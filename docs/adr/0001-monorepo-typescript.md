@@ -1,6 +1,6 @@
 # ADR-0001 · Monorepo TypeScript con pnpm
 
-- **Estado:** Aceptado (la versión de Node la modifica ADR-0008: Node 26)
+- **Estado:** Aceptado (modificado por ADR-0008: Node 26, y ADR-0009: TypeScript 7)
 - **Fecha:** 2026-09-28
 
 ## Contexto
@@ -8,7 +8,7 @@ El sistema tiene varias piezas (API, worker, panel web, CLI) que comparten domin
 
 ## Decisión
 - Monorepo con **pnpm workspaces**: `apps/*` y `packages/*`.
-- **TypeScript strict** en todo, con Node 22 y ESM. *(Reemplazado por ADR-0008: Node 26.)*
+- **TypeScript strict** en todo, con Node 22 y ESM. *(Modificado por ADR-0008: Node 26.)*
 - **Hono** para la API y su cliente RPC tipado, compartido por web y CLI.
 - **Biome** para lint y formato; **Vitest** para tests.
 - Sin Turborepo por ahora: los scripts se orquestan con `pnpm -r` y `pnpm --filter`.
