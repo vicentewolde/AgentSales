@@ -45,7 +45,7 @@ Spec detallado: `docs/specs/fase-1-carga.md`.
 
 ## F3 · Aprobación + Instagram
 - Máquina de estados de publicaciones completa, con eventos.
-- Aprobar, editar o rechazar desde el panel y la CLI (`corredor approve <id>`).
+- Aprobar, editar o rechazar desde el panel y la CLI (`agentsales approve <id>`).
 - OAuth Instagram Login; tokens cifrados y refresco automático.
 - Publicar carrusel y reel en la cuenta de prueba, primero en `dry-run` y luego en `live`.
 

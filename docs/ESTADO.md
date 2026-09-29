@@ -29,5 +29,6 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - [ ] Preparar las 3 propiedades de muestra (necesarias para F1)
 
 ## Notas de la última sesión
+- 2026-09-29: el proyecto se llama **AgentSales** (antes "IA Corredor"); CLI `agentsales`, paquetes `@agentsales/*`.
 - 2026-09-29: se reemplazó Supabase por Neon (Postgres) + Cloudflare R2 (archivos) por el límite de 2 proyectos gratis (ADR-0007). Alta paso a paso en `docs/09-alta-neon-r2.md`.
 - Se creó la documentación base, 6 ADRs, los specs F0 (aprobado) y F1 (borrador), y la configuración de Claude Code.

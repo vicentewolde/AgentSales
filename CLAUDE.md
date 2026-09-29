@@ -1,4 +1,4 @@
-# CLAUDE.md — IA Corredor
+# CLAUDE.md — AgentSales
 
 Sistema que toma avisos (propiedades hoy, productos después) con fotos y videos, redacta el contenido con IA, procesa los medios y los publica en Instagram, Portal Inmobiliario y Facebook Marketplace, con aprobación, calendario y seguimiento. Proyecto personal de Vinny (operador) para aprender y luego ofrecer a corredores independientes.
 

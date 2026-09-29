@@ -1,4 +1,4 @@
-# IA Corredor
+# AgentSales
 
 Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento.
 

@@ -16,7 +16,7 @@ Tener el esqueleto completo funcionando: monorepo que compila y testea, base de 
 - `packages/storage`: archivos en Cloudflare R2 (API S3): subir, leer, borrar, URL prefirmada y comprobación de acceso.
 - `apps/api`: Hono, `/health`, manejo de errores y tipo `AppType` exportado.
 - `apps/worker`: pg-boss arrancando, job de prueba y apagado ordenado.
-- `apps/cli`: `corredor doctor` y `corredor status`.
+- `apps/cli`: `agentsales doctor` y `agentsales status`.
 - `apps/web`: shell React con página "Estado del sistema".
 - CI con GitHub Actions.
 
@@ -32,7 +32,7 @@ Tener el esqueleto completo funcionando: monorepo que compila y testea, base de 
 apps/{api,worker,cli,web}
 packages/{config,core,db,storage}
 ```
-Nombres de paquete: `@ia-corredor/<nombre>`. Binario de la CLI: `corredor`.
+Nombres de paquete: `@agentsales/<nombre>`. Binario de la CLI: `agentsales`.
 
 ### 4.2 Scripts raíz (`package.json`)
 | Script | Hace |
@@ -48,8 +48,8 @@ Nombres de paquete: `@ia-corredor/<nombre>`. Binario de la CLI: `corredor`.
 
 ### 4.3 Contratos
 - `GET /health` → `200 { status: "ok"|"degraded", publishMode, checks: { db, storage, queue }, version }`. Cada check es `{ ok, latencyMs, error? }`. Responde 200 aunque haya checks fallidos (con `degraded`).
-- `corredor doctor`: verifica env, db, storage, cola, `ffmpeg -version`, Chromium de Playwright y `claude --version`. Imprime ✓/✗ por ítem con una sugerencia de arreglo, y sale con código 1 si algo crítico falla. Los ítems que su fase aún no necesita (Playwright, Claude) salen como advertencia, no como error. Neon suspende el cómputo tras 5 min sin actividad y la primera conexión puede tardar unos segundos: el check de base de datos usa un timeout de 10 s y un reintento antes de fallar.
-- `corredor status`: llama a `/health` y muestra `PUBLISH_MODE` destacado.
+- `agentsales doctor`: verifica env, db, storage, cola, `ffmpeg -version`, Chromium de Playwright y `claude --version`. Imprime ✓/✗ por ítem con una sugerencia de arreglo, y sale con código 1 si algo crítico falla. Los ítems que su fase aún no necesita (Playwright, Claude) salen como advertencia, no como error. Neon suspende el cómputo tras 5 min sin actividad y la primera conexión puede tardar unos segundos: el check de base de datos usa un timeout de 10 s y un reintento antes de fallar.
+- `agentsales status`: llama a `/health` y muestra `PUBLISH_MODE` destacado.
 
 ### 4.4 Datos
 - Migración `0000_init`: todas las tablas y enums de `02-modelo-datos.md`.

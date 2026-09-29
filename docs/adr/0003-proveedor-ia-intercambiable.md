@@ -17,7 +17,7 @@ El operador tiene plan Max de Claude y quiere aprovecharlo durante el desarrollo
 
 ## Consecuencias
 - Cero costo de IA durante el piloto propio.
-- `claude -p` es más lento que la API y depende de tener la CLI instalada y autenticada: `corredor doctor` lo verifica.
+- `claude -p` es más lento que la API y depende de tener la CLI instalada y autenticada: `agentsales doctor` lo verifica.
 - Pasar a producción es cambiar una variable, no el código.
 
 ## Alternativas descartadas

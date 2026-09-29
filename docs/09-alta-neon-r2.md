@@ -8,7 +8,7 @@ Al terminar tendrás 5 valores para el `.env`: `DATABASE_URL`, `R2_ACCOUNT_ID`, 
 
 1. Entra a **neon.com** → **Sign up** → **Continue with GitHub**.
 2. **Create project**:
-   - Name: `ia-corredor`
+   - Name: `agentsales`
    - Postgres version: la que viene por defecto
    - Region: **AWS South America (São Paulo)** (`aws-sa-east-1`)
    - Clic en **Create**.
@@ -31,7 +31,7 @@ Al terminar tendrás 5 valores para el `.env`: `DATABASE_URL`, `R2_ACCOUNT_ID`, 
    - **Pide una tarjeta.** Cloudflare hace una retención temporal de US$5 para verificarla; no es un cobro.
    - No se cobra nada mientras no superes 10 GB almacenados, 1 millón de operaciones de escritura y 10 millones de lecturas al mes.
 3. **Create bucket**:
-   - Name: `ia-corredor-media`
+   - Name: `ia-corredor-media` (nombre histórico del proyecto, antes de llamarse AgentSales; R2 no permite renombrar buckets, así que se conserva)
    - Location: **Automatic**
    - Default storage class: **Standard**
    - Déjalo **privado**: no actives "Public access", "r2.dev" ni dominios personalizados.

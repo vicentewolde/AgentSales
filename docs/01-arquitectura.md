@@ -66,7 +66,7 @@ Esto permite cambiar Claude CLI por la API de Anthropic, o agregar una plataform
 ## Estructura del monorepo
 
 ```
-ia-corredor/
+agentsales/
 ├── apps/
 │   ├── api/          Hono REST API; tipos exportados para el cliente RPC
 │   ├── web/          React + Vite + Tailwind; panel de operación

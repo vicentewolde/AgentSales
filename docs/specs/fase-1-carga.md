@@ -66,10 +66,10 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 
 CLI:
 ```
-corredor import <xlsx> [--media <dir|zip>] [--broker <slug>] [--dry-run]
-corredor listings [--status ready] [--json]
-corredor listing <external_ref|id> [--json]
-corredor imports [<id>]
+agentsales import <xlsx> [--media <dir|zip>] [--broker <slug>] [--dry-run]
+agentsales listings [--status ready] [--json]
+agentsales listing <external_ref|id> [--json]
+agentsales imports [<id>]
 ```
 
 ### 4.5 Datos

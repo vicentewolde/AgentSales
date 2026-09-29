@@ -6,7 +6,7 @@ Corredores de propiedades independientes y vendedores pequeños pierden horas pu
 
 ## Solución
 
-**IA Corredor**: un sistema que recibe una lista de avisos (propiedades hoy, productos en general mañana) con sus fotos y videos, y:
+**AgentSales**: un sistema que recibe una lista de avisos (propiedades hoy, productos en general mañana) con sus fotos y videos, y:
 
 1. Redacta el contenido adaptado a cada plataforma, con el tono y la marca del corredor.
 2. Procesa imágenes y videos: recortes por formato, portada, carrusel con diseño profesional y reels.

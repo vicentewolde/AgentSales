@@ -10,7 +10,7 @@ El ADR-0002 elegía Supabase (plan gratis) para base de datos y archivos. Ese pl
 Instagram exige que los medios estén en una **URL accesible desde internet**, así que se necesita almacenamiento en la nube incluso con la app corriendo en local.
 
 ## Decisión
-- **Base de datos: Neon, plan gratis**, un proyecto `ia-corredor` en la región AWS São Paulo (`aws-sa-east-1`).
+- **Base de datos: Neon, plan gratis**, un proyecto `agentsales` en la región AWS São Paulo (`aws-sa-east-1`).
   - Se usa la **conexión directa** (host sin `-pooler`, con `sslmode=require`) para todo: la app, drizzle-kit y pg-boss. El pooler de Neon usa PgBouncer en modo transacción y no soporta bloqueos de sesión, `LISTEN/NOTIFY` ni algunas herramientas de migración.
   - Driver de Postgres estándar (`pg` o `postgres`); no se usa el driver serverless de Neon.
   - **Drizzle ORM + drizzle-kit** se mantienen sin cambios.
