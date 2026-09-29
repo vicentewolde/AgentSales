@@ -1,3 +1,8 @@
 packages:
   - apps/*
   - packages/*
+
+# esbuild (vía tsx y drizzle-kit) solo verifica su binario en postinstall; el binario
+# llega como dependencia opcional por plataforma, así que no se ejecuta su script.
+allowBuilds:
+  esbuild: false

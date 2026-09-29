@@ -2,7 +2,7 @@
 
 Base de datos: Postgres en Neon (plan gratis, conexión directa). Esquema en `packages/db` con Drizzle; este documento es la referencia conceptual. Si difieren, **manda el código** y este documento se actualiza en la misma tarea.
 
-Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `platform_account_status`, `field_type`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`).
+Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`.
 
 ## Diagrama
 
@@ -76,13 +76,13 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | broker_id | uuid FK | |
 | external_ref | text | `id_propiedad` del Excel |
 | category | text | `real_estate` |
-| operation | enum null | `sale`, `rent` |
+| operation | enum `operation` null | `sale`, `rent` |
 | property_type | text null | Departamento, Casa… |
 | status | enum `listing_status` | `draft`, `ready`, `active`, `paused`, `closed`, `archived` |
 | close_reason | enum `close_reason` null | `sold`, `rented`, `withdrawn` |
 | price_amount | numeric(14,2) | |
-| price_currency | enum | `UF`, `CLP` |
-| region, comuna, address, unit_number | text | |
+| price_currency | enum `currency` | `UF`, `CLP` |
+| region, comuna, address, unit_number | text null | Un borrador o un producto (ADR-0006) puede no tenerlos |
 | show_exact_address | boolean | |
 | attributes | jsonb | Resto de campos, validados con `field_definitions` |
 | highlights | text null | Lo que el corredor quiere destacar |
@@ -103,11 +103,14 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | variant | text null | ej. `ig_4x5`, `ig_reel`, `pi_4x3`, `cover`, `spec_sheet` |
 | parent_media_id | uuid null | Derivado de qué original |
 | storage_path | text | Ruta en el bucket |
-| mime, width, height, duration_s, bytes | | |
+| mime | text | |
+| width, height | int null | |
+| duration_s | numeric(10,3) null | Solo videos |
+| bytes | bigint | |
 | checksum | text | sha256; evita duplicados |
 | sort_order | int | Orden del carrusel |
 | is_cover | boolean | |
-| ai_metadata | jsonb | Descripción y puntaje de la IA |
+| ai_metadata | jsonb null | Descripción y puntaje de la IA |
 
 ### contents — textos generados por plataforma
 | Columna | Tipo | Notas |
@@ -145,7 +148,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | Columna | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
-| publication_id | uuid FK | |
+| publication_id | uuid FK | `ON DELETE CASCADE` |
 | type | text | `status_changed`, `publish_attempt`, `sync`, `manual_edit` |
 | from_status, to_status | text null | |
 | actor | text | `system`, `operator`, `cli` |

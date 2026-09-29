@@ -83,6 +83,12 @@ test/             # opcional: fixtures, helpers y tests de integración
 - Sin la condición, Node cae **en silencio** a `dist/`, que puede estar viejo. Si un cambio "no se ve", revisa que la herramienta tenga la condición.
 - En producción se usa `dist/`, que genera `tsc -b`.
 - Las dependencias internas se declaran como `"@agentsales/<nombre>": "workspace:*"`.
+- Los scripts de paquete que ejecutan TypeScript usan `NODE_OPTIONS=--conditions=@agentsales/source tsx …` (y lo mismo para `drizzle-kit`).
+
+## Dependencias y pnpm
+
+- pnpm 11 exige una antigüedad mínima a cada versión publicada (`minimumReleaseAge`). **No se agregan excepciones** (`minimumReleaseAgeExclude`): si una versión es demasiado nueva, se usa la anterior.
+- Los scripts de instalación de dependencias se aprueban uno a uno en `allowBuilds` de `pnpm-workspace.yaml`, con un comentario del motivo.
 
 ## Tests
 
