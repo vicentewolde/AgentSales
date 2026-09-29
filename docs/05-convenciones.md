@@ -28,7 +28,7 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
 
 ## Código
 
-- Funciones puras en `core`; efectos en adaptadores. `core` solo importa `zod` e imports relativos (y `vitest` en tests): Biome lo exige con `noRestrictedImports` y su tsconfig no carga tipos de Node.
+- Funciones puras en `core`; efectos en adaptadores. `core` solo importa `zod` e imports relativos (y `vitest` en `*.test.ts(x)` y `test/`): Biome lo exige con `noRestrictedImports` y su tsconfig no carga tipos de Node. Biome no revisa `require()` ni `import()` dinámico: no se usan en `core`.
 - Valores de dominio como tuplas `as const` en `core` (`PLATFORMS`, `PUBLICATION_STATUSES`…), reutilizadas por `z.enum()` y `pgEnum()`; nunca se repiten los literales en otro paquete.
 - Un caso de uso por archivo: `packages/core/src/use-cases/import-listings.ts`.
 - Errores tipados: `AppError` con `code` (ej. `IMPORT_INVALID_ROW`, `PUBLISH_RATE_LIMITED`) y `retriable: boolean`. Nada de `throw "string"`.

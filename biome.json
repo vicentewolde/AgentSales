@@ -59,7 +59,11 @@
       }
     },
     {
-      "includes": ["packages/core/**/*.test.ts"],
+      "includes": [
+        "packages/core/**/*.test.ts",
+        "packages/core/**/*.test.tsx",
+        "packages/core/test/**"
+      ],
       "linter": {
         "rules": {
           "style": {

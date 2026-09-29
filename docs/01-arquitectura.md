@@ -11,13 +11,14 @@ flowchart LR
 
   subgraph Interfaces
     WEB[apps/web<br/>Panel React]
-    CLI[apps/cli<br/>corredor]
+    CLI[apps/cli<br/>agentsales]
   end
 
   subgraph Backend
     API[apps/api<br/>Hono REST]
     WRK[apps/worker<br/>pg-boss]
     CORE[packages/core<br/>dominio + casos de uso]
+    CFG[packages/config<br/>env · logger]
   end
 
   subgraph Adaptadores
@@ -44,7 +45,9 @@ flowchart LR
   CLI --> API
   API --> CORE
   WRK --> CORE
-  CORE --> IMP & LLM & MEDIA & PUB & DB & STO
+  IMP & LLM & MEDIA & PUB & DB & STO -. implementan puertos de .-> CORE
+  API & WRK & CLI --> CFG
+  CFG --> CORE
   DB --> NEON
   STO --> R2
   MEDIA --> STO
@@ -108,6 +111,7 @@ listing → media: normaliza, recorta por formato, elige portada
         → video: reel 9:16 (recorte + tope 90 s)
         → llm: genera textos por plataforma (JSON validado con zod)
         → crea contents y publications en estado pending_approval
+          (o approved si el corredor tiene auto_publish)
 ```
 
 ### 3. Publicación (job `publication.publish`)
@@ -116,7 +120,9 @@ listing → media: normaliza, recorta por formato, elige portada
 publication approved/scheduled → worker toma el job
   → publisher.validate() → publisher.publish()   (o dry-run)
   → guarda external_id/url → estado published
-  → error: reintento con backoff; al agotar reintentos, failed
+  → error reintentable: pg-boss reintenta con backoff; la publicación sigue en
+    publishing (sube attempts y se registra un publish_attempt)
+  → error no reintentable o reintentos agotados: failed
   → cada transición queda en publication_events
 ```
 
@@ -139,7 +145,7 @@ stateDiagram-v2
   approved --> publishing: publicar ahora
   scheduled --> publishing: llega la hora
   publishing --> published: ok
-  publishing --> failed: error sin reintentos
+  publishing --> failed: error no reintentable o reintentos agotados
   failed --> publishing: reintento manual
   published --> paused: pausar
   paused --> published: reactivar
@@ -149,9 +155,22 @@ stateDiagram-v2
   awaiting_manual_confirm --> published: operador hace el clic final
   awaiting_manual_confirm --> failed: captcha, verificación o abandono
   unpublished --> [*]
+  draft --> cancelled: descartar
+  pending_approval --> cancelled: descartar
+  approved --> cancelled: descartar
+  scheduled --> cancelled: desprogramar o cerrar el aviso
+  failed --> cancelled: descartar
+  awaiting_manual_confirm --> cancelled: descartar
+  cancelled --> [*]
 ```
 
 Para Marketplace (semiautomático) existe además `awaiting_manual_confirm` entre `publishing` y `published`: el formulario queda listo y el operador hace el clic final. Si aparece un captcha o una verificación, el sistema se detiene y la publicación pasa a `failed` (ADR-0004).
+
+Estados iniciales (`INITIAL_PUBLICATION_STATUSES`): una publicación se crea en `draft`, en `pending_approval` (flujo normal: el contenido ya está generado) o en `approved` (corredor con `auto_publish`).
+
+Estados terminales (`TERMINAL_PUBLICATION_STATUSES`): `unpublished` (estuvo en la plataforma y se bajó) y `cancelled` (nunca llegó a la plataforma). Todos los demás cuentan como **activos** (`ACTIVE_PUBLICATION_STATUSES`), incluido `failed`; por eso un `failed` se reintenta o se cancela antes de crear otra publicación del mismo aviso en la misma cuenta.
+
+`transition()` no conoce la plataforma: el caso de uso solo lleva a `awaiting_manual_confirm` a publishers con `capabilities.manualStep`, y solo pausa en plataformas que lo soportan.
 
 La máquina de estados vive en `packages/core` (`PUBLICATION_TRANSITIONS`, `canTransition`, `transition`) como función pura con tests: toda transición inválida lanza `AppError("INVALID_TRANSITION")`.
 

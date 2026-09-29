@@ -2,7 +2,7 @@
 
 Base de datos: Postgres en Neon (plan gratis, conexión directa). Esquema en `packages/db` con Drizzle; este documento es la referencia conceptual. Si difieren, **manda el código** y este documento se actualiza en la misma tarea.
 
-Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados.
+Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `platform_account_status`, `field_type`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`).
 
 ## Diagrama
 
@@ -46,7 +46,7 @@ erDiagram
 | display_name | text | |
 | credentials_encrypted | text null | JSON de tokens cifrado |
 | token_expires_at | timestamptz null | |
-| status | enum | `connected`, `expired`, `revoked`, `error` |
+| status | enum `platform_account_status` | `connected`, `expired`, `revoked`, `error` |
 | meta | jsonb | Datos propios de la plataforma |
 
 Único: `(broker_id, platform, external_account_id)`.
@@ -59,7 +59,7 @@ erDiagram
 | category | text | `real_estate` (luego `product`) |
 | key | text | ej. `dormitorios` |
 | label | text | Texto visible |
-| type | enum | `text`, `number`, `enum`, `boolean`, `date`, `url`, `list` |
+| type | enum `field_type` | `text`, `number`, `enum`, `boolean`, `date`, `url`, `list` |
 | required | boolean | |
 | options | jsonb null | Opciones de `enum` |
 | source_column | text | Encabezado en el Excel |
@@ -79,7 +79,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | operation | enum null | `sale`, `rent` |
 | property_type | text null | Departamento, Casa… |
 | status | enum `listing_status` | `draft`, `ready`, `active`, `paused`, `closed`, `archived` |
-| close_reason | text null | `sold`, `rented`, `withdrawn` |
+| close_reason | enum `close_reason` null | `sold`, `rented`, `withdrawn` |
 | price_amount | numeric(14,2) | |
 | price_currency | enum | `UF`, `CLP` |
 | region, comuna, address, unit_number | text | |
@@ -87,7 +87,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | attributes | jsonb | Resto de campos, validados con `field_definitions` |
 | highlights | text null | Lo que el corredor quiere destacar |
 | internal_notes | text null | Nunca se publica |
-| source | enum | `xlsx`, `google_sheets`, `manual`, `chat` |
+| source | enum `listing_source` | `xlsx`, `google_sheets`, `manual`, `chat` |
 | source_hash | text | Hash de la fila para detectar cambios |
 
 Único: `(broker_id, external_ref)`. Ese par es la llave de la **importación idempotente**.
@@ -98,8 +98,8 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | id | uuid PK | |
 | listing_id | uuid FK null | `null` para medios del corredor (logo) |
 | broker_id | uuid FK | |
-| kind | enum | `image`, `video` |
-| role | enum | `original`, `processed`, `rendered` |
+| kind | enum `media_kind` | `image`, `video` |
+| role | enum `media_role` | `original`, `processed`, `rendered` |
 | variant | text null | ej. `ig_4x5`, `ig_reel`, `pi_4x3`, `cover`, `spec_sheet` |
 | parent_media_id | uuid null | Derivado de qué original |
 | storage_path | text | Ruta en el bucket |
@@ -118,7 +118,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | title | text null | Portal y Marketplace |
 | body | text | Caption o descripción |
 | hashtags | text[] | |
-| status | enum | `draft`, `edited`, `approved` |
+| status | enum `content_status` | `draft`, `edited`, `approved` |
 | llm_provider, llm_model, prompt_version | text | Trazabilidad |
 | raw_output | jsonb | Salida validada de la IA |
 
@@ -131,7 +131,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | platform | enum `platform` | Denormalizado para consultas |
 | content_id | uuid FK | |
 | media_ids | uuid[] | Medios usados, en orden |
-| status | enum `publication_status` | Ver máquina de estados en `01-arquitectura.md` |
+| status | enum `publication_status` | `draft`, `pending_approval`, `approved`, `scheduled`, `publishing`, `awaiting_manual_confirm`, `published`, `failed`, `paused`, `unpublished`, `cancelled`. Transiciones en `01-arquitectura.md` |
 | scheduled_at | timestamptz null | |
 | published_at | timestamptz null | |
 | external_id, external_url | text null | |
@@ -139,7 +139,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | last_error | jsonb null | `{ code, message, retriable }` |
 | dry_run | boolean | Publicado en modo simulación |
 
-Único parcial: una publicación activa por `(listing_id, platform_account_id)`.
+Único parcial: una publicación activa por `(listing_id, platform_account_id)`, con `WHERE status NOT IN ('unpublished', 'cancelled')` (los estados de `ACTIVE_PUBLICATION_STATUSES` en `core`).
 
 ### publication_events — bitácora
 | Columna | Tipo | Notas |
@@ -157,7 +157,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 |---|---|---|
 | id | uuid PK | |
 | broker_id | uuid FK | |
-| source | enum | |
+| source | enum `listing_source` | Mismos valores que `listings.source` |
 | file_name | text | |
 | rows_total, rows_created, rows_updated, rows_skipped, rows_failed | int | |
 | report | jsonb | Errores por fila y columna |

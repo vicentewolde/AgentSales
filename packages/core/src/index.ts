@@ -1,3 +1,10 @@
 export * from "./enums.js";
-export { AppError, type AppErrorOptions } from "./errors.js";
-export { canTransition, PUBLICATION_TRANSITIONS, transition } from "./publication-state.js";
+export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
+export {
+  ACTIVE_PUBLICATION_STATUSES,
+  canTransition,
+  INITIAL_PUBLICATION_STATUSES,
+  PUBLICATION_TRANSITIONS,
+  TERMINAL_PUBLICATION_STATUSES,
+  transition,
+} from "./publication-state.js";

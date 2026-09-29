@@ -26,6 +26,7 @@ export const PUBLICATION_STATUSES = [
   "failed",
   "paused",
   "unpublished",
+  "cancelled",
 ] as const;
 export type PublicationStatus = (typeof PUBLICATION_STATUSES)[number];
 

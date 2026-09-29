@@ -121,6 +121,14 @@ describe("loadEnv", () => {
     expect(() => loadEnv({ ...validSource, APP_ENCRYPTION_KEY: "a".repeat(31) })).toThrow(EnvError);
   });
 
+  it("rechaza un LLM_PROVIDER desconocido listando las tres opciones", () => {
+    const error = envErrorOf({ ...validSource, LLM_PROVIDER: "openai" });
+
+    expect(error.message).toContain(
+      'LLM_PROVIDER: debe ser "claude-cli", "anthropic-api" o "fake"',
+    );
+  });
+
   it("rechaza un PUBLISH_MODE desconocido", () => {
     const error = envErrorOf({ ...validSource, PUBLISH_MODE: "foo" });
 
