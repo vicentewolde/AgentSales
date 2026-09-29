@@ -5,7 +5,7 @@ Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal
 > Estado: **F0 · Fundaciones**. Ver `docs/ESTADO.md`.
 
 ## Requisitos
-- Node.js 22 LTS y pnpm
+- Node.js 26 y pnpm
 - ffmpeg
 - Claude Code con sesión iniciada (para generar contenido en local)
 - Proyecto de Neon (Postgres) y bucket de Cloudflare R2, ambos gratis (ver `docs/09-alta-neon-r2.md`)

@@ -1,7 +1,8 @@
 # ADR-NNNN · Título en forma de decisión
 
-- **Estado:** Propuesto | Aceptado | Reemplazado por ADR-XXXX
+- **Estado:** Propuesto | Aceptado | Reemplazado por ADR-XXXX | Aceptado (modificado por ADR-XXXX)
 - **Fecha:** AAAA-MM-DD
+- **Reemplaza a / Modifica a:** ADR-XXXX (alcance) — opcional
 
 ## Contexto
 ¿Qué problema o fuerza obliga a decidir? Hechos y restricciones, no opiniones.

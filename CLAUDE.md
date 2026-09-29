@@ -21,7 +21,7 @@ Sistema que toma avisos (propiedades hoy, productos después) con fotos y videos
 | `docs/adr/` | Decisiones tomadas; no las contradigas sin un ADR nuevo |
 
 ## Stack (resumen; detalle en 05-convenciones)
-Node 22 · pnpm workspaces · TypeScript strict · Hono (+ cliente RPC `hc`) · React + Vite + Tailwind + TanStack Query · Drizzle + Neon (Postgres) · Cloudflare R2 (archivos, API S3) · pg-boss · sharp · ffmpeg · Playwright · zod · Vitest · Biome · pino.
+Node 26 · pnpm workspaces · TypeScript strict · Hono (+ cliente RPC `hc`) · React + Vite + Tailwind + TanStack Query · Drizzle + Neon (Postgres) · Cloudflare R2 (archivos, API S3) · pg-boss · sharp · ffmpeg · Playwright · zod · Vitest · Biome · pino.
 
 ## Estructura
 ```

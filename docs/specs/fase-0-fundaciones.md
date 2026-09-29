@@ -3,7 +3,7 @@
 - **Estado:** Aprobado (listo para comenzar)
 - **Rama base:** `main`
 - **Tag al cerrar:** `v0.0.1`
-- **Referencias:** `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/05-convenciones.md`, ADR 0001, 0002 (solo la parte de Drizzle), 0003, 0005 y 0007
+- **Referencias:** `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/05-convenciones.md`, ADR 0001, 0002 (solo la parte de Drizzle), 0003, 0005, 0007 y 0008
 
 ## 1. Objetivo
 Tener el esqueleto completo funcionando: monorepo que compila y testea, base de datos con el esquema v1 en Neon, API, worker, CLI y panel conectados, y un comando `doctor` que diga si el entorno está sano. Nada de funcionalidad de negocio todavía.
@@ -39,12 +39,17 @@ Nombres de paquete: `@agentsales/<nombre>`. Binario de la CLI: `agentsales`.
 |---|---|
 | `pnpm dev` | Levanta api, worker y web en paralelo |
 | `pnpm check` | `biome check` + `tsc -b` + `vitest run` |
+| `pnpm lint` | `biome check` (sin corregir) |
+| `pnpm format` | `biome check --write` (formato y correcciones seguras) |
+| `pnpm typecheck` | `tsc -b` |
 | `pnpm test` | vitest en todos los paquetes |
 | `pnpm db:generate` | drizzle-kit generate |
 | `pnpm db:migrate` | aplica migraciones |
 | `pnpm db:seed` | seed idempotente |
 | `pnpm storage:check` | sube, lee y borra un objeto de prueba en el bucket de R2 (el bucket lo crea el operador a mano) |
 | `pnpm cli <args>` | ejecuta la CLI en modo dev (tsx) |
+
+T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega la tarea que los introduce: `db:*` y `storage:check` en T04, `dev` en T05–T08 y `cli` en T07.
 
 ### 4.3 Contratos
 - `GET /health` → `200 { status: "ok"|"degraded", publishMode, checks: { db, storage, queue }, version }`. Cada check es `{ ok, latencyMs, error? }`. Responde 200 aunque haya checks fallidos (con `degraded`).
@@ -64,16 +69,17 @@ Nombres de paquete: `@agentsales/<nombre>`. Binario de la CLI: `agentsales`.
 
 ### F0-T01 · Esqueleto del monorepo y tooling
 - **Depende de:** —
-- **Descripción:** `pnpm-workspace.yaml`, `package.json` raíz con scripts, `tsconfig.base.json` (strict, NodeNext, ES2023), `biome.json`, `.nvmrc` (22), `.editorconfig`, `vitest.workspace` o config por paquete.
+- **Descripción:** `pnpm-workspace.yaml`, `package.json` raíz con scripts, `tsconfig.base.json` (strict, NodeNext, ES2023), `biome.json`, `.nvmrc` (26, ADR-0008), `.editorconfig`, `vitest.config.ts` raíz (Vitest 5 ya no tiene `vitest.workspace`; se pasa a `test.projects` cuando un paquete necesite otro entorno, p. ej. web en T08).
 - **Hecho cuando:**
-  - [ ] `pnpm install` y `pnpm check` pasan con el repo vacío de lógica
-  - [ ] `docs/ESTADO.md` actualizado
+  - [x] `pnpm install` y `pnpm check` pasan con el repo vacío de lógica
+  - [x] `docs/ESTADO.md` actualizado
 
 ### F0-T02 · packages/config
 - **Depende de:** T01
 - **Descripción:** esquema zod de todas las variables de `.env.example` (las de fases futuras, opcionales); `loadEnv()` que falla con un mensaje claro indicando qué falta; logger pino con redactor de `token|secret|password|authorization|key`.
 - **Hecho cuando:**
   - [ ] Tests: env válida, env inválida (mensaje legible) y redacción de secretos en logs
+  - [ ] Se quita `passWithNoTests` de `vitest.config.ts` (primera tarea con tests)
   - [ ] `PUBLISH_MODE` por defecto es `dry-run`
   - [ ] `DATABASE_URL` con host `-pooler` se rechaza con un mensaje claro (debe ser la conexión directa de Neon, con `sslmode=require`)
   - [ ] `APP_ENCRYPTION_KEY` acepta cualquier texto de al menos 32 caracteres (se derivan 32 bytes con HKDF-SHA256) y rechaza los más cortos
@@ -83,7 +89,7 @@ Nombres de paquete: `@agentsales/<nombre>`. Binario de la CLI: `agentsales`.
 - **Descripción:** enums (`Platform`, `ListingStatus`, `PublicationStatus`, `Currency`, `Operation`), clase `AppError { code, message, retriable, details }` y máquina de estados de publicaciones según `01-arquitectura.md` (incluido `awaiting_manual_confirm`): `canTransition(from, to)` y `transition(from, to)`, que lanza `AppError("INVALID_TRANSITION")`.
 - **Hecho cuando:**
   - [ ] Tests que cubren todas las transiciones válidas y un conjunto de inválidas
-  - [ ] Cero dependencias de infraestructura en `core`
+  - [ ] Cero dependencias de infraestructura en `core`: su tsconfig usa `"types": []` y Biome prohíbe importar `node:*` y librerías de infraestructura en `packages/core/**`
 
 ### F0-T04 · packages/db y packages/storage — esquema, migración, seed y R2
 - **Depende de:** T02, T03
@@ -160,3 +166,4 @@ Nombres de paquete: `@agentsales/<nombre>`. Binario de la CLI: `agentsales`.
 |---|---|
 | 2026-09-28 | Versión inicial |
 | 2026-09-29 | Supabase reemplazado por Neon + Cloudflare R2 (ADR-0007); nuevo `packages/storage`; `APP_ENCRYPTION_KEY` libre de formato |
+| 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
