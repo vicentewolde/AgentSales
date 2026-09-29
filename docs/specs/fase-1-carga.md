@@ -146,7 +146,7 @@ corredor imports [<id>]
 |---|---|
 | Excel editado en Google Sheets cambia tipos (fechas, números como texto) | Normalizador tolerante y tests con archivo exportado desde Sheets |
 | Fotos HEIC desde iPhone | Se aceptan en F1 y se convierten en F2 (sharp con libheif, o fallback a ffmpeg) |
-| Archivos grandes de video | Límite configurable (`MAX_VIDEO_MB`, default 300) con advertencia |
+| Archivos grandes de video | Plan gratis de Supabase limita cada archivo a 50 MB: `MAX_VIDEO_MB` default 50; los videos más pesados se rechazan con advertencia en F1 y se comprimen con ffmpeg en F2 |
 
 ## 9. Preguntas abiertas
 - [ ] ¿Google Sheets y Drive son necesarios antes de F3, o basta con Excel y zip durante el piloto?

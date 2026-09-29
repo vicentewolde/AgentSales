@@ -88,7 +88,8 @@ Nombres de paquete: `@ia-corredor/<nombre>`. Binario de la CLI: `corredor`.
 - **Hecho cuando:**
   - [ ] Migración aplicada en Supabase sin errores
   - [ ] Correr `db:seed` dos veces no duplica
-  - [ ] Bucket `media` existe y es privado
+  - [ ] Bucket `media` existe, es privado y limita archivos a 50 MB (tope del plan gratis)
+  - [ ] **RLS activado en todas las tablas** (sin políticas): Supabase expone el esquema `public` por su API REST y sin RLS cualquiera con la clave pública podría leer los datos. Nuestro backend usa conexión directa a Postgres, que no se ve afectada
   - [ ] `02-modelo-datos.md` coincide con el esquema (actualizar si hubo ajustes)
 
 ### F0-T05 · apps/api — Hono y /health

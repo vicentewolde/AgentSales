@@ -11,7 +11,7 @@ Cosas que **solo tú puedes hacer** (cuentas, aprobaciones, datos reales). Claud
 - [ ] Claude Code instalado y con sesión iniciada con tu plan Max (`claude` → `/status`)
 - [ ] Repositorio privado en GitHub: `ia-corredor`
 - [ ] Proyecto en Supabase (plan gratis, región São Paulo)
-  - [ ] Copiar a `.env`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+  - [ ] Copiar a `.env`: `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (clave `sb_secret_...`)
   - [ ] Copiar a `.env`: `DATABASE_URL` (connection string **Session pooler**, puerto 5432)
 - [ ] Generar `APP_ENCRYPTION_KEY`: `openssl rand -base64 32`
 

@@ -2,7 +2,7 @@
 
 Base de datos: Postgres en Supabase. Esquema en `packages/db` con Drizzle; este documento es la referencia conceptual. Si difieren, **manda el código** y este documento se actualiza en la misma tarea.
 
-Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados.
+Seguridad: **todas las tablas tienen RLS activado y sin políticas** (acceso solo por conexión directa del backend); el acceso por la API REST de Supabase queda denegado. Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados.
 
 ## Diagrama
 

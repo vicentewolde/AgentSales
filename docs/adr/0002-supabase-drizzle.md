@@ -13,6 +13,9 @@ La app corre en local, pero Instagram exige que los medios estén en una **URL p
 - El cliente `@supabase/supabase-js` se usa solo para Storage (y para Auth en F7).
 
 ## Consecuencias
+- Todas las tablas con **RLS activado y sin políticas**: el backend usa la conexión Postgres directa (rol `postgres`, que ignora RLS) y la API REST de Supabase no puede leer nada.
+- Plan gratis: 500 MB de base de datos, 1 GB de Storage y **50 MB máximo por archivo**.
+- Conexión: **Session pooler** (IPv4, puerto 5432) por defecto, porque la conexión directa del plan gratis es solo IPv6.
 - No hace falta Docker para desarrollar.
 - Los proyectos gratis se pausan tras un periodo de inactividad: basta con reactivarlo desde el dashboard.
 - Migrar a Postgres propio más adelante es directo, porque el esquema es Drizzle y SQL estándar.
