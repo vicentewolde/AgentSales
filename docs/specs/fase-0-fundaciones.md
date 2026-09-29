@@ -3,7 +3,7 @@
 - **Estado:** Aprobado (listo para comenzar)
 - **Rama base:** `main`
 - **Tag al cerrar:** `v0.0.1`
-- **Referencias:** `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/05-convenciones.md`, ADR 0001, 0002 (solo la parte de Drizzle), 0003, 0005 y 0007
+- **Referencias:** `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/05-convenciones.md`, ADR 0001, 0002 (solo la parte de Drizzle), 0003, 0005, 0007 y 0008
 
 ## 1. Objetivo
 Tener el esqueleto completo funcionando: monorepo que compila y testea, base de datos con el esquema v1 en Neon, API, worker, CLI y panel conectados, y un comando `doctor` que diga si el entorno está sano. Nada de funcionalidad de negocio todavía.
@@ -64,7 +64,7 @@ Nombres de paquete: `@agentsales/<nombre>`. Binario de la CLI: `agentsales`.
 
 ### F0-T01 · Esqueleto del monorepo y tooling
 - **Depende de:** —
-- **Descripción:** `pnpm-workspace.yaml`, `package.json` raíz con scripts, `tsconfig.base.json` (strict, NodeNext, ES2023), `biome.json`, `.nvmrc` (22), `.editorconfig`, `vitest.workspace` o config por paquete.
+- **Descripción:** `pnpm-workspace.yaml`, `package.json` raíz con scripts, `tsconfig.base.json` (strict, NodeNext, ES2023), `biome.json`, `.nvmrc` (26, ADR-0008), `.editorconfig`, `vitest.workspace` o config por paquete.
 - **Hecho cuando:**
   - [ ] `pnpm install` y `pnpm check` pasan con el repo vacío de lógica
   - [ ] `docs/ESTADO.md` actualizado

@@ -10,7 +10,7 @@
 
 | Área | Elección |
 |---|---|
-| Runtime | Node.js 22 LTS, ESM |
+| Runtime | Node.js 26 (LTS desde 2026-10-28), ESM — ADR-0008 |
 | Paquetes | pnpm workspaces |
 | Lenguaje | TypeScript `strict`, sin `any` (usar `unknown` y validar) |
 | Lint y formato | Biome |

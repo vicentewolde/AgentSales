@@ -4,7 +4,7 @@ Cosas que **solo tú puedes hacer** (cuentas, aprobaciones, datos reales). Claud
 
 ## Antes de F0
 
-- [ ] Node.js 22 LTS instalado (`node -v`)
+- [ ] Node.js 26 instalado (`node -v`; ADR-0008)
 - [ ] pnpm instalado (`corepack enable && corepack prepare pnpm@latest --activate`)
 - [ ] Git configurado con tu nombre y correo
 - [ ] ffmpeg instalado (`ffmpeg -version`)
