@@ -7,7 +7,9 @@ import { seed } from "../seed.js";
 loadEnvFile();
 const env = loadEnv();
 const logger = createLogger({ level: env.LOG_LEVEL, pretty: env.NODE_ENV !== "production" });
-const { db, close } = createDb(env.DATABASE_URL);
+const { db, close } = createDb(env.DATABASE_URL, {
+  onError: (error) => logger.warn({ err: error }, "conexión inactiva cerrada por la base de datos"),
+});
 
 try {
   const { brokerId } = await seed(db);

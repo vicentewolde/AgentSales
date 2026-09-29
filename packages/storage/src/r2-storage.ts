@@ -3,7 +3,6 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
-  NotFound,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -20,6 +19,45 @@ export type R2StorageOptions = {
   endpoint?: string;
 };
 
+/** Status HTTP de un error del SDK, si lo trae. */
+function httpStatusOf(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null || !("$metadata" in error)) {
+    return undefined;
+  }
+  const metadata = error.$metadata;
+  if (typeof metadata === "object" && metadata !== null && "httpStatusCode" in metadata) {
+    return typeof metadata.httpStatusCode === "number" ? metadata.httpStatusCode : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Traduce un error del SDK a `AppError` para que nada fuera de este paquete dependa del SDK:
+ * - 404 → `STORAGE_NOT_FOUND` (no reintentable);
+ * - 5xx, 429 o sin respuesta (red, DNS, timeout) → `STORAGE_UNAVAILABLE` (reintentable);
+ * - el resto (credenciales, permisos, bucket inexistente) → `STORAGE_ERROR` (no reintentable).
+ */
+function toAppError(error: unknown, path: string): AppError {
+  const status = httpStatusOf(error);
+  if (status === 404) {
+    return new AppError("STORAGE_NOT_FOUND", `No existe el objeto ${path}`, {
+      details: { path },
+      cause: error,
+    });
+  }
+  if (status === undefined || status >= 500 || status === 429) {
+    return new AppError("STORAGE_UNAVAILABLE", `R2 no respondió al acceder a ${path}`, {
+      retriable: true,
+      details: { path, status },
+      cause: error,
+    });
+  }
+  return new AppError("STORAGE_ERROR", `R2 rechazó la operación sobre ${path} (${status})`, {
+    details: { path, status },
+    cause: error,
+  });
+}
+
 /** Adaptador de `MediaStorage` para Cloudflare R2 vía la API S3 (ADR-0007). */
 export function createR2Storage(options: R2StorageOptions): MediaStorage {
   const { bucket, signedUrlTtlSeconds } = options;
@@ -32,35 +70,48 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
     },
   });
 
+  async function send<T>(path: string, operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      throw toAppError(error, path);
+    }
+  }
+
   return {
-    async put(path, body, contentType) {
-      await client.send(
-        new PutObjectCommand({ Bucket: bucket, Key: path, Body: body, ContentType: contentType }),
-      );
+    put(path, body, contentType) {
+      return send(path, async () => {
+        await client.send(
+          new PutObjectCommand({ Bucket: bucket, Key: path, Body: body, ContentType: contentType }),
+        );
+      });
     },
 
-    async get(path) {
-      const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: path }));
-      if (!response.Body) {
-        throw new AppError("STORAGE_EMPTY_BODY", `El objeto ${path} vino sin contenido`);
-      }
-      return response.Body.transformToByteArray();
+    get(path) {
+      return send(path, async () => {
+        const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: path }));
+        return response.Body ? response.Body.transformToByteArray() : new Uint8Array();
+      });
     },
 
     async head(path): Promise<StoredObjectInfo | null> {
       try {
-        const response = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: path }));
-        return { size: response.ContentLength ?? 0, contentType: response.ContentType };
+        return await send(path, async () => {
+          const response = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: path }));
+          return { size: response.ContentLength ?? 0, contentType: response.ContentType };
+        });
       } catch (error) {
-        if (error instanceof NotFound || isNotFound(error)) {
+        if (error instanceof AppError && error.code === "STORAGE_NOT_FOUND") {
           return null;
         }
         throw error;
       }
     },
 
-    async delete(path) {
-      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: path }));
+    delete(path) {
+      return send(path, async () => {
+        await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: path }));
+      });
     },
 
     signedReadUrl(path, ttlSeconds = signedUrlTtlSeconds) {
@@ -69,18 +120,4 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
       });
     },
   };
-}
-
-/** HEAD no trae cuerpo: según la versión del SDK, el 404 llega como `NotFound` o solo con status. */
-function isNotFound(error: unknown): boolean {
-  if (typeof error !== "object" || error === null || !("$metadata" in error)) {
-    return false;
-  }
-  const metadata = error.$metadata;
-  return (
-    typeof metadata === "object" &&
-    metadata !== null &&
-    "httpStatusCode" in metadata &&
-    metadata.httpStatusCode === 404
-  );
 }

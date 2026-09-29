@@ -13,6 +13,7 @@ import {
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
   PUBLICATION_STATUSES,
+  TERMINAL_PUBLICATION_STATUSES,
 } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import { MIGRATIONS_FOLDER } from "./migrations.js";
@@ -45,7 +46,10 @@ const EXPECTED_TABLES = [
   "publications",
 ];
 
-/** SQL acumulado de todas las migraciones, en orden. */
+/**
+ * SQL acumulado de todas las migraciones, en orden. Estos tests comparan la migración con `core`
+ * (enums, tablas, índices clave); el desfase de columnas lo detecta `pnpm db:generate` en CI.
+ */
 function migrationsSql(): string {
   return readdirSync(MIGRATIONS_FOLDER)
     .filter((file) => file.endsWith(".sql"))
@@ -54,6 +58,7 @@ function migrationsSql(): string {
     .join("\n");
 }
 
+// Solo lee `CREATE TYPE`: cuando una migración use `ALTER TYPE … ADD VALUE`, hay que sumarlo aquí.
 function sqlEnums(sql: string): Record<string, string[]> {
   const enums: Record<string, string[]> = {};
   for (const match of sql.matchAll(/CREATE TYPE "public"\."(\w+)" AS ENUM\(([^)]*)\)/g)) {
@@ -79,8 +84,10 @@ describe("migraciones", () => {
   });
 
   it("limitan a una publicación activa por aviso y cuenta, excluyendo los terminales", () => {
+    const terminals = TERMINAL_PUBLICATION_STATUSES.map((status) => `'${status}'`).join(", ");
+
     expect(sql).toContain(
-      `CREATE UNIQUE INDEX "publications_one_active_per_account" ON "publications" USING btree ("listing_id","platform_account_id") WHERE "status" NOT IN ('unpublished', 'cancelled');`,
+      `CREATE UNIQUE INDEX "publications_one_active_per_account" ON "publications" USING btree ("listing_id","platform_account_id") WHERE "status" NOT IN (${terminals});`,
     );
   });
 

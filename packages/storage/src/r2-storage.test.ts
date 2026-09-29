@@ -86,14 +86,61 @@ describe("createR2Storage", () => {
     expect(await storage.head("no-existe.txt")).toBeNull();
   });
 
-  it("get propaga el error si el objeto no existe", async () => {
-    await expect(storage.get("no-existe.txt")).rejects.toThrow();
+  it("get sobre un objeto inexistente lanza STORAGE_NOT_FOUND", async () => {
+    await expect(storage.get("no-existe.txt")).rejects.toMatchObject({
+      name: "AppError",
+      code: "STORAGE_NOT_FOUND",
+      retriable: false,
+      details: { path: "no-existe.txt" },
+    });
   });
 
-  it("head propaga errores que no son 404", async () => {
-    server.use(http.head(`${ORIGIN}/*`, () => new HttpResponse(null, { status: 500 })));
+  it("un 5xx es STORAGE_UNAVAILABLE y reintentable", async () => {
+    server.use(http.head(`${ORIGIN}/*`, () => new HttpResponse(null, { status: 503 })));
 
-    await expect(storage.head("x.txt")).rejects.toThrow();
+    await expect(storage.head("x.txt")).rejects.toMatchObject({
+      code: "STORAGE_UNAVAILABLE",
+      retriable: true,
+    });
+  });
+
+  it("un error de red es STORAGE_UNAVAILABLE y reintentable", async () => {
+    server.use(http.put(`${ORIGIN}/*`, () => HttpResponse.error()));
+
+    await expect(storage.put("x.txt", body, "text/plain")).rejects.toMatchObject({
+      code: "STORAGE_UNAVAILABLE",
+      retriable: true,
+    });
+  });
+
+  it("un 403 (credenciales o permisos) es STORAGE_ERROR y no reintentable", async () => {
+    server.use(
+      http.delete(
+        `${ORIGIN}/*`,
+        () =>
+          new HttpResponse("<Error><Code>AccessDenied</Code></Error>", {
+            status: 403,
+            headers: { "Content-Type": "application/xml" },
+          }),
+      ),
+    );
+
+    await expect(storage.delete("x.txt")).rejects.toMatchObject({
+      code: "STORAGE_ERROR",
+      retriable: false,
+      details: { status: 403 },
+    });
+  });
+
+  it("delete es idempotente: borrar algo que no existe no falla", async () => {
+    await expect(storage.delete("no-existe.txt")).resolves.toBeUndefined();
+  });
+
+  it("put sobrescribe un objeto existente", async () => {
+    await storage.put("a.txt", body, "text/plain");
+    await storage.put("a.txt", new TextEncoder().encode("otro"), "text/plain");
+
+    expect(new TextDecoder().decode(await storage.get("a.txt"))).toBe("otro");
   });
 });
 

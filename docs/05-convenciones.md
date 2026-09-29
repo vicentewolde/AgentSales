@@ -33,6 +33,7 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
 - Un caso de uso por archivo: `packages/core/src/use-cases/import-listings.ts`.
 - Errores tipados: `AppError` con `code` (ej. `IMPORT_INVALID_ROW`, `PUBLISH_RATE_LIMITED`) y `retriable: boolean`. Nada de `throw "string"`.
 - Nada de secretos en el código. Todo por `packages/config` (env validado con zod al arrancar).
+- Solo los puntos de entrada cargan el entorno (`loadEnvFile`/`loadEnv`): las apps y los `src/scripts/*` de cada paquete. El resto de un paquete recibe opciones concretas (`createDb(url)`, `createR2Storage({...})`); Biome lo exige en `db` y `storage`.
 - Nombres de archivos: `kebab-case.ts`. Componentes React: `PascalCase.tsx`.
 - Imports entre paquetes solo por su nombre público (`@agentsales/core`), nunca por ruta relativa a otro paquete.
 

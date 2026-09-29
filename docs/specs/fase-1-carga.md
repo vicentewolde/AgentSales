@@ -25,8 +25,8 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 
 ### 4.1 Componentes
 - **Nuevo** `packages/importers`: `xlsx-reader`, `media-folder`, `zip`.
-- **core:** casos de uso `importListings`, `ingestMedia`, `buildListingValidator(fieldDefs)`; puertos `ListingRepository`, `MediaStorage`, `FieldDefinitionRepository`.
-- **db:** implementaciones de los repositorios; seed de `field_definitions`.
+- **core:** casos de uso `importListings`, `ingestMedia`, `buildListingValidator(fieldDefs)`; puertos `ListingRepository` y `FieldDefinitionRepository`. `MediaStorage` ya existe desde F0-T04 (archivos completos en memoria); F1-T04 lo amplía con streams para videos de hasta `MAX_VIDEO_MB` (por ejemplo `put` con `AsyncIterable<Uint8Array>` y `contentLength`, y `getStream`), y decide si hace falta `@aws-sdk/lib-storage` (dependencia nueva: justificarla en el PR).
+- **db:** implementaciones de los repositorios; seed de `field_definitions`. Migración `0001` (no se edita `0000_init`, ya aplicada): `UNIQUE NULLS NOT DISTINCT (broker_id, category, key)` en `field_definitions` (destino del upsert del seed y garantía de "el corredor sobrescribe la global"), y en `media` un único parcial `(listing_id, checksum) WHERE role = 'original'` más `UNIQUE (storage_path)`.
 - **api:** endpoints de importación y listings.
 - **cli:** comandos `import`, `listings` y `listing`.
 - **web:** páginas Propiedades, Detalle e Importar.
@@ -156,3 +156,4 @@ agentsales imports [<id>]
 |---|---|
 | 2026-09-28 | Borrador inicial |
 | 2026-09-29 | Almacenamiento en Cloudflare R2 en vez de Supabase (ADR-0007); `MAX_VIDEO_MB` vuelve a 300 |
+| 2026-09-29 | Desde la revisión de F0-T04: `MediaStorage` ya existe y F1-T04 lo amplía con streams; migración `0001` con únicos de `field_definitions` y `media` |

@@ -2,7 +2,7 @@
 
 Base de datos: Postgres en Neon (plan gratis, conexión directa). Esquema en `packages/db` con Drizzle; este documento es la referencia conceptual. Si difieren, **manda el código** y este documento se actualiza en la misma tarea.
 
-Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`.
+Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true`.
 
 ## Diagrama
 
@@ -83,7 +83,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | price_amount | numeric(14,2) | |
 | price_currency | enum `currency` | `UF`, `CLP` |
 | region, comuna, address, unit_number | text null | Un borrador o un producto (ADR-0006) puede no tenerlos |
-| show_exact_address | boolean | |
+| show_exact_address | boolean default false | Privacidad: por defecto no se publica la dirección exacta |
 | attributes | jsonb | Resto de campos, validados con `field_definitions` |
 | highlights | text null | Lo que el corredor quiere destacar |
 | internal_notes | text null | Nunca se publica |
@@ -164,7 +164,8 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | file_name | text | |
 | rows_total, rows_created, rows_updated, rows_skipped, rows_failed | int | |
 | report | jsonb | Errores por fila y columna |
-| started_at, finished_at | timestamptz | |
+| started_at | timestamptz default now() | |
+| finished_at | timestamptz null | `null` mientras la carga está en curso |
 
 ### Cola de trabajos
 

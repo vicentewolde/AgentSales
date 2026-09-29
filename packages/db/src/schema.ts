@@ -190,7 +190,10 @@ export const contents = pgTable("contents", {
   ...timestamps,
 });
 
-/** `WHERE status NOT IN (<terminales>)`: todo estado no terminal cuenta como activo. */
+/**
+ * `WHERE status NOT IN (<terminales>)`: todo estado no terminal cuenta como activo.
+ * `sql.raw` es seguro aquí: los valores son literales constantes de `core`, nunca entrada externa.
+ */
 const activePublication = sql.raw(
   `"status" NOT IN (${TERMINAL_PUBLICATION_STATUSES.map((status) => `'${status}'`).join(", ")})`,
 );

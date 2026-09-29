@@ -16,7 +16,7 @@ Las herramientas del stack aceptan condiciones de exportación propias: `tsc` co
 - La condición se activa en **un solo lugar por herramienta**:
   - `tsc`: `customConditions` en `tsconfig.base.json`.
   - Vitest: `ssr.resolve.conditions` en `vitest.config.ts`, repitiendo las condiciones por defecto de Vite salvo `module` (ver Seguimiento), porque la lista las reemplaza.
-  - tsx y Node en desarrollo: `NODE_OPTIONS=--conditions=@agentsales/source` en los scripts `dev` y `cli` (T05–T07).
+  - tsx y Node en desarrollo: `NODE_OPTIONS=--conditions=@agentsales/source` en los scripts `dev` y `cli` (T05–T07) y en los scripts de paquete (`db:*`, `storage:check`, drizzle-kit).
   - Vite (`apps/web`): `resolve.conditions` en su config (T08).
 - En producción no se activa la condición y se usa `dist/`, generado con `tsc -b`.
 - Las dependencias internas se declaran como `"workspace:*"`.

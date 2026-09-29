@@ -15,3 +15,6 @@ Qué gana y qué pierde el proyecto; qué queda más fácil y qué más difícil
 
 ## Alternativas descartadas
 Cada alternativa con el motivo por el que se descartó.
+
+## Seguimiento (opcional)
+Verificaciones y ajustes posteriores a la aceptación, con fecha. Un cambio de fondo requiere un ADR nuevo.

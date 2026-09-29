@@ -1,2 +1,9 @@
-export { createDb, type Database, type DbClient, toPgConnectionString } from "./client.js";
+export {
+  type CreateDbOptions,
+  createDb,
+  type Database,
+  type DbClient,
+  toPgConnectionString,
+} from "./client.js";
+export { MIGRATIONS_FOLDER } from "./migrations.js";
 export * as schema from "./schema.js";
