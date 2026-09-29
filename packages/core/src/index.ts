@@ -1,5 +1,6 @@
 export * from "./enums.js";
 export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
+export type { MediaStorage, StoredObjectInfo } from "./ports/media-storage.js";
 export {
   ACTIVE_PUBLICATION_STATUSES,
   canTransition,

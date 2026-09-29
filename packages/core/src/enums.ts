@@ -43,3 +43,26 @@ export type PublishMode = (typeof PUBLISH_MODES)[number];
 /** Proveedores de IA (ADR-0003). */
 export const LLM_PROVIDERS = ["claude-cli", "anthropic-api", "fake"] as const;
 export type LlmProvider = (typeof LLM_PROVIDERS)[number];
+
+export const PLATFORM_ACCOUNT_STATUSES = ["connected", "expired", "revoked", "error"] as const;
+export type PlatformAccountStatus = (typeof PLATFORM_ACCOUNT_STATUSES)[number];
+
+/** Tipos de un campo configurable (`field_definitions`). */
+export const FIELD_TYPES = ["text", "number", "enum", "boolean", "date", "url", "list"] as const;
+export type FieldType = (typeof FIELD_TYPES)[number];
+
+export const MEDIA_KINDS = ["image", "video"] as const;
+export type MediaKind = (typeof MEDIA_KINDS)[number];
+
+export const MEDIA_ROLES = ["original", "processed", "rendered"] as const;
+export type MediaRole = (typeof MEDIA_ROLES)[number];
+
+export const CONTENT_STATUSES = ["draft", "edited", "approved"] as const;
+export type ContentStatus = (typeof CONTENT_STATUSES)[number];
+
+/** Origen de un aviso; también de una carga (`import_runs`). */
+export const LISTING_SOURCES = ["xlsx", "google_sheets", "manual", "chat"] as const;
+export type ListingSource = (typeof LISTING_SOURCES)[number];
+
+export const CLOSE_REASONS = ["sold", "rented", "withdrawn"] as const;
+export type CloseReason = (typeof CLOSE_REASONS)[number];
