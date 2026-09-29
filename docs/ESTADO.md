@@ -4,15 +4,15 @@
 
 **Actualizado:** 2026-09-29
 **Fase actual:** F0 · Fundaciones (`docs/specs/fase-0-fundaciones.md`)
-**Última tarea terminada:** F0-T02 · packages/config
-**Siguiente paso:** F0-T03 · packages/core (enums, `AppError` y máquina de estados)
+**Última tarea terminada:** F0-T03 · packages/core
+**Siguiente paso:** F0-T04 · packages/db y packages/storage (esquema, migración, seed y R2)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
 | F0-T01 Esqueleto y tooling | ✅ terminada | [#1](https://github.com/vicentewolde/AgentSales/pull/1) |
 | F0-T02 packages/config | ✅ terminada | [#2](https://github.com/vicentewolde/AgentSales/pull/2) |
-| F0-T03 packages/core base | ⏳ pendiente | |
+| F0-T03 packages/core base | ✅ terminada | [#3](https://github.com/vicentewolde/AgentSales/pull/3) |
 | F0-T04 packages/db y packages/storage | ⏳ pendiente | |
 | F0-T05 apps/api | ⏳ pendiente | |
 | F0-T06 apps/worker | ⏳ pendiente | |
@@ -34,6 +34,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - 2026-09-29: el runtime pasa de Node 22 a **Node 26** (ADR-0008). Node 26 no trae corepack: pnpm se instala aparte.
 - 2026-09-29 (F0-T01): tooling con TypeScript 7 (ADR-0009), Biome 2.5, Vitest 5 y pnpm 11. `tsconfig.json` raíz revisa los `*.ts` de la raíz (`noEmit`); cada paquete nuevo se agrega a sus `references` según la plantilla de `05-convenciones.md`. Vitest usa un único `vitest.config.ts` raíz; `passWithNoTests` se quita en T02.
 - 2026-09-29 (F0-T02): `@agentsales/config` con `loadEnv()` (zod; errores con nombres de variable y sin valores), `loadEnvFile()` (usa `process.loadEnvFile` de Node, sin dotenv) y `createLogger()` (pino; redacta claves sensibles, URLs con credenciales, errores y bindings). Los paquetes internos resuelven su fuente con la condición `@agentsales/source` (ADR-0010). El `.env` del operador pasa la validación (verificado con un script que solo imprime nombres de variables).
+- 2026-09-29 (F0-T03): `@agentsales/core` con enums como tuplas `as const`, `AppError` y máquina de estados (16 transiciones válidas; se prueban las 100 combinaciones). `config` ya usa `PUBLISH_MODES` y `LLM_PROVIDERS` de `core`: primer import entre paquetes, verificado con `tsc -b` y Vitest sin `dist/` (falta tsx, en T04). Biome permite en `core` solo `zod` e imports relativos. Tras la revisión: estado terminal `cancelled`, grupos `INITIAL/TERMINAL/ACTIVE_PUBLICATION_STATUSES` e `isAppError`; `02-modelo-datos` nombra todos los tipos enum.
 - Deuda F0-T02:
   - F3: derivar la clave con HKDF-SHA256 desde `APP_ENCRYPTION_KEY` al implementar el cifrado de tokens.
   - F2: exigir `ANTHROPIC_API_KEY` cuando `LLM_PROVIDER=anthropic-api`.

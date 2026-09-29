@@ -88,13 +88,13 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 - **Depende de:** T01
 - **Descripción:** enums (`Platform`, `ListingStatus`, `PublicationStatus`, `Currency`, `Operation`), clase `AppError { code, message, retriable, details }` y máquina de estados de publicaciones según `01-arquitectura.md` (incluido `awaiting_manual_confirm`): `canTransition(from, to)` y `transition(from, to)`, que lanza `AppError("INVALID_TRANSITION")`.
 - **Hecho cuando:**
-  - [ ] Tests que cubren todas las transiciones válidas y un conjunto de inválidas
-  - [ ] `core` exporta `PUBLISH_MODES` y `LLM_PROVIDERS`, y `packages/config` los usa en su esquema (`z.enum(PUBLISH_MODES)`) en vez de repetir los literales
-  - [ ] Cero dependencias de infraestructura en `core`: su tsconfig usa `"types": []` y Biome prohíbe importar `node:*` y librerías de infraestructura en `packages/core/**`
+  - [x] Tests que cubren todas las transiciones válidas y un conjunto de inválidas
+  - [x] `core` exporta `PUBLISH_MODES` y `LLM_PROVIDERS`, y `packages/config` los usa en su esquema (`z.enum(PUBLISH_MODES)`) en vez de repetir los literales
+  - [x] Cero dependencias de infraestructura en `core`: su tsconfig usa `"types": []` y Biome prohíbe importar `node:*` y librerías de infraestructura en `packages/core/**`
 
 ### F0-T04 · packages/db y packages/storage — esquema, migración, seed y R2
 - **Depende de:** T02, T03
-- **Descripción:** esquema Drizzle de todas las tablas (usando los enums de `core`), migración inicial, cliente de base de datos, `db:migrate` y `db:seed` (corredor demo, idempotente). Driver de Postgres estándar (`pg` o `postgres`), no el serverless de Neon. `packages/storage`: cliente S3 hacia Cloudflare R2 (`@aws-sdk/client-s3`, endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, región `auto`) con put, get, delete, head y URL prefirmada de lectura (TTL `SIGNED_URL_TTL_SECONDS`), más el script `storage:check`.
+- **Descripción:** agrega a `core` los enums restantes de `02-modelo-datos.md` con su test (`PLATFORM_ACCOUNT_STATUSES`, `FIELD_TYPES`, `MEDIA_KINDS`, `MEDIA_ROLES`, `CONTENT_STATUSES`, `LISTING_SOURCES`, `CLOSE_REASONS`) y, si `core` empieza a usar `zod`, lo declara como dependencia. Esquema Drizzle de todas las tablas (usando los enums de `core`; el índice único parcial de `publications` usa `ACTIVE_PUBLICATION_STATUSES`), migración inicial, cliente de base de datos, `db:migrate` y `db:seed` (corredor demo, idempotente). Driver de Postgres estándar (`pg` o `postgres`), no el serverless de Neon. `packages/storage`: cliente S3 hacia Cloudflare R2 (`@aws-sdk/client-s3`, endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, región `auto`) con put, get, delete, head y URL prefirmada de lectura (TTL `SIGNED_URL_TTL_SECONDS`), más el script `storage:check`.
 - **Hecho cuando:**
   - [ ] Migración aplicada en Neon sin errores (conexión directa)
   - [ ] Correr `db:seed` dos veces no duplica
@@ -105,7 +105,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 
 ### F0-T05 · apps/api — Hono y /health
 - **Depende de:** T04
-- **Descripción:** servidor Hono con logger de requests, manejador global de `AppError` → JSON `{ error: { code, message } }` con status HTTP según el código, `/health` con los 3 checks, y `export type AppType`.
+- **Descripción:** servidor Hono con logger de requests, manejador global de `AppError` (reconocido con `isAppError`, no con `instanceof`) → JSON `{ error: { code, message } }` con status HTTP según una tabla explícita de códigos (`INVALID_TRANSITION` → 409, `*_NOT_FOUND` → 404, `*_INVALID*` → 400; por defecto 500, documentada en `05-convenciones.md`); nunca expone `details` ni `cause` en la respuesta, `/health` con los 3 checks, y `export type AppType`.
 - **Hecho cuando:**
   - [ ] Test de `/health` con dependencias simuladas
   - [ ] `curl localhost:8787/health` funciona contra Neon y R2 reales
@@ -170,4 +170,6 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | 2026-09-29 | Supabase reemplazado por Neon + Cloudflare R2 (ADR-0007); nuevo `packages/storage`; `APP_ENCRYPTION_KEY` libre de formato |
 | 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
 | 2026-09-29 | T02: HKDF de `APP_ENCRYPTION_KEY` se mueve a F3 (donde se cifra); `exports` con condición `@agentsales/source` (ADR-0010) |
+| 2026-09-29 | T03: `awaiting_manual_confirm → failed` (captcha o abandono, ADR-0004); `AppError.code` es texto libre en mayúsculas |
+| 2026-09-29 | Revisión de T03: estado terminal `cancelled` (desde todo lo que no llegó a la plataforma); estados iniciales, terminales y activos en `core`; `isAppError`; T04 agrega los enums restantes; T05 fija la tabla código→HTTP |
 | 2026-09-29 | Revisión de T02: criterios nuevos en T03 (enums compartidos en `core`) y T04 (import entre paquetes verificado) |
