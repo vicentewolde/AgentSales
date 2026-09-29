@@ -19,7 +19,7 @@ Spec detallado: `docs/specs/fase-0-fundaciones.md`.
 **Criterios de aceptación**
 - `pnpm install && pnpm check` pasa en limpio.
 - `pnpm dev` levanta API, worker y web; `GET /health` responde con estado de base de datos, storage y cola.
-- Migración inicial aplicada en Supabase con todas las tablas de `02-modelo-datos.md`.
+- Migración inicial aplicada en Neon con todas las tablas de `02-modelo-datos.md`.
 - `pnpm cli doctor` verifica env, base de datos, storage, ffmpeg, Playwright y Claude CLI.
 - CI en GitHub Actions ejecuta `pnpm check` en cada PR.
 
@@ -73,10 +73,11 @@ Spec detallado: `docs/specs/fase-1-carga.md`.
 - Cerrar un listing (vendido/arrendado) despublica o pausa en todas las plataformas.
 - Vista de seguimiento: matriz de propiedad × plataforma con estado y enlace.
 - `auto_publish` por corredor.
+- Respaldo local periódico de la base (`pg_dump`): el plan gratis de Neon solo conserva 6 horas de historial.
 
 ## F7 · Listo para terceros
 - Proveedor `anthropic-api` como default para terceros.
-- Autenticación (Supabase Auth) y separación estricta por corredor (RLS).
+- Autenticación (proveedor a decidir en un ADR) y separación estricta por corredor (`broker_id` en cada consulta, con RLS opcional).
 - Onboarding: conectar cuentas, subir marca y plantilla de campos.
 - App Review de Meta; despliegue (ej. Fly.io o Railway) con backups.
 - Términos de uso y privacidad básicos.

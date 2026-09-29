@@ -13,7 +13,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 - Validador dinámico construido desde `field_definitions`.
 - Lectura del Excel (hojas **Propiedades** y **Corredor**).
 - Importación idempotente con reporte por fila.
-- Ingesta de medios desde carpetas locales o desde un .zip, subidos a Storage.
+- Ingesta de medios desde carpetas locales o desde un .zip, subidos a Cloudflare R2.
 - API, CLI y panel para importar y ver propiedades.
 
 ## 3. Fuera de alcance
@@ -50,7 +50,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 - Portada: `foto_portada` si existe; si no, la primera. En F2 la IA puede sugerir otra.
 - Deduplicación por sha256: si el mismo archivo ya existe para esa propiedad, no se vuelve a subir.
 - Metadatos: ancho y alto (sharp), duración (ffprobe).
-- Ruta en Storage: `brokers/{brokerId}/listings/{listingId}/original/{sha256}.{ext}`.
+- Clave del objeto en R2: `brokers/{brokerId}/listings/{listingId}/original/{sha256}.{ext}`.
 - Una propiedad sin ninguna foto queda con estado `draft` y advertencia (mínimo 1 foto para `ready`).
 
 ### 4.4 Contratos
@@ -100,7 +100,7 @@ corredor imports [<id>]
 
 ### F1-T04 · Ingesta de medios
 - **Depende de:** T03
-- **Descripción:** `media-folder` y `zip` (descomprime a un directorio temporal), caso de uso `ingestMedia` según §4.3, e implementación de `MediaStorage` con Supabase Storage (subir y generar URL firmada).
+- **Descripción:** `media-folder` y `zip` (descomprime a un directorio temporal), caso de uso `ingestMedia` según §4.3, usando `packages/storage` (Cloudflare R2: subir, leer y generar URL prefirmada) como implementación de `MediaStorage`; cada archivo se sube con su `Content-Type` correcto.
 - **Hecho cuando:**
   - [ ] Tests con carpeta fixture (3 fotos + 1 video + 1 archivo inválido)
   - [ ] Reimportar no vuelve a subir archivos (verificado por checksum)
@@ -146,7 +146,7 @@ corredor imports [<id>]
 |---|---|
 | Excel editado en Google Sheets cambia tipos (fechas, números como texto) | Normalizador tolerante y tests con archivo exportado desde Sheets |
 | Fotos HEIC desde iPhone | Se aceptan en F1 y se convierten en F2 (sharp con libheif, o fallback a ffmpeg) |
-| Archivos grandes de video | Plan gratis de Supabase limita cada archivo a 50 MB: `MAX_VIDEO_MB` default 50; los videos más pesados se rechazan con advertencia en F1 y se comprimen con ffmpeg en F2 |
+| Archivos grandes de video | Límite configurable (`MAX_VIDEO_MB`, default 300) con advertencia; R2 no limita el tamaño por archivo, pero el plan gratis incluye 10 GB en total |
 
 ## 9. Preguntas abiertas
 - [ ] ¿Google Sheets y Drive son necesarios antes de F3, o basta con Excel y zip durante el piloto?
@@ -155,3 +155,4 @@ corredor imports [<id>]
 | Fecha | Cambio |
 |---|---|
 | 2026-09-28 | Borrador inicial |
+| 2026-09-29 | Almacenamiento en Cloudflare R2 en vez de Supabase (ADR-0007); `MAX_VIDEO_MB` vuelve a 300 |

@@ -3,16 +3,17 @@
 - **Estado:** Aprobado (listo para comenzar)
 - **Rama base:** `main`
 - **Tag al cerrar:** `v0.0.1`
-- **Referencias:** `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/05-convenciones.md`, ADR 0001, 0002, 0003 y 0005
+- **Referencias:** `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/05-convenciones.md`, ADR 0001, 0002 (solo la parte de Drizzle), 0003, 0005 y 0007
 
 ## 1. Objetivo
-Tener el esqueleto completo funcionando: monorepo que compila y testea, base de datos con el esquema v1 en Supabase, API, worker, CLI y panel conectados, y un comando `doctor` que diga si el entorno está sano. Nada de funcionalidad de negocio todavía.
+Tener el esqueleto completo funcionando: monorepo que compila y testea, base de datos con el esquema v1 en Neon, API, worker, CLI y panel conectados, y un comando `doctor` que diga si el entorno está sano. Nada de funcionalidad de negocio todavía.
 
 ## 2. Alcance
 - Monorepo pnpm con tooling (TypeScript, Biome, Vitest).
 - `packages/config`: variables de entorno validadas, logger y redactor de secretos.
 - `packages/core`: enums de dominio, `AppError` y máquina de estados de publicaciones (pura, con tests).
 - `packages/db`: esquema Drizzle completo según `02-modelo-datos.md`, migración inicial y seed de corredor demo.
+- `packages/storage`: archivos en Cloudflare R2 (API S3): subir, leer, borrar, URL prefirmada y comprobación de acceso.
 - `apps/api`: Hono, `/health`, manejo de errores y tipo `AppType` exportado.
 - `apps/worker`: pg-boss arrancando, job de prueba y apagado ordenado.
 - `apps/cli`: `corredor doctor` y `corredor status`.
@@ -29,7 +30,7 @@ Tener el esqueleto completo funcionando: monorepo que compila y testea, base de 
 ### 4.1 Estructura resultante
 ```
 apps/{api,worker,cli,web}
-packages/{config,core,db}
+packages/{config,core,db,storage}
 ```
 Nombres de paquete: `@ia-corredor/<nombre>`. Binario de la CLI: `corredor`.
 
@@ -42,12 +43,12 @@ Nombres de paquete: `@ia-corredor/<nombre>`. Binario de la CLI: `corredor`.
 | `pnpm db:generate` | drizzle-kit generate |
 | `pnpm db:migrate` | aplica migraciones |
 | `pnpm db:seed` | seed idempotente |
-| `pnpm setup:storage` | crea el bucket privado `media` si no existe |
+| `pnpm storage:check` | sube, lee y borra un objeto de prueba en el bucket de R2 (el bucket lo crea el operador a mano) |
 | `pnpm cli <args>` | ejecuta la CLI en modo dev (tsx) |
 
 ### 4.3 Contratos
 - `GET /health` → `200 { status: "ok"|"degraded", publishMode, checks: { db, storage, queue }, version }`. Cada check es `{ ok, latencyMs, error? }`. Responde 200 aunque haya checks fallidos (con `degraded`).
-- `corredor doctor`: verifica env, db, storage, cola, `ffmpeg -version`, Chromium de Playwright y `claude --version`. Imprime ✓/✗ por ítem con una sugerencia de arreglo, y sale con código 1 si algo crítico falla. Los ítems que su fase aún no necesita (Playwright, Claude) salen como advertencia, no como error.
+- `corredor doctor`: verifica env, db, storage, cola, `ffmpeg -version`, Chromium de Playwright y `claude --version`. Imprime ✓/✗ por ítem con una sugerencia de arreglo, y sale con código 1 si algo crítico falla. Los ítems que su fase aún no necesita (Playwright, Claude) salen como advertencia, no como error. Neon suspende el cómputo tras 5 min sin actividad y la primera conexión puede tardar unos segundos: el check de base de datos usa un timeout de 10 s y un reintento antes de fallar.
 - `corredor status`: llama a `/health` y muestra `PUBLISH_MODE` destacado.
 
 ### 4.4 Datos
@@ -74,6 +75,8 @@ Nombres de paquete: `@ia-corredor/<nombre>`. Binario de la CLI: `corredor`.
 - **Hecho cuando:**
   - [ ] Tests: env válida, env inválida (mensaje legible) y redacción de secretos en logs
   - [ ] `PUBLISH_MODE` por defecto es `dry-run`
+  - [ ] `DATABASE_URL` con host `-pooler` se rechaza con un mensaje claro (debe ser la conexión directa de Neon, con `sslmode=require`)
+  - [ ] `APP_ENCRYPTION_KEY` acepta cualquier texto de al menos 32 caracteres (se derivan 32 bytes con HKDF-SHA256) y rechaza los más cortos
 
 ### F0-T03 · packages/core — base del dominio
 - **Depende de:** T01
@@ -82,14 +85,14 @@ Nombres de paquete: `@ia-corredor/<nombre>`. Binario de la CLI: `corredor`.
   - [ ] Tests que cubren todas las transiciones válidas y un conjunto de inválidas
   - [ ] Cero dependencias de infraestructura en `core`
 
-### F0-T04 · packages/db — esquema, migración, seed y storage
+### F0-T04 · packages/db y packages/storage — esquema, migración, seed y R2
 - **Depende de:** T02, T03
-- **Descripción:** esquema Drizzle de todas las tablas (usando los enums de `core`), migración inicial, cliente de base de datos, `db:migrate`, `db:seed` (corredor demo, idempotente) y `setup:storage` (bucket `media` privado).
+- **Descripción:** esquema Drizzle de todas las tablas (usando los enums de `core`), migración inicial, cliente de base de datos, `db:migrate` y `db:seed` (corredor demo, idempotente). Driver de Postgres estándar (`pg` o `postgres`), no el serverless de Neon. `packages/storage`: cliente S3 hacia Cloudflare R2 (`@aws-sdk/client-s3`, endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, región `auto`) con put, get, delete, head y URL prefirmada de lectura (TTL `SIGNED_URL_TTL_SECONDS`), más el script `storage:check`.
 - **Hecho cuando:**
-  - [ ] Migración aplicada en Supabase sin errores
+  - [ ] Migración aplicada en Neon sin errores (conexión directa)
   - [ ] Correr `db:seed` dos veces no duplica
-  - [ ] Bucket `media` existe, es privado y limita archivos a 50 MB (tope del plan gratis)
-  - [ ] **RLS activado en todas las tablas** (sin políticas): Supabase expone el esquema `public` por su API REST y sin RLS cualquiera con la clave pública podría leer los datos. Nuestro backend usa conexión directa a Postgres, que no se ve afectada
+  - [ ] `pnpm storage:check` sube, lee, genera una URL prefirmada que responde 200 y borra un objeto de prueba en el bucket privado de R2
+  - [ ] Tests de `storage` con el cliente S3 simulado: la URL prefirmada respeta el TTL configurado
   - [ ] `02-modelo-datos.md` coincide con el esquema (actualizar si hubo ajustes)
 
 ### F0-T05 · apps/api — Hono y /health
@@ -97,11 +100,11 @@ Nombres de paquete: `@ia-corredor/<nombre>`. Binario de la CLI: `corredor`.
 - **Descripción:** servidor Hono con logger de requests, manejador global de `AppError` → JSON `{ error: { code, message } }` con status HTTP según el código, `/health` con los 3 checks, y `export type AppType`.
 - **Hecho cuando:**
   - [ ] Test de `/health` con dependencias simuladas
-  - [ ] `curl localhost:8787/health` funciona contra Supabase real
+  - [ ] `curl localhost:8787/health` funciona contra Neon y R2 reales
 
 ### F0-T06 · apps/worker — pg-boss
 - **Depende de:** T04
-- **Descripción:** arranque de pg-boss (crea su esquema), registro de handlers por nombre de job, job `system.ping` que loguea y termina, y apagado ordenado con SIGINT/SIGTERM. Check de cola en `/health` (API) usando pg-boss en modo solo lectura o una consulta al esquema.
+- **Descripción:** arranque de pg-boss (crea su esquema), registro de handlers por nombre de job, job `system.ping` que loguea y termina, y apagado ordenado con SIGINT/SIGTERM. Check de cola en `/health` (API) usando pg-boss en modo solo lectura o una consulta al esquema. pg-boss usa la conexión directa de Neon; mientras el worker corre mantiene el cómputo despierto (ADR-0007), así que se apaga cuando no se desarrolla.
 - **Hecho cuando:**
   - [ ] Un `system.ping` encolado desde un script de prueba se procesa y se ve en el log
   - [ ] Ctrl+C no deja jobs colgados
@@ -144,7 +147,9 @@ Nombres de paquete: `@ia-corredor/<nombre>`. Binario de la CLI: `corredor`.
 ## 8. Riesgos y mitigaciones
 | Riesgo | Mitigación |
 |---|---|
-| Conexión a Supabase por pooler en modo transacción rompe pg-boss o drizzle-kit | Usar el **Session pooler** (5432) o la conexión directa; documentado en `.env.example` |
+| Conexión por el pooler de Neon (`-pooler`, modo transacción) rompe pg-boss y drizzle-kit | Usar solo la conexión **directa** (sin `-pooler`); `loadEnv()` la rechaza si detecta el sufijo |
+| Arranque en frío de Neon (suspende a los 5 min) hace fallar `/health` o `doctor` | Timeout de 10 s con un reintento; el panel muestra `degraded` sin caerse |
+| Worker encendido 24/7 agota las 100 CU-horas mensuales del plan gratis | Encenderlo solo al desarrollar; ver ADR-0007 |
 | Sobre-ingeniería en el esqueleto | Nada de paquetes que no use esta fase |
 
 ## 9. Preguntas abiertas
@@ -154,3 +159,4 @@ Nombres de paquete: `@ia-corredor/<nombre>`. Binario de la CLI: `corredor`.
 | Fecha | Cambio |
 |---|---|
 | 2026-09-28 | Versión inicial |
+| 2026-09-29 | Supabase reemplazado por Neon + Cloudflare R2 (ADR-0007); nuevo `packages/storage`; `APP_ENCRYPTION_KEY` libre de formato |

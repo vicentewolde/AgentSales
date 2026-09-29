@@ -10,10 +10,13 @@ Cosas que **solo tú puedes hacer** (cuentas, aprobaciones, datos reales). Claud
 - [ ] ffmpeg instalado (`ffmpeg -version`)
 - [ ] Claude Code instalado y con sesión iniciada con tu plan Max (`claude` → `/status`)
 - [ ] Repositorio privado en GitHub: `ia-corredor`
-- [ ] Proyecto en Supabase (plan gratis, región São Paulo)
-  - [ ] Copiar a `.env`: `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (clave `sb_secret_...`)
-  - [ ] Copiar a `.env`: `DATABASE_URL` (connection string **Session pooler**, puerto 5432)
-- [ ] Generar `APP_ENCRYPTION_KEY`: `openssl rand -base64 32`
+- [ ] Proyecto en Neon (plan gratis, región AWS São Paulo) — pasos en `docs/09-alta-neon-r2.md`
+  - [ ] Copiar a `.env`: `DATABASE_URL` (conexión **directa**, sin `-pooler`, terminada en `?sslmode=require`)
+- [ ] Cuenta de Cloudflare con R2 activado (pide tarjeta: retención temporal de US$5, sin cobro dentro del plan gratis)
+  - [ ] Bucket privado `ia-corredor-media`
+  - [ ] Token S3 con permiso "Object Read & Write" limitado a ese bucket
+  - [ ] Copiar a `.env`: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`
+- [ ] Generar `APP_ENCRYPTION_KEY`: 44 caracteres aleatorios alfanuméricos con tu gestor de contraseñas (o `openssl rand -base64 32`)
 
 ## Antes de F1
 

@@ -1,6 +1,6 @@
 # ADR-0002 · Supabase para base de datos y archivos, con Drizzle
 
-- **Estado:** Aceptado
+- **Estado:** Reemplazado por ADR-0007 (Supabase → Neon + Cloudflare R2). Se mantiene la decisión de usar Drizzle.
 - **Fecha:** 2026-09-28
 
 ## Contexto

@@ -15,7 +15,7 @@ Eres el arquitecto del proyecto IA Corredor. Tu trabajo es proteger la coherenci
 - El spec de la fase en `docs/specs/`
 
 ## Qué verificas
-1. **Capas:** `packages/core` no importa infraestructura (drizzle, supabase, sharp, playwright, hono, SDKs). Las apps no contienen lógica de negocio; llaman casos de uso.
+1. **Capas:** `packages/core` no importa infraestructura (drizzle, aws-sdk/S3, sharp, playwright, hono, SDKs de terceros). Las apps no contienen lógica de negocio; llaman casos de uso.
 2. **Contratos:** los `Publisher`, `LLMProvider` y repositorios respetan las interfaces documentadas. Los cambios de contrato están reflejados en los docs.
 3. **Datos:** el esquema Drizzle coincide con `02-modelo-datos.md`; toda migración es incremental; nada de datos dinámicos en columnas fijas sin ADR (ADR-0006).
 4. **Decisiones:** nada contradice un ADR aceptado sin un ADR nuevo que lo reemplace.

@@ -20,7 +20,7 @@ Resumen de cómo se integra cada canal. Antes de implementar un publisher, el su
   2. Para carrusel, crear el contenedor padre con `media_type=CAROUSEL` y los hijos.
   3. Para video o reel, consultar el estado hasta `FINISHED`.
   4. Publicar (`POST /{ig-user-id}/media_publish`).
-- **Medios:** deben estar en una **URL pública** (usamos URLs firmadas de Supabase). Imágenes en JPEG. El carrusel se recorta a la proporción de la primera imagen, así que todas van en 4:5 (1080×1350). Hasta 10 ítems por carrusel vía API (verificar). Reels en 9:16, entre 5 y 90 s, MP4 H.264.
+- **Medios:** deben estar en una **URL pública** (usamos URLs prefirmadas de Cloudflare R2, con `Content-Type` correcto en cada archivo; **verificar en F3** que Instagram las acepta; plan B: dominio público propio para un prefijo del bucket). Imágenes en JPEG. El carrusel se recorta a la proporción de la primera imagen, así que todas van en 4:5 (1080×1350). Hasta 10 ítems por carrusel vía API (verificar). Reels en 9:16, entre 5 y 90 s, MP4 H.264.
 - **Límites:** entre 50 y 100 posts por cuenta cada 24 h según la fuente; se consulta el endpoint `content_publishing_limit` antes de publicar. Un carrusel cuenta como 1 post.
 - **Tokens:** los tokens de larga duración duran unos 60 días y deben refrescarse con un job periódico.
 - **Despublicar:** la API no permite borrar posts (verificar). "Cerrar" en Instagram = marcar como no disponible en el sistema y avisar al operador para archivarlo a mano.

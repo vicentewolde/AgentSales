@@ -8,13 +8,13 @@ Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal
 - Node.js 22 LTS y pnpm
 - ffmpeg
 - Claude Code con sesión iniciada (para generar contenido en local)
-- Proyecto de Supabase (gratis)
+- Proyecto de Neon (Postgres) y bucket de Cloudflare R2, ambos gratis (ver `docs/09-alta-neon-r2.md`)
 
 ## Puesta en marcha
 ```bash
 cp .env.example .env        # completar valores (ver docs/07-checklist-cuentas.md)
 pnpm install
-pnpm db:migrate && pnpm db:seed && pnpm setup:storage
+pnpm db:migrate && pnpm db:seed && pnpm storage:check
 pnpm cli doctor
 pnpm dev                    # API :8787 · panel :5173
 ```

@@ -21,12 +21,12 @@ Sistema que toma avisos (propiedades hoy, productos después) con fotos y videos
 | `docs/adr/` | Decisiones tomadas; no las contradigas sin un ADR nuevo |
 
 ## Stack (resumen; detalle en 05-convenciones)
-Node 22 · pnpm workspaces · TypeScript strict · Hono (+ cliente RPC `hc`) · React + Vite + Tailwind + TanStack Query · Drizzle + Supabase (Postgres + Storage) · pg-boss · sharp · ffmpeg · Playwright · zod · Vitest · Biome · pino.
+Node 22 · pnpm workspaces · TypeScript strict · Hono (+ cliente RPC `hc`) · React + Vite + Tailwind + TanStack Query · Drizzle + Neon (Postgres) · Cloudflare R2 (archivos, API S3) · pg-boss · sharp · ffmpeg · Playwright · zod · Vitest · Biome · pino.
 
 ## Estructura
 ```
 apps/     api · worker · cli · web
-packages/ config · core · db · importers · llm · media · templates · publishers
+packages/ config · core · db · storage · importers · llm · media · templates · publishers
 docs/     documentación, specs y ADRs
 data/     plantillas (en git) y muestras (fuera de git)
 ```
@@ -40,6 +40,7 @@ pnpm test           # solo tests
 pnpm db:generate    # generar migración tras cambiar el esquema
 pnpm db:migrate     # aplicar migraciones
 pnpm db:seed        # seeds idempotentes
+pnpm storage:check  # verifica acceso al bucket de R2
 pnpm cli doctor     # salud del entorno
 ```
 (Los comandos existen desde F0; si alguno falta, la tarea que lo introduce debe crearlo.)

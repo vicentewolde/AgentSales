@@ -26,10 +26,12 @@ flowchart LR
     MEDIA[packages/media<br/>sharp · ffmpeg · Playwright]
     PUB[packages/publishers]
     DB[packages/db<br/>Drizzle]
+    STO[packages/storage<br/>API S3]
   end
 
   subgraph Externos
-    SB[(Supabase<br/>Postgres + Storage)]
+    NEON[(Neon<br/>Postgres)]
+    R2[(Cloudflare R2<br/>archivos)]
     CL[Claude<br/>CLI o API]
     IG[Instagram API]
     ML[Mercado Libre API<br/>→ Portal Inmobiliario]
@@ -42,13 +44,14 @@ flowchart LR
   CLI --> API
   API --> CORE
   WRK --> CORE
-  CORE --> IMP & LLM & MEDIA & PUB & DB
-  DB --> SB
-  MEDIA --> SB
+  CORE --> IMP & LLM & MEDIA & PUB & DB & STO
+  DB --> NEON
+  STO --> R2
+  MEDIA --> STO
   LLM --> CL
   PUB --> IG & ML & FB
-  API -. encola jobs .-> SB
-  WRK -. consume jobs .-> SB
+  API -. encola jobs .-> NEON
+  WRK -. consume jobs .-> NEON
 ```
 
 ## Estilo: puertos y adaptadores
@@ -72,6 +75,7 @@ ia-corredor/
 ├── packages/
 │   ├── core/         Dominio, esquemas zod, estados, casos de uso, puertos
 │   ├── db/           Esquema Drizzle, migraciones, repositorios
+│   ├── storage/      Archivos en Cloudflare R2 (API S3): subir, leer, borrar, URLs prefirmadas
 │   ├── importers/    xlsx, google-sheets, carpetas de medios
 │   ├── llm/          Proveedores: claude-cli, anthropic-api, fake
 │   ├── media/        Procesamiento de imagen/video y render de plantillas
@@ -92,7 +96,7 @@ Los paquetes se crean **cuando la fase que los necesita comienza**, no antes (ve
 ```
 Excel + carpetas → importer valida contra field_definitions
   → upsert de listings (idempotente por broker + external_ref)
-  → sube medios originales a Storage → registra media
+  → sube medios originales a R2 → registra media
   → import_run con reporte de errores por fila
 ```
 
@@ -181,7 +185,8 @@ Los prompts viven versionados en `packages/llm/prompts/` y cada `content` guarda
 
 - Tokens de plataformas cifrados en reposo (AES-256-GCM con `APP_ENCRYPTION_KEY`).
 - Nunca se loguean tokens, contraseñas ni `.env`.
-- El bucket de Storage es privado; se usan URLs firmadas de corta duración para que Instagram descargue los medios.
+- El bucket de R2 es privado; se usan URLs prefirmadas de corta duración para que Instagram descargue los medios.
+- La base de datos solo acepta conexiones con credenciales y TLS (`sslmode=require`); no se expone ninguna API HTTP de datos.
 - Marketplace: la sesión del corredor vive en un perfil de navegador local por corredor; el sistema nunca guarda su contraseña.
 
 ## Decisiones

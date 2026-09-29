@@ -9,3 +9,6 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 - Specs F0 (aprobado) y F1 (borrador).
 - Configuración de Claude Code: `CLAUDE.md`, skills del flujo de trabajo y subagentes.
 - Plantilla Excel de propiedades.
+
+### Cambiado
+- Supabase reemplazado por Neon (Postgres) + Cloudflare R2 (archivos); nuevo ADR-0007 y guía de alta `docs/09-alta-neon-r2.md`.

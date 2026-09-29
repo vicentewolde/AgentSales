@@ -17,6 +17,8 @@
 | Validación | zod en todos los bordes: HTTP, archivos, IA, APIs externas, env |
 | API | Hono y su cliente RPC tipado (`hc`) para web y CLI |
 | ORM | Drizzle ORM + drizzle-kit (migraciones SQL versionadas) |
+| Base de datos | Postgres en Neon (plan gratis), conexión directa |
+| Archivos | Cloudflare R2 vía API S3 (`@aws-sdk/client-s3`) |
 | Cola | pg-boss |
 | Tests | Vitest; msw para HTTP externo; Playwright para e2e del panel |
 | Logs | pino, JSON en producción y pretty en dev |
