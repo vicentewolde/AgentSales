@@ -12,13 +12,13 @@ importers:
         specifier: 2.5.14
         version: 2.5.14
       '@types/node':
-        specifier: ^26.6.3
+        specifier: 26.6.3
         version: 26.6.3
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vitest:
-        specifier: ^5.0.2
+        specifier: 5.0.2
         version: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3))
 
 packages:

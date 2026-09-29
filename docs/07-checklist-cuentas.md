@@ -5,7 +5,7 @@ Cosas que **solo tú puedes hacer** (cuentas, aprobaciones, datos reales). Claud
 ## Antes de F0
 
 - [ ] Node.js 26 instalado (`node -v`; ADR-0008)
-- [ ] pnpm instalado (`corepack enable && corepack prepare pnpm@latest --activate`)
+- [ ] pnpm 11 instalado (`npm i -g pnpm@11` o `brew install pnpm`; Node 26 ya no trae corepack)
 - [ ] Git configurado con tu nombre y correo
 - [ ] ffmpeg instalado (`ffmpeg -version`)
 - [ ] Claude Code instalado y con sesión iniciada con tu plan Max (`claude` → `/status`)
