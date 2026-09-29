@@ -1,0 +1,26 @@
+{
+  "name": "@agentsales/storage",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@agentsales/source": "./src/index.ts",
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "check": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/check.ts"
+  },
+  "dependencies": {
+    "@agentsales/config": "workspace:*",
+    "@agentsales/core": "workspace:*",
+    "@aws-sdk/client-s3": "3.1141.0",
+    "@aws-sdk/s3-request-presigner": "3.1141.0"
+  },
+  "devDependencies": {
+    "msw": "3.0.0"
+  }
+}
