@@ -24,7 +24,7 @@
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- [ ] Terminar "Antes de F0" de `docs/07-checklist-cuentas.md`: Neon, R2 y `APP_ENCRYPTION_KEY` (bloquean F0-T04; el tooling local ya está verificado)
+- [x] Sección "Antes de F0" de `docs/07-checklist-cuentas.md` (Neon, R2 y `APP_ENCRYPTION_KEY` según el operador; se verifican en T02 y T04)
 - [ ] Iniciar el trámite de la app de Meta (lento, en paralelo)
 - [ ] Preparar las 3 propiedades de muestra (necesarias para F1)
 
