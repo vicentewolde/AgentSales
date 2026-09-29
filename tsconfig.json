@@ -6,5 +6,5 @@
     "types": ["node"]
   },
   "include": ["*.ts"],
-  "references": []
+  "references": [{ "path": "./packages/config" }]
 }

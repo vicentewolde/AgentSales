@@ -3,7 +3,7 @@
 - **Estado:** Aprobado (listo para comenzar)
 - **Rama base:** `main`
 - **Tag al cerrar:** `v0.0.1`
-- **Referencias:** `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/05-convenciones.md`, ADR 0001, 0002 (solo la parte de Drizzle), 0003, 0005, 0007 y 0008
+- **Referencias:** `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/05-convenciones.md`, ADR 0001, 0002 (solo la parte de Drizzle), 0003, 0005, 0007, 0008, 0009 y 0010
 
 ## 1. Objetivo
 Tener el esqueleto completo funcionando: monorepo que compila y testea, base de datos con el esquema v1 en Neon, API, worker, CLI y panel conectados, y un comando `doctor` que diga si el entorno está sano. Nada de funcionalidad de negocio todavía.
@@ -78,17 +78,18 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 - **Depende de:** T01
 - **Descripción:** esquema zod de todas las variables de `.env.example` (las de fases futuras, opcionales); `loadEnv()` que falla con un mensaje claro indicando qué falta; logger pino con redactor de `token|secret|password|authorization|key`.
 - **Hecho cuando:**
-  - [ ] Tests: env válida, env inválida (mensaje legible) y redacción de secretos en logs
-  - [ ] Se quita `passWithNoTests` de `vitest.config.ts` (primera tarea con tests)
-  - [ ] `PUBLISH_MODE` por defecto es `dry-run`
-  - [ ] `DATABASE_URL` con host `-pooler` se rechaza con un mensaje claro (debe ser la conexión directa de Neon, con `sslmode=require`)
-  - [ ] `APP_ENCRYPTION_KEY` acepta cualquier texto de al menos 32 caracteres (se derivan 32 bytes con HKDF-SHA256) y rechaza los más cortos
+  - [x] Tests: env válida, env inválida (mensaje legible) y redacción de secretos en logs
+  - [x] Se quita `passWithNoTests` de `vitest.config.ts` (primera tarea con tests)
+  - [x] `PUBLISH_MODE` por defecto es `dry-run`
+  - [x] `DATABASE_URL` con host `-pooler` se rechaza con un mensaje claro (debe ser la conexión directa de Neon, con `sslmode=require`)
+  - [x] `APP_ENCRYPTION_KEY` acepta cualquier texto de al menos 32 caracteres y rechaza los más cortos. La derivación de 32 bytes con HKDF-SHA256 se implementa en F3, junto con el cifrado de tokens
 
 ### F0-T03 · packages/core — base del dominio
 - **Depende de:** T01
 - **Descripción:** enums (`Platform`, `ListingStatus`, `PublicationStatus`, `Currency`, `Operation`), clase `AppError { code, message, retriable, details }` y máquina de estados de publicaciones según `01-arquitectura.md` (incluido `awaiting_manual_confirm`): `canTransition(from, to)` y `transition(from, to)`, que lanza `AppError("INVALID_TRANSITION")`.
 - **Hecho cuando:**
   - [ ] Tests que cubren todas las transiciones válidas y un conjunto de inválidas
+  - [ ] `core` exporta `PUBLISH_MODES` y `LLM_PROVIDERS`, y `packages/config` los usa en su esquema (`z.enum(PUBLISH_MODES)`) en vez de repetir los literales
   - [ ] Cero dependencias de infraestructura en `core`: su tsconfig usa `"types": []` y Biome prohíbe importar `node:*` y librerías de infraestructura en `packages/core/**`
 
 ### F0-T04 · packages/db y packages/storage — esquema, migración, seed y R2
@@ -100,6 +101,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
   - [ ] `pnpm storage:check` sube, lee, genera una URL prefirmada que responde 200 y borra un objeto de prueba en el bucket privado de R2
   - [ ] Tests de `storage` con el cliente S3 simulado: la URL prefirmada respeta el TTL configurado
   - [ ] `02-modelo-datos.md` coincide con el esquema (actualizar si hubo ajustes)
+  - [ ] Un import entre paquetes (`@agentsales/db` → `@agentsales/config` y `@agentsales/core`) resuelve al código fuente con `tsc -b`, Vitest y tsx (ADR-0010)
 
 ### F0-T05 · apps/api — Hono y /health
 - **Depende de:** T04
@@ -167,3 +169,5 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | 2026-09-28 | Versión inicial |
 | 2026-09-29 | Supabase reemplazado por Neon + Cloudflare R2 (ADR-0007); nuevo `packages/storage`; `APP_ENCRYPTION_KEY` libre de formato |
 | 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
+| 2026-09-29 | T02: HKDF de `APP_ENCRYPTION_KEY` se mueve a F3 (donde se cifra); `exports` con condición `@agentsales/source` (ADR-0010) |
+| 2026-09-29 | Revisión de T02: criterios nuevos en T03 (enums compartidos en `core`) y T04 (import entre paquetes verificado) |

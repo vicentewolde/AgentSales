@@ -4,14 +4,14 @@
 
 **Actualizado:** 2026-09-29
 **Fase actual:** F0 · Fundaciones (`docs/specs/fase-0-fundaciones.md`)
-**Última tarea terminada:** F0-T01 · Esqueleto del monorepo y tooling
-**Siguiente paso:** F0-T02 · packages/config (env con zod, logger pino y redactor)
+**Última tarea terminada:** F0-T02 · packages/config
+**Siguiente paso:** F0-T03 · packages/core (enums, `AppError` y máquina de estados)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
 | F0-T01 Esqueleto y tooling | ✅ terminada | [#1](https://github.com/vicentewolde/AgentSales/pull/1) |
-| F0-T02 packages/config | ⏳ pendiente | |
+| F0-T02 packages/config | ✅ terminada | [#2](https://github.com/vicentewolde/AgentSales/pull/2) |
 | F0-T03 packages/core base | ⏳ pendiente | |
 | F0-T04 packages/db y packages/storage | ⏳ pendiente | |
 | F0-T05 apps/api | ⏳ pendiente | |
@@ -33,4 +33,11 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - 2026-09-29: se reemplazó Supabase por Neon (Postgres) + Cloudflare R2 (archivos) por el límite de 2 proyectos gratis (ADR-0007). Alta paso a paso en `docs/09-alta-neon-r2.md`.
 - 2026-09-29: el runtime pasa de Node 22 a **Node 26** (ADR-0008). Node 26 no trae corepack: pnpm se instala aparte.
 - 2026-09-29 (F0-T01): tooling con TypeScript 7 (ADR-0009), Biome 2.5, Vitest 5 y pnpm 11. `tsconfig.json` raíz revisa los `*.ts` de la raíz (`noEmit`); cada paquete nuevo se agrega a sus `references` según la plantilla de `05-convenciones.md`. Vitest usa un único `vitest.config.ts` raíz; `passWithNoTests` se quita en T02.
+- 2026-09-29 (F0-T02): `@agentsales/config` con `loadEnv()` (zod; errores con nombres de variable y sin valores), `loadEnvFile()` (usa `process.loadEnvFile` de Node, sin dotenv) y `createLogger()` (pino; redacta claves sensibles, URLs con credenciales, errores y bindings). Los paquetes internos resuelven su fuente con la condición `@agentsales/source` (ADR-0010). El `.env` del operador pasa la validación (verificado con un script que solo imprime nombres de variables).
+- Deuda F0-T02:
+  - F3: derivar la clave con HKDF-SHA256 desde `APP_ENCRYPTION_KEY` al implementar el cifrado de tokens.
+  - F2: exigir `ANTHROPIC_API_KEY` cuando `LLM_PROVIDER=anthropic-api`.
+  - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
+  - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey` de S3); usar nombres como `objectPath` en logs.
+  - Solo las apps llaman a `loadEnvFile()` y `loadEnv()`; `db` y `storage` reciben opciones concretas, y `apps/web` solo importa tipos de config.
 - Se creó la documentación base, 6 ADRs, los specs F0 (aprobado) y F1 (borrador), y la configuración de Claude Code.

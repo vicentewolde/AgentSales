@@ -59,9 +59,29 @@ test/             # opcional: fixtures, helpers y tests de integración
 
 - `include` tiene `src` y `test`, así `tsc -b` también tipa los tests.
 - `types` se declara siempre. `packages/core` usa `"types": []` para que el compilador rechace `process`, `Buffer` y compañía.
-- `references` enumera los paquetes internos de los que depende. Además, cada paquete nuevo se agrega a `references` del `tsconfig.json` raíz.
+- `references` enumera solo los paquetes internos de los que depende (el ejemplo depende de `config`; `packages/core` no tiene ninguna). Además, cada paquete nuevo se agrega a `references` del `tsconfig.json` raíz.
 - `apps/web` (F0-T08) sobrescribe `lib` (con DOM), `jsx`, `module`/`moduleResolution` (`Bundler`) y usa `emitDeclarationOnly` en vez de `noEmit`, porque un proyecto referenciado no puede tener `noEmit`.
-- Cómo resuelve `exports` en desarrollo (fuente en `src/` o compilado en `dist/`) se define en F0-T02, con el primer paquete.
+
+`exports` del `package.json` del paquete:
+
+```json
+"exports": {
+  ".": {
+    "@agentsales/source": "./src/index.ts",
+    "types": "./dist/src/index.d.ts",
+    "default": "./dist/src/index.js"
+  }
+}
+```
+
+- En desarrollo se usa la condición `@agentsales/source`, que resuelve al código fuente sin compilar antes (ADR-0010). Se activa una sola vez por herramienta:
+  - `tsc`: `customConditions` en `tsconfig.base.json`.
+  - Vitest: `ssr.resolve.conditions` en `vitest.config.ts`.
+  - tsx: `NODE_OPTIONS=--conditions=@agentsales/source` en los scripts `dev` y `cli`.
+  - Vite: `resolve.conditions`.
+- Sin la condición, Node cae **en silencio** a `dist/`, que puede estar viejo. Si un cambio "no se ve", revisa que la herramienta tenga la condición.
+- En producción se usa `dist/`, que genera `tsc -b`.
+- Las dependencias internas se declaran como `"@agentsales/<nombre>": "workspace:*"`.
 
 ## Tests
 
@@ -85,7 +105,11 @@ test/             # opcional: fixtures, helpers y tests de integración
 
 - `PUBLISH_MODE=dry-run` es el default. Solo se cambia a `live` a mano en `.env`, y el sistema lo muestra en rojo en el panel y la CLI.
 - Primeras publicaciones `live`: solo en cuentas de prueba del operador.
-- Los logs pasan por un redactor que oculta `token`, `secret`, `password` y `authorization`.
+- Los logs pasan por el redactor de `@agentsales/config`:
+  - Oculta el valor de toda clave que contenga `token`, `secret`, `password`, `authorization` o `key`, a cualquier profundidad, también dentro de errores y bindings.
+  - Oculta las credenciales de URLs (`usuario:clave@`) y los parámetros sensibles (`access_token=`, `X-Amz-Signature=`…) en cualquier texto.
+- Aun así, no se loguea el objeto `env` completo ni respuestas crudas de APIs externas.
+- Como `key` también oculta nombres como `objectKey`, en los logs se usan nombres como `objectPath`.
 
 ## Documentación viva
 
