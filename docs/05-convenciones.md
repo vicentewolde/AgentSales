@@ -61,7 +61,22 @@ test/             # opcional: fixtures, helpers y tests de integración
 - `types` se declara siempre. `packages/core` usa `"types": []` para que el compilador rechace `process`, `Buffer` y compañía.
 - `references` enumera los paquetes internos de los que depende. Además, cada paquete nuevo se agrega a `references` del `tsconfig.json` raíz.
 - `apps/web` (F0-T08) sobrescribe `lib` (con DOM), `jsx`, `module`/`moduleResolution` (`Bundler`) y usa `emitDeclarationOnly` en vez de `noEmit`, porque un proyecto referenciado no puede tener `noEmit`.
-- Cómo resuelve `exports` en desarrollo (fuente en `src/` o compilado en `dist/`) se define en F0-T02, con el primer paquete.
+
+`exports` del `package.json` del paquete:
+
+```json
+"exports": {
+  ".": {
+    "@agentsales/source": "./src/index.ts",
+    "types": "./dist/src/index.d.ts",
+    "default": "./dist/src/index.js"
+  }
+}
+```
+
+- En desarrollo, `tsc` (`customConditions` en `tsconfig.base.json`), Vitest (`ssr.resolve.conditions` en `vitest.config.ts`) y tsx y Vite (`--conditions` y `resolve.conditions`, desde T05) usan la condición `@agentsales/source`. Así leen el código fuente sin compilar antes.
+- En producción se usa `dist/`, que genera `tsc -b`.
+- Las dependencias internas se declaran como `"@agentsales/<nombre>": "workspace:*"`.
 
 ## Tests
 

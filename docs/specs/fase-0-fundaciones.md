@@ -78,11 +78,11 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 - **Depende de:** T01
 - **Descripción:** esquema zod de todas las variables de `.env.example` (las de fases futuras, opcionales); `loadEnv()` que falla con un mensaje claro indicando qué falta; logger pino con redactor de `token|secret|password|authorization|key`.
 - **Hecho cuando:**
-  - [ ] Tests: env válida, env inválida (mensaje legible) y redacción de secretos en logs
-  - [ ] Se quita `passWithNoTests` de `vitest.config.ts` (primera tarea con tests)
-  - [ ] `PUBLISH_MODE` por defecto es `dry-run`
-  - [ ] `DATABASE_URL` con host `-pooler` se rechaza con un mensaje claro (debe ser la conexión directa de Neon, con `sslmode=require`)
-  - [ ] `APP_ENCRYPTION_KEY` acepta cualquier texto de al menos 32 caracteres (se derivan 32 bytes con HKDF-SHA256) y rechaza los más cortos
+  - [x] Tests: env válida, env inválida (mensaje legible) y redacción de secretos en logs
+  - [x] Se quita `passWithNoTests` de `vitest.config.ts` (primera tarea con tests)
+  - [x] `PUBLISH_MODE` por defecto es `dry-run`
+  - [x] `DATABASE_URL` con host `-pooler` se rechaza con un mensaje claro (debe ser la conexión directa de Neon, con `sslmode=require`)
+  - [x] `APP_ENCRYPTION_KEY` acepta cualquier texto de al menos 32 caracteres y rechaza los más cortos. La derivación de 32 bytes con HKDF-SHA256 se implementa en F3, junto con el cifrado de tokens
 
 ### F0-T03 · packages/core — base del dominio
 - **Depende de:** T01
@@ -167,3 +167,4 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | 2026-09-28 | Versión inicial |
 | 2026-09-29 | Supabase reemplazado por Neon + Cloudflare R2 (ADR-0007); nuevo `packages/storage`; `APP_ENCRYPTION_KEY` libre de formato |
 | 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
+| 2026-09-29 | T02: HKDF de `APP_ENCRYPTION_KEY` se mueve a F3 (donde se cifra); `exports` con condición `@agentsales/source` (ver `05-convenciones.md`) |
