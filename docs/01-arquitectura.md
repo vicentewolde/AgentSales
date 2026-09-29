@@ -189,6 +189,22 @@ interface Publisher {
 
 Con `PUBLISH_MODE=dry-run`, un decorador envuelve cualquier publisher: ejecuta `validate()`, registra lo que *habría* enviado y devuelve un resultado simulado.
 
+## Contrato de almacenamiento de archivos
+
+```ts
+interface MediaStorage {
+  put(path: string, body: Uint8Array, contentType: string): Promise<void>;   // sobrescribe
+  get(path: string): Promise<Uint8Array>;                                     // STORAGE_NOT_FOUND si no existe
+  head(path: string): Promise<{ size: number; contentType?: string } | null>; // null si no existe
+  delete(path: string): Promise<void>;                                        // idempotente
+  signedReadUrl(path: string, ttlSeconds?: number): Promise<string>;
+}
+```
+
+- Implementación: `packages/storage` (Cloudflare R2 vía API S3, ADR-0007).
+- Errores como `AppError`: `STORAGE_NOT_FOUND`, `STORAGE_UNAVAILABLE` (reintentable) y `STORAGE_ERROR`.
+- Hoy trabaja con archivos completos en memoria; F1 lo amplía con streams para videos grandes.
+
 ## Contrato del proveedor de IA
 
 ```ts

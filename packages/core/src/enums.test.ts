@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLOSE_REASONS,
+  CONTENT_STATUSES,
   CURRENCIES,
+  FIELD_TYPES,
+  LISTING_SOURCES,
   LISTING_STATUSES,
   LLM_PROVIDERS,
+  MEDIA_KINDS,
+  MEDIA_ROLES,
   OPERATIONS,
+  PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
   PUBLISH_MODES,
 } from "./enums.js";
@@ -15,6 +22,13 @@ describe("enums de dominio", () => {
     expect(LISTING_STATUSES).toEqual(["draft", "ready", "active", "paused", "closed", "archived"]);
     expect(CURRENCIES).toEqual(["UF", "CLP"]);
     expect(OPERATIONS).toEqual(["sale", "rent"]);
+    expect(PLATFORM_ACCOUNT_STATUSES).toEqual(["connected", "expired", "revoked", "error"]);
+    expect(FIELD_TYPES).toEqual(["text", "number", "enum", "boolean", "date", "url", "list"]);
+    expect(MEDIA_KINDS).toEqual(["image", "video"]);
+    expect(MEDIA_ROLES).toEqual(["original", "processed", "rendered"]);
+    expect(CONTENT_STATUSES).toEqual(["draft", "edited", "approved"]);
+    expect(LISTING_SOURCES).toEqual(["xlsx", "google_sheets", "manual", "chat"]);
+    expect(CLOSE_REASONS).toEqual(["sold", "rented", "withdrawn"]);
   });
 
   it("dry-run es el primer modo de publicación y los proveedores de IA son los del ADR-0003", () => {

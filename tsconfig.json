@@ -6,5 +6,18 @@
     "types": ["node"]
   },
   "include": ["*.ts"],
-  "references": [{ "path": "./packages/core" }, { "path": "./packages/config" }]
+  "references": [
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/config"
+    },
+    {
+      "path": "./packages/db"
+    },
+    {
+      "path": "./packages/storage"
+    }
+  ]
 }

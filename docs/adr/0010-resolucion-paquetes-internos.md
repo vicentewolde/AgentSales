@@ -15,8 +15,8 @@ Las herramientas del stack aceptan condiciones de exportación propias: `tsc` co
   `"@agentsales/source": "./src/index.ts"`, `"types": "./dist/src/index.d.ts"`, `"default": "./dist/src/index.js"`.
 - La condición se activa en **un solo lugar por herramienta**:
   - `tsc`: `customConditions` en `tsconfig.base.json`.
-  - Vitest: `ssr.resolve.conditions` en `vitest.config.ts`, repitiendo las condiciones por defecto de Vite (`module`, `node`, `development|production`), porque la lista las reemplaza.
-  - tsx y Node en desarrollo: `NODE_OPTIONS=--conditions=@agentsales/source` en los scripts `dev` y `cli` (T05–T07).
+  - Vitest: `ssr.resolve.conditions` en `vitest.config.ts`, repitiendo las condiciones por defecto de Vite salvo `module` (ver Seguimiento), porque la lista las reemplaza.
+  - tsx y Node en desarrollo: `NODE_OPTIONS=--conditions=@agentsales/source` en los scripts `dev` y `cli` (T05–T07) y en los scripts de paquete (`db:*`, `storage:check`, drizzle-kit).
   - Vite (`apps/web`): `resolve.conditions` en su config (T08).
 - En producción no se activa la condición y se usa `dist/`, generado con `tsc -b`.
 - Las dependencias internas se declaran como `"workspace:*"`.
@@ -31,3 +31,7 @@ Las herramientas del stack aceptan condiciones de exportación propias: `tsc` co
 - **`paths` en tsconfig:** solo afecta a `tsc`. Vitest, tsx y Vite necesitarían alias duplicados, y el nombre del paquete dejaría de ser el contrato real.
 - **`main`/`exports` apuntando a `src/*.ts`:** simple en desarrollo, pero producción tendría que ejecutar TypeScript (tsx o type stripping de Node), y el spec fija compilar a `dist/`.
 - **Compilar antes de ejecutar (`tsc -b --watch` más `dist/`):** agrega un proceso más en desarrollo y el problema del `dist/` desactualizado.
+
+## Seguimiento
+- 2026-09-29 (F0-T04): verificado sin `dist/` con `tsc -b`, Vitest, tsx (`db:migrate`, `db:seed`, `storage:check`) y drizzle-kit (`db:generate` con `NODE_OPTIONS`).
+- 2026-09-29 (F0-T04): Vitest no incluye la condición `module`: con ella carga builds ESM de dependencias (por ejemplo `@aws-sdk/checksums`) que no corren en Node sin bundler.

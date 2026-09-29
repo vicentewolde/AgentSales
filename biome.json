@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/coverage"]
+    "includes": ["**", "!**/node_modules", "!**/dist", "!**/coverage", "!packages/db/drizzle"]
   },
   "formatter": {
     "enabled": true,
@@ -76,6 +76,23 @@
                     "message": "packages/core no depende de infraestructura: solo zod e imports relativos (docs/01-arquitectura.md)."
                   }
                 ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/db/src/**", "packages/storage/src/**", "!packages/*/src/scripts/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@agentsales/config": "Solo los puntos de entrada (apps y src/scripts) cargan el entorno; los paquetes reciben opciones concretas (createDb, createR2Storage)."
+                }
               }
             }
           }

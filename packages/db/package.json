@@ -1,0 +1,29 @@
+{
+  "name": "@agentsales/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@agentsales/source": "./src/index.ts",
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "generate": "NODE_OPTIONS=--conditions=@agentsales/source drizzle-kit generate",
+    "migrate": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/migrate.ts",
+    "seed": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/seed.ts"
+  },
+  "dependencies": {
+    "@agentsales/config": "workspace:*",
+    "@agentsales/core": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11"
+  }
+}

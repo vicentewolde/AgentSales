@@ -66,5 +66,6 @@ Consecuencias prácticas:
 - Apaga el worker (`pnpm dev` completo) cuando no estés desarrollando: mientras corre, mantiene el cómputo de Neon despierto y consume CU-horas.
 
 ## E. Verificación
-- `pnpm storage:check` (tarea F0-T04): sube, lee y borra un objeto de prueba en R2.
+- `pnpm storage:check` (tarea F0-T04): sube, lee, prueba una URL prefirmada, comprueba que la misma URL sin firma se rechaza y borra un objeto de prueba en R2.
+- A mano, en el panel de Cloudflare → R2 → `agentsales-media` → Settings: "Public Development URL" (r2.dev) **deshabilitado** y sin dominios personalizados. `storage:check` no puede detectar un bucket público, porque el endpoint S3 siempre exige firma.
 - `pnpm cli doctor` (tarea F0-T07): revisa `.env`, base de datos y almacenamiento.

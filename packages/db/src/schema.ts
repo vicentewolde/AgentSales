@@ -1,0 +1,265 @@
+// Esquema de la base de datos. Referencia conceptual: docs/02-modelo-datos.md.
+// Los valores de los enums salen de @agentsales/core; nunca se repiten aquí.
+import {
+  CLOSE_REASONS,
+  CONTENT_STATUSES,
+  CURRENCIES,
+  FIELD_TYPES,
+  LISTING_SOURCES,
+  LISTING_STATUSES,
+  MEDIA_KINDS,
+  MEDIA_ROLES,
+  OPERATIONS,
+  PLATFORM_ACCOUNT_STATUSES,
+  PLATFORMS,
+  PUBLICATION_STATUSES,
+  TERMINAL_PUBLICATION_STATUSES,
+} from "@agentsales/core";
+import { sql } from "drizzle-orm";
+import {
+  type AnyPgColumn,
+  bigint,
+  boolean,
+  integer,
+  jsonb,
+  numeric,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+// ── Enums ────────────────────────────────────────────────────────────────
+
+export const platformEnum = pgEnum("platform", PLATFORMS);
+export const platformAccountStatusEnum = pgEnum(
+  "platform_account_status",
+  PLATFORM_ACCOUNT_STATUSES,
+);
+export const fieldTypeEnum = pgEnum("field_type", FIELD_TYPES);
+export const operationEnum = pgEnum("operation", OPERATIONS);
+export const listingStatusEnum = pgEnum("listing_status", LISTING_STATUSES);
+export const closeReasonEnum = pgEnum("close_reason", CLOSE_REASONS);
+export const currencyEnum = pgEnum("currency", CURRENCIES);
+export const listingSourceEnum = pgEnum("listing_source", LISTING_SOURCES);
+export const mediaKindEnum = pgEnum("media_kind", MEDIA_KINDS);
+export const mediaRoleEnum = pgEnum("media_role", MEDIA_ROLES);
+export const contentStatusEnum = pgEnum("content_status", CONTENT_STATUSES);
+export const publicationStatusEnum = pgEnum("publication_status", PUBLICATION_STATUSES);
+
+// ── Columnas comunes ─────────────────────────────────────────────────────
+
+const id = () => uuid("id").primaryKey().defaultRandom();
+
+const timestamps = {
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+};
+
+// ── Tablas ───────────────────────────────────────────────────────────────
+
+export const brokers = pgTable("brokers", {
+  id: id(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  brandName: text("brand_name").notNull(),
+  logoMediaId: uuid("logo_media_id").references((): AnyPgColumn => media.id),
+  primaryColor: text("primary_color").notNull(),
+  secondaryColor: text("secondary_color").notNull(),
+  whatsapp: text("whatsapp"),
+  email: text("email"),
+  instagramHandle: text("instagram_handle"),
+  website: text("website"),
+  tone: text("tone"),
+  fixedHashtags: text("fixed_hashtags").array().notNull().default(sql`'{}'::text[]`),
+  autoPublish: boolean("auto_publish").notNull().default(false),
+  ...timestamps,
+});
+
+export const platformAccounts = pgTable(
+  "platform_accounts",
+  {
+    id: id(),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    platform: platformEnum("platform").notNull(),
+    externalAccountId: text("external_account_id").notNull(),
+    displayName: text("display_name").notNull(),
+    credentialsEncrypted: text("credentials_encrypted"),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    status: platformAccountStatusEnum("status").notNull(),
+    meta: jsonb("meta").notNull().default({}),
+    ...timestamps,
+  },
+  (t) => [unique().on(t.brokerId, t.platform, t.externalAccountId)],
+);
+
+export const fieldDefinitions = pgTable("field_definitions", {
+  id: id(),
+  /** `null` = definición global. */
+  brokerId: uuid("broker_id").references(() => brokers.id),
+  category: text("category").notNull(),
+  key: text("key").notNull(),
+  label: text("label").notNull(),
+  type: fieldTypeEnum("type").notNull(),
+  required: boolean("required").notNull().default(false),
+  options: jsonb("options"),
+  sourceColumn: text("source_column").notNull(),
+  isCore: boolean("is_core").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  ...timestamps,
+});
+
+export const listings = pgTable(
+  "listings",
+  {
+    id: id(),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    externalRef: text("external_ref").notNull(),
+    category: text("category").notNull(),
+    operation: operationEnum("operation"),
+    propertyType: text("property_type"),
+    status: listingStatusEnum("status").notNull().default("draft"),
+    closeReason: closeReasonEnum("close_reason"),
+    priceAmount: numeric("price_amount", { precision: 14, scale: 2 }).notNull(),
+    priceCurrency: currencyEnum("price_currency").notNull(),
+    region: text("region"),
+    comuna: text("comuna"),
+    address: text("address"),
+    unitNumber: text("unit_number"),
+    showExactAddress: boolean("show_exact_address").notNull().default(false),
+    attributes: jsonb("attributes").notNull().default({}),
+    highlights: text("highlights"),
+    /** Nunca se envía a la IA ni a las plataformas. */
+    internalNotes: text("internal_notes"),
+    source: listingSourceEnum("source").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    ...timestamps,
+  },
+  (t) => [unique().on(t.brokerId, t.externalRef)],
+);
+
+export const media = pgTable("media", {
+  id: id(),
+  /** `null` para medios del corredor (logo). */
+  listingId: uuid("listing_id").references(() => listings.id),
+  brokerId: uuid("broker_id")
+    .notNull()
+    .references(() => brokers.id),
+  kind: mediaKindEnum("kind").notNull(),
+  role: mediaRoleEnum("role").notNull(),
+  variant: text("variant"),
+  parentMediaId: uuid("parent_media_id").references((): AnyPgColumn => media.id),
+  storagePath: text("storage_path").notNull(),
+  mime: text("mime").notNull(),
+  width: integer("width"),
+  height: integer("height"),
+  durationS: numeric("duration_s", { precision: 10, scale: 3 }),
+  bytes: bigint("bytes", { mode: "number" }).notNull(),
+  checksum: text("checksum").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isCover: boolean("is_cover").notNull().default(false),
+  aiMetadata: jsonb("ai_metadata"),
+  ...timestamps,
+});
+
+export const contents = pgTable("contents", {
+  id: id(),
+  listingId: uuid("listing_id")
+    .notNull()
+    .references(() => listings.id),
+  platform: platformEnum("platform").notNull(),
+  title: text("title"),
+  body: text("body").notNull(),
+  hashtags: text("hashtags").array().notNull().default(sql`'{}'::text[]`),
+  status: contentStatusEnum("status").notNull().default("draft"),
+  llmProvider: text("llm_provider").notNull(),
+  llmModel: text("llm_model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  rawOutput: jsonb("raw_output").notNull(),
+  ...timestamps,
+});
+
+/**
+ * `WHERE status NOT IN (<terminales>)`: todo estado no terminal cuenta como activo.
+ * `sql.raw` es seguro aquí: los valores son literales constantes de `core`, nunca entrada externa.
+ */
+const activePublication = sql.raw(
+  `"status" NOT IN (${TERMINAL_PUBLICATION_STATUSES.map((status) => `'${status}'`).join(", ")})`,
+);
+
+export const publications = pgTable(
+  "publications",
+  {
+    id: id(),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    platformAccountId: uuid("platform_account_id")
+      .notNull()
+      .references(() => platformAccounts.id),
+    platform: platformEnum("platform").notNull(),
+    contentId: uuid("content_id")
+      .notNull()
+      .references(() => contents.id),
+    mediaIds: uuid("media_ids").array().notNull().default(sql`'{}'::uuid[]`),
+    status: publicationStatusEnum("status").notNull(),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    externalId: text("external_id"),
+    externalUrl: text("external_url"),
+    attempts: integer("attempts").notNull().default(0),
+    /** `{ code, message, retriable }`. */
+    lastError: jsonb("last_error"),
+    dryRun: boolean("dry_run").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("publications_one_active_per_account")
+      .on(t.listingId, t.platformAccountId)
+      .where(activePublication),
+  ],
+);
+
+/** Bitácora inmutable: solo `created_at`. */
+export const publicationEvents = pgTable("publication_events", {
+  id: id(),
+  publicationId: uuid("publication_id")
+    .notNull()
+    .references(() => publications.id, { onDelete: "cascade" }),
+  type: text("type").notNull(),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status"),
+  actor: text("actor").notNull(),
+  /** Sin secretos. */
+  payload: jsonb("payload").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const importRuns = pgTable("import_runs", {
+  id: id(),
+  brokerId: uuid("broker_id")
+    .notNull()
+    .references(() => brokers.id),
+  source: listingSourceEnum("source").notNull(),
+  fileName: text("file_name").notNull(),
+  rowsTotal: integer("rows_total").notNull().default(0),
+  rowsCreated: integer("rows_created").notNull().default(0),
+  rowsUpdated: integer("rows_updated").notNull().default(0),
+  rowsSkipped: integer("rows_skipped").notNull().default(0),
+  rowsFailed: integer("rows_failed").notNull().default(0),
+  report: jsonb("report").notNull().default({}),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  ...timestamps,
+});
