@@ -11,7 +11,7 @@
 | Tarea | Estado | PR |
 |---|---|---|
 | F0-T01 Esqueleto y tooling | ✅ terminada | [#1](https://github.com/vicentewolde/AgentSales/pull/1) |
-| F0-T02 packages/config | ✅ terminada | |
+| F0-T02 packages/config | ✅ terminada | [#2](https://github.com/vicentewolde/AgentSales/pull/2) |
 | F0-T03 packages/core base | ⏳ pendiente | |
 | F0-T04 packages/db y packages/storage | ⏳ pendiente | |
 | F0-T05 apps/api | ⏳ pendiente | |
