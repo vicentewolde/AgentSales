@@ -1,0 +1,32 @@
+# Dependencias y builds
+node_modules/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+coverage/
+
+# Entorno y secretos
+.env
+.env.local
+.env.*.local
+
+# Datos reales (nunca a git)
+data/muestras/
+tmp/
+*.log
+
+# Navegador (sesiones de corredores)
+.browser-profiles/
+playwright-report/
+test-results/
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Claude Code: configuración personal
+.claude/settings.local.json
