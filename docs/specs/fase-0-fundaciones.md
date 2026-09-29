@@ -107,8 +107,8 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 - **Depende de:** T04
 - **Descripción:** servidor Hono con logger de requests, manejador global de `AppError` (reconocido con `isAppError`, no con `instanceof`) → JSON `{ error: { code, message } }` con status HTTP según una tabla explícita de códigos (`INVALID_TRANSITION` → 409, `*_NOT_FOUND` → 404, `*_INVALID*` → 400; por defecto 500, documentada en `05-convenciones.md`); nunca expone `details` ni `cause` en la respuesta, `/health` con los 3 checks, y `export type AppType`. El check de base de datos usa una función `pingDatabase(db)` que se agrega a `@agentsales/db` (`select 1`, con un reintento por el arranque en frío de Neon); el de almacenamiento usa `storage.head("_healthcheck/ping")` (devuelve `null` si hay acceso y lanza si fallan credenciales o bucket), sin agregar métodos al puerto.
 - **Hecho cuando:**
-  - [ ] Test de `/health` con dependencias simuladas
-  - [ ] `curl localhost:8787/health` funciona contra Neon y R2 reales
+  - [x] Test de `/health` con dependencias simuladas
+  - [x] `curl localhost:8787/health` funciona contra Neon y R2 reales
 
 ### F0-T06 · apps/worker — pg-boss
 - **Depende de:** T04
@@ -171,6 +171,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
 | 2026-09-29 | T02: HKDF de `APP_ENCRYPTION_KEY` se mueve a F3 (donde se cifra); `exports` con condición `@agentsales/source` (ADR-0010) |
 | 2026-09-29 | T03: `awaiting_manual_confirm → failed` (captcha o abandono, ADR-0004); `AppError.code` es texto libre en mayúsculas |
+| 2026-09-29 | T05: la API escucha solo en `127.0.0.1` (sin autenticación hasta F7); tabla de errores con 429 (`*_RATE_LIMITED`) y 503 (`*_UNAVAILABLE`); `queue` responde `pendiente: F0-T06` hasta el worker; `hono@4.13.10` y `@hono/node-server@2.1.1` por la política de antigüedad |
 | 2026-09-29 | Revisión de T04: errores de storage como `AppError`; `createDb` con `onError`; `pingDatabase` y check de storage en T05; `toPgConnectionString` en T06 |
 | 2026-09-29 | T04: puerto `MediaStorage` en `core`; driver `pg`; enums de Postgres `operation` y `currency`; el cliente fija `sslmode=verify-full`; Vitest sin la condición `module` |
 | 2026-09-29 | Revisión de T03: estado terminal `cancelled` (desde todo lo que no llegó a la plataforma); estados iniciales, terminales y activos en `core`; `isAppError`; T04 agrega los enums restantes; T05 fija la tabla código→HTTP |

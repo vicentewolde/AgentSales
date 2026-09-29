@@ -19,7 +19,8 @@ const URL_CREDENTIALS = /([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]+@/gi;
 const SENSITIVE_QUERY =
   /([?&][^=&#\s]*(?:token|secret|password|key|signature|credential)[^=&#\s]*=)[^&#\s]+/gi;
 
-function redactString(text: string): string {
+/** Oculta credenciales y parámetros sensibles de URLs dentro de un texto. */
+export function redactText(text: string): string {
   return text.replace(URL_CREDENTIALS, `$1${REDACTED}@`).replace(SENSITIVE_QUERY, `$1${REDACTED}`);
 }
 
@@ -45,7 +46,7 @@ function redactEntries(
 
 function redactValue(value: unknown, ancestors: Set<object>): unknown {
   if (typeof value === "string") {
-    return redactString(value);
+    return redactText(value);
   }
   const walkable = Array.isArray(value) || value instanceof Error || isPlainObject(value);
   if (!walkable) {
@@ -64,8 +65,8 @@ function redactValue(value: unknown, ancestors: Set<object>): unknown {
       // Copia plana: los errores de clientes HTTP y SDK traen `config`, `request` o `headers`.
       return {
         type: value.name,
-        message: redactString(value.message),
-        ...(value.stack ? { stack: redactString(value.stack) } : {}),
+        message: redactText(value.message),
+        ...(value.stack ? { stack: redactText(value.stack) } : {}),
         ...(value.cause !== undefined ? { cause: redactValue(value.cause, ancestors) } : {}),
         ...redactEntries(Object.entries(value), ancestors),
       };
@@ -131,7 +132,7 @@ export function createLogger(options: LoggerOptions = {}, destination?: Destinat
     },
     hooks: {
       logMethod(this: Logger, args: Parameters<LogFn>, method: LogFn) {
-        const redacted = args.map((arg) => (typeof arg === "string" ? redactString(arg) : arg));
+        const redacted = args.map((arg) => (typeof arg === "string" ? redactText(arg) : arg));
         method.apply(this, redacted as Parameters<LogFn>);
       },
     },

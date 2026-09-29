@@ -7,6 +7,7 @@
     "node": ">=26 <27"
   },
   "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "check": "biome check . && tsc -b && vitest run",
     "lint": "biome check .",
     "format": "biome check --write .",

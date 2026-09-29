@@ -24,6 +24,27 @@ importers:
         specifier: 5.0.2
         version: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15))
 
+  apps/api:
+    dependencies:
+      '@agentsales/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@agentsales/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@agentsales/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@agentsales/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+      '@hono/node-server':
+        specifier: 2.1.1
+        version: 2.1.1(hono@4.13.10)
+      hono:
+        specifier: 4.13.10
+        version: 4.13.10
+
   packages/config:
     dependencies:
       '@agentsales/core':
@@ -672,6 +693,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@hono/node-server@2.1.1':
+    resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      hono: ^4
+
   '@inquirer/ansi@2.0.8':
     resolution: {integrity: sha512-WpQM+Ti6Z40EFwwt+uL2p4UabT+W179zHp6HhLVOzfbwnVn05IPO/eXIZXGNqcT1jbQ15SujNLzQ39k4QPPxBQ==}
     engines: {node: '>=23.5.0 || ^22.13.0 || ^20.17.0'}
@@ -1250,6 +1277,10 @@ packages:
 
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
+
+  hono@4.13.10:
+    resolution: {integrity: sha512-dQuLsa5oO+47QVMVMaaD9cIv8ctmVtK1iRvwWngkfloFJMeFeuoUFDswIqZGxmGX3hrRzREgEArjkK9OgsQEhA==}
+    engines: {node: '>=16.9.0'}
 
   is-node-process@1.2.0:
     resolution: {integrity: sha512-Vg4o6/fqPxIjtxgUH5QLJhwZ7gW5diGCVlXpuUfELC62CuxM1iHcRe51f2W1FDy04Ai4KJkagKjx3XaqyfRKXw==}
@@ -2147,6 +2178,10 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
+  '@hono/node-server@2.1.1(hono@4.13.10)':
+    dependencies:
+      hono: 4.13.10
+
   '@inquirer/ansi@2.0.8': {}
 
   '@inquirer/confirm@6.3.2(@types/node@26.6.3)':
@@ -2562,6 +2597,8 @@ snapshots:
       set-cookie-parser: 3.1.2
 
   help-me@5.0.0: {}
+
+  hono@4.13.10: {}
 
   is-node-process@1.2.0: {}
 
