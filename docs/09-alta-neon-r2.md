@@ -31,14 +31,14 @@ Al terminar tendrás 5 valores para el `.env`: `DATABASE_URL`, `R2_ACCOUNT_ID`, 
    - **Pide una tarjeta.** Cloudflare hace una retención temporal de US$5 para verificarla; no es un cobro.
    - No se cobra nada mientras no superes 10 GB almacenados, 1 millón de operaciones de escritura y 10 millones de lecturas al mes.
 3. **Create bucket**:
-   - Name: `ia-corredor-media` (nombre histórico del proyecto, antes de llamarse AgentSales; R2 no permite renombrar buckets, así que se conserva)
+   - Name: `agentsales-media`
    - Location: **Automatic**
    - Default storage class: **Standard**
    - Déjalo **privado**: no actives "Public access", "r2.dev" ni dominios personalizados.
 4. Vuelve a la pantalla principal de R2 y copia el **Account ID** (aparece en "Account details" y también dentro de la URL del endpoint S3).
 5. En la misma pantalla, clic en **Manage** junto a "API Tokens" → **Create Account API token** (si no aparece, **User API token**):
    - Permissions: **Object Read & Write**
-   - Specify bucket: solo `ia-corredor-media`
+   - Specify bucket: solo `agentsales-media`
    - TTL: sin vencimiento
    - Clic en **Create**.
 6. Copia **Access Key ID** y **Secret Access Key**. **El secreto se muestra una sola vez**: guárdalo de inmediato en tu gestor de contraseñas. El "Token value" que aparece también no se usa.
@@ -47,7 +47,7 @@ Al terminar tendrás 5 valores para el `.env`: `DATABASE_URL`, `R2_ACCOUNT_ID`, 
    R2_ACCOUNT_ID=<Account ID>
    R2_ACCESS_KEY_ID=<Access Key ID>
    R2_SECRET_ACCESS_KEY=<Secret Access Key>
-   R2_BUCKET=ia-corredor-media
+   R2_BUCKET=agentsales-media
    ```
 
 ## C. Qué NO hacer

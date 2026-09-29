@@ -13,7 +13,7 @@ Cosas que **solo tú puedes hacer** (cuentas, aprobaciones, datos reales). Claud
 - [ ] Proyecto en Neon (plan gratis, región AWS São Paulo) — pasos en `docs/09-alta-neon-r2.md`
   - [ ] Copiar a `.env`: `DATABASE_URL` (conexión **directa**, sin `-pooler`, terminada en `?sslmode=require`)
 - [ ] Cuenta de Cloudflare con R2 activado (pide tarjeta: retención temporal de US$5, sin cobro dentro del plan gratis)
-  - [ ] Bucket privado `ia-corredor-media`
+  - [ ] Bucket privado `agentsales-media`
   - [ ] Token S3 con permiso "Object Read & Write" limitado a ese bucket
   - [ ] Copiar a `.env`: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`
 - [ ] Generar `APP_ENCRYPTION_KEY`: 44 caracteres aleatorios alfanuméricos con tu gestor de contraseñas (o `openssl rand -base64 32`)

@@ -16,7 +16,7 @@ Instagram exige que los medios estén en una **URL accesible desde internet**, a
   - **Drizzle ORM + drizzle-kit** se mantienen sin cambios.
 - **Archivos: Cloudflare R2, plan gratis**, con la API compatible con S3.
   - Cliente `@aws-sdk/client-s3` y `@aws-sdk/s3-request-presigner`; endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`, región `auto`.
-  - Bucket **privado** `ia-corredor-media`; para publicar se generan **URLs prefirmadas** de lectura (TTL por defecto 1 h; máximo 7 días).
+  - Bucket **privado** `agentsales-media`; para publicar se generan **URLs prefirmadas** de lectura (TTL por defecto 1 h; máximo 7 días).
   - Nuevo paquete `packages/storage` que implementa el puerto `MediaStorage`. Cambiar de proveedor S3-compatible (Backblaze B2, Tigris, MinIO) es cambiar el adaptador y las variables de entorno.
 - **Autenticación (F7):** ya no es Supabase Auth; el proveedor se decidirá en un ADR propio.
 - **Seguridad:** Neon no expone ninguna API HTTP de datos por defecto (solo conexión Postgres con credenciales y TLS), por lo que ya no se exige RLS. La separación por corredor se hace con `broker_id` en cada consulta.
