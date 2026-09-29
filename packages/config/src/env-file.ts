@@ -16,10 +16,18 @@ export function findWorkspaceRoot(start: string = process.cwd()): string {
 
 /**
  * Carga el `.env` de la raíz del workspace en `process.env`, sin pisar variables ya definidas.
- * Devuelve `false` si el archivo no existe (por ejemplo, en CI).
+ * Devuelve `false` si no hay `.env` o no hay workspace (por ejemplo, en CI o en un despliegue).
  */
-export function loadEnvFile(root: string = findWorkspaceRoot()): boolean {
-  const path = join(root, ".env");
+export function loadEnvFile(root?: string): boolean {
+  let dir = root;
+  if (dir === undefined) {
+    try {
+      dir = findWorkspaceRoot();
+    } catch {
+      return false;
+    }
+  }
+  const path = join(dir, ".env");
   if (!existsSync(path)) {
     return false;
   }

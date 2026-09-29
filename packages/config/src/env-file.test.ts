@@ -54,4 +54,16 @@ describe("env-file", () => {
   it("devuelve false si no hay .env", () => {
     expect(loadEnvFile(root)).toBe(false);
   });
+
+  it("devuelve false si no hay workspace", () => {
+    const outside = mkdtempSync(join(tmpdir(), "agentsales-none-"));
+    const cwd = process.cwd();
+    try {
+      process.chdir(outside);
+      expect(loadEnvFile()).toBe(false);
+    } finally {
+      process.chdir(cwd);
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
 });

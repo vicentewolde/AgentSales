@@ -89,7 +89,25 @@ describe("loadEnv", () => {
       DATABASE_URL: DIRECT_URL.replace("?sslmode=require", ""),
     });
 
-    expect(error.message).toContain("DATABASE_URL: debe terminar en ?sslmode=require");
+    expect(error.message).toContain("DATABASE_URL: debe incluir sslmode=require");
+  });
+
+  it("rechaza el pooler aunque el host venga en mayúsculas", () => {
+    const error = envErrorOf({
+      ...validSource,
+      DATABASE_URL: POOLER_URL.replace("ep-test-123-pooler", "EP-TEST-123-POOLER"),
+    });
+
+    expect(error.message).toMatch(/DATABASE_URL: el host contiene -pooler/);
+  });
+
+  it("rechaza channel_binding en DATABASE_URL", () => {
+    const error = envErrorOf({
+      ...validSource,
+      DATABASE_URL: `${DIRECT_URL}&channel_binding=require`,
+    });
+
+    expect(error.message).toContain("DATABASE_URL: no debe incluir channel_binding");
   });
 
   it("rechaza una DATABASE_URL que no es postgresql://", () => {
@@ -107,6 +125,42 @@ describe("loadEnv", () => {
     const error = envErrorOf({ ...validSource, PUBLISH_MODE: "foo" });
 
     expect(error.message).toContain('PUBLISH_MODE: debe ser "dry-run" o "live"');
+  });
+
+  it("recorta los espacios de los valores", () => {
+    const env = loadEnv({ ...validSource, R2_BUCKET: "  agentsales-media\n", API_PORT: " 9000 " });
+
+    expect(env.R2_BUCKET).toBe("agentsales-media");
+    expect(env.API_PORT).toBe(9000);
+  });
+
+  it.each(["0x10", "1e3", "80.5", "70000"])("rechaza el puerto %s", (value) => {
+    expect(() => loadEnv({ ...validSource, API_PORT: value })).toThrow(EnvError);
+  });
+
+  it("limita SIGNED_URL_TTL_SECONDS a 7 días", () => {
+    expect(
+      loadEnv({ ...validSource, SIGNED_URL_TTL_SECONDS: "604800" }).SIGNED_URL_TTL_SECONDS,
+    ).toBe(604800);
+    expect(() => loadEnv({ ...validSource, SIGNED_URL_TTL_SECONDS: "604801" })).toThrow(EnvError);
+  });
+
+  it.each([
+    ["NODE_ENV", "SECRETVAL"],
+    ["LOG_LEVEL", "SECRETVAL"],
+    ["PUBLISH_MODE", "SECRETVAL"],
+    ["LLM_PROVIDER", "SECRETVAL"],
+    ["API_PORT", "SECRETVAL"],
+    ["SIGNED_URL_TTL_SECONDS", "SECRETVAL"],
+    ["MAX_VIDEO_MB", "SECRETVAL"],
+    ["DATABASE_URL", "SECRETVAL"],
+    ["DATABASE_URL", "postgresql://u:SECRETVAL@ep-x-pooler.neon.tech/db?channel_binding=require"],
+    ["APP_ENCRYPTION_KEY", "SECRETVAL"],
+  ])("el error de %s no muestra el valor recibido", (variable, value) => {
+    const error = envErrorOf({ ...validSource, [variable]: value });
+
+    expect(error.issues.map((issue) => issue.variable)).toContain(variable);
+    expect(error.message).not.toContain("SECRETVAL");
   });
 
   it("rechaza un puerto que no es número", () => {

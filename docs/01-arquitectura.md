@@ -70,7 +70,7 @@ agentsales/
 ├── apps/
 │   ├── api/          Hono REST API; tipos exportados para el cliente RPC
 │   ├── web/          React + Vite + Tailwind; panel de operación
-│   ├── cli/          CLI `corredor` (commander); usa el cliente RPC de la API
+│   ├── cli/          CLI `agentsales` (commander); usa el cliente RPC de la API
 │   └── worker/       Procesa jobs: medios, contenido, publicación, sincronización
 ├── packages/
 │   ├── core/         Dominio, esquemas zod, estados, casos de uso, puertos
@@ -81,7 +81,7 @@ agentsales/
 │   ├── media/        Procesamiento de imagen/video y render de plantillas
 │   ├── templates/    Plantillas HTML/CSS de posts (portada, ficha, etc.)
 │   ├── publishers/   instagram, mercadolibre, fb-marketplace
-│   └── config/       Carga y validación de variables de entorno, tsconfig base
+│   └── config/       Variables de entorno validadas (zod), logger pino y redactor de secretos
 ├── docs/             Documentación (esta carpeta)
 ├── data/             Plantillas y datos de prueba (los datos reales no van a git)
 └── .claude/          Configuración de Claude Code: skills y subagentes
@@ -183,7 +183,7 @@ Los prompts viven versionados en `packages/llm/prompts/` y cada `content` guarda
 
 ## Seguridad
 
-- Tokens de plataformas cifrados en reposo (AES-256-GCM con `APP_ENCRYPTION_KEY`).
+- Tokens de plataformas cifrados en reposo con AES-256-GCM. La clave de 32 bytes se deriva de `APP_ENCRYPTION_KEY` con HKDF-SHA256 (se implementa en F3).
 - Nunca se loguean tokens, contraseñas ni `.env`.
 - El bucket de R2 es privado; se usan URLs prefirmadas de corta duración para que Instagram descargue los medios.
 - La base de datos solo acepta conexiones con credenciales y TLS (`sslmode=require`); no se expone ninguna API HTTP de datos.

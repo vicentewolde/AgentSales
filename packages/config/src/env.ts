@@ -4,17 +4,21 @@ const MIN_ENCRYPTION_KEY_LENGTH = 32;
 
 const requiredText = z.string({ error: "falta (obligatoria)" }).min(1, "falta (obligatoria)");
 
-const positiveInt = (description: string) =>
-  z.coerce
-    .number({ error: `debe ser ${description}` })
-    .int(`debe ser ${description}`)
-    .positive(`debe ser ${description}`);
+/** Entero escrito solo con dígitos (rechaza `0x10`, `1e3`, `80.5`) dentro de un rango. */
+const intInRange = (min: number, max: number, message: string) =>
+  z
+    .string()
+    .regex(/^\d+$/, message)
+    .transform(Number)
+    .pipe(z.number().int(message).min(min, message).max(max, message));
 
-const port = z.coerce
-  .number({ error: "debe ser un puerto entre 1 y 65535" })
-  .int("debe ser un puerto entre 1 y 65535")
-  .min(1, "debe ser un puerto entre 1 y 65535")
-  .max(65535, "debe ser un puerto entre 1 y 65535");
+const positiveInt = (description: string) =>
+  intInRange(1, Number.MAX_SAFE_INTEGER, `debe ser ${description}`);
+
+const port = intInRange(1, 65535, "debe ser un puerto entre 1 y 65535");
+
+/** Máximo de una URL prefirmada de R2 (ADR-0007). */
+const MAX_SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 const databaseUrl = requiredText.superRefine((value, ctx) => {
   const url = URL.parse(value);
@@ -22,15 +26,21 @@ const databaseUrl = requiredText.superRefine((value, ctx) => {
     ctx.addIssue({ code: "custom", message: "debe ser una URL postgresql://" });
     return;
   }
-  if (url.hostname.includes("-pooler")) {
+  if (url.hostname.toLowerCase().includes("-pooler")) {
     ctx.addIssue({
       code: "custom",
       message:
-        "usa el pooler de Neon (-pooler); copia la conexión directa, sin -pooler (ver docs/09-alta-neon-r2.md)",
+        "el host contiene -pooler; usa la conexión directa de Neon, sin -pooler (ver docs/09-alta-neon-r2.md)",
     });
   }
   if (url.searchParams.get("sslmode") !== "require") {
-    ctx.addIssue({ code: "custom", message: "debe terminar en ?sslmode=require" });
+    ctx.addIssue({ code: "custom", message: "debe incluir sslmode=require" });
+  }
+  if (url.searchParams.has("channel_binding")) {
+    ctx.addIssue({
+      code: "custom",
+      message: "no debe incluir channel_binding (quítalo de la URL que copia Neon)",
+    });
   }
 });
 
@@ -61,7 +71,11 @@ const envSchema = z.object({
   R2_ACCESS_KEY_ID: requiredText,
   R2_SECRET_ACCESS_KEY: requiredText,
   R2_BUCKET: requiredText,
-  SIGNED_URL_TTL_SECONDS: positiveInt("un número entero de segundos mayor que 0").default(3600),
+  SIGNED_URL_TTL_SECONDS: intInRange(
+    1,
+    MAX_SIGNED_URL_TTL_SECONDS,
+    `debe ser un número entero de segundos entre 1 y ${MAX_SIGNED_URL_TTL_SECONDS} (7 días)`,
+  ).default(3600),
 
   // Seguridad: la clave de 32 bytes se deriva con HKDF-SHA256 donde se cifra (F3)
   APP_ENCRYPTION_KEY: requiredText.min(
@@ -116,12 +130,14 @@ export class EnvError extends Error {
 
 /**
  * Valida las variables de entorno y devuelve una configuración tipada e inmutable.
- * Las variables vacías (`CLAVE=`) cuentan como no definidas.
+ * Los valores se recortan y las variables vacías (`CLAVE=`) cuentan como no definidas.
  * Lanza `EnvError` con todos los problemas juntos.
  */
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
   const cleaned = Object.fromEntries(
-    Object.entries(source).filter(([, value]) => value !== undefined && value.trim() !== ""),
+    Object.entries(source)
+      .map(([name, value]) => [name, value?.trim()] as const)
+      .filter(([, value]) => value !== undefined && value !== ""),
   );
   const result = envSchema.safeParse(cleaned);
   if (!result.success) {
