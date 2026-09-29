@@ -38,7 +38,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - 2026-09-29 (F0-T04): `@agentsales/db` (Drizzle + `pg`, 9 tablas y 12 enums desde `core`, migración `0000_init` aplicada en Neon, seed del corredor `demo` idempotente) y `@agentsales/storage` (R2 vía S3; `storage:check` OK contra el bucket real). Puerto `MediaStorage` en `core`. El cliente fija `sslmode=verify-full`. Imports entre paquetes verificados con `tsc -b`, Vitest, tsx y drizzle-kit sin `dist/`.
 - Deuda F0-T04: en T09 (CI) comprobar que `pnpm db:generate` no produce cambios (esquema y migraciones sincronizados).
   - F1-T04: ampliar `MediaStorage` con streams (videos grandes) y migración `0001` con los únicos de `field_definitions` y `media` (ya anotado en el spec F1).
-  - Verificar a mano que r2.dev esté deshabilitado en el bucket (ver `docs/09-alta-neon-r2.md`).
+  - r2.dev deshabilitado en el bucket: verificado a mano por el operador (2026-09-29).
 - Deuda F0-T02:
   - F3: derivar la clave con HKDF-SHA256 desde `APP_ENCRYPTION_KEY` al implementar el cifrado de tokens.
   - F2: exigir `ANTHROPIC_API_KEY` cuando `LLM_PROVIDER=anthropic-api`.
