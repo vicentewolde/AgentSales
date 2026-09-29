@@ -2,15 +2,15 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-09-28
+**Actualizado:** 2026-09-29
 **Fase actual:** F0 · Fundaciones (`docs/specs/fase-0-fundaciones.md`)
-**Última tarea terminada:** — (documentación y planificación inicial)
-**Siguiente paso:** F0-T01 · Esqueleto del monorepo y tooling
+**Última tarea terminada:** F0-T01 · Esqueleto del monorepo y tooling
+**Siguiente paso:** F0-T02 · packages/config (env con zod, logger pino y redactor)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| F0-T01 Esqueleto y tooling | 🔨 en curso | |
+| F0-T01 Esqueleto y tooling | ✅ terminada | |
 | F0-T02 packages/config | ⏳ pendiente | |
 | F0-T03 packages/core base | ⏳ pendiente | |
 | F0-T04 packages/db y packages/storage | ⏳ pendiente | |
@@ -29,6 +29,8 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - [ ] Preparar las 3 propiedades de muestra (necesarias para F1)
 
 ## Notas de la última sesión
+- 2026-09-29 (F0-T01): tooling con TypeScript 7.0 (compilador nativo), Biome 2.5, Vitest 5 y pnpm 11. `tsconfig.json` raíz revisa los `*.ts` de la raíz (`noEmit`); cada paquete nuevo se agrega a su `references`. Vitest usa un único `vitest.config.ts` raíz con `passWithNoTests` (se puede quitar cuando haya tests).
+- Deuda: marcar lo ya hecho en "Antes de F0" de `docs/07-checklist-cuentas.md` (el operador).
 - 2026-09-29: el runtime pasa de Node 22 a **Node 26** (ADR-0008).
 - 2026-09-29: el proyecto se llama **AgentSales** (antes "IA Corredor"); CLI `agentsales`, paquetes `@agentsales/*`.
 - 2026-09-29: se reemplazó Supabase por Neon (Postgres) + Cloudflare R2 (archivos) por el límite de 2 proyectos gratis (ADR-0007). Alta paso a paso en `docs/09-alta-neon-r2.md`.

@@ -64,10 +64,10 @@ Nombres de paquete: `@agentsales/<nombre>`. Binario de la CLI: `agentsales`.
 
 ### F0-T01 · Esqueleto del monorepo y tooling
 - **Depende de:** —
-- **Descripción:** `pnpm-workspace.yaml`, `package.json` raíz con scripts, `tsconfig.base.json` (strict, NodeNext, ES2023), `biome.json`, `.nvmrc` (26, ADR-0008), `.editorconfig`, `vitest.workspace` o config por paquete.
+- **Descripción:** `pnpm-workspace.yaml`, `package.json` raíz con scripts, `tsconfig.base.json` (strict, NodeNext, ES2023), `biome.json`, `.nvmrc` (26, ADR-0008), `.editorconfig`, `vitest.config.ts` raíz (Vitest 5 ya no tiene `vitest.workspace`; se pasa a `test.projects` cuando un paquete necesite otro entorno, p. ej. web en T08).
 - **Hecho cuando:**
-  - [ ] `pnpm install` y `pnpm check` pasan con el repo vacío de lógica
-  - [ ] `docs/ESTADO.md` actualizado
+  - [x] `pnpm install` y `pnpm check` pasan con el repo vacío de lógica
+  - [x] `docs/ESTADO.md` actualizado
 
 ### F0-T02 · packages/config
 - **Depende de:** T01

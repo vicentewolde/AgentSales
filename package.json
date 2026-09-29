@@ -1,0 +1,22 @@
+{
+  "name": "agentsales",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=26 <27"
+  },
+  "scripts": {
+    "check": "biome check . && tsc -b && vitest run",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "^26.6.3",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.2"
+  }
+}
