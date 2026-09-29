@@ -145,12 +145,15 @@ stateDiagram-v2
   paused --> published: reactivar
   published --> unpublished: despublicar
   paused --> unpublished: despublicar
+  publishing --> awaiting_manual_confirm: formulario listo (Marketplace)
+  awaiting_manual_confirm --> published: operador hace el clic final
+  awaiting_manual_confirm --> failed: captcha, verificación o abandono
   unpublished --> [*]
 ```
 
-Para Marketplace (semiautomático) existe además `awaiting_manual_confirm` entre `publishing` y `published`: el formulario queda listo y el operador hace el clic final.
+Para Marketplace (semiautomático) existe además `awaiting_manual_confirm` entre `publishing` y `published`: el formulario queda listo y el operador hace el clic final. Si aparece un captcha o una verificación, el sistema se detiene y la publicación pasa a `failed` (ADR-0004).
 
-La máquina de estados vive en `packages/core` como función pura con tests: toda transición inválida lanza error.
+La máquina de estados vive en `packages/core` (`PUBLICATION_TRANSITIONS`, `canTransition`, `transition`) como función pura con tests: toda transición inválida lanza `AppError("INVALID_TRANSITION")`.
 
 ## Contrato de un Publisher
 

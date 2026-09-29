@@ -1,4 +1,12 @@
+import { LLM_PROVIDERS, PUBLISH_MODES } from "@agentsales/core";
 import { z } from "zod";
+
+/** `["a", "b", "c"]` → `"a", "b" o "c"` (para mensajes de error). */
+const listOf = (values: readonly string[]) =>
+  values
+    .map((value) => `"${value}"`)
+    .join(", ")
+    .replace(/, ([^,]*)$/, " o $1");
 
 const MIN_ENCRYPTION_KEY_LENGTH = 32;
 
@@ -60,7 +68,7 @@ const envSchema = z.object({
     })
     .default("info"),
   PUBLISH_MODE: z
-    .enum(["dry-run", "live"], { error: 'debe ser "dry-run" o "live"' })
+    .enum(PUBLISH_MODES, { error: `debe ser ${listOf(PUBLISH_MODES)}` })
     .default("dry-run"),
 
   // Base de datos (Neon, conexión directa)
@@ -85,9 +93,7 @@ const envSchema = z.object({
 
   // IA (F2)
   LLM_PROVIDER: z
-    .enum(["claude-cli", "anthropic-api", "fake"], {
-      error: 'debe ser "claude-cli", "anthropic-api" o "fake"',
-    })
+    .enum(LLM_PROVIDERS, { error: `debe ser ${listOf(LLM_PROVIDERS)}` })
     .default("claude-cli"),
   LLM_MODEL: z.string().default("sonnet"),
   ANTHROPIC_API_KEY: z.string().optional(),

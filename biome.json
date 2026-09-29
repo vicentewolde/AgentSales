@@ -36,5 +36,47 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**", "!zod", "!zod/**", "!./**", "!../**"],
+                    "message": "packages/core no depende de infraestructura: solo zod e imports relativos (docs/01-arquitectura.md)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/core/**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**", "!zod", "!zod/**", "!./**", "!../**", "!vitest"],
+                    "message": "packages/core no depende de infraestructura: solo zod e imports relativos (docs/01-arquitectura.md)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

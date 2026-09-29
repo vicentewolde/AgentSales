@@ -88,9 +88,9 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 - **Depende de:** T01
 - **Descripción:** enums (`Platform`, `ListingStatus`, `PublicationStatus`, `Currency`, `Operation`), clase `AppError { code, message, retriable, details }` y máquina de estados de publicaciones según `01-arquitectura.md` (incluido `awaiting_manual_confirm`): `canTransition(from, to)` y `transition(from, to)`, que lanza `AppError("INVALID_TRANSITION")`.
 - **Hecho cuando:**
-  - [ ] Tests que cubren todas las transiciones válidas y un conjunto de inválidas
-  - [ ] `core` exporta `PUBLISH_MODES` y `LLM_PROVIDERS`, y `packages/config` los usa en su esquema (`z.enum(PUBLISH_MODES)`) en vez de repetir los literales
-  - [ ] Cero dependencias de infraestructura en `core`: su tsconfig usa `"types": []` y Biome prohíbe importar `node:*` y librerías de infraestructura en `packages/core/**`
+  - [x] Tests que cubren todas las transiciones válidas y un conjunto de inválidas
+  - [x] `core` exporta `PUBLISH_MODES` y `LLM_PROVIDERS`, y `packages/config` los usa en su esquema (`z.enum(PUBLISH_MODES)`) en vez de repetir los literales
+  - [x] Cero dependencias de infraestructura en `core`: su tsconfig usa `"types": []` y Biome prohíbe importar `node:*` y librerías de infraestructura en `packages/core/**`
 
 ### F0-T04 · packages/db y packages/storage — esquema, migración, seed y R2
 - **Depende de:** T02, T03
@@ -170,4 +170,5 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | 2026-09-29 | Supabase reemplazado por Neon + Cloudflare R2 (ADR-0007); nuevo `packages/storage`; `APP_ENCRYPTION_KEY` libre de formato |
 | 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
 | 2026-09-29 | T02: HKDF de `APP_ENCRYPTION_KEY` se mueve a F3 (donde se cifra); `exports` con condición `@agentsales/source` (ADR-0010) |
+| 2026-09-29 | T03: `awaiting_manual_confirm → failed` (captcha o abandono, ADR-0004); `AppError.code` es texto libre en mayúsculas |
 | 2026-09-29 | Revisión de T02: criterios nuevos en T03 (enums compartidos en `core`) y T04 (import entre paquetes verificado) |
