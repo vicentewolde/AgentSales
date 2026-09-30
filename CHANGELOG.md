@@ -28,6 +28,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 - Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009).
 - El repositorio pasa a ser público, con protección de la rama `main`.
 
+### Corregido
+- Sin conexión a internet, el worker ya no inunda la terminal: registra el primer error, un resumen cada 30 s y un aviso cuando la conexión vuelve.
+
 ### Seguridad
 - `PUBLISH_MODE=dry-run` por defecto.
 - Los logs ocultan tokens, claves y credenciales de URLs.
