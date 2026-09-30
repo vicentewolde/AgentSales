@@ -4,13 +4,13 @@
 
 **Actualizado:** 2026-09-30
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F0-T10 · Cierre de F0 (tag `v0.0.1`)
-**Siguiente paso:** `/tarea F1-T01`: migración `0001`, definiciones de campos y errores de base de datos
+**Última tarea terminada:** F1-T01 · Migración 0001, definiciones de campos y errores de base de datos
+**Siguiente paso:** `/tarea F1-T02`: validador dinámico (luego T03, el lector de Excel)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| F1-T01 Migración 0001, definiciones de campos y errores de base de datos | ⏳ pendiente | |
+| F1-T01 Migración 0001, definiciones de campos y errores de base de datos | ✅ terminada | |
 | F1-T02 Validador dinámico | ⏳ pendiente | |
 | F1-T03 Lector de Excel | ⏳ pendiente | |
 | F1-T04 Caso de uso importListings | ⏳ pendiente | |
@@ -44,6 +44,13 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 ## Notas de la última sesión
 - 2026-09-30: **F0 cerrada.** Monorepo con `core`, `config`, `db` (Neon, migración `0000_init`), `storage` (R2), API (`/health`), worker (pg-boss), CLI (`doctor`/`status`) y panel. CI en GitHub Actions. 321 tests. Detalle en `CHANGELOG.md` `[0.0.1]` y en el spec F0.
 - 2026-09-30: demo de F0 confirmada por el operador. Arreglo derivado: el worker resume los errores repetidos de pg-boss sin conexión.
+- 2026-09-30: **F1-T01.**
+  - Migración `0001`, aplicada en Neon.
+  - 36 definiciones globales sembradas desde la plantilla, con tipos y obligatorios del diccionario de la hoja Instrucciones. `carpeta_medios` es opcional, según §4.3 del spec.
+  - `FieldDefinitionRepository`, con implementación Drizzle y otra en memoria (`@agentsales/core/testing`).
+  - `DB_UNAVAILABLE` para los fallos de conexión.
+  - Tests de repositorios con PGlite, dependencia nueva de desarrollo en `packages/db`.
+  - drizzle 0.45 envuelve los errores del driver en `DrizzleQueryError`: para ver el SQLSTATE se usa `sqlStateOf`, que recorre `cause`.
 - 2026-09-30: **spec F1 aprobado** con 15 tareas. Decisiones D1–D6: ADR-0011 (contratos HTTP en `@agentsales/api/contracts`); job `import.run` (enmienda de ADR-0005); `putStream` sin `lib-storage`; PGlite en `packages/db`; bundle del panel como deuda hasta F7; metadatos de medios en F2.
 - 2026-09-30: `/tarea` incorpora la retro de F0: plan sin red, revisión de `minimumReleaseAgeExclude` tras `pnpm add`, simulación de la CI en un clon limpio y push, PR y merge solo con autorización y `CI / check` en verde.
 - 2026-09-30: el operador decide dejar el repo **sin licencia** (todos los derechos reservados).

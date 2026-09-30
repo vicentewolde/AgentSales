@@ -116,6 +116,7 @@ Una subruta (por ejemplo `./contracts` en `apps/api` o `./testing` en `packages/
 
 - **core:** tests unitarios obligatorios (máquina de estados, validaciones, formateo de precios).
 - **Adaptadores externos:** tests de contrato con respuestas grabadas (msw). **Ningún test llama a APIs reales ni publica.**
+- **Repositorios (`packages/db`):** tests contra Postgres en memoria con PGlite (`createTestDatabase()` de `packages/db/test/pglite.ts`, que aplica todas las migraciones), sin Neon ni red. Los casos de uso se prueban con los repositorios en memoria de `@agentsales/core/testing`, que solo se importa desde tests (Biome).
 - **Importadores:** fixtures en `packages/importers/test/fixtures/` (Excel pequeños, incluidos casos con errores).
 - **Panel (React):** tests de componentes con Testing Library en jsdom, activado por archivo con `// @vitest-environment jsdom`. Nada de red: el acceso a la API se inyecta por contexto (hoy `HealthFetcherContext`) o se simula `fetch`. El router en memoria acepta la ruta inicial (`initialPath`).
 - **LLM:** en los tests se usa el proveedor `fake`. Evaluación de prompts aparte con `pnpm eval:content` (fase 2).

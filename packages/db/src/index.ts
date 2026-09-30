@@ -3,8 +3,10 @@ export {
   createDb,
   type Database,
   type DbClient,
+  type SchemaDatabase,
   toPgConnectionString,
 } from "./client.js";
+export { isDbUnavailable, sqlStateOf, toDbError, withDbErrors } from "./errors.js";
 export {
   checkQueueSchema,
   type Pingable,
@@ -14,4 +16,15 @@ export {
   type Queryable,
 } from "./health.js";
 export { MIGRATIONS_FOLDER } from "./migrations.js";
+export {
+  createFieldDefinitionRepository,
+  toFieldDefinition,
+} from "./repositories/field-definitions.js";
 export * as schema from "./schema.js";
+export { type SeedResult, seed } from "./seed.js";
+export {
+  REAL_ESTATE_CATEGORY,
+  REAL_ESTATE_FIELD_DEFINITIONS,
+  TEMPLATE_COLUMNS,
+  type TemplateColumn,
+} from "./seed-data.js";

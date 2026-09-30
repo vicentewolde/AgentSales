@@ -2,7 +2,7 @@
 
 Base de datos: Postgres en Neon (plan gratis, conexión directa). Esquema en `packages/db` con Drizzle; este documento es la referencia conceptual. Si difieren, **manda el código** y este documento se actualiza en la misma tarea.
 
-Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.rows_* = 0`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload` y `report` empiezan vacíos. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES`.
+Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`, `import_run_status`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.status = queued`, `import_runs.dry_run = false`, `import_runs.rows_* = 0`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload`, `report` e `input` empiezan vacíos. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES`.
 
 ## Diagrama
 
@@ -67,7 +67,7 @@ erDiagram
 | sort_order | int | |
 | active | boolean | |
 
-Una definición del corredor con el mismo `key` **sobrescribe** la global (único `(broker_id, category, key)` en F1, migración `0001`). Agregar un campo = insertar una fila; no requiere migración.
+Una definición del corredor con el mismo `key` **sobrescribe** la global. Único `UNIQUE NULLS NOT DISTINCT (broker_id, category, key)` (migración `0001`): dos globales con el mismo `key` chocan, y es el destino del upsert del seed. El seed crea las 36 globales de `real_estate` desde la plantilla (`TEMPLATE_COLUMNS` en `packages/db/src/seed-data.ts`) y pisa los cambios hechos a mano en ellas: para personalizar un campo se crea una definición del corredor. Agregar un campo = insertar una fila; no requiere migración.
 
 ### listings — aviso (propiedad o producto)
 | Columna | Tipo | Notas |
@@ -107,10 +107,12 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global (únic
 | width, height | int null | |
 | duration_s | numeric(10,3) null | Solo videos |
 | bytes | bigint | |
-| checksum | text | sha256; evita duplicados (único en F1, migración `0001`) |
+| checksum | text | sha256; evita duplicados |
 | sort_order | int | Orden del carrusel |
 | is_cover | boolean | |
 | ai_metadata | jsonb null | Descripción y puntaje de la IA |
+
+Únicos (migración `0001`): `(listing_id, checksum) WHERE role = 'original'` (el mismo archivo no se sube dos veces a una propiedad) y `UNIQUE (storage_path)`, que también cubre el logo (`listing_id` null). En F1, `width`, `height` y `duration_s` quedan en `null`; los mide `media.process` en F2.
 
 ### contents — textos generados por plataforma
 | Columna | Tipo | Notas |
@@ -159,12 +161,16 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global (únic
 | Columna | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
-| broker_id | uuid FK | |
+| broker_id | uuid FK null | `null` hasta que el job lee la hoja Corredor |
+| status | enum `import_run_status` | `queued`, `running`, `succeeded`, `failed` |
+| dry_run | boolean | Valida y reporta sin escribir listings ni medios |
+| input | jsonb | Rutas absolutas de entrada y broker pedido; sin secretos. El job `import.run` solo recibe el id |
+| error | jsonb null | `{ code, message }` cuando `status = failed` |
 | source | enum `listing_source` | Mismos valores que `listings.source` |
 | file_name | text | |
 | rows_total, rows_created, rows_updated, rows_skipped, rows_failed | int | |
 | report | jsonb | Errores por fila y columna |
-| started_at | timestamptz default now() | |
+| started_at | timestamptz null | Se fija al pasar a `running` |
 | finished_at | timestamptz null | `null` mientras la carga está en curso |
 
 ### Cola de trabajos

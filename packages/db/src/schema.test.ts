@@ -5,6 +5,7 @@ import {
   CONTENT_STATUSES,
   CURRENCIES,
   FIELD_TYPES,
+  IMPORT_RUN_STATUSES,
   LISTING_SOURCES,
   LISTING_STATUSES,
   MEDIA_KINDS,
@@ -32,6 +33,7 @@ const EXPECTED_ENUMS: Record<string, readonly string[]> = {
   media_role: MEDIA_ROLES,
   content_status: CONTENT_STATUSES,
   publication_status: PUBLICATION_STATUSES,
+  import_run_status: IMPORT_RUN_STATUSES,
 };
 
 const EXPECTED_TABLES = [
@@ -94,5 +96,13 @@ describe("migraciones", () => {
   it("mantienen las llaves de la importación idempotente y del seed", () => {
     expect(sql).toContain(`UNIQUE("broker_id","external_ref")`);
     expect(sql).toContain(`UNIQUE("slug")`);
+  });
+
+  it("tienen los únicos de F1: definiciones por key, medios por checksum y por ruta (0001)", () => {
+    expect(sql).toContain(`UNIQUE NULLS NOT DISTINCT("broker_id","category","key")`);
+    expect(sql).toContain(
+      `CREATE UNIQUE INDEX "media_original_listing_checksum_unique" ON "media" USING btree ("listing_id","checksum") WHERE "role" = 'original';`,
+    );
+    expect(sql).toContain(`UNIQUE("storage_path")`);
   });
 });

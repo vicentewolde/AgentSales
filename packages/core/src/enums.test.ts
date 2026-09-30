@@ -4,6 +4,7 @@ import {
   CONTENT_STATUSES,
   CURRENCIES,
   FIELD_TYPES,
+  IMPORT_RUN_STATUSES,
   LISTING_SOURCES,
   LISTING_STATUSES,
   LLM_PROVIDERS,
@@ -29,6 +30,7 @@ describe("enums de dominio", () => {
     expect(CONTENT_STATUSES).toEqual(["draft", "edited", "approved"]);
     expect(LISTING_SOURCES).toEqual(["xlsx", "google_sheets", "manual", "chat"]);
     expect(CLOSE_REASONS).toEqual(["sold", "rented", "withdrawn"]);
+    expect(IMPORT_RUN_STATUSES).toEqual(["queued", "running", "succeeded", "failed"]);
   });
 
   it("dry-run es el primer modo de publicación y los proveedores de IA son los del ADR-0003", () => {

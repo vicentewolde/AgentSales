@@ -5,6 +5,7 @@ import {
   CONTENT_STATUSES,
   CURRENCIES,
   FIELD_TYPES,
+  IMPORT_RUN_STATUSES,
   LISTING_SOURCES,
   LISTING_STATUSES,
   MEDIA_KINDS,
@@ -49,6 +50,7 @@ export const mediaKindEnum = pgEnum("media_kind", MEDIA_KINDS);
 export const mediaRoleEnum = pgEnum("media_role", MEDIA_ROLES);
 export const contentStatusEnum = pgEnum("content_status", CONTENT_STATUSES);
 export const publicationStatusEnum = pgEnum("publication_status", PUBLICATION_STATUSES);
+export const importRunStatusEnum = pgEnum("import_run_status", IMPORT_RUN_STATUSES);
 
 // ── Columnas comunes ─────────────────────────────────────────────────────
 
@@ -101,22 +103,32 @@ export const platformAccounts = pgTable(
   (t) => [unique().on(t.brokerId, t.platform, t.externalAccountId)],
 );
 
-export const fieldDefinitions = pgTable("field_definitions", {
-  id: id(),
-  /** `null` = definición global. */
-  brokerId: uuid("broker_id").references(() => brokers.id),
-  category: text("category").notNull(),
-  key: text("key").notNull(),
-  label: text("label").notNull(),
-  type: fieldTypeEnum("type").notNull(),
-  required: boolean("required").notNull().default(false),
-  options: jsonb("options"),
-  sourceColumn: text("source_column").notNull(),
-  isCore: boolean("is_core").notNull().default(false),
-  sortOrder: integer("sort_order").notNull().default(0),
-  active: boolean("active").notNull().default(true),
-  ...timestamps,
-});
+export const fieldDefinitions = pgTable(
+  "field_definitions",
+  {
+    id: id(),
+    /** `null` = definición global. */
+    brokerId: uuid("broker_id").references(() => brokers.id),
+    category: text("category").notNull(),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    type: fieldTypeEnum("type").notNull(),
+    required: boolean("required").notNull().default(false),
+    options: jsonb("options"),
+    sourceColumn: text("source_column").notNull(),
+    isCore: boolean("is_core").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    // Una definición por `key` y categoría, global (`broker_id` null) o del corredor: destino del
+    // upsert del seed. NULLS NOT DISTINCT hace que dos globales con el mismo `key` choquen (PG ≥ 15).
+    unique("field_definitions_broker_category_key_unique")
+      .on(t.brokerId, t.category, t.key)
+      .nullsNotDistinct(),
+  ],
+);
 
 export const listings = pgTable(
   "listings",
@@ -149,29 +161,40 @@ export const listings = pgTable(
   (t) => [unique().on(t.brokerId, t.externalRef)],
 );
 
-export const media = pgTable("media", {
-  id: id(),
-  /** `null` para medios del corredor (logo). */
-  listingId: uuid("listing_id").references(() => listings.id),
-  brokerId: uuid("broker_id")
-    .notNull()
-    .references(() => brokers.id),
-  kind: mediaKindEnum("kind").notNull(),
-  role: mediaRoleEnum("role").notNull(),
-  variant: text("variant"),
-  parentMediaId: uuid("parent_media_id").references((): AnyPgColumn => media.id),
-  storagePath: text("storage_path").notNull(),
-  mime: text("mime").notNull(),
-  width: integer("width"),
-  height: integer("height"),
-  durationS: numeric("duration_s", { precision: 10, scale: 3 }),
-  bytes: bigint("bytes", { mode: "number" }).notNull(),
-  checksum: text("checksum").notNull(),
-  sortOrder: integer("sort_order").notNull().default(0),
-  isCover: boolean("is_cover").notNull().default(false),
-  aiMetadata: jsonb("ai_metadata"),
-  ...timestamps,
-});
+export const media = pgTable(
+  "media",
+  {
+    id: id(),
+    /** `null` para medios del corredor (logo). */
+    listingId: uuid("listing_id").references(() => listings.id),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    kind: mediaKindEnum("kind").notNull(),
+    role: mediaRoleEnum("role").notNull(),
+    variant: text("variant"),
+    parentMediaId: uuid("parent_media_id").references((): AnyPgColumn => media.id),
+    storagePath: text("storage_path").notNull(),
+    mime: text("mime").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    durationS: numeric("duration_s", { precision: 10, scale: 3 }),
+    bytes: bigint("bytes", { mode: "number" }).notNull(),
+    checksum: text("checksum").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    isCover: boolean("is_cover").notNull().default(false),
+    aiMetadata: jsonb("ai_metadata"),
+    ...timestamps,
+  },
+  (t) => [
+    // El mismo archivo no se sube dos veces a la misma propiedad (deduplicación por sha256).
+    uniqueIndex("media_original_listing_checksum_unique")
+      .on(t.listingId, t.checksum)
+      .where(sql`"role" = 'original'`),
+    // Cubre también el logo (`listing_id` null), que el único parcial no alcanza.
+    unique("media_storage_path_unique").on(t.storagePath),
+  ],
+);
 
 export const contents = pgTable("contents", {
   id: id(),
@@ -248,9 +271,14 @@ export const publicationEvents = pgTable("publication_events", {
 
 export const importRuns = pgTable("import_runs", {
   id: id(),
-  brokerId: uuid("broker_id")
-    .notNull()
-    .references(() => brokers.id),
+  /** `null` hasta que el job lee la hoja Corredor. */
+  brokerId: uuid("broker_id").references(() => brokers.id),
+  status: importRunStatusEnum("status").notNull().default("queued"),
+  dryRun: boolean("dry_run").notNull().default(false),
+  /** Rutas absolutas de entrada y broker pedido; sin secretos. El job solo recibe el id. */
+  input: jsonb("input").notNull().default({}),
+  /** `{ code, message }` cuando `status = failed`. */
+  error: jsonb("error"),
   source: listingSourceEnum("source").notNull(),
   fileName: text("file_name").notNull(),
   rowsTotal: integer("rows_total").notNull().default(0),
@@ -259,7 +287,8 @@ export const importRuns = pgTable("import_runs", {
   rowsSkipped: integer("rows_skipped").notNull().default(0),
   rowsFailed: integer("rows_failed").notNull().default(0),
   report: jsonb("report").notNull().default({}),
-  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Se fija al pasar a `running`. */
+  startedAt: timestamp("started_at", { withTimezone: true }),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
   ...timestamps,
 });
