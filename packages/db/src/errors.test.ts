@@ -4,9 +4,13 @@ import { isDbUnavailable, sqlStateOf, toDbError, withDbErrors } from "./errors.j
 
 const withCode = (message: string, code: string) => Object.assign(new Error(message), { code });
 
-/** Como lo lanza drizzle 0.45: el error del driver va en `cause`. */
-const drizzleWrapped = (cause: unknown) =>
-  Object.assign(new Error("Failed query: select 1\nparams: "), { cause });
+/** Como lo lanza drizzle 0.45: SQL y parámetros en el mensaje, y el error del driver en `cause`. */
+const drizzleWrapped = (cause: unknown, params: unknown[] = []) =>
+  Object.assign(new Error(`Failed query: select 1\nparams: ${params.join(",")}`), {
+    query: "select 1",
+    params,
+    cause,
+  });
 
 describe("isDbUnavailable", () => {
   it.each([
@@ -15,6 +19,8 @@ describe("isDbUnavailable", () => {
     ["conexión cortada", new Error("Connection terminated unexpectedly")],
     ["SQLSTATE 08006", withCode("connection failure", "08006")],
     ["SQLSTATE 57P01", withCode("terminating connection due to administrator command", "57P01")],
+    ["EHOSTUNREACH", withCode("connect EHOSTUNREACH", "EHOSTUNREACH")],
+    ["cliente roto", new Error("Client has encountered a connection error and is not queryable")],
     ["envuelto por drizzle", drizzleWrapped(withCode("connect ECONNREFUSED", "ECONNREFUSED"))],
   ])("%s → sí", (_name, error) => {
     expect(isDbUnavailable(error)).toBe(true);
@@ -24,6 +30,15 @@ describe("isDbUnavailable", () => {
     ["único violado", withCode("duplicate key value", "23505")],
     ["error de sintaxis", drizzleWrapped(withCode("syntax error", "42601"))],
     ["un valor que no es Error", "texto"],
+    ["SQLSTATE 08P01 (violación de protocolo)", withCode("protocol violation", "08P01")],
+    [
+      "único violado con un parámetro que dice 'connection timeout'",
+      drizzleWrapped(withCode("duplicate key value", "23505"), ["connection timeout"]),
+    ],
+    [
+      "wrapper de drizzle sin causa, con 'Connection terminated' en los parámetros",
+      drizzleWrapped(undefined, ["Connection terminated"]),
+    ],
   ])("%s → no", (_name, error) => {
     expect(isDbUnavailable(error)).toBe(false);
   });

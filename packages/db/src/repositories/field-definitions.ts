@@ -1,4 +1,5 @@
 import {
+  AppError,
   type FieldDefinition,
   type FieldDefinitionQuery,
   type FieldDefinitionRepository,
@@ -11,9 +12,12 @@ import { fieldDefinitions } from "../schema.js";
 
 type FieldDefinitionRow = typeof fieldDefinitions.$inferSelect;
 
-/** Fila → entidad de core. `options` es jsonb: se valida al leerlo, no se asume su forma. */
-export function toFieldDefinition(row: FieldDefinitionRow): FieldDefinition {
-  return fieldDefinitionSchema.parse({
+/**
+ * Fila → entidad de core. `options` es jsonb: se valida al leerlo en vez de asumir su forma. Una
+ * fila corrupta es `FIELD_DEFINITION_INVALID` (no reintentable), con el `id` y el `key`.
+ */
+function toFieldDefinition(row: FieldDefinitionRow): FieldDefinition {
+  const parsed = fieldDefinitionSchema.safeParse({
     id: row.id,
     brokerId: row.brokerId,
     category: row.category,
@@ -27,6 +31,14 @@ export function toFieldDefinition(row: FieldDefinitionRow): FieldDefinition {
     sortOrder: row.sortOrder,
     active: row.active,
   });
+  if (!parsed.success) {
+    throw new AppError(
+      "FIELD_DEFINITION_INVALID",
+      `La definición de campo ${row.key} tiene datos inválidos`,
+      { details: { id: row.id, key: row.key, issues: parsed.error.issues } },
+    );
+  }
+  return parsed.data;
 }
 
 /** `FieldDefinitionRepository` sobre Drizzle (node-postgres en las apps, PGlite en los tests). */
@@ -41,9 +53,7 @@ export function createFieldDefinitionRepository(db: SchemaDatabase): FieldDefini
         const rows = await db
           .select()
           .from(fieldDefinitions)
-          .where(
-            and(eq(fieldDefinitions.category, category), eq(fieldDefinitions.active, true), owner),
-          )
+          .where(and(eq(fieldDefinitions.category, category), owner))
           // Mismo orden que el repositorio en memoria: `key` byte a byte y la global primero.
           .orderBy(
             asc(fieldDefinitions.sortOrder),

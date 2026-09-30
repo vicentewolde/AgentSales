@@ -1,48 +1,34 @@
 import { describe, expect, it } from "vitest";
-import type { FieldDefinition } from "../field-definition.js";
+import { fieldDefinitionOrderFixture } from "./field-definition-fixtures.js";
 import { createInMemoryFieldDefinitionRepository } from "./field-definition-repository.js";
 
-const def = (overrides: Partial<FieldDefinition>): FieldDefinition => ({
-  id: overrides.key ?? "id",
-  brokerId: null,
-  category: "real_estate",
-  key: "dormitorios",
-  label: "Dormitorios",
-  type: "number",
-  required: false,
-  options: null,
-  sourceColumn: overrides.key ?? "dormitorios",
-  isCore: false,
-  sortOrder: 0,
-  active: true,
-  ...overrides,
-});
+const fixture = fieldDefinitionOrderFixture({ brokerA: "broker-a", brokerB: "broker-b" });
+const repo = createInMemoryFieldDefinitionRepository(
+  fixture.rows.map((row) => ({ ...row, id: row.label })),
+);
+const labels = (rows: { label: string }[]) => rows.map((row) => row.label);
 
+// Mismo fixture que los tests del repositorio Drizzle (packages/db/test), para que ordenen igual.
 describe("createInMemoryFieldDefinitionRepository", () => {
-  const rows = [
-    def({ id: "g-banos", key: "banos", sortOrder: 20 }),
-    def({ id: "g-dorm", key: "dormitorios", sortOrder: 10 }),
-    def({ id: "b1-dorm", key: "dormitorios", sortOrder: 10, brokerId: "b1", required: true }),
-    def({ id: "b2-piso", key: "piso", sortOrder: 5, brokerId: "b2" }),
-    def({ id: "g-old", key: "antiguo", sortOrder: 1, active: false }),
-    def({ id: "p-color", key: "color", category: "product" }),
-  ];
-  const repo = createInMemoryFieldDefinitionRepository(rows);
-
-  it("devuelve las globales activas de la categoría cuando no hay corredor", async () => {
-    const result = await repo.list({ category: "real_estate", brokerId: null });
-    expect(result.map((row) => row.id)).toEqual(["g-dorm", "g-banos"]);
+  it("sin corredor devuelve las globales de la categoría (incluidas las inactivas), en orden", async () => {
+    const result = await repo.list({ category: fixture.category, brokerId: null });
+    expect(labels(result)).toEqual(fixture.expected.global);
   });
 
-  it("suma las del corredor (con la global primero si el key se repite) y no las de otro", async () => {
-    const result = await repo.list({ category: "real_estate", brokerId: "b1" });
-    expect(result.map((row) => row.id)).toEqual(["g-dorm", "b1-dorm", "g-banos"]);
+  it("con corredor suma las suyas, con la global primero si el key se repite", async () => {
+    const result = await repo.list({ category: fixture.category, brokerId: "broker-a" });
+    expect(labels(result)).toEqual(fixture.expected.brokerA);
   });
 
-  it("devuelve copias: modificar el resultado no cambia lo guardado", async () => {
-    const [first] = await repo.list({ category: "real_estate", brokerId: null });
-    if (first) first.label = "cambiado";
-    const [again] = await repo.list({ category: "real_estate", brokerId: null });
-    expect(again?.label).toBe("Dormitorios");
+  it("devuelve copias profundas: modificar el resultado no cambia lo guardado", async () => {
+    const [base] = fixture.rows;
+    if (!base) throw new Error("el fixture no tiene filas");
+    const withOptions = createInMemoryFieldDefinitionRepository([
+      { ...base, id: "1", type: "enum", options: ["Sí", "No"] },
+    ]);
+    const [first] = await withOptions.list({ category: fixture.category, brokerId: null });
+    first?.options?.push("Tal vez");
+    const [again] = await withOptions.list({ category: fixture.category, brokerId: null });
+    expect(again?.options).toEqual(["Sí", "No"]);
   });
 });

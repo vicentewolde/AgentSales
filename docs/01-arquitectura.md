@@ -60,7 +60,7 @@ flowchart LR
 ## Estilo: puertos y adaptadores
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
-- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider` y `Publisher`. Hoy solo existe `MediaStorage` (`packages/core/src/ports/`); el resto llega en su fase (F1: repositorios, `MediaFileSource` y `JobQueue`).
+- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider` y `Publisher`. Hoy existen `MediaStorage` y `FieldDefinitionRepository` (`packages/core/src/ports/`); el resto llega en su fase (F1: los demás repositorios, `MediaFileSource` y `JobQueue`).
 - Cola (ADR-0005): en F0 el adaptador de pg-boss vive en `apps/worker/src/queue.ts`, porque solo lo usan el worker y su script de prueba. **En F1**, cuando la API empieza a encolar `import.run`, se extrae a `packages/queue` implementando `JobQueue`, y con él `QUEUE_SCHEMA` y `checkQueueSchema` (hoy en `@agentsales/db`). La API, como `producer`, arranca pg-boss de forma diferida en el primer `enqueue`, y su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
@@ -238,6 +238,14 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 - Se usan los puertos de `core` o tipos mínimos locales. Por ejemplo, `AppLogger` en vez del `Logger` de pino.
 - TypeScript puede compilar el panel contra el **código fuente** de la API, no solo contra sus `.d.ts`; pasa, por ejemplo, en un clon limpio. Por eso la regla vale para todo módulo de `apps/api/src` alcanzable desde `index.ts`: no puede importar `@agentsales/config`, `node:*` ni usar `NodeJS.*`. Solo `server.ts`, el punto de entrada, compone lo que depende de Node. Las utilidades puras que comparten, como `redactText`, viven en `core`.
 - El panel tiene una guardia (`apps/web/src/no-node-types.ts`): si se filtran los tipos de Node, `tsc -b` falla. La CI la ejerce en un clon limpio.
+
+## Contrato de repositorios
+
+- El puerto vive en `packages/core/src/ports/` y devuelve **entidades de core**, validadas con su esquema zod (ADR-0011). Una fila que no calza con el esquema, por ejemplo un jsonb corrupto, es un `AppError` no reintentable (`FIELD_DEFINITION_INVALID`…), no un `ZodError`.
+- La implementación Drizzle vive en `packages/db/src/repositories/` y recibe `SchemaDatabase`: sirve con node-postgres en las apps y con PGlite en los tests. No usa nada propio del driver.
+- Los fallos de conexión se traducen con `withDbErrors` a `AppError("DB_UNAVAILABLE", { retriable: true })`, que la API responde como 503 y el job reintenta. El resto de los errores pasa tal cual. `sqlStateOf` lee el SQLSTATE a través de la cadena de `cause` (drizzle envuelve el error del driver en `DrizzleQueryError`).
+- Hay un doble en memoria con la misma semántica en `@agentsales/core/testing`, que solo se importa desde tests. Los dos se prueban con los mismos fixtures, por ejemplo `fieldDefinitionOrderFixture`.
+- `FieldDefinitionRepository.list` devuelve las definiciones activas e inactivas. La precedencia (la del corredor sobre la global) y el filtro de `active` los resuelve el validador (F1-T02).
 
 ## Contrato de almacenamiento de archivos
 
