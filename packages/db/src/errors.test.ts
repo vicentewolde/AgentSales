@@ -45,37 +45,52 @@ describe("isDbUnavailable", () => {
 });
 
 describe("toDbError", () => {
-  it("convierte un fallo de conexión en DB_UNAVAILABLE reintentable, con el error del driver", () => {
-    const driver = new Error("timeout exceeded when trying to connect");
+  it("convierte un fallo de conexión en DB_UNAVAILABLE reintentable, con un resumen del driver", () => {
+    const driver = withCode("connect ECONNREFUSED 127.0.0.1:5432", "ECONNREFUSED");
     const result = toDbError(drizzleWrapped(driver, ["Calle Privada 123"]));
     expect(isAppError(result)).toBe(true);
-    expect(result).toMatchObject({ code: "DB_UNAVAILABLE", retriable: true, cause: driver });
+    expect(result).toMatchObject({
+      code: "DB_UNAVAILABLE",
+      retriable: true,
+      cause: { message: "Error de la base de datos (ECONNREFUSED)", code: "ECONNREFUSED" },
+    });
   });
 
   it("otro error de una consulta → DB_QUERY_FAILED con el SQLSTATE, no reintentable", () => {
-    const driver = withCode("duplicate key value violates unique constraint", "23505");
+    const driver = Object.assign(withCode("duplicate key value", "23505"), {
+      constraint: "listings_broker_id_external_ref_unique",
+      table: "listings",
+    });
     const result = toDbError(drizzleWrapped(driver, ["P001"]));
     expect(result).toMatchObject({
       code: "DB_QUERY_FAILED",
       retriable: false,
-      cause: driver,
       details: { sqlState: "23505" },
+      cause: {
+        code: "23505",
+        constraint: "listings_broker_id_external_ref_unique",
+        table: "listings",
+      },
     });
     expect(sqlStateOf(result)).toBe("23505");
   });
 
-  it("los parámetros de la consulta (datos de clientes) no quedan en el error ni en su causa", () => {
-    const params = ["Notas internas privadas", "Calle Privada 123"];
-    for (const driver of [
-      withCode("connect ECONNREFUSED", "ECONNREFUSED"),
-      withCode("x", "23505"),
-    ]) {
-      const result = toDbError(drizzleWrapped(driver, params));
-      const chain: string[] = [];
+  it("no guarda datos de clientes: ni params, ni detail, ni el mensaje del driver", () => {
+    const privateData = "Calle Privada 123";
+    const drivers = [
+      withCode(`connect ECONNREFUSED ${privateData}`, "ECONNREFUSED"),
+      Object.assign(withCode("null value in column", "23502"), {
+        detail: `Failing row contains (${privateData}, notas internas)`,
+      }),
+      withCode(`invalid input syntax for type numeric: "${privateData}"`, "22P02"),
+    ];
+    for (const driver of drivers) {
+      const result = toDbError(drizzleWrapped(driver, [privateData]));
+      const chain: unknown[] = [];
       for (let current: unknown = result; current instanceof Error; current = current.cause) {
-        chain.push(current.message);
+        chain.push({ ...current, message: current.message });
       }
-      expect(chain.join("\n")).not.toContain("Privada");
+      expect(JSON.stringify(chain)).not.toContain("Privada");
     }
   });
 

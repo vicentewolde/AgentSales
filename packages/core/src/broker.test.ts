@@ -53,6 +53,19 @@ describe("parseBrokerSheet", () => {
     ]);
   });
 
+  it("hashtags_fijos: separa por espacios o comas, agrega # y quita repetidos", () => {
+    const result = parseBrokerSheet({ ...SHEET, hashtags_fijos: "casa, #venta #casa ##depto" });
+    expect(result).toMatchObject({
+      ok: true,
+      data: { fixedHashtags: ["#casa", "#venta", "#depto"] },
+    });
+  });
+
+  it("con errores igual informa el slug que habría tenido, para el reporte", () => {
+    const result = parseBrokerSheet({ nombre_marca: "Marca Inventada", color_primario: "azul" });
+    expect(result).toMatchObject({ ok: false, slug: "marca-inventada" });
+  });
+
   it("un slug explícito (--broker) gana sobre el de la marca", () => {
     expect(parseBrokerSheet(SHEET, { slug: "mi-corredor" })).toMatchObject({
       ok: true,

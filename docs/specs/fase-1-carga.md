@@ -30,7 +30,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 - **Nuevo `packages/queue`** (D2): adaptador de pg-boss extraído de `apps/worker/src/queue.ts`, que implementa el puerto `JobQueue`. Se lleva `QUEUE_SCHEMA` y `checkQueueSchema` desde `@agentsales/db`. En rol `producer` arranca pg-boss de forma diferida, en el primer `enqueue`, para que la API levante aunque el esquema `pgboss` no exista.
 - **core** (sin fs, sin `node:*` y sin tipos de Node: el panel importa core):
   - Casos de uso:
-    - `importListings(deps, input: ListingSheetInput)` recibe `{ headers, rows, broker }`, ya leído por `xlsx-reader`; no lee archivos. `headers` sirve para `checkHeaders`. `ListingSheetInput` es de core y el lector depende de él.
+    - `importListings(deps, { runId, input: ListingSheetInput })` recibe `{ headers, rows, broker }`, ya leído por `xlsx-reader`; no lee archivos. `headers` sirve para `checkHeaders`. `ListingSheetInput` es de core y el lector depende de él. `dry_run`, el origen y el `--broker` salen del run (`import_runs.input`, con `importRunInputSchema`).
     - `ingestMedia`.
     - `requestImport`: crea el run y encola; si `enqueue` falla, deja el run en `failed`.
     - `changeListingStatus`.
@@ -277,7 +277,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 ### F1-T04 · Caso de uso importListings
 - **Depende de:** T02, T03
 - **Descripción:**
-  - `importListings(deps, { runId, input: ListingSheetInput, brokerSlug?, dryRun })` según §4.2, con `sha256` inyectado.
+  - `importListings(deps, { runId, input: ListingSheetInput })` según §4.2, con `sha256` inyectado. `dry_run`, el origen y el `--broker` salen del run.
     - Resuelve el broker desde la hoja Corredor, que se mapea con la tabla de §4.2 y cuyas etiquetas se comparan sin mayúsculas ni tildes. Con `brokerSlug`, gana ese slug y los datos de la hoja lo actualizan.
     - Filtra con `isIgnored`, valida y hace el upsert.
     - Un `id_propiedad` repetido en la hoja es `failed` en la segunda aparición.
@@ -297,9 +297,15 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T04b · Repositorios Drizzle de brokers, listings e import_runs
 - **Depende de:** T04
-- **Descripción:** implementaciones Drizzle de `BrokerRepository`, `ListingRepository` e `ImportRunRepository` en `packages/db/src/repositories/`, sobre `SchemaDatabase` y con `withDbErrors`. `price_amount` (`numeric`) se convierte entre texto y número.
+- **Descripción:**
+  - Implementaciones Drizzle de `BrokerRepository`, `ListingRepository` e `ImportRunRepository` en `packages/db/src/repositories/`, sobre `SchemaDatabase` y con `withDbErrors`.
+  - `price_amount` (`numeric`) se convierte entre texto y número.
+  - `findByExternalRefs([])` devuelve `[]` sin consultar.
+  - Los conflictos de `create` son `BROKER_CONFLICT` o `LISTING_CONFLICT`, reintentables (23505 de su único). Un `update` de un id que no existe es `*_NOT_FOUND`. `update` fija `updated_at` y no toca `status`, `logo_media_id` ni `auto_publish`.
+  - `get` valida `report` e `input` (jsonb) con sus esquemas.
+  - **Migración `0002`:** `import_runs.report` pasa a admitir `null` y pierde su default (`null` hasta que `importListings` registra), y los `'{}'` existentes pasan a `NULL`. Actualizar `02-modelo-datos.md`.
 - **Hecho cuando:**
-  - [ ] Tests con PGlite de los repositorios (upsert por `external_ref`), con los mismos casos que los dobles en memoria
+  - [ ] Tests con PGlite de los repositorios (upsert por `external_ref`), con los mismos casos que los dobles en memoria, incluidos los conflictos, `update` que no pisa `status` y la migración `0002`
 
 ### F1-T05 · Almacenamiento con streams
 - **Depende de:** F0
@@ -323,7 +329,9 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Deduplicación, portada, clave en R2 y `putStream` con su `Content-Type`, subiendo antes de insertar.
   - Sube el logo del corredor.
   - Corre también para las filas `skipped`.
-  - Pasa el listing a `ready` o `draft` según §4.2.
+  - Pasa el listing a `ready` o `draft` según §4.2, con `ListingRepository.promoteToReady(id)`: pasa de `draft` a `ready` y nunca desde otro estado, así no pisa `paused`, `archived`, `active` ni `closed`. Usa `status` de `ImportedRow` para la advertencia.
+  - Asigna el logo con `BrokerRepository.setLogo(id, mediaId)`.
+  - Suma `media` (opcional) a `importReportSchema` y las advertencias de medios a `rows[].warnings`.
   - Puerto `MediaRepository`, con implementaciones Drizzle y en memoria.
 - **Hecho cuando:**
   - [ ] Test con un `MediaStorage` y un `MediaFileSource` en memoria: suben 4 archivos válidos con su tipo, y el inválido va al reporte
@@ -346,7 +354,8 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Depende de:** T04b, T07, T08
 - **Descripción:**
   - Job `import.run` (§4.6) y `buildJobs(deps)` en el worker.
-  - Caso de uso `requestImport` en core.
+  - Caso de uso `requestImport` en core, que crea el run con `input` según `importRunInputSchema`.
+  - `ImportRunRepository` suma los cambios de estado del run (`running`, `succeeded` y `failed`, con `started_at`, `finished_at` y `error`).
   - Staging en `<workspace>/tmp/imports`, con su limpieza al arrancar.
 - **Hecho cuando:**
   - [ ] Tests del handler con fakes: éxito → `succeeded`; `STORAGE_UNAVAILABLE` → se propaga para reintento; último intento → `failed` con `error`; error no reintentable → `failed`; y un run ya terminal → no hace nada
@@ -359,6 +368,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Salida `@agentsales/api/contracts` (`errorBodySchema`, parámetros y respuestas), con su regla de Biome.
   - Helper de validación (`REQUEST_INVALID`).
   - Caso de uso `changeListingStatus` con `LISTING_MANUAL_TRANSITIONS`.
+  - Entidad `listingSchema` en core, más `ListingRepository.list` y `get`; `BrokerRepository.list`.
   - Rutas `/listings`, `/listings/:id`, `PATCH /listings/:id/status` y `/brokers`, con URLs firmadas.
 - **Hecho cuando:**
   - [ ] Tests con `app.request` y repositorios en memoria: filtros, detalle, 404, `REQUEST_INVALID`, cambio de estado permitido y `409 INVALID_TRANSITION`
@@ -370,7 +380,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Descripción:**
   - `POST /imports` (multipart a `input/` mediante `AppDeps.uploads`, con `bodyLimit`).
   - `POST /imports/local`, habilitado con `AppDeps.localImports`.
-  - `GET /imports` e `/imports/:id` (§4.4).
+  - `GET /imports` e `/imports/:id` (§4.4), con `ImportRunRepository.list`. `report` puede ser `null` (el run falló antes de registrar).
 - **Hecho cuando:**
   - [ ] Tests con `app.request`, una `JobQueue` falsa y repositorios en memoria: `202` y job encolado; `/imports/local` → 404 si `localImports` es `false`; cuerpo demasiado grande → 413; xlsx de más de 10 MB → `REQUEST_INVALID`; cola caída → 503 y run `failed`; y `GET /imports/:id` no expone las rutas completas
 
@@ -457,3 +467,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-09-30 | Desde la revisión de F1-T02: el filtro de `EJEMPLO` y `Borrador` pasa del lector (T03) a `importListings` (T04), con `validator.isIgnored`; T03 aplana las celdas de exceljs a `RawCell` y devuelve los encabezados; `precio` tiene un tope por `numeric(14,2)` |
 | 2026-09-30 | Desde F1-T03: `ListingSheetInput` y `RawBrokerSheet` en core (entrada de `importListings`, con `headers`); `RawListingRow` pasa a `Readonly<Record<string, unknown>>` y core exporta `foldText`; el lector tiene un tope de 1000 filas y los errores `IMPORT_FILE_NOT_FOUND` / `IMPORT_FILE_INVALID`; la fixture de Google Sheets es una simulación |
 | 2026-09-30 | Plan de F1-T04, aprobado por el operador: T04 se parte en T04 (core: caso de uso, puertos, dobles y reporte) y T04b (repositorios Drizzle con PGlite). `source_hash` sobre `{ core, attributes, control }`; una propiedad nueva queda en `draft` y T07 la pasa a `ready`; `--broker` gana sobre el slug de la hoja |
+| 2026-09-30 | Desde la revisión de F1-T04: `dry_run`, el origen y el `--broker` salen del run (`importRunInputSchema` en `import_runs.input`); los conflictos de `create` son reintentables (`*_CONFLICT`); `report` pasa a admitir `null` (migración `0002` en T04b); el reporte suma `listingId` y `warnings` por fila, y `headers` puede ser `null`; métodos anotados para T07 (`promoteToReady`, `setLogo`), T09 (estado del run), T10 (`listingSchema`, `list`/`get`) y T11 (`list` de runs) |

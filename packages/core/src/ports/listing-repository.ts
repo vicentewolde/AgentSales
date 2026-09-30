@@ -24,7 +24,13 @@ export type NewListing = ListingImportData & {
 /**
  * Avisos (`listings`), únicos por `(broker_id, external_ref)`. Un aviso nuevo nace en `draft`, y
  * la importación nunca cambia `status` (ni lo pisa al reimportar): eso es de la ingesta de medios
- * y del operador. Los errores de conexión son `AppError("DB_UNAVAILABLE", { retriable: true })`.
+ * y del operador. `ListingImportRecord` es una proyección para la carga, sin esquema; la entidad
+ * completa (`listingSchema`) y `list`/`get` llegan con la API (F1-T10), y la ingesta de medios
+ * (F1-T07) suma `promoteToReady(id)` (solo desde `draft`). Errores (`AppError`):
+ * - `create` de un `(broker_id, external_ref)` que ya existe → `LISTING_CONFLICT`, **reintentable**
+ *   (intentos del job solapados; el reintento lo reclasifica como `skipped` o `updated`);
+ * - `update` de un id que no existe → `LISTING_NOT_FOUND`;
+ * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
  */
 export interface ListingRepository {
   findByExternalRefs(

@@ -1,14 +1,12 @@
 export {
   type Broker,
   type BrokerData,
-  brokerDiffers,
   brokerSchema,
   isValidSlug,
   type ParsedBrokerSheet,
   parseBrokerSheet,
   slugify,
 } from "./broker.js";
-export { canonicalJson } from "./canonical-json.js";
 export * from "./enums.js";
 export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
 export { type FieldDefinition, fieldDefinitionSchema } from "./field-definition.js";
@@ -21,7 +19,9 @@ export {
   type ImportReport,
   type ImportRowOutcome,
   type ImportRun,
+  type ImportRunInput,
   importReportSchema,
+  importRunInputSchema,
   importRunSchema,
 } from "./import-run.js";
 export type { ListingSheetInput, ListingSheetRow, RawBrokerSheet } from "./listing-sheet.js";

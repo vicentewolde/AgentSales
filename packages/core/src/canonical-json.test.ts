@@ -17,4 +17,9 @@ describe("canonicalJson", () => {
     const extra = Object.fromEntries([["__proto__", "valor"]]);
     expect(canonicalJson({ _extra: extra })).toBe('{"_extra":{"__proto__":"valor"}}');
   });
+
+  it("serializa las fechas con toJSON, como JSON.stringify (no como {})", () => {
+    const date = new Date(Date.UTC(2026, 10, 15));
+    expect(canonicalJson({ fecha: date })).toBe('{"fecha":"2026-11-15T00:00:00.000Z"}');
+  });
 });

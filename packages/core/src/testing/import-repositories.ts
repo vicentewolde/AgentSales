@@ -1,4 +1,5 @@
 import type { Broker, BrokerData } from "../broker.js";
+import { AppError } from "../errors.js";
 import type { ImportRun } from "../import-run.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ImportRunRepository, NewImportRun } from "../ports/import-run-repository.js";
@@ -29,7 +30,9 @@ export function createInMemoryBrokerRepository(
     },
     async create(data: BrokerData) {
       if ([...stored.values()].some((broker) => broker.slug === data.slug)) {
-        throw new Error(`slug duplicado: ${data.slug}`);
+        throw new AppError("BROKER_CONFLICT", `Ya existe el corredor ${data.slug}`, {
+          retriable: true,
+        });
       }
       const broker: Broker = {
         ...copyData(data),
@@ -42,7 +45,9 @@ export function createInMemoryBrokerRepository(
     },
     async update(id, data) {
       const current = stored.get(id);
-      if (current === undefined) throw new Error(`no existe el broker ${id}`);
+      if (current === undefined) {
+        throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+      }
       const updated = { ...current, ...copyData(data) };
       stored.set(id, updated);
       return structuredCopy(updated);
@@ -81,14 +86,19 @@ export function createInMemoryListingRepository(): InMemoryListingRepository {
       const duplicate = [...stored.values()].some(
         (other) => other.brokerId === listing.brokerId && other.externalRef === listing.externalRef,
       );
-      if (duplicate) throw new Error(`external_ref duplicado: ${listing.externalRef}`);
+      if (duplicate) {
+        throw new AppError("LISTING_CONFLICT", `Ya existe el aviso ${listing.externalRef}`, {
+          retriable: true,
+        });
+      }
       const created: StoredListing = { ...structuredCopy(listing), id: nextId(), status: "draft" };
       stored.set(created.id, created);
       return record(created);
     },
     async update(id, data: ListingImportData) {
       const current = stored.get(id);
-      if (current === undefined) throw new Error(`no existe el listing ${id}`);
+      if (current === undefined)
+        throw new AppError("LISTING_NOT_FOUND", `No existe el aviso ${id}`);
       // `status` no se toca: es del operador y de la ingesta de medios.
       const updated: StoredListing = { ...current, ...structuredCopy(data) };
       stored.set(id, updated);
@@ -117,6 +127,7 @@ export function createInMemoryImportRunRepository(): InMemoryImportRunRepository
         dryRun: run.dryRun,
         source: run.source,
         fileName: run.fileName,
+        input: structuredCopy(run.input),
         rowsTotal: 0,
         rowsCreated: 0,
         rowsUpdated: 0,
@@ -137,7 +148,9 @@ export function createInMemoryImportRunRepository(): InMemoryImportRunRepository
     },
     async recordListingsResult(id, { brokerId, counts, report }) {
       const current = stored.get(id);
-      if (current === undefined) throw new Error(`no existe la carga ${id}`);
+      if (current === undefined) {
+        throw new AppError("IMPORT_RUN_NOT_FOUND", `No existe la carga ${id}`);
+      }
       stored.set(id, { ...current, brokerId, ...counts, report: structuredCopy(report) });
     },
   };

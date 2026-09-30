@@ -41,6 +41,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - F3: derivar la clave con HKDF-SHA256 desde `APP_ENCRYPTION_KEY` al cifrar tokens.
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
+- **F1-T12:** la CLI normaliza `--broker` con `slugify` (hoy `Mi-Corredor` da `BROKER_INVALID`).
 - **T11 / F7:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un zip de 10 MB podría descomprimirse en mucho más (zip bomb). Es tolerable en local; con subidas públicas (`POST /imports` multipart), limitar el tamaño descomprimido.
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
@@ -54,7 +55,15 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
   - Un aviso nuevo nace en `draft`, y T07 lo pasa a `ready`.
   - `id_propiedad` repetido en la hoja → `failed`. Un `id_propiedad` numérico se busca ya normalizado, para no duplicar.
   - Nuevos en core: `importReportSchema`, `importRunSchema`, `brokerSchema` y `LISTING_CATEGORIES`, más los puertos de brokers, listings e import_runs con sus dobles en memoria.
-  - `toDbError` guarda como `cause` el error del driver, sin los `params` de la consulta, y los demás errores de consulta son `DB_QUERY_FAILED`.
+  - `toDbError` guarda como `cause` un resumen sin datos del error del driver (ni `params`, ni `detail`, ni el mensaje), y los demás errores de consulta son `DB_QUERY_FAILED`.
+  - Correcciones de `/revisar`:
+    - `dry_run`, el origen y el `--broker` salen del run (`importRunInputSchema`).
+    - Una fila que falla al escribir con un error no reintentable queda `failed`, y la carga sigue.
+    - Conflictos reintentables (`*_CONFLICT`).
+    - El reporte suma `listingId`, `warnings` y `headers` que puede ser `null`.
+    - `externalRef` sale con `validator.refOf`.
+    - Hashtags sin repetidos y con `#`.
+    - Los métodos que se suman después quedaron anotados en T04b, T07, T09, T10 y T11.
 - 2026-09-30: **F1-T03.** Nuevo `packages/importers`, con `readListingsWorkbook` sobre exceljs 4.4.0.
   - Lee las hojas Propiedades y Corredor, sin validar ni filtrar, y entrega `ListingSheetInput` (core).
   - Aplana las celdas de exceljs cuando puede. Lo demás, incluidos los errores de Excel, lo rechaza el validador.

@@ -8,6 +8,11 @@ export function canonicalJson(value: unknown): string {
 }
 
 function sortKeys(value: unknown): unknown {
+  // Como `JSON.stringify`: un valor con `toJSON` (un `Date`) se serializa con él, no como `{}`.
+  if (typeof value === "object" && value !== null && "toJSON" in value) {
+    const toJSON = (value as { toJSON: unknown }).toJSON;
+    if (typeof toJSON === "function") return sortKeys(toJSON.call(value));
+  }
   if (Array.isArray(value)) return value.map(sortKeys);
   if (typeof value !== "object" || value === null) return value;
   return Object.fromEntries(

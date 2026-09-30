@@ -293,6 +293,15 @@ describe("buildListingValidator · isIgnored", () => {
   });
 });
 
+describe("buildListingValidator · refOf", () => {
+  it("lee id_propiedad por su columna resuelta, como texto, aunque la fila sea inválida", () => {
+    expect(validator.refOf({ ...VALID_ROW, id_propiedad: 101, precio: "caro" })).toBe("101");
+    expect(validator.refOf({ ...VALID_ROW, id_propiedad: "  P009 " })).toBe("P009");
+    expect(validator.refOf({ ...VALID_ROW, id_propiedad: null })).toBeNull();
+    expect(validator.refOf({ ...VALID_ROW, id_propiedad: { richText: [] } })).toBeNull();
+  });
+});
+
 describe("buildListingValidator · definiciones desde la base de datos", () => {
   it("un campo agregado solo como definición se valida sin cambiar código", () => {
     const withNewField = buildListingValidator([

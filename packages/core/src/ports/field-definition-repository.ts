@@ -1,6 +1,10 @@
 import type { FieldDefinition } from "../field-definition.js";
 
 export type FieldDefinitionQuery = {
+  /**
+   * Categoría (`LISTING_CATEGORIES`). Es `string`, igual que la columna, para que los tests aíslen
+   * sus datos con categorías propias sin mezclarse con el seed.
+   */
   category: string;
   /** Corredor de la carga; `null` devuelve solo las globales. */
   brokerId: string | null;

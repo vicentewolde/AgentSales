@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isAppError } from "../errors.js";
+import type { ListingSource } from "../enums.js";
+import { AppError, isAppError } from "../errors.js";
 import type { FieldDefinition } from "../field-definition.js";
 import { importReportSchema } from "../import-run.js";
 import type { ListingSheetInput, ListingSheetRow } from "../listing-sheet.js";
@@ -9,7 +10,7 @@ import {
   createInMemoryImportRunRepository,
   createInMemoryListingRepository,
 } from "../testing/import-repositories.js";
-import { type ImportListingsParams, importListings } from "./import-listings.js";
+import { importListings } from "./import-listings.js";
 
 let nextDef = 0;
 const def = (
@@ -75,6 +76,8 @@ const sheet = (
 
 const THREE_ROWS = [row(2), row(3), row(4)];
 
+type RunParams = { dryRun?: boolean; brokerSlug?: string; source?: ListingSource };
+
 /** Dependencias en memoria; `sha256` falso pero determinista (core no usa node:crypto). */
 function setup(defs: FieldDefinition[] = DEFS) {
   const deps = {
@@ -84,25 +87,24 @@ function setup(defs: FieldDefinition[] = DEFS) {
     fieldDefinitions: createInMemoryFieldDefinitionRepository(defs),
     sha256: async (text: string) => `hash:${text}`,
   };
-  const run = async (
-    input: ListingSheetInput,
-    params: Partial<Omit<ImportListingsParams, "runId" | "input">> = {},
-  ) => {
-    const importRun = await deps.importRuns.create({
-      source: "xlsx",
+  /** Crea el run (con su `dry_run`, origen y `--broker`) e importa la hoja en él. */
+  const createRun = (params: RunParams = {}) =>
+    deps.importRuns.create({
+      source: params.source ?? "xlsx",
       fileName: "propiedades.xlsx",
       dryRun: params.dryRun ?? false,
-      input: {},
+      input: {
+        xlsxPath: "/tmp/propiedades.xlsx",
+        mediaDir: null,
+        broker: params.brokerSlug ?? null,
+      },
     });
-    const result = await importListings(deps, {
-      runId: importRun.id,
-      input,
-      dryRun: false,
-      ...params,
-    });
+  const run = async (input: ListingSheetInput, params: RunParams = {}) => {
+    const importRun = await createRun(params);
+    const result = await importListings(deps, { runId: importRun.id, input });
     return { result, runId: importRun.id };
   };
-  return { deps, run };
+  return { deps, run, createRun };
 }
 
 const outcomes = (rows: { outcome: string }[]) => rows.map((r) => r.outcome);
@@ -297,26 +299,44 @@ describe("importListings · hoja Corredor", () => {
   });
 
   it("una hoja Corredor con errores → BROKER_INVALID, sin escribir, y el detalle en el reporte", async () => {
-    const { deps } = setup();
-    const importRun = await deps.importRuns.create({
-      source: "xlsx",
-      fileName: "propiedades.xlsx",
-      dryRun: false,
-      input: {},
-    });
+    const { deps, createRun } = setup();
+    const importRun = await createRun();
     const invalid = sheet([row(2)], { broker: { nombre_marca: "Marca", color_primario: "azul" } });
     await expectAppError(
-      importListings(deps, { runId: importRun.id, input: invalid, dryRun: false }),
+      importListings(deps, { runId: importRun.id, input: invalid }),
       "BROKER_INVALID",
     );
     expect(deps.brokers.all()).toEqual([]);
     expect(deps.listings.all()).toEqual([]);
     const report = (await deps.importRuns.get(importRun.id))?.report;
-    expect(report?.broker).toMatchObject({ outcome: "invalid" });
+    // Con errores, la hoja no se revisó: `headers` es null (no "sin problemas").
+    expect(report).toMatchObject({ headers: null, rows: [] });
+    expect(report?.broker).toMatchObject({ slug: "marca", outcome: "invalid" });
     expect(report?.broker?.issues.map((i) => i.column)).toEqual([
       "nombre_corredor",
       "color_primario",
     ]);
+  });
+
+  it("sin hoja Corredor ni --broker, el motivo también queda en el reporte", async () => {
+    const { deps, createRun } = setup();
+    const importRun = await createRun();
+    await expectAppError(
+      importListings(deps, { runId: importRun.id, input: sheet([row(2)], { broker: null }) }),
+      "BROKER_INVALID",
+    );
+    const report = (await deps.importRuns.get(importRun.id))?.report;
+    expect(report?.broker).toMatchObject({ outcome: "invalid", issues: [{ column: "Corredor" }] });
+  });
+
+  it("en dry-run, una hoja Corredor cambiada reporta updated sin escribir", async () => {
+    const { deps, run } = setup();
+    await run(sheet([row(2)]));
+    const { result } = await run(sheet([row(2)], { broker: { ...BROKER_SHEET, tono: "Formal" } }), {
+      dryRun: true,
+    });
+    expect(result.report.broker?.outcome).toBe("updated");
+    expect(deps.brokers.all()[0]?.tone).toBe("Cercano");
   });
 });
 
@@ -329,7 +349,7 @@ describe("importListings · errores del run", () => {
   it("un run inexistente → IMPORT_RUN_NOT_FOUND", async () => {
     const { deps } = setup();
     await expectAppError(
-      importListings(deps, { runId: "run-x", input: sheet([row(2)]), dryRun: false }),
+      importListings(deps, { runId: "run-x", input: sheet([row(2)]) }),
       "IMPORT_RUN_NOT_FOUND",
     );
   });
@@ -341,5 +361,82 @@ describe("importListings · errores del run", () => {
       listingId: expect.any(String),
       control: { loadStatus: "ready", mediaFolder: "P001-fotos", coverFile: null },
     });
+  });
+});
+
+describe("importListings · origen, reporte y estado", () => {
+  it("el origen del aviso sale del run (no siempre xlsx)", async () => {
+    const { deps, run } = setup();
+    await run(sheet([row(2)]), { source: "google_sheets" });
+    expect(deps.listings.all()[0]?.source).toBe("google_sheets");
+  });
+
+  it("el reporte trae externalRef aunque la fila falle con un id numérico", async () => {
+    const { run } = setup();
+    const { result } = await run(sheet([row(2, { id_propiedad: 101, precio: "caro" })]));
+    expect(result.report.rows[0]).toMatchObject({ externalRef: "101", outcome: "failed" });
+  });
+
+  it("cada fila del reporte trae su listingId y warnings; cada fila devuelta, su status", async () => {
+    const { deps, run } = setup();
+    const first = await run(sheet([row(2)]));
+    const listingId = first.result.rows[0]?.listingId ?? "";
+    expect(first.result.report.rows[0]).toMatchObject({ listingId, warnings: [] });
+    expect(first.result.rows[0]?.status).toBe("draft");
+    deps.listings.setStatus(listingId, "paused");
+    const again = await run(sheet([row(2)]));
+    expect(again.result.rows[0]).toMatchObject({ outcome: "skipped", listingId, status: "paused" });
+  });
+
+  it("cambiar solo control (la foto de portada) → updated, porque entra en source_hash", async () => {
+    const coverDefs = [...DEFS, def("foto_portada", "text", { isCore: true })];
+    const { run } = setup(coverDefs);
+    const headers = coverDefs.map((d) => d.sourceColumn);
+    await run(sheet([row(2, { foto_portada: "01.jpg" })], { headers }));
+    const again = await run(sheet([row(2, { foto_portada: "02.jpg" })], { headers }));
+    expect(outcomes(again.result.rows)).toEqual(["updated"]);
+  });
+});
+
+describe("importListings · errores de base de datos a mitad de la carga", () => {
+  it("un error no reintentable en una fila la deja failed y la carga sigue", async () => {
+    const { deps, run } = setup();
+    const create = deps.listings.create.bind(deps.listings);
+    let calls = 0;
+    deps.listings.create = async (listing) => {
+      calls++;
+      if (calls === 2) throw new AppError("DB_QUERY_FAILED", "detalle del driver");
+      return create(listing);
+    };
+    const { result } = await run(sheet(THREE_ROWS));
+    expect(outcomes(result.rows)).toEqual(["created", "failed", "created"]);
+    expect(result.report.rows[1]?.errors[0]?.message).toBe(
+      "No se pudo guardar la fila (DB_QUERY_FAILED)",
+    );
+  });
+
+  it("un error reintentable se propaga, y el reintento deja lo ya creado como skipped", async () => {
+    const { deps, run } = setup();
+    const create = deps.listings.create.bind(deps.listings);
+    let fail = true;
+    deps.listings.create = async (listing) => {
+      if (listing.externalRef === "P002" && fail) {
+        fail = false;
+        throw new AppError("DB_UNAVAILABLE", "La base de datos no responde", { retriable: true });
+      }
+      return create(listing);
+    };
+    await expectAppError(run(sheet(THREE_ROWS)), "DB_UNAVAILABLE");
+    const retry = await run(sheet(THREE_ROWS));
+    expect(outcomes(retry.result.rows)).toEqual(["skipped", "created", "created"]);
+    expect(deps.listings.all()).toHaveLength(3);
+  });
+
+  it("un conflicto (intentos del job solapados) es reintentable y se propaga", async () => {
+    const { deps, run } = setup();
+    deps.listings.create = async () => {
+      throw new AppError("LISTING_CONFLICT", "Ya existe el aviso", { retriable: true });
+    };
+    await expectAppError(run(sheet([row(2)])), "LISTING_CONFLICT");
   });
 });

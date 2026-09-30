@@ -62,7 +62,13 @@ export type ParsedBrokerSheet =
       logoFile: string | null;
       warnings: string[];
     }
-  | { ok: false; issues: FieldIssue[]; warnings: string[] };
+  | {
+      ok: false;
+      /** Slug que habría tenido el corredor, para el reporte; `null` si no hay marca ni `--broker`. */
+      slug: string | null;
+      issues: FieldIssue[];
+      warnings: string[];
+    };
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -83,7 +89,8 @@ export function isValidSlug(slug: string): boolean {
  * Hoja Corredor (`Campo` → `Tu valor`) → datos del corredor, con la tabla de §4.2:
  * - las etiquetas se comparan sin mayúsculas ni tildes; una repetida o desconocida es advertencia;
  * - obligatorios: `nombre_corredor`, `nombre_marca` y `color_primario` (HEX `#RRGGBB`);
- * - `color_secundario` vacío toma el primario; `instagram` sin `@`; `hashtags_fijos` por espacios;
+ * - `color_secundario` vacío toma el primario; `instagram` sin `@`;
+ * - `hashtags_fijos` se separa por espacios (o comas), sin repetidos y con `#` adelante;
  * - el `slug` sale de `nombre_marca`, salvo que venga uno explícito (`--broker`), que gana.
  */
 export function parseBrokerSheet(
@@ -160,7 +167,9 @@ export function parseBrokerSheet(
     );
   }
 
-  if (issues.length > 0) return { ok: false, issues, warnings };
+  if (issues.length > 0) {
+    return { ok: false, slug: slug || null, issues, warnings };
+  }
   return {
     ok: true,
     data: {
@@ -174,11 +183,21 @@ export function parseBrokerSheet(
       instagramHandle: optional("instagram")?.replace(/^@+/, "") ?? null,
       website: optional("sitio_web"),
       tone: optional("tono"),
-      fixedHashtags: (optional("hashtags_fijos") ?? "").split(/\s+/).filter(Boolean),
+      fixedHashtags: parseHashtags(optional("hashtags_fijos")),
     },
     logoFile: optional("logo"),
     warnings,
   };
+}
+
+/** `#uno #dos`, `uno, dos` o `#uno #uno` → `["#uno", "#dos"]`: con `#` y sin repetidos. */
+function parseHashtags(text: string | null): string[] {
+  const tags = (text ?? "")
+    .split(/[\s,]+/)
+    .map((tag) => tag.replace(/^#+/, ""))
+    .filter(Boolean)
+    .map((tag) => `#${tag}`);
+  return [...new Set(tags)];
 }
 
 /** `true` si guardar `data` cambiaría el corredor (para informar `updated` o `unchanged`). */
