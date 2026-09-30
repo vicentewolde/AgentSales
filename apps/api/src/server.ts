@@ -1,6 +1,5 @@
 import { createLogger, loadEnv, loadEnvFile } from "@agentsales/config";
-import { AppError } from "@agentsales/core";
-import { createDb, pingDatabase } from "@agentsales/db";
+import { checkQueueSchema, createDb, pingDatabase } from "@agentsales/db";
 import { createR2Storage } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
@@ -39,9 +38,8 @@ const app = createApp({
     storage: async () => {
       await storage.head(HEALTHCHECK_PATH);
     },
-    queue: async () => {
-      throw new AppError("QUEUE_NOT_IMPLEMENTED", "pendiente: F0-T06");
-    },
+    // Solo lee el catálogo: la API no arranca pg-boss (lo hace el worker).
+    queue: () => checkQueueSchema(database.db),
   },
   publishMode: env.PUBLISH_MODE,
   version: readApiVersion(),

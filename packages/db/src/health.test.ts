@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Pingable, pingDatabase } from "./health.js";
+import { checkQueueSchema, type Pingable, pingDatabase, type Queryable } from "./health.js";
 
 /** Base simulada: falla las primeras `failures` llamadas. */
 function fakeDb(failures: number) {
@@ -38,5 +38,20 @@ describe("pingDatabase", () => {
 
     await expect(pingDatabase(db, { retryDelayMs: 0 })).rejects.toThrow("intento 2 falló");
     expect(calls()).toBe(2);
+  });
+});
+
+describe("checkQueueSchema", () => {
+  const withRows = (rows: unknown[]): Queryable => ({ execute: async () => ({ rows }) });
+
+  it("pasa si existe el esquema de pg-boss", async () => {
+    await expect(checkQueueSchema(withRows([{ "?column?": 1 }]))).resolves.toBeUndefined();
+  });
+
+  it("lanza QUEUE_NOT_INITIALIZED si el worker nunca arrancó", async () => {
+    await expect(checkQueueSchema(withRows([]))).rejects.toMatchObject({
+      code: "QUEUE_NOT_INITIALIZED",
+      message: expect.stringContaining("arranca el worker"),
+    });
   });
 });
