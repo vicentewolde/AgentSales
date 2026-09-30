@@ -47,7 +47,7 @@ Nombres de paquete: `@agentsales/<nombre>`. Binario de la CLI: `agentsales`.
 | `pnpm db:migrate` | aplica migraciones |
 | `pnpm db:seed` | seed idempotente |
 | `pnpm storage:check` | sube, lee y borra un objeto de prueba en el bucket de R2 (el bucket lo crea el operador a mano) |
-| `pnpm cli <args>` | ejecuta la CLI en modo dev (tsx) |
+| `pnpm cli <args>` | ejecuta la CLI en modo dev (tsx); `pnpm -s cli doctor` para una salida sin el eco de pnpm |
 | `pnpm worker:ping [delayMs]` | encola un `system.ping` para probar el worker (T06) |
 
 T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega la tarea que los introduce: `db:*` y `storage:check` en T04, `dev` en T05–T08 y `cli` en T07.
@@ -122,12 +122,12 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 - **Depende de:** T05
 - **Descripción:** commander, cliente RPC `hc<AppType>`, comandos `doctor` y `status` según §4.3, y salida con colores (picocolors). La URL de la API se arma con `http://127.0.0.1:${API_PORT}`; `status` tolera unos 30 s (el peor caso de `/health` es 25 s); `doctor` obtiene db, storage y cola desde `/health` y, si la API no responde, sugiere `pnpm dev`. La CLI no define script `dev` (`pnpm dev` levanta solo api, worker y web).
 - **Hecho cuando:**
-  - [ ] `pnpm cli doctor` muestra el estado real del entorno
-  - [ ] `PUBLISH_MODE` se muestra en rojo si es `live`
+  - [x] `pnpm cli doctor` muestra el estado real del entorno
+  - [x] `PUBLISH_MODE` se muestra en rojo si es `live`
 
 ### F0-T08 · apps/web — shell del panel
 - **Depende de:** T05
-- **Descripción:** Vite + React + Tailwind + TanStack Query + React Router; layout con menú (Estado, Propiedades y Publicaciones deshabilitados por ahora); página "Estado del sistema" con `/health` (sondeo cada 30–60 s solo con la pestaña visible, por Neon); banner permanente de `PUBLISH_MODE`. Proxy según §4.5. Comprobar que `import type { AppType } from "@agentsales/api"` no arrastra tipos de Node al `tsc -b` de la web; si lo hace, crear una salida solo de tipos en la API.
+- **Descripción:** Vite + React + Tailwind + TanStack Query + React Router; layout con menú (Estado, Propiedades y Publicaciones deshabilitados por ahora); página "Estado del sistema" con `/health` (sondeo cada 30–60 s solo con la pestaña visible, por Neon); banner permanente de `PUBLISH_MODE`. Proxy según §4.5. Comprobar que `import type { AppType } from "@agentsales/api"` no arrastra tipos de Node al `tsc -b` de la web. `AppType = ReturnType<typeof createApp>` arrastra la firma de `createApp(deps: AppDeps)` y, con ella, `Logger` de pino; si molesta, tipar `AppDeps.logger` con un tipo estructural mínimo, porque una salida solo de tipos no alcanza.
 - **Hecho cuando:**
   - [ ] `pnpm dev` levanta todo y la página muestra los checks en vivo
   - [ ] Se ve bien en pantalla de notebook y en móvil
@@ -173,6 +173,8 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
 | 2026-09-29 | T02: HKDF de `APP_ENCRYPTION_KEY` se mueve a F3 (donde se cifra); `exports` con condición `@agentsales/source` (ADR-0010) |
 | 2026-09-29 | T03: `awaiting_manual_confirm → failed` (captcha o abandono, ADR-0004); `AppError.code` es texto libre en mayúsculas |
+| 2026-09-29 | Revisión de T07: `PUBLISH_MODE` se toma de la API (error si no coincide con `.env`) y `live` va en rojo también en `doctor`; `/health` validado con zod en la CLI; errores de la API como `CODE: mensaje`; sugerencias para base y almacenamiento; notas para F1-T06 y T08 |
+| 2026-09-29 | T07: `doctor` marca error en Node distinto de 26, `.env` inválido, API caída (con base, almacenamiento y cola), ffmpeg ausente; advertencia en Chromium, Claude y `PUBLISH_MODE=live`. `status` sale con 1 si no está `ok`. Chromium se detecta en la caché de ms-playwright, sin instalar Playwright. `commander@15.0.0`, `picocolors@1.1.1` |
 | 2026-09-29 | Revisión de T06: `defineJob` con zod y política por cola aplicada por el worker; `batchSize: 1`; errores no reintentables sin reintento; arranque interrumpible; extracción de la cola "en la primera fase en que la API encole" |
 | 2026-09-29 | T06: `pg-boss@12.35.0`; adaptador en `apps/worker` (a `packages/queue` en F2); `checkQueueSchema` en `@agentsales/db`; script `pnpm worker:ping` (no `ping`: choca con un comando de pnpm) |
 | 2026-09-29 | Revisión de T05: rutas sin prefijo y proxy con rewrite (§4.5); Host permitidos y CSRF en la API; riesgo del sondeo a Neon; notas para T06, T07 y T08; `pnpm dev` con filtros explícitos |

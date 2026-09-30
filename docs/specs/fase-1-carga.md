@@ -114,6 +114,11 @@ agentsales imports [<id>]
 ### F1-T06 · CLI de importación y consulta
 - **Depende de:** T05
 - **Descripción:** comandos de §4.4. `import` muestra un resumen (creadas, actualizadas, omitidas, con error) y la tabla de errores por fila y columna.
+  - **Cliente:** antes de sumar comandos, `createApiClient(port, { timeoutMs })` devuelve el `hc<AppType>` completo, y un `unwrap(res)` lee el `ErrorBody` y lo muestra como `CODE: mensaje`, con la misma validación zod y los mismos errores que `createHealthFetcher` de F0.
+  - **Timeout de `import`:** necesita uno propio (sube medios a R2), o bien pasa a ser asíncrono (job más sondeo de `/imports/:id`). Se decide junto con la enmienda pendiente de ADR-0005.
+  - **Estructura:** un comando por archivo (`src/commands/<nombre>.ts`), cada uno con una función `run<Nombre>(deps)` testeable y un `register(program, ctx)`. `checks.ts` pasa a `commands/doctor/`.
+  - **Tests:** contra la app real en proceso, con `hc<AppType>(url, { fetch: app.request })`, `createApp` y los repositorios en memoria, sin red.
+  - `agentsales import` usa `/imports/local`, que solo existe con `NODE_ENV=development`.
 - **Hecho cuando:**
   - [ ] `pnpm cli import data/muestras/propiedades.xlsx --media data/muestras/medios` funciona con las 3 propiedades reales de muestra
 

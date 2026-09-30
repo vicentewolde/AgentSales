@@ -1,0 +1,24 @@
+{
+  "name": "@agentsales/cli",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "agentsales": "./dist/src/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "cli": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/index.ts"
+  },
+  "dependencies": {
+    "@agentsales/config": "workspace:*",
+    "@agentsales/core": "workspace:*",
+    "commander": "15.0.0",
+    "hono": "4.13.10",
+    "picocolors": "1.1.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@agentsales/api": "workspace:*"
+  }
+}
