@@ -2,7 +2,7 @@
 
 Base de datos: Postgres en Neon (plan gratis, conexión directa). Esquema en `packages/db` con Drizzle; este documento es la referencia conceptual. Si difieren, **manda el código** y este documento se actualiza en la misma tarea.
 
-Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true`.
+Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.rows_* = 0`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload` y `report` empiezan vacíos. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES`.
 
 ## Diagrama
 
@@ -67,7 +67,7 @@ erDiagram
 | sort_order | int | |
 | active | boolean | |
 
-Una definición del corredor con el mismo `key` **sobrescribe** la global. Agregar un campo = insertar una fila; no requiere migración.
+Una definición del corredor con el mismo `key` **sobrescribe** la global (único `(broker_id, category, key)` en F1, migración `0001`). Agregar un campo = insertar una fila; no requiere migración.
 
 ### listings — aviso (propiedad o producto)
 | Columna | Tipo | Notas |
@@ -107,7 +107,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 | width, height | int null | |
 | duration_s | numeric(10,3) null | Solo videos |
 | bytes | bigint | |
-| checksum | text | sha256; evita duplicados |
+| checksum | text | sha256; evita duplicados (único en F1, migración `0001`) |
 | sort_order | int | Orden del carrusel |
 | is_cover | boolean | |
 | ai_metadata | jsonb null | Descripción y puntaje de la IA |

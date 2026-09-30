@@ -53,14 +53,14 @@ flowchart LR
   MEDIA --> STO
   LLM --> CL
   PUB --> IG & ML & FB
-  API -. encola jobs .-> NEON
+  API -. encola jobs (desde F1/F2) .-> NEON
   WRK -. consume jobs .-> NEON
 ```
 
 ## Estilo: puertos y adaptadores
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
-- Core define **puertos** (interfaces): `ListingRepository`, `MediaStorage`, `LLMProvider`, `Publisher`, `Importer`, `JobQueue`.
+- Core define **puertos** (interfaces): `ListingRepository`, `MediaStorage`, `LLMProvider`, `Publisher`, `Importer`, `JobQueue`. Hoy solo existe `MediaStorage` (`packages/core/src/ports/`); el resto llega en su fase.
 - Cola (ADR-0005): en F0 el adaptador de pg-boss vive en `apps/worker/src/queue.ts`, porque solo lo usan el worker y su script de prueba. **En la primera fase en que la API encole** (F1 si se adopta un job `import.run`; si no, F2) se extrae a `packages/queue` implementando `JobQueue`, y con él `QUEUE_SCHEMA` y `checkQueueSchema` (hoy en `@agentsales/db`). La API no arranca pg-boss: su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
@@ -78,7 +78,7 @@ agentsales/
 │   └── worker/       Procesa jobs: medios, contenido, publicación, sincronización
 ├── packages/
 │   ├── core/         Dominio, esquemas zod, estados, casos de uso, puertos
-│   ├── db/           Esquema Drizzle, migraciones, repositorios
+│   ├── db/           Esquema Drizzle, migraciones y (desde F1) repositorios
 │   ├── storage/      Archivos en Cloudflare R2 (API S3): subir, leer, borrar, URLs prefirmadas
 │   ├── importers/    xlsx, google-sheets, carpetas de medios
 │   ├── llm/          Proveedores: claude-cli, anthropic-api, fake
@@ -86,6 +86,7 @@ agentsales/
 │   ├── templates/    Plantillas HTML/CSS de posts (portada, ficha, etc.)
 │   ├── publishers/   instagram, mercadolibre, fb-marketplace
 │   └── config/       Variables de entorno validadas (zod), logger pino y redactor de secretos
+├── .github/          CI (GitHub Actions)
 ├── docs/             Documentación (esta carpeta)
 ├── data/             Plantillas y datos de prueba (los datos reales no van a git)
 └── .claude/          Configuración de Claude Code: skills y subagentes
@@ -244,7 +245,7 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 interface MediaStorage {
   put(path: string, body: Uint8Array, contentType: string): Promise<void>;   // sobrescribe
   get(path: string): Promise<Uint8Array>;                                     // STORAGE_NOT_FOUND si no existe
-  head(path: string): Promise<{ size: number; contentType?: string } | null>; // null si no existe
+  head(path: string): Promise<{ size: number; contentType: string | undefined } | null>; // null si no existe
   delete(path: string): Promise<void>;                                        // idempotente
   signedReadUrl(path: string, ttlSeconds?: number): Promise<string>;
 }

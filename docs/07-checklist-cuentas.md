@@ -9,7 +9,7 @@ Cosas que **solo tú puedes hacer** (cuentas, aprobaciones, datos reales). Claud
 - [x] Git configurado con tu nombre y correo
 - [x] ffmpeg instalado (`ffmpeg -version`)
 - [x] Claude Code instalado y con sesión iniciada con tu plan Max (`claude` → `/status`)
-- [x] Repositorio privado en GitHub: `AgentSales`
+- [x] Repositorio en GitHub: `AgentSales`. Público desde 2026-09-30, con protección de `main`: el merge exige el check `check` de la CI
 - [x] Proyecto en Neon (plan gratis, región AWS São Paulo) — pasos en `docs/09-alta-neon-r2.md`
   - [x] Copiar a `.env`: `DATABASE_URL` (conexión **directa**, sin `-pooler`, terminada en `?sslmode=require`)
 - [x] Cuenta de Cloudflare con R2 activado (pide tarjeta: retención temporal de US$5, sin cobro dentro del plan gratis)

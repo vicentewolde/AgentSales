@@ -4,7 +4,7 @@ Cada fase entrega algo **usable y demostrable**. Una fase empieza con su spec en
 
 | Fase | Nombre | Entregable | Tag |
 |---|---|---|---|
-| F0 | Fundaciones | Monorepo que compila, con base de datos, API, panel y CLI vacíos | v0.0.1 |
+| F0 | Fundaciones | Monorepo que compila, con base de datos, almacenamiento R2, API, worker, panel y CLI vacíos | v0.0.1 |
 | F1 | Carga | Importar Excel con fotos y ver las propiedades en panel y CLI | v0.1.0 |
 | F2 | Contenido | Textos IA, imágenes procesadas, carrusel y reel en vista previa | v0.2.0 |
 | F3 | Aprobación + Instagram | Aprobar y publicar en Instagram al instante | v0.3.0 |
@@ -20,8 +20,8 @@ Spec detallado: `docs/specs/fase-0-fundaciones.md`.
 - `pnpm install && pnpm check` pasa en limpio.
 - `pnpm dev` levanta API, worker y web; `GET /health` responde con estado de base de datos, storage y cola.
 - Migración inicial aplicada en Neon con todas las tablas de `02-modelo-datos.md`.
-- `pnpm cli doctor` verifica env, base de datos, storage, ffmpeg, Playwright y Claude CLI.
-- CI en GitHub Actions ejecuta `pnpm check` en cada PR.
+- `pnpm -s cli doctor` (con `pnpm dev` corriendo) verifica Node, `.env`, `PUBLISH_MODE`, API, base de datos, storage, cola, ffmpeg, Playwright y Claude CLI.
+- CI en GitHub Actions ejecuta `pnpm check`, verifica que las migraciones estén al día y construye el panel en cada PR y push a `main`; el check es obligatorio para hacer merge.
 
 ## F1 · Carga
 Spec detallado: `docs/specs/fase-1-carga.md`.

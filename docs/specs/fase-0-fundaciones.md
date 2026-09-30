@@ -1,6 +1,6 @@
 # Spec F0 · Fundaciones
 
-- **Estado:** Aprobado (listo para comenzar)
+- **Estado:** Cerrado (2026-09-30, tag `v0.0.1`)
 - **Rama base:** `main`
 - **Tag al cerrar:** `v0.0.1`
 - **Referencias:** `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/05-convenciones.md`, ADR 0001, 0002 (solo la parte de Drizzle), 0003, 0005, 0007, 0008, 0009 y 0010
@@ -54,7 +54,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 
 ### 4.3 Contratos
 - `GET /health` → `200 { status: "ok"|"degraded", publishMode, checks: { db, storage, queue }, version }`. Cada check es `{ ok, latencyMs, error? }`. Responde 200 aunque haya checks fallidos (con `degraded`). `queue.ok` indica que el esquema `pgboss` existe (la cola se inicializó alguna vez), no que el worker esté corriendo.
-- `agentsales doctor`: verifica env, db, storage, cola, `ffmpeg -version`, Chromium de Playwright y `claude --version`. Imprime ✓/✗ por ítem con una sugerencia de arreglo, y sale con código 1 si algo crítico falla. Los ítems que su fase aún no necesita (Playwright, Claude) salen como advertencia, no como error. Neon suspende el cómputo tras 5 min sin actividad y la primera conexión puede tardar unos segundos: el check de base de datos usa un timeout de 10 s y un reintento antes de fallar.
+- `agentsales doctor` (con `pnpm dev` corriendo): revisa Node 26, `.env` (solo nombres de variables, nunca valores), `PUBLISH_MODE` (el de la API; error si no coincide con `.env`), la API, y base, almacenamiento y cola **desde `/health`**, además de ffmpeg, Chromium de Playwright y `claude --version`. Imprime ✓/⚠/✗ por ítem con una sugerencia de arreglo y sale con código 1 si algo crítico falla (Node, `.env`, API, servicios o ffmpeg). Playwright, Claude y `live` salen como advertencia. El timeout de 10 s por intento, con un reintento para el arranque en frío de Neon, lo aplica `pingDatabase` en la API.
 - `agentsales status`: llama a `/health` y muestra `PUBLISH_MODE` destacado.
 
 ### 4.4 Datos
@@ -113,7 +113,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 
 ### F0-T06 · apps/worker — pg-boss
 - **Depende de:** T04
-- **Descripción:** arranque de pg-boss (crea su esquema), registro de handlers por nombre de job, job `system.ping` que loguea y termina, y apagado ordenado con SIGINT/SIGTERM. Check de cola en `/health` (API) como consulta de solo lectura al esquema `pgboss` (por ejemplo, una función en `@agentsales/db` junto a `pingDatabase`), sin `boss.start()` en la API (arrancaría el mantenimiento y la supervisión). Documenta en `01-arquitectura.md` dónde vive el adaptador de `JobQueue` para cuando la API tenga que encolar (F2). pg-boss usa la conexión directa de Neon, pasada por `toPgConnectionString` de `@agentsales/db` para mantener `sslmode=verify-full`; mientras el worker corre mantiene el cómputo despierto (ADR-0007), así que se apaga cuando no se desarrolla.
+- **Descripción:** arranque de pg-boss (crea su esquema), registro de handlers por nombre de job, job `system.ping` que loguea y termina, y apagado ordenado con SIGINT/SIGTERM. Check de cola en `/health` (API) como consulta de solo lectura al esquema `pgboss` (por ejemplo, una función en `@agentsales/db` junto a `pingDatabase`), sin `boss.start()` en la API (arrancaría el mantenimiento y la supervisión). Documenta en `01-arquitectura.md` dónde vive el adaptador de `JobQueue` para cuando la API tenga que encolar (la primera fase en que lo haga: F1 si se adopta `import.run`; si no, F2). pg-boss usa la conexión directa de Neon, pasada por `toPgConnectionString` de `@agentsales/db` para mantener `sslmode=verify-full`; mientras el worker corre mantiene el cómputo despierto (ADR-0007), así que se apaga cuando no se desarrolla.
 - **Hecho cuando:**
   - [x] Un `system.ping` encolado desde un script de prueba se procesa y se ve en el log
   - [x] Ctrl+C no deja jobs colgados
@@ -143,15 +143,16 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 - **Descripción:** `/fase-cerrar 0`: verificar criterios, README con "cómo levantar", `CHANGELOG.md`, `docs/ESTADO.md` apuntando a F1 y tag `v0.0.1`.
 
 ## 6. Criterios de aceptación de la fase
-- [ ] Clonar el repo, copiar `.env`, correr `pnpm install && pnpm db:migrate && pnpm db:seed && pnpm dev`, y el panel muestra todo en verde
-- [ ] `pnpm cli doctor` pasa (con advertencias permitidas para Playwright y Claude)
-- [ ] CI en verde en `main`
-- [ ] Documentación coherente con el código
+- [x] Clonar el repo, copiar `.env`, correr `pnpm install && pnpm db:migrate && pnpm db:seed && pnpm dev`, y el panel muestra todo en verde. Verificado en un clon limpio desde GitHub (af8c19f): 321 tests, migraciones al día, seed con 1 corredor, y el panel en `ok` con base, almacenamiento y cola
+- [x] `pnpm -s cli doctor` pasa: 10/10 ✓, "Todo en orden", código 0
+- [x] CI en verde en `main`: la corrida de `push` sobre af8c19f terminó en `success`, y `main` exige el check
+- [x] Documentación coherente con el código: auditoría del arquitecto y correcciones en `docs/f0-cierre`
 
 ## 7. Plan de demo
-1. `pnpm cli doctor`
-2. `pnpm dev` → abrir http://localhost:5173 → Estado del sistema en verde
-3. Apagar internet → el panel muestra `degraded` sin caerse
+1. `pnpm dev`
+2. En otra terminal: `pnpm -s cli doctor` → todo en ✓
+3. Abrir http://localhost:5173 → Estado del sistema en verde
+4. Apagar internet → el panel muestra `degraded` sin caerse; al reconectar vuelve a `ok`
 
 ## 8. Riesgos y mitigaciones
 | Riesgo | Mitigación |
@@ -173,6 +174,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
 | 2026-09-29 | T02: HKDF de `APP_ENCRYPTION_KEY` se mueve a F3 (donde se cifra); `exports` con condición `@agentsales/source` (ADR-0010) |
 | 2026-09-29 | T03: `awaiting_manual_confirm → failed` (captcha o abandono, ADR-0004); `AppError.code` es texto libre en mayúsculas |
+| 2026-09-30 | Cierre de F0 (T10): criterios verificados en un clon limpio; auditoría de docs; repo público con `main` protegida (check `check` obligatorio); extracción de la cola "en la primera fase en que la API encole"; contrato de `doctor` actualizado; estado **Cerrado** y tag `v0.0.1` |
 | 2026-09-29 | T09: CI en `.github/workflows/ci.yml` (acciones fijadas por SHA; install con lockfile congelado, `pnpm check`, migraciones al día y build del panel). Simulada en un clon limpio, destapó que la web compilaba el código fuente de la API: `redactText` pasa a `core`, la API no usa `NodeJS.*` en lo que exporta y los tests del panel van en `tsconfig.test.json` |
 | 2026-09-29 | Revisión de T08: Vite lee `API_PORT`/`WEB_PORT` del `.env` de la raíz; solo la página Estado sondea (el banner no); errores del panel como `CODE: mensaje`, con timeout de 35 s y cancelación; banner con un solo `role="status"` y contraste AA; guardia de tipos de Node en la web; declaraciones fuera de `dist/`; contratos HTTP pendientes de un ADR-0011 en F1 |
 | 2026-09-29 | T08: contrato de `/health` (`healthReportSchema`) en `core`, que usan la API, la CLI y el panel; `core` usa `zod`; la API tipa su logger con `AppLogger` (mínimo) para que `AppType` no meta pino ni los tipos de Node en la web (verificado: la web rechaza `process`); tests del panel con jsdom y Testing Library por archivo; sondeo de `/health` cada 30 s solo con la pestaña visible |

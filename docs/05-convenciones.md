@@ -17,10 +17,10 @@
 | Validación | zod en todos los bordes: HTTP, archivos, IA, APIs externas, env, datos de jobs |
 | API | Hono y su cliente RPC tipado (`hc`) para web y CLI |
 | ORM | Drizzle ORM + drizzle-kit (migraciones SQL versionadas) |
-| Base de datos | Postgres en Neon (plan gratis), conexión directa |
+| Base de datos | Postgres en Neon (plan gratis), conexión directa; driver `pg` |
 | Archivos | Cloudflare R2 vía API S3 (`@aws-sdk/client-s3`) |
 | Cola | pg-boss |
-| Tests | Vitest 5; msw para HTTP externo; Playwright para e2e del panel |
+| Tests | Vitest 5; msw para HTTP externo; Testing Library + jsdom para componentes; Playwright para e2e del panel |
 | Logs | pino, JSON en producción y pretty en dev |
 | UI | React + Vite + Tailwind + TanStack Query + React Router |
 | CLI | commander + picocolors; cliente RPC `hc<AppType>` de Hono |
@@ -102,7 +102,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 - Sin la condición, Node cae **en silencio** a `dist/`, que puede estar viejo. Si un cambio "no se ve", revisa que la herramienta tenga la condición.
 - En producción se usa `dist/`, que genera `tsc -b`.
 - Las dependencias internas se declaran como `"@agentsales/<nombre>": "workspace:*"`.
-- Los scripts no se llaman como comandos propios de pnpm (`ping`, `test` de un filtro, `install`…): `pnpm --filter x ping` ejecuta el comando de pnpm, no el script. Se usan nombres como `job:ping` y se invocan con `pnpm --filter x run <script>`.
+- Los scripts no se llaman como comandos propios de pnpm (`ping`, `test` de un filtro, `install`…): `pnpm --filter x ping` ejecuta el comando de pnpm, no el script. Se usan nombres como `job:ping` y, si el nombre podría chocar, se invocan con `pnpm --filter x run <script>`.
 - Los scripts de paquete que ejecutan TypeScript usan `NODE_OPTIONS=--conditions=@agentsales/source tsx …` (y lo mismo para `drizzle-kit`).
 
 ## Dependencias y pnpm
@@ -126,7 +126,9 @@ test/             # opcional: fixtures, helpers y tests de integración
 - Una rama por tarea: `<tipo>/<id-tarea>-<resumen>`. Ejemplo: `feat/f1-t03-import-xlsx`.
 - **Conventional Commits:** `feat(importers): importa hoja Propiedades desde xlsx`. Tipos: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `build`, `ci`.
 - Un PR por tarea, con squash merge a `main`. La descripción del PR enlaza la tarea del spec.
-- **No se hace merge sin el check `CI / check` en verde sobre el último commit del PR** (`.github/workflows/ci.yml`). GitHub no permite exigirlo en repos privados del plan gratis (protección de ramas y rulesets requieren GitHub Pro), así que es una regla del proceso: la cumplen el operador y Claude Code.
+- **`main` está protegida:** todo cambio entra por PR, y el merge exige el check `check` de `.github/workflows/ci.yml` en verde sobre el último commit, con la rama al día respecto de `main`. La regla aplica también a los administradores, y bloquea el force push y el borrado.
+- **La CI** instala con el lockfile congelado y corre `pnpm check`. También verifica que `pnpm db:generate` no produzca cambios y hace el build del panel. No usa secretos.
+- **El repositorio es público:** nada de secretos, datos de clientes ni capturas con datos reales en commits, issues o PRs.
 - Al cerrar cada fase: tag `vX.Y.0` (F0 → `v0.0.1`, F1 → `v0.1.0`, …).
 - Nunca `git push --force` a `main`. Nunca commitear `.env` ni datos reales de clientes.
 
