@@ -169,7 +169,10 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Agreg
 
 ### Cola de trabajos
 
-`pg-boss` crea y administra su propio esquema (`pgboss`). No se modela aquí.
+`pg-boss` crea y administra su propio esquema (`pgboss`). No se modela aquí:
+- Lo crea y migra **solo el worker** al arrancar (`migrate: true`). La API solo consulta que exista, y los productores (scripts) no migran.
+- Sus migraciones son de pg-boss, no de drizzle: la versión va fijada (`pg-boss@12.35.0`) y se sube a propósito.
+- `drizzle.config.ts` usa `schemaFilter: ["public"]` para que drizzle-kit nunca toque `pgboss`.
 
 ## Reglas de datos
 

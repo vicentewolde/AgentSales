@@ -26,3 +26,6 @@ Procesar video, renderizar plantillas, llamar a la IA y publicar son tareas lent
 ## Alternativas descartadas
 - **BullMQ + Redis:** otra pieza que operar.
 - **node-cron en memoria:** se pierde todo si el proceso se reinicia, y no tiene reintentos.
+
+## Seguimiento
+- 2026-09-29 (F0-T06): pg-boss 12.35.0 en `apps/worker`. Cada job se declara con `defineJob` (datos validados con zod y solo ids), con una política por cola que aplica el worker (`createQueue` + `updateQueue`) y `batchSize: 1`. Un `AppError` no reintentable no se reintenta. Contrato objetivo (`JOB_NAMES`/`JOB_PAYLOADS` en `core`, puerto `JobQueue`) y tabla de políticas en `docs/01-arquitectura.md` → Cola de trabajos.

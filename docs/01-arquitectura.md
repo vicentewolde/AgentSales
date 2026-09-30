@@ -61,6 +61,7 @@ flowchart LR
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
 - Core define **puertos** (interfaces): `ListingRepository`, `MediaStorage`, `LLMProvider`, `Publisher`, `Importer`, `JobQueue`.
+- Cola (ADR-0005): en F0 el adaptador de pg-boss vive en `apps/worker/src/queue.ts`, porque solo lo usan el worker y su script de prueba. **En la primera fase en que la API encole** (F1 si se adopta un job `import.run`; si no, F2) se extrae a `packages/queue` implementando `JobQueue`, y con él `QUEUE_SCHEMA` y `checkQueueSchema` (hoy en `@agentsales/db`). La API no arranca pg-boss: su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
 
@@ -189,6 +190,38 @@ interface Publisher {
 
 Con `PUBLISH_MODE=dry-run`, un decorador envuelve cualquier publisher: ejecuta `validate()`, registra lo que *habría* enviado y devuelve un resultado simulado.
 
+## Cola de trabajos
+
+Hoy (F0, `apps/worker/src/jobs/`):
+- Cada job se declara con `defineJob({ name, schema, queue, handler })`:
+  - **`schema`:** zod valida los datos antes del handler. Los datos vienen de la base, escritos por otro proceso, así que son un borde. Si son inválidos, lanza `JOB_PAYLOAD_INVALID`, que no se reintenta.
+  - **`queue`:** política de la cola (`retryLimit`, `retryDelay`, `retryBackoff`, `expireInSeconds`). Solo el worker la aplica al arrancar (`createQueue` + `updateQueue`), así que el código es la fuente de verdad. Los productores no crean colas.
+- **Payloads con solo ids** (`publicationId`, `mediaId`…), nunca secretos ni estado. El handler recarga el estado desde la base y verifica `external_id` y `status` antes de actuar, lo que lo hace idempotente (ADR-0005).
+- **Errores:**
+  - Un `AppError` no reintentable se registra y el job se da por cerrado. El caso de uso ya dejó el estado de dominio, por ejemplo la publicación en `failed`.
+  - Cualquier otro error se propaga y pg-boss reintenta según la política.
+  - `batchSize: 1`: un fallo nunca repite jobs ajenos.
+- Los handlers son delgados: validan, arman dependencias y llaman un caso de uso de `core`. Cuando necesiten db, storage o llm, `JOBS` pasa a `buildJobs(deps)`.
+
+Cuando la API encole (extracción a `packages/queue`):
+- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API y el worker comparten el contrato sin repetir literales.
+- **Puerto `JobQueue`** en `core/src/ports/job-queue.ts`: `enqueue<N extends JobName>(name: N, data: JobPayload<N>, opts?: { startAfter?: Date; singletonKey?: string }): Promise<string>`.
+
+Política objetivo por cola (cada fase la confirma en su spec):
+
+| Cola | Unicidad | Reintentos | Backoff | Expira |
+|---|---|---|---|---|
+| `system.ping` (F0) | — | 0 | no | 60 s |
+| `media.process` | `singletonKey = mediaId` | 3 | sí, desde 30 s | ~15 min (ffmpeg) |
+| `content.prepare` | `singletonKey = listingId` | 2 | sí, desde 60 s | ~10 min (LLM) |
+| `publication.publish` | `singletonKey = publicationId`; dead-letter que lleva a `failed` | 3 | sí, desde 60 s | ~5 min (Marketplace termina en `awaiting_manual_confirm`) |
+| `publication.sync` | cron, sin solaparse | 1 | no | ~10 min |
+| `tokens.refresh` | cron | 3 | sí | ~5 min |
+
+Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al arrancar y los cron del período apagado se pierden. Eso afecta al calendario de F6.
+
+`queue: ok` en `/health` significa que la cola se inicializó alguna vez, **no** que el worker esté corriendo.
+
 ## Contrato de almacenamiento de archivos
 
 ```ts
@@ -224,7 +257,7 @@ Los prompts viven versionados en `packages/llm/prompts/` y cada `content` guarda
 - Tokens de plataformas cifrados en reposo con AES-256-GCM. La clave de 32 bytes se deriva de `APP_ENCRYPTION_KEY` con HKDF-SHA256 (se implementa en F3).
 - Nunca se loguean tokens, contraseñas ni `.env`.
 - El bucket de R2 es privado; se usan URLs prefirmadas de corta duración para que Instagram descargue los medios.
-- La base de datos solo acepta conexiones con credenciales y TLS (`sslmode=require`); no se expone ninguna API HTTP de datos.
+- La base de datos solo acepta conexiones con credenciales y TLS. `.env` usa `sslmode=require` y el cliente lo convierte en `verify-full`, que además verifica el certificado (`toPgConnectionString`, también para pg-boss). No se expone ninguna API HTTP de datos.
 - Marketplace: la sesión del corredor vive en un perfil de navegador local por corredor; el sistema nunca guarda su contraseña.
 - La API no tiene autenticación hasta F7, así que solo escucha en `127.0.0.1`. Como eso no protege del navegador del propio operador (cualquier página abierta puede apuntar a `127.0.0.1:8787`):
   - rechaza cualquier `Host` que no sea local (defensa contra DNS rebinding): `127.0.0.1` o `localhost` en `API_PORT` o `WEB_PORT`;
