@@ -136,7 +136,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 - **Depende de:** T01 (idealmente al final)
 - **Descripción:** `.github/workflows/ci.yml` que en cada PR y push a `main` corre install con caché de pnpm y `pnpm check`. Los tests no requieren base de datos real.
 - **Hecho cuando:**
-  - [ ] El PR de esta tarea muestra el check en verde
+  - [x] El PR de esta tarea muestra el check en verde
 
 ### F0-T10 · Cierre de fase
 - **Depende de:** todas

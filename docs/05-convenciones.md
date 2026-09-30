@@ -126,6 +126,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 - Una rama por tarea: `<tipo>/<id-tarea>-<resumen>`. Ejemplo: `feat/f1-t03-import-xlsx`.
 - **Conventional Commits:** `feat(importers): importa hoja Propiedades desde xlsx`. Tipos: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `build`, `ci`.
 - Un PR por tarea, con squash merge a `main`. La descripción del PR enlaza la tarea del spec.
+- **No se hace merge sin el check `CI / check` en verde sobre el último commit del PR** (`.github/workflows/ci.yml`). GitHub no permite exigirlo en repos privados del plan gratis (protección de ramas y rulesets requieren GitHub Pro), así que es una regla del proceso: la cumplen el operador y Claude Code.
 - Al cerrar cada fase: tag `vX.Y.0` (F0 → `v0.0.1`, F1 → `v0.1.0`, …).
 - Nunca `git push --force` a `main`. Nunca commitear `.env` ni datos reales de clientes.
 
