@@ -29,8 +29,23 @@ const fail = (code: FieldIssueCode, message: string): Normalized<never> => ({
   message,
 });
 
-/** `true` si la celda está vacía (sin valor o solo espacios). */
-export function isBlank(value: RawCell): value is null | undefined | "" {
+/**
+ * `true` si el valor es una celda que el validador sabe leer. exceljs entrega objetos para las
+ * celdas con hipervínculo, texto enriquecido o fórmula: el lector (F1-T03) debe aplanarlos antes.
+ */
+export function isRawCell(value: unknown): value is RawCell {
+  return (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value instanceof Date
+  );
+}
+
+/** `true` si la celda está vacía: sin valor o con solo espacios. */
+export function isBlank(value: unknown): boolean {
   return value === null || value === undefined || (typeof value === "string" && !value.trim());
 }
 
@@ -54,7 +69,11 @@ function formatDayMonthYear(date: Date): string {
 const quote = (value: RawCell) => `«${String(value).trim()}»`;
 
 export function normalizeText(value: RawCell): Normalized<string> {
-  if (value instanceof Date) return ok(formatDayMonthYear(value));
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? fail("FIELD_VALUE_INVALID", "la fecha de la celda no es válida")
+      : ok(formatDayMonthYear(value));
+  }
   return ok(String(value).trim());
 }
 

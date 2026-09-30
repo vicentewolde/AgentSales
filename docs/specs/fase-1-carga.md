@@ -63,7 +63,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 - **web:** `createApiClient` + `unwrap`, `ApiClientContext`, hooks por recurso y `routes.tsx`; páginas Propiedades, Detalle e Importar.
 
 ### 4.2 Reglas de importación
-- **Filas ignoradas:** la fila con `id_propiedad = EJEMPLO` y las filas con `estado_carga = Borrador`.
+- **Filas ignoradas:** la fila con `id_propiedad = EJEMPLO` y las filas con `estado_carga = Borrador`. Las filtra `importListings` (T04) con `validator.isIgnored(row)`, que usa las columnas ya resueltas por `source_column`. Así el filtro sigue funcionando si un corredor cambia el encabezado.
 - **Hoja Corredor:** es vertical. Cada fila es un campo; las columnas se ubican por su encabezado (`Campo` y `Tu valor`), no por letra.
   - Crea o actualiza el broker por `slug`, derivado de `nombre_marca` o dado con `--broker`.
   - Si viene vacía y se pasa `--broker <slug>`, usa ese broker existente; si no existe, `BROKER_NOT_FOUND`.
@@ -94,7 +94,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
   | `tipo` | `property_type` | opciones de la hoja Listas |
   | `region`, `comuna`, `direccion`, `numero_unidad` | `region`, `comuna`, `address`, `unit_number` | |
   | `mostrar_direccion_exacta` | `show_exact_address` | `Sí/No` |
-  | `precio` | `price_amount` | obligatorio |
+  | `precio` | `price_amount` | obligatorio, mayor que 0 y dentro de `numeric(14,2)` (hasta 12 dígitos enteros) |
   | `moneda` | `price_currency` | obligatorio, `UF` o `CLP` |
   | `destacados` | `highlights` | |
   | `notas_internas` | `internal_notes` | nunca va a la IA ni a las plataformas |
@@ -266,7 +266,9 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T03 · Lector de Excel
 - **Depende de:** T01 (por `TEMPLATE_COLUMNS`)
-- **Descripción:** `packages/importers/xlsx-reader` con exceljs. Lee Propiedades y Corredor (vertical, por encabezados), ignora `EJEMPLO` y `Borrador`, y devuelve `{ broker, rows: [{ rowNumber, raw }] }` para que el validador de T02 normalice.
+- **Descripción:** `packages/importers/xlsx-reader` con exceljs.
+  - Lee Propiedades y Corredor (vertical, por encabezados) y devuelve `{ broker, headers, rows: [{ rowNumber, raw }] }`, con **todas** las filas no vacías. El filtro de `EJEMPLO` y `Borrador` lo hace T04 con `validator.isIgnored`.
+  - Aplana las celdas de exceljs a `RawCell`: hipervínculo → texto, texto enriquecido → texto plano, fórmula → resultado. El validador rechaza cualquier otro objeto con `FIELD_VALUE_INVALID`.
 - **Hecho cuando:**
   - [ ] Test contra la plantilla real: sus encabezados son exactamente `TEMPLATE_COLUMNS`
   - [ ] Fixtures sintéticos (sin datos reales): válido, con errores, con columnas extra, con la hoja Corredor vacía y exportado desde Google Sheets, con un test para cada uno
@@ -439,3 +441,4 @@ Orden sugerido: T01 → T02/T03 → T04. T05, T06 y T08 se pueden hacer en cualq
 | 2026-09-30 | Revisión en `/fase-plan 1` contra el código de F0 y la plantilla, con observaciones del subagente `arquitecto`. 15 tareas (antes 8): migración `0001` (T01), streams (T05), lectores de medios (T06), paquete de cola (T08), job `import.run` (T09), la API partida en lectura (T10) e importación (T11), y el panel partido en dos (T13, T14). Core no lee archivos: `importListings` recibe filas, el sha256 se inyecta y hay un puerto `MediaFileSource`. `import_runs` gana `status`, `dry_run`, `input` y `error`, y `broker_id` y `started_at` pasan a `null`. Una fila con errores no se escribe. Hay tablas de destino para las columnas y para la hoja Corredor (vertical). La carpeta de medios sale de `carpeta_medios`, y reimportar no pisa un estado puesto a mano. Se agregan el ciclo de vida del run, la limpieza del staging, las rutas absolutas, lo que depende de Node por `AppDeps` y el comportamiento sin red (§4.7). Sin `q=` ni `GET /brokers/:id`. Decisiones D1–D6 (§4.8) propuestas al operador |
 | 2026-09-30 | Decisiones del operador: D1 (ADR-0011 aceptado), D2 (job `import.run`; ADR-0005 enmendado), D4 (PGlite en `packages/db`) y D6 (metadatos de medios en F2). D3 y D5 quedan como propuestas del spec |
 | 2026-09-30 | Spec **aprobado** por el operador |
+| 2026-09-30 | Desde la revisión de F1-T02: el filtro de `EJEMPLO` y `Borrador` pasa del lector (T03) a `importListings` (T04), con `validator.isIgnored`; T03 aplana las celdas de exceljs a `RawCell` y devuelve los encabezados; `precio` tiene un tope por `numeric(14,2)` |

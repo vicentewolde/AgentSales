@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   foldText,
   isBlank,
+  isRawCell,
   normalizeBoolean,
   normalizeDate,
   normalizeEnum,
@@ -24,6 +25,8 @@ describe("normalizeNumber", () => {
     ["72,5", 72.5],
     ["72.5", 72.5],
     ["1.2345", 1.2345],
+    // Ambigüedad aceptada en el spec: punto + 3 dígitos es separador de miles.
+    ["0.500", 500],
     [" 12 ", 12],
     ["-3", -3],
   ])("%j → %d", (input, expected) => {
@@ -138,6 +141,22 @@ describe("normalizeText, isBlank y foldText", () => {
       ok: true,
       value: "05-11-2026",
     });
+  });
+
+  it("una fecha inválida no se convierte en NaN-NaN-NaN", () => {
+    expect(normalizeText(new Date(Number.NaN))).toMatchObject({
+      ok: false,
+      code: "FIELD_VALUE_INVALID",
+    });
+  });
+
+  it("isRawCell acepta solo valores primitivos de celda y fechas", () => {
+    for (const value of ["a", 1, true, null, undefined, new Date()]) {
+      expect(isRawCell(value)).toBe(true);
+    }
+    for (const value of [{ text: "a", hyperlink: "x" }, { richText: [] }, ["a"]]) {
+      expect(isRawCell(value)).toBe(false);
+    }
   });
 
   it("considera vacías las celdas sin valor o con solo espacios", () => {

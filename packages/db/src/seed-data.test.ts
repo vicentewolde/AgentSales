@@ -2,25 +2,6 @@ import { buildListingValidator, CORE_FIELD_TARGETS, type FieldDefinition } from 
 import { describe, expect, it } from "vitest";
 import { REAL_ESTATE_FIELD_DEFINITIONS, TEMPLATE_COLUMNS } from "./seed-data.js";
 
-/** Columnas con destino fijo o de control de la carga (spec F1 §4.2). */
-const CORE_COLUMNS = [
-  "id_propiedad",
-  "operacion",
-  "tipo",
-  "region",
-  "comuna",
-  "direccion",
-  "numero_unidad",
-  "mostrar_direccion_exacta",
-  "precio",
-  "moneda",
-  "destacados",
-  "carpeta_medios",
-  "foto_portada",
-  "estado_carga",
-  "notas_internas",
-];
-
 describe("REAL_ESTATE_FIELD_DEFINITIONS", () => {
   it("tiene una definición por columna de la plantilla, en el mismo orden", () => {
     expect(TEMPLATE_COLUMNS).toHaveLength(36);
@@ -46,11 +27,6 @@ describe("REAL_ESTATE_FIELD_DEFINITIONS", () => {
         expect(def.options, def.key).toBeNull();
       }
     }
-  });
-
-  it("marca is_core exactamente en las columnas con destino fijo o de control", () => {
-    const core = REAL_ESTATE_FIELD_DEFINITIONS.filter((def) => def.isCore).map((def) => def.key);
-    expect(core.sort()).toEqual([...CORE_COLUMNS].sort());
   });
 
   it("son globales de real_estate y activas", () => {
@@ -109,11 +85,15 @@ describe("buildListingValidator con las 36 definiciones del seed", () => {
 
   it("arma el validador y reconoce todos los encabezados de la plantilla", () => {
     expect(validator.definitions).toHaveLength(36);
-    expect(validator.checkHeaders([...TEMPLATE_COLUMNS])).toEqual({ unknown: [], missing: [] });
+    expect(validator.checkHeaders([...TEMPLATE_COLUMNS])).toEqual({
+      unknown: [],
+      missing: [],
+      duplicated: [],
+    });
   });
 
-  it("valida la fila de ejemplo de la plantilla (sintética, ya en git)", () => {
-    const result = validator.validate({
+  it("valida la fila de ejemplo de la plantilla (sintética, ya en git) y la marca como ignorada", () => {
+    const example = {
       id_propiedad: "EJEMPLO",
       operacion: "Venta",
       tipo: "Departamento",
@@ -150,7 +130,9 @@ describe("buildListingValidator con las 36 definiciones del seed", () => {
       publicar_en: "Instagram, Portal Inmobiliario, Marketplace",
       estado_carga: "Listo",
       notas_internas: "Dueño prefiere visitas en la tarde",
-    });
+    };
+    expect(validator.isIgnored(example)).toBe(true);
+    const result = validator.validate(example);
     expect(result).toMatchObject({
       ok: true,
       data: {

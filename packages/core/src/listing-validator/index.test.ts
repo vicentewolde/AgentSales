@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isAppError } from "../errors.js";
 import type { FieldDefinition } from "../field-definition.js";
-import { buildListingValidator, type RawListingRow } from "./index.js";
+import { buildListingValidator, fieldIssueSchema, type RawListingRow } from "./index.js";
 
 let nextId = 0;
 const def = (
@@ -158,11 +158,46 @@ describe("buildListingValidator · errores por celda", () => {
       publicar_en: "Instagarm",
       link_video: "youtu.be/abc",
     });
-    expect(errors.map((error) => [error.column, error.code])).toEqual([
-      ["precio", "FIELD_NUMBER_INVALID"],
+    // Sin depender del orden: el reporte lo arma quien llama.
+    expect(errors.map((error) => [error.column, error.code]).sort()).toEqual([
       ["amoblado", "FIELD_BOOLEAN_INVALID"],
       ["link_video", "FIELD_URL_INVALID"],
+      ["precio", "FIELD_NUMBER_INVALID"],
       ["publicar_en", "FIELD_LIST_INVALID"],
+    ]);
+    // Los errores calzan con el contrato que viaja en el reporte y por HTTP.
+    for (const error of errors) expect(fieldIssueSchema.parse(error)).toEqual(error);
+  });
+
+  it("un precio que no cabe en numeric(14,2) es un error de la fila, no del INSERT", () => {
+    expect(errorsOf({ ...VALID_ROW, precio: 1e13 })).toEqual([
+      expect.objectContaining({ column: "precio", code: "FIELD_NUMBER_INVALID" }),
+    ]);
+  });
+
+  it("una lista obligatoria con solo separadores cuenta como vacía", () => {
+    expect(errorsOf({ ...VALID_ROW, publicar_en: " , ," })).toEqual([
+      expect.objectContaining({ column: "publicar_en", code: "FIELD_REQUIRED" }),
+    ]);
+  });
+
+  it("mostrar_direccion_exacta: en blanco es false; un valor inválido es error, no false", () => {
+    const lenient = buildListingValidator(
+      DEFS.map((d) => (d.key === "mostrar_direccion_exacta" ? { ...d, required: false } : d)),
+    );
+    const blank = lenient.validate({ ...VALID_ROW, mostrar_direccion_exacta: "" });
+    expect(blank).toMatchObject({ ok: true, data: { core: { showExactAddress: false } } });
+    expect(lenient.validate({ ...VALID_ROW, mostrar_direccion_exacta: "tal vez" })).toMatchObject({
+      ok: false,
+      errors: [{ column: "mostrar_direccion_exacta", code: "FIELD_BOOLEAN_INVALID" }],
+    });
+  });
+
+  it("una celda que no es RawCell (hipervínculo de exceljs) es FIELD_VALUE_INVALID", () => {
+    const hyperlink = { text: "Calle Falsa 123", hyperlink: "https://example.cl" };
+    const row = { ...VALID_ROW, direccion: hyperlink } as unknown as RawListingRow;
+    expect(errorsOf(row)).toEqual([
+      expect.objectContaining({ column: "direccion", code: "FIELD_VALUE_INVALID" }),
     ]);
   });
 
@@ -184,6 +219,20 @@ describe("buildListingValidator · errores por celda", () => {
   });
 });
 
+describe("buildListingValidator · columnas ausentes", () => {
+  it("un campo opcional sin su columna en la hoja no hace fallar la fila", () => {
+    const { notas_internas: _notas, link_video: _video, ...row } = VALID_ROW;
+    expect(validRow(row).core.internalNotes).toBeNull();
+  });
+
+  it("un obligatorio sin su columna en la hoja es FIELD_REQUIRED", () => {
+    const { dormitorios: _dormitorios, ...row } = VALID_ROW;
+    expect(errorsOf(row)).toEqual([
+      expect.objectContaining({ column: "dormitorios", code: "FIELD_REQUIRED" }),
+    ]);
+  });
+});
+
 describe("buildListingValidator · columnas desconocidas", () => {
   it("guarda sus valores no vacíos en attributes._extra, como texto", () => {
     const data = validRow({ ...VALID_ROW, " Vista al mar ": "Sí", Comentario: "", Codigo: 42 });
@@ -195,7 +244,52 @@ describe("buildListingValidator · columnas desconocidas", () => {
     expect(validator.checkHeaders(headers)).toEqual({
       unknown: ["Vista al mar"],
       missing: ["dormitorios"],
+      duplicated: [],
     });
+  });
+
+  it("ignora los encabezados vacíos (celdas sobrantes de Excel) en checkHeaders y validate", () => {
+    expect(validator.checkHeaders([...Object.keys(VALID_ROW), "", "  "])).toEqual({
+      unknown: [],
+      missing: [],
+      duplicated: [],
+    });
+    expect(validRow({ ...VALID_ROW, "": "basura", " ": 3 }).attributes._extra).toBeUndefined();
+  });
+
+  it("con encabezados repetidos vale el primero, y checkHeaders los informa", () => {
+    expect(validator.checkHeaders(["precio", " Precio "]).duplicated).toEqual([" Precio "]);
+    expect(validRow({ ...VALID_ROW, " PRECIO ": "1" }).core.priceAmount).toBe(5800);
+  });
+
+  it("guarda en _extra un encabezado como __proto__ y descarta celdas que no son RawCell", () => {
+    const row = { ...VALID_ROW, ["__proto__"]: "valor", Rara: { richText: [] } };
+    const extra = validRow(row as unknown as RawListingRow).attributes._extra;
+    expect(Object.entries(extra ?? {})).toEqual([["__proto__", "valor"]]);
+  });
+});
+
+describe("buildListingValidator · isIgnored", () => {
+  it("ignora la fila EJEMPLO (sin importar mayúsculas) y las de estado Borrador", () => {
+    expect(validator.isIgnored({ ...VALID_ROW, id_propiedad: "EJEMPLO" })).toBe(true);
+    expect(validator.isIgnored({ ...VALID_ROW, id_propiedad: " ejemplo " })).toBe(true);
+    expect(validator.isIgnored({ ...VALID_ROW, estado_carga: "borrador" })).toBe(true);
+    expect(validator.isIgnored(VALID_ROW)).toBe(false);
+  });
+
+  it("usa las columnas resueltas: sirve aunque el corredor cambie el encabezado", () => {
+    const renamed = buildListingValidator([
+      ...DEFS,
+      def("id_propiedad", "text", {
+        brokerId: "b1",
+        required: true,
+        isCore: true,
+        sourceColumn: "Código",
+      }),
+    ]);
+    const { id_propiedad: _ref, ...rest } = VALID_ROW;
+    expect(renamed.isIgnored({ ...rest, codigo: "EJEMPLO" })).toBe(true);
+    expect(renamed.isIgnored({ ...rest, codigo: "P001" })).toBe(false);
   });
 });
 
@@ -211,6 +305,37 @@ describe("buildListingValidator · definiciones desde la base de datos", () => {
     expect(withNewField.validate(VALID_ROW)).toMatchObject({
       ok: false,
       errors: [{ column: "Vista al mar", code: "FIELD_REQUIRED" }],
+    });
+  });
+
+  it("un campo de tipo date se normaliza a ISO", () => {
+    const withDate = buildListingValidator([...DEFS, def("fecha_entrega", "date")]);
+    const result = withDate.validate({ ...VALID_ROW, fecha_entrega: "15-11-2026" });
+    expect(result).toMatchObject({
+      ok: true,
+      data: { attributes: { fecha_entrega: "2026-11-15" } },
+    });
+  });
+
+  it("notas_internas va a core y nunca a attributes (no llega a la IA)", () => {
+    const data = validRow(VALID_ROW);
+    expect(data.core.internalNotes).toBe("Visitas en la tarde");
+    expect(Object.keys(data.attributes)).not.toContain("notas_internas");
+  });
+
+  it("las opciones mapeadas del corredor se comparan sin mayúsculas ni tildes", () => {
+    const lower = buildListingValidator([
+      ...DEFS,
+      def("moneda", "enum", {
+        brokerId: "b1",
+        required: true,
+        isCore: true,
+        options: ["uf", "clp"],
+      }),
+    ]);
+    expect(lower.validate({ ...VALID_ROW, moneda: "UF" })).toMatchObject({
+      ok: true,
+      data: { core: { priceCurrency: "UF" } },
     });
   });
 
@@ -237,11 +362,11 @@ describe("buildListingValidator · definiciones inválidas", () => {
     try {
       buildListingValidator(defs);
     } catch (error) {
-      expect(isAppError(error) && error.code).toBe("FIELD_DEFINITIONS_INVALID");
+      expect(isAppError(error) && error.code).toBe("FIELD_CONFIG_INVALID");
       expect(isAppError(error) && error.details).toMatchObject({ key });
       return;
     }
-    throw new Error("se esperaba FIELD_DEFINITIONS_INVALID");
+    throw new Error("se esperaba FIELD_CONFIG_INVALID");
   };
 
   it("falta un obligatorio del modelo (por ejemplo, el corredor desactivó precio)", () => {
@@ -259,6 +384,32 @@ describe("buildListingValidator · definiciones inválidas", () => {
     );
   });
 
+  it("un destino fijo redefinido por el corredor como atributo (is_core = false)", () => {
+    expectInvalid(
+      [...DEFS, def("notas_internas", "text", { brokerId: "b1", isCore: false })],
+      "notas_internas",
+    );
+  });
+
+  it("una opción de un campo mapeado sin equivalente (operacion con Permuta)", () => {
+    expectInvalid(
+      [
+        ...DEFS,
+        def("operacion", "enum", {
+          brokerId: "b1",
+          required: true,
+          isCore: true,
+          options: ["Venta", "Arriendo", "Permuta"],
+        }),
+      ],
+      "operacion",
+    );
+  });
+
+  it.each(["_extra", "__proto__", "Con Espacios"])("una clave con formato inválido: %s", (key) => {
+    expectInvalid([...DEFS, def(key, "text")], key);
+  });
+
   it("un enum sin opciones", () => {
     expectInvalid([...DEFS, def("orientacion", "enum")], "orientacion");
   });
@@ -268,7 +419,7 @@ describe("buildListingValidator · definiciones inválidas", () => {
       buildListingValidator([...DEFS, def("piezas", "number", { sourceColumn: "Dormitorios" })]);
       throw new Error("se esperaba un error");
     } catch (error) {
-      expect(isAppError(error) && error.code).toBe("FIELD_DEFINITIONS_INVALID");
+      expect(isAppError(error) && error.code).toBe("FIELD_CONFIG_INVALID");
     }
   });
 });

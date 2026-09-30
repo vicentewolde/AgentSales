@@ -41,6 +41,9 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **Antes de F1-T04:** el `cause` de `DB_UNAVAILABLE` (un `DrizzleQueryError`) lleva los `params` de la consulta en su mensaje. Con listings pueden ser datos de clientes (notas internas, dirección): decidir cómo se redactan en los logs.
+- **F1-T04:**
+  - `listings.category` es `NOT NULL` y `REAL_ESTATE_CATEGORY` vive en `db`: core necesita su propia constante o tupla de categorías.
+  - Fijar en el spec qué entra en `source_hash`: solo `core` y `attributes`, o también `control`.
 - **F1-T03:**
   - La hoja Instrucciones de la plantilla todavía marca `carpeta_medios` como obligatoria; el seed la deja opcional (spec §4.3). Actualizar el xlsx.
   - `@agentsales/db` va solo como `devDependency` de `packages/importers`, por `TEMPLATE_COLUMNS` en los tests.
@@ -59,7 +62,15 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
     - listas validadas contra `options`.
   - `CORE_FIELD_TARGETS` asigna los destinos fijos. `tipo` se guarda como etiqueta (`Departamento`).
   - `publicar_en` gana sus opciones en el seed; re-sembrado en Neon.
-  - La configuración inválida lanza `FIELD_DEFINITIONS_INVALID` al construir el validador.
+  - La configuración inválida lanza `FIELD_CONFIG_INVALID` al construir el validador.
+  - Correcciones de `/revisar`:
+    - Una columna opcional ausente ya no hace fallar la fila.
+    - Una `key` de destino fijo debe ser `is_core`, así `notas_internas` no llega a `attributes`.
+    - Los encabezados vacíos se ignoran y los repetidos se informan.
+    - `isIgnored` filtra `EJEMPLO` y `Borrador` con las columnas resueltas.
+    - `fieldIssueSchema` en zod.
+    - `precio` con tope por `numeric(14,2)`.
+    - Las celdas que no son `RawCell` son `FIELD_VALUE_INVALID`.
 - 2026-09-30: **F1-T01.**
   - Migración `0001`, aplicada en Neon.
   - 36 definiciones globales sembradas desde la plantilla, con tipos y obligatorios del diccionario de la hoja Instrucciones. `carpeta_medios` es opcional, según §4.3 del spec.

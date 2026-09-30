@@ -250,10 +250,23 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 ## Validador de filas (`buildListingValidator`, core)
 
 - Se construye desde las definiciones (ADR-0006): agregar un campo es insertar una fila, sin cambiar código.
-- **Configuración inválida:** si con las definiciones no se puede armar un `listing`, lanza `FIELD_DEFINITIONS_INVALID` al construirse, una vez por carga. Pasa si falta `id_propiedad`, `precio` o `moneda`; si hay un `is_core` sin destino en `CORE_FIELD_TARGETS`; si un destino tiene otro tipo; si hay un enum sin opciones, o si dos campos leen la misma columna.
-- **Por fila:** `validate(row)` normaliza cada celda según su tipo y acumula los errores con columna, código y motivo, sin detenerse en el primero.
+- **Configuración inválida:** si con las definiciones no se puede armar un `listing`, lanza `FIELD_CONFIG_INVALID` al construirse, una vez por carga. Pasa en estos casos:
+  - falta `id_propiedad`, `precio` o `moneda`;
+  - una `key` no está en snake_case (`_extra` queda reservada);
+  - un `is_core` no tiene destino en `CORE_FIELD_TARGETS`, o una `key` de destino fijo no es `is_core` (así `notas_internas` nunca termina en `attributes`);
+  - un destino tiene otro tipo;
+  - una opción de un campo mapeado (`operacion`, `moneda`, `estado_carga`) no tiene equivalente;
+  - hay un enum sin opciones;
+  - dos campos leen la misma columna.
+- **Por fila:** `validate(row)` empareja los encabezados sin mayúsculas, tildes ni espacios extra, y normaliza cada celda según su tipo.
+  - Una columna opcional ausente no hace fallar la fila, y una obligatoria ausente es `FIELD_REQUIRED`.
+  - Acumula los errores (`FieldIssue`: columna, `key`, código y motivo) sin detenerse en el primero. La fila la agrega quien llama.
+  - `fieldIssueSchema` es el contrato zod de ese error, porque viaja en el reporte y por HTTP.
 - **Salida:** `core` (columnas de `listings`), `control` (`estado_carga`, `carpeta_medios`, `foto_portada`) y `attributes` (con `_extra` para las columnas desconocidas).
-- **Encabezados:** `checkHeaders(headers)` los revisa una vez por hoja.
+- **Encabezados y filas ignoradas:**
+  - `checkHeaders(headers)` revisa los encabezados una vez por hoja: desconocidos, obligatorios faltantes y repetidos. Ignora los vacíos.
+  - `isIgnored(row)` marca la fila `EJEMPLO` y las de `Borrador`.
+- **`schema`:** es el esquema zod por `key` que usa `validate`. No lo reemplaza, porque no empareja columnas ni arma `_extra`.
 - Es código puro: sin red, base ni archivos.
 
 ## Contrato de almacenamiento de archivos
