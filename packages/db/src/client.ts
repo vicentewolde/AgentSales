@@ -1,8 +1,15 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import pg from "pg";
 import * as schema from "./schema.js";
 
 export type Database = NodePgDatabase<typeof schema> & { $client: pg.Pool };
+
+/**
+ * Cualquier base con el esquema, sin importar el driver: node-postgres en las apps y PGlite en los
+ * tests. Los repositorios y el seed la reciben para poder probarse sin Neon (spec F1, D4).
+ */
+export type SchemaDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 export type DbClient = {
   db: Database;

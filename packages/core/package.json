@@ -8,6 +8,11 @@
       "@agentsales/source": "./src/index.ts",
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
+    },
+    "./testing": {
+      "@agentsales/source": "./src/testing/index.ts",
+      "types": "./dist/src/testing/index.d.ts",
+      "default": "./dist/src/testing/index.js"
     }
   },
   "scripts": {

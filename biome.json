@@ -21,6 +21,16 @@
       "preset": "recommended",
       "suspicious": {
         "noExplicitAny": "error"
+      },
+      "style": {
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "@agentsales/core/testing": "Los dobles de prueba de @agentsales/core/testing solo se importan desde tests (*.test.ts o test/)."
+            }
+          }
+        }
       }
     }
   },
@@ -83,7 +93,13 @@
       }
     },
     {
-      "includes": ["packages/db/src/**", "packages/storage/src/**", "!packages/*/src/scripts/**"],
+      "includes": [
+        "packages/db/src/**",
+        "packages/storage/src/**",
+        "!packages/*/src/scripts/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -91,10 +107,21 @@
               "level": "error",
               "options": {
                 "paths": {
-                  "@agentsales/config": "Solo los puntos de entrada (apps y src/scripts) cargan el entorno; los paquetes reciben opciones concretas (createDb, createR2Storage)."
+                  "@agentsales/config": "Solo los puntos de entrada (apps y src/scripts) cargan el entorno; los paquetes reciben opciones concretas (createDb, createR2Storage).",
+                  "@agentsales/core/testing": "Los dobles de prueba de @agentsales/core/testing solo se importan desde tests (*.test.ts o test/)."
                 }
               }
             }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/test/**", "!packages/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
           }
         }
       }

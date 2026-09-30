@@ -111,11 +111,18 @@ Una subruta (por ejemplo `./contracts` en `apps/api` o `./testing` en `packages/
 
 - pnpm 11 exige una antigüedad mínima a cada versión publicada (`minimumReleaseAge`). **No se agregan excepciones** (`minimumReleaseAgeExclude`): si una versión es demasiado nueva, se usa la anterior.
 - Los scripts de instalación de dependencias se aprueban uno a uno en `allowBuilds` de `pnpm-workspace.yaml`, con un comentario del motivo.
+- **Biome:** un override reemplaza las opciones de `noRestrictedImports` en vez de sumarlas. Por eso `@agentsales/core/testing` se repite en cada override que restringe imports. Además, el override de tests (el último) apaga la regla, así que un override nuevo que restrinja imports va **antes** que él.
 
 ## Tests
 
 - **core:** tests unitarios obligatorios (máquina de estados, validaciones, formateo de precios).
 - **Adaptadores externos:** tests de contrato con respuestas grabadas (msw). **Ningún test llama a APIs reales ni publica.**
+- **Repositorios (`packages/db`):**
+  - Se prueban contra Postgres en memoria con PGlite (`createTestDatabase()` de `packages/db/test/pglite.ts`, que aplica todas las migraciones), sin Neon ni red.
+  - Reciben `SchemaDatabase` y no usan nada propio del driver (`$client`, `rowCount`, el tipo de resultado de `execute` de pg).
+  - Los casos de uso se prueban con los repositorios en memoria de `@agentsales/core/testing`, que solo se importa desde tests (Biome).
+  - Los dos repositorios se prueban con los mismos fixtures, para que tengan la misma semántica.
+  - Cada `describe` usa sus propios datos (otra categoría u otras filas), para que se pueda correr solo.
 - **Importadores:** fixtures en `packages/importers/test/fixtures/` (Excel pequeños, incluidos casos con errores).
 - **Panel (React):** tests de componentes con Testing Library en jsdom, activado por archivo con `// @vitest-environment jsdom`. Nada de red: el acceso a la API se inyecta por contexto (hoy `HealthFetcherContext`) o se simula `fetch`. El router en memoria acepta la ruta inicial (`initialPath`).
 - **LLM:** en los tests se usa el proveedor `fake`. Evaluación de prompts aparte con `pnpm eval:content` (fase 2).

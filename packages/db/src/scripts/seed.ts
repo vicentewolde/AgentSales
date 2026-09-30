@@ -12,9 +12,9 @@ const { db, close } = createDb(env.DATABASE_URL, {
 });
 
 try {
-  const { brokerId } = await seed(db);
+  const result = await seed(db);
   const [total] = await db.select({ value: count() }).from(brokers);
-  logger.info({ brokerId, brokers: total?.value }, "seed aplicado");
+  logger.info({ ...result, brokers: total?.value }, "seed aplicado");
 } catch (error) {
   logger.error({ err: error }, "falló el seed");
   process.exitCode = 1;
