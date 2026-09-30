@@ -61,7 +61,7 @@ erDiagram
 | label | text | Texto visible |
 | type | enum `field_type` | `text`, `number`, `enum`, `boolean`, `date`, `url`, `list` |
 | required | boolean | |
-| options | jsonb null | Opciones de `enum` |
+| options | jsonb null | Opciones de `enum`, o de cada elemento de un `list` (ej. `publicar_en`) |
 | source_column | text | Encabezado en el Excel |
 | is_core | boolean | Mapea a una columna fija de `listings` en vez de `attributes` |
 | sort_order | int | |
