@@ -1,4 +1,5 @@
 import { createLogger, loadEnv, loadEnvFile } from "@agentsales/config";
+import { createErrorThrottle } from "./error-throttle.js";
 import { JOBS } from "./jobs/index.js";
 import { registerJobs } from "./jobs/registry.js";
 import { createBoss } from "./queue.js";
@@ -15,7 +16,9 @@ const logger = createLogger({
 });
 
 const boss = createBoss(env.DATABASE_URL, "worker");
-boss.on("error", (error) => logger.error({ err: error }, "error de pg-boss"));
+// Sin conexión, pg-boss reintenta cada 1–2 s y emite un error por intento: se resumen.
+const bossErrors = createErrorThrottle(logger, "error de pg-boss");
+boss.on("error", (error) => bossErrors.report(error));
 boss.on("warning", (warning) => logger.warn({ warning }, "aviso de pg-boss"));
 
 let shuttingDown = false;
@@ -25,6 +28,7 @@ async function shutdown(signal: string): Promise<void> {
     return;
   }
   shuttingDown = true;
+  bossErrors.dispose();
   logger.info({ signal }, "apagando el worker: esperando los jobs en curso");
   const force = setTimeout(() => {
     logger.error("el apagado tardó demasiado; se fuerza la salida");

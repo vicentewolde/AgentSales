@@ -21,12 +21,12 @@ Sistema que toma avisos (propiedades hoy, productos después) con fotos y videos
 | `docs/adr/` | Decisiones tomadas; no las contradigas sin un ADR nuevo |
 
 ## Stack (resumen; detalle en 05-convenciones)
-Node 26 · pnpm workspaces · TypeScript strict · Hono (+ cliente RPC `hc`) · React + Vite + Tailwind + TanStack Query · Drizzle + Neon (Postgres) · Cloudflare R2 (archivos, API S3) · pg-boss · sharp · ffmpeg · Playwright · zod · Vitest · Biome · pino.
+Node 26 · pnpm 11 workspaces · TypeScript 7 strict · Hono (+ cliente RPC `hc`) · React + Vite + Tailwind + TanStack Query + React Router · Drizzle + `pg` + Neon (Postgres) · Cloudflare R2 (archivos, API S3) · pg-boss · commander + picocolors (CLI) · sharp · ffmpeg · Playwright · zod · Vitest · Biome · pino.
 
 ## Estructura
 ```
 apps/     api · worker · cli · web
-packages/ config · core · db · storage · importers · llm · media · templates · publishers
+packages/ config · core · db · storage  (desde F1+: importers · llm · media · templates · publishers)
 docs/     documentación, specs y ADRs
 data/     plantillas (en git) y muestras (fuera de git)
 ```
@@ -34,14 +34,18 @@ data/     plantillas (en git) y muestras (fuera de git)
 
 ## Comandos
 ```bash
-pnpm dev            # api + worker + web
-pnpm check          # lint + typecheck + tests (obligatorio antes de commit)
-pnpm test           # solo tests
-pnpm db:generate    # generar migración tras cambiar el esquema
-pnpm db:migrate     # aplicar migraciones
-pnpm db:seed        # seeds idempotentes
-pnpm storage:check  # verifica acceso al bucket de R2
-pnpm cli doctor     # salud del entorno
+pnpm dev                 # api + worker + web (apágalo al terminar: mantiene Neon despierto)
+pnpm check               # lint + typecheck + tests (obligatorio antes de commit)
+pnpm lint | pnpm format  # Biome (revisar | corregir)
+pnpm typecheck           # tsc -b
+pnpm test                # solo tests
+pnpm db:generate         # generar migración tras cambiar el esquema
+pnpm db:migrate          # aplicar migraciones
+pnpm db:seed             # seeds idempotentes
+pnpm storage:check       # verifica acceso al bucket de R2
+pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo)
+pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo)
+pnpm worker:ping         # encola un job de prueba (con el worker corriendo)
 ```
 (Los comandos existen desde F0; si alguno falta, la tarea que lo introduce debe crearlo.)
 

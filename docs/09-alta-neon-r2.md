@@ -68,4 +68,4 @@ Consecuencias prácticas:
 ## E. Verificación
 - `pnpm storage:check` (tarea F0-T04): sube, lee, prueba una URL prefirmada, comprueba que la misma URL sin firma se rechaza y borra un objeto de prueba en R2.
 - A mano, en el panel de Cloudflare → R2 → `agentsales-media` → Settings: "Public Development URL" (r2.dev) **deshabilitado** y sin dominios personalizados. `storage:check` no puede detectar un bucket público, porque el endpoint S3 siempre exige firma.
-- `pnpm cli doctor` (tarea F0-T07): revisa `.env`, base de datos y almacenamiento.
+- `pnpm -s cli doctor` (tarea F0-T07), con `pnpm dev` corriendo: revisa Node, `.env`, API, base de datos, almacenamiento, cola y herramientas.

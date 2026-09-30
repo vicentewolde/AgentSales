@@ -29,10 +29,10 @@ Contexto:
    - `docs/ESTADO.md`: fase siguiente, tabla de progreso reiniciada y siguiente paso `/fase-plan N+1`.
    - `README.md`: actualiza la sección de puesta en marcha si cambió.
 
-6. **Tag.** Propón los comandos y ejecútalos solo con permiso:
+6. **Tag.** Los cambios del cierre entran a `main` por PR (la rama está protegida y exige el check `check` de la CI). Después del merge, desde `main` actualizado, propón los comandos y ejecútalos solo con permiso, con la versión del roadmap (F0 → `v0.0.1`, F1 → `v0.1.0`, …):
    ```bash
-   git tag -a vX.Y.0 -m "FN · <nombre>"
-   git push origin main --tags
+   git tag -a vX.Y.Z -m "FN · <nombre>"
+   git push origin vX.Y.Z
    ```
 
 7. **Retro breve.** Tres líneas: qué funcionó, qué no, y qué cambiar en la próxima fase. Si algo afecta la forma de trabajar, propón editar `CLAUDE.md` o las skills.
