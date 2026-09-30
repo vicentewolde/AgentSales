@@ -10,3 +10,4 @@ export {
   TERMINAL_PUBLICATION_STATUSES,
   transition,
 } from "./publication-state.js";
+export * from "./redact.js";

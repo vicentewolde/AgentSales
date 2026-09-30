@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { REDACTED, redactText } from "@agentsales/core";
 import {
   type Bindings,
   type ChildLoggerOptions,
@@ -9,20 +10,10 @@ import {
   pino,
 } from "pino";
 
-export const REDACTED = "[REDACTED]";
+export { REDACTED, redactText };
 
 /** Claves cuyo valor se oculta completo. */
 const SENSITIVE_KEY = /token|secret|password|authorization|key/i;
-/** Credenciales dentro de una URL: `postgresql://usuario:clave@host` → `postgresql://[REDACTED]@host`. */
-const URL_CREDENTIALS = /([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]+@/gi;
-/** Parámetros sensibles de una URL: `?access_token=…`, `X-Amz-Signature=…`, `api_key=…`. */
-const SENSITIVE_QUERY =
-  /([?&][^=&#\s]*(?:token|secret|password|key|signature|credential)[^=&#\s]*=)[^&#\s]+/gi;
-
-/** Oculta credenciales y parámetros sensibles de URLs dentro de un texto. */
-export function redactText(text: string): string {
-  return text.replace(URL_CREDENTIALS, `$1${REDACTED}@`).replace(SENSITIVE_QUERY, `$1${REDACTED}`);
-}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null) {

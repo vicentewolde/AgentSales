@@ -1,11 +1,10 @@
-import { redactText } from "@agentsales/config";
 import type {
   HealthCheckName,
   HealthCheckResult,
   HealthReport,
   PublishMode,
 } from "@agentsales/core";
-import { HEALTH_CHECK_NAMES } from "@agentsales/core";
+import { HEALTH_CHECK_NAMES, redactText } from "@agentsales/core";
 
 /** Resuelve si el servicio está sano; lanza si no. */
 export type HealthCheck = () => Promise<void>;
