@@ -42,20 +42,16 @@ Lee los docs que la tarea toca (modelo de datos, plataformas, convenciones, ADRs
 ## 4. Verificar
 - `pnpm check` debe pasar completo. Si falla, arréglalo; nunca desactives reglas ni tests para pasar.
 - Revisa uno por uno los criterios "Hecho cuando" de la tarea y demuestra cada uno (comando, salida o test).
-- **Simulación de la CI** antes de proponer el PR: en un clon limpio de la rama en el scratchpad, sin `.env`, `node_modules` ni artefactos de build locales (`*.tsbuildinfo`, `dist`). En F0 esto destapó los tipos de Node filtrados a la web, que la caché local ocultaba. Como clona lo commiteado, se corre después del commit (paso 6) y se repite si agregas commits. Cada paso corta si falla; no uses pipes (`| tail`, `| grep`) que oculten el código de salida:
-  ```bash
-  set -euo pipefail
-  clon="<scratchpad>/ci-<rama>"
-  rm -rf "$clon"
-  git clone --quiet --branch <rama> --single-branch "$(git rev-parse --show-toplevel)" "$clon"
-  cd "$clon"
-  pnpm install --frozen-lockfile
-  pnpm check
-  pnpm db:generate
-  test -z "$(git status --porcelain packages/db/drizzle)"
-  pnpm --filter @agentsales/web build
-  ```
-  Si `db:generate` deja cambios en `packages/db/drizzle`, falta una migración: genérala y commitéala en la rama.
+- **Simulación de la CI** antes de proponer el PR: en un clon limpio de la rama en el scratchpad, sin `.env`, `node_modules` ni artefactos de build locales (`*.tsbuildinfo`, `dist`). En F0 esto destapó los tipos de Node filtrados a la web, que la caché local ocultaba. Como clona lo commiteado, se corre después del commit (paso 6) y se repite si agregas commits. Cada paso corta si falla (`&&`). No uses pipes (`| tail`, `| grep`) que oculten el código de salida: la salida de cada paso va a su log y se lee después.
+  1. Clona en un directorio nuevo (sufijo `-2`, `-3`… si repites; no uses `rm -rf`):
+     ```bash
+     git clone --quiet --branch <rama> --single-branch <raíz-del-repo> <scratchpad>/ci-<rama>
+     ```
+  2. Desde el clon, corre los pasos de `.github/workflows/ci.yml` en orden:
+     ```bash
+     pnpm install --frozen-lockfile > ../ci-install.log 2>&1 && echo "install OK" && pnpm check > ../ci-check.log 2>&1 && echo "check OK" && pnpm db:generate > ../ci-gen.log 2>&1 && test -z "$(git status --porcelain packages/db/drizzle)" && echo "db:generate sin cambios OK" && pnpm --filter @agentsales/web build > ../ci-build.log 2>&1 && echo "web build OK"
+     ```
+  3. Si falta algún `OK`, lee el log de ese paso. Si `db:generate` deja cambios en `packages/db/drizzle`, falta una migración: genérala y commitéala en la rama.
 
 ## 5. Documentar
 - Actualiza los docs afectados si el comportamiento o los contratos cambiaron.
