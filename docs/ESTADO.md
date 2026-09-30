@@ -18,7 +18,7 @@
 | F0-T06 apps/worker | ✅ terminada | [#6](https://github.com/vicentewolde/AgentSales/pull/6) |
 | F0-T07 apps/cli | ✅ terminada | [#7](https://github.com/vicentewolde/AgentSales/pull/7) |
 | F0-T08 apps/web | ✅ terminada | [#8](https://github.com/vicentewolde/AgentSales/pull/8) |
-| F0-T09 CI | 🔨 en curso | |
+| F0-T09 CI | 🔨 en curso | [#9](https://github.com/vicentewolde/AgentSales/pull/9) |
 | F0-T10 Cierre | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
