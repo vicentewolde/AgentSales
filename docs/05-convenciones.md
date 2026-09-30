@@ -101,6 +101,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 - Sin la condición, Node cae **en silencio** a `dist/`, que puede estar viejo. Si un cambio "no se ve", revisa que la herramienta tenga la condición.
 - En producción se usa `dist/`, que genera `tsc -b`.
 - Las dependencias internas se declaran como `"@agentsales/<nombre>": "workspace:*"`.
+- Los scripts no se llaman como comandos propios de pnpm (`ping`, `test` de un filtro, `install`…): `pnpm --filter x ping` ejecuta el comando de pnpm, no el script. Se usan nombres como `job:ping` y se invocan con `pnpm --filter x run <script>`.
 - Los scripts de paquete que ejecutan TypeScript usan `NODE_OPTIONS=--conditions=@agentsales/source tsx …` (y lo mismo para `drizzle-kit`).
 
 ## Dependencias y pnpm

@@ -1,0 +1,18 @@
+{
+  "name": "@agentsales/worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "NODE_OPTIONS=--conditions=@agentsales/source tsx watch src/worker.ts",
+    "start": "node dist/src/worker.js",
+    "job:ping": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ping.ts"
+  },
+  "dependencies": {
+    "@agentsales/config": "workspace:*",
+    "@agentsales/core": "workspace:*",
+    "@agentsales/db": "workspace:*",
+    "pg-boss": "12.35.0"
+  }
+}

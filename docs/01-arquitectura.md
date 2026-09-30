@@ -61,6 +61,7 @@ flowchart LR
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
 - Core define **puertos** (interfaces): `ListingRepository`, `MediaStorage`, `LLMProvider`, `Publisher`, `Importer`, `JobQueue`.
+- Cola (ADR-0005): en F0 el adaptador de pg-boss vive en `apps/worker/src/queue.ts`, porque solo lo usan el worker y su script de prueba. En F2, cuando la API tenga que encolar, se extrae a `packages/queue` implementando `JobQueue`. La API no arranca pg-boss: su check de `/health` solo consulta que exista el esquema `pgboss` (`checkQueueSchema` de `@agentsales/db`).
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
 

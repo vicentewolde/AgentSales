@@ -16,7 +16,8 @@
     "db:generate": "pnpm --filter @agentsales/db generate",
     "db:migrate": "pnpm --filter @agentsales/db migrate",
     "db:seed": "pnpm --filter @agentsales/db seed",
-    "storage:check": "pnpm --filter @agentsales/storage check"
+    "storage:check": "pnpm --filter @agentsales/storage check",
+    "worker:ping": "pnpm --filter @agentsales/worker run job:ping"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
