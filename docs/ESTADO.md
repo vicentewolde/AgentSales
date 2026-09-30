@@ -24,7 +24,6 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 ## Bloqueos y pendientes del operador
 - [ ] Preparar las 3 propiedades de muestra (necesarias para F1; ver "Antes de F1" en `docs/07-checklist-cuentas.md`)
 - [ ] Iniciar el trámite de la app de Meta (lento, en paralelo; se usa en F3)
-- [ ] Decidir la licencia del repo ahora que es público (sin `LICENSE` quedan todos los derechos reservados)
 
 ## Decisiones pendientes para `/fase-plan 1`
 - **ADR-0011:** dónde viven los contratos HTTP compartidos. Propuesta: entidades en `core`; salud, cuerpo de error, parámetros y formularios en `@agentsales/api/contracts`. Hoy `errorBodySchema` está duplicado en la web y la CLI.
@@ -47,6 +46,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 ## Notas de la última sesión
 - 2026-09-30: **F0 cerrada.** Monorepo con `core`, `config`, `db` (Neon, migración `0000_init`), `storage` (R2), API (`/health`), worker (pg-boss), CLI (`doctor`/`status`) y panel. CI en GitHub Actions. 321 tests. Detalle en `CHANGELOG.md` `[0.0.1]` y en el spec F0.
 - 2026-09-30: demo de F0 confirmada por el operador. Arreglo derivado: el worker resume los errores repetidos de pg-boss sin conexión.
+- 2026-09-30: el operador decide dejar el repo **sin licencia** (todos los derechos reservados).
 - 2026-09-30: el repo `vicentewolde/AgentSales` es **público**, y `main` tiene protección de rama: check `check` obligatorio, rama al día, aplica también a administradores, sin force push. El historial se revisó antes de publicarlo y no tiene secretos.
 - **Recordatorios de operación:**
   - `pnpm dev` levanta API, worker y panel; hay que apagarlo al terminar, porque mantiene Neon despierto.
