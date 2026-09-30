@@ -24,6 +24,9 @@
     },
     {
       "path": "./apps/worker"
+    },
+    {
+      "path": "./apps/cli"
     }
   ]
 }
