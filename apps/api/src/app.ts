@@ -1,16 +1,16 @@
-import type { Logger } from "@agentsales/config";
-import type { PublishMode } from "@agentsales/core";
+import type { HealthCheckName, PublishMode } from "@agentsales/core";
 import { Hono } from "hono";
 import { createErrorHandler, notFoundHandler } from "./errors.js";
-import { type CheckName, type HealthCheck, runHealth } from "./health.js";
+import { type HealthCheck, runHealth } from "./health.js";
+import type { AppLogger } from "./logger.js";
 import { requestLogger } from "./request-logger.js";
 import { csrfGuard, hostGuard, type LocalAccess } from "./security.js";
 
 export type AppDeps = {
-  checks: Record<CheckName, HealthCheck>;
+  checks: Record<HealthCheckName, HealthCheck>;
   publishMode: PublishMode;
   version: string;
-  logger: Logger;
+  logger: AppLogger;
   /** Hosts y orígenes locales permitidos (`localAccess(API_PORT, WEB_PORT)`). */
   access: LocalAccess;
   /** Solo para tests; por defecto `DEFAULT_CHECK_TIMEOUT_MS`. */

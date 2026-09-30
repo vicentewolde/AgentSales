@@ -1,11 +1,11 @@
 import { Writable } from "node:stream";
 import { createLogger } from "@agentsales/config";
+import type { HealthReport } from "@agentsales/core";
 import { AppError } from "@agentsales/core";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
 import { type AppDeps, createApp } from "./app.js";
 import type { ErrorBody } from "./errors.js";
-import type { HealthReport } from "./health.js";
 
 const silentLogger = createLogger(
   { level: "silent" },

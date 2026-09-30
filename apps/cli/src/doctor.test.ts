@@ -1,5 +1,5 @@
-import type { HealthReport } from "@agentsales/api";
 import { loadEnv } from "@agentsales/config";
+import type { HealthReport } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import type { RunCommand } from "./checks.js";
 import { createColors } from "./colors.js";

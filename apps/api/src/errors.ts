@@ -1,8 +1,8 @@
-import type { Logger } from "@agentsales/config";
 import { isAppError } from "@agentsales/core";
 import type { Context, ErrorHandler, NotFoundHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import type { AppLogger } from "./logger.js";
 
 export type ErrorBody = { error: { code: string; message: string } };
 
@@ -43,7 +43,7 @@ export function errorJson(
  * - un 500 responde un mensaje genérico (el `code` sí se mantiene): el detalle queda en el log;
  * - un error que no es `AppError` responde `500 INTERNAL_ERROR`.
  */
-export function createErrorHandler(logger: Logger): ErrorHandler {
+export function createErrorHandler(logger: AppLogger): ErrorHandler {
   return (error, c) => {
     if (isAppError(error)) {
       const status = httpStatusFor(error.code);

@@ -1,20 +1,14 @@
 import { redactText } from "@agentsales/config";
-import type { PublishMode } from "@agentsales/core";
-
-export const CHECK_NAMES = ["db", "storage", "queue"] as const;
-export type CheckName = (typeof CHECK_NAMES)[number];
+import type {
+  HealthCheckName,
+  HealthCheckResult,
+  HealthReport,
+  PublishMode,
+} from "@agentsales/core";
+import { HEALTH_CHECK_NAMES } from "@agentsales/core";
 
 /** Resuelve si el servicio está sano; lanza si no. */
 export type HealthCheck = () => Promise<void>;
-
-export type CheckResult = { ok: boolean; latencyMs: number; error?: string };
-
-export type HealthReport = {
-  status: "ok" | "degraded";
-  publishMode: PublishMode;
-  checks: Record<CheckName, CheckResult>;
-  version: string;
-};
 
 /** Tope por check: la base ya reintenta con 10 s por intento; nada debe colgar `/health`. */
 export const DEFAULT_CHECK_TIMEOUT_MS = 25_000;
@@ -27,7 +21,7 @@ function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-async function runCheck(check: HealthCheck, timeoutMs: number): Promise<CheckResult> {
+async function runCheck(check: HealthCheck, timeoutMs: number): Promise<HealthCheckResult> {
   const start = performance.now();
   const latency = () => Math.round(performance.now() - start);
   try {
@@ -41,19 +35,19 @@ async function runCheck(check: HealthCheck, timeoutMs: number): Promise<CheckRes
 
 /** Corre los checks en paralelo. `degraded` si alguno falla; nunca lanza. */
 export async function runHealth(options: {
-  checks: Record<CheckName, HealthCheck>;
+  checks: Record<HealthCheckName, HealthCheck>;
   publishMode: PublishMode;
   version: string;
   timeoutMs?: number;
 }): Promise<HealthReport> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_CHECK_TIMEOUT_MS;
   const results = await Promise.all(
-    CHECK_NAMES.map(
+    HEALTH_CHECK_NAMES.map(
       async (name) => [name, await runCheck(options.checks[name], timeoutMs)] as const,
     ),
   );
-  // `results` recorre CHECK_NAMES completo, así que el objeto tiene todas las claves.
-  const checks = Object.fromEntries(results) as Record<CheckName, CheckResult>;
+  // `results` recorre HEALTH_CHECK_NAMES completo, así que el objeto tiene todas las claves.
+  const checks = Object.fromEntries(results) as Record<HealthCheckName, HealthCheckResult>;
   return {
     status: results.every(([, result]) => result.ok) ? "ok" : "degraded",
     publishMode: options.publishMode,
