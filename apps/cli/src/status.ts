@@ -1,4 +1,4 @@
-import type { HealthReport } from "@agentsales/api";
+import type { HealthReport } from "@agentsales/core";
 import type { HealthFetcher } from "./api-client.js";
 import { apiHint } from "./checks.js";
 import type { Colors } from "./colors.js";

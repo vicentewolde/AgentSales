@@ -1,5 +1,5 @@
-import type { AppType, HealthReport } from "@agentsales/api";
-import { PUBLISH_MODES } from "@agentsales/core";
+import type { AppType } from "@agentsales/api";
+import { type HealthReport, healthReportSchema } from "@agentsales/core";
 import { hc } from "hono/client";
 import { z } from "zod";
 
@@ -21,20 +21,6 @@ export class ApiCallError extends Error {
 }
 
 export type HealthFetcher = () => Promise<HealthReport>;
-
-const checkSchema = z.object({
-  ok: z.boolean(),
-  latencyMs: z.number(),
-  error: z.string().optional(),
-});
-
-// La respuesta viene de la red (quizás de otro servicio en el mismo puerto): se valida.
-const healthSchema = z.object({
-  status: z.enum(["ok", "degraded"]),
-  publishMode: z.enum(PUBLISH_MODES),
-  checks: z.object({ db: checkSchema, storage: checkSchema, queue: checkSchema }),
-  version: z.string(),
-});
 
 const errorBodySchema = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
 
@@ -81,7 +67,8 @@ export function createHealthFetcher(port: number, timeoutMs = API_TIMEOUT_MS): H
           )
         : new ApiCallError(`la API respondió ${response.status}`);
     }
-    const parsed = healthSchema.safeParse(body);
+    // La respuesta viene de la red (quizás de otro servicio en el mismo puerto): se valida.
+    const parsed = healthReportSchema.safeParse(body);
     if (!parsed.success) {
       throw new ApiCallError(
         "respuesta inesperada de /health: ¿hay otro servicio en ese puerto?",

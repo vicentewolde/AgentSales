@@ -1,6 +1,5 @@
-import type { HealthReport } from "@agentsales/api";
 import type { Env, EnvIssue } from "@agentsales/config";
-import type { PublishMode } from "@agentsales/core";
+import type { HealthReport, PublishMode } from "@agentsales/core";
 import { ApiCallError, type HealthFetcher } from "./api-client.js";
 
 export type Level = "ok" | "warn" | "error";

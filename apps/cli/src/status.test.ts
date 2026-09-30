@@ -1,4 +1,4 @@
-import type { HealthReport } from "@agentsales/api";
+import type { HealthReport } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import { createColors } from "./colors.js";
 import { renderPublishMode, runStatus } from "./status.js";
