@@ -44,3 +44,5 @@ Instagram exige que los medios estén en una **URL accesible desde internet**, a
 
 ## Seguimiento
 - 2026-09-29 (F0-T05): además del worker, el panel sondeando `/health` mantiene Neon despierto (cada sondeo hace `select 1`). El sondeo es de 30–60 s y solo con la pestaña visible (spec F0, T08).
+- 2026-09-29 (F0-T04): el cliente convierte `sslmode=require` en `verify-full` (`toPgConnectionString`), que verifica el certificado de Neon; pg-boss usa la misma conexión.
+- 2026-09-29 (F0-T06): con el worker apagado para ahorrar CU-horas, los jobs con `startAfter` vencido corren al arrancar y los cron del período apagado se pierden. Afecta al calendario (F6): ver riesgos en su spec.

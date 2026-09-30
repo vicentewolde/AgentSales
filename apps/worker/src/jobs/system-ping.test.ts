@@ -14,7 +14,7 @@ function run(data: unknown) {
       },
     }),
   );
-  return { promise: systemPing(data, { jobId: "j1", logger }), lines };
+  return { promise: systemPing.run(data, { jobId: "j1", logger }), lines };
 }
 
 describe("systemPing", () => {
@@ -22,13 +22,15 @@ describe("systemPing", () => {
     vi.useRealTimers();
   });
 
-  it("registra pong con los datos recibidos", async () => {
+  it("no se reintenta y expira pronto", () => {
+    expect(systemPing.queue).toMatchObject({ retryLimit: 0, expireInSeconds: 60 });
+  });
+
+  it("registra pong con el mensaje recibido", async () => {
     const { promise, lines } = run({ message: "hola" });
     await promise;
 
-    expect(lines).toEqual([
-      expect.objectContaining({ msg: "pong", data: { message: "hola" }, delayMs: 0 }),
-    ]);
+    expect(lines).toEqual([expect.objectContaining({ msg: "pong", message: "hola", delayMs: 0 })]);
   });
 
   it("espera delayMs antes de responder", async () => {
@@ -42,17 +44,13 @@ describe("systemPing", () => {
     expect(lines[0]).toMatchObject({ msg: "pong", delayMs: 3000 });
   });
 
-  it.each([
-    [{ delayMs: 60_000 }, MAX_PING_DELAY_MS],
-    [{ delayMs: -5 }, 0],
-    [{ delayMs: "mucho" }, 0],
-    [null, 0],
-  ])("acota el retardo de %j a %i ms", async (data, expected) => {
-    vi.useFakeTimers();
-    const { promise, lines } = run(data);
-    await vi.advanceTimersByTimeAsync(MAX_PING_DELAY_MS);
-    await promise;
-
-    expect(lines[0]).toMatchObject({ delayMs: expected });
-  });
+  it.each([{ delayMs: MAX_PING_DELAY_MS + 1 }, { delayMs: -5 }, { delayMs: "mucho" }, null])(
+    "rechaza datos inválidos (%j) sin reintento",
+    async (data) => {
+      await expect(run(data).promise).rejects.toMatchObject({
+        code: "JOB_PAYLOAD_INVALID",
+        retriable: false,
+      });
+    },
+  );
 });

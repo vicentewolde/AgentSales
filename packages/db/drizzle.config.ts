@@ -6,4 +6,6 @@ export default defineConfig({
   dialect: "postgresql",
   schema: "./src/schema.ts",
   out: "./drizzle",
+  // El esquema `pgboss` lo administra pg-boss (lo crea y migra el worker): drizzle-kit no lo toca.
+  schemaFilter: ["public"],
 });

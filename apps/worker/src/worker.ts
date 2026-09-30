@@ -16,6 +16,7 @@ const logger = createLogger({
 
 const boss = createBoss(env.DATABASE_URL, "worker");
 boss.on("error", (error) => logger.error({ err: error }, "error de pg-boss"));
+boss.on("warning", (warning) => logger.warn({ warning }, "aviso de pg-boss"));
 
 let shuttingDown = false;
 
@@ -46,12 +47,20 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 try {
   await boss.start();
-  await registerJobs(boss, JOBS, logger);
-  logger.info({ jobs: Object.keys(JOBS) }, "worker listo");
-  logger.warn(
-    "Mientras el worker corre, Neon no se suspende y consume CU-horas: apágalo al terminar (ADR-0007).",
-  );
+  // Una señal durante el arranque: `shutdown` ya está deteniendo pg-boss; no se registra nada más.
+  const registered =
+    !shuttingDown && (await registerJobs(boss, JOBS, logger, { isStopping: () => shuttingDown }));
+  if (registered) {
+    logger.info({ jobs: JOBS.map((job) => job.name) }, "worker listo");
+    logger.warn(
+      "Mientras el worker corre, Neon no se suspende y consume CU-horas: apágalo al terminar (ADR-0007).",
+    );
+  }
 } catch (error) {
-  logger.error({ err: error }, "no se pudo arrancar el worker");
-  process.exit(1);
+  if (shuttingDown) {
+    logger.debug({ err: error }, "arranque interrumpido por el apagado");
+  } else {
+    logger.error({ err: error }, "no se pudo arrancar el worker");
+    process.exit(1);
+  }
 }

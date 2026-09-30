@@ -14,7 +14,7 @@
 | Paquetes | pnpm 11 workspaces (versión fija en `packageManager`) |
 | Lenguaje | TypeScript 7 `strict`, sin `any` (usar `unknown` y validar) — ADR-0009 |
 | Lint y formato | Biome 2 |
-| Validación | zod en todos los bordes: HTTP, archivos, IA, APIs externas, env |
+| Validación | zod en todos los bordes: HTTP, archivos, IA, APIs externas, env, datos de jobs |
 | API | Hono y su cliente RPC tipado (`hc`) para web y CLI |
 | ORM | Drizzle ORM + drizzle-kit (migraciones SQL versionadas) |
 | Base de datos | Postgres en Neon (plan gratis), conexión directa |

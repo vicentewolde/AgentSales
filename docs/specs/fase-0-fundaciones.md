@@ -53,7 +53,7 @@ Nombres de paquete: `@agentsales/<nombre>`. Binario de la CLI: `agentsales`.
 T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega la tarea que los introduce: `db:*` y `storage:check` en T04, `dev` en T05–T08 y `cli` en T07.
 
 ### 4.3 Contratos
-- `GET /health` → `200 { status: "ok"|"degraded", publishMode, checks: { db, storage, queue }, version }`. Cada check es `{ ok, latencyMs, error? }`. Responde 200 aunque haya checks fallidos (con `degraded`).
+- `GET /health` → `200 { status: "ok"|"degraded", publishMode, checks: { db, storage, queue }, version }`. Cada check es `{ ok, latencyMs, error? }`. Responde 200 aunque haya checks fallidos (con `degraded`). `queue.ok` indica que el esquema `pgboss` existe (la cola se inicializó alguna vez), no que el worker esté corriendo.
 - `agentsales doctor`: verifica env, db, storage, cola, `ffmpeg -version`, Chromium de Playwright y `claude --version`. Imprime ✓/✗ por ítem con una sugerencia de arreglo, y sale con código 1 si algo crítico falla. Los ítems que su fase aún no necesita (Playwright, Claude) salen como advertencia, no como error. Neon suspende el cómputo tras 5 min sin actividad y la primera conexión puede tardar unos segundos: el check de base de datos usa un timeout de 10 s y un reintento antes de fallar.
 - `agentsales status`: llama a `/health` y muestra `PUBLISH_MODE` destacado.
 
@@ -173,6 +173,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
 | 2026-09-29 | T02: HKDF de `APP_ENCRYPTION_KEY` se mueve a F3 (donde se cifra); `exports` con condición `@agentsales/source` (ADR-0010) |
 | 2026-09-29 | T03: `awaiting_manual_confirm → failed` (captcha o abandono, ADR-0004); `AppError.code` es texto libre en mayúsculas |
+| 2026-09-29 | Revisión de T06: `defineJob` con zod y política por cola aplicada por el worker; `batchSize: 1`; errores no reintentables sin reintento; arranque interrumpible; extracción de la cola "en la primera fase en que la API encole" |
 | 2026-09-29 | T06: `pg-boss@12.35.0`; adaptador en `apps/worker` (a `packages/queue` en F2); `checkQueueSchema` en `@agentsales/db`; script `pnpm worker:ping` (no `ping`: choca con un comando de pnpm) |
 | 2026-09-29 | Revisión de T05: rutas sin prefijo y proxy con rewrite (§4.5); Host permitidos y CSRF en la API; riesgo del sondeo a Neon; notas para T06, T07 y T08; `pnpm dev` con filtros explícitos |
 | 2026-09-29 | T05: la API escucha solo en `127.0.0.1` (sin autenticación hasta F7); tabla de errores con 429 (`*_RATE_LIMITED`) y 503 (`*_UNAVAILABLE`); `queue` responde `pendiente: F0-T06` hasta el worker; `hono@4.13.10` y `@hono/node-server@2.1.1` por la política de antigüedad |
