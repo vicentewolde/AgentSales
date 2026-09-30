@@ -1,6 +1,6 @@
 import { Writable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { createLogger, REDACTED, redact } from "./logger.js";
+import { createLogger, REDACTED, redact, redactText } from "./logger.js";
 
 function captureLogger() {
   const lines: Record<string, unknown>[] = [];
@@ -147,5 +147,17 @@ describe("createLogger", () => {
       msg: `conectando a postgresql://${REDACTED}@ep-test.neon.tech/neondb`,
     });
     expect(JSON.stringify(lines)).not.toMatch(/LEAK|fake-pass/);
+  });
+});
+
+describe("redactText", () => {
+  it("oculta credenciales y parámetros sensibles de URLs en un texto libre", () => {
+    expect(redactText("falló postgresql://u:p@host/db y https://x.test/a?api_key=k1&page=2")).toBe(
+      `falló postgresql://${REDACTED}@host/db y https://x.test/a?api_key=${REDACTED}&page=2`,
+    );
+  });
+
+  it("deja intacto un texto sin URLs sensibles", () => {
+    expect(redactText("bucket inaccesible")).toBe("bucket inaccesible");
   });
 });

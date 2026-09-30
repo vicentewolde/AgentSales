@@ -156,4 +156,5 @@ agentsales imports [<id>]
 |---|---|
 | 2026-09-28 | Borrador inicial |
 | 2026-09-29 | Almacenamiento en Cloudflare R2 en vez de Supabase (ADR-0007); `MAX_VIDEO_MB` vuelve a 300 |
+| 2026-09-29 | Desde la revisión de F0-T05 (resolver en `/fase-plan 1`): `POST /imports` síncrono choca con ADR-0005 ("la API solo encola"): job `import.run` o aclaración del ADR; rutas en `apps/api/src/routes/<recurso>.ts` montadas con `.route()` dentro de la cadena de `createApp` (si no, `AppType` pierde el esquema); salida `./testing` en `exports` para los repositorios en memoria; hook de validación zod que lance `AppError("REQUEST_INVALID")` (y `@hono/zod-validator` es dependencia nueva); `csrf()` bloquea `multipart` sin `Origin`, así que la CLI usa `/imports/local` (JSON) |
 | 2026-09-29 | Desde la revisión de F0-T04: `MediaStorage` ya existe y F1-T04 lo amplía con streams; migración `0001` con únicos de `field_definitions` y `media` |

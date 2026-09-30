@@ -31,7 +31,24 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
 - Funciones puras en `core`; efectos en adaptadores. `core` solo importa `zod` e imports relativos (y `vitest` en `*.test.ts(x)` y `test/`): Biome lo exige con `noRestrictedImports` y su tsconfig no carga tipos de Node. Biome no revisa `require()` ni `import()` dinámico: no se usan en `core`.
 - Valores de dominio como tuplas `as const` en `core` (`PLATFORMS`, `PUBLICATION_STATUSES`…), reutilizadas por `z.enum()` y `pgEnum()`; nunca se repiten los literales en otro paquete.
 - Un caso de uso por archivo: `packages/core/src/use-cases/import-listings.ts`.
-- Errores tipados: `AppError` con `code` (ej. `IMPORT_INVALID_ROW`, `PUBLISH_RATE_LIMITED`) y `retriable: boolean`. Nada de `throw "string"`.
+- Errores tipados: `AppError` con `code` (ej. `IMPORT_INVALID_ROW`, `PUBLISH_RATE_LIMITED`) y `retriable: boolean`. Nada de `throw "string"`. Se reconocen con `isAppError`, no con `instanceof`.
+- La API traduce el código a HTTP en este orden (`apps/api/src/errors.ts`), y responde solo `{ error: { code, message } }`, nunca `details` ni `cause`:
+
+  | Código | HTTP |
+  |---|---|
+  | `INVALID_TRANSITION` | 409 |
+  | `*_NOT_FOUND` | 404 |
+  | `*_INVALID*` o `INVALID_*` | 400 |
+  | `*_RATE_LIMITED` | 429 |
+  | `*_UNAVAILABLE` | 503 |
+  | cualquier otro | 500 |
+
+  Además:
+  - Un `AppError` que resulta en 500 mantiene su `code` pero responde un mensaje genérico; el detalle queda solo en el log.
+  - Un error que no es `AppError` responde `500 INTERNAL_ERROR`.
+  - Una `HTTPException` 4xx de Hono responde `HTTP_<status>` (por ejemplo `HTTP_429`) y conserva sus headers.
+  - Un cuerpo JSON mal formado responde `400 INVALID_JSON`.
+  - Un `Host` no local responde `403 HOST_NOT_ALLOWED`; una ruta inexistente, `404 ROUTE_NOT_FOUND`.
 - Nada de secretos en el código. Todo por `packages/config` (env validado con zod al arrancar).
 - Solo los puntos de entrada cargan el entorno (`loadEnvFile`/`loadEnv`): las apps y los `src/scripts/*` de cada paquete. El resto de un paquete recibe opciones concretas (`createDb(url)`, `createR2Storage({...})`); Biome lo exige en `db` y `storage`.
 - Nombres de archivos: `kebab-case.ts`. Componentes React: `PascalCase.tsx`.

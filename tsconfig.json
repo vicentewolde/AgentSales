@@ -18,6 +18,9 @@
     },
     {
       "path": "./packages/storage"
+    },
+    {
+      "path": "./apps/api"
     }
   ]
 }

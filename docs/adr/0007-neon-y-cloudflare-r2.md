@@ -41,3 +41,6 @@ Instagram exige que los medios estén en una **URL accesible desde internet**, a
 - **Pausar un proyecto de Supabase o reusarlo con un esquema propio:** ambos proyectos están en uso; compartir base de datos mezcla riesgos y consume su cuota de 500 MB.
 - **Backblaze B2 o Tigris en vez de R2:** son válidos gracias al adaptador S3; se eligió R2 por su plan gratis y sus cero costos de salida.
 - **Cloudinary u otro servicio de medios:** API propia que ata el diseño; el adaptador S3 es más portable.
+
+## Seguimiento
+- 2026-09-29 (F0-T05): además del worker, el panel sondeando `/health` mantiene Neon despierto (cada sondeo hace `select 1`). El sondeo es de 30–60 s y solo con la pestaña visible (spec F0, T08).

@@ -62,7 +62,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 
 ### 4.5 Decisiones
 - `tsx` para ejecutar TypeScript en dev; build con `tsc` a `dist/`.
-- Web en puerto 5173 con proxy de Vite `/api` → API en 8787.
+- Web en puerto 5173 con proxy de Vite `/api` → API en 8787. La API expone sus rutas **sin prefijo** (`/health`, y en F1 `/imports`, `/listings`), igual que las llama la CLI; el proxy quita el prefijo: `"/api": { target: "http://127.0.0.1:8787", rewrite: (p) => p.replace(/^\/api/, "") }`, y la web usa `hc<AppType>("/api")`. Target `127.0.0.1` y no `localhost`, porque la API solo escucha en IPv4.
 - El worker y la API comparten `packages/config` y leen el mismo `.env` de la raíz.
 
 ## 5. Tareas
@@ -107,26 +107,26 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 - **Depende de:** T04
 - **Descripción:** servidor Hono con logger de requests, manejador global de `AppError` (reconocido con `isAppError`, no con `instanceof`) → JSON `{ error: { code, message } }` con status HTTP según una tabla explícita de códigos (`INVALID_TRANSITION` → 409, `*_NOT_FOUND` → 404, `*_INVALID*` → 400; por defecto 500, documentada en `05-convenciones.md`); nunca expone `details` ni `cause` en la respuesta, `/health` con los 3 checks, y `export type AppType`. El check de base de datos usa una función `pingDatabase(db)` que se agrega a `@agentsales/db` (`select 1`, con un reintento por el arranque en frío de Neon); el de almacenamiento usa `storage.head("_healthcheck/ping")` (devuelve `null` si hay acceso y lanza si fallan credenciales o bucket), sin agregar métodos al puerto.
 - **Hecho cuando:**
-  - [ ] Test de `/health` con dependencias simuladas
-  - [ ] `curl localhost:8787/health` funciona contra Neon y R2 reales
+  - [x] Test de `/health` con dependencias simuladas
+  - [x] `curl localhost:8787/health` funciona contra Neon y R2 reales
 
 ### F0-T06 · apps/worker — pg-boss
 - **Depende de:** T04
-- **Descripción:** arranque de pg-boss (crea su esquema), registro de handlers por nombre de job, job `system.ping` que loguea y termina, y apagado ordenado con SIGINT/SIGTERM. Check de cola en `/health` (API) usando pg-boss en modo solo lectura o una consulta al esquema. pg-boss usa la conexión directa de Neon, pasada por `toPgConnectionString` de `@agentsales/db` para mantener `sslmode=verify-full`; mientras el worker corre mantiene el cómputo despierto (ADR-0007), así que se apaga cuando no se desarrolla.
+- **Descripción:** arranque de pg-boss (crea su esquema), registro de handlers por nombre de job, job `system.ping` que loguea y termina, y apagado ordenado con SIGINT/SIGTERM. Check de cola en `/health` (API) como consulta de solo lectura al esquema `pgboss` (por ejemplo, una función en `@agentsales/db` junto a `pingDatabase`), sin `boss.start()` en la API (arrancaría el mantenimiento y la supervisión). Documenta en `01-arquitectura.md` dónde vive el adaptador de `JobQueue` para cuando la API tenga que encolar (F2). pg-boss usa la conexión directa de Neon, pasada por `toPgConnectionString` de `@agentsales/db` para mantener `sslmode=verify-full`; mientras el worker corre mantiene el cómputo despierto (ADR-0007), así que se apaga cuando no se desarrolla.
 - **Hecho cuando:**
   - [ ] Un `system.ping` encolado desde un script de prueba se procesa y se ve en el log
   - [ ] Ctrl+C no deja jobs colgados
 
 ### F0-T07 · apps/cli — doctor y status
 - **Depende de:** T05
-- **Descripción:** commander, cliente RPC `hc<AppType>`, comandos `doctor` y `status` según §4.3, y salida con colores (picocolors).
+- **Descripción:** commander, cliente RPC `hc<AppType>`, comandos `doctor` y `status` según §4.3, y salida con colores (picocolors). La URL de la API se arma con `http://127.0.0.1:${API_PORT}`; `status` tolera unos 30 s (el peor caso de `/health` es 25 s); `doctor` obtiene db, storage y cola desde `/health` y, si la API no responde, sugiere `pnpm dev`. La CLI no define script `dev` (`pnpm dev` levanta solo api, worker y web).
 - **Hecho cuando:**
   - [ ] `pnpm cli doctor` muestra el estado real del entorno
   - [ ] `PUBLISH_MODE` se muestra en rojo si es `live`
 
 ### F0-T08 · apps/web — shell del panel
 - **Depende de:** T05
-- **Descripción:** Vite + React + Tailwind + TanStack Query + React Router; layout con menú (Estado, Propiedades y Publicaciones deshabilitados por ahora); página "Estado del sistema" con `/health`; banner permanente de `PUBLISH_MODE`.
+- **Descripción:** Vite + React + Tailwind + TanStack Query + React Router; layout con menú (Estado, Propiedades y Publicaciones deshabilitados por ahora); página "Estado del sistema" con `/health` (sondeo cada 30–60 s solo con la pestaña visible, por Neon); banner permanente de `PUBLISH_MODE`. Proxy según §4.5. Comprobar que `import type { AppType } from "@agentsales/api"` no arrastra tipos de Node al `tsc -b` de la web; si lo hace, crear una salida solo de tipos en la API.
 - **Hecho cuando:**
   - [ ] `pnpm dev` levanta todo y la página muestra los checks en vivo
   - [ ] Se ve bien en pantalla de notebook y en móvil
@@ -156,7 +156,8 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | Riesgo | Mitigación |
 |---|---|
 | Conexión por el pooler de Neon (`-pooler`, modo transacción) rompe pg-boss y drizzle-kit | Usar solo la conexión **directa** (sin `-pooler`); `loadEnv()` la rechaza si detecta el sufijo |
-| Arranque en frío de Neon (suspende a los 5 min) hace fallar `/health` o `doctor` | Timeout de 10 s con un reintento; el panel muestra `degraded` sin caerse |
+| Arranque en frío de Neon (suspende a los 5 min) hace fallar `/health` o `doctor` | Timeout de conexión de 10 s por intento, con un reintento (tope de 25 s por check); el panel muestra `degraded` sin caerse |
+| El panel sondeando `/health` mantiene Neon despierto (cada sondeo hace `select 1`) y consume CU-horas | La página Estado sondea cada 30–60 s y solo con la pestaña visible (`refetchIntervalInBackground: false`); ver ADR-0007 |
 | Worker encendido 24/7 agota las 100 CU-horas mensuales del plan gratis | Encenderlo solo al desarrollar; ver ADR-0007 |
 | Sobre-ingeniería en el esqueleto | Nada de paquetes que no use esta fase |
 
@@ -171,6 +172,8 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
 | 2026-09-29 | T02: HKDF de `APP_ENCRYPTION_KEY` se mueve a F3 (donde se cifra); `exports` con condición `@agentsales/source` (ADR-0010) |
 | 2026-09-29 | T03: `awaiting_manual_confirm → failed` (captcha o abandono, ADR-0004); `AppError.code` es texto libre en mayúsculas |
+| 2026-09-29 | Revisión de T05: rutas sin prefijo y proxy con rewrite (§4.5); Host permitidos y CSRF en la API; riesgo del sondeo a Neon; notas para T06, T07 y T08; `pnpm dev` con filtros explícitos |
+| 2026-09-29 | T05: la API escucha solo en `127.0.0.1` (sin autenticación hasta F7); tabla de errores con 429 (`*_RATE_LIMITED`) y 503 (`*_UNAVAILABLE`); `queue` responde `pendiente: F0-T06` hasta el worker; `hono@4.13.10` y `@hono/node-server@2.1.1` por la política de antigüedad |
 | 2026-09-29 | Revisión de T04: errores de storage como `AppError`; `createDb` con `onError`; `pingDatabase` y check de storage en T05; `toPgConnectionString` en T06 |
 | 2026-09-29 | T04: puerto `MediaStorage` en `core`; driver `pg`; enums de Postgres `operation` y `currency`; el cliente fija `sslmode=verify-full`; Vitest sin la condición `module` |
 | 2026-09-29 | Revisión de T03: estado terminal `cancelled` (desde todo lo que no llegó a la plataforma); estados iniciales, terminales y activos en `core`; `isAppError`; T04 agrega los enums restantes; T05 fija la tabla código→HTTP |

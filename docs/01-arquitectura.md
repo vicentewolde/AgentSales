@@ -226,6 +226,9 @@ Los prompts viven versionados en `packages/llm/prompts/` y cada `content` guarda
 - El bucket de R2 es privado; se usan URLs prefirmadas de corta duración para que Instagram descargue los medios.
 - La base de datos solo acepta conexiones con credenciales y TLS (`sslmode=require`); no se expone ninguna API HTTP de datos.
 - Marketplace: la sesión del corredor vive en un perfil de navegador local por corredor; el sistema nunca guarda su contraseña.
+- La API no tiene autenticación hasta F7, así que solo escucha en `127.0.0.1`. Como eso no protege del navegador del propio operador (cualquier página abierta puede apuntar a `127.0.0.1:8787`):
+  - rechaza cualquier `Host` que no sea local (defensa contra DNS rebinding): `127.0.0.1` o `localhost` en `API_PORT` o `WEB_PORT`;
+  - aplica `csrf()` de Hono: formularios y `multipart` solo desde el origen del panel.
 
 ## Decisiones
 
