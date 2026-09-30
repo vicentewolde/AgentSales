@@ -30,7 +30,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 - **Nuevo `packages/queue`** (D2): adaptador de pg-boss extraído de `apps/worker/src/queue.ts`, que implementa el puerto `JobQueue`. Se lleva `QUEUE_SCHEMA` y `checkQueueSchema` desde `@agentsales/db`. En rol `producer` arranca pg-boss de forma diferida, en el primer `enqueue`, para que la API levante aunque el esquema `pgboss` no exista.
 - **core** (sin fs, sin `node:*` y sin tipos de Node: el panel importa core):
   - Casos de uso:
-    - `importListings(deps, { broker, rows })` recibe las filas ya leídas por `xlsx-reader`; no lee archivos.
+    - `importListings(deps, input: ListingSheetInput)` recibe `{ headers, rows, broker }`, ya leído por `xlsx-reader`; no lee archivos. `headers` sirve para `checkHeaders`. `ListingSheetInput` es de core y el lector depende de él.
     - `ingestMedia`.
     - `requestImport`: crea el run y encola; si `enqueue` falla, deja el run en `failed`.
     - `changeListingStatus`.
@@ -268,15 +268,16 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Depende de:** T01 (por `TEMPLATE_COLUMNS`)
 - **Descripción:** `packages/importers/xlsx-reader` con exceljs.
   - Lee Propiedades y Corredor (vertical, por encabezados) y devuelve `{ broker, headers, rows: [{ rowNumber, raw }] }`, con **todas** las filas no vacías. El filtro de `EJEMPLO` y `Borrador` lo hace T04 con `validator.isIgnored`.
-  - Aplana las celdas de exceljs a `RawCell`: hipervínculo → texto, texto enriquecido → texto plano, fórmula → resultado. El validador rechaza cualquier otro objeto con `FIELD_VALUE_INVALID`.
+  - Aplana las celdas de exceljs a `RawCell`: hipervínculo → texto, texto enriquecido → texto plano, fórmula → resultado. El validador rechaza cualquier otro objeto, incluidos los errores de Excel, con `FIELD_VALUE_INVALID`.
+  - Topes: 10 MB y 1000 filas de datos (`IMPORT_FILE_NOT_FOUND` / `IMPORT_FILE_INVALID`, con el nombre del archivo y sin la ruta).
 - **Hecho cuando:**
   - [ ] Test contra la plantilla real: sus encabezados son exactamente `TEMPLATE_COLUMNS`
-  - [ ] Fixtures sintéticos (sin datos reales): válido, con errores, con columnas extra, con la hoja Corredor vacía y exportado desde Google Sheets, con un test para cada uno
+  - [ ] Fixtures sintéticos (sin datos reales): válido, con errores, con columnas extra, con la hoja Corredor vacía y exportado desde Google Sheets, con un test para cada uno. El de Google Sheets es una **simulación** armada con exceljs: hojas renombradas, texto, booleanos y filas vacías. Un export real con datos inventados se puede agregar en `packages/importers/test/fixtures/`.
 
 ### F1-T04 · Caso de uso importListings
 - **Depende de:** T02, T03
 - **Descripción:**
-  - `importListings(deps, { broker, rows })` según §4.2, con `dryRun` y `sha256` inyectado.
+  - `importListings(deps, input: ListingSheetInput)` según §4.2, con `dryRun` y `sha256` inyectado.
   - Puertos `BrokerRepository`, `ListingRepository` e `ImportRunRepository`, con implementaciones Drizzle y en memoria.
   - Esquema `importReport` en core.
 - **Hecho cuando:**
@@ -442,3 +443,4 @@ Orden sugerido: T01 → T02/T03 → T04. T05, T06 y T08 se pueden hacer en cualq
 | 2026-09-30 | Decisiones del operador: D1 (ADR-0011 aceptado), D2 (job `import.run`; ADR-0005 enmendado), D4 (PGlite en `packages/db`) y D6 (metadatos de medios en F2). D3 y D5 quedan como propuestas del spec |
 | 2026-09-30 | Spec **aprobado** por el operador |
 | 2026-09-30 | Desde la revisión de F1-T02: el filtro de `EJEMPLO` y `Borrador` pasa del lector (T03) a `importListings` (T04), con `validator.isIgnored`; T03 aplana las celdas de exceljs a `RawCell` y devuelve los encabezados; `precio` tiene un tope por `numeric(14,2)` |
+| 2026-09-30 | Desde F1-T03: `ListingSheetInput` y `RawBrokerSheet` en core (entrada de `importListings`, con `headers`); `RawListingRow` pasa a `Readonly<Record<string, unknown>>` y core exporta `foldText`; el lector tiene un tope de 1000 filas y los errores `IMPORT_FILE_NOT_FOUND` / `IMPORT_FILE_INVALID`; la fixture de Google Sheets es una simulación |

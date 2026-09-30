@@ -21,15 +21,15 @@ import {
   type Normalized,
   normalizeField,
   normalizeText,
-  type RawCell,
 } from "./normalizers.js";
 import { resolveEffectiveDefinitions } from "./resolve-definitions.js";
 
 /**
- * Una fila del Excel: encabezado → celda, tal como la entrega el lector (F1-T03). El validador
- * igual revisa cada valor en tiempo de ejecución: lo que no sea `RawCell` es `FIELD_VALUE_INVALID`.
+ * Una fila del Excel: encabezado → celda, tal como la entrega el lector (F1-T03). Los valores son
+ * `unknown` a propósito: el validador revisa cada uno en tiempo de ejecución, y lo que no sea
+ * `RawCell` es `FIELD_VALUE_INVALID`.
  */
-export type RawListingRow = Readonly<Record<string, RawCell>>;
+export type RawListingRow = Readonly<Record<string, unknown>>;
 
 /**
  * Error de validación de una celda: columna, `key`, código y motivo. La fila la agrega quien llama.
@@ -373,5 +373,6 @@ export {
   FIELD_ISSUE_CODES,
   type FieldIssueCode,
   type FieldValue,
+  foldText,
   type RawCell,
 } from "./normalizers.js";
