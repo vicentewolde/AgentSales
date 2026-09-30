@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "node_modules/.cache/tsc/web-test",
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/no-node-types.ts"],
+  "references": [
+    {
+      "path": "../../packages/core"
+    },
+    {
+      "path": "../api"
+    }
+  ]
+}
