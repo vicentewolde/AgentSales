@@ -15,7 +15,8 @@
     "@agentsales/core": "workspace:*",
     "commander": "15.0.0",
     "hono": "4.13.10",
-    "picocolors": "1.1.1"
+    "picocolors": "1.1.1",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@agentsales/api": "workspace:*"

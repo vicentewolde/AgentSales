@@ -1,5 +1,6 @@
 import type { HealthReport } from "@agentsales/api";
 import type { HealthFetcher } from "./api-client.js";
+import { apiHint } from "./checks.js";
 import type { Colors } from "./colors.js";
 
 export type StatusResult = { text: string; exitCode: 0 | 1 };
@@ -19,7 +20,7 @@ export async function runStatus(fetchHealth: HealthFetcher, c: Colors): Promise<
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return {
-      text: `${c.red("✗ La API no responde")} (${reason})\n  ${c.dim("→ Levántala con pnpm dev")}`,
+      text: `${c.red("✗ La API no responde")}: ${reason}\n  ${c.dim(`→ ${apiHint(error)}`)}`,
       exitCode: 1,
     };
   }

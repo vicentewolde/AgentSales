@@ -23,8 +23,9 @@
 | Tests | Vitest 5; msw para HTTP externo; Playwright para e2e del panel |
 | Logs | pino, JSON en producción y pretty en dev |
 | UI | React + Vite + Tailwind + TanStack Query |
+| CLI | commander + picocolors; cliente RPC `hc<AppType>` de Hono |
 
-Cualquier dependencia nueva que no esté en esta tabla requiere justificación en el PR (y un ADR si es estructural). Las herramientas de desarrollo se fijan con versión exacta.
+Cualquier dependencia nueva que no esté en esta tabla requiere justificación en el PR (y un ADR si es estructural). Las herramientas de desarrollo se fijan con versión exacta. `hono` va en la **misma versión** en `apps/api`, `apps/cli` y `apps/web`: si difieren, `hc<AppType>` puede tiparse mal sin avisar.
 
 ## Código
 

@@ -159,7 +159,9 @@ describe("runDoctor", () => {
     expect(item?.detail).toBe(
       "DATABASE_URL (el host contiene -pooler); APP_ENCRYPTION_KEY (debe tener al menos 32 caracteres)",
     );
-    expect(report.items.some((i) => i.name === "PUBLISH_MODE")).toBe(false);
+    expect(report.items.find((i) => i.name === "PUBLISH_MODE")?.detail).toBe(
+      "dry-run: no se publica nada (según la API)",
+    );
   });
 
   it("sin archivo .env sugiere copiar .env.example", async () => {
@@ -183,15 +185,91 @@ describe("runDoctor", () => {
     expect(report.items[0]).toMatchObject({ name: "Node", level: "error" });
   });
 
-  it("PUBLISH_MODE=live es una advertencia", async () => {
+  it("PUBLISH_MODE=live en la API es una advertencia destacada", async () => {
     const report = await runDoctor(
-      deps({ env: { ok: true, env: { ...env, PUBLISH_MODE: "live" } } }),
+      deps({
+        env: { ok: true, env: { ...env, PUBLISH_MODE: "live" } },
+        fetchHealth: async () => ({ ...healthy, publishMode: "live" }),
+      }),
     );
 
+    expect(report.exitCode).toBe(0);
     expect(report.items.find((i) => i.name === "PUBLISH_MODE")).toMatchObject({
       level: "warn",
-      detail: "live: las publicaciones son reales",
+      emphasis: "danger",
+      detail: "LIVE: las publicaciones son reales (según la API)",
     });
+  });
+
+  it("si la API corre en otro modo que el .env, es un error", async () => {
+    const report = await runDoctor(
+      deps({ fetchHealth: async () => ({ ...healthy, publishMode: "live" }) }),
+    );
+
+    expect(report.exitCode).toBe(1);
+    expect(report.items.find((i) => i.name === "PUBLISH_MODE")).toMatchObject({
+      level: "error",
+      detail: "la API corre en live pero .env dice dry-run",
+      hint: "Reinicia pnpm dev para que la API tome el .env actual",
+    });
+  });
+
+  it("con la API caída usa el modo del .env y lo aclara", async () => {
+    const report = await runDoctor(
+      deps({
+        fetchHealth: async () => {
+          throw new Error("x");
+        },
+      }),
+    );
+
+    expect(report.items.find((i) => i.name === "PUBLISH_MODE")?.detail).toBe(
+      "dry-run: no se publica nada (según .env; la API no responde)",
+    );
+  });
+
+  it.each([
+    ["db", "Base de datos", "Neon puede estar despertando"],
+    ["storage", "Almacenamiento", "pnpm storage:check"],
+  ] as const)("un %s caído trae su sugerencia", async (key, name, hint) => {
+    const report = await runDoctor(
+      deps({
+        fetchHealth: async () => ({
+          ...healthy,
+          status: "degraded",
+          checks: { ...healthy.checks, [key]: { ok: false, latencyMs: 10, error: "falló" } },
+        }),
+      }),
+    );
+
+    expect(report.items.find((i) => i.name === name)).toMatchObject({
+      level: "error",
+      detail: "falló",
+      hint: expect.stringContaining(hint),
+    });
+  });
+
+  it("con Node 27 también marca error", async () => {
+    expect((await runDoctor(deps({ nodeVersion: "v27.0.0" }))).items[0]?.level).toBe("error");
+  });
+
+  it("describe por qué falló un comando", async () => {
+    const report = await runDoctor(
+      deps({
+        run: async (command) => {
+          const error = Object.assign(new Error("spawn"), {
+            code: command === "claude" ? "ENOENT" : undefined,
+            killed: command !== "claude",
+          });
+          throw error;
+        },
+      }),
+    );
+
+    expect(report.items.find((i) => i.name === "ffmpeg")?.detail).toBe(
+      "ffmpeg: no respondió a tiempo",
+    );
+    expect(report.items.find((i) => i.name === "Claude Code")?.detail).toContain("no encontrado");
   });
 });
 
@@ -206,5 +284,19 @@ describe("renderDoctor", () => {
     expect(text).toContain(c.yellow("⚠"));
     expect(text).toContain(c.dim("→ En F5: pnpm exec playwright install chromium"));
     expect(text).toContain(c.green("Todo en orden (1 advertencia(s))"));
+  });
+
+  it("destaca PUBLISH_MODE=live en rojo", async () => {
+    const c = createColors(true);
+    const report = await runDoctor(
+      deps({
+        env: { ok: true, env: { ...env, PUBLISH_MODE: "live" } },
+        fetchHealth: async () => ({ ...healthy, publishMode: "live" }),
+      }),
+    );
+
+    expect(renderDoctor(report, c)).toContain(
+      c.bold(c.bgRed(c.white(" LIVE: las publicaciones son reales (según la API) "))),
+    );
   });
 });

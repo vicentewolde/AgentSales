@@ -14,8 +14,8 @@ export const runCommand: RunCommand = async (command, args) => {
 };
 
 /** Carpeta de navegadores de Playwright según el sistema (o `PLAYWRIGHT_BROWSERS_PATH`). */
-function playwrightBrowsersPath(): string {
-  const custom = process.env.PLAYWRIGHT_BROWSERS_PATH;
+export function playwrightBrowsersPath(env: NodeJS.ProcessEnv = process.env): string {
+  const custom = env.PLAYWRIGHT_BROWSERS_PATH;
   if (custom && custom !== "0") {
     return custom;
   }
@@ -23,18 +23,24 @@ function playwrightBrowsersPath(): string {
     case "darwin":
       return join(homedir(), "Library", "Caches", "ms-playwright");
     case "win32":
-      return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "ms-playwright");
+      return join(env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "ms-playwright");
     default:
-      return join(homedir(), ".cache", "ms-playwright");
+      return join(env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "ms-playwright");
   }
 }
 
-/** Busca Chromium de Playwright sin depender de Playwright (se instala en F5). */
-export function findChromium(): string | null {
-  const dir = playwrightBrowsersPath();
+/**
+ * Busca Chromium de Playwright sin depender de Playwright (se instala en F5). Devuelve la
+ * revisión más nueva (`chromium-<n>`); no cuenta `chromium_headless_shell-*`.
+ */
+export function findChromium(dir: string = playwrightBrowsersPath()): string | null {
   try {
-    const found = readdirSync(dir).find((entry) => /^chromium-\d+$/.test(entry));
-    return found ? join(dir, found) : null;
+    const revisions = readdirSync(dir)
+      .map((entry) => /^chromium-(\d+)$/.exec(entry))
+      .filter((match): match is RegExpExecArray => match !== null)
+      .sort((a, b) => Number(b[1]) - Number(a[1]));
+    const newest = revisions[0];
+    return newest ? join(dir, newest[0]) : null;
   } catch {
     return null;
   }

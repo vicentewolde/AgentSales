@@ -73,7 +73,7 @@ describe("runStatus", () => {
     }, plain);
 
     expect(result.exitCode).toBe(1);
-    expect(result.text).toContain("La API no responde (fetch failed)");
+    expect(result.text).toContain("La API no responde: fetch failed");
     expect(result.text).toContain("pnpm dev");
   });
 });

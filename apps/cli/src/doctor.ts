@@ -26,17 +26,21 @@ export type DoctorReport = { items: CheckItem[]; exitCode: 0 | 1 };
 
 /** Revisa el entorno completo. Sale con 1 si algún ítem es error; las advertencias no cuentan. */
 export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
-  const items: CheckItem[] = [checkNode(deps.nodeVersion), checkEnv(deps.env)];
-  if (deps.env.ok) {
-    items.push(checkPublishMode(deps.env.env));
-  }
-  items.push(...(await checkServices(deps.fetchHealth)));
+  const services = await checkServices(deps.fetchHealth);
+  const publishMode = checkPublishMode(
+    services.report?.publishMode,
+    deps.env.ok ? deps.env.env.PUBLISH_MODE : undefined,
+  );
   const ffmpegPath = deps.env.ok ? deps.env.env.FFMPEG_PATH : "ffmpeg";
-  items.push(
+  const items: CheckItem[] = [
+    checkNode(deps.nodeVersion),
+    checkEnv(deps.env),
+    ...(publishMode ? [publishMode] : []),
+    ...services.items,
     await checkFfmpeg(deps.run, ffmpegPath),
     checkChromium(deps.chromiumDir),
     await checkClaude(deps.run),
-  );
+  ];
   return { items, exitCode: items.some((item) => item.level === "error") ? 1 : 0 };
 }
 
@@ -50,7 +54,9 @@ export function renderDoctor(report: DoctorReport, c: Colors): string {
   };
   const width = Math.max(...report.items.map((item) => item.name.length));
   const lines = report.items.flatMap((item) => {
-    const line = `${paint[item.level](SYMBOL[item.level])} ${c.bold(item.name.padEnd(width))}  ${item.detail}`;
+    const detail =
+      item.emphasis === "danger" ? c.bold(c.bgRed(c.white(` ${item.detail} `))) : item.detail;
+    const line = `${paint[item.level](SYMBOL[item.level])} ${c.bold(item.name.padEnd(width))}  ${detail}`;
     return item.hint ? [line, `  ${c.dim(`→ ${item.hint}`)}`] : [line];
   });
   const errors = report.items.filter((item) => item.level === "error").length;

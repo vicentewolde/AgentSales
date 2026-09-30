@@ -1,37 +1,12 @@
 #!/usr/bin/env node
-import { EnvError, loadEnv, loadEnvFile } from "@agentsales/config";
 import { Command } from "commander";
 import { createHealthFetcher } from "./api-client.js";
-import type { EnvResult } from "./checks.js";
 import { colors } from "./colors.js";
 import { renderDoctor, runDoctor } from "./doctor.js";
+import { apiPort, loadEnvironment } from "./env.js";
 import { runStatus } from "./status.js";
 import { findChromium, runCommand } from "./system.js";
 import { readCliVersion } from "./version.js";
-
-const DEFAULT_API_PORT = 8787;
-
-/** Carga el `.env`; si es inválido, devuelve los problemas (sin valores) en vez de lanzar. */
-function loadEnvironment(): EnvResult {
-  const fileFound = loadEnvFile();
-  try {
-    return { ok: true, env: loadEnv() };
-  } catch (error) {
-    if (error instanceof EnvError) {
-      return { ok: false, fileFound, issues: error.issues };
-    }
-    throw error;
-  }
-}
-
-/** Puerto de la API aunque el `.env` sea inválido (para poder diagnosticar igual). */
-function apiPort(env: EnvResult): number {
-  if (env.ok) {
-    return env.env.API_PORT;
-  }
-  const raw = Number(process.env.API_PORT);
-  return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_API_PORT;
-}
 
 const program = new Command()
   .name("agentsales")
@@ -64,4 +39,10 @@ program
     process.exitCode = result.exitCode;
   });
 
-await program.parseAsync();
+try {
+  await program.parseAsync();
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(colors.red(`✗ Error inesperado: ${message}`));
+  process.exitCode = 1;
+}
