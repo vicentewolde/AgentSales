@@ -89,15 +89,41 @@ export function isDbUnavailable(error: unknown): boolean {
 }
 
 /**
- * Traduce un fallo de conexión a `AppError("DB_UNAVAILABLE", { retriable: true })` (la API lo
- * responde como 503 y el job se reintenta). Cualquier otro error se devuelve tal cual.
+ * El error del driver dentro del `DrizzleQueryError`. El wrapper lleva el SQL y los **parámetros**
+ * en su mensaje (datos de clientes: dirección, notas internas), así que no se guarda como `cause`:
+ * terminaría en los logs.
+ */
+function driverError(error: unknown): unknown {
+  return isQueryWrapper(error) && error instanceof Error && error.cause !== undefined
+    ? error.cause
+    : error;
+}
+
+/**
+ * Traduce los errores de la base de datos:
+ * - fallo de conexión → `AppError("DB_UNAVAILABLE", { retriable: true })` (la API responde 503 y
+ *   el job se reintenta);
+ * - otro error de una consulta de drizzle → `AppError("DB_QUERY_FAILED")`, no reintentable, con el
+ *   SQLSTATE en `details`;
+ * - en los dos casos, `cause` es el error del driver, sin los parámetros de la consulta.
+ * Un `AppError` o un error ajeno a la base se devuelven tal cual.
  */
 export function toDbError(error: unknown): unknown {
-  if (isAppError(error) || !isDbUnavailable(error)) return error;
-  return new AppError("DB_UNAVAILABLE", "La base de datos no responde", {
-    retriable: true,
-    cause: error,
-  });
+  if (isAppError(error)) return error;
+  if (isDbUnavailable(error)) {
+    return new AppError("DB_UNAVAILABLE", "La base de datos no responde", {
+      retriable: true,
+      cause: driverError(error),
+    });
+  }
+  if (isQueryWrapper(error)) {
+    const state = sqlStateOf(error);
+    return new AppError("DB_QUERY_FAILED", "Falló una consulta a la base de datos", {
+      cause: driverError(error),
+      details: state === undefined ? {} : { sqlState: state },
+    });
+  }
+  return error;
 }
 
 /** Ejecuta una operación de base de datos y traduce sus errores con `toDbError`. */

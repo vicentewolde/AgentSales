@@ -244,9 +244,23 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 
 - El puerto vive en `packages/core/src/ports/` y devuelve **entidades de core**, validadas con su esquema zod (ADR-0011). Una fila que no calza con el esquema, por ejemplo un jsonb corrupto, es un `AppError` no reintentable (`FIELD_DEFINITION_INVALID`…), no un `ZodError`.
 - La implementación Drizzle vive en `packages/db/src/repositories/` y recibe `SchemaDatabase`: sirve con node-postgres en las apps y con PGlite en los tests. No usa nada propio del driver.
-- Los fallos de conexión se traducen con `withDbErrors` a `AppError("DB_UNAVAILABLE", { retriable: true })`, que la API responde como 503 y el job reintenta. El resto de los errores pasa tal cual. `sqlStateOf` lee el SQLSTATE a través de la cadena de `cause` (drizzle envuelve el error del driver en `DrizzleQueryError`).
+- **Errores (`withDbErrors`):**
+  - Un fallo de conexión es `AppError("DB_UNAVAILABLE", { retriable: true })`: la API responde 503 y el job reintenta.
+  - Otro error de una consulta es `DB_QUERY_FAILED`, no reintentable, con el SQLSTATE en `details`.
+  - En los dos casos, `cause` es el error del **driver**, no el `DrizzleQueryError`, que lleva los parámetros de la consulta (datos de clientes) en su mensaje y terminaría en los logs.
+  - `sqlStateOf` lee el SQLSTATE a través de la cadena de `cause`.
 - Hay un doble en memoria con la misma semántica en `@agentsales/core/testing`, que solo se importa desde tests. Los dos se prueban con los mismos fixtures, por ejemplo `fieldDefinitionOrderFixture`.
 - `FieldDefinitionRepository.list` devuelve las definiciones activas e inactivas. La precedencia (la del corredor sobre la global) y el filtro de `active` los resuelve `buildListingValidator` en core (`resolveEffectiveDefinitions`).
+
+## Importación de propiedades (`importListings`, core)
+
+- `importListings(deps, { runId, input, brokerSlug?, dryRun })` recibe la hoja ya leída (`ListingSheetInput`) y un `import_run` ya creado. Los pasos:
+  1. Resuelve el corredor con `parseBrokerSheet` (hoja Corredor) o con `brokerSlug`. `brokerSlug` gana sobre el slug de la hoja, y la hoja actualiza ese corredor. Los errores son `BROKER_INVALID` (el detalle queda en el reporte del run) y `BROKER_NOT_FOUND`.
+  2. Arma el validador con las definiciones del corredor.
+  3. Por fila, `ignored`, `failed`, `created`, `updated` o `skipped`, comparando `source_hash`: el sha256 del JSON canónico de `{ core, attributes, control }`. `sha256` se inyecta, porque core no usa `node:crypto`.
+- **Estado:** un aviso nuevo nace en `draft` y la importación nunca cambia `status`. El paso a `ready` lo hace la ingesta de medios (F1-T07), con el `control` que devuelve cada fila.
+- **Registro:** los contadores y el reporte (`importReportSchema`) se guardan en el run, también con `dry_run`, que solo lee y reporta lo que pasaría.
+- **Reintentos:** reintentar es seguro, porque todo se escribe por `external_ref`.
 
 ## Lector de Excel (`packages/importers`)
 

@@ -169,7 +169,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | source | enum `listing_source` | Mismos valores que `listings.source` |
 | file_name | text | |
 | rows_total, rows_created, rows_updated, rows_skipped, rows_failed | int | |
-| report | jsonb | Errores por fila y columna |
+| report | jsonb | `importReportSchema` (core): encabezados, corredor y resultado de cada fila, con sus errores por columna |
 | started_at | timestamptz null | Se fija al pasar a `running` |
 | finished_at | timestamptz null | `null` mientras la carga está en curso |
 

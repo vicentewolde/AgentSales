@@ -277,9 +277,16 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 ### F1-T04 · Caso de uso importListings
 - **Depende de:** T02, T03
 - **Descripción:**
-  - `importListings(deps, input: ListingSheetInput)` según §4.2, con `dryRun` y `sha256` inyectado.
-  - Puertos `BrokerRepository`, `ListingRepository` e `ImportRunRepository`, con implementaciones Drizzle y en memoria.
-  - Esquema `importReport` en core.
+  - `importListings(deps, { runId, input: ListingSheetInput, brokerSlug?, dryRun })` según §4.2, con `sha256` inyectado.
+    - Resuelve el broker desde la hoja Corredor, que se mapea con la tabla de §4.2 y cuyas etiquetas se comparan sin mayúsculas ni tildes. Con `brokerSlug`, gana ese slug y los datos de la hoja lo actualizan.
+    - Filtra con `isIgnored`, valida y hace el upsert.
+    - Un `id_propiedad` repetido en la hoja es `failed` en la segunda aparición.
+    - Una propiedad nueva queda en `draft`, y reimportar no toca `status`. El paso a `ready` es de T07.
+    - Devuelve las filas con su `listingId` y `control`, para T07.
+  - `source_hash` = sha256 del JSON canónico de `{ core, attributes, control }`.
+  - Puertos `BrokerRepository`, `ListingRepository` e `ImportRunRepository`, con dobles en memoria en `@agentsales/core/testing`.
+  - Esquema `importReport` en core. También `LISTING_CATEGORIES` en core, que el seed de db pasa a usar.
+  - `toDbError` guarda como `cause` el error del driver, no el `DrizzleQueryError` con los `params` de la consulta.
 - **Hecho cuando:**
   - [ ] Test de idempotencia (dos importaciones: la segunda dice `skipped`)
   - [ ] Test de actualización (cambia el precio → `updated`)
@@ -287,7 +294,12 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - [ ] Test: `dryRun` no escribe nada salvo el `import_run`
   - [ ] Test: reimportar no pisa un `status` puesto a mano
   - [ ] Tests de la hoja Corredor: crea el broker, lo actualiza, `BROKER_NOT_FOUND` y `BROKER_INVALID`
-  - [ ] Tests con PGlite de los repositorios (upsert por `external_ref`)
+
+### F1-T04b · Repositorios Drizzle de brokers, listings e import_runs
+- **Depende de:** T04
+- **Descripción:** implementaciones Drizzle de `BrokerRepository`, `ListingRepository` e `ImportRunRepository` en `packages/db/src/repositories/`, sobre `SchemaDatabase` y con `withDbErrors`. `price_amount` (`numeric`) se convierte entre texto y número.
+- **Hecho cuando:**
+  - [ ] Tests con PGlite de los repositorios (upsert por `external_ref`), con los mismos casos que los dobles en memoria
 
 ### F1-T05 · Almacenamiento con streams
 - **Depende de:** F0
@@ -331,7 +343,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - [ ] Los tests del worker de F0 siguen pasando, y `pnpm worker:ping` funciona con `packages/queue` (demo)
 
 ### F1-T09 · Job import.run
-- **Depende de:** T07, T08
+- **Depende de:** T04b, T07, T08
 - **Descripción:**
   - Job `import.run` (§4.6) y `buildJobs(deps)` en el worker.
   - Caso de uso `requestImport` en core.
@@ -342,7 +354,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - [ ] Test: `extracted/` se borra aunque el intento falle, e `input/` se conserva hasta el estado terminal
 
 ### F1-T10 · Contratos HTTP y API de lectura
-- **Depende de:** T04 y ADR-0011 aceptado
+- **Depende de:** T04b y ADR-0011 aceptado
 - **Descripción:**
   - Salida `@agentsales/api/contracts` (`errorBodySchema`, parámetros y respuestas), con su regla de Biome.
   - Helper de validación (`REQUEST_INVALID`).
@@ -401,7 +413,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Depende de:** todas
 - **Descripción:** `/fase-cerrar 1`.
 
-Orden sugerido: T01 → T02/T03 → T04. T05, T06 y T08 se pueden hacer en cualquier momento después de F0. Luego T07 → T09. T10 va después de T04. T11 después de T09 y T10. Luego T12, T13 → T14, y al final T15.
+Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer en cualquier momento después de F0. Luego T07 → T09. T10 va después de T04b. T11 después de T09 y T10. Luego T12, T13 → T14, y al final T15.
 
 ## 6. Criterios de aceptación de la fase
 - [ ] Ver `docs/06-roadmap.md#f1--carga`
@@ -444,3 +456,4 @@ Orden sugerido: T01 → T02/T03 → T04. T05, T06 y T08 se pueden hacer en cualq
 | 2026-09-30 | Spec **aprobado** por el operador |
 | 2026-09-30 | Desde la revisión de F1-T02: el filtro de `EJEMPLO` y `Borrador` pasa del lector (T03) a `importListings` (T04), con `validator.isIgnored`; T03 aplana las celdas de exceljs a `RawCell` y devuelve los encabezados; `precio` tiene un tope por `numeric(14,2)` |
 | 2026-09-30 | Desde F1-T03: `ListingSheetInput` y `RawBrokerSheet` en core (entrada de `importListings`, con `headers`); `RawListingRow` pasa a `Readonly<Record<string, unknown>>` y core exporta `foldText`; el lector tiene un tope de 1000 filas y los errores `IMPORT_FILE_NOT_FOUND` / `IMPORT_FILE_INVALID`; la fixture de Google Sheets es una simulación |
+| 2026-09-30 | Plan de F1-T04, aprobado por el operador: T04 se parte en T04 (core: caso de uso, puertos, dobles y reporte) y T04b (repositorios Drizzle con PGlite). `source_hash` sobre `{ core, attributes, control }`; una propiedad nueva queda en `draft` y T07 la pasa a `ready`; `--broker` gana sobre el slug de la hoja |

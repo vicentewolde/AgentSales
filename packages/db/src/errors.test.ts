@@ -45,14 +45,41 @@ describe("isDbUnavailable", () => {
 });
 
 describe("toDbError", () => {
-  it("convierte un fallo de conexión en DB_UNAVAILABLE reintentable, con la causa", () => {
-    const original = drizzleWrapped(new Error("timeout exceeded when trying to connect"));
-    const result = toDbError(original);
+  it("convierte un fallo de conexión en DB_UNAVAILABLE reintentable, con el error del driver", () => {
+    const driver = new Error("timeout exceeded when trying to connect");
+    const result = toDbError(drizzleWrapped(driver, ["Calle Privada 123"]));
     expect(isAppError(result)).toBe(true);
-    expect(result).toMatchObject({ code: "DB_UNAVAILABLE", retriable: true, cause: original });
+    expect(result).toMatchObject({ code: "DB_UNAVAILABLE", retriable: true, cause: driver });
   });
 
-  it("deja pasar tal cual los demás errores, incluidos los AppError", () => {
+  it("otro error de una consulta → DB_QUERY_FAILED con el SQLSTATE, no reintentable", () => {
+    const driver = withCode("duplicate key value violates unique constraint", "23505");
+    const result = toDbError(drizzleWrapped(driver, ["P001"]));
+    expect(result).toMatchObject({
+      code: "DB_QUERY_FAILED",
+      retriable: false,
+      cause: driver,
+      details: { sqlState: "23505" },
+    });
+    expect(sqlStateOf(result)).toBe("23505");
+  });
+
+  it("los parámetros de la consulta (datos de clientes) no quedan en el error ni en su causa", () => {
+    const params = ["Notas internas privadas", "Calle Privada 123"];
+    for (const driver of [
+      withCode("connect ECONNREFUSED", "ECONNREFUSED"),
+      withCode("x", "23505"),
+    ]) {
+      const result = toDbError(drizzleWrapped(driver, params));
+      const chain: string[] = [];
+      for (let current: unknown = result; current instanceof Error; current = current.cause) {
+        chain.push(current.message);
+      }
+      expect(chain.join("\n")).not.toContain("Privada");
+    }
+  });
+
+  it("deja pasar tal cual los AppError y los errores ajenos a drizzle", () => {
     const duplicate = withCode("duplicate key value", "23505");
     expect(toDbError(duplicate)).toBe(duplicate);
     const appError = new AppError("LISTING_NOT_FOUND");
