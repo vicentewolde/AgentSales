@@ -4,14 +4,14 @@
 
 **Actualizado:** 2026-09-30
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T01 · Migración 0001, definiciones de campos y errores de base de datos
-**Siguiente paso:** `/tarea F1-T02`: validador dinámico (luego T03, el lector de Excel)
+**Última tarea terminada:** F1-T02 · Validador dinámico
+**Siguiente paso:** `/tarea F1-T03`: lector de Excel (necesita las muestras de `data/muestras/` recién en las demos de T12 y T14)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| F1-T01 Migración 0001, definiciones de campos y errores de base de datos | ✅ terminada | |
-| F1-T02 Validador dinámico | ⏳ pendiente | |
+| F1-T01 Migración 0001, definiciones de campos y errores de base de datos | ✅ terminada | #13 |
+| F1-T02 Validador dinámico | ✅ terminada | |
 | F1-T03 Lector de Excel | ⏳ pendiente | |
 | F1-T04 Caso de uso importListings | ⏳ pendiente | |
 | F1-T05 Almacenamiento con streams | ⏳ pendiente | |
@@ -41,9 +41,9 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **Antes de F1-T04:** el `cause` de `DB_UNAVAILABLE` (un `DrizzleQueryError`) lleva los `params` de la consulta en su mensaje. Con listings pueden ser datos de clientes (notas internas, dirección): decidir cómo se redactan en los logs.
-- **F1-T02:**
-  - Decidir si `options` también valida cada elemento de un `list` (por ejemplo `publicar_en`, con las plataformas).
-  - Test que cruce `CORE_FIELD_TARGETS` de core con `TEMPLATE_COLUMNS` e `is_core` del seed, para que no se desincronicen.
+- **F1-T04:**
+  - `listings.category` es `NOT NULL` y `REAL_ESTATE_CATEGORY` vive en `db`: core necesita su propia constante o tupla de categorías.
+  - Fijar en el spec qué entra en `source_hash`: solo `core` y `attributes`, o también `control`.
 - **F1-T03:**
   - La hoja Instrucciones de la plantilla todavía marca `carpeta_medios` como obligatoria; el seed la deja opcional (spec §4.3). Actualizar el xlsx.
   - `@agentsales/db` va solo como `devDependency` de `packages/importers`, por `TEMPLATE_COLUMNS` en los tests.
@@ -52,6 +52,25 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 ## Notas de la última sesión
 - 2026-09-30: **F0 cerrada.** Monorepo con `core`, `config`, `db` (Neon, migración `0000_init`), `storage` (R2), API (`/health`), worker (pg-boss), CLI (`doctor`/`status`) y panel. CI en GitHub Actions. 321 tests. Detalle en `CHANGELOG.md` `[0.0.1]` y en el spec F0.
 - 2026-09-30: demo de F0 confirmada por el operador. Arreglo derivado: el worker resume los errores repetidos de pg-boss sin conexión.
+- 2026-09-30: **F1-T02.** `buildListingValidator` en core.
+  - La precedencia del corredor la resuelve `resolveEffectiveDefinitions`: gana la del corredor por su dueño, y después se filtran las inactivas.
+  - Un normalizador por tipo:
+    - `5.800` → 5800 (el punto seguido de 3 dígitos es de miles);
+    - `72.5` y `72,5` → decimales;
+    - `Sí/No` sin importar mayúsculas;
+    - enums sin mayúsculas ni tildes;
+    - listas validadas contra `options`.
+  - `CORE_FIELD_TARGETS` asigna los destinos fijos. `tipo` se guarda como etiqueta (`Departamento`).
+  - `publicar_en` gana sus opciones en el seed; re-sembrado en Neon.
+  - La configuración inválida lanza `FIELD_CONFIG_INVALID` al construir el validador.
+  - Correcciones de `/revisar`:
+    - Una columna opcional ausente ya no hace fallar la fila.
+    - Una `key` de destino fijo debe ser `is_core`, así `notas_internas` no llega a `attributes`.
+    - Los encabezados vacíos se ignoran y los repetidos se informan.
+    - `isIgnored` filtra `EJEMPLO` y `Borrador` con las columnas resueltas.
+    - `fieldIssueSchema` en zod.
+    - `precio` con tope por `numeric(14,2)`.
+    - Las celdas que no son `RawCell` son `FIELD_VALUE_INVALID`.
 - 2026-09-30: **F1-T01.**
   - Migración `0001`, aplicada en Neon.
   - 36 definiciones globales sembradas desde la plantilla, con tipos y obligatorios del diccionario de la hoja Instrucciones. `carpeta_medios` es opcional, según §4.3 del spec.

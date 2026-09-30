@@ -245,7 +245,29 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 - La implementación Drizzle vive en `packages/db/src/repositories/` y recibe `SchemaDatabase`: sirve con node-postgres en las apps y con PGlite en los tests. No usa nada propio del driver.
 - Los fallos de conexión se traducen con `withDbErrors` a `AppError("DB_UNAVAILABLE", { retriable: true })`, que la API responde como 503 y el job reintenta. El resto de los errores pasa tal cual. `sqlStateOf` lee el SQLSTATE a través de la cadena de `cause` (drizzle envuelve el error del driver en `DrizzleQueryError`).
 - Hay un doble en memoria con la misma semántica en `@agentsales/core/testing`, que solo se importa desde tests. Los dos se prueban con los mismos fixtures, por ejemplo `fieldDefinitionOrderFixture`.
-- `FieldDefinitionRepository.list` devuelve las definiciones activas e inactivas. La precedencia (la del corredor sobre la global) y el filtro de `active` los resuelve el validador (F1-T02).
+- `FieldDefinitionRepository.list` devuelve las definiciones activas e inactivas. La precedencia (la del corredor sobre la global) y el filtro de `active` los resuelve `buildListingValidator` en core (`resolveEffectiveDefinitions`).
+
+## Validador de filas (`buildListingValidator`, core)
+
+- Se construye desde las definiciones (ADR-0006): agregar un campo es insertar una fila, sin cambiar código.
+- **Configuración inválida:** si con las definiciones no se puede armar un `listing`, lanza `FIELD_CONFIG_INVALID` al construirse, una vez por carga. Pasa en estos casos:
+  - falta `id_propiedad`, `precio` o `moneda`;
+  - una `key` no está en snake_case (`_extra` queda reservada);
+  - un `is_core` no tiene destino en `CORE_FIELD_TARGETS`, o una `key` de destino fijo no es `is_core` (así `notas_internas` nunca termina en `attributes`);
+  - un destino tiene otro tipo;
+  - una opción de un campo mapeado (`operacion`, `moneda`, `estado_carga`) no tiene equivalente;
+  - hay un enum sin opciones;
+  - dos campos leen la misma columna.
+- **Por fila:** `validate(row)` empareja los encabezados sin mayúsculas, tildes ni espacios extra, y normaliza cada celda según su tipo.
+  - Una columna opcional ausente no hace fallar la fila, y una obligatoria ausente es `FIELD_REQUIRED`.
+  - Acumula los errores (`FieldIssue`: columna, `key`, código y motivo) sin detenerse en el primero. La fila la agrega quien llama.
+  - `fieldIssueSchema` es el contrato zod de ese error, porque viaja en el reporte y por HTTP.
+- **Salida:** `core` (columnas de `listings`), `control` (`estado_carga`, `carpeta_medios`, `foto_portada`) y `attributes` (con `_extra` para las columnas desconocidas).
+- **Encabezados y filas ignoradas:**
+  - `checkHeaders(headers)` revisa los encabezados una vez por hoja: desconocidos, obligatorios faltantes y repetidos. Ignora los vacíos.
+  - `isIgnored(row)` marca la fila `EJEMPLO` y las de `Borrador`.
+- **`schema`:** es el esquema zod por `key` que usa `validate`. No lo reemplaza, porque no empareja columnas ni arma `_extra`.
+- Es código puro: sin red, base ni archivos.
 
 ## Contrato de almacenamiento de archivos
 

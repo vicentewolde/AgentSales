@@ -67,7 +67,10 @@ type FieldSeed = {
   label: string;
   type: FieldType;
   required?: boolean;
-  /** Opciones de un `enum`, tal como las ofrece la hoja **Listas** de la plantilla. */
+  /**
+   * Opciones de un `enum` (las de la hoja **Listas** de la plantilla) o de cada elemento de un
+   * `list`.
+   */
   options?: readonly string[];
   /** Columna fija de `listings` o de control de la carga (spec F1 §4.2). */
   isCore?: boolean;
@@ -167,7 +170,14 @@ const FIELD_SEEDS: readonly FieldSeed[] = [
   { key: "foto_portada", label: "Foto de portada", type: "text", isCore: true },
   { key: "link_video", label: "Link de video", type: "url" },
   { key: "link_tour_360", label: "Link de tour 360", type: "url" },
-  { key: "publicar_en", label: "Publicar en", type: "list", required: true },
+  {
+    key: "publicar_en",
+    label: "Publicar en",
+    type: "list",
+    required: true,
+    // Cada elemento se valida contra estas opciones: un error de tipeo sale en el reporte de F1.
+    options: ["Instagram", "Portal Inmobiliario", "Marketplace"],
+  },
   {
     key: "estado_carga",
     label: "Estado de carga",
