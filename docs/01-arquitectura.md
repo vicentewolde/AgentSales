@@ -73,7 +73,7 @@ Esto permite cambiar Claude CLI por la API de Anthropic, o agregar una plataform
 agentsales/
 ├── apps/
 │   ├── api/          Hono REST API; tipos exportados para el cliente RPC
-│   ├── web/          React + Vite + Tailwind; panel de operación
+│   ├── web/          React + Vite + Tailwind + TanStack Query + React Router; panel de operación
 │   ├── cli/          CLI `agentsales` (commander); usa el cliente RPC de la API
 │   └── worker/       Procesa jobs: medios, contenido, publicación, sincronización
 ├── packages/
@@ -225,6 +225,17 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
 ## Contrato de `/health`
 
 `healthReportSchema` y `HealthReport` viven en `packages/core` (`health.ts`). La API tipa su respuesta con ellos, y la CLI y el panel validan con el mismo esquema lo que reciben. El panel no puede importar nada de la API en tiempo de ejecución, porque arrastraría el servidor. Solo usa `import type { AppType }`.
+
+Dónde viven los contratos HTTP compartidos es una decisión pendiente para F1: un **ADR-0011** en `/fase-plan 1` define qué va en `core` y qué en una salida propia de la API. El criterio propuesto:
+- **Entidades de dominio** (`listing`, `importRun`): en `core`.
+- **Contratos HTTP** (salud, cuerpo de error, parámetros, formularios): en una salida `@agentsales/api/contracts` limitada a `zod` y `core`.
+
+## Tipos alcanzables desde `AppType`
+
+La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que arrastra la firma de `createApp(deps: AppDeps)` y todo tipo que se alcance desde ahí. Por eso:
+- En esos tipos no puede aparecer pino, drizzle, pg-boss, `@hono/node-server` ni `NodeJS.*`.
+- Se usan los puertos de `core` o tipos mínimos locales. Por ejemplo, `AppLogger` en vez del `Logger` de pino.
+- El panel tiene una guardia (`apps/web/src/no-node-types.ts`): si se filtran los tipos de Node, `tsc -b` falla.
 
 ## Contrato de almacenamiento de archivos
 

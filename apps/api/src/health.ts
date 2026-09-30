@@ -7,8 +7,6 @@ import type {
 } from "@agentsales/core";
 import { HEALTH_CHECK_NAMES } from "@agentsales/core";
 
-export type { HealthCheckName as CheckName, HealthCheckResult as CheckResult, HealthReport };
-
 /** Resuelve si el servicio está sano; lanza si no. */
 export type HealthCheck = () => Promise<void>;
 

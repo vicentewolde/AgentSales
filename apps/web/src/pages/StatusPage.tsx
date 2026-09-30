@@ -1,5 +1,6 @@
 import type { HealthCheckName, HealthCheckResult } from "@agentsales/core";
 import { HEALTH_CHECK_NAMES } from "@agentsales/core";
+import { useId } from "react";
 import { useHealth } from "../health.js";
 
 const CHECKS: Record<HealthCheckName, { label: string; note?: string }> = {
@@ -15,32 +16,37 @@ const timeFormat = new Intl.DateTimeFormat("es-CL", {
 
 function CheckCard({ name, result }: { name: HealthCheckName; result: HealthCheckResult }) {
   const { label, note } = CHECKS[name];
+  const titleId = useId();
   return (
-    <li
-      aria-label={label}
-      className={`rounded-lg border bg-white p-4 shadow-sm ${result.ok ? "border-slate-200" : "border-red-300"}`}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-semibold">{label}</h2>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-            result.ok ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"
-          }`}
-        >
-          {result.ok ? "OK" : "Falla"}
-        </span>
-      </div>
-      {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
-      <p className="mt-3 text-sm text-slate-700">{result.latencyMs} ms</p>
-      {!result.ok && result.error && (
-        <p className="mt-2 break-words text-sm text-red-700">{result.error}</p>
-      )}
+    <li>
+      <section
+        aria-labelledby={titleId}
+        className={`h-full rounded-lg border bg-white p-4 shadow-sm ${result.ok ? "border-slate-200" : "border-red-300"}`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <h2 id={titleId} className="font-semibold">
+            {label}
+          </h2>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+              result.ok ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"
+            }`}
+          >
+            {result.ok ? "OK" : "Falla"}
+          </span>
+        </div>
+        {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
+        <p className="mt-3 text-sm text-slate-700">{result.latencyMs} ms</p>
+        {!result.ok && result.error && (
+          <p className="mt-2 break-words text-sm text-red-700">{result.error}</p>
+        )}
+      </section>
     </li>
   );
 }
 
 export function StatusPage() {
-  const { data, error, isPending, isFetching, dataUpdatedAt, refetch } = useHealth();
+  const { data, error, isPending, isFetching, dataUpdatedAt, refetch } = useHealth({ poll: true });
 
   return (
     <section className="mx-auto max-w-4xl">
@@ -56,7 +62,7 @@ export function StatusPage() {
         </button>
       </div>
 
-      {isPending && !error && <p className="mt-6 text-slate-600">Consultando la API…</p>}
+      {isPending && <p className="mt-6 text-slate-600">Consultando la API…</p>}
 
       {error && (
         <div role="alert" className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4">

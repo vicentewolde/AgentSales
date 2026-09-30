@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
-    "outDir": "dist/node-types",
+    "outDir": "node_modules/.cache/tsc/web-node",
     "emitDeclarationOnly": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",

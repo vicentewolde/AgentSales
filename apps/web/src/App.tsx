@@ -30,12 +30,16 @@ export type AppProps = {
   fetchHealth?: HealthFetcher;
   queryClient?: QueryClient;
   inMemory?: boolean;
+  /** Solo con `inMemory`: ruta inicial. */
+  initialPath?: string;
 };
 
-export function App({ fetchHealth, queryClient, inMemory = false }: AppProps) {
+export function App({ fetchHealth, queryClient, inMemory = false, initialPath = "/" }: AppProps) {
   // Se crean una sola vez: un router o un cliente nuevos en cada render perderían el estado.
   const [router] = useState(() =>
-    inMemory ? createMemoryRouter(routes) : createBrowserRouter(routes),
+    inMemory
+      ? createMemoryRouter(routes, { initialEntries: [initialPath] })
+      : createBrowserRouter(routes),
   );
   const [client] = useState(
     () => queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: 1 } } }),

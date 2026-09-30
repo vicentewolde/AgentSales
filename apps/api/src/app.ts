@@ -1,13 +1,13 @@
-import type { PublishMode } from "@agentsales/core";
+import type { HealthCheckName, PublishMode } from "@agentsales/core";
 import { Hono } from "hono";
 import { createErrorHandler, notFoundHandler } from "./errors.js";
-import { type CheckName, type HealthCheck, runHealth } from "./health.js";
+import { type HealthCheck, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
 import { requestLogger } from "./request-logger.js";
 import { csrfGuard, hostGuard, type LocalAccess } from "./security.js";
 
 export type AppDeps = {
-  checks: Record<CheckName, HealthCheck>;
+  checks: Record<HealthCheckName, HealthCheck>;
   publishMode: PublishMode;
   version: string;
   logger: AppLogger;

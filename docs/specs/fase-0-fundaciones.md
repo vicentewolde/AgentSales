@@ -70,7 +70,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 
 ### F0-T01 · Esqueleto del monorepo y tooling
 - **Depende de:** —
-- **Descripción:** `pnpm-workspace.yaml`, `package.json` raíz con scripts, `tsconfig.base.json` (strict, NodeNext, ES2023), `biome.json`, `.nvmrc` (26, ADR-0008), `.editorconfig`, `vitest.config.ts` raíz (Vitest 5 ya no tiene `vitest.workspace`; se pasa a `test.projects` cuando un paquete necesite otro entorno, p. ej. web en T08).
+- **Descripción:** `pnpm-workspace.yaml`, `package.json` raíz con scripts, `tsconfig.base.json` (strict, NodeNext, ES2023), `biome.json`, `.nvmrc` (26, ADR-0008), `.editorconfig`, `vitest.config.ts` raíz (Vitest 5 ya no tiene `vitest.workspace`; los tests del panel usan jsdom por archivo, así que no hizo falta `test.projects`).
 - **Hecho cuando:**
   - [x] `pnpm install` y `pnpm check` pasan con el repo vacío de lógica
   - [x] `docs/ESTADO.md` actualizado
@@ -173,6 +173,7 @@ T01 crea `check`, `lint`, `format`, `typecheck` y `test`. Los demás los agrega 
 | 2026-09-29 | Runtime Node 26 (ADR-0008) y TypeScript 7 (ADR-0009); Vitest 5 con config raíz; scripts `lint`, `format` y `typecheck`; criterios nuevos en T02 (`passWithNoTests`) y T03 (`core` sin tipos de Node) |
 | 2026-09-29 | T02: HKDF de `APP_ENCRYPTION_KEY` se mueve a F3 (donde se cifra); `exports` con condición `@agentsales/source` (ADR-0010) |
 | 2026-09-29 | T03: `awaiting_manual_confirm → failed` (captcha o abandono, ADR-0004); `AppError.code` es texto libre en mayúsculas |
+| 2026-09-29 | Revisión de T08: Vite lee `API_PORT`/`WEB_PORT` del `.env` de la raíz; solo la página Estado sondea (el banner no); errores del panel como `CODE: mensaje`, con timeout de 35 s y cancelación; banner con un solo `role="status"` y contraste AA; guardia de tipos de Node en la web; declaraciones fuera de `dist/`; contratos HTTP pendientes de un ADR-0011 en F1 |
 | 2026-09-29 | T08: contrato de `/health` (`healthReportSchema`) en `core`, que usan la API, la CLI y el panel; `core` usa `zod`; la API tipa su logger con `AppLogger` (mínimo) para que `AppType` no meta pino ni los tipos de Node en la web (verificado: la web rechaza `process`); tests del panel con jsdom y Testing Library por archivo; sondeo de `/health` cada 30 s solo con la pestaña visible |
 | 2026-09-29 | Revisión de T07: `PUBLISH_MODE` se toma de la API (error si no coincide con `.env`) y `live` va en rojo también en `doctor`; `/health` validado con zod en la CLI; errores de la API como `CODE: mensaje`; sugerencias para base y almacenamiento; notas para F1-T06 y T08 |
 | 2026-09-29 | T07: `doctor` marca error en Node distinto de 26, `.env` inválido, API caída (con base, almacenamiento y cola), ffmpeg ausente; advertencia en Chromium, Claude y `PUBLISH_MODE=live`. `status` sale con 1 si no está `ok`. Chromium se detecta en la caché de ms-playwright, sin instalar Playwright. `commander@15.0.0`, `picocolors@1.1.1` |

@@ -22,7 +22,7 @@
 | Cola | pg-boss |
 | Tests | Vitest 5; msw para HTTP externo; Playwright para e2e del panel |
 | Logs | pino, JSON en producción y pretty en dev |
-| UI | React + Vite + Tailwind + TanStack Query |
+| UI | React + Vite + Tailwind + TanStack Query + React Router |
 | CLI | commander + picocolors; cliente RPC `hc<AppType>` de Hono |
 
 Cualquier dependencia nueva que no esté en esta tabla requiere justificación en el PR (y un ADR si es estructural). Las herramientas de desarrollo se fijan con versión exacta. `hono` va en la **misma versión** en `apps/api`, `apps/cli` y `apps/web`: si difieren, `hc<AppType>` puede tiparse mal sin avisar.
@@ -80,7 +80,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 - `include` tiene `src` y `test`, así `tsc -b` también tipa los tests.
 - `types` se declara siempre. `packages/core` usa `"types": []` para que el compilador rechace `process`, `Buffer` y compañía.
 - `references` enumera solo los paquetes internos de los que depende (el ejemplo depende de `config`; `packages/core` no tiene ninguna). Además, cada paquete nuevo se agrega a `references` del `tsconfig.json` raíz.
-- `apps/web` sobrescribe `lib` (con DOM), `jsx`, `module`/`moduleResolution` (`Bundler`) y `types: ["vite/client"]`, y usa `emitDeclarationOnly` en vez de `noEmit`, porque un proyecto referenciado no puede tener `noEmit`. `vite.config.ts` tiene su propio `tsconfig.node.json` (con tipos de Node). La web **no** debe ver tipos de Node: lo que exporta la API para `AppType` usa tipos mínimos (por ejemplo `AppLogger`), nunca los de pino o Node.
+- `apps/web` sobrescribe `lib` (con DOM), `jsx`, `module`/`moduleResolution` (`Bundler`) y `types: ["vite/client"]`, y usa `emitDeclarationOnly` en vez de `noEmit`, porque un proyecto referenciado no puede tener `noEmit`. `vite.config.ts` tiene su propio `tsconfig.node.json` (con tipos de Node). Las declaraciones de la web van a `node_modules/.cache/tsc/`, fuera de `dist/`, porque `vite build` vacía esa carpeta. La web **no** debe ver tipos de Node: lo que exporta la API para `AppType` usa tipos mínimos (por ejemplo `AppLogger`), nunca los de pino o Node.
 
 `exports` del `package.json` del paquete:
 
@@ -115,7 +115,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 - **core:** tests unitarios obligatorios (máquina de estados, validaciones, formateo de precios).
 - **Adaptadores externos:** tests de contrato con respuestas grabadas (msw). **Ningún test llama a APIs reales ni publica.**
 - **Importadores:** fixtures en `packages/importers/test/fixtures/` (Excel pequeños, incluidos casos con errores).
-- **Panel (React):** tests de componentes con Testing Library en jsdom, activado por archivo con `// @vitest-environment jsdom`. Nada de red: `/health` se inyecta por contexto.
+- **Panel (React):** tests de componentes con Testing Library en jsdom, activado por archivo con `// @vitest-environment jsdom`. Nada de red: el acceso a la API se inyecta por contexto (hoy `HealthFetcherContext`) o se simula `fetch`. El router en memoria acepta la ruta inicial (`initialPath`).
 - **LLM:** en los tests se usa el proveedor `fake`. Evaluación de prompts aparte con `pnpm eval:content` (fase 2).
 - Ubicación: `src/**/*.test.ts(x)` o `test/**/*.test.ts(x)` dentro de cada paquete. Es el patrón que busca `vitest.config.ts`; un test fuera de él no corre.
 - `pnpm check` = lint + typecheck + tests. Debe pasar antes de cada commit.

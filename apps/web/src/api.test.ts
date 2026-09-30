@@ -12,11 +12,11 @@ const healthy = {
   },
 };
 
-function stubFetch(response: () => Response | Promise<Response>) {
+function stubFetch(response: (init?: RequestInit) => Response | Promise<Response>) {
   const calls: string[] = [];
-  vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+  vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
     calls.push(String(input instanceof Request ? input.url : input));
-    return response();
+    return response(init);
   });
   return calls;
 }
@@ -33,24 +33,54 @@ describe("fetchHealth", () => {
     expect(calls[0]).toMatch(/\/api\/health$/);
   });
 
-  it("un 502 del proxy (API apagada) es ApiUnavailableError", async () => {
+  it("un 502 sin JSON del proxy (API apagada) es UNREACHABLE", async () => {
     stubFetch(() => new Response("Bad Gateway", { status: 502 }));
 
     await expect(fetchHealth()).rejects.toMatchObject({
-      name: "ApiUnavailableError",
+      name: "ApiError",
+      code: "UNREACHABLE",
       message: "La API no responde (HTTP 502)",
     });
   });
 
-  it("una respuesta con otra forma se rechaza", async () => {
-    stubFetch(() => Response.json({ hola: "mundo" }));
+  it("un error de la API se muestra como CODE: mensaje", async () => {
+    stubFetch(() =>
+      Response.json(
+        { error: { code: "HOST_NOT_ALLOWED", message: "Host no permitido: x:1" } },
+        { status: 403 },
+      ),
+    );
 
-    await expect(fetchHealth()).rejects.toThrow(/Respuesta inesperada/);
+    await expect(fetchHealth()).rejects.toMatchObject({
+      code: "HOST_NOT_ALLOWED",
+      message: "HOST_NOT_ALLOWED: Host no permitido: x:1",
+    });
   });
 
-  it("un fallo de red es ApiUnavailableError", async () => {
+  it.each([
+    ["otro JSON", () => Response.json({ hola: "mundo" })],
+    ["un 200 sin JSON", () => new Response("<html></html>", { status: 200 })],
+  ])("rechaza %s", async (_label, response) => {
+    stubFetch(response);
+
+    await expect(fetchHealth()).rejects.toMatchObject({ code: "UNEXPECTED_RESPONSE" });
+  });
+
+  it("un fallo de red es UNREACHABLE", async () => {
     stubFetch(() => Promise.reject(new TypeError("fetch failed")));
 
     await expect(fetchHealth()).rejects.toMatchObject({ message: "La API no responde" });
+  });
+
+  it("pasa una señal a fetch (cancelación y timeout)", async () => {
+    let received: AbortSignal | null | undefined;
+    stubFetch((init) => {
+      received = init?.signal;
+      return Response.json(healthy);
+    });
+
+    await fetchHealth(new AbortController().signal);
+
+    expect(received).toBeInstanceOf(AbortSignal);
   });
 });

@@ -15,7 +15,7 @@ Las herramientas del stack aceptan condiciones de exportación propias: `tsc` co
   `"@agentsales/source": "./src/index.ts"`, `"types": "./dist/src/index.d.ts"`, `"default": "./dist/src/index.js"`.
 - La condición se activa en **un solo lugar por herramienta**:
   - `tsc`: `customConditions` en `tsconfig.base.json`.
-  - Vitest: `ssr.resolve.conditions` en `vitest.config.ts`, repitiendo las condiciones por defecto de Vite salvo `module` (ver Seguimiento), porque la lista las reemplaza.
+  - Vitest: `ssr.resolve.conditions` en `vitest.config.ts` para los tests de Node, repitiendo las condiciones por defecto de Vite salvo `module` (ver Seguimiento), y `resolve.conditions` con las de navegador para los tests del panel en jsdom. Las listas reemplazan las de Vite.
   - tsx y Node en desarrollo: `NODE_OPTIONS=--conditions=@agentsales/source` en los scripts `dev` y `cli` (T05–T07) y en los scripts de paquete (`db:*`, `storage:check`, drizzle-kit).
   - Vite (`apps/web`): `resolve.conditions` en su config (T08).
 - En producción no se activa la condición y se usa `dist/`, generado con `tsc -b`.
