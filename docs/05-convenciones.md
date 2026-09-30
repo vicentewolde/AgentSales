@@ -43,7 +43,12 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
   | `*_UNAVAILABLE` | 503 |
   | cualquier otro | 500 |
 
-  Un error que no es `AppError` responde `500 INTERNAL_ERROR` con un mensaje genérico; el detalle queda solo en el log.
+  Además:
+  - Un `AppError` que resulta en 500 mantiene su `code` pero responde un mensaje genérico; el detalle queda solo en el log.
+  - Un error que no es `AppError` responde `500 INTERNAL_ERROR`.
+  - Una `HTTPException` 4xx de Hono responde `HTTP_<status>` (por ejemplo `HTTP_429`) y conserva sus headers.
+  - Un cuerpo JSON mal formado responde `400 INVALID_JSON`.
+  - Un `Host` no local responde `403 HOST_NOT_ALLOWED`; una ruta inexistente, `404 ROUTE_NOT_FOUND`.
 - Nada de secretos en el código. Todo por `packages/config` (env validado con zod al arrancar).
 - Solo los puntos de entrada cargan el entorno (`loadEnvFile`/`loadEnv`): las apps y los `src/scripts/*` de cada paquete. El resto de un paquete recibe opciones concretas (`createDb(url)`, `createR2Storage({...})`); Biome lo exige en `db` y `storage`.
 - Nombres de archivos: `kebab-case.ts`. Componentes React: `PascalCase.tsx`.

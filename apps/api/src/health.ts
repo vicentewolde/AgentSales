@@ -52,6 +52,7 @@ export async function runHealth(options: {
       async (name) => [name, await runCheck(options.checks[name], timeoutMs)] as const,
     ),
   );
+  // `results` recorre CHECK_NAMES completo, así que el objeto tiene todas las claves.
   const checks = Object.fromEntries(results) as Record<CheckName, CheckResult>;
   return {
     status: results.every(([, result]) => result.ok) ? "ok" : "degraded",

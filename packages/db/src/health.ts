@@ -1,5 +1,7 @@
-import { sql } from "drizzle-orm";
-import type { Database } from "./client.js";
+import { type SQL, sql } from "drizzle-orm";
+
+/** Lo mínimo que necesita el ping; `Database` lo cumple. */
+export type Pingable = { execute(query: SQL): PromiseLike<unknown> };
 
 export type PingOptions = {
   /** Reintentos tras el primer fallo; Neon puede tardar en despertar (ADR-0007). */
@@ -12,7 +14,7 @@ export type PingOptions = {
  * conexión del pool (10 s); si todos fallan, lanza el error del último intento.
  */
 export async function pingDatabase(
-  db: Pick<Database, "execute">,
+  db: Pingable,
   { retries = 1, retryDelayMs = 500 }: PingOptions = {},
 ): Promise<void> {
   for (let attempt = 0; ; attempt++) {

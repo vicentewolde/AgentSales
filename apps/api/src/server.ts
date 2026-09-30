@@ -4,12 +4,14 @@ import { createDb, pingDatabase } from "@agentsales/db";
 import { createR2Storage } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
+import { localAccess } from "./security.js";
 import { readApiVersion } from "./version.js";
 
 /** Solo en local: la API no tiene autenticación hasta F7. */
 const HOSTNAME = "127.0.0.1";
 const HEALTHCHECK_PATH = "_healthcheck/ping";
-const SHUTDOWN_TIMEOUT_MS = 10_000;
+/** Mayor que el tope de un check de `/health` (25 s), para dejar terminar lo que está en curso. */
+const SHUTDOWN_TIMEOUT_MS = 30_000;
 
 loadEnvFile();
 const env = loadEnv();
@@ -44,6 +46,7 @@ const app = createApp({
   publishMode: env.PUBLISH_MODE,
   version: readApiVersion(),
   logger,
+  access: localAccess(env.API_PORT, env.WEB_PORT),
 });
 
 const server = serve({ fetch: app.fetch, port: env.API_PORT, hostname: HOSTNAME }, (info) => {
@@ -55,18 +58,44 @@ const server = serve({ fetch: app.fetch, port: env.API_PORT, hostname: HOSTNAME 
   }
 });
 
+server.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EADDRINUSE") {
+    logger.error(
+      `El puerto ${env.API_PORT} está ocupado: ¿otra API corriendo? Cambia API_PORT o ciérrala.`,
+    );
+  } else {
+    logger.error({ err: error }, "el servidor HTTP falló");
+  }
+  process.exit(1);
+});
+
+let shuttingDown = false;
+
 function shutdown(signal: string): void {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
   logger.info({ signal }, "apagando la API");
   const force = setTimeout(() => {
-    logger.error("el apagado tardó demasiado; se fuerza la salida");
+    logger.error("el apagado tardó demasiado; se cierran las conexiones y se fuerza la salida");
+    if ("closeAllConnections" in server) {
+      server.closeAllConnections();
+    }
     process.exit(1);
   }, SHUTDOWN_TIMEOUT_MS);
   force.unref();
-  server.close(async () => {
-    await database.close();
-    process.exit(0);
+  // `close` deja de aceptar conexiones y espera a las activas; las ociosas las cierra Node.
+  server.close((error) => {
+    if (error) {
+      logger.warn({ err: error }, "el servidor ya estaba cerrado");
+    }
+    database
+      .close()
+      .catch((closeError: unknown) => logger.error({ err: closeError }, "error al cerrar la base"))
+      .finally(() => process.exit(0));
   });
 }
 
-process.once("SIGINT", () => shutdown("SIGINT"));
-process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

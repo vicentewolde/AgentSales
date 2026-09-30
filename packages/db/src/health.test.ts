@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { Database } from "./client.js";
-import { pingDatabase } from "./health.js";
+import { type Pingable, pingDatabase } from "./health.js";
 
 /** Base simulada: falla las primeras `failures` llamadas. */
 function fakeDb(failures: number) {
   let calls = 0;
-  const db = {
+  const db: Pingable = {
     execute: async () => {
       calls++;
       if (calls <= failures) {
@@ -13,7 +12,7 @@ function fakeDb(failures: number) {
       }
       return { rows: [] };
     },
-  } as unknown as Pick<Database, "execute">;
+  };
   return { db, calls: () => calls };
 }
 
