@@ -1,11 +1,10 @@
-import { redactText } from "@agentsales/config";
 import type {
   HealthCheckName,
   HealthCheckResult,
   HealthReport,
   PublishMode,
 } from "@agentsales/core";
-import { HEALTH_CHECK_NAMES } from "@agentsales/core";
+import { HEALTH_CHECK_NAMES, redactText } from "@agentsales/core";
 
 /** Resuelve si el servicio está sano; lanza si no. */
 export type HealthCheck = () => Promise<void>;
@@ -14,7 +13,7 @@ export type HealthCheck = () => Promise<void>;
 export const DEFAULT_CHECK_TIMEOUT_MS = 25_000;
 
 function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
-  let timer: NodeJS.Timeout | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`sin respuesta en ${ms} ms`)), ms);
   });

@@ -33,6 +33,9 @@
     },
     {
       "path": "./apps/web/tsconfig.node.json"
+    },
+    {
+      "path": "./apps/web/tsconfig.test.json"
     }
   ]
 }

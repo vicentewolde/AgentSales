@@ -80,7 +80,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 - `include` tiene `src` y `test`, así `tsc -b` también tipa los tests.
 - `types` se declara siempre. `packages/core` usa `"types": []` para que el compilador rechace `process`, `Buffer` y compañía.
 - `references` enumera solo los paquetes internos de los que depende (el ejemplo depende de `config`; `packages/core` no tiene ninguna). Además, cada paquete nuevo se agrega a `references` del `tsconfig.json` raíz.
-- `apps/web` sobrescribe `lib` (con DOM), `jsx`, `module`/`moduleResolution` (`Bundler`) y `types: ["vite/client"]`, y usa `emitDeclarationOnly` en vez de `noEmit`, porque un proyecto referenciado no puede tener `noEmit`. `vite.config.ts` tiene su propio `tsconfig.node.json` (con tipos de Node). Las declaraciones de la web van a `node_modules/.cache/tsc/`, fuera de `dist/`, porque `vite build` vacía esa carpeta. La web **no** debe ver tipos de Node: lo que exporta la API para `AppType` usa tipos mínimos (por ejemplo `AppLogger`), nunca los de pino o Node.
+- `apps/web` sobrescribe `lib` (con DOM), `jsx`, `module`/`moduleResolution` (`Bundler`) y `types: ["vite/client"]`, y usa `emitDeclarationOnly` en vez de `noEmit`, porque un proyecto referenciado no puede tener `noEmit`. `vite.config.ts` tiene su propio `tsconfig.node.json` (con tipos de Node). Las declaraciones de la web van a `node_modules/.cache/tsc/`, fuera de `dist/`, porque `vite build` vacía esa carpeta. Los tests del panel tienen su propio `tsconfig.test.json` (con tipos de Node, porque Vitest los trae) y quedan fuera del `tsconfig.json` de la app, donde la guardia `no-node-types.ts` exige que no haya tipos de Node. La web **no** debe ver tipos de Node: lo que exporta la API para `AppType` usa tipos mínimos (por ejemplo `AppLogger`), nunca los de pino o Node.
 
 `exports` del `package.json` del paquete:
 
@@ -126,6 +126,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 - Una rama por tarea: `<tipo>/<id-tarea>-<resumen>`. Ejemplo: `feat/f1-t03-import-xlsx`.
 - **Conventional Commits:** `feat(importers): importa hoja Propiedades desde xlsx`. Tipos: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `build`, `ci`.
 - Un PR por tarea, con squash merge a `main`. La descripción del PR enlaza la tarea del spec.
+- **No se hace merge sin el check `CI / check` en verde sobre el último commit del PR** (`.github/workflows/ci.yml`). GitHub no permite exigirlo en repos privados del plan gratis (protección de ramas y rulesets requieren GitHub Pro), así que es una regla del proceso: la cumplen el operador y Claude Code.
 - Al cerrar cada fase: tag `vX.Y.0` (F0 → `v0.0.1`, F1 → `v0.1.0`, …).
 - Nunca `git push --force` a `main`. Nunca commitear `.env` ni datos reales de clientes.
 
