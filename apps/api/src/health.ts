@@ -13,7 +13,7 @@ export type HealthCheck = () => Promise<void>;
 export const DEFAULT_CHECK_TIMEOUT_MS = 25_000;
 
 function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
-  let timer: NodeJS.Timeout | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`sin respuesta en ${ms} ms`)), ms);
   });
