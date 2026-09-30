@@ -29,3 +29,8 @@ Procesar video, renderizar plantillas, llamar a la IA y publicar son tareas lent
 
 ## Seguimiento
 - 2026-09-29 (F0-T06): pg-boss 12.35.0 en `apps/worker`. Cada job se declara con `defineJob` (datos validados con zod y solo ids), con una política por cola que aplica el worker (`createQueue` + `updateQueue`) y `batchSize: 1`. Un `AppError` no reintentable no se reintenta. Contrato objetivo (`JOB_NAMES`/`JOB_PAYLOADS` en `core`, puerto `JobQueue`) y tabla de políticas en `docs/01-arquitectura.md` → Cola de trabajos.
+- 2026-09-30 (`/fase-plan 1`): **enmienda.** Se agrega el job `import.run`, porque la importación de F1 sube videos de hasta 300 MB y debe reintentarse si R2 falla. Así se mantiene "la API solo encola":
+  - La API crea el `import_run` en `queued`, encola `{ importRunId }` y responde `202`.
+  - El worker importa y deja el run en `succeeded` o `failed`, también en el último intento.
+  - En el MVP, la API y el worker comparten disco local (`<workspace>/tmp/imports`) para los archivos subidos. Con el despliegue de F7 pasan a R2.
+  - El adaptador se extrae a `packages/queue` en F1 (spec F1 §4.6, T08 y T09).

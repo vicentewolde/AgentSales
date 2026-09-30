@@ -94,6 +94,8 @@ test/             # opcional: fixtures, helpers y tests de integración
 }
 ```
 
+Una subruta (por ejemplo `./contracts` en `apps/api` o `./testing` en `packages/core`, desde F1) repite las tres condiciones con su propio punto de entrada: `"@agentsales/source": "./src/contracts/index.ts"`, `"types": "./dist/src/contracts/index.d.ts"` y `"default": "./dist/src/contracts/index.js"`. Una salida de repositorios en memoria (`./testing`) solo se importa desde tests, y Biome lo hace cumplir.
+
 - En desarrollo se usa la condición `@agentsales/source`, que resuelve al código fuente sin compilar antes (ADR-0010). Se activa una sola vez por herramienta:
   - `tsc`: `customConditions` en `tsconfig.base.json`.
   - Vitest: `ssr.resolve.conditions` en `vitest.config.ts`.
