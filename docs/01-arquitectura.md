@@ -60,8 +60,8 @@ flowchart LR
 ## Estilo: puertos y adaptadores
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
-- Core define **puertos** (interfaces): `ListingRepository`, `MediaStorage`, `LLMProvider`, `Publisher`, `Importer`, `JobQueue`. Hoy solo existe `MediaStorage` (`packages/core/src/ports/`); el resto llega en su fase.
-- Cola (ADR-0005): en F0 el adaptador de pg-boss vive en `apps/worker/src/queue.ts`, porque solo lo usan el worker y su script de prueba. **En la primera fase en que la API encole** (F1 si se adopta un job `import.run`; si no, F2) se extrae a `packages/queue` implementando `JobQueue`, y con él `QUEUE_SCHEMA` y `checkQueueSchema` (hoy en `@agentsales/db`). La API no arranca pg-boss: su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
+- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider` y `Publisher`. Hoy solo existe `MediaStorage` (`packages/core/src/ports/`); el resto llega en su fase (F1: repositorios, `MediaFileSource` y `JobQueue`).
+- Cola (ADR-0005): en F0 el adaptador de pg-boss vive en `apps/worker/src/queue.ts`, porque solo lo usan el worker y su script de prueba. **En F1**, cuando la API empieza a encolar `import.run`, se extrae a `packages/queue` implementando `JobQueue`, y con él `QUEUE_SCHEMA` y `checkQueueSchema` (hoy en `@agentsales/db`). La API, como `producer`, arranca pg-boss de forma diferida en el primer `enqueue`, y su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
 
@@ -213,6 +213,7 @@ Política objetivo por cola (cada fase la confirma en su spec):
 | Cola | Unicidad | Reintentos | Backoff | Expira |
 |---|---|---|---|---|
 | `system.ping` (F0) | — | 0 | no | 60 s |
+| `import.run` (F1) | `singletonKey = importRunId`; en el último intento deja el run en `failed` | 2 | sí, desde 30 s | 2 h (videos grandes) |
 | `media.process` | `singletonKey = mediaId` | 3 | sí, desde 30 s | ~15 min (ffmpeg) |
 | `content.prepare` | `singletonKey = listingId` | 2 | sí, desde 60 s | ~10 min (LLM) |
 | `publication.publish` | `singletonKey = publicationId`; dead-letter que lleva a `failed` | 3 | sí, desde 60 s | ~5 min (Marketplace termina en `awaiting_manual_confirm`) |
@@ -223,13 +224,12 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
 
 `queue: ok` en `/health` significa que la cola se inicializó alguna vez, **no** que el worker esté corriendo.
 
-## Contrato de `/health`
+## Contratos HTTP compartidos (ADR-0011)
 
-`healthReportSchema` y `HealthReport` viven en `packages/core` (`health.ts`). La API tipa su respuesta con ellos, y la CLI y el panel validan con el mismo esquema lo que reciben. El panel no puede importar nada de la API en tiempo de ejecución, porque arrastraría el servidor. Solo usa `import type { AppType }`.
-
-Dónde viven los contratos HTTP compartidos es una decisión pendiente para F1: un **ADR-0011** en `/fase-plan 1` define qué va en `core` y qué en una salida propia de la API. El criterio propuesto:
-- **Entidades de dominio** (`listing`, `importRun`): en `core`.
-- **Contratos HTTP** (salud, cuerpo de error, parámetros, formularios): en una salida `@agentsales/api/contracts` limitada a `zod` y `core`.
+- **Entidades de dominio** (`listing`, `media`, `broker`, `importRun`, `importReport`) y `healthReportSchema`: en `packages/core`.
+- **Contratos HTTP:** en la salida `@agentsales/api/contracts` (`apps/api/src/contracts/`). Incluye el cuerpo de error (`errorBodySchema`), los parámetros, los formularios y los sobres de respuesta. Biome la limita a `zod`, `@agentsales/core` e imports relativos (desde F1-T10).
+- La API tipa sus respuestas y valida su entrada con esos esquemas. La CLI y el panel validan con los mismos esquemas lo que reciben.
+- **Lo único que el panel importa de la API en tiempo de ejecución es `@agentsales/api/contracts`.** De la raíz de `@agentsales/api` solo importa `import type { AppType }`, porque en tiempo de ejecución arrastraría el servidor.
 
 ## Tipos alcanzables desde `AppType`
 
