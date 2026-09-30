@@ -99,7 +99,8 @@ Los paquetes se crean **cuando la fase que los necesita comienza**, no antes (ve
 ### 1. Carga
 
 ```
-Excel + carpetas → importer valida contra field_definitions
+Excel + carpetas → xlsx-reader (importers) lee la planilla, sin validar ni filtrar
+  → importListings (core) filtra EJEMPLO/Borrador y valida contra field_definitions
   → upsert de listings (idempotente por broker + external_ref)
   → sube medios originales a R2 → registra media
   → import_run con reporte de errores por fila
@@ -251,7 +252,13 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 
 - `readListingsWorkbook(ruta | bytes)` lee la hoja **Propiedades** (encabezados en la fila 1) y la hoja **Corredor** (vertical, con las columnas `Campo` y `Tu valor`). Busca las hojas y las columnas sin mayúsculas ni tildes.
 - Devuelve `{ headers, rows: [{ rowNumber, raw }], broker }`, con **todas** las filas no vacías y su número real de fila en Excel. **No valida ni filtra:** eso es del validador y de `importListings`.
-- Aplana las celdas de exceljs a `RawCell`: fórmula → resultado, hipervínculo → texto, texto enriquecido → texto plano, error → el texto del error.
+- **Celdas:** aplana las de exceljs cuando puede: fórmula → su resultado guardado, hipervínculo → el texto visible (no la URL), texto enriquecido → texto plano. Lo que no sabe aplanar, incluidos los errores de Excel (`#REF!`), pasa tal cual y el validador lo marca `FIELD_VALUE_INVALID` en cualquier campo.
+- **Casos especiales:**
+  - las celdas combinadas que no son la principal se leen vacías;
+  - una fórmula sin resultado guardado (un Excel generado por script) se lee vacía;
+  - en `link_video`, un hipervínculo con el texto "Ver video" no sirve, porque se lee el texto: hay que escribir la URL.
+- **Contrato:** entrega `ListingSheetInput` (core) y las claves de cada fila son propiedades propias, así que un encabezado como `constructor` o `__proto__` no se pierde.
+- **Mensajes de error:** llevan solo el **nombre** del archivo, nunca la ruta.
 - Topes: 10 MB y 1000 filas de datos. Los errores son `IMPORT_FILE_NOT_FOUND` o `IMPORT_FILE_INVALID` (no es xlsx, excede un tope, falta la hoja Propiedades o la hoja Corredor no tiene sus columnas).
 
 ## Validador de filas (`buildListingValidator`, core)

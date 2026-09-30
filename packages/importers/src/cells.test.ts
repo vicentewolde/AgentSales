@@ -9,7 +9,8 @@ describe("flattenCell", () => {
     ["hipervínculo", { text: "Ver video", hyperlink: "https://example.cl" }, "Ver video"],
     ["hipervínculo sin texto", { hyperlink: "https://example.cl" }, "https://example.cl"],
     ["texto enriquecido", { richText: [{ text: "Muy " }, { text: "luminoso" }] }, "Muy luminoso"],
-    ["error de Excel", { error: "#DIV/0!" }, "#DIV/0!"],
+    // El error queda como objeto: el validador lo rechaza en cualquier campo (FIELD_VALUE_INVALID).
+    ["error de Excel", { error: "#DIV/0!" }, { error: "#DIV/0!" }],
     [
       "fórmula con texto enriquecido",
       { formula: "A1", result: { richText: [{ text: "x" }] } },
@@ -35,5 +36,7 @@ describe("cellText", () => {
     expect(cellText({ richText: [{ text: " Tu valor " }] })).toBe("Tu valor");
     expect(cellText(null)).toBe("");
     expect(cellText(12)).toBe("12");
+    expect(cellText({ error: "#REF!" })).toBe("#REF!");
+    expect(cellText({ algo: "raro" })).toBe("");
   });
 });

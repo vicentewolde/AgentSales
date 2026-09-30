@@ -2,6 +2,7 @@ export * from "./enums.js";
 export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
 export { type FieldDefinition, fieldDefinitionSchema } from "./field-definition.js";
 export * from "./health.js";
+export type { ListingSheetInput, ListingSheetRow, RawBrokerSheet } from "./listing-sheet.js";
 export {
   buildListingValidator,
   CORE_FIELD_TARGETS,

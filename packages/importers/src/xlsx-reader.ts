@@ -1,5 +1,13 @@
 import { readFile, stat } from "node:fs/promises";
-import { AppError, foldText, type RawListingRow } from "@agentsales/core";
+import { basename } from "node:path";
+import {
+  AppError,
+  foldText,
+  isAppError,
+  type ListingSheetInput,
+  type ListingSheetRow,
+  type RawBrokerSheet,
+} from "@agentsales/core";
 import ExcelJS from "exceljs";
 import { cellText, flattenCell } from "./cells.js";
 
@@ -13,28 +21,40 @@ const BROKER_SHEET = "Corredor";
 const BROKER_LABEL_HEADER = "Campo";
 const BROKER_VALUE_HEADER = "Tu valor";
 
-export type WorkbookRow = {
-  /** Número de fila en Excel (la 1 es el encabezado), para el reporte. */
-  rowNumber: number;
-  /** Encabezado → celda aplanada. Con encabezados repetidos, vale el primero. */
-  raw: RawListingRow;
-};
-
-export type ListingsWorkbook = {
-  /** Encabezados no vacíos de la hoja Propiedades, en orden y tal como están escritos. */
-  headers: string[];
-  /** Todas las filas con algún valor; `EJEMPLO` y `Borrador` los filtra `importListings`. */
-  rows: WorkbookRow[];
-  /** Hoja Corredor: `Campo` → `Tu valor`. `null` si la hoja no existe o no tiene valores. */
-  broker: RawListingRow | null;
-};
-
-function invalidFile(message: string, details: Record<string, unknown> = {}): AppError {
-  return new AppError("IMPORT_FILE_INVALID", message, { details });
+/**
+ * Error del archivo. El mensaje y los `details` llevan solo el **nombre** del archivo, nunca la
+ * ruta: terminan en `import_runs.error` y en la API. La causa original va en `cause`, que no se
+ * expone.
+ */
+function fileError(
+  code: "IMPORT_FILE_NOT_FOUND" | "IMPORT_FILE_INVALID",
+  message: string,
+  details: Record<string, unknown> = {},
+  cause?: unknown,
+): AppError {
+  return new AppError(code, message, { details, ...(cause === undefined ? {} : { cause }) });
 }
+
+const invalidFile = (message: string, details?: Record<string, unknown>, cause?: unknown) =>
+  fileError("IMPORT_FILE_INVALID", message, details, cause);
+
+const tooBig = (bytes: number, file?: string) =>
+  invalidFile(`El Excel pesa más de ${MAX_XLSX_BYTES / 1024 / 1024} MB`, {
+    ...(file === undefined ? {} : { file }),
+    bytes,
+    maxBytes: MAX_XLSX_BYTES,
+  });
 
 const isBlankCell = (value: unknown) =>
   value === null || value === undefined || (typeof value === "string" && !value.trim());
+
+/**
+ * Valor de la celda aplanado. Las celdas combinadas que no son la principal se leen vacías:
+ * exceljs les repite el valor de la principal, y eso copiaría un dato a otra columna.
+ */
+function cellValue(cell: ExcelJS.Cell): unknown {
+  return cell.type === ExcelJS.ValueType.Merge ? null : flattenCell(cell.value);
+}
 
 /** Busca una hoja por nombre, sin mayúsculas, tildes ni espacios (Sheets puede cambiarlos). */
 function findSheet(workbook: ExcelJS.Workbook, name: string): ExcelJS.Worksheet | undefined {
@@ -47,24 +67,19 @@ async function loadBytes(source: string | Uint8Array): Promise<Uint8Array> {
     if (source.byteLength > MAX_XLSX_BYTES) throw tooBig(source.byteLength);
     return source;
   }
+  const file = basename(source);
   try {
     const info = await stat(source);
-    if (!info.isFile()) throw invalidFile("La ruta no es un archivo", { path: source });
-    if (info.size > MAX_XLSX_BYTES) throw tooBig(info.size);
+    if (!info.isFile()) throw invalidFile(`${file} no es un archivo`, { file });
+    if (info.size > MAX_XLSX_BYTES) throw tooBig(info.size, file);
     return await readFile(source);
   } catch (error) {
-    if (error instanceof AppError) throw error;
+    if (isAppError(error)) throw error;
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      throw new AppError("IMPORT_FILE_NOT_FOUND", `No existe el archivo ${source}`, {
-        details: { path: source },
-      });
+      throw fileError("IMPORT_FILE_NOT_FOUND", `No existe el archivo ${file}`, { file }, error);
     }
-    throw invalidFile("No se pudo leer el archivo", { path: source, cause: String(error) });
+    throw invalidFile(`No se pudo leer el archivo ${file}`, { file }, error);
   }
-}
-
-function tooBig(bytes: number): AppError {
-  return invalidFile(`El Excel pesa más de ${MAX_XLSX_BYTES / 1024 / 1024} MB`, { bytes });
 }
 
 async function loadWorkbook(bytes: Uint8Array): Promise<ExcelJS.Workbook> {
@@ -76,16 +91,30 @@ async function loadWorkbook(bytes: Uint8Array): Promise<ExcelJS.Workbook> {
     copy.set(bytes);
     await workbook.xlsx.load(copy.buffer);
   } catch (error) {
-    throw invalidFile("El archivo no es un Excel (.xlsx) válido", { cause: String(error) });
+    throw invalidFile("El archivo no es un Excel (.xlsx) válido", {}, error);
   }
   return workbook;
 }
 
-function readListingsSheet(sheet: ExcelJS.Worksheet): Pick<ListingsWorkbook, "headers" | "rows"> {
-  const headerRow = sheet.getRow(1);
+/**
+ * Objeto con solo propiedades propias, conservando la primera aparición de cada clave. Con `{}` y
+ * `in`, un encabezado como `constructor` o `__proto__` se perdería por el prototipo.
+ */
+function firstWins(entries: readonly (readonly [string, unknown])[]): Record<string, unknown> {
+  const seen = new Set<string>();
+  return Object.fromEntries(
+    entries.filter(([key]) => {
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }),
+  );
+}
+
+function readListingsSheet(sheet: ExcelJS.Worksheet): Pick<ListingSheetInput, "headers" | "rows"> {
   const columns: { index: number; header: string }[] = [];
-  headerRow.eachCell({ includeEmpty: false }, (cell, index) => {
-    const header = cellText(cell.value);
+  sheet.getRow(1).eachCell({ includeEmpty: false }, (cell, index) => {
+    const header = cell.type === ExcelJS.ValueType.Merge ? "" : cellText(cell.value);
     if (header) columns.push({ index, header });
   });
   if (columns.length === 0) {
@@ -94,30 +123,27 @@ function readListingsSheet(sheet: ExcelJS.Worksheet): Pick<ListingsWorkbook, "he
     });
   }
 
-  const rows: WorkbookRow[] = [];
+  const rows: ListingSheetRow[] = [];
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber === 1) return;
-    const raw: Record<string, unknown> = {};
-    let hasValue = false;
-    for (const { index, header } of columns) {
-      const value = flattenCell(row.getCell(index).value);
-      if (!isBlankCell(value)) hasValue = true;
-      if (!(header in raw)) raw[header] = value;
-    }
+    const entries = columns.map(
+      ({ index, header }) => [header, cellValue(row.getCell(index))] as const,
+    );
     // La plantilla trae filas vacías con formato y listas desplegables: no son datos.
-    if (!hasValue) return;
+    if (entries.every(([, value]) => isBlankCell(value))) return;
     if (rows.length >= MAX_DATA_ROWS) {
       throw invalidFile(`La hoja ${LISTINGS_SHEET} tiene más de ${MAX_DATA_ROWS} filas`, {
         maxRows: MAX_DATA_ROWS,
       });
     }
-    rows.push({ rowNumber, raw });
+    // Con encabezados repetidos vale la primera columna (`checkHeaders` los informa).
+    rows.push({ rowNumber, raw: firstWins(entries) });
   });
 
   return { headers: columns.map((column) => column.header), rows };
 }
 
-function readBrokerSheet(sheet: ExcelJS.Worksheet): RawListingRow | null {
+function readBrokerSheet(sheet: ExcelJS.Worksheet): RawBrokerSheet | null {
   let labelColumn: number | undefined;
   let valueColumn: number | undefined;
   sheet.getRow(1).eachCell({ includeEmpty: false }, (cell, index) => {
@@ -132,17 +158,13 @@ function readBrokerSheet(sheet: ExcelJS.Worksheet): RawListingRow | null {
     );
   }
 
-  const fields: Record<string, unknown> = {};
-  let hasValue = false;
+  const entries: (readonly [string, unknown])[] = [];
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber === 1 || labelColumn === undefined || valueColumn === undefined) return;
     const label = cellText(row.getCell(labelColumn).value);
-    if (!label || label in fields) return;
-    const value = flattenCell(row.getCell(valueColumn).value);
-    if (!isBlankCell(value)) hasValue = true;
-    fields[label] = value;
+    if (label) entries.push([label, cellValue(row.getCell(valueColumn))]);
   });
-  return hasValue ? fields : null;
+  return entries.some(([, value]) => !isBlankCell(value)) ? firstWins(entries) : null;
 }
 
 /**
@@ -153,7 +175,9 @@ function readBrokerSheet(sheet: ExcelJS.Worksheet): RawListingRow | null {
  * No valida ni filtra: eso es del validador (F1-T02) y de `importListings` (F1-T04). Lanza
  * `IMPORT_FILE_NOT_FOUND` o `IMPORT_FILE_INVALID` (no es xlsx, excede los topes o falta la hoja).
  */
-export async function readListingsWorkbook(source: string | Uint8Array): Promise<ListingsWorkbook> {
+export async function readListingsWorkbook(
+  source: string | Uint8Array,
+): Promise<ListingSheetInput> {
   const workbook = await loadWorkbook(await loadBytes(source));
   const listings = findSheet(workbook, LISTINGS_SHEET);
   if (listings === undefined) {

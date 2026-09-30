@@ -42,8 +42,10 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **Antes de F1-T04:** el `cause` de `DB_UNAVAILABLE` (un `DrizzleQueryError`) lleva los `params` de la consulta en su mensaje. Con listings pueden ser datos de clientes (notas internas, dirección): decidir cómo se redactan en los logs.
 - **F1-T04:**
+  - Hoja Corredor: comparar las etiquetas (`Campo`) sin mayúsculas ni tildes, y avisar si una se repite (hoy vale la primera, sin aviso).
   - `listings.category` es `NOT NULL` y `REAL_ESTATE_CATEGORY` vive en `db`: core necesita su propia constante o tupla de categorías.
   - Fijar en el spec qué entra en `source_hash`: solo `core` y `attributes`, o también `control`.
+- **T11 / F7:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un zip de 10 MB podría descomprimirse en mucho más (zip bomb). Es tolerable en local; con subidas públicas (`POST /imports` multipart), limitar el tamaño descomprimido.
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
@@ -51,7 +53,13 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - 2026-09-30: **F0 cerrada.** Monorepo con `core`, `config`, `db` (Neon, migración `0000_init`), `storage` (R2), API (`/health`), worker (pg-boss), CLI (`doctor`/`status`) y panel. CI en GitHub Actions. 321 tests. Detalle en `CHANGELOG.md` `[0.0.1]` y en el spec F0.
 - 2026-09-30: demo de F0 confirmada por el operador. Arreglo derivado: el worker resume los errores repetidos de pg-boss sin conexión.
 - 2026-09-30: **F1-T03.** Nuevo `packages/importers`, con `readListingsWorkbook` sobre exceljs 4.4.0.
-  - Lee las hojas Propiedades y Corredor, sin validar ni filtrar, y aplana las celdas de exceljs a `RawCell`.
+  - Lee las hojas Propiedades y Corredor, sin validar ni filtrar, y entrega `ListingSheetInput` (core).
+  - Aplana las celdas de exceljs cuando puede. Lo demás, incluidos los errores de Excel, lo rechaza el validador.
+  - Correcciones de `/revisar`:
+    - los encabezados como `constructor` ya no se pierden;
+    - las celdas combinadas no copian el dato;
+    - los mensajes llevan el nombre del archivo, no la ruta;
+    - Biome prohíbe `@agentsales/db` en `importers/src`.
   - Las fixtures se arman en memoria.
   - La plantilla marca `carpeta_medios` como opcional; la edité directo en el XML, conservando las listas desplegables. Un test compara el diccionario de la hoja Instrucciones con `required` del seed.
   - `RawListingRow` acepta `unknown` en los valores (el validador los revisa), y `foldText` vuelve a exportarse desde core.

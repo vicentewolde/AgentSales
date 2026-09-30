@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildListingValidator, isAppError } from "@agentsales/core";
 import { REAL_ESTATE_FIELD_DEFINITIONS, TEMPLATE_COLUMNS } from "@agentsales/db";
+import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { MAX_DATA_ROWS, MAX_XLSX_BYTES, readListingsWorkbook } from "../src/xlsx-reader.js";
 import { buildWorkbook, syntheticRow } from "./workbook.js";
@@ -93,23 +94,26 @@ describe("readListingsWorkbook · fixtures sintéticas", () => {
     });
   });
 
-  it("estilo Google Sheets: todo como texto, TRUE/FALSE y hojas con otro nombre y orden", async () => {
+  // Simulación (no un export real de Sheets): hojas renombradas y en otro orden, números y fechas
+  // como texto, casillas como booleanos nativos y filas vacías al final.
+  it("simulación de Google Sheets: otro nombre y orden de hojas, texto, booleanos y filas vacías", async () => {
     const asText = syntheticRow({
       precio: "5.800",
       sup_util_m2: "72,5",
       dormitorios: "3",
       gastos_comunes_clp: "$120.000",
-      amoblado: "FALSE",
-      mostrar_direccion_exacta: "TRUE",
+      amoblado: false,
+      mostrar_direccion_exacta: true,
       disponibilidad: "15-11-2026",
     });
     const bytes = await buildWorkbook({
-      listings: { rows: [asText] },
+      listings: { rows: [asText, null, null] },
       broker: BROKER,
       sheetNames: { listings: "PROPIEDADES", broker: "corredor ", brokerFirst: true },
     });
     const workbook = await readListingsWorkbook(bytes);
     expect(workbook.broker).not.toBeNull();
+    expect(workbook.rows).toHaveLength(1);
     expect(validator.validate(workbook.rows[0]?.raw ?? {})).toMatchObject({
       ok: true,
       data: {
@@ -136,6 +140,7 @@ describe("readListingsWorkbook · fixtures sintéticas", () => {
               richText: [{ text: "Muy " }, { font: { bold: true }, text: "luminoso" }],
             },
             gastos_comunes_clp: { error: "#N/A" },
+            direccion: { error: "#REF!" },
             disponibilidad: new Date(Date.UTC(2026, 10, 15)),
           }),
         ],
@@ -146,13 +151,16 @@ describe("readListingsWorkbook · fixtures sintéticas", () => {
       precio: 5800,
       link_video: "https://example.cl/video",
       destacados: "Muy luminoso",
-      gastos_comunes_clp: "#N/A",
+      gastos_comunes_clp: { error: "#N/A" },
     });
     expect(raw.disponibilidad).toEqual(new Date(Date.UTC(2026, 10, 15)));
-    // El error de Excel no se pierde en silencio: el validador lo marca.
+    // Los errores de Excel no pasan como texto válido: el validador los rechaza en cualquier campo.
     const result = validator.validate(raw);
-    expect(result.ok ? [] : result.errors.map((error) => [error.column, error.code])).toEqual([
-      ["gastos_comunes_clp", "FIELD_NUMBER_INVALID"],
+    expect(
+      result.ok ? [] : result.errors.map((error) => [error.column, error.code]).sort(),
+    ).toEqual([
+      ["direccion", "FIELD_VALUE_INVALID"],
+      ["gastos_comunes_clp", "FIELD_VALUE_INVALID"],
     ]);
   });
 
@@ -174,6 +182,55 @@ describe("readListingsWorkbook · fixtures sintéticas", () => {
   });
 });
 
+describe("readListingsWorkbook · casos borde de exceljs", () => {
+  it("encabezados y etiquetas como constructor, toString o __proto__ no se pierden", async () => {
+    const headers = ["id_propiedad", "constructor", "toString", "__proto__"];
+    const row = Object.fromEntries([
+      ["id_propiedad", "P001"],
+      ["constructor", "a"],
+      ["toString", "b"],
+      ["__proto__", "c"],
+    ]);
+    const bytes = await buildWorkbook({
+      listings: { headers, rows: [row] },
+      broker: [
+        ["constructor", "x"],
+        ["nombre_marca", "Marca"],
+      ],
+    });
+    const workbook = await readListingsWorkbook(bytes);
+    expect(Object.entries(workbook.rows[0]?.raw ?? {})).toEqual([
+      ["id_propiedad", "P001"],
+      ["constructor", "a"],
+      ["toString", "b"],
+      ["__proto__", "c"],
+    ]);
+    expect(Object.hasOwn(workbook.broker ?? {}, "constructor")).toBe(true);
+  });
+
+  it("las celdas combinadas que no son la principal se leen vacías (no copian el dato)", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Propiedades");
+    sheet.addRow(["id_propiedad", "dormitorios", "banos"]);
+    sheet.addRow(["P001", 3, null]);
+    sheet.mergeCells("B2:C2");
+    const bytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+    const raw = (await readListingsWorkbook(bytes)).rows[0]?.raw;
+    expect(raw).toEqual({ id_propiedad: "P001", dormitorios: 3, banos: null });
+  });
+
+  it("encabezados que no son texto (número o fórmula) se leen como texto", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Propiedades");
+    sheet.addRow(["id_propiedad", 2024, { formula: '"pre"&"cio"', result: "precio" }]);
+    sheet.addRow(["P001", "x", 5800]);
+    const bytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+    const result = await readListingsWorkbook(bytes);
+    expect(result.headers).toEqual(["id_propiedad", "2024", "precio"]);
+    expect(result.rows[0]?.raw).toEqual({ id_propiedad: "P001", "2024": "x", precio: 5800 });
+  });
+});
+
 describe("readListingsWorkbook · hoja Corredor", () => {
   it("ausente → broker null", async () => {
     const bytes = await buildWorkbook({ listings: { rows: [syntheticRow()] }, broker: "missing" });
@@ -189,16 +246,17 @@ describe("readListingsWorkbook · hoja Corredor", () => {
 
   it("sin la columna Tu valor → IMPORT_FILE_INVALID", async () => {
     const bytes = await buildWorkbook({ broker: BROKER, brokerHeaders: ["Campo", "Valor"] });
-    await expectError(readListingsWorkbook(bytes), "IMPORT_FILE_INVALID");
+    const error = await expectError(readListingsWorkbook(bytes), "IMPORT_FILE_INVALID");
+    expect(isAppError(error) && error.message).toContain("Tu valor");
   });
 });
 
 describe("readListingsWorkbook · archivos inválidos", () => {
-  it("archivo inexistente → IMPORT_FILE_NOT_FOUND", async () => {
-    await expectError(
-      readListingsWorkbook(join(tmpdir(), "no-existe-agentsales.xlsx")),
-      "IMPORT_FILE_NOT_FOUND",
-    );
+  it("archivo inexistente → IMPORT_FILE_NOT_FOUND, con el nombre y sin la ruta", async () => {
+    const path = join(tmpdir(), "agentsales-ruta-privada", "no-existe.xlsx");
+    const error = await expectError(readListingsWorkbook(path), "IMPORT_FILE_NOT_FOUND");
+    expect(isAppError(error) && error.message).toBe("No existe el archivo no-existe.xlsx");
+    expect(isAppError(error) && error.details).toEqual({ file: "no-existe.xlsx" });
   });
 
   it("una carpeta o un archivo que no es xlsx → IMPORT_FILE_INVALID", async () => {
@@ -219,11 +277,48 @@ describe("readListingsWorkbook · archivos inválidos", () => {
     expect(isAppError(error) && error.details).toMatchObject({ sheets: ["Corredor"] });
   });
 
-  it("más de 10 MB → IMPORT_FILE_INVALID sin intentar leerlo", async () => {
-    await expectError(
+  it("más de 10 MB en bytes → IMPORT_FILE_INVALID sin intentar leerlo", async () => {
+    const error = await expectError(
       readListingsWorkbook(new Uint8Array(MAX_XLSX_BYTES + 1)),
       "IMPORT_FILE_INVALID",
     );
+    expect(isAppError(error) && error.details).toEqual({
+      bytes: MAX_XLSX_BYTES + 1,
+      maxBytes: MAX_XLSX_BYTES,
+    });
+  });
+
+  it("más de 10 MB en disco → IMPORT_FILE_INVALID sin leerlo (solo mira el tamaño)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "agentsales-xlsx-"));
+    try {
+      const big = join(dir, "grande.xlsx");
+      await writeFile(big, "");
+      await truncate(big, MAX_XLSX_BYTES + 1);
+      const error = await expectError(readListingsWorkbook(big), "IMPORT_FILE_INVALID");
+      expect(isAppError(error) && error.details).toEqual({
+        file: "grande.xlsx",
+        bytes: MAX_XLSX_BYTES + 1,
+        maxBytes: MAX_XLSX_BYTES,
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it(`exactamente ${MAX_DATA_ROWS} filas de datos se leen; las vacías con formato no cuentan`, async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Propiedades");
+    sheet.addRow(["id_propiedad"]);
+    for (let index = 0; index < MAX_DATA_ROWS; index++) sheet.addRow([`P${index}`]);
+    for (let index = 0; index < 5; index++) {
+      sheet.addRow([]).getCell(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFFFFF00" },
+      };
+    }
+    const bytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+    expect((await readListingsWorkbook(bytes)).rows).toHaveLength(MAX_DATA_ROWS);
   });
 
   it(`más de ${MAX_DATA_ROWS} filas de datos → IMPORT_FILE_INVALID`, async () => {
@@ -231,6 +326,7 @@ describe("readListingsWorkbook · archivos inválidos", () => {
       id_propiedad: `P${index}`,
     }));
     const bytes = await buildWorkbook({ listings: { headers: ["id_propiedad"], rows } });
-    await expectError(readListingsWorkbook(bytes), "IMPORT_FILE_INVALID");
+    const error = await expectError(readListingsWorkbook(bytes), "IMPORT_FILE_INVALID");
+    expect(isAppError(error) && error.details).toEqual({ maxRows: MAX_DATA_ROWS });
   });
 });

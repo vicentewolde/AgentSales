@@ -6,13 +6,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Valor de una celda de exceljs → `RawCell`, lo único que acepta el validador (F1-T02):
- * - fórmula (`{ formula | sharedFormula, result }`) → su resultado;
- * - hipervínculo (`{ text, hyperlink }`) → el texto visible;
+ * Valor de una celda de exceljs → `RawCell` (lo que acepta el validador de F1-T02), cuando se puede:
+ * - fórmula (`{ formula | sharedFormula, result }`) → su resultado guardado. Un Excel generado por
+ *   script, sin valores calculados, no lo trae: la celda se lee **vacía**;
+ * - hipervínculo (`{ text, hyperlink }`) → el texto visible, no la URL. Si en `link_video` el texto
+ *   dice "Ver video", el validador lo marca como link inválido;
  * - texto enriquecido (`{ richText: [{ text }] }`) → el texto plano;
- * - error de Excel (`{ error: "#N/A" }`) → el texto del error, para que el validador lo marque;
  * - las fechas quedan como `Date` (exceljs las entrega en UTC).
- * Cualquier otra forma se devuelve tal cual y el validador la rechaza (`FIELD_VALUE_INVALID`).
+ * Lo demás se devuelve tal cual y el validador lo rechaza con `FIELD_VALUE_INVALID`. Incluye los
+ * errores de Excel (`{ error: "#REF!" }`), que así no pasan como texto válido en ningún campo.
  */
 export function flattenCell(value: unknown, depth = 0): unknown {
   if (!isRecord(value) || depth >= MAX_DEPTH) return value ?? null;
@@ -27,13 +29,17 @@ export function flattenCell(value: unknown, depth = 0): unknown {
   if ("hyperlink" in value) {
     return "text" in value ? flattenCell(value.text, depth + 1) : value.hyperlink;
   }
-  if (typeof value.error === "string") return value.error;
   return value;
 }
 
-/** Texto de un encabezado o de una etiqueta (`Campo`), sin espacios en los bordes. */
+/**
+ * Texto de un encabezado o de una etiqueta (`Campo`), sin espacios en los bordes. Un error de Excel
+ * da su texto (`#REF!`), y un objeto que no se sabe leer, vacío.
+ */
 export function cellText(value: unknown): string {
   const flat = flattenCell(value);
   if (flat === null || flat === undefined) return "";
-  return (flat instanceof Date ? flat.toISOString() : String(flat)).trim();
+  if (flat instanceof Date) return flat.toISOString();
+  if (isRecord(flat)) return typeof flat.error === "string" ? flat.error : "";
+  return String(flat).trim();
 }
