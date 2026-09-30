@@ -222,6 +222,10 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
 
 `queue: ok` en `/health` significa que la cola se inicializó alguna vez, **no** que el worker esté corriendo.
 
+## Contrato de `/health`
+
+`healthReportSchema` y `HealthReport` viven en `packages/core` (`health.ts`). La API tipa su respuesta con ellos, y la CLI y el panel validan con el mismo esquema lo que reciben. El panel no puede importar nada de la API en tiempo de ejecución, porque arrastraría el servidor. Solo usa `import type { AppType }`.
+
 ## Contrato de almacenamiento de archivos
 
 ```ts

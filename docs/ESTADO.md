@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-09-29
 **Fase actual:** F0 · Fundaciones (`docs/specs/fase-0-fundaciones.md`)
-**Última tarea terminada:** F0-T07 · apps/cli
-**Siguiente paso:** F0-T08 · apps/web (panel React con la página Estado del sistema)
+**Última tarea terminada:** F0-T08 · apps/web
+**Siguiente paso:** F0-T09 · CI (GitHub Actions)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -17,7 +17,7 @@
 | F0-T05 apps/api | ✅ terminada | [#5](https://github.com/vicentewolde/AgentSales/pull/5) |
 | F0-T06 apps/worker | ✅ terminada | [#6](https://github.com/vicentewolde/AgentSales/pull/6) |
 | F0-T07 apps/cli | ✅ terminada | [#7](https://github.com/vicentewolde/AgentSales/pull/7) |
-| F0-T08 apps/web | ⏳ pendiente | |
+| F0-T08 apps/web | ✅ terminada | |
 | F0-T09 CI | ⏳ pendiente | |
 | F0-T10 Cierre | ⏳ pendiente | |
 
@@ -39,6 +39,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - 2026-09-29 (F0-T05): `@agentsales/api` (Hono en `127.0.0.1:8787`): `/health` con db (`pingDatabase`), storage (`head`) y cola (pendiente de T06, por eso `degraded`); errores `{ error: { code, message } }` con tabla código→HTTP; logger de requests (`/health` en debug); Host permitidos y CSRF; apagado ordenado e idempotente. `pnpm dev` levanta las apps en paralelo. Verificado contra Neon y R2 reales.
 - 2026-09-29 (F0-T06): `@agentsales/worker` con pg-boss 12 (esquema `pgboss` creado en Neon), registro de handlers por nombre y `system.ping`; apagado ordenado que espera los jobs en curso (verificado: job de 5 s terminado tras SIGINT, `completed` en la base). `/health` ya responde `ok` con la cola. **Apagar el worker al terminar de desarrollar** (mantiene Neon despierto). Tras la revisión: `defineJob` (zod + política por cola), `batchSize: 1`, errores no reintentables sin reintento y arranque interrumpible.
 - 2026-09-29 (F0-T07): `@agentsales/cli` (`agentsales doctor` y `status`) con commander, picocolors y el cliente `hc<AppType>`. `doctor` revisa Node, `.env` (sin valores), `PUBLISH_MODE`, API, base, almacenamiento y cola (desde `/health`), ffmpeg, Chromium y Claude; verificado con y sin la API levantada. `PUBLISH_MODE=live` en rojo (probado en tests, sin tocar `.env`). Tras la revisión: el modo sale de la API (y si no coincide con `.env` es error), `/health` se valida con zod y hay errores claros (ECONNREFUSED, timeout, `CODE: mensaje`).
+- 2026-09-29 (F0-T08): `@agentsales/web` (Vite 8, React 19, Tailwind 4, TanStack Query, React Router): layout con menú, banner permanente de `PUBLISH_MODE` (de la API) y página Estado con sondeo cada 30 s solo con la pestaña visible. `pnpm dev` levanta api, worker y web; verificado en el navegador en notebook y móvil, sin errores de consola. Contrato de `/health` movido a `core`; `AppLogger` evita que la web vea tipos de Node.
 - Deuda F0-T05: el timeout de `/health` no cancela el check (una consulta colgada sigue ocupando el pool de 5); si molesta, pasar un `AbortSignal` a `HealthCheck`. Pendientes de F1 anotados en su spec (registro de cambios).
 - Deuda F0-T04: en T09 (CI) comprobar que `pnpm db:generate` no produce cambios (esquema y migraciones sincronizados).
   - F1-T04: ampliar `MediaStorage` con streams (videos grandes) y migración `0001` con los únicos de `field_definitions` y `media` (ya anotado en el spec F1).

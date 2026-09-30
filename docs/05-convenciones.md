@@ -80,7 +80,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 - `include` tiene `src` y `test`, así `tsc -b` también tipa los tests.
 - `types` se declara siempre. `packages/core` usa `"types": []` para que el compilador rechace `process`, `Buffer` y compañía.
 - `references` enumera solo los paquetes internos de los que depende (el ejemplo depende de `config`; `packages/core` no tiene ninguna). Además, cada paquete nuevo se agrega a `references` del `tsconfig.json` raíz.
-- `apps/web` (F0-T08) sobrescribe `lib` (con DOM), `jsx`, `module`/`moduleResolution` (`Bundler`) y usa `emitDeclarationOnly` en vez de `noEmit`, porque un proyecto referenciado no puede tener `noEmit`.
+- `apps/web` sobrescribe `lib` (con DOM), `jsx`, `module`/`moduleResolution` (`Bundler`) y `types: ["vite/client"]`, y usa `emitDeclarationOnly` en vez de `noEmit`, porque un proyecto referenciado no puede tener `noEmit`. `vite.config.ts` tiene su propio `tsconfig.node.json` (con tipos de Node). La web **no** debe ver tipos de Node: lo que exporta la API para `AppType` usa tipos mínimos (por ejemplo `AppLogger`), nunca los de pino o Node.
 
 `exports` del `package.json` del paquete:
 
@@ -115,6 +115,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 - **core:** tests unitarios obligatorios (máquina de estados, validaciones, formateo de precios).
 - **Adaptadores externos:** tests de contrato con respuestas grabadas (msw). **Ningún test llama a APIs reales ni publica.**
 - **Importadores:** fixtures en `packages/importers/test/fixtures/` (Excel pequeños, incluidos casos con errores).
+- **Panel (React):** tests de componentes con Testing Library en jsdom, activado por archivo con `// @vitest-environment jsdom`. Nada de red: `/health` se inyecta por contexto.
 - **LLM:** en los tests se usa el proveedor `fake`. Evaluación de prompts aparte con `pnpm eval:content` (fase 2).
 - Ubicación: `src/**/*.test.ts(x)` o `test/**/*.test.ts(x)` dentro de cada paquete. Es el patrón que busca `vitest.config.ts`; un test fuera de él no corre.
 - `pnpm check` = lint + typecheck + tests. Debe pasar antes de cada commit.

@@ -5,6 +5,10 @@ export default defineConfig({
   // las condiciones por defecto de Vite (`module`, `node`, `development|production`) y omite
   // `module` a propósito: con ella se cargan builds ESM de dependencias (p. ej. @aws-sdk/*)
   // que no corren en Node sin bundler.
+  // Tests del panel (jsdom): mismas condiciones que usa Vite para el navegador.
+  resolve: {
+    conditions: ["@agentsales/source", "module", "browser", "development|production"],
+  },
   ssr: {
     resolve: { conditions: ["@agentsales/source", "node", "development|production"] },
   },
