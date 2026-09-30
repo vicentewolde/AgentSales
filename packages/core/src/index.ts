@@ -10,6 +10,7 @@ export {
   type FieldIssueCode,
   type FieldValue,
   fieldIssueSchema,
+  foldText,
   type HeaderCheck,
   type ListingAttributes,
   type ListingControlFields,

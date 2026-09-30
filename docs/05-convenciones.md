@@ -123,7 +123,7 @@ Una subruta (por ejemplo `./contracts` en `apps/api` o `./testing` en `packages/
   - Los casos de uso se prueban con los repositorios en memoria de `@agentsales/core/testing`, que solo se importa desde tests (Biome).
   - Los dos repositorios se prueban con los mismos fixtures, para que tengan la misma semántica.
   - Cada `describe` usa sus propios datos (otra categoría u otras filas), para que se pueda correr solo.
-- **Importadores:** fixtures en `packages/importers/test/fixtures/` (Excel pequeños, incluidos casos con errores).
+- **Importadores:** los Excel de prueba se arman **en memoria** con exceljs (`buildWorkbook` y `syntheticRow` de `packages/importers/test/workbook.ts`), con datos inventados: no hay binarios de fixtures en git. La plantilla real (`data/plantillas/plantilla_propiedades.xlsx`) se prueba directamente. Si hace falta un archivo real (por ejemplo, un export de Google Sheets), va en `packages/importers/test/fixtures/` y solo con datos inventados.
 - **Panel (React):** tests de componentes con Testing Library en jsdom, activado por archivo con `// @vitest-environment jsdom`. Nada de red: el acceso a la API se inyecta por contexto (hoy `HealthFetcherContext`) o se simula `fetch`. El router en memoria acepta la ruta inicial (`initialPath`).
 - **LLM:** en los tests se usa el proveedor `fake`. Evaluación de prompts aparte con `pnpm eval:content` (fase 2).
 - Ubicación: `src/**/*.test.ts(x)` o `test/**/*.test.ts(x)` dentro de cada paquete. Es el patrón que busca `vitest.config.ts`; un test fuera de él no corre.

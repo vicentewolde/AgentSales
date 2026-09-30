@@ -247,6 +247,13 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 - Hay un doble en memoria con la misma semántica en `@agentsales/core/testing`, que solo se importa desde tests. Los dos se prueban con los mismos fixtures, por ejemplo `fieldDefinitionOrderFixture`.
 - `FieldDefinitionRepository.list` devuelve las definiciones activas e inactivas. La precedencia (la del corredor sobre la global) y el filtro de `active` los resuelve `buildListingValidator` en core (`resolveEffectiveDefinitions`).
 
+## Lector de Excel (`packages/importers`)
+
+- `readListingsWorkbook(ruta | bytes)` lee la hoja **Propiedades** (encabezados en la fila 1) y la hoja **Corredor** (vertical, con las columnas `Campo` y `Tu valor`). Busca las hojas y las columnas sin mayúsculas ni tildes.
+- Devuelve `{ headers, rows: [{ rowNumber, raw }], broker }`, con **todas** las filas no vacías y su número real de fila en Excel. **No valida ni filtra:** eso es del validador y de `importListings`.
+- Aplana las celdas de exceljs a `RawCell`: fórmula → resultado, hipervínculo → texto, texto enriquecido → texto plano, error → el texto del error.
+- Topes: 10 MB y 1000 filas de datos. Los errores son `IMPORT_FILE_NOT_FOUND` o `IMPORT_FILE_INVALID` (no es xlsx, excede un tope, falta la hoja Propiedades o la hoja Corredor no tiene sus columnas).
+
 ## Validador de filas (`buildListingValidator`, core)
 
 - Se construye desde las definiciones (ADR-0006): agregar un campo es insertar una fila, sin cambiar código.

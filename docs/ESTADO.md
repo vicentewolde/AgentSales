@@ -4,15 +4,15 @@
 
 **Actualizado:** 2026-09-30
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T02 · Validador dinámico
-**Siguiente paso:** `/tarea F1-T03`: lector de Excel (necesita las muestras de `data/muestras/` recién en las demos de T12 y T14)
+**Última tarea terminada:** F1-T03 · Lector de Excel
+**Siguiente paso:** `/tarea F1-T04`: caso de uso `importListings` (ver la deuda de T04 más abajo)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
 | F1-T01 Migración 0001, definiciones de campos y errores de base de datos | ✅ terminada | #13 |
-| F1-T02 Validador dinámico | ✅ terminada | |
-| F1-T03 Lector de Excel | ⏳ pendiente | |
+| F1-T02 Validador dinámico | ✅ terminada | #14 |
+| F1-T03 Lector de Excel | ✅ terminada | |
 | F1-T04 Caso de uso importListings | ⏳ pendiente | |
 | F1-T05 Almacenamiento con streams | ⏳ pendiente | |
 | F1-T06 Lectores de medios | ⏳ pendiente | |
@@ -29,7 +29,7 @@
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- [ ] Preparar las 3 propiedades de muestra ("Antes de F1" en `docs/07-checklist-cuentas.md`). Hacen falta para las demos de F1-T12 y T14; Claude avisa antes de F1-T03
+- [ ] Preparar las 3 propiedades de muestra ("Antes de F1" en `docs/07-checklist-cuentas.md`). Hacen falta para las demos de F1-T12 y T14 (avisado antes de T03, que no las usa)
 - [ ] Iniciar el trámite de la app de Meta (lento, en paralelo; se usa en F3)
 
 ## Deuda técnica
@@ -44,14 +44,17 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F1-T04:**
   - `listings.category` es `NOT NULL` y `REAL_ESTATE_CATEGORY` vive en `db`: core necesita su propia constante o tupla de categorías.
   - Fijar en el spec qué entra en `source_hash`: solo `core` y `attributes`, o también `control`.
-- **F1-T03:**
-  - La hoja Instrucciones de la plantilla todavía marca `carpeta_medios` como obligatoria; el seed la deja opcional (spec §4.3). Actualizar el xlsx.
-  - `@agentsales/db` va solo como `devDependency` de `packages/importers`, por `TEMPLATE_COLUMNS` en los tests.
+- **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
 - 2026-09-30: **F0 cerrada.** Monorepo con `core`, `config`, `db` (Neon, migración `0000_init`), `storage` (R2), API (`/health`), worker (pg-boss), CLI (`doctor`/`status`) y panel. CI en GitHub Actions. 321 tests. Detalle en `CHANGELOG.md` `[0.0.1]` y en el spec F0.
 - 2026-09-30: demo de F0 confirmada por el operador. Arreglo derivado: el worker resume los errores repetidos de pg-boss sin conexión.
+- 2026-09-30: **F1-T03.** Nuevo `packages/importers`, con `readListingsWorkbook` sobre exceljs 4.4.0.
+  - Lee las hojas Propiedades y Corredor, sin validar ni filtrar, y aplana las celdas de exceljs a `RawCell`.
+  - Las fixtures se arman en memoria.
+  - La plantilla marca `carpeta_medios` como opcional; la edité directo en el XML, conservando las listas desplegables. Un test compara el diccionario de la hoja Instrucciones con `required` del seed.
+  - `RawListingRow` acepta `unknown` en los valores (el validador los revisa), y `foldText` vuelve a exportarse desde core.
 - 2026-09-30: **F1-T02.** `buildListingValidator` en core.
   - La precedencia del corredor la resuelve `resolveEffectiveDefinitions`: gana la del corredor por su dueño, y después se filtran las inactivas.
   - Un normalizador por tipo:

@@ -195,7 +195,7 @@ describe("buildListingValidator · errores por celda", () => {
 
   it("una celda que no es RawCell (hipervínculo de exceljs) es FIELD_VALUE_INVALID", () => {
     const hyperlink = { text: "Calle Falsa 123", hyperlink: "https://example.cl" };
-    const row = { ...VALID_ROW, direccion: hyperlink } as unknown as RawListingRow;
+    const row = { ...VALID_ROW, direccion: hyperlink };
     expect(errorsOf(row)).toEqual([
       expect.objectContaining({ column: "direccion", code: "FIELD_VALUE_INVALID" }),
     ]);
@@ -264,7 +264,7 @@ describe("buildListingValidator · columnas desconocidas", () => {
 
   it("guarda en _extra un encabezado como __proto__ y descarta celdas que no son RawCell", () => {
     const row = { ...VALID_ROW, ["__proto__"]: "valor", Rara: { richText: [] } };
-    const extra = validRow(row as unknown as RawListingRow).attributes._extra;
+    const extra = validRow(row).attributes._extra;
     expect(Object.entries(extra ?? {})).toEqual([["__proto__", "valor"]]);
   });
 });
