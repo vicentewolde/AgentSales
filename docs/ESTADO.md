@@ -14,7 +14,7 @@
 | F0-T02 packages/config | ✅ terminada | [#2](https://github.com/vicentewolde/AgentSales/pull/2) |
 | F0-T03 packages/core base | ✅ terminada | [#3](https://github.com/vicentewolde/AgentSales/pull/3) |
 | F0-T04 packages/db y packages/storage | ✅ terminada | [#4](https://github.com/vicentewolde/AgentSales/pull/4) |
-| F0-T05 apps/api | ✅ terminada | |
+| F0-T05 apps/api | ✅ terminada | [#5](https://github.com/vicentewolde/AgentSales/pull/5) |
 | F0-T06 apps/worker | ⏳ pendiente | |
 | F0-T07 apps/cli | ⏳ pendiente | |
 | F0-T08 apps/web | ⏳ pendiente | |
