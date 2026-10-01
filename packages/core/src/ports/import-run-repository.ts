@@ -10,8 +10,12 @@ export type NewImportRun = {
 
 /**
  * Cargas (`import_runs`). F1-T04 registra el resultado de las filas. Llegan después, como métodos
- * nuevos: los cambios de estado del run (`running`, `succeeded`, `failed`) con el job
- * `import.run` (F1-T09), y `list` para `GET /imports` (F1-T11).
+ * nuevos:
+ * - los cambios de estado del run (`running`, `succeeded`, `failed`), con el job `import.run`
+ *   (F1-T09). Son **condicionales** (`UPDATE … WHERE status IN (…)`, que devuelven si cambió),
+ *   así un reintento sobre un run ya terminal no hace nada;
+ * - `list`, para `GET /imports` (F1-T11).
+ * Los ids son uuid: la API los valida antes de llegar aquí.
  */
 export interface ImportRunRepository {
   create(run: NewImportRun): Promise<ImportRun>;

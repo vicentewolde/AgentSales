@@ -355,7 +355,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Descripción:**
   - Job `import.run` (§4.6) y `buildJobs(deps)` en el worker.
   - Caso de uso `requestImport` en core, que crea el run con `input` según `importRunInputSchema`.
-  - `ImportRunRepository` suma los cambios de estado del run (`running`, `succeeded` y `failed`, con `started_at`, `finished_at` y `error`).
+  - `ImportRunRepository` suma los cambios de estado del run (`running`, `succeeded` y `failed`, con `started_at`, `finished_at` y `error`). Son condicionales (`UPDATE … WHERE status IN (…)`, que devuelven si cambió), así un run ya terminal no se vuelve a procesar.
   - Staging en `<workspace>/tmp/imports`, con su limpieza al arrancar.
 - **Hecho cuando:**
   - [ ] Tests del handler con fakes: éxito → `succeeded`; `STORAGE_UNAVAILABLE` → se propaga para reintento; último intento → `failed` con `error`; error no reintentable → `failed`; y un run ya terminal → no hace nada
@@ -369,6 +369,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Helper de validación (`REQUEST_INVALID`).
   - Caso de uso `changeListingStatus` con `LISTING_MANUAL_TRANSITIONS`.
   - Entidad `listingSchema` en core, más `ListingRepository.list` y `get`; `BrokerRepository.list`.
+  - Los ids de ruta (`/listings/:id`, `/imports/:id`) se validan como uuid con zod antes de llegar al repositorio; un id con otro formato es `REQUEST_INVALID`, no un error de base de datos.
   - Rutas `/listings`, `/listings/:id`, `PATCH /listings/:id/status` y `/brokers`, con URLs firmadas.
 - **Hecho cuando:**
   - [ ] Tests con `app.request` y repositorios en memoria: filtros, detalle, 404, `REQUEST_INVALID`, cambio de estado permitido y `409 INVALID_TRANSITION`

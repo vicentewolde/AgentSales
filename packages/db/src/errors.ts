@@ -148,3 +148,17 @@ export async function withDbErrors<T>(operation: () => Promise<T>): Promise<T> {
     throw toDbError(error);
   }
 }
+
+/**
+ * `true` si el error es una violación del único `constraint` (SQLSTATE `23505`), ya traducido o no
+ * por `toDbError`: el resumen del driver conserva `code` y `constraint`.
+ */
+export function isUniqueViolation(error: unknown, constraint: string): boolean {
+  if (sqlStateOf(error) !== "23505") return false;
+  for (const value of causeChain(error)) {
+    if (typeof value === "object" && value !== null && "constraint" in value) {
+      return value.constraint === constraint;
+    }
+  }
+  return false;
+}

@@ -31,6 +31,7 @@ export type NewListing = ListingImportData & {
  *   (intentos del job solapados; el reintento lo reclasifica como `skipped` o `updated`);
  * - `update` de un id que no existe → `LISTING_NOT_FOUND`;
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
+ * Los ids son uuid: la API los valida antes de llegar aquí.
  */
 export interface ListingRepository {
   findByExternalRefs(
