@@ -144,6 +144,121 @@ describe("createR2Storage", () => {
   });
 });
 
+/** Un archivo en trozos, como lo entrega un `createReadStream`. */
+async function* chunksOf(data: Uint8Array, size: number): AsyncGenerator<Uint8Array> {
+  for (let offset = 0; offset < data.byteLength; offset += size) {
+    yield data.subarray(offset, offset + size);
+  }
+}
+
+describe("putStream", () => {
+  const storage = createR2Storage(options);
+  // 200 KB con un patrón reconocible, en trozos de 64 KB.
+  const data = Uint8Array.from({ length: 200 * 1024 }, (_, index) => index % 251);
+
+  it("sube el contenido exacto con su Content-Type y Content-Length", async () => {
+    const seen: { contentLength: string | null; contentType: string | null }[] = [];
+    server.use(
+      http.put(`${ORIGIN}/*`, async ({ request }) => {
+        seen.push({
+          contentLength: request.headers.get("content-length"),
+          contentType: request.headers.get("content-type"),
+        });
+        objects.set(keyOf(request), {
+          body: new Uint8Array(await request.arrayBuffer()),
+          contentType: request.headers.get("content-type") ?? "",
+        });
+        return new HttpResponse(null, { status: 200, headers: { ETag: '"etag"' } });
+      }),
+    );
+
+    await storage.putStream(
+      "brokers/b1/listings/l1/original/video.mp4",
+      chunksOf(data, 64 * 1024),
+      {
+        contentType: "video/mp4",
+        contentLength: data.byteLength,
+      },
+    );
+
+    expect(seen).toEqual([{ contentLength: String(data.byteLength), contentType: "video/mp4" }]);
+    expect(await storage.get("brokers/b1/listings/l1/original/video.mp4")).toEqual(data);
+  });
+
+  it("un 5xx es STORAGE_UNAVAILABLE con un solo intento (el SDK no reintenta un stream)", async () => {
+    let attempts = 0;
+    server.use(
+      http.put(`${ORIGIN}/*`, () => {
+        attempts++;
+        return new HttpResponse(null, { status: 503 });
+      }),
+    );
+
+    await expect(
+      storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
+        contentType: "video/mp4",
+        contentLength: data.byteLength,
+      }),
+    ).rejects.toMatchObject({ code: "STORAGE_UNAVAILABLE", retriable: true });
+    expect(attempts).toBe(1);
+  });
+
+  it("un corte de red es STORAGE_UNAVAILABLE y reintentable", async () => {
+    server.use(http.put(`${ORIGIN}/*`, () => HttpResponse.error()));
+
+    await expect(
+      storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
+        contentType: "video/mp4",
+        contentLength: data.byteLength,
+      }),
+    ).rejects.toMatchObject({ code: "STORAGE_UNAVAILABLE", retriable: true });
+  });
+
+  it.each([
+    ["más", data.byteLength - 1],
+    ["menos", data.byteLength + 1],
+  ])(
+    "un stream con %s bytes que contentLength es STORAGE_ERROR, no reintentable",
+    async (_, length) => {
+      await expect(
+        storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
+          contentType: "video/mp4",
+          contentLength: length,
+        }),
+      ).rejects.toMatchObject({
+        code: "STORAGE_ERROR",
+        retriable: false,
+        details: { path: "x.mp4", expected: length },
+      });
+    },
+  );
+
+  it("un error al leer el archivo de origen rechaza la promesa, sin errores sin manejar", async () => {
+    async function* broken(): AsyncGenerator<Uint8Array> {
+      yield data.subarray(0, 1024);
+      throw new Error("EIO: no se pudo leer el disco");
+    }
+    await expect(
+      storage.putStream("x.mp4", broken(), {
+        contentType: "video/mp4",
+        contentLength: data.byteLength,
+      }),
+    ).rejects.toMatchObject({ code: "STORAGE_ERROR", retriable: false });
+  });
+
+  it("los demás métodos siguen reintentando (cliente aparte para los streams)", async () => {
+    let attempts = 0;
+    server.use(
+      http.head(`${ORIGIN}/*`, () => {
+        attempts++;
+        return new HttpResponse(null, { status: 503 });
+      }),
+    );
+    await expect(storage.head("x.txt")).rejects.toMatchObject({ code: "STORAGE_UNAVAILABLE" });
+    expect(attempts).toBeGreaterThan(1);
+  });
+});
+
 describe("signedReadUrl", () => {
   const storage = createR2Storage(options);
 

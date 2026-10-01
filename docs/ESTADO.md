@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T04b · Repositorios Drizzle de brokers, listings e import_runs
-**Siguiente paso:** `/tarea F1-T05` (almacenamiento con streams), F1-T06 (lectores de medios) o F1-T08 (paquete de cola): ninguna depende de las otras; T07 necesita T05 y T06
+**Última tarea terminada:** F1-T05 · Almacenamiento con streams
+**Siguiente paso:** `/tarea F1-T06` (lectores de medios) o F1-T08 (paquete de cola). T07 necesita T06
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -14,8 +14,8 @@
 | F1-T02 Validador dinámico | ✅ terminada | #14 |
 | F1-T03 Lector de Excel | ✅ terminada | #15 |
 | F1-T04 Caso de uso importListings | ✅ terminada | #16 |
-| F1-T04b Repositorios Drizzle de brokers, listings e import_runs | ✅ terminada | |
-| F1-T05 Almacenamiento con streams | ⏳ pendiente | |
+| F1-T04b Repositorios Drizzle de brokers, listings e import_runs | ✅ terminada | #17 |
+| F1-T05 Almacenamiento con streams | ✅ terminada | |
 | F1-T06 Lectores de medios | ⏳ pendiente | |
 | F1-T07 Caso de uso ingestMedia | ⏳ pendiente | |
 | F1-T08 Paquete de cola | ⏳ pendiente | |
@@ -47,6 +47,10 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
+- 2026-10-01: **F1-T05.** `MediaStorage.putStream`.
+  - En R2 es un solo `PutObject` con `Content-Length`, sin `lib-storage`, desde un cliente S3 aparte sin reintentos y sin el checksum por defecto del SDK. Con ese checksum, el stream viaja en `aws-chunked` y sin `Content-Length` (lo verifiqué con msw).
+  - **Bug encontrado y corregido antes del commit:** si el stream trae otro largo o falla al leerse, el generador avisa y termina **sin lanzar**, y `putStream` aborta la petición. Lanzar dejaba la petición colgada y un `error` sin escuchar, que en el worker tumbaría el proceso.
+  - `storage:check` sube 1 MB en streaming contra R2: OK.
 - 2026-10-01: **F1-T04b.** Repositorios Drizzle de brokers, listings e import_runs.
   - Los conflictos de los únicos son `*_CONFLICT`, reintentables.
   - `price_amount` se escribe con `toFixed(2)`.

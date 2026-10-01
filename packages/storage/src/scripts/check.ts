@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createLogger, loadEnv, loadEnvFile } from "@agentsales/config";
 import { createR2Storage } from "../r2-storage.js";
 
@@ -16,6 +16,17 @@ const storage = createR2Storage({
 });
 
 const path = `_healthcheck/${randomUUID()}.txt`;
+const streamPath = `_healthcheck/${randomUUID()}.bin`;
+/** 1 MB en trozos de 64 KB, como un video leído del disco (`putStream`, spec F1 D3). */
+const STREAM_BYTES = 1024 * 1024;
+const STREAM_CHUNK = 64 * 1024;
+const streamData = Uint8Array.from({ length: STREAM_BYTES }, (_, index) => (index * 31) % 256);
+async function* streamChunks(): AsyncGenerator<Uint8Array> {
+  for (let offset = 0; offset < STREAM_BYTES; offset += STREAM_CHUNK) {
+    yield streamData.subarray(offset, offset + STREAM_CHUNK);
+  }
+}
+const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const content = `agentsales storage:check ${new Date().toISOString()}`;
 const expected = new TextEncoder().encode(content);
 
@@ -29,6 +40,7 @@ function check(ok: boolean, step: string): void {
 const FETCH_TIMEOUT_MS = 15_000;
 
 let uploaded = false;
+let streamUploaded = false;
 try {
   logger.info({ bucket: env.R2_BUCKET, path }, "probando el bucket de R2");
 
@@ -57,14 +69,34 @@ try {
   uploaded = false;
   check((await storage.head(path)) === null, "borrar objeto");
 
+  await storage.putStream(streamPath, streamChunks(), {
+    contentType: "application/octet-stream",
+    contentLength: STREAM_BYTES,
+  });
+  streamUploaded = true;
+  const streamed = await storage.get(streamPath);
+  check(
+    streamed.byteLength === STREAM_BYTES && sha256(streamed) === sha256(streamData),
+    "subir en streaming (1 MB, mismo sha256)",
+  );
+  await storage.delete(streamPath);
+  streamUploaded = false;
+
   logger.info("storage:check OK");
 } catch (error) {
   logger.error({ err: error }, "storage:check falló");
   process.exitCode = 1;
 } finally {
-  if (uploaded) {
-    await storage.delete(path).catch((error: unknown) => {
-      logger.warn({ err: error, path }, "no se pudo borrar el objeto de prueba; bórralo a mano");
+  for (const [pending, objectPath] of [
+    [uploaded, path],
+    [streamUploaded, streamPath],
+  ] as const) {
+    if (!pending) continue;
+    await storage.delete(objectPath).catch((error: unknown) => {
+      logger.warn(
+        { err: error, objectPath },
+        "no se pudo borrar el objeto de prueba; bórralo a mano",
+      );
     });
   }
 }
