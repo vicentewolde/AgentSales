@@ -39,7 +39,10 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
   - **Puertos:**
     - `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository`, `MediaRepository` e `ImportRunRepository`.
     - `JobQueue`.
-    - `MediaFileSource.list(folder): Promise<MediaFile[]>`, con `MediaFile = { relPath, kind, mime, bytes, sha256, open(): AsyncIterable<Uint8Array> }`.
+    - `MediaFileSource.list(folder): Promise<{ files: MediaFile[], skipped: SkippedMediaFile[] }>` (F1-T06):
+      - `MediaFile = { relPath, kind, mime, bytes, sha256, open(): AsyncIterable<Uint8Array> }`.
+      - `SkippedMediaFile = { relPath, reason }`, con `reason` en `MEDIA_SKIP_REASONS`: `unsupported_type`, `signature_mismatch`, `empty`, `too_large`, `not_a_file` o `unreadable`.
+      - `folder` es relativo a la raíz de medios con que se construye el adaptador (`carpeta_medios`, `id_propiedad` o `_marca`) y no puede salir de ella (`MEDIA_FOLDER_INVALID`). Si no existe, `MEDIA_FOLDER_NOT_FOUND`.
   - **Contrato de jobs** en `core/src/jobs.ts` (`JOB_NAMES`, `JOB_PAYLOADS`).
   - **Entidades con esquema zod** (`listing`, `media`, `broker`, `importRun`, `importReport`) y tuplas nuevas (`IMPORT_RUN_STATUSES`, `LISTING_MANUAL_TRANSITIONS`), según ADR-0011.
   - **Repositorios en memoria** en la salida `@agentsales/core/testing`. Biome prohíbe importarla fuera de los tests.
@@ -134,6 +137,8 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
   - Se descomprime en streaming en `tmp/imports/{id}/extracted/`.
   - Protección contra zip-slip: se rechazan rutas absolutas o con `..`, y se verifica que el destino quede dentro del directorio.
   - Topes: 4 GB descomprimidos y 2000 entradas.
+  - Se omiten los enlaces simbólicos, `__MACOSX/` y los archivos ocultos.
+  - **A decidir en T09:** si un zip con una sola carpeta en la raíz (macOS → Comprimir "medios") se "desenvuelve". F1-T06 no lo hace: el zip debe traer las carpetas de las propiedades en su raíz.
 - **Staging:**
   - `tmp/imports/{id}/input/` guarda el xlsx y el zip subidos. Se borra solo cuando el run llega a un estado terminal (`succeeded` o `failed`), para no perderlos entre reintentos.
   - `extracted/` se recrea en cada intento y se borra en un `finally`.
@@ -318,7 +323,12 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Depende de:** F0
 - **Descripción:** en `packages/importers`:
   - `media-folder` implementa `MediaFileSource`: lista, filtra por tipo, verifica la firma, calcula el sha256 en streaming y ordena en orden natural.
+    - `createMediaFolderSource(rootDir, { maxVideoBytes })`. Un video sobre el tope se omite (`too_large`) sin calcular su hash.
+    - Los archivos rechazados van a `skipped` con su motivo, para el reporte de T07.
   - `zip`: extracción en streaming con protección contra zip-slip y los topes de §4.3.
+    - `extractZip(zipPath, destDir, { maxEntries, maxTotalBytes })`.
+    - Un zip con una entrada hostil se rechaza completo (`IMPORT_FILE_INVALID`), y un fallo del disco es `IMPORT_EXTRACT_FAILED`.
+    - Lo que alcanzó a escribir lo borra quien llama (T09).
 - **Hecho cuando:**
   - [ ] Tests con una carpeta fixture: 3 fotos + 1 video + 1 archivo inválido, en orden natural y con el sha256 correcto
   - [ ] Tests de zip: extracción normal, una entrada con `..` rechazada, y los topes de tamaño y de entradas superados
@@ -474,3 +484,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-09-30 | Plan de F1-T04, aprobado por el operador: T04 se parte en T04 (core: caso de uso, puertos, dobles y reporte) y T04b (repositorios Drizzle con PGlite). `source_hash` sobre `{ core, attributes, control }`; una propiedad nueva queda en `draft` y T07 la pasa a `ready`; `--broker` gana sobre el slug de la hoja |
 | 2026-09-30 | Desde la revisión de F1-T04: `dry_run`, el origen y el `--broker` salen del run (`importRunInputSchema` en `import_runs.input`); los conflictos de `create` son reintentables (`*_CONFLICT`); `report` pasa a admitir `null` (migración `0002` en T04b); el reporte suma `listingId` y `warnings` por fila, y `headers` puede ser `null`; métodos anotados para T07 (`promoteToReady`, `setLogo`), T09 (estado del run), T10 (`listingSchema`, `list`/`get`) y T11 (`list` de runs) |
 | 2026-10-01 | Desde F1-T05: D3 queda con el checksum por defecto del SDK desactivado en el cliente de streams (`WHEN_REQUIRED`), porque mandaba `aws-chunked` sin `Content-Length`; `maxAttempts: 1` defensivo. T07 decide `ChecksumSHA256` y la política de reintentos por archivo |
+| 2026-10-01 | Plan de F1-T06, aprobado por el operador: `MediaFileSource.list` devuelve `{ files, skipped }` con `MEDIA_SKIP_REASONS`; `folder` es relativo a la raíz del adaptador y no puede salir de ella; el tope de video lo aplica el adaptador (sin hashear); los zips de los tests se arman con un generador propio, sin dependencia nueva; desenvolver una carpeta raíz del zip se decide en T09 |

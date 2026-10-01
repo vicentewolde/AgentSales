@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T05 · Almacenamiento con streams
-**Siguiente paso:** `/tarea F1-T06` (lectores de medios) o F1-T08 (paquete de cola). T07 necesita T06
+**Última tarea terminada:** F1-T06 · Lectores de medios
+**Siguiente paso:** `/tarea F1-T07` (`ingestMedia`) o F1-T08 (paquete de cola)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -15,8 +15,8 @@
 | F1-T03 Lector de Excel | ✅ terminada | #15 |
 | F1-T04 Caso de uso importListings | ✅ terminada | #16 |
 | F1-T04b Repositorios Drizzle de brokers, listings e import_runs | ✅ terminada | #17 |
-| F1-T05 Almacenamiento con streams | ✅ terminada | |
-| F1-T06 Lectores de medios | ⏳ pendiente | |
+| F1-T05 Almacenamiento con streams | ✅ terminada | #18 |
+| F1-T06 Lectores de medios | ✅ terminada | |
 | F1-T07 Caso de uso ingestMedia | ⏳ pendiente | |
 | F1-T08 Paquete de cola | ⏳ pendiente | |
 | F1-T09 Job import.run | ⏳ pendiente | |
@@ -47,6 +47,19 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
+- 2026-10-01: **F1-T06.** Lectores de medios en `packages/importers`.
+  - **Puerto `MediaFileSource` en core.** Plan aprobado con tres cambios al spec:
+    - `list` devuelve `{ files, skipped }`, con `MEDIA_SKIP_REASONS`;
+    - `folder` es relativo a la raíz del adaptador y no puede salir de ella (`MEDIA_FOLDER_INVALID`), porque `carpeta_medios` viene del Excel;
+    - el tope de video lo aplica el adaptador, sin hashear.
+  - **`createMediaFolderSource`:** firmas propias, sin dependencias. El sha256 se calcula en streaming, y no sigue enlaces simbólicos (`O_NOFOLLOW`).
+  - **`extractZip`** con **yauzl 3.4.0** (dependencia nueva del spec, más `@types/yauzl`):
+    - Topes de entradas y de bytes, y `validateEntrySizes` contra zip bombs.
+    - Un zip-slip rechaza el zip completo.
+    - Omite los enlaces simbólicos.
+    - Código nuevo `IMPORT_EXTRACT_FAILED`, para cuando el problema es el disco y no el zip.
+  - **Tests:** los zips se arman con un generador propio (`test/zip-builder.ts`, con `stored` y `deflate`, y nombres hostiles a mano). Probé con mutaciones que fallan si se quita cada protección: validación de tamaños, enlaces, tope de bytes, raíz de la carpeta y tope de video.
+  - **Pendiente para T09:** desenvolver un zip con una sola carpeta raíz (anotado en §4.3 del spec).
 - 2026-10-01: **F1-T05.** `MediaStorage.putStream`.
   - En R2 es un solo `PutObject` con `Content-Length`, sin `lib-storage`, desde un cliente S3 aparte sin reintentos y sin el checksum por defecto del SDK. Con ese checksum, el stream viaja en `aws-chunked` y sin `Content-Length` (lo verifiqué con msw).
   - **Bug encontrado y corregido antes del commit:** si el stream trae otro largo o falla al leerse, el generador avisa y termina **sin lanzar**, y `putStream` aborta la petición. Lanzar dejaba la petición colgada y un `error` sin escuchar, que en el worker tumbaría el proceso.
