@@ -238,7 +238,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **D3 · Streams sin `@aws-sdk/lib-storage`:**
   - `MediaStorage.putStream(path, body: AsyncIterable<Uint8Array>, { contentType, contentLength })`, con tipos de ES2023 y sin tipos de Node en `core`. El adaptador usa `Readable.from(body)`.
   - R2 acepta un `PutObject` de un solo envío de hasta ~5 GB con `ContentLength` conocido, así que para `MAX_VIDEO_MB = 300` no hace falta la subida multiparte de `lib-storage`.
-  - **Checksum (decidido en F1-T05):** el cliente de streams usa `requestChecksumCalculation: "WHEN_REQUIRED"`. Con el valor por defecto, el SDK manda el stream en `aws-chunked`, con un CRC32 al final y **sin `Content-Length`** (verificado con msw). No queremos depender de ese formato en R2, así que no se llegó a probar contra R2. Queda un PUT normal con `Content-Length`, que `storage:check` verifica contra R2 (1 MB en streaming, mismo sha256). La integridad en tránsito la da TLS. El contenido subido no se verifica contra el sha256 de la ingesta: mandarlo como `ChecksumSHA256` se decide en el plan de T07.
+  - **Checksum (decidido en F1-T05):** el cliente de streams usa `requestChecksumCalculation: "WHEN_REQUIRED"`. Con el valor por defecto, el SDK manda el stream en `aws-chunked`, con un CRC32 al final y **sin `Content-Length`** (verificado con msw). No queremos depender de ese formato en R2, así que no se llegó a probar contra R2. Queda un PUT normal con `Content-Length`, que `storage:check` verifica contra R2 (1 MB en streaming, mismo sha256). La integridad en tránsito la da TLS. El contenido subido no se verifica contra el sha256 de la ingesta. Mandarlo como `ChecksumSHA256` se hace en T07b, solo si R2 rechaza un sha256 erróneo (nota `docs/integraciones/r2-checksums.md`). Un largo distinto es `STORAGE_CONTENT_MISMATCH` (desde T07).
   - Un stream no se puede reintentar dentro del SDK, así que el reintento es el del job, que vuelve a abrir el archivo. El cliente de streams usa `maxAttempts: 1` como defensa: la versión actual del SDK ya no reintenta un cuerpo que es stream.
   - `getStream` se agrega en F2, cuando ffmpeg lo necesite.
 - **D4 · Pruebas de los repositorios Drizzle con PGlite:** la CI no tiene base de datos y los tests no tocan Neon. Para que las garantías de idempotencia (`ON CONFLICT`, `NULLS NOT DISTINCT`, el único parcial) tengan prueba automática, se usa **PGlite** (Postgres en WASM) como `devDependency` solo de `packages/db`: aplica las migraciones y prueba los repositorios en la CI. Se descartó probar solo los mapeos y confiar en la demo contra Neon.
@@ -340,32 +340,56 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T07 · Caso de uso ingestMedia
 - **Depende de:** T04, T05, T06
-- **Descripción:** `ingestMedia` según §4.3:
-  - Deduplicación, portada, clave en R2 y `putStream` con su `Content-Type`, subiendo antes de insertar.
-  - Sube el logo del corredor.
-  - Corre también para las filas `skipped`.
-  - Pasa el listing a `ready` o `draft` según §4.2, con `ListingRepository.promoteToReady(id)`: pasa de `draft` a `ready` y nunca desde otro estado, así no pisa `paused`, `archived`, `active` ni `closed`. Usa `status` de `ImportedRow` para la advertencia.
-  - Asigna el logo con `BrokerRepository.setLogo(id, mediaId)`.
-  - Suma `media` (opcional) a `importReportSchema` y las advertencias de medios a `rows[].warnings`.
-  - **A decidir en el plan:**
-    - si `putStream` manda el sha256 como `ChecksumSHA256`, para que R2 verifique el contenido. Cambia el contrato de `PutStreamOptions`, y el subagente `integraciones` tiene que confirmar antes que R2 lo acepta;
-    - si `ingestMedia` reintenta por archivo o le deja todo al job. La deduplicación ya evita volver a subir lo que terminó.
-  - **Fallos de un archivo después de `list` (desde la revisión de T06):**
-    - `MEDIA_FILE_UNREADABLE` (`open()`) y `STORAGE_ERROR` por largo distinto (el archivo cambió) son advertencias de la fila, igual que `skipped`: un archivo no hace fallar el run (§4.2).
-    - `STORAGE_UNAVAILABLE` se propaga para que el job reintente.
-    - Los errores `MEDIA_FOLDER_*` de `list` también son advertencias de la fila.
-  - **Clave en R2:** `{sha256}.{extension}`, con `MediaFile.extension` (canónica; core no repite la tabla de tipos).
-  - El doble en memoria de `MediaStorage` (`@agentsales/core/testing`) lee el iterable completo y da `STORAGE_ERROR` si el largo no calza con `contentLength`, igual que R2.
-  - **Doble en memoria de `MediaFileSource`** (`@agentsales/core/testing`):
-    - es un mapa `folder → MediaFolderListing | AppError`, con `open()` sobre bytes en memoria y sha256 fijos;
-    - no reimplementa la validación de rutas (`MEDIA_FOLDER_INVALID` es del adaptador y ya tiene su prueba).
-  - Puerto `MediaRepository`, con implementaciones Drizzle y en memoria.
+- **Plan aprobado (2026-10-01):** T07 se parte en T07 (core) y T07b (adaptadores), como T04 y T04b.
+- **Descripción:** `ingestMedia(deps, { runId, imported, source })` según §4.3, en el mismo run que `importListings`. `imported` es su resultado. `source` es el `MediaFileSource` de la carga, o `null` sin `--media`; lo compone el job (T09), porque la raíz cambia en cada run.
+  - **Logo:** `_marca/<logo>` de la hoja Corredor. Va en `brokers/{brokerId}/brand/{sha256}.{extension}`, no se resube si ya existe (`MediaRepository.findByStoragePath`) y se asigna con `BrokerRepository.setLogo(id, mediaId)`. Sus advertencias van a `broker.warnings`.
+  - **Por fila** `created`, `updated` y también `skipped`:
+    - la carpeta es `carpeta_medios`, o `id_propiedad` si viene vacía;
+    - deduplica por sha256 contra los originales del aviso y dentro de la carpeta;
+    - sube con `putStream`, con su `Content-Type`, y después inserta: primero R2 y después la fila;
+    - la clave es `{sha256}.{extension}`, con `MediaFile.extension` (canónica; core no repite la tabla de tipos).
+  - **Orden y portada** con `MediaRepository.arrange`:
+    - el orden natural de la carpeta; los medios que ya no están se conservan, al final y sin portada;
+    - la portada es `foto_portada`, comparada sin mayúsculas, si es una foto de la carpeta; si no, la primera foto, con advertencia;
+    - solo escribe si algo cambió.
+  - **Estado:** con `estado_carga = Listo` y al menos una foto del aviso (nueva o de antes; un video no cuenta), `ListingRepository.promoteToReady(id)`. Solo pasa de `draft` a `ready`, así no pisa `paused`, `archived`, `active` ni `closed`. Con `Listo`, sin fotos y en `draft`: advertencia.
+  - **Advertencias de la fila (no fallan el run, §4.2):**
+    - `skipped` de `list` y archivos repetidos;
+    - errores `MEDIA_FOLDER_*`;
+    - `MEDIA_FILE_UNREADABLE` (`open()`) y `STORAGE_CONTENT_MISMATCH` (código nuevo de `putStream`: el contenido no es el anunciado; antes era `STORAGE_ERROR`).
+  - **Se propagan:** `STORAGE_UNAVAILABLE`, `DB_UNAVAILABLE`, `MEDIA_CONFLICT` (reintentables) y `STORAGE_ERROR` (credenciales).
+  - **Sin reintentos por archivo:** el reintento es del job, y la deduplicación evita volver a subir lo que terminó.
+  - **`dry_run`:** solo lee, incluidos los medios que el aviso ya tiene. El reporte dice lo que se subiría.
+  - **Reporte:** `importReportSchema` suma `media` opcional, `{ filesUploaded, filesExisting, filesSkipped, filesFailed }`, sin el logo, y las advertencias van a `rows[].warnings`. Se guarda con `ImportRunRepository.recordMediaResult(id, report)`.
+  - **Puertos:**
+    - `MediaRepository` (`listOriginals`, `findByStoragePath`, `create` con `MEDIA_CONFLICT` reintentable, `arrange` todo o nada);
+    - `ListingRepository.promoteToReady`, `BrokerRepository.setLogo` e `ImportRunRepository.recordMediaResult`. Estos tres ya tienen implementación Drizzle en T07, con la suite de contrato: sin ella `packages/db` no compila.
+  - **Dobles en `@agentsales/core/testing`:**
+    - `MediaRepository`;
+    - `MediaStorage`: lee el iterable completo, da `STORAGE_CONTENT_MISMATCH` si el largo no calza, como R2, y registra las subidas;
+    - `MediaFileSource`: un mapa `folder → listado | AppError`, con `memoryFile` y sha256 fijos. No reimplementa la validación de rutas (`MEDIA_FOLDER_INVALID` es del adaptador, que ya tiene su prueba).
 - **Hecho cuando:**
   - [ ] Test con un `MediaStorage` y un `MediaFileSource` en memoria: suben 4 archivos válidos con su tipo, y el inválido va al reporte
   - [ ] Reimportar no vuelve a subir archivos (verificado por checksum)
   - [ ] Test: agregar una foto a una propiedad `skipped` la sube
   - [ ] Test: una propiedad sin fotos queda en `draft` con advertencia
   - [ ] Test: cambiar `foto_portada` desmarca la portada anterior
+
+### F1-T07b · MediaRepository en Drizzle y checksum en R2
+- **Depende de:** T07
+- **Descripción:**
+  - `MediaRepository` en Drizzle (`packages/db/src/repositories/media.ts`), con `withDbErrors`:
+    - `create` da `MEDIA_CONFLICT`, reintentable, por los únicos `media_original_listing_checksum_unique` y `media_storage_path_unique`;
+    - `arrange` va en una transacción.
+  - **`ChecksumSHA256` en `putStream`** (nota `docs/integraciones/r2-checksums.md`):
+    - `PutStreamOptions` gana `sha256` opcional, en hex. El adaptador lo manda en base64 como `ChecksumSHA256`, sin `ChecksumAlgorithm`, y conserva `WHEN_REQUIRED`;
+    - `BadDigest` da `STORAGE_CONTENT_MISMATCH`;
+    - `ingestMedia` pasa el sha256 del archivo.
+    - **Solo si** el caso negativo de `storage:check` confirma que R2 rechaza un sha256 erróneo y no guarda el objeto. Si no, se descarta y queda documentado.
+- **Hecho cuando:**
+  - [ ] Suite de contrato de `MediaRepository` contra el doble en memoria y contra PGlite: los únicos (`MEDIA_CONFLICT`), el orden de `listOriginals` y `arrange` todo o nada
+  - [ ] Test msw: con `sha256`, la petición lleva `x-amz-checksum-sha256` y `Content-Length`, sin `aws-chunked`, `x-amz-trailer` ni `x-amz-sdk-checksum-algorithm`; `BadDigest` da `STORAGE_CONTENT_MISMATCH`
+  - [ ] Demo: `pnpm storage:check` contra R2: el caso positivo sube con el sha256 correcto, y el negativo da `BadDigest` sin dejar el objeto
 
 ### F1-T08 · Paquete de cola
 - **Depende de:** F0
@@ -378,7 +402,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - [ ] Los tests del worker de F0 siguen pasando, y `pnpm worker:ping` funciona con `packages/queue` (demo)
 
 ### F1-T09 · Job import.run
-- **Depende de:** T04b, T07, T08
+- **Depende de:** T04b, T07, T07b, T08
 - **Descripción:**
   - Job `import.run` (§4.6) y `buildJobs(deps)` en el worker.
   - Caso de uso `requestImport` en core, que crea el run con `input` según `importRunInputSchema`.
@@ -451,7 +475,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Depende de:** todas
 - **Descripción:** `/fase-cerrar 1`.
 
-Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer en cualquier momento después de F0. Luego T07 → T09. T10 va después de T04b. T11 después de T09 y T10. Luego T12, T13 → T14, y al final T15.
+Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer en cualquier momento después de F0. Luego T07 → T07b → T09. T10 va después de T04b. T11 después de T09 y T10. Luego T12, T13 → T14, y al final T15.
 
 ## 6. Criterios de aceptación de la fase
 - [ ] Ver `docs/06-roadmap.md#f1--carga`
@@ -499,3 +523,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Desde F1-T05: D3 queda con el checksum por defecto del SDK desactivado en el cliente de streams (`WHEN_REQUIRED`), porque mandaba `aws-chunked` sin `Content-Length`; `maxAttempts: 1` defensivo. T07 decide `ChecksumSHA256` y la política de reintentos por archivo |
 | 2026-10-01 | Plan de F1-T06, aprobado por el operador: `MediaFileSource.list` devuelve `{ files, skipped }` con `MEDIA_SKIP_REASONS`; `folder` es relativo a la raíz del adaptador y no puede salir de ella; el tope de video lo aplica el adaptador (sin hashear); los zips de los tests se arman con un generador propio, sin dependencia nueva; desenvolver una carpeta raíz del zip se decide en T09 |
 | 2026-10-01 | Desde la revisión de F1-T06: `MediaFile` gana `extension` canónica; códigos `MEDIA_FOLDER_UNREADABLE`, `MEDIA_FILE_UNREADABLE` e `IMPORT_EXTRACT_FAILED`; la carpeta no puede salir de la raíz tampoco por un enlace simbólico (`realpath`); `extractZip` devuelve `skipped` y rechaza nombres repetidos o en conflicto antes de escribir; T07 convierte en advertencia los fallos de un archivo y tiene un doble de `MediaFileSource` |
+| 2026-10-01 | Plan de F1-T07, aprobado por el operador: se parte en T07 (core: `ingestMedia`, `MediaRepository`, dobles y reporte; más `promoteToReady`, `setLogo` y `recordMediaResult` en Drizzle) y T07b (`MediaRepository` en Drizzle y `ChecksumSHA256` en `putStream`, condicionado a la prueba negativa contra R2); sin reintentos por archivo (el reintento es del job); `STORAGE_CONTENT_MISMATCH` para un contenido distinto del anunciado, que la ingesta trata como advertencia; T09 depende de T07b |

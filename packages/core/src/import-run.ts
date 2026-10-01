@@ -22,8 +22,8 @@ export type ImportBrokerOutcome = (typeof IMPORT_BROKER_OUTCOMES)[number];
 /**
  * Reporte de una carga (`import_runs.report`, ADR-0011): viaja por HTTP y lo muestran la CLI y el
  * panel. Con `dry_run`, los resultados son los que **habría** tenido la carga. Los campos nuevos
- * se agregan como opcionales (la ingesta de medios, F1-T07, suma `media`), para que los reportes
- * ya guardados en jsonb sigan validando.
+ * se agregan como opcionales (como `media`, de F1-T07), para que los reportes ya guardados en
+ * jsonb sigan validando.
  */
 export const importReportSchema = z.object({
   /** `null` si la carga falló antes de revisar la hoja (por ejemplo, `BROKER_INVALID`). */
@@ -53,8 +53,25 @@ export const importReportSchema = z.object({
       warnings: z.array(z.string()),
     }),
   ),
+  /**
+   * Resumen de la ingesta de medios (F1-T07), sin el logo; falta si la carga no llegó a esa etapa.
+   * Las advertencias de cada archivo van en `rows[].warnings` (las del logo, en `broker.warnings`).
+   */
+  media: z
+    .object({
+      /** Subidos (en `dry_run`: los que se subirían). */
+      filesUploaded: z.number().int(),
+      /** Ya estaban en el aviso (mismo sha256): no se vuelven a subir. */
+      filesExisting: z.number().int(),
+      /** No aceptados (tipo, firma, vacío, tamaño…) o repetidos dentro de la carpeta. */
+      filesSkipped: z.number().int(),
+      /** Aceptados que no se pudieron subir (se leyeron mal o cambiaron mientras se subían). */
+      filesFailed: z.number().int(),
+    })
+    .optional(),
 });
 export type ImportReport = z.infer<typeof importReportSchema>;
+export type ImportMediaCounts = NonNullable<ImportReport["media"]>;
 
 /** Contadores de `import_runs`. `rowsTotal` no cuenta las filas `ignored`. */
 export type ImportCounts = {

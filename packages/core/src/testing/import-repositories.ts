@@ -56,6 +56,13 @@ export function createInMemoryBrokerRepository(
       stored.set(id, updated);
       return structuredCopy(updated);
     },
+    async setLogo(id, mediaId) {
+      const current = stored.get(id);
+      if (current === undefined) {
+        throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+      }
+      stored.set(id, { ...current, logoMediaId: mediaId });
+    },
     all: () => [...stored.values()].map(structuredCopy),
     setAutoPublish(id, autoPublish) {
       const current = stored.get(id);
@@ -113,6 +120,12 @@ export function createInMemoryListingRepository(): InMemoryListingRepository {
       stored.set(id, updated);
       return record(updated);
     },
+    async promoteToReady(id) {
+      const current = stored.get(id);
+      if (current?.status !== "draft") return false;
+      stored.set(id, { ...current, status: "ready" });
+      return true;
+    },
     all: () => [...stored.values()].map(structuredCopy),
     setStatus(id, status) {
       const current = stored.get(id);
@@ -162,11 +175,18 @@ export function createInMemoryImportRunRepository(): InMemoryImportRunRepository
       }
       stored.set(id, { ...current, brokerId, ...counts, report: structuredCopy(report) });
     },
+    async recordMediaResult(id, report) {
+      const current = stored.get(id);
+      if (current === undefined) {
+        throw new AppError("IMPORT_RUN_NOT_FOUND", `No existe la carga ${id}`);
+      }
+      stored.set(id, { ...current, report: structuredCopy(report) });
+    },
   };
 }
 
 /** Copia profunda de datos planos (JSON más fechas): lo guardado no se comparte con quien llama. */
-function structuredCopy<T>(value: T): T {
+export function structuredCopy<T>(value: T): T {
   if (value instanceof Date) return new Date(value.getTime()) as T;
   if (Array.isArray(value)) return value.map(structuredCopy) as T;
   if (typeof value !== "object" || value === null) return value;

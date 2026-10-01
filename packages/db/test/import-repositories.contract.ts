@@ -23,6 +23,8 @@ export type ImportRepositories = {
   setListingStatus(id: string, status: ListingStatus): Promise<void>;
   /** Cambio de `auto_publish` fuera de la hoja Corredor, para probar que `update` no lo pisa. */
   setBrokerAutoPublish(id: string, autoPublish: boolean): Promise<void>;
+  /** Un medio del corredor (el logo), para `setLogo`: en Postgres hace falta la fila por la FK. */
+  createBrokerMedia(brokerId: string): Promise<string>;
   /** Un id con el formato del adaptador que no existe (un uuid en Postgres). */
   missingId: string;
 };
@@ -135,6 +137,24 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
         "BROKER_NOT_FOUND",
       );
     });
+
+    it("setLogo fija el logo, y update de la hoja no lo pisa", async () => {
+      const slug = unique("corredor");
+      const created = await repos.brokers.create(brokerData(slug));
+      const mediaId = await repos.createBrokerMedia(created.id);
+      await repos.brokers.setLogo(created.id, mediaId);
+      expect(await repos.brokers.findBySlug(slug)).toEqual({ ...created, logoMediaId: mediaId });
+
+      const updated = await repos.brokers.update(created.id, brokerData(slug, { tone: "Formal" }));
+      expect(updated.logoMediaId).toBe(mediaId);
+    });
+
+    it("setLogo de un id inexistente → BROKER_NOT_FOUND", async () => {
+      const mediaId = await repos.createBrokerMedia(
+        (await repos.brokers.create(brokerData(unique("corredor")))).id,
+      );
+      await expectAppError(repos.brokers.setLogo(repos.missingId, mediaId), "BROKER_NOT_FOUND");
+    });
   });
 
   describe(`${name} · ListingRepository`, () => {
@@ -195,6 +215,31 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       const { brokerId: _b, category: _c, source: _s, ...data } = newListing(brokerId, unique("P"));
       await expectAppError(repos.listings.update(repos.missingId, data), "LISTING_NOT_FOUND");
     });
+
+    it("promoteToReady pasa de draft a ready una sola vez", async () => {
+      const ref = unique("P");
+      const created = await repos.listings.create(newListing(brokerId, ref));
+      expect(await repos.listings.promoteToReady(created.id)).toBe(true);
+      expect(await repos.listings.promoteToReady(created.id)).toBe(false);
+      const [found] = await repos.listings.findByExternalRefs(brokerId, [ref]);
+      expect(found?.status).toBe("ready");
+    });
+
+    it.each(["paused", "archived", "active", "closed"] as const)(
+      "promoteToReady no toca un aviso en %s",
+      async (status) => {
+        const ref = unique("P");
+        const created = await repos.listings.create(newListing(brokerId, ref));
+        await repos.setListingStatus(created.id, status);
+        expect(await repos.listings.promoteToReady(created.id)).toBe(false);
+        const [found] = await repos.listings.findByExternalRefs(brokerId, [ref]);
+        expect(found?.status).toBe(status);
+      },
+    );
+
+    it("promoteToReady de un id inexistente devuelve false", async () => {
+      expect(await repos.listings.promoteToReady(repos.missingId)).toBe(false);
+    });
   });
 
   describe(`${name} · ImportRunRepository`, () => {
@@ -253,6 +298,45 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
         ...counts,
         report: REPORT,
       });
+    });
+
+    it("recordMediaResult reemplaza el reporte y no toca contadores ni estado", async () => {
+      const brokerId = (await repos.brokers.create(brokerData(unique("corredor")))).id;
+      const run = await repos.importRuns.create({
+        source: "xlsx",
+        fileName: "propiedades.xlsx",
+        dryRun: false,
+        input,
+      });
+      const counts = {
+        rowsTotal: 1,
+        rowsCreated: 1,
+        rowsUpdated: 0,
+        rowsSkipped: 0,
+        rowsFailed: 0,
+      };
+      await repos.importRuns.recordListingsResult(run.id, { brokerId, counts, report: REPORT });
+      const withMedia: ImportReport = {
+        ...REPORT,
+        rows: REPORT.rows.map((row) => ({ ...row, warnings: ["notas.txt: tipo no admitido"] })),
+        media: { filesUploaded: 3, filesExisting: 1, filesSkipped: 1, filesFailed: 0 },
+      };
+
+      await repos.importRuns.recordMediaResult(run.id, withMedia);
+
+      expect(await repos.importRuns.get(run.id)).toEqual({
+        ...run,
+        brokerId,
+        ...counts,
+        report: withMedia,
+      });
+    });
+
+    it("recordMediaResult de un id inexistente → IMPORT_RUN_NOT_FOUND", async () => {
+      await expectAppError(
+        repos.importRuns.recordMediaResult(repos.missingId, REPORT),
+        "IMPORT_RUN_NOT_FOUND",
+      );
     });
 
     it("recordListingsResult de un id inexistente → IMPORT_RUN_NOT_FOUND", async () => {

@@ -25,6 +25,7 @@ import {
 import { createTestDatabase, type TestDatabase } from "./pglite.js";
 
 const MISSING_UUID = "00000000-0000-0000-0000-000000000000";
+let mediaSequence = 0;
 
 const databases: TestDatabase[] = [];
 afterAll(async () => {
@@ -46,6 +47,22 @@ async function pgliteRepositories() {
     async setBrokerAutoPublish(id: string, autoPublish: boolean) {
       await db.update(brokers).set({ autoPublish }).where(eq(brokers.id, id));
     },
+    async createBrokerMedia(brokerId: string) {
+      const [row] = await db
+        .insert(media)
+        .values({
+          brokerId,
+          kind: "image",
+          role: "original",
+          storagePath: `brokers/${brokerId}/brand/${++mediaSequence}.png`,
+          mime: "image/png",
+          bytes: 10,
+          checksum: `sha-${mediaSequence}`,
+        })
+        .returning({ id: media.id });
+      if (row === undefined) throw new Error("no se creó el medio");
+      return row.id;
+    },
     missingId: MISSING_UUID,
   };
 }
@@ -59,6 +76,7 @@ importRepositoriesContract("en memoria", async () => {
     importRuns: createInMemoryImportRunRepository(),
     setListingStatus: async (id, status) => listingRepo.setStatus(id, status),
     setBrokerAutoPublish: async (id, autoPublish) => brokerRepo.setAutoPublish(id, autoPublish),
+    createBrokerMedia: async () => `media-${++mediaSequence}`,
     missingId: MISSING_UUID,
   };
 });

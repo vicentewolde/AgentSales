@@ -25,8 +25,7 @@ export type NewListing = ListingImportData & {
  * Avisos (`listings`), únicos por `(broker_id, external_ref)`. Un aviso nuevo nace en `draft`, y
  * la importación nunca cambia `status` (ni lo pisa al reimportar): eso es de la ingesta de medios
  * y del operador. `ListingImportRecord` es una proyección para la carga, sin esquema; la entidad
- * completa (`listingSchema`) y `list`/`get` llegan con la API (F1-T10), y la ingesta de medios
- * (F1-T07) suma `promoteToReady(id)` (solo desde `draft`). Errores (`AppError`):
+ * completa (`listingSchema`) y `list`/`get` llegan con la API (F1-T10). Errores (`AppError`):
  * - `create` de un `(broker_id, external_ref)` que ya existe → `LISTING_CONFLICT`, **reintentable**
  *   (intentos del job solapados; el reintento lo reclasifica como `skipped` o `updated`);
  * - `update` de un id que no existe → `LISTING_NOT_FOUND`;
@@ -40,4 +39,10 @@ export interface ListingRepository {
   ): Promise<ListingImportRecord[]>;
   create(listing: NewListing): Promise<ListingImportRecord>;
   update(id: string, data: ListingImportData): Promise<ListingImportRecord>;
+  /**
+   * Pasa el aviso de `draft` a `ready` (ingesta de medios, F1-T07) y devuelve si cambió. Desde
+   * cualquier otro estado no hace nada: no pisa `paused`, `archived`, `active` ni `closed`, y un
+   * id que no existe también devuelve `false`.
+   */
+  promoteToReady(id: string): Promise<boolean>;
 }

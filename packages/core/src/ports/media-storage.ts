@@ -18,7 +18,9 @@ export type StoredObjectInfo = {
  * - `put` sobrescribe si el objeto ya existe.
  * - `delete` no falla si el objeto no existe.
  * - Los errores son `AppError`: `STORAGE_NOT_FOUND` (no reintentable), `STORAGE_UNAVAILABLE`
- *   (reintentable: red o 5xx) y `STORAGE_ERROR` (no reintentable: credenciales, permisos).
+ *   (reintentable: red o 5xx), `STORAGE_ERROR` (no reintentable: credenciales, permisos) y, solo
+ *   en `putStream`, `STORAGE_CONTENT_MISMATCH` (no reintentable: el contenido no es el anunciado).
+ *   Este último es un problema del archivo, no de R2: la ingesta lo trata como una advertencia.
  *
  * `put` trabaja con el archivo completo en memoria; `putStream` lo sube en streaming (un solo PUT,
  * no multiparte), para videos de hasta `MAX_VIDEO_MB` (spec F1, D3).
@@ -28,7 +30,7 @@ export interface MediaStorage {
   /**
    * Sube un archivo en streaming; sobrescribe si existe. `contentLength` es obligatorio (R2 no
    * acepta un largo desconocido sin multiparte). Si el stream trae más o menos bytes (el archivo
-   * cambió mientras se subía), `STORAGE_ERROR`. Un stream no se puede rebobinar, así que el
+   * cambió mientras se subía), `STORAGE_CONTENT_MISMATCH`. Un stream no se puede rebobinar, así que el
    * adaptador **no** reintenta: el reintento es de quien llama, que vuelve a abrir el archivo.
    * Un `AppError` que lance el iterable (el lector del archivo) pasa tal cual. El contenido no se
    * verifica contra un hash (se decide en F1-T07).

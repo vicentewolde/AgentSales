@@ -16,6 +16,7 @@ export {
   IMPORT_ROW_OUTCOMES,
   type ImportBrokerOutcome,
   type ImportCounts,
+  type ImportMediaCounts,
   type ImportReport,
   type ImportRowOutcome,
   type ImportRun,
@@ -65,6 +66,12 @@ export {
   type MediaSkipReason,
   type SkippedMediaFile,
 } from "./ports/media-file-source.js";
+export type {
+  MediaArrangement,
+  MediaRecord,
+  MediaRepository,
+  NewMedia,
+} from "./ports/media-repository.js";
 export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
 export {
   ACTIVE_PUBLICATION_STATUSES,
@@ -82,3 +89,12 @@ export {
   type ImportListingsResult,
   importListings,
 } from "./use-cases/import-listings.js";
+export {
+  BRAND_FOLDER,
+  brandMediaPath,
+  type IngestMediaDeps,
+  type IngestMediaParams,
+  type IngestMediaResult,
+  ingestMedia,
+  listingMediaPath,
+} from "./use-cases/ingest-media.js";

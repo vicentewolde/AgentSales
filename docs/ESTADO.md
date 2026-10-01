@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T06 · Lectores de medios
-**Siguiente paso:** `/tarea F1-T07` (`ingestMedia`) o F1-T08 (paquete de cola)
+**Última tarea terminada:** F1-T07 · Caso de uso ingestMedia (core)
+**Siguiente paso:** `/tarea F1-T07b` (`MediaRepository` en Drizzle y `ChecksumSHA256`) o F1-T08 (paquete de cola). T09 necesita T07b
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -17,7 +17,8 @@
 | F1-T04b Repositorios Drizzle de brokers, listings e import_runs | ✅ terminada | #17 |
 | F1-T05 Almacenamiento con streams | ✅ terminada | #18 |
 | F1-T06 Lectores de medios | ✅ terminada | #19 |
-| F1-T07 Caso de uso ingestMedia | ⏳ pendiente | |
+| F1-T07 Caso de uso ingestMedia (core) | ✅ terminada | |
+| F1-T07b MediaRepository en Drizzle y checksum en R2 | ⏳ pendiente | |
 | F1-T08 Paquete de cola | ⏳ pendiente | |
 | F1-T09 Job import.run | ⏳ pendiente | |
 | F1-T10 Contratos HTTP y API de lectura | ⏳ pendiente | |
@@ -47,6 +48,21 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
+- 2026-10-01: **F1-T07.** `ingestMedia` en core. Plan aprobado: partida en T07 (core) y T07b (adaptadores).
+  - **Decisiones:**
+    - Sin reintentos por archivo: el reintento es del job, y la deduplicación evita volver a subir.
+    - `STORAGE_CONTENT_MISMATCH`, nuevo en `putStream` (antes `STORAGE_ERROR`): el contenido no es el anunciado y es advertencia del archivo. `STORAGE_ERROR` (credenciales) sigue haciendo fallar el run.
+    - `ChecksumSHA256` va a T07b, con la nota `docs/integraciones/r2-checksums.md` y la condición de que R2 rechace un sha256 erróneo en `storage:check`.
+  - **Puertos:**
+    - `MediaRepository` (`listOriginals`, `findByStoragePath`, `create` con `MEDIA_CONFLICT`, `arrange`), con doble en memoria; Drizzle en T07b.
+    - `promoteToReady`, `setLogo` y `recordMediaResult` ya tienen Drizzle y suite de contrato con PGlite. Sin ellos, `packages/db` no compilaba.
+  - **Dobles:** `MediaStorage` en memoria (largo distinto → `STORAGE_CONTENT_MISMATCH`, registra las subidas) y `MediaFileSource` en memoria (`memoryFile`).
+  - **Reporte:** `media` (`filesUploaded`, `filesExisting`, `filesSkipped`, `filesFailed`) más las advertencias por fila. Las del logo van a `broker.warnings`.
+  - **Comportamiento:**
+    - Los medios que ya no están en la carpeta se conservan, al final y sin portada.
+    - Un video no cuenta como foto para `ready`.
+    - Sin `--media`, las fotos que el aviso ya tenía bastan para pasar a `ready`.
+  - **Tests:** 28 del caso de uso, más los dobles. Probé 12 mutaciones (deduplicación, filas `skipped`, portada, `promoteToReady`, clasificación de errores, `dry_run`, logo) y todas hacen fallar algún test.
 - 2026-10-01: **F1-T06.** Lectores de medios en `packages/importers`.
   - **Puerto `MediaFileSource` en core.** Plan aprobado con tres cambios al spec:
     - `list` devuelve `{ files, skipped }`, con `MEDIA_SKIP_REASONS`;

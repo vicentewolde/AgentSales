@@ -95,5 +95,17 @@ export function createListingRepository(db: SchemaDatabase): ListingRepository {
         return row;
       });
     },
+
+    promoteToReady(id) {
+      return withDbErrors(async () => {
+        // Condicional: solo desde `draft`, así no pisa `paused`, `archived`, `active` ni `closed`.
+        const updated = await db
+          .update(listings)
+          .set({ status: "ready" })
+          .where(and(eq(listings.id, id), eq(listings.status, "draft")))
+          .returning({ id: listings.id });
+        return updated.length > 0;
+      });
+    },
   };
 }

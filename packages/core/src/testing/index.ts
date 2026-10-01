@@ -15,3 +15,14 @@ export {
   type InMemoryListingRepository,
   type StoredListing,
 } from "./import-repositories.js";
+export {
+  createInMemoryMediaFileSource,
+  createInMemoryMediaRepository,
+  createInMemoryMediaStorage,
+  type InMemoryMediaFileSource,
+  type InMemoryMediaRepository,
+  type InMemoryMediaStorage,
+  type InMemoryMediaStorageOptions,
+  type MemoryFileOptions,
+  memoryFile,
+} from "./media.js";

@@ -28,4 +28,10 @@ export interface ImportRunRepository {
     id: string,
     result: { brokerId: string | null; counts: ImportCounts; report: ImportReport },
   ): Promise<void>;
+  /**
+   * Reemplaza el reporte con el de `ingestMedia` (el mismo, más `media` y las advertencias de
+   * medios). No toca contadores, `status` ni `finished_at`. Un id inexistente es
+   * `IMPORT_RUN_NOT_FOUND`.
+   */
+  recordMediaResult(id: string, report: ImportReport): Promise<void>;
 }
