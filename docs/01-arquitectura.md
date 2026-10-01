@@ -250,7 +250,8 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
   - En los dos casos, `cause` es un **resumen sin datos** del error del driver (`safeDriverError`): un mensaje fijo y solo `code`, `constraint`, `table`, `column` y `schema`. El `DrizzleQueryError` lleva los parámetros de la consulta, y el error de pg lleva la fila en `detail`; los dos terminarían en los logs con datos de clientes.
   - `sqlStateOf` lee el SQLSTATE a través de la cadena de `cause`.
 - **Conflictos:** un `create` que choca con un único (`slug`, o `(broker_id, external_ref)`) es `BROKER_CONFLICT` o `LISTING_CONFLICT`, **reintentable**, porque dos intentos del job pueden solaparse y el reintento reclasifica la fila. Un `update` de un id que no existe es `*_NOT_FOUND`.
-- **Proyecciones:** `ListingImportRecord` (id, `external_ref`, `status` y `source_hash`) es una proyección para la carga, sin esquema. La entidad `listingSchema` y `list`/`get` llegan con la API (F1-T10).
+- **Proyecciones:** `ListingImportRecord` (id, `external_ref`, `status` y `source_hash`) es una proyección para la carga, sin esquema. La entidad `listingSchema`, `ListingRepository.list`/`get` y `BrokerRepository.list` llegan con la API (F1-T10).
+- **Ids:** son uuid. La API los valida con zod antes de llamar al repositorio; con otro formato, el adaptador de Postgres da `DB_QUERY_FAILED` (22P02) y los dobles en memoria, `null` o `*_NOT_FOUND`.
 - Hay un doble en memoria con la misma semántica en `@agentsales/core/testing`, que solo se importa desde tests. Los dos se prueban con los mismos fixtures, por ejemplo `fieldDefinitionOrderFixture`.
 - `FieldDefinitionRepository.list` devuelve las definiciones activas e inactivas. La precedencia (la del corredor sobre la global) y el filtro de `active` los resuelve `buildListingValidator` en core (`resolveEffectiveDefinitions`).
 

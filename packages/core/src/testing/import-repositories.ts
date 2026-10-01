@@ -16,7 +16,11 @@ function idGenerator(prefix: string) {
   return () => `${prefix}-${++next}`;
 }
 
-export type InMemoryBrokerRepository = BrokerRepository & { all(): Broker[] };
+export type InMemoryBrokerRepository = BrokerRepository & {
+  all(): Broker[];
+  /** Simula un cambio fuera de la hoja Corredor (panel), para probar que `update` no lo pisa. */
+  setAutoPublish(id: string, autoPublish: boolean): void;
+};
 
 export function createInMemoryBrokerRepository(
   initial: readonly Broker[] = [],
@@ -53,6 +57,11 @@ export function createInMemoryBrokerRepository(
       return structuredCopy(updated);
     },
     all: () => [...stored.values()].map(structuredCopy),
+    setAutoPublish(id, autoPublish) {
+      const current = stored.get(id);
+      if (current === undefined) throw new Error(`no existe el broker ${id}`);
+      stored.set(id, { ...current, autoPublish });
+    },
   };
 }
 

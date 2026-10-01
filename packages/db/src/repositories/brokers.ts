@@ -12,8 +12,12 @@ import { brokers } from "../schema.js";
 
 const SLUG_UNIQUE = "brokers_slug_unique";
 
+/**
+ * Fila → entidad. Una fila que no calza con `brokerSchema` (por ejemplo, un `fixed_hashtags`
+ * editado a mano con un `NULL`) es `BROKER_ROW_INVALID`, no reintentable, y no un `ZodError`.
+ */
 function toBroker(row: typeof brokers.$inferSelect): Broker {
-  return brokerSchema.parse({
+  const parsed = brokerSchema.safeParse({
     id: row.id,
     slug: row.slug,
     name: row.name,
@@ -29,6 +33,12 @@ function toBroker(row: typeof brokers.$inferSelect): Broker {
     fixedHashtags: row.fixedHashtags,
     autoPublish: row.autoPublish,
   });
+  if (!parsed.success) {
+    throw new AppError("BROKER_ROW_INVALID", `El corredor ${row.slug} tiene datos inválidos`, {
+      details: { id: row.id, issues: parsed.error.issues },
+    });
+  }
+  return parsed.data;
 }
 
 /** Columnas que escribe la hoja Corredor; nunca `logo_media_id` ni `auto_publish`. */

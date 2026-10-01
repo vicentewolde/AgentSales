@@ -1,6 +1,12 @@
 import { AppError, isAppError } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
-import { isDbUnavailable, sqlStateOf, toDbError, withDbErrors } from "./errors.js";
+import {
+  isDbUnavailable,
+  isUniqueViolation,
+  sqlStateOf,
+  toDbError,
+  withDbErrors,
+} from "./errors.js";
 
 const withCode = (message: string, code: string) => Object.assign(new Error(message), { code });
 
@@ -119,5 +125,25 @@ describe("sqlStateOf", () => {
     expect(sqlStateOf(withCode("connect ECONNREFUSED", "ECONNREFUSED"))).toBeUndefined();
     const epipe = Object.assign(withCode("write EPIPE", "EPIPE"), { syscall: "write" });
     expect(sqlStateOf(epipe)).toBeUndefined();
+  });
+});
+
+describe("isUniqueViolation", () => {
+  const CONSTRAINT = "listings_broker_id_external_ref_unique";
+  const unique = (constraint?: string) =>
+    Object.assign(withCode("duplicate key value", "23505"), constraint ? { constraint } : {});
+
+  it("reconoce el 23505 de su único: crudo, envuelto por drizzle o ya traducido por toDbError", () => {
+    expect(isUniqueViolation(unique(CONSTRAINT), CONSTRAINT)).toBe(true);
+    expect(isUniqueViolation(drizzleWrapped(unique(CONSTRAINT)), CONSTRAINT)).toBe(true);
+    expect(isUniqueViolation(toDbError(drizzleWrapped(unique(CONSTRAINT))), CONSTRAINT)).toBe(true);
+  });
+
+  it("no confunde otro único, otro SQLSTATE ni un 23505 sin constraint", () => {
+    expect(isUniqueViolation(unique("brokers_slug_unique"), CONSTRAINT)).toBe(false);
+    expect(isUniqueViolation(withCode("check violation", "23514"), CONSTRAINT)).toBe(false);
+    // Sin `constraint` (otro driver o versión) no se puede saber cuál chocó: no es un conflicto
+    // reintentable sino DB_QUERY_FAILED. Si pasara con pg o PGlite, la suite de contrato lo detecta.
+    expect(isUniqueViolation(unique(), CONSTRAINT)).toBe(false);
   });
 });

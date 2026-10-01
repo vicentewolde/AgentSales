@@ -2,7 +2,7 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-09-30
+**Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
 **Última tarea terminada:** F1-T04b · Repositorios Drizzle de brokers, listings e import_runs
 **Siguiente paso:** `/tarea F1-T05` (almacenamiento con streams), F1-T06 (lectores de medios) o F1-T08 (paquete de cola): ninguna depende de las otras; T07 necesita T05 y T06
@@ -47,13 +47,12 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
-- 2026-09-30: **F0 cerrada.** Monorepo con `core`, `config`, `db` (Neon, migración `0000_init`), `storage` (R2), API (`/health`), worker (pg-boss), CLI (`doctor`/`status`) y panel. CI en GitHub Actions. 321 tests. Detalle en `CHANGELOG.md` `[0.0.1]` y en el spec F0.
-- 2026-09-30: demo de F0 confirmada por el operador. Arreglo derivado: el worker resume los errores repetidos de pg-boss sin conexión.
 - 2026-10-01: **F1-T04b.** Repositorios Drizzle de brokers, listings e import_runs.
   - Los conflictos de los únicos son `*_CONFLICT`, reintentables.
   - `price_amount` se escribe con `toFixed(2)`.
   - `get` valida los jsonb (`IMPORT_RUN_INVALID`).
-  - **Migración `0002`:** `import_runs.report` admite `null`, con un `UPDATE` de `'{}'` a `NULL` agregado a mano; aplicada en Neon.
+  - **Migración `0002`:** `import_runs.report` admite `null`, con un `UPDATE` de `'{}'` a `NULL` agregado a mano; aplicada en Neon (demo del plan aprobado).
+  - Correcciones de `/revisar`: `BROKER_ROW_INVALID` en vez de `ZodError`, tests de `updated_at`, `auto_publish` y logo, de `isUniqueViolation` y de que un reporte real sobrevive a `0002`.
   - **Tests:** una suite de contrato corre los mismos casos contra los dobles en memoria y contra PGlite. También hay un test de punta a punta de `importListings` contra Postgres (PGlite) y uno de la migración `0002` sobre datos.
 - 2026-09-30: **F1-T04.** `importListings` en core, con la tarea partida en T04 (core) y T04b (Drizzle).
   - Hoja Corredor: `parseBrokerSheet` compara las etiquetas sin mayúsculas ni tildes y avisa las repetidas. `--broker` gana sobre el slug de la hoja.
@@ -115,6 +114,8 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
     - "Contrato de repositorios" en `01-arquitectura.md`.
 - 2026-09-30: **spec F1 aprobado** con 15 tareas. Decisiones D1–D6: ADR-0011 (contratos HTTP en `@agentsales/api/contracts`); job `import.run` (enmienda de ADR-0005); `putStream` sin `lib-storage`; PGlite en `packages/db`; bundle del panel como deuda hasta F7; metadatos de medios en F2.
 - 2026-09-30: `/tarea` incorpora la retro de F0: plan sin red, revisión de `minimumReleaseAgeExclude` tras `pnpm add`, simulación de la CI en un clon limpio y push, PR y merge solo con autorización y `CI / check` en verde.
+- 2026-09-30: **F0 cerrada.** Monorepo con `core`, `config`, `db` (Neon, migración `0000_init`), `storage` (R2), API (`/health`), worker (pg-boss), CLI (`doctor`/`status`) y panel. CI en GitHub Actions. 321 tests. Detalle en `CHANGELOG.md` `[0.0.1]` y en el spec F0.
+- 2026-09-30: demo de F0 confirmada por el operador. Arreglo derivado: el worker resume los errores repetidos de pg-boss sin conexión.
 - 2026-09-30: el operador decide dejar el repo **sin licencia** (todos los derechos reservados).
 - 2026-09-30: el repo `vicentewolde/AgentSales` es **público**, y `main` tiene protección de rama: check `check` obligatorio, rama al día, aplica también a administradores, sin force push. El historial se revisó antes de publicarlo y no tiene secretos.
 - **Recordatorios de operación:**

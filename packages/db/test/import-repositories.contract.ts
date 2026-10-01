@@ -21,6 +21,8 @@ export type ImportRepositories = {
   importRuns: ImportRunRepository;
   /** Cambio manual de estado (panel o CLI), para probar que `update` no lo pisa. */
   setListingStatus(id: string, status: ListingStatus): Promise<void>;
+  /** Cambio de `auto_publish` fuera de la hoja Corredor, para probar que `update` no lo pisa. */
+  setBrokerAutoPublish(id: string, autoPublish: boolean): Promise<void>;
   /** Un id con el formato del adaptador que no existe (un uuid en Postgres). */
   missingId: string;
 };
@@ -113,9 +115,12 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       await expectAppError(repos.brokers.create(brokerData(slug)), "BROKER_CONFLICT", true);
     });
 
-    it("update cambia los datos de la hoja y conserva id, logo y auto_publish", async () => {
+    it("update cambia los datos de la hoja y conserva id y auto_publish", async () => {
       const slug = unique("corredor");
-      const created = await repos.brokers.create(brokerData(slug));
+      const original = await repos.brokers.create(brokerData(slug));
+      // Fuera del valor por defecto: si `update` escribiera `auto_publish`, se notaría.
+      await repos.setBrokerAutoPublish(original.id, true);
+      const created = { ...original, autoPublish: true };
       const updated = await repos.brokers.update(
         created.id,
         brokerData(slug, { tone: "Formal", fixedHashtags: ["#tres"] }),

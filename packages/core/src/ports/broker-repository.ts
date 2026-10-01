@@ -7,7 +7,9 @@ import type { Broker, BrokerData } from "../broker.js";
  *   job pueden solaparse, y el reintento lo encuentra y sale `unchanged` o `updated`;
  * - `update` de un id que no existe → `BROKER_NOT_FOUND`;
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
- * La ingesta de medios (F1-T07) suma `setLogo(id, mediaId)`.
+ * Los ids son uuid: la API los valida antes de llegar aquí (con otro formato, el adaptador de
+ * Postgres da `DB_QUERY_FAILED`). La ingesta de medios (F1-T07) suma `setLogo(id, mediaId)` y la
+ * API (F1-T10) suma `list`.
  */
 export interface BrokerRepository {
   findBySlug(slug: string): Promise<Broker | null>;
