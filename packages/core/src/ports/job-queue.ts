@@ -16,8 +16,10 @@ export type EnqueueOptions = {
  */
 export interface JobQueue {
   /**
-   * Encola y devuelve el id del job, o `null` si ya había uno activo con el mismo `singletonKey`
-   * (no se duplica).
+   * Encola y devuelve el id del job, o `null` si no se creó porque ya había uno con el mismo
+   * `singletonKey`. Eso depende de la **política de la cola**: en pg-boss solo deduplican
+   * `singleton`, `stately`, `exclusive`… y no la estándar, y la política no se puede cambiar
+   * después de crear la cola (F1-T09 define la de `import.run`).
    */
   enqueue<N extends JobName>(
     name: N,

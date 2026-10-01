@@ -10,7 +10,7 @@ export type ProducerBoss = {
     options: { startAfter?: Date; singletonKey?: string },
   ): Promise<string | null>;
   stop(options: { graceful: boolean }): Promise<void>;
-  on(event: "error", listener: (error: Error) => void): unknown;
+  on(event: "error", listener: (error: unknown) => void): unknown;
 };
 
 export type JobQueueOptions = {
@@ -20,18 +20,26 @@ export type JobQueueOptions = {
    * Errores de fondo de pg-boss (por ejemplo, el pool perdió la conexión). Sin un listener, un
    * evento `error` tumbaría el proceso; quien llama los registra (resumidos, como el worker).
    */
-  onError?: (error: Error) => void;
+  onError?: (error: unknown) => void;
   /** Solo para tests: reemplaza a pg-boss. */
   boss?: () => ProducerBoss;
 };
 
 export type PgBossJobQueue = JobQueue & {
-  /** Cierra la conexión si se abrió. No falla. */
+  /**
+   * Cierra la conexión si se abrió (también si el arranque está en curso). No falla. Después,
+   * `enqueue` da `QUEUE_UNAVAILABLE`.
+   */
   stop(): Promise<void>;
 };
 
-/** "pg-boss is not installed" (esquema) o "Queue X does not exist" (cola): el worker nunca corrió. */
-const NOT_READY = /not installed|requires migrations|does not exist/i;
+/**
+ * Mensajes exactos de pg-boss cuando el worker nunca corrió: sin esquema, esquema viejo o cola sin
+ * crear. Anclados, para no confundirlos con `database "x" does not exist` de un `DATABASE_URL` mal
+ * puesto, que es "no se pudo conectar".
+ */
+const NOT_READY =
+  /^(pg-boss is not installed|pg-boss database requires migrations|Queue \S+ does not exist)/;
 
 function unavailable(error: unknown): AppError {
   const message = error instanceof Error ? error.message : String(error);
@@ -57,10 +65,13 @@ export function createJobQueue(options: JobQueueOptions): PgBossJobQueue {
     options.boss ??
     (() => createBoss({ connectionString: options.connectionString, role: "producer" }));
   let starting: Promise<ProducerBoss> | null = null;
+  let stopped = false;
 
   function started(): Promise<ProducerBoss> {
-    starting ??= (async () => {
+    if (starting !== null) return starting;
+    const attempt: Promise<ProducerBoss> = (async () => {
       const boss = makeBoss();
+      // Antes de `start`: sin un listener, un evento `error` de fondo tumbaría el proceso.
       boss.on("error", (error) => options.onError?.(error));
       try {
         await boss.start();
@@ -70,11 +81,13 @@ export function createJobQueue(options: JobQueueOptions): PgBossJobQueue {
         throw error;
       }
     })().catch((error: unknown) => {
-      // Un arranque fallido no queda guardado: el próximo `enqueue` reintenta.
-      starting = null;
+      // Un arranque fallido no queda guardado: el próximo `enqueue` reintenta. Solo se limpia si
+      // sigue siendo el arranque vigente (un `stop` o un arranque nuevo pudieron reemplazarlo).
+      if (starting === attempt) starting = null;
       throw unavailable(error);
     });
-    return starting;
+    starting = attempt;
+    return attempt;
   }
 
   return {
@@ -89,6 +102,12 @@ export function createJobQueue(options: JobQueueOptions): PgBossJobQueue {
               message: issue.message,
             })),
           },
+        });
+      }
+      // Tras `stop` (apagado de la API), un `enqueue` rezagado no reabre la conexión.
+      if (stopped) {
+        throw new AppError("QUEUE_UNAVAILABLE", "La cola se cerró: el proceso se está apagando", {
+          retriable: true,
         });
       }
       const boss = await started();
@@ -107,6 +126,7 @@ export function createJobQueue(options: JobQueueOptions): PgBossJobQueue {
     },
 
     async stop() {
+      stopped = true;
       const current = starting;
       starting = null;
       if (current === null) return;

@@ -19,7 +19,7 @@
 | F1-T06 Lectores de medios | ✅ terminada | #19 |
 | F1-T07 Caso de uso ingestMedia (core) | ✅ terminada | #20 |
 | F1-T07b MediaRepository en Drizzle y checksum en R2 | ✅ terminada | #21 |
-| F1-T08 Paquete de cola | ✅ terminada | |
+| F1-T08 Paquete de cola | ✅ terminada | #22 |
 | F1-T09 Job import.run | ⏳ pendiente | |
 | F1-T10 Contratos HTTP y API de lectura | ⏳ pendiente | |
 | F1-T11 API de importación | ⏳ pendiente | |
@@ -54,6 +54,15 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
   - **Contrato en core:** `JOB_NAMES` y `JOB_PAYLOADS`, con `system.ping` e `import.run`.
   - **Dependencias:** el paquete no depende de `@agentsales/db`; la conexión llega convertida, y se agregó a la regla de Biome de adaptadores.
   - **Demo:** con el worker corriendo, `pnpm worker:ping` encola con el productor nuevo, el worker responde "pong" y se apaga limpio.
+  - **Correcciones de `/revisar`:**
+    - El productor refresca su caché de colas una vez al día: antes consultaba Neon cada 60 s y no lo dejaba dormir.
+    - El mensaje "arranca el worker" solo sale con los errores exactos de pg-boss.
+    - `stop()` cierra un arranque en curso y deja la cola cerrada.
+    - `JOB_PAYLOAD_INVALID` responde 500.
+    - Se quitó `pg-boss` de las dependencias del worker.
+    - Tests nuevos: arranque compartido que falla, `onError`, opciones ausentes y configuración de `createBoss`. Probé 4 mutaciones y todas hacen fallar algún test.
+    - Quedaron anotados en el spec: para T09, `policy` (`exclusive`, inmutable), `defineJob` tipado y `requestImport`; para T11, `onError` resumido y `stop()`.
+    - Pendiente del operador: `CLAUDE.md` (sección Estructura) no lista `queue`; no lo edité porque es el archivo de instrucciones.
 - 2026-10-01: **F1-T07b.** `MediaRepository` en Drizzle y `ChecksumSHA256` en R2.
   - **Checksum adoptado.** Contra R2 real (`storage:check`), el sha256 correcto se acepta y el de otro contenido da `BadDigest`, sin guardar el objeto. Ahora R2 detecta un archivo que cambió entre la lectura y la subida. Línea en ADR-0007.
   - **Postgres:**

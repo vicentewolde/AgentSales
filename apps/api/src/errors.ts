@@ -14,6 +14,8 @@ const INTERNAL_MESSAGE = "Error interno del servidor";
  */
 export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "INVALID_TRANSITION") return 409;
+  // Los datos de un job los arma el servidor (por ejemplo, el id del run): es un bug, no del cliente.
+  if (code === "JOB_PAYLOAD_INVALID") return 500;
   if (code.endsWith("_NOT_FOUND")) return 404;
   if (code.includes("_INVALID") || code.startsWith("INVALID_")) return 400;
   if (code.endsWith("_RATE_LIMITED")) return 429;

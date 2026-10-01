@@ -425,6 +425,10 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T09 · Job import.run
 - **Depende de:** T04b, T07, T07b, T08
+- **Desde la revisión de T08** (hacer **antes** de que el worker cree la cola `import.run`, porque la política no se puede cambiar después):
+  - `QueuePolicy` gana `policy` (pg-boss). Se pasa solo a `createQueue`, no a `updateQueue`, que falla con `policy`. Para `import.run`: `exclusive`, así `singletonKey = importRunId` deduplica de verdad.
+  - `defineJob<N extends JobName>` toma el nombre de `JOB_NAMES` y el esquema de `JOB_PAYLOADS[name]`, sin parámetro `schema` y sin repetir el literal en el worker.
+  - `requestImport` solo convierte `QUEUE_UNAVAILABLE` en run `failed` + 503. Cualquier otro error (por ejemplo `JOB_PAYLOAD_INVALID`, que es un bug y responde 500) se propaga.
 - **Descripción:**
   - Job `import.run` (§4.6) y `buildJobs(deps)` en el worker.
   - Caso de uso `requestImport` en core, que crea el run con `input` según `importRunInputSchema`.
@@ -451,6 +455,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T11 · API de importación
 - **Depende de:** T09, T10
+- **Desde la revisión de T08:** la API compone `createJobQueue` con `onError` resumido (`createErrorThrottle`, que hoy vive en `apps/worker`; mudarlo a `@agentsales/config` o duplicarlo con su test) y llama a `queue.stop()` al apagarse.
 - **Descripción:**
   - `POST /imports` (multipart a `input/` mediante `AppDeps.uploads`, con `bodyLimit`).
   - `POST /imports/local`, habilitado con `AppDeps.localImports`.
@@ -522,6 +527,7 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | Run que queda en `running` para siempre | El handler lo deja en `failed` en el último intento, y un run terminal no se vuelve a procesar (§4.6) |
 | Rutas relativas resueltas en otra carpeta | `findWorkspaceRoot()` para el staging, `INIT_CWD` en la CLI y rutas absolutas en `input` |
 | Repositorios Drizzle sin tests contra Postgres en la CI | PGlite (D4) |
+| El proceso de la API cae entre crear el run y encolarlo | El run queda en `queued` sin job. La CLI y el panel avisan a los 20 s; reintentar la carga crea un run nuevo (MVP). Desde la revisión de T08 |
 
 ## 9. Preguntas abiertas
 - [ ] ¿Google Sheets y Drive son necesarios antes de F3, o basta con Excel y zip durante el piloto?
@@ -550,3 +556,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Plan de F1-T07b, aprobado por el operador: `setLogo` valida el medio (`MEDIA_NOT_FOUND`); `arrange` rechaza ids repetidos o dos portadas (`MEDIA_ARRANGE_INVALID`, `checkArrangement` en core); el doble no modela `role`. `ChecksumSHA256` **adoptado**: `storage:check` contra R2 confirmó el rechazo con `BadDigest` sin guardar el objeto. D3 actualizado |
 | 2026-10-01 | Desde la revisión de F1-T07b: `arrange` bloquea el aviso (`FOR NO KEY UPDATE`) para que dos intentos del job no dejen dos portadas ni se bloqueen entre sí; `checkArrangement` también valida `sortOrder` (entero de 0 al máximo de int4); `BadDigest` se reconoce por `Code` además de `name`; test de rollback de `arrange` con PGlite. La concurrencia real no se puede probar con PGlite (una sola conexión): queda documentada |
 | 2026-10-01 | F1-T08: `packages/queue` con `createJobQueue` (productor con arranque diferido), `createBoss`, `QUEUE_SCHEMA` y `checkQueueSchema`; `JOB_NAMES` y `JOB_PAYLOADS` en core, con `import.run`; `QUEUE_NOT_INITIALIZED` pasa a `QUEUE_UNAVAILABLE`; el paquete no depende de `@agentsales/db` (la conexión llega convertida) |
+| 2026-10-01 | Desde la revisión de F1-T08: el productor refresca el caché de colas una vez al día, para no mantener Neon despierto; el mensaje de "cola no lista" solo sale con los errores exactos de pg-boss; `stop()` deja la cola cerrada y cierra un arranque en curso; `JOB_PAYLOAD_INVALID` responde 500; T09 suma `policy` (`exclusive` para `import.run`, inmutable), `defineJob` tipado por `JobName` y `requestImport` acotado a `QUEUE_UNAVAILABLE`; T11 resume `onError` y llama a `stop()`; riesgo del run sin job en §8 |

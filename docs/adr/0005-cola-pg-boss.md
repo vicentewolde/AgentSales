@@ -34,3 +34,9 @@ Procesar video, renderizar plantillas, llamar a la IA y publicar son tareas lent
   - El worker importa y deja el run en `succeeded` o `failed`, también en el último intento.
   - En el MVP, la API y el worker comparten disco local (`<workspace>/tmp/imports`) para los archivos subidos. Con el despliegue de F7 pasan a R2.
   - El adaptador se extrae a `packages/queue` en F1 (spec F1 §4.6, T08 y T09).
+- 2026-10-01 (F1-T08): extraído a `packages/queue`.
+  - Productor `createJobQueue`, con arranque diferido y caché de colas diaria para no mantener Neon despierto.
+  - `createBoss`, `QUEUE_SCHEMA` y `checkQueueSchema`.
+  - `JOB_NAMES` y `JOB_PAYLOADS` en core.
+  - `QUEUE_NOT_INITIALIZED` pasa a `QUEUE_UNAVAILABLE`.
+  - La deduplicación por `singletonKey` depende de la política de la cola, que es inmutable: T09 la fija para `import.run`.
