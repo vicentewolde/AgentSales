@@ -139,9 +139,15 @@ importers:
       '@agentsales/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@agentsales/importers':
+        specifier: workspace:*
+        version: link:../../packages/importers
       '@agentsales/queue':
         specifier: workspace:*
         version: link:../../packages/queue
+      '@agentsales/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       zod:
         specifier: 4.6.5
         version: 4.6.5

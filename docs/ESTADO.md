@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T08 · Paquete de cola
-**Siguiente paso:** `/tarea F1-T09` (job `import.run`): ya tiene todo lo que necesita (T04b, T07, T07b y T08)
+**Última tarea terminada:** F1-T09 · Job import.run
+**Siguiente paso:** `/tarea F1-T10` (contratos HTTP y API de lectura). Después T11 (API de importación), que necesita T09 y T10
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -20,7 +20,7 @@
 | F1-T07 Caso de uso ingestMedia (core) | ✅ terminada | #20 |
 | F1-T07b MediaRepository en Drizzle y checksum en R2 | ✅ terminada | #21 |
 | F1-T08 Paquete de cola | ✅ terminada | #22 |
-| F1-T09 Job import.run | ⏳ pendiente | |
+| F1-T09 Job import.run | ✅ terminada | |
 | F1-T10 Contratos HTTP y API de lectura | ⏳ pendiente | |
 | F1-T11 API de importación | ⏳ pendiente | |
 | F1-T12 CLI de importación y consulta | ⏳ pendiente | |
@@ -48,6 +48,20 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
+- 2026-10-01: **F1-T09.** Job `import.run`.
+  - **Core:**
+    - `requestImport`: crea el run y encola; con `QUEUE_UNAVAILABLE`, deja el run en `failed` y borra el staging.
+    - `runImport`, que es el handler: guarda terminal, `running`, xlsx, `importListings`, medios, `ingestMedia` y `succeeded`. Con un error final, `markFailed` antes de relanzar.
+    - Estados del run, condicionales, en el puerto, el doble y Drizzle, con la suite de contrato.
+  - **Worker:**
+    - `defineJob` tipado por `JobName` y con el esquema de `JOB_PAYLOADS`.
+    - `QueuePolicy.policy`, que solo va a `createQueue`; `import.run` usa `exclusive`.
+    - `isLastAttempt`, con `includeMetadata`.
+    - `buildJobs(deps)`, y la composición en `worker.ts` con db, R2, el lector de xlsx y el staging.
+    - El log de cada intento lleva los datos del job (`importRunId`).
+  - **Staging:** `extracted/` por intento, `input/` hasta el estado terminal y limpieza al arrancar. Un zip con una sola carpeta en la raíz se desenvuelve si ahí están las carpetas pedidas, como decía la decisión abierta de T06.
+  - **Tests:** casos de uso, staging, registro y job. Probé 10 mutaciones y todas menos una hacen fallar algún test. La que sobrevive es la guarda terminal, redundante con `markRunning`: el comportamiento es el mismo.
+  - **Prueba de humo:** el worker arranca contra Neon con `system.ping` e `import.run`, lo que crea la cola `import.run` como `exclusive`, y se apaga limpio. La prueba de punta a punta con Neon y R2 llega en T12, con la CLI y las propiedades de muestra.
 - 2026-10-01: **F1-T08.** `packages/queue`.
   - **Productor (`createJobQueue`):** arranca pg-boss en el primer `enqueue`, valida los datos con `JOB_PAYLOADS` y convierte cualquier falla de la cola en `QUEUE_UNAVAILABLE` (reintentable, 503). Si falla el arranque, el siguiente `enqueue` reintenta.
   - **Se mudaron de `db` y del worker a `packages/queue`:** `createBoss`, `QUEUE_SCHEMA` y `checkQueueSchema`. `QUEUE_NOT_INITIALIZED` desaparece.

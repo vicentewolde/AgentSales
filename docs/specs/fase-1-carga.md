@@ -141,7 +141,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
   - Protección contra zip-slip: se rechazan rutas absolutas o con `..`, y se verifica que el destino quede dentro del directorio.
   - Topes: 4 GB descomprimidos y 2000 entradas.
   - Se omiten los enlaces simbólicos, `__MACOSX/` y los archivos ocultos.
-  - **A decidir en T09:** si un zip con una sola carpeta en la raíz (macOS → Comprimir "medios") se "desenvuelve". F1-T06 no lo hace: el zip debe traer las carpetas de las propiedades en su raíz.
+  - **Zip con una sola carpeta en la raíz** (macOS → Comprimir "medios"), decidido en T09: se desenvuelve si ninguna carpeta que la carga pide está en la raíz pero sí dentro de esa única carpeta. Un zip con una sola propiedad en su raíz no se toca.
 - **Staging:**
   - `tmp/imports/{id}/input/` guarda el xlsx y el zip subidos. Se borra solo cuando el run llega a un estado terminal (`succeeded` o `failed`), para no perderlos entre reintentos.
   - `extracted/` se recrea en cada intento y se borra en un `finally`.
@@ -434,6 +434,10 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Caso de uso `requestImport` en core, que crea el run con `input` según `importRunInputSchema`.
   - `ImportRunRepository` suma los cambios de estado del run (`running`, `succeeded` y `failed`, con `started_at`, `finished_at` y `error`). Son condicionales (`UPDATE … WHERE status IN (…)`, que devuelven si cambió), así un run ya terminal no se vuelve a procesar.
   - Staging en `<workspace>/tmp/imports`, con su limpieza al arrancar.
+- **Hecho en F1-T09:**
+  - El handler es el caso de uso `runImport` en core. Recibe `readSheet`, `openMedia(run, folders)` y `discardStaging` inyectados, y el job del worker solo lo llama con `isLastAttempt`.
+  - Estados del run: `markRunning` (desde `queued` o `running`, `started_at` solo la primera vez), `markSucceeded` y `markFailed`.
+  - Staging: `apps/worker/src/staging.ts`.
 - **Hecho cuando:**
   - [ ] Tests del handler con fakes: éxito → `succeeded`; `STORAGE_UNAVAILABLE` → se propaga para reintento; último intento → `failed` con `error`; error no reintentable → `failed`; y un run ya terminal → no hace nada
   - [ ] Tests de `requestImport`: encola; si `enqueue` falla → run `failed` y staging borrado
@@ -557,3 +561,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Desde la revisión de F1-T07b: `arrange` bloquea el aviso (`FOR NO KEY UPDATE`) para que dos intentos del job no dejen dos portadas ni se bloqueen entre sí; `checkArrangement` también valida `sortOrder` (entero de 0 al máximo de int4); `BadDigest` se reconoce por `Code` además de `name`; test de rollback de `arrange` con PGlite. La concurrencia real no se puede probar con PGlite (una sola conexión): queda documentada |
 | 2026-10-01 | F1-T08: `packages/queue` con `createJobQueue` (productor con arranque diferido), `createBoss`, `QUEUE_SCHEMA` y `checkQueueSchema`; `JOB_NAMES` y `JOB_PAYLOADS` en core, con `import.run`; `QUEUE_NOT_INITIALIZED` pasa a `QUEUE_UNAVAILABLE`; el paquete no depende de `@agentsales/db` (la conexión llega convertida) |
 | 2026-10-01 | Desde la revisión de F1-T08: el productor refresca el caché de colas una vez al día, para no mantener Neon despierto; el mensaje de "cola no lista" solo sale con los errores exactos de pg-boss; `stop()` deja la cola cerrada y cierra un arranque en curso; `JOB_PAYLOAD_INVALID` responde 500; T09 suma `policy` (`exclusive` para `import.run`, inmutable), `defineJob` tipado por `JobName` y `requestImport` acotado a `QUEUE_UNAVAILABLE`; T11 resume `onError` y llama a `stop()`; riesgo del run sin job en §8 |
+| 2026-10-01 | F1-T09: `requestImport` y `runImport` en core; estados del run (`markRunning`, `markSucceeded`, `markFailed`, condicionales); job `import.run` con cola `exclusive`, `defineJob` tipado por `JobName`, `isLastAttempt` (pg-boss `includeMetadata`) y `policy` solo al crear; staging en el worker con su limpieza al arrancar; un zip con una sola carpeta en la raíz se desenvuelve si ahí están las carpetas pedidas |

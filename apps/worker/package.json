@@ -13,7 +13,9 @@
     "@agentsales/config": "workspace:*",
     "@agentsales/core": "workspace:*",
     "@agentsales/db": "workspace:*",
+    "@agentsales/importers": "workspace:*",
     "@agentsales/queue": "workspace:*",
+    "@agentsales/storage": "workspace:*",
     "zod": "4.6.5"
   }
 }

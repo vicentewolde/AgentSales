@@ -4,7 +4,7 @@ import {
   type ImportRunRepository,
   importRunSchema,
 } from "@agentsales/core";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { withDbErrors } from "../errors.js";
 import { importRuns } from "../schema.js";
@@ -78,6 +78,40 @@ export function createImportRunRepository(db: SchemaDatabase): ImportRunReposito
           .where(eq(importRuns.id, id))
           .returning({ id: importRuns.id });
         if (updated.length === 0) throw notFound(id);
+      });
+    },
+
+    markRunning(id) {
+      return withDbErrors(async () => {
+        const updated = await db
+          .update(importRuns)
+          // `started_at` es el del primer intento: un reintento no lo mueve.
+          .set({ status: "running", startedAt: sql`coalesce(${importRuns.startedAt}, now())` })
+          .where(and(eq(importRuns.id, id), inArray(importRuns.status, ["queued", "running"])))
+          .returning({ id: importRuns.id });
+        return updated.length > 0;
+      });
+    },
+
+    markSucceeded(id) {
+      return withDbErrors(async () => {
+        const updated = await db
+          .update(importRuns)
+          .set({ status: "succeeded", finishedAt: sql`now()` })
+          .where(and(eq(importRuns.id, id), eq(importRuns.status, "running")))
+          .returning({ id: importRuns.id });
+        return updated.length > 0;
+      });
+    },
+
+    markFailed(id, error) {
+      return withDbErrors(async () => {
+        const updated = await db
+          .update(importRuns)
+          .set({ status: "failed", error, finishedAt: sql`now()` })
+          .where(and(eq(importRuns.id, id), inArray(importRuns.status, ["queued", "running"])))
+          .returning({ id: importRuns.id });
+        return updated.length > 0;
       });
     },
 

@@ -58,7 +58,11 @@ export type {
   FieldDefinitionQuery,
   FieldDefinitionRepository,
 } from "./ports/field-definition-repository.js";
-export type { ImportRunRepository, NewImportRun } from "./ports/import-run-repository.js";
+export type {
+  ImportRunError,
+  ImportRunRepository,
+  NewImportRun,
+} from "./ports/import-run-repository.js";
 export type { EnqueueOptions, JobQueue } from "./ports/job-queue.js";
 export type {
   ListingImportData,
@@ -107,3 +111,14 @@ export {
   ingestMedia,
   listingMediaPath,
 } from "./use-cases/ingest-media.js";
+export {
+  type RequestImportDeps,
+  requestImport,
+} from "./use-cases/request-import.js";
+export {
+  type OpenedMedia,
+  type RunImportDeps,
+  type RunImportParams,
+  type RunImportResult,
+  runImport,
+} from "./use-cases/run-import.js";
