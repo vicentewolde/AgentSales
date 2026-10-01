@@ -71,6 +71,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
     - Tests del sha256 en mayúsculas y del largo distinto con sha256.
     - Se rompió el ciclo de módulos de los dobles (`testing/copy.ts`).
     - Docs: contrato de repositorios, D3, ADR-0007 en orden y modelo de datos.
+  - **CI:** falló un test de T06 que contaba los descriptores de archivo del proceso (inestable en Linux: 26 contra 25). Ahora intercepta `open` y verifica que el lector cierra el archivo.
 - 2026-10-01: **F1-T07.** `ingestMedia` en core. Plan aprobado: partida en T07 (core) y T07b (adaptadores).
   - **Decisiones:**
     - Sin reintentos por archivo: el reintento es del job, y la deduplicación evita volver a subir.

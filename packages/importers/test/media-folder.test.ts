@@ -1,10 +1,34 @@
-import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isAppError, type MediaFile, type MediaFolderListing } from "@agentsales/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMediaFolderSource, naturalOrder } from "../src/media-folder.js";
 import { collect, SAMPLES, sha256 } from "./media-fixtures.js";
+
+/**
+ * Cada `open` de `node:fs/promises` queda registrado con si se cerró: así se prueba que el lector
+ * cierra el archivo sin contar los descriptores del proceso, que en la CI cambian por otras
+ * actividades del runner (pasó en F1-T07b).
+ */
+const fileHandles = vi.hoisted(() => [] as { closed: boolean }[]);
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    async open(...args: Parameters<typeof actual.open>) {
+      const handle = await actual.open(...args);
+      const record = { closed: false };
+      fileHandles.push(record);
+      const close = handle.close.bind(handle);
+      handle.close = async () => {
+        record.closed = true;
+        return close();
+      };
+      return handle;
+    },
+  };
+});
 
 const MAX_VIDEO_BYTES = 1024;
 
@@ -112,22 +136,19 @@ describe("createMediaFolderSource · carpeta fixture", () => {
     expect(sha256(await collect(file.open()))).toBe(file.sha256);
   });
 
-  it.skipIf(process.platform === "win32")(
-    "open() cortado a mitad (como cuando putStream aborta) cierra el archivo",
-    async () => {
-      await put("p/grande.jpg", SAMPLES.jpeg("x", 300_000));
-      const file = onlyFile(await source().list("p"));
-      const openFds = async () => (await readdir("/dev/fd")).length;
-      const before = await openFds();
+  it("open() cortado a mitad (como cuando putStream aborta) cierra el archivo", async () => {
+    await put("p/grande.jpg", SAMPLES.jpeg("x", 300_000));
+    const file = onlyFile(await source().list("p"));
+    const before = fileHandles.length;
 
-      const iterator = file.open()[Symbol.asyncIterator]();
-      await iterator.next();
-      expect(await openFds()).toBe(before + 1);
-      await iterator.return?.();
+    const iterator = file.open()[Symbol.asyncIterator]();
+    await iterator.next();
+    const [handle] = fileHandles.slice(before);
+    expect(handle?.closed).toBe(false);
+    await iterator.return?.();
 
-      expect(await openFds()).toBe(before);
-    },
-  );
+    expect(fileHandles.slice(before).map((opened) => opened.closed)).toEqual([true]);
+  });
 
   it("open() de un archivo que ya no existe: MEDIA_FILE_UNREADABLE con la ruta relativa", async () => {
     const path = await put("p/foto.jpg", SAMPLES.jpeg());
