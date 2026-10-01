@@ -13,14 +13,7 @@ export {
   toDbError,
   withDbErrors,
 } from "./errors.js";
-export {
-  checkQueueSchema,
-  type Pingable,
-  type PingOptions,
-  pingDatabase,
-  QUEUE_SCHEMA,
-  type Queryable,
-} from "./health.js";
+export { type Pingable, type PingOptions, pingDatabase } from "./health.js";
 export { MIGRATIONS_FOLDER } from "./migrations.js";
 export { createBrokerRepository } from "./repositories/brokers.js";
 export { createFieldDefinitionRepository } from "./repositories/field-definitions.js";

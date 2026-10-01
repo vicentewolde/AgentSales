@@ -38,6 +38,7 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
   | Código | HTTP |
   |---|---|
   | `INVALID_TRANSITION` | 409 |
+  | `JOB_PAYLOAD_INVALID` | 500 (los datos de un job los arma el servidor: es un bug) |
   | `*_NOT_FOUND` | 404 |
   | `*_INVALID*` o `INVALID_*` | 400 |
   | `*_RATE_LIMITED` | 429 |
@@ -51,7 +52,8 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
   - Un cuerpo JSON mal formado responde `400 INVALID_JSON`.
   - Un `Host` no local responde `403 HOST_NOT_ALLOWED`; una ruta inexistente, `404 ROUTE_NOT_FOUND`.
 - Nada de secretos en el código. Todo por `packages/config` (env validado con zod al arrancar).
-- Solo los puntos de entrada cargan el entorno (`loadEnvFile`/`loadEnv`): las apps y los `src/scripts/*` de cada paquete. El resto de un paquete recibe opciones concretas (`createDb(url)`, `createR2Storage({...})`); Biome lo exige en `db` y `storage`.
+- Solo los puntos de entrada cargan el entorno (`loadEnvFile`/`loadEnv`): las apps y los `src/scripts/*` de cada paquete. El resto de un paquete recibe opciones concretas (`createDb(url)`, `createR2Storage({...})`, `createJobQueue({...})`); Biome lo exige en `db`, `storage`, `importers` y `queue`, que además no se importan entre sí (los adaptadores no dependen unos de otros).
+- `drizzle-orm` va en la **misma versión exacta** en `packages/db` y `packages/queue` (`checkQueueSchema` recibe un `SQL` de Drizzle): si difieren, falla el typecheck.
 - Nombres de archivos: `kebab-case.ts`. Componentes React: `PascalCase.tsx`.
 - Imports entre paquetes solo por su nombre público (`@agentsales/core`), nunca por ruta relativa a otro paquete.
 

@@ -25,6 +25,13 @@ export {
   importRunInputSchema,
   importRunSchema,
 } from "./import-run.js";
+export {
+  JOB_NAMES,
+  JOB_PAYLOADS,
+  type JobName,
+  type JobPayload,
+  MAX_PING_DELAY_MS,
+} from "./jobs.js";
 export type { ListingSheetInput, ListingSheetRow, RawBrokerSheet } from "./listing-sheet.js";
 export {
   buildListingValidator,
@@ -52,6 +59,7 @@ export type {
   FieldDefinitionRepository,
 } from "./ports/field-definition-repository.js";
 export type { ImportRunRepository, NewImportRun } from "./ports/import-run-repository.js";
+export type { EnqueueOptions, JobQueue } from "./ports/job-queue.js";
 export type {
   ListingImportData,
   ListingImportRecord,

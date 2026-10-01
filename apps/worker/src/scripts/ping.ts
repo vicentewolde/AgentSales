@@ -1,14 +1,16 @@
 import { createLogger, loadEnv, loadEnvFile } from "@agentsales/config";
-import { SYSTEM_PING, systemPingSchema } from "../jobs/system-ping.js";
-import { createBoss } from "../queue.js";
+import { isAppError, JOB_PAYLOADS } from "@agentsales/core";
+import { toPgConnectionString } from "@agentsales/db";
+import { createJobQueue } from "@agentsales/queue";
 
 // Encola un `system.ping` para probar el worker: `pnpm worker:ping [delayMs]`.
-// No crea la cola: la crea el worker con su política (jobs/define.ts).
+// Usa el productor de `@agentsales/queue`, como la API. No crea la cola: la crea el worker con su
+// política (jobs/define.ts).
 loadEnvFile();
 const env = loadEnv();
 const logger = createLogger({ level: env.LOG_LEVEL, pretty: env.NODE_ENV !== "production" });
 
-const parsed = systemPingSchema.safeParse({
+const parsed = JOB_PAYLOADS["system.ping"].safeParse({
   message: "ping desde el script de prueba",
   delayMs: Number(process.argv[2] ?? 0),
 });
@@ -17,23 +19,20 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-const boss = createBoss(env.DATABASE_URL, "producer");
-boss.on("error", (error) => logger.error({ err: error }, "error de pg-boss"));
+const queue = createJobQueue({
+  connectionString: toPgConnectionString(env.DATABASE_URL),
+  onError: (error) => logger.error({ err: error }, "error de pg-boss"),
+});
 
 try {
-  await boss.start();
-  const jobId = await boss.send(SYSTEM_PING, parsed.data);
+  const jobId = await queue.enqueue("system.ping", parsed.data);
   logger.info({ jobId, data: parsed.data }, "system.ping encolado");
 } catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  const notReady = /not installed|requires migrations|does not exist/i.test(message);
   logger.error(
     { err: error },
-    notReady
-      ? "la cola no está lista: arranca el worker una vez (pnpm dev) y vuelve a intentar"
-      : "no se pudo encolar system.ping",
+    isAppError(error) ? `${error.code}: ${error.message}` : "no se pudo encolar system.ping",
   );
   process.exitCode = 1;
 } finally {
-  await boss.stop({ graceful: false }).catch(() => undefined);
+  await queue.stop();
 }

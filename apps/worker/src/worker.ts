@@ -1,8 +1,9 @@
 import { createLogger, loadEnv, loadEnvFile } from "@agentsales/config";
+import { toPgConnectionString } from "@agentsales/db";
+import { createBoss } from "@agentsales/queue";
 import { createErrorThrottle } from "./error-throttle.js";
 import { JOBS } from "./jobs/index.js";
 import { registerJobs } from "./jobs/registry.js";
-import { createBoss } from "./queue.js";
 
 /** Tiempo que se espera a que terminen los jobs en curso al apagar. */
 const GRACEFUL_STOP_MS = 30_000;
@@ -15,7 +16,10 @@ const logger = createLogger({
   name: "worker",
 });
 
-const boss = createBoss(env.DATABASE_URL, "worker");
+const boss = createBoss({
+  connectionString: toPgConnectionString(env.DATABASE_URL),
+  role: "worker",
+});
 // Sin conexión, pg-boss reintenta cada 1–2 s y emite un error por intento: se resumen.
 const bossErrors = createErrorThrottle(logger, "error de pg-boss");
 boss.on("error", (error) => bossErrors.report(error));

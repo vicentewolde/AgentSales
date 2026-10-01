@@ -1,7 +1,8 @@
 import { Writable } from "node:stream";
 import { createLogger } from "@agentsales/config";
+import { MAX_PING_DELAY_MS } from "@agentsales/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MAX_PING_DELAY_MS, systemPing } from "./system-ping.js";
+import { systemPing } from "./system-ping.js";
 
 function run(data: unknown) {
   const lines: Record<string, unknown>[] = [];

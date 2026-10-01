@@ -97,6 +97,7 @@
         "packages/db/src/**",
         "packages/storage/src/**",
         "packages/importers/src/**",
+        "packages/queue/src/**",
         "!packages/*/src/scripts/**",
         "!**/*.test.ts",
         "!**/*.test.tsx"
@@ -110,7 +111,7 @@
                 "paths": {
                   "@agentsales/config": "Solo los puntos de entrada (apps y src/scripts) cargan el entorno; los paquetes reciben opciones concretas (createDb, createR2Storage).",
                   "@agentsales/core/testing": "Los dobles de prueba de @agentsales/core/testing solo se importan desde tests (*.test.ts o test/).",
-                  "@agentsales/db": "Los adaptadores no dependen entre sí: packages/importers solo usa @agentsales/db en tests (TEMPLATE_COLUMNS y el seed)."
+                  "@agentsales/db": "Los adaptadores no dependen entre sí: importers y queue no importan @agentsales/db (importers solo lo usa en tests; queue recibe la conexión ya convertida)."
                 }
               }
             }

@@ -13,7 +13,7 @@
     "@agentsales/config": "workspace:*",
     "@agentsales/core": "workspace:*",
     "@agentsales/db": "workspace:*",
-    "pg-boss": "12.35.0",
+    "@agentsales/queue": "workspace:*",
     "zod": "4.6.5"
   }
 }
