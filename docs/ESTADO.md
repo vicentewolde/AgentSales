@@ -17,7 +17,7 @@
 | F1-T04b Repositorios Drizzle de brokers, listings e import_runs | ✅ terminada | #17 |
 | F1-T05 Almacenamiento con streams | ✅ terminada | #18 |
 | F1-T06 Lectores de medios | ✅ terminada | #19 |
-| F1-T07 Caso de uso ingestMedia (core) | ✅ terminada | |
+| F1-T07 Caso de uso ingestMedia (core) | ✅ terminada | #20 |
 | F1-T07b MediaRepository en Drizzle y checksum en R2 | ⏳ pendiente | |
 | F1-T08 Paquete de cola | ⏳ pendiente | |
 | F1-T09 Job import.run | ⏳ pendiente | |
@@ -63,6 +63,20 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
     - Un video no cuenta como foto para `ready`.
     - Sin `--media`, las fotos que el aviso ya tenía bastan para pasar a `ready`.
   - **Tests:** 28 del caso de uso, más los dobles. Probé 12 mutaciones (deduplicación, filas `skipped`, portada, `promoteToReady`, clasificación de errores, `dry_run`, logo) y todas hacen fallar algún test.
+  - **Correcciones de `/revisar`:**
+    - Sin carpeta legible (sin `--media` o `MEDIA_FOLDER_*`), reimportar ya no cambia la portada elegida. Antes saltaba a otra foto, con una advertencia falsa.
+    - Si la carpeta solo trae videos, se conserva la portada.
+    - `dry_run` advierte "Sin fotos" también para avisos nuevos.
+    - Las advertencias usan textos fijos, sin la clave en R2.
+    - Invariante `MEDIA_INGEST_STATE_INVALID`.
+    - Tests nuevos:
+      - `MEDIA_CONFLICT`, y R2 que acepta la subida mientras falla la inserción, con el reintento convergiendo;
+      - fila `updated` que cambia de carpeta;
+      - `paused` con fotos;
+      - `arrange` solo si cambió;
+      - `STORAGE_ERROR` en una fila.
+    - Probé 6 mutaciones más, y todas hacen fallar algún test.
+    - Los hallazgos para Postgres (una sola portada, `role`, `setLogo` con FK) quedaron anotados en T07b, y lo de `media` ausente, para T10 y T12.
 - 2026-10-01: **F1-T06.** Lectores de medios en `packages/importers`.
   - **Puerto `MediaFileSource` en core.** Plan aprobado con tres cambios al spec:
     - `list` devuelve `{ files, skipped }`, con `MEDIA_SKIP_REASONS`;

@@ -74,7 +74,7 @@ No aplica a esta nota (el límite de un `PutObject` único en R2 es 5 GiB según
 
 | Situación | Respuesta de R2 | Reintentable en `putStream` |
 |---|---|---|
-| Checksum no calza con el contenido | `BadDigest`, HTTP 400 (DOC) | No automáticamente. Hoy `toAppError` lo convertiría en `STORAGE_ERROR` no reintentable (status 400). Ver pregunta 2 abajo |
+| Checksum no calza con el contenido | `BadDigest`, HTTP 400 (DOC) | No. Al escribir la nota, `toAppError` lo convertía en `STORAGE_ERROR`; F1-T07b lo mapea a `STORAGE_CONTENT_MISMATCH` (ver sección 10) |
 | Header mal formado (por ejemplo hex en vez de base64) | `InvalidDigest`, HTTP 400 (DOC) | No: es un bug de quien llama |
 | R2 no implementa el header | `NotImplemented`, "Header '...' not implemented" (hilos de foro y repos de terceros; no hay texto oficial) | No |
 | Falta `Content-Length` | `MissingContentLength`, HTTP 411 (DOC) | No: es lo que evitamos con `WHEN_REQUIRED` |
@@ -108,8 +108,8 @@ El script debe imprimir solo códigos y nombres de error, nunca credenciales ni 
 
 - Agregar un campo opcional a `PutStreamOptions` (por ejemplo `sha256Hex?: string`). En el adaptador convertirlo a base64 del digest crudo: `Buffer.from(hex, "hex").toString("base64")`, validando 64 caracteres hex. Pasarlo como `ChecksumSHA256` en el `PutObjectCommand`, junto con `ContentLength`.
 - No pasar `ChecksumAlgorithm`. Mantener `requestChecksumCalculation: "WHEN_REQUIRED"` en el cliente de streams y `maxAttempts: 1`.
-- Mapear `BadDigest` (400) a un error con detalle claro ("el contenido subido no calza con el sha256"). **Decisión del plan de F1-T07:** `STORAGE_CONTENT_MISMATCH`, no reintentable, el mismo código que un largo distinto; la ingesta lo trata como advertencia del archivo (respuesta a la pregunta 2). Si la prueba negativa falla (R2 acepta el objeto con checksum erróneo), **no** enviar el header y dejar la verificación a una lectura posterior, o aceptar la limitación documentada.
-- Cambia el contrato de `PutStreamOptions` (puerto de `core`): requiere actualizar `docs/01-arquitectura.md` y la línea de D3 del spec F1, y probablemente una línea en ADR-0007, en el mismo PR de T07.
+- Mapear `BadDigest` (400) a un error con detalle claro ("el contenido subido no calza con el sha256"). **Decisión del plan de F1-T07 (se implementa en F1-T07b):** `STORAGE_CONTENT_MISMATCH`, no reintentable, el mismo código que un largo distinto; la ingesta lo trata como advertencia del archivo (respuesta a la pregunta 2). Si la prueba negativa falla (R2 acepta el objeto con checksum erróneo), **no** enviar el header y dejar la verificación a una lectura posterior, o aceptar la limitación documentada.
+- Cambia el contrato de `PutStreamOptions` (puerto de `core`): requiere actualizar `docs/01-arquitectura.md` y la línea de D3 del spec F1, más una línea de Seguimiento en ADR-0007, en el PR de F1-T07b (el plan de F1-T07 partió la tarea).
 
 Preguntas para el operador o el plan de T07:
 1. ¿El sha256 de la ingesta se calcula sobre los mismos bytes que se suben (lectura previa del archivo completo) o en una pasada distinta? Si el archivo puede cambiar entre ambas, el rechazo por `BadDigest` es justamente lo deseado.

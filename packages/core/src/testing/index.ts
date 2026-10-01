@@ -21,6 +21,7 @@ export {
   createInMemoryMediaStorage,
   type InMemoryMediaFileSource,
   type InMemoryMediaRepository,
+  type InMemoryMediaRepositoryOptions,
   type InMemoryMediaStorage,
   type InMemoryMediaStorageOptions,
   type MemoryFileOptions,

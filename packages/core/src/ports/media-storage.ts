@@ -33,7 +33,8 @@ export interface MediaStorage {
    * cambió mientras se subía), `STORAGE_CONTENT_MISMATCH`. Un stream no se puede rebobinar, así que el
    * adaptador **no** reintenta: el reintento es de quien llama, que vuelve a abrir el archivo.
    * Un `AppError` que lance el iterable (el lector del archivo) pasa tal cual. El contenido no se
-   * verifica contra un hash (se decide en F1-T07).
+   * verifica contra un hash: F1-T07b lo agrega solo si R2 rechaza un sha256 erróneo
+   * (`docs/integraciones/r2-checksums.md`).
    */
   putStream(
     path: string,

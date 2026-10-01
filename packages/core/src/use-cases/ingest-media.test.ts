@@ -14,6 +14,7 @@ import {
   createInMemoryMediaFileSource,
   createInMemoryMediaRepository,
   createInMemoryMediaStorage,
+  type InMemoryMediaRepositoryOptions,
   type InMemoryMediaStorageOptions,
   memoryFile,
 } from "../testing/media.js";
@@ -95,13 +96,16 @@ const P001: Folders = {
 };
 
 /** Dependencias en memoria compartidas entre cargas, como en la base real. */
-function setup(storageOptions: InMemoryMediaStorageOptions = {}) {
+function setup(
+  storageOptions: InMemoryMediaStorageOptions = {},
+  mediaOptions: InMemoryMediaRepositoryOptions = {},
+) {
   const deps = {
     brokers: createInMemoryBrokerRepository(),
     listings: createInMemoryListingRepository(),
     importRuns: createInMemoryImportRunRepository(),
     fieldDefinitions: createInMemoryFieldDefinitionRepository(DEFS),
-    media: createInMemoryMediaRepository(),
+    media: createInMemoryMediaRepository(mediaOptions),
     storage: createInMemoryMediaStorage(storageOptions),
     sha256: async (text: string) => `hash:${text}`,
   };
@@ -272,6 +276,82 @@ describe("ingestMedia · subida", () => {
   });
 });
 
+describe("ingestMedia · sin carpeta legible se conservan orden y portada", () => {
+  it.each([
+    ["sin carpeta de medios (sin --media)", null],
+    [
+      "con la carpeta ilegible (MEDIA_FOLDER_UNREADABLE)",
+      {
+        P001: new AppError(
+          "MEDIA_FOLDER_UNREADABLE",
+          'No se pudo leer la carpeta de medios "P001"',
+        ),
+        _marca: { files: [LOGO] },
+      },
+    ],
+  ] as const)("reimportar %s no cambia la portada elegida", async (_, folders) => {
+    const { deps, load, arrangement } = setup();
+    await load(sheet([row(2, { foto_portada: "foto2.png" })]), P001);
+    const before = arrangement();
+    const calls = deps.media.arrangeCalls();
+
+    const { result } = await load(
+      sheet([row(2, { foto_portada: "foto2.png", precio: 6100 })]),
+      folders as Folders | null,
+    );
+
+    expect(arrangement()).toEqual(before);
+    expect(deps.media.arrangeCalls()).toBe(calls);
+    expect(warningsOf(result.report).join(" | ")).not.toContain("foto_portada");
+  });
+
+  it("una carpeta con solo videos conserva la portada anterior, con advertencia", async () => {
+    const { load, arrangement } = setup();
+    await load(sheet([row(2, { foto_portada: "foto2.png" })]), P001);
+
+    const { result } = await load(sheet([row(2, { foto_portada: "foto2.png" })]), {
+      P001: { files: [PHOTOS.video] },
+    });
+
+    expect(arrangement()).toEqual([
+      ["video-uno", false],
+      ["foto-uno", false],
+      ["foto-dos", true],
+      ["foto-diez", false],
+    ]);
+    expect(warningsOf(result.report)).toEqual([
+      "foto_portada «foto2.png» no está entre los medios de la carpeta; se conserva la portada anterior",
+    ]);
+  });
+
+  it("reimportar sin cambios no vuelve a escribir orden ni portada", async () => {
+    const { deps, load } = setup();
+    await load(sheet([row(2)]), P001);
+    const calls = deps.media.arrangeCalls();
+
+    await load(sheet([row(2)]), P001);
+
+    expect(deps.media.arrangeCalls()).toBe(calls);
+  });
+
+  it("una fila updated que cambia carpeta_medios: lo nuevo primero; lo anterior, al final sin portada", async () => {
+    const { load, arrangement } = setup();
+    await load(sheet([row(2)]), { P001: { files: [PHOTOS.foto1, PHOTOS.foto2] } });
+    const nueva = memoryFile("nueva/foto3.jpg", "foto-tres");
+
+    const { imported } = await load(sheet([row(2, { carpeta_medios: "nueva" })]), {
+      nueva: { files: [nueva] },
+    });
+
+    expect(imported.rows[0]?.outcome).toBe("updated");
+    expect(arrangement()).toEqual([
+      ["foto-tres", true],
+      ["foto-uno", false],
+      ["foto-dos", false],
+    ]);
+  });
+});
+
 describe("ingestMedia · portada y estado", () => {
   it("cambiar foto_portada desmarca la portada anterior", async () => {
     const { load, arrangement } = setup();
@@ -345,15 +425,37 @@ describe("ingestMedia · portada y estado", () => {
     );
   });
 
-  it("un aviso puesto a mano en paused no se toca ni recibe la advertencia", async () => {
-    const { deps, load, listing } = setup();
-    await load(sheet([row(2, { estado_carga: null })]), { P001: { files: [PHOTOS.video] } });
-    deps.listings.setStatus(listing().id, "paused");
+  it.each([
+    ["sin fotos", [PHOTOS.video]],
+    ["con fotos", [PHOTOS.foto1, PHOTOS.video]],
+  ])(
+    "un aviso puesto a mano en paused (%s) no se toca ni recibe la advertencia",
+    async (_, files) => {
+      const { deps, load, listing } = setup();
+      await load(sheet([row(2, { estado_carga: null })]), { P001: { files } });
+      deps.listings.setStatus(listing().id, "paused");
 
-    const { result } = await load(sheet([row(2)]), { P001: { files: [PHOTOS.video] } });
+      const { result } = await load(sheet([row(2)]), { P001: { files } });
 
-    expect(listing().status).toBe("paused");
-    expect(warningsOf(result.report)).toEqual([]);
+      expect(listing().status).toBe("paused");
+      expect(warningsOf(result.report)).toEqual([]);
+    },
+  );
+
+  it("dry_run de un aviso nuevo sin fotos también advierte que quedaría en borrador", async () => {
+    const { load } = setup();
+
+    const { result } = await load(
+      sheet([row(2)]),
+      { P001: { files: [PHOTOS.video] } },
+      {
+        dryRun: true,
+      },
+    );
+
+    expect(warningsOf(result.report)).toEqual([
+      "Sin fotos: el aviso queda en borrador (hace falta al menos una para «Listo»)",
+    ]);
   });
 
   it("sin carpeta de medios, las fotos que el aviso ya tenía bastan para pasar a ready", async () => {
@@ -376,7 +478,7 @@ describe("ingestMedia · fallos", () => {
       { openError: new AppError("MEDIA_FILE_UNREADABLE", "No se pudo leer P001/foto2.png") },
     ],
     ["cambió de largo (STORAGE_CONTENT_MISMATCH)", { openBytes: new Uint8Array(3) }],
-  ])("un archivo que %s es advertencia y los demás suben", async (_, options) => {
+  ])("un archivo que %s es advertencia y los demás suben", async (cause, options) => {
     const { deps, load } = setup();
     const broken = memoryFile("P001/foto2.png", "foto-dos", options);
 
@@ -385,8 +487,44 @@ describe("ingestMedia · fallos", () => {
     });
 
     expect(result.media).toMatchObject({ filesUploaded: 2, filesFailed: 1 });
-    expect(warningsOf(result.report)[0]).toMatch(/^P001\/foto2\.png: no se pudo subir \(/);
+    const text = cause.startsWith("se borró")
+      ? "no se pudo leer el archivo"
+      : "el archivo cambió mientras se subía";
+    expect(warningsOf(result.report)).toEqual([`P001/foto2.png: no se pudo subir (${text})`]);
+    // La clave interna en R2 no llega al reporte (lo leen el operador, la CLI y el panel).
+    expect(JSON.stringify(result.report)).not.toContain("brokers/");
     expect(deps.storage.uploads.some((path) => path.includes("foto-dos"))).toBe(false);
+  });
+
+  it.each([
+    ["MEDIA_CONFLICT (otro intento del job lo insertó)", "MEDIA_CONFLICT"],
+    ["DB_UNAVAILABLE después de subir a R2", "DB_UNAVAILABLE"],
+  ])("%s se propaga; el reintento sobrescribe la misma clave y registra", async (_, code) => {
+    let failing = true;
+    const { deps, load } = setup(
+      {},
+      {
+        failCreate: (media) =>
+          failing && media.checksum === "sha256-foto-dos"
+            ? new AppError(code, "falla simulada", { retriable: true })
+            : undefined,
+      },
+    );
+
+    await expectAppError(load(sheet([row(2)]), P001), code);
+    const fotoDos = deps.storage.uploads.filter((path) => path.includes("foto-dos"));
+    expect(fotoDos).toHaveLength(1);
+
+    failing = false;
+    const { result } = await load(sheet([row(2)]), P001);
+
+    expect(result.media).toMatchObject({ filesUploaded: 3, filesExisting: 1, filesFailed: 0 });
+    // La misma clave, otra vez: se sobrescribe, no se crea otra.
+    expect(deps.storage.uploads.filter((path) => path.includes("foto-dos"))).toEqual([
+      ...fotoDos,
+      ...fotoDos,
+    ]);
+    expect(deps.media.all().filter((media) => media.listingId !== null)).toHaveLength(4);
   });
 
   it("R2 caído (STORAGE_UNAVAILABLE) se propaga; el reintento retoma sin duplicar", async () => {
@@ -410,9 +548,12 @@ describe("ingestMedia · fallos", () => {
     expect(new Set(checksums).size).toBe(checksums.length);
   });
 
-  it("STORAGE_ERROR (credenciales) no es un problema del archivo: se propaga", async () => {
+  it("STORAGE_ERROR (credenciales) en una fila no es un problema del archivo: se propaga", async () => {
     const { load } = setup({
-      failUpload: () => new AppError("STORAGE_ERROR", "R2 rechazó la operación (403)"),
+      failUpload: (path) =>
+        path.includes("/listings/")
+          ? new AppError("STORAGE_ERROR", "R2 rechazó la operación (403)")
+          : undefined,
     });
     await expectAppError(load(sheet([row(2)]), P001), "STORAGE_ERROR");
   });

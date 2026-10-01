@@ -10,14 +10,26 @@ import type { MediaRecord, MediaRepository, NewMedia } from "../ports/media-repo
 import type { MediaStorage, StoredObjectInfo } from "../ports/media-storage.js";
 import { structuredCopy } from "./import-repositories.js";
 
-export type InMemoryMediaRepository = MediaRepository & { all(): MediaRecord[] };
+export type InMemoryMediaRepository = MediaRepository & {
+  all(): MediaRecord[];
+  /** Veces que se llamó a `arrange` (para probar que solo escribe si algo cambió). */
+  arrangeCalls(): number;
+};
+
+export type InMemoryMediaRepositoryOptions = {
+  /** Error para un `create` (por ejemplo, `MEDIA_CONFLICT` o `DB_UNAVAILABLE`); `undefined` sigue. */
+  failCreate?: (media: NewMedia) => AppError | undefined;
+};
 
 /**
  * `MediaRepository` en memoria, con los mismos únicos que la base: `(listing_id, checksum)` para
  * los originales de un aviso y `storage_path`.
  */
-export function createInMemoryMediaRepository(): InMemoryMediaRepository {
+export function createInMemoryMediaRepository(
+  options: InMemoryMediaRepositoryOptions = {},
+): InMemoryMediaRepository {
   let next = 0;
+  let arrangeCalls = 0;
   const stored = new Map<string, MediaRecord>();
   const byOrder = (a: MediaRecord, b: MediaRecord) =>
     a.sortOrder - b.sortOrder || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -33,6 +45,8 @@ export function createInMemoryMediaRepository(): InMemoryMediaRepository {
       return found === undefined ? null : structuredCopy(found);
     },
     async create(media: NewMedia) {
+      const failure = options.failCreate?.(media);
+      if (failure !== undefined) throw failure;
       const clash = [...stored.values()].some(
         (other) =>
           other.storagePath === media.storagePath ||
@@ -50,6 +64,7 @@ export function createInMemoryMediaRepository(): InMemoryMediaRepository {
       return structuredCopy(created);
     },
     async arrange(listingId, items) {
+      arrangeCalls += 1;
       // Todo o nada: se valida antes de cambiar algo.
       for (const { id } of items) {
         if (stored.get(id)?.listingId !== listingId) {
@@ -62,6 +77,7 @@ export function createInMemoryMediaRepository(): InMemoryMediaRepository {
       }
     },
     all: () => [...stored.values()].sort(byOrder).map(structuredCopy),
+    arrangeCalls: () => arrangeCalls,
   };
 }
 

@@ -84,18 +84,21 @@ const emptyCounts = (): ImportMediaCounts => ({
   filesFailed: 0,
 });
 
-/** Lista una carpeta; un problema de la carpeta se vuelve advertencia (y ningún archivo). */
+/**
+ * Lista una carpeta. Un problema de la carpeta se vuelve advertencia y devuelve `null`: no se
+ * sabe qué hay en ella, así que quien llama no debe tratarla como vacía.
+ */
 async function listFolder(
   source: MediaFileSource,
   folder: string,
   warnings: string[],
-): Promise<MediaFolderListing> {
+): Promise<MediaFolderListing | null> {
   try {
     return await source.list(folder);
   } catch (error) {
     if (!isFolderProblem(error)) throw error;
     warnings.push(error.message);
-    return { files: [], skipped: [] };
+    return null;
   }
 }
 
@@ -121,48 +124,63 @@ async function upload(
   }
 }
 
-const failedWarning = (relPath: string, error: AppError) =>
-  `${relPath}: no se pudo subir (${error.message})`;
+/**
+ * Texto fijo por código: el mensaje del error puede traer la clave interna en R2, y las
+ * advertencias las leen el operador, la CLI y el panel.
+ */
+const FAILURE_TEXT: Readonly<Record<string, string>> = {
+  MEDIA_FILE_UNREADABLE: "no se pudo leer el archivo",
+  STORAGE_CONTENT_MISMATCH: "el archivo cambió mientras se subía",
+};
+
+const failedWarning = (subject: string, error: AppError) =>
+  `${subject}: no se pudo subir (${FAILURE_TEXT[error.code] ?? error.code})`;
 
 /** Un medio de la carpeta tal como quedó en esta carga (o quedaría, en `dry_run`). */
 type Placed = { file: MediaFile; record: MediaRecord | null };
 
+type OrderItem = { kind: MediaRecord["kind"]; id: string | null };
+
 /**
- * Orden y portada finales: los archivos de la carpeta en su orden natural y, después, los que el
- * aviso ya tenía y ya no están en la carpeta (no se borran), en su orden anterior. La portada es
- * `foto_portada` si es una foto de la carpeta; si no, la primera foto (spec F1 §4.3).
+ * Orden y portada finales, con la carpeta ya listada (spec F1 §4.3): los archivos de la carpeta en
+ * su orden natural y, después, los que el aviso ya tenía y ya no están (no se borran), en su orden
+ * anterior. La portada es `foto_portada` si es una foto de la carpeta; si no, la primera foto de la
+ * carpeta. Si la carpeta no trae fotos, se conserva la portada guardada (o, sin ella, la primera
+ * foto anterior): `media` no guarda el nombre original, así que `foto_portada` solo se resuelve
+ * contra la carpeta.
  */
 function arrange(
   placed: readonly Placed[],
   absent: readonly MediaRecord[],
   coverFile: string | null,
   warnings: string[],
-): { order: { kind: MediaRecord["kind"]; id: string | null; name: string }[]; coverIndex: number } {
-  const order = [
-    ...placed.map(({ file, record }) => ({
-      kind: file.kind,
-      id: record?.id ?? null,
-      name: file.relPath,
-    })),
-    ...absent.map((record) => ({ kind: record.kind, id: record.id, name: record.storagePath })),
+): { order: OrderItem[]; coverIndex: number } {
+  const order: OrderItem[] = [
+    ...placed.map(({ file, record }) => ({ kind: file.kind, id: record?.id ?? null })),
+    ...absent.map((record) => ({ kind: record.kind, id: record.id })),
   ];
-  const firstPhoto = order.findIndex((item) => item.kind === "image");
-  if (coverFile === null) return { order, coverIndex: firstPhoto };
+  const firstFolderPhoto = placed.findIndex(({ file }) => file.kind === "image");
+  let fallbackIndex = firstFolderPhoto;
+  let fallbackText = `se usa ${fileName(placed[firstFolderPhoto]?.file.relPath ?? "")}`;
+  if (firstFolderPhoto < 0) {
+    const keptCover = absent.findIndex((record) => record.isCover && record.kind === "image");
+    const oldPhoto =
+      keptCover >= 0 ? keptCover : absent.findIndex((record) => record.kind === "image");
+    fallbackIndex = oldPhoto >= 0 ? placed.length + oldPhoto : -1;
+    fallbackText = oldPhoto >= 0 ? "se conserva la portada anterior" : "y el aviso no tiene fotos";
+  }
+  if (coverFile === null) return { order, coverIndex: fallbackIndex };
 
   const chosen = placed.findIndex(({ file }) => sameName(file.relPath, coverFile));
-  const fallback =
-    firstPhoto < 0
-      ? "y el aviso no tiene fotos"
-      : `se usa ${fileName(order[firstPhoto]?.name ?? "")}`;
   if (chosen < 0) {
     warnings.push(
-      `foto_portada «${coverFile}» no está entre los medios de la carpeta; ${fallback}`,
+      `foto_portada «${coverFile}» no está entre los medios de la carpeta; ${fallbackText}`,
     );
-    return { order, coverIndex: firstPhoto };
+    return { order, coverIndex: fallbackIndex };
   }
   if (order[chosen]?.kind !== "image") {
-    warnings.push(`foto_portada «${coverFile}» no es una foto; ${fallback}`);
-    return { order, coverIndex: firstPhoto };
+    warnings.push(`foto_portada «${coverFile}» no es una foto; ${fallbackText}`);
+    return { order, coverIndex: fallbackIndex };
   }
   return { order, coverIndex: chosen };
 }
@@ -195,6 +213,28 @@ type RowContext = {
   counts: ImportMediaCounts;
 };
 
+const NO_PHOTOS_WARNING =
+  "Sin fotos: el aviso queda en borrador (hace falta al menos una para «Listo»)";
+
+/** Pasa a `ready` si corresponde, o advierte si el aviso queda en borrador por falta de fotos. */
+async function settleStatus(
+  ctx: RowContext,
+  row: ImportedRow,
+  loadStatus: NonNullable<ImportedRow["control"]>["loadStatus"],
+  hasPhoto: boolean,
+  warnings: string[],
+) {
+  if (loadStatus !== "ready") return;
+  if (hasPhoto) {
+    if (!ctx.dryRun && row.listingId !== null)
+      await ctx.deps.listings.promoteToReady(row.listingId);
+    return;
+  }
+  // Solo si queda en borrador por esto (un `paused` no se toca). Un aviso nuevo en `dry_run` no
+  // tiene estado todavía, pero nacería en `draft`.
+  if ((row.status ?? "draft") === "draft") warnings.push(NO_PHOTOS_WARNING);
+}
+
 /** Medios de una fila: subir, deduplicar, ordenar, elegir portada y decidir `ready`. */
 async function ingestRow(ctx: RowContext, row: ImportedRow, warnings: string[]): Promise<void> {
   const { deps, counts } = ctx;
@@ -202,14 +242,25 @@ async function ingestRow(ctx: RowContext, row: ImportedRow, warnings: string[]):
   if (control === null || row.externalRef === null) return;
 
   const listingId = row.listingId;
+  // Fuera de `dry_run`, `importListings` siempre deja el aviso y el corredor guardados: si no,
+  // contar archivos como subidos sin subirlos mentiría en el reporte.
+  if (!ctx.dryRun && (listingId === null || ctx.brokerId === null)) {
+    throw new AppError("MEDIA_INGEST_STATE_INVALID", "Fila guardada sin aviso o sin corredor", {
+      details: { rowNumber: row.rowNumber },
+    });
+  }
   const current = listingId === null ? [] : await deps.media.listOriginals(listingId);
   const byChecksum = new Map(current.map((record) => [record.checksum, record]));
 
   const folder = control.mediaFolder ?? row.externalRef;
-  const listing =
-    ctx.source === null
-      ? { files: [], skipped: [] }
-      : await listFolder(ctx.source, folder, warnings);
+  const listing = ctx.source === null ? null : await listFolder(ctx.source, folder, warnings);
+  if (listing === null) {
+    // Sin carpeta legible no se sabe qué hay: se conservan orden y portada, y cuentan las fotos
+    // que el aviso ya tenía.
+    const hasPhoto = current.some((record) => record.kind === "image");
+    await settleStatus(ctx, row, control.loadStatus, hasPhoto, warnings);
+    return;
+  }
 
   for (const { relPath, reason } of listing.skipped) {
     warnings.push(`${relPath}: ${SKIP_REASON_TEXT[reason]}`);
@@ -266,16 +317,12 @@ async function ingestRow(ctx: RowContext, row: ImportedRow, warnings: string[]):
   const absent = current.filter((record) => !present.has(record.id));
   const { order, coverIndex } = arrange(placed, absent, control.coverFile, warnings);
 
-  const hasPhoto = order.some((item) => item.kind === "image");
   if (!ctx.dryRun && listingId !== null) {
     const created = placed.flatMap(({ record }) => (record === null ? [] : [record]));
     await saveArrangement(deps, listingId, [...current, ...created], order, coverIndex);
-    if (control.loadStatus === "ready" && hasPhoto) await deps.listings.promoteToReady(listingId);
   }
-  // La advertencia solo si el aviso queda en borrador por esto (un `paused` no se toca).
-  if (control.loadStatus === "ready" && !hasPhoto && row.status === "draft") {
-    warnings.push("Sin fotos: el aviso queda en borrador (hace falta al menos una para «Listo»)");
-  }
+  const hasPhoto = order.some((item) => item.kind === "image");
+  await settleStatus(ctx, row, control.loadStatus, hasPhoto, warnings);
 }
 
 /** Logo del corredor (`_marca/<logo>`); sus advertencias van a `broker.warnings`. */
@@ -286,6 +333,7 @@ async function ingestLogo(ctx: RowContext, logoFile: string, warnings: string[])
     return;
   }
   const listing = await listFolder(ctx.source, BRAND_FOLDER, warnings);
+  if (listing === null) return;
   const file = listing.files.find((candidate) => sameName(candidate.relPath, logoFile));
   if (file === undefined) {
     const skipped = listing.skipped.find((candidate) => sameName(candidate.relPath, logoFile));

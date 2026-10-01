@@ -210,7 +210,8 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Pasa el run a `running`, lee el xlsx y llama a `importListings` y luego a `ingestMedia`. Al terminar lo deja en `succeeded`.
   - Con un error no reintentable, o en el último intento (`retryCount >= retryLimit`, leído con `includeMetadata`), deja el run en `failed` con `error` **antes** de relanzar. Así ningún run queda en `running` para siempre, sea o no `AppError` el error.
 - **Idempotencia:** el upsert por `external_ref`, la deduplicación por sha256 y el `storage_path` determinístico hacen que reintentar no duplique nada.
-- **Errores reintentables:** `STORAGE_UNAVAILABLE` y `DB_UNAVAILABLE`.
+- **Errores reintentables:** `STORAGE_UNAVAILABLE`, `DB_UNAVAILABLE` y los conflictos de intentos solapados (`BROKER_CONFLICT`, `LISTING_CONFLICT`, `MEDIA_CONFLICT`). El handler decide con `retriable` del `AppError`, no con una lista.
+- **Cada intento corre las dos etapas:** `importListings` y después `ingestMedia`. El resultado de `importListings` (con el `control` de cada fila) vive solo en memoria, así que no se puede reanudar solo la ingesta. Al reintentar, `recordListingsResult` deja el reporte sin `media` hasta que `recordMediaResult` lo repone.
 - **Worker apagado:** si la cola existe pero el worker no corre, la API responde `202` y el run queda en `queued`. La CLI y el panel lo avisan a los 20 s ("sigue en cola: ¿está corriendo el worker?"). Si el esquema `pgboss` no existe, el `enqueue` falla y aplica el primer punto.
 - **Estado compartido:** en el MVP, la API y el worker comparten disco local (`<workspace>/tmp/imports`).
 - **ADR-0005:** enmendado en el PR de este spec con el job `import.run` y el disco compartido.
@@ -349,10 +350,13 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
     - sube con `putStream`, con su `Content-Type`, y después inserta: primero R2 y después la fila;
     - la clave es `{sha256}.{extension}`, con `MediaFile.extension` (canónica; core no repite la tabla de tipos).
   - **Orden y portada** con `MediaRepository.arrange`:
-    - el orden natural de la carpeta; los medios que ya no están se conservan, al final y sin portada;
-    - la portada es `foto_portada`, comparada sin mayúsculas, si es una foto de la carpeta; si no, la primera foto, con advertencia;
+    - el orden natural de la carpeta; los medios que ya no están se conservan al final;
+    - la portada es `foto_portada`, comparada sin mayúsculas, si es una foto de la carpeta; si no, la primera foto de la carpeta, con advertencia;
+    - **si la carpeta no trae fotos**, se conserva la portada guardada, aunque ese medio ya no esté. `media` no guarda el nombre original, así que `foto_portada` solo se resuelve contra la carpeta;
+    - **sin carpeta legible** (sin `--media`, o con `MEDIA_FOLDER_*`), no se tocan orden ni portada, y para el estado cuentan las fotos que el aviso ya tenía (desde la revisión de T07);
     - solo escribe si algo cambió.
-  - **Estado:** con `estado_carga = Listo` y al menos una foto del aviso (nueva o de antes; un video no cuenta), `ListingRepository.promoteToReady(id)`. Solo pasa de `draft` a `ready`, así no pisa `paused`, `archived`, `active` ni `closed`. Con `Listo`, sin fotos y en `draft`: advertencia.
+  - **Estado:** con `estado_carga = Listo` y al menos una foto del aviso (nueva o de antes; un video no cuenta), `ListingRepository.promoteToReady(id)`. Solo pasa de `draft` a `ready`, así no pisa `paused`, `archived`, `active` ni `closed`. Con `Listo`, sin fotos y en `draft`: advertencia. En `dry_run`, un aviso nuevo cuenta como `draft`.
+  - **Textos:** las advertencias de un archivo fallido usan un texto fijo por código, nunca `error.message`, que puede traer la clave interna en R2. Fuera de `dry_run`, una fila guardada sin aviso o sin corredor es `MEDIA_INGEST_STATE_INVALID` (invariante).
   - **Advertencias de la fila (no fallan el run, §4.2):**
     - `skipped` de `list` y archivos repetidos;
     - errores `MEDIA_FOLDER_*`;
@@ -386,6 +390,13 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
     - `BadDigest` da `STORAGE_CONTENT_MISMATCH`;
     - `ingestMedia` pasa el sha256 del archivo.
     - **Solo si** el caso negativo de `storage:check` confirma que R2 rechaza un sha256 erróneo y no guarda el objeto. Si no, se descarta y queda documentado.
+  - **Desde la revisión de T07** (la suite de contrato los fija):
+    - `arrange` garantiza **una sola portada** por aviso: al marcar una, desmarca los demás originales, en el doble y en Postgres. Hoy depende de que el caso de uso pase todos los originales;
+    - `listOriginals`, `findByStoragePath` y `arrange` filtran `role = 'original'`; el doble modela `role`, para no divergir con los derivados de F2;
+    - la suite no fija el desempate del orden por id (en memoria es texto, en Postgres un uuid), solo `sortOrder`. Definir qué pasa con ids repetidos en `arrange`;
+    - `setLogo` con un medio inexistente o de otro corredor: hoy en Postgres da un 23503 (FK) como error genérico. Validarlo (`MEDIA_NOT_FOUND`) o documentarlo en el puerto, con su caso en la suite (en memoria el id es inventado y pasa trivialmente);
+    - `setLogo` escribe en cada carga aunque el logo no cambie; es idempotente y se deja así (anotado);
+    - para T10 y T12: `report.media` puede faltar (reportes anteriores a T07 o cargas que no llegaron a la ingesta). Mostrar "medios: —", sin asumir ceros.
 - **Hecho cuando:**
   - [ ] Suite de contrato de `MediaRepository` contra el doble en memoria y contra PGlite: los únicos (`MEDIA_CONFLICT`), el orden de `listOriginals` y `arrange` todo o nada
   - [ ] Test msw: con `sha256`, la petición lleva `x-amz-checksum-sha256` y `Content-Length`, sin `aws-chunked`, `x-amz-trailer` ni `x-amz-sdk-checksum-algorithm`; `BadDigest` da `STORAGE_CONTENT_MISMATCH`
@@ -524,3 +535,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Plan de F1-T06, aprobado por el operador: `MediaFileSource.list` devuelve `{ files, skipped }` con `MEDIA_SKIP_REASONS`; `folder` es relativo a la raíz del adaptador y no puede salir de ella; el tope de video lo aplica el adaptador (sin hashear); los zips de los tests se arman con un generador propio, sin dependencia nueva; desenvolver una carpeta raíz del zip se decide en T09 |
 | 2026-10-01 | Desde la revisión de F1-T06: `MediaFile` gana `extension` canónica; códigos `MEDIA_FOLDER_UNREADABLE`, `MEDIA_FILE_UNREADABLE` e `IMPORT_EXTRACT_FAILED`; la carpeta no puede salir de la raíz tampoco por un enlace simbólico (`realpath`); `extractZip` devuelve `skipped` y rechaza nombres repetidos o en conflicto antes de escribir; T07 convierte en advertencia los fallos de un archivo y tiene un doble de `MediaFileSource` |
 | 2026-10-01 | Plan de F1-T07, aprobado por el operador: se parte en T07 (core: `ingestMedia`, `MediaRepository`, dobles y reporte; más `promoteToReady`, `setLogo` y `recordMediaResult` en Drizzle) y T07b (`MediaRepository` en Drizzle y `ChecksumSHA256` en `putStream`, condicionado a la prueba negativa contra R2); sin reintentos por archivo (el reintento es del job); `STORAGE_CONTENT_MISMATCH` para un contenido distinto del anunciado, que la ingesta trata como advertencia; T09 depende de T07b |
+| 2026-10-01 | Desde la revisión de F1-T07: sin carpeta legible no se tocan orden ni portada; si la carpeta no trae fotos se conserva la portada guardada; en `dry_run` un aviso nuevo cuenta como `draft` para la advertencia; las advertencias de archivos usan textos fijos (sin la clave en R2); invariante `MEDIA_INGEST_STATE_INVALID`; §4.6 suma los `*_CONFLICT` a los reintentables y que cada intento corre las dos etapas; notas para T07b (una sola portada, `role`, `setLogo` con FK) y para T10 y T12 (`media` puede faltar) |

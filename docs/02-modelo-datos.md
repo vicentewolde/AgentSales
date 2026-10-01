@@ -112,7 +112,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | is_cover | boolean | |
 | ai_metadata | jsonb null | Descripción y puntaje de la IA |
 
-Únicos (migración `0001`): `(listing_id, checksum) WHERE role = 'original'` (el mismo archivo no se sube dos veces a una propiedad) y `UNIQUE (storage_path)`, que también cubre el logo (`listing_id` null). En F1, `width`, `height` y `duration_s` quedan en `null`; los mide `media.process` en F2.
+Únicos (migración `0001`): `(listing_id, checksum) WHERE role = 'original'` (el mismo archivo no se sube dos veces a una propiedad) y `UNIQUE (storage_path)`, que también cubre el logo (`listing_id` null). El logo es un medio `original` sin aviso (`listing_id` null), en `brokers/{brokerId}/brand/{sha256}.{ext}`; `brokers.logo_media_id` apunta a él. En F1, `width`, `height` y `duration_s` quedan en `null`; los mide `media.process` en F2.
 
 ### contents — textos generados por plataforma
 | Columna | Tipo | Notas |
@@ -169,7 +169,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | source | enum `listing_source` | Mismos valores que `listings.source` |
 | file_name | text | |
 | rows_total, rows_created, rows_updated, rows_skipped, rows_failed | int | |
-| report | jsonb null | `importReportSchema` (core): encabezados, corredor y resultado de cada fila, con sus errores por columna. `null` hasta que `importListings` registra su resultado (migración `0002`) |
+| report | jsonb null | `importReportSchema` (core): encabezados, corredor y resultado de cada fila, con sus errores por columna y sus advertencias. `null` hasta que `importListings` registra su resultado (migración `0002`). La ingesta de medios suma `media` (subidos, existentes, omitidos y fallidos), que falta si la carga no llegó a esa etapa o es anterior a F1-T07 |
 | started_at | timestamptz null | Se fija al pasar a `running` |
 | finished_at | timestamptz null | `null` mientras la carga está en curso |
 

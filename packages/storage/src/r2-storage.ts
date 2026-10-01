@@ -128,7 +128,8 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
   // - sin checksum por defecto: con él, el SDK manda el stream en `aws-chunked` con un CRC32 al
   //   final y sin `Content-Length`, un formato del que no queremos depender en R2. Queda un PUT
   //   normal con `Content-Length`. La integridad en tránsito la da TLS; el contenido subido **no**
-  //   se verifica contra el sha256 de la ingesta (se decide en F1-T07).
+  //   se verifica contra el sha256 de la ingesta (F1-T07b, condicionado a la prueba negativa
+  //   contra R2: `docs/integraciones/r2-checksums.md`).
   const streamClient = new S3Client({
     ...clientConfig,
     maxAttempts: 1,
