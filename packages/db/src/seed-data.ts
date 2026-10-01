@@ -1,4 +1,4 @@
-import type { FieldType } from "@agentsales/core";
+import type { FieldType, ListingCategory } from "@agentsales/core";
 import type { brokers, fieldDefinitions } from "./schema.js";
 
 /** Corredor de demostración (F0). */
@@ -60,7 +60,7 @@ export const TEMPLATE_COLUMNS = [
 export type TemplateColumn = (typeof TEMPLATE_COLUMNS)[number];
 
 /** Categoría de las definiciones globales que siembra F1. */
-export const REAL_ESTATE_CATEGORY = "real_estate";
+export const REAL_ESTATE_CATEGORY: ListingCategory = "real_estate";
 
 type FieldSeed = {
   key: TemplateColumn;

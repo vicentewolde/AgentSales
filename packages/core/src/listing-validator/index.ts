@@ -77,6 +77,11 @@ export type ListingValidator = {
   checkHeaders(headers: readonly string[]): HeaderCheck;
   /** `true` para la fila de ejemplo (`id_propiedad = EJEMPLO`) y las de `estado_carga = Borrador`. */
   isIgnored(row: RawListingRow): boolean;
+  /**
+   * `id_propiedad` de la fila como texto (un `101` numérico da `"101"`), leído por su columna
+   * resuelta; `null` si falta o no se puede leer. Sirve para el reporte aunque la fila sea inválida.
+   */
+  refOf(row: RawListingRow): string | null;
   validate(row: RawListingRow): RowValidation;
 };
 
@@ -310,6 +315,13 @@ export function buildListingValidator(defs: readonly FieldDefinition[]): Listing
         byKey.has("estado_carga") &&
         mapLookup(estadoCarga, status) === "draft"
       );
+    },
+
+    refOf(row) {
+      const cell = cellFor(row, "id_propiedad");
+      if (!isRawCell(cell) || isBlank(cell)) return null;
+      const text = normalizeText(cell);
+      return text.ok ? text.value : null;
     },
 
     validate(row) {

@@ -70,3 +70,7 @@ export type CloseReason = (typeof CLOSE_REASONS)[number];
 /** Estado de una carga (`import_runs`, job `import.run`). `succeeded` y `failed` son terminales. */
 export const IMPORT_RUN_STATUSES = ["queued", "running", "succeeded", "failed"] as const;
 export type ImportRunStatus = (typeof IMPORT_RUN_STATUSES)[number];
+
+/** Categoría de un aviso (ADR-0006). `product` llega después del MVP. */
+export const LISTING_CATEGORIES = ["real_estate"] as const;
+export type ListingCategory = (typeof LISTING_CATEGORIES)[number];

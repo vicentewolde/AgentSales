@@ -4,16 +4,17 @@
 
 **Actualizado:** 2026-09-30
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T03 · Lector de Excel
-**Siguiente paso:** `/tarea F1-T04`: caso de uso `importListings` (ver la deuda de T04 más abajo)
+**Última tarea terminada:** F1-T04 · Caso de uso importListings
+**Siguiente paso:** `/tarea F1-T04b`: repositorios Drizzle de brokers, listings e import_runs
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
 | F1-T01 Migración 0001, definiciones de campos y errores de base de datos | ✅ terminada | #13 |
 | F1-T02 Validador dinámico | ✅ terminada | #14 |
-| F1-T03 Lector de Excel | ✅ terminada | |
-| F1-T04 Caso de uso importListings | ⏳ pendiente | |
+| F1-T03 Lector de Excel | ✅ terminada | #15 |
+| F1-T04 Caso de uso importListings | ✅ terminada | |
+| F1-T04b Repositorios Drizzle de brokers, listings e import_runs | ⏳ pendiente | |
 | F1-T05 Almacenamiento con streams | ⏳ pendiente | |
 | F1-T06 Lectores de medios | ⏳ pendiente | |
 | F1-T07 Caso de uso ingestMedia | ⏳ pendiente | |
@@ -40,11 +41,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - F3: derivar la clave con HKDF-SHA256 desde `APP_ENCRYPTION_KEY` al cifrar tokens.
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
-- **Antes de F1-T04:** el `cause` de `DB_UNAVAILABLE` (un `DrizzleQueryError`) lleva los `params` de la consulta en su mensaje. Con listings pueden ser datos de clientes (notas internas, dirección): decidir cómo se redactan en los logs.
-- **F1-T04:**
-  - Hoja Corredor: comparar las etiquetas (`Campo`) sin mayúsculas ni tildes, y avisar si una se repite (hoy vale la primera, sin aviso).
-  - `listings.category` es `NOT NULL` y `REAL_ESTATE_CATEGORY` vive en `db`: core necesita su propia constante o tupla de categorías.
-  - Fijar en el spec qué entra en `source_hash`: solo `core` y `attributes`, o también `control`.
+- **F1-T12:** la CLI normaliza `--broker` con `slugify` (hoy `Mi-Corredor` da `BROKER_INVALID`).
 - **T11 / F7:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un zip de 10 MB podría descomprimirse en mucho más (zip bomb). Es tolerable en local; con subidas públicas (`POST /imports` multipart), limitar el tamaño descomprimido.
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
@@ -52,6 +49,21 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 ## Notas de la última sesión
 - 2026-09-30: **F0 cerrada.** Monorepo con `core`, `config`, `db` (Neon, migración `0000_init`), `storage` (R2), API (`/health`), worker (pg-boss), CLI (`doctor`/`status`) y panel. CI en GitHub Actions. 321 tests. Detalle en `CHANGELOG.md` `[0.0.1]` y en el spec F0.
 - 2026-09-30: demo de F0 confirmada por el operador. Arreglo derivado: el worker resume los errores repetidos de pg-boss sin conexión.
+- 2026-09-30: **F1-T04.** `importListings` en core, con la tarea partida en T04 (core) y T04b (Drizzle).
+  - Hoja Corredor: `parseBrokerSheet` compara las etiquetas sin mayúsculas ni tildes y avisa las repetidas. `--broker` gana sobre el slug de la hoja.
+  - `source_hash` sobre `{ core, attributes, control }`.
+  - Un aviso nuevo nace en `draft`, y T07 lo pasa a `ready`.
+  - `id_propiedad` repetido en la hoja → `failed`. Un `id_propiedad` numérico se busca ya normalizado, para no duplicar.
+  - Nuevos en core: `importReportSchema`, `importRunSchema`, `brokerSchema` y `LISTING_CATEGORIES`, más los puertos de brokers, listings e import_runs con sus dobles en memoria.
+  - `toDbError` guarda como `cause` un resumen sin datos del error del driver (ni `params`, ni `detail`, ni el mensaje), y los demás errores de consulta son `DB_QUERY_FAILED`.
+  - Correcciones de `/revisar`:
+    - `dry_run`, el origen y el `--broker` salen del run (`importRunInputSchema`).
+    - Una fila que falla al escribir con un error no reintentable queda `failed`, y la carga sigue.
+    - Conflictos reintentables (`*_CONFLICT`).
+    - El reporte suma `listingId`, `warnings` y `headers` que puede ser `null`.
+    - `externalRef` sale con `validator.refOf`.
+    - Hashtags sin repetidos y con `#`.
+    - Los métodos que se suman después quedaron anotados en T04b, T07, T09, T10 y T11.
 - 2026-09-30: **F1-T03.** Nuevo `packages/importers`, con `readListingsWorkbook` sobre exceljs 4.4.0.
   - Lee las hojas Propiedades y Corredor, sin validar ni filtrar, y entrega `ListingSheetInput` (core).
   - Aplana las celdas de exceljs cuando puede. Lo demás, incluidos los errores de Excel, lo rechaza el validador.

@@ -88,16 +88,56 @@ export function isDbUnavailable(error: unknown): boolean {
   return false;
 }
 
+/** Propiedades del error del driver que no traen datos: identifican el problema, no la fila. */
+const SAFE_DRIVER_FIELDS = ["code", "constraint", "table", "column", "schema"] as const;
+
 /**
- * Traduce un fallo de conexión a `AppError("DB_UNAVAILABLE", { retriable: true })` (la API lo
- * responde como 503 y el job se reintenta). Cualquier otro error se devuelve tal cual.
+ * Error del driver **sin datos de clientes**, para guardarlo como `cause` (termina en los logs):
+ * - el `DrizzleQueryError` lleva el SQL y los parámetros en su mensaje;
+ * - el error de pg o PGlite lleva datos en `detail` ("Failing row contains (…)", "Key (…)=(…)") y
+ *   a veces en `message` ("invalid input syntax for type numeric: …").
+ * Se arma un `Error` nuevo con un mensaje fijo y solo `code`, `constraint`, `table`, `column` y
+ * `schema`. `sqlStateOf` lo sigue leyendo porque conserva `code`; un error de red (`ECONNREFUSED`)
+ * se describe con su código.
+ */
+function safeDriverError(error: unknown): Error {
+  const driver = isQueryWrapper(error) && error instanceof Error ? error.cause : error;
+  const safe = new Error(`Error de la base de datos (${codeOf(driver) ?? "sin código"})`);
+  safe.name = "DatabaseDriverError";
+  if (typeof driver === "object" && driver !== null) {
+    for (const field of SAFE_DRIVER_FIELDS) {
+      const value = (driver as Record<string, unknown>)[field];
+      if (typeof value === "string") Object.assign(safe, { [field]: value });
+    }
+  }
+  return safe;
+}
+
+/**
+ * Traduce los errores de la base de datos:
+ * - fallo de conexión → `AppError("DB_UNAVAILABLE", { retriable: true })` (la API responde 503 y
+ *   el job se reintenta);
+ * - otro error de una consulta de drizzle → `AppError("DB_QUERY_FAILED")`, no reintentable, con el
+ *   SQLSTATE en `details`;
+ * - en los dos casos, `cause` es un resumen del error del driver sin datos (`safeDriverError`).
+ * Un `AppError` o un error ajeno a la base se devuelven tal cual.
  */
 export function toDbError(error: unknown): unknown {
-  if (isAppError(error) || !isDbUnavailable(error)) return error;
-  return new AppError("DB_UNAVAILABLE", "La base de datos no responde", {
-    retriable: true,
-    cause: error,
-  });
+  if (isAppError(error)) return error;
+  if (isDbUnavailable(error)) {
+    return new AppError("DB_UNAVAILABLE", "La base de datos no responde", {
+      retriable: true,
+      cause: safeDriverError(error),
+    });
+  }
+  if (isQueryWrapper(error)) {
+    const state = sqlStateOf(error);
+    return new AppError("DB_QUERY_FAILED", "Falló una consulta a la base de datos", {
+      cause: safeDriverError(error),
+      details: state === undefined ? {} : { sqlState: state },
+    });
+  }
+  return error;
 }
 
 /** Ejecuta una operación de base de datos y traduce sus errores con `toDbError`. */
