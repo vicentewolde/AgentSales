@@ -1,5 +1,6 @@
 import { createLogger, loadEnv, loadEnvFile } from "@agentsales/config";
-import { checkQueueSchema, createDb, pingDatabase } from "@agentsales/db";
+import { createDb, pingDatabase } from "@agentsales/db";
+import { checkQueueSchema } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";

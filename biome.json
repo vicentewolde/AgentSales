@@ -97,6 +97,7 @@
         "packages/db/src/**",
         "packages/storage/src/**",
         "packages/importers/src/**",
+        "packages/queue/src/**",
         "!packages/*/src/scripts/**",
         "!**/*.test.ts",
         "!**/*.test.tsx"

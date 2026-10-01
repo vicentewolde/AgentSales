@@ -35,6 +35,9 @@ importers:
       '@agentsales/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@agentsales/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
       '@agentsales/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -136,6 +139,9 @@ importers:
       '@agentsales/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@agentsales/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
       pg-boss:
         specifier: 12.35.0
         version: 12.35.0
@@ -207,6 +213,18 @@ importers:
       '@types/yauzl':
         specifier: 3.4.0
         version: 3.4.0
+
+  packages/queue:
+    dependencies:
+      '@agentsales/core':
+        specifier: workspace:*
+        version: link:../core
+      drizzle-orm:
+        specifier: 0.45.3
+        version: 0.45.3(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(pg@8.23.0)
+      pg-boss:
+        specifier: 12.35.0
+        version: 12.35.0
 
   packages/storage:
     dependencies:

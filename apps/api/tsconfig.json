@@ -7,9 +7,20 @@
   },
   "include": ["src", "test"],
   "references": [
-    { "path": "../../packages/core" },
-    { "path": "../../packages/config" },
-    { "path": "../../packages/db" },
-    { "path": "../../packages/storage" }
+    {
+      "path": "../../packages/core"
+    },
+    {
+      "path": "../../packages/config"
+    },
+    {
+      "path": "../../packages/db"
+    },
+    {
+      "path": "../../packages/storage"
+    },
+    {
+      "path": "../../packages/queue"
+    }
   ]
 }

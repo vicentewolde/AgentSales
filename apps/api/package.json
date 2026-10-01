@@ -19,6 +19,7 @@
     "@agentsales/config": "workspace:*",
     "@agentsales/core": "workspace:*",
     "@agentsales/db": "workspace:*",
+    "@agentsales/queue": "workspace:*",
     "@agentsales/storage": "workspace:*",
     "@hono/node-server": "2.1.1",
     "hono": "4.13.10"

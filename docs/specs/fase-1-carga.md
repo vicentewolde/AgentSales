@@ -414,6 +414,11 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Extrae `packages/queue` desde `apps/worker/src/queue.ts`: puerto `JobQueue` en core, `JOB_NAMES` y `JOB_PAYLOADS` en `core/src/jobs.ts`, arranque diferido del `producer` y `QUEUE_SCHEMA` y `checkQueueSchema` mudados.
   - `QUEUE_NOT_INITIALIZED` se unifica con `QUEUE_UNAVAILABLE`.
   - Actualización de "Cola de trabajos" en `01-arquitectura.md`.
+  - **Hecho en F1-T08:**
+    - `createJobQueue({ connectionString, onError })` valida los datos con `JOB_PAYLOADS` antes de conectar. `enqueue` devuelve `null` si el `singletonKey` ya tenía un job activo.
+    - `packages/queue` no depende de `@agentsales/db`: la conexión llega ya convertida con `toPgConnectionString`, porque los adaptadores no dependen entre sí. Para `checkQueueSchema` depende de `drizzle-orm`, que es del stack.
+    - `JOB_PAYLOADS` ya incluye `import.run` (`{ importRunId }`); el handler llega en T09.
+    - `pnpm worker:ping` usa el productor nuevo.
 - **Hecho cuando:**
   - [ ] Test: `enqueue` con el esquema o la cola inexistentes → `QUEUE_UNAVAILABLE`
   - [ ] Los tests del worker de F0 siguen pasando, y `pnpm worker:ping` funciona con `packages/queue` (demo)
@@ -544,3 +549,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Desde la revisión de F1-T07: sin carpeta legible no se tocan orden ni portada; si la carpeta no trae fotos se conserva la portada guardada; en `dry_run` un aviso nuevo cuenta como `draft` para la advertencia; las advertencias de archivos usan textos fijos (sin la clave en R2); invariante `MEDIA_INGEST_STATE_INVALID`; §4.6 suma los `*_CONFLICT` a los reintentables y que cada intento corre las dos etapas; notas para T07b (una sola portada, `role`, `setLogo` con FK) y para T10 y T12 (`media` puede faltar) |
 | 2026-10-01 | Plan de F1-T07b, aprobado por el operador: `setLogo` valida el medio (`MEDIA_NOT_FOUND`); `arrange` rechaza ids repetidos o dos portadas (`MEDIA_ARRANGE_INVALID`, `checkArrangement` en core); el doble no modela `role`. `ChecksumSHA256` **adoptado**: `storage:check` contra R2 confirmó el rechazo con `BadDigest` sin guardar el objeto. D3 actualizado |
 | 2026-10-01 | Desde la revisión de F1-T07b: `arrange` bloquea el aviso (`FOR NO KEY UPDATE`) para que dos intentos del job no dejen dos portadas ni se bloqueen entre sí; `checkArrangement` también valida `sortOrder` (entero de 0 al máximo de int4); `BadDigest` se reconoce por `Code` además de `name`; test de rollback de `arrange` con PGlite. La concurrencia real no se puede probar con PGlite (una sola conexión): queda documentada |
+| 2026-10-01 | F1-T08: `packages/queue` con `createJobQueue` (productor con arranque diferido), `createBoss`, `QUEUE_SCHEMA` y `checkQueueSchema`; `JOB_NAMES` y `JOB_PAYLOADS` en core, con `import.run`; `QUEUE_NOT_INITIALIZED` pasa a `QUEUE_UNAVAILABLE`; el paquete no depende de `@agentsales/db` (la conexión llega convertida) |

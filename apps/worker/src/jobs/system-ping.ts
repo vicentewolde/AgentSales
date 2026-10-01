@@ -1,16 +1,11 @@
-import { z } from "zod";
+import { JOB_PAYLOADS, type JobPayload } from "@agentsales/core";
 import { defineJob } from "./define.js";
 
 export const SYSTEM_PING = "system.ping";
 
-/** Tope del trabajo simulado: solo sirve para probar el apagado con un job en curso. */
-export const MAX_PING_DELAY_MS = 10_000;
-
-export const systemPingSchema = z.object({
-  message: z.string().max(200).optional(),
-  delayMs: z.number().int().min(0).max(MAX_PING_DELAY_MS).optional(),
-});
-export type SystemPingData = z.infer<typeof systemPingSchema>;
+/** El contrato vive en core (`JOB_PAYLOADS`), compartido con quien encola. */
+export const systemPingSchema = JOB_PAYLOADS[SYSTEM_PING];
+export type SystemPingData = JobPayload<typeof SYSTEM_PING>;
 
 /** Job de prueba: responde "pong", opcionalmente tras `delayMs`. Sin reintentos. */
 export const systemPing = defineJob({

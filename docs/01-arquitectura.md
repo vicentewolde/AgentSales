@@ -195,7 +195,7 @@ Con `PUBLISH_MODE=dry-run`, un decorador envuelve cualquier publisher: ejecuta `
 
 ## Cola de trabajos
 
-Hoy (F0, `apps/worker/src/jobs/`):
+Los jobs del worker (`apps/worker/src/jobs/`):
 - Cada job se declara con `defineJob({ name, schema, queue, handler })`:
   - **`schema`:** zod valida los datos antes del handler. Los datos vienen de la base, escritos por otro proceso, así que son un borde. Si son inválidos, lanza `JOB_PAYLOAD_INVALID`, que no se reintenta.
   - **`queue`:** política de la cola (`retryLimit`, `retryDelay`, `retryBackoff`, `expireInSeconds`). Solo el worker la aplica al arrancar (`createQueue` + `updateQueue`), así que el código es la fuente de verdad. Los productores no crean colas.
@@ -206,9 +206,19 @@ Hoy (F0, `apps/worker/src/jobs/`):
   - `batchSize: 1`: un fallo nunca repite jobs ajenos.
 - Los handlers son delgados: validan, arman dependencias y llaman un caso de uso de `core`. Cuando necesiten db, storage o llm, `JOBS` pasa a `buildJobs(deps)`.
 
-Cuando la API encole (extracción a `packages/queue`):
-- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API y el worker comparten el contrato sin repetir literales.
-- **Puerto `JobQueue`** en `core/src/ports/job-queue.ts`: `enqueue<N extends JobName>(name: N, data: JobPayload<N>, opts?: { startAfter?: Date; singletonKey?: string }): Promise<string>`.
+Para encolar (`packages/queue`, desde F1-T08):
+- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` (`system.ping`, `import.run`) y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API, los scripts y el worker comparten el contrato sin repetir literales.
+- **Puerto `JobQueue`** en `core/src/ports/job-queue.ts`: `enqueue<N extends JobName>(name: N, data: JobPayload<N>, opts?: { startAfter?: Date; singletonKey?: string }): Promise<string | null>`. Devuelve `null` si ya había un job activo con el mismo `singletonKey`.
+- **Adaptador `createJobQueue({ connectionString, onError })`**, sobre pg-boss en rol `producer`:
+  - Arranca pg-boss recién en el primer `enqueue`, así la API levanta aunque el esquema `pgboss` no exista. Si el arranque falla, el siguiente `enqueue` lo reintenta.
+  - Valida los datos con `JOB_PAYLOADS` antes de conectar (`JOB_PAYLOAD_INVALID`).
+  - Cualquier falla de la cola (sin conexión, sin esquema, o una cola que el worker todavía no creó) es `QUEUE_UNAVAILABLE`, reintentable: la API responde 503. Antes, el esquema faltante era `QUEUE_NOT_INITIALIZED`.
+  - `stop()` cierra la conexión.
+- **También en `packages/queue`:**
+  - `createBoss({ connectionString, role })`, que usa el worker;
+  - `QUEUE_SCHEMA`;
+  - `checkQueueSchema`, el check de `/health`, que solo lee el catálogo.
+- **Conexión:** el paquete no depende de `@agentsales/db`, porque los adaptadores no dependen entre sí. Quien lo usa pasa la conexión ya convertida con `toPgConnectionString`.
 
 Política objetivo por cola (cada fase la confirma en su spec):
 

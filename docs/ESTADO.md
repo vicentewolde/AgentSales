@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T07b · MediaRepository en Drizzle y checksum en R2
-**Siguiente paso:** `/tarea F1-T08` (paquete de cola). Después T09 (job `import.run`), que ya tiene todo lo demás
+**Última tarea terminada:** F1-T08 · Paquete de cola
+**Siguiente paso:** `/tarea F1-T09` (job `import.run`): ya tiene todo lo que necesita (T04b, T07, T07b y T08)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -19,7 +19,7 @@
 | F1-T06 Lectores de medios | ✅ terminada | #19 |
 | F1-T07 Caso de uso ingestMedia (core) | ✅ terminada | #20 |
 | F1-T07b MediaRepository en Drizzle y checksum en R2 | ✅ terminada | #21 |
-| F1-T08 Paquete de cola | ⏳ pendiente | |
+| F1-T08 Paquete de cola | ✅ terminada | |
 | F1-T09 Job import.run | ⏳ pendiente | |
 | F1-T10 Contratos HTTP y API de lectura | ⏳ pendiente | |
 | F1-T11 API de importación | ⏳ pendiente | |
@@ -48,6 +48,12 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
+- 2026-10-01: **F1-T08.** `packages/queue`.
+  - **Productor (`createJobQueue`):** arranca pg-boss en el primer `enqueue`, valida los datos con `JOB_PAYLOADS` y convierte cualquier falla de la cola en `QUEUE_UNAVAILABLE` (reintentable, 503). Si falla el arranque, el siguiente `enqueue` reintenta.
+  - **Se mudaron de `db` y del worker a `packages/queue`:** `createBoss`, `QUEUE_SCHEMA` y `checkQueueSchema`. `QUEUE_NOT_INITIALIZED` desaparece.
+  - **Contrato en core:** `JOB_NAMES` y `JOB_PAYLOADS`, con `system.ping` e `import.run`.
+  - **Dependencias:** el paquete no depende de `@agentsales/db`; la conexión llega convertida, y se agregó a la regla de Biome de adaptadores.
+  - **Demo:** con el worker corriendo, `pnpm worker:ping` encola con el productor nuevo, el worker responde "pong" y se apaga limpio.
 - 2026-10-01: **F1-T07b.** `MediaRepository` en Drizzle y `ChecksumSHA256` en R2.
   - **Checksum adoptado.** Contra R2 real (`storage:check`), el sha256 correcto se acepta y el de otro contenido da `BadDigest`, sin guardar el objeto. Ahora R2 detecta un archivo que cambió entre la lectura y la subida. Línea en ADR-0007.
   - **Postgres:**
