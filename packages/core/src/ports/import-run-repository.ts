@@ -46,4 +46,11 @@ export interface ImportRunRepository {
    * existe: el primer estado terminal gana.
    */
   markFailed(id: string, error: ImportRunError): Promise<boolean>;
+  /**
+   * Cierra los runs abandonados: los que siguen en `running` con `started_at` anterior a
+   * `startedBefore` pasan a `failed` con `error` (el proceso murió, o la base no respondió en el
+   * último intento). No toca los `queued`: su job puede seguir en la cola si el worker estuvo
+   * apagado. Devuelve los ids cerrados.
+   */
+  failAbandoned(startedBefore: Date, error: ImportRunError): Promise<string[]>;
 }

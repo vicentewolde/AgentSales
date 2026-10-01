@@ -20,7 +20,7 @@
 | F1-T07 Caso de uso ingestMedia (core) | ✅ terminada | #20 |
 | F1-T07b MediaRepository en Drizzle y checksum en R2 | ✅ terminada | #21 |
 | F1-T08 Paquete de cola | ✅ terminada | #22 |
-| F1-T09 Job import.run | ✅ terminada | |
+| F1-T09 Job import.run | ✅ terminada | #23 |
 | F1-T10 Contratos HTTP y API de lectura | ⏳ pendiente | |
 | F1-T11 API de importación | ⏳ pendiente | |
 | F1-T12 CLI de importación y consulta | ⏳ pendiente | |
@@ -61,6 +61,17 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
     - El log de cada intento lleva los datos del job (`importRunId`).
   - **Staging:** `extracted/` por intento, `input/` hasta el estado terminal y limpieza al arrancar. Un zip con una sola carpeta en la raíz se desenvuelve si ahí están las carpetas pedidas, como decía la decisión abierta de T06.
   - **Tests:** casos de uso, staging, registro y job. Probé 10 mutaciones y todas menos una hacen fallar algún test. La que sobrevive es la guarda terminal, redundante con `markRunning`: el comportamiento es el mismo.
+  - **Correcciones de `/revisar`:**
+    - Al arrancar, el worker cierra los runs abandonados: más de 7 h en `running`, por un proceso que murió o una base caída en el último intento.
+    - Un error que no es `AppError` se normaliza: el job se cierra, sin gastar reintentos.
+    - Si `markFailed` falla, el motivo original va como `cause`.
+    - `markSucceeded` sin efecto da `skipped`.
+    - Un directorio de extracción por intento, así dos intentos no se pisan.
+    - La limpieza del staging no se corta por un error. Primero borra por antigüedad, sin base, y a los huérfanos les da 10 minutos de gracia.
+    - El worker avisa si una cola existe con otra política.
+    - `openMedia` tiene un contrato más estrecho.
+    - Tests nuevos, y 8 mutaciones probadas: todas hacen fallar algún test.
+    - Para T11 quedaron anotados el id del run generado por quien llama y `createStaging` en `importers`.
   - **Prueba de humo:** el worker arranca contra Neon con `system.ping` e `import.run`, lo que crea la cola `import.run` como `exclusive`, y se apaga limpio. La prueba de punta a punta con Neon y R2 llega en T12, con la CLI y las propiedades de muestra.
 - 2026-10-01: **F1-T08.** `packages/queue`.
   - **Productor (`createJobQueue`):** arranca pg-boss en el primer `enqueue`, valida los datos con `JOB_PAYLOADS` y convierte cualquier falla de la cola en `QUEUE_UNAVAILABLE` (reintentable, 503). Si falla el arranque, el siguiente `enqueue` reintenta.

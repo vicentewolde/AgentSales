@@ -17,6 +17,20 @@ export const IMPORT_RUN_QUEUE: QueuePolicy = {
   expireInSeconds: 2 * 60 * 60,
 };
 
+/**
+ * Un run en `running` más viejo que esto ya no tiene un intento vivo: los 3 intentos de 2 h, más
+ * el backoff y una hora de margen. El worker los cierra al arrancar (`failAbandoned`).
+ */
+export const IMPORT_RUN_ABANDONED_AFTER_MS =
+  ((IMPORT_RUN_QUEUE.retryLimit + 1) * IMPORT_RUN_QUEUE.expireInSeconds + 60 * 60) * 1000;
+
+/** Motivo de un run cerrado por abandonado (el proceso murió o la base no respondió al final). */
+export const IMPORT_ABANDONED = {
+  code: "IMPORT_ABANDONED",
+  message:
+    "La carga quedó a medias (el worker se detuvo o perdió la conexión): vuelve a importarla",
+};
+
 /** Job `import.run`: delgado, corre `runImport` de core con las dependencias del worker. */
 export function importRunJob(deps: RunImportDeps): Job {
   return defineJob({

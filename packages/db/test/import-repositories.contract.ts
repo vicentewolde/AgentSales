@@ -394,6 +394,33 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       }
     });
 
+    it("failAbandoned cierra los running viejos; deja los recientes, los queued y los terminados", async () => {
+      const viejo = await newRun();
+      await repos.importRuns.markRunning(viejo.id);
+      const enCola = await newRun();
+      const terminado = await newRun();
+      await repos.importRuns.markRunning(terminado.id);
+      await repos.importRuns.markSucceeded(terminado.id);
+      const error = { code: "IMPORT_ABANDONED", message: "La carga quedó a medias" };
+
+      // Un corte en el futuro: todo lo que está running "empezó antes".
+      const closed = await repos.importRuns.failAbandoned(new Date(Date.now() + 60_000), error);
+
+      expect(closed).toContain(viejo.id);
+      expect(closed).not.toContain(enCola.id);
+      expect(closed).not.toContain(terminado.id);
+      expect(await repos.importRuns.get(viejo.id)).toMatchObject({ status: "failed", error });
+      expect((await repos.importRuns.get(enCola.id))?.status).toBe("queued");
+      expect((await repos.importRuns.get(terminado.id))?.status).toBe("succeeded");
+
+      const reciente = await newRun();
+      await repos.importRuns.markRunning(reciente.id);
+      expect(
+        await repos.importRuns.failAbandoned(new Date(Date.now() - 60_000), error),
+      ).not.toContain(reciente.id);
+      expect((await repos.importRuns.get(reciente.id))?.status).toBe("running");
+    });
+
     it("los cambios de estado de un id inexistente devuelven false", async () => {
       expect(await repos.importRuns.markRunning(repos.missingId)).toBe(false);
       expect(await repos.importRuns.markSucceeded(repos.missingId)).toBe(false);

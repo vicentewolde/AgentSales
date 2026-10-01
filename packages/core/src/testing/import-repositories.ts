@@ -217,6 +217,16 @@ export function createInMemoryImportRunRepository(
       stored.set(id, { ...current, status: "failed", error: { ...error }, finishedAt: new Date() });
       return true;
     },
+    async failAbandoned(startedBefore, error) {
+      const closed: string[] = [];
+      for (const [id, run] of stored) {
+        if (run.status === "running" && run.startedAt !== null && run.startedAt < startedBefore) {
+          stored.set(id, { ...run, status: "failed", error: { ...error }, finishedAt: new Date() });
+          closed.push(id);
+        }
+      }
+      return closed;
+    },
     async recordMediaResult(id, report) {
       const current = stored.get(id);
       if (current === undefined) {

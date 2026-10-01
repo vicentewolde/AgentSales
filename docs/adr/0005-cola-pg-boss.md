@@ -40,3 +40,9 @@ Procesar video, renderizar plantillas, llamar a la IA y publicar son tareas lent
   - `JOB_NAMES` y `JOB_PAYLOADS` en core.
   - `QUEUE_NOT_INITIALIZED` pasa a `QUEUE_UNAVAILABLE`.
   - La deduplicación por `singletonKey` depende de la política de la cola, que es inmutable: T09 la fija para `import.run`.
+- 2026-10-01 (F1-T09): `import.run` en el worker.
+  - La cola `import.run` es `exclusive`, con 2 reintentos y expiración a las 2 h.
+  - `QueuePolicy.policy` solo va a `createQueue`, y el worker avisa si una cola existente tiene otra política.
+  - `defineJob` está tipado por `JobName`, con `isLastAttempt` (`includeMetadata`).
+  - El handler es `runImport` (core).
+  - Al arrancar, el worker cierra los runs abandonados (`IMPORT_ABANDONED`).

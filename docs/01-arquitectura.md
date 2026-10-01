@@ -220,14 +220,22 @@ Los jobs del worker (`apps/worker/src/jobs/`):
 - **`runImport` (core), el handler:**
   1. Un run terminal no hace nada.
   2. `markRunning`, lee el xlsx, corre `importListings`, prepara los medios (`openMedia`), corre `ingestMedia` y deja el run en `succeeded`.
-  3. Con un error no reintentable, o en el último intento, `markFailed` **antes** de relanzar.
+  3. Con un error no reintentable, o en el último intento, `markFailed` **antes** de relanzar. Si `markFailed` falla, se lanza ese error con el original como `cause`.
   4. Los medios se liberan siempre, y el staging se borra al llegar a un estado terminal.
-  - Un error que no es `AppError` queda como `INTERNAL_ERROR`, con un mensaje genérico.
+  5. Si `markSucceeded` no cambia nada (otro intento ya lo dejó terminal), informa `skipped`.
+  - Un error que no es `AppError` se normaliza a `INTERNAL_ERROR`, no reintentable y con un mensaje genérico: el run queda en `failed` y el job se cierra.
+- **Runs abandonados:** al arrancar, el worker cierra como `failed` (`IMPORT_ABANDONED`) los runs en `running` de hace más de 7 h (`failAbandoned`). Cubre un proceso que murió, o una base caída en el último intento. Los `queued` no se tocan.
+- **Política de la cola:** al arrancar, el worker compara la política guardada con la del código, y avisa en el log si difiere (`createQueue` no cambia una cola existente).
 - **Staging (`apps/worker/src/staging.ts`), en `<workspace>/tmp/imports/{runId}/`:**
   - `input/` lo escribe la API (T11) y se conserva hasta el estado terminal.
-  - `extracted/` es el zip de cada intento: se recrea al empezar y se borra al terminar, falle o no.
+  - `extracted-{uuid}/` es el zip de **un** intento: se crea al empezar y se borra al terminar, falle o no. Dos intentos solapados no se pisan.
   - **Zip con una sola carpeta en la raíz** (macOS → Comprimir "medios"): si ninguna de las carpetas que la carga pide está en la raíz, pero sí dentro de esa única carpeta, la raíz pasa a ser esa carpeta. Un zip con una sola propiedad en su raíz no se desenvuelve.
-  - **Al arrancar,** el worker borra los directorios de runs terminados (o inexistentes) y los de más de 24 h. Solo toca directorios con nombre de uuid.
+  - **Al arrancar,** el worker borra:
+    - los directorios de más de 24 h, antes de conectarse a la base;
+    - ya conectado, los de runs terminados, y los sin run de más de 10 minutos (la API escribe `input/` antes de crear el run, T11).
+
+    Solo toca directorios con nombre de uuid, y un error en uno no corta el barrido.
+  - **T11** muda `createStaging` a `packages/importers` (`@agentsales/importers/staging`) para compartirlo con la API.
   - **Los medios de la CLI** (`--media <dir>`) se leen en su lugar: el staging nunca borra archivos del operador.
 
 Para encolar (`packages/queue`, desde F1-T08):

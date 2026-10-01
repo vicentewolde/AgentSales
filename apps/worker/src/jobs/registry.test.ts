@@ -30,7 +30,7 @@ function capture() {
 }
 
 /** pg-boss simulado: guarda las llamadas y los handlers registrados. */
-function fakeBoss(options: { failCreate?: boolean } = {}) {
+function fakeBoss(options: { failCreate?: boolean; policies?: Record<string, string> } = {}) {
   const calls: string[] = [];
   const workers = new Map<string, Work>();
   const boss: WorkerBoss = {
@@ -43,6 +43,7 @@ function fakeBoss(options: { failCreate?: boolean } = {}) {
     updateQueue: async (name) => {
       calls.push(`update ${name}`);
     },
+    getQueue: async (name) => ({ policy: options.policies?.[name] ?? "standard" }),
     work: async (name, workOptions, handler) => {
       calls.push(`work ${name} ${JSON.stringify(workOptions)}`);
       workers.set(name, handler);
@@ -91,6 +92,26 @@ describe("registerJobs", () => {
 
     expect(calls[0]).toBe(`create import.run ${JSON.stringify(exclusive)}`);
     expect(updates).toEqual([policy]);
+  });
+
+  it("avisa si la cola ya existía con otra política (no se puede cambiar sin borrarla)", async () => {
+    const { boss } = fakeBoss({ policies: { "import.run": "standard" } });
+    const { logger, lines } = capture();
+
+    await registerJobs(
+      boss,
+      [{ name: "import.run", queue: { ...policy, policy: "exclusive" }, run: async () => {} }],
+      logger,
+    );
+
+    expect(lines).toContainEqual(
+      expect.objectContaining({
+        job: "import.run",
+        expected: "exclusive",
+        actual: "standard",
+        level: 50,
+      }),
+    );
   });
 
   it.each([

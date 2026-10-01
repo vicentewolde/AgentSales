@@ -6,6 +6,7 @@ import type { Job, QueuePolicy } from "./define.js";
 export type WorkerBoss = {
   createQueue(name: string, options: QueuePolicy): Promise<void>;
   updateQueue(name: string, options: Omit<QueuePolicy, "policy">): Promise<void>;
+  getQueue(name: string): Promise<{ policy?: string } | null>;
   work(
     name: string,
     options: { batchSize: 1; includeMetadata: true },
@@ -43,6 +44,7 @@ export async function registerJobs(
     const { policy: _policy, ...updatable } = job.queue;
     await boss.createQueue(job.name, job.queue);
     await boss.updateQueue(job.name, updatable);
+    await checkPolicy(boss, job, logger);
     // `includeMetadata`: trae `retryLimit`, para saber si es el último intento.
     await boss.work(job.name, { batchSize: 1, includeMetadata: true }, async (batch) => {
       for (const { id, data, retryCount, retryLimit } of batch) {
@@ -51,6 +53,22 @@ export async function registerJobs(
     });
   }
   return !isStopping();
+}
+
+/**
+ * `createQueue` no cambia una cola que ya existe: si se creó con otra política (otro entorno, una
+ * versión vieja), `singletonKey` podría no deduplicar. No se puede arreglar sin borrar la cola, así
+ * que se avisa fuerte en el log.
+ */
+async function checkPolicy(boss: WorkerBoss, job: Job, logger: Logger): Promise<void> {
+  const expected = job.queue.policy ?? "standard";
+  const actual = (await boss.getQueue(job.name))?.policy ?? "standard";
+  if (actual !== expected) {
+    logger.error(
+      { job: job.name, expected, actual },
+      "la cola existe con otra política: hay que borrarla y recrearla para aplicar la del código",
+    );
+  }
 }
 
 async function runOne(

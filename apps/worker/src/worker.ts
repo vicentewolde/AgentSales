@@ -15,6 +15,7 @@ import { readListingsWorkbook } from "@agentsales/importers";
 import { createBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { createErrorThrottle } from "./error-throttle.js";
+import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
 import { buildJobs } from "./jobs/index.js";
 import { registerJobs } from "./jobs/registry.js";
 import { createStaging } from "./staging.js";
@@ -54,7 +55,7 @@ const importRun: RunImportDeps = {
   }),
   sha256: async (text) => createHash("sha256").update(text, "utf8").digest("hex"),
   readSheet: (input) => readListingsWorkbook(input.xlsxPath),
-  openMedia: (run, folders) => staging.openMedia(run, folders),
+  openMedia: (request) => staging.openMedia(request),
   discardStaging: (runId) => staging.discard(runId),
 };
 const jobs = buildJobs({ importRun });
@@ -99,24 +100,44 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 /**
- * Borra el staging de runs terminados o de más de 24 h (spec F1 §4.3). Si la base no responde,
- * se deja para el próximo arranque: no impide procesar jobs.
+ * Al arrancar (spec F1 §4.3 y §4.6), sin impedir que el worker procese jobs si algo falla:
+ * 1. antes de conectar, borra el staging de más de 24 h (no necesita la base);
+ * 2. ya conectado, cierra los runs abandonados en `running` y borra el staging de runs terminados.
  */
-async function cleanStaging(): Promise<void> {
+async function cleanStaging(withDatabase: boolean): Promise<void> {
   try {
-    const removed = await staging.cleanup(async (runId) => {
-      const run = await importRuns.get(runId);
-      return run === null || run.status === "succeeded" || run.status === "failed";
-    });
+    const removed = await staging.cleanup(
+      withDatabase
+        ? async (runId) => {
+            const run = await importRuns.get(runId);
+            if (run === null) return "missing";
+            return run.status === "succeeded" || run.status === "failed" ? "closed" : "open";
+          }
+        : undefined,
+    );
     if (removed.length > 0) logger.info({ removed: removed.length }, "staging limpiado");
   } catch (error) {
     logger.warn({ err: error }, "no se pudo limpiar el staging; se intenta al próximo arranque");
   }
 }
 
+async function failAbandonedRuns(): Promise<void> {
+  try {
+    const closed = await importRuns.failAbandoned(
+      new Date(Date.now() - IMPORT_RUN_ABANDONED_AFTER_MS),
+      IMPORT_ABANDONED,
+    );
+    if (closed.length > 0) logger.warn({ importRunIds: closed }, "cargas abandonadas cerradas");
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron revisar las cargas abandonadas");
+  }
+}
+
 try {
+  await cleanStaging(false);
   await boss.start();
-  await cleanStaging();
+  await failAbandonedRuns();
+  await cleanStaging(true);
   // Una señal durante el arranque: `shutdown` ya está deteniendo pg-boss; no se registra nada más.
   const registered =
     !shuttingDown && (await registerJobs(boss, jobs, logger, { isStopping: () => shuttingDown }));

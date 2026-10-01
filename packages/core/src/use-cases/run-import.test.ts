@@ -88,7 +88,7 @@ function setup(storageOptions: InMemoryMediaStorageOptions = {}) {
       calls.readSheet += 1;
       return SHEET;
     },
-    openMedia: async (_run: unknown, folders: readonly string[]) => {
+    openMedia: async ({ folders }: { folders: readonly string[] }) => {
       calls.openMedia += 1;
       calls.folders.push(folders);
       return {
@@ -193,18 +193,71 @@ describe("runImport", () => {
     expect((await deps.importRuns.get(run.id))?.error?.code).toBe("IMPORT_FILE_INVALID");
   });
 
-  it("un error que no es AppError: failed con un mensaje genérico, sin el detalle", async () => {
+  it("un error que no es AppError: failed con un mensaje genérico, y se relanza como no reintentable", async () => {
     const { deps, createRun } = setup();
+    const original = new Error("ENOENT: /Users/alguien/secreto.xlsx");
     deps.readSheet = async () => {
-      throw new Error("ENOENT: /Users/alguien/secreto.xlsx");
+      throw original;
     };
     const run = await createRun();
 
-    await caught(runImport(deps, { importRunId: run.id, isLastAttempt: false }));
+    const error = await caught(runImport(deps, { importRunId: run.id, isLastAttempt: false }));
 
     expect((await deps.importRuns.get(run.id))?.error).toEqual({
       code: "INTERNAL_ERROR",
       message: "Error interno al importar",
+    });
+    // No reintentable: el registro del worker cierra el job en vez de gastar intentos.
+    expect(isAppError(error) && [error.code, error.retriable, error.cause]).toEqual([
+      "INTERNAL_ERROR",
+      false,
+      original,
+    ]);
+  });
+
+  it("si otro intento ya dejó el run terminal, no se informa éxito ni se borra el staging", async () => {
+    const { deps, calls, createRun } = setup();
+    const run = await createRun();
+    deps.importRuns.markSucceeded = async () => false;
+    const markFailed = deps.importRuns.markFailed.bind(deps.importRuns);
+    deps.openMedia = async () => {
+      // Mientras este intento sube, otro deja el run en failed.
+      await markFailed(run.id, { code: "X", message: "otro intento" });
+      return { source: createInMemoryMediaFileSource(FOLDERS), close: async () => {} };
+    };
+
+    const result = await runImport(deps, { importRunId: run.id, isLastAttempt: false });
+
+    expect(result).toEqual({ outcome: "skipped", status: "failed" });
+    expect(calls.discarded).toEqual([]);
+  });
+
+  it("dry_run: recorre lo mismo, deja el run en succeeded y no escribe avisos ni medios", async () => {
+    const { deps } = setup();
+    const run = await deps.importRuns.create({
+      source: "xlsx",
+      fileName: "propiedades.xlsx",
+      dryRun: true,
+      input: INPUT,
+    });
+
+    expect(await runImport(deps, { importRunId: run.id, isLastAttempt: false })).toEqual({
+      outcome: "succeeded",
+    });
+    expect(deps.listings.all()).toEqual([]);
+    expect(deps.storage.uploads).toEqual([]);
+    expect((await deps.importRuns.get(run.id))?.report?.media).toMatchObject({ filesUploaded: 1 });
+  });
+
+  it("si borrar el staging falla, la carga igual queda terminada", async () => {
+    const { deps, createRun } = setup();
+    deps.discardStaging = async () => {
+      throw new Error("EBUSY");
+    };
+    const run = await createRun();
+
+    expect(await runImport(deps, { importRunId: run.id, isLastAttempt: false })).toEqual({
+      outcome: "succeeded",
     });
   });
 
@@ -241,20 +294,31 @@ describe("runImport", () => {
     });
   });
 
-  it("si la base no responde al marcar failed, se propaga ese error (reintentable)", async () => {
-    const { deps, createRun } = setup();
-    deps.readSheet = async () => {
-      throw new AppError("IMPORT_FILE_INVALID", "inválido");
-    };
-    deps.importRuns.markFailed = async () => {
-      throw new AppError("DB_UNAVAILABLE", "La base de datos no responde", { retriable: true });
-    };
-    const run = await createRun();
+  it.each([false, true])(
+    "si la base no responde al marcar failed (último intento: %s), se propaga ese error con el motivo original como causa",
+    async (isLastAttempt) => {
+      const { deps, createRun } = setup();
+      const original = new AppError("IMPORT_FILE_INVALID", "inválido");
+      deps.readSheet = async () => {
+        throw original;
+      };
+      deps.importRuns.markFailed = async () => {
+        throw new AppError("DB_UNAVAILABLE", "La base de datos no responde", { retriable: true });
+      };
+      const run = await createRun();
 
-    const error = await caught(runImport(deps, { importRunId: run.id, isLastAttempt: false }));
+      const error = await caught(runImport(deps, { importRunId: run.id, isLastAttempt }));
 
-    expect(isAppError(error) && [error.code, error.retriable]).toEqual(["DB_UNAVAILABLE", true]);
-  });
+      expect(isAppError(error) && [error.code, error.retriable, error.cause]).toEqual([
+        "DB_UNAVAILABLE",
+        true,
+        original,
+      ]);
+      expect(isAppError(error) && error.details).toMatchObject({
+        originalCode: "IMPORT_FILE_INVALID",
+      });
+    },
+  );
 
   it("un run inexistente → IMPORT_RUN_NOT_FOUND", async () => {
     const { deps } = setup();

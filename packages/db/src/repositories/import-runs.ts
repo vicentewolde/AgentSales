@@ -4,7 +4,7 @@ import {
   type ImportRunRepository,
   importRunSchema,
 } from "@agentsales/core";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { withDbErrors } from "../errors.js";
 import { importRuns } from "../schema.js";
@@ -112,6 +112,17 @@ export function createImportRunRepository(db: SchemaDatabase): ImportRunReposito
           .where(and(eq(importRuns.id, id), inArray(importRuns.status, ["queued", "running"])))
           .returning({ id: importRuns.id });
         return updated.length > 0;
+      });
+    },
+
+    failAbandoned(startedBefore, error) {
+      return withDbErrors(async () => {
+        const closed = await db
+          .update(importRuns)
+          .set({ status: "failed", error, finishedAt: sql`now()` })
+          .where(and(eq(importRuns.status, "running"), lt(importRuns.startedAt, startedBefore)))
+          .returning({ id: importRuns.id });
+        return closed.map((row) => row.id);
       });
     },
 
