@@ -13,7 +13,7 @@ import {
   type NewMedia,
 } from "../ports/media-repository.js";
 import type { MediaStorage, StoredObjectInfo } from "../ports/media-storage.js";
-import { structuredCopy } from "./import-repositories.js";
+import { structuredCopy } from "./copy.js";
 
 export type InMemoryMediaRepository = MediaRepository & {
   all(): MediaRecord[];
@@ -113,7 +113,8 @@ export type InMemoryMediaStorageOptions = {
  * `MediaStorage` en memoria. `putStream` lee el iterable completo y, como R2, da
  * `STORAGE_CONTENT_MISMATCH` si el largo no calza con `contentLength` (sin guardar nada). Un
  * error del iterable (el lector del archivo) pasa tal cual. El `sha256` se guarda pero no se
- * verifica: core no calcula hashes (en R2 lo verifica R2, y lo prueba `storage:check`).
+ * verifica, ni su formato: core no calcula hashes, y `memoryFile` usa etiquetas (`sha256-…`) que
+ * el adaptador de R2 rechazaría por no ser hexadecimales. En R2 lo verifica R2 (`storage:check`).
  */
 export function createInMemoryMediaStorage(
   options: InMemoryMediaStorageOptions = {},

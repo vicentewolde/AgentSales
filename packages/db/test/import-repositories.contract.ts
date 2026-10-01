@@ -521,6 +521,10 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
           { id: b, sortOrder: 1, isCover: true },
         ],
       ],
+      ["un orden negativo", (a: string) => [{ id: a, sortOrder: -1, isCover: false }]],
+      ["un orden decimal", (a: string) => [{ id: a, sortOrder: 1.5, isCover: false }]],
+      ["un orden fuera de int4", (a: string) => [{ id: a, sortOrder: 2 ** 31, isCover: false }]],
+      ["un orden NaN", (a: string) => [{ id: a, sortOrder: Number.NaN, isCover: false }]],
     ])("arrange con %s → MEDIA_ARRANGE_INVALID, sin cambiar nada", async (_, itemsOf) => {
       const { id, media } = await listingWith("a", "b");
       const before = await repos.media.listOriginals(id);

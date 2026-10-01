@@ -20,8 +20,13 @@ export type R2StorageOptions = {
   endpoint?: string;
 };
 
-/** Nombre del error del SDK (el código S3, como `BadDigest`), si lo trae. */
-function errorName(error: unknown): string | undefined {
+/**
+ * Código S3 del error (`BadDigest`…). El SDK lo pone en `name` y también en `Code`; se miran los
+ * dos, por si una versión deja de copiarlo a `name` (el test msw lo detectaría igual).
+ */
+function s3ErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  if ("Code" in error && typeof error.Code === "string") return error.Code;
   return error instanceof Error ? error.name : undefined;
 }
 
@@ -51,7 +56,7 @@ function httpStatusOf(error: unknown): number | undefined {
 function toAppError(error: unknown, path: string): AppError {
   const status = httpStatusOf(error);
   // R2 recalcula el sha256 de lo recibido y no guarda el objeto si no calza con `ChecksumSHA256`.
-  if (errorName(error) === "BadDigest") {
+  if (s3ErrorCode(error) === "BadDigest") {
     return new AppError(
       "STORAGE_CONTENT_MISMATCH",
       `El contenido subido a ${path} no calza con su sha256`,

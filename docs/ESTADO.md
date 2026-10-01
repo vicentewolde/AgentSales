@@ -18,7 +18,7 @@
 | F1-T05 Almacenamiento con streams | ✅ terminada | #18 |
 | F1-T06 Lectores de medios | ✅ terminada | #19 |
 | F1-T07 Caso de uso ingestMedia (core) | ✅ terminada | #20 |
-| F1-T07b MediaRepository en Drizzle y checksum en R2 | ✅ terminada | |
+| F1-T07b MediaRepository en Drizzle y checksum en R2 | ✅ terminada | #21 |
 | F1-T08 Paquete de cola | ⏳ pendiente | |
 | F1-T09 Job import.run | ⏳ pendiente | |
 | F1-T10 Contratos HTTP y API de lectura | ⏳ pendiente | |
@@ -63,6 +63,14 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
     - Tests msw del header.
     - Probé 7 mutaciones y todas hacen fallar algún test.
   - **Nota de operación:** el SDK imprime "An error was encountered in a non-retryable streaming request." cuando R2 rechaza; es esperable.
+  - **Correcciones de `/revisar`:**
+    - `arrange` bloquea el aviso: dos intentos del job solapados no dejan dos portadas ni se bloquean entre sí. PGlite no puede probar la concurrencia; queda documentado.
+    - Test de rollback de `arrange`, con un trigger que falla a mitad.
+    - `checkArrangement` valida `sortOrder`.
+    - `BadDigest` se reconoce también por `Code`.
+    - Tests del sha256 en mayúsculas y del largo distinto con sha256.
+    - Se rompió el ciclo de módulos de los dobles (`testing/copy.ts`).
+    - Docs: contrato de repositorios, D3, ADR-0007 en orden y modelo de datos.
 - 2026-10-01: **F1-T07.** `ingestMedia` en core. Plan aprobado: partida en T07 (core) y T07b (adaptadores).
   - **Decisiones:**
     - Sin reintentos por archivo: el reintento es del job, y la deduplicación evita volver a subir.

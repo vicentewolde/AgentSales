@@ -23,11 +23,21 @@ export type NewMedia = Omit<MediaRecord, "id">;
 /** Posición y portada de un medio de un aviso. */
 export type MediaArrangement = { id: string; sortOrder: number; isCover: boolean };
 
+/** `media.sort_order` es `integer` (int4). */
+const MAX_SORT_ORDER = 2 ** 31 - 1;
+
 /**
- * Valida un `arrange` antes de tocar nada; la usan todas las implementaciones. Ids repetidos o
- * más de una portada son un bug de quien llama: `MEDIA_ARRANGE_INVALID`, no reintentable.
+ * Valida un `arrange` antes de tocar nada; la usan todas las implementaciones. Ids repetidos, más
+ * de una portada o un `sortOrder` que no es un entero entre 0 y el máximo de int4 son un bug de
+ * quien llama: `MEDIA_ARRANGE_INVALID`, no reintentable.
  */
 export function checkArrangement(items: readonly MediaArrangement[]): void {
+  const badOrder = items.find(
+    ({ sortOrder }) => !Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > MAX_SORT_ORDER,
+  );
+  if (badOrder !== undefined) {
+    throw new AppError("MEDIA_ARRANGE_INVALID", `Orden inválido: ${badOrder.sortOrder}`);
+  }
   if (new Set(items.map((item) => item.id)).size !== items.length) {
     throw new AppError("MEDIA_ARRANGE_INVALID", "Un medio aparece dos veces en el orden");
   }
@@ -42,8 +52,9 @@ export function checkArrangement(items: readonly MediaArrangement[]): void {
  * `storage_path` (spec F1 §4.5). Errores (`AppError`):
  * - `create` que choca con uno de esos únicos → `MEDIA_CONFLICT`, **reintentable**: dos intentos
  *   del job pueden solaparse, y el reintento lo encuentra con `listOriginals` o `findByStoragePath`;
- * - `arrange` con un id que no es original de ese aviso → `MEDIA_NOT_FOUND`, y con ids repetidos o
- *   más de una portada → `MEDIA_ARRANGE_INVALID`; en los dos casos, sin cambiar nada;
+ * - `arrange` con un id que no es original de ese aviso → `MEDIA_NOT_FOUND`, y con ids repetidos,
+ *   más de una portada o un `sortOrder` inválido → `MEDIA_ARRANGE_INVALID`; sin cambiar nada. En
+ *   Postgres, dos `arrange` del mismo aviso se serializan (bloqueo del aviso);
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
  */
 export interface MediaRepository {

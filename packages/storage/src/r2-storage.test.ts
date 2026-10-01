@@ -239,6 +239,39 @@ describe("putStream", () => {
       expect(await storage.get("x.mp4")).toEqual(data);
     });
 
+    it("un sha256 en mayúsculas se acepta y da el mismo ChecksumSHA256", async () => {
+      const checksums: (string | null)[] = [];
+      server.use(
+        http.put(`${ORIGIN}/*`, async ({ request }) => {
+          checksums.push(request.headers.get("x-amz-checksum-sha256"));
+          await request.arrayBuffer();
+          return new HttpResponse(null, { status: 200, headers: { ETag: '"etag"' } });
+        }),
+      );
+
+      await storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
+        contentType: "video/mp4",
+        contentLength: data.byteLength,
+        sha256: hex.toUpperCase(),
+      });
+
+      expect(checksums).toEqual([Buffer.from(hex, "hex").toString("base64")]);
+    });
+
+    it("con sha256, un largo distinto sigue siendo STORAGE_CONTENT_MISMATCH por el largo", async () => {
+      await expect(
+        storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
+          contentType: "video/mp4",
+          contentLength: data.byteLength + 1,
+          sha256: hex,
+        }),
+      ).rejects.toMatchObject({
+        code: "STORAGE_CONTENT_MISMATCH",
+        details: { expected: data.byteLength + 1, received: data.byteLength },
+      });
+      expect(objects.has("x.mp4")).toBe(false);
+    });
+
     it("un BadDigest de R2 es STORAGE_CONTENT_MISMATCH, no reintentable", async () => {
       server.use(
         http.put(`${ORIGIN}/*`, async ({ request }) => {

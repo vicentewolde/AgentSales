@@ -182,6 +182,38 @@ describe("repositorios Drizzle · lo que el puerto no muestra (PGlite)", () => {
     expect(isAppError(error) && error.code).toBe("MEDIA_NOT_FOUND");
   });
 
+  it("arrange es todo o nada: si una escritura falla a mitad, la portada anterior no se pierde", async () => {
+    const brokerId = (await repos.brokers.create(brokerData("arrange-atomico"))).id;
+    const listingId = (await repos.listings.create(newListing(brokerId, "P-ATOM"))).id;
+    const a = await repos.media.create(newMedia(brokerId, listingId, "atom-a", { sortOrder: 0 }));
+    const b = await repos.media.create(newMedia(brokerId, listingId, "atom-b", { sortOrder: 1 }));
+    await repos.media.arrange(listingId, [{ id: a.id, sortOrder: 0, isCover: true }]);
+    const before = await repos.media.listOriginals(listingId);
+    // Un trigger que falla al escribir el orden 99: la transacción ya desmarcó la portada de `a`.
+    await repos.db.execute(sql`
+      CREATE FUNCTION fail_on_99() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'falla simulada'; END $$ LANGUAGE plpgsql`);
+    await repos.db.execute(sql`
+      CREATE TRIGGER media_fail_99 BEFORE UPDATE ON media FOR EACH ROW
+      WHEN (NEW.sort_order = 99) EXECUTE FUNCTION fail_on_99()`);
+    try {
+      const error = await repos.media
+        .arrange(listingId, [
+          { id: b.id, sortOrder: 0, isCover: true },
+          { id: a.id, sortOrder: 99, isCover: false },
+        ])
+        .then(
+          () => undefined,
+          (caught: unknown) => caught,
+        );
+      expect(isAppError(error) && error.code).toBe("DB_QUERY_FAILED");
+      expect(await repos.media.listOriginals(listingId)).toEqual(before);
+    } finally {
+      await repos.db.execute(sql`DROP TRIGGER media_fail_99 ON media`);
+      await repos.db.execute(sql`DROP FUNCTION fail_on_99()`);
+    }
+  });
+
   it("un corredor con datos que no calzan → BROKER_ROW_INVALID, no un ZodError", async () => {
     await repos.brokers.create(brokerData("hashtags-rotos"));
     await repos.db.execute(

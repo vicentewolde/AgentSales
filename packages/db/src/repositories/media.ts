@@ -8,7 +8,7 @@ import {
 import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
-import { media } from "../schema.js";
+import { listings, media } from "../schema.js";
 
 /** Únicos de `media` (migración `0001`) que dan `MEDIA_CONFLICT`. */
 const CHECKSUM_UNIQUE = "media_original_listing_checksum_unique";
@@ -83,6 +83,14 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
       if (items.length === 0) return;
       await withDbErrors(() =>
         db.transaction(async (tx) => {
+          // Bloquea el aviso: dos `arrange` del mismo aviso (intentos del job solapados) se
+          // serializan. Sin esto, en READ COMMITTED cada uno desmarcaría solo las portadas ya
+          // confirmadas y podrían quedar dos, o un orden cruzado de filas daría un deadlock.
+          await tx
+            .select({ id: listings.id })
+            .from(listings)
+            .where(eq(listings.id, listingId))
+            .for("no key update");
           const ids = items.map((item) => item.id);
           const found = await tx
             .select({ id: media.id })
@@ -111,7 +119,10 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
               );
           }
           for (const { id, sortOrder, isCover } of items) {
-            await tx.update(media).set({ sortOrder, isCover }).where(eq(media.id, id));
+            await tx
+              .update(media)
+              .set({ sortOrder, isCover })
+              .where(and(eq(media.id, id), eq(media.listingId, listingId), isOriginal));
           }
         }),
       );

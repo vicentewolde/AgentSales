@@ -9,7 +9,8 @@ import type {
   ListingRepository,
   NewListing,
 } from "../ports/listing-repository.js";
-import type { InMemoryMediaRepository } from "./media.js";
+import type { MediaRecord } from "../ports/media-repository.js";
+import { structuredCopy } from "./copy.js";
 
 /** Ids legibles y deterministas para los tests (`broker-1`, `listing-2`…). */
 function idGenerator(prefix: string) {
@@ -26,9 +27,9 @@ export type InMemoryBrokerRepository = BrokerRepository & {
 export type InMemoryBrokerRepositoryOptions = {
   /**
    * Medios para validar `setLogo` como Postgres (que el medio exista, sea del corredor y no sea de
-   * un aviso). Sin ellos, `setLogo` no valida el medio.
+   * un aviso). Sin ellos, `setLogo` no valida el medio: solo sirve para tests que no lo ejercen.
    */
-  media?: Pick<InMemoryMediaRepository, "all">;
+  media?: { all(): Pick<MediaRecord, "id" | "brokerId" | "listingId">[] };
 };
 
 export function createInMemoryBrokerRepository(
@@ -199,16 +200,6 @@ export function createInMemoryImportRunRepository(): InMemoryImportRunRepository
       stored.set(id, { ...current, report: structuredCopy(report) });
     },
   };
-}
-
-/** Copia profunda de datos planos (JSON más fechas): lo guardado no se comparte con quien llama. */
-export function structuredCopy<T>(value: T): T {
-  if (value instanceof Date) return new Date(value.getTime()) as T;
-  if (Array.isArray(value)) return value.map(structuredCopy) as T;
-  if (typeof value !== "object" || value === null) return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, structuredCopy(item)]),
-  ) as T;
 }
 
 function copyData(data: BrokerData): BrokerData {

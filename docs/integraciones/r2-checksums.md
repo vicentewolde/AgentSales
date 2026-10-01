@@ -106,7 +106,7 @@ El script debe imprimir solo códigos y nombres de error, nunca credenciales ni 
 
 **Sí: mandar `ChecksumSHA256`, condicionado a que pase la prueba negativa (8.2) contra R2 real.**
 
-- Agregar un campo opcional a `PutStreamOptions` (por ejemplo `sha256Hex?: string`). En el adaptador convertirlo a base64 del digest crudo: `Buffer.from(hex, "hex").toString("base64")`, validando 64 caracteres hex. Pasarlo como `ChecksumSHA256` en el `PutObjectCommand`, junto con `ContentLength`.
+- Agregar un campo opcional a `PutStreamOptions` (por ejemplo `sha256Hex?: string`; se implementó como `sha256`). En el adaptador convertirlo a base64 del digest crudo: `Buffer.from(hex, "hex").toString("base64")`, validando 64 caracteres hex. Pasarlo como `ChecksumSHA256` en el `PutObjectCommand`, junto con `ContentLength`.
 - No pasar `ChecksumAlgorithm`. Mantener `requestChecksumCalculation: "WHEN_REQUIRED"` en el cliente de streams y `maxAttempts: 1`.
 - Mapear `BadDigest` (400) a un error con detalle claro ("el contenido subido no calza con el sha256"). **Decisión del plan de F1-T07 (se implementa en F1-T07b):** `STORAGE_CONTENT_MISMATCH`, no reintentable, el mismo código que un largo distinto; la ingesta lo trata como advertencia del archivo (respuesta a la pregunta 2). Si la prueba negativa falla (R2 acepta el objeto con checksum erróneo), **no** enviar el header y dejar la verificación a una lectura posterior, o aceptar la limitación documentada.
 - Cambia el contrato de `PutStreamOptions` (puerto de `core`): requiere actualizar `docs/01-arquitectura.md` y la línea de D3 del spec F1, más una línea de Seguimiento en ADR-0007, en el PR de F1-T07b (el plan de F1-T07 partió la tarea).
