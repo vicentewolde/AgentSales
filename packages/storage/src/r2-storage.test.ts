@@ -1,3 +1,4 @@
+import { AppError } from "@agentsales/core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -157,12 +158,15 @@ describe("putStream", () => {
   const data = Uint8Array.from({ length: 200 * 1024 }, (_, index) => index % 251);
 
   it("sube el contenido exacto con su Content-Type y Content-Length", async () => {
-    const seen: { contentLength: string | null; contentType: string | null }[] = [];
+    const seen: Record<string, string | null>[] = [];
     server.use(
       http.put(`${ORIGIN}/*`, async ({ request }) => {
         seen.push({
           contentLength: request.headers.get("content-length"),
           contentType: request.headers.get("content-type"),
+          // Sin el checksum por defecto del SDK: nada de `aws-chunked` ni CRC32 al final.
+          contentEncoding: request.headers.get("content-encoding"),
+          trailer: request.headers.get("x-amz-trailer"),
         });
         objects.set(keyOf(request), {
           body: new Uint8Array(await request.arrayBuffer()),
@@ -181,11 +185,20 @@ describe("putStream", () => {
       },
     );
 
-    expect(seen).toEqual([{ contentLength: String(data.byteLength), contentType: "video/mp4" }]);
+    expect(seen).toEqual([
+      {
+        contentLength: String(data.byteLength),
+        contentType: "video/mp4",
+        contentEncoding: null,
+        trailer: null,
+      },
+    ]);
     expect(await storage.get("brokers/b1/listings/l1/original/video.mp4")).toEqual(data);
   });
 
-  it("un 5xx es STORAGE_UNAVAILABLE con un solo intento (el SDK no reintenta un stream)", async () => {
+  // Comportamiento, no configuración: el SDK ya no reintenta un cuerpo que es stream, así que este
+  // test pasa con o sin `maxAttempts: 1` (que es defensivo). Lo que fija es que hay un solo intento.
+  it("un 5xx es STORAGE_UNAVAILABLE con un solo intento", async () => {
     let attempts = 0;
     server.use(
       http.put(`${ORIGIN}/*`, () => {
@@ -218,7 +231,7 @@ describe("putStream", () => {
     ["más", data.byteLength - 1],
     ["menos", data.byteLength + 1],
   ])(
-    "un stream con %s bytes que contentLength es STORAGE_ERROR, no reintentable",
+    "un stream con %s bytes que contentLength es STORAGE_ERROR y no guarda nada",
     async (_, length) => {
       await expect(
         storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
@@ -228,23 +241,44 @@ describe("putStream", () => {
       ).rejects.toMatchObject({
         code: "STORAGE_ERROR",
         retriable: false,
-        details: { path: "x.mp4", expected: length },
+        details: { path: "x.mp4", expected: length, received: data.byteLength },
       });
+      expect(objects.has("x.mp4")).toBe(false);
     },
   );
 
-  it("un error al leer el archivo de origen rechaza la promesa, sin errores sin manejar", async () => {
-    async function* broken(): AsyncGenerator<Uint8Array> {
+  it("un AppError del lector de origen pasa tal cual, con su código y si es reintentable", async () => {
+    async function* vanished(): AsyncGenerator<Uint8Array> {
       yield data.subarray(0, 1024);
-      throw new Error("EIO: no se pudo leer el disco");
+      throw new AppError("MEDIA_FILE_UNAVAILABLE", "El archivo ya no está", { retriable: true });
     }
     await expect(
-      storage.putStream("x.mp4", broken(), {
+      storage.putStream("x.mp4", vanished(), {
         contentType: "video/mp4",
         contentLength: data.byteLength,
       }),
-    ).rejects.toMatchObject({ code: "STORAGE_ERROR", retriable: false });
+    ).rejects.toMatchObject({ code: "MEDIA_FILE_UNAVAILABLE", retriable: true });
   });
+
+  it.each([Number.NaN, -1, 1.5])(
+    "un contentLength inválido (%s) es STORAGE_ERROR, sin subir nada",
+    async (length) => {
+      let requests = 0;
+      server.use(
+        http.put(`${ORIGIN}/*`, () => {
+          requests++;
+          return new HttpResponse(null, { status: 200 });
+        }),
+      );
+      await expect(
+        storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
+          contentType: "video/mp4",
+          contentLength: length,
+        }),
+      ).rejects.toMatchObject({ code: "STORAGE_ERROR", retriable: false });
+      expect(requests).toBe(0);
+    },
+  );
 
   it("los demás métodos siguen reintentando (cliente aparte para los streams)", async () => {
     let attempts = 0;

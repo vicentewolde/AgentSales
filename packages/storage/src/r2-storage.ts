@@ -1,5 +1,5 @@
 import { Readable } from "node:stream";
-import { AppError, type MediaStorage, type StoredObjectInfo } from "@agentsales/core";
+import { AppError, isAppError, type MediaStorage, type StoredObjectInfo } from "@agentsales/core";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -64,7 +64,8 @@ function toAppError(error: unknown, path: string): AppError {
  * **termina sin lanzar**: un error lanzado aquí no corta la petición (queda colgada) y sale como
  * evento `error` del `Readable`. Quien llama aborta la petición y lanza el `STORAGE_ERROR`:
  * - más o menos bytes que `contentLength`: el archivo cambió mientras se subía;
- * - un error al leerlo (disco, archivo borrado).
+ * - un error al leerlo: un `AppError` del lector (por ejemplo, de la ingesta de medios) pasa tal
+ *   cual, con su código y si es reintentable; cualquier otro error se envuelve en `STORAGE_ERROR`.
  */
 async function* counted(
   body: AsyncIterable<Uint8Array>,
@@ -91,15 +92,20 @@ async function* counted(
       yield chunk;
     }
   } catch (error) {
-    onFailure(
-      new AppError("STORAGE_ERROR", `No se pudo leer el archivo para subir ${path}`, {
-        details: { path },
-        cause: error,
-      }),
-    );
+    onFailure(readFailure(error, path));
     return;
   }
   if (total !== expected) mismatch();
+}
+
+/** Error al leer el archivo de origen: un `AppError` del lector pasa tal cual. */
+function readFailure(error: unknown, path: string): AppError {
+  return isAppError(error)
+    ? error
+    : new AppError("STORAGE_ERROR", `No se pudo leer el archivo para subir ${path}`, {
+        details: { path },
+        cause: error,
+      });
 }
 
 /** Adaptador de `MediaStorage` para Cloudflare R2 vía la API S3 (ADR-0007). */
@@ -115,12 +121,13 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
   };
   const client = new S3Client(clientConfig);
   // Cliente aparte para streams:
-  // - un solo intento: el SDK no puede rebobinar el cuerpo, así que reintentar mandaría un cuerpo
-  //   vacío o cortado. El reintento es del job, que vuelve a abrir el archivo (spec F1, D3);
+  // - un solo intento: el SDK no puede rebobinar el cuerpo. Hoy el SDK ya no reintenta un cuerpo
+  //   que es stream, así que `maxAttempts: 1` es **defensivo**, por si eso cambia en otra versión.
+  //   El reintento es del job, que vuelve a abrir el archivo (spec F1, D3);
   // - sin checksum por defecto: con él, el SDK manda el stream en `aws-chunked` con un CRC32 al
   //   final y sin `Content-Length`, un formato del que no queremos depender en R2. Queda un PUT
-  //   normal con `Content-Length`; la integridad en tránsito la da TLS, y el sha256 lo calcula la
-  //   ingesta (F1-T06).
+  //   normal con `Content-Length`. La integridad en tránsito la da TLS; el contenido subido **no**
+  //   se verifica contra el sha256 de la ingesta (se decide en F1-T07).
   const streamClient = new S3Client({
     ...clientConfig,
     maxAttempts: 1,
@@ -145,6 +152,16 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
     },
 
     async putStream(path, body, { contentType, contentLength }) {
+      // Un largo inválido es un bug de quien llama: sin esto saldría como reintentable.
+      if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
+        throw new AppError(
+          "STORAGE_ERROR",
+          `contentLength inválido para ${path}: ${contentLength}`,
+          {
+            details: { path, contentLength },
+          },
+        );
+      }
       let failure: AppError | undefined;
       // Un problema del archivo de origen no corta la petición por sí solo: se aborta a mano.
       const abort = new AbortController();
@@ -154,9 +171,12 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
           abort.abort(error);
         }),
       );
-      // Red de seguridad: un error del stream de origen (por ejemplo, el disco) nunca queda sin
-      // escuchar; la petición falla igual y `send` lo traduce.
-      stream.on("error", () => {});
+      // Red de seguridad: `counted` no lanza, pero si el `Readable` igual fallara, se registra el
+      // error y se aborta la petición (el pipe no lo propaga y quedaría colgada).
+      stream.on("error", (error) => {
+        failure ??= readFailure(error, path);
+        abort.abort(failure);
+      });
       try {
         await send(path, async () => {
           await streamClient.send(

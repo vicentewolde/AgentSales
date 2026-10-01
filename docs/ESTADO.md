@@ -51,6 +51,14 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
   - En R2 es un solo `PutObject` con `Content-Length`, sin `lib-storage`, desde un cliente S3 aparte sin reintentos y sin el checksum por defecto del SDK. Con ese checksum, el stream viaja en `aws-chunked` y sin `Content-Length` (lo verifiqué con msw).
   - **Bug encontrado y corregido antes del commit:** si el stream trae otro largo o falla al leerse, el generador avisa y termina **sin lanzar**, y `putStream` aborta la petición. Lanzar dejaba la petición colgada y un `error` sin escuchar, que en el worker tumbaría el proceso.
   - `storage:check` sube 1 MB en streaming contra R2: OK.
+  - Correcciones de `/revisar`:
+    - Un `AppError` del lector de origen pasa tal cual.
+    - El `error` del stream aborta la petición.
+    - `contentLength` validado.
+    - `maxAttempts: 1` es defensivo: verifiqué que el SDK ya no reintenta streams.
+    - D3 corregido, más una línea en ADR-0007.
+    - `hookTimeout` de 30 s para PGlite bajo carga.
+    - `ChecksumSHA256` y los reintentos por archivo se deciden en T07.
 - 2026-10-01: **F1-T04b.** Repositorios Drizzle de brokers, listings e import_runs.
   - Los conflictos de los únicos son `*_CONFLICT`, reintentables.
   - `price_amount` se escribe con `toFixed(2)`.
