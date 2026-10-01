@@ -57,7 +57,7 @@ export type {
   ListingRepository,
   NewListing,
 } from "./ports/listing-repository.js";
-export type { MediaStorage, StoredObjectInfo } from "./ports/media-storage.js";
+export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
 export {
   ACTIVE_PUBLICATION_STATUSES,
   canTransition,

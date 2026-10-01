@@ -306,6 +306,8 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 ```ts
 interface MediaStorage {
   put(path: string, body: Uint8Array, contentType: string): Promise<void>;   // sobrescribe
+  putStream(path: string, body: AsyncIterable<Uint8Array>,
+            options: { contentType: string; contentLength: number }): Promise<void>; // sobrescribe
   get(path: string): Promise<Uint8Array>;                                     // STORAGE_NOT_FOUND si no existe
   head(path: string): Promise<{ size: number; contentType: string | undefined } | null>; // null si no existe
   delete(path: string): Promise<void>;                                        // idempotente
@@ -315,7 +317,13 @@ interface MediaStorage {
 
 - Implementación: `packages/storage` (Cloudflare R2 vía API S3, ADR-0007).
 - Errores como `AppError`: `STORAGE_NOT_FOUND`, `STORAGE_UNAVAILABLE` (reintentable) y `STORAGE_ERROR`.
-- Hoy trabaja con archivos completos en memoria; F1 lo amplía con streams para videos grandes.
+- `put` trabaja con el archivo completo en memoria. `putStream` lo sube **en streaming, en un solo PUT** (no multiparte), para videos de hasta `MAX_VIDEO_MB`, con tipos de ES2023 y nada de Node en core (spec F1, D3):
+  - Es un solo `PutObject` con `Content-Length`, sin `@aws-sdk/lib-storage`, porque R2 acepta hasta unos 5 GB en un PUT.
+  - Usa un cliente S3 aparte, **sin reintentos**: un stream no se puede rebobinar. Reintenta el job, que vuelve a abrir el archivo. La versión actual del SDK ya no reintenta streams, así que `maxAttempts: 1` es defensivo.
+  - Sin el checksum por defecto del SDK: con él, el stream viaja en `aws-chunked`, con un CRC32 al final y sin `Content-Length`. La integridad en tránsito la da TLS. El contenido subido **no** se verifica contra el sha256 de la ingesta; se decide en F1-T07.
+  - Si el stream trae más o menos bytes que `contentLength`, es `STORAGE_ERROR` no reintentable: se aborta la petición, sin dejarla colgada. Un `contentLength` inválido también.
+  - Si falla la lectura del origen, un `AppError` del lector pasa tal cual, con su código y si es reintentable; cualquier otro error es `STORAGE_ERROR`.
+  - `pnpm storage:check` lo verifica contra R2 (1 MB en trozos de 64 KB).
 
 ## Contrato del proveedor de IA
 

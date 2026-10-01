@@ -14,5 +14,8 @@ export default defineConfig({
   },
   test: {
     include: ["{apps,packages}/*/{src,test}/**/*.test.{ts,tsx}"],
+    // Levantar PGlite (Postgres en WASM) y aplicar las migraciones en un `beforeAll` tarda 1–2 s, y
+    // con todos los workers en paralelo puede pasar los 10 s por defecto (visto en una revisión).
+    hookTimeout: 30_000,
   },
 });

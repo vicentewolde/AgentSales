@@ -230,8 +230,8 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **D3 · Streams sin `@aws-sdk/lib-storage`:**
   - `MediaStorage.putStream(path, body: AsyncIterable<Uint8Array>, { contentType, contentLength })`, con tipos de ES2023 y sin tipos de Node en `core`. El adaptador usa `Readable.from(body)`.
   - R2 acepta un `PutObject` de un solo envío de hasta ~5 GB con `ContentLength` conocido, así que para `MAX_VIDEO_MB = 300` no hace falta la subida multiparte de `lib-storage`.
-  - `storage:check` verifica que R2 acepte el checksum que el SDK agrega por defecto a los streams. Si no, `requestChecksumCalculation: "WHEN_REQUIRED"`.
-  - Un stream no se puede reintentar dentro del SDK, así que el reintento es el del job, que vuelve a abrir el archivo.
+  - **Checksum (decidido en F1-T05):** el cliente de streams usa `requestChecksumCalculation: "WHEN_REQUIRED"`. Con el valor por defecto, el SDK manda el stream en `aws-chunked`, con un CRC32 al final y **sin `Content-Length`** (verificado con msw). No queremos depender de ese formato en R2, así que no se llegó a probar contra R2. Queda un PUT normal con `Content-Length`, que `storage:check` verifica contra R2 (1 MB en streaming, mismo sha256). La integridad en tránsito la da TLS. El contenido subido no se verifica contra el sha256 de la ingesta: mandarlo como `ChecksumSHA256` se decide en el plan de T07.
+  - Un stream no se puede reintentar dentro del SDK, así que el reintento es el del job, que vuelve a abrir el archivo. El cliente de streams usa `maxAttempts: 1` como defensa: la versión actual del SDK ya no reintenta un cuerpo que es stream.
   - `getStream` se agrega en F2, cuando ffmpeg lo necesite.
 - **D4 · Pruebas de los repositorios Drizzle con PGlite:** la CI no tiene base de datos y los tests no tocan Neon. Para que las garantías de idempotencia (`ON CONFLICT`, `NULLS NOT DISTINCT`, el único parcial) tengan prueba automática, se usa **PGlite** (Postgres en WASM) como `devDependency` solo de `packages/db`: aplica las migraciones y prueba los repositorios en la CI. Se descartó probar solo los mapeos y confiar en la demo contra Neon.
 - **D5 · Bundle del panel (660 kB):** queda como deuda hasta F7. El panel se sirve en local, así que el tamaño no afecta al operador. F1-T13 solo carga las páginas de forma diferida con `React.lazy` desde `routes.tsx`, lo que es casi gratis.
@@ -332,6 +332,10 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Pasa el listing a `ready` o `draft` según §4.2, con `ListingRepository.promoteToReady(id)`: pasa de `draft` a `ready` y nunca desde otro estado, así no pisa `paused`, `archived`, `active` ni `closed`. Usa `status` de `ImportedRow` para la advertencia.
   - Asigna el logo con `BrokerRepository.setLogo(id, mediaId)`.
   - Suma `media` (opcional) a `importReportSchema` y las advertencias de medios a `rows[].warnings`.
+  - **A decidir en el plan:**
+    - si `putStream` manda el sha256 como `ChecksumSHA256`, para que R2 verifique el contenido. Cambia el contrato de `PutStreamOptions`, y el subagente `integraciones` tiene que confirmar antes que R2 lo acepta;
+    - si `ingestMedia` reintenta por archivo o le deja todo al job. La deduplicación ya evita volver a subir lo que terminó.
+  - El doble en memoria de `MediaStorage` (`@agentsales/core/testing`) lee el iterable completo y da `STORAGE_ERROR` si el largo no calza con `contentLength`, igual que R2.
   - Puerto `MediaRepository`, con implementaciones Drizzle y en memoria.
 - **Hecho cuando:**
   - [ ] Test con un `MediaStorage` y un `MediaFileSource` en memoria: suben 4 archivos válidos con su tipo, y el inválido va al reporte
@@ -469,3 +473,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-09-30 | Desde F1-T03: `ListingSheetInput` y `RawBrokerSheet` en core (entrada de `importListings`, con `headers`); `RawListingRow` pasa a `Readonly<Record<string, unknown>>` y core exporta `foldText`; el lector tiene un tope de 1000 filas y los errores `IMPORT_FILE_NOT_FOUND` / `IMPORT_FILE_INVALID`; la fixture de Google Sheets es una simulación |
 | 2026-09-30 | Plan de F1-T04, aprobado por el operador: T04 se parte en T04 (core: caso de uso, puertos, dobles y reporte) y T04b (repositorios Drizzle con PGlite). `source_hash` sobre `{ core, attributes, control }`; una propiedad nueva queda en `draft` y T07 la pasa a `ready`; `--broker` gana sobre el slug de la hoja |
 | 2026-09-30 | Desde la revisión de F1-T04: `dry_run`, el origen y el `--broker` salen del run (`importRunInputSchema` en `import_runs.input`); los conflictos de `create` son reintentables (`*_CONFLICT`); `report` pasa a admitir `null` (migración `0002` en T04b); el reporte suma `listingId` y `warnings` por fila, y `headers` puede ser `null`; métodos anotados para T07 (`promoteToReady`, `setLogo`), T09 (estado del run), T10 (`listingSchema`, `list`/`get`) y T11 (`list` de runs) |
+| 2026-10-01 | Desde F1-T05: D3 queda con el checksum por defecto del SDK desactivado en el cliente de streams (`WHEN_REQUIRED`), porque mandaba `aws-chunked` sin `Content-Length`; `maxAttempts: 1` defensivo. T07 decide `ChecksumSHA256` y la política de reintentos por archivo |
