@@ -57,6 +57,14 @@ export type {
   ListingRepository,
   NewListing,
 } from "./ports/listing-repository.js";
+export {
+  MEDIA_SKIP_REASONS,
+  type MediaFile,
+  type MediaFileSource,
+  type MediaFolderListing,
+  type MediaSkipReason,
+  type SkippedMediaFile,
+} from "./ports/media-file-source.js";
 export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
 export {
   ACTIVE_PUBLICATION_STATUSES,

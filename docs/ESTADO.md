@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T05 · Almacenamiento con streams
-**Siguiente paso:** `/tarea F1-T06` (lectores de medios) o F1-T08 (paquete de cola). T07 necesita T06
+**Última tarea terminada:** F1-T06 · Lectores de medios
+**Siguiente paso:** `/tarea F1-T07` (`ingestMedia`) o F1-T08 (paquete de cola)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -15,8 +15,8 @@
 | F1-T03 Lector de Excel | ✅ terminada | #15 |
 | F1-T04 Caso de uso importListings | ✅ terminada | #16 |
 | F1-T04b Repositorios Drizzle de brokers, listings e import_runs | ✅ terminada | #17 |
-| F1-T05 Almacenamiento con streams | ✅ terminada | |
-| F1-T06 Lectores de medios | ⏳ pendiente | |
+| F1-T05 Almacenamiento con streams | ✅ terminada | #18 |
+| F1-T06 Lectores de medios | ✅ terminada | #19 |
 | F1-T07 Caso de uso ingestMedia | ⏳ pendiente | |
 | F1-T08 Paquete de cola | ⏳ pendiente | |
 | F1-T09 Job import.run | ⏳ pendiente | |
@@ -42,11 +42,35 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **F1-T12:** la CLI normaliza `--broker` con `slugify` (hoy `Mi-Corredor` da `BROKER_INVALID`).
-- **T11 / F7:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un zip de 10 MB podría descomprimirse en mucho más (zip bomb). Es tolerable en local; con subidas públicas (`POST /imports` multipart), limitar el tamaño descomprimido.
+- **T11 / F7:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un xlsx de 10 MB (que es un zip) podría descomprimirse en mucho más dentro de exceljs. El zip de medios ya tiene topes (T06: 4 GB y `validateEntrySizes`). Es tolerable en local; con subidas públicas (`POST /imports` multipart), limitar el cuerpo y el tamaño descomprimido del xlsx.
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
+- 2026-10-01: **F1-T06.** Lectores de medios en `packages/importers`.
+  - **Puerto `MediaFileSource` en core.** Plan aprobado con tres cambios al spec:
+    - `list` devuelve `{ files, skipped }`, con `MEDIA_SKIP_REASONS`;
+    - `folder` es relativo a la raíz del adaptador y no puede salir de ella (`MEDIA_FOLDER_INVALID`), porque `carpeta_medios` viene del Excel;
+    - el tope de video lo aplica el adaptador, sin hashear.
+  - **`createMediaFolderSource`:** firmas propias, sin dependencias. El sha256 se calcula en streaming, y no sigue enlaces simbólicos (`O_NOFOLLOW`).
+  - **`extractZip`** con **yauzl 3.4.0** (dependencia nueva del spec, más `@types/yauzl`):
+    - Topes de entradas y de bytes, y `validateEntrySizes` contra zip bombs.
+    - Un zip-slip rechaza el zip completo.
+    - Omite los enlaces simbólicos.
+    - Código nuevo `IMPORT_EXTRACT_FAILED`, para cuando el problema es el disco y no el zip.
+  - **Tests:** los zips se arman con un generador propio (`test/zip-builder.ts`, con `stored` y `deflate`, y nombres hostiles a mano). Probé con mutaciones que fallan si se quita cada protección: validación de tamaños, enlaces, tope de bytes, raíz de la carpeta y tope de video.
+  - **Pendiente para T09:** desenvolver un zip con una sola carpeta raíz (anotado en §4.3 del spec).
+  - **Correcciones de `/revisar`:**
+    - La carpeta tampoco sale de la raíz por un enlace simbólico (`realpath`).
+    - Un zip con nombres `./…` ya no extrae 0 archivos, y `extractZip` cuenta las entradas omitidas (`skipped`).
+    - El test de la contraseña ahora ejerce la comprobación propia.
+    - `MediaFile.extension` es canónica.
+    - Nombres repetidos o en conflicto se detectan antes de escribir, y un destino sucio es `IMPORT_EXTRACT_FAILED`.
+    - Desempate binario del orden.
+    - Un `EIO` en un archivo es `MEDIA_FOLDER_UNREADABLE`.
+    - Marcas `hevm` y `hevs`, y AVIF y audio no son video.
+    - Test de que `open()` cortado cierra el archivo.
+    - T07 anotado en el spec: los fallos de un archivo son advertencias, y el doble de `MediaFileSource`.
 - 2026-10-01: **F1-T05.** `MediaStorage.putStream`.
   - En R2 es un solo `PutObject` con `Content-Length`, sin `lib-storage`, desde un cliente S3 aparte sin reintentos y sin el checksum por defecto del SDK. Con ese checksum, el stream viaja en `aws-chunked` y sin `Content-Length` (lo verifiqué con msw).
   - **Bug encontrado y corregido antes del commit:** si el stream trae otro largo o falla al leerse, el generador avisa y termina **sin lanzar**, y `putStream` aborta la petición. Lanzar dejaba la petición colgada y un `error` sin escuchar, que en el worker tumbaría el proceso.

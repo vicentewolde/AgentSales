@@ -15,9 +15,11 @@
   },
   "dependencies": {
     "@agentsales/core": "workspace:*",
-    "exceljs": "4.4.0"
+    "exceljs": "4.4.0",
+    "yauzl": "3.4.0"
   },
   "devDependencies": {
-    "@agentsales/db": "workspace:*"
+    "@agentsales/db": "workspace:*",
+    "@types/yauzl": "3.4.0"
   }
 }
