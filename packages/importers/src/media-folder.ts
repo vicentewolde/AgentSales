@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { type FileHandle, open, readdir } from "node:fs/promises";
+import { type FileHandle, open, readdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   AppError,
@@ -27,8 +27,24 @@ const isIgnored = (name: string) => name.startsWith(".") || IGNORED_NAMES.has(na
 /** Orden natural del spec (F1 §4.3): `foto2` antes de `foto10`, sin distinguir mayúsculas. */
 const collator = new Intl.Collator("es", { numeric: true, sensitivity: "base" });
 
+/**
+ * Con empate (`Foto1.jpg` y `foto1.jpg`), la comparación binaria decide. Así el orden, y con él
+ * la portada por defecto, no depende del orden en que el sistema de archivos lista la carpeta.
+ */
+export const naturalOrder = (a: string, b: string) =>
+  collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
+
+/** Errores de un archivo que se omiten con `unreadable`; los demás son de la carpeta o el disco. */
+const UNREADABLE_CODES = new Set(["EACCES", "EPERM", "ENOENT"]);
+
 const errorCode = (error: unknown) =>
   error instanceof Error && "code" in error ? String(error.code) : undefined;
+
+/** `true` si `path` queda estrictamente dentro de `base` (no es la misma carpeta). */
+function isInside(base: string, path: string): boolean {
+  const rel = relative(base, path);
+  return !!rel && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
 
 /**
  * `MediaFileSource` sobre una carpeta local (la de `--media` o el zip ya extraído). Los mensajes
@@ -40,34 +56,51 @@ export function createMediaFolderSource(
 ): MediaFileSource {
   const root = resolve(rootDir);
 
-  /** Carpeta absoluta, verificando que quede dentro de la raíz (`carpeta_medios` viene del Excel). */
-  function resolveFolder(folder: string): { dir: string; prefix: string } {
+  const invalidFolder = (folder: string) =>
+    new AppError("MEDIA_FOLDER_INVALID", `La carpeta de medios "${folder}" no es válida`, {
+      details: { folder },
+    });
+
+  const folderError = (folder: string, error: unknown) => {
+    const code = errorCode(error);
+    return code === "ENOENT" || code === "ENOTDIR"
+      ? new AppError("MEDIA_FOLDER_NOT_FOUND", `No existe la carpeta de medios "${folder}"`, {
+          details: { folder },
+          cause: error,
+        })
+      : new AppError(
+          "MEDIA_FOLDER_UNREADABLE",
+          `No se pudo leer la carpeta de medios "${folder}"`,
+          { details: { folder }, cause: error },
+        );
+  };
+
+  /**
+   * Carpeta real, verificando que quede dentro de la raíz (`carpeta_medios` viene del Excel):
+   * primero en el texto de la ruta y después con `realpath`, porque `O_NOFOLLOW` solo protege el
+   * último tramo y una subcarpeta enlazada (`root/link -> ../afuera`) sacaría la lectura de la raíz.
+   */
+  async function resolveFolder(folder: string): Promise<{ dir: string; prefix: string }> {
     const dir = resolve(root, folder);
-    const rel = relative(root, dir);
-    if (!folder.trim() || !rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-      throw new AppError("MEDIA_FOLDER_INVALID", `La carpeta de medios "${folder}" no es válida`, {
-        details: { folder },
-      });
+    if (!folder.trim() || !isInside(root, dir)) throw invalidFolder(folder);
+
+    let realRoot: string;
+    let realDir: string;
+    try {
+      realRoot = await realpath(root);
+      realDir = await realpath(dir);
+    } catch (error) {
+      throw folderError(folder, error);
     }
-    return { dir, prefix: rel.split(sep).join("/") };
+    if (!isInside(realRoot, realDir)) throw invalidFolder(folder);
+    return { dir: realDir, prefix: relative(root, dir).split(sep).join("/") };
   }
 
   async function readFolder(dir: string, folder: string) {
     try {
       return await readdir(dir, { withFileTypes: true });
     } catch (error) {
-      const code = errorCode(error);
-      if (code === "ENOENT" || code === "ENOTDIR") {
-        throw new AppError("MEDIA_FOLDER_NOT_FOUND", `No existe la carpeta de medios "${folder}"`, {
-          details: { folder },
-          cause: error,
-        });
-      }
-      throw new AppError(
-        "MEDIA_FOLDER_UNREADABLE",
-        `No se pudo leer la carpeta de medios "${folder}"`,
-        { details: { folder }, cause: error },
-      );
+      throw folderError(folder, error);
     }
   }
 
@@ -87,8 +120,16 @@ export function createMediaFolderSource(
     }
   }
 
-  /** Revisa tipo, tamaño y firma, y calcula el sha256 en streaming. */
-  async function inspect(path: string, relPath: string): Promise<MediaFile | SkippedMediaFile> {
+  /**
+   * Revisa tipo, tamaño y firma, y calcula el sha256 en streaming. Sin permiso, o si el archivo
+   * desapareció, lo omite; otro error (`EIO`, `EMFILE`) es del disco y lanza
+   * `MEDIA_FOLDER_UNREADABLE` en vez de esconderse como un archivo omitido.
+   */
+  async function inspect(
+    path: string,
+    relPath: string,
+    folder: string,
+  ): Promise<MediaFile | SkippedMediaFile> {
     const type = mediaTypeOf(relPath);
     if (!type) return { relPath, reason: "unsupported_type" };
 
@@ -118,13 +159,20 @@ export function createMediaFolderSource(
         relPath,
         kind: type.kind,
         mime: type.mime,
+        extension: type.extension,
         bytes,
         sha256: hash.digest("hex"),
         open: () => openFile(path, relPath),
       };
     } catch (error) {
-      // ELOOP: era un enlace simbólico (O_NOFOLLOW); el resto, permisos o errores de disco.
-      return { relPath, reason: errorCode(error) === "ELOOP" ? "not_a_file" : "unreadable" };
+      const code = errorCode(error);
+      // ELOOP: lo cambiaron por un enlace simbólico después del listado (O_NOFOLLOW).
+      if (code === "ELOOP") return { relPath, reason: "not_a_file" };
+      if (code && UNREADABLE_CODES.has(code)) return { relPath, reason: "unreadable" };
+      throw new AppError("MEDIA_FOLDER_UNREADABLE", `No se pudo leer ${relPath}`, {
+        details: { folder, relPath },
+        cause: error,
+      });
     } finally {
       await handle?.close().catch(() => undefined);
     }
@@ -132,17 +180,17 @@ export function createMediaFolderSource(
 
   return {
     async list(folder) {
-      const { dir, prefix } = resolveFolder(folder);
+      const { dir, prefix } = await resolveFolder(folder);
       const entries = (await readFolder(dir, folder))
         .filter((entry) => !isIgnored(entry.name))
-        .sort((a, b) => collator.compare(a.name, b.name));
+        .sort((a, b) => naturalOrder(a.name, b.name));
 
       const listing: MediaFolderListing = { files: [], skipped: [] };
       for (const entry of entries) {
         const relPath = `${prefix}/${entry.name}`;
         // `readdir` no sigue enlaces: un enlace simbólico no es `isFile()`.
         const result = entry.isFile()
-          ? await inspect(join(dir, entry.name), relPath)
+          ? await inspect(join(dir, entry.name), relPath, folder)
           : ({ relPath, reason: "not_a_file" } as const);
         if ("reason" in result) listing.skipped.push(result);
         else listing.files.push(result);

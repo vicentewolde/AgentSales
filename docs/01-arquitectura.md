@@ -80,7 +80,7 @@ agentsales/
 │   ├── core/         Dominio, esquemas zod, estados, casos de uso, puertos
 │   ├── db/           Esquema Drizzle, migraciones y (desde F1) repositorios
 │   ├── storage/      Archivos en Cloudflare R2 (API S3): subir, leer, borrar, URLs prefirmadas
-│   ├── importers/    xlsx, google-sheets, carpetas de medios
+│   ├── importers/    xlsx, google-sheets, carpetas de medios y zip
 │   ├── llm/          Proveedores: claude-cli, anthropic-api, fake
 │   ├── media/        Procesamiento de imagen/video y render de plantillas
 │   ├── templates/    Plantillas HTML/CSS de posts (portada, ficha, etc.)
@@ -284,7 +284,10 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 - **`createMediaFolderSource(rootDir, { maxVideoBytes })`** implementa `MediaFileSource` (core). `list(folder)` recibe la carpeta **relativa** a la raíz (`carpeta_medios`, `id_propiedad` o `_marca`) y devuelve `{ files, skipped }`.
   - **Carpeta:**
     - Si sale de la raíz o viene vacía, `MEDIA_FOLDER_INVALID`: `carpeta_medios` viene del Excel.
-    - Si no existe, `MEDIA_FOLDER_NOT_FOUND`; si no se puede leer, `MEDIA_FOLDER_UNREADABLE`.
+      - Se verifica en el texto de la ruta y después con `realpath`, así una carpeta enlazada (`root/link -> ../afuera`) tampoco sale.
+      - Un enlace que apunta dentro de la raíz sí vale.
+    - Si no existe, `MEDIA_FOLDER_NOT_FOUND`.
+    - Si no se puede leer, o el disco falla con un archivo (`EIO`, `EMFILE`), `MEDIA_FOLDER_UNREADABLE`. Un archivo sin permiso, o que desapareció, solo se omite (`unreadable`).
     - Ninguno de los tres es reintentable.
   - **Archivos:**
     - No recorre subcarpetas ni sigue enlaces simbólicos (`O_NOFOLLOW`).
@@ -292,21 +295,24 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
   - **Tipo:**
     - Se decide por la extensión, sin mayúsculas: jpg, jpeg, png, webp, heic, mp4 y mov.
     - Se verifica con la firma de los primeros 16 bytes.
-    - HEIC, mp4 y mov comparten la caja `ftyp`, y se distinguen por la marca HEIF.
+    - HEIC, mp4 y mov comparten la caja `ftyp`. Se distinguen por la marca: las de HEIF son HEIC, las de AVIF y audio (`avif`, `M4A `…) no son video, y cualquier otra es video.
+    - `extension` es la canónica (`jpeg` → `jpg`), para la clave en R2.
   - **Omitidos:** cada archivo omitido va a `skipped` con su motivo (`MEDIA_SKIP_REASONS`). Un video sobre `maxVideoBytes` se omite sin calcular su hash.
   - **Aceptados:**
-    - El sha256 se calcula en streaming, y el orden es natural (`Intl.Collator("es", { numeric: true })`).
+    - El sha256 se calcula en streaming.
+    - El orden es natural (`naturalOrder`: `Intl.Collator("es", { numeric: true })`). Con empate, decide la comparación binaria, para no depender del orden del sistema de archivos.
     - `open()` vuelve a leer el archivo, y un fallo es `MEDIA_FILE_UNREADABLE`, que `putStream` deja pasar.
     - Si el archivo cambia entre `list` y `open`, `putStream` detecta el cambio de largo, pero no un contenido distinto del mismo largo (`ChecksumSHA256`: T07).
 - **`extractZip(zipPath, destDir, { maxEntries, maxTotalBytes })`**, con yauzl, entrada por entrada:
   - **Topes:** 2000 entradas (leídas del directorio central, antes de escribir) y 4 GB descomprimidos. Los bytes se suman con lo declarado antes de escribir cada entrada, y `validateEntrySizes` corta si una entrada trae más de lo que declara.
-  - **Zip-slip:** yauzl rechaza los nombres absolutos o con `..` (también con `\`), y además se verifica que el destino quede dentro de `destDir`. Un zip con una entrada así se rechaza completo.
-  - **Se omiten** los enlaces simbólicos y otras entradas especiales, `__MACOSX/` y los ocultos.
+  - **Zip-slip:** yauzl rechaza los nombres absolutos o con `..` (también con `\`), y además `entryTargetPath` verifica que el destino quede dentro de `destDir`, antes de decidir si la entrada se omite. Un zip con una entrada así se rechaza completo.
+  - **Se omiten**, y se cuentan en `skipped`: los enlaces simbólicos y otras entradas especiales, `__MACOSX/` y los ocultos. `.` y `..` no cuentan como ocultos: `./p/foto.jpg` se extrae.
+  - **Conflictos del propio zip:** se detectan antes de escribir, sin distinguir mayúsculas. Son nombres repetidos, o un archivo y una carpeta con el mismo nombre.
   - **Escritura:** con `wx`, así que no pisa archivos ni escribe a través de un enlace.
   - **Errores:**
     - `IMPORT_FILE_NOT_FOUND`;
-    - `IMPORT_FILE_INVALID`: corrupto, cifrado, tope superado, ruta hostil o entradas repetidas;
-    - `IMPORT_EXTRACT_FAILED`: el disco.
+    - `IMPORT_FILE_INVALID`: no es zip, corrupto, cifrado, tope superado, ruta hostil, nombres demasiado largos, repetidos o en conflicto;
+    - `IMPORT_EXTRACT_FAILED`: el disco, o un `destDir` que ya tenía esos archivos.
 
     Ninguno es reintentable, y llevan el nombre del zip, no la ruta.
   - **Limpieza:** lo que alcanzó a escribir antes de un error lo borra quien llama.

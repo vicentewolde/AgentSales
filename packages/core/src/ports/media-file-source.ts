@@ -6,6 +6,8 @@ export type MediaFile = {
   relPath: string;
   kind: MediaKind;
   mime: string;
+  /** Extensión canónica, en minúsculas y sin punto (`jpeg` → `jpg`), para la clave en R2. */
+  extension: string;
   bytes: number;
   /** sha256 del contenido, en hexadecimal (64 caracteres en minúsculas). */
   sha256: string;
@@ -28,7 +30,7 @@ export const MEDIA_SKIP_REASONS = [
   "too_large",
   /** Subcarpeta, enlace simbólico u otro tipo que no es un archivo regular. */
   "not_a_file",
-  /** No se pudo leer (permisos, error de disco). */
+  /** Sin permiso de lectura, o se borró entre el listado y la lectura. */
   "unreadable",
 ] as const;
 export type MediaSkipReason = (typeof MEDIA_SKIP_REASONS)[number];
@@ -49,9 +51,10 @@ export type MediaFolderListing = {
  * relativo a esa raíz: `carpeta_medios` (o `id_propiedad`) de la fila, o `_marca` para el logo.
  *
  * - No recorre subcarpetas ni sigue enlaces simbólicos; ignora los archivos ocultos.
- * - Errores: `MEDIA_FOLDER_INVALID` si `folder` sale de la raíz o está vacío,
- *   `MEDIA_FOLDER_NOT_FOUND` si no existe y `MEDIA_FOLDER_UNREADABLE` si no se puede leer (permisos).
- *   Ninguno es reintentable; `ingestMedia` los convierte en una advertencia de la fila.
+ * - Errores: `MEDIA_FOLDER_INVALID` si `folder` sale de la raíz (también a través de un enlace
+ *   simbólico) o está vacío, `MEDIA_FOLDER_NOT_FOUND` si no existe y `MEDIA_FOLDER_UNREADABLE` si
+ *   no se puede leer la carpeta o falla el disco con un archivo. Ninguno es reintentable;
+ *   `ingestMedia` los convierte en una advertencia de la fila.
  * - Un archivo que no se acepta va a `skipped` con su motivo, no lanza.
  */
 export interface MediaFileSource {

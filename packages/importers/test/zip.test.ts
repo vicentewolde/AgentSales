@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isAppError } from "@agentsales/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { extractZip, MAX_ZIP_BYTES, MAX_ZIP_ENTRIES } from "../src/zip.js";
+import { entryTargetPath, extractZip, MAX_ZIP_BYTES, MAX_ZIP_ENTRIES } from "../src/zip.js";
 import { SAMPLES } from "./media-fixtures.js";
 import { buildZip, type ZipEntrySpec } from "./zip-builder.js";
 
@@ -68,6 +68,7 @@ describe("extractZip · extracción normal", () => {
     expect(result).toEqual({
       files: 3,
       bytes: photo.byteLength + video.byteLength + SAMPLES.png().byteLength,
+      skipped: 0,
     });
     expect(await tree(dest)).toEqual([
       "_marca/logo.png",
@@ -86,8 +87,20 @@ describe("extractZip · extracción normal", () => {
       { name: "p/.DS_Store", data: "x" },
     ]);
 
-    expect(await extractZip(zip, dest)).toMatchObject({ files: 1 });
+    expect(await extractZip(zip, dest)).toMatchObject({ files: 1, skipped: 3 });
     expect(await tree(dest)).toEqual(["p/foto.jpg"]);
+  });
+
+  it("nombres con prefijo ./ (algunas herramientas) se extraen", async () => {
+    const zip = await writeZip([
+      { name: "./" },
+      { name: "./p/" },
+      { name: "./p/foto.jpg", data: SAMPLES.jpeg() },
+      { name: "p/./video.mp4", data: SAMPLES.mp4() },
+    ]);
+
+    expect(await extractZip(zip, dest)).toMatchObject({ files: 2, skipped: 0 });
+    expect(await tree(dest)).toEqual(["p/foto.jpg", "p/video.mp4"]);
   });
 
   it("una entrada sin tipo Unix (zip de Windows) es un archivo", async () => {
@@ -102,20 +115,41 @@ describe("extractZip · extracción normal", () => {
 });
 
 describe("extractZip · zip-slip", () => {
-  it.each(["../evil.txt", "p/../../evil.txt", "/tmp/agentsales-evil.txt", "..\\evil.txt"])(
-    "rechaza la entrada %s sin escribir nada fuera del destino",
-    async (name) => {
-      const zip = await writeZip([
-        { name: "p/foto.jpg", data: SAMPLES.jpeg() },
-        { name, data: "malicioso" },
-      ]);
+  const absolute = join(tmpdir(), `agentsales-evil-${process.pid}.txt`);
 
-      await expectError(extractZip(zip, dest), "IMPORT_FILE_INVALID");
+  it.each([
+    "../evil.txt",
+    "p/../../evil.txt",
+    absolute,
+    "..\\evil.txt",
+    // Oculto y con `..`: la ruta se verifica antes de decidir si se omite.
+    "../.evil.txt",
+  ])("rechaza la entrada %s sin escribir nada fuera del destino", async (name) => {
+    const zip = await writeZip([
+      { name: "p/foto.jpg", data: SAMPLES.jpeg() },
+      { name, data: "malicioso" },
+    ]);
 
-      expect(await readdir(work)).toEqual(expect.not.arrayContaining(["evil.txt"]));
-      await expect(lstat("/tmp/agentsales-evil.txt")).rejects.toThrow();
-    },
-  );
+    await expectError(extractZip(zip, dest), "IMPORT_FILE_INVALID");
+
+    expect(await readdir(work)).toEqual(expect.not.arrayContaining(["evil.txt", ".evil.txt"]));
+    await expect(lstat(absolute)).rejects.toThrow();
+  });
+
+  // yauzl rechaza estos nombres antes; esta es la segunda barrera, probada directo.
+  it.each([
+    ["../evil.txt", null],
+    ["..", null],
+    ["p/../..", null],
+    ["p/../../evil.txt", null],
+    ["/etc/passwd", null],
+    ["p/foto.jpg", "p/foto.jpg"],
+    ["./p/./foto.jpg", "p/foto.jpg"],
+    ["./", ""],
+  ])("entryTargetPath(%s)", (name, expected) => {
+    const root = join(work, "raiz");
+    expect(entryTargetPath(root, name)).toBe(expected === null ? null : join(root, expected));
+  });
 });
 
 describe("extractZip · topes", () => {
@@ -175,19 +209,68 @@ describe("extractZip · errores", () => {
     await expectError(extractZip(path, dest), "IMPORT_FILE_INVALID");
   });
 
-  it("una entrada con contraseña: IMPORT_FILE_INVALID", async () => {
+  it("una entrada con contraseña: IMPORT_FILE_INVALID por la contraseña", async () => {
     const zip = await writeZip([{ name: "a.jpg", data: SAMPLES.jpeg(), encrypted: true }]);
+    const error = await expectError(extractZip(zip, dest), "IMPORT_FILE_INVALID");
+    expect(isAppError(error) && error.message).toContain("contraseña");
+  });
+
+  it.each([
+    ["exactos", "p/foto.jpg"],
+    ["que solo cambian mayúsculas", "p/FOTO.jpg"],
+  ])("nombres repetidos %s: IMPORT_FILE_INVALID, sin pisar el primero", async (_, second) => {
+    const zip = await writeZip([
+      { name: "p/foto.jpg", data: "primera" },
+      { name: second, data: "segunda" },
+    ]);
+
+    const error = await expectError(extractZip(zip, dest), "IMPORT_FILE_INVALID");
+    expect(isAppError(error) && error.message).toContain("repetidos");
+    expect(await readFile(join(dest, "p/foto.jpg"), "utf8")).toBe("primera");
+  });
+
+  it.each([
+    [
+      "archivo y después carpeta",
+      [
+        { name: "p", data: "x" },
+        { name: "p/foto.jpg", data: "y" },
+      ],
+    ],
+    [
+      "carpeta y después archivo",
+      [
+        { name: "p/foto.jpg", data: "y" },
+        { name: "P", data: "x" },
+      ],
+    ],
+    ["archivo y entrada de carpeta", [{ name: "p", data: "x" }, { name: "p/" }]],
+  ])(
+    "un archivo y una carpeta con el mismo nombre (%s): IMPORT_FILE_INVALID",
+    async (_, entries) => {
+      const zip = await writeZip(entries);
+      const error = await expectError(extractZip(zip, dest), "IMPORT_FILE_INVALID");
+      expect(isAppError(error) && error.message).toContain("conflicto");
+    },
+  );
+
+  it("un nombre demasiado largo para el disco: IMPORT_FILE_INVALID", async () => {
+    const zip = await writeZip([{ name: `p/${"x".repeat(300)}.jpg`, data: SAMPLES.jpeg() }]);
     await expectError(extractZip(zip, dest), "IMPORT_FILE_INVALID");
   });
 
-  it("entradas repetidas: IMPORT_FILE_INVALID, sin pisar la primera", async () => {
-    const zip = await writeZip([
-      { name: "p/foto.jpg", data: "primera" },
-      { name: "p/foto.jpg", data: "segunda" },
-    ]);
+  it("una carpeta en vez de zip: IMPORT_FILE_INVALID", async () => {
+    const folder = join(work, "carpeta.zip");
+    await mkdir(folder);
+    await expectError(extractZip(folder, dest), "IMPORT_FILE_INVALID");
+  });
 
-    await expectError(extractZip(zip, dest), "IMPORT_FILE_INVALID");
-    expect(await readFile(join(dest, "p/foto.jpg"), "utf8")).toBe("primera");
+  it("un destino que ya tenía esos archivos: IMPORT_EXTRACT_FAILED, no culpa al zip", async () => {
+    await mkdir(join(dest, "p"), { recursive: true });
+    await writeFile(join(dest, "p/foto.jpg"), "de un intento anterior");
+    const zip = await writeZip([{ name: "p/foto.jpg", data: SAMPLES.jpeg() }]);
+
+    await expectError(extractZip(zip, dest), "IMPORT_EXTRACT_FAILED");
   });
 
   it("no puede escribir en el destino: IMPORT_EXTRACT_FAILED", async () => {

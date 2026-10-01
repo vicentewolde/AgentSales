@@ -16,6 +16,15 @@ describe("mediaTypeOf", () => {
   });
 
   it.each([
+    ["FOTO.JPEG", "jpg"],
+    ["foto.JPG", "jpg"],
+    ["IMG_0001.HEIC", "heic"],
+    ["recorrido.MOV", "mov"],
+  ])("%s tiene la extensión canónica %s", (name, extension) => {
+    expect(mediaTypeOf(name)?.extension).toBe(extension);
+  });
+
+  it.each([
     "notas.txt",
     "plano.pdf",
     "sin-extension",
@@ -41,6 +50,12 @@ describe("firmas", () => {
     ["video.mov", SAMPLES.movLegacy()],
     // Un mp4 renombrado a .mov se reproduce igual.
     ["video.mov", SAMPLES.mp4()],
+    // Marcas de video de teléfonos y variantes de HEIF.
+    ["video.mp4", SAMPLES.ftyp("3gp4")],
+    ["video.mp4", SAMPLES.ftyp("mp42")],
+    ["foto.heic", SAMPLES.ftyp("hevm")],
+    ["foto.heic", SAMPLES.ftyp("hevs")],
+    ["foto.heic", SAMPLES.ftyp("mif1")],
   ])("%s acepta su firma", (name, bytes) => {
     expect(matches(name, bytes)).toBe(true);
   });
@@ -54,6 +69,10 @@ describe("firmas", () => {
     ["video.mp4", SAMPLES.heic()],
     ["video.mov", SAMPLES.heic()],
     ["video.mp4", SAMPLES.movLegacy()],
+    // AVIF y audio de iTunes renombrados a .mp4 no son video.
+    ["video.mp4", SAMPLES.ftyp("avif")],
+    ["video.mp4", SAMPLES.ftyp("M4A ")],
+    ["video.mov", SAMPLES.ftyp("M4B ")],
     ["foto.jpg", new TextEncoder().encode("no soy una foto")],
     ["foto.jpg", new Uint8Array([0xff, 0xd8])],
     ["video.mp4", new Uint8Array(0)],

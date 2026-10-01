@@ -10,7 +10,10 @@ export type ZipEntrySpec = {
   /** `deflate` permite declarar un tamaño descomprimido falso (`declaredSize`). */
   method?: "store" | "deflate";
   declaredSize?: number;
-  /** Marca la entrada como cifrada (bit 0 de las banderas), sin cifrar nada. */
+  /**
+   * Marca la entrada como cifrada (bit 0 de las banderas) y antepone los 12 bytes del encabezado
+   * del cifrado tradicional, sin cifrar nada: es la forma que yauzl acepta como entrada cifrada.
+   */
   encrypted?: boolean;
 };
 
@@ -44,7 +47,8 @@ export function buildZip(entries: readonly ZipEntrySpec[]): Buffer {
     const data = Buffer.from(entry.data ?? "");
     const isDir = entry.name.endsWith("/");
     const deflate = entry.method === "deflate";
-    const body = deflate ? deflateRawSync(data) : data;
+    const compressed = deflate ? deflateRawSync(data) : data;
+    const body = entry.encrypted ? Buffer.concat([Buffer.alloc(12), compressed]) : compressed;
     const size = entry.declaredSize ?? data.length;
     const flags = UTF8_NAMES | (entry.encrypted ? 1 : 0);
     const mode = entry.mode ?? (isDir ? DIR_MODE : FILE_MODE);

@@ -40,9 +40,12 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
     - `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository`, `MediaRepository` e `ImportRunRepository`.
     - `JobQueue`.
     - `MediaFileSource.list(folder): Promise<{ files: MediaFile[], skipped: SkippedMediaFile[] }>` (F1-T06):
-      - `MediaFile = { relPath, kind, mime, bytes, sha256, open(): AsyncIterable<Uint8Array> }`.
+      - `MediaFile = { relPath, kind, mime, extension, bytes, sha256, open(): AsyncIterable<Uint8Array> }`. `extension` es la canónica, en minúsculas y sin punto (`jpeg` → `jpg`), para la clave en R2.
       - `SkippedMediaFile = { relPath, reason }`, con `reason` en `MEDIA_SKIP_REASONS`: `unsupported_type`, `signature_mismatch`, `empty`, `too_large`, `not_a_file` o `unreadable`.
-      - `folder` es relativo a la raíz de medios con que se construye el adaptador (`carpeta_medios`, `id_propiedad` o `_marca`) y no puede salir de ella (`MEDIA_FOLDER_INVALID`). Si no existe, `MEDIA_FOLDER_NOT_FOUND`.
+      - `folder` es relativo a la raíz de medios con que se construye el adaptador (`carpeta_medios`, `id_propiedad` o `_marca`) y no puede salir de ella, tampoco a través de un enlace simbólico (`MEDIA_FOLDER_INVALID`).
+      - Si no existe, `MEDIA_FOLDER_NOT_FOUND`. Si no se puede leer la carpeta, o el disco falla con un archivo (`EIO`), `MEDIA_FOLDER_UNREADABLE`.
+      - Si `open()` falla al releer un archivo, `MEDIA_FILE_UNREADABLE`.
+      - Ninguno de estos errores es reintentable.
   - **Contrato de jobs** en `core/src/jobs.ts` (`JOB_NAMES`, `JOB_PAYLOADS`).
   - **Entidades con esquema zod** (`listing`, `media`, `broker`, `importRun`, `importReport`) y tuplas nuevas (`IMPORT_RUN_STATUSES`, `LISTING_MANUAL_TRANSITIONS`), según ADR-0011.
   - **Repositorios en memoria** en la salida `@agentsales/core/testing`. Biome prohíbe importarla fuera de los tests.
@@ -327,7 +330,9 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
     - Los archivos rechazados van a `skipped` con su motivo, para el reporte de T07.
   - `zip`: extracción en streaming con protección contra zip-slip y los topes de §4.3.
     - `extractZip(zipPath, destDir, { maxEntries, maxTotalBytes })`.
-    - Un zip con una entrada hostil se rechaza completo (`IMPORT_FILE_INVALID`), y un fallo del disco es `IMPORT_EXTRACT_FAILED`.
+    - Un zip con una entrada hostil, nombres repetidos (también si solo cambian mayúsculas) o un archivo y una carpeta con el mismo nombre se rechaza completo (`IMPORT_FILE_INVALID`).
+    - Un fallo del disco, o un destino que ya tenía esos archivos, es `IMPORT_EXTRACT_FAILED`.
+    - Devuelve `{ files, bytes, skipped }`; `skipped` cuenta las entradas omitidas, para que T09 avise si el zip no trajo medios.
     - Lo que alcanzó a escribir lo borra quien llama (T09).
 - **Hecho cuando:**
   - [ ] Tests con una carpeta fixture: 3 fotos + 1 video + 1 archivo inválido, en orden natural y con el sha256 correcto
@@ -345,7 +350,15 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - **A decidir en el plan:**
     - si `putStream` manda el sha256 como `ChecksumSHA256`, para que R2 verifique el contenido. Cambia el contrato de `PutStreamOptions`, y el subagente `integraciones` tiene que confirmar antes que R2 lo acepta;
     - si `ingestMedia` reintenta por archivo o le deja todo al job. La deduplicación ya evita volver a subir lo que terminó.
+  - **Fallos de un archivo después de `list` (desde la revisión de T06):**
+    - `MEDIA_FILE_UNREADABLE` (`open()`) y `STORAGE_ERROR` por largo distinto (el archivo cambió) son advertencias de la fila, igual que `skipped`: un archivo no hace fallar el run (§4.2).
+    - `STORAGE_UNAVAILABLE` se propaga para que el job reintente.
+    - Los errores `MEDIA_FOLDER_*` de `list` también son advertencias de la fila.
+  - **Clave en R2:** `{sha256}.{extension}`, con `MediaFile.extension` (canónica; core no repite la tabla de tipos).
   - El doble en memoria de `MediaStorage` (`@agentsales/core/testing`) lee el iterable completo y da `STORAGE_ERROR` si el largo no calza con `contentLength`, igual que R2.
+  - **Doble en memoria de `MediaFileSource`** (`@agentsales/core/testing`):
+    - es un mapa `folder → MediaFolderListing | AppError`, con `open()` sobre bytes en memoria y sha256 fijos;
+    - no reimplementa la validación de rutas (`MEDIA_FOLDER_INVALID` es del adaptador y ya tiene su prueba).
   - Puerto `MediaRepository`, con implementaciones Drizzle y en memoria.
 - **Hecho cuando:**
   - [ ] Test con un `MediaStorage` y un `MediaFileSource` en memoria: suben 4 archivos válidos con su tipo, y el inválido va al reporte
@@ -485,3 +498,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-09-30 | Desde la revisión de F1-T04: `dry_run`, el origen y el `--broker` salen del run (`importRunInputSchema` en `import_runs.input`); los conflictos de `create` son reintentables (`*_CONFLICT`); `report` pasa a admitir `null` (migración `0002` en T04b); el reporte suma `listingId` y `warnings` por fila, y `headers` puede ser `null`; métodos anotados para T07 (`promoteToReady`, `setLogo`), T09 (estado del run), T10 (`listingSchema`, `list`/`get`) y T11 (`list` de runs) |
 | 2026-10-01 | Desde F1-T05: D3 queda con el checksum por defecto del SDK desactivado en el cliente de streams (`WHEN_REQUIRED`), porque mandaba `aws-chunked` sin `Content-Length`; `maxAttempts: 1` defensivo. T07 decide `ChecksumSHA256` y la política de reintentos por archivo |
 | 2026-10-01 | Plan de F1-T06, aprobado por el operador: `MediaFileSource.list` devuelve `{ files, skipped }` con `MEDIA_SKIP_REASONS`; `folder` es relativo a la raíz del adaptador y no puede salir de ella; el tope de video lo aplica el adaptador (sin hashear); los zips de los tests se arman con un generador propio, sin dependencia nueva; desenvolver una carpeta raíz del zip se decide en T09 |
+| 2026-10-01 | Desde la revisión de F1-T06: `MediaFile` gana `extension` canónica; códigos `MEDIA_FOLDER_UNREADABLE`, `MEDIA_FILE_UNREADABLE` e `IMPORT_EXTRACT_FAILED`; la carpeta no puede salir de la raíz tampoco por un enlace simbólico (`realpath`); `extractZip` devuelve `skipped` y rechaza nombres repetidos o en conflicto antes de escribir; T07 convierte en advertencia los fallos de un archivo y tiene un doble de `MediaFileSource` |

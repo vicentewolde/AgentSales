@@ -22,6 +22,9 @@ export const SAMPLES = {
   mp4: (fill = "m", length?: number) => withSignature(box("ftyp", "isom"), fill, length),
   mov: (fill = "q", length?: number) => withSignature(box("ftyp", "qt  "), fill, length),
   movLegacy: (fill = "q", length?: number) => withSignature(box("moov", "mvhd"), fill, length),
+  /** Caja `ftyp` con la marca principal dada (4 caracteres). */
+  ftyp: (brand: string, fill = "f", length?: number) =>
+    withSignature(box("ftyp", brand), fill, length),
 };
 
 export const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");

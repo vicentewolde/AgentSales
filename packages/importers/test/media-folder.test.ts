@@ -1,9 +1,9 @@
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isAppError, type MediaFile, type MediaFolderListing } from "@agentsales/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createMediaFolderSource } from "../src/media-folder.js";
+import { createMediaFolderSource, naturalOrder } from "../src/media-folder.js";
 import { collect, SAMPLES, sha256 } from "./media-fixtures.js";
 
 const MAX_VIDEO_BYTES = 1024;
@@ -45,6 +45,7 @@ const summary = (file: MediaFile) => ({
   relPath: file.relPath,
   kind: file.kind,
   mime: file.mime,
+  extension: file.extension,
   bytes: file.bytes,
   sha256: file.sha256,
 });
@@ -68,6 +69,7 @@ describe("createMediaFolderSource · carpeta fixture", () => {
         relPath: "depto-101/Foto1.webp",
         kind: "image",
         mime: "image/webp",
+        extension: "webp",
         bytes: photo1.byteLength,
         sha256: sha256(photo1),
       },
@@ -75,6 +77,7 @@ describe("createMediaFolderSource · carpeta fixture", () => {
         relPath: "depto-101/foto2.png",
         kind: "image",
         mime: "image/png",
+        extension: "png",
         bytes: photo2.byteLength,
         sha256: sha256(photo2),
       },
@@ -82,6 +85,7 @@ describe("createMediaFolderSource · carpeta fixture", () => {
         relPath: "depto-101/foto10.jpg",
         kind: "image",
         mime: "image/jpeg",
+        extension: "jpg",
         bytes: photo10.byteLength,
         sha256: sha256(photo10),
       },
@@ -89,6 +93,7 @@ describe("createMediaFolderSource · carpeta fixture", () => {
         relPath: "depto-101/recorrido.mp4",
         kind: "video",
         mime: "video/mp4",
+        extension: "mp4",
         bytes: video.byteLength,
         sha256: sha256(video),
       },
@@ -106,6 +111,23 @@ describe("createMediaFolderSource · carpeta fixture", () => {
     expect(await collect(file.open())).toEqual(big);
     expect(sha256(await collect(file.open()))).toBe(file.sha256);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "open() cortado a mitad (como cuando putStream aborta) cierra el archivo",
+    async () => {
+      await put("p/grande.jpg", SAMPLES.jpeg("x", 300_000));
+      const file = onlyFile(await source().list("p"));
+      const openFds = async () => (await readdir("/dev/fd")).length;
+      const before = await openFds();
+
+      const iterator = file.open()[Symbol.asyncIterator]();
+      await iterator.next();
+      expect(await openFds()).toBe(before + 1);
+      await iterator.return?.();
+
+      expect(await openFds()).toBe(before);
+    },
+  );
 
   it("open() de un archivo que ya no existe: MEDIA_FILE_UNREADABLE con la ruta relativa", async () => {
     const path = await put("p/foto.jpg", SAMPLES.jpeg());
@@ -138,6 +160,28 @@ describe("createMediaFolderSource · archivos omitidos", () => {
       { relPath: "p/sub", reason: "not_a_file" },
       { relPath: "p/vacia.jpg", reason: "empty" },
     ]);
+  });
+
+  it("con nombres que empatan sin mayúsculas ni tildes, el orden es determinista", async () => {
+    await put("p/fóto1.jpg", SAMPLES.jpeg());
+    await put("p/foto1.jpg", SAMPLES.jpeg());
+    await put("p/foto01.jpg", SAMPLES.jpeg());
+
+    const listing = await source().list("p");
+
+    expect(listing.files.map((file) => file.relPath)).toEqual([
+      "p/foto01.jpg",
+      "p/foto1.jpg",
+      "p/fóto1.jpg",
+    ]);
+  });
+
+  it("naturalOrder desempata con la comparación binaria, en cualquier orden de entrada", () => {
+    const names = ["fóto1.jpg", "Foto1.jpg", "foto10.jpg", "foto1.jpg", "foto2.jpg"];
+    const expected = ["Foto1.jpg", "foto1.jpg", "fóto1.jpg", "foto2.jpg", "foto10.jpg"];
+
+    expect([...names].sort(naturalOrder)).toEqual(expected);
+    expect([...names].reverse().sort(naturalOrder)).toEqual(expected);
   });
 
   it("ignora sin advertencia los ocultos y la basura del sistema", async () => {
@@ -174,6 +218,7 @@ describe("createMediaFolderSource · archivos omitidos", () => {
         relPath: "casas/c1/IMG_0001.HEIC",
         kind: "image",
         mime: "image/heic",
+        extension: "heic",
         bytes: heic.byteLength,
         sha256: sha256(heic),
       },
@@ -188,6 +233,31 @@ describe("createMediaFolderSource · carpeta", () => {
       await expectError(source().list(folder), "MEDIA_FOLDER_INVALID");
     },
   );
+
+  it("una carpeta enlazada que apunta fuera de la raíz: MEDIA_FOLDER_INVALID", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "agentsales-outside-"));
+    try {
+      await writeFile(join(outside, "secreto.jpg"), SAMPLES.jpeg());
+      await mkdir(join(outside, "interna"));
+      await writeFile(join(outside, "interna/secreto.jpg"), SAMPLES.jpeg());
+      await symlink(outside, join(root, "enlace"));
+
+      await expectError(source().list("enlace"), "MEDIA_FOLDER_INVALID");
+      // También si el enlace está en un tramo intermedio de la ruta.
+      await expectError(source().list("enlace/interna"), "MEDIA_FOLDER_INVALID");
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("una carpeta enlazada que apunta dentro de la raíz sí es válida", async () => {
+    await put("p/foto.jpg", SAMPLES.jpeg());
+    await symlink(join(root, "p"), join(root, "alias"));
+
+    expect((await source().list("alias")).files.map((file) => file.relPath)).toEqual([
+      "alias/foto.jpg",
+    ]);
+  });
 
   it("una carpeta que empieza con dos puntos sí es válida", async () => {
     await put("..fotos/foto.jpg", SAMPLES.jpeg());
