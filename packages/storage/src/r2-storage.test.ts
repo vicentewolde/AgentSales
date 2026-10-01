@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { AppError } from "@agentsales/core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -194,6 +195,83 @@ describe("putStream", () => {
       },
     ]);
     expect(await storage.get("brokers/b1/listings/l1/original/video.mp4")).toEqual(data);
+  });
+
+  describe("con sha256 (F1-T07b)", () => {
+    const hex = createHash("sha256").update(data).digest("hex");
+
+    it("manda ChecksumSHA256 en base64, con Content-Length y sin aws-chunked ni trailer", async () => {
+      const seen: Record<string, string | null>[] = [];
+      server.use(
+        http.put(`${ORIGIN}/*`, async ({ request }) => {
+          seen.push({
+            checksum: request.headers.get("x-amz-checksum-sha256"),
+            algorithm: request.headers.get("x-amz-sdk-checksum-algorithm"),
+            contentLength: request.headers.get("content-length"),
+            contentEncoding: request.headers.get("content-encoding"),
+            transferEncoding: request.headers.get("transfer-encoding"),
+            trailer: request.headers.get("x-amz-trailer"),
+          });
+          objects.set(keyOf(request), {
+            body: new Uint8Array(await request.arrayBuffer()),
+            contentType: request.headers.get("content-type") ?? "",
+          });
+          return new HttpResponse(null, { status: 200, headers: { ETag: '"etag"' } });
+        }),
+      );
+
+      await storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
+        contentType: "video/mp4",
+        contentLength: data.byteLength,
+        sha256: hex,
+      });
+
+      expect(seen).toEqual([
+        {
+          checksum: Buffer.from(hex, "hex").toString("base64"),
+          algorithm: null,
+          contentLength: String(data.byteLength),
+          contentEncoding: null,
+          transferEncoding: null,
+          trailer: null,
+        },
+      ]);
+      expect(await storage.get("x.mp4")).toEqual(data);
+    });
+
+    it("un BadDigest de R2 es STORAGE_CONTENT_MISMATCH, no reintentable", async () => {
+      server.use(
+        http.put(`${ORIGIN}/*`, async ({ request }) => {
+          await request.arrayBuffer();
+          return new HttpResponse(
+            "<Error><Code>BadDigest</Code><Message>Provided checksum does not match the uploaded content</Message></Error>",
+            { status: 400, headers: { "Content-Type": "application/xml" } },
+          );
+        }),
+      );
+
+      await expect(
+        storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
+          contentType: "video/mp4",
+          contentLength: data.byteLength,
+          sha256: hex,
+        }),
+      ).rejects.toMatchObject({ code: "STORAGE_CONTENT_MISMATCH", retriable: false });
+    });
+
+    it.each(["abc", "z".repeat(64), Buffer.from(hex, "hex").toString("base64")])(
+      "un sha256 que no es hexadecimal de 64 caracteres (%s) es STORAGE_ERROR, sin subir nada",
+      async (sha256) => {
+        await expect(
+          storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
+            contentType: "video/mp4",
+            contentLength: data.byteLength,
+            sha256,
+          }),
+        ).rejects.toMatchObject({ code: "STORAGE_ERROR", retriable: false });
+        expect(objects.has("x.mp4")).toBe(false);
+      },
+    );
   });
 
   // Comportamiento, no configuración: el SDK ya no reintenta un cuerpo que es stream, así que este

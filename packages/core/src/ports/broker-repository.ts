@@ -15,6 +15,10 @@ export interface BrokerRepository {
   create(data: BrokerData): Promise<Broker>;
   /** Actualiza los datos de la hoja Corredor; no toca `logoMediaId` ni `autoPublish`. */
   update(id: string, data: BrokerData): Promise<Broker>;
-  /** Fija el logo (F1-T07); `BROKER_NOT_FOUND` si el corredor no existe. */
+  /**
+   * Fija el logo (F1-T07). `BROKER_NOT_FOUND` si el corredor no existe, y `MEDIA_NOT_FOUND` si el
+   * medio no existe, es de otro corredor o es de un aviso (el logo es un original sin aviso).
+   * Escribe aunque el logo no cambie: es idempotente.
+   */
   setLogo(id: string, mediaId: string): Promise<void>;
 }

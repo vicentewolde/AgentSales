@@ -173,7 +173,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | started_at | timestamptz null | Se fija al pasar a `running` |
 | finished_at | timestamptz null | `null` mientras la carga está en curso |
 
-Los únicos `brokers.slug` y `listings (broker_id, external_ref)` se traducen en los repositorios a `BROKER_CONFLICT` y `LISTING_CONFLICT`, reintentables: dos intentos del job `import.run` pueden solaparse, y el reintento reclasifica la fila.
+Los únicos `brokers.slug`, `listings (broker_id, external_ref)` y los dos de `media` se traducen en los repositorios a `BROKER_CONFLICT`, `LISTING_CONFLICT` y `MEDIA_CONFLICT`, reintentables: dos intentos del job `import.run` pueden solaparse, y el reintento reclasifica la fila o encuentra el medio ya registrado.
 
 ### Cola de trabajos
 

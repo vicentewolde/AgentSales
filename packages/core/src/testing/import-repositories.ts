@@ -9,6 +9,7 @@ import type {
   ListingRepository,
   NewListing,
 } from "../ports/listing-repository.js";
+import type { InMemoryMediaRepository } from "./media.js";
 
 /** Ids legibles y deterministas para los tests (`broker-1`, `listing-2`…). */
 function idGenerator(prefix: string) {
@@ -22,8 +23,17 @@ export type InMemoryBrokerRepository = BrokerRepository & {
   setAutoPublish(id: string, autoPublish: boolean): void;
 };
 
+export type InMemoryBrokerRepositoryOptions = {
+  /**
+   * Medios para validar `setLogo` como Postgres (que el medio exista, sea del corredor y no sea de
+   * un aviso). Sin ellos, `setLogo` no valida el medio.
+   */
+  media?: Pick<InMemoryMediaRepository, "all">;
+};
+
 export function createInMemoryBrokerRepository(
   initial: readonly Broker[] = [],
+  options: InMemoryBrokerRepositoryOptions = {},
 ): InMemoryBrokerRepository {
   const nextId = idGenerator("broker");
   const stored = new Map(initial.map((broker) => [broker.id, structuredCopy(broker)]));
@@ -60,6 +70,12 @@ export function createInMemoryBrokerRepository(
       const current = stored.get(id);
       if (current === undefined) {
         throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+      }
+      if (options.media !== undefined) {
+        const logo = options.media.all().find((media) => media.id === mediaId);
+        if (logo?.brokerId !== id || logo.listingId !== null) {
+          throw new AppError("MEDIA_NOT_FOUND", `El medio ${mediaId} no es un logo del corredor`);
+        }
       }
       stored.set(id, { ...current, logoMediaId: mediaId });
     },

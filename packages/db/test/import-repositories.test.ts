@@ -1,11 +1,15 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { importListings, isAppError, type ListingSheetInput } from "@agentsales/core";
+import { importListings, ingestMedia, isAppError, type ListingSheetInput } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryImportRunRepository,
   createInMemoryListingRepository,
+  createInMemoryMediaFileSource,
+  createInMemoryMediaRepository,
+  createInMemoryMediaStorage,
+  memoryFile,
 } from "@agentsales/core/testing";
 import { PGlite } from "@electric-sql/pglite";
 import { eq, sql } from "drizzle-orm";
@@ -15,17 +19,18 @@ import { createBrokerRepository } from "../src/repositories/brokers.js";
 import { createFieldDefinitionRepository } from "../src/repositories/field-definitions.js";
 import { createImportRunRepository } from "../src/repositories/import-runs.js";
 import { createListingRepository } from "../src/repositories/listings.js";
+import { createMediaRepository } from "../src/repositories/media.js";
 import { brokers, importRuns, listings, media } from "../src/schema.js";
 import { seed } from "../src/seed.js";
 import {
   brokerData,
   importRepositoriesContract,
   newListing,
+  newMedia,
 } from "./import-repositories.contract.js";
 import { createTestDatabase, type TestDatabase } from "./pglite.js";
 
 const MISSING_UUID = "00000000-0000-0000-0000-000000000000";
-let mediaSequence = 0;
 
 const databases: TestDatabase[] = [];
 afterAll(async () => {
@@ -41,27 +46,12 @@ async function pgliteRepositories() {
     brokers: createBrokerRepository(db),
     listings: createListingRepository(db),
     importRuns: createImportRunRepository(db),
+    media: createMediaRepository(db),
     async setListingStatus(id: string, status: (typeof listings.$inferSelect)["status"]) {
       await db.update(listings).set({ status }).where(eq(listings.id, id));
     },
     async setBrokerAutoPublish(id: string, autoPublish: boolean) {
       await db.update(brokers).set({ autoPublish }).where(eq(brokers.id, id));
-    },
-    async createBrokerMedia(brokerId: string) {
-      const [row] = await db
-        .insert(media)
-        .values({
-          brokerId,
-          kind: "image",
-          role: "original",
-          storagePath: `brokers/${brokerId}/brand/${++mediaSequence}.png`,
-          mime: "image/png",
-          bytes: 10,
-          checksum: `sha-${mediaSequence}`,
-        })
-        .returning({ id: media.id });
-      if (row === undefined) throw new Error("no se creó el medio");
-      return row.id;
     },
     missingId: MISSING_UUID,
   };
@@ -69,14 +59,15 @@ async function pgliteRepositories() {
 
 importRepositoriesContract("en memoria", async () => {
   const listingRepo = createInMemoryListingRepository();
-  const brokerRepo = createInMemoryBrokerRepository();
+  const mediaRepo = createInMemoryMediaRepository();
+  const brokerRepo = createInMemoryBrokerRepository([], { media: mediaRepo });
   return {
     brokers: brokerRepo,
     listings: listingRepo,
     importRuns: createInMemoryImportRunRepository(),
+    media: mediaRepo,
     setListingStatus: async (id, status) => listingRepo.setStatus(id, status),
     setBrokerAutoPublish: async (id, autoPublish) => brokerRepo.setAutoPublish(id, autoPublish),
-    createBrokerMedia: async () => `media-${++mediaSequence}`,
     missingId: MISSING_UUID,
   };
 });
@@ -165,6 +156,30 @@ describe("repositorios Drizzle · lo que el puerto no muestra (PGlite)", () => {
     for (const key of ["broker", "listing", "run"] as const) {
       expect(after[key]?.getTime(), key).toBeGreaterThan(before[key]?.getTime() ?? 0);
     }
+  });
+
+  it("MediaRepository solo ve originales: un derivado (F2) no se lista, no se encuentra ni se ordena", async () => {
+    const brokerId = (await repos.brokers.create(brokerData("con-derivados"))).id;
+    const listingId = (await repos.listings.create(newListing(brokerId, "P-DER"))).id;
+    const original = await repos.media.create(newMedia(brokerId, listingId, "orig"));
+    const [derived] = await repos.db
+      .insert(media)
+      .values({
+        ...newMedia(brokerId, listingId, "orig", { storagePath: "derivado/ig_4x5.jpg" }),
+        role: "processed",
+        parentMediaId: original.id,
+      })
+      .returning({ id: media.id });
+
+    expect(await repos.media.listOriginals(listingId)).toEqual([original]);
+    expect(await repos.media.findByStoragePath("derivado/ig_4x5.jpg")).toBeNull();
+    const error = await repos.media
+      .arrange(listingId, [{ id: derived?.id ?? "", sortOrder: 0, isCover: true }])
+      .then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+    expect(isAppError(error) && error.code).toBe("MEDIA_NOT_FOUND");
   });
 
   it("un corredor con datos que no calzan → BROKER_ROW_INVALID, no un ZodError", async () => {
@@ -289,6 +304,109 @@ describe("importListings de punta a punta contra Drizzle (PGlite)", () => {
     const stored = await repos.db.select().from(listings);
     expect(stored.map((row) => row.priceAmount)).toEqual(["6100.00", "6100.00"]);
     expect(stored.every((row) => row.status === "draft")).toBe(true);
+  });
+});
+
+describe("importListings + ingestMedia de punta a punta contra Drizzle (PGlite)", () => {
+  let repos: Awaited<ReturnType<typeof pgliteRepositories>>;
+  beforeAll(async () => {
+    repos = await pgliteRepositories();
+    await seed(repos.db);
+  });
+
+  /** Hoja con las columnas del seed y un logo (datos inventados). */
+  const raw = {
+    id_propiedad: "M001",
+    operacion: "Venta",
+    tipo: "Departamento",
+    region: "Metropolitana",
+    comuna: "Ñuñoa",
+    direccion: "Calle Inventada 123",
+    mostrar_direccion_exacta: "No",
+    precio: 5800,
+    moneda: "UF",
+    sup_util_m2: 72,
+    dormitorios: 3,
+    banos: 2,
+    estacionamientos: 1,
+    bodegas: 1,
+    amoblado: "No",
+    disponibilidad: "Inmediata",
+    publicar_en: "Instagram",
+    estado_carga: "Listo",
+    foto_portada: "foto2.jpg",
+  };
+  const input: ListingSheetInput = {
+    headers: Object.keys(raw),
+    rows: [{ rowNumber: 2, raw }],
+    broker: {
+      nombre_corredor: "Persona",
+      nombre_marca: "Marca Medios",
+      color_primario: "#112233",
+      logo: "logo.png",
+    },
+  };
+  const source = createInMemoryMediaFileSource({
+    M001: {
+      files: [
+        memoryFile("M001/foto1.jpg", "foto-uno"),
+        memoryFile("M001/foto2.jpg", "foto-dos"),
+        memoryFile("M001/recorrido.mp4", "video-uno"),
+      ],
+    },
+    _marca: { files: [memoryFile("_marca/logo.png", "logo")] },
+  });
+  const storage = createInMemoryMediaStorage();
+
+  const load = async () => {
+    const fieldDefinitions = createFieldDefinitionRepository(repos.db);
+    const sha256 = async (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+    const run = await repos.importRuns.create({
+      source: "xlsx",
+      fileName: "propiedades.xlsx",
+      dryRun: false,
+      input: { xlsxPath: "/tmp/p.xlsx", mediaDir: "/tmp/medios", broker: null },
+    });
+    const imported = await importListings(
+      { ...repos, fieldDefinitions, sha256 },
+      { runId: run.id, input },
+    );
+    return ingestMedia({ ...repos, storage }, { runId: run.id, imported, source });
+  };
+
+  it("sube, registra con los únicos reales, elige portada, pasa a ready y asigna el logo; reimportar no repite", async () => {
+    const first = await load();
+    expect(first.media).toEqual({
+      filesUploaded: 3,
+      filesExisting: 0,
+      filesSkipped: 0,
+      filesFailed: 0,
+    });
+
+    const [listing] = await repos.db
+      .select()
+      .from(listings)
+      .where(eq(listings.externalRef, "M001"));
+    expect(listing?.status).toBe("ready");
+    const rows = await repos.db
+      .select()
+      .from(media)
+      .where(eq(media.listingId, listing?.id ?? ""))
+      .orderBy(media.sortOrder);
+    expect(rows.map((row) => [row.checksum, row.sortOrder, row.isCover, row.role])).toEqual([
+      ["sha256-foto-uno", 0, false, "original"],
+      ["sha256-foto-dos", 1, true, "original"],
+      ["sha256-video-uno", 2, false, "original"],
+    ]);
+    const broker = await repos.brokers.findBySlug("marca-medios");
+    const logo = await repos.media.findByStoragePath(`brokers/${broker?.id}/brand/sha256-logo.png`);
+    expect(broker?.logoMediaId).toBe(logo?.id);
+
+    const uploads = storage.uploads.length;
+    const again = await load();
+    expect(again.media).toMatchObject({ filesUploaded: 0, filesExisting: 3 });
+    expect(storage.uploads).toHaveLength(uploads);
+    expect(await repos.db.select().from(media)).toHaveLength(4);
   });
 });
 

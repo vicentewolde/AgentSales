@@ -66,11 +66,12 @@ export {
   type MediaSkipReason,
   type SkippedMediaFile,
 } from "./ports/media-file-source.js";
-export type {
-  MediaArrangement,
-  MediaRecord,
-  MediaRepository,
-  NewMedia,
+export {
+  checkArrangement,
+  type MediaArrangement,
+  type MediaRecord,
+  type MediaRepository,
+  type NewMedia,
 } from "./ports/media-repository.js";
 export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
 export {

@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T07 · Caso de uso ingestMedia (core)
-**Siguiente paso:** `/tarea F1-T07b` (`MediaRepository` en Drizzle y `ChecksumSHA256`) o F1-T08 (paquete de cola). T09 necesita T07b
+**Última tarea terminada:** F1-T07b · MediaRepository en Drizzle y checksum en R2
+**Siguiente paso:** `/tarea F1-T08` (paquete de cola). Después T09 (job `import.run`), que ya tiene todo lo demás
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -18,7 +18,7 @@
 | F1-T05 Almacenamiento con streams | ✅ terminada | #18 |
 | F1-T06 Lectores de medios | ✅ terminada | #19 |
 | F1-T07 Caso de uso ingestMedia (core) | ✅ terminada | #20 |
-| F1-T07b MediaRepository en Drizzle y checksum en R2 | ⏳ pendiente | |
+| F1-T07b MediaRepository en Drizzle y checksum en R2 | ✅ terminada | |
 | F1-T08 Paquete de cola | ⏳ pendiente | |
 | F1-T09 Job import.run | ⏳ pendiente | |
 | F1-T10 Contratos HTTP y API de lectura | ⏳ pendiente | |
@@ -48,6 +48,21 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
+- 2026-10-01: **F1-T07b.** `MediaRepository` en Drizzle y `ChecksumSHA256` en R2.
+  - **Checksum adoptado.** Contra R2 real (`storage:check`), el sha256 correcto se acepta y el de otro contenido da `BadDigest`, sin guardar el objeto. Ahora R2 detecta un archivo que cambió entre la lectura y la subida. Línea en ADR-0007.
+  - **Postgres:**
+    - Conflictos de los únicos → `MEDIA_CONFLICT`.
+    - Una sola portada por propiedad, garantizada por el repositorio.
+    - Solo se consideran originales.
+    - `setLogo` rechaza un medio ajeno (`MEDIA_NOT_FOUND`).
+    - `arrange` inválido → `MEDIA_ARRANGE_INVALID` (`checkArrangement` en core).
+  - **Tests:**
+    - Suite de contrato de `MediaRepository`, contra el doble y contra PGlite.
+    - Filtro de originales probado con PGlite.
+    - Carga de punta a punta (`importListings` + `ingestMedia`) contra PGlite.
+    - Tests msw del header.
+    - Probé 7 mutaciones y todas hacen fallar algún test.
+  - **Nota de operación:** el SDK imprime "An error was encountered in a non-retryable streaming request." cuando R2 rechaza; es esperable.
 - 2026-10-01: **F1-T07.** `ingestMedia` en core. Plan aprobado: partida en T07 (core) y T07b (adaptadores).
   - **Decisiones:**
     - Sin reintentos por archivo: el reintento es del job, y la deduplicación evita volver a subir.

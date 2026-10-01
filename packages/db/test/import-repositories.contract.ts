@@ -6,7 +6,9 @@ import {
   isAppError,
   type ListingRepository,
   type ListingStatus,
+  type MediaRepository,
   type NewListing,
+  type NewMedia,
 } from "@agentsales/core";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -19,12 +21,11 @@ export type ImportRepositories = {
   brokers: BrokerRepository;
   listings: ListingRepository;
   importRuns: ImportRunRepository;
+  media: MediaRepository;
   /** Cambio manual de estado (panel o CLI), para probar que `update` no lo pisa. */
   setListingStatus(id: string, status: ListingStatus): Promise<void>;
   /** Cambio de `auto_publish` fuera de la hoja Corredor, para probar que `update` no lo pisa. */
   setBrokerAutoPublish(id: string, autoPublish: boolean): Promise<void>;
-  /** Un medio del corredor (el logo), para `setLogo`: en Postgres hace falta la fila por la FK. */
-  createBrokerMedia(brokerId: string): Promise<string>;
   /** Un id con el formato del adaptador que no existe (un uuid en Postgres). */
   missingId: string;
 };
@@ -87,6 +88,28 @@ const REPORT: ImportReport = {
   ],
 };
 
+/** Un medio original sintético; sin `listingId`, es un logo del corredor. */
+export const newMedia = (
+  brokerId: string,
+  listingId: string | null,
+  checksum: string,
+  overrides: Partial<NewMedia> = {},
+): NewMedia => ({
+  listingId,
+  brokerId,
+  kind: "image",
+  storagePath:
+    listingId === null
+      ? `brokers/${brokerId}/brand/${checksum}.png`
+      : `brokers/${brokerId}/listings/${listingId}/original/${checksum}.jpg`,
+  mime: "image/jpeg",
+  bytes: 1234,
+  checksum,
+  sortOrder: 0,
+  isCover: false,
+  ...overrides,
+});
+
 async function expectAppError(promise: Promise<unknown>, code: string, retriable = false) {
   const error = await promise.then(
     () => undefined,
@@ -141,7 +164,7 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
     it("setLogo fija el logo, y update de la hoja no lo pisa", async () => {
       const slug = unique("corredor");
       const created = await repos.brokers.create(brokerData(slug));
-      const mediaId = await repos.createBrokerMedia(created.id);
+      const mediaId = (await repos.media.create(newMedia(created.id, null, unique("logo")))).id;
       await repos.brokers.setLogo(created.id, mediaId);
       expect(await repos.brokers.findBySlug(slug)).toEqual({ ...created, logoMediaId: mediaId });
 
@@ -150,10 +173,23 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
     });
 
     it("setLogo de un id inexistente → BROKER_NOT_FOUND", async () => {
-      const mediaId = await repos.createBrokerMedia(
-        (await repos.brokers.create(brokerData(unique("corredor")))).id,
-      );
+      const brokerId = (await repos.brokers.create(brokerData(unique("corredor")))).id;
+      const mediaId = (await repos.media.create(newMedia(brokerId, null, unique("logo")))).id;
       await expectAppError(repos.brokers.setLogo(repos.missingId, mediaId), "BROKER_NOT_FOUND");
+    });
+
+    it("setLogo con un medio inexistente, de otro corredor o de un aviso → MEDIA_NOT_FOUND", async () => {
+      const slug = unique("corredor");
+      const brokerId = (await repos.brokers.create(brokerData(slug))).id;
+      const otherId = (await repos.brokers.create(brokerData(unique("corredor")))).id;
+      const ajeno = (await repos.media.create(newMedia(otherId, null, unique("logo")))).id;
+      const listingId = (await repos.listings.create(newListing(brokerId, unique("P")))).id;
+      const deAviso = (await repos.media.create(newMedia(brokerId, listingId, unique("foto")))).id;
+
+      for (const mediaId of [repos.missingId, ajeno, deAviso]) {
+        await expectAppError(repos.brokers.setLogo(brokerId, mediaId), "MEDIA_NOT_FOUND");
+      }
+      expect((await repos.brokers.findBySlug(slug))?.logoMediaId).toBeNull();
     });
   });
 
@@ -348,6 +384,152 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
         }),
         "IMPORT_RUN_NOT_FOUND",
       );
+    });
+  });
+
+  describe(`${name} · MediaRepository`, () => {
+    let repos: ImportRepositories;
+    let brokerId: string;
+    let listingId: string;
+    beforeAll(async () => {
+      repos = await make();
+      brokerId = (await repos.brokers.create(brokerData(unique("corredor")))).id;
+      listingId = (await repos.listings.create(newListing(brokerId, unique("P")))).id;
+    });
+
+    /** Un aviso nuevo con sus medios, en el orden dado por `sortOrder`. */
+    async function listingWith(...checksums: string[]) {
+      const id = (await repos.listings.create(newListing(brokerId, unique("P")))).id;
+      const created = [];
+      for (const [index, checksum] of checksums.entries()) {
+        created.push(
+          await repos.media.create(newMedia(brokerId, id, unique(checksum), { sortOrder: index })),
+        );
+      }
+      return { id, media: created };
+    }
+
+    it("create devuelve el registro; listOriginals ordena por sortOrder", async () => {
+      const id = (await repos.listings.create(newListing(brokerId, unique("P")))).id;
+      const second = await repos.media.create(
+        newMedia(brokerId, id, unique("b"), { sortOrder: 1, kind: "video", mime: "video/mp4" }),
+      );
+      const first = await repos.media.create(newMedia(brokerId, id, unique("a"), { sortOrder: 0 }));
+      expect(second).toMatchObject({ listingId: id, brokerId, kind: "video", sortOrder: 1 });
+
+      expect(await repos.media.listOriginals(id)).toEqual([first, second]);
+      expect(await repos.media.listOriginals(listingId)).toEqual([]);
+    });
+
+    it("findByStoragePath encuentra un logo (sin aviso); una ruta desconocida es null", async () => {
+      const logo = await repos.media.create(newMedia(brokerId, null, unique("logo")));
+      expect(await repos.media.findByStoragePath(logo.storagePath)).toEqual(logo);
+      expect(await repos.media.findByStoragePath(`${logo.storagePath}.x`)).toBeNull();
+    });
+
+    it("el mismo archivo dos veces en un aviso, o la misma ruta → MEDIA_CONFLICT, reintentable", async () => {
+      const checksum = unique("dup");
+      const original = await repos.media.create(newMedia(brokerId, listingId, checksum));
+
+      await expectAppError(
+        repos.media.create(newMedia(brokerId, listingId, checksum, { storagePath: unique("x") })),
+        "MEDIA_CONFLICT",
+        true,
+      );
+      await expectAppError(
+        repos.media.create(
+          newMedia(brokerId, listingId, unique("otro"), { storagePath: original.storagePath }),
+        ),
+        "MEDIA_CONFLICT",
+        true,
+      );
+    });
+
+    it("el mismo archivo en otro aviso, o dos logos con el mismo archivo y otra ruta, sí valen", async () => {
+      const checksum = unique("compartido");
+      const other = (await repos.listings.create(newListing(brokerId, unique("P")))).id;
+      await repos.media.create(newMedia(brokerId, listingId, checksum));
+      await repos.media.create(newMedia(brokerId, other, checksum));
+      await repos.media.create(newMedia(brokerId, null, checksum));
+      await repos.media.create(
+        newMedia(brokerId, null, checksum, { storagePath: `${unique("logo")}.png` }),
+      );
+    });
+
+    it("arrange fija orden y portada", async () => {
+      const { id, media } = await listingWith("a", "b", "c");
+      const [a, b, c] = media.map((item) => item.id) as [string, string, string];
+
+      await repos.media.arrange(id, [
+        { id: c, sortOrder: 0, isCover: true },
+        { id: a, sortOrder: 1, isCover: false },
+        { id: b, sortOrder: 2, isCover: false },
+      ]);
+
+      expect(
+        (await repos.media.listOriginals(id)).map(({ id: mediaId, sortOrder, isCover }) => [
+          mediaId,
+          sortOrder,
+          isCover,
+        ]),
+      ).toEqual([
+        [c, 0, true],
+        [a, 1, false],
+        [b, 2, false],
+      ]);
+    });
+
+    it("una sola portada: la nueva desmarca la anterior aunque no venga en items", async () => {
+      const { id, media } = await listingWith("a", "b");
+      const [a, b] = media.map((item) => item.id) as [string, string];
+      await repos.media.arrange(id, [{ id: a, sortOrder: 0, isCover: true }]);
+
+      await repos.media.arrange(id, [{ id: b, sortOrder: 1, isCover: true }]);
+
+      expect((await repos.media.listOriginals(id)).filter((item) => item.isCover)).toEqual([
+        expect.objectContaining({ id: b }),
+      ]);
+    });
+
+    it("arrange con un medio de otro aviso → MEDIA_NOT_FOUND, sin cambiar nada", async () => {
+      const { id, media } = await listingWith("a");
+      const other = await listingWith("b");
+      const before = await repos.media.listOriginals(id);
+
+      await expectAppError(
+        repos.media.arrange(id, [
+          { id: media[0]?.id ?? "", sortOrder: 5, isCover: true },
+          { id: other.media[0]?.id ?? "", sortOrder: 6, isCover: false },
+        ]),
+        "MEDIA_NOT_FOUND",
+      );
+      expect(await repos.media.listOriginals(id)).toEqual(before);
+    });
+
+    it.each([
+      [
+        "ids repetidos",
+        (a: string) => [
+          { id: a, sortOrder: 0, isCover: false },
+          { id: a, sortOrder: 1, isCover: false },
+        ],
+      ],
+      [
+        "dos portadas",
+        (a: string, b: string) => [
+          { id: a, sortOrder: 0, isCover: true },
+          { id: b, sortOrder: 1, isCover: true },
+        ],
+      ],
+    ])("arrange con %s → MEDIA_ARRANGE_INVALID, sin cambiar nada", async (_, itemsOf) => {
+      const { id, media } = await listingWith("a", "b");
+      const before = await repos.media.listOriginals(id);
+
+      await expectAppError(
+        repos.media.arrange(id, itemsOf(media[0]?.id ?? "", media[1]?.id ?? "")),
+        "MEDIA_ARRANGE_INVALID",
+      );
+      expect(await repos.media.listOriginals(id)).toEqual(before);
     });
   });
 }

@@ -116,6 +116,15 @@ Preguntas para el operador o el plan de T07:
 2. ¿`BadDigest` debe ser reintentable (el job reabre el archivo y reintenta una vez) o terminal? Propuesta: terminal con mensaje claro, porque un archivo que cambió o se corrompió en disco no se arregla reintentando.
 3. ¿Se acepta ampliar `storage:check` con la prueba negativa (sube y borra objetos de prueba, como ya hace)?
 
+## 10b. Resultado contra R2 real (2026-10-01, F1-T07b)
+
+`pnpm storage:check`, con el adaptador ya implementado según la sección 10:
+- **Positivo:** 1 MB en streaming con el sha256 correcto: aceptado, y la relectura da el mismo sha256.
+- **Negativo:** el sha256 de otro contenido: R2 responde `BadDigest` (mapeado a `STORAGE_CONTENT_MISMATCH`), y `head(path)` devuelve `null`: el objeto no quedó guardado.
+- El SDK imprime en consola "An error was encountered in a non-retryable streaming request." al recibir el rechazo. Es esperable y no indica un problema.
+
+Con esto, lo NO VERIFICADO de 4.2 queda verificado para `PutObject` de un solo envío, y se adopta `ChecksumSHA256` (ADR-0007, Seguimiento).
+
 ## 11. Fuentes (consultadas el 2026-10-01)
 
 - Cloudflare R2, S3 API compatibility: https://developers.cloudflare.com/r2/api/s3/api/ (fila de `PutObject`, `UploadPart`, tabla "Checksum Types"; texto crudo leído en https://raw.githubusercontent.com/cloudflare/cloudflare-docs/production/src/content/docs/r2/api/s3/api.mdx)

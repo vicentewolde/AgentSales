@@ -2,6 +2,12 @@ export type PutStreamOptions = {
   contentType: string;
   /** Tamaño exacto en bytes. */
   contentLength: number;
+  /**
+   * sha256 del contenido, en hexadecimal (64 caracteres). Si viene, el almacenamiento verifica
+   * que lo subido calce y, si no, `STORAGE_CONTENT_MISMATCH` sin guardar nada (F1-T07b). Sin él,
+   * solo se verifica el largo.
+   */
+  sha256?: string;
 };
 
 /** Metadatos de un objeto guardado. */

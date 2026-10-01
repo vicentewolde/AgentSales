@@ -100,12 +100,14 @@ function setup(
   storageOptions: InMemoryMediaStorageOptions = {},
   mediaOptions: InMemoryMediaRepositoryOptions = {},
 ) {
+  const media = createInMemoryMediaRepository(mediaOptions);
   const deps = {
-    brokers: createInMemoryBrokerRepository(),
+    // Con los medios, `setLogo` valida como Postgres (que el logo sea del corredor).
+    brokers: createInMemoryBrokerRepository([], { media }),
     listings: createInMemoryListingRepository(),
     importRuns: createInMemoryImportRunRepository(),
     fieldDefinitions: createInMemoryFieldDefinitionRepository(DEFS),
-    media: createInMemoryMediaRepository(mediaOptions),
+    media,
     storage: createInMemoryMediaStorage(storageOptions),
     sha256: async (text: string) => `hash:${text}`,
   };
@@ -165,7 +167,11 @@ describe("ingestMedia · subida", () => {
       `${base}/sha256-foto-diez.heic`,
       `${base}/sha256-video-uno.mp4`,
     ]);
-    expect(deps.storage.objects.get(`${base}/sha256-video-uno.mp4`)?.contentType).toBe("video/mp4");
+    expect(deps.storage.objects.get(`${base}/sha256-video-uno.mp4`)).toMatchObject({
+      contentType: "video/mp4",
+      // El sha256 de la ingesta viaja a R2, que verifica lo subido (F1-T07b).
+      sha256: "sha256-video-uno",
+    });
     expect(
       deps.media
         .all()

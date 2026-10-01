@@ -20,6 +20,16 @@ export type R2StorageOptions = {
   endpoint?: string;
 };
 
+/** Nombre del error del SDK (el código S3, como `BadDigest`), si lo trae. */
+function errorName(error: unknown): string | undefined {
+  return error instanceof Error ? error.name : undefined;
+}
+
+const SHA256_HEX = /^[0-9a-f]{64}$/i;
+
+/** `ChecksumSHA256` va en base64 del digest crudo, no en hexadecimal. */
+const sha256Base64 = (hex: string) => Buffer.from(hex, "hex").toString("base64");
+
 /** Status HTTP de un error del SDK, si lo trae. */
 function httpStatusOf(error: unknown): number | undefined {
   if (typeof error !== "object" || error === null || !("$metadata" in error)) {
@@ -40,6 +50,14 @@ function httpStatusOf(error: unknown): number | undefined {
  */
 function toAppError(error: unknown, path: string): AppError {
   const status = httpStatusOf(error);
+  // R2 recalcula el sha256 de lo recibido y no guarda el objeto si no calza con `ChecksumSHA256`.
+  if (errorName(error) === "BadDigest") {
+    return new AppError(
+      "STORAGE_CONTENT_MISMATCH",
+      `El contenido subido a ${path} no calza con su sha256`,
+      { details: { path, status }, cause: error },
+    );
+  }
   if (status === 404) {
     return new AppError("STORAGE_NOT_FOUND", `No existe el objeto ${path}`, {
       details: { path },
@@ -127,9 +145,9 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
   //   El reintento es del job, que vuelve a abrir el archivo (spec F1, D3);
   // - sin checksum por defecto: con él, el SDK manda el stream en `aws-chunked` con un CRC32 al
   //   final y sin `Content-Length`, un formato del que no queremos depender en R2. Queda un PUT
-  //   normal con `Content-Length`. La integridad en tránsito la da TLS; el contenido subido **no**
-  //   se verifica contra el sha256 de la ingesta (F1-T07b, condicionado a la prueba negativa
-  //   contra R2: `docs/integraciones/r2-checksums.md`).
+  //   normal con `Content-Length`. Con `sha256`, se manda como `ChecksumSHA256` (sin
+  //   `ChecksumAlgorithm`): el SDK deja el header tal cual, sin `aws-chunked`, y R2 rechaza con
+  //   `BadDigest` un contenido que no calza (F1-T07b, `docs/integraciones/r2-checksums.md`).
   const streamClient = new S3Client({
     ...clientConfig,
     maxAttempts: 1,
@@ -153,8 +171,9 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
       });
     },
 
-    async putStream(path, body, { contentType, contentLength }) {
-      // Un largo inválido es un bug de quien llama: sin esto saldría como reintentable.
+    async putStream(path, body, { contentType, contentLength, sha256 }) {
+      // Un largo o un sha256 inválidos son un bug de quien llama: sin esto saldrían como
+      // reintentables o como un `InvalidDigest` de R2.
       if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
         throw new AppError(
           "STORAGE_ERROR",
@@ -163,6 +182,11 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
             details: { path, contentLength },
           },
         );
+      }
+      if (sha256 !== undefined && !SHA256_HEX.test(sha256)) {
+        throw new AppError("STORAGE_ERROR", `sha256 inválido para ${path}`, {
+          details: { path },
+        });
       }
       let failure: AppError | undefined;
       // Un problema del archivo de origen no corta la petición por sí solo: se aborta a mano.
@@ -188,6 +212,7 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
               Body: stream,
               ContentLength: contentLength,
               ContentType: contentType,
+              ...(sha256 === undefined ? {} : { ChecksumSHA256: sha256Base64(sha256) }),
             }),
             { abortSignal: abort.signal },
           );

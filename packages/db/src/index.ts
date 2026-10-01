@@ -26,6 +26,7 @@ export { createBrokerRepository } from "./repositories/brokers.js";
 export { createFieldDefinitionRepository } from "./repositories/field-definitions.js";
 export { createImportRunRepository } from "./repositories/import-runs.js";
 export { createListingRepository } from "./repositories/listings.js";
+export { createMediaRepository } from "./repositories/media.js";
 export * as schema from "./schema.js";
 export {
   REAL_ESTATE_CATEGORY,

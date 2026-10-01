@@ -113,9 +113,11 @@ async function upload(
   file: MediaFile,
 ): Promise<AppError | null> {
   try {
+    // Con el sha256, R2 rechaza un contenido distinto del que se listó (el archivo cambió).
     await storage.putStream(path, file.open(), {
       contentType: file.mime,
       contentLength: file.bytes,
+      sha256: file.sha256,
     });
     return null;
   } catch (error) {
