@@ -80,5 +80,16 @@ export function createImportRunRepository(db: SchemaDatabase): ImportRunReposito
         if (updated.length === 0) throw notFound(id);
       });
     },
+
+    recordMediaResult(id, report) {
+      return withDbErrors(async () => {
+        const updated = await db
+          .update(importRuns)
+          .set({ report })
+          .where(eq(importRuns.id, id))
+          .returning({ id: importRuns.id });
+        if (updated.length === 0) throw notFound(id);
+      });
+    },
   };
 }

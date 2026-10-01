@@ -62,8 +62,9 @@ function toAppError(error: unknown, path: string): AppError {
 /**
  * Recorre el stream contando bytes. Ante un problema del archivo de origen avisa con `onFailure` y
  * **termina sin lanzar**: un error lanzado aquí no corta la petición (queda colgada) y sale como
- * evento `error` del `Readable`. Quien llama aborta la petición y lanza el `STORAGE_ERROR`:
- * - más o menos bytes que `contentLength`: el archivo cambió mientras se subía;
+ * evento `error` del `Readable`. Quien llama aborta la petición y lanza el error:
+ * - más o menos bytes que `contentLength`: el archivo cambió mientras se subía
+ *   (`STORAGE_CONTENT_MISMATCH`, no reintentable: es del archivo, no de R2);
  * - un error al leerlo: un `AppError` del lector (por ejemplo, de la ingesta de medios) pasa tal
  *   cual, con su código y si es reintentable; cualquier otro error se envuelve en `STORAGE_ERROR`.
  */
@@ -77,7 +78,7 @@ async function* counted(
   const mismatch = () =>
     onFailure(
       new AppError(
-        "STORAGE_ERROR",
+        "STORAGE_CONTENT_MISMATCH",
         `El archivo ${path} cambió mientras se subía (se esperaban ${expected} bytes)`,
         { details: { path, expected, received: total } },
       ),
@@ -127,7 +128,8 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
   // - sin checksum por defecto: con él, el SDK manda el stream en `aws-chunked` con un CRC32 al
   //   final y sin `Content-Length`, un formato del que no queremos depender en R2. Queda un PUT
   //   normal con `Content-Length`. La integridad en tránsito la da TLS; el contenido subido **no**
-  //   se verifica contra el sha256 de la ingesta (se decide en F1-T07).
+  //   se verifica contra el sha256 de la ingesta (F1-T07b, condicionado a la prueba negativa
+  //   contra R2: `docs/integraciones/r2-checksums.md`).
   const streamClient = new S3Client({
     ...clientConfig,
     maxAttempts: 1,

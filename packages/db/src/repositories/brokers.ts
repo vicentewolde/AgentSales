@@ -100,5 +100,18 @@ export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
         return toBroker(row);
       });
     },
+
+    setLogo(id, mediaId) {
+      return withDbErrors(async () => {
+        const updated = await db
+          .update(brokers)
+          .set({ logoMediaId: mediaId })
+          .where(eq(brokers.id, id))
+          .returning({ id: brokers.id });
+        if (updated.length === 0) {
+          throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+        }
+      });
+    },
   };
 }

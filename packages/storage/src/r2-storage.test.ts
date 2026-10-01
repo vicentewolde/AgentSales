@@ -231,7 +231,7 @@ describe("putStream", () => {
     ["más", data.byteLength - 1],
     ["menos", data.byteLength + 1],
   ])(
-    "un stream con %s bytes que contentLength es STORAGE_ERROR y no guarda nada",
+    "un stream con %s bytes que contentLength es STORAGE_CONTENT_MISMATCH y no guarda nada",
     async (_, length) => {
       await expect(
         storage.putStream("x.mp4", chunksOf(data, 64 * 1024), {
@@ -239,7 +239,7 @@ describe("putStream", () => {
           contentLength: length,
         }),
       ).rejects.toMatchObject({
-        code: "STORAGE_ERROR",
+        code: "STORAGE_CONTENT_MISMATCH",
         retriable: false,
         details: { path: "x.mp4", expected: length, received: data.byteLength },
       });

@@ -60,7 +60,7 @@ flowchart LR
 ## Estilo: puertos y adaptadores
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
-- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository` e `ImportRunRepository` (`packages/core/src/ports/`); el resto llega en su fase (F1: `MediaRepository` y `JobQueue`).
+- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository` e `ImportRunRepository` (`packages/core/src/ports/`); el resto llega en su fase (F1: `JobQueue`). `MediaRepository` tiene su doble en memoria desde F1-T07, y su implementación Drizzle llega en F1-T07b.
 - Cola (ADR-0005): en F0 el adaptador de pg-boss vive en `apps/worker/src/queue.ts`, porque solo lo usan el worker y su script de prueba. **En F1**, cuando la API empieza a encolar `import.run`, se extrae a `packages/queue` implementando `JobQueue`, y con él `QUEUE_SCHEMA` y `checkQueueSchema` (hoy en `@agentsales/db`). La API, como `producer`, arranca pg-boss de forma diferida en el primer `enqueue`, y su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
@@ -102,8 +102,9 @@ Los paquetes se crean **cuando la fase que los necesita comienza**, no antes (ve
 Excel + carpetas → xlsx-reader (importers) lee la planilla, sin validar ni filtrar
   → importListings (core) filtra EJEMPLO/Borrador y valida contra field_definitions
   → upsert de listings (idempotente por broker + external_ref)
-  → sube medios originales a R2 → registra media
-  → import_run con reporte de errores por fila
+  → ingestMedia (core): por carpeta, deduplica por sha256, sube a R2 → registra media,
+    ordena, elige portada y pasa a ready (solo desde draft)
+  → import_run con reporte de errores y advertencias por fila
 ```
 
 ### 2. Preparación de contenido (job `content.prepare`)
@@ -266,6 +267,31 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 - **Errores de escritura:** un error no reintentable al escribir una fila la deja `failed`, con un motivo genérico, y la carga sigue. Uno reintentable (`DB_UNAVAILABLE`, `*_CONFLICT`) se propaga para que el job reintente.
 - **Reintentos:** reintentar es seguro, porque todo se escribe por `external_ref`: lo ya creado sale `skipped`.
 
+## Ingesta de medios (`ingestMedia`, core)
+
+- `ingestMedia(deps, { runId, imported, source })` corre después de `importListings`, en el mismo run, con su resultado (`imported`).
+  - `source` es el `MediaFileSource` de la carga, o `null` si no se pasaron medios; lo compone el job.
+  - `dry_run` sale del run: solo lee y reporta lo que se subiría.
+- **Logo:**
+  - `_marca/<logo>` se sube a `brokers/{brokerId}/brand/{sha256}.{extension}`.
+  - No se resube si ya existe (`findByStoragePath`), y se asigna con `setLogo`.
+  - Las advertencias van a `broker.warnings`.
+- **Por fila** `created`, `updated` y `skipped` (así, agregar fotos sin tocar el Excel las sube):
+  1. **Carpeta y deduplicación:** lista `carpeta_medios`, o `id_propiedad` si viene vacía. Deduplica por sha256 contra los originales del aviso y dentro de la carpeta.
+  2. **Subida:** sube a `brokers/{b}/listings/{l}/original/{sha256}.{extension}` y después inserta en `media`. Si falla entre medio, el reintento sobrescribe la misma clave.
+  3. **Orden y portada:** fija orden y portada con `arrange`, solo si algo cambió.
+     - El orden es el natural de la carpeta, y lo que ya no está se conserva al final.
+     - La portada es `foto_portada` si es una foto de la carpeta; si no, la primera foto de la carpeta.
+     - Si la carpeta no trae fotos, se conserva la portada guardada. `media` no guarda el nombre original, así que `foto_portada` solo se resuelve contra la carpeta.
+     - **Sin carpeta legible** (no se pasaron medios, o `MEDIA_FOLDER_*`): no toca orden ni portada. Solo cuentan las fotos que el aviso ya tenía, para el estado.
+  4. **Estado:** con `estado_carga = Listo` y al menos una foto, `promoteToReady`, que solo pasa de `draft` a `ready`. Con `Listo`, sin fotos y en `draft`, deja una advertencia. En `dry_run`, un aviso nuevo cuenta como `draft`.
+- **Errores:**
+  - Un problema de una carpeta (`MEDIA_FOLDER_*`) o de un archivo es una advertencia de su fila. De un archivo: `MEDIA_FILE_UNREADABLE`, o `STORAGE_CONTENT_MISMATCH` si cambió mientras se subía.
+  - Lo demás se propaga para que el job reintente: `STORAGE_UNAVAILABLE`, `DB_UNAVAILABLE`, `MEDIA_CONFLICT`, y también `STORAGE_ERROR` de credenciales.
+  - No hay reintentos por archivo: la deduplicación evita volver a subir lo que ya terminó.
+- **Advertencias:** usan un texto fijo por código, por ejemplo "el archivo cambió mientras se subía", nunca el mensaje del error, que puede traer la clave interna en R2.
+- **Reporte:** el de `importListings` más `media` (`filesUploaded`, `filesExisting`, `filesSkipped`, `filesFailed`, sin el logo) y las advertencias. Se guarda con `recordMediaResult`, que no toca contadores ni estado.
+
 ## Lector de Excel (`packages/importers`)
 
 - `readListingsWorkbook(ruta | bytes)` lee la hoja **Propiedades** (encabezados en la fila 1) y la hoja **Corredor** (vertical, con las columnas `Campo` y `Tu valor`). Busca las hojas y las columnas sin mayúsculas ni tildes.
@@ -354,12 +380,12 @@ interface MediaStorage {
 ```
 
 - Implementación: `packages/storage` (Cloudflare R2 vía API S3, ADR-0007).
-- Errores como `AppError`: `STORAGE_NOT_FOUND`, `STORAGE_UNAVAILABLE` (reintentable) y `STORAGE_ERROR`.
+- Errores como `AppError`: `STORAGE_NOT_FOUND`, `STORAGE_UNAVAILABLE` (reintentable), `STORAGE_ERROR` y `STORAGE_CONTENT_MISMATCH` (solo `putStream`; del archivo, no de R2).
 - `put` trabaja con el archivo completo en memoria. `putStream` lo sube **en streaming, en un solo PUT** (no multiparte), para videos de hasta `MAX_VIDEO_MB`, con tipos de ES2023 y nada de Node en core (spec F1, D3):
   - Es un solo `PutObject` con `Content-Length`, sin `@aws-sdk/lib-storage`, porque R2 acepta hasta unos 5 GB en un PUT.
   - Usa un cliente S3 aparte, **sin reintentos**: un stream no se puede rebobinar. Reintenta el job, que vuelve a abrir el archivo. La versión actual del SDK ya no reintenta streams, así que `maxAttempts: 1` es defensivo.
-  - Sin el checksum por defecto del SDK: con él, el stream viaja en `aws-chunked`, con un CRC32 al final y sin `Content-Length`. La integridad en tránsito la da TLS. El contenido subido **no** se verifica contra el sha256 de la ingesta; se decide en F1-T07.
-  - Si el stream trae más o menos bytes que `contentLength`, es `STORAGE_ERROR` no reintentable: se aborta la petición, sin dejarla colgada. Un `contentLength` inválido también.
+  - Sin el checksum por defecto del SDK: con él, el stream viaja en `aws-chunked`, con un CRC32 al final y sin `Content-Length`. La integridad en tránsito la da TLS. El contenido subido **no** se verifica contra el sha256 de la ingesta: `ChecksumSHA256` llega en F1-T07b, solo si R2 rechaza un sha256 erróneo (`docs/integraciones/r2-checksums.md`).
+  - Si el stream trae más o menos bytes que `contentLength`, es `STORAGE_CONTENT_MISMATCH`, no reintentable: se aborta la petición, sin dejarla colgada. Un `contentLength` inválido es `STORAGE_ERROR` (un bug de quien llama).
   - Si falla la lectura del origen, un `AppError` del lector pasa tal cual, con su código y si es reintentable; cualquier otro error es `STORAGE_ERROR`.
   - `pnpm storage:check` lo verifica contra R2 (1 MB en trozos de 64 KB).
 
