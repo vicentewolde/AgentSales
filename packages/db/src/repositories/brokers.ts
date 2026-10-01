@@ -5,10 +5,10 @@ import {
   type BrokerRepository,
   brokerSchema,
 } from "@agentsales/core";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
-import { brokers } from "../schema.js";
+import { brokers, media } from "../schema.js";
 
 const SLUG_UNIQUE = "brokers_slug_unique";
 
@@ -102,16 +102,34 @@ export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
     },
 
     setLogo(id, mediaId) {
-      return withDbErrors(async () => {
-        const updated = await db
-          .update(brokers)
-          .set({ logoMediaId: mediaId })
-          .where(eq(brokers.id, id))
-          .returning({ id: brokers.id });
-        if (updated.length === 0) {
-          throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
-        }
-      });
+      return withDbErrors(() =>
+        db.transaction(async (tx) => {
+          const [broker] = await tx
+            .select({ id: brokers.id })
+            .from(brokers)
+            .where(eq(brokers.id, id));
+          if (broker === undefined) {
+            throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+          }
+          // Sin esto, un medio inexistente sería un 23503 (FK) genérico, y uno de otro corredor
+          // o de un aviso pasaría sin error.
+          const [logo] = await tx
+            .select({ id: media.id })
+            .from(media)
+            .where(
+              and(
+                eq(media.id, mediaId),
+                eq(media.brokerId, id),
+                isNull(media.listingId),
+                eq(media.role, "original"),
+              ),
+            );
+          if (logo === undefined) {
+            throw new AppError("MEDIA_NOT_FOUND", `El medio ${mediaId} no es un logo del corredor`);
+          }
+          await tx.update(brokers).set({ logoMediaId: mediaId }).where(eq(brokers.id, id));
+        }),
+      );
     },
   };
 }

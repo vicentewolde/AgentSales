@@ -43,7 +43,8 @@ Instagram exige que los medios estén en una **URL accesible desde internet**, a
 - **Cloudinary u otro servicio de medios:** API propia que ata el diseño; el adaptador S3 es más portable.
 
 ## Seguimiento
-- 2026-09-29 (F0-T05): además del worker, el panel sondeando `/health` mantiene Neon despierto (cada sondeo hace `select 1`). El sondeo es de 30–60 s y solo con la pestaña visible (spec F0, T08).
 - 2026-09-29 (F0-T04): el cliente convierte `sslmode=require` en `verify-full` (`toPgConnectionString`), que verifica el certificado de Neon; pg-boss usa la misma conexión.
-- 2026-10-01 (F1-T05): las subidas en streaming a R2 (`putStream`) usan un cliente S3 aparte con `maxAttempts: 1` y `requestChecksumCalculation: "WHEN_REQUIRED"`, en un solo PUT con `Content-Length` (sin `aws-chunked` ni subida multiparte). Detalle en el spec F1, D3.
+- 2026-09-29 (F0-T05): además del worker, el panel sondeando `/health` mantiene Neon despierto (cada sondeo hace `select 1`). El sondeo es de 30–60 s y solo con la pestaña visible (spec F0, T08).
 - 2026-09-29 (F0-T06): con el worker apagado para ahorrar CU-horas, los jobs con `startAfter` vencido corren al arrancar y los cron del período apagado se pierden. Afecta al calendario (F6): ver riesgos en su spec.
+- 2026-10-01 (F1-T05): las subidas en streaming a R2 (`putStream`) usan un cliente S3 aparte con `maxAttempts: 1` y `requestChecksumCalculation: "WHEN_REQUIRED"`, en un solo PUT con `Content-Length` (sin `aws-chunked` ni subida multiparte). Detalle en el spec F1, D3.
+- 2026-10-01 (F1-T07b): `putStream` manda el sha256 de la ingesta como `ChecksumSHA256` (header `x-amz-checksum-sha256`, sin `ChecksumAlgorithm`), y R2 rechaza con `BadDigest` un contenido que no calza, sin guardar el objeto. `pnpm storage:check` lo prueba contra R2. Detalle en `docs/integraciones/r2-checksums.md`.

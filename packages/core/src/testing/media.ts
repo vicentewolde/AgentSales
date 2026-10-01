@@ -6,9 +6,14 @@ import type {
   MediaFolderListing,
   SkippedMediaFile,
 } from "../ports/media-file-source.js";
-import type { MediaRecord, MediaRepository, NewMedia } from "../ports/media-repository.js";
+import {
+  checkArrangement,
+  type MediaRecord,
+  type MediaRepository,
+  type NewMedia,
+} from "../ports/media-repository.js";
 import type { MediaStorage, StoredObjectInfo } from "../ports/media-storage.js";
-import { structuredCopy } from "./import-repositories.js";
+import { structuredCopy } from "./copy.js";
 
 export type InMemoryMediaRepository = MediaRepository & {
   all(): MediaRecord[];
@@ -66,9 +71,20 @@ export function createInMemoryMediaRepository(
     async arrange(listingId, items) {
       arrangeCalls += 1;
       // Todo o nada: se valida antes de cambiar algo.
-      for (const { id } of items) {
-        if (stored.get(id)?.listingId !== listingId) {
-          throw new AppError("MEDIA_NOT_FOUND", `El medio ${id} no es de ese aviso`);
+      checkArrangement(items);
+      const missing = items.filter(({ id }) => stored.get(id)?.listingId !== listingId);
+      if (missing.length > 0) {
+        throw new AppError("MEDIA_NOT_FOUND", "Hay medios que no son originales de ese aviso", {
+          details: { listingId, missing: missing.map(({ id }) => id) },
+        });
+      }
+      // Una sola portada por aviso: la nueva desmarca las demás, vengan o no en `items`.
+      const cover = items.find((item) => item.isCover);
+      if (cover !== undefined) {
+        for (const [id, record] of stored) {
+          if (record.listingId === listingId && record.isCover && id !== cover.id) {
+            stored.set(id, { ...record, isCover: false });
+          }
         }
       }
       for (const { id, sortOrder, isCover } of items) {
@@ -82,8 +98,8 @@ export function createInMemoryMediaRepository(
 }
 
 export type InMemoryMediaStorage = MediaStorage & {
-  /** Objetos guardados, por ruta. */
-  objects: Map<string, { body: Uint8Array; contentType: string }>;
+  /** Objetos guardados, por ruta, con el sha256 que se pidió verificar (si vino). */
+  objects: Map<string, { body: Uint8Array; contentType: string; sha256?: string }>;
   /** Rutas de cada `put`/`putStream` exitoso, en orden: para probar que no se resube. */
   uploads: string[];
 };
@@ -96,17 +112,23 @@ export type InMemoryMediaStorageOptions = {
 /**
  * `MediaStorage` en memoria. `putStream` lee el iterable completo y, como R2, da
  * `STORAGE_CONTENT_MISMATCH` si el largo no calza con `contentLength` (sin guardar nada). Un
- * error del iterable (el lector del archivo) pasa tal cual.
+ * error del iterable (el lector del archivo) pasa tal cual. El `sha256` se guarda pero no se
+ * verifica, ni su formato: core no calcula hashes, y `memoryFile` usa etiquetas (`sha256-…`) que
+ * el adaptador de R2 rechazaría por no ser hexadecimales. En R2 lo verifica R2 (`storage:check`).
  */
 export function createInMemoryMediaStorage(
   options: InMemoryMediaStorageOptions = {},
 ): InMemoryMediaStorage {
-  const objects = new Map<string, { body: Uint8Array; contentType: string }>();
+  const objects = new Map<string, { body: Uint8Array; contentType: string; sha256?: string }>();
   const uploads: string[] = [];
-  const store = (path: string, body: Uint8Array, contentType: string) => {
+  const store = (path: string, body: Uint8Array, contentType: string, sha256?: string) => {
     const failure = options.failUpload?.(path);
     if (failure !== undefined) throw failure;
-    objects.set(path, { body: body.slice(), contentType });
+    objects.set(path, {
+      body: body.slice(),
+      contentType,
+      ...(sha256 === undefined ? {} : { sha256 }),
+    });
     uploads.push(path);
   };
   return {
@@ -115,7 +137,7 @@ export function createInMemoryMediaStorage(
     async put(path, body, contentType) {
       store(path, body, contentType);
     },
-    async putStream(path, body, { contentType, contentLength }) {
+    async putStream(path, body, { contentType, contentLength, sha256 }) {
       const chunks: Uint8Array[] = [];
       let total = 0;
       for await (const chunk of body) {
@@ -135,7 +157,7 @@ export function createInMemoryMediaStorage(
         joined.set(chunk, offset);
         offset += chunk.byteLength;
       }
-      store(path, joined, contentType);
+      store(path, joined, contentType, sha256);
     },
     async get(path) {
       const object = objects.get(path);

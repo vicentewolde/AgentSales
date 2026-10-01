@@ -9,6 +9,8 @@ import type {
   ListingRepository,
   NewListing,
 } from "../ports/listing-repository.js";
+import type { MediaRecord } from "../ports/media-repository.js";
+import { structuredCopy } from "./copy.js";
 
 /** Ids legibles y deterministas para los tests (`broker-1`, `listing-2`…). */
 function idGenerator(prefix: string) {
@@ -22,8 +24,17 @@ export type InMemoryBrokerRepository = BrokerRepository & {
   setAutoPublish(id: string, autoPublish: boolean): void;
 };
 
+export type InMemoryBrokerRepositoryOptions = {
+  /**
+   * Medios para validar `setLogo` como Postgres (que el medio exista, sea del corredor y no sea de
+   * un aviso). Sin ellos, `setLogo` no valida el medio: solo sirve para tests que no lo ejercen.
+   */
+  media?: { all(): Pick<MediaRecord, "id" | "brokerId" | "listingId">[] };
+};
+
 export function createInMemoryBrokerRepository(
   initial: readonly Broker[] = [],
+  options: InMemoryBrokerRepositoryOptions = {},
 ): InMemoryBrokerRepository {
   const nextId = idGenerator("broker");
   const stored = new Map(initial.map((broker) => [broker.id, structuredCopy(broker)]));
@@ -60,6 +71,12 @@ export function createInMemoryBrokerRepository(
       const current = stored.get(id);
       if (current === undefined) {
         throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+      }
+      if (options.media !== undefined) {
+        const logo = options.media.all().find((media) => media.id === mediaId);
+        if (logo?.brokerId !== id || logo.listingId !== null) {
+          throw new AppError("MEDIA_NOT_FOUND", `El medio ${mediaId} no es un logo del corredor`);
+        }
       }
       stored.set(id, { ...current, logoMediaId: mediaId });
     },
@@ -183,16 +200,6 @@ export function createInMemoryImportRunRepository(): InMemoryImportRunRepository
       stored.set(id, { ...current, report: structuredCopy(report) });
     },
   };
-}
-
-/** Copia profunda de datos planos (JSON más fechas): lo guardado no se comparte con quien llama. */
-export function structuredCopy<T>(value: T): T {
-  if (value instanceof Date) return new Date(value.getTime()) as T;
-  if (Array.isArray(value)) return value.map(structuredCopy) as T;
-  if (typeof value !== "object" || value === null) return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, structuredCopy(item)]),
-  ) as T;
 }
 
 function copyData(data: BrokerData): BrokerData {

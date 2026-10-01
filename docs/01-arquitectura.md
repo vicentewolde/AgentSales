@@ -60,7 +60,7 @@ flowchart LR
 ## Estilo: puertos y adaptadores
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
-- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository` e `ImportRunRepository` (`packages/core/src/ports/`); el resto llega en su fase (F1: `JobQueue`). `MediaRepository` tiene su doble en memoria desde F1-T07, y su implementación Drizzle llega en F1-T07b.
+- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository` e `ImportRunRepository` (`packages/core/src/ports/`); el resto llega en su fase (F1: `JobQueue`).
 - Cola (ADR-0005): en F0 el adaptador de pg-boss vive en `apps/worker/src/queue.ts`, porque solo lo usan el worker y su script de prueba. **En F1**, cuando la API empieza a encolar `import.run`, se extrae a `packages/queue` implementando `JobQueue`, y con él `QUEUE_SCHEMA` y `checkQueueSchema` (hoy en `@agentsales/db`). La API, como `producer`, arranca pg-boss de forma diferida en el primer `enqueue`, y su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
@@ -250,7 +250,11 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
   - Otro error de una consulta es `DB_QUERY_FAILED`, no reintentable, con el SQLSTATE en `details`.
   - En los dos casos, `cause` es un **resumen sin datos** del error del driver (`safeDriverError`): un mensaje fijo y solo `code`, `constraint`, `table`, `column` y `schema`. El `DrizzleQueryError` lleva los parámetros de la consulta, y el error de pg lleva la fila en `detail`; los dos terminarían en los logs con datos de clientes.
   - `sqlStateOf` lee el SQLSTATE a través de la cadena de `cause`.
-- **Conflictos:** un `create` que choca con un único (`slug`, o `(broker_id, external_ref)`) es `BROKER_CONFLICT` o `LISTING_CONFLICT`, **reintentable**, porque dos intentos del job pueden solaparse y el reintento reclasifica la fila. Un `update` de un id que no existe es `*_NOT_FOUND`.
+- **Conflictos:** un `create` que choca con un único (`slug`, `(broker_id, external_ref)`, o los de `media`: `media_original_listing_checksum_unique` y `media_storage_path_unique`) es `BROKER_CONFLICT`, `LISTING_CONFLICT` o `MEDIA_CONFLICT`, **reintentable**, porque dos intentos del job pueden solaparse y el reintento reclasifica la fila o encuentra el medio. Un `update` de un id que no existe es `*_NOT_FOUND`.
+- **`MediaRepository.arrange`:**
+  - `checkArrangement` (core) rechaza ids repetidos, más de una portada o un `sortOrder` inválido (`MEDIA_ARRANGE_INVALID`), y un id que no es original del aviso da `MEDIA_NOT_FOUND`. En los dos casos no cambia nada.
+  - En Postgres va en una transacción que bloquea el aviso (`FOR NO KEY UPDATE`): dos `arrange` del mismo aviso se serializan, y queda una sola portada sin deadlocks. PGlite no puede probar la concurrencia, porque tiene una sola conexión; el rollback sí está probado.
+- **`BrokerRepository.setLogo`:** valida que el medio sea un original sin aviso del mismo corredor (`MEDIA_NOT_FOUND`); la base solo tiene la FK.
 - **Proyecciones:** `ListingImportRecord` (id, `external_ref`, `status` y `source_hash`) es una proyección para la carga, sin esquema. La entidad `listingSchema`, `ListingRepository.list`/`get` y `BrokerRepository.list` llegan con la API (F1-T10).
 - **Ids:** son uuid. La API los valida con zod antes de llamar al repositorio; con otro formato, el adaptador de Postgres da `DB_QUERY_FAILED` (22P02) y los dobles en memoria, `null` o `*_NOT_FOUND`.
 - Hay un doble en memoria con la misma semántica en `@agentsales/core/testing`, que solo se importa desde tests. Los dos se prueban con los mismos fixtures, por ejemplo `fieldDefinitionOrderFixture`.
@@ -278,7 +282,7 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
   - Las advertencias van a `broker.warnings`.
 - **Por fila** `created`, `updated` y `skipped` (así, agregar fotos sin tocar el Excel las sube):
   1. **Carpeta y deduplicación:** lista `carpeta_medios`, o `id_propiedad` si viene vacía. Deduplica por sha256 contra los originales del aviso y dentro de la carpeta.
-  2. **Subida:** sube a `brokers/{b}/listings/{l}/original/{sha256}.{extension}` y después inserta en `media`. Si falla entre medio, el reintento sobrescribe la misma clave.
+  2. **Subida:** sube a `brokers/{b}/listings/{l}/original/{sha256}.{extension}`, con el sha256 para que R2 verifique el contenido, y después inserta en `media`. Si falla entre medio, el reintento sobrescribe la misma clave.
   3. **Orden y portada:** fija orden y portada con `arrange`, solo si algo cambió.
      - El orden es el natural de la carpeta, y lo que ya no está se conserva al final.
      - La portada es `foto_portada` si es una foto de la carpeta; si no, la primera foto de la carpeta.
@@ -328,7 +332,7 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
     - El sha256 se calcula en streaming.
     - El orden es natural (`naturalOrder`: `Intl.Collator("es", { numeric: true })`). Con empate, decide la comparación binaria, para no depender del orden del sistema de archivos.
     - `open()` vuelve a leer el archivo, y un fallo es `MEDIA_FILE_UNREADABLE`, que `putStream` deja pasar.
-    - Si el archivo cambia entre `list` y `open`, `putStream` detecta el cambio de largo, pero no un contenido distinto del mismo largo (`ChecksumSHA256`: T07).
+    - Si el archivo cambia entre `list` y `open`, `putStream` lo detecta: el cambio de largo lo ve el adaptador, y un contenido distinto del mismo largo lo rechaza R2 con el sha256 (`ChecksumSHA256`, F1-T07b).
 - **`extractZip(zipPath, destDir, { maxEntries, maxTotalBytes })`**, con yauzl, entrada por entrada:
   - **Topes:** 2000 entradas (leídas del directorio central, antes de escribir) y 4 GB descomprimidos. Los bytes se suman con lo declarado antes de escribir cada entrada, y `validateEntrySizes` corta si una entrada trae más de lo que declara.
   - **Zip-slip:** yauzl rechaza los nombres absolutos o con `..` (también con `\`), y además `entryTargetPath` verifica que el destino quede dentro de `destDir`, antes de decidir si la entrada se omite. Un zip con una entrada así se rechaza completo.
@@ -371,7 +375,7 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 interface MediaStorage {
   put(path: string, body: Uint8Array, contentType: string): Promise<void>;   // sobrescribe
   putStream(path: string, body: AsyncIterable<Uint8Array>,
-            options: { contentType: string; contentLength: number }): Promise<void>; // sobrescribe
+            options: { contentType: string; contentLength: number; sha256?: string }): Promise<void>; // sobrescribe
   get(path: string): Promise<Uint8Array>;                                     // STORAGE_NOT_FOUND si no existe
   head(path: string): Promise<{ size: number; contentType: string | undefined } | null>; // null si no existe
   delete(path: string): Promise<void>;                                        // idempotente
@@ -384,10 +388,11 @@ interface MediaStorage {
 - `put` trabaja con el archivo completo en memoria. `putStream` lo sube **en streaming, en un solo PUT** (no multiparte), para videos de hasta `MAX_VIDEO_MB`, con tipos de ES2023 y nada de Node en core (spec F1, D3):
   - Es un solo `PutObject` con `Content-Length`, sin `@aws-sdk/lib-storage`, porque R2 acepta hasta unos 5 GB en un PUT.
   - Usa un cliente S3 aparte, **sin reintentos**: un stream no se puede rebobinar. Reintenta el job, que vuelve a abrir el archivo. La versión actual del SDK ya no reintenta streams, así que `maxAttempts: 1` es defensivo.
-  - Sin el checksum por defecto del SDK: con él, el stream viaja en `aws-chunked`, con un CRC32 al final y sin `Content-Length`. La integridad en tránsito la da TLS. El contenido subido **no** se verifica contra el sha256 de la ingesta: `ChecksumSHA256` llega en F1-T07b, solo si R2 rechaza un sha256 erróneo (`docs/integraciones/r2-checksums.md`).
+  - Sin el checksum por defecto del SDK: con él, el stream viaja en `aws-chunked`, con un CRC32 al final y sin `Content-Length`. La integridad en tránsito la da TLS.
+  - **Verificación del contenido (F1-T07b):** con `sha256` (hex), el adaptador lo manda como `ChecksumSHA256` en base64, sin `ChecksumAlgorithm`. El SDK deja el header tal cual, sin `aws-chunked`, y R2 recalcula el sha256 de lo recibido. Si no calza, responde `BadDigest` sin guardar el objeto (`STORAGE_CONTENT_MISMATCH`). Un `sha256` mal formado es `STORAGE_ERROR`. Detalle en `docs/integraciones/r2-checksums.md`.
   - Si el stream trae más o menos bytes que `contentLength`, es `STORAGE_CONTENT_MISMATCH`, no reintentable: se aborta la petición, sin dejarla colgada. Un `contentLength` inválido es `STORAGE_ERROR` (un bug de quien llama).
   - Si falla la lectura del origen, un `AppError` del lector pasa tal cual, con su código y si es reintentable; cualquier otro error es `STORAGE_ERROR`.
-  - `pnpm storage:check` lo verifica contra R2 (1 MB en trozos de 64 KB).
+  - `pnpm storage:check` lo verifica contra R2: 1 MB en trozos de 64 KB, con el sha256 correcto y con el de otro contenido, que debe rechazarse sin dejar el objeto.
 
 ## Contrato del proveedor de IA
 

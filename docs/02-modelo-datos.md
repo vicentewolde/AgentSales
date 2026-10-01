@@ -112,7 +112,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | is_cover | boolean | |
 | ai_metadata | jsonb null | Descripción y puntaje de la IA |
 
-Únicos (migración `0001`): `(listing_id, checksum) WHERE role = 'original'` (el mismo archivo no se sube dos veces a una propiedad) y `UNIQUE (storage_path)`, que también cubre el logo (`listing_id` null). El logo es un medio `original` sin aviso (`listing_id` null), en `brokers/{brokerId}/brand/{sha256}.{ext}`; `brokers.logo_media_id` apunta a él. En F1, `width`, `height` y `duration_s` quedan en `null`; los mide `media.process` en F2.
+Únicos (migración `0001`): `(listing_id, checksum) WHERE role = 'original'` (el mismo archivo no se sube dos veces a una propiedad) y `UNIQUE (storage_path)`, que también cubre el logo (`listing_id` null). El logo es un medio `original` sin aviso (`listing_id` null), en `brokers/{brokerId}/brand/{sha256}.{ext}`; `brokers.logo_media_id` apunta a él. Que sea un original sin aviso y del mismo corredor lo valida `BrokerRepository.setLogo`, no la base (solo hay FK). En F1, `width`, `height` y `duration_s` quedan en `null`; los mide `media.process` en F2.
 
 ### contents — textos generados por plataforma
 | Columna | Tipo | Notas |
@@ -173,7 +173,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | started_at | timestamptz null | Se fija al pasar a `running` |
 | finished_at | timestamptz null | `null` mientras la carga está en curso |
 
-Los únicos `brokers.slug` y `listings (broker_id, external_ref)` se traducen en los repositorios a `BROKER_CONFLICT` y `LISTING_CONFLICT`, reintentables: dos intentos del job `import.run` pueden solaparse, y el reintento reclasifica la fila.
+Los únicos `brokers.slug`, `listings (broker_id, external_ref)` y los dos de `media` se traducen en los repositorios a `BROKER_CONFLICT`, `LISTING_CONFLICT` y `MEDIA_CONFLICT`, reintentables: dos intentos del job `import.run` pueden solaparse, y el reintento reclasifica la fila o encuentra el medio ya registrado.
 
 ### Cola de trabajos
 

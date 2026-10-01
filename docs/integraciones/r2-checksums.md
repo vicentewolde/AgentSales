@@ -106,7 +106,7 @@ El script debe imprimir solo códigos y nombres de error, nunca credenciales ni 
 
 **Sí: mandar `ChecksumSHA256`, condicionado a que pase la prueba negativa (8.2) contra R2 real.**
 
-- Agregar un campo opcional a `PutStreamOptions` (por ejemplo `sha256Hex?: string`). En el adaptador convertirlo a base64 del digest crudo: `Buffer.from(hex, "hex").toString("base64")`, validando 64 caracteres hex. Pasarlo como `ChecksumSHA256` en el `PutObjectCommand`, junto con `ContentLength`.
+- Agregar un campo opcional a `PutStreamOptions` (por ejemplo `sha256Hex?: string`; se implementó como `sha256`). En el adaptador convertirlo a base64 del digest crudo: `Buffer.from(hex, "hex").toString("base64")`, validando 64 caracteres hex. Pasarlo como `ChecksumSHA256` en el `PutObjectCommand`, junto con `ContentLength`.
 - No pasar `ChecksumAlgorithm`. Mantener `requestChecksumCalculation: "WHEN_REQUIRED"` en el cliente de streams y `maxAttempts: 1`.
 - Mapear `BadDigest` (400) a un error con detalle claro ("el contenido subido no calza con el sha256"). **Decisión del plan de F1-T07 (se implementa en F1-T07b):** `STORAGE_CONTENT_MISMATCH`, no reintentable, el mismo código que un largo distinto; la ingesta lo trata como advertencia del archivo (respuesta a la pregunta 2). Si la prueba negativa falla (R2 acepta el objeto con checksum erróneo), **no** enviar el header y dejar la verificación a una lectura posterior, o aceptar la limitación documentada.
 - Cambia el contrato de `PutStreamOptions` (puerto de `core`): requiere actualizar `docs/01-arquitectura.md` y la línea de D3 del spec F1, más una línea de Seguimiento en ADR-0007, en el PR de F1-T07b (el plan de F1-T07 partió la tarea).
@@ -115,6 +115,15 @@ Preguntas para el operador o el plan de T07:
 1. ¿El sha256 de la ingesta se calcula sobre los mismos bytes que se suben (lectura previa del archivo completo) o en una pasada distinta? Si el archivo puede cambiar entre ambas, el rechazo por `BadDigest` es justamente lo deseado.
 2. ¿`BadDigest` debe ser reintentable (el job reabre el archivo y reintenta una vez) o terminal? Propuesta: terminal con mensaje claro, porque un archivo que cambió o se corrompió en disco no se arregla reintentando.
 3. ¿Se acepta ampliar `storage:check` con la prueba negativa (sube y borra objetos de prueba, como ya hace)?
+
+## 10b. Resultado contra R2 real (2026-10-01, F1-T07b)
+
+`pnpm storage:check`, con el adaptador ya implementado según la sección 10:
+- **Positivo:** 1 MB en streaming con el sha256 correcto: aceptado, y la relectura da el mismo sha256.
+- **Negativo:** el sha256 de otro contenido: R2 responde `BadDigest` (mapeado a `STORAGE_CONTENT_MISMATCH`), y `head(path)` devuelve `null`: el objeto no quedó guardado.
+- El SDK imprime en consola "An error was encountered in a non-retryable streaming request." al recibir el rechazo. Es esperable y no indica un problema.
+
+Con esto, lo NO VERIFICADO de 4.2 queda verificado para `PutObject` de un solo envío, y se adopta `ChecksumSHA256` (ADR-0007, Seguimiento).
 
 ## 11. Fuentes (consultadas el 2026-10-01)
 

@@ -11,6 +11,7 @@ export {
   createInMemoryImportRunRepository,
   createInMemoryListingRepository,
   type InMemoryBrokerRepository,
+  type InMemoryBrokerRepositoryOptions,
   type InMemoryImportRunRepository,
   type InMemoryListingRepository,
   type StoredListing,

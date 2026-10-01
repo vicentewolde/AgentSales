@@ -82,6 +82,36 @@ try {
   await storage.delete(streamPath);
   streamUploaded = false;
 
+  // Con sha256 (F1-T07b): el correcto se acepta y uno de otro contenido se rechaza sin guardar.
+  await storage.putStream(streamPath, streamChunks(), {
+    contentType: "application/octet-stream",
+    contentLength: STREAM_BYTES,
+    sha256: sha256(streamData),
+  });
+  streamUploaded = true;
+  check(sha256(await storage.get(streamPath)) === sha256(streamData), "subir con sha256 correcto");
+  await storage.delete(streamPath);
+  streamUploaded = false;
+
+  const rejected = await storage
+    .putStream(streamPath, streamChunks(), {
+      contentType: "application/octet-stream",
+      contentLength: STREAM_BYTES,
+      sha256: sha256(new TextEncoder().encode("otro contenido")),
+    })
+    .then(
+      () => null,
+      (error: unknown) => error,
+    );
+  streamUploaded = rejected === null;
+  const rejectedCode =
+    rejected instanceof Error && "code" in rejected ? String(rejected.code) : String(rejected);
+  check(
+    rejectedCode === "STORAGE_CONTENT_MISMATCH",
+    `sha256 de otro contenido → rechazado (${rejectedCode})`,
+  );
+  check((await storage.head(streamPath)) === null, "el rechazado no quedó guardado");
+
   logger.info("storage:check OK");
 } catch (error) {
   logger.error({ err: error }, "storage:check falló");
