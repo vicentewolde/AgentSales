@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-09-30
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T04 · Caso de uso importListings
-**Siguiente paso:** `/tarea F1-T04b`: repositorios Drizzle de brokers, listings e import_runs
+**Última tarea terminada:** F1-T04b · Repositorios Drizzle de brokers, listings e import_runs
+**Siguiente paso:** `/tarea F1-T05` (almacenamiento con streams), F1-T06 (lectores de medios) o F1-T08 (paquete de cola): ninguna depende de las otras; T07 necesita T05 y T06
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -13,8 +13,8 @@
 | F1-T01 Migración 0001, definiciones de campos y errores de base de datos | ✅ terminada | #13 |
 | F1-T02 Validador dinámico | ✅ terminada | #14 |
 | F1-T03 Lector de Excel | ✅ terminada | #15 |
-| F1-T04 Caso de uso importListings | ✅ terminada | |
-| F1-T04b Repositorios Drizzle de brokers, listings e import_runs | ⏳ pendiente | |
+| F1-T04 Caso de uso importListings | ✅ terminada | #16 |
+| F1-T04b Repositorios Drizzle de brokers, listings e import_runs | ✅ terminada | |
 | F1-T05 Almacenamiento con streams | ⏳ pendiente | |
 | F1-T06 Lectores de medios | ⏳ pendiente | |
 | F1-T07 Caso de uso ingestMedia | ⏳ pendiente | |
@@ -49,6 +49,12 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 ## Notas de la última sesión
 - 2026-09-30: **F0 cerrada.** Monorepo con `core`, `config`, `db` (Neon, migración `0000_init`), `storage` (R2), API (`/health`), worker (pg-boss), CLI (`doctor`/`status`) y panel. CI en GitHub Actions. 321 tests. Detalle en `CHANGELOG.md` `[0.0.1]` y en el spec F0.
 - 2026-09-30: demo de F0 confirmada por el operador. Arreglo derivado: el worker resume los errores repetidos de pg-boss sin conexión.
+- 2026-10-01: **F1-T04b.** Repositorios Drizzle de brokers, listings e import_runs.
+  - Los conflictos de los únicos son `*_CONFLICT`, reintentables.
+  - `price_amount` se escribe con `toFixed(2)`.
+  - `get` valida los jsonb (`IMPORT_RUN_INVALID`).
+  - **Migración `0002`:** `import_runs.report` admite `null`, con un `UPDATE` de `'{}'` a `NULL` agregado a mano; aplicada en Neon.
+  - **Tests:** una suite de contrato corre los mismos casos contra los dobles en memoria y contra PGlite. También hay un test de punta a punta de `importListings` contra Postgres (PGlite) y uno de la migración `0002` sobre datos.
 - 2026-09-30: **F1-T04.** `importListings` en core, con la tarea partida en T04 (core) y T04b (Drizzle).
   - Hoja Corredor: `parseBrokerSheet` compara las etiquetas sin mayúsculas ni tildes y avisa las repetidas. `--broker` gana sobre el slug de la hoja.
   - `source_hash` sobre `{ core, attributes, control }`.

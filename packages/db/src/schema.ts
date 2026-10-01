@@ -286,7 +286,8 @@ export const importRuns = pgTable("import_runs", {
   rowsUpdated: integer("rows_updated").notNull().default(0),
   rowsSkipped: integer("rows_skipped").notNull().default(0),
   rowsFailed: integer("rows_failed").notNull().default(0),
-  report: jsonb("report").notNull().default({}),
+  /** `importReportSchema` (core); `null` hasta que `importListings` registra su resultado. */
+  report: jsonb("report"),
   /** Se fija al pasar a `running`. */
   startedAt: timestamp("started_at", { withTimezone: true }),
   finishedAt: timestamp("finished_at", { withTimezone: true }),

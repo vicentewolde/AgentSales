@@ -6,7 +6,13 @@ export {
   type SchemaDatabase,
   toPgConnectionString,
 } from "./client.js";
-export { isDbUnavailable, sqlStateOf, toDbError, withDbErrors } from "./errors.js";
+export {
+  isDbUnavailable,
+  isUniqueViolation,
+  sqlStateOf,
+  toDbError,
+  withDbErrors,
+} from "./errors.js";
 export {
   checkQueueSchema,
   type Pingable,
@@ -16,7 +22,10 @@ export {
   type Queryable,
 } from "./health.js";
 export { MIGRATIONS_FOLDER } from "./migrations.js";
+export { createBrokerRepository } from "./repositories/brokers.js";
 export { createFieldDefinitionRepository } from "./repositories/field-definitions.js";
+export { createImportRunRepository } from "./repositories/import-runs.js";
+export { createListingRepository } from "./repositories/listings.js";
 export * as schema from "./schema.js";
 export {
   REAL_ESTATE_CATEGORY,
