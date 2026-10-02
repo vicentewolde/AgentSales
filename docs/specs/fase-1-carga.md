@@ -601,6 +601,12 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 ### F1-T15 · Cierre de fase
 - **Depende de:** todas
 - **Descripción:** `/fase-cerrar 1`.
+- **Hecho cuando:**
+  - [x] Demos del plan de demo (§7) con las 3 propiedades de muestra (2026-10-02)
+  - [x] Criterios de §6 y del roadmap verificados con evidencia
+  - [x] Auditoría de coherencia docs-código (subagente `arquitecto`) y docs corregidos
+  - [x] `CHANGELOG.md` `[0.1.0]`, spec cerrado y `docs/ESTADO.md` apuntando a F2
+  - [ ] Tag `v0.1.0` desde `main`, después del merge del cierre
 
 Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer en cualquier momento después de F0. Luego T07 → T07b → T09. T10 va después de T04b. T11 después de T09 y T10. Luego T12, T13 → T14, y al final T15.
 
@@ -636,7 +642,7 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | El proceso de la API cae entre crear el run y encolarlo | El run queda en `queued` sin job. La CLI y el panel avisan a los 20 s; reintentar la carga crea un run nuevo (MVP). Desde la revisión de T08 |
 
 ## 9. Preguntas abiertas
-- [ ] ¿Google Sheets y Drive son necesarios antes de F3, o basta con Excel y zip durante el piloto?
+- [ ] ¿Google Sheets y Drive son necesarios antes de F3, o basta con Excel y zip durante el piloto? **Pospuesta a `/fase-plan 2`** al cerrar F1 (2026-10-02); queda en `docs/ESTADO.md`.
 
 ## 10. Registro de cambios del spec
 | Fecha | Cambio |
@@ -675,4 +681,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-02 | Desde la revisión de F1-T13: enteros de cuatro cifras sin punto (`formatNumber`); `LISTING_STATUS_TEXT`, `OPERATION_TEXT` e `IMPORT_RUN_STATUS_TEXT` en core (la CLI muestra los estados en español); resultados anteriores mientras se filtra, comunas de respaldo y `aria-live`; el cambio de estado conserva la hora de carga del detalle; sin reintento de `TIMEOUT` y corte del cuerpo como `TIMEOUT`; `errorElement`; botones según el estado de origen; guardia de imports ampliada; notas para T14 (invalidar `listingKeys.all`) |
 | 2026-10-02 | F1-T14: páginas `/importar` y `/importar/:id`; sondeo cada 2 s solo mientras corre e invalidación de propiedades al terminar; aviso de cola a los 20 s; reporte por fila y columna; `IMPORT_BROKER_OUTCOME_TEXT` e `IMPORT_ROW_OUTCOME_TEXT` en core; `UPLOAD_TIMEOUT_MS`; el archivo de los contratos como `z.custom<File>` (antes filtraba el `File` de Node a `AppType`) |
 | 2026-10-02 | Desde la revisión de F1-T14: topes del sondeo (2 h y 3 fallas seguidas, `IMPORT_WAIT` en core, compartido con la CLI) en §4.7; `importReportIssues` en core; una carga terminada no se vuelve a pedir y solo invalida si se la vio terminar; test que rechaza `z.instanceof(` en `contracts`; extensiones en `contracts`; test de la subida en Node |
-| 2026-10-02 | Cierre de F1: casillas "Hecho cuando" de T01 a T11 marcadas (tareas mergeadas en #13 a #25); correcciones de la auditoría de coherencia (`MAX_IMPORT_UPLOAD_MB` en 512 y escritura en streaming, limpieza del staging, `estado_carga`, `NODE_ENV`). Las 6 demos del plan de demo pasaron contra Neon y R2 con las 3 propiedades de muestra; criterios de §6 verificados; spec **Cerrado** y tag `v0.1.0` |
+| 2026-10-02 | Cierre de F1: la pregunta de §9 (Google Sheets y Drive) se pospone a `/fase-plan 2`; casillas "Hecho cuando" de T01 a T11 marcadas (tareas mergeadas en #13 a #25); correcciones de la auditoría de coherencia (`MAX_IMPORT_UPLOAD_MB` en 512 y escritura en streaming, limpieza del staging, `estado_carga`, `NODE_ENV`). Las 6 demos del plan de demo pasaron contra Neon y R2 con las 3 propiedades de muestra; criterios de §6 verificados; spec **Cerrado** y tag `v0.1.0` |

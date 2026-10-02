@@ -27,6 +27,7 @@ Ahora se cargan propiedades desde un Excel con sus fotos y videos, por la CLI o 
 - **Plantilla:** `carpeta_medios` pasa a ser opcional; si se deja vacía, se usa `id_propiedad`.
 - **Validación de filas:** cada fila del Excel se valida contra las definiciones de campo. Los errores indican columna y motivo, sin detener las demás filas; números como `5.800`, `Sí/No`, listas y opciones se aceptan con o sin mayúsculas y tildes. `publicar_en` solo acepta Instagram, Portal Inmobiliario y Marketplace.
 - **Errores de base de datos:** si Neon no responde, se informa `DB_UNAVAILABLE` (reintentable) en vez de un error genérico.
+- **Documentación:** ADR-0011 (dónde viven los contratos HTTP que comparten la API, la CLI y el panel) y enmienda de ADR-0005 (la importación corre como trabajo del worker, `import.run`).
 
 ### Corregido
 - La fecha de última modificación de una propiedad la pone la base de datos, así el orden "más recientes primero" no se cruza cuando dos cambios ocurren en el mismo milisegundo.

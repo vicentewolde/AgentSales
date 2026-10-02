@@ -18,12 +18,13 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - [ ] Iniciar el trámite de la app de Meta (lento, en paralelo; se usa en F3)
 
 ## Decisiones pendientes para `/fase-plan 2`
-- **Proveedor de IA:** `LLMProvider` con `claude-cli` y `fake` (ADR-0006); `anthropic-api` como stub, que exige `ANTHROPIC_API_KEY` si se elige.
-- **Medios:** variantes `ig_4x5`, `pi_4x3` e `ig_reel` con sharp y ffmpeg, dónde se guardan en R2 y cómo se registran. Las fotos HEIC de iPhone se aceptan desde F1 y se convierten en F2 (sharp con libheif, o ffmpeg como alternativa).
-- **Plantillas:** render de portada y ficha con Playwright a PNG (ADR-0010).
+- **Proveedor de IA:** `LLMProvider` con `claude-cli` y `fake` (ADR-0003); `anthropic-api` como stub, que exige `ANTHROPIC_API_KEY` si se elige.
+- **Medios:** variantes `ig_4x5`, `pi_4x3` e `ig_reel` con sharp y ffmpeg, dónde se guardan en R2 y cómo se registran. Las fotos HEIC de iPhone se aceptan desde F1 y se convierten en F2 (sharp con libheif, o ffmpeg como alternativa). Compromisos del spec F1: `media.process` mide `width`, `height` y `duration_s` con sharp y ffprobe (D6), y `MediaStorage.getStream` llega en F2 (D3; cambia el contrato de `MediaStorage` en 01). Decidir también si la portada que sugiera la IA (`cover_media_id`, `photo_order`) puede pisar la `foto_portada` que eligió el operador.
+- **Contenido sin cuenta conectada:** el roadmap deja el contenido de F2 en `pending_approval`, pero ese estado es de `publications` (`contents.status` es `draft`, `edited` o `approved`) y `publications.platform_account_id` es obligatorio, mientras que las cuentas se conectan en F3. Opciones: crear solo `contents` y ajustar el criterio de F2, sembrar una cuenta en `dry-run`, o hacer opcional la FK (migración, cambio en 02 y probablemente un ADR).
+- **Plantillas:** render de portada y ficha con Playwright a PNG (roadmap F2). Los paquetes nuevos `llm`, `media` y `templates` siguen ADR-0010 (`exports` con `@agentsales/source`), y si Playwright carga módulos o plantillas se revisa contra esa condición.
 - **Evaluación:** `pnpm eval:content` sobre las 3 propiedades de muestra (`agentsales-pruebas`), sin llamar a Anthropic en los tests.
 - **Validación de números:** si se suman `min` y `max` a `FieldDefinition` en F2 (ver deuda).
-- **Pregunta abierta de F1 (§9):** ¿Google Sheets y Drive hacen falta antes de F3, o basta con Excel y zip durante el piloto?
+- **Pregunta abierta de F1 (§9, pospuesta al cierre):** ¿Google Sheets y Drive hacen falta antes de F3, o basta con Excel y zip durante el piloto? En las demos de F1, la exportación de Sheets a xlsx se importó sin problemas.
 
 ## Deuda técnica
 - **Validación de números:** las definiciones de campo no tienen mínimo ni máximo, así que `dormitorios = -2` o `banos = -1` pasan (visto en la demo 4 de F1). Proponer `min` y `max` en `FieldDefinition` en el spec de la fase que lo tome; el precio ya exige ser mayor que 0.
@@ -55,7 +56,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
     2. El mismo comando: 3 sin cambios y 12 archivos que ya estaban, sin subir nada.
     3. Copia con el precio de P003 cambiado (exportada desde Google Sheets): 1 actualizada y 2 sin cambios. La exportación de Sheets se lee igual que el Excel original.
     4. Copia con una fila P004 con errores: el reporte muestra la fila 6 con `operacion` («Permuta» no es una opción válida), `comuna` (falta el valor) y `precio` («mucho» no es un número). Las otras 3 quedan sin cambios y la CLI sale con código 1.
-    5. Panel → Propiedades → Detalle: las 3 con portada, precio en formato chileno (`UF 6.200`, `$1.400.000/mes`, `UF 5.600`), estado Lista y atributos con etiqueta. La dirección está oculta en P001 y P002 y visible en P003, y el video de P002 (6 s) se reproduce.
+    5. Panel → Propiedades → Detalle: las 3 con portada, precio en formato chileno (UF en venta y pesos con `/mes` en arriendo), estado Lista y atributos con etiqueta. La dirección está oculta en P001 y P002 y visible en P003, y el video de P002 (6 s) se reproduce.
     6. Panel → Importar con el xlsx y el zip de medios (comprimido en Finder): "en cola" y luego el reporte, con 3 sin cambios y 12 archivos que ya estaban.
   - **Para la próxima demo:** las variantes del Excel se arman en Google Sheets y se exportan como xlsx; la planilla queda como estaba. Al final, Neon quedó con las 3 propiedades de muestra tal como están en `data/muestras/propiedades.xlsx`.
   - **Criterios:** los de `docs/06-roadmap.md` y spec §6 quedaron verificados (evidencia en el spec). `pnpm check`: 74 archivos y 1103 tests.

@@ -108,9 +108,9 @@ CLI (POST /imports/local, rutas del disco) o panel (POST /imports, multipart)
   → xlsx-reader (importers) lee la planilla, sin validar ni filtrar
   → importListings (core) filtra EJEMPLO/Borrador y valida contra field_definitions
   → upsert de listings (idempotente por broker + external_ref)
-  → openMedia (importers): carpeta o zip en el staging
+  → openMedia (importers, inyectado): la carpeta en su lugar, o el zip extraído en el staging del intento
   → ingestMedia (core): por carpeta, deduplica por sha256, sube a R2 → registra media,
-    ordena, elige portada y pasa a ready (solo desde draft)
+    ordena, elige portada y pasa a ready con `estado_carga = Listo` y al menos una foto (solo desde draft)
   → import_run en succeeded o failed, con reporte de errores y advertencias por fila
 ```
 
