@@ -1,6 +1,7 @@
 import type { Broker, BrokerData } from "../broker.js";
 import { AppError } from "../errors.js";
 import type { ImportRun } from "../import-run.js";
+import type { Listing } from "../listing.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ImportRunRepository, NewImportRun } from "../ports/import-run-repository.js";
 import type {
@@ -42,6 +43,11 @@ export function createInMemoryBrokerRepository(
     async findBySlug(slug) {
       const found = [...stored.values()].find((broker) => broker.slug === slug);
       return found === undefined ? null : structuredCopy(found);
+    },
+    async list() {
+      return [...stored.values()]
+        .sort((a, b) => a.brandName.localeCompare(b.brandName, "es") || a.id.localeCompare(b.id))
+        .map(structuredCopy);
     },
     async create(data: BrokerData) {
       if ([...stored.values()].some((broker) => broker.slug === data.slug)) {
@@ -98,9 +104,29 @@ export type InMemoryListingRepository = ListingRepository & {
   setStatus(id: string, status: StoredListing["status"]): void;
 };
 
-export function createInMemoryListingRepository(): InMemoryListingRepository {
-  const nextId = idGenerator("listing");
+export function createInMemoryListingRepository(
+  options: { nextId?: () => string } = {},
+): InMemoryListingRepository {
+  // Por defecto, ids legibles (`listing-1`); la API valida uuid, así que sus tests dan los suyos.
+  const nextId = options.nextId ?? idGenerator("listing");
   const stored = new Map<string, StoredListing>();
+  // Fechas aparte, para no cambiar `StoredListing`. Un reloj que siempre avanza: dos escrituras
+  // seguidas no empatan en `updatedAt`.
+  const times = new Map<string, { createdAt: Date; updatedAt: Date }>();
+  let clock = Date.UTC(2026, 0, 1);
+  const tick = () => {
+    clock += 1000;
+    return new Date(clock);
+  };
+  const touch = (id: string) => {
+    const now = tick();
+    times.set(id, { createdAt: times.get(id)?.createdAt ?? now, updatedAt: now });
+  };
+  const entity = (listing: StoredListing): Listing => {
+    const { sourceHash: _hash, ...rest } = structuredCopy(listing);
+    const time = times.get(listing.id) ?? { createdAt: new Date(0), updatedAt: new Date(0) };
+    return { ...rest, closeReason: null, createdAt: time.createdAt, updatedAt: time.updatedAt };
+  };
   const record = (listing: StoredListing): ListingImportRecord => ({
     id: listing.id,
     externalRef: listing.externalRef,
@@ -126,6 +152,7 @@ export function createInMemoryListingRepository(): InMemoryListingRepository {
       }
       const created: StoredListing = { ...structuredCopy(listing), id: nextId(), status: "draft" };
       stored.set(created.id, created);
+      touch(created.id);
       return record(created);
     },
     async update(id, data: ListingImportData) {
@@ -135,12 +162,36 @@ export function createInMemoryListingRepository(): InMemoryListingRepository {
       // `status` no se toca: es del operador y de la ingesta de medios.
       const updated: StoredListing = { ...current, ...structuredCopy(data) };
       stored.set(id, updated);
+      touch(id);
       return record(updated);
     },
     async promoteToReady(id) {
       const current = stored.get(id);
       if (current?.status !== "draft") return false;
       stored.set(id, { ...current, status: "ready" });
+      touch(id);
+      return true;
+    },
+    async list(filters = {}) {
+      return [...stored.values()]
+        .filter(
+          (listing) =>
+            (filters.status === undefined || listing.status === filters.status) &&
+            (filters.operation === undefined || listing.operation === filters.operation) &&
+            (filters.comuna === undefined || listing.comuna === filters.comuna),
+        )
+        .map(entity)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || b.id.localeCompare(a.id));
+    },
+    async get(id) {
+      const listing = stored.get(id);
+      return listing === undefined ? null : entity(listing);
+    },
+    async changeStatus(id, from, to) {
+      const current = stored.get(id);
+      if (current?.status !== from) return false;
+      stored.set(id, { ...current, status: to });
+      touch(id);
       return true;
     },
     all: () => [...stored.values()].map(structuredCopy),

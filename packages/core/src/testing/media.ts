@@ -45,6 +45,15 @@ export function createInMemoryMediaRepository(
         .sort(byOrder)
         .map(structuredCopy);
     },
+    async listCovers(listingIds) {
+      return [...stored.values()]
+        .filter(
+          (media) =>
+            media.isCover && media.listingId !== null && listingIds.includes(media.listingId),
+        )
+        .sort(byOrder)
+        .map(structuredCopy);
+    },
     async findByStoragePath(storagePath) {
       const found = [...stored.values()].find((media) => media.storagePath === storagePath);
       return found === undefined ? null : structuredCopy(found);

@@ -16,6 +16,9 @@ data/muestras/
 tmp/
 *.log
 
+# Sondas temporales de los tests de reglas de Biome (apps/api/test/contracts-boundary.test.ts)
+*.biome-probe.ts
+
 # Navegador (sesiones de corredores)
 .browser-profiles/
 playwright-report/

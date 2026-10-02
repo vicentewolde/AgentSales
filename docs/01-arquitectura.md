@@ -274,7 +274,28 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
 ## Contratos HTTP compartidos (ADR-0011)
 
 - **Entidades de dominio** (`listing`, `media`, `broker`, `importRun`, `importReport`) y `healthReportSchema`: en `packages/core`.
-- **Contratos HTTP:** en la salida `@agentsales/api/contracts` (`apps/api/src/contracts/`). Incluye el cuerpo de error (`errorBodySchema`), los parámetros, los formularios y los sobres de respuesta. Biome la limita a `zod`, `@agentsales/core` e imports relativos (desde F1-T10).
+- **Contratos HTTP:** en la salida `@agentsales/api/contracts` (`apps/api/src/contracts/`). Incluye:
+  - el cuerpo de error (`errorBodySchema`);
+  - los parámetros (`idParamSchema`: uuid);
+  - los filtros (`listingQuerySchema`);
+  - los cuerpos (`listingStatusBodySchema`);
+  - los sobres de respuesta (`listingListResponseSchema`, `listingDetailResponseSchema`, `brokerListResponseSchema`). Las fechas llegan como texto ISO y se vuelven `Date` (`z.coerce.date`).
+- **Frontera:** Biome la limita a `zod`, `@agentsales/core` e imports relativos, y un test (`apps/api/test/contracts-boundary.test.ts`) prueba que rechaza `@agentsales/config`, `node:*` y `hono`.
+- **Validación de entrada:** `validated(target, schema)` (`apps/api/src/validation.ts`, sobre `hono/validator`). Un valor inválido es `REQUEST_INVALID` (400), con los campos en el mensaje.
+- **Rutas (F1-T10):**
+  - `GET /listings` (filtros exactos, con la portada como URL firmada);
+  - `GET /listings/:id` (con sus medios en orden y URLs firmadas);
+  - `PATCH /listings/:id/status` (`changeListingStatus`);
+  - `GET /brokers`.
+
+  Van en `apps/api/src/routes/`, montadas con `.route()`. `AppDeps` recibe puertos de core (`listings`, `brokers`, `media` y `storage.signedReadUrl`), no adaptadores.
+- **Cambios manuales de estado (`LISTING_MANUAL_TRANSITIONS`, core):**
+  - `draft` → `ready` o `archived`;
+  - `ready` → `paused` o `archived`;
+  - `paused` → `ready` o `archived`;
+  - `archived` → `ready`.
+
+  `ready` exige al menos una foto, y el cambio es condicional (`ListingRepository.changeStatus`). `active` y `closed` no se cambian a mano en F1. Una transición no permitida es `409 INVALID_TRANSITION`.
 - La API tipa sus respuestas y valida su entrada con esos esquemas. La CLI y el panel validan con los mismos esquemas lo que reciben.
 - **Lo único que el panel importa de la API en tiempo de ejecución es `@agentsales/api/contracts`.** De la raíz de `@agentsales/api` solo importa `import type { AppType }`, porque en tiempo de ejecución arrastraría el servidor.
 

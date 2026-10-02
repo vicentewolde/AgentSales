@@ -1,7 +1,7 @@
 import type { AppType } from "@agentsales/api";
+import { errorBodySchema } from "@agentsales/api/contracts";
 import { type HealthReport, healthReportSchema } from "@agentsales/core";
 import { hc } from "hono/client";
-import { z } from "zod";
 
 /** Mayor que el peor caso de `/health` (25 s con Neon despertando). */
 export const API_TIMEOUT_MS = 30_000;
@@ -21,8 +21,6 @@ export class ApiCallError extends Error {
 }
 
 export type HealthFetcher = () => Promise<HealthReport>;
-
-const errorBodySchema = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
 
 /** Mensaje legible de un fallo de red o de timeout de `fetch`. */
 function describeFetchError(error: unknown, timeoutMs: number): ApiCallError {

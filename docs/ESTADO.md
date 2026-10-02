@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T09 · Job import.run
-**Siguiente paso:** `/tarea F1-T10` (contratos HTTP y API de lectura). Después T11 (API de importación), que necesita T09 y T10
+**Última tarea terminada:** F1-T10 · Contratos HTTP y API de lectura
+**Siguiente paso:** `/tarea F1-T11` (API de importación): ya tiene T09 y T10
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -21,7 +21,7 @@
 | F1-T07b MediaRepository en Drizzle y checksum en R2 | ✅ terminada | #21 |
 | F1-T08 Paquete de cola | ✅ terminada | #22 |
 | F1-T09 Job import.run | ✅ terminada | #23 |
-| F1-T10 Contratos HTTP y API de lectura | ⏳ pendiente | |
+| F1-T10 Contratos HTTP y API de lectura | ✅ terminada | |
 | F1-T11 API de importación | ⏳ pendiente | |
 | F1-T12 CLI de importación y consulta | ⏳ pendiente | |
 | F1-T13 Panel: patrón, Propiedades y Detalle | ⏳ pendiente | |
@@ -48,6 +48,17 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
+- 2026-10-01: **F1-T10.** Contratos HTTP y API de lectura.
+  - **`@agentsales/api/contracts`:** cuerpo de error, parámetros, filtros y respuestas. Biome lo limita a zod, core e imports relativos, y un test lo comprueba. Para que Biome no ignore el archivo temporal del test, se corre con `--vcs-use-ignore-file=false`.
+  - **`validated`:** con `REQUEST_INVALID`. Los ids de ruta se validan como uuid.
+  - **Core:**
+    - `listingSchema`.
+    - `LISTING_MANUAL_TRANSITIONS`, sin `active` ni `closed` hasta F3.
+    - `changeListingStatus`: `ready` exige una foto, y el cambio es condicional.
+    - Repositorios: `list`, `get` y `changeStatus` de avisos, `list` de corredores y `listCovers` de medios, en Drizzle, en los dobles y en la suite de contrato.
+  - **Rutas:** `/listings` (con la portada como URL firmada), `/listings/:id` (con sus medios), `PATCH /listings/:id/status` y `/brokers`.
+  - La web y la CLI usan el `errorBodySchema` compartido; `@agentsales/api` pasa a `dependencies`. La web compila.
+  - **Tests:** de rutas con `app.request` y dobles en memoria. Probé 4 mutaciones y todas hacen fallar algún test.
 - 2026-10-01: **F1-T09.** Job `import.run`.
   - **Core:**
     - `requestImport`: crea el run y encola; con `QUEUE_UNAVAILABLE`, deja el run en `failed` y borra el staging.

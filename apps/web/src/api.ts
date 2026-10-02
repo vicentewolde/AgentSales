@@ -1,7 +1,7 @@
 import type { AppType } from "@agentsales/api";
+import { errorBodySchema } from "@agentsales/api/contracts";
 import { type HealthReport, healthReportSchema } from "@agentsales/core";
 import { hc } from "hono/client";
-import { z } from "zod";
 
 /** Mayor que el peor caso de `/health` en la API (25 s con Neon despertando). */
 export const API_TIMEOUT_MS = 35_000;
@@ -18,9 +18,6 @@ export class ApiError extends Error {
 }
 
 export type HealthFetcher = (signal?: AbortSignal) => Promise<HealthReport>;
-
-// Pendiente de ADR-0011 (F1): dónde viven los contratos HTTP compartidos (cuerpo de error y otros).
-const errorBodySchema = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
 
 /** Cliente RPC tipado a través del proxy de Vite (`/api` → API, spec F0 §4.5). */
 const client = hc<AppType>("/api");

@@ -451,6 +451,13 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T10 · Contratos HTTP y API de lectura
 - **Depende de:** T04b y ADR-0011 aceptado
+- **Hecho en F1-T10:**
+  - `LISTING_MANUAL_TRANSITIONS`: `draft` → `ready`/`archived`, `ready` → `paused`/`archived`, `paused` → `ready`/`archived` y `archived` → `ready`. `active` y `closed` quedan fuera hasta F3.
+  - `ready` exige al menos una foto, que no puede ser un video.
+  - `ListingRepository.changeStatus(id, from, to)` es condicional.
+  - `MediaRepository.listCovers` trae las portadas de la lista.
+  - `@agentsales/api` pasa a `dependencies` en la web y la CLI, que usan el `errorBodySchema` compartido.
+  - La regla de Biome de `contracts` tiene su test.
 - **Descripción:**
   - Salida `@agentsales/api/contracts` (`errorBodySchema`, parámetros y respuestas), con su regla de Biome.
   - Helper de validación (`REQUEST_INVALID`).
@@ -577,3 +584,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Desde la revisión de F1-T08: el productor refresca el caché de colas una vez al día, para no mantener Neon despierto; el mensaje de "cola no lista" solo sale con los errores exactos de pg-boss; `stop()` deja la cola cerrada y cierra un arranque en curso; `JOB_PAYLOAD_INVALID` responde 500; T09 suma `policy` (`exclusive` para `import.run`, inmutable), `defineJob` tipado por `JobName` y `requestImport` acotado a `QUEUE_UNAVAILABLE`; T11 resume `onError` y llama a `stop()`; riesgo del run sin job en §8 |
 | 2026-10-01 | F1-T09: `requestImport` y `runImport` en core; estados del run (`markRunning`, `markSucceeded`, `markFailed`, condicionales); job `import.run` con cola `exclusive`, `defineJob` tipado por `JobName`, `isLastAttempt` (pg-boss `includeMetadata`) y `policy` solo al crear; staging en el worker con su limpieza al arrancar; un zip con una sola carpeta en la raíz se desenvuelve si ahí están las carpetas pedidas |
 | 2026-10-01 | Desde la revisión de F1-T09: runs abandonados cerrados al arrancar el worker (`failAbandoned`, `IMPORT_ABANDONED`, tras 7 h en `running`); un error que no es `AppError` se normaliza a `INTERNAL_ERROR` no reintentable; si `markFailed` falla, el original va como `cause`; `markSucceeded` sin efecto da `skipped`; `extracted-{uuid}/` por intento; limpieza del staging robusta (por antigüedad sin base, huérfanos con 10 min de gracia, sin cortar el barrido); el worker avisa si una cola existe con otra política; `openMedia({ runId, mediaDir, folders })`; notas para T11 (id del run generado por quien llama, `createStaging` a `importers`) |
+| 2026-10-01 | F1-T10: `@agentsales/api/contracts` con su frontera de Biome (y un test); `validated` (`REQUEST_INVALID`); `listingSchema`, `ListingRepository.list`, `get` y `changeStatus`, `BrokerRepository.list` y `MediaRepository.listCovers`; `changeListingStatus` con `LISTING_MANUAL_TRANSITIONS` (fuera `active` y `closed` hasta F3); rutas `/listings`, `/listings/:id`, `PATCH /listings/:id/status` y `/brokers` |

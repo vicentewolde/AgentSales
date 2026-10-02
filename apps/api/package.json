@@ -8,6 +8,11 @@
       "@agentsales/source": "./src/index.ts",
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
+    },
+    "./contracts": {
+      "@agentsales/source": "./src/contracts/index.ts",
+      "types": "./dist/src/contracts/index.d.ts",
+      "default": "./dist/src/contracts/index.js"
     }
   },
   "scripts": {
@@ -22,6 +27,7 @@
     "@agentsales/queue": "workspace:*",
     "@agentsales/storage": "workspace:*",
     "@hono/node-server": "2.1.1",
-    "hono": "4.13.10"
+    "hono": "4.13.10",
+    "zod": "4.6.5"
   }
 }

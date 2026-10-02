@@ -1,5 +1,11 @@
 import { createLogger, loadEnv, loadEnvFile } from "@agentsales/config";
-import { createDb, pingDatabase } from "@agentsales/db";
+import {
+  createBrokerRepository,
+  createDb,
+  createListingRepository,
+  createMediaRepository,
+  pingDatabase,
+} from "@agentsales/db";
 import { checkQueueSchema } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
@@ -42,6 +48,10 @@ const app = createApp({
     // Solo lee el catálogo: la API no arranca pg-boss (lo hace el worker).
     queue: () => checkQueueSchema(database.db),
   },
+  listings: createListingRepository(database.db),
+  brokers: createBrokerRepository(database.db),
+  media: createMediaRepository(database.db),
+  storage,
   publishMode: env.PUBLISH_MODE,
   version: readApiVersion(),
   logger,

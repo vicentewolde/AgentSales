@@ -47,9 +47,15 @@ importers:
       hono:
         specifier: 4.13.10
         version: 4.13.10
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
 
   apps/cli:
     dependencies:
+      '@agentsales/api':
+        specifier: workspace:*
+        version: link:../api
       '@agentsales/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -68,13 +74,12 @@ importers:
       zod:
         specifier: 4.6.5
         version: 4.6.5
-    devDependencies:
-      '@agentsales/api':
-        specifier: workspace:*
-        version: link:../api
 
   apps/web:
     dependencies:
+      '@agentsales/api':
+        specifier: workspace:*
+        version: link:../api
       '@agentsales/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -97,9 +102,6 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
     devDependencies:
-      '@agentsales/api':
-        specifier: workspace:*
-        version: link:../api
       '@tailwindcss/vite':
         specifier: 4.3.3
         version: 4.3.3(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))

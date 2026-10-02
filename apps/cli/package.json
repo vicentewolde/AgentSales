@@ -11,6 +11,7 @@
     "cli": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/index.ts"
   },
   "dependencies": {
+    "@agentsales/api": "workspace:*",
     "@agentsales/config": "workspace:*",
     "@agentsales/core": "workspace:*",
     "commander": "15.0.0",
@@ -18,7 +19,5 @@
     "picocolors": "1.1.1",
     "zod": "4.6.5"
   },
-  "devDependencies": {
-    "@agentsales/api": "workspace:*"
-  }
+  "devDependencies": {}
 }
