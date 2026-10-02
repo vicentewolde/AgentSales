@@ -4,7 +4,7 @@ Nota verificada el 2026-10-02. Responde cómo usar `claude -p` como subproceso d
 
 Convención: **DOC** = lo dice la documentación oficial; **INFERENCIA** = deducido, sin confirmar; **NO VERIFICADO** = falta una prueba real (ver sección 8).
 
-Limitación de esta verificación: solo se leyó documentación. No se ejecutó `claude --version` ni `claude -p --help` (el subagente no tenía terminal). La versión local declarada es **2.1.243**; varios flags de la doc son más nuevos (ver sección 3). Antes de codificar, correr `claude --version` y `claude --help` y contrastar con esta nota.
+Limitación de esta verificación: el subagente solo leyó documentación. Después, el 2026-10-02, se contrastó en local `claude -p --help` de la versión **2.1.243** (ver sección 3): lista `--safe-mode`, `--tools`, `--json-schema`, `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence` y `--setting-sources`, y **no lista `--max-turns`** (la prueba de humo de F2-T04 confirma si existe). No se hizo ninguna llamada real al modelo.
 
 ## 1. Resumen
 
@@ -45,7 +45,7 @@ claude -p --output-format json \
   --no-session-persistence --max-turns <N> --model sonnet
 ```
 
-Agregar `--safe-mode` solo si `claude --help` lo lista en la versión instalada. `--system-prompt` (texto en línea) es equivalente a `--system-prompt-file`.
+`--safe-mode` está en la 2.1.243 (verificado en local). `--system-prompt` (texto en línea) es equivalente a `--system-prompt-file`.
 
 El prompt del usuario va por stdin (tope de 10 MB por stdin; error claro y código distinto de 0 si se excede) o como argumento. (DOC)
 

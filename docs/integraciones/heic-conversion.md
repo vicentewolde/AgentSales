@@ -1,10 +1,10 @@
 # HEIC a JPEG en Node (sharp, ffmpeg, sips)
 
-Nota verificada el 2026-10-02. Responde cómo convertir fotos HEIC de iPhone a JPEG en `media.process` (F2). Corrige un supuesto de `docs/specs/fase-1-carga.md` (riesgos: "sharp con libheif, o fallback a ffmpeg").
+Nota verificada el 2026-10-02. Responde cómo convertir fotos HEIC de iPhone a JPEG en la etapa `media` del job `content.prepare` (F2). Corrige un supuesto de `docs/specs/fase-1-carga.md` (riesgos: "sharp con libheif, o fallback a ffmpeg").
 
 Convención: **DOC** = documentación oficial; **INFERENCIA** = deducido; **NO VERIFICADO** = falta prueba real.
 
-Limitación: el subagente no tenía terminal. No se ejecutaron `ffmpeg -decoders`, `ffmpeg -demuxers` ni `ffmpeg -version` en la máquina local (ffmpeg 9.0.1 declarado en `/opt/homebrew/bin`). Las comprobaciones locales quedan en la sección 8.
+Limitación: el subagente no tenía terminal; las comprobaciones locales se hicieron después, el 2026-10-02, con ffmpeg 9.0.1 (sección 8).
 
 ## 1. Resumen
 
@@ -48,13 +48,13 @@ No aplica.
 ## 5. Medios
 
 - Entrada: HEIC de iPhone (HEVC, grilla de tiles, a menudo Display P3). Salida: JPEG sRGB, que Instagram exige (`instagram.md`) y que la API de Anthropic acepta (HEIC no; `anthropic-api.md`).
-- Pasos recomendados en `media.process` para un HEIC: 1) ffmpeg a JPEG sin pérdida notable (`-q:v 2`) en un archivo temporal; 2) sharp: `rotate()` según EXIF si hace falta, `toColorspace("srgb")` o conversión equivalente, redimensionar a las variantes; 3) guardar variantes y borrar el temporal.
+- Pasos recomendados en la etapa `media` para un HEIC: 1) ffmpeg a JPEG sin pérdida notable (`-q:v 2`) en un archivo temporal; 2) sharp: `rotate()` según EXIF si hace falta, `toColorspace("srgb")` o conversión equivalente, redimensionar a las variantes; 3) guardar variantes y borrar el temporal.
 - Preguntas abiertas de calidad (NO VERIFICADO): orientación (los HEIC de iPhone guardan la rotación como propiedad `irot`; confirmar que ffmpeg 8.1 la aplica), perfil de color (si ffmpeg no etiqueta o convierte Display P3, los colores salen apagados), y mapas de ganancia HDR (se ignoran).
 - No hay URL pública involucrada.
 
 ## 6. Límites
 
-- Tiempo: 1 foto HEIC de 12 MP tarda del orden de décimas de segundo a 1 s (INFERENCIA); cabe en el `media.process` existente (~15 min para video, `docs/01-arquitectura.md`).
+- Tiempo: 1 foto HEIC de 12 MP tarda del orden de décimas de segundo a 1 s (INFERENCIA); cabe en el job `content.prepare` (30 min por intento).
 - Sin cuotas.
 
 ## 7. Errores comunes
@@ -62,7 +62,7 @@ No aplica.
 | Situación | Cómo se ve | Tratamiento |
 |---|---|---|
 | ffmpeg < 8.1 | Sale un JPEG de 512x512 (un solo tile) sin error | Detectarlo: validar que el ancho/alto de salida sea >= 1000 px en el lado largo; si no, error `MEDIA_HEIC_TILE_ONLY`. `doctor` avisa por versión |
-| HEIC con códec distinto o corrupto | ffmpeg termina con código distinto de 0 | `media.process` marca el medio como fallido con advertencia y sigue con los demás; no reintentar |
+| HEIC con códec distinto o corrupto | ffmpeg termina con código distinto de 0 | La etapa `media` marca el medio como fallido con advertencia y sigue con los demás; no reintentar |
 | ffmpeg ausente | Error al lanzar el proceso | `doctor` ya lo marca como error |
 | sharp recibe un HEIC | Error "unsupported image format" (INFERENCIA) | No enviar HEIC a sharp: convertir antes |
 
@@ -72,7 +72,7 @@ No aplica.
 - `ffmpeg -demuxers` no lista un demuxer `heif` propio (lo lee el de `mov`), y `ffmpeg -decoders` trae `hevc`.
 - `ffprobe -show_entries stream_group=type` lista un grupo `Tile Grid` de mosaicos HEVC de 512×512.
 - `ffmpeg -i DefaultDesktop.heic -frames:v 1 salida.jpg` sale **completo, en 3840×2160** (no un mosaico suelto).
-- Quedan por probar la orientación (`irot`) y el perfil Display P3 con una foto de iPhone propia: lo cubre el test de T06 del spec F2.
+- Quedan por probar la orientación (`irot`) y el perfil Display P3 con una foto de iPhone propia: lo cubre el test de T07 del spec F2.
 
 Comprobaciones restantes (usar una foto de prueba propia, no de clientes):
 1. `ffmpeg -version` (debe ser >= 8.1) y `ffmpeg -decoders | grep -i hevc`; `ffmpeg -demuxers | grep -i -E "heif|mov"`.

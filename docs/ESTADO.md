@@ -10,7 +10,7 @@
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F2 (`/fase-plan 2`) | ✅ | |
+| Spec F2 (`/fase-plan 2`) | ✅ | #31 |
 | F2-T01 · Mínimos y máximos en campos numéricos | ⏳ pendiente | |
 | F2-T02 · Datos de contenido: corridas y contenidos | ⏳ pendiente | |
 | F2-T03 · Medios derivados en la base y `getStream` | ⏳ pendiente | |
@@ -44,10 +44,10 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - **D4 · Una corrida por aviso con etapas** (`content.prepare`): medios, renders, reel y textos; `media.process` no se crea.
 - **D5 · Reel con fondo desenfocado** y el texto de los primeros 2 s como PNG renderizado.
 - **D6 · CI con ffmpeg (8.1 o más nuevo, por HEIC) y Chromium.**
-- **D9 · Título de Portal sin abreviaturas** (`3 dormitorios 2 baños`), de hasta 60 caracteres.
-- **Revisión del arquitecto:** plantillas y render como puertos de core (`SlideTemplates`, `HtmlRenderer`); el procesador de medios maneja sus temporales; el reel se rehace si cambia el precio; la revisión editorial ve los datos privados para detectar fugas; una corrida en cola se reencola al pedirla; procesos hijos cortados al apagar el worker.
 - **D7 · Mínimos y máximos** como columnas de `field_definitions`.
 - **D8 · Google Sheets y Drive:** no antes de F3; backlog post-MVP.
+- **D9 · Título de Portal sin abreviaturas y con la operación** (`Departamento en venta 3 dormitorios 2 baños en Ñuñoa`), de hasta 60 caracteres.
+- **Revisión del arquitecto:** plantillas y render como puertos de core (`SlideTemplates`, `HtmlRenderer`); el procesador de medios maneja sus temporales; el reel se rehace si cambia el precio; la revisión editorial ve los datos privados para detectar fugas; una corrida en cola se reencola al pedirla y al arrancar el worker; regenerar textos no reemplaza una edición a mano sin `replaceEdits`; la CLI de Claude corre fuera del repo; procesos hijos cortados al apagar el worker.
 - **Hallazgos de las notas de integración:** HEIC con ffmpeg (sharp no lo decodifica; verificado con ffmpeg 9.0.1); la CLI de Claude sin `--bare` (exige API key) y sin `ANTHROPIC_API_KEY` en su entorno (cobraría por API); carrusel de hasta 10; reel de Meta entre 3 s y 15 min (el tope de 90 s es nuestro); título de Portal de hasta 60 caracteres sin abreviaturas (por confirmar en F4).
 
 ## Deuda técnica
@@ -75,5 +75,5 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 
 ## Notas de la última sesión
 - 2026-10-02: **`/fase-plan 2`.** Spec de F2 aprobado (17 tareas), ADR-0012 y ADR-0013 aceptados, y seguimientos en ADR-0003 y ADR-0005. Notas de integración nuevas en `docs/integraciones/` (CLI de Claude, API de Anthropic, HEIC, Instagram y Mercado Libre), con verificaciones locales: la CLI 2.1.243 tiene `--safe-mode`, `--tools` y `claude auth`, y ffmpeg 9.0.1 convierte un HEIC en mosaicos completo. Revisado por el subagente `arquitecto` (6 bloqueantes corregidos en el spec).
-- **Pendientes de verificar en sus tareas:** el sobre real de `claude -p` con `--json-schema` y `--tools ""` (prueba de humo en T04), la orientación y el color de un HEIC de iPhone (T07), y el largo del título y las reglas de contacto de Mercado Libre (F4: la doc dio 403).
+- **Pendientes de verificar en sus tareas:** el sobre real de `claude -p` con `--json-schema` y `--tools ""`, y si existe `--max-turns` (no sale en la ayuda de la 2.1.243) (prueba de humo en T04), la orientación y el color de un HEIC de iPhone (T07), y el largo del título y las reglas de contacto de Mercado Libre (F4: la doc dio 403).
 - **Para la próxima demo:** las variantes del Excel se arman en Google Sheets y se exportan como xlsx; la planilla queda como estaba. Neon tiene las 3 propiedades de muestra tal como están en `data/muestras/propiedades.xlsx` (cierre de F1, `v0.1.0`; detalle en `CHANGELOG.md`).

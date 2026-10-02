@@ -25,6 +25,7 @@ flowchart LR
     IMP[packages/importers]
     LLM[packages/llm]
     MEDIA[packages/media<br/>sharp · ffmpeg · Playwright]
+    TPL[packages/templates<br/>HTML de portada y ficha]
     PUB[packages/publishers]
     DB[packages/db<br/>Drizzle]
     STO[packages/storage<br/>API S3]
@@ -46,12 +47,11 @@ flowchart LR
   CLI --> API
   API --> CORE
   WRK --> CORE
-  IMP & LLM & MEDIA & PUB & DB & STO & QUE -. implementan puertos de .-> CORE
+  IMP & LLM & MEDIA & TPL & PUB & DB & STO & QUE -. implementan puertos de .-> CORE
   API & WRK & CLI --> CFG
   CFG --> CORE
   DB --> NEON
   STO --> R2
-  MEDIA --> STO
   LLM --> CL
   PUB --> IG & ML & FB
   API -. encola jobs (desde F1) .-> NEON
@@ -130,7 +130,7 @@ CLI (prepare) o panel (Preparar contenido)
   → content_run en succeeded o failed, con reporte por etapa
 ```
 
-En F2 no se crean `publications` (ADR-0012): nacen en F3 desde el contenido vigente, cuando hay una cuenta conectada (en `pending_approval`, o `approved` si el corredor tiene `auto_publish`). Detalle en el spec F2 §4.2 a §4.6.
+En F2 no se crean `publications` (ADR-0012): nacen en F3 desde el contenido vigente, cuando hay una cuenta conectada; F3 decide cómo nacen (ADR-0012). Detalle en el spec F2 §4.2 a §4.6.
 
 ### 3. Publicación (job `publication.publish`)
 
@@ -273,8 +273,7 @@ Política objetivo por cola (cada fase la confirma en su spec):
 |---|---|---|---|---|
 | `system.ping` (F0) | — | 0 | no | 60 s |
 | `import.run` (F1) | `singletonKey = importRunId`; en el último intento deja el run en `failed` | 2 | sí, desde 30 s | 2 h (videos grandes) |
-| `media.process` | `singletonKey = mediaId` | 3 | sí, desde 30 s | ~15 min (ffmpeg) |
-| `content.prepare` | `singletonKey = listingId` | 2 | sí, desde 60 s | ~10 min (LLM) |
+| `content.prepare` (F2) | `exclusive`, `singletonKey = contentRunId`; en el último intento deja la corrida en `failed`. Reemplaza a `media.process` (ADR-0012, enmienda de ADR-0005) | 2 | sí, desde 30 s | 30 min (video, render e IA) |
 | `publication.publish` | `singletonKey = publicationId`; dead-letter que lleva a `failed` | 3 | sí, desde 60 s | ~5 min (Marketplace termina en `awaiting_manual_confirm`) |
 | `publication.sync` | cron, sin solaparse | 1 | no | ~10 min |
 | `tokens.refresh` | cron | 3 | sí | ~5 min |

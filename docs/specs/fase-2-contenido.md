@@ -18,6 +18,7 @@ El operador pide "preparar contenido" para una propiedad cargada y, sin publicar
 - Corridas de contenido (`content_runs`) como job `content.prepare` del worker, con avance por etapa y reintentos.
 - API, CLI y panel: preparar, ver la vista previa por canal y editar los textos.
 - `pnpm eval:content` sobre las propiedades de muestra, sin llamar a Anthropic en los tests.
+- F2 no publica nada ni toca `PUBLISH_MODE`: todo queda en Neon y R2 para revisar.
 
 ## 3. Fuera de alcance
 - Aprobar, rechazar y crear `publications` (F3). En F2 no hay cuentas conectadas: el contenido queda listo para revisar (ADR-0012).
@@ -66,7 +67,7 @@ El operador pide "preparar contenido" para una propiedad cargada y, sin publicar
   |---|---|---|
   | `thumb` | cada foto, y un cuadro de cada video | lado mayor de 800 px, sin recorte, calidad 80. Para el panel (los navegadores no muestran HEIC) |
   | `ig_4x5` | cada foto | 1080×1350, recorte centrado, calidad 90. Instagram: JPEG sRGB de hasta 8 MB y entre 320 y 1440 px de ancho |
-  | `pi_4x3` | cada foto | 1600×1200, recorte centrado, calidad 88. Mercado Libre recomienda 1200 px y acepta hasta 1920 |
+  | `pi_4x3` | cada foto | 1600×1200, recorte centrado, calidad 88. Mercado Libre recomendaría 1200 px y aceptaría hasta 1920 (por confirmar en F4) |
   | `ig_reel` | el primer video del aviso | MP4 H.264 (4:2:0, GOP cerrado) + AAC, 1080×1920, 30 fps, `moov` al inicio y sin edit lists, hasta 90 s (se corta) y bajo 300 MB; fondo desenfocado si no es vertical; el texto del reel encima durante los primeros 2 s |
   | `cover` | render | portada del carrusel, 1080×1350 |
   | `spec_sheet` | render | ficha del carrusel, 1080×1350 |
@@ -81,6 +82,7 @@ El operador pide "preparar contenido" para una propiedad cargada y, sin publicar
   - Derivado de una foto o `thumb` de un video: `brokers/{b}/listings/{l}/processed/{variante}/{sha256-del-original}-v{version}.jpg`.
   - Reel: `brokers/{b}/listings/{l}/processed/ig_reel/{sha256-del-original}-{sha256-del-texto}.mp4`, donde el segundo hash es el del JSON canónico de `ReelOverlayData`, la versión de las plantillas y la del procesador. Si cambia el precio, cambia la clave y el reel se rehace.
   - Render: `brokers/{b}/listings/{l}/rendered/{variante}/{sha256-de-la-entrada}.jpg`. La entrada es el JSON canónico de los datos de la plantilla, la versión de las plantillas y los sha256 de las imágenes que usa (la variante `ig_4x5` de la portada y el logo).
+  - Core calcula estos hashes con `deps.sha256(text)` inyectado, como `importListings` (core no usa `node:crypto`). Los sha256 de los bytes producidos los devuelven el procesador y el renderizador.
 - **Registro:** un derivado es una fila de `media` con `role = processed`, `variant` y `parent_media_id`; un render tiene `role = rendered`, `variant` y `parent_media_id = null`. `checksum` es el sha256 de la salida, que calcula el procesador o el renderizador. Hay **uno vigente** por original y variante, y por aviso y variante de render (únicos de §4.3). Si cambia la clave, la fila se reemplaza en su lugar y el objeto anterior se borra de R2 (si falla, solo queda en el log). Si cambia el primer video, el reel del anterior se borra.
 - **`MediaRepository`** suma `listByListing(listingId)` (originales y derivados), `updateMeasurements(id, { width, height, durationS })`, `upsertDerivative(...)` (inserta o reemplaza el vigente y devuelve la clave anterior si cambió) y `deleteDerivative(id)`. Los métodos de F1 (`listOriginals`, `listCovers`, `findByStoragePath`, `arrange`) siguen viendo solo originales. El doble en memoria pasa a modelar `role`.
 - **`MediaStorage.getStream(path): Promise<AsyncIterable<Uint8Array>>`:** para videos de hasta 300 MB, que no caben cómodos en memoria. `STORAGE_NOT_FOUND` si no existe.
@@ -94,15 +96,17 @@ El operador pide "preparar contenido" para una propiedad cargada y, sin publicar
       Promise<{ measurements: Measurements; thumb: ImageOutput; reel: VideoOutput | null; warnings: MediaWarning[] }>;
   }
   // ImageOutput = { variant, bytes, width, height, mime, sha256 }
-  // VideoOutput = { bytes, sha256, width, height, durationS, open(): AsyncIterable<Uint8Array> }  // se sube con putStream
+  // VideoOutput = { size, sha256, width, height, durationS, open(): AsyncIterable<Uint8Array> }  // size en bytes; se sube con putStream
   ```
+  - La etapa `media` llama a `processVideo` con `reel: null` (medidas y `thumb`); la etapa `reel` hace una segunda pasada con el PNG del texto, que sale del renderizador.
+  - Los procesos hijos (ffmpeg, ffprobe) se cortan con el `AbortSignal`. Los temporales los borra el worker en un `finally`, al terminar el intento: el puerto no tiene `dispose`.
   - Errores: `MEDIA_DECODE_FAILED` (el archivo no se puede leer: advertencia de ese medio, no corta la corrida) y `MEDIA_TOOL_NOT_INSTALLED` (falta ffmpeg o ffprobe, o es anterior a 8.1: no reintentable, con el comando para instalarlo).
 - **Composición** (core, pura):
   - **Carrusel de Instagram:** `cover`, después las fotos (`ig_4x5`) en el orden del aviso sin la de portada (que ya está en el render), hasta 8, y al final `spec_sheet`. Máximo 10 elementos, el límite de la API.
   - **Portal y Marketplace:** las fotos `pi_4x3`, la portada primero y después el orden del aviso.
   - **Reel:** el `ig_reel` cuyo padre es el primer video actual, si existe.
 - **`SlideTemplates`** (puerto; `packages/templates`):
-  - `cover(data: CoverData)`: la foto de portada a sangre, degradado inferior, etiqueta `VENTA` o `ARRIENDO`, precio grande, `Tipo · Comuna`, íconos de m² útiles, dormitorios y baños (los que existan) y el logo en una esquina, con los colores del corredor. La foto llega como `data:` desde la variante `ig_4x5` (JPEG), así que una portada HEIC funciona; el logo, desde el original (PNG o JPG).
+  - `cover(data: CoverData)`: la foto de portada a sangre, degradado inferior, etiqueta `VENTA` o `ARRIENDO`, precio grande, `Tipo · Comuna`, íconos de m² útiles, dormitorios y baños (los que existan) y el logo en una esquina, con los colores del corredor. La foto y el logo llegan como `{ bytes, mime, sha256 }`: la plantilla arma el `data:` y la clave del render usa el `sha256` (no los bytes). La foto es la variante `ig_4x5` (JPEG), así que una portada HEIC funciona; el logo es el original (PNG o JPG).
   - `specSheet(data: SpecSheetData)`: fondo con el color primario, tabla de atributos con íconos, disponibilidad y contacto (WhatsApp e Instagram del corredor).
   - `reelOverlay(data: ReelOverlayData)`: texto `Operación · Tipo · Comuna · Precio` sobre fondo transparente, 1080×1920.
   - Textos dentro de márgenes de 64 px; los datos se escapan (vienen del Excel). La dirección exacta nunca aparece en una plantilla. Tipografía Inter (licencia OFL) como `data:` en el CSS, íconos SVG propios y nada de red.
@@ -138,20 +142,22 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Pedir** (`requestContentRun({ listingId, texts })`):
   - El aviso debe estar en `ready`, `paused` o `active`, con al menos una foto; si no, `LISTING_NOT_READY` (409).
   - Si ya hay una corrida activa del aviso, la devuelve con `reused: true` (y su propio `texts`, que puede no ser el pedido). Si está en `queued`, **vuelve a encolar** `{ contentRunId }`: con `singletonKey` es idempotente, y así una corrida cuyo job se perdió no bloquea el aviso.
+  - **Ediciones a mano:** con `texts = true`, si el contenido vigente de algún canal está en `edited`, responde `CONTENT_EDITED` (409) salvo que venga `replaceEdits: true`. Así ni la CLI ni la API reemplazan una edición sin avisar. Las filas reemplazadas quedan en la base, pero en F2 no hay vista para recuperarlas.
   - Si no, crea la corrida en `queued` y encola. Si `create` choca con el único (`CONTENT_RUN_CONFLICT`, otra petición ganó la carrera), busca la activa y la devuelve.
   - Si `enqueue` falla, la corrida nueva queda en `failed` con `QUEUE_UNAVAILABLE` (503), como en `requestImport`.
 - **Política de la cola:** `exclusive` con `singletonKey = contentRunId`, 2 reintentos con backoff desde 30 s y expiración a los 30 min.
 - **Handler (`prepareContent`)**, por etapas. Cada una es idempotente, así que un reintento rehace solo lo que falta:
-  1. **`media`:** mide y procesa cada original sin sus variantes vigentes (clave de la versión actual). Las fotos se leen con `get`; los videos, con `getStream`.
+  0. Si la corrida ya es terminal (`succeeded` o `failed`), no hace nada (`skipped`). `markRunning` es condicional: solo pasa a `running` desde `queued` o `running`.
+  1. **`media`:** mide y procesa cada original sin sus variantes vigentes (clave de la versión actual). Las fotos se leen con `get`; los videos, con `getStream` (`processVideo` con `reel: null`).
   2. **`renders`:** portada y ficha, si cambió su entrada.
-  3. **`reel`:** con el primer video, si su clave cambió; borra el reel de otro video si quedó uno.
+  3. **`reel`:** con el primer video, si su clave cambió (segunda pasada de `processVideo` con el PNG del texto); borra el reel de otro video si quedó uno.
   4. **`texts`** (si `texts = true`): arma el brief, llama a la IA, valida, ensambla y guarda las 3 filas de `contents` en una transacción con el paso a `succeeded`.
   - Al empezar cada etapa actualiza `stage`. El reporte suma las advertencias de cada medio (texto fijo por código, sin claves de R2) y las de la IA.
   - Un medio ilegible (`MEDIA_DECODE_FAILED`) es una advertencia y la corrida sigue. Si no queda ninguna foto procesada, la corrida falla con `CONTENT_NO_PHOTOS`.
 - **Cierre condicional:** `markSucceeded` solo cambia una corrida en `running`. Si no cambia nada, o si choca con `(content_run_id, platform)` porque un intento solapado (el que expiró y siguió corriendo) ya guardó, el intento termina como `skipped`, no como `failed`, igual que `runImport`.
 - **Errores:** como `import.run`. Un error no reintentable, o el último intento, deja la corrida en `failed` con `error` antes de relanzar, y un error que no es `AppError` se normaliza a `INTERNAL_ERROR`. Reintentables: `STORAGE_UNAVAILABLE`, `DB_UNAVAILABLE`, `LLM_UNAVAILABLE`, `LLM_TIMEOUT` y los `*_CONFLICT`.
 - **Apagado:** el handler recibe un `AbortSignal` que el worker dispara al apagarse; el procesador, el renderizador y la CLI de Claude matan sus procesos hijos con él. Así no quedan procesos `claude` gastando cuota después de apagar.
-- **Corridas abandonadas:** al arrancar, el worker cierra como `failed` con `CONTENT_RUN_ABANDONED` las `running` con `started_at` de hace más de 2 h (3 intentos de 30 min más margen) y las `queued` creadas hace más de 24 h.
+- **Corridas abandonadas o sin job:** al arrancar, el worker cierra como `failed` con `CONTENT_RUN_ABANDONED` las `running` con `started_at` de hace más de 2 h (3 intentos de 30 min más margen), y **reencola** todas las `queued` (idempotente con `singletonKey`), sin fallarlas: con el worker apagado salvo al desarrollar (ADR-0007), una corrida puede esperar días en cola y su pedido sigue siendo válido.
 - **Archivos temporales:** `<workspace>/tmp/content/{runId}/{uuid-del-intento}/`, borrado en un `finally`. Al arrancar, el worker borra los de más de 24 h.
 - **ADR-0005:** no se crea el job `media.process` de la lista inicial: el procesamiento es la primera etapa de `content.prepare` (ADR-0012 y seguimiento de ADR-0005).
 
@@ -182,22 +188,22 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
   | `LLM_NOT_CONFIGURED` | no | el stub `anthropic-api` |
 - **Validación y reintento** (`generateContentDraft`, core, igual para todo proveedor): si `data` no calza con `contentDraftSchema`, se reintenta **una vez** con el error de validación en el prompt; si vuelve a fallar, la corrida queda `failed` con `LLM_OUTPUT_INVALID` y el contenido anterior sigue vigente.
 - **`claude-cli`** (detalle en `docs/integraciones/claude-code-cli.md`):
-  - Ejecuta `CLAUDE_CLI_PATH` (default `claude`) con `-p`, `--output-format json`, `--json-schema`, `--model LLM_MODEL`, `--system-prompt` propio, `--tools ""` (sin herramientas), `--safe-mode` (sin `CLAUDE.md`, skills, plugins, hooks ni MCP; la sesión del plan sigue), `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence` y `--max-turns` (el valor lo fija la prueba de humo de T04). El prompt va por stdin, nunca en los argumentos.
+  - Ejecuta `CLAUDE_CLI_PATH` (default `claude`) con `-p`, `--output-format json`, `--json-schema`, `--model LLM_MODEL`, `--system-prompt` propio, `--tools ""` (sin herramientas), `--safe-mode` (sin `CLAUDE.md`, skills, plugins, hooks ni MCP; la sesión del plan sigue), `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence` y, si existe, `--max-turns`: la ayuda de la 2.1.243 no lo lista, así que la prueba de humo de T04 lo confirma; si no existe, el tope de tiempo es el único límite. El prompt va por stdin, nunca en los argumentos.
   - **No usa `--bare`:** ese modo exige `ANTHROPIC_API_KEY` y no usa el login del plan Max.
-  - Corre en un **directorio vacío** del temporal, como segunda defensa para que no lea el `CLAUDE.md` ni la configuración del repo.
+  - Corre en un directorio vacío creado con `mkdtemp` en el temporal **del sistema** (`os.tmpdir()`), fuera del repo: Claude Code también lee el `CLAUDE.md` de los directorios padre, así que un directorio dentro del repo no protegería. `--safe-mode` es la defensa principal y este directorio, la segunda.
   - **Entorno mínimo:** solo `PATH`, `HOME`, `USER`, `LANG` y `TMPDIR`. Nunca pasa las del `.env` (base de datos, R2, cifrado) ni `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` o `CLAUDE_CODE_USE_*`: con una clave en el entorno, la CLI cobra por API en vez de usar el plan del operador.
-  - **Sobre JSON** (validado con zod): el dato va en `structured_output`. `subtype = error_max_structured_output_retries` o `error_max_turns`, y `stop_reason = max_tokens` o `refusal`, son `LLM_OUTPUT_INVALID`; "Not logged in" es `LLM_AUTH_REQUIRED`; "You've hit your … limit" es `LLM_RATE_LIMITED`; el resto, `LLM_UNAVAILABLE`. Los textos de error no son un contrato documentado: T04 los fija con una prueba de humo local (pocas llamadas cortas con datos inventados, del plan del operador) y los guarda como fixture del ejecutable falso.
-  - Tope de tiempo y `AbortSignal`: mata el proceso (la CLI no tiene tope propio).
+  - **Sobre JSON** (validado con zod): el dato va en `structured_output`. `subtype = error_max_structured_output_retries` o `error_max_turns`, `stop_reason = max_tokens` o `refusal`, y un `success` sin `structured_output`, son `LLM_OUTPUT_INVALID`; "Not logged in" es `LLM_AUTH_REQUIRED`; "You've hit your … limit" y los mensajes de saldo o facturación ("Credit balance is too low") son `LLM_RATE_LIMITED`, no reintentable a propósito (la nota lo marca como "reintentar más tarde": eso lo decide el operador, no el job); el resto, `LLM_UNAVAILABLE`. Los textos de error no son un contrato documentado: T04 los fija con una prueba de humo local (pocas llamadas cortas con datos inventados, del plan del operador) y los guarda como fixture del ejecutable falso.
+  - Tope de tiempo y `AbortSignal`: corta el proceso con SIGINT y, si no termina, SIGTERM (la CLI no tiene tope propio).
   - **Solo uso propio** del operador (ADR-0003).
 - **`anthropic-api` (stub):** el entorno exige `ANTHROPIC_API_KEY` si `LLM_PROVIDER=anthropic-api` (deuda de F1), y el adaptador responde `LLM_NOT_CONFIGURED` ("llega en F7"). No agrega el SDK.
-- **`fake`:** devuelve un borrador fijo o los que se le pasen, en orden; registra las peticiones para los tests.
+- **`fake`:** proveedor de ejecución (para `LLM_PROVIDER=fake` y `eval:content --provider fake`) que devuelve un borrador fijo válido. Los tests de core usan su propio doble en `@agentsales/core/testing` (con respuestas en orden y registro de peticiones), porque core no puede depender de `packages/llm` y `packages/llm` no puede importar la salida de tests de core.
 - **Logs:** solo proveedor, modelo, duración, intentos y largo del prompt. Nunca el prompt ni la respuesta (traen datos de clientes).
 
 ### 4.6 Contenido (ADR-0013)
 - **Brief** (`buildContentBrief(listing, definitions, broker)`, core): lo único que ve la IA.
   - Operación, tipo, región, comuna, `sector_referencia`, precio y gastos comunes ya formateados (`formatListingPrice`), los atributos efectivos con su etiqueta y valor formateado (`describeAttributes`; el filtro de `fields` que hoy vive en `apps/api/src/routes/listings.ts` pasa a core, deuda de F1), `destacados`, `disponibilidad`, `amenities`, `requisitos_arriendo` (para que la IA los filtre), y tono y marca del corredor.
   - **Nunca:** `internal_notes`, `_extra` (columnas desconocidas), links ni contacto. La dirección y el número de unidad solo si `show_exact_address = true`.
-- **Prompt** (`listing-content-v1`): las reglas editoriales de `04-formato-publicaciones.md` en el prompt de sistema, y los datos del aviso como JSON dentro de un bloque delimitado, con la instrucción de tratarlos como datos y nunca como órdenes (el Excel lo escribe un tercero).
+- **Prompt** (`listing-content-v1`): las reglas editoriales de `04-formato-publicaciones.md` en el prompt de sistema, y los datos del aviso como JSON (con sus caracteres escapados) dentro de un bloque delimitado, con la instrucción de tratarlos como datos y nunca como órdenes (el Excel lo escribe un tercero). Un texto del Excel que imite el delimitador no puede cerrar el bloque.
 - **Salida de la IA** (`contentDraftSchema`): solo frases.
   ```json
   {
@@ -209,8 +215,8 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
   ```
   Con topes de largo por campo (solo en el esquema estricto); `location` y `conditions` admiten `null` (sin datos, se omite). Los títulos no los escribe la IA.
 - **Ensamblado** (`assembleContents(brief, draft, contact)`, core, puro), según `04-formato-publicaciones.md`:
-  - **Instagram:** caption con la línea de tipo, el gancho, la línea de datos (`📐 … m² útiles · 🛏 … dorm · 🛁 … baños`, solo los que existen), el precio (`💰 UF 5.800 | GC aprox. $120.000`), el texto de la IA, el contacto (WhatsApp del corredor, o solo DM si no tiene) y los hashtags. Hashtags: `#{comuna}` y `#{tipo}{operación}`, los fijos del corredor y los de la IA, normalizados (minúsculas, sin tildes ni espacios), sin repetir y entre 5 y 12. Máximo 2.200 caracteres: si se pasa, se recorta el texto de la IA.
-  - **Portal Inmobiliario:** título armado por el código, sin abreviaturas ni adjetivos y de hasta 60 caracteres (`docs/integraciones/mercadolibre.md`, por confirmar en F4): `Departamento 3 dormitorios 2 baños en Ñuñoa`. Si se pasa, se quitan primero los baños y después los dormitorios. Descripción en texto plano, sin emojis: presentación, `Características:` (lista desde los atributos), `Espacios comunes:` (si hay `amenities`), `Ubicación y conectividad:` (si la IA la redactó), `Condiciones:` (disponibilidad y requisitos filtrados) y un cierre sin teléfono ni email (las reglas de contacto de Mercado Libre se verifican en F4).
+  - **Instagram:** caption con la línea de tipo, el gancho, la línea de datos (`📐 … m² útiles · 🛏 … dorm · 🛁 … baños · 🚗 … est`, solo los que existen; estacionamientos solo si es mayor que 0), el precio (`💰 UF 5.800 | GC aprox. $120.000`), el texto de la IA, el contacto (WhatsApp del corredor, o solo DM si no tiene) y los hashtags. Hashtags: `#{comuna}` y `#{tipo}{operación}`, los fijos del corredor y los de la IA, normalizados (minúsculas, sin tildes ni espacios), sin repetir y entre 5 y 12. Máximo 2.200 caracteres: si se pasa, se recorta el texto de la IA.
+  - **Portal Inmobiliario:** título armado por el código con operación, tipo, dormitorios y comuna, sin abreviaturas ni adjetivos y de hasta 60 caracteres (`docs/integraciones/mercadolibre.md`, por confirmar en F4): `Departamento en venta 3 dormitorios 2 baños en Ñuñoa`. Singular y plural (`1 dormitorio`); con 0 dormitorios se omite. Si se pasa, se quitan primero los baños y después los dormitorios. Descripción en texto plano, sin emojis: presentación, `Características:` (lista desde los atributos), `Espacios comunes:` (si hay `amenities`), `Ubicación y conectividad:` (si la IA la redactó), `Condiciones:` (disponibilidad y requisitos filtrados) y un cierre sin teléfono ni email (las reglas de contacto de Mercado Libre se verifican en F4).
   - **Marketplace:** el mismo título y una descripción intermedia: la introducción de la IA, los datos principales, el precio y el WhatsApp.
   - Las 3 filas guardan `llm_provider`, `llm_model`, `prompt_version` y `raw_output` (la salida validada de la IA).
 - **Revisión editorial** (`checkContent(platform, { title, body, hashtags }, ctx)`, core, pura), con `ctx = { brief, contact, private: { address, unitNumber, internalNotes } }`: lo privado no va al brief, pero la revisión lo necesita para detectar una fuga (por ejemplo, en una edición manual). Devuelve `{ code, severity, message }[]`:
@@ -235,7 +241,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 ### 4.7 Contratos
 | Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/listings/:id/content-runs` | `{ texts?: boolean }` (default `true`). `202` con la corrida (`ContentRunView`) y `reused` si ya había una activa. `409 LISTING_NOT_READY` |
+| POST | `/listings/:id/content-runs` | `{ texts?: boolean, replaceEdits?: boolean }` (`texts` por defecto `true`). `202` con la corrida (`ContentRunView`) y `reused` si ya había una activa. `409 LISTING_NOT_READY` o `CONTENT_EDITED` |
 | GET | `/content-runs/:id` | estado, etapa, reporte y error |
 | GET | `/listings/:id/content` | `getListingContent`: contenido vigente por canal (`id`, `title`, `body`, `hashtags`, `status`, `checks`, `updatedAt`, `promptVersion`), carrusel, fotos de Portal y Marketplace y reel (URLs firmadas), y la última corrida |
 | PATCH | `/contents/:id` | `editContent`: `{ title?, body?, hashtags? }` → el contenido con `checks`. `409 CONTENT_NOT_CURRENT` |
@@ -243,13 +249,14 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 | GET | `/listings` | (cambia) la portada usa `thumb` si existe, para que una portada HEIC se vea |
 
 - Los esquemas van en `@agentsales/api/contracts`, y las entidades (`contentRun`, `content`, `media`) en core (ADR-0011).
-- `LISTING_NOT_READY` y `CONTENT_NOT_CURRENT` responden 409: se suman a la tabla de códigos de `05-convenciones.md`.
+- `LISTING_NOT_READY`, `CONTENT_EDITED` y `CONTENT_NOT_CURRENT` responden 409: se suman a la tabla de códigos de `05-convenciones.md`.
 - **CLI:**
   ```
-  agentsales prepare <external_ref|id> [--broker <slug>] [--no-texts] [--no-wait]
+  agentsales prepare <external_ref|id> [--broker <slug>] [--no-texts] [--replace-edits] [--no-wait]
   agentsales content <external_ref|id> [--broker <slug>] [--platform instagram|portal|marketplace] [--json]
   ```
   - `prepare` encola y espera como `import` (cada 2 s, con el aviso de "sigue en cola" a los 20 s y los mismos topes), mostrando la etapa, y termina con el resumen (medios procesados, advertencias y revisión editorial). Si la corrida ya existía, lo dice.
+  - Si hay textos editados a mano, `prepare` sin `--replace-edits` termina con un mensaje que lo explica y sugiere `--no-texts` o `--replace-edits`.
   - `content` imprime los textos vigentes y su revisión.
   - Los nombres cortos de `--platform` (`portal`, `marketplace`) se traducen a `PLATFORMS` en un solo lugar de core (`PLATFORM_SHORT_NAMES`).
 - **Panel:** en el detalle, la sección **Contenido**:
@@ -265,7 +272,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
   - ffmpeg 8.1 o más nuevo, y ffprobe (T07; hoy solo revisa que exista ffmpeg).
   - Chromium de la versión que pide el Playwright instalado (T09; hoy avisa "se necesita en F5").
   - Sesión de la CLI de Claude con `claude auth status`, sin gastar cuota (T04).
-- **Requisitos locales** (`docs/08-guia-operador.md` y `docs/07-checklist-cuentas.md`): ffmpeg con ffprobe (`brew install ffmpeg`), Chromium de Playwright y la CLI de Claude con sesión iniciada.
+- **Requisitos locales** (`docs/08-guia-operador.md` y `docs/07-checklist-cuentas.md`, cada uno en su tarea: T04 la CLI de Claude, T07 ffmpeg con ffprobe y T09 Chromium): ffmpeg con ffprobe (`brew install ffmpeg`), Chromium de Playwright y la CLI de Claude con sesión iniciada.
 - **CLAUDE.md:** comandos `prepare`, `content` y `eval:content` (en sus tareas).
 
 ### 4.9 Comportamiento sin red
@@ -282,10 +289,10 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **D3 · La IA no elige ni sugiere la portada, y no ve las fotos.** La portada es la del operador (`foto_portada`, o la primera foto). Razones: un modelo que mira fotos tiende a describir lo que ve ("piscina", "vista al parque"), que no está en los datos; `media` no recuerda si la portada fue elegida a mano, así que una sugerencia aplicada se perdería al reimportar; y ahorra cuota del plan. La sugerencia con visión queda en el backlog.
 - **D4 · Una corrida por aviso con etapas** (`content.prepare`), en vez de jobs separados de medios y contenido: un solo avance que mirar, y las etapas idempotentes hacen que un reintento no repita trabajo.
 - **D5 · Reel con fondo desenfocado** para videos que no son verticales (recortar al centro corta media habitación), y el texto de los primeros 2 s como PNG de la misma plantilla (sin depender de las fuentes de ffmpeg).
-- **D6 · CI con ffmpeg y Chromium.** Los adaptadores de `packages/media` se prueban de verdad, con fotos generadas por sharp y videos por ffmpeg (`testsrc`), sin archivos de clientes (excepción a "msw para lo externo", que se anota en `05-convenciones.md`). La CI instala el Chromium de Playwright (con caché) y un ffmpeg 8.1 o más nuevo: el de Ubuntu 24.04 (6.1) no arma los HEIC en mosaicos, así que se usa un build estático fijado por versión y verificado con sha256 (T07).
+- **D6 · CI con ffmpeg y Chromium.** Los adaptadores de `packages/media` se prueban de verdad, con fotos generadas por sharp y videos por ffmpeg (`testsrc`), sin archivos de clientes (excepción a "msw para lo externo", que se anota en `05-convenciones.md`). La CI instala el Chromium de Playwright (con caché) y un ffmpeg 8.1 o más nuevo: el de Ubuntu 24.04 (6.1) no arma los HEIC en mosaicos, así que se usa un build estático de la misma rama probada en local (9.0.x), fijado por versión y verificado con sha256 (T07). El mínimo de 8.1 sale del changelog de ffmpeg; solo se probó la 9.0.1.
 - **D7 · Mínimos y máximos** como columnas de `field_definitions`, no dentro de `options`: son de los campos numéricos y el validador los lee directo.
 - **D8 · Google Sheets y Drive** (pregunta abierta de F1): no hacen falta antes de F3. Durante el piloto basta con Excel y zip, y la exportación de Sheets a xlsx se importó sin problemas en la demo 3 de F1. Pasan al backlog post-MVP.
-- **D9 · Título de Portal sin abreviaturas** (`3 dormitorios 2 baños`, no `3D 2B`), de hasta 60 caracteres: lo que recomienda Mercado Libre para inmuebles (por confirmar en F4).
+- **D9 · Título de Portal sin abreviaturas y con la operación** (`Departamento en venta 3 dormitorios 2 baños en Ñuñoa`, no `3D 2B`), de hasta 60 caracteres: operación, tipo, dormitorios y comuna es lo que recomendaría Mercado Libre para inmuebles (por confirmar en F4).
 
 ### 4.11 Dependencias nuevas (se justifican en el PR de su tarea)
 - `sharp` (T07, `packages/media`): imágenes. Está en el stack.
@@ -321,13 +328,13 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T04 · Proveedor de IA (`packages/llm`)
 - **Depende de:** F1
-- **Descripción:** puerto `LLMProvider` en core (§4.5); paquete `packages/llm` con `claude-cli`, `fake` y el stub `anthropic-api`; `CLAUDE_CLI_PATH`, `LLM_TIMEOUT_SECONDS` y la exigencia de `ANTHROPIC_API_KEY`; `doctor` con `claude auth status`. Override de Biome. Seguimiento en ADR-0003 y nota de integración con lo que confirme la prueba de humo.
+- **Descripción:** puerto `LLMProvider` en core (§4.5); paquete `packages/llm` con `claude-cli`, `fake` y el stub `anthropic-api`; `CLAUDE_CLI_PATH`, `LLM_TIMEOUT_SECONDS` y la exigencia de `ANTHROPIC_API_KEY`; `doctor` con `claude auth status`. Override de Biome. **Guardia en `vitest.config.ts`:** `CLAUDE_CLI_PATH` apunta a un ejecutable que siempre falla, así un test que olvide el ejecutable falso no puede llamar a la CLI real. El resultado de la prueba de humo va a la nota de integración y al seguimiento de ADR-0003. Actualiza `07-checklist-cuentas.md` y `08-guia-operador.md`.
 - **Hecho cuando:**
   - [ ] Tests de `claude-cli` con un ejecutable falso (un script de Node que imita el sobre de la CLI): éxito, `error_max_structured_output_retries`, `max_tokens`, sin sesión, límite de uso, error del modelo, proceso que muere, tope de tiempo y `AbortSignal` (en los dos últimos, el proceso queda terminado)
-  - [ ] Test: el proceso hijo recibe solo las variables permitidas (nunca `DATABASE_URL`, `R2_*`, `APP_ENCRYPTION_KEY`, `ANTHROPIC_API_KEY` ni `ANTHROPIC_AUTH_TOKEN`), corre en un directorio vacío, recibe el prompt por stdin y lleva `--safe-mode` y `--tools ""`
+  - [ ] Test: el proceso hijo recibe solo las variables permitidas (nunca `DATABASE_URL`, `R2_*`, `APP_ENCRYPTION_KEY`, `ANTHROPIC_API_KEY` ni `ANTHROPIC_AUTH_TOKEN`), corre en un directorio vacío fuera del repo (ningún directorio padre tiene un `CLAUDE.md`), recibe el prompt por stdin y lleva `--safe-mode` y `--tools ""`
   - [ ] Tests del entorno (`anthropic-api` sin clave falla al arrancar) y del stub
   - [ ] Ningún test ejecuta la CLI real de Claude
-  - [ ] Demo: prueba de humo con la CLI real y un aviso inventado (salida válida); el sobre real queda como fixture, sin datos de clientes
+  - [ ] Demo: prueba de humo con la CLI real y un aviso inventado (salida válida), que también confirma `--max-turns` y el comportamiento de `--tools ""` con `--json-schema`; el sobre real queda como fixture, sin datos de clientes
 
 ### F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado
 - **Depende de:** T04 (puerto)
@@ -335,7 +342,8 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Hecho cuando:**
   - [ ] Tests del brief: sin notas internas, sin `_extra`, sin links ni contacto, sin dirección con `show_exact_address = false` y con ella si es `true`
   - [ ] Test: el JSON Schema enviado no lleva largos y el esquema estricto sí los aplica
-  - [ ] Tests del ensamblado por canal con avisos inventados (venta en UF, arriendo en pesos con gastos comunes, sin estacionamientos, sin WhatsApp), del recorte a 2.200 caracteres y del título de Portal sobre 60 caracteres
+  - [ ] Tests del ensamblado por canal con avisos inventados (venta en UF, arriendo en pesos con gastos comunes, sin estacionamientos, sin WhatsApp), del recorte a 2.200 caracteres y del título de Portal (sobre 60 caracteres, 1 dormitorio, 0 dormitorios)
+  - [ ] Test con datos hostiles: un texto del Excel con instrucciones o con el delimitador del bloque queda escapado dentro de los datos
   - [ ] Test del reintento con el proveedor falso: la segunda petición lleva el error de validación; dos fallas → `LLM_OUTPUT_INVALID`
 
 ### F2-T06 · Revisión editorial (`checkContent`)
@@ -347,22 +355,22 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T07 · Procesamiento de imágenes (`packages/media`)
 - **Depende de:** T03
-- **Descripción:** puerto `MediaProcessor` completo en core (también `processVideo`, que implementa T08); paquete `packages/media` con `processImage` (§4.2): medidas, rotación EXIF, borrado de metadatos, sRGB, HEIC → JPEG con ffmpeg, variantes `thumb`, `ig_4x5` y `pi_4x3` con su sha256, advertencias de foto chica, `MEDIA_DECODE_FAILED` y `MEDIA_TOOL_NOT_INSTALLED`. `FFPROBE_PATH` y `doctor` con ffmpeg 8.1 y ffprobe. La CI instala ffmpeg 8.1 o más nuevo (D6). Override de Biome y excepción de tests de `05-convenciones.md`.
+- **Descripción:** puerto `MediaProcessor` completo en core (también `processVideo`, que implementa T08); paquete `packages/media` con `processImage` (§4.2): medidas, rotación EXIF, borrado de metadatos, sRGB, HEIC → JPEG con ffmpeg, variantes `thumb`, `ig_4x5` y `pi_4x3` con su sha256, advertencias de foto chica, `MEDIA_DECODE_FAILED` y `MEDIA_TOOL_NOT_INSTALLED`. `FFPROBE_PATH` y `doctor` con ffmpeg 8.1 y ffprobe. Actualiza `08-guia-operador.md`. La CI instala ffmpeg 8.1 o más nuevo (D6). Override de Biome y excepción de tests de `05-convenciones.md`.
 - **Hecho cuando:**
   - [ ] Tests con fotos generadas por sharp: tamaño y proporción de cada variante, rotación EXIF aplicada, sin EXIF ni GPS en la salida, sha256 correcto, foto chica con advertencia y archivo corrupto
-  - [ ] Test con un HEIC de prueba en mosaicos (imagen sintética en `test/fixtures/`, anotada en `05-convenciones.md`) que sale en JPEG completo y con la orientación correcta
+  - [ ] Test con un HEIC de prueba en mosaicos que sale en JPEG completo y con la orientación correcta. El archivo es sintético: un JPEG generado con sharp (sin personas) convertido una sola vez con `sips -s format heic` de macOS, que codifica en mosaicos las imágenes grandes (verificado en local: una imagen sintética de 1600×1200 sale como `Tile Grid` de 73 KB); de menos de 300 KB, en `test/fixtures/` y anotado en `05-convenciones.md`. La tarea verifica con ffprobe que trae el grupo `Tile Grid`
   - [ ] La CI pasa con el paso de ffmpeg
 
 ### F2-T08 · Procesamiento de video (`packages/media`)
 - **Depende de:** T07
-- **Descripción:** `processVideo` con ffprobe y ffmpeg (§4.2, D5): medidas y rotación, `thumb` y reel 1080×1920 con fondo desenfocado, tope de 90 s, mínimo de 3 s y el PNG del texto encima durante 2 s; temporales del intento, `dispose` y `AbortSignal`.
+- **Descripción:** `processVideo` con ffprobe y ffmpeg (§4.2, D5): medidas y rotación, `thumb` y reel 1080×1920 con fondo desenfocado, tope de 90 s, mínimo de 3 s y el PNG del texto encima durante 2 s; temporales en el directorio del intento y `AbortSignal`. Un video sin audio recibe una pista AAC silenciosa.
 - **Hecho cuando:**
-  - [ ] Tests con videos generados por ffmpeg (`testsrc`: horizontal, vertical, de 100 s y de 2 s): duración y medidas, reel de 1080×1920 en H.264 4:2:0 con audio y `moov` al inicio, cortado a 90 s; el de 2 s sin reel
-  - [ ] Tests: un `FFMPEG_PATH` inexistente → `MEDIA_TOOL_NOT_INSTALLED`; abortar mata ffmpeg y borra los temporales
+  - [ ] Tests con videos generados por ffmpeg (`testsrc`: horizontal, vertical, sin audio, de 100 s y de 2 s): duración y medidas; reel de 1080×1920 en H.264 4:2:0 con audio, `moov` al inicio, sin edit lists, GOP cerrado y bitrate bajo 25 Mbps (todo leído con ffprobe), cortado a 90 s; el de 2 s sin reel
+  - [ ] Tests: un `FFMPEG_PATH` inexistente → `MEDIA_TOOL_NOT_INSTALLED`; abortar corta ffmpeg
 
 ### F2-T09 · Plantillas y render
 - **Depende de:** T07
-- **Descripción:** puertos `SlideTemplates` y `HtmlRenderer` con los tipos de datos en core; `packages/templates` (`cover`, `specSheet` y `reelOverlay`, Inter e íconos SVG); `createHtmlRenderer` con Playwright en `packages/media` (red bloqueada, tope de 30 s, Chromium compartido, `RENDER_BROWSER_NOT_INSTALLED`). La CI instala Chromium (D6). `doctor` revisa la versión de Chromium. Override de Biome y seguimiento en ADR-0010 (`import.meta.resolve` de la fuente).
+- **Descripción:** puertos `SlideTemplates` y `HtmlRenderer` con los tipos de datos en core; `packages/templates` (`cover`, `specSheet` y `reelOverlay`, Inter e íconos SVG); `createHtmlRenderer` con Playwright en `packages/media` (red bloqueada, tope de 30 s, Chromium compartido, `RENDER_BROWSER_NOT_INSTALLED`). La CI instala Chromium (D6). `doctor` revisa la versión de Chromium. Override de Biome y seguimiento en ADR-0010 (`import.meta.resolve` de la fuente; si no funciona dentro de Vitest, `createRequire(import.meta.url).resolve`). Actualiza `08-guia-operador.md`.
 - **Hecho cuando:**
   - [ ] Tests de HTML: datos escapados, sin dirección, íconos solo de los datos que existen, colores del corredor, venta y arriendo
   - [ ] Tests del render: JPEG de 1080×1350 y PNG transparente de 1080×1920; una plantilla que pide una URL externa no la carga
@@ -373,15 +381,15 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Descripción:** `requestContentRun` y `prepareContent` (§4.4) con dobles de todos los puertos; `composeCarousel` y `composePhotoSet`; claves de R2 de derivados, reel y renders; `contentRunReportSchema`.
 - **Hecho cuando:**
   - [ ] Tests: corrida completa con el proveedor falso (variantes, renders, reel y 3 contenidos); segunda corrida sin cambios (nada se procesa ni se sube, solo la IA); `texts = false` (sin IA y con el contenido anterior vigente); cambio de versión del procesador (regenera y borra lo anterior); cambio de precio (rehace la portada, la ficha y el reel); cambio del primer video (borra el reel anterior)
-  - [ ] Tests de errores: medio ilegible (advertencia), ninguna foto procesable (`CONTENT_NO_PHOTOS`), sin sesión de la IA (`failed` con su mensaje), error reintentable que sube, último intento que deja `failed` e intento solapado que termina `skipped`
-  - [ ] Tests de `requestContentRun`: aviso no listo, corrida activa devuelta (y reencolada si está `queued`), carrera con `CONTENT_RUN_CONFLICT` y cola caída
+  - [ ] Tests de errores: medio ilegible (advertencia), ninguna foto procesable (`CONTENT_NO_PHOTOS`), sin sesión de la IA (`failed` con su mensaje), error reintentable que sube, último intento que deja `failed`, intento solapado que termina `skipped` y corrida ya terminal que no se toca
+  - [ ] Tests de `requestContentRun`: aviso no listo, corrida activa devuelta (y reencolada si está `queued`), carrera con `CONTENT_RUN_CONFLICT`, contenido editado sin y con `replaceEdits`, y cola caída
 
 ### F2-T11 · Job `content.prepare` en el worker
 - **Depende de:** T04, T08, T09, T10
 - **Descripción:** `defineJob` con la política de §4.4; composición en `worker.ts` (R2, base, procesador y temporales por intento, plantillas, renderizador con cierre al apagar, proveedor de IA según `LLM_PROVIDER` y `AbortSignal` de apagado); corridas abandonadas y limpieza de temporales al arrancar. Seguimiento en ADR-0005 y tabla de colas de `01-arquitectura.md`.
 - **Hecho cuando:**
   - [ ] Tests del handler (como `import-run.test.ts`): datos inválidos, error no reintentable, último intento y temporales borrados también si falla
-  - [ ] Test de arranque: cierra corridas abandonadas y borra temporales viejos
+  - [ ] Test de arranque: cierra las `running` abandonadas, reencola las `queued` y borra temporales viejos
   - [ ] Demo: con `pnpm dev`, una corrida de P001 encolada a mano termina `succeeded` en Neon y R2
 
 ### F2-T12 · API de contenido
@@ -389,13 +397,13 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Descripción:** `getListingContent` y `editContent` en core; rutas de §4.7 con sus contratos; `LISTING_NOT_READY` y `CONTENT_NOT_CURRENT` → 409; `thumbUrl` y medidas en `GET /listings/:id`, y portada `thumb` en `GET /listings`.
 - **Hecho cuando:**
   - [ ] Tests de los casos de uso: contenido vigente con su revisión y medios, editar el vigente (`edited`) y uno viejo (`CONTENT_NOT_CURRENT`)
-  - [ ] Tests de rutas con `testDeps`: pedir (nueva, reusada, aviso no listo, cola caída), consultar la corrida, contenido con `checks` y URLs firmadas, editar (cuerpo inválido, id inexistente)
+  - [ ] Tests de rutas con `testDeps`: pedir (nueva, reusada, aviso no listo, contenido editado, cola caída), consultar la corrida, contenido con `checks` y URLs firmadas, editar (cuerpo inválido, id inexistente)
 
 ### F2-T13 · CLI `prepare` y `content`
 - **Depende de:** T12
-- **Descripción:** comandos de §4.7; `IMPORT_WAIT` pasa a `RUN_WAIT` en core y se comparte; `PLATFORM_SHORT_NAMES`. Actualiza `CLAUDE.md` y `08-guia-operador.md`.
+- **Descripción:** comandos de §4.7; `IMPORT_WAIT` pasa a `RUN_WAIT` en core y se comparte (toca también `apps/web/src/queries/imports.ts`, `apps/web/src/pages/ImportRunPage.tsx` y la espera de `import` en la CLI); `PLATFORM_SHORT_NAMES`. Actualiza `CLAUDE.md` y `08-guia-operador.md`.
 - **Hecho cuando:**
-  - [ ] Tests contra la API en proceso con reloj falso: espera con etapas, aviso de cola, corrida reusada, `--no-wait`, `--no-texts`, corrida fallida (código ≠ 0 y mensaje) y `content` con y sin `--platform` y `--json`
+  - [ ] Tests contra la API en proceso con reloj falso: espera con etapas, aviso de cola, corrida reusada, `--no-wait`, `--no-texts`, textos editados sin y con `--replace-edits`, corrida fallida (código ≠ 0 y mensaje) y `content` con y sin `--platform` y `--json`
 
 ### F2-T14 · Panel: preparar y vista previa
 - **Depende de:** T13 (`RUN_WAIT`)
@@ -405,7 +413,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T15 · Panel: edición de textos
 - **Depende de:** T14
-- **Descripción:** editar título, cuerpo y hashtags de cada canal, con contador de caracteres, guardar (`edited`), revisión actualizada y aviso al regenerar textos sobre un contenido editado ("se reemplazará tu edición; la anterior queda en el historial").
+- **Descripción:** editar título, cuerpo y hashtags de cada canal, con contador de caracteres, guardar (`edited`), revisión actualizada y aviso al regenerar textos sobre un contenido editado ("se reemplazará tu edición"), que al confirmar envía `replaceEdits`.
 - **Hecho cuando:**
   - [ ] Tests: editar y guardar, error al guardar, `CONTENT_NOT_CURRENT`, contador sobre el tope y la confirmación al regenerar
 
@@ -414,7 +422,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Descripción:** `evaluateListingContent` en core (brief → IA → ensamblado → revisión, sin escribir) y un script delgado en el worker (`apps/worker/src/scripts/eval-content.ts`) que lee de Neon los avisos `ready` de un corredor (`--broker`, default `agentsales-pruebas`) y usa el proveedor configurado (o `--provider fake`). Imprime por aviso y canal los errores y advertencias, deja los textos en `tmp/eval/` (fuera de git) y sale con código 1 si hay algún error. Actualiza `CLAUDE.md`.
 - **Hecho cuando:**
   - [ ] Tests con el proveedor falso y repositorios en memoria: un borrador limpio sale 0, uno con un número inventado sale 1
-  - [ ] Demo: `pnpm eval:content` con `claude-cli` sobre las 3 muestras, sin errores
+  - [ ] Demo: `pnpm eval:content` con `claude-cli` sobre las 3 muestras, sin errores. El brief de las muestras va a Anthropic a través del plan del operador, sin dirección ni notas internas (es lo mismo que hace una corrida normal), y los textos quedan solo en `tmp/eval/`
 
 ### F2-T17 · Cierre de fase
 - **Depende de:** todas
@@ -456,7 +464,9 @@ Orden: T01 → T02 → T03 (migraciones en cadena). T04 en cualquier momento; T0
 | Procesos `claude` o ffmpeg huérfanos al apagar el worker | `AbortSignal` de apagado hasta los procesos hijos, con test |
 | HEIC: sharp no lo decodifica y un ffmpeg viejo saca solo un mosaico | ffmpeg 8.1 o más nuevo, exigido por `doctor` y en la CI, con un test de HEIC en mosaicos (T07) |
 | Chromium de Playwright distinto del instalado | Versión de Playwright fijada, `doctor` la revisa y `RENDER_BROWSER_NOT_INSTALLED` con el comando para instalarlo |
-| Una corrida queda en `queued` sin job | Pedirla de nuevo la reencola; las `queued` de más de 24 h se cierran al arrancar |
+| Una corrida queda en `queued` sin job | Pedirla de nuevo la reencola, y el worker reencola todas las `queued` al arrancar; una corrida terminal nunca se reprocesa |
+| Regenerar textos borra una edición a mano | `CONTENT_EDITED` salvo `replaceEdits` (CLI `--replace-edits`, confirmación en el panel) |
+| Un test llama por error a la CLI real de Claude | Guardia en `vitest.config.ts` (`CLAUDE_CLI_PATH` a un ejecutable que falla) y ejecutable falso en los tests del adaptador |
 | La CI se alarga con ffmpeg y Chromium | Caché de los navegadores y build estático de ffmpeg; si pasa de 5 min, se revisa |
 | Fotos con la ubicación GPS del corredor | Las variantes salen sin metadatos, con test (§6) |
 | R2 se llena (10 GB gratis) | Tres variantes JPEG por foto y un reel por aviso; los derivados viejos se borran al reemplazarse |
@@ -476,3 +486,4 @@ Resueltas con la recomendación del spec, por la aprobación permanente del oper
 | 2026-10-02 | Borrador inicial (`/fase-plan 2`), con las notas de integración de F2 (CLI de Claude, API de Anthropic, HEIC, Instagram y Mercado Libre) y verificaciones locales (opciones de la CLI 2.1.243 y HEIC en mosaicos con ffmpeg 9.0.1) |
 | 2026-10-02 | Revisión del subagente `arquitecto`: puertos `SlideTemplates` y `HtmlRenderer` en core (las plantillas no tenían dueño); `MediaProcessor` maneja sus temporales y devuelve el sha256 de cada salida (core no toca archivos); clave del reel con el hash de su texto; `checkContent` con contexto privado; migraciones en cadena T01 → T02 → T03; una corrida `queued` se reencola al pedirla y la carrera de `create` devuelve la activa; `jsonSchema` sin topes y validación en core; `max_tokens`, `refusal` y `error_max_turns` como `LLM_OUTPUT_INVALID`; `getListingContent` y `editContent` en core (`CONTENT_NOT_CURRENT`); portada desde la variante `ig_4x5`; cierre condicional y `AbortSignal`; `mediaSchema`; `FIELD_NUMBER_INVALID`; errores `*_NOT_INSTALLED` y `CONTENT_NO_PHOTOS`; índices; `content_runs` sin `broker_id`; la revisión editorial pasa a su propia tarea (T06) y el cierre a T17 |
 | 2026-10-02 | Spec **aprobado** (aprobación permanente del operador): decisiones D1–D9 con la recomendación del spec. ADR-0012 y ADR-0013 aceptados; seguimientos en ADR-0003 y ADR-0005; `01-arquitectura.md` (flujo 2, estructura y contrato de IA), `04-formato-publicaciones.md`, `06-roadmap.md` y `00-vision.md` actualizados |
+| 2026-10-02 | Revisión del PR (#31) con `revisor` y `arquitecto`: el worker reencola las corridas `queued` al arrancar (en vez de fallarlas a las 24 h) y una corrida terminal no se reprocesa (`markRunning` condicional); `CONTENT_EDITED` y `replaceEdits` para no reemplazar ediciones sin avisar; la CLI de Claude corre en un temporal del sistema, fuera del repo; `--max-turns` por confirmar en la prueba de humo; título de Portal con la operación; `VideoOutput.size`, `processVideo` en dos pasadas y sin `dispose`; `sha256` inyectado y `{ bytes, mime, sha256 }` en las plantillas; guardia de Vitest contra la CLI real; tests de datos hostiles, del reel con ffprobe y del HEIC sintético; estacionamientos en el caption; tabla de colas y diagrama de `01-arquitectura.md`, `02-modelo-datos.md`, ADR-0012, ADR-0013 y notas de integración corregidos |

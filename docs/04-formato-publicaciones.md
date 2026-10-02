@@ -54,7 +54,7 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 
 ## Portal Inmobiliario
 
-- **Título:** lo arma el código, sin abreviaturas ni adjetivos y de hasta 60 caracteres (lo que recomienda Mercado Libre para inmuebles; por confirmar en F4, `docs/integraciones/mercadolibre.md`). Formato: `{{Tipo}} {{dorm}} dormitorios {{baños}} baños en {{Comuna}}`. Ejemplo: `Departamento 3 dormitorios 2 baños en Ñuñoa`. Si se pasa, se quitan primero los baños y después los dormitorios.
+- **Título:** lo arma el código con operación, tipo, dormitorios y comuna, sin abreviaturas ni adjetivos y de hasta 60 caracteres (lo que recomendaría Mercado Libre para inmuebles; por confirmar en F4, `docs/integraciones/mercadolibre.md`). Formato: `{{Tipo}} en {{venta|arriendo}} {{dorm}} dormitorios {{baños}} baños en {{Comuna}}`, con singular y plural, y sin dormitorios si son 0. Ejemplo: `Departamento en venta 3 dormitorios 2 baños en Ñuñoa`. Si se pasa, se quitan primero los baños y después los dormitorios.
 - **Descripción:** texto plano, formal y sin emojis. Estructura:
   1. Párrafo de presentación (2–3 líneas).
   2. **Características:** lista con guiones.
@@ -62,7 +62,7 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
   4. **Ubicación y conectividad.**
   5. **Condiciones:** disponibilidad y requisitos no discriminatorios.
   6. Cierre sin teléfono ni email: las reglas de Mercado Libre sobre datos de contacto en la descripción se verifican en F4.
-- **Fotos:** proporción 4:3 (1600×1200), sin texto sobrepuesto (los portales suelen penalizarlo). Mercado Libre recomienda 1200 px y acepta hasta 1920; una foto más chica deja una advertencia. La portada va primero.
+- **Fotos:** proporción 4:3 (1600×1200), sin texto sobrepuesto (los portales suelen penalizarlo). Mercado Libre recomendaría 1200 px y aceptaría hasta 1920 (por confirmar en F4); una foto más chica deja una advertencia. La portada va primero.
 - **Atributos:** se mapean a los atributos de la categoría ML; los faltantes obligatorios bloquean la publicación (validación antes de enviar).
 
 ## Facebook Marketplace

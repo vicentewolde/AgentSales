@@ -49,7 +49,9 @@ response.parsed_output;
 - **NO VERIFICADO:** qué versión de zod exige `zodOutputFormat` (el repo usa zod 4; confirmar al instalar el SDK). Alternativa sin helper: `z.toJSONSchema(schema, { target: "draft-7" })` y `jsonSchemaOutputFormat`.
 - **Alternativa:** tool use con `strict: true` y `tool_choice: auto` (garantiza que la entrada de la herramienta cumpla el esquema). Más complejo que `output_config.format`; no es necesario.
 
-### 4.2 Forma del puerto `LLMProvider` (recomendación)
+### 4.2 Forma del puerto `LLMProvider` (recomendación previa, superada por el spec F2 §4.5)
+
+> El spec F2 fijó otro contrato: el puerto recibe `system`, `prompt` y un JSON Schema sin topes, devuelve `{ data: unknown, model }` y core valida con zod. Sin imágenes en F2. El stub responde `LLM_NOT_CONFIGURED`. Lo de abajo queda como antecedente.
 
 - Tanto `claude-cli` como `anthropic-api` pueden cumplir `generateStructured<T>({ system, prompt, images, schema })` del contrato actual (`docs/01-arquitectura.md`). No hace falta cambiarlo para F2.
 - Añadir al resultado, de forma opcional, metadatos de uso: `{ data: T, usage?: { inputTokens, outputTokens, costUsd? }, model: string, promptVersion }` para el registro de `content`. Decisión del operador (ver preguntas en el resumen).
@@ -103,7 +105,7 @@ Errores 400 propios de los modelos nuevos que el adaptador debe evitar: prefill,
 ## 8. Cómo probar sin riesgo
 
 - Tests: `msw` o el adaptador `fake`; ningún test llama a la API real (CLAUDE.md).
-- Para el stub de F2: el adaptador `anthropic-api` lanza un error claro (`LLM_PROVIDER_NOT_IMPLEMENTED`) o se implementa completo con tests de contrato en msw (los cuerpos de la sección 4 son verificables sin red).
+- Para el stub de F2: el adaptador `anthropic-api` lanza un error claro (en el spec F2: `LLM_NOT_CONFIGURED`) o se implementa completo con tests de contrato en msw (los cuerpos de la sección 4 son verificables sin red).
 - Prueba real (cuando se implemente de verdad, no en F2): una llamada con una imagen de 200x200 y un esquema trivial con `claude-haiku-4-5-20251001`, en una clave de la Console con tope de gasto bajo. No hay sandbox.
 
 ## 9. Riesgos y términos de uso relevantes

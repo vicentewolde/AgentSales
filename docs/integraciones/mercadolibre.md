@@ -1,6 +1,6 @@
 # Portal Inmobiliario y Mercado Libre (MLC): título y fotos
 
-Nota verificada el 2026-10-02. **Alcance parcial:** solo largo del título de inmuebles en MLC y tamaño de las fotos, para las plantillas y el prompt de F2. OAuth, categorías, atributos, listing types y estado quedan para F4.
+Nota **parcialmente verificada** el 2026-10-02. **Alcance parcial:** solo largo del título de inmuebles en MLC y tamaño de las fotos, para las plantillas y el prompt de F2. OAuth, categorías, atributos, listing types y estado quedan para F4.
 
 Convención: **DOC** = documentación oficial; **INFERENCIA** = deducido; **NO VERIFICADO** = falta prueba real.
 
