@@ -1,5 +1,11 @@
 import type { RawListingRow } from "./listing-validator/index.js";
 
+/**
+ * Tope del xlsx: lo aplican el lector (`packages/importers`) y la API al recibir una subida
+ * (spec F1 §4.4). Vive en core para que los dos usen el mismo valor.
+ */
+export const MAX_XLSX_BYTES = 10 * 1024 * 1024;
+
 /** Hoja Corredor tal como la lee el lector: `Campo` → `Tu valor`. La valida `importListings`. */
 export type RawBrokerSheet = Readonly<Record<string, unknown>>;
 

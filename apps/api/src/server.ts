@@ -1,12 +1,22 @@
-import { createLogger, loadEnv, loadEnvFile } from "@agentsales/config";
+import { randomUUID } from "node:crypto";
+import {
+  createErrorThrottle,
+  createLogger,
+  findWorkspaceRoot,
+  loadEnv,
+  loadEnvFile,
+} from "@agentsales/config";
 import {
   createBrokerRepository,
   createDb,
+  createImportRunRepository,
   createListingRepository,
   createMediaRepository,
   pingDatabase,
+  toPgConnectionString,
 } from "@agentsales/db";
-import { checkQueueSchema } from "@agentsales/queue";
+import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
+import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
@@ -38,6 +48,17 @@ const storage = createR2Storage({
   signedUrlTtlSeconds: env.SIGNED_URL_TTL_SECONDS,
 });
 
+// La API solo encola (ADR-0005): pg-boss arranca en el primer `enqueue`, así la API levanta aunque
+// el esquema `pgboss` no exista. Sus errores de fondo se resumen, como en el worker.
+const queueErrors = createErrorThrottle(logger, "error de la cola (pg-boss)");
+const queue = createJobQueue({
+  connectionString: toPgConnectionString(env.DATABASE_URL),
+  onError: (error) => queueErrors.report(error),
+});
+// El mismo staging que el worker (`<workspace>/tmp/imports`): en el MVP comparten disco (§4.6).
+// La API solo escribe en el staging: leer medios (con su tope de video) es del worker.
+const staging = createStaging({ root: stagingRootOf(findWorkspaceRoot()) });
+
 const app = createApp({
   checks: {
     db: () => pingDatabase(database.db),
@@ -45,13 +66,23 @@ const app = createApp({
     storage: async () => {
       await storage.head(HEALTHCHECK_PATH);
     },
-    // Solo lee el catálogo: la API no arranca pg-boss (lo hace el worker).
+    // Solo lee el catálogo, sin pg-boss: `ok` es que la cola se inicializó alguna vez.
     queue: () => checkQueueSchema(database.db),
   },
   listings: createListingRepository(database.db),
   brokers: createBrokerRepository(database.db),
   media: createMediaRepository(database.db),
   storage,
+  importRuns: createImportRunRepository(database.db),
+  queue,
+  uploads: {
+    save: (runId, fileName, bytes) => staging.saveInput(runId, fileName, bytes),
+    discard: (runId) => staging.discard(runId),
+  },
+  newId: randomUUID,
+  // `POST /imports/local` lee rutas del disco del operador: solo en desarrollo (la CLI).
+  localImports: env.NODE_ENV === "development",
+  maxUploadBytes: env.MAX_IMPORT_UPLOAD_MB * 1024 * 1024,
   publishMode: env.PUBLISH_MODE,
   version: readApiVersion(),
   logger,
@@ -99,9 +130,11 @@ function shutdown(signal: string): void {
     if (error) {
       logger.warn({ err: error }, "el servidor ya estaba cerrado");
     }
-    database
-      .close()
-      .catch((closeError: unknown) => logger.error({ err: closeError }, "error al cerrar la base"))
+    queueErrors.dispose();
+    Promise.all([queue.stop(), database.close()])
+      .catch((closeError: unknown) =>
+        logger.error({ err: closeError }, "error al cerrar la cola o la base"),
+      )
       .finally(() => process.exit(0));
   });
 }

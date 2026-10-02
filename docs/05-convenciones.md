@@ -38,6 +38,7 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
   | Código | HTTP |
   |---|---|
   | `INVALID_TRANSITION` | 409 |
+  | `REQUEST_TOO_LARGE` | 413 |
   | `JOB_PAYLOAD_INVALID`, `IMPORT_RUN_INVALID`, `*_ROW_INVALID` | 500 (datos que arma el servidor, o una fila corrupta en la base: no es culpa del cliente) |
   | `*_NOT_FOUND` | 404 |
   | `*_INVALID*` o `INVALID_*` | 400 |
@@ -96,7 +97,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 }
 ```
 
-Una subruta (por ejemplo `./contracts` en `apps/api` o `./testing` en `packages/core`, desde F1) repite las tres condiciones con su propio punto de entrada: `"@agentsales/source": "./src/contracts/index.ts"`, `"types": "./dist/src/contracts/index.d.ts"` y `"default": "./dist/src/contracts/index.js"`. Una salida de repositorios en memoria (`./testing`) solo se importa desde tests, y Biome lo hace cumplir.
+Una subruta (por ejemplo `./contracts` en `apps/api`, `./testing` en `packages/core` o `./staging` en `packages/importers`, desde F1) repite las tres condiciones con su propio punto de entrada: `"@agentsales/source": "./src/contracts/index.ts"`, `"types": "./dist/src/contracts/index.d.ts"` y `"default": "./dist/src/contracts/index.js"`. Una salida de repositorios en memoria (`./testing`) solo se importa desde tests, y Biome lo hace cumplir.
 
 - En desarrollo se usa la condición `@agentsales/source`, que resuelve al código fuente sin compilar antes (ADR-0010). Se activa una sola vez por herramienta:
   - `tsc`: `customConditions` en `tsconfig.base.json`.

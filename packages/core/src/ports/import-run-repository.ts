@@ -2,6 +2,11 @@ import type { ListingSource } from "../enums.js";
 import type { ImportCounts, ImportReport, ImportRun, ImportRunInput } from "../import-run.js";
 
 export type NewImportRun = {
+  /**
+   * uuid generado por quien llama (opcional): la API lo necesita antes de crear el run, para
+   * guardar los archivos en `tmp/imports/{id}/input/`. Sin él, lo genera la base.
+   */
+  id?: string;
   source: ListingSource;
   fileName: string;
   dryRun: boolean;
@@ -14,12 +19,14 @@ export type ImportRunError = { code: string; message: string };
 /**
  * Cargas (`import_runs`). F1-T04 registra el resultado de las filas, y F1-T09 los cambios de
  * estado: son **condicionales** (`UPDATE … WHERE status IN (…)`) y devuelven si cambió, así un
- * reintento sobre un run ya terminal no hace nada. `list` llega con `GET /imports` (F1-T11).
+ * reintento sobre un run ya terminal no hace nada.
  * Los ids son uuid: la API los valida antes de llegar aquí.
  */
 export interface ImportRunRepository {
   create(run: NewImportRun): Promise<ImportRun>;
   get(id: string): Promise<ImportRun | null>;
+  /** Las cargas más recientes primero (`created_at`), hasta `limit` (por defecto 50). */
+  list(limit?: number): Promise<ImportRun[]>;
   /**
    * Guarda el corredor, los contadores y el reporte de `importListings` (también en `dry_run`).
    * No cambia `status` ni `finished_at`. Un id inexistente es `IMPORT_RUN_NOT_FOUND`.

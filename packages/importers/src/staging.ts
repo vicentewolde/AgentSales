@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { readdir, rm, stat } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { AppError, type RunImportDeps } from "@agentsales/core";
-import { createMediaFolderSource, extractZip } from "@agentsales/importers";
+import { createMediaFolderSource } from "./media-folder.js";
+import { extractZip } from "./zip.js";
 
 /** Directorios de staging de más de esto se borran al arrancar, sea cual sea su run (§4.3). */
 export const STAGING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -13,6 +17,12 @@ export const STAGING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
  */
 export const STAGING_ORPHAN_GRACE_MS = 10 * 60 * 1000;
 
+/** Tope de un nombre de archivo en los discos habituales (ext4, APFS). */
+const MAX_FILE_NAME_BYTES = 255;
+
+/** `<workspace>/tmp/imports`: la misma raíz para la API y el worker (spec F1 §4.1). */
+export const stagingRootOf = (workspaceRoot: string) => join(workspaceRoot, "tmp", "imports");
+
 /** Estado del run de un directorio de staging, para la limpieza al arrancar. */
 export type StagingRunState = "open" | "closed" | "missing";
 
@@ -22,8 +32,11 @@ const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export type StagingOptions = {
   /** `<workspace>/tmp/imports` (spec F1 §4.1). */
   root: string;
-  /** `MAX_VIDEO_MB` en bytes, para el lector de medios. */
-  maxVideoBytes: number;
+  /**
+   * `MAX_VIDEO_MB` en bytes, para el lector de medios (`openMedia`, el worker). Quien solo guarda
+   * archivos (la API) no lo necesita; sin él, `openMedia` lanza en vez de leer sin tope.
+   */
+  maxVideoBytes?: number;
 };
 
 export type Staging = {
@@ -32,6 +45,18 @@ export type Staging = {
    * cada intento tiene el suyo, así dos intentos solapados no se pisan).
    */
   dirOf(runId: string): string;
+  /** `<root>/{runId}/input`: los archivos que subió la API (se conservan hasta el estado terminal). */
+  inputDirOf(runId: string): string;
+  /**
+   * Guarda un archivo subido en `input/`, en streaming, y devuelve su ruta absoluta (para
+   * `import_runs.input`). Del nombre solo se usa el último tramo: un `../x.xlsx` del navegador no
+   * sale de `input/`. Un nombre vacío, con `\0` o de más de 255 bytes es `IMPORT_FILE_INVALID`.
+   */
+  saveInput(
+    runId: string,
+    fileName: string,
+    body: AsyncIterable<Uint8Array> | Uint8Array,
+  ): Promise<string>;
   openMedia: RunImportDeps["openMedia"];
   /** Borra `<root>/{runId}` completo (al llegar a un estado terminal). No falla si no existe. */
   discard(runId: string): Promise<void>;
@@ -83,11 +108,40 @@ export function createStaging(options: StagingOptions): Staging {
     return join(options.root, runId);
   };
   const remove = (path: string) => rm(path, { recursive: true, force: true });
-  const sourceOf = (root: string) =>
-    createMediaFolderSource(root, { maxVideoBytes: options.maxVideoBytes });
+  const sourceOf = (root: string) => {
+    if (options.maxVideoBytes === undefined) {
+      throw new Error("createStaging: openMedia necesita maxVideoBytes");
+    }
+    return createMediaFolderSource(root, { maxVideoBytes: options.maxVideoBytes });
+  };
+
+  const inputDirOf = (runId: string) => join(dirOf(runId), "input");
 
   return {
     dirOf,
+    inputDirOf,
+
+    async saveInput(runId, fileName, body) {
+      const name = basename(fileName.replaceAll("\\", "/")).trim();
+      if (
+        !name ||
+        name === "." ||
+        name === ".." ||
+        name.includes("\0") ||
+        Buffer.byteLength(name) > MAX_FILE_NAME_BYTES
+      ) {
+        throw new AppError("IMPORT_FILE_INVALID", "El archivo subido no tiene un nombre válido", {
+          details: { file: fileName.slice(0, 100) },
+        });
+      }
+      const dir = inputDirOf(runId);
+      await mkdir(dir, { recursive: true });
+      const path = join(dir, name);
+      // En streaming: un zip grande no se copia otra vez en memoria (spec F1 §4.4).
+      const source = body instanceof Uint8Array ? Readable.from([body]) : Readable.from(body);
+      await pipeline(source, createWriteStream(path));
+      return path;
+    },
 
     async openMedia({ runId, mediaDir, folders }) {
       if (mediaDir === null) return { source: null, close: async () => {} };

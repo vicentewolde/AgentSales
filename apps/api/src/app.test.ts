@@ -2,13 +2,9 @@ import { Writable } from "node:stream";
 import { createLogger } from "@agentsales/config";
 import type { HealthReport } from "@agentsales/core";
 import { AppError } from "@agentsales/core";
-import {
-  createInMemoryBrokerRepository,
-  createInMemoryListingRepository,
-  createInMemoryMediaRepository,
-} from "@agentsales/core/testing";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
+import { testDeps } from "../test/app-deps.js";
 import { type AppDeps, createApp } from "./app.js";
 import type { ErrorBody } from "./errors.js";
 
@@ -26,18 +22,14 @@ const fail = (message: string) => async () => {
 };
 
 function appWith(checks: Partial<AppDeps["checks"]> = {}, extra: Partial<AppDeps> = {}) {
-  return createApp({
-    checks: { db: ok, storage: ok, queue: ok, ...checks },
-    publishMode: "dry-run",
-    version: "0.0.1",
-    logger: silentLogger,
-    access,
-    listings: createInMemoryListingRepository(),
-    brokers: createInMemoryBrokerRepository(),
-    media: createInMemoryMediaRepository(),
-    storage: { signedReadUrl: async (path) => `https://r2.test/${path}?firma` },
-    ...extra,
-  });
+  return createApp(
+    testDeps({
+      checks: { db: ok, storage: ok, queue: ok, ...checks },
+      logger: silentLogger,
+      access,
+      ...extra,
+    }),
+  );
 }
 
 async function health(app: ReturnType<typeof createApp>) {

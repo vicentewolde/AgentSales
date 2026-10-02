@@ -80,6 +80,11 @@ Spec detallado: `docs/specs/fase-1-carga.md`.
 - Autenticación (proveedor a decidir en un ADR) y separación estricta por corredor (`broker_id` en cada consulta, con RLS opcional).
 - Onboarding: conectar cuentas, subir marca y plantilla de campos.
 - App Review de Meta; despliegue (ej. Fly.io o Railway) con backups.
+- **Deuda heredada de F1** (detalle en `docs/ESTADO.md` → Deuda técnica):
+  - las subidas del panel pasan a ser directas a R2, con una URL prefirmada, y `import_runs.input` pasa de rutas locales a claves de R2 (seguimiento de ADR-0005);
+  - se quita `POST /imports/local` y el staging compartido en disco entre la API y el worker;
+  - el despliegue fija `NODE_ENV=production`, porque `/imports/local` depende de ese valor;
+  - `GET /listings` pasa a una proyección acotada (hoy entrega notas internas y la dirección exacta).
 - Términos de uso y privacidad básicos.
 
 ## Post-MVP (backlog)

@@ -6,13 +6,14 @@ import {
   isAppError,
   type ListingSheetInput,
   type ListingSheetRow,
+  MAX_XLSX_BYTES,
   type RawBrokerSheet,
 } from "@agentsales/core";
 import ExcelJS from "exceljs";
 import { cellText, flattenCell } from "./cells.js";
 
-/** Mismo tope que la API para el xlsx (spec F1 §4.4). */
-export const MAX_XLSX_BYTES = 10 * 1024 * 1024;
+/** El tope del xlsx vive en core: la API aplica el mismo al recibir una subida (spec F1 §4.4). */
+export { MAX_XLSX_BYTES };
 /** Filas de datos por archivo; el piloto son unas pocas propiedades. */
 export const MAX_DATA_ROWS = 1000;
 

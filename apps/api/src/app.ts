@@ -1,6 +1,8 @@
 import type {
   BrokerRepository,
   HealthCheckName,
+  ImportRunRepository,
+  JobQueue,
   ListingRepository,
   MediaRepository,
   MediaStorage,
@@ -12,6 +14,7 @@ import { type HealthCheck, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
 import { requestLogger } from "./request-logger.js";
 import { brokerRoutes } from "./routes/brokers.js";
+import { type ImportUploads, importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
 import { csrfGuard, hostGuard, type LocalAccess } from "./security.js";
 
@@ -30,6 +33,16 @@ export type AppDeps = {
   media: MediaRepository;
   /** Solo para las URLs de lectura temporales de las fotos. */
   storage: Pick<MediaStorage, "signedReadUrl">;
+  // Importación (F1-T11): la API solo crea el run y encola (ADR-0005).
+  importRuns: ImportRunRepository;
+  queue: JobQueue;
+  /** Escribe y borra en el staging; lo compone `server.ts` (lo que depende de Node). */
+  uploads: ImportUploads;
+  newId: () => string;
+  /** `POST /imports/local`: `server.ts` lo activa con `NODE_ENV=development`. */
+  localImports: boolean;
+  /** `MAX_IMPORT_UPLOAD_MB` en bytes. */
+  maxUploadBytes: number;
 };
 
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
@@ -50,7 +63,8 @@ export function createApp(deps: AppDeps) {
     })
     // Encadenadas con `.route()`, así `AppType` conserva el esquema de cada ruta (ADR-0011).
     .route("/listings", listingRoutes(deps))
-    .route("/brokers", brokerRoutes(deps));
+    .route("/brokers", brokerRoutes(deps))
+    .route("/imports", importRoutes(deps));
   app.onError(createErrorHandler(deps.logger));
   app.notFound(notFoundHandler);
   return app;

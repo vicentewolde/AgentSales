@@ -8,6 +8,11 @@
       "@agentsales/source": "./src/index.ts",
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
+    },
+    "./staging": {
+      "@agentsales/source": "./src/staging.ts",
+      "types": "./dist/src/staging.d.ts",
+      "default": "./dist/src/staging.js"
     }
   },
   "scripts": {

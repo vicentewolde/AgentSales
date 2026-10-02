@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T10 · Contratos HTTP y API de lectura
-**Siguiente paso:** `/tarea F1-T11` (API de importación): ya tiene T09 y T10
+**Última tarea terminada:** F1-T11 · API de importación
+**Siguiente paso:** `/tarea F1-T12` (CLI de importación y consulta), o F1-T13 (panel). La demo de T12 necesita las 3 propiedades de muestra
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -22,7 +22,7 @@
 | F1-T08 Paquete de cola | ✅ terminada | #22 |
 | F1-T09 Job import.run | ✅ terminada | #23 |
 | F1-T10 Contratos HTTP y API de lectura | ✅ terminada | #24 |
-| F1-T11 API de importación | ⏳ pendiente | |
+| F1-T11 API de importación | ✅ terminada | #25 |
 | F1-T12 CLI de importación y consulta | ⏳ pendiente | |
 | F1-T13 Panel: patrón, Propiedades y Detalle | ⏳ pendiente | |
 | F1-T14 Panel: Importar | ⏳ pendiente | |
@@ -44,11 +44,38 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **F1-T12:** la CLI normaliza `--broker` con `slugify` (hoy `Mi-Corredor` da `BROKER_INVALID`).
-- **T11 / F7:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un xlsx de 10 MB (que es un zip) podría descomprimirse en mucho más dentro de exceljs. El zip de medios ya tiene topes (T06: 4 GB y `validateEntrySizes`). Es tolerable en local; con subidas públicas (`POST /imports` multipart), limitar el cuerpo y el tamaño descomprimido del xlsx.
+- **F7:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un xlsx de 10 MB (que es un zip) podría descomprimirse en mucho más dentro de exceljs. El cuerpo de la subida ya tiene tope (T11: `MAX_IMPORT_UPLOAD_MB` y 413), y el zip de medios también (T06: 4 GB y `validateEntrySizes`). Falta limitar el tamaño descomprimido del xlsx con subidas públicas.
+- **F7, subidas del panel:**
+  - Hono lee el multipart completo en memoria; con los archivos escritos en streaming, el pico es de unas 2 veces el cuerpo (de ahí el default de 512 MB).
+  - F7 cambia esto por la subida directa a R2 con URL prefirmada: `import_runs.input` pasa a claves de R2, y se quitan `POST /imports/local` y el staging compartido.
+  - El despliegue fija `NODE_ENV=production` (`/imports/local` depende de eso). Ver `docs/06-roadmap.md` → F7.
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
+- 2026-10-01: **F1-T11.** API de importación.
+  - **Rutas:**
+    - `POST /imports` (multipart): el id del run lo genera la API, guarda los archivos en `input/`, `requestImport` y `202`. Con `bodyLimit` (`MAX_IMPORT_UPLOAD_MB`, 413), un xlsx de hasta 10 MB y borrado de lo guardado si falla.
+    - `POST /imports/local`: rutas absolutas, solo en desarrollo; si no, 404 antes de validar.
+    - `GET /imports` y `/imports/:id`: con nombres de archivo, nunca rutas.
+  - **Mudanzas:** `createStaging` a `@agentsales/importers/staging` (con `saveInput`), y `createErrorThrottle` a `@agentsales/config`. El worker usa los dos.
+  - **Core y db:** `NewImportRun.id` e `ImportRunRepository.list`, con la suite de contrato.
+  - **API:** compone la cola (arranque diferido, errores resumidos, `stop()` al apagar) y el staging.
+  - **Tests:** de rutas con dobles. Probé 4 mutaciones y todas hacen fallar algún test.
+  - **Correcciones de `/revisar`:**
+    - Los archivos subidos se escriben en streaming, y `MAX_IMPORT_UPLOAD_MB` por defecto baja a 512.
+    - Un campo vacío del formulario cuenta como no enviado.
+    - Los nombres con `\0` o de más de 255 bytes dan `IMPORT_FILE_INVALID`.
+    - `MAX_XLSX_BYTES` en core.
+    - La lista de cargas va sin `report`.
+    - Si la carga ya existe, sus archivos se conservan.
+    - `IMPORT_RUN_CONFLICT` para un id repetido.
+    - Se rechazan las rutas que terminan en `/`.
+    - `stagingRootOf`, compartido por la API y el worker.
+    - Biome impide que los adaptadores se importen entre sí.
+    - Tests nuevos: CSRF, 413 con `Content-Length`, falla a mitad de la subida y JSON inválido en `/local`.
+    - Se estabilizó un test de orden de la lista.
+    - Quedaron anotados: F7 en el roadmap, y notas para T12 y T14.
 - 2026-10-01: **F1-T10.** Contratos HTTP y API de lectura.
   - **`@agentsales/api/contracts`:** cuerpo de error, parámetros, filtros y respuestas. Biome lo limita a zod, core e imports relativos, y un test lo comprueba. Para que Biome no ignore el archivo temporal del test, se corre con `--vcs-use-ignore-file=false`.
   - **`validated`:** con `REQUEST_INVALID`. Los ids de ruta se validan como uuid.
