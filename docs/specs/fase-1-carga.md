@@ -1,6 +1,6 @@
 # Spec F1 · Carga de propiedades y medios
 
-- **Estado:** Aprobado (2026-09-30)
+- **Estado:** Cerrado (2026-10-02, `v0.1.0`). Aprobado el 2026-09-30
 - **Rama base:** `main`
 - **Tag al cerrar:** `v0.1.0`
 - **Referencias:** `docs/06-roadmap.md#f1--carga`, ADR-0005 (enmendado), ADR-0006, ADR-0007, ADR-0010, ADR-0011, `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `data/plantillas/plantilla_propiedades.xlsx`
@@ -605,8 +605,14 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer en cualquier momento después de F0. Luego T07 → T07b → T09. T10 va después de T04b. T11 después de T09 y T10. Luego T12, T13 → T14, y al final T15.
 
 ## 6. Criterios de aceptación de la fase
-- [ ] Ver `docs/06-roadmap.md#f1--carga`
-- [ ] Las 3 propiedades de muestra del operador se ven correctamente en el panel
+- [x] Ver `docs/06-roadmap.md#f1--carga` (verificados el 2026-10-02):
+  - [x] `pnpm cli import ./data/muestras/propiedades.xlsx --media ./data/muestras/medios` crea o actualiza propiedades y sube los medios: demo 1 (3 creadas, 12 archivos en R2) y demo 3 (1 actualizada)
+  - [x] Reimportar el mismo archivo no duplica nada: demo 2 (3 sin cambios, 12 archivos que ya estaban, nada subido)
+  - [x] Las filas inválidas no detienen la carga, y el reporte muestra fila, columna y motivo: demo 4 (fila 6, tres errores; las otras 3 sin cambios)
+  - [x] Un campo agregado en `field_definitions` se importa sin tocar el código: test `un campo agregado solo como definición se valida sin cambiar código` (`packages/core/src/listing-validator/index.test.ts`), más los de definiciones del corredor (sobrescribir, desactivar y mapear opciones)
+  - [x] El panel lista propiedades con portada, estado y detalle con galería: demo 5
+- [x] Las 3 propiedades de muestra del operador se ven correctamente en el panel: demo 5 (portada, precio en formato chileno, estado, atributos con etiqueta, dirección oculta o visible según `mostrar_direccion_exacta` y el video de P002) y demo 6 (Importar desde el navegador)
+- [x] `pnpm check` en verde sobre `main`: 74 archivos, 1103 tests
 
 ## 7. Plan de demo
 1. `pnpm dev`, y en otra terminal `pnpm cli import data/muestras/propiedades.xlsx --media data/muestras/medios`
@@ -669,3 +675,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-02 | Desde la revisión de F1-T13: enteros de cuatro cifras sin punto (`formatNumber`); `LISTING_STATUS_TEXT`, `OPERATION_TEXT` e `IMPORT_RUN_STATUS_TEXT` en core (la CLI muestra los estados en español); resultados anteriores mientras se filtra, comunas de respaldo y `aria-live`; el cambio de estado conserva la hora de carga del detalle; sin reintento de `TIMEOUT` y corte del cuerpo como `TIMEOUT`; `errorElement`; botones según el estado de origen; guardia de imports ampliada; notas para T14 (invalidar `listingKeys.all`) |
 | 2026-10-02 | F1-T14: páginas `/importar` y `/importar/:id`; sondeo cada 2 s solo mientras corre e invalidación de propiedades al terminar; aviso de cola a los 20 s; reporte por fila y columna; `IMPORT_BROKER_OUTCOME_TEXT` e `IMPORT_ROW_OUTCOME_TEXT` en core; `UPLOAD_TIMEOUT_MS`; el archivo de los contratos como `z.custom<File>` (antes filtraba el `File` de Node a `AppType`) |
 | 2026-10-02 | Desde la revisión de F1-T14: topes del sondeo (2 h y 3 fallas seguidas, `IMPORT_WAIT` en core, compartido con la CLI) en §4.7; `importReportIssues` en core; una carga terminada no se vuelve a pedir y solo invalida si se la vio terminar; test que rechaza `z.instanceof(` en `contracts`; extensiones en `contracts`; test de la subida en Node |
+| 2026-10-02 | Cierre de F1: las 6 demos del plan de demo pasaron contra Neon y R2 con las 3 propiedades de muestra; criterios de §6 verificados; spec **Cerrado** y tag `v0.1.0` |
