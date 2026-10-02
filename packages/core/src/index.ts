@@ -12,6 +12,7 @@ export * from "./enums.js";
 export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
 export { type FieldDefinition, fieldDefinitionSchema } from "./field-definition.js";
 export * from "./health.js";
+export { IMPORT_WAIT, type ImportIssue, importReportIssues } from "./import-progress.js";
 export {
   IMPORT_BROKER_OUTCOMES,
   IMPORT_ROW_OUTCOMES,
@@ -33,7 +34,13 @@ export {
   type JobPayload,
   MAX_PING_DELAY_MS,
 } from "./jobs.js";
-export { IMPORT_RUN_STATUS_TEXT, LISTING_STATUS_TEXT, OPERATION_TEXT } from "./labels.js";
+export {
+  IMPORT_BROKER_OUTCOME_TEXT,
+  IMPORT_ROW_OUTCOME_TEXT,
+  IMPORT_RUN_STATUS_TEXT,
+  LISTING_STATUS_TEXT,
+  OPERATION_TEXT,
+} from "./labels.js";
 export {
   canChangeListingStatus,
   LISTING_MANUAL_TARGETS,

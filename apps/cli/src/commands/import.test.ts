@@ -3,12 +3,12 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AppError } from "@agentsales/core";
+import { AppError, IMPORT_WAIT } from "@agentsales/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fakeClock, harness, simulateWorker } from "../../test/harness.js";
 import { createApiClient } from "../api-client.js";
 import { createColors } from "../colors.js";
-import { IMPORT_WAIT, type ImportDeps, type ImportOptions, runImport } from "./import.js";
+import { type ImportDeps, type ImportOptions, runImport } from "./import.js";
 
 let dir: string;
 

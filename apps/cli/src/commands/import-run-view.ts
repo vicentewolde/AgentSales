@@ -1,15 +1,11 @@
 import type { ImportRunView } from "@agentsales/api/contracts";
-import { IMPORT_RUN_STATUS_TEXT, type ImportBrokerOutcome } from "@agentsales/core";
+import {
+  IMPORT_BROKER_OUTCOME_TEXT,
+  IMPORT_RUN_STATUS_TEXT,
+  importReportIssues,
+} from "@agentsales/core";
 import type { Colors } from "../colors.js";
 import { formatDateTime, renderTable } from "../output.js";
-
-const BROKER_OUTCOME_TEXT: Readonly<Record<ImportBrokerOutcome, string>> = {
-  created: "creado",
-  updated: "actualizado",
-  unchanged: "sin cambios",
-  existing: "ya existía",
-  invalid: "con errores",
-};
 
 /** Estado con color: verde si terminó, rojo si falló, amarillo mientras corre. */
 export function paintStatus(run: Pick<ImportRunView, "status" | "dryRun">, c: Colors): string {
@@ -42,7 +38,7 @@ export function renderImportRun(run: ImportRunView, c: Colors): string {
   }
   if (report?.broker) {
     lines.push(
-      `  Corredor: ${report.broker.slug ?? "—"} (${BROKER_OUTCOME_TEXT[report.broker.outcome]})`,
+      `  Corredor: ${report.broker.slug ?? "—"} (${IMPORT_BROKER_OUTCOME_TEXT[report.broker.outcome]})`,
     );
   }
   if (report !== null) {
@@ -75,17 +71,13 @@ export function renderImportRun(run: ImportRunView, c: Colors): string {
     }
   }
 
-  const errors = [
-    ...(report.broker?.issues ?? []).map((issue) => ["Corredor", "—", issue.column, issue.message]),
-    ...report.rows.flatMap((row) =>
-      row.errors.map((issue) => [
-        String(row.rowNumber),
-        row.externalRef ?? "—",
-        issue.column,
-        issue.message,
-      ]),
-    ),
-  ];
+  const issues = importReportIssues(report);
+  const errors = issues.errors.map((issue) => [
+    issue.rowNumber === null ? "Corredor" : String(issue.rowNumber),
+    issue.externalRef ?? "—",
+    issue.column,
+    issue.message,
+  ]);
   if (errors.length > 0) {
     lines.push(
       "",
@@ -94,15 +86,7 @@ export function renderImportRun(run: ImportRunView, c: Colors): string {
     );
   }
 
-  const warnings = [
-    ...(report.broker?.warnings ?? []).map((warning) => `Corredor: ${warning}`),
-    ...report.rows.flatMap((row) =>
-      row.warnings.map(
-        (warning) =>
-          `Fila ${row.rowNumber}${row.externalRef ? ` (${row.externalRef})` : ""}: ${warning}`,
-      ),
-    ),
-  ];
+  const { warnings } = issues;
   if (warnings.length > 0) {
     lines.push(
       "",

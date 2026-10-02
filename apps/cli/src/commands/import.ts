@@ -1,22 +1,13 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { type ImportRunView, importRunResponseSchema } from "@agentsales/api/contracts";
-import { IMPORT_RUN_STATUS_TEXT, isTerminalImportRun } from "@agentsales/core";
+import { IMPORT_RUN_STATUS_TEXT, IMPORT_WAIT, isTerminalImportRun } from "@agentsales/core";
 import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
 import { exitCodeOf, renderImportRun } from "./import-run-view.js";
 import { brokerSlugOf } from "./shared.js";
-
-/** Tiempos de la espera (spec F1 §4.4); los tests los acortan. */
-export const IMPORT_WAIT = {
-  pollMs: 2_000,
-  queuedWarningMs: 20_000,
-  maxWaitMs: 2 * 60 * 60 * 1000,
-  /** Consultas seguidas que pueden fallar (API reiniciándose, Neon despertando) antes de rendirse. */
-  maxPollFailures: 3,
-};
 
 export type ImportOptions = {
   media?: string;

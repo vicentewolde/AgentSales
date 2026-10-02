@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { rm, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { findWorkspaceRoot } from "@agentsales/config";
@@ -69,5 +69,23 @@ describe("@agentsales/api/testing · solo en tests (Biome)", () => {
 
   it("la acepta desde test/", async () => {
     expect(await lintIn(["apps", "cli", "test"], probe)).toEqual({ ok: true, output: "" });
+  });
+});
+
+// docs/01-arquitectura.md ("Tipos alcanzables desde `AppType`"): un global que Node también
+// define (`File`, `Blob`…) se nombra como tipo. `z.instanceof(X)` infiere la clase de Node al
+// compilar la API, y el panel la recibiría como `import("node:buffer").File` (pasó en F1-T11).
+describe("@agentsales/api/contracts · sin z.instanceof", () => {
+  it("ningún archivo de contracts usa z.instanceof", async () => {
+    const dir = join(root, "apps", "api", "src", "contracts");
+    const files = (await readdir(dir)).filter(
+      (name) => /\.ts$/.test(name) && !/\.test\.ts$/.test(name),
+    );
+    const offending: string[] = [];
+    for (const name of files) {
+      if ((await readFile(join(dir, name), "utf8")).includes("z.instanceof(")) offending.push(name);
+    }
+    expect(files.length).toBeGreaterThan(0);
+    expect(offending).toEqual([]);
   });
 });
