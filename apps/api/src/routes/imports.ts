@@ -21,8 +21,11 @@ import { validated } from "../validation.js";
 
 /** Lo que la API escribe en disco: lo compone `server.ts` con el staging (spec F1 §4.1). */
 export type ImportUploads = {
-  /** Guarda un archivo subido en `tmp/imports/{runId}/input/` y devuelve su ruta absoluta. */
-  save(runId: string, fileName: string, bytes: Uint8Array): Promise<string>;
+  /**
+   * Guarda un archivo subido en `tmp/imports/{runId}/input/`, en streaming (sin otra copia en
+   * memoria), y devuelve su ruta absoluta.
+   */
+  save(runId: string, fileName: string, body: ReadableStream<Uint8Array>): Promise<string>;
   /** Borra `tmp/imports/{runId}/`; no falla si no existe. */
   discard(runId: string): Promise<void>;
 };
@@ -40,7 +43,7 @@ export type ImportRoutesDeps = {
 };
 
 /** El último tramo de una ruta, con `/` o `\`: lo único que la API muestra de `input`. */
-const fileNameOf = (path: string) => path.split(/[\\/]/).pop() ?? path;
+const fileNameOf = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? "";
 
 function viewOf(run: ImportRun): ImportRunView {
   return {
@@ -95,15 +98,9 @@ export function importRoutes(deps: ImportRoutesDeps) {
         const id = deps.newId();
         let params: NewImportRun;
         try {
-          const xlsxPath = await deps.uploads.save(
-            id,
-            file.name,
-            new Uint8Array(await file.arrayBuffer()),
-          );
+          const xlsxPath = await deps.uploads.save(id, file.name, file.stream());
           const mediaDir =
-            media === undefined
-              ? null
-              : await deps.uploads.save(id, media.name, new Uint8Array(await media.arrayBuffer()));
+            media === undefined ? null : await deps.uploads.save(id, media.name, media.stream());
           params = {
             id,
             source: "xlsx",
@@ -116,8 +113,11 @@ export function importRoutes(deps: ImportRoutesDeps) {
           throw error;
         }
         const run = await request(params).catch(async (error: unknown) => {
-          // Si no se llegó a crear el run (la base no respondió), lo guardado queda huérfano.
-          await deps.uploads.discard(id).catch(() => undefined);
+          // Si el run no se llegó a crear (la base no respondió), lo guardado queda huérfano y se
+          // borra. Si existe (la cola caída ya lo dejó en `failed` y borró su staging, o un bug
+          // lo dejó en `queued`), sus archivos se conservan para revisarlo.
+          const created = await deps.importRuns.get(id).catch(() => null);
+          if (created === null) await deps.uploads.discard(id).catch(() => undefined);
           throw error;
         });
         const body: ImportRunResponse = { importRun: viewOf(run) };
@@ -149,7 +149,10 @@ export function importRoutes(deps: ImportRoutesDeps) {
     )
     .get("/", async (c) => {
       const body: ImportRunListResponse = {
-        importRuns: (await deps.importRuns.list()).map(viewOf),
+        importRuns: (await deps.importRuns.list()).map((run) => {
+          const { report: _report, ...summary } = viewOf(run);
+          return summary;
+        }),
       };
       return c.json(body, 200);
     })

@@ -137,21 +137,21 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 - **Límite:** un video de más de `MAX_VIDEO_MB` se omite con advertencia.
 - **Clave del objeto en R2:** `brokers/{brokerId}/listings/{listingId}/original/{sha256}.{ext}`. El logo va en `brokers/{brokerId}/brand/{sha256}.{ext}`: el único parcial de `media` no lo cubre (`listing_id` es `null`), pero `UNIQUE (storage_path)` sí.
 - **Zip:**
-  - Se descomprime en streaming en `tmp/imports/{id}/extracted/`.
+  - Se descomprime en streaming en `tmp/imports/{id}/extracted-{uuid}/`, un directorio por intento (desde T09).
   - Protección contra zip-slip: se rechazan rutas absolutas o con `..`, y se verifica que el destino quede dentro del directorio.
   - Topes: 4 GB descomprimidos y 2000 entradas.
   - Se omiten los enlaces simbólicos, `__MACOSX/` y los archivos ocultos.
   - **Zip con una sola carpeta en la raíz** (macOS → Comprimir "medios"), decidido en T09: se desenvuelve si ninguna carpeta que la carga pide está en la raíz pero sí dentro de esa única carpeta. Un zip con una sola propiedad en su raíz no se toca.
 - **Staging:**
   - `tmp/imports/{id}/input/` guarda el xlsx y el zip subidos. Se borra solo cuando el run llega a un estado terminal (`succeeded` o `failed`), para no perderlos entre reintentos.
-  - `extracted/` se recrea en cada intento y se borra en un `finally`.
+  - `extracted-{uuid}/` es de un intento y se borra en un `finally`.
   - Al arrancar, el worker limpia los directorios de runs terminales y los de más de 24 h.
 - Una propiedad sin ninguna foto queda en `draft` con advertencia (mínimo 1 foto para `ready`).
 
 ### 4.4 Contratos
 | Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/imports` | multipart `file` (xlsx) + `media` (zip, opcional) + `broker` (opcional) + `dryRun`. Guarda los archivos en `tmp/imports/{id}/`, crea el `import_run` en `queued`, encola `import.run` y responde `202` con el `ImportRun` |
+| POST | `/imports` | multipart `file` (xlsx) + `media` (zip, opcional) + `broker` (opcional) + `dryRun`. Guarda los archivos en `tmp/imports/{id}/`, crea el `import_run` en `queued`, encola `import.run` y responde `202` con el run (`ImportRunView`: `input` solo con nombres de archivo) |
 | POST | `/imports/local` | `{ xlsxPath, mediaDir?, broker?, dryRun? }`, solo cuando `NODE_ENV=development` (la CLI; `csrf()` bloquea `multipart` sin `Origin`). Responde `202` |
 | GET | `/imports` · `/imports/:id` | historial, y estado más reporte. `input` se muestra solo como nombres de archivo, sin las rutas completas |
 | GET | `/listings?status=&operation=&comuna=` | lista con portada (URL firmada) |
@@ -496,6 +496,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T12 · CLI de importación y consulta
 - **Depende de:** T11
+- **Desde la revisión de T11:** los tests de la CLI contra `createApp` necesitan armar `AppDeps` con dobles. Hoy `apps/api/test/app-deps.ts` (`testDeps`, `fakeUploads`) no es público. Se decide en el plan de T12: una subruta de solo tests, `@agentsales/api/testing`, restringida con Biome como `core/testing` (cabe en ADR-0010), o armar los dobles en la CLI.
 - **Desde la revisión de T10:** `agentsales listing <external_ref|id>` necesita buscar por `external_ref`, que es único **por corredor**.
   - Agregar un filtro exacto `externalRef` a `listingQuerySchema` y `ListingFilters`, un cambio aditivo.
   - Si devuelve más de un aviso, pedir `--broker`.
@@ -531,6 +532,10 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - [ ] La página Estado de F0 sigue funcionando con el patrón nuevo
 
 ### F1-T14 · Panel: Importar
+- **Desde la revisión de T11:**
+  - El formulario puede mandar el campo de medios vacío y el corredor vacío: la API los trata como "no enviado".
+  - Comprobar que el proxy de Vite (`/api`) conserva el header `Origin`, porque `csrf()` rechaza un multipart sin él.
+  - `GET /imports` devuelve las cargas sin `report`; el reporte viene en `/imports/:id`.
 - **Depende de:** T11, T13
 - **Descripción:** subir el xlsx y el zip (con el selector de corredor), y ver el progreso, el aviso de `queued` y el reporte por fila y columna.
 - **Hecho cuando:**
@@ -601,3 +606,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | F1-T10: `@agentsales/api/contracts` con su frontera de Biome (y un test); `validated` (`REQUEST_INVALID`); `listingSchema`, `ListingRepository.list`, `get` y `changeStatus`, `BrokerRepository.list` y `MediaRepository.listCovers`; `changeListingStatus` con `LISTING_MANUAL_TRANSITIONS` (fuera `active` y `closed` hasta F3); rutas `/listings`, `/listings/:id`, `PATCH /listings/:id/status` y `/brokers` |
 | 2026-10-01 | Desde la revisión de F1-T10: `*_ROW_INVALID`, `IMPORT_RUN_INVALID` y `JOB_PAYLOAD_INVALID` responden 500; el JSON mal formado de `hono/validator` es `INVALID_JSON`; `ErrorBody` sale de `contracts`; `LISTING_MANUAL_TARGETS` en core; `contracts` sin `../`; corredores ordenados igual en Postgres y en memoria; `media` sin esquema en core (aclarado); notas en T12 (`externalRef`), T13 (etiquetas de atributos, TTL de las URLs) y F3 (tabla de estados provisional) |
 | 2026-10-01 | F1-T11: rutas `/imports` (multipart con `bodyLimit` y 413, `/imports/local` solo en desarrollo, lista y detalle con nombres de archivo); `createStaging` en `@agentsales/importers/staging` y `createErrorThrottle` en `@agentsales/config`; `NewImportRun.id` e `ImportRunRepository.list`; `MAX_IMPORT_UPLOAD_MB` |
+| 2026-10-01 | Desde la revisión de F1-T11: subidas guardadas en streaming (`File.stream()`) y `MAX_IMPORT_UPLOAD_MB` por defecto en 512; campos vacíos del formulario cuentan como no enviados; `saveInput` rechaza nombres con `\0` o de más de 255 bytes; `MAX_XLSX_BYTES` en core; `GET /imports` sin `report`; `IMPORT_RUN_CONFLICT` para un id repetido; rutas locales que terminan en `/` rechazadas; `stagingRootOf`; Biome impide que los adaptadores se importen entre sí; notas para T12 (`@agentsales/api/testing`), T14 (proxy y `Origin`) y F7 (roadmap) |

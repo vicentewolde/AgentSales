@@ -141,6 +141,89 @@ describe("POST /imports (multipart)", () => {
   });
 });
 
+describe("POST /imports · bordes", () => {
+  it.each([
+    ["sin Origin", undefined],
+    ["con un Origin ajeno", "https://evil.example"],
+  ])("un multipart %s → 403 (csrf), sin guardar nada", async (_, origin) => {
+    const { app, uploads } = setup();
+    const form = new FormData();
+    form.append("file", fileOf("propiedades.xlsx"));
+    const response = await app.request("/imports", {
+      method: "POST",
+      body: form,
+      headers: origin === undefined ? {} : { Origin: origin },
+    });
+    expect(response.status).toBe(403);
+    expect(uploads.files.size).toBe(0);
+  });
+
+  it("con Content-Length (como el navegador), un cuerpo sobre el tope → 413", async () => {
+    const { app } = setup({ maxUploadBytes: 1024 });
+    const form = new FormData();
+    form.append("file", fileOf("propiedades.xlsx", 4096));
+    const encoded = new Response(form);
+    const body = new Uint8Array(await encoded.arrayBuffer());
+
+    const response = await app.request("/imports", {
+      method: "POST",
+      body,
+      headers: {
+        Origin: ORIGIN,
+        "Content-Type": encoded.headers.get("content-type") ?? "",
+        "Content-Length": String(body.byteLength),
+      },
+    });
+
+    expect(response.status).toBe(413);
+  });
+
+  it("un campo de medios vacío y un corredor vacío (form del panel) cuentan como no enviados", async () => {
+    const { app } = setup();
+    const response = await upload(app, {
+      file: fileOf("propiedades.xlsx"),
+      media: new File([], ""),
+      broker: "  ",
+    });
+    expect(response.status).toBe(202);
+    const { importRun } = importRunResponseSchema.parse(await response.json());
+    expect(importRun.input).toMatchObject({ mediaFile: null, broker: null });
+  });
+
+  it("si guardar el segundo archivo falla, borra lo que alcanzó a guardar", async () => {
+    const uploads = fakeUploads();
+    const save = uploads.save.bind(uploads);
+    let calls = 0;
+    uploads.save = async (runId, name, body) => {
+      calls += 1;
+      if (calls === 2) throw new Error("ENOSPC");
+      return save(runId, name, body);
+    };
+    const { app, importRuns } = setup({ uploads });
+
+    const response = await upload(app, {
+      file: fileOf("propiedades.xlsx"),
+      media: fileOf("m.zip"),
+    });
+
+    expect(response.status).toBe(500);
+    expect(uploads.files.size).toBe(0);
+    expect(await importRuns.list()).toEqual([]);
+  });
+
+  it("si el run ya existe y falla otra cosa al encolar (un bug), sus archivos se conservan", async () => {
+    const queue = createInMemoryJobQueue({
+      fail: () => new AppError("JOB_PAYLOAD_INVALID", "Datos inválidos para el job import.run"),
+    });
+    const { app, uploads } = setup({ queue });
+
+    const response = await upload(app, { file: fileOf("propiedades.xlsx") });
+
+    expect(response.status).toBe(500);
+    expect(uploads.files.size).toBe(1);
+  });
+});
+
 describe("POST /imports/local", () => {
   it("con rutas absolutas crea el run y encola → 202", async () => {
     const { app, queue } = setup();
@@ -167,6 +250,25 @@ describe("POST /imports/local", () => {
       expect(response.status).toBe(404);
       expect((await errorOf(response)).code).toBe("ROUTE_NOT_FOUND");
     }
+  });
+
+  it.each([
+    ["sin JSON (text/plain)", { "Content-Type": "text/plain" }],
+    ["sin content-type", {}],
+  ])("un cuerpo %s se rechaza (csrf 403 o 400) sin encolar", async (_, headers) => {
+    const { app, queue } = setup();
+    const response = await app.request("/imports/local", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ xlsxPath: "/a/propiedades.xlsx" }),
+    });
+    expect([400, 403]).toContain(response.status);
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it.each(["/", "/a/carpeta/"])("una ruta que termina en / (%s) → 400", async (xlsxPath) => {
+    const { app } = setup();
+    expect((await local(app, { xlsxPath })).status).toBe(400);
   });
 
   it("una ruta relativa → 400 REQUEST_INVALID", async () => {
@@ -203,6 +305,8 @@ describe("GET /imports y /imports/:id", () => {
     });
     const listText = await list.text();
     expect(listText).not.toContain("/Users/");
+    // La lista va sin el reporte (puede ser grande); el detalle lo trae.
+    expect(JSON.parse(listText).importRuns[0]).not.toHaveProperty("report");
     expect(
       importRunListResponseSchema.parse(JSON.parse(listText)).importRuns.map((r) => r.id),
     ).toEqual([created.id]);

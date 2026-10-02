@@ -24,9 +24,9 @@ export function fakeUploads(): FakeUploads {
   const files = new Map<string, Map<string, Uint8Array>>();
   return {
     files,
-    async save(runId, fileName, bytes) {
+    async save(runId, fileName, body) {
       const run = files.get(runId) ?? new Map<string, Uint8Array>();
-      run.set(fileName, bytes);
+      run.set(fileName, new Uint8Array(await new Response(body).arrayBuffer()));
       files.set(runId, run);
       return `/workspace/tmp/imports/${runId}/input/${fileName}`;
     },

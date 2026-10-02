@@ -388,12 +388,26 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
         input,
       });
       expect(withId.id).toBe(id);
+      // `created_at` de PGlite puede empatar al milisegundo: se separan para que el orden no
+      // dependa del desempate (un uuid al azar).
+      await new Promise((resolve) => setTimeout(resolve, 5));
       const newer = await repos.importRuns.create({
         source: "xlsx",
         fileName: "despues.xlsx",
         dryRun: false,
         input,
       });
+
+      const duplicate = await repos.importRuns
+        .create({ id, source: "xlsx", fileName: "otra.xlsx", dryRun: false, input })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(isAppError(duplicate) && [duplicate.code, duplicate.retriable]).toEqual([
+        "IMPORT_RUN_CONFLICT",
+        false,
+      ]);
 
       const recent = await repos.importRuns.list(2);
       expect(recent.map((run) => run.id)).toEqual([newer.id, withId.id]);

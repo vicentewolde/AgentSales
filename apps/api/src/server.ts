@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import {
   createErrorThrottle,
   createLogger,
@@ -16,7 +15,7 @@ import {
   pingDatabase,
   toPgConnectionString,
 } from "@agentsales/db";
-import { createStaging } from "@agentsales/importers/staging";
+import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
@@ -57,10 +56,8 @@ const queue = createJobQueue({
   onError: (error) => queueErrors.report(error),
 });
 // El mismo staging que el worker (`<workspace>/tmp/imports`): en el MVP comparten disco (§4.6).
-const staging = createStaging({
-  root: join(findWorkspaceRoot(), "tmp", "imports"),
-  maxVideoBytes: env.MAX_VIDEO_MB * 1024 * 1024,
-});
+// La API solo escribe en el staging: leer medios (con su tope de video) es del worker.
+const staging = createStaging({ root: stagingRootOf(findWorkspaceRoot()) });
 
 const app = createApp({
   checks: {
@@ -69,7 +66,7 @@ const app = createApp({
     storage: async () => {
       await storage.head(HEALTHCHECK_PATH);
     },
-    // Solo lee el catálogo: la API no arranca pg-boss (lo hace el worker).
+    // Solo lee el catálogo, sin pg-boss: `ok` es que la cola se inicializó alguna vez.
     queue: () => checkQueueSchema(database.db),
   },
   listings: createListingRepository(database.db),
@@ -135,7 +132,9 @@ function shutdown(signal: string): void {
     }
     queueErrors.dispose();
     Promise.all([queue.stop(), database.close()])
-      .catch((closeError: unknown) => logger.error({ err: closeError }, "error al cerrar la base"))
+      .catch((closeError: unknown) =>
+        logger.error({ err: closeError }, "error al cerrar la cola o la base"),
+      )
       .finally(() => process.exit(0));
   });
 }

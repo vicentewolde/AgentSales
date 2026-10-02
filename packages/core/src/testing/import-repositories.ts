@@ -216,6 +216,9 @@ export function createInMemoryImportRunRepository(
   const stored = new Map<string, ImportRun>();
   return {
     async create(run: NewImportRun) {
+      if (run.id !== undefined && stored.has(run.id)) {
+        throw new AppError("IMPORT_RUN_CONFLICT", `Ya existe la carga ${run.id}`);
+      }
       const created: ImportRun = {
         id: run.id ?? nextId(),
         brokerId: null,

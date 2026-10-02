@@ -6,7 +6,7 @@ import {
 } from "@agentsales/core";
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
-import { withDbErrors } from "../errors.js";
+import { isUniqueViolation, withDbErrors } from "../errors.js";
 import { importRuns } from "../schema.js";
 
 /**
@@ -41,26 +41,39 @@ function toImportRun(row: typeof importRuns.$inferSelect): ImportRun {
   return parsed.data;
 }
 
+const IMPORT_RUN_PKEY = "import_runs_pkey";
+
 const notFound = (id: string) => new AppError("IMPORT_RUN_NOT_FOUND", `No existe la carga ${id}`);
 
 /** `ImportRunRepository` sobre Drizzle (node-postgres en las apps, PGlite en los tests). */
 export function createImportRunRepository(db: SchemaDatabase): ImportRunRepository {
   return {
-    create(run) {
-      return withDbErrors(async () => {
-        const [row] = await db
-          .insert(importRuns)
-          .values({
-            ...(run.id === undefined ? {} : { id: run.id }),
-            source: run.source,
-            fileName: run.fileName,
-            dryRun: run.dryRun,
-            input: run.input,
-          })
-          .returning();
-        if (row === undefined) throw new AppError("IMPORT_RUN_WRITE_FAILED", "No se creó la carga");
-        return toImportRun(row);
-      });
+    async create(run) {
+      try {
+        return await withDbErrors(async () => {
+          const [row] = await db
+            .insert(importRuns)
+            .values({
+              ...(run.id === undefined ? {} : { id: run.id }),
+              source: run.source,
+              fileName: run.fileName,
+              dryRun: run.dryRun,
+              input: run.input,
+            })
+            .returning();
+          if (row === undefined)
+            throw new AppError("IMPORT_RUN_WRITE_FAILED", "No se creó la carga");
+          return toImportRun(row);
+        });
+      } catch (error) {
+        // Un id dado por quien llama que ya existe: un bug (los uuid no chocan), no reintentable.
+        if (isUniqueViolation(error, IMPORT_RUN_PKEY)) {
+          throw new AppError("IMPORT_RUN_CONFLICT", `Ya existe la carga ${run.id}`, {
+            cause: error,
+          });
+        }
+        throw error;
+      }
     },
 
     list(limit = 50) {

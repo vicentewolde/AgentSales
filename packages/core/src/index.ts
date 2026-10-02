@@ -40,7 +40,12 @@ export {
   type ListingFilters,
   listingSchema,
 } from "./listing.js";
-export type { ListingSheetInput, ListingSheetRow, RawBrokerSheet } from "./listing-sheet.js";
+export {
+  type ListingSheetInput,
+  type ListingSheetRow,
+  MAX_XLSX_BYTES,
+  type RawBrokerSheet,
+} from "./listing-sheet.js";
 export {
   buildListingValidator,
   CORE_FIELD_TARGETS,

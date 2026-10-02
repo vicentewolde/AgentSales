@@ -8,6 +8,7 @@ import {
   LISTING_MANUAL_TARGETS,
   LISTING_STATUSES,
   listingSchema,
+  MAX_XLSX_BYTES,
   MEDIA_KINDS,
   OPERATIONS,
 } from "@agentsales/core";
@@ -70,22 +71,43 @@ export type ListingStatusResponse = z.infer<typeof listingStatusResponseSchema>;
 export const brokerListResponseSchema = z.object({ brokers: z.array(brokerSchema) });
 export type BrokerListResponse = z.infer<typeof brokerListResponseSchema>;
 
-/** Tope del xlsx subido (el mismo del lector, spec F1 §4.4). */
-export const MAX_XLSX_UPLOAD_BYTES = 10 * 1024 * 1024;
-
 /**
  * `POST /imports` (multipart, desde el panel): el Excel, el zip de medios (opcional), el corredor
  * (opcional) y `dryRun` como texto. El tope del xlsx se revisa en la ruta, ya leído el cuerpo.
  */
+/**
+ * Un `<input type="file">` sin elegir llega vacío (como texto `""` o un `File` de 0 bytes, según
+ * el cliente), y un `<select>` sin corredor como `""`: cuentan como "no enviado" (el panel arma el
+ * form con `FormData`).
+ */
+const optionalFile = z.preprocess(
+  (value) => (value === "" || (value instanceof File && value.size === 0) ? undefined : value),
+  z.instanceof(File).optional(),
+);
+const optionalText = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().min(1).optional(),
+);
+
+/**
+ * `POST /imports` (multipart, desde el panel): el Excel (hasta `MAX_XLSX_BYTES`), el zip de
+ * medios (opcional), el corredor (opcional) y `dryRun` como texto.
+ */
 export const importUploadFormSchema = z.object({
   file: z.instanceof(File),
-  media: z.instanceof(File).optional(),
-  broker: z.string().trim().min(1).optional(),
+  media: optionalFile,
+  broker: optionalText,
   dryRun: z.enum(["true", "false"]).optional(),
 });
 
+/** Tope del xlsx subido: el mismo del lector (core). */
+export const MAX_XLSX_UPLOAD_BYTES = MAX_XLSX_BYTES;
+
 /** Ruta absoluta (Unix o Windows): la CLI resuelve las relativas antes de llamar (spec F1 §4.1). */
-const absolutePath = z.string().regex(/^(\/|[A-Za-z]:[\\/])/, "debe ser una ruta absoluta");
+const absolutePath = z
+  .string()
+  .regex(/^(\/|[A-Za-z]:[\\/])/, "debe ser una ruta absoluta")
+  .regex(/[^\\/]$/, "debe terminar en el nombre de un archivo o carpeta");
 
 /** `POST /imports/local` (la CLI, solo en desarrollo): rutas del disco del operador. */
 export const localImportBodySchema = z.object({
@@ -115,5 +137,11 @@ export type ImportRunView = z.infer<typeof importRunViewSchema>;
 export const importRunResponseSchema = z.object({ importRun: importRunViewSchema });
 export type ImportRunResponse = z.infer<typeof importRunResponseSchema>;
 
-export const importRunListResponseSchema = z.object({ importRuns: z.array(importRunViewSchema) });
+/** En la lista va sin el reporte (puede ser grande): el detalle lo trae completo. */
+export const importRunSummarySchema = importRunViewSchema.omit({ report: true });
+export type ImportRunSummary = z.infer<typeof importRunSummarySchema>;
+
+export const importRunListResponseSchema = z.object({
+  importRuns: z.array(importRunSummarySchema),
+});
 export type ImportRunListResponse = z.infer<typeof importRunListResponseSchema>;

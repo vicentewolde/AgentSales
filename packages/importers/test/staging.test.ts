@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isAppError } from "@agentsales/core";
@@ -173,10 +173,22 @@ describe("createStaging · saveInput", () => {
     expect(path).toBe(join(root, RUN_ID, "input", "medios.zip"));
   });
 
-  it.each(["", "..", "  "])("un nombre inválido (%j) es IMPORT_FILE_INVALID", async (name) => {
-    const error = await caught(staging().saveInput(RUN_ID, name, new Uint8Array([1])));
-    expect(isAppError(error) && error.code).toBe("IMPORT_FILE_INVALID");
+  it("acepta un stream (lo que entrega File.stream()) y lo escribe completo", async () => {
+    async function* chunks() {
+      yield new Uint8Array([1, 2]);
+      yield new Uint8Array([3]);
+    }
+    const path = await staging().saveInput(RUN_ID, "medios.zip", chunks());
+    expect([...(await readFile(path))]).toEqual([1, 2, 3]);
   });
+
+  it.each(["", "..", "  ", "a\u0000b.xlsx", `${"x".repeat(256)}.xlsx`])(
+    "un nombre inválido (%j) es IMPORT_FILE_INVALID",
+    async (name) => {
+      const error = await caught(staging().saveInput(RUN_ID, name, new Uint8Array([1])));
+      expect(isAppError(error) && error.code).toBe("IMPORT_FILE_INVALID");
+    },
+  );
 });
 
 describe("createStaging · discard y cleanup", () => {

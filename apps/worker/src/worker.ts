@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { join } from "node:path";
 import {
   createErrorThrottle,
   createLogger,
@@ -18,7 +17,7 @@ import {
   toPgConnectionString,
 } from "@agentsales/db";
 import { readListingsWorkbook } from "@agentsales/importers";
-import { createStaging } from "@agentsales/importers/staging";
+import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import { createBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
@@ -42,7 +41,7 @@ const database = createDb(env.DATABASE_URL, { onError: (error) => dbErrors.repor
 const importRuns = createImportRunRepository(database.db);
 // `pnpm --filter` corre cada app en su carpeta: el staging se resuelve contra la raíz (spec §4.1).
 const staging = createStaging({
-  root: join(findWorkspaceRoot(), "tmp", "imports"),
+  root: stagingRootOf(findWorkspaceRoot()),
   maxVideoBytes: env.MAX_VIDEO_MB * 1024 * 1024,
 });
 const importRun: RunImportDeps = {
