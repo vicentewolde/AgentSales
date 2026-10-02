@@ -314,6 +314,19 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       ]);
     });
 
+    it("list filtra por externalRef exacto, que puede repetirse entre corredores", async () => {
+      const first = (await repos.brokers.create(brokerData(unique("ref-a")))).id;
+      const second = (await repos.brokers.create(brokerData(unique("ref-b")))).id;
+      const ref = unique("REF");
+      const a = await repos.listings.create(newListing(first, ref));
+      const b = await repos.listings.create(newListing(second, ref));
+      await repos.listings.create(newListing(first, `${ref}-2`));
+
+      const found = await repos.listings.list({ externalRef: ref });
+      expect(found.map((listing) => listing.id).sort()).toEqual([a.id, b.id].sort());
+      expect(await repos.listings.list({ externalRef: ref.toLowerCase() })).toEqual([]);
+    });
+
     it("changeStatus es condicional: solo desde el estado esperado", async () => {
       const created = await repos.listings.create(newListing(brokerId, unique("P")));
       expect(await repos.listings.changeStatus(created.id, "ready", "paused")).toBe(false);

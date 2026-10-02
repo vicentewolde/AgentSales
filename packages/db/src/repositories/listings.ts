@@ -142,6 +142,9 @@ export function createListingRepository(db: SchemaDatabase): ListingRepository {
           conditions.push(eq(listings.operation, filters.operation));
         }
         if (filters.comuna !== undefined) conditions.push(eq(listings.comuna, filters.comuna));
+        if (filters.externalRef !== undefined) {
+          conditions.push(eq(listings.externalRef, filters.externalRef));
+        }
         const rows = await db
           .select()
           .from(listings)

@@ -45,6 +45,8 @@ export type ListingFilters = {
   status?: ListingStatus;
   operation?: Operation;
   comuna?: string;
+  /** `id_propiedad` exacto: es único por corredor, así que puede devolver más de un aviso. */
+  externalRef?: string;
 };
 
 /**

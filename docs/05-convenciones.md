@@ -97,7 +97,7 @@ test/             # opcional: fixtures, helpers y tests de integración
 }
 ```
 
-Una subruta (por ejemplo `./contracts` en `apps/api`, `./testing` en `packages/core` o `./staging` en `packages/importers`, desde F1) repite las tres condiciones con su propio punto de entrada: `"@agentsales/source": "./src/contracts/index.ts"`, `"types": "./dist/src/contracts/index.d.ts"` y `"default": "./dist/src/contracts/index.js"`. Una salida de repositorios en memoria (`./testing`) solo se importa desde tests, y Biome lo hace cumplir.
+Una subruta (por ejemplo `./contracts` y `./testing` en `apps/api`, `./testing` en `packages/core` o `./staging` en `packages/importers`, desde F1) repite las tres condiciones con su propio punto de entrada: `"@agentsales/source": "./src/contracts/index.ts"`, `"types": "./dist/src/contracts/index.d.ts"` y `"default": "./dist/src/contracts/index.js"`. Una salida de dobles de prueba (`./testing`: los repositorios en memoria de core, o `testDeps` de la API) solo se importa desde tests, y Biome lo hace cumplir.
 
 - En desarrollo se usa la condición `@agentsales/source`, que resuelve al código fuente sin compilar antes (ADR-0010). Se activa una sola vez por herramienta:
   - `tsc`: `customConditions` en `tsconfig.base.json`.
@@ -128,6 +128,7 @@ Una subruta (por ejemplo `./contracts` en `apps/api`, `./testing` en `packages/c
   - Cada `describe` usa sus propios datos (otra categoría u otras filas), para que se pueda correr solo.
 - **Importadores:** los Excel de prueba se arman **en memoria** con exceljs (`buildWorkbook` y `syntheticRow` de `packages/importers/test/workbook.ts`), con datos inventados: no hay binarios de fixtures en git. La plantilla real (`data/plantillas/plantilla_propiedades.xlsx`) se prueba directamente. Si hace falta un archivo real (por ejemplo, un export de Google Sheets), va en `packages/importers/test/fixtures/` y solo con datos inventados.
 - **Panel (React):** tests de componentes con Testing Library en jsdom, activado por archivo con `// @vitest-environment jsdom`. Nada de red: el acceso a la API se inyecta por contexto (hoy `HealthFetcherContext`) o se simula `fetch`. El router en memoria acepta la ruta inicial (`initialPath`).
+- **CLI:** un comando por archivo (`apps/cli/src/commands/<nombre>.ts`), con una función `run<Nombre>(deps)` que devuelve el código de salida y un `register(program, ctx)`. Los tests corren contra la API real en proceso: `createApp(testDeps(...))` de `@agentsales/api/testing`, con `app.request` como `fetch` del cliente (`apps/cli/test/harness.ts`), sin red. La espera se prueba con un reloj falso (`sleep` y `now` inyectados).
 - **LLM:** en los tests se usa el proveedor `fake`. Evaluación de prompts aparte con `pnpm eval:content` (fase 2).
 - Ubicación: `src/**/*.test.ts(x)` o `test/**/*.test.ts(x)` dentro de cada paquete. Es el patrón que busca `vitest.config.ts`; un test fuera de él no corre.
 - `pnpm check` = lint + typecheck + tests. Debe pasar antes de cada commit.

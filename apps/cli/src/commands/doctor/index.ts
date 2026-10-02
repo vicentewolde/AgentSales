@@ -1,4 +1,8 @@
-import type { HealthFetcher } from "./api-client.js";
+import type { Command } from "commander";
+import { createHealthFetcher, type HealthFetcher } from "../../api-client.js";
+import type { Colors } from "../../colors.js";
+import type { CliContext } from "../../context.js";
+import { type EnvResult, loadEnvironment } from "../../env.js";
 import {
   type CheckItem,
   checkChromium,
@@ -8,11 +12,10 @@ import {
   checkNode,
   checkPublishMode,
   checkServices,
-  type EnvResult,
   type Level,
   type RunCommand,
 } from "./checks.js";
-import type { Colors } from "./colors.js";
+import { findChromium, runCommand } from "./system.js";
 
 export type DoctorDeps = {
   nodeVersion: string;
@@ -66,4 +69,21 @@ export function renderDoctor(report: DoctorReport, c: Colors): string {
       ? c.red(`${errors} error(es), ${warnings} advertencia(s)`)
       : c.green(`Todo en orden${warnings > 0 ? ` (${warnings} advertencia(s))` : ""}`);
   return [c.bold("agentsales doctor"), "", ...lines, "", summary].join("\n");
+}
+
+export function register(program: Command, ctx: CliContext): void {
+  program
+    .command("doctor")
+    .description("Revisa el entorno: .env, API, base, almacenamiento, cola y herramientas")
+    .action(async () => {
+      const report = await runDoctor({
+        nodeVersion: process.version,
+        env: loadEnvironment(),
+        fetchHealth: createHealthFetcher(ctx.api()),
+        run: runCommand,
+        chromiumDir: findChromium(),
+      });
+      ctx.print(renderDoctor(report, ctx.colors));
+      process.exitCode = report.exitCode;
+    });
 }

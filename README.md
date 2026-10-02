@@ -25,6 +25,13 @@ pnpm -s cli doctor       # Node, .env, API, base, almacenamiento, cola y herrami
 pnpm -s cli status       # /health y PUBLISH_MODE
 pnpm worker:ping         # opcional: encola un job de prueba; el worker loguea "pong"
 ```
+Cargar y consultar propiedades (las rutas son relativas a la carpeta donde corres el comando):
+```bash
+pnpm -s cli import propiedades.xlsx --media medios   # o --media medios.zip; --dry-run simula
+pnpm -s cli imports [<id>]                           # historial de cargas, o el reporte de una
+pnpm -s cli listings [--status ready] [--json]
+pnpm -s cli listing <id_propiedad> [--broker <slug>] [--json]
+```
 - **`PUBLISH_MODE=dry-run` por defecto:** no se publica nada de verdad. En `live` se ve en rojo en el panel y la CLI.
 - **La cola la inicializa el worker:** la primera vez aparece con error hasta que el worker arranca (lo hace `pnpm dev`); refresca el panel.
 - **Detén `pnpm dev` al terminar** (Ctrl+C): el worker y el panel mantienen Neon despierto y consumen las horas del plan gratis.

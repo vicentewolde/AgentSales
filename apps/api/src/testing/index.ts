@@ -1,3 +1,6 @@
+// Dobles de la API para tests (`@agentsales/api/testing`): `AppDeps` con repositorios en memoria,
+// para probar contra `createApp` sin red ni base (los tests de la API y de la CLI).
+// Solo para tests: Biome prohíbe importarlo desde código de aplicación.
 import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger, type Logger } from "@agentsales/config";
@@ -8,7 +11,7 @@ import {
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
 } from "@agentsales/core/testing";
-import type { AppDeps } from "../src/app.js";
+import type { AppDeps } from "../app.js";
 
 export const silentLogger: Logger = createLogger(
   { level: "silent" },

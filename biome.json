@@ -27,7 +27,8 @@
           "level": "error",
           "options": {
             "paths": {
-              "@agentsales/core/testing": "Los dobles de prueba de @agentsales/core/testing solo se importan desde tests (*.test.ts o test/)."
+              "@agentsales/core/testing": "Los dobles de prueba de @agentsales/core/testing solo se importan desde tests (*.test.ts o test/).",
+              "@agentsales/api/testing": "Los dobles de prueba de @agentsales/api/testing solo se importan desde tests (*.test.ts o test/)."
             }
           }
         }
@@ -131,6 +132,7 @@
                 "paths": {
                   "@agentsales/config": "Solo los puntos de entrada (apps y src/scripts) cargan el entorno; los paquetes reciben opciones concretas (createDb, createR2Storage).",
                   "@agentsales/core/testing": "Los dobles de prueba de @agentsales/core/testing solo se importan desde tests (*.test.ts o test/).",
+                  "@agentsales/api/testing": "Los dobles de prueba de @agentsales/api/testing solo se importan desde tests (*.test.ts o test/).",
                   "@agentsales/db": "Los adaptadores no dependen entre sí: importers y queue no importan @agentsales/db (importers solo lo usa en tests; queue recibe la conexión ya convertida).",
                   "@agentsales/storage": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
                   "@agentsales/queue": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
@@ -144,7 +146,13 @@
       }
     },
     {
-      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/test/**", "!packages/core/**"],
+      "includes": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/test/**",
+        "apps/api/src/testing/**",
+        "!packages/core/**"
+      ],
       "linter": {
         "rules": {
           "style": {

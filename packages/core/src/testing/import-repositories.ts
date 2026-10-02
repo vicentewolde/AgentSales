@@ -181,7 +181,8 @@ export function createInMemoryListingRepository(
           (listing) =>
             (filters.status === undefined || listing.status === filters.status) &&
             (filters.operation === undefined || listing.operation === filters.operation) &&
-            (filters.comuna === undefined || listing.comuna === filters.comuna),
+            (filters.comuna === undefined || listing.comuna === filters.comuna) &&
+            (filters.externalRef === undefined || listing.externalRef === filters.externalRef),
         )
         .map(entity)
         .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || b.id.localeCompare(a.id));

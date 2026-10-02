@@ -5,13 +5,13 @@ import {
   createInMemoryJobQueue,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { fakeUploads, testDeps } from "../../test/app-deps.js";
 import { createApp } from "../app.js";
 import {
   errorBodySchema,
   importRunListResponseSchema,
   importRunResponseSchema,
 } from "../contracts/index.js";
+import { fakeUploads, testDeps } from "../testing/index.js";
 
 const ORIGIN = "http://localhost:5173";
 

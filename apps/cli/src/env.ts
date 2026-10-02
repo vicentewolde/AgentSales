@@ -1,5 +1,8 @@
-import { EnvError, loadEnv, loadEnvFile } from "@agentsales/config";
-import type { EnvResult } from "./checks.js";
+import { type Env, EnvError, type EnvIssue, loadEnv, loadEnvFile } from "@agentsales/config";
+
+export type EnvResult =
+  | { ok: true; env: Env }
+  | { ok: false; fileFound: boolean; issues: readonly EnvIssue[] };
 
 export const DEFAULT_API_PORT = 8787;
 

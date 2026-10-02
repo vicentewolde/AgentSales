@@ -71,6 +71,15 @@ export type CloseReason = (typeof CLOSE_REASONS)[number];
 export const IMPORT_RUN_STATUSES = ["queued", "running", "succeeded", "failed"] as const;
 export type ImportRunStatus = (typeof IMPORT_RUN_STATUSES)[number];
 
+/** Estados finales de una carga: el job no la vuelve a procesar, y la CLI y el panel dejan de sondear. */
+export const TERMINAL_IMPORT_RUN_STATUSES = [
+  "succeeded",
+  "failed",
+] as const satisfies readonly ImportRunStatus[];
+
+export const isTerminalImportRun = (status: ImportRunStatus): boolean =>
+  (TERMINAL_IMPORT_RUN_STATUSES as readonly ImportRunStatus[]).includes(status);
+
 /** Categoría de un aviso (ADR-0006). `product` llega después del MVP. */
 export const LISTING_CATEGORIES = ["real_estate"] as const;
 export type ListingCategory = (typeof LISTING_CATEGORIES)[number];

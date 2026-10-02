@@ -13,6 +13,11 @@
       "@agentsales/source": "./src/contracts/index.ts",
       "types": "./dist/src/contracts/index.d.ts",
       "default": "./dist/src/contracts/index.js"
+    },
+    "./testing": {
+      "@agentsales/source": "./src/testing/index.ts",
+      "types": "./dist/src/testing/index.d.ts",
+      "default": "./dist/src/testing/index.js"
     }
   },
   "scripts": {

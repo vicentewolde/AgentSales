@@ -2,10 +2,10 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-01
+**Actualizado:** 2026-10-02
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T11 · API de importación
-**Siguiente paso:** `/tarea F1-T12` (CLI de importación y consulta), o F1-T13 (panel). La demo de T12 necesita las 3 propiedades de muestra
+**Última tarea terminada:** F1-T12 · CLI de importación y consulta (falta la demo con las propiedades de muestra)
+**Siguiente paso:** `/tarea F1-T13` (panel: Propiedades y Detalle). La demo de T12 queda pendiente hasta que estén las 3 propiedades de muestra
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -23,7 +23,7 @@
 | F1-T09 Job import.run | ✅ terminada | #23 |
 | F1-T10 Contratos HTTP y API de lectura | ✅ terminada | #24 |
 | F1-T11 API de importación | ✅ terminada | #25 |
-| F1-T12 CLI de importación y consulta | ⏳ pendiente | |
+| F1-T12 CLI de importación y consulta | ✅ terminada (demo pendiente) | |
 | F1-T13 Panel: patrón, Propiedades y Detalle | ⏳ pendiente | |
 | F1-T14 Panel: Importar | ⏳ pendiente | |
 | F1-T15 Cierre de fase | ⏳ pendiente | |
@@ -31,7 +31,7 @@
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- [ ] Preparar las 3 propiedades de muestra ("Antes de F1" en `docs/07-checklist-cuentas.md`). Hacen falta para las demos de F1-T12 y T14 (avisado antes de T03, que no las usa)
+- [ ] Preparar las 3 propiedades de muestra ("Antes de F1" en `docs/07-checklist-cuentas.md`). Hacen falta para la demo pendiente de F1-T12 (`pnpm -s cli import data/muestras/propiedades.xlsx --media data/muestras/medios`) y la de T14
 - [ ] Iniciar el trámite de la app de Meta (lento, en paralelo; se usa en F3)
 
 ## Deuda técnica
@@ -43,16 +43,37 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - F3: derivar la clave con HKDF-SHA256 desde `APP_ENCRYPTION_KEY` al cifrar tokens.
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
-- **F1-T12:** la CLI normaliza `--broker` con `slugify` (hoy `Mi-Corredor` da `BROKER_INVALID`).
 - **F7:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un xlsx de 10 MB (que es un zip) podría descomprimirse en mucho más dentro de exceljs. El cuerpo de la subida ya tiene tope (T11: `MAX_IMPORT_UPLOAD_MB` y 413), y el zip de medios también (T06: 4 GB y `validateEntrySizes`). Falta limitar el tamaño descomprimido del xlsx con subidas públicas.
 - **F7, subidas del panel:**
   - Hono lee el multipart completo en memoria; con los archivos escritos en streaming, el pico es de unas 2 veces el cuerpo (de ahí el default de 512 MB).
   - F7 cambia esto por la subida directa a R2 con URL prefirmada: `import_runs.input` pasa a claves de R2, y se quitan `POST /imports/local` y el staging compartido.
   - El despliegue fija `NODE_ENV=production` (`/imports/local` depende de eso). Ver `docs/06-roadmap.md` → F7.
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
-- **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
+- **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`), y también `apps/api/src/testing` (importa `@agentsales/core/testing`) y `apps/cli/test`. Excluirlos del build de producción al armar el despliegue.
+- **F7:** `agentsales listing --broker` resuelve el corredor en la CLI con `/brokers`. Con autenticación y varios clientes, el alcance por corredor lo tiene que hacer el servidor (junto con la proyección acotada de `GET /listings`).
+- `--broker` se normaliza con `slugify` solo en la CLI: `POST /imports/local` con `"Mi Corredor"` da `BROKER_NOT_FOUND`. Hoy no importa (el panel usa un selector); si aparece otro cliente, normalizar en core (`requestImport`).
 
 ## Notas de la última sesión
+- 2026-10-02: **F1-T12.** CLI de importación y consulta.
+  - **Comandos:** `import` (con `--media`, `--broker`, `--dry-run` y `--no-wait`), `imports [<id>]`, `listings [--status] [--json]` y `listing <id_propiedad|id> [--broker] [--json]`. Un archivo por comando en `apps/cli/src/commands/`, con `run<Nombre>(deps)` y `register`; `doctor` y `status` se mudaron ahí.
+  - **Cliente:** `createApiClient` (el `hc` completo, con timeout) y `unwrap`, que valida con los esquemas de `contracts`. Los errores se muestran como `CODE: mensaje` y una sugerencia (Neon, cola, R2, Host), sin stack trace.
+  - **Decisiones del plan:**
+    - Dobles compartidos en `@agentsales/api/testing`, en vez de copiarlos en la CLI. Los tests de la CLI corren contra `createApp` en proceso (`app.request` como `fetch`).
+    - Filtro `externalRef` exacto en la API; `--broker` se resuelve en la CLI con `/brokers`.
+    - `formatPrice` en core, para la CLI y el panel.
+    - `--no-wait` imprime solo el id; hasta 3 consultas fallidas seguidas se reintentan; sale con 1 si hay filas con error.
+  - **Arreglo de paso:** `updated_at` con `now()` de la base al actualizar. El test de orden de la lista de avisos fallaba de vez en cuando (milisegundos del proceso contra microsegundos de la base).
+  - **Prueba de humo:** con la API y el worker contra Neon, `import` de la plantilla con `--broker Demo --dry-run` se encola, el worker la procesa y la CLI muestra el resumen; `imports`, `listings` y `listing` responden. Apagados al terminar.
+  - **Correcciones de `/revisar`:**
+    - §4.4 del spec con `externalRef` y `listing --broker`.
+    - `TERMINAL_IMPORT_RUN_STATUSES` e `isTerminalImportRun` en core (la regla estaba repetida en la CLI).
+    - Ayudas compartidas en `commands/shared.ts`.
+    - `@agentsales/api/testing` también prohibida en los adaptadores, con test de Biome.
+    - Reloj monótono para el tope de 2 h; un 4xx al consultar ya no dice que la carga "sigue en el worker"; el código de `listing` se recorta; timeout menor a 1 s en ms; signo de `formatPrice` unificado.
+    - Test nuevo: el contador de fallas vuelve a cero al responder.
+    - Docs: arquitectura (excepción de `src/testing/`), modelo de datos (`updated_at`) y deudas de F7.
+  - **`CLAUDE.md`:** la sección Estructura suma `queue`, a pedido del operador.
+  - **Demo pendiente:** faltan las 3 propiedades de muestra en `data/muestras/`.
 - 2026-10-01: **F1-T11.** API de importación.
   - **Rutas:**
     - `POST /imports` (multipart): el id del run lo genera la API, guarda los archivos en `input/`, `requestImport` y `202`. Con `bodyLimit` (`MAX_IMPORT_UPLOAD_MB`, 413), un xlsx de hasta 10 MB y borrado de lo guardado si falla.
