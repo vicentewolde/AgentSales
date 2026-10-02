@@ -2,7 +2,7 @@ import { AppError } from "@agentsales/core";
 import { validator } from "hono/validator";
 import type { z } from "zod";
 
-type Target = "json" | "query" | "param";
+type Target = "json" | "query" | "param" | "form";
 
 /**
  * Valida una parte de la petición con un esquema de `@agentsales/api/contracts` (spec F1 §4.4).

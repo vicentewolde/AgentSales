@@ -35,6 +35,9 @@ importers:
       '@agentsales/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@agentsales/importers':
+        specifier: workspace:*
+        version: link:../../packages/importers
       '@agentsales/queue':
         specifier: workspace:*
         version: link:../../packages/queue

@@ -217,7 +217,7 @@ export function createInMemoryImportRunRepository(
   return {
     async create(run: NewImportRun) {
       const created: ImportRun = {
-        id: nextId(),
+        id: run.id ?? nextId(),
         brokerId: null,
         status: "queued",
         dryRun: run.dryRun,
@@ -241,6 +241,10 @@ export function createInMemoryImportRunRepository(
     async get(id) {
       const run = stored.get(id);
       return run === undefined ? null : structuredCopy(run);
+    },
+    async list(limit = 50) {
+      // Orden de creación inverso (el doble no tiene reloj propio: el último creado es el más nuevo).
+      return [...stored.values()].reverse().slice(0, limit).map(structuredCopy);
     },
     async recordListingsResult(id, { brokerId, counts, report }) {
       const current = stored.get(id);

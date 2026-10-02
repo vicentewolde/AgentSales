@@ -4,6 +4,7 @@ import { httpStatusFor } from "./errors.js";
 describe("httpStatusFor", () => {
   it.each([
     ["INVALID_TRANSITION", 409],
+    ["REQUEST_TOO_LARGE", 413],
     ["JOB_PAYLOAD_INVALID", 500],
     ["IMPORT_RUN_INVALID", 500],
     ["LISTING_ROW_INVALID", 500],

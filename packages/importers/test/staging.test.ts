@@ -1,73 +1,13 @@
 import { mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { crc32 } from "node:zlib";
 import { isAppError } from "@agentsales/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createStaging, STAGING_MAX_AGE_MS, STAGING_ORPHAN_GRACE_MS } from "./staging.js";
+import { createStaging, STAGING_MAX_AGE_MS, STAGING_ORPHAN_GRACE_MS } from "../src/staging.js";
+import { buildZip } from "./zip-builder.js";
 
 const RUN_ID = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
-
-/**
- * Zip mínimo sin compresión (el generador completo vive en los tests de `importers`, que no es
- * público). Solo archivos, con su ruta.
- */
-function buildZip(files: Record<string, Buffer>): Buffer {
-  const u16 = (n: number) => Buffer.from([n & 0xff, (n >> 8) & 0xff]);
-  const u32 = (n: number) => {
-    const b = Buffer.alloc(4);
-    b.writeUInt32LE(n >>> 0);
-    return b;
-  };
-  const locals: Buffer[] = [];
-  const centrals: Buffer[] = [];
-  let offset = 0;
-  for (const [path, data] of Object.entries(files)) {
-    const name = Buffer.from(path, "utf8");
-    const shared = Buffer.concat([
-      u16(20),
-      u16(0x0800),
-      u16(0),
-      u16(0),
-      u16(0x21),
-      u32(crc32(data)),
-      u32(data.length),
-      u32(data.length),
-      u16(name.length),
-    ]);
-    const local = Buffer.concat([u32(0x04034b50), shared, u16(0), name, data]);
-    centrals.push(
-      Buffer.concat([
-        u32(0x02014b50),
-        u16((3 << 8) | 20),
-        shared,
-        u16(0),
-        u16(0),
-        u16(0),
-        u16(0),
-        u32(0o100644 << 16),
-        u32(offset),
-        name,
-      ]),
-    );
-    locals.push(local);
-    offset += local.length;
-  }
-  const central = Buffer.concat(centrals);
-  const count = Object.keys(files).length;
-  const end = Buffer.concat([
-    u32(0x06054b50),
-    u16(0),
-    u16(0),
-    u16(count),
-    u16(count),
-    u32(central.length),
-    u32(offset),
-    u16(0),
-  ]);
-  return Buffer.concat([...locals, central, end]);
-}
 
 let work: string;
 let root: string;
@@ -107,7 +47,10 @@ async function caught(promise: Promise<unknown>) {
 
 async function writeZip(name: string, files: Record<string, Buffer>) {
   const path = join(work, name);
-  await writeFile(path, buildZip(files));
+  await writeFile(
+    path,
+    buildZip(Object.entries(files).map(([name, data]) => ({ name, data: new Uint8Array(data) }))),
+  );
   return path;
 }
 
@@ -209,6 +152,30 @@ describe("createStaging · openMedia", () => {
     expect(isAppError(error) && error.code).toBe(code);
     expect(isAppError(error) && error.message).toContain(name);
     expect(isAppError(error) && error.message).not.toContain(work);
+  });
+});
+
+describe("createStaging · saveInput", () => {
+  it("guarda en input/ con solo el nombre del archivo y devuelve la ruta absoluta", async () => {
+    const path = await staging().saveInput(
+      RUN_ID,
+      "../../propiedades.xlsx",
+      new Uint8Array([1, 2]),
+    );
+
+    expect(path).toBe(join(root, RUN_ID, "input", "propiedades.xlsx"));
+    expect(staging().inputDirOf(RUN_ID)).toBe(join(root, RUN_ID, "input"));
+    expect(await readdir(join(root, RUN_ID, "input"))).toEqual(["propiedades.xlsx"]);
+  });
+
+  it("un nombre con barras de Windows tampoco sale de input/", async () => {
+    const path = await staging().saveInput(RUN_ID, "C:\\temp\\medios.zip", new Uint8Array([1]));
+    expect(path).toBe(join(root, RUN_ID, "input", "medios.zip"));
+  });
+
+  it.each(["", "..", "  "])("un nombre inválido (%j) es IMPORT_FILE_INVALID", async (name) => {
+    const error = await caught(staging().saveInput(RUN_ID, name, new Uint8Array([1])));
+    expect(isAppError(error) && error.code).toBe("IMPORT_FILE_INVALID");
   });
 });
 

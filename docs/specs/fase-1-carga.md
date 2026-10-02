@@ -443,7 +443,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Hecho en F1-T09:**
   - El handler es el caso de uso `runImport` en core. Recibe `readSheet`, `openMedia(run, folders)` y `discardStaging` inyectados, y el job del worker solo lo llama con `isLastAttempt`.
   - Estados del run: `markRunning` (desde `queued` o `running`, `started_at` solo la primera vez), `markSucceeded` y `markFailed`.
-  - Staging: `apps/worker/src/staging.ts`.
+  - Staging: `apps/worker/src/staging.ts` (desde T11, `@agentsales/importers/staging`).
 - **Hecho cuando:**
   - [ ] Tests del handler con fakes: éxito → `succeeded`; `STORAGE_UNAVAILABLE` → se propaga para reintento; último intento → `failed` con `error`; error no reintentable → `failed`; y un run ya terminal → no hace nada
   - [ ] Tests de `requestImport`: encola; si `enqueue` falla → run `failed` y staging borrado
@@ -472,6 +472,12 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T11 · API de importación
 - **Depende de:** T09, T10
+- **Hecho en F1-T11:**
+  - `createErrorThrottle` se mudó a `@agentsales/config`, y `createStaging` a `@agentsales/importers/staging`, con `inputDirOf` y `saveInput`.
+  - `NewImportRun.id` lo puede generar quien llama, e `ImportRunRepository.list(limit)` devuelve las cargas.
+  - `MAX_IMPORT_UPLOAD_MB` (1024) se aplica con `bodyLimit` y responde `413 REQUEST_TOO_LARGE`.
+  - `POST /imports/local` exige rutas absolutas, y fuera de desarrollo es 404 antes de validar el cuerpo.
+  - La API compone `createJobQueue` con `onError` resumido y `stop()` al apagarse.
 - **Desde la revisión de T08:** la API compone `createJobQueue` con `onError` resumido (`createErrorThrottle`, que hoy vive en `apps/worker`; mudarlo a `@agentsales/config` o duplicarlo con su test) y llama a `queue.stop()` al apagarse.
 - **Desde la revisión de T09:**
   - **El id del run lo genera quien llama:** `NewImportRun` gana `id?` (uuid), así la API escribe `input/` en `tmp/imports/{id}/` **antes** de crear el run y de encolar.
@@ -594,3 +600,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Desde la revisión de F1-T09: runs abandonados cerrados al arrancar el worker (`failAbandoned`, `IMPORT_ABANDONED`, tras 7 h en `running`); un error que no es `AppError` se normaliza a `INTERNAL_ERROR` no reintentable; si `markFailed` falla, el original va como `cause`; `markSucceeded` sin efecto da `skipped`; `extracted-{uuid}/` por intento; limpieza del staging robusta (por antigüedad sin base, huérfanos con 10 min de gracia, sin cortar el barrido); el worker avisa si una cola existe con otra política; `openMedia({ runId, mediaDir, folders })`; notas para T11 (id del run generado por quien llama, `createStaging` a `importers`) |
 | 2026-10-01 | F1-T10: `@agentsales/api/contracts` con su frontera de Biome (y un test); `validated` (`REQUEST_INVALID`); `listingSchema`, `ListingRepository.list`, `get` y `changeStatus`, `BrokerRepository.list` y `MediaRepository.listCovers`; `changeListingStatus` con `LISTING_MANUAL_TRANSITIONS` (fuera `active` y `closed` hasta F3); rutas `/listings`, `/listings/:id`, `PATCH /listings/:id/status` y `/brokers` |
 | 2026-10-01 | Desde la revisión de F1-T10: `*_ROW_INVALID`, `IMPORT_RUN_INVALID` y `JOB_PAYLOAD_INVALID` responden 500; el JSON mal formado de `hono/validator` es `INVALID_JSON`; `ErrorBody` sale de `contracts`; `LISTING_MANUAL_TARGETS` en core; `contracts` sin `../`; corredores ordenados igual en Postgres y en memoria; `media` sin esquema en core (aclarado); notas en T12 (`externalRef`), T13 (etiquetas de atributos, TTL de las URLs) y F3 (tabla de estados provisional) |
+| 2026-10-01 | F1-T11: rutas `/imports` (multipart con `bodyLimit` y 413, `/imports/local` solo en desarrollo, lista y detalle con nombres de archivo); `createStaging` en `@agentsales/importers/staging` y `createErrorThrottle` en `@agentsales/config`; `NewImportRun.id` e `ImportRunRepository.list`; `MAX_IMPORT_UPLOAD_MB` |

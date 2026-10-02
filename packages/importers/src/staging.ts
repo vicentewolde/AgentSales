@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { AppError, type RunImportDeps } from "@agentsales/core";
-import { createMediaFolderSource, extractZip } from "@agentsales/importers";
+import { createMediaFolderSource } from "./media-folder.js";
+import { extractZip } from "./zip.js";
 
 /** Directorios de staging de más de esto se borran al arrancar, sea cual sea su run (§4.3). */
 export const STAGING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -32,6 +33,13 @@ export type Staging = {
    * cada intento tiene el suyo, así dos intentos solapados no se pisan).
    */
   dirOf(runId: string): string;
+  /** `<root>/{runId}/input`: los archivos que subió la API (se conservan hasta el estado terminal). */
+  inputDirOf(runId: string): string;
+  /**
+   * Guarda un archivo subido en `input/` y devuelve su ruta absoluta (para `import_runs.input`).
+   * Del nombre solo se usa el último tramo: un `../x.xlsx` del navegador no sale de `input/`.
+   */
+  saveInput(runId: string, fileName: string, bytes: Uint8Array): Promise<string>;
   openMedia: RunImportDeps["openMedia"];
   /** Borra `<root>/{runId}` completo (al llegar a un estado terminal). No falla si no existe. */
   discard(runId: string): Promise<void>;
@@ -86,8 +94,25 @@ export function createStaging(options: StagingOptions): Staging {
   const sourceOf = (root: string) =>
     createMediaFolderSource(root, { maxVideoBytes: options.maxVideoBytes });
 
+  const inputDirOf = (runId: string) => join(dirOf(runId), "input");
+
   return {
     dirOf,
+    inputDirOf,
+
+    async saveInput(runId, fileName, bytes) {
+      const name = basename(fileName.replaceAll("\\", "/")).trim();
+      if (!name || name === "." || name === "..") {
+        throw new AppError("IMPORT_FILE_INVALID", "El archivo subido no tiene un nombre válido", {
+          details: { file: fileName },
+        });
+      }
+      const dir = inputDirOf(runId);
+      await mkdir(dir, { recursive: true });
+      const path = join(dir, name);
+      await writeFile(path, bytes);
+      return path;
+    },
 
     async openMedia({ runId, mediaDir, folders }) {
       if (mediaDir === null) return { source: null, close: async () => {} };

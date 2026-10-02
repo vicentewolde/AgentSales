@@ -4,6 +4,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 ### Añadido
+- **API de importación:** el panel puede subir el Excel y un zip de medios, y la CLI importar archivos de tu disco (solo en desarrollo). La carga queda en cola para el worker y responde de inmediato. Se puede ver la lista de cargas y el reporte de cada una, sin exponer las rutas de tus archivos. Una subida demasiado grande, un Excel de más de 10 MB o una cola caída se informan con un error claro.
 - **API de propiedades:** la API lista las propiedades con filtros (estado, operación, comuna) y su foto de portada, muestra el detalle con todas sus fotos y videos, deja cambiar el estado a mano (lista, pausada, archivada; "lista" necesita al menos una foto) y lista los corredores. Una petición mal formada responde un error claro.
 - **Importación en el worker:** una carga pedida queda "en cola" y el worker la corre completa (Excel, propiedades, fotos y logo) hasta dejarla "terminada" o "fallida" con su motivo. Si R2 o Neon fallan, se reintenta dos veces sin duplicar nada; una carga terminada nunca se vuelve a procesar. Un zip comprimido desde la carpeta "medios" en macOS también funciona. Los archivos temporales se limpian solos.
 - **Cola de trabajos compartida:** la API y los scripts ya pueden encolar trabajos para el worker (`packages/queue`). Si la cola no está disponible (por ejemplo, el worker nunca arrancó), se informa `QUEUE_UNAVAILABLE` con un mensaje claro, y la API puede arrancar igual. `pnpm worker:ping` usa este mismo camino.

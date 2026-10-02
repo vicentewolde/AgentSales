@@ -1,4 +1,4 @@
-import type { Logger } from "@agentsales/config";
+import type { Logger } from "pino";
 
 export type ErrorThrottleOptions = {
   /** Cada cuánto se resume una falla que sigue ocurriendo. */

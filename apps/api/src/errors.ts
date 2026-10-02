@@ -17,6 +17,7 @@ const INTERNAL_MESSAGE = "Error interno del servidor";
  */
 export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "INVALID_TRANSITION") return 409;
+  if (code === "REQUEST_TOO_LARGE") return 413;
   // Datos inválidos que no vienen del cliente: los de un job los arma el servidor, y una fila
   // corrupta en la base (`*_ROW_INVALID`, `IMPORT_RUN_INVALID`) es un fallo del servidor.
   if (code === "JOB_PAYLOAD_INVALID" || code === "IMPORT_RUN_INVALID") return 500;

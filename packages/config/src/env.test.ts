@@ -161,6 +161,7 @@ describe("loadEnv", () => {
     ["API_PORT", "SECRETVAL"],
     ["SIGNED_URL_TTL_SECONDS", "SECRETVAL"],
     ["MAX_VIDEO_MB", "SECRETVAL"],
+    ["MAX_IMPORT_UPLOAD_MB", "SECRETVAL"],
     ["DATABASE_URL", "SECRETVAL"],
     ["DATABASE_URL", "postgresql://u:SECRETVAL@ep-x-pooler.neon.tech/db?channel_binding=require"],
     ["APP_ENCRYPTION_KEY", "SECRETVAL"],

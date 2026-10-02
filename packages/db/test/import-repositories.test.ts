@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { importListings, ingestMedia, isAppError, type ListingSheetInput } from "@agentsales/core";
@@ -54,6 +54,7 @@ async function pgliteRepositories() {
       await db.update(brokers).set({ autoPublish }).where(eq(brokers.id, id));
     },
     missingId: MISSING_UUID,
+    newId: randomUUID,
   };
 }
 
@@ -69,6 +70,7 @@ importRepositoriesContract("en memoria", async () => {
     setListingStatus: async (id, status) => listingRepo.setStatus(id, status),
     setBrokerAutoPublish: async (id, autoPublish) => brokerRepo.setAutoPublish(id, autoPublish),
     missingId: MISSING_UUID,
+    newId: randomUUID,
   };
 });
 

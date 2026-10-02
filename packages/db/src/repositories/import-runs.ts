@@ -4,7 +4,7 @@ import {
   type ImportRunRepository,
   importRunSchema,
 } from "@agentsales/core";
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { withDbErrors } from "../errors.js";
 import { importRuns } from "../schema.js";
@@ -51,6 +51,7 @@ export function createImportRunRepository(db: SchemaDatabase): ImportRunReposito
         const [row] = await db
           .insert(importRuns)
           .values({
+            ...(run.id === undefined ? {} : { id: run.id }),
             source: run.source,
             fileName: run.fileName,
             dryRun: run.dryRun,
@@ -59,6 +60,17 @@ export function createImportRunRepository(db: SchemaDatabase): ImportRunReposito
           .returning();
         if (row === undefined) throw new AppError("IMPORT_RUN_WRITE_FAILED", "No se creó la carga");
         return toImportRun(row);
+      });
+    },
+
+    list(limit = 50) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(importRuns)
+          .orderBy(desc(importRuns.createdAt), desc(importRuns.id))
+          .limit(limit);
+        return rows.map(toImportRun);
       });
     },
 

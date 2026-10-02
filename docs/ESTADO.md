@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-01
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T10 · Contratos HTTP y API de lectura
-**Siguiente paso:** `/tarea F1-T11` (API de importación): ya tiene T09 y T10
+**Última tarea terminada:** F1-T11 · API de importación
+**Siguiente paso:** `/tarea F1-T12` (CLI de importación y consulta), o F1-T13 (panel). La demo de T12 necesita las 3 propiedades de muestra
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -22,7 +22,7 @@
 | F1-T08 Paquete de cola | ✅ terminada | #22 |
 | F1-T09 Job import.run | ✅ terminada | #23 |
 | F1-T10 Contratos HTTP y API de lectura | ✅ terminada | #24 |
-| F1-T11 API de importación | ⏳ pendiente | |
+| F1-T11 API de importación | ✅ terminada | |
 | F1-T12 CLI de importación y consulta | ⏳ pendiente | |
 | F1-T13 Panel: patrón, Propiedades y Detalle | ⏳ pendiente | |
 | F1-T14 Panel: Importar | ⏳ pendiente | |
@@ -49,6 +49,15 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
 
 ## Notas de la última sesión
+- 2026-10-01: **F1-T11.** API de importación.
+  - **Rutas:**
+    - `POST /imports` (multipart): el id del run lo genera la API, guarda los archivos en `input/`, `requestImport` y `202`. Con `bodyLimit` (`MAX_IMPORT_UPLOAD_MB`, 413), un xlsx de hasta 10 MB y borrado de lo guardado si falla.
+    - `POST /imports/local`: rutas absolutas, solo en desarrollo; si no, 404 antes de validar.
+    - `GET /imports` y `/imports/:id`: con nombres de archivo, nunca rutas.
+  - **Mudanzas:** `createStaging` a `@agentsales/importers/staging` (con `saveInput`), y `createErrorThrottle` a `@agentsales/config`. El worker usa los dos.
+  - **Core y db:** `NewImportRun.id` e `ImportRunRepository.list`, con la suite de contrato.
+  - **API:** compone la cola (arranque diferido, errores resumidos, `stop()` al apagar) y el staging.
+  - **Tests:** de rutas con dobles. Probé 4 mutaciones y todas hacen fallar algún test.
 - 2026-10-01: **F1-T10.** Contratos HTTP y API de lectura.
   - **`@agentsales/api/contracts`:** cuerpo de error, parámetros, filtros y respuestas. Biome lo limita a zod, core e imports relativos, y un test lo comprueba. Para que Biome no ignore el archivo temporal del test, se corre con `--vcs-use-ignore-file=false`.
   - **`validated`:** con `REQUEST_INVALID`. Los ids de ruta se validan como uuid.

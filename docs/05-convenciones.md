@@ -38,6 +38,7 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
   | Código | HTTP |
   |---|---|
   | `INVALID_TRANSITION` | 409 |
+  | `REQUEST_TOO_LARGE` | 413 |
   | `JOB_PAYLOAD_INVALID`, `IMPORT_RUN_INVALID`, `*_ROW_INVALID` | 500 (datos que arma el servidor, o una fila corrupta en la base: no es culpa del cliente) |
   | `*_NOT_FOUND` | 404 |
   | `*_INVALID*` o `INVALID_*` | 400 |

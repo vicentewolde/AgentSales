@@ -28,6 +28,8 @@ export type ImportRepositories = {
   setBrokerAutoPublish(id: string, autoPublish: boolean): Promise<void>;
   /** Un id con el formato del adaptador que no existe (un uuid en Postgres). */
   missingId: string;
+  /** Un id nuevo con el formato del adaptador (para `create` con id). */
+  newId: () => string;
 };
 
 let sequence = 0;
@@ -374,6 +376,28 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
         finishedAt: null,
       });
       expect(await repos.importRuns.get(run.id)).toEqual(run);
+    });
+
+    it("create con un id dado lo usa; list devuelve los más recientes primero, con tope", async () => {
+      const id = repos.newId();
+      const withId = await repos.importRuns.create({
+        id,
+        source: "xlsx",
+        fileName: "con-id.xlsx",
+        dryRun: false,
+        input,
+      });
+      expect(withId.id).toBe(id);
+      const newer = await repos.importRuns.create({
+        source: "xlsx",
+        fileName: "despues.xlsx",
+        dryRun: false,
+        input,
+      });
+
+      const recent = await repos.importRuns.list(2);
+      expect(recent.map((run) => run.id)).toEqual([newer.id, withId.id]);
+      expect(await repos.importRuns.list(1)).toHaveLength(1);
     });
 
     it("get de un id inexistente es null", async () => {

@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { Writable } from "node:stream";
-import { createLogger } from "@agentsales/config";
 import { AppError, type NewListing } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
@@ -8,6 +6,7 @@ import {
   createInMemoryMediaRepository,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
+import { testDeps } from "../../test/app-deps.js";
 import { createApp } from "../app.js";
 import {
   brokerListResponseSchema,
@@ -16,12 +15,6 @@ import {
   listingListResponseSchema,
   listingStatusResponseSchema,
 } from "../contracts/index.js";
-
-const logger = createLogger(
-  { level: "silent" },
-  new Writable({ write: (_chunk, _encoding, callback) => callback() }),
-);
-const ok = async () => {};
 
 /** Aviso sintético (datos inventados). */
 const newListing = (brokerId: string, externalRef: string, extra: Partial<NewListing> = {}) => ({
@@ -49,17 +42,7 @@ async function setup() {
   const listings = createInMemoryListingRepository({ nextId: randomUUID });
   const media = createInMemoryMediaRepository();
   const brokers = createInMemoryBrokerRepository();
-  const app = createApp({
-    checks: { db: ok, storage: ok, queue: ok },
-    publishMode: "dry-run",
-    version: "0.0.1",
-    logger,
-    access: { allowedHosts: ["localhost"], allowedOrigins: [] },
-    listings,
-    brokers,
-    media,
-    storage: { signedReadUrl: async (path) => `https://r2.test/${path}?firma` },
-  });
+  const app = createApp(testDeps({ listings, brokers, media }));
   const broker = await brokers.create({
     slug: "marca",
     name: "Persona Inventada",

@@ -1,7 +1,7 @@
 import { Writable } from "node:stream";
-import { createLogger } from "@agentsales/config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createErrorThrottle } from "./error-throttle.js";
+import { createLogger } from "./logger.js";
 
 function capture() {
   const lines: Record<string, unknown>[] = [];
