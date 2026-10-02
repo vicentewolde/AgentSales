@@ -296,8 +296,33 @@ describe("runImport", () => {
     const clock2 = fakeClock();
     expect(await run(again, clock2)).toBe(1);
     expect(clock2.sleeps).toHaveLength(3);
-    expect(again.errors()).toContain("Dejé de esperar; la carga sigue en el worker");
+    expect(again.errors()).toContain(
+      "Dejé de esperar; revisa la carga más tarde con agentsales imports",
+    );
     expect(again.errors()).toContain("✗ La API no responde: fetch failed");
+  });
+
+  it("el contador de fallas vuelve a cero cuando una consulta responde", async () => {
+    // Por consulta: falla, falla, responde, falla, falla, responde (ya terminada).
+    const outcomes = [false, false, true, false, false, true];
+    const h = harness({
+      beforeRequest: (_url, method) => {
+        if (method === "GET" && outcomes.shift() === false) throw new TypeError("fetch failed");
+      },
+    });
+    const worker = simulateWorker(h);
+    const clock = fakeClock(async (elapsed) => {
+      if (elapsed === 12_000) {
+        await worker.start();
+        await worker.finish();
+      }
+    });
+
+    await run(h, clock);
+
+    expect(clock.sleeps).toHaveLength(6);
+    expect(h.text()).toContain("terminada");
+    expect(h.errors()).toBe("");
   });
 
   it("un error de la API al consultar (no transitorio) corta de inmediato", async () => {
@@ -309,5 +334,6 @@ describe("runImport", () => {
     expect(await run(h, clock)).toBe(1);
     expect(clock.sleeps).toHaveLength(1);
     expect(h.errors()).toContain("✗ IMPORT_RUN_NOT_FOUND");
+    expect(h.errors()).not.toContain("Dejé de esperar");
   });
 });

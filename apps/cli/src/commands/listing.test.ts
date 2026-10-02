@@ -65,10 +65,10 @@ describe("runListing", () => {
     expect(h.requests).toContain(`GET /listings/${listing.id}`);
   });
 
-  it("un uuid va directo al detalle", async () => {
+  it("un uuid va directo al detalle, aunque traiga espacios", async () => {
     const { h, listing } = await setup();
 
-    expect(await runListing({ ...h.io, client: h.client }, listing.id)).toBe(0);
+    expect(await runListing({ ...h.io, client: h.client }, ` ${listing.id} `)).toBe(0);
     expect(h.requests).toEqual(["GET /brokers", `GET /listings/${listing.id}`]);
   });
 

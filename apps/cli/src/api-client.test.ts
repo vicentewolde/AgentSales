@@ -88,7 +88,7 @@ describe("createHealthFetcher", () => {
       createHealthFetcher(createApiClient(port, { timeoutMs: 100 }))(),
     ).rejects.toMatchObject({
       code: "TIMEOUT",
-      message: "sin respuesta en 0 s",
+      message: "sin respuesta en 100 ms",
     });
   });
 

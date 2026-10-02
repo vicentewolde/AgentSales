@@ -9,12 +9,12 @@ const groupThousands = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/
  * `Intl`, para que la CLI, el panel y las plantillas den lo mismo en cualquier entorno.
  */
 export function formatPrice(amount: number, currency: Currency): string {
+  // El validador exige precio > 0; un negativo igual muestra su signo, delante de todo.
   const sign = amount < 0 ? "-" : "";
   const absolute = Math.abs(amount);
   if (currency === "CLP") {
     return `${sign}$${groupThousands(Math.round(absolute).toString())}`;
   }
   const [integer = "0", decimals = "00"] = absolute.toFixed(2).split(".");
-  const formatted = groupThousands(integer) + (decimals === "00" ? "" : `,${decimals}`);
-  return `UF ${sign}${formatted}`;
+  return `${sign}UF ${groupThousands(integer)}${decimals === "00" ? "" : `,${decimals}`}`;
 }

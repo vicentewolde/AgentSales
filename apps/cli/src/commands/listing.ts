@@ -9,8 +9,7 @@ import { z } from "zod";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, formatBytes, guarded, type Io } from "../output.js";
-import { brokerSlugOf } from "./import.js";
-import { fetchBrokers, OPERATION_TEXT } from "./listings.js";
+import { brokerSlugOf, fetchBrokers, OPERATION_TEXT } from "./shared.js";
 
 export type ListingDeps = Io & { client: ApiClient };
 
@@ -46,7 +45,7 @@ async function resolveListingId(
   if (first === undefined) {
     throw new CliError(
       "LISTING_NOT_FOUND",
-      `No existe la propiedad ${ref.trim()}${brokerOption === undefined ? "" : ` en ese corredor`}`,
+      `No existe la propiedad ${ref}${brokerOption === undefined ? "" : ` en ese corredor`}`,
       "Revisa el código con agentsales listings",
     );
   }
@@ -54,7 +53,7 @@ async function resolveListingId(
     const slugs = matches.map((listing) => brokers.get(listing.brokerId)?.slug ?? listing.brokerId);
     throw new CliError(
       "LISTING_AMBIGUOUS",
-      `${ref.trim()} existe en ${matches.length} corredores (${slugs.join(", ")})`,
+      `${ref} existe en ${matches.length} corredores (${slugs.join(", ")})`,
       "Indica cuál con --broker <slug>",
     );
   }
@@ -132,7 +131,8 @@ export function renderListingDetail(
 export function runListing(deps: ListingDeps, ref: string, options: ListingOptions = {}) {
   return guarded(deps, async () => {
     const brokers = await fetchBrokers(deps.client);
-    const id = await resolveListingId(deps.client, ref, brokers, options.broker);
+    // Copiado de una tabla o de un mensaje, el código puede traer espacios alrededor.
+    const id = await resolveListingId(deps.client, ref.trim(), brokers, options.broker);
     const detail = await unwrap(
       deps.client.listings[":id"].$get({ param: { id } }),
       listingDetailResponseSchema,

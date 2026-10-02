@@ -1,3 +1,4 @@
+import { isTerminalImportRun } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import type { ImportRun, ImportRunInput } from "../import-run.js";
 import type { ListingSheetInput } from "../listing-sheet.js";
@@ -64,8 +65,6 @@ const runErrorOf = (error: AppError): ImportRunError => ({
   message: error.message,
 });
 
-const isTerminal = (status: ImportRun["status"]) => status === "succeeded" || status === "failed";
-
 /** Carpetas que `ingestMedia` va a listar: las de las filas guardadas y la del logo. */
 function mediaFoldersOf(imported: ImportListingsResult): string[] {
   const folders = new Set<string>();
@@ -103,7 +102,7 @@ export async function runImport(
       details: { importRunId },
     });
   }
-  if (isTerminal(run.status)) return { outcome: "skipped", status: run.status };
+  if (isTerminalImportRun(run.status)) return { outcome: "skipped", status: run.status };
   if (!(await deps.importRuns.markRunning(run.id))) {
     const current = await deps.importRuns.get(run.id);
     return { outcome: "skipped", status: current?.status ?? run.status };

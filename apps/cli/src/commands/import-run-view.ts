@@ -18,9 +18,6 @@ const BROKER_OUTCOME_TEXT: Readonly<Record<ImportBrokerOutcome, string>> = {
   invalid: "con errores",
 };
 
-export const isTerminal = (status: ImportRunStatus) =>
-  status === "succeeded" || status === "failed";
-
 /** Estado con color: verde si terminó, rojo si falló, amarillo mientras corre. */
 export function paintStatus(run: Pick<ImportRunView, "status" | "dryRun">, c: Colors): string {
   const text = RUN_STATUS_TEXT[run.status] + (run.dryRun ? " (simulación)" : "");

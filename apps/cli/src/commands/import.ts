@@ -1,12 +1,13 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { type ImportRunView, importRunResponseSchema } from "@agentsales/api/contracts";
-import { slugify } from "@agentsales/core";
+import { isTerminalImportRun } from "@agentsales/core";
 import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
-import { exitCodeOf, isTerminal, RUN_STATUS_TEXT, renderImportRun } from "./import-run-view.js";
+import { exitCodeOf, RUN_STATUS_TEXT, renderImportRun } from "./import-run-view.js";
+import { brokerSlugOf } from "./shared.js";
 
 /** Tiempos de la espera (spec F1 §4.4); los tests los acortan. */
 export const IMPORT_WAIT = {
@@ -30,7 +31,7 @@ export type ImportDeps = Io & {
   /** Base de las rutas relativas (`INIT_CWD`). */
   cwd: string;
   sleep: (ms: number) => Promise<void>;
-  /** Reloj en milisegundos. */
+  /** Reloj monótono en milisegundos (un cambio de hora no adelanta ni atrasa el tope). */
   now: () => number;
   wait?: Partial<typeof IMPORT_WAIT>;
 };
@@ -76,15 +77,6 @@ export async function resolveImportPaths(
     );
   }
   return { xlsxPath, mediaDir };
-}
-
-/** `--broker` como slug (`Mi-Corredor` → `mi-corredor`), igual que el que sale de la hoja. */
-export function brokerSlugOf(broker: string): string {
-  const slug = slugify(broker);
-  if (slug === "") {
-    throw new CliError("BROKER_INVALID", `--broker "${broker}" no tiene letras ni números`);
-  }
-  return slug;
 }
 
 /** Puede volver a consultar: la API no respondió, o respondió un error de su lado (503, 500). */
@@ -133,7 +125,7 @@ export function runImport(deps: ImportDeps, xlsx: string, options: ImportOptions
     let shown = run.status;
     let warned = false;
     let failures = 0;
-    while (!isTerminal(run.status)) {
+    while (!isTerminalImportRun(run.status)) {
       if (deps.now() - started >= timing.maxWaitMs) {
         deps.print(c.yellow(`Sigue en curso: revisa más tarde con agentsales imports ${run.id}`));
         return 1;
@@ -149,15 +141,17 @@ export function runImport(deps: ImportDeps, xlsx: string, options: ImportOptions
         failures = 0;
       } catch (error) {
         failures += 1;
-        if (!isTransient(error) || failures >= timing.maxPollFailures) {
+        if (!isTransient(error)) throw error;
+        if (failures >= timing.maxPollFailures) {
+          // La API no responde: la carga sigue (o no) en el worker, que no depende de ella.
           deps.printError(
-            c.yellow(`Dejé de esperar; la carga sigue en el worker: agentsales imports ${run.id}`),
+            c.yellow(`Dejé de esperar; revisa la carga más tarde con agentsales imports ${run.id}`),
           );
           throw error;
         }
         continue;
       }
-      if (run.status !== shown && !isTerminal(run.status)) {
+      if (run.status !== shown && !isTerminalImportRun(run.status)) {
         deps.print(`${RUN_STATUS_TEXT[run.status]}…`);
       }
       shown = run.status;
@@ -188,7 +182,7 @@ export function register(program: Command, ctx: CliContext): void {
             ...ctx,
             client: ctx.api(),
             sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
-            now: () => Date.now(),
+            now: () => performance.now(),
           },
           xlsx,
           options,

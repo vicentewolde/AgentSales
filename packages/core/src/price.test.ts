@@ -18,6 +18,6 @@ describe("formatPrice", () => {
 
   it("un negativo conserva el signo (no debería llegar: el precio es mayor que 0)", () => {
     expect(formatPrice(-1500, "CLP")).toBe("-$1.500");
-    expect(formatPrice(-2.5, "UF")).toBe("UF -2,50");
+    expect(formatPrice(-2.5, "UF")).toBe("-UF 2,50");
   });
 });

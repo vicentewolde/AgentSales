@@ -11,11 +11,14 @@ const root = findWorkspaceRoot();
 const biome = join(root, "node_modules", ".bin", "biome");
 
 /**
- * Corre Biome sobre un archivo de prueba dentro de `apps/api/src/contracts/` (la regla aplica por
- * ruta) y lo borra. `*.biome-probe.ts` está en `.gitignore`, por si el test se interrumpe.
+ * Corre Biome sobre un archivo de prueba dentro de `dir` (las reglas aplican por ruta) y lo borra.
+ * `*.biome-probe.ts` está en `.gitignore`, por si el test se interrumpe.
  */
-async function lintInContracts(source: string): Promise<{ ok: boolean; output: string }> {
-  const file = join(root, "apps", "api", "src", "contracts", `${randomUUID()}.biome-probe.ts`);
+async function lintIn(
+  dir: readonly string[],
+  source: string,
+): Promise<{ ok: boolean; output: string }> {
+  const file = join(root, ...dir, `${randomUUID()}.biome-probe.ts`);
   await writeFile(file, source);
   try {
     await run(biome, ["lint", "--vcs-use-ignore-file=false", file], { cwd: root });
@@ -28,6 +31,8 @@ async function lintInContracts(source: string): Promise<{ ok: boolean; output: s
     await rm(file, { force: true });
   }
 }
+
+const lintInContracts = (source: string) => lintIn(["apps", "api", "src", "contracts"], source);
 
 describe("@agentsales/api/contracts · frontera (Biome)", () => {
   it.each([
@@ -47,5 +52,22 @@ describe("@agentsales/api/contracts · frontera (Biome)", () => {
       'import { LISTING_STATUSES } from "@agentsales/core";\nimport { z } from "zod";\nimport { errorBodySchema } from "./index.js";\nexport const x = [z.enum(LISTING_STATUSES), errorBodySchema];\n',
     );
     expect(result).toEqual({ ok: true, output: "" });
+  });
+});
+
+describe("@agentsales/api/testing · solo en tests (Biome)", () => {
+  const probe = 'import { testDeps } from "@agentsales/api/testing";\nexport const x = testDeps;\n';
+
+  it.each([[["apps", "cli", "src"]], [["apps", "web", "src"]], [["packages", "db", "src"]]])(
+    "rechaza importarla desde %j",
+    async (dir) => {
+      const result = await lintIn(dir, probe);
+      expect(result.ok).toBe(false);
+      expect(result.output).toContain("noRestrictedImports");
+    },
+  );
+
+  it("la acepta desde test/", async () => {
+    expect(await lintIn(["apps", "cli", "test"], probe)).toEqual({ ok: true, output: "" });
   });
 });

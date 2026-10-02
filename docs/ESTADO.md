@@ -49,7 +49,9 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
   - F7 cambia esto por la subida directa a R2 con URL prefirmada: `import_runs.input` pasa a claves de R2, y se quitan `POST /imports/local` y el staging compartido.
   - El despliegue fija `NODE_ENV=production` (`/imports/local` depende de eso). Ver `docs/06-roadmap.md` → F7.
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
-- **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`). Excluirlo del build de producción al armar el despliegue.
+- **F7:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`), y también `apps/api/src/testing` (importa `@agentsales/core/testing`) y `apps/cli/test`. Excluirlos del build de producción al armar el despliegue.
+- **F7:** `agentsales listing --broker` resuelve el corredor en la CLI con `/brokers`. Con autenticación y varios clientes, el alcance por corredor lo tiene que hacer el servidor (junto con la proyección acotada de `GET /listings`).
+- `--broker` se normaliza con `slugify` solo en la CLI: `POST /imports/local` con `"Mi Corredor"` da `BROKER_NOT_FOUND`. Hoy no importa (el panel usa un selector); si aparece otro cliente, normalizar en core (`requestImport`).
 
 ## Notas de la última sesión
 - 2026-10-02: **F1-T12.** CLI de importación y consulta.
@@ -62,6 +64,14 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
     - `--no-wait` imprime solo el id; hasta 3 consultas fallidas seguidas se reintentan; sale con 1 si hay filas con error.
   - **Arreglo de paso:** `updated_at` con `now()` de la base al actualizar. El test de orden de la lista de avisos fallaba de vez en cuando (milisegundos del proceso contra microsegundos de la base).
   - **Prueba de humo:** con la API y el worker contra Neon, `import` de la plantilla con `--broker Demo --dry-run` se encola, el worker la procesa y la CLI muestra el resumen; `imports`, `listings` y `listing` responden. Apagados al terminar.
+  - **Correcciones de `/revisar`:**
+    - §4.4 del spec con `externalRef` y `listing --broker`.
+    - `TERMINAL_IMPORT_RUN_STATUSES` e `isTerminalImportRun` en core (la regla estaba repetida en la CLI).
+    - Ayudas compartidas en `commands/shared.ts`.
+    - `@agentsales/api/testing` también prohibida en los adaptadores, con test de Biome.
+    - Reloj monótono para el tope de 2 h; un 4xx al consultar ya no dice que la carga "sigue en el worker"; el código de `listing` se recorta; timeout menor a 1 s en ms; signo de `formatPrice` unificado.
+    - Test nuevo: el contador de fallas vuelve a cero al responder.
+    - Docs: arquitectura (excepción de `src/testing/`), modelo de datos (`updated_at`) y deudas de F7.
   - **Demo pendiente:** faltan las 3 propiedades de muestra en `data/muestras/`.
 - 2026-10-01: **F1-T11.** API de importación.
   - **Rutas:**

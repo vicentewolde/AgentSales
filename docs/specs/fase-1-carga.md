@@ -154,7 +154,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 | POST | `/imports` | multipart `file` (xlsx) + `media` (zip, opcional) + `broker` (opcional) + `dryRun`. Guarda los archivos en `tmp/imports/{id}/`, crea el `import_run` en `queued`, encola `import.run` y responde `202` con el run (`ImportRunView`: `input` solo con nombres de archivo) |
 | POST | `/imports/local` | `{ xlsxPath, mediaDir?, broker?, dryRun? }`, solo cuando `NODE_ENV=development` (la CLI; `csrf()` bloquea `multipart` sin `Origin`). Responde `202` |
 | GET | `/imports` · `/imports/:id` | historial, y estado más reporte. `input` se muestra solo como nombres de archivo, sin las rutas completas |
-| GET | `/listings?status=&operation=&comuna=` | lista con portada (URL firmada) |
+| GET | `/listings?status=&operation=&comuna=&externalRef=` | lista con portada (URL firmada). `externalRef` es exacto (F1-T12) y puede repetirse entre corredores |
 | GET | `/listings/:id` | detalle con medios (URLs firmadas) y atributos |
 | PATCH | `/listings/:id/status` | cambio manual según `LISTING_MANUAL_TRANSITIONS` (a `ready`, `paused` o `archived`). `ready` exige al menos una foto. Una transición no permitida es `409 INVALID_TRANSITION` |
 | GET | `/brokers` | para el selector de corredor en Importar |
@@ -174,7 +174,7 @@ CLI:
 agentsales import <xlsx> [--media <dir|zip>] [--broker <slug>] [--dry-run] [--no-wait]
 agentsales imports [<id>]
 agentsales listings [--status ready] [--json]
-agentsales listing <external_ref|id> [--json]
+agentsales listing <external_ref|id> [--broker <slug>] [--json]
 ```
 `import`:
 - Usa `/imports/local` y luego consulta `/imports/:id` cada 2 s hasta que termina, mostrando el progreso.
@@ -507,7 +507,10 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
     - Al consultar, hasta 3 fallas seguidas de la API (sin respuesta o 5xx) se reintentan; un 4xx corta de inmediato.
     - Código de salida: 1 si la carga falla, si alguna fila quedó con errores o si se deja de esperar a las 2 h.
     - Si la API no acepta cargas locales (`ROUTE_NOT_FOUND`), `LOCAL_IMPORTS_DISABLED` con la sugerencia de `pnpm dev` o el panel.
-  - **`listing`:** un uuid va directo; si no, se busca por `externalRef`. Más de un resultado es `LISTING_AMBIGUOUS` y pide `--broker`.
+  - **`listing`:** el código se recorta; un uuid va directo, y si no, se busca por `externalRef`. Más de un resultado es `LISTING_AMBIGUOUS` y pide `--broker`.
+  - **Espera:** el tope de 2 h se mide con un reloj monótono (`performance.now()`). Un 4xx al consultar corta sin decir que la carga "sigue en el worker".
+  - **Estados terminales en core:** `TERMINAL_IMPORT_RUN_STATUSES` e `isTerminalImportRun` (en `enums.ts`), que usan `runImport` y la CLI, y que usará el panel (T14).
+  - **Ayudas compartidas de la CLI** en `commands/shared.ts` (`brokerSlugOf`, `fetchBrokers`, `OPERATION_TEXT`), para que un comando no importe a otro.
   - **Arreglo de paso:** `updated_at` toma la hora de la base al actualizar (`now()`, antes `new Date()` del proceso). Con milisegundos contra microsegundos, un aviso tocado en el mismo milisegundo en que se creó otro quedaba como "más antiguo", y el test de orden de la lista fallaba de vez en cuando.
 - **Desde la revisión de T11:** los tests de la CLI contra `createApp` necesitan armar `AppDeps` con dobles. Hoy `apps/api/test/app-deps.ts` (`testDeps`, `fakeUploads`) no es público. Se decide en el plan de T12: una subruta de solo tests, `@agentsales/api/testing`, restringida con Biome como `core/testing` (cabe en ADR-0010), o armar los dobles en la CLI.
 - **Desde la revisión de T10:** `agentsales listing <external_ref|id>` necesita buscar por `external_ref`, que es único **por corredor**.
@@ -621,3 +624,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | F1-T11: rutas `/imports` (multipart con `bodyLimit` y 413, `/imports/local` solo en desarrollo, lista y detalle con nombres de archivo); `createStaging` en `@agentsales/importers/staging` y `createErrorThrottle` en `@agentsales/config`; `NewImportRun.id` e `ImportRunRepository.list`; `MAX_IMPORT_UPLOAD_MB` |
 | 2026-10-01 | Desde la revisión de F1-T11: subidas guardadas en streaming (`File.stream()`) y `MAX_IMPORT_UPLOAD_MB` por defecto en 512; campos vacíos del formulario cuentan como no enviados; `saveInput` rechaza nombres con `\0` o de más de 255 bytes; `MAX_XLSX_BYTES` en core; `GET /imports` sin `report`; `IMPORT_RUN_CONFLICT` para un id repetido; rutas locales que terminan en `/` rechazadas; `stagingRootOf`; Biome impide que los adaptadores se importen entre sí; notas para T12 (`@agentsales/api/testing`), T14 (proxy y `Origin`) y F7 (roadmap) |
 | 2026-10-02 | F1-T12: CLI con `import`, `imports`, `listings` y `listing`; `@agentsales/api/testing` (subruta de solo tests); filtro `externalRef`; `formatPrice` en core; `--broker` normalizado con `slugify`; reintento de hasta 3 consultas fallidas; `updated_at` con la hora de la base al actualizar |
+| 2026-10-02 | Desde la revisión de F1-T12: §4.4 con `externalRef` y `listing --broker`; `TERMINAL_IMPORT_RUN_STATUSES` e `isTerminalImportRun` en core; ayudas compartidas de la CLI en `commands/shared.ts`; `@agentsales/api/testing` también prohibida en los adaptadores, con test de Biome; reloj monótono para el tope de espera; código de `listing` recortado; `formatPrice` con el signo delante de todo |

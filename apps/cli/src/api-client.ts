@@ -29,7 +29,8 @@ export class ApiCallError extends Error {
 /** Mensaje legible de un fallo de red o de timeout de `fetch`. */
 function describeFetchError(error: unknown, timeoutMs: number): ApiCallError {
   if (error instanceof Error && error.name === "TimeoutError") {
-    return new ApiCallError(`sin respuesta en ${Math.round(timeoutMs / 1000)} s`, "TIMEOUT");
+    const after = timeoutMs < 1000 ? `${timeoutMs} ms` : `${Math.round(timeoutMs / 1000)} s`;
+    return new ApiCallError(`sin respuesta en ${after}`, "TIMEOUT");
   }
   const cause = error instanceof Error ? error.cause : undefined;
   const code =

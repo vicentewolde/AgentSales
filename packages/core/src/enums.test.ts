@@ -5,6 +5,7 @@ import {
   CURRENCIES,
   FIELD_TYPES,
   IMPORT_RUN_STATUSES,
+  isTerminalImportRun,
   LISTING_SOURCES,
   LISTING_STATUSES,
   LLM_PROVIDERS,
@@ -36,5 +37,9 @@ describe("enums de dominio", () => {
   it("dry-run es el primer modo de publicación y los proveedores de IA son los del ADR-0003", () => {
     expect(PUBLISH_MODES).toEqual(["dry-run", "live"]);
     expect(LLM_PROVIDERS).toEqual(["claude-cli", "anthropic-api", "fake"]);
+  });
+
+  it("una carga es terminal solo en succeeded o failed", () => {
+    expect(IMPORT_RUN_STATUSES.filter(isTerminalImportRun)).toEqual(["succeeded", "failed"]);
   });
 });

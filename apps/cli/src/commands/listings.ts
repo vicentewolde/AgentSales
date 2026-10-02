@@ -1,30 +1,14 @@
-import { brokerListResponseSchema, listingListResponseSchema } from "@agentsales/api/contracts";
-import {
-  type Broker,
-  formatPrice,
-  LISTING_STATUSES,
-  type ListingStatus,
-  type Operation,
-} from "@agentsales/core";
+import { listingListResponseSchema } from "@agentsales/api/contracts";
+import { formatPrice, LISTING_STATUSES, type ListingStatus } from "@agentsales/core";
 import { type Command, Option } from "commander";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { guarded, type Io, renderTable } from "../output.js";
-
-export const OPERATION_TEXT: Readonly<Record<Operation, string>> = {
-  sale: "Venta",
-  rent: "Arriendo",
-};
+import { fetchBrokers, OPERATION_TEXT } from "./shared.js";
 
 export type ListingsDeps = Io & { client: ApiClient };
 
 export type ListingsOptions = { status?: ListingStatus; json?: boolean };
-
-/** Slug de cada corredor por id, para mostrar de quién es cada aviso. */
-export async function fetchBrokers(client: ApiClient): Promise<Map<string, Broker>> {
-  const { brokers } = await unwrap(client.brokers.$get(), brokerListResponseSchema);
-  return new Map(brokers.map((broker) => [broker.id, broker]));
-}
 
 /** `agentsales listings [--status ready] [--json]`: las propiedades, de la más reciente a la más antigua. */
 export function runListings(deps: ListingsDeps, options: ListingsOptions = {}) {
