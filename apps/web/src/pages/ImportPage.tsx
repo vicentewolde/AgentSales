@@ -1,4 +1,9 @@
-import { MAX_XLSX_UPLOAD_BYTES } from "@agentsales/api/contracts";
+import {
+  hasExtension,
+  MAX_XLSX_UPLOAD_BYTES,
+  MEDIA_ZIP_EXTENSION,
+  XLSX_EXTENSION,
+} from "@agentsales/api/contracts";
 import { type FormEvent, useId, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
@@ -17,11 +22,12 @@ const fieldClass = "rounded-md border border-slate-300 bg-white px-2 py-1.5 text
 /** Lo que se puede revisar sin subir nada: tipo y tamaño del Excel, tipo del zip. */
 function checkFiles(file: File | undefined, media: File | undefined): string | null {
   if (!file) return "Elige el Excel con las propiedades.";
-  if (!file.name.toLowerCase().endsWith(".xlsx")) return "El archivo debe ser un Excel (.xlsx).";
+  if (!hasExtension(file.name, XLSX_EXTENSION)) return "El archivo debe ser un Excel (.xlsx).";
+  if (file.size === 0) return "El Excel está vacío.";
   if (file.size > MAX_XLSX_UPLOAD_BYTES) {
     return `El Excel pasa de ${MAX_XLSX_UPLOAD_BYTES / 1024 / 1024} MB.`;
   }
-  if (media && !media.name.toLowerCase().endsWith(".zip")) {
+  if (media && !hasExtension(media.name, MEDIA_ZIP_EXTENSION)) {
     return "Las fotos y videos deben venir en un .zip.";
   }
   return null;
@@ -37,14 +43,15 @@ function ImportForm() {
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const { elements } = event.currentTarget;
-    // El archivo elegido en cada campo; uno vacío (0 bytes) cuenta como no enviado.
+    // El archivo elegido en cada campo. Un zip vacío (0 bytes) cuenta como no enviado; un Excel
+    // vacío se avisa.
     const fileOf = (name: string) => {
       const input = elements.namedItem(name);
-      const file = input instanceof HTMLInputElement ? input.files?.[0] : undefined;
-      return file && file.size > 0 ? file : undefined;
+      return input instanceof HTMLInputElement ? input.files?.[0] : undefined;
     };
     const file = fileOf("file");
-    const media = fileOf("media");
+    const chosenMedia = fileOf("media");
+    const media = chosenMedia && chosenMedia.size > 0 ? chosenMedia : undefined;
     const issue = checkFiles(file, media);
     setProblem(issue);
     if (issue || !file) return;
@@ -71,13 +78,19 @@ function ImportForm() {
         <label htmlFor={ids.file} className="text-sm font-medium">
           Excel de propiedades (.xlsx)
         </label>
-        <input id={ids.file} name="file" type="file" accept=".xlsx" className="text-sm" />
+        <input id={ids.file} name="file" type="file" accept={XLSX_EXTENSION} className="text-sm" />
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor={ids.media} className="text-sm font-medium">
           Fotos y videos (.zip, opcional)
         </label>
-        <input id={ids.media} name="media" type="file" accept=".zip" className="text-sm" />
+        <input
+          id={ids.media}
+          name="media"
+          type="file"
+          accept={MEDIA_ZIP_EXTENSION}
+          className="text-sm"
+        />
         <p className="text-xs text-slate-500">
           Una carpeta por propiedad, con el nombre de su id_propiedad o de carpeta_medios.
         </p>

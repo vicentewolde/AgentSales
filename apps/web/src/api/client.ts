@@ -49,14 +49,21 @@ export function createApiClient(baseUrl = "/api", options: ApiClientOptions = {}
   const send: Fetch = options.fetch ?? ((input, init) => fetch(input, init));
   return hc<AppType>(baseUrl, {
     fetch: async (input: string | URL | Request, init?: RequestInit) => {
-      const limitMs = init?.body instanceof FormData ? uploadTimeoutMs : timeoutMs;
+      const upload = init?.body instanceof FormData;
+      const limitMs = upload ? uploadTimeoutMs : timeoutMs;
       const timeout = AbortSignal.timeout(limitMs);
       const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
       try {
         return await send(input, { ...init, signal });
       } catch (error) {
         if (error instanceof Error && error.name === "TimeoutError") {
-          throw new ApiError(`La API no respondió en ${Math.round(limitMs / 1000)} s`, "TIMEOUT");
+          // La API pudo recibir la subida igual: antes de reintentar, mira "Cargas anteriores".
+          throw new ApiError(
+            upload
+              ? `La subida no terminó en ${Math.round(limitMs / 60_000)} min: revisa "Cargas anteriores" antes de reintentar`
+              : `La API no respondió en ${Math.round(limitMs / 1000)} s`,
+            "TIMEOUT",
+          );
         }
         // Una cancelación (TanStack Query al desmontar) sigue su curso: no es un fallo.
         if (error instanceof Error && error.name === "AbortError") throw error;

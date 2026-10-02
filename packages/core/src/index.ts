@@ -12,6 +12,7 @@ export * from "./enums.js";
 export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
 export { type FieldDefinition, fieldDefinitionSchema } from "./field-definition.js";
 export * from "./health.js";
+export { IMPORT_WAIT, type ImportIssue, importReportIssues } from "./import-progress.js";
 export {
   IMPORT_BROKER_OUTCOMES,
   IMPORT_ROW_OUTCOMES,

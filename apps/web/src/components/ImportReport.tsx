@@ -1,5 +1,9 @@
 import type { ImportRunView } from "@agentsales/api/contracts";
-import { IMPORT_BROKER_OUTCOME_TEXT, IMPORT_ROW_OUTCOME_TEXT } from "@agentsales/core";
+import {
+  IMPORT_BROKER_OUTCOME_TEXT,
+  IMPORT_ROW_OUTCOME_TEXT,
+  importReportIssues,
+} from "@agentsales/core";
 import { Link } from "react-router";
 
 type Report = NonNullable<ImportRunView["report"]>;
@@ -13,27 +17,34 @@ function Counts({ run }: { run: ImportRunView }) {
     ["Con error", run.rowsFailed],
   ] as const;
   return (
-    <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {items.map(([label, value]) => (
-        <div key={label} className="rounded-lg border border-slate-200 bg-white p-3">
-          <dt className="text-xs font-medium text-slate-500">{label}</dt>
-          <dd
-            className={`text-2xl font-semibold ${label === "Con error" && value > 0 ? "text-red-700" : ""}`}
-          >
-            {value}
+    <>
+      {run.dryRun && (
+        <p className="mt-4 text-xs font-medium text-amber-700">
+          Simulación: estos números son lo que habría pasado; no se guardó nada.
+        </p>
+      )}
+      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {items.map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-slate-200 bg-white p-3">
+            <dt className="text-xs font-medium text-slate-500">{label}</dt>
+            <dd
+              className={`text-2xl font-semibold ${label === "Con error" && value > 0 ? "text-red-700" : ""}`}
+            >
+              {value}
+            </dd>
+          </div>
+        ))}
+        <div className="col-span-2 rounded-lg border border-slate-200 bg-white p-3 sm:col-span-4">
+          <dt className="text-xs font-medium text-slate-500">Fotos y videos</dt>
+          {/* `media` falta si la carga no llegó a la ingesta: no se asumen ceros. */}
+          <dd className="text-sm">
+            {media
+              ? `subidos ${media.filesUploaded} · ya estaban ${media.filesExisting} · omitidos ${media.filesSkipped} · con error ${media.filesFailed}`
+              : "—"}
           </dd>
         </div>
-      ))}
-      <div className="col-span-2 rounded-lg border border-slate-200 bg-white p-3 sm:col-span-4">
-        <dt className="text-xs font-medium text-slate-500">Fotos y videos</dt>
-        {/* `media` falta si la carga no llegó a la ingesta: no se asumen ceros. */}
-        <dd className="text-sm">
-          {media
-            ? `subidos ${media.filesUploaded} · ya estaban ${media.filesExisting} · omitidos ${media.filesSkipped} · con error ${media.filesFailed}`
-            : "—"}
-        </dd>
-      </div>
-    </dl>
+      </dl>
+    </>
   );
 }
 
@@ -67,22 +78,12 @@ function HeaderNotes({ headers }: { headers: Report["headers"] }) {
 
 /** Errores por fila y columna, con los de la hoja Corredor primero (spec F1 §4.4). */
 function ErrorsTable({ report }: { report: Report }) {
-  const rows = [
-    ...(report.broker?.issues ?? []).map((issue) => ({
-      row: "Corredor",
-      ref: "—",
-      column: issue.column,
-      message: issue.message,
-    })),
-    ...report.rows.flatMap((row) =>
-      row.errors.map((issue) => ({
-        row: String(row.rowNumber),
-        ref: row.externalRef ?? "—",
-        column: issue.column,
-        message: issue.message,
-      })),
-    ),
-  ];
+  const rows = importReportIssues(report).errors.map((issue) => ({
+    row: issue.rowNumber === null ? "Corredor" : String(issue.rowNumber),
+    ref: issue.externalRef ?? "—",
+    column: issue.column,
+    message: issue.message,
+  }));
   if (rows.length === 0) return null;
   return (
     <section aria-labelledby="errores" className="mt-6">
@@ -163,15 +164,7 @@ function RowsTable({ report }: { report: Report }) {
 }
 
 function Warnings({ report }: { report: Report }) {
-  const warnings = [
-    ...(report.broker?.warnings ?? []).map((warning) => `Corredor: ${warning}`),
-    ...report.rows.flatMap((row) =>
-      row.warnings.map(
-        (warning) =>
-          `Fila ${row.rowNumber}${row.externalRef ? ` (${row.externalRef})` : ""}: ${warning}`,
-      ),
-    ),
-  ];
+  const { warnings } = importReportIssues(report);
   if (warnings.length === 0) return null;
   return (
     <section aria-labelledby="advertencias" className="mt-6">

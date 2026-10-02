@@ -9,6 +9,7 @@ import {
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
+  hasExtension,
   type ImportRunListResponse,
   type ImportRunResponse,
   type ImportRunView,
@@ -16,6 +17,8 @@ import {
   importUploadFormSchema,
   localImportBodySchema,
   MAX_XLSX_UPLOAD_BYTES,
+  MEDIA_ZIP_EXTENSION,
+  XLSX_EXTENSION,
 } from "../contracts/index.js";
 import { validated } from "../validation.js";
 
@@ -85,13 +88,13 @@ export function importRoutes(deps: ImportRoutesDeps) {
       validated("form", importUploadFormSchema),
       async (c) => {
         const { file, media, broker, dryRun } = c.req.valid("form");
-        if (!file.name.toLowerCase().endsWith(".xlsx")) {
+        if (!hasExtension(file.name, XLSX_EXTENSION)) {
           throw invalidUpload("El archivo debe ser un Excel (.xlsx)");
         }
         if (file.size > MAX_XLSX_UPLOAD_BYTES) {
           throw invalidUpload(`El Excel pasa de ${MAX_XLSX_UPLOAD_BYTES / 1024 / 1024} MB`);
         }
-        if (media !== undefined && !media.name.toLowerCase().endsWith(".zip")) {
+        if (media !== undefined && !hasExtension(media.name, MEDIA_ZIP_EXTENSION)) {
           throw invalidUpload("Los medios deben venir en un .zip");
         }
 

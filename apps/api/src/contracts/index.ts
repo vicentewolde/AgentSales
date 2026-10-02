@@ -87,22 +87,25 @@ export type ListingStatusResponse = z.infer<typeof listingStatusResponseSchema>;
 export const brokerListResponseSchema = z.object({ brokers: z.array(brokerSchema) });
 export type BrokerListResponse = z.infer<typeof brokerListResponseSchema>;
 
+/** Extensiones que acepta la subida del panel (la API y el formulario revisan las mismas). */
+export const XLSX_EXTENSION = ".xlsx";
+export const MEDIA_ZIP_EXTENSION = ".zip";
+
+/** `true` si el nombre del archivo termina en `extension`, sin importar mayúsculas. */
+export const hasExtension = (fileName: string, extension: string) =>
+  fileName.toLowerCase().endsWith(extension);
+
 /**
- * `POST /imports` (multipart, desde el panel): el Excel, el zip de medios (opcional), el corredor
- * (opcional) y `dryRun` como texto. El tope del xlsx se revisa en la ruta, ya leído el cuerpo.
- */
-/**
- * Un `<input type="file">` sin elegir llega vacío (como texto `""` o un `File` de 0 bytes, según
- * el cliente), y un `<select>` sin corredor como `""`: cuentan como "no enviado" (el panel arma el
- * form con `FormData`).
- */
-/**
- * Un archivo subido. Con el tipo explícito `File` (la interfaz global), y no `z.instanceof(File)`:
+ * Un archivo subido. Con el tipo explícito `File` (la interfaz global), y no con `z.instanceof`:
  * ese infiere la clase de `node:buffer` al compilar la API, y `AppType` le pasaría al panel un tipo
  * de Node (docs/01-arquitectura.md, "Tipos alcanzables desde `AppType`").
  */
 const fileSchema = z.custom<File>((value) => value instanceof File, "debe ser un archivo");
 
+/**
+ * Un `<input type="file">` sin elegir llega vacío (como texto `""` o un `File` de 0 bytes, según
+ * el cliente), y un `<select>` sin corredor como `""`: cuentan como "no enviado".
+ */
 const optionalFile = z.preprocess(
   (value) => (value === "" || (value instanceof File && value.size === 0) ? undefined : value),
   fileSchema.optional(),
@@ -114,7 +117,8 @@ const optionalText = z.preprocess(
 
 /**
  * `POST /imports` (multipart, desde el panel): el Excel (hasta `MAX_XLSX_BYTES`), el zip de
- * medios (opcional), el corredor (opcional) y `dryRun` como texto.
+ * medios (opcional), el corredor (opcional) y `dryRun` como texto. El tope del xlsx se revisa en
+ * la ruta, ya leído el cuerpo.
  */
 export const importUploadFormSchema = z.object({
   file: fileSchema,

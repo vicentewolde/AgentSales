@@ -28,7 +28,8 @@ const fileOf = (name: string, size = 16) => new File([new Uint8Array(size)], nam
 
 function upload(
   app: ReturnType<typeof createApp>,
-  fields: { file?: File; media?: File; broker?: string; dryRun?: string },
+  // Cada campo puede ser un archivo o texto: así se prueba lo que no es un archivo.
+  fields: Readonly<Record<string, File | string | undefined>>,
 ) {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) {
@@ -176,6 +177,21 @@ describe("POST /imports · bordes", () => {
     });
 
     expect(response.status).toBe(413);
+  });
+
+  it.each([
+    ["file como texto", { file: "propiedades.xlsx" }],
+    ["sin file", { broker: "marca" }],
+    ["media como texto no vacío", { file: fileOf("propiedades.xlsx"), media: "medios.zip" }],
+  ])("%s → 400 REQUEST_INVALID, sin guardar nada", async (_, fields) => {
+    const { app, uploads, queue } = setup();
+
+    const response = await upload(app, fields);
+
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).code).toBe("REQUEST_INVALID");
+    expect(uploads.files.size).toBe(0);
+    expect(queue.jobs).toHaveLength(0);
   });
 
   it("un campo de medios vacío y un corredor vacío (form del panel) cuentan como no enviados", async () => {

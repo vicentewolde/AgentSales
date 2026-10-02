@@ -1,10 +1,10 @@
-import { isTerminalImportRun } from "@agentsales/core";
+import { IMPORT_WAIT, isTerminalImportRun } from "@agentsales/core";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../api/client.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { ImportReport } from "../components/ImportReport.js";
 import { RunStatusBadge } from "../components/RunStatusBadge.js";
-import { QUEUED_WARNING_MS, useImportRun } from "../queries/imports.js";
+import { useImportRun } from "../queries/imports.js";
 
 /**
  * Una carga: su progreso mientras corre (consulta cada 2 s), el aviso si sigue en cola a los 20 s
@@ -12,14 +12,16 @@ import { QUEUED_WARNING_MS, useImportRun } from "../queries/imports.js";
  */
 export function ImportRunPage() {
   const { id = "" } = useParams();
-  const run = useImportRun(id);
+  const { run, stopped } = useImportRun(id);
   const notFound =
     run.error instanceof ApiError &&
     (run.error.code === "IMPORT_RUN_NOT_FOUND" || run.error.code === "REQUEST_INVALID");
   const data = run.data;
-  // Se mide con la hora de cada consulta (la API corre en la misma máquina que el panel).
+  // Se mide con la hora de cada respuesta, contra `createdAt`, que pone la base (Neon): el desfase
+  // de reloj es despreciable frente a 20 s.
   const stuckInQueue =
-    data?.status === "queued" && run.dataUpdatedAt - data.createdAt.getTime() >= QUEUED_WARNING_MS;
+    data?.status === "queued" &&
+    run.dataUpdatedAt - data.createdAt.getTime() >= IMPORT_WAIT.queuedWarningMs;
 
   return (
     <section className="mx-auto max-w-4xl">
@@ -32,7 +34,8 @@ export function ImportRunPage() {
           Esta carga no existe.
         </p>
       )}
-      {run.error && !notFound && (
+      {/* Con datos, una consulta fallida la cubre el aviso de "Dejé de consultar". */}
+      {run.error && !notFound && !data && (
         <ErrorAlert
           error={run.error}
           onRetry={() => void run.refetch()}
@@ -60,12 +63,33 @@ export function ImportRunPage() {
                 {data.status === "queued" ? "En cola…" : "Procesando el Excel y los medios…"}
               </p>
             )}
-            {stuckInQueue && (
-              <p role="alert" className="mt-2 text-sm text-amber-800">
-                Sigue en cola: ¿está corriendo el worker? (pnpm dev)
-              </p>
-            )}
           </div>
+          {stuckInQueue && !stopped && (
+            <p role="alert" className="mt-2 text-sm text-amber-800">
+              Sigue en cola: ¿está corriendo el worker? (pnpm dev)
+            </p>
+          )}
+          {stopped && (
+            <div role="alert" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+              <p className="font-semibold text-amber-900">
+                {stopped === "failures"
+                  ? "Dejé de consultar: la API no respondió varias veces seguidas."
+                  : "Dejé de consultar: la carga lleva más de 2 horas sin terminar."}
+              </p>
+              <p className="mt-1 text-sm text-amber-800">
+                La carga sigue en el worker. Revisa que estén corriendo la API y el worker (pnpm
+                dev).
+              </p>
+              <button
+                type="button"
+                onClick={() => void run.refetch()}
+                disabled={run.isFetching}
+                className="mt-3 rounded-md bg-amber-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {run.isFetching ? "Consultando…" : "Consultar de nuevo"}
+              </button>
+            </div>
+          )}
           {data.error && (
             <ErrorAlert
               error={new ApiError(`${data.error.code}: ${data.error.message}`, data.error.code)}

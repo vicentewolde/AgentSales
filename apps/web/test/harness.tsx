@@ -14,9 +14,10 @@ import { configure, render } from "@testing-library/react";
 import { App } from "../src/App.js";
 import { createApiClient } from "../src/api/client.js";
 
-// `findBy…` y `waitFor` esperan hasta 5 s (1 s por defecto), como el timeout de cada test: con la
-// máquina o la CI cargadas, una página diferida o la API en proceso pueden tardar más de 1 s.
-configure({ asyncUtilTimeout: 5_000 });
+// `findBy…` y `waitFor` esperan hasta 4 s (1 s por defecto): con la máquina o la CI cargadas, una
+// página diferida o la API en proceso pueden tardar más de 1 s. Queda bajo el timeout de cada test
+// (5 s), para que una espera fallida muestre el mensaje de Testing Library.
+configure({ asyncUtilTimeout: 4_000 });
 
 export type UploadedForm = {
   file: { name: string; size: number } | null;

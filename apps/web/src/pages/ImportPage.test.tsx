@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { randomUUID } from "node:crypto";
-import type { ImportReport, NewImportRun } from "@agentsales/core";
+import { IMPORT_WAIT, type ImportReport, type NewImportRun } from "@agentsales/core";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { brokerData, harness, newListing } from "../../test/harness.js";
-import { IMPORT_POLL_MS, QUEUED_WARNING_MS } from "../queries/imports.js";
+import { pollStop } from "../queries/imports.js";
+
+const { pollMs: IMPORT_POLL_MS, queuedWarningMs: QUEUED_WARNING_MS } = IMPORT_WAIT;
 
 afterEach(() => {
   cleanup();
@@ -121,6 +123,7 @@ describe("panel: Importar", () => {
   it.each([
     [[], [], "Elige el Excel con las propiedades."],
     [[new File(["x"], "notas.txt")], [], "El archivo debe ser un Excel (.xlsx)."],
+    [[new File([], "vacio.xlsx")], [], "El Excel está vacío."],
     [[new File(["x"], "p.xlsx")], [new File(["x"], "fotos.rar")], "deben venir en un .zip"],
   ])("revisa los archivos antes de subir (%#)", async (files, media, message) => {
     const h = harness();
@@ -261,25 +264,96 @@ describe("panel: una carga", () => {
     expect(screen.getByText("falló")).toBeTruthy();
   });
 
-  it("al terminar una carga, Propiedades muestra lo recién cargado sin esperar la caché", async () => {
+  it("si la carga termina mientras se mira, Propiedades muestra lo nuevo sin esperar la caché", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const h = harness();
     const run = await h.importRuns.create(newRun());
     h.renderApp("/propiedades");
     await screen.findByText(/Todavía no hay propiedades/);
 
-    // Navega a la carga (la lista de propiedades queda en caché, vacía).
+    // A la carga, en curso (la lista de propiedades queda en caché, vacía).
     const menu = screen.getByRole("navigation", { name: "Menú principal" });
     fireEvent.click(within(menu).getByRole("link", { name: "Importar" }));
-    await finishRun(h, run.id);
     fireEvent.click(
       await within(await screen.findByRole("region", { name: "Cargas anteriores" })).findByRole(
         "link",
       ),
     );
+    await screen.findByText("En cola…");
+    await finishRun(h, run.id);
+    await advance(IMPORT_POLL_MS);
     await screen.findByText("terminada");
 
     fireEvent.click(screen.getByRole("link", { name: "Ver las propiedades →" }));
     expect(await screen.findByRole("link", { name: /P-001/ })).toBeTruthy();
+  });
+
+  it("abrir una carga que ya estaba terminada no vuelve a pedir las propiedades", async () => {
+    const h = harness();
+    const run = await h.importRuns.create(newRun());
+    await finishRun(h, run.id);
+    h.renderApp("/propiedades");
+    await screen.findByRole("link", { name: /P-001/ });
+    const listingRequests = () => h.requests.filter((r) => r.startsWith("GET /listings")).length;
+    const before = listingRequests();
+
+    const menu = screen.getByRole("navigation", { name: "Menú principal" });
+    fireEvent.click(within(menu).getByRole("link", { name: "Importar" }));
+    fireEvent.click(
+      await within(await screen.findByRole("region", { name: "Cargas anteriores" })).findByRole(
+        "link",
+      ),
+    );
+    // "terminada" también sale en el historial: se espera el enlace de la página de la carga.
+    fireEvent.click(await screen.findByRole("link", { name: "Ver las propiedades →" }));
+    await screen.findByRole("link", { name: /P-001/ });
+
+    expect(listingRequests()).toBe(before);
+  });
+
+  it("tras fallas seguidas deja de consultar, lo dice y deja consultar de nuevo", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let down = false;
+    const h = harness({
+      intercept: (_method, path) => {
+        if (down && path.startsWith("/imports/")) throw new TypeError("fetch failed");
+        return undefined;
+      },
+    });
+    const run = await h.importRuns.create(newRun());
+    h.renderApp(`/importar/${run.id}`);
+    await screen.findByText("En cola…");
+    const polls = () => h.requests.filter((r) => r === `GET /imports/${run.id}`).length;
+
+    down = true;
+    await advance(IMPORT_POLL_MS * 10);
+    expect(
+      await screen.findByText("Dejé de consultar: la API no respondió varias veces seguidas."),
+    ).toBeTruthy();
+    const stoppedAt = polls();
+    await advance(IMPORT_POLL_MS * 10);
+    expect(polls()).toBe(stoppedAt);
+
+    down = false;
+    await h.importRuns.markRunning(run.id);
+    fireEvent.click(screen.getByRole("button", { name: "Consultar de nuevo" }));
+    expect(await screen.findByText("Procesando el Excel y los medios…")).toBeTruthy();
+    expect(screen.queryByText(/Dejé de consultar/)).toBeNull();
+  });
+
+  it("a las 2 h de creada deja de consultar una carga que no termina", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const h = harness();
+    const run = await h.importRuns.create(newRun());
+    vi.setSystemTime(Date.now() + IMPORT_WAIT.maxWaitMs);
+    h.renderApp(`/importar/${run.id}`);
+
+    expect(
+      await screen.findByText("Dejé de consultar: la carga lleva más de 2 horas sin terminar."),
+    ).toBeTruthy();
+    const polls = h.requests.filter((r) => r === `GET /imports/${run.id}`).length;
+    await advance(IMPORT_POLL_MS * 5);
+    expect(h.requests.filter((r) => r === `GET /imports/${run.id}`)).toHaveLength(polls);
   });
 
   it.each([
@@ -289,5 +363,22 @@ describe("panel: una carga", () => {
     harness().renderApp(`/importar/${id()}`);
 
     expect(await screen.findByText("Esta carga no existe.")).toBeTruthy();
+  });
+});
+
+describe("pollStop", () => {
+  const createdAt = new Date(2026, 9, 2, 10, 0);
+  const at = (ms: number) => createdAt.getTime() + ms;
+
+  it("sigue mientras la carga corre, sin fallas y antes de las 2 h", () => {
+    expect(pollStop({ status: "running", createdAt }, 2, at(IMPORT_WAIT.maxWaitMs - 1))).toBeNull();
+  });
+
+  it("para tras 3 fallas seguidas o a las 2 h, y nunca en una carga terminada", () => {
+    expect(pollStop({ status: "queued", createdAt }, 3, at(0))).toBe("failures");
+    expect(pollStop({ status: "running", createdAt }, 0, at(IMPORT_WAIT.maxWaitMs))).toBe(
+      "max-wait",
+    );
+    expect(pollStop({ status: "failed", createdAt }, 5, at(IMPORT_WAIT.maxWaitMs))).toBeNull();
   });
 });

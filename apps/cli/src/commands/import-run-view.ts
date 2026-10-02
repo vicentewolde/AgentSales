@@ -1,5 +1,9 @@
 import type { ImportRunView } from "@agentsales/api/contracts";
-import { IMPORT_BROKER_OUTCOME_TEXT, IMPORT_RUN_STATUS_TEXT } from "@agentsales/core";
+import {
+  IMPORT_BROKER_OUTCOME_TEXT,
+  IMPORT_RUN_STATUS_TEXT,
+  importReportIssues,
+} from "@agentsales/core";
 import type { Colors } from "../colors.js";
 import { formatDateTime, renderTable } from "../output.js";
 
@@ -67,17 +71,13 @@ export function renderImportRun(run: ImportRunView, c: Colors): string {
     }
   }
 
-  const errors = [
-    ...(report.broker?.issues ?? []).map((issue) => ["Corredor", "—", issue.column, issue.message]),
-    ...report.rows.flatMap((row) =>
-      row.errors.map((issue) => [
-        String(row.rowNumber),
-        row.externalRef ?? "—",
-        issue.column,
-        issue.message,
-      ]),
-    ),
-  ];
+  const issues = importReportIssues(report);
+  const errors = issues.errors.map((issue) => [
+    issue.rowNumber === null ? "Corredor" : String(issue.rowNumber),
+    issue.externalRef ?? "—",
+    issue.column,
+    issue.message,
+  ]);
   if (errors.length > 0) {
     lines.push(
       "",
@@ -86,15 +86,7 @@ export function renderImportRun(run: ImportRunView, c: Colors): string {
     );
   }
 
-  const warnings = [
-    ...(report.broker?.warnings ?? []).map((warning) => `Corredor: ${warning}`),
-    ...report.rows.flatMap((row) =>
-      row.warnings.map(
-        (warning) =>
-          `Fila ${row.rowNumber}${row.externalRef ? ` (${row.externalRef})` : ""}: ${warning}`,
-      ),
-    ),
-  ];
+  const { warnings } = issues;
   if (warnings.length > 0) {
     lines.push(
       "",

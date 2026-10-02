@@ -58,10 +58,17 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
   - **Páginas:** `/importar` (formulario y cargas anteriores) e `/importar/:id` (progreso, aviso de cola a los 20 s y reporte con filas, errores por fila y columna y advertencias). "Importar" en el menú.
   - **Sondeo:** cada 2 s solo mientras la carga corre. Al terminar se invalidan propiedades, corredores y cargas, así Propiedades muestra lo nuevo sin esperar la caché.
   - **Subidas:** timeout propio de 10 min; el formulario revisa la extensión y el tope del Excel antes de subir.
-  - **Core:** `IMPORT_BROKER_OUTCOME_TEXT` e `IMPORT_ROW_OUTCOME_TEXT` (también en la CLI).
+  - **Core:** `IMPORT_BROKER_OUTCOME_TEXT` (también en la CLI) e `IMPORT_ROW_OUTCOME_TEXT`.
   - **Hallazgo:** los contratos tipaban el archivo subido con `z.instanceof(File)`, que le pasaba al panel el `File` de Node (desde T11). Ahora es `z.custom<File>`; anotado en arquitectura.
   - **Tests:** el arnés reenvía la subida a `/imports/local` (jsdom no puede mandar archivos a la API en proceso); reloj simulado que avanza solo para las páginas diferidas.
   - **Prueba en el navegador** con API, worker y panel contra Neon: la plantilla con `demo` y "Solo simular" se sube por el proxy (con `Origin`), la API responde `202`, el worker la procesa y la página deja de consultar al terminar. Apagados al terminar.
+  - **Correcciones de `/revisar`:**
+    - **El sondeo del panel no tenía tope:** ahora para a las 2 h o tras 3 fallas seguidas (`IMPORT_WAIT` en core, compartido con la CLI) y ofrece "Consultar de nuevo". Al probarlo apareció que el contador de fallas de TanStack se reinicia en cada consulta: el panel cuenta las suyas.
+    - Una carga terminada no se vuelve a pedir, y abrir una vieja no refresca Propiedades.
+    - `importReportIssues` en core (CLI y panel). Extensiones en `contracts`.
+    - Guardia: un test rechaza `z.instanceof(` en `contracts`.
+    - Tests nuevos: la subida real del cliente del panel a la API (en Node), el timeout de subida y los archivos que no son archivos en la API.
+    - Textos: timeout de subida en minutos, "El Excel está vacío", aviso de simulación en los contadores; aviso de cola fuera del `aria-live`.
   - **Demo pendiente:** con las 3 propiedades de muestra.
 - 2026-10-02: **F1-T13.** Panel: patrón, Propiedades y Detalle.
   - **API:** el detalle trae `fields` (etiquetas de los atributos, con las definiciones efectivas del corredor); `AppDeps.fieldDefinitions`. La CLI también las muestra.
