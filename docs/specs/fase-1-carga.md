@@ -531,7 +531,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
     - ruta relativa resuelta contra `INIT_CWD`
     - archivo inexistente → error antes de llamar a la API
     - API caída → mensaje claro con código de salida ≠ 0
-  - [ ] Demo (pendiente: faltan las propiedades de muestra del operador; la prueba de humo con la plantilla y `--dry-run` contra Neon pasó): `pnpm cli import data/muestras/propiedades.xlsx --media data/muestras/medios` funciona con las 3 propiedades reales de muestra
+  - [x] Demo (2026-10-02): `pnpm cli import data/muestras/propiedades.xlsx --media data/muestras/medios` funciona con las 3 propiedades reales de muestra: 3 creadas y 12 archivos subidos; repetida, todo sin cambios y sin subir nada
 
 ### F1-T13 · Panel: patrón, Propiedades y Detalle
 - **Depende de:** T10
@@ -596,7 +596,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Descripción:** subir el xlsx y el zip (con el selector de corredor), y ver el progreso, el aviso de `queued` y el reporte por fila y columna.
 - **Hecho cuando:**
   - [x] Tests de componentes: envío del formulario, sondeo que se detiene en un estado terminal, aviso de `queued` y tabla de errores
-  - [ ] Demo: flujo completo desde el navegador con los archivos de muestra (pendiente: faltan las propiedades de muestra del operador; el flujo con la plantilla y "Solo simular" contra Neon pasó)
+  - [x] Demo (2026-10-02): flujo completo desde el navegador con los archivos de muestra (xlsx y zip de medios): "en cola" y luego el reporte, con 3 sin cambios y 12 archivos que ya estaban
 
 ### F1-T15 · Cierre de fase
 - **Depende de:** todas

@@ -23,18 +23,19 @@
 | F1-T09 Job import.run | ✅ terminada | #23 |
 | F1-T10 Contratos HTTP y API de lectura | ✅ terminada | #24 |
 | F1-T11 API de importación | ✅ terminada | #25 |
-| F1-T12 CLI de importación y consulta | ✅ terminada (demo pendiente) | #26 |
+| F1-T12 CLI de importación y consulta | ✅ terminada (demo hecha el 2026-10-02) | #26 |
 | F1-T13 Panel: patrón, Propiedades y Detalle | ✅ terminada | #27 |
-| F1-T14 Panel: Importar | ✅ terminada (demo pendiente) | |
+| F1-T14 Panel: Importar | ✅ terminada (demo hecha el 2026-10-02) | #28 |
 | F1-T15 Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- [ ] Preparar las 3 propiedades de muestra ("Antes de F1" en `docs/07-checklist-cuentas.md`). Hacen falta para la demo pendiente de F1-T12 (`pnpm -s cli import data/muestras/propiedades.xlsx --media data/muestras/medios`) y la de T14
+- [x] Preparar las 3 propiedades de muestra ("Antes de F1" en `docs/07-checklist-cuentas.md`): listas el 2026-10-02 (P001, P002 y P003, corredor `agentsales-pruebas`)
 - [ ] Iniciar el trámite de la app de Meta (lento, en paralelo; se usa en F3)
 
 ## Deuda técnica
+- **Validación de números:** las definiciones de campo no tienen mínimo ni máximo, así que `dormitorios = -2` o `banos = -1` pasan (visto en la demo 4 de F1). Proponer `min` y `max` en `FieldDefinition` en el spec de la fase que lo tome; el precio ya exige ser mayor que 0.
 - **F7:** `GET /listings` devuelve la entidad completa: notas internas, dirección exacta y todos los atributos. Es aceptable mientras la API sea local (`hostGuard`). Con autenticación y despliegue, usar una proyección acotada para la lista.
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
@@ -54,6 +55,14 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - `--broker` se normaliza con `slugify` solo en la CLI: `POST /imports/local` con `"Mi Corredor"` da `BROKER_NOT_FOUND`. Hoy no importa (el panel usa un selector); si aparece otro cliente, normalizar en core (`requestImport`).
 
 ## Notas de la última sesión
+- 2026-10-02: **Demos reales de F1** (plan de demo, spec §7), contra Neon y R2 y sin publicar nada:
+  1. `pnpm -s cli import data/muestras/propiedades.xlsx --media data/muestras/medios`: 3 creadas, 12 archivos subidos, corredor `agentsales-pruebas` creado. P001 con portada `02_living.jpg` (la 2/4 de la galería).
+  2. El mismo comando: 3 sin cambios y 12 archivos que ya estaban, sin subir nada.
+  3. Copia con el precio de P003 cambiado (exportada desde Google Sheets): 1 actualizada y 2 sin cambios. La exportación de Sheets se lee igual que el Excel original.
+  4. Copia con una fila P004 con errores: el reporte muestra fila 6 con `operacion` («Permuta» no es una opción válida), `comuna` (falta el valor) y `precio` («mucho» no es un número); las otras 3 quedan sin cambios y la CLI sale con código 1.
+  5. Panel → Propiedades → Detalle: las 3 con portada, precio en formato chileno (`UF 6.200`, `$1.400.000/mes`, `UF 5.600`), estado Lista, atributos con etiqueta, dirección oculta en P001 y P002 y visible en P003, y el video de P002 (6 s) se reproduce.
+  6. Panel → Importar con el xlsx y el zip de medios (comprimido en Finder): "en cola" y luego el reporte con 3 sin cambios y 12 archivos que ya estaban.
+  - Visto en las demos y anotado como deuda: `dormitorios = -2` pasa la validación, porque las definiciones de campo no tienen mínimos.
 - 2026-10-02: **F1-T14.** Panel: Importar.
   - **Páginas:** `/importar` (formulario y cargas anteriores) e `/importar/:id` (progreso, aviso de cola a los 20 s y reporte con filas, errores por fila y columna y advertencias). "Importar" en el menú.
   - **Sondeo:** cada 2 s solo mientras la carga corre. Al terminar se invalidan propiedades, corredores y cargas, así Propiedades muestra lo nuevo sin esperar la caché.
