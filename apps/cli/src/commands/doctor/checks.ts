@@ -1,6 +1,6 @@
-import type { Env, EnvIssue } from "@agentsales/config";
 import type { HealthReport, PublishMode } from "@agentsales/core";
-import { ApiCallError, type HealthFetcher } from "./api-client.js";
+import { apiHint, type HealthFetcher } from "../../api-client.js";
+import type { EnvResult } from "../../env.js";
 
 export type Level = "ok" | "warn" | "error";
 
@@ -12,10 +12,6 @@ export type CheckItem = {
   /** `danger`: se destaca en rojo aunque sea una advertencia (`PUBLISH_MODE=live`). */
   emphasis?: "danger";
 };
-
-export type EnvResult =
-  | { ok: true; env: Env }
-  | { ok: false; fileFound: boolean; issues: readonly EnvIssue[] };
 
 /** Ejecuta un comando y devuelve su salida; lanza si no existe, falla o tarda demasiado. */
 export type RunCommand = (command: string, args: readonly string[]) => Promise<string>;
@@ -101,17 +97,6 @@ const SERVICES = {
 } as const;
 
 type ServiceKey = keyof typeof SERVICES;
-
-/** Sugerencia según el motivo por el que la API no respondió. */
-export function apiHint(error: unknown): string {
-  if (error instanceof ApiCallError && error.code === "HOST_NOT_ALLOWED") {
-    return "La API rechazó el Host: revisa que API_PORT coincida con el de la API";
-  }
-  if (error instanceof ApiCallError && error.code === "UNEXPECTED_RESPONSE") {
-    return "Otro proceso usa el puerto: ciérralo o cambia API_PORT, y levanta pnpm dev";
-  }
-  return "Levántala con pnpm dev";
-}
 
 /** API más db, storage y cola, todo desde `/health` (la CLI no duplica los checks). */
 export async function checkServices(

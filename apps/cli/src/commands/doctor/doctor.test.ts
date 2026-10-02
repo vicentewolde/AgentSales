@@ -1,9 +1,9 @@
 import { loadEnv } from "@agentsales/config";
 import type { HealthReport } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
+import { createColors } from "../../colors.js";
 import type { RunCommand } from "./checks.js";
-import { createColors } from "./colors.js";
-import { type DoctorDeps, renderDoctor, runDoctor } from "./doctor.js";
+import { type DoctorDeps, renderDoctor, runDoctor } from "./index.js";
 
 const env = loadEnv({
   DATABASE_URL: "postgresql://o:fake-pass@ep-test.neon.tech/db?sslmode=require",

@@ -4,9 +4,9 @@ import type { HealthReport } from "@agentsales/core";
 import { AppError } from "@agentsales/core";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
-import { testDeps } from "../test/app-deps.js";
 import { type AppDeps, createApp } from "./app.js";
 import type { ErrorBody } from "./errors.js";
+import { testDeps } from "./testing/index.js";
 
 const silentLogger = createLogger(
   { level: "silent" },

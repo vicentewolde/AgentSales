@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { createHealthFetcher } from "./api-client.js";
 import { colors } from "./colors.js";
-import { renderDoctor, runDoctor } from "./doctor.js";
-import { apiPort, loadEnvironment } from "./env.js";
-import { runStatus } from "./status.js";
-import { findChromium, runCommand } from "./system.js";
+import * as doctor from "./commands/doctor/index.js";
+import * as importCommand from "./commands/import.js";
+import * as imports from "./commands/imports.js";
+import * as listing from "./commands/listing.js";
+import * as listings from "./commands/listings.js";
+import * as status from "./commands/status.js";
+import { createContext } from "./context.js";
 import { readCliVersion } from "./version.js";
 
 const program = new Command()
@@ -13,31 +15,11 @@ const program = new Command()
   .description("CLI de AgentSales")
   .version(readCliVersion());
 
-program
-  .command("doctor")
-  .description("Revisa el entorno: .env, API, base, almacenamiento, cola y herramientas")
-  .action(async () => {
-    const env = loadEnvironment();
-    const report = await runDoctor({
-      nodeVersion: process.version,
-      env,
-      fetchHealth: createHealthFetcher(apiPort(env)),
-      run: runCommand,
-      chromiumDir: findChromium(),
-    });
-    console.log(renderDoctor(report, colors));
-    process.exitCode = report.exitCode;
-  });
-
-program
-  .command("status")
-  .description("Estado de la API (/health) y PUBLISH_MODE")
-  .action(async () => {
-    const env = loadEnvironment();
-    const result = await runStatus(createHealthFetcher(apiPort(env)), colors);
-    console.log(result.text);
-    process.exitCode = result.exitCode;
-  });
+// Un comando por archivo (spec F1-T12), cada uno con su `register`.
+const ctx = createContext();
+for (const command of [doctor, status, importCommand, imports, listings, listing]) {
+  command.register(program, ctx);
+}
 
 try {
   await program.parseAsync();

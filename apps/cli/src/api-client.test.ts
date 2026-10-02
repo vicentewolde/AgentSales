@@ -1,7 +1,14 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { ApiCallError, apiUrl, createHealthFetcher } from "./api-client.js";
+import { z } from "zod";
+import {
+  ApiCallError,
+  apiUrl,
+  createApiClient,
+  createHealthFetcher,
+  unwrap,
+} from "./api-client.js";
 
 const healthy = {
   status: "ok",
@@ -40,21 +47,22 @@ describe("createHealthFetcher", () => {
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(healthy));
     });
 
-    expect(await createHealthFetcher(port)()).toEqual(healthy);
+    expect(await createHealthFetcher(createApiClient(port))()).toEqual(healthy);
   });
 
-  it("un error de la API se muestra como CODE: mensaje", async () => {
+  it("un error de la API se muestra como CODE: mensaje, con el status", async () => {
     const port = await serve((res) => {
       res
         .writeHead(403, { "Content-Type": "application/json" })
         .end(JSON.stringify({ error: { code: "HOST_NOT_ALLOWED", message: "Host no permitido" } }));
     });
 
-    const error = await createHealthFetcher(port)().catch((e: unknown) => e);
+    const error = await createHealthFetcher(createApiClient(port))().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiCallError);
     expect(error).toMatchObject({
       code: "HOST_NOT_ALLOWED",
       message: "HOST_NOT_ALLOWED: Host no permitido",
+      status: 403,
     });
   });
 
@@ -66,7 +74,7 @@ describe("createHealthFetcher", () => {
       res.writeHead(200, { "Content-Type": type }).end(body);
     });
 
-    await expect(createHealthFetcher(port)()).rejects.toMatchObject({
+    await expect(createHealthFetcher(createApiClient(port))()).rejects.toMatchObject({
       code: "UNEXPECTED_RESPONSE",
     });
   });
@@ -76,7 +84,9 @@ describe("createHealthFetcher", () => {
       // nunca responde
     });
 
-    await expect(createHealthFetcher(port, 100)()).rejects.toMatchObject({
+    await expect(
+      createHealthFetcher(createApiClient(port, { timeoutMs: 100 }))(),
+    ).rejects.toMatchObject({
       code: "TIMEOUT",
       message: "sin respuesta en 0 s",
     });
@@ -87,8 +97,32 @@ describe("createHealthFetcher", () => {
     await new Promise<void>((resolve) => server?.close(() => resolve()));
     server = undefined;
 
-    await expect(createHealthFetcher(port, 2_000)()).rejects.toMatchObject({
-      code: "ECONNREFUSED",
+    await expect(
+      createHealthFetcher(createApiClient(port, { timeoutMs: 2_000 }))(),
+    ).rejects.toMatchObject({ code: "ECONNREFUSED", status: undefined });
+  });
+});
+
+describe("unwrap", () => {
+  const response = (status: number, body: unknown) =>
+    new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
+  const schema = z.object({ hola: z.string() });
+
+  it("devuelve el cuerpo validado", async () => {
+    expect(await unwrap(response(200, { hola: "mundo" }), schema)).toEqual({ hola: "mundo" });
+  });
+
+  it("un error sin ErrorBody informa el status", async () => {
+    await expect(unwrap(response(502, "<html>proxy</html>"), schema)).rejects.toMatchObject({
+      message: "la API respondió 502",
+      code: undefined,
+      status: 502,
+    });
+  });
+
+  it("una respuesta exitosa con otra forma es UNEXPECTED_RESPONSE", async () => {
+    await expect(unwrap(response(200, { otra: 1 }), schema)).rejects.toMatchObject({
+      code: "UNEXPECTED_RESPONSE",
     });
   });
 });

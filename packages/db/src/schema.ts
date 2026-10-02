@@ -61,7 +61,9 @@ const timestamps = {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow()
-    .$onUpdate(() => new Date()),
+    // La hora de la base, como `defaultNow()`: con `new Date()` (milisegundos) un aviso tocado en
+    // el mismo milisegundo en que se creó otro (microsegundos) quedaba como "más antiguo".
+    .$onUpdate(() => sql`now()`),
 };
 
 // ── Tablas ───────────────────────────────────────────────────────────────

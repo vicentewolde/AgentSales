@@ -6,7 +6,6 @@ import {
   createInMemoryMediaRepository,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { testDeps } from "../../test/app-deps.js";
 import { createApp } from "../app.js";
 import {
   brokerListResponseSchema,
@@ -15,6 +14,7 @@ import {
   listingListResponseSchema,
   listingStatusResponseSchema,
 } from "../contracts/index.js";
+import { testDeps } from "../testing/index.js";
 
 /** Aviso sintético (datos inventados). */
 const newListing = (brokerId: string, externalRef: string, extra: Partial<NewListing> = {}) => ({
@@ -121,6 +121,9 @@ describe("GET /listings", () => {
     expect(await refs("comuna=Providencia")).toEqual(["P001", "P002"]);
     expect(await refs("status=ready")).toEqual(["P001"]);
     expect(await refs("operation=rent")).toEqual(["P002"]);
+    expect(await refs("externalRef=P003")).toEqual(["P003"]);
+    expect(await refs(`externalRef=${encodeURIComponent(" P003 ")}`)).toEqual(["P003"]);
+    expect(await refs("externalRef=p003")).toEqual([]);
   });
 
   it("un filtro inválido es 400 REQUEST_INVALID, con el campo en el mensaje", async () => {

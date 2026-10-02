@@ -99,6 +99,7 @@ export {
   type NewMedia,
 } from "./ports/media-repository.js";
 export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
+export { formatPrice } from "./price.js";
 export {
   ACTIVE_PUBLICATION_STATUSES,
   canTransition,

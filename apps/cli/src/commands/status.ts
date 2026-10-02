@@ -1,7 +1,8 @@
 import type { HealthReport } from "@agentsales/core";
-import type { HealthFetcher } from "./api-client.js";
-import { apiHint } from "./checks.js";
-import type { Colors } from "./colors.js";
+import type { Command } from "commander";
+import { apiHint, createHealthFetcher, type HealthFetcher } from "../api-client.js";
+import type { Colors } from "../colors.js";
+import type { CliContext } from "../context.js";
 
 export type StatusResult = { text: string; exitCode: 0 | 1 };
 
@@ -39,4 +40,15 @@ export async function runStatus(fetchHealth: HealthFetcher, c: Colors): Promise<
     ].join("\n"),
     exitCode: ok ? 0 : 1,
   };
+}
+
+export function register(program: Command, ctx: CliContext): void {
+  program
+    .command("status")
+    .description("Estado de la API (/health) y PUBLISH_MODE")
+    .action(async () => {
+      const result = await runStatus(createHealthFetcher(ctx.api()), ctx.colors);
+      ctx.print(result.text);
+      process.exitCode = result.exitCode;
+    });
 }

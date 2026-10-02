@@ -28,6 +28,8 @@ export const listingQuerySchema = z.object({
   status: z.enum(LISTING_STATUSES).optional(),
   operation: z.enum(OPERATIONS).optional(),
   comuna: z.string().trim().min(1).optional(),
+  /** `id_propiedad` exacto (la CLI: `agentsales listing <ref>`); se repite entre corredores. */
+  externalRef: z.string().trim().min(1).optional(),
 });
 export type ListingQuery = z.infer<typeof listingQuerySchema>;
 

@@ -496,6 +496,19 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T12 · CLI de importación y consulta
 - **Depende de:** T11
+- **Hecho en F1-T12:**
+  - **Dobles compartidos:** `apps/api/test/app-deps.ts` pasó a la subruta de solo tests `@agentsales/api/testing` (`testDeps`, `fakeUploads`, `silentLogger`), restringida con Biome como `core/testing`. La API y la CLI la usan.
+  - **`externalRef`:** filtro exacto en `ListingFilters`, en `listingQuerySchema` (con `trim`), en el doble y en Drizzle, con la suite de contrato. `listing` con `--broker` filtra en la CLI con `/brokers`, sin otro filtro en la API.
+  - **`formatPrice`** en core (`UF 5.800`, `UF 3.250,50`, `$650.000`), sin `Intl`; también lo usará el panel (T13).
+  - **Cliente:** `createApiClient(port, { timeoutMs, fetch })` convierte los fallos de red en `ApiCallError` (sin `status`), y `unwrap(res, schema)` lanza `CODE: mensaje` (con `status`) o `UNEXPECTED_RESPONSE`. `HealthFetcher` queda como un tipo de una línea sobre `unwrap`, para inyectar `/health` en `doctor` y `status`.
+  - **`import`:**
+    - `--broker` se normaliza con `slugify` (`Mi Corredor` → `mi-corredor`).
+    - `--no-wait` imprime solo el id en la salida estándar (el aviso va a la de errores), para usarlo en scripts.
+    - Al consultar, hasta 3 fallas seguidas de la API (sin respuesta o 5xx) se reintentan; un 4xx corta de inmediato.
+    - Código de salida: 1 si la carga falla, si alguna fila quedó con errores o si se deja de esperar a las 2 h.
+    - Si la API no acepta cargas locales (`ROUTE_NOT_FOUND`), `LOCAL_IMPORTS_DISABLED` con la sugerencia de `pnpm dev` o el panel.
+  - **`listing`:** un uuid va directo; si no, se busca por `externalRef`. Más de un resultado es `LISTING_AMBIGUOUS` y pide `--broker`.
+  - **Arreglo de paso:** `updated_at` toma la hora de la base al actualizar (`now()`, antes `new Date()` del proceso). Con milisegundos contra microsegundos, un aviso tocado en el mismo milisegundo en que se creó otro quedaba como "más antiguo", y el test de orden de la lista fallaba de vez en cuando.
 - **Desde la revisión de T11:** los tests de la CLI contra `createApp` necesitan armar `AppDeps` con dobles. Hoy `apps/api/test/app-deps.ts` (`testDeps`, `fakeUploads`) no es público. Se decide en el plan de T12: una subruta de solo tests, `@agentsales/api/testing`, restringida con Biome como `core/testing` (cabe en ADR-0010), o armar los dobles en la CLI.
 - **Desde la revisión de T10:** `agentsales listing <external_ref|id>` necesita buscar por `external_ref`, que es único **por corredor**.
   - Agregar un filtro exacto `externalRef` a `listingQuerySchema` y `ListingFilters`, un cambio aditivo.
@@ -507,7 +520,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - **Rutas:** relativas a `INIT_CWD ?? process.cwd()`, verificadas antes de llamar a la API.
   - **Tests:** contra la app real en proceso, con `hc<AppType>(url, { fetch: app.request })`, `createApp` y los repositorios en memoria, sin red.
 - **Hecho cuando:**
-  - [ ] Tests:
+  - [x] Tests:
     - resumen y tabla de errores
     - sondeo hasta `succeeded`
     - aviso de `queued` a los 20 s
@@ -515,7 +528,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
     - ruta relativa resuelta contra `INIT_CWD`
     - archivo inexistente → error antes de llamar a la API
     - API caída → mensaje claro con código de salida ≠ 0
-  - [ ] Demo: `pnpm cli import data/muestras/propiedades.xlsx --media data/muestras/medios` funciona con las 3 propiedades reales de muestra
+  - [ ] Demo (pendiente: faltan las propiedades de muestra del operador; la prueba de humo con la plantilla y `--dry-run` contra Neon pasó): `pnpm cli import data/muestras/propiedades.xlsx --media data/muestras/medios` funciona con las 3 propiedades reales de muestra
 
 ### F1-T13 · Panel: patrón, Propiedades y Detalle
 - **Depende de:** T10
@@ -607,3 +620,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Desde la revisión de F1-T10: `*_ROW_INVALID`, `IMPORT_RUN_INVALID` y `JOB_PAYLOAD_INVALID` responden 500; el JSON mal formado de `hono/validator` es `INVALID_JSON`; `ErrorBody` sale de `contracts`; `LISTING_MANUAL_TARGETS` en core; `contracts` sin `../`; corredores ordenados igual en Postgres y en memoria; `media` sin esquema en core (aclarado); notas en T12 (`externalRef`), T13 (etiquetas de atributos, TTL de las URLs) y F3 (tabla de estados provisional) |
 | 2026-10-01 | F1-T11: rutas `/imports` (multipart con `bodyLimit` y 413, `/imports/local` solo en desarrollo, lista y detalle con nombres de archivo); `createStaging` en `@agentsales/importers/staging` y `createErrorThrottle` en `@agentsales/config`; `NewImportRun.id` e `ImportRunRepository.list`; `MAX_IMPORT_UPLOAD_MB` |
 | 2026-10-01 | Desde la revisión de F1-T11: subidas guardadas en streaming (`File.stream()`) y `MAX_IMPORT_UPLOAD_MB` por defecto en 512; campos vacíos del formulario cuentan como no enviados; `saveInput` rechaza nombres con `\0` o de más de 255 bytes; `MAX_XLSX_BYTES` en core; `GET /imports` sin `report`; `IMPORT_RUN_CONFLICT` para un id repetido; rutas locales que terminan en `/` rechazadas; `stagingRootOf`; Biome impide que los adaptadores se importen entre sí; notas para T12 (`@agentsales/api/testing`), T14 (proxy y `Origin`) y F7 (roadmap) |
+| 2026-10-02 | F1-T12: CLI con `import`, `imports`, `listings` y `listing`; `@agentsales/api/testing` (subruta de solo tests); filtro `externalRef`; `formatPrice` en core; `--broker` normalizado con `slugify`; reintento de hasta 3 consultas fallidas; `updated_at` con la hora de la base al actualizar |
