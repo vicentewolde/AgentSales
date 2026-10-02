@@ -34,6 +34,7 @@ export {
 } from "./jobs.js";
 export {
   canChangeListingStatus,
+  LISTING_MANUAL_TARGETS,
   LISTING_MANUAL_TRANSITIONS,
   type Listing,
   type ListingFilters,

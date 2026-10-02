@@ -154,17 +154,20 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(await repos.brokers.findBySlug(slug)).toEqual(updated);
     });
 
-    it("list devuelve los corredores por nombre de marca", async () => {
+    it("list devuelve los corredores por nombre de marca, sin distinguir mayúsculas", async () => {
+      const c = await repos.brokers.create(
+        brokerData(unique("lista-c"), { brandName: "ZZ marca c" }),
+      );
       const b = await repos.brokers.create(
         brokerData(unique("lista-b"), { brandName: "ZZ Marca B" }),
       );
       const a = await repos.brokers.create(
-        brokerData(unique("lista-a"), { brandName: "ZZ Marca A" }),
+        brokerData(unique("lista-a"), { brandName: "zz marca a" }),
       );
       const listed = (await repos.brokers.list()).filter((broker) =>
-        broker.brandName.startsWith("ZZ"),
+        broker.brandName.toLowerCase().startsWith("zz"),
       );
-      expect(listed.map((broker) => broker.id)).toEqual([a.id, b.id]);
+      expect(listed.map((broker) => broker.id)).toEqual([a.id, b.id, c.id]);
       expect(listed[0]).toEqual(a);
     });
 

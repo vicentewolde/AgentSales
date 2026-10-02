@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger } from "@agentsales/config";
-import type { NewListing } from "@agentsales/core";
+import { AppError, type NewListing } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryListingRepository,
@@ -217,6 +217,23 @@ describe("PATCH /listings/:id/status", () => {
     expect((await errorOf(response)).error.code).toBe("INVALID_TRANSITION");
   });
 
+  it("un JSON mal formado es 400 INVALID_JSON, en español", async () => {
+    const { app, addListing } = await setup();
+    const listing = await addListing("P001");
+
+    const response = await app.request(`/listings/${listing.id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: "{",
+    });
+
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).error).toEqual({
+      code: "INVALID_JSON",
+      message: "El cuerpo de la petición no es JSON válido",
+    });
+  });
+
   it.each([{ status: "active" }, { status: "draft" }, {}, { status: 5 }])(
     "un cuerpo inválido (%j) es 400 REQUEST_INVALID",
     async (body) => {
@@ -240,5 +257,19 @@ describe("GET /brokers", () => {
     const response = await app.request("/brokers");
     expect(response.status).toBe(200);
     expect(brokerListResponseSchema.parse(await response.json())).toEqual({ brokers: [broker] });
+  });
+});
+
+describe("datos corruptos en la base", () => {
+  it("una fila inválida (LISTING_ROW_INVALID) es 500 con su código, no culpa del cliente", async () => {
+    const { app, listings } = await setup();
+    listings.list = async () => {
+      throw new AppError("LISTING_ROW_INVALID", "El aviso x tiene datos inválidos");
+    };
+
+    const response = await app.request("/listings");
+
+    expect(response.status).toBe(500);
+    expect((await errorOf(response)).error.code).toBe("LISTING_ROW_INVALID");
   });
 });

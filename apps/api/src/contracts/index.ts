@@ -4,6 +4,7 @@
 // e imports relativos (nada de Node ni de `@agentsales/config`).
 import {
   brokerSchema,
+  LISTING_MANUAL_TARGETS,
   LISTING_STATUSES,
   listingSchema,
   MEDIA_KINDS,
@@ -29,9 +30,7 @@ export const listingQuerySchema = z.object({
 export type ListingQuery = z.infer<typeof listingQuerySchema>;
 
 /** `PATCH /listings/:id/status`: solo hacia los estados manuales (`LISTING_MANUAL_TRANSITIONS`). */
-export const listingStatusBodySchema = z.object({
-  status: z.enum(["ready", "paused", "archived"]),
-});
+export const listingStatusBodySchema = z.object({ status: z.enum(LISTING_MANUAL_TARGETS) });
 export type ListingStatusBody = z.infer<typeof listingStatusBodySchema>;
 
 /** Un aviso tal como viaja en JSON: las fechas llegan como texto ISO y se vuelven `Date`. */
@@ -65,6 +64,7 @@ export const listingDetailResponseSchema = z.object({
 export type ListingDetailResponse = z.infer<typeof listingDetailResponseSchema>;
 
 export const listingStatusResponseSchema = z.object({ listing: listingJsonSchema });
+export type ListingStatusResponse = z.infer<typeof listingStatusResponseSchema>;
 
 export const brokerListResponseSchema = z.object({ brokers: z.array(brokerSchema) });
 export type BrokerListResponse = z.infer<typeof brokerListResponseSchema>;

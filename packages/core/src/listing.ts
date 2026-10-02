@@ -62,5 +62,12 @@ export const LISTING_MANUAL_TRANSITIONS: Readonly<Record<ListingStatus, readonly
     closed: [],
   };
 
+/** Estados a los que se puede pasar a mano (los destinos de la tabla), para validar la entrada. */
+export const LISTING_MANUAL_TARGETS = [
+  "ready",
+  "paused",
+  "archived",
+] as const satisfies readonly ListingStatus[];
+
 export const canChangeListingStatus = (from: ListingStatus, to: ListingStatus) =>
   LISTING_MANUAL_TRANSITIONS[from].includes(to);

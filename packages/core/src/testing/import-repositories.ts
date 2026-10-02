@@ -45,8 +45,11 @@ export function createInMemoryBrokerRepository(
       return found === undefined ? null : structuredCopy(found);
     },
     async list() {
+      // Como Postgres (`lower(brand_name) collate "C"`): sin mayúsculas y por bytes.
+      const key = (broker: Broker) => broker.brandName.toLowerCase();
+      const bytes = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
       return [...stored.values()]
-        .sort((a, b) => a.brandName.localeCompare(b.brandName, "es") || a.id.localeCompare(b.id))
+        .sort((a, b) => bytes(key(a), key(b)) || bytes(a.id, b.id))
         .map(structuredCopy);
     },
     async create(data: BrokerData) {

@@ -5,6 +5,10 @@ describe("httpStatusFor", () => {
   it.each([
     ["INVALID_TRANSITION", 409],
     ["JOB_PAYLOAD_INVALID", 500],
+    ["IMPORT_RUN_INVALID", 500],
+    ["LISTING_ROW_INVALID", 500],
+    ["BROKER_ROW_INVALID", 500],
+    ["REQUEST_INVALID", 400],
     ["QUEUE_UNAVAILABLE", 503],
     ["STORAGE_NOT_FOUND", 404],
     ["LISTING_NOT_FOUND", 404],

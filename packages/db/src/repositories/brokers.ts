@@ -5,7 +5,7 @@ import {
   type BrokerRepository,
   brokerSchema,
 } from "@agentsales/core";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
 import { brokers, media } from "../schema.js";
@@ -63,10 +63,12 @@ export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
   return {
     list() {
       return withDbErrors(async () => {
+        // Sin mayúsculas y por bytes ("C"): el mismo orden que el doble en memoria, sea cual sea la
+        // collation de la base.
         const rows = await db
           .select()
           .from(brokers)
-          .orderBy(asc(brokers.brandName), asc(brokers.id));
+          .orderBy(sql`lower(${brokers.brandName}) collate "C"`, asc(brokers.id));
         return rows.map(toBroker);
       });
     },

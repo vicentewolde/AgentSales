@@ -11,6 +11,7 @@ import {
   idParamSchema,
   type ListingDetailResponse,
   type ListingListResponse,
+  type ListingStatusResponse,
   listingQuerySchema,
   listingStatusBodySchema,
 } from "../contracts/index.js";
@@ -72,11 +73,13 @@ export function listingRoutes(deps: ListingRoutesDeps) {
       validated("param", idParamSchema),
       validated("json", listingStatusBodySchema),
       async (c) => {
+        // Pasar al mismo estado (un doble clic) también es 409: la tabla no tiene `x → x`.
         const listing: Listing = await changeListingStatus(deps, {
           listingId: c.req.valid("param").id,
           status: c.req.valid("json").status,
         });
-        return c.json({ listing }, 200);
+        const body: ListingStatusResponse = { listing };
+        return c.json(body, 200);
       },
     );
 }

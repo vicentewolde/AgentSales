@@ -21,7 +21,7 @@
 | F1-T07b MediaRepository en Drizzle y checksum en R2 | ✅ terminada | #21 |
 | F1-T08 Paquete de cola | ✅ terminada | #22 |
 | F1-T09 Job import.run | ✅ terminada | #23 |
-| F1-T10 Contratos HTTP y API de lectura | ✅ terminada | |
+| F1-T10 Contratos HTTP y API de lectura | ✅ terminada | #24 |
 | F1-T11 API de importación | ⏳ pendiente | |
 | F1-T12 CLI de importación y consulta | ⏳ pendiente | |
 | F1-T13 Panel: patrón, Propiedades y Detalle | ⏳ pendiente | |
@@ -35,6 +35,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - [ ] Iniciar el trámite de la app de Meta (lento, en paralelo; se usa en F3)
 
 ## Deuda técnica
+- **F7:** `GET /listings` devuelve la entidad completa: notas internas, dirección exacta y todos los atributos. Es aceptable mientras la API sea local (`hostGuard`). Con autenticación y despliegue, usar una proyección acotada para la lista.
 - Panel: bundle de 660 kB (201 kB gzip). Queda hasta F7 (D5 del spec F1); F1-T13 solo agrega `React.lazy`.
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
@@ -59,6 +60,14 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
   - **Rutas:** `/listings` (con la portada como URL firmada), `/listings/:id` (con sus medios), `PATCH /listings/:id/status` y `/brokers`.
   - La web y la CLI usan el `errorBodySchema` compartido; `@agentsales/api` pasa a `dependencies`. La web compila.
   - **Tests:** de rutas con `app.request` y dobles en memoria. Probé 4 mutaciones y todas hacen fallar algún test.
+  - **Correcciones de `/revisar`:**
+    - Una fila corrupta en la base (`*_ROW_INVALID`) responde 500 con su código, no 400.
+    - Un JSON mal formado da `INVALID_JSON` en español, también desde `hono/validator`.
+    - `ErrorBody` sale de `contracts`.
+    - `LISTING_MANUAL_TARGETS` en core.
+    - `contracts` sin `../`, con su test.
+    - Corredores ordenados igual en Postgres y en memoria (sin mayúsculas, por bytes).
+    - Quedaron anotados: `externalRef` para T12; etiquetas de atributos y TTL de las URLs para T13; la tabla de estados provisional para F3; la lista completa como deuda de F7.
 - 2026-10-01: **F1-T09.** Job `import.run`.
   - **Core:**
     - `requestImport`: crea el run y encola; con `QUEUE_UNAVAILABLE`, deja el run en `failed` y borra el staging.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isAppError } from "../errors.js";
-import { LISTING_MANUAL_TRANSITIONS } from "../listing.js";
+import { LISTING_MANUAL_TARGETS, LISTING_MANUAL_TRANSITIONS } from "../listing.js";
 import { createInMemoryListingRepository } from "../testing/import-repositories.js";
 import { createInMemoryMediaRepository } from "../testing/media.js";
 import { changeListingStatus } from "./change-listing-status.js";
@@ -55,7 +55,8 @@ async function caught(promise: Promise<unknown>) {
 describe("changeListingStatus", () => {
   it("las transiciones manuales: solo hacia ready, paused o archived; active y closed no se tocan", () => {
     const targets = new Set(Object.values(LISTING_MANUAL_TRANSITIONS).flat());
-    expect([...targets].sort()).toEqual(["archived", "paused", "ready"]);
+    // La API valida contra `LISTING_MANUAL_TARGETS`: tiene que ser exactamente la tabla.
+    expect([...targets].sort()).toEqual([...LISTING_MANUAL_TARGETS].sort());
     expect(LISTING_MANUAL_TRANSITIONS.active).toEqual([]);
     expect(LISTING_MANUAL_TRANSITIONS.closed).toEqual([]);
   });
