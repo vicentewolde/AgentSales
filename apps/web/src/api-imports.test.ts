@@ -9,7 +9,10 @@ function appFiles(dir = SRC): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) return appFiles(path);
-    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+    // `*.biome-probe.ts`: archivos de un instante del test de fronteras de Biome (`apps/api/test`),
+    // que puede correr en paralelo.
+    const app = /\.tsx?$/.test(entry.name) && !/\.(test|biome-probe)\.tsx?$/.test(entry.name);
+    return app ? [path] : [];
   });
 }
 
