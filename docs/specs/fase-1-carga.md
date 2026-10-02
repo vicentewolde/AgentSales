@@ -119,7 +119,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
   - Si no cambió → `skipped`; si cambió → `updated`.
 - **Fila con errores:** una fila con cualquier error de validación no se crea ni se actualiza, y cuenta en `rows_failed`. Si ya existía, se conserva la versión anterior.
 - **Estado del listing:**
-  - Una propiedad válida queda en `ready` si `estado_carga = Listo` y tiene al menos una foto. Si no, queda en `draft` con advertencia.
+  - Una propiedad válida queda en `ready` si `estado_carga = Listo` y tiene al menos una foto. Con `Listo` y sin fotos queda en `draft` con advertencia; con `Borrador`, la fila se ignora.
   - Reimportar no pisa un estado puesto a mano (`paused`, `archived`) ni los de F3+ (`active`, `closed`).
 - **Medios en cada importación:** `ingestMedia` corre también para las filas `skipped`, así que agregar fotos a la carpeta sin tocar el Excel sí las sube.
 - **Reintentos:** si el job se reintenta, lo que el primer intento ya creó aparece como `skipped` en el reporte final.
@@ -145,7 +145,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 - **Staging:**
   - `tmp/imports/{id}/input/` guarda el xlsx y el zip subidos. Se borra solo cuando el run llega a un estado terminal (`succeeded` o `failed`), para no perderlos entre reintentos.
   - `extracted-{uuid}/` es de un intento y se borra en un `finally`.
-  - Al arrancar, el worker limpia los directorios de runs terminales y los de más de 24 h.
+  - Al arrancar, el worker limpia los directorios de runs terminales, los sin run de más de 10 minutos (`STAGING_ORPHAN_GRACE_MS`) y los de más de 24 h.
 - Una propiedad sin ninguna foto queda en `draft` con advertencia (mínimo 1 foto para `ready`).
 
 ### 4.4 Contratos
@@ -162,9 +162,9 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 - **Entrada:** se valida con zod mediante un helper propio sobre `hono/validator`, que lanza `AppError("REQUEST_INVALID")`. No se usa `@hono/zod-validator`, que sería una dependencia nueva.
 - **Salida:** se tipa con los esquemas de `@agentsales/api/contracts`.
 - **Lógica:** crear el run y encolar (`requestImport`) y las reglas de estado (`changeListingStatus`) son casos de uso de core, no código de las rutas.
-- **`/imports/local`:** se habilita con `AppDeps.localImports`, que `server.ts` activa cuando `NODE_ENV=development`.
+- **`/imports/local`:** se habilita con `AppDeps.localImports`, que `server.ts` activa cuando `NODE_ENV=development`. `NODE_ENV` vale `development` por defecto, así que la ruta está activa en local; F7 fija `production` al desplegar.
 - **Límites:**
-  - `c.req.parseBody()` carga el multipart completo en memoria. Por eso el tope es `MAX_IMPORT_UPLOAD_MB` (nueva variable, default 1024) para todo el cuerpo, con `bodyLimit`.
+  - Tope de todo el cuerpo: `MAX_IMPORT_UPLOAD_MB` (nueva variable, default 512), con `bodyLimit`. Hono lee el multipart completo, y los archivos se escriben a disco en streaming (`File.stream()`), así que el pico ronda las 2 veces el cuerpo.
   - El xlsx no puede pasar de 10 MB; eso se verifica después de leer el cuerpo.
   - En F7, con despliegue, la subida pasa a ser directa a R2 con una URL prefirmada (deuda).
 - **Errores de cola:** `QUEUE_NOT_INITIALIZED` (hoy 500) se unifica con `QUEUE_UNAVAILABLE` (503).
@@ -268,16 +268,16 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Helper `DB_UNAVAILABLE` (§4.1).
   - Actualización de `02-modelo-datos.md`.
 - **Hecho cuando:**
-  - [ ] Tests: el seed cubre exactamente `TEMPLATE_COLUMNS`; el helper traduce `ECONNREFUSED` y un timeout a `DB_UNAVAILABLE` reintentable
-  - [ ] Tests con PGlite que aplican `0000` y `0001`, y prueban que el seed es idempotente y que el único de `field_definitions` impide dos globales con el mismo `key`
-  - [ ] Demo: `pnpm db:migrate` aplica `0001` en Neon, `pnpm db:generate` no genera cambios y `pnpm db:seed` dos veces deja 36 definiciones globales
+  - [x] Tests: el seed cubre exactamente `TEMPLATE_COLUMNS`; el helper traduce `ECONNREFUSED` y un timeout a `DB_UNAVAILABLE` reintentable
+  - [x] Tests con PGlite que aplican `0000` y `0001`, y prueban que el seed es idempotente y que el único de `field_definitions` impide dos globales con el mismo `key`
+  - [x] Demo: `pnpm db:migrate` aplica `0001` en Neon, `pnpm db:generate` no genera cambios y `pnpm db:seed` dos veces deja 36 definiciones globales
 
 ### F1-T02 · Validador dinámico
 - **Depende de:** T01
 - **Descripción:** `buildListingValidator(defs)` en core devuelve un esquema zod y un normalizador (§4.2), con `CORE_FIELD_TARGETS`, `_extra` para las columnas desconocidas y la definición del corredor sobre la global.
 - **Hecho cuando:**
-  - [ ] Tests: fila válida, obligatorio faltante, enum inválido, número con puntos, `Sí/No`, listas, `Venta` → `sale` y columna desconocida
-  - [ ] Test que prueba que un campo agregado solo en la base de datos se valida sin cambiar código
+  - [x] Tests: fila válida, obligatorio faltante, enum inválido, número con puntos, `Sí/No`, listas, `Venta` → `sale` y columna desconocida
+  - [x] Test que prueba que un campo agregado solo en la base de datos se valida sin cambiar código
 
 ### F1-T03 · Lector de Excel
 - **Depende de:** T01 (por `TEMPLATE_COLUMNS`)
@@ -286,8 +286,8 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Aplana las celdas de exceljs a `RawCell`: hipervínculo → texto, texto enriquecido → texto plano, fórmula → resultado. El validador rechaza cualquier otro objeto, incluidos los errores de Excel, con `FIELD_VALUE_INVALID`.
   - Topes: 10 MB y 1000 filas de datos (`IMPORT_FILE_NOT_FOUND` / `IMPORT_FILE_INVALID`, con el nombre del archivo y sin la ruta).
 - **Hecho cuando:**
-  - [ ] Test contra la plantilla real: sus encabezados son exactamente `TEMPLATE_COLUMNS`
-  - [ ] Fixtures sintéticos (sin datos reales): válido, con errores, con columnas extra, con la hoja Corredor vacía y exportado desde Google Sheets, con un test para cada uno. El de Google Sheets es una **simulación** armada con exceljs: hojas renombradas, texto, booleanos y filas vacías. Un export real con datos inventados se puede agregar en `packages/importers/test/fixtures/`.
+  - [x] Test contra la plantilla real: sus encabezados son exactamente `TEMPLATE_COLUMNS`
+  - [x] Fixtures sintéticos (sin datos reales): válido, con errores, con columnas extra, con la hoja Corredor vacía y exportado desde Google Sheets, con un test para cada uno. El de Google Sheets es una **simulación** armada con exceljs: hojas renombradas, texto, booleanos y filas vacías. Un export real con datos inventados se puede agregar en `packages/importers/test/fixtures/`.
 
 ### F1-T04 · Caso de uso importListings
 - **Depende de:** T02, T03
@@ -303,12 +303,12 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Esquema `importReport` en core. También `LISTING_CATEGORIES` en core, que el seed de db pasa a usar.
   - `toDbError` guarda como `cause` el error del driver, no el `DrizzleQueryError` con los `params` de la consulta.
 - **Hecho cuando:**
-  - [ ] Test de idempotencia (dos importaciones: la segunda dice `skipped`)
-  - [ ] Test de actualización (cambia el precio → `updated`)
-  - [ ] Test: una fila con errores no se escribe ni detiene las demás, y el reporte trae fila, columna y motivo
-  - [ ] Test: `dryRun` no escribe nada salvo el `import_run`
-  - [ ] Test: reimportar no pisa un `status` puesto a mano
-  - [ ] Tests de la hoja Corredor: crea el broker, lo actualiza, `BROKER_NOT_FOUND` y `BROKER_INVALID`
+  - [x] Test de idempotencia (dos importaciones: la segunda dice `skipped`)
+  - [x] Test de actualización (cambia el precio → `updated`)
+  - [x] Test: una fila con errores no se escribe ni detiene las demás, y el reporte trae fila, columna y motivo
+  - [x] Test: `dryRun` no escribe nada salvo el `import_run`
+  - [x] Test: reimportar no pisa un `status` puesto a mano
+  - [x] Tests de la hoja Corredor: crea el broker, lo actualiza, `BROKER_NOT_FOUND` y `BROKER_INVALID`
 
 ### F1-T04b · Repositorios Drizzle de brokers, listings e import_runs
 - **Depende de:** T04
@@ -320,14 +320,14 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - `get` valida `report` e `input` (jsonb) con sus esquemas.
   - **Migración `0002`:** `import_runs.report` pasa a admitir `null` y pierde su default (`null` hasta que `importListings` registra), y los `'{}'` existentes pasan a `NULL`. Actualizar `02-modelo-datos.md`.
 - **Hecho cuando:**
-  - [ ] Tests con PGlite de los repositorios (upsert por `external_ref`), con los mismos casos que los dobles en memoria, incluidos los conflictos, `update` que no pisa `status` y la migración `0002`
+  - [x] Tests con PGlite de los repositorios (upsert por `external_ref`), con los mismos casos que los dobles en memoria, incluidos los conflictos, `update` que no pisa `status` y la migración `0002`
 
 ### F1-T05 · Almacenamiento con streams
 - **Depende de:** F0
 - **Descripción:** `MediaStorage.putStream` en el puerto de core y en `packages/storage` (D3). Actualización de "Contrato de almacenamiento de archivos" en `01-arquitectura.md`.
 - **Hecho cuando:**
-  - [ ] Tests con msw: sube con `Content-Length` y `Content-Type` correctos, y un 5xx o un corte de red → `STORAGE_UNAVAILABLE`
-  - [ ] Demo: `pnpm storage:check` sube y borra un archivo de prueba con `putStream` contra R2
+  - [x] Tests con msw: sube con `Content-Length` y `Content-Type` correctos, y un 5xx o un corte de red → `STORAGE_UNAVAILABLE`
+  - [x] Demo: `pnpm storage:check` sube y borra un archivo de prueba con `putStream` contra R2
 
 ### F1-T06 · Lectores de medios
 - **Depende de:** F0
@@ -342,8 +342,8 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
     - Devuelve `{ files, bytes, skipped }`; `skipped` cuenta las entradas omitidas, para que T09 avise si el zip no trajo medios.
     - Lo que alcanzó a escribir lo borra quien llama (T09).
 - **Hecho cuando:**
-  - [ ] Tests con una carpeta fixture: 3 fotos + 1 video + 1 archivo inválido, en orden natural y con el sha256 correcto
-  - [ ] Tests de zip: extracción normal, una entrada con `..` rechazada, y los topes de tamaño y de entradas superados
+  - [x] Tests con una carpeta fixture: 3 fotos + 1 video + 1 archivo inválido, en orden natural y con el sha256 correcto
+  - [x] Tests de zip: extracción normal, una entrada con `..` rechazada, y los topes de tamaño y de entradas superados
 
 ### F1-T07 · Caso de uso ingestMedia
 - **Depende de:** T04, T05, T06
@@ -379,11 +379,11 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
     - `MediaStorage`: lee el iterable completo, da `STORAGE_CONTENT_MISMATCH` si el largo no calza, como R2, y registra las subidas;
     - `MediaFileSource`: un mapa `folder → listado | AppError`, con `memoryFile` y sha256 fijos. No reimplementa la validación de rutas (`MEDIA_FOLDER_INVALID` es del adaptador, que ya tiene su prueba).
 - **Hecho cuando:**
-  - [ ] Test con un `MediaStorage` y un `MediaFileSource` en memoria: suben 4 archivos válidos con su tipo, y el inválido va al reporte
-  - [ ] Reimportar no vuelve a subir archivos (verificado por checksum)
-  - [ ] Test: agregar una foto a una propiedad `skipped` la sube
-  - [ ] Test: una propiedad sin fotos queda en `draft` con advertencia
-  - [ ] Test: cambiar `foto_portada` desmarca la portada anterior
+  - [x] Test con un `MediaStorage` y un `MediaFileSource` en memoria: suben 4 archivos válidos con su tipo, y el inválido va al reporte
+  - [x] Reimportar no vuelve a subir archivos (verificado por checksum)
+  - [x] Test: agregar una foto a una propiedad `skipped` la sube
+  - [x] Test: una propiedad sin fotos queda en `draft` con advertencia
+  - [x] Test: cambiar `foto_portada` desmarca la portada anterior
 
 ### F1-T07b · MediaRepository en Drizzle y checksum en R2
 - **Depende de:** T07
@@ -409,10 +409,10 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
     - `setLogo` escribe en cada carga aunque el logo no cambie; es idempotente y se deja así (anotado);
     - para T10 y T12: `report.media` puede faltar (reportes anteriores a T07 o cargas que no llegaron a la ingesta). Mostrar "medios: —", sin asumir ceros.
 - **Hecho cuando:**
-  - [ ] Suite de contrato de `MediaRepository` contra el doble en memoria y contra PGlite: los únicos (`MEDIA_CONFLICT`), el orden de `listOriginals` y `arrange` todo o nada
-  - [ ] Test de punta a punta de `importListings` más `ingestMedia` contra PGlite: únicos reales, portada, `ready` y logo con su FK
-  - [ ] Test msw: con `sha256`, la petición lleva `x-amz-checksum-sha256` y `Content-Length`, sin `aws-chunked`, `x-amz-trailer` ni `x-amz-sdk-checksum-algorithm`; `BadDigest` da `STORAGE_CONTENT_MISMATCH`
-  - [ ] Demo: `pnpm storage:check` contra R2: el caso positivo sube con el sha256 correcto, y el negativo da `BadDigest` sin dejar el objeto
+  - [x] Suite de contrato de `MediaRepository` contra el doble en memoria y contra PGlite: los únicos (`MEDIA_CONFLICT`), el orden de `listOriginals` y `arrange` todo o nada
+  - [x] Test de punta a punta de `importListings` más `ingestMedia` contra PGlite: únicos reales, portada, `ready` y logo con su FK
+  - [x] Test msw: con `sha256`, la petición lleva `x-amz-checksum-sha256` y `Content-Length`, sin `aws-chunked`, `x-amz-trailer` ni `x-amz-sdk-checksum-algorithm`; `BadDigest` da `STORAGE_CONTENT_MISMATCH`
+  - [x] Demo: `pnpm storage:check` contra R2: el caso positivo sube con el sha256 correcto, y el negativo da `BadDigest` sin dejar el objeto
 
 ### F1-T08 · Paquete de cola
 - **Depende de:** F0
@@ -426,8 +426,8 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
     - `JOB_PAYLOADS` ya incluye `import.run` (`{ importRunId }`); el handler llega en T09.
     - `pnpm worker:ping` usa el productor nuevo.
 - **Hecho cuando:**
-  - [ ] Test: `enqueue` con el esquema o la cola inexistentes → `QUEUE_UNAVAILABLE`
-  - [ ] Los tests del worker de F0 siguen pasando, y `pnpm worker:ping` funciona con `packages/queue` (demo)
+  - [x] Test: `enqueue` con el esquema o la cola inexistentes → `QUEUE_UNAVAILABLE`
+  - [x] Los tests del worker de F0 siguen pasando, y `pnpm worker:ping` funciona con `packages/queue` (demo)
 
 ### F1-T09 · Job import.run
 - **Depende de:** T04b, T07, T07b, T08
@@ -445,9 +445,9 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Estados del run: `markRunning` (desde `queued` o `running`, `started_at` solo la primera vez), `markSucceeded` y `markFailed`.
   - Staging: `apps/worker/src/staging.ts` (desde T11, `@agentsales/importers/staging`).
 - **Hecho cuando:**
-  - [ ] Tests del handler con fakes: éxito → `succeeded`; `STORAGE_UNAVAILABLE` → se propaga para reintento; último intento → `failed` con `error`; error no reintentable → `failed`; y un run ya terminal → no hace nada
-  - [ ] Tests de `requestImport`: encola; si `enqueue` falla → run `failed` y staging borrado
-  - [ ] Test: `extracted/` se borra aunque el intento falle, e `input/` se conserva hasta el estado terminal
+  - [x] Tests del handler con fakes: éxito → `succeeded`; `STORAGE_UNAVAILABLE` → se propaga para reintento; último intento → `failed` con `error`; error no reintentable → `failed`; y un run ya terminal → no hace nada
+  - [x] Tests de `requestImport`: encola; si `enqueue` falla → run `failed` y staging borrado
+  - [x] Test: `extracted/` se borra aunque el intento falle, e `input/` se conserva hasta el estado terminal
 
 ### F1-T10 · Contratos HTTP y API de lectura
 - **Depende de:** T04b y ADR-0011 aceptado
@@ -466,16 +466,16 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Los ids de ruta (`/listings/:id`, `/imports/:id`) se validan como uuid con zod antes de llegar al repositorio; un id con otro formato es `REQUEST_INVALID`, no un error de base de datos.
   - Rutas `/listings`, `/listings/:id`, `PATCH /listings/:id/status` y `/brokers`, con URLs firmadas.
 - **Hecho cuando:**
-  - [ ] Tests con `app.request` y repositorios en memoria: filtros, detalle, 404, `REQUEST_INVALID`, cambio de estado permitido y `409 INVALID_TRANSITION`
-  - [ ] Biome rechaza un import de `@agentsales/config` o de `node:*` dentro de `contracts`
-  - [ ] La guardia `no-node-types` del panel sigue pasando
+  - [x] Tests con `app.request` y repositorios en memoria: filtros, detalle, 404, `REQUEST_INVALID`, cambio de estado permitido y `409 INVALID_TRANSITION`
+  - [x] Biome rechaza un import de `@agentsales/config` o de `node:*` dentro de `contracts`
+  - [x] La guardia `no-node-types` del panel sigue pasando
 
 ### F1-T11 · API de importación
 - **Depende de:** T09, T10
 - **Hecho en F1-T11:**
   - `createErrorThrottle` se mudó a `@agentsales/config`, y `createStaging` a `@agentsales/importers/staging`, con `inputDirOf` y `saveInput`.
   - `NewImportRun.id` lo puede generar quien llama, e `ImportRunRepository.list(limit)` devuelve las cargas.
-  - `MAX_IMPORT_UPLOAD_MB` (1024) se aplica con `bodyLimit` y responde `413 REQUEST_TOO_LARGE`.
+  - `MAX_IMPORT_UPLOAD_MB` (512) se aplica con `bodyLimit` y responde `413 REQUEST_TOO_LARGE`.
   - `POST /imports/local` exige rutas absolutas, y fuera de desarrollo es 404 antes de validar el cuerpo.
   - La API compone `createJobQueue` con `onError` resumido y `stop()` al apagarse.
 - **Desde la revisión de T08:** la API compone `createJobQueue` con `onError` resumido (`createErrorThrottle`, que hoy vive en `apps/worker`; mudarlo a `@agentsales/config` o duplicarlo con su test) y llama a `queue.stop()` al apagarse.
@@ -492,7 +492,7 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - `POST /imports/local`, habilitado con `AppDeps.localImports`.
   - `GET /imports` e `/imports/:id` (§4.4), con `ImportRunRepository.list`. `report` puede ser `null` (el run falló antes de registrar).
 - **Hecho cuando:**
-  - [ ] Tests con `app.request`, una `JobQueue` falsa y repositorios en memoria: `202` y job encolado; `/imports/local` → 404 si `localImports` es `false`; cuerpo demasiado grande → 413; xlsx de más de 10 MB → `REQUEST_INVALID`; cola caída → 503 y run `failed`; y `GET /imports/:id` no expone las rutas completas
+  - [x] Tests con `app.request`, una `JobQueue` falsa y repositorios en memoria: `202` y job encolado; `/imports/local` → 404 si `localImports` es `false`; cuerpo demasiado grande → 413; xlsx de más de 10 MB → `REQUEST_INVALID`; cola caída → 503 y run `failed`; y `GET /imports/:id` no expone las rutas completas
 
 ### F1-T12 · CLI de importación y consulta
 - **Depende de:** T11
@@ -675,4 +675,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-02 | Desde la revisión de F1-T13: enteros de cuatro cifras sin punto (`formatNumber`); `LISTING_STATUS_TEXT`, `OPERATION_TEXT` e `IMPORT_RUN_STATUS_TEXT` en core (la CLI muestra los estados en español); resultados anteriores mientras se filtra, comunas de respaldo y `aria-live`; el cambio de estado conserva la hora de carga del detalle; sin reintento de `TIMEOUT` y corte del cuerpo como `TIMEOUT`; `errorElement`; botones según el estado de origen; guardia de imports ampliada; notas para T14 (invalidar `listingKeys.all`) |
 | 2026-10-02 | F1-T14: páginas `/importar` y `/importar/:id`; sondeo cada 2 s solo mientras corre e invalidación de propiedades al terminar; aviso de cola a los 20 s; reporte por fila y columna; `IMPORT_BROKER_OUTCOME_TEXT` e `IMPORT_ROW_OUTCOME_TEXT` en core; `UPLOAD_TIMEOUT_MS`; el archivo de los contratos como `z.custom<File>` (antes filtraba el `File` de Node a `AppType`) |
 | 2026-10-02 | Desde la revisión de F1-T14: topes del sondeo (2 h y 3 fallas seguidas, `IMPORT_WAIT` en core, compartido con la CLI) en §4.7; `importReportIssues` en core; una carga terminada no se vuelve a pedir y solo invalida si se la vio terminar; test que rechaza `z.instanceof(` en `contracts`; extensiones en `contracts`; test de la subida en Node |
-| 2026-10-02 | Cierre de F1: las 6 demos del plan de demo pasaron contra Neon y R2 con las 3 propiedades de muestra; criterios de §6 verificados; spec **Cerrado** y tag `v0.1.0` |
+| 2026-10-02 | Cierre de F1: casillas "Hecho cuando" de T01 a T11 marcadas (tareas mergeadas en #13 a #25); correcciones de la auditoría de coherencia (`MAX_IMPORT_UPLOAD_MB` en 512 y escritura en streaming, limpieza del staging, `estado_carga`, `NODE_ENV`). Las 6 demos del plan de demo pasaron contra Neon y R2 con las 3 propiedades de muestra; criterios de §6 verificados; spec **Cerrado** y tag `v0.1.0` |

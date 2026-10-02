@@ -45,6 +45,9 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **F7:** `agentsales listing --broker` resuelve el corredor en la CLI con `/brokers`. Con autenticación y varios clientes, el alcance por corredor lo tiene que hacer el servidor (junto con la proyección acotada de `GET /listings`).
 - `--broker` se normaliza con `slugify` solo en la CLI: `POST /imports/local` con `"Mi Corredor"` da `BROKER_NOT_FOUND`. Hoy no importa (el panel usa un selector); si aparece otro cliente, normalizar en core (`requestImport`).
 
+- **F2, capas:** el filtro de `fields` del detalle (definiciones efectivas, sin `isCore` y con valor) vive en `apps/api/src/routes/listings.ts`. Cuando las plantillas de F2 lo necesiten, moverlo a core junto a `describeAttributes`.
+- Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
+
 ## Notas de la última sesión
 - 2026-10-02: **Cierre de F1 (`v0.1.0`).**
   - **Demos reales** (plan de demo, spec §7), contra Neon y R2 y sin publicar nada:

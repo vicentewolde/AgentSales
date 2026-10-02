@@ -46,7 +46,7 @@ flowchart LR
   CLI --> API
   API --> CORE
   WRK --> CORE
-  IMP & LLM & MEDIA & PUB & DB & STO -. implementan puertos de .-> CORE
+  IMP & LLM & MEDIA & PUB & DB & STO & QUE -. implementan puertos de .-> CORE
   API & WRK & CLI --> CFG
   CFG --> CORE
   DB --> NEON
@@ -54,7 +54,8 @@ flowchart LR
   MEDIA --> STO
   LLM --> CL
   PUB --> IG & ML & FB
-  API -. encola jobs (desde F1/F2) .-> NEON
+  API -. encola jobs (desde F1) .-> NEON
+  API --> IMP
   WRK -. consume jobs .-> NEON
 ```
 
@@ -76,12 +77,12 @@ agentsales/
 │   ├── api/          Hono REST API; tipos exportados para el cliente RPC
 │   ├── web/          React + Vite + Tailwind + TanStack Query + React Router; panel de operación
 │   ├── cli/          CLI `agentsales` (commander); usa el cliente RPC de la API
-│   └── worker/       Procesa jobs: medios, contenido, publicación, sincronización
+│   └── worker/       Procesa jobs: importación (F1), medios, contenido, publicación y sincronización
 ├── packages/
 │   ├── core/         Dominio, esquemas zod, estados, casos de uso, puertos
 │   ├── db/           Esquema Drizzle, migraciones y (desde F1) repositorios
 │   ├── storage/      Archivos en Cloudflare R2 (API S3): subir, leer, borrar, URLs prefirmadas
-│   ├── importers/    xlsx, google-sheets, carpetas de medios, zip y staging de cargas (`./staging`)
+│   ├── importers/    xlsx, carpetas de medios, zip y staging de cargas (`./staging`); Google Sheets en F1b, si se decide
 │   ├── queue/        Cola de trabajos (pg-boss): productor `JobQueue`, `createBoss` y check de `/health`
 │   ├── llm/          Proveedores: claude-cli, anthropic-api, fake
 │   ├── media/        Procesamiento de imagen/video y render de plantillas
@@ -101,12 +102,16 @@ Los paquetes se crean **cuando la fase que los necesita comienza**, no antes (ve
 ### 1. Carga
 
 ```
-Excel + carpetas → xlsx-reader (importers) lee la planilla, sin validar ni filtrar
+CLI (POST /imports/local, rutas del disco) o panel (POST /imports, multipart)
+  → requestImport (core): crea el import_run en queued y encola import.run
+  → el worker corre runImport: markRunning
+  → xlsx-reader (importers) lee la planilla, sin validar ni filtrar
   → importListings (core) filtra EJEMPLO/Borrador y valida contra field_definitions
   → upsert de listings (idempotente por broker + external_ref)
+  → openMedia (importers): carpeta o zip en el staging
   → ingestMedia (core): por carpeta, deduplica por sha256, sube a R2 → registra media,
     ordena, elige portada y pasa a ready (solo desde draft)
-  → import_run con reporte de errores y advertencias por fila
+  → import_run en succeeded o failed, con reporte de errores y advertencias por fila
 ```
 
 ### 2. Preparación de contenido (job `content.prepare`)
@@ -273,7 +278,7 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
 
 ## Contratos HTTP compartidos (ADR-0011)
 
-- **Entidades de dominio** (`listing`, `media`, `broker`, `importRun`, `importReport`) y `healthReportSchema`: en `packages/core`.
+- **Entidades de dominio** (`listing`, `broker`, `importRun`, `importReport`) y `healthReportSchema`: en `packages/core`. `media` no tiene esquema en core en F1: la API expone `mediaItemSchema` en `contracts` (ver "Proyecciones").
 - **Contratos HTTP:** en la salida `@agentsales/api/contracts` (`apps/api/src/contracts/`). Incluye:
   - el cuerpo de error (`errorBodySchema`);
   - los parámetros (`idParamSchema`: uuid);
@@ -289,8 +294,8 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
     - todo el cuerpo tiene un tope, `MAX_IMPORT_UPLOAD_MB` (`bodyLimit`): si lo pasa, `413 REQUEST_TOO_LARGE`;
     - el id del run lo genera la API (`newId`), para guardar los archivos en `input/` antes de crear el run;
     - si algo falla después de guardar, borra lo guardado. Con la cola caída, `503 QUEUE_UNAVAILABLE` y el run queda en `failed`.
-  - **`POST /imports/local` (la CLI):** recibe rutas absolutas del disco del operador. Solo existe con `localImports` (`NODE_ENV=development`): si no, `404`, aunque el cuerpo sea inválido.
-  - **`GET /imports` y `/imports/:id`:** muestran `input` solo con nombres de archivo (`importRunViewSchema`), nunca las rutas completas. La lista va sin `report` (`importRunSummarySchema`), y en el detalle `report` puede ser `null`.
+  - **`POST /imports/local` (la CLI):** recibe rutas absolutas del disco del operador. Solo existe con `localImports` (`NODE_ENV=development`): si no, `404`, aunque el cuerpo sea inválido. `NODE_ENV` vale `development` por defecto, así que la ruta está activa en local; F7 fija `production` al desplegar.
+  - **`GET /imports` (las 50 más recientes) y `/imports/:id`:** muestran `input` solo con nombres de archivo (`importRunViewSchema`), nunca las rutas completas. La lista va sin `report` (`importRunSummarySchema`), y en el detalle `report` puede ser `null`.
   - **Memoria:** Hono lee el multipart completo, y los archivos se escriben a disco en streaming (`File.stream()`). El pico ronda las 2 veces el cuerpo, de ahí el default de `MAX_IMPORT_UPLOAD_MB` en 512. En F7 se cambia por la subida directa a R2.
   - **Formulario del panel:** un campo de archivo vacío o un corredor vacío cuentan como no enviados.
   - **`AppDeps`:** recibe `importRuns`, `queue`, `uploads` (`save` y `discard`, que `server.ts` compone con el staging), `newId`, `localImports` y `maxUploadBytes`.
@@ -299,6 +304,7 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
   - `GET /listings/:id` (con sus medios en orden y URLs firmadas, y desde F1-T13 `fields`: las etiquetas de sus atributos);
   - `PATCH /listings/:id/status` (`changeListingStatus`);
   - `GET /brokers`.
+- **Páginas del panel** (`apps/web/src/routes.tsx`, cada una con `React.lazy`): `/` (Estado), `/propiedades`, `/propiedades/:id`, `/importar` e `/importar/:id`.
 
   Van en `apps/api/src/routes/`, montadas con `.route()`. `AppDeps` recibe puertos de core (`listings`, `brokers`, `media`, `fieldDefinitions` y `storage.signedReadUrl`), no adaptadores.
 - **Cambios manuales de estado (`LISTING_MANUAL_TRANSITIONS`, core):**
@@ -320,7 +326,7 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 - En esos tipos no puede aparecer pino, drizzle, pg-boss, `@hono/node-server` ni `NodeJS.*`.
 - **Globales que Node también define** (`File`, `Blob`, `ReadableStream`): se nombran como tipo (`z.custom<File>`), no se infieren de su valor. `z.instanceof(File)` toma la clase de `node:buffer` al compilar la API, y el panel la recibe como `import("node:buffer").File`; la guardia de `process` no lo ve. Lo detectan un test que rechaza `z.instanceof(` en `apps/api/src/contracts` (`contracts-boundary.test.ts`) y el formulario de Importar, que deja de compilar (F1-T14).
 - Se usan los puertos de `core` o tipos mínimos locales. Por ejemplo, `AppLogger` en vez del `Logger` de pino.
-- TypeScript puede compilar el panel contra el **código fuente** de la API, no solo contra sus `.d.ts`; pasa, por ejemplo, en un clon limpio. Por eso la regla vale para todo módulo de `apps/api/src` alcanzable desde `index.ts`: no puede importar `@agentsales/config`, `node:*` ni usar `NodeJS.*`. Solo `server.ts`, el punto de entrada, compone lo que depende de Node. La excepción es `src/testing/` (`@agentsales/api/testing`): es una salida aparte, solo para tests, que `index.ts` no importa. Las utilidades puras que comparten, como `redactText`, viven en `core`.
+- TypeScript puede compilar el panel contra el **código fuente** de la API, no solo contra sus `.d.ts`; pasa, por ejemplo, en un clon limpio. Por eso la regla vale para todo módulo de `apps/api/src` alcanzable desde `index.ts`: no puede importar `@agentsales/config`, `node:*` ni usar `NodeJS.*`. Solo `server.ts`, el punto de entrada, y lo que únicamente él importa (`version.ts`) componen lo que depende de Node. La excepción es `src/testing/` (`@agentsales/api/testing`): es una salida aparte, solo para tests, que `index.ts` no importa. Las utilidades puras que comparten, como `redactText`, viven en `core`.
 - El panel tiene una guardia (`apps/web/src/no-node-types.ts`): si se filtran los tipos de Node, `tsc -b` falla. La CI la ejerce en un clon limpio.
 
 ## Contrato de repositorios

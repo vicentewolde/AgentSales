@@ -46,3 +46,4 @@ Procesar video, renderizar plantillas, llamar a la IA y publicar son tareas lent
   - `defineJob` está tipado por `JobName`, con `isLastAttempt` (`includeMetadata`).
   - El handler es `runImport` (core).
   - Al arrancar, el worker cierra los runs abandonados (`IMPORT_ABANDONED`).
+- 2026-10-01 (F1-T11): la API compone `createJobQueue` (con `onError` resumido y `stop()` al apagar) y guarda las subidas del panel en `<workspace>/tmp/imports/{id}/input/` en streaming (`@agentsales/importers/staging`). `POST /imports/local` existe solo en desarrollo, para la CLI. Las dos cosas se quitan en F7 (subida directa a R2).
