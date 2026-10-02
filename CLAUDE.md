@@ -21,12 +21,12 @@ Sistema que toma avisos (propiedades hoy, productos después) con fotos y videos
 | `docs/adr/` | Decisiones tomadas; no las contradigas sin un ADR nuevo |
 
 ## Stack (resumen; detalle en 05-convenciones)
-Node 26 · pnpm 11 workspaces · TypeScript 7 strict · Hono (+ cliente RPC `hc`) · React + Vite + Tailwind + TanStack Query + React Router · Drizzle + `pg` + Neon (Postgres) · Cloudflare R2 (archivos, API S3) · pg-boss · commander + picocolors (CLI) · sharp · ffmpeg · Playwright · zod · Vitest · Biome · pino.
+Node 26 · pnpm 11 workspaces · TypeScript 7 strict · Hono (+ cliente RPC `hc`) · React + Vite + Tailwind + TanStack Query + React Router · Drizzle + `pg` + Neon (Postgres) · Cloudflare R2 (archivos, API S3) · pg-boss · exceljs + yauzl (xlsx y zip) · commander + picocolors (CLI) · sharp · ffmpeg · Playwright · zod · Vitest (+ PGlite para los repositorios) · Biome · pino.
 
 ## Estructura
 ```
 apps/     api · worker · cli · web
-packages/ config · core · db · storage · queue  (desde F1+: importers · llm · media · templates · publishers)
+packages/ config · core · db · storage · queue · importers  (desde F2+: llm · media · templates · publishers)
 docs/     documentación, specs y ADRs
 data/     plantillas (en git) y muestras (fuera de git)
 ```
@@ -46,6 +46,8 @@ pnpm storage:check       # verifica acceso al bucket de R2
 pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo)
 pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo)
 pnpm worker:ping         # encola un job de prueba (con el worker corriendo)
+pnpm -s cli import <xlsx> --media <carpeta|zip>  # carga propiedades (con pnpm dev corriendo; --dry-run simula)
+pnpm -s cli listings     # propiedades cargadas (detalle: cli listing <id>; historial: cli imports)
 ```
 (Los comandos existen desde F0; si alguno falta, la tarea que lo introduce debe crearlo.)
 
