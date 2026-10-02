@@ -16,38 +16,64 @@ function appFiles(dir = SRC): string[] {
   });
 }
 
-/** Cada `import … from "<módulo>"` con su texto completo (incluye los de varias líneas). */
-const importsOf = (source: string) =>
-  [...source.matchAll(/^import\s+([\s\S]*?)\s+from\s+"([^"]+)";/gm)].map((match) => ({
-    clause: match[1] ?? "",
-    module: match[2] ?? "",
+type ModuleUse = { module: string; typeOnly: boolean };
+
+/**
+ * Cada uso de un módulo: `import … from`, `export … from` (de varias líneas también), `import "x"`
+ * y `import("x")`. Solo `import type` y `export type` cuentan como uso de tipos.
+ */
+function modulesUsedBy(source: string): ModuleUse[] {
+  const fromClauses = [
+    ...source.matchAll(/^(import|export)\s+([\s\S]*?)\s+from\s+"([^"]+)"/gm),
+  ].map((match) => ({ module: match[3] ?? "", typeOnly: (match[2] ?? "").startsWith("type ") }));
+  const bare = [...source.matchAll(/^import\s+"([^"]+)"/gm)].map((match) => ({
+    module: match[1] ?? "",
+    typeOnly: false,
   }));
+  const dynamic = [...source.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((match) => ({
+    module: match[1] ?? "",
+    typeOnly: false,
+  }));
+  return [...fromClauses, ...bare, ...dynamic];
+}
+
+const forbidden = ({ module, typeOnly }: ModuleUse) =>
+  (module === "@agentsales/api" && !typeOnly) || module === "@agentsales/api/testing";
 
 // ADR-0011: en tiempo de ejecución el panel solo carga `@agentsales/api/contracts`. De la raíz
 // solo toma tipos (`AppType`): un import de valor metería el servidor en el bundle. Biome no
 // distingue `import type`, así que esta guardia lo revisa.
 describe("imports de @agentsales/api en el panel", () => {
-  it("de la raíz solo `import type`, y nunca la salida de tests", () => {
+  it("de la raíz solo tipos, y nunca la salida de tests", () => {
     const offending = appFiles().flatMap((file) =>
-      importsOf(readFileSync(file, "utf8"))
-        .filter(
-          ({ clause, module }) =>
-            (module === "@agentsales/api" && !clause.startsWith("type ")) ||
-            module === "@agentsales/api/testing",
-        )
+      modulesUsedBy(readFileSync(file, "utf8"))
+        .filter(forbidden)
         .map(({ module }) => `${relative(SRC, file)}: ${module}`),
     );
     expect(offending).toEqual([]);
   });
 
-  it("la guardia detecta un import de valor", () => {
-    expect(
-      importsOf(
-        'import { createApp } from "@agentsales/api";\nimport type { AppType } from "@agentsales/api";\n',
-      ),
-    ).toEqual([
-      { clause: "{ createApp }", module: "@agentsales/api" },
-      { clause: "type { AppType }", module: "@agentsales/api" },
+  it("la guardia detecta cada forma de usar un módulo", () => {
+    const uses = modulesUsedBy(
+      [
+        'import { createApp } from "@agentsales/api";',
+        'import type { AppType } from "@agentsales/api";',
+        'import {\n  type A,\n  b,\n} from "@agentsales/api";',
+        'export { createApp } from "@agentsales/api";',
+        'export * from "@agentsales/api";',
+        'export type { AppType } from "@agentsales/api";',
+        'import "@agentsales/api";',
+        'const m = await import("@agentsales/api");',
+        'import { errorBodySchema } from "@agentsales/api/contracts";',
+        'import { testDeps } from "@agentsales/api/testing";',
+      ].join("\n"),
+    );
+
+    expect(uses.filter(forbidden)).toHaveLength(7);
+    expect(uses.filter((use) => !forbidden(use)).map((use) => use.module)).toEqual([
+      "@agentsales/api",
+      "@agentsales/api",
+      "@agentsales/api/contracts",
     ]);
   });
 });

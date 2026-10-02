@@ -3,11 +3,17 @@ import type { Currency, Operation } from "./enums.js";
 /** Miles con punto: `5800` → `5.800`. */
 const groupThousands = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
-/** Número con formato chileno: `120000` → `120.000`, `72.5` → `72,5` (hasta dos decimales). */
+/**
+ * Número con formato chileno, hasta dos decimales: `120000` → `120.000`, `72.5` → `72,5`. Como
+ * indica la RAE, un entero de cuatro cifras va sin punto (`2018`, `1500`): así un año no sale como
+ * `2.018`. El precio sí lo lleva siempre (`UF 5.800`, docs/04), con `formatPrice`.
+ */
 export function formatNumber(value: number): string {
-  const sign = value < 0 ? "-" : "";
-  const [integer = "0", decimals = ""] = String(Math.round(Math.abs(value) * 100) / 100).split(".");
-  return `${sign}${groupThousands(integer)}${decimals ? `,${decimals}` : ""}`;
+  const rounded = Math.round(Math.abs(value) * 100) / 100;
+  const sign = value < 0 && rounded > 0 ? "-" : "";
+  const [integer = "0", decimals = ""] = String(rounded).split(".");
+  const grouped = integer.length > 4 ? groupThousands(integer) : integer;
+  return `${sign}${grouped}${decimals ? `,${decimals}` : ""}`;
 }
 
 /**

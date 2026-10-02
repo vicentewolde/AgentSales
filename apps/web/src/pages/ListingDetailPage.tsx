@@ -3,12 +3,13 @@ import {
   describeAttributes,
   formatListingPrice,
   LISTING_MANUAL_TRANSITIONS,
+  OPERATION_TEXT,
 } from "@agentsales/core";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../api/client.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { StatusBadge } from "../components/StatusBadge.js";
-import { OPERATION_TEXT, STATUS_ACTION_TEXT } from "../labels.js";
+import { isManualTarget, statusActionText } from "../labels.js";
 import { useChangeListingStatus, useListing } from "../queries/listings.js";
 
 type Detail = ListingDetailResponse;
@@ -57,9 +58,7 @@ function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: 
 
 function StatusActions({ id, status }: { id: string; status: Detail["listing"]["status"] }) {
   const change = useChangeListingStatus(id);
-  const targets = LISTING_MANUAL_TRANSITIONS[status].filter(
-    (target): target is keyof typeof STATUS_ACTION_TEXT => target in STATUS_ACTION_TEXT,
-  );
+  const targets = LISTING_MANUAL_TRANSITIONS[status].filter(isManualTarget);
   if (targets.length === 0) return null;
   return (
     <div className="mt-4">
@@ -72,7 +71,7 @@ function StatusActions({ id, status }: { id: string; status: Detail["listing"]["
             onClick={() => change.mutate(target)}
             className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50"
           >
-            {STATUS_ACTION_TEXT[target]}
+            {statusActionText(status, target)}
           </button>
         ))}
       </div>
@@ -124,7 +123,7 @@ function DetailView({ detail }: { detail: Detail }) {
                 {address || "—"}
                 {!listing.showExactAddress && (
                   <span className="block text-xs text-slate-500">
-                    No se publica: en los avisos va solo la comuna.
+                    No se publica la dirección exacta.
                   </span>
                 )}
               </dd>

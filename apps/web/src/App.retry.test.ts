@@ -9,6 +9,10 @@ describe("shouldRetry", () => {
     expect(shouldRetry(1, new ApiError("La API no responde", "UNREACHABLE"))).toBe(false);
   });
 
+  it("no reintenta un TIMEOUT (ya esperó 35 s)", () => {
+    expect(shouldRetry(0, new ApiError("La API no respondió en 35 s", "TIMEOUT"))).toBe(false);
+  });
+
   it("no reintenta un 4xx", () => {
     expect(shouldRetry(0, new ApiError("LISTING_NOT_FOUND: x", "LISTING_NOT_FOUND", 404))).toBe(
       false,

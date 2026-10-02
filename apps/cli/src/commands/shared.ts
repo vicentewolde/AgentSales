@@ -1,14 +1,9 @@
 import { brokerListResponseSchema } from "@agentsales/api/contracts";
-import { type Broker, type Operation, slugify } from "@agentsales/core";
+import { type Broker, slugify } from "@agentsales/core";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { CliError } from "../output.js";
 
 /** Lo que usan varios comandos. */
-
-export const OPERATION_TEXT: Readonly<Record<Operation, string>> = {
-  sale: "Venta",
-  rent: "Arriendo",
-};
 
 /** `--broker` como slug (`Mi-Corredor` → `mi-corredor`), igual que el que sale de la hoja. */
 export function brokerSlugOf(broker: string): string {

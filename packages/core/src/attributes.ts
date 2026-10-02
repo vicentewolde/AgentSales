@@ -25,6 +25,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * Los atributos de un aviso (ADR-0006) como texto: primero los que tienen definición, en su orden
  * y con su etiqueta; después los que no (con la clave como etiqueta), y al final las columnas
  * desconocidas de `_extra`. `Sí`/`No`, listas con coma y números con formato chileno.
+ *
+ * Es la vista del **operador** (CLI y panel): incluye `_extra` y las claves sin definición, que
+ * pueden traer datos privados. La IA y las plantillas (F2) usan solo los campos definidos.
  */
 export function describeAttributes(
   attributes: Readonly<Record<string, unknown>>,
@@ -46,7 +49,7 @@ export function describeAttributes(
       .map(([key, value]) => entry(key, key, value)),
     ...(isRecord(extra)
       ? Object.entries(extra).map(([key, value]) => entry(key, key, value, true))
-      : extra === undefined
+      : extra === undefined || extra === null
         ? []
         : [entry("_extra", "_extra", extra)]),
   ];

@@ -3,13 +3,19 @@ import {
   listingDetailResponseSchema,
   listingListResponseSchema,
 } from "@agentsales/api/contracts";
-import { type Broker, describeAttributes, formatListingPrice } from "@agentsales/core";
+import {
+  type Broker,
+  describeAttributes,
+  formatListingPrice,
+  LISTING_STATUS_TEXT,
+  OPERATION_TEXT,
+} from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, formatBytes, guarded, type Io } from "../output.js";
-import { brokerSlugOf, fetchBrokers, OPERATION_TEXT } from "./shared.js";
+import { brokerSlugOf, fetchBrokers } from "./shared.js";
 
 export type ListingDeps = Io & { client: ApiClient };
 
@@ -82,7 +88,7 @@ export function renderListingDetail(
     .join(", ");
   const lines = [
     c.bold(title),
-    `  Estado: ${listing.status} · Corredor: ${brokers.get(listing.brokerId)?.slug ?? "—"}`,
+    `  Estado: ${LISTING_STATUS_TEXT[listing.status]} (${listing.status}) · Corredor: ${brokers.get(listing.brokerId)?.slug ?? "—"}`,
     `  Precio: ${formatListingPrice(listing)}`,
     `  Dirección: ${address || "—"}${
       listing.showExactAddress ? "" : c.dim(" (no se publica la dirección exacta)")

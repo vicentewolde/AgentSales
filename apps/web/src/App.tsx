@@ -7,11 +7,12 @@ import { routes } from "./routes.js";
 
 /**
  * Un reintento ante fallas pasajeras (red, 5xx). Un 4xx (no existe, pedido inválido) no mejora
- * reintentando: se muestra de inmediato.
+ * reintentando, y un `TIMEOUT` ya esperó 35 s: los dos se muestran de inmediato.
  */
 export function shouldRetry(failureCount: number, error: Error): boolean {
-  const clientError = error instanceof ApiError && error.status !== undefined && error.status < 500;
-  return failureCount < 1 && !clientError;
+  if (!(error instanceof ApiError)) return failureCount < 1;
+  const clientError = error.status !== undefined && error.status < 500;
+  return failureCount < 1 && !clientError && error.code !== "TIMEOUT";
 }
 
 export type AppProps = {

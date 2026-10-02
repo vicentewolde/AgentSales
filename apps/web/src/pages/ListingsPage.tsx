@@ -1,10 +1,15 @@
 import type { ListingListResponse, ListingQuery } from "@agentsales/api/contracts";
-import { formatListingPrice, LISTING_STATUSES, OPERATIONS } from "@agentsales/core";
+import {
+  formatListingPrice,
+  LISTING_STATUS_TEXT,
+  LISTING_STATUSES,
+  OPERATION_TEXT,
+  OPERATIONS,
+} from "@agentsales/core";
 import { useId } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { StatusBadge } from "../components/StatusBadge.js";
-import { LISTING_STATUS_TEXT, OPERATION_TEXT } from "../labels.js";
 import { useListings } from "../queries/listings.js";
 
 type ListingItem = ListingListResponse["listings"][number];
@@ -66,7 +71,6 @@ function ListingCard({ listing }: { listing: ListingItem }) {
     <li>
       <Link
         to={`/propiedades/${listing.id}`}
-        aria-label={`${listing.externalRef}: ${title}`}
         className="block h-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
       >
         <div className="aspect-[4/3] bg-slate-100">
@@ -104,11 +108,14 @@ export function ListingsPage() {
   const [params, setParams] = useSearchParams();
   const filters = filtersFrom(params);
   const listings = useListings(filters);
-  // Las comunas del selector salen de todas las propiedades (es la misma consulta sin filtros).
+  // Las comunas del selector salen de todas las propiedades (es la misma consulta sin filtros); si
+  // esa consulta falla, de las que se ven.
   const all = useListings({});
   const comunas = [
     ...new Set([
-      ...(all.data ?? []).flatMap((listing) => (listing.comuna ? [listing.comuna] : [])),
+      ...(all.data ?? listings.data ?? []).flatMap((listing) =>
+        listing.comuna ? [listing.comuna] : [],
+      ),
       ...(filters.comuna ? [filters.comuna] : []),
     ]),
   ].sort((a, b) => a.localeCompare(b, "es"));
@@ -173,8 +180,6 @@ export function ListingsPage() {
         )}
       </form>
 
-      {listings.isPending && <p className="mt-6 text-slate-600">Cargando propiedades…</p>}
-
       {listings.error && (
         <ErrorAlert
           error={listings.error}
@@ -183,23 +188,30 @@ export function ListingsPage() {
         />
       )}
 
-      {listings.data?.length === 0 && (
-        <p className="mt-6 text-slate-600">
-          {filtered
-            ? "No hay propiedades con esos filtros."
-            : "Todavía no hay propiedades. Cárgalas con: pnpm -s cli import propiedades.xlsx --media medios"}
-        </p>
-      )}
+      {/* Lo que cambia al filtrar se anuncia a los lectores de pantalla. */}
+      <div aria-live="polite">
+        {listings.isPending && <p className="mt-6 text-slate-600">Cargando propiedades…</p>}
+        {listings.data?.length === 0 && (
+          <p className="mt-6 text-slate-600">
+            {filtered
+              ? "No hay propiedades con esos filtros."
+              : "Todavía no hay propiedades. Cárgalas con: pnpm -s cli import propiedades.xlsx --media medios"}
+          </p>
+        )}
+        {listings.data && listings.data.length > 0 && (
+          <p className="mt-4 text-sm text-slate-600">
+            {listings.data.length} propiedad(es)
+            {listings.isPlaceholderData && " · actualizando…"}
+          </p>
+        )}
+      </div>
 
       {listings.data && listings.data.length > 0 && (
-        <>
-          <p className="mt-4 text-sm text-slate-600">{listings.data.length} propiedad(es)</p>
-          <ul aria-label="Resultados" className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {listings.data.map((listing) => (
-              <ListingCard key={listing.id} listing={listing} />
-            ))}
-          </ul>
-        </>
+        <ul aria-label="Resultados" className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {listings.data.map((listing) => (
+            <ListingCard key={listing.id} listing={listing} />
+          ))}
+        </ul>
       )}
     </section>
   );

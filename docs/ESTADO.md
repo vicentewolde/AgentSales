@@ -63,6 +63,13 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
     - Detalle: galería, datos, atributos con etiqueta y cambio de estado.
     - Los avisos se guardan en caché 5 min (15 sin uso), bien por debajo de la hora de vida de las URLs firmadas. Un 4xx no se reintenta.
   - **Tests:** contra la API real en proceso (`apps/web/test/harness.tsx`). Una guardia (test) revisa que el panel solo haga `import type` de la raíz de la API.
+  - **Correcciones de `/revisar`:**
+    - Bloqueante: un año salía "2.018". Ahora un entero de cuatro cifras va sin punto (RAE), y el precio sigue con punto.
+    - Textos de estado, operación y carga en core; la CLI muestra los estados en español.
+    - Panel: sin parpadeo al filtrar, comunas de respaldo, `aria-live`, detalle que no "rejuvenece" sus URLs al cambiar el estado, sin reintento de `TIMEOUT`, corte del cuerpo como `TIMEOUT` (también en la CLI), `errorElement`, y botones "Reanudar" y "Desarchivar".
+    - Guardia de imports con `export … from`, `import "x"` e `import()`.
+    - Tests nuevos de datos vacíos, estados sin botones y año.
+    - Docs: arquitectura (rutas, `AppDeps`, clientes HTTP de la CLI y el panel, textos en core) y una nota para T14: invalidar `listingKeys.all` al terminar una carga.
   - **Prueba en el navegador** con la API contra Neon: Propiedades (vacía, con el aviso de cómo cargar) y el detalle de un id inexistente. Ahí apareció el arreglo de los reintentos: un 404 quedaba en "Cargando". La grilla con fotos reales espera las propiedades de muestra. Apagados al terminar.
 - 2026-10-02: **F1-T12.** CLI de importación y consulta.
   - **Comandos:** `import` (con `--media`, `--broker`, `--dry-run` y `--no-wait`), `imports [<id>]`, `listings [--status] [--json]` y `listing <id_propiedad|id> [--broker] [--json]`. Un archivo por comando en `apps/cli/src/commands/`, con `run<Nombre>(deps)` y `register`; `doctor` y `status` se mudaron ahí.

@@ -115,4 +115,19 @@ describe("createApiClient + unwrap", () => {
 
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
+
+  it("un corte por timeout mientras llega el cuerpo es TIMEOUT, no otra forma", async () => {
+    const response = {
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new DOMException("se acabó el tiempo", "TimeoutError");
+      },
+    };
+
+    await expect(unwrap(response, healthReportSchema)).rejects.toMatchObject({
+      code: "TIMEOUT",
+      status: 200,
+    });
+  });
 });

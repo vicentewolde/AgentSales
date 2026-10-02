@@ -6,7 +6,7 @@ import {
   listingListResponseSchema,
   listingStatusResponseSchema,
 } from "@agentsales/api/contracts";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
 
@@ -37,6 +37,8 @@ export function useListings(filters: ListingQuery) {
           listingListResponseSchema,
         )
       ).listings,
+    // Al cambiar un filtro se siguen viendo los resultados anteriores hasta que llegan los nuevos.
+    placeholderData: keepPreviousData,
     staleTime: LISTINGS_STALE_MS,
     gcTime: LISTINGS_GC_MS,
   });
@@ -73,8 +75,13 @@ export function useChangeListingStatus(id: string) {
         )
       ).listing,
     onSuccess: async (listing) => {
-      queryClient.setQueryData<ListingDetailResponse>(listingKeys.detail(id), (current) =>
-        current ? { ...current, listing } : current,
+      // Conserva la hora de la carga original: las URLs de la galería son de entonces, y no deben
+      // parecer recién pedidas (vencen a la hora).
+      const key = listingKeys.detail(id);
+      queryClient.setQueryData<ListingDetailResponse>(
+        key,
+        (current) => (current ? { ...current, listing } : current),
+        { updatedAt: queryClient.getQueryState(key)?.dataUpdatedAt },
       );
       await queryClient.invalidateQueries({ queryKey: listingKeys.lists() });
     },

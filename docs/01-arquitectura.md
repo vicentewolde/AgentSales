@@ -295,12 +295,12 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
   - **Formulario del panel:** un campo de archivo vacío o un corredor vacío cuentan como no enviados.
   - **`AppDeps`:** recibe `importRuns`, `queue`, `uploads` (`save` y `discard`, que `server.ts` compone con el staging), `newId`, `localImports` y `maxUploadBytes`.
 - **Rutas (F1-T10):**
-  - `GET /listings` (filtros exactos, con la portada como URL firmada);
-  - `GET /listings/:id` (con sus medios en orden y URLs firmadas);
+  - `GET /listings` (filtros exactos, también `externalRef` desde F1-T12, con la portada como URL firmada);
+  - `GET /listings/:id` (con sus medios en orden y URLs firmadas, y desde F1-T13 `fields`: las etiquetas de sus atributos);
   - `PATCH /listings/:id/status` (`changeListingStatus`);
   - `GET /brokers`.
 
-  Van en `apps/api/src/routes/`, montadas con `.route()`. `AppDeps` recibe puertos de core (`listings`, `brokers`, `media` y `storage.signedReadUrl`), no adaptadores.
+  Van en `apps/api/src/routes/`, montadas con `.route()`. `AppDeps` recibe puertos de core (`listings`, `brokers`, `media`, `fieldDefinitions` y `storage.signedReadUrl`), no adaptadores.
 - **Cambios manuales de estado (`LISTING_MANUAL_TRANSITIONS`, core):**
   - `draft` → `ready` o `archived`;
   - `ready` → `paused` o `archived`;
@@ -310,7 +310,9 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
   `ready` exige al menos una foto, y el cambio es condicional (`ListingRepository.changeStatus`). `active` y `closed` no se cambian a mano en F1. Una transición no permitida es `409 INVALID_TRANSITION`, también pasar al mismo estado (la tabla no tiene `x → x`). `LISTING_MANUAL_TARGETS` (core) son los destinos, y la API valida con ellos.
   - **Provisional:** en F3 la tabla se redefine con su diagrama, como la de las publicaciones, y `changeListingStatus` pasa a orquestar las publicaciones: pausar al pasar a `paused`, despublicar al archivar, `active` ↔ `paused` y `closed` con `close_reason`.
 - La API tipa sus respuestas y valida su entrada con esos esquemas. La CLI y el panel validan con los mismos esquemas lo que reciben.
-- **Lo único que el panel importa de la API en tiempo de ejecución es `@agentsales/api/contracts`.** De la raíz de `@agentsales/api` solo importa `import type { AppType }`, porque en tiempo de ejecución arrastraría el servidor.
+- **Lo único que el panel importa de la API en tiempo de ejecución es `@agentsales/api/contracts`.** De la raíz de `@agentsales/api` solo importa `import type { AppType }`, porque en tiempo de ejecución arrastraría el servidor. Biome no distingue `import type`, así que lo revisa un test (`apps/web/src/api-imports.test.ts`).
+- **Clientes HTTP de la CLI y el panel:** cada uno tiene el suyo a propósito (`apps/cli/src/api-client.ts` y `apps/web/src/api/client.ts`). Difieren en el transporte: la CLI va por puerto y reconoce `ECONNREFUSED`; el panel va por el proxy `/api`, trata un 5xx sin JSON como `UNREACHABLE` y deja pasar las cancelaciones. Compartirlos exigiría una salida de runtime con `hono/client`, fuera de lo que permite ADR-0011. Los dos deben mantener la misma semántica: `code` y `status` del error, `TIMEOUT`, `UNEXPECTED_RESPONSE` y la respuesta validada con `contracts`.
+- **Textos para el operador** (`LISTING_STATUS_TEXT`, `OPERATION_TEXT`, `IMPORT_RUN_STATUS_TEXT`) y formatos (`formatPrice`, `formatListingPrice`, `formatNumber`, `describeAttributes`): en core, compartidos por la CLI, el panel y las plantillas de F2.
 
 ## Tipos alcanzables desde `AppType`
 
@@ -337,7 +339,7 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
 - **Proyecciones:** `ListingImportRecord` (id, `external_ref`, `status` y `source_hash`) es una proyección para la carga, sin esquema. La entidad completa es `listingSchema`, que devuelven `ListingRepository.list` y `get`. `MediaRecord` también es una proyección sin esquema: la API expone `mediaItemSchema` (sin `storagePath` ni `checksum`, con la URL firmada), definido en `contracts`. En F1, `media` no tiene esquema zod en core (excepción a §4.1 del spec F1).
 - **Ids:** son uuid. La API los valida con zod antes de llamar al repositorio; con otro formato, el adaptador de Postgres da `DB_QUERY_FAILED` (22P02) y los dobles en memoria, `null` o `*_NOT_FOUND`.
 - Hay un doble en memoria con la misma semántica en `@agentsales/core/testing`, que solo se importa desde tests. Los dos se prueban con los mismos fixtures, por ejemplo `fieldDefinitionOrderFixture`.
-- `FieldDefinitionRepository.list` devuelve las definiciones activas e inactivas. La precedencia (la del corredor sobre la global) y el filtro de `active` los resuelve `buildListingValidator` en core (`resolveEffectiveDefinitions`).
+- `FieldDefinitionRepository.list` devuelve las definiciones activas e inactivas. La precedencia (la del corredor sobre la global) y el filtro de `active` los resuelve core con `resolveEffectiveDefinitions`, que usan `buildListingValidator` y, desde F1-T13, el detalle de la API (`fields`: las efectivas sin las fijas y solo las que tienen valor en `attributes`).
 
 ## Importación de propiedades (`importListings`, core)
 

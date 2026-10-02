@@ -543,13 +543,23 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - **Reintentos:** el panel reintenta una vez las fallas pasajeras (red, 5xx); un 4xx se muestra de inmediato (un 404 quedaba en "Cargando" mientras esperaba el reintento).
   - **Propiedades:** filtros de estado, operación y comuna en la URL (un valor desconocido se ignora). Las comunas del selector salen de todas las propiedades.
   - **Detalle:** galería (fotos y videos, con la portada marcada), datos (dirección con el aviso de `show_exact_address`, destacados y notas internas), atributos con su etiqueta y botones para los cambios de `LISTING_MANUAL_TRANSITIONS`. Un id que no existe o no es uuid dice "Esta propiedad no existe".
-  - **`import type`:** Biome no distingue `import type`, así que la regla la revisa un test (`api-imports.test.ts`).
+  - **`import type`:** Biome no distingue `import type`, así que la regla la revisa un test (`api-imports.test.ts`), que cubre `import`, `export … from`, `import "x"` e `import()`.
+  - **Desde la revisión de T13:**
+    - **Números:** un entero de cuatro cifras va sin punto (RAE): `2018`, `1500`, pero `120.000`. El precio sigue con punto (`UF 5.800`).
+    - **Textos compartidos en core:** `LISTING_STATUS_TEXT`, `OPERATION_TEXT` e `IMPORT_RUN_STATUS_TEXT`. La CLI muestra el estado en español, como el panel ("Borrador (draft)" en el detalle).
+    - **Panel:**
+      - Los resultados anteriores se mantienen mientras llegan los de un filtro nuevo, y el contador se anuncia (`aria-live`).
+      - Si falla la consulta de comunas, el selector usa las propiedades visibles.
+      - El cambio de estado conserva la hora de carga del detalle (las URLs firmadas son de entonces).
+      - Un `TIMEOUT` no se reintenta, y un corte por tiempo mientras llega el cuerpo es `TIMEOUT` (también en la CLI).
+      - Una página que falla muestra un aviso dentro del layout (`errorElement`).
+      - Los botones se nombran según el estado de origen ("Reanudar", "Desarchivar"), y `Record<ManualTarget, string>` obliga a nombrar un destino nuevo.
 - **Desde la revisión de T10:**
   - **Atributos con su etiqueta:** `attributes` llega con las claves internas (`dormitorios`, `_extra`). Las etiquetas son datos (ADR-0006), así que el detalle suma `fields: [{ key, label, type }]` con las definiciones efectivas del corredor (`resolveEffectiveDefinitions`; la ruta recibe `FieldDefinitionRepository`). Se decide en el plan de T13; la alternativa es mostrar las claves crudas en F1.
   - **URLs firmadas:** duran `SIGNED_URL_TTL_SECONDS` (1 h). `staleTime` y `gcTime` de TanStack Query quedan bien por debajo, o la galería vuelve a pedir los datos si falla una imagen.
   - **Imports desde la API:** el panel solo hace `import type` de la raíz de `@agentsales/api`; en tiempo de ejecución, solo `@agentsales/api/contracts`. Si Biome permite distinguir `import type`, se agrega una regla para `apps/web/src/**`. Si no, queda como revisión manual.
 - **Descripción:**
-  - **Patrón:** `createApiClient` con el `hc` completo, y `unwrap(res)` que lee `ErrorBody` y lanza `ApiError { code, status }`. Un solo `ApiClientContext`, hooks por recurso en `src/queries/` con fábricas de `queryKey`, y `routes.tsx` separado de `App.tsx` con páginas en `React.lazy` (D5). El `HealthFetcher` desaparece con este patrón, y se actualiza la sección de tests del panel en `05-convenciones.md`.
+  - **Patrón:** `createApiClient` con el `hc` completo, y `unwrap(res, schema)` que lee `ErrorBody` y lanza `ApiError { code, status }`. Un solo `ApiClientContext`, hooks por recurso en `src/queries/` con fábricas de `queryKey`, y `routes.tsx` separado de `App.tsx` con páginas en `React.lazy` (D5). El `HealthFetcher` desaparece con este patrón, y se actualiza la sección de tests del panel en `05-convenciones.md`.
   - **Propiedades:** grilla con portada, operación, tipo, comuna, precio formateado (`UF 5.800`, `$650.000`) y estado. Filtros en los parámetros de la URL.
   - **Detalle:** galería, atributos y cambio de estado.
 - **Hecho cuando:**
@@ -557,6 +567,10 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - [x] La página Estado de F0 sigue funcionando con el patrón nuevo
 
 ### F1-T14 · Panel: Importar
+- **Desde la revisión de T13:**
+  - Al terminar una carga (y en cada sondeo que la vea terminada), invalidar `listingKeys.all`. Si no, Propiedades sigue mostrando la caché de 5 min y las propiedades recién cargadas no aparecen.
+  - Los estados de la carga ya tienen texto en core (`IMPORT_RUN_STATUS_TEXT`), y `isTerminalImportRun` dice cuándo dejar de sondear.
+  - Patrón del panel: `src/queries/imports.ts` con su fábrica de claves, y los tests con `apps/web/test/harness.tsx`.
 - **Desde la revisión de T11:**
   - El formulario puede mandar el campo de medios vacío y el corredor vacío: la API los trata como "no enviado".
   - Comprobar que el proxy de Vite (`/api`) conserva el header `Origin`, porque `csrf()` rechaza un multipart sin él.
@@ -635,3 +649,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-02 | F1-T12: CLI con `import`, `imports`, `listings` y `listing`; `@agentsales/api/testing` (subruta de solo tests); filtro `externalRef`; `formatPrice` en core; `--broker` normalizado con `slugify`; reintento de hasta 3 consultas fallidas; `updated_at` con la hora de la base al actualizar |
 | 2026-10-02 | Desde la revisión de F1-T12: §4.4 con `externalRef` y `listing --broker`; `TERMINAL_IMPORT_RUN_STATUSES` e `isTerminalImportRun` en core; ayudas compartidas de la CLI en `commands/shared.ts`; `@agentsales/api/testing` también prohibida en los adaptadores, con test de Biome; reloj monótono para el tope de espera; código de `listing` recortado; `formatPrice` con el signo delante de todo |
 | 2026-10-02 | F1-T13: `fields` (etiquetas de los atributos) en el detalle de la API; `describeAttributes`, `formatNumber` y `formatListingPrice` en core; patrón del panel (`createApiClient`, `unwrap`, `ApiClientContext`, `src/queries/`, `routes.tsx` con `React.lazy`); páginas Propiedades y Detalle; sin reintento de los 4xx; guardia de `import type` con un test |
+| 2026-10-02 | Desde la revisión de F1-T13: enteros de cuatro cifras sin punto (`formatNumber`); `LISTING_STATUS_TEXT`, `OPERATION_TEXT` e `IMPORT_RUN_STATUS_TEXT` en core (la CLI muestra los estados en español); resultados anteriores mientras se filtra, comunas de respaldo y `aria-live`; el cambio de estado conserva la hora de carga del detalle; sin reintento de `TIMEOUT` y corte del cuerpo como `TIMEOUT`; `errorElement`; botones según el estado de origen; guardia de imports ampliada; notas para T14 (invalidar `listingKeys.all`) |

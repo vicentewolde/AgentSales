@@ -1,13 +1,7 @@
-import type { ListingStatus, Operation } from "@agentsales/core";
+import { LISTING_MANUAL_TARGETS, type ListingStatus } from "@agentsales/core";
 
-export const LISTING_STATUS_TEXT: Readonly<Record<ListingStatus, string>> = {
-  draft: "Borrador",
-  ready: "Lista",
-  active: "Publicada",
-  paused: "Pausada",
-  closed: "Cerrada",
-  archived: "Archivada",
-};
+// Los textos de estados y operaciones viven en core (los comparte la CLI). Aquí, solo lo propio
+// de la interfaz: colores y botones.
 
 /** Colores de la etiqueta de estado (Tailwind). */
 export const LISTING_STATUS_TONE: Readonly<Record<ListingStatus, string>> = {
@@ -19,14 +13,23 @@ export const LISTING_STATUS_TONE: Readonly<Record<ListingStatus, string>> = {
   archived: "bg-slate-200 text-slate-600",
 };
 
-export const OPERATION_TEXT: Readonly<Record<Operation, string>> = {
-  sale: "Venta",
-  rent: "Arriendo",
-};
+export type ManualTarget = (typeof LISTING_MANUAL_TARGETS)[number];
 
-/** Botón de cada cambio manual de estado (`LISTING_MANUAL_TARGETS`). */
-export const STATUS_ACTION_TEXT = {
+export const isManualTarget = (status: ListingStatus): status is ManualTarget =>
+  (LISTING_MANUAL_TARGETS as readonly ListingStatus[]).includes(status);
+
+/**
+ * Botón de cada cambio manual (`LISTING_MANUAL_TARGETS`): un `Record` obliga a escribir el texto de
+ * un destino nuevo. Volver a `ready` se nombra según desde dónde se vuelve.
+ */
+const ACTION_TEXT: Readonly<Record<ManualTarget, string>> = {
   ready: "Marcar como lista",
   paused: "Pausar",
   archived: "Archivar",
-} as const;
+};
+
+export function statusActionText(from: ListingStatus, to: ManualTarget): string {
+  if (to === "ready" && from === "paused") return "Reanudar";
+  if (to === "ready" && from === "archived") return "Desarchivar";
+  return ACTION_TEXT[to];
+}

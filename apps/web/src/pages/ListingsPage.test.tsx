@@ -42,7 +42,9 @@ describe("panel: Propiedades", () => {
     const { renderApp, sale, broker } = await withListings();
     renderApp("/propiedades");
 
-    const p1 = await screen.findByRole("link", { name: "P-001: Departamento · Ñuñoa" });
+    // El nombre accesible de la tarjeta es todo su texto: código, título, operación, precio y estado.
+    const p1 = await screen.findByRole("link", { name: /P-001.*Departamento · Ñuñoa/ });
+    expect(p1.textContent).toContain("UF 5.800");
     expect(p1.getAttribute("href")).toBe(`/propiedades/${sale.id}`);
     expect(within(p1).getByText("Venta")).toBeTruthy();
     expect(within(p1).getByText("UF 5.800")).toBeTruthy();
@@ -51,7 +53,7 @@ describe("panel: Propiedades", () => {
       `https://r2.test/brokers/${broker.id}/listings/${sale.id}/original/a.jpg?firma`,
     );
 
-    const p2 = screen.getByRole("link", { name: "P-002: Departamento · Providencia" });
+    const p2 = screen.getByRole("link", { name: /P-002.*Departamento · Providencia/ });
     expect(within(p2).getByText("Arriendo")).toBeTruthy();
     expect(within(p2).getByText("$650.000/mes")).toBeTruthy();
     expect(within(p2).getByText("Borrador")).toBeTruthy();
@@ -93,7 +95,7 @@ describe("panel: Propiedades", () => {
 
     fireEvent.change(select("Operación"), { target: { value: "rent" } });
     await waitFor(() => expect(cards()).toHaveLength(1));
-    expect(cards()[0]?.getAttribute("aria-label")).toContain("P-002");
+    expect(cards()[0]?.textContent).toContain("P-002");
 
     fireEvent.click(screen.getByRole("button", { name: "Quitar filtros" }));
     await waitFor(() => expect(cards()).toHaveLength(2));
@@ -132,6 +134,39 @@ describe("panel: Propiedades", () => {
 
     await screen.findByRole("link", { name: /P-001/ });
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("una tarjeta sin operación, tipo ni comuna se muestra igual", async () => {
+    const h = harness();
+    const broker = await h.brokers.create(brokerData("marca"));
+    await h.listings.create(
+      newListing(broker.id, "P-009", { operation: null, propertyType: null, comuna: null }),
+    );
+    h.renderApp("/propiedades");
+
+    const card = await screen.findByRole("link", { name: /P-009/ });
+    expect(within(card).getByText("Propiedad")).toBeTruthy();
+    expect(within(card).getByText("Sin operación")).toBeTruthy();
+  });
+
+  it("si falla la consulta de comunas, el selector usa las propiedades que se ven", async () => {
+    const { renderApp } = await withListings({
+      // Solo falla la consulta sin filtros (la de las comunas).
+      intercept: (_method, path) =>
+        path === "/listings"
+          ? Response.json({ error: { code: "DB_UNAVAILABLE", message: "x" } }, { status: 503 })
+          : undefined,
+    });
+    renderApp("/propiedades?status=ready");
+
+    await screen.findByRole("link", { name: /P-001/ });
+    await waitFor(() =>
+      expect(
+        within(select("Comuna"))
+          .getAllByRole("option")
+          .map((o) => o.textContent),
+      ).toEqual(["Todos", "Ñuñoa"]),
+    );
   });
 
   it("una tarjeta lleva al detalle", async () => {

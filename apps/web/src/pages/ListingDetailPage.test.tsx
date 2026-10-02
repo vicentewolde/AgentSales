@@ -27,6 +27,7 @@ async function setup({
       fieldDefinitions: createInMemoryFieldDefinitionRepository([
         definition("dormitorios", "Dormitorios", 1),
         definition("gastos_comunes", "Gastos comunes", 2),
+        definition("ano_construccion", "Año de construcción", 3),
       ]),
       ...options.deps,
     },
@@ -39,6 +40,7 @@ async function setup({
       internalNotes: "Llaves en conserjería",
       attributes: {
         gastos_comunes: 120000,
+        ano_construccion: 2018,
         dormitorios: 3,
         piscina: true,
         _extra: { vista: "al cerro" },
@@ -87,7 +89,7 @@ describe("panel: Detalle de una propiedad", () => {
 
     const datos = screen.getByRole("region", { name: "Datos" });
     expect(within(datos).getByText(/Calle Inventada 123, 45, Ñuñoa, Metropolitana/)).toBeTruthy();
-    expect(within(datos).getByText("No se publica: en los avisos va solo la comuna.")).toBeTruthy();
+    expect(within(datos).getByText("No se publica la dirección exacta.")).toBeTruthy();
     expect(within(datos).getByText("Llaves en conserjería")).toBeTruthy();
 
     const atributos = screen.getByRole("region", { name: "Atributos" });
@@ -97,6 +99,8 @@ describe("panel: Detalle de una propiedad", () => {
     expect(pairs).toEqual([
       ["Dormitorios", "3"],
       ["Gastos comunes", "120.000"],
+      // Un año no lleva punto de miles (RAE: cuatro cifras sin separador).
+      ["Año de construcción", "2018"],
       ["piscina", "Sí"],
       ["vista(extra)", "al cerro"],
     ]);
@@ -145,6 +149,47 @@ describe("panel: Detalle de una propiedad", () => {
     const card = await screen.findByRole("link", { name: /P-001/ });
     await waitFor(() => expect(within(card).getByText("Lista")).toBeTruthy());
     expect(requests.filter((request) => request === "GET /listings")).toHaveLength(2);
+  });
+
+  it.each([
+    ["paused", ["Reanudar", "Archivar"]],
+    ["archived", ["Desarchivar"]],
+    ["active", []],
+    ["closed", []],
+  ] as const)("desde %s ofrece %j", async (status, buttons) => {
+    const { renderApp, listing, listings } = await setup();
+    listings.setStatus(listing.id, status);
+    renderApp(`/propiedades/${listing.id}`);
+
+    await screen.findByRole("heading", { name: /Departamento en venta/ });
+    const actions = screen
+      .queryAllByRole("button")
+      .map((button) => button.textContent)
+      .filter((text) => text !== "Reintentar");
+    expect(actions).toEqual(buttons);
+  });
+
+  it("con datos vacíos no muestra secciones de más", async () => {
+    const h = harness();
+    const broker = await h.brokers.create(brokerData("marca"));
+    const bare = await h.listings.create(
+      newListing(broker.id, "P-009", {
+        operation: null,
+        propertyType: null,
+        comuna: null,
+        showExactAddress: true,
+        attributes: {},
+      }),
+    );
+    h.renderApp(`/propiedades/${bare.id}`);
+
+    expect(await screen.findByRole("heading", { name: "Propiedad" })).toBeTruthy();
+    const datos = screen.getByRole("region", { name: "Datos" });
+    expect(within(datos).getByText("Calle Inventada 123, Metropolitana")).toBeTruthy();
+    expect(within(datos).queryByText("No se publica la dirección exacta.")).toBeNull();
+    expect(within(datos).queryByText("Destacados")).toBeNull();
+    expect(within(datos).queryByText("Notas internas")).toBeNull();
+    expect(screen.getByText("Sin atributos.")).toBeTruthy();
   });
 
   it.each([

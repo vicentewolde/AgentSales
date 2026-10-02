@@ -1,12 +1,12 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { type ImportRunView, importRunResponseSchema } from "@agentsales/api/contracts";
-import { isTerminalImportRun } from "@agentsales/core";
+import { IMPORT_RUN_STATUS_TEXT, isTerminalImportRun } from "@agentsales/core";
 import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
-import { exitCodeOf, RUN_STATUS_TEXT, renderImportRun } from "./import-run-view.js";
+import { exitCodeOf, renderImportRun } from "./import-run-view.js";
 import { brokerSlugOf } from "./shared.js";
 
 /** Tiempos de la espera (spec F1 §4.4); los tests los acortan. */
@@ -120,7 +120,7 @@ export function runImport(deps: ImportDeps, xlsx: string, options: ImportOptions
     if (broker !== undefined && broker !== options.broker) {
       deps.print(c.dim(`Corredor: ${broker}`));
     }
-    deps.print(`Carga ${run.id} (${run.input.xlsxFile}): ${RUN_STATUS_TEXT[run.status]}…`);
+    deps.print(`Carga ${run.id} (${run.input.xlsxFile}): ${IMPORT_RUN_STATUS_TEXT[run.status]}…`);
     const started = deps.now();
     let shown = run.status;
     let warned = false;
@@ -152,7 +152,7 @@ export function runImport(deps: ImportDeps, xlsx: string, options: ImportOptions
         continue;
       }
       if (run.status !== shown && !isTerminalImportRun(run.status)) {
-        deps.print(`${RUN_STATUS_TEXT[run.status]}…`);
+        deps.print(`${IMPORT_RUN_STATUS_TEXT[run.status]}…`);
       }
       shown = run.status;
       if (run.status === "queued" && !warned && deps.now() - started >= timing.queuedWarningMs) {

@@ -34,11 +34,17 @@ describe("describeAttributes", () => {
     ["", "—"],
     [[], "—"],
     [120000, "120.000"],
+    [2018, "2018"],
     [72.5, "72,5"],
-    [1234.567, "1.234,57"],
+    [1234.567, "1234,57"],
+    [12345.678, "12.345,68"],
     [{ a: 1 }, '{"a":1}'],
   ])("%j → %s", (value, expected) => {
     expect(describeAttributes({ campo: value }, [])[0]?.value).toBe(expected);
+  });
+
+  it("un _extra nulo no aparece", () => {
+    expect(describeAttributes({ _extra: null }, [])).toEqual([]);
   });
 
   it("un _extra que no es un objeto se muestra tal cual", () => {

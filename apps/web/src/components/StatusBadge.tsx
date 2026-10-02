@@ -1,5 +1,5 @@
-import type { ListingStatus } from "@agentsales/core";
-import { LISTING_STATUS_TEXT, LISTING_STATUS_TONE } from "../labels.js";
+import { LISTING_STATUS_TEXT, type ListingStatus } from "@agentsales/core";
+import { LISTING_STATUS_TONE } from "../labels.js";
 
 export function StatusBadge({ status }: { status: ListingStatus }) {
   return (

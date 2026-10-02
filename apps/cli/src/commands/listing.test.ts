@@ -70,7 +70,7 @@ describe("runListing", () => {
     expect(h.text()).toBe(
       [
         "P-001 · Departamento en venta · Ñuñoa",
-        "  Estado: draft · Corredor: marca",
+        "  Estado: Borrador (draft) · Corredor: marca",
         "  Precio: UF 5.800",
         "  Dirección: Calle Inventada 123, 45, Ñuñoa, Metropolitana (no se publica la dirección exacta)",
         "  Destacados: Luminoso",
