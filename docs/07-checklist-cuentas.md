@@ -26,10 +26,10 @@ Cosas que **solo tú puedes hacer** (cuentas, aprobaciones, datos reales). Claud
 
 ## En paralelo, antes de F3 (Instagram) — empieza pronto, es lo más lento
 
-- [ ] Confirmar que tu Instagram es cuenta **profesional** (Empresa o Creador)
-- [ ] Crear cuenta de desarrollador en developers.facebook.com
-- [ ] Crear una app de tipo **Empresa** y agregar el producto **Instagram** (API con inicio de sesión de Instagram)
-- [ ] Agregar tu cuenta de Instagram como **tester** de la app y aceptar la invitación desde Instagram
+- [x] Confirmar que tu Instagram es cuenta **profesional** (Empresa o Creador): lo es, categoría Emprendedor y vinculada a la página de Facebook AgentSales (2026-10-02)
+- [x] Crear cuenta de desarrollador en developers.facebook.com
+- [x] Crear una app de tipo **Empresa** y agregar el producto **Instagram** (API con inicio de sesión de Instagram): app `AgentSales-IG`
+- [x] Agregar tu cuenta de Instagram como **tester** de la app y aceptar la invitación desde Instagram (aceptada el 2026-10-02). En la web en inglés: *Settings → App website permissions → Apps and websites → Tester Invites* (atajo: instagram.com/accounts/manage_access/)
 - [ ] Anotar `META_APP_ID` y `META_APP_SECRET` en `.env`
 - [ ] (Para terceros, en F7) Verificación del negocio y App Review de `instagram_business_content_publish`
 
