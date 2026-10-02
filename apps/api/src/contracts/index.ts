@@ -96,9 +96,16 @@ export type BrokerListResponse = z.infer<typeof brokerListResponseSchema>;
  * el cliente), y un `<select>` sin corredor como `""`: cuentan como "no enviado" (el panel arma el
  * form con `FormData`).
  */
+/**
+ * Un archivo subido. Con el tipo explícito `File` (la interfaz global), y no `z.instanceof(File)`:
+ * ese infiere la clase de `node:buffer` al compilar la API, y `AppType` le pasaría al panel un tipo
+ * de Node (docs/01-arquitectura.md, "Tipos alcanzables desde `AppType`").
+ */
+const fileSchema = z.custom<File>((value) => value instanceof File, "debe ser un archivo");
+
 const optionalFile = z.preprocess(
   (value) => (value === "" || (value instanceof File && value.size === 0) ? undefined : value),
-  z.instanceof(File).optional(),
+  fileSchema.optional(),
 );
 const optionalText = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
@@ -110,7 +117,7 @@ const optionalText = z.preprocess(
  * medios (opcional), el corredor (opcional) y `dryRun` como texto.
  */
 export const importUploadFormSchema = z.object({
-  file: z.instanceof(File),
+  file: fileSchema,
   media: optionalFile,
   broker: optionalText,
   dryRun: z.enum(["true", "false"]).optional(),

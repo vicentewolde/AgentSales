@@ -9,6 +9,12 @@ const StatusPage = lazy(() =>
 const ListingsPage = lazy(() =>
   import("./pages/ListingsPage.js").then((module) => ({ default: module.ListingsPage })),
 );
+const ImportPage = lazy(() =>
+  import("./pages/ImportPage.js").then((module) => ({ default: module.ImportPage })),
+);
+const ImportRunPage = lazy(() =>
+  import("./pages/ImportRunPage.js").then((module) => ({ default: module.ImportRunPage })),
+);
 const ListingDetailPage = lazy(() =>
   import("./pages/ListingDetailPage.js").then((module) => ({ default: module.ListingDetailPage })),
 );
@@ -50,6 +56,8 @@ export const routes: RouteObject[] = [
           { index: true, element: <StatusPage /> },
           { path: "propiedades", element: <ListingsPage /> },
           { path: "propiedades/:id", element: <ListingDetailPage /> },
+          { path: "importar", element: <ImportPage /> },
+          { path: "importar/:id", element: <ImportRunPage /> },
           { path: "*", element: <NotFound /> },
         ],
       },

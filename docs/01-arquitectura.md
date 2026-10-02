@@ -318,6 +318,7 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
 
 La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que arrastra la firma de `createApp(deps: AppDeps)` y todo tipo que se alcance desde ahí. Por eso:
 - En esos tipos no puede aparecer pino, drizzle, pg-boss, `@hono/node-server` ni `NodeJS.*`.
+- **Globales que Node también define** (`File`, `Blob`, `ReadableStream`): se nombran como tipo (`z.custom<File>`), no se infieren de su valor. `z.instanceof(File)` toma la clase de `node:buffer` al compilar la API, y el panel la recibe como `import("node:buffer").File`; la guardia de `process` no lo ve, pero el formulario de Importar deja de compilar (F1-T14).
 - Se usan los puertos de `core` o tipos mínimos locales. Por ejemplo, `AppLogger` en vez del `Logger` de pino.
 - TypeScript puede compilar el panel contra el **código fuente** de la API, no solo contra sus `.d.ts`; pasa, por ejemplo, en un clon limpio. Por eso la regla vale para todo módulo de `apps/api/src` alcanzable desde `index.ts`: no puede importar `@agentsales/config`, `node:*` ni usar `NodeJS.*`. Solo `server.ts`, el punto de entrada, compone lo que depende de Node. La excepción es `src/testing/` (`@agentsales/api/testing`): es una salida aparte, solo para tests, que `index.ts` no importa. Las utilidades puras que comparten, como `redactText`, viven en `core`.
 - El panel tiene una guardia (`apps/web/src/no-node-types.ts`): si se filtran los tipos de Node, `tsc -b` falla. La CI la ejerce en un clon limpio.

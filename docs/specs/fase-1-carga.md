@@ -567,6 +567,15 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - [x] La página Estado de F0 sigue funcionando con el patrón nuevo
 
 ### F1-T14 · Panel: Importar
+- **Hecho en F1-T14:**
+  - **Páginas:** `/importar` (formulario y "Cargas anteriores") y `/importar/:id` (progreso, aviso de cola y reporte). "Importar" queda en el menú.
+  - **Formulario:** el Excel, el zip (opcional), el corredor (de `/brokers`, o "desde la hoja Corredor") y "Solo simular". Antes de subir revisa la extensión y el tope del Excel (`MAX_XLSX_UPLOAD_BYTES`) y la extensión del zip. Una subida multipart tiene su propio timeout (`UPLOAD_TIMEOUT_MS`, 10 min).
+  - **Sondeo:** `useImportRun` consulta cada 2 s solo mientras la carga está en `queued` o `running`, y al verla terminada invalida las propiedades, los corredores y la lista de cargas. El aviso de cola sale a los 20 s, medido desde `createdAt` con la hora de cada consulta.
+  - **Reporte:** contadores (con "Fotos y videos: —" si falta `media`), corredor, columnas desconocidas, faltantes o repetidas, la tabla de errores por fila y columna (la hoja Corredor primero), las filas con su resultado y enlace a la propiedad, y las advertencias.
+  - **Textos en core:** `IMPORT_BROKER_OUTCOME_TEXT` e `IMPORT_ROW_OUTCOME_TEXT` (la CLI también los usa).
+  - **Contratos:** el archivo subido se tipa como `z.custom<File>`, no `z.instanceof(File)`. Este último inferia la clase `File` de `node:buffer` al compilar la API, y `AppType` le pasaba al panel un tipo de Node (venía de T11, y nadie usaba el formulario en el panel).
+  - **Proxy y `Origin`:** comprobado en el navegador contra Neon: el proxy de Vite conserva `Origin`, `csrf()` acepta el multipart, la API responde `202`, el worker procesa y la página deja de consultar al terminar (con la plantilla, `demo` y "Solo simular").
+  - **Tests:** jsdom no puede pasarle a la API un `FormData` con archivos (su `File` no es el de Node). El arnés registra lo que manda el formulario y lo reenvía a `POST /imports/local`; la subida multipart en sí la prueban los tests de la API.
 - **Desde la revisión de T13:**
   - Al terminar una carga (y en cada sondeo que la vea terminada), invalidar `listingKeys.all`. Si no, Propiedades sigue mostrando la caché de 5 min y las propiedades recién cargadas no aparecen.
   - Los estados de la carga ya tienen texto en core (`IMPORT_RUN_STATUS_TEXT`), y `isTerminalImportRun` dice cuándo dejar de sondear.
@@ -578,8 +587,8 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Depende de:** T11, T13
 - **Descripción:** subir el xlsx y el zip (con el selector de corredor), y ver el progreso, el aviso de `queued` y el reporte por fila y columna.
 - **Hecho cuando:**
-  - [ ] Tests de componentes: envío del formulario, sondeo que se detiene en un estado terminal, aviso de `queued` y tabla de errores
-  - [ ] Demo: flujo completo desde el navegador con los archivos de muestra
+  - [x] Tests de componentes: envío del formulario, sondeo que se detiene en un estado terminal, aviso de `queued` y tabla de errores
+  - [ ] Demo: flujo completo desde el navegador con los archivos de muestra (pendiente: faltan las propiedades de muestra del operador; el flujo con la plantilla y "Solo simular" contra Neon pasó)
 
 ### F1-T15 · Cierre de fase
 - **Depende de:** todas
@@ -650,3 +659,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-02 | Desde la revisión de F1-T12: §4.4 con `externalRef` y `listing --broker`; `TERMINAL_IMPORT_RUN_STATUSES` e `isTerminalImportRun` en core; ayudas compartidas de la CLI en `commands/shared.ts`; `@agentsales/api/testing` también prohibida en los adaptadores, con test de Biome; reloj monótono para el tope de espera; código de `listing` recortado; `formatPrice` con el signo delante de todo |
 | 2026-10-02 | F1-T13: `fields` (etiquetas de los atributos) en el detalle de la API; `describeAttributes`, `formatNumber` y `formatListingPrice` en core; patrón del panel (`createApiClient`, `unwrap`, `ApiClientContext`, `src/queries/`, `routes.tsx` con `React.lazy`); páginas Propiedades y Detalle; sin reintento de los 4xx; guardia de `import type` con un test |
 | 2026-10-02 | Desde la revisión de F1-T13: enteros de cuatro cifras sin punto (`formatNumber`); `LISTING_STATUS_TEXT`, `OPERATION_TEXT` e `IMPORT_RUN_STATUS_TEXT` en core (la CLI muestra los estados en español); resultados anteriores mientras se filtra, comunas de respaldo y `aria-live`; el cambio de estado conserva la hora de carga del detalle; sin reintento de `TIMEOUT` y corte del cuerpo como `TIMEOUT`; `errorElement`; botones según el estado de origen; guardia de imports ampliada; notas para T14 (invalidar `listingKeys.all`) |
+| 2026-10-02 | F1-T14: páginas `/importar` y `/importar/:id`; sondeo cada 2 s solo mientras corre e invalidación de propiedades al terminar; aviso de cola a los 20 s; reporte por fila y columna; `IMPORT_BROKER_OUTCOME_TEXT` e `IMPORT_ROW_OUTCOME_TEXT` en core; `UPLOAD_TIMEOUT_MS`; el archivo de los contratos como `z.custom<File>` (antes filtraba el `File` de Node a `AppType`) |
