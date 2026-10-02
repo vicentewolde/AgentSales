@@ -34,17 +34,20 @@ Spec detallado: `docs/specs/fase-1-carga.md`.
 - El panel lista propiedades con portada, estado y detalle con galería.
 
 ## F2 · Contenido
-- Proveedor `LLMProvider` con `claude-cli` y `fake`; `anthropic-api` como stub.
-- Prompt versionado; salida validada con zod según `04-formato-publicaciones.md`.
-- Procesamiento de medios: variantes `ig_4x5`, `pi_4x3`, `ig_reel`; selección de portada.
-- Render de plantillas (portada y ficha) con Playwright a PNG.
-- Vista previa en el panel: carrusel IG, caption, textos de Portal y Marketplace, con edición manual.
-- `pnpm eval:content` corre el generador sobre las 3 propiedades de muestra y revisa las reglas editoriales (sin datos inventados).
+Spec detallado: `docs/specs/fase-2-contenido.md`.
 
-**Aceptación:** las 3 propiedades de muestra quedan con contenido `pending_approval` que el operador aprobaría sin cambios mayores.
+- Proveedor `LLMProvider` con `claude-cli` y `fake`; `anthropic-api` como stub.
+- Prompt versionado; salida validada con zod según `04-formato-publicaciones.md`. Textos híbridos: los datos los pone el código y la IA redacta las frases (ADR-0013).
+- Procesamiento de medios: variantes `thumb`, `ig_4x5`, `pi_4x3`, `ig_reel`; HEIC → JPEG; sin metadatos GPS. La portada es la del operador (`foto_portada`).
+- Render de plantillas (portada y ficha) con Playwright, en JPEG.
+- Vista previa en el panel: carrusel IG, caption, reel, textos de Portal y Marketplace, con edición manual.
+- `pnpm eval:content` corre el generador sobre las 3 propiedades de muestra y revisa las reglas editoriales (sin datos inventados).
+- Mínimos y máximos en los campos numéricos (deuda de F1).
+
+**Aceptación:** las 3 propiedades de muestra quedan con contenido listo para revisar (`contents` en `draft` o `edited`, sin publicaciones: ADR-0012) que el operador aprobaría sin cambios mayores.
 
 ## F3 · Aprobación + Instagram
-- Máquina de estados de publicaciones completa, con eventos.
+- Máquina de estados de publicaciones completa, con eventos. Las publicaciones nacen del contenido vigente de F2 cuando hay una cuenta conectada (ADR-0012).
 - Aprobar, editar o rechazar desde el panel y la CLI (`agentsales approve <id>`).
 - OAuth Instagram Login; tokens cifrados y refresco automático.
 - Publicar carrusel y reel en la cuenta de prueba, primero en `dry-run` y luego en `live`.
@@ -89,6 +92,8 @@ Spec detallado: `docs/specs/fase-1-carga.md`.
 
 ## Post-MVP (backlog)
 - Respuestas a DMs, comentarios y preguntas de ML (siguiente gran fase).
+- Google Sheets y Drive como origen directo de la carga (spec F2, D8: durante el piloto basta con Excel y zip).
+- Sugerencia de portada y orden de fotos con visión de la IA (spec F2, D3).
 - Carga por chat (WhatsApp o Telegram).
 - Yapo, TikTok, Facebook Page.
 - Categoría `product` para vendedores generales.

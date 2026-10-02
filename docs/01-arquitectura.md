@@ -62,7 +62,7 @@ flowchart LR
 ## Estilo: puertos y adaptadores
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
-- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `JobQueue`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository` e `ImportRunRepository` (`packages/core/src/ports/`); el resto llega en su fase.
+- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider`, `MediaProcessor`, `SlideTemplates`, `HtmlRenderer` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `JobQueue`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository` e `ImportRunRepository` (`packages/core/src/ports/`); el resto llega en su fase (F2: `LLMProvider`, `MediaProcessor`, `SlideTemplates`, `HtmlRenderer`, `ContentRunRepository` y `ContentRepository`, spec F2 §4.1).
 - Cola (ADR-0005): el adaptador de pg-boss vive en `packages/queue` desde F1-T08 (en F0 estaba en el worker). Implementa `JobQueue` e incluye `QUEUE_SCHEMA` y `checkQueueSchema`. La API, como `producer`, arranca pg-boss de forma diferida en el primer `enqueue`, y su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
@@ -82,11 +82,11 @@ agentsales/
 │   ├── core/         Dominio, esquemas zod, estados, casos de uso, puertos
 │   ├── db/           Esquema Drizzle, migraciones y (desde F1) repositorios
 │   ├── storage/      Archivos en Cloudflare R2 (API S3): subir, leer, borrar, URLs prefirmadas
-│   ├── importers/    xlsx, carpetas de medios, zip y staging de cargas (`./staging`); Google Sheets en F1b, si se decide
+│   ├── importers/    xlsx, carpetas de medios, zip y staging de cargas (`./staging`); Google Sheets directo, después del MVP
 │   ├── queue/        Cola de trabajos (pg-boss): productor `JobQueue`, `createBoss` y check de `/health`
-│   ├── llm/          Proveedores: claude-cli, anthropic-api, fake
-│   ├── media/        Procesamiento de imagen/video y render de plantillas
-│   ├── templates/    Plantillas HTML/CSS de posts (portada, ficha, etc.)
+│   ├── llm/          Proveedores (solo transporte): claude-cli, anthropic-api, fake. Los prompts viven en core (ADR-0013)
+│   ├── media/        Procesamiento de imagen y video (sharp, ffmpeg) y render de HTML (Playwright)
+│   ├── templates/    Plantillas HTML/CSS de posts (portada, ficha y texto del reel)
 │   ├── publishers/   instagram, mercadolibre, fb-marketplace
 │   └── config/       Variables de entorno validadas (zod), logger pino, redactor de secretos y resumen de errores repetidos
 ├── .github/          CI (GitHub Actions)
@@ -114,16 +114,23 @@ CLI (POST /imports/local, rutas del disco) o panel (POST /imports, multipart)
   → import_run en succeeded o failed, con reporte de errores y advertencias por fila
 ```
 
-### 2. Preparación de contenido (job `content.prepare`)
+### 2. Preparación de contenido (job `content.prepare`, F2)
 
 ```
-listing → media: normaliza, recorta por formato, elige portada
-        → templates: renderiza portada y ficha técnica (PNG)
-        → video: reel 9:16 (recorte + tope 90 s)
-        → llm: genera textos por plataforma (JSON validado con zod)
-        → crea contents y publications en estado pending_approval
-          (o approved si el corredor tiene auto_publish)
+CLI (prepare) o panel (Preparar contenido)
+  → requestContentRun (core): crea el content_run en queued y encola content.prepare
+    (si el aviso ya tiene una corrida activa, la devuelve)
+  → el worker corre prepareContent, por etapas idempotentes:
+    1. media:   mide, pasa HEIC a JPEG, borra metadatos y crea thumb, ig_4x5 y pi_4x3
+                (la portada es la del operador: foto_portada o la primera foto)
+    2. renders: portada y ficha (plantillas HTML → Playwright → JPEG)
+    3. reel:    9:16 con fondo desenfocado, tope de 90 s y el texto de los primeros 2 s
+    4. texts:   brief sin datos privados → IA (frases, JSON validado con zod)
+                → ensamblado con los datos por código → contents en draft
+  → content_run en succeeded o failed, con reporte por etapa
 ```
+
+En F2 no se crean `publications` (ADR-0012): nacen en F3 desde el contenido vigente, cuando hay una cuenta conectada (en `pending_approval`, o `approved` si el corredor tiene `auto_publish`). Detalle en el spec F2 §4.2 a §4.6.
 
 ### 3. Publicación (job `publication.publish`)
 
@@ -486,15 +493,23 @@ interface MediaStorage {
 
 ```ts
 interface LLMProvider {
-  generateStructured<T>(req: { system: string; prompt: string; images?: ImageRef[]; schema: ZodSchema<T> }): Promise<T>;
+  readonly name: LlmProvider;
+  generateStructured(req: {
+    system: string;
+    prompt: string;
+    jsonSchema: Record<string, unknown>;   // draft-07, sin largos ni topes
+    signal?: AbortSignal;
+  }): Promise<{ data: unknown; model: string }>;
 }
 ```
 
-- `claude-cli`: invoca `claude -p ... --output-format json` como subproceso. Usa el plan Max. **Solo para uso propio.**
-- `anthropic-api`: SDK oficial con `ANTHROPIC_API_KEY`. Obligatorio cuando el sistema lo usen terceros.
+Contrato objetivo de F2 (spec F2 §4.5; se implementa en F2-T04). Core valida `data` con el esquema zod estricto y reintenta una vez si no calza. Sin imágenes en F2.
+
+- `claude-cli`: invoca `claude -p --output-format json --json-schema …` como subproceso, sin herramientas, con `--safe-mode`, en un directorio vacío y con un entorno mínimo (sin `ANTHROPIC_API_KEY`). Usa el plan Max. **Solo para uso propio.** Detalle en `docs/integraciones/claude-code-cli.md`.
+- `anthropic-api`: SDK oficial con `ANTHROPIC_API_KEY`. Obligatorio cuando el sistema lo usen terceros. Stub en F2; real en F7.
 - `fake`: respuestas fijas para tests.
 
-Los prompts viven versionados en `packages/llm/prompts/` y cada `content` guarda `prompt_version`.
+El prompt, el esquema de salida, el ensamblado y la revisión editorial viven juntos en `packages/core/src/content/` (ADR-0013), y cada `content` guarda `prompt_version`.
 
 ## Seguridad
 

@@ -23,3 +23,11 @@ El operador tiene plan Max de Claude y quiere aprovecharlo durante el desarrollo
 ## Alternativas descartadas
 - **Solo API desde el inicio:** tiene costo desde el día 1, sin beneficio técnico en la fase local.
 - **Agent SDK con login de claude.ai en un producto para terceros:** no permitido por los términos.
+
+## Seguimiento
+- 2026-10-02 (`/fase-plan 2`):
+  - Los prompts pasan de `packages/llm/prompts/` a core, junto con el esquema de salida, el ensamblado y la revisión editorial (ADR-0013). `packages/llm` queda como transporte.
+  - El puerto cambia: recibe `system`, `prompt`, el JSON Schema (sin topes) y un `AbortSignal`, y devuelve `{ data: unknown, model }`; core valida con zod. Sin imágenes en F2 (spec F2, §4.5).
+  - `claude-cli` no usa `--bare` (exige `ANTHROPIC_API_KEY` y no usa el login del plan), corre con `--safe-mode`, sin herramientas, en un directorio vacío y con un entorno mínimo **sin** `ANTHROPIC_API_KEY`: con la clave en el entorno, la CLI cobraría por API (`docs/integraciones/claude-code-cli.md`).
+  - `anthropic-api` es un stub en F2 (`LLM_NOT_CONFIGURED`), y el entorno exige `ANTHROPIC_API_KEY` si se elige.
+  - Los términos siguen vigentes: el login de claude.ai es solo para uso propio del operador.
