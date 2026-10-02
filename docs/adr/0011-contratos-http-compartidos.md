@@ -35,3 +35,10 @@ Restricciones:
 - **Todo en `core`:** más simple, pero mezcla la forma de las respuestas HTTP con el dominio y hace crecer el paquete que importan todos.
 - **Un paquete nuevo `packages/contracts`:** separa aún más, pero agrega un paquete y referencias de proyecto para algo que es de la API. Una salida del mismo paquete basta.
 - **Solo tipos (`hc<AppType>`) sin validar en runtime:** la respuesta viene de la red, y F0 ya mostró que otro servicio puede estar en el puerto.
+
+## Seguimiento
+- 2026-10-02 (cierre de F1):
+  - `media` no tiene esquema en core: `MediaRecord` es una proyección del repositorio, y la API expone `mediaItemSchema` en `contracts`, sin `storagePath` ni `checksum` y con la URL firmada. El esquema se agrega a core cuando un caso de uso lo necesite (previsto en F2: `media.process`, variantes y `photo_order` de la IA).
+  - "Imports relativos" en `contracts` significa solo `./`: Biome rechaza `../`, que sale al código del servidor, y un test (`apps/api/test/contracts-boundary.test.ts`) lo prueba.
+  - Se sumó la salida de solo tests `@agentsales/api/testing` (`testDeps`, `fakeUploads`, `silentLogger`), restringida con Biome como `@agentsales/core/testing`.
+  - Los archivos se tipan con `z.custom<File>`, nunca con `z.instanceof(File)`, que filtra el `File` de `node:buffer` a `AppType`.

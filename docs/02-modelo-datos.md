@@ -63,7 +63,7 @@ erDiagram
 | required | boolean | |
 | options | jsonb null | Opciones de `enum`, o de cada elemento de un `list` (ej. `publicar_en`) |
 | source_column | text | Encabezado en el Excel |
-| is_core | boolean | Mapea a una columna fija de `listings` en vez de `attributes` |
+| is_core | boolean | Mapea a una columna fija de `listings`, o es una columna de control de la carga que no se guarda (`estado_carga`, `carpeta_medios`, `foto_portada`). En los dos casos, nunca va a `attributes` |
 | sort_order | int | |
 | active | boolean | |
 
@@ -164,7 +164,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | broker_id | uuid FK null | `null` hasta que el job lee la hoja Corredor |
 | status | enum `import_run_status` | `queued`, `running`, `succeeded`, `failed` |
 | dry_run | boolean | Valida y reporta sin escribir listings ni medios |
-| input | jsonb | Rutas absolutas de entrada y broker pedido; sin secretos. El job `import.run` solo recibe el id |
+| input | jsonb | `{ xlsxPath, mediaDir, broker }` (`importRunInputSchema`): rutas absolutas de entrada y broker pedido; sin secretos. El job `import.run` solo recibe el id |
 | error | jsonb null | `{ code, message }` cuando `status = failed` |
 | source | enum `listing_source` | Mismos valores que `listings.source` |
 | file_name | text | |

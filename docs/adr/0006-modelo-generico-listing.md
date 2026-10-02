@@ -20,3 +20,6 @@ El piloto es inmobiliario, pero el producto apunta también a vendedores general
 ## Alternativas descartadas
 - **Una columna por campo:** exige una migración por cada campo nuevo.
 - **Tablas separadas por categoría:** duplica lógica cuando lleguen los productos.
+
+## Seguimiento
+- 2026-10-02 (cierre de F1): además de precio, moneda, operación, tipo, ubicación y estado, `listings` tiene como columnas fijas `show_exact_address`, `highlights` e `internal_notes`, porque el sistema opera sobre ellas por reglas editoriales y de privacidad (`docs/04-formato-publicaciones.md`). Las columnas de control de la carga (`estado_carga`, `carpeta_medios`, `foto_portada`) son definiciones `is_core` sin columna: guían la importación y no se guardan.

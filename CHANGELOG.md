@@ -3,6 +3,10 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versiones por fase (ver `docs/06-roadmap.md`).
 
 ## [Sin publicar]
+
+## [0.1.0] - 2026-10-02 · F1 Carga
+Ahora se cargan propiedades desde un Excel con sus fotos y videos, por la CLI o el panel, y quedan guardadas en Neon y R2, listas para F2. Se probó de punta a punta con 3 propiedades reales de muestra: crear, repetir sin duplicar, cambiar un precio, una fila con errores, verlas en el panel e importar desde el navegador. No se publica nada.
+
 ### Añadido
 - **Importar desde el panel:** la sección Importar sube el Excel y un zip de fotos (con el corredor elegido de una lista, o el de la hoja Corredor) y deja simular sin guardar. La página de la carga muestra el avance, avisa si a los 20 s sigue en cola ("¿está corriendo el worker?") y al terminar muestra cuántas propiedades se crearon, actualizaron o fallaron, la tabla de errores por fila y columna, las fotos subidas y las advertencias, con enlace a cada propiedad. Debajo del formulario está el historial de cargas. Al terminar, Propiedades muestra lo nuevo de inmediato.
 - **Panel de propiedades:** la sección Propiedades muestra cada propiedad con su foto de portada, operación, tipo, comuna, precio en formato chileno (`UF 5.800`, `$650.000/mes`) y estado, con filtros por estado, operación y comuna que quedan en la dirección de la página. El detalle muestra la galería de fotos y videos, los datos (la dirección avisa si no se publica), los atributos con su nombre legible y botones para marcarla lista, pausarla o archivarla. Si la API no responde, el panel lo dice y ofrece reintentar. La CLI (`listing`) también muestra los atributos con su nombre.
@@ -23,8 +27,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 - **Plantilla:** `carpeta_medios` pasa a ser opcional; si se deja vacía, se usa `id_propiedad`.
 - **Validación de filas:** cada fila del Excel se valida contra las definiciones de campo. Los errores indican columna y motivo, sin detener las demás filas; números como `5.800`, `Sí/No`, listas y opciones se aceptan con o sin mayúsculas y tildes. `publicar_en` solo acepta Instagram, Portal Inmobiliario y Marketplace.
 - **Errores de base de datos:** si Neon no responde, se informa `DB_UNAVAILABLE` (reintentable) en vez de un error genérico.
+- **Documentación:** ADR-0011 (dónde viven los contratos HTTP que comparten la API, la CLI y el panel) y enmienda de ADR-0005 (la importación corre como trabajo del worker, `import.run`).
 
-### Arreglado
+### Corregido
 - La fecha de última modificación de una propiedad la pone la base de datos, así el orden "más recientes primero" no se cruza cuando dos cambios ocurren en el mismo milisegundo.
 
 ## [0.0.1] - 2026-09-30 · F0 Fundaciones
