@@ -4,7 +4,7 @@
     "outDir": "node_modules/.cache/tsc/web-test",
     "types": ["vite/client", "node"]
   },
-  "include": ["src"],
+  "include": ["src", "test"],
   "exclude": ["src/no-node-types.ts"],
   "references": [
     {

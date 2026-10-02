@@ -6,6 +6,7 @@ import { Writable } from "node:stream";
 import { createLogger, type Logger } from "@agentsales/config";
 import {
   createInMemoryBrokerRepository,
+  createInMemoryFieldDefinitionRepository,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
   createInMemoryListingRepository,
@@ -53,6 +54,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     listings: createInMemoryListingRepository({ nextId: randomUUID }),
     brokers: createInMemoryBrokerRepository(),
     media: createInMemoryMediaRepository(),
+    fieldDefinitions: createInMemoryFieldDefinitionRepository(),
     storage: { signedReadUrl: async (path) => `https://r2.test/${path}?firma` },
     importRuns: createInMemoryImportRunRepository({ nextId: randomUUID }),
     queue: createInMemoryJobQueue(),

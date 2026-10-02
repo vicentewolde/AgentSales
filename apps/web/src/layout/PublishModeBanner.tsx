@@ -1,4 +1,4 @@
-import { useHealth } from "../health.js";
+import { useHealth } from "../queries/health.js";
 
 const TONE = {
   live: "bg-red-700 font-bold",

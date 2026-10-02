@@ -1,7 +1,8 @@
 import type { HealthCheckName, HealthCheckResult } from "@agentsales/core";
 import { HEALTH_CHECK_NAMES } from "@agentsales/core";
 import { useId } from "react";
-import { useHealth } from "../health.js";
+import { ErrorAlert } from "../components/ErrorAlert.js";
+import { useHealth } from "../queries/health.js";
 
 const CHECKS: Record<HealthCheckName, { label: string; note?: string }> = {
   db: { label: "Base de datos", note: "Neon (Postgres)" },
@@ -64,12 +65,7 @@ export function StatusPage() {
 
       {isPending && <p className="mt-6 text-slate-600">Consultando la API…</p>}
 
-      {error && (
-        <div role="alert" className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4">
-          <p className="font-semibold text-red-800">{error.message}</p>
-          <p className="mt-1 text-sm text-red-700">Levántala con pnpm dev y vuelve a intentar.</p>
-        </div>
-      )}
+      {error && <ErrorAlert error={error} />}
 
       {data && (
         <>

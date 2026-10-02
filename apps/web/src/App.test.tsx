@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 import type { HealthReport } from "@agentsales/core";
-import { QueryClient } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "./App.js";
-import { ApiError, type HealthFetcher } from "./api.js";
-import { HEALTH_REFETCH_MS } from "./health.js";
+import { harness } from "../test/harness.js";
+import { HEALTH_REFETCH_MS } from "./queries/health.js";
 
 const healthy: HealthReport = {
   status: "ok",
@@ -18,11 +16,16 @@ const healthy: HealthReport = {
   },
 };
 
-function renderApp(fetchHealth: HealthFetcher, initialPath = "/") {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <App fetchHealth={fetchHealth} queryClient={queryClient} inMemory initialPath={initialPath} />,
-  );
+/** El panel con `/health` respondido por `health` (los demás endpoints, por la API en proceso). */
+function renderWithHealth(health: () => Promise<HealthReport> | HealthReport, initialPath = "/") {
+  const h = harness({
+    intercept: (_method, path) =>
+      path === "/health"
+        ? Promise.resolve(health()).then((report) => Response.json(report))
+        : undefined,
+  });
+  h.renderApp(initialPath);
+  return h;
 }
 
 const card = (name: string) => screen.getByRole("region", { name });
@@ -34,15 +37,15 @@ afterEach(() => {
 });
 
 describe("panel: Estado del sistema", () => {
-  it("mientras consulta lo indica en la página y en el banner", () => {
-    renderApp(() => new Promise(() => {}));
+  it("mientras consulta lo indica en la página y en el banner", async () => {
+    renderWithHealth(() => new Promise(() => {}));
 
-    expect(screen.getByText("Consultando la API…")).toBeTruthy();
+    expect(await screen.findByText("Consultando la API…")).toBeTruthy();
     expect(banner().textContent).toBe("Consultando PUBLISH_MODE…");
   });
 
   it("muestra los tres checks con su latencia y el banner dry-run", async () => {
-    renderApp(async () => healthy);
+    renderWithHealth(() => healthy);
 
     await screen.findByRole("region", { name: "Base de datos" });
     expect(within(card("Base de datos")).getByText("OK")).toBeTruthy();
@@ -53,8 +56,15 @@ describe("panel: Estado del sistema", () => {
     expect(screen.getByText(/Estado general:/).textContent).toContain("ok");
   });
 
+  it("con la API real en proceso también funciona (contrato de /health)", async () => {
+    harness().renderApp("/");
+
+    await screen.findByRole("region", { name: "Base de datos" });
+    expect(screen.getByText(/Estado general:/).textContent).toContain("ok");
+  });
+
   it("con un check caído muestra degradado y el error", async () => {
-    renderApp(async () => ({
+    renderWithHealth(() => ({
       ...healthy,
       status: "degraded",
       checks: {
@@ -70,7 +80,7 @@ describe("panel: Estado del sistema", () => {
   });
 
   it("con PUBLISH_MODE=live el banner lo anuncia de inmediato", async () => {
-    renderApp(async () => ({ ...healthy, publishMode: "live" }));
+    renderWithHealth(() => ({ ...healthy, publishMode: "live" }));
 
     await screen.findByText("PUBLISH_MODE: LIVE — las publicaciones son reales");
     expect(banner().getAttribute("aria-live")).toBe("assertive");
@@ -78,11 +88,14 @@ describe("panel: Estado del sistema", () => {
 
   it("si la API no responde lo dice, sugiere pnpm dev y se recupera con Actualizar", async () => {
     let calls = 0;
-    renderApp(async () => {
-      calls++;
-      if (calls === 1) throw new ApiError("La API no responde (HTTP 502)", "UNREACHABLE");
-      return healthy;
+    const h = harness({
+      intercept: (_method, path) => {
+        if (path !== "/health") return undefined;
+        calls++;
+        return calls === 1 ? new Response("Bad Gateway", { status: 502 }) : Response.json(healthy);
+      },
     });
+    h.renderApp("/");
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("La API no responde (HTTP 502)");
@@ -95,17 +108,19 @@ describe("panel: Estado del sistema", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("deja Propiedades y Publicaciones deshabilitadas", () => {
-    renderApp(async () => healthy);
+  it("Propiedades queda habilitada y Publicaciones no", () => {
+    renderWithHealth(() => healthy);
 
     const menu = screen.getByRole("navigation", { name: "Menú principal" });
     expect(within(menu).getByRole("link", { name: "Estado" })).toBeTruthy();
-    expect(within(menu).getByText("Propiedades").getAttribute("aria-disabled")).toBe("true");
+    expect(within(menu).getByRole("link", { name: "Propiedades" }).getAttribute("href")).toBe(
+      "/propiedades",
+    );
     expect(within(menu).getByText("Publicaciones").getAttribute("aria-disabled")).toBe("true");
   });
 
   it("una ruta inexistente muestra un aviso dentro del layout", () => {
-    renderApp(async () => healthy, "/no-existe");
+    renderWithHealth(() => healthy, "/no-existe");
 
     expect(screen.getByText("Esta página no existe.")).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Menú principal" })).toBeTruthy();
@@ -113,21 +128,20 @@ describe("panel: Estado del sistema", () => {
 });
 
 describe("sondeo de /health (Neon, ADR-0007)", () => {
-  async function callsAfter(initialPath: string, ms: number) {
+  async function healthCallsAfter(initialPath: string, ms: number) {
     vi.useFakeTimers({ shouldAdvanceTime: false });
-    const fetcher = vi.fn<HealthFetcher>(async () => healthy);
-    renderApp(fetcher, initialPath);
+    const h = renderWithHealth(() => healthy, initialPath);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(ms);
     });
-    return fetcher.mock.calls.length;
+    return h.requests.filter((request) => request === "GET /health").length;
   }
 
   it("la página Estado consulta cada 30 s", async () => {
-    expect(await callsAfter("/", HEALTH_REFETCH_MS * 2 + 100)).toBe(3);
+    expect(await healthCallsAfter("/", HEALTH_REFETCH_MS * 2 + 100)).toBe(3);
   });
 
   it("fuera de Estado el banner no sondea: una sola consulta", async () => {
-    expect(await callsAfter("/no-existe", HEALTH_REFETCH_MS * 2 + 100)).toBe(1);
+    expect(await healthCallsAfter("/no-existe", HEALTH_REFETCH_MS * 2 + 100)).toBe(1);
   });
 });

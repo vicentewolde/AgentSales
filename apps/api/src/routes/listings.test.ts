@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { AppError, type NewListing } from "@agentsales/core";
+import { AppError, type FieldDefinition, type NewListing } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
+  createInMemoryFieldDefinitionRepository,
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
 } from "@agentsales/core/testing";
@@ -151,6 +152,73 @@ describe("GET /listings/:id", () => {
     ).toEqual([
       [0, true, true],
       [1, false, true],
+    ]);
+  });
+
+  it("trae las etiquetas de sus atributos: las del corredor ganan, sin inactivas ni fijas", async () => {
+    const definition = (key: string, extra: Partial<FieldDefinition> = {}): FieldDefinition => ({
+      id: randomUUID(),
+      brokerId: null,
+      category: "real_estate",
+      key,
+      label: key,
+      type: "text",
+      required: false,
+      options: null,
+      sourceColumn: key,
+      isCore: false,
+      sortOrder: 0,
+      active: true,
+      ...extra,
+    });
+    const listings = createInMemoryListingRepository({ nextId: randomUUID });
+    const brokers = createInMemoryBrokerRepository();
+    const broker = await brokers.create({
+      slug: "marca",
+      name: "Persona Inventada",
+      brandName: "Marca Inventada",
+      primaryColor: "#112233",
+      secondaryColor: "#112233",
+      whatsapp: null,
+      email: null,
+      instagramHandle: null,
+      website: null,
+      tone: null,
+      fixedHashtags: [],
+    });
+    const app = createApp(
+      testDeps({
+        listings,
+        brokers,
+        fieldDefinitions: createInMemoryFieldDefinitionRepository([
+          definition("dormitorios", { label: "Dormitorios", type: "number", sortOrder: 2 }),
+          definition("banos", { label: "Baños", type: "number", sortOrder: 1 }),
+          // El corredor renombra "banos"; su definición gana.
+          definition("banos", {
+            brokerId: broker.id,
+            label: "Baños completos",
+            type: "number",
+            sortOrder: 1,
+          }),
+          definition("bodega", { label: "Bodega", active: false, sortOrder: 3 }),
+          definition("comuna", { label: "Comuna", isCore: true }),
+          definition("piscina", { label: "Piscina", type: "boolean", sortOrder: 4 }),
+        ]),
+      }),
+    );
+    const listing = await listings.create(
+      newListing(broker.id, "P001", {
+        attributes: { dormitorios: 3, banos: 2, bodega: true, _extra: { vista: "mar" } },
+      }),
+    );
+
+    const body = listingDetailResponseSchema.parse(
+      await (await app.request(`/listings/${listing.id}`)).json(),
+    );
+
+    expect(body.fields).toEqual([
+      { key: "banos", label: "Baños completos", type: "number" },
+      { key: "dormitorios", label: "Dormitorios", type: "number" },
     ]);
   });
 

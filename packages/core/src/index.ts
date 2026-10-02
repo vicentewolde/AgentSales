@@ -1,3 +1,4 @@
+export { type AttributeEntry, describeAttributes } from "./attributes.js";
 export {
   type Broker,
   type BrokerData,
@@ -66,6 +67,7 @@ export {
   type RowValidation,
   type ValidatedListingRow,
 } from "./listing-validator/index.js";
+export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export type {
   FieldDefinitionQuery,
@@ -99,7 +101,7 @@ export {
   type NewMedia,
 } from "./ports/media-repository.js";
 export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
-export { formatPrice } from "./price.js";
+export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   ACTIVE_PUBLICATION_STATUSES,
   canTransition,

@@ -1,5 +1,5 @@
 import { listingListResponseSchema } from "@agentsales/api/contracts";
-import { formatPrice, LISTING_STATUSES, type ListingStatus } from "@agentsales/core";
+import { formatListingPrice, LISTING_STATUSES, type ListingStatus } from "@agentsales/core";
 import { type Command, Option } from "commander";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
@@ -42,7 +42,7 @@ export function runListings(deps: ListingsDeps, options: ListingsOptions = {}) {
           listing.propertyType ?? "—",
           listing.operation === null ? "—" : OPERATION_TEXT[listing.operation],
           listing.comuna ?? "—",
-          formatPrice(listing.priceAmount, listing.priceCurrency),
+          formatListingPrice(listing),
           listing.status,
           listing.coverUrl === null ? c.yellow("no") : "sí",
         ]),

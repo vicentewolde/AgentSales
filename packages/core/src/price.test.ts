@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPrice } from "./price.js";
+import { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 
 describe("formatPrice", () => {
   it.each([
@@ -19,5 +19,31 @@ describe("formatPrice", () => {
   it("un negativo conserva el signo (no debería llegar: el precio es mayor que 0)", () => {
     expect(formatPrice(-1500, "CLP")).toBe("-$1.500");
     expect(formatPrice(-2.5, "UF")).toBe("-UF 2,50");
+  });
+});
+
+describe("formatNumber", () => {
+  it.each([
+    [0, "0"],
+    [120000, "120.000"],
+    [72.5, "72,5"],
+    [0.125, "0,13"],
+    [-1500.25, "-1.500,25"],
+  ])("%d → %s", (value, expected) => {
+    expect(formatNumber(value)).toBe(expected);
+  });
+});
+
+describe("formatListingPrice", () => {
+  it("en arriendo agrega /mes; en venta o sin operación, no", () => {
+    expect(
+      formatListingPrice({ priceAmount: 650000, priceCurrency: "CLP", operation: "rent" }),
+    ).toBe("$650.000/mes");
+    expect(formatListingPrice({ priceAmount: 5800, priceCurrency: "UF", operation: "sale" })).toBe(
+      "UF 5.800",
+    );
+    expect(formatListingPrice({ priceAmount: 30, priceCurrency: "UF", operation: null })).toBe(
+      "UF 30",
+    );
   });
 });

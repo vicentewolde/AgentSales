@@ -4,6 +4,7 @@
 // e imports relativos (nada de Node ni de `@agentsales/config`).
 import {
   brokerSchema,
+  FIELD_TYPES,
   importRunSchema,
   LISTING_MANUAL_TARGETS,
   LISTING_STATUSES,
@@ -60,10 +61,23 @@ export const listingListResponseSchema = z.object({
 });
 export type ListingListResponse = z.infer<typeof listingListResponseSchema>;
 
+/** Etiqueta de un atributo (`attributes[key]`), de las definiciones efectivas del corredor. */
+export const listingFieldSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum(FIELD_TYPES),
+});
+export type ListingField = z.infer<typeof listingFieldSchema>;
+
 export const listingDetailResponseSchema = z.object({
   listing: listingJsonSchema,
   /** En orden; la portada lleva `isCover`. */
   media: z.array(mediaItemSchema),
+  /**
+   * Los atributos del aviso que tienen definición, en el orden de las definiciones (ADR-0006: las
+   * etiquetas son datos). Los que no la tienen (`_extra`, o un campo ya borrado) no aparecen.
+   */
+  fields: z.array(listingFieldSchema),
 });
 export type ListingDetailResponse = z.infer<typeof listingDetailResponseSchema>;
 

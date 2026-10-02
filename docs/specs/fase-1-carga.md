@@ -155,7 +155,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
 | POST | `/imports/local` | `{ xlsxPath, mediaDir?, broker?, dryRun? }`, solo cuando `NODE_ENV=development` (la CLI; `csrf()` bloquea `multipart` sin `Origin`). Responde `202` |
 | GET | `/imports` · `/imports/:id` | historial, y estado más reporte. `input` se muestra solo como nombres de archivo, sin las rutas completas |
 | GET | `/listings?status=&operation=&comuna=&externalRef=` | lista con portada (URL firmada). `externalRef` es exacto (F1-T12) y puede repetirse entre corredores |
-| GET | `/listings/:id` | detalle con medios (URLs firmadas) y atributos |
+| GET | `/listings/:id` | detalle con medios (URLs firmadas), atributos y sus etiquetas (`fields`, F1-T13) |
 | PATCH | `/listings/:id/status` | cambio manual según `LISTING_MANUAL_TRANSITIONS` (a `ready`, `paused` o `archived`). `ready` exige al menos una foto. Una transición no permitida es `409 INVALID_TRANSITION` |
 | GET | `/brokers` | para el selector de corredor en Importar |
 
@@ -535,6 +535,15 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T13 · Panel: patrón, Propiedades y Detalle
 - **Depende de:** T10
+- **Hecho en F1-T13:**
+  - **Etiquetas de los atributos:** el detalle (`GET /listings/:id`) suma `fields: [{ key, label, type }]`, con las definiciones efectivas del corredor (`resolveEffectiveDefinitions`, ahora exportada por core) que tienen valor en `attributes`, sin las fijas. `AppDeps` recibe `fieldDefinitions`. La CLI (`listing`) también las usa.
+  - **En core, para la CLI y el panel:** `describeAttributes(attributes, fields)` (orden de las definiciones, `Sí`/`No`, listas con coma, `_extra` al final), `formatNumber` (`120.000`, `72,5`) y `formatListingPrice` (`/mes` en arriendo, docs/04).
+  - **Patrón del panel:** `src/api/client.ts` (`createApiClient`, `unwrap`, `ApiError { code, status }`), `src/api/context.ts` (`ApiClientContext`), `src/queries/` (`health`, `listings` con `listingKeys`) y `routes.tsx` con las páginas en `React.lazy`. `api.ts`, `health.ts` y el `HealthFetcher` desaparecen.
+  - **URLs firmadas:** las consultas de avisos usan `staleTime` de 5 min y `gcTime` de 15 min, bien por debajo de la hora de vida de las URLs.
+  - **Reintentos:** el panel reintenta una vez las fallas pasajeras (red, 5xx); un 4xx se muestra de inmediato (un 404 quedaba en "Cargando" mientras esperaba el reintento).
+  - **Propiedades:** filtros de estado, operación y comuna en la URL (un valor desconocido se ignora). Las comunas del selector salen de todas las propiedades.
+  - **Detalle:** galería (fotos y videos, con la portada marcada), datos (dirección con el aviso de `show_exact_address`, destacados y notas internas), atributos con su etiqueta y botones para los cambios de `LISTING_MANUAL_TRANSITIONS`. Un id que no existe o no es uuid dice "Esta propiedad no existe".
+  - **`import type`:** Biome no distingue `import type`, así que la regla la revisa un test (`api-imports.test.ts`).
 - **Desde la revisión de T10:**
   - **Atributos con su etiqueta:** `attributes` llega con las claves internas (`dormitorios`, `_extra`). Las etiquetas son datos (ADR-0006), así que el detalle suma `fields: [{ key, label, type }]` con las definiciones efectivas del corredor (`resolveEffectiveDefinitions`; la ruta recibe `FieldDefinitionRepository`). Se decide en el plan de T13; la alternativa es mostrar las claves crudas en F1.
   - **URLs firmadas:** duran `SIGNED_URL_TTL_SECONDS` (1 h). `staleTime` y `gcTime` de TanStack Query quedan bien por debajo, o la galería vuelve a pedir los datos si falla una imagen.
@@ -544,8 +553,8 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - **Propiedades:** grilla con portada, operación, tipo, comuna, precio formateado (`UF 5.800`, `$650.000`) y estado. Filtros en los parámetros de la URL.
   - **Detalle:** galería, atributos y cambio de estado.
 - **Hecho cuando:**
-  - [ ] Tests de componentes con el router en memoria (`initialEntries`) y un cliente inyectado: grilla, filtros desde la URL, detalle, cambio de estado y error de API
-  - [ ] La página Estado de F0 sigue funcionando con el patrón nuevo
+  - [x] Tests de componentes con el router en memoria (`initialEntries`) y un cliente inyectado: grilla, filtros desde la URL, detalle, cambio de estado y error de API
+  - [x] La página Estado de F0 sigue funcionando con el patrón nuevo
 
 ### F1-T14 · Panel: Importar
 - **Desde la revisión de T11:**
@@ -625,3 +634,4 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Desde la revisión de F1-T11: subidas guardadas en streaming (`File.stream()`) y `MAX_IMPORT_UPLOAD_MB` por defecto en 512; campos vacíos del formulario cuentan como no enviados; `saveInput` rechaza nombres con `\0` o de más de 255 bytes; `MAX_XLSX_BYTES` en core; `GET /imports` sin `report`; `IMPORT_RUN_CONFLICT` para un id repetido; rutas locales que terminan en `/` rechazadas; `stagingRootOf`; Biome impide que los adaptadores se importen entre sí; notas para T12 (`@agentsales/api/testing`), T14 (proxy y `Origin`) y F7 (roadmap) |
 | 2026-10-02 | F1-T12: CLI con `import`, `imports`, `listings` y `listing`; `@agentsales/api/testing` (subruta de solo tests); filtro `externalRef`; `formatPrice` en core; `--broker` normalizado con `slugify`; reintento de hasta 3 consultas fallidas; `updated_at` con la hora de la base al actualizar |
 | 2026-10-02 | Desde la revisión de F1-T12: §4.4 con `externalRef` y `listing --broker`; `TERMINAL_IMPORT_RUN_STATUSES` e `isTerminalImportRun` en core; ayudas compartidas de la CLI en `commands/shared.ts`; `@agentsales/api/testing` también prohibida en los adaptadores, con test de Biome; reloj monótono para el tope de espera; código de `listing` recortado; `formatPrice` con el signo delante de todo |
+| 2026-10-02 | F1-T13: `fields` (etiquetas de los atributos) en el detalle de la API; `describeAttributes`, `formatNumber` y `formatListingPrice` en core; patrón del panel (`createApiClient`, `unwrap`, `ApiClientContext`, `src/queries/`, `routes.tsx` con `React.lazy`); páginas Propiedades y Detalle; sin reintento de los 4xx; guardia de `import type` con un test |

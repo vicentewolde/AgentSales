@@ -30,7 +30,7 @@ describe("runListings", () => {
     );
     expect(rows).toHaveLength(2);
     expect(rows.find((row) => row.startsWith("P-002"))).toMatch(
-      /P-002\s+marca\s+Departamento\s+Arriendo\s+Providencia\s+\$650\.000\s+draft\s+no$/,
+      /P-002\s+marca\s+Departamento\s+Arriendo\s+Providencia\s+\$650\.000\/mes\s+draft\s+no$/,
     );
     expect(rows.find((row) => row.startsWith("P-001"))).toMatch(
       /Venta\s+Ñuñoa\s+UF 5\.800\s+ready/,

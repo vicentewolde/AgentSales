@@ -1,10 +1,12 @@
 import {
   AppError,
   changeListingStatus,
+  type FieldDefinitionRepository,
   type Listing,
   type ListingRepository,
   type MediaRepository,
   type MediaStorage,
+  resolveEffectiveDefinitions,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import {
@@ -20,6 +22,8 @@ import { validated } from "../validation.js";
 export type ListingRoutesDeps = {
   listings: ListingRepository;
   media: MediaRepository;
+  /** Las etiquetas de los atributos del detalle (definiciones efectivas del corredor). */
+  fieldDefinitions: FieldDefinitionRepository;
   /** Solo para las URLs de lectura temporales de las fotos (R2 es privado, ADR-0007). */
   storage: Pick<MediaStorage, "signedReadUrl">;
 };
@@ -52,8 +56,17 @@ export function listingRoutes(deps: ListingRoutesDeps) {
       const listing = await deps.listings.get(id);
       if (listing === null) throw notFound(id);
       const media = await deps.media.listOriginals(id);
+      const definitions = resolveEffectiveDefinitions(
+        await deps.fieldDefinitions.list({
+          category: listing.category,
+          brokerId: listing.brokerId,
+        }),
+      );
       const body: ListingDetailResponse = {
         listing,
+        fields: definitions
+          .filter((def) => !def.isCore && Object.hasOwn(listing.attributes, def.key))
+          .map(({ key, label, type }) => ({ key, label, type })),
         media: await Promise.all(
           media.map(async (item) => ({
             id: item.id,
