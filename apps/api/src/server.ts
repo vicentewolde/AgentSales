@@ -9,6 +9,7 @@ import {
 import {
   createBrokerRepository,
   createDb,
+  createFieldDefinitionRepository,
   createImportRunRepository,
   createListingRepository,
   createMediaRepository,
@@ -72,6 +73,7 @@ const app = createApp({
   listings: createListingRepository(database.db),
   brokers: createBrokerRepository(database.db),
   media: createMediaRepository(database.db),
+  fieldDefinitions: createFieldDefinitionRepository(database.db),
   storage,
   importRuns: createImportRunRepository(database.db),
   queue,

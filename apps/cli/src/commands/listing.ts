@@ -3,13 +3,19 @@ import {
   listingDetailResponseSchema,
   listingListResponseSchema,
 } from "@agentsales/api/contracts";
-import { type Broker, formatPrice } from "@agentsales/core";
+import {
+  type Broker,
+  describeAttributes,
+  formatListingPrice,
+  LISTING_STATUS_TEXT,
+  OPERATION_TEXT,
+} from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, formatBytes, guarded, type Io } from "../output.js";
-import { brokerSlugOf, fetchBrokers, OPERATION_TEXT } from "./shared.js";
+import { brokerSlugOf, fetchBrokers } from "./shared.js";
 
 export type ListingDeps = Io & { client: ApiClient };
 
@@ -60,26 +66,8 @@ async function resolveListingId(
   return first.id;
 }
 
-/** Un atributo como texto: listas con coma, `Sí`/`No`, y `_extra` (columnas desconocidas) aplanado. */
-function attributeLines(attributes: Record<string, unknown>): string[] {
-  const text = (value: unknown): string => {
-    if (value === null || value === undefined || value === "") return "—";
-    if (typeof value === "boolean") return value ? "Sí" : "No";
-    if (Array.isArray(value)) return value.map(text).join(", ");
-    if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
-  };
-  return Object.entries(attributes).flatMap(([key, value]) =>
-    key === "_extra" && typeof value === "object" && value !== null && !Array.isArray(value)
-      ? Object.entries(value).map(
-          ([column, extra]) => `  ${column} (columna extra): ${text(extra)}`,
-        )
-      : [`  ${key}: ${text(value)}`],
-  );
-}
-
 export function renderListingDetail(
-  { listing, media }: ListingDetailResponse,
+  { listing, media, fields }: ListingDetailResponse,
   brokers: Map<string, Broker>,
   c: Io["colors"],
 ): string {
@@ -100,8 +88,8 @@ export function renderListingDetail(
     .join(", ");
   const lines = [
     c.bold(title),
-    `  Estado: ${listing.status} · Corredor: ${brokers.get(listing.brokerId)?.slug ?? "—"}`,
-    `  Precio: ${formatPrice(listing.priceAmount, listing.priceCurrency)}`,
+    `  Estado: ${LISTING_STATUS_TEXT[listing.status]} (${listing.status}) · Corredor: ${brokers.get(listing.brokerId)?.slug ?? "—"}`,
+    `  Precio: ${formatListingPrice(listing)}`,
     `  Dirección: ${address || "—"}${
       listing.showExactAddress ? "" : c.dim(" (no se publica la dirección exacta)")
     }`,
@@ -112,7 +100,9 @@ export function renderListingDetail(
   }
   lines.push(`  id: ${listing.id}`);
 
-  const attributes = attributeLines(listing.attributes);
+  const attributes = describeAttributes(listing.attributes, fields).map(
+    ({ label, value, extra }) => `  ${label}${extra ? " (columna extra)" : ""}: ${value}`,
+  );
   if (attributes.length > 0) lines.push("", c.bold("Atributos"), ...attributes);
 
   lines.push("", c.bold(`Medios (${media.length})`));

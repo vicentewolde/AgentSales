@@ -1,10 +1,16 @@
 import { listingListResponseSchema } from "@agentsales/api/contracts";
-import { formatPrice, LISTING_STATUSES, type ListingStatus } from "@agentsales/core";
+import {
+  formatListingPrice,
+  LISTING_STATUS_TEXT,
+  LISTING_STATUSES,
+  type ListingStatus,
+  OPERATION_TEXT,
+} from "@agentsales/core";
 import { type Command, Option } from "commander";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { guarded, type Io, renderTable } from "../output.js";
-import { fetchBrokers, OPERATION_TEXT } from "./shared.js";
+import { fetchBrokers } from "./shared.js";
 
 export type ListingsDeps = Io & { client: ApiClient };
 
@@ -42,8 +48,8 @@ export function runListings(deps: ListingsDeps, options: ListingsOptions = {}) {
           listing.propertyType ?? "—",
           listing.operation === null ? "—" : OPERATION_TEXT[listing.operation],
           listing.comuna ?? "—",
-          formatPrice(listing.priceAmount, listing.priceCurrency),
-          listing.status,
+          formatListingPrice(listing),
+          LISTING_STATUS_TEXT[listing.status],
           listing.coverUrl === null ? c.yellow("no") : "sí",
         ]),
         c,

@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-02
 **Fase actual:** F1 · Carga (`docs/specs/fase-1-carga.md`, **aprobado**)
-**Última tarea terminada:** F1-T12 · CLI de importación y consulta (falta la demo con las propiedades de muestra)
-**Siguiente paso:** `/tarea F1-T13` (panel: Propiedades y Detalle). La demo de T12 queda pendiente hasta que estén las 3 propiedades de muestra
+**Última tarea terminada:** F1-T13 · Panel: patrón, Propiedades y Detalle
+**Siguiente paso:** `/tarea F1-T14` (panel: Importar). Las demos de T12 y T14 esperan las 3 propiedades de muestra
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -23,8 +23,8 @@
 | F1-T09 Job import.run | ✅ terminada | #23 |
 | F1-T10 Contratos HTTP y API de lectura | ✅ terminada | #24 |
 | F1-T11 API de importación | ✅ terminada | #25 |
-| F1-T12 CLI de importación y consulta | ✅ terminada (demo pendiente) | |
-| F1-T13 Panel: patrón, Propiedades y Detalle | ⏳ pendiente | |
+| F1-T12 CLI de importación y consulta | ✅ terminada (demo pendiente) | #26 |
+| F1-T13 Panel: patrón, Propiedades y Detalle | ✅ terminada | |
 | F1-T14 Panel: Importar | ⏳ pendiente | |
 | F1-T15 Cierre de fase | ⏳ pendiente | |
 
@@ -36,7 +36,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Deuda técnica
 - **F7:** `GET /listings` devuelve la entidad completa: notas internas, dirección exacta y todos los atributos. Es aceptable mientras la API sea local (`hostGuard`). Con autenticación y despliegue, usar una proyección acotada para la lista.
-- Panel: bundle de 660 kB (201 kB gzip). Queda hasta F7 (D5 del spec F1); F1-T13 solo agrega `React.lazy`.
+- Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - F2: exigir `ANTHROPIC_API_KEY` cuando `LLM_PROVIDER=anthropic-api`.
@@ -54,6 +54,23 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - `--broker` se normaliza con `slugify` solo en la CLI: `POST /imports/local` con `"Mi Corredor"` da `BROKER_NOT_FOUND`. Hoy no importa (el panel usa un selector); si aparece otro cliente, normalizar en core (`requestImport`).
 
 ## Notas de la última sesión
+- 2026-10-02: **F1-T13.** Panel: patrón, Propiedades y Detalle.
+  - **API:** el detalle trae `fields` (etiquetas de los atributos, con las definiciones efectivas del corredor); `AppDeps.fieldDefinitions`. La CLI también las muestra.
+  - **Core:** `describeAttributes`, `formatNumber`, `formatListingPrice` (`/mes` en arriendo) y `resolveEffectiveDefinitions` exportada.
+  - **Panel:**
+    - Patrón: `createApiClient` + `unwrap` + `ApiClientContext`, consultas por recurso en `src/queries/` y páginas en `React.lazy`. El `HealthFetcher` desaparece.
+    - Propiedades: grilla con portada, operación, tipo, comuna, precio y estado; filtros en la URL.
+    - Detalle: galería, datos, atributos con etiqueta y cambio de estado.
+    - Los avisos se guardan en caché 5 min (15 sin uso), bien por debajo de la hora de vida de las URLs firmadas. Un 4xx no se reintenta.
+  - **Tests:** contra la API real en proceso (`apps/web/test/harness.tsx`). Una guardia (test) revisa que el panel solo haga `import type` de la raíz de la API.
+  - **Correcciones de `/revisar`:**
+    - Bloqueante: un año salía "2.018". Ahora un entero de cuatro cifras va sin punto (RAE), y el precio sigue con punto.
+    - Textos de estado, operación y carga en core; la CLI muestra los estados en español.
+    - Panel: sin parpadeo al filtrar, comunas de respaldo, `aria-live`, detalle que no "rejuvenece" sus URLs al cambiar el estado, sin reintento de `TIMEOUT`, corte del cuerpo como `TIMEOUT` (también en la CLI), `errorElement`, y botones "Reanudar" y "Desarchivar".
+    - Guardia de imports con `export … from`, `import "x"` e `import()`.
+    - Tests nuevos de datos vacíos, estados sin botones y año.
+    - Docs: arquitectura (rutas, `AppDeps`, clientes HTTP de la CLI y el panel, textos en core) y una nota para T14: invalidar `listingKeys.all` al terminar una carga.
+  - **Prueba en el navegador** con la API contra Neon: Propiedades (vacía, con el aviso de cómo cargar) y el detalle de un id inexistente. Ahí apareció el arreglo de los reintentos: un 404 quedaba en "Cargando". La grilla con fotos reales espera las propiedades de muestra. Apagados al terminar.
 - 2026-10-02: **F1-T12.** CLI de importación y consulta.
   - **Comandos:** `import` (con `--media`, `--broker`, `--dry-run` y `--no-wait`), `imports [<id>]`, `listings [--status] [--json]` y `listing <id_propiedad|id> [--broker] [--json]`. Un archivo por comando en `apps/cli/src/commands/`, con `run<Nombre>(deps)` y `register`; `doctor` y `status` se mudaron ahí.
   - **Cliente:** `createApiClient` (el `hc` completo, con timeout) y `unwrap`, que valida con los esquemas de `contracts`. Los errores se muestran como `CODE: mensaje` y una sugerencia (Neon, cola, R2, Host), sin stack trace.

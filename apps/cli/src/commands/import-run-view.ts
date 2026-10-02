@@ -1,14 +1,7 @@
 import type { ImportRunView } from "@agentsales/api/contracts";
-import type { ImportBrokerOutcome, ImportRunStatus } from "@agentsales/core";
+import { IMPORT_RUN_STATUS_TEXT, type ImportBrokerOutcome } from "@agentsales/core";
 import type { Colors } from "../colors.js";
 import { formatDateTime, renderTable } from "../output.js";
-
-export const RUN_STATUS_TEXT: Readonly<Record<ImportRunStatus, string>> = {
-  queued: "en cola",
-  running: "procesando",
-  succeeded: "terminada",
-  failed: "falló",
-};
 
 const BROKER_OUTCOME_TEXT: Readonly<Record<ImportBrokerOutcome, string>> = {
   created: "creado",
@@ -20,7 +13,7 @@ const BROKER_OUTCOME_TEXT: Readonly<Record<ImportBrokerOutcome, string>> = {
 
 /** Estado con color: verde si terminó, rojo si falló, amarillo mientras corre. */
 export function paintStatus(run: Pick<ImportRunView, "status" | "dryRun">, c: Colors): string {
-  const text = RUN_STATUS_TEXT[run.status] + (run.dryRun ? " (simulación)" : "");
+  const text = IMPORT_RUN_STATUS_TEXT[run.status] + (run.dryRun ? " (simulación)" : "");
   if (run.status === "succeeded") return c.green(text);
   if (run.status === "failed") return c.red(text);
   return c.yellow(text);

@@ -1,57 +1,43 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
-import {
-  createBrowserRouter,
-  createMemoryRouter,
-  type RouteObject,
-  RouterProvider,
-} from "react-router";
-import type { HealthFetcher } from "./api.js";
-import { HealthFetcherContext } from "./health.js";
-import { Layout } from "./layout/Layout.js";
-import { StatusPage } from "./pages/StatusPage.js";
+import { createBrowserRouter, createMemoryRouter, RouterProvider } from "react-router";
+import { type ApiClient, ApiError } from "./api/client.js";
+import { ApiClientContext } from "./api/context.js";
+import { routes } from "./routes.js";
 
-function NotFound() {
-  return <p className="text-slate-600">Esta página no existe.</p>;
+/**
+ * Un reintento ante fallas pasajeras (red, 5xx). Un 4xx (no existe, pedido inválido) no mejora
+ * reintentando, y un `TIMEOUT` ya esperó 35 s: los dos se muestran de inmediato.
+ */
+export function shouldRetry(failureCount: number, error: Error): boolean {
+  if (!(error instanceof ApiError)) return failureCount < 1;
+  const clientError = error.status !== undefined && error.status < 500;
+  return failureCount < 1 && !clientError && error.code !== "TIMEOUT";
 }
 
-export const routes: RouteObject[] = [
-  {
-    element: <Layout />,
-    children: [
-      { index: true, element: <StatusPage /> },
-      { path: "*", element: <NotFound /> },
-    ],
-  },
-];
-
 export type AppProps = {
-  /** Solo para tests: `/health` simulado y rutas en memoria. */
-  fetchHealth?: HealthFetcher;
+  /** Solo para tests: el cliente contra la API en proceso, y rutas en memoria. */
+  client?: ApiClient;
   queryClient?: QueryClient;
   inMemory?: boolean;
   /** Solo con `inMemory`: ruta inicial. */
   initialPath?: string;
 };
 
-export function App({ fetchHealth, queryClient, inMemory = false, initialPath = "/" }: AppProps) {
+export function App({ client, queryClient, inMemory = false, initialPath = "/" }: AppProps) {
   // Se crean una sola vez: un router o un cliente nuevos en cada render perderían el estado.
   const [router] = useState(() =>
     inMemory
       ? createMemoryRouter(routes, { initialEntries: [initialPath] })
       : createBrowserRouter(routes),
   );
-  const [client] = useState(
-    () => queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: 1 } } }),
+  const [queries] = useState(
+    () => queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: shouldRetry } } }),
   );
   const content = (
-    <QueryClientProvider client={client}>
+    <QueryClientProvider client={queries}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   );
-  return fetchHealth ? (
-    <HealthFetcherContext value={fetchHealth}>{content}</HealthFetcherContext>
-  ) : (
-    content
-  );
+  return client ? <ApiClientContext value={client}>{content}</ApiClientContext> : content;
 }

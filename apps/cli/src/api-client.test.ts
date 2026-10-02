@@ -120,6 +120,17 @@ describe("unwrap", () => {
     });
   });
 
+  it("un corte por timeout mientras llega el cuerpo es TIMEOUT", async () => {
+    const cut = {
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new DOMException("se acabó el tiempo", "TimeoutError");
+      },
+    };
+    await expect(unwrap(cut, schema)).rejects.toMatchObject({ code: "TIMEOUT", status: 200 });
+  });
+
   it("una respuesta exitosa con otra forma es UNEXPECTED_RESPONSE", async () => {
     await expect(unwrap(response(200, { otra: 1 }), schema)).rejects.toMatchObject({
       code: "UNEXPECTED_RESPONSE",

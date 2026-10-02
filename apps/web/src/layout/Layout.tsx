@@ -1,12 +1,14 @@
+import { Suspense } from "react";
 import { NavLink, Outlet } from "react-router";
 import { PublishModeBanner } from "./PublishModeBanner.js";
 
-type MenuItem = { label: string; to?: string; phase?: string };
+type MenuItem = { label: string; to?: string; phase?: string; end?: boolean };
 
-/** Solo Estado está disponible en F0; el resto se habilita en su fase. */
+/** Cada sección se habilita en su fase. `end`: solo se marca en esa ruta exacta. */
 export const MENU: readonly MenuItem[] = [
-  { label: "Estado", to: "/" },
-  { label: "Propiedades", phase: "F1" },
+  { label: "Estado", to: "/", end: true },
+  // Sin `end`: también queda marcada en el detalle (`/propiedades/:id`).
+  { label: "Propiedades", to: "/propiedades" },
   { label: "Publicaciones", phase: "F3" },
 ];
 
@@ -26,7 +28,7 @@ function MenuEntry({ item }: { item: MenuItem }) {
   return (
     <NavLink
       to={item.to}
-      end
+      end={item.end ?? false}
       className={({ isActive }) =>
         `${base} ${isActive ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-200"}`
       }
@@ -57,7 +59,9 @@ export function Layout() {
           </ul>
         </nav>
         <main className="flex-1 px-4 py-6 md:px-8">
-          <Outlet />
+          <Suspense fallback={<p className="text-slate-600">Cargando…</p>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

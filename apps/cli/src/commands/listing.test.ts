@@ -1,10 +1,35 @@
 import { randomUUID } from "node:crypto";
+import type { FieldDefinition } from "@agentsales/core";
+import { createInMemoryFieldDefinitionRepository } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { brokerData, harness, newListing } from "../../test/harness.js";
 import { runListing } from "./listing.js";
 
+/** Definición global sintética: solo importan la clave, la etiqueta y el orden. */
+const definition = (key: string, label: string, sortOrder: number): FieldDefinition => ({
+  id: randomUUID(),
+  brokerId: null,
+  category: "real_estate",
+  key,
+  label,
+  type: "text",
+  required: false,
+  options: null,
+  sourceColumn: key,
+  isCore: false,
+  sortOrder,
+  active: true,
+});
+
 async function setup() {
-  const h = harness();
+  const h = harness({
+    deps: {
+      fieldDefinitions: createInMemoryFieldDefinitionRepository([
+        definition("dormitorios", "Dormitorios", 1),
+        definition("amenities", "Amenities", 2),
+      ]),
+    },
+  });
   const marca = await h.brokers.create(brokerData("marca"));
   const otra = await h.brokers.create(brokerData("otra-marca"));
   const listing = await h.listings.create(
@@ -45,7 +70,7 @@ describe("runListing", () => {
     expect(h.text()).toBe(
       [
         "P-001 · Departamento en venta · Ñuñoa",
-        "  Estado: draft · Corredor: marca",
+        "  Estado: Borrador (draft) · Corredor: marca",
         "  Precio: UF 5.800",
         "  Dirección: Calle Inventada 123, 45, Ñuñoa, Metropolitana (no se publica la dirección exacta)",
         "  Destacados: Luminoso",
@@ -53,8 +78,8 @@ describe("runListing", () => {
         `  id: ${listing.id}`,
         "",
         "Atributos",
-        "  dormitorios: 3",
-        "  amenities: Piscina, Quincho",
+        "  Dormitorios: 3",
+        "  Amenities: Piscina, Quincho",
         "  acepta_mascotas: Sí",
         "  vista (columna extra): al cerro",
         "",

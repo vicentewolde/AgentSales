@@ -86,7 +86,17 @@ export async function unwrap<S extends z.ZodType>(
   schema: S,
 ): Promise<z.output<S>> {
   const res = await response;
-  const body: unknown = await res.json().catch(() => undefined);
+  const body: unknown = await res.json().catch((error: unknown) => {
+    // El timeout sigue corriendo mientras llega el cuerpo: un corte ahí no es "otra forma".
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new ApiCallError(
+        "la API dejó de responder a mitad de la respuesta",
+        "TIMEOUT",
+        res.status,
+      );
+    }
+    return undefined;
+  });
   if (!res.ok) {
     const parsed = errorBodySchema.safeParse(body);
     throw parsed.success
