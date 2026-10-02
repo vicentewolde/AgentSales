@@ -141,7 +141,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
   - Protección contra zip-slip: se rechazan rutas absolutas o con `..`, y se verifica que el destino quede dentro del directorio.
   - Topes: 4 GB descomprimidos y 2000 entradas.
   - Se omiten los enlaces simbólicos, `__MACOSX/` y los archivos ocultos.
-  - **A decidir en T09:** si un zip con una sola carpeta en la raíz (macOS → Comprimir "medios") se "desenvuelve". F1-T06 no lo hace: el zip debe traer las carpetas de las propiedades en su raíz.
+  - **Zip con una sola carpeta en la raíz** (macOS → Comprimir "medios"), decidido en T09: se desenvuelve si ninguna carpeta que la carga pide está en la raíz pero sí dentro de esa única carpeta. Un zip con una sola propiedad en su raíz no se toca.
 - **Staging:**
   - `tmp/imports/{id}/input/` guarda el xlsx y el zip subidos. Se borra solo cuando el run llega a un estado terminal (`succeeded` o `failed`), para no perderlos entre reintentos.
   - `extracted/` se recrea en cada intento y se borra en un `finally`.
@@ -208,7 +208,13 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 - **Handler:**
   - Si el run ya está en `succeeded` o `failed`, no hace nada. Esa guarda evita que dos intentos se pisen.
   - Pasa el run a `running`, lee el xlsx y llama a `importListings` y luego a `ingestMedia`. Al terminar lo deja en `succeeded`.
-  - Con un error no reintentable, o en el último intento (`retryCount >= retryLimit`, leído con `includeMetadata`), deja el run en `failed` con `error` **antes** de relanzar. Así ningún run queda en `running` para siempre, sea o no `AppError` el error.
+  - Con un error no reintentable, o en el último intento (`retryCount >= retryLimit`, leído con `includeMetadata`), deja el run en `failed` con `error` **antes** de relanzar.
+    - Un error que no es `AppError` se normaliza a `INTERNAL_ERROR`, no reintentable: el job se cierra.
+    - Si `markFailed` falla, se lanza ese error con el original como `cause`.
+  - **Runs abandonados:** si el proceso muere, o la base no responde justo en el último intento, el run puede quedar en `running`.
+    - Al arrancar, el worker cierra los `running` con `started_at` de hace más de 7 h (3 intentos de 2 h más una hora de margen) como `failed` con `IMPORT_ABANDONED` (`ImportRunRepository.failAbandoned`).
+    - Los `queued` no se tocan: su job sigue en la cola si el worker estuvo apagado.
+  - **Intentos solapados** (dos workers, o uno que expiró y sigue corriendo): cada intento extrae el zip en su propio `extracted-{uuid}/`, y el primer estado terminal gana. Si `markSucceeded` no cambia nada, el intento informa `skipped`, no éxito.
 - **Idempotencia:** el upsert por `external_ref`, la deduplicación por sha256 y el `storage_path` determinístico hacen que reintentar no duplique nada.
 - **Errores reintentables:** `STORAGE_UNAVAILABLE`, `DB_UNAVAILABLE` y los conflictos de intentos solapados (`BROKER_CONFLICT`, `LISTING_CONFLICT`, `MEDIA_CONFLICT`). El handler decide con `retriable` del `AppError`, no con una lista.
 - **Cada intento corre las dos etapas:** `importListings` y después `ingestMedia`. El resultado de `importListings` (con el `control` de cada fila) vive solo en memoria, así que no se puede reanudar solo la ingesta. Al reintentar, `recordListingsResult` deja el reporte sin `media` hasta que `recordMediaResult` lo repone.
@@ -434,6 +440,10 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
   - Caso de uso `requestImport` en core, que crea el run con `input` según `importRunInputSchema`.
   - `ImportRunRepository` suma los cambios de estado del run (`running`, `succeeded` y `failed`, con `started_at`, `finished_at` y `error`). Son condicionales (`UPDATE … WHERE status IN (…)`, que devuelven si cambió), así un run ya terminal no se vuelve a procesar.
   - Staging en `<workspace>/tmp/imports`, con su limpieza al arrancar.
+- **Hecho en F1-T09:**
+  - El handler es el caso de uso `runImport` en core. Recibe `readSheet`, `openMedia(run, folders)` y `discardStaging` inyectados, y el job del worker solo lo llama con `isLastAttempt`.
+  - Estados del run: `markRunning` (desde `queued` o `running`, `started_at` solo la primera vez), `markSucceeded` y `markFailed`.
+  - Staging: `apps/worker/src/staging.ts`.
 - **Hecho cuando:**
   - [ ] Tests del handler con fakes: éxito → `succeeded`; `STORAGE_UNAVAILABLE` → se propaga para reintento; último intento → `failed` con `error`; error no reintentable → `failed`; y un run ya terminal → no hace nada
   - [ ] Tests de `requestImport`: encola; si `enqueue` falla → run `failed` y staging borrado
@@ -456,6 +466,14 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 ### F1-T11 · API de importación
 - **Depende de:** T09, T10
 - **Desde la revisión de T08:** la API compone `createJobQueue` con `onError` resumido (`createErrorThrottle`, que hoy vive en `apps/worker`; mudarlo a `@agentsales/config` o duplicarlo con su test) y llama a `queue.stop()` al apagarse.
+- **Desde la revisión de T09:**
+  - **El id del run lo genera quien llama:** `NewImportRun` gana `id?` (uuid), así la API escribe `input/` en `tmp/imports/{id}/` **antes** de crear el run y de encolar.
+    - Si eso falla a mitad, borra lo escrito.
+    - La limpieza del worker ya espera 10 minutos antes de borrar un directorio sin run (`STAGING_ORPHAN_GRACE_MS`).
+  - **Mudar `createStaging`** desde `apps/worker/src/staging.ts` a `packages/importers`, como primer paso de T11, cuando aparece el segundo consumidor.
+    - Con la subruta `@agentsales/importers/staging`, así la API no carga exceljs.
+    - Con `inputDirOf(runId)`.
+    - La raíz `<workspace>/tmp/imports` se compone igual en la API y en el worker.
 - **Descripción:**
   - `POST /imports` (multipart a `input/` mediante `AppDeps.uploads`, con `bodyLimit`).
   - `POST /imports/local`, habilitado con `AppDeps.localImports`.
@@ -524,7 +542,7 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | Archivos grandes de video | `MAX_VIDEO_MB` (default 300) con advertencia, subida en streaming y reintento del job. R2 no limita el tamaño por archivo, pero el plan gratis incluye 10 GB en total |
 | Zip malicioso o gigante | Protección contra zip-slip, topes de tamaño y cantidad, y un directorio temporal que se borra |
 | Import con el worker apagado | Si la cola no existe, `503 QUEUE_UNAVAILABLE`. Si existe, el run queda en `queued` y la CLI y el panel avisan a los 20 s; `pnpm dev` levanta el worker |
-| Run que queda en `running` para siempre | El handler lo deja en `failed` en el último intento, y un run terminal no se vuelve a procesar (§4.6) |
+| Run que queda en `running` para siempre | El handler lo deja en `failed` en el último intento, y un run terminal no se vuelve a procesar. Si el proceso muere o la base no responde al final, el worker lo cierra al arrancar (`IMPORT_ABANDONED`, §4.6) |
 | Rutas relativas resueltas en otra carpeta | `findWorkspaceRoot()` para el staging, `INIT_CWD` en la CLI y rutas absolutas en `input` |
 | Repositorios Drizzle sin tests contra Postgres en la CI | PGlite (D4) |
 | El proceso de la API cae entre crear el run y encolarlo | El run queda en `queued` sin job. La CLI y el panel avisan a los 20 s; reintentar la carga crea un run nuevo (MVP). Desde la revisión de T08 |
@@ -557,3 +575,5 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Desde la revisión de F1-T07b: `arrange` bloquea el aviso (`FOR NO KEY UPDATE`) para que dos intentos del job no dejen dos portadas ni se bloqueen entre sí; `checkArrangement` también valida `sortOrder` (entero de 0 al máximo de int4); `BadDigest` se reconoce por `Code` además de `name`; test de rollback de `arrange` con PGlite. La concurrencia real no se puede probar con PGlite (una sola conexión): queda documentada |
 | 2026-10-01 | F1-T08: `packages/queue` con `createJobQueue` (productor con arranque diferido), `createBoss`, `QUEUE_SCHEMA` y `checkQueueSchema`; `JOB_NAMES` y `JOB_PAYLOADS` en core, con `import.run`; `QUEUE_NOT_INITIALIZED` pasa a `QUEUE_UNAVAILABLE`; el paquete no depende de `@agentsales/db` (la conexión llega convertida) |
 | 2026-10-01 | Desde la revisión de F1-T08: el productor refresca el caché de colas una vez al día, para no mantener Neon despierto; el mensaje de "cola no lista" solo sale con los errores exactos de pg-boss; `stop()` deja la cola cerrada y cierra un arranque en curso; `JOB_PAYLOAD_INVALID` responde 500; T09 suma `policy` (`exclusive` para `import.run`, inmutable), `defineJob` tipado por `JobName` y `requestImport` acotado a `QUEUE_UNAVAILABLE`; T11 resume `onError` y llama a `stop()`; riesgo del run sin job en §8 |
+| 2026-10-01 | F1-T09: `requestImport` y `runImport` en core; estados del run (`markRunning`, `markSucceeded`, `markFailed`, condicionales); job `import.run` con cola `exclusive`, `defineJob` tipado por `JobName`, `isLastAttempt` (pg-boss `includeMetadata`) y `policy` solo al crear; staging en el worker con su limpieza al arrancar; un zip con una sola carpeta en la raíz se desenvuelve si ahí están las carpetas pedidas |
+| 2026-10-01 | Desde la revisión de F1-T09: runs abandonados cerrados al arrancar el worker (`failAbandoned`, `IMPORT_ABANDONED`, tras 7 h en `running`); un error que no es `AppError` se normaliza a `INTERNAL_ERROR` no reintentable; si `markFailed` falla, el original va como `cause`; `markSucceeded` sin efecto da `skipped`; `extracted-{uuid}/` por intento; limpieza del staging robusta (por antigüedad sin base, huérfanos con 10 min de gracia, sin cortar el barrido); el worker avisa si una cola existe con otra política; `openMedia({ runId, mediaDir, folders })`; notas para T11 (id del run generado por quien llama, `createStaging` a `importers`) |

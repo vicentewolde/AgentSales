@@ -198,15 +198,45 @@ Con `PUBLISH_MODE=dry-run`, un decorador envuelve cualquier publisher: ejecuta `
 ## Cola de trabajos
 
 Los jobs del worker (`apps/worker/src/jobs/`):
-- Cada job se declara con `defineJob({ name, schema, queue, handler })`:
-  - **`schema`:** zod valida los datos antes del handler. Los datos vienen de la base, escritos por otro proceso, así que son un borde. Si son inválidos, lanza `JOB_PAYLOAD_INVALID`, que no se reintenta.
-  - **`queue`:** política de la cola (`retryLimit`, `retryDelay`, `retryBackoff`, `expireInSeconds`). Solo el worker la aplica al arrancar (`createQueue` + `updateQueue`), así que el código es la fuente de verdad. Los productores no crean colas.
+- Cada job se declara con `defineJob({ name, queue, handler })`, con `name` de `JOB_NAMES` (core):
+  - **Datos:** se validan con `JOB_PAYLOADS[name]`, el mismo esquema que usa quien encola. Los datos vienen de la base, escritos por otro proceso, así que son un borde. Si son inválidos, lanza `JOB_PAYLOAD_INVALID`, que no se reintenta.
+  - **`queue`:** política de la cola (`policy`, `retryLimit`, `retryDelay`, `retryBackoff`, `expireInSeconds`). Solo el worker la aplica al arrancar, así que el código es la fuente de verdad. Los productores no crean colas.
+    - `createQueue` recibe todo.
+    - `updateQueue` recibe todo **menos `policy`**, que es inmutable.
+  - **Contexto:** el handler recibe `isLastAttempt` (`retryCount >= retryLimit`, de `work` con `includeMetadata`), para dejar el estado de dominio en `failed` antes del último error.
 - **Payloads con solo ids** (`publicationId`, `mediaId`…), nunca secretos ni estado. El handler recarga el estado desde la base y verifica `external_id` y `status` antes de actuar, lo que lo hace idempotente (ADR-0005).
 - **Errores:**
   - Un `AppError` no reintentable se registra y el job se da por cerrado. El caso de uso ya dejó el estado de dominio, por ejemplo la publicación en `failed`.
   - Cualquier otro error se propaga y pg-boss reintenta según la política.
   - `batchSize: 1`: un fallo nunca repite jobs ajenos.
-- Los handlers son delgados: validan, arman dependencias y llaman un caso de uso de `core`. Cuando necesiten db, storage o llm, `JOBS` pasa a `buildJobs(deps)`.
+- Los handlers son delgados: validan, arman dependencias y llaman un caso de uso de `core`. `buildJobs(deps)` arma la lista con las dependencias que compone `worker.ts` (db, R2, lector de xlsx y staging).
+- **El log de cada intento** lleva los datos del job, que son solo ids: así cada error queda con, por ejemplo, su `importRunId`.
+
+### Job `import.run` (F1-T09)
+- **Cola:** `exclusive` (un solo job por `singletonKey = importRunId`), 2 reintentos con backoff desde 30 s, y expira a las 2 h.
+- **`requestImport` (core):** crea el run en `queued` y encola.
+  - Si la cola no está disponible (`QUEUE_UNAVAILABLE`), deja el run en `failed` y borra su staging.
+  - Cualquier otro error se propaga sin tocar el run.
+- **`runImport` (core), el handler:**
+  1. Un run terminal no hace nada.
+  2. `markRunning`, lee el xlsx, corre `importListings`, prepara los medios (`openMedia`), corre `ingestMedia` y deja el run en `succeeded`.
+  3. Con un error no reintentable, o en el último intento, `markFailed` **antes** de relanzar. Si `markFailed` falla, se lanza ese error con el original como `cause`.
+  4. Los medios se liberan siempre, y el staging se borra al llegar a un estado terminal.
+  5. Si `markSucceeded` no cambia nada (otro intento ya lo dejó terminal), informa `skipped`.
+  - Un error que no es `AppError` se normaliza a `INTERNAL_ERROR`, no reintentable y con un mensaje genérico: el run queda en `failed` y el job se cierra.
+- **Runs abandonados:** al arrancar, el worker cierra como `failed` (`IMPORT_ABANDONED`) los runs en `running` de hace más de 7 h (`failAbandoned`). Cubre un proceso que murió, o una base caída en el último intento. Los `queued` no se tocan.
+- **Política de la cola:** al arrancar, el worker compara la política guardada con la del código, y avisa en el log si difiere (`createQueue` no cambia una cola existente).
+- **Staging (`apps/worker/src/staging.ts`), en `<workspace>/tmp/imports/{runId}/`:**
+  - `input/` lo escribe la API (T11) y se conserva hasta el estado terminal.
+  - `extracted-{uuid}/` es el zip de **un** intento: se crea al empezar y se borra al terminar, falle o no. Dos intentos solapados no se pisan.
+  - **Zip con una sola carpeta en la raíz** (macOS → Comprimir "medios"): si ninguna de las carpetas que la carga pide está en la raíz, pero sí dentro de esa única carpeta, la raíz pasa a ser esa carpeta. Un zip con una sola propiedad en su raíz no se desenvuelve.
+  - **Al arrancar,** el worker borra:
+    - los directorios de más de 24 h, antes de conectarse a la base;
+    - ya conectado, los de runs terminados, y los sin run de más de 10 minutos (la API escribe `input/` antes de crear el run, T11).
+
+    Solo toca directorios con nombre de uuid, y un error en uno no corta el barrido.
+  - **T11** muda `createStaging` a `packages/importers` (`@agentsales/importers/staging`) para compartirlo con la API.
+  - **Los medios de la CLI** (`--media <dir>`) se leen en su lugar: el staging nunca borra archivos del operador.
 
 Para encolar (`packages/queue`, desde F1-T08):
 - **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` (`system.ping`, `import.run`) y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API, los scripts y el worker comparten el contrato sin repetir literales.

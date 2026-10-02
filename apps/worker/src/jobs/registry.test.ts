@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { Job, QueuePolicy } from "./define.js";
 import { registerJobs, type WorkerBoss } from "./registry.js";
 
-type Batch = { id: string; data: unknown }[];
+type Batch = { id: string; data: unknown; retryCount: number; retryLimit: number }[];
 type Work = (jobs: Batch) => Promise<void>;
 
 const policy: QueuePolicy = {
@@ -30,7 +30,7 @@ function capture() {
 }
 
 /** pg-boss simulado: guarda las llamadas y los handlers registrados. */
-function fakeBoss(options: { failCreate?: boolean } = {}) {
+function fakeBoss(options: { failCreate?: boolean; policies?: Record<string, string> } = {}) {
   const calls: string[] = [];
   const workers = new Map<string, Work>();
   const boss: WorkerBoss = {
@@ -43,6 +43,7 @@ function fakeBoss(options: { failCreate?: boolean } = {}) {
     updateQueue: async (name) => {
       calls.push(`update ${name}`);
     },
+    getQueue: async (name) => ({ policy: options.policies?.[name] ?? "standard" }),
     work: async (name, workOptions, handler) => {
       calls.push(`work ${name} ${JSON.stringify(workOptions)}`);
       workers.set(name, handler);
@@ -52,24 +53,84 @@ function fakeBoss(options: { failCreate?: boolean } = {}) {
   return { boss, calls, workers };
 }
 
-const job = (name: string, run: Job["run"] = async () => {}): Job => ({ name, queue: policy, run });
+const job = (name: Job["name"], run: Job["run"] = async () => {}): Job => ({
+  name,
+  queue: policy,
+  run,
+});
 
 describe("registerJobs", () => {
   it("crea y actualiza cada cola con su política y registra un worker de a un job", async () => {
     const { boss, calls } = fakeBoss();
     const { logger } = capture();
 
-    const done = await registerJobs(boss, [job("system.ping"), job("media.process")], logger);
+    const done = await registerJobs(boss, [job("system.ping"), job("import.run")], logger);
 
     expect(done).toBe(true);
     expect(calls).toEqual([
       `create system.ping ${JSON.stringify(policy)}`,
       "update system.ping",
-      'work system.ping {"batchSize":1}',
-      `create media.process ${JSON.stringify(policy)}`,
-      "update media.process",
-      'work media.process {"batchSize":1}',
+      'work system.ping {"batchSize":1,"includeMetadata":true}',
+      `create import.run ${JSON.stringify(policy)}`,
+      "update import.run",
+      'work import.run {"batchSize":1,"includeMetadata":true}',
     ]);
+  });
+
+  it("la política de pg-boss (policy) va solo al crear la cola, no al actualizarla", async () => {
+    const updates: unknown[] = [];
+    const { boss, calls } = fakeBoss();
+    boss.updateQueue = async (_name, options) => void updates.push(options);
+    const { logger } = capture();
+    const exclusive = { ...policy, policy: "exclusive" as const };
+
+    await registerJobs(
+      boss,
+      [{ name: "import.run", queue: exclusive, run: async () => {} }],
+      logger,
+    );
+
+    expect(calls[0]).toBe(`create import.run ${JSON.stringify(exclusive)}`);
+    expect(updates).toEqual([policy]);
+  });
+
+  it("avisa si la cola ya existía con otra política (no se puede cambiar sin borrarla)", async () => {
+    const { boss } = fakeBoss({ policies: { "import.run": "standard" } });
+    const { logger, lines } = capture();
+
+    await registerJobs(
+      boss,
+      [{ name: "import.run", queue: { ...policy, policy: "exclusive" }, run: async () => {} }],
+      logger,
+    );
+
+    expect(lines).toContainEqual(
+      expect.objectContaining({
+        job: "import.run",
+        expected: "exclusive",
+        actual: "standard",
+        level: 50,
+      }),
+    );
+  });
+
+  it.each([
+    [0, 2, false],
+    [1, 2, false],
+    [2, 2, true],
+  ])("con retryCount %i de %i, isLastAttempt es %s", async (retryCount, retryLimit, last) => {
+    const { boss, workers } = fakeBoss();
+    const { logger } = capture();
+    const seen: boolean[] = [];
+
+    await registerJobs(
+      boss,
+      [job("import.run", async (_data, { isLastAttempt }) => void seen.push(isLastAttempt))],
+      logger,
+    );
+    await workers.get("import.run")?.([{ id: "j9", data: {}, retryCount, retryLimit }]);
+
+    expect(seen).toEqual([last]);
   });
 
   it("pasa los datos y el id del job, y registra inicio y fin", async () => {
@@ -82,7 +143,9 @@ describe("registerJobs", () => {
       [job("system.ping", async (data, { jobId }) => void received.push({ data, jobId }))],
       logger,
     );
-    await workers.get("system.ping")?.([{ id: "j1", data: { message: "hola" } }]);
+    await workers.get("system.ping")?.([
+      { id: "j1", data: { message: "hola" }, retryCount: 0, retryLimit: 3 },
+    ]);
 
     expect(received).toEqual([{ data: { message: "hola" }, jobId: "j1" }]);
     expect(lines.map((line) => [line.msg, line.job, line.jobId])).toEqual([
@@ -105,9 +168,9 @@ describe("registerJobs", () => {
       logger,
     );
 
-    await expect(workers.get("system.ping")?.([{ id: "j2", data: {} }])).rejects.toThrow(
-      "R2 no respondió",
-    );
+    await expect(
+      workers.get("system.ping")?.([{ id: "j2", data: {}, retryCount: 0, retryLimit: 3 }]),
+    ).rejects.toThrow("R2 no respondió");
     expect(lines.at(-1)).toMatchObject({ jobId: "j2", level: 50 });
   });
 
@@ -118,7 +181,7 @@ describe("registerJobs", () => {
     await registerJobs(
       boss,
       [
-        job("publication.publish", async () => {
+        job("import.run", async () => {
           throw new AppError("INVALID_TRANSITION", "Transición inválida de draft a published");
         }),
       ],
@@ -126,7 +189,7 @@ describe("registerJobs", () => {
     );
 
     await expect(
-      workers.get("publication.publish")?.([{ id: "j3", data: {} }]),
+      workers.get("import.run")?.([{ id: "j3", data: {}, retryCount: 0, retryLimit: 3 }]),
     ).resolves.toBeUndefined();
     expect(lines.at(-1)).toMatchObject({
       msg: "job falló sin reintento (error no reintentable)",
@@ -146,16 +209,13 @@ describe("registerJobs", () => {
       },
     };
 
-    const done = await registerJobs(
-      trackingBoss,
-      [job("system.ping"), job("media.process")],
-      logger,
-      { isStopping: () => stopping },
-    );
+    const done = await registerJobs(trackingBoss, [job("system.ping"), job("import.run")], logger, {
+      isStopping: () => stopping,
+    });
 
     expect(done).toBe(false);
     expect(calls.filter((call) => call.startsWith("work"))).toEqual([
-      'work system.ping {"batchSize":1}',
+      'work system.ping {"batchSize":1,"includeMetadata":true}',
     ]);
   });
 

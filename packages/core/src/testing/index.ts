@@ -16,6 +16,7 @@ export {
   type InMemoryListingRepository,
   type StoredListing,
 } from "./import-repositories.js";
+export { createInMemoryJobQueue, type EnqueuedJob, type InMemoryJobQueue } from "./job-queue.js";
 export {
   createInMemoryMediaFileSource,
   createInMemoryMediaRepository,

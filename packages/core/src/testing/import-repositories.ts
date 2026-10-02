@@ -154,8 +154,11 @@ export function createInMemoryListingRepository(): InMemoryListingRepository {
 
 export type InMemoryImportRunRepository = ImportRunRepository;
 
-export function createInMemoryImportRunRepository(): InMemoryImportRunRepository {
-  const nextId = idGenerator("run");
+export function createInMemoryImportRunRepository(
+  options: { nextId?: () => string } = {},
+): InMemoryImportRunRepository {
+  // Por defecto, ids legibles (`run-1`); un test que pasa por el job (que exige uuid) da los suyos.
+  const nextId = options.nextId ?? idGenerator("run");
   const stored = new Map<string, ImportRun>();
   return {
     async create(run: NewImportRun) {
@@ -191,6 +194,38 @@ export function createInMemoryImportRunRepository(): InMemoryImportRunRepository
         throw new AppError("IMPORT_RUN_NOT_FOUND", `No existe la carga ${id}`);
       }
       stored.set(id, { ...current, brokerId, ...counts, report: structuredCopy(report) });
+    },
+    async markRunning(id) {
+      const current = stored.get(id);
+      if (current === undefined || (current.status !== "queued" && current.status !== "running")) {
+        return false;
+      }
+      stored.set(id, { ...current, status: "running", startedAt: current.startedAt ?? new Date() });
+      return true;
+    },
+    async markSucceeded(id) {
+      const current = stored.get(id);
+      if (current?.status !== "running") return false;
+      stored.set(id, { ...current, status: "succeeded", finishedAt: new Date() });
+      return true;
+    },
+    async markFailed(id, error) {
+      const current = stored.get(id);
+      if (current === undefined || (current.status !== "queued" && current.status !== "running")) {
+        return false;
+      }
+      stored.set(id, { ...current, status: "failed", error: { ...error }, finishedAt: new Date() });
+      return true;
+    },
+    async failAbandoned(startedBefore, error) {
+      const closed: string[] = [];
+      for (const [id, run] of stored) {
+        if (run.status === "running" && run.startedAt !== null && run.startedAt < startedBefore) {
+          stored.set(id, { ...run, status: "failed", error: { ...error }, finishedAt: new Date() });
+          closed.push(id);
+        }
+      }
+      return closed;
     },
     async recordMediaResult(id, report) {
       const current = stored.get(id);

@@ -336,6 +336,99 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       });
     });
 
+    const newRun = () =>
+      repos.importRuns.create({ source: "xlsx", fileName: "p.xlsx", dryRun: false, input });
+
+    it("markRunning toma un run en cola o en curso, y fija started_at solo la primera vez", async () => {
+      const run = await newRun();
+      expect(await repos.importRuns.markRunning(run.id)).toBe(true);
+      const first = await repos.importRuns.get(run.id);
+      expect(first).toMatchObject({ status: "running", finishedAt: null });
+      expect(first?.startedAt).toBeInstanceOf(Date);
+
+      // Un reintento del job vuelve a tomarlo, sin mover started_at.
+      expect(await repos.importRuns.markRunning(run.id)).toBe(true);
+      expect((await repos.importRuns.get(run.id))?.startedAt).toEqual(first?.startedAt);
+    });
+
+    it("markSucceeded solo desde running, con finished_at", async () => {
+      const run = await newRun();
+      expect(await repos.importRuns.markSucceeded(run.id)).toBe(false);
+      await repos.importRuns.markRunning(run.id);
+
+      expect(await repos.importRuns.markSucceeded(run.id)).toBe(true);
+      const done = await repos.importRuns.get(run.id);
+      expect(done).toMatchObject({ status: "succeeded", error: null });
+      expect(done?.finishedAt).toBeInstanceOf(Date);
+    });
+
+    it("markFailed desde queued o running, con error y finished_at", async () => {
+      const queued = await newRun();
+      const running = await newRun();
+      await repos.importRuns.markRunning(running.id);
+      const error = { code: "STORAGE_UNAVAILABLE", message: "R2 no respondió" };
+
+      for (const run of [queued, running]) {
+        expect(await repos.importRuns.markFailed(run.id, error)).toBe(true);
+        const failed = await repos.importRuns.get(run.id);
+        expect(failed).toMatchObject({ status: "failed", error });
+        expect(failed?.finishedAt).toBeInstanceOf(Date);
+      }
+    });
+
+    it("un run terminal no cambia: el primer estado terminal gana", async () => {
+      const succeeded = await newRun();
+      await repos.importRuns.markRunning(succeeded.id);
+      await repos.importRuns.markSucceeded(succeeded.id);
+      const failed = await newRun();
+      await repos.importRuns.markFailed(failed.id, { code: "X", message: "primero" });
+
+      for (const run of [succeeded, failed]) {
+        const before = await repos.importRuns.get(run.id);
+        expect(await repos.importRuns.markRunning(run.id)).toBe(false);
+        expect(await repos.importRuns.markSucceeded(run.id)).toBe(false);
+        expect(await repos.importRuns.markFailed(run.id, { code: "Y", message: "otro" })).toBe(
+          false,
+        );
+        expect(await repos.importRuns.get(run.id)).toEqual(before);
+      }
+    });
+
+    it("failAbandoned cierra los running viejos; deja los recientes, los queued y los terminados", async () => {
+      const viejo = await newRun();
+      await repos.importRuns.markRunning(viejo.id);
+      const enCola = await newRun();
+      const terminado = await newRun();
+      await repos.importRuns.markRunning(terminado.id);
+      await repos.importRuns.markSucceeded(terminado.id);
+      const error = { code: "IMPORT_ABANDONED", message: "La carga quedó a medias" };
+
+      // Un corte en el futuro: todo lo que está running "empezó antes".
+      const closed = await repos.importRuns.failAbandoned(new Date(Date.now() + 60_000), error);
+
+      expect(closed).toContain(viejo.id);
+      expect(closed).not.toContain(enCola.id);
+      expect(closed).not.toContain(terminado.id);
+      expect(await repos.importRuns.get(viejo.id)).toMatchObject({ status: "failed", error });
+      expect((await repos.importRuns.get(enCola.id))?.status).toBe("queued");
+      expect((await repos.importRuns.get(terminado.id))?.status).toBe("succeeded");
+
+      const reciente = await newRun();
+      await repos.importRuns.markRunning(reciente.id);
+      expect(
+        await repos.importRuns.failAbandoned(new Date(Date.now() - 60_000), error),
+      ).not.toContain(reciente.id);
+      expect((await repos.importRuns.get(reciente.id))?.status).toBe("running");
+    });
+
+    it("los cambios de estado de un id inexistente devuelven false", async () => {
+      expect(await repos.importRuns.markRunning(repos.missingId)).toBe(false);
+      expect(await repos.importRuns.markSucceeded(repos.missingId)).toBe(false);
+      expect(await repos.importRuns.markFailed(repos.missingId, { code: "X", message: "x" })).toBe(
+        false,
+      );
+    });
+
     it("recordMediaResult reemplaza el reporte y no toca contadores ni estado", async () => {
       const brokerId = (await repos.brokers.create(brokerData(unique("corredor")))).id;
       const run = await repos.importRuns.create({

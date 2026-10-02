@@ -8,13 +8,13 @@ export type NewImportRun = {
   input: ImportRunInput;
 };
 
+/** Motivo de una carga fallida (`import_runs.error`): sin rutas ni datos de clientes. */
+export type ImportRunError = { code: string; message: string };
+
 /**
- * Cargas (`import_runs`). F1-T04 registra el resultado de las filas. Llegan después, como métodos
- * nuevos:
- * - los cambios de estado del run (`running`, `succeeded`, `failed`), con el job `import.run`
- *   (F1-T09). Son **condicionales** (`UPDATE … WHERE status IN (…)`, que devuelven si cambió),
- *   así un reintento sobre un run ya terminal no hace nada;
- * - `list`, para `GET /imports` (F1-T11).
+ * Cargas (`import_runs`). F1-T04 registra el resultado de las filas, y F1-T09 los cambios de
+ * estado: son **condicionales** (`UPDATE … WHERE status IN (…)`) y devuelven si cambió, así un
+ * reintento sobre un run ya terminal no hace nada. `list` llega con `GET /imports` (F1-T11).
  * Los ids son uuid: la API los valida antes de llegar aquí.
  */
 export interface ImportRunRepository {
@@ -34,4 +34,23 @@ export interface ImportRunRepository {
    * `IMPORT_RUN_NOT_FOUND`.
    */
   recordMediaResult(id: string, report: ImportReport): Promise<void>;
+  /**
+   * `queued` o `running` → `running` (un reintento del job lo vuelve a tomar). Fija `started_at`
+   * solo la primera vez. `false` si el run ya terminó o no existe.
+   */
+  markRunning(id: string): Promise<boolean>;
+  /** `running` → `succeeded`, con `finished_at`. `false` desde otro estado o si no existe. */
+  markSucceeded(id: string): Promise<boolean>;
+  /**
+   * `queued` o `running` → `failed`, con `error` y `finished_at`. `false` si ya terminó o no
+   * existe: el primer estado terminal gana.
+   */
+  markFailed(id: string, error: ImportRunError): Promise<boolean>;
+  /**
+   * Cierra los runs abandonados: los que siguen en `running` con `started_at` anterior a
+   * `startedBefore` pasan a `failed` con `error` (el proceso murió, o la base no respondió en el
+   * último intento). No toca los `queued`: su job puede seguir en la cola si el worker estuvo
+   * apagado. Devuelve los ids cerrados.
+   */
+  failAbandoned(startedBefore: Date, error: ImportRunError): Promise<string[]>;
 }
