@@ -2,6 +2,11 @@ import { Writable } from "node:stream";
 import { createLogger } from "@agentsales/config";
 import type { HealthReport } from "@agentsales/core";
 import { AppError } from "@agentsales/core";
+import {
+  createInMemoryBrokerRepository,
+  createInMemoryListingRepository,
+  createInMemoryMediaRepository,
+} from "@agentsales/core/testing";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
 import { type AppDeps, createApp } from "./app.js";
@@ -27,6 +32,10 @@ function appWith(checks: Partial<AppDeps["checks"]> = {}, extra: Partial<AppDeps
     version: "0.0.1",
     logger: silentLogger,
     access,
+    listings: createInMemoryListingRepository(),
+    brokers: createInMemoryBrokerRepository(),
+    media: createInMemoryMediaRepository(),
+    storage: { signedReadUrl: async (path) => `https://r2.test/${path}?firma` },
     ...extra,
   });
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readdir, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { AppError, type OpenedMedia, type RunImportDeps } from "@agentsales/core";
+import { AppError, type RunImportDeps } from "@agentsales/core";
 import { createMediaFolderSource, extractZip } from "@agentsales/importers";
 
 /** Directorios de staging de más de esto se borran al arrancar, sea cual sea su run (§4.3). */

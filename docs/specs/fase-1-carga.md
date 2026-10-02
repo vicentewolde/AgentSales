@@ -47,7 +47,7 @@ El operador carga un Excel con propiedades y una carpeta de fotos y videos, y la
       - Si `open()` falla al releer un archivo, `MEDIA_FILE_UNREADABLE`.
       - Ninguno de estos errores es reintentable.
   - **Contrato de jobs** en `core/src/jobs.ts` (`JOB_NAMES`, `JOB_PAYLOADS`).
-  - **Entidades con esquema zod** (`listing`, `media`, `broker`, `importRun`, `importReport`) y tuplas nuevas (`IMPORT_RUN_STATUSES`, `LISTING_MANUAL_TRANSITIONS`), según ADR-0011.
+  - **Entidades con esquema zod** (`listing`, `media`, `broker`, `importRun`, `importReport`) y tuplas nuevas (`IMPORT_RUN_STATUSES`, `LISTING_MANUAL_TRANSITIONS`), según ADR-0011. `media` quedó sin esquema en core (`MediaRecord` es una proyección): la API expone `mediaItemSchema` en `contracts` (F1-T10).
   - **Repositorios en memoria** en la salida `@agentsales/core/testing`. Biome prohíbe importarla fuera de los tests.
 - **`MediaStorage`:** agrega `putStream` para videos de hasta `MAX_VIDEO_MB` (D3).
 - **db:**
@@ -451,6 +451,13 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T10 · Contratos HTTP y API de lectura
 - **Depende de:** T04b y ADR-0011 aceptado
+- **Hecho en F1-T10:**
+  - `LISTING_MANUAL_TRANSITIONS`: `draft` → `ready`/`archived`, `ready` → `paused`/`archived`, `paused` → `ready`/`archived` y `archived` → `ready`. `active` y `closed` quedan fuera hasta F3.
+  - `ready` exige al menos una foto, que no puede ser un video.
+  - `ListingRepository.changeStatus(id, from, to)` es condicional.
+  - `MediaRepository.listCovers` trae las portadas de la lista.
+  - `@agentsales/api` pasa a `dependencies` en la web y la CLI, que usan el `errorBodySchema` compartido.
+  - La regla de Biome de `contracts` tiene su test.
 - **Descripción:**
   - Salida `@agentsales/api/contracts` (`errorBodySchema`, parámetros y respuestas), con su regla de Biome.
   - Helper de validación (`REQUEST_INVALID`).
@@ -483,6 +490,10 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T12 · CLI de importación y consulta
 - **Depende de:** T11
+- **Desde la revisión de T10:** `agentsales listing <external_ref|id>` necesita buscar por `external_ref`, que es único **por corredor**.
+  - Agregar un filtro exacto `externalRef` a `listingQuerySchema` y `ListingFilters`, un cambio aditivo.
+  - Si devuelve más de un aviso, pedir `--broker`.
+  - Un uuid va directo a `GET /listings/:id`.
 - **Descripción:** comandos de §4.4.
   - **Cliente:** antes de sumar comandos, `createApiClient(port, { timeoutMs })` devuelve el `hc<AppType>` completo, y `unwrap(res)` lee el `ErrorBody` (con el esquema de `contracts`) y lo muestra como `CODE: mensaje`.
   - **Estructura:** un comando por archivo (`src/commands/<nombre>.ts`), cada uno con una función `run<Nombre>(deps)` testeable y un `register(program, ctx)`. `checks.ts` pasa a `commands/doctor/`.
@@ -501,6 +512,10 @@ Migración `0001` (`0000_init` ya está aplicada y no se edita):
 
 ### F1-T13 · Panel: patrón, Propiedades y Detalle
 - **Depende de:** T10
+- **Desde la revisión de T10:**
+  - **Atributos con su etiqueta:** `attributes` llega con las claves internas (`dormitorios`, `_extra`). Las etiquetas son datos (ADR-0006), así que el detalle suma `fields: [{ key, label, type }]` con las definiciones efectivas del corredor (`resolveEffectiveDefinitions`; la ruta recibe `FieldDefinitionRepository`). Se decide en el plan de T13; la alternativa es mostrar las claves crudas en F1.
+  - **URLs firmadas:** duran `SIGNED_URL_TTL_SECONDS` (1 h). `staleTime` y `gcTime` de TanStack Query quedan bien por debajo, o la galería vuelve a pedir los datos si falla una imagen.
+  - **Imports desde la API:** el panel solo hace `import type` de la raíz de `@agentsales/api`; en tiempo de ejecución, solo `@agentsales/api/contracts`. Si Biome permite distinguir `import type`, se agrega una regla para `apps/web/src/**`. Si no, queda como revisión manual.
 - **Descripción:**
   - **Patrón:** `createApiClient` con el `hc` completo, y `unwrap(res)` que lee `ErrorBody` y lanza `ApiError { code, status }`. Un solo `ApiClientContext`, hooks por recurso en `src/queries/` con fábricas de `queryKey`, y `routes.tsx` separado de `App.tsx` con páginas en `React.lazy` (D5). El `HealthFetcher` desaparece con este patrón, y se actualiza la sección de tests del panel en `05-convenciones.md`.
   - **Propiedades:** grilla con portada, operación, tipo, comuna, precio formateado (`UF 5.800`, `$650.000`) y estado. Filtros en los parámetros de la URL.
@@ -577,3 +592,5 @@ Orden sugerido: T01 → T02/T03 → T04 → T04b. T05, T06 y T08 se pueden hacer
 | 2026-10-01 | Desde la revisión de F1-T08: el productor refresca el caché de colas una vez al día, para no mantener Neon despierto; el mensaje de "cola no lista" solo sale con los errores exactos de pg-boss; `stop()` deja la cola cerrada y cierra un arranque en curso; `JOB_PAYLOAD_INVALID` responde 500; T09 suma `policy` (`exclusive` para `import.run`, inmutable), `defineJob` tipado por `JobName` y `requestImport` acotado a `QUEUE_UNAVAILABLE`; T11 resume `onError` y llama a `stop()`; riesgo del run sin job en §8 |
 | 2026-10-01 | F1-T09: `requestImport` y `runImport` en core; estados del run (`markRunning`, `markSucceeded`, `markFailed`, condicionales); job `import.run` con cola `exclusive`, `defineJob` tipado por `JobName`, `isLastAttempt` (pg-boss `includeMetadata`) y `policy` solo al crear; staging en el worker con su limpieza al arrancar; un zip con una sola carpeta en la raíz se desenvuelve si ahí están las carpetas pedidas |
 | 2026-10-01 | Desde la revisión de F1-T09: runs abandonados cerrados al arrancar el worker (`failAbandoned`, `IMPORT_ABANDONED`, tras 7 h en `running`); un error que no es `AppError` se normaliza a `INTERNAL_ERROR` no reintentable; si `markFailed` falla, el original va como `cause`; `markSucceeded` sin efecto da `skipped`; `extracted-{uuid}/` por intento; limpieza del staging robusta (por antigüedad sin base, huérfanos con 10 min de gracia, sin cortar el barrido); el worker avisa si una cola existe con otra política; `openMedia({ runId, mediaDir, folders })`; notas para T11 (id del run generado por quien llama, `createStaging` a `importers`) |
+| 2026-10-01 | F1-T10: `@agentsales/api/contracts` con su frontera de Biome (y un test); `validated` (`REQUEST_INVALID`); `listingSchema`, `ListingRepository.list`, `get` y `changeStatus`, `BrokerRepository.list` y `MediaRepository.listCovers`; `changeListingStatus` con `LISTING_MANUAL_TRANSITIONS` (fuera `active` y `closed` hasta F3); rutas `/listings`, `/listings/:id`, `PATCH /listings/:id/status` y `/brokers` |
+| 2026-10-01 | Desde la revisión de F1-T10: `*_ROW_INVALID`, `IMPORT_RUN_INVALID` y `JOB_PAYLOAD_INVALID` responden 500; el JSON mal formado de `hono/validator` es `INVALID_JSON`; `ErrorBody` sale de `contracts`; `LISTING_MANUAL_TARGETS` en core; `contracts` sin `../`; corredores ordenados igual en Postgres y en memoria; `media` sin esquema en core (aclarado); notas en T12 (`externalRef`), T13 (etiquetas de atributos, TTL de las URLs) y F3 (tabla de estados provisional) |

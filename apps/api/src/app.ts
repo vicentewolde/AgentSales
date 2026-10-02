@@ -1,9 +1,18 @@
-import type { HealthCheckName, PublishMode } from "@agentsales/core";
+import type {
+  BrokerRepository,
+  HealthCheckName,
+  ListingRepository,
+  MediaRepository,
+  MediaStorage,
+  PublishMode,
+} from "@agentsales/core";
 import { Hono } from "hono";
 import { createErrorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
 import { requestLogger } from "./request-logger.js";
+import { brokerRoutes } from "./routes/brokers.js";
+import { listingRoutes } from "./routes/listings.js";
 import { csrfGuard, hostGuard, type LocalAccess } from "./security.js";
 
 export type AppDeps = {
@@ -15,6 +24,12 @@ export type AppDeps = {
   access: LocalAccess;
   /** Solo para tests; por defecto `DEFAULT_CHECK_TIMEOUT_MS`. */
   checkTimeoutMs?: number;
+  // Puertos de core (no los adaptadores): así `AppType` no arrastra drizzle ni el SDK de S3.
+  listings: ListingRepository;
+  brokers: BrokerRepository;
+  media: MediaRepository;
+  /** Solo para las URLs de lectura temporales de las fotos. */
+  storage: Pick<MediaStorage, "signedReadUrl">;
 };
 
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
@@ -32,7 +47,10 @@ export function createApp(deps: AppDeps) {
       });
       // Siempre 200: el estado va en el cuerpo (`ok` o `degraded`).
       return c.json(report, 200);
-    });
+    })
+    // Encadenadas con `.route()`, así `AppType` conserva el esquema de cada ruta (ADR-0011).
+    .route("/listings", listingRoutes(deps))
+    .route("/brokers", brokerRoutes(deps));
   app.onError(createErrorHandler(deps.logger));
   app.notFound(notFoundHandler);
   return app;

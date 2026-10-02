@@ -60,6 +60,8 @@ export function checkArrangement(items: readonly MediaArrangement[]): void {
 export interface MediaRepository {
   /** Originales de un aviso, por `sortOrder` y luego por id. */
   listOriginals(listingId: string): Promise<MediaRecord[]>;
+  /** Portadas (originales con `isCover`) de esos avisos, para la lista de la API. */
+  listCovers(listingIds: readonly string[]): Promise<MediaRecord[]>;
   /** Para el logo, que no tiene aviso: su clave en R2 lleva el sha256. */
   findByStoragePath(storagePath: string): Promise<MediaRecord | null>;
   create(media: NewMedia): Promise<MediaRecord>;

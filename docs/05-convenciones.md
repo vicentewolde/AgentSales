@@ -38,7 +38,7 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
   | Código | HTTP |
   |---|---|
   | `INVALID_TRANSITION` | 409 |
-  | `JOB_PAYLOAD_INVALID` | 500 (los datos de un job los arma el servidor: es un bug) |
+  | `JOB_PAYLOAD_INVALID`, `IMPORT_RUN_INVALID`, `*_ROW_INVALID` | 500 (datos que arma el servidor, o una fila corrupta en la base: no es culpa del cliente) |
   | `*_NOT_FOUND` | 404 |
   | `*_INVALID*` o `INVALID_*` | 400 |
   | `*_RATE_LIMITED` | 429 |
@@ -49,7 +49,7 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
   - Un `AppError` que resulta en 500 mantiene su `code` pero responde un mensaje genérico; el detalle queda solo en el log.
   - Un error que no es `AppError` responde `500 INTERNAL_ERROR`.
   - Una `HTTPException` 4xx de Hono responde `HTTP_<status>` (por ejemplo `HTTP_429`) y conserva sus headers.
-  - Un cuerpo JSON mal formado responde `400 INVALID_JSON`.
+  - Un cuerpo JSON mal formado responde `400 INVALID_JSON`, también cuando lo detecta `hono/validator`.
   - Un `Host` no local responde `403 HOST_NOT_ALLOWED`; una ruta inexistente, `404 ROUTE_NOT_FOUND`.
 - Nada de secretos en el código. Todo por `packages/config` (env validado con zod al arrancar).
 - Solo los puntos de entrada cargan el entorno (`loadEnvFile`/`loadEnv`): las apps y los `src/scripts/*` de cada paquete. El resto de un paquete recibe opciones concretas (`createDb(url)`, `createR2Storage({...})`, `createJobQueue({...})`); Biome lo exige en `db`, `storage`, `importers` y `queue`, que además no se importan entre sí (los adaptadores no dependen unos de otros).

@@ -5,7 +5,7 @@ import {
   type BrokerRepository,
   brokerSchema,
 } from "@agentsales/core";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
 import { brokers, media } from "../schema.js";
@@ -61,6 +61,18 @@ function columnsOf(data: BrokerData) {
 /** `BrokerRepository` sobre Drizzle (node-postgres en las apps, PGlite en los tests). */
 export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
   return {
+    list() {
+      return withDbErrors(async () => {
+        // Sin mayúsculas y por bytes ("C"): el mismo orden que el doble en memoria, sea cual sea la
+        // collation de la base.
+        const rows = await db
+          .select()
+          .from(brokers)
+          .orderBy(sql`lower(${brokers.brandName}) collate "C"`, asc(brokers.id));
+        return rows.map(toBroker);
+      });
+    },
+
     findBySlug(slug) {
       return withDbErrors(async () => {
         const [row] = await db.select().from(brokers).where(eq(brokers.slug, slug));

@@ -49,6 +49,26 @@
   },
   "overrides": [
     {
+      "includes": ["apps/api/src/contracts/**", "!**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**", "!zod", "!zod/**", "!@agentsales/core", "!./**"],
+                    "message": "@agentsales/api/contracts lo importa el panel en tiempo de ejecución: solo zod, @agentsales/core e imports de ./ (nada de ../, que sale al código del servidor; ADR-0011)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/core/**"],
       "linter": {
         "rules": {

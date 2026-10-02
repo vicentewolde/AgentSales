@@ -1,4 +1,5 @@
 import type { ListingCategory, ListingSource, ListingStatus } from "../enums.js";
+import type { Listing, ListingFilters } from "../listing.js";
 import type { ListingAttributes, ListingCoreFields } from "../listing-validator/index.js";
 
 /** Lo que la importación necesita saber de un aviso ya guardado. */
@@ -24,8 +25,8 @@ export type NewListing = ListingImportData & {
 /**
  * Avisos (`listings`), únicos por `(broker_id, external_ref)`. Un aviso nuevo nace en `draft`, y
  * la importación nunca cambia `status` (ni lo pisa al reimportar): eso es de la ingesta de medios
- * y del operador. `ListingImportRecord` es una proyección para la carga, sin esquema; la entidad
- * completa (`listingSchema`) y `list`/`get` llegan con la API (F1-T10). Errores (`AppError`):
+ * y del operador. `ListingImportRecord` es una proyección para la carga; la entidad completa es
+ * `listingSchema` (`list`/`get`, para la API). Errores (`AppError`):
  * - `create` de un `(broker_id, external_ref)` que ya existe → `LISTING_CONFLICT`, **reintentable**
  *   (intentos del job solapados; el reintento lo reclasifica como `skipped` o `updated`);
  * - `update` de un id que no existe → `LISTING_NOT_FOUND`;
@@ -45,4 +46,14 @@ export interface ListingRepository {
    * id que no existe también devuelve `false`.
    */
   promoteToReady(id: string): Promise<boolean>;
+  /** Avisos con los filtros dados (exactos), del más reciente al más antiguo (`updated_at`). */
+  list(filters?: ListingFilters): Promise<Listing[]>;
+  /** `null` si no existe. */
+  get(id: string): Promise<Listing | null>;
+  /**
+   * Cambio manual de estado, **condicional**: solo si el aviso sigue en `from`. Devuelve si
+   * cambió (`false` si otro cambio llegó antes, o si no existe). Las reglas las aplica
+   * `changeListingStatus`.
+   */
+  changeStatus(id: string, from: ListingStatus, to: ListingStatus): Promise<boolean>;
 }

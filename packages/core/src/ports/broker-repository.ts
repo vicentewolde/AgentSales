@@ -8,10 +8,12 @@ import type { Broker, BrokerData } from "../broker.js";
  * - `update` de un id que no existe → `BROKER_NOT_FOUND`;
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
  * Los ids son uuid: la API los valida antes de llegar aquí (con otro formato, el adaptador de
- * Postgres da `DB_QUERY_FAILED`). La API (F1-T10) suma `list`.
+ * Postgres da `DB_QUERY_FAILED`).
  */
 export interface BrokerRepository {
   findBySlug(slug: string): Promise<Broker | null>;
+  /** Todos los corredores, por nombre de marca (para el selector de Importar). */
+  list(): Promise<Broker[]>;
   create(data: BrokerData): Promise<Broker>;
   /** Actualiza los datos de la hoja Corredor; no toca `logoMediaId` ni `autoPublish`. */
   update(id: string, data: BrokerData): Promise<Broker>;

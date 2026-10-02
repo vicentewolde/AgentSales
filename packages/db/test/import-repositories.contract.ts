@@ -154,6 +154,23 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(await repos.brokers.findBySlug(slug)).toEqual(updated);
     });
 
+    it("list devuelve los corredores por nombre de marca, sin distinguir mayúsculas", async () => {
+      const c = await repos.brokers.create(
+        brokerData(unique("lista-c"), { brandName: "ZZ marca c" }),
+      );
+      const b = await repos.brokers.create(
+        brokerData(unique("lista-b"), { brandName: "ZZ Marca B" }),
+      );
+      const a = await repos.brokers.create(
+        brokerData(unique("lista-a"), { brandName: "zz marca a" }),
+      );
+      const listed = (await repos.brokers.list()).filter((broker) =>
+        broker.brandName.toLowerCase().startsWith("zz"),
+      );
+      expect(listed.map((broker) => broker.id)).toEqual([a.id, b.id, c.id]);
+      expect(listed[0]).toEqual(a);
+    });
+
     it("update de un id inexistente → BROKER_NOT_FOUND", async () => {
       await expectAppError(
         repos.brokers.update(repos.missingId, brokerData(unique("corredor"))),
@@ -250,6 +267,57 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
     it("update de un id inexistente → LISTING_NOT_FOUND", async () => {
       const { brokerId: _b, category: _c, source: _s, ...data } = newListing(brokerId, unique("P"));
       await expectAppError(repos.listings.update(repos.missingId, data), "LISTING_NOT_FOUND");
+    });
+
+    it("get devuelve la entidad completa; un id inexistente es null", async () => {
+      const ref = unique("P");
+      const created = await repos.listings.create(
+        newListing(brokerId, ref, { priceAmount: 6100.5 }),
+      );
+      const listing = await repos.listings.get(created.id);
+      expect(listing).toMatchObject({
+        id: created.id,
+        brokerId,
+        externalRef: ref,
+        status: "draft",
+        closeReason: null,
+        priceAmount: 6100.5,
+        attributes: { dormitorios: 3, amenities: ["Piscina"] },
+        source: "xlsx",
+      });
+      expect(listing?.createdAt).toBeInstanceOf(Date);
+      expect(listing).not.toHaveProperty("sourceHash");
+      expect(await repos.listings.get(repos.missingId)).toBeNull();
+    });
+
+    it("list filtra por estado, operación y comuna, del más reciente al más antiguo", async () => {
+      const other = (await repos.brokers.create(brokerData(unique("filtros")))).id;
+      const comuna = unique("Comuna");
+      const first = await repos.listings.create(newListing(other, unique("P"), { comuna }));
+      const second = await repos.listings.create(
+        newListing(other, unique("P"), { comuna, operation: "rent" }),
+      );
+      await repos.listings.create(newListing(other, unique("P"), { comuna: unique("Otra") }));
+      await repos.listings.promoteToReady(first.id);
+
+      expect((await repos.listings.list({ comuna })).map((listing) => listing.id)).toEqual([
+        first.id,
+        second.id,
+      ]);
+      expect((await repos.listings.list({ comuna, status: "ready" })).map((l) => l.id)).toEqual([
+        first.id,
+      ]);
+      expect((await repos.listings.list({ comuna, operation: "rent" })).map((l) => l.id)).toEqual([
+        second.id,
+      ]);
+    });
+
+    it("changeStatus es condicional: solo desde el estado esperado", async () => {
+      const created = await repos.listings.create(newListing(brokerId, unique("P")));
+      expect(await repos.listings.changeStatus(created.id, "ready", "paused")).toBe(false);
+      expect(await repos.listings.changeStatus(created.id, "draft", "archived")).toBe(true);
+      expect((await repos.listings.get(created.id))?.status).toBe("archived");
+      expect(await repos.listings.changeStatus(repos.missingId, "draft", "ready")).toBe(false);
     });
 
     it("promoteToReady pasa de draft a ready una sola vez", async () => {
@@ -547,6 +615,20 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       await repos.media.create(
         newMedia(brokerId, null, checksum, { storagePath: `${unique("logo")}.png` }),
       );
+    });
+
+    it("listCovers trae solo las portadas de esos avisos", async () => {
+      const { id, media } = await listingWith("a", "b");
+      const other = await listingWith("c");
+      await repos.media.arrange(id, [{ id: media[1]?.id ?? "", sortOrder: 0, isCover: true }]);
+      await repos.media.arrange(other.id, [
+        { id: other.media[0]?.id ?? "", sortOrder: 0, isCover: true },
+      ]);
+
+      const covers = await repos.media.listCovers([id]);
+
+      expect(covers.map((cover) => cover.id)).toEqual([media[1]?.id]);
+      expect(await repos.media.listCovers([])).toEqual([]);
     });
 
     it("arrange fija orden y portada", async () => {

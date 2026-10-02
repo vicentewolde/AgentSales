@@ -2,9 +2,12 @@ import { isAppError } from "@agentsales/core";
 import type { Context, ErrorHandler, NotFoundHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+// El cuerpo de error vive en los contratos compartidos (ADR-0011): un cambio rompe el typecheck
+// de la API, la CLI y el panel a la vez.
+import type { ErrorBody } from "./contracts/index.js";
 import type { AppLogger } from "./logger.js";
 
-export type ErrorBody = { error: { code: string; message: string } };
+export type { ErrorBody };
 
 const INTERNAL_MESSAGE = "Error interno del servidor";
 
@@ -14,8 +17,10 @@ const INTERNAL_MESSAGE = "Error interno del servidor";
  */
 export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "INVALID_TRANSITION") return 409;
-  // Los datos de un job los arma el servidor (por ejemplo, el id del run): es un bug, no del cliente.
-  if (code === "JOB_PAYLOAD_INVALID") return 500;
+  // Datos inválidos que no vienen del cliente: los de un job los arma el servidor, y una fila
+  // corrupta en la base (`*_ROW_INVALID`, `IMPORT_RUN_INVALID`) es un fallo del servidor.
+  if (code === "JOB_PAYLOAD_INVALID" || code === "IMPORT_RUN_INVALID") return 500;
+  if (code.endsWith("_ROW_INVALID")) return 500;
   if (code.endsWith("_NOT_FOUND")) return 404;
   if (code.includes("_INVALID") || code.startsWith("INVALID_")) return 400;
   if (code.endsWith("_RATE_LIMITED")) return 429;
@@ -55,6 +60,15 @@ export function createErrorHandler(logger: AppLogger): ErrorHandler {
       }
       logger.warn({ err: error, path: c.req.path }, "error de la aplicación");
       return errorJson(c, status, error.code, error.message);
+    }
+    // `hono/validator` rechaza un JSON mal formado con su propio 400 en inglés: mismo trato que
+    // el `SyntaxError` de `c.req.json()`.
+    if (
+      error instanceof HTTPException &&
+      error.status === 400 &&
+      /^Malformed JSON/.test(error.message)
+    ) {
+      return errorJson(c, 400, "INVALID_JSON", "El cuerpo de la petición no es JSON válido");
     }
     if (error instanceof HTTPException && error.status < 500) {
       const status = error.status as ContentfulStatusCode;

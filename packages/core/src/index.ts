@@ -32,6 +32,14 @@ export {
   type JobPayload,
   MAX_PING_DELAY_MS,
 } from "./jobs.js";
+export {
+  canChangeListingStatus,
+  LISTING_MANUAL_TARGETS,
+  LISTING_MANUAL_TRANSITIONS,
+  type Listing,
+  type ListingFilters,
+  listingSchema,
+} from "./listing.js";
 export type { ListingSheetInput, ListingSheetRow, RawBrokerSheet } from "./listing-sheet.js";
 export {
   buildListingValidator,
@@ -95,6 +103,10 @@ export {
   transition,
 } from "./publication-state.js";
 export * from "./redact.js";
+export {
+  type ChangeListingStatusDeps,
+  changeListingStatus,
+} from "./use-cases/change-listing-status.js";
 export {
   type ImportedRow,
   type ImportListingsDeps,

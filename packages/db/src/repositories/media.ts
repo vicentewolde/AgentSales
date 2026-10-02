@@ -43,6 +43,19 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
       );
     },
 
+    listCovers(listingIds) {
+      if (listingIds.length === 0) return Promise.resolve([]);
+      return withDbErrors(() =>
+        db
+          .select(recordColumns)
+          .from(media)
+          .where(
+            and(inArray(media.listingId, [...listingIds]), isOriginal, eq(media.isCover, true)),
+          )
+          .orderBy(asc(media.sortOrder), asc(media.id)),
+      );
+    },
+
     findByStoragePath(storagePath) {
       return withDbErrors(async () => {
         const [row] = await db
