@@ -72,6 +72,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
     - Reloj monótono para el tope de 2 h; un 4xx al consultar ya no dice que la carga "sigue en el worker"; el código de `listing` se recorta; timeout menor a 1 s en ms; signo de `formatPrice` unificado.
     - Test nuevo: el contador de fallas vuelve a cero al responder.
     - Docs: arquitectura (excepción de `src/testing/`), modelo de datos (`updated_at`) y deudas de F7.
+  - **`CLAUDE.md`:** la sección Estructura suma `queue`, a pedido del operador.
   - **Demo pendiente:** faltan las 3 propiedades de muestra en `data/muestras/`.
 - 2026-10-01: **F1-T11.** API de importación.
   - **Rutas:**
