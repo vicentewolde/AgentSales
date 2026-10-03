@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   CLAUDE_CLI_ENV_ALLOWLIST,
   type ClaudeCliOptions,
+  claudeCliEnv,
   createClaudeCliProvider,
   createLlmProvider,
 } from "../src/index.js";
@@ -36,6 +37,10 @@ const APP_ENV = {
   ANTHROPIC_API_KEY: "sk-ant-clave-falsa",
   ANTHROPIC_AUTH_TOKEN: "token-falso",
   CLAUDE_CODE_USE_BEDROCK: "1",
+  // Canarios: cualquier otra variable de la app tampoco debe llegar.
+  R2_ACCOUNT_ID: "cuenta-falsa",
+  PUBLISH_MODE: "dry-run",
+  CANARIO_X: "no-debe-llegar",
 };
 
 const provider = (overrides: Partial<ClaudeCliOptions> = {}) =>
@@ -80,6 +85,50 @@ describe("createClaudeCliProvider: respuestas", () => {
       data: { saludo: "hola" },
       model: "claude-sonnet-5-5",
     });
+  });
+
+  it("con dos modelos en modelUsage, el que respondió es el de más tokens de salida", async () => {
+    const result = await provider().generateStructured(request("dos-modelos"));
+    expect(result.model).toBe("claude-sonnet-5-5");
+  });
+
+  it("texto de terceros en errors no se lee como sesión ni límite: LLM_OUTPUT_INVALID", async () => {
+    const error = await errorOf(provider().generateStructured(request("auth-en-errores")));
+    expect([error.code, error.retriable]).toEqual(["LLM_OUTPUT_INVALID", false]);
+  });
+
+  it("un 429 de la API es transitorio: LLM_UNAVAILABLE, reintentable", async () => {
+    const error = await errorOf(provider().generateStructured(request("429")));
+    expect([error.code, error.retriable]).toEqual(["LLM_UNAVAILABLE", true]);
+  });
+
+  it("más de 10 MB de salida es LLM_OUTPUT_INVALID, y la CLI se corta", async () => {
+    const error = await errorOf(provider().generateStructured(request("inundacion")));
+    expect([error.code, error.retriable]).toEqual(["LLM_OUTPUT_INVALID", false]);
+  });
+
+  it("una CLI que responde sin leer el prompt no rompe nada (EPIPE)", async () => {
+    const noRead = await createFakeClaude("no-lee");
+    try {
+      const result = await provider({ cliPath: noRead.cliPath }).generateStructured(
+        request("exito", { prompt: "x".repeat(2 * 1024 * 1024) }),
+      );
+      expect(result.data).toEqual({ saludo: "sin leer" });
+    } finally {
+      await rm(noRead.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("un archivo sin permiso de ejecución es LLM_NOT_CONFIGURED", async () => {
+    const noExec = await createFakeClaude("sin-permiso");
+    try {
+      const error = await errorOf(
+        provider({ cliPath: noExec.cliPath }).generateStructured(request("exito")),
+      );
+      expect([error.code, error.retriable]).toEqual(["LLM_NOT_CONFIGURED", false]);
+    } finally {
+      await rm(noExec.dir, { recursive: true, force: true });
+    }
   });
 
   it("sin modelUsage, el modelo es el configurado", async () => {
@@ -148,6 +197,24 @@ describe("createClaudeCliProvider: aislamiento (spec F2 §4.5)", () => {
     echo = (await provider().generateStructured(echoRequest)).data as Echo;
   });
 
+  it("claudeCliEnv deja solo las variables de la lista", () => {
+    expect(claudeCliEnv(APP_ENV)).toEqual({
+      PATH: APP_ENV.PATH,
+      HOME: APP_ENV.HOME,
+      USER: "operador",
+      LANG: "es_CL.UTF-8",
+      TMPDIR: APP_ENV.TMPDIR,
+    });
+  });
+
+  it("ninguna variable de la app fuera de la lista llega al proceso", () => {
+    const allowed = new Set<string>(CLAUDE_CLI_ENV_ALLOWLIST);
+    const leaked = Object.keys(APP_ENV).filter(
+      (key) => !allowed.has(key) && echo.envKeys.includes(key),
+    );
+    expect(leaked).toEqual([]);
+  });
+
   it("recibe solo las variables permitidas: nada del .env ni claves de Anthropic", () => {
     const allowed = new Set<string>(CLAUDE_CLI_ENV_ALLOWLIST);
     // Node puede sumar variables propias del proceso (por ejemplo, `__CF_USER_TEXT_ENCODING` en
@@ -201,57 +268,74 @@ describe("createClaudeCliProvider: aislamiento (spec F2 §4.5)", () => {
 
 describe("createClaudeCliProvider: tope de tiempo y corte", () => {
   const pidsFile = () => join(workDir, `pids-${Math.random().toString(36).slice(2)}.json`);
-  const pidsOf = async (file: string): Promise<number[]> =>
-    JSON.parse(await readFile(file, "utf8"));
+  /** Espera (con tope) a que el ejecutable falso escriba sus PIDs: arrancar Node tarda. */
+  const pidsOf = async (file: string): Promise<number[]> => {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      if (existsSync(file)) return JSON.parse(await readFile(file, "utf8"));
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`el ejecutable falso nunca escribió ${file}`);
+  };
   const waitUntilDead = async (pids: number[]) => {
-    for (let attempt = 0; attempt < 50 && pids.some(alive); attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
+    for (let attempt = 0; attempt < 200 && pids.some(alive); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
     }
     return pids.filter(alive);
   };
 
   it("al vencer el tope: LLM_TIMEOUT reintentable, y la CLI y sus hijos terminan", async () => {
     const file = pidsFile();
-    const error = await errorOf(
-      provider({ timeoutMs: 500 }).generateStructured(
+    const call = errorOf(
+      provider({ timeoutMs: 2000 }).generateStructured(
         request("cuelga", { prompt: `MODO:cuelga PIDS:${file}` }),
       ),
     );
+    const pids = await pidsOf(file);
+    const error = await call;
     expect([error.code, error.retriable]).toEqual(["LLM_TIMEOUT", true]);
-    expect(await waitUntilDead(await pidsOf(file))).toEqual([]);
+    expect(await waitUntilDead(pids)).toEqual([]);
   });
 
   it("una CLI que ignora SIGINT y SIGTERM termina igual (SIGKILL)", async () => {
     const file = pidsFile();
-    const error = await errorOf(
-      provider({ timeoutMs: 500 }).generateStructured(
+    const call = errorOf(
+      provider({ timeoutMs: 2000 }).generateStructured(
         request("terco", { prompt: `MODO:terco PIDS:${file}` }),
       ),
     );
-    expect(error.code).toBe("LLM_TIMEOUT");
-    expect(await waitUntilDead(await pidsOf(file))).toEqual([]);
+    const pids = await pidsOf(file);
+    expect((await call).code).toBe("LLM_TIMEOUT");
+    expect(await waitUntilDead(pids)).toEqual([]);
   });
 
   it("con signal: LLM_ABORTED reintentable, y los procesos terminan", async () => {
     const file = pidsFile();
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 500);
+    const call = errorOf(
+      provider().generateStructured(
+        request("cuelga", { prompt: `MODO:cuelga PIDS:${file}`, signal: controller.signal }),
+      ),
+    );
+    // Se corta cuando la CLI ya está corriendo, no por un tiempo fijo.
+    const pids = await pidsOf(file);
+    controller.abort();
+    const error = await call;
+    expect([error.code, error.retriable]).toEqual(["LLM_ABORTED", true]);
+    expect(await waitUntilDead(pids)).toEqual([]);
+  });
+
+  it("con signal ya disparado no lanza la CLI: LLM_ABORTED", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const file = pidsFile();
     const error = await errorOf(
       provider().generateStructured(
         request("cuelga", { prompt: `MODO:cuelga PIDS:${file}`, signal: controller.signal }),
       ),
     );
-    expect([error.code, error.retriable]).toEqual(["LLM_ABORTED", true]);
-    expect(await waitUntilDead(await pidsOf(file))).toEqual([]);
-  });
-
-  it("con signal ya disparado no espera: LLM_ABORTED", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const error = await errorOf(
-      provider().generateStructured(request("cuelga", { signal: controller.signal })),
-    );
     expect(error.code).toBe("LLM_ABORTED");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(existsSync(file)).toBe(false);
   });
 });
 

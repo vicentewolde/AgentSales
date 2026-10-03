@@ -65,6 +65,9 @@ importers:
       '@agentsales/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@agentsales/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       commander:
         specifier: 15.0.0
         version: 15.0.0

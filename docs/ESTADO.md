@@ -14,7 +14,7 @@
 | F2-T01 · Mínimos y máximos en campos numéricos | ✅ | #33 |
 | F2-T02 · Datos de contenido: corridas y contenidos | ✅ | #34 |
 | F2-T03 · Medios derivados en la base y `getStream` | ✅ | #35 |
-| F2-T04 · Proveedor de IA (`packages/llm`) | ✅ | |
+| F2-T04 · Proveedor de IA (`packages/llm`) | ✅ (falta la demo con tu sesión: `pnpm llm:smoke`) | #36 |
 | F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado | ⏳ pendiente | |
 | F2-T06 · Revisión editorial (`checkContent`) | ⏳ pendiente | |
 | F2-T07 · Procesamiento de imágenes (`packages/media`) | ⏳ pendiente | |
@@ -57,7 +57,6 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
-- F2 (T04): exigir `ANTHROPIC_API_KEY` cuando `LLM_PROVIDER=anthropic-api`.
 - F3: derivar la clave con HKDF-SHA256 desde `APP_ENCRYPTION_KEY` al cifrar tokens.
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.

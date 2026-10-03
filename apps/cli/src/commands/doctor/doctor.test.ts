@@ -39,6 +39,7 @@ function deps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     fetchHealth: async () => healthy,
     run: allTools,
     chromiumDir: "/cache/ms-playwright/chromium-1217",
+    processEnv: { PATH: "/usr/bin", HOME: "/home/operador" },
     ...overrides,
   };
 }
@@ -163,6 +164,40 @@ describe("runDoctor", () => {
       detail: "2.1.243 (Claude Code) · sin sesión: no se puede generar contenido",
     });
     expect(claude?.hint).toContain("/login");
+  });
+
+  it("una API key no cuenta como sesión: el sistema no se la pasa a la CLI", async () => {
+    const apiKeyOnly: RunCommand = async (command, args) =>
+      command === "claude" && args[0] === "auth"
+        ? '{ "loggedIn": true, "authMethod": "api_key" }'
+        : allTools(command, args);
+    const report = await runDoctor(deps({ run: apiKeyOnly }));
+    expect(report.items.find((item) => item.name === "Claude Code")).toMatchObject({
+      level: "warn",
+      detail: expect.stringContaining("solo con una API key"),
+    });
+  });
+
+  it("la CLI de Claude se ejecuta con el entorno mínimo, sin el .env ni claves", async () => {
+    const envs: Record<string, string>[] = [];
+    const recording: RunCommand = async (command, args, options) => {
+      if (command === "claude") envs.push(options?.env ?? {});
+      return allTools(command, args);
+    };
+    await runDoctor(
+      deps({
+        run: recording,
+        processEnv: {
+          PATH: "/usr/bin",
+          HOME: "/home/operador",
+          DATABASE_URL: "postgresql://falso",
+          ANTHROPIC_API_KEY: "sk-ant-falsa",
+          R2_SECRET_ACCESS_KEY: "secreto-falso",
+        },
+      }),
+    );
+    expect(envs).toHaveLength(2);
+    for (const env of envs) expect(env).toEqual({ PATH: "/usr/bin", HOME: "/home/operador" });
   });
 
   it("si no se puede leer la sesión, lo dice; y usa CLAUDE_CLI_PATH", async () => {

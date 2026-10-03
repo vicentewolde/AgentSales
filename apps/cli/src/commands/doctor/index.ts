@@ -1,3 +1,4 @@
+import { claudeCliEnv } from "@agentsales/llm";
 import type { Command } from "commander";
 import { createHealthFetcher, type HealthFetcher } from "../../api-client.js";
 import type { Colors } from "../../colors.js";
@@ -23,6 +24,8 @@ export type DoctorDeps = {
   fetchHealth: HealthFetcher;
   run: RunCommand;
   chromiumDir: string | null;
+  /** Entorno del proceso: la CLI de Claude recibe solo las variables permitidas (`claudeCliEnv`). */
+  processEnv: Readonly<Record<string, string | undefined>>;
 };
 
 export type DoctorReport = { items: CheckItem[]; exitCode: 0 | 1 };
@@ -42,7 +45,11 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     ...services.items,
     await checkFfmpeg(deps.run, ffmpegPath),
     checkChromium(deps.chromiumDir),
-    await checkClaude(deps.run, deps.env.ok ? deps.env.env.CLAUDE_CLI_PATH : "claude"),
+    await checkClaude(
+      deps.run,
+      deps.env.ok ? deps.env.env.CLAUDE_CLI_PATH : "claude",
+      claudeCliEnv(deps.processEnv),
+    ),
   ];
   return { items, exitCode: items.some((item) => item.level === "error") ? 1 : 0 };
 }
@@ -82,6 +89,7 @@ export function register(program: Command, ctx: CliContext): void {
         fetchHealth: createHealthFetcher(ctx.api()),
         run: runCommand,
         chromiumDir: findChromium(),
+        processEnv: process.env,
       });
       ctx.print(renderDoctor(report, ctx.colors));
       process.exitCode = report.exitCode;

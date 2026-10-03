@@ -12,8 +12,11 @@ export type ClaudeCliOptions = {
   model: string;
   /** Tope de cada llamada (`LLM_TIMEOUT_SECONDS`): la CLI no tiene uno propio. */
   timeoutMs: number;
-  /** Entorno del que se copian las variables permitidas. Por defecto, el del proceso. */
-  baseEnv?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Entorno del que se copian las variables permitidas (`CLAUDE_CLI_ENV_ALLOWLIST`). Lo pasa el
+   * punto de entrada (`process.env`): los paquetes no leen el entorno por su cuenta.
+   */
+  baseEnv: Readonly<Record<string, string | undefined>>;
   /** Carpeta donde se crea el directorio de trabajo vacío. Por defecto, el temporal del sistema. */
   tmpDir?: string;
   /** Espera entre SIGINT, SIGTERM y SIGKILL al cortar el proceso. */
@@ -52,9 +55,13 @@ type Envelope = z.infer<typeof envelopeSchema>;
 // (F2-T04) y la nota de integración. Si cambian, el error cae en `LLM_UNAVAILABLE`. Con la sesión
 // vencida, la 2.1.243 responde "Failed to authenticate: OAuth session expired and could not be
 // refreshed" (visto en la prueba de humo del 2026-10-03).
+// Los patrones se buscan solo en `result` (el mensaje de la CLI), nunca en `errors`, que puede
+// traer texto del modelo o del aviso: un aviso que diga "authentication" no es un error de sesión.
+// Un 429 transitorio de la API (`api_error_status`) es `LLM_UNAVAILABLE`, reintentable; el límite
+// del plan y el saldo se reconocen por su texto.
 const AUTH_PATTERN =
-  /not logged in|please run \/login|invalid api key|failed to authenticate|oauth session expired|authentication/i;
-const LIMIT_PATTERN = /hit your .*limit|usage limit|rate limit|credit balance is too low/i;
+  /not logged in|please run \/login|invalid api key|failed to authenticate|oauth session expired/i;
+const LIMIT_PATTERN = /hit your .*limit|usage limit|credit balance is too low/i;
 const OUTPUT_SUBTYPES = new Set(["error_max_structured_output_retries", "error_max_turns"]);
 const OUTPUT_STOP_REASONS = new Set(["max_tokens", "refusal"]);
 
@@ -78,33 +85,56 @@ function classifyText(text: string): AppError | null {
   return null;
 }
 
+/** Tokens de salida de una entrada de `modelUsage` (la forma no es un contrato: 0 si no está). */
+function outputTokens(usage: unknown): number {
+  if (typeof usage !== "object" || usage === null || !("outputTokens" in usage)) return 0;
+  return typeof usage.outputTokens === "number" ? usage.outputTokens : 0;
+}
+
+/**
+ * El modelo que respondió: el de `modelUsage` con más tokens de salida (la CLI puede usar un
+ * modelo auxiliar para tareas internas), o el configurado si no hay datos.
+ */
+function respondingModel(modelUsage: Envelope["modelUsage"], fallbackModel: string): string {
+  const entries = Object.entries(modelUsage ?? {});
+  const best = entries.reduce<[string, unknown] | undefined>(
+    (top, entry) =>
+      top === undefined || outputTokens(entry[1]) > outputTokens(top[1]) ? entry : top,
+    undefined,
+  );
+  return best?.[0] ?? fallbackModel;
+}
+
 /** Del sobre a la respuesta o al error tipado (spec F2 §4.5). */
 export function interpretEnvelope(envelope: Envelope, fallbackModel: string): LLMResponse {
-  const text = [envelope.result ?? "", ...(envelope.errors ?? []).map(String)].join("\n");
   const details = {
     subtype: envelope.subtype,
     stopReason: envelope.stop_reason,
     apiErrorStatus: envelope.api_error_status,
   };
-  if (envelope.is_error === true || envelope.subtype !== "success") {
-    const classified = classifyText(text);
-    if (classified !== null) throw classified;
-    if (OUTPUT_SUBTYPES.has(envelope.subtype ?? "")) {
-      throw llmError("LLM_OUTPUT_INVALID", MESSAGES.output, false, details);
-    }
-    if (envelope.api_error_status === 401) {
-      throw llmError("LLM_AUTH_REQUIRED", MESSAGES.auth, false, details);
-    }
-    throw llmError("LLM_UNAVAILABLE", MESSAGES.unavailable, true, details);
-  }
+  // Primero lo que dice el sobre de forma estructurada; el texto, al final y solo de `result`.
   if (
-    OUTPUT_STOP_REASONS.has(envelope.stop_reason ?? "") ||
-    envelope.structured_output === undefined
+    OUTPUT_SUBTYPES.has(envelope.subtype ?? "") ||
+    OUTPUT_STOP_REASONS.has(envelope.stop_reason ?? "")
   ) {
     throw llmError("LLM_OUTPUT_INVALID", MESSAGES.output, false, details);
   }
-  const model = Object.keys(envelope.modelUsage ?? {})[0] ?? fallbackModel;
-  return { data: envelope.structured_output, model };
+  if (envelope.is_error === true || envelope.subtype !== "success") {
+    if (envelope.api_error_status === 401) {
+      throw llmError("LLM_AUTH_REQUIRED", MESSAGES.auth, false, details);
+    }
+    throw (
+      classifyText(envelope.result ?? "") ??
+      llmError("LLM_UNAVAILABLE", MESSAGES.unavailable, true, details)
+    );
+  }
+  if (envelope.structured_output === undefined) {
+    throw llmError("LLM_OUTPUT_INVALID", MESSAGES.output, false, details);
+  }
+  return {
+    data: envelope.structured_output,
+    model: respondingModel(envelope.modelUsage, fallbackModel),
+  };
 }
 
 /** El entorno de la CLI: solo las variables permitidas. */
@@ -153,7 +183,7 @@ function runCli(options: ClaudeCliOptions, request: LLMRequest, cwd: string): Pr
   return new Promise((resolve, reject) => {
     const child = spawn(options.cliPath, claudeCliArgs(request, options.model), {
       cwd,
-      env: claudeCliEnv(options.baseEnv ?? process.env),
+      env: claudeCliEnv(options.baseEnv),
       stdio: ["pipe", "pipe", "pipe"],
       detached: true,
     });
@@ -209,6 +239,8 @@ function runCli(options: ClaudeCliOptions, request: LLMRequest, cwd: string): Pr
     });
     child.on("close", (exitCode) => {
       cleanup();
+      // Si se cortó, un último SIGKILL al grupo: algún hijo de la CLI pudo sobrevivir al padre.
+      if (stopReason !== null) killGroup("SIGKILL");
       if (stopReason === "timeout") {
         reject(llmError("LLM_TIMEOUT", MESSAGES.timeout, true, { timeoutMs: options.timeoutMs }));
         return;
@@ -250,7 +282,16 @@ export function createClaudeCliProvider(options: ClaudeCliOptions): LLMProvider 
   return {
     name: "claude-cli",
     async generateStructured(request) {
-      const cwd = await mkdtemp(join(options.tmpDir ?? tmpdir(), "agentsales-claude-"));
+      // Ya cortado: no se crea el directorio ni se lanza la CLI.
+      if (request.signal?.aborted) throw llmError("LLM_ABORTED", MESSAGES.aborted, true);
+      let cwd: string;
+      try {
+        cwd = await mkdtemp(join(options.tmpDir ?? tmpdir(), "agentsales-claude-"));
+      } catch (error) {
+        const code =
+          typeof error === "object" && error !== null && "code" in error ? error.code : null;
+        throw llmError("LLM_UNAVAILABLE", MESSAGES.unavailable, true, { code });
+      }
       try {
         const { stdout, stderr, exitCode } = await runCli(options, request, cwd);
         const envelope = parseEnvelope(stdout);

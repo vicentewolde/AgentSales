@@ -14,6 +14,7 @@
     "@agentsales/api": "workspace:*",
     "@agentsales/config": "workspace:*",
     "@agentsales/core": "workspace:*",
+    "@agentsales/llm": "workspace:*",
     "commander": "15.0.0",
     "hono": "4.13.10",
     "picocolors": "1.1.1",

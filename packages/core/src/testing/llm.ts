@@ -23,7 +23,11 @@ export function createInMemoryLlmProvider(
   return {
     name: "fake",
     requests,
-    async generateStructured({ system, prompt, jsonSchema }) {
+    async generateStructured({ system, prompt, jsonSchema, signal }) {
+      // Como el adaptador: con la señal ya disparada no responde (para probar el apagado).
+      if (signal?.aborted) {
+        throw new AppError("LLM_ABORTED", "Se cortó la llamada a la IA", { retriable: true });
+      }
       requests.push(structuredCopy({ system, prompt, jsonSchema }));
       const next = pending.shift();
       if (next === undefined)
@@ -36,7 +40,15 @@ export function createInMemoryLlmProvider(
 
 /** Errores frecuentes, para guionar respuestas sin repetir códigos. */
 export const LLM_ERRORS = {
-  authRequired: () => new AppError("LLM_AUTH_REQUIRED", "La CLI de Claude no tiene sesión"),
-  rateLimited: () => new AppError("LLM_RATE_LIMITED", "Se alcanzó el límite de uso del plan"),
+  authRequired: () =>
+    new AppError(
+      "LLM_AUTH_REQUIRED",
+      "La CLI de Claude no tiene sesión: ábrela con `claude` y usa /login",
+    ),
+  rateLimited: () =>
+    new AppError(
+      "LLM_RATE_LIMITED",
+      "Se alcanzó el límite de uso del plan de Claude: intenta más tarde",
+    ),
   unavailable: () => new AppError("LLM_UNAVAILABLE", "La IA no respondió", { retriable: true }),
 } as const;

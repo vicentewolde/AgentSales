@@ -44,6 +44,39 @@ switch (mode) {
   case "exito":
     print(ok({ result: "", structured_output: { saludo: "hola" }, modelUsage: { "claude-sonnet-5-5": {} } }));
     break;
+  case "dos-modelos":
+    // La CLI puede usar un modelo auxiliar: el que respondió es el de más tokens de salida.
+    print(ok({
+      structured_output: { saludo: "hola" },
+      modelUsage: { "claude-haiku-4-5": { outputTokens: 12 }, "claude-sonnet-5-5": { outputTokens: 480 } },
+    }));
+    break;
+  case "auth-en-errores":
+    // Texto de terceros dentro de errors: no debe leerse como un problema de sesión.
+    print({
+      ...base,
+      subtype: "error_max_structured_output_retries",
+      is_error: true,
+      result: "",
+      errors: ["El aviso dice: authentication required, rate limit, please run /login"],
+    }, 1);
+    break;
+  case "429":
+    print({ ...base, subtype: "success", is_error: true, api_error_status: 429, result: "API Error: Request rejected (429)" }, 1);
+    break;
+  case "inundacion": {
+    const block = "x".repeat(1024 * 1024);
+    let sent = 0;
+    const more = () => {
+      while (sent < 12) {
+        sent += 1;
+        if (!process.stdout.write(block)) return process.stdout.once("drain", more);
+      }
+      setInterval(() => {}, 1000);
+    };
+    more();
+    break;
+  }
   case "sin-modelo":
     print(ok({ structured_output: { saludo: "hola" } }));
     break;
@@ -123,12 +156,22 @@ switch (mode) {
 }
 `;
 
-/** Escribe el ejecutable falso en una carpeta temporal y devuelve su ruta. */
-export async function createFakeClaude(): Promise<{ cliPath: string; dir: string }> {
+/** Una CLI que responde bien sin leer stdin: escribirle un prompt grande da EPIPE. */
+const NO_READ_SCRIPT = `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({
+  type: "result", subtype: "success", is_error: false, stop_reason: "end_turn",
+  structured_output: { saludo: "sin leer" },
+}));
+`;
+
+/** Escribe un ejecutable falso en una carpeta temporal y devuelve su ruta. */
+export async function createFakeClaude(
+  variant: "normal" | "no-lee" | "sin-permiso" = "normal",
+): Promise<{ cliPath: string; dir: string }> {
   const dir = await mkdtemp(join(tmpdir(), "agentsales-fake-claude-"));
   // `.mjs`: el script usa `import`, y la carpeta temporal no tiene package.json.
   const cliPath = join(dir, "claude.mjs");
-  await writeFile(cliPath, SCRIPT, "utf8");
-  await chmod(cliPath, 0o755);
+  await writeFile(cliPath, variant === "no-lee" ? NO_READ_SCRIPT : SCRIPT, "utf8");
+  await chmod(cliPath, variant === "sin-permiso" ? 0o644 : 0o755);
   return { cliPath, dir };
 }

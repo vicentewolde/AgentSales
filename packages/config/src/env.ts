@@ -100,12 +100,13 @@ const envSchema = z
     // Solo con LLM_PROVIDER=anthropic-api (se exige abajo). La CLI de Claude nunca la recibe: con
     // ella en su entorno cobraría por API en vez de usar el plan del operador (spec F2 §4.5).
     ANTHROPIC_API_KEY: z.string().optional(),
-    // Ejecutable de la CLI de Claude (proveedor claude-cli) y tope de cada llamada a la IA.
+    // Ejecutable de la CLI de Claude (proveedor claude-cli) y tope de cada llamada a la IA. Hasta
+    // 600 s: la llamada y su reintento, más los medios, deben caber en los 30 min del job.
     CLAUDE_CLI_PATH: z.string().default("claude"),
     LLM_TIMEOUT_SECONDS: intInRange(
       10,
-      1800,
-      "debe ser un número entero de segundos entre 10 y 1800",
+      600,
+      "debe ser un número entero de segundos entre 10 y 600",
     ).default(180),
 
     // Medios (F1-F2)

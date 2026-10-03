@@ -32,6 +32,7 @@ const request = {
 const help = spawnSync(env.CLAUDE_CLI_PATH, ["-p", "--help"], { encoding: "utf8" });
 const maxTurns = (help.stdout ?? "").includes("--max-turns");
 
+// `spawnSync` con `timeout` corta solo a la CLI, no a sus hijos: es un script manual y corto.
 const cwd = await mkdtemp(join(tmpdir(), "agentsales-claude-smoke-"));
 const started = Date.now();
 const run = spawnSync(env.CLAUDE_CLI_PATH, claudeCliArgs(request, env.LLM_MODEL), {
