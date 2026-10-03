@@ -1,7 +1,12 @@
 import type { Content, ContentRun } from "../content.js";
-import { ACTIVE_CONTENT_RUN_STATUSES, type ContentRunStatus, PLATFORMS } from "../enums.js";
+import { isTerminalContentRun, PLATFORMS } from "../enums.js";
 import { AppError } from "../errors.js";
-import type { ContentRepository, ContentRunRepository } from "../ports/content-repository.js";
+import {
+  type ContentRepository,
+  type ContentRunRepository,
+  checkNewContents,
+  pickContentChanges,
+} from "../ports/content-repository.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryContentRepositories = {
@@ -11,15 +16,15 @@ export type InMemoryContentRepositories = {
   allContents(): Content[];
 };
 
-const isActive = (status: ContentRunStatus) =>
-  (ACTIVE_CONTENT_RUN_STATUSES as readonly ContentRunStatus[]).includes(status);
+const isActive = (status: ContentRun["status"]) => !isTerminalContentRun(status);
 
 /**
  * `ContentRunRepository` y `ContentRepository` en memoria, con la semántica de Postgres (spec F2
  * §4.3): una corrida activa por aviso (`CONTENT_RUN_CONFLICT`), cambios de estado condicionales,
  * `markSucceeded` todo o nada y el contenido vigente = el más reciente por canal. Comparten el
  * almacén porque `markSucceeded` escribe las dos tablas. El orden es el de creación: el doble no
- * tiene reloj propio.
+ * tiene reloj propio. A diferencia de Postgres, no verifica que el aviso exista (allí, la FK da
+ * `DB_QUERY_FAILED`): en la aplicación el aviso siempre se carga antes.
  */
 export function createInMemoryContentRepositories(
   options: { nextId?: () => string } = {},
@@ -86,19 +91,20 @@ export function createInMemoryContentRepositories(
       return true;
     },
     async markSucceeded(id, { report, contents: rows }) {
+      checkNewContents(rows);
       const run = findRun(id);
       if (run?.status !== "running") return false;
-      // Como el único (content_run_id, platform): un canal repetido no guarda nada.
-      const platforms = [
-        ...contents.filter((content) => content.contentRunId === id).map((c) => c.platform),
-        ...rows.map((row) => row.platform),
-      ];
-      if (new Set(platforms).size !== platforms.length) return false;
+      // Como el único (content_run_id, platform): un canal que ya tiene fila no guarda nada.
+      const saved = contents.filter((content) => content.contentRunId === id);
+      if (rows.some((row) => saved.some((content) => content.platform === row.platform))) {
+        return false;
+      }
       const now = new Date();
       for (const row of rows) {
         contents.push({
           ...structuredCopy(row),
-          rawOutput: structuredCopy(row.rawOutput),
+          // Como jsonb NOT NULL: una salida ausente se guarda como `null`.
+          rawOutput: structuredCopy(row.rawOutput ?? null),
           id: nextId(),
           listingId: run.listingId,
           contentRunId: id,
@@ -153,10 +159,11 @@ export function createInMemoryContentRepositories(
       if (current === undefined) {
         throw new AppError("CONTENT_NOT_FOUND", `No existe el contenido ${id}`);
       }
-      const defined = Object.fromEntries(
-        Object.entries(structuredCopy(changes)).filter(([, value]) => value !== undefined),
-      );
-      const updated: Content = { ...current, ...defined, updatedAt: new Date() };
+      const updated: Content = {
+        ...current,
+        ...structuredCopy(pickContentChanges(changes)),
+        updatedAt: new Date(),
+      };
       contents[index] = updated;
       return structuredCopy(updated);
     },

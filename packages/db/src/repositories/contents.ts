@@ -4,13 +4,14 @@ import {
   type ContentRepository,
   contentSchema,
   PLATFORMS,
+  pickContentChanges,
 } from "@agentsales/core";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { withDbErrors } from "../errors.js";
 import { contents } from "../schema.js";
 
-/** Fila → entidad. Una fila corrupta es `CONTENT_INVALID` (no reintentable). */
+/** Fila → entidad. Una fila corrupta es `CONTENT_ROW_INVALID` (no reintentable). */
 function toContent(row: typeof contents.$inferSelect): Content {
   const parsed = contentSchema.safeParse({
     id: row.id,
@@ -29,7 +30,7 @@ function toContent(row: typeof contents.$inferSelect): Content {
     updatedAt: row.updatedAt,
   });
   if (!parsed.success) {
-    throw new AppError("CONTENT_INVALID", `El contenido ${row.id} tiene datos inválidos`, {
+    throw new AppError("CONTENT_ROW_INVALID", `El contenido ${row.id} tiene datos inválidos`, {
       details: { id: row.id, issues: parsed.error.issues },
     });
   }
@@ -43,7 +44,8 @@ export function createContentRepository(db: SchemaDatabase): ContentRepository {
   return {
     listCurrent(listingId) {
       return withDbErrors(async () => {
-        // El más reciente de cada canal (`DISTINCT ON`), con el índice (listing, platform, created_at).
+        // El más reciente de cada canal (`DISTINCT ON`). El índice (listing, platform, created_at)
+        // acota las filas del aviso; con pocas filas por canal, el orden descendente no importa.
         const rows = await db
           .selectDistinctOn([contents.platform])
           .from(contents)
@@ -62,9 +64,8 @@ export function createContentRepository(db: SchemaDatabase): ContentRepository {
 
     update(id, changes) {
       return withDbErrors(async () => {
-        const set = Object.fromEntries(
-          Object.entries(changes).filter(([, value]) => value !== undefined),
-        );
+        // Solo los campos que el puerto permite cambiar: `undefined` = no tocar; `null` borra el título.
+        const set = pickContentChanges(changes);
         const [row] = await db
           .update(contents)
           // La hora de la base, explícita: así también cambia sin otros campos.

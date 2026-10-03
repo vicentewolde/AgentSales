@@ -11,7 +11,8 @@ const count = z.number().int().nonnegative();
 
 /**
  * Reporte de una corrida de contenido (`content_runs.report`, spec F2 §4.4): lo muestran la CLI y
- * el panel. Cada etapa agrega su sección al terminar, así que todas son opcionales; las
+ * el panel. Se arma en memoria durante la corrida (una sección por etapa, así que todas son
+ * opcionales) y se guarda una vez, al terminar (`markSucceeded` o `markFailed`); las
  * advertencias usan textos fijos por código (sin claves de R2 ni datos del aviso). Los campos
  * nuevos se agregan como opcionales, para que los reportes ya guardados sigan validando.
  */
@@ -73,7 +74,7 @@ export const contentSchema = z.object({
   body: z.string(),
   hashtags: z.array(z.string()),
   status: z.enum(CONTENT_STATUSES),
-  llmProvider: z.string(),
+  llmProvider: z.enum(LLM_PROVIDERS),
   llmModel: z.string(),
   promptVersion: z.string(),
   rawOutput: z.unknown(),

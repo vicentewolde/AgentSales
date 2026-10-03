@@ -1,5 +1,6 @@
 import type { Content, ContentRun, ContentRunError, ContentRunReport } from "../content.js";
-import type { ContentRunStage, ContentStatus, Platform } from "../enums.js";
+import type { ContentRunStage, ContentStatus, LlmProvider, Platform } from "../enums.js";
+import { AppError } from "../errors.js";
 
 export type NewContentRun = {
   listingId: string;
@@ -13,7 +14,7 @@ export type NewContent = {
   title: string | null;
   body: string;
   hashtags: string[];
-  llmProvider: string;
+  llmProvider: LlmProvider;
   llmModel: string;
   promptVersion: string;
   rawOutput: unknown;
@@ -50,7 +51,8 @@ export interface ContentRunRepository {
    * de la corrida) **en la misma transacción**: o queda todo, o nada. `false`, sin escribir nada,
    * si la corrida no está en `running` o si alguno de sus canales ya tiene fila (un intento
    * solapado ya guardó): ese intento termina como `skipped`. Una corrida con `texts = false` pasa
-   * `contents` vacío.
+   * `contents` vacío. Un canal repetido en `contents` es un bug de quien llama:
+   * `CONTENT_PLATFORM_DUPLICATED`, no reintentable, sin escribir nada (`checkNewContents`).
    */
   markSucceeded(
     id: string,
@@ -78,9 +80,35 @@ export type ContentChanges = {
 };
 
 /**
+ * Valida los textos de `markSucceeded` antes de tocar nada; la usan todas las implementaciones.
+ * Un canal repetido es `CONTENT_PLATFORM_DUPLICATED`, no reintentable.
+ */
+export function checkNewContents(contents: readonly NewContent[]): void {
+  const platforms = contents.map((content) => content.platform);
+  if (new Set(platforms).size !== platforms.length) {
+    throw new AppError("CONTENT_PLATFORM_DUPLICATED", "Un canal aparece dos veces en los textos");
+  }
+}
+
+/**
+ * Los cambios que `update` aplica: solo los campos de `ContentChanges` y sin los `undefined`
+ * (`undefined` = no tocar; `null` borra el título). Una clave ajena que llegue por un cast no
+ * pisa otra columna. La usan todas las implementaciones.
+ */
+export function pickContentChanges(changes: ContentChanges): ContentChanges {
+  const picked: ContentChanges = {};
+  if (changes.title !== undefined) picked.title = changes.title;
+  if (changes.body !== undefined) picked.body = changes.body;
+  if (changes.hashtags !== undefined) picked.hashtags = [...changes.hashtags];
+  if (changes.status !== undefined) picked.status = changes.status;
+  return picked;
+}
+
+/**
  * Textos generados (`contents`). El **vigente** de un aviso en un canal es su fila más reciente
  * (`created_at` y después `id`, ADR-0012). Las filas las crea `ContentRunRepository.markSucceeded`.
- * Un `update` de un id que no existe es `CONTENT_NOT_FOUND`.
+ * `update` no verifica que el texto sea el vigente: quien llama lo compara con `listCurrent`
+ * (`editContent`, F2-T12). Un `update` de un id que no existe es `CONTENT_NOT_FOUND`.
  */
 export interface ContentRepository {
   /** El texto vigente de cada canal del aviso, uno por plataforma, en el orden de `PLATFORMS`. */

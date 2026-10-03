@@ -284,7 +284,7 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
 
 ## Contratos HTTP compartidos (ADR-0011)
 
-- **Entidades de dominio** (`listing`, `broker`, `importRun`, `importReport`) y `healthReportSchema`: en `packages/core`. `media` no tiene esquema en core en F1: la API expone `mediaItemSchema` en `contracts` (ver "Proyecciones").
+- **Entidades de dominio** (`listing`, `broker`, `importRun`, `importReport` y, desde F2-T02, `contentRun`, `contentRunReport` y `content`) y `healthReportSchema`: en `packages/core`. `media` no tiene esquema en core en F1: la API expone `mediaItemSchema` en `contracts` (ver "Proyecciones").
 - **Contratos HTTP:** en la salida `@agentsales/api/contracts` (`apps/api/src/contracts/`). Incluye:
   - el cuerpo de error (`errorBodySchema`);
   - los parámetros (`idParamSchema`: uuid);

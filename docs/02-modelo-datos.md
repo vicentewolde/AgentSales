@@ -144,7 +144,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | hashtags | text[] | |
 | status | enum `content_status` | `draft`, `edited`, `approved` |
 | llm_provider, llm_model, prompt_version | text | Trazabilidad |
-| raw_output | jsonb | Salida validada de la IA |
+| raw_output | jsonb | Salida validada de la IA; si falta, `null` de JSON (no NULL de SQL) |
 
 Único `contents_run_platform_unique` `(content_run_id, platform)`: un texto por canal y corrida, así un intento solapado del job no duplica. El **vigente** de un aviso en un canal es su fila más reciente (`created_at` y después `id`; índice `(listing_id, platform, created_at)`); las anteriores quedan como historial. En F2 no hay `approved`: lo usa F3.
 

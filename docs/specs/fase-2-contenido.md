@@ -236,7 +236,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
   Se calcula al leer, así que no se guarda.
 - **Leer** (`getListingContent(listingId)`, core): el contenido vigente por canal con su revisión, el carrusel, las fotos de Portal y Marketplace, el reel y la última corrida.
-- **Editar** (`editContent(contentId, { title?, body?, hashtags? })`, core): solo el contenido vigente de su canal (si no, `CONTENT_NOT_CURRENT`, 409). Deja `status = edited` y devuelve el contenido con su revisión. En F2 no hay `approved` (F3).
+- **Editar** (`editContent(contentId, { title?, body?, hashtags? })`, core): solo el contenido vigente de su canal (si no, `CONTENT_NOT_CURRENT`, 409; lo compara con `listCurrent`). Mientras el aviso tenga una corrida activa con `texts = true`, responde `CONTENT_RUN_ACTIVE` (409): esa corrida reemplazaría la edición sin avisar, porque `CONTENT_EDITED` solo se revisa al pedirla (desde la revisión de F2-T02). Deja `status = edited` y devuelve el contenido con su revisión. En F2 no hay `approved` (F3).
 
 ### 4.7 Contratos
 | Método | Ruta | Descripción |
@@ -244,12 +244,12 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 | POST | `/listings/:id/content-runs` | `{ texts?: boolean, replaceEdits?: boolean }` (`texts` por defecto `true`). `202` con la corrida (`ContentRunView`) y `reused` si ya había una activa. `409 LISTING_NOT_READY` o `CONTENT_EDITED` |
 | GET | `/content-runs/:id` | estado, etapa, reporte y error |
 | GET | `/listings/:id/content` | `getListingContent`: contenido vigente por canal (`id`, `title`, `body`, `hashtags`, `status`, `checks`, `updatedAt`, `promptVersion`), carrusel, fotos de Portal y Marketplace y reel (URLs firmadas), y la última corrida |
-| PATCH | `/contents/:id` | `editContent`: `{ title?, body?, hashtags? }` → el contenido con `checks`. `409 CONTENT_NOT_CURRENT` |
+| PATCH | `/contents/:id` | `editContent`: `{ title?, body?, hashtags? }` → el contenido con `checks`. `409 CONTENT_NOT_CURRENT` o `CONTENT_RUN_ACTIVE` |
 | GET | `/listings/:id` | (cambia) cada medio suma `thumbUrl` (o `null`) y sus medidas; solo lista originales |
 | GET | `/listings` | (cambia) la portada usa `thumb` si existe, para que una portada HEIC se vea |
 
-- Los esquemas van en `@agentsales/api/contracts`, y las entidades (`contentRun`, `content`, `media`) en core (ADR-0011).
-- `LISTING_NOT_READY`, `CONTENT_EDITED` y `CONTENT_NOT_CURRENT` responden 409: se suman a la tabla de códigos de `05-convenciones.md`.
+- Los esquemas van en `@agentsales/api/contracts`, y las entidades (`contentRun`, `content`, `media`) en core (ADR-0011). La vista HTTP del contenido no expone `rawOutput`, `llmProvider` ni `llmModel` (solo `promptVersion`).
+- `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT` y `CONTENT_RUN_ACTIVE` responden 409: se suman a la tabla de códigos de `05-convenciones.md`.
 - **CLI:**
   ```
   agentsales prepare <external_ref|id> [--broker <slug>] [--no-texts] [--replace-edits] [--no-wait]
@@ -319,7 +319,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Hecho cuando:**
   - [x] Tests con PGlite y en memoria con los mismos fixtures: una sola corrida activa por aviso (el segundo `create` es `CONTENT_RUN_CONFLICT`), contenido vigente = el más reciente por canal, `markSucceeded` guarda filas y estado juntos (rollback probado) y no cambia una corrida que no está en `running`, `failAbandoned` cierra las `running` viejas y no toca las `queued`, y `listQueued` las devuelve para reencolarlas (§4.4)
   - [x] `pnpm db:generate` sin cambios después de commitear la migración
-- **Hecho en:** migración `0004_f2_contenido` (aplicada en Neon). El criterio decía que `failAbandoned` cerraba también las `queued` viejas: quedó como en §4.4 desde la revisión del PR #31 (las `queued` se reencolan con `listQueued`). `contentRunReportSchema` tiene una sección opcional por etapa; T10 la completa si hace falta. `ContentRepository.update` fija `updated_at` con la hora de la base también sin otros cambios. El doble en memoria es uno solo para las dos tablas (`createInMemoryContentRepositories`), porque `markSucceeded` escribe en ambas.
+- **Hecho en:** migración `0004_f2_contenido` (aplicada en Neon). El criterio decía que `failAbandoned` cerraba también las `queued` viejas: quedó como en §4.4 desde la revisión del PR #31 (las `queued` se reencolan con `listQueued`). `contentRunReportSchema` tiene una sección opcional por etapa; T10 la completa si hace falta. `ContentRepository.update` fija `updated_at` con la hora de la base también sin otros cambios. El doble en memoria es uno solo para las dos tablas (`createInMemoryContentRepositories`), porque `markSucceeded` escribe en ambas. Desde la revisión: una fila corrupta es `CONTENT_RUN_ROW_INVALID` o `CONTENT_ROW_INVALID` (500, por la regla `*_ROW_INVALID`); un canal repetido en la entrada de `markSucceeded` es `CONTENT_PLATFORM_DUPLICATED`, no reintentable (`checkNewContents`); `update` aplica solo los campos de `ContentChanges` (`pickContentChanges`); `llmProvider` es de `LLM_PROVIDERS`; una salida de la IA ausente se guarda como `null` de JSON; y `editContent` (T12) suma `CONTENT_RUN_ACTIVE`.
 
 ### F2-T03 · Medios derivados en la base y `getStream`
 - **Depende de:** T02 (orden de las migraciones)
@@ -380,7 +380,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T10 · Caso de uso `prepareContent`
 - **Depende de:** T02, T03, T06, T07 (puerto), T09 (puertos)
-- **Descripción:** `requestContentRun` y `prepareContent` (§4.4) con dobles de todos los puertos; `composeCarousel` y `composePhotoSet`; claves de R2 de derivados, reel y renders; `contentRunReportSchema`.
+- **Descripción:** `requestContentRun` y `prepareContent` (§4.4) con dobles de todos los puertos; `composeCarousel` y `composePhotoSet`; claves de R2 de derivados, reel y renders; completa `contentRunReportSchema` (existe desde T02) si hace falta.
 - **Hecho cuando:**
   - [ ] Tests: corrida completa con el proveedor falso (variantes, renders, reel y 3 contenidos); segunda corrida sin cambios (nada se procesa ni se sube, solo la IA); `texts = false` (sin IA y con el contenido anterior vigente); cambio de versión del procesador (regenera y borra lo anterior); cambio de precio (rehace la portada, la ficha y el reel); cambio del primer video (borra el reel anterior)
   - [ ] Tests de errores: medio ilegible (advertencia), ninguna foto procesable (`CONTENT_NO_PHOTOS`), sin sesión de la IA (`failed` con su mensaje), error reintentable que sube, último intento que deja `failed`, intento solapado que termina `skipped` y corrida ya terminal que no se toca
@@ -396,9 +396,9 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T12 · API de contenido
 - **Depende de:** T10
-- **Descripción:** `getListingContent` y `editContent` en core; rutas de §4.7 con sus contratos; `LISTING_NOT_READY` y `CONTENT_NOT_CURRENT` → 409; `thumbUrl` y medidas en `GET /listings/:id`, y portada `thumb` en `GET /listings`.
+- **Descripción:** `getListingContent` y `editContent` en core; rutas de §4.7 con sus contratos; `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT` y `CONTENT_RUN_ACTIVE` → 409; `thumbUrl` y medidas en `GET /listings/:id`, y portada `thumb` en `GET /listings`.
 - **Hecho cuando:**
-  - [ ] Tests de los casos de uso: contenido vigente con su revisión y medios, editar el vigente (`edited`) y uno viejo (`CONTENT_NOT_CURRENT`)
+  - [ ] Tests de los casos de uso: contenido vigente con su revisión y medios, editar el vigente (`edited`), uno viejo (`CONTENT_NOT_CURRENT`) y con una corrida de textos activa (`CONTENT_RUN_ACTIVE`; con una de solo imágenes sí se puede)
   - [ ] Tests de rutas con `testDeps`: pedir (nueva, reusada, aviso no listo, contenido editado, cola caída), consultar la corrida, contenido con `checks` y URLs firmadas, editar (cuerpo inválido, id inexistente)
 
 ### F2-T13 · CLI `prepare` y `content`
@@ -417,7 +417,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Depende de:** T14
 - **Descripción:** editar título, cuerpo y hashtags de cada canal, con contador de caracteres, guardar (`edited`), revisión actualizada y aviso al regenerar textos sobre un contenido editado ("se reemplazará tu edición"), que al confirmar envía `replaceEdits`.
 - **Hecho cuando:**
-  - [ ] Tests: editar y guardar, error al guardar, `CONTENT_NOT_CURRENT`, contador sobre el tope y la confirmación al regenerar
+  - [ ] Tests: editar y guardar, error al guardar, `CONTENT_NOT_CURRENT`, `CONTENT_RUN_ACTIVE` (edición bloqueada mientras se regeneran los textos, con el motivo), contador sobre el tope y la confirmación al regenerar
 
 ### F2-T16 · `pnpm eval:content`
 - **Depende de:** T06, T11
@@ -467,7 +467,7 @@ Orden: T01 → T02 → T03 (migraciones en cadena). T04 en cualquier momento; T0
 | HEIC: sharp no lo decodifica y un ffmpeg viejo saca solo un mosaico | ffmpeg 8.1 o más nuevo, exigido por `doctor` y en la CI, con un test de HEIC en mosaicos (T07) |
 | Chromium de Playwright distinto del instalado | Versión de Playwright fijada, `doctor` la revisa y `RENDER_BROWSER_NOT_INSTALLED` con el comando para instalarlo |
 | Una corrida queda en `queued` sin job | Pedirla de nuevo la reencola, y el worker reencola todas las `queued` al arrancar; una corrida terminal nunca se reprocesa |
-| Regenerar textos borra una edición a mano | `CONTENT_EDITED` salvo `replaceEdits` (CLI `--replace-edits`, confirmación en el panel) |
+| Regenerar textos borra una edición a mano | `CONTENT_EDITED` salvo `replaceEdits` (CLI `--replace-edits`, confirmación en el panel), y `CONTENT_RUN_ACTIVE` mientras una corrida de textos está pendiente |
 | Un test llama por error a la CLI real de Claude | Guardia en `vitest.config.ts` (`CLAUDE_CLI_PATH` a un ejecutable que falla) y ejecutable falso en los tests del adaptador |
 | La CI se alarga con ffmpeg y Chromium | Caché de los navegadores y build estático de ffmpeg; si pasa de 5 min, se revisa |
 | Fotos con la ubicación GPS del corredor | Las variantes salen sin metadatos, con test (§6) |
@@ -489,3 +489,4 @@ Resueltas con la recomendación del spec, por la aprobación permanente del oper
 | 2026-10-02 | Revisión del subagente `arquitecto`: puertos `SlideTemplates` y `HtmlRenderer` en core (las plantillas no tenían dueño); `MediaProcessor` maneja sus temporales y devuelve el sha256 de cada salida (core no toca archivos); clave del reel con el hash de su texto; `checkContent` con contexto privado; migraciones en cadena T01 → T02 → T03; una corrida `queued` se reencola al pedirla y la carrera de `create` devuelve la activa; `jsonSchema` sin topes y validación en core; `max_tokens`, `refusal` y `error_max_turns` como `LLM_OUTPUT_INVALID`; `getListingContent` y `editContent` en core (`CONTENT_NOT_CURRENT`); portada desde la variante `ig_4x5`; cierre condicional y `AbortSignal`; `mediaSchema`; `FIELD_NUMBER_INVALID`; errores `*_NOT_INSTALLED` y `CONTENT_NO_PHOTOS`; índices; `content_runs` sin `broker_id`; la revisión editorial pasa a su propia tarea (T06) y el cierre a T17 |
 | 2026-10-02 | Spec **aprobado** (aprobación permanente del operador): decisiones D1–D9 con la recomendación del spec. ADR-0012 y ADR-0013 aceptados; seguimientos en ADR-0003 y ADR-0005; `01-arquitectura.md` (flujo 2, estructura y contrato de IA), `04-formato-publicaciones.md`, `06-roadmap.md` y `00-vision.md` actualizados |
 | 2026-10-02 | Revisión del PR (#31) con `revisor` y `arquitecto`: el worker reencola las corridas `queued` al arrancar (en vez de fallarlas a las 24 h) y una corrida terminal no se reprocesa (`markRunning` condicional); `CONTENT_EDITED` y `replaceEdits` para no reemplazar ediciones sin avisar; la CLI de Claude corre en un temporal del sistema, fuera del repo; `--max-turns` por confirmar en la prueba de humo; título de Portal con la operación; `VideoOutput.size`, `processVideo` en dos pasadas y sin `dispose`; `sha256` inyectado y `{ bytes, mime, sha256 }` en las plantillas; guardia de Vitest contra la CLI real; tests de datos hostiles, del reel con ffprobe y del HEIC sintético; estacionamientos en el caption; tabla de colas y diagrama de `01-arquitectura.md`, `02-modelo-datos.md`, ADR-0012, ADR-0013 y notas de integración corregidos |
+| 2026-10-03 | Desde la revisión de F2-T02: `editContent` responde `CONTENT_RUN_ACTIVE` (409) mientras hay una corrida de textos activa (una corrida en cola no puede pisar una edición sin avisar); la vista HTTP del contenido sin `rawOutput` ni datos del modelo; T10 completa `contentRunReportSchema`, que existe desde T02 |

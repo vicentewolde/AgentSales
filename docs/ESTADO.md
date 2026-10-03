@@ -12,7 +12,7 @@
 |---|---|---|
 | Spec F2 (`/fase-plan 2`) | ✅ | #31 |
 | F2-T01 · Mínimos y máximos en campos numéricos | ✅ | #33 |
-| F2-T02 · Datos de contenido: corridas y contenidos | ✅ | |
+| F2-T02 · Datos de contenido: corridas y contenidos | ✅ | #34 |
 | F2-T03 · Medios derivados en la base y `getStream` | ⏳ pendiente | |
 | F2-T04 · Proveedor de IA (`packages/llm`) | ⏳ pendiente | |
 | F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado | ⏳ pendiente | |
@@ -51,6 +51,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - **Hallazgos de las notas de integración:** HEIC con ffmpeg (sharp no lo decodifica; verificado con ffmpeg 9.0.1); la CLI de Claude sin `--bare` (exige API key) y sin `ANTHROPIC_API_KEY` en su entorno (cobraría por API); carrusel de hasta 10; reel de Meta entre 3 s y 15 min (el tope de 90 s es nuestro); título de Portal de hasta 60 caracteres sin abreviaturas (por confirmar en F4).
 
 ## Deuda técnica
+- **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
 - **F7, rangos:** la base no impide un `min_value` mayor que `max_value` ni un rango en un campo que no es `number`; hoy lo detecta el validador (`FIELD_CONFIG_INVALID`). Si el panel permite editar definiciones, sumar `CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)`.
 - **F7:** `GET /listings` devuelve la entidad completa: notas internas, dirección exacta y todos los atributos. Es aceptable mientras la API sea local (`hostGuard`). Con autenticación y despliegue, usar una proyección acotada para la lista.
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
@@ -74,7 +75,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
-- 2026-10-03: **F2-T02.** Tabla `content_runs` y `contents.content_run_id` (migración `0004`, aplicada en Neon), con una sola corrida activa por aviso y un texto por canal y corrida. Entidades `contentRun` y `content`, puertos `ContentRunRepository` y `ContentRepository` (Drizzle y un doble en memoria con la misma suite de contrato) y el job `content.prepare` en el contrato de core. El criterio de T02 decía que `failAbandoned` cerraba las `queued` viejas: quedó como §4.4 (solo `running`; las `queued` se reencolan con `listQueued`).
+- 2026-10-03: **F2-T02.** Tabla `content_runs` y `contents.content_run_id` (migración `0004`, aplicada en Neon), con una sola corrida activa por aviso y un texto por canal y corrida. Entidades `contentRun` y `content`, puertos `ContentRunRepository` y `ContentRepository` (Drizzle y un doble en memoria con la misma suite de contrato) y el job `content.prepare` en el contrato de core. Desde la revisión: errores `*_ROW_INVALID` (500) para filas corruptas, `CONTENT_PLATFORM_DUPLICATED` para un canal repetido, y en el spec `CONTENT_RUN_ACTIVE` (409) para no editar mientras una corrida de textos espera. El criterio de T02 decía que `failAbandoned` cerraba las `queued` viejas: quedó como §4.4 (solo `running`; las `queued` se reencolan con `listQueued`).
 - 2026-10-03: **F2-T01.** `field_definitions.min_value` y `max_value` (migración `0003`, aplicada en Neon) y rangos en el seed (`dormitorios` y `banos` de 0 a 50, superficies de 1 a 1.000.000, `piso` de -10 a 200, año de 1800 a 2100, gastos y contribuciones desde 0). Fuera de rango es `FIELD_NUMBER_INVALID` con el rango en el motivo ("debe estar entre 0 y 50"); un rango en un campo que no es `number`, o con el mínimo mayor que el máximo, es `FIELD_CONFIG_INVALID`. Demo en `--dry-run` con una copia de Sheets (P001 con `dormitorios = -2`): falla esa fila y las demás quedan sin cambios; la planilla quedó como estaba.
 - 2026-10-02: **`/fase-plan 2`.** Spec de F2 aprobado (17 tareas), ADR-0012 y ADR-0013 aceptados, y seguimientos en ADR-0003 y ADR-0005. Notas de integración nuevas en `docs/integraciones/` (CLI de Claude, API de Anthropic, HEIC, Instagram y Mercado Libre), con verificaciones locales: la CLI 2.1.243 tiene `--safe-mode`, `--tools` y `claude auth`, y ffmpeg 9.0.1 convierte un HEIC en mosaicos completo. Revisado por el subagente `arquitecto` (6 bloqueantes corregidos en el spec).
 - **Pendientes de verificar en sus tareas:** el sobre real de `claude -p` con `--json-schema` y `--tools ""`, y si existe `--max-turns` (no sale en la ayuda de la 2.1.243) (prueba de humo en T04), la orientación y el color de un HEIC de iPhone (T07), y el largo del título y las reglas de contacto de Mercado Libre (F4: la doc dio 403).

@@ -226,18 +226,57 @@ export function contentRepositoriesContract(
       expect(await repos.contents.listCurrent(listingId)).toEqual([]);
     });
 
-    it("markSucceeded es todo o nada: un canal repetido deshace la transacción y la corrida sigue en running", async () => {
+    it("un canal repetido en la entrada es CONTENT_PLATFORM_DUPLICATED y no escribe nada", async () => {
       const listingId = await newListingId();
       const run = await runningRun(listingId);
       const before = await repos.contentRuns.get(run.id);
-      expect(
-        await repos.contentRuns.markSucceeded(run.id, {
+      await expect(
+        repos.contentRuns.markSucceeded(run.id, {
           report: REPORT,
           contents: [newContent("instagram"), newContent("instagram", { body: "Otra" })],
         }),
-      ).toBe(false);
+      ).rejects.toMatchObject({ code: "CONTENT_PLATFORM_DUPLICATED", retriable: false });
       expect(await repos.contentRuns.get(run.id)).toEqual(before);
       expect(await repos.contents.listCurrent(listingId)).toEqual([]);
+    });
+
+    it("una salida de la IA ausente o null se guarda como null", async () => {
+      const listingId = await newListingId();
+      const run = await runningRun(listingId);
+      await repos.contentRuns.markSucceeded(run.id, {
+        report: REPORT,
+        contents: [
+          newContent("instagram", { rawOutput: undefined }),
+          newContent("portal_inmobiliario", { rawOutput: null }),
+        ],
+      });
+      const current = await repos.contents.listCurrent(listingId);
+      expect(current.map((content) => content.rawOutput)).toEqual([null, null]);
+    });
+
+    it("lo guardado no se comparte con quien llama (copias, no referencias)", async () => {
+      const listingId = await newListingId();
+      const run = await runningRun(listingId);
+      const report = structuredClone(REPORT);
+      const rows = [newContent("instagram")];
+      await repos.contentRuns.markSucceeded(run.id, { report, contents: rows });
+      // Cambiar la entrada después de guardar no cambia lo guardado.
+      report.warnings.push("después");
+      rows[0]?.hashtags.push("#despues");
+
+      const saved = await repos.contentRuns.get(run.id);
+      expect(saved?.report?.warnings).toEqual(REPORT.warnings);
+      const [content] = await repos.contents.listCurrent(listingId);
+      expect(content?.hashtags).toEqual(["#nunoa", "#departamentoventa"]);
+
+      // Cambiar lo devuelto tampoco.
+      saved?.report?.warnings.push("devuelto");
+      content?.hashtags.push("#devuelto");
+      expect((await repos.contentRuns.get(run.id))?.report?.warnings).toEqual(REPORT.warnings);
+      expect((await repos.contents.get(content?.id ?? ""))?.hashtags).toEqual([
+        "#nunoa",
+        "#departamentoventa",
+      ]);
     });
 
     it("el vigente es el más reciente por canal; una corrida sin textos conserva el anterior y su edición", async () => {
@@ -379,6 +418,26 @@ export function contentRepositoriesContract(
       expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(portal.updatedAt.getTime());
       expect(await repos.contents.get(portal.id)).toEqual(updated);
       expect(await repos.contents.get(repos.missingId)).toBeNull();
+    });
+
+    it("update: undefined no toca el campo, null borra el título y {} solo refresca updated_at", async () => {
+      const listingId = await newListingId();
+      const run = await runningRun(listingId);
+      await repos.contentRuns.markSucceeded(run.id, { report: REPORT, contents: ALL_PLATFORMS });
+      const portal = (await repos.contents.listCurrent(listingId))[1];
+      if (portal === undefined) throw new Error("se esperaba el texto de Portal");
+
+      const bodyOnly = await repos.contents.update(portal.id, { title: undefined, body: "Nuevo" });
+      expect(bodyOnly).toMatchObject({ title: portal.title, body: "Nuevo", status: "draft" });
+
+      const noTitle = await repos.contents.update(portal.id, { title: null });
+      expect(noTitle).toMatchObject({ title: null, body: "Nuevo" });
+
+      // Una pausa breve para que la hora avance también en el doble (milisegundos).
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const touched = await repos.contents.update(portal.id, {});
+      expect(touched).toMatchObject({ title: null, body: "Nuevo", hashtags: portal.hashtags });
+      expect(touched.updatedAt.getTime()).toBeGreaterThan(noTitle.updatedAt.getTime());
     });
 
     it("update de un id inexistente → CONTENT_NOT_FOUND", async () => {

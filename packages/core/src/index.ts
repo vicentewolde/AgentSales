@@ -87,12 +87,14 @@ export {
 } from "./listing-validator/index.js";
 export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
-export type {
-  ContentChanges,
-  ContentRepository,
-  ContentRunRepository,
-  NewContent,
-  NewContentRun,
+export {
+  type ContentChanges,
+  type ContentRepository,
+  type ContentRunRepository,
+  checkNewContents,
+  type NewContent,
+  type NewContentRun,
+  pickContentChanges,
 } from "./ports/content-repository.js";
 export type {
   FieldDefinitionQuery,

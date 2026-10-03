@@ -3,6 +3,7 @@ import {
   AppError,
   type ContentRun,
   type ContentRunRepository,
+  checkNewContents,
   contentRunSchema,
 } from "@agentsales/core";
 import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
@@ -15,7 +16,7 @@ const RUN_PLATFORM_UNIQUE = "contents_run_platform_unique";
 
 /**
  * Fila → entidad. `stage`, `report` y `error` los escribió otro proceso: se validan al leerlos.
- * Una fila corrupta es `CONTENT_RUN_INVALID` (no reintentable), con el detalle en `details`.
+ * Una fila corrupta es `CONTENT_RUN_ROW_INVALID` (no reintentable), con el detalle en `details`.
  */
 function toContentRun(row: typeof contentRuns.$inferSelect): ContentRun {
   const parsed = contentRunSchema.safeParse({
@@ -32,7 +33,7 @@ function toContentRun(row: typeof contentRuns.$inferSelect): ContentRun {
   });
   if (!parsed.success) {
     throw new AppError(
-      "CONTENT_RUN_INVALID",
+      "CONTENT_RUN_ROW_INVALID",
       `La corrida de contenido ${row.id} tiene datos inválidos`,
       {
         details: { id: row.id, issues: parsed.error.issues },
@@ -136,6 +137,7 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
     },
 
     async markSucceeded(id, { report, contents: rows }) {
+      checkNewContents(rows);
       try {
         return await withDbErrors(() =>
           db.transaction(async (tx) => {
@@ -151,8 +153,9 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
                   ...row,
                   listingId: run.listingId,
                   contentRunId: id,
-                  // jsonb NOT NULL: una salida ausente se guarda como `null` de JSON.
-                  rawOutput: row.rawOutput ?? null,
+                  // jsonb NOT NULL: una salida ausente se guarda como `null` de JSON. Drizzle
+                  // convierte el `null` de JavaScript en NULL de SQL, así que va explícito.
+                  rawOutput: row.rawOutput ?? sql`'null'::jsonb`,
                 })),
               );
             }
