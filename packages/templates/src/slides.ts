@@ -1,5 +1,6 @@
 import {
   type CoverData,
+  type Operation,
   type ReelOverlayData,
   SLIDE_SIZES,
   type SlideBrand,
@@ -30,6 +31,12 @@ function brandColors(brand: SlideBrand) {
   const secondary = safeColor(brand.secondaryColor, primary);
   return { primary, secondary, onPrimary: readableOn(primary), onSecondary: readableOn(secondary) };
 }
+
+/** La etiqueta `VENTA` o `ARRIENDO`; sin operación, un espacio vacío (el logo sigue a la derecha). */
+const badge = (operation: Operation | null) =>
+  operation === null
+    ? "<span></span>"
+    : `<span class="badge">${OPERATION_LABEL[operation].toUpperCase()}</span>`;
 
 /** El logo del corredor, o su nombre si no tiene. */
 function brandMark(brand: SlideBrand, className: string): string {
@@ -62,7 +69,7 @@ footer{position:absolute;left:${MARGIN}px;right:${MARGIN}px;bottom:${MARGIN}px;c
 .facts li{display:flex;align-items:center;gap:14px}`;
   const body = `${photo === null ? "" : `<img class="photo" src="${photo}" alt="">`}
 <div class="shade"></div>
-<header><span class="badge">${OPERATION_LABEL[data.operation].toUpperCase()}</span>${brandMark(data.brand, "logo")}</header>
+<header>${badge(data.operation)}${brandMark(data.brand, "logo")}</header>
 <footer>
 <div class="price">${escapeHtml(data.price)}</div>
 <div class="place">${place(data.propertyType, data.comuna)}</div>
@@ -110,7 +117,7 @@ header{display:flex;justify-content:space-between;align-items:center}
 .contact{margin-top:auto;display:flex;gap:44px;font-size:34px;font-weight:600;padding-top:24px;border-top:2px solid currentColor}
 .contact span{display:flex;align-items:center;gap:14px}`;
   const body = `<div class="sheet">
-<header><span class="badge">${OPERATION_LABEL[data.operation].toUpperCase()}</span>${brandMark(data.brand, "mark")}</header>
+<header>${badge(data.operation)}${brandMark(data.brand, "mark")}</header>
 <div class="place">${place(data.propertyType, data.comuna)}</div>
 <div class="price">${escapeHtml(data.price)}</div>
 ${data.commonExpenses === null ? "" : `<div class="expenses">Gastos comunes aprox. ${escapeHtml(data.commonExpenses)}</div>`}
@@ -130,7 +137,7 @@ export function reelOverlayHtml(data: ReelOverlayData, fontCss: string): string 
 .place{font-weight:800;font-size:58px;margin-top:14px;line-height:1.1}
 .price{font-weight:800;font-size:76px;margin-top:16px}`;
   const body = `<div class="box">
-<div class="operation">${OPERATION_LABEL[data.operation].toUpperCase()}</div>
+${data.operation === null ? "" : `<div class="operation">${OPERATION_LABEL[data.operation].toUpperCase()}</div>`}
 <div class="place">${place(data.propertyType, data.comuna)}</div>
 <div class="price">${escapeHtml(data.price)}</div>
 </div>`;

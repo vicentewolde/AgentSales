@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-03
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
-**Última tarea terminada:** F2-T09 · Plantillas y render
-**Siguiente paso:** `/tarea F2-T10` (caso de uso `prepareContent`).
+**Última tarea terminada:** F2-T10 · Caso de uso `prepareContent`
+**Siguiente paso:** `/tarea F2-T11` (job `content.prepare` en el worker).
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -20,7 +20,7 @@
 | F2-T07 · Procesamiento de imágenes (`packages/media`) | ✅ | #40 |
 | F2-T08 · Procesamiento de video (`packages/media`) | ✅ | #41 |
 | F2-T09 · Plantillas y render | ✅ | #42 |
-| F2-T10 · Caso de uso `prepareContent` | ⏳ pendiente | |
+| F2-T10 · Caso de uso `prepareContent` | ✅ | |
 | F2-T11 · Job `content.prepare` en el worker | ⏳ pendiente | |
 | F2-T12 · API de contenido | ⏳ pendiente | |
 | F2-T13 · CLI `prepare` y `content` | ⏳ pendiente | |
@@ -75,6 +75,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-03: **F2-T10.** `requestContentRun` y `prepareContent` en core, con las etapas `media`, `renders`, `reel` y `texts`, idempotentes por claves de R2 determinísticas; la composición del carrusel y de las fotos de Portal; los datos de las plantillas desde una lista fija; `BrokerRepository.findById`. Probado con dobles de todos los puertos: una segunda corrida sin cambios solo llama a la IA, y un cambio de precio rehace portada, ficha y reel.
 - 2026-10-03: **F2-T09.** Puertos `SlideTemplates` y `HtmlRenderer` con sus datos en core; `packages/templates` con la portada, la ficha y el texto del reel (Inter incrustada, íconos SVG propios, datos escapados y colores del corredor); `createHtmlRenderer` con Playwright 1.63 (sin red ni JavaScript de la página, tope de 30 s y un Chromium compartido). `doctor` exige el Chromium que pide Playwright y la CI lo instala con caché. Muestras en `docs/assets/plantillas/`. Desde la revisión (#42): `slideKeyInput` para saber si un render cambió sin descargar las fotos, dobles de plantillas y render para T10, un solo plazo de 30 s y corte que responde siempre, un Chromium caído se reabre, errores sin rutas y mejor contraste.
 - 2026-10-03: **F2-T08.** `processVideo` en `packages/media`: medidas con ffprobe (con el giro del celular), `thumb` del segundo 1 y reel de 1080×1920 con fondo desenfocado, el texto los primeros 2 s, H.264 4:2:0 con GOP cerrado, AAC (silencioso si no hay audio), `moov` al inicio y sin edit lists, cortado a 90 s y sin reel bajo 3 s. Un reel de 90 s tarda ~26 s en local. Opción `threads` para que los tests no atrasen a los demás. Desde la revisión (#41): los avisos del reel los calcula core (`reelWarnings`), la copia del video no puede botar el worker si el disco se llena, y el GOP de 2 s se verifica con ffprobe.
 - 2026-10-03: **F2-T07.** Puerto `MediaProcessor` en core (con su doble en memoria) y `packages/media` con sharp 0.35.5: fotos rotadas según el EXIF, en sRGB y sin metadatos (GPS incluido), con las variantes `thumb`, `ig_4x5` y `pi_4x3` y su sha256, y advertencias de foto chica. HEIC con ffmpeg (8.1 o más nuevo, revisado una vez); un HEIC sintético de 5,6 KB en mosaicos y girado sale completo y derecho. `FFPROBE_PATH`, y `doctor` exige ffmpeg y ffprobe 8.1 o más nuevos. La CI instala ffmpeg 9.0.1 estático (BtbN, fijado por sha256 y con caché) y pasó en el PR. Desde la revisión (#40): la advertencia de foto chica la calcula core en cada corrida (`photoSizeWarnings`); PNG con transparencia sobre blanco; cortar una foto no corta otra.

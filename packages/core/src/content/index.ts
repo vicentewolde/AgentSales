@@ -31,6 +31,15 @@ export {
   hasContentErrors,
 } from "./check.js";
 export {
+  CAROUSEL_MAX_ITEMS,
+  composeCarousel,
+  composePhotoSet,
+  composeReel,
+  coverPhoto,
+  variantOf,
+  videosOf,
+} from "./compose.js";
+export {
   CONTENT_DRAFT_JSON_SCHEMA,
   CONTENT_DRAFT_LIMITS,
   type ContentDraft,
@@ -38,4 +47,12 @@ export {
   SAMPLE_CONTENT_DRAFT,
 } from "./draft.js";
 export { type GenerateContentDraftResult, generateContentDraft } from "./generate.js";
+export { reelPath, reelTextInput, renderInput, renderPath, variantPath } from "./media-keys.js";
 export { buildContentPrompt, CONTENT_PROMPT_VERSION } from "./prompt.js";
+export {
+  coverData,
+  coverFacts,
+  reelOverlayData,
+  slideBrand,
+  specSheetData,
+} from "./slides-data.js";

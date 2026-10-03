@@ -354,6 +354,7 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
   - En Postgres va en una transacción que bloquea el original (o el aviso, si es un render) con `FOR NO KEY UPDATE`, así dos intentos solapados reemplazan de a uno. PGlite no puede probar la concurrencia.
   - El vigente se reemplaza en su lugar y se devuelve la clave anterior (`previousPath`) para borrarla de R2. `deleteDerivative` devuelve la clave borrada y nunca borra un original.
   - `get(id)` lee cualquier medio (por ejemplo, el logo) y `listVariants(ids, variante)` trae una variante de varios originales en una consulta (las miniaturas de la lista de avisos).
+- **`BrokerRepository.findById`** (F2-T10): el corredor de un aviso, para preparar su contenido.
 - **`BrokerRepository.setLogo`:** valida que el medio sea un original sin aviso del mismo corredor (`MEDIA_NOT_FOUND`); la base solo tiene la FK.
 - **Proyecciones:** `ListingImportRecord` (id, `external_ref`, `status` y `source_hash`) es una proyección para la carga, sin esquema. La entidad completa es `listingSchema`, que devuelven `ListingRepository.list` y `get`. `MediaRecord` también es una proyección sin esquema, la de la carga (solo originales). Desde F2-T03, la entidad completa es `mediaSchema` (core: rol, variante, padre y medidas), que devuelve `MediaRepository.listByListing`; una fila que no calza es `MEDIA_ROW_INVALID`. La API expone `mediaItemSchema` (sin `storagePath` ni `checksum`, con la URL firmada), definido en `contracts`.
 - **Ids:** son uuid. La API los valida con zod antes de llamar al repositorio; con otro formato, el adaptador de Postgres da `DB_QUERY_FAILED` (22P02) y los dobles en memoria, `null` o `*_NOT_FOUND`.
@@ -520,6 +521,21 @@ Implementado en F2-T04 (`packages/core/src/ports/llm-provider.ts`; `signal` es `
 
 El prompt, el esquema de salida, el ensamblado y la revisión editorial viven juntos en `packages/core/src/content/` (ADR-0013), y cada `content` guarda `prompt_version`. Desde F2-T05: `buildContentBrief` (lo que ve la IA), `buildContentPrompt` (`listing-content-v1`, con los datos como JSON escapado en un bloque delimitado), `contentDraftSchema` y `CONTENT_DRAFT_JSON_SCHEMA` (la misma forma sin topes, para el proveedor), `generateContentDraft` (valida y reintenta una vez) y `assembleContents`. `SAMPLE_CONTENT_DRAFT` es el borrador que devuelve el proveedor `fake`. Desde F2-T06: `checkContent` (la revisión editorial, pura y calculada al leer), `buildContentCheckContext` (brief, contacto y lo privado del aviso, que no sale del servidor) y `hasContentErrors`, con las listas de términos en `check-terms.ts`.
 
+
+## Corrida de contenido (`requestContentRun` y `prepareContent`, F2-T10)
+
+- **`requestContentRun`** (core) pide una corrida: valida el aviso (`ready`, `paused` o `active`, con fotos), devuelve la activa si hay (y la reencola si sigue en cola), revisa las ediciones a mano (`CONTENT_EDITED` salvo `replaceEdits`) y encola `content.prepare` con `singletonKey`. Con la cola caída, la corrida nueva queda en `failed`.
+- **`prepareContent`** (core, handler del job): cuatro etapas idempotentes. Cada una rehace solo lo que falta, comparando las claves de R2, que son determinísticas (`variantPath`, `renderPath` y `reelPath`, en `packages/core/src/content/media-keys.ts`).
+  - `media`: medidas antes que variantes.
+  - `renders`: la clave sale de `renderInput`, con las imágenes por su sha256 (`slideKeyInput`); se descargan solo si cambió.
+  - `reel`: con el primer video; borra el de otro video. Un video corto no se vuelve a descargar.
+  - `texts`: el mismo contexto (`buildContentCheckContext`) para la IA, el ensamblado y la revisión.
+- **Avisos y errores:**
+  - Los avisos de foto chica y de largo del reel se calculan en cada corrida desde las medidas guardadas, con la posición del medio (`Foto 2: …`) y sin claves de R2.
+  - Un medio ilegible es un aviso; sin ninguna foto procesada, `CONTENT_NO_PHOTOS`.
+  - Un error no reintentable, o el último intento, deja la corrida en `failed` con el reporte hasta donde llegó, salvo que el worker se esté apagando (`signal`).
+- **Composición** (para leer, F2-T12): `composeCarousel` (portada, hasta 8 fotos y ficha), `composePhotoSet` (`pi_4x3`, la portada primero) y `composeReel`.
+- **Datos de las plantillas:** salen de una lista fija de campos (`slides-data.ts`), nunca de la dirección.
 
 ## Procesador de medios (`MediaProcessor`, F2-T07)
 

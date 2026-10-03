@@ -230,6 +230,20 @@ describe("ficha", () => {
   });
 });
 
+describe("sin operación", () => {
+  it("la portada, la ficha y el reel no muestran la etiqueta", () => {
+    for (const html of [
+      withoutFont(templates.cover(cover({ operation: null }))),
+      withoutFont(templates.specSheet(sheet({ operation: null }))),
+      withoutFont(templates.reelOverlay({ ...reel, operation: null })),
+    ]) {
+      expect(html).not.toContain('class="badge"');
+      expect(html).not.toContain('class="operation"');
+      expect(html).not.toMatch(/VENTA|ARRIENDO/);
+    }
+  });
+});
+
 describe("texto del reel", () => {
   it("operación, tipo, comuna y precio, sobre fondo transparente", () => {
     const html = withoutFont(templates.reelOverlay(reel));

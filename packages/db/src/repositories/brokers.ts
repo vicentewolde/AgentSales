@@ -73,6 +73,13 @@ export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
       });
     },
 
+    findById(id) {
+      return withDbErrors(async () => {
+        const [row] = await db.select().from(brokers).where(eq(brokers.id, id));
+        return row === undefined ? null : toBroker(row);
+      });
+    },
+
     findBySlug(slug) {
       return withDbErrors(async () => {
         const [row] = await db.select().from(brokers).where(eq(brokers.slug, slug));

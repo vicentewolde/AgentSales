@@ -137,6 +137,12 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(await repos.brokers.findBySlug(unique("nadie"))).toBeNull();
     });
 
+    it("findById devuelve el corredor; un id desconocido es null (F2-T10)", async () => {
+      const created = await repos.brokers.create(brokerData(unique("corredor")));
+      expect(await repos.brokers.findById(created.id)).toEqual(created);
+      expect(await repos.brokers.findById("00000000-0000-4000-8000-00000000dead")).toBeNull();
+    });
+
     it("create con un slug existente → BROKER_CONFLICT, reintentable", async () => {
       const slug = unique("corredor");
       await repos.brokers.create(brokerData(slug));

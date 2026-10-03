@@ -10,6 +10,7 @@ export {
   contentDefinitionsFixture,
   contentListingFixture,
 } from "./content-fixtures.js";
+export { fakeHash } from "./fake-hash.js";
 export {
   type FieldDefinitionFixtureRow,
   type FieldDefinitionOrderFixture,

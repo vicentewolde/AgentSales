@@ -33,6 +33,11 @@ export const contentRunReportSchema = z.object({
       durationMs: count,
     })
     .optional(),
+  /**
+   * Etapa `texts`: los códigos de la revisión editorial de cada canal (F2-T10), sin los mensajes,
+   * que traen trozos del aviso. La revisión completa se calcula al leer (F2-T12).
+   */
+  checks: z.partialRecord(z.enum(PLATFORMS), z.array(z.string())).optional(),
   warnings: z.array(z.string()),
 });
 export type ContentRunReport = z.infer<typeof contentRunReportSchema>;
