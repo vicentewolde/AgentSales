@@ -20,9 +20,11 @@ Cosas que **solo tú puedes hacer** (cuentas, aprobaciones, datos reales). Claud
 
 ## Antes de F1
 
-- [ ] Llenar `data/plantillas/plantilla_propiedades.xlsx` con 3 propiedades distintas y guardarla como `data/muestras/propiedades.xlsx`
-- [ ] Fotos y videos en `data/muestras/medios/P001/`, `P002/` y `P003/` (al menos una con video)
-- [ ] Llenar la hoja **Corredor** con tu marca de prueba, y poner el logo PNG en `data/muestras/medios/_marca/logo.png`
+Hecho el 2026-10-02: 3 propiedades de muestra (P001, P002 y P003, corredor `agentsales-pruebas`), usadas en las demos de F1.
+
+- [x] Llenar `data/plantillas/plantilla_propiedades.xlsx` con 3 propiedades distintas y guardarla como `data/muestras/propiedades.xlsx`
+- [x] Fotos y videos en `data/muestras/medios/P001/`, `P002/` y `P003/` (al menos una con video)
+- [x] Llenar la hoja **Corredor** con tu marca de prueba, y poner el logo PNG en `data/muestras/medios/_marca/logo.png`
 
 ## En paralelo, antes de F3 (Instagram) — empieza pronto, es lo más lento
 
