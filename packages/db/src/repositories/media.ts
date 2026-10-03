@@ -1,18 +1,61 @@
 import {
   AppError,
   checkArrangement,
+  checkDerivative,
+  type Media,
   type MediaRecord,
   type MediaRepository,
+  mediaSchema,
   type NewMedia,
 } from "@agentsales/core";
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
 import { listings, media } from "../schema.js";
 
-/** Únicos de `media` (migración `0001`) que dan `MEDIA_CONFLICT`. */
+/** Únicos de `media` (migraciones `0001` y `0005`) que dan `MEDIA_CONFLICT`. */
 const CHECKSUM_UNIQUE = "media_original_listing_checksum_unique";
 const STORAGE_PATH_UNIQUE = "media_storage_path_unique";
+const PROCESSED_UNIQUE = "media_processed_parent_variant_unique";
+const RENDERED_UNIQUE = "media_rendered_listing_variant_unique";
+const MEDIA_UNIQUES = [CHECKSUM_UNIQUE, STORAGE_PATH_UNIQUE, PROCESSED_UNIQUE, RENDERED_UNIQUE];
+
+const isMediaConflict = (error: unknown) =>
+  MEDIA_UNIQUES.some((constraint) => isUniqueViolation(error, constraint));
+
+/** Orden de `listByListing`: originales, variantes y renders (el enum sigue `MEDIA_ROLES`). */
+const roleOrder = sql`case ${media.role} when 'original' then 0 when 'processed' then 1 else 2 end`;
+
+/**
+ * Fila → entidad. `variant` es texto en la base: se valida con `MEDIA_VARIANTS` al leer. Una fila
+ * corrupta es `MEDIA_ROW_INVALID` (no reintentable; 500 en la API).
+ */
+function toMedia(row: typeof media.$inferSelect): Media {
+  const parsed = mediaSchema.safeParse({
+    id: row.id,
+    listingId: row.listingId,
+    brokerId: row.brokerId,
+    kind: row.kind,
+    role: row.role,
+    variant: row.variant,
+    parentMediaId: row.parentMediaId,
+    storagePath: row.storagePath,
+    mime: row.mime,
+    width: row.width,
+    height: row.height,
+    durationS: row.durationS,
+    bytes: row.bytes,
+    checksum: row.checksum,
+    sortOrder: row.sortOrder,
+    isCover: row.isCover,
+  });
+  if (!parsed.success) {
+    throw new AppError("MEDIA_ROW_INVALID", `El medio ${row.id} tiene datos inválidos`, {
+      details: { id: row.id, issues: parsed.error.issues },
+    });
+  }
+  return parsed.data;
+}
 
 const recordColumns = {
   id: media.id,
@@ -77,10 +120,7 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
           return row;
         });
       } catch (error) {
-        if (
-          isUniqueViolation(error, CHECKSUM_UNIQUE) ||
-          isUniqueViolation(error, STORAGE_PATH_UNIQUE)
-        ) {
+        if (isMediaConflict(error)) {
           // Dos intentos del job solapados: el reintento lo encuentra y no lo vuelve a crear.
           throw new AppError("MEDIA_CONFLICT", `Ya existe el medio ${data.storagePath}`, {
             retriable: true,
@@ -139,6 +179,165 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
           }
         }),
       );
+    },
+
+    listByListing(listingId) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(media)
+          .where(eq(media.listingId, listingId))
+          .orderBy(roleOrder, asc(media.sortOrder), asc(media.id));
+        return rows.map(toMedia);
+      });
+    },
+
+    get(id) {
+      return withDbErrors(async () => {
+        const [row] = await db.select().from(media).where(eq(media.id, id));
+        return row === undefined ? null : toMedia(row);
+      });
+    },
+
+    listVariants(parentMediaIds, variant) {
+      if (parentMediaIds.length === 0) return Promise.resolve([]);
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(media)
+          .where(
+            and(
+              eq(media.role, "processed"),
+              eq(media.variant, variant),
+              inArray(media.parentMediaId, [...parentMediaIds]),
+            ),
+          )
+          .orderBy(asc(media.id));
+        return rows.map(toMedia);
+      });
+    },
+
+    updateMeasurements(id, { width, height, durationS }) {
+      return withDbErrors(async () => {
+        const updated = await db
+          .update(media)
+          .set({ width, height, durationS })
+          .where(eq(media.id, id))
+          .returning({ id: media.id });
+        if (updated.length === 0) {
+          throw new AppError("MEDIA_NOT_FOUND", `No existe el medio ${id}`, { details: { id } });
+        }
+      });
+    },
+
+    async upsertDerivative(derivative) {
+      checkDerivative(derivative);
+      try {
+        return await withDbErrors(() =>
+          db.transaction(async (tx) => {
+            if (derivative.role === "processed") {
+              // Bloquea el original: dos intentos solapados reemplazan su variante de a uno.
+              const [parent] = await tx
+                .select({ id: media.id })
+                .from(media)
+                .where(
+                  and(
+                    eq(media.id, derivative.parentMediaId),
+                    eq(media.listingId, derivative.listingId),
+                    eq(media.brokerId, derivative.brokerId),
+                    isOriginal,
+                  ),
+                )
+                .for("no key update");
+              if (parent === undefined) {
+                throw new AppError(
+                  "MEDIA_NOT_FOUND",
+                  "El original del derivado no es de ese aviso",
+                  {
+                    details: {
+                      listingId: derivative.listingId,
+                      parentMediaId: derivative.parentMediaId,
+                    },
+                  },
+                );
+              }
+            } else {
+              // Un render no tiene padre: se bloquea el aviso, como en `arrange`.
+              const [listing] = await tx
+                .select({ id: listings.id })
+                .from(listings)
+                .where(
+                  and(
+                    eq(listings.id, derivative.listingId),
+                    eq(listings.brokerId, derivative.brokerId),
+                  ),
+                )
+                .for("no key update");
+              if (listing === undefined) {
+                throw new AppError(
+                  "MEDIA_NOT_FOUND",
+                  "El aviso del render no existe o es de otro corredor",
+                  {
+                    details: { listingId: derivative.listingId },
+                  },
+                );
+              }
+            }
+            const [current] = await tx
+              .select({ id: media.id, storagePath: media.storagePath })
+              .from(media)
+              .where(
+                derivative.role === "processed"
+                  ? and(
+                      eq(media.role, "processed"),
+                      eq(media.parentMediaId, derivative.parentMediaId),
+                      eq(media.variant, derivative.variant),
+                    )
+                  : and(
+                      eq(media.role, "rendered"),
+                      eq(media.listingId, derivative.listingId),
+                      eq(media.variant, derivative.variant),
+                    ),
+              );
+            const values = { ...derivative, sortOrder: 0, isCover: false };
+            const [row] =
+              current === undefined
+                ? await tx.insert(media).values(values).returning()
+                : await tx.update(media).set(values).where(eq(media.id, current.id)).returning();
+            if (row === undefined) {
+              // El vigente se borró entre la lectura y el reemplazo (`deleteDerivative` no toma el
+              // bloqueo del original): reintentar lo crea de nuevo.
+              throw new AppError("MEDIA_CONFLICT", `El derivado ${derivative.storagePath} cambió`, {
+                retriable: true,
+              });
+            }
+            const previousPath =
+              current !== undefined && current.storagePath !== derivative.storagePath
+                ? current.storagePath
+                : null;
+            return { media: toMedia(row), previousPath };
+          }),
+        );
+      } catch (error) {
+        if (isMediaConflict(error)) {
+          // Dos intentos solapados: el reintento encuentra el vigente y lo reemplaza.
+          throw new AppError("MEDIA_CONFLICT", `Ya existe el medio ${derivative.storagePath}`, {
+            retriable: true,
+            cause: error,
+          });
+        }
+        throw error;
+      }
+    },
+
+    deleteDerivative(id) {
+      return withDbErrors(async () => {
+        const [deleted] = await db
+          .delete(media)
+          .where(and(eq(media.id, id), ne(media.role, "original")))
+          .returning({ storagePath: media.storagePath });
+        return deleted?.storagePath ?? null;
+      });
     },
   };
 }

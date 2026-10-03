@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "media_processed_parent_variant_unique" ON "media" USING btree ("parent_media_id","variant") WHERE "role" = 'processed';--> statement-breakpoint
+CREATE UNIQUE INDEX "media_rendered_listing_variant_unique" ON "media" USING btree ("listing_id","variant") WHERE "role" = 'rendered';

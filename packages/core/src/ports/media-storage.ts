@@ -1,3 +1,5 @@
+import type { AbortSignalLike } from "../abort.js";
+
 export type PutStreamOptions = {
   contentType: string;
   /** Tamaño exacto en bytes. */
@@ -49,6 +51,18 @@ export interface MediaStorage {
   ): Promise<void>;
   /** Lanza `STORAGE_NOT_FOUND` si el objeto no existe. */
   get(path: string): Promise<Uint8Array>;
+  /**
+   * Lee un objeto en streaming, sin cargarlo completo en memoria (videos de hasta `MAX_VIDEO_MB`;
+   * spec F2 §4.2). `STORAGE_NOT_FOUND` si no existe, al pedirlo. Un corte durante la lectura sale
+   * del iterable como `STORAGE_UNAVAILABLE`, reintentable: el reintento es de quien llama, que lo
+   * vuelve a pedir. La conexión se libera al leer hasta el final, al dejar de iterar (`break`), al
+   * llamar a `return()` del iterador aunque no se haya leído nada, o al disparar `signal`. Quien
+   * pide el stream y no lo va a leer debe hacer una de esas cosas.
+   */
+  getStream(
+    path: string,
+    options?: { signal?: AbortSignalLike },
+  ): Promise<AsyncIterable<Uint8Array>>;
   /** `null` si el objeto no existe. */
   head(path: string): Promise<StoredObjectInfo | null>;
   delete(path: string): Promise<void>;

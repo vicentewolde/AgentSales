@@ -119,4 +119,13 @@ describe("migraciones", () => {
       `ALTER TABLE "contents" ADD CONSTRAINT "contents_run_platform_unique" UNIQUE("content_run_id","platform");`,
     );
   });
+
+  it("tienen los únicos de derivados de F2: una variante por original y un render por aviso (0005)", () => {
+    expect(sql).toContain(
+      `CREATE UNIQUE INDEX "media_processed_parent_variant_unique" ON "media" USING btree ("parent_media_id","variant") WHERE "role" = 'processed';`,
+    );
+    expect(sql).toContain(
+      `CREATE UNIQUE INDEX "media_rendered_listing_variant_unique" ON "media" USING btree ("listing_id","variant") WHERE "role" = 'rendered';`,
+    );
+  });
 });
