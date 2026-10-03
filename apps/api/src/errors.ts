@@ -12,11 +12,22 @@ export type { ErrorBody };
 const INTERNAL_MESSAGE = "Error interno del servidor";
 
 /**
+ * Pedidos válidos que el estado actual no permite (spec F2 §4.7): el cliente puede corregirlos
+ * (esperar, recargar o confirmar), así que son 409 y no 500 como `*_CONFLICT`.
+ */
+const CONFLICTS = new Set([
+  "LISTING_NOT_READY",
+  "CONTENT_EDITED",
+  "CONTENT_NOT_CURRENT",
+  "CONTENT_RUN_ACTIVE",
+]);
+
+/**
  * Status HTTP de un `AppError` según su código (docs/05-convenciones.md). Se evalúa en orden:
  * primero los códigos exactos, luego los patrones; lo que no calza es 500.
  */
 export function httpStatusFor(code: string): ContentfulStatusCode {
-  if (code === "INVALID_TRANSITION") return 409;
+  if (code === "INVALID_TRANSITION" || CONFLICTS.has(code)) return 409;
   if (code === "REQUEST_TOO_LARGE") return 413;
   // Datos inválidos que no vienen del cliente: los de un job los arma el servidor, y una fila
   // corrupta en la base (`*_ROW_INVALID`, `IMPORT_RUN_INVALID`) es un fallo del servidor.

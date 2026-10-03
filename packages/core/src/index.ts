@@ -195,6 +195,18 @@ export {
   changeListingStatus,
 } from "./use-cases/change-listing-status.js";
 export {
+  type ContentEdit,
+  type EditContentDeps,
+  editContent,
+} from "./use-cases/edit-content.js";
+export {
+  type CheckedContent,
+  type ContentCheckDeps,
+  type GetListingContentDeps,
+  getListingContent,
+  type ListingContent,
+} from "./use-cases/get-listing-content.js";
+export {
   type ImportedRow,
   type ImportListingsDeps,
   type ImportListingsParams,

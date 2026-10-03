@@ -8,6 +8,8 @@ import {
 } from "@agentsales/config";
 import {
   createBrokerRepository,
+  createContentRepository,
+  createContentRunRepository,
   createDb,
   createFieldDefinitionRepository,
   createImportRunRepository,
@@ -76,6 +78,8 @@ const app = createApp({
   fieldDefinitions: createFieldDefinitionRepository(database.db),
   storage,
   importRuns: createImportRunRepository(database.db),
+  contentRuns: createContentRunRepository(database.db),
+  contents: createContentRepository(database.db),
   queue,
   uploads: {
     save: (runId, fileName, bytes) => staging.saveInput(runId, fileName, bytes),

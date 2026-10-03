@@ -1,5 +1,7 @@
 import type {
   BrokerRepository,
+  ContentRepository,
+  ContentRunRepository,
   FieldDefinitionRepository,
   HealthCheckName,
   ImportRunRepository,
@@ -15,6 +17,7 @@ import { type HealthCheck, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
 import { requestLogger } from "./request-logger.js";
 import { brokerRoutes } from "./routes/brokers.js";
+import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
 import { type ImportUploads, importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
 import { csrfGuard, hostGuard, type LocalAccess } from "./security.js";
@@ -45,6 +48,9 @@ export type AppDeps = {
   localImports: boolean;
   /** `MAX_IMPORT_UPLOAD_MB` en bytes. */
   maxUploadBytes: number;
+  // Contenido (F2-T12): la API pide corridas y edita textos; las corre el worker (ADR-0012).
+  contentRuns: ContentRunRepository;
+  contents: ContentRepository;
 };
 
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
@@ -65,6 +71,9 @@ export function createApp(deps: AppDeps) {
     })
     // Encadenadas con `.route()`, así `AppType` conserva el esquema de cada ruta (ADR-0011).
     .route("/listings", listingRoutes(deps))
+    .route("/listings", listingContentRoutes(deps))
+    .route("/content-runs", contentRunRoutes(deps))
+    .route("/contents", contentRoutes(deps))
     .route("/brokers", brokerRoutes(deps))
     .route("/imports", importRoutes(deps));
   app.onError(createErrorHandler(deps.logger));

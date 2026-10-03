@@ -33,11 +33,22 @@ const notFound = (id: string) =>
 
 /** `/listings`: lista con portada, detalle con medios y cambio manual de estado (spec F1 §4.4). */
 export function listingRoutes(deps: ListingRoutesDeps) {
+  const signedOrNull = async (path: string | undefined) =>
+    path === undefined ? null : deps.storage.signedReadUrl(path);
   return new Hono()
     .get("/", validated("query", listingQuerySchema), async (c) => {
       const listings = await deps.listings.list(c.req.valid("query"));
+      // La miniatura de la portada si existe (una portada HEIC no se ve en el navegador), y si no
+      // el original: dos consultas para toda la lista, no una por aviso (spec F2 §4.7).
       const covers = await deps.media.listCovers(listings.map((listing) => listing.id));
-      const coverOf = new Map(covers.map((cover) => [cover.listingId, cover.storagePath]));
+      const thumbs = await deps.media.listVariants(
+        covers.map((cover) => cover.id),
+        "thumb",
+      );
+      const thumbOf = new Map(thumbs.map((thumb) => [thumb.parentMediaId, thumb.storagePath]));
+      const coverOf = new Map(
+        covers.map((cover) => [cover.listingId, thumbOf.get(cover.id) ?? cover.storagePath]),
+      );
       const body: ListingListResponse = {
         listings: await Promise.all(
           listings.map(async (listing) => {
@@ -55,7 +66,14 @@ export function listingRoutes(deps: ListingRoutesDeps) {
       const { id } = c.req.valid("param");
       const listing = await deps.listings.get(id);
       if (listing === null) throw notFound(id);
-      const media = await deps.media.listOriginals(id);
+      // Una consulta: los originales (en orden y con sus medidas) y sus miniaturas.
+      const all = await deps.media.listByListing(id);
+      const media = all.filter((item) => item.role === "original");
+      const thumbOf = new Map(
+        all
+          .filter((item) => item.role === "processed" && item.variant === "thumb")
+          .map((thumb) => [thumb.parentMediaId, thumb.storagePath]),
+      );
       const definitions = await deps.fieldDefinitions.list({
         category: listing.category,
         brokerId: listing.brokerId,
@@ -72,6 +90,10 @@ export function listingRoutes(deps: ListingRoutesDeps) {
             sortOrder: item.sortOrder,
             isCover: item.isCover,
             url: await deps.storage.signedReadUrl(item.storagePath),
+            thumbUrl: await signedOrNull(thumbOf.get(item.id)),
+            width: item.width,
+            height: item.height,
+            durationS: item.durationS,
           })),
         ),
       };

@@ -6,6 +6,7 @@ import { Writable } from "node:stream";
 import { createLogger, type Logger } from "@agentsales/config";
 import {
   createInMemoryBrokerRepository,
+  createInMemoryContentRepositories,
   createInMemoryFieldDefinitionRepository,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
@@ -45,6 +46,7 @@ export function fakeUploads(): FakeUploads {
  * usa http://localhost/x: el Host es "localhost", y el origen del panel, el 5173.
  */
 export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
+  const content = createInMemoryContentRepositories({ nextId: randomUUID });
   return {
     checks: { db: ok, storage: ok, queue: ok },
     publishMode: "dry-run",
@@ -62,6 +64,8 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     newId: randomUUID,
     localImports: true,
     maxUploadBytes: 50 * 1024 * 1024,
+    contentRuns: content.contentRuns,
+    contents: content.contents,
     ...overrides,
   };
 }

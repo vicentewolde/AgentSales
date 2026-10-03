@@ -319,13 +319,20 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
   - **Formulario del panel:** un campo de archivo vacío o un corredor vacío cuentan como no enviados.
   - **`AppDeps`:** recibe `importRuns`, `queue`, `uploads` (`save` y `discard`, que `server.ts` compone con el staging), `newId`, `localImports` y `maxUploadBytes`.
 - **Rutas (F1-T10):**
-  - `GET /listings` (filtros exactos, también `externalRef` desde F1-T12, con la portada como URL firmada);
-  - `GET /listings/:id` (con sus medios en orden y URLs firmadas, y desde F1-T13 `fields`: las etiquetas de sus atributos);
+  - `GET /listings` (filtros exactos, también `externalRef` desde F1-T12, con la portada como URL firmada; desde F2-T12, la miniatura `thumb` de la portada si existe, con `listCovers` y `listVariants`: dos consultas para toda la lista);
+  - `GET /listings/:id` (con sus medios en orden y URLs firmadas, y desde F1-T13 `fields`: las etiquetas de sus atributos; desde F2-T12, cada original con `thumbUrl` y sus medidas, en una consulta con `listByListing`);
   - `PATCH /listings/:id/status` (`changeListingStatus`);
   - `GET /brokers`.
+- **Rutas de contenido (F2-T12, `apps/api/src/routes/content.ts`):**
+  - `POST /listings/:id/content-runs` (`requestContentRun`): `202` con `{ contentRun, reused }`;
+  - `GET /content-runs/:id`: estado, etapa, reporte y error;
+  - `GET /listings/:id/content` (`getListingContent`): el texto vigente de cada canal con su revisión (`checks`), el carrusel, las fotos de Portal y Marketplace y el reel con URLs firmadas, y la última corrida;
+  - `PATCH /contents/:id` (`editContent`): el texto con su revisión.
+
+  La vista del texto no lleva `rawOutput`, `llmProvider` ni `llmModel` (solo `promptVersion`), y de la revisión solo salen los `checks`: el contexto con lo privado del aviso (`ContentCheckContext.private`) se queda en el servidor. Los esquemas usan `CONTENT_CHECK_CODES` y `CONTENT_CHECK_SEVERITY_LEVELS` de core.
 - **Páginas del panel** (`apps/web/src/routes.tsx`, cada una con `React.lazy`): `/` (Estado), `/propiedades`, `/propiedades/:id`, `/importar` e `/importar/:id`.
 
-  Van en `apps/api/src/routes/`, montadas con `.route()`. `AppDeps` recibe puertos de core (`listings`, `brokers`, `media`, `fieldDefinitions` y `storage.signedReadUrl`), no adaptadores.
+  Van en `apps/api/src/routes/`, montadas con `.route()`. `AppDeps` recibe puertos de core (`listings`, `brokers`, `media`, `fieldDefinitions` y `storage.signedReadUrl`; desde F2-T12, `contentRuns` y `contents`), no adaptadores.
 - **Cambios manuales de estado (`LISTING_MANUAL_TRANSITIONS`, core):**
   - `draft` → `ready` o `archived`;
   - `ready` → `paused` o `archived`;
