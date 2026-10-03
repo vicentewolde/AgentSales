@@ -1,4 +1,5 @@
-import { readdir } from "node:fs/promises";
+import { readdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { AppError, type LLMProvider, type RunImportDeps } from "@agentsales/core";
 import {
   createInMemoryContentRepositories,
@@ -49,6 +50,7 @@ describe("job content.prepare · cola", () => {
     // 3 intentos de 30 min y media hora de margen.
     expect(CONTENT_RUN_ABANDONED_AFTER_MS).toBe(2 * 60 * 60 * 1000);
     const { deps } = await contentJobSetup();
+    // Solo se miran los nombres: `import.run` no usa sus dependencias hasta correr.
     expect(
       buildJobs({ importRun: {} as RunImportDeps, contentPrepare: deps }).map((job) => job.name),
     ).toEqual(["system.ping", "import.run", "content.prepare"]);
@@ -148,6 +150,30 @@ describe("job content.prepare · handler", () => {
     expect(await readdir(t.tmpRoot)).toEqual([]);
   });
 
+  it.each([
+    [false, "queued"],
+    [true, "failed"],
+  ])(
+    "sin carpeta temporal (isLastAttempt %s): CONTENT_TMP_UNAVAILABLE y la corrida en %s",
+    async (last, status) => {
+      const t = await contentJobSetup();
+      // Un archivo donde iría la carpeta: `mkdir` falla, como con el disco lleno.
+      const blocked = join(t.tmpRoot, "archivo");
+      await writeFile(blocked, "x");
+      t.deps.tmpRoot = blocked;
+      const runId = await t.newRun();
+
+      await expect(
+        contentPrepareJob(t.deps).run({ contentRunId: runId }, context(last)),
+      ).rejects.toMatchObject({ code: "CONTENT_TMP_UNAVAILABLE", retriable: true });
+      expect(await t.contentRuns.get(runId)).toMatchObject({
+        status,
+        error: last ? { code: "CONTENT_TMP_UNAVAILABLE" } : null,
+      });
+      expect(t.workDirs).toEqual([]);
+    },
+  );
+
   it("con el corte, un error no reintentable se relanza como CONTENT_RUN_ABORTED (reintentable)", async () => {
     let t: Awaited<ReturnType<typeof contentJobSetup>> | undefined;
     const llm: LLMProvider = {
@@ -239,7 +265,10 @@ describe("job content.prepare · arranque", () => {
     await repos.contentRuns.markRunning(running.id);
     const queue = createInMemoryJobQueue();
 
-    expect(await requeueQueuedContentRuns(repos.contentRuns, queue)).toBe(2);
+    expect(await requeueQueuedContentRuns(repos.contentRuns, queue)).toEqual({
+      requeued: 2,
+      failed: [],
+    });
     expect(queue.jobs).toEqual([
       {
         name: "content.prepare",
@@ -252,5 +281,24 @@ describe("job content.prepare · arranque", () => {
         options: { singletonKey: second.id },
       },
     ]);
+  });
+
+  it("si una corrida no se puede reencolar, sigue con las demás y la informa", async () => {
+    const repos = createInMemoryContentRepositories();
+    const first = await repos.contentRuns.create({ listingId: "l1", texts: true });
+    const second = await repos.contentRuns.create({ listingId: "l2", texts: true });
+    let calls = 0;
+    const queue = createInMemoryJobQueue({
+      fail: () =>
+        ++calls === 1
+          ? new AppError("QUEUE_UNAVAILABLE", "No se pudo conectar a la cola", { retriable: true })
+          : undefined,
+    });
+
+    expect(await requeueQueuedContentRuns(repos.contentRuns, queue)).toEqual({
+      requeued: 1,
+      failed: [first.id],
+    });
+    expect(queue.jobs.map((job) => job.data)).toEqual([{ contentRunId: second.id }]);
   });
 });

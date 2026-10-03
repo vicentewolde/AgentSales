@@ -228,12 +228,13 @@ Los jobs del worker (`apps/worker/src/jobs/`):
 ### Job `content.prepare` (F2-T11)
 - **Cola:** `exclusive` (un solo job por `singletonKey = contentRunId`), 2 reintentos con backoff desde 30 s, y expira a los 30 min.
 - **Handler:** corre `prepareContent` (core) con `isLastAttempt` y el `signal` de apagado. Cada intento arma su procesador de medios (`createMediaProcessor` sin `threads`: ffmpeg usa todos los núcleos) con su temporal `<workspace>/tmp/content/{contentRunId}/{uuid}/`, que se borra en un `finally` (y el de la corrida, si queda vacío). Lo demás es del proceso: repositorios, R2, plantillas, un renderizador (`createHtmlRenderer`) y el proveedor de IA según `LLM_PROVIDER` (con `fake`, `SAMPLE_CONTENT_DRAFT`).
-- **Corte por apagado:** la corrida queda en `running`, también en el último intento. Si el adaptador cortado dio un error no reintentable, el job lo relanza como `CONTENT_RUN_ABORTED` (reintentable), para que pg-boss lo retome al arrancar.
+- **Corte por apagado:** la corrida queda en `running`, también en el último intento, y el error sube como reintentable (core convierte uno no reintentable en `CONTENT_RUN_ABORTED`). La retoma el siguiente intento de pg-boss; si era el último, un nuevo pedido (`requestContentRun` la reencola) o, pasadas 2 h, la limpieza de abandonadas al arrancar.
+- **Sin temporal:** si el worker no puede crear la carpeta del intento (disco lleno, permisos), es `CONTENT_TMP_UNAVAILABLE` (reintentable); en el último intento deja la corrida en `failed`.
 - **Logs:** un error por intento, con `contentRunId` y solo el código. Al terminar, solo conteos (medios, renders, reel, cantidad de advertencias y la llamada a la IA), nunca las advertencias ni la revisión. Un objeto viejo de R2 que no se pudo borrar (`onCleanupFailed`) va al log como `objectPath` (solo ids).
 - **Al arrancar:**
   - antes de conectar, borra los temporales de más de 24 h (solo directorios con nombre de uuid);
   - ya conectado, cierra como `failed` (`CONTENT_RUN_ABANDONED`) las corridas `running` con `started_at` de hace más de 2 h (3 intentos de 30 min y media hora de margen);
-  - con las colas creadas, reencola **todas** las `queued` (`enqueueContentRun`, idempotente por `singletonKey`) con la conexión del worker.
+  - con las colas creadas, reencola **todas** las `queued` (`enqueueContentRun`, idempotente por `singletonKey`) con la conexión del worker (`jobQueueFromBoss`); una que falla no corta las demás.
 
 ### Job `import.run` (F1-T09)
 - **Cola:** `exclusive` (un solo job por `singletonKey = importRunId`), 2 reintentos con backoff desde 30 s, y expira a las 2 h.
@@ -274,6 +275,7 @@ Para encolar (`packages/queue`, desde F1-T08):
 - **Deduplicación con `singletonKey`:** depende de la **política de la cola**. En pg-boss 12 solo deduplican `singleton`, `stately`, `exclusive`, `short` y `key_strict_fifo`; con la estándar, `singletonKey` es solo una etiqueta. La política **no se puede cambiar después de crear la cola**: `updateQueue` falla si recibe `policy`, y cambiarla exige borrar la cola. T09 agrega `policy` a `QueuePolicy`, que solo se pasa a `createQueue`, y le da `exclusive` a `import.run`.
 - **También en `packages/queue`:**
   - `createBoss({ connectionString, role })`, que usa el worker;
+  - `jobQueueFromBoss(boss)` (F2-T11): un `JobQueue` sobre un pg-boss ya arrancado (el del worker, para reencolar al arrancar), con la misma validación y los mismos errores que `createJobQueue`, sin arrancarlo ni detenerlo;
   - `QUEUE_SCHEMA`;
   - `checkQueueSchema`, el check de `/health`, que solo lee el catálogo.
 - **Conexión:** el paquete no depende de `@agentsales/db`, porque los adaptadores no dependen entre sí. Quien lo usa pasa la conexión ya convertida con `toPgConnectionString`.
@@ -535,7 +537,7 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 
 ## Corrida de contenido (`requestContentRun` y `prepareContent`, F2-T10)
 
-- **`requestContentRun`** (core) pide una corrida: valida el aviso (`ready`, `paused` o `active`, con fotos), devuelve la activa si hay (y la reencola si sigue en cola), revisa las ediciones a mano (`CONTENT_EDITED` salvo `replaceEdits`) y encola `content.prepare` con `singletonKey`. Con la cola caída, la corrida nueva queda en `failed`.
+- **`requestContentRun`** (core) pide una corrida: valida el aviso (`ready`, `paused` o `active`, con fotos), devuelve la activa si hay (y la reencola, en cola o corriendo: un corte en el último intento la deja sin job), revisa las ediciones a mano (`CONTENT_EDITED` salvo `replaceEdits`) y encola `content.prepare` con `singletonKey`. Con la cola caída, la corrida nueva queda en `failed`.
 - **`prepareContent`** (core, handler del job): cuatro etapas idempotentes. Cada una rehace solo lo que falta, comparando las claves de R2, que son determinísticas (`variantPath`, `renderPath` y `reelPath`, en `packages/core/src/content/media-keys.ts`).
   - `media`: medidas antes que variantes.
   - `renders`: la clave sale de `renderInput`, con las imágenes por su sha256 (`slideKeyInput`); se descargan solo si cambió.

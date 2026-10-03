@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
@@ -27,6 +27,7 @@ import {
   createInMemorySlideTemplates,
   fakeHash,
 } from "@agentsales/core/testing";
+import { onTestFinished } from "vitest";
 import type { ContentPrepareJobDeps } from "../src/jobs/content-prepare.js";
 
 /** Un logger que descarta todo. */
@@ -93,6 +94,7 @@ export async function contentJobSetup(options: { llm?: LLMProvider } = {}) {
 
   const contentRepos = createInMemoryContentRepositories({ nextId: () => randomUUID() });
   const tmpRoot = await mkdtemp(join(tmpdir(), "agentsales-content-"));
+  onTestFinished(() => rm(tmpRoot, { recursive: true, force: true }));
   const workDirs: { path: string; existed: boolean }[] = [];
   const llm =
     options.llm ??

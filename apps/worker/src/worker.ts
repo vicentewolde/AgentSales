@@ -6,7 +6,7 @@ import {
   loadEnv,
   loadEnvFile,
 } from "@agentsales/config";
-import type { JobQueue, RunImportDeps } from "@agentsales/core";
+import type { RunImportDeps } from "@agentsales/core";
 import {
   createBrokerRepository,
   createContentRunRepository,
@@ -21,7 +21,7 @@ import { readListingsWorkbook } from "@agentsales/importers";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import { createLlmProvider } from "@agentsales/llm";
 import { createHtmlRenderer, createMediaProcessor } from "@agentsales/media";
-import { createBoss } from "@agentsales/queue";
+import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { createSlideTemplates } from "@agentsales/templates";
 import { cleanContentTmp, contentTmpRootOf } from "./content-tmp.js";
@@ -43,7 +43,7 @@ const logger = createLogger({
   name: "worker",
 });
 
-// Dependencias de los jobs: se componen aquí, en el punto de entrada (ADR-0010).
+// Dependencias de los jobs: se componen aquí, en el punto de entrada (01-arquitectura.md).
 const dbErrors = createErrorThrottle(logger, "error de la base de datos");
 const database = createDb(env.DATABASE_URL, { onError: (error) => dbErrors.report(error) });
 const importRuns = createImportRunRepository(database.db);
@@ -117,9 +117,7 @@ const bossErrors = createErrorThrottle(logger, "error de pg-boss");
 boss.on("error", (error) => bossErrors.report(error));
 boss.on("warning", (warning) => logger.warn({ warning }, "aviso de pg-boss"));
 // Para reencolar al arrancar con la conexión del worker (no abre otra como `createJobQueue`).
-const queue: JobQueue = {
-  enqueue: (name, data, options = {}) => boss.send(name, data, options),
-};
+const queue = jobQueueFromBoss(boss);
 
 let shuttingDown = false;
 
@@ -150,7 +148,7 @@ async function shutdown(signal: string): Promise<void> {
     logger.info("worker detenido");
     process.exit(0);
   } catch (error) {
-    logger.error({ err: error }, "error al detener pg-boss");
+    logger.error({ err: error }, "error al apagar el worker");
     process.exit(1);
   }
 }
@@ -216,8 +214,14 @@ async function failAbandonedContent(): Promise<void> {
 
 async function requeueContent(): Promise<void> {
   try {
-    const requeued = await requeueQueuedContentRuns(contentRuns, queue);
+    const { requeued, failed } = await requeueQueuedContentRuns(contentRuns, queue);
     if (requeued > 0) logger.info({ requeued }, "corridas en cola reencoladas");
+    if (failed.length > 0) {
+      logger.warn(
+        { contentRunIds: failed },
+        "no se pudieron reencolar algunas corridas: se reintenta al próximo arranque o al pedirlas",
+      );
+    }
   } catch (error) {
     logger.warn({ err: error }, "no se pudieron reencolar las corridas en cola");
   }

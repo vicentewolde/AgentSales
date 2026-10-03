@@ -578,7 +578,7 @@ describe("prepareContent · revisión de F2-T10", () => {
     expect(variantsOf(await t.derivatives(), "ig_4x5")).toHaveLength(1);
   });
 
-  it("un corte a mitad de corrida (signal) relanza sin marcar failed, aun con un error no reintentable", async () => {
+  it("un corte a mitad de corrida (signal) no marca failed y un error no reintentable sube como CONTENT_RUN_ABORTED", async () => {
     const t = await setup();
     const controller = { aborted: false, addEventListener() {}, removeEventListener() {} };
     const processor = t.deps.processor;
@@ -597,7 +597,11 @@ describe("prepareContent · revisión de F2-T10", () => {
 
     await expect(
       prepareContent(cutting, { contentRunId: runId, isLastAttempt: true, signal: controller }),
-    ).rejects.toMatchObject({ code: "MEDIA_TOOL_NOT_INSTALLED" });
+    ).rejects.toMatchObject({
+      code: "CONTENT_RUN_ABORTED",
+      retriable: true,
+      cause: expect.objectContaining({ code: "MEDIA_TOOL_NOT_INSTALLED" }),
+    });
     expect((await t.contentRepos.contentRuns.get(runId))?.status).toBe("running");
   });
 

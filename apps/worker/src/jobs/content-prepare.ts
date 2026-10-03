@@ -72,11 +72,33 @@ const summaryOf = (report: ContentRunReport) => ({
 });
 
 /**
+ * El temporal del intento. Si no se puede crear (disco lleno, permisos), es
+ * `CONTENT_TMP_UNAVAILABLE` (reintentable); en el último intento deja la corrida en `failed`, como
+ * haría `prepareContent`: sin eso quedaría en cola sin job.
+ */
+async function attemptDir(deps: ContentPrepareJobDeps, contentRunId: string, last: boolean) {
+  try {
+    return await createAttemptDir(deps.tmpRoot, contentRunId);
+  } catch (cause) {
+    const error = new AppError(
+      "CONTENT_TMP_UNAVAILABLE",
+      "El worker no pudo crear su carpeta temporal (¿disco lleno?)",
+      { retriable: true, cause },
+    );
+    if (last && !deps.signal.aborted) {
+      await deps.shared.contentRuns
+        .markFailed(contentRunId, { code: error.code, message: error.message })
+        .catch(() => false);
+    }
+    throw error;
+  }
+}
+
+/**
  * Job `content.prepare`: corre `prepareContent` de core con un procesador y un directorio temporal
- * propios de cada intento, que se borra al terminar, también si falla.
- * - Un corte por apagado se relanza como reintentable (`CONTENT_RUN_ABORTED`) aunque el adaptador
- *   haya dado otro error: la corrida sigue en `running` y la retoma pg-boss al volver a arrancar.
- * - El log de un error lleva solo su código (y los datos del job, el `contentRunId`).
+ * propios de cada intento, que se borra al terminar, también si falla. El corte por apagado lo
+ * resuelve core (la corrida queda en `running` y el error sube como reintentable). El log de un
+ * error lleva solo su código (y los datos del job, el `contentRunId`).
  */
 export function contentPrepareJob(deps: ContentPrepareJobDeps): Job {
   return defineJob({
@@ -84,7 +106,7 @@ export function contentPrepareJob(deps: ContentPrepareJobDeps): Job {
     queue: CONTENT_PREPARE_QUEUE,
     errorLogFields: (error) => ({ code: codeOf(error) }),
     handler: async ({ contentRunId }, { logger, isLastAttempt }) => {
-      const dir = await createAttemptDir(deps.tmpRoot, contentRunId);
+      const dir = await attemptDir(deps, contentRunId, isLastAttempt);
       try {
         const result = await prepareContent(
           {
@@ -104,14 +126,6 @@ export function contentPrepareJob(deps: ContentPrepareJobDeps): Job {
         } else {
           logger.info(summaryOf(result.report), "contenido preparado");
         }
-      } catch (error) {
-        if (deps.signal.aborted && !(isAppError(error) && error.retriable)) {
-          throw new AppError("CONTENT_RUN_ABORTED", "Se cortó la corrida de contenido", {
-            retriable: true,
-            cause: error,
-          });
-        }
-        throw error;
       } finally {
         await dir
           .remove()
@@ -143,13 +157,22 @@ export function failAbandonedContentRuns(
 /**
  * Al arrancar, con las colas ya creadas: reencola **todas** las corridas `queued` (spec F2 §4.4).
  * Con el worker apagado, una corrida puede esperar días y su pedido sigue valiendo; si su job sigue
- * en la cola, `singletonKey` no lo duplica. Devuelve cuántas se reencolaron.
+ * en la cola, `singletonKey` no lo duplica. Una que falla no corta las demás: devuelve cuántas se
+ * reencolaron y los ids de las que no.
  */
 export async function requeueQueuedContentRuns(
   contentRuns: Pick<ContentRunRepository, "listQueued">,
   queue: JobQueue,
-): Promise<number> {
-  const queued = await contentRuns.listQueued();
-  for (const run of queued) await enqueueContentRun(queue, run.id);
-  return queued.length;
+): Promise<{ requeued: number; failed: string[] }> {
+  const failed: string[] = [];
+  let requeued = 0;
+  for (const run of await contentRuns.listQueued()) {
+    try {
+      await enqueueContentRun(queue, run.id);
+      requeued += 1;
+    } catch {
+      failed.push(run.id);
+    }
+  }
+  return { requeued, failed };
 }

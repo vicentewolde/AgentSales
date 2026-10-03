@@ -125,7 +125,7 @@ describe("requestContentRun", () => {
     });
   });
 
-  it("con una corrida activa la devuelve (con su texts) y, si sigue en cola, la vuelve a encolar", async () => {
+  it("con una corrida activa la devuelve (con su texts) y la vuelve a encolar, en cola o corriendo", async () => {
     const t = await setup();
     const first = await requestContentRun(t.deps, { listingId: t.listingId, texts: false });
 
@@ -133,11 +133,18 @@ describe("requestContentRun", () => {
     expect(again).toEqual({ run: first.run, reused: true });
     expect(t.queue.jobs).toHaveLength(2);
 
+    // En `running` también: si su último intento se cortó al apagar, ya no tiene job. La cola
+    // `exclusive` no duplica uno que siga en cola, en reintento o activo.
     await t.repos.contentRuns.markRunning(first.run.id);
     const running = await requestContentRun(t.deps, { listingId: t.listingId });
     expect(running.reused).toBe(true);
     expect(running.run.status).toBe("running");
-    expect(t.queue.jobs).toHaveLength(2);
+    expect(t.queue.jobs).toHaveLength(3);
+    expect(t.queue.jobs.at(-1)).toEqual({
+      name: "content.prepare",
+      data: { contentRunId: first.run.id },
+      options: { singletonKey: first.run.id },
+    });
   });
 
   it("si otra petición gana la carrera (CONTENT_RUN_CONFLICT), devuelve la activa", async () => {

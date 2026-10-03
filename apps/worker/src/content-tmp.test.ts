@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import {
   CONTENT_TMP_MAX_AGE_MS,
   cleanContentTmp,
@@ -11,7 +11,11 @@ import {
   createAttemptDir,
 } from "./content-tmp.js";
 
-const newRoot = () => mkdtemp(join(tmpdir(), "agentsales-content-tmp-"));
+async function newRoot() {
+  const root = await mkdtemp(join(tmpdir(), "agentsales-content-tmp-"));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  return root;
+}
 
 /** Un directorio de corrida con un archivo, con fecha de hace `ageMs`. */
 async function runDir(root: string, ageMs: number, name: string = randomUUID()) {

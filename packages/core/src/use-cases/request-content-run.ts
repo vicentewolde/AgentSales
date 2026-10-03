@@ -42,8 +42,9 @@ export const enqueueContentRun = (queue: JobQueue, contentRunId: string) =>
  * Pide una corrida de contenido (spec F2 §4.4):
  * - el aviso debe estar en `ready`, `paused` o `active` y tener al menos una foto
  *   (`LISTING_NOT_READY`, 409);
- * - si ya hay una corrida activa, la devuelve (`reused`); si está en `queued`, la **vuelve a
- *   encolar** (idempotente con `singletonKey`), así una corrida cuyo job se perdió no bloquea el aviso;
+ * - si ya hay una corrida activa, la devuelve (`reused`) y la **vuelve a encolar** (idempotente con
+ *   `singletonKey`), así una corrida cuyo job se perdió (en cola, o en `running` tras un corte en el
+ *   último intento) no bloquea el aviso;
  * - con `texts`, un texto vigente editado a mano da `CONTENT_EDITED` (409) salvo `replaceEdits`;
  * - si no, crea la corrida en `queued` y encola. Si otra petición ganó la carrera
  *   (`CONTENT_RUN_CONFLICT`), devuelve la activa;
@@ -116,11 +117,15 @@ export async function requestContentRun(
   return { run, reused: false };
 }
 
-/** Devuelve la corrida activa; si sigue en cola, la vuelve a encolar por si su job se perdió. */
+/**
+ * Devuelve la corrida activa y la vuelve a encolar por si su job se perdió: una en cola cuyo job no
+ * existe, o una en `running` cuyo último intento se cortó al apagar el worker (spec F2 §4.4). Con
+ * `singletonKey` en la cola `exclusive`, no duplica un job que siga en cola, en reintento o activo.
+ */
 async function reuse(
   deps: RequestContentRunDeps,
   run: ContentRun,
 ): Promise<RequestContentRunResult> {
-  if (run.status === "queued") await enqueueContentRun(deps.queue, run.id);
+  await enqueueContentRun(deps.queue, run.id);
   return { run, reused: true };
 }
