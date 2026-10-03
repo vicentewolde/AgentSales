@@ -142,8 +142,8 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | content_run_id | uuid FK | Corrida que lo generó (ADR-0012). `NOT NULL` desde la migración `0004`, que falla a propósito si la tabla ya tenía filas |
 | platform | enum `platform` | |
 | title | text null | Portal y Marketplace |
-| body | text | Caption o descripción |
-| hashtags | text[] | |
+| body | text | Caption (sin los hashtags) o descripción |
+| hashtags | text[] | Solo Instagram: el caption que se publica es `body`, una línea en blanco y los hashtags (`instagramCaption`, core) |
 | status | enum `content_status` | `draft`, `edited`, `approved` |
 | llm_provider, llm_model, prompt_version | text | Trazabilidad |
 | raw_output | jsonb | Salida validada de la IA; si falta, `null` de JSON (no NULL de SQL) |

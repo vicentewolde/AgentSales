@@ -29,7 +29,7 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 ## Instagram — caption
 
 ```
-{{emoji_tipo}} {{Tipo}} en {{Operación}} · {{Comuna}}
+{{emoji_tipo}} {{Tipo}} en {{operación}} · {{Comuna}}
 {{Gancho: 1 línea basada en un destacado concreto}}
 
 📐 {{sup_util}} m² útiles · 🛏 {{dorm}} dorm · 🛁 {{baños}} baños{{ · 🚗 est si > 0}}
@@ -42,7 +42,23 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 {{5 a 12 hashtags: #{{comuna}} #{{tipo}}{{operación}} … + fixed_hashtags}}
 ```
 
-- Máximo 2.200 caracteres. Sin markdown (Instagram no lo interpreta).
+- Máximo 2.200 caracteres, contando los hashtags. Si se pasa, se recorta el texto de la IA (en una palabra, con `…`) y, si no alcanza, se quita ese párrafo. Sin markdown (Instagram no lo interpreta).
+- Lo arma `assembleContents` (core, F2-T05). Ejemplo con datos inventados:
+  ```
+  🏢 Departamento en venta · Ñuñoa
+  Terraza con vista despejada para tus mañanas
+
+  📐 72,5 m² útiles · 🛏 3 dorm · 🛁 2 baños · 🚗 1 est
+  💰 UF 5.800 | GC aprox. $120.000
+
+  Cocina remodelada y espacios bien distribuidos.
+
+  📩 Escríbeme por DM o al WhatsApp +56 9 1111 2222
+  ```
+- **Emoji del tipo:** 🏢 departamento, 🏡 casa, 💼 oficina, 🏪 local comercial, 🌳 terreno o parcela, 📦 bodega, 🚗 estacionamiento y 🏠 para el resto.
+- **Línea de datos:** solo los que existen; dormitorios, baños y estacionamientos solo si son más de 0, con singular (`1 baño`). Sin ninguno, la línea no va. El precio va siempre, y `| GC aprox.` solo si hay gastos comunes.
+- **Contacto:** sin WhatsApp del corredor, `📩 Escríbeme por DM`.
+- **Hashtags:** en `contents.hashtags`, aparte del cuerpo; el caption que se publica es el cuerpo, una línea en blanco y los hashtags separados por espacios (`instagramCaption`). Van primero `#{comuna}` y `#{tipo}{operación}`, después los fijos del corredor y al final los de la IA, normalizados (minúsculas, sin tildes, espacios ni signos: `Ñuñoa` → `#nunoa`) y sin repetir. Un hashtag de más de 50 caracteres se descarta. Si quedan menos de 5, se completan con `#{tipo}`, `#{operación}`, `#propiedades`, `#bienesraices`, `#inmobiliaria` y `#chile`; si son más de 12, salen primero los de la IA.
 
 ## Instagram — reel (si hay video)
 
@@ -54,7 +70,7 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 
 ## Portal Inmobiliario
 
-- **Título:** lo arma el código con operación, tipo, dormitorios y comuna, sin abreviaturas ni adjetivos y de hasta 60 caracteres (lo que recomendaría Mercado Libre para inmuebles; por confirmar en F4, `docs/integraciones/mercadolibre.md`). Formato: `{{Tipo}} en {{venta|arriendo}} {{dorm}} dormitorios {{baños}} baños en {{Comuna}}`, con singular y plural, y sin dormitorios si son 0. Ejemplo: `Departamento en venta 3 dormitorios 2 baños en Ñuñoa`. Si se pasa, se quitan primero los baños y después los dormitorios.
+- **Título:** lo arma el código con operación, tipo, dormitorios y comuna, sin abreviaturas ni adjetivos y de hasta 60 caracteres (lo que recomendaría Mercado Libre para inmuebles; por confirmar en F4, `docs/integraciones/mercadolibre.md`). Formato: `{{Tipo}} en {{venta|arriendo}} {{dorm}} dormitorios {{baños}} baños en {{Comuna}}`, con singular y plural, y sin dormitorios ni baños si son 0. Ejemplo: `Departamento en venta 3 dormitorios 2 baños en Ñuñoa`. Si se pasa, se quitan primero los baños y después los dormitorios; si aún no cabe, se recorta en una palabra (`listingTitle`, core).
 - **Descripción:** texto plano, formal y sin emojis. Estructura:
   1. Párrafo de presentación (2–3 líneas).
   2. **Características:** lista con guiones.
@@ -62,19 +78,38 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
   4. **Ubicación y conectividad.**
   5. **Condiciones:** disponibilidad y requisitos no discriminatorios.
   6. Cierre sin teléfono ni email: las reglas de Mercado Libre sobre datos de contacto en la descripción se verifican en F4.
+
+  Como lo arma `assembleContents` (F2-T05): la presentación de la IA; `Características:` con un guion por campo con valor, en el orden de las definiciones (`- Superficie útil: 72,5 m²`, `- Gastos comunes: $120.000`, `- Amoblado: No`); `Espacios comunes:` con los `amenities`; `Ubicación y conectividad:` con el texto de la IA; `Condiciones:` con `Disponibilidad: …` y el texto de la IA (los requisitos ya filtrados), y el cierre `Si te interesa, coordina una visita a través de Portal Inmobiliario.` Una sección sin datos no va. Al final se quitan los emojis de todo el texto, también los que vengan de la planilla o de la IA (`stripEmoji`).
 - **Fotos:** proporción 4:3 (1600×1200), sin texto sobrepuesto (los portales suelen penalizarlo). Mercado Libre recomendaría 1200 px y aceptaría hasta 1920 (por confirmar en F4); una foto más chica deja una advertencia. La portada va primero.
 - **Atributos:** se mapean a los atributos de la categoría ML; los faltantes obligatorios bloquean la publicación (validación antes de enviar).
 
 ## Facebook Marketplace
 
-- **Título:** corto y descriptivo, como en Portal.
-- **Descripción:** intermedia; admite pocos emojis. Termina con WhatsApp.
+- **Título:** el mismo de Portal (`listingTitle`).
+- **Descripción:** intermedia; admite pocos emojis. Termina con WhatsApp. Como la arma `assembleContents` (F2-T05):
+  ```
+  {{Introducción de la IA}}
+
+  🏠 {{Tipo}} en {{operación}} · {{Comuna}} · {{sector_referencia}} · {{dirección si show_exact_address}}
+  3 dormitorios · 2 baños · 72,5 m² útiles · 1 estacionamiento
+  💰 {{precio}} · GC aprox. $X
+  Disponibilidad: {{disponibilidad}}
+
+  📲 Escríbeme al WhatsApp {{whatsapp}}
+  ```
+  Solo con los datos que existen. Sin WhatsApp: `📲 Escríbeme por Marketplace para coordinar una visita.`
 - **Fotos:** las mismas de Portal (sin texto sobrepuesto).
 - **Campos del formulario:** tipo, operación, precio, dormitorios, baños, m² y dirección aproximada según `show_exact_address`.
 
 ## Salida estructurada de la IA
 
-Los textos son **híbridos** (ADR-0013): el código pone los datos y la IA redacta las frases. La IA recibe un brief sin `internal_notes`, sin links ni contacto, y sin dirección si `show_exact_address = false`, y devuelve JSON validado con zod (`contentDraftSchema`, en `packages/core/src/content/`):
+Los textos son **híbridos** (ADR-0013): el código pone los datos y la IA redacta las frases. La IA recibe un brief sin `internal_notes`, sin links ni contacto, y sin dirección si `show_exact_address = false`, y devuelve JSON validado con zod (`contentDraftSchema`, en `packages/core/src/content/`).
+
+**El brief** (`buildContentBrief`): operación, tipo, región, comuna, `sector_referencia`, precio y gastos comunes con formato, las características (los campos definidos y con valor del corredor, sin los `url` y sin `publicar_en`; los `_clp` con `$` y los `_m2` con `m²`), `destacados`, `disponibilidad`, `amenities`, `requisitos_arriendo` (solo en arriendo) y la marca, el tono y los hashtags fijos del corredor. Nunca `internal_notes`, `_extra`, campos sin definición, links ni el contacto del corredor; la dirección y el número de unidad, solo con `show_exact_address = true`. Un campo que el corredor desactivó no llega.
+
+**El prompt** (`listing-content-v1`, `CONTENT_PROMPT_VERSION`): estas reglas van en el prompt de sistema, y los datos del aviso como JSON dentro de un bloque `<datos_del_aviso>`, con la instrucción de tratarlos solo como datos. Dentro del bloque, `<`, `>` y `&` van escapados (`\u003c`…), así un texto de la planilla no puede cerrarlo. El prompt pide además no escribir teléfonos, emails ni links, y evitar los números (los pone el código).
+
+Lo que devuelve la IA (con topes de largo en el esquema estricto: gancho 150, cuerpo 1.000, presentación 700, ubicación 600, condiciones 500, introducción 400, hasta 10 hashtags de 40 y 10 advertencias; el JSON Schema que recibe el proveedor no los lleva, porque la CLI no los aplica):
 
 ```json
 {
