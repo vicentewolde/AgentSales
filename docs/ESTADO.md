@@ -32,7 +32,7 @@
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- [ ] Iniciar el trámite de la app de Meta (lento, en paralelo; se usa en F3)
+- [x] Trámite de la app de Meta (para F3): cuenta profesional, app `AgentSales-IG`, tester aceptado (2026-10-02) y `META_APP_ID` y `META_APP_SECRET` en `.env` (2026-10-03). En F3 se confirma que son el par de Instagram que usa el sistema. La verificación del negocio y el App Review quedan para F7
 - [ ] Antes de F2-T04: la CLI de Claude con sesión iniciada (`claude auth status`). La demo de T04 hace unas pocas llamadas cortas con datos inventados, del plan del operador.
 - [ ] Antes de F2-T09: Chromium de Playwright (`pnpm --filter @agentsales/media exec playwright install chromium`; lo indica la tarea)
 
