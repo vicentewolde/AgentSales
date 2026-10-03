@@ -8,6 +8,16 @@ export {
   parseBrokerSheet,
   slugify,
 } from "./broker.js";
+export {
+  type Content,
+  type ContentRun,
+  type ContentRunError,
+  type ContentRunReport,
+  contentRunErrorSchema,
+  contentRunReportSchema,
+  contentRunSchema,
+  contentSchema,
+} from "./content.js";
 export * from "./enums.js";
 export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
 export { type FieldDefinition, fieldDefinitionSchema } from "./field-definition.js";
@@ -77,6 +87,13 @@ export {
 } from "./listing-validator/index.js";
 export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
+export type {
+  ContentChanges,
+  ContentRepository,
+  ContentRunRepository,
+  NewContent,
+  NewContentRun,
+} from "./ports/content-repository.js";
 export type {
   FieldDefinitionQuery,
   FieldDefinitionRepository,

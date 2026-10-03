@@ -29,6 +29,13 @@
       "when": 1791034395579,
       "tag": "0003_f2_rangos_campos",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791036875945,
+      "tag": "0004_f2_contenido",
+      "breakpoints": true
     }
   ]
 }

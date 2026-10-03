@@ -5,7 +5,7 @@ import { z } from "zod";
  * fuente para los nombres y los datos. Los datos llevan solo ids, nunca secretos ni estado; el
  * handler recarga el estado desde la base. Los demás jobs de ADR-0005 se agregan en su fase.
  */
-export const JOB_NAMES = ["system.ping", "import.run"] as const;
+export const JOB_NAMES = ["system.ping", "import.run", "content.prepare"] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 /** Tope del trabajo simulado de `system.ping`: solo sirve para probar el apagado del worker. */
@@ -19,6 +19,8 @@ export const JOB_PAYLOADS = {
   }),
   /** Una carga de propiedades (spec F1 §4.6): el run guarda la entrada; el job lleva su id. */
   "import.run": z.object({ importRunId: z.uuid() }),
+  /** Una corrida de contenido (spec F2 §4.4): la corrida guarda lo pedido; el job lleva su id. */
+  "content.prepare": z.object({ contentRunId: z.uuid() }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;

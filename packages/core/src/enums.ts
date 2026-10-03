@@ -80,6 +80,26 @@ export const TERMINAL_IMPORT_RUN_STATUSES = [
 export const isTerminalImportRun = (status: ImportRunStatus): boolean =>
   (TERMINAL_IMPORT_RUN_STATUSES as readonly ImportRunStatus[]).includes(status);
 
+/**
+ * Estado de una corrida de contenido (`content_runs`, job `content.prepare`; ADR-0012). Mismos
+ * valores que las cargas, en su propio enum de Postgres. `succeeded` y `failed` son terminales.
+ */
+export const CONTENT_RUN_STATUSES = ["queued", "running", "succeeded", "failed"] as const;
+export type ContentRunStatus = (typeof CONTENT_RUN_STATUSES)[number];
+
+/** Corridas en curso: una sola por aviso (único parcial de `content_runs`). */
+export const ACTIVE_CONTENT_RUN_STATUSES = [
+  "queued",
+  "running",
+] as const satisfies readonly ContentRunStatus[];
+
+export const isTerminalContentRun = (status: ContentRunStatus): boolean =>
+  !(ACTIVE_CONTENT_RUN_STATUSES as readonly ContentRunStatus[]).includes(status);
+
+/** Etapas de una corrida de contenido, en orden (spec F2 §4.4): para mostrar el avance. */
+export const CONTENT_RUN_STAGES = ["media", "renders", "reel", "texts"] as const;
+export type ContentRunStage = (typeof CONTENT_RUN_STAGES)[number];
+
 /** Categoría de un aviso (ADR-0006). `product` llega después del MVP. */
 export const LISTING_CATEGORIES = ["real_estate"] as const;
 export type ListingCategory = (typeof LISTING_CATEGORIES)[number];

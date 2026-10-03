@@ -4,15 +4,15 @@
 
 **Actualizado:** 2026-10-03
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
-**Última tarea terminada:** F2-T01 · Mínimos y máximos en campos numéricos
-**Siguiente paso:** `/tarea F2-T02` (datos de contenido: corridas y contenidos). Orden: T02 → T03 (migraciones en cadena); T04 en cualquier momento.
+**Última tarea terminada:** F2-T02 · Datos de contenido: corridas y contenidos
+**Siguiente paso:** `/tarea F2-T03` (medios derivados en la base y `getStream`; su migración va después de la de T02). T04 se puede hacer en cualquier momento.
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F2 (`/fase-plan 2`) | ✅ | #31 |
 | F2-T01 · Mínimos y máximos en campos numéricos | ✅ | #33 |
-| F2-T02 · Datos de contenido: corridas y contenidos | ⏳ pendiente | |
+| F2-T02 · Datos de contenido: corridas y contenidos | ✅ | |
 | F2-T03 · Medios derivados en la base y `getStream` | ⏳ pendiente | |
 | F2-T04 · Proveedor de IA (`packages/llm`) | ⏳ pendiente | |
 | F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado | ⏳ pendiente | |
@@ -74,6 +74,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-03: **F2-T02.** Tabla `content_runs` y `contents.content_run_id` (migración `0004`, aplicada en Neon), con una sola corrida activa por aviso y un texto por canal y corrida. Entidades `contentRun` y `content`, puertos `ContentRunRepository` y `ContentRepository` (Drizzle y un doble en memoria con la misma suite de contrato) y el job `content.prepare` en el contrato de core. El criterio de T02 decía que `failAbandoned` cerraba las `queued` viejas: quedó como §4.4 (solo `running`; las `queued` se reencolan con `listQueued`).
 - 2026-10-03: **F2-T01.** `field_definitions.min_value` y `max_value` (migración `0003`, aplicada en Neon) y rangos en el seed (`dormitorios` y `banos` de 0 a 50, superficies de 1 a 1.000.000, `piso` de -10 a 200, año de 1800 a 2100, gastos y contribuciones desde 0). Fuera de rango es `FIELD_NUMBER_INVALID` con el rango en el motivo ("debe estar entre 0 y 50"); un rango en un campo que no es `number`, o con el mínimo mayor que el máximo, es `FIELD_CONFIG_INVALID`. Demo en `--dry-run` con una copia de Sheets (P001 con `dormitorios = -2`): falla esa fila y las demás quedan sin cambios; la planilla quedó como estaba.
 - 2026-10-02: **`/fase-plan 2`.** Spec de F2 aprobado (17 tareas), ADR-0012 y ADR-0013 aceptados, y seguimientos en ADR-0003 y ADR-0005. Notas de integración nuevas en `docs/integraciones/` (CLI de Claude, API de Anthropic, HEIC, Instagram y Mercado Libre), con verificaciones locales: la CLI 2.1.243 tiene `--safe-mode`, `--tools` y `claude auth`, y ffmpeg 9.0.1 convierte un HEIC en mosaicos completo. Revisado por el subagente `arquitecto` (6 bloqueantes corregidos en el spec).
 - **Pendientes de verificar en sus tareas:** el sobre real de `claude -p` con `--json-schema` y `--tools ""`, y si existe `--max-turns` (no sale en la ayuda de la 2.1.243) (prueba de humo en T04), la orientación y el color de un HEIC de iPhone (T07), y el largo del título y las reglas de contacto de Mercado Libre (F4: la doc dio 403).

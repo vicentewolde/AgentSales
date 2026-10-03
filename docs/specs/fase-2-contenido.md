@@ -315,10 +315,11 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T02 · Datos de contenido: corridas y contenidos
 - **Depende de:** T01 (orden de las migraciones)
-- **Descripción:** migración de contenido (§4.3, ADR-0012); entidades `contentRun` y `content` con `CONTENT_RUN_STATUSES`; puertos `ContentRunRepository` (`create`, `get`, `findActive`, `latest`, `markRunning`, `setStage`, `markSucceeded` condicional junto con las filas de `contents`, `markFailed`, `failAbandoned`) y `ContentRepository` (`listCurrent(listingId)`, `get`, `update`), con dobles en memoria e implementaciones Drizzle; `content.prepare` en `JOB_NAMES` y `JOB_PAYLOADS`.
+- **Descripción:** migración de contenido (§4.3, ADR-0012); entidades `contentRun` y `content` con `CONTENT_RUN_STATUSES`; puertos `ContentRunRepository` (`create`, `get`, `findActive`, `latest`, `listQueued`, `markRunning`, `setStage`, `markSucceeded` condicional junto con las filas de `contents`, `markFailed`, `failAbandoned`) y `ContentRepository` (`listCurrent(listingId)`, `get`, `update`), con dobles en memoria e implementaciones Drizzle; `content.prepare` en `JOB_NAMES` y `JOB_PAYLOADS`.
 - **Hecho cuando:**
-  - [ ] Tests con PGlite y en memoria con los mismos fixtures: una sola corrida activa por aviso (el segundo `create` es `CONTENT_RUN_CONFLICT`), contenido vigente = el más reciente por canal, `markSucceeded` guarda filas y estado juntos (rollback probado) y no cambia una corrida que no está en `running`, y `failAbandoned` con `running` y `queued` viejas
-  - [ ] `pnpm db:generate` sin cambios después de commitear la migración
+  - [x] Tests con PGlite y en memoria con los mismos fixtures: una sola corrida activa por aviso (el segundo `create` es `CONTENT_RUN_CONFLICT`), contenido vigente = el más reciente por canal, `markSucceeded` guarda filas y estado juntos (rollback probado) y no cambia una corrida que no está en `running`, `failAbandoned` cierra las `running` viejas y no toca las `queued`, y `listQueued` las devuelve para reencolarlas (§4.4)
+  - [x] `pnpm db:generate` sin cambios después de commitear la migración
+- **Hecho en:** migración `0004_f2_contenido` (aplicada en Neon). El criterio decía que `failAbandoned` cerraba también las `queued` viejas: quedó como en §4.4 desde la revisión del PR #31 (las `queued` se reencolan con `listQueued`). `contentRunReportSchema` tiene una sección opcional por etapa; T10 la completa si hace falta. `ContentRepository.update` fija `updated_at` con la hora de la base también sin otros cambios. El doble en memoria es uno solo para las dos tablas (`createInMemoryContentRepositories`), porque `markSucceeded` escribe en ambas.
 
 ### F2-T03 · Medios derivados en la base y `getStream`
 - **Depende de:** T02 (orden de las migraciones)

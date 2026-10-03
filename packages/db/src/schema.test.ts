@@ -1,7 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  ACTIVE_CONTENT_RUN_STATUSES,
   CLOSE_REASONS,
+  CONTENT_RUN_STATUSES,
   CONTENT_STATUSES,
   CURRENCIES,
   FIELD_TYPES,
@@ -34,10 +36,12 @@ const EXPECTED_ENUMS: Record<string, readonly string[]> = {
   content_status: CONTENT_STATUSES,
   publication_status: PUBLICATION_STATUSES,
   import_run_status: IMPORT_RUN_STATUSES,
+  content_run_status: CONTENT_RUN_STATUSES,
 };
 
 const EXPECTED_TABLES = [
   "brokers",
+  "content_runs",
   "contents",
   "field_definitions",
   "import_runs",
@@ -79,7 +83,7 @@ describe("migraciones", () => {
     expect(sqlEnums(sql)).toEqual(EXPECTED_ENUMS);
   });
 
-  it("crean las 9 tablas del modelo de datos", () => {
+  it("crean las 10 tablas del modelo de datos", () => {
     const tables = [...sql.matchAll(/CREATE TABLE "(\w+)"/g)].map((match) => match[1]).sort();
 
     expect(tables).toEqual(EXPECTED_TABLES);
@@ -104,5 +108,15 @@ describe("migraciones", () => {
       `CREATE UNIQUE INDEX "media_original_listing_checksum_unique" ON "media" USING btree ("listing_id","checksum") WHERE "role" = 'original';`,
     );
     expect(sql).toContain(`UNIQUE("storage_path")`);
+  });
+
+  it("tienen los únicos de contenido de F2: una corrida activa por aviso y un texto por canal (0004)", () => {
+    const active = ACTIVE_CONTENT_RUN_STATUSES.map((status) => `'${status}'`).join(", ");
+    expect(sql).toContain(
+      `CREATE UNIQUE INDEX "content_runs_one_active_per_listing" ON "content_runs" USING btree ("listing_id") WHERE "status" IN (${active});`,
+    );
+    expect(sql).toContain(
+      `ALTER TABLE "contents" ADD CONSTRAINT "contents_run_platform_unique" UNIQUE("content_run_id","platform");`,
+    );
   });
 });
