@@ -1,11 +1,14 @@
 import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isAppError } from "@agentsales/core";
 import sharp from "sharp";
 
 // libvips usa por defecto un hilo por núcleo: con los demás archivos de tests corriendo en
 // paralelo, eso atrasaba tests ajenos hasta su tope de 5 s. En los tests basta con dos.
 sharp.concurrency(2);
+/** Lo mismo para ffmpeg al armar reels (opción `threads` del procesador). */
+export const TEST_THREADS = 2;
 
 /** ffmpeg y ffprobe de verdad (la CI instala 8.1 o más nuevo; spec F2, D6). */
 export const FFMPEG = process.env.FFMPEG_PATH ?? "ffmpeg";
@@ -80,4 +83,38 @@ setTimeout(() => {}, 60000);
   );
   await chmod(path, 0o755);
   return { path, dir };
+}
+
+/** El `AppError` con que falla una promesa. */
+export async function errorOf(promise: Promise<unknown>) {
+  const error = await promise.then(
+    () => undefined,
+    (caught: unknown) => caught,
+  );
+  if (!isAppError(error)) throw new Error(`se esperaba un AppError: ${String(error)}`);
+  return error;
+}
+
+export const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Reintenta hasta que `read` devuelva algo (o 5 s). */
+export async function waitFor<T>(read: () => Promise<T | undefined>): Promise<T> {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    try {
+      const value = await read();
+      if (value !== undefined) return value;
+    } catch {
+      // todavía no está
+    }
+    if (Date.now() > deadline) throw new Error("waitFor: se acabó el tiempo");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
 }

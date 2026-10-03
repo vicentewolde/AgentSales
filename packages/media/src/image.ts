@@ -28,16 +28,14 @@ export type ImageToolOptions = {
   ensureFfmpeg: (signal?: AbortSignalLike) => Promise<void>;
 };
 
-const decodeFailed = (cause?: unknown) =>
+export const decodeFailed = (cause?: unknown) =>
   new AppError(
     "MEDIA_DECODE_FAILED",
-    "No se pudo leer la foto (formato no válido o archivo dañado)",
-    {
-      cause,
-    },
+    "No se pudo leer el archivo (formato no válido o archivo dañado)",
+    { cause },
   );
 
-const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+export const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
 /**
  * Un HEIC a JPEG con ffmpeg: arma los mosaicos y aplica el giro guardado (`irot`). Calidad alta
@@ -96,36 +94,36 @@ export async function processImage(
   const outputs: ImageOutput[] = [];
   for (const variant of variants) {
     throwIfAborted(signal);
-    const spec = IMAGE_VARIANT_SPECS[variant];
-    // JPEG no tiene transparencia: una PNG o WebP con alfa se aplana sobre blanco (no negro).
-    const pipeline = sharp(source)
-      .rotate()
-      .flatten({ background: "#ffffff" })
-      .toColourspace("srgb");
-    const resized =
-      spec.fit === "inside"
-        ? pipeline.resize(spec.maxSide, spec.maxSide, { fit: "inside", withoutEnlargement: true })
-        : pipeline.resize(spec.width, spec.height, { fit: "cover", position: "centre" });
-    let result: { data: Buffer; info: OutputInfo };
-    try {
-      result = await resized.jpeg({ quality: spec.quality }).toBuffer({ resolveWithObject: true });
-    } catch (error) {
-      throw decodeFailed(error);
-    }
-    const bytes = new Uint8Array(
-      result.data.buffer,
-      result.data.byteOffset,
-      result.data.byteLength,
-    );
-    outputs.push({
-      variant,
-      bytes,
-      width: result.info.width,
-      height: result.info.height,
-      mime: "image/jpeg",
-      sha256: sha256(bytes),
-    });
+    outputs.push(await renderVariant(source, variant));
   }
 
   return { measurements: { width, height, durationS: null }, outputs };
+}
+
+/**
+ * Una variante JPEG de una imagen que sharp puede leer (también un cuadro de un video): rotada
+ * según su EXIF, sobre blanco si tiene transparencia (JPEG no la tiene), en sRGB y sin metadatos.
+ */
+export async function renderVariant(source: Buffer, variant: ImageVariant): Promise<ImageOutput> {
+  const spec = IMAGE_VARIANT_SPECS[variant];
+  const pipeline = sharp(source).rotate().flatten({ background: "#ffffff" }).toColourspace("srgb");
+  const resized =
+    spec.fit === "inside"
+      ? pipeline.resize(spec.maxSide, spec.maxSide, { fit: "inside", withoutEnlargement: true })
+      : pipeline.resize(spec.width, spec.height, { fit: "cover", position: "centre" });
+  let result: { data: Buffer; info: OutputInfo };
+  try {
+    result = await resized.jpeg({ quality: spec.quality }).toBuffer({ resolveWithObject: true });
+  } catch (error) {
+    throw decodeFailed(error);
+  }
+  const bytes = new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength);
+  return {
+    variant,
+    bytes,
+    width: result.info.width,
+    height: result.info.height,
+    mime: "image/jpeg",
+    sha256: sha256(bytes),
+  };
 }

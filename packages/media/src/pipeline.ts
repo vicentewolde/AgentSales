@@ -22,3 +22,25 @@ export const IMAGE_VARIANT_SPECS: Readonly<Record<ImageVariant, ImageVariantSpec
   // Portal Inmobiliario y Marketplace: 4:3 (Mercado Libre aceptaría hasta 1920; por confirmar en F4).
   pi_4x3: { fit: "cover", width: 1600, height: 1200, quality: 88 },
 };
+
+/**
+ * El reel de Instagram (spec F2 §4.2, D5): 1080×1920 a 30 fps, H.264 4:2:0 con GOP cerrado de 2 s y
+ * AAC estéreo, `moov` al inicio y sin edit lists. Bajo 25 Mbps (Meta) y bajo 300 MB en 90 s (tope
+ * de 20 Mbps). Un video que no es vertical va al centro sobre su propia imagen desenfocada; el
+ * desenfoque se hace en chico (270×480) y se amplía: mismo efecto, cuatro veces menos trabajo.
+ */
+export const REEL_SPEC = {
+  width: 1080,
+  height: 1920,
+  fps: 30,
+  /** Meta acepta de 3 s a 15 min; el tope de 90 s es nuestro. */
+  minDurationS: 3,
+  maxDurationS: 90,
+  /** El texto del reel (PNG transparente de 1080×1920) va encima los primeros segundos. */
+  overlayS: 2,
+  blur: { width: 270, height: 480, radius: 8 },
+  x264: { preset: "veryfast", crf: 23, maxrate: "20M", bufsize: "40M", gop: 60 },
+  audio: { bitrate: "128k", sampleRate: 48000 },
+  /** Segundo del video del que sale su `thumb` (o la mitad, si dura menos de 2 s). */
+  thumbAtS: 1,
+} as const;
