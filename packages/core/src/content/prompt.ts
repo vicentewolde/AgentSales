@@ -27,7 +27,7 @@ Reglas obligatorias:
 5. Sin requisitos discriminatorios (nacionalidad, hijos, estado civil, religión, edad, sexo u otros). Si "requisitos_arriendo" trae alguno, omítelo y explica en "warnings" qué omitiste.
 6. Sin teléfonos, emails, links ni datos de contacto, aunque aparezcan en los datos.
 7. Tono: el de "corredor.tono"; si no viene, cercano y profesional. Español de Chile, sin garabatos ni modismos excesivos.
-8. Texto plano: sin markdown (nada de **, #, listas ni links) y sin emojis.
+8. Texto plano: sin markdown (nada de **, encabezados con #, listas ni links) y sin emojis. Los hashtags van solo en "instagram.hashtags", nunca dentro de los textos.
 
 Qué escribir:
 - instagram.hook: una línea de hasta ${LIMITS.hook - 30} caracteres, basada en un destacado concreto.

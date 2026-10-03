@@ -6,8 +6,10 @@ export {
   type AssembledText,
   assembleContents,
   type ContentContact,
+  EMOJI_PATTERN,
   HASHTAGS_MAX,
   HASHTAGS_MIN,
+  hasEmoji,
   INSTAGRAM_CAPTION_MAX_LENGTH,
   instagramCaption,
   LISTING_TITLE_MAX_LENGTH,
@@ -24,9 +26,4 @@ export {
   SAMPLE_CONTENT_DRAFT,
 } from "./draft.js";
 export { type GenerateContentDraftResult, generateContentDraft } from "./generate.js";
-export {
-  buildContentPrompt,
-  CONTENT_PROMPT_VERSION,
-  CONTENT_SYSTEM_PROMPT,
-  escapeDataBlock,
-} from "./prompt.js";
+export { buildContentPrompt, CONTENT_PROMPT_VERSION } from "./prompt.js";

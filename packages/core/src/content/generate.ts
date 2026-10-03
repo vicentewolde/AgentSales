@@ -15,16 +15,36 @@ export type GenerateContentDraftResult = {
   model: string;
   /** 1 o 2. */
   attempts: number;
+  /** Largo del prompt del intento válido, para los logs (spec F2 §4.5); nunca el prompt. */
+  promptChars: number;
 };
 
+/** Texto fijo por tipo de problema: nunca el mensaje de zod, que puede citar lo que respondió la IA. */
+function describeIssue(issue: z.core.$ZodIssue): string {
+  switch (issue.code) {
+    case "invalid_type":
+      return `tipo incorrecto (se esperaba ${issue.expected})`;
+    case "too_big":
+      return `demasiado largo (máximo ${String(issue.maximum)})`;
+    case "too_small":
+      return `demasiado corto o vacío (mínimo ${String(issue.minimum)})`;
+    case "unrecognized_keys":
+      return "tiene claves que no están en el formato pedido";
+    default:
+      return "valor no válido";
+  }
+}
+
 /**
- * Los motivos de una validación fallida, como `instagram.hook: Too big…`: la ruta y el mensaje de
- * zod, sin los valores (traen datos del aviso).
+ * Los motivos de una validación fallida, como `instagram.hook: demasiado largo (máximo 150)`: la
+ * ruta (claves del esquema e índices) y un texto fijo, sin valores ni claves que haya inventado la
+ * IA (podrían repetir datos del aviso o una instrucción, y van al prompt de reintento sin escape).
  */
 function describeIssues(error: z.ZodError): string[] {
-  return error.issues.map((issue) =>
-    issue.path.length === 0 ? issue.message : `${issue.path.join(".")}: ${issue.message}`,
-  );
+  return error.issues.map((issue) => {
+    const path = issue.path.map(String).join(".");
+    return path === "" ? describeIssue(issue) : `${path}: ${describeIssue(issue)}`;
+  });
 }
 
 /**
@@ -47,7 +67,14 @@ export async function generateContentDraft(
       ...(params.signal === undefined ? {} : { signal: params.signal }),
     });
     const parsed = contentDraftSchema.safeParse(response.data);
-    if (parsed.success) return { draft: parsed.data, model: response.model, attempts: attempt };
+    if (parsed.success) {
+      return {
+        draft: parsed.data,
+        model: response.model,
+        attempts: attempt,
+        promptChars: system.length + prompt.length,
+      };
+    }
     issues = describeIssues(parsed.error);
   }
   throw new AppError(

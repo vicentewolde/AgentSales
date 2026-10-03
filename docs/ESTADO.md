@@ -15,7 +15,7 @@
 | F2-T02 · Datos de contenido: corridas y contenidos | ✅ | #34 |
 | F2-T03 · Medios derivados en la base y `getStream` | ✅ | #35 |
 | F2-T04 · Proveedor de IA (`packages/llm`) | ✅ (falta la demo con tu sesión: `pnpm llm:smoke`) | #36 |
-| F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado | ✅ | |
+| F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado | ✅ | #37 |
 | F2-T06 · Revisión editorial (`checkContent`) | ⏳ pendiente | |
 | F2-T07 · Procesamiento de imágenes (`packages/media`) | ⏳ pendiente | |
 | F2-T08 · Procesamiento de video (`packages/media`) | ⏳ pendiente | |
@@ -51,6 +51,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - **Hallazgos de las notas de integración:** HEIC con ffmpeg (sharp no lo decodifica; verificado con ffmpeg 9.0.1); la CLI de Claude sin `--bare` (exige API key) y sin `ANTHROPIC_API_KEY` en su entorno (cobraría por API); carrusel de hasta 10; reel de Meta entre 3 s y 15 min (el tope de 90 s es nuestro); título de Portal de hasta 60 caracteres sin abreviaturas (por confirmar en F4).
 
 ## Deuda técnica
+- **F7, campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
 - **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
 - **F7, rangos:** la base no impide un `min_value` mayor que `max_value` ni un rango en un campo que no es `number`; hoy lo detecta el validador (`FIELD_CONFIG_INVALID`). Si el panel permite editar definiciones, sumar `CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)`.
 - **F7:** `GET /listings` devuelve la entidad completa: notas internas, dirección exacta y todos los atributos. Es aceptable mientras la API sea local (`hostGuard`). Con autenticación y despliegue, usar una proyección acotada para la lista.

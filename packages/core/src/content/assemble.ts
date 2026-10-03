@@ -22,16 +22,31 @@ export type AssembledContents = Readonly<Record<Platform, AssembledText>>;
 /** El contacto que el código agrega a los textos: nunca pasa por la IA. */
 export type ContentContact = Pick<Broker, "whatsapp">;
 
-const PROPERTY_EMOJI: Readonly<Record<string, string>> = {
-  departamento: "🏢",
-  casa: "🏡",
-  oficina: "💼",
-  "local comercial": "🏪",
-  terreno: "🌳",
-  parcela: "🌳",
-  bodega: "📦",
-  estacionamiento: "🚗",
-};
+const PROPERTY_EMOJI: ReadonlyMap<string, string> = new Map([
+  ["departamento", "🏢"],
+  ["casa", "🏡"],
+  ["oficina", "💼"],
+  ["local comercial", "🏪"],
+  ["terreno", "🌳"],
+  ["parcela", "🌳"],
+  ["bodega", "📦"],
+  ["estacionamiento", "🚗"],
+]);
+
+/**
+ * Emojis y sus piezas (modificadores de tono, banderas, selector de variante, unión y tecla). `©`,
+ * `®` y `™` son pictográficos para Unicode, pero van en marcas (`Remax®`): se quedan.
+ */
+export const EMOJI_PATTERN =
+  /(?![©®™])\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\u{FE0F}|\u{200D}|\u{20E3}/gu;
+
+/** `true` si el texto tiene algún emoji (`EMOJI_PATTERN`). */
+export function hasEmoji(text: string): boolean {
+  return new RegExp(EMOJI_PATTERN.source, "u").test(text);
+}
+
+/** Palabras que no pueden cerrar un título recortado (`… Oriente de la`). */
+const TRAILING_STOPWORDS = new Set(["de", "del", "la", "las", "el", "los", "en", "y", "a", "con"]);
 
 const plural = (count: number, singular: string, many: string) =>
   `${formatNumber(count)} ${count === 1 ? singular : many}`;
@@ -135,7 +150,7 @@ function assembleInstagram(
   draft: ContentDraft,
   contact: ContentContact,
 ): AssembledText {
-  const emoji = PROPERTY_EMOJI[foldText(brief.propertyType ?? "")] ?? "🏠";
+  const emoji = PROPERTY_EMOJI.get(foldText(brief.propertyType ?? "")) ?? "🏠";
   const hashtags = buildHashtags(brief, draft);
   const contactLine =
     contact.whatsapp === null
@@ -183,7 +198,19 @@ export function listingTitle(brief: ContentBrief): string {
     `${start}${end}`,
   ].map((title) => stripEmoji(title));
   const fits = options.find((title) => title.length <= LISTING_TITLE_MAX_LENGTH);
-  return fits ?? truncateText(options.at(-1) ?? "", LISTING_TITLE_MAX_LENGTH).replace(/…$/, "");
+  return fits ?? cutTitle(options.at(-1) ?? "");
+}
+
+/** Recorta un título a 60 en palabras enteras, sin `…` y sin terminar en `de`, `la`, `en`… */
+function cutTitle(title: string): string {
+  const words = title.split(" ");
+  const kept: string[] = [];
+  for (const word of words) {
+    if ([...kept, word].join(" ").length > LISTING_TITLE_MAX_LENGTH) break;
+    kept.push(word);
+  }
+  while (kept.length > 1 && TRAILING_STOPWORDS.has(foldText(kept.at(-1) ?? ""))) kept.pop();
+  return kept.join(" ");
 }
 
 /**
@@ -192,10 +219,7 @@ export function listingTitle(brief: ContentBrief): string {
  */
 export function stripEmoji(text: string): string {
   return text
-    .replace(
-      /\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\u{FE0F}|\u{200D}|\u{20E3}/gu,
-      "",
-    )
+    .replace(EMOJI_PATTERN, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+([.,;:!?])/g, "$1")
     .replace(/[ \t]+$/gm, "")
@@ -214,7 +238,9 @@ function assemblePortal(brief: ContentBrief, draft: ContentDraft): AssembledText
     return present.length === 0 ? "" : `${heading}\n${present.join("\n")}`;
   };
   const conditionLines = [
-    brief.availability === null ? null : `Disponibilidad: ${brief.availability}.`,
+    brief.availability === null
+      ? null
+      : `Disponibilidad: ${brief.availability.replace(/[.\s]+$/, "")}.`,
     conditions === null ? null : tidy(conditions),
   ];
   const body = [

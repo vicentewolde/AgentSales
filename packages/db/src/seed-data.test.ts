@@ -1,4 +1,5 @@
 import { buildListingValidator, CORE_FIELD_TARGETS, type FieldDefinition } from "@agentsales/core";
+import { contentDefinitionsFixture } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { REAL_ESTATE_FIELD_DEFINITIONS, TEMPLATE_COLUMNS } from "./seed-data.js";
 
@@ -205,5 +206,25 @@ describe("rangos del seed (spec F2 §4.3)", () => {
     for (const key of Object.keys(ranges)) {
       expect(REAL_ESTATE_FIELD_DEFINITIONS.find((def) => def.key === key)?.type).toBe("number");
     }
+  });
+});
+
+describe("contentDefinitionsFixture (core)", () => {
+  it("calza con la semilla: mismas etiquetas, tipos e isCore, y en el mismo orden", () => {
+    const seed = new Map<string, (typeof REAL_ESTATE_FIELD_DEFINITIONS)[number]>(
+      REAL_ESTATE_FIELD_DEFINITIONS.map((def) => [def.key, def]),
+    );
+    const fixture = contentDefinitionsFixture();
+
+    for (const def of fixture) {
+      expect(seed.get(def.key), def.key).toMatchObject({
+        label: def.label,
+        type: def.type,
+        isCore: def.isCore,
+      });
+    }
+    const order: string[] = REAL_ESTATE_FIELD_DEFINITIONS.map((def) => def.key);
+    const positions = fixture.map((def) => order.indexOf(def.key));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 });

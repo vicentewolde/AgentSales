@@ -205,7 +205,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### 4.6 Contenido (ADR-0013)
 - **Brief** (`buildContentBrief(listing, definitions, broker)`, core): lo único que ve la IA.
-  - Operación, tipo, región, comuna, `sector_referencia`, precio y gastos comunes ya formateados (`formatListingPrice`), los atributos efectivos con su etiqueta y valor formateado (`describeAttributes`; el filtro de `fields` que hoy vive en `apps/api/src/routes/listings.ts` pasa a core, deuda de F1), `destacados`, `disponibilidad`, `amenities`, `requisitos_arriendo` (para que la IA los filtre), y tono y marca del corredor.
+  - Operación, tipo, región, comuna, `sector_referencia`, precio y gastos comunes ya formateados (`formatListingPrice`), los atributos efectivos con su etiqueta y valor formateado (`describeAttributes`; el filtro de `fields` que hoy vive en `apps/api/src/routes/listings.ts` pasa a core, deuda de F1), `destacados`, `disponibilidad`, `amenities`, `requisitos_arriendo` (para que la IA los filtre; solo en arriendo), y tono, marca y hashtags fijos del corredor (para que la IA no los repita).
   - **Nunca:** `internal_notes`, `_extra` (columnas desconocidas), links ni contacto. La dirección y el número de unidad solo si `show_exact_address = true`.
 - **Prompt** (`listing-content-v1`): las reglas editoriales de `04-formato-publicaciones.md` en el prompt de sistema, y los datos del aviso como JSON (con sus caracteres escapados) dentro de un bloque delimitado, con la instrucción de tratarlos como datos y nunca como órdenes (el Excel lo escribe un tercero). Un texto del Excel que imite el delimitador no puede cerrar el bloque.
 - **Salida de la IA** (`contentDraftSchema`): solo frases.
@@ -219,9 +219,9 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
   ```
   Con topes de largo por campo (solo en el esquema estricto); `location` y `conditions` admiten `null` (sin datos, se omite). Los títulos no los escribe la IA.
 - **Ensamblado** (`assembleContents(brief, draft, contact)`, core, puro), según `04-formato-publicaciones.md`:
-  - **Instagram:** caption con la línea de tipo, el gancho, la línea de datos (`📐 … m² útiles · 🛏 … dorm · 🛁 … baños · 🚗 … est`, solo los que existen; estacionamientos solo si es mayor que 0), el precio (`💰 UF 5.800 | GC aprox. $120.000`), el texto de la IA, el contacto (WhatsApp del corredor, o solo DM si no tiene) y los hashtags. Hashtags: `#{comuna}` y `#{tipo}{operación}`, los fijos del corredor y los de la IA, normalizados (minúsculas, sin tildes ni espacios), sin repetir y entre 5 y 12. Máximo 2.200 caracteres: si se pasa, se recorta el texto de la IA.
+  - **Instagram:** caption con la línea de tipo, el gancho, la línea de datos (`📐 … m² útiles · 🛏 … dorm · 🛁 … baños · 🚗 … est`, solo los que existen; estacionamientos solo si es mayor que 0), el precio (`💰 UF 5.800 | GC aprox. $120.000`), el texto de la IA, el contacto (WhatsApp del corredor, o solo DM si no tiene) y los hashtags. Los hashtags se guardan en `contents.hashtags`, aparte de `body`: el caption que se publica (F3) y el que se mide es `instagramCaption({ body, hashtags })`. Hashtags: `#{comuna}` y `#{tipo}{operación}`, los fijos del corredor y los de la IA, normalizados (`normalizeHashtag`: minúsculas, sin tildes ni espacios), sin repetir y entre 5 y 12. Máximo 2.200 caracteres con los hashtags: si se pasa, se recorta el texto de la IA.
   - **Portal Inmobiliario:** título armado por el código con operación, tipo, dormitorios y comuna, sin abreviaturas ni adjetivos y de hasta 60 caracteres (`docs/integraciones/mercadolibre.md`, por confirmar en F4): `Departamento en venta 3 dormitorios 2 baños en Ñuñoa`. Singular y plural (`1 dormitorio`); con 0 dormitorios se omite. Si se pasa, se quitan primero los baños y después los dormitorios. Descripción en texto plano, sin emojis: presentación, `Características:` (lista desde los atributos), `Espacios comunes:` (si hay `amenities`), `Ubicación y conectividad:` (si la IA la redactó), `Condiciones:` (disponibilidad y requisitos filtrados) y un cierre sin teléfono ni email (las reglas de contacto de Mercado Libre se verifican en F4).
-  - **Marketplace:** el mismo título y una descripción intermedia: la introducción de la IA, los datos principales, el precio y el WhatsApp.
+  - **Marketplace:** el mismo título (con el tope de 60 de Portal hasta confirmar el de Marketplace en F5) y una descripción intermedia: la introducción de la IA, los datos principales, el precio y el WhatsApp.
   - Las 3 filas guardan `llm_provider`, `llm_model`, `prompt_version` y `raw_output` (la salida validada de la IA).
 - **Revisión editorial** (`checkContent(platform, { title, body, hashtags }, ctx)`, core, pura), con `ctx = { brief, contact, private: { address, unitNumber, internalNotes } }`: lo privado no va al brief, pero la revisión lo necesita para detectar una fuga (por ejemplo, en una edición manual). Devuelve `{ code, severity, message }[]`:
 
@@ -232,7 +232,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
   | `INTERNAL_NOTES_LEAK` | error | 6 palabras seguidas de `internal_notes` |
   | `DISCRIMINATORY` | error | requisitos por nacionalidad, hijos, estado civil, religión, edad o sexo (lista en core) |
   | `EMOJI_NOT_ALLOWED` | error | emojis en el título o la descripción de Portal |
-  | `TOO_LONG` | error | caption de más de 2.200 caracteres, o título sobre el tope de la plataforma |
+  | `TOO_LONG` | error | caption de más de 2.200 caracteres (medido con `instagramCaption`, con los hashtags), o título de más de `LISTING_TITLE_MAX_LENGTH` |
   | `AMENITY_NOT_IN_DATA` | advertencia | un amenity o servicio cercano (piscina, quincho, metro…) que no está en los datos |
   | `SUPERLATIVE` | advertencia | "increíble", "único", "espectacular"… |
   | `MARKDOWN` | advertencia | `**`, encabezados o links de markdown en Instagram |
@@ -240,7 +240,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
   Se calcula al leer, así que no se guarda.
 - **Leer** (`getListingContent(listingId)`, core): el contenido vigente por canal con su revisión, el carrusel, las fotos de Portal y Marketplace, el reel y la última corrida.
-- **Editar** (`editContent(contentId, { title?, body?, hashtags? })`, core): solo el contenido vigente de su canal (si no, `CONTENT_NOT_CURRENT`, 409; lo compara con `listCurrent`). Mientras el aviso tenga una corrida activa con `texts = true`, responde `CONTENT_RUN_ACTIVE` (409): esa corrida reemplazaría la edición sin avisar, porque `CONTENT_EDITED` solo se revisa al pedirla (desde la revisión de F2-T02). Deja `status = edited` y devuelve el contenido con su revisión. En F2 no hay `approved` (F3).
+- **Editar** (`editContent(contentId, { title?, body?, hashtags? })`, core): solo el contenido vigente de su canal (si no, `CONTENT_NOT_CURRENT`, 409; lo compara con `listCurrent`). Mientras el aviso tenga una corrida activa con `texts = true`, responde `CONTENT_RUN_ACTIVE` (409): esa corrida reemplazaría la edición sin avisar, porque `CONTENT_EDITED` solo se revisa al pedirla (desde la revisión de F2-T02). Deja `status = edited` y devuelve el contenido con su revisión. En F2 no hay `approved` (F3). **Hashtags** (desde la revisión de F2-T05): en Instagram se normalizan con `normalizeHashtag` y se descartan los vacíos y repetidos; en Portal y Marketplace deben venir vacíos (si no, `VALIDATION_ERROR`, 400).
 
 ### 4.7 Contratos
 | Método | Ruta | Descripción |
@@ -357,7 +357,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T06 · Revisión editorial (`checkContent`)
 - **Depende de:** T05
-- **Descripción:** `checkContent` con la tabla de §4.6 y su contexto privado; listas de superlativos, amenities y términos discriminatorios en core.
+- **Descripción:** `checkContent` con la tabla de §4.6 y su contexto privado; listas de superlativos, amenities y términos discriminatorios en core. Reusa lo de T05: `instagramCaption` para `TOO_LONG` y `HASHTAG_COUNT` (el cuerpo no trae los hashtags), `hasEmoji` para `EMOJI_NOT_ALLOWED`, y `LISTING_TITLE_MAX_LENGTH`, `INSTAGRAM_CAPTION_MAX_LENGTH`, `HASHTAGS_MIN` y `HASHTAGS_MAX`.
 - **Hecho cuando:**
   - [ ] Tests de cada código, en positivo y en negativo (también con tildes, mayúsculas y números con formato chileno: `5.800`, `72,5`)
   - [ ] Test: un contenido ensamblado desde un borrador limpio no tiene errores
@@ -423,7 +423,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T15 · Panel: edición de textos
 - **Depende de:** T14
-- **Descripción:** editar título, cuerpo y hashtags de cada canal, con contador de caracteres, guardar (`edited`), revisión actualizada y aviso al regenerar textos sobre un contenido editado ("se reemplazará tu edición"), que al confirmar envía `replaceEdits`.
+- **Descripción:** editar título, cuerpo y hashtags de cada canal, con contador de caracteres (en Instagram cuenta el caption con los hashtags, `instagramCaption`), guardar (`edited`), revisión actualizada y aviso al regenerar textos sobre un contenido editado ("se reemplazará tu edición"), que al confirmar envía `replaceEdits`.
 - **Hecho cuando:**
   - [ ] Tests: editar y guardar, error al guardar, `CONTENT_NOT_CURRENT`, `CONTENT_RUN_ACTIVE` (edición bloqueada mientras se regeneran los textos, con el motivo), contador sobre el tope y la confirmación al regenerar
 
@@ -501,4 +501,4 @@ Resueltas con la recomendación del spec, por la aprobación permanente del oper
 | 2026-10-03 | Desde la revisión de F2-T03: `MediaRepository.get` y `listVariants` (§4.2 y §4.7); `AbortSignalLike` en core para todos los puertos que cortan trabajo; `MediaMeasurements` e `ImageVariant` en el ejemplo de `MediaProcessor`; la etapa `media` guarda las medidas antes que las variantes y las claves salen de una función pura de core |
 | 2026-10-03 | Desde F2-T04: `LLM_ABORTED` (reintentable) en la tabla de errores de la IA; `--max-turns` no existe en la CLI 2.1.243; la prueba de humo es `pnpm llm:smoke` y la llamada exitosa la corre el operador |
 | 2026-10-03 | Desde la revisión de F2-T04: `LLM_ABORTED` entre los reintentables de §4.4 y el corte por apagado que no marca `failed`; `SAMPLE_CONTENT_DRAFT` en T05 para el proveedor `fake`; T11 dispara el `signal` y espera antes de salir; `LLM_NOT_CONFIGURED` también para la CLI que falta; clasificación del sobre por campos; `LLM_TIMEOUT_SECONDS` hasta 600 |
-| 2026-10-03 | Desde F2-T05 (detalles que el spec no fijaba, en `04-formato-publicaciones.md`): `requisitos_arriendo` va al brief solo en arriendo; los hashtags de Instagram van en `contents.hashtags`, aparte del cuerpo, y el caption que se publica los suma (`instagramCaption`); con menos de 5 se completan con genéricos y sobre 12 salen primero los de la IA; el título de Portal se recorta en una palabra si ni sin dormitorios cabe; Marketplace usa el mismo título que Portal; la descripción de Portal queda sin emojis aunque vengan de la planilla o de la IA |
+| 2026-10-03 | Desde F2-T05 (detalles que el spec no fijaba, en `04-formato-publicaciones.md`): `requisitos_arriendo` va al brief solo en arriendo; los hashtags de Instagram van en `contents.hashtags`, aparte del cuerpo, y el caption que se publica los suma (`instagramCaption`); con menos de 5 se completan con genéricos y sobre 12 salen primero los de la IA; el título de Portal se recorta en una palabra si ni sin dormitorios cabe; Marketplace usa el mismo título que Portal; la descripción de Portal queda sin emojis aunque vengan de la planilla o de la IA (salvo `©`, `®` y `™`); dormitorios y baños en 0 no se muestran en ningún canal, tampoco los baños del título. Desde la revisión del PR (#37): el motivo del reintento usa textos fijos por tipo de problema (nunca claves ni valores que inventó la IA); el título se recorta en palabras enteras y sin terminar en `de`, `la` o `en`; `editContent` normaliza los hashtags (§4.6); T06 y T15 miden el caption con `instagramCaption`; los campos propios de un corredor llegan a la IA (deuda anotada para F7) |

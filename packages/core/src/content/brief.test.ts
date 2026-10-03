@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { FieldDefinition } from "../field-definition.js";
 import {
   contentBrokerFixture,
   contentDefinitionsFixture,
@@ -93,16 +94,38 @@ describe("buildContentBrief", () => {
   });
 
   it("un campo que el corredor desactivó no llega a la IA", () => {
-    const disabled = {
-      ...definitions.find((def) => def.key === "sector_referencia"),
-      id: "def-broker-sector",
-      brokerId: broker.id,
-      active: false,
-    } as (typeof definitions)[number];
+    const global = definitions.find((def) => def.key === "sector_referencia");
+    if (global === undefined) throw new Error("falta sector_referencia en la fixture");
+    const disabled = { ...global, id: "def-broker-sector", brokerId: broker.id, active: false };
     const brief = buildContentBrief(contentListingFixture(), [...definitions, disabled], broker);
 
     expect(brief.sectorReference).toBeNull();
     expect(JSON.stringify(brief)).not.toContain("Plaza Inventada");
+  });
+
+  it("un campo propio del corredor con valor sí llega a la IA (decisión documentada en 04)", () => {
+    const own: FieldDefinition = {
+      id: "def-own",
+      brokerId: broker.id,
+      category: "real_estate",
+      key: "vista",
+      label: "Vista",
+      type: "text",
+      required: false,
+      options: null,
+      sourceColumn: "vista",
+      isCore: false,
+      minValue: null,
+      maxValue: null,
+      sortOrder: 999,
+      active: true,
+    };
+    const listing = contentListingFixture({
+      attributes: { ...contentListingFixture().attributes, vista: "Al cerro" },
+    });
+    const brief = buildContentBrief(listing, [...definitions, own], broker);
+
+    expect(brief.features).toContainEqual({ key: "vista", label: "Vista", value: "Al cerro" });
   });
 
   it("en arriendo lleva el precio mensual y los requisitos; en venta, no los requisitos", () => {

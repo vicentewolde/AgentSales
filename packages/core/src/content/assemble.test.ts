@@ -9,6 +9,7 @@ import {
   assembleContents,
   HASHTAGS_MAX,
   HASHTAGS_MIN,
+  hasEmoji,
   INSTAGRAM_CAPTION_MAX_LENGTH,
   instagramCaption,
   LISTING_TITLE_MAX_LENGTH,
@@ -163,6 +164,58 @@ describe("assembleContents · Instagram", () => {
     expect(instagram.body).toContain("💰 UF 5.800 | GC aprox. $120.000");
     expect(instagram.hashtags.length).toBeGreaterThanOrEqual(HASHTAGS_MIN);
   });
+
+  it("si ni recortando cabe el texto de la IA, se quita ese párrafo", () => {
+    // Un gancho (sin pasar por el esquema) que deja solo 5 caracteres libres: el cuerpo no cabe.
+    const brief = briefOf();
+    const draftWith = (hook: string, body: string) => ({
+      ...DRAFT,
+      instagram: { ...DRAFT.instagram, hook, body },
+    });
+    const base = instagramCaption(assembleContents(brief, draftWith("", ""), contact).instagram);
+    const hook = "g".repeat(INSTAGRAM_CAPTION_MAX_LENGTH - base.length - 5);
+
+    const { instagram } = assembleContents(brief, draftWith(hook, DRAFT.instagram.body), contact);
+
+    expect(instagramCaption(instagram).length).toBeLessThanOrEqual(INSTAGRAM_CAPTION_MAX_LENGTH);
+    expect(instagram.body).not.toContain("Cocina remodelada");
+    expect(instagram.body).toContain("💰 UF 5.800 | GC aprox. $120.000\n\n📩 Escríbeme por DM");
+  });
+
+  it("sin operación, tipo ni comuna: 🏠 Propiedad y hashtags igual entre 5 y 12", () => {
+    const { instagram } = assembleContents(
+      { ...briefOf(), operation: null, propertyType: null, comuna: null },
+      DRAFT,
+      contact,
+    );
+
+    expect(instagram.body.startsWith("🏠 Propiedad\nTerraza")).toBe(true);
+    expect(instagram.hashtags[0]).toBe("#propiedad");
+    expect(instagram.hashtags.length).toBeGreaterThanOrEqual(HASHTAGS_MIN);
+  });
+
+  it("normaliza los hashtags de la IA y descarta los vacíos o de más de 50", () => {
+    const { instagram } = assembleContents(
+      briefOf(),
+      {
+        ...DRAFT,
+        instagram: {
+          ...DRAFT.instagram,
+          hashtags: ["#Línea 3", "##ÑUÑOA", "🏡", `#${"a".repeat(51)}`, "#vida_2026"],
+        },
+      },
+      contact,
+    );
+
+    expect(instagram.hashtags).toEqual([
+      "#nunoa",
+      "#departamentoventa",
+      "#inventadapropiedades",
+      "#propiedades",
+      "#linea3",
+      "#vida_2026",
+    ]);
+  });
 });
 
 describe("listingTitle (Portal y Marketplace)", () => {
@@ -196,12 +249,22 @@ describe("listingTitle (Portal y Marketplace)", () => {
     }
   });
 
-  it("si ni así cabe, se recorta en una palabra", () => {
-    const text = title({ comuna: "Comuna Inventada Con Un Nombre Larguísimo Que No Cabe" });
+  it("si ni así cabe, se recorta en palabras enteras, sin terminar en de, la o en", () => {
+    expect(
+      title({
+        propertyType: "Local comercial",
+        comuna: "Lo Barnechea Oriente de la Ciudad de Santiago",
+      }),
+    ).toBe("Local comercial en venta en Lo Barnechea Oriente");
+    expect(title({ comuna: "Comuna Inventada Con Un Nombre Larguísimo Que No Cabe" })).toBe(
+      "Departamento en venta en Comuna Inventada Con Un Nombre",
+    );
+  });
 
-    expect(text.length).toBeLessThanOrEqual(LISTING_TITLE_MAX_LENGTH);
-    expect(text.startsWith("Departamento en venta en Comuna Inventada")).toBe(true);
-    expect(text.endsWith(" ")).toBe(false);
+  it("sin operación, tipo ni comuna: solo lo que hay", () => {
+    expect(title({ operation: null, propertyType: null, comuna: null })).toBe(
+      "Propiedad 3 dormitorios 2 baños",
+    );
   });
 });
 
@@ -268,6 +331,24 @@ describe("assembleContents · Portal Inmobiliario", () => {
     expect(portal.body).toContain("Casa luminosa\n\nCaracterísticas:\n- Dormitorios: 2");
     expect(portal.body).toContain("Condiciones:\nDisponibilidad: Inmediata.");
   });
+
+  it("también quita los emojis que vienen de la planilla en características y amenities", () => {
+    const brief = briefOf({
+      attributes: attributes({ orientacion: "Norte ☀️", amenities: ["Piscina 🏊", "Quincho"] }),
+    });
+    const { portal_inmobiliario: portal } = assembleContents(brief, DRAFT, contact);
+
+    expect(portal.body).toContain("- Orientación: Norte\n");
+    expect(portal.body).toContain("- Piscina\n- Quincho");
+    expect(portal.body).not.toMatch(/\p{Extended_Pictographic}/u);
+  });
+
+  it("la disponibilidad que ya termina en punto no queda con dos", () => {
+    const brief = briefOf({ attributes: attributes({ disponibilidad: "Desde marzo." }) });
+    const { portal_inmobiliario: portal } = assembleContents(brief, DRAFT, contact);
+
+    expect(portal.body).toContain("Disponibilidad: Desde marzo.\n");
+  });
 });
 
 describe("assembleContents · Marketplace", () => {
@@ -319,6 +400,12 @@ describe("ayudas del ensamblado", () => {
 
   it("stripEmoji quita emojis, banderas y modificadores sin dejar espacios dobles", () => {
     expect(stripEmoji("Hola 👋🏽 casa 🏡 y 🇨🇱 bandera ❤️ fin")).toBe("Hola casa y bandera fin");
+  });
+
+  it("stripEmoji y hasEmoji dejan ©, ® y ™ de las marcas", () => {
+    expect(stripEmoji("Remax® Marca™ ©2026 ✔")).toBe("Remax® Marca™ ©2026");
+    expect(hasEmoji("Remax® Marca™")).toBe(false);
+    expect(hasEmoji("Casa 🏡")).toBe(true);
   });
 
   it("el borrador de ejemplo arma textos para cualquier aviso", () => {
