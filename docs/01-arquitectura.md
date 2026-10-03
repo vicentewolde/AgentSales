@@ -344,10 +344,16 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
   - Otro error de una consulta es `DB_QUERY_FAILED`, no reintentable, con el SQLSTATE en `details`.
   - En los dos casos, `cause` es un **resumen sin datos** del error del driver (`safeDriverError`): un mensaje fijo y solo `code`, `constraint`, `table`, `column` y `schema`. El `DrizzleQueryError` lleva los parámetros de la consulta, y el error de pg lleva la fila en `detail`; los dos terminarían en los logs con datos de clientes.
   - `sqlStateOf` lee el SQLSTATE a través de la cadena de `cause`.
-- **Conflictos:** un `create` que choca con un único (`slug`, `(broker_id, external_ref)`, o los de `media`: `media_original_listing_checksum_unique` y `media_storage_path_unique`) es `BROKER_CONFLICT`, `LISTING_CONFLICT` o `MEDIA_CONFLICT`, **reintentable**, porque dos intentos del job pueden solaparse y el reintento reclasifica la fila o encuentra el medio. Desde F2-T02, una segunda corrida activa del mismo aviso es `CONTENT_RUN_CONFLICT`, también reintentable: quien la pide busca la activa con `findActive`. Un `update` de un id que no existe es `*_NOT_FOUND`.
+- **Conflictos:** un `create` que choca con un único (`slug`, `(broker_id, external_ref)`, o los de `media`: `media_original_listing_checksum_unique` y `media_storage_path_unique`) es `BROKER_CONFLICT`, `LISTING_CONFLICT` o `MEDIA_CONFLICT`, **reintentable**, porque dos intentos del job pueden solaparse y el reintento reclasifica la fila o encuentra el medio. Desde F2-T02, una segunda corrida activa del mismo aviso es `CONTENT_RUN_CONFLICT`, también reintentable: quien la pide busca la activa con `findActive`. Desde F2-T03, `upsertDerivative` da `MEDIA_CONFLICT` si choca con `media_processed_parent_variant_unique`, `media_rendered_listing_variant_unique` o la clave de otro medio, o si el vigente se borró mientras se reemplazaba. Un `update` de un id que no existe es `*_NOT_FOUND`.
 - **`MediaRepository.arrange`:**
   - `checkArrangement` (core) rechaza ids repetidos, más de una portada o un `sortOrder` inválido (`MEDIA_ARRANGE_INVALID`), y un id que no es original del aviso da `MEDIA_NOT_FOUND`. En los dos casos no cambia nada.
   - En Postgres va en una transacción que bloquea el aviso (`FOR NO KEY UPDATE`): dos `arrange` del mismo aviso se serializan, y queda una sola portada sin deadlocks. PGlite no puede probar la concurrencia, porque tiene una sola conexión; el rollback sí está probado.
+- **`MediaRepository.upsertDerivative` y `deleteDerivative` (F2-T03):**
+  - `checkDerivative` (core) rechaza una variante que no es de su rol, un padre que no corresponde al rol o un tipo que no calza (el reel es video; lo demás, imagen): `MEDIA_DERIVATIVE_INVALID`, sin cambiar nada.
+  - El padre de una variante debe ser un original del mismo aviso y corredor, y el aviso de un render debe existir y ser del corredor: si no, `MEDIA_NOT_FOUND`.
+  - En Postgres va en una transacción que bloquea el original (o el aviso, si es un render) con `FOR NO KEY UPDATE`, así dos intentos solapados reemplazan de a uno. PGlite no puede probar la concurrencia.
+  - El vigente se reemplaza en su lugar y se devuelve la clave anterior (`previousPath`) para borrarla de R2. `deleteDerivative` devuelve la clave borrada y nunca borra un original.
+  - `get(id)` lee cualquier medio (por ejemplo, el logo) y `listVariants(ids, variante)` trae una variante de varios originales en una consulta (las miniaturas de la lista de avisos).
 - **`BrokerRepository.setLogo`:** valida que el medio sea un original sin aviso del mismo corredor (`MEDIA_NOT_FOUND`); la base solo tiene la FK.
 - **Proyecciones:** `ListingImportRecord` (id, `external_ref`, `status` y `source_hash`) es una proyección para la carga, sin esquema. La entidad completa es `listingSchema`, que devuelven `ListingRepository.list` y `get`. `MediaRecord` también es una proyección sin esquema, la de la carga (solo originales). Desde F2-T03, la entidad completa es `mediaSchema` (core: rol, variante, padre y medidas), que devuelve `MediaRepository.listByListing`; una fila que no calza es `MEDIA_ROW_INVALID`. La API expone `mediaItemSchema` (sin `storagePath` ni `checksum`, con la URL firmada), definido en `contracts`.
 - **Ids:** son uuid. La API los valida con zod antes de llamar al repositorio; con otro formato, el adaptador de Postgres da `DB_QUERY_FAILED` (22P02) y los dobles en memoria, `null` o `*_NOT_FOUND`.
@@ -473,7 +479,7 @@ interface MediaStorage {
   putStream(path: string, body: AsyncIterable<Uint8Array>,
             options: { contentType: string; contentLength: number; sha256?: string }): Promise<void>; // sobrescribe
   get(path: string): Promise<Uint8Array>;                                     // STORAGE_NOT_FOUND si no existe
-  getStream(path: string): Promise<AsyncIterable<Uint8Array>>;               // F2-T03; STORAGE_NOT_FOUND al pedirlo
+  getStream(path: string, options?: { signal?: AbortSignalLike }): Promise<AsyncIterable<Uint8Array>>; // F2-T03
   head(path: string): Promise<{ size: number; contentType: string | undefined } | null>; // null si no existe
   delete(path: string): Promise<void>;                                        // idempotente
   signedReadUrl(path: string, ttlSeconds?: number): Promise<string>;
@@ -490,7 +496,7 @@ interface MediaStorage {
   - Si el stream trae más o menos bytes que `contentLength`, es `STORAGE_CONTENT_MISMATCH`, no reintentable: se aborta la petición, sin dejarla colgada. Un `contentLength` inválido es `STORAGE_ERROR` (un bug de quien llama).
   - Si falla la lectura del origen, un `AppError` del lector pasa tal cual, con su código y si es reintentable; cualquier otro error es `STORAGE_ERROR`.
   - `pnpm storage:check` lo verifica contra R2: 1 MB en trozos de 64 KB, con el sha256 correcto y con el de otro contenido, que debe rechazarse sin dejar el objeto.
-- `getStream` (F2-T03) lee un objeto en streaming, para los videos que procesa ffmpeg (spec F2 §4.2). Pedir un objeto inexistente es `STORAGE_NOT_FOUND`. Un corte durante la lectura sale del iterable como `STORAGE_UNAVAILABLE`, reintentable: lo convierte `readBody`, y el reintento es de quien llama. Dejar de iterar libera la conexión. `pnpm storage:check` lo verifica contra R2: el mismo 1 MB llega en varios trozos con el mismo sha256.
+- `getStream` (F2-T03) lee un objeto en streaming, para los videos que procesa ffmpeg (spec F2 §4.2). Pedir un objeto inexistente es `STORAGE_NOT_FOUND`. Un corte durante la lectura sale del iterable como `STORAGE_UNAVAILABLE`, reintentable: lo convierte `readBody`, y el reintento es de quien llama. La conexión se libera al leer hasta el final, ante un error, al dejar de iterar, con `return()` aunque no se haya leído nada (`streamFromBody`) o al disparar `signal` (`AbortSignalLike`, el tipo mínimo de core que cumple el `AbortSignal` de Node). R2 sin cuerpo es `STORAGE_UNAVAILABLE`, no un archivo vacío. `pnpm storage:check` lo verifica contra R2: el mismo 1 MB llega en varios trozos con el mismo sha256.
 
 ## Contrato del proveedor de IA
 

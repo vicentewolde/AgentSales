@@ -24,7 +24,7 @@ export type MediaRecord = {
   isCover: boolean;
 };
 
-/** Medio original nuevo; `role` es siempre `original` en F1 (los derivados llegan en F2). */
+/** Medio original nuevo (la carga); los derivados entran por `upsertDerivative`. */
 export type NewMedia = Omit<MediaRecord, "id">;
 
 /** Medidas de un medio, ya rotadas; `null` si no aplica (un video sin alto conocido, una foto). */
@@ -62,8 +62,9 @@ export type DerivativeResult = { media: Media; previousPath: string | null };
 
 /**
  * Valida un derivado antes de tocar nada; la usan todas las implementaciones. Una variante que no
- * es de su rol (un `cover` como `processed`), o un padre que no corresponde al rol, es un bug de
- * quien llama: `MEDIA_DERIVATIVE_INVALID`, no reintentable.
+ * es de su rol (un `cover` como `processed`), un padre que no corresponde al rol o un tipo que no
+ * calza (el reel es video; lo demás, imagen) es un bug de quien llama: `MEDIA_DERIVATIVE_INVALID`,
+ * no reintentable.
  */
 export function checkDerivative(derivative: NewDerivative): void {
   const variants: readonly MediaVariant[] =
@@ -72,7 +73,9 @@ export function checkDerivative(derivative: NewDerivative): void {
     derivative.role === "processed"
       ? typeof derivative.parentMediaId === "string" && derivative.parentMediaId.length > 0
       : derivative.parentMediaId === null;
-  if (!variants.includes(derivative.variant) || !parentOk) {
+  // El reel es el único video; las demás variantes y los renders son imágenes.
+  const kindOk = derivative.kind === (derivative.variant === "ig_reel" ? "video" : "image");
+  if (!variants.includes(derivative.variant) || !parentOk || !kindOk) {
     throw new AppError(
       "MEDIA_DERIVATIVE_INVALID",
       `La variante ${derivative.variant} no corresponde a un medio ${derivative.role}`,
@@ -120,8 +123,9 @@ export function checkArrangement(items: readonly MediaArrangement[]): void {
  *   más de una portada o un `sortOrder` inválido → `MEDIA_ARRANGE_INVALID`; sin cambiar nada. En
  *   Postgres, dos `arrange` del mismo aviso se serializan (bloqueo del aviso);
  * - `upsertDerivative` con un derivado inconsistente → `MEDIA_DERIVATIVE_INVALID`; con un padre que
- *   no es original del aviso → `MEDIA_NOT_FOUND`; si dos intentos solapados chocan con un único →
- *   `MEDIA_CONFLICT`, reintentable;
+ *   no es original del aviso, o de otro corredor → `MEDIA_NOT_FOUND`; si dos intentos solapados
+ *   chocan con un único, o uno borró el vigente mientras otro lo reemplazaba → `MEDIA_CONFLICT`,
+ *   reintentable;
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
  */
 export interface MediaRepository {
@@ -143,6 +147,13 @@ export interface MediaRepository {
    * `rendered`), `sortOrder` e id. No incluye el logo del corredor, que no tiene aviso.
    */
   listByListing(listingId: string): Promise<Media[]>;
+  /** Un medio por id, de cualquier rol (por ejemplo, el logo del corredor); `null` si no existe. */
+  get(id: string): Promise<Media | null>;
+  /**
+   * Las variantes vigentes `variant` de esos originales, en una sola consulta (por ejemplo, el
+   * `thumb` de las portadas de la lista de avisos). Sin ids devuelve `[]` sin consultar.
+   */
+  listVariants(parentMediaIds: readonly string[], variant: ProcessedMediaVariant): Promise<Media[]>;
   /** Guarda las medidas de un medio. Un id inexistente es `MEDIA_NOT_FOUND`. */
   updateMeasurements(id: string, measurements: MediaMeasurements): Promise<void>;
   /**

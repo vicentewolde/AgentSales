@@ -33,6 +33,10 @@ export type InMemoryMediaRepositoryOptions = {
 
 const ROLE_ORDER: Readonly<Record<MediaRole, number>> = { original: 0, processed: 1, rendered: 2 };
 
+/** Como `numeric(10,3)` en Postgres: la duración se guarda con 3 decimales. */
+const roundDuration = (durationS: number | null) =>
+  durationS === null ? null : Math.round(durationS * 1000) / 1000;
+
 /** La proyección de la carga (F1): sin rol, variante ni medidas. */
 function toRecord(media: Media): MediaRecord {
   return {
@@ -53,7 +57,8 @@ function toRecord(media: Media): MediaRecord {
  * `MediaRepository` en memoria, con los mismos únicos que la base: `(listing_id, checksum)` para
  * los originales de un aviso, `storage_path`, `(parent_media_id, variant)` de las variantes y
  * `(listing_id, variant)` de los renders. Como en Postgres, los métodos de la carga ven solo
- * originales.
+ * originales. A diferencia de Postgres, no verifica que el aviso de un render exista (allí, la FK
+ * o el bloqueo del aviso lo rechazan): en la aplicación el aviso siempre se carga antes.
  */
 export function createInMemoryMediaRepository(
   options: InMemoryMediaRepositoryOptions = {},
@@ -146,18 +151,38 @@ export function createInMemoryMediaRepository(
         .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || byOrder(a, b))
         .map(structuredCopy);
     },
+    async get(id) {
+      const media = stored.get(id);
+      return media === undefined ? null : structuredCopy(media);
+    },
+    async listVariants(parentMediaIds, variant) {
+      return [...stored.values()]
+        .filter(
+          (media) =>
+            media.role === "processed" &&
+            media.variant === variant &&
+            media.parentMediaId !== null &&
+            parentMediaIds.includes(media.parentMediaId),
+        )
+        .sort(byId)
+        .map(structuredCopy);
+    },
     async updateMeasurements(id, { width, height, durationS }) {
       const current = stored.get(id);
       if (current === undefined) {
         throw new AppError("MEDIA_NOT_FOUND", `No existe el medio ${id}`, { details: { id } });
       }
-      stored.set(id, { ...current, width, height, durationS });
+      stored.set(id, { ...current, width, height, durationS: roundDuration(durationS) });
     },
     async upsertDerivative(derivative) {
       checkDerivative(derivative);
       if (derivative.role === "processed") {
         const parent = stored.get(derivative.parentMediaId);
-        if (parent?.role !== "original" || parent.listingId !== derivative.listingId) {
+        if (
+          parent?.role !== "original" ||
+          parent.listingId !== derivative.listingId ||
+          parent.brokerId !== derivative.brokerId
+        ) {
           throw new AppError("MEDIA_NOT_FOUND", "El original del derivado no es de ese aviso", {
             details: { listingId: derivative.listingId, parentMediaId: derivative.parentMediaId },
           });
@@ -173,9 +198,22 @@ export function createInMemoryMediaRepository(
             media.variant === derivative.variant,
       );
       if (pathTaken(derivative.storagePath, current?.id)) throw conflict(derivative.storagePath);
+      // Campo por campo, como las columnas de la tabla: nada extra que venga en el objeto.
       const media: Media = {
-        ...structuredCopy(derivative),
         id: current?.id ?? `media-${++next}`,
+        listingId: derivative.listingId,
+        brokerId: derivative.brokerId,
+        kind: derivative.kind,
+        role: derivative.role,
+        variant: derivative.variant,
+        parentMediaId: derivative.parentMediaId,
+        storagePath: derivative.storagePath,
+        mime: derivative.mime,
+        width: derivative.width,
+        height: derivative.height,
+        durationS: roundDuration(derivative.durationS),
+        bytes: derivative.bytes,
+        checksum: derivative.checksum,
         sortOrder: 0,
         isCover: false,
       };
@@ -273,10 +311,11 @@ export function createInMemoryMediaStorage(
         throw new AppError("STORAGE_NOT_FOUND", `No existe el objeto ${path}`);
       }
       const body = object.body.slice();
-      // En dos trozos, como llega de la red: quien lee no puede suponer un solo trozo.
+      // En dos trozos, como llega de la red: quien lee no puede suponer un solo trozo. Un objeto
+      // vacío no entrega ninguno.
       const middle = Math.ceil(body.byteLength / 2);
       return (async function* () {
-        yield body.subarray(0, middle);
+        if (middle > 0) yield body.subarray(0, middle);
         if (middle < body.byteLength) yield body.subarray(middle);
       })();
     },

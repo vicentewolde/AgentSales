@@ -850,10 +850,28 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
     it("una versión nueva reemplaza en su lugar y devuelve la clave anterior; otra variante convive", async () => {
       const { listingId, first } = await listingWithPhotos();
       const v1 = await repos.media.upsertDerivative(processed(listingId, first.id, "thumb", "v1"));
-      const v2 = await repos.media.upsertDerivative(processed(listingId, first.id, "thumb", "v2"));
+      const v2 = await repos.media.upsertDerivative({
+        ...processed(listingId, first.id, "thumb", "v2"),
+        width: 800,
+        height: 600,
+        bytes: 999,
+        checksum: "sha-v2",
+        mime: "image/webp",
+      });
       expect(v2.media.id).toBe(v1.media.id);
       expect(v2.previousPath).toBe(v1.media.storagePath);
-      expect(v2.media.storagePath).toContain("-v2.jpg");
+      expect(v2.media).toMatchObject({
+        storagePath: expect.stringContaining("-v2.jpg"),
+        width: 800,
+        height: 600,
+        bytes: 999,
+        checksum: "sha-v2",
+        mime: "image/webp",
+      });
+      const thumbs = (await repos.media.listByListing(listingId)).filter(
+        (media) => media.variant === "thumb",
+      );
+      expect(thumbs).toEqual([v2.media]);
 
       await repos.media.upsertDerivative(processed(listingId, first.id, "pi_4x3"));
       const derivatives = (await repos.media.listByListing(listingId)).filter(
@@ -957,7 +975,7 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(await repos.media.listByListing(listingId)).toEqual(before);
     });
 
-    it("una clave que ya usa otro medio es MEDIA_CONFLICT, reintentable", async () => {
+    it("una clave que ya usa otro medio es MEDIA_CONFLICT, reintentable, al crear o al reemplazar", async () => {
       const { listingId, first, second } = await listingWithPhotos();
       await expectAppError(
         repos.media.upsertDerivative({
@@ -967,6 +985,87 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
         "MEDIA_CONFLICT",
         true,
       );
+      const current = await repos.media.upsertDerivative(processed(listingId, second.id, "thumb"));
+      await expectAppError(
+        repos.media.upsertDerivative({
+          ...processed(listingId, second.id, "thumb", "v2"),
+          storagePath: first.storagePath,
+        }),
+        "MEDIA_CONFLICT",
+        true,
+      );
+      // El vigente quedó como estaba.
+      expect(await repos.media.get(current.media.id)).toEqual(current.media);
+    });
+
+    it("get devuelve cualquier medio por id (también el logo); un id inexistente es null", async () => {
+      const { listingId, first } = await listingWithPhotos();
+      const logo = await repos.media.create(newMedia(brokerId, null, unique("logo")));
+      const variant = await repos.media.upsertDerivative(processed(listingId, first.id, "thumb"));
+      expect(await repos.media.get(logo.id)).toMatchObject({
+        id: logo.id,
+        listingId: null,
+        role: "original",
+        variant: null,
+      });
+      expect(await repos.media.get(variant.media.id)).toEqual(variant.media);
+      expect(await repos.media.get(repos.missingId)).toBeNull();
+    });
+
+    it("listVariants trae la variante pedida de varios originales en una consulta", async () => {
+      const a = await listingWithPhotos();
+      const b = await listingWithPhotos();
+      const thumbA = await repos.media.upsertDerivative(
+        processed(a.listingId, a.first.id, "thumb"),
+      );
+      const thumbB = await repos.media.upsertDerivative(
+        processed(b.listingId, b.first.id, "thumb"),
+      );
+      await repos.media.upsertDerivative(processed(a.listingId, a.first.id, "ig_4x5"));
+
+      const thumbs = await repos.media.listVariants([a.first.id, b.first.id, a.second.id], "thumb");
+      expect(thumbs.map((media) => media.id).sort()).toEqual(
+        [thumbA.media.id, thumbB.media.id].sort(),
+      );
+      expect(await repos.media.listVariants([], "thumb")).toEqual([]);
+    });
+
+    it("el padre debe ser del mismo corredor, y el tipo debe calzar con la variante", async () => {
+      const { listingId, first } = await listingWithPhotos();
+      const otherBroker = (await repos.brokers.create(brokerData(unique("otro-corredor")))).id;
+      await expectAppError(
+        repos.media.upsertDerivative({
+          ...processed(listingId, first.id, "thumb"),
+          brokerId: otherBroker,
+        }),
+        "MEDIA_NOT_FOUND",
+      );
+      await expectAppError(
+        repos.media.upsertDerivative({
+          ...processed(listingId, first.id, "ig_reel"),
+          kind: "image",
+        }),
+        "MEDIA_DERIVATIVE_INVALID",
+      );
+      await expectAppError(
+        repos.media.upsertDerivative({ ...processed(listingId, first.id, "thumb"), kind: "video" }),
+        "MEDIA_DERIVATIVE_INVALID",
+      );
+    });
+
+    it("la duración se guarda con 3 decimales, como numeric(10,3)", async () => {
+      const { listingId, first } = await listingWithPhotos();
+      await repos.media.updateMeasurements(first.id, {
+        width: 1920,
+        height: 1080,
+        durationS: 12.5678,
+      });
+      const reel = await repos.media.upsertDerivative({
+        ...processed(listingId, first.id, "ig_reel"),
+        durationS: 90.00049,
+      });
+      expect((await repos.media.get(first.id))?.durationS).toBe(12.568);
+      expect(reel.media.durationS).toBe(90);
     });
 
     it("deleteDerivative borra y devuelve la clave; es idempotente y nunca borra un original", async () => {

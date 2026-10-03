@@ -13,7 +13,7 @@
 | Spec F2 (`/fase-plan 2`) | ✅ | #31 |
 | F2-T01 · Mínimos y máximos en campos numéricos | ✅ | #33 |
 | F2-T02 · Datos de contenido: corridas y contenidos | ✅ | #34 |
-| F2-T03 · Medios derivados en la base y `getStream` | ✅ | |
+| F2-T03 · Medios derivados en la base y `getStream` | ✅ | #35 |
 | F2-T04 · Proveedor de IA (`packages/llm`) | ⏳ pendiente | |
 | F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado | ⏳ pendiente | |
 | F2-T06 · Revisión editorial (`checkContent`) | ⏳ pendiente | |

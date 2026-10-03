@@ -192,6 +192,31 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
       });
     },
 
+    get(id) {
+      return withDbErrors(async () => {
+        const [row] = await db.select().from(media).where(eq(media.id, id));
+        return row === undefined ? null : toMedia(row);
+      });
+    },
+
+    listVariants(parentMediaIds, variant) {
+      if (parentMediaIds.length === 0) return Promise.resolve([]);
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(media)
+          .where(
+            and(
+              eq(media.role, "processed"),
+              eq(media.variant, variant),
+              inArray(media.parentMediaId, [...parentMediaIds]),
+            ),
+          )
+          .orderBy(asc(media.id));
+        return rows.map(toMedia);
+      });
+    },
+
     updateMeasurements(id, { width, height, durationS }) {
       return withDbErrors(async () => {
         const updated = await db
@@ -219,6 +244,7 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
                   and(
                     eq(media.id, derivative.parentMediaId),
                     eq(media.listingId, derivative.listingId),
+                    eq(media.brokerId, derivative.brokerId),
                     isOriginal,
                   ),
                 )
@@ -237,11 +263,25 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
               }
             } else {
               // Un render no tiene padre: se bloquea el aviso, como en `arrange`.
-              await tx
+              const [listing] = await tx
                 .select({ id: listings.id })
                 .from(listings)
-                .where(eq(listings.id, derivative.listingId))
+                .where(
+                  and(
+                    eq(listings.id, derivative.listingId),
+                    eq(listings.brokerId, derivative.brokerId),
+                  ),
+                )
                 .for("no key update");
+              if (listing === undefined) {
+                throw new AppError(
+                  "MEDIA_NOT_FOUND",
+                  "El aviso del render no existe o es de otro corredor",
+                  {
+                    details: { listingId: derivative.listingId },
+                  },
+                );
+              }
             }
             const [current] = await tx
               .select({ id: media.id, storagePath: media.storagePath })
@@ -265,7 +305,11 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
                 ? await tx.insert(media).values(values).returning()
                 : await tx.update(media).set(values).where(eq(media.id, current.id)).returning();
             if (row === undefined) {
-              throw new AppError("MEDIA_WRITE_FAILED", "No se guardó el derivado");
+              // El vigente se borró entre la lectura y el reemplazo (`deleteDerivative` no toma el
+              // bloqueo del original): reintentar lo crea de nuevo.
+              throw new AppError("MEDIA_CONFLICT", `El derivado ${derivative.storagePath} cambió`, {
+                retriable: true,
+              });
             }
             const previousPath =
               current !== undefined && current.storagePath !== derivative.storagePath

@@ -1,3 +1,4 @@
+export type { AbortSignalLike } from "./abort.js";
 export { type AttributeEntry, describeAttributes } from "./attributes.js";
 export {
   type Broker,

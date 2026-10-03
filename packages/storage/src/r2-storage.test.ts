@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { AppError } from "@agentsales/core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { createR2Storage, readBody } from "./r2-storage.js";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createR2Storage, readBody, streamFromBody } from "./r2-storage.js";
 
 const ORIGIN = "https://test-bucket.fake-account.r2.cloudflarestorage.com";
 
@@ -490,18 +490,78 @@ describe("getStream (F2-T03)", () => {
     expect(received).toEqual([1, 2, 3]);
   });
 
-  it("dejar de leer a mitad no deja errores colgando", async () => {
-    const data = new Uint8Array(2 * 1024 * 1024).fill(9);
-    objects.set("parcial.mp4", { body: data, contentType: "video/mp4" });
-    const stream = await storage.getStream("parcial.mp4");
-    for await (const chunk of stream) {
-      expect(chunk.byteLength).toBeGreaterThan(0);
+  it("con la señal ya disparada no lee nada: STORAGE_UNAVAILABLE", async () => {
+    objects.set("abortado.mp4", { body: new Uint8Array([1, 2, 3]), contentType: "video/mp4" });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      storage.getStream("abortado.mp4", { signal: controller.signal }),
+    ).rejects.toMatchObject({ code: "STORAGE_UNAVAILABLE" });
+  });
+});
+
+describe("streamFromBody: la conexión siempre se libera (F2-T03)", () => {
+  /** Un cuerpo como el `Readable` del SDK: trozos y un `destroy` espiado. */
+  function fakeBody(chunks: number[][], failAfter?: number) {
+    const destroy = vi.fn();
+    return {
+      destroy,
+      async *[Symbol.asyncIterator]() {
+        for (const [index, chunk] of chunks.entries()) {
+          if (index === failAfter) throw new Error("socket hang up");
+          yield new Uint8Array(chunk);
+        }
+      },
+    };
+  }
+
+  it("return() sin haber leído nada destruye el cuerpo y avisa una sola vez", async () => {
+    const body = fakeBody([[1], [2]]);
+    const onRelease = vi.fn();
+    const iterator = streamFromBody(body, "v.mp4", onRelease)[Symbol.asyncIterator]();
+    await iterator.return?.();
+    await iterator.return?.();
+    expect(body.destroy).toHaveBeenCalledTimes(1);
+    expect(onRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("dejar de iterar a mitad destruye el cuerpo", async () => {
+    const body = fakeBody([[1], [2], [3]]);
+    for await (const chunk of streamFromBody(body, "v.mp4")) {
+      expect([...chunk]).toEqual([1]);
       break;
     }
-    // Después de cortar se puede volver a pedir y leer completo.
-    expect((await readAll(await storage.getStream("parcial.mp4"))).byteLength).toBe(
-      data.byteLength,
-    );
+    expect(body.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("leer hasta el final lo libera, con el contenido completo", async () => {
+    const body = fakeBody([[1, 2], [3]]);
+    const onRelease = vi.fn();
+    const read: number[] = [];
+    for await (const chunk of streamFromBody(body, "v.mp4", onRelease)) read.push(...chunk);
+    expect(read).toEqual([1, 2, 3]);
+    expect(body.destroy).toHaveBeenCalledTimes(1);
+    expect(onRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("un error a mitad de la lectura lo libera y sale como STORAGE_UNAVAILABLE", async () => {
+    const body = fakeBody([[1], [2]], 1);
+    await expect(
+      (async () => {
+        for await (const _ of streamFromBody(body, "v.mp4")) {
+          // sigue leyendo
+        }
+      })(),
+    ).rejects.toMatchObject({ code: "STORAGE_UNAVAILABLE", retriable: true });
+    expect(body.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("un cuerpo ausente es STORAGE_UNAVAILABLE, no un video de 0 bytes", () => {
+    for (const body of [undefined, null, "texto"]) {
+      expect(() => streamFromBody(body, "v.mp4")).toThrow(
+        expect.objectContaining({ code: "STORAGE_UNAVAILABLE", retriable: true }),
+      );
+    }
   });
 });
 

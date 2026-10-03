@@ -132,11 +132,10 @@ function readFailure(error: unknown, path: string): AppError {
       });
 }
 
-/** Adaptador de `MediaStorage` para Cloudflare R2 vía la API S3 (ADR-0007). */
 /**
  * El cuerpo de un `GetObject` como iterable de bytes. Un corte a mitad de la lectura sale como
  * `AppError` (`toAppError`: sin respuesta HTTP es `STORAGE_UNAVAILABLE`, reintentable), no como el
- * error crudo del socket. Dejar de iterar destruye el stream y libera la conexión.
+ * error crudo del socket.
  */
 export async function* readBody(
   body: AsyncIterable<Uint8Array>,
@@ -149,6 +148,62 @@ export async function* readBody(
   }
 }
 
+const isAsyncIterable = (value: unknown): value is AsyncIterable<Uint8Array> =>
+  typeof value === "object" && value !== null && Symbol.asyncIterator in value;
+
+/** Destruye el `Readable` del SDK (libera el socket); no hace nada si el cuerpo no lo permite. */
+function destroyBody(body: object): void {
+  if ("destroy" in body && typeof body.destroy === "function") body.destroy();
+}
+
+/**
+ * Envuelve el cuerpo de un `GetObject` (spec F2 §4.2) para que la conexión se libere siempre: al
+ * terminar de leer, ante un error, al dejar de iterar y también con `return()` sin haber leído
+ * nada (un generador sin arrancar no ejecuta su `finally`, y el socket quedaría tomado). R2 sin
+ * cuerpo es `STORAGE_UNAVAILABLE`, reintentable: entregar un iterable vacío haría pasar un video
+ * por uno de 0 bytes. `onRelease` corre una sola vez.
+ */
+export function streamFromBody(
+  body: unknown,
+  path: string,
+  onRelease: () => void = () => {},
+): AsyncIterable<Uint8Array> {
+  if (!isAsyncIterable(body)) {
+    throw new AppError("STORAGE_UNAVAILABLE", `R2 no devolvió el contenido de ${path}`, {
+      retriable: true,
+      details: { path },
+    });
+  }
+  const chunks = readBody(body, path);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    destroyBody(body);
+    onRelease();
+  };
+  return {
+    [Symbol.asyncIterator]: () => ({
+      async next() {
+        try {
+          const result = await chunks.next();
+          if (result.done) release();
+          return result;
+        } catch (error) {
+          release();
+          throw error;
+        }
+      },
+      async return() {
+        release();
+        await chunks.return(undefined);
+        return { done: true, value: undefined };
+      },
+    }),
+  };
+}
+
+/** Adaptador de `MediaStorage` para Cloudflare R2 vía la API S3 (ADR-0007). */
 export function createR2Storage(options: R2StorageOptions): MediaStorage {
   const { bucket, signedUrlTtlSeconds } = options;
   const clientConfig = {
@@ -252,13 +307,31 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
       });
     },
 
-    async getStream(path) {
-      const response = await send(path, () =>
-        client.send(new GetObjectCommand({ Bucket: bucket, Key: path })),
-      );
-      // En Node, el cuerpo es un `Readable` (iterable de `Buffer`, que es un `Uint8Array`).
-      const body = response.Body as AsyncIterable<Uint8Array> | undefined;
-      return readBody(body ?? (async function* () {})(), path);
+    async getStream(path, { signal } = {}) {
+      // La señal de quien llama (`AbortSignalLike`, de core) corta la petición y, después, la
+      // lectura: un `AbortController` propio la traduce al `AbortSignal` que pide el SDK.
+      const abort = new AbortController();
+      const onAbort = () => abort.abort();
+      if (signal?.aborted) abort.abort();
+      signal?.addEventListener("abort", onAbort, { once: true });
+      const stopListening = () => signal?.removeEventListener("abort", onAbort);
+      try {
+        const response = await send(path, () =>
+          client.send(new GetObjectCommand({ Bucket: bucket, Key: path }), {
+            abortSignal: abort.signal,
+          }),
+        );
+        // En Node, el cuerpo es un `Readable`: un iterable de `Buffer`, que es un `Uint8Array`.
+        const body = response.Body;
+        const stream = streamFromBody(body, path, stopListening);
+        if (typeof body === "object" && body !== null) {
+          abort.signal.addEventListener("abort", () => destroyBody(body), { once: true });
+        }
+        return stream;
+      } catch (error) {
+        stopListening();
+        throw error;
+      }
     },
 
     async head(path): Promise<StoredObjectInfo | null> {

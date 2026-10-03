@@ -216,6 +216,50 @@ describe("repositorios Drizzle · lo que el puerto no muestra (PGlite)", () => {
     }
   });
 
+  it("un medio con una variante desconocida → MEDIA_ROW_INVALID, no un ZodError", async () => {
+    const brokerId = (await repos.brokers.create(brokerData("medio-roto"))).id;
+    const listingId = (await repos.listings.create(newListing(brokerId, "P-ROTO"))).id;
+    const original = await repos.media.create(newMedia(brokerId, listingId, "sha-roto"));
+    await repos.db.execute(sql`update media set variant = 'xyz' where id = ${original.id}`);
+    for (const read of [
+      () => repos.media.listByListing(listingId),
+      () => repos.media.get(original.id),
+    ]) {
+      const error = await read().catch((caught: unknown) => caught);
+      expect(isAppError(error) && [error.code, error.retriable]).toEqual([
+        "MEDIA_ROW_INVALID",
+        false,
+      ]);
+    }
+  });
+
+  it("un render de un aviso inexistente o de otro corredor → MEDIA_NOT_FOUND", async () => {
+    const brokerId = (await repos.brokers.create(brokerData("render-sin-aviso"))).id;
+    const otherBroker = (await repos.brokers.create(brokerData("render-otro"))).id;
+    const listingId = (await repos.listings.create(newListing(brokerId, "P-RENDER"))).id;
+    const render = (listing: string, broker: string) => ({
+      role: "rendered" as const,
+      variant: "cover" as const,
+      parentMediaId: null,
+      listingId: listing,
+      brokerId: broker,
+      kind: "image" as const,
+      storagePath: `brokers/${broker}/listings/${listing}/rendered/cover/x.jpg`,
+      mime: "image/jpeg",
+      width: 1080,
+      height: 1350,
+      durationS: null,
+      bytes: 10,
+      checksum: "sha-render",
+    });
+    for (const derivative of [render(MISSING_UUID, brokerId), render(listingId, otherBroker)]) {
+      const error = await repos.media
+        .upsertDerivative(derivative)
+        .catch((caught: unknown) => caught);
+      expect(isAppError(error) && error.code).toBe("MEDIA_NOT_FOUND");
+    }
+  });
+
   it("un corredor con datos que no calzan → BROKER_ROW_INVALID, no un ZodError", async () => {
     await repos.brokers.create(brokerData("hashtags-rotos"));
     await repos.db.execute(
