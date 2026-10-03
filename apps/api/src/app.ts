@@ -36,7 +36,7 @@ export type AppDeps = {
   brokers: BrokerRepository;
   media: MediaRepository;
   fieldDefinitions: FieldDefinitionRepository;
-  /** Solo para las URLs de lectura temporales de las fotos. */
+  /** Solo para las URLs de lectura temporales de los medios (fotos, renders y reel). */
   storage: Pick<MediaStorage, "signedReadUrl">;
   // Importación (F1-T11): la API solo crea el run y encola (ADR-0005).
   importRuns: ImportRunRepository;

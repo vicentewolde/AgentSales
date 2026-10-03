@@ -22,7 +22,7 @@
 | F2-T09 · Plantillas y render | ✅ | #42 |
 | F2-T10 · Caso de uso `prepareContent` | ✅ | #43 |
 | F2-T11 · Job `content.prepare` en el worker | ✅ | #44 |
-| F2-T12 · API de contenido | ✅ | |
+| F2-T12 · API de contenido | ✅ | #45 |
 | F2-T13 · CLI `prepare` y `content` | ⏳ pendiente | |
 | F2-T14 · Panel: preparar y vista previa | ⏳ pendiente | |
 | F2-T15 · Panel: edición de textos | ⏳ pendiente | |

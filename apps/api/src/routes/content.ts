@@ -2,6 +2,7 @@ import {
   AppError,
   type CheckedContent,
   type ContentRepository,
+  type ContentRun,
   type ContentRunRepository,
   type EditContentDeps,
   editContent,
@@ -19,6 +20,7 @@ import {
   type ContentMedia,
   type ContentRunRequestResponse,
   type ContentRunResponse,
+  type ContentRunView,
   type ContentView,
   contentEditBodySchema,
   contentRunRequestBodySchema,
@@ -49,6 +51,13 @@ const contentView = ({ content, checks }: CheckedContent): ContentView => ({
   promptVersion: content.promptVersion,
   updatedAt: content.updatedAt,
 });
+
+/** La vista HTTP de una corrida: el reporte sin el proveedor ni el modelo de la IA. */
+export function contentRunView(run: ContentRun): ContentRunView {
+  if (run.report?.llm === undefined) return { ...run, report: run.report };
+  const { provider: _provider, model: _model, ...llm } = run.report.llm;
+  return { ...run, report: { ...run.report, llm } };
+}
 
 /** Un medio de un canal con su URL firmada. Solo derivados y renders: nunca un original. */
 const contentMedia =
@@ -84,7 +93,7 @@ export function listingContentRoutes(deps: ContentRoutesDeps) {
           ...(texts === undefined ? {} : { texts }),
           ...(replaceEdits === undefined ? {} : { replaceEdits }),
         });
-        const body: ContentRunRequestResponse = { contentRun: run, reused };
+        const body: ContentRunRequestResponse = { contentRun: contentRunView(run), reused };
         return c.json(body, 202);
       },
     )
@@ -95,7 +104,7 @@ export function listingContentRoutes(deps: ContentRoutesDeps) {
         carousel: await Promise.all(content.carousel.map(signed)),
         photos: await Promise.all(content.photos.map(signed)),
         reel: content.reel === null ? null : await signed(content.reel),
-        latestRun: content.latestRun,
+        latestRun: content.latestRun === null ? null : contentRunView(content.latestRun),
       };
       return c.json(body, 200);
     });
@@ -111,7 +120,7 @@ export function contentRunRoutes(deps: Pick<ContentRoutesDeps, "contentRuns">) {
         details: { contentRunId: id },
       });
     }
-    const body: ContentRunResponse = { contentRun: run };
+    const body: ContentRunResponse = { contentRun: contentRunView(run) };
     return c.json(body, 200);
   });
 }

@@ -7,6 +7,7 @@ import {
   CONTENT_CHECK_CODES,
   CONTENT_CHECK_SEVERITY_LEVELS,
   CONTENT_STATUSES,
+  contentRunReportSchema,
   contentRunSchema,
   FIELD_TYPES,
   importRunSchema,
@@ -194,8 +195,18 @@ export const contentRunRequestBodySchema = z.object({
 });
 export type ContentRunRequestBody = z.infer<typeof contentRunRequestBodySchema>;
 
+/**
+ * El reporte de una corrida tal como sale de la API: la llamada a la IA sin `provider` ni `model`
+ * (como la vista del texto, spec F2 §4.7), solo la versión del prompt, los intentos y la duración.
+ */
+export const contentRunReportViewSchema = contentRunReportSchema.extend({
+  llm: contentRunReportSchema.shape.llm.unwrap().omit({ provider: true, model: true }).optional(),
+});
+export type ContentRunReportView = z.infer<typeof contentRunReportViewSchema>;
+
 /** Una corrida de contenido con sus fechas como `Date` (estado, etapa, reporte y error). */
 export const contentRunViewSchema = contentRunSchema.extend({
+  report: contentRunReportViewSchema.nullable(),
   startedAt: z.coerce.date().nullable(),
   finishedAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),

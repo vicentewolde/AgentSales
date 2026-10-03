@@ -212,6 +212,12 @@ describe("GET /content-runs/:id", () => {
       error: null,
     });
     expect(contentRun.finishedAt).toBeInstanceOf(Date);
+    // La llamada a la IA sin proveedor ni modelo, como la vista del texto.
+    expect(contentRun.report?.llm).toEqual({
+      promptVersion: "listing-content-v1",
+      attempts: 1,
+      durationMs: expect.any(Number),
+    });
 
     const missing = await t.app.request(`/content-runs/${randomUUID()}`);
     expect(missing.status).toBe(404);
@@ -244,6 +250,8 @@ describe("GET /listings/:id/content", () => {
     // Ni la salida cruda ni el modelo, ni lo privado del aviso.
     expect(raw).not.toContain("rawOutput");
     expect(raw).not.toContain("llmModel");
+    expect(raw).not.toContain("modelo-falso");
+    expect(raw).not.toMatch(/"(provider|model|llmProvider)"/);
     expect(raw).not.toContain("Secreta");
     expect(raw).not.toContain("quinientos");
   });
@@ -328,10 +336,14 @@ describe("PATCH /contents/:id", () => {
     expect((await errorOf(stale)).error.code).toBe("CONTENT_NOT_CURRENT");
   });
 
-  it("hashtags en Portal son 400 CONTENT_HASHTAGS_INVALID", async () => {
+  it("hashtags en Portal o un título en Instagram son 400", async () => {
     const t = await setup();
     await t.prepare();
-    const [, portal] = (await t.content()).contents;
+    const [instagram, portal] = (await t.content()).contents;
+
+    const title = await t.json("PATCH", `/contents/${instagram?.id}`, { title: "Hola" });
+    expect(title.status).toBe(400);
+    expect((await errorOf(title)).error.code).toBe("CONTENT_TITLE_INVALID");
 
     const response = await t.json("PATCH", `/contents/${portal?.id}`, { hashtags: ["#nunoa"] });
     expect(response.status).toBe(400);

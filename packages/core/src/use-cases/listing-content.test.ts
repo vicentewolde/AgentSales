@@ -229,6 +229,19 @@ describe("editContent", () => {
     ).resolves.toMatchObject({ content: { hashtags: [] } });
   });
 
+  it("si falta el corredor, no guarda nada (el contexto se carga antes de escribir)", async () => {
+    const t = await setup();
+    const [instagram] = await t.current();
+
+    await expect(
+      editContent(
+        { ...t.deps, brokers: createInMemoryBrokerRepository([]) },
+        { contentId: instagram?.id ?? "", edit: { body: "a mano" } },
+      ),
+    ).rejects.toMatchObject({ code: "BROKER_NOT_FOUND" });
+    expect(await t.repos.contents.get(instagram?.id ?? "")).toMatchObject({ status: "draft" });
+  });
+
   it("un texto que no existe → CONTENT_NOT_FOUND", async () => {
     const t = await setup();
     await expect(

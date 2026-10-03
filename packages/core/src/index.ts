@@ -200,8 +200,6 @@ export {
   editContent,
 } from "./use-cases/edit-content.js";
 export {
-  type CheckedContent,
-  type ContentCheckDeps,
   type GetListingContentDeps,
   getListingContent,
   type ListingContent,

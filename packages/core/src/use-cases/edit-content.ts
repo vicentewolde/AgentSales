@@ -1,16 +1,16 @@
 import { normalizeHashtag } from "../content/assemble.js";
+import {
+  type CheckedContent,
+  type ContentCheckDeps,
+  checked,
+  loadCheckContext,
+} from "../content/check-context.js";
 import { AppError } from "../errors.js";
 import type {
   ContentChanges,
   ContentRepository,
   ContentRunRepository,
 } from "../ports/content-repository.js";
-import {
-  type CheckedContent,
-  type ContentCheckDeps,
-  checked,
-  loadCheckContext,
-} from "./get-listing-content.js";
 
 export type EditContentDeps = ContentCheckDeps & {
   contents: Pick<ContentRepository, "get" | "listCurrent" | "update">;
@@ -37,6 +37,9 @@ function instagramHashtags(tags: readonly string[]): string[] {
  * - hashtags en Portal o Marketplace, que no los usan → `CONTENT_HASHTAGS_INVALID` (400).
  * En Instagram, los hashtags se normalizan y se descartan los vacíos y repetidos. El largo y lo
  * demás no se rechaza: lo informa la revisión que vuelve con el texto.
+ * Entre revisar la corrida activa y guardar puede colarse un pedido de textos: la edición se guarda
+ * y esa corrida la reemplazará. La ventana es mínima, y el pedido ya avisa con `CONTENT_EDITED` si
+ * la edición llegó antes.
  */
 export async function editContent(
   deps: EditContentDeps,
@@ -67,6 +70,9 @@ export async function editContent(
     );
   }
 
+  // El contexto antes de guardar: si falta el aviso o el corredor, no queda una edición guardada
+  // con una respuesta de error.
+  const { ctx } = await loadCheckContext(deps, content.listingId);
   const changes: ContentChanges = { status: "edited" };
   if (edit.title !== undefined) {
     if (content.platform === "instagram") {
@@ -85,6 +91,5 @@ export async function editContent(
     changes.hashtags = instagramHashtags(edit.hashtags);
   }
 
-  const { ctx } = await loadCheckContext(deps, content.listingId);
   return checked(await deps.contents.update(content.id, changes), ctx);
 }
