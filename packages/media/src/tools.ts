@@ -29,17 +29,26 @@ export function isSupportedFfmpeg(version: { major: number; minor: number } | nu
   );
 }
 
-/** El comando para instalar el Chromium que pide la versión de Playwright del proyecto. */
-export const CHROMIUM_INSTALL_HINT =
-  "Instala el Chromium de Playwright: pnpm --filter @agentsales/media exec playwright install chromium";
+/** El comando que instala el Chromium que pide la versión de Playwright del proyecto. */
+export const CHROMIUM_INSTALL_COMMAND =
+  "pnpm --filter @agentsales/media exec playwright install chromium";
+export const CHROMIUM_INSTALL_HINT = `Instala el Chromium de Playwright: ${CHROMIUM_INSTALL_COMMAND}`;
 
 /**
- * La ruta del Chromium que pide el Playwright instalado y si existe (para `doctor`). Playwright se
+ * El Chromium que pide el Playwright instalado y si está (para `doctor`). Los renders sin ventana
+ * usan el `chromium_headless_shell` de la misma revisión, así que se revisan los dos. Playwright se
  * carga recién al llamarla.
  */
 export async function chromiumStatus(): Promise<{ path: string; installed: boolean }> {
   const { existsSync } = await import("node:fs");
   const { chromium } = await import("playwright");
   const path = chromium.executablePath();
-  return { path, installed: existsSync(path) };
+  const revision = /[/\\]chromium-(\d+)[/\\]/.exec(path);
+  const shellDir =
+    revision === null
+      ? null
+      : path.slice(0, revision.index) +
+        `${path[revision.index]}chromium_headless_shell-${revision[1]}`;
+  const installed = existsSync(path) && (shellDir === null || existsSync(shellDir));
+  return { path, installed };
 }

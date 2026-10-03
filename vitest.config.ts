@@ -17,6 +17,10 @@ export default defineConfig({
     // Levantar PGlite (Postgres en WASM) y aplicar las migraciones en un `beforeAll` tarda 1–2 s, y
     // con todos los workers en paralelo puede pasar los 10 s por defecto (visto en una revisión).
     hookTimeout: 30_000,
+    // Desde F2, los tests de medios (sharp, ffmpeg y Chromium de verdad) cargan el procesador, y con
+    // todo en paralelo un test ajeno y rápido (por ejemplo, una subida simulada a R2) llegó a pasar
+    // los 5 s por defecto. El tope solo da margen: no cambia lo que cada test comprueba.
+    testTimeout: 20_000,
     // Guardia (spec F2-T04): ningún test ejecuta la CLI real de Claude. Si un test arma el
     // proveedor desde el entorno sin pasar el ejecutable falso, apunta a uno que no existe y falla
     // con LLM_NOT_CONFIGURED en vez de gastar la cuota del plan. Los tests del adaptador pasan su

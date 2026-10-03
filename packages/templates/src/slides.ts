@@ -53,11 +53,12 @@ export function coverHtml(data: CoverData, fontCss: string): string {
 header{position:absolute;top:${MARGIN}px;left:${MARGIN}px;right:${MARGIN}px;display:flex;justify-content:space-between;align-items:flex-start}
 .badge{background:${colors.secondary};color:${colors.onSecondary};font-weight:800;font-size:30px;letter-spacing:.12em;padding:14px 26px;border-radius:12px}
 .logo{max-width:260px;max-height:120px;object-fit:contain}
-.logo-name{color:#fff;font-weight:600;font-size:30px;max-width:520px;text-align:right}
+.logo-name{color:#fff;font-weight:600;font-size:30px;max-width:520px;text-align:right;text-shadow:0 2px 10px rgba(0,0,0,.6);overflow-wrap:anywhere}
 footer{position:absolute;left:${MARGIN}px;right:${MARGIN}px;bottom:${MARGIN}px;color:#fff}
-.price{font-weight:800;font-size:104px;line-height:1.05;letter-spacing:-.02em}
+.price{font-weight:800;font-size:104px;line-height:1.05;letter-spacing:-.02em;overflow-wrap:anywhere}
+.place{overflow-wrap:anywhere}
 .place{font-weight:600;font-size:44px;margin-top:14px;opacity:.95}
-.facts{list-style:none;display:flex;gap:44px;margin-top:34px;font-size:34px;font-weight:600}
+.facts{list-style:none;display:flex;flex-wrap:wrap;gap:16px 44px;margin-top:34px;font-size:34px;font-weight:600}
 .facts li{display:flex;align-items:center;gap:14px}`;
   const body = `${photo === null ? "" : `<img class="photo" src="${photo}" alt="">`}
 <div class="shade"></div>
@@ -98,10 +99,12 @@ header{display:flex;justify-content:space-between;align-items:center}
 .place{font-weight:800;font-size:54px;margin-top:44px;line-height:1.1}
 .price{font-weight:800;font-size:70px;margin-top:16px;letter-spacing:-.01em}
 .expenses{font-size:30px;margin-top:6px;opacity:.85}
-.rows{display:grid;grid-template-columns:1fr 1fr;gap:26px 40px;margin-top:44px}
-.row{display:flex;gap:18px;align-items:center}
-.label{font-size:24px;opacity:.75}
+.rows{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:26px 40px;margin-top:44px}
+.row{display:flex;gap:18px;align-items:center;min-width:0}
+.row>div{min-width:0;overflow-wrap:anywhere}
+.label{font-size:27px;opacity:.85}
 .value{font-size:34px;font-weight:600}
+.place,.availability,.contact span{overflow-wrap:anywhere}
 .availability{font-size:30px;margin-top:36px}
 .availability strong{font-weight:800}
 .contact{margin-top:auto;display:flex;gap:44px;font-size:34px;font-weight:600;padding-top:24px;border-top:2px solid currentColor}

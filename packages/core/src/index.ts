@@ -168,13 +168,17 @@ export {
   type ReelOverlayData,
   type RenderedImage,
   SLIDE_ICONS,
+  SLIDE_IMAGE_MIMES,
   SLIDE_SIZES,
   type SlideBrand,
   type SlideFact,
   type SlideIcon,
   type SlideImage,
+  type SlideImageMime,
+  type SlideImageRef,
   type SlideTemplates,
   type SpecSheetData,
+  slideKeyInput,
 } from "./ports/slide-templates.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {

@@ -1,5 +1,8 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createSlideTemplates } from "@agentsales/templates";
 import sharp from "sharp";
 import { afterAll, describe, expect, it } from "vitest";
@@ -110,6 +113,18 @@ describe("createHtmlRenderer", () => {
     const result = await renderer.render(html, { width: 1080, height: 1350, format: "jpeg" });
     const metadata = await sharp(result.bytes).metadata();
     expect([metadata.width, metadata.height]).toEqual([1080, 1350]);
+
+    // Inter se aplica: sin las @font-face (con la fuente por defecto) la imagen es otra.
+    const overlay = templates.reelOverlay({
+      operation: "sale",
+      propertyType: "Departamento",
+      comuna: "Ñuñoa",
+      price: "UF 5.800",
+    });
+    const size = { width: 1080, height: 1920, format: "png" } as const;
+    const withInter = await renderer.render(overlay, size);
+    const withoutInter = await renderer.render(overlay.replace(/@font-face\{[^}]*\}/g, ""), size);
+    expect(withInter.sha256).not.toBe(withoutInter.sha256);
   }, 60_000);
 
   it("con el signal ya disparado no dibuja: RENDER_ABORTED, reintentable", async () => {
@@ -139,8 +154,55 @@ describe("createHtmlRenderer", () => {
     expect([error.code, error.retriable]).toEqual(["RENDER_BROWSER_NOT_INSTALLED", false]);
     expect(error.message).toContain("playwright install chromium");
     expect(error.message).not.toContain("/no/existe");
+    // Ni en la causa, que va a los logs.
+    expect(JSON.stringify(error.cause ?? "")).not.toContain("/no/existe");
     await missing.close();
   });
+
+  it("un Chromium que existe pero no se puede abrir → RENDER_FAILED, no 'no instalado'", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "agentsales-render-"));
+    const notExecutable = join(dir, "chromium");
+    await writeFile(notExecutable, "no soy un navegador");
+    const broken = createHtmlRenderer({ executablePath: notExecutable });
+    try {
+      const error = await errorOf(
+        broken.render(page(""), { width: 10, height: 10, format: "png" }),
+      );
+      expect(error.code).toBe("RENDER_FAILED");
+      expect(JSON.stringify(error.cause ?? "")).not.toContain(dir);
+    } finally {
+      await broken.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("el JavaScript de la página no corre", async () => {
+    const html = page(
+      "<script>document.body.style.background='rgb(255,0,0)'</script>",
+      "body{background:rgb(0,0,255)}",
+    );
+    const result = await renderer.render(html, { width: 100, height: 100, format: "png" });
+    const [r = 0, , b = 0] = await sharp(result.bytes)
+      .extract({ left: 50, top: 50, width: 1, height: 1 })
+      .raw()
+      .toBuffer();
+    expect([r < 30, b > 220]).toEqual([true, true]);
+  }, 60_000);
+
+  it("cortar a mitad del render: RENDER_ABORTED, y el renderizador sigue sirviendo", async () => {
+    const controller = new AbortController();
+    const pending = renderer.render(
+      page("<div></div>"),
+      { width: 1080, height: 1350, format: "jpeg" },
+      controller.signal,
+    );
+    setTimeout(() => controller.abort(), 5);
+    const error = await errorOf(pending);
+    expect([error.code, error.retriable]).toEqual(["RENDER_ABORTED", true]);
+
+    const after = await renderer.render(page(""), { width: 10, height: 10, format: "png" });
+    expect(after.bytes.length).toBeGreaterThan(0);
+  }, 60_000);
 
   it("después de close() se puede volver a dibujar (abre otro Chromium)", async () => {
     const own = createHtmlRenderer();

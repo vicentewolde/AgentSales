@@ -1,11 +1,21 @@
 import type { AbortSignalLike } from "../abort.js";
 import type { Operation } from "../enums.js";
 
+/** Formatos que una plantilla puede incrustar (Chromium los dibuja). Un logo HEIC no va. */
+export const SLIDE_IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp"] as const;
+export type SlideImageMime = (typeof SLIDE_IMAGE_MIMES)[number];
+
+/**
+ * Una imagen sin sus bytes: lo que entra en la clave de R2 de un render (spec F2 §4.2). Sale de
+ * `media` (`mime` y `checksum`) sin descargar nada.
+ */
+export type SlideImageRef = { mime: SlideImageMime; sha256: string };
+
 /**
  * Una imagen que usa una plantilla (la foto de portada o el logo): la plantilla arma el `data:`
- * con los bytes, y la clave del render usa el `sha256` (spec F2 §4.2), no los bytes.
+ * con los bytes, y la clave del render usa el `sha256` (`slideKeyInput`), no los bytes.
  */
-export type SlideImage = { bytes: Uint8Array; mime: "image/jpeg" | "image/png"; sha256: string };
+export type SlideImage = SlideImageRef & { bytes: Uint8Array };
 
 /** Íconos de las plantillas (SVG propios en `packages/templates`). */
 export const SLIDE_ICONS = [
@@ -27,12 +37,15 @@ export type SlideIcon = (typeof SLIDE_ICONS)[number];
 /** Un dato con su ícono, ya formateado por core (`72,5 m²`, `3 dorm`). */
 export type SlideFact = { icon: SlideIcon; text: string };
 
-/** La marca del corredor en las plantillas: colores `#RRGGBB` y el logo (PNG o JPG), si hay. */
-export type SlideBrand = {
+/**
+ * La marca del corredor en las plantillas: colores `#RRGGBB` y el logo (JPEG, PNG o WebP), si hay.
+ * Un logo en otro formato (HEIC) va como `null` y se muestra el nombre de la marca.
+ */
+export type SlideBrand<Image extends SlideImageRef = SlideImage> = {
   brandName: string;
   primaryColor: string;
   secondaryColor: string;
-  logo: SlideImage | null;
+  logo: Image | null;
 };
 
 /**
@@ -40,7 +53,7 @@ export type SlideBrand = {
  * precio, `Tipo · Comuna` y los datos que existan (hasta 3: m² útiles, dormitorios y baños). Nunca
  * lleva la dirección: el tipo no tiene dónde ponerla.
  */
-export type CoverData = {
+export type CoverData<Image extends SlideImageRef = SlideImage> = {
   operation: Operation;
   propertyType: string;
   comuna: string | null;
@@ -48,12 +61,12 @@ export type CoverData = {
   price: string;
   facts: SlideFact[];
   /** La variante `ig_4x5` de la foto de portada (JPEG), así una portada HEIC funciona. */
-  photo: SlideImage;
-  brand: SlideBrand;
+  photo: Image;
+  brand: SlideBrand<Image>;
 };
 
 /** Ficha del carrusel: tabla de atributos con íconos, disponibilidad y contacto. */
-export type SpecSheetData = {
+export type SpecSheetData<Image extends SlideImageRef = SlideImage> = {
   operation: Operation;
   propertyType: string;
   comuna: string | null;
@@ -63,7 +76,7 @@ export type SpecSheetData = {
   rows: { icon: SlideIcon; label: string; value: string }[];
   availability: string | null;
   contact: { whatsapp: string | null; instagramHandle: string | null };
-  brand: SlideBrand;
+  brand: SlideBrand<Image>;
 };
 
 /** Texto de los primeros 2 s del reel: `Venta · Departamento · Ñuñoa · UF 5.800`. */
@@ -113,4 +126,31 @@ export interface HtmlRenderer {
     options: { width: number; height: number; format: "jpeg" | "png" },
     signal?: AbortSignalLike,
   ): Promise<RenderedImage>;
+}
+
+const isImage = (value: unknown): value is SlideImageRef =>
+  typeof value === "object" &&
+  value !== null &&
+  "sha256" in value &&
+  "mime" in value &&
+  typeof (value as SlideImageRef).sha256 === "string";
+
+/**
+ * Los datos de una plantilla tal como entran en la clave de R2 del render (spec F2 §4.2): cada
+ * imagen queda solo con `mime` y `sha256`, sin bytes. Acepta los datos con o sin bytes, así la
+ * corrida (F2-T10) calcula la clave desde `media` y descarga las imágenes solo si cambió. Se pasa a
+ * `canonicalJson` junto con la versión de las plantillas.
+ */
+export function slideKeyInput(
+  data: CoverData<SlideImageRef> | SpecSheetData<SlideImageRef> | ReelOverlayData,
+): unknown {
+  const strip = (value: unknown): unknown => {
+    if (isImage(value)) return { mime: value.mime, sha256: value.sha256 };
+    if (Array.isArray(value)) return value.map(strip);
+    if (typeof value === "object" && value !== null) {
+      return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, strip(child)]));
+    }
+    return value;
+  };
+  return strip(data);
 }

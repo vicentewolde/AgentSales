@@ -1,6 +1,6 @@
 import type { HealthReport, PublishMode } from "@agentsales/core";
 import {
-  CHROMIUM_INSTALL_HINT,
+  CHROMIUM_INSTALL_COMMAND,
   FFMPEG_MIN_VERSION,
   isSupportedFfmpeg,
   parseFfmpegVersion,
@@ -208,7 +208,7 @@ export function checkChromium(status: { path: string; installed: boolean } | nul
     name,
     level: "error",
     detail: status === null ? "no se pudo revisar (Playwright no cargó)" : "no instalado",
-    hint: CHROMIUM_INSTALL_HINT.replace(/^Instala el Chromium de Playwright: /, ""),
+    hint: CHROMIUM_INSTALL_COMMAND,
   };
 }
 

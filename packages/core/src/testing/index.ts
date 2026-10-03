@@ -51,3 +51,11 @@ export {
   type InMemoryMediaProcessorOptions,
   type MediaProcessorCall,
 } from "./media-processor.js";
+export {
+  createInMemoryHtmlRenderer,
+  createInMemorySlideTemplates,
+  type HtmlRenderCall,
+  type InMemoryHtmlRenderer,
+  type InMemorySlideTemplates,
+  type SlideTemplateCall,
+} from "./slides.js";

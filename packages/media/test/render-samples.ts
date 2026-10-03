@@ -1,5 +1,8 @@
 // Imágenes de muestra de las plantillas con datos inventados (spec F2-T09): para revisar el diseño.
-// pnpm --filter @agentsales/media run render:samples  →  tmp/render-samples/ (fuera de git)
+//   pnpm --filter @agentsales/media run render:samples            →  tmp/render-samples/ (fuera de git)
+//   pnpm --filter @agentsales/media run render:samples -- --out docs/assets/plantillas
+// (`--out` es relativa a la raíz del repo). Las de `docs/assets/plantillas/` se regeneran cada vez
+// que sube `TEMPLATES_VERSION`.
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { SLIDE_SIZES } from "@agentsales/core";
@@ -7,7 +10,12 @@ import { createSlideTemplates } from "@agentsales/templates";
 import sharp from "sharp";
 import { createHtmlRenderer } from "../src/index.js";
 
-const outDir = resolve(import.meta.dirname, "../../../tmp/render-samples");
+const root = resolve(import.meta.dirname, "../../..");
+const outFlag = process.argv.indexOf("--out");
+const outDir = resolve(
+  root,
+  outFlag === -1 ? "tmp/render-samples" : (process.argv[outFlag + 1] ?? "tmp/render-samples"),
+);
 await mkdir(outDir, { recursive: true });
 
 // Una "foto" sintética: cielo, muro y piso, sin personas ni datos de clientes.

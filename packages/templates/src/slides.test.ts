@@ -170,7 +170,14 @@ describe("portada", () => {
     expect(html).toContain('<span class="logo-name">Inventada Propiedades</span>');
   });
 
-  it("una imagen que no es JPEG ni PNG no se incrusta", () => {
+  it("un logo WebP se incrusta", () => {
+    const html = templates.cover(
+      cover({ brand: { ...brand, logo: { ...logo, mime: "image/webp" } } }),
+    );
+    expect(html).toContain('class="logo" src="data:image/webp;base64,');
+  });
+
+  it("una imagen que no es JPEG, PNG ni WebP no se incrusta", () => {
     const html = templates.cover(
       cover({ photo: { ...photo, mime: "image/svg+xml" as "image/jpeg" } }),
     );

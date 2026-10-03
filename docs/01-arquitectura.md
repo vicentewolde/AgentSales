@@ -25,7 +25,7 @@ flowchart LR
     IMP[packages/importers]
     LLM[packages/llm]
     MEDIA[packages/media<br/>sharp · ffmpeg · Playwright]
-    TPL[packages/templates<br/>HTML de portada y ficha]
+    TPL[packages/templates<br/>HTML de portada, ficha y texto del reel]
     PUB[packages/publishers]
     DB[packages/db<br/>Drizzle]
     STO[packages/storage<br/>API S3]
@@ -540,17 +540,18 @@ interface MediaProcessor {
 
 ## Plantillas y render (`SlideTemplates` y `HtmlRenderer`, F2-T09)
 
-- **Datos:** `CoverData`, `SpecSheetData` y `ReelOverlayData` son de core (`packages/core/src/ports/slide-templates.ts`). Traen los textos ya formateados (`UF 5.800`, `72,5 m²`), los íconos de cada dato (`SLIDE_ICONS`) y la marca del corredor. No tienen campo de dirección. Las imágenes van como `SlideImage` (`{ bytes, mime, sha256 }`).
+- **Datos:** `CoverData`, `SpecSheetData` y `ReelOverlayData` son de core; sus imágenes son `SlideImage` (JPEG, PNG o WebP, con bytes) o, para calcular la clave de R2 sin descargar, `SlideImageRef` (`slideKeyInput`) (`packages/core/src/ports/slide-templates.ts`). Traen los textos ya formateados (`UF 5.800`, `72,5 m²`), los íconos de cada dato (`SLIDE_ICONS`) y la marca del corredor. No tienen campo de dirección. Las imágenes van como `SlideImage` (`{ bytes, mime, sha256 }`).
+- Los tests de core usan `createInMemorySlideTemplates` y `createInMemoryHtmlRenderer` (`@agentsales/core/testing`).
 - **`createSlideTemplates()`** (`packages/templates`): arma HTML autocontenido para la portada y la ficha (1080×1350) y el texto del reel (1080×1920, transparente).
   - Inter (OFL, `@fontsource/inter`) va incrustada como `data:`; los íconos son SVG propios.
   - Los datos se escapan, y los colores inválidos se reemplazan.
   - `TEMPLATES_VERSION` entra en las claves de R2 de los renders y del reel.
 - **`createHtmlRenderer()`** (`packages/media`, Playwright):
-  - Un Chromium por proceso, que se abre al primer render y se cierra con `close()` (el worker al apagarse).
+  - Un Chromium por proceso, que se abre al primer render, se vuelve a abrir si se cae y se cierra con `close()` (el worker al apagarse, después de cortar los renders en curso).
   - Cada render usa un contexto nuevo: sin red (todas las peticiones se cortan), sin JavaScript de la página, y espera las fuentes.
-  - Salida: JPEG de calidad 90 o PNG transparente, con su sha256. Tope de 30 s.
+  - Salida: JPEG de calidad 90 o PNG transparente, con su sha256. Un solo tope de 30 s para todo el render; el corte con `signal` responde aunque Playwright no se interrumpa.
   - Errores: `RENDER_BROWSER_NOT_INSTALLED` (no reintentable, con el comando para instalarlo), `RENDER_TIMEOUT` y `RENDER_ABORTED` (reintentables) y `RENDER_FAILED`.
-- **`chromiumStatus()`** (`@agentsales/media/tools`): la ruta del Chromium que pide el Playwright instalado. La usa `doctor`, que carga Playwright solo al revisar.
+- **`chromiumStatus()`** (`@agentsales/media/tools`): la ruta del Chromium que pide el Playwright instalado (y su `chromium_headless_shell`, que es el que dibuja). La usa `doctor`, que carga Playwright solo al revisar.
 ## Seguridad
 
 - Tokens de plataformas cifrados en reposo con AES-256-GCM. La clave de 32 bytes se deriva de `APP_ENCRYPTION_KEY` con HKDF-SHA256 (se implementa en F3).
