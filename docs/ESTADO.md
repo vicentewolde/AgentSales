@@ -4,14 +4,14 @@
 
 **Actualizado:** 2026-10-02
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
-**Última tarea terminada:** Spec de F2 (`/fase-plan 2`)
-**Siguiente paso:** `/tarea F2-T01` (mínimos y máximos en campos numéricos). Orden: T01 → T02 → T03 (migraciones en cadena); T04 en cualquier momento.
+**Última tarea terminada:** F2-T01 · Mínimos y máximos en campos numéricos
+**Siguiente paso:** `/tarea F2-T02` (datos de contenido: corridas y contenidos). Orden: T02 → T03 (migraciones en cadena); T04 en cualquier momento.
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F2 (`/fase-plan 2`) | ✅ | #31 |
-| F2-T01 · Mínimos y máximos en campos numéricos | ⏳ pendiente | |
+| F2-T01 · Mínimos y máximos en campos numéricos | ✅ | |
 | F2-T02 · Datos de contenido: corridas y contenidos | ⏳ pendiente | |
 | F2-T03 · Medios derivados en la base y `getStream` | ⏳ pendiente | |
 | F2-T04 · Proveedor de IA (`packages/llm`) | ⏳ pendiente | |
@@ -51,7 +51,6 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - **Hallazgos de las notas de integración:** HEIC con ffmpeg (sharp no lo decodifica; verificado con ffmpeg 9.0.1); la CLI de Claude sin `--bare` (exige API key) y sin `ANTHROPIC_API_KEY` en su entorno (cobraría por API); carrusel de hasta 10; reel de Meta entre 3 s y 15 min (el tope de 90 s es nuestro); título de Portal de hasta 60 caracteres sin abreviaturas (por confirmar en F4).
 
 ## Deuda técnica
-- **Validación de números:** las definiciones de campo no tienen mínimo ni máximo, así que `dormitorios = -2` o `banos = -1` pasan (visto en la demo 4 de F1). Se resuelve en F2-T01.
 - **F7:** `GET /listings` devuelve la entidad completa: notas internas, dirección exacta y todos los atributos. Es aceptable mientras la API sea local (`hostGuard`). Con autenticación y despliegue, usar una proyección acotada para la lista.
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
@@ -74,6 +73,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-03: **F2-T01.** `field_definitions.min_value` y `max_value` (migración `0003`, aplicada en Neon) y rangos en el seed (`dormitorios` y `banos` de 0 a 50, superficies de 1 a 1.000.000, `piso` de -10 a 200, año de 1800 a 2100, gastos y contribuciones desde 0). Fuera de rango es `FIELD_NUMBER_INVALID` con el rango en el motivo; un rango en un campo que no es `number`, o con el mínimo mayor que el máximo, es `FIELD_CONFIG_INVALID`. Demo en `--dry-run` con una copia de Sheets (P001 con `dormitorios = -2`): falla esa fila y las demás quedan sin cambios; la planilla quedó como estaba.
 - 2026-10-02: **`/fase-plan 2`.** Spec de F2 aprobado (17 tareas), ADR-0012 y ADR-0013 aceptados, y seguimientos en ADR-0003 y ADR-0005. Notas de integración nuevas en `docs/integraciones/` (CLI de Claude, API de Anthropic, HEIC, Instagram y Mercado Libre), con verificaciones locales: la CLI 2.1.243 tiene `--safe-mode`, `--tools` y `claude auth`, y ffmpeg 9.0.1 convierte un HEIC en mosaicos completo. Revisado por el subagente `arquitecto` (6 bloqueantes corregidos en el spec).
 - **Pendientes de verificar en sus tareas:** el sobre real de `claude -p` con `--json-schema` y `--tools ""`, y si existe `--max-turns` (no sale en la ayuda de la 2.1.243) (prueba de humo en T04), la orientación y el color de un HEIC de iPhone (T07), y el largo del título y las reglas de contacto de Mercado Libre (F4: la doc dio 403).
 - **Para la próxima demo:** las variantes del Excel se arman en Google Sheets y se exportan como xlsx; la planilla queda como estaba. Neon tiene las 3 propiedades de muestra tal como están en `data/muestras/propiedades.xlsx` (cierre de F1, `v0.1.0`; detalle en `CHANGELOG.md`).

@@ -38,6 +38,8 @@ export async function seed(db: SchemaDatabase): Promise<SeedResult> {
         options: excluded(fieldDefinitions.options),
         sourceColumn: excluded(fieldDefinitions.sourceColumn),
         isCore: excluded(fieldDefinitions.isCore),
+        minValue: excluded(fieldDefinitions.minValue),
+        maxValue: excluded(fieldDefinitions.maxValue),
         sortOrder: excluded(fieldDefinitions.sortOrder),
         active: excluded(fieldDefinitions.active),
         updatedAt: sql`now()`,

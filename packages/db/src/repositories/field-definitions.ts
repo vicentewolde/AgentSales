@@ -28,6 +28,8 @@ function toFieldDefinition(row: FieldDefinitionRow): FieldDefinition {
     options: row.options,
     sourceColumn: row.sourceColumn,
     isCore: row.isCore,
+    minValue: row.minValue,
+    maxValue: row.maxValue,
     sortOrder: row.sortOrder,
     active: row.active,
   });

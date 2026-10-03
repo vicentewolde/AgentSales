@@ -74,6 +74,9 @@ type FieldSeed = {
   options?: readonly string[];
   /** Columna fija de `listings` o de control de la carga (spec F1 §4.2). */
   isCore?: boolean;
+  /** Rango de un `number`, con los extremos incluidos (spec F2 §4.3). */
+  min?: number;
+  max?: number;
 };
 
 const PROPERTY_TYPES = [
@@ -96,6 +99,9 @@ const ORIENTATIONS = [
   "Suroriente",
   "Surponiente",
 ];
+
+/** Superficies en m²: más de 0 (al menos 1) y hasta un millón (100 hectáreas). */
+const SURFACE = { min: 1, max: 1_000_000 } as const;
 
 // Tipo y obligatoriedad según el diccionario de la hoja Instrucciones. Excepción: `carpeta_medios`
 // es opcional porque, si viene vacía, se usa `id_propiedad` (spec F1 §4.3).
@@ -138,22 +144,36 @@ const FIELD_SEEDS: readonly FieldSeed[] = [
     options: ["UF", "CLP"],
     isCore: true,
   },
-  { key: "gastos_comunes_clp", label: "Gastos comunes (CLP)", type: "number" },
+  { key: "gastos_comunes_clp", label: "Gastos comunes (CLP)", type: "number", min: 0 },
   {
     key: "contribuciones_trimestrales_clp",
     label: "Contribuciones trimestrales (CLP)",
     type: "number",
+    min: 0,
   },
-  { key: "sup_util_m2", label: "Superficie útil (m²)", type: "number", required: true },
-  { key: "sup_total_m2", label: "Superficie total (m²)", type: "number" },
-  { key: "sup_terreno_m2", label: "Superficie de terreno (m²)", type: "number" },
-  { key: "dormitorios", label: "Dormitorios", type: "number", required: true },
-  { key: "banos", label: "Baños", type: "number", required: true },
-  { key: "estacionamientos", label: "Estacionamientos", type: "number", required: true },
-  { key: "bodegas", label: "Bodegas", type: "number", required: true },
-  { key: "piso", label: "Piso", type: "number" },
+  {
+    key: "sup_util_m2",
+    label: "Superficie útil (m²)",
+    type: "number",
+    required: true,
+    ...SURFACE,
+  },
+  { key: "sup_total_m2", label: "Superficie total (m²)", type: "number", ...SURFACE },
+  { key: "sup_terreno_m2", label: "Superficie de terreno (m²)", type: "number", ...SURFACE },
+  { key: "dormitorios", label: "Dormitorios", type: "number", required: true, min: 0, max: 50 },
+  { key: "banos", label: "Baños", type: "number", required: true, min: 0, max: 50 },
+  {
+    key: "estacionamientos",
+    label: "Estacionamientos",
+    type: "number",
+    required: true,
+    min: 0,
+    max: 100,
+  },
+  { key: "bodegas", label: "Bodegas", type: "number", required: true, min: 0, max: 100 },
+  { key: "piso", label: "Piso", type: "number", min: -10, max: 200 },
   { key: "orientacion", label: "Orientación", type: "enum", options: ORIENTATIONS },
-  { key: "ano_construccion", label: "Año de construcción", type: "number" },
+  { key: "ano_construccion", label: "Año de construcción", type: "number", min: 1800, max: 2100 },
   { key: "amoblado", label: "Amoblado", type: "boolean", required: true },
   {
     key: "acepta_mascotas",
@@ -205,6 +225,8 @@ export const REAL_ESTATE_FIELD_DEFINITIONS = FIELD_SEEDS.map(
       options: field.options ? [...field.options] : null,
       sourceColumn: field.key,
       isCore: field.isCore ?? false,
+      minValue: field.min ?? null,
+      maxValue: field.max ?? null,
       sortOrder: (index + 1) * 10,
       active: true,
     }) satisfies typeof fieldDefinitions.$inferInsert,

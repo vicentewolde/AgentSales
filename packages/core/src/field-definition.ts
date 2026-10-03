@@ -20,6 +20,12 @@ export const fieldDefinitionSchema = z.object({
   sourceColumn: z.string().min(1),
   /** Va a una columna fija de `listings` (o controla la carga) en vez de a `attributes`. */
   isCore: z.boolean(),
+  /**
+   * Rango permitido de un `number`, con los extremos incluidos; `null` = sin tope de ese lado
+   * (spec F2 §4.3). Solo vale en campos `number`: en otro tipo, `FIELD_CONFIG_INVALID`.
+   */
+  minValue: z.number().nullable(),
+  maxValue: z.number().nullable(),
   sortOrder: z.number().int(),
   active: z.boolean(),
 });

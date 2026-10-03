@@ -63,6 +63,32 @@ describe("seed (PGlite)", () => {
     expect(restored).toMatchObject({ id: original?.id, label: "Baños", required: true });
   });
 
+  it("guarda los rangos como numeric y el repositorio los devuelve como número (migración de F2-T01)", async () => {
+    const repo = createFieldDefinitionRepository(test.db);
+    const defs = await repo.list({ category: "real_estate", brokerId: null });
+    const range = (key: string) => {
+      const def = defs.find((candidate) => candidate.key === key);
+      return [def?.minValue, def?.maxValue];
+    };
+    expect(range("piso")).toEqual([-10, 200]);
+    expect(range("sup_util_m2")).toEqual([1, 1_000_000]);
+    expect(range("gastos_comunes_clp")).toEqual([0, null]);
+    expect(range("precio")).toEqual([null, null]);
+  });
+
+  it("restaura un rango cambiado a mano, y un decimal se lee igual", async () => {
+    const [original] = (await realEstateGlobals()).filter((row) => row.key === "dormitorios");
+    await test.db
+      .update(fieldDefinitions)
+      .set({ minValue: 0.5, maxValue: null })
+      .where(eq(fieldDefinitions.id, original?.id ?? ""));
+    const [changed] = (await realEstateGlobals()).filter((row) => row.key === "dormitorios");
+    expect([changed?.minValue, changed?.maxValue]).toEqual([0.5, null]);
+    await seed(test.db);
+    const [restored] = (await realEstateGlobals()).filter((row) => row.key === "dormitorios");
+    expect([restored?.minValue, restored?.maxValue]).toEqual([0, 50]);
+  });
+
   it("guarda las opciones de los enum como arreglo jsonb", async () => {
     const repo = createFieldDefinitionRepository(test.db);
     const defs = await repo.list({ category: "real_estate", brokerId: null });
