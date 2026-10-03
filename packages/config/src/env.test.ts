@@ -150,6 +150,14 @@ describe("loadEnv", () => {
     }
   });
 
+  it("FFMPEG_PATH y FFPROBE_PATH tienen valores por defecto (F2-T07)", () => {
+    const env = loadEnv(validSource);
+    expect([env.FFMPEG_PATH, env.FFPROBE_PATH]).toEqual(["ffmpeg", "ffprobe"]);
+    expect(loadEnv({ ...validSource, FFPROBE_PATH: "/opt/ffprobe" }).FFPROBE_PATH).toBe(
+      "/opt/ffprobe",
+    );
+  });
+
   it("rechaza un LLM_PROVIDER desconocido listando las tres opciones", () => {
     const error = envErrorOf({ ...validSource, LLM_PROVIDER: "openai" });
 

@@ -94,6 +94,13 @@ export {
 } from "./listing-validator/index.js";
 export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
 export { type Media, mediaSchema } from "./media.js";
+export {
+  PHOTO_MIN_WIDTH,
+  PHOTO_SIZE_WARNING_CODES,
+  PHOTO_SIZE_WARNING_TEXT,
+  type PhotoSizeWarningCode,
+  photoSizeWarnings,
+} from "./media-checks.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export {
   type ContentChanges,
@@ -129,6 +136,17 @@ export {
   type MediaSkipReason,
   type SkippedMediaFile,
 } from "./ports/media-file-source.js";
+export {
+  type ImageOutput,
+  type ImageVariant,
+  MEDIA_WARNING_TEXT,
+  type MediaProcessor,
+  type MediaWarning,
+  type MediaWarningCode,
+  type ProcessedImage,
+  type ProcessedVideo,
+  type VideoOutput,
+} from "./ports/media-processor.js";
 export {
   checkArrangement,
   checkDerivative,

@@ -62,7 +62,7 @@ flowchart LR
 ## Estilo: puertos y adaptadores
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
-- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider`, `MediaProcessor`, `SlideTemplates`, `HtmlRenderer` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `JobQueue`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository`, `ImportRunRepository`, `ContentRunRepository`, `ContentRepository` y `LLMProvider` (`packages/core/src/ports/`); el resto llega en su fase (F2: `MediaProcessor`, `SlideTemplates` y `HtmlRenderer`, spec F2 §4.1).
+- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider`, `MediaProcessor`, `SlideTemplates`, `HtmlRenderer` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `JobQueue`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository`, `ImportRunRepository`, `ContentRunRepository`, `ContentRepository`, `LLMProvider` y `MediaProcessor` (`packages/core/src/ports/`); el resto llega en su fase (F2: `SlideTemplates` y `HtmlRenderer`, spec F2 §4.1). `MediaProcessor` (F2-T07) lo implementa `createMediaProcessor` de `packages/media` con sharp y ffmpeg: las fotos (también HEIC, que ffmpeg 8.1 o más nuevo arma desde sus mosaicos) salen rotadas, en sRGB, sin metadatos y en las variantes `thumb`, `ig_4x5` y `pi_4x3`, con su sha256; los parámetros y su versión (`MEDIA_PIPELINE_VERSION`) viven en `packages/media/src/pipeline.ts`. El video llega en F2-T08. Contrato en "Procesador de medios", más abajo.
 - Cola (ADR-0005): el adaptador de pg-boss vive en `packages/queue` desde F1-T08 (en F0 estaba en el worker). Implementa `JobQueue` e incluye `QUEUE_SCHEMA` y `checkQueueSchema`. La API, como `producer`, arranca pg-boss de forma diferida en el primer `enqueue`, y su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
@@ -520,6 +520,23 @@ Implementado en F2-T04 (`packages/core/src/ports/llm-provider.ts`; `signal` es `
 
 El prompt, el esquema de salida, el ensamblado y la revisión editorial viven juntos en `packages/core/src/content/` (ADR-0013), y cada `content` guarda `prompt_version`. Desde F2-T05: `buildContentBrief` (lo que ve la IA), `buildContentPrompt` (`listing-content-v1`, con los datos como JSON escapado en un bloque delimitado), `contentDraftSchema` y `CONTENT_DRAFT_JSON_SCHEMA` (la misma forma sin topes, para el proveedor), `generateContentDraft` (valida y reintenta una vez) y `assembleContents`. `SAMPLE_CONTENT_DRAFT` es el borrador que devuelve el proveedor `fake`. Desde F2-T06: `checkContent` (la revisión editorial, pura y calculada al leer), `buildContentCheckContext` (brief, contacto y lo privado del aviso, que no sale del servidor) y `hasContentErrors`, con las listas de términos en `check-terms.ts`.
 
+
+## Procesador de medios (`MediaProcessor`, F2-T07)
+
+```ts
+interface MediaProcessor {
+  readonly version: string;   // MEDIA_PIPELINE_VERSION: va en la clave de R2 de cada variante
+  processImage(input: Uint8Array, opts: { mime: string; variants: ImageVariant[] }, signal?: AbortSignalLike):
+    Promise<{ measurements: MediaMeasurements; outputs: ImageOutput[] }>;
+  processVideo(input: AsyncIterable<Uint8Array>, opts: { reel: { overlayPng: Uint8Array } | null }, signal?: AbortSignalLike):
+    Promise<{ measurements: MediaMeasurements; thumb: ImageOutput; reel: VideoOutput | null; warnings: MediaWarning[] }>;
+}
+```
+
+- Lo implementa `createMediaProcessor({ ffmpegPath, ffprobePath, workDir })` de `packages/media`. El worker crea uno por intento con el directorio temporal del intento y lo borra en un `finally`: el puerto no tiene `dispose`. Core solo ve bytes y streams.
+- Errores: `MEDIA_DECODE_FAILED` (el archivo no se puede leer: advertencia de ese medio, la corrida sigue), `MEDIA_TOOL_NOT_INSTALLED` (falta ffmpeg o ffprobe, o es anterior a 8.1; no reintentable, con el comando para instalarlo) y `MEDIA_ABORTED` (reintentable: se cortó con `signal` y ffmpeg terminó).
+- Las advertencias del procesador son solo del video (`MEDIA_WARNING_TEXT`). Las de tamaño de una foto las calcula core desde el ancho guardado (`photoSizeWarnings`).
+- Los tests de core usan `createInMemoryMediaProcessor` (`@agentsales/core/testing`), con la misma semántica (salidas deterministas por entrada, `CORRUPTO…` ilegible, reel con los topes de 3 y 90 s).
 ## Seguridad
 
 - Tokens de plataformas cifrados en reposo con AES-256-GCM. La clave de 32 bytes se deriva de `APP_ENCRYPTION_KEY` con HKDF-SHA256 (se implementa en F3).

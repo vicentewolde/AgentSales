@@ -9,7 +9,7 @@ import {
   checkChromium,
   checkClaude,
   checkEnv,
-  checkFfmpeg,
+  checkFfmpegTool,
   checkNode,
   checkPublishMode,
   checkServices,
@@ -38,12 +38,14 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     deps.env.ok ? deps.env.env.PUBLISH_MODE : undefined,
   );
   const ffmpegPath = deps.env.ok ? deps.env.env.FFMPEG_PATH : "ffmpeg";
+  const ffprobePath = deps.env.ok ? deps.env.env.FFPROBE_PATH : "ffprobe";
   const items: CheckItem[] = [
     checkNode(deps.nodeVersion),
     checkEnv(deps.env),
     ...(publishMode ? [publishMode] : []),
     ...services.items,
-    await checkFfmpeg(deps.run, ffmpegPath),
+    await checkFfmpegTool(deps.run, "ffmpeg", ffmpegPath),
+    await checkFfmpegTool(deps.run, "ffprobe", ffprobePath),
     checkChromium(deps.chromiumDir),
     await checkClaude(
       deps.run,

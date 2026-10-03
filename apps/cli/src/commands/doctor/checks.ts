@@ -1,4 +1,5 @@
 import type { HealthReport, PublishMode } from "@agentsales/core";
+import { FFMPEG_MIN_VERSION, isSupportedFfmpeg, parseFfmpegVersion } from "@agentsales/media/tools";
 import { apiHint, type HealthFetcher } from "../../api-client.js";
 import type { EnvResult } from "../../env.js";
 
@@ -158,17 +159,37 @@ export function describeCommandError(error: unknown): string {
 
 const firstLine = (output: string) => output.split("\n")[0]?.trim() || "(sin versión)";
 
-export async function checkFfmpeg(run: RunCommand, ffmpegPath: string): Promise<CheckItem> {
+/**
+ * ffmpeg o ffprobe (spec F2 §4.8): que exista y sea 8.1 o más nuevo (las fotos HEIC del iPhone,
+ * hechas de mosaicos, necesitan 8.1). Una versión que no se reconoce (un build de desarrollo) pasa.
+ */
+export async function checkFfmpegTool(
+  run: RunCommand,
+  name: "ffmpeg" | "ffprobe",
+  path: string,
+): Promise<CheckItem> {
+  const variable = name === "ffmpeg" ? "FFMPEG_PATH" : "FFPROBE_PATH";
+  let output: string;
   try {
-    return { name: "ffmpeg", level: "ok", detail: firstLine(await run(ffmpegPath, ["-version"])) };
+    output = await run(path, ["-version"]);
   } catch (error) {
     return {
-      name: "ffmpeg",
+      name,
       level: "error",
-      detail: `${ffmpegPath}: ${describeCommandError(error)}`,
-      hint: "brew install ffmpeg, o ajusta FFMPEG_PATH en .env",
+      detail: `${path}: ${describeCommandError(error)}`,
+      hint: `brew install ffmpeg (trae ffprobe), o ajusta ${variable} en .env`,
     };
   }
+  const version = parseFfmpegVersion(output);
+  if (!isSupportedFfmpeg(version)) {
+    return {
+      name,
+      level: "error",
+      detail: `${firstLine(output)} (se necesita ${FFMPEG_MIN_VERSION.major}.${FFMPEG_MIN_VERSION.minor} o más nueva)`,
+      hint: "brew upgrade ffmpeg",
+    };
+  }
+  return { name, level: "ok", detail: firstLine(output) };
 }
 
 export function checkChromium(chromiumDir: string | null): CheckItem {

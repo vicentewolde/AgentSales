@@ -35,6 +35,34 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      # ffmpeg 8.1 o más nuevo (spec F2, D6): el de Ubuntu 24.04 (6.1) no arma las fotos HEIC hechas
+      # de mosaicos. Build estático de la rama probada en local (9.0.1), del cierre de mes de
+      # BtbN/FFmpeg-Builds (esos se conservan), fijado por versión y verificado con sha256. El
+      # build GPL trae libx264, que el reel necesita (F2-T08).
+      - name: Caché de ffmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ffmpeg
+          # La clave lleva el sha256: otro archivo nunca reusa la caché de este.
+          key: ffmpeg-${{ runner.os }}-n9.0.1-11-ge47273f4d9-linux64-gpl-182c1b509720
+
+      - name: Instalar ffmpeg
+        env:
+          FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz
+          FFMPEG_SHA256: 182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a
+          CACHE_HIT: ${{ steps.ffmpeg-cache.outputs.cache-hit }}
+        run: |
+          if [ "$CACHE_HIT" != "true" ]; then
+            curl -fsSL --retry 3 -o "$RUNNER_TEMP/ffmpeg.tar.xz" "$FFMPEG_URL"
+            echo "$FFMPEG_SHA256  $RUNNER_TEMP/ffmpeg.tar.xz" | sha256sum -c -
+            mkdir -p "$RUNNER_TEMP/ffmpeg"
+            tar -xJf "$RUNNER_TEMP/ffmpeg.tar.xz" -C "$RUNNER_TEMP/ffmpeg" --strip-components=1
+          fi
+          echo "$RUNNER_TEMP/ffmpeg/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/ffmpeg/bin/ffmpeg" -hide_banner -version | head -1
+          "$RUNNER_TEMP/ffmpeg/bin/ffprobe" -hide_banner -version | head -1
+
       # Falla si el lockfile no coincide; aplica la política de antigüedad de pnpm.
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
