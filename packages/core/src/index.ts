@@ -114,6 +114,7 @@ export type {
   ListingRepository,
   NewListing,
 } from "./ports/listing-repository.js";
+export type { LLMProvider, LLMRequest, LLMResponse } from "./ports/llm-provider.js";
 export {
   MEDIA_SKIP_REASONS,
   type MediaFile,

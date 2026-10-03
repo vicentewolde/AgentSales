@@ -25,8 +25,12 @@ const healthy: HealthReport = {
   },
 };
 
-const allTools: RunCommand = async (command) =>
-  command === "claude" ? "2.1.243 (Claude Code)\n" : "ffmpeg version 9.0.1 Copyright\nmás\n";
+const allTools: RunCommand = async (command, args) => {
+  if (command !== "claude") return "ffmpeg version 9.0.1 Copyright\nmás\n";
+  return args[0] === "auth"
+    ? '{ "loggedIn": true, "authMethod": "claude.ai" }'
+    : "2.1.243 (Claude Code)\n";
+};
 
 function deps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
   return {
@@ -138,6 +142,45 @@ describe("runDoctor", () => {
       "Chromium (Playwright)": "warn",
       "Claude Code": "warn",
     });
+  });
+
+  it("la CLI de Claude sin sesión solo advierte, con la instrucción para iniciarla (F2-T04)", async () => {
+    // Sin sesión, `claude auth status` sale con código 1 y el JSON va en stdout del error.
+    const loggedOut: RunCommand = async (command, args) => {
+      if (command === "claude" && args[0] === "auth") {
+        throw Object.assign(new Error("Command failed"), {
+          code: 1,
+          stdout: '{ "loggedIn": false, "authMethod": "none" }',
+        });
+      }
+      return allTools(command, args);
+    };
+    const report = await runDoctor(deps({ run: loggedOut }));
+    const claude = report.items.find((item) => item.name === "Claude Code");
+    expect(report.exitCode).toBe(0);
+    expect(claude).toMatchObject({
+      level: "warn",
+      detail: "2.1.243 (Claude Code) · sin sesión: no se puede generar contenido",
+    });
+    expect(claude?.hint).toContain("/login");
+  });
+
+  it("si no se puede leer la sesión, lo dice; y usa CLAUDE_CLI_PATH", async () => {
+    const calls: string[] = [];
+    const odd: RunCommand = async (command, args) => {
+      calls.push(command);
+      return args[0] === "auth" ? "no es json" : "2.1.243 (Claude Code)";
+    };
+    const report = await runDoctor(
+      deps({
+        run: odd,
+        env: { ok: true, env: { ...env, CLAUDE_CLI_PATH: "/opt/claude/bin/claude" } },
+      }),
+    );
+    expect(report.items.find((item) => item.name === "Claude Code")?.detail).toBe(
+      "2.1.243 (Claude Code) · no se pudo revisar la sesión",
+    );
+    expect(calls).toContain("/opt/claude/bin/claude");
   });
 
   it("con un .env inválido lista las variables sin mostrar valores", async () => {

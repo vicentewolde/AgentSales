@@ -26,6 +26,9 @@
       "path": "./packages/queue"
     },
     {
+      "path": "./packages/llm"
+    },
+    {
       "path": "./apps/api"
     },
     {

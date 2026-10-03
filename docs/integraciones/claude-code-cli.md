@@ -161,6 +161,14 @@ Códigos de salida (DOC): 0 en éxito; distinto de 0 si la corrida falla. Flags 
   5. Con `ANTHROPIC_API_KEY` ausente del entorno, confirmar que no hay cobro a la API (revisar la columna de costo en el panel de uso del plan).
 - **Modo desarrollo:** no existe sandbox; es el plan real. `LLM_PROVIDER=fake` para el desarrollo diario.
 
+### Resultados de la prueba de humo (F2-T04, 2026-10-03)
+
+`pnpm llm:smoke` (`packages/llm/src/scripts/smoke.ts`) hace una sola llamada con un aviso inventado y guarda el sobre en `tmp/llm-smoke/` (fuera de git). Corrida desde la sesión de desarrollo, aislada del llavero del operador:
+- **`--max-turns` no existe en la 2.1.243** (no aparece en `claude -p --help`): el adaptador no lo usa, y el único límite es `LLM_TIMEOUT_SECONDS`.
+- **Sesión vencida:** sale con código 1 y un sobre con `subtype: "success"`, `is_error: true`, `result: "Failed to authenticate: OAuth session expired and could not be refreshed"`, `stop_reason: "stop_sequence"`, `api_error_status: null`, `terminal_reason: "api_error"`, `modelUsage: {}` y `total_cost_usd: 0`. El adaptador lo lee como `LLM_AUTH_REQUIRED` (el ejecutable falso de los tests repite este sobre).
+- **Campos reales del sobre:** `api_error_status`, `duration_api_ms`, `duration_ms`, `fast_mode_disabled_reason`, `fast_mode_state`, `is_error`, `modelUsage`, `num_turns`, `permission_denials`, `queued_turn_count`, `result`, `session_id`, `stop_reason`, `subagent_stats`, `subtype`, `terminal_reason`, `total_cost_usd`, `type`, `usage` y `uuid` (más `structured_output` cuando hay salida).
+- **Pendiente:** la llamada exitosa con la sesión del operador (`structured_output` con `--tools ""` y `--json-schema`). La corre el operador en su terminal con `pnpm llm:smoke`; el resultado se anota aquí.
+
 ## 9. Riesgos y términos de uso relevantes
 
 - **Términos (DOC, vigentes al 2026-10-02, sin cambios respecto de ADR-0003):** la autenticación OAuth "is intended exclusively for purchasers of Claude Free, Pro, Max, Team, and Enterprise subscription plans and is designed to support ordinary use of Claude Code and other native Anthropic applications". Quienes construyen productos o servicios, incluido el Agent SDK, "should use API key authentication". "Anthropic does not permit third-party developers to offer Claude.ai login into their own applications, or to route requests through Free, Pro, or Max plan credentials on behalf of their users". Tampoco se pueden recolectar ni guardar credenciales o tokens de claude.ai. Anthropic puede aplicar estas restricciones sin aviso.

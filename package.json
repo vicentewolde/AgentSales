@@ -18,7 +18,8 @@
     "db:seed": "pnpm --filter @agentsales/db seed",
     "storage:check": "pnpm --filter @agentsales/storage check",
     "worker:ping": "pnpm --filter @agentsales/worker run job:ping",
-    "cli": "pnpm --silent --filter @agentsales/cli run cli"
+    "cli": "pnpm --silent --filter @agentsales/cli run cli",
+    "llm:smoke": "pnpm --filter @agentsales/llm run smoke"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

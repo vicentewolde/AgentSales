@@ -121,6 +121,35 @@ describe("loadEnv", () => {
     expect(() => loadEnv({ ...validSource, APP_ENCRYPTION_KEY: "a".repeat(31) })).toThrow(EnvError);
   });
 
+  it("con LLM_PROVIDER=anthropic-api exige ANTHROPIC_API_KEY (F2-T04), sin mostrar valores", () => {
+    const error = envErrorOf({ ...validSource, LLM_PROVIDER: "anthropic-api" });
+    expect(error.issues).toEqual([
+      {
+        variable: "ANTHROPIC_API_KEY",
+        message: 'falta (obligatoria con LLM_PROVIDER="anthropic-api")',
+      },
+    ]);
+    const env = loadEnv({
+      ...validSource,
+      LLM_PROVIDER: "anthropic-api",
+      ANTHROPIC_API_KEY: "sk-test-clave-falsa",
+    });
+    expect(env.LLM_PROVIDER).toBe("anthropic-api");
+    // Con claude-cli no hace falta.
+    expect(loadEnv(validSource).ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it("CLAUDE_CLI_PATH y LLM_TIMEOUT_SECONDS tienen valores por defecto y un rango (F2-T04)", () => {
+    const env = loadEnv(validSource);
+    expect([env.CLAUDE_CLI_PATH, env.LLM_TIMEOUT_SECONDS]).toEqual(["claude", 180]);
+    expect(loadEnv({ ...validSource, LLM_TIMEOUT_SECONDS: "60" }).LLM_TIMEOUT_SECONDS).toBe(60);
+    for (const value of ["5", "3600", "1.5"]) {
+      expect(envErrorOf({ ...validSource, LLM_TIMEOUT_SECONDS: value }).issues[0]?.variable).toBe(
+        "LLM_TIMEOUT_SECONDS",
+      );
+    }
+  });
+
   it("rechaza un LLM_PROVIDER desconocido listando las tres opciones", () => {
     const error = envErrorOf({ ...validSource, LLM_PROVIDER: "openai" });
 

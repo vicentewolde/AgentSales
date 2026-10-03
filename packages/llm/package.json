@@ -1,0 +1,22 @@
+{
+  "name": "@agentsales/llm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@agentsales/source": "./src/index.ts",
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "smoke": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@agentsales/config": "workspace:*",
+    "@agentsales/core": "workspace:*",
+    "zod": "4.6.5"
+  }
+}

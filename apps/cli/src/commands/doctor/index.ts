@@ -42,7 +42,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     ...services.items,
     await checkFfmpeg(deps.run, ffmpegPath),
     checkChromium(deps.chromiumDir),
-    await checkClaude(deps.run),
+    await checkClaude(deps.run, deps.env.ok ? deps.env.env.CLAUDE_CLI_PATH : "claude"),
   ];
   return { items, exitCode: items.some((item) => item.level === "error") ? 1 : 0 };
 }

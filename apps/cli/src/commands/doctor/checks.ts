@@ -177,19 +177,59 @@ export function checkChromium(chromiumDir: string | null): CheckItem {
       };
 }
 
-export async function checkClaude(run: RunCommand): Promise<CheckItem> {
+/** `loggedIn` de `claude auth status --json`; `null` si la salida no es la esperada. */
+function parseLoggedIn(output: string): boolean | null {
   try {
-    return {
-      name: "Claude Code",
-      level: "ok",
-      detail: firstLine(await run("claude", ["--version"])),
-    };
+    const status: unknown = JSON.parse(output);
+    return typeof status === "object" && status !== null && "loggedIn" in status
+      ? status.loggedIn === true
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Si la CLI tiene sesión, sin gastar cuota del plan. Sin sesión, `claude auth status` sale con
+ * código 1 y el JSON igual va en stdout, que trae el error de `execFile`.
+ */
+async function claudeSession(run: RunCommand, cliPath: string): Promise<boolean | null> {
+  try {
+    return parseLoggedIn(await run(cliPath, ["auth", "status", "--json"]));
+  } catch (error) {
+    const stdout =
+      typeof error === "object" && error !== null && "stdout" in error ? error.stdout : undefined;
+    return typeof stdout === "string" ? parseLoggedIn(stdout) : null;
+  }
+}
+
+const CLAUDE_LOGIN_HINT =
+  "Abre `claude` en una terminal e inicia sesión con /login (docs/07-checklist-cuentas.md)";
+
+/** La CLI de Claude (proveedor `claude-cli`, spec F2 §4.8): que exista y que tenga sesión. */
+export async function checkClaude(run: RunCommand, cliPath: string): Promise<CheckItem> {
+  let version: string;
+  try {
+    version = firstLine(await run(cliPath, ["--version"]));
   } catch (error) {
     return {
       name: "Claude Code",
       level: "warn",
-      detail: `${describeCommandError(error)}; se necesita en F2 (generación de contenido)`,
-      hint: "Instala Claude Code e inicia sesión (docs/07-checklist-cuentas.md)",
+      detail: `${describeCommandError(error)}; se necesita para generar contenido (F2)`,
+      hint: "Instala Claude Code e inicia sesión, o ajusta CLAUDE_CLI_PATH en .env",
     };
   }
+  const session = await claudeSession(run, cliPath);
+  if (session === true) {
+    return { name: "Claude Code", level: "ok", detail: `${version} · sesión iniciada` };
+  }
+  return {
+    name: "Claude Code",
+    level: "warn",
+    detail:
+      session === false
+        ? `${version} · sin sesión: no se puede generar contenido`
+        : `${version} · no se pudo revisar la sesión`,
+    hint: CLAUDE_LOGIN_HINT,
+  };
 }

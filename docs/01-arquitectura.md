@@ -62,7 +62,7 @@ flowchart LR
 ## Estilo: puertos y adaptadores
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
-- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider`, `MediaProcessor`, `SlideTemplates`, `HtmlRenderer` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `JobQueue`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository`, `ImportRunRepository`, `ContentRunRepository` y `ContentRepository` (`packages/core/src/ports/`); el resto llega en su fase (F2: `LLMProvider`, `MediaProcessor`, `SlideTemplates` y `HtmlRenderer`, spec F2 §4.1).
+- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider`, `MediaProcessor`, `SlideTemplates`, `HtmlRenderer` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `JobQueue`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository`, `ImportRunRepository`, `ContentRunRepository`, `ContentRepository` y `LLMProvider` (`packages/core/src/ports/`); el resto llega en su fase (F2: `MediaProcessor`, `SlideTemplates` y `HtmlRenderer`, spec F2 §4.1).
 - Cola (ADR-0005): el adaptador de pg-boss vive en `packages/queue` desde F1-T08 (en F0 estaba en el worker). Implementa `JobQueue` e incluye `QUEUE_SCHEMA` y `checkQueueSchema`. La API, como `producer`, arranca pg-boss de forma diferida en el primer `enqueue`, y su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
@@ -512,11 +512,11 @@ interface LLMProvider {
 }
 ```
 
-Contrato objetivo de F2 (spec F2 §4.5; se implementa en F2-T04). Core valida `data` con el esquema zod estricto y reintenta una vez si no calza. Sin imágenes en F2.
+Implementado en F2-T04 (`packages/core/src/ports/llm-provider.ts`; `signal` es `AbortSignalLike`). Core valida `data` con el esquema zod estricto y reintenta una vez si no calza. Sin imágenes en F2. Errores: `LLM_UNAVAILABLE`, `LLM_TIMEOUT` y `LLM_ABORTED` (reintentables), y `LLM_AUTH_REQUIRED`, `LLM_RATE_LIMITED`, `LLM_OUTPUT_INVALID` y `LLM_NOT_CONFIGURED` (no reintentables). `packages/llm` arma el proveedor con `createLlmProvider` según `LLM_PROVIDER`.
 
-- `claude-cli`: invoca `claude -p --output-format json --json-schema …` como subproceso, sin herramientas, con `--safe-mode`, en un directorio vacío y con un entorno mínimo (sin `ANTHROPIC_API_KEY`). Usa el plan Max. **Solo para uso propio.** Detalle en `docs/integraciones/claude-code-cli.md`.
+- `claude-cli`: invoca `claude -p --output-format json --json-schema …` como subproceso, sin herramientas, con `--safe-mode`, en un directorio vacío del temporal del sistema (fuera del repo) y con un entorno mínimo (sin `ANTHROPIC_API_KEY`). Corre en su propio grupo de procesos: al vencer `LLM_TIMEOUT_SECONDS` o con `signal`, SIGINT, SIGTERM y SIGKILL. Usa el plan Max. **Solo para uso propio.** `pnpm llm:smoke` hace una llamada real con datos inventados. Detalle en `docs/integraciones/claude-code-cli.md`.
 - `anthropic-api`: SDK oficial con `ANTHROPIC_API_KEY`. Obligatorio cuando el sistema lo usen terceros. Stub en F2; real en F7.
-- `fake`: respuestas fijas para tests.
+- `fake`: devuelve siempre el dato configurado (`LLM_PROVIDER=fake`). Los tests de core usan `createInMemoryLlmProvider` (`@agentsales/core/testing`), con respuestas en orden.
 
 El prompt, el esquema de salida, el ensamblado y la revisión editorial viven juntos en `packages/core/src/content/` (ADR-0013), y cada `content` guarda `prompt_version`.
 
