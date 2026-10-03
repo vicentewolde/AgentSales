@@ -1,4 +1,5 @@
 import { claudeCliEnv } from "@agentsales/llm";
+import { chromiumStatus } from "@agentsales/media/tools";
 import type { Command } from "commander";
 import { createHealthFetcher, type HealthFetcher } from "../../api-client.js";
 import type { Colors } from "../../colors.js";
@@ -16,14 +17,15 @@ import {
   type Level,
   type RunCommand,
 } from "./checks.js";
-import { findChromium, runCommand } from "./system.js";
+import { runCommand } from "./system.js";
 
 export type DoctorDeps = {
   nodeVersion: string;
   env: EnvResult;
   fetchHealth: HealthFetcher;
   run: RunCommand;
-  chromiumDir: string | null;
+  /** El Chromium que pide Playwright (`chromiumStatus`); `null` si Playwright no cargó. */
+  chromium: { path: string; installed: boolean } | null;
   /** Entorno del proceso: la CLI de Claude recibe solo las variables permitidas (`claudeCliEnv`). */
   processEnv: Readonly<Record<string, string | undefined>>;
 };
@@ -46,7 +48,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     ...services.items,
     await checkFfmpegTool(deps.run, "ffmpeg", ffmpegPath),
     await checkFfmpegTool(deps.run, "ffprobe", ffprobePath),
-    checkChromium(deps.chromiumDir),
+    checkChromium(deps.chromium),
     await checkClaude(
       deps.run,
       deps.env.ok ? deps.env.env.CLAUDE_CLI_PATH : "claude",
@@ -90,7 +92,7 @@ export function register(program: Command, ctx: CliContext): void {
         env: loadEnvironment(),
         fetchHealth: createHealthFetcher(ctx.api()),
         run: runCommand,
-        chromiumDir: findChromium(),
+        chromium: await chromiumStatus().catch(() => null),
         processEnv: process.env,
       });
       ctx.print(renderDoctor(report, ctx.colors));

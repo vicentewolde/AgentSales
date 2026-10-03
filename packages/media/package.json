@@ -16,11 +16,16 @@
     }
   },
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "render:samples": "NODE_OPTIONS=--conditions=@agentsales/source tsx test/render-samples.ts"
   },
   "dependencies": {
     "@agentsales/core": "workspace:*",
+    "playwright": "1.63.0",
     "sharp": "0.35.5",
     "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@agentsales/templates": "workspace:*"
   }
 }

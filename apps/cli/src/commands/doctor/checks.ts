@@ -1,5 +1,10 @@
 import type { HealthReport, PublishMode } from "@agentsales/core";
-import { FFMPEG_MIN_VERSION, isSupportedFfmpeg, parseFfmpegVersion } from "@agentsales/media/tools";
+import {
+  CHROMIUM_INSTALL_COMMAND,
+  FFMPEG_MIN_VERSION,
+  isSupportedFfmpeg,
+  parseFfmpegVersion,
+} from "@agentsales/media/tools";
 import { apiHint, type HealthFetcher } from "../../api-client.js";
 import type { EnvResult } from "../../env.js";
 
@@ -192,15 +197,19 @@ export async function checkFfmpegTool(
   return { name, level: "ok", detail: firstLine(output) };
 }
 
-export function checkChromium(chromiumDir: string | null): CheckItem {
-  return chromiumDir
-    ? { name: "Chromium (Playwright)", level: "ok", detail: chromiumDir }
-    : {
-        name: "Chromium (Playwright)",
-        level: "warn",
-        detail: "no instalado; se necesita en F5 (Marketplace)",
-        hint: "En F5: pnpm exec playwright install chromium",
-      };
+/**
+ * El Chromium que pide la versión de Playwright del proyecto (spec F2 §4.8): desde F2 dibuja la
+ * portada, la ficha y el texto del reel, así que falta es un error. `null` si Playwright no cargó.
+ */
+export function checkChromium(status: { path: string; installed: boolean } | null): CheckItem {
+  const name = "Chromium (Playwright)";
+  if (status?.installed) return { name, level: "ok", detail: status.path };
+  return {
+    name,
+    level: "error",
+    detail: status === null ? "no se pudo revisar (Playwright no cargó)" : "no instalado",
+    hint: CHROMIUM_INSTALL_COMMAND,
+  };
 }
 
 /** Sesión de la CLI según `claude auth status --json`. */

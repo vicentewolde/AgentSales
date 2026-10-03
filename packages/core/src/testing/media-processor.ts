@@ -9,6 +9,7 @@ import type {
   ProcessedVideo,
 } from "../ports/media-processor.js";
 import type { MediaMeasurements } from "../ports/media-repository.js";
+import { fakeHash } from "./fake-hash.js";
 
 /** Una llamada recibida por el procesador falso (sin los bytes). */
 export type MediaProcessorCall =
@@ -30,16 +31,6 @@ const encoder = {
 const decoder = {
   decode: (bytes: Uint8Array) => Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""),
 };
-
-/** Hash de prueba (FNV-1a, 32 bits): determinista y sin `node:crypto`, que core no usa. */
-function fakeHash(text: string): string {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0").repeat(8);
-}
 
 /** Una entrada que empieza con `CORRUPTO` no se puede leer (`MEDIA_DECODE_FAILED`). */
 const isCorrupt = (input: Uint8Array) => decoder.decode(input.slice(0, 8)) === "CORRUPTO";
