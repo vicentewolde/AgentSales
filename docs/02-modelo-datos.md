@@ -127,7 +127,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | status | enum `content_run_status` | `queued`, `running`, `succeeded`, `failed` (`CONTENT_RUN_STATUSES`) |
 | texts | boolean default true | Si la corrida genera textos; `false` solo rehace medios y renders |
 | stage | text null | Etapa en curso: `media`, `renders`, `reel` o `texts` (`CONTENT_RUN_STAGES`) |
-| report | jsonb null | `contentRunReportSchema` (core): una sección por etapa y advertencias; `null` hasta que la corrida termina |
+| report | jsonb null | `contentRunReportSchema` (core): una sección por etapa (`media`, `renders`, `reel`, `llm`), los códigos de la revisión editorial por canal (`checks`, sin mensajes; una foto de la corrida, que queda vieja tras una edición) y advertencias; `null` hasta que la corrida termina |
 | error | jsonb null | `{ code, message }` cuando `status = failed` |
 | started_at | timestamptz null | Se fija al pasar a `running` (el primer intento) |
 | finished_at | timestamptz null | |

@@ -12,6 +12,8 @@ import type { Broker, BrokerData } from "../broker.js";
  */
 export interface BrokerRepository {
   findBySlug(slug: string): Promise<Broker | null>;
+  /** El corredor de un aviso (`listing.brokerId`, F2-T10); `null` si no existe. */
+  findById(id: string): Promise<Broker | null>;
   /** Todos los corredores, por nombre de marca (para el selector de Importar). */
   list(): Promise<Broker[]>;
   create(data: BrokerData): Promise<Broker>;

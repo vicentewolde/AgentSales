@@ -40,6 +40,10 @@ export function createInMemoryBrokerRepository(
   const nextId = idGenerator("broker");
   const stored = new Map(initial.map((broker) => [broker.id, structuredCopy(broker)]));
   return {
+    async findById(id) {
+      const found = stored.get(id);
+      return found === undefined ? null : structuredCopy(found);
+    },
     async findBySlug(slug) {
       const found = [...stored.values()].find((broker) => broker.slug === slug);
       return found === undefined ? null : structuredCopy(found);

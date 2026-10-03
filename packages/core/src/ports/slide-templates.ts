@@ -54,7 +54,8 @@ export type SlideBrand<Image extends SlideImageRef = SlideImage> = {
  * lleva la dirección: el tipo no tiene dónde ponerla.
  */
 export type CoverData<Image extends SlideImageRef = SlideImage> = {
-  operation: Operation;
+  /** `null` si el aviso no la trae: la plantilla no muestra la etiqueta. */
+  operation: Operation | null;
   propertyType: string;
   comuna: string | null;
   /** `UF 5.800` o `$650.000/mes`. */
@@ -67,7 +68,8 @@ export type CoverData<Image extends SlideImageRef = SlideImage> = {
 
 /** Ficha del carrusel: tabla de atributos con íconos, disponibilidad y contacto. */
 export type SpecSheetData<Image extends SlideImageRef = SlideImage> = {
-  operation: Operation;
+  /** `null` si el aviso no la trae: la plantilla no muestra la etiqueta. */
+  operation: Operation | null;
   propertyType: string;
   comuna: string | null;
   price: string;
@@ -81,7 +83,8 @@ export type SpecSheetData<Image extends SlideImageRef = SlideImage> = {
 
 /** Texto de los primeros 2 s del reel: `Venta · Departamento · Ñuñoa · UF 5.800`. */
 export type ReelOverlayData = {
-  operation: Operation;
+  /** `null` si el aviso no la trae: la plantilla no muestra la etiqueta. */
+  operation: Operation | null;
   propertyType: string;
   comuna: string | null;
   price: string;

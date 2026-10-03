@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTENT_CHECK_CODES } from "./content/check.js";
 import {
   CONTENT_RUN_STAGES,
   CONTENT_RUN_STATUSES,
@@ -33,6 +34,12 @@ export const contentRunReportSchema = z.object({
       durationMs: count,
     })
     .optional(),
+  /**
+   * Etapa `texts`: los códigos de la revisión editorial de cada canal (F2-T10), sin los mensajes,
+   * que traen trozos del aviso. Es una foto de la corrida: tras una edición queda vieja, y la
+   * revisión vigente se calcula al leer (`getListingContent`, F2-T12).
+   */
+  checks: z.partialRecord(z.enum(PLATFORMS), z.array(z.enum(CONTENT_CHECK_CODES))).optional(),
   warnings: z.array(z.string()),
 });
 export type ContentRunReport = z.infer<typeof contentRunReportSchema>;
