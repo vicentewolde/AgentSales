@@ -236,7 +236,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
   | `AMENITY_NOT_IN_DATA` | advertencia | un amenity o servicio cercano (piscina, quincho, metro…) que no está en los datos |
   | `SUPERLATIVE` | advertencia | "increíble", "único", "espectacular"… |
   | `MARKDOWN` | advertencia | `**`, encabezados o links de markdown en Instagram |
-  | `HASHTAG_COUNT` | advertencia | menos de 5 o más de 12 hashtags |
+  | `HASHTAG_COUNT` | advertencia | menos de 5 o más de 12 hashtags, en Instagram |
 
   Se calcula al leer, así que no se guarda.
 - **Leer** (`getListingContent(listingId)`, core): el contenido vigente por canal con su revisión, el carrusel, las fotos de Portal y Marketplace, el reel y la última corrida.
@@ -388,7 +388,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T10 · Caso de uso `prepareContent`
 - **Depende de:** T02, T03, T06, T07 (puerto), T09 (puertos)
-- **Descripción:** `requestContentRun` y `prepareContent` (§4.4) con dobles de todos los puertos; `composeCarousel` y `composePhotoSet`; claves de R2 de derivados, reel y renders; completa `contentRunReportSchema` (existe desde T02) si hace falta.
+- **Descripción:** `requestContentRun` y `prepareContent` (§4.4) con dobles de todos los puertos; `composeCarousel` y `composePhotoSet`; claves de R2 de derivados, reel y renders; completa `contentRunReportSchema` (existe desde T02) si hace falta. **Contexto único (desde la revisión de F2-T06):** arma `buildContentCheckContext` una vez y usa `ctx.brief` y `ctx.contact` para la IA, el ensamblado y la revisión; en el reporte y los logs van solo los `code` de la revisión, nunca los mensajes (traen trozos del aviso).
 - **Hecho cuando:**
   - [ ] Tests: corrida completa con el proveedor falso (variantes, renders, reel y 3 contenidos); segunda corrida sin cambios (nada se procesa ni se sube, solo la IA); `texts = false` (sin IA y con el contenido anterior vigente); cambio de versión del procesador (regenera y borra lo anterior); cambio de precio (rehace la portada, la ficha y el reel); cambio del primer video (borra el reel anterior)
   - [ ] Tests de errores: medio ilegible (advertencia), ninguna foto procesable (`CONTENT_NO_PHOTOS`), sin sesión de la IA (`failed` con su mensaje), error reintentable que sube, último intento que deja `failed`, intento solapado que termina `skipped` y corrida ya terminal que no se toca
@@ -405,7 +405,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T12 · API de contenido
 - **Depende de:** T10
-- **Descripción:** `getListingContent` y `editContent` en core; rutas de §4.7 con sus contratos; `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT` y `CONTENT_RUN_ACTIVE` → 409; `thumbUrl` y medidas en `GET /listings/:id`, y portada `thumb` en `GET /listings`.
+- **Descripción:** `getListingContent` y `editContent` en core; rutas de §4.7 con sus contratos; `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT` y `CONTENT_RUN_ACTIVE` → 409; `thumbUrl` y medidas en `GET /listings/:id`, y portada `thumb` en `GET /listings`. La vista HTTP de `checks` usa `CONTENT_CHECK_CODES` y `CONTENT_CHECK_SEVERITY_LEVELS` (core) en `z.enum`, y la API devuelve solo los `checks`: el contexto privado (`ContentCheckContext.private`) no sale del servidor.
 - **Hecho cuando:**
   - [ ] Tests de los casos de uso: contenido vigente con su revisión y medios, editar el vigente (`edited`), uno viejo (`CONTENT_NOT_CURRENT`) y con una corrida de textos activa (`CONTENT_RUN_ACTIVE`; con una de solo imágenes sí se puede)
   - [ ] Tests de rutas con `testDeps`: pedir (nueva, reusada, aviso no listo, contenido editado, cola caída), consultar la corrida, contenido con `checks` y URLs firmadas, editar (cuerpo inválido, id inexistente)
@@ -424,13 +424,13 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 
 ### F2-T15 · Panel: edición de textos
 - **Depende de:** T14
-- **Descripción:** editar título, cuerpo y hashtags de cada canal, con contador de caracteres (en Instagram cuenta el caption con los hashtags, `instagramCaption`), guardar (`edited`), revisión actualizada y aviso al regenerar textos sobre un contenido editado ("se reemplazará tu edición"), que al confirmar envía `replaceEdits`.
+- **Descripción:** editar título, cuerpo y hashtags de cada canal, con contador de caracteres (en Instagram cuenta el caption con los hashtags, `instagramCaption`), guardar (`edited`), revisión actualizada y aviso al regenerar textos sobre un contenido editado ("se reemplazará tu edición"), que al confirmar envía `replaceEdits`. La revisión se actualiza con la respuesta del PATCH: el panel nunca corre `checkContent` (necesitaría lo privado del aviso en el navegador).
 - **Hecho cuando:**
   - [ ] Tests: editar y guardar, error al guardar, `CONTENT_NOT_CURRENT`, `CONTENT_RUN_ACTIVE` (edición bloqueada mientras se regeneran los textos, con el motivo), contador sobre el tope y la confirmación al regenerar
 
 ### F2-T16 · `pnpm eval:content`
 - **Depende de:** T06, T11
-- **Descripción:** `evaluateListingContent` en core (brief → IA → ensamblado → revisión, sin escribir) y un script delgado en el worker (`apps/worker/src/scripts/eval-content.ts`) que lee de Neon los avisos `ready` de un corredor (`--broker`, default `agentsales-pruebas`) y usa el proveedor configurado (o `--provider fake`). Imprime por aviso y canal los errores y advertencias, deja los textos en `tmp/eval/` (fuera de git) y sale con código 1 si hay algún error. Actualiza `CLAUDE.md`.
+- **Descripción:** `evaluateListingContent` en core (brief → IA → ensamblado → revisión, sin escribir) y un script delgado en el worker (`apps/worker/src/scripts/eval-content.ts`) que lee de Neon los avisos `ready` de un corredor (`--broker`, default `agentsales-pruebas`) y usa el proveedor configurado (o `--provider fake`). Imprime por aviso y canal los errores y advertencias, deja los textos en `tmp/eval/` (fuera de git) y sale con código 1 si hay algún error. Actualiza `CLAUDE.md`. Arma el contexto una vez (`buildContentCheckContext`) y sale con 1 si `hasContentErrors`.
 - **Hecho cuando:**
   - [ ] Tests con el proveedor falso y repositorios en memoria: un borrador limpio sale 0, uno con un número inventado sale 1
   - [ ] Demo: `pnpm eval:content` con `claude-cli` sobre las 3 muestras, sin errores. El brief de las muestras va a Anthropic a través del plan del operador, sin dirección ni notas internas (es lo mismo que hace una corrida normal), y los textos quedan solo en `tmp/eval/`
@@ -504,3 +504,4 @@ Resueltas con la recomendación del spec, por la aprobación permanente del oper
 | 2026-10-03 | Desde la revisión de F2-T04: `LLM_ABORTED` entre los reintentables de §4.4 y el corte por apagado que no marca `failed`; `SAMPLE_CONTENT_DRAFT` en T05 para el proveedor `fake`; T11 dispara el `signal` y espera antes de salir; `LLM_NOT_CONFIGURED` también para la CLI que falta; clasificación del sobre por campos; `LLM_TIMEOUT_SECONDS` hasta 600 |
 | 2026-10-03 | Desde F2-T05 (detalles que el spec no fijaba, en `04-formato-publicaciones.md`): `requisitos_arriendo` va al brief solo en arriendo; los hashtags de Instagram van en `contents.hashtags`, aparte del cuerpo, y el caption que se publica los suma (`instagramCaption`); con menos de 5 se completan con genéricos y sobre 12 salen primero los de la IA; el título de Portal se recorta en una palabra si ni sin dormitorios cabe; Marketplace usa el mismo título que Portal; la descripción de Portal queda sin emojis aunque vengan de la planilla o de la IA (salvo `©`, `®` y `™`); dormitorios y baños en 0 no se muestran en ningún canal, tampoco los baños del título. Desde la revisión del PR (#37): el motivo del reintento usa textos fijos por tipo de problema (nunca claves ni valores que inventó la IA); el título se recorta en palabras enteras y sin terminar en `de`, `la` o `en`; `editContent` normaliza los hashtags (§4.6); T06 y T15 miden el caption con `instagramCaption`; los campos propios de un corredor llegan a la IA (deuda anotada para F7) |
 | 2026-10-03 | Desde F2-T06 (detalles que el spec no fijaba, en `04-formato-publicaciones.md`): se revisa el título y el cuerpo (los hashtags solo cuentan); `5.800`, `5800` y `72,5` se comparan por valor; la calle se reconoce sin palabras genéricas ni números, y no cuenta si también está en los datos; notas internas de 3 a 5 palabras se buscan completas; `buildContentCheckContext` arma el contexto (brief, contacto y lo privado) en un solo lugar |
+| 2026-10-03 | Desde la revisión de F2-T06 (PR #39): frases discriminatorias de preferencia y negación más comunes ("no se permiten niños", "preferentemente mujeres", "abstenerse extranjeros") y edades que no hablan de personas excluidas ("antigüedad entre 5 y 10 años"); la calle se reconoce por cualquier palabra distintiva, también en los hashtags; notas internas de 1 o 2 palabras (si tienen al menos 8 letras) y nunca un trozo que también está en los datos; números con palabras junto a una distancia ("a cinco minutos"); `metros` no es el metro; `CONTENT_CHECK_CODES` y `CONTENT_CHECK_SEVERITY_LEVELS` para la API; contexto único en T10 y T16, y lo privado solo en el servidor (T12 y T15); `HASHTAG_COUNT` solo en Instagram |

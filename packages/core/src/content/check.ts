@@ -14,7 +14,17 @@ import {
   LISTING_TITLE_MAX_LENGTH,
 } from "./assemble.js";
 import { buildContentBrief, type ContentBrief } from "./brief.js";
-import { AMENITY_TERMS, DISCRIMINATORY_PATTERNS, SUPERLATIVE_TERMS } from "./check-terms.js";
+import {
+  AMENITY_EXACT,
+  AMENITY_TERMS,
+  DISCRIMINATORY_PATTERNS,
+  DISTANCE_UNITS,
+  NUMBER_WORDS,
+  SUPERLATIVE_TERMS,
+} from "./check-terms.js";
+
+/** Severidades de la revisión: los errores bloquean, las advertencias no. */
+export const CONTENT_CHECK_SEVERITY_LEVELS = ["error", "warning"] as const;
 
 /** Códigos de la revisión editorial (spec F2 §4.6), con su severidad. */
 export const CONTENT_CHECK_SEVERITIES = {
@@ -28,9 +38,15 @@ export const CONTENT_CHECK_SEVERITIES = {
   SUPERLATIVE: "warning",
   MARKDOWN: "warning",
   HASHTAG_COUNT: "warning",
-} as const;
+} as const satisfies Record<string, (typeof CONTENT_CHECK_SEVERITY_LEVELS)[number]>;
 export type ContentCheckCode = keyof typeof CONTENT_CHECK_SEVERITIES;
-export type ContentCheckSeverity = (typeof CONTENT_CHECK_SEVERITIES)[ContentCheckCode];
+export type ContentCheckSeverity = (typeof CONTENT_CHECK_SEVERITY_LEVELS)[number];
+
+/** Los códigos como tupla, para `z.enum` en los contratos de la API (F2-T12). */
+export const CONTENT_CHECK_CODES = Object.keys(CONTENT_CHECK_SEVERITIES) as [
+  ContentCheckCode,
+  ...ContentCheckCode[],
+];
 
 /** Un problema del texto: los errores bloquean (`eval:content` sale con 1), las advertencias no. */
 export type ContentCheck = {
@@ -42,7 +58,8 @@ export type ContentCheck = {
 /**
  * Lo que la revisión necesita: el brief (los datos permitidos), el contacto que pone el código y lo
  * **privado** del aviso, que nunca va a la IA pero sirve para detectar una fuga (por ejemplo, en
- * una edición manual).
+ * una edición manual). Lo privado no sale del servidor: la API devuelve solo los `checks`, y sus
+ * mensajes nunca citan la dirección, la unidad ni las notas.
  */
 export type ContentCheckContext = {
   brief: ContentBrief;
@@ -50,7 +67,11 @@ export type ContentCheckContext = {
   private: { address: string | null; unitNumber: string | null; internalNotes: string | null };
 };
 
-/** El contexto de la revisión de un aviso, con el mismo brief que ve la IA. */
+/**
+ * El contexto de la revisión de un aviso, con el mismo brief que ve la IA. Quien genera y revisa
+ * (T10 y T16) lo arma una vez y usa `ctx.brief` y `ctx.contact` también para la IA y el ensamblado,
+ * así la revisión mide contra los mismos datos.
+ */
 export function buildContentCheckContext(
   listing: Listing,
   definitions: readonly FieldDefinition[],
@@ -89,15 +110,52 @@ function briefValues(value: unknown): string[] {
   return [];
 }
 
-/** Términos de una lista que aparecen como palabra (o con su plural simple) en un texto plegado. */
-function termsIn(folded: string, terms: readonly string[]): string[] {
-  return terms.filter((term) => new RegExp(String.raw`\b${term}(?:s|es)?\b`).test(folded));
+/**
+ * Términos de una lista (con tildes) que aparecen como palabra, o con su plural simple, en un texto
+ * plegado. Los términos no llevan metacaracteres. Si uno más largo los contiene (`jardín infantil`
+ * y `jardín`), queda solo el largo.
+ */
+function termsIn(folded: string, terms: readonly string[], exact: ReadonlySet<string> = new Set()) {
+  const found = terms.filter((term) => {
+    const key = foldText(term);
+    const plural = exact.has(key) ? "" : "(?:s|es)?";
+    return new RegExp(String.raw`\b${key}${plural}\b`).test(folded);
+  });
+  return found.filter(
+    (term) => !found.some((other) => other !== term && foldText(other).includes(foldText(term))),
+  );
 }
 
 const words = (text: string) => foldText(text).match(/[a-z0-9]+/g) ?? [];
 
-/** Palabras genéricas de una dirección, que no la identifican. */
+/**
+ * Palabras de una dirección que no la identifican: tipos de vía, de unidad, artículos y adjetivos
+ * frecuentes en nombres de calles ("Avenida Central" no hace sospechosa a "ubicación central").
+ */
 const STREET_WORDS = new Set([
+  "los",
+  "las",
+  "del",
+  "de",
+  "la",
+  "el",
+  "y",
+  "central",
+  "principal",
+  "norte",
+  "sur",
+  "oriente",
+  "poniente",
+  "nueva",
+  "nuevo",
+  "grande",
+  "alto",
+  "alta",
+  "real",
+  "general",
+  "santa",
+  "santo",
+  "san",
   "calle",
   "avenida",
   "av",
@@ -120,13 +178,19 @@ const STREET_WORDS = new Set([
   "block",
 ]);
 
-/** El nombre de la calle de una dirección (`Av. Irarrázaval 1234, depto 5` → `irarrazaval`). */
-function streetName(address: string): string | null {
-  const name = words(address.split(",")[0] ?? "")
-    .filter((word) => !/\d/.test(word) && !STREET_WORDS.has(word))
-    .join(" ");
-  return name.length >= 4 ? name : null;
+/**
+ * Las palabras que identifican la calle de una dirección, de todos sus tramos (`Depto 506, Av.
+ * Vicuña Mackenna 1234` → `vicuna` y `mackenna`): de 5 letras o más, sin números ni genéricas.
+ * Solo letras y números, así que se pueden comparar palabra a palabra.
+ */
+function streetWords(address: string): string[] {
+  return words(address).filter(
+    (word) => word.length >= 5 && !/\d/.test(word) && !STREET_WORDS.has(word),
+  );
 }
+
+/** Notas de una o dos palabras se buscan solo si son una frase con algo de cuerpo. */
+const SHORT_NOTES_MIN_CHARS = 8;
 
 /**
  * Revisa un texto de un canal (spec F2 §4.6): una función pura que corre sobre el texto final,
@@ -158,14 +222,30 @@ export function checkContent(
     reported.add(key);
     add("NUMBER_NOT_IN_DATA", `El número «${raw}» no está en los datos del aviso`);
   }
+  // Y con palabras junto a una distancia o un tiempo: `a cinco minutos`, `dos cuadras`.
+  const spelled = new RegExp(
+    String.raw`\b(${Object.keys(NUMBER_WORDS).join("|")})\s+${DISTANCE_UNITS}\b`,
+    "g",
+  );
+  for (const match of folded.matchAll(spelled)) {
+    const key = String(NUMBER_WORDS[match[1] ?? ""]);
+    if (known.has(key) || reported.has(match[0])) continue;
+    reported.add(match[0]);
+    add("NUMBER_NOT_IN_DATA", `«${match[0]}» no está en los datos del aviso`);
+  }
 
-  // Dirección y número de unidad, si no se pueden mostrar (y no son ya parte de los datos).
+  // Dirección y número de unidad, si no se pueden mostrar (y no son ya parte de los datos). La
+  // calle se busca también en los hashtags, que se publican con el caption.
+  const contentWords = words(content);
+  const dataWords = new Set(words(dataText));
   if (ctx.brief.address === null) {
-    const street = ctx.private.address === null ? null : streetName(ctx.private.address);
+    const street = streetWords(ctx.private.address ?? "").filter((word) => !dataWords.has(word));
+    const tags = text.hashtags.map((tag) => foldText(tag).replace(/[^a-z0-9]/g, ""));
+    const inWords = new Set([...contentWords, ...tags.flatMap((tag) => words(tag))]);
+    const joined = street.join("");
     if (
-      street !== null &&
-      new RegExp(String.raw`\b${street}\b`).test(folded) &&
-      !foldedData.includes(street)
+      street.some((word) => inWords.has(word)) ||
+      (joined.length > 0 && tags.some((tag) => tag.includes(joined)))
     ) {
       add("ADDRESS_EXPOSED", "Menciona la calle del aviso, que no se puede mostrar");
     }
@@ -176,13 +256,21 @@ export function checkContent(
     }
   }
 
-  // Notas internas: 6 palabras seguidas (o todas, si son entre 3 y 5).
+  // Notas internas: 6 palabras seguidas (o todas, si son menos), salvo que ese trozo también
+  // esté en los datos (por ejemplo, "departamento en venta").
   const notes = words(ctx.private.internalNotes ?? "");
   const size = Math.min(6, notes.length);
-  if (size >= 3) {
-    const haystack = ` ${words(content).join(" ")} `;
+  const longEnough = size >= 3 || notes.join(" ").length >= SHORT_NOTES_MIN_CHARS;
+  if (size > 0 && longEnough) {
+    const haystack = ` ${contentWords.join(" ")} `;
+    // Lo permitido incluye la operación como la escribe el código (`Departamento en venta`).
+    const operation = ctx.brief.operation === "rent" ? "en arriendo" : "en venta";
+    const allowed = ` ${words(
+      `${dataText}\n${ctx.brief.propertyType ?? ""} ${ctx.brief.operation === null ? "" : operation}\n${ctx.contact.whatsapp ?? ""}`,
+    ).join(" ")} `;
     for (let start = 0; start + size <= notes.length; start += 1) {
-      if (haystack.includes(` ${notes.slice(start, start + size).join(" ")} `)) {
+      const piece = ` ${notes.slice(start, start + size).join(" ")} `;
+      if (haystack.includes(piece) && !allowed.includes(piece)) {
         add("INTERNAL_NOTES_LEAK", "Repite un trozo de las notas internas del aviso");
         break;
       }
@@ -214,8 +302,8 @@ export function checkContent(
     );
   }
 
-  for (const term of termsIn(folded, AMENITY_TERMS)) {
-    if (termsIn(foldedData, [term]).length === 0) {
+  for (const term of termsIn(folded, AMENITY_TERMS, AMENITY_EXACT)) {
+    if (termsIn(foldedData, [term], AMENITY_EXACT).length === 0) {
       add("AMENITY_NOT_IN_DATA", `Menciona «${term}», que no está en los datos del aviso`);
     }
   }

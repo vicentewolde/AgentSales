@@ -1,11 +1,21 @@
-// Listas de la revisión editorial (spec F2 §4.6, `checkContent`). Todo se compara sobre el texto
-// plegado con `foldText` (minúsculas, sin tildes y con un solo espacio), así que los términos van
-// así: `ninos`, no `niños`. Ampliarlas no cambia `CONTENT_PROMPT_VERSION`: no cambian los textos.
+// Listas de la revisión editorial (spec F2 §4.6, `checkContent`). Se compara sobre el texto plegado
+// con `foldText` (minúsculas, sin tildes y con un solo espacio): los patrones van sin tildes
+// (`ninos`), y las listas de términos se escriben con tildes y se pliegan al usarlas (el mensaje
+// muestra la forma con tildes). Los términos no llevan metacaracteres de expresiones regulares.
+// Ampliar las listas no cambia `CONTENT_PROMPT_VERSION`: la revisión se calcula al leer y no
+// cambia los textos guardados (seguimiento de ADR-0013).
 
-/** Prefijos que restringen a un grupo: `solo chilenos`, `únicamente para mujeres`. */
-const ONLY = String.raw`(?:solo|solamente|unicamente|exclusivamente)\s+(?:para\s+|a\s+)?`;
-/** Negaciones: `sin niños`, `no se aceptan extranjeros`. */
-const NOT = String.raw`(?:no|sin)\s+(?:se\s+)?(?:aceptan?\s+|admiten?\s+|arrienda\s+a\s+)?`;
+/** Hasta dos palabras entre el prefijo y el grupo: `solo profesionales jóvenes solteros`. */
+const FILLER = String.raw`(?:[a-z]+\s+){0,2}`;
+/** Prefijos que restringen o prefieren a un grupo: `solo chilenos`, `preferentemente mujeres`. */
+const ONLY = String.raw`(?:solo|solamente|unicamente|exclusivamente|preferentemente|se\s+prefieren?|abstenerse|se\s+requiere\s+ser)\s+(?:para\s+|a\s+)?(?:gente\s+|personas\s+)?${FILLER}`;
+/** Negaciones: `sin niños`, `no se permiten niños`, `no apto para niños`, `ni niños`. */
+const NOT = String.raw`(?:no|sin|ni)\s+(?:se\s+)?(?:aceptan?\s+|aceptamos\s+|admiten?\s+|permiten?\s+|arrienda\s+|apto\s+)?(?:a\s+|para\s+)?(?:inquilinos\s+|arrendatarios\s+)?`;
+/**
+ * Lo que va antes de una edad y no habla de personas: `antigüedad entre 5 y 10 años`, `juegos
+ * para menores de 10 años`. Mira hasta 3 palabras atrás.
+ */
+const NOT_ABOUT_PEOPLE = String.raw`(?<!\b(?:antiguedad|construccion|construido|construida|edificio|propiedad|juegos|juego|sala|piscina|plaza|area|uso|vida\s+util)\b(?:\s+[a-z0-9]+){0,3}\s)`;
 
 /**
  * Requisitos discriminatorios por nacionalidad, hijos, estado civil, religión, edad o sexo
@@ -16,7 +26,7 @@ export const DISCRIMINATORY_PATTERNS: readonly { reason: string; pattern: RegExp
   {
     reason: "nacionalidad",
     pattern: new RegExp(
-      String.raw`\b(?:${ONLY}(?:chilen[oa]s|nacionales|extranjer[oa]s)|${NOT}extranjer[oa]s|nacionalidad\s+chilena)\b`,
+      String.raw`\b(?:${ONLY}(?:chilen[oa]s?|nacionales|extranjer[oa]s)|${NOT}extranjer[oa]s|nacionalidad\s+chilena)\b`,
     ),
   },
   {
@@ -38,7 +48,7 @@ export const DISCRIMINATORY_PATTERNS: readonly { reason: string; pattern: RegExp
   {
     reason: "edad",
     pattern: new RegExp(
-      String.raw`\b(?:(?:menores|mayores)\s+de\s+\d+\s+anos|entre\s+\d+\s+y\s+\d+\s+anos|edad\s+(?:maxima|minima)|${ONLY}(?:jovenes|adultos\s+jovenes))\b`,
+      String.raw`${NOT_ABOUT_PEOPLE}\b(?:(?:menores|mayores)\s+de\s+\d+\s+anos|entre\s+\d+\s+y\s+\d+\s+anos|edad\s+(?:maxima|minima)|${ONLY}(?:jovenes|adultos\s+jovenes))\b`,
     ),
   },
   {
@@ -51,26 +61,21 @@ export const DISCRIMINATORY_PATTERNS: readonly { reason: string; pattern: RegExp
 
 /** Superlativos vacíos (regla 5): advertencia, porque a veces calzan con un dato. */
 export const SUPERLATIVE_TERMS: readonly string[] = [
-  "increible",
-  "increibles",
-  "unico",
-  "unica",
-  "unicos",
-  "unicas",
+  "increíble",
+  "único",
+  "única",
   "espectacular",
-  "espectaculares",
   "impresionante",
-  "impresionantes",
   "maravilloso",
   "maravillosa",
   "imperdible",
   "insuperable",
   "inmejorable",
-  "fantastico",
-  "fantastica",
-  "de ensueno",
-  "sonado",
-  "sonada",
+  "fantástico",
+  "fantástica",
+  "de ensueño",
+  "soñado",
+  "soñada",
   "el mejor",
   "la mejor",
   "perfecto",
@@ -80,7 +85,7 @@ export const SUPERLATIVE_TERMS: readonly string[] = [
 /**
  * Amenities, espacios y servicios cercanos que un modelo suele inventar (regla 1). Se avisa si el
  * texto menciona uno que no aparece en los datos del brief. Los plurales simples (`s`, `es`) se
- * reconocen solos.
+ * reconocen solos, salvo en `AMENITY_EXACT`.
  */
 export const AMENITY_TERMS: readonly string[] = [
   "piscina",
@@ -89,18 +94,18 @@ export const AMENITY_TERMS: readonly string[] = [
   "sauna",
   "jacuzzi",
   "spa",
-  "conserjeria",
+  "conserjería",
   "conserje",
   "ascensor",
   "terraza",
-  "balcon",
-  "jardin",
+  "balcón",
+  "jardín",
   "logia",
   "sala de eventos",
-  "salon de eventos",
+  "salón de eventos",
   "sala multiuso",
-  "lavanderia",
-  "areas verdes",
+  "lavandería",
+  "áreas verdes",
   "juegos infantiles",
   "cowork",
   "bicicletero",
@@ -109,14 +114,42 @@ export const AMENITY_TERMS: readonly string[] = [
   "vista a la cordillera",
   "metro",
   "colegio",
-  "jardin infantil",
+  "jardín infantil",
   "supermercado",
   "mall",
   "centro comercial",
   "universidad",
-  "clinica",
+  "clínica",
   "hospital",
   "parque",
   "playa",
-  "ciclovia",
+  "ciclovía",
 ];
+
+/** Términos sin plural automático: `metros` (cuadrados) no es el metro. */
+export const AMENITY_EXACT: ReadonlySet<string> = new Set(["metro"]);
+
+/**
+ * Números escritos con palabras junto a una distancia o un tiempo (`a cinco minutos`, `dos
+ * cuadras`): el modo típico de inventar una cercanía. El valor se busca en los datos como un número.
+ */
+export const NUMBER_WORDS: Readonly<Record<string, number>> = {
+  un: 1,
+  una: 1,
+  dos: 2,
+  tres: 3,
+  cuatro: 4,
+  cinco: 5,
+  seis: 6,
+  siete: 7,
+  ocho: 8,
+  nueve: 9,
+  diez: 10,
+  quince: 15,
+  veinte: 20,
+  treinta: 30,
+  cuarenta: 40,
+  cincuenta: 50,
+  cien: 100,
+};
+export const DISTANCE_UNITS = "(?:minutos?|cuadras?|metros|kilometros?|km|horas?)";

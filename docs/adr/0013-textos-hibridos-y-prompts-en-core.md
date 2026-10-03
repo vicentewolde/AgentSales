@@ -28,3 +28,6 @@
 - **La IA escribe el texto completo** (como decía `04`): cada dato pasa por el modelo y solo una revisión posterior detecta un error; un precio mal copiado es el peor error posible en un aviso.
 - **Plantillas sin IA:** cumplen las reglas, pero sin gancho ni redacción adaptada al tono del corredor, que es lo que la fase promete.
 - **Prompts en `packages/llm/prompts/`:** el prompt, el esquema y las reglas que lo revisan cambiarían por separado, y la versión registrada no describiría todo lo que produjo el texto.
+
+## Seguimiento
+- 2026-10-03 (F2-T06): la revisión editorial (`checkContent`) se calcula al leer, contra los datos actuales del aviso, y no forma parte de `prompt_version`: ampliar sus listas no cambia los textos guardados ni la versión. Un contenido viejo puede mostrar `NUMBER_NOT_IN_DATA` si el aviso se reimportó con otro precio: indica que quedó desactualizado.

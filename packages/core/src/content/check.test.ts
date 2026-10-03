@@ -73,6 +73,18 @@ describe("checkContent · NUMBER_NOT_IN_DATA", () => {
     expect(checks.filter((check) => check.code === "NUMBER_NOT_IN_DATA")).toHaveLength(1);
   });
 
+  it.each([
+    ["A cinco minutos del centro", "«cinco minutos» no está en los datos del aviso"],
+    ["A cuatro cuadras de la plaza", "«cuatro cuadras» no está en los datos del aviso"],
+  ])("marca números con palabras junto a una distancia: «%s»", (body, message) => {
+    const messages = checkContent("instagram", text(body), contextOf()).map((c) => c.message);
+    expect(messages).toContain(message);
+  });
+
+  it("un número con palabras que está en los datos no se marca", () => {
+    expect(codesOf("Con tres dormitorios a tres cuadras")).not.toContain("NUMBER_NOT_IN_DATA");
+  });
+
   it("acepta números de los datos de texto (destacados, sector)", () => {
     const listing = {
       highlights: "Terraza de 20 m²",
@@ -95,7 +107,39 @@ describe("checkContent · ADDRESS_EXPOSED", () => {
   });
 
   it("marca el número de la unidad", () => {
-    expect(codesOf("Departamento 506 con vista")).toContain("ADDRESS_EXPOSED");
+    const checks = checkContent("instagram", text("Departamento 506 con vista"), contextOf());
+    expect(checks.map((check) => check.message)).toContain(
+      "Menciona el número de la unidad, que no se puede mostrar",
+    );
+  });
+
+  it.each([
+    ["una palabra de una calle de varias", "Av. Vicuña Mackenna 1234", "Cerca de Vicuña"],
+    ["una calle con apóstrofe", "Av. Libertador Bernardo O'Higgins 99", "Frente a O'Higgins"],
+    ["la calle en el segundo tramo", "Depto 506, Av. Irarrázaval 1234", "En Irarrázaval"],
+  ])("marca %s", (_, address, body) => {
+    expect(codesOf(body, { listing: { address } })).toContain("ADDRESS_EXPOSED");
+  });
+
+  it("marca la calle en un hashtag de Instagram", () => {
+    const listing = { address: "Av. Vicuña Mackenna 1234" };
+    const ctx = contextOf(listing);
+    for (const tag of ["#vicunamackenna", "#Mackenna"]) {
+      const checks = checkContent(
+        "instagram",
+        text("Texto", { hashtags: [...HASHTAGS, tag] }),
+        ctx,
+      );
+      expect(
+        checks.map((check) => check.code),
+        tag,
+      ).toContain("ADDRESS_EXPOSED");
+    }
+  });
+
+  it("una calle con palabras genéricas no marca textos normales", () => {
+    const listing = { address: "Avenida Central 123" };
+    expect(codesOf("Ubicación central y tranquila", { listing })).not.toContain("ADDRESS_EXPOSED");
   });
 
   it("con show_exact_address = true no es una fuga", () => {
@@ -128,6 +172,22 @@ describe("checkContent · INTERNAL_NOTES_LEAK", () => {
     );
   });
 
+  it("notas de 1 o 2 palabras se buscan completas si tienen al menos 8 letras", () => {
+    expect(
+      codesOf("Precio negociable, consulta", { listing: { internalNotes: "Precio negociable" } }),
+    ).toContain("INTERNAL_NOTES_LEAK");
+    expect(codesOf("Entrega urgente", { listing: { internalNotes: "Urgente" } })).not.toContain(
+      "INTERNAL_NOTES_LEAK",
+    );
+  });
+
+  it("un trozo de las notas que también está en los datos no es fuga", () => {
+    const listing = { internalNotes: "Departamento en venta" };
+    expect(codesOf("Departamento en venta en Ñuñoa", { listing })).not.toContain(
+      "INTERNAL_NOTES_LEAK",
+    );
+  });
+
   it("notas de 3 a 5 palabras se buscan completas", () => {
     const listing = { internalNotes: "No mostrar el balcón" };
     expect(codesOf("Tip: no mostrar el balcón.", { listing })).toContain("INTERNAL_NOTES_LEAK");
@@ -146,6 +206,17 @@ describe("checkContent · DISCRIMINATORY", () => {
     ["Mayores de 25 años", "edad"],
     ["Solo para MUJERES", "sexo"],
     ["Exclusivamente señoritas", "sexo"],
+    ["No se permiten niños", "hijos"],
+    ["No apto para niños", "hijos"],
+    ["Sin mascotas ni niños", "hijos"],
+    ["Se prefiere chilenos", "nacionalidad"],
+    ["Preferentemente mujeres", "sexo"],
+    ["Solo gente chilena", "nacionalidad"],
+    ["No aceptamos extranjeros", "nacionalidad"],
+    ["Solo profesionales jóvenes solteros", "estado civil"],
+    ["No se aceptan inquilinos extranjeros", "nacionalidad"],
+    ["Se requiere ser casados", "estado civil"],
+    ["Abstenerse extranjeros", "nacionalidad"],
   ])("marca «%s» (%s)", (body, reason) => {
     const checks = checkContent("portal_inmobiliario", text(body), contextOf());
     expect(checks).toContainEqual({
@@ -160,6 +231,9 @@ describe("checkContent · DISCRIMINATORY", () => {
     "Se aceptan mascotas",
     "Solo se pide aval y liquidaciones de sueldo",
     "Cerca de colegios para tus hijos",
+    "Edificio con antigüedad entre 5 y 10 años",
+    "Plaza con juegos para menores de 10 años",
+    "Solo a pasos del metro",
   ])("no marca «%s»", (body) => {
     expect(codesOf(body, { platform: "portal_inmobiliario" })).not.toContain("DISCRIMINATORY");
   });
@@ -177,6 +251,9 @@ describe("checkContent · EMOJI_NOT_ALLOWED y TOO_LONG", () => {
       "EMOJI_NOT_ALLOWED",
     );
     expect(codesOf("Linda casa 🏡")).not.toContain("EMOJI_NOT_ALLOWED");
+    expect(codesOf("Linda casa 🏡", { platform: "fb_marketplace" })).not.toContain(
+      "EMOJI_NOT_ALLOWED",
+    );
   });
 
   it("el caption de Instagram se mide con los hashtags", () => {
@@ -213,6 +290,18 @@ describe("checkContent · advertencias", () => {
     // Quincho, gimnasio y terraza sí están (amenities y destacados).
     expect(codesOf("Quinchos, gimnasio y terraza")).not.toContain("AMENITY_NOT_IN_DATA");
     expect(codesOf("Metrópolis")).not.toContain("AMENITY_NOT_IN_DATA");
+    expect(codesOf("Departamento de 72 metros cuadrados")).not.toContain("AMENITY_NOT_IN_DATA");
+  });
+
+  it("un término largo no repite el aviso del corto que contiene", () => {
+    const checks = checkContent("instagram", text("Cerca de un jardín infantil"), contextOf());
+    expect(checks.filter((check) => check.code === "AMENITY_NOT_IN_DATA")).toEqual([
+      {
+        code: "AMENITY_NOT_IN_DATA",
+        severity: "warning",
+        message: "Menciona «jardín infantil», que no está en los datos del aviso",
+      },
+    ]);
   });
 
   it("superlativos, con tildes y mayúsculas, en una sola advertencia", () => {
@@ -220,7 +309,7 @@ describe("checkContent · advertencias", () => {
     expect(checks).toContainEqual({
       code: "SUPERLATIVE",
       severity: "warning",
-      message: "Usa superlativos vacíos: «increible», «unica»",
+      message: "Usa superlativos vacíos: «increíble», «única»",
     });
     expect(codesOf("Una vista despejada")).not.toContain("SUPERLATIVE");
   });
@@ -313,5 +402,33 @@ describe("checkContent sobre lo ensamblado", () => {
     expect(checks.map((check) => check.message)).toContain(
       "El número «5» no está en los datos del aviso",
     );
+  });
+});
+
+describe("buildContentCheckContext", () => {
+  it("guarda lo privado aunque la dirección no se pueda mostrar, y el brief no lo lleva", () => {
+    const ctx = contextOf();
+
+    expect(ctx.private).toEqual({
+      address: "Calle Inventada 1234",
+      unitNumber: "Depto 506",
+      internalNotes: "Dueño acepta ofertas bajo el precio publicado si pagan al contado",
+    });
+    expect(ctx.brief.address).toBeNull();
+    expect(ctx.contact).toEqual({ whatsapp: "+56 9 1111 2222" });
+  });
+
+  it("los mensajes nunca citan la dirección, la unidad ni las notas internas", () => {
+    const leaky =
+      "En Calle Inventada, depto 506. Dueño acepta ofertas bajo el precio publicado si pagan al contado.";
+    const checks = checkContent("instagram", text(leaky), contextOf());
+    const codes = checks.map((check) => check.code);
+
+    expect(codes).toContain("ADDRESS_EXPOSED");
+    expect(codes).toContain("INTERNAL_NOTES_LEAK");
+    const messages = JSON.stringify(checks.filter((check) => check.code !== "NUMBER_NOT_IN_DATA"));
+    for (const secret of ["Inventada", "506", "Dueño", "contado"]) {
+      expect(messages).not.toContain(secret);
+    }
   });
 });
