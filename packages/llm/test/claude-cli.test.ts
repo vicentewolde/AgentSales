@@ -87,6 +87,13 @@ describe("createClaudeCliProvider: respuestas", () => {
     });
   });
 
+  it("sobre real de una llamada exitosa (prueba de humo): la salida y el modelo que respondió", async () => {
+    await expect(provider().generateStructured(request("exito-real"))).resolves.toEqual({
+      data: { hook: "Departamento de 2 dormitorios en venta, en Comuna Inventada." },
+      model: "claude-sonnet-5",
+    });
+  });
+
   it("con dos modelos en modelUsage, el que respondió es el de más tokens de salida", async () => {
     const result = await provider().generateStructured(request("dos-modelos"));
     expect(result.model).toBe("claude-sonnet-5-5");

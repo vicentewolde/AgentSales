@@ -106,6 +106,31 @@ switch (mode) {
   case "sin-sesion":
     print({ ...base, subtype: "success", is_error: true, result: "Not logged in · Please run /login" }, 1);
     break;
+  case "exito-real":
+    // Sobre real de una llamada exitosa con la sesión del plan del operador (prueba de humo del
+    // 2026-10-03, aviso inventado), con los ids reemplazados y sin las estadísticas de uso. Con
+    // --json-schema y --tools "" la CLI usa dos turnos (la salida estructurada es una herramienta
+    // interna) y un modelo auxiliar, que gasta menos tokens de salida que el que respondió.
+    print({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: JSON.stringify({ hook: "Departamento de 2 dormitorios en venta, en Comuna Inventada." }),
+      structured_output: { hook: "Departamento de 2 dormitorios en venta, en Comuna Inventada." },
+      stop_reason: "tool_use",
+      api_error_status: null,
+      modelUsage: {
+        "claude-haiku-4-5-20251001": { inputTokens: 946, outputTokens: 16 },
+        "claude-sonnet-5": { inputTokens: 861, outputTokens: 135 },
+      },
+      duration_api_ms: 2608,
+      num_turns: 2,
+      session_id: "sesion-falsa",
+      total_cost_usd: 0.004098,
+      permission_denials: [],
+      terminal_reason: "completed",
+    });
+    break;
   case "sesion-vencida":
     // Sobre real de la CLI 2.1.243 con la sesión OAuth vencida (prueba de humo del 2026-10-03),
     // con el id de sesión reemplazado y sin las estadísticas de uso.
