@@ -146,4 +146,64 @@ describe("buildListingValidator con las 36 definiciones del seed", () => {
       },
     });
   });
+
+  it("rechaza los números fuera de rango del seed (deuda de F1: dormitorios = -2 pasaba)", () => {
+    const issues = (row: Record<string, unknown>) => {
+      const result = validator.validate(row);
+      return result.ok ? [] : result.errors.map((error) => [error.column, error.code]);
+    };
+    const base = {
+      id_propiedad: "P900",
+      operacion: "Venta",
+      tipo: "Casa",
+      region: "Metropolitana",
+      comuna: "Maipú",
+      direccion: "Calle Inventada 1",
+      mostrar_direccion_exacta: "No",
+      precio: 3000,
+      moneda: "UF",
+      sup_util_m2: 90,
+      dormitorios: 3,
+      banos: 2,
+      estacionamientos: 1,
+      bodegas: 0,
+      amoblado: "No",
+      disponibilidad: "Inmediata",
+      publicar_en: "Instagram",
+      estado_carga: "Listo",
+    };
+    expect(issues(base)).toEqual([]);
+    expect(issues({ ...base, dormitorios: -2, banos: -1, sup_util_m2: 0, piso: 300 })).toEqual([
+      ["sup_util_m2", "FIELD_NUMBER_INVALID"],
+      ["dormitorios", "FIELD_NUMBER_INVALID"],
+      ["banos", "FIELD_NUMBER_INVALID"],
+      ["piso", "FIELD_NUMBER_INVALID"],
+    ]);
+  });
+});
+
+describe("rangos del seed (spec F2 §4.3)", () => {
+  it("son exactamente los de la tabla del spec, y solo en campos number", () => {
+    const ranges = Object.fromEntries(
+      REAL_ESTATE_FIELD_DEFINITIONS.filter(
+        (def) => def.minValue !== null || def.maxValue !== null,
+      ).map((def) => [def.key, [def.minValue, def.maxValue]]),
+    );
+    expect(ranges).toEqual({
+      gastos_comunes_clp: [0, null],
+      contribuciones_trimestrales_clp: [0, null],
+      sup_util_m2: [1, 1_000_000],
+      sup_total_m2: [1, 1_000_000],
+      sup_terreno_m2: [1, 1_000_000],
+      dormitorios: [0, 50],
+      banos: [0, 50],
+      estacionamientos: [0, 100],
+      bodegas: [0, 100],
+      piso: [-10, 200],
+      ano_construccion: [1800, 2100],
+    });
+    for (const key of Object.keys(ranges)) {
+      expect(REAL_ESTATE_FIELD_DEFINITIONS.find((def) => def.key === key)?.type).toBe("number");
+    }
+  });
 });

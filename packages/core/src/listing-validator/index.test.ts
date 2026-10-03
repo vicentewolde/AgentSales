@@ -19,6 +19,8 @@ const def = (
   options: null,
   sourceColumn: key,
   isCore: false,
+  minValue: null,
+  maxValue: null,
   sortOrder: nextId * 10,
   active: true,
   ...overrides,
@@ -430,5 +432,127 @@ describe("buildListingValidator · definiciones inválidas", () => {
     } catch (error) {
       expect(isAppError(error) && error.code).toBe("FIELD_CONFIG_INVALID");
     }
+  });
+
+  it("un rango en un campo que no es number", () => {
+    expectInvalid([...DEFS, def("piso_texto", "text", { minValue: 0 })], "piso_texto");
+  });
+
+  it("un mínimo mayor que el máximo", () => {
+    expectInvalid([...DEFS, def("piso", "number", { minValue: 10, maxValue: 1 })], "piso");
+  });
+
+  it.each([
+    { minValue: Number.NaN, maxValue: null },
+    { minValue: null, maxValue: Number.POSITIVE_INFINITY },
+  ])(
+    "un extremo que no es un número finito: %o (red de seguridad: desde la base lo corta zod)",
+    (range) => {
+      expectInvalid([...DEFS, def("piso", "number", range)], "piso");
+    },
+  );
+});
+
+describe("buildListingValidator · mínimos y máximos (F2-T01)", () => {
+  const ranged = buildListingValidator([
+    ...DEFS.map((d) => (d.key === "dormitorios" ? { ...d, minValue: 0, maxValue: 50 } : d)),
+    def("piso", "number", { minValue: -10, maxValue: 200 }),
+    def("gastos_comunes_clp", "number", { minValue: 0 }),
+    def("ano_construccion", "number", { minValue: 1800, maxValue: 2100 }),
+  ]);
+  const check = (row: RawListingRow) => ranged.validate({ ...VALID_ROW, ...row });
+
+  it("rechaza un número bajo el mínimo, con el rango completo en el motivo", () => {
+    const result = check({ dormitorios: -2 });
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.errors).toEqual([
+      {
+        column: "dormitorios",
+        key: "dormitorios",
+        code: "FIELD_NUMBER_INVALID",
+        message: "debe estar entre 0 y 50",
+      },
+    ]);
+  });
+
+  it("rechaza un número sobre el máximo", () => {
+    const result = check({ ano_construccion: 21000 });
+    expect(!result.ok && result.errors).toEqual([
+      expect.objectContaining({
+        column: "ano_construccion",
+        code: "FIELD_NUMBER_INVALID",
+        message: "debe estar entre 1800 y 2100",
+      }),
+    ]);
+  });
+
+  it("con un solo extremo, el motivo da ese extremo, con formato chileno (miles y decimales)", () => {
+    const formatted = buildListingValidator([
+      ...DEFS,
+      def("sup_util_m2", "number", { maxValue: 1_000_000 }),
+      def("sup_terreno_m2", "number", { minValue: 0.5 }),
+    ]);
+    const result = formatted.validate({
+      ...VALID_ROW,
+      sup_util_m2: 1_000_001,
+      sup_terreno_m2: 0.4,
+    });
+    expect(!result.ok && result.errors.map((error) => error.message)).toEqual([
+      "no puede ser mayor que 1.000.000",
+      "debe ser al menos 0,5",
+    ]);
+    expect(check({ gastos_comunes_clp: -1 })).toMatchObject({
+      ok: false,
+      errors: [{ column: "gastos_comunes_clp", message: "debe ser al menos 0" }],
+    });
+  });
+
+  it("un rango del corredor sobre el precio se suma a sus reglas fijas (mayor que 0)", () => {
+    const withPrice = (range: Partial<FieldDefinition>) =>
+      buildListingValidator([
+        ...DEFS,
+        def("precio", "number", { brokerId: "b1", required: true, isCore: true, ...range }),
+      ]);
+    const narrow = withPrice({ minValue: 1000, maxValue: 5000 });
+    expect(narrow.validate({ ...VALID_ROW, precio: 500 })).toMatchObject({
+      ok: false,
+      errors: [{ column: "precio", message: "debe estar entre 1000 y 5000" }],
+    });
+    expect(narrow.validate({ ...VALID_ROW, precio: 3000 }).ok).toBe(true);
+    // Un rango más amplio no afloja la regla fija del modelo.
+    expect(withPrice({ minValue: -5 }).validate({ ...VALID_ROW, precio: -1 })).toMatchObject({
+      ok: false,
+      errors: [{ column: "precio", message: "debe ser mayor que 0" }],
+    });
+  });
+
+  it("acepta los bordes (extremos incluidos) y un mínimo negativo", () => {
+    for (const row of [
+      { dormitorios: 0, piso: -10, ano_construccion: 1800 },
+      { dormitorios: 50, piso: 200, ano_construccion: 2100 },
+      { dormitorios: "2", piso: "-1" },
+    ]) {
+      expect(check(row).ok).toBe(true);
+    }
+  });
+
+  it("con solo mínimo no hay tope arriba, y un campo sin rango acepta cualquier número", () => {
+    expect(check({ gastos_comunes_clp: "1.500.000" }).ok).toBe(true);
+    expect(check({ gastos_comunes_clp: -1 }).ok).toBe(false);
+    expect(validator.validate({ ...VALID_ROW, dormitorios: -2 }).ok).toBe(true);
+  });
+
+  it("una celda vacía de un campo opcional con rango no se valida", () => {
+    expect(check({ piso: "" }).ok).toBe(true);
+  });
+
+  it("el rango del corredor sobrescribe el global", () => {
+    const broker = buildListingValidator([
+      ...DEFS.map((d) => (d.key === "dormitorios" ? { ...d, minValue: 0, maxValue: 50 } : d)),
+      def("dormitorios", "number", { brokerId: "b1", required: true, minValue: 1, maxValue: 5 }),
+    ]);
+    expect(broker.validate({ ...VALID_ROW, dormitorios: 0 }).ok).toBe(false);
+    expect(broker.validate({ ...VALID_ROW, dormitorios: 6 }).ok).toBe(false);
+    expect(broker.validate({ ...VALID_ROW, dormitorios: 5 }).ok).toBe(true);
   });
 });

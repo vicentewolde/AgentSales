@@ -167,6 +167,8 @@ describe("GET /listings/:id", () => {
       options: null,
       sourceColumn: key,
       isCore: false,
+      minValue: null,
+      maxValue: null,
       sortOrder: 0,
       active: true,
       ...extra,

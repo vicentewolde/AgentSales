@@ -36,6 +36,8 @@ export function fieldDefinitionOrderFixture(ids: {
     options: null,
     sourceColumn: key,
     isCore: false,
+    minValue: null,
+    maxValue: null,
     sortOrder,
     active: true,
     ...overrides,

@@ -17,6 +17,8 @@ const definition = (key: string, label: string, sortOrder: number): FieldDefinit
   options: null,
   sourceColumn: key,
   isCore: false,
+  minValue: null,
+  maxValue: null,
   sortOrder,
   active: true,
 });

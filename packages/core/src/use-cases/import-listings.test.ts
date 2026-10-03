@@ -28,6 +28,8 @@ const def = (
   options: null,
   sourceColumn: key,
   isCore: false,
+  minValue: null,
+  maxValue: null,
   sortOrder: nextDef * 10,
   active: true,
   ...overrides,

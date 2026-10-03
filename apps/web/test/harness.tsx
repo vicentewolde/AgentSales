@@ -179,6 +179,8 @@ export const definition = (key: string, label: string, sortOrder: number): Field
   options: null,
   sourceColumn: key,
   isCore: false,
+  minValue: null,
+  maxValue: null,
   sortOrder,
   active: true,
 });

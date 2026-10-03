@@ -119,6 +119,9 @@ export const fieldDefinitions = pgTable(
     options: jsonb("options"),
     sourceColumn: text("source_column").notNull(),
     isCore: boolean("is_core").notNull().default(false),
+    /** Rango de un campo `number`, con los extremos incluidos; `null` = sin tope (spec F2 §4.3). */
+    minValue: numeric("min_value", { mode: "number" }),
+    maxValue: numeric("max_value", { mode: "number" }),
     sortOrder: integer("sort_order").notNull().default(0),
     active: boolean("active").notNull().default(true),
     ...timestamps,

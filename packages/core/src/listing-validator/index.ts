@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AppError } from "../errors.js";
 import type { FieldDefinition } from "../field-definition.js";
+import { formatNumber } from "../price.js";
 import {
   CORE_FIELD_TARGETS,
   type CoreFieldTarget,
@@ -120,6 +121,7 @@ function assertUsable(defs: readonly FieldDefinition[]): void {
     if (def.type === "enum" && (def.options === null || def.options.length === 0)) {
       throw invalidConfig(`El campo ${def.key} es enum pero no tiene opciones`, { key: def.key });
     }
+    assertRange(def);
     if (isCoreFieldKey(def.key)) {
       const target = coreTarget(def.key);
       if (target.type !== def.type) {
@@ -148,6 +150,45 @@ function assertUsable(defs: readonly FieldDefinition[]): void {
     }
     columns.set(column, def.key);
   }
+}
+
+/** Un rango solo vale en un `number`, con números finitos y el mínimo no mayor que el máximo. */
+function assertRange(def: FieldDefinition): void {
+  const { minValue: min, maxValue: max } = def;
+  if (min === null && max === null) return;
+  if (def.type !== "number") {
+    throw invalidConfig(`El campo ${def.key} tiene mínimo o máximo pero no es number`, {
+      key: def.key,
+      type: def.type,
+    });
+  }
+  if ((min !== null && !Number.isFinite(min)) || (max !== null && !Number.isFinite(max))) {
+    throw invalidConfig(`El rango de ${def.key} no es un número finito`, { key: def.key });
+  }
+  if (min !== null && max !== null && min > max) {
+    throw invalidConfig(`El mínimo de ${def.key} es mayor que su máximo`, {
+      key: def.key,
+      minValue: min,
+      maxValue: max,
+    });
+  }
+}
+
+/**
+ * Motivo de un número fuera del rango de su definición (extremos incluidos), o `null`. Con los dos
+ * extremos el motivo da el rango completo; con uno solo, ese extremo.
+ */
+function outOfRange(def: FieldDefinition, value: number): string | null {
+  const { minValue: min, maxValue: max } = def;
+  const below = min !== null && value < min;
+  const above = max !== null && value > max;
+  if (!below && !above) return null;
+  if (min !== null && max !== null) {
+    return `debe estar entre ${formatNumber(min)} y ${formatNumber(max)}`;
+  }
+  return min !== null
+    ? `debe ser al menos ${formatNumber(min)}`
+    : `no puede ser mayor que ${formatNumber(max ?? 0)}`;
 }
 
 /** Busca en el mapa sin mayúsculas ni tildes: las opciones del corredor pueden escribirse distinto. */
@@ -222,6 +263,8 @@ function fieldSchema(def: FieldDefinition) {
         ? fail("FIELD_REQUIRED", "falta el valor (es obligatorio)")
         : undefined;
     }
+    const rangeIssue = typeof value === "number" ? outOfRange(def, value) : null;
+    if (rangeIssue !== null) return fail("FIELD_NUMBER_INVALID", rangeIssue);
     const result = applyTarget(def, value);
     return result.ok ? result.value : fail(result.code, result.message);
   });
