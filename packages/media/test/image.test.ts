@@ -4,11 +4,12 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isAppError } from "@agentsales/core";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMediaProcessor, MEDIA_PIPELINE_VERSION } from "../src/index.js";
 import {
+  alive,
+  errorOf,
   FFMPEG,
   FFPROBE,
   fakeFfmpeg,
@@ -16,6 +17,7 @@ import {
   isRed,
   pixel,
   syntheticPhoto,
+  waitFor,
 } from "./images.js";
 
 const ALL = ["thumb", "ig_4x5", "pi_4x3"] as const;
@@ -38,15 +40,6 @@ afterAll(async () => {
 
 const processor = (overrides: { ffmpegPath?: string } = {}) =>
   createMediaProcessor({ ffmpegPath: FFMPEG, ffprobePath: FFPROBE, workDir, ...overrides });
-
-async function errorOf(promise: Promise<unknown>) {
-  const error = await promise.then(
-    () => undefined,
-    (caught: unknown) => caught,
-  );
-  if (!isAppError(error)) throw new Error(`se esperaba un AppError: ${String(error)}`);
-  return error;
-}
 
 describe("processImage: variantes", () => {
   it("mide el original y arma cada variante con su tamaño, proporción y sha256", async () => {
@@ -304,35 +297,7 @@ describe("processImage: cortar con signal", () => {
 });
 
 describe("createMediaProcessor", () => {
-  it("expone la versión de los parámetros, y el video llega en F2-T08", async () => {
+  it("expone la versión de los parámetros", () => {
     expect(processor().version).toBe(MEDIA_PIPELINE_VERSION);
-    const error = await errorOf(
-      processor().processVideo((async function* () {})(), { reel: null }),
-    );
-    expect(error.code).toBe("MEDIA_VIDEO_NOT_IMPLEMENTED");
   });
 });
-
-const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-/** Reintenta hasta que `read` devuelva algo (o 5 s). */
-async function waitFor<T>(read: () => Promise<T | undefined>): Promise<T> {
-  const deadline = Date.now() + 5000;
-  for (;;) {
-    try {
-      const value = await read();
-      if (value !== undefined) return value;
-    } catch {
-      // todavía no está
-    }
-    if (Date.now() > deadline) throw new Error("waitFor: se acabó el tiempo");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}

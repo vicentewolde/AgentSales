@@ -28,19 +28,6 @@ export type VideoOutput = {
   open(): AsyncIterable<Uint8Array>;
 };
 
-/**
- * Advertencias que solo el procesador puede saber (las del video, F2-T08), con texto fijo por
- * código: van al reporte de la corrida, sin claves de R2 ni datos del aviso. Las de tamaño de una
- * foto no van aquí: las calcula core desde el ancho guardado (`photoSizeWarnings`), en cada corrida.
- */
-export const MEDIA_WARNING_TEXT = {
-  VIDEO_TOO_SHORT:
-    "El video dura menos de 3 s: Instagram no acepta reels tan cortos, así que no se armó",
-  VIDEO_TRIMMED: "El video dura más de 90 s: el reel se cortó en los primeros 90 s",
-} as const;
-export type MediaWarningCode = keyof typeof MEDIA_WARNING_TEXT;
-export type MediaWarning = { code: MediaWarningCode; message: string };
-
 export type ProcessedImage = {
   /** Del original, ya rotado según su orientación. */
   measurements: MediaMeasurements;
@@ -51,8 +38,8 @@ export type ProcessedImage = {
 export type ProcessedVideo = {
   measurements: MediaMeasurements;
   thumb: ImageOutput;
+  /** `null` si no se pidió o si el video dura menos de `REEL_MIN_DURATION_S`. */
   reel: VideoOutput | null;
-  warnings: MediaWarning[];
 };
 
 /**
@@ -63,6 +50,9 @@ export type ProcessedVideo = {
  * - `MEDIA_TOOL_NOT_INSTALLED`: falta ffmpeg o ffprobe, o es anterior a 8.1 (no reintentable, con
  *   el comando para instalarlo);
  * - `MEDIA_ABORTED` (reintentable): se cortó con `signal`; los procesos hijos terminan.
+ *
+ * El procesador no devuelve avisos: los de tamaño de una foto y de largo del reel los calcula core
+ * desde las medidas guardadas (`photoSizeWarnings` y `reelWarnings`), en cada corrida.
  */
 export interface MediaProcessor {
   /** Versión de los parámetros de las variantes: cambiarla las regenera (va en la clave de R2). */
@@ -74,7 +64,7 @@ export interface MediaProcessor {
   ): Promise<ProcessedImage>;
   /**
    * Medidas y `thumb` de un video; con `reel`, además el reel con el PNG del texto encima durante
-   * los primeros 2 s (F2-T08).
+   * los primeros 2 s, cortado a `REEL_MAX_DURATION_S` (F2-T08).
    */
   processVideo(
     input: AsyncIterable<Uint8Array>,

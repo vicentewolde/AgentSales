@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-03
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
-**Última tarea terminada:** F2-T07 · Procesamiento de imágenes (`packages/media`)
-**Siguiente paso:** `/tarea F2-T08` (procesamiento de video). T09 (plantillas y render) también puede ir, y necesita el Chromium de Playwright.
+**Última tarea terminada:** F2-T08 · Procesamiento de video (`packages/media`)
+**Siguiente paso:** `/tarea F2-T09` (plantillas y render). Antes, el operador instala el Chromium de Playwright (ver pendientes).
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -18,7 +18,7 @@
 | F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado | ✅ | #37 |
 | F2-T06 · Revisión editorial (`checkContent`) | ✅ | #39 |
 | F2-T07 · Procesamiento de imágenes (`packages/media`) | ✅ | #40 |
-| F2-T08 · Procesamiento de video (`packages/media`) | ⏳ pendiente | |
+| F2-T08 · Procesamiento de video (`packages/media`) | ✅ | #41 |
 | F2-T09 · Plantillas y render | ⏳ pendiente | |
 | F2-T10 · Caso de uso `prepareContent` | ⏳ pendiente | |
 | F2-T11 · Job `content.prepare` en el worker | ⏳ pendiente | |
@@ -51,6 +51,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - **Hallazgos de las notas de integración:** HEIC con ffmpeg (sharp no lo decodifica; verificado con ffmpeg 9.0.1); la CLI de Claude sin `--bare` (exige API key) y sin `ANTHROPIC_API_KEY` en su entorno (cobraría por API); carrusel de hasta 10; reel de Meta entre 3 s y 15 min (el tope de 90 s es nuestro); título de Portal de hasta 60 caracteres sin abreviaturas (por confirmar en F4).
 
 ## Deuda técnica
+- **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
 - **F7, campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
 - **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
 - **F7, rangos:** la base no impide un `min_value` mayor que `max_value` ni un rango en un campo que no es `number`; hoy lo detecta el validador (`FIELD_CONFIG_INVALID`). Si el panel permite editar definiciones, sumar `CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)`.
@@ -74,6 +75,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-03: **F2-T08.** `processVideo` en `packages/media`: medidas con ffprobe (con el giro del celular), `thumb` del segundo 1 y reel de 1080×1920 con fondo desenfocado, el texto los primeros 2 s, H.264 4:2:0 con GOP cerrado, AAC (silencioso si no hay audio), `moov` al inicio y sin edit lists, cortado a 90 s y sin reel bajo 3 s. Un reel de 90 s tarda ~26 s en local. Opción `threads` para que los tests no atrasen a los demás. Desde la revisión (#41): los avisos del reel los calcula core (`reelWarnings`), la copia del video no puede botar el worker si el disco se llena, y el GOP de 2 s se verifica con ffprobe.
 - 2026-10-03: **F2-T07.** Puerto `MediaProcessor` en core (con su doble en memoria) y `packages/media` con sharp 0.35.5: fotos rotadas según el EXIF, en sRGB y sin metadatos (GPS incluido), con las variantes `thumb`, `ig_4x5` y `pi_4x3` y su sha256, y advertencias de foto chica. HEIC con ffmpeg (8.1 o más nuevo, revisado una vez); un HEIC sintético de 5,6 KB en mosaicos y girado sale completo y derecho. `FFPROBE_PATH`, y `doctor` exige ffmpeg y ffprobe 8.1 o más nuevos. La CI instala ffmpeg 9.0.1 estático (BtbN, fijado por sha256 y con caché) y pasó en el PR. Desde la revisión (#40): la advertencia de foto chica la calcula core en cada corrida (`photoSizeWarnings`); PNG con transparencia sobre blanco; cortar una foto no corta otra.
 - 2026-10-03: **F2-T06.** `checkContent` en core con los 10 códigos de §4.6 (6 errores y 4 advertencias), su contexto privado (`buildContentCheckContext`: brief, contacto y dirección, unidad y notas internas) y las listas de términos discriminatorios, superlativos y amenities en `check-terms.ts`. Números comparados por valor (`5.800` = `5800`). El borrador de ejemplo, ensamblado en varios avisos inventados, sale sin ningún aviso. Desde la revisión del PR (#39): más frases discriminatorias y menos falsos positivos (edad de un edificio, "metros cuadrados"), calles por cualquier palabra distintiva y en los hashtags, notas cortas, números con palabras, y `CONTENT_CHECK_CODES` para la API.
 - 2026-10-03: **Prueba de humo de F2-T04 completa.** El operador renovó la sesión (`claude auth login`) y corrió `pnpm llm:smoke`: salida estructurada correcta (`claude-sonnet-5`, 2 turnos, un modelo auxiliar en `modelUsage`). El sobre real quedó como caso `exito-real` del ejecutable falso, y la nota de integración y ADR-0003 lo registran.

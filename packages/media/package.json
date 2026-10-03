@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@agentsales/core": "workspace:*",
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "zod": "4.6.5"
   }
 }

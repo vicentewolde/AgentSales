@@ -32,3 +32,36 @@ export function photoSizeWarnings(
   if (width < PHOTO_MIN_WIDTH.portal) codes.push("IMAGE_SMALL_FOR_PORTAL");
   return codes.map((code) => ({ code, message: PHOTO_SIZE_WARNING_TEXT[code] }));
 }
+
+/**
+ * Largo del reel de Instagram (spec F2 §4.2): Meta acepta desde 3 s; el tope de 90 s es nuestro (Meta
+ * acepta hasta 15 min). Los usan el procesador (que corta o no arma el reel) y la corrida (avisos).
+ */
+export const REEL_MIN_DURATION_S = 3;
+export const REEL_MAX_DURATION_S = 90;
+
+export const REEL_WARNING_CODES = ["VIDEO_TOO_SHORT", "VIDEO_TRIMMED"] as const;
+export type ReelWarningCode = (typeof REEL_WARNING_CODES)[number];
+
+export const REEL_WARNING_TEXT: Readonly<Record<ReelWarningCode, string>> = {
+  VIDEO_TOO_SHORT: `El video dura menos de ${REEL_MIN_DURATION_S} s: Instagram no acepta reels tan cortos, así que no se armó`,
+  VIDEO_TRIMMED: `El video dura más de ${REEL_MAX_DURATION_S} s: el reel se cortó en los primeros ${REEL_MAX_DURATION_S} s`,
+};
+
+/**
+ * Avisos del reel a partir de la duración guardada del video. Los calcula core en cada corrida
+ * (F2-T10), como los de tamaño de una foto: así se ven aunque el reel ya estuviera armado, y un video
+ * de menos de 3 s no se vuelve a descargar solo para avisar.
+ */
+export function reelWarnings(
+  durationS: number | null,
+): { code: ReelWarningCode; message: string }[] {
+  if (durationS === null) return [];
+  const code: ReelWarningCode | null =
+    durationS < REEL_MIN_DURATION_S
+      ? "VIDEO_TOO_SHORT"
+      : durationS > REEL_MAX_DURATION_S
+        ? "VIDEO_TRIMMED"
+        : null;
+  return code === null ? [] : [{ code, message: REEL_WARNING_TEXT[code] }];
+}

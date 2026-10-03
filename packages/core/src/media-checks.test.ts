@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { PHOTO_MIN_WIDTH, PHOTO_SIZE_WARNING_TEXT, photoSizeWarnings } from "./media-checks.js";
+import {
+  PHOTO_MIN_WIDTH,
+  PHOTO_SIZE_WARNING_TEXT,
+  photoSizeWarnings,
+  REEL_WARNING_TEXT,
+  reelWarnings,
+} from "./media-checks.js";
 
 describe("photoSizeWarnings", () => {
   it.each([
@@ -17,5 +23,22 @@ describe("photoSizeWarnings", () => {
     expect(PHOTO_MIN_WIDTH).toEqual({ instagram: 1080, portal: 1200 });
     expect(PHOTO_SIZE_WARNING_TEXT.IMAGE_SMALL_FOR_INSTAGRAM).toContain("1080 px");
     expect(PHOTO_SIZE_WARNING_TEXT.IMAGE_SMALL_FOR_PORTAL).toContain("1200 px");
+  });
+});
+
+describe("reelWarnings", () => {
+  it.each([
+    [2.9, ["VIDEO_TOO_SHORT"]],
+    [3, []],
+    [90, []],
+    [90.5, ["VIDEO_TRIMMED"]],
+    [null, []],
+  ])("un video de %s s → %j", (durationS, codes) => {
+    expect(reelWarnings(durationS).map((warning) => warning.code)).toEqual(codes);
+  });
+
+  it("los textos citan los topes", () => {
+    expect(REEL_WARNING_TEXT.VIDEO_TOO_SHORT).toContain("3 s");
+    expect(REEL_WARNING_TEXT.VIDEO_TRIMMED).toContain("90 s");
   });
 });
