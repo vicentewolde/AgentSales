@@ -1,7 +1,9 @@
 // Esquema de la base de datos. Referencia conceptual: docs/02-modelo-datos.md.
 // Los valores de los enums salen de @agentsales/core; nunca se repiten aquí.
 import {
+  ACTIVE_CONTENT_RUN_STATUSES,
   CLOSE_REASONS,
+  CONTENT_RUN_STATUSES,
   CONTENT_STATUSES,
   CURRENCIES,
   FIELD_TYPES,
@@ -21,6 +23,7 @@ import {
   type AnyPgColumn,
   bigint,
   boolean,
+  index,
   integer,
   jsonb,
   numeric,
@@ -51,6 +54,7 @@ export const mediaRoleEnum = pgEnum("media_role", MEDIA_ROLES);
 export const contentStatusEnum = pgEnum("content_status", CONTENT_STATUSES);
 export const publicationStatusEnum = pgEnum("publication_status", PUBLICATION_STATUSES);
 export const importRunStatusEnum = pgEnum("import_run_status", IMPORT_RUN_STATUSES);
+export const contentRunStatusEnum = pgEnum("content_run_status", CONTENT_RUN_STATUSES);
 
 // ── Columnas comunes ─────────────────────────────────────────────────────
 
@@ -201,22 +205,70 @@ export const media = pgTable(
   ],
 );
 
-export const contents = pgTable("contents", {
-  id: id(),
-  listingId: uuid("listing_id")
-    .notNull()
-    .references(() => listings.id),
-  platform: platformEnum("platform").notNull(),
-  title: text("title"),
-  body: text("body").notNull(),
-  hashtags: text("hashtags").array().notNull().default(sql`'{}'::text[]`),
-  status: contentStatusEnum("status").notNull().default("draft"),
-  llmProvider: text("llm_provider").notNull(),
-  llmModel: text("llm_model").notNull(),
-  promptVersion: text("prompt_version").notNull(),
-  rawOutput: jsonb("raw_output").notNull(),
-  ...timestamps,
-});
+/**
+ * `WHERE status IN (<activos>)`: una sola corrida activa por aviso.
+ * `sql.raw` es seguro aquí: los valores son literales constantes de `core`, nunca entrada externa.
+ */
+const activeContentRun = sql.raw(
+  `"status" IN (${ACTIVE_CONTENT_RUN_STATUSES.map((status) => `'${status}'`).join(", ")})`,
+);
+
+/** Corridas de contenido (job `content.prepare`, ADR-0012; spec F2 §4.3). */
+export const contentRuns = pgTable(
+  "content_runs",
+  {
+    id: id(),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    status: contentRunStatusEnum("status").notNull().default("queued"),
+    /** Si la corrida genera textos (`false`: solo medios y renders). */
+    texts: boolean("texts").notNull().default(true),
+    /** Etapa en curso (`CONTENT_RUN_STAGES`); `null` antes de empezar. */
+    stage: text("stage"),
+    /** `contentRunReportSchema` (core); `null` hasta que la corrida termina. */
+    report: jsonb("report"),
+    /** `{ code, message }` cuando `status = failed`. */
+    error: jsonb("error"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("content_runs_one_active_per_listing").on(t.listingId).where(activeContentRun),
+    index("content_runs_listing_created_idx").on(t.listingId, t.createdAt),
+  ],
+);
+
+export const contents = pgTable(
+  "contents",
+  {
+    id: id(),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    /** Corrida que lo generó (ADR-0012). */
+    contentRunId: uuid("content_run_id")
+      .notNull()
+      .references(() => contentRuns.id),
+    platform: platformEnum("platform").notNull(),
+    title: text("title"),
+    body: text("body").notNull(),
+    hashtags: text("hashtags").array().notNull().default(sql`'{}'::text[]`),
+    status: contentStatusEnum("status").notNull().default("draft"),
+    llmProvider: text("llm_provider").notNull(),
+    llmModel: text("llm_model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    rawOutput: jsonb("raw_output").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    // Un texto por canal y corrida: un intento solapado del job no duplica (spec F2 §4.4).
+    unique("contents_run_platform_unique").on(t.contentRunId, t.platform),
+    // El vigente de cada canal es el más reciente.
+    index("contents_listing_platform_created_idx").on(t.listingId, t.platform, t.createdAt),
+  ],
+);
 
 /**
  * `WHERE status NOT IN (<terminales>)`: todo estado no terminal cuenta como activo.

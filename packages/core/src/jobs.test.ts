@@ -13,4 +13,14 @@ describe("contrato de jobs", () => {
     });
     expect(JOB_PAYLOADS["import.run"].safeParse({ importRunId: "run-1" }).success).toBe(false);
   });
+
+  it("content.prepare lleva solo el id de la corrida, que debe ser un uuid", () => {
+    const id = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
+    expect(JOB_PAYLOADS["content.prepare"].parse({ contentRunId: id, texts: true })).toEqual({
+      contentRunId: id,
+    });
+    expect(JOB_PAYLOADS["content.prepare"].safeParse({ contentRunId: "run-1" }).success).toBe(
+      false,
+    );
+  });
 });

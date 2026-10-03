@@ -16,6 +16,8 @@ export {
 export { type Pingable, type PingOptions, pingDatabase } from "./health.js";
 export { MIGRATIONS_FOLDER } from "./migrations.js";
 export { createBrokerRepository } from "./repositories/brokers.js";
+export { createContentRunRepository } from "./repositories/content-runs.js";
+export { createContentRepository } from "./repositories/contents.js";
 export { createFieldDefinitionRepository } from "./repositories/field-definitions.js";
 export { createImportRunRepository } from "./repositories/import-runs.js";
 export { createListingRepository } from "./repositories/listings.js";
