@@ -7,6 +7,7 @@ import {
   type ListingRepository,
   type ListingStatus,
   type MediaRepository,
+  type NewDerivative,
   type NewListing,
   type NewMedia,
 } from "@agentsales/core";
@@ -760,6 +761,247 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
         "MEDIA_ARRANGE_INVALID",
       );
       expect(await repos.media.listOriginals(id)).toEqual(before);
+    });
+  });
+
+  describe(`${name} · MediaRepository · derivados (F2-T03)`, () => {
+    let repos: ImportRepositories;
+    let brokerId: string;
+    beforeAll(async () => {
+      repos = await make();
+      brokerId = (await repos.brokers.create(brokerData(unique("derivados")))).id;
+    });
+
+    /** Un aviso con dos fotos originales (la primera de portada). */
+    async function listingWithPhotos() {
+      const listingId = (await repos.listings.create(newListing(brokerId, unique("P-DER")))).id;
+      const first = await repos.media.create(
+        newMedia(brokerId, listingId, unique("foto"), { sortOrder: 0, isCover: true }),
+      );
+      const second = await repos.media.create(
+        newMedia(brokerId, listingId, unique("foto"), { sortOrder: 1 }),
+      );
+      return { listingId, first, second };
+    }
+
+    const processed = (
+      listingId: string,
+      parentMediaId: string,
+      variant: "thumb" | "ig_4x5" | "pi_4x3" | "ig_reel",
+      version = "v1",
+    ): NewDerivative => ({
+      role: "processed",
+      variant,
+      parentMediaId,
+      listingId,
+      brokerId,
+      kind: variant === "ig_reel" ? "video" : "image",
+      storagePath: `brokers/${brokerId}/listings/${listingId}/processed/${variant}/${parentMediaId}-${version}.${variant === "ig_reel" ? "mp4" : "jpg"}`,
+      mime: variant === "ig_reel" ? "video/mp4" : "image/jpeg",
+      width: 1080,
+      height: 1350,
+      durationS: variant === "ig_reel" ? 12.5 : null,
+      bytes: 2048,
+      checksum: unique("sha-derivado"),
+    });
+
+    const rendered = (
+      listingId: string,
+      variant: "cover" | "spec_sheet",
+      input = "entrada-1",
+    ): NewDerivative => ({
+      role: "rendered",
+      variant,
+      parentMediaId: null,
+      listingId,
+      brokerId,
+      kind: "image",
+      storagePath: `brokers/${brokerId}/listings/${listingId}/rendered/${variant}/${input}.jpg`,
+      mime: "image/jpeg",
+      width: 1080,
+      height: 1350,
+      durationS: null,
+      bytes: 4096,
+      checksum: unique("sha-render"),
+    });
+
+    it("upsertDerivative crea la variante; con la misma clave la reemplaza sin clave anterior", async () => {
+      const { listingId, first } = await listingWithPhotos();
+      const created = await repos.media.upsertDerivative(processed(listingId, first.id, "ig_4x5"));
+      expect(created.previousPath).toBeNull();
+      expect(created.media).toMatchObject({
+        listingId,
+        brokerId,
+        role: "processed",
+        variant: "ig_4x5",
+        parentMediaId: first.id,
+        width: 1080,
+        height: 1350,
+        durationS: null,
+        sortOrder: 0,
+        isCover: false,
+      });
+
+      const again = await repos.media.upsertDerivative(processed(listingId, first.id, "ig_4x5"));
+      expect(again.previousPath).toBeNull();
+      expect(again.media.id).toBe(created.media.id);
+    });
+
+    it("una versión nueva reemplaza en su lugar y devuelve la clave anterior; otra variante convive", async () => {
+      const { listingId, first } = await listingWithPhotos();
+      const v1 = await repos.media.upsertDerivative(processed(listingId, first.id, "thumb", "v1"));
+      const v2 = await repos.media.upsertDerivative(processed(listingId, first.id, "thumb", "v2"));
+      expect(v2.media.id).toBe(v1.media.id);
+      expect(v2.previousPath).toBe(v1.media.storagePath);
+      expect(v2.media.storagePath).toContain("-v2.jpg");
+
+      await repos.media.upsertDerivative(processed(listingId, first.id, "pi_4x3"));
+      const derivatives = (await repos.media.listByListing(listingId)).filter(
+        (media) => media.role === "processed",
+      );
+      expect(derivatives.map((media) => media.variant).sort()).toEqual(["pi_4x3", "thumb"]);
+    });
+
+    it("un render por aviso y variante: reemplazo con clave anterior, y otro aviso no choca", async () => {
+      const { listingId } = await listingWithPhotos();
+      const cover = await repos.media.upsertDerivative(rendered(listingId, "cover", "entrada-1"));
+      expect(cover.media).toMatchObject({
+        role: "rendered",
+        variant: "cover",
+        parentMediaId: null,
+      });
+      const replaced = await repos.media.upsertDerivative(
+        rendered(listingId, "cover", "entrada-2"),
+      );
+      expect(replaced.media.id).toBe(cover.media.id);
+      expect(replaced.previousPath).toBe(cover.media.storagePath);
+
+      await repos.media.upsertDerivative(rendered(listingId, "spec_sheet"));
+      const other = await listingWithPhotos();
+      await repos.media.upsertDerivative(rendered(other.listingId, "cover"));
+      expect(
+        (await repos.media.listByListing(listingId))
+          .filter((media) => media.role === "rendered")
+          .map((media) => media.variant)
+          .sort(),
+      ).toEqual(["cover", "spec_sheet"]);
+    });
+
+    it("listByListing trae originales, variantes y renders, en ese orden, sin el logo ni otros avisos", async () => {
+      const { listingId, first, second } = await listingWithPhotos();
+      await repos.media.create(newMedia(brokerId, null, unique("logo")));
+      const render = await repos.media.upsertDerivative(rendered(listingId, "spec_sheet"));
+      const variant = await repos.media.upsertDerivative(processed(listingId, second.id, "thumb"));
+      const other = await listingWithPhotos();
+
+      const all = await repos.media.listByListing(listingId);
+      expect(all.map((media) => media.id)).toEqual([
+        first.id,
+        second.id,
+        variant.media.id,
+        render.media.id,
+      ]);
+      expect(all[0]).toMatchObject({ role: "original", variant: null, parentMediaId: null });
+      expect(all.map((media) => media.id)).not.toContain(other.first.id);
+    });
+
+    it("updateMeasurements guarda ancho, alto y duración (con decimales); un id inexistente es MEDIA_NOT_FOUND", async () => {
+      const { listingId, first } = await listingWithPhotos();
+      await repos.media.updateMeasurements(first.id, {
+        width: 4032,
+        height: 3024,
+        durationS: 6.25,
+      });
+      expect((await repos.media.listByListing(listingId))[0]).toMatchObject({
+        id: first.id,
+        width: 4032,
+        height: 3024,
+        durationS: 6.25,
+      });
+      await expectAppError(
+        repos.media.updateMeasurements(repos.missingId, { width: 1, height: 1, durationS: null }),
+        "MEDIA_NOT_FOUND",
+      );
+    });
+
+    it("el padre de una variante debe ser un original del mismo aviso → si no, MEDIA_NOT_FOUND", async () => {
+      const { listingId, first } = await listingWithPhotos();
+      const other = await listingWithPhotos();
+      await expectAppError(
+        repos.media.upsertDerivative(processed(listingId, other.first.id, "thumb")),
+        "MEDIA_NOT_FOUND",
+      );
+      const variant = await repos.media.upsertDerivative(processed(listingId, first.id, "thumb"));
+      await expectAppError(
+        repos.media.upsertDerivative(processed(listingId, variant.media.id, "ig_4x5")),
+        "MEDIA_NOT_FOUND",
+      );
+      await expectAppError(
+        repos.media.upsertDerivative(processed(listingId, repos.missingId, "ig_4x5")),
+        "MEDIA_NOT_FOUND",
+      );
+    });
+
+    it("un derivado inconsistente es MEDIA_DERIVATIVE_INVALID, sin escribir nada", async () => {
+      const { listingId, first } = await listingWithPhotos();
+      const before = await repos.media.listByListing(listingId);
+      const wrong = [
+        { ...rendered(listingId, "cover"), role: "processed", parentMediaId: first.id },
+        { ...processed(listingId, first.id, "thumb"), role: "rendered", parentMediaId: null },
+        { ...processed(listingId, first.id, "thumb"), parentMediaId: "" },
+        { ...rendered(listingId, "cover"), parentMediaId: first.id },
+      ] as unknown as NewDerivative[];
+      for (const derivative of wrong) {
+        await expectAppError(repos.media.upsertDerivative(derivative), "MEDIA_DERIVATIVE_INVALID");
+      }
+      expect(await repos.media.listByListing(listingId)).toEqual(before);
+    });
+
+    it("una clave que ya usa otro medio es MEDIA_CONFLICT, reintentable", async () => {
+      const { listingId, first, second } = await listingWithPhotos();
+      await expectAppError(
+        repos.media.upsertDerivative({
+          ...processed(listingId, second.id, "thumb"),
+          storagePath: first.storagePath,
+        }),
+        "MEDIA_CONFLICT",
+        true,
+      );
+    });
+
+    it("deleteDerivative borra y devuelve la clave; es idempotente y nunca borra un original", async () => {
+      const { listingId, first } = await listingWithPhotos();
+      const reel = await repos.media.upsertDerivative(processed(listingId, first.id, "ig_reel"));
+      expect(await repos.media.deleteDerivative(reel.media.id)).toBe(reel.media.storagePath);
+      expect(await repos.media.deleteDerivative(reel.media.id)).toBeNull();
+      expect(await repos.media.deleteDerivative(first.id)).toBeNull();
+      expect((await repos.media.listOriginals(listingId)).map((media) => media.id)).toContain(
+        first.id,
+      );
+    });
+
+    it("los métodos de la carga no ven derivados", async () => {
+      const { listingId, first, second } = await listingWithPhotos();
+      const variant = await repos.media.upsertDerivative(processed(listingId, first.id, "ig_4x5"));
+      const render = await repos.media.upsertDerivative(rendered(listingId, "cover"));
+
+      expect((await repos.media.listOriginals(listingId)).map((media) => media.id)).toEqual([
+        first.id,
+        second.id,
+      ]);
+      expect((await repos.media.listCovers([listingId])).map((media) => media.id)).toEqual([
+        first.id,
+      ]);
+      expect(await repos.media.findByStoragePath(variant.media.storagePath)).toBeNull();
+      expect(await repos.media.findByStoragePath(render.media.storagePath)).toBeNull();
+      await expectAppError(
+        repos.media.arrange(listingId, [{ id: variant.media.id, sortOrder: 0, isCover: true }]),
+        "MEDIA_NOT_FOUND",
+      );
+      // El checksum de una variante no choca con un original nuevo (el único es de originales).
+      await expect(
+        repos.media.create(newMedia(brokerId, listingId, variant.media.checksum)),
+      ).resolves.toMatchObject({ checksum: variant.media.checksum });
     });
   });
 }

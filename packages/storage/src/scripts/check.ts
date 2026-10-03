@@ -79,6 +79,26 @@ try {
     streamed.byteLength === STREAM_BYTES && sha256(streamed) === sha256(streamData),
     "subir en streaming (1 MB, mismo sha256)",
   );
+
+  // Lectura en streaming (F2-T03): mismo contenido, en varios trozos y sin cargarlo de una vez.
+  const parts: Uint8Array[] = [];
+  for await (const part of await storage.getStream(streamPath)) parts.push(part);
+  const joined = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0));
+  let offset = 0;
+  for (const part of parts) {
+    joined.set(part, offset);
+    offset += part.byteLength;
+  }
+  check(
+    joined.byteLength === STREAM_BYTES && sha256(joined) === sha256(streamData),
+    `leer en streaming (${parts.length} trozos, mismo sha256)`,
+  );
+  const missing = await storage.getStream(`${streamPath}.no-existe`).then(
+    () => "sin error",
+    (error: unknown) =>
+      error instanceof Error && "code" in error ? String(error.code) : String(error),
+  );
+  check(missing === "STORAGE_NOT_FOUND", `leer en streaming un objeto inexistente → ${missing}`);
   await storage.delete(streamPath);
   streamUploaded = false;
 

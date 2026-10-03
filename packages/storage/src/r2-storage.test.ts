@@ -3,7 +3,7 @@ import { AppError } from "@agentsales/core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { createR2Storage } from "./r2-storage.js";
+import { createR2Storage, readBody } from "./r2-storage.js";
 
 const ORIGIN = "https://test-bucket.fake-account.r2.cloudflarestorage.com";
 
@@ -401,6 +401,107 @@ describe("putStream", () => {
     );
     await expect(storage.head("x.txt")).rejects.toMatchObject({ code: "STORAGE_UNAVAILABLE" });
     expect(attempts).toBeGreaterThan(1);
+  });
+});
+
+describe("getStream (F2-T03)", () => {
+  const storage = createR2Storage(options);
+
+  async function readAll(stream: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    return new Uint8Array(Buffer.concat(chunks));
+  }
+
+  it("lee el objeto completo, sin cambiar un byte", async () => {
+    // msw entrega el cuerpo en un solo trozo; contra R2 llega en varios (`storage:check`).
+    const data = Uint8Array.from({ length: 3 * 1024 * 1024 }, (_, index) => (index * 7) % 256);
+    objects.set("videos/largo.mp4", { body: data, contentType: "video/mp4" });
+
+    const read = await readAll(await storage.getStream("videos/largo.mp4"));
+    expect(Buffer.from(read).equals(Buffer.from(data))).toBe(true);
+  });
+
+  it("un objeto vacío es un iterable vacío", async () => {
+    objects.set("vacio.bin", { body: new Uint8Array(), contentType: "application/octet-stream" });
+    expect((await readAll(await storage.getStream("vacio.bin"))).byteLength).toBe(0);
+  });
+
+  it("un objeto inexistente es STORAGE_NOT_FOUND al pedirlo", async () => {
+    await expect(storage.getStream("no-existe.mp4")).rejects.toMatchObject({
+      code: "STORAGE_NOT_FOUND",
+      retriable: false,
+      details: { path: "no-existe.mp4" },
+    });
+  });
+
+  it("un 5xx es STORAGE_UNAVAILABLE y reintentable", async () => {
+    server.use(http.get(`${ORIGIN}/*`, () => new HttpResponse(null, { status: 503 })));
+    await expect(storage.getStream("x.mp4")).rejects.toMatchObject({
+      code: "STORAGE_UNAVAILABLE",
+      retriable: true,
+    });
+  });
+
+  it("un corte de la conexión es STORAGE_UNAVAILABLE, al pedir o al leer", async () => {
+    server.use(
+      http.get(`${ORIGIN}/*`, () => {
+        let sent = false;
+        const body = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (!sent) {
+              sent = true;
+              controller.enqueue(new Uint8Array(64 * 1024).fill(1));
+              return;
+            }
+            controller.error(new Error("socket hang up"));
+          },
+        });
+        return new HttpResponse(body, {
+          status: 200,
+          headers: { "Content-Type": "video/mp4", "Content-Length": String(1024 * 1024) },
+        });
+      }),
+    );
+    // msw adelanta el corte a la respuesta; contra R2 puede llegar a mitad de la lectura.
+    await expect(
+      (async () => readAll(await storage.getStream("cortado.mp4")))(),
+    ).rejects.toMatchObject({ code: "STORAGE_UNAVAILABLE", retriable: true });
+  });
+
+  it("un error a mitad de la lectura sale como AppError, no como el error del socket", async () => {
+    async function* cut(): AsyncGenerator<Uint8Array> {
+      yield new Uint8Array([1, 2, 3]);
+      throw Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+    }
+    const received: number[] = [];
+    await expect(
+      (async () => {
+        for await (const chunk of readBody(cut(), "videos/cortado.mp4")) {
+          received.push(...chunk);
+        }
+      })(),
+    ).rejects.toMatchObject({
+      name: "AppError",
+      code: "STORAGE_UNAVAILABLE",
+      retriable: true,
+      details: { path: "videos/cortado.mp4" },
+    });
+    expect(received).toEqual([1, 2, 3]);
+  });
+
+  it("dejar de leer a mitad no deja errores colgando", async () => {
+    const data = new Uint8Array(2 * 1024 * 1024).fill(9);
+    objects.set("parcial.mp4", { body: data, contentType: "video/mp4" });
+    const stream = await storage.getStream("parcial.mp4");
+    for await (const chunk of stream) {
+      expect(chunk.byteLength).toBeGreaterThan(0);
+      break;
+    }
+    // Después de cortar se puede volver a pedir y leer completo.
+    expect((await readAll(await storage.getStream("parcial.mp4"))).byteLength).toBe(
+      data.byteLength,
+    );
   });
 });
 

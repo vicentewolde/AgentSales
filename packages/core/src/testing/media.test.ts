@@ -100,6 +100,20 @@ describe("createInMemoryMediaStorage", () => {
     expect(await storage.head("x.jpg")).toEqual({ size: 3, contentType: "image/jpeg" });
     expect(storage.uploads).toEqual(["x.jpg"]);
   });
+
+  it("getStream entrega el contenido en trozos, y un objeto inexistente es STORAGE_NOT_FOUND", async () => {
+    const storage = createInMemoryMediaStorage();
+    await storage.put("v.mp4", new Uint8Array([1, 2, 3, 4, 5]), "video/mp4");
+
+    const chunks: number[][] = [];
+    for await (const chunk of await storage.getStream("v.mp4")) chunks.push([...chunk]);
+    expect(chunks).toEqual([
+      [1, 2, 3],
+      [4, 5],
+    ]);
+    const error = await caught(storage.getStream("no-existe.mp4"));
+    expect(isAppError(error) && error.code).toBe("STORAGE_NOT_FOUND");
+  });
 });
 
 describe("createInMemoryMediaFileSource", () => {

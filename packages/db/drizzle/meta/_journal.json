@@ -36,6 +36,13 @@
       "when": 1791036875945,
       "tag": "0004_f2_contenido",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791042024956,
+      "tag": "0005_f2_medios_derivados",
+      "breakpoints": true
     }
   ]
 }

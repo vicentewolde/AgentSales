@@ -86,6 +86,7 @@ export {
   type ValidatedListingRow,
 } from "./listing-validator/index.js";
 export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
+export { type Media, mediaSchema } from "./media.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export {
   type ContentChanges,
@@ -122,9 +123,13 @@ export {
 } from "./ports/media-file-source.js";
 export {
   checkArrangement,
+  checkDerivative,
+  type DerivativeResult,
   type MediaArrangement,
+  type MediaMeasurements,
   type MediaRecord,
   type MediaRepository,
+  type NewDerivative,
   type NewMedia,
 } from "./ports/media-repository.js";
 export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";

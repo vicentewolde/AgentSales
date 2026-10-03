@@ -325,8 +325,9 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Depende de:** T02 (orden de las migraciones)
 - **Descripción:** migración de medios (§4.3); `MEDIA_VARIANTS` y `mediaSchema` en core; `MediaRepository.listByListing`, `updateMeasurements`, `upsertDerivative` y `deleteDerivative` (§4.2); el doble en memoria modela `role`. `MediaStorage.getStream` en el puerto y en R2. Actualiza "Contrato de almacenamiento" y "Proyecciones" en `01-arquitectura.md`, y el seguimiento de ADR-0011.
 - **Hecho cuando:**
-  - [ ] Tests con PGlite y en memoria: un derivado vigente por original y variante, reemplazo que devuelve la clave anterior, un render por aviso y variante, y los métodos de F1 sin derivados
-  - [ ] Tests con msw de `getStream` (contenido, `STORAGE_NOT_FOUND` y `STORAGE_UNAVAILABLE`); `pnpm storage:check` lo prueba contra R2
+  - [x] Tests con PGlite y en memoria: un derivado vigente por original y variante, reemplazo que devuelve la clave anterior, un render por aviso y variante, y los métodos de F1 sin derivados
+  - [x] Tests con msw de `getStream` (contenido, `STORAGE_NOT_FOUND` y `STORAGE_UNAVAILABLE`); `pnpm storage:check` lo prueba contra R2
+- **Hecho en:** migración `0005_f2_medios_derivados` (aplicada en Neon). `upsertDerivative` valida el derivado (`checkDerivative`: `MEDIA_DERIVATIVE_INVALID`) y que el padre sea un original del mismo aviso (`MEDIA_NOT_FOUND`), y en Postgres bloquea el original o el aviso para que dos intentos solapados reemplacen de a uno. `deleteDerivative` devuelve la clave borrada (o `null`) y nunca borra un original. Una fila de `media` que no calza con `mediaSchema` es `MEDIA_ROW_INVALID` (500). `duration_s` se lee como número (modo `number` de Drizzle, sin cambio de SQL). `getStream` convierte un corte a mitad de la lectura en `STORAGE_UNAVAILABLE` (`readBody`); msw entrega el cuerpo de una vez, así que la lectura en varios trozos la prueba `storage:check` contra R2 (1 MB en 66 trozos, mismo sha256). El doble en memoria guarda filas completas con `role` y suma `allMedia()`.
 
 ### F2-T04 · Proveedor de IA (`packages/llm`)
 - **Depende de:** F1

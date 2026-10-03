@@ -57,6 +57,21 @@ export type MediaKind = (typeof MEDIA_KINDS)[number];
 export const MEDIA_ROLES = ["original", "processed", "rendered"] as const;
 export type MediaRole = (typeof MEDIA_ROLES)[number];
 
+/**
+ * Variantes de un original (`role = processed`, spec F2 §4.2): miniatura para el panel, recortes
+ * por canal y el reel. Una vigente por original y variante.
+ */
+export const PROCESSED_MEDIA_VARIANTS = ["thumb", "ig_4x5", "pi_4x3", "ig_reel"] as const;
+export type ProcessedMediaVariant = (typeof PROCESSED_MEDIA_VARIANTS)[number];
+
+/** Renders de plantillas (`role = rendered`): portada y ficha del carrusel. Uno por aviso. */
+export const RENDERED_MEDIA_VARIANTS = ["cover", "spec_sheet"] as const;
+export type RenderedMediaVariant = (typeof RENDERED_MEDIA_VARIANTS)[number];
+
+/** `media.variant`: texto en la base, validado con esta tupla al leer. */
+export const MEDIA_VARIANTS = [...PROCESSED_MEDIA_VARIANTS, ...RENDERED_MEDIA_VARIANTS] as const;
+export type MediaVariant = (typeof MEDIA_VARIANTS)[number];
+
 export const CONTENT_STATUSES = ["draft", "edited", "approved"] as const;
 export type ContentStatus = (typeof CONTENT_STATUSES)[number];
 

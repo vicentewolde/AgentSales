@@ -284,7 +284,7 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
 
 ## Contratos HTTP compartidos (ADR-0011)
 
-- **Entidades de dominio** (`listing`, `broker`, `importRun`, `importReport` y, desde F2-T02, `contentRun`, `contentRunReport` y `content`) y `healthReportSchema`: en `packages/core`. `media` no tiene esquema en core en F1: la API expone `mediaItemSchema` en `contracts` (ver "Proyecciones").
+- **Entidades de dominio** (`listing`, `broker`, `importRun`, `importReport`; desde F2-T02, `contentRun`, `contentRunReport` y `content`; y desde F2-T03, `media`) y `healthReportSchema`: en `packages/core`. La vista HTTP de un medio es `mediaItemSchema`, en `contracts` (ver "Proyecciones").
 - **Contratos HTTP:** en la salida `@agentsales/api/contracts` (`apps/api/src/contracts/`). Incluye:
   - el cuerpo de error (`errorBodySchema`);
   - los parámetros (`idParamSchema`: uuid);
@@ -349,7 +349,7 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
   - `checkArrangement` (core) rechaza ids repetidos, más de una portada o un `sortOrder` inválido (`MEDIA_ARRANGE_INVALID`), y un id que no es original del aviso da `MEDIA_NOT_FOUND`. En los dos casos no cambia nada.
   - En Postgres va en una transacción que bloquea el aviso (`FOR NO KEY UPDATE`): dos `arrange` del mismo aviso se serializan, y queda una sola portada sin deadlocks. PGlite no puede probar la concurrencia, porque tiene una sola conexión; el rollback sí está probado.
 - **`BrokerRepository.setLogo`:** valida que el medio sea un original sin aviso del mismo corredor (`MEDIA_NOT_FOUND`); la base solo tiene la FK.
-- **Proyecciones:** `ListingImportRecord` (id, `external_ref`, `status` y `source_hash`) es una proyección para la carga, sin esquema. La entidad completa es `listingSchema`, que devuelven `ListingRepository.list` y `get`. `MediaRecord` también es una proyección sin esquema: la API expone `mediaItemSchema` (sin `storagePath` ni `checksum`, con la URL firmada), definido en `contracts`. En F1, `media` no tiene esquema zod en core (excepción a §4.1 del spec F1).
+- **Proyecciones:** `ListingImportRecord` (id, `external_ref`, `status` y `source_hash`) es una proyección para la carga, sin esquema. La entidad completa es `listingSchema`, que devuelven `ListingRepository.list` y `get`. `MediaRecord` también es una proyección sin esquema, la de la carga (solo originales). Desde F2-T03, la entidad completa es `mediaSchema` (core: rol, variante, padre y medidas), que devuelve `MediaRepository.listByListing`; una fila que no calza es `MEDIA_ROW_INVALID`. La API expone `mediaItemSchema` (sin `storagePath` ni `checksum`, con la URL firmada), definido en `contracts`.
 - **Ids:** son uuid. La API los valida con zod antes de llamar al repositorio; con otro formato, el adaptador de Postgres da `DB_QUERY_FAILED` (22P02) y los dobles en memoria, `null` o `*_NOT_FOUND`.
 - Hay un doble en memoria con la misma semántica en `@agentsales/core/testing`, que solo se importa desde tests. Los dos se prueban con los mismos fixtures, por ejemplo `fieldDefinitionOrderFixture`.
 - `FieldDefinitionRepository.list` devuelve las definiciones activas e inactivas. La precedencia (la del corredor sobre la global) y el filtro de `active` los resuelve core con `resolveEffectiveDefinitions`, que usan `buildListingValidator` y, desde F1-T13, el detalle de la API (`fields`: las efectivas sin las fijas y solo las que tienen valor en `attributes`).
@@ -473,6 +473,7 @@ interface MediaStorage {
   putStream(path: string, body: AsyncIterable<Uint8Array>,
             options: { contentType: string; contentLength: number; sha256?: string }): Promise<void>; // sobrescribe
   get(path: string): Promise<Uint8Array>;                                     // STORAGE_NOT_FOUND si no existe
+  getStream(path: string): Promise<AsyncIterable<Uint8Array>>;               // F2-T03; STORAGE_NOT_FOUND al pedirlo
   head(path: string): Promise<{ size: number; contentType: string | undefined } | null>; // null si no existe
   delete(path: string): Promise<void>;                                        // idempotente
   signedReadUrl(path: string, ttlSeconds?: number): Promise<string>;
@@ -489,6 +490,7 @@ interface MediaStorage {
   - Si el stream trae más o menos bytes que `contentLength`, es `STORAGE_CONTENT_MISMATCH`, no reintentable: se aborta la petición, sin dejarla colgada. Un `contentLength` inválido es `STORAGE_ERROR` (un bug de quien llama).
   - Si falla la lectura del origen, un `AppError` del lector pasa tal cual, con su código y si es reintentable; cualquier otro error es `STORAGE_ERROR`.
   - `pnpm storage:check` lo verifica contra R2: 1 MB en trozos de 64 KB, con el sha256 correcto y con el de otro contenido, que debe rechazarse sin dejar el objeto.
+- `getStream` (F2-T03) lee un objeto en streaming, para los videos que procesa ffmpeg (spec F2 §4.2). Pedir un objeto inexistente es `STORAGE_NOT_FOUND`. Un corte durante la lectura sale del iterable como `STORAGE_UNAVAILABLE`, reintentable: lo convierte `readBody`, y el reintento es de quien llama. Dejar de iterar libera la conexión. `pnpm storage:check` lo verifica contra R2: el mismo 1 MB llega en varios trozos con el mismo sha256.
 
 ## Contrato del proveedor de IA
 

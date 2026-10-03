@@ -187,7 +187,7 @@ export const media = pgTable(
     mime: text("mime").notNull(),
     width: integer("width"),
     height: integer("height"),
-    durationS: numeric("duration_s", { precision: 10, scale: 3 }),
+    durationS: numeric("duration_s", { precision: 10, scale: 3, mode: "number" }),
     bytes: bigint("bytes", { mode: "number" }).notNull(),
     checksum: text("checksum").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
@@ -202,6 +202,13 @@ export const media = pgTable(
       .where(sql`"role" = 'original'`),
     // Cubre también el logo (`listing_id` null), que el único parcial no alcanza.
     unique("media_storage_path_unique").on(t.storagePath),
+    // Una variante vigente por original y variante, y un render por aviso y variante (F2-T03).
+    uniqueIndex("media_processed_parent_variant_unique")
+      .on(t.parentMediaId, t.variant)
+      .where(sql`"role" = 'processed'`),
+    uniqueIndex("media_rendered_listing_variant_unique")
+      .on(t.listingId, t.variant)
+      .where(sql`"role" = 'rendered'`),
   ],
 );
 

@@ -1,5 +1,6 @@
-import type { MediaKind } from "../enums.js";
+import type { MediaKind, MediaRole } from "../enums.js";
 import { AppError } from "../errors.js";
+import type { Media } from "../media.js";
 import type {
   MediaFile,
   MediaFileSource,
@@ -8,6 +9,7 @@ import type {
 } from "../ports/media-file-source.js";
 import {
   checkArrangement,
+  checkDerivative,
   type MediaRecord,
   type MediaRepository,
   type NewMedia,
@@ -16,7 +18,10 @@ import type { MediaStorage, StoredObjectInfo } from "../ports/media-storage.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryMediaRepository = MediaRepository & {
+  /** Los originales, como `MediaRecord` (lo que ve la carga). */
   all(): MediaRecord[];
+  /** Todas las filas: originales, variantes y renders. */
+  allMedia(): Media[];
   /** Veces que se llamó a `arrange` (para probar que solo escribe si algo cambió). */
   arrangeCalls(): number;
 };
@@ -26,62 +31,96 @@ export type InMemoryMediaRepositoryOptions = {
   failCreate?: (media: NewMedia) => AppError | undefined;
 };
 
+const ROLE_ORDER: Readonly<Record<MediaRole, number>> = { original: 0, processed: 1, rendered: 2 };
+
+/** La proyección de la carga (F1): sin rol, variante ni medidas. */
+function toRecord(media: Media): MediaRecord {
+  return {
+    id: media.id,
+    listingId: media.listingId,
+    brokerId: media.brokerId,
+    kind: media.kind,
+    storagePath: media.storagePath,
+    mime: media.mime,
+    bytes: media.bytes,
+    checksum: media.checksum,
+    sortOrder: media.sortOrder,
+    isCover: media.isCover,
+  };
+}
+
 /**
  * `MediaRepository` en memoria, con los mismos únicos que la base: `(listing_id, checksum)` para
- * los originales de un aviso y `storage_path`.
+ * los originales de un aviso, `storage_path`, `(parent_media_id, variant)` de las variantes y
+ * `(listing_id, variant)` de los renders. Como en Postgres, los métodos de la carga ven solo
+ * originales.
  */
 export function createInMemoryMediaRepository(
   options: InMemoryMediaRepositoryOptions = {},
 ): InMemoryMediaRepository {
   let next = 0;
   let arrangeCalls = 0;
-  const stored = new Map<string, MediaRecord>();
-  const byOrder = (a: MediaRecord, b: MediaRecord) =>
-    a.sortOrder - b.sortOrder || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const stored = new Map<string, Media>();
+  const byId = (a: Media, b: Media) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const byOrder = (a: Media, b: Media) => a.sortOrder - b.sortOrder || byId(a, b);
+  const originals = () => [...stored.values()].filter((media) => media.role === "original");
+  const pathTaken = (storagePath: string, exceptId?: string) =>
+    [...stored.values()].some(
+      (other) => other.storagePath === storagePath && other.id !== exceptId,
+    );
+  const conflict = (storagePath: string) =>
+    new AppError("MEDIA_CONFLICT", `Ya existe el medio ${storagePath}`, { retriable: true });
   return {
     async listOriginals(listingId) {
-      return [...stored.values()]
+      return originals()
         .filter((media) => media.listingId === listingId)
         .sort(byOrder)
-        .map(structuredCopy);
+        .map(toRecord);
     },
     async listCovers(listingIds) {
-      return [...stored.values()]
+      return originals()
         .filter(
           (media) =>
             media.isCover && media.listingId !== null && listingIds.includes(media.listingId),
         )
         .sort(byOrder)
-        .map(structuredCopy);
+        .map(toRecord);
     },
     async findByStoragePath(storagePath) {
-      const found = [...stored.values()].find((media) => media.storagePath === storagePath);
-      return found === undefined ? null : structuredCopy(found);
+      const found = originals().find((media) => media.storagePath === storagePath);
+      return found === undefined ? null : toRecord(found);
     },
     async create(media: NewMedia) {
       const failure = options.failCreate?.(media);
       if (failure !== undefined) throw failure;
-      const clash = [...stored.values()].some(
-        (other) =>
-          other.storagePath === media.storagePath ||
-          (media.listingId !== null &&
-            other.listingId === media.listingId &&
-            other.checksum === media.checksum),
-      );
-      if (clash) {
-        throw new AppError("MEDIA_CONFLICT", `Ya existe el medio ${media.storagePath}`, {
-          retriable: true,
-        });
-      }
-      const created: MediaRecord = { ...structuredCopy(media), id: `media-${++next}` };
+      const clash =
+        pathTaken(media.storagePath) ||
+        (media.listingId !== null &&
+          originals().some(
+            (other) => other.listingId === media.listingId && other.checksum === media.checksum,
+          ));
+      if (clash) throw conflict(media.storagePath);
+      const created: Media = {
+        ...structuredCopy(media),
+        id: `media-${++next}`,
+        role: "original",
+        variant: null,
+        parentMediaId: null,
+        width: null,
+        height: null,
+        durationS: null,
+      };
       stored.set(created.id, created);
-      return structuredCopy(created);
+      return toRecord(created);
     },
     async arrange(listingId, items) {
       arrangeCalls += 1;
       // Todo o nada: se valida antes de cambiar algo.
       checkArrangement(items);
-      const missing = items.filter(({ id }) => stored.get(id)?.listingId !== listingId);
+      const missing = items.filter(({ id }) => {
+        const media = stored.get(id);
+        return media?.role !== "original" || media.listingId !== listingId;
+      });
       if (missing.length > 0) {
         throw new AppError("MEDIA_NOT_FOUND", "Hay medios que no son originales de ese aviso", {
           details: { listingId, missing: missing.map(({ id }) => id) },
@@ -90,9 +129,9 @@ export function createInMemoryMediaRepository(
       // Una sola portada por aviso: la nueva desmarca las demás, vengan o no en `items`.
       const cover = items.find((item) => item.isCover);
       if (cover !== undefined) {
-        for (const [id, record] of stored) {
-          if (record.listingId === listingId && record.isCover && id !== cover.id) {
-            stored.set(id, { ...record, isCover: false });
+        for (const record of originals()) {
+          if (record.listingId === listingId && record.isCover && record.id !== cover.id) {
+            stored.set(record.id, { ...record, isCover: false });
           }
         }
       }
@@ -101,7 +140,60 @@ export function createInMemoryMediaRepository(
         if (current !== undefined) stored.set(id, { ...current, sortOrder, isCover });
       }
     },
-    all: () => [...stored.values()].sort(byOrder).map(structuredCopy),
+    async listByListing(listingId) {
+      return [...stored.values()]
+        .filter((media) => media.listingId === listingId)
+        .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || byOrder(a, b))
+        .map(structuredCopy);
+    },
+    async updateMeasurements(id, { width, height, durationS }) {
+      const current = stored.get(id);
+      if (current === undefined) {
+        throw new AppError("MEDIA_NOT_FOUND", `No existe el medio ${id}`, { details: { id } });
+      }
+      stored.set(id, { ...current, width, height, durationS });
+    },
+    async upsertDerivative(derivative) {
+      checkDerivative(derivative);
+      if (derivative.role === "processed") {
+        const parent = stored.get(derivative.parentMediaId);
+        if (parent?.role !== "original" || parent.listingId !== derivative.listingId) {
+          throw new AppError("MEDIA_NOT_FOUND", "El original del derivado no es de ese aviso", {
+            details: { listingId: derivative.listingId, parentMediaId: derivative.parentMediaId },
+          });
+        }
+      }
+      const current = [...stored.values()].find((media) =>
+        derivative.role === "processed"
+          ? media.role === "processed" &&
+            media.parentMediaId === derivative.parentMediaId &&
+            media.variant === derivative.variant
+          : media.role === "rendered" &&
+            media.listingId === derivative.listingId &&
+            media.variant === derivative.variant,
+      );
+      if (pathTaken(derivative.storagePath, current?.id)) throw conflict(derivative.storagePath);
+      const media: Media = {
+        ...structuredCopy(derivative),
+        id: current?.id ?? `media-${++next}`,
+        sortOrder: 0,
+        isCover: false,
+      };
+      stored.set(media.id, media);
+      const previousPath =
+        current !== undefined && current.storagePath !== derivative.storagePath
+          ? current.storagePath
+          : null;
+      return { media: structuredCopy(media), previousPath };
+    },
+    async deleteDerivative(id) {
+      const current = stored.get(id);
+      if (current === undefined || current.role === "original") return null;
+      stored.delete(id);
+      return current.storagePath;
+    },
+    all: () => originals().sort(byOrder).map(toRecord),
+    allMedia: () => [...stored.values()].sort(byOrder).map(structuredCopy),
     arrangeCalls: () => arrangeCalls,
   };
 }
@@ -174,6 +266,19 @@ export function createInMemoryMediaStorage(
         throw new AppError("STORAGE_NOT_FOUND", `No existe el objeto ${path}`);
       }
       return object.body.slice();
+    },
+    async getStream(path) {
+      const object = objects.get(path);
+      if (object === undefined) {
+        throw new AppError("STORAGE_NOT_FOUND", `No existe el objeto ${path}`);
+      }
+      const body = object.body.slice();
+      // En dos trozos, como llega de la red: quien lee no puede suponer un solo trozo.
+      const middle = Math.ceil(body.byteLength / 2);
+      return (async function* () {
+        yield body.subarray(0, middle);
+        if (middle < body.byteLength) yield body.subarray(middle);
+      })();
     },
     async head(path): Promise<StoredObjectInfo | null> {
       const object = objects.get(path);

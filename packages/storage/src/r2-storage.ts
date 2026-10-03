@@ -133,6 +133,22 @@ function readFailure(error: unknown, path: string): AppError {
 }
 
 /** Adaptador de `MediaStorage` para Cloudflare R2 vía la API S3 (ADR-0007). */
+/**
+ * El cuerpo de un `GetObject` como iterable de bytes. Un corte a mitad de la lectura sale como
+ * `AppError` (`toAppError`: sin respuesta HTTP es `STORAGE_UNAVAILABLE`, reintentable), no como el
+ * error crudo del socket. Dejar de iterar destruye el stream y libera la conexión.
+ */
+export async function* readBody(
+  body: AsyncIterable<Uint8Array>,
+  path: string,
+): AsyncGenerator<Uint8Array> {
+  try {
+    for await (const chunk of body) yield chunk;
+  } catch (error) {
+    throw toAppError(error, path);
+  }
+}
+
 export function createR2Storage(options: R2StorageOptions): MediaStorage {
   const { bucket, signedUrlTtlSeconds } = options;
   const clientConfig = {
@@ -234,6 +250,15 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
         const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: path }));
         return response.Body ? response.Body.transformToByteArray() : new Uint8Array();
       });
+    },
+
+    async getStream(path) {
+      const response = await send(path, () =>
+        client.send(new GetObjectCommand({ Bucket: bucket, Key: path })),
+      );
+      // En Node, el cuerpo es un `Readable` (iterable de `Buffer`, que es un `Uint8Array`).
+      const body = response.Body as AsyncIterable<Uint8Array> | undefined;
+      return readBody(body ?? (async function* () {})(), path);
     },
 
     async head(path): Promise<StoredObjectInfo | null> {
