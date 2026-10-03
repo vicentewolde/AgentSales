@@ -124,3 +124,22 @@ Lo que devuelve la IA (con topes de largo en el esquema estricto: gancho 150, cu
 - **Lo arma el código:** la línea de tipo y comuna, la de superficies, dormitorios y baños, el precio y los gastos comunes, las listas de características y espacios comunes, la disponibilidad, el contacto, los títulos y los hashtags base (`#{comuna}`, `#{tipo}{operación}` y los fijos del corredor). Así esos datos no dependen del modelo.
 - Si la salida no calza con el esquema, se reintenta una vez con el error incluido en el prompt. Si vuelve a fallar, la corrida de contenido queda `failed` con el error visible y el contenido anterior sigue vigente (ADR-0012).
 - **Revisión editorial** (`checkContent`): números que no están en los datos, dirección expuesta, notas internas, requisitos discriminatorios, emojis en Portal y largos son errores; amenities no entregados, superlativos, markdown y la cantidad de hashtags son advertencias. Se muestra en el panel y la usa `pnpm eval:content` (spec F2 §4.6).
+
+### Cómo revisa (`checkContent`, F2-T06)
+
+Revisa el título y el cuerpo (los hashtags solo cuentan), sin mayúsculas ni tildes, y no se guarda: se calcula al leer, también después de una edición a mano. Recibe el brief (los datos permitidos), el contacto y lo privado del aviso (`buildContentCheckContext`).
+
+| Código | Severidad | Cómo lo detecta |
+|---|---|---|
+| `NUMBER_NOT_IN_DATA` | error | Cada número del texto (`5.800`, `5800` y `72,5` se leen como el mismo valor) debe estar en algún dato del brief (precio, superficies, características, destacados, sector, disponibilidad…) o en el WhatsApp. Un número repetido se informa una vez |
+| `ADDRESS_EXPOSED` | error | Con `show_exact_address = false`: el nombre de la calle (sin "calle", "avenida", "depto"… ni números) o el número de la unidad. No cuenta si ese nombre o número también está en los datos (por ejemplo, una calle que es el sector de referencia) |
+| `INTERNAL_NOTES_LEAK` | error | 6 palabras seguidas de `internal_notes`; si las notas tienen de 3 a 5 palabras, todas seguidas |
+| `DISCRIMINATORY` | error | Frases que restringen por nacionalidad, hijos, estado civil, religión, edad o sexo ("solo chilenos", "sin niños", "mayores de 25 años", "solo para mujeres"…). "Ideal para familias con niños" no lo es |
+| `EMOJI_NOT_ALLOWED` | error | Un emoji en el título o la descripción de Portal (`©`, `®` y `™` no cuentan) |
+| `TOO_LONG` | error | Caption de Instagram de más de 2.200 caracteres con los hashtags, o título de Portal o Marketplace de más de 60 |
+| `AMENITY_NOT_IN_DATA` | advertencia | Un amenity o servicio cercano de la lista (piscina, quincho, terraza, metro, colegio, playa…) que no aparece en los datos |
+| `SUPERLATIVE` | advertencia | "Increíble", "único", "espectacular", "imperdible", "el mejor"… (una advertencia con todos) |
+| `MARKDOWN` | advertencia | En Instagram: `**`, `__`, una línea que empieza con `# `, o un link `[texto](url)` |
+| `HASHTAG_COUNT` | advertencia | En Instagram: menos de 5 o más de 12 hashtags |
+
+Las listas de términos viven en `packages/core/src/content/check-terms.ts`. Ampliarlas no cambia `CONTENT_PROMPT_VERSION`, porque no cambian los textos generados.
