@@ -4,9 +4,9 @@ import {
   type FieldDefinitionRepository,
   type Listing,
   type ListingRepository,
+  listingFields,
   type MediaRepository,
   type MediaStorage,
-  resolveEffectiveDefinitions,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import {
@@ -56,17 +56,13 @@ export function listingRoutes(deps: ListingRoutesDeps) {
       const listing = await deps.listings.get(id);
       if (listing === null) throw notFound(id);
       const media = await deps.media.listOriginals(id);
-      const definitions = resolveEffectiveDefinitions(
-        await deps.fieldDefinitions.list({
-          category: listing.category,
-          brokerId: listing.brokerId,
-        }),
-      );
+      const definitions = await deps.fieldDefinitions.list({
+        category: listing.category,
+        brokerId: listing.brokerId,
+      });
       const body: ListingDetailResponse = {
         listing,
-        fields: definitions
-          .filter((def) => !def.isCore && Object.hasOwn(listing.attributes, def.key))
-          .map(({ key, label, type }) => ({ key, label, type })),
+        fields: listingFields(definitions, listing.attributes),
         media: await Promise.all(
           media.map(async (item) => ({
             id: item.id,

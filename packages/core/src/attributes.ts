@@ -1,3 +1,6 @@
+import type { FieldType } from "./enums.js";
+import type { FieldDefinition } from "./field-definition.js";
+import { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
 import { formatNumber } from "./price.js";
 
 /** Un atributo listo para mostrar (CLI y panel). */
@@ -53,4 +56,22 @@ export function describeAttributes(
         ? []
         : [entry("_extra", "_extra", extra)]),
   ];
+}
+
+/** Un campo configurable con valor en un aviso: su clave, etiqueta y tipo. */
+export type ListingField = { key: string; label: string; type: FieldType };
+
+/**
+ * Los campos configurables que un aviso tiene con valor, en el orden de las definiciones: las
+ * efectivas del corredor (`resolveEffectiveDefinitions`, a partir de lo que devuelve
+ * `FieldDefinitionRepository.list`), sin las columnas fijas (`isCore`) y solo las que están en
+ * `attributes`. Lo usan el detalle de la API y el brief de la IA (spec F2 §4.6).
+ */
+export function listingFields(
+  definitions: readonly FieldDefinition[],
+  attributes: Readonly<Record<string, unknown>>,
+): ListingField[] {
+  return resolveEffectiveDefinitions(definitions)
+    .filter((def) => !def.isCore && Object.hasOwn(attributes, def.key))
+    .map(({ key, label, type }) => ({ key, label, type }));
 }
