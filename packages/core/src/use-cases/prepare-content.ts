@@ -119,6 +119,12 @@ export function contentRunErrorOf(error: AppError): { code: string; message: str
   return { code: error.code, message };
 }
 
+const aborted = (cause?: unknown) =>
+  new AppError("CONTENT_RUN_ABORTED", "Se cortó la corrida de contenido", {
+    retriable: true,
+    ...(cause === undefined ? {} : { cause }),
+  });
+
 /** La corrida ya no está en `running` (la cerró otro intento): este intento termina `skipped`. */
 class RunClosed extends Error {}
 
@@ -173,8 +179,10 @@ export async function prepareContent(
   } catch (caught) {
     if (caught instanceof RunClosed) return skipped(deps, run);
     const error = normalized(caught);
-    // Corte por apagado: la corrida queda en `running`; la retoma pg-boss o la limpieza.
-    if (signal?.aborted) throw error;
+    // Corte por apagado: la corrida queda en `running` y el error sube como reintentable, aunque el
+    // adaptador cortado haya dado otro (spec F2 §4.4). La retoma un reintento, un nuevo pedido o la
+    // limpieza de abandonadas.
+    if (signal?.aborted) throw error.retriable ? error : aborted(error);
     if (!error.retriable || isLastAttempt) {
       await deps.contentRuns
         .markFailed(run.id, contentRunErrorOf(error), report)
@@ -198,11 +206,7 @@ async function skipped(deps: PrepareContentDeps, run: ContentRun): Promise<Prepa
  * este intento se detiene en el acto: no sigue gastando la IA ni el procesador.
  */
 async function stage<T>(state: Run, name: ContentRunStage, work: () => Promise<T>): Promise<T> {
-  if (state.signal?.aborted) {
-    throw new AppError("CONTENT_RUN_ABORTED", "Se cortó la corrida de contenido", {
-      retriable: true,
-    });
-  }
+  if (state.signal?.aborted) throw aborted();
   if (!(await state.deps.contentRuns.setStage(state.run.id, name))) throw new RunClosed();
   return work();
 }

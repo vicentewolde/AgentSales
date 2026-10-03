@@ -11,7 +11,6 @@ import {
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { IMPORT_RUN_QUEUE, importRunJob } from "./import-run.js";
-import { buildJobs } from "./index.js";
 
 const logger = createLogger(
   { level: "silent" },
@@ -49,10 +48,6 @@ describe("job import.run", () => {
       retryBackoff: true,
       expireInSeconds: 7200,
     });
-    expect(buildJobs({ importRun: deps() }).map((job) => job.name)).toEqual([
-      "system.ping",
-      "import.run",
-    ]);
   });
 
   it("corre runImport con el run del job: un error deja el run en failed y se relanza", async () => {

@@ -1,6 +1,6 @@
 import { isAppError } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
-import { createJobQueue, type ProducerBoss } from "./job-queue.js";
+import { createJobQueue, jobQueueFromBoss, type ProducerBoss } from "./job-queue.js";
 
 const RUN_ID = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
 
@@ -211,5 +211,44 @@ describe("createJobQueue", () => {
     await queue.enqueue("system.ping", {});
     await queue.stop();
     expect(fake.stats.stops).toBe(1);
+  });
+});
+
+describe("jobQueueFromBoss", () => {
+  it("encola con el pg-boss del worker, sin arrancarlo ni detenerlo", async () => {
+    const fake = fakeBosses({ sendResult: null });
+    const boss = fake.make();
+    const queue = jobQueueFromBoss(boss);
+
+    const id = await queue.enqueue(
+      "content.prepare",
+      { contentRunId: RUN_ID },
+      { singletonKey: RUN_ID },
+    );
+
+    expect(id).toBeNull(); // ya había uno con la misma clave
+    expect(fake.sent).toEqual([
+      {
+        name: "content.prepare",
+        data: { contentRunId: RUN_ID },
+        options: { singletonKey: RUN_ID },
+      },
+    ]);
+    expect(fake.stats).toMatchObject({ starts: 0, stops: 0 });
+  });
+
+  it("valida los datos (JOB_PAYLOAD_INVALID) y traduce las fallas a QUEUE_UNAVAILABLE", async () => {
+    const invalid = fakeBosses();
+    const bad = await caught(
+      jobQueueFromBoss(invalid.make()).enqueue("content.prepare", { contentRunId: "x" }),
+    );
+    expect(bad).toMatchObject({ code: "JOB_PAYLOAD_INVALID" });
+    expect(invalid.sent).toEqual([]);
+
+    const down = fakeBosses({ sendError: "Connection terminated unexpectedly" });
+    const error = await caught(
+      jobQueueFromBoss(down.make()).enqueue("content.prepare", { contentRunId: RUN_ID }),
+    );
+    expect(isAppError(error) && error.code === "QUEUE_UNAVAILABLE" && error.retriable).toBe(true);
   });
 });

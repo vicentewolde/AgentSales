@@ -71,6 +71,8 @@ async function checkPolicy(boss: WorkerBoss, job: Job, logger: Logger): Promise<
   }
 }
 
+const fullError = (error: unknown) => ({ err: error });
+
 async function runOne(
   job: Job,
   jobId: string,
@@ -88,14 +90,12 @@ async function runOne(
     await job.run(data, { jobId, logger: jobLogger, isLastAttempt });
     jobLogger.info({ ms: ms() }, "job terminado");
   } catch (error) {
+    const fields = { ...(job.errorLogFields ?? fullError)(error), ms: ms() };
     if (isAppError(error) && !error.retriable) {
-      jobLogger.error({ err: error, ms: ms() }, "job falló sin reintento (error no reintentable)");
+      jobLogger.error(fields, "job falló sin reintento (error no reintentable)");
       return;
     }
-    jobLogger.error(
-      { err: error, ms: ms() },
-      "job falló; pg-boss lo reintentará si le quedan intentos",
-    );
+    jobLogger.error(fields, "job falló; pg-boss lo reintentará si le quedan intentos");
     throw error;
   }
 }

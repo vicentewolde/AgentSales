@@ -1,4 +1,11 @@
-import { AppError, JOB_PAYLOADS, type JobQueue } from "@agentsales/core";
+import {
+  AppError,
+  type EnqueueOptions,
+  JOB_PAYLOADS,
+  type JobName,
+  type JobPayload,
+  type JobQueue,
+} from "@agentsales/core";
 import { createBoss } from "./boss.js";
 
 /** Lo que el productor usa de pg-boss; `PgBoss` lo cumple. */
@@ -52,6 +59,53 @@ function unavailable(error: unknown): AppError {
   );
 }
 
+/** Valida los datos con `JOB_PAYLOADS`: un payload inválido es un bug, no una caída. */
+function payloadOf<N extends JobName>(name: N, data: JobPayload<N>): JobPayload<N> {
+  const parsed = JOB_PAYLOADS[name].safeParse(data);
+  if (!parsed.success) {
+    throw new AppError("JOB_PAYLOAD_INVALID", `Datos inválidos para el job ${name}`, {
+      details: {
+        issues: parsed.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        })),
+      },
+    });
+  }
+  // zod no estrecha `JOB_PAYLOADS[name]` por `N`: el esquema es justamente el de `N`.
+  return parsed.data as JobPayload<N>;
+}
+
+/** Envía un job ya validado; cualquier falla de pg-boss es `QUEUE_UNAVAILABLE`. */
+async function send(
+  boss: Pick<ProducerBoss, "send">,
+  name: JobName,
+  data: object,
+  options: EnqueueOptions,
+): Promise<string | null> {
+  try {
+    return await boss.send(name, data, {
+      ...(options.startAfter === undefined ? {} : { startAfter: options.startAfter }),
+      ...(options.singletonKey === undefined ? {} : { singletonKey: options.singletonKey }),
+    });
+  } catch (error) {
+    throw unavailable(error);
+  }
+}
+
+/**
+ * `JobQueue` sobre un pg-boss **ya arrancado** que no es suyo: el worker reencola al arrancar con su
+ * propia conexión, sin abrir otra como `createJobQueue`. Valida y traduce los errores igual; no
+ * arranca ni detiene pg-boss (eso lo hace el worker).
+ */
+export function jobQueueFromBoss(boss: Pick<ProducerBoss, "send">): JobQueue {
+  return {
+    async enqueue(name, data, enqueueOptions = {}) {
+      return send(boss, name, payloadOf(name, data), enqueueOptions);
+    },
+  };
+}
+
 /**
  * `JobQueue` sobre pg-boss en rol `producer` (spec F1 §4.1, D2). Arranca pg-boss **recién en el
  * primer `enqueue`**: la API levanta aunque el esquema `pgboss` no exista todavía. Si el arranque
@@ -92,37 +146,15 @@ export function createJobQueue(options: JobQueueOptions): PgBossJobQueue {
 
   return {
     async enqueue(name, data, enqueueOptions = {}) {
-      // Los datos se validan antes de conectar: un payload inválido es un bug, no una caída.
-      const parsed = JOB_PAYLOADS[name].safeParse(data);
-      if (!parsed.success) {
-        throw new AppError("JOB_PAYLOAD_INVALID", `Datos inválidos para el job ${name}`, {
-          details: {
-            issues: parsed.error.issues.map((issue) => ({
-              path: issue.path.join("."),
-              message: issue.message,
-            })),
-          },
-        });
-      }
+      // Los datos se validan antes de conectar.
+      const payload = payloadOf(name, data);
       // Tras `stop` (apagado de la API), un `enqueue` rezagado no reabre la conexión.
       if (stopped) {
         throw new AppError("QUEUE_UNAVAILABLE", "La cola se cerró: el proceso se está apagando", {
           retriable: true,
         });
       }
-      const boss = await started();
-      try {
-        return await boss.send(name, parsed.data, {
-          ...(enqueueOptions.startAfter === undefined
-            ? {}
-            : { startAfter: enqueueOptions.startAfter }),
-          ...(enqueueOptions.singletonKey === undefined
-            ? {}
-            : { singletonKey: enqueueOptions.singletonKey }),
-        });
-      } catch (error) {
-        throw unavailable(error);
-      }
+      return send(await started(), name, payload, enqueueOptions);
     },
 
     async stop() {

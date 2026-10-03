@@ -2,6 +2,7 @@ export { type BossOptions, type BossRole, createBoss, QUEUE_SCHEMA } from "./bos
 export {
   createJobQueue,
   type JobQueueOptions,
+  jobQueueFromBoss,
   type PgBossJobQueue,
   type ProducerBoss,
 } from "./job-queue.js";
