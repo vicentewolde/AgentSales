@@ -81,6 +81,14 @@ Comprobaciones restantes (usar una foto de prueba propia, no de clientes):
 4. `node -e "require('sharp')(...)"` con el HEIC: debe fallar (confirma que no hay HEVC en sharp).
 5. Fijar este caso como test de integración opcional (omitido si falta ffmpeg >= 8.1) y como chequeo en `agentsales doctor` con un HEIC diminuto de muestra versionado (sin personas).
 
+### Verificado en F2-T07 (2026-10-03, macOS, ffmpeg 9.0.1)
+- **HEIC sintético de prueba:** un JPEG de 1600×1200 hecho con sharp (con EXIF Orientation = 6), convertido con `sips -s format heic`. `sips` lo codifica en un grupo `Tile Grid` de 12 mosaicos HEVC y guarda el giro como `irot` (en ffprobe, `display_matrix` con `rotation=-90`). Pesa 5,6 KB y está en `packages/media/test/fixtures/`.
+- **Orientación:** `ffmpeg -i foto.heic -frames:v 1 …` **aplica el `irot`**: sale derecho (1200×1600), con el bloque que estaba arriba a la izquierda ahora arriba a la derecha. La pregunta abierta de la sección 5 queda resuelta para el giro.
+- **sharp 0.35.5 (binarios precompilados) no decodifica HEIC**, aunque trae libheif (solo AVIF), como decía la sección 4.
+- **El adaptador** (`packages/media`) escribe el HEIC en el temporal del intento, lo pasa por ffmpeg (`-q:v 2`, salida `mjpeg` por la salida estándar, sin archivo intermedio) y sigue con sharp. Revisa una vez que ffmpeg sea 8.1 o más nuevo (`MEDIA_TOOL_NOT_INSTALLED` si no), en vez de validar las dimensiones de salida: `doctor` también exige 8.1.
+- **Sin verificar:** el perfil de color (Display P3 de un iPhone real) y los mapas de ganancia HDR. Se revisan con la primera foto real en la demo de F2.
+- **CI:** build estático de BtbN/FFmpeg-Builds `n9.0.1-11-ge47273f4d9` (linux64, GPL, cierre de agosto de 2026; los builds de cierre de mes se conservan), fijado por URL y sha256 en `.github/workflows/ci.yml`. El de Ubuntu 24.04 (6.1) no sirve, y el de johnvansickle.com sigue en 7.0.2.
+
 ## 9. Riesgos y términos de uso relevantes
 
 - **Versión mínima de ffmpeg:** 8.1. En Linux, los paquetes de las distribuciones suelen ir atrasados; usar un build estático o contenedor con versión fijada para el worker en la nube.

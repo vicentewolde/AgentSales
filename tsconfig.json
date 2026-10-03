@@ -29,6 +29,9 @@
       "path": "./packages/llm"
     },
     {
+      "path": "./packages/media"
+    },
+    {
       "path": "./apps/api"
     },
     {

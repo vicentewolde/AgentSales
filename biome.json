@@ -120,6 +120,7 @@
         "packages/importers/src/**",
         "packages/queue/src/**",
         "packages/llm/src/**",
+        "packages/media/src/**",
         "!packages/*/src/scripts/**",
         "!**/*.test.ts",
         "!**/*.test.tsx"
@@ -139,7 +140,9 @@
                   "@agentsales/queue": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
                   "@agentsales/importers": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
                   "@agentsales/importers/staging": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
-                  "@agentsales/llm": "Los adaptadores no dependen entre sí (docs/05-convenciones.md)."
+                  "@agentsales/llm": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
+                  "@agentsales/media": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
+                  "@agentsales/media/tools": "Los adaptadores no dependen entre sí (docs/05-convenciones.md)."
                 }
               }
             }

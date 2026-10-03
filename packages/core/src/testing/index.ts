@@ -45,3 +45,9 @@ export {
   type MemoryFileOptions,
   memoryFile,
 } from "./media.js";
+export {
+  createInMemoryMediaProcessor,
+  type InMemoryMediaProcessor,
+  type InMemoryMediaProcessorOptions,
+  type MediaProcessorCall,
+} from "./media-processor.js";

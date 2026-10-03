@@ -61,6 +61,7 @@ describe("runDoctor", () => {
       Almacenamiento: "ok",
       Cola: "ok",
       ffmpeg: "ok",
+      ffprobe: "ok",
       "Chromium (Playwright)": "ok",
       "Claude Code": "ok",
     });
@@ -125,6 +126,45 @@ describe("runDoctor", () => {
 
     expect(report.exitCode).toBe(1);
     expect(levels(report.items).ffmpeg).toBe("error");
+  });
+
+  it("revisa ffmpeg y ffprobe: una versión anterior a 8.1 es error, con cómo actualizar", async () => {
+    const report = await runDoctor(
+      deps({
+        run: async (command, args) => {
+          if (command === "ffmpeg") return "ffmpeg version 8.0.1 Copyright\n";
+          if (command === "ffprobe") return "ffprobe version n9.0.1-11-ge47273f4d9 Copyright\n";
+          return allTools(command, args);
+        },
+      }),
+    );
+
+    expect(report.exitCode).toBe(1);
+    expect(report.items.find((item) => item.name === "ffmpeg")).toEqual({
+      name: "ffmpeg",
+      level: "error",
+      detail: "ffmpeg version 8.0.1 Copyright (se necesita 8.1 o más nueva)",
+      hint: "brew upgrade ffmpeg",
+    });
+    expect(levels(report.items).ffprobe).toBe("ok");
+  });
+
+  it("sin ffprobe sale con 1 y sugiere FFPROBE_PATH", async () => {
+    const report = await runDoctor(
+      deps({
+        run: async (command, args) => {
+          if (command === "ffprobe") throw Object.assign(new Error("spawn"), { code: "ENOENT" });
+          return allTools(command, args);
+        },
+      }),
+    );
+
+    expect(report.exitCode).toBe(1);
+    expect(report.items.find((item) => item.name === "ffprobe")).toMatchObject({
+      level: "error",
+      detail: "ffprobe: no encontrado",
+      hint: "brew install ffmpeg (trae ffprobe), o ajusta FFPROBE_PATH en .env",
+    });
   });
 
   it("sin Claude ni Chromium solo advierte y sale con 0", async () => {

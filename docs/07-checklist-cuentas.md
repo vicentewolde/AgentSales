@@ -7,7 +7,7 @@ Cosas que **solo tú puedes hacer** (cuentas, aprobaciones, datos reales). Claud
 - [x] Node.js 26 instalado (`node -v`; ADR-0008)
 - [x] pnpm 11 instalado (`npm i -g pnpm@11` o `brew install pnpm`; Node 26 ya no trae corepack)
 - [x] Git configurado con tu nombre y correo
-- [x] ffmpeg instalado (`ffmpeg -version`)
+- [x] ffmpeg instalado (`ffmpeg -version`). Desde F2 debe ser **8.1 o más nuevo**, con ffprobe (viene con él): arma las fotos HEIC del iPhone. `pnpm -s cli doctor` lo revisa; si es viejo, `brew upgrade ffmpeg` (verificado 9.0.1 el 2026-10-03)
 - [x] Claude Code instalado y con sesión iniciada con tu plan Max (`claude` → `/status`)
 - [x] Repositorio en GitHub: `AgentSales`. Público desde 2026-09-30, con protección de `main`: el merge exige el check `check` de la CI
 - [x] Proyecto en Neon (plan gratis, región AWS São Paulo) — pasos en `docs/09-alta-neon-r2.md`

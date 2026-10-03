@@ -114,7 +114,9 @@ const envSchema = z
     // Tope del cuerpo de `POST /imports` (xlsx + zip). Hono lo lee completo en memoria y la subida
     // puede ocupar hasta ~2 veces eso mientras se procesa (spec F1 §4.4).
     MAX_IMPORT_UPLOAD_MB: positiveInt("un número entero de MB mayor que 0").default(512),
+    // ffmpeg 8.1 o más nuevo (fotos HEIC) y ffprobe (videos), spec F2 §4.8.
     FFMPEG_PATH: z.string().default("ffmpeg"),
+    FFPROBE_PATH: z.string().default("ffprobe"),
 
     // Instagram (F3)
     META_APP_ID: z.string().optional(),
