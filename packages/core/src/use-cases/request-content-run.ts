@@ -31,8 +31,12 @@ export type RequestContentRunResult = {
 /** Estados en que un aviso puede preparar contenido (spec F2 §4.4). */
 const PREPARABLE: readonly ListingStatus[] = ["ready", "paused", "active"];
 
-const enqueue = (queue: JobQueue, run: ContentRun) =>
-  queue.enqueue("content.prepare", { contentRunId: run.id }, { singletonKey: run.id });
+/**
+ * Encola el job de una corrida. Con `singletonKey` (cola `exclusive`) es idempotente: lo usan este
+ * caso de uso y el worker, que reencola las corridas en cola al arrancar.
+ */
+export const enqueueContentRun = (queue: JobQueue, contentRunId: string) =>
+  queue.enqueue("content.prepare", { contentRunId }, { singletonKey: contentRunId });
 
 /**
  * Pide una corrida de contenido (spec F2 §4.4):
@@ -99,7 +103,7 @@ export async function requestContentRun(
   }
 
   try {
-    await enqueue(deps.queue, run);
+    await enqueueContentRun(deps.queue, run.id);
   } catch (error) {
     if (isAppError(error) && error.code === "QUEUE_UNAVAILABLE") {
       // Si además falla la base, igual se informa el error de la cola: es la causa.
@@ -117,6 +121,6 @@ async function reuse(
   deps: RequestContentRunDeps,
   run: ContentRun,
 ): Promise<RequestContentRunResult> {
-  if (run.status === "queued") await enqueue(deps.queue, run);
+  if (run.status === "queued") await enqueueContentRun(deps.queue, run.id);
   return { run, reused: true };
 }

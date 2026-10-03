@@ -153,12 +153,21 @@ importers:
       '@agentsales/importers':
         specifier: workspace:*
         version: link:../../packages/importers
+      '@agentsales/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
+      '@agentsales/media':
+        specifier: workspace:*
+        version: link:../../packages/media
       '@agentsales/queue':
         specifier: workspace:*
         version: link:../../packages/queue
       '@agentsales/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@agentsales/templates':
+        specifier: workspace:*
+        version: link:../../packages/templates
       zod:
         specifier: 4.6.5
         version: 4.6.5

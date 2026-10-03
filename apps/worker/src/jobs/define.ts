@@ -29,11 +29,19 @@ export type QueuePolicy = {
   expireInSeconds: number;
 };
 
+/** Campos del log de un intento que falló (por defecto, el error completo: `{ err }`). */
+export type ErrorLogFields = (error: unknown) => Record<string, unknown>;
+
 /** Job listo para registrar: valida sus datos con zod y luego llama al handler. */
 export type Job = {
   name: JobName;
   queue: QueuePolicy;
   run(data: unknown, context: JobContext): Promise<void>;
+  /**
+   * Qué se registra de un error. Un job cuyos errores pueden traer datos del aviso (por ejemplo, en
+   * la causa de un `INTERNAL_ERROR`) registra solo el código.
+   */
+  errorLogFields?: ErrorLogFields;
 };
 
 /**
@@ -46,12 +54,14 @@ export function defineJob<N extends JobName>(definition: {
   name: N;
   queue: QueuePolicy;
   handler: (data: JobPayload<N>, context: JobContext) => Promise<void>;
+  errorLogFields?: ErrorLogFields;
 }): Job {
-  const { name, queue, handler } = definition;
+  const { name, queue, handler, errorLogFields } = definition;
   const schema = JOB_PAYLOADS[name];
   return {
     name,
     queue,
+    ...(errorLogFields === undefined ? {} : { errorLogFields }),
     async run(data, context) {
       const parsed = schema.safeParse(data);
       if (!parsed.success) {

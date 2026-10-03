@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-03
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
-**Última tarea terminada:** F2-T10 · Caso de uso `prepareContent`
-**Siguiente paso:** `/tarea F2-T11` (job `content.prepare` en el worker).
+**Última tarea terminada:** F2-T11 · Job `content.prepare` en el worker
+**Siguiente paso:** `/tarea F2-T12` (API de contenido).
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -20,8 +20,8 @@
 | F2-T07 · Procesamiento de imágenes (`packages/media`) | ✅ | #40 |
 | F2-T08 · Procesamiento de video (`packages/media`) | ✅ | #41 |
 | F2-T09 · Plantillas y render | ✅ | #42 |
-| F2-T10 · Caso de uso `prepareContent` | ✅ | |
-| F2-T11 · Job `content.prepare` en el worker | ⏳ pendiente | |
+| F2-T10 · Caso de uso `prepareContent` | ✅ | #43 |
+| F2-T11 · Job `content.prepare` en el worker | ✅ | |
 | F2-T12 · API de contenido | ⏳ pendiente | |
 | F2-T13 · CLI `prepare` y `content` | ⏳ pendiente | |
 | F2-T14 · Panel: preparar y vista previa | ⏳ pendiente | |
@@ -75,6 +75,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-03: **F2-T11.** Job `content.prepare` en el worker: cola `exclusive` de 30 min con 2 reintentos; cada intento con su procesador y su temporal (`tmp/content/{corrida}/{intento}/`, borrado siempre); un Chromium y un proveedor de IA por proceso (`LLM_PROVIDER`; `fake` usa el borrador de ejemplo). Al apagar: corte, pg-boss, Chromium y base, en ese orden (`stopWorker`). Al arrancar: corridas abandonadas de más de 2 h a `failed`, reencolado de las `queued` y temporales de más de 24 h borrados. Los errores de este job van al log solo con su código. Demo con `LLM_PROVIDER=fake`: P001 `succeeded` en 19 s (Neon y R2); la segunda corrida solo llamó a la IA. La corrida con la CLI de Claude real la puedes hacer tú cuando quieras (gasta cuota).
 - 2026-10-03: **F2-T10.** `requestContentRun` y `prepareContent` en core, con las etapas `media`, `renders`, `reel` y `texts`, idempotentes por claves de R2 determinísticas; la composición del carrusel y de las fotos de Portal; los datos de las plantillas desde una lista fija; `BrokerRepository.findById`. Probado con dobles de todos los puertos: una segunda corrida sin cambios solo llama a la IA, y un cambio de precio rehace portada, ficha y reel.
 - 2026-10-03: **F2-T09.** Puertos `SlideTemplates` y `HtmlRenderer` con sus datos en core; `packages/templates` con la portada, la ficha y el texto del reel (Inter incrustada, íconos SVG propios, datos escapados y colores del corredor); `createHtmlRenderer` con Playwright 1.63 (sin red ni JavaScript de la página, tope de 30 s y un Chromium compartido). `doctor` exige el Chromium que pide Playwright y la CI lo instala con caché. Muestras en `docs/assets/plantillas/`. Desde la revisión (#42): `slideKeyInput` para saber si un render cambió sin descargar las fotos, dobles de plantillas y render para T10, un solo plazo de 30 s y corte que responde siempre, un Chromium caído se reabre, errores sin rutas y mejor contraste.
 - 2026-10-03: **F2-T08.** `processVideo` en `packages/media`: medidas con ffprobe (con el giro del celular), `thumb` del segundo 1 y reel de 1080×1920 con fondo desenfocado, el texto los primeros 2 s, H.264 4:2:0 con GOP cerrado, AAC (silencioso si no hay audio), `moov` al inicio y sin edit lists, cortado a 90 s y sin reel bajo 3 s. Un reel de 90 s tarda ~26 s en local. Opción `threads` para que los tests no atrasen a los demás. Desde la revisión (#41): los avisos del reel los calcula core (`reelWarnings`), la copia del video no puede botar el worker si el disco se llena, y el GOP de 2 s se verifica con ffprobe.

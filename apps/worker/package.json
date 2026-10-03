@@ -14,8 +14,11 @@
     "@agentsales/core": "workspace:*",
     "@agentsales/db": "workspace:*",
     "@agentsales/importers": "workspace:*",
+    "@agentsales/llm": "workspace:*",
+    "@agentsales/media": "workspace:*",
     "@agentsales/queue": "workspace:*",
     "@agentsales/storage": "workspace:*",
+    "@agentsales/templates": "workspace:*",
     "zod": "4.6.5"
   }
 }

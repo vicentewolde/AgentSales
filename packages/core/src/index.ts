@@ -217,6 +217,7 @@ export {
   prepareContent,
 } from "./use-cases/prepare-content.js";
 export {
+  enqueueContentRun,
   type RequestContentRunDeps,
   type RequestContentRunParams,
   type RequestContentRunResult,

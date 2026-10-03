@@ -221,8 +221,19 @@ Los jobs del worker (`apps/worker/src/jobs/`):
   - Un `AppError` no reintentable se registra y el job se da por cerrado. El caso de uso ya dejó el estado de dominio, por ejemplo la publicación en `failed`.
   - Cualquier otro error se propaga y pg-boss reintenta según la política.
   - `batchSize: 1`: un fallo nunca repite jobs ajenos.
-- Los handlers son delgados: validan, arman dependencias y llaman un caso de uso de `core`. `buildJobs(deps)` arma la lista con las dependencias que compone `worker.ts` (db, R2, lector de xlsx y staging).
-- **El log de cada intento** lleva los datos del job, que son solo ids: así cada error queda con, por ejemplo, su `importRunId`.
+- Los handlers son delgados: validan, arman dependencias y llaman un caso de uso de `core`. `buildJobs(deps)` arma la lista con las dependencias que compone `worker.ts` (db, R2, lector de xlsx y staging; desde F2-T11, también plantillas, renderizador, IA y el procesador de cada intento).
+- **El log de cada intento** lleva los datos del job, que son solo ids: así cada error queda con, por ejemplo, su `importRunId`. Un job puede fijar `errorLogFields` para registrar menos que el error completo: `content.prepare` registra solo el código (el mensaje o la causa pueden traer datos del aviso).
+- **Apagado (desde F2-T11, `stopWorker` en `apps/worker/src/shutdown.ts`):** en SIGINT o SIGTERM, el worker dispara el `AbortController` de los handlers, espera a que pg-boss los detenga (`stop` con `graceful`, hasta 30 s) y recién después cierra el Chromium del renderizador (también si detener pg-boss falla) y la base. `tsx watch` (`pnpm dev`) corta al worker sin esperar ese cierre si recibe la señal él solo; con Ctrl+C en la terminal la señal llega a los dos.
+
+### Job `content.prepare` (F2-T11)
+- **Cola:** `exclusive` (un solo job por `singletonKey = contentRunId`), 2 reintentos con backoff desde 30 s, y expira a los 30 min.
+- **Handler:** corre `prepareContent` (core) con `isLastAttempt` y el `signal` de apagado. Cada intento arma su procesador de medios (`createMediaProcessor` sin `threads`: ffmpeg usa todos los núcleos) con su temporal `<workspace>/tmp/content/{contentRunId}/{uuid}/`, que se borra en un `finally` (y el de la corrida, si queda vacío). Lo demás es del proceso: repositorios, R2, plantillas, un renderizador (`createHtmlRenderer`) y el proveedor de IA según `LLM_PROVIDER` (con `fake`, `SAMPLE_CONTENT_DRAFT`).
+- **Corte por apagado:** la corrida queda en `running`, también en el último intento. Si el adaptador cortado dio un error no reintentable, el job lo relanza como `CONTENT_RUN_ABORTED` (reintentable), para que pg-boss lo retome al arrancar.
+- **Logs:** un error por intento, con `contentRunId` y solo el código. Al terminar, solo conteos (medios, renders, reel, cantidad de advertencias y la llamada a la IA), nunca las advertencias ni la revisión. Un objeto viejo de R2 que no se pudo borrar (`onCleanupFailed`) va al log como `objectPath` (solo ids).
+- **Al arrancar:**
+  - antes de conectar, borra los temporales de más de 24 h (solo directorios con nombre de uuid);
+  - ya conectado, cierra como `failed` (`CONTENT_RUN_ABANDONED`) las corridas `running` con `started_at` de hace más de 2 h (3 intentos de 30 min y media hora de margen);
+  - con las colas creadas, reencola **todas** las `queued` (`enqueueContentRun`, idempotente por `singletonKey`) con la conexión del worker.
 
 ### Job `import.run` (F1-T09)
 - **Cola:** `exclusive` (un solo job por `singletonKey = importRunId`), 2 reintentos con backoff desde 30 s, y expira a las 2 h.
@@ -251,7 +262,7 @@ Los jobs del worker (`apps/worker/src/jobs/`):
   - **Los medios de la CLI** (`--media <dir>`) se leen en su lugar: el staging nunca borra archivos del operador.
 
 Para encolar (`packages/queue`, desde F1-T08):
-- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` (`system.ping`, `import.run`) y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API, los scripts y el worker comparten el contrato sin repetir literales.
+- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` (`system.ping`, `import.run` y, desde F2-T02, `content.prepare`) y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API, los scripts y el worker comparten el contrato sin repetir literales.
 - **Puerto `JobQueue`** en `core/src/ports/job-queue.ts`: `enqueue<N extends JobName>(name: N, data: JobPayload<N>, opts?: { startAfter?: Date; singletonKey?: string }): Promise<string | null>`. Devuelve `null` si ya había un job activo con el mismo `singletonKey`.
 - **Adaptador `createJobQueue({ connectionString, onError })`**, sobre pg-boss en rol `producer`:
   - Arranca pg-boss recién en el primer `enqueue`, así la API levanta aunque el esquema `pgboss` no exista. Si el arranque falla, el siguiente `enqueue` lo reintenta.
@@ -273,7 +284,7 @@ Política objetivo por cola (cada fase la confirma en su spec):
 |---|---|---|---|---|
 | `system.ping` (F0) | — | 0 | no | 60 s |
 | `import.run` (F1) | `singletonKey = importRunId`; en el último intento deja el run en `failed` | 2 | sí, desde 30 s | 2 h (videos grandes) |
-| `content.prepare` (F2) | `exclusive`, `singletonKey = contentRunId`; en el último intento deja la corrida en `failed`. Reemplaza a `media.process` (ADR-0012, enmienda de ADR-0005) | 2 | sí, desde 30 s | 30 min (video, render e IA) |
+| `content.prepare` (F2-T11) | `exclusive`, `singletonKey = contentRunId`; en el último intento deja la corrida en `failed`, salvo un corte por apagado. Reemplaza a `media.process` (ADR-0012, enmienda de ADR-0005) | 2 | sí, desde 30 s | 30 min (video, render e IA) |
 | `publication.publish` | `singletonKey = publicationId`; dead-letter que lleva a `failed` | 3 | sí, desde 60 s | ~5 min (Marketplace termina en `awaiting_manual_confirm`) |
 | `publication.sync` | cron, sin solaparse | 1 | no | ~10 min |
 | `tokens.refresh` | cron | 3 | sí | ~5 min |
