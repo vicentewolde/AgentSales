@@ -18,10 +18,11 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 | Slide | Contenido |
 |---|---|
 | 1 · Portada | Mejor foto a sangre, degradado inferior, etiqueta `VENTA` o `ARRIENDO`, precio grande, `Tipo · Comuna`, 3 íconos (m² · dorm · baños), logo en una esquina |
-| 2 a N-1 | Fotos en el orden del Excel o el orden sugerido por la IA; sin texto, o una etiqueta corta opcional ("Cocina americana") |
+| 2 a N-1 | Fotos en el orden del Excel (sin la de portada), sin texto. Las etiquetas cortas ("Cocina americana") quedan para después de F2 |
 | N · Ficha | Fondo con color primario: tabla de atributos con íconos, disponibilidad y contacto (WhatsApp, @usuario) |
 
-- Máximo 10 slides (verificar límite de la API). Si hay más fotos, la IA elige las 8 mejores más la portada y la ficha.
+- Máximo 10 slides, el límite de la API (`docs/integraciones/instagram.md`). Si hay más fotos, van las 8 primeras en el orden del Excel, más la portada y la ficha. La portada la elige el operador (`foto_portada`, o la primera foto); la IA no la elige ni la sugiere (spec F2, D3).
+- Todo en JPEG sRGB (Instagram no acepta PNG): la portada y la ficha se renderizan con Playwright directo a JPEG.
 - Tipografía: una sans geométrica (ej. Inter o Montserrat) cargada localmente en las plantillas.
 - Texto dentro de márgenes seguros de 64 px.
 
@@ -45,22 +46,23 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 
 ## Instagram — reel (si hay video)
 
-- 9:16, 1080×1920, entre 5 y 90 s, MP4 H.264.
-- Si el video es horizontal: recorte centrado, o fondo desenfocado con el video al centro.
+- 9:16, 1080×1920, MP4 H.264 (4:2:0) con AAC y `moov` al inicio. Meta acepta de 3 s a 15 min; nuestro tope es 90 s (se corta), y un video de menos de 3 s no genera reel.
+- Si el video no es vertical: fondo desenfocado con el video al centro (spec F2, D5).
+- Solo el primer video del aviso genera reel.
 - Primeros 2 segundos: texto sobrepuesto con `Operación · Tipo · Comuna · Precio`.
-- Portada del reel: el mismo render de la portada del carrusel.
+- Portada del reel: el mismo render de la portada del carrusel (se envía en F3).
 
 ## Portal Inmobiliario
 
-- **Título:** máximo el largo que permita la categoría (verificar). Formato: `{{Tipo}} {{dorm}}D {{baños}}B en {{Comuna}}{{, destacado corto}}`. Ejemplo: `Departamento 3D 2B en Ñuñoa, vista despejada`.
+- **Título:** lo arma el código con operación, tipo, dormitorios y comuna, sin abreviaturas ni adjetivos y de hasta 60 caracteres (lo que recomendaría Mercado Libre para inmuebles; por confirmar en F4, `docs/integraciones/mercadolibre.md`). Formato: `{{Tipo}} en {{venta|arriendo}} {{dorm}} dormitorios {{baños}} baños en {{Comuna}}`, con singular y plural, y sin dormitorios si son 0. Ejemplo: `Departamento en venta 3 dormitorios 2 baños en Ñuñoa`. Si se pasa, se quitan primero los baños y después los dormitorios.
 - **Descripción:** texto plano, formal y sin emojis. Estructura:
   1. Párrafo de presentación (2–3 líneas).
   2. **Características:** lista con guiones.
   3. **Espacios comunes:** si existen.
   4. **Ubicación y conectividad.**
   5. **Condiciones:** disponibilidad y requisitos no discriminatorios.
-  6. Cierre con contacto.
-- **Fotos:** proporción 4:3, mínimo 1200 px de ancho y sin texto sobrepuesto (los portales suelen penalizarlo). La portada va primero.
+  6. Cierre sin teléfono ni email: las reglas de Mercado Libre sobre datos de contacto en la descripción se verifican en F4.
+- **Fotos:** proporción 4:3 (1600×1200), sin texto sobrepuesto (los portales suelen penalizarlo). Mercado Libre recomendaría 1200 px y aceptaría hasta 1920 (por confirmar en F4); una foto más chica deja una advertencia. La portada va primero.
 - **Atributos:** se mapean a los atributos de la categoría ML; los faltantes obligatorios bloquean la publicación (validación antes de enviar).
 
 ## Facebook Marketplace
@@ -72,18 +74,18 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 
 ## Salida estructurada de la IA
 
-La IA devuelve JSON validado con zod (esquema en `packages/core`):
+Los textos son **híbridos** (ADR-0013): el código pone los datos y la IA redacta las frases. La IA recibe un brief sin `internal_notes`, sin links ni contacto, y sin dirección si `show_exact_address = false`, y devuelve JSON validado con zod (`contentDraftSchema`, en `packages/core/src/content/`):
 
 ```json
 {
-  "instagram": { "hook": "...", "caption": "...", "hashtags": ["..."] },
-  "portal_inmobiliario": { "title": "...", "description": "..." },
-  "fb_marketplace": { "title": "...", "description": "..." },
-  "photo_order": ["media_id", "..."],
-  "cover_media_id": "...",
-  "slide_labels": { "media_id": "Cocina americana" },
-  "warnings": ["Se omitió requisito discriminatorio: ..."]
+  "instagram": { "hook": "...", "body": "...", "hashtags": ["..."] },
+  "portal_inmobiliario": { "presentation": "...", "location": "...", "conditions": "..." },
+  "fb_marketplace": { "intro": "..." },
+  "warnings": ["Se omitió un requisito discriminatorio: ..."]
 }
 ```
 
-Si la validación falla, se reintenta una vez con el error incluido en el prompt; si vuelve a fallar, el contenido queda `draft` con el error visible.
+- `location` y `conditions` pueden ser `null` (sin datos, se omite la sección).
+- **Lo arma el código:** la línea de tipo y comuna, la de superficies, dormitorios y baños, el precio y los gastos comunes, las listas de características y espacios comunes, la disponibilidad, el contacto, los títulos y los hashtags base (`#{comuna}`, `#{tipo}{operación}` y los fijos del corredor). Así esos datos no dependen del modelo.
+- Si la salida no calza con el esquema, se reintenta una vez con el error incluido en el prompt. Si vuelve a fallar, la corrida de contenido queda `failed` con el error visible y el contenido anterior sigue vigente (ADR-0012).
+- **Revisión editorial** (`checkContent`): números que no están en los datos, dirección expuesta, notas internas, requisitos discriminatorios, emojis en Portal y largos son errores; amenities no entregados, superlativos, markdown y la cantidad de hashtags son advertencias. Se muestra en el panel y la usa `pnpm eval:content` (spec F2 §4.6).

@@ -23,7 +23,7 @@ Corredores de propiedades independientes y vendedores pequeños pierden horas pu
 
 ## Alcance del MVP (piloto inmobiliario)
 
-- Carga de propiedades desde Excel (y luego Google Sheets) con fotos y videos.
+- Carga de propiedades desde Excel (o su exportación desde Google Sheets) con fotos y videos. La lectura directa de Google Sheets y Drive queda para después del MVP.
 - Campos configurables: se pueden agregar o quitar sin cambiar el código.
 - Generación de textos con Claude, y procesamiento de imágenes y videos.
 - Aprobación manual antes de publicar.
