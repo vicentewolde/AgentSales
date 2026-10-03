@@ -56,14 +56,13 @@ describe("createInMemoryMediaProcessor", () => {
     const chunks: Uint8Array[] = [];
     for await (const chunk of withReel.reel?.open() ?? []) chunks.push(chunk);
     expect(chunks[0]?.length).toBe(withReel.reel?.size);
-    expect(withReel.warnings).toEqual([]);
     expect(processor.calls.map((call) => call.kind === "video" && call.reel)).toEqual([
       false,
       true,
     ]);
   });
 
-  it("como el adaptador: un video de menos de 3 s no da reel, y uno de más de 90 s se corta", async () => {
+  it("como el adaptador: un video de menos de 3 s no da reel, y uno de más de 90 s se corta a 90 s", async () => {
     const measure = (duration: number) => () => ({
       width: 1920,
       height: 1080,
@@ -80,8 +79,6 @@ describe("createInMemoryMediaProcessor", () => {
     );
 
     expect(short.reel).toBeNull();
-    expect(short.warnings.map((warning) => warning.code)).toEqual(["VIDEO_TOO_SHORT"]);
     expect(long.reel?.durationS).toBe(90);
-    expect(long.warnings.map((warning) => warning.code)).toEqual(["VIDEO_TRIMMED"]);
   });
 });

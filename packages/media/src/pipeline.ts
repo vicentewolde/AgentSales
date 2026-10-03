@@ -1,9 +1,11 @@
-import type { ImageVariant } from "@agentsales/core";
+import { type ImageVariant, REEL_MAX_DURATION_S, REEL_MIN_DURATION_S } from "@agentsales/core";
 
 /**
- * Versión de los parámetros de las variantes (spec F2 §4.2). Va en la clave de R2 de cada derivado
- * (`…-v{version}.jpg`): cambiar un tamaño, una calidad o el recorte sube la versión, y la siguiente
- * corrida regenera las variantes y borra las anteriores.
+ * Versión de los parámetros de las variantes y del reel (spec F2 §4.2). Va en la clave de R2 de
+ * cada derivado (`…-v{version}.jpg`) y en la del reel: cambiar algo de `IMAGE_VARIANT_SPECS` o de
+ * `REEL_SPEC` (un tamaño, una calidad, el recorte, el segundo del `thumb`) **sube la versión**, y la
+ * siguiente corrida regenera todo (fotos incluidas) y borra lo anterior. Si no se sube, lo ya
+ * procesado queda como estaba.
  */
 export const MEDIA_PIPELINE_VERSION = "1";
 
@@ -33,9 +35,9 @@ export const REEL_SPEC = {
   width: 1080,
   height: 1920,
   fps: 30,
-  /** Meta acepta de 3 s a 15 min; el tope de 90 s es nuestro. */
-  minDurationS: 3,
-  maxDurationS: 90,
+  /** Meta acepta de 3 s a 15 min; el tope de 90 s es nuestro (constantes de core). */
+  minDurationS: REEL_MIN_DURATION_S,
+  maxDurationS: REEL_MAX_DURATION_S,
   /** El texto del reel (PNG transparente de 1080×1920) va encima los primeros segundos. */
   overlayS: 2,
   blur: { width: 270, height: 480, radius: 8 },

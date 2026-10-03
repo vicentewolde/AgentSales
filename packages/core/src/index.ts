@@ -100,6 +100,12 @@ export {
   PHOTO_SIZE_WARNING_TEXT,
   type PhotoSizeWarningCode,
   photoSizeWarnings,
+  REEL_MAX_DURATION_S,
+  REEL_MIN_DURATION_S,
+  REEL_WARNING_CODES,
+  REEL_WARNING_TEXT,
+  type ReelWarningCode,
+  reelWarnings,
 } from "./media-checks.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export {
@@ -136,16 +142,13 @@ export {
   type MediaSkipReason,
   type SkippedMediaFile,
 } from "./ports/media-file-source.js";
-export {
-  type ImageOutput,
-  type ImageVariant,
-  MEDIA_WARNING_TEXT,
-  type MediaProcessor,
-  type MediaWarning,
-  type MediaWarningCode,
-  type ProcessedImage,
-  type ProcessedVideo,
-  type VideoOutput,
+export type {
+  ImageOutput,
+  ImageVariant,
+  MediaProcessor,
+  ProcessedImage,
+  ProcessedVideo,
+  VideoOutput,
 } from "./ports/media-processor.js";
 export {
   checkArrangement,

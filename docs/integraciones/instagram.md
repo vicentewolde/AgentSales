@@ -63,7 +63,13 @@ Fuera del alcance (F3), salvo lo necesario para los límites:
 
 - **Corrección:** "entre 5 y 90 s" de `docs/03-plataformas.md` y `docs/04-formato-publicaciones.md` no corresponde al límite de la API (3 s a 15 min). Si se quiere mantener 5 a 90 s, es una política de producto de AgentSales (reels cortos), no un requisito de Meta. Decisión del operador.
 - Nuestro estándar 9:16 de 1080x1920 cumple (1920 es el máximo en horizontal; con 1080 de ancho y 1920 de alto: el límite se refiere a "horizontal pixels", así que 1080 queda bajo 1920).
-- Asegurar `faststart`, sin edit lists y GOP cerrado al codificar con ffmpeg (por ejemplo `-c:v libx264 -pix_fmt yuv420p -movflags +faststart` más GOP cerrado, y `-c:a aac -ar 48000 -b:a 128k`). Los parámetros exactos de ffmpeg para "closed GOP" y "sin edit lists" no se probaron (NO VERIFICADO).
+- Asegurar `faststart`, sin edit lists y GOP cerrado al codificar con ffmpeg (por ejemplo `-c:v libx264 -pix_fmt yuv420p -movflags +faststart` más GOP cerrado, y `-c:a aac -ar 48000 -b:a 128k`). **Verificado en local (F2-T08, 2026-10-03, ffmpeg 9.0.1)**, con ffprobe en los tests de `packages/media`. Los parámetros están en `REEL_SPEC`:
+  - libx264 `veryfast`, CRF 23, `-maxrate 20M -bufsize 40M`, yuv420p, 30 fps.
+  - GOP fijo de 2 s y cerrado: `-g 60 -keyint_min 60 -sc_threshold 0 -flags +cgop`. x264 escribe `open_gop=0`, y hay un cuadro clave cada 2 s.
+  - AAC estéreo a 48 kHz y 128 kb/s.
+  - `-movflags +faststart` (`moov` antes de `mdat`) y `-use_editlist 0` (sin `elst`).
+
+  Hay un desfase de ~67 ms entre el inicio del video y el del audio (dos B-frames de x264), sin edit list que lo corrija; es inocuo, y `-bf 0` lo quita si molestara. **Falta verificar que Meta acepte el reel** (F3).
 - Si el video de origen ya cumple, evitar recodificar; en otro caso, `media.process` genera `ig_reel` (`docs/02-modelo-datos.md`).
 
 ## 6. Límites

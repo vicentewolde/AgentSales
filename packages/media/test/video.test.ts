@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -37,6 +37,7 @@ beforeAll(async () => {
   make("sinAudio", "testsrc=size=640x360", 4, false);
   make("largo", "testsrc=size=160x90", 100, true);
   make("corto", "testsrc=size=640x360", 2, true);
+  make("doce", "testsrc=size=320x180", 12, true);
   make("azul", "color=c=blue:size=640x360", 5, false);
   // Un video horizontal grabado con el celular girado: la matriz dice 90°.
   videos.girado = join(dir, "girado.mp4");
@@ -114,7 +115,7 @@ async function saveReel(
   const chunks: Uint8Array[] = [];
   for await (const chunk of open()) chunks.push(chunk);
   const bytes = Buffer.concat(chunks);
-  const path = join(dir, `reel-${chunks.length}-${bytes.length}.mp4`);
+  const path = join(dir, `reel-${randomUUID()}.mp4`);
   await writeFile(path, bytes);
   return { path, bytes };
 }
@@ -136,7 +137,6 @@ describe("processVideo: medidas y thumb", () => {
     expect(result.measurements).toMatchObject({ width: 640, height: 360 });
     expect(result.measurements.durationS).toBeCloseTo(4, 1);
     expect(result.reel).toBeNull();
-    expect(result.warnings).toEqual([]);
     expect(result.thumb).toMatchObject({
       variant: "thumb",
       width: 640,
@@ -195,9 +195,8 @@ describe("processVideo: reel", () => {
     expect(Number(info.format.bit_rate)).toBeLessThan(25_000_000);
     expect(bytes.indexOf("moov")).toBeLessThan(bytes.indexOf("mdat"));
     expect(bytes.indexOf("elst")).toBe(-1);
-    // x264 deja sus opciones en el archivo: GOP cerrado y cada 2 s.
+    // x264 deja sus opciones en el archivo: GOP cerrado (el espaciado se prueba con ffprobe abajo).
     expect(bytes.toString("latin1")).toContain("open_gop=0");
-    expect(bytes.toString("latin1")).toContain(`keyint=${REEL_SPEC.x264.gop}`);
     expect({
       size: reel.size,
       sha256: reel.sha256,
@@ -212,7 +211,27 @@ describe("processVideo: reel", () => {
     // El contenedor dura lo que la pista más larga: el AAC puede pasarse unas centésimas.
     expect(reel.durationS).toBeGreaterThan(3.9);
     expect(reel.durationS).toBeLessThan(4.2);
-    expect(result.warnings).toEqual([]);
+  }, 60_000);
+
+  it("un cuadro clave cada 2 s exactos (GOP fijo, leído con ffprobe)", async () => {
+    const result = await (await processor()).processVideo(video("doce"), { reel: { overlayPng } });
+    if (result.reel === null) throw new Error("falta el reel");
+    const { path } = await saveReel(result.reel.open);
+    const keyframes = execFileSync(FFPROBE, [
+      ...["-v", "error", "-select_streams", "v:0", "-skip_frame", "nokey"],
+      ...["-show_entries", "frame=pts_time", "-of", "csv=p=0", path],
+    ])
+      .toString()
+      .trim()
+      .split("\n")
+      // Algunas líneas traen una coma al final (datos laterales del cuadro).
+      .map((line) => Number.parseFloat(line));
+
+    expect(keyframes).toHaveLength(6);
+    const gapS = REEL_SPEC.x264.gop / REEL_SPEC.fps;
+    for (let i = 1; i < keyframes.length; i += 1) {
+      expect((keyframes[i] ?? 0) - (keyframes[i - 1] ?? 0)).toBeCloseTo(gapS, 2);
+    }
   }, 60_000);
 
   it("el texto va encima los primeros 2 s y después no", async () => {
@@ -246,25 +265,24 @@ describe("processVideo: reel", () => {
     expect(Number(audioStream?.duration)).toBeGreaterThan(3.5);
   }, 60_000);
 
-  it("un video de 100 s se corta a 90 s y avisa", async () => {
+  it("un video de 100 s se corta a 90 s (el aviso lo calcula core: reelWarnings)", async () => {
     const result = await (await processor()).processVideo(video("largo"), { reel: { overlayPng } });
 
     expect(result.measurements.durationS).toBeCloseTo(100, 0);
     expect(result.reel?.durationS).toBeGreaterThan(89.5);
     expect(result.reel?.durationS).toBeLessThanOrEqual(90.2);
-    expect(result.warnings.map((warning) => warning.code)).toEqual(["VIDEO_TRIMMED"]);
   }, 240_000);
 
-  it("un video de 2 s no da reel y avisa; sin pedir reel no avisa", async () => {
+  it("un video de 2 s no da reel, pero sí medidas y thumb", async () => {
     const withReel = await (await processor()).processVideo(video("corto"), {
       reel: { overlayPng },
     });
     const withoutReel = await (await processor()).processVideo(video("corto"), { reel: null });
 
     expect(withReel.reel).toBeNull();
-    expect(withReel.warnings.map((warning) => warning.code)).toEqual(["VIDEO_TOO_SHORT"]);
     expect(withReel.thumb.variant).toBe("thumb");
-    expect(withoutReel.warnings).toEqual([]);
+    expect(withReel.measurements.durationS).toBeCloseTo(2, 0);
+    expect(withoutReel.reel).toBeNull();
   });
 
   it("solo el reel queda en el temporal (para subirlo); la copia del video y el texto se borran", async () => {

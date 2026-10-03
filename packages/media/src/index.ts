@@ -23,8 +23,9 @@ export type MediaProcessorOptions = {
    */
   workDir: string;
   /**
-   * Hilos de ffmpeg al armar el reel; sin valor, ffmpeg usa todos los núcleos. Los tests usan 2,
-   * para no atrasar a los demás tests que corren en paralelo.
+   * Hilos de ffmpeg al armar el reel (filtros y codificador); sin valor, ffmpeg usa todos los
+   * núcleos. **Reduce** el uso, no lo limita del todo (el escalado y el lookahead de x264 usan algo
+   * más). Los tests usan 2, para no atrasar a los demás tests que corren en paralelo.
    */
   threads?: number;
 };

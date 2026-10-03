@@ -1,13 +1,12 @@
 import type { AbortSignalLike } from "../abort.js";
 import { AppError } from "../errors.js";
-import {
-  type ImageOutput,
-  type ImageVariant,
-  MEDIA_WARNING_TEXT,
-  type MediaProcessor,
-  type MediaWarning,
-  type ProcessedImage,
-  type ProcessedVideo,
+import { REEL_MAX_DURATION_S, REEL_MIN_DURATION_S } from "../media-checks.js";
+import type {
+  ImageOutput,
+  ImageVariant,
+  MediaProcessor,
+  ProcessedImage,
+  ProcessedVideo,
 } from "../ports/media-processor.js";
 import type { MediaMeasurements } from "../ports/media-repository.js";
 
@@ -111,11 +110,8 @@ export function createInMemoryMediaProcessor(
       const measurements = measure(bytes, "video");
       // Como el adaptador (F2-T08): menos de 3 s no da reel; más de 90 s se corta.
       const duration = measurements.durationS ?? 0;
-      const warnings: MediaWarning[] = [];
-      if (reel !== null && duration < 3) warnings.push(warning("VIDEO_TOO_SHORT"));
-      if (reel !== null && duration > 90) warnings.push(warning("VIDEO_TRIMMED"));
       const reelBytes =
-        reel === null || duration < 3
+        reel === null || duration < REEL_MIN_DURATION_S
           ? null
           : encoder.encode(`reel:v${version}:${decoder.decode(bytes)}:${reel.overlayPng.length}`);
       return {
@@ -129,18 +125,12 @@ export function createInMemoryMediaProcessor(
                 sha256: fakeHash(decoder.decode(reelBytes)),
                 width: 1080,
                 height: 1920,
-                durationS: Math.min(measurements.durationS ?? 0, 90),
+                durationS: Math.min(duration, REEL_MAX_DURATION_S),
                 async *open() {
                   yield reelBytes;
                 },
               },
-        warnings,
       };
     },
   };
 }
-
-const warning = (code: keyof typeof MEDIA_WARNING_TEXT): MediaWarning => ({
-  code,
-  message: MEDIA_WARNING_TEXT[code],
-});

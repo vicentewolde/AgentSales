@@ -2,19 +2,18 @@ import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { finished } from "node:stream/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import {
   type AbortSignalLike,
-  MEDIA_WARNING_TEXT,
-  type MediaWarning,
-  type MediaWarningCode,
   type ProcessedVideo,
+  REEL_MIN_DURATION_S,
   type VideoOutput,
 } from "@agentsales/core";
 import { z } from "zod";
 import { decodeFailed, renderVariant } from "./image.js";
 import { REEL_SPEC } from "./pipeline.js";
-import { CommandFailedError, runTool, throwIfAborted } from "./run.js";
+import { aborted, CommandFailedError, runTool, throwIfAborted } from "./run.js";
 
 export type VideoToolOptions = {
   ffmpegPath: string;
@@ -32,6 +31,8 @@ const probeSchema = z.object({
   streams: z.array(
     z.looseObject({
       codec_type: z.string(),
+      duration: z.string().optional(),
+      disposition: z.looseObject({ attached_pic: z.number().optional() }).optional(),
       width: z.number().optional(),
       height: z.number().optional(),
       side_data_list: z.array(z.looseObject({ rotation: z.number().optional() })).optional(),
@@ -42,11 +43,6 @@ const probeSchema = z.object({
 });
 
 type Probe = { width: number; height: number; durationS: number; hasAudio: boolean };
-
-const warning = (code: MediaWarningCode): MediaWarning => ({
-  code,
-  message: MEDIA_WARNING_TEXT[code],
-});
 
 /** Corre una herramienta; si termina con error, el archivo no se pudo leer. */
 async function runOrDecodeFailed(
@@ -61,21 +57,26 @@ async function runOrDecodeFailed(
   }
 }
 
-/** Copia el video al temporal del intento: ffprobe y ffmpeg necesitan moverse por el archivo. */
+/**
+ * Copia el video al temporal del intento: ffprobe y ffmpeg necesitan moverse por el archivo. Con
+ * `pipeline`, un error de escritura (disco lleno) rechaza en vez de quedar sin manejar.
+ */
 async function writeInput(
   input: AsyncIterable<Uint8Array>,
   path: string,
   signal?: AbortSignalLike,
 ): Promise<void> {
-  const file = createWriteStream(path);
+  throwIfAborted(signal);
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  signal?.addEventListener("abort", onAbort, { once: true });
   try {
-    for await (const chunk of input) {
-      throwIfAborted(signal);
-      if (!file.write(chunk)) await new Promise((resolve) => file.once("drain", resolve));
-    }
+    await pipeline(Readable.from(input), createWriteStream(path), { signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw aborted();
+    throw error;
   } finally {
-    file.end();
-    await finished(file);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 
@@ -92,8 +93,12 @@ async function probe(path: string, options: VideoToolOptions, signal?: AbortSign
   } catch (error) {
     throw decodeFailed(error);
   }
-  const video = parsed.streams.find((stream) => stream.codec_type === "video");
-  const durationS = Number(parsed.format.duration);
+  // La pista de video de verdad, no una carátula adjunta (algunos mp4 traen una).
+  const video = parsed.streams.find(
+    (stream) => stream.codec_type === "video" && stream.disposition?.attached_pic !== 1,
+  );
+  // Algunos contenedores (mkv, webm) no dan la duración general: vale la de la pista.
+  const durationS = Number(parsed.format.duration ?? video?.duration);
   if (!video?.width || !video.height || !Number.isFinite(durationS) || durationS <= 0) {
     throw decodeFailed();
   }
@@ -209,7 +214,12 @@ async function encodeReel(
     ...["-movflags", "+faststart", "-use_editlist", "0", "-map_metadata", "-1", reelPath],
   ];
   try {
+    // Un fallo al armar el reel (también del codificador o del disco) es MEDIA_DECODE_FAILED: la
+    // corrida lo toma como aviso de ese video, sin reel, y la siguiente lo vuelve a intentar.
     await runOrDecodeFailed(options.ffmpegPath, args, signal);
+  } catch (error) {
+    await rm(reelPath, { force: true });
+    throw error;
   } finally {
     await rm(overlayPath, { force: true });
   }
@@ -226,7 +236,7 @@ async function encodeReel(
 
 /**
  * Un video → sus medidas, su `thumb` y, con `reel`, el reel de Instagram (spec F2 §4.2, D5). Un
- * video de menos de 3 s no da reel; uno de más de 90 s se corta. Todo queda en el temporal del
+ * video de menos de 3 s no da reel; uno de más de 90 s se corta (los avisos son de core). Todo queda en el temporal del
  * intento, que el worker borra al terminar (el reel también: se sube antes con `open()`).
  */
 export async function processVideo(
@@ -249,21 +259,15 @@ export async function processVideo(
     );
     const thumb = await renderVariant(frame, "thumb");
 
-    const warnings: MediaWarning[] = [];
-    let output: VideoOutput | null = null;
-    if (reel !== null) {
-      if (source.durationS < REEL_SPEC.minDurationS) {
-        warnings.push(warning("VIDEO_TOO_SHORT"));
-      } else {
-        if (source.durationS > REEL_SPEC.maxDurationS) warnings.push(warning("VIDEO_TRIMMED"));
-        output = await encodeReel(path, source, reel.overlayPng, options, signal);
-      }
-    }
+    // Sin reel bajo el mínimo de Meta; el aviso lo calcula core (`reelWarnings`).
+    const output =
+      reel === null || source.durationS < REEL_MIN_DURATION_S
+        ? null
+        : await encodeReel(path, source, reel.overlayPng, options, signal);
     return {
       measurements: { width: source.width, height: source.height, durationS: source.durationS },
       thumb,
       reel: output,
-      warnings,
     };
   } finally {
     await rm(path, { force: true });

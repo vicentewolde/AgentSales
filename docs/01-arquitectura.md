@@ -529,13 +529,13 @@ interface MediaProcessor {
   processImage(input: Uint8Array, opts: { mime: string; variants: ImageVariant[] }, signal?: AbortSignalLike):
     Promise<{ measurements: MediaMeasurements; outputs: ImageOutput[] }>;
   processVideo(input: AsyncIterable<Uint8Array>, opts: { reel: { overlayPng: Uint8Array } | null }, signal?: AbortSignalLike):
-    Promise<{ measurements: MediaMeasurements; thumb: ImageOutput; reel: VideoOutput | null; warnings: MediaWarning[] }>;
+    Promise<{ measurements: MediaMeasurements; thumb: ImageOutput; reel: VideoOutput | null }>;
 }
 ```
 
 - Lo implementa `createMediaProcessor({ ffmpegPath, ffprobePath, workDir, threads? })` de `packages/media`. El reel (F2-T08) sale en 1080×1920 con fondo desenfocado, el texto los primeros 2 s, H.264 y AAC, `moov` al inicio y sin edit lists (`REEL_SPEC`); queda en el temporal hasta que se sube con `open()`. El worker crea uno por intento con el directorio temporal del intento y lo borra en un `finally`: el puerto no tiene `dispose`. Core solo ve bytes y streams.
 - Errores: `MEDIA_DECODE_FAILED` (el archivo no se puede leer: advertencia de ese medio, la corrida sigue), `MEDIA_TOOL_NOT_INSTALLED` (falta ffmpeg o ffprobe, o es anterior a 8.1; no reintentable, con el comando para instalarlo) y `MEDIA_ABORTED` (reintentable: se cortó con `signal` y ffmpeg terminó).
-- Las advertencias del procesador son solo del video (`MEDIA_WARNING_TEXT`). Las de tamaño de una foto las calcula core desde el ancho guardado (`photoSizeWarnings`).
+- El procesador no devuelve advertencias: las de tamaño de una foto y de largo del reel las calcula core desde las medidas guardadas (`photoSizeWarnings` y `reelWarnings`, `packages/core/src/media-checks.ts`), en cada corrida. Un video de menos de 3 s no da reel; uno de más de 90 s se corta.
 - Los tests de core usan `createInMemoryMediaProcessor` (`@agentsales/core/testing`), con la misma semántica (salidas deterministas por entrada, `CORRUPTO…` ilegible, reel con los topes de 3 y 90 s).
 ## Seguridad
 
