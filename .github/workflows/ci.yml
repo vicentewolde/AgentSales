@@ -44,14 +44,16 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/ffmpeg
-          key: ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl
+          # La clave lleva el sha256: otro archivo nunca reusa la caché de este.
+          key: ffmpeg-${{ runner.os }}-n9.0.1-11-ge47273f4d9-linux64-gpl-182c1b509720
 
       - name: Instalar ffmpeg
         env:
           FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz
           FFMPEG_SHA256: 182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a
+          CACHE_HIT: ${{ steps.ffmpeg-cache.outputs.cache-hit }}
         run: |
-          if [ "${{ steps.ffmpeg-cache.outputs.cache-hit }}" != "true" ]; then
+          if [ "$CACHE_HIT" != "true" ]; then
             curl -fsSL --retry 3 -o "$RUNNER_TEMP/ffmpeg.tar.xz" "$FFMPEG_URL"
             echo "$FFMPEG_SHA256  $RUNNER_TEMP/ffmpeg.tar.xz" | sha256sum -c -
             mkdir -p "$RUNNER_TEMP/ffmpeg"

@@ -22,6 +22,3 @@ export const IMAGE_VARIANT_SPECS: Readonly<Record<ImageVariant, ImageVariantSpec
   // Portal Inmobiliario y Marketplace: 4:3 (Mercado Libre aceptaría hasta 1920; por confirmar en F4).
   pi_4x3: { fit: "cover", width: 1600, height: 1200, quality: 88 },
 };
-
-/** Ancho mínimo de la foto original para no avisar que se amplió o que es chica. */
-export const MIN_WIDTH = { instagram: 1080, portal: 1200 } as const;

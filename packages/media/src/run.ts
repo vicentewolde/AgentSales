@@ -64,7 +64,8 @@ export function runTool(
           error: new AppError(
             "MEDIA_TOOL_NOT_INSTALLED",
             `No se encontró ${command}. ${FFMPEG_INSTALL_HINT}`,
-            { cause: error },
+            // Solo el código: el error de spawn trae los argumentos, con rutas del temporal.
+            { cause: { code: error.code } },
           ),
         });
       } else {

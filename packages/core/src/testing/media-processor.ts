@@ -1,12 +1,13 @@
 import type { AbortSignalLike } from "../abort.js";
 import { AppError } from "../errors.js";
-import type {
-  ImageOutput,
-  ImageVariant,
-  MediaProcessor,
-  MediaWarning,
-  ProcessedImage,
-  ProcessedVideo,
+import {
+  type ImageOutput,
+  type ImageVariant,
+  MEDIA_WARNING_TEXT,
+  type MediaProcessor,
+  type MediaWarning,
+  type ProcessedImage,
+  type ProcessedVideo,
 } from "../ports/media-processor.js";
 import type { MediaMeasurements } from "../ports/media-repository.js";
 
@@ -19,8 +20,6 @@ export type InMemoryMediaProcessorOptions = {
   version?: string;
   /** Medidas de cada entrada (por defecto, 2000×1500 en fotos y 1920×1080 de 30 s en videos). */
   measure?: (input: Uint8Array, kind: "image" | "video") => MediaMeasurements;
-  /** Advertencias de una foto (por defecto, ninguna). */
-  warnings?: (input: Uint8Array) => MediaWarning[];
 };
 
 export type InMemoryMediaProcessor = MediaProcessor & { calls: MediaProcessorCall[] };
@@ -95,7 +94,6 @@ export function createInMemoryMediaProcessor(
       return {
         measurements: measure(input, "image"),
         outputs: variants.map((variant) => output(variant, input, version)),
-        warnings: options.warnings?.(input) ?? [],
       };
     },
     async processVideo(input, { reel }, signal): Promise<ProcessedVideo> {
@@ -111,8 +109,13 @@ export function createInMemoryMediaProcessor(
       calls.push({ kind: "video", reel: reel !== null, inputBytes: bytes.length });
       if (isCorrupt(bytes)) throw decodeFailed();
       const measurements = measure(bytes, "video");
+      // Como el adaptador (F2-T08): menos de 3 s no da reel; más de 90 s se corta.
+      const duration = measurements.durationS ?? 0;
+      const warnings: MediaWarning[] = [];
+      if (reel !== null && duration < 3) warnings.push(warning("VIDEO_TOO_SHORT"));
+      if (reel !== null && duration > 90) warnings.push(warning("VIDEO_TRIMMED"));
       const reelBytes =
-        reel === null
+        reel === null || duration < 3
           ? null
           : encoder.encode(`reel:v${version}:${decoder.decode(bytes)}:${reel.overlayPng.length}`);
       return {
@@ -131,8 +134,13 @@ export function createInMemoryMediaProcessor(
                   yield reelBytes;
                 },
               },
-        warnings: [],
+        warnings,
       };
     },
   };
 }
+
+const warning = (code: keyof typeof MEDIA_WARNING_TEXT): MediaWarning => ({
+  code,
+  message: MEDIA_WARNING_TEXT[code],
+});

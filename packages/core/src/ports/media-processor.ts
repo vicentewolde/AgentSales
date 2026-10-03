@@ -29,14 +29,14 @@ export type VideoOutput = {
 };
 
 /**
- * Advertencias de un medio, con texto fijo por código (van al reporte de la corrida, sin claves
- * de R2 ni datos del aviso).
+ * Advertencias que solo el procesador puede saber (las del video, F2-T08), con texto fijo por
+ * código: van al reporte de la corrida, sin claves de R2 ni datos del aviso. Las de tamaño de una
+ * foto no van aquí: las calcula core desde el ancho guardado (`photoSizeWarnings`), en cada corrida.
  */
 export const MEDIA_WARNING_TEXT = {
-  IMAGE_SMALL_FOR_INSTAGRAM:
-    "La foto mide menos de 1080 px de ancho: se amplió para Instagram y puede verse borrosa",
-  IMAGE_SMALL_FOR_PORTAL:
-    "La foto mide menos de 1200 px de ancho: Portal Inmobiliario recomienda fotos más grandes",
+  VIDEO_TOO_SHORT:
+    "El video dura menos de 3 s: Instagram no acepta reels tan cortos, así que no se armó",
+  VIDEO_TRIMMED: "El video dura más de 90 s: el reel se cortó en los primeros 90 s",
 } as const;
 export type MediaWarningCode = keyof typeof MEDIA_WARNING_TEXT;
 export type MediaWarning = { code: MediaWarningCode; message: string };
@@ -46,7 +46,6 @@ export type ProcessedImage = {
   measurements: MediaMeasurements;
   /** Una por variante pedida, en el mismo orden. */
   outputs: ImageOutput[];
-  warnings: MediaWarning[];
 };
 
 export type ProcessedVideo = {

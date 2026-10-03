@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { isAppError } from "@agentsales/core";
 import sharp from "sharp";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMediaProcessor, MEDIA_PIPELINE_VERSION } from "../src/index.js";
 import {
   FFMPEG,
@@ -19,9 +20,20 @@ import {
 
 const ALL = ["thumb", "ig_4x5", "pi_4x3"] as const;
 
+const HEIC_PATH = fileURLToPath(HEIC_FIXTURE);
+
 let workDir: string;
+const tempDirs: string[] = [];
+const tempDir = async (prefix: string) => {
+  const dir = await mkdtemp(join(tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+};
 beforeAll(async () => {
-  workDir = await mkdtemp(join(tmpdir(), "agentsales-media-test-"));
+  workDir = await tempDir("agentsales-media-test-");
+});
+afterAll(async () => {
+  await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
 const processor = (overrides: { ffmpegPath?: string } = {}) =>
@@ -42,7 +54,6 @@ describe("processImage: variantes", () => {
     const result = await processor().processImage(input, { mime: "image/jpeg", variants: ALL });
 
     expect(result.measurements).toEqual({ width: 2000, height: 1500, durationS: null });
-    expect(result.warnings).toEqual([]);
     expect(
       result.outputs.map(({ variant, width, height, mime }) => ({ variant, width, height, mime })),
     ).toEqual([
@@ -106,6 +117,8 @@ describe("processImage: variantes", () => {
       expect(metadata.orientation, output.variant).toBeUndefined();
       expect(metadata.space, output.variant).toBe("srgb");
       expect(metadata.icc, output.variant).toBeUndefined();
+      expect(metadata.iptc, output.variant).toBeUndefined();
+      expect(metadata.tifftagPhotoshop, output.variant).toBeUndefined();
       // Ni rastro de la ubicación ni del equipo en los bytes.
       const text = Buffer.from(output.bytes).toString("latin1");
       expect(text).not.toContain("Fabricante Inventado");
@@ -114,30 +127,41 @@ describe("processImage: variantes", () => {
   });
 });
 
-describe("processImage: fotos chicas y archivos dañados", () => {
-  it.each([
-    [800, ["IMAGE_SMALL_FOR_INSTAGRAM", "IMAGE_SMALL_FOR_PORTAL"]],
-    [1100, ["IMAGE_SMALL_FOR_PORTAL"]],
-    [1300, []],
-  ])("una foto de %i px de ancho deja %j", async (width, codes) => {
-    const input = await syntheticPhoto(width, Math.round((width * 3) / 4));
-    const result = await processor().processImage(input, { mime: "image/jpeg", variants: ALL });
+describe("processImage: fotos chicas, transparencia y archivos dañados", () => {
+  it.each([800, 1100, 1300])(
+    "una foto de %i px de ancho igual se arma: ig_4x5 y pi_4x3 se amplían, el thumb no",
+    async (width) => {
+      // La advertencia de foto chica la calcula core desde el ancho guardado (photoSizeWarnings).
+      const input = await syntheticPhoto(width, Math.round((width * 3) / 4));
+      const result = await processor().processImage(input, { mime: "image/jpeg", variants: ALL });
 
-    expect(result.warnings.map((warning) => warning.code)).toEqual(codes);
-    // Igual se arma: ig_4x5 y pi_4x3 se amplían; el thumb no.
-    const sizes = Object.fromEntries(result.outputs.map((o) => [o.variant, [o.width, o.height]]));
-    expect(sizes.ig_4x5).toEqual([1080, 1350]);
-    expect(sizes.pi_4x3).toEqual([1600, 1200]);
-    expect(sizes.thumb?.[0]).toBe(Math.min(width, 800));
-  });
+      const sizes = Object.fromEntries(result.outputs.map((o) => [o.variant, [o.width, o.height]]));
+      expect(sizes.ig_4x5).toEqual([1080, 1350]);
+      expect(sizes.pi_4x3).toEqual([1600, 1200]);
+      expect(sizes.thumb?.[0]).toBe(Math.min(width, 800));
+      expect(result.measurements.width).toBe(width);
+    },
+  );
 
-  it("sin las variantes de Instagram y Portal no avisa", async () => {
-    const input = await syntheticPhoto(400, 300);
+  it("una PNG con transparencia sale sobre fondo blanco, no negro", async () => {
+    const input = new Uint8Array(
+      await sharp({
+        create: {
+          width: 1200,
+          height: 900,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+      })
+        .png()
+        .toBuffer(),
+    );
     const result = await processor().processImage(input, {
-      mime: "image/jpeg",
+      mime: "image/png",
       variants: ["thumb"],
     });
-    expect(result.warnings).toEqual([]);
+    const [r = 0, g = 0, b = 0] = await pixel(result.outputs[0]?.bytes ?? new Uint8Array(), 10, 10);
+    expect(Math.min(r, g, b)).toBeGreaterThan(240);
   });
 
   it.each([
@@ -147,8 +171,16 @@ describe("processImage: fotos chicas y archivos dañados", () => {
   ])("%s → MEDIA_DECODE_FAILED, no reintentable", async (_, mime, bytes) => {
     const photo = await syntheticPhoto(1200, 900);
     const input = bytes ?? photo.slice(0, Math.floor(photo.length / 2));
-    const error = await errorOf(processor().processImage(input, { mime, variants: ALL }));
+    const dir = await tempDir("agentsales-media-bad-");
+    const error = await errorOf(
+      createMediaProcessor({ ffmpegPath: FFMPEG, ffprobePath: FFPROBE, workDir: dir }).processImage(
+        input,
+        { mime, variants: ALL },
+      ),
+    );
     expect([error.code, error.retriable]).toEqual(["MEDIA_DECODE_FAILED", false]);
+    // El HEIC que no se pudo leer tampoco deja su copia en el temporal.
+    expect(await readdir(dir)).toEqual([]);
   });
 });
 
@@ -158,14 +190,14 @@ describe("processImage: HEIC con ffmpeg", () => {
       "-v",
       "error",
       "-show_stream_groups",
-      HEIC_FIXTURE.pathname,
+      HEIC_PATH,
     ]).toString();
     expect(output).toContain("type=Tile Grid");
   });
 
   it("sale en JPEG completo, derecho y sin metadatos, y borra su temporal", async () => {
     const input = new Uint8Array(await readFile(HEIC_FIXTURE));
-    const dir = await mkdtemp(join(tmpdir(), "agentsales-media-heic-"));
+    const dir = await tempDir("agentsales-media-heic-");
     const result = await createMediaProcessor({
       ffmpegPath: FFMPEG,
       ffprobePath: FFPROBE,
@@ -209,6 +241,7 @@ describe("processImage: HEIC con ffmpeg", () => {
 
   it("un ffmpeg anterior a 8.1 → MEDIA_TOOL_NOT_INSTALLED", async () => {
     const fake = await fakeFfmpeg("7.1.1");
+    tempDirs.push(fake.dir);
     const input = new Uint8Array(await readFile(HEIC_FIXTURE));
     const error = await errorOf(
       processor({ ffmpegPath: fake.path }).processImage(input, {
@@ -232,6 +265,22 @@ describe("processImage: cortar con signal", () => {
     expect([error.code, error.retriable]).toEqual(["MEDIA_ABORTED", true]);
   });
 
+  it("cortar una foto HEIC no corta otra que se procesa a la vez", async () => {
+    const input = new Uint8Array(await readFile(HEIC_FIXTURE));
+    const shared = processor();
+    const controller = new AbortController();
+    const cut = shared.processImage(
+      input,
+      { mime: "image/heic", variants: ["thumb"] },
+      controller.signal,
+    );
+    const other = shared.processImage(input, { mime: "image/heic", variants: ["thumb"] });
+    controller.abort();
+
+    expect((await errorOf(cut)).code).toBe("MEDIA_ABORTED");
+    expect((await other).outputs).toHaveLength(1);
+  });
+
   it("cortar mientras ffmpeg trabaja lo termina", async () => {
     const fake = await fakeFfmpeg("9.0.1");
     const input = new Uint8Array(await readFile(HEIC_FIXTURE));
@@ -242,11 +291,15 @@ describe("processImage: cortar con signal", () => {
       controller.signal,
     );
     const pidFile = join(fake.dir, "pid");
-    const pid = await waitFor(async () => Number(await readFile(pidFile, "utf8")));
+    const pid = await waitFor(async () => {
+      const value = Number(await readFile(pidFile, "utf8"));
+      return Number.isInteger(value) && value > 0 ? value : undefined;
+    });
     controller.abort();
 
     expect((await errorOf(pending)).code).toBe("MEDIA_ABORTED");
     await waitFor(async () => (alive(pid) ? undefined : true));
+    tempDirs.push(fake.dir);
   });
 });
 
@@ -275,7 +328,7 @@ async function waitFor<T>(read: () => Promise<T | undefined>): Promise<T> {
   for (;;) {
     try {
       const value = await read();
-      if (value !== undefined && !Number.isNaN(value)) return value;
+      if (value !== undefined) return value;
     } catch {
       // todavía no está
     }

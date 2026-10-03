@@ -6,13 +6,10 @@ import {
   AppError,
   type ImageOutput,
   type ImageVariant,
-  MEDIA_WARNING_TEXT,
-  type MediaWarning,
-  type MediaWarningCode,
   type ProcessedImage,
 } from "@agentsales/core";
 import sharp, { type OutputInfo } from "sharp";
-import { IMAGE_VARIANT_SPECS, MIN_WIDTH } from "./pipeline.js";
+import { IMAGE_VARIANT_SPECS } from "./pipeline.js";
 import { CommandFailedError, runTool, throwIfAborted } from "./run.js";
 
 /** HEIF y HEIC (fotos del iPhone): sharp no los decodifica, ffmpeg sí (`heic-conversion.md`). */
@@ -100,7 +97,11 @@ export async function processImage(
   for (const variant of variants) {
     throwIfAborted(signal);
     const spec = IMAGE_VARIANT_SPECS[variant];
-    const pipeline = sharp(source).rotate().toColourspace("srgb");
+    // JPEG no tiene transparencia: una PNG o WebP con alfa se aplana sobre blanco (no negro).
+    const pipeline = sharp(source)
+      .rotate()
+      .flatten({ background: "#ffffff" })
+      .toColourspace("srgb");
     const resized =
       spec.fit === "inside"
         ? pipeline.resize(spec.maxSide, spec.maxSide, { fit: "inside", withoutEnlargement: true })
@@ -126,11 +127,5 @@ export async function processImage(
     });
   }
 
-  const warnings: MediaWarning[] = [];
-  const warn = (code: MediaWarningCode) =>
-    warnings.push({ code, message: MEDIA_WARNING_TEXT[code] });
-  if (variants.includes("ig_4x5") && width < MIN_WIDTH.instagram) warn("IMAGE_SMALL_FOR_INSTAGRAM");
-  if (variants.includes("pi_4x3") && width < MIN_WIDTH.portal) warn("IMAGE_SMALL_FOR_PORTAL");
-
-  return { measurements: { width, height, durationS: null }, outputs, warnings };
+  return { measurements: { width, height, durationS: null }, outputs };
 }
