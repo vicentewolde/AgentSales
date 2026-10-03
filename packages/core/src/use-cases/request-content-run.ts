@@ -55,13 +55,18 @@ export async function requestContentRun(
       details: { listingId },
     });
   }
-  const photos = (await deps.media.listOriginals(listingId)).filter((m) => m.kind === "image");
-  if (!PREPARABLE.includes(listing.status) || photos.length === 0) {
+  if (!PREPARABLE.includes(listing.status)) {
     throw new AppError(
       "LISTING_NOT_READY",
-      photos.length === 0
-        ? "El aviso no tiene fotos: agrégalas en la carpeta de medios y vuelve a importar"
-        : "El aviso tiene que estar listo, pausado o publicado para preparar su contenido",
+      "El aviso tiene que estar listo, pausado o publicado para preparar su contenido",
+      { details: { listingId, status: listing.status } },
+    );
+  }
+  const photos = (await deps.media.listOriginals(listingId)).filter((m) => m.kind === "image");
+  if (photos.length === 0) {
+    throw new AppError(
+      "LISTING_NOT_READY",
+      "El aviso no tiene fotos: agrégalas en la carpeta de medios y vuelve a importar",
       { details: { listingId, status: listing.status } },
     );
   }

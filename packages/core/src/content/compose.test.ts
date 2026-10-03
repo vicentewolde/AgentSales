@@ -69,6 +69,14 @@ describe("composeCarousel", () => {
     expect(carousel.filter((m) => m.variant === "ig_4x5")).toHaveLength(8);
   });
 
+  it("con portada y sin ficha: la portada y hasta 9 fotos", () => {
+    const media = listingMedia(12).filter((m) => m.variant !== "spec_sheet");
+    const carousel = composeCarousel(media);
+    expect(carousel).toHaveLength(10);
+    expect(carousel[0]?.variant).toBe("cover");
+    expect(carousel.filter((m) => m.variant === "ig_4x5")).toHaveLength(9);
+  });
+
   it("sin renders, solo las fotos (incluida la de portada)", () => {
     const carousel = composeCarousel(listingMedia(3, { renders: false }));
     expect(carousel.map((m) => m.variant)).toEqual(["ig_4x5", "ig_4x5", "ig_4x5"]);

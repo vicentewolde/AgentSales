@@ -92,6 +92,36 @@ const ordered = (media: readonly Media[]) =>
 const isDecodeFailed = (error: unknown) =>
   isAppError(error) && error.code === "MEDIA_DECODE_FAILED";
 
+/**
+ * Mensajes fijos para los errores que pueden traer claves de R2 o rutas (`STORAGE_*`, `MEDIA_*`):
+ * el error de la corrida lo muestran la API, el panel y la CLI (spec F2 §4.9).
+ */
+const FIXED_MESSAGES: Readonly<Record<string, string>> = {
+  STORAGE_NOT_FOUND:
+    "Falta un archivo del aviso en el almacenamiento: vuelve a importar sus medios",
+  STORAGE_UNAVAILABLE: "El almacenamiento de archivos no respondió",
+  STORAGE_ERROR: "El almacenamiento de archivos rechazó la operación",
+  STORAGE_CONTENT_MISMATCH: "Un archivo cambió mientras se subía",
+  MEDIA_CONFLICT: "Otra preparación del mismo aviso escribió los medios al mismo tiempo",
+  MEDIA_NOT_FOUND: "Falta un medio del aviso",
+};
+
+/**
+ * El error que se guarda en la corrida: sin claves de R2 ni rutas absolutas (dos o más tramos; un
+ * comando como `/login` queda).
+ */
+export function contentRunErrorOf(error: AppError): { code: string; message: string } {
+  const message =
+    FIXED_MESSAGES[error.code] ??
+    error.message
+      .replace(/brokers\/\S+/g, "<archivo>")
+      .replace(/(?:^|\s)\/[^\s/]+\/\S+/g, " <ruta>");
+  return { code: error.code, message };
+}
+
+/** La corrida ya no está en `running` (la cerró otro intento): este intento termina `skipped`. */
+class RunClosed extends Error {}
+
 function normalized(error: unknown): AppError {
   return isAppError(error)
     ? error
@@ -141,12 +171,13 @@ export async function prepareContent(
     await stage(state, "reel", () => reelStage(state));
     if (run.texts) contents = await stage(state, "texts", () => textsStage(state));
   } catch (caught) {
+    if (caught instanceof RunClosed) return skipped(deps, run);
     const error = normalized(caught);
     // Corte por apagado: la corrida queda en `running`; la retoma pg-boss o la limpieza.
     if (signal?.aborted) throw error;
     if (!error.retriable || isLastAttempt) {
       await deps.contentRuns
-        .markFailed(run.id, { code: error.code, message: error.message }, report)
+        .markFailed(run.id, contentRunErrorOf(error), report)
         .catch(() => false);
     }
     throw error;
@@ -162,14 +193,17 @@ async function skipped(deps: PrepareContentDeps, run: ContentRun): Promise<Prepa
   return { outcome: "skipped", status: current?.status ?? run.status };
 }
 
-/** Marca la etapa (si la corrida sigue en `running`) y la corre. */
+/**
+ * Marca la etapa y la corre. Si la corrida ya no está en `running` (la cerró un intento solapado),
+ * este intento se detiene en el acto: no sigue gastando la IA ni el procesador.
+ */
 async function stage<T>(state: Run, name: ContentRunStage, work: () => Promise<T>): Promise<T> {
   if (state.signal?.aborted) {
     throw new AppError("CONTENT_RUN_ABORTED", "Se cortó la corrida de contenido", {
       retriable: true,
     });
   }
-  await state.deps.contentRuns.setStage(state.run.id, name);
+  if (!(await state.deps.contentRuns.setStage(state.run.id, name))) throw new RunClosed();
   return work();
 }
 
@@ -332,10 +366,24 @@ async function processVideoThumb(state: Run, original: Media) {
   return [result.thumb];
 }
 
+const isSlideMime = (mime: string): mime is SlideImageMime =>
+  (SLIDE_IMAGE_MIMES as readonly string[]).includes(mime);
+
 /** La referencia de una imagen guardada (para la clave del render), si se puede incrustar. */
 function imageRef(media: Media | null): SlideImageRef | null {
-  if (media === null || !(SLIDE_IMAGE_MIMES as readonly string[]).includes(media.mime)) return null;
-  return { mime: media.mime as SlideImageMime, sha256: media.checksum };
+  if (media === null || !isSlideMime(media.mime)) return null;
+  return { mime: media.mime, sha256: media.checksum };
+}
+
+/** Borra un derivado vigente y su objeto: mejor no tener uno que tener uno desactualizado. */
+async function dropDerivative(state: Run, media: Media | null | undefined): Promise<void> {
+  if (media === null || media === undefined) return;
+  const path = await state.deps.media.deleteDerivative(media.id);
+  if (path !== null) {
+    await state.deps.storage
+      .delete(path)
+      .catch((error: unknown) => state.deps.onCleanupFailed?.(path, error));
+  }
 }
 
 /**
@@ -350,8 +398,13 @@ async function rendersStage(state: Run): Promise<void> {
   const photo = coverOriginal === null ? null : variantOf(media, coverOriginal.id, "ig_4x5");
   const photoRef = imageRef(photo);
   if (photo === null || photoRef === null) {
-    // `mediaStage` ya exige al menos una foto procesada; la de portada pudo fallar.
+    // `mediaStage` ya exige al menos una foto procesada; la de portada pudo fallar. La portada
+    // anterior (con otra foto o datos viejos) no queda vigente.
     state.report.warnings.push("La foto de portada no se pudo procesar: no se armó la portada");
+    await dropDerivative(
+      state,
+      media.find((item) => item.role === "rendered" && item.variant === "cover"),
+    );
   }
 
   const logo = broker.logoMediaId === null ? null : await deps.media.get(broker.logoMediaId);
@@ -465,8 +518,10 @@ async function reelStage(state: Run): Promise<void> {
   }
   for (const warning of reelWarnings(first.durationS))
     state.report.warnings.push(`Video 1: ${warning.message}`);
+  const currentReel = variantOf(media, first.id, "ig_reel");
   if (first.durationS === null || first.durationS < REEL_MIN_DURATION_S) {
     state.report.reel = "skipped";
+    await dropDerivative(state, currentReel);
     return;
   }
 
@@ -478,7 +533,7 @@ async function reelStage(state: Run): Promise<void> {
     }),
   );
   const storagePath = reelPath(ids, first.checksum, textKey);
-  if (variantOf(media, first.id, "ig_reel")?.storagePath === storagePath) {
+  if (currentReel?.storagePath === storagePath) {
     state.report.reel = "existing";
     return;
   }
@@ -501,6 +556,7 @@ async function reelStage(state: Run): Promise<void> {
     const reel = result.reel;
     if (reel === null) {
       state.report.reel = "skipped";
+      await dropDerivative(state, currentReel);
       return;
     }
     await saveDerivative(
@@ -531,6 +587,8 @@ async function reelStage(state: Run): Promise<void> {
   } catch (error) {
     // El video no se pudo armar como reel: aviso de ese video; la siguiente corrida lo reintenta.
     if (!isDecodeFailed(error)) throw error;
+    // El reel anterior tiene el texto viejo (por ejemplo, otro precio): no queda vigente.
+    await dropDerivative(state, currentReel);
     state.report.reel = "skipped";
     state.report.warnings.push(
       "Video 1: no se pudo armar el reel (formato no válido o archivo dañado)",

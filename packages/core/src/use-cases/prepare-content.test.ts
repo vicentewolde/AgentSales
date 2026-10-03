@@ -524,3 +524,192 @@ describe("prepareContent · errores", () => {
     await expect(t.prepare("no-existe")).rejects.toMatchObject({ code: "CONTENT_RUN_NOT_FOUND" });
   });
 });
+
+describe("prepareContent · revisión de F2-T10", () => {
+  it("un reintento real retoma sin repetir: medios existentes, sin subidas nuevas, y termina succeeded", async () => {
+    const t = await setup({
+      llm: [{ error: LLM_ERRORS.unavailable() }, { data: SAMPLE_CONTENT_DRAFT }],
+    });
+    const runId = await t.newRun();
+    await expect(t.prepare(runId, false)).rejects.toMatchObject({ code: "LLM_UNAVAILABLE" });
+    const uploads = t.storage.uploads.length;
+    const calls = t.processor.calls.length;
+
+    const retry = await t.prepare(runId, true);
+
+    expect(retry).toMatchObject({
+      outcome: "succeeded",
+      report: { media: { processed: 0, existing: 4 }, renders: { existing: 2 }, reel: "existing" },
+    });
+    expect(t.storage.uploads).toHaveLength(uploads);
+    expect(t.processor.calls).toHaveLength(calls);
+  });
+
+  it("las medidas se guardan antes que las variantes: si la subida falla, la siguiente rehace solo variantes", async () => {
+    const t = await setup({ originals: [PHOTOS[0] as Original] });
+    const failing = {
+      ...t.deps,
+      storage: {
+        ...t.storage,
+        put: async () => {
+          throw new AppError("STORAGE_UNAVAILABLE", "R2 no responde brokers/x/y", {
+            retriable: true,
+          });
+        },
+      },
+    };
+    const runId = await t.newRun();
+    await expect(
+      prepareContent(failing, { contentRunId: runId, isLastAttempt: true }),
+    ).rejects.toMatchObject({ code: "STORAGE_UNAVAILABLE" });
+
+    const photo = await t.media.get(t.ids["foto-1"] ?? "");
+    expect(photo?.width).toBe(2000);
+    expect(await t.derivatives()).toEqual([]);
+    // El error guardado no lleva la clave de R2.
+    expect(await t.contentRepos.contentRuns.get(runId)).toMatchObject({
+      status: "failed",
+      error: { code: "STORAGE_UNAVAILABLE", message: "El almacenamiento de archivos no respondió" },
+    });
+
+    await t.prepare(await t.newRun());
+    const lastCall = t.processor.calls.at(-1);
+    expect(lastCall).toMatchObject({ kind: "image", variants: ["thumb", "ig_4x5", "pi_4x3"] });
+    expect(variantsOf(await t.derivatives(), "ig_4x5")).toHaveLength(1);
+  });
+
+  it("un corte a mitad de corrida (signal) relanza sin marcar failed, aun con un error no reintentable", async () => {
+    const t = await setup();
+    const controller = { aborted: false, addEventListener() {}, removeEventListener() {} };
+    const processor = t.deps.processor;
+    const cutting = {
+      ...t.deps,
+      processor: {
+        version: processor.version,
+        processVideo: processor.processVideo,
+        async processImage() {
+          controller.aborted = true;
+          throw new AppError("MEDIA_TOOL_NOT_INSTALLED", "falta ffmpeg");
+        },
+      },
+    };
+    const runId = await t.newRun();
+
+    await expect(
+      prepareContent(cutting, { contentRunId: runId, isLastAttempt: true, signal: controller }),
+    ).rejects.toMatchObject({ code: "MEDIA_TOOL_NOT_INSTALLED" });
+    expect((await t.contentRepos.contentRuns.get(runId))?.status).toBe("running");
+  });
+
+  it("si otro intento cerró la corrida, este se detiene en la siguiente etapa: sin IA y skipped", async () => {
+    const t = await setup();
+    const runId = await t.newRun();
+    const repos = t.contentRepos.contentRuns;
+    const closing = {
+      ...t.deps,
+      contentRuns: {
+        ...repos,
+        async setStage(id: string, stage: Parameters<typeof repos.setStage>[1]) {
+          // El intento solapado terminó la corrida justo antes de la etapa del reel.
+          if (stage === "reel")
+            await repos.markFailed(id, { code: "OTRO", message: "otro intento" });
+          return repos.setStage(id, stage);
+        },
+      },
+    };
+
+    const result = await prepareContent(closing, { contentRunId: runId, isLastAttempt: true });
+
+    expect(result).toEqual({ outcome: "skipped", status: "failed" });
+    expect(t.llm.requests).toEqual([]);
+    expect(variantsOf(await t.derivatives(), "ig_reel")).toEqual([]);
+  });
+
+  it("si el reel no se puede rehacer (tras un cambio de precio), el anterior no queda vigente", async () => {
+    const t = await setup();
+    await t.prepare(await t.newRun());
+    const oldReel = variantsOf(await t.derivatives(), "ig_reel")[0];
+
+    await t.listings.update(t.listingId, {
+      ...t.listingData,
+      priceAmount: 5900,
+      sourceHash: "hash-2",
+    });
+    const broken = {
+      ...t.deps,
+      processor: {
+        ...t.deps.processor,
+        version: t.deps.processor.version,
+        processImage: t.deps.processor.processImage,
+        async processVideo() {
+          throw new AppError("MEDIA_DECODE_FAILED", "No se pudo leer el medio");
+        },
+      },
+    };
+    const runId = await t.newRun();
+    await prepareContent(broken, { contentRunId: runId, isLastAttempt: true });
+
+    expect(variantsOf(await t.derivatives(), "ig_reel")).toEqual([]);
+    expect(t.storage.objects.has(oldReel?.storagePath ?? "")).toBe(false);
+    expect((await t.contentRepos.contentRuns.get(runId))?.report?.reel).toBe("skipped");
+  });
+
+  it("si la foto de portada no se puede procesar, la portada anterior no queda vigente", async () => {
+    const t = await setup();
+    await t.prepare(await t.newRun());
+    expect(variantsOf(await t.derivatives(), "cover")).toHaveLength(1);
+
+    // La foto marcada como portada se reemplaza por una ilegible.
+    const corrupt = await t.media.create({
+      listingId: t.listingId,
+      brokerId: contentBrokerFixture().id,
+      kind: "image",
+      storagePath: "brokers/x/listings/y/original/corrupta",
+      mime: "image/jpeg",
+      bytes: 8,
+      checksum: "sha-corrupta",
+      sortOrder: 9,
+      isCover: false,
+    });
+    await t.storage.put("brokers/x/listings/y/original/corrupta", text("CORRUPTO"), "image/jpeg");
+    await t.media.arrange(t.listingId, [{ id: corrupt.id, sortOrder: 9, isCover: true }]);
+    const runId = await t.newRun();
+    await t.prepare(runId);
+
+    expect(variantsOf(await t.derivatives(), "cover")).toEqual([]);
+    expect((await t.contentRepos.contentRuns.get(runId))?.report?.warnings).toContain(
+      "La foto de portada no se pudo procesar: no se armó la portada",
+    );
+  });
+
+  it("el reporte no lleva claves de R2 ni la dirección (las advertencias de la IA sí van)", async () => {
+    const t = await setup({
+      originals: [{ name: "CORRUPTO-1", kind: "image" }, ...PHOTOS, VIDEO],
+      photoWidth: 900,
+      llm: [{ data: { ...SAMPLE_CONTENT_DRAFT, warnings: ["Se omitió un requisito"] } }],
+    });
+    const runId = await t.newRun();
+    await t.prepare(runId);
+
+    const report = JSON.stringify((await t.contentRepos.contentRuns.get(runId))?.report);
+    expect(report).not.toContain("brokers/");
+    expect(report).not.toContain("Calle Inventada");
+    expect(report).toContain("Se omitió un requisito");
+  });
+
+  it("después de varias corridas, en R2 quedan solo los originales y los derivados vigentes", async () => {
+    const t = await setup();
+    await t.prepare(await t.newRun());
+    await t.listings.update(t.listingId, {
+      ...t.listingData,
+      priceAmount: 5900,
+      sourceHash: "hash-2",
+    });
+    await t.prepare(await t.newRun());
+
+    const all = await t.media.listByListing(t.listingId);
+    expect([...t.storage.objects.keys()].sort()).toEqual(
+      all.map((item) => item.storagePath).sort(),
+    );
+  });
+});

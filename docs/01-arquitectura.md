@@ -528,13 +528,13 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 - **`prepareContent`** (core, handler del job): cuatro etapas idempotentes. Cada una rehace solo lo que falta, comparando las claves de R2, que son determinísticas (`variantPath`, `renderPath` y `reelPath`, en `packages/core/src/content/media-keys.ts`).
   - `media`: medidas antes que variantes.
   - `renders`: la clave sale de `renderInput`, con las imágenes por su sha256 (`slideKeyInput`); se descargan solo si cambió.
-  - `reel`: con el primer video; borra el de otro video. Un video corto no se vuelve a descargar.
+  - `reel`: con el primer video; borra el de otro video. Un video corto no se vuelve a descargar. Si el reel o la portada no se pueden rehacer, se borra el anterior: mejor ninguno que uno con datos viejos.
   - `texts`: el mismo contexto (`buildContentCheckContext`) para la IA, el ensamblado y la revisión.
 - **Avisos y errores:**
   - Los avisos de foto chica y de largo del reel se calculan en cada corrida desde las medidas guardadas, con la posición del medio (`Foto 2: …`) y sin claves de R2.
   - Un medio ilegible es un aviso; sin ninguna foto procesada, `CONTENT_NO_PHOTOS`.
   - Un error no reintentable, o el último intento, deja la corrida en `failed` con el reporte hasta donde llegó, salvo que el worker se esté apagando (`signal`).
-- **Composición** (para leer, F2-T12): `composeCarousel` (portada, hasta 8 fotos y ficha), `composePhotoSet` (`pi_4x3`, la portada primero) y `composeReel`.
+- **Composición** (para leer, F2-T12): `composeCarousel` (portada, fotos y ficha, hasta 10 elementos), `composePhotoSet` (`pi_4x3`, la portada primero) y `composeReel`.
 - **Datos de las plantillas:** salen de una lista fija de campos (`slides-data.ts`), nunca de la dirección.
 
 ## Procesador de medios (`MediaProcessor`, F2-T07)
