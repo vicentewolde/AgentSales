@@ -38,7 +38,7 @@ function deps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     env: { ok: true, env },
     fetchHealth: async () => healthy,
     run: allTools,
-    chromiumDir: "/cache/ms-playwright/chromium-1217",
+    chromium: { path: "/cache/ms-playwright/chromium-1243/chrome", installed: true },
     processEnv: { PATH: "/usr/bin", HOME: "/home/operador" },
     ...overrides,
   };
@@ -167,10 +167,9 @@ describe("runDoctor", () => {
     });
   });
 
-  it("sin Claude ni Chromium solo advierte y sale con 0", async () => {
+  it("sin Claude solo advierte y sale con 0", async () => {
     const report = await runDoctor(
       deps({
-        chromiumDir: null,
         run: async (command) => {
           if (command === "claude") throw new Error("ENOENT");
           return "ffmpeg version 9.0.1";
@@ -179,10 +178,19 @@ describe("runDoctor", () => {
     );
 
     expect(report.exitCode).toBe(0);
-    expect(levels(report.items)).toMatchObject({
-      "Chromium (Playwright)": "warn",
-      "Claude Code": "warn",
-    });
+    expect(levels(report.items)).toMatchObject({ "Claude Code": "warn" });
+  });
+
+  it("sin el Chromium que pide Playwright sale con 1 y dice cómo instalarlo (F2-T09)", async () => {
+    for (const chromium of [{ path: "/cache/chromium-1243/chrome", installed: false }, null]) {
+      const report = await runDoctor(deps({ chromium }));
+
+      expect(report.exitCode).toBe(1);
+      expect(report.items.find((item) => item.name === "Chromium (Playwright)")).toMatchObject({
+        level: "error",
+        hint: "pnpm --filter @agentsales/media exec playwright install chromium",
+      });
+    }
   });
 
   it("la CLI de Claude sin sesión solo advierte, con la instrucción para iniciarla (F2-T04)", async () => {
@@ -394,13 +402,19 @@ describe("runDoctor", () => {
 describe("renderDoctor", () => {
   it("usa ✓, ⚠ y ✗ con sus colores y muestra las sugerencias", async () => {
     const c = createColors(true);
-    const report = await runDoctor(deps({ chromiumDir: null }));
+    const report = await runDoctor(
+      deps({
+        run: async (command, args) => {
+          if (command === "claude") throw new Error("ENOENT");
+          return allTools(command, args);
+        },
+      }),
+    );
 
     const text = renderDoctor(report, c);
 
     expect(text).toContain(c.green("✓"));
     expect(text).toContain(c.yellow("⚠"));
-    expect(text).toContain(c.dim("→ En F5: pnpm exec playwright install chromium"));
     expect(text).toContain(c.green("Todo en orden (1 advertencia(s))"));
   });
 

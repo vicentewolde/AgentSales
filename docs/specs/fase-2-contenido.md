@@ -393,9 +393,15 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Depende de:** T07
 - **Descripción:** puertos `SlideTemplates` y `HtmlRenderer` con los tipos de datos en core; `packages/templates` (`cover`, `specSheet` y `reelOverlay`, Inter e íconos SVG); `createHtmlRenderer` con Playwright en `packages/media` (red bloqueada, tope de 30 s, Chromium compartido, `RENDER_BROWSER_NOT_INSTALLED`). La CI instala Chromium (D6). `doctor` revisa la versión de Chromium. Override de Biome y seguimiento en ADR-0010 (`import.meta.resolve` de la fuente; si no funciona dentro de Vitest, `createRequire(import.meta.url).resolve`). Actualiza `08-guia-operador.md`.
 - **Hecho cuando:**
-  - [ ] Tests de HTML: datos escapados, sin dirección, íconos solo de los datos que existen, colores del corredor, venta y arriendo
-  - [ ] Tests del render: JPEG de 1080×1350 y PNG transparente de 1080×1920; una plantilla que pide una URL externa no la carga
-  - [ ] Imágenes de muestra con datos inventados adjuntas al PR para revisar el diseño
+  - [x] Tests de HTML: datos escapados, sin dirección, íconos solo de los datos que existen, colores del corredor, venta y arriendo
+  - [x] Tests del render: JPEG de 1080×1350 y PNG transparente de 1080×1920; una plantilla que pide una URL externa no la carga
+  - [x] Imágenes de muestra con datos inventados adjuntas al PR para revisar el diseño (`docs/assets/plantillas/`, generadas con `pnpm --filter @agentsales/media run render:samples`)
+- **Hecho en:**
+  - **core:** `ports/slide-templates.ts` con `CoverData`, `SpecSheetData`, `ReelOverlayData`, `SlideImage`, `SlideBrand`, `SLIDE_ICONS`, `SLIDE_SIZES`, `SlideTemplates` y `HtmlRenderer`. Los textos llegan formateados; los datos no tienen dirección.
+  - **`packages/templates`:** `createSlideTemplates()` (sincrónico; lee Inter una vez) y `TEMPLATES_VERSION`. Los colores inválidos caen en un respaldo, y el texto se lee claro u oscuro según el fondo. La ficha muestra hasta 10 filas.
+  - **`packages/media`:** `createHtmlRenderer({ timeoutMs?, executablePath? })` con Playwright 1.63, un contexto por render sin red (todas las rutas se cortan y `offline`) ni JavaScript de la página, y `close()`. Errores `RENDER_BROWSER_NOT_INSTALLED`, `RENDER_TIMEOUT` y `RENDER_ABORTED` (reintentables los dos últimos) y `RENDER_FAILED`.
+  - **`doctor`:** `chromiumStatus()` de `@agentsales/media/tools` (Playwright se carga solo ahí); desde F2, la falta de Chromium es error. Se quitó la búsqueda propia de la carpeta de Playwright.
+  - **CI:** `playwright install --with-deps chromium`, con caché por versión de Playwright.
 
 ### F2-T10 · Caso de uso `prepareContent`
 - **Depende de:** T02, T03, T06, T07 (puerto), T09 (puertos)
@@ -520,3 +526,4 @@ Resueltas con la recomendación del spec, por la aprobación permanente del oper
 | 2026-10-03 | Desde la revisión de F2-T07 (PR #40): las advertencias de foto chica las calcula core en cada corrida desde el ancho guardado (`photoSizeWarnings`, con los umbrales en `PHOTO_MIN_WIDTH`), y `processImage` ya no devuelve advertencias; las del procesador son solo del video (`VIDEO_TOO_SHORT` y `VIDEO_TRIMMED`, definidas en core para T08); `MEDIA_ABORTED` en §4.2 y entre los reintentables de §4.4; las fotos con transparencia se aplanan sobre blanco |
 | 2026-10-03 | Desde F2-T08: el fondo del reel se desenfoca en chico y se amplía (mismo efecto, cuatro veces más rápido); el `thumb` de un video es el cuadro del segundo 1; `VIDEO_TOO_SHORT` y `VIDEO_TRIMMED` solo cuando se pide reel; opción `threads` del procesador para limitar a ffmpeg (los tests usan 2) |
 | 2026-10-03 | Desde la revisión de F2-T08 (PR #41): `processVideo` ya no devuelve advertencias; las del reel las calcula core con `reelWarnings` desde la duración guardada (`REEL_MIN_DURATION_S` y `REEL_MAX_DURATION_S`), así no se pierden en corridas siguientes y un video corto no se vuelve a descargar; un fallo al armar el reel es `MEDIA_DECODE_FAILED` (aviso de ese video) y borra el reel a medias; copia del video con `pipeline` (un disco lleno rechaza); duración de la pista si el contenedor no la da, y sin carátulas adjuntas |
+| 2026-10-03 | Desde F2-T09: errores del renderizador `RENDER_TIMEOUT` y `RENDER_ABORTED` (reintentables) y `RENDER_FAILED`, además de `RENDER_BROWSER_NOT_INSTALLED`; los métodos de `SlideTemplates` son sincrónicos (la fuente se lee al crearlas) y los datos llegan con los textos ya formateados y un ícono por dato (`SLIDE_ICONS`); el render corre sin JavaScript de la página; `doctor` marca como error la falta de Chromium (antes, advertencia para F5); `import.meta.resolve` funcionó en Vitest (sin el respaldo con `createRequire`) |

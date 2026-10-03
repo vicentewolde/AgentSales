@@ -36,3 +36,4 @@ Las herramientas del stack aceptan condiciones de exportación propias: `tsc` co
 - 2026-09-29 (F0-T04): verificado sin `dist/` con `tsc -b`, Vitest, tsx (`db:migrate`, `db:seed`, `storage:check`) y drizzle-kit (`db:generate` con `NODE_OPTIONS`).
 - 2026-09-29 (F0-T04): Vitest no incluye la condición `module`: con ella carga builds ESM de dependencias (por ejemplo `@aws-sdk/checksums`) que no corren en Node sin bundler.
 - 2026-09-29 (F0-T08): Vite usa `resolve.conditions: ["@agentsales/source", ...defaultClientConditions]`. Los tests del panel en jsdom usan `resolve.conditions` de `vitest.config.ts` (condiciones de navegador), no las de `ssr`.
+- 2026-10-03 (F2-T09): `import.meta.resolve` funciona en Node, tsx y Vitest para ubicar archivos de una dependencia (la fuente Inter de `@fontsource/inter`, `packages/templates/src/fonts.ts`), sin el respaldo con `createRequire` que preveía el spec.

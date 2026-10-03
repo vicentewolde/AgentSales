@@ -32,6 +32,9 @@
       "path": "./packages/media"
     },
     {
+      "path": "./packages/templates"
+    },
+    {
       "path": "./apps/api"
     },
     {

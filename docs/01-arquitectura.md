@@ -62,7 +62,7 @@ flowchart LR
 ## Estilo: puertos y adaptadores
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
-- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider`, `MediaProcessor`, `SlideTemplates`, `HtmlRenderer` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `JobQueue`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository`, `ImportRunRepository`, `ContentRunRepository`, `ContentRepository`, `LLMProvider` y `MediaProcessor` (`packages/core/src/ports/`); el resto llega en su fase (F2: `SlideTemplates` y `HtmlRenderer`, spec F2 §4.1). `MediaProcessor` (F2-T07) lo implementa `createMediaProcessor` de `packages/media` con sharp y ffmpeg: las fotos (también HEIC, que ffmpeg 8.1 o más nuevo arma desde sus mosaicos) salen rotadas, en sRGB, sin metadatos y en las variantes `thumb`, `ig_4x5` y `pi_4x3`, con su sha256; los parámetros y su versión (`MEDIA_PIPELINE_VERSION`) viven en `packages/media/src/pipeline.ts`. Los videos (F2-T08) se miden con ffprobe, dan su `thumb` y, en la etapa `reel`, el reel de Instagram. Contrato en "Procesador de medios", más abajo.
+- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider`, `MediaProcessor`, `SlideTemplates`, `HtmlRenderer` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `JobQueue`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository`, `ImportRunRepository`, `ContentRunRepository`, `ContentRepository`, `LLMProvider`, `MediaProcessor`, `SlideTemplates` y `HtmlRenderer` (`packages/core/src/ports/`); `Publisher` llega en F3. `MediaProcessor` (F2-T07) lo implementa `createMediaProcessor` de `packages/media` con sharp y ffmpeg: las fotos (también HEIC, que ffmpeg 8.1 o más nuevo arma desde sus mosaicos) salen rotadas, en sRGB, sin metadatos y en las variantes `thumb`, `ig_4x5` y `pi_4x3`, con su sha256; los parámetros y su versión (`MEDIA_PIPELINE_VERSION`) viven en `packages/media/src/pipeline.ts`. Los videos (F2-T08) se miden con ffprobe, dan su `thumb` y, en la etapa `reel`, el reel de Instagram. Contrato en "Procesador de medios", más abajo. `SlideTemplates` (F2-T09) lo implementa `createSlideTemplates` de `packages/templates` y `HtmlRenderer`, `createHtmlRenderer` de `packages/media`: ver "Plantillas y render".
 - Cola (ADR-0005): el adaptador de pg-boss vive en `packages/queue` desde F1-T08 (en F0 estaba en el worker). Implementa `JobQueue` e incluye `QUEUE_SCHEMA` y `checkQueueSchema`. La API, como `producer`, arranca pg-boss de forma diferida en el primer `enqueue`, y su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
@@ -537,6 +537,20 @@ interface MediaProcessor {
 - Errores: `MEDIA_DECODE_FAILED` (el archivo no se puede leer: advertencia de ese medio, la corrida sigue), `MEDIA_TOOL_NOT_INSTALLED` (falta ffmpeg o ffprobe, o es anterior a 8.1; no reintentable, con el comando para instalarlo) y `MEDIA_ABORTED` (reintentable: se cortó con `signal` y ffmpeg terminó).
 - El procesador no devuelve advertencias: las de tamaño de una foto y de largo del reel las calcula core desde las medidas guardadas (`photoSizeWarnings` y `reelWarnings`, `packages/core/src/media-checks.ts`), en cada corrida. Un video de menos de 3 s no da reel; uno de más de 90 s se corta.
 - Los tests de core usan `createInMemoryMediaProcessor` (`@agentsales/core/testing`), con la misma semántica (salidas deterministas por entrada, `CORRUPTO…` ilegible, reel con los topes de 3 y 90 s).
+
+## Plantillas y render (`SlideTemplates` y `HtmlRenderer`, F2-T09)
+
+- **Datos:** `CoverData`, `SpecSheetData` y `ReelOverlayData` son de core (`packages/core/src/ports/slide-templates.ts`). Traen los textos ya formateados (`UF 5.800`, `72,5 m²`), los íconos de cada dato (`SLIDE_ICONS`) y la marca del corredor. No tienen campo de dirección. Las imágenes van como `SlideImage` (`{ bytes, mime, sha256 }`).
+- **`createSlideTemplates()`** (`packages/templates`): arma HTML autocontenido para la portada y la ficha (1080×1350) y el texto del reel (1080×1920, transparente).
+  - Inter (OFL, `@fontsource/inter`) va incrustada como `data:`; los íconos son SVG propios.
+  - Los datos se escapan, y los colores inválidos se reemplazan.
+  - `TEMPLATES_VERSION` entra en las claves de R2 de los renders y del reel.
+- **`createHtmlRenderer()`** (`packages/media`, Playwright):
+  - Un Chromium por proceso, que se abre al primer render y se cierra con `close()` (el worker al apagarse).
+  - Cada render usa un contexto nuevo: sin red (todas las peticiones se cortan), sin JavaScript de la página, y espera las fuentes.
+  - Salida: JPEG de calidad 90 o PNG transparente, con su sha256. Tope de 30 s.
+  - Errores: `RENDER_BROWSER_NOT_INSTALLED` (no reintentable, con el comando para instalarlo), `RENDER_TIMEOUT` y `RENDER_ABORTED` (reintentables) y `RENDER_FAILED`.
+- **`chromiumStatus()`** (`@agentsales/media/tools`): la ruta del Chromium que pide el Playwright instalado. La usa `doctor`, que carga Playwright solo al revisar.
 ## Seguridad
 
 - Tokens de plataformas cifrados en reposo con AES-256-GCM. La clave de 32 bytes se deriva de `APP_ENCRYPTION_KEY` con HKDF-SHA256 (se implementa en F3).

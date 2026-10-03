@@ -162,6 +162,20 @@ export {
   type NewMedia,
 } from "./ports/media-repository.js";
 export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
+export {
+  type CoverData,
+  type HtmlRenderer,
+  type ReelOverlayData,
+  type RenderedImage,
+  SLIDE_ICONS,
+  SLIDE_SIZES,
+  type SlideBrand,
+  type SlideFact,
+  type SlideIcon,
+  type SlideImage,
+  type SlideTemplates,
+  type SpecSheetData,
+} from "./ports/slide-templates.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   ACTIVE_PUBLICATION_STATUSES,

@@ -11,6 +11,11 @@ export {
   MEDIA_PIPELINE_VERSION,
   REEL_SPEC,
 } from "./pipeline.js";
+export {
+  type ClosableHtmlRenderer,
+  createHtmlRenderer,
+  type HtmlRendererOptions,
+} from "./render.js";
 
 export type MediaProcessorOptions = {
   /** `FFMPEG_PATH`: el ejecutable de ffmpeg (8.1 o más nuevo). */

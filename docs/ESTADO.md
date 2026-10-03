@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-03
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
-**Última tarea terminada:** F2-T08 · Procesamiento de video (`packages/media`)
-**Siguiente paso:** `/tarea F2-T09` (plantillas y render). Antes, el operador instala el Chromium de Playwright (ver pendientes).
+**Última tarea terminada:** F2-T09 · Plantillas y render
+**Siguiente paso:** `/tarea F2-T10` (caso de uso `prepareContent`).
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -19,7 +19,7 @@
 | F2-T06 · Revisión editorial (`checkContent`) | ✅ | #39 |
 | F2-T07 · Procesamiento de imágenes (`packages/media`) | ✅ | #40 |
 | F2-T08 · Procesamiento de video (`packages/media`) | ✅ | #41 |
-| F2-T09 · Plantillas y render | ⏳ pendiente | |
+| F2-T09 · Plantillas y render | ✅ | |
 | F2-T10 · Caso de uso `prepareContent` | ⏳ pendiente | |
 | F2-T11 · Job `content.prepare` en el worker | ⏳ pendiente | |
 | F2-T12 · API de contenido | ⏳ pendiente | |
@@ -34,7 +34,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 ## Bloqueos y pendientes del operador
 - [x] Trámite de la app de Meta (para F3): cuenta profesional, app `AgentSales-IG`, tester aceptado (2026-10-02) y `META_APP_ID` y `META_APP_SECRET` en `.env` (2026-10-03). En F3 se confirma que son el par de Instagram que usa el sistema. La verificación del negocio y el App Review quedan para F7
 - [x] La CLI de Claude con sesión de tu plan y `pnpm llm:smoke` en tu terminal (2026-10-03: salida estructurada correcta; cierra la demo de F2-T04)
-- [ ] Antes de F2-T09: Chromium de Playwright (`pnpm --filter @agentsales/media exec playwright install chromium`; lo indica la tarea)
+- [x] Chromium de Playwright 1.63 (`chromium-1243`, instalado el 2026-10-03). Hay que repetir `pnpm --filter @agentsales/media exec playwright install chromium` cuando se actualice Playwright
 
 ## Decisiones de `/fase-plan 2` (2026-10-02)
 Resueltas con la recomendación del spec (§4.10), por la aprobación permanente del operador:
@@ -75,6 +75,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-03: **F2-T09.** Puertos `SlideTemplates` y `HtmlRenderer` con sus datos en core; `packages/templates` con la portada, la ficha y el texto del reel (Inter incrustada, íconos SVG propios, datos escapados y colores del corredor); `createHtmlRenderer` con Playwright 1.63 (sin red ni JavaScript de la página, tope de 30 s y un Chromium compartido). `doctor` exige el Chromium que pide Playwright y la CI lo instala con caché. Muestras en `docs/assets/plantillas/`.
 - 2026-10-03: **F2-T08.** `processVideo` en `packages/media`: medidas con ffprobe (con el giro del celular), `thumb` del segundo 1 y reel de 1080×1920 con fondo desenfocado, el texto los primeros 2 s, H.264 4:2:0 con GOP cerrado, AAC (silencioso si no hay audio), `moov` al inicio y sin edit lists, cortado a 90 s y sin reel bajo 3 s. Un reel de 90 s tarda ~26 s en local. Opción `threads` para que los tests no atrasen a los demás. Desde la revisión (#41): los avisos del reel los calcula core (`reelWarnings`), la copia del video no puede botar el worker si el disco se llena, y el GOP de 2 s se verifica con ffprobe.
 - 2026-10-03: **F2-T07.** Puerto `MediaProcessor` en core (con su doble en memoria) y `packages/media` con sharp 0.35.5: fotos rotadas según el EXIF, en sRGB y sin metadatos (GPS incluido), con las variantes `thumb`, `ig_4x5` y `pi_4x3` y su sha256, y advertencias de foto chica. HEIC con ffmpeg (8.1 o más nuevo, revisado una vez); un HEIC sintético de 5,6 KB en mosaicos y girado sale completo y derecho. `FFPROBE_PATH`, y `doctor` exige ffmpeg y ffprobe 8.1 o más nuevos. La CI instala ffmpeg 9.0.1 estático (BtbN, fijado por sha256 y con caché) y pasó en el PR. Desde la revisión (#40): la advertencia de foto chica la calcula core en cada corrida (`photoSizeWarnings`); PNG con transparencia sobre blanco; cortar una foto no corta otra.
 - 2026-10-03: **F2-T06.** `checkContent` en core con los 10 códigos de §4.6 (6 errores y 4 advertencias), su contexto privado (`buildContentCheckContext`: brief, contacto y dirección, unidad y notas internas) y las listas de términos discriminatorios, superlativos y amenities en `check-terms.ts`. Números comparados por valor (`5.800` = `5800`). El borrador de ejemplo, ensamblado en varios avisos inventados, sale sin ningún aviso. Desde la revisión del PR (#39): más frases discriminatorias y menos falsos positivos (edad de un edificio, "metros cuadrados"), calles por cualquier palabra distintiva y en los hashtags, notas cortas, números con palabras, y `CONTENT_CHECK_CODES` para la API.

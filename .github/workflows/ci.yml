@@ -67,6 +67,21 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
 
+      # Chromium de Playwright (spec F2, D6): la versión que pide el Playwright del lockfile, con
+      # caché por versión. `--with-deps` instala también las librerías del sistema (apt).
+      - name: Versión de Playwright
+        id: playwright
+        run: echo "version=$(pnpm --filter @agentsales/media exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Caché de Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Instalar Chromium
+        run: pnpm --filter @agentsales/media exec playwright install --with-deps chromium
+
       - name: Lint, tipos y tests
         run: pnpm check
 

@@ -25,6 +25,7 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 - Todo en JPEG sRGB (Instagram no acepta PNG): la portada y la ficha se renderizan con Playwright directo a JPEG.
 - Tipografía: una sans geométrica (ej. Inter o Montserrat) cargada localmente en las plantillas.
 - Texto dentro de márgenes seguros de 64 px.
+- Muestras con datos inventados (F2-T09): [portada](assets/plantillas/portada.jpg), [ficha](assets/plantillas/ficha.jpg) y [texto del reel](assets/plantillas/texto-reel.png). Se regeneran con `pnpm --filter @agentsales/media run render:samples`.
 
 ## Instagram — caption
 
