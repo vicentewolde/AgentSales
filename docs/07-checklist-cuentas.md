@@ -30,7 +30,7 @@ Cosas que **solo tú puedes hacer** (cuentas, aprobaciones, datos reales). Claud
 - [x] Crear cuenta de desarrollador en developers.facebook.com
 - [x] Crear una app de tipo **Empresa** y agregar el producto **Instagram** (API con inicio de sesión de Instagram): app `AgentSales-IG`
 - [x] Agregar tu cuenta de Instagram como **tester** de la app y aceptar la invitación desde Instagram (aceptada el 2026-10-02). En la web en inglés: *Settings → App website permissions → Apps and websites → Tester Invites* (atajo: instagram.com/accounts/manage_access/)
-- [ ] Anotar `META_APP_ID` y `META_APP_SECRET` en `.env`
+- [x] Anotar `META_APP_ID` y `META_APP_SECRET` en `.env` (2026-10-03, los de la app de Instagram; en F3 se confirma que son el par correcto)
 - [ ] (Para terceros, en F7) Verificación del negocio y App Review de `instagram_business_content_publish`
 
 ## En paralelo, antes de F4 (Portal Inmobiliario)
