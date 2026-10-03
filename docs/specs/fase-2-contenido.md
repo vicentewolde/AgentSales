@@ -311,7 +311,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
   - [x] Tests del validador: bajo el mínimo, sobre el máximo, en el borde, sin rango y un rango del corredor que sobrescribe el global
   - [x] Tests con PGlite de la migración y del seed idempotente con los rangos
   - [x] Demo: `pnpm db:migrate` y `pnpm db:seed` en Neon; una copia de la planilla con `dormitorios = -2` falla en esa fila
-- **Hecho en:** migración `0003_f2_rangos_campos` (`numeric` en modo número, sin conversión de texto). La demo (2026-10-03) aplicó la migración en Neon, corrió el seed dos veces (36 definiciones) e importó en `--dry-run` una copia exportada de Google Sheets con P001 en `dormitorios = -2`: la fila 3 sale con "debe ser al menos 0" y las otras dos quedan sin cambios (las muestras están dentro de los rangos).
+- **Hecho en:** migración `0003_f2_rangos_campos` (`numeric` en modo número, sin conversión de texto). La demo (2026-10-03) aplicó la migración en Neon, corrió el seed dos veces (36 definiciones) e importó en `--dry-run` una copia exportada de Google Sheets con P001 en `dormitorios = -2`: la fila 3 sale con "debe estar entre 0 y 50" y las otras dos quedan sin cambios (las muestras están dentro de los rangos).
 
 ### F2-T02 · Datos de contenido: corridas y contenidos
 - **Depende de:** T01 (orden de las migraciones)

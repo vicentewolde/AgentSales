@@ -174,15 +174,21 @@ function assertRange(def: FieldDefinition): void {
   }
 }
 
-/** Motivo de un número fuera del rango de su definición (extremos incluidos), o `null`. */
+/**
+ * Motivo de un número fuera del rango de su definición (extremos incluidos), o `null`. Con los dos
+ * extremos el motivo da el rango completo; con uno solo, ese extremo.
+ */
 function outOfRange(def: FieldDefinition, value: number): string | null {
-  if (def.minValue !== null && value < def.minValue) {
-    return `debe ser al menos ${formatNumber(def.minValue)}`;
+  const { minValue: min, maxValue: max } = def;
+  const below = min !== null && value < min;
+  const above = max !== null && value > max;
+  if (!below && !above) return null;
+  if (min !== null && max !== null) {
+    return `debe estar entre ${formatNumber(min)} y ${formatNumber(max)}`;
   }
-  if (def.maxValue !== null && value > def.maxValue) {
-    return `no puede ser mayor que ${formatNumber(def.maxValue)}`;
-  }
-  return null;
+  return min !== null
+    ? `debe ser al menos ${formatNumber(min)}`
+    : `no puede ser mayor que ${formatNumber(max ?? 0)}`;
 }
 
 /** Busca en el mapa sin mayúsculas ni tildes: las opciones del corredor pueden escribirse distinto. */

@@ -451,11 +451,11 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
   - un destino tiene otro tipo;
   - una opción de un campo mapeado (`operacion`, `moneda`, `estado_carga`) no tiene equivalente;
   - hay un enum sin opciones;
-  - un campo que no es `number` tiene rango, o su mínimo es mayor que su máximo (F2-T01);
+  - un campo que no es `number` tiene rango, su mínimo es mayor que su máximo o un extremo no es un número finito (F2-T01);
   - dos campos leen la misma columna.
 - **Por fila:** `validate(row)` empareja los encabezados sin mayúsculas, tildes ni espacios extra, y normaliza cada celda según su tipo.
   - Una columna opcional ausente no hace fallar la fila, y una obligatoria ausente es `FIELD_REQUIRED`.
-  - Un número fuera del rango de su definición (`minValue`, `maxValue`, extremos incluidos) es `FIELD_NUMBER_INVALID`, con el rango en el motivo ("debe ser al menos 0"). Desde F2-T01.
+  - Un número fuera del rango de su definición (`minValue`, `maxValue`, extremos incluidos) es `FIELD_NUMBER_INVALID`, con el rango en el motivo ("debe estar entre 0 y 50", o "debe ser al menos 0" si solo hay mínimo). Las reglas fijas de un destino (el precio mayor que 0) se aplican además del rango. Desde F2-T01.
   - Acumula los errores (`FieldIssue`: columna, `key`, código y motivo) sin detenerse en el primero. La fila la agrega quien llama.
   - `fieldIssueSchema` es el contrato zod de ese error, porque viaja en el reporte y por HTTP.
 - **Salida:** `core` (columnas de `listings`), `control` (`estado_carga`, `carpeta_medios`, `foto_portada`) y `attributes` (con `_extra` para las columnas desconocidas).

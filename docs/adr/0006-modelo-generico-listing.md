@@ -23,3 +23,4 @@ El piloto es inmobiliario, pero el producto apunta también a vendedores general
 
 ## Seguimiento
 - 2026-10-02 (cierre de F1): además de precio, moneda, operación, tipo, ubicación y estado, `listings` tiene como columnas fijas `show_exact_address`, `highlights` e `internal_notes`, porque el sistema opera sobre ellas por reglas editoriales y de privacidad (`docs/04-formato-publicaciones.md`). Las columnas de control de la carga (`estado_carga`, `carpeta_medios`, `foto_portada`) son definiciones `is_core` sin columna: guían la importación y no se guardan.
+- 2026-10-03 (F2-T01): `field_definitions` suma `min_value` y `max_value`, el rango de un campo `number` (ADR-0012 §5, spec F2 D7). Agregar un campo sigue sin requerir migración: el rango es un dato más de la fila.
