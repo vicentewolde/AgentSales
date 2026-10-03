@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-03
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
-**Última tarea terminada:** F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado
-**Siguiente paso:** `/tarea F2-T06` (revisión editorial, `checkContent`).
+**Última tarea terminada:** F2-T06 · Revisión editorial (`checkContent`)
+**Siguiente paso:** `/tarea F2-T07` (procesamiento de imágenes, `packages/media`).
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -16,7 +16,7 @@
 | F2-T03 · Medios derivados en la base y `getStream` | ✅ | #35 |
 | F2-T04 · Proveedor de IA (`packages/llm`) | ✅ | #36 |
 | F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado | ✅ | #37 |
-| F2-T06 · Revisión editorial (`checkContent`) | ⏳ pendiente | |
+| F2-T06 · Revisión editorial (`checkContent`) | ✅ | #39 |
 | F2-T07 · Procesamiento de imágenes (`packages/media`) | ⏳ pendiente | |
 | F2-T08 · Procesamiento de video (`packages/media`) | ⏳ pendiente | |
 | F2-T09 · Plantillas y render | ⏳ pendiente | |
@@ -74,6 +74,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-03: **F2-T06.** `checkContent` en core con los 10 códigos de §4.6 (6 errores y 4 advertencias), su contexto privado (`buildContentCheckContext`: brief, contacto y dirección, unidad y notas internas) y las listas de términos discriminatorios, superlativos y amenities en `check-terms.ts`. Números comparados por valor (`5.800` = `5800`). El borrador de ejemplo, ensamblado en varios avisos inventados, sale sin ningún aviso. Desde la revisión del PR (#39): más frases discriminatorias y menos falsos positivos (edad de un edificio, "metros cuadrados"), calles por cualquier palabra distintiva y en los hashtags, notas cortas, números con palabras, y `CONTENT_CHECK_CODES` para la API.
 - 2026-10-03: **Prueba de humo de F2-T04 completa.** El operador renovó la sesión (`claude auth login`) y corrió `pnpm llm:smoke`: salida estructurada correcta (`claude-sonnet-5`, 2 turnos, un modelo auxiliar en `modelUsage`). El sobre real quedó como caso `exito-real` del ejecutable falso, y la nota de integración y ADR-0003 lo registran.
 - 2026-10-03: **F2-T05.** Módulo `packages/core/src/content/`: el brief (lo único que ve la IA: sin notas internas, `_extra`, links ni contacto, y sin dirección si no se puede mostrar), el prompt `listing-content-v1` con los datos como JSON escapado en `<datos_del_aviso>` (probado con textos hostiles), el esquema estricto y su JSON Schema sin topes, `generateContentDraft` (un reintento con el error de validación; dos fallas → `LLM_OUTPUT_INVALID`), `assembleContents` para los tres canales y `SAMPLE_CONTENT_DRAFT`. El filtro de campos del detalle pasó a core (`listingFields`; cierra la deuda de capas de F1). Decisiones de detalle en el registro del spec y en `04-formato-publicaciones.md` (hashtags aparte del cuerpo, relleno hasta 5, requisitos solo en arriendo).
 - 2026-10-03: **F2-T04.** `packages/llm` con `claude-cli`, `fake` y el stub `anthropic-api`; puerto `LLMProvider` y `AbortSignalLike` en core; `CLAUDE_CLI_PATH`, `LLM_TIMEOUT_SECONDS` y `ANTHROPIC_API_KEY` exigida con `anthropic-api`; `doctor` revisa la sesión de la CLI; guardia de Vitest. La prueba de humo desde la sesión de desarrollo mostró la sesión OAuth vencida (sin costo): ese sobre real ahora se lee como `LLM_AUTH_REQUIRED` (antes caía en `LLM_UNAVAILABLE`), y `--max-turns` no existe en la 2.1.243. La llamada exitosa la corrió el operador el mismo día (nota anterior).

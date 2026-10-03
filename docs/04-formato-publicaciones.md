@@ -124,3 +124,27 @@ Lo que devuelve la IA (con topes de largo en el esquema estricto: gancho 150, cu
 - **Lo arma el código:** la línea de tipo y comuna, la de superficies, dormitorios y baños, el precio y los gastos comunes, las listas de características y espacios comunes, la disponibilidad, el contacto, los títulos y los hashtags base (`#{comuna}`, `#{tipo}{operación}` y los fijos del corredor). Así esos datos no dependen del modelo.
 - Si la salida no calza con el esquema, se reintenta una vez con el error incluido en el prompt. Si vuelve a fallar, la corrida de contenido queda `failed` con el error visible y el contenido anterior sigue vigente (ADR-0012).
 - **Revisión editorial** (`checkContent`): números que no están en los datos, dirección expuesta, notas internas, requisitos discriminatorios, emojis en Portal y largos son errores; amenities no entregados, superlativos, markdown y la cantidad de hashtags son advertencias. Se muestra en el panel y la usa `pnpm eval:content` (spec F2 §4.6).
+
+### Cómo revisa (`checkContent`, F2-T06)
+
+Revisa el título y el cuerpo, sin mayúsculas ni tildes, y no se guarda: se calcula al leer, contra los datos actuales del aviso (un contenido viejo puede mostrar un número que ya no está si el aviso se reimportó con otro precio). También corre después de una edición a mano. Recibe el brief (los datos permitidos), el contacto y lo privado del aviso (`buildContentCheckContext`). Lo privado no sale del servidor, y los mensajes nunca citan la dirección, la unidad ni las notas.
+
+| Código | Severidad | Cómo lo detecta |
+|---|---|---|
+| `NUMBER_NOT_IN_DATA` | error | Cada número del texto (`5.800`, `5800` y `72,5` se leen como el mismo valor) debe estar en algún dato del brief (precio, superficies, características, destacados, sector, disponibilidad…) o en el WhatsApp. También los números con palabras junto a una distancia o un tiempo ("a cinco minutos", "cuatro cuadras"). Un número repetido se informa una vez |
+| `ADDRESS_EXPOSED` | error | Con `show_exact_address = false`: cualquier palabra distintiva de la calle (5 letras o más, sin "calle", "avenida", "depto", artículos ni adjetivos frecuentes como "central"), de cualquier tramo de la dirección, en el texto o en los hashtags (`#vicunamackenna`), o el número de la unidad. No cuenta si esa palabra o número también está en los datos (por ejemplo, una calle que es el sector de referencia o la comuna) |
+| `INTERNAL_NOTES_LEAK` | error | 6 palabras seguidas de `internal_notes` (todas, si son menos; con 1 o 2 palabras, solo si suman 8 letras o más). No cuenta un trozo que también está en los datos o en la frase que arma el código ("Departamento en venta") |
+| `DISCRIMINATORY` | error | Frases que restringen o prefieren por nacionalidad, hijos, estado civil, religión, edad o sexo: "solo chilenos", "sin niños", "no se permiten niños", "no apto para niños", "preferentemente mujeres", "abstenerse extranjeros", "se requiere ser casados", "mayores de 25 años"… Una edad que no habla de personas ("antigüedad entre 5 y 10 años", "juegos para menores de 10 años") y "ideal para familias con niños" no lo son |
+| `EMOJI_NOT_ALLOWED` | error | Un emoji en el título o la descripción de Portal (`©`, `®` y `™` no cuentan) |
+| `TOO_LONG` | error | Caption de Instagram de más de 2.200 caracteres con los hashtags, o título de Portal o Marketplace de más de 60 |
+| `AMENITY_NOT_IN_DATA` | advertencia | Un amenity o servicio cercano de la lista (piscina, quincho, terraza, metro, colegio, playa…) que no aparece en los datos. "Metros cuadrados" no es el metro, y si calza un término largo ("jardín infantil") no se repite el corto |
+| `SUPERLATIVE` | advertencia | "Increíble", "único", "espectacular", "imperdible", "el mejor"… (una advertencia con todos) |
+| `MARKDOWN` | advertencia | En Instagram: `**`, `__`, una línea que empieza con `# `, o un link `[texto](url)` |
+| `HASHTAG_COUNT` | advertencia | En Instagram: menos de 5 o más de 12 hashtags |
+
+**Límites conocidos:**
+- Los números se comparan contra todos los datos juntos: "5 baños" pasa si el 5 aparece en otro dato.
+- Un número con formato inglés ("72.5", "5,800") se lee distinto.
+- Las notas internas no se buscan en los hashtags.
+
+Las listas de términos viven en `packages/core/src/content/check-terms.ts`. Ampliarlas no cambia `CONTENT_PROMPT_VERSION`, porque no cambian los textos generados.

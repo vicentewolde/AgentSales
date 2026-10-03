@@ -19,6 +19,18 @@ export {
 } from "./assemble.js";
 export { type BriefFeature, buildContentBrief, type ContentBrief } from "./brief.js";
 export {
+  buildContentCheckContext,
+  CONTENT_CHECK_CODES,
+  CONTENT_CHECK_SEVERITIES,
+  CONTENT_CHECK_SEVERITY_LEVELS,
+  type ContentCheck,
+  type ContentCheckCode,
+  type ContentCheckContext,
+  type ContentCheckSeverity,
+  checkContent,
+  hasContentErrors,
+} from "./check.js";
+export {
   CONTENT_DRAFT_JSON_SCHEMA,
   CONTENT_DRAFT_LIMITS,
   type ContentDraft,
