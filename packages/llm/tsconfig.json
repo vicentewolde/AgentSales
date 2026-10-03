@@ -7,9 +7,11 @@
   },
   "include": ["src", "test"],
   "references": [
-    { "path": "../../packages/core" },
-    { "path": "../../packages/config" },
-    { "path": "../../packages/llm" },
-    { "path": "../api" }
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../config"
+    }
   ]
 }

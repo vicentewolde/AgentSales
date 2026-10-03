@@ -4,7 +4,7 @@ Nota verificada el 2026-10-02. Responde cómo usar `claude -p` como subproceso d
 
 Convención: **DOC** = lo dice la documentación oficial; **INFERENCIA** = deducido, sin confirmar; **NO VERIFICADO** = falta una prueba real (ver sección 8).
 
-Limitación de esta verificación: el subagente solo leyó documentación. Después, el 2026-10-02, se contrastó en local `claude -p --help` de la versión **2.1.243** (ver sección 3): lista `--safe-mode`, `--tools`, `--json-schema`, `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence` y `--setting-sources`, y **no lista `--max-turns`** (la prueba de humo de F2-T04 confirma si existe). No se hizo ninguna llamada real al modelo.
+Limitación de esta verificación: el subagente solo leyó documentación. Después, el 2026-10-02, se contrastó en local `claude -p --help` de la versión **2.1.243** (ver sección 3): lista `--safe-mode`, `--tools`, `--json-schema`, `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence` y `--setting-sources`, y **no lista `--max-turns`**: la prueba de humo de F2-T04 confirmó que no existe en esa versión. No se hizo ninguna llamada real al modelo.
 
 ## 1. Resumen
 
@@ -42,8 +42,10 @@ claude -p --output-format json \
   --json-schema '<schema draft-07 en una línea>' \
   --system-prompt-file <prompt.txt> \
   --tools "" --disable-slash-commands --strict-mcp-config \
-  --no-session-persistence --max-turns <N> --model sonnet
+  --no-session-persistence --safe-mode --model sonnet
 ```
+
+(Así lo invoca el adaptador desde F2-T04, con el prompt de sistema en línea. `--max-turns` no existe en la 2.1.243.)
 
 `--safe-mode` está en la 2.1.243 (verificado en local). `--system-prompt` (texto en línea) es equivalente a `--system-prompt-file`.
 
@@ -152,7 +154,7 @@ Códigos de salida (DOC): 0 en éxito; distinto de 0 si la corrida falla. Flags 
 
 ## 8. Cómo probar sin riesgo
 
-- **Tests automáticos:** el adaptador recibe el ejecutor de procesos por inyección y los tests usan un ejecutable falso que imprime JSON de ejemplo de cada fila de la sección 7 (regla de CLAUDE.md: ningún test llama al modelo real).
+- **Tests automáticos:** el adaptador recibe la ruta de la CLI (`cliPath`) y los tests le pasan un ejecutable falso, generado en el temporal (`packages/llm/test/fake-claude.ts`), que imprime JSON de ejemplo de cada fila de la sección 7 (regla de CLAUDE.md: ningún test llama al modelo real).
 - **Prueba de humo manual, una sola vez (consume cuota del plan, unos pocos mensajes cortos; la ejecuta el operador o quien implemente, con aprobación explícita):**
   1. `claude --version` y `claude --help | grep -E "safe-mode|restricted|bare|json-schema"`: confirma qué flags existen en 2.1.243.
   2. `claude auth status`: debe decir `authMethod: claude.ai`.
@@ -160,6 +162,14 @@ Códigos de salida (DOC): 0 en éxito; distinto de 0 si la corrida falla. Flags 
   4. Llamada con 2 fotos de prueba (no de clientes) por la opción A, y por la B si se quiere evaluar.
   5. Con `ANTHROPIC_API_KEY` ausente del entorno, confirmar que no hay cobro a la API (revisar la columna de costo en el panel de uso del plan).
 - **Modo desarrollo:** no existe sandbox; es el plan real. `LLM_PROVIDER=fake` para el desarrollo diario.
+
+### Resultados de la prueba de humo (F2-T04, 2026-10-03)
+
+`pnpm llm:smoke` (`packages/llm/src/scripts/smoke.ts`) hace una sola llamada con un aviso inventado y guarda el sobre en `tmp/llm-smoke/` (fuera de git). Corrida desde la sesión de desarrollo, aislada del llavero del operador:
+- **`--max-turns` no existe en la 2.1.243** (no aparece en `claude -p --help`): el adaptador no lo usa, y el único límite es `LLM_TIMEOUT_SECONDS`.
+- **Sesión vencida:** sale con código 1 y un sobre con `subtype: "success"`, `is_error: true`, `result: "Failed to authenticate: OAuth session expired and could not be refreshed"`, `stop_reason: "stop_sequence"`, `api_error_status: null`, `terminal_reason: "api_error"`, `modelUsage: {}` y `total_cost_usd: 0`. El adaptador lo lee como `LLM_AUTH_REQUIRED` (el ejecutable falso de los tests repite este sobre).
+- **Campos reales del sobre:** `api_error_status`, `duration_api_ms`, `duration_ms`, `fast_mode_disabled_reason`, `fast_mode_state`, `is_error`, `modelUsage`, `num_turns`, `permission_denials`, `queued_turn_count`, `result`, `session_id`, `stop_reason`, `subagent_stats`, `subtype`, `terminal_reason`, `total_cost_usd`, `type`, `usage` y `uuid` (más `structured_output` cuando hay salida).
+- **Pendiente:** la llamada exitosa con la sesión del operador (`structured_output` con `--tools ""` y `--json-schema`). La corre el operador en su terminal con `pnpm llm:smoke`; el resultado se anota aquí.
 
 ## 9. Riesgos y términos de uso relevantes
 

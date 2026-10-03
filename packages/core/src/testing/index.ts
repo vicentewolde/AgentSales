@@ -23,6 +23,12 @@ export {
 } from "./import-repositories.js";
 export { createInMemoryJobQueue, type EnqueuedJob, type InMemoryJobQueue } from "./job-queue.js";
 export {
+  createInMemoryLlmProvider,
+  type InMemoryLlmProvider,
+  LLM_ERRORS,
+  type ScriptedLlmResponse,
+} from "./llm.js";
+export {
   createInMemoryMediaFileSource,
   createInMemoryMediaRepository,
   createInMemoryMediaStorage,

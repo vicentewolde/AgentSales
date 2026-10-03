@@ -46,6 +46,7 @@ pnpm storage:check       # verifica acceso al bucket de R2
 pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo)
 pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo)
 pnpm worker:ping         # encola un job de prueba (con el worker corriendo)
+pnpm llm:smoke           # una llamada real y corta a la CLI de Claude con datos inventados (gasta cuota; la corre el operador)
 pnpm -s cli import <xlsx> --media <carpeta|zip>  # carga propiedades (con pnpm dev corriendo; --dry-run simula)
 pnpm -s cli listings     # propiedades cargadas (detalle: cli listing <id>; historial: cli imports)
 ```

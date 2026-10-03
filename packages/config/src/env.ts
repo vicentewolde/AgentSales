@@ -52,74 +52,95 @@ const databaseUrl = requiredText.superRefine((value, ctx) => {
   }
 });
 
-const envSchema = z.object({
-  // General
-  NODE_ENV: z
-    .enum(["development", "production", "test"], {
-      error: 'debe ser "development", "production" o "test"',
-    })
-    .default("development"),
-  TZ_DISPLAY: z.string().default("America/Santiago"),
-  API_PORT: port.default(8787),
-  WEB_PORT: port.default(5173),
-  LOG_LEVEL: z
-    .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"], {
-      error: "debe ser fatal, error, warn, info, debug, trace o silent",
-    })
-    .default("info"),
-  PUBLISH_MODE: z
-    .enum(PUBLISH_MODES, { error: `debe ser ${listOf(PUBLISH_MODES)}` })
-    .default("dry-run"),
+const envSchema = z
+  .object({
+    // General
+    NODE_ENV: z
+      .enum(["development", "production", "test"], {
+        error: 'debe ser "development", "production" o "test"',
+      })
+      .default("development"),
+    TZ_DISPLAY: z.string().default("America/Santiago"),
+    API_PORT: port.default(8787),
+    WEB_PORT: port.default(5173),
+    LOG_LEVEL: z
+      .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"], {
+        error: "debe ser fatal, error, warn, info, debug, trace o silent",
+      })
+      .default("info"),
+    PUBLISH_MODE: z
+      .enum(PUBLISH_MODES, { error: `debe ser ${listOf(PUBLISH_MODES)}` })
+      .default("dry-run"),
 
-  // Base de datos (Neon, conexión directa)
-  DATABASE_URL: databaseUrl,
+    // Base de datos (Neon, conexión directa)
+    DATABASE_URL: databaseUrl,
 
-  // Archivos (Cloudflare R2)
-  R2_ACCOUNT_ID: requiredText,
-  R2_ACCESS_KEY_ID: requiredText,
-  R2_SECRET_ACCESS_KEY: requiredText,
-  R2_BUCKET: requiredText,
-  SIGNED_URL_TTL_SECONDS: intInRange(
-    1,
-    MAX_SIGNED_URL_TTL_SECONDS,
-    `debe ser un número entero de segundos entre 1 y ${MAX_SIGNED_URL_TTL_SECONDS} (7 días)`,
-  ).default(3600),
+    // Archivos (Cloudflare R2)
+    R2_ACCOUNT_ID: requiredText,
+    R2_ACCESS_KEY_ID: requiredText,
+    R2_SECRET_ACCESS_KEY: requiredText,
+    R2_BUCKET: requiredText,
+    SIGNED_URL_TTL_SECONDS: intInRange(
+      1,
+      MAX_SIGNED_URL_TTL_SECONDS,
+      `debe ser un número entero de segundos entre 1 y ${MAX_SIGNED_URL_TTL_SECONDS} (7 días)`,
+    ).default(3600),
 
-  // Seguridad: la clave de 32 bytes se deriva con HKDF-SHA256 donde se cifra (F3)
-  APP_ENCRYPTION_KEY: requiredText.min(
-    MIN_ENCRYPTION_KEY_LENGTH,
-    `debe tener al menos ${MIN_ENCRYPTION_KEY_LENGTH} caracteres`,
-  ),
+    // Seguridad: la clave de 32 bytes se deriva con HKDF-SHA256 donde se cifra (F3)
+    APP_ENCRYPTION_KEY: requiredText.min(
+      MIN_ENCRYPTION_KEY_LENGTH,
+      `debe tener al menos ${MIN_ENCRYPTION_KEY_LENGTH} caracteres`,
+    ),
 
-  // IA (F2)
-  LLM_PROVIDER: z
-    .enum(LLM_PROVIDERS, { error: `debe ser ${listOf(LLM_PROVIDERS)}` })
-    .default("claude-cli"),
-  LLM_MODEL: z.string().default("sonnet"),
-  ANTHROPIC_API_KEY: z.string().optional(),
+    // IA (F2)
+    LLM_PROVIDER: z
+      .enum(LLM_PROVIDERS, { error: `debe ser ${listOf(LLM_PROVIDERS)}` })
+      .default("claude-cli"),
+    LLM_MODEL: z.string().default("sonnet"),
+    // Solo con LLM_PROVIDER=anthropic-api (se exige abajo). La CLI de Claude nunca la recibe: con
+    // ella en su entorno cobraría por API en vez de usar el plan del operador (spec F2 §4.5).
+    ANTHROPIC_API_KEY: z.string().optional(),
+    // Ejecutable de la CLI de Claude (proveedor claude-cli) y tope de cada llamada a la IA. Hasta
+    // 600 s: la llamada y su reintento, más los medios, deben caber en los 30 min del job.
+    CLAUDE_CLI_PATH: z.string().default("claude"),
+    LLM_TIMEOUT_SECONDS: intInRange(
+      10,
+      600,
+      "debe ser un número entero de segundos entre 10 y 600",
+    ).default(180),
 
-  // Medios (F1-F2)
-  MAX_VIDEO_MB: positiveInt("un número entero de MB mayor que 0").default(300),
-  // Tope del cuerpo de `POST /imports` (xlsx + zip). Hono lo lee completo en memoria y la subida
-  // puede ocupar hasta ~2 veces eso mientras se procesa (spec F1 §4.4).
-  MAX_IMPORT_UPLOAD_MB: positiveInt("un número entero de MB mayor que 0").default(512),
-  FFMPEG_PATH: z.string().default("ffmpeg"),
+    // Medios (F1-F2)
+    MAX_VIDEO_MB: positiveInt("un número entero de MB mayor que 0").default(300),
+    // Tope del cuerpo de `POST /imports` (xlsx + zip). Hono lo lee completo en memoria y la subida
+    // puede ocupar hasta ~2 veces eso mientras se procesa (spec F1 §4.4).
+    MAX_IMPORT_UPLOAD_MB: positiveInt("un número entero de MB mayor que 0").default(512),
+    FFMPEG_PATH: z.string().default("ffmpeg"),
 
-  // Instagram (F3)
-  META_APP_ID: z.string().optional(),
-  META_APP_SECRET: z.string().optional(),
-  META_REDIRECT_URI: z.string().default("http://localhost:8787/oauth/instagram/callback"),
+    // Instagram (F3)
+    META_APP_ID: z.string().optional(),
+    META_APP_SECRET: z.string().optional(),
+    META_REDIRECT_URI: z.string().default("http://localhost:8787/oauth/instagram/callback"),
 
-  // Mercado Libre / Portal Inmobiliario (F4)
-  ML_APP_ID: z.string().optional(),
-  ML_CLIENT_SECRET: z.string().optional(),
-  ML_REDIRECT_URI: z.string().optional(),
-  ML_SITE_ID: z.string().default("MLC"),
+    // Mercado Libre / Portal Inmobiliario (F4)
+    ML_APP_ID: z.string().optional(),
+    ML_CLIENT_SECRET: z.string().optional(),
+    ML_REDIRECT_URI: z.string().optional(),
+    ML_SITE_ID: z.string().default("MLC"),
 
-  // Facebook Marketplace (F5)
-  MARKETPLACE_DAILY_LIMIT: positiveInt("un número entero mayor que 0").default(3),
-  BROWSER_PROFILES_DIR: z.string().default("./.browser-profiles"),
-});
+    // Facebook Marketplace (F5)
+    MARKETPLACE_DAILY_LIMIT: positiveInt("un número entero mayor que 0").default(3),
+    BROWSER_PROFILES_DIR: z.string().default("./.browser-profiles"),
+  })
+  .superRefine((env, ctx) => {
+    // El proveedor de la API de Anthropic no funciona sin su clave (deuda de F1, spec F2 §4.5).
+    if (env.LLM_PROVIDER === "anthropic-api" && env.ANTHROPIC_API_KEY === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ANTHROPIC_API_KEY"],
+        message: 'falta (obligatoria con LLM_PROVIDER="anthropic-api")',
+      });
+    }
+  });
 
 export type Env = Readonly<z.infer<typeof envSchema>>;
 

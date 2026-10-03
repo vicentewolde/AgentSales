@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-03
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
-**Última tarea terminada:** F2-T03 · Medios derivados en la base y `getStream`
-**Siguiente paso:** `/tarea F2-T04` (proveedor de IA, `packages/llm`; necesita la CLI de Claude con sesión para la prueba de humo). Después, T05 → T06, y T07 cuando se quiera empezar con los medios.
+**Última tarea terminada:** F2-T04 · Proveedor de IA (`packages/llm`), con la prueba de humo exitosa pendiente del operador
+**Siguiente paso:** `/tarea F2-T05` (contenido en core: brief, prompt, esquema y ensamblado). En paralelo, el operador corre `pnpm llm:smoke` (ver pendientes).
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -14,7 +14,7 @@
 | F2-T01 · Mínimos y máximos en campos numéricos | ✅ | #33 |
 | F2-T02 · Datos de contenido: corridas y contenidos | ✅ | #34 |
 | F2-T03 · Medios derivados en la base y `getStream` | ✅ | #35 |
-| F2-T04 · Proveedor de IA (`packages/llm`) | ⏳ pendiente | |
+| F2-T04 · Proveedor de IA (`packages/llm`) | ✅ (falta la demo con tu sesión: `pnpm llm:smoke`) | #36 |
 | F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado | ⏳ pendiente | |
 | F2-T06 · Revisión editorial (`checkContent`) | ⏳ pendiente | |
 | F2-T07 · Procesamiento de imágenes (`packages/media`) | ⏳ pendiente | |
@@ -33,7 +33,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
 - [x] Trámite de la app de Meta (para F3): cuenta profesional, app `AgentSales-IG`, tester aceptado (2026-10-02) y `META_APP_ID` y `META_APP_SECRET` en `.env` (2026-10-03). En F3 se confirma que son el par de Instagram que usa el sistema. La verificación del negocio y el App Review quedan para F7
-- [ ] Antes de F2-T04: la CLI de Claude con sesión iniciada (`claude auth status`). La demo de T04 hace unas pocas llamadas cortas con datos inventados, del plan del operador.
+- [ ] La CLI de Claude con sesión de tu plan (`claude auth status` → `"loggedIn": true`; desde la sesión de desarrollo se ve vencida) y, una vez, `pnpm llm:smoke` en tu terminal: una llamada corta con datos inventados. Cuéntame lo que imprime (cierra la demo de F2-T04). Necesario antes de F2-T11.
 - [ ] Antes de F2-T09: Chromium de Playwright (`pnpm --filter @agentsales/media exec playwright install chromium`; lo indica la tarea)
 
 ## Decisiones de `/fase-plan 2` (2026-10-02)
@@ -57,7 +57,6 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
-- F2 (T04): exigir `ANTHROPIC_API_KEY` cuando `LLM_PROVIDER=anthropic-api`.
 - F3: derivar la clave con HKDF-SHA256 desde `APP_ENCRYPTION_KEY` al cifrar tokens.
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
@@ -75,6 +74,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-03: **F2-T04.** `packages/llm` con `claude-cli`, `fake` y el stub `anthropic-api`; puerto `LLMProvider` y `AbortSignalLike` en core; `CLAUDE_CLI_PATH`, `LLM_TIMEOUT_SECONDS` y `ANTHROPIC_API_KEY` exigida con `anthropic-api`; `doctor` revisa la sesión de la CLI; guardia de Vitest. La prueba de humo desde la sesión de desarrollo mostró la sesión OAuth vencida (sin costo): ese sobre real ahora se lee como `LLM_AUTH_REQUIRED` (antes caía en `LLM_UNAVAILABLE`), y `--max-turns` no existe en la 2.1.243. Falta la llamada exitosa, que corre el operador.
 - 2026-10-03: **F2-T03.** Únicos de derivados en `media` (migración `0005`, aplicada en Neon): una variante vigente por original y variante, y un render por aviso y variante. `mediaSchema` y `MEDIA_VARIANTS` en core; `MediaRepository` suma `listByListing`, `updateMeasurements`, `upsertDerivative` (reemplaza en su lugar y devuelve la clave anterior) y `deleteDerivative`, con la misma suite de contrato en memoria y en PGlite. `MediaStorage.getStream` en R2: `storage:check` leyó 1 MB en 66 trozos con el mismo sha256.
 - 2026-10-03: **F2-T02.** Tabla `content_runs` y `contents.content_run_id` (migración `0004`, aplicada en Neon), con una sola corrida activa por aviso y un texto por canal y corrida. Entidades `contentRun` y `content`, puertos `ContentRunRepository` y `ContentRepository` (Drizzle y un doble en memoria con la misma suite de contrato) y el job `content.prepare` en el contrato de core. Desde la revisión: errores `*_ROW_INVALID` (500) para filas corruptas, `CONTENT_PLATFORM_DUPLICATED` para un canal repetido, y en el spec `CONTENT_RUN_ACTIVE` (409) para no editar mientras una corrida de textos espera. El criterio de T02 decía que `failAbandoned` cerraba las `queued` viejas: quedó como §4.4 (solo `running`; las `queued` se reencolan con `listQueued`).
 - 2026-10-03: **F2-T01.** `field_definitions.min_value` y `max_value` (migración `0003`, aplicada en Neon) y rangos en el seed (`dormitorios` y `banos` de 0 a 50, superficies de 1 a 1.000.000, `piso` de -10 a 200, año de 1800 a 2100, gastos y contribuciones desde 0). Fuera de rango es `FIELD_NUMBER_INVALID` con el rango en el motivo ("debe estar entre 0 y 50"); un rango en un campo que no es `number`, o con el mínimo mayor que el máximo, es `FIELD_CONFIG_INVALID`. Demo en `--dry-run` con una copia de Sheets (P001 con `dormitorios = -2`): falla esa fila y las demás quedan sin cambios; la planilla quedó como estaba.

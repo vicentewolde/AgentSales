@@ -26,6 +26,11 @@ Hecho el 2026-10-02: 3 propiedades de muestra (P001, P002 y P003, corredor `agen
 - [x] Fotos y videos en `data/muestras/medios/P001/`, `P002/` y `P003/` (al menos una con video)
 - [x] Llenar la hoja **Corredor** con tu marca de prueba, y poner el logo PNG en `data/muestras/medios/_marca/logo.png`
 
+## Antes de F2 (contenido)
+
+- [ ] La CLI de Claude con sesión de tu plan: `claude auth status` debe decir `"loggedIn": true` (si no, abre `claude` y usa `/login`). `pnpm -s cli doctor` también lo revisa.
+- [ ] Una vez, en tu terminal: `pnpm llm:smoke`. Hace una sola llamada corta con un aviso inventado (descuenta del plan) y confirma que la CLI responde la salida estructurada. Cuéntale a Claude el resultado que imprime.
+
 ## En paralelo, antes de F3 (Instagram) — empieza pronto, es lo más lento
 
 - [x] Confirmar que tu Instagram es cuenta **profesional** (Empresa o Creador): lo es, categoría Emprendedor y vinculada a la página de Facebook AgentSales (2026-10-02)

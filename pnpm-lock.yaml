@@ -65,6 +65,9 @@ importers:
       '@agentsales/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@agentsales/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       commander:
         specifier: 15.0.0
         version: 15.0.0
@@ -221,6 +224,18 @@ importers:
       '@types/yauzl':
         specifier: 3.4.0
         version: 3.4.0
+
+  packages/llm:
+    dependencies:
+      '@agentsales/config':
+        specifier: workspace:*
+        version: link:../config
+      '@agentsales/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/queue:
     dependencies:

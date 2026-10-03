@@ -66,3 +66,5 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea; nunca `--force` s
 | Una API externa no se comporta como dice el doc | Pide al subagente `integraciones` verificar y actualizar las notas; luego ajusta el spec |
 | Quieres cambiar el stack o un patrón | `/adr "..."` primero, código después |
 | Perdiste el hilo entre sesiones | `/estado` |
+| Una corrida de contenido falla con `LLM_AUTH_REQUIRED` | La CLI de Claude perdió la sesión: abre `claude`, usa `/login` y prepara de nuevo. `pnpm -s cli doctor` muestra si tiene sesión |
+| Quieres comprobar que la CLI de Claude responde | `pnpm llm:smoke` en tu terminal: una llamada corta con datos inventados (descuenta del plan) |

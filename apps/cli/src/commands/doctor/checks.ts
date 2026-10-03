@@ -14,7 +14,12 @@ export type CheckItem = {
 };
 
 /** Ejecuta un comando y devuelve su salida; lanza si no existe, falla o tarda demasiado. */
-export type RunCommand = (command: string, args: readonly string[]) => Promise<string>;
+/** Ejecuta un comando; con `env`, el proceso recibe solo ese entorno (no el de la CLI). */
+export type RunCommand = (
+  command: string,
+  args: readonly string[],
+  options?: { env?: Record<string, string> },
+) => Promise<string>;
 
 const REQUIRED_NODE_MAJOR = 26;
 
@@ -177,19 +182,77 @@ export function checkChromium(chromiumDir: string | null): CheckItem {
       };
 }
 
-export async function checkClaude(run: RunCommand): Promise<CheckItem> {
+/** Sesión de la CLI según `claude auth status --json`. */
+type ClaudeSession = "plan" | "api-key" | "none" | "unknown";
+
+/**
+ * `plan` solo con la sesión de claude.ai (la que usa el adaptador `claude-cli`). Una API key
+ * también da `loggedIn: true`, pero el adaptador no se la pasa a la CLI: no cuenta como sesión.
+ */
+function parseSession(output: string): ClaudeSession {
   try {
-    return {
-      name: "Claude Code",
-      level: "ok",
-      detail: firstLine(await run("claude", ["--version"])),
-    };
+    const status: unknown = JSON.parse(output);
+    if (typeof status !== "object" || status === null || !("loggedIn" in status)) return "unknown";
+    if (status.loggedIn !== true) return "none";
+    const method = "authMethod" in status ? status.authMethod : undefined;
+    return method === "claude.ai" || method === "oauth_token" ? "plan" : "api-key";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * La sesión de la CLI, sin gastar cuota, con el mismo entorno mínimo que usa el adaptador (sin
+ * `ANTHROPIC_API_KEY` ni nada del `.env`). Sin sesión, `claude auth status` sale con código 1 y el
+ * JSON igual va en stdout, que trae el error de `execFile`.
+ */
+async function claudeSession(
+  run: RunCommand,
+  cliPath: string,
+  env: Record<string, string>,
+): Promise<ClaudeSession> {
+  try {
+    return parseSession(await run(cliPath, ["auth", "status", "--json"], { env }));
+  } catch (error) {
+    const stdout =
+      typeof error === "object" && error !== null && "stdout" in error ? error.stdout : undefined;
+    return typeof stdout === "string" ? parseSession(stdout) : "unknown";
+  }
+}
+
+const CLAUDE_LOGIN_HINT =
+  "Abre `claude` en una terminal e inicia sesión con /login (docs/07-checklist-cuentas.md)";
+
+/** La CLI de Claude (proveedor `claude-cli`, spec F2 §4.8): que exista y que tenga sesión. */
+export async function checkClaude(
+  run: RunCommand,
+  cliPath: string,
+  env: Record<string, string>,
+): Promise<CheckItem> {
+  let version: string;
+  try {
+    version = firstLine(await run(cliPath, ["--version"], { env }));
   } catch (error) {
     return {
       name: "Claude Code",
       level: "warn",
-      detail: `${describeCommandError(error)}; se necesita en F2 (generación de contenido)`,
-      hint: "Instala Claude Code e inicia sesión (docs/07-checklist-cuentas.md)",
+      detail: `${describeCommandError(error)}; se necesita para generar contenido (F2)`,
+      hint: "Instala Claude Code e inicia sesión, o ajusta CLAUDE_CLI_PATH en .env",
     };
   }
+  const session = await claudeSession(run, cliPath, env);
+  if (session === "plan") {
+    return { name: "Claude Code", level: "ok", detail: `${version} · sesión iniciada` };
+  }
+  const detail: Record<Exclude<ClaudeSession, "plan">, string> = {
+    none: "sin sesión: no se puede generar contenido",
+    "api-key": "solo con una API key, que el sistema no le pasa: inicia sesión con tu plan",
+    unknown: "no se pudo revisar la sesión",
+  };
+  return {
+    name: "Claude Code",
+    level: "warn",
+    detail: `${version} · ${detail[session]}`,
+    hint: CLAUDE_LOGIN_HINT,
+  };
 }
