@@ -5,7 +5,7 @@
 **Actualizado:** 2026-10-03
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
 **Última tarea terminada:** F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado
-**Siguiente paso:** `/tarea F2-T06` (revisión editorial, `checkContent`). En paralelo, el operador corre `pnpm llm:smoke` (ver pendientes).
+**Siguiente paso:** `/tarea F2-T06` (revisión editorial, `checkContent`).
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -14,7 +14,7 @@
 | F2-T01 · Mínimos y máximos en campos numéricos | ✅ | #33 |
 | F2-T02 · Datos de contenido: corridas y contenidos | ✅ | #34 |
 | F2-T03 · Medios derivados en la base y `getStream` | ✅ | #35 |
-| F2-T04 · Proveedor de IA (`packages/llm`) | ✅ (falta la demo con tu sesión: `pnpm llm:smoke`) | #36 |
+| F2-T04 · Proveedor de IA (`packages/llm`) | ✅ | #36 |
 | F2-T05 · Contenido en core: brief, prompt, esquema y ensamblado | ✅ | #37 |
 | F2-T06 · Revisión editorial (`checkContent`) | ⏳ pendiente | |
 | F2-T07 · Procesamiento de imágenes (`packages/media`) | ⏳ pendiente | |
@@ -33,7 +33,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
 - [x] Trámite de la app de Meta (para F3): cuenta profesional, app `AgentSales-IG`, tester aceptado (2026-10-02) y `META_APP_ID` y `META_APP_SECRET` en `.env` (2026-10-03). En F3 se confirma que son el par de Instagram que usa el sistema. La verificación del negocio y el App Review quedan para F7
-- [ ] La CLI de Claude con sesión de tu plan (`claude auth status` → `"loggedIn": true`; desde la sesión de desarrollo se ve vencida) y, una vez, `pnpm llm:smoke` en tu terminal: una llamada corta con datos inventados. Cuéntame lo que imprime (cierra la demo de F2-T04). Necesario antes de F2-T11.
+- [x] La CLI de Claude con sesión de tu plan y `pnpm llm:smoke` en tu terminal (2026-10-03: salida estructurada correcta; cierra la demo de F2-T04)
 - [ ] Antes de F2-T09: Chromium de Playwright (`pnpm --filter @agentsales/media exec playwright install chromium`; lo indica la tarea)
 
 ## Decisiones de `/fase-plan 2` (2026-10-02)
@@ -74,6 +74,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-03: **Prueba de humo de F2-T04 completa.** El operador renovó la sesión (`claude auth login`) y corrió `pnpm llm:smoke`: salida estructurada correcta (`claude-sonnet-5`, 2 turnos, un modelo auxiliar en `modelUsage`). El sobre real quedó como caso `exito-real` del ejecutable falso, y la nota de integración y ADR-0003 lo registran.
 - 2026-10-03: **F2-T05.** Módulo `packages/core/src/content/`: el brief (lo único que ve la IA: sin notas internas, `_extra`, links ni contacto, y sin dirección si no se puede mostrar), el prompt `listing-content-v1` con los datos como JSON escapado en `<datos_del_aviso>` (probado con textos hostiles), el esquema estricto y su JSON Schema sin topes, `generateContentDraft` (un reintento con el error de validación; dos fallas → `LLM_OUTPUT_INVALID`), `assembleContents` para los tres canales y `SAMPLE_CONTENT_DRAFT`. El filtro de campos del detalle pasó a core (`listingFields`; cierra la deuda de capas de F1). Decisiones de detalle en el registro del spec y en `04-formato-publicaciones.md` (hashtags aparte del cuerpo, relleno hasta 5, requisitos solo en arriendo).
 - 2026-10-03: **F2-T04.** `packages/llm` con `claude-cli`, `fake` y el stub `anthropic-api`; puerto `LLMProvider` y `AbortSignalLike` en core; `CLAUDE_CLI_PATH`, `LLM_TIMEOUT_SECONDS` y `ANTHROPIC_API_KEY` exigida con `anthropic-api`; `doctor` revisa la sesión de la CLI; guardia de Vitest. La prueba de humo desde la sesión de desarrollo mostró la sesión OAuth vencida (sin costo): ese sobre real ahora se lee como `LLM_AUTH_REQUIRED` (antes caía en `LLM_UNAVAILABLE`), y `--max-turns` no existe en la 2.1.243. Falta la llamada exitosa, que corre el operador.
 - 2026-10-03: **F2-T03.** Únicos de derivados en `media` (migración `0005`, aplicada en Neon): una variante vigente por original y variante, y un render por aviso y variante. `mediaSchema` y `MEDIA_VARIANTS` en core; `MediaRepository` suma `listByListing`, `updateMeasurements`, `upsertDerivative` (reemplaza en su lugar y devuelve la clave anterior) y `deleteDerivative`, con la misma suite de contrato en memoria y en PGlite. `MediaStorage.getStream` en R2: `storage:check` leyó 1 MB en 66 trozos con el mismo sha256.

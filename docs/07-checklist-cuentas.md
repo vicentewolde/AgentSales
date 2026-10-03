@@ -28,8 +28,8 @@ Hecho el 2026-10-02: 3 propiedades de muestra (P001, P002 y P003, corredor `agen
 
 ## Antes de F2 (contenido)
 
-- [ ] La CLI de Claude con sesión de tu plan: `claude auth status` debe decir `"loggedIn": true` (si no, abre `claude` y usa `/login`). `pnpm -s cli doctor` también lo revisa.
-- [ ] Una vez, en tu terminal: `pnpm llm:smoke`. Hace una sola llamada corta con un aviso inventado (descuenta del plan) y confirma que la CLI responde la salida estructurada. Cuéntale a Claude el resultado que imprime.
+- [x] La CLI de Claude con sesión de tu plan (2026-10-03, con `claude auth login`): `claude auth status` debe decir `"loggedIn": true` (si no, abre `claude` y usa `/login`). `pnpm -s cli doctor` también lo revisa.
+- [x] Una vez, en tu terminal: `pnpm llm:smoke` (2026-10-03: salida estructurada correcta, modelo `claude-sonnet-5`). Hace una sola llamada corta con un aviso inventado (descuenta del plan) y confirma que la CLI responde la salida estructurada. Cuéntale a Claude el resultado que imprime.
 
 ## En paralelo, antes de F3 (Instagram) — empieza pronto, es lo más lento
 
