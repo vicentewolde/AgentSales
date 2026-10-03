@@ -15,7 +15,7 @@
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- [ ] Iniciar el trámite de la app de Meta (lento, en paralelo; se usa en F3)
+- [x] Trámite de la app de Meta (para F3): cuenta profesional, app `AgentSales-IG`, tester aceptado (2026-10-02) y `META_APP_ID` y `META_APP_SECRET` en `.env` (2026-10-03). En F3 se confirma que son el par de Instagram que usa el sistema. La verificación del negocio y el App Review quedan para F7
 
 ## Decisiones pendientes para `/fase-plan 2`
 - **Proveedor de IA:** `LLMProvider` con `claude-cli` y `fake` (ADR-0003); `anthropic-api` como stub, que exige `ANTHROPIC_API_KEY` si se elige.
