@@ -162,8 +162,11 @@ describe("panel: Detalle de una propiedad", () => {
     renderApp(`/propiedades/${listing.id}`);
 
     await screen.findByRole("heading", { name: /Departamento en venta/ });
+    // Los botones de cambio de estado: los de la sección Contenido son otra cosa (F2-T14).
+    const contentSection = screen.getByRole("region", { name: "Contenido" });
     const actions = screen
       .queryAllByRole("button")
+      .filter((button) => !contentSection.contains(button))
       .map((button) => button.textContent)
       .filter((text) => text !== "Reintentar");
     expect(actions).toEqual(buttons);

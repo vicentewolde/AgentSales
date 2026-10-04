@@ -7,6 +7,7 @@ import {
 } from "@agentsales/core";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../api/client.js";
+import { ContentSection } from "../components/ContentSection.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { isManualTarget, statusActionText } from "../labels.js";
@@ -29,7 +30,8 @@ function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: 
           {item.kind === "image" ? (
             <a href={item.url} target="_blank" rel="noreferrer">
               <img
-                src={item.url}
+                // La miniatura JPEG si existe (desde F2-T12): los navegadores no muestran HEIC.
+                src={item.thumbUrl ?? item.url}
                 alt={`Foto ${index + 1} de ${externalRef}`}
                 loading="lazy"
                 className="aspect-[4/3] w-full object-cover"
@@ -39,6 +41,7 @@ function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: 
             // biome-ignore lint/a11y/useMediaCaption: videos del corredor, sin subtítulos en el MVP.
             <video
               src={item.url}
+              poster={item.thumbUrl ?? undefined}
               controls
               preload="metadata"
               aria-label={`Video ${index + 1} de ${externalRef}`}
@@ -169,11 +172,16 @@ function DetailView({ detail }: { detail: Detail }) {
           )}
         </section>
       </div>
+
+      <ContentSection listingId={listing.id} listingStatus={listing.status} />
     </>
   );
 }
 
-/** Detalle de una propiedad: galería, datos, atributos y cambio de estado (spec F1-T13). */
+/**
+ * Detalle de una propiedad: galería, datos, atributos y cambio de estado (spec F1-T13), y su
+ * contenido por canal (F2-T14).
+ */
 export function ListingDetailPage() {
   const { id = "" } = useParams();
   const detail = useListing(id);
