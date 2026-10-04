@@ -40,3 +40,4 @@ Las tres migraciones se generan en cadena, en las tareas T01, T02 y T03 del spec
   - un corte por apagado deja la corrida en `running` y sube como `CONTENT_RUN_ABORTED` (reintentable);
   - mientras hay una corrida que genera textos, editar responde `CONTENT_RUN_ACTIVE` (409), y regenerar sobre una edición a mano exige `replaceEdits` (`CONTENT_EDITED`);
   - las publicaciones siguen sin crearse: nacen en F3 desde el contenido vigente.
+- 2026-10-04 (spec F3): ADR-0014 modifica la consecuencia "la aprobación sigue siendo de F3, sobre `publications`, con su máquina de estados intacta". Se aprueba el texto de cada canal y las publicaciones nacen aprobadas, por formato, con `content_id` y `media_ids` fijos; mientras haya publicaciones pendientes no se vuelve a preparar el contenido, así que los derivados que se reemplazan en su lugar no afectan lo aprobado.

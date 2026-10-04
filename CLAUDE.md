@@ -56,7 +56,7 @@ pnpm -s cli content <id_propiedad>  # textos por canal con su revisión (--platf
 (Los comandos existen desde F0; si alguno falta, la tarea que lo introduce debe crearlo.)
 
 ## Glosario (español → código)
-corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) → `Media` · texto generado → `Content` · publicación (aviso × plataforma) → `Publication` · cuenta conectada → `PlatformAccount` · campo configurable → `FieldDefinition` · carga → `ImportRun`.
+corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) → `Media` · texto generado → `Content` · publicación (aviso × cuenta × formato: carrusel o reel) → `Publication` · cuenta conectada → `PlatformAccount` · campo configurable → `FieldDefinition` · carga → `ImportRun`.
 
 ## Reglas de trabajo (obligatorias)
 1. **Spec primero.** No implementes nada que no esté en el spec aprobado de la fase. Si falta algo, propónlo y actualiza el spec antes.

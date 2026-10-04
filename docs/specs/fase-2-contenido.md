@@ -508,7 +508,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
   - [x] Criterios de §6 verificados con evidencia
   - [x] Auditoría de coherencia docs-código (subagente `arquitecto`) y docs corregidos
   - [x] `CHANGELOG.md` `[0.2.0]`, spec cerrado y `docs/ESTADO.md` apuntando a F3
-  - [ ] Tag `v0.2.0` desde `main`, después del merge del cierre
+  - [x] Tag `v0.2.0` desde `main`, después del merge del cierre
 - **Evidencia (2026-10-04):**
   - **§6 criterio 1 y demo 1, 3, 4 y 5 (operador, CLI de Claude `claude-sonnet-5`):** P001 preparada por la CLI (sin reprocesar medios: 0 procesados, 4 existentes) y aprobada por el operador en el panel; P002 preparada desde el panel, con reel de 1080×1920 y 6 s, carrusel de 5 y 4 fotos 4:3; P003 preparada (3 fotos y 2 renders nuevos), editada a mano en Instagram (la revisión marcó un número de la edición que no estaba en los datos) y vuelta al texto original, que queda `edited` sin problemas. Los 9 textos sin problemas de revisión.
   - **§6 criterio 2 y demo 6:** `pnpm eval:content` con la CLI de Claude: 3 de 3 sin errores (después del arreglo de `INTERNAL_NOTES_LEAK`, #50).

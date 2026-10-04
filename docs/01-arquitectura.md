@@ -130,17 +130,25 @@ CLI (prepare) o panel (Preparar contenido)
   → content_run en succeeded o failed, con reporte por etapa
 ```
 
-En F2 no se crean `publications` (ADR-0012): nacen en F3 desde el contenido vigente, cuando hay una cuenta conectada (ADR-0012). Detalle en el spec F2 §4.2 a §4.6.
+En F2 no se crean `publications` (ADR-0012). Desde F3 (ADR-0014) nacen aprobadas del texto aprobado de un canal: al aprobarlo, si hay una cuenta conectada, o al publicar. Detalle en el spec F2 §4.2 a §4.6 y en el spec F3 §4.2.
 
-### 3. Publicación (job `publication.publish`)
+### 3. Aprobación y publicación (job `publication.publish`, F3, ADR-0014)
 
 ```
-publication approved/scheduled → worker toma el job
-  → publisher.validate() → publisher.publish()   (o dry-run)
-  → guarda external_id/url → estado published
+CLI (approve) o panel (Aprobar)
+  → approveContent (core, con el candado del aviso): el texto vigente del canal → approved
+  → con cuenta conectada: una publicación por formato (Instagram: post y, con video, reel)
+    nace en approved, con content_id y media_ids fijos
+CLI (publish) o panel (Publicar)
+  → publishListing (core, con el candado): abre las que falten, approved/failed → publishing
+    (fija dry_run con PUBLISH_MODE) y, ya confirmado, encola publication.publish
+  → el worker corre publishPublication: solo si sigue en publishing
+  → publisher.validate() → publisher.publish()   (withDryRun si publication.dry_run)
+    guardando el progreso (contenedores) antes del paso que publica
+  → guarda external_id/url → published (el aviso pasa a active si fue en live)
   → error reintentable: pg-boss reintenta con backoff; la publicación sigue en
-    publishing (sube attempts y se registra un publish_attempt)
-  → error no reintentable o reintentos agotados: failed
+    publishing y el reintento retoma desde el progreso, sin publicar dos veces
+  → error no reintentable o reintentos agotados: failed con causa legible
   → cada transición queda en publication_events
 ```
 
@@ -153,13 +161,12 @@ listing cerrado (vendido/arrendado) → publisher.unpublish() en todas
 
 ## Máquina de estados de una publicación
 
+Desde F3 (ADR-0014), lo que se aprueba es el texto de un canal (`contents.status = approved`) y la publicación nace aprobada. Se quitaron `draft` y `pending_approval`.
+
 ```mermaid
 stateDiagram-v2
-  [*] --> draft
-  draft --> pending_approval: contenido generado
-  pending_approval --> approved: operador aprueba
-  pending_approval --> draft: operador pide cambios
-  approved --> scheduled: tiene fecha futura
+  [*] --> approved: nace del texto aprobado
+  approved --> scheduled: tiene fecha futura (F6)
   approved --> publishing: publicar ahora
   scheduled --> publishing: llega la hora
   publishing --> published: ok
@@ -167,14 +174,12 @@ stateDiagram-v2
   failed --> publishing: reintento manual
   published --> paused: pausar
   paused --> published: reactivar
-  published --> unpublished: despublicar
+  published --> unpublished: despublicar o marcar como retirada
   paused --> unpublished: despublicar
   publishing --> awaiting_manual_confirm: formulario listo (Marketplace)
   awaiting_manual_confirm --> published: operador hace el clic final
   awaiting_manual_confirm --> failed: captcha, verificación o abandono
   unpublished --> [*]
-  draft --> cancelled: descartar
-  pending_approval --> cancelled: descartar
   approved --> cancelled: descartar
   scheduled --> cancelled: desprogramar o cerrar el aviso
   failed --> cancelled: descartar
@@ -184,28 +189,36 @@ stateDiagram-v2
 
 Para Marketplace (semiautomático) existe además `awaiting_manual_confirm` entre `publishing` y `published`: el formulario queda listo y el operador hace el clic final. Si aparece un captcha o una verificación, el sistema se detiene y la publicación pasa a `failed` (ADR-0004).
 
-Estados iniciales (`INITIAL_PUBLICATION_STATUSES`): una publicación se crea en `draft`, en `pending_approval` (flujo normal: el contenido ya está generado) o en `approved` (corredor con `auto_publish`).
+Estado inicial (`INITIAL_PUBLICATION_STATUSES`): `approved`, siempre desde un texto aprobado (también con `auto_publish` en F6, que aprueba el texto solo).
 
-Estados terminales (`TERMINAL_PUBLICATION_STATUSES`): `unpublished` (estuvo en la plataforma y se bajó) y `cancelled` (nunca llegó a la plataforma). Todos los demás cuentan como **activos** (`ACTIVE_PUBLICATION_STATUSES`), incluido `failed`; por eso un `failed` se reintenta o se cancela antes de crear otra publicación del mismo aviso en la misma cuenta.
+Estados terminales (`TERMINAL_PUBLICATION_STATUSES`): `unpublished` (estuvo en la plataforma y se bajó) y `cancelled` (nunca llegó a la plataforma). Todos los demás cuentan como **activos** (`ACTIVE_PUBLICATION_STATUSES`), incluido `failed`; por eso un `failed` se reintenta o se cancela antes de crear otra publicación del mismo aviso, cuenta y formato. Los activos que aún no están en la plataforma (`approved`, `scheduled`, `publishing`, `failed`, `awaiting_manual_confirm`) son **pendientes** (`PENDING_PUBLICATION_STATUSES`): mientras un aviso tenga uno, no se vuelve a preparar su contenido (spec F3, §4.2).
 
-`transition()` no conoce la plataforma: el caso de uso solo lleva a `awaiting_manual_confirm` a publishers con `capabilities.manualStep`, y solo pausa en plataformas que lo soportan.
+`transition()` no conoce la plataforma: el caso de uso solo lleva a `awaiting_manual_confirm` a publishers con paso manual, y solo pausa en plataformas que lo soportan.
 
-La máquina de estados vive en `packages/core` (`PUBLICATION_TRANSITIONS`, `canTransition`, `transition`) como función pura con tests: toda transición inválida lanza `AppError("INVALID_TRANSITION")`.
+La máquina de estados vive en `packages/core` (`PUBLICATION_TRANSITIONS`, `canTransition`, `transition`) como función pura con tests: toda transición inválida lanza `AppError("INVALID_TRANSITION")`. Cada transición guarda la fila y su evento en una sola transacción, de forma condicional.
 
 ## Contrato de un Publisher
 
+Desde F3 (ADR-0014, spec F3 §4.5):
+
 ```ts
 interface Publisher {
-  platform: Platform;
-  capabilities: { carousel: boolean; video: boolean; unpublish: boolean; statusSync: boolean; manualStep: boolean };
-  validate(input: PublishInput): ValidationResult;          // requisitos de la plataforma
-  publish(input: PublishInput, account: PlatformAccount): Promise<PublishResult>;
-  unpublish(ref: ExternalRef, account: PlatformAccount): Promise<void>;
-  getStatus(ref: ExternalRef, account: PlatformAccount): Promise<ExternalStatus>;
+  readonly platform: Platform;
+  readonly formats: readonly PublicationFormat[];          // Instagram: post y reel
+  validate(input: PublishInput): PublishValidation;        // requisitos de la plataforma
+  publish(input: PublishInput, ctx: PublishContext): Promise<PublishResult>;
 }
+type PublishContext = {
+  account: PlatformAccount;
+  credentials: PlatformCredentials;                         // descifradas, solo en memoria
+  progress: unknown | null;                                  // lo creado por un intento anterior
+  saveProgress(progress: unknown): Promise<void>;           // antes del paso que publica
+  signal?: AbortSignalLike;
+};
+type PublishResult = { externalId: string; externalUrl: string | null; simulated: boolean };
 ```
 
-Con `PUBLISH_MODE=dry-run`, un decorador envuelve cualquier publisher: ejecuta `validate()`, registra lo que *habría* enviado y devuelve un resultado simulado.
+`unpublish` y `getStatus` se suman cuando un canal los use (F4 y F6). Con `dry_run` en la publicación, el decorador `withDryRun` (core) ejecuta `validate()`, registra lo que *habría* enviado y devuelve un resultado simulado, sin llamar a `publish`.
 
 ## Cola de trabajos
 
@@ -287,9 +300,9 @@ Política objetivo por cola (cada fase la confirma en su spec):
 | `system.ping` (F0) | — | 0 | no | 60 s |
 | `import.run` (F1) | `singletonKey = importRunId`; en el último intento deja el run en `failed` | 2 | sí, desde 30 s | 2 h (videos grandes) |
 | `content.prepare` (F2-T11) | `exclusive`, `singletonKey = contentRunId`; en el último intento deja la corrida en `failed`, salvo un corte por apagado. Reemplaza a `media.process` (ADR-0012, enmienda de ADR-0005) | 2 | sí, desde 30 s | 30 min (video, render e IA) |
-| `publication.publish` | `singletonKey = publicationId`; dead-letter que lleva a `failed` | 3 | sí, desde 60 s | ~5 min (Marketplace termina en `awaiting_manual_confirm`) |
+| `publication.publish` (F3) | `exclusive`, `singletonKey = publicationId`; en el último intento deja la publicación en `failed`; al arrancar se reencolan las `publishing` | 2 | sí, desde 60 s | 15 min (sondeo del reel de hasta 5 min) |
 | `publication.sync` | cron, sin solaparse | 1 | no | ~10 min |
-| `tokens.refresh` | cron | 3 | sí | ~5 min |
+| `tokens.refresh` (F3) | cron diario y al arrancar el worker | 3 | sí | ~5 min |
 
 Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al arrancar y los cron del período apagado se pierden. Eso afecta al calendario de F6.
 
@@ -343,7 +356,7 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
   - `archived` → `ready`.
 
   `ready` exige al menos una foto, y el cambio es condicional (`ListingRepository.changeStatus`). `active` y `closed` no se cambian a mano en F1. Una transición no permitida es `409 INVALID_TRANSITION`, también pasar al mismo estado (la tabla no tiene `x → x`). `LISTING_MANUAL_TARGETS` (core) son los destinos, y la API valida con ellos.
-  - **Provisional:** en F3 la tabla se redefine con su diagrama, como la de las publicaciones, y `changeListingStatus` pasa a orquestar las publicaciones: pausar al pasar a `paused`, despublicar al archivar, `active` ↔ `paused` y `closed` con `close_reason`.
+  - **Provisional:** en F6 (spec F3, §3) la tabla se redefine con su diagrama, como la de las publicaciones, y `changeListingStatus` pasa a orquestar las publicaciones: pausar al pasar a `paused`, despublicar al archivar, `active` ↔ `paused` y `closed` con `close_reason`.
 - La API tipa sus respuestas y valida su entrada con esos esquemas. La CLI y el panel validan con los mismos esquemas lo que reciben.
 - **Lo único que el panel importa de la API en tiempo de ejecución es `@agentsales/api/contracts`.** De la raíz de `@agentsales/api` solo importa `import type { AppType }`, porque en tiempo de ejecución arrastraría el servidor. Biome no distingue `import type`, así que lo revisa un test (`apps/web/src/api-imports.test.ts`).
 - **Clientes HTTP de la CLI y el panel:** cada uno tiene el suyo a propósito (`apps/cli/src/api-client.ts` y `apps/web/src/api/client.ts`). Difieren en el transporte: la CLI va por puerto y reconoce `ECONNREFUSED`; el panel va por el proxy `/api`, trata un 5xx sin JSON como `UNREACHABLE` y deja pasar las cancelaciones. Compartirlos exigiría una salida de runtime con `hono/client`, fuera de lo que permite ADR-0011. Los dos deben mantener la misma semántica: `code` y `status` del error, `TIMEOUT`, `UNEXPECTED_RESPONSE` y la respuesta validada con `contracts`. Solo el panel tiene `UPLOAD_TIMEOUT_MS` (10 min), porque la CLI nunca manda multipart: usa `/imports/local` con rutas.
