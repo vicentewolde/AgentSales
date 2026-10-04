@@ -215,6 +215,7 @@ type PublishContext = {
   saveProgress(progress: unknown): Promise<void>;           // antes del paso que publica
   signal?: AbortSignalLike;
 };
+type PublishResult = { externalId: string; externalUrl: string | null; simulated: boolean };
 ```
 
 `unpublish` y `getStatus` se suman cuando un canal los use (F4 y F6). Con `dry_run` en la publicación, el decorador `withDryRun` (core) ejecuta `validate()`, registra lo que *habría* enviado y devuelve un resultado simulado, sin llamar a `publish`.
@@ -355,7 +356,7 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
   - `archived` → `ready`.
 
   `ready` exige al menos una foto, y el cambio es condicional (`ListingRepository.changeStatus`). `active` y `closed` no se cambian a mano en F1. Una transición no permitida es `409 INVALID_TRANSITION`, también pasar al mismo estado (la tabla no tiene `x → x`). `LISTING_MANUAL_TARGETS` (core) son los destinos, y la API valida con ellos.
-  - **Provisional:** en F3 la tabla se redefine con su diagrama, como la de las publicaciones, y `changeListingStatus` pasa a orquestar las publicaciones: pausar al pasar a `paused`, despublicar al archivar, `active` ↔ `paused` y `closed` con `close_reason`.
+  - **Provisional:** en F6 (spec F3, §3) la tabla se redefine con su diagrama, como la de las publicaciones, y `changeListingStatus` pasa a orquestar las publicaciones: pausar al pasar a `paused`, despublicar al archivar, `active` ↔ `paused` y `closed` con `close_reason`.
 - La API tipa sus respuestas y valida su entrada con esos esquemas. La CLI y el panel validan con los mismos esquemas lo que reciben.
 - **Lo único que el panel importa de la API en tiempo de ejecución es `@agentsales/api/contracts`.** De la raíz de `@agentsales/api` solo importa `import type { AppType }`, porque en tiempo de ejecución arrastraría el servidor. Biome no distingue `import type`, así que lo revisa un test (`apps/web/src/api-imports.test.ts`).
 - **Clientes HTTP de la CLI y el panel:** cada uno tiene el suyo a propósito (`apps/cli/src/api-client.ts` y `apps/web/src/api/client.ts`). Difieren en el transporte: la CLI va por puerto y reconoce `ECONNREFUSED`; el panel va por el proxy `/api`, trata un 5xx sin JSON como `UNREACHABLE` y deja pasar las cancelaciones. Compartirlos exigiría una salida de runtime con `hono/client`, fuera de lo que permite ADR-0011. Los dos deben mantener la misma semántica: `code` y `status` del error, `TIMEOUT`, `UNEXPECTED_RESPONSE` y la respuesta validada con `contracts`. Solo el panel tiene `UPLOAD_TIMEOUT_MS` (10 min), porque la CLI nunca manda multipart: usa `/imports/local` con rutas.

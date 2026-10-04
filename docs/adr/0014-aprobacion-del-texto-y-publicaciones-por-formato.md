@@ -21,7 +21,7 @@
    - sin corridas de contenido (de textos ni de imágenes) mientras el aviso tenga publicaciones pendientes;
    - un texto con una publicación activa no se edita;
    - un texto aprobado cuenta como editado para regenerar (`replaceEdits`);
-   - las escrituras que dependen del estado del aviso (pedir corrida, editar, aprobar, quitar la aprobación y abrir publicaciones) corren con un **candado por aviso** (`ListingLock`: transacción que bloquea la fila del aviso y entrega repositorios de esa transacción).
+   - las escrituras que dependen del estado del aviso (pedir corrida, editar, aprobar, quitar la aprobación, abrir publicaciones y pasarlas a `publishing`) corren con un **candado por aviso** (`ListingLock`: transacción que bloquea la fila del aviso y entrega repositorios de esa transacción).
 6. **Progreso en la plataforma:** `publications.progress` (`jsonb null`) guarda lo que el publisher ya creó (en Instagram, los contenedores) antes del paso que publica, para que un reintento retome sin publicar dos veces.
 7. **El modo lo decide la publicación:** `publications.dry_run` se fija al pasar a `publishing`, y el worker lo respeta: simula una publicación pedida en `dry-run` aunque esté en `live`, y no publica una pedida en `live` si está en `dry-run` (`PUBLISH_MODE_MISMATCH`).
 8. **Contrato de `Publisher`:** `validate(input)` y `publish(input, ctx)`, donde `ctx` trae la cuenta, las credenciales descifradas, el progreso y `saveProgress`; `formats` reemplaza las banderas de carrusel y video. `unpublish` y `getStatus` se suman cuando un canal los use (F4 y F6). En `dry-run`, `withDryRun` (core) valida y registra sin llamar al publisher envuelto.

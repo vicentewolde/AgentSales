@@ -28,6 +28,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 - Conectar cuentas de terceros: App Review, acceso avanzado y verificación del negocio (F7).
 - Subida reanudable del reel (`rupload`): plan B si Meta no acepta la URL firmada del reel (nota §4.5).
 - Editar textos desde la CLI: se editan en el panel (F2-T15); la CLI aprueba, quita la aprobación y publica (D9).
+- Redefinir los cambios manuales del aviso (`LISTING_MANUAL_TRANSITIONS`: pausar, archivar o cerrar un aviso `active`) y que `changeListingStatus` orqueste sus publicaciones: pasa a F6, junto con "cerrar despublica todo". En F3, un aviso `paused` o `archived` con publicaciones aprobadas no publica (`LISTING_NOT_READY`) y ellas esperan hasta que vuelva a `ready` o se descarten.
 
 ## 4. Diseño
 
@@ -53,6 +54,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
   - **al aprobar**, si la cuenta ya está conectada;
   - **al publicar**, si la cuenta se conectó después (el mismo `openPublications`).
   - Una por **formato**: Instagram da `post` (carrusel; con un solo elemento, imagen suelta) y, si el aviso tiene reel, `reel`. Portal y Marketplace darán `post`.
+  - Un formato que ya tiene una publicación activa en esa cuenta (por ejemplo, una `published` de un texto anterior, también de `dry-run`) no abre otra: se salta y se informa (`skipped`, con el id de la activa). Para publicar el texto nuevo, primero se retira o se descarta la anterior. Así el único parcial nunca salta dentro del candado, donde un error de la base anularía la aprobación entera.
   - Al nacer se fijan `content_id` y `media_ids` (`composeCarousel` o `composeReel` en ese momento). Sin medios para el formato (`post` sin fotos procesadas) es `CONTENT_NOT_READY` (409).
 - **Quitar la aprobación** (`unapproveContent`, "rechazar" en el roadmap) deja el texto en `edited` (protege lo revisado de una regeneración sin aviso) y cancela las publicaciones de ese texto que aún no salieron (`approved` o `failed` → `cancelled`). Con una en `publishing`, `PUBLICATION_IN_PROGRESS` (409).
 - **Textos nuevos después de aprobar:** necesitan una aprobación nueva, y no pueden pisar lo aprobado:
@@ -68,11 +70,11 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 ### 4.3 Publicaciones
 - **Estados que usa F3** (máquina de estados en core, ADR-0014): `approved` → `publishing` → `published` o `failed`; `failed` → `publishing` (reintento manual); `approved` o `failed` → `cancelled` (descartar); `published` → `unpublished` (marcar como retirada). `draft` y `pending_approval` se quitan (la revisión es del texto); `scheduled`, `paused` y `awaiting_manual_confirm` quedan para F4 a F6.
 - **Cada transición** guarda la fila y su evento (`status_changed`, con `actor` `operator`, `cli` o `system`) en una sola transacción, y es condicional (`from` → `to`): si otro cambio llegó antes, `INVALID_TRANSITION`.
-- **Publicar** (`publishListing`, por aviso y canal): con el aviso en `ready` o `active` (`LISTING_NOT_READY`), abre las publicaciones que falten (§4.2), pasa las `approved` y `failed` del canal a `publishing` (sube `attempts` y fija `dry_run` con el `PUBLISH_MODE` de la API en ese momento) y, ya fuera del candado, encola `publication.publish` por cada una. Sin texto aprobado, `CONTENT_NOT_APPROVED`; sin cuenta conectada, `ACCOUNT_NOT_CONNECTED` (409). También se puede publicar una sola (`POST /publications/:id/publish`); sobre una que ya está en `publishing`, la reencola (un corte en el último intento la dejaba sin job), como `requestContentRun`. Un reintento desde `failed` conserva `progress`.
+- **Publicar** (`publishListing`, por aviso y canal): con el aviso en `ready` o `active` (`LISTING_NOT_READY`), abre las publicaciones que falten (§4.2), pasa las `approved` y `failed` del canal a `publishing` (sube `attempts` y fija `dry_run` con el `PUBLISH_MODE` de la API en ese momento) y, ya fuera del candado, encola `publication.publish` por cada una. Sin texto aprobado, `CONTENT_NOT_APPROVED`; sin cuenta conectada, `ACCOUNT_NOT_CONNECTED`; sin ninguna publicación que pasar a `publishing` (todas `published` o en curso), `NOTHING_TO_PUBLISH` (409). También se puede publicar una sola (`POST /publications/:id/publish`); sobre una que ya está en `publishing`, la reencola (un corte en el último intento la dejaba sin job), como `requestContentRun`. Un reintento desde `failed` conserva `progress`.
 - **El modo lo decide la publicación, no el worker:** el handler usa `withDryRun` si `publication.dryRun` es `true`, aunque el worker esté en `live`. Si es `false` y el worker está en `dry-run`, la deja en `failed` con `PUBLISH_MODE_MISMATCH` (no reintentable). Así un cambio de `PUBLISH_MODE` entre la API y el worker nunca publica de verdad algo pedido como simulación.
 - **Descartar** (`cancelPublication`): `approved` o `failed` → `cancelled`. El texto sigue aprobado.
 - **Marcar como retirada** (`retirePublication`): `published` → `unpublished`. En `live`, el operador confirma que la borró a mano en Instagram (el panel y la CLI lo piden); en `dry-run` no hay nada que borrar.
-- **Estado del aviso:** la primera publicación `published` en `live` pasa el aviso de `ready` a `active`; al retirar la última publicación `live` publicada, vuelve a `ready`. Las de `dry-run` no cambian el aviso.
+- **Estado del aviso:** la primera publicación `published` en `live` pasa el aviso de `ready` a `active`; al retirar la última publicación `live` publicada, vuelve a `ready`. Las de `dry-run` no cambian el aviso. Los dos cambios son del sistema (no de la tabla manual) y condicionales, con `ListingRepository.changeStatus(id, from, to)`: si el aviso ya cambió, no se toca.
 - **Bitácora:** cada intento deja un evento `publish_attempt` con el modo, el número de intento, el resultado y, en `dry-run`, lo que se habría enviado: formato, caption completo, medios (rutas de R2, tipo, tamaño y medidas) y la cuenta (`@usuario`). Nunca URLs firmadas ni tokens.
 
 ### 4.4 Job `publication.publish`
@@ -131,9 +133,9 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 ### 4.6 Cuentas, OAuth y tokens
 - **Variables:** `INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET` son el par **de Instagram** (App Dashboard > Instagram > API setup with Instagram login > Business login settings), no el de Settings > Basic (nota §2.1). `INSTAGRAM_REDIRECT_URI` (por defecto `http://localhost:8787/oauth/instagram/callback`; el host debe ser el mismo del enlace de inicio, porque la cookie distingue `localhost` de `127.0.0.1`). Reemplazan a `META_*` (D5). `doctor` avisa si faltan.
 - **Conectar (panel → API):**
-  1. El botón Conectar del panel abre directo `http://localhost:8787/oauth/instagram/start?broker=<slug>` (no por el proxy `/api` de Vite). La API arma el `state` (nonce aleatorio, corredor y vencimiento de 10 min, firmado con HMAC), lo deja en una cookie `HttpOnly`, `SameSite=Lax`, `Path=/oauth`, y redirige a `instagram.com/oauth/authorize` con los scopes `instagram_business_basic,instagram_business_content_publish`.
+  1. El botón Conectar del panel abre directo (el `broker` se valida con zod y debe existir, `BROKER_NOT_FOUND`) `http://localhost:8787/oauth/instagram/start?broker=<slug>` (no por el proxy `/api` de Vite). La API arma el `state` (nonce aleatorio, corredor y vencimiento de 10 min, firmado con HMAC), lo deja en una cookie `HttpOnly`, `SameSite=Lax`, `Path=/oauth`, y redirige a `instagram.com/oauth/authorize` con los scopes `instagram_business_basic,instagram_business_content_publish`.
   2. `GET /oauth/instagram/callback` compara el `state` con la cookie (`OAUTH_STATE_INVALID`), quita el `#_` del código, lo canjea por el token corto y luego por el largo, lee `/me?fields=user_id,username,account_type`, exige `instagram_business_content_publish` entre los permisos (`IG_PERMISSION_DENIED`) y guarda la cuenta (`connectAccount`). Redirige a la URL absoluta del panel (`http://localhost:<WEB_PORT>/cuentas?conectada=instagram` o `?error=<código>`), sin datos de la cuenta en la URL.
-  - Si el operador rechaza en Instagram (`error=access_denied`), vuelve al panel con `?error=OAUTH_DENIED`.
+  - Si el operador rechaza en Instagram (`error=access_denied`), vuelve al panel con `?error=OAUTH_DENIED`. Es solo un código de la redirección para el panel, no un `AppError` (no va en `errors.ts`).
 - **Si el panel de Meta no acepta `http://localhost`** (lo prueba el operador antes de T13, nota §3.6): T13 y T16 suman `agentsales accounts connect instagram --broker <slug> --token-stdin`, que recibe por la entrada estándar el token largo del botón **Generate token** y sigue igual desde `/me` (D4). No se agregan túneles ni HTTPS local en F3.
 - **Guardado (`platform_accounts`):** `external_account_id` = `user_id` de `/me`, `display_name` = `@username`, `status = connected`, `token_expires_at`, `meta` con `accountType`, los permisos y `tokenRefreshedAt`. `credentials_encrypted` guarda `{ accessToken }` cifrado. Reconectar la misma cuenta actualiza la fila.
 - **Cifrado (`SecretBox` y `createSecretBox`, `packages/config`; lo inyectan las apps en el repositorio de cuentas):**
@@ -143,6 +145,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
   - Un texto alterado, otra clave u otra AAD dan `CREDENTIALS_UNREADABLE` (no reintentable; la cuenta queda en `error` y hay que reconectarla).
   - Core nunca ve el cifrado: el repositorio cifra al guardar y descifra solo en `getCredentials(id)`.
 - **Refresco (`refreshAccountTokens`):** refresca los tokens con más de 24 h desde el último refresco y menos de 30 días de vigencia. Corre al arrancar el worker y una vez al día mientras corre (`schedule` de pg-boss, job `tokens.refresh`, como en ADR-0005: cron, 3 reintentos con backoff, ~5 min). Un token vencido pasa la cuenta a `expired` sin llamar a Instagram; un 190 al refrescar, también. El panel muestra el vencimiento y avisa con 10 días de anticipación. Como el worker solo corre con `pnpm dev`, una cuenta sin uso por 60 días vence y se reconecta.
+- **Refresco a pedido:** `POST /accounts/:id/refresh` (CLI `accounts refresh <id> [--force]`) corre el mismo caso de uso para una cuenta; `force` salta solo el tope de 30 días, nunca el mínimo de 24 h.
 - **Desconectar:** `revoked` y borra `credentials_encrypted`. La cuenta no se borra (sus publicaciones la referencian).
 - **Logs:** `redactText` (`packages/core/src/redact.ts`) ya oculta `access_token`, `client_secret` y `signature` en URLs. Se suma `code` **solo como parámetro de una URL** (no la clave `code` de los objetos del log, que son los códigos de error) y los cuerpos de formulario (`a=b&c=d` sin `?`). Tests que revisan que ningún log, error ni respuesta lleve el token, el secret ni el código.
 
@@ -165,21 +168,22 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 |---|---|
 | `GET /oauth/instagram/start?broker=` y `GET /oauth/instagram/callback` | Conexión (§4.6); responden con redirecciones |
 | `GET /accounts` | Cuentas por corredor: plataforma, `@usuario`, estado, vencimiento. Nunca credenciales |
-| `POST /accounts/:id/disconnect` | `revoked` |
+| `POST /accounts/:id/disconnect` y `POST /accounts/:id/refresh` `{ force? }` | `revoked`; refresco a pedido (§4.6) |
+| `POST /accounts/connect-token` `{ broker, platform: "instagram", token }` | Solo si Meta no acepta `http://localhost` (D4): conecta con el token del panel, validado con zod y detrás del `hostGuard`; el token nunca vuelve en la respuesta ni va al log |
 | `POST /contents/:id/approve` y `POST /contents/:id/unapprove` | Aprobar y quitar la aprobación (§4.2); responden con el texto, su revisión y las publicaciones del canal |
 | `GET /listings/:id/publications` | Publicaciones del aviso con su estado, enlace, error y medios (miniaturas firmadas) |
 | `POST /listings/:id/publish` `{ platform }` | Publicar el canal (§4.3) |
 | `POST /publications/:id/publish`, `/cancel` y `/retire` | Publicar o reintentar una, descartarla y marcarla como retirada (`retire` exige `{ removedByHand: true }` si es `live`) |
 | `GET /publications/:id/events` | Bitácora, sin secretos |
 
-Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_LOCKED`, `CONTENT_NOT_APPROVED`, `PUBLICATION_PENDING`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT` y `ACCOUNT_NOT_CONNECTED` (409); `PUBLICATION_NOT_FOUND` y `ACCOUNT_NOT_FOUND` (404); `OAUTH_STATE_INVALID` (400); `CREDENTIALS_UNREADABLE` (500); los `IG_*` y `PUBLISH_MODE_MISMATCH` solo viajan dentro de `last_error`.
+Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_LOCKED`, `CONTENT_NOT_APPROVED`, `PUBLICATION_PENDING`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH` y `ACCOUNT_NOT_CONNECTED` (409); `PUBLICATION_NOT_FOUND` y `ACCOUNT_NOT_FOUND` (404); `OAUTH_STATE_INVALID` (400); `CREDENTIALS_UNREADABLE` (500); los `IG_*` y `PUBLISH_MODE_MISMATCH` solo viajan dentro de `last_error`.
 
 ### 4.9 CLI y panel
 - **CLI:**
   - `agentsales approve <id_propiedad> [--platform instagram|portal|marketplace]`: sin `--platform`, aprueba los canales con texto vigente sin errores e informa cada uno; `--undo` quita la aprobación.
-  - `agentsales publish <id_propiedad> [--platform instagram] [--no-wait]`: espera hasta `published` o `failed` con el sondeo de F2 (`waitForRun` generalizado) y muestra el enlace.
-  - `agentsales publications [<id_propiedad>]`: estado, formato, modo y enlace; `--events` para la bitácora.
-  - `agentsales accounts` y `agentsales accounts connect instagram --broker <slug>` (imprime la URL de conexión y la abre en el navegador).
+  - `agentsales publish <id_propiedad> [--platform instagram] [--no-wait] [--yes]`: en `live` pide confirmación (salvo `--yes`); espera hasta `published` o `failed` con el sondeo de F2 (`waitForRun` generalizado) y muestra el enlace.
+  - `agentsales publications [<id_propiedad>]`: estado, formato, modo y enlace; `--events` para la bitácora. `publications cancel <id>` y `publications retire <id> [--yes]` (en `live`, confirma que se borró a mano).
+  - `agentsales accounts`, `agentsales accounts connect instagram --broker <slug>` (imprime la URL de conexión y la abre en el navegador) y `accounts refresh <id> [--force]`.
 - **Panel:**
   - Página **Cuentas** (`/cuentas`): por corredor, la cuenta de Instagram con su estado y vencimiento, y los botones Conectar, Reconectar y Desconectar.
   - Sección Contenido del aviso: en cada pestaña, la insignia "Aprobado" y los botones Aprobar o Quitar aprobación (con los motivos si no se puede). En Instagram, las publicaciones (carrusel y reel) con su estado, modo (`dry-run` o en vivo), enlace, error legible y los botones Publicar, Reintentar, Descartar y Marcar como retirada (con confirmación). Sondea mientras hay una en `publishing`, con `usePolledRun`; el tope de espera se cuenta desde que pasó a `publishing` (`updatedAt`), no desde que nació, porque una publicación puede llevar días aprobada.
@@ -237,7 +241,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso
 - **Depende de:** T01
-- **Archivos:** `packages/core/src/ports/{publication-repository.ts,listing-lock.ts}`, `packages/core/src/testing/*`, `packages/db/src/repositories/publications.ts`, `packages/db/src/listing-lock.ts`
+- **Archivos:** `packages/core/src/ports/{publication-repository.ts,listing-lock.ts}`, `packages/core/src/testing/*`, `packages/db/src/repositories/{publications.ts,media.ts,content-runs.ts,contents.ts,listings.ts}`, `packages/db/src/listing-lock.ts`
 - **Descripción:** `create` (nace con su evento), `transition` (condicional, con su evento y los campos del cambio: `attempts`, `dry_run`, `external_*`, `last_error`), `saveProgress`, `get`, `listByListing`, `listByStatus`, `listEvents`, `addEvent`. `createListingLock(db)` (§4.2), cuyo `fn` solo recibe repositorios de la transacción.
 - **Hecho cuando:**
   - [ ] Una transición desde un estado que ya cambió da `INVALID_TRANSITION` sin escribir
@@ -248,16 +252,17 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T05 · Aprobación en core
 - **Depende de:** T03, T04
-- **Archivos:** `packages/core/src/use-cases/{approve-content.ts,unapprove-content.ts,open-publications.ts}`
+- **Archivos:** `packages/core/src/use-cases/{approve-content.ts,unapprove-content.ts,open-publications.ts}`, `packages/core/src/ports/content-repository.ts` (cambio de estado condicional del texto), `packages/db/src/repositories/contents.ts`, `packages/core/src/testing/*`
 - **Descripción:** aprobar, quitar la aprobación y abrir publicaciones (§4.2), dentro de `ListingLock`.
 - **Hecho cuando:**
   - [ ] Aprobar con cuenta conectada crea `post` y `reel` (con video) con `content_id` y `media_ids` fijos; sin cuenta, solo aprueba
+  - [ ] Aprobar un texto nuevo con una publicación `published` del mismo formato salta ese formato y lo informa (el texto queda aprobado)
   - [ ] Cada rechazo de §4.2 con su código (no vigente, corrida activa, errores, sin medios, aviso no listo)
   - [ ] Quitar la aprobación cancela las pendientes y deja `edited`; con una en `publishing`, `PUBLICATION_IN_PROGRESS`
 
 ### F3-T06 · Lo aprobado no cambia: edición y corridas con el candado
 - **Depende de:** T05
-- **Archivos:** `packages/core/src/use-cases/{edit-content.ts,request-content-run.ts}`, `apps/api/src/app.ts` y `apps/worker/src/worker.ts` (componen el candado)
+- **Archivos:** `packages/core/src/use-cases/{edit-content.ts,request-content-run.ts}` (consultan las publicaciones del aviso), sus tests, `apps/api/src/app.ts` y `apps/worker/src/worker.ts` (componen el candado)
 - **Descripción:** las reglas nuevas de `editContent` y `requestContentRun` (§4.2) dentro de `ListingLock`, encolando después del candado.
 - **Hecho cuando:**
   - [ ] Corrida pedida con publicación pendiente: `PUBLICATION_PENDING`; con un texto aprobado: `CONTENT_EDITED` salvo `replaceEdits`
@@ -298,7 +303,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 - **Descripción:** §4.3 sin el intento: publicar el canal o una (con reencolado de una en `publishing`), `dry_run` con el modo de la API, encolar después del candado, descartar, retirar y el estado del aviso al retirar.
 - **Hecho cuando:**
   - [ ] Publicar abre las que faltan y pasa `approved` y `failed` a `publishing` con su evento; el job se encola después de confirmar
-  - [ ] Cada rechazo con su código (sin aprobar, sin cuenta, aviso no listo)
+  - [ ] Cada rechazo con su código (sin aprobar, sin cuenta, aviso no listo, `NOTHING_TO_PUBLISH`)
   - [ ] Retirar en `live` exige la confirmación; retirar la última publicada en `live` devuelve el aviso a `ready`
 
 ### F3-T11 · Intento de publicación en core
@@ -323,7 +328,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 ### F3-T13 · Conectar Instagram
 - **Depende de:** T03, T08
 - **Archivos:** `packages/core/src/use-cases/{connect-account.ts,disconnect-account.ts}`, `apps/api/src/routes/{oauth.ts,accounts.ts}`, `apps/api/src/contracts/index.ts`, `apps/api/src/app.ts` e `index.ts` (composición)
-- **Descripción:** §4.6 completo: inicio y vuelta del OAuth, `GET /accounts`, desconectar. Si el operador informó que Meta no acepta `http://localhost`, también `connectAccount` desde un token (T15 lo expone con `--token-stdin`).
+- **Descripción:** §4.6 completo: inicio y vuelta del OAuth, `GET /accounts`, desconectar. Si el operador informó que Meta no acepta `http://localhost`, también `connectAccount` desde un token y `POST /accounts/connect-token` (T16 lo expone con `--token-stdin`).
 - **Hecho cuando:**
   - [ ] Callback con `state` correcto guarda la cuenta cifrada; con otro, sin cookie o vencido, `OAUTH_STATE_INVALID` sin llamar a Instagram
   - [ ] Rechazo del usuario y falta del permiso de publicar vuelven al panel con su código, a la URL absoluta del panel
@@ -333,7 +338,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 ### F3-T14 · Refresco de tokens
 - **Depende de:** T13
 - **Archivos:** `packages/core/src/use-cases/refresh-account-tokens.ts`, `packages/core/src/jobs.ts`, `apps/worker/src/jobs/tokens-refresh.ts`, `apps/worker/src/worker.ts`
-- **Descripción:** §4.6 (refresco): job `tokens.refresh` al arrancar y una vez al día.
+- **Descripción:** §4.6 (refresco): job `tokens.refresh` al arrancar y una vez al día, y el refresco a pedido de una cuenta (`force`).
 - **Hecho cuando:**
   - [ ] Ventana de refresco (menos de 24 h, entre 24 h y 30 días restantes, vencido) con reloj falso
   - [ ] 190 al refrescar deja la cuenta en `expired`; un error de red no la cambia
@@ -350,10 +355,11 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 ### F3-T16 · CLI
 - **Depende de:** T15
 - **Archivos:** `apps/cli/src/commands/{approve.ts,publish.ts,publications.ts,accounts.ts}`, `apps/cli/src/commands/wait-run.ts`
-- **Descripción:** §4.9 (CLI), y `accounts connect instagram --token-stdin` si T13 lo sumó.
+- **Descripción:** §4.9 (CLI): `approve`, `publish`, `publications` (con `cancel` y `retire`) y `accounts` (con `connect` y `refresh`), y `accounts connect instagram --token-stdin` si T13 lo sumó.
 - **Hecho cuando:**
   - [ ] Tests de cada comando con la API simulada; `publish` sale con 1 si queda `failed`
-  - [ ] `retire` en `live` pide confirmación (o `--yes`)
+  - [ ] `publish` y `publications retire` en `live` piden confirmación (o `--yes`)
+  - [ ] `CLAUDE.md` (Comandos) con los comandos nuevos
 
 ### F3-T17 · Panel: Cuentas
 - **Depende de:** T13
@@ -368,7 +374,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 - **Descripción:** §4.9 (sección Contenido).
 - **Hecho cuando:**
   - [ ] Tests: aprobar y quitar la aprobación, publicar, sondeo hasta `published` con enlace, `failed` con su error, descartar y retirar con confirmación
-  - [ ] El sondeo cuenta desde `updatedAt` para las publicaciones (test con una aprobada hace días)
+  - [ ] `PolledRun` y `pollStop` (`run-poll.ts`) se generalizan con el inicio de la espera (`startedAt`: `createdAt` para corridas y cargas, `updatedAt` para publicaciones), con test de una aprobada hace días
   - [ ] El editor y el botón Preparar quedan bloqueados con su motivo cuando corresponde
 
 ### F3-T19 · `pnpm ig:smoke`
@@ -378,6 +384,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 - **Hecho cuando:**
   - [ ] Test con msw que verifica que nunca se llama a `media_publish`
   - [ ] Salida con el estado del contenedor y el código si falla, sin tokens
+  - [ ] `CLAUDE.md` (Comandos) con `pnpm ig:smoke`
 
 ### F3-T20 · Cierre de fase
 - **Depende de:** todas
@@ -407,7 +414,7 @@ Orden: T01 y T02 primero (independientes). T03 después de T02; T04 después de 
 4. CLI: `approve P001`, `publish P001` (en `dry-run`), `publications P001 --events`.
 5. `pnpm ig:smoke` (operador): Meta descarga una URL firmada de R2 sin publicar nada.
 6. **`live`, solo con la instrucción del operador en el chat:** `PUBLISH_MODE=live`, publicar P002 (carrusel y reel), abrir los enlaces guardados, borrar las dos publicaciones a mano en Instagram, marcarlas como retiradas y volver a `PUBLISH_MODE=dry-run`.
-7. Refresco: con el token de más de 24 h, reiniciar el worker y ver el vencimiento nuevo.
+7. Refresco: un token recién conectado tiene 60 días y no entra en la ventana (menos de 30 días), así que la demo usa `pnpm -s cli accounts refresh <id> --force` (refresca si tiene más de 24 h, sin mirar la vigencia) y muestra el vencimiento nuevo. La ventana normal la cubren los tests con reloj falso.
 
 ## 8. Riesgos y mitigaciones
 | Riesgo | Mitigación |
@@ -443,3 +450,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-04 | Borrador inicial (`/fase-plan 3`), con la nota `docs/integraciones/instagram.md` completada (OAuth, publicación, borrado, límites y errores) |
 | 2026-10-04 | Revisión del subagente `arquitecto`: se encola después del candado (un job encolado antes de confirmar no veía el cambio); el modo lo decide `publication.dryRun` (`PUBLISH_MODE_MISMATCH`, D11); SQL de la migración `0006` ajustado a mano por el índice parcial; reglas del candado (solo repositorios de la transacción, nada externo adentro); `LISTING_NOT_READY`, `PUBLICATION_CONFLICT`, job `tokens.refresh` y política de `publication.publish`; `validateInstagramInput` pura y cliente perezoso; reel sin `cover_url`, con `thumb_offset` (D12); `INSTAGRAM_CAPTION_MAX_LENGTH` reutilizado; redactor en core y sin ocultar la clave `code` de los logs; OAuth con URL absoluta del panel y enlace directo a la API; sondeo del panel desde `updatedAt`; reencolar las `publishing` al arrancar y al pedirlo; `SecretBox` en config; T05 y T09 partidas (20 tareas) y composición en las apps |
 | 2026-10-04 | Spec **aprobado** (aprobación permanente del operador): decisiones D1–D12 con la recomendación del spec. ADR-0014 aceptado; seguimientos en ADR-0005 y ADR-0012; `01-arquitectura.md` (flujos, máquina de estados, contrato `Publisher` y colas), `04-formato-publicaciones.md` (portada del reel), `06-roadmap.md`, `CLAUDE.md` (glosario) y `docs/ESTADO.md` actualizados |
+| 2026-10-04 | Revisión del PR (#52) con `revisor` y `arquitecto`: aprobar un texto nuevo salta el formato que ya tiene una publicación activa (sin chocar con el único dentro del candado) y `NOTHING_TO_PUBLISH`; cambios del aviso del sistema y condicionales, y la tabla manual del aviso pasa a F6 (§3); archivos de repositorios en T04 a T06; `publications cancel` y `retire`, confirmación de `publish` en `live` y `accounts refresh --force` (la demo del refresco); `POST /accounts/connect-token` para el plan del token; `broker` validado; `OAUTH_DENIED` no es un `AppError`; `startedAt` en el sondeo del panel; `CLAUDE.md` con los comandos nuevos; nota en `02-modelo-datos.md` hasta T01 y límites de `03-plataformas.md` alineados con D10 |
