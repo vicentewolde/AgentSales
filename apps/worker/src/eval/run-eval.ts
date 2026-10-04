@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import {
+  type AbortSignalLike,
   type BrokerRepository,
   type EvaluatedText,
   type EvaluateListingContentDeps,
@@ -24,8 +25,30 @@ export type EvalDeps = Omit<EvaluateListingContentDeps, "brokers" | "listings"> 
 /** El corredor de las muestras de prueba (spec F2-T16). */
 export const DEFAULT_EVAL_BROKER = "agentsales-pruebas";
 
-/** Un nombre de archivo seguro para el `id_propiedad` (viene del Excel). */
-const fileNameOf = (externalRef: string) => `${externalRef.replace(/[^\w.-]/g, "_")}.md`;
+/** La carpeta de una evaluación, con la hora local y los milisegundos (dos seguidas no chocan). */
+export function evalFolderName(date: Date): string {
+  const pad = (n: number, width = 2) => String(n).padStart(width, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_` +
+    `${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}-` +
+    pad(date.getMilliseconds(), 3)
+  );
+}
+
+/**
+ * Nombres de archivo seguros para los `id_propiedad` (vienen del Excel): solo letras, números,
+ * `.`, `-` y `_`, sin empezar con punto (nada de `..`), y únicos (`A/1` y `A_1` no se pisan).
+ */
+export function fileNamer(): (externalRef: string) => string {
+  const used = new Set<string>();
+  return (externalRef) => {
+    const base = externalRef.replace(/[^\w.-]/g, "_").replace(/^\.+/, "_") || "_";
+    let name = `${base}.md`;
+    for (let n = 2; used.has(name); n += 1) name = `${base}-${n}.md`;
+    used.add(name);
+    return name;
+  };
+}
 
 function checkLines(item: EvaluatedText): string[] {
   if (item.checks.length === 0) return ["sin problemas"];
@@ -58,7 +81,10 @@ export function renderEvaluation(evaluation: ListingEvaluation): string {
  * dado, sin escribir en la base. Imprime la revisión por aviso y canal, deja los textos en
  * `outDir` y devuelve 1 si algún texto tiene errores o algún aviso no se pudo evaluar.
  */
-export async function runEval(deps: EvalDeps, { brokerSlug }: { brokerSlug: string }) {
+export async function runEval(
+  deps: EvalDeps,
+  { brokerSlug, signal }: { brokerSlug: string; signal?: AbortSignalLike },
+) {
   const broker = await deps.brokers.findBySlug(brokerSlug);
   if (broker === null) {
     deps.printError(`✗ No existe el corredor ${brokerSlug}: indica otro con --broker <slug>`);
@@ -74,9 +100,17 @@ export async function runEval(deps: EvalDeps, { brokerSlug }: { brokerSlug: stri
 
   let failed = 0;
   let withErrors = 0;
+  let evaluated = 0;
+  const fileNameOf = fileNamer();
   for (const listing of listings) {
+    // Con Ctrl+C no se pide nada más (cada llamada a la IA gasta cuota del plan).
+    if (signal?.aborted) break;
     try {
-      const evaluation = await evaluateListingContent(deps, { listingId: listing.id });
+      const evaluation = await evaluateListingContent(deps, {
+        listingId: listing.id,
+        ...(signal === undefined ? {} : { signal }),
+      });
+      evaluated += 1;
       const path = join(deps.outDir, fileNameOf(listing.externalRef));
       await deps.writeFile(path, renderEvaluation(evaluation));
       if (evaluation.hasErrors) withErrors += 1;
@@ -89,16 +123,18 @@ export async function runEval(deps: EvalDeps, { brokerSlug }: { brokerSlug: stri
       for (const warning of evaluation.warnings) deps.print(`  ⚠ IA: ${warning}`);
     } catch (error) {
       if (!isAppError(error)) throw error;
+      if (signal?.aborted) break;
       failed += 1;
       deps.print(`✗ ${listing.externalRef}: ${error.code}: ${error.message}`);
     }
   }
 
   deps.print("");
+  if (signal?.aborted) deps.print("Evaluación cortada: no se pidió nada más a la IA.");
   deps.print(
-    `Evaluadas ${listings.length - failed} de ${listings.length} · con errores ${withErrors}` +
+    `Evaluadas ${evaluated} de ${listings.length} · con errores ${withErrors}` +
       (failed > 0 ? ` · no se pudieron evaluar ${failed}` : ""),
   );
-  deps.print(`Textos en ${deps.outDir}`);
-  return withErrors > 0 || failed > 0 ? 1 : 0;
+  if (evaluated > 0) deps.print(`Textos en ${deps.outDir}`);
+  return withErrors > 0 || failed > 0 || evaluated < listings.length ? 1 : 0;
 }

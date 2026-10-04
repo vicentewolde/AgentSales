@@ -11,7 +11,7 @@ import {
   type ScriptedLlmResponse,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_EVAL_BROKER, runEval } from "./run-eval.js";
+import { DEFAULT_EVAL_BROKER, evalFolderName, fileNamer, runEval } from "./run-eval.js";
 
 /** El borrador de ejemplo con un número que no está en los datos del aviso. */
 const DRAFT_WITH_INVENTED_NUMBER = {
@@ -19,8 +19,20 @@ const DRAFT_WITH_INVENTED_NUMBER = {
   instagram: { ...SAMPLE_CONTENT_DRAFT.instagram, body: "Tiene 847 m² de jardín privado." },
 };
 
-/** Un corredor de pruebas con un aviso listo y otro en borrador; la IA responde `responses`. */
-async function setup(responses: ScriptedLlmResponse[]) {
+const NOTES = "acepta ofertas bajo la tasación";
+const ADDRESS = "Calle Secreta 4321";
+
+/**
+ * Un corredor de pruebas con avisos (por defecto, P001 listo y P009 en borrador); la IA responde
+ * `responses`, en orden.
+ */
+async function setup(
+  responses: ScriptedLlmResponse[],
+  refs: readonly (readonly [string, boolean])[] = [
+    ["P001", true],
+    ["P009", false],
+  ],
+) {
   const broker = contentBrokerFixture({ slug: DEFAULT_EVAL_BROKER });
   const listings = createInMemoryListingRepository();
   const add = async (externalRef: string, ready: boolean) => {
@@ -31,7 +43,12 @@ async function setup(responses: ScriptedLlmResponse[]) {
       createdAt: _a,
       updatedAt: _u,
       ...rest
-    } = contentListingFixture({ externalRef, brokerId: broker.id });
+    } = contentListingFixture({
+      externalRef,
+      brokerId: broker.id,
+      address: ADDRESS,
+      internalNotes: NOTES,
+    });
     const listing = await listings.create({
       ...(rest as Omit<NewListing, "sourceHash">),
       sourceHash: "h",
@@ -39,8 +56,7 @@ async function setup(responses: ScriptedLlmResponse[]) {
     if (ready) await listings.promoteToReady(listing.id);
     return listing;
   };
-  await add("P001", true);
-  await add("P009", false);
+  for (const [externalRef, ready] of refs) await add(externalRef, ready);
   const files = new Map<string, string>();
   const out: string[] = [];
   const err: string[] = [];
@@ -104,5 +120,81 @@ describe("pnpm eval:content (runEval)", () => {
     expect(empty.err).toEqual([
       `✗ ${DEFAULT_EVAL_BROKER} no tiene propiedades listas para evaluar`,
     ]);
+  });
+
+  it("si la IA falla en un aviso, sigue con los demás y sale con 1", async () => {
+    const t = await setup(
+      [{ error: LLM_ERRORS.unavailable() }, { data: SAMPLE_CONTENT_DRAFT }],
+      [
+        ["P001", true],
+        ["P002", true],
+      ],
+    );
+
+    expect(await runEval(t.deps, { brokerSlug: DEFAULT_EVAL_BROKER })).toBe(1);
+    expect(t.out[0]).toMatch(/^✗ P001: LLM_UNAVAILABLE/);
+    expect(t.out).toContain("✓ P002");
+    expect([...t.files.keys()]).toEqual(["/tmp/eval/prueba/P002.md"]);
+    expect(t.out).toContain("Evaluadas 1 de 2 · con errores 0 · no se pudieron evaluar 1");
+  });
+
+  it("con Ctrl+C (signal) no pide nada más a la IA y sale con 1", async () => {
+    const controller = new AbortController();
+    const t = await setup(
+      [{ data: SAMPLE_CONTENT_DRAFT }, { data: SAMPLE_CONTENT_DRAFT }],
+      [
+        ["P001", true],
+        ["P002", true],
+      ],
+    );
+    const write = t.deps.writeFile;
+    t.deps.writeFile = async (path, text) => {
+      await write(path, text);
+      controller.abort(); // el operador corta después del primer aviso
+    };
+
+    expect(
+      await runEval(t.deps, { brokerSlug: DEFAULT_EVAL_BROKER, signal: controller.signal }),
+    ).toBe(1);
+    expect(t.deps.llm.requests).toHaveLength(1);
+    expect(t.out).toContain("Evaluación cortada: no se pidió nada más a la IA.");
+    expect(t.out).toContain("Evaluadas 1 de 2 · con errores 0");
+  });
+
+  it("los textos no llevan la dirección ni las notas internas", async () => {
+    const t = await setup([{ data: SAMPLE_CONTENT_DRAFT }]);
+
+    await runEval(t.deps, { brokerSlug: DEFAULT_EVAL_BROKER });
+
+    const text = [...t.files.values(), ...t.out].join("\n");
+    expect(text).not.toContain("Secreta");
+    expect(text).not.toContain("tasación");
+  });
+
+  it("un fallo que no es de la aplicación (la base) se propaga", async () => {
+    const t = await setup([]);
+    t.deps.listings.list = async () => {
+      throw new Error("Connection terminated unexpectedly");
+    };
+
+    await expect(runEval(t.deps, { brokerSlug: DEFAULT_EVAL_BROKER })).rejects.toThrow(
+      "Connection terminated",
+    );
+  });
+});
+
+describe("archivos de la evaluación", () => {
+  it("nombres seguros y únicos para cualquier id_propiedad", () => {
+    const nameOf = fileNamer();
+    expect(nameOf("P001")).toBe("P001.md");
+    expect(nameOf("A/1")).toBe("A_1.md");
+    expect(nameOf("A_1")).toBe("A_1-2.md");
+    expect(nameOf("../../etc")).toBe("__.._etc.md"); // sin barras: queda dentro de la carpeta
+    expect(nameOf("..")).toBe("_.md");
+    expect(nameOf("ñuñoa 3")).toBe("_u_oa_3.md");
+  });
+
+  it("la carpeta lleva la hora local con milisegundos", () => {
+    expect(evalFolderName(new Date(2026, 9, 3, 21, 5, 7, 42))).toBe("2026-10-03_21-05-07-042");
   });
 });
