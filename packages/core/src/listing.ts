@@ -73,3 +73,12 @@ export const LISTING_MANUAL_TARGETS = [
 
 export const canChangeListingStatus = (from: ListingStatus, to: ListingStatus) =>
   LISTING_MANUAL_TRANSITIONS[from].includes(to);
+
+/**
+ * Estados en que un aviso puede preparar contenido (spec F2 §4.4). Lo revisan `requestContentRun`
+ * y el panel (para desactivar el botón), con el mismo texto.
+ */
+export const PREPARABLE_LISTING_STATUSES: readonly ListingStatus[] = ["ready", "paused", "active"];
+
+export const canPrepareContent = (status: ListingStatus): boolean =>
+  PREPARABLE_LISTING_STATUSES.includes(status);

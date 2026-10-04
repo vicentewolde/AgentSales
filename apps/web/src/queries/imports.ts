@@ -1,4 +1,9 @@
-import { importRunListResponseSchema, importRunResponseSchema } from "@agentsales/api/contracts";
+import {
+  type ImportRunView,
+  importRunListResponseSchema,
+  importRunResponseSchema,
+} from "@agentsales/api/contracts";
+import { isTerminalImportRun } from "@agentsales/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { unwrap } from "../api/client.js";
@@ -6,8 +11,6 @@ import { useApiClient } from "../api/context.js";
 import { brokerKeys } from "./brokers.js";
 import { listingKeys } from "./listings.js";
 import { usePolledRun } from "./run-poll.js";
-
-export { type PollStop, pollStop } from "./run-poll.js";
 
 export const importKeys = {
   all: ["imports"] as const,
@@ -43,7 +46,7 @@ export function useImportRuns() {
 export function useImportRun(id: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
-  const { query, stopped, finishedHere } = usePolledRun({
+  const { query, stopped, finishedHere } = usePolledRun<ImportRunView>({
     queryKey: importKeys.detail(id),
     fetch: async (signal) =>
       (
@@ -52,6 +55,7 @@ export function useImportRun(id: string) {
           importRunResponseSchema,
         )
       ).importRun,
+    isTerminal: isTerminalImportRun,
   });
   useEffect(() => {
     if (!finishedHere) return;

@@ -7,7 +7,7 @@ import {
 } from "@agentsales/core";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../api/client.js";
-import { ContentSection } from "../components/ContentSection.js";
+import { ContentSection } from "../components/content/ContentSection.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { isManualTarget, statusActionText } from "../labels.js";

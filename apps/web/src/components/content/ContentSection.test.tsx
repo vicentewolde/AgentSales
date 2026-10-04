@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { RUN_WAIT } from "@agentsales/core";
+import { AppError, RUN_WAIT as WAIT } from "@agentsales/core";
 import {
   contentDefinitionsFixture,
+  createInMemoryJobQueue,
   createInMemoryLlmProvider,
   LLM_ERRORS,
 } from "@agentsales/core/testing";
@@ -11,7 +12,7 @@ import {
   contentSetup,
   createInMemoryFieldDefinitionRepository,
   harness,
-} from "../../test/harness.js";
+} from "../../../test/harness.js";
 
 afterEach(() => {
   cleanup();
@@ -19,10 +20,15 @@ afterEach(() => {
 });
 
 /** La API en proceso con las mismas definiciones que usa la corrida (la revisión las necesita). */
-async function setup(options: Parameters<typeof contentSetup>[1] = {}) {
+async function setup(
+  options: Parameters<typeof contentSetup>[1] = {},
+  harnessOptions: Parameters<typeof harness>[0] = {},
+) {
   const h = harness({
+    ...harnessOptions,
     deps: {
       fieldDefinitions: createInMemoryFieldDefinitionRepository(contentDefinitionsFixture()),
+      ...harnessOptions.deps,
     },
   });
   const content = await contentSetup(h, options);
@@ -79,7 +85,7 @@ describe("panel: sección Contenido", () => {
 
     await t.contentRuns.markRunning(run?.id ?? "");
     await t.contentRuns.setStage(run?.id ?? "", "renders");
-    await advance(RUN_WAIT.pollMs);
+    await advance(WAIT.pollMs);
     expect(
       await within(section).findByText("Preparando: armando la portada y la ficha…"),
     ).toBeTruthy();
@@ -87,7 +93,7 @@ describe("panel: sección Contenido", () => {
     expect(within(stages).getByText(/procesando fotos y videos/).textContent).toMatch(/^✓/);
 
     await t.prepare();
-    await advance(RUN_WAIT.pollMs);
+    await advance(WAIT.pollMs);
     expect(await within(section).findByRole("tablist", { name: "Canales" })).toBeTruthy();
     expect(within(section).queryByText(/Preparando/)).toBeNull();
     // La galería pasa a usar las miniaturas que armó la corrida.
@@ -106,7 +112,7 @@ describe("panel: sección Contenido", () => {
     fireEvent.click(within(section).getByRole("button", { name: "Rehacer imágenes" }));
     await within(section).findByText("Preparando: en cola…");
     expect(await t.contentRuns.latest(t.listing.id)).toMatchObject({ texts: false });
-    await advance(RUN_WAIT.queuedWarningMs + RUN_WAIT.pollMs);
+    await advance(WAIT.queuedWarningMs + WAIT.pollMs);
     expect(
       await within(section).findByText("Sigue en cola: ¿está corriendo el worker? (pnpm dev)"),
     ).toBeTruthy();
@@ -141,10 +147,10 @@ describe("panel: sección Contenido", () => {
     expect(within(carousel).getAllByRole("img")).toHaveLength(4);
     expect(within(section).getByLabelText("Reel de Instagram")).toBeTruthy();
 
-    const caption = within(section).getByTestId("caption");
-    expect(caption.textContent?.endsWith("…")).toBe(true);
+    const caption = () => within(section).getByRole("region", { name: "Caption de Instagram" });
+    expect(caption().textContent).toMatch(/…ver más$/);
     fireEvent.click(within(section).getByRole("button", { name: "ver más" }));
-    expect(within(section).getByTestId("caption").textContent).toContain("#");
+    expect(caption().textContent).toContain("#");
     expect(
       within(
         within(section).getByRole("region", { name: "Revisión editorial de Instagram" }),
@@ -184,8 +190,8 @@ describe("panel: sección Contenido", () => {
     const section = await t.open();
     await within(section).findByRole("tablist", { name: "Canales" });
 
-    expect(within(tab("Portal Inmobiliario")).getByTitle("La revisión tiene errores")).toBeTruthy();
-    expect(within(tab("Instagram")).queryByTitle("La revisión tiene errores")).toBeNull();
+    expect(tab("Portal Inmobiliario").textContent).toContain("(la revisión tiene errores)");
+    expect(tab("Instagram").textContent).not.toContain("errores");
     fireEvent.click(tab("Portal Inmobiliario"));
     const checks = within(section).getByRole("region", {
       name: "Revisión editorial de Portal Inmobiliario",
@@ -231,5 +237,112 @@ describe("panel: sección Contenido", () => {
       (within(section).getByRole("button", { name: "Preparar contenido" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it('con textos editados, "Reemplazar mis textos" pide la corrida con replaceEdits', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const t = await setup();
+    await t.prepared();
+    const [instagram] = await t.contents.listCurrent(t.listing.id);
+    await t.contents.update(instagram?.id ?? "", { body: "Lo escribí yo.", status: "edited" });
+    const section = await t.open();
+    await within(section).findByRole("tablist", { name: "Canales" });
+
+    fireEvent.click(within(section).getByRole("button", { name: "Preparar contenido" }));
+    fireEvent.click(await within(section).findByRole("button", { name: "Reemplazar mis textos" }));
+    await within(section).findByText("Preparando: en cola…");
+    expect(await t.contentRuns.latest(t.listing.id)).toMatchObject({ texts: true });
+
+    await t.prepare();
+    await advance(WAIT.pollMs);
+    await waitFor(async () => {
+      const [current] = await t.contents.listCurrent(t.listing.id);
+      expect(current?.status).toBe("draft");
+    });
+  });
+
+  it("al abrir con una corrida en curso la muestra y no deja pedir otra", async () => {
+    const t = await setup();
+    const run = await t.contentRuns.create({ listingId: t.listing.id, texts: true });
+    await t.contentRuns.markRunning(run.id);
+    await t.contentRuns.setStage(run.id, "media");
+    const section = await t.open();
+
+    expect(await within(section).findByText("Preparando: procesando fotos y videos…")).toBeTruthy();
+    expect(
+      (within(section).getByRole("button", { name: "Preparar contenido" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("tras fallas seguidas deja de consultar y deja consultar de nuevo", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let down = false;
+    const t = await setup(
+      {},
+      {
+        intercept: (_method, path) => {
+          if (down && path.startsWith("/content-runs/")) throw new TypeError("fetch failed");
+          return undefined;
+        },
+      },
+    );
+    const section = await t.open();
+    await within(section).findByText(/Todavía no hay contenido/);
+    fireEvent.click(within(section).getByRole("button", { name: "Preparar contenido" }));
+    await within(section).findByText("Preparando: en cola…");
+
+    down = true;
+    await advance(WAIT.pollMs * 10);
+    expect(
+      await within(section).findByText(
+        "Dejé de consultar: la API no respondió varias veces seguidas.",
+      ),
+    ).toBeTruthy();
+
+    down = false;
+    await t.prepare();
+    fireEvent.click(within(section).getByRole("button", { name: "Consultar de nuevo" }));
+    expect(await within(section).findByRole("tablist", { name: "Canales" })).toBeTruthy();
+  });
+
+  it("si no se puede pedir (cola caída), lo explica con su sugerencia", async () => {
+    const t = await setup(
+      {},
+      {
+        deps: {
+          queue: createInMemoryJobQueue({
+            fail: () =>
+              new AppError("QUEUE_UNAVAILABLE", "No se pudo conectar a la cola", {
+                retriable: true,
+              }),
+          }),
+        },
+      },
+    );
+    const section = await t.open();
+    await within(section).findByText(/Todavía no hay contenido/);
+
+    fireEvent.click(within(section).getByRole("button", { name: "Preparar contenido" }));
+    expect(await within(section).findByText(/No se pudo conectar a la cola/)).toBeTruthy();
+  });
+
+  it("no muestra lo privado del aviso ni el modelo de la IA", async () => {
+    const notes = "el dueño acepta bajar hasta cinco mil quinientos";
+    const t = await setup({ video: true, internalNotes: notes });
+    await t.prepared();
+    const section = await t.open();
+    await within(section).findByRole("tablist", { name: "Canales" });
+
+    for (const name of ["Instagram", "Portal Inmobiliario", "Facebook Marketplace"]) {
+      fireEvent.click(tab(name));
+      const text = section.textContent ?? "";
+      expect(text).not.toContain("quinientos");
+      expect(text).not.toContain("Calle Inventada");
+      expect(text).not.toContain("modelo-falso");
+    }
+    // La galería: miniatura en las fotos y como portada de los videos.
+    const video = screen.getByLabelText("Video 4 de P-001") as HTMLVideoElement;
+    expect(video.poster).toContain("/processed/thumb/");
   });
 });

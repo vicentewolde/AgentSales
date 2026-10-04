@@ -1,9 +1,11 @@
 import {
   type ContentRunRequestBody,
+  type ContentRunView,
   contentRunRequestResponseSchema,
   contentRunResponseSchema,
   listingContentResponseSchema,
 } from "@agentsales/api/contracts";
+import { isTerminalContentRun } from "@agentsales/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { unwrap } from "../api/client.js";
@@ -42,7 +44,7 @@ export function useListingContent(listingId: string) {
 export function useContentRun(listingId: string, runId: string | null) {
   const client = useApiClient();
   const queryClient = useQueryClient();
-  const polled = usePolledRun({
+  const polled = usePolledRun<ContentRunView>({
     queryKey: contentKeys.run(runId ?? "ninguna"),
     enabled: runId !== null,
     fetch: async (signal) =>
@@ -52,6 +54,7 @@ export function useContentRun(listingId: string, runId: string | null) {
           contentRunResponseSchema,
         )
       ).contentRun,
+    isTerminal: isTerminalContentRun,
   });
   useEffect(() => {
     if (!polled.finishedHere) return;

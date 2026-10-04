@@ -201,7 +201,7 @@ describe("runPrepare", () => {
     h.listings.setStatus(listing.id, "draft");
 
     expect(await run(h, fakeClock())).toBe(1);
-    expect(h.errors()).toContain("✗ LISTING_NOT_READY: El aviso tiene que estar listo");
+    expect(h.errors()).toContain("✗ LISTING_NOT_READY: La propiedad tiene que estar lista");
     expect(h.errors()).toContain("agentsales listing P-001");
 
     expect(await run(h, fakeClock(), {}, "NADA")).toBe(1);

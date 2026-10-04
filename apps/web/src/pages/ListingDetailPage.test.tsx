@@ -170,6 +170,11 @@ describe("panel: Detalle de una propiedad", () => {
       .map((button) => button.textContent)
       .filter((text) => text !== "Reintentar");
     expect(actions).toEqual(buttons);
+    expect(
+      within(contentSection)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Preparar contenido", "Rehacer imágenes"]);
   });
 
   it("con datos vacíos no muestra secciones de más", async () => {

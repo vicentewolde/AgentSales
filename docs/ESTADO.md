@@ -24,7 +24,7 @@
 | F2-T11 · Job `content.prepare` en el worker | ✅ | #44 |
 | F2-T12 · API de contenido | ✅ | #45 |
 | F2-T13 · CLI `prepare` y `content` | ✅ | #46 |
-| F2-T14 · Panel: preparar y vista previa | ✅ | |
+| F2-T14 · Panel: preparar y vista previa | ✅ | #47 |
 | F2-T15 · Panel: edición de textos | ⏳ pendiente | |
 | F2-T16 · `pnpm eval:content` | ⏳ pendiente | |
 | F2-T17 · Cierre de fase | ⏳ pendiente | |
