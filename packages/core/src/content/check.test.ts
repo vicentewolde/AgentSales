@@ -198,6 +198,46 @@ describe("checkContent · INTERNAL_NOTES_LEAK", () => {
     );
   });
 
+  it("el caso de la demo: URL del aviso en las notas y dos datos públicos seguidos", () => {
+    const listing = {
+      internalNotes:
+        "Muestra basada en https://ejemplo.test/MLC-1-oficina-en-pedro-de-valdivia-a-pasos-de-la-municipalidad-_JM), consultado el 02-10-2026.",
+    };
+    expect(
+      codesOf(
+        "Ubicada en la comuna de Providencia, sector Pedro de Valdivia. A pasos de Av. Pedro de Valdivia y de la Municipalidad.",
+        { listing },
+      ),
+    ).not.toContain("INTERNAL_NOTES_LEAK");
+  });
+
+  it("un punto después de un número también corta la frase", () => {
+    // Las únicas 6 palabras de las notas solo aparecen juntas cruzando "piso 5. A pasos…".
+    const listing = { internalNotes: "piso 5 a pasos del metro" };
+    expect(codesOf("Está en el piso 5. A pasos del metro.", { listing })).not.toContain(
+      "INTERNAL_NOTES_LEAK",
+    );
+    expect(codesOf("Está en el piso 5 a pasos del metro.", { listing })).toContain(
+      "INTERNAL_NOTES_LEAK",
+    );
+  });
+
+  it("una copia de las notas con su misma puntuación sí se marca", () => {
+    const listing = { internalNotes: "Llaves en conserjería. Dueño viaja. Llamar antes de ir" };
+    expect(
+      codesOf("Llaves en conserjería. Dueño viaja. Llamar antes de ir.", { listing }),
+    ).toContain("INTERNAL_NOTES_LEAK");
+  });
+
+  it("el texto pegado a una URL en las notas se sigue revisando", () => {
+    const listing = {
+      internalNotes: "Ver https://ejemplo.test/aviso, el dueño no quiere mostrar la bodega",
+    };
+    expect(codesOf("El dueño no quiere mostrar la bodega", { listing })).toContain(
+      "INTERNAL_NOTES_LEAK",
+    );
+  });
+
   it("un trozo que cruza de una frase a otra no es copia de las notas", () => {
     const listing = { internalNotes: "Queda en el sector norte a pasos de la estación vieja" };
     expect(
