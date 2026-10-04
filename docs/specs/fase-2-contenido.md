@@ -1,6 +1,6 @@
 # Spec F2 · Contenido
 
-- **Estado:** Aprobado (2026-10-02)
+- **Estado:** Cerrado (2026-10-04, `v0.2.0`). Aprobado el 2026-10-02
 - **Rama base:** `main`
 - **Tag al cerrar:** `v0.2.0`
 - **Referencias:** `docs/06-roadmap.md#f2--contenido`, ADR-0003, ADR-0005, ADR-0006, ADR-0010, ADR-0011, ADR-0012 y ADR-0013 (nuevos), `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/04-formato-publicaciones.md`, notas de `docs/integraciones/` (`claude-code-cli.md`, `anthropic-api.md`, `heic-conversion.md`, `instagram.md`, `mercadolibre.md`)
@@ -504,21 +504,29 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Depende de:** todas
 - **Descripción:** `/fase-cerrar 2`.
 - **Hecho cuando:**
-  - [ ] Demos del plan de demo (§7) con las 3 propiedades de muestra
-  - [ ] Criterios de §6 verificados con evidencia
-  - [ ] Auditoría de coherencia docs-código (subagente `arquitecto`) y docs corregidos
-  - [ ] `CHANGELOG.md` `[0.2.0]`, spec cerrado y `docs/ESTADO.md` apuntando a F3
+  - [x] Demos del plan de demo (§7) con las 3 propiedades de muestra
+  - [x] Criterios de §6 verificados con evidencia
+  - [x] Auditoría de coherencia docs-código (subagente `arquitecto`) y docs corregidos
+  - [x] `CHANGELOG.md` `[0.2.0]`, spec cerrado y `docs/ESTADO.md` apuntando a F3
   - [ ] Tag `v0.2.0` desde `main`, después del merge del cierre
+- **Evidencia (2026-10-04):**
+  - **§6 criterio 1 y demo 1, 3, 4 y 5 (operador, CLI de Claude `claude-sonnet-5`):** P001 preparada por la CLI (sin reprocesar medios: 0 procesados, 4 existentes) y aprobada por el operador en el panel; P002 preparada desde el panel, con reel de 1080×1920 y 6 s, carrusel de 5 y 4 fotos 4:3; P003 preparada (3 fotos y 2 renders nuevos), editada a mano en Instagram (la revisión marcó un número de la edición que no estaba en los datos) y vuelta al texto original, que queda `edited` sin problemas. Los 9 textos sin problemas de revisión.
+  - **§6 criterio 2 y demo 6:** `pnpm eval:content` con la CLI de Claude: 3 de 3 sin errores (después del arreglo de `INTERNAL_NOTES_LEAK`, #50).
+  - **§6 criterio 3 y demo 2:** `pnpm -s cli prepare P001 --no-texts` → medios "procesados 0 · ya estaban 4", portada y ficha "armadas 0 · sin cambios 2".
+  - **§6 criterio 4:** test de T15 (editar y guardar con la revisión del servidor) y la demo 5.
+  - **§6 criterio 5:** `packages/media/test/image.test.ts` ("borra los metadatos: ni EXIF, ni GPS…", con una foto con coordenadas de Santiago) y las variantes de P001 en R2 sin segmento EXIF (los originales de las muestras tampoco traían).
+  - **§6 criterio 6:** `pnpm check` en `main`: 112 archivos, 1661 tests; guardia `CLAUDE_CLI_PATH` en `vitest.config.ts`.
+  - **Demo 7:** con el worker apagado, `prepare P001 --no-texts` mostró "Sigue en cola: ¿está corriendo el worker? (pnpm dev)" a los 20 s y terminó al encenderlo.
 
 Orden: T01 → T02 → T03 (migraciones en cadena). T04 en cualquier momento; T05 → T06 después de T04. T07 después de T03, y luego T08 y T09. T10 cuando estén T02, T03, T06, T07 y T09. Luego T11 → T12 → T13 → T14 → T15, y T16 después de T11. Al final, T17.
 
 ## 6. Criterios de aceptación de la fase
-- [ ] Las 3 propiedades de muestra tienen contenido preparado y visible en el panel: carrusel con portada y ficha, caption, fotos 4:3, textos de Portal y Marketplace, y el reel de P002. El operador lo aprobaría sin cambios mayores (ADR-0012: listo para revisar, sin publicaciones).
-- [ ] `pnpm eval:content` sobre las 3 muestras termina sin errores editoriales.
-- [ ] Repetir la preparación no duplica medios ni vuelve a subir lo que no cambió.
-- [ ] Una edición manual en el panel se guarda y la revisión editorial se actualiza.
-- [ ] Ninguna variante publicable conserva la ubicación GPS de la foto.
-- [ ] Ningún test llama a Anthropic ni ejecuta la CLI de Claude; `pnpm check` en verde.
+- [x] Las 3 propiedades de muestra tienen contenido preparado y visible en el panel: carrusel con portada y ficha, caption, fotos 4:3, textos de Portal y Marketplace, y el reel de P002. El operador lo aprobaría sin cambios mayores (ADR-0012: listo para revisar, sin publicaciones).
+- [x] `pnpm eval:content` sobre las 3 muestras termina sin errores editoriales.
+- [x] Repetir la preparación no duplica medios ni vuelve a subir lo que no cambió.
+- [x] Una edición manual en el panel se guarda y la revisión editorial se actualiza.
+- [x] Ninguna variante publicable conserva la ubicación GPS de la foto.
+- [x] Ningún test llama a Anthropic ni ejecuta la CLI de Claude; `pnpm check` en verde.
 
 ## 7. Plan de demo
 1. `pnpm dev`; en otra terminal, `pnpm -s cli prepare P001` → termina con el resumen y sin errores editoriales.
@@ -585,3 +593,4 @@ Resueltas con la recomendación del spec, por la aprobación permanente del oper
 | 2026-10-03 | Desde F2-T15 y su revisión (#48): `contentLength` (lo que mide `TOO_LONG`) y `normalizeHashtags` pasan a core y los comparten la revisión, `editContent` y el editor; cada pestaña conserva su borrador y un texto reemplazado mientras se edita pide decidir; el editor normaliza los hashtags como la API para contar el caption igual que la revisión; un título o caption sobre el tope se puede guardar (lo marca la revisión); la confirmación al regenerar se muestra antes de pedir, nombrando los canales editados; un editor abierto conserva lo escrito si empieza una corrida de textos |
 | 2026-10-03 | Desde F2-T16 y su revisión (#49): `draftListingTexts` compartido por la corrida y la evaluación; Ctrl+C corta la llamada a la IA en curso; un error de la IA en un aviso no corta la evaluación de los demás (se informa y sale con 1); un corredor inexistente o sin avisos listos sale con 1; los textos van a `tmp/eval/<fecha>/<id_propiedad>.md`; `--provider` solo acepta `fake`; la demo con `claude-cli` la corre el operador |
 | 2026-10-03 | Desde la demo de F2-T16: `INTERNAL_NOTES_LEAK` no cuenta las direcciones web de las notas (que terminan antes de `,;)` y del punto final) y compara con los fines de frase de las notas y del texto en el mismo lugar: dos frases del texto que solo juntas forman un trozo de las notas no cuentan, una copia con la misma puntuación sí; un punto corta salvo entre dos dígitos (falso positivo en P003: un slug de URL coincidía con dos datos públicos seguidos). Desde la revisión del PR (#50): el punto después de un número corta, la copia con puntuación se sigue detectando y el texto pegado a una URL se revisa |
+| 2026-10-04 | Cierre de F2 (`/fase-cerrar 2`): criterios de §6 verificados con evidencia y demo del plan §7 con las 3 muestras (el operador aprobó los textos); auditoría docs-código del `arquitecto` aplicada; spec **Cerrado** |
