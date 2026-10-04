@@ -1,13 +1,28 @@
 import { randomUUID } from "node:crypto";
 import { type AppDeps, createApp, localAccess } from "@agentsales/api";
 import { testDeps } from "@agentsales/api/testing";
-import type { BrokerData, FieldDefinition, NewListing } from "@agentsales/core";
 import {
+  type BrokerData,
+  type FieldDefinition,
+  type LLMProvider,
+  type NewListing,
+  prepareContent,
+  SAMPLE_CONTENT_DRAFT,
+} from "@agentsales/core";
+import {
+  contentDefinitionsFixture,
   createInMemoryBrokerRepository,
+  createInMemoryContentRepositories,
   createInMemoryFieldDefinitionRepository,
+  createInMemoryHtmlRenderer,
   createInMemoryImportRunRepository,
   createInMemoryListingRepository,
+  createInMemoryLlmProvider,
+  createInMemoryMediaProcessor,
   createInMemoryMediaRepository,
+  createInMemoryMediaStorage,
+  createInMemorySlideTemplates,
+  fakeHash,
 } from "@agentsales/core/testing";
 import { QueryClient } from "@tanstack/react-query";
 import { configure, render } from "@testing-library/react";
@@ -44,6 +59,7 @@ export function harness(options: HarnessOptions = {}) {
   const brokers = createInMemoryBrokerRepository();
   const media = createInMemoryMediaRepository();
   const importRuns = createInMemoryImportRunRepository({ nextId: randomUUID });
+  const content = createInMemoryContentRepositories({ nextId: randomUUID });
   const app = createApp(
     testDeps({
       access: localAccess(8787, 5173),
@@ -51,6 +67,8 @@ export function harness(options: HarnessOptions = {}) {
       brokers,
       media,
       importRuns,
+      contentRuns: content.contentRuns,
+      contents: content.contents,
       ...options.deps,
     }),
   );
@@ -123,7 +141,79 @@ export function harness(options: HarnessOptions = {}) {
     );
   };
 
-  return { client, requests, uploads, listings, brokers, media, importRuns, renderApp };
+  return {
+    client,
+    requests,
+    uploads,
+    listings,
+    brokers,
+    media,
+    importRuns,
+    contentRuns: content.contentRuns,
+    contents: content.contents,
+    renderApp,
+  };
+}
+
+/**
+ * Un aviso listo con sus fotos (y un video si se pide) para preparar su contenido, y `prepare`, que
+ * hace de worker: corre `prepareContent` (core) con dobles sobre la corrida más reciente.
+ */
+export async function contentSetup(
+  h: ReturnType<typeof harness>,
+  options: { video?: boolean; internalNotes?: string } = {},
+) {
+  const storage = createInMemoryMediaStorage();
+  const broker = await h.brokers.create({ ...brokerData("marca"), whatsapp: "+56911112222" });
+  const listing = await h.listings.create(
+    newListing(broker.id, "P-001", {
+      attributes: { dormitorios: 3, banos: 2, sup_util_m2: 72 },
+      internalNotes: options.internalNotes ?? null,
+    }),
+  );
+  await h.listings.promoteToReady(listing.id);
+  const names = ["foto-1.jpg", "foto-2.jpg", "foto-3.jpg", ...(options.video ? ["video.mp4"] : [])];
+  for (const [index, name] of names.entries()) {
+    const kind = name.endsWith(".mp4") ? ("video" as const) : ("image" as const);
+    const mime = kind === "video" ? "video/mp4" : "image/jpeg";
+    const path = `brokers/${broker.id}/listings/${listing.id}/original/${name}`;
+    await storage.put(path, new TextEncoder().encode(name), mime);
+    await h.media.create({
+      listingId: listing.id,
+      brokerId: broker.id,
+      kind,
+      storagePath: path,
+      mime,
+      bytes: name.length,
+      checksum: `sha-${name}`,
+      sortOrder: index,
+      isCover: index === 0,
+    });
+  }
+  const fieldDefinitions = createInMemoryFieldDefinitionRepository(contentDefinitionsFixture());
+  const prepare = async (
+    llm: LLMProvider = createInMemoryLlmProvider([{ data: SAMPLE_CONTENT_DRAFT }]),
+  ) => {
+    const run = await h.contentRuns.latest(listing.id);
+    if (run === null) throw new Error("no hay corridas");
+    return prepareContent(
+      {
+        contentRuns: h.contentRuns,
+        listings: h.listings,
+        brokers: h.brokers,
+        fieldDefinitions,
+        media: h.media,
+        storage,
+        processor: createInMemoryMediaProcessor(),
+        templates: createInMemorySlideTemplates(),
+        renderer: createInMemoryHtmlRenderer(),
+        llm,
+        sha256: fakeHash,
+      },
+      { contentRunId: run.id, isLastAttempt: true },
+    );
+  };
+  return { listing, broker, fieldDefinitions, prepare };
 }
 
 /** Corredor sintético (datos inventados). */

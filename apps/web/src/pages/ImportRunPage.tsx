@@ -1,10 +1,12 @@
-import { isTerminalImportRun, RUN_QUEUED_WARNING_TEXT, RUN_WAIT } from "@agentsales/core";
+import { isTerminalImportRun, RUN_QUEUED_WARNING_TEXT } from "@agentsales/core";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../api/client.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { ImportReport } from "../components/ImportReport.js";
+import { PollStoppedAlert } from "../components/PollStoppedAlert.js";
 import { RunStatusBadge } from "../components/RunStatusBadge.js";
 import { useImportRun } from "../queries/imports.js";
+import { stuckInQueue as isStuckInQueue } from "../queries/run-poll.js";
 
 /**
  * Una carga: su progreso mientras corre (consulta cada 2 s), el aviso si sigue en cola a los 20 s
@@ -19,9 +21,7 @@ export function ImportRunPage() {
   const data = run.data;
   // Se mide con la hora de cada respuesta, contra `createdAt`, que pone la base (Neon): el desfase
   // de reloj es despreciable frente a 20 s.
-  const stuckInQueue =
-    data?.status === "queued" &&
-    run.dataUpdatedAt - data.createdAt.getTime() >= RUN_WAIT.queuedWarningMs;
+  const stuckInQueue = isStuckInQueue(data, run.dataUpdatedAt);
 
   return (
     <section className="mx-auto max-w-4xl">
@@ -70,25 +70,12 @@ export function ImportRunPage() {
             </p>
           )}
           {stopped && (
-            <div role="alert" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
-              <p className="font-semibold text-amber-900">
-                {stopped === "failures"
-                  ? "Dejé de consultar: la API no respondió varias veces seguidas."
-                  : "Dejé de consultar: la carga lleva más de 2 horas sin terminar."}
-              </p>
-              <p className="mt-1 text-sm text-amber-800">
-                La carga sigue en el worker. Revisa que estén corriendo la API y el worker (pnpm
-                dev).
-              </p>
-              <button
-                type="button"
-                onClick={() => void run.refetch()}
-                disabled={run.isFetching}
-                className="mt-3 rounded-md bg-amber-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {run.isFetching ? "Consultando…" : "Consultar de nuevo"}
-              </button>
-            </div>
+            <PollStoppedAlert
+              stopped={stopped}
+              noun="La carga"
+              onRetry={() => void run.refetch()}
+              retrying={run.isFetching}
+            />
           )}
           {data.error && (
             <ErrorAlert

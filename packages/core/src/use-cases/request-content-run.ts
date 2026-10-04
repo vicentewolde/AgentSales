@@ -1,6 +1,7 @@
 import type { ContentRun } from "../content.js";
-import type { ListingStatus } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
+import { LISTING_NOT_PREPARABLE_TEXT } from "../labels.js";
+import { canPrepareContent } from "../listing.js";
 import type { ContentRepository, ContentRunRepository } from "../ports/content-repository.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
@@ -27,9 +28,6 @@ export type RequestContentRunResult = {
   /** `true` si ya había una corrida activa del aviso: se devuelve esa (con su propio `texts`). */
   reused: boolean;
 };
-
-/** Estados en que un aviso puede preparar contenido (spec F2 §4.4). */
-const PREPARABLE: readonly ListingStatus[] = ["ready", "paused", "active"];
 
 /**
  * Encola el job de una corrida. Con `singletonKey` (cola `exclusive`) es idempotente: lo usan este
@@ -60,12 +58,10 @@ export async function requestContentRun(
       details: { listingId },
     });
   }
-  if (!PREPARABLE.includes(listing.status)) {
-    throw new AppError(
-      "LISTING_NOT_READY",
-      "El aviso tiene que estar listo, pausado o publicado para preparar su contenido",
-      { details: { listingId, status: listing.status } },
-    );
+  if (!canPrepareContent(listing.status)) {
+    throw new AppError("LISTING_NOT_READY", LISTING_NOT_PREPARABLE_TEXT, {
+      details: { listingId, status: listing.status },
+    });
   }
   const photos = (await deps.media.listOriginals(listingId)).filter((m) => m.kind === "image");
   if (photos.length === 0) {

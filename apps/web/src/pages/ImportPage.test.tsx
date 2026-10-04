@@ -4,7 +4,6 @@ import { type ImportReport, type NewImportRun, RUN_WAIT } from "@agentsales/core
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { brokerData, harness, newListing } from "../../test/harness.js";
-import { pollStop } from "../queries/imports.js";
 
 const { pollMs: IMPORT_POLL_MS, queuedWarningMs: QUEUED_WARNING_MS } = RUN_WAIT;
 
@@ -363,20 +362,5 @@ describe("panel: una carga", () => {
     harness().renderApp(`/importar/${id()}`);
 
     expect(await screen.findByText("Esta carga no existe.")).toBeTruthy();
-  });
-});
-
-describe("pollStop", () => {
-  const createdAt = new Date(2026, 9, 2, 10, 0);
-  const at = (ms: number) => createdAt.getTime() + ms;
-
-  it("sigue mientras la carga corre, sin fallas y antes de las 2 h", () => {
-    expect(pollStop({ status: "running", createdAt }, 2, at(RUN_WAIT.maxWaitMs - 1))).toBeNull();
-  });
-
-  it("para tras 3 fallas seguidas o a las 2 h, y nunca en una carga terminada", () => {
-    expect(pollStop({ status: "queued", createdAt }, 3, at(0))).toBe("failures");
-    expect(pollStop({ status: "running", createdAt }, 0, at(RUN_WAIT.maxWaitMs))).toBe("max-wait");
-    expect(pollStop({ status: "failed", createdAt }, 5, at(RUN_WAIT.maxWaitMs))).toBeNull();
   });
 });
