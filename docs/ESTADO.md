@@ -3,27 +3,45 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-04
-**Fase actual:** F3 · Aprobación + Instagram (spec por redactar en `docs/specs/`)
-**Última tarea terminada:** F2-T17 · Cierre de F2 (tag `v0.2.0`)
-**Siguiente paso:** `/fase-plan 3` para redactar y aprobar el spec de F3 (ver "Decisiones pendientes")
+**Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
+**Última tarea terminada:** Spec F3 (`/fase-plan 3`), con ADR-0014
+**Siguiente paso:** `/tarea F3-T01` · Esquema de publicaciones (migración `0006`); T02 es independiente
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F3 (`/fase-plan 3`) | ⏳ pendiente | |
+| Spec F3 (`/fase-plan 3`) | ✅ terminada | |
+| F3-T01 · Esquema de publicaciones (migración `0006`) | ⏳ pendiente | |
+| F3-T02 · Cifrado, firma y variables de Instagram | ⏳ pendiente | |
+| F3-T03 · Cuentas conectadas: puerto y repositorio | ⏳ pendiente | |
+| F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso | ⏳ pendiente | |
+| F3-T05 · Aprobación en core | ⏳ pendiente | |
+| F3-T06 · Lo aprobado no cambia: edición y corridas con el candado | ⏳ pendiente | |
+| F3-T07 · Puerto `Publisher` y `dry-run` | ⏳ pendiente | |
+| F3-T08 · Instagram: cliente de la API y OAuth | ⏳ pendiente | |
+| F3-T09 · Instagram: publisher | ⏳ pendiente | |
+| F3-T10 · Publicar, descartar y retirar en core | ⏳ pendiente | |
+| F3-T11 · Intento de publicación en core | ⏳ pendiente | |
+| F3-T12 · Job `publication.publish` | ⏳ pendiente | |
+| F3-T13 · Conectar Instagram | ⏳ pendiente | |
+| F3-T14 · Refresco de tokens | ⏳ pendiente | |
+| F3-T15 · API de aprobación y publicaciones | ⏳ pendiente | |
+| F3-T16 · CLI | ⏳ pendiente | |
+| F3-T17 · Panel: Cuentas | ⏳ pendiente | |
+| F3-T18 · Panel: aprobar y publicar | ⏳ pendiente | |
+| F3-T19 · `pnpm ig:smoke` | ⏳ pendiente | |
+| F3-T20 · Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
 - [x] Trámite de la app de Meta: cuenta profesional, app `AgentSales-IG`, tester aceptado (2026-10-02) y `META_APP_ID` y `META_APP_SECRET` en `.env` (2026-10-03). En F3 se confirma que son el par de Instagram que usa el sistema. La verificación del negocio y el App Review quedan para F7
-- [ ] Antes de la demo de F3: una cuenta de Instagram de pruebas (profesional y conectada a la app) donde se pueda publicar sin problema. `PUBLISH_MODE=live` solo con tu instrucción en el chat
+- [ ] **Antes de F3-T02:** en `.env`, renombrar `META_APP_ID`, `META_APP_SECRET` y `META_REDIRECT_URI` a `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` e `INSTAGRAM_REDIRECT_URI`, y confirmar que son el par **de Instagram** (App Dashboard > Instagram > API setup with Instagram login > Business login settings), no el de Settings > Basic. Pasos en `docs/integraciones/instagram.md` §2.1
+- [ ] **Antes de F3-T13:** pegar `http://localhost:8787/oauth/instagram/callback` en "OAuth redirect URIs" del panel de Meta y avisar si lo acepta (nota §3.6). Si no, la cuenta se conecta con el token del botón "Generate token" (spec F3, D4)
+- [ ] Demo de F3: la prueba en `live` usa tu cuenta (profesional, vinculada a la página AgentSales y tester de `AgentSales-IG`); se publica una propiedad de muestra (carrusel y reel) y se borra a mano después. `PUBLISH_MODE=live` solo con tu instrucción en el chat
 
-## Decisiones pendientes para `/fase-plan 3`
-- **Cómo nacen las publicaciones (ADR-0012):** desde el contenido vigente de cada canal cuando hay una cuenta conectada. Decidir si se crean al conectar la cuenta, al aprobar o al pedir publicar, y qué pasa con una corrida de textos que llega después de aprobar.
-- **Aprobación:** `contents.status = approved` (existe desde F0, sin uso en F2) y la máquina de estados de `publications` con sus eventos; quién aprueba y si una edición después de aprobar vuelve a `edited`.
-- **Instagram:** OAuth (Instagram Login o Facebook Login, ver `docs/integraciones/instagram.md`, solo límites de contenido verificados), tokens cifrados con AES-256-GCM y clave derivada con HKDF-SHA256 (deuda abajo), refresco (`tokens.refresh`), y publicación de carrusel y reel con URLs firmadas de R2 que Meta pueda descargar.
-- **`PUBLISH_MODE=dry-run`:** el decorador que registra lo que se habría enviado; la demo de F3 se hace en `dry-run` y solo pasa a `live` con instrucción explícita.
-- **Ventana de edición (spec F2, riesgos):** un pedido de textos entre la revisión de `editContent` y su guardado no ve la edición. Si en F3 la aprobación lo hace más grave, que la etapa `texts` revise `edited` salvo `replaceEdits`.
+## Decisiones de F3
+Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; OAuth con `http://localhost` o token del panel; sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
@@ -50,6 +68,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-04: **`/fase-plan 3`.** Nota `docs/integraciones/instagram.md` completada (OAuth, tokens, publicación, borrado, límites y errores; lo no verificado se prueba en la demo). Spec F3 aprobado con 20 tareas, revisado por el `arquitecto` (encolar después del candado, modo por publicación, SQL de la migración `0006` a mano). ADR-0014 aceptado; arquitectura, formato, roadmap y glosario al día.
 - 2026-10-04: **Cierre de F2 (`v0.2.0`).** Las 3 muestras con contenido listo para revisar (P001, P002 con reel de 1080×1920, P003 con una edición a mano) y aprobadas por el operador; `pnpm eval:content` con la CLI de Claude, 3 de 3 sin errores; repetir la preparación no reprocesa nada; aviso de "sigue en cola" con el worker apagado; variantes sin EXIF ni GPS; 1661 tests sin llamar a Claude. Auditoría docs-código del `arquitecto` aplicada (README con los requisitos de F2, seguimientos de ADR-0003, 0011, 0012 y 0013). Detalle en `CHANGELOG.md` y en el spec F2.
 - 2026-10-03: **Tras la demo de F2-T16:** `INTERNAL_NOTES_LEAK` no cuenta las URLs de las notas y compara con los fines de frase en el mismo lugar (falso positivo en P003; #50).
 - **Pendientes de verificar:** la orientación y el color de un HEIC real de iPhone (se probó con uno sintético en F2-T07), un video HDR de iPhone en el reel (deuda), y el largo del título y las reglas de contacto de Mercado Libre (F4: la doc dio 403).

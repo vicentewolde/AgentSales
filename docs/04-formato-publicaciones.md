@@ -67,7 +67,7 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 - Si el video no es vertical: fondo desenfocado con el video al centro (spec F2, D5).
 - Solo el primer video del aviso genera reel.
 - Primeros 2 segundos: texto sobrepuesto con `Operación · Tipo · Comuna · Precio`.
-- Portada del reel: el mismo render de la portada del carrusel (se envía en F3).
+- Portada del reel: el cuadro del segundo 1, con el texto sobrepuesto (`thumb_offset=1000`). La portada del carrusel es 4:5 y Meta recortaría su centro 9:16 (spec F3, D12).
 
 ## Portal Inmobiliario
 

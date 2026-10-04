@@ -47,12 +47,14 @@ Spec detallado: `docs/specs/fase-2-contenido.md`.
 **Aceptación:** las 3 propiedades de muestra quedan con contenido listo para revisar (`contents` en `draft` o `edited`, sin publicaciones: ADR-0012) que el operador aprobaría sin cambios mayores.
 
 ## F3 · Aprobación + Instagram
-- Máquina de estados de publicaciones completa, con eventos. Las publicaciones nacen del contenido vigente de F2 cuando hay una cuenta conectada (ADR-0012).
-- Aprobar, editar o rechazar desde el panel y la CLI (`agentsales approve <id>`).
-- OAuth Instagram Login; tokens cifrados y refresco automático.
-- Publicar carrusel y reel en la cuenta de prueba, primero en `dry-run` y luego en `live`.
+Spec detallado: `docs/specs/fase-3-aprobacion-instagram.md`.
 
-**Aceptación:** una propiedad aprobada aparece publicada en la cuenta de prueba y el sistema guarda su URL.
+- Se aprueba el texto de cada canal; las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo (ADR-0014). Máquina de estados con eventos.
+- Aprobar y quitar la aprobación desde el panel y la CLI (`agentsales approve <id>`); los textos se editan en el panel (spec F3, D9).
+- OAuth Instagram Login; tokens cifrados y refresco automático.
+- Publicar carrusel y reel en la cuenta del operador, primero en `dry-run` y luego en `live`.
+
+**Aceptación:** una propiedad aprobada aparece publicada en la cuenta de Instagram del operador y el sistema guarda su URL.
 
 ## F4 · Portal Inmobiliario
 - OAuth de Mercado Libre, con refresh.
