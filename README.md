@@ -2,18 +2,20 @@
 
 Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento.
 
-> Estado: **F1 · Carga cerrada (`v0.1.0`)**. Siguiente: F2 · Contenido. Ver `docs/ESTADO.md`.
+> Estado: **F2 · Contenido cerrada (`v0.2.0`)**. Siguiente: F3 · Instagram. Ver `docs/ESTADO.md`.
 
 ## Requisitos
 - Node.js 26 (`.nvmrc`) y pnpm 11 (`npm i -g pnpm@11`; Node 26 ya no trae corepack)
-- ffmpeg
+- ffmpeg 8.1 o más nuevo, con ffprobe (`brew install ffmpeg`): arma las fotos HEIC del iPhone y el reel
+- Chromium de Playwright, para dibujar la portada y la ficha (se instala en la puesta en marcha)
+- La CLI de Claude (Claude Code) con sesión iniciada en tu plan (`claude` y `/login`): redacta los textos. Para probar sin gastar cuota, `LLM_PROVIDER=fake` en `.env`
 - Proyecto de Neon (Postgres) y bucket privado de Cloudflare R2, ambos gratis: `docs/09-alta-neon-r2.md`
-- Más adelante: Claude Code con sesión iniciada (F2) y Chromium de Playwright (F5). Hoy `doctor` los muestra como advertencia si faltan.
 
 ## Puesta en marcha
 ```bash
 cp .env.example .env     # completar DATABASE_URL, R2_* y APP_ENCRYPTION_KEY (docs/09-alta-neon-r2.md)
 pnpm install
+pnpm --filter @agentsales/media exec playwright install chromium   # el Chromium que pide Playwright (repetir al actualizarlo)
 pnpm db:migrate          # aplica las migraciones en Neon
 pnpm db:seed             # crea el corredor demo y las 36 definiciones de campos (se puede repetir)
 pnpm storage:check       # sube, lee y borra un objeto de prueba en R2
@@ -33,6 +35,15 @@ pnpm -s cli listings [--status ready] [--json]
 pnpm -s cli listing <id_propiedad> [--broker <slug>] [--json]
 ```
 También se puede importar desde el panel, en http://localhost:5173/importar (el Excel y un zip de fotos y videos), y ver las propiedades en http://localhost:5173/propiedades.
+
+Preparar el contenido de una propiedad lista (fotos para cada canal, portada, ficha, reel y textos de la IA), con `pnpm dev` corriendo:
+```bash
+pnpm -s cli prepare <id_propiedad>                   # --no-texts rehace solo las imágenes; --replace-edits reemplaza tus ediciones
+pnpm -s cli content <id_propiedad> [--platform portal] [--json]
+pnpm eval:content                                    # evalúa los textos de la IA sin guardar nada (gasta cuota; --provider fake no)
+pnpm llm:smoke                                       # una llamada corta a la CLI de Claude con datos inventados
+```
+En el panel, el detalle de cada propiedad tiene la sección **Contenido**: preparar, el avance, la vista previa por canal (carrusel, caption, reel, Portal y Marketplace) con su revisión editorial y la edición de los textos. En F2 no se publica nada: el contenido queda listo para revisar (las publicaciones llegan en F3).
 - **`PUBLISH_MODE=dry-run` por defecto:** no se publica nada de verdad. En `live` se ve en rojo en el panel y la CLI.
 - **La cola la inicializa el worker:** la primera vez aparece con error hasta que el worker arranca (lo hace `pnpm dev`); refresca el panel.
 - **Detén `pnpm dev` al terminar** (Ctrl+C): el worker y el panel mantienen Neon despierto y consumen las horas del plan gratis.

@@ -31,3 +31,4 @@
 
 ## Seguimiento
 - 2026-10-03 (F2-T06): la revisión editorial (`checkContent`) se calcula al leer, contra los datos actuales del aviso, y no forma parte de `prompt_version`: ampliar sus listas no cambia los textos guardados ni la versión. Un contenido viejo puede mostrar `NUMBER_NOT_IN_DATA` si el aviso se reimportó con otro precio: indica que quedó desactualizado.
+- 2026-10-03 (F2-T10 a F2-T16): un solo camino de los textos en core: `loadCheckContext` arma el contexto (brief, contacto y lo privado) y `draftListingTexts` hace brief → IA → ensamblado → revisión. Lo comparten la etapa `texts` de la corrida, la lectura y la edición (`getListingContent`, `editContent`) y la evaluación (`pnpm eval:content`), así lo que se evalúa es lo que se publicaría. `contentLength` y `normalizeHashtags` (core) también los usa el editor del panel, que nunca corre `checkContent` (necesitaría lo privado del aviso).

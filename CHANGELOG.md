@@ -4,6 +4,34 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [0.2.0] - 2026-10-04 · F2 Contenido
+Ahora cada propiedad lista puede prepararse para publicar: el sistema procesa sus fotos y videos para cada canal, arma la portada y la ficha del carrusel, el reel de Instagram, y la IA (tu CLI de Claude) redacta los textos de Instagram, Portal Inmobiliario y Marketplace, que se revisan solos contra los datos de la propiedad. Todo se ve y se edita en el panel. Se probó con las 3 propiedades de muestra: las tres quedaron con contenido listo para revisar, sin errores en la revisión. No se publica nada: las publicaciones llegan en F3.
+
+### Añadido
+- **Preparar contenido:** `pnpm -s cli prepare P001` o el botón "Preparar contenido" del panel. Muestra el avance por etapa (fotos y videos, portada y ficha, reel, textos) y termina con un resumen y la revisión de cada canal. "Rehacer imágenes" (`--no-texts`) no toca los textos. Repetirlo no vuelve a procesar ni a subir lo que no cambió, y si cambia el precio se rehacen solo la portada, la ficha y el reel. Si el worker no está corriendo, avisa a los 20 s.
+- **Fotos para cada canal:** se rotan según el celular, pierden los metadatos (también la ubicación GPS) y salen en 4:5 para Instagram, 4:3 para Portal y Marketplace, y una miniatura. Las fotos HEIC del iPhone funcionan, y en el panel ya se ven. Una foto chica o un archivo dañado queda como advertencia, sin detener la preparación.
+- **Portada y ficha:** la portada lleva la foto de portada, el precio, el tipo, la comuna y los datos clave con íconos, con los colores y el logo del corredor; la ficha resume los atributos y el contacto. Nunca muestran la dirección exacta.
+- **Reel de Instagram:** con el primer video de la propiedad, en vertical (1080×1920) con fondo desenfocado si el video no lo es, el texto de la propiedad los primeros 2 s y un tope de 90 s. Un video de menos de 3 s no da reel.
+- **Textos con IA:** la IA solo redacta frases; el precio, las superficies, el título de Portal y el contacto los pone el sistema, así no se inventan datos. La IA nunca ve la dirección oculta, las notas internas ni el contacto. Con `LLM_PROVIDER=fake` se prueba todo sin gastar cuota.
+- **Revisión editorial:** cada texto se revisa contra los datos: números o servicios que no están, la dirección o la unidad cuando no se pueden mostrar, notas internas copiadas, requisitos discriminatorios, emojis en Portal, largos (2.200 caracteres del caption con hashtags; 60 del título) y superlativos o markdown. Los errores se ven en rojo y las advertencias en ámbar.
+- **Vista previa y edición en el panel:** la sección Contenido del detalle muestra el carrusel deslizable, el caption con "ver más" y el reel de Instagram, y el título, la descripción y las fotos de Portal y Marketplace. "Editar" cambia el texto de cada canal con un contador de caracteres; al guardar queda "editado a mano" y la revisión se actualiza. Regenerar textos sobre una edición pide confirmación ("se reemplazará tu edición"), y mientras se regeneran no se puede editar.
+- **CLI:** `agentsales prepare` y `agentsales content` (los textos por canal con su revisión, `--platform portal`, `--json`).
+- **Evaluar los textos de la IA:** `pnpm eval:content` prueba la redacción sobre las propiedades listas sin guardar nada, muestra la revisión por canal, deja los textos en `tmp/eval/` y termina con error si hay alguno. Ctrl+C corta también la llamada en curso.
+- **Mínimos y máximos:** los campos numéricos del Excel tienen rangos (por ejemplo, dormitorios de 0 a 50); un valor fuera de rango es un error de esa fila.
+- **`doctor`:** revisa ffmpeg y ffprobe 8.1 o más nuevos, el Chromium de Playwright y la sesión de la CLI de Claude (sin gastar cuota).
+- **Base de datos:** migraciones `0003` (rangos), `0004` (corridas y textos) y `0005` (variantes de medios), aplicadas en Neon.
+- **Documentación:** ADR-0012 (sin publicaciones hasta F3) y ADR-0013 (textos híbridos y prompts en core).
+
+### Cambiado
+- La lista y el detalle de propiedades usan miniaturas: las portadas HEIC se ven en el navegador.
+- El worker se apaga en orden: corta los trabajos en curso (también la CLI de Claude, que corre aparte y no recibe el Ctrl+C), espera a que paren y después cierra el navegador que dibuja las portadas.
+- La CLI y el panel esperan cargas y preparaciones con las mismas reglas (cada 2 s, aviso a los 20 s, tope de 2 h y de 3 fallas seguidas).
+- El README pide ffmpeg 8.1 con ffprobe, el Chromium de Playwright y la CLI de Claude, y explica cómo instalarlos.
+
+### Corregido
+- La revisión ya no marca como copia de las notas internas un trozo que solo coincide con la dirección web del aviso en las notas, ni dos frases públicas que juntas forman las mismas palabras (pasó con P003 en la evaluación).
+- Una preparación cortada al apagar el worker en su último intento ya no deja la propiedad bloqueada: pedirla de nuevo la retoma.
+
 ## [0.1.0] - 2026-10-02 · F1 Carga
 Ahora se cargan propiedades desde un Excel con sus fotos y videos, por la CLI o el panel, y quedan guardadas en Neon y R2, listas para F2. Se probó de punta a punta con 3 propiedades reales de muestra: crear, repetir sin duplicar, cambiar un precio, una fila con errores, verlas en el panel e importar desde el navegador. No se publica nada.
 

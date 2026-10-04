@@ -23,7 +23,7 @@
 | Importación | exceljs (xlsx) y yauzl (zip), en `packages/importers` (spec F1 §4.9) |
 | Medios | sharp (imágenes) y ffmpeg 8.1 o más nuevo con ffprobe (HEIC y video, programas del sistema), en `packages/media` (spec F2 §4.2) |
 | Plantillas y render | HTML propio en `packages/templates`, con Inter de `@fontsource/inter` (OFL); Playwright 1.63 (Chromium) en `packages/media` para dibujarlo (spec F2 §4.2) |
-| Tests | Vitest 5; msw para HTTP externo; Testing Library + jsdom para componentes; PGlite para los repositorios de `packages/db` (D4 del spec F1); Playwright para e2e del panel |
+| Tests | Vitest 5; msw para HTTP externo; Testing Library + jsdom para componentes; PGlite para los repositorios de `packages/db` (D4 del spec F1); Playwright para el render de plantillas (F2) y, más adelante, e2e del panel (pendiente) |
 | Logs | pino, JSON en producción y pretty en dev |
 | UI | React + Vite + Tailwind + TanStack Query + React Router |
 | CLI | commander + picocolors; cliente RPC `hc<AppType>` de Hono |

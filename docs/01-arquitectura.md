@@ -77,7 +77,7 @@ agentsales/
 │   ├── api/          Hono REST API; tipos exportados para el cliente RPC
 │   ├── web/          React + Vite + Tailwind + TanStack Query + React Router; panel de operación
 │   ├── cli/          CLI `agentsales` (commander); usa el cliente RPC de la API
-│   └── worker/       Procesa jobs: importación (F1), medios, contenido, publicación y sincronización
+│   └── worker/       Procesa jobs: importación (F1), contenido (F2: medios, renders, reel y textos), publicación y sincronización
 ├── packages/
 │   ├── core/         Dominio, esquemas zod, estados, casos de uso, puertos
 │   ├── db/           Esquema Drizzle, migraciones y (desde F1) repositorios
@@ -130,7 +130,7 @@ CLI (prepare) o panel (Preparar contenido)
   → content_run en succeeded o failed, con reporte por etapa
 ```
 
-En F2 no se crean `publications` (ADR-0012): nacen en F3 desde el contenido vigente, cuando hay una cuenta conectada; F3 decide cómo nacen (ADR-0012). Detalle en el spec F2 §4.2 a §4.6.
+En F2 no se crean `publications` (ADR-0012): nacen en F3 desde el contenido vigente, cuando hay una cuenta conectada (ADR-0012). Detalle en el spec F2 §4.2 a §4.6.
 
 ### 3. Publicación (job `publication.publish`)
 
@@ -532,7 +532,7 @@ interface LLMProvider {
     system: string;
     prompt: string;
     jsonSchema: Record<string, unknown>;   // draft-07, sin largos ni topes
-    signal?: AbortSignal;
+    signal?: AbortSignalLike;
   }): Promise<{ data: unknown; model: string }>;
 }
 ```
@@ -585,18 +585,19 @@ interface MediaProcessor {
 
 ## Plantillas y render (`SlideTemplates` y `HtmlRenderer`, F2-T09)
 
-- **Datos:** `CoverData`, `SpecSheetData` y `ReelOverlayData` son de core; sus imágenes son `SlideImage` (JPEG, PNG o WebP, con bytes) o, para calcular la clave de R2 sin descargar, `SlideImageRef` (`slideKeyInput`) (`packages/core/src/ports/slide-templates.ts`). Traen los textos ya formateados (`UF 5.800`, `72,5 m²`), los íconos de cada dato (`SLIDE_ICONS`) y la marca del corredor. No tienen campo de dirección. Las imágenes van como `SlideImage` (`{ bytes, mime, sha256 }`).
+- **Datos:** `CoverData`, `SpecSheetData` y `ReelOverlayData` son de core; sus imágenes son `SlideImage` (JPEG, PNG o WebP, con bytes) o, para calcular la clave de R2 sin descargar, `SlideImageRef` (`slideKeyInput`) (`packages/core/src/ports/slide-templates.ts`). Traen los textos ya formateados (`UF 5.800`, `72,5 m²`), los íconos de cada dato (`SLIDE_ICONS`) y la marca del corredor. No tienen campo de dirección.
 - Los tests de core usan `createInMemorySlideTemplates` y `createInMemoryHtmlRenderer` (`@agentsales/core/testing`).
 - **`createSlideTemplates()`** (`packages/templates`): arma HTML autocontenido para la portada y la ficha (1080×1350) y el texto del reel (1080×1920, transparente).
   - Inter (OFL, `@fontsource/inter`) va incrustada como `data:`; los íconos son SVG propios.
   - Los datos se escapan, y los colores inválidos se reemplazan.
   - `TEMPLATES_VERSION` entra en las claves de R2 de los renders y del reel.
-- **`createHtmlRenderer()`** (`packages/media`, Playwright):
+- **`createHtmlRenderer({ timeoutMs?, executablePath? })`** (`packages/media`, Playwright; por defecto 30 s y el Chromium que pide Playwright):
   - Un Chromium por proceso, que se abre al primer render, se vuelve a abrir si se cae y se cierra con `close()` (el worker al apagarse, después de cortar los renders en curso).
   - Cada render usa un contexto nuevo: sin red (todas las peticiones se cortan), sin JavaScript de la página, y espera las fuentes.
   - Salida: JPEG de calidad 90 o PNG transparente, con su sha256. Un solo tope de 30 s para todo el render; el corte con `signal` responde aunque Playwright no se interrumpa.
   - Errores: `RENDER_BROWSER_NOT_INSTALLED` (no reintentable, con el comando para instalarlo), `RENDER_TIMEOUT` y `RENDER_ABORTED` (reintentables) y `RENDER_FAILED`.
 - **`chromiumStatus()`** (`@agentsales/media/tools`): la ruta del Chromium que pide el Playwright instalado (y su `chromium_headless_shell`, que es el que dibuja). La usa `doctor`, que carga Playwright solo al revisar.
+
 ## Seguridad
 
 - Tokens de plataformas cifrados en reposo con AES-256-GCM. La clave de 32 bytes se deriva de `APP_ENCRYPTION_KEY` con HKDF-SHA256 (se implementa en F3).

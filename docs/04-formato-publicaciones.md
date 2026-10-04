@@ -23,7 +23,7 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 
 - Máximo 10 slides, el límite de la API (`docs/integraciones/instagram.md`). Si hay más fotos, van las 8 primeras en el orden del Excel, más la portada y la ficha. La portada la elige el operador (`foto_portada`, o la primera foto); la IA no la elige ni la sugiere (spec F2, D3).
 - Todo en JPEG sRGB (Instagram no acepta PNG): la portada y la ficha se renderizan con Playwright directo a JPEG.
-- Tipografía: una sans geométrica (ej. Inter o Montserrat) cargada localmente en las plantillas.
+- Tipografía: Inter (licencia OFL, `@fontsource/inter`), incrustada en las plantillas; nada se pide a la red.
 - Texto dentro de márgenes seguros de 64 px.
 - Muestras con datos inventados (F2-T09): [portada](assets/plantillas/portada.jpg), [ficha](assets/plantillas/ficha.jpg) y [texto del reel](assets/plantillas/texto-reel.png). Se regeneran cada vez que sube `TEMPLATES_VERSION`, con `pnpm --filter @agentsales/media run render:samples -- --out docs/assets/plantillas`.
 
