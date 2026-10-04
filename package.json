@@ -19,7 +19,8 @@
     "storage:check": "pnpm --filter @agentsales/storage check",
     "worker:ping": "pnpm --filter @agentsales/worker run job:ping",
     "cli": "pnpm --silent --filter @agentsales/cli run cli",
-    "llm:smoke": "pnpm --filter @agentsales/llm run smoke"
+    "llm:smoke": "pnpm --filter @agentsales/llm run smoke",
+    "eval:content": "pnpm --silent --filter @agentsales/worker run eval:content"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

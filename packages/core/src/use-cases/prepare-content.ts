@@ -1,10 +1,9 @@
 import type { AbortSignalLike } from "../abort.js";
 import type { Broker } from "../broker.js";
-import { assembleContents } from "../content/assemble.js";
-import { type ContentCheckContext, checkContent } from "../content/check.js";
+import type { ContentCheckContext } from "../content/check.js";
 import { loadCheckContext } from "../content/check-context.js";
 import { coverPhoto, variantOf, videosOf } from "../content/compose.js";
-import { generateContentDraft } from "../content/generate.js";
+import { draftListingTexts } from "../content/draft-texts.js";
 import {
   reelPath,
   reelTextInput,
@@ -15,12 +14,7 @@ import {
 import { CONTENT_PROMPT_VERSION } from "../content/prompt.js";
 import { coverData, reelOverlayData, slideBrand, specSheetData } from "../content/slides-data.js";
 import type { ContentRun, ContentRunReport } from "../content.js";
-import {
-  type ContentRunStage,
-  isTerminalContentRun,
-  PLATFORMS,
-  type RenderedMediaVariant,
-} from "../enums.js";
+import { type ContentRunStage, isTerminalContentRun, type RenderedMediaVariant } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import type { Listing } from "../listing.js";
 import type { Media } from "../media.js";
@@ -590,11 +584,7 @@ async function textsStage(state: Run): Promise<NewContent[]> {
   const { deps, ctx, signal } = state;
   const now = deps.now ?? Date.now;
   const started = now();
-  const result = await generateContentDraft(
-    { llm: deps.llm },
-    { brief: ctx.brief, ...(signal === undefined ? {} : { signal }) },
-  );
-  const assembled = assembleContents(ctx.brief, result.draft, ctx.contact);
+  const result = await draftListingTexts({ llm: deps.llm }, ctx, signal);
   state.report.llm = {
     provider: deps.llm.name,
     model: result.model,
@@ -604,16 +594,13 @@ async function textsStage(state: Run): Promise<NewContent[]> {
   };
   state.report.warnings.push(...result.draft.warnings);
   state.report.checks = Object.fromEntries(
-    PLATFORMS.map((platform) => [
-      platform,
-      checkContent(platform, assembled[platform], ctx).map((check) => check.code),
-    ]),
+    result.texts.map(({ platform, checks }) => [platform, checks.map((check) => check.code)]),
   );
-  return PLATFORMS.map((platform) => ({
+  return result.texts.map(({ platform, text }) => ({
     platform,
-    title: assembled[platform].title,
-    body: assembled[platform].body,
-    hashtags: assembled[platform].hashtags,
+    title: text.title,
+    body: text.body,
+    hashtags: text.hashtags,
     llmProvider: deps.llm.name,
     llmModel: result.model,
     promptVersion: CONTENT_PROMPT_VERSION,

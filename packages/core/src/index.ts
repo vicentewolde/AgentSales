@@ -213,6 +213,12 @@ export {
   editContent,
 } from "./use-cases/edit-content.js";
 export {
+  type EvaluatedText,
+  type EvaluateListingContentDeps,
+  evaluateListingContent,
+  type ListingEvaluation,
+} from "./use-cases/evaluate-listing-content.js";
+export {
   type GetListingContentDeps,
   getListingContent,
   type ListingContent,
