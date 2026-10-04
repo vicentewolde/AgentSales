@@ -190,6 +190,16 @@ function streetWords(address: string): string[] {
 /** Notas de una o dos palabras se buscan solo si son una frase con algo de cuerpo. */
 const SHORT_NOTES_MIN_CHARS = 8;
 
+/** Las direcciones web de las notas: no son prosa (un slug como `a-pasos-de-la-plaza` no es fuga). */
+const URL = /\bhttps?:\/\/\S+|\bwww\.\S+/gi;
+
+/**
+ * Fin de una frase: `.`, `!`, `?`, `;`, `:` o un salto de línea, salvo un punto entre dígitos
+ * (`5.800`). Un trozo de las notas no se busca a través de dos frases: dos datos públicos uno tras
+ * otro ("sector Pedro de Valdivia. A pasos de…") no son una copia de las notas.
+ */
+const SENTENCE_END = /(?<!\d)[.!?;:](?!\d)|\n/;
+
 /**
  * Revisa un texto de un canal (spec F2 §4.6): una función pura que corre sobre el texto final,
  * también después de una edición manual, y no se guarda (se calcula al leer). En Instagram, los
@@ -254,13 +264,17 @@ export function checkContent(
     }
   }
 
-  // Notas internas: 6 palabras seguidas (o todas, si son menos), salvo que ese trozo también
-  // esté en los datos (por ejemplo, "departamento en venta").
-  const notes = words(ctx.private.internalNotes ?? "");
+  // Notas internas: 6 palabras seguidas (o todas, si son menos) dentro de una misma frase del
+  // texto, salvo que ese trozo también esté en los datos (por ejemplo, "departamento en venta").
+  // Las direcciones web de las notas no cuentan.
+  const notes = words((ctx.private.internalNotes ?? "").replace(URL, " "));
   const size = Math.min(6, notes.length);
   const longEnough = size >= 3 || notes.join(" ").length >= SHORT_NOTES_MIN_CHARS;
   if (size > 0 && longEnough) {
-    const haystack = ` ${contentWords.join(" ")} `;
+    const haystack = ` ${content
+      .split(SENTENCE_END)
+      .map((sentence) => words(sentence).join(" "))
+      .join(" | ")} `;
     // Lo permitido incluye la operación como la escribe el código (`Departamento en venta`).
     const operation = ctx.brief.operation === "rent" ? "en arriendo" : "en venta";
     const allowed = ` ${words(

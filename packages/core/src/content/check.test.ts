@@ -188,6 +188,27 @@ describe("checkContent · INTERNAL_NOTES_LEAK", () => {
     );
   });
 
+  it("las direcciones web de las notas no cuentan (un slug no es prosa)", () => {
+    const listing = {
+      internalNotes:
+        "Muestra basada en https://ejemplo.test/oficina-en-providencia-a-pasos-del-metro-central",
+    };
+    expect(codesOf("Oficina en Providencia, a pasos del metro.", { listing })).not.toContain(
+      "INTERNAL_NOTES_LEAK",
+    );
+  });
+
+  it("un trozo que cruza de una frase a otra no es copia de las notas", () => {
+    const listing = { internalNotes: "Queda en el sector norte a pasos de la estación vieja" };
+    expect(
+      codesOf("Ubicada en el sector norte. A pasos de la estación.", { listing }),
+    ).not.toContain("INTERNAL_NOTES_LEAK");
+    // Dentro de una misma frase sí se marca.
+    expect(codesOf("Ubicada en el sector norte a pasos de la estación.", { listing })).toContain(
+      "INTERNAL_NOTES_LEAK",
+    );
+  });
+
   it("notas de 3 a 5 palabras se buscan completas", () => {
     const listing = { internalNotes: "No mostrar el balcón" };
     expect(codesOf("Tip: no mostrar el balcón.", { listing })).toContain("INTERNAL_NOTES_LEAK");
