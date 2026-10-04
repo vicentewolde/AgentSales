@@ -28,7 +28,7 @@ const listingNotFound = (listingId: string) =>
 /**
  * El aviso, su corredor y el contexto de su revisión (brief, contacto y lo privado). Lo usan la
  * corrida (`prepareContent`, para la IA, el ensamblado y la revisión) y la lectura y la edición
- * (`getListingContent` y `editContent`): así la revisión al leer mide contra los mismos datos que
+ * (`getListingContent` y `editContent`) y la evaluación del prompt (`evaluateListingContent`): así la revisión al leer mide contra los mismos datos que
  * la de la corrida. `LISTING_NOT_FOUND` o `BROKER_NOT_FOUND` si falta alguno.
  */
 export async function loadCheckContext(

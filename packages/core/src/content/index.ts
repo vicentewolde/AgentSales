@@ -53,6 +53,11 @@ export {
   contentDraftSchema,
   SAMPLE_CONTENT_DRAFT,
 } from "./draft.js";
+export {
+  type DraftedText,
+  type DraftListingTextsResult,
+  draftListingTexts,
+} from "./draft-texts.js";
 export { type GenerateContentDraftResult, generateContentDraft } from "./generate.js";
 export { reelPath, reelTextInput, renderInput, renderPath, variantPath } from "./media-keys.js";
 export { buildContentPrompt, CONTENT_PROMPT_VERSION } from "./prompt.js";
