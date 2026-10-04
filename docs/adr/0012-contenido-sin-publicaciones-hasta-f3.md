@@ -33,3 +33,10 @@ Las tres migraciones se generan en cadena, en las tareas T01, T02 y T03 del spec
 - **Hacer opcional `publications.platform_account_id`:** publicaciones sin destino que se podrían aprobar sin poder publicarse, y el único parcial deja de proteger (en Postgres, `null` no choca con `null`).
 - **Guardar el estado de la preparación en `listings`:** mezcla el estado comercial del aviso con el de un proceso técnico, y no deja historial ni reporte.
 - **Un job aparte `media.process` (ADR-0005) más `content.prepare`:** dos avances que coordinar. Las etapas idempotentes de una sola corrida dan el mismo reintento parcial.
+
+## Seguimiento
+- 2026-10-03 (F2-T10 a F2-T15, cierre de F2): implementado como se decidió, con estos ajustes:
+  - pedir una corrida activa la reencola también si está en `running` (un corte en el último intento la dejaba sin job; la cola `exclusive` no duplica un job vivo), y el worker cierra como `failed` (`CONTENT_RUN_ABANDONED`) las `running` de más de 2 h al arrancar;
+  - un corte por apagado deja la corrida en `running` y sube como `CONTENT_RUN_ABORTED` (reintentable);
+  - mientras hay una corrida que genera textos, editar responde `CONTENT_RUN_ACTIVE` (409), y regenerar sobre una edición a mano exige `replaceEdits` (`CONTENT_EDITED`);
+  - las publicaciones siguen sin crearse: nacen en F3 desde el contenido vigente.

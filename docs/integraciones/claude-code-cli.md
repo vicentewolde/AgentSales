@@ -59,11 +59,11 @@ El prompt del usuario va por stdin (tope de 10 MB por stdin; error claro y códi
 - El validador usa **JSON Schema draft-07**; un esquema que declare una versión más nueva se rechaza. Con zod 4: `z.toJSONSchema(schema, { target: "draft-7" })`. (DOC, página del Agent SDK, que comparte motor con la CLI: INFERENCIA para la CLI.)
 - Funciones de esquema soportadas: tipos básicos, `enum`, `const`, `required`, objetos anidados, `$ref`. Para "la lista completa de soportes y limitaciones" la doc remite a la página de structured outputs de la API: sin `minimum`/`maximum`, `minLength`/`maxLength`, esquemas recursivos ni `additionalProperties` distinto de `false` (DOC de la API; aplicar a la CLI es INFERENCIA). **Consecuencia:** los largos (título de 60 caracteres, caption de 2.200) no se pueden exigir en el esquema; se validan después con zod.
 - **Si el modelo no cumple (DOC):** el SDK "re-prompts on mismatch" hasta un límite de reintentos. Si no logra salida válida, el resultado trae `subtype: "error_max_structured_output_retries"`, `is_error: true` y sin `structured_output`. Puede pasar también por un retroceso de modelo (fallback) que retira la salida; la lista `errors` distingue las causas. Un resultado con `subtype: "success"` pero sin `structured_output` también debe tratarse como fallo.
-- **NO VERIFICADO:** si `--tools ""` deja disponible la herramienta interna con que se entrega `structured_output`, y si los reintentos de validación cuentan contra `--max-turns` (la doc dice que `max_turns` cuenta solo turnos con herramientas). Probar con un esquema trivial.
+- **Verificado en la prueba de humo (2026-10-03):** con `--tools ""` la CLI entrega `structured_output` igual; `--max-turns` no existe en la 2.1.243. Ver la sección de resultados.
 
 ### 4.3 Sobre del resultado con `--output-format json`
 
-La doc de la CLI lista `result`, `session_id`, `total_cost_usd`, el desglose de costo por modelo, `usage` y `structured_output`. Los campos completos salen de la referencia del Agent SDK (`ResultMessage`), que la CLI comparte (INFERENCIA que el JSON de la CLI trae todos; **NO VERIFICADO** con una salida real):
+La doc de la CLI lista `result`, `session_id`, `total_cost_usd`, el desglose de costo por modelo, `usage` y `structured_output`. Los campos completos salen de la referencia del Agent SDK (`ResultMessage`), que la CLI comparte (verificado con el sobre real de la prueba de humo del 2026-10-03; ver la sección de resultados):
 
 | Campo | Significado |
 |---|---|
@@ -72,7 +72,7 @@ La doc de la CLI lista `result`, `session_id`, `total_cost_usd`, el desglose de 
 | `is_error` | `true` si terminó en error |
 | `result` | texto final, **o el mensaje de error de la API** (ej. "You've hit your session limit · resets 3:45pm") |
 | `structured_output` | el dato validado (solo con `--json-schema`) |
-| `total_cost_usd`, `usage`, `model_usage` | estimación del cliente, no facturación; con plan Max no se cobra |
+| `total_cost_usd`, `usage`, `modelUsage` (así sale en el sobre real) | estimación del cliente, no facturación; con plan Max no se cobra |
 | `num_turns`, `duration_ms`, `duration_api_ms` | métricas |
 | `session_id` | id de sesión |
 | `stop_reason` | `end_turn`, `max_tokens`, `refusal`… (revisar `refusal`) |

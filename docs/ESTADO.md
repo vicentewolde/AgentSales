@@ -27,7 +27,7 @@
 | F2-T14 · Panel: preparar y vista previa | ✅ | #47 |
 | F2-T15 · Panel: edición de textos | ✅ | #48 |
 | F2-T16 · `pnpm eval:content` | ✅ | #49 |
-| F2-T17 · Cierre de fase | ⏳ pendiente | |
+| F2-T17 · Cierre de fase | 🔨 en curso | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 

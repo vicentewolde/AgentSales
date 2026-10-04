@@ -201,11 +201,11 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
   - **Solo uso propio** del operador (ADR-0003).
 - **`anthropic-api` (stub):** el entorno exige `ANTHROPIC_API_KEY` si `LLM_PROVIDER=anthropic-api` (deuda de F1), y el adaptador responde `LLM_NOT_CONFIGURED` ("llega en F7"). No agrega el SDK.
 - **`fake`:** proveedor de ejecución (para `LLM_PROVIDER=fake` y `eval:content --provider fake`) que devuelve el dato que le pasa quien lo compone: el borrador de ejemplo de core (`SAMPLE_CONTENT_DRAFT`, T05), que pasa la revisión editorial sin errores. Los tests de core usan su propio doble en `@agentsales/core/testing` (con respuestas en orden y registro de peticiones), porque core no puede depender de `packages/llm` y `packages/llm` no puede importar la salida de tests de core.
-- **Logs:** solo proveedor, modelo, duración, intentos y largo del prompt. Nunca el prompt ni la respuesta (traen datos de clientes).
+- **Logs:** a lo más proveedor, modelo, duración, intentos y largo del prompt (el job `content.prepare` registra proveedor, intentos y duración). Nunca el prompt ni la respuesta (traen datos de clientes).
 
 ### 4.6 Contenido (ADR-0013)
 - **Brief** (`buildContentBrief(listing, definitions, broker)`, core): lo único que ve la IA.
-  - Operación, tipo, región, comuna, `sector_referencia`, precio y gastos comunes ya formateados (`formatListingPrice`), los atributos efectivos con su etiqueta y valor formateado (`describeAttributes`; el filtro de `fields` que hoy vive en `apps/api/src/routes/listings.ts` pasa a core, deuda de F1), `destacados`, `disponibilidad`, `amenities`, `requisitos_arriendo` (para que la IA los filtre; solo en arriendo), y tono, marca y hashtags fijos del corredor (para que la IA no los repita).
+  - Operación, tipo, región, comuna, `sector_referencia`, precio y gastos comunes ya formateados (`formatListingPrice`), los atributos efectivos con su etiqueta y valor formateado (`describeAttributes`; el filtro de `fields`, que vivía en `apps/api/src/routes/listings.ts`, pasó a core en T05 como `listingFields`, deuda de F1), `destacados`, `disponibilidad`, `amenities`, `requisitos_arriendo` (para que la IA los filtre; solo en arriendo), y tono, marca y hashtags fijos del corredor (para que la IA no los repita).
   - **Nunca:** `internal_notes`, `_extra` (columnas desconocidas), links ni contacto. La dirección y el número de unidad solo si `show_exact_address = true`.
 - **Prompt** (`listing-content-v1`): las reglas editoriales de `04-formato-publicaciones.md` en el prompt de sistema, y los datos del aviso como JSON (con sus caracteres escapados) dentro de un bloque delimitado, con la instrucción de tratarlos como datos y nunca como órdenes (el Excel lo escribe un tercero). Un texto del Excel que imite el delimitador no puede cerrar el bloque.
 - **Salida de la IA** (`contentDraftSchema`): solo frases.
@@ -273,8 +273,8 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - Variables nuevas: `CLAUDE_CLI_PATH` (default `claude`), `LLM_TIMEOUT_SECONDS` (default 180) y `FFPROBE_PATH` (default `ffprobe`), en `packages/config` y `.env.example`.
 - `LLM_PROVIDER=anthropic-api` exige `ANTHROPIC_API_KEY`.
 - **`agentsales doctor`:**
-  - ffmpeg 8.1 o más nuevo, y ffprobe (T07; hoy solo revisa que exista ffmpeg).
-  - Chromium de la versión que pide el Playwright instalado (T09; hoy avisa "se necesita en F5").
+  - ffmpeg 8.1 o más nuevo, y ffprobe (T07; antes solo revisaba que existiera ffmpeg).
+  - Chromium de la versión que pide el Playwright instalado (T09; error si falta, antes era una advertencia "se necesita en F5").
   - Sesión de la CLI de Claude con `claude auth status`, sin gastar cuota (T04).
 - **Requisitos locales** (`docs/08-guia-operador.md` y `docs/07-checklist-cuentas.md`, cada uno en su tarea: T04 la CLI de Claude, T07 ffmpeg con ffprobe y T09 Chromium): ffmpeg con ffprobe (`brew install ffmpeg`), Chromium de Playwright y la CLI de Claude con sesión iniciada.
 - **CLAUDE.md:** comandos `prepare`, `content` y `eval:content` (en sus tareas).
@@ -371,7 +371,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
   - [x] Test con un HEIC de prueba en mosaicos que sale en JPEG completo y con la orientación correcta. El archivo es sintético: un JPEG generado con sharp (sin personas) convertido una sola vez con `sips -s format heic` de macOS, que codifica en mosaicos las imágenes grandes (verificado en local: una imagen sintética de 1600×1200 sale como `Tile Grid` de 73 KB); de menos de 300 KB, en `test/fixtures/` y anotado en `05-convenciones.md`. La tarea verifica con ffprobe que trae el grupo `Tile Grid`
   - [x] La CI pasa con el paso de ffmpeg (PR #40)
 - **Hecho en:**
-  - **core:** puerto `MediaProcessor` completo (`ImageOutput`, `VideoOutput`, `MediaWarning` con textos fijos por código y `processVideo`, que implementa T08) y `createInMemoryMediaProcessor` en `@agentsales/core/testing`.
+  - **core:** puerto `MediaProcessor` completo (`ImageOutput`, `VideoOutput`, `MediaWarning` con textos fijos por código, que la revisión del PR #40 quitó del puerto, y `processVideo`, que implementa T08) y `createInMemoryMediaProcessor` en `@agentsales/core/testing`.
   - **`packages/media`:** `createMediaProcessor({ ffmpegPath, ffprobePath, workDir })` con sharp 0.35.5. `MEDIA_PIPELINE_VERSION` e `IMAGE_VARIANT_SPECS` en `src/pipeline.ts`. `MEDIA_ABORTED` (reintentable) al cortar con `signal`, que mata a ffmpeg.
   - **HEIC:** sintético de 5,6 KB (12 mosaicos y giro `irot`); ffmpeg aplica el giro (1200×1600). La versión de ffmpeg (8.1 o más nueva) se revisa una vez, con `@agentsales/media/tools`, que también usa `doctor` (ffmpeg y ffprobe).
   - **CI:** ffmpeg 9.0.1 estático de BtbN (cierre de agosto de 2026), fijado por URL y sha256 y con caché.
