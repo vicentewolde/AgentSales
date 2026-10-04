@@ -1,8 +1,12 @@
 import {
+  type ContentEditBody,
   type ContentRunRequestBody,
   type ContentRunView,
+  type ContentView,
+  contentEditResponseSchema,
   contentRunRequestResponseSchema,
   contentRunResponseSchema,
+  type ListingContentResponse,
   listingContentResponseSchema,
 } from "@agentsales/api/contracts";
 import { isTerminalContentRun } from "@agentsales/core";
@@ -77,6 +81,37 @@ export function useRequestContentRun(listingId: string) {
       ),
     onSuccess: ({ contentRun }) => {
       queryClient.setQueryData(contentKeys.run(contentRun.id), contentRun);
+    },
+  });
+}
+
+/**
+ * `PATCH /contents/:id`: guarda una edición a mano. La respuesta trae el texto con su revisión
+ * nueva, que reemplaza al de la caché: el panel nunca revisa por su cuenta (necesitaría lo privado
+ * del aviso). Conserva la hora de la carga del contenido, porque sus URLs firmadas son de entonces.
+ */
+export function useEditContent(listingId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, edit }: { id: string; edit: ContentEditBody }) =>
+      (
+        await unwrap(
+          client.contents[":id"].$patch({ param: { id }, json: edit }),
+          contentEditResponseSchema,
+        )
+      ).content,
+    onSuccess: (saved: ContentView) => {
+      const key = contentKeys.listing(listingId);
+      queryClient.setQueryData<ListingContentResponse>(
+        key,
+        (current) =>
+          current && {
+            ...current,
+            contents: current.contents.map((item) => (item.id === saved.id ? saved : item)),
+          },
+        { updatedAt: queryClient.getQueryState(key)?.dataUpdatedAt },
+      );
     },
   });
 }

@@ -6,12 +6,10 @@ import { foldText } from "../listing-validator/normalizers.js";
 import {
   type AssembledText,
   type ContentContact,
+  contentLength,
   HASHTAGS_MAX,
   HASHTAGS_MIN,
   hasEmoji,
-  INSTAGRAM_CAPTION_MAX_LENGTH,
-  instagramCaption,
-  LISTING_TITLE_MAX_LENGTH,
 } from "./assemble.js";
 import { buildContentBrief, type ContentBrief } from "./brief.js";
 import {
@@ -287,18 +285,13 @@ export function checkContent(
     add("EMOJI_NOT_ALLOWED", "Portal Inmobiliario no admite emojis en el título ni la descripción");
   }
 
-  if (platform === "instagram") {
-    const length = instagramCaption(text).length;
-    if (length > INSTAGRAM_CAPTION_MAX_LENGTH) {
-      add(
-        "TOO_LONG",
-        `El caption tiene ${length} caracteres con los hashtags (máximo ${INSTAGRAM_CAPTION_MAX_LENGTH})`,
-      );
-    }
-  } else if ((text.title ?? "").length > LISTING_TITLE_MAX_LENGTH) {
+  const { length, max } = contentLength(platform, text);
+  if (length > max) {
     add(
       "TOO_LONG",
-      `El título tiene ${(text.title ?? "").length} caracteres (máximo ${LISTING_TITLE_MAX_LENGTH})`,
+      platform === "instagram"
+        ? `El caption tiene ${length} caracteres con los hashtags (máximo ${max})`
+        : `El título tiene ${length} caracteres (máximo ${max})`,
     );
   }
 

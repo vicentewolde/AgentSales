@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { AppError, RUN_WAIT as WAIT } from "@agentsales/core";
+import { AppError, SAMPLE_CONTENT_DRAFT, RUN_WAIT as WAIT } from "@agentsales/core";
 import {
   contentDefinitionsFixture,
   createInMemoryJobQueue,
@@ -344,5 +344,244 @@ describe("panel: sección Contenido", () => {
     // La galería: miniatura en las fotos y como portada de los videos.
     const video = screen.getByLabelText("Video 4 de P-001") as HTMLVideoElement;
     expect(video.poster).toContain("/processed/thumb/");
+  });
+});
+
+describe("panel: edición de textos", () => {
+  /** Un aviso con su contenido listo, abierto en la pestaña `name`. */
+  async function editing(name: string, harnessOptions: Parameters<typeof harness>[0] = {}) {
+    const t = await setup({}, harnessOptions);
+    await t.prepared();
+    const section = await t.open();
+    await within(section).findByRole("tablist", { name: "Canales" });
+    fireEvent.click(tab(name));
+    fireEvent.click(within(section).getByRole("button", { name: "Editar" }));
+    const form = within(section).getByRole("form", { name: `Editar el texto de ${name}` });
+    return { ...t, section, form };
+  }
+
+  it("edita y guarda: queda editado a mano y la revisión llega con la respuesta", async () => {
+    const t = await editing("Portal Inmobiliario");
+
+    fireEvent.change(within(t.form).getByLabelText("Título"), {
+      target: { value: "Departamento luminoso en Ñuñoa" },
+    });
+    fireEvent.change(within(t.form).getByLabelText("Descripción"), {
+      target: { value: "Un departamento increíble y luminoso." },
+    });
+    fireEvent.click(within(t.form).getByRole("button", { name: "Guardar" }));
+
+    const panel = within(t.section).getByRole("tabpanel");
+    expect(
+      await within(panel).findByRole("heading", { name: "Departamento luminoso en Ñuñoa" }),
+    ).toBeTruthy();
+    expect(within(panel).getByText("Texto: editado a mano")).toBeTruthy();
+    // La revisión nueva la calcula el servidor: "increíble" es un superlativo.
+    const checks = within(panel).getByRole("region", {
+      name: "Revisión editorial de Portal Inmobiliario",
+    });
+    expect(within(checks).getByText(/Advertencia/)).toBeTruthy();
+    const [, portal] = await t.contents.listCurrent(t.listing.id);
+    expect(portal).toMatchObject({
+      status: "edited",
+      title: "Departamento luminoso en Ñuñoa",
+      body: "Un departamento increíble y luminoso.",
+    });
+    expect(t.requests).toContain(`PATCH /contents/${portal?.id}`);
+  });
+
+  it("en Instagram cuenta el caption con los hashtags y avisa si se pasa del tope", async () => {
+    const t = await editing("Instagram");
+    const counter = () => within(t.form).getByText(/caracteres/);
+
+    fireEvent.change(within(t.form).getByLabelText("Texto"), {
+      target: { value: "a".repeat(2_195) },
+    });
+    fireEvent.change(within(t.form).getByLabelText("Hashtags"), {
+      target: { value: "Ñuñoa #ñuñoa" },
+    });
+    // 2195 + "\n\n" + "#nunoa": el hashtag repetido cuenta una vez, ya normalizado.
+    expect(counter().textContent).toBe("2203 / 2200 caracteres · se pasa por 3");
+    expect(counter().className).toContain("red");
+
+    // Se puede guardar igual: la revisión lo marca como error.
+    fireEvent.click(within(t.form).getByRole("button", { name: "Guardar" }));
+    const checks = await within(t.section).findByRole("region", {
+      name: "Revisión editorial de Instagram",
+    });
+    expect(within(checks).getByText(/El caption tiene 2203 caracteres/)).toBeTruthy();
+  });
+
+  it("si falla al guardar, lo dice y deja el formulario con lo escrito", async () => {
+    const t = await editing("Facebook Marketplace", {
+      intercept: (method, path) => {
+        if (method === "PATCH" && path.startsWith("/contents/")) {
+          throw new TypeError("fetch failed");
+        }
+        return undefined;
+      },
+    });
+
+    fireEvent.change(within(t.form).getByLabelText("Descripción"), {
+      target: { value: "Texto nuevo" },
+    });
+    fireEvent.click(within(t.form).getByRole("button", { name: "Guardar" }));
+
+    expect(await within(t.form).findByRole("alert")).toBeTruthy();
+    expect((within(t.form).getByLabelText("Descripción") as HTMLTextAreaElement).value).toBe(
+      "Texto nuevo",
+    );
+  });
+
+  it("si una preparación nueva reemplazó el texto, lo explica y ofrece recargar", async () => {
+    const t = await editing("Instagram");
+    // Mientras se editaba, otra preparación dejó textos nuevos.
+    await t.contentRuns.create({ listingId: t.listing.id, texts: true });
+    await t.prepare(
+      createInMemoryLlmProvider([
+        {
+          data: {
+            ...SAMPLE_CONTENT_DRAFT,
+            instagram: {
+              hook: "Recién preparado",
+              body: "Texto de la preparación nueva.",
+              hashtags: [],
+            },
+          },
+        },
+      ]),
+    );
+
+    fireEvent.change(within(t.form).getByLabelText("Texto"), { target: { value: "Mío" } });
+    fireEvent.click(within(t.form).getByRole("button", { name: "Guardar" }));
+    expect(await within(t.form).findByText("Este texto ya no es el vigente")).toBeTruthy();
+
+    fireEvent.click(within(t.form).getByRole("button", { name: "Recargar el contenido" }));
+    expect(await within(t.section).findByText(/Recién preparado/)).toBeTruthy();
+    expect(within(t.section).queryByRole("form")).toBeNull();
+  });
+
+  it("si se están regenerando los textos, no guarda y explica por qué", async () => {
+    const t = await editing("Portal Inmobiliario");
+    // La CLI pidió textos nuevos mientras se editaba.
+    await t.contentRuns.create({ listingId: t.listing.id, texts: true });
+
+    fireEvent.change(within(t.form).getByLabelText("Descripción"), {
+      target: { value: "Texto nuevo" },
+    });
+    fireEvent.click(within(t.form).getByRole("button", { name: "Guardar" }));
+    expect(
+      await within(t.form).findByText("No se guardó: se están regenerando los textos"),
+    ).toBeTruthy();
+  });
+
+  it("con una preparación de textos en curso, Editar está bloqueado y dice el motivo", async () => {
+    const t = await setup();
+    await t.prepared();
+    await t.contentRuns.create({ listingId: t.listing.id, texts: true });
+    const section = await t.open();
+    await within(section).findByRole("tablist", { name: "Canales" });
+
+    const panel = within(section).getByRole("tabpanel");
+    const button = within(panel).getByRole("button", { name: "Editar" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(within(panel).getByText(/Se están regenerando los textos/)).toBeTruthy();
+  });
+
+  it("con una de solo imágenes en curso, se puede editar", async () => {
+    const t = await setup();
+    await t.prepared();
+    await t.contentRuns.create({ listingId: t.listing.id, texts: false });
+    const section = await t.open();
+    await within(section).findByText(/Preparando/);
+
+    const button = within(section).getByRole("button", { name: "Editar" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
+  it("antes de regenerar sobre una edición avisa que se reemplazará, sin pedir nada todavía", async () => {
+    const t = await setup();
+    await t.prepared();
+    const [instagram] = await t.contents.listCurrent(t.listing.id);
+    await t.contents.update(instagram?.id ?? "", { body: "Lo escribí yo.", status: "edited" });
+    const section = await t.open();
+    await within(section).findByRole("tablist", { name: "Canales" });
+
+    fireEvent.click(within(section).getByRole("button", { name: "Preparar contenido" }));
+    expect(
+      await within(section).findByText(/Editaste Instagram: se reemplazará tu edición/),
+    ).toBeTruthy();
+    expect(t.requests.some((request) => request.startsWith("POST"))).toBe(false);
+
+    fireEvent.click(within(section).getByRole("button", { name: "Reemplazar mis textos" }));
+    await within(section).findByText(/Preparando/);
+    expect(await t.contentRuns.latest(t.listing.id)).toMatchObject({ texts: true });
+  });
+
+  it("cada pestaña conserva su borrador: cambiar de canal no lo cruza con otro", async () => {
+    const t = await editing("Portal Inmobiliario");
+    fireEvent.change(within(t.form).getByLabelText("Título"), {
+      target: { value: "Borrador de Portal" },
+    });
+
+    fireEvent.click(tab("Facebook Marketplace"));
+    const marketplace = within(t.section).getByRole("tabpanel");
+    // Marketplace muestra su texto, sin el formulario de Portal.
+    expect(within(marketplace).queryByRole("form")).toBeNull();
+    expect(within(marketplace).queryByText("Borrador de Portal")).toBeNull();
+
+    fireEvent.click(tab("Portal Inmobiliario"));
+    const form = within(t.section).getByRole("form", {
+      name: "Editar el texto de Portal Inmobiliario",
+    });
+    expect((within(form).getByLabelText("Título") as HTMLInputElement).value).toBe(
+      "Borrador de Portal",
+    );
+  });
+
+  it("sin cambios o con campos vacíos no deja guardar", async () => {
+    const t = await editing("Portal Inmobiliario");
+    const save = () => within(t.form).getByRole("button", { name: "Guardar" }) as HTMLButtonElement;
+    expect(save().disabled).toBe(true);
+
+    fireEvent.change(within(t.form).getByLabelText("Título"), { target: { value: "   " } });
+    expect(save().disabled).toBe(true);
+    expect(
+      within(t.form).getByText("El título y la descripción no pueden quedar vacíos."),
+    ).toBeTruthy();
+    expect(within(t.form).getByLabelText("Título").getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("si empieza una preparación de textos con el editor abierto, conserva lo escrito y no guarda", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const t = await editing("Instagram");
+    fireEvent.change(within(t.form).getByLabelText("Texto"), { target: { value: "Mi borrador" } });
+
+    fireEvent.click(within(t.section).getByRole("button", { name: "Preparar contenido" }));
+    expect(await within(t.form).findByText(/Tu edición queda aquí hasta que termine/)).toBeTruthy();
+    expect(
+      (within(t.form).getByRole("button", { name: "Guardar" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((within(t.form).getByLabelText("Texto") as HTMLTextAreaElement).value).toBe(
+      "Mi borrador",
+    );
+
+    // La preparación termina con un texto nuevo: el borrador sigue y pide decidir.
+    await t.prepare();
+    await advance(WAIT.pollMs);
+    expect(await within(t.form).findByText("El texto cambió mientras editabas")).toBeTruthy();
+    expect((within(t.form).getByLabelText("Texto") as HTMLTextAreaElement).value).toBe(
+      "Mi borrador",
+    );
+    expect(
+      within(t.form).getByRole("button", { name: "Guardar sobre el texto nuevo" }),
+    ).toBeTruthy();
+
+    fireEvent.click(within(t.form).getByRole("button", { name: "Descartar mi borrador" }));
+    const [current] = await t.contents.listCurrent(t.listing.id);
+    expect((within(t.form).getByLabelText("Texto") as HTMLTextAreaElement).value).toBe(
+      current?.body,
+    );
+    expect(within(t.form).queryByText("El texto cambió mientras editabas")).toBeNull();
   });
 });
