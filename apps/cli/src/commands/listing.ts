@@ -1,8 +1,4 @@
-import {
-  type ListingDetailResponse,
-  listingDetailResponseSchema,
-  listingListResponseSchema,
-} from "@agentsales/api/contracts";
+import { type ListingDetailResponse, listingDetailResponseSchema } from "@agentsales/api/contracts";
 import {
   type Broker,
   describeAttributes,
@@ -11,60 +7,14 @@ import {
   OPERATION_TEXT,
 } from "@agentsales/core";
 import type { Command } from "commander";
-import { z } from "zod";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
-import { CliError, formatBytes, guarded, type Io } from "../output.js";
-import { brokerSlugOf, fetchBrokers } from "./shared.js";
+import { formatBytes, guarded, type Io } from "../output.js";
+import { fetchBrokers, resolveListingId } from "./shared.js";
 
 export type ListingDeps = Io & { client: ApiClient };
 
 export type ListingOptions = { broker?: string; json?: boolean };
-
-const isUuid = (text: string) => z.uuid().safeParse(text).success;
-
-/**
- * El id del aviso: un uuid va directo; si no, es el `id_propiedad`, que es único por corredor
- * (spec F1-T12). Si está en más de un corredor, hace falta `--broker`.
- */
-async function resolveListingId(
-  client: ApiClient,
-  ref: string,
-  brokers: Map<string, Broker>,
-  brokerOption: string | undefined,
-): Promise<string> {
-  if (isUuid(ref)) return ref;
-  const { listings } = await unwrap(
-    client.listings.$get({ query: { externalRef: ref } }),
-    listingListResponseSchema,
-  );
-  let matches = listings;
-  if (brokerOption !== undefined) {
-    const slug = brokerSlugOf(brokerOption);
-    const broker = [...brokers.values()].find((candidate) => candidate.slug === slug);
-    if (broker === undefined) {
-      throw new CliError("BROKER_NOT_FOUND", `No existe el corredor ${slug}`);
-    }
-    matches = listings.filter((listing) => listing.brokerId === broker.id);
-  }
-  const [first, ...others] = matches;
-  if (first === undefined) {
-    throw new CliError(
-      "LISTING_NOT_FOUND",
-      `No existe la propiedad ${ref}${brokerOption === undefined ? "" : ` en ese corredor`}`,
-      "Revisa el código con agentsales listings",
-    );
-  }
-  if (others.length > 0) {
-    const slugs = matches.map((listing) => brokers.get(listing.brokerId)?.slug ?? listing.brokerId);
-    throw new CliError(
-      "LISTING_AMBIGUOUS",
-      `${ref} existe en ${matches.length} corredores (${slugs.join(", ")})`,
-      "Indica cuál con --broker <slug>",
-    );
-  }
-  return first.id;
-}
 
 export function renderListingDetail(
   { listing, media, fields }: ListingDetailResponse,

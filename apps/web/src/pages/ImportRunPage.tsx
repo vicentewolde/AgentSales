@@ -1,4 +1,4 @@
-import { IMPORT_WAIT, isTerminalImportRun } from "@agentsales/core";
+import { isTerminalImportRun, RUN_QUEUED_WARNING_TEXT, RUN_WAIT } from "@agentsales/core";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../api/client.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
@@ -21,7 +21,7 @@ export function ImportRunPage() {
   // de reloj es despreciable frente a 20 s.
   const stuckInQueue =
     data?.status === "queued" &&
-    run.dataUpdatedAt - data.createdAt.getTime() >= IMPORT_WAIT.queuedWarningMs;
+    run.dataUpdatedAt - data.createdAt.getTime() >= RUN_WAIT.queuedWarningMs;
 
   return (
     <section className="mx-auto max-w-4xl">
@@ -66,7 +66,7 @@ export function ImportRunPage() {
           </div>
           {stuckInQueue && !stopped && (
             <p role="alert" className="mt-2 text-sm text-amber-800">
-              Sigue en cola: ¿está corriendo el worker? (pnpm dev)
+              {RUN_QUEUED_WARNING_TEXT}
             </p>
           )}
           {stopped && (

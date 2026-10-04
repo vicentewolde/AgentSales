@@ -5,14 +5,9 @@ import {
   loadCheckContext,
 } from "../content/check-context.js";
 import { composeCarousel, composePhotoSet, composeReel } from "../content/compose.js";
-import type { Content, ContentRun } from "../content.js";
-import { AppError } from "../errors.js";
-import type { Listing } from "../listing.js";
+import type { ContentRun } from "../content.js";
 import type { Media } from "../media.js";
-import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository, ContentRunRepository } from "../ports/content-repository.js";
-import type { FieldDefinitionRepository } from "../ports/field-definition-repository.js";
-import type { ListingRepository } from "../ports/listing-repository.js";
 import type { MediaRepository } from "../ports/media-repository.js";
 
 export type GetListingContentDeps = ContentCheckDeps & {

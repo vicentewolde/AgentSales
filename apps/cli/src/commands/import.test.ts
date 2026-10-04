@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AppError, IMPORT_WAIT } from "@agentsales/core";
+import { AppError, RUN_WAIT } from "@agentsales/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fakeClock, harness, simulateWorker } from "../../test/harness.js";
 import { createApiClient } from "../api-client.js";
@@ -144,7 +144,7 @@ describe("runImport", () => {
   });
 
   it("los tiempos son los del spec: cada 2 s, aviso a los 20 s y tope de 2 h", () => {
-    expect(IMPORT_WAIT).toMatchObject({
+    expect(RUN_WAIT).toMatchObject({
       pollMs: 2_000,
       queuedWarningMs: 20_000,
       maxWaitMs: 7_200_000,

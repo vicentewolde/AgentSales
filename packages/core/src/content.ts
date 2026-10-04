@@ -17,13 +17,17 @@ const count = z.number().int().nonnegative();
  * advertencias usan textos fijos por código (sin claves de R2 ni datos del aviso). Los campos
  * nuevos se agregan como opcionales, para que los reportes ya guardados sigan validando.
  */
+/** Qué pasó con el reel en una corrida (`report.reel`). */
+export const CONTENT_REEL_OUTCOMES = ["created", "existing", "none", "skipped"] as const;
+export type ContentReelOutcome = (typeof CONTENT_REEL_OUTCOMES)[number];
+
 export const contentRunReportSchema = z.object({
   /** Etapa `media`: originales procesados ahora, los que ya tenían sus variantes y los ilegibles. */
   media: z.object({ processed: count, existing: count, failed: count }).optional(),
   /** Etapa `renders`: portada y ficha renderizadas ahora o que no cambiaron. */
   renders: z.object({ rendered: count, existing: count }).optional(),
   /** Etapa `reel`: `none` si el aviso no tiene video; `skipped` si el video no sirve (muy corto). */
-  reel: z.enum(["created", "existing", "none", "skipped"]).optional(),
+  reel: z.enum(CONTENT_REEL_OUTCOMES).optional(),
   /** Etapa `texts`: la llamada a la IA (sin el prompt ni la respuesta, que traen datos). */
   llm: z
     .object({

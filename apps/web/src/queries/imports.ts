@@ -3,7 +3,7 @@ import {
   importRunListResponseSchema,
   importRunResponseSchema,
 } from "@agentsales/api/contracts";
-import { IMPORT_WAIT, isTerminalImportRun } from "@agentsales/core";
+import { isTerminalImportRun, RUN_WAIT } from "@agentsales/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { unwrap } from "../api/client.js";
@@ -14,7 +14,7 @@ import { listingKeys } from "./listings.js";
 export type PollStop = "failures" | "max-wait";
 
 /**
- * Por qué se deja de consultar una carga que sigue en curso (`IMPORT_WAIT`, igual que la CLI): tras
+ * Por qué se deja de consultar una carga que sigue en curso (`RUN_WAIT`, igual que la CLI): tras
  * 3 fallas seguidas (contando el reintento de cada consulta) o a las 2 h de creada, así una carga
  * atascada no mantiene Neon despierto con la pestaña abierta. `checkedAt` es la hora de la última
  * respuesta; `createdAt` lo pone la base (Neon), con un desfase de reloj despreciable.
@@ -25,8 +25,8 @@ export function pollStop(
   checkedAt: number,
 ): PollStop | null {
   if (isTerminalImportRun(run.status)) return null;
-  if (failures >= IMPORT_WAIT.maxPollFailures) return "failures";
-  if (checkedAt - run.createdAt.getTime() >= IMPORT_WAIT.maxWaitMs) return "max-wait";
+  if (failures >= RUN_WAIT.maxPollFailures) return "failures";
+  if (checkedAt - run.createdAt.getTime() >= RUN_WAIT.maxWaitMs) return "max-wait";
   return null;
 }
 
@@ -86,7 +86,7 @@ export function useImportRun(id: string) {
     refetchInterval: (current) => {
       const { data, dataUpdatedAt } = current.state;
       if (data === undefined || isTerminalImportRun(data.status)) return false;
-      return pollStop(data, failures.current, dataUpdatedAt) === null ? IMPORT_WAIT.pollMs : false;
+      return pollStop(data, failures.current, dataUpdatedAt) === null ? RUN_WAIT.pollMs : false;
     },
     staleTime: (current) => {
       const status = current.state.data?.status;

@@ -17,12 +17,15 @@ export const apiUrl = (port: number) => `http://127.0.0.1:${port}`;
 export class ApiCallError extends Error {
   readonly code: string | undefined;
   readonly status: number | undefined;
+  /** El mensaje de la API, sin el código delante (`message` es `CODE: mensaje`). */
+  readonly apiMessage: string | undefined;
 
-  constructor(message: string, code?: string, status?: number) {
+  constructor(message: string, code?: string, status?: number, apiMessage?: string) {
     super(message);
     this.name = "ApiCallError";
     this.code = code;
     this.status = status;
+    this.apiMessage = apiMessage;
   }
 }
 
@@ -104,6 +107,7 @@ export async function unwrap<S extends z.ZodType>(
           `${parsed.data.error.code}: ${parsed.data.error.message}`,
           parsed.data.error.code,
           res.status,
+          parsed.data.error.message,
         )
       : new ApiCallError(`la API respondió ${res.status}`, undefined, res.status);
   }

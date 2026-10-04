@@ -49,6 +49,8 @@ pnpm worker:ping         # encola un job de prueba (con el worker corriendo)
 pnpm llm:smoke           # una llamada real y corta a la CLI de Claude con datos inventados (gasta cuota; la corre el operador)
 pnpm -s cli import <xlsx> --media <carpeta|zip>  # carga propiedades (con pnpm dev corriendo; --dry-run simula)
 pnpm -s cli listings     # propiedades cargadas (detalle: cli listing <id>; historial: cli imports)
+pnpm -s cli prepare <id_propiedad>  # prepara fotos, portada, reel y textos y espera (con pnpm dev; --no-texts, --replace-edits, --no-wait)
+pnpm -s cli content <id_propiedad>  # textos por canal con su revisión (--platform instagram|portal|marketplace, --json)
 ```
 (Los comandos existen desde F0; si alguno falta, la tarea que lo introduce debe crearlo.)
 
