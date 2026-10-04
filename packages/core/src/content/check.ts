@@ -191,6 +191,31 @@ function streetWords(address: string): string[] {
 const SHORT_NOTES_MIN_CHARS = 8;
 
 /**
+ * Las direcciones web de las notas: no son prosa (un slug como `a-pasos-de-la-plaza` no es fuga).
+ * Terminan antes de una coma, un punto y coma, un paréntesis o un punto final, así el texto pegado
+ * a ellas ("…/aviso, dueño urgente") se sigue revisando.
+ */
+const URL = /\b(?:https?:\/\/|www\.)[^\s,;)]*[^\s,;).]/gi;
+
+/**
+ * Fin de una frase: `.`, `!`, `?`, `;`, `:` o un salto de línea. Un punto solo no corta entre dos
+ * dígitos (`5.800`); después de un número sí (`UF 5.800. A pasos…`).
+ */
+const SENTENCE_END = /\.(?!\d)|(?<!\d)\.|[!?;:]|\n/;
+
+/**
+ * Las palabras de un texto con los fines de frase como `|`. Las notas y el texto se parten igual:
+ * una copia de las notas con su misma puntuación coincide, y dos frases del texto que solo juntas
+ * forman un trozo de las notas ("sector Pedro de Valdivia. A pasos de…") no.
+ */
+const sentenceTokens = (text: string): string[] =>
+  text
+    .split(SENTENCE_END)
+    .map(words)
+    .filter((sentence) => sentence.length > 0)
+    .flatMap((sentence, index) => (index === 0 ? sentence : ["|", ...sentence]));
+
+/**
  * Revisa un texto de un canal (spec F2 §4.6): una función pura que corre sobre el texto final,
  * también después de una edición manual, y no se guarda (se calcula al leer). En Instagram, los
  * largos y la cantidad se miden sobre el caption que se publica (`instagramCaption`). El texto
@@ -254,21 +279,27 @@ export function checkContent(
     }
   }
 
-  // Notas internas: 6 palabras seguidas (o todas, si son menos), salvo que ese trozo también
-  // esté en los datos (por ejemplo, "departamento en venta").
-  const notes = words(ctx.private.internalNotes ?? "");
+  // Notas internas: 6 palabras seguidas (o todas, si son menos), con los fines de frase de las
+  // notas y del texto en el mismo lugar, salvo que ese trozo también esté en los datos (por
+  // ejemplo, "departamento en venta"). Las direcciones web de las notas no cuentan.
+  const noteTokens = sentenceTokens((ctx.private.internalNotes ?? "").replace(URL, " "));
+  const notes = noteTokens.filter((token) => token !== "|");
   const size = Math.min(6, notes.length);
   const longEnough = size >= 3 || notes.join(" ").length >= SHORT_NOTES_MIN_CHARS;
   if (size > 0 && longEnough) {
-    const haystack = ` ${contentWords.join(" ")} `;
+    const haystack = ` ${sentenceTokens(content).join(" ")} `;
     // Lo permitido incluye la operación como la escribe el código (`Departamento en venta`).
     const operation = ctx.brief.operation === "rent" ? "en arriendo" : "en venta";
     const allowed = ` ${words(
       `${dataText}\n${ctx.brief.propertyType ?? ""} ${ctx.brief.operation === null ? "" : operation}\n${ctx.contact.whatsapp ?? ""}`,
     ).join(" ")} `;
-    for (let start = 0; start + size <= notes.length; start += 1) {
-      const piece = ` ${notes.slice(start, start + size).join(" ")} `;
-      if (haystack.includes(piece) && !allowed.includes(piece)) {
+    // Cada trozo: `size` palabras seguidas de las notas, con sus fines de frase entremedio.
+    const starts = noteTokens.flatMap((token, index) => (token === "|" ? [] : [index]));
+    for (const [n, start] of starts.entries()) {
+      const end = starts[n + size - 1];
+      if (end === undefined) break;
+      const piece = ` ${noteTokens.slice(start, end + 1).join(" ")} `;
+      if (haystack.includes(piece) && !allowed.includes(piece.replaceAll(" |", ""))) {
         add("INTERNAL_NOTES_LEAK", "Repite un trozo de las notas internas del aviso");
         break;
       }
