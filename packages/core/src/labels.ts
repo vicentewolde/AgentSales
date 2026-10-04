@@ -1,4 +1,12 @@
-import type { ImportRunStatus, ListingStatus, Operation } from "./enums.js";
+import type {
+  ContentRunStage,
+  ContentRunStatus,
+  ContentStatus,
+  ImportRunStatus,
+  ListingStatus,
+  Operation,
+  Platform,
+} from "./enums.js";
 import type { ImportBrokerOutcome, ImportRowOutcome } from "./import-run.js";
 
 // Textos para el operador, compartidos por la CLI y el panel (y las plantillas de F2): un solo
@@ -41,4 +49,32 @@ export const IMPORT_ROW_OUTCOME_TEXT: Readonly<Record<ImportRowOutcome, string>>
   skipped: "sin cambios",
   failed: "con error",
   ignored: "ignorada",
+};
+
+/** Los canales, como los ve el operador. */
+export const PLATFORM_TEXT: Readonly<Record<Platform, string>> = {
+  instagram: "Instagram",
+  portal_inmobiliario: "Portal Inmobiliario",
+  fb_marketplace: "Facebook Marketplace",
+};
+
+export const CONTENT_RUN_STATUS_TEXT: Readonly<Record<ContentRunStatus, string>> = {
+  queued: "en cola",
+  running: "preparando",
+  succeeded: "lista",
+  failed: "falló",
+};
+
+/** La etapa en curso de una preparación de contenido (spec F2 §4.4). */
+export const CONTENT_RUN_STAGE_TEXT: Readonly<Record<ContentRunStage, string>> = {
+  media: "procesando fotos y videos",
+  renders: "armando la portada y la ficha",
+  reel: "armando el reel",
+  texts: "redactando los textos",
+};
+
+export const CONTENT_STATUS_TEXT: Readonly<Record<ContentStatus, string>> = {
+  draft: "borrador",
+  edited: "editado a mano",
+  approved: "aprobado",
 };

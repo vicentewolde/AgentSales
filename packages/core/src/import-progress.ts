@@ -1,11 +1,12 @@
 import type { ImportReport } from "./import-run.js";
 
 /**
- * Cómo esperan una carga la CLI y el panel (spec F1 §4.4 y §4.7): consultan cada 2 s, avisan a los
- * 20 s si sigue en cola, y dejan de consultar a las 2 h o tras 3 fallas seguidas, para no
- * mantener Neon despierto con una carga atascada (ADR-0007).
+ * Cómo esperan una corrida (una carga o una preparación de contenido) la CLI y el panel (spec F1
+ * §4.4 y §4.7, F2 §4.9): consultan cada 2 s, avisan a los 20 s si sigue en cola, y dejan de
+ * consultar a las 2 h o tras 3 fallas seguidas, para no mantener Neon despierto con una corrida
+ * atascada (ADR-0007). Era `IMPORT_WAIT` hasta F2-T13.
  */
-export const IMPORT_WAIT: Readonly<{
+export const RUN_WAIT: Readonly<{
   pollMs: number;
   queuedWarningMs: number;
   maxWaitMs: number;

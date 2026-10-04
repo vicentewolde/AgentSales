@@ -1,9 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { type AppDeps, createApp, localAccess } from "@agentsales/api";
 import { testDeps } from "@agentsales/api/testing";
-import type { BrokerData, ImportReport, NewListing } from "@agentsales/core";
+import type {
+  BrokerData,
+  ContentRunReport,
+  ContentRunStage,
+  ImportReport,
+  NewContent,
+  NewListing,
+} from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
+  createInMemoryContentRepositories,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
   createInMemoryListingRepository,
@@ -31,6 +39,7 @@ export function harness(options: HarnessOptions = {}) {
   const brokers = createInMemoryBrokerRepository();
   const media = createInMemoryMediaRepository();
   const queue = createInMemoryJobQueue();
+  const content = createInMemoryContentRepositories({ nextId: randomUUID });
   const app = createApp(
     testDeps({
       access: localAccess(PORT, 5173),
@@ -39,6 +48,8 @@ export function harness(options: HarnessOptions = {}) {
       brokers,
       media,
       queue,
+      contentRuns: content.contentRuns,
+      contents: content.contents,
       ...options.deps,
     }),
   );
@@ -72,6 +83,8 @@ export function harness(options: HarnessOptions = {}) {
     brokers,
     media,
     queue,
+    contentRuns: content.contentRuns,
+    contents: content.contents,
   };
 }
 
@@ -204,6 +217,86 @@ export function simulateWorker(
     },
     fail: async (code: string, message: string) => {
       await h.importRuns.markFailed(await runId(), { code, message });
+    },
+  };
+}
+
+/** Una propiedad lista (con una foto) del corredor `marca`, para preparar su contenido. */
+export async function readyListing(h: ReturnType<typeof harness>, externalRef = "P-001") {
+  const broker =
+    (await h.brokers.findBySlug("marca")) ?? (await h.brokers.create(brokerData("marca")));
+  const listing = await h.listings.create(newListing(broker.id, externalRef));
+  await h.listings.promoteToReady(listing.id);
+  await h.media.create({
+    listingId: listing.id,
+    brokerId: broker.id,
+    kind: "image",
+    storagePath: `brokers/${broker.id}/listings/${listing.id}/original/foto.jpg`,
+    mime: "image/jpeg",
+    bytes: 1000,
+    checksum: `sha-${externalRef}`,
+    sortOrder: 0,
+    isCover: true,
+  });
+  return listing;
+}
+
+/** Textos sintéticos de los tres canales (datos inventados). */
+export const sampleContents = (instagramBody = "Departamento luminoso en Ñuñoa."): NewContent[] =>
+  (["instagram", "portal_inmobiliario", "fb_marketplace"] as const).map((platform) => ({
+    platform,
+    title: platform === "instagram" ? null : "Departamento en venta en Ñuñoa",
+    body: platform === "instagram" ? instagramBody : "Departamento en venta en Ñuñoa.",
+    hashtags:
+      platform === "instagram"
+        ? ["#nunoa", "#departamento", "#venta", "#santiago", "#propiedades"]
+        : [],
+    llmProvider: "fake",
+    llmModel: "modelo-falso",
+    promptVersion: "listing-content-v1",
+    rawOutput: {},
+  }));
+
+/** Reporte sintético de una corrida completa. */
+export const sampleContentReport = (): ContentRunReport => ({
+  media: { processed: 1, existing: 0, failed: 0 },
+  renders: { rendered: 2, existing: 0 },
+  reel: "none",
+  llm: {
+    provider: "fake",
+    model: "modelo-falso",
+    promptVersion: "listing-content-v1",
+    attempts: 1,
+    durationMs: 12_000,
+  },
+  warnings: ["Foto 1: es angosta para Portal Inmobiliario (menos de 1200 px)"],
+});
+
+/** Hace de worker para la corrida de contenido más reciente de un aviso. */
+export function simulateContentWorker(h: ReturnType<typeof harness>, listingId: string) {
+  const runId = async () => {
+    const run = await h.contentRuns.latest(listingId);
+    if (run === null) throw new Error("no hay corridas");
+    return run;
+  };
+  return {
+    stage: async (stage: ContentRunStage) => {
+      const run = await runId();
+      await h.contentRuns.markRunning(run.id);
+      await h.contentRuns.setStage(run.id, stage);
+    },
+    finish: async (contents = sampleContents()) => {
+      const run = await runId();
+      await h.contentRuns.markRunning(run.id);
+      await h.contentRuns.markSucceeded(run.id, {
+        report: sampleContentReport(),
+        contents: run.texts ? contents : [],
+      });
+    },
+    fail: async (code: string, message: string) => {
+      const run = await runId();
+      await h.contentRuns.markRunning(run.id);
+      await h.contentRuns.markFailed(run.id, { code, message }, { warnings: [] });
     },
   };
 }

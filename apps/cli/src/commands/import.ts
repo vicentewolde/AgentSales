@@ -1,13 +1,14 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { type ImportRunView, importRunResponseSchema } from "@agentsales/api/contracts";
-import { IMPORT_RUN_STATUS_TEXT, IMPORT_WAIT, isTerminalImportRun } from "@agentsales/core";
+import { IMPORT_RUN_STATUS_TEXT, isTerminalImportRun } from "@agentsales/core";
 import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
-import { CliError, guarded, type Io } from "../output.js";
+import { CliError, guarded } from "../output.js";
 import { exitCodeOf, renderImportRun } from "./import-run-view.js";
 import { brokerSlugOf } from "./shared.js";
+import { type WaitDeps, waitForRun } from "./wait-run.js";
 
 export type ImportOptions = {
   media?: string;
@@ -17,14 +18,10 @@ export type ImportOptions = {
   wait?: boolean;
 };
 
-export type ImportDeps = Io & {
+export type ImportDeps = WaitDeps & {
   client: ApiClient;
   /** Base de las rutas relativas (`INIT_CWD`). */
   cwd: string;
-  sleep: (ms: number) => Promise<void>;
-  /** Reloj monótono en milisegundos (un cambio de hora no adelanta ni atrasa el tope). */
-  now: () => number;
-  wait?: Partial<typeof IMPORT_WAIT>;
 };
 
 async function kindOf(path: string): Promise<"file" | "dir" | "other" | null> {
@@ -70,17 +67,12 @@ export async function resolveImportPaths(
   return { xlsxPath, mediaDir };
 }
 
-/** Puede volver a consultar: la API no respondió, o respondió un error de su lado (503, 500). */
-const isTransient = (error: unknown) =>
-  error instanceof ApiCallError && (error.status === undefined || error.status >= 500);
-
 /**
  * `agentsales import <xlsx>`: pide la carga por `POST /imports/local` y espera a que el worker la
  * termine, consultando `/imports/:id` cada 2 s. Al final muestra el resumen y los errores.
  */
 export function runImport(deps: ImportDeps, xlsx: string, options: ImportOptions = {}) {
   const c = deps.colors;
-  const timing = { ...IMPORT_WAIT, ...deps.wait };
   return guarded(deps, async () => {
     const paths = await resolveImportPaths(deps.cwd, xlsx, options.media);
     const broker = options.broker === undefined ? undefined : brokerSlugOf(options.broker);
@@ -112,45 +104,22 @@ export function runImport(deps: ImportDeps, xlsx: string, options: ImportOptions
       deps.print(c.dim(`Corredor: ${broker}`));
     }
     deps.print(`Carga ${run.id} (${run.input.xlsxFile}): ${IMPORT_RUN_STATUS_TEXT[run.status]}…`);
-    const started = deps.now();
-    let shown = run.status;
-    let warned = false;
-    let failures = 0;
-    while (!isTerminalImportRun(run.status)) {
-      if (deps.now() - started >= timing.maxWaitMs) {
-        deps.print(c.yellow(`Sigue en curso: revisa más tarde con agentsales imports ${run.id}`));
-        return 1;
-      }
-      await deps.sleep(timing.pollMs);
-      try {
-        run = (
+    const done = await waitForRun(deps, {
+      run,
+      fetch: async () =>
+        (
           await unwrap(
             deps.client.imports[":id"].$get({ param: { id: run.id } }),
             importRunResponseSchema,
           )
-        ).importRun;
-        failures = 0;
-      } catch (error) {
-        failures += 1;
-        if (!isTransient(error)) throw error;
-        if (failures >= timing.maxPollFailures) {
-          // La API no responde: la carga sigue (o no) en el worker, que no depende de ella.
-          deps.printError(
-            c.yellow(`Dejé de esperar; revisa la carga más tarde con agentsales imports ${run.id}`),
-          );
-          throw error;
-        }
-        continue;
-      }
-      if (run.status !== shown && !isTerminalImportRun(run.status)) {
-        deps.print(`${IMPORT_RUN_STATUS_TEXT[run.status]}…`);
-      }
-      shown = run.status;
-      if (run.status === "queued" && !warned && deps.now() - started >= timing.queuedWarningMs) {
-        warned = true;
-        deps.print(c.yellow("Sigue en cola: ¿está corriendo el worker? (pnpm dev)"));
-      }
-    }
+        ).importRun,
+      isTerminal: (current) => isTerminalImportRun(current.status),
+      progress: (current) => IMPORT_RUN_STATUS_TEXT[current.status],
+      laterCommand: `agentsales imports ${run.id}`,
+      noun: "la carga",
+    });
+    if (done === null) return 1;
+    run = done;
     deps.print("");
     deps.print(renderImportRun(run, c));
     return exitCodeOf(run);

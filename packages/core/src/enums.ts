@@ -4,6 +4,17 @@
 export const PLATFORMS = ["instagram", "portal_inmobiliario", "fb_marketplace"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
+/**
+ * Los nombres cortos de los canales para la CLI (`--platform portal`, spec F2 §4.7): se traducen a
+ * `PLATFORMS` solo aquí.
+ */
+export const PLATFORM_SHORT_NAMES = {
+  instagram: "instagram",
+  portal: "portal_inmobiliario",
+  marketplace: "fb_marketplace",
+} as const satisfies Record<string, Platform>;
+export type PlatformShortName = keyof typeof PLATFORM_SHORT_NAMES;
+
 export const LISTING_STATUSES = [
   "draft",
   "ready",
