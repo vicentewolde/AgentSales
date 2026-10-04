@@ -6,6 +6,7 @@ export {
   type AssembledText,
   assembleContents,
   type ContentContact,
+  contentLength,
   EMOJI_PATTERN,
   HASHTAGS_MAX,
   HASHTAGS_MIN,
@@ -15,6 +16,7 @@ export {
   LISTING_TITLE_MAX_LENGTH,
   listingTitle,
   normalizeHashtag,
+  normalizeHashtags,
   stripEmoji,
 } from "./assemble.js";
 export { type BriefFeature, buildContentBrief, type ContentBrief } from "./brief.js";

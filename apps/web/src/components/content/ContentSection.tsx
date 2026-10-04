@@ -74,7 +74,7 @@ export function ContentSection({
   const prepare = () => (editedPlatforms.length > 0 ? setConfirmReplace(true) : start(true));
   // Mientras se regeneran los textos no se edita: la corrida reemplazaría la edición.
   const lockReason =
-    inProgress && tracked?.texts
+    (inProgress && tracked?.texts) || (request.isPending && request.variables?.texts)
       ? "Se están regenerando los textos: la edición se habilita cuando termine la preparación."
       : null;
   const editedConflict =

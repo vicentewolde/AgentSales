@@ -7,6 +7,7 @@ import {
 } from "../testing/index.js";
 import {
   assembleContents,
+  contentLength,
   HASHTAGS_MAX,
   HASHTAGS_MIN,
   hasEmoji,
@@ -15,6 +16,7 @@ import {
   LISTING_TITLE_MAX_LENGTH,
   listingTitle,
   normalizeHashtag,
+  normalizeHashtags,
   stripEmoji,
 } from "./assemble.js";
 import { buildContentBrief, type ContentBrief } from "./brief.js";
@@ -413,5 +415,30 @@ describe("ayudas del ensamblado", () => {
 
     expect(Object.keys(contents)).toEqual(["instagram", "portal_inmobiliario", "fb_marketplace"]);
     expect(contents.instagram.body).toContain(SAMPLE_CONTENT_DRAFT.instagram.hook);
+  });
+});
+
+describe("contentLength y normalizeHashtags (editor y revisión)", () => {
+  it("Instagram mide el caption con los hashtags; los demás canales, el título", () => {
+    expect(
+      contentLength("instagram", { title: null, body: "Hola", hashtags: ["#a", "#b"] }),
+    ).toEqual({
+      length: "Hola\n\n#a #b".length,
+      max: INSTAGRAM_CAPTION_MAX_LENGTH,
+    });
+    expect(
+      contentLength("fb_marketplace", {
+        title: "Depto en Ñuñoa",
+        body: "x".repeat(5000),
+        hashtags: [],
+      }),
+    ).toEqual({ length: 14, max: LISTING_TITLE_MAX_LENGTH });
+  });
+
+  it("normaliza los hashtags que escribe el operador, sin vacíos ni repetidos", () => {
+    expect(normalizeHashtags(["Ñuñoa", "#ñuñoa", "  ", "#Depto Venta"])).toEqual([
+      "#nunoa",
+      "#deptoventa",
+    ]);
   });
 });

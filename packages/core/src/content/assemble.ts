@@ -83,6 +83,29 @@ export function normalizeHashtag(tag: string): string | null {
 }
 
 /**
+ * Hashtags que escribe el operador, como se guardan (spec F2 §4.6): normalizados, sin vacíos ni
+ * repetidos. La usan `editContent` y el editor del panel, que cuenta el caption igual que la API.
+ */
+export function normalizeHashtags(tags: readonly string[]): string[] {
+  const normalized = tags.map(normalizeHashtag).filter((tag): tag is string => tag !== null);
+  return [...new Set(normalized)];
+}
+
+/**
+ * Lo que mide `TOO_LONG` en cada canal: en Instagram el caption que se publica, con los hashtags
+ * (`instagramCaption`); en Portal y Marketplace, el título. La usan la revisión (`checkContent`) y
+ * el contador del editor del panel, así no pueden divergir.
+ */
+export function contentLength(
+  platform: Platform,
+  text: Pick<AssembledText, "title" | "body" | "hashtags">,
+): { length: number; max: number } {
+  return platform === "instagram"
+    ? { length: instagramCaption(text).length, max: INSTAGRAM_CAPTION_MAX_LENGTH }
+    : { length: (text.title ?? "").length, max: LISTING_TITLE_MAX_LENGTH };
+}
+
+/**
  * Hashtags del caption: `#{comuna}` y `#{tipo}{operación}`, los fijos del corredor y los de la IA,
  * normalizados y sin repetir; si son menos de 5, se completan con genéricos, y quedan a lo más 12
  * (los de la IA son los primeros en salir).

@@ -1,4 +1,4 @@
-import { normalizeHashtag } from "../content/assemble.js";
+import { normalizeHashtags } from "../content/assemble.js";
 import {
   type CheckedContent,
   type ContentCheckDeps,
@@ -19,12 +19,6 @@ export type EditContentDeps = ContentCheckDeps & {
 
 /** Lo que el operador puede cambiar de un texto; `undefined` = no tocar. */
 export type ContentEdit = { title?: string; body?: string; hashtags?: string[] };
-
-/** Hashtags de Instagram normalizados, sin vacíos ni repetidos (spec F2 §4.6). */
-function instagramHashtags(tags: readonly string[]): string[] {
-  const normalized = tags.map(normalizeHashtag).filter((tag): tag is string => tag !== null);
-  return [...new Set(normalized)];
-}
 
 /**
  * Edita el texto **vigente** de un canal (spec F2 §4.6, `PATCH /contents/:id`) y lo deja en
@@ -88,7 +82,7 @@ export async function editContent(
         "Solo Instagram usa hashtags: en este canal deben ir vacíos",
       );
     }
-    changes.hashtags = instagramHashtags(edit.hashtags);
+    changes.hashtags = normalizeHashtags(edit.hashtags);
   }
 
   return checked(await deps.contents.update(content.id, changes), ctx);

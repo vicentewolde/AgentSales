@@ -178,7 +178,7 @@ export function Preview({ content, ...edit }: { content: ListingContentResponse 
               role="tab"
               id={`tab-${target}`}
               aria-selected={selected}
-              aria-controls={selected ? `panel-${target}` : undefined}
+              aria-controls={`panel-${target}`}
               tabIndex={selected ? 0 : -1}
               onClick={() => setPlatform(target)}
               className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
@@ -198,28 +198,34 @@ export function Preview({ content, ...edit }: { content: ListingContentResponse 
           );
         })}
       </div>
-      <div
-        role="tabpanel"
-        id={`panel-${platform}`}
-        aria-labelledby={`tab-${platform}`}
-        className="pt-4"
-      >
-        {platform === "instagram" ? (
-          <InstagramPanel
-            content={textOf("instagram")}
-            carousel={content.carousel}
-            reel={content.reel}
-            edit={edit}
-          />
-        ) : (
-          <ListingPanel
-            platform={platform}
-            content={textOf(platform)}
-            photos={content.photos}
-            edit={edit}
-          />
-        )}
-      </div>
+      {/* Los tres paneles quedan montados (solo se ve el elegido): un borrador abierto en un canal
+          no se pierde ni se cruza con otro al cambiar de pestaña. */}
+      {PLATFORMS.map((target) => (
+        <div
+          key={target}
+          role="tabpanel"
+          id={`panel-${target}`}
+          aria-labelledby={`tab-${target}`}
+          hidden={platform !== target}
+          className="pt-4"
+        >
+          {target === "instagram" ? (
+            <InstagramPanel
+              content={textOf("instagram")}
+              carousel={content.carousel}
+              reel={content.reel}
+              edit={edit}
+            />
+          ) : (
+            <ListingPanel
+              platform={target}
+              content={textOf(target)}
+              photos={content.photos}
+              edit={edit}
+            />
+          )}
+        </div>
+      ))}
     </div>
   );
 }

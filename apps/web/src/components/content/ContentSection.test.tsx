@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { AppError, RUN_WAIT as WAIT } from "@agentsales/core";
+import { AppError, SAMPLE_CONTENT_DRAFT, RUN_WAIT as WAIT } from "@agentsales/core";
 import {
   contentDefinitionsFixture,
   createInMemoryJobQueue,
@@ -441,7 +441,7 @@ describe("panel: edición de textos", () => {
       createInMemoryLlmProvider([
         {
           data: {
-            ...(await import("@agentsales/core")).SAMPLE_CONTENT_DRAFT,
+            ...SAMPLE_CONTENT_DRAFT,
             instagram: {
               hook: "Recién preparado",
               body: "Texto de la preparación nueva.",
@@ -482,9 +482,10 @@ describe("panel: edición de textos", () => {
     const section = await t.open();
     await within(section).findByRole("tablist", { name: "Canales" });
 
-    const button = within(section).getByRole("button", { name: "Editar" }) as HTMLButtonElement;
+    const panel = within(section).getByRole("tabpanel");
+    const button = within(panel).getByRole("button", { name: "Editar" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(within(section).getByText(/Se están regenerando los textos/)).toBeTruthy();
+    expect(within(panel).getByText(/Se están regenerando los textos/)).toBeTruthy();
   });
 
   it("con una de solo imágenes en curso, se puede editar", async () => {
@@ -515,5 +516,72 @@ describe("panel: edición de textos", () => {
     fireEvent.click(within(section).getByRole("button", { name: "Reemplazar mis textos" }));
     await within(section).findByText(/Preparando/);
     expect(await t.contentRuns.latest(t.listing.id)).toMatchObject({ texts: true });
+  });
+
+  it("cada pestaña conserva su borrador: cambiar de canal no lo cruza con otro", async () => {
+    const t = await editing("Portal Inmobiliario");
+    fireEvent.change(within(t.form).getByLabelText("Título"), {
+      target: { value: "Borrador de Portal" },
+    });
+
+    fireEvent.click(tab("Facebook Marketplace"));
+    const marketplace = within(t.section).getByRole("tabpanel");
+    // Marketplace muestra su texto, sin el formulario de Portal.
+    expect(within(marketplace).queryByRole("form")).toBeNull();
+    expect(within(marketplace).queryByText("Borrador de Portal")).toBeNull();
+
+    fireEvent.click(tab("Portal Inmobiliario"));
+    const form = within(t.section).getByRole("form", {
+      name: "Editar el texto de Portal Inmobiliario",
+    });
+    expect((within(form).getByLabelText("Título") as HTMLInputElement).value).toBe(
+      "Borrador de Portal",
+    );
+  });
+
+  it("sin cambios o con campos vacíos no deja guardar", async () => {
+    const t = await editing("Portal Inmobiliario");
+    const save = () => within(t.form).getByRole("button", { name: "Guardar" }) as HTMLButtonElement;
+    expect(save().disabled).toBe(true);
+
+    fireEvent.change(within(t.form).getByLabelText("Título"), { target: { value: "   " } });
+    expect(save().disabled).toBe(true);
+    expect(
+      within(t.form).getByText("El título y la descripción no pueden quedar vacíos."),
+    ).toBeTruthy();
+    expect(within(t.form).getByLabelText("Título").getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("si empieza una preparación de textos con el editor abierto, conserva lo escrito y no guarda", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const t = await editing("Instagram");
+    fireEvent.change(within(t.form).getByLabelText("Texto"), { target: { value: "Mi borrador" } });
+
+    fireEvent.click(within(t.section).getByRole("button", { name: "Preparar contenido" }));
+    expect(await within(t.form).findByText(/Tu edición queda aquí hasta que termine/)).toBeTruthy();
+    expect(
+      (within(t.form).getByRole("button", { name: "Guardar" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((within(t.form).getByLabelText("Texto") as HTMLTextAreaElement).value).toBe(
+      "Mi borrador",
+    );
+
+    // La preparación termina con un texto nuevo: el borrador sigue y pide decidir.
+    await t.prepare();
+    await advance(WAIT.pollMs);
+    expect(await within(t.form).findByText("El texto cambió mientras editabas")).toBeTruthy();
+    expect((within(t.form).getByLabelText("Texto") as HTMLTextAreaElement).value).toBe(
+      "Mi borrador",
+    );
+    expect(
+      within(t.form).getByRole("button", { name: "Guardar sobre el texto nuevo" }),
+    ).toBeTruthy();
+
+    fireEvent.click(within(t.form).getByRole("button", { name: "Descartar mi borrador" }));
+    const [current] = await t.contents.listCurrent(t.listing.id);
+    expect((within(t.form).getByLabelText("Texto") as HTMLTextAreaElement).value).toBe(
+      current?.body,
+    );
+    expect(within(t.form).queryByText("El texto cambió mientras editabas")).toBeNull();
   });
 });

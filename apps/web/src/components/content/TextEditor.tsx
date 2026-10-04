@@ -5,7 +5,7 @@ import { ApiError } from "../../api/client.js";
 import { useEditContent } from "../../queries/content.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { Checks } from "./Checks.js";
-import { type Counter, captionCounter, parseHashtags, titleCounter } from "./editor.js";
+import { type Counter, parseHashtags, textCounter } from "./editor.js";
 
 const FIELD =
   "mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none";
@@ -58,7 +58,10 @@ function SaveError({ error, onReload }: { error: Error; onReload: () => void }) 
   return <ErrorAlert error={error} />;
 }
 
-/** El formulario de edición de un texto. */
+/**
+ * El formulario de edición de un texto. Si el texto cambia mientras se edita (una preparación nueva
+ * lo reemplazó), el borrador se conserva y guardar pide decidir: sobre el texto nuevo o descartarlo.
+ */
 function Editor({
   content,
   listingId,
@@ -74,20 +77,36 @@ function Editor({
 }) {
   const ids = useId();
   const instagram = content.platform === "instagram";
+  // El texto sobre el que se empezó a editar: si el vigente cambia, el borrador queda "viejo".
+  const [base, setBase] = useState(content);
   const [title, setTitle] = useState(content.title ?? "");
   const [body, setBody] = useState(content.body);
   const [hashtags, setHashtags] = useState(content.hashtags.join(" "));
   const save = useEditContent(listingId);
+  const stale = base.id !== content.id;
 
   const parsedTags = parseHashtags(hashtags);
-  const counter = instagram ? captionCounter(body, parsedTags) : titleCounter(title);
+  const counter = textCounter(content.platform, {
+    title: instagram ? null : title.trim(),
+    body,
+    hashtags: instagram ? parsedTags : [],
+  });
   const edit: ContentEditBody = instagram
-    ? { body, hashtags: parsedTags }
-    : { title: title.trim(), body };
+    ? { body: body.trim(), hashtags: parsedTags }
+    : { title: title.trim(), body: body.trim() };
   const changed = instagram
-    ? body !== content.body || parsedTags.join(" ") !== content.hashtags.join(" ")
-    : title.trim() !== (content.title ?? "") || body !== content.body;
+    ? body.trim() !== base.body || parsedTags.join(" ") !== base.hashtags.join(" ")
+    : title.trim() !== (base.title ?? "") || body.trim() !== base.body;
   const blank = body.trim() === "" || (!instagram && title.trim() === "");
+  const discard = () => {
+    setBase(content);
+    setTitle(content.title ?? "");
+    setBody(content.body);
+    setHashtags(content.hashtags.join(" "));
+  };
+  const counterId = `${ids}-counter`;
+  const blankId = `${ids}-blank`;
+  const describedBy = (...extra: string[]) => [counterId, ...extra].join(" ");
 
   return (
     <form
@@ -104,7 +123,8 @@ function Editor({
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            aria-describedby={`${ids}-counter`}
+            aria-describedby={describedBy(blankId)}
+            aria-invalid={title.trim() === ""}
             className={FIELD}
           />
         </label>
@@ -115,7 +135,8 @@ function Editor({
           value={body}
           onChange={(event) => setBody(event.target.value)}
           rows={instagram ? 10 : 14}
-          {...(instagram ? { "aria-describedby": `${ids}-counter` } : {})}
+          aria-describedby={instagram ? describedBy(blankId) : blankId}
+          aria-invalid={body.trim() === ""}
           className={FIELD}
         />
       </label>
@@ -127,7 +148,7 @@ function Editor({
               value={hashtags}
               onChange={(event) => setHashtags(event.target.value)}
               placeholder="#nunoa #departamento"
-              aria-describedby={`${ids}-tags`}
+              aria-describedby={describedBy(`${ids}-tags`)}
               className={FIELD}
             />
           </label>
@@ -136,26 +157,42 @@ function Editor({
           </p>
         </div>
       )}
-      <CounterText counter={counter} id={`${ids}-counter`} />
-      {blank && (
-        <p className="text-xs text-red-700">
-          {instagram
+      <CounterText counter={counter} id={counterId} />
+      <p id={blankId} className="text-xs text-red-700">
+        {blank
+          ? instagram
             ? "El texto no puede quedar vacío."
-            : "El título y la descripción no pueden quedar vacíos."}
-        </p>
-      )}
+            : "El título y la descripción no pueden quedar vacíos."
+          : ""}
+      </p>
       {lockReason !== null && (
         <p role="alert" className="text-sm text-amber-800">
           {lockReason} Tu edición queda aquí hasta que termine.
         </p>
       )}
+      {stale && lockReason === null && (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+          <p className="font-semibold text-amber-900">El texto cambió mientras editabas</p>
+          <p className="mt-1 text-amber-900">
+            Una preparación nueva lo reemplazó. Tu borrador sigue aquí: guárdalo sobre el texto
+            nuevo o descártalo para ver el nuevo.
+          </p>
+          <button
+            type="button"
+            onClick={discard}
+            className="mt-2 rounded-md border border-amber-400 bg-white px-3 py-1.5 font-medium text-amber-900"
+          >
+            Descartar mi borrador
+          </button>
+        </div>
+      )}
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={save.isPending || !changed || blank || lockReason !== null}
+          disabled={save.isPending || (!changed && !stale) || blank || lockReason !== null}
           className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         >
-          {save.isPending ? "Guardando…" : "Guardar"}
+          {save.isPending ? "Guardando…" : stale ? "Guardar sobre el texto nuevo" : "Guardar"}
         </button>
         <button
           type="button"

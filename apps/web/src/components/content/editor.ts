@@ -1,38 +1,27 @@
-import {
-  INSTAGRAM_CAPTION_MAX_LENGTH,
-  instagramCaption,
-  LISTING_TITLE_MAX_LENGTH,
-  normalizeHashtag,
-} from "@agentsales/core";
+import { contentLength, normalizeHashtags, type Platform } from "@agentsales/core";
 
 /**
  * Los hashtags que escribe el operador (separados por espacios, comas o saltos de línea), como los
- * guardará la API: normalizados (`normalizeHashtag`), sin vacíos ni repetidos.
+ * guardará la API (`normalizeHashtags`, la misma de `editContent`).
  */
-export function parseHashtags(text: string): string[] {
-  const tags = text
-    .split(/[\s,]+/)
-    .map(normalizeHashtag)
-    .filter((tag): tag is string => tag !== null);
-  return [...new Set(tags)];
-}
+export const parseHashtags = (text: string): string[] => normalizeHashtags(text.split(/[\s,]+/));
 
 /** Un contador de caracteres contra su tope (`over` si se pasa). */
 export type Counter = { length: number; max: number; over: boolean };
 
-const counter = (length: number, max: number): Counter => ({ length, max, over: length > max });
-
 /**
- * El largo que mide la revisión (`TOO_LONG`): en Instagram el caption que se publica, con los
- * hashtags (`instagramCaption`); en los demás canales, el título. Se cuenta igual que en core.
+ * Lo que mide la revisión (`TOO_LONG`), con la misma función de core (`contentLength`): en
+ * Instagram el caption con los hashtags; en los demás canales, el título. El cuerpo va recortado,
+ * como lo guarda la API.
  */
-export function captionCounter(body: string, hashtags: readonly string[]): Counter {
-  return counter(
-    instagramCaption({ body, hashtags: [...hashtags] }).length,
-    INSTAGRAM_CAPTION_MAX_LENGTH,
-  );
-}
-
-export function titleCounter(title: string): Counter {
-  return counter(title.length, LISTING_TITLE_MAX_LENGTH);
+export function textCounter(
+  platform: Platform,
+  text: { title: string | null; body: string; hashtags: readonly string[] },
+): Counter {
+  const { length, max } = contentLength(platform, {
+    title: text.title,
+    body: text.body.trim(),
+    hashtags: [...text.hashtags],
+  });
+  return { length, max, over: length > max };
 }
