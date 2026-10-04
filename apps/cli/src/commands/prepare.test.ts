@@ -95,11 +95,40 @@ describe("runPrepare", () => {
     const clock = fakeClock(() => worker.finish());
 
     expect(await run(h, clock)).toBe(0);
-    expect(h.out[0]).toBe(
+    expect(h.errors()).toContain(
       "Ya había una preparación de P-001 en curso: sigo esa (esa no redacta los textos)",
     );
-    expect(h.out[1]).toBe(`Preparación ${active.id} (P-001): en cola…`);
+    expect(h.out[0]).toBe(`Preparación ${active.id} (P-001): en cola…`);
     expect(h.text()).toContain("sin textos (--no-texts)");
+  });
+
+  it("--no-wait con una corrida reusada: el id sigue siendo la única línea de stdout", async () => {
+    const h = harness();
+    const listing = await readyListing(h);
+    const active = await h.contentRuns.create({ listingId: listing.id, texts: true });
+
+    expect(await run(h, fakeClock(), { wait: false })).toBe(0);
+    expect(h.out).toEqual([active.id]);
+    expect(h.errors()).toContain("Ya había una preparación");
+  });
+
+  it("si la revisión no se puede leer al final, muestra el resumen y sale con 0", async () => {
+    const h = harness({
+      beforeRequest: (url, method) => {
+        if (method === "GET" && url.endsWith("/content")) throw new Error("sin conexión");
+      },
+    });
+    const listing = await readyListing(h);
+    const worker = simulateContentWorker(h, listing.id);
+
+    expect(
+      await run(
+        h,
+        fakeClock(() => worker.finish()),
+      ),
+    ).toBe(0);
+    expect(h.text()).toContain("lista");
+    expect(h.errors()).toContain("No se pudo leer la revisión editorial");
   });
 
   it("--no-wait imprime el id y sale sin consultar", async () => {
@@ -141,8 +170,11 @@ describe("runPrepare", () => {
     expect(h.errors()).toContain("--no-texts");
     expect(h.errors()).toContain("--replace-edits");
 
-    const clock = fakeClock(() => worker.finish());
+    const clock = fakeClock(() => worker.finish(sampleContents("Texto nuevo de la IA.")));
     expect(await run(h, clock, { replaceEdits: true })).toBe(0);
+    // La edición a mano quedó reemplazada por los textos nuevos.
+    const [current] = await h.contents.listCurrent(listing.id);
+    expect(current).toMatchObject({ status: "draft", body: "Texto nuevo de la IA." });
   });
 
   it("una corrida fallida sale con 1 y muestra el código y el mensaje", async () => {

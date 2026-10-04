@@ -11,10 +11,10 @@ export type ContentDeps = Io & { client: ApiClient };
 
 export type ContentOptions = { broker?: string; platform?: string; json?: boolean };
 
-const SHORT_NAMES = Object.keys(PLATFORM_SHORT_NAMES) as PlatformShortName[];
+const SHORT_NAMES = Object.keys(PLATFORM_SHORT_NAMES);
 
 const isShortName = (name: string): name is PlatformShortName =>
-  (SHORT_NAMES as string[]).includes(name);
+  Object.hasOwn(PLATFORM_SHORT_NAMES, name);
 
 /**
  * `agentsales content <propiedad> [--platform] [--json]` (spec F2 §4.7): los textos vigentes con
@@ -52,9 +52,15 @@ export function runContent(deps: ContentDeps, ref: string, options: ContentOptio
     }
     deps.print(c.bold(`Contenido de ${trimmed}`));
     deps.print(renderContentMedia(content, c));
-    if (content.contents.length === 0) {
+    if (contents.length === 0) {
       deps.print("");
-      deps.print(c.yellow("Todavía no tiene textos"));
+      deps.print(
+        c.yellow(
+          platform === undefined
+            ? "Todavía no tiene textos"
+            : "Todavía no tiene textos en ese canal",
+        ),
+      );
       deps.print(c.dim(`→ Prepáralos con: agentsales prepare ${trimmed}`));
       return 0;
     }

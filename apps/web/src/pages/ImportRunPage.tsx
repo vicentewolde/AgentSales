@@ -1,4 +1,4 @@
-import { isTerminalImportRun, RUN_WAIT } from "@agentsales/core";
+import { isTerminalImportRun, RUN_QUEUED_WARNING_TEXT, RUN_WAIT } from "@agentsales/core";
 import { Link, useParams } from "react-router";
 import { ApiError } from "../api/client.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
@@ -66,7 +66,7 @@ export function ImportRunPage() {
           </div>
           {stuckInQueue && !stopped && (
             <p role="alert" className="mt-2 text-sm text-amber-800">
-              Sigue en cola: ¿está corriendo el worker? (pnpm dev)
+              {RUN_QUEUED_WARNING_TEXT}
             </p>
           )}
           {stopped && (

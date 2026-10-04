@@ -1,3 +1,4 @@
+import type { ContentReelOutcome, ContentRun } from "./content.js";
 import type {
   ContentRunStage,
   ContentRunStatus,
@@ -78,3 +79,21 @@ export const CONTENT_STATUS_TEXT: Readonly<Record<ContentStatus, string>> = {
   edited: "editado a mano",
   approved: "aprobado",
 };
+
+/** Qué pasó con el reel en una corrida (`report.reel`). */
+export const CONTENT_REEL_OUTCOME_TEXT: Readonly<Record<ContentReelOutcome, string>> = {
+  created: "armado",
+  existing: "ya estaba (sin cambios)",
+  none: "sin video",
+  skipped: "no se armó (video muy corto o ilegible)",
+};
+
+/** El avance de una preparación: la etapa mientras corre y, si no, su estado. */
+export function contentRunProgressText(run: Pick<ContentRun, "status" | "stage">): string {
+  return run.status === "running" && run.stage !== null
+    ? CONTENT_RUN_STAGE_TEXT[run.stage]
+    : CONTENT_RUN_STATUS_TEXT[run.status];
+}
+
+/** Lo que muestran la CLI y el panel cuando una corrida sigue en cola a los 20 s (`RUN_WAIT`). */
+export const RUN_QUEUED_WARNING_TEXT = "Sigue en cola: ¿está corriendo el worker? (pnpm dev)";

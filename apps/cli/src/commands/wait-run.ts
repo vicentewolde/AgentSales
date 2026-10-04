@@ -1,4 +1,4 @@
-import { RUN_WAIT } from "@agentsales/core";
+import { RUN_QUEUED_WARNING_TEXT, RUN_WAIT } from "@agentsales/core";
 import { ApiCallError } from "../api-client.js";
 import type { Io } from "../output.js";
 
@@ -71,7 +71,7 @@ export async function waitForRun<R extends WaitedRun>(
     shown = progress;
     if (run.status === "queued" && !warned && deps.now() - started >= timing.queuedWarningMs) {
       warned = true;
-      deps.print(c.yellow("Sigue en cola: ¿está corriendo el worker? (pnpm dev)"));
+      deps.print(c.yellow(RUN_QUEUED_WARNING_TEXT));
     }
   }
   return run;

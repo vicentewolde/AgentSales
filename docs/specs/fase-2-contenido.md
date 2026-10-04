@@ -284,7 +284,7 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **La CLI de Claude sin sesión o con el límite alcanzado:** la corrida queda `failed` con un mensaje que dice qué hacer. Las etapas de medios ya hechas quedan, y la siguiente corrida no las repite.
 - **La IA tarda o se cae:** `LLM_TIMEOUT` o `LLM_UNAVAILABLE`, con 2 reintentos.
 - **Falta ffmpeg o Chromium:** `MEDIA_TOOL_NOT_INSTALLED` o `RENDER_BROWSER_NOT_INSTALLED`, no reintentables, con el comando para instalarlos.
-- **Sondeo:** la CLI y el panel solo consultan mientras la corrida está `queued` o `running`, con los mismos topes que la importación (`IMPORT_WAIT` pasa a `RUN_WAIT` en T13).
+- **Sondeo:** la CLI y el panel solo consultan mientras la corrida está `queued` o `running`, con los mismos topes que la importación (`RUN_WAIT`, que era `IMPORT_WAIT` hasta T13).
 - **Logs:** un error por intento, con `contentRunId`, sin datos del aviso.
 
 ### 4.10 Decisiones (el operador dejó aprobación permanente: se aplican las recomendaciones y se le informan)
@@ -455,8 +455,9 @@ Las migraciones se numeran al generarlas con drizzle-kit, en el orden de las tar
 - **Hecho en:**
   - **Comandos:** `apps/cli/src/commands/prepare.ts` y `content.ts`, con la vista en `content-view.ts`; `resolveListingId` pasa a `commands/shared.ts`.
   - **Espera compartida:** `commands/wait-run.ts` (`waitForRun`), que ahora usan `import` y `prepare`; `RUN_WAIT` en core (antes `IMPORT_WAIT`), también en el panel.
-  - **Core:** `PLATFORM_SHORT_NAMES` (`enums.ts`) y los textos `PLATFORM_TEXT`, `CONTENT_RUN_STATUS_TEXT`, `CONTENT_RUN_STAGE_TEXT` y `CONTENT_STATUS_TEXT` (`labels.ts`), para la CLI y el panel.
-  - **Salida:** `prepare` sale con 1 si la corrida falla; una revisión con errores no cambia el código de salida (se marca en rojo), porque los textos quedan para editar.
+  - **Core:** `PLATFORM_SHORT_NAMES` (`enums.ts`), `CONTENT_REEL_OUTCOMES` (`content.ts`), `RUN_WAIT` (`run-wait.ts`) y los textos `PLATFORM_TEXT`, `CONTENT_RUN_STATUS_TEXT`, `CONTENT_RUN_STAGE_TEXT`, `CONTENT_STATUS_TEXT`, `CONTENT_REEL_OUTCOME_TEXT`, `contentRunProgressText` y `RUN_QUEUED_WARNING_TEXT` (`labels.ts`), para la CLI y el panel (T14).
+  - **Salida:** `prepare` sale con 1 si la corrida falla o si deja de esperar (2 h o 3 fallas seguidas de la API, como `import`); una revisión con errores no cambia el código de salida (se marca en rojo), porque los textos quedan para editar. Si la corrida terminó pero la revisión no se puede leer, muestra el resumen, avisa y sale con 0.
+  - **Desde la revisión (#46):** el aviso de corrida reusada va a stderr (con `--no-wait`, el id es la única línea de stdout); `ApiCallError.apiMessage` (el mensaje de la API sin el código); textos del reel y del avance en core; `content --platform` avisa si ese canal no tiene texto.
   - **Demo (2026-10-03):** con la API y el worker (`LLM_PROVIDER=fake`), `pnpm -s cli prepare P001` terminó `lista` sin reprocesar medios ni renders, con la revisión de los 3 canales sin problemas, y `pnpm -s cli content P001 --platform portal` mostró el título, la descripción y la revisión.
 
 ### F2-T14 · Panel: preparar y vista previa

@@ -4,17 +4,12 @@ import {
   contentRunResponseSchema,
   listingContentResponseSchema,
 } from "@agentsales/api/contracts";
-import { isTerminalContentRun } from "@agentsales/core";
+import { contentRunProgressText, isTerminalContentRun } from "@agentsales/core";
 import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded } from "../output.js";
-import {
-  contentRunProgress,
-  paintContentRunStatus,
-  renderChecksSummary,
-  renderContentRun,
-} from "./content-view.js";
+import { paintContentRunStatus, renderChecksSummary, renderContentRun } from "./content-view.js";
 import { fetchBrokers, resolveListingId } from "./shared.js";
 import { type WaitDeps, waitForRun } from "./wait-run.js";
 
@@ -42,7 +37,7 @@ function explained(error: unknown, ref: string): unknown {
   if (error.code === "LISTING_NOT_READY") {
     return new CliError(
       "LISTING_NOT_READY",
-      error.message.replace(/^LISTING_NOT_READY: /, ""),
+      error.apiMessage ?? error.message,
       `Revisa la propiedad con agentsales listing ${ref}`,
     );
   }
@@ -72,7 +67,8 @@ export function runPrepare(deps: PrepareDeps, ref: string, options: PrepareOptio
     });
 
     if (reused) {
-      deps.print(
+      // A stderr: con `--no-wait`, la única línea de stdout es el id.
+      deps.printError(
         c.yellow(
           `Ya había una preparación de ${trimmed} en curso: sigo esa` +
             (contentRun.texts === texts
@@ -89,7 +85,7 @@ export function runPrepare(deps: PrepareDeps, ref: string, options: PrepareOptio
       return 0;
     }
 
-    deps.print(`Preparación ${contentRun.id} (${trimmed}): ${contentRunProgress(contentRun)}…`);
+    deps.print(`Preparación ${contentRun.id} (${trimmed}): ${contentRunProgressText(contentRun)}…`);
     const done = await waitForRun<ContentRunView>(deps, {
       run: contentRun,
       fetch: async () =>
@@ -100,7 +96,7 @@ export function runPrepare(deps: PrepareDeps, ref: string, options: PrepareOptio
           )
         ).contentRun,
       isTerminal: (run) => isTerminalContentRun(run.status),
-      progress: contentRunProgress,
+      progress: contentRunProgressText,
       laterCommand: `agentsales content ${trimmed}`,
       noun: "la preparación",
     });
@@ -109,12 +105,19 @@ export function runPrepare(deps: PrepareDeps, ref: string, options: PrepareOptio
     deps.print("");
     deps.print(renderContentRun(done, c));
     if (done.status === "succeeded" && done.texts) {
-      const { contents } = await unwrap(
-        deps.client.listings[":id"].content.$get({ param: { id: listingId } }),
-        listingContentResponseSchema,
-      );
-      deps.print("");
-      deps.print(renderChecksSummary(contents, c));
+      // La preparación ya terminó: si la revisión no se puede leer, se avisa sin fallar.
+      try {
+        const { contents } = await unwrap(
+          deps.client.listings[":id"].content.$get({ param: { id: listingId } }),
+          listingContentResponseSchema,
+        );
+        deps.print("");
+        deps.print(renderChecksSummary(contents, c));
+      } catch {
+        deps.printError(
+          c.yellow("No se pudo leer la revisión editorial: mírala con agentsales content"),
+        );
+      }
     }
     if (done.status === "succeeded") {
       deps.print("");

@@ -4,20 +4,13 @@ import type {
   ListingContentResponse,
 } from "@agentsales/api/contracts";
 import {
-  CONTENT_RUN_STAGE_TEXT,
+  CONTENT_REEL_OUTCOME_TEXT,
   CONTENT_RUN_STATUS_TEXT,
   CONTENT_STATUS_TEXT,
   PLATFORM_TEXT,
 } from "@agentsales/core";
 import type { Colors } from "../colors.js";
 import { formatDateTime } from "../output.js";
-
-/** Lo que muestra la espera: la etapa mientras corre, o el estado. */
-export function contentRunProgress(run: Pick<ContentRunView, "status" | "stage">): string {
-  return run.status === "running" && run.stage !== null
-    ? CONTENT_RUN_STAGE_TEXT[run.stage]
-    : CONTENT_RUN_STATUS_TEXT[run.status];
-}
 
 /** Estado con color: verde si terminó, rojo si falló, amarillo mientras corre. */
 export function paintContentRunStatus(run: Pick<ContentRunView, "status">, c: Colors): string {
@@ -26,13 +19,6 @@ export function paintContentRunStatus(run: Pick<ContentRunView, "status">, c: Co
   if (run.status === "failed") return c.red(text);
   return c.yellow(text);
 }
-
-const REEL_TEXT = {
-  created: "armado",
-  existing: "ya estaba (sin cambios)",
-  none: "sin video",
-  skipped: "no se armó (video muy corto o ilegible)",
-} as const;
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -60,7 +46,7 @@ export function renderContentRun(run: ContentRunView, c: Colors): string {
       `  Portada y ficha: armadas ${report.renders.rendered} · sin cambios ${report.renders.existing}`,
     );
   }
-  if (report.reel) lines.push(`  Reel: ${REEL_TEXT[report.reel]}`);
+  if (report.reel) lines.push(`  Reel: ${CONTENT_REEL_OUTCOME_TEXT[report.reel]}`);
   if (report.llm) {
     const seconds = Math.round(report.llm.durationMs / 1000);
     lines.push(
