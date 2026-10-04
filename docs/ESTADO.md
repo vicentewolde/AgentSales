@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-03
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
-**Última tarea terminada:** F2-T14 · Panel: preparar y vista previa
-**Siguiente paso:** `/tarea F2-T15` (panel: edición de textos).
+**Última tarea terminada:** F2-T15 · Panel: edición de textos
+**Siguiente paso:** `/tarea F2-T16` (`pnpm eval:content`).
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -25,7 +25,7 @@
 | F2-T12 · API de contenido | ✅ | #45 |
 | F2-T13 · CLI `prepare` y `content` | ✅ | #46 |
 | F2-T14 · Panel: preparar y vista previa | ✅ | #47 |
-| F2-T15 · Panel: edición de textos | ⏳ pendiente | |
+| F2-T15 · Panel: edición de textos | ✅ | |
 | F2-T16 · `pnpm eval:content` | ⏳ pendiente | |
 | F2-T17 · Cierre de fase | ⏳ pendiente | |
 
@@ -75,6 +75,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-03: **F2-T15.** Edición de textos en el panel: "Editar" en cada pestaña, contador que mide igual que la revisión (en Instagram, el caption con los hashtags), guardar con la revisión nueva del servidor, bloqueo con el motivo mientras se regeneran los textos, `CONTENT_NOT_CURRENT` con "Recargar el contenido" y confirmación antes de regenerar sobre una edición. Probado en el navegador con P001 (que quedó otra vez en borrador).
 - 2026-10-03: **F2-T14.** Sección Contenido en el detalle de una propiedad: preparar y rehacer imágenes (con confirmación si hay textos editados a mano), avance por etapa en vivo, error de la última corrida y pestañas Instagram (carrusel, caption con "ver más", reel), Portal y Marketplace (título, descripción y fotos 4:3), cada una con su revisión editorial. La galería usa las miniaturas (HEIC visibles). El sondeo de cargas y preparaciones es uno solo (`usePolledRun`). Probado en el navegador con `pnpm dev` y la IA falsa.
 - 2026-10-03: **F2-T13.** `agentsales prepare <propiedad>` (espera con la etapa, resumen y revisión editorial; `--no-texts`, `--replace-edits`, `--no-wait`) y `agentsales content <propiedad>` (`--platform`, `--json`). La espera de `import` y `prepare` es una sola (`waitForRun`), y `IMPORT_WAIT` pasó a `RUN_WAIT` (también en el panel). Textos de estados, etapas y canales en core para la CLI y el panel. Demo con `LLM_PROVIDER=fake` contra Neon y R2: P001 lista y sus textos se leen por canal.
 - 2026-10-03: **F2-T12.** `getListingContent` y `editContent` en core (la revisión se calcula al leer, con el mismo contexto que la corrida). Rutas `POST /listings/:id/content-runs`, `GET /content-runs/:id`, `GET /listings/:id/content` y `PATCH /contents/:id`; `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT` y `CONTENT_RUN_ACTIVE` → 409. El detalle de una propiedad trae `thumbUrl` y medidas, y la lista usa la miniatura de la portada (las HEIC se ven). La vista del texto no expone la salida cruda ni el modelo, y de la revisión solo los `checks`. Hashtags en Portal o Marketplace: `CONTENT_HASHTAGS_INVALID` (el spec decía `VALIDATION_ERROR`, que no existe).

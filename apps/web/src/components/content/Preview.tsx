@@ -1,8 +1,8 @@
 import type { ContentMedia, ContentView, ListingContentResponse } from "@agentsales/api/contracts";
-import { CONTENT_STATUS_TEXT, PLATFORM_TEXT, PLATFORMS, type Platform } from "@agentsales/core";
+import { PLATFORM_TEXT, PLATFORMS, type Platform } from "@agentsales/core";
 import { type KeyboardEvent, useRef, useState } from "react";
-import { Checks } from "./Checks.js";
 import { captionPreview } from "./caption.js";
+import { EditableText } from "./TextEditor.js";
 
 /** El caption de Instagram con "ver más", como en la app: primero solo el comienzo. */
 function Caption({ content }: { content: ContentView }) {
@@ -24,23 +24,19 @@ function Caption({ content }: { content: ContentView }) {
   );
 }
 
-function TextStatus({ content }: { content: ContentView }) {
-  return (
-    <p className="text-xs text-slate-500">
-      Texto: {CONTENT_STATUS_TEXT[content.status]}
-      {content.status === "edited" ? "" : ` · ${content.promptVersion}`}
-    </p>
-  );
-}
+/** Lo que necesita un texto para poder editarse. */
+type EditContext = { listingId: string; lockReason: string | null; onReload: () => void };
 
 function InstagramPanel({
   content,
   carousel,
   reel,
+  edit,
 }: {
   content: ContentView | undefined;
   carousel: ContentMedia[];
   reel: ContentMedia | null;
+  edit: EditContext;
 }) {
   return (
     <div className="grid gap-6 md:grid-cols-2">
@@ -86,11 +82,9 @@ function InstagramPanel({
         {content === undefined ? (
           <p className="text-sm text-slate-500">Sin texto todavía.</p>
         ) : (
-          <>
-            <TextStatus content={content} />
+          <EditableText content={content} {...edit}>
             <Caption content={content} />
-            <Checks content={content} />
-          </>
+          </EditableText>
         )}
       </div>
     </div>
@@ -101,22 +95,22 @@ function ListingPanel({
   platform,
   content,
   photos,
+  edit,
 }: {
   platform: Platform;
   content: ContentView | undefined;
   photos: ContentMedia[];
+  edit: EditContext;
 }) {
   return (
     <div>
       {content === undefined ? (
         <p className="text-sm text-slate-500">Sin texto todavía.</p>
       ) : (
-        <>
-          <TextStatus content={content} />
+        <EditableText content={content} {...edit}>
           <h3 className="mt-2 text-lg font-semibold">{content.title}</h3>
           <p className="mt-2 whitespace-pre-line text-sm">{content.body}</p>
-          <Checks content={content} />
-        </>
+        </EditableText>
       )}
       <h3 className="mt-4 text-sm font-semibold text-slate-700">Fotos ({photos.length})</h3>
       <ul className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -139,7 +133,7 @@ function ListingPanel({
  * Pestañas por canal: lo que se publicaría en cada uno. Siguen el patrón de pestañas de ARIA: solo
  * la activa se enfoca con Tab, y las flechas, Inicio y Fin cambian de pestaña.
  */
-export function Preview({ content }: { content: ListingContentResponse }) {
+export function Preview({ content, ...edit }: { content: ListingContentResponse } & EditContext) {
   const [platform, setPlatform] = useState<Platform>("instagram");
   const tabs = useRef(new Map<Platform, HTMLButtonElement>());
   const textOf = (target: Platform) => content.contents.find((item) => item.platform === target);
@@ -215,9 +209,15 @@ export function Preview({ content }: { content: ListingContentResponse }) {
             content={textOf("instagram")}
             carousel={content.carousel}
             reel={content.reel}
+            edit={edit}
           />
         ) : (
-          <ListingPanel platform={platform} content={textOf(platform)} photos={content.photos} />
+          <ListingPanel
+            platform={platform}
+            content={textOf(platform)}
+            photos={content.photos}
+            edit={edit}
+          />
         )}
       </div>
     </div>

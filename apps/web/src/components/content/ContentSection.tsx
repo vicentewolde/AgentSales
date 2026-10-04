@@ -4,6 +4,7 @@ import {
   isTerminalContentRun,
   LISTING_NOT_PREPARABLE_TEXT,
   type ListingStatus,
+  PLATFORM_TEXT,
 } from "@agentsales/core";
 import { useState } from "react";
 import { ApiError } from "../../api/client.js";
@@ -65,6 +66,17 @@ export function ContentSection({
     );
   };
   const busy = request.isPending || inProgress;
+  const editedPlatforms = (content.data?.contents ?? [])
+    .filter((item) => item.status === "edited")
+    .map((item) => PLATFORM_TEXT[item.platform]);
+  // Regenerar textos sobre una edición a mano: se confirma antes de pedir (la API igual lo revisa
+  // con `CONTENT_EDITED`, por si la edición se hizo en otra pestaña).
+  const prepare = () => (editedPlatforms.length > 0 ? setConfirmReplace(true) : start(true));
+  // Mientras se regeneran los textos no se edita: la corrida reemplazaría la edición.
+  const lockReason =
+    inProgress && tracked?.texts
+      ? "Se están regenerando los textos: la edición se habilita cuando termine la preparación."
+      : null;
   const editedConflict =
     request.error instanceof ApiError && request.error.code === "CONTENT_EDITED";
   const empty =
@@ -83,7 +95,7 @@ export function ContentSection({
             type="button"
             className={PRIMARY}
             disabled={busy || !preparable}
-            onClick={() => start(true)}
+            onClick={prepare}
           >
             Preparar contenido
           </button>
@@ -103,8 +115,10 @@ export function ContentSection({
         <div role="alert" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
           <p className="font-semibold text-amber-900">Hay textos editados a mano</p>
           <p className="mt-1 text-sm text-amber-900">
-            Preparar de nuevo los reemplazaría por textos nuevos. Puedes rehacer solo las imágenes y
-            conservar tus textos.
+            {editedPlatforms.length > 0
+              ? `Editaste ${editedPlatforms.join(", ")}: se reemplazará tu edición por textos nuevos.`
+              : "Se reemplazará tu edición por textos nuevos."}{" "}
+            Puedes rehacer solo las imágenes y conservar tus textos.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -171,7 +185,12 @@ export function ContentSection({
             </p>
           )
         ) : (
-          <Preview content={content.data} />
+          <Preview
+            content={content.data}
+            listingId={listingId}
+            lockReason={lockReason}
+            onReload={() => void content.refetch()}
+          />
         ))}
     </section>
   );
