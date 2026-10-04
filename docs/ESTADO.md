@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-03
 **Fase actual:** F2 · Contenido (spec aprobado: `docs/specs/fase-2-contenido.md`)
-**Última tarea terminada:** F2-T15 · Panel: edición de textos
-**Siguiente paso:** `/tarea F2-T16` (`pnpm eval:content`).
+**Última tarea terminada:** F2-T16 · `pnpm eval:content`
+**Siguiente paso:** `/fase-cerrar 2` (F2-T17), después de que el operador corra `pnpm eval:content` con la CLI de Claude.
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -26,12 +26,13 @@
 | F2-T13 · CLI `prepare` y `content` | ✅ | #46 |
 | F2-T14 · Panel: preparar y vista previa | ✅ | #47 |
 | F2-T15 · Panel: edición de textos | ✅ | #48 |
-| F2-T16 · `pnpm eval:content` | ⏳ pendiente | |
+| F2-T16 · `pnpm eval:content` | ✅ | |
 | F2-T17 · Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
+- [ ] Correr `pnpm eval:content` en tu terminal (con la CLI de Claude, gasta cuota) sobre las 3 muestras y revisar que salga sin errores y que los textos de `tmp/eval/<fecha>/` se lean bien. Cierra la demo de F2-T16 y es un criterio de aceptación de F2
 - [x] Trámite de la app de Meta (para F3): cuenta profesional, app `AgentSales-IG`, tester aceptado (2026-10-02) y `META_APP_ID` y `META_APP_SECRET` en `.env` (2026-10-03). En F3 se confirma que son el par de Instagram que usa el sistema. La verificación del negocio y el App Review quedan para F7
 - [x] La CLI de Claude con sesión de tu plan y `pnpm llm:smoke` en tu terminal (2026-10-03: salida estructurada correcta; cierra la demo de F2-T04)
 - [x] Chromium de Playwright 1.63 (`chromium-1243`, instalado el 2026-10-03). Hay que repetir `pnpm --filter @agentsales/media exec playwright install chromium` cuando se actualice Playwright
@@ -75,6 +76,7 @@ Resueltas con la recomendación del spec (§4.10), por la aprobación permanente
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-04: **F2-T16.** `evaluateListingContent` en core (brief → IA → ensamblado → revisión, sin escribir) y `pnpm eval:content [--broker] [--provider fake]`: evalúa las propiedades listas de un corredor, imprime la revisión por canal, deja los textos en `tmp/eval/<fecha>/` y sale con 1 si hay errores. Con `--provider fake` contra Neon, P001–P003 sin errores. La demo con la CLI de Claude la corre el operador.
 - 2026-10-03: **F2-T15.** Edición de textos en el panel: "Editar" en cada pestaña, contador que mide igual que la revisión (en Instagram, el caption con los hashtags), guardar con la revisión nueva del servidor, bloqueo con el motivo mientras se regeneran los textos, `CONTENT_NOT_CURRENT` con "Recargar el contenido" y confirmación antes de regenerar sobre una edición. Probado en el navegador con P001 (que quedó otra vez en borrador).
 - 2026-10-03: **F2-T14.** Sección Contenido en el detalle de una propiedad: preparar y rehacer imágenes (con confirmación si hay textos editados a mano), avance por etapa en vivo, error de la última corrida y pestañas Instagram (carrusel, caption con "ver más", reel), Portal y Marketplace (título, descripción y fotos 4:3), cada una con su revisión editorial. La galería usa las miniaturas (HEIC visibles). El sondeo de cargas y preparaciones es uno solo (`usePolledRun`). Probado en el navegador con `pnpm dev` y la IA falsa.
 - 2026-10-03: **F2-T13.** `agentsales prepare <propiedad>` (espera con la etapa, resumen y revisión editorial; `--no-texts`, `--replace-edits`, `--no-wait`) y `agentsales content <propiedad>` (`--platform`, `--json`). La espera de `import` y `prepare` es una sola (`waitForRun`), y `IMPORT_WAIT` pasó a `RUN_WAIT` (también en el panel). Textos de estados, etapas y canales en core para la CLI y el panel. Demo con `LLM_PROVIDER=fake` contra Neon y R2: P001 lista y sus textos se leen por canal.
