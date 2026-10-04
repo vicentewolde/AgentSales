@@ -1,11 +1,8 @@
 import type { AbortSignalLike } from "../abort.js";
 import type { Broker } from "../broker.js";
 import { assembleContents } from "../content/assemble.js";
-import {
-  buildContentCheckContext,
-  type ContentCheckContext,
-  checkContent,
-} from "../content/check.js";
+import { type ContentCheckContext, checkContent } from "../content/check.js";
+import { loadCheckContext } from "../content/check-context.js";
 import { coverPhoto, variantOf, videosOf } from "../content/compose.js";
 import { generateContentDraft } from "../content/generate.js";
 import {
@@ -218,28 +215,13 @@ async function load(
   report: ContentRunReport,
   signal: AbortSignalLike | undefined,
 ): Promise<Run> {
-  const listing = await deps.listings.get(run.listingId);
-  if (listing === null) {
-    throw new AppError("LISTING_NOT_FOUND", `No existe el aviso ${run.listingId}`, {
-      details: { listingId: run.listingId },
-    });
-  }
-  const broker = await deps.brokers.findById(listing.brokerId);
-  if (broker === null) {
-    throw new AppError("BROKER_NOT_FOUND", "No existe el corredor del aviso", {
-      details: { listingId: listing.id },
-    });
-  }
-  const definitions = await deps.fieldDefinitions.list({
-    category: listing.category,
-    brokerId: listing.brokerId,
-  });
+  const { listing, broker, ctx } = await loadCheckContext(deps, run.listingId);
   return {
     deps,
     run,
     listing,
     broker,
-    ctx: buildContentCheckContext(listing, definitions, broker),
+    ctx,
     ids: { brokerId: listing.brokerId, listingId: listing.id },
     report,
     signal,

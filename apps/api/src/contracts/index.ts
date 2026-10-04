@@ -4,6 +4,11 @@
 // e imports relativos (nada de Node ni de `@agentsales/config`).
 import {
   brokerSchema,
+  CONTENT_CHECK_CODES,
+  CONTENT_CHECK_SEVERITY_LEVELS,
+  CONTENT_STATUSES,
+  contentRunReportSchema,
+  contentRunSchema,
   FIELD_TYPES,
   importRunSchema,
   LISTING_MANUAL_TARGETS,
@@ -11,7 +16,9 @@ import {
   listingSchema,
   MAX_XLSX_BYTES,
   MEDIA_KINDS,
+  MEDIA_VARIANTS,
   OPERATIONS,
+  PLATFORMS,
 } from "@agentsales/core";
 import { z } from "zod";
 
@@ -44,7 +51,11 @@ export const listingJsonSchema = listingSchema.extend({
   updatedAt: z.coerce.date(),
 });
 
-/** Un medio original con su URL de lectura temporal (prefirmada). */
+/**
+ * Un medio original con su URL de lectura temporal (prefirmada). `thumbUrl` es su miniatura JPEG
+ * (desde F2-T12; `null` hasta que una corrida la arma): los navegadores no muestran HEIC. Las
+ * medidas, ya rotadas, son `null` hasta que la etapa `media` las mide.
+ */
 export const mediaItemSchema = z.object({
   id: z.string(),
   kind: z.enum(MEDIA_KINDS),
@@ -53,6 +64,10 @@ export const mediaItemSchema = z.object({
   sortOrder: z.number().int(),
   isCover: z.boolean(),
   url: z.string(),
+  thumbUrl: z.string().nullable(),
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
+  durationS: z.number().nullable(),
 });
 export type MediaItem = z.infer<typeof mediaItemSchema>;
 
@@ -172,3 +187,112 @@ export const importRunListResponseSchema = z.object({
   importRuns: z.array(importRunSummarySchema),
 });
 export type ImportRunListResponse = z.infer<typeof importRunListResponseSchema>;
+
+/** `POST /listings/:id/content-runs` (spec F2 §4.7): `texts` por defecto `true`. */
+export const contentRunRequestBodySchema = z.object({
+  texts: z.boolean().optional(),
+  replaceEdits: z.boolean().optional(),
+});
+export type ContentRunRequestBody = z.infer<typeof contentRunRequestBodySchema>;
+
+/**
+ * El reporte de una corrida tal como sale de la API: la llamada a la IA sin `provider` ni `model`
+ * (como la vista del texto, spec F2 §4.7), solo la versión del prompt, los intentos y la duración.
+ */
+export const contentRunReportViewSchema = contentRunReportSchema.extend({
+  llm: contentRunReportSchema.shape.llm.unwrap().omit({ provider: true, model: true }).optional(),
+});
+export type ContentRunReportView = z.infer<typeof contentRunReportViewSchema>;
+
+/** Una corrida de contenido con sus fechas como `Date` (estado, etapa, reporte y error). */
+export const contentRunViewSchema = contentRunSchema.extend({
+  report: contentRunReportViewSchema.nullable(),
+  startedAt: z.coerce.date().nullable(),
+  finishedAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+});
+export type ContentRunView = z.infer<typeof contentRunViewSchema>;
+
+/** `POST /listings/:id/content-runs`: la corrida, y `reused` si ya había una activa del aviso. */
+export const contentRunRequestResponseSchema = z.object({
+  contentRun: contentRunViewSchema,
+  reused: z.boolean(),
+});
+export type ContentRunRequestResponse = z.infer<typeof contentRunRequestResponseSchema>;
+
+export const contentRunResponseSchema = z.object({ contentRun: contentRunViewSchema });
+export type ContentRunResponse = z.infer<typeof contentRunResponseSchema>;
+
+/**
+ * Un problema de la revisión editorial. Solo esto sale del servidor: la revisión usa lo privado del
+ * aviso (dirección, unidad y notas), y sus mensajes no lo citan.
+ */
+export const contentCheckSchema = z.object({
+  code: z.enum(CONTENT_CHECK_CODES),
+  severity: z.enum(CONTENT_CHECK_SEVERITY_LEVELS),
+  message: z.string(),
+});
+export type ContentCheckView = z.infer<typeof contentCheckSchema>;
+
+/**
+ * Un texto vigente con su revisión, calculada al leer. Sin `rawOutput`, `llmProvider` ni
+ * `llmModel`: solo `promptVersion` (spec F2 §4.7).
+ */
+export const contentViewSchema = z.object({
+  id: z.string(),
+  platform: z.enum(PLATFORMS),
+  /** Portal y Marketplace; `null` en Instagram. */
+  title: z.string().nullable(),
+  body: z.string(),
+  /** Solo Instagram; el caption que se publica los suma al cuerpo (`instagramCaption`). */
+  hashtags: z.array(z.string()),
+  status: z.enum(CONTENT_STATUSES),
+  checks: z.array(contentCheckSchema),
+  promptVersion: z.string(),
+  updatedAt: z.coerce.date(),
+});
+export type ContentView = z.infer<typeof contentViewSchema>;
+
+/** Un medio de un canal (render, variante o reel) con su URL de lectura temporal. */
+export const contentMediaSchema = z.object({
+  id: z.string(),
+  variant: z.enum(MEDIA_VARIANTS),
+  mime: z.string(),
+  width: z.number().int().nullable(),
+  height: z.number().int().nullable(),
+  durationS: z.number().nullable(),
+  url: z.string(),
+});
+export type ContentMedia = z.infer<typeof contentMediaSchema>;
+
+/** `GET /listings/:id/content`: lo que se publicaría en cada canal y la última corrida. */
+export const listingContentResponseSchema = z.object({
+  /** El vigente de cada canal, en el orden de `PLATFORMS`; vacío si nunca se generó. */
+  contents: z.array(contentViewSchema),
+  /** Instagram: portada, fotos y ficha (hasta 10). */
+  carousel: z.array(contentMediaSchema),
+  /** Portal Inmobiliario y Marketplace: fotos 4:3, la portada primero. */
+  photos: z.array(contentMediaSchema),
+  reel: contentMediaSchema.nullable(),
+  latestRun: contentRunViewSchema.nullable(),
+});
+export type ListingContentResponse = z.infer<typeof listingContentResponseSchema>;
+
+/**
+ * `PATCH /contents/:id`: al menos un campo. Los topes son de la petición (un cuerpo enorme), no
+ * editoriales: el largo de cada canal lo informa la revisión (`TOO_LONG`).
+ */
+export const contentEditBodySchema = z
+  .object({
+    title: z.string().trim().min(1).max(500).optional(),
+    body: z.string().trim().min(1).max(20_000).optional(),
+    hashtags: z.array(z.string().max(200)).max(50).optional(),
+  })
+  .refine(
+    (edit) => edit.title !== undefined || edit.body !== undefined || edit.hashtags !== undefined,
+    { message: "manda al menos title, body o hashtags" },
+  );
+export type ContentEditBody = z.infer<typeof contentEditBodySchema>;
+
+export const contentEditResponseSchema = z.object({ content: contentViewSchema });
+export type ContentEditResponse = z.infer<typeof contentEditResponseSchema>;

@@ -297,14 +297,14 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
 
 ## Contratos HTTP compartidos (ADR-0011)
 
-- **Entidades de dominio** (`listing`, `broker`, `importRun`, `importReport`; desde F2-T02, `contentRun`, `contentRunReport` y `content`; y desde F2-T03, `media`) y `healthReportSchema`: en `packages/core`. La vista HTTP de un medio es `mediaItemSchema`, en `contracts` (ver "Proyecciones").
+- **Entidades de dominio** (`listing`, `broker`, `importRun`, `importReport`; desde F2-T02, `contentRun`, `contentRunReport` y `content`; y desde F2-T03, `media`) y `healthReportSchema`: en `packages/core`. La vista HTTP de un medio es `mediaItemSchema`, en `contracts` (ver "Proyecciones"), y la de un medio de un canal (render, variante o reel), `contentMediaSchema` (F2-T12).
 - **Contratos HTTP:** en la salida `@agentsales/api/contracts` (`apps/api/src/contracts/`). Incluye:
   - el cuerpo de error (`errorBodySchema`);
   - los parámetros (`idParamSchema`: uuid);
   - los filtros (`listingQuerySchema`);
-  - los cuerpos (`listingStatusBodySchema`);
+  - los cuerpos (`listingStatusBodySchema`; desde F2-T12, `contentRunRequestBodySchema` y `contentEditBodySchema`);
   - los formularios y cuerpos de importación (`importUploadFormSchema`, `localImportBodySchema`);
-  - los sobres de respuesta (`listingListResponseSchema`, `listingDetailResponseSchema`, `brokerListResponseSchema`, `importRunResponseSchema` e `importRunListResponseSchema`). Las fechas llegan como texto ISO y se vuelven `Date` (`z.coerce.date`).
+  - los sobres de respuesta (`listingListResponseSchema`, `listingDetailResponseSchema`, `brokerListResponseSchema`, `importRunResponseSchema` e `importRunListResponseSchema`; desde F2-T12, `contentRunRequestResponseSchema`, `contentRunResponseSchema`, `listingContentResponseSchema` y `contentEditResponseSchema`, con las vistas `contentRunViewSchema`, `contentCheckSchema`, `contentViewSchema` y `contentMediaSchema`). Las fechas llegan como texto ISO y se vuelven `Date` (`z.coerce.date`).
 - **Frontera:** Biome la limita a `zod`, `@agentsales/core` e imports de `./` (no `../`, que sale al código del servidor), y un test (`apps/api/test/contracts-boundary.test.ts`) prueba que rechaza `@agentsales/config`, `node:*` y `hono`.
 - **Validación de entrada:** `validated(target, schema)` (`apps/api/src/validation.ts`, sobre `hono/validator`). Un valor inválido es `REQUEST_INVALID` (400), con los campos en el mensaje.
 - **Importación (F1-T11, `apps/api/src/routes/imports.ts`):** la API solo crea el run y encola (`requestImport`, ADR-0005), y responde `202`.
@@ -319,13 +319,20 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
   - **Formulario del panel:** un campo de archivo vacío o un corredor vacío cuentan como no enviados.
   - **`AppDeps`:** recibe `importRuns`, `queue`, `uploads` (`save` y `discard`, que `server.ts` compone con el staging), `newId`, `localImports` y `maxUploadBytes`.
 - **Rutas (F1-T10):**
-  - `GET /listings` (filtros exactos, también `externalRef` desde F1-T12, con la portada como URL firmada);
-  - `GET /listings/:id` (con sus medios en orden y URLs firmadas, y desde F1-T13 `fields`: las etiquetas de sus atributos);
+  - `GET /listings` (filtros exactos, también `externalRef` desde F1-T12, con la portada como URL firmada; desde F2-T12, la miniatura `thumb` de la portada si existe, con `listCovers` y `listVariants`: dos consultas para toda la lista);
+  - `GET /listings/:id` (con sus medios en orden y URLs firmadas, y desde F1-T13 `fields`: las etiquetas de sus atributos; desde F2-T12, cada original con `thumbUrl` y sus medidas, en una consulta con `listByListing`);
   - `PATCH /listings/:id/status` (`changeListingStatus`);
   - `GET /brokers`.
-- **Páginas del panel** (`apps/web/src/routes.tsx`, cada una con `React.lazy`): `/` (Estado), `/propiedades`, `/propiedades/:id`, `/importar` e `/importar/:id`.
 
-  Van en `apps/api/src/routes/`, montadas con `.route()`. `AppDeps` recibe puertos de core (`listings`, `brokers`, `media`, `fieldDefinitions` y `storage.signedReadUrl`), no adaptadores.
+  Van en `apps/api/src/routes/`, montadas con `.route()`. `AppDeps` recibe puertos de core (`listings`, `brokers`, `media`, `fieldDefinitions` y `storage.signedReadUrl`; desde F2-T12, `contentRuns` y `contents`), no adaptadores.
+- **Rutas de contenido (F2-T12, `apps/api/src/routes/content.ts`):**
+  - `POST /listings/:id/content-runs` (`requestContentRun`): `202` con `{ contentRun, reused }`;
+  - `GET /content-runs/:id`: estado, etapa, reporte y error;
+  - `GET /listings/:id/content` (`getListingContent`): el texto vigente de cada canal con su revisión (`checks`), el carrusel, las fotos de Portal y Marketplace y el reel con URLs firmadas, y la última corrida;
+  - `PATCH /contents/:id` (`editContent`): el texto con su revisión.
+
+  La vista del texto no lleva `rawOutput`, `llmProvider` ni `llmModel` (solo `promptVersion`), y la de la corrida tampoco: su `report.llm` sale sin `provider` ni `model` (`contentRunView`). De la revisión solo salen los `checks`: el contexto con lo privado del aviso (`ContentCheckContext.private`) se queda en el servidor. Los esquemas usan `CONTENT_CHECK_CODES` y `CONTENT_CHECK_SEVERITY_LEVELS` de core. La revisión al leer usa `loadCheckContext` (`packages/core/src/content/check-context.ts`), el mismo que arma el contexto de la corrida. Las URLs se firman en la API (R2 es privado, ADR-0007), como en `/listings`.
+- **Páginas del panel** (`apps/web/src/routes.tsx`, cada una con `React.lazy`): `/` (Estado), `/propiedades`, `/propiedades/:id`, `/importar` e `/importar/:id`.
 - **Cambios manuales de estado (`LISTING_MANUAL_TRANSITIONS`, core):**
   - `draft` → `ready` o `archived`;
   - `ready` → `paused` o `archived`;

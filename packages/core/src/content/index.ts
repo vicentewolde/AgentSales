@@ -31,6 +31,11 @@ export {
   hasContentErrors,
 } from "./check.js";
 export {
+  type CheckedContent,
+  type ContentCheckDeps,
+  loadCheckContext,
+} from "./check-context.js";
+export {
   CAROUSEL_MAX_ITEMS,
   composeCarousel,
   composePhotoSet,
