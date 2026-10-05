@@ -15,6 +15,7 @@ import {
   OPERATIONS,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
   TERMINAL_PUBLICATION_STATUSES,
 } from "@agentsales/core";
@@ -35,6 +36,7 @@ const EXPECTED_ENUMS: Record<string, readonly string[]> = {
   media_role: MEDIA_ROLES,
   content_status: CONTENT_STATUSES,
   publication_status: PUBLICATION_STATUSES,
+  publication_format: PUBLICATION_FORMATS,
   import_run_status: IMPORT_RUN_STATUSES,
   content_run_status: CONTENT_RUN_STATUSES,
 };
@@ -64,7 +66,8 @@ function migrationsSql(): string {
     .join("\n");
 }
 
-// Solo lee `CREATE TYPE`: cuando una migración use `ALTER TYPE … ADD VALUE`, hay que sumarlo aquí.
+// Solo lee `CREATE TYPE`; un tipo recreado (0006: `publication_status`) queda con su última versión.
+// Cuando una migración use `ALTER TYPE … ADD VALUE`, hay que sumarlo aquí.
 function sqlEnums(sql: string): Record<string, string[]> {
   const enums: Record<string, string[]> = {};
   for (const match of sql.matchAll(/CREATE TYPE "public"\."(\w+)" AS ENUM\(([^)]*)\)/g)) {
@@ -89,12 +92,13 @@ describe("migraciones", () => {
     expect(tables).toEqual(EXPECTED_TABLES);
   });
 
-  it("limitan a una publicación activa por aviso y cuenta, excluyendo los terminales", () => {
+  it("limitan a una publicación activa por aviso, cuenta y formato, excluyendo los terminales (0006)", () => {
     const terminals = TERMINAL_PUBLICATION_STATUSES.map((status) => `'${status}'`).join(", ");
 
     expect(sql).toContain(
-      `CREATE UNIQUE INDEX "publications_one_active_per_account" ON "publications" USING btree ("listing_id","platform_account_id") WHERE "status" NOT IN (${terminals});`,
+      `CREATE UNIQUE INDEX "publications_one_active_per_format" ON "publications" USING btree ("listing_id","platform_account_id","format") WHERE "status" NOT IN (${terminals});`,
     );
+    expect(sql).toContain(`DROP INDEX "publications_one_active_per_account";`);
   });
 
   it("mantienen las llaves de la importación idempotente y del seed", () => {

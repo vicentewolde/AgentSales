@@ -2,7 +2,7 @@
 
 Base de datos: Postgres en Neon (plan gratis, conexión directa). Esquema en `packages/db` con Drizzle; este documento es la referencia conceptual. Si difieren, **manda el código** y este documento se actualiza en la misma tarea.
 
-Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`, `import_run_status`, `content_run_status`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). `updated_at` lo fija la base (`now()`, la hora de inicio de la transacción) al crear y en cada `update` de Drizzle (`$onUpdate`); un SQL crudo o un `onConflictDoUpdate` lo fija explícitamente (como `seed.ts`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.status = queued`, `import_runs.dry_run = false`, `content_runs.status = queued`, `content_runs.texts = true`, `import_runs.rows_* = 0`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload` e `input` empiezan vacíos, e `import_runs.report` y `content_runs.report` empiezan en `null`. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES`.
+Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `publication_format`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`, `import_run_status`, `content_run_status`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). `updated_at` lo fija la base (`now()`, la hora de inicio de la transacción) al crear y en cada `update` de Drizzle (`$onUpdate`); un SQL crudo o un `onConflictDoUpdate` lo fija explícitamente (como `seed.ts`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.status = queued`, `import_runs.dry_run = false`, `content_runs.status = queued`, `content_runs.texts = true`, `import_runs.rows_* = 0`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload` e `input` empiezan vacíos, e `import_runs.report`, `content_runs.report` y `publications.progress` empiezan en `null`. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES` (solo `approved`, ADR-0014).
 
 ## Diagrama
 
@@ -150,9 +150,8 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 
 Único `contents_run_platform_unique` `(content_run_id, platform)`: un texto por canal y corrida, así un intento solapado del job no duplica. El **vigente** de un aviso en un canal es su fila más reciente (`created_at` y después `id`; índice `(listing_id, platform, created_at)`); las anteriores quedan como historial. En F2 no hay `approved`: lo usa F3.
 
-### publications — un aviso en una plataforma
-
-> Cambia en F3-T01 (ADR-0014): se suman `format` (`post`, `reel`) y `progress`, el único parcial pasa a ser por formato y se quitan `draft` y `pending_approval`. Detalle en el spec F3 §4.7.
+### publications — un aviso en una cuenta y un formato (ADR-0014)
+Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `media_ids` fijos (spec F3 §4.2). Entidad en core: `publicationSchema` (`packages/core/src/publication.ts`).
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -160,28 +159,32 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | listing_id | uuid FK | |
 | platform_account_id | uuid FK | |
 | platform | enum `platform` | Denormalizado para consultas |
-| content_id | uuid FK | |
-| media_ids | uuid[] | Medios usados, en orden |
-| status | enum `publication_status` | `draft`, `pending_approval`, `approved`, `scheduled`, `publishing`, `awaiting_manual_confirm`, `published`, `failed`, `paused`, `unpublished`, `cancelled`. Transiciones en `01-arquitectura.md` |
+| format | enum `publication_format` | `post` (carrusel o imagen suelta) o `reel` (`PUBLICATION_FORMATS`) |
+| content_id | uuid FK | Texto aprobado que se publica; no cambia mientras la publicación está activa |
+| media_ids | uuid[] | Medios usados, en orden, fijados al nacer |
+| status | enum `publication_status` | `approved`, `scheduled`, `publishing`, `awaiting_manual_confirm`, `published`, `failed`, `paused`, `unpublished`, `cancelled` (sin `draft` ni `pending_approval` desde la migración `0006`). Transiciones en `01-arquitectura.md` |
 | scheduled_at | timestamptz null | |
 | published_at | timestamptz null | |
 | external_id, external_url | text null | |
 | attempts | int default 0 | |
 | last_error | jsonb null | `{ code, message, retriable }` |
-| dry_run | boolean | Publicado en modo simulación |
+| dry_run | boolean | Modo del último intento (lo fija la API al pasar a `publishing` y lo respeta el worker, spec F3 D11) |
+| progress | jsonb null | Lo que el publisher ya creó en la plataforma, para retomar sin publicar dos veces. Instagram: `{ attemptStartedAt, childIds, containerId }` (`instagramProgressSchema`); se valida con el esquema de su plataforma |
 
-Único parcial: una publicación activa por `(listing_id, platform_account_id)`, con `WHERE status NOT IN ('unpublished', 'cancelled')` (los estados de `ACTIVE_PUBLICATION_STATUSES` en `core`).
+Único parcial `publications_one_active_per_format`: una publicación activa por `(listing_id, platform_account_id, format)`, con `WHERE status NOT IN ('unpublished', 'cancelled')` (los estados de `ACTIVE_PUBLICATION_STATUSES` en `core`): el carrusel y el reel de un aviso conviven. Índice `(listing_id)`. La migración `0006` (F3-T01) recreó el tipo `publication_status` con el SQL ajustado a mano (primero el índice viejo, después el tipo) y falla a propósito si la tabla tiene filas.
 
 ### publication_events — bitácora
 | Columna | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
 | publication_id | uuid FK | `ON DELETE CASCADE` |
-| type | text | `status_changed`, `publish_attempt`, `sync`, `manual_edit` |
-| from_status, to_status | text null | |
-| actor | text | `system`, `operator`, `cli` |
+| type | text | `status_changed`, `publish_attempt`, `sync`, `manual_edit` (`PUBLICATION_EVENT_TYPES`) |
+| from_status, to_status | text null | `from_status` es `null` al nacer la publicación |
+| actor | text | `system`, `operator`, `cli` (`PUBLICATION_ACTORS`) |
 | payload | jsonb | Sin secretos |
 | created_at | timestamptz | |
+
+Índice `(publication_id, created_at)` para la bitácora de una publicación. Entidad en core: `publicationEventSchema`.
 
 ### import_runs — historial de cargas
 | Columna | Tipo | Notas |

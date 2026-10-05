@@ -25,10 +25,11 @@ export const LISTING_STATUSES = [
 ] as const;
 export type ListingStatus = (typeof LISTING_STATUSES)[number];
 
-/** Estados de una publicación. Transiciones en `publication-state.ts`. */
+/**
+ * Estados de una publicación. Transiciones en `publication-state.ts`. Desde ADR-0014 nace en
+ * `approved` (lo que se aprueba es el texto de su canal): ya no existen `draft` ni `pending_approval`.
+ */
 export const PUBLICATION_STATUSES = [
-  "draft",
-  "pending_approval",
   "approved",
   "scheduled",
   "publishing",
@@ -40,6 +41,13 @@ export const PUBLICATION_STATUSES = [
   "cancelled",
 ] as const;
 export type PublicationStatus = (typeof PUBLICATION_STATUSES)[number];
+
+/**
+ * Formato de una publicación (ADR-0014): una por aviso, cuenta y formato. En Instagram, `post` es el
+ * carrusel (o una imagen suelta) y `reel` el reel; Portal y Marketplace solo usan `post`.
+ */
+export const PUBLICATION_FORMATS = ["post", "reel"] as const;
+export type PublicationFormat = (typeof PUBLICATION_FORMATS)[number];
 
 export const CURRENCIES = ["UF", "CLP"] as const;
 export type Currency = (typeof CURRENCIES)[number];

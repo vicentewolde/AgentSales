@@ -15,6 +15,7 @@ import {
   OPERATIONS,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
   TERMINAL_PUBLICATION_STATUSES,
 } from "@agentsales/core";
@@ -53,6 +54,7 @@ export const mediaKindEnum = pgEnum("media_kind", MEDIA_KINDS);
 export const mediaRoleEnum = pgEnum("media_role", MEDIA_ROLES);
 export const contentStatusEnum = pgEnum("content_status", CONTENT_STATUSES);
 export const publicationStatusEnum = pgEnum("publication_status", PUBLICATION_STATUSES);
+export const publicationFormatEnum = pgEnum("publication_format", PUBLICATION_FORMATS);
 export const importRunStatusEnum = pgEnum("import_run_status", IMPORT_RUN_STATUSES);
 export const contentRunStatusEnum = pgEnum("content_run_status", CONTENT_RUN_STATUSES);
 
@@ -296,6 +298,8 @@ export const publications = pgTable(
       .notNull()
       .references(() => platformAccounts.id),
     platform: platformEnum("platform").notNull(),
+    /** `post` (carrusel o imagen suelta) o `reel` (ADR-0014). */
+    format: publicationFormatEnum("format").notNull(),
     contentId: uuid("content_id")
       .notNull()
       .references(() => contents.id),
@@ -309,29 +313,37 @@ export const publications = pgTable(
     /** `{ code, message, retriable }`. */
     lastError: jsonb("last_error"),
     dryRun: boolean("dry_run").notNull(),
+    /** Lo que el publisher ya creó en la plataforma, para retomar sin publicar dos veces (ADR-0014). */
+    progress: jsonb("progress"),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex("publications_one_active_per_account")
-      .on(t.listingId, t.platformAccountId)
+    // Una activa por aviso, cuenta y formato: el carrusel y el reel conviven (ADR-0014).
+    uniqueIndex("publications_one_active_per_format")
+      .on(t.listingId, t.platformAccountId, t.format)
       .where(activePublication),
+    index("publications_listing_idx").on(t.listingId),
   ],
 );
 
 /** Bitácora inmutable: solo `created_at`. */
-export const publicationEvents = pgTable("publication_events", {
-  id: id(),
-  publicationId: uuid("publication_id")
-    .notNull()
-    .references(() => publications.id, { onDelete: "cascade" }),
-  type: text("type").notNull(),
-  fromStatus: text("from_status"),
-  toStatus: text("to_status"),
-  actor: text("actor").notNull(),
-  /** Sin secretos. */
-  payload: jsonb("payload").notNull().default({}),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const publicationEvents = pgTable(
+  "publication_events",
+  {
+    id: id(),
+    publicationId: uuid("publication_id")
+      .notNull()
+      .references(() => publications.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    actor: text("actor").notNull(),
+    /** Sin secretos. */
+    payload: jsonb("payload").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("publication_events_publication_created_idx").on(t.publicationId, t.createdAt)],
+);
 
 export const importRuns = pgTable("import_runs", {
   id: id(),

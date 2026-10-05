@@ -43,6 +43,13 @@
       "when": 1791042024956,
       "tag": "0005_f2_medios_derivados",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791203064955,
+      "tag": "0006_f3_publicaciones",
+      "breakpoints": true
     }
   ]
 }
