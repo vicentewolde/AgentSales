@@ -177,6 +177,27 @@ describe("runPrepare", () => {
     expect(current).toMatchObject({ status: "draft", body: "Texto nuevo de la IA." });
   });
 
+  it("con una publicación aprobada que no salió se detiene y explica (PUBLICATION_PENDING)", async () => {
+    const h = harness();
+    const listing = await readyListing(h);
+    await h.publications.create(
+      {
+        listingId: listing.id,
+        platformAccountId: "cuenta-1",
+        platform: "instagram",
+        format: "post",
+        contentId: "texto-1",
+        mediaIds: [],
+      },
+      { actor: "operator" },
+    );
+
+    expect(await run(h, fakeClock())).toBe(1);
+    expect(h.errors()).toContain("✗ PUBLICATION_PENDING: P-001 tiene publicaciones aprobadas");
+    expect(h.errors()).toContain("Publícalas o descártalas");
+    expect(await h.contentRuns.latest(listing.id)).toBeNull();
+  });
+
   it("una corrida fallida sale con 1 y muestra el código y el mensaje", async () => {
     const h = harness();
     const listing = await readyListing(h);

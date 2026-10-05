@@ -9,17 +9,22 @@ import {
   createInMemoryContentRepositories,
   createInMemoryFieldDefinitionRepository,
   createInMemoryHtmlRenderer,
+  createInMemoryJobQueue,
+  createInMemoryListingLock,
   createInMemoryListingRepository,
   createInMemoryLlmProvider,
   createInMemoryMediaProcessor,
   createInMemoryMediaRepository,
   createInMemoryMediaStorage,
+  createInMemoryPlatformAccountRepository,
+  createInMemoryPublicationRepository,
   createInMemorySlideTemplates,
   fakeHash,
 } from "../testing/index.js";
 import { editContent } from "./edit-content.js";
 import { getListingContent } from "./get-listing-content.js";
 import { prepareContent } from "./prepare-content.js";
+import { requestContentRun } from "./request-content-run.js";
 
 const text = (value: string) => Uint8Array.from(value, (char) => char.charCodeAt(0));
 
@@ -96,7 +101,30 @@ async function setup(options: { prepared?: boolean; internalNotes?: string } = {
   if (options.prepared ?? true) await prepare();
   const current = async () =>
     (await getListingContent(deps, { listingId: listing.id })).contents.map((item) => item.content);
-  return { deps, listingId: listing.id, repos, prepare, current };
+  const publications = createInMemoryPublicationRepository();
+  const lockWith = (lockBrokers = brokers) =>
+    createInMemoryListingLock({
+      brokers: lockBrokers,
+      listings,
+      media,
+      contentRuns: repos.contentRuns,
+      contents: repos.contents,
+      publications,
+      platformAccounts: createInMemoryPlatformAccountRepository(),
+    });
+  const lock = lockWith();
+  const editDeps = { contents: repos.contents, listings, fieldDefinitions, lock };
+  return {
+    deps,
+    editDeps,
+    lock,
+    lockWith,
+    publications,
+    listingId: listing.id,
+    repos,
+    prepare,
+    current,
+  };
 }
 
 describe("getListingContent", () => {
@@ -160,7 +188,7 @@ describe("editContent", () => {
     const t = await setup();
     const [, portal] = await t.current();
 
-    const result = await editContent(t.deps, {
+    const result = await editContent(t.editDeps, {
       contentId: portal?.id ?? "",
       edit: { title: "Departamento en venta en Ñuñoa", body: "Increíble departamento." },
     });
@@ -179,7 +207,7 @@ describe("editContent", () => {
     const t = await setup();
     const [instagram] = await t.current();
 
-    const { content } = await editContent(t.deps, {
+    const { content } = await editContent(t.editDeps, {
       contentId: instagram?.id ?? "",
       edit: { hashtags: ["Ñuñoa", "#ñuñoa", "  ", "#Depto Venta"] },
     });
@@ -193,7 +221,7 @@ describe("editContent", () => {
     await t.prepare();
 
     await expect(
-      editContent(t.deps, { contentId: old?.id ?? "", edit: { body: "nuevo" } }),
+      editContent(t.editDeps, { contentId: old?.id ?? "", edit: { body: "nuevo" } }),
     ).rejects.toMatchObject({ code: "CONTENT_NOT_CURRENT" });
     expect(await t.repos.contents.get(old?.id ?? "")).toMatchObject({ status: "draft" });
   });
@@ -204,13 +232,13 @@ describe("editContent", () => {
     const texts = await t.repos.contentRuns.create({ listingId: t.listingId, texts: true });
 
     await expect(
-      editContent(t.deps, { contentId: instagram?.id ?? "", edit: { body: "a mano" } }),
+      editContent(t.editDeps, { contentId: instagram?.id ?? "", edit: { body: "a mano" } }),
     ).rejects.toMatchObject({ code: "CONTENT_RUN_ACTIVE" });
 
     await t.repos.contentRuns.markFailed(texts.id, { code: "X", message: "x" });
     await t.repos.contentRuns.create({ listingId: t.listingId, texts: false });
     await expect(
-      editContent(t.deps, { contentId: instagram?.id ?? "", edit: { body: "a mano" } }),
+      editContent(t.editDeps, { contentId: instagram?.id ?? "", edit: { body: "a mano" } }),
     ).resolves.toMatchObject({ content: { status: "edited", body: "a mano" } });
   });
 
@@ -219,13 +247,13 @@ describe("editContent", () => {
     const [instagram, portal] = await t.current();
 
     await expect(
-      editContent(t.deps, { contentId: instagram?.id ?? "", edit: { title: "Hola" } }),
+      editContent(t.editDeps, { contentId: instagram?.id ?? "", edit: { title: "Hola" } }),
     ).rejects.toMatchObject({ code: "CONTENT_TITLE_INVALID" });
     await expect(
-      editContent(t.deps, { contentId: portal?.id ?? "", edit: { hashtags: ["#nunoa"] } }),
+      editContent(t.editDeps, { contentId: portal?.id ?? "", edit: { hashtags: ["#nunoa"] } }),
     ).rejects.toMatchObject({ code: "CONTENT_HASHTAGS_INVALID" });
     await expect(
-      editContent(t.deps, { contentId: portal?.id ?? "", edit: { hashtags: [] } }),
+      editContent(t.editDeps, { contentId: portal?.id ?? "", edit: { hashtags: [] } }),
     ).resolves.toMatchObject({ content: { hashtags: [] } });
   });
 
@@ -235,17 +263,170 @@ describe("editContent", () => {
 
     await expect(
       editContent(
-        { ...t.deps, brokers: createInMemoryBrokerRepository([]) },
+        { ...t.editDeps, lock: t.lockWith(createInMemoryBrokerRepository([])) },
         { contentId: instagram?.id ?? "", edit: { body: "a mano" } },
       ),
     ).rejects.toMatchObject({ code: "BROKER_NOT_FOUND" });
     expect(await t.repos.contents.get(instagram?.id ?? "")).toMatchObject({ status: "draft" });
   });
 
+  it("un texto con una publicación activa → CONTENT_LOCKED, sin cambiarlo (también publicada)", async () => {
+    const t = await setup();
+    const [instagram] = await t.current();
+    const publication = await t.publications.create(
+      {
+        listingId: t.listingId,
+        platformAccountId: "account-1",
+        platform: "instagram",
+        format: "post",
+        contentId: instagram?.id ?? "",
+        mediaIds: [],
+      },
+      { actor: "operator" },
+    );
+    const edit = () =>
+      editContent(t.editDeps, { contentId: instagram?.id ?? "", edit: { body: "a mano" } });
+
+    await expect(edit()).rejects.toMatchObject({
+      code: "CONTENT_LOCKED",
+      details: { publicationId: publication.id, status: "approved" },
+    });
+    await t.publications.transition(
+      publication.id,
+      { from: "approved", to: "publishing", changes: { dryRun: true } },
+      { actor: "system" },
+    );
+    await t.publications.transition(
+      publication.id,
+      { from: "publishing", to: "published" },
+      { actor: "system" },
+    );
+    await expect(edit()).rejects.toMatchObject({ code: "CONTENT_LOCKED" });
+    expect(await t.repos.contents.get(instagram?.id ?? "")).toMatchObject({ status: "draft" });
+
+    // Una publicación descartada o retirada ya no lo bloquea.
+    await t.publications.transition(
+      publication.id,
+      { from: "published", to: "unpublished" },
+      { actor: "operator" },
+    );
+    await expect(edit()).resolves.toMatchObject({ content: { status: "edited" } });
+  });
+
+  it("un texto aprobado sin publicaciones activas se edita y pierde la aprobación", async () => {
+    const t = await setup();
+    const [instagram] = await t.current();
+    await t.repos.contents.update(instagram?.id ?? "", { status: "approved" });
+
+    await expect(
+      editContent(t.editDeps, { contentId: instagram?.id ?? "", edit: { body: "a mano" } }),
+    ).resolves.toMatchObject({ content: { status: "edited", body: "a mano" } });
+  });
+
+  describe("la ventana de F2 se cerró: un pedido de textos y una edición a la vez", () => {
+    /** Un `Deferred`: una promesa que el test resuelve cuando quiere. */
+    const deferred = () => {
+      let resolve: () => void = () => {};
+      const promise = new Promise<void>((done) => {
+        resolve = done;
+      });
+      return { promise, resolve };
+    };
+    /** Espera (con tope, en microtareas: core no usa timers de Node) a que `first` llegue a la puerta. */
+    const untilBusy = async (busy: () => boolean) => {
+      for (let i = 0; i < 1000 && !busy(); i += 1) await Promise.resolve();
+      expect(busy()).toBe(true);
+    };
+
+    /**
+     * Arranca primero `first` y lo detiene **dentro** del candado (en su escritura), lanza `second`
+     * mientras tanto y después suelta a `first`. `serialize: false` usa un "candado" que no
+     * serializa, para comprobar que el test detecta la falta de candado.
+     */
+    async function race(first: "edit" | "request", { serialize = true } = {}) {
+      const t = await setup();
+      const [instagram] = await t.current();
+      const gate = deferred();
+      let entered = false;
+      // Los repositorios del candado, con la escritura de `first` detenida en la puerta.
+      const contents = {
+        ...t.repos.contents,
+        update: async (...args: Parameters<typeof t.repos.contents.update>) => {
+          if (first === "edit") {
+            entered = true;
+            await gate.promise;
+          }
+          return t.repos.contents.update(...args);
+        },
+      };
+      const contentRuns = {
+        ...t.repos.contentRuns,
+        create: async (...args: Parameters<typeof t.repos.contentRuns.create>) => {
+          if (first === "request") {
+            entered = true;
+            await gate.promise;
+          }
+          return t.repos.contentRuns.create(...args);
+        },
+      };
+      const locked = {
+        brokers: createInMemoryBrokerRepository([contentBrokerFixture()]),
+        listings: t.deps.listings,
+        media: t.deps.media,
+        contentRuns,
+        contents,
+        publications: t.publications,
+        platformAccounts: createInMemoryPlatformAccountRepository(),
+      };
+      const lock = serialize
+        ? createInMemoryListingLock(locked)
+        : { run: <T>(_id: string, fn: (repos: typeof locked) => Promise<T>) => fn(locked) };
+      const startEdit = () =>
+        editContent(
+          { ...t.editDeps, lock },
+          { contentId: instagram?.id ?? "", edit: { body: "a mano" } },
+        );
+      const startRequest = () =>
+        requestContentRun(
+          { lock, contentRuns: t.repos.contentRuns, queue: createInMemoryJobQueue() },
+          { listingId: t.listingId },
+        );
+
+      const firstCall = first === "edit" ? startEdit() : startRequest();
+      await untilBusy(() => entered);
+      const secondCall = first === "edit" ? startRequest() : startEdit();
+      // Que `second` alcance a llegar al candado (o, sin candado, a su escritura) antes de soltar.
+      for (let i = 0; i < 1000; i += 1) await Promise.resolve();
+      gate.resolve();
+      const [a, b] = await Promise.allSettled([firstCall, secondCall]);
+      const code = (result: PromiseSettledResult<unknown>) =>
+        result.status === "fulfilled" ? "ok" : (result.reason as { code: string }).code;
+      const [edit, request] = first === "edit" ? [code(a), code(b)] : [code(b), code(a)];
+      const body = (await t.repos.contents.get(instagram?.id ?? ""))?.body;
+      return { edit, request, body };
+    }
+
+    it("si la edición entra primero, el pedido avisa con CONTENT_EDITED y la edición queda", async () => {
+      expect(await race("edit")).toEqual({
+        edit: "ok",
+        request: "CONTENT_EDITED",
+        body: "a mano",
+      });
+    });
+
+    it("si el pedido entra primero, la edición espera la corrida (CONTENT_RUN_ACTIVE)", async () => {
+      expect(await race("request")).toMatchObject({ edit: "CONTENT_RUN_ACTIVE", request: "ok" });
+    });
+
+    it("sin candado, las dos pasan y la corrida pisaría la edición (el test lo detecta)", async () => {
+      expect(await race("edit", { serialize: false })).toMatchObject({ edit: "ok", request: "ok" });
+    });
+  });
+
   it("un texto que no existe → CONTENT_NOT_FOUND", async () => {
     const t = await setup();
     await expect(
-      editContent(t.deps, { contentId: "nadie", edit: { body: "x" } }),
+      editContent(t.editDeps, { contentId: "nadie", edit: { body: "x" } }),
     ).rejects.toMatchObject({ code: "CONTENT_NOT_FOUND" });
   });
 });

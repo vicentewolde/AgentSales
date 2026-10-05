@@ -14,8 +14,11 @@ import {
   createInMemoryContentRepositories,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
+  createInMemoryListingLock,
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
+  createInMemoryPlatformAccountRepository,
+  createInMemoryPublicationRepository,
 } from "@agentsales/core/testing";
 import { createApiClient } from "../src/api-client.js";
 import { createColors } from "../src/colors.js";
@@ -40,6 +43,17 @@ export function harness(options: HarnessOptions = {}) {
   const media = createInMemoryMediaRepository();
   const queue = createInMemoryJobQueue();
   const content = createInMemoryContentRepositories({ nextId: randomUUID });
+  // El candado con las publicaciones a mano, para armar casos como una publicación pendiente.
+  const publications = createInMemoryPublicationRepository();
+  const lock = createInMemoryListingLock({
+    brokers,
+    listings,
+    media,
+    contentRuns: content.contentRuns,
+    contents: content.contents,
+    publications,
+    platformAccounts: createInMemoryPlatformAccountRepository(),
+  });
   const app = createApp(
     testDeps({
       access: localAccess(PORT, 5173),
@@ -50,6 +64,7 @@ export function harness(options: HarnessOptions = {}) {
       queue,
       contentRuns: content.contentRuns,
       contents: content.contents,
+      lock,
       ...options.deps,
     }),
   );
@@ -85,6 +100,7 @@ export function harness(options: HarnessOptions = {}) {
     queue,
     contentRuns: content.contentRuns,
     contents: content.contents,
+    publications,
   };
 }
 

@@ -267,13 +267,13 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T06 · Lo aprobado no cambia: edición y corridas con el candado
 - **Depende de:** T05
-- **Archivos:** `packages/core/src/use-cases/{edit-content.ts,request-content-run.ts}` (consultan las publicaciones del aviso), sus tests, `apps/api/src/app.ts` y `apps/worker/src/worker.ts` (componen el candado)
+- **Archivos:** `packages/core/src/use-cases/{edit-content.ts,request-content-run.ts}` (consultan las publicaciones del aviso), sus tests, `apps/api/src/{app.ts,server.ts,testing/index.ts,errors.ts}` (componen el candado y los 409), y los textos de la confirmación al regenerar en el panel y la CLI. El worker no cambia: no pide corridas ni edita
 - **Descripción:** las reglas nuevas de `editContent` y `requestContentRun` (§4.2) dentro de `ListingLock`, encolando después del candado.
 - **Hecho cuando:**
-  - [ ] Corrida pedida con publicación pendiente: `PUBLICATION_PENDING`; con un texto aprobado: `CONTENT_EDITED` salvo `replaceEdits`
-  - [ ] Editar un texto con publicación activa: `CONTENT_LOCKED`; uno aprobado sin publicaciones vuelve a `edited`
-  - [ ] Test de la ventana de F2: un pedido de textos y una edición concurrentes con el candado en memoria; el job se encola solo después de confirmar
-  - [ ] Spec F2 §8 y docs 01 al día (la ventana se cerró)
+  - [x] Corrida pedida con publicación pendiente: `PUBLICATION_PENDING`; con un texto aprobado: `CONTENT_EDITED` salvo `replaceEdits`
+  - [x] Editar un texto con publicación activa: `CONTENT_LOCKED`; uno aprobado sin publicaciones vuelve a `edited`
+  - [x] Test de la ventana de F2: un pedido de textos y una edición concurrentes con el candado en memoria; el job se encola solo después de confirmar
+  - [x] Spec F2 §8 y docs 01 al día (la ventana se cerró)
 
 ### F3-T07 · Puerto `Publisher` y `dry-run`
 - **Depende de:** T01
@@ -332,7 +332,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T13 · Conectar Instagram
 - **Depende de:** T03, T08
-- **Archivos:** `packages/core/src/use-cases/{connect-account.ts,disconnect-account.ts}`, `apps/api/src/routes/{oauth.ts,accounts.ts}`, `apps/api/src/contracts/index.ts`, `apps/api/src/app.ts` e `index.ts` (composición)
+- **Archivos:** `packages/core/src/use-cases/{connect-account.ts,disconnect-account.ts}`, `apps/api/src/routes/{oauth.ts,accounts.ts}`, `apps/api/src/contracts/index.ts`, `apps/api/src/app.ts` y `server.ts` (composición, con el mismo `SecretBox` que el candado; en los dobles, el candado recibe el mismo repositorio de cuentas que la app)
 - **Descripción:** §4.6 completo: inicio y vuelta del OAuth, `GET /accounts`, desconectar. Como Meta no acepta `http://localhost` (D4), también `connectAccount` desde un token y `POST /accounts/connect-token` (T16 lo expone con `--token-stdin`).
 - **Hecho cuando:**
   - [ ] Callback con `state` correcto guarda la cuenta cifrada; con otro, sin cookie o vencido, `OAUTH_STATE_INVALID` sin llamar a Instagram
@@ -465,3 +465,5 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-05 | Revisión de F3-T04 (#57): la publicación nace en `dry_run = true` (sin pasarlo) y pasar a `publishing` exige fijar el modo (`PUBLICATION_MODE_REQUIRED`); una FK inexistente al crear es `PUBLICATION_REFERENCE_INVALID`; los dos adaptadores revisan los datos antes que el estado; `updated_at` con `clock_timestamp()`; fila y evento juntos o ninguno probado con un trigger que hace fallar el evento; savepoints de `arrange`, `upsertDerivative` y `markSucceeded` dentro del candado; T05 lee los campos configurables antes del candado |
 | 2026-10-05 | Desde F3-T05: `openPublications` solo usa cuentas `connected`; aprobar un texto ya aprobado es idempotente (abre lo que falte); quitar la aprobación de un texto que no está aprobado es `CONTENT_NOT_APPROVED`, y cancela también las `scheduled` y `awaiting_manual_confirm` de ese texto (todo lo que la máquina deja descartar); `ContentCheckDeps.fieldDefinitions` pide solo `list` |
 | 2026-10-05 | Revisión de F3-T05 (#58): todas las revisiones (también el plan de publicaciones: `planPublications`) van antes de la primera escritura, así un rechazo no deja nada a medias aunque el candado en memoria no deshaga; aprobar y quitar la aprobación devuelven además `publications` (todas las del canal, leídas en el candado) y `skipped` informa solo formatos ocupados por **otro** texto; `beforeContentLock` y `lockedCurrentContent` en `content/locked-content.ts` (los usará `editContent` en T06); un aviso que no existe es `LISTING_NOT_FOUND` en los dos; tests que fallan si `fn` usa algo de fuera del candado |
+| 2026-10-05 | Desde F3-T06: `requestContentRun` ya no tiene el camino `CONTENT_RUN_CONFLICT` → `findActive` (con el candado no hay carrera); `CONTENT_LOCKED` y `PUBLICATION_PENDING` son 409 en la API desde esta tarea, porque ya salen por `PATCH /contents/:id` y `POST /listings/:id/content-runs`; la API compone `createListingLock` (con el `SecretBox`) y sus dobles el de memoria con los mismos repositorios; el worker no cambia (no pide corridas ni edita) |
+| 2026-10-05 | Revisión de F3-T06 (#59): el test de la ventana de F2 fuerza los dos órdenes (con una puerta dentro del candado) y comprueba que sin candado la edición se pierde; `CONTENT_LOCKED` dice qué hacer según la publicación (pendiente o publicada); la confirmación de regenerar en el panel y la CLI cubre los textos aprobados; la CLI explica `PUBLICATION_PENDING`; un solo `SecretBox` en `server.ts` para el candado y (T13) las cuentas; test de que el candado de `testDeps` usa los repositorios de la app |

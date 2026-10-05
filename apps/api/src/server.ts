@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   createErrorThrottle,
   createLogger,
+  createSecretBox,
   findWorkspaceRoot,
   loadEnv,
   loadEnvFile,
@@ -13,6 +14,7 @@ import {
   createDb,
   createFieldDefinitionRepository,
   createImportRunRepository,
+  createListingLock,
   createListingRepository,
   createMediaRepository,
   pingDatabase,
@@ -62,6 +64,10 @@ const queue = createJobQueue({
 // La API solo escribe en el staging: leer medios (con su tope de video) es del worker.
 const staging = createStaging({ root: stagingRootOf(findWorkspaceRoot()) });
 
+// Un solo `SecretBox` para toda la API: el candado y (desde T13) el repositorio de cuentas cifran y
+// descifran con la clave derivada de APP_ENCRYPTION_KEY (F3-T02).
+const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
+
 const app = createApp({
   checks: {
     db: () => pingDatabase(database.db),
@@ -80,6 +86,7 @@ const app = createApp({
   importRuns: createImportRunRepository(database.db),
   contentRuns: createContentRunRepository(database.db),
   contents: createContentRepository(database.db),
+  lock: createListingLock(database.db, { secretBox }),
   queue,
   uploads: {
     save: (runId, fileName, bytes) => staging.saveInput(runId, fileName, bytes),

@@ -118,7 +118,8 @@ CLI (POST /imports/local, rutas del disco) o panel (POST /imports, multipart)
 
 ```
 CLI (prepare) o panel (Preparar contenido)
-  → requestContentRun (core): crea el content_run en queued y encola content.prepare
+  → requestContentRun (core, con el candado del aviso): crea el content_run en queued y,
+    ya confirmado, encola content.prepare
     (si el aviso ya tiene una corrida activa, la devuelve)
   → el worker corre prepareContent, por etapas idempotentes:
     1. media:   mide, pasa HEIC a JPEG, borra metadatos y crea thumb, ig_4x5 y pi_4x3
@@ -574,7 +575,7 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 
 ## Corrida de contenido (`requestContentRun` y `prepareContent`, F2-T10)
 
-- **`requestContentRun`** (core) pide una corrida: valida el aviso (`ready`, `paused` o `active`, con fotos), devuelve la activa si hay (y la reencola, en cola o corriendo: un corte en el último intento la deja sin job), revisa las ediciones a mano (`CONTENT_EDITED` salvo `replaceEdits`) y encola `content.prepare` con `singletonKey`. Con la cola caída, la corrida nueva queda en `failed`.
+- **`requestContentRun`** (core) pide una corrida: valida el aviso (`ready`, `paused` o `active`, con fotos), devuelve la activa si hay (y la reencola, en cola o corriendo: un corte en el último intento la deja sin job), revisa las ediciones a mano (`CONTENT_EDITED` salvo `replaceEdits`) y encola `content.prepare` con `singletonKey`. Con la cola caída, la corrida nueva queda en `failed`. Desde F3-T06 (ADR-0014) la revisión y la creación corren dentro de `ListingLock` y el job se encola **después** de confirmar; con publicaciones pendientes es `PUBLICATION_PENDING` (también una corrida de solo imágenes, que reemplazaría los medios fijados), y un texto `approved` cuenta como editado para `CONTENT_EDITED`. Con el candado ya no hay carrera de `create`: el camino `CONTENT_RUN_CONFLICT` → `findActive` se quitó.
 - **`prepareContent`** (core, handler del job): cuatro etapas idempotentes. Cada una rehace solo lo que falta, comparando las claves de R2, que son determinísticas (`variantPath`, `renderPath` y `reelPath`, en `packages/core/src/content/media-keys.ts`).
   - `media`: medidas antes que variantes.
   - `renders`: la clave sale de `renderInput`, con las imágenes por su sha256 (`slideKeyInput`); se descargan solo si cambió.
@@ -593,6 +594,7 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 - **`approveContent`** (ADR-0014): revisa que el texto sea el vigente, que el aviso esté en `ready`, `active` o `paused`, que no haya una corrida activa, que la revisión no tenga errores y arma el plan de publicaciones (`planPublications`); **recién después** escribe: el texto a `approved` y las publicaciones (`createPublications`). Así un rechazo no deja nada a medias, aunque el candado en memoria no deshaga. Aprobar de nuevo es idempotente.
 - **`planPublications`**: una publicación por cuenta **conectada** del corredor en el canal y por formato (`publicationPlan`: Instagram, `post` con `composeCarousel` y, si hay reel, `reel`; Portal y Marketplace, `post` con `composePhotoSet`), con `content_id` y `media_ids` fijos. Un formato con una publicación activa en esa cuenta no se abre: si es de este texto, ya está; si es de otro, va en `skipped`. Con cuentas y sin medios, `CONTENT_NOT_READY`.
 - **`unapproveContent`**: revisa y después escribe: deja el texto en `edited` y cancela sus publicaciones que se pueden descartar; con una en `publishing`, `PUBLICATION_IN_PROGRESS` sin cambiar nada. Las publicadas no cambian.
+- **`editContent`** (desde F3-T06) usa los mismos pasos: dentro del candado, un texto con una publicación activa (pendiente o `published`) es `CONTENT_LOCKED`, y uno aprobado sin publicaciones activas se edita y vuelve a `edited`. Con el candado, la ventana de F2 (un pedido de textos entre la revisión y el guardado de una edición) se cerró.
 - Los dos devuelven el texto con su revisión (`CheckedContent`), lo que cambió (`created` y `skipped`, o `cancelled`) y `publications`: todas las del canal, leídas en el candado (para la API y la CLI). El actor (`operator` o `cli`) queda en la bitácora.
 
 ## Procesador de medios (`MediaProcessor`, F2-T07)

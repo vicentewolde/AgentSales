@@ -6,6 +6,7 @@ import type {
   HealthCheckName,
   ImportRunRepository,
   JobQueue,
+  ListingLock,
   ListingRepository,
   MediaRepository,
   MediaStorage,
@@ -51,6 +52,11 @@ export type AppDeps = {
   // Contenido (F2-T12): la API pide corridas y edita textos; las corre el worker (ADR-0012).
   contentRuns: ContentRunRepository;
   contents: ContentRepository;
+  /**
+   * Candado por aviso (ADR-0014, spec F3 §4.2): pedir una corrida y editar corren dentro de él (y,
+   * desde T15, aprobar y publicar). `server.ts` compone `createListingLock` sobre la misma base.
+   */
+  lock: ListingLock;
 };
 
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */

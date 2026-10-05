@@ -9,11 +9,14 @@ import {
   createInMemoryFieldDefinitionRepository,
   createInMemoryHtmlRenderer,
   createInMemoryJobQueue,
+  createInMemoryListingLock,
   createInMemoryListingRepository,
   createInMemoryLlmProvider,
   createInMemoryMediaProcessor,
   createInMemoryMediaRepository,
   createInMemoryMediaStorage,
+  createInMemoryPlatformAccountRepository,
+  createInMemoryPublicationRepository,
   createInMemorySlideTemplates,
   fakeHash,
 } from "@agentsales/core/testing";
@@ -83,6 +86,16 @@ async function setup(options: { queueDown?: boolean } = {}) {
       isCover: index === 0,
     });
   }
+  const publications = createInMemoryPublicationRepository();
+  const lock = createInMemoryListingLock({
+    brokers,
+    listings,
+    media,
+    contentRuns: repos.contentRuns,
+    contents: repos.contents,
+    publications,
+    platformAccounts: createInMemoryPlatformAccountRepository(),
+  });
   const app = createApp(
     testDeps({
       listings,
@@ -92,8 +105,22 @@ async function setup(options: { queueDown?: boolean } = {}) {
       contentRuns: repos.contentRuns,
       contents: repos.contents,
       queue,
+      lock,
     }),
   );
+  /** Una publicación aprobada (pendiente) del texto de Instagram, como la deja `approveContent`. */
+  const approvedPublication = async (contentId: string) =>
+    publications.create(
+      {
+        listingId: listing.id,
+        platformAccountId: randomUUID(),
+        platform: "instagram",
+        format: "post",
+        contentId,
+        mediaIds: [],
+      },
+      { actor: "operator" },
+    );
   const prepare = async () => {
     const run = await repos.contentRuns.create({ listingId: listing.id, texts: true });
     await prepareContent(
@@ -126,10 +153,81 @@ async function setup(options: { queueDown?: boolean } = {}) {
     listingContentResponseSchema.parse(
       await (await app.request(`/listings/${listing.id}/content`)).json(),
     );
-  return { app, listings, listing, repos, queue, prepare, json, request, content };
+  return {
+    app,
+    listings,
+    listing,
+    repos,
+    queue,
+    prepare,
+    json,
+    request,
+    content,
+    approvedPublication,
+  };
 }
 
 const errorOf = async (response: Response) => errorBodySchema.parse(await response.json());
+
+describe("testDeps · el candado por defecto", () => {
+  it("usa los mismos repositorios que la app, también los que llegan por overrides", async () => {
+    const listings = createInMemoryListingRepository({ nextId: randomUUID });
+    const media = createInMemoryMediaRepository();
+    const repos = createInMemoryContentRepositories({ nextId: randomUUID });
+    const queue = createInMemoryJobQueue();
+    const listing = await listings.create({
+      ...(contentListingFixture() as unknown as NewListing),
+      sourceHash: "h",
+    });
+    await listings.promoteToReady(listing.id);
+    await media.create({
+      listingId: listing.id,
+      brokerId: contentListingFixture().brokerId,
+      kind: "image",
+      storagePath: "foto.jpg",
+      mime: "image/jpeg",
+      bytes: 1,
+      checksum: "sha-foto",
+      sortOrder: 0,
+      isCover: true,
+    });
+    // Sin `lock`: lo arma `testDeps` sobre estos repositorios. Si usara otros, el aviso no existiría.
+    const app = createApp(
+      testDeps({
+        listings,
+        media,
+        contentRuns: repos.contentRuns,
+        contents: repos.contents,
+        queue,
+      }),
+    );
+
+    const response = await app.request(`/listings/${listing.id}/content-runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(202);
+    expect(await repos.contentRuns.latest(listing.id)).toMatchObject({ status: "queued" });
+  });
+});
+
+describe("POST /listings/:id/content-runs · publicaciones pendientes (F3)", () => {
+  it("con una publicación aprobada que no salió es 409 PUBLICATION_PENDING, también sin textos", async () => {
+    const t = await setup();
+    await t.prepare();
+    const [instagram] = (await t.content()).contents;
+    await t.approvedPublication(instagram?.id ?? "");
+
+    for (const body of [{}, { texts: false }, { replaceEdits: true }]) {
+      const blocked = await t.request(body);
+      expect(blocked.status).toBe(409);
+      expect((await errorOf(blocked)).error.code).toBe("PUBLICATION_PENDING");
+    }
+    expect(t.queue.jobs).toEqual([]);
+  });
+});
 
 describe("POST /listings/:id/content-runs", () => {
   it("crea la corrida (202) y encola; un segundo pedido devuelve la misma con reused", async () => {
@@ -334,6 +432,17 @@ describe("PATCH /contents/:id", () => {
     const stale = await t.json("PATCH", `/contents/${old?.id}`, { body: "x" });
     expect(stale.status).toBe(409);
     expect((await errorOf(stale)).error.code).toBe("CONTENT_NOT_CURRENT");
+  });
+
+  it("un texto con una publicación activa es 409 CONTENT_LOCKED (ADR-0014)", async () => {
+    const t = await setup();
+    await t.prepare();
+    const [instagram] = (await t.content()).contents;
+    await t.approvedPublication(instagram?.id ?? "");
+
+    const locked = await t.json("PATCH", `/contents/${instagram?.id}`, { body: "x" });
+    expect(locked.status).toBe(409);
+    expect((await errorOf(locked)).error.code).toBe("CONTENT_LOCKED");
   });
 
   it("hashtags en Portal o un título en Instagram son 400", async () => {

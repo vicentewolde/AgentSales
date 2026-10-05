@@ -30,8 +30,15 @@ function explained(error: unknown, ref: string): unknown {
   if (error.code === "CONTENT_EDITED") {
     return new CliError(
       "CONTENT_EDITED",
-      `${ref} tiene textos editados a mano: preparar de nuevo los reemplazaría`,
+      `${ref} tiene textos editados a mano o aprobados: preparar de nuevo los reemplazaría`,
       `Usa --no-texts para rehacer solo las imágenes, o --replace-edits para reemplazar los textos`,
+    );
+  }
+  if (error.code === "PUBLICATION_PENDING") {
+    return new CliError(
+      "PUBLICATION_PENDING",
+      `${ref} tiene publicaciones aprobadas que no han salido: preparar de nuevo cambiaría lo aprobado`,
+      "Publícalas o descártalas antes de preparar de nuevo",
     );
   }
   if (error.code === "LISTING_NOT_READY") {
@@ -136,7 +143,7 @@ export function register(program: Command, ctx: CliContext): void {
     .argument("<propiedad>", "id_propiedad del Excel, o el id del aviso")
     .option("--broker <slug>", "corredor, si el id_propiedad está en más de uno")
     .option("--no-texts", "rehace solo las imágenes y el reel, sin tocar los textos")
-    .option("--replace-edits", "reemplaza también los textos editados a mano")
+    .option("--replace-edits", "reemplaza también los textos editados a mano o aprobados")
     .option("--no-wait", "imprime el id de la preparación y sale sin esperar")
     .action((ref: string, options: PrepareOptions) =>
       exitWith(() =>
