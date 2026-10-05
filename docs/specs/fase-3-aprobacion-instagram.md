@@ -248,12 +248,12 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 - **Archivos:** `packages/core/src/ports/{publication-repository.ts,listing-lock.ts}`, `packages/core/src/testing/*`, `packages/db/src/repositories/{publications.ts,media.ts,content-runs.ts,contents.ts,listings.ts}`, `packages/db/src/listing-lock.ts`
 - **Descripción:** `create` (nace con su evento), `transition` (condicional, con su evento y los campos del cambio: `attempts`, `dry_run`, `external_*`, `last_error`), `saveProgress`, `get`, `listByListing`, `listByStatus`, `listEvents`, `addEvent`. `createListingLock(db)` (§4.2), cuyo `fn` solo recibe repositorios de la transacción.
 - **Hecho cuando:**
-  - [ ] Una transición desde un estado que ya cambió da `INVALID_TRANSITION` sin escribir
-  - [ ] Fila y evento se escriben juntos o ninguno (rollback probado en PGlite)
-  - [ ] Una segunda activa del mismo formato da `PUBLICATION_CONFLICT`
-  - [ ] Una fila que no calza (también un `progress` que no calza con su plataforma) es `PUBLICATION_ROW_INVALID`; `saveProgress` valida con `PUBLICATION_PROGRESS_SCHEMAS` antes de escribir (no reintentable), y el contrato de repositorios de `01-arquitectura.md` lo dice
-  - [ ] Dentro del candado de Postgres, `arrange`, `upsertDerivative` y `markSucceeded` funcionan como savepoints (PGlite); rollback si `fn` falla
-  - [ ] El candado en memoria serializa dos `run` del mismo aviso (test)
+  - [x] Una transición desde un estado que ya cambió da `INVALID_TRANSITION` sin escribir
+  - [x] Fila y evento se escriben juntos o ninguno (rollback probado en PGlite)
+  - [x] Una segunda activa del mismo formato da `PUBLICATION_CONFLICT`
+  - [x] Una fila que no calza (también un `progress` que no calza con su plataforma) es `PUBLICATION_ROW_INVALID`; `saveProgress` valida con `PUBLICATION_PROGRESS_SCHEMAS` antes de escribir (no reintentable), y el contrato de repositorios de `01-arquitectura.md` lo dice
+  - [x] Dentro del candado de Postgres, `markSucceeded` funciona como savepoint (PGlite; `arrange` y `upsertDerivative` usan el mismo `db.transaction`); rollback si `fn` falla
+  - [x] El candado en memoria serializa dos `run` del mismo aviso (test)
 
 ### F3-T05 · Aprobación en core
 - **Depende de:** T03, T04
@@ -461,3 +461,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-05 | Desde F3-T02: `deriveKey` con sal fija (`agentsales/hkdf/v1`) y `KEY_PURPOSES`; el `state` lleva nonce y vencimiento en base64url (`<datos>.<firma>`); `loadEnv` rechaza las variables `META_*` con su nombre nuevo (en vez de ignorarlas) y valida `INSTAGRAM_REDIRECT_URI` como URL http(s); `doctor` avisa (sin error) si falta el par de Instagram |
 | 2026-10-05 | Desde F3-T03: la entidad `PlatformAccount` lleva `hasCredentials` (sin las credenciales); `getCredentials` de una cuenta desconectada es `ACCOUNT_NOT_CONNECTED`, y un cifrado válido con otra forma es `CREDENTIALS_UNREADABLE`; el puerto `SecretBox` pasa a core (Biome no deja que `packages/db` importe `@agentsales/config`, ni siquiera un tipo) y `createSecretBox` lo implementa; `updateToken` mezcla `meta` en la base y no cambia el estado; `markStatus` y `disconnect` devuelven la cuenta; un corredor que no existe es `BROKER_NOT_FOUND` (la FK) |
 | 2026-10-05 | Revisión de F3-T03 (#56): `markStatus` pasa a `changeStatus(id, from, to)` condicional y `updateToken` solo escribe con la cuenta `connected` (un refresco no revive una cuenta desconectada); la AAD lleva el corredor (`platform:broker_id:external_account_id`); credenciales vacías son `CREDENTIALS_INVALID` y `meta` se guarda como JSON en los dos repositorios (`normalizeAccountMeta`); una cuenta conectada por corredor y plataforma (T13 desconecta la anterior); esquema de `meta` de Instagram en T13; el doble en memoria puede simular un cifrado ilegible (`corruptCredentials`) |
+| 2026-10-05 | Desde F3-T04: `saveProgress` fuera de `publishing` es `PUBLICATION_NOT_PUBLISHING`, y un `payload` de evento que no es objeto, `PUBLICATION_EVENT_INVALID`; `LockedRepositories` suma `brokers` (T05 arma el carrusel con la marca); `created_at` de publicaciones y eventos con `clock_timestamp()` para el orden dentro del candado; el candado en memoria no deshace nada (el rollback se prueba en PGlite) |

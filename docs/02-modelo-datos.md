@@ -184,7 +184,7 @@ Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `medi
 | payload | jsonb | Sin secretos |
 | created_at | timestamptz | |
 
-Índice `(publication_id, created_at)` para la bitácora de una publicación. Entidad en core: `publicationEventSchema`.
+Índice `(publication_id, created_at)` para la bitácora de una publicación. `created_at` de los eventos y de las publicaciones se escribe con `clock_timestamp()` (no `now()`), para que el orden se mantenga dentro de una transacción. Entidad en core: `publicationEventSchema`.
 
 ### import_runs — historial de cargas
 | Columna | Tipo | Notas |

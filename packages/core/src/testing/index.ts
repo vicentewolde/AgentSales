@@ -58,6 +58,11 @@ export {
   type InMemoryPlatformAccountRepositoryOptions,
 } from "./platform-accounts.js";
 export {
+  createInMemoryListingLock,
+  createInMemoryPublicationRepository,
+  type InMemoryPublicationRepository,
+} from "./publications.js";
+export {
   createInMemoryHtmlRenderer,
   createInMemorySlideTemplates,
   type HtmlRenderCall,

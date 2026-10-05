@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PLATFORMS, type Platform, PUBLICATION_FORMATS, PUBLICATION_STATUSES } from "./enums.js";
+import { AppError } from "./errors.js";
 
 /**
  * Lo que el publisher de Instagram ya creó en la plataforma (`publications.progress`, ADR-0014):
@@ -20,6 +21,37 @@ export type InstagramProgress = z.infer<typeof instagramProgressSchema>;
 export const PUBLICATION_PROGRESS_SCHEMAS = {
   instagram: instagramProgressSchema,
 } as const satisfies Readonly<Partial<Record<Platform, z.ZodType>>>;
+
+/**
+ * Valida el progreso antes de guardarlo (`PublicationRepository`): con el esquema de su plataforma,
+ * o `null` para borrarlo. `PUBLICATION_PROGRESS_INVALID` (no reintentable) si no calza: así un
+ * progreso mal formado nunca deja una publicación ilegible e imposible de reintentar.
+ */
+export function checkPublicationProgress(platform: Platform, progress: unknown): unknown {
+  if (progress === null) return null;
+  const schemas: Readonly<Partial<Record<Platform, z.ZodType>>> = PUBLICATION_PROGRESS_SCHEMAS;
+  const parsed = schemas[platform]?.safeParse(progress);
+  if (parsed === undefined || !parsed.success) {
+    throw new AppError(
+      "PUBLICATION_PROGRESS_INVALID",
+      `El progreso no calza con el de ${platform}`,
+      { details: { platform } },
+    );
+  }
+  return parsed.data;
+}
+
+/**
+ * `payload` de un evento tal como queda guardado (jsonb): un objeto JSON. `PUBLICATION_EVENT_INVALID`
+ * si no lo es. No revisa secretos: quien lo arma no los pone (spec F3 §4.3).
+ */
+export function normalizeEventPayload(payload: unknown): Record<string, unknown> {
+  const json: unknown = JSON.parse(JSON.stringify(payload ?? {}));
+  if (typeof json !== "object" || json === null || Array.isArray(json)) {
+    throw new AppError("PUBLICATION_EVENT_INVALID", "El detalle de un evento debe ser un objeto");
+  }
+  return json as Record<string, unknown>;
+}
 
 /** Motivo del último intento fallido (`publications.last_error`): legible y sin secretos. */
 export const publicationErrorSchema = z.object({
