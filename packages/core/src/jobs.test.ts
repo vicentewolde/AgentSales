@@ -23,4 +23,14 @@ describe("contrato de jobs", () => {
       false,
     );
   });
+
+  it("publication.publish lleva solo el id de la publicación, que debe ser un uuid", () => {
+    const id = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
+    expect(JOB_PAYLOADS["publication.publish"].parse({ publicationId: id, dryRun: true })).toEqual({
+      publicationId: id,
+    });
+    expect(
+      JOB_PAYLOADS["publication.publish"].safeParse({ publicationId: "publication-1" }).success,
+    ).toBe(false);
+  });
 });

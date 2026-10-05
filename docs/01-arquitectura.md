@@ -143,6 +143,10 @@ CLI (approve) o panel (Aprobar)
 CLI (publish) o panel (Publicar)
   → publishListing (core, con el candado): abre las que falten, approved/failed → publishing
     (fija dry_run con PUBLISH_MODE) y, ya confirmado, encola publication.publish
+    (una sola: startPublication, que reencola una que ya está en publishing)
+CLI o panel: descartar (cancelPublication: approved/failed → cancelled) y marcar como
+  retirada (retirePublication: published → unpublished; en live con la confirmación de que
+  se borró a mano; la última en live devuelve el aviso de active a ready)
   → el worker corre publishPublication: solo si sigue en publishing
   → checkPublishInput() → publisher.publish()   (withDryRun si publication.dry_run)
     guardando el progreso (contenedores) antes del paso que publica

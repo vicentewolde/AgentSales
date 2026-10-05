@@ -282,6 +282,10 @@ export {
   approveContent,
 } from "./use-cases/approve-content.js";
 export {
+  type CancelPublicationDeps,
+  cancelPublication,
+} from "./use-cases/cancel-publication.js";
+export {
   type ChangeListingStatusDeps,
   changeListingStatus,
 } from "./use-cases/change-listing-status.js";
@@ -334,6 +338,15 @@ export {
   prepareContent,
 } from "./use-cases/prepare-content.js";
 export {
+  enqueuePublication,
+  type PublishListingDeps,
+  type PublishListingResult,
+  publishListing,
+  type StartPublicationDeps,
+  type StartPublicationResult,
+  startPublication,
+} from "./use-cases/publish-listing.js";
+export {
   enqueueContentRun,
   type RequestContentRunDeps,
   type RequestContentRunParams,
@@ -344,6 +357,11 @@ export {
   type RequestImportDeps,
   requestImport,
 } from "./use-cases/request-import.js";
+export {
+  type RetiredPublication,
+  type RetirePublicationDeps,
+  retirePublication,
+} from "./use-cases/retire-publication.js";
 export {
   type OpenedMedia,
   type RunImportDeps,

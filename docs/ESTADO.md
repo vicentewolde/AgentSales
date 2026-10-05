@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-05
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** F3-T09 · Instagram: publisher
-**Siguiente paso:** `/tarea F3-T10` · Publicar, descartar y retirar en core
+**Última tarea terminada:** F3-T10 · Publicar, descartar y retirar en core
+**Siguiente paso:** `/tarea F3-T11` · Intento de publicación en core
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -19,8 +19,8 @@
 | F3-T06 · Lo aprobado no cambia: edición y corridas con el candado | ✅ terminada | #59 |
 | F3-T07 · Puerto `Publisher` y `dry-run` | ✅ terminada | #60 |
 | F3-T08 · Instagram: cliente de la API y OAuth | ✅ terminada | #61 |
-| F3-T09 · Instagram: publisher | ✅ terminada | |
-| F3-T10 · Publicar, descartar y retirar en core | ⏳ pendiente | |
+| F3-T09 · Instagram: publisher | ✅ terminada | #62 |
+| F3-T10 · Publicar, descartar y retirar en core | ✅ terminada | |
 | F3-T11 · Intento de publicación en core | ⏳ pendiente | |
 | F3-T12 · Job `publication.publish` | ⏳ pendiente | |
 | F3-T13 · Conectar Instagram | ⏳ pendiente | |
@@ -69,6 +69,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-05: **F3-T10.** Publicar en core: el canal (`publishListing`: abre las que faltan, pasa `approved`/`failed` a `publishing` con el modo de la API y encola después del candado) o una (`startPublication`, que reencola una en `publishing`); descartar (`cancelPublication`) y marcar como retirada (`retirePublication`: en `live` exige la confirmación de que se borró a mano, y la última en `live` devuelve el aviso a `ready`). Job `publication.publish` en el contrato de core (la cola la crea el worker en T12).
 - 2026-10-05: **F3-T09.** Publisher de Instagram (`createInstagramPublisher`): revisión previa pura (`validateInstagramInput`: imágenes, reel, proporción, caption, hashtags y menciones), cupo, carrusel o imagen suelta y reel, sondeo con reloj inyectable y tope de 12 min por intento, progreso guardado antes de sondear y antes de `media_publish`, y retoma sin duplicar (`FINISHED` publica, `PUBLISHED` busca el medio del mismo formato y caption, un contenedor trabado o `EXPIRED`/`ERROR` se rehace, un pedido sin respuesta se reconoce antes de repetirlo). Cliente perezoso: validar y simular no lo construyen. Probado con un Instagram simulado con estado y reloj falso. macOS borró la caché de Playwright con el disco al 95 %: si fallan las pruebas de render con "No se encontró Chromium", reinstalarlo (`pnpm --filter @agentsales/media exec playwright install chromium`).
 - 2026-10-05: **F3-T08.** Paquete nuevo `packages/publishers` con el cliente de Instagram: OAuth (`createInstagramAuth`, puerto `InstagramAuth` de core: URL de permisos, canje del código sin el `#_`, token largo, refresco y `/me`), la Graph API (`createInstagramGraph`: contenedores, estado, `media_publish`, medio, últimos medios y cupo; token en la cabecera, versión fija, respuestas con o sin `data`, tope de 30 s y señal) y la tabla de errores `IG_*`. Probado solo con msw; ningún error lleva tokens, el secret ni el código. La revisión dejó decidido en el spec cómo T13 y T14 tratan la cuenta conectada con el token del panel (permisos y vencimiento desconocidos) y el refresco a pedido síncrono (seguimiento de ADR-0014).
 - 2026-10-05: **F3-T07.** Contrato `Publisher` en core, con `buildPublishInput` (caption y medios de `media_ids` con URLs firmadas de 1 h; revisa antes que el texto siga aprobado y que estén los medios), `checkPublishInput` (plataforma, formato y `validate`; `PUBLISH_INPUT_INVALID` con los motivos), `withDryRun` (valida y devuelve `dry-run:<id>`; nunca llama al publisher real) y `publishAttemptRecord` (lo enviado, sin URLs ni tokens, para la bitácora de cada intento, también en `live`). Publisher falso `createFakePublisher` para T10 a T12.
