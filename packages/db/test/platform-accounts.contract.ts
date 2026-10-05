@@ -75,7 +75,7 @@ export function platformAccountRepositoryContract(
     it("reconectar la misma cuenta actualiza la fila (mismo id) y la deja conectada", async () => {
       const first = connectedAccount(brokerId);
       const created = await repos.accounts.upsertConnected(first);
-      await repos.accounts.markStatus(created.id, "expired");
+      expect(await repos.accounts.changeStatus(created.id, "connected", "expired")).toBe(true);
 
       const again = await repos.accounts.upsertConnected({
         ...first,
@@ -95,6 +95,67 @@ export function platformAccountRepositoryContract(
       expect(await repos.accounts.getCredentials(created.id)).toEqual({
         accessToken: "IGAA-reconectada",
       });
+      expect(again.createdAt).toEqual(created.createdAt);
+      expect(again.updatedAt.getTime()).toBeGreaterThanOrEqual(created.updatedAt.getTime());
+      expect(
+        (await repos.accounts.listByBroker(brokerId)).filter(
+          (account) => account.externalAccountId === first.externalAccountId,
+        ),
+      ).toHaveLength(1);
+    });
+
+    it("reconectar una cuenta desconectada la deja conectada y con credenciales", async () => {
+      const input = connectedAccount(brokerId);
+      const created = await repos.accounts.upsertConnected(input);
+      await repos.accounts.disconnect(created.id);
+
+      const again = await repos.accounts.upsertConnected(input);
+
+      expect(again).toMatchObject({ id: created.id, status: "connected", hasCredentials: true });
+      expect(await repos.accounts.getCredentials(created.id)).toEqual(input.credentials);
+    });
+
+    it("la misma cuenta externa en otra plataforma es otra fila", async () => {
+      const input = connectedAccount(brokerId);
+      const instagram = await repos.accounts.upsertConnected(input);
+      const portal = await repos.accounts.upsertConnected({
+        ...input,
+        platform: "portal_inmobiliario",
+      });
+
+      expect(portal.id).not.toBe(instagram.id);
+    });
+
+    it("guarda meta como JSON: sin undefined y con las fechas como texto", async () => {
+      const account = await repos.accounts.upsertConnected(
+        connectedAccount(brokerId, {
+          meta: { at: new Date("2026-10-05T12:00:00Z"), nada: undefined, n: 1 },
+        }),
+      );
+
+      expect(account.meta).toEqual({ at: "2026-10-05T12:00:00.000Z", n: 1 });
+      expect((await repos.accounts.get(account.id))?.meta).toEqual(account.meta);
+    });
+
+    it("rechaza credenciales vacías o con otra forma (CREDENTIALS_INVALID), sin el valor en el error", async () => {
+      for (const credentials of [{ accessToken: "" }, { otra: "IGAA-secreto" }]) {
+        const error = await repos.accounts
+          .upsertConnected(
+            connectedAccount(brokerId, { credentials: credentials as { accessToken: string } }),
+          )
+          .catch((caught: unknown) => caught);
+        expect(error).toMatchObject({ code: "CREDENTIALS_INVALID", retriable: false });
+        expect(JSON.stringify(error, Object.getOwnPropertyNames(error as object))).not.toContain(
+          "IGAA-secreto",
+        );
+      }
+      const account = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+      await expect(
+        repos.accounts.updateToken(account.id, {
+          credentials: { accessToken: "" },
+          tokenExpiresAt: null,
+        }),
+      ).rejects.toMatchObject({ code: "CREDENTIALS_INVALID" });
     });
 
     it("la misma cuenta externa en otro corredor es otra fila", async () => {
@@ -125,9 +186,8 @@ export function platformAccountRepositoryContract(
       expect(all.indexOf(first.id)).toBeLessThan(all.indexOf(second.id));
     });
 
-    it("updateToken guarda el token nuevo y mezcla meta, sin cambiar el estado", async () => {
+    it("updateToken guarda el token nuevo y mezcla meta a un nivel, sin cambiar el estado", async () => {
       const account = await repos.accounts.upsertConnected(connectedAccount(brokerId));
-      await repos.accounts.markStatus(account.id, "error");
 
       const updated = await repos.accounts.updateToken(account.id, {
         credentials: { accessToken: "IGAA-refrescado" },
@@ -136,7 +196,7 @@ export function platformAccountRepositoryContract(
       });
 
       expect(updated).toMatchObject({
-        status: "error",
+        status: "connected",
         tokenExpiresAt: new Date("2027-02-01T00:00:00Z"),
         meta: {
           accountType: "MEDIA_CREATOR",
@@ -146,6 +206,46 @@ export function platformAccountRepositoryContract(
       });
       expect(await repos.accounts.getCredentials(account.id)).toEqual({
         accessToken: "IGAA-refrescado",
+      });
+      expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(account.updatedAt.getTime());
+
+      const again = await repos.accounts.updateToken(account.id, {
+        credentials: { accessToken: "IGAA-otra-vez" },
+        tokenExpiresAt: null,
+      });
+      expect(again).toMatchObject({ tokenExpiresAt: null, meta: updated.meta });
+    });
+
+    it("updateToken no revive una cuenta vencida ni desconectada (ACCOUNT_NOT_CONNECTED)", async () => {
+      const update = { credentials: { accessToken: "IGAA-tarde" }, tokenExpiresAt: null };
+      const expired = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+      await repos.accounts.changeStatus(expired.id, "connected", "expired");
+      const revoked = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+      await repos.accounts.disconnect(revoked.id);
+
+      for (const account of [expired, revoked]) {
+        await expect(repos.accounts.updateToken(account.id, update)).rejects.toMatchObject({
+          code: "ACCOUNT_NOT_CONNECTED",
+        });
+      }
+      expect(await repos.accounts.get(revoked.id)).toMatchObject({
+        status: "revoked",
+        hasCredentials: false,
+      });
+      expect(await repos.accounts.getCredentials(expired.id)).not.toEqual({
+        accessToken: "IGAA-tarde",
+      });
+    });
+
+    it("changeStatus es condicional: no cambia si la cuenta ya está en otro estado", async () => {
+      const account = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+
+      expect(await repos.accounts.changeStatus(account.id, "expired", "error")).toBe(false);
+      expect((await repos.accounts.get(account.id))?.status).toBe("connected");
+      expect(await repos.accounts.changeStatus(account.id, "connected", "error")).toBe(true);
+      expect(await repos.accounts.get(account.id)).toMatchObject({
+        status: "error",
+        hasCredentials: true,
       });
     });
 
@@ -166,7 +266,7 @@ export function platformAccountRepositoryContract(
       for (const action of [
         () => repos.accounts.getCredentials(id),
         () => repos.accounts.updateToken(id, { credentials, tokenExpiresAt: null }),
-        () => repos.accounts.markStatus(id, "expired"),
+        () => repos.accounts.changeStatus(id, "connected", "expired"),
         () => repos.accounts.disconnect(id),
       ]) {
         await expect(action()).rejects.toMatchObject({ code: "ACCOUNT_NOT_FOUND" });

@@ -154,7 +154,16 @@ export async function withDbErrors<T>(operation: () => Promise<T>): Promise<T> {
  * por `toDbError`: el resumen del driver conserva `code` y `constraint`.
  */
 export function isUniqueViolation(error: unknown, constraint: string): boolean {
-  if (sqlStateOf(error) !== "23505") return false;
+  return violates(error, "23505", constraint);
+}
+
+/** `true` si el error es una violación de la clave foránea `constraint` (SQLSTATE `23503`). */
+export function isForeignKeyViolation(error: unknown, constraint: string): boolean {
+  return violates(error, "23503", constraint);
+}
+
+function violates(error: unknown, sqlState: string, constraint: string): boolean {
+  if (sqlStateOf(error) !== sqlState) return false;
   for (const value of causeChain(error)) {
     if (typeof value === "object" && value !== null && "constraint" in value) {
       return value.constraint === constraint;

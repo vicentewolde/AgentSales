@@ -46,7 +46,7 @@ erDiagram
 | platform | enum `platform` | `instagram`, `portal_inmobiliario`, `fb_marketplace` (luego `yapo`, `tiktok`) |
 | external_account_id | text | ID en la plataforma (Instagram: el `user_id` de `/me`). No cambia en una fila: es parte del único y de la AAD del cifrado |
 | display_name | text | Lo que ve el operador (Instagram: `@usuario`) |
-| credentials_encrypted | text null | `{ accessToken }` cifrado con AES-256-GCM (`v1.<iv>.<cifrado>.<tag>`, AAD `platform:external_account_id`); `null` en una cuenta desconectada |
+| credentials_encrypted | text null | `{ accessToken }` cifrado con AES-256-GCM (`v1.<iv>.<cifrado>.<tag>`, AAD `platform:broker_id:external_account_id`); `null` en una cuenta desconectada |
 | token_expires_at | timestamptz null | |
 | status | enum `platform_account_status` | `connected`, `expired`, `revoked`, `error` |
 | meta | jsonb | Datos propios de la plataforma, sin secretos (Instagram: tipo de cuenta, permisos, `tokenRefreshedAt`) |

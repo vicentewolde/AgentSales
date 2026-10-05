@@ -84,6 +84,45 @@ describe("cuentas conectadas · cifrado en la base (PGlite)", () => {
     expect((await repos.accounts.getCredentials(first.id)).accessToken).toMatch(/^IGAA/);
   });
 
+  it("la misma cuenta externa en otro corredor no comparte cifrado (la AAD lleva el corredor)", async () => {
+    const otherBroker = (await repos.brokers.create(brokerData("cuentas-cifrado-otro"))).id;
+    const input = connectedAccount(brokerId);
+    const mine = await repos.accounts.upsertConnected(input);
+    const theirs = await repos.accounts.upsertConnected({ ...input, brokerId: otherBroker });
+    const stolen = (await rawRow(mine.id))?.credentialsEncrypted ?? null;
+    await repos.db
+      .update(platformAccounts)
+      .set({ credentialsEncrypted: stolen })
+      .where(eq(platformAccounts.id, theirs.id));
+
+    await expect(repos.accounts.getCredentials(theirs.id)).rejects.toMatchObject({
+      code: "CREDENTIALS_UNREADABLE",
+    });
+  });
+
+  it("desconectar deja la columna en null", async () => {
+    const account = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+    await repos.accounts.disconnect(account.id);
+
+    expect((await rawRow(account.id))?.credentialsEncrypted).toBeNull();
+  });
+
+  it("updateToken reemplaza una meta guardada que no es objeto, en vez de concatenarla", async () => {
+    const account = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+    await repos.db
+      .update(platformAccounts)
+      .set({ meta: ["corrupta"] })
+      .where(eq(platformAccounts.id, account.id));
+
+    const updated = await repos.accounts.updateToken(account.id, {
+      credentials: { accessToken: "IGAA-nuevo" },
+      tokenExpiresAt: null,
+      meta: { tokenRefreshedAt: "2026-10-05T12:00:00.000Z" },
+    });
+
+    expect(updated.meta).toEqual({ tokenRefreshedAt: "2026-10-05T12:00:00.000Z" });
+  });
+
   it("con otra APP_ENCRYPTION_KEY no se descifra: CREDENTIALS_UNREADABLE sin el token en el error", async () => {
     const input = connectedAccount(brokerId);
     const account = await repos.accounts.upsertConnected(input);
@@ -102,7 +141,7 @@ describe("cuentas conectadas · cifrado en la base (PGlite)", () => {
     const account = await repos.accounts.upsertConnected(connectedAccount(brokerId));
     const sealed = createSecretBox(APP_KEY).encrypt(
       JSON.stringify({ otra: "forma" }),
-      `instagram:${account.externalAccountId}`,
+      `instagram:${brokerId}:${account.externalAccountId}`,
     );
     await repos.db
       .update(platformAccounts)
@@ -125,5 +164,22 @@ describe("cuentas conectadas · cifrado en la base (PGlite)", () => {
       code: "PLATFORM_ACCOUNT_ROW_INVALID",
       retriable: false,
     });
+  });
+});
+
+describe("cuentas conectadas · doble en memoria", () => {
+  it("corruptCredentials simula un cifrado ilegible hasta la próxima reconexión", async () => {
+    const brokers = createInMemoryBrokerRepository();
+    const accounts = createInMemoryPlatformAccountRepository({ brokers });
+    const brokerId = (await brokers.create(brokerData("cuentas-doble"))).id;
+    const input = connectedAccount(brokerId);
+    const account = await accounts.upsertConnected(input);
+
+    accounts.corruptCredentials(account.id);
+    await expect(accounts.getCredentials(account.id)).rejects.toMatchObject({
+      code: "CREDENTIALS_UNREADABLE",
+    });
+    await accounts.upsertConnected(input);
+    expect(await accounts.getCredentials(account.id)).toEqual(input.credentials);
   });
 });

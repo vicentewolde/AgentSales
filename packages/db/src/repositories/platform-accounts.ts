@@ -1,6 +1,7 @@
 import {
   AppError,
-  type Platform,
+  checkCredentials,
+  normalizeAccountMeta,
   type PlatformAccount,
   type PlatformAccountRepository,
   type PlatformCredentials,
@@ -8,20 +9,22 @@ import {
   platformCredentialsSchema,
   type SecretBox,
 } from "@agentsales/core";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
-import { sqlStateOf, withDbErrors } from "../errors.js";
+import { isForeignKeyViolation, withDbErrors } from "../errors.js";
 import { platformAccounts } from "../schema.js";
 
 type Row = typeof platformAccounts.$inferSelect;
 
+const BROKER_FK = "platform_accounts_broker_id_brokers_id_fk";
+
 /**
- * Datos asociados del cifrado (AAD): atan las credenciales a su cuenta, así un cifrado copiado a
- * otra fila no se descifra. Se arma solo aquí. `external_account_id` no cambia en una fila (es parte
- * del único), así que la AAD tampoco.
+ * Datos asociados del cifrado (AAD): atan las credenciales a su fila, así un cifrado copiado a otra
+ * cuenta (también la misma cuenta externa en otro corredor) no se descifra. Se arma solo aquí.
+ * Corredor, plataforma y cuenta externa son el único de la tabla y no cambian en una fila.
  */
-const credentialsAad = (platform: Platform, externalAccountId: string) =>
-  `${platform}:${externalAccountId}`;
+const credentialsAad = (row: Pick<Row, "brokerId" | "platform" | "externalAccountId">) =>
+  `${row.platform}:${row.brokerId}:${row.externalAccountId}`;
 
 /** Fila → entidad, sin credenciales. Una fila que no calza es `PLATFORM_ACCOUNT_ROW_INVALID`. */
 function toAccount(row: Row): PlatformAccount {
@@ -53,32 +56,31 @@ function toAccount(row: Row): PlatformAccount {
 const notFound = (id: string) =>
   new AppError("ACCOUNT_NOT_FOUND", `No existe la cuenta ${id}`, { details: { accountId: id } });
 
+const notConnected = (id: string) =>
+  new AppError("ACCOUNT_NOT_CONNECTED", "La cuenta no tiene credenciales: conéctala", {
+    details: { accountId: id },
+  });
+
+const unreadable = (id: string) =>
+  new AppError(
+    "CREDENTIALS_UNREADABLE",
+    "No se pudieron leer las credenciales guardadas: reconecta la cuenta",
+    { details: { reason: "shape", accountId: id } },
+  );
+
 /**
  * `PlatformAccountRepository` sobre Drizzle (spec F3 §4.6). Cifra las credenciales con el
- * `SecretBox` que inyecta la app (`createSecretBox(APP_ENCRYPTION_KEY)`) y nunca las devuelve fuera
- * de `getCredentials`.
+ * `SecretBox` que inyecta la app (`createSecretBox(APP_ENCRYPTION_KEY)` de config) y nunca las
+ * devuelve fuera de `getCredentials`.
  */
 export function createPlatformAccountRepository(
   db: SchemaDatabase,
   { secretBox }: { secretBox: SecretBox },
 ): PlatformAccountRepository {
-  const seal = (platform: Platform, externalAccountId: string, credentials: PlatformCredentials) =>
-    secretBox.encrypt(
-      JSON.stringify(platformCredentialsSchema.parse(credentials)),
-      credentialsAad(platform, externalAccountId),
-    );
-
-  /** Actualiza una fila; `ACCOUNT_NOT_FOUND` si no existe. */
-  const update = (id: string, changes: Partial<typeof platformAccounts.$inferInsert>) =>
-    withDbErrors(async () => {
-      const [row] = await db
-        .update(platformAccounts)
-        .set(changes)
-        .where(eq(platformAccounts.id, id))
-        .returning();
-      if (row === undefined) throw notFound(id);
-      return toAccount(row);
-    });
+  const seal = (
+    owner: Pick<Row, "brokerId" | "platform" | "externalAccountId">,
+    credentials: PlatformCredentials,
+  ) => secretBox.encrypt(JSON.stringify(credentials), credentialsAad(owner));
 
   const findRow = (id: string) =>
     withDbErrors(async () => {
@@ -88,19 +90,17 @@ export function createPlatformAccountRepository(
 
   return {
     async upsertConnected(account) {
+      const credentials = checkCredentials(account.credentials);
+      const meta = normalizeAccountMeta(account.meta);
       const values = {
         brokerId: account.brokerId,
         platform: account.platform,
         externalAccountId: account.externalAccountId,
         displayName: account.displayName,
-        credentialsEncrypted: seal(
-          account.platform,
-          account.externalAccountId,
-          account.credentials,
-        ),
+        credentialsEncrypted: seal(account, credentials),
         tokenExpiresAt: account.tokenExpiresAt,
         status: "connected" as const,
-        meta: account.meta,
+        meta,
       };
       try {
         return await withDbErrors(async () => {
@@ -127,8 +127,7 @@ export function createPlatformAccountRepository(
           return toAccount(row);
         });
       } catch (error) {
-        // FK de `broker_id`: el corredor no existe.
-        if (sqlStateOf(error) === "23503") {
+        if (isForeignKeyViolation(error, BROKER_FK)) {
           throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${account.brokerId}`, {
             details: { brokerId: account.brokerId },
           });
@@ -171,51 +170,71 @@ export function createPlatformAccountRepository(
     async getCredentials(id) {
       const row = await findRow(id);
       if (row === undefined) throw notFound(id);
-      if (row.credentialsEncrypted === null) {
-        throw new AppError("ACCOUNT_NOT_CONNECTED", "La cuenta no tiene credenciales: conéctala", {
-          details: { accountId: id },
-        });
-      }
-      const plaintext = secretBox.decrypt(
-        row.credentialsEncrypted,
-        credentialsAad(row.platform, row.externalAccountId),
-      );
+      if (row.credentialsEncrypted === null) throw notConnected(id);
+      const plaintext = secretBox.decrypt(row.credentialsEncrypted, credentialsAad(row));
       let parsed: unknown;
       try {
         parsed = JSON.parse(plaintext);
       } catch {
-        parsed = undefined;
+        throw unreadable(id);
       }
       const credentials = platformCredentialsSchema.safeParse(parsed);
-      if (!credentials.success) {
-        throw new AppError(
-          "CREDENTIALS_UNREADABLE",
-          "No se pudieron leer las credenciales guardadas: reconecta la cuenta",
-          { details: { reason: "shape", accountId: id } },
-        );
-      }
+      if (!credentials.success) throw unreadable(id);
       return credentials.data;
     },
 
     async updateToken(id, { credentials, tokenExpiresAt, meta }) {
+      const checked = checkCredentials(credentials);
+      const patch = normalizeAccountMeta(meta);
       const row = await findRow(id);
       if (row === undefined) throw notFound(id);
-      return update(id, {
-        credentialsEncrypted: seal(row.platform, row.externalAccountId, credentials),
-        tokenExpiresAt,
-        // Mezcla en la base (`||` de jsonb): no pisa lo que otro escribió entre la lectura y esto.
-        ...(meta === undefined
-          ? {}
-          : { meta: sql`${platformAccounts.meta} || ${JSON.stringify(meta)}::jsonb` }),
-      });
+      const [updated] = await withDbErrors(() =>
+        // Condicional: un refresco que se cruza con una desconexión o un vencimiento no revive la
+        // cuenta. La mezcla de `meta` es en la base (`||`), a un nivel, y reemplaza una `meta`
+        // guardada que no sea objeto.
+        db
+          .update(platformAccounts)
+          .set({
+            credentialsEncrypted: seal(row, checked),
+            tokenExpiresAt,
+            meta: sql`(CASE WHEN jsonb_typeof(${platformAccounts.meta}) = 'object' THEN ${platformAccounts.meta} ELSE '{}'::jsonb END) || ${JSON.stringify(patch)}::jsonb`,
+          })
+          .where(
+            and(
+              eq(platformAccounts.id, id),
+              eq(platformAccounts.status, "connected"),
+              isNotNull(platformAccounts.credentialsEncrypted),
+            ),
+          )
+          .returning(),
+      );
+      if (updated === undefined) throw notConnected(id);
+      return toAccount(updated);
     },
 
-    markStatus(id, status) {
-      return update(id, { status });
+    async changeStatus(id, from, to) {
+      const changed = await withDbErrors(() =>
+        db
+          .update(platformAccounts)
+          .set({ status: to })
+          .where(and(eq(platformAccounts.id, id), eq(platformAccounts.status, from)))
+          .returning({ id: platformAccounts.id }),
+      );
+      if (changed.length > 0) return true;
+      if ((await findRow(id)) === undefined) throw notFound(id);
+      return false;
     },
 
-    disconnect(id) {
-      return update(id, { status: "revoked", credentialsEncrypted: null });
+    async disconnect(id) {
+      const [row] = await withDbErrors(() =>
+        db
+          .update(platformAccounts)
+          .set({ status: "revoked", credentialsEncrypted: null })
+          .where(eq(platformAccounts.id, id))
+          .returning(),
+      );
+      if (row === undefined) throw notFound(id);
+      return toAccount(row);
     },
   };
 }

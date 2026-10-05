@@ -122,6 +122,8 @@ export {
   reelWarnings,
 } from "./media-checks.js";
 export {
+  checkCredentials,
+  normalizeAccountMeta,
   type PlatformAccount,
   type PlatformCredentials,
   platformAccountSchema,
@@ -184,6 +186,7 @@ export {
 export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
 export type {
   ConnectedAccount,
+  PlatformAccountProblemStatus,
   PlatformAccountRepository,
   TokenUpdate,
 } from "./ports/platform-account-repository.js";

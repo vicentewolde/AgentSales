@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PLATFORM_ACCOUNT_STATUSES, PLATFORMS } from "./enums.js";
+import { AppError } from "./errors.js";
 
 /**
  * Cuenta conectada de un corredor en una plataforma (`platform_accounts`, spec F3 §4.6). La entidad
@@ -31,3 +32,27 @@ export type PlatformAccount = z.infer<typeof platformAccountSchema>;
  */
 export const platformCredentialsSchema = z.object({ accessToken: z.string().min(1) });
 export type PlatformCredentials = z.infer<typeof platformCredentialsSchema>;
+
+/**
+ * Valida las credenciales antes de guardarlas: `CREDENTIALS_INVALID` (no reintentable) si no
+ * calzan. El error no lleva el valor recibido.
+ */
+export function checkCredentials(credentials: unknown): PlatformCredentials {
+  const parsed = platformCredentialsSchema.safeParse(credentials);
+  if (!parsed.success) {
+    throw new AppError("CREDENTIALS_INVALID", "Las credenciales de la cuenta no son válidas");
+  }
+  return parsed.data;
+}
+
+/**
+ * `meta` tal como queda guardada (jsonb): un objeto JSON, sin `undefined` ni fechas como `Date`.
+ * La usan los dos repositorios para comportarse igual. `ACCOUNT_META_INVALID` si no es un objeto.
+ */
+export function normalizeAccountMeta(meta: unknown): Record<string, unknown> {
+  const json: unknown = JSON.parse(JSON.stringify(meta ?? {}));
+  if (typeof json !== "object" || json === null || Array.isArray(json)) {
+    throw new AppError("ACCOUNT_META_INVALID", "Los datos de la cuenta deben ser un objeto");
+  }
+  return json as Record<string, unknown>;
+}
