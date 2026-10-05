@@ -168,7 +168,7 @@ Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `medi
 | external_id, external_url | text null | |
 | attempts | int default 0 | |
 | last_error | jsonb null | `{ code, message, retriable }` |
-| dry_run | boolean | Modo del último intento (lo fija la API al pasar a `publishing` y lo respeta el worker, spec F3 D11) |
+| dry_run | boolean | Modo del último intento: nace en `true` (el valor seguro) y la API lo fija al pasar a `publishing` (obligatorio); el worker lo respeta (spec F3 D11) |
 | progress | jsonb null | Lo que el publisher ya creó en la plataforma, para retomar sin publicar dos veces. Instagram: `{ attemptStartedAt, childIds, containerId }` (`instagramProgressSchema`); se valida con el esquema de su plataforma |
 
 Único parcial `publications_one_active_per_format`: una publicación activa por `(listing_id, platform_account_id, format)`, con `WHERE status NOT IN ('unpublished', 'cancelled')` (los estados de `ACTIVE_PUBLICATION_STATUSES` en `core`): el carrusel y el reel de un aviso conviven. Índice `(listing_id)`. La migración `0006` (F3-T01) recreó el tipo `publication_status` con el SQL ajustado a mano (primero el índice viejo, después el tipo) y falla a propósito si la tabla tiene filas.
@@ -184,7 +184,7 @@ Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `medi
 | payload | jsonb | Sin secretos |
 | created_at | timestamptz | |
 
-Índice `(publication_id, created_at)` para la bitácora de una publicación. Entidad en core: `publicationEventSchema`.
+Índice `(publication_id, created_at)` para la bitácora de una publicación. `created_at` de los eventos y de las publicaciones se escribe con `clock_timestamp()` (no `now()`), para que el orden se mantenga dentro de una transacción. Entidad en core: `publicationEventSchema`.
 
 ### import_runs — historial de cargas
 | Columna | Tipo | Notas |

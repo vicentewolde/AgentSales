@@ -275,10 +275,20 @@ describe("createClaudeCliProvider: aislamiento (spec F2 §4.5)", () => {
 
 describe("createClaudeCliProvider: tope de tiempo y corte", () => {
   const pidsFile = () => join(workDir, `pids-${Math.random().toString(36).slice(2)}.json`);
-  /** Espera (con tope) a que el ejecutable falso escriba sus PIDs: arrancar Node tarda. */
+  /**
+   * Espera (con tope) a que el ejecutable falso escriba sus PIDs: arrancar Node tarda. El archivo
+   * puede existir antes de tener todo el JSON (se crea y después se escribe): un JSON incompleto
+   * cuenta como "todavía no".
+   */
   const pidsOf = async (file: string): Promise<number[]> => {
     for (let attempt = 0; attempt < 200; attempt++) {
-      if (existsSync(file)) return JSON.parse(await readFile(file, "utf8"));
+      if (existsSync(file)) {
+        try {
+          return JSON.parse(await readFile(file, "utf8"));
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error;
+        }
+      }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     throw new Error(`el ejecutable falso nunca escribió ${file}`);

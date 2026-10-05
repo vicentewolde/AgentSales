@@ -14,6 +14,7 @@ export {
   withDbErrors,
 } from "./errors.js";
 export { type Pingable, type PingOptions, pingDatabase } from "./health.js";
+export { createListingLock } from "./listing-lock.js";
 export { MIGRATIONS_FOLDER } from "./migrations.js";
 export { createBrokerRepository } from "./repositories/brokers.js";
 export { createContentRunRepository } from "./repositories/content-runs.js";
@@ -23,6 +24,7 @@ export { createImportRunRepository } from "./repositories/import-runs.js";
 export { createListingRepository } from "./repositories/listings.js";
 export { createMediaRepository } from "./repositories/media.js";
 export { createPlatformAccountRepository } from "./repositories/platform-accounts.js";
+export { createPublicationRepository } from "./repositories/publications.js";
 export * as schema from "./schema.js";
 export {
   REAL_ESTATE_CATEGORY,

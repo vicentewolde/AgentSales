@@ -149,6 +149,7 @@ export type {
   NewImportRun,
 } from "./ports/import-run-repository.js";
 export type { EnqueueOptions, JobQueue } from "./ports/job-queue.js";
+export type { ListingLock, LockedRepositories } from "./ports/listing-lock.js";
 export type {
   ListingImportData,
   ListingImportRecord,
@@ -190,6 +191,13 @@ export type {
   PlatformAccountRepository,
   TokenUpdate,
 } from "./ports/platform-account-repository.js";
+export type {
+  NewPublication,
+  NewPublicationEvent,
+  PublicationChanges,
+  PublicationEventInput,
+  PublicationRepository,
+} from "./ports/publication-repository.js";
 export type { SecretBox } from "./ports/secret-box.js";
 export {
   type CoverData,
@@ -211,8 +219,10 @@ export {
 } from "./ports/slide-templates.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
+  checkPublicationProgress,
   type InstagramProgress,
   instagramProgressSchema,
+  normalizeEventPayload,
   PUBLICATION_ACTORS,
   PUBLICATION_EVENT_TYPES,
   PUBLICATION_PROGRESS_SCHEMAS,
@@ -224,6 +234,7 @@ export {
   publicationErrorSchema,
   publicationEventSchema,
   publicationSchema,
+  requirePublicationMode,
 } from "./publication.js";
 export {
   ACTIVE_PUBLICATION_STATUSES,

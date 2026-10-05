@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-05
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** F3-T03 · Cuentas conectadas: puerto y repositorio
-**Siguiente paso:** `/tarea F3-T04` · Publicaciones: repositorio, bitácora y candado por aviso
+**Última tarea terminada:** F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso
+**Siguiente paso:** `/tarea F3-T05` · Aprobación en core
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -14,7 +14,7 @@
 | F3-T01 · Esquema de publicaciones (migración `0006`) | ✅ terminada | #54 |
 | F3-T02 · Cifrado, firma y variables de Instagram | ✅ terminada | #55 |
 | F3-T03 · Cuentas conectadas: puerto y repositorio | ✅ terminada | #56 |
-| F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso | ⏳ pendiente | |
+| F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso | ✅ terminada | #57 |
 | F3-T05 · Aprobación en core | ⏳ pendiente | |
 | F3-T06 · Lo aprobado no cambia: edición y corridas con el candado | ⏳ pendiente | |
 | F3-T07 · Puerto `Publisher` y `dry-run` | ⏳ pendiente | |
@@ -68,6 +68,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-05: **F3-T04.** Repositorio de publicaciones (cada transición condicional, con su evento en la misma transacción; progreso validado al escribir) y candado por aviso (`createListingLock`: bloquea la fila del aviso y entrega repositorios de la transacción). Rollback y savepoints probados en PGlite. La bitácora usa `clock_timestamp()` para no desordenarse dentro de una transacción.
 - 2026-10-05: **F3-T03.** Repositorio de cuentas conectadas: cifra el token al guardar (AAD `platform:external_account_id`) y lo descifra solo en `getCredentials`; la entidad lleva `hasCredentials`. Suite de contrato compartida entre el doble en memoria y PGlite, más pruebas del cifrado en la fila cruda, con otra clave y con un cifrado copiado de otra cuenta.
 - 2026-10-05: **F3-T02.** Cifrado de credenciales (AES-256-GCM) y firma del `state` del OAuth (HMAC), con claves derivadas por HKDF-SHA256 desde `APP_ENCRYPTION_KEY` (deuda de F0 pagada). Variables `INSTAGRAM_*`; una `META_*` que quede en `.env` es un error con su nombre nuevo. `doctor` avisa si falta el par de Instagram. El redactor oculta el `code` del OAuth y los secretos de formularios.
 - 2026-10-05: **F3-T01.** Publicaciones sin `draft` ni `pending_approval`, con `format` (`post`, `reel`) y `progress`; único parcial por aviso, cuenta y formato. La migración `0006` se ajustó a mano (drizzle-kit borraba el índice después de recrear el tipo) y falla si la tabla tiene filas. Neon tenía `publications` vacía; la `0006` se aplica después del merge.
