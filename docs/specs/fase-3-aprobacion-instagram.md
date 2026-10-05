@@ -75,11 +75,11 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 - **Descartar** (`cancelPublication`): `approved` o `failed` → `cancelled`. El texto sigue aprobado.
 - **Marcar como retirada** (`retirePublication`): `published` → `unpublished`. En `live`, el operador confirma que la borró a mano en Instagram (el panel y la CLI lo piden); en `dry-run` no hay nada que borrar.
 - **Estado del aviso:** la primera publicación `published` en `live` pasa el aviso de `ready` a `active`; al retirar la última publicación `live` publicada, vuelve a `ready`. Las de `dry-run` no cambian el aviso. Los dos cambios son del sistema (no de la tabla manual) y condicionales, con `ListingRepository.changeStatus(id, from, to)`: si el aviso ya cambió, no se toca.
-- **Bitácora:** cada intento deja un evento `publish_attempt` con el modo, el número de intento, el resultado y, en `dry-run`, lo que se habría enviado: formato, caption completo, medios (rutas de R2, tipo, tamaño y medidas) y la cuenta (`@usuario`). Nunca URLs firmadas ni tokens.
+- **Bitácora:** cada intento deja un único evento `publish_attempt` con el modo, el número de intento, el resultado y lo que se envió (en `dry-run`, lo que se habría enviado; `publishAttemptRecord`, T07): formato, caption completo, medios (rutas de R2, tipo, tamaño y medidas) y la cuenta (`@usuario`). Va en los dos modos, porque después de publicada una corrida nueva puede reemplazar los medios (ADR-0014). Nunca URLs firmadas ni tokens.
 
 ### 4.4 Job `publication.publish`
 - **Cola:** `exclusive` por `singletonKey = publicationId`, 2 reintentos con backoff desde 60 s, expira a los 15 min (el sondeo de un reel dura hasta 5 min). Reemplaza la política objetivo de `01-arquitectura.md` (3 reintentos y ~5 min). Datos: `{ publicationId }`. Al arrancar, el worker reencola **todas** las publicaciones en `publishing` (idempotente por `singletonKey`), como las corridas en cola.
-- **Handler** (`publishPublication`, core): recarga la publicación y sigue solo si está en `publishing` (si no, termina sin hacer nada: idempotente). Carga la cuenta (`connected` o `ACCOUNT_NOT_CONNECTED`, no reintentable) y sus credenciales, arma el `PublishInput` (caption con `instagramCaption`, medios de `media_ids` con URLs firmadas recién creadas por 1 h) y llama al publisher, envuelto en `withDryRun` según `publication.dryRun` (§4.3).
+- **Handler** (`publishPublication`, core): recarga la publicación y sigue solo si está en `publishing` (si no, termina sin hacer nada: idempotente). Carga la cuenta (`connected` o `ACCOUNT_NOT_CONNECTED`, no reintentable) y sus credenciales, arma el `PublishInput` (`buildPublishInput`: caption con `instagramCaption`, medios de `media_ids` con URLs firmadas recién creadas por 1 h) y llama al publisher, envuelto en `withDryRun` según `publication.dryRun` (§4.3). En `live`, `checkPublishInput` corre antes de `publish` (plataforma, formato y requisitos, antes de crear contenedores); en `dry-run` la corre `withDryRun`. Las credenciales se descifran en los dos modos (un `CREDENTIALS_UNREADABLE` también detiene una simulación). El paso del aviso a `active` lo decide `publication.dryRun`, no `result.simulated` (los dos coinciden; un test lo comprueba).
 - **Progreso sin duplicar (`publications.progress`):** el publisher guarda los ids de los contenedores **antes** de `media_publish` (`saveProgress`). Un reintento empieza por el progreso guardado:
   - contenedor `FINISHED` → `media_publish` de ese mismo contenedor;
   - `PUBLISHED` → busca el medio entre los últimos de la cuenta (mismo caption, publicado después del inicio del intento) y lo da por publicado; si no lo encuentra, `failed` con `IG_PUBLISH_OUTCOME_UNKNOWN` (no reintentable: "revisa Instagram antes de reintentar");
@@ -178,7 +178,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 | `POST /publications/:id/publish`, `/cancel` y `/retire` | Publicar o reintentar una, descartarla y marcarla como retirada (`retire` exige `{ removedByHand: true }` si es `live`) |
 | `GET /publications/:id/events` | Bitácora, sin secretos |
 
-Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_LOCKED`, `CONTENT_NOT_APPROVED`, `PUBLICATION_PENDING`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH` y `ACCOUNT_NOT_CONNECTED` (409); `PUBLICATION_NOT_FOUND` y `ACCOUNT_NOT_FOUND` (404); `OAUTH_STATE_INVALID` (400); `CREDENTIALS_UNREADABLE` (500); los `IG_*` y `PUBLISH_MODE_MISMATCH` solo viajan dentro de `last_error`.
+Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_LOCKED`, `CONTENT_NOT_APPROVED`, `PUBLICATION_PENDING`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH` y `ACCOUNT_NOT_CONNECTED` (409); `PUBLICATION_NOT_FOUND` y `ACCOUNT_NOT_FOUND` (404); `OAUTH_STATE_INVALID` (400); `CREDENTIALS_UNREADABLE` (500); los `IG_*`, `PUBLISH_MODE_MISMATCH`, `PUBLISH_INPUT_INVALID`, `PUBLICATION_MEDIA_MISSING` y `PUBLICATION_CONTENT_MISMATCH` (T07) solo viajan dentro de `last_error` (también `CONTENT_NOT_APPROVED`, cuando sale de un intento).
 
 ### 4.9 CLI y panel
 - **CLI:**
@@ -277,12 +277,12 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T07 · Puerto `Publisher` y `dry-run`
 - **Depende de:** T01
-- **Archivos:** `packages/core/src/ports/publisher.ts`, `packages/core/src/publish/{dry-run.ts,input.ts}`, `packages/core/src/testing/fake-publisher.ts`
-- **Descripción:** contrato (§4.5), `buildPublishInput` (caption y medios desde `media_ids`), `withDryRun` (valida, devuelve lo que se habría enviado y un resultado simulado `dry-run:<publicationId>`), publisher falso configurable para los tests.
+- **Archivos:** `packages/core/src/ports/publisher.ts`, `packages/core/src/publish/{dry-run.ts,input.ts}`, `packages/core/src/testing/fake-publisher.ts`, sus tests y `docs/01-arquitectura.md` (contrato)
+- **Descripción:** contrato (§4.5), `buildPublishInput` (caption y medios desde `media_ids`), `withDryRun` (valida y devuelve un resultado simulado `dry-run:<publicationId>`), `publishAttemptRecord` (lo que se envió o se habría enviado, para la bitácora), publisher falso configurable para los tests.
 - **Hecho cuando:**
-  - [ ] `withDryRun` nunca llama a `publish` del publisher envuelto (test con uno que falla si se le llama)
-  - [ ] Un `PublishInput` inválido no se "publica" en `dry-run`: devuelve los motivos
-  - [ ] El registro de `dry-run` no lleva URLs firmadas ni tokens
+  - [x] `withDryRun` nunca llama a `publish` del publisher envuelto (test con uno que falla si se le llama)
+  - [x] Un `PublishInput` inválido no se "publica" en `dry-run`: devuelve los motivos
+  - [x] El registro de `dry-run` no lleva URLs firmadas ni tokens
 
 ### F3-T08 · Instagram: cliente de la API y OAuth
 - **Depende de:** T02
@@ -314,7 +314,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 ### F3-T11 · Intento de publicación en core
 - **Depende de:** T10
 - **Archivos:** `packages/core/src/use-cases/publish-publication.ts`
-- **Descripción:** el handler de §4.4 (sin el worker): carga, modo por `publication.dryRun` (`PUBLISH_MODE_MISMATCH`), URLs firmadas, progreso, errores, cuenta `expired` ante 190 y el aviso a `active`.
+- **Descripción:** el handler de §4.4 (sin el worker): carga, modo por `publication.dryRun` (`PUBLISH_MODE_MISMATCH`), URLs firmadas, `checkPublishInput` en `live`, progreso, errores, cuenta `expired` ante 190 y el aviso a `active`. Un único `publish_attempt` por intento, al final, con `publishAttemptRecord` en los dos modos.
 - **Hecho cuando:**
   - [ ] Con el publisher falso: `published` con enlace; error reintentable sigue en `publishing` y en el último intento `failed`; no reintentable `failed`
   - [ ] Un job sobre una publicación que no está en `publishing` no hace nada
@@ -467,3 +467,5 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-05 | Revisión de F3-T05 (#58): todas las revisiones (también el plan de publicaciones: `planPublications`) van antes de la primera escritura, así un rechazo no deja nada a medias aunque el candado en memoria no deshaga; aprobar y quitar la aprobación devuelven además `publications` (todas las del canal, leídas en el candado) y `skipped` informa solo formatos ocupados por **otro** texto; `beforeContentLock` y `lockedCurrentContent` en `content/locked-content.ts` (los usará `editContent` en T06); un aviso que no existe es `LISTING_NOT_FOUND` en los dos; tests que fallan si `fn` usa algo de fuera del candado |
 | 2026-10-05 | Desde F3-T06: `requestContentRun` ya no tiene el camino `CONTENT_RUN_CONFLICT` → `findActive` (con el candado no hay carrera); `CONTENT_LOCKED` y `PUBLICATION_PENDING` son 409 en la API desde esta tarea, porque ya salen por `PATCH /contents/:id` y `POST /listings/:id/content-runs`; la API compone `createListingLock` (con el `SecretBox`) y sus dobles el de memoria con los mismos repositorios; el worker no cambia (no pide corridas ni edita) |
 | 2026-10-05 | Revisión de F3-T06 (#59): el test de la ventana de F2 fuerza los dos órdenes (con una puerta dentro del candado) y comprueba que sin candado la edición se pierde; `CONTENT_LOCKED` dice qué hacer según la publicación (pendiente o publicada); la confirmación de regenerar en el panel y la CLI cubre los textos aprobados; la CLI explica `PUBLICATION_PENDING`; un solo `SecretBox` en `server.ts` para el candado y (T13) las cuentas; test de que el candado de `testDeps` usa los repositorios de la app |
+| 2026-10-05 | Desde F3-T07: `PublishInput` lleva `publicationId`, `title` (siempre `null` en Instagram) y medios con su ruta de R2, URL firmada, tipo, tamaño, medidas y duración (`buildPublishInput`, que antes de firmar revisa el texto: `PUBLICATION_CONTENT_MISMATCH`, `CONTENT_NOT_APPROVED`, y los medios: `PUBLICATION_MEDIA_MISSING`); `checkPublishInput` revisa plataforma, formato y `validate` y da `PUBLISH_INPUT_INVALID` con los motivos (un rechazo sin motivos también); `withDryRun` valida y simula; publisher falso `createFakePublisher` |
+| 2026-10-05 | Revisión de F3-T07 (#60): lo enviado se registra en **cada** intento, también en `live` (`publishAttemptRecord`, como pide ADR-0014), en un único `publish_attempt` al final (§4.3 y T11), y `withDryRun` ya no tiene `onRecord`; `checkPublishInput` en `live` antes de `publish`, credenciales descifradas en los dos modos y el aviso a `active` por `publication.dryRun` (§4.4) |
