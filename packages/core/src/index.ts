@@ -121,6 +121,14 @@ export {
   type ReelWarningCode,
   reelWarnings,
 } from "./media-checks.js";
+export {
+  checkCredentials,
+  normalizeAccountMeta,
+  type PlatformAccount,
+  type PlatformCredentials,
+  platformAccountSchema,
+  platformCredentialsSchema,
+} from "./platform-account.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export {
   type ContentChanges,
@@ -176,6 +184,13 @@ export {
   type NewMedia,
 } from "./ports/media-repository.js";
 export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
+export type {
+  ConnectedAccount,
+  PlatformAccountProblemStatus,
+  PlatformAccountRepository,
+  TokenUpdate,
+} from "./ports/platform-account-repository.js";
+export type { SecretBox } from "./ports/secret-box.js";
 export {
   type CoverData,
   type HtmlRenderer,

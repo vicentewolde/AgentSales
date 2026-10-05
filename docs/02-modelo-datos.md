@@ -44,14 +44,14 @@ erDiagram
 | id | uuid PK | |
 | broker_id | uuid FK | |
 | platform | enum `platform` | `instagram`, `portal_inmobiliario`, `fb_marketplace` (luego `yapo`, `tiktok`) |
-| external_account_id | text | ID en la plataforma |
-| display_name | text | |
-| credentials_encrypted | text null | JSON de tokens cifrado |
+| external_account_id | text | ID en la plataforma (Instagram: el `user_id` de `/me`). No cambia en una fila: es parte del único y de la AAD del cifrado |
+| display_name | text | Lo que ve el operador (Instagram: `@usuario`) |
+| credentials_encrypted | text null | `{ accessToken }` cifrado con AES-256-GCM (`v1.<iv>.<cifrado>.<tag>`, AAD `platform:broker_id:external_account_id`); `null` en una cuenta desconectada |
 | token_expires_at | timestamptz null | |
 | status | enum `platform_account_status` | `connected`, `expired`, `revoked`, `error` |
-| meta | jsonb | Datos propios de la plataforma |
+| meta | jsonb | Datos propios de la plataforma, sin secretos (Instagram: tipo de cuenta, permisos, `tokenRefreshedAt`) |
 
-Único: `(broker_id, platform, external_account_id)`.
+Único: `(broker_id, platform, external_account_id)`. Entidad en core: `platformAccountSchema` (sin credenciales, con `hasCredentials`); las credenciales salen descifradas solo por `PlatformAccountRepository.getCredentials` (F3-T03).
 
 ### field_definitions — campos configurables
 | Columna | Tipo | Notas |

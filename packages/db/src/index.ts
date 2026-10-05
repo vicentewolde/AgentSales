@@ -22,6 +22,7 @@ export { createFieldDefinitionRepository } from "./repositories/field-definition
 export { createImportRunRepository } from "./repositories/import-runs.js";
 export { createListingRepository } from "./repositories/listings.js";
 export { createMediaRepository } from "./repositories/media.js";
+export { createPlatformAccountRepository } from "./repositories/platform-accounts.js";
 export * as schema from "./schema.js";
 export {
   REAL_ESTATE_CATEGORY,

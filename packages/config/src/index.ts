@@ -4,7 +4,6 @@ export {
   createStateSigner,
   deriveKey,
   KEY_PURPOSES,
-  type SecretBox,
   type SignedState,
   type StateSigner,
 } from "./crypto.js";
