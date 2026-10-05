@@ -1,0 +1,23 @@
+{
+  "name": "@agentsales/publishers",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@agentsales/source": "./src/index.ts",
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@agentsales/core": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "msw": "3.0.0"
+  }
+}

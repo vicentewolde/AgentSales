@@ -153,6 +153,12 @@ export type {
   ImportRunRepository,
   NewImportRun,
 } from "./ports/import-run-repository.js";
+export type {
+  InstagramAuth,
+  InstagramCodeExchange,
+  InstagramProfile,
+  InstagramToken,
+} from "./ports/instagram-auth.js";
 export type { EnqueueOptions, JobQueue } from "./ports/job-queue.js";
 export type { ListingLock, LockedRepositories } from "./ports/listing-lock.js";
 export type {

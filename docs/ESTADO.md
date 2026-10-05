@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-05
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** F3-T07 · Puerto `Publisher` y `dry-run`
-**Siguiente paso:** `/tarea F3-T08` · Instagram: cliente de la API y OAuth
+**Última tarea terminada:** F3-T08 · Instagram: cliente de la API y OAuth
+**Siguiente paso:** `/tarea F3-T09` · Instagram: publisher
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -18,7 +18,7 @@
 | F3-T05 · Aprobación en core | ✅ terminada | #58 |
 | F3-T06 · Lo aprobado no cambia: edición y corridas con el candado | ✅ terminada | #59 |
 | F3-T07 · Puerto `Publisher` y `dry-run` | ✅ terminada | #60 |
-| F3-T08 · Instagram: cliente de la API y OAuth | ⏳ pendiente | |
+| F3-T08 · Instagram: cliente de la API y OAuth | ✅ terminada | |
 | F3-T09 · Instagram: publisher | ⏳ pendiente | |
 | F3-T10 · Publicar, descartar y retirar en core | ⏳ pendiente | |
 | F3-T11 · Intento de publicación en core | ⏳ pendiente | |
@@ -68,6 +68,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-05: **F3-T08.** Paquete nuevo `packages/publishers` con el cliente de Instagram: OAuth (`createInstagramAuth`, puerto `InstagramAuth` de core: URL de permisos, canje del código sin el `#_`, token largo, refresco y `/me`), la Graph API (`createInstagramGraph`: contenedores, estado, `media_publish`, medio, últimos medios y cupo; token en la cabecera, versión fija, respuestas con o sin `data`, tope de 30 s y señal) y la tabla de errores `IG_*`. Probado solo con msw; ningún error lleva tokens, el secret ni el código.
 - 2026-10-05: **F3-T07.** Contrato `Publisher` en core, con `buildPublishInput` (caption y medios de `media_ids` con URLs firmadas de 1 h; revisa antes que el texto siga aprobado y que estén los medios), `checkPublishInput` (plataforma, formato y `validate`; `PUBLISH_INPUT_INVALID` con los motivos), `withDryRun` (valida y devuelve `dry-run:<id>`; nunca llama al publisher real) y `publishAttemptRecord` (lo enviado, sin URLs ni tokens, para la bitácora de cada intento, también en `live`). Publisher falso `createFakePublisher` para T10 a T12.
 - 2026-10-05: **F3-T06.** Editar y pedir una corrida corren dentro del candado por aviso (la ventana de edición de F2 se cerró, con un test de concurrencia); un texto con publicación activa no se edita (`CONTENT_LOCKED`) y no se prepara de nuevo con publicaciones pendientes (`PUBLICATION_PENDING`); el job se encola después de confirmar. La API compone el candado.
 - 2026-10-05: **F3-T05.** Aprobar y quitar la aprobación en core, dentro del candado: el texto pasa a `approved` y nacen sus publicaciones (carrusel y reel) en la cuenta conectada, con sus medios fijos; un formato con una publicación activa se salta y se informa.

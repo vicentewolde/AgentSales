@@ -127,7 +127,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
   | `IG_UNAVAILABLE` | 5xx, red, 1, 2, 2207001, 2207032, 2207053, 2207006, 2207020 | Sí (contenedores nuevos) |
   | `IG_CONTAINER_TIMEOUT` | sondeo agotado | Sí |
   | `IG_PUBLISH_OUTCOME_UNKNOWN` | contenedor publicado sin medio encontrado | No |
-  2207008 y 2207027 no son errores: se sigue sondeando. Los mensajes son en español y sin datos del aviso.
+  2207008 y 2207027 no son errores: se sigue sondeando (el cliente los entrega como `IG_MEDIA_NOT_READY`, reintentable, y el publisher sigue esperando; nunca llegan a `last_error`). Los mensajes son en español y sin datos del aviso. Además (T08): lo que no calza con la tabla es `IG_REQUEST_REJECTED` (no reintentable, con el código de Meta); sin red o pasados 30 s, `IG_UNAVAILABLE` (reintentable); un corte por la señal, `IG_ABORTED` (reintentable); y una respuesta con otra forma, `IG_UNEXPECTED_RESPONSE` (no reintentable). Ningún error lleva el token, la URL ni el mensaje de Meta.
 - **No se envía `is_ai_generated`** (D6): las fotos y el video son reales; la IA solo redacta frases del caption.
 
 ### 4.6 Cuentas, OAuth y tokens
@@ -286,12 +286,12 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T08 · Instagram: cliente de la API y OAuth
 - **Depende de:** T02
-- **Archivos:** `packages/publishers/` (nuevo: `package.json`, `src/instagram/{graph.ts,auth.ts,errors.ts,constants.ts}`), `packages/core/src/ports/instagram-auth.ts`, `docs/05-convenciones.md`
+- **Archivos:** `packages/publishers/` (nuevo: `package.json`, `src/instagram/{graph.ts,auth.ts,errors.ts,constants.ts}`, `test/instagram-server.ts`), `packages/core/src/ports/instagram-auth.ts`, `docs/05-convenciones.md`, `biome.json` y `tsconfig.json` (el paquete nuevo)
 - **Descripción:** cliente de `graph.instagram.com` (cabecera `Bearer`, versión fija, parsers tolerantes, `AbortSignal`), clasificación de errores (§4.5), y el puerto `InstagramAuth` de core: `authorizeUrl`, `exchangeCode` (corto → largo), `refresh`, `me`.
 - **Hecho cuando:**
-  - [ ] Tests con msw de cada llamada, con y sin la envoltura `data`
-  - [ ] Cada fila de la tabla de errores de §4.5 con su código y si se reintenta
-  - [ ] El `#_` del código se quita; el secret y los tokens nunca aparecen en errores ni logs (test)
+  - [x] Tests con msw de cada llamada, con y sin la envoltura `data`
+  - [x] Cada fila de la tabla de errores de §4.5 con su código y si se reintenta
+  - [x] El `#_` del código se quita; el secret y los tokens nunca aparecen en errores ni logs (test)
 
 ### F3-T09 · Instagram: publisher
 - **Depende de:** T07, T08
@@ -469,3 +469,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-05 | Revisión de F3-T06 (#59): el test de la ventana de F2 fuerza los dos órdenes (con una puerta dentro del candado) y comprueba que sin candado la edición se pierde; `CONTENT_LOCKED` dice qué hacer según la publicación (pendiente o publicada); la confirmación de regenerar en el panel y la CLI cubre los textos aprobados; la CLI explica `PUBLICATION_PENDING`; un solo `SecretBox` en `server.ts` para el candado y (T13) las cuentas; test de que el candado de `testDeps` usa los repositorios de la app |
 | 2026-10-05 | Desde F3-T07: `PublishInput` lleva `publicationId`, `title` (siempre `null` en Instagram) y medios con su ruta de R2, URL firmada, tipo, tamaño, medidas y duración (`buildPublishInput`, que antes de firmar revisa el texto: `PUBLICATION_CONTENT_MISMATCH`, `CONTENT_NOT_APPROVED`, y los medios: `PUBLICATION_MEDIA_MISSING`); `checkPublishInput` revisa plataforma, formato y `validate` y da `PUBLISH_INPUT_INVALID` con los motivos (un rechazo sin motivos también); `withDryRun` valida y simula; publisher falso `createFakePublisher` |
 | 2026-10-05 | Revisión de F3-T07 (#60): lo enviado se registra en **cada** intento, también en `live` (`publishAttemptRecord`, como pide ADR-0014), en un único `publish_attempt` al final (§4.3 y T11), y `withDryRun` ya no tiene `onRecord`; `checkPublishInput` en `live` antes de `publish`, credenciales descifradas en los dos modos y el aviso a `active` por `publication.dryRun` (§4.4) |
+| 2026-10-05 | Desde F3-T08: el cliente de la Graph API trae todas las llamadas que usará T09 (`me`, contenedores, estado, `media_publish`, medio, últimos medios y cupo), con tope de 30 s por llamada; el canje del token largo y el refresco mandan el token y el secret en la URL, como los documenta Meta (las demás llamadas usan `Bearer`; se prueba en la demo, nota §8), y esa URL nunca sale en un error; un 400 del canje del código (vencido o usado) es `IG_AUTH_INVALID`; códigos nuevos `IG_MEDIA_NOT_READY`, `IG_REQUEST_REJECTED`, `IG_ABORTED` e `IG_UNEXPECTED_RESPONSE` (§4.5) |

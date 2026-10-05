@@ -35,6 +35,9 @@
       "path": "./packages/templates"
     },
     {
+      "path": "./packages/publishers"
+    },
+    {
       "path": "./apps/api"
     },
     {

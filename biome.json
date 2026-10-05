@@ -122,6 +122,7 @@
         "packages/llm/src/**",
         "packages/media/src/**",
         "packages/templates/src/**",
+        "packages/publishers/src/**",
         "!packages/*/src/scripts/**",
         "!**/*.test.ts",
         "!**/*.test.tsx"
@@ -144,7 +145,8 @@
                   "@agentsales/llm": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
                   "@agentsales/media": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
                   "@agentsales/media/tools": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
-                  "@agentsales/templates": "Los adaptadores no dependen entre sí (docs/05-convenciones.md)."
+                  "@agentsales/templates": "Los adaptadores no dependen entre sí (docs/05-convenciones.md).",
+                  "@agentsales/publishers": "Los adaptadores no dependen entre sí (docs/05-convenciones.md)."
                 }
               }
             }

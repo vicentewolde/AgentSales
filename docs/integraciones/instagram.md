@@ -360,7 +360,7 @@ Orden sugerido, de menor a mayor riesgo; las primeras no publican nada:
 1. ~~Guardar `http://localhost:8787/oauth/instagram/callback` en "OAuth redirect URIs"~~ **Resuelto el 2026-10-05: el panel lo rechaza** (§3.6). Queda probar que el token de Generate token sirve para `/me`, publicar y refrescar.
 2. ~~Confirmar que `META_APP_ID` es el Instagram app ID~~ **Hecho el 2026-10-05:** las variables se llaman `INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET` y el operador confirmó el identificador de Instagram (sección 2.1).
 3. Canje del código: forma de la respuesta (con o sin `data`), y si `user_id` coincide con el `user_id` de `/me`.
-4. Refresco: token con más de 24 h, y si el token de **Generate token** también se refresca.
+4. Refresco: token con más de 24 h, y si el token de **Generate token** también se refresca. El código (F3-T08) manda el token y el secret del canje largo y del refresco en la URL, como la doc; probar si esas rutas aceptan la cabecera `Bearer` (el resto de las llamadas ya la usa).
 5. `GET /me`, `GET /<IG_ID>/content_publishing_limit` en `graph.instagram.com` (¿responde? ¿`quota_total` 50 o 100?).
 6. Versión de API: ¿`graph.instagram.com` acepta `v25.0`, `v26.0` y la omisión?
 7. Cabeceras `X-App-Usage` y `X-Business-Use-Case-Usage` en las respuestas.
