@@ -260,10 +260,10 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 - **Archivos:** `packages/core/src/use-cases/{approve-content.ts,unapprove-content.ts,open-publications.ts}`, `packages/core/src/ports/content-repository.ts` (cambio de estado condicional del texto), `packages/db/src/repositories/contents.ts`, `packages/core/src/testing/*`
 - **Descripción:** aprobar, quitar la aprobación y abrir publicaciones (§4.2), dentro de `ListingLock`. Lo que no está en `LockedRepositories` (los campos configurables que pide la revisión editorial) se lee **antes** de `run`.
 - **Hecho cuando:**
-  - [ ] Aprobar con cuenta conectada crea `post` y `reel` (con video) con `content_id` y `media_ids` fijos; sin cuenta, solo aprueba
-  - [ ] Aprobar un texto nuevo con una publicación `published` del mismo formato salta ese formato y lo informa (el texto queda aprobado)
-  - [ ] Cada rechazo de §4.2 con su código (no vigente, corrida activa, errores, sin medios, aviso no listo)
-  - [ ] Quitar la aprobación cancela las pendientes y deja `edited`; con una en `publishing`, `PUBLICATION_IN_PROGRESS`
+  - [x] Aprobar con cuenta conectada crea `post` y `reel` (con video) con `content_id` y `media_ids` fijos; sin cuenta, solo aprueba
+  - [x] Aprobar un texto nuevo con una publicación `published` del mismo formato salta ese formato y lo informa (el texto queda aprobado)
+  - [x] Cada rechazo de §4.2 con su código (no vigente, corrida activa, errores, sin medios, aviso no listo)
+  - [x] Quitar la aprobación cancela las pendientes y deja `edited`; con una en `publishing`, `PUBLICATION_IN_PROGRESS`
 
 ### F3-T06 · Lo aprobado no cambia: edición y corridas con el candado
 - **Depende de:** T05
@@ -463,3 +463,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-05 | Revisión de F3-T03 (#56): `markStatus` pasa a `changeStatus(id, from, to)` condicional y `updateToken` solo escribe con la cuenta `connected` (un refresco no revive una cuenta desconectada); la AAD lleva el corredor (`platform:broker_id:external_account_id`); credenciales vacías son `CREDENTIALS_INVALID` y `meta` se guarda como JSON en los dos repositorios (`normalizeAccountMeta`); una cuenta conectada por corredor y plataforma (T13 desconecta la anterior); esquema de `meta` de Instagram en T13; el doble en memoria puede simular un cifrado ilegible (`corruptCredentials`) |
 | 2026-10-05 | Desde F3-T04: `saveProgress` fuera de `publishing` es `PUBLICATION_NOT_PUBLISHING`, y un `payload` de evento que no es objeto, `PUBLICATION_EVENT_INVALID`; `LockedRepositories` suma `brokers` (T05 arma el carrusel con la marca); `created_at` de publicaciones y eventos con `clock_timestamp()` para el orden dentro del candado; el candado en memoria no deshace nada (el rollback se prueba en PGlite) |
 | 2026-10-05 | Revisión de F3-T04 (#57): la publicación nace en `dry_run = true` (sin pasarlo) y pasar a `publishing` exige fijar el modo (`PUBLICATION_MODE_REQUIRED`); una FK inexistente al crear es `PUBLICATION_REFERENCE_INVALID`; los dos adaptadores revisan los datos antes que el estado; `updated_at` con `clock_timestamp()`; fila y evento juntos o ninguno probado con un trigger que hace fallar el evento; savepoints de `arrange`, `upsertDerivative` y `markSucceeded` dentro del candado; T05 lee los campos configurables antes del candado |
+| 2026-10-05 | Desde F3-T05: `openPublications` solo usa cuentas `connected`; aprobar un texto ya aprobado es idempotente (abre lo que falte); quitar la aprobación de un texto que no está aprobado es `CONTENT_NOT_APPROVED`, y cancela también las `scheduled` y `awaiting_manual_confirm` de ese texto (todo lo que la máquina deja descartar); `ContentCheckDeps.fieldDefinitions` pide solo `list` |
