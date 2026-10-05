@@ -26,9 +26,21 @@ describe("redactText", () => {
     );
   });
 
-  it("no confunde otros parámetros que terminan en code", () => {
+  it("no confunde otros parámetros que terminan en code, ni code en un mensaje", () => {
     expect(redactText("https://x.test/e?error_code=190&error_subcode=463")).toBe(
       "https://x.test/e?error_code=190&error_subcode=463",
+    );
+    expect(redactText("status code=500 retry; Error code=ECONNRESET")).toBe(
+      "status code=500 retry; Error code=ECONNRESET",
+    );
+  });
+
+  it("oculta el code en un fragmento y los valores sensibles de un JSON", () => {
+    expect(redactText("https://x.test/cb#code=AQB&state=s")).toBe(
+      `https://x.test/cb#code=${REDACTED}&state=s`,
+    );
+    expect(redactText('{"access_token": "IGAA\\"x", "user_id": 9, "client_secret":"s"}')).toBe(
+      `{"access_token": "${REDACTED}", "user_id": 9, "client_secret":"${REDACTED}"}`,
     );
   });
 

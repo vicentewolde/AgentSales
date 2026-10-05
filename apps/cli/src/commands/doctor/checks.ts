@@ -63,8 +63,8 @@ export function checkEnv(result: EnvResult): CheckItem {
 }
 
 /**
- * El par de la app de Instagram (spec F3 §4.6): sin él no se conecta ni se refresca la cuenta.
- * Es una advertencia, no un error: lo demás funciona. Nunca muestra los valores. `null` si el `.env`
+ * El par de la app de Instagram (spec F3 §4.6): lo necesita la conexión con el botón (OAuth, F7).
+ * Conectar con el token del panel y refrescarlo no lo usan (D4), así que es una advertencia. Nunca muestra los valores. `null` si el `.env`
  * no es válido (ya lo informa `checkEnv`).
  */
 export function checkInstagram(result: EnvResult): CheckItem | null {
@@ -82,7 +82,7 @@ export function checkInstagram(result: EnvResult): CheckItem | null {
   return {
     name: "Instagram",
     level: "warn",
-    detail: `falta ${missing.join(" y ")}: no se podrá conectar ni refrescar la cuenta`,
+    detail: `falta ${missing.join(" y ")}: la conexión con el botón (OAuth) no funcionará; con el token del panel no hace falta`,
     hint: "Copia el identificador y la clave de la app de Instagram (docs/integraciones/instagram.md §2.1)",
   };
 }

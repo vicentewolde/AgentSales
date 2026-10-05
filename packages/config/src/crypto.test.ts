@@ -33,12 +33,23 @@ describe("deriveKey (HKDF-SHA256)", () => {
   });
 });
 
+/** Cambia el primer byte de una parte (`1` IV, `2` cifrado, `3` tag) de `v1.<iv>.<cifrado>.<tag>`. */
+function flipByte(sealed: string, index: number): string {
+  const parts = sealed.split(".");
+  const bytes = Buffer.from(parts[index] ?? "", "base64url");
+  bytes[0] = (bytes[0] ?? 0) ^ 1;
+  parts[index] = bytes.toString("base64url");
+  return parts.join(".");
+}
+
 describe("createSecretBox (AES-256-GCM)", () => {
   const box = createSecretBox(APP_KEY);
   const token = JSON.stringify({ accessToken: "IGAA-token-de-prueba" });
 
-  it("ida y vuelta con la misma AAD", () => {
+  it("ida y vuelta con la misma AAD, también con un texto vacío o con tildes y emojis", () => {
     expect(box.decrypt(box.encrypt(token, AAD), AAD)).toBe(token);
+    expect(box.decrypt(box.encrypt("", AAD), AAD)).toBe("");
+    expect(box.decrypt(box.encrypt("Ñuñoa 🏢", AAD), AAD)).toBe("Ñuñoa 🏢");
   });
 
   it("el cifrado no contiene el texto, y dos cifrados del mismo texto difieren (IV aleatorio)", () => {
@@ -53,13 +64,22 @@ describe("createSecretBox (AES-256-GCM)", () => {
   it.each([
     ["otra AAD", (sealed: string) => [sealed, "instagram:otra-cuenta"] as const],
     ["otra clave", (sealed: string) => [sealed, AAD, "z".repeat(32)] as const],
+    ["un byte cambiado del IV", (sealed: string) => [flipByte(sealed, 1), AAD] as const],
+    ["un byte cambiado del cifrado", (sealed: string) => [flipByte(sealed, 2), AAD] as const],
+    ["un byte cambiado del tag", (sealed: string) => [flipByte(sealed, 3), AAD] as const],
     [
-      "un byte cambiado",
+      "el tag truncado",
       (sealed: string) => {
         const parts = sealed.split(".");
-        const ciphertext = Buffer.from(parts[2] ?? "", "base64url");
-        ciphertext[0] = (ciphertext[0] ?? 0) ^ 1;
-        parts[2] = ciphertext.toString("base64url");
+        parts[3] = (parts[3] ?? "").slice(0, 16);
+        return [parts.join("."), AAD] as const;
+      },
+    ],
+    [
+      "un carácter fuera de base64url",
+      (sealed: string) => {
+        const parts = sealed.split(".");
+        parts[2] = `${parts[2] ?? ""}!`;
         return [parts.join("."), AAD] as const;
       },
     ],
@@ -102,6 +122,12 @@ describe("createStateSigner (HMAC-SHA256)", () => {
     expect(state.nonce).toMatch(/^[\w-]{20,}$/);
   });
 
+  it("rechaza un vencimiento que no es un entero positivo", () => {
+    for (const ttlSeconds of [0, -1, 1.5, Number.NaN]) {
+      expect(() => signer.sign({ brokerId: "b1" }, { ttlSeconds, now })).toThrow(RangeError);
+    }
+  });
+
   it("dos firmas de los mismos datos difieren (nonce)", () => {
     expect(signer.sign({ brokerId: "b1" }, { ttlSeconds: 600, now })).not.toBe(
       signer.sign({ brokerId: "b1" }, { ttlSeconds: 600, now }),
@@ -121,7 +147,15 @@ describe("createStateSigner (HMAC-SHA256)", () => {
       },
       now,
     ],
-    ["con la firma alterada", (token: string) => `${token.slice(0, -2)}AA`, now],
+    [
+      "con la firma alterada",
+      (token: string) => {
+        const [payload, signature = ""] = token.split(".");
+        const flipped = signature.startsWith("A") ? "B" : "A";
+        return `${payload}.${flipped}${signature.slice(1)}`;
+      },
+      now,
+    ],
     [
       "de otra clave",
       () => createStateSigner("z".repeat(32)).sign({}, { ttlSeconds: 600, now }),

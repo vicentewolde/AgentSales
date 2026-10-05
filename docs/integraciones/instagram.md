@@ -50,7 +50,7 @@ Instrucción paso a paso para el operador (no pegues el secret en el chat):
 2. En el menú izquierdo abre **Instagram > API setup with Instagram login** (o **Use cases > Customize > API setup with Instagram login** en el panel nuevo).
 3. Baja al paso **3. Set up Instagram business login** y pulsa **Business login settings**.
 4. Ahí aparecen **Instagram app ID**, **Instagram app secret** (botón "Show") y la lista **OAuth redirect URIs** (también el **Embed URL**, que trae `client_id`, `redirect_uri` y `scope` ya armados).
-5. Abre el `.env` en tu editor y compara: `META_APP_ID` debe ser **igual al Instagram app ID**, y `META_APP_SECRET` igual al Instagram app secret (compara los primeros y los últimos 4 caracteres, sin copiarlo a ninguna parte).
+5. Abre el `.env` en tu editor y compara: `INSTAGRAM_APP_ID` (antes `META_APP_ID`) debe ser **igual al Instagram app ID**, y `INSTAGRAM_APP_SECRET` igual al Instagram app secret (compara los primeros y los últimos 4 caracteres, sin copiarlo a ninguna parte).
 6. Compara con **Settings > Basic** (App ID y App secret de la app de Facebook). Si lo que tienes en `.env` coincide con **ese** par, es el equivocado: el OAuth de Instagram fallará (la comunidad reporta "Invalid platform app" o "Invalid client_id").
 7. Confirma que el App ID de `.env` es el del paso 4 en el panel; si no, corrige el `.env`.
 8. Prueba barata sin tocar tokens: abre en el navegador `https://www.instagram.com/oauth/authorize?client_id=<ID>&redirect_uri=<URI>&response_type=code&scope=instagram_business_basic` con tu ID. Si muestra la pantalla de permisos, el ID es válido; si muestra error de app o de URI, no.

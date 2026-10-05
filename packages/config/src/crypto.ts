@@ -27,6 +27,16 @@ export function deriveKey(secret: string, info: string): Buffer {
   return Buffer.from(hkdfSync("sha256", secret, HKDF_SALT, info, KEY_BYTES));
 }
 
+/**
+ * base64url estricto: solo su alfabeto y en forma canónica (`Buffer.from` ignoraría caracteres
+ * inválidos y aceptaría variantes del último carácter). `null` si no lo es.
+ */
+function decodeBase64url(text: string): Buffer | null {
+  if (!/^[\w-]*$/.test(text)) return null;
+  const bytes = Buffer.from(text, "base64url");
+  return bytes.toString("base64url") === text ? bytes : null;
+}
+
 const FORMAT_VERSION = "v1";
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
@@ -66,8 +76,8 @@ export function createSecretBox(appEncryptionKey: string): SecretBox {
     decrypt(sealed, aad) {
       const parts = sealed.split(".");
       if (parts.length !== 4 || parts[0] !== FORMAT_VERSION) throw unreadable("format");
-      const [iv, ciphertext, tag] = parts.slice(1).map((part) => Buffer.from(part, "base64url"));
-      if (iv?.length !== IV_BYTES || tag?.length !== TAG_BYTES || ciphertext === undefined) {
+      const [iv, ciphertext, tag] = parts.slice(1).map(decodeBase64url);
+      if (iv?.length !== IV_BYTES || tag?.length !== TAG_BYTES || !ciphertext) {
         throw unreadable("format");
       }
       try {
@@ -83,8 +93,14 @@ export function createSecretBox(appEncryptionKey: string): SecretBox {
   };
 }
 
-/** Datos que viajan firmados en el `state` del OAuth (sin secretos: van en la URL de Instagram). */
-export type SignedState = Readonly<Record<string, string | number | boolean>>;
+/**
+ * Datos que viajan firmados en el `state` del OAuth (sin secretos: van en la URL de Instagram).
+ * `nonce` y `exp` los pone el firmador.
+ */
+export type SignedState = Readonly<Record<string, string | number | boolean>> & {
+  readonly nonce?: never;
+  readonly exp?: never;
+};
 
 /**
  * Firma y verifica el `state` del OAuth con HMAC-SHA256 (spec F3 §4.6). El token lleva los datos,
@@ -94,7 +110,10 @@ export type SignedState = Readonly<Record<string, string | number | boolean>>;
 export interface StateSigner {
   sign(data: SignedState, options: { ttlSeconds: number; now?: Date }): string;
   /** Lanza `OAUTH_STATE_INVALID` si la firma no calza, el formato es otro o ya venció. */
-  verify(token: string, options?: { now?: Date }): SignedState & { nonce: string; exp: number };
+  verify(
+    token: string,
+    options?: { now?: Date },
+  ): Readonly<Record<string, string | number | boolean>> & { nonce: string; exp: number };
 }
 
 const invalidState = (reason: string) =>
@@ -107,6 +126,9 @@ export function createStateSigner(appEncryptionKey: string): StateSigner {
   const mac = (payload: string) => createHmac("sha256", key).update(payload).digest();
   return {
     sign(data, { ttlSeconds, now = new Date() }) {
+      if (!Number.isInteger(ttlSeconds) || ttlSeconds <= 0) {
+        throw new RangeError("ttlSeconds debe ser un entero mayor que 0");
+      }
       const exp = Math.floor(now.getTime() / 1000) + ttlSeconds;
       const nonce = randomBytes(16).toString("base64url");
       const payload = Buffer.from(JSON.stringify({ ...data, nonce, exp }), "utf8").toString(
@@ -120,8 +142,8 @@ export function createStateSigner(appEncryptionKey: string): StateSigner {
         throw invalidState("format");
       }
       const expected = mac(payload);
-      const given = Buffer.from(signature, "base64url");
-      if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+      const given = decodeBase64url(signature);
+      if (given === null || given.length !== expected.length || !timingSafeEqual(given, expected)) {
         throw invalidState("signature");
       }
       let data: unknown;
@@ -138,7 +160,10 @@ export function createStateSigner(appEncryptionKey: string): StateSigner {
       ) {
         throw invalidState("format");
       }
-      const state = data as SignedState & { nonce: string; exp: number };
+      const state = data as Readonly<Record<string, string | number | boolean>> & {
+        nonce: string;
+        exp: number;
+      };
       if (state.exp <= Math.floor(now.getTime() / 1000)) throw invalidState("expired");
       return state;
     },
