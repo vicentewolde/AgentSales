@@ -43,8 +43,15 @@ export const CONTAINER_STATUS_CODES = [
 ] as const;
 export type ContainerStatusCode = (typeof CONTAINER_STATUS_CODES)[number];
 
-/** Estado de un contenedor (nota §4.4); en `ERROR`, el subcódigo que trae `status`. */
-export type ContainerStatus = { statusCode: ContainerStatusCode; subcode: number | null };
+/**
+ * Estado de un contenedor (nota §4.4); en `ERROR`, el subcódigo que trae `status`. Un estado que
+ * Meta agregue y no conocemos llega como `UNKNOWN`: el publisher sigue sondeando (y, si no cambia,
+ * termina en `IG_CONTAINER_TIMEOUT`) en vez de fallar sin reintento.
+ */
+export type ContainerStatus = {
+  statusCode: ContainerStatusCode | "UNKNOWN";
+  subcode: number | null;
+};
 
 /** Un medio publicado (nota §4.6). */
 export type InstagramMedia = {
@@ -77,7 +84,11 @@ export interface InstagramGraph {
     containerId: string,
     options?: CallOptions,
   ): Promise<ContainerStatus>;
-  /** `media_publish`: devuelve el id del medio publicado. */
+  /**
+   * `media_publish`: devuelve el id del medio publicado. Si la llamada no termina (`IG_UNAVAILABLE`
+   * por red o tope de tiempo, `IG_ABORTED`, `IG_UNEXPECTED_RESPONSE`), el medio **pudo** publicarse:
+   * el publisher no la repite a ciegas, sino que consulta el contenedor (spec F3 §4.4).
+   */
   publishContainer(
     accessToken: string,
     igUserId: string,
@@ -98,7 +109,10 @@ export interface InstagramGraph {
   ): Promise<PublishingLimit>;
 }
 
-/** Ids que Meta a veces manda como número. */
+/**
+ * Ids que Meta a veces manda como número. Uno mayor que 2^53 ya llegó corrupto de `JSON.parse`, y
+ * zod lo rechaza (`IG_UNEXPECTED_RESPONSE`) en vez de guardar un id equivocado.
+ */
 const idSchema = z.union([z.string().min(1), z.number().int()]).transform(String);
 
 const profileSchema = z.object({
@@ -108,9 +122,11 @@ const profileSchema = z.object({
 });
 const idResponseSchema = z.object({ id: idSchema });
 const statusSchema = z.object({
-  status_code: z.enum(CONTAINER_STATUS_CODES),
+  status_code: z.string(),
   status: z.string().nullish(),
 });
+const isKnownStatus = (code: string): code is ContainerStatusCode =>
+  (CONTAINER_STATUS_CODES as readonly string[]).includes(code);
 const mediaSchema = z.object({
   id: idSchema,
   permalink: z.string().nullish(),
@@ -219,9 +235,10 @@ export function createInstagramGraph(options: InstagramGraphOptions = {}): Insta
         callOptions,
       );
       const status = parseSingle("containerStatus", statusSchema, body);
+      const statusCode = isKnownStatus(status.status_code) ? status.status_code : "UNKNOWN";
       return {
-        statusCode: status.status_code,
-        subcode: status.status_code === "ERROR" ? subcodeOfStatus(status.status) : null,
+        statusCode,
+        subcode: statusCode === "ERROR" ? subcodeOfStatus(status.status) : null,
       };
     },
     async publishContainer(accessToken, igUserId, containerId, callOptions) {
@@ -271,11 +288,14 @@ export function createInstagramGraph(options: InstagramGraphOptions = {}): Insta
 }
 
 /** Una petición: el token va en la cabecera, o, si no hay, la URL ya trae lo que pide la doc. */
-type RequestInit = {
+type RequestSpec = {
   method: "GET" | "POST";
   accessToken?: string;
   form?: Record<string, string>;
 };
+
+/** Un token válido: solo caracteres visibles de ASCII, sin espacios. */
+const TOKEN_PATTERN = /^[\x21-\x7e]+$/;
 
 /**
  * Hace una llamada y devuelve el JSON, o lanza el `AppError` que corresponde. Ningún error lleva la
@@ -285,10 +305,15 @@ type RequestInit = {
 export async function instagramRequest(
   call: string,
   target: URL,
-  init: RequestInit,
+  init: RequestSpec,
   { signal, timeoutMs }: CallOptions & { timeoutMs: number },
 ): Promise<unknown> {
   if (signal?.aborted) throw INSTAGRAM_ERRORS.aborted();
+  // Un token con caracteres que no caben en una cabecera (por ejemplo, un salto de línea) haría
+  // fallar a `fetch` como si fuera la red, y se reintentaría en vano.
+  if (init.accessToken !== undefined && !TOKEN_PATTERN.test(init.accessToken)) {
+    throw INSTAGRAM_ERRORS.malformedToken();
+  }
   const caller = new AbortController();
   const onAbort = () => caller.abort();
   signal?.addEventListener("abort", onAbort, { once: true });

@@ -9,8 +9,16 @@ import {
 
 /** La tabla de errores del spec F3 §4.5, fila por fila: lo que llega, el código y si se reintenta. */
 const TABLE: [string, InstagramErrorInfo[], boolean][] = [
-  ["IG_AUTH_INVALID", [{ code: 190 }, { code: 190, subcode: 463 }, { code: 102 }], false],
-  ["IG_PERMISSION_DENIED", [{ code: 10 }, { code: 200 }, { code: 250 }, { code: 299 }], false],
+  [
+    "IG_AUTH_INVALID",
+    [{ code: 190 }, { code: 190, subcode: 463 }, { code: 102 }, { httpStatus: 401 }],
+    false,
+  ],
+  [
+    "IG_PERMISSION_DENIED",
+    [{ code: 10 }, { code: 200 }, { code: 250 }, { code: 299 }, { httpStatus: 403 }],
+    false,
+  ],
   [
     "IG_MEDIA_REJECTED",
     [
@@ -29,7 +37,11 @@ const TABLE: [string, InstagramErrorInfo[], boolean][] = [
     false,
   ],
   ["IG_PUBLISH_LIMIT", [{ code: 9 }, { code: 9, subcode: 2207042 }], false],
-  ["IG_RATE_LIMITED", [{ code: 4 }, { code: 17 }, { code: 80002 }, { code: 613 }], false],
+  [
+    "IG_RATE_LIMITED",
+    [{ code: 4 }, { code: 17 }, { code: 80002 }, { code: 613 }, { httpStatus: 429 }],
+    false,
+  ],
   [
     "IG_MEDIA_FETCH_FAILED",
     [
@@ -94,6 +106,10 @@ describe("instagramError", () => {
       code: "IG_UNAVAILABLE",
       retriable: true,
     });
+    expect(INSTAGRAM_ERRORS.malformedToken()).toMatchObject({
+      code: "IG_AUTH_INVALID",
+      retriable: false,
+    });
     expect(INSTAGRAM_ERRORS.aborted()).toMatchObject({ code: "IG_ABORTED", retriable: true });
     expect(INSTAGRAM_ERRORS.unexpectedResponse("me")).toMatchObject({
       code: "IG_UNEXPECTED_RESPONSE",
@@ -115,6 +131,16 @@ describe("graphErrorOf", () => {
     expect(
       graphErrorOf({ error_type: "OAuthException", code: 400, error_message: "Invalid code" }),
     ).toEqual({ code: 400 });
+  });
+
+  it("un código que no es un número entero no cuenta", () => {
+    for (const code of [null, "", true, [], "abc", 1.5]) {
+      expect(graphErrorOf({ error: { code, error_subcode: code } })).toEqual({
+        code: undefined,
+        subcode: undefined,
+      });
+    }
+    expect(graphErrorOf({ error: { code: "-1" } })).toEqual({ code: -1, subcode: undefined });
   });
 
   it("un cuerpo sin error es null", () => {

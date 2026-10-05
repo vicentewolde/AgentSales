@@ -27,6 +27,12 @@ export const platformAccountSchema = z.object({
 export type PlatformAccount = z.infer<typeof platformAccountSchema>;
 
 /**
+ * El permiso de Instagram sin el que no se puede publicar: conectar una cuenta lo exige cuando se
+ * conocen los permisos (spec F3 §4.6). Vive en core porque lo revisa `connectAccount` (T13).
+ */
+export const INSTAGRAM_PUBLISH_SCOPE = "instagram_business_content_publish";
+
+/**
  * Credenciales de una cuenta, ya descifradas: solo viven en memoria, nunca van a un log, un error,
  * una respuesta HTTP ni a los datos de un job. Se guardan cifradas (`credentials_encrypted`).
  */

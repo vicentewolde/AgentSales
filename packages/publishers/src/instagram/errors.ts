@@ -43,6 +43,7 @@ const UNAVAILABLE_SUBCODES = new Set([2207001, 2207032, 2207053, 2207006, 220702
 /** No son errores (spec F3 §4.5): el medio aún se procesa y se sigue sondeando. */
 export const INSTAGRAM_NOT_READY_SUBCODES: ReadonlySet<number> = new Set([2207008, 2207027]);
 const RATE_LIMIT_CODES = new Set([4, 17, 80002, 613]);
+const STATUS_AS_CODE: Readonly<Record<number, number>> = { 401: 190, 403: 10, 429: 4 };
 
 const error = (code: string, message: string, retriable: boolean, info: InstagramErrorInfo) =>
   new AppError(code, message, {
@@ -61,7 +62,11 @@ const error = (code: string, message: string, retriable: boolean, info: Instagra
  * de la petición. Lo que no calza con la tabla es `IG_REQUEST_REJECTED`, no reintentable.
  */
 export function instagramError(info: InstagramErrorInfo): AppError {
-  const { code, subcode, httpStatus } = info;
+  const { subcode, httpStatus } = info;
+  // Sin código de Meta en el cuerpo (por ejemplo, una página HTML de un proxy), el status hace de
+  // código: 401 como token inválido, 403 como permiso y 429 como límite. Los detalles guardan lo
+  // que llegó de verdad.
+  const code = info.code ?? (httpStatus == null ? null : STATUS_AS_CODE[httpStatus]) ?? null;
   if (subcode != null) {
     const rejected = MEDIA_REJECTED[subcode];
     if (rejected !== undefined) return error("IG_MEDIA_REJECTED", rejected, false, info);
@@ -150,6 +155,13 @@ export const INSTAGRAM_ERRORS = {
     ),
   /** Se cortó con la señal (apagado del worker): el reintento retoma. */
   aborted: () => new AppError("IG_ABORTED", "Se cortó la llamada a Instagram", { retriable: true }),
+  /** Un token que no puede ir en una cabecera (por ejemplo, con un salto de línea). */
+  malformedToken: () =>
+    new AppError(
+      "IG_AUTH_INVALID",
+      "El acceso guardado de Instagram no es válido: reconecta la cuenta",
+      { details: { reason: "token_malformed" } },
+    ),
   /** Una respuesta con otra forma: reintentar no la cambia. */
   unexpectedResponse: (call: string) =>
     new AppError("IG_UNEXPECTED_RESPONSE", "Instagram respondió algo inesperado", {
@@ -168,7 +180,17 @@ export const INSTAGRAM_ERRORS = {
     ),
 } as const;
 
-const graphCodeSchema = z.coerce.number().int().optional().catch(undefined);
+/** Un código de Meta: número entero o texto con dígitos; otra cosa (null, "", true) no cuenta. */
+const graphCodeSchema = z
+  .union([
+    z.number().int(),
+    z
+      .string()
+      .regex(/^-?\d+$/)
+      .transform(Number),
+  ])
+  .optional()
+  .catch(undefined);
 
 /**
  * El error dentro de un cuerpo de Instagram, en sus dos formas: la de Graph

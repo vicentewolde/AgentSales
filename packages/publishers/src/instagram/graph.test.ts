@@ -1,3 +1,4 @@
+import type { AbortSignalLike } from "@agentsales/core";
 import { delay, HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { errorText, useInstagramServer } from "../../test/instagram-server.js";
@@ -109,6 +110,28 @@ describe("createInstagramGraph", () => {
     expect(requests[0]?.url.searchParams.get("fields")).toBe("status_code,status");
   });
 
+  it("createContainer acepta el id dentro de la envoltura data", async () => {
+    server.use(
+      http.post(`${BASE}/${IG_USER}/media`, () => HttpResponse.json({ data: [{ id: 42 }] })),
+    );
+    await expect(
+      graph.createContainer(TOKEN, IG_USER, {
+        kind: "carousel_item",
+        imageUrl: "https://r2.test/a.jpg",
+      }),
+    ).resolves.toBe("42");
+  });
+
+  it("un estado que Meta agregue y no conocemos llega como UNKNOWN, no como error", async () => {
+    server.use(
+      http.get(`${BASE}/c-3`, () => HttpResponse.json({ status_code: "SCHEDULED", status: "x" })),
+    );
+    await expect(graph.containerStatus(TOKEN, "c-3")).resolves.toEqual({
+      statusCode: "UNKNOWN",
+      subcode: null,
+    });
+  });
+
   it("publishContainer manda creation_id y devuelve el id del medio", async () => {
     for (const body of shapes({ id: 9001 })) {
       server.use(http.post(`${BASE}/${IG_USER}/media_publish`, () => HttpResponse.json(body)));
@@ -159,6 +182,11 @@ describe("createInstagramGraph", () => {
     const media = await graph.recentMedia(TOKEN, IG_USER, { limit: 5 });
     expect(media.map((item) => item.id)).toEqual(["m-2", "m-1"]);
     expect(requests[0]?.url.searchParams.get("limit")).toBe("5");
+  });
+
+  it("recentMedia acepta la lista como arreglo suelto", async () => {
+    server.use(http.get(`${BASE}/${IG_USER}/media`, () => HttpResponse.json([{ id: "m-1" }])));
+    await expect(graph.recentMedia(TOKEN, IG_USER)).resolves.toMatchObject([{ id: "m-1" }]);
   });
 
   it("publishingLimit: el uso y el total de config; sin config el total es null", async () => {
@@ -230,6 +258,94 @@ describe("errores del cliente", () => {
     });
   });
 
+  it("los errores de crear, consultar y publicar un contenedor se clasifican igual", async () => {
+    const graphError = (code: number, subcode: number) =>
+      HttpResponse.json(
+        { error: { code, error_subcode: subcode, message: TOKEN } },
+        { status: 400 },
+      );
+    server.use(
+      http.post(`${BASE}/${IG_USER}/media`, () => graphError(9004, 2207052)),
+      http.get(`${BASE}/c-1`, () => graphError(100, 2207026)),
+      http.post(`${BASE}/${IG_USER}/media_publish`, () => graphError(9, 2207042)),
+    );
+    const results = await Promise.all([
+      graph
+        .createContainer(TOKEN, IG_USER, {
+          kind: "carousel_item",
+          imageUrl: "https://r2.test/a.jpg",
+        })
+        .catch((caught: unknown) => caught),
+      graph.containerStatus(TOKEN, "c-1").catch((caught: unknown) => caught),
+      graph.publishContainer(TOKEN, IG_USER, "c-1").catch((caught: unknown) => caught),
+    ]);
+    expect(results).toMatchObject([
+      { code: "IG_MEDIA_FETCH_FAILED", retriable: true },
+      { code: "IG_MEDIA_REJECTED", retriable: false },
+      { code: "IG_PUBLISH_LIMIT", retriable: false },
+    ]);
+    for (const result of results) expect(errorText(result)).not.toContain(TOKEN);
+  });
+
+  it("un 4xx que no es JSON (una página de un proxy) se clasifica por su status", async () => {
+    for (const [status, code] of [
+      [401, "IG_AUTH_INVALID"],
+      [403, "IG_PERMISSION_DENIED"],
+      [429, "IG_RATE_LIMITED"],
+      [400, "IG_REQUEST_REJECTED"],
+    ] as const) {
+      server.use(http.get(`${BASE}/me`, () => new HttpResponse("<html>No</html>", { status })));
+      await expect(graph.me(TOKEN)).rejects.toMatchObject({ code, retriable: false });
+    }
+  });
+
+  it("una cabecera de espera ilegible deja la hora por defecto", async () => {
+    server.use(
+      http.get(`${BASE}/me`, () =>
+        HttpResponse.json(
+          { error: { code: 4 } },
+          { status: 400, headers: { "X-Business-Use-Case-Usage": "{basura" } },
+        ),
+      ),
+    );
+    await expect(graph.me(TOKEN)).rejects.toMatchObject({
+      code: "IG_RATE_LIMITED",
+      message: expect.stringContaining("60 minutos"),
+    });
+  });
+
+  it("un corte al leer la respuesta es IG_UNAVAILABLE", async () => {
+    server.use(
+      http.get(
+        `${BASE}/me`,
+        () =>
+          new HttpResponse(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('{"user_id":'));
+                controller.error(new Error("se cortó"));
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+      ),
+    );
+    await expect(graph.me(TOKEN)).rejects.toMatchObject({
+      code: "IG_UNAVAILABLE",
+      retriable: true,
+    });
+  });
+
+  it("un token que no cabe en una cabecera es IG_AUTH_INVALID, sin llamar", async () => {
+    for (const bad of ["", "con espacio", "linea\nnueva", "tíldé"]) {
+      await expect(graph.me(bad)).rejects.toMatchObject({
+        code: "IG_AUTH_INVALID",
+        retriable: false,
+      });
+    }
+    expect(requests).toEqual([]);
+  });
+
   it("un 5xx que no es JSON es IG_UNAVAILABLE, reintentable", async () => {
     server.use(
       http.get(`${BASE}/me`, () => new HttpResponse("<html>Bad gateway</html>", { status: 502 })),
@@ -297,6 +413,59 @@ describe("errores del cliente", () => {
       code: "IG_ABORTED",
     });
     expect(requests).toHaveLength(before);
+  });
+});
+
+describe("la señal no deja listeners colgando", () => {
+  /** Una señal que cuenta cuántos listeners quedan puestos. */
+  function countingSignal() {
+    const controller = new AbortController();
+    let active = 0;
+    const signal: AbortSignalLike = {
+      get aborted() {
+        return controller.signal.aborted;
+      },
+      addEventListener(type, listener, options) {
+        active += 1;
+        controller.signal.addEventListener(type, listener, options);
+      },
+      removeEventListener(type, listener) {
+        active -= 1;
+        controller.signal.removeEventListener(type, listener);
+      },
+    };
+    return { signal, controller, active: () => active };
+  }
+
+  it("tras éxito, error de Meta, sin red, tope de tiempo y corte", async () => {
+    const slow = createInstagramGraph({ timeoutMs: 30 });
+    const replies = [
+      () => HttpResponse.json({ user_id: "1", username: "c", account_type: "BUSINESS" }),
+      () => HttpResponse.json({ error: { code: 190 } }, { status: 400 }),
+      () => HttpResponse.error(),
+      async () => {
+        await delay("infinite");
+        return HttpResponse.json({});
+      },
+    ];
+    for (const reply of replies) {
+      server.use(http.get(`${BASE}/me`, reply));
+      const counted = countingSignal();
+      await slow.me(TOKEN, { signal: counted.signal }).catch(() => undefined);
+      expect(counted.active()).toBe(0);
+    }
+    server.use(
+      http.get(`${BASE}/me`, async () => {
+        await delay("infinite");
+        return HttpResponse.json({});
+      }),
+    );
+    const counted = countingSignal();
+    const pending = graph.me(TOKEN, { signal: counted.signal }).catch(() => undefined);
+    await delay(10);
+    counted.controller.abort();
+    await pending;
+    expect(counted.active()).toBe(0);
   });
 });
 

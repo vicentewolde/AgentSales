@@ -128,6 +128,7 @@ export {
 } from "./media-checks.js";
 export {
   checkCredentials,
+  INSTAGRAM_PUBLISH_SCOPE,
   normalizeAccountMeta,
   type PlatformAccount,
   type PlatformCredentials,

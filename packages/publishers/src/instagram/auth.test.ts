@@ -113,6 +113,23 @@ describe("createInstagramAuth", () => {
     expectNoSecrets(error);
   });
 
+  it("sin red o con la señal cortada en el primer paso, el error no lleva el código ni el secret", async () => {
+    server.use(
+      http.post("https://api.instagram.com/oauth/access_token", () => HttpResponse.error()),
+    );
+    const offline = await auth.exchangeCode(CODE).catch((caught: unknown) => caught);
+    expect(offline).toMatchObject({ code: "IG_UNAVAILABLE", retriable: true });
+    expectNoSecrets(offline);
+
+    const controller = new AbortController();
+    controller.abort();
+    const aborted = await auth
+      .exchangeCode(CODE, { signal: controller.signal })
+      .catch((caught: unknown) => caught);
+    expect(aborted).toMatchObject({ code: "IG_ABORTED", retriable: true });
+    expectNoSecrets(aborted);
+  });
+
   it("si falla el canje por el largo, el error no lleva el token corto ni el secret", async () => {
     server.use(
       http.post("https://api.instagram.com/oauth/access_token", () =>

@@ -96,7 +96,7 @@ export function createInstagramAuth(options: InstagramAuthOptions): InstagramAut
         if (isAppError(error) && error.code === "IG_REQUEST_REJECTED") {
           throw new AppError(
             "IG_AUTH_INVALID",
-            "Instagram no aceptó el código de conexión (venció o ya se usó): conecta de nuevo",
+            "Instagram no aceptó el código de conexión (venció, ya se usó o la dirección de retorno no coincide): conecta de nuevo",
             { details: error.details },
           );
         }

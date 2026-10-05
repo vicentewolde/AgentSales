@@ -1,4 +1,8 @@
-import { CAROUSEL_MAX_ITEMS, INSTAGRAM_CAPTION_MAX_LENGTH } from "@agentsales/core";
+import {
+  CAROUSEL_MAX_ITEMS,
+  INSTAGRAM_CAPTION_MAX_LENGTH,
+  INSTAGRAM_PUBLISH_SCOPE,
+} from "@agentsales/core";
 
 // Constantes de la plataforma (spec F3 §4.5, nota `docs/integraciones/instagram.md`): un solo
 // archivo, para revisarlas juntas cuando Meta cambie algo.
@@ -11,13 +15,8 @@ export const INSTAGRAM_GRAPH_ORIGIN = "https://graph.instagram.com";
 export const INSTAGRAM_AUTHORIZE_URL = "https://www.instagram.com/oauth/authorize";
 /** Canje del código por el token corto (nota §3.2): otro host, sin versión. */
 export const INSTAGRAM_CODE_EXCHANGE_URL = "https://api.instagram.com/oauth/access_token";
-/** Permisos que pide F3 (nota §2): leer la cuenta y publicar. */
-export const INSTAGRAM_SCOPES = [
-  "instagram_business_basic",
-  "instagram_business_content_publish",
-] as const;
-/** El permiso sin el que no se puede publicar: conectar lo exige (spec F3 §4.6). */
-export const INSTAGRAM_PUBLISH_SCOPE = "instagram_business_content_publish";
+/** Permisos que pide F3 (nota §2): leer la cuenta y publicar (este, de core). */
+export const INSTAGRAM_SCOPES = ["instagram_business_basic", INSTAGRAM_PUBLISH_SCOPE] as const;
 
 /** Tope de cada llamada: después, `IG_UNAVAILABLE` (reintentable). */
 export const INSTAGRAM_REQUEST_TIMEOUT_MS = 30_000;
