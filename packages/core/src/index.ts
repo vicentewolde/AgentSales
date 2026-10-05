@@ -16,6 +16,11 @@ export {
 } from "./broker.js";
 export * from "./content/index.js";
 export {
+  beforeContentLock,
+  type ContentLockDeps,
+  lockedCurrentContent,
+} from "./content/locked-content.js";
+export {
   CONTENT_REEL_OUTCOMES,
   type Content,
   type ContentReelOutcome,
@@ -289,9 +294,12 @@ export {
   listingMediaPath,
 } from "./use-cases/ingest-media.js";
 export {
-  type OpenedPublications,
-  openPublications,
+  channelPublications,
+  createPublications,
+  type PlannedPublication,
+  type PublicationOpening,
   type PublicationPlanItem,
+  planPublications,
   publicationPlan,
   type SkippedPublication,
 } from "./use-cases/open-publications.js";

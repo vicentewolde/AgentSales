@@ -15,7 +15,7 @@
 | F3-T02 · Cifrado, firma y variables de Instagram | ✅ terminada | #55 |
 | F3-T03 · Cuentas conectadas: puerto y repositorio | ✅ terminada | #56 |
 | F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso | ✅ terminada | #57 |
-| F3-T05 · Aprobación en core | ✅ terminada | |
+| F3-T05 · Aprobación en core | ✅ terminada | #58 |
 | F3-T06 · Lo aprobado no cambia: edición y corridas con el candado | ⏳ pendiente | |
 | F3-T07 · Puerto `Publisher` y `dry-run` | ⏳ pendiente | |
 | F3-T08 · Instagram: cliente de la API y OAuth | ⏳ pendiente | |

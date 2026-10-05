@@ -34,37 +34,43 @@ export function publicationPlan(
   return plan;
 }
 
-/** Un formato que no se abrió porque ya tenía una publicación activa en esa cuenta. */
+/** Un formato que no se abrió porque ya tenía una publicación activa **de otro texto** en esa cuenta. */
 export type SkippedPublication = {
   platformAccountId: string;
   format: PublicationFormat;
   publicationId: string;
 };
 
-export type OpenedPublications = { created: Publication[]; skipped: SkippedPublication[] };
+/** Una publicación por abrir: su cuenta, su formato y sus medios. */
+export type PlannedPublication = PublicationPlanItem & { platformAccountId: string };
+
+/** Lo que se va a abrir y lo que se salta, sin haber escrito nada. */
+export type PublicationOpening = { toCreate: PlannedPublication[]; skipped: SkippedPublication[] };
 
 /**
- * Abre las publicaciones de un texto aprobado (ADR-0014, spec F3 §4.2): una por cuenta conectada
- * del corredor en ese canal y por formato, con `content_id` y `media_ids` fijos. Un formato que ya
- * tiene una publicación activa en esa cuenta (por ejemplo, una `published` de un texto anterior) se
- * salta y se informa, sin chocar con el único dentro del candado. Sin cuentas conectadas no abre
- * nada. Corre dentro de `ListingLock` (recibe sus repositorios); quien la llama ya revisó que el
- * texto esté aprobado y sea el vigente.
+ * Planifica las publicaciones de un texto (ADR-0014, spec F3 §4.2), **sin escribir**: una por
+ * cuenta conectada del corredor en el canal y por formato. Un formato que ya tiene una publicación
+ * activa en esa cuenta no se abre: si es de este mismo texto, ya está (aprobar de nuevo es
+ * idempotente); si es de otro (por ejemplo, una `published` de un texto anterior), se informa en
+ * `skipped`. Sin cuentas conectadas no hay nada que abrir. Con cuentas, un `post` sin medios es
+ * `CONTENT_NOT_READY` (también si todos los formatos se fueran a saltar: el plan se arma antes).
+ * Se llama antes de cualquier escritura, así un rechazo no deja nada a medias (el candado en memoria
+ * no deshace).
  */
-export async function openPublications(
+export async function planPublications(
   repos: Pick<LockedRepositories, "platformAccounts" | "media" | "publications">,
-  { listing, content, actor }: { listing: Listing; content: Content; actor: PublicationActor },
-): Promise<OpenedPublications> {
+  { listing, content }: { listing: Listing; content: Content },
+): Promise<PublicationOpening> {
   const accounts = (
     await repos.platformAccounts.listByBroker(listing.brokerId, content.platform)
   ).filter((account) => account.status === "connected");
-  if (accounts.length === 0) return { created: [], skipped: [] };
+  if (accounts.length === 0) return { toCreate: [], skipped: [] };
 
   const plan = publicationPlan(content.platform, await repos.media.listByListing(listing.id));
   const active = (await repos.publications.listByListing(listing.id)).filter((publication) =>
     ACTIVE_PUBLICATION_STATUSES.includes(publication.status),
   );
-  const created: Publication[] = [];
+  const toCreate: PlannedPublication[] = [];
   const skipped: SkippedPublication[] = [];
   for (const account of accounts) {
     for (const item of plan) {
@@ -72,28 +78,61 @@ export async function openPublications(
         (publication) =>
           publication.platformAccountId === account.id && publication.format === item.format,
       );
-      if (existing !== undefined) {
+      if (existing === undefined) {
+        toCreate.push({ ...item, platformAccountId: account.id });
+      } else if (existing.contentId !== content.id) {
         skipped.push({
           platformAccountId: account.id,
           format: item.format,
           publicationId: existing.id,
         });
-        continue;
       }
-      created.push(
-        await repos.publications.create(
-          {
-            listingId: listing.id,
-            platformAccountId: account.id,
-            platform: content.platform,
-            format: item.format,
-            contentId: content.id,
-            mediaIds: item.mediaIds,
-          },
-          { actor, payload: { contentId: content.id, mediaCount: item.mediaIds.length } },
-        ),
-      );
     }
   }
-  return { created, skipped };
+  return { toCreate, skipped };
+}
+
+/** Crea las publicaciones planificadas, en `approved`, con `content_id` y `media_ids` fijos. */
+export async function createPublications(
+  repos: Pick<LockedRepositories, "publications">,
+  {
+    listing,
+    content,
+    planned,
+    actor,
+  }: {
+    listing: Listing;
+    content: Content;
+    planned: readonly PlannedPublication[];
+    actor: PublicationActor;
+  },
+): Promise<Publication[]> {
+  const created: Publication[] = [];
+  for (const item of planned) {
+    created.push(
+      await repos.publications.create(
+        {
+          listingId: listing.id,
+          platformAccountId: item.platformAccountId,
+          platform: content.platform,
+          format: item.format,
+          contentId: content.id,
+          mediaIds: item.mediaIds,
+        },
+        { actor, payload: { contentId: content.id, mediaCount: item.mediaIds.length } },
+      ),
+    );
+  }
+  return created;
+}
+
+/** Las publicaciones de un canal del aviso, para devolverlas leídas dentro del candado. */
+export async function channelPublications(
+  repos: Pick<LockedRepositories, "publications">,
+  listingId: string,
+  platform: Platform,
+): Promise<Publication[]> {
+  return (await repos.publications.listByListing(listingId)).filter(
+    (publication) => publication.platform === platform,
+  );
 }

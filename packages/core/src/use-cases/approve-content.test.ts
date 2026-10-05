@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_CONTENT_DRAFT } from "../content/draft.js";
-import type { LockedRepositories } from "../ports/listing-lock.js";
+import type { ListingLock, LockedRepositories } from "../ports/listing-lock.js";
 import type { NewListing } from "../ports/listing-repository.js";
 import {
   contentBrokerFixture,
@@ -30,7 +30,7 @@ import { unapproveContent } from "./unapprove-content.js";
 const text = (value: string) => Uint8Array.from(value, (char) => char.charCodeAt(0));
 
 /** Un aviso `ready` con 3 fotos y un video, preparado con el proveedor falso (carrusel y reel). */
-async function setup(options: { account?: boolean } = {}) {
+async function setup(options: { account?: boolean; processed?: boolean } = {}) {
   const media = createInMemoryMediaRepository();
   const storage = createInMemoryMediaStorage();
   const broker = contentBrokerFixture();
@@ -103,7 +103,28 @@ async function setup(options: { account?: boolean } = {}) {
       { contentRunId: run.id, isLastAttempt: true },
     );
   };
-  await prepare();
+  if (options.processed === false) {
+    // Textos sin medios procesados: una corrida que solo guarda los textos.
+    const run = await contentRuns.create({ listingId: listing.id, texts: true });
+    await contentRuns.markRunning(run.id);
+    await contentRuns.markSucceeded(run.id, {
+      report: { warnings: [] },
+      contents: [
+        {
+          platform: "instagram",
+          title: null,
+          body: "Departamento en venta",
+          hashtags: ["#nunoa"],
+          llmProvider: "fake",
+          llmModel: "fake",
+          promptVersion: "listing-content-v1",
+          rawOutput: null,
+        },
+      ],
+    });
+  } else {
+    await prepare();
+  }
   const account =
     options.account === false
       ? null
@@ -116,7 +137,37 @@ async function setup(options: { account?: boolean } = {}) {
           meta: {},
           credentials: { accessToken: "IGAA-prueba" },
         });
-  const deps = { contents, listings, fieldDefinitions, lock };
+  // Lo que se usa antes del candado: falla si se llama dentro (`fn` solo usa lo del candado).
+  let insideLock = false;
+  const outside = <T extends object>(repo: T): T =>
+    new Proxy(repo, {
+      get(target, key, receiver) {
+        const value = Reflect.get(target, key, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (insideLock) throw new Error(`${String(key)} se llamó dentro del candado`);
+          return value.apply(target, args);
+        };
+      },
+    });
+  const watchedLock: ListingLock = {
+    async run(listingId, fn) {
+      return lock.run(listingId, async (repos) => {
+        insideLock = true;
+        try {
+          return await fn(repos);
+        } finally {
+          insideLock = false;
+        }
+      });
+    },
+  };
+  const deps = {
+    contents: outside(contents),
+    listings: outside(listings),
+    fieldDefinitions: outside(fieldDefinitions),
+    lock: watchedLock,
+  };
   const view = () =>
     getListingContent(
       { listings, brokers, fieldDefinitions, media, contents, contentRuns },
@@ -172,9 +223,25 @@ describe("approveContent", () => {
     expect(await t.locked.publications.listByListing(t.listingId)).toEqual([]);
   });
 
-  it("una cuenta desconectada o vencida no recibe publicaciones", async () => {
+  it.each(["expired", "error"] as const)(
+    "una cuenta en %s no recibe publicaciones",
+    async (status) => {
+      const t = await setup();
+      await t.locked.platformAccounts.changeStatus(t.account?.id ?? "", "connected", status);
+
+      const result = await approveContent(t.deps, {
+        contentId: await t.currentId("instagram"),
+        actor: "operator",
+      });
+
+      expect(result.content.status).toBe("approved");
+      expect(result.created).toEqual([]);
+    },
+  );
+
+  it("una cuenta desconectada no recibe publicaciones", async () => {
     const t = await setup();
-    await t.locked.platformAccounts.changeStatus(t.account?.id ?? "", "connected", "expired");
+    await t.locked.platformAccounts.disconnect(t.account?.id ?? "");
 
     const result = await approveContent(t.deps, {
       contentId: await t.currentId("instagram"),
@@ -196,7 +263,7 @@ describe("approveContent", () => {
     expect(result.created).toEqual([]);
   });
 
-  it("aprobar de nuevo no duplica: informa los formatos que ya tienen publicación", async () => {
+  it("aprobar de nuevo no duplica: sus publicaciones ya están (sin informarlas como saltadas)", async () => {
     const t = await setup();
     const contentId = await t.currentId("instagram");
     const first = await approveContent(t.deps, { contentId, actor: "operator" });
@@ -204,9 +271,45 @@ describe("approveContent", () => {
     const again = await approveContent(t.deps, { contentId, actor: "operator" });
 
     expect(again.created).toEqual([]);
-    expect(again.skipped.map((item) => [item.format, item.publicationId])).toEqual(
-      first.created.map((publication) => [publication.format, publication.id]),
+    expect(again.skipped).toEqual([]);
+    expect(again.publications.map((publication) => publication.id)).toEqual(
+      first.created.map((publication) => publication.id),
     );
+  });
+
+  it("devuelve todas las publicaciones del canal, leídas después de aprobar", async () => {
+    const t = await setup();
+    const result = await approveContent(t.deps, {
+      contentId: await t.currentId("instagram"),
+      actor: "operator",
+    });
+
+    expect(result.publications).toEqual(result.created);
+    expect(result.publications.every((publication) => publication.platform === "instagram")).toBe(
+      true,
+    );
+  });
+
+  it("con cuenta conectada y sin fotos procesadas es CONTENT_NOT_READY, sin aprobar el texto", async () => {
+    const t = await setup({ processed: false });
+    const contentId = await t.currentId("instagram");
+
+    await expect(approveContent(t.deps, { contentId, actor: "operator" })).rejects.toMatchObject({
+      code: "CONTENT_NOT_READY",
+    });
+    expect((await t.locked.contents.get(contentId))?.status).toBe("draft");
+    expect(await t.locked.publications.listByListing(t.listingId)).toEqual([]);
+  });
+
+  it("sin cuenta conectada aprueba aunque falten las fotos (no hay nada que abrir)", async () => {
+    const t = await setup({ processed: false, account: false });
+
+    const result = await approveContent(t.deps, {
+      contentId: await t.currentId("instagram"),
+      actor: "operator",
+    });
+
+    expect(result.content.status).toBe("approved");
   });
 
   it("un texto nuevo con el carrusel anterior publicado salta ese formato (sin chocar)", async () => {
@@ -386,6 +489,50 @@ describe("unapproveContent", () => {
 
     expect(result.cancelled.map((publication) => publication.format)).toEqual(["reel"]);
     expect((await t.locked.publications.get(post?.id ?? ""))?.status).toBe("published");
+  });
+
+  it("cancela también las fallidas y las programadas de ese texto", async () => {
+    const t = await setup();
+    const contentId = await t.currentId("instagram");
+    const approved = await approveContent(t.deps, { contentId, actor: "operator" });
+    const [post, reel] = approved.created;
+    await t.locked.publications.transition(
+      post?.id ?? "",
+      { from: "approved", to: "publishing", changes: { dryRun: true } },
+      { actor: "system" },
+    );
+    await t.locked.publications.transition(
+      post?.id ?? "",
+      { from: "publishing", to: "failed" },
+      { actor: "system" },
+    );
+    await t.locked.publications.transition(
+      reel?.id ?? "",
+      { from: "approved", to: "scheduled" },
+      { actor: "operator" },
+    );
+
+    const result = await unapproveContent(t.deps, { contentId, actor: "operator" });
+
+    expect(result.cancelled.map((publication) => publication.id)).toEqual([post?.id, reel?.id]);
+    expect(result.publications.every((publication) => publication.status === "cancelled")).toBe(
+      true,
+    );
+  });
+
+  it("un texto que no existe es CONTENT_NOT_FOUND, y uno que no es el vigente CONTENT_NOT_CURRENT", async () => {
+    const t = await setup();
+    await expect(
+      unapproveContent(t.deps, { contentId: "no-existe", actor: "operator" }),
+    ).rejects.toMatchObject({ code: "CONTENT_NOT_FOUND" });
+
+    const old = await t.currentId("instagram");
+    await approveContent(t.deps, { contentId: old, actor: "operator" });
+    await t.prepare();
+    await expect(
+      unapproveContent(t.deps, { contentId: old, actor: "operator" }),
+    ).rejects.toMatchObject({ code: "CONTENT_NOT_CURRENT" });
+    expect((await t.locked.contents.get(old))?.status).toBe("approved");
   });
 
   it("un texto que no está aprobado es CONTENT_NOT_APPROVED", async () => {

@@ -587,12 +587,13 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 - **Composición** (para leer, F2-T12): `composeCarousel` (portada, fotos y ficha, hasta 10 elementos), `composePhotoSet` (`pi_4x3`, la portada primero) y `composeReel`.
 - **Datos de las plantillas:** salen de una lista fija de campos (`slides-data.ts`), nunca de la dirección.
 
-## Aprobación (`approveContent`, `unapproveContent` y `openPublications`, F3-T05)
+## Aprobación (`approveContent` y `unapproveContent`, F3-T05)
 
-- **`approveContent`** (core, ADR-0014): lee antes del candado lo que `LockedRepositories` no trae (las definiciones de campos del aviso) y, dentro de `ListingLock`, revisa que el texto sea el vigente de su canal, que el aviso esté en `ready`, `active` o `paused`, que no haya una corrida activa y que la revisión editorial no tenga errores. Lo deja en `approved` y llama a `openPublications`. Aprobar de nuevo es idempotente.
-- **`openPublications`**: una publicación por cuenta **conectada** del corredor en el canal y por formato (`publicationPlan`: Instagram, `post` con `composeCarousel` y, si hay reel, `reel`; Portal y Marketplace, `post` con `composePhotoSet`), con `content_id` y `media_ids` fijos. Un formato con una publicación activa en esa cuenta se salta y se informa (`skipped`). Un `post` sin medios es `CONTENT_NOT_READY`.
-- **`unapproveContent`**: deja el texto en `edited` y cancela sus publicaciones que se pueden descartar; con una en `publishing`, `PUBLICATION_IN_PROGRESS` sin cambiar nada. Las publicadas no cambian.
-- Los dos devuelven el texto con su revisión (`CheckedContent`) y las publicaciones tocadas; el actor (`operator` o `cli`) queda en la bitácora.
+- **Antes del candado** (`beforeContentLock`, `content/locked-content.ts`): el texto, su aviso y las definiciones de campos, que `LockedRepositories` no trae y pide la revisión editorial. **Dentro** (`lockedCurrentContent`): el texto vigente, su aviso y el contexto de su revisión, con los repositorios de la transacción. Lo comparten aprobar, quitar la aprobación y (desde T06) editar.
+- **`approveContent`** (ADR-0014): revisa que el texto sea el vigente, que el aviso esté en `ready`, `active` o `paused`, que no haya una corrida activa, que la revisión no tenga errores y arma el plan de publicaciones (`planPublications`); **recién después** escribe: el texto a `approved` y las publicaciones (`createPublications`). Así un rechazo no deja nada a medias, aunque el candado en memoria no deshaga. Aprobar de nuevo es idempotente.
+- **`planPublications`**: una publicación por cuenta **conectada** del corredor en el canal y por formato (`publicationPlan`: Instagram, `post` con `composeCarousel` y, si hay reel, `reel`; Portal y Marketplace, `post` con `composePhotoSet`), con `content_id` y `media_ids` fijos. Un formato con una publicación activa en esa cuenta no se abre: si es de este texto, ya está; si es de otro, va en `skipped`. Con cuentas y sin medios, `CONTENT_NOT_READY`.
+- **`unapproveContent`**: revisa y después escribe: deja el texto en `edited` y cancela sus publicaciones que se pueden descartar; con una en `publishing`, `PUBLICATION_IN_PROGRESS` sin cambiar nada. Las publicadas no cambian.
+- Los dos devuelven el texto con su revisión (`CheckedContent`), lo que cambió (`created` y `skipped`, o `cancelled`) y `publications`: todas las del canal, leídas en el candado (para la API y la CLI). El actor (`operator` o `cli`) queda en la bitácora.
 
 ## Procesador de medios (`MediaProcessor`, F2-T07)
 

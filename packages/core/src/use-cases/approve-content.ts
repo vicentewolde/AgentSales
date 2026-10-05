@@ -1,93 +1,55 @@
 import { hasContentErrors } from "../content/check.js";
-import { type CheckedContent, checked, loadCheckContext } from "../content/check-context.js";
-import type { Content } from "../content.js";
+import {
+  beforeContentLock,
+  type CheckedContent,
+  type ContentLockDeps,
+  checked,
+  lockedCurrentContent,
+} from "../content/locked-content.js";
 import { AppError } from "../errors.js";
 import { LISTING_NOT_PREPARABLE_TEXT } from "../labels.js";
 import { canPrepareContent } from "../listing.js";
-import type { ContentRepository } from "../ports/content-repository.js";
-import type { FieldDefinitionRepository } from "../ports/field-definition-repository.js";
-import type { ListingLock, LockedRepositories } from "../ports/listing-lock.js";
-import type { ListingRepository } from "../ports/listing-repository.js";
-import type { PublicationActor } from "../publication.js";
-import { type OpenedPublications, openPublications } from "./open-publications.js";
+import type { ListingLock } from "../ports/listing-lock.js";
+import type { Publication, PublicationActor } from "../publication.js";
+import {
+  channelPublications,
+  createPublications,
+  planPublications,
+  type SkippedPublication,
+} from "./open-publications.js";
 
-export type ApproveContentDeps = {
-  contents: Pick<ContentRepository, "get">;
-  listings: Pick<ListingRepository, "get">;
-  /** Se leen antes del candado: `LockedRepositories` no los trae (spec F3, T05). */
-  fieldDefinitions: Pick<FieldDefinitionRepository, "list">;
-  lock: ListingLock;
+export type ApproveContentDeps = ContentLockDeps & { lock: ListingLock };
+
+export type ApprovedContent = CheckedContent & {
+  /** Las publicaciones que nacieron ahora. */
+  created: Publication[];
+  /** Formatos que no se abrieron porque ya tenían una publicación activa de otro texto. */
+  skipped: SkippedPublication[];
+  /** Todas las publicaciones del canal del aviso, después de aprobar (leídas en el candado). */
+  publications: Publication[];
 };
-
-export type ApprovedContent = CheckedContent & OpenedPublications;
-
-const notFound = (contentId: string) =>
-  new AppError("CONTENT_NOT_FOUND", `No existe el texto ${contentId}`, { details: { contentId } });
-
-/**
- * El texto y su aviso, revisados dentro del candado: que exista, sea el vigente de su canal y el
- * aviso pueda tener contenido. Lo comparten aprobar y quitar la aprobación.
- */
-export async function lockedCurrentContent(
-  locked: LockedRepositories,
-  contentId: string,
-): Promise<Content> {
-  const content = await locked.contents.get(contentId);
-  if (content === null) throw notFound(contentId);
-  const current = (await locked.contents.listCurrent(content.listingId)).find(
-    (item) => item.platform === content.platform,
-  );
-  if (current?.id !== content.id) {
-    throw new AppError(
-      "CONTENT_NOT_CURRENT",
-      "Ese texto ya no es el vigente: vuelve a cargar el contenido del aviso",
-      { details: { contentId, currentId: current?.id ?? null } },
-    );
-  }
-  return content;
-}
 
 /**
  * Aprueba el texto **vigente** de un canal (ADR-0014, spec F3 §4.2, `POST /contents/:id/approve`):
  * lo deja en `approved` y, si el corredor tiene una cuenta conectada en ese canal, abre sus
- * publicaciones (Instagram: carrusel y, con video, reel), todo dentro del candado del aviso.
- * Errores (`AppError`, 409 salvo el primero):
- * - el texto no existe → `CONTENT_NOT_FOUND` (404);
+ * publicaciones (Instagram: carrusel y, con video, reel), todo dentro del candado del aviso. Todas
+ * las revisiones van antes de la primera escritura. Errores (`AppError`, 409 salvo los "no existe"):
+ * - el texto o su aviso no existen → `CONTENT_NOT_FOUND` o `LISTING_NOT_FOUND` (404);
  * - no es el vigente → `CONTENT_NOT_CURRENT`;
  * - el aviso no está en `ready`, `active` o `paused` → `LISTING_NOT_READY`;
  * - hay una corrida activa (de textos o de imágenes, que reemplaza los medios) → `CONTENT_RUN_ACTIVE`;
  * - la revisión editorial tiene errores → `CONTENT_HAS_ERRORS` (las advertencias no bloquean);
- * - faltan las fotos del canal → `CONTENT_NOT_READY` (solo si hay una cuenta conectada).
+ * - con una cuenta conectada, faltan las fotos del canal → `CONTENT_NOT_READY`.
  * Aprobar un texto ya aprobado vuelve a revisar y abre lo que falte (idempotente).
  */
 export async function approveContent(
   deps: ApproveContentDeps,
   { contentId, actor }: { contentId: string; actor: PublicationActor },
 ): Promise<ApprovedContent> {
-  // Fuera del candado, lo que `LockedRepositories` no trae: las definiciones de campos del aviso.
-  const before = await deps.contents.get(contentId);
-  if (before === null) throw notFound(contentId);
-  const listingBefore = await deps.listings.get(before.listingId);
-  if (listingBefore === null) {
-    throw new AppError("LISTING_NOT_FOUND", `No existe el aviso ${before.listingId}`, {
-      details: { listingId: before.listingId },
-    });
-  }
-  const definitions = await deps.fieldDefinitions.list({
-    category: listingBefore.category,
-    brokerId: listingBefore.brokerId,
-  });
+  const { listingId, definitions } = await beforeContentLock(deps, contentId);
 
-  return deps.lock.run(before.listingId, async (locked) => {
-    const content = await lockedCurrentContent(locked, contentId);
-    const { listing, ctx } = await loadCheckContext(
-      {
-        listings: locked.listings,
-        brokers: locked.brokers,
-        fieldDefinitions: { list: async () => definitions },
-      },
-      content.listingId,
-    );
+  return deps.lock.run(listingId, async (locked) => {
+    const { content, listing, ctx } = await lockedCurrentContent(locked, contentId, definitions);
     if (!canPrepareContent(listing.status)) {
       throw new AppError("LISTING_NOT_READY", LISTING_NOT_PREPARABLE_TEXT, {
         details: { listingId: listing.id, status: listing.status },
@@ -109,11 +71,25 @@ export async function approveContent(
         { details: { contentId, codes: review.checks.map((check) => check.code) } },
       );
     }
+    const opening = await planPublications(locked, { listing, content });
+
+    // Recién aquí se escribe: nada de lo anterior puede dejar el texto aprobado a medias.
     const approved =
       content.status === "approved"
         ? content
         : await locked.contents.update(content.id, { status: "approved" });
-    const opened = await openPublications(locked, { listing, content: approved, actor });
-    return { content: approved, checks: review.checks, ...opened };
+    const created = await createPublications(locked, {
+      listing,
+      content: approved,
+      planned: opening.toCreate,
+      actor,
+    });
+    return {
+      content: approved,
+      checks: review.checks,
+      created,
+      skipped: opening.skipped,
+      publications: await channelPublications(locked, listing.id, approved.platform),
+    };
   });
 }

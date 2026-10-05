@@ -1,53 +1,44 @@
-import { type CheckedContent, checked, loadCheckContext } from "../content/check-context.js";
+import {
+  beforeContentLock,
+  type CheckedContent,
+  type ContentLockDeps,
+  checked,
+  lockedCurrentContent,
+} from "../content/locked-content.js";
 import { AppError } from "../errors.js";
-import type { ContentRepository } from "../ports/content-repository.js";
-import type { FieldDefinitionRepository } from "../ports/field-definition-repository.js";
 import type { ListingLock } from "../ports/listing-lock.js";
-import type { ListingRepository } from "../ports/listing-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { canTransition } from "../publication-state.js";
-import { lockedCurrentContent } from "./approve-content.js";
+import { channelPublications } from "./open-publications.js";
 
-export type UnapproveContentDeps = {
-  contents: Pick<ContentRepository, "get">;
-  listings: Pick<ListingRepository, "get">;
-  fieldDefinitions: Pick<FieldDefinitionRepository, "list">;
-  lock: ListingLock;
+export type UnapproveContentDeps = ContentLockDeps & { lock: ListingLock };
+
+export type UnapprovedContent = CheckedContent & {
+  /** Las publicaciones de este texto que se descartaron. */
+  cancelled: Publication[];
+  /** Todas las publicaciones del canal del aviso, después del cambio (leídas en el candado). */
+  publications: Publication[];
 };
-
-export type UnapprovedContent = CheckedContent & { cancelled: Publication[] };
 
 /**
  * Quita la aprobación del texto vigente de un canal ("rechazar" del roadmap; ADR-0014, spec F3
  * §4.2, `POST /contents/:id/unapprove`): el texto queda en `edited` (protege lo revisado de una
- * regeneración sin aviso) y se cancelan las publicaciones de ese texto que aún no salieron y se
- * pueden descartar (`approved`, `scheduled`, `failed`, `awaiting_manual_confirm`). Las publicadas
- * no cambian. Errores (`AppError`, 409 salvo el primero):
- * - el texto no existe → `CONTENT_NOT_FOUND` (404); no es el vigente → `CONTENT_NOT_CURRENT`;
- * - no está aprobado → `CONTENT_NOT_APPROVED`;
+ * regeneración sin aviso) y se cancelan las publicaciones de ese texto que aún no salieron y que la
+ * máquina deja descartar (`approved`, `scheduled`, `failed` y `awaiting_manual_confirm`). Las
+ * publicadas no cambian. Todas las revisiones van antes de la primera escritura. Errores
+ * (`AppError`, 409 salvo los "no existe"):
+ * - el texto o su aviso no existen → `CONTENT_NOT_FOUND` o `LISTING_NOT_FOUND` (404);
+ * - no es el vigente → `CONTENT_NOT_CURRENT`; no está aprobado → `CONTENT_NOT_APPROVED`;
  * - una de sus publicaciones se está publicando → `PUBLICATION_IN_PROGRESS` (sin cambiar nada).
  */
 export async function unapproveContent(
   deps: UnapproveContentDeps,
   { contentId, actor }: { contentId: string; actor: PublicationActor },
 ): Promise<UnapprovedContent> {
-  const before = await deps.contents.get(contentId);
-  if (before === null) {
-    throw new AppError("CONTENT_NOT_FOUND", `No existe el texto ${contentId}`, {
-      details: { contentId },
-    });
-  }
-  const listingBefore = await deps.listings.get(before.listingId);
-  const definitions =
-    listingBefore === null
-      ? []
-      : await deps.fieldDefinitions.list({
-          category: listingBefore.category,
-          brokerId: listingBefore.brokerId,
-        });
+  const { listingId, definitions } = await beforeContentLock(deps, contentId);
 
-  return deps.lock.run(before.listingId, async (locked) => {
-    const content = await lockedCurrentContent(locked, contentId);
+  return deps.lock.run(listingId, async (locked) => {
+    const { content, ctx } = await lockedCurrentContent(locked, contentId, definitions);
     if (content.status !== "approved") {
       throw new AppError("CONTENT_NOT_APPROVED", "Ese texto no está aprobado", {
         details: { contentId, status: content.status },
@@ -64,6 +55,8 @@ export async function unapproveContent(
         { details: { contentId, publicationId: publishing.id } },
       );
     }
+
+    // Recién aquí se escribe.
     const cancelled: Publication[] = [];
     for (const publication of own) {
       if (!canTransition(publication.status, "cancelled")) continue;
@@ -76,14 +69,10 @@ export async function unapproveContent(
       );
     }
     const edited = await locked.contents.update(content.id, { status: "edited" });
-    const { ctx } = await loadCheckContext(
-      {
-        listings: locked.listings,
-        brokers: locked.brokers,
-        fieldDefinitions: { list: async () => definitions },
-      },
-      content.listingId,
-    );
-    return { ...checked(edited, ctx), cancelled };
+    return {
+      ...checked(edited, ctx),
+      cancelled,
+      publications: await channelPublications(locked, content.listingId, content.platform),
+    };
   });
 }
