@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import { SAMPLE_CONTENT_DRAFT } from "../content/draft.js";
 import type { ListingStatus } from "../enums.js";
 import { AppError } from "../errors.js";
-import type { ContentRunRepository } from "../ports/content-repository.js";
 import {
+  createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
   createInMemoryJobQueue,
+  createInMemoryListingLock,
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
+  createInMemoryPlatformAccountRepository,
+  createInMemoryPublicationRepository,
 } from "../testing/index.js";
 import { requestContentRun } from "./request-content-run.js";
 
@@ -50,20 +53,28 @@ async function setup(
     });
   }
   const repos = createInMemoryContentRepositories();
-  const queue = createInMemoryJobQueue({
-    fail: () =>
-      options.queueDown
-        ? new AppError("QUEUE_UNAVAILABLE", "La cola no responde", { retriable: true })
-        : undefined,
-  });
-  const deps = {
+  const publications = createInMemoryPublicationRepository();
+  const lock = createInMemoryListingLock({
+    brokers: createInMemoryBrokerRepository(),
     listings,
     media,
     contentRuns: repos.contentRuns,
     contents: repos.contents,
-    queue,
-  };
-  return { deps, listingId: listing.id, repos, queue };
+    publications,
+    platformAccounts: createInMemoryPlatformAccountRepository(),
+  });
+  /** Si el candado del aviso seguía tomado en cada `enqueue` (debe encolar después). */
+  const lockedAtEnqueue: boolean[] = [];
+  const queue = createInMemoryJobQueue({
+    fail: () => {
+      lockedAtEnqueue.push(lock.busy().includes(listing.id));
+      return options.queueDown
+        ? new AppError("QUEUE_UNAVAILABLE", "La cola no responde", { retriable: true })
+        : undefined;
+    },
+  });
+  const deps = { lock, contentRuns: repos.contentRuns, queue };
+  return { deps, listingId: listing.id, repos, queue, publications, lockedAtEnqueue };
 }
 
 /** Deja un texto vigente de cada canal, el de Instagram editado a mano. */
@@ -147,26 +158,83 @@ describe("requestContentRun", () => {
     });
   });
 
-  it("si otra petición gana la carrera (CONTENT_RUN_CONFLICT), devuelve la activa", async () => {
+  it("encola recién después de soltar el candado (ya confirmado)", async () => {
     const t = await setup();
-    let winnerId = "";
-    const racing: ContentRunRepository = {
-      ...t.repos.contentRuns,
-      // Nadie activa al revisar; al crear, otra petición ya ganó.
-      findActive: async (listingId) =>
-        winnerId === "" ? null : t.repos.contentRuns.findActive(listingId),
-      create: async (run) => {
-        winnerId = (await t.repos.contentRuns.create(run)).id;
-        return t.repos.contentRuns.create(run);
-      },
-    };
+    await requestContentRun(t.deps, { listingId: t.listingId });
+    await requestContentRun(t.deps, { listingId: t.listingId });
 
-    const result = await requestContentRun(
-      { ...t.deps, contentRuns: racing },
-      { listingId: t.listingId },
+    expect(t.lockedAtEnqueue).toEqual([false, false]);
+  });
+
+  it.each([true, false])(
+    "con una publicación pendiente: PUBLICATION_PENDING, sin crear nada (texts: %s)",
+    async (texts) => {
+      const t = await setup();
+      const pending = await t.publications.create(
+        {
+          listingId: t.listingId,
+          platformAccountId: "account-1",
+          platform: "instagram",
+          format: "post",
+          contentId: "content-1",
+          mediaIds: [],
+        },
+        { actor: "operator" },
+      );
+
+      await expect(
+        requestContentRun(t.deps, { listingId: t.listingId, texts, replaceEdits: true }),
+      ).rejects.toMatchObject({
+        code: "PUBLICATION_PENDING",
+        details: { publicationIds: [pending.id] },
+      });
+      expect(await t.repos.contentRuns.latest(t.listingId)).toBeNull();
+      expect(t.queue.jobs).toEqual([]);
+    },
+  );
+
+  it("con solo publicaciones ya publicadas se puede preparar de nuevo", async () => {
+    const t = await setup();
+    const published = await t.publications.create(
+      {
+        listingId: t.listingId,
+        platformAccountId: "account-1",
+        platform: "instagram",
+        format: "post",
+        contentId: "content-1",
+        mediaIds: [],
+      },
+      { actor: "operator" },
     );
-    expect(result.reused).toBe(true);
-    expect(result.run.id).toBe(winnerId);
+    await t.publications.transition(
+      published.id,
+      { from: "approved", to: "publishing", changes: { dryRun: true } },
+      { actor: "system" },
+    );
+    await t.publications.transition(
+      published.id,
+      { from: "publishing", to: "published" },
+      { actor: "system" },
+    );
+
+    await expect(requestContentRun(t.deps, { listingId: t.listingId })).resolves.toMatchObject({
+      reused: false,
+    });
+  });
+
+  it("un texto aprobado cuenta como editado: CONTENT_EDITED salvo replaceEdits", async () => {
+    const t = await setup();
+    await withEditedContent(t);
+    const [instagram] = await t.repos.contents.listCurrent(t.listingId);
+    await t.repos.contents.update(instagram?.id ?? "", { status: "approved" });
+
+    await expect(requestContentRun(t.deps, { listingId: t.listingId })).rejects.toMatchObject({
+      code: "CONTENT_EDITED",
+      details: { platforms: ["instagram"] },
+    });
+    await expect(
+      requestContentRun(t.deps, { listingId: t.listingId, replaceEdits: true }),
+    ).resolves.toMatchObject({ reused: false });
   });
 
   it("con textos editados a mano: CONTENT_EDITED, salvo replaceEdits o sin textos", async () => {

@@ -10,8 +10,11 @@ import {
   createInMemoryFieldDefinitionRepository,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
+  createInMemoryListingLock,
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
+  createInMemoryPlatformAccountRepository,
+  createInMemoryPublicationRepository,
 } from "@agentsales/core/testing";
 import type { AppDeps } from "../app.js";
 
@@ -47,7 +50,7 @@ export function fakeUploads(): FakeUploads {
  */
 export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   const content = createInMemoryContentRepositories({ nextId: randomUUID });
-  return {
+  const deps: Omit<AppDeps, "lock"> & { lock?: AppDeps["lock"] } = {
     checks: { db: ok, storage: ok, queue: ok },
     publishMode: "dry-run",
     version: "0.0.1",
@@ -68,4 +71,17 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     contents: content.contents,
     ...overrides,
   };
+  // El candado entrega los mismos repositorios que la app (también los que pisó `overrides`).
+  const lock =
+    deps.lock ??
+    createInMemoryListingLock({
+      brokers: deps.brokers,
+      listings: deps.listings,
+      media: deps.media,
+      contentRuns: deps.contentRuns,
+      contents: deps.contents,
+      publications: createInMemoryPublicationRepository(),
+      platformAccounts: createInMemoryPlatformAccountRepository(),
+    });
+  return { ...deps, lock };
 }

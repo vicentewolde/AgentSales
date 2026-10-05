@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   createErrorThrottle,
   createLogger,
+  createSecretBox,
   findWorkspaceRoot,
   loadEnv,
   loadEnvFile,
@@ -13,6 +14,7 @@ import {
   createDb,
   createFieldDefinitionRepository,
   createImportRunRepository,
+  createListingLock,
   createListingRepository,
   createMediaRepository,
   pingDatabase,
@@ -80,6 +82,8 @@ const app = createApp({
   importRuns: createImportRunRepository(database.db),
   contentRuns: createContentRunRepository(database.db),
   contents: createContentRepository(database.db),
+  // Las credenciales de las cuentas se cifran con la clave derivada de APP_ENCRYPTION_KEY (F3-T02).
+  lock: createListingLock(database.db, { secretBox: createSecretBox(env.APP_ENCRYPTION_KEY) }),
   queue,
   uploads: {
     save: (runId, fileName, bytes) => staging.saveInput(runId, fileName, bytes),

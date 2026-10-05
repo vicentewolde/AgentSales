@@ -20,6 +20,9 @@ const CONFLICTS = new Set([
   "CONTENT_EDITED",
   "CONTENT_NOT_CURRENT",
   "CONTENT_RUN_ACTIVE",
+  // F3 (ADR-0014): lo aprobado no cambia mientras tenga publicaciones activas o pendientes.
+  "CONTENT_LOCKED",
+  "PUBLICATION_PENDING",
 ]);
 
 /**

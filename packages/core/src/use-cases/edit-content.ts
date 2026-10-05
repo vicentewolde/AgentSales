@@ -1,89 +1,82 @@
 import { normalizeHashtags } from "../content/assemble.js";
 import {
+  beforeContentLock,
   type CheckedContent,
-  type ContentCheckDeps,
+  type ContentLockDeps,
   checked,
-  loadCheckContext,
-} from "../content/check-context.js";
+  lockedCurrentContent,
+} from "../content/locked-content.js";
 import { AppError } from "../errors.js";
-import type {
-  ContentChanges,
-  ContentRepository,
-  ContentRunRepository,
-} from "../ports/content-repository.js";
+import type { ContentChanges } from "../ports/content-repository.js";
+import type { ListingLock } from "../ports/listing-lock.js";
+import { ACTIVE_PUBLICATION_STATUSES } from "../publication-state.js";
 
-export type EditContentDeps = ContentCheckDeps & {
-  contents: Pick<ContentRepository, "get" | "listCurrent" | "update">;
-  contentRuns: Pick<ContentRunRepository, "findActive">;
-};
+export type EditContentDeps = ContentLockDeps & { lock: ListingLock };
 
 /** Lo que el operador puede cambiar de un texto; `undefined` = no tocar. */
 export type ContentEdit = { title?: string; body?: string; hashtags?: string[] };
 
 /**
- * Edita el texto **vigente** de un canal (spec F2 §4.6, `PATCH /contents/:id`) y lo deja en
- * `edited`. Errores (`AppError`):
- * - el texto no existe → `CONTENT_NOT_FOUND` (404);
+ * Edita el texto **vigente** de un canal (spec F2 §4.6 y F3 §4.2, `PATCH /contents/:id`) y lo deja
+ * en `edited`, dentro del candado del aviso: un pedido de textos y una edición ya no se cruzan (la
+ * ventana de F2 se cerró). Errores (`AppError`):
+ * - el texto o su aviso no existen → `CONTENT_NOT_FOUND` o `LISTING_NOT_FOUND` (404);
  * - no es el vigente de su canal → `CONTENT_NOT_CURRENT` (409);
  * - el aviso tiene una corrida activa que genera textos → `CONTENT_RUN_ACTIVE` (409): la reemplazaría
  *   sin avisar (una de solo imágenes no toca los textos, así que sí se puede);
+ * - el texto tiene una publicación activa (pendiente o `published`) → `CONTENT_LOCKED` (409): es el
+ *   registro de lo que se aprobó o se publicó (ADR-0014). Uno aprobado sin publicaciones activas sí
+ *   se edita y pierde la aprobación (vuelve a `edited`);
  * - un título en Instagram, que no lo tiene → `CONTENT_TITLE_INVALID` (400);
  * - hashtags en Portal o Marketplace, que no los usan → `CONTENT_HASHTAGS_INVALID` (400).
  * En Instagram, los hashtags se normalizan y se descartan los vacíos y repetidos. El largo y lo
  * demás no se rechaza: lo informa la revisión que vuelve con el texto.
- * Entre revisar la corrida activa y guardar puede colarse un pedido de textos: la edición se guarda
- * y esa corrida la reemplazará. La ventana es mínima, y el pedido ya avisa con `CONTENT_EDITED` si
- * la edición llegó antes.
  */
 export async function editContent(
   deps: EditContentDeps,
   { contentId, edit }: { contentId: string; edit: ContentEdit },
 ): Promise<CheckedContent> {
-  const content = await deps.contents.get(contentId);
-  if (content === null) {
-    throw new AppError("CONTENT_NOT_FOUND", `No existe el texto ${contentId}`, {
-      details: { contentId },
-    });
-  }
-  const current = (await deps.contents.listCurrent(content.listingId)).find(
-    (item) => item.platform === content.platform,
-  );
-  if (current?.id !== content.id) {
-    throw new AppError(
-      "CONTENT_NOT_CURRENT",
-      "Ese texto ya no es el vigente: vuelve a cargar el contenido del aviso",
-      { details: { contentId, currentId: current?.id ?? null } },
-    );
-  }
-  const active = await deps.contentRuns.findActive(content.listingId);
-  if (active?.texts) {
-    throw new AppError(
-      "CONTENT_RUN_ACTIVE",
-      "Hay una preparación de textos en curso: espera a que termine para editar",
-      { details: { contentId, contentRunId: active.id } },
-    );
-  }
+  const { listingId, definitions } = await beforeContentLock(deps, contentId);
 
-  // El contexto antes de guardar: si falta el aviso o el corredor, no queda una edición guardada
-  // con una respuesta de error.
-  const { ctx } = await loadCheckContext(deps, content.listingId);
-  const changes: ContentChanges = { status: "edited" };
-  if (edit.title !== undefined) {
-    if (content.platform === "instagram") {
-      throw new AppError("CONTENT_TITLE_INVALID", "Instagram no tiene título");
-    }
-    changes.title = edit.title;
-  }
-  if (edit.body !== undefined) changes.body = edit.body;
-  if (edit.hashtags !== undefined) {
-    if (content.platform !== "instagram" && edit.hashtags.length > 0) {
+  return deps.lock.run(listingId, async (locked) => {
+    const { content, ctx } = await lockedCurrentContent(locked, contentId, definitions);
+    const active = await locked.contentRuns.findActive(content.listingId);
+    if (active?.texts) {
       throw new AppError(
-        "CONTENT_HASHTAGS_INVALID",
-        "Solo Instagram usa hashtags: en este canal deben ir vacíos",
+        "CONTENT_RUN_ACTIVE",
+        "Hay una preparación de textos en curso: espera a que termine para editar",
+        { details: { contentId, contentRunId: active.id } },
       );
     }
-    changes.hashtags = normalizeHashtags(edit.hashtags);
-  }
+    const publication = (await locked.publications.listByListing(content.listingId)).find(
+      (item) => item.contentId === content.id && ACTIVE_PUBLICATION_STATUSES.includes(item.status),
+    );
+    if (publication !== undefined) {
+      throw new AppError(
+        "CONTENT_LOCKED",
+        "Este texto ya tiene una publicación: quita la aprobación o descarta la publicación para editarlo",
+        { details: { contentId, publicationId: publication.id, status: publication.status } },
+      );
+    }
 
-  return checked(await deps.contents.update(content.id, changes), ctx);
+    const changes: ContentChanges = { status: "edited" };
+    if (edit.title !== undefined) {
+      if (content.platform === "instagram") {
+        throw new AppError("CONTENT_TITLE_INVALID", "Instagram no tiene título");
+      }
+      changes.title = edit.title;
+    }
+    if (edit.body !== undefined) changes.body = edit.body;
+    if (edit.hashtags !== undefined) {
+      if (content.platform !== "instagram" && edit.hashtags.length > 0) {
+        throw new AppError(
+          "CONTENT_HASHTAGS_INVALID",
+          "Solo Instagram usa hashtags: en este canal deben ir vacíos",
+        );
+      }
+      changes.hashtags = normalizeHashtags(edit.hashtags);
+    }
+
+    return checked(await locked.contents.update(content.id, changes), ctx);
+  });
 }
