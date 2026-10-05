@@ -16,7 +16,7 @@ import {
 export type ContentCheckDeps = {
   listings: Pick<ListingRepository, "get">;
   brokers: Pick<BrokerRepository, "findById">;
-  fieldDefinitions: FieldDefinitionRepository;
+  fieldDefinitions: Pick<FieldDefinitionRepository, "list">;
 };
 
 /** Un texto con su revisión editorial, calculada al leer (no se guarda). */

@@ -16,6 +16,11 @@ export {
 } from "./broker.js";
 export * from "./content/index.js";
 export {
+  beforeContentLock,
+  type ContentLockDeps,
+  lockedCurrentContent,
+} from "./content/locked-content.js";
+export {
   CONTENT_REEL_OUTCOMES,
   type Content,
   type ContentReelOutcome,
@@ -248,6 +253,11 @@ export {
 export * from "./redact.js";
 export { RUN_WAIT } from "./run-wait.js";
 export {
+  type ApproveContentDeps,
+  type ApprovedContent,
+  approveContent,
+} from "./use-cases/approve-content.js";
+export {
   type ChangeListingStatusDeps,
   changeListingStatus,
 } from "./use-cases/change-listing-status.js";
@@ -284,6 +294,16 @@ export {
   listingMediaPath,
 } from "./use-cases/ingest-media.js";
 export {
+  channelPublications,
+  createPublications,
+  type PlannedPublication,
+  type PublicationOpening,
+  type PublicationPlanItem,
+  planPublications,
+  publicationPlan,
+  type SkippedPublication,
+} from "./use-cases/open-publications.js";
+export {
   type PrepareContentDeps,
   type PrepareContentParams,
   type PrepareContentResult,
@@ -307,3 +327,8 @@ export {
   type RunImportResult,
   runImport,
 } from "./use-cases/run-import.js";
+export {
+  type UnapproveContentDeps,
+  type UnapprovedContent,
+  unapproveContent,
+} from "./use-cases/unapprove-content.js";
