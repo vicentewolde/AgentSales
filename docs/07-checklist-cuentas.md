@@ -38,7 +38,9 @@ Hecho el 2026-10-02: 3 propiedades de muestra (P001, P002 y P003, corredor `agen
 - [x] Crear cuenta de desarrollador en developers.facebook.com
 - [x] Crear una app de tipo **Empresa** y agregar el producto **Instagram** (API con inicio de sesión de Instagram): app `AgentSales-IG`
 - [x] Agregar tu cuenta de Instagram como **tester** de la app y aceptar la invitación desde Instagram (aceptada el 2026-10-02). En la web en inglés: *Settings → App website permissions → Apps and websites → Tester Invites* (atajo: instagram.com/accounts/manage_access/)
-- [x] Anotar `META_APP_ID` y `META_APP_SECRET` en `.env` (2026-10-03, los de la app de Instagram; en F3 se confirma que son el par correcto)
+- [x] Anotar el ID y la clave de la app de Instagram en `.env` (2026-10-03); renombrados a `INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET` (2026-10-05). Son el "Identificador de la aplicación de Instagram" y su clave (Casos de uso > Administrar mensajes y contenido en Instagram > Personalizar > Configuración de la API con el inicio de sesión de Instagram), no el identificador general de la app
+- [x] Agregar al caso de uso los permisos `instagram_business_basic` e `instagram_business_content_publish` (pestaña "Permisos y funciones"; quedan "Listo para prueba", 2026-10-05)
+- [x] Probar la dirección de retorno local: Meta rechaza `http://localhost` (2026-10-05). En F3 la cuenta se conecta con el token del botón **Generate token** (paso 2 de esa pantalla, con tu cuenta como tester de Instagram)
 - [ ] (Para terceros, en F7) Verificación del negocio y App Review de `instagram_business_content_publish`
 
 ## En paralelo, antes de F4 (Portal Inmobiliario)
