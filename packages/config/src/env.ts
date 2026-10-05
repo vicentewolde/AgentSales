@@ -28,6 +28,19 @@ const port = intInRange(1, 65535, "debe ser un puerto entre 1 y 65535");
 /** Máximo de una URL prefirmada de R2 (ADR-0007). */
 const MAX_SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 
+/** URL `http://` o `https://` (la dirección de retorno del OAuth). */
+const httpUrl = z.string().refine((value) => {
+  const url = URL.parse(value);
+  return url !== null && (url.protocol === "http:" || url.protocol === "https:");
+}, "debe ser una URL http:// o https://");
+
+/** Variables que cambiaron de nombre: se avisa en vez de ignorarlas en silencio (spec F3, D5). */
+const RENAMED_VARIABLES: Readonly<Record<string, string>> = {
+  META_APP_ID: "INSTAGRAM_APP_ID",
+  META_APP_SECRET: "INSTAGRAM_APP_SECRET",
+  META_REDIRECT_URI: "INSTAGRAM_REDIRECT_URI",
+};
+
 const databaseUrl = requiredText.superRefine((value, ctx) => {
   const url = URL.parse(value);
   if (!url || (url.protocol !== "postgres:" && url.protocol !== "postgresql:")) {
@@ -86,7 +99,7 @@ const envSchema = z
       `debe ser un número entero de segundos entre 1 y ${MAX_SIGNED_URL_TTL_SECONDS} (7 días)`,
     ).default(3600),
 
-    // Seguridad: la clave de 32 bytes se deriva con HKDF-SHA256 donde se cifra (F3)
+    // Seguridad: las claves de 32 bytes se derivan con HKDF-SHA256 por propósito (crypto.ts, F3)
     APP_ENCRYPTION_KEY: requiredText.min(
       MIN_ENCRYPTION_KEY_LENGTH,
       `debe tener al menos ${MIN_ENCRYPTION_KEY_LENGTH} caracteres`,
@@ -118,10 +131,11 @@ const envSchema = z
     FFMPEG_PATH: z.string().default("ffmpeg"),
     FFPROBE_PATH: z.string().default("ffprobe"),
 
-    // Instagram (F3)
-    META_APP_ID: z.string().optional(),
-    META_APP_SECRET: z.string().optional(),
-    META_REDIRECT_URI: z.string().default("http://localhost:8787/oauth/instagram/callback"),
+    // Instagram (F3): el par de la app de Instagram (Casos de uso > Personalizar > Configuración de
+    // la API con el inicio de sesión de Instagram), no el de Configuración > Información básica.
+    INSTAGRAM_APP_ID: z.string().optional(),
+    INSTAGRAM_APP_SECRET: z.string().optional(),
+    INSTAGRAM_REDIRECT_URI: httpUrl.default("http://localhost:8787/oauth/instagram/callback"),
 
     // Mercado Libre / Portal Inmobiliario (F4)
     ML_APP_ID: z.string().optional(),
@@ -171,14 +185,20 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
       .map(([name, value]) => [name, value?.trim()] as const)
       .filter(([, value]) => value !== undefined && value !== ""),
   );
+  const renamed: EnvIssue[] = Object.entries(RENAMED_VARIABLES)
+    .filter(([old]) => old in cleaned)
+    .map(([old, current]) => ({ variable: old, message: `se renombró a ${current}` }));
   const result = envSchema.safeParse(cleaned);
-  if (!result.success) {
-    throw new EnvError(
-      result.error.issues.map((issue) => ({
-        variable: issue.path.join(".") || "(entorno)",
-        message: issue.message,
-      })),
-    );
+  if (!result.success || renamed.length > 0) {
+    throw new EnvError([
+      ...renamed,
+      ...(result.success
+        ? []
+        : result.error.issues.map((issue) => ({
+            variable: issue.path.join(".") || "(entorno)",
+            message: issue.message,
+          }))),
+    ]);
   }
   return Object.freeze(result.data);
 }

@@ -88,7 +88,7 @@ agentsales/
 │   ├── media/        Procesamiento de imagen y video (sharp, ffmpeg) y render de HTML (Playwright)
 │   ├── templates/    Plantillas HTML/CSS de posts (portada, ficha y texto del reel)
 │   ├── publishers/   instagram, mercadolibre, fb-marketplace
-│   └── config/       Variables de entorno validadas (zod), logger pino, redactor de secretos y resumen de errores repetidos
+│   └── config/       Variables de entorno validadas (zod), logger pino, redactor de secretos, resumen de errores repetidos y, desde F3, cifrado y firma (crypto.ts)
 ├── .github/          CI (GitHub Actions)
 ├── docs/             Documentación (esta carpeta)
 ├── data/             Plantillas y datos de prueba (los datos reales no van a git)
@@ -613,7 +613,9 @@ interface MediaProcessor {
 
 ## Seguridad
 
-- Tokens de plataformas cifrados en reposo con AES-256-GCM. La clave de 32 bytes se deriva de `APP_ENCRYPTION_KEY` con HKDF-SHA256 (se implementa en F3).
+- Tokens de plataformas cifrados en reposo con AES-256-GCM (`createSecretBox`, `packages/config/src/crypto.ts`, F3-T02): formato `v1.<iv>.<cifrado>.<tag>` en base64url, IV aleatorio de 12 bytes y AAD que ata el cifrado a su cuenta. Un texto alterado, otra clave u otra AAD dan `CREDENTIALS_UNREADABLE` (no reintentable: se reconecta la cuenta).
+- Las claves de 32 bytes se derivan de `APP_ENCRYPTION_KEY` con HKDF-SHA256 (sal fija `agentsales/hkdf/v1`), una por propósito (`KEY_PURPOSES`): credenciales y `state` del OAuth. El `state` se firma con HMAC-SHA256 (`createStateSigner`), con nonce y vencimiento, y uno alterado o vencido es `OAUTH_STATE_INVALID`.
+- `redactText` (core) oculta también el `code` de un OAuth y los secretos de un cuerpo de formulario (`client_secret=…&code=…`); la clave `code` de los objetos del log queda visible, porque son los códigos de error.
 - Nunca se loguean tokens, contraseñas ni `.env`.
 - El bucket de R2 es privado; se usan URLs prefirmadas de corta duración para que Instagram descargue los medios.
 - La base de datos solo acepta conexiones con credenciales y TLS. `.env` usa `sslmode=require` y el cliente lo convierte en `verify-full`, que además verifica el certificado (`toPgConnectionString`, también para pg-boss). No se expone ninguna API HTTP de datos.

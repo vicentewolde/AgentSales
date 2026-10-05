@@ -63,6 +63,31 @@ export function checkEnv(result: EnvResult): CheckItem {
 }
 
 /**
+ * El par de la app de Instagram (spec F3 §4.6): sin él no se conecta ni se refresca la cuenta.
+ * Es una advertencia, no un error: lo demás funciona. Nunca muestra los valores. `null` si el `.env`
+ * no es válido (ya lo informa `checkEnv`).
+ */
+export function checkInstagram(result: EnvResult): CheckItem | null {
+  if (!result.ok) return null;
+  const missing = (["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET"] as const).filter(
+    (name) => result.env[name] === undefined,
+  );
+  if (missing.length === 0) {
+    return {
+      name: "Instagram",
+      level: "ok",
+      detail: "INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET definidas",
+    };
+  }
+  return {
+    name: "Instagram",
+    level: "warn",
+    detail: `falta ${missing.join(" y ")}: no se podrá conectar ni refrescar la cuenta`,
+    hint: "Copia el identificador y la clave de la app de Instagram (docs/integraciones/instagram.md §2.1)",
+  };
+}
+
+/**
  * El modo que manda es el de la API en ejecución (`/health`); si no responde, el del `.env`.
  * Si no coinciden, es un error: la API se levantó con otra configuración.
  */

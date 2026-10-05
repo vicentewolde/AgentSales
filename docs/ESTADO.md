@@ -4,15 +4,15 @@
 
 **Actualizado:** 2026-10-05
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** F3-T01 · Esquema de publicaciones (migración `0006`)
-**Siguiente paso:** `/tarea F3-T02` · Cifrado, firma y variables de Instagram (después, T03 y T04)
+**Última tarea terminada:** F3-T02 · Cifrado, firma y variables de Instagram
+**Siguiente paso:** `/tarea F3-T03` · Cuentas conectadas: puerto y repositorio (T04 es independiente)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F3 (`/fase-plan 3`) | ✅ terminada | |
 | F3-T01 · Esquema de publicaciones (migración `0006`) | ✅ terminada | #54 |
-| F3-T02 · Cifrado, firma y variables de Instagram | ⏳ pendiente | |
+| F3-T02 · Cifrado, firma y variables de Instagram | ✅ terminada | |
 | F3-T03 · Cuentas conectadas: puerto y repositorio | ⏳ pendiente | |
 | F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso | ⏳ pendiente | |
 | F3-T05 · Aprobación en core | ⏳ pendiente | |
@@ -53,7 +53,6 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
-- F3: derivar la clave con HKDF-SHA256 desde `APP_ENCRYPTION_KEY` al cifrar tokens.
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **F7:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un xlsx de 10 MB (que es un zip) podría descomprimirse en mucho más dentro de exceljs. El cuerpo de la subida ya tiene tope (T11: `MAX_IMPORT_UPLOAD_MB` y 413), y el zip de medios también (T06: 4 GB y `validateEntrySizes`). Falta limitar el tamaño descomprimido del xlsx con subidas públicas.
@@ -69,6 +68,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-05: **F3-T02.** Cifrado de credenciales (AES-256-GCM) y firma del `state` del OAuth (HMAC), con claves derivadas por HKDF-SHA256 desde `APP_ENCRYPTION_KEY` (deuda de F0 pagada). Variables `INSTAGRAM_*`; una `META_*` que quede en `.env` es un error con su nombre nuevo. `doctor` avisa si falta el par de Instagram. El redactor oculta el `code` del OAuth y los secretos de formularios.
 - 2026-10-05: **F3-T01.** Publicaciones sin `draft` ni `pending_approval`, con `format` (`post`, `reel`) y `progress`; único parcial por aviso, cuenta y formato. La migración `0006` se ajustó a mano (drizzle-kit borraba el índice después de recrear el tipo) y falla si la tabla tiene filas. Neon tenía `publications` vacía; la `0006` se aplica después del merge.
 - 2026-10-04: **`/fase-plan 3`.** Nota `docs/integraciones/instagram.md` completada (OAuth, tokens, publicación, borrado, límites y errores; lo no verificado se prueba en la demo). Spec F3 aprobado con 20 tareas, revisado por el `arquitecto` (encolar después del candado, modo por publicación, SQL de la migración `0006` a mano). ADR-0014 aceptado; arquitectura, formato, roadmap y glosario al día.
 - 2026-10-04: **Cierre de F2 (`v0.2.0`).** Las 3 muestras con contenido listo para revisar (P001, P002 con reel de 1080×1920, P003 con una edición a mano) y aprobadas por el operador; `pnpm eval:content` con la CLI de Claude, 3 de 3 sin errores; repetir la preparación no reprocesa nada; aviso de "sigue en cola" con el worker apagado; variantes sin EXIF ni GPS; 1661 tests sin llamar a Claude. Auditoría docs-código del `arquitecto` aplicada (README con los requisitos de F2, seguimientos de ADR-0003, 0011, 0012 y 0013). Detalle en `CHANGELOG.md` y en el spec F2.

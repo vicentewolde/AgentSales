@@ -37,6 +37,22 @@ describe("redact", () => {
     });
   });
 
+  it("deja visible la clave code (los códigos de error) y oculta los tokens de Instagram (F3)", () => {
+    expect(
+      redact({
+        err: { code: "IG_AUTH_INVALID", message: "token vencido" },
+        accessToken: "IGAA-1",
+        credentials: { access_token: "IGAA-2", client_secret: "s" },
+        url: "https://x.test/cb?code=AQB&state=s1",
+      }),
+    ).toEqual({
+      err: { code: "IG_AUTH_INVALID", message: "token vencido" },
+      accessToken: REDACTED,
+      credentials: { access_token: REDACTED, client_secret: REDACTED },
+      url: `https://x.test/cb?code=${REDACTED}&state=s1`,
+    });
+  });
+
   it("no se cae con referencias circulares", () => {
     const node: Record<string, unknown> = { name: "a" };
     node.self = node;

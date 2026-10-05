@@ -12,6 +12,8 @@ const env = loadEnv({
   R2_SECRET_ACCESS_KEY: "c",
   R2_BUCKET: "agentsales-media",
   APP_ENCRYPTION_KEY: "k".repeat(32),
+  INSTAGRAM_APP_ID: "fake-ig-app",
+  INSTAGRAM_APP_SECRET: "fake-ig-secret",
 });
 
 const healthy: HealthReport = {
@@ -48,6 +50,35 @@ const levels = (items: { name: string; level: string }[]) =>
   Object.fromEntries(items.map((item) => [item.name, item.level]));
 
 describe("runDoctor", () => {
+  it("avisa (sin cortar) si falta el par de Instagram, sin mostrar valores", async () => {
+    const { INSTAGRAM_APP_SECRET: _secret, ...withoutSecret } = env;
+    const report = await runDoctor(deps({ env: { ok: true, env: withoutSecret } }));
+    const item = report.items.find((entry) => entry.name === "Instagram");
+
+    expect(report.exitCode).toBe(0);
+    expect(item).toMatchObject({ level: "warn" });
+    expect(item?.detail).toContain("INSTAGRAM_APP_SECRET");
+    expect(item?.detail).not.toContain("INSTAGRAM_APP_ID");
+    expect(JSON.stringify(report.items)).not.toContain("fake-ig");
+  });
+
+  it("no revisa Instagram si el .env es inválido (ya lo dice .env)", async () => {
+    const report = await runDoctor(
+      deps({
+        env: {
+          ok: false,
+          fileFound: true,
+          issues: [{ variable: "META_APP_ID", message: "se renombró a INSTAGRAM_APP_ID" }],
+        },
+      }),
+    );
+
+    expect(report.items.some((item) => item.name === "Instagram")).toBe(false);
+    expect(report.items.find((item) => item.name === ".env")?.detail).toBe(
+      "META_APP_ID (se renombró a INSTAGRAM_APP_ID)",
+    );
+  });
+
   it("con todo sano sale con 0 y marca cada ítem en ok", async () => {
     const report = await runDoctor(deps());
 
@@ -56,6 +87,7 @@ describe("runDoctor", () => {
       Node: "ok",
       ".env": "ok",
       PUBLISH_MODE: "ok",
+      Instagram: "ok",
       API: "ok",
       "Base de datos": "ok",
       Almacenamiento: "ok",

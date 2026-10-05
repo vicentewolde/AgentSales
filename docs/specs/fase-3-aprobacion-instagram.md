@@ -139,7 +139,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 - **Meta no acepta `http://localhost`** (probado el 2026-10-05, nota §3.6). En F3 la cuenta se conecta con `agentsales accounts connect instagram --broker <slug> --token-stdin`, que recibe por la entrada estándar el token largo del botón **Generate token** (`POST /accounts/connect-token`) y sigue igual desde `/me` (D4). El OAuth de arriba se implementa y se prueba con msw (lo necesita F7, con HTTPS), pero el panel muestra el botón Conectar solo si `INSTAGRAM_REDIRECT_URI` es `https://`; si no, muestra el comando de la CLI. No se agregan túneles ni HTTPS local en F3.
 - **Guardado (`platform_accounts`):** `external_account_id` = `user_id` de `/me`, `display_name` = `@username`, `status = connected`, `token_expires_at`, `meta` con `accountType`, los permisos y `tokenRefreshedAt`. `credentials_encrypted` guarda `{ accessToken }` cifrado. Reconectar la misma cuenta actualiza la fila.
 - **Cifrado (`SecretBox` y `createSecretBox`, `packages/config`; lo inyectan las apps en el repositorio de cuentas):**
-  - Clave de 32 bytes con HKDF-SHA256 desde `APP_ENCRYPTION_KEY`, con `info` por propósito (`agentsales/credentials/v1`; el `state` del OAuth usa otra: `agentsales/oauth-state/v1`).
+  - Clave de 32 bytes con HKDF-SHA256 desde `APP_ENCRYPTION_KEY` (sal fija `agentsales/hkdf/v1`), con `info` por propósito (`agentsales/credentials/v1`; el `state` del OAuth usa otra: `agentsales/oauth-state/v1`).
   - AES-256-GCM con IV aleatorio de 12 bytes; formato `v1.<iv>.<cifrado>.<tag>` en base64url.
   - AAD = `platform:external_account_id`: un cifrado copiado a otra fila no se descifra.
   - Un texto alterado, otra clave u otra AAD dan `CREDENTIALS_UNREADABLE` (no reintentable; la cuenta queda en `error` y hay que reconectarla).
@@ -218,7 +218,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
   - [x] La migración se aplica en PGlite, recrea el tipo y el único parcial por formato (test con dos activas del mismo formato y una de otro), y `pnpm db:generate` no genera nada después
   - [x] La migración falla con filas en `publications` (test)
   - [x] Probada en Neon dentro de `BEGIN … ROLLBACK` (2026-10-05: tipo recreado e índices nuevos, sin dejar cambios); `publications` con 0 filas
-  - [ ] Aplicada en Neon justo después del merge (`pnpm db:migrate`)
+  - [x] Aplicada en Neon justo después del merge (`pnpm db:migrate`, 2026-10-05)
   - [x] Docs 01 y 02 al día
 
 ### F3-T02 · Cifrado, firma y variables de Instagram
@@ -226,11 +226,11 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 - **Archivos:** `packages/config/src/{crypto.ts,env.ts}`, `packages/core/src/redact.ts`, `apps/cli/src/commands/doctor/*`, `.env.example`, `docs/07-checklist-cuentas.md`
 - **Descripción:** `SecretBox`, `createSecretBox(APP_ENCRYPTION_KEY)` y `createStateSigner` (§4.6); `INSTAGRAM_*` en lugar de `META_*`; `doctor` avisa si faltan; `redactText` con `code` en URLs y cuerpos de formulario.
 - **Hecho cuando:**
-  - [ ] Ida y vuelta; un byte cambiado, otra clave u otra AAD dan `CREDENTIALS_UNREADABLE`; dos cifrados del mismo texto difieren (IV); vector fijo de HKDF
-  - [ ] El `state` firmado vence y no se acepta alterado
-  - [ ] Tests del redactor (el `code` de una URL se oculta; la clave `code` de un objeto del log, no)
-  - [ ] Tests del entorno y de `doctor` con las variables nuevas
-  - [ ] Operador: renombra las variables en `.env` y confirma el par según la nota §2.1
+  - [x] Ida y vuelta; un byte cambiado, otra clave u otra AAD dan `CREDENTIALS_UNREADABLE`; dos cifrados del mismo texto difieren (IV); vector fijo de HKDF (también contra un HKDF escrito a mano)
+  - [x] El `state` firmado vence y no se acepta alterado
+  - [x] Tests del redactor (el `code` de una URL se oculta; la clave `code` de un objeto del log, no)
+  - [x] Tests del entorno y de `doctor` con las variables nuevas
+  - [x] Operador: renombra las variables en `.env` y confirma el par según la nota §2.1 (2026-10-05)
 
 ### F3-T03 · Cuentas conectadas: puerto y repositorio
 - **Depende de:** T02
@@ -456,3 +456,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-04 | Revisión del PR (#52) con `revisor` y `arquitecto`: aprobar un texto nuevo salta el formato que ya tiene una publicación activa (sin chocar con el único dentro del candado) y `NOTHING_TO_PUBLISH`; cambios del aviso del sistema y condicionales, y la tabla manual del aviso pasa a F6 (§3); archivos de repositorios en T04 a T06; `publications cancel` y `retire`, confirmación de `publish` en `live` y `accounts refresh --force` (la demo del refresco); `POST /accounts/connect-token` para el plan del token; `broker` validado; `OAUTH_DENIED` no es un `AppError`; `startedAt` en el sondeo del panel; `CLAUDE.md` con los comandos nuevos; nota en `02-modelo-datos.md` hasta T01 y límites de `03-plataformas.md` alineados con D10 |
 | 2026-10-05 | Meta rechazó `http://localhost` como dirección de retorno (probado en el panel del operador): en F3 la cuenta se conecta con el token de Generate token (D4, §4.6, T13, T17 y demo 2); el OAuth se implementa y prueba con msw para F7. Se agregaron a la app los permisos `instagram_business_basic` e `instagram_business_content_publish`, que faltaban |
 | 2026-10-05 | Desde F3-T01: la migración `0006` se prueba en Neon dentro de `BEGIN … ROLLBACK` antes del merge y se aplica justo después (con `publications` vacía, verificado), no en una rama de Neon, que el proyecto no tiene cómo crear; textos de estados y formatos (`PUBLICATION_STATUS_TEXT`, `PUBLICATION_FORMAT_TEXT`) y tuplas de la bitácora (`PUBLICATION_EVENT_TYPES`, `PUBLICATION_ACTORS`) en core |
+| 2026-10-05 | Desde F3-T02: `deriveKey` con sal fija (`agentsales/hkdf/v1`) y `KEY_PURPOSES`; el `state` lleva nonce y vencimiento en base64url (`<datos>.<firma>`); `loadEnv` rechaza las variables `META_*` con su nombre nuevo (en vez de ignorarlas) y valida `INSTAGRAM_REDIRECT_URI` como URL http(s); `doctor` avisa (sin error) si falta el par de Instagram |
