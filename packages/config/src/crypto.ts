@@ -6,7 +6,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { AppError } from "@agentsales/core";
+import { AppError, type SecretBox } from "@agentsales/core";
 
 // Cifrado de credenciales y firma del `state` del OAuth (spec F3 §4.6). Las dos claves de 32 bytes
 // se derivan de `APP_ENCRYPTION_KEY` con HKDF-SHA256, una por propósito (`info`): una clave filtrada
@@ -41,18 +41,6 @@ const FORMAT_VERSION = "v1";
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
-/**
- * Cifra y descifra textos cortos (los tokens de una cuenta conectada) con AES-256-GCM.
- * `aad` (datos asociados, sin cifrar) ata el cifrado a su dueño: el repositorio usa
- * `platform:external_account_id`, así un cifrado copiado a otra fila no se descifra.
- */
-export interface SecretBox {
-  /** Devuelve `v1.<iv>.<cifrado>.<tag>` en base64url; dos llamadas con el mismo texto difieren. */
-  encrypt(plaintext: string, aad: string): string;
-  /** Lanza `CREDENTIALS_UNREADABLE` (no reintentable) si el texto, la clave o la `aad` no calzan. */
-  decrypt(sealed: string, aad: string): string;
-}
-
 const unreadable = (reason: string) =>
   new AppError(
     "CREDENTIALS_UNREADABLE",
@@ -60,6 +48,10 @@ const unreadable = (reason: string) =>
     { details: { reason } },
   );
 
+/**
+ * `SecretBox` (puerto de core) con AES-256-GCM: `encrypt` devuelve `v1.<iv>.<cifrado>.<tag>` en
+ * base64url, con IV aleatorio. El repositorio de cuentas usa la AAD `platform:external_account_id`.
+ */
 export function createSecretBox(appEncryptionKey: string): SecretBox {
   const key = deriveKey(appEncryptionKey, KEY_PURPOSES.credentials);
   return {

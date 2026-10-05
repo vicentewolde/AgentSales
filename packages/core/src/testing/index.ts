@@ -53,6 +53,11 @@ export {
   type MediaProcessorCall,
 } from "./media-processor.js";
 export {
+  createInMemoryPlatformAccountRepository,
+  type InMemoryPlatformAccountRepository,
+  type InMemoryPlatformAccountRepositoryOptions,
+} from "./platform-accounts.js";
+export {
   createInMemoryHtmlRenderer,
   createInMemorySlideTemplates,
   type HtmlRenderCall,
