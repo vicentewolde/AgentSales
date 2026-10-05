@@ -337,14 +337,11 @@ export {
   type PrepareContentResult,
   prepareContent,
 } from "./use-cases/prepare-content.js";
+export { enqueuePublication } from "./use-cases/publication-start.js";
 export {
-  enqueuePublication,
   type PublishListingDeps,
   type PublishListingResult,
   publishListing,
-  type StartPublicationDeps,
-  type StartPublicationResult,
-  startPublication,
 } from "./use-cases/publish-listing.js";
 export {
   enqueueContentRun,
@@ -369,6 +366,11 @@ export {
   type RunImportResult,
   runImport,
 } from "./use-cases/run-import.js";
+export {
+  type StartPublicationDeps,
+  type StartPublicationResult,
+  startPublication,
+} from "./use-cases/start-publication.js";
 export {
   type UnapproveContentDeps,
   type UnapprovedContent,

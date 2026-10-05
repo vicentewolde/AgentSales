@@ -27,8 +27,9 @@ import {
 import { approveContent } from "./approve-content.js";
 import { cancelPublication } from "./cancel-publication.js";
 import { prepareContent } from "./prepare-content.js";
-import { publishListing, startPublication } from "./publish-listing.js";
+import { publishListing } from "./publish-listing.js";
 import { retirePublication } from "./retire-publication.js";
+import { startPublication } from "./start-publication.js";
 
 const text = (value: string) => Uint8Array.from(value, (char) => char.charCodeAt(0));
 
@@ -96,23 +97,26 @@ async function setup(
     options.queueFails === undefined ? {} : { fail: options.queueFails },
   );
 
-  const run = await contentRuns.create({ listingId: listing.id, texts: true });
-  await prepareContent(
-    {
-      listings,
-      brokers,
-      fieldDefinitions,
-      media,
-      contentRuns,
-      storage,
-      processor: createInMemoryMediaProcessor(),
-      templates: createInMemorySlideTemplates(),
-      renderer: createInMemoryHtmlRenderer(),
-      llm: createInMemoryLlmProvider([{ data: SAMPLE_CONTENT_DRAFT }]),
-      sha256: fakeHash,
-    },
-    { contentRunId: run.id, isLastAttempt: true },
-  );
+  const prepare = async () => {
+    const run = await contentRuns.create({ listingId: listing.id, texts: true });
+    await prepareContent(
+      {
+        listings,
+        brokers,
+        fieldDefinitions,
+        media,
+        contentRuns,
+        storage,
+        processor: createInMemoryMediaProcessor(),
+        templates: createInMemorySlideTemplates(),
+        renderer: createInMemoryHtmlRenderer(),
+        llm: createInMemoryLlmProvider([{ data: SAMPLE_CONTENT_DRAFT }]),
+        sha256: fakeHash,
+      },
+      { contentRunId: run.id, isLastAttempt: true },
+    );
+  };
+  await prepare();
   const connect = () =>
     platformAccounts.upsertConnected({
       brokerId: broker.id,
@@ -177,6 +181,7 @@ async function setup(
     account,
     connect,
     instagramId,
+    prepare,
     approved,
     byFormat,
     deps: { lock: watchedLock, queue: watchedQueue, publications: outsidePublications },
@@ -291,12 +296,62 @@ describe("publishListing", () => {
     });
   });
 
-  it("sin nada que pasar a publishing (todo publicado o en curso) es NOTHING_TO_PUBLISH, sin encolar", async () => {
+  it("las que ya están en publishing se reencolan (por si su job se perdió), sin cambiarlas", async () => {
     const t = await setup();
     await markPublished(t, t.byFormat("post")?.id ?? "", true);
-    await publish(t);
-    await expect(publish(t)).rejects.toMatchObject({ code: "NOTHING_TO_PUBLISH" });
-    expect(t.queue.jobs).toHaveLength(1);
+    const first = await publish(t);
+    const again = await publish(t, false);
+    expect(again.started).toEqual([]);
+    expect(again.requeued.map((p) => [p.id, p.dryRun, p.attempts])).toEqual([
+      [first.started[0]?.id, true, 1],
+    ]);
+    expect(t.queue.jobs.map((job) => job.data)).toEqual([
+      { publicationId: first.started[0]?.id },
+      { publicationId: first.started[0]?.id },
+    ]);
+  });
+
+  it("con todo publicado es NOTHING_TO_PUBLISH, sin encolar", async () => {
+    const t = await setup();
+    await markPublished(t, t.byFormat("post")?.id ?? "", true);
+    await markPublished(t, t.byFormat("reel")?.id ?? "", true);
+    await expect(publish(t)).rejects.toMatchObject({
+      code: "NOTHING_TO_PUBLISH",
+      message: expect.stringContaining("todo está publicado"),
+    });
+    expect(t.queue.jobs).toEqual([]);
+  });
+
+  it("si un formato está ocupado por la publicación de un texto anterior, NOTHING_TO_PUBLISH dice que se retire o descarte", async () => {
+    const t = await setup();
+    await markPublished(t, t.byFormat("post")?.id ?? "", true);
+    await markPublished(t, t.byFormat("reel")?.id ?? "", true);
+    // Un texto nuevo, aprobado: sus dos formatos están ocupados por las publicadas del anterior.
+    await t.prepare();
+    await approveContent(t.approveDeps, { contentId: await t.instagramId(), actor: "operator" });
+    await expect(publish(t)).rejects.toMatchObject({
+      code: "NOTHING_TO_PUBLISH",
+      message: expect.stringContaining("retírala o descártala"),
+      details: { skipped: [{ format: "post" }, { format: "reel" }] },
+    });
+  });
+
+  it("el carrusel de un texto anterior publicado se informa en skipped; el reel nuevo se publica", async () => {
+    const t = await setup();
+    const oldPost = t.byFormat("post");
+    await markPublished(t, oldPost?.id ?? "", true);
+    await cancelPublication(t.deps, {
+      publicationId: t.byFormat("reel")?.id ?? "",
+      actor: "operator",
+    });
+    await t.prepare();
+    await approveContent(t.approveDeps, { contentId: await t.instagramId(), actor: "operator" });
+
+    const result = await publish(t);
+    expect(result.started.map((p) => p.format)).toEqual(["reel"]);
+    expect(result.skipped).toEqual([
+      { platformAccountId: t.account?.id, format: "post", publicationId: oldPost?.id },
+    ]);
   });
 
   it("sin texto aprobado es CONTENT_NOT_APPROVED", async () => {
@@ -533,5 +588,188 @@ describe("retirePublication", () => {
     await expect(
       retirePublication(t.deps, { publicationId: "no-existe", actor: "cli" }),
     ).rejects.toMatchObject({ code: "PUBLICATION_NOT_FOUND" });
+  });
+});
+
+describe("publishListing · cuentas, medios, cola y carreras", () => {
+  it("solo mueve las de cuentas conectadas; las de una cuenta desconectada se informan en stranded", async () => {
+    const t = await setup();
+    const old = t.publications.all();
+    await t.platformAccounts.disconnect(t.account?.id ?? "");
+    await t.platformAccounts.upsertConnected({
+      brokerId: t.account?.brokerId ?? "",
+      platform: "instagram",
+      externalAccountId: "17841400000000002",
+      displayName: "@otra",
+      tokenExpiresAt: null,
+      meta: {},
+      credentials: { accessToken: "IGAA-otra" },
+    });
+    const result = await publish(t);
+    expect(result.created.map((p) => p.format)).toEqual(["post", "reel"]);
+    expect(result.started.map((p) => p.id)).toEqual(result.created.map((p) => p.id));
+    expect(result.stranded.map((p) => [p.id, p.status])).toEqual(
+      old.map((p) => [p.id, "approved"]),
+    );
+  });
+
+  it("las nuevas quedan con su evento de nacimiento y el de publishing", async () => {
+    const t = await setup({ account: false });
+    await t.connect();
+    const result = await publish(t);
+    const events = await t.publications.listEvents(result.started[0]?.id ?? "");
+    expect(events.map((e) => [e.fromStatus, e.toStatus])).toEqual([
+      [null, "approved"],
+      ["approved", "publishing"],
+    ]);
+  });
+
+  it("si la cola falla a mitad de camino, intenta todas y dice cuáles quedaron sin job; publicar otra vez las reencola", async () => {
+    let calls = 0;
+    const t = await setup({
+      queueFails: () =>
+        ++calls === 2
+          ? new AppError("QUEUE_UNAVAILABLE", "La cola no está disponible", { retriable: true })
+          : undefined,
+    });
+    const [post, reel] = [t.byFormat("post"), t.byFormat("reel")];
+    await expect(publish(t)).rejects.toMatchObject({
+      code: "QUEUE_UNAVAILABLE",
+      details: { publicationIds: [reel?.id] },
+    });
+    expect(t.queue.jobs.map((job) => job.data)).toEqual([{ publicationId: post?.id }]);
+    expect(t.publications.all().map((p) => p.status)).toEqual(["publishing", "publishing"]);
+
+    const again = await publish(t);
+    expect(again.requeued.map((p) => p.id)).toEqual([post?.id, reel?.id]);
+  });
+
+  it("una fallida que empezó en live no se reintenta en dry-run (PUBLISH_MODE_LOCKED); en live sí", async () => {
+    const t = await setup();
+    const post = t.byFormat("post");
+    await markPublished(t, t.byFormat("reel")?.id ?? "", true);
+    await t.publications.transition(
+      post?.id ?? "",
+      { from: "approved", to: "publishing", changes: { dryRun: false, incrementAttempts: true } },
+      { actor: "system" },
+    );
+    await t.publications.saveProgress(post?.id ?? "", {
+      attemptStartedAt: "2026-10-05T12:00:00.000Z",
+      childIds: [],
+      containerId: "c-1",
+    });
+    await t.publications.transition(
+      post?.id ?? "",
+      {
+        from: "publishing",
+        to: "failed",
+        changes: {
+          lastError: { code: "IG_PUBLISH_OUTCOME_UNKNOWN", message: "x", retriable: false },
+        },
+      },
+      { actor: "system" },
+    );
+    await expect(publish(t, true)).rejects.toMatchObject({ code: "PUBLISH_MODE_LOCKED" });
+    await expect(
+      startPublication(t.deps, { publicationId: post?.id ?? "", dryRun: true, actor: "cli" }),
+    ).rejects.toMatchObject({ code: "PUBLISH_MODE_LOCKED" });
+    expect(t.byFormat("post")?.status).toBe("failed");
+    await expect(publish(t, false)).resolves.toMatchObject({ started: [{ id: post?.id }] });
+  });
+
+  it("dos publicar a la vez: el segundo espera al candado y solo reencola lo que el primero inició", async () => {
+    const t = await setup();
+    const plain = { ...t.deps, lock: createInMemoryListingLock(t.locked) };
+    const [first, second] = await Promise.all([
+      publishListing(plain, {
+        listingId: t.listingId,
+        platform: "instagram",
+        dryRun: true,
+        actor: "operator",
+      }),
+      publishListing(plain, {
+        listingId: t.listingId,
+        platform: "instagram",
+        dryRun: false,
+        actor: "cli",
+      }),
+    ]);
+    expect(first.started).toHaveLength(2);
+    expect(second.started).toEqual([]);
+    expect(second.requeued.map((p) => p.dryRun)).toEqual([true, true]);
+    expect(t.publications.all().map((p) => p.attempts)).toEqual([1, 1]);
+  });
+
+  it("publicar y descartar a la vez quedan en orden: o se descarta antes, o se publica y descartar espera", async () => {
+    const t = await setup();
+    const plain = { ...t.deps, lock: createInMemoryListingLock(t.locked) };
+    const reel = t.byFormat("reel");
+    const [cancelled, published] = await Promise.allSettled([
+      cancelPublication(plain, { publicationId: reel?.id ?? "", actor: "operator" }),
+      publishListing(plain, {
+        listingId: t.listingId,
+        platform: "instagram",
+        dryRun: true,
+        actor: "operator",
+      }),
+    ]);
+    const formats =
+      published.status === "fulfilled" ? published.value.started.map((p) => p.format) : [];
+    if (cancelled.status === "fulfilled") {
+      expect(formats).toEqual(["post"]);
+      expect(t.byFormat("reel")?.status).toBe("cancelled");
+    } else {
+      expect(cancelled.reason).toMatchObject({ code: "PUBLICATION_IN_PROGRESS" });
+      expect(formats).toEqual(["post", "reel"]);
+    }
+  });
+});
+
+describe("startPublication · revisiones", () => {
+  it("reintenta una fallida conservando el progreso", async () => {
+    const t = await setup();
+    const post = t.byFormat("post");
+    const progress = {
+      attemptStartedAt: "2026-10-05T12:00:00.000Z",
+      childIds: [],
+      containerId: "c-1",
+    };
+    await t.publications.transition(
+      post?.id ?? "",
+      { from: "approved", to: "publishing", changes: { dryRun: true, incrementAttempts: true } },
+      { actor: "system" },
+    );
+    await t.publications.saveProgress(post?.id ?? "", progress);
+    await t.publications.transition(
+      post?.id ?? "",
+      {
+        from: "publishing",
+        to: "failed",
+        changes: { lastError: { code: "X", message: "x", retriable: true } },
+      },
+      { actor: "system" },
+    );
+    const result = await startPublication(t.deps, {
+      publicationId: post?.id ?? "",
+      dryRun: true,
+      actor: "cli",
+    });
+    expect(result.publication).toMatchObject({ attempts: 2, progress, lastError: null });
+  });
+
+  it("con una corrida activa es CONTENT_RUN_ACTIVE; con su texto ya no aprobado, CONTENT_NOT_APPROVED", async () => {
+    const t = await setup();
+    const post = t.byFormat("post");
+    const run = await t.contentRuns.create({ listingId: t.listingId, texts: false });
+    await expect(
+      startPublication(t.deps, { publicationId: post?.id ?? "", dryRun: true, actor: "cli" }),
+    ).rejects.toMatchObject({ code: "CONTENT_RUN_ACTIVE" });
+    await t.contentRuns.markRunning(run.id);
+    await t.contentRuns.markFailed(run.id, { code: "X", message: "x" });
+    await t.contents.update(post?.contentId ?? "", { status: "edited" });
+    await expect(
+      startPublication(t.deps, { publicationId: post?.id ?? "", dryRun: true, actor: "cli" }),
+    ).rejects.toMatchObject({ code: "CONTENT_NOT_APPROVED" });
+    expect(t.queue.jobs).toEqual([]);
   });
 });

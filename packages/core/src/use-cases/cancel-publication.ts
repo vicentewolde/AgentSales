@@ -3,7 +3,7 @@ import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { canTransition } from "../publication-state.js";
-import { publicationNotFound } from "./publish-listing.js";
+import { publicationNotFound } from "./publication-start.js";
 
 export type CancelPublicationDeps = {
   lock: ListingLock;
@@ -13,8 +13,10 @@ export type CancelPublicationDeps = {
 
 /**
  * Descarta una publicación que no salió (spec F3 §4.3, `POST /publications/:id/cancel`):
- * `approved` o `failed` → `cancelled`, con su evento, dentro del candado del aviso. El texto sigue
- * aprobado: publicar de nuevo abre otra. Errores (`AppError`):
+ * `approved` o `failed` → `cancelled`, con su evento, dentro del candado del aviso (también
+ * `scheduled` y `awaiting_manual_confirm`, que la máquina deja descartar, como al quitar la
+ * aprobación; en F3 no se alcanzan, y la de Marketplace se revisa en F5). El texto sigue aprobado:
+ * publicar de nuevo abre otra. Errores (`AppError`):
  * - no existe → `PUBLICATION_NOT_FOUND` (404);
  * - se está publicando → `PUBLICATION_IN_PROGRESS` (409: espera a que termine);
  * - ya publicada, descartada o retirada → `INVALID_TRANSITION` (409; una publicada se retira).

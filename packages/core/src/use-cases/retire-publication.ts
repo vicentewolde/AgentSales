@@ -2,7 +2,7 @@ import { AppError } from "../errors.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
-import { publicationNotFound } from "./publish-listing.js";
+import { publicationNotFound } from "./publication-start.js";
 
 export type RetirePublicationDeps = {
   lock: ListingLock;
@@ -61,6 +61,8 @@ export async function retirePublication(
     );
     let listingBackToReady = false;
     if (live) {
+      // Una que se está publicando en `live` no cuenta: si sale, el intento (T11) sube el aviso a
+      // `active` otra vez, con su propio cambio condicional.
       const stillLive = (await locked.publications.listByListing(publication.listingId)).some(
         (other) => !other.dryRun && (other.status === "published" || other.status === "paused"),
       );
