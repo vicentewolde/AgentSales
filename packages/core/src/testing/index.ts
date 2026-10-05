@@ -12,6 +12,13 @@ export {
 } from "./content-fixtures.js";
 export { fakeHash } from "./fake-hash.js";
 export {
+  createFakePublisher,
+  type FakePublishCall,
+  type FakePublisher,
+  type FakePublisherOptions,
+  type FakePublishStep,
+} from "./fake-publisher.js";
+export {
   type FieldDefinitionFixtureRow,
   type FieldDefinitionOrderFixture,
   fieldDefinitionOrderFixture,

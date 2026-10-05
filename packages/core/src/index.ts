@@ -203,6 +203,15 @@ export type {
   PublicationEventInput,
   PublicationRepository,
 } from "./ports/publication-repository.js";
+export type {
+  PublishContext,
+  Publisher,
+  PublishInput,
+  PublishIssue,
+  PublishMediaItem,
+  PublishResult,
+  PublishValidation,
+} from "./ports/publisher.js";
 export type { SecretBox } from "./ports/secret-box.js";
 export {
   type CoverData,
@@ -250,6 +259,18 @@ export {
   TERMINAL_PUBLICATION_STATUSES,
   transition,
 } from "./publication-state.js";
+export {
+  type DryRunOptions,
+  type DryRunRecord,
+  dryRunExternalId,
+  dryRunRecord,
+  withDryRun,
+} from "./publish/dry-run.js";
+export {
+  buildPublishInput,
+  checkPublishInput,
+  PUBLISH_MEDIA_URL_TTL_S,
+} from "./publish/input.js";
 export * from "./redact.js";
 export { RUN_WAIT } from "./run-wait.js";
 export {

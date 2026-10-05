@@ -178,7 +178,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 | `POST /publications/:id/publish`, `/cancel` y `/retire` | Publicar o reintentar una, descartarla y marcarla como retirada (`retire` exige `{ removedByHand: true }` si es `live`) |
 | `GET /publications/:id/events` | Bitácora, sin secretos |
 
-Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_LOCKED`, `CONTENT_NOT_APPROVED`, `PUBLICATION_PENDING`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH` y `ACCOUNT_NOT_CONNECTED` (409); `PUBLICATION_NOT_FOUND` y `ACCOUNT_NOT_FOUND` (404); `OAUTH_STATE_INVALID` (400); `CREDENTIALS_UNREADABLE` (500); los `IG_*` y `PUBLISH_MODE_MISMATCH` solo viajan dentro de `last_error`.
+Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_LOCKED`, `CONTENT_NOT_APPROVED`, `PUBLICATION_PENDING`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH` y `ACCOUNT_NOT_CONNECTED` (409); `PUBLICATION_NOT_FOUND` y `ACCOUNT_NOT_FOUND` (404); `OAUTH_STATE_INVALID` (400); `CREDENTIALS_UNREADABLE` (500); los `IG_*`, `PUBLISH_MODE_MISMATCH`, `PUBLISH_INPUT_INVALID`, `PUBLICATION_MEDIA_MISSING` y `PUBLICATION_CONTENT_MISMATCH` (T07) solo viajan dentro de `last_error`.
 
 ### 4.9 CLI y panel
 - **CLI:**
@@ -277,12 +277,12 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T07 · Puerto `Publisher` y `dry-run`
 - **Depende de:** T01
-- **Archivos:** `packages/core/src/ports/publisher.ts`, `packages/core/src/publish/{dry-run.ts,input.ts}`, `packages/core/src/testing/fake-publisher.ts`
+- **Archivos:** `packages/core/src/ports/publisher.ts`, `packages/core/src/publish/{dry-run.ts,input.ts}`, `packages/core/src/testing/fake-publisher.ts`, sus tests y `docs/01-arquitectura.md` (contrato)
 - **Descripción:** contrato (§4.5), `buildPublishInput` (caption y medios desde `media_ids`), `withDryRun` (valida, devuelve lo que se habría enviado y un resultado simulado `dry-run:<publicationId>`), publisher falso configurable para los tests.
 - **Hecho cuando:**
-  - [ ] `withDryRun` nunca llama a `publish` del publisher envuelto (test con uno que falla si se le llama)
-  - [ ] Un `PublishInput` inválido no se "publica" en `dry-run`: devuelve los motivos
-  - [ ] El registro de `dry-run` no lleva URLs firmadas ni tokens
+  - [x] `withDryRun` nunca llama a `publish` del publisher envuelto (test con uno que falla si se le llama)
+  - [x] Un `PublishInput` inválido no se "publica" en `dry-run`: devuelve los motivos
+  - [x] El registro de `dry-run` no lleva URLs firmadas ni tokens
 
 ### F3-T08 · Instagram: cliente de la API y OAuth
 - **Depende de:** T02
@@ -467,3 +467,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-05 | Revisión de F3-T05 (#58): todas las revisiones (también el plan de publicaciones: `planPublications`) van antes de la primera escritura, así un rechazo no deja nada a medias aunque el candado en memoria no deshaga; aprobar y quitar la aprobación devuelven además `publications` (todas las del canal, leídas en el candado) y `skipped` informa solo formatos ocupados por **otro** texto; `beforeContentLock` y `lockedCurrentContent` en `content/locked-content.ts` (los usará `editContent` en T06); un aviso que no existe es `LISTING_NOT_FOUND` en los dos; tests que fallan si `fn` usa algo de fuera del candado |
 | 2026-10-05 | Desde F3-T06: `requestContentRun` ya no tiene el camino `CONTENT_RUN_CONFLICT` → `findActive` (con el candado no hay carrera); `CONTENT_LOCKED` y `PUBLICATION_PENDING` son 409 en la API desde esta tarea, porque ya salen por `PATCH /contents/:id` y `POST /listings/:id/content-runs`; la API compone `createListingLock` (con el `SecretBox`) y sus dobles el de memoria con los mismos repositorios; el worker no cambia (no pide corridas ni edita) |
 | 2026-10-05 | Revisión de F3-T06 (#59): el test de la ventana de F2 fuerza los dos órdenes (con una puerta dentro del candado) y comprueba que sin candado la edición se pierde; `CONTENT_LOCKED` dice qué hacer según la publicación (pendiente o publicada); la confirmación de regenerar en el panel y la CLI cubre los textos aprobados; la CLI explica `PUBLICATION_PENDING`; un solo `SecretBox` en `server.ts` para el candado y (T13) las cuentas; test de que el candado de `testDeps` usa los repositorios de la app |
+| 2026-10-05 | Desde F3-T07: `PublishInput` lleva `publicationId`, `title` (`null` en Instagram) y medios con su ruta de R2, URL firmada, tipo, tamaño, medidas y duración (`buildPublishInput`, con `PUBLICATION_MEDIA_MISSING` y `PUBLICATION_CONTENT_MISMATCH`); `checkPublishInput` revisa plataforma, formato y `validate` y da `PUBLISH_INPUT_INVALID` con los motivos (sirve en `live` y `dry-run`); `withDryRun` entrega lo que se habría enviado por `onRecord` (`dryRunRecord`, sin URLs ni credenciales) para la bitácora de T11; publisher falso `createFakePublisher` |
