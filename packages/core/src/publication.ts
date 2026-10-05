@@ -17,9 +17,9 @@ export const instagramProgressSchema = z.object({
 export type InstagramProgress = z.infer<typeof instagramProgressSchema>;
 
 /** Esquema del progreso de cada plataforma; las que aún no publican no tienen. */
-export const PUBLICATION_PROGRESS_SCHEMAS: Readonly<Partial<Record<Platform, z.ZodType>>> = {
+export const PUBLICATION_PROGRESS_SCHEMAS = {
   instagram: instagramProgressSchema,
-};
+} as const satisfies Readonly<Partial<Record<Platform, z.ZodType>>>;
 
 /** Motivo del último intento fallido (`publications.last_error`): legible y sin secretos. */
 export const publicationErrorSchema = z.object({
@@ -58,7 +58,8 @@ export const publicationSchema = z
   })
   .superRefine((publication, ctx) => {
     if (publication.progress === null) return;
-    const schema = PUBLICATION_PROGRESS_SCHEMAS[publication.platform];
+    const schemas: Readonly<Partial<Record<Platform, z.ZodType>>> = PUBLICATION_PROGRESS_SCHEMAS;
+    const schema = schemas[publication.platform];
     if (schema === undefined || !schema.safeParse(publication.progress).success) {
       ctx.addIssue({
         code: "custom",

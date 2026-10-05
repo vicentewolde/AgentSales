@@ -40,7 +40,7 @@ export const TERMINAL_PUBLICATION_STATUSES = [
 
 /**
  * Estados que cuentan como "publicación activa" para el índice único parcial
- * `(listing_id, platform_account_id)` de `publications`: todos menos los terminales.
+ * `(listing_id, platform_account_id, format)` de `publications`: todos menos los terminales.
  */
 const terminal: readonly PublicationStatus[] = TERMINAL_PUBLICATION_STATUSES;
 export const ACTIVE_PUBLICATION_STATUSES: readonly PublicationStatus[] =

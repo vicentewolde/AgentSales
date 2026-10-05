@@ -159,7 +159,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
   3. la columna a `text`, `DROP TYPE` y el tipo nuevo;
   4. la columna de vuelta al tipo con `USING`;
   5. `format`, `progress` y el índice nuevo por formato.
-  El snapshot de drizzle queda igual al esquema (`pnpm db:generate` no genera nada después). Se aplica en PGlite (tests) y en una rama de Neon antes del merge.
+  El snapshot de drizzle queda igual al esquema (`pnpm db:generate` no genera nada después). Se aplica en PGlite (tests); antes del merge se prueba en Neon dentro de una transacción que se deshace (`BEGIN … ROLLBACK`), y se aplica en Neon justo después del merge.
 - Índices `(listing_id)` en `publications` y `(publication_id, created_at)` en `publication_events`.
 - `platform_accounts` no cambia: `meta` guarda lo nuevo.
 
@@ -211,13 +211,14 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T01 · Esquema de publicaciones (migración `0006`)
 - **Depende de:** —
-- **Archivos:** `packages/core/src/{enums.ts,publication-state.ts,labels.ts}`, `packages/core/src/publication.ts` (nuevo), `packages/db/src/schema.ts`, `packages/db/drizzle/0006_*.sql`, `apps/web/src/labels.ts`, `docs/02-modelo-datos.md`, `docs/01-arquitectura.md`
+- **Archivos:** `packages/core/src/{enums.ts,publication-state.ts,labels.ts}`, `packages/core/src/publication.ts` (nuevo), `packages/db/src/schema.ts`, `packages/db/drizzle/0006_*.sql`, `docs/02-modelo-datos.md` (`apps/web/src/labels.ts` no cambió: las apps no usaban los estados quitados; `docs/01-arquitectura.md` quedó al día con el spec)
 - **Descripción:** `PUBLICATION_FORMATS`; estados sin `draft` ni `pending_approval`; `INITIAL_PUBLICATION_STATUSES = ["approved"]` y `PENDING_PUBLICATION_STATUSES`; entidades `Publication` y `PublicationEvent` con esquema zod y el esquema de `progress` de Instagram; migración con el SQL ajustado a mano (§4.7); etiquetas de la web y de core sin los estados quitados.
 - **Hecho cuando:**
   - [x] Tests de la máquina de estados (todas las transiciones, válidas e inválidas) y de los conjuntos de estados
   - [x] La migración se aplica en PGlite, recrea el tipo y el único parcial por formato (test con dos activas del mismo formato y una de otro), y `pnpm db:generate` no genera nada después
   - [x] La migración falla con filas en `publications` (test)
-  - [ ] Aplicada en Neon justo después del merge, con `publications` vacía (verificado antes: 0 filas). No hay herramienta para ramas de Neon en el proyecto; la guarda de la migración cubre el caso con filas
+  - [x] Probada en Neon dentro de `BEGIN … ROLLBACK` (2026-10-05: tipo recreado e índices nuevos, sin dejar cambios); `publications` con 0 filas
+  - [ ] Aplicada en Neon justo después del merge (`pnpm db:migrate`)
   - [x] Docs 01 y 02 al día
 
 ### F3-T02 · Cifrado, firma y variables de Instagram
@@ -248,6 +249,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
   - [ ] Una transición desde un estado que ya cambió da `INVALID_TRANSITION` sin escribir
   - [ ] Fila y evento se escriben juntos o ninguno (rollback probado en PGlite)
   - [ ] Una segunda activa del mismo formato da `PUBLICATION_CONFLICT`
+  - [ ] Una fila que no calza (también un `progress` que no calza con su plataforma) es `PUBLICATION_ROW_INVALID`; `saveProgress` valida con `PUBLICATION_PROGRESS_SCHEMAS` antes de escribir (no reintentable), y el contrato de repositorios de `01-arquitectura.md` lo dice
   - [ ] Dentro del candado de Postgres, `arrange`, `upsertDerivative` y `markSucceeded` funcionan como savepoints (PGlite); rollback si `fn` falla
   - [ ] El candado en memoria serializa dos `run` del mismo aviso (test)
 
@@ -442,8 +444,8 @@ Resueltas con la recomendación del spec, por la aprobación permanente del oper
 - [x] ¿Cómo conectar en local si Meta no acepta `http://localhost`? Token del panel (D4). Meta la rechazó el 2026-10-05.
 
 Pendientes del operador (no bloquean el inicio):
-- Antes de T02: renombrar las variables en `.env` y confirmar el par (nota §2.1).
-- ~~Antes de T13: probar la URI~~ Hecho el 2026-10-05 (rechazada). Probar la URI `http://localhost:8787/oauth/instagram/callback` en el panel de Meta (nota §3.6).
+- [x] Renombrar las variables en `.env` y confirmar el par de Instagram (2026-10-05, nota §2.1).
+- [x] Probar la URI `http://localhost:8787/oauth/instagram/callback` en el panel de Meta: rechazada el 2026-10-05 (nota §3.6, D4).
 
 ## 10. Registro de cambios del spec
 | Fecha | Cambio |
@@ -453,4 +455,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-04 | Spec **aprobado** (aprobación permanente del operador): decisiones D1–D12 con la recomendación del spec. ADR-0014 aceptado; seguimientos en ADR-0005 y ADR-0012; `01-arquitectura.md` (flujos, máquina de estados, contrato `Publisher` y colas), `04-formato-publicaciones.md` (portada del reel), `06-roadmap.md`, `CLAUDE.md` (glosario) y `docs/ESTADO.md` actualizados |
 | 2026-10-04 | Revisión del PR (#52) con `revisor` y `arquitecto`: aprobar un texto nuevo salta el formato que ya tiene una publicación activa (sin chocar con el único dentro del candado) y `NOTHING_TO_PUBLISH`; cambios del aviso del sistema y condicionales, y la tabla manual del aviso pasa a F6 (§3); archivos de repositorios en T04 a T06; `publications cancel` y `retire`, confirmación de `publish` en `live` y `accounts refresh --force` (la demo del refresco); `POST /accounts/connect-token` para el plan del token; `broker` validado; `OAUTH_DENIED` no es un `AppError`; `startedAt` en el sondeo del panel; `CLAUDE.md` con los comandos nuevos; nota en `02-modelo-datos.md` hasta T01 y límites de `03-plataformas.md` alineados con D10 |
 | 2026-10-05 | Meta rechazó `http://localhost` como dirección de retorno (probado en el panel del operador): en F3 la cuenta se conecta con el token de Generate token (D4, §4.6, T13, T17 y demo 2); el OAuth se implementa y prueba con msw para F7. Se agregaron a la app los permisos `instagram_business_basic` e `instagram_business_content_publish`, que faltaban |
-| 2026-10-05 | Desde F3-T01: la migración `0006` se aplica en Neon justo después del merge (con `publications` vacía, verificado), no en una rama de Neon, que el proyecto no tiene cómo crear; textos de estados y formatos (`PUBLICATION_STATUS_TEXT`, `PUBLICATION_FORMAT_TEXT`) y tuplas de la bitácora (`PUBLICATION_EVENT_TYPES`, `PUBLICATION_ACTORS`) en core |
+| 2026-10-05 | Desde F3-T01: la migración `0006` se prueba en Neon dentro de `BEGIN … ROLLBACK` antes del merge y se aplica justo después (con `publications` vacía, verificado), no en una rama de Neon, que el proyecto no tiene cómo crear; textos de estados y formatos (`PUBLICATION_STATUS_TEXT`, `PUBLICATION_FORMAT_TEXT`) y tuplas de la bitácora (`PUBLICATION_EVENT_TYPES`, `PUBLICATION_ACTORS`) en core |
