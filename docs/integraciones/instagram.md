@@ -118,6 +118,10 @@ Condiciones:
 
 ### 3.6 Redirect URI en local: ¿`http://localhost`?
 
+> **Verificado el 2026-10-05 en el panel del operador (diseño por casos de uso): NO lo acepta.** Al guardar `http://localhost:8787/oauth/instagram/callback` en "URL de redireccionamiento" (Casos de uso > Administrar mensajes y contenido en Instagram > Personalizar > Configuración de la API con el inicio de sesión de Instagram > 4. Configura un inicio de sesión empresarial de Instagram > Configurar), el panel responde "Error al guardar los URI de redireccionamiento. Verifícalos y vuelve a intentarlo". En F3 la cuenta se conecta con el token de **Generate token** (alternativa 1, spec F3 D4). No se probó `https://localhost`.
+>
+> En ese mismo panel, los permisos `instagram_business_basic` e `instagram_business_content_publish` no venían agregados al caso de uso: se agregaron el 2026-10-05 en la pestaña "Permisos y funciones" y quedaron "Listo para prueba" (acceso estándar, sin App Review). El "Identificador de la aplicación de Instagram" se ve en la pestaña de configuración de la API, distinto del identificador general de la app.
+
 - **DOC:** solo dice que la URI debe coincidir exactamente con la lista del panel. **No dice nada** sobre HTTP, HTTPS ni `localhost` para Instagram Login. La página de seguridad de Facebook Login define "Enforce HTTPS" (exige HTTPS en las redirecciones OAuth), pero tampoco menciona `localhost`, y es de otro producto.
 - **Pistas no oficiales (contradictorias):** hay reportes de que Instagram rechaza `http://localhost` (error "invalid redirect_uri") y se arregló con `https://localhost:...`, y otros de que en modo desarrollo `http://localhost` funciona (en Facebook Login se dice que HTTP en `localhost` está permitido solo mientras la app está en modo desarrollo; sin cita oficial).
 - **Conclusión: NO VERIFICADO.** La prueba es inmediata y sin riesgo: pegar `http://localhost:8787/oauth/instagram/callback` en "OAuth redirect URIs" y guardar. Si el panel lo rechaza, la respuesta está ahí. Si lo guarda, aun así hay que ver que la pantalla de autorización no falle (punto 8 de la sección 2.1).
@@ -353,7 +357,7 @@ Para todos: parar, esperar y espaciar (la doc recomienda detener las llamadas de
 
 Orden sugerido, de menor a mayor riesgo; las primeras no publican nada:
 
-1. Guardar `http://localhost:8787/oauth/instagram/callback` en "OAuth redirect URIs" (¿lo acepta?) y abrir la URL de autorización (¿error de URI?).
+1. ~~Guardar `http://localhost:8787/oauth/instagram/callback` en "OAuth redirect URIs"~~ **Resuelto el 2026-10-05: el panel lo rechaza** (§3.6). Queda probar que el token de Generate token sirve para `/me`, publicar y refrescar.
 2. Confirmar que `META_APP_ID` es el Instagram app ID (sección 2.1).
 3. Canje del código: forma de la respuesta (con o sin `data`), y si `user_id` coincide con el `user_id` de `/me`.
 4. Refresco: token con más de 24 h, y si el token de **Generate token** también se refresca.

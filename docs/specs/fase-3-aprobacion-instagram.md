@@ -136,7 +136,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
   1. El botón Conectar del panel abre directo (el `broker` se valida con zod y debe existir, `BROKER_NOT_FOUND`) `http://localhost:8787/oauth/instagram/start?broker=<slug>` (no por el proxy `/api` de Vite). La API arma el `state` (nonce aleatorio, corredor y vencimiento de 10 min, firmado con HMAC), lo deja en una cookie `HttpOnly`, `SameSite=Lax`, `Path=/oauth`, y redirige a `instagram.com/oauth/authorize` con los scopes `instagram_business_basic,instagram_business_content_publish`.
   2. `GET /oauth/instagram/callback` compara el `state` con la cookie (`OAUTH_STATE_INVALID`), quita el `#_` del código, lo canjea por el token corto y luego por el largo, lee `/me?fields=user_id,username,account_type`, exige `instagram_business_content_publish` entre los permisos (`IG_PERMISSION_DENIED`) y guarda la cuenta (`connectAccount`). Redirige a la URL absoluta del panel (`http://localhost:<WEB_PORT>/cuentas?conectada=instagram` o `?error=<código>`), sin datos de la cuenta en la URL.
   - Si el operador rechaza en Instagram (`error=access_denied`), vuelve al panel con `?error=OAUTH_DENIED`. Es solo un código de la redirección para el panel, no un `AppError` (no va en `errors.ts`).
-- **Si el panel de Meta no acepta `http://localhost`** (lo prueba el operador antes de T13, nota §3.6): T13 y T16 suman `agentsales accounts connect instagram --broker <slug> --token-stdin`, que recibe por la entrada estándar el token largo del botón **Generate token** y sigue igual desde `/me` (D4). No se agregan túneles ni HTTPS local en F3.
+- **Meta no acepta `http://localhost`** (probado el 2026-10-05, nota §3.6). En F3 la cuenta se conecta con `agentsales accounts connect instagram --broker <slug> --token-stdin`, que recibe por la entrada estándar el token largo del botón **Generate token** (`POST /accounts/connect-token`) y sigue igual desde `/me` (D4). El OAuth de arriba se implementa y se prueba con msw (lo necesita F7, con HTTPS), pero el panel muestra el botón Conectar solo si `INSTAGRAM_REDIRECT_URI` es `https://`; si no, muestra el comando de la CLI. No se agregan túneles ni HTTPS local en F3.
 - **Guardado (`platform_accounts`):** `external_account_id` = `user_id` de `/me`, `display_name` = `@username`, `status = connected`, `token_expires_at`, `meta` con `accountType`, los permisos y `tokenRefreshedAt`. `credentials_encrypted` guarda `{ accessToken }` cifrado. Reconectar la misma cuenta actualiza la fila.
 - **Cifrado (`SecretBox` y `createSecretBox`, `packages/config`; lo inyectan las apps en el repositorio de cuentas):**
   - Clave de 32 bytes con HKDF-SHA256 desde `APP_ENCRYPTION_KEY`, con `info` por propósito (`agentsales/credentials/v1`; el `state` del OAuth usa otra: `agentsales/oauth-state/v1`).
@@ -169,7 +169,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 | `GET /oauth/instagram/start?broker=` y `GET /oauth/instagram/callback` | Conexión (§4.6); responden con redirecciones |
 | `GET /accounts` | Cuentas por corredor: plataforma, `@usuario`, estado, vencimiento. Nunca credenciales |
 | `POST /accounts/:id/disconnect` y `POST /accounts/:id/refresh` `{ force? }` | `revoked`; refresco a pedido (§4.6) |
-| `POST /accounts/connect-token` `{ broker, platform: "instagram", token }` | Solo si Meta no acepta `http://localhost` (D4): conecta con el token del panel, validado con zod y detrás del `hostGuard`; el token nunca vuelve en la respuesta ni va al log |
+| `POST /accounts/connect-token` `{ broker, platform: "instagram", token }` | La conexión de F3, porque Meta no acepta `http://localhost` (D4): conecta con el token del panel, validado con zod y detrás del `hostGuard`; el token nunca vuelve en la respuesta ni va al log |
 | `POST /contents/:id/approve` y `POST /contents/:id/unapprove` | Aprobar y quitar la aprobación (§4.2); responden con el texto, su revisión y las publicaciones del canal |
 | `GET /listings/:id/publications` | Publicaciones del aviso con su estado, enlace, error y medios (miniaturas firmadas) |
 | `POST /listings/:id/publish` `{ platform }` | Publicar el canal (§4.3) |
@@ -185,7 +185,7 @@ Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `
   - `agentsales publications [<id_propiedad>]`: estado, formato, modo y enlace; `--events` para la bitácora. `publications cancel <id>` y `publications retire <id> [--yes]` (en `live`, confirma que se borró a mano).
   - `agentsales accounts`, `agentsales accounts connect instagram --broker <slug>` (imprime la URL de conexión y la abre en el navegador) y `accounts refresh <id> [--force]`.
 - **Panel:**
-  - Página **Cuentas** (`/cuentas`): por corredor, la cuenta de Instagram con su estado y vencimiento, y los botones Conectar, Reconectar y Desconectar.
+  - Página **Cuentas** (`/cuentas`): por corredor, la cuenta de Instagram con su estado y vencimiento, y Desconectar. Conectar y Reconectar: el botón del OAuth si `INSTAGRAM_REDIRECT_URI` es `https://`; si no (F3 en local), el comando `accounts connect instagram --token-stdin` para copiar (D4).
   - Sección Contenido del aviso: en cada pestaña, la insignia "Aprobado" y los botones Aprobar o Quitar aprobación (con los motivos si no se puede). En Instagram, las publicaciones (carrusel y reel) con su estado, modo (`dry-run` o en vivo), enlace, error legible y los botones Publicar, Reintentar, Descartar y Marcar como retirada (con confirmación). Sondea mientras hay una en `publishing`, con `usePolledRun`; el tope de espera se cuenta desde que pasó a `publishing` (`updatedAt`), no desde que nació, porque una publicación puede llevar días aprobada.
   - Con publicaciones pendientes, el botón Preparar contenido queda desactivado con el motivo (`PUBLICATION_PENDING`).
   - El banner de `PUBLISH_MODE` ya existe; en `live`, el botón Publicar pide confirmación.
@@ -194,7 +194,7 @@ Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `
 - **D1 · Se aprueba el texto, no la publicación (ADR-0014).** El texto es lo que el operador revisa; Instagram da dos publicaciones (carrusel y reel) que se aprobarían dos veces con el mismo texto, y un texto de Portal se puede aprobar antes de que exista su cuenta (F4). La publicación nace aprobada y fija lo aprobado. Se quitan `draft` y `pending_approval` de las publicaciones, que quedaban sin uso.
 - **D2 · Carrusel y reel son dos publicaciones** (`format`): cada una con su estado, su enlace y sus reintentos, sin repetir la otra. El glosario pasa a "publicación (aviso × cuenta × formato)".
 - **D3 · Lo aprobado no cambia:** sin corridas mientras haya publicaciones pendientes, sin editar textos con publicaciones activas, y candado por aviso (cierra la ventana de F2).
-- **D4 · OAuth con redirección a `http://localhost`**, y token del panel por la entrada estándar si Meta no lo acepta (nota §3.6). Sin túneles ni HTTPS local.
+- **D4 · En F3, la cuenta se conecta con el token del panel de Meta** (Generate token) por la entrada estándar de la CLI: Meta rechazó `http://localhost` como dirección de retorno (probado el 2026-10-05, nota §3.6). El OAuth queda implementado y probado con msw para F7 (con HTTPS). Sin túneles ni HTTPS local.
 - **D5 · `INSTAGRAM_*` en vez de `META_*`:** la nota muestra que la app tiene dos pares y el de Settings > Basic falla. El operador renombra las variables en su `.env` (T02).
 - **D6 · Sin `is_ai_generated`:** las fotos y el video son reales; la IA solo redacta frases que el operador aprueba.
 - **D7 · Tope del reel de 3 a 90 s** (el de F2): política de producto dentro de los límites de Meta (3 s a 15 min).
@@ -328,12 +328,12 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 ### F3-T13 · Conectar Instagram
 - **Depende de:** T03, T08
 - **Archivos:** `packages/core/src/use-cases/{connect-account.ts,disconnect-account.ts}`, `apps/api/src/routes/{oauth.ts,accounts.ts}`, `apps/api/src/contracts/index.ts`, `apps/api/src/app.ts` e `index.ts` (composición)
-- **Descripción:** §4.6 completo: inicio y vuelta del OAuth, `GET /accounts`, desconectar. Si el operador informó que Meta no acepta `http://localhost`, también `connectAccount` desde un token y `POST /accounts/connect-token` (T16 lo expone con `--token-stdin`).
+- **Descripción:** §4.6 completo: inicio y vuelta del OAuth, `GET /accounts`, desconectar. Como Meta no acepta `http://localhost` (D4), también `connectAccount` desde un token y `POST /accounts/connect-token` (T16 lo expone con `--token-stdin`).
 - **Hecho cuando:**
   - [ ] Callback con `state` correcto guarda la cuenta cifrada; con otro, sin cookie o vencido, `OAUTH_STATE_INVALID` sin llamar a Instagram
   - [ ] Rechazo del usuario y falta del permiso de publicar vuelven al panel con su código, a la URL absoluta del panel
   - [ ] Las rutas pasan el `hostGuard` con `localhost:8787` y nada de la respuesta lleva tokens
-  - [ ] Operador: probó la URI en el panel de Meta (nota §3.6) antes de empezar
+  - [x] Operador: probó la URI en el panel de Meta (nota §3.6): rechazada el 2026-10-05, así que T13 incluye `POST /accounts/connect-token`
 
 ### F3-T14 · Refresco de tokens
 - **Depende de:** T13
@@ -409,7 +409,7 @@ Orden: T01 y T02 primero (independientes). T03 después de T02; T04 después de 
 
 ## 7. Plan de demo
 1. **Sin publicar nada:** el operador confirma el par `INSTAGRAM_*` y la URI en el panel de Meta (nota §2.1 y §3.6).
-2. Conectar la cuenta desde **Cuentas** (o con el token del panel, si la URI no se aceptó). Ver `@usuario`, estado y vencimiento.
+2. Conectar la cuenta con el token del panel de Meta (`accounts connect instagram --token-stdin`, D4). Ver `@usuario`, estado y vencimiento en la CLI y en **Cuentas**.
 3. **`dry-run`:** aprobar P002 en el panel, publicar y ver las dos publicaciones (carrusel y reel) en `published` con la marca de simulación y lo que se habría enviado. Intentar preparar de nuevo y ver `PUBLICATION_PENDING` antes de publicar; intentar editar el caption aprobado y ver `CONTENT_LOCKED`. Marcar las simulaciones como retiradas.
 4. CLI: `approve P001`, `publish P001` (en `dry-run`), `publications P001 --events`.
 5. `pnpm ig:smoke` (operador): Meta descarga una URL firmada de R2 sin publicar nada.
@@ -421,7 +421,7 @@ Orden: T01 y T02 primero (independientes). T03 después de T02; T04 después de 
 |---|---|
 | Publicar dos veces por un reintento | Progreso guardado antes de `media_publish`, retoma que consulta el contenedor, `exclusive` por publicación y `IG_PUBLISH_OUTCOME_UNKNOWN` sin reintento automático |
 | Meta no acepta la URL firmada de R2 (query larga, `HEAD` o descarga lenta) | `pnpm ig:smoke` antes de `live`; URLs nuevas en cada intento; plan B: prefijo público con dominio propio y vida de 24 h, o subida reanudable para el reel (nota §4.5 y §5) |
-| El panel de Meta no acepta `http://localhost` | Token del panel por la entrada estándar (D4) |
+| El panel de Meta no acepta `http://localhost` (confirmado) | Token del panel por la entrada estándar (D4); el OAuth se prueba de verdad en F7, con HTTPS |
 | El par de variables equivocado (Settings > Basic) | `INSTAGRAM_*` (D5) y la verificación del operador en T02 |
 | Un token en un log o en la base sin cifrar | Cifrado en el repositorio, cabecera `Bearer` (no la URL), redactor ampliado y tests que buscan el token en logs, errores y filas |
 | Un job encolado antes de confirmar el cambio no encuentra la publicación o la corrida | Se encola después del candado, con test (revisión del `arquitecto`) |
@@ -438,11 +438,11 @@ Resueltas con la recomendación del spec, por la aprobación permanente del oper
 - [x] ¿Cuándo nacen las publicaciones? Al aprobar (con cuenta) o al publicar (D1).
 - [x] ¿Qué pasa con textos nuevos después de aprobar? Piden una aprobación nueva; mientras haya publicaciones pendientes no se regenera (D3).
 - [x] ¿Tope del reel? 3 a 90 s (D7). ¿`is_ai_generated`? No (D6). ¿`DELETE`? No (D8). ¿Renombrar `META_*`? Sí (D5).
-- [x] ¿Cómo conectar en local si Meta no acepta `http://localhost`? Token del panel (D4).
+- [x] ¿Cómo conectar en local si Meta no acepta `http://localhost`? Token del panel (D4). Meta la rechazó el 2026-10-05.
 
 Pendientes del operador (no bloquean el inicio):
 - Antes de T02: renombrar las variables en `.env` y confirmar el par (nota §2.1).
-- Antes de T13: probar la URI `http://localhost:8787/oauth/instagram/callback` en el panel de Meta (nota §3.6).
+- ~~Antes de T13: probar la URI~~ Hecho el 2026-10-05 (rechazada). Probar la URI `http://localhost:8787/oauth/instagram/callback` en el panel de Meta (nota §3.6).
 
 ## 10. Registro de cambios del spec
 | Fecha | Cambio |
@@ -451,3 +451,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-04 | Revisión del subagente `arquitecto`: se encola después del candado (un job encolado antes de confirmar no veía el cambio); el modo lo decide `publication.dryRun` (`PUBLISH_MODE_MISMATCH`, D11); SQL de la migración `0006` ajustado a mano por el índice parcial; reglas del candado (solo repositorios de la transacción, nada externo adentro); `LISTING_NOT_READY`, `PUBLICATION_CONFLICT`, job `tokens.refresh` y política de `publication.publish`; `validateInstagramInput` pura y cliente perezoso; reel sin `cover_url`, con `thumb_offset` (D12); `INSTAGRAM_CAPTION_MAX_LENGTH` reutilizado; redactor en core y sin ocultar la clave `code` de los logs; OAuth con URL absoluta del panel y enlace directo a la API; sondeo del panel desde `updatedAt`; reencolar las `publishing` al arrancar y al pedirlo; `SecretBox` en config; T05 y T09 partidas (20 tareas) y composición en las apps |
 | 2026-10-04 | Spec **aprobado** (aprobación permanente del operador): decisiones D1–D12 con la recomendación del spec. ADR-0014 aceptado; seguimientos en ADR-0005 y ADR-0012; `01-arquitectura.md` (flujos, máquina de estados, contrato `Publisher` y colas), `04-formato-publicaciones.md` (portada del reel), `06-roadmap.md`, `CLAUDE.md` (glosario) y `docs/ESTADO.md` actualizados |
 | 2026-10-04 | Revisión del PR (#52) con `revisor` y `arquitecto`: aprobar un texto nuevo salta el formato que ya tiene una publicación activa (sin chocar con el único dentro del candado) y `NOTHING_TO_PUBLISH`; cambios del aviso del sistema y condicionales, y la tabla manual del aviso pasa a F6 (§3); archivos de repositorios en T04 a T06; `publications cancel` y `retire`, confirmación de `publish` en `live` y `accounts refresh --force` (la demo del refresco); `POST /accounts/connect-token` para el plan del token; `broker` validado; `OAUTH_DENIED` no es un `AppError`; `startedAt` en el sondeo del panel; `CLAUDE.md` con los comandos nuevos; nota en `02-modelo-datos.md` hasta T01 y límites de `03-plataformas.md` alineados con D10 |
+| 2026-10-05 | Meta rechazó `http://localhost` como dirección de retorno (probado en el panel del operador): en F3 la cuenta se conecta con el token de Generate token (D4, §4.6, T13, T17 y demo 2); el OAuth se implementa y prueba con msw para F7. Se agregaron a la app los permisos `instagram_business_basic` e `instagram_business_content_publish`, que faltaban |
