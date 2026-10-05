@@ -10,6 +10,7 @@ import {
   normalizeEventPayload,
   type Publication,
   type PublicationEvent,
+  requirePublicationMode,
 } from "../publication.js";
 import { ACTIVE_PUBLICATION_STATUSES, canTransition } from "../publication-state.js";
 import { structuredCopy } from "./copy.js";
@@ -95,7 +96,7 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
         externalUrl: null,
         attempts: 0,
         lastError: null,
-        dryRun: input.dryRun,
+        dryRun: true,
         progress: null,
         createdAt: now,
         updatedAt: now,
@@ -116,13 +117,15 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
     },
     async transition(id, { from, to, changes = {} }, event) {
       const found = find(id);
+      // Primero los datos y después el estado, como el de Drizzle.
+      normalizeEventPayload(event.payload);
+      const publication = applyChanges(found.publication, to, changes);
+      requirePublicationMode(to, changes.dryRun);
       if (!canTransition(from, to) || found.publication.status !== from) {
         throw new AppError("INVALID_TRANSITION", `Transición inválida de ${from} a ${to}`, {
           details: { publicationId: id, from, to, current: found.publication.status },
         });
       }
-      normalizeEventPayload(event.payload);
-      const publication = applyChanges(found.publication, to, changes);
       publications.set(id, { ...found, publication });
       pushEvent(id, "status_changed", from, to, event);
       return structuredCopy(publication);
@@ -146,6 +149,7 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
       return structuredCopy(publication);
     },
     async addEvent(publicationId, event) {
+      normalizeEventPayload(event.payload);
       find(publicationId);
       return pushEvent(publicationId, event.type, null, null, event);
     },
@@ -189,6 +193,7 @@ function applyChanges(
 /**
  * Candado en memoria: serializa los `run` del mismo aviso (uno espera al anterior) y entrega los
  * repositorios que recibe. No deshace nada si `fn` falla: los tests de rollback son de PGlite.
+ * No valida las referencias de `create` (aviso, cuenta, texto): eso lo prueba el de Drizzle.
  */
 export function createInMemoryListingLock(repos: LockedRepositories): ListingLock & {
   /** Avisos con un `run` en curso, para afirmar en los tests de concurrencia. */

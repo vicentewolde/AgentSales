@@ -40,7 +40,6 @@ export function publicationRepositoryContract(
         format: "post",
         contentId,
         mediaIds: [],
-        dryRun: true,
         ...overrides,
       };
     };
@@ -146,7 +145,7 @@ export function publicationRepositoryContract(
       const created = await repos.publications.create(await newPublication(), operator);
       await repos.publications.transition(
         created.id,
-        { from: "approved", to: "publishing", changes: { incrementAttempts: true } },
+        { from: "approved", to: "publishing", changes: { incrementAttempts: true, dryRun: true } },
         operator,
       );
       const lastError = {
@@ -164,7 +163,11 @@ export function publicationRepositoryContract(
 
       const retry = await repos.publications.transition(
         created.id,
-        { from: "failed", to: "publishing", changes: { incrementAttempts: true, lastError: null } },
+        {
+          from: "failed",
+          to: "publishing",
+          changes: { incrementAttempts: true, lastError: null, dryRun: true },
+        },
         operator,
       );
       expect(retry).toMatchObject({ lastError: null, attempts: 2 });
@@ -191,7 +194,11 @@ export function publicationRepositoryContract(
       await expect(
         repos.publications.transition(
           created.id,
-          { from: "approved", to: "publishing", changes: { incrementAttempts: true } },
+          {
+            from: "approved",
+            to: "publishing",
+            changes: { incrementAttempts: true, dryRun: true },
+          },
           operator,
         ),
       ).rejects.toMatchObject({ code: "INVALID_TRANSITION" });
@@ -206,7 +213,7 @@ export function publicationRepositoryContract(
       const created = await repos.publications.create(await newPublication(), operator);
       await repos.publications.transition(
         created.id,
-        { from: "approved", to: "publishing" },
+        { from: "approved", to: "publishing", changes: { dryRun: true } },
         operator,
       );
 
@@ -237,7 +244,7 @@ export function publicationRepositoryContract(
 
       await repos.publications.transition(
         created.id,
-        { from: "approved", to: "publishing" },
+        { from: "approved", to: "publishing", changes: { dryRun: true } },
         operator,
       );
       expect((await repos.publications.saveProgress(created.id, progress)).progress).toEqual(
@@ -253,7 +260,7 @@ export function publicationRepositoryContract(
       const created = await repos.publications.create(await newPublication(), operator);
       await repos.publications.transition(
         created.id,
-        { from: "approved", to: "publishing" },
+        { from: "approved", to: "publishing", changes: { dryRun: true } },
         operator,
       );
       await repos.publications.saveProgress(created.id, progress);
@@ -265,7 +272,7 @@ export function publicationRepositoryContract(
 
       const retry = await repos.publications.transition(
         created.id,
-        { from: "failed", to: "publishing" },
+        { from: "failed", to: "publishing", changes: { dryRun: true } },
         operator,
       );
       expect(retry.progress).toEqual(progress);
@@ -297,13 +304,85 @@ export function publicationRepositoryContract(
       const created = await repos.publications.create(await newPublication(), operator);
       await repos.publications.transition(
         created.id,
-        { from: "approved", to: "publishing" },
+        { from: "approved", to: "publishing", changes: { dryRun: true } },
         operator,
       );
 
       const publishing = await repos.publications.listByStatus("publishing");
       expect(publishing.map((item) => item.id)).toContain(created.id);
       expect(publishing.every((item) => item.status === "publishing")).toBe(true);
+    });
+
+    it("pasar a publishing sin fijar el modo es PUBLICATION_MODE_REQUIRED, sin escribir", async () => {
+      const created = await repos.publications.create(await newPublication(), operator);
+
+      await expect(
+        repos.publications.transition(
+          created.id,
+          { from: "approved", to: "publishing", changes: { incrementAttempts: true } },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_MODE_REQUIRED", retriable: false });
+      expect(await repos.publications.get(created.id)).toMatchObject({
+        status: "approved",
+        attempts: 0,
+      });
+    });
+
+    it("un formato terminal libera su lugar: se puede crear otra del mismo formato", async () => {
+      const input = await newPublication();
+      const first = await repos.publications.create(input, operator);
+      await repos.publications.transition(
+        first.id,
+        { from: "approved", to: "cancelled" },
+        operator,
+      );
+
+      const second = await repos.publications.create(input, operator);
+      expect(second.id).not.toBe(first.id);
+      expect(
+        (await repos.publications.listByListing(input.listingId)).map((item) => item.status),
+      ).toEqual(["cancelled", "approved"]);
+    });
+
+    it("updatedAt avanza con cada cambio y nunca queda antes de createdAt", async () => {
+      const created = await repos.publications.create(await newPublication(), operator);
+      expect(created.updatedAt.getTime()).toBeGreaterThanOrEqual(created.createdAt.getTime());
+
+      const publishing = await repos.publications.transition(
+        created.id,
+        { from: "approved", to: "publishing", changes: { dryRun: true } },
+        operator,
+      );
+      expect(publishing.updatedAt.getTime()).toBeGreaterThanOrEqual(created.updatedAt.getTime());
+      const saved = await repos.publications.saveProgress(created.id, progress);
+      expect(saved.updatedAt.getTime()).toBeGreaterThanOrEqual(publishing.updatedAt.getTime());
+    });
+
+    it("revisa los datos antes que el estado: los dos adaptadores dan el mismo error", async () => {
+      const created = await repos.publications.create(await newPublication(), operator);
+      await repos.publications.transition(
+        created.id,
+        { from: "approved", to: "cancelled" },
+        operator,
+      );
+
+      // Desde un estado que ya cambió y con un progreso inválido: manda el progreso.
+      await expect(
+        repos.publications.transition(
+          created.id,
+          { from: "approved", to: "publishing", changes: { dryRun: true, progress: { x: 1 } } },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_PROGRESS_INVALID" });
+      // Un evento inválido sobre una publicación que no existe: manda el evento.
+      await expect(
+        repos.publications.addEvent(repos.missingId, {
+          type: "sync",
+          actor: "system",
+          payload: ["no", "es", "objeto"] as unknown as Record<string, unknown>,
+        }),
+      ).rejects.toMatchObject({ code: "PUBLICATION_EVENT_INVALID" });
     });
 
     it("una publicación que no existe es PUBLICATION_NOT_FOUND en cada escritura", async () => {

@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { PLATFORMS, type Platform, PUBLICATION_FORMATS, PUBLICATION_STATUSES } from "./enums.js";
+import {
+  PLATFORMS,
+  type Platform,
+  PUBLICATION_FORMATS,
+  PUBLICATION_STATUSES,
+  type PublicationStatus,
+} from "./enums.js";
 import { AppError } from "./errors.js";
 
 /**
@@ -51,6 +57,19 @@ export function normalizeEventPayload(payload: unknown): Record<string, unknown>
     throw new AppError("PUBLICATION_EVENT_INVALID", "El detalle de un evento debe ser un objeto");
   }
   return json as Record<string, unknown>;
+}
+
+/**
+ * Al pasar a `publishing`, el modo de ese intento es obligatorio (spec F3 §4.3, D11): el worker lo
+ * respeta, así que nunca puede quedar uno viejo. `PUBLICATION_MODE_REQUIRED` si falta.
+ */
+export function requirePublicationMode(to: PublicationStatus, dryRun: boolean | undefined): void {
+  if (to === "publishing" && dryRun === undefined) {
+    throw new AppError(
+      "PUBLICATION_MODE_REQUIRED",
+      "Al pasar a publishing hay que fijar el modo (dry-run o live)",
+    );
+  }
 }
 
 /** Motivo del último intento fallido (`publications.last_error`): legible y sin secretos. */

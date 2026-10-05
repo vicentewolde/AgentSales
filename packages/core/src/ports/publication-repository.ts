@@ -15,8 +15,6 @@ export type NewPublication = {
   format: PublicationFormat;
   contentId: string;
   mediaIds: readonly string[];
-  /** Modo provisional (el de la API al nacer); el definitivo se fija al pasar a `publishing`. */
-  dryRun: boolean;
 };
 
 /** Quién causó un cambio y qué se anota en la bitácora (sin secretos: se guarda tal cual). */
@@ -27,6 +25,7 @@ export type PublicationEventInput = {
 
 /** Campos que acompañan una transición; `undefined` = no tocar. */
 export type PublicationChanges = {
+  /** Obligatorio al pasar a `publishing`: el modo de ese intento, que respeta el worker (D11). */
   dryRun?: boolean;
   /** Suma 1 a `attempts` (al pasar a `publishing`). */
   incrementAttempts?: boolean;
@@ -48,17 +47,25 @@ export type NewPublicationEvent = PublicationEventInput & {
  * Cada cambio de estado guarda la fila y su evento `status_changed` en una sola transacción, y es
  * condicional: solo si la publicación sigue en `from`. Errores (`AppError`):
  * - una segunda publicación activa del mismo aviso, cuenta y formato → `PUBLICATION_CONFLICT`;
+ * - un aviso, una cuenta o un texto que no existen al crear → `PUBLICATION_REFERENCE_INVALID`;
  * - una publicación que no existe → `PUBLICATION_NOT_FOUND`;
  * - una transición que la máquina no permite, o desde un estado que ya cambió →
  *   `INVALID_TRANSITION` (sin escribir nada);
- * - un `progress` que no calza con el esquema de su plataforma → `PUBLICATION_PROGRESS_INVALID`;
+ * - pasar a `publishing` sin `changes.dryRun` → `PUBLICATION_MODE_REQUIRED` (el modo siempre se
+ *   fija en ese paso, spec F3 §4.3 y D11);
+ * - un `progress` que no calza con el esquema de su plataforma → `PUBLICATION_PROGRESS_INVALID`, y
+ *   un `payload` de evento que no es objeto → `PUBLICATION_EVENT_INVALID`;
  * - `saveProgress` fuera de `publishing` → `PUBLICATION_NOT_PUBLISHING`;
  * - una fila que no calza con la entidad → `PUBLICATION_ROW_INVALID` (o `PUBLICATION_EVENT_ROW_INVALID`);
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
- * Ninguno es reintentable salvo `DB_UNAVAILABLE`.
+ * Ninguno es reintentable salvo `DB_UNAVAILABLE`. Se revisan primero los datos (el evento, el
+ * progreso, el modo) y después el estado: los dos adaptadores dan el mismo error ante lo mismo.
  */
 export interface PublicationRepository {
-  /** Crea la publicación en `approved` con su evento de nacimiento (`null` → `approved`). */
+  /**
+   * Crea la publicación en `approved` con su evento de nacimiento (`null` → `approved`). Nace en
+   * `dry_run = true` (el valor seguro): el modo de verdad se fija al pasar a `publishing`.
+   */
   create(publication: NewPublication, event: PublicationEventInput): Promise<Publication>;
   get(id: string): Promise<Publication | null>;
   /** Las de un aviso, por fecha de creación. */

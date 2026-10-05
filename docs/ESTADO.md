@@ -14,7 +14,7 @@
 | F3-T01 · Esquema de publicaciones (migración `0006`) | ✅ terminada | #54 |
 | F3-T02 · Cifrado, firma y variables de Instagram | ✅ terminada | #55 |
 | F3-T03 · Cuentas conectadas: puerto y repositorio | ✅ terminada | #56 |
-| F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso | ✅ terminada | |
+| F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso | ✅ terminada | #57 |
 | F3-T05 · Aprobación en core | ⏳ pendiente | |
 | F3-T06 · Lo aprobado no cambia: edición y corridas con el candado | ⏳ pendiente | |
 | F3-T07 · Puerto `Publisher` y `dry-run` | ⏳ pendiente | |

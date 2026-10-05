@@ -9,10 +9,11 @@ import {
   type PublicationRepository,
   publicationEventSchema,
   publicationSchema,
+  requirePublicationMode,
 } from "@agentsales/core";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
-import { isUniqueViolation, withDbErrors } from "../errors.js";
+import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { publicationEvents, publications } from "../schema.js";
 
 type Row = typeof publications.$inferSelect;
@@ -131,7 +132,8 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
                 contentId: input.contentId,
                 mediaIds: [...input.mediaIds],
                 status: "approved",
-                dryRun: input.dryRun,
+                // El valor seguro: el modo de verdad se fija al pasar a `publishing`.
+                dryRun: true,
                 createdAt: sql`clock_timestamp()`,
                 updatedAt: sql`clock_timestamp()`,
               })
@@ -153,6 +155,14 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
             "PUBLICATION_CONFLICT",
             "Ya hay una publicación activa de ese aviso, cuenta y formato",
             { details: { listingId: input.listingId, format: input.format } },
+          );
+        }
+        // Una FK (aviso, cuenta o texto) que no existe: un bug de quien llama.
+        if (sqlStateOf(error) === "23503") {
+          throw new AppError(
+            "PUBLICATION_REFERENCE_INVALID",
+            "El aviso, la cuenta o el texto de la publicación no existen",
+            { details: { listingId: input.listingId } },
           );
         }
         throw error;
@@ -193,14 +203,16 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
         new AppError("INVALID_TRANSITION", `Transición inválida de ${from} a ${to}`, {
           details: { publicationId: id, from, to },
         });
-      if (!canTransition(from, to)) throw invalid();
+      // Primero los datos y después el estado, como el doble en memoria.
       const payload = normalizeEventPayload(event.payload);
       const columns = columnsOf(current, changes);
+      requirePublicationMode(to, changes.dryRun);
+      if (!canTransition(from, to)) throw invalid();
       const row = await withDbErrors(() =>
         db.transaction(async (tx) => {
           const [updated] = await tx
             .update(publications)
-            .set({ ...columns, status: to })
+            .set({ ...columns, status: to, updatedAt: sql`clock_timestamp()` })
             .where(and(eq(publications.id, id), eq(publications.status, from)))
             .returning();
           if (updated === undefined) return undefined;
@@ -225,7 +237,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
       const [row] = await withDbErrors(() =>
         db
           .update(publications)
-          .set({ progress: checked })
+          .set({ progress: checked, updatedAt: sql`clock_timestamp()` })
           .where(and(eq(publications.id, id), eq(publications.status, "publishing")))
           .returning(),
       );

@@ -234,6 +234,7 @@ export {
   publicationErrorSchema,
   publicationEventSchema,
   publicationSchema,
+  requirePublicationMode,
 } from "./publication.js";
 export {
   ACTIVE_PUBLICATION_STATUSES,

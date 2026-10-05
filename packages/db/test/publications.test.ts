@@ -9,6 +9,7 @@ import {
   createInMemoryPlatformAccountRepository,
   createInMemoryPublicationRepository,
 } from "@agentsales/core/testing";
+import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import { createListingLock } from "../src/listing-lock.js";
@@ -21,7 +22,7 @@ import { createPlatformAccountRepository } from "../src/repositories/platform-ac
 import { createPublicationRepository } from "../src/repositories/publications.js";
 import { publications } from "../src/schema.js";
 import { newContent } from "./content-repositories.contract.js";
-import { brokerData, newListing } from "./import-repositories.contract.js";
+import { brokerData, newListing, newMedia } from "./import-repositories.contract.js";
 import { createTestDatabase, type TestDatabase } from "./pglite.js";
 import { connectedAccount } from "./platform-accounts.contract.js";
 import { publicationRepositoryContract } from "./publications.contract.js";
@@ -111,7 +112,6 @@ describe("publicaciones · lo que el puerto no muestra (PGlite)", () => {
         format: "post",
         contentId: ids.contentId,
         mediaIds: [],
-        dryRun: true,
       },
       { actor: "operator" },
     );
@@ -124,6 +124,93 @@ describe("publicaciones · lo que el puerto no muestra (PGlite)", () => {
       code: "PUBLICATION_ROW_INVALID",
       retriable: false,
     });
+  });
+});
+
+describe("publicaciones · fila y evento juntos o ninguno (PGlite)", () => {
+  /** Un trigger que hace fallar el INSERT del evento cuando su payload trae `falla`. */
+  async function withFailingEvents() {
+    const setup = await pglite();
+    const client = (setup.db as unknown as { $client: PGlite }).$client;
+    await client.exec(`
+      CREATE FUNCTION fallar_evento() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.payload ? 'falla' THEN RAISE EXCEPTION 'evento rechazado'; END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql;
+      CREATE TRIGGER fallar_evento BEFORE INSERT ON publication_events
+        FOR EACH ROW EXECUTE FUNCTION fallar_evento();
+    `);
+    return setup;
+  }
+
+  it("si falla el evento de nacimiento, la publicación no queda", async () => {
+    const { repos } = await withFailingEvents();
+    const ids = await seed(repos);
+
+    await expect(
+      repos.publications.create(
+        {
+          listingId: ids.listingId,
+          platformAccountId: ids.accountId,
+          platform: "instagram",
+          format: "post",
+          contentId: ids.contentId,
+          mediaIds: [],
+        },
+        { actor: "operator", payload: { falla: true } },
+      ),
+    ).rejects.toMatchObject({ code: "DB_QUERY_FAILED" });
+    expect(await repos.publications.listByListing(ids.listingId)).toEqual([]);
+  });
+
+  it("si falla el evento de una transición, el estado no cambia", async () => {
+    const { repos } = await withFailingEvents();
+    const ids = await seed(repos);
+    const created = await repos.publications.create(
+      {
+        listingId: ids.listingId,
+        platformAccountId: ids.accountId,
+        platform: "instagram",
+        format: "post",
+        contentId: ids.contentId,
+        mediaIds: [],
+      },
+      { actor: "operator" },
+    );
+
+    await expect(
+      repos.publications.transition(
+        created.id,
+        { from: "approved", to: "publishing", changes: { dryRun: false, incrementAttempts: true } },
+        { actor: "operator", payload: { falla: true } },
+      ),
+    ).rejects.toMatchObject({ code: "DB_QUERY_FAILED" });
+    expect(await repos.publications.get(created.id)).toMatchObject({
+      status: "approved",
+      attempts: 0,
+      dryRun: true,
+    });
+    expect(await repos.publications.listEvents(created.id)).toHaveLength(1);
+  });
+
+  it("un aviso, una cuenta o un texto que no existen es PUBLICATION_REFERENCE_INVALID", async () => {
+    const { repos } = await pglite();
+    const ids = await seed(repos);
+
+    await expect(
+      repos.publications.create(
+        {
+          listingId: ids.listingId,
+          platformAccountId: ids.accountId,
+          platform: "instagram",
+          format: "post",
+          contentId: MISSING_UUID,
+          mediaIds: [],
+        },
+        { actor: "operator" },
+      ),
+    ).rejects.toMatchObject({ code: "PUBLICATION_REFERENCE_INVALID", retriable: false });
   });
 });
 
@@ -146,13 +233,16 @@ function lockContract(
             format: "post",
             contentId: ids.contentId,
             mediaIds: [],
-            dryRun: true,
           },
           { actor: "operator" },
         );
         await locked.publications.transition(
           created.id,
-          { from: "approved", to: "publishing", changes: { incrementAttempts: true } },
+          {
+            from: "approved",
+            to: "publishing",
+            changes: { incrementAttempts: true, dryRun: true },
+          },
           { actor: "operator" },
         );
         return created.id;
@@ -198,7 +288,6 @@ describe("ListingLock · Postgres (PGlite)", () => {
             format: "post",
             contentId: ids.contentId,
             mediaIds: [],
-            dryRun: true,
           },
           { actor: "operator" },
         );
@@ -233,6 +322,47 @@ describe("ListingLock · Postgres (PGlite)", () => {
     expect((await repos.contentRuns.get(run.id))?.status).toBe("succeeded");
   });
 
+  it("arrange y upsertDerivative de los medios también funcionan dentro (savepoints)", async () => {
+    const { db, repos, lock } = await pglite();
+    const ids = await seed(repos);
+    const listing = await repos.listings.get(ids.listingId);
+    const brokerId = listing?.brokerId ?? "";
+    const media = createMediaRepository(db);
+    const first = await media.create(newMedia(brokerId, ids.listingId, unique("sha-a")));
+    const second = await media.create(newMedia(brokerId, ids.listingId, unique("sha-b")));
+
+    await lock.run(ids.listingId, async (locked) => {
+      await locked.media.arrange(ids.listingId, [
+        { id: second.id, sortOrder: 0, isCover: true },
+        { id: first.id, sortOrder: 1, isCover: false },
+      ]);
+      await locked.media.upsertDerivative({
+        role: "processed",
+        variant: "ig_4x5",
+        parentMediaId: first.id,
+        listingId: ids.listingId,
+        brokerId,
+        kind: "image",
+        storagePath: `brokers/${brokerId}/listings/${ids.listingId}/processed/ig_4x5/${first.id}.jpg`,
+        mime: "image/jpeg",
+        width: 1080,
+        height: 1350,
+        durationS: null,
+        bytes: 2048,
+        checksum: unique("sha-derivado"),
+      });
+    });
+
+    const all = await media.listByListing(ids.listingId);
+    expect(all.find((item) => item.id === second.id)).toMatchObject({
+      isCover: true,
+      sortOrder: 0,
+    });
+    expect(all.some((item) => item.role === "processed" && item.parentMediaId === first.id)).toBe(
+      true,
+    );
+  });
+
   it("un conflicto dentro de fn deshace también lo anterior de esa transacción", async () => {
     const { repos, lock } = await pglite();
     const ids = await seed(repos);
@@ -243,7 +373,6 @@ describe("ListingLock · Postgres (PGlite)", () => {
       format: "post" as const,
       contentId: ids.contentId,
       mediaIds: [],
-      dryRun: true,
     };
 
     await expect(

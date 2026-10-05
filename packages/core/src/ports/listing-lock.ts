@@ -29,7 +29,9 @@ export type LockedRepositories = {
  * - usa solo los repositorios que recibe;
  * - no encola, no toca R2 ni llama a plataformas: devuelve lo que haga falta (por ejemplo, ids) y
  *   quien llamó encola **después** de que `run` termina, ya confirmado;
- * - un error de la base dentro de `fn` no se recupera: anula la transacción.
+ * - un error de la base dentro de `fn` no se recupera: aunque las escrituras de los repositorios
+ *   corren como savepoints (y algunas se podrían retomar), la regla prudente es dejar que falle;
+ * - no se anida: un `run` del mismo aviso dentro de `fn` se espera a sí mismo para siempre.
  * Un aviso que no existe es `LISTING_NOT_FOUND`.
  */
 export interface ListingLock {
