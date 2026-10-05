@@ -47,3 +47,6 @@ Detalle en el spec F3 (§4.2 a §4.7). Migración `0006` en F3-T01.
 - **Copiar el texto y las claves en la publicación:** duplica datos para resolver algo que basta con no cambiar mientras está pendiente.
 - **Revisar la condición sin candado** (antes de escribir): deja la ventana de F2 y suma otra entre aprobar y regenerar.
 - **Dejar `draft` y `pending_approval` sin uso:** estados que nadie alcanza, en la base, en las etiquetas y en los tests.
+
+## Seguimiento
+- 2026-10-05 (F3-T08, revisión del `arquitecto`): el punto 9 cubre también conectar con el token del panel (`POST /accounts/connect-token`, D4 del spec F3), que llama a `/me` de forma síncrona, y el refresco a pedido de una cuenta (`POST /accounts/:id/refresh`): son operaciones de cuenta cuyo resultado el operador espera en pantalla. El refresco diario sigue en el worker (`tokens.refresh`).

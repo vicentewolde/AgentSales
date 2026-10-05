@@ -108,7 +108,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
   type PublishResult = { externalId: string; externalUrl: string | null; simulated: boolean };
   ```
   `unpublish` y `getStatus` se suman cuando un canal los use (F4 y F6).
-- **Graph API:** host `graph.instagram.com`, versión fija en `INSTAGRAM_GRAPH_VERSION` (`v25.0`), token en la cabecera `Authorization: Bearer` (nunca en la URL), parsers tolerantes a la envoltura `data: [ ]`. Las constantes de la plataforma (2 a 10 ítems, 30 hashtags, 20 menciones, 8 MB, ritmo de sondeo) viven en un solo archivo, y el largo del caption reutiliza `INSTAGRAM_CAPTION_MAX_LENGTH` de core.
+- **Graph API:** host `graph.instagram.com`, versión fija en `INSTAGRAM_GRAPH_VERSION` (`v25.0`), token en la cabecera `Authorization: Bearer` (nunca en la URL), salvo el canje por el token largo y el refresco, que Meta documenta solo con parámetros en la URL (nota §3.3 y §3.4): esa URL nunca va a un error ni a un log, y `redactText` oculta `access_token` y `client_secret` si se registrara; parsers tolerantes a la envoltura `data: [ ]`. Las constantes de la plataforma (2 a 10 ítems, 30 hashtags, 20 menciones, 8 MB, ritmo de sondeo) viven en un solo archivo, y el largo del caption reutiliza `INSTAGRAM_CAPTION_MAX_LENGTH` de core.
 - **`validate`:** carrusel de 1 a 10 imágenes JPEG (con 1, imagen suelta), caption dentro de los topes, reel MP4 de 3 a 90 s (tope de producto de F2, dentro de los 3 s a 15 min de Meta). Es una función pura (`validateInstagramInput`): la usa `withDryRun` sin construir el cliente de la API, que el publisher recibe de forma perezosa.
 - **`post`:** un contenedor por imagen (`is_carousel_item=true`), el del carrusel con `children` y `caption`, sondeo hasta `FINISHED`, `media_publish` y `permalink` (del carrusel, no de los hijos).
 - **`reel`:** contenedor `REELS` con `video_url`, `caption`, `thumb_offset=1000` (el cuadro del segundo 1, con el texto del reel) y `share_to_feed=true`; sondeo, `media_publish` y `permalink`. Sin `cover_url`: la portada del carrusel es 4:5 y Meta recortaría el centro 9:16 (nota §5). `media_ids` del reel es solo el reel.
@@ -117,17 +117,17 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 - **Errores** (nota §7, por subcódigo y después por código), como `AppError`:
   | Código | Casos | Reintentable |
   |---|---|---|
-  | `IG_AUTH_INVALID` | 190, 102 | No (la cuenta pasa a `expired`) |
-  | `IG_PERMISSION_DENIED` | 10, 200 a 299 | No |
+  | `IG_AUTH_INVALID` | 190, 102 (o un HTTP 401 sin código) | No (la cuenta pasa a `expired`) |
+  | `IG_PERMISSION_DENIED` | 10, 200 a 299 (o un HTTP 403 sin código) | No |
   | `IG_MEDIA_REJECTED` | 2207004, 05, 09, 10, 23, 26, 28, 35 a 37, 40, 57 | No |
   | `IG_ACCOUNT_RESTRICTED` | 2207050, 2207051 | No |
   | `IG_PUBLISH_LIMIT` | 9, 2207042 | No |
-  | `IG_RATE_LIMITED` | 4, 17, 80002, 613 | No en F3 (el mensaje dice cuándo reintentar; la espera automática es de F6) |
+  | `IG_RATE_LIMITED` | 4, 17, 80002, 613 (o un HTTP 429 sin código) | No en F3 (el mensaje dice cuándo reintentar; la espera automática es de F6) |
   | `IG_MEDIA_FETCH_FAILED` | 2207003, 2207052 | Sí (URLs nuevas) |
   | `IG_UNAVAILABLE` | 5xx, red, 1, 2, 2207001, 2207032, 2207053, 2207006, 2207020 | Sí (contenedores nuevos) |
   | `IG_CONTAINER_TIMEOUT` | sondeo agotado | Sí |
   | `IG_PUBLISH_OUTCOME_UNKNOWN` | contenedor publicado sin medio encontrado | No |
-  2207008 y 2207027 no son errores: se sigue sondeando. Los mensajes son en español y sin datos del aviso.
+  2207008 y 2207027 no son errores: se sigue sondeando (el cliente los entrega como `IG_MEDIA_NOT_READY`, reintentable, y el publisher sigue esperando; nunca llegan a `last_error`). Los mensajes son en español y sin datos del aviso. Además (T08): lo que no calza con la tabla es `IG_REQUEST_REJECTED` (no reintentable, con el código de Meta); sin red o pasados 30 s, `IG_UNAVAILABLE` (reintentable); un corte por la señal, `IG_ABORTED` (reintentable); y una respuesta con otra forma, `IG_UNEXPECTED_RESPONSE` (no reintentable). Ningún error lleva el token, la URL ni el mensaje de Meta. Un estado de contenedor que Meta agregue y no conozcamos llega como `UNKNOWN` y se sigue sondeando (si no cambia, `IG_CONTAINER_TIMEOUT`).
 - **No se envía `is_ai_generated`** (D6): las fotos y el video son reales; la IA solo redacta frases del caption.
 
 ### 4.6 Cuentas, OAuth y tokens
@@ -137,7 +137,8 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
   2. `GET /oauth/instagram/callback` compara el `state` con la cookie (`OAUTH_STATE_INVALID`), quita el `#_` del código, lo canjea por el token corto y luego por el largo, lee `/me?fields=user_id,username,account_type`, exige `instagram_business_content_publish` entre los permisos (`IG_PERMISSION_DENIED`) y guarda la cuenta (`connectAccount`). Redirige a la URL absoluta del panel (`http://localhost:<WEB_PORT>/cuentas?conectada=instagram` o `?error=<código>`), sin datos de la cuenta en la URL.
   - Si el operador rechaza en Instagram (`error=access_denied`), vuelve al panel con `?error=OAUTH_DENIED`. Es solo un código de la redirección para el panel, no un `AppError` (no va en `errors.ts`).
 - **Meta no acepta `http://localhost`** (probado el 2026-10-05, nota §3.6). En F3 la cuenta se conecta con `agentsales accounts connect instagram --broker <slug> --token-stdin`, que recibe por la entrada estándar el token largo del botón **Generate token** (`POST /accounts/connect-token`) y sigue igual desde `/me` (D4). El OAuth de arriba se implementa y se prueba con msw (lo necesita F7, con HTTPS), pero el panel muestra el botón Conectar solo si `INSTAGRAM_REDIRECT_URI` es `https://`; si no, muestra el comando de la CLI. No se agregan túneles ni HTTPS local en F3.
-- **Guardado (`platform_accounts`):** `external_account_id` = `user_id` de `/me`, `display_name` = `@username`, `status = connected`, `token_expires_at`, `meta` con `accountType`, los permisos y `tokenRefreshedAt`. `credentials_encrypted` guarda `{ accessToken }` cifrado. Reconectar la misma cuenta actualiza la fila. `meta` de Instagram tiene su esquema en core (`instagramAccountMetaSchema`, T13), porque el refresco (T14) lee `tokenRefreshedAt`.
+- **Guardado (`platform_accounts`):** `external_account_id` = `user_id` de `/me`, `display_name` = `@username`, `status = connected`, `token_expires_at`, `meta` con `accountType`, los permisos, `connectedAt` y `tokenRefreshedAt`.
+- **Con el token del panel** (`connect-token`, D4) no hay canje: no se conocen los permisos ni el vencimiento real (revisión del `arquitecto` en T08). Se guarda `meta.permissions: null` (desconocidos; nunca `[]`, que se leería como "ninguno"), `meta.tokenRefreshedAt: null` y un `token_expires_at` estimado a 60 días desde la conexión (`meta.tokenExpiryEstimated: true`). El permiso de publicar se exige solo cuando se conoce (`INSTAGRAM_PUBLISH_SCOPE`, en core): un token sin él falla al publicar con `IG_PERMISSION_DENIED`, que pide reconectar. No se sondea con `content_publishing_limit` (con Instagram Login está sin verificar, nota §6). El refresco (T14) trata `tokenRefreshedAt: null` como "refrescar en cuanto pasen 24 h desde `connectedAt`", y así obtiene el vencimiento real. `credentials_encrypted` guarda `{ accessToken }` cifrado. Reconectar la misma cuenta actualiza la fila. `meta` de Instagram tiene su esquema en core (`instagramAccountMetaSchema`, T13), porque el refresco (T14) lee `tokenRefreshedAt`.
 - **Una cuenta conectada por corredor y plataforma:** conectar otra cuenta externa de Instagram en el mismo corredor desconecta la anterior (`revoked`); sus publicaciones pendientes quedan con `ACCOUNT_NOT_CONNECTED` hasta descartarlas o reconectarla. Lo hace `connectAccount` (T13), dentro de una transacción; la base no lo impone. Así aprobar y publicar (T05, T10) siempre tienen una sola cuenta del canal.
 - **Cambios de estado condicionales:** `updateToken` solo escribe si la cuenta sigue `connected` (un refresco que se cruza con una desconexión no la revive), y `changeStatus(id, from, to)` solo cambia desde el estado esperado. El intento de publicación (T11) revisa que la cuenta esté `connected` antes de pedir las credenciales: una `expired` todavía las devuelve.
 - **Cifrado (puerto `SecretBox` en core; `createSecretBox` en `packages/config`, que lo inyectan las apps en el repositorio de cuentas, porque los paquetes no importan config):**
@@ -147,7 +148,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
   - Un texto alterado, otra clave u otra AAD dan `CREDENTIALS_UNREADABLE` (no reintentable; la cuenta queda en `error` y hay que reconectarla).
   - Core nunca ve el cifrado: el repositorio cifra al guardar y descifra solo en `getCredentials(id)`.
 - **Refresco (`refreshAccountTokens`):** refresca los tokens con más de 24 h desde el último refresco y menos de 30 días de vigencia. Corre al arrancar el worker y una vez al día mientras corre (`schedule` de pg-boss, job `tokens.refresh`, como en ADR-0005: cron, 3 reintentos con backoff, ~5 min). Un token vencido pasa la cuenta a `expired` sin llamar a Instagram; un 190 al refrescar, también. El panel muestra el vencimiento y avisa con 10 días de anticipación. Como el worker solo corre con `pnpm dev`, una cuenta sin uso por 60 días vence y se reconecta.
-- **Refresco a pedido:** `POST /accounts/:id/refresh` (CLI `accounts refresh <id> [--force]`) corre el mismo caso de uso para una cuenta; `force` salta solo el tope de 30 días, nunca el mínimo de 24 h.
+- **Refresco a pedido:** `POST /accounts/:id/refresh` (CLI `accounts refresh <id> [--force]`) corre el mismo caso de uso para una cuenta, de forma síncrona (el operador espera el resultado; seguimiento de ADR-0014, punto 9); `force` salta solo el tope de 30 días, nunca el mínimo de 24 h.
 - **Desconectar:** `revoked` y borra `credentials_encrypted`. La cuenta no se borra (sus publicaciones la referencian).
 - **Logs:** `redactText` (`packages/core/src/redact.ts`) ya oculta `access_token`, `client_secret` y `signature` en URLs. Se suma `code` **solo como parámetro** (`?code=`, `&code=`, `#code=` o al inicio de un formulario; no `status code=500` en un mensaje, ni la clave `code` de los objetos del log, que son los códigos de error), los secretos de los cuerpos de formulario (`a=b&c=d` sin `?`) y los valores sensibles de un JSON (`"access_token": "…"`, la respuesta de un canje). Tests que revisan que ningún log, error ni respuesta lleve el token, el secret ni el código.
 
@@ -178,7 +179,7 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 | `POST /publications/:id/publish`, `/cancel` y `/retire` | Publicar o reintentar una, descartarla y marcarla como retirada (`retire` exige `{ removedByHand: true }` si es `live`) |
 | `GET /publications/:id/events` | Bitácora, sin secretos |
 
-Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_LOCKED`, `CONTENT_NOT_APPROVED`, `PUBLICATION_PENDING`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH` y `ACCOUNT_NOT_CONNECTED` (409); `PUBLICATION_NOT_FOUND` y `ACCOUNT_NOT_FOUND` (404); `OAUTH_STATE_INVALID` (400); `CREDENTIALS_UNREADABLE` (500); los `IG_*`, `PUBLISH_MODE_MISMATCH`, `PUBLISH_INPUT_INVALID`, `PUBLICATION_MEDIA_MISSING` y `PUBLICATION_CONTENT_MISMATCH` (T07) solo viajan dentro de `last_error` (también `CONTENT_NOT_APPROVED`, cuando sale de un intento).
+Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_LOCKED`, `CONTENT_NOT_APPROVED`, `PUBLICATION_PENDING`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH` y `ACCOUNT_NOT_CONNECTED` (409); `PUBLICATION_NOT_FOUND` y `ACCOUNT_NOT_FOUND` (404); `OAUTH_STATE_INVALID` (400); `CREDENTIALS_UNREADABLE` (500); `PUBLISH_MODE_MISMATCH`, `PUBLISH_INPUT_INVALID`, `PUBLICATION_MEDIA_MISSING` y `PUBLICATION_CONTENT_MISMATCH` (T07) solo viajan dentro de `last_error` (también `CONTENT_NOT_APPROVED`, cuando sale de un intento). Los `IG_*` viajan en `last_error` al publicar, pero conectar y refrescar a pedido (T13 y T14) los devuelven en la respuesta: `IG_UNAVAILABLE` es 503 e `IG_RATE_LIMITED` 429 por las reglas que ya existen, y T13 agrega `IG_AUTH_INVALID`, `IG_PERMISSION_DENIED` e `IG_REQUEST_REJECTED` (400) e `IG_UNEXPECTED_RESPONSE` (502).
 
 ### 4.9 CLI y panel
 - **CLI:**
@@ -286,17 +287,17 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T08 · Instagram: cliente de la API y OAuth
 - **Depende de:** T02
-- **Archivos:** `packages/publishers/` (nuevo: `package.json`, `src/instagram/{graph.ts,auth.ts,errors.ts,constants.ts}`), `packages/core/src/ports/instagram-auth.ts`, `docs/05-convenciones.md`
+- **Archivos:** `packages/publishers/` (nuevo: `package.json`, `src/instagram/{graph.ts,auth.ts,errors.ts,constants.ts}`, `test/instagram-server.ts`), `packages/core/src/ports/instagram-auth.ts`, `docs/05-convenciones.md`, `biome.json` y `tsconfig.json` (el paquete nuevo)
 - **Descripción:** cliente de `graph.instagram.com` (cabecera `Bearer`, versión fija, parsers tolerantes, `AbortSignal`), clasificación de errores (§4.5), y el puerto `InstagramAuth` de core: `authorizeUrl`, `exchangeCode` (corto → largo), `refresh`, `me`.
 - **Hecho cuando:**
-  - [ ] Tests con msw de cada llamada, con y sin la envoltura `data`
-  - [ ] Cada fila de la tabla de errores de §4.5 con su código y si se reintenta
-  - [ ] El `#_` del código se quita; el secret y los tokens nunca aparecen en errores ni logs (test)
+  - [x] Tests con msw de cada llamada, con y sin la envoltura `data`
+  - [x] Cada fila de la tabla de errores de §4.5 con su código y si se reintenta
+  - [x] El `#_` del código se quita; el secret y los tokens nunca aparecen en errores ni logs (test)
 
 ### F3-T09 · Instagram: publisher
 - **Depende de:** T07, T08
 - **Archivos:** `packages/publishers/src/instagram/{publisher.ts,validate.ts}`
-- **Descripción:** `validateInstagramInput`, carrusel o imagen suelta, reel, sondeo, cuota, `permalink`, progreso y retoma (§4.4 y §4.5).
+- **Descripción:** `validateInstagramInput`, carrusel o imagen suelta, reel, sondeo, cuota, `permalink`, progreso y retoma (§4.4 y §4.5), sobre el cliente de T08. Notas de la revisión de T08: `IG_MEDIA_NOT_READY` (también de `media_publish`) y un estado `UNKNOWN` se atrapan y se sigue sondeando; un `IG_REQUEST_REJECTED` de `publishingLimit` es "sin consultar la cuota" (se anota y se sigue), y los demás errores se propagan; un `media_publish` que no terminó (`IG_UNAVAILABLE`, `IG_ABORTED` o `IG_UNEXPECTED_RESPONSE`) se resuelve siempre por el progreso guardado, nunca creando contenedores nuevos a ciegas.
 - **Hecho cuando:**
   - [ ] msw: carrusel de 3, imagen suelta, reel con sondeo `IN_PROGRESS` → `FINISHED` y `thumb_offset`
   - [ ] Retoma: contenedor `FINISHED` publica sin crear otro; `PUBLISHED` busca el medio; `EXPIRED` rehace; nunca dos `media_publish` sobre el mismo contenedor
@@ -333,7 +334,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 ### F3-T13 · Conectar Instagram
 - **Depende de:** T03, T08
 - **Archivos:** `packages/core/src/use-cases/{connect-account.ts,disconnect-account.ts}`, `apps/api/src/routes/{oauth.ts,accounts.ts}`, `apps/api/src/contracts/index.ts`, `apps/api/src/app.ts` y `server.ts` (composición, con el mismo `SecretBox` que el candado; en los dobles, el candado recibe el mismo repositorio de cuentas que la app)
-- **Descripción:** §4.6 completo: inicio y vuelta del OAuth, `GET /accounts`, desconectar. Como Meta no acepta `http://localhost` (D4), también `connectAccount` desde un token y `POST /accounts/connect-token` (T16 lo expone con `--token-stdin`).
+- **Descripción:** §4.6 completo: inicio y vuelta del OAuth, `GET /accounts`, desconectar. Como Meta no acepta `http://localhost` (D4), también `connectAccount` desde un token y `POST /accounts/connect-token` (T16 lo expone con `--token-stdin`), con permisos y vencimiento desconocidos (§4.6) y el HTTP de los `IG_*` (§4.8).
 - **Hecho cuando:**
   - [ ] Callback con `state` correcto guarda la cuenta cifrada; con otro, sin cookie o vencido, `OAUTH_STATE_INVALID` sin llamar a Instagram
   - [ ] Rechazo del usuario y falta del permiso de publicar vuelven al panel con su código, a la URL absoluta del panel
@@ -343,7 +344,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 ### F3-T14 · Refresco de tokens
 - **Depende de:** T13
 - **Archivos:** `packages/core/src/use-cases/refresh-account-tokens.ts`, `packages/core/src/jobs.ts`, `apps/worker/src/jobs/tokens-refresh.ts`, `apps/worker/src/worker.ts`
-- **Descripción:** §4.6 (refresco): job `tokens.refresh` al arrancar y una vez al día, y el refresco a pedido de una cuenta (`force`).
+- **Descripción:** §4.6 (refresco): job `tokens.refresh` al arrancar y una vez al día, y el refresco a pedido de una cuenta (`force`, síncrono). Una cuenta conectada con el token del panel (`tokenRefreshedAt: null`) se refresca en cuanto pasan 24 h desde `connectedAt`.
 - **Hecho cuando:**
   - [ ] Ventana de refresco (menos de 24 h, entre 24 h y 30 días restantes, vencido) con reloj falso
   - [ ] 190 al refrescar deja la cuenta en `expired`; un error de red no la cambia
@@ -469,3 +470,5 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-05 | Revisión de F3-T06 (#59): el test de la ventana de F2 fuerza los dos órdenes (con una puerta dentro del candado) y comprueba que sin candado la edición se pierde; `CONTENT_LOCKED` dice qué hacer según la publicación (pendiente o publicada); la confirmación de regenerar en el panel y la CLI cubre los textos aprobados; la CLI explica `PUBLICATION_PENDING`; un solo `SecretBox` en `server.ts` para el candado y (T13) las cuentas; test de que el candado de `testDeps` usa los repositorios de la app |
 | 2026-10-05 | Desde F3-T07: `PublishInput` lleva `publicationId`, `title` (siempre `null` en Instagram) y medios con su ruta de R2, URL firmada, tipo, tamaño, medidas y duración (`buildPublishInput`, que antes de firmar revisa el texto: `PUBLICATION_CONTENT_MISMATCH`, `CONTENT_NOT_APPROVED`, y los medios: `PUBLICATION_MEDIA_MISSING`); `checkPublishInput` revisa plataforma, formato y `validate` y da `PUBLISH_INPUT_INVALID` con los motivos (un rechazo sin motivos también); `withDryRun` valida y simula; publisher falso `createFakePublisher` |
 | 2026-10-05 | Revisión de F3-T07 (#60): lo enviado se registra en **cada** intento, también en `live` (`publishAttemptRecord`, como pide ADR-0014), en un único `publish_attempt` al final (§4.3 y T11), y `withDryRun` ya no tiene `onRecord`; `checkPublishInput` en `live` antes de `publish`, credenciales descifradas en los dos modos y el aviso a `active` por `publication.dryRun` (§4.4) |
+| 2026-10-05 | Desde F3-T08: el cliente de la Graph API trae todas las llamadas que usará T09 (`me`, contenedores, estado, `media_publish`, medio, últimos medios y cupo), con tope de 30 s por llamada; el canje del token largo y el refresco mandan el token y el secret en la URL, como los documenta Meta (las demás llamadas usan `Bearer`; se prueba en la demo, nota §8), y esa URL nunca sale en un error; un 400 del canje del código (vencido o usado) es `IG_AUTH_INVALID`; códigos nuevos `IG_MEDIA_NOT_READY`, `IG_REQUEST_REJECTED`, `IG_ABORTED` e `IG_UNEXPECTED_RESPONSE` (§4.5) |
+| 2026-10-05 | Revisión de F3-T08 (con `revisor` y `arquitecto`): la excepción del token en la URL queda en §4.5; HTTP 401, 403 y 429 sin código de Meta se clasifican como 190, 10 y 4; un estado de contenedor desconocido es `UNKNOWN` (se sigue sondeando); un token que no cabe en una cabecera es `IG_AUTH_INVALID` sin llamar; `INSTAGRAM_PUBLISH_SCOPE` pasa a core; con el token del panel, permisos y vencimiento desconocidos (`null`, vencimiento estimado y refresco a las 24 h, §4.6); el refresco a pedido es síncrono (seguimiento de ADR-0014); HTTP de los `IG_*` que llegan a la API (§4.8); notas para T09 |

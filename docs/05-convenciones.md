@@ -56,7 +56,7 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
   - Un cuerpo JSON mal formado responde `400 INVALID_JSON`, también cuando lo detecta `hono/validator`.
   - Un `Host` no local responde `403 HOST_NOT_ALLOWED`; una ruta inexistente, `404 ROUTE_NOT_FOUND`.
 - Nada de secretos en el código. Todo por `packages/config` (env validado con zod al arrancar).
-- Solo los puntos de entrada cargan el entorno (`loadEnvFile`/`loadEnv`): las apps y los `src/scripts/*` de cada paquete. El resto de un paquete recibe opciones concretas (`createDb(url)`, `createR2Storage({...})`, `createJobQueue({...})`); Biome lo exige en `db`, `storage`, `importers`, `queue`, `llm`, `media` y `templates`, que además no se importan entre sí (los adaptadores no dependen unos de otros). Excepciones, solo como `devDependency` y prohibidas por Biome en `src`: los tests de `importers` usan `TEMPLATE_COLUMNS` de `@agentsales/db`, y los tests y el script de muestras de `media` (`render:samples`) usan `@agentsales/templates`.
+- Solo los puntos de entrada cargan el entorno (`loadEnvFile`/`loadEnv`): las apps y los `src/scripts/*` de cada paquete. El resto de un paquete recibe opciones concretas (`createDb(url)`, `createR2Storage({...})`, `createJobQueue({...})`); Biome lo exige en `db`, `storage`, `importers`, `queue`, `llm`, `media`, `templates` y `publishers`, que además no se importan entre sí (los adaptadores no dependen unos de otros). Excepciones, solo como `devDependency` y prohibidas por Biome en `src`: los tests de `importers` usan `TEMPLATE_COLUMNS` de `@agentsales/db`, y los tests y el script de muestras de `media` (`render:samples`) usan `@agentsales/templates`.
 - `drizzle-orm` va en la **misma versión exacta** en `packages/db` y `packages/queue` (`checkQueueSchema` recibe un `SQL` de Drizzle): si difieren, falla el typecheck.
 - Nombres de archivos: `kebab-case.ts`. Componentes React: `PascalCase.tsx`.
 - Imports entre paquetes solo por su nombre público (`@agentsales/core`), nunca por ruta relativa a otro paquete.
@@ -123,6 +123,7 @@ Una subruta (por ejemplo `./contracts` y `./testing` en `apps/api`, `./testing` 
 
 - **core:** tests unitarios obligatorios (máquina de estados, validaciones, formateo de precios).
 - **Adaptadores externos:** tests de contrato con respuestas grabadas (msw). **Ningún test llama a APIs reales ni publica.**
+- **Instagram (`packages/publishers`, F3):** `useInstagramServer()` (`packages/publishers/test/instagram-server.ts`) levanta msw con `onUnhandledFrame: "error"` (una llamada sin handler falla el test) y registra cada petición (método, URL, cabecera `Authorization` y formulario) para afirmar qué se mandó. `errorText(error)` junta mensaje, pila, detalles y causa: los tests revisan que ningún token, secret ni código aparezca ahí. Cada respuesta se prueba con y sin la envoltura `data: [ ]`, y los cortes (sin red, tope de tiempo, señal) con `HttpResponse.error()` y `delay("infinite")`.
 - **Repositorios (`packages/db`):**
   - Se prueban contra Postgres en memoria con PGlite (`createTestDatabase()` de `packages/db/test/pglite.ts`, que aplica todas las migraciones), sin Neon ni red.
   - Reciben `SchemaDatabase` y no usan nada propio del driver (`$client`, `rowCount`, el tipo de resultado de `execute` de pg).
