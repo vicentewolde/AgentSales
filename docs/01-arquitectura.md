@@ -87,7 +87,7 @@ agentsales/
 │   ├── llm/          Proveedores (solo transporte): claude-cli, anthropic-api, fake. Los prompts viven en core (ADR-0013)
 │   ├── media/        Procesamiento de imagen y video (sharp, ffmpeg) y render de HTML (Playwright)
 │   ├── templates/    Plantillas HTML/CSS de posts (portada, ficha y texto del reel)
-│   ├── publishers/   instagram (F3: cliente de la Graph API, OAuth y errores; publisher en T09); mercadolibre y fb-marketplace después
+│   ├── publishers/   instagram (F3: cliente de la Graph API, OAuth, errores, validación y publisher); mercadolibre y fb-marketplace después
 │   └── config/       Variables de entorno validadas (zod), logger pino, redactor de secretos, resumen de errores repetidos y, desde F3, cifrado y firma (crypto.ts)
 ├── .github/          CI (GitHub Actions)
 ├── docs/             Documentación (esta carpeta)
@@ -221,9 +221,11 @@ type PublishResult = { externalId: string; externalUrl: string | null; simulated
 
 `unpublish` y `getStatus` se suman cuando un canal los use (F4 y F6). Desde F3-T07 (`packages/core/src/ports/publisher.ts` y `packages/core/src/publish/`):
 - **`PublishInput`** = `publicationId`, `platform`, `format`, `title` (siempre `null` en Instagram), `caption` y `media` (cada uno con `mediaId`, `kind`, `mime`, `storagePath`, `url` firmada, `bytes`, medidas y `durationS`). Lo arma `buildPublishInput`: el caption con `instagramCaption` (en los otros canales, el cuerpo) y los medios de `media_ids` en su orden, con URLs firmadas nuevas por 1 hora (`PUBLISH_MEDIA_URL_TTL_S`). Un texto que no es el de la publicación (otro id o canal) es `PUBLICATION_CONTENT_MISMATCH`; uno que ya no está aprobado, `CONTENT_NOT_APPROVED`; y un medio fijado que falta, `PUBLICATION_MEDIA_MISSING` (los tres no reintentables, antes de firmar nada).
+- **`publish` recibe un input que ya pasó `checkPublishInput`** (el intento la corre en `live` y `withDryRun` en `dry-run`); un adaptador puede volver a correrla, porque es pura y barata (el de Instagram lo hace).
 - **`checkPublishInput(publisher, input)`** revisa la plataforma, el formato (`publisher.formats`) y `publisher.validate` (un rechazo sin motivos cuenta como rechazo); si algo falla, `PUBLISH_INPUT_INVALID` (no reintentable) con los motivos (`{ code, message }`, en español y sin datos del aviso) en el mensaje y en `details.issues`. En `live` la llama el intento (T11) antes de `publish`; en `dry-run`, `withDryRun`.
 - **`withDryRun(publisher)`** (con `dry_run` en la publicación): `publish` corre `checkPublishInput` y devuelve `{ externalId: "dry-run:<publicationId>", externalUrl: null, simulated: true }`. Nunca llama a `publish` del envuelto ni a `saveProgress`.
 - **`publishAttemptRecord(input, account)`**: lo que se envió en un intento, o lo que se habría enviado en `dry-run` (formato, título, caption completo, medios con su ruta de R2, tipo, tamaño y medidas, y la cuenta con su `@usuario`). Va en el evento `publish_attempt` de cada intento, en los dos modos (ADR-0014: después de publicada, una corrida nueva puede reemplazar los medios). Nunca va al log y nunca lleva URLs firmadas ni credenciales: se arma campo por campo.
+- El de Instagram es `createInstagramPublisher` (`@agentsales/publishers`, F3-T09): recibe el cliente de la Graph API de forma perezosa (validar y simular no lo construyen), revisa el cupo, crea los contenedores, guarda el progreso antes de sondear y otra vez antes de `media_publish` (con la hora del pedido), y retoma desde él sin publicar dos veces (spec F3 §4.4); todo el intento tiene un tope de 12 min.
 - Para los tests, `createFakePublisher` (`@agentsales/core/testing`): `validate` y `publish` guionados (progreso, error o resultado por llamada) y registrados.
 
 ## Cola de trabajos

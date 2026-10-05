@@ -1,3 +1,4 @@
+// Lo que componen las apps (worker, API y `ig:smoke`); el resto del paquete es interno.
 export { createInstagramAuth, type InstagramAuthOptions } from "./instagram/auth.js";
 export {
   INSTAGRAM_GRAPH_VERSION,
@@ -7,20 +8,19 @@ export {
   INSTAGRAM_SCOPES,
 } from "./instagram/constants.js";
 export {
-  INSTAGRAM_ERRORS,
-  INSTAGRAM_NOT_READY_SUBCODES,
-  type InstagramErrorInfo,
-  instagramError,
-} from "./instagram/errors.js";
-export {
   type CallOptions,
-  CONTAINER_STATUS_CODES,
   type ContainerRequest,
   type ContainerStatus,
-  type ContainerStatusCode,
   createInstagramGraph,
   type InstagramGraph,
   type InstagramGraphOptions,
   type InstagramMedia,
   type PublishingLimit,
 } from "./instagram/graph.js";
+export {
+  createInstagramPublisher,
+  INSTAGRAM_ATTEMPT_MAX_MS,
+  type InstagramPublisherOptions,
+  type InstagramPublishNote,
+} from "./instagram/publisher.js";
+export { validateInstagramInput } from "./instagram/validate.js";

@@ -191,7 +191,7 @@ La página de publicación con Instagram Login documenta `upload_type=resumable`
 `GET /<MEDIA_ID>?fields=id,media_type,media_product_type,permalink,timestamp,caption,is_shared_to_feed` (host `graph.instagram.com` para Instagram Login).
 - `permalink` es la "permanent URL to the media". **No** está disponible en los hijos de un álbum: pedirlo del ID del **carrusel** (el que devuelve `media_publish`), no de los hijos.
 - Con el `permalink` se guarda la URL de la publicación (criterio de aceptación de F3).
-- `media_product_type` distingue `FEED` y `REELS`. Formato del enlace de un reel (`/reel/...`): INFERENCIA.
+- `media_product_type` distingue `FEED` y `REELS`. Formato del enlace de un reel (`/reel/...`): INFERENCIA. El publisher (F3-T09) pide `media_type` y `media_product_type` en los últimos medios para no confundir el carrusel con el reel del mismo aviso, que llevan el mismo caption.
 
 ### 4.7 Editar, pausar y cerrar
 
@@ -365,7 +365,7 @@ Orden sugerido, de menor a mayor riesgo; las primeras no publican nada:
 6. Versión de API: ¿`graph.instagram.com` acepta `v25.0`, `v26.0` y la omisión?
 7. Cabeceras `X-App-Usage` y `X-Business-Use-Case-Usage` en las respuestas.
 8. **Publicación en vivo de muestra:** carrusel de 3 a 4 imágenes con URL prefirmada de R2 (¿acepta la query larga? ¿hace `HEAD`?), luego el reel (¿acepta el MP4 de `REEL_SPEC`?, tiempo hasta `FINISHED`, `cover_url`/`thumb_offset`, `share_to_feed` por defecto).
-9. `permalink` del carrusel y del reel; tiempo hasta que el enlace funciona.
+9. `permalink` del carrusel y del reel; tiempo hasta que el enlace funciona. Ver qué devuelve un segundo `media_publish` sobre un contenedor ya publicado (el publisher lo evita, pero un corte justo durante el pedido deja una ventana: spec F3 §4.4) y si `/<IG_ID>/media` trae `media_type` y `media_product_type` con Instagram Login.
 10. Intento de `DELETE` (opcional) y borrado manual.
 11. Cuántos contenedores y publicaciones suma `content_publishing_limit` tras la prueba (¿un reel cuenta 1?).
 

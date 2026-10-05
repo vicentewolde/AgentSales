@@ -176,7 +176,7 @@ export const INSTAGRAM_ERRORS = {
   publishOutcomeUnknown: () =>
     new AppError(
       "IG_PUBLISH_OUTCOME_UNKNOWN",
-      "No se sabe si la publicación salió en Instagram: revísalo antes de reintentar",
+      "No se sabe si la publicación salió en Instagram: revisa la cuenta. Si no salió, descártala y vuelve a publicar; si salió, bórrala a mano antes de volver a publicar",
     ),
 } as const;
 

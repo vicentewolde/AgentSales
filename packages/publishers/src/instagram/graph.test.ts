@@ -148,6 +148,8 @@ describe("createInstagramGraph", () => {
           permalink: "https://www.instagram.com/p/abc/",
           timestamp: "2026-10-05T15:00:00+0000",
           caption: "Hola",
+          media_type: "CAROUSEL_ALBUM",
+          media_product_type: "FEED",
         }),
       ),
       http.get(`${BASE}/m-2`, () => HttpResponse.json({ data: [{ id: "m-2" }] })),
@@ -157,14 +159,20 @@ describe("createInstagramGraph", () => {
       permalink: "https://www.instagram.com/p/abc/",
       timestamp: new Date("2026-10-05T15:00:00Z"),
       caption: "Hola",
+      mediaType: "CAROUSEL_ALBUM",
+      productType: "FEED",
     });
     await expect(graph.media(TOKEN, "m-2")).resolves.toEqual({
       id: "m-2",
       permalink: null,
       timestamp: null,
       caption: null,
+      mediaType: null,
+      productType: null,
     });
-    expect(requests[0]?.url.searchParams.get("fields")).toBe("id,permalink,timestamp,caption");
+    expect(requests[0]?.url.searchParams.get("fields")).toBe(
+      "id,permalink,timestamp,caption,media_type,media_product_type",
+    );
   });
 
   it("recentMedia lee la lista de data con su límite", async () => {

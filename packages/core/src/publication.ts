@@ -20,6 +20,11 @@ export const instagramProgressSchema = z.object({
   childIds: z.array(z.string().min(1)),
   /** Contenedor que se publica (el del carrusel, la imagen o el reel); `null` hasta crearlo. */
   containerId: z.string().min(1).nullable(),
+  /**
+   * Cuándo se pidió `media_publish` (F3-T09): si un corte deja la respuesta sin leer, el reintento
+   * espera y busca el medio antes de pedirlo otra vez. Opcional: los progresos anteriores no lo tienen.
+   */
+  publishRequestedAt: z.iso.datetime().optional(),
 });
 export type InstagramProgress = z.infer<typeof instagramProgressSchema>;
 
