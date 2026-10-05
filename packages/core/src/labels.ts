@@ -7,6 +7,8 @@ import type {
   ListingStatus,
   Operation,
   Platform,
+  PublicationFormat,
+  PublicationStatus,
 } from "./enums.js";
 import type { ImportBrokerOutcome, ImportRowOutcome } from "./import-run.js";
 
@@ -78,6 +80,23 @@ export const CONTENT_STATUS_TEXT: Readonly<Record<ContentStatus, string>> = {
   draft: "borrador",
   edited: "editado a mano",
   approved: "aprobado",
+};
+
+export const PUBLICATION_STATUS_TEXT: Readonly<Record<PublicationStatus, string>> = {
+  approved: "aprobada",
+  scheduled: "programada",
+  publishing: "publicando",
+  awaiting_manual_confirm: "espera tu clic final",
+  published: "publicada",
+  failed: "falló",
+  paused: "pausada",
+  unpublished: "retirada",
+  cancelled: "descartada",
+};
+
+export const PUBLICATION_FORMAT_TEXT: Readonly<Record<PublicationFormat, string>> = {
+  post: "carrusel",
+  reel: "reel",
 };
 
 /** Qué pasó con el reel en una corrida (`report.reel`). */

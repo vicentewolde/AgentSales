@@ -2,16 +2,16 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-04
+**Actualizado:** 2026-10-05
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** Spec F3 (`/fase-plan 3`), con ADR-0014
-**Siguiente paso:** `/tarea F3-T01` · Esquema de publicaciones (migración `0006`); T02 es independiente
+**Última tarea terminada:** F3-T01 · Esquema de publicaciones (migración `0006`)
+**Siguiente paso:** `/tarea F3-T02` · Cifrado, firma y variables de Instagram (después, T03 y T04)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F3 (`/fase-plan 3`) | ✅ terminada | |
-| F3-T01 · Esquema de publicaciones (migración `0006`) | ⏳ pendiente | |
+| F3-T01 · Esquema de publicaciones (migración `0006`) | ✅ terminada | #54 |
 | F3-T02 · Cifrado, firma y variables de Instagram | ⏳ pendiente | |
 | F3-T03 · Cuentas conectadas: puerto y repositorio | ⏳ pendiente | |
 | F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso | ⏳ pendiente | |
@@ -35,9 +35,9 @@
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- [x] Trámite de la app de Meta: cuenta profesional, app `AgentSales-IG`, tester aceptado (2026-10-02) y `META_APP_ID` y `META_APP_SECRET` en `.env` (2026-10-03). En F3 se confirma que son el par de Instagram que usa el sistema. La verificación del negocio y el App Review quedan para F7
+- [x] Trámite de la app de Meta: cuenta profesional, app `AgentSales-IG`, tester aceptado (2026-10-02) y el ID y la clave de la app de Instagram en `.env` (2026-10-03). La verificación del negocio y el App Review quedan para F7
 - [x] Variables renombradas en `.env` a `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` e `INSTAGRAM_REDIRECT_URI` (2026-10-05)
-- [ ] **Antes de F3-T02:** confirmar que `INSTAGRAM_APP_ID` es el "Identificador de la aplicación de Instagram" (Casos de uso > Administrar mensajes y contenido en Instagram > Personalizar > Configuración de la API con el inicio de sesión de Instagram), no el identificador general de la app
+- [x] `INSTAGRAM_APP_ID` es el "Identificador de la aplicación de Instagram" (Casos de uso > Administrar mensajes y contenido en Instagram > Personalizar > Configuración de la API con el inicio de sesión de Instagram), no el identificador general de la app (confirmado por el operador, 2026-10-05)
 - [x] Dirección de retorno local: Meta rechazó `http://localhost:8787/oauth/instagram/callback` (2026-10-05). En F3 la cuenta se conecta con el token del botón "Generate token" (spec F3, D4). Permisos `instagram_business_basic` e `instagram_business_content_publish` agregados a la app (2026-10-05)
 - [ ] Demo de F3: la prueba en `live` usa tu cuenta (profesional, vinculada a la página AgentSales y tester de `AgentSales-IG`); se publica una propiedad de muestra (carrusel y reel) y se borra a mano después. `PUBLISH_MODE=live` solo con tu instrucción en el chat
 
@@ -69,6 +69,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-05: **F3-T01.** Publicaciones sin `draft` ni `pending_approval`, con `format` (`post`, `reel`) y `progress`; único parcial por aviso, cuenta y formato. La migración `0006` se ajustó a mano (drizzle-kit borraba el índice después de recrear el tipo) y falla si la tabla tiene filas. Neon tenía `publications` vacía; la `0006` se aplica después del merge.
 - 2026-10-04: **`/fase-plan 3`.** Nota `docs/integraciones/instagram.md` completada (OAuth, tokens, publicación, borrado, límites y errores; lo no verificado se prueba en la demo). Spec F3 aprobado con 20 tareas, revisado por el `arquitecto` (encolar después del candado, modo por publicación, SQL de la migración `0006` a mano). ADR-0014 aceptado; arquitectura, formato, roadmap y glosario al día.
 - 2026-10-04: **Cierre de F2 (`v0.2.0`).** Las 3 muestras con contenido listo para revisar (P001, P002 con reel de 1080×1920, P003 con una edición a mano) y aprobadas por el operador; `pnpm eval:content` con la CLI de Claude, 3 de 3 sin errores; repetir la preparación no reprocesa nada; aviso de "sigue en cola" con el worker apagado; variantes sin EXIF ni GPS; 1661 tests sin llamar a Claude. Auditoría docs-código del `arquitecto` aplicada (README con los requisitos de F2, seguimientos de ADR-0003, 0011, 0012 y 0013). Detalle en `CHANGELOG.md` y en el spec F2.
 - 2026-10-03: **Tras la demo de F2-T16:** `INTERNAL_NOTES_LEAK` no cuenta las URLs de las notas y compara con los fines de frase en el mismo lugar (falso positivo en P003; #50).

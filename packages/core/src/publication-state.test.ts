@@ -5,15 +5,14 @@ import {
   ACTIVE_PUBLICATION_STATUSES,
   canTransition,
   INITIAL_PUBLICATION_STATUSES,
+  PENDING_PUBLICATION_STATUSES,
   PUBLICATION_TRANSITIONS,
   TERMINAL_PUBLICATION_STATUSES,
   transition,
 } from "./publication-state.js";
 
-// Copia literal del diagrama de docs/01-arquitectura.md, independiente de la implementación.
+// Copia literal del diagrama de docs/01-arquitectura.md (ADR-0014), independiente de la implementación.
 const STATUSES: readonly PublicationStatus[] = [
-  "draft",
-  "pending_approval",
   "approved",
   "scheduled",
   "publishing",
@@ -26,11 +25,6 @@ const STATUSES: readonly PublicationStatus[] = [
 ];
 
 const VALID: readonly [PublicationStatus, PublicationStatus][] = [
-  ["draft", "pending_approval"],
-  ["draft", "cancelled"],
-  ["pending_approval", "approved"],
-  ["pending_approval", "draft"],
-  ["pending_approval", "cancelled"],
   ["approved", "scheduled"],
   ["approved", "publishing"],
   ["approved", "cancelled"],
@@ -60,14 +54,14 @@ const INVALID = STATUSES.flatMap((from) =>
 );
 
 describe("máquina de estados de una publicación", () => {
-  it("usa exactamente los 11 estados del diagrama", () => {
+  it("usa exactamente los 9 estados del diagrama (sin draft ni pending_approval)", () => {
     expect(PUBLICATION_STATUSES).toEqual(STATUSES);
     expect(Object.keys(PUBLICATION_TRANSITIONS).sort()).toEqual([...STATUSES].sort());
   });
 
-  it("cubre la matriz completa de 121 pares: 22 válidos y 99 inválidos", () => {
-    expect(VALID).toHaveLength(22);
-    expect(INVALID).toHaveLength(99);
+  it("cubre la matriz completa de 81 pares: 17 válidos y 64 inválidos", () => {
+    expect(VALID).toHaveLength(17);
+    expect(INVALID).toHaveLength(64);
   });
 
   it.each(VALID)("permite %s → %s", (from, to) => {
@@ -107,20 +101,28 @@ describe("máquina de estados de una publicación", () => {
     expect(ACTIVE_PUBLICATION_STATUSES).toContain("failed");
   });
 
-  it("se crea en draft, pending_approval o approved (auto_publish)", () => {
-    expect(INITIAL_PUBLICATION_STATUSES).toEqual(["draft", "pending_approval", "approved"]);
+  it("solo nace en approved, desde el texto aprobado (ADR-0014)", () => {
+    expect(INITIAL_PUBLICATION_STATUSES).toEqual(["approved"]);
+  });
+
+  it("pendientes son las activas que aún no están en la plataforma", () => {
+    expect(PENDING_PUBLICATION_STATUSES).toEqual([
+      "approved",
+      "scheduled",
+      "publishing",
+      "failed",
+      "awaiting_manual_confirm",
+    ]);
+    expect(
+      ACTIVE_PUBLICATION_STATUSES.filter(
+        (status) => !(PENDING_PUBLICATION_STATUSES as readonly string[]).includes(status),
+      ),
+    ).toEqual(["published", "paused"]);
   });
 
   it("solo lo que no llegó a la plataforma se puede cancelar", () => {
     const cancellable = STATUSES.filter((status) => canTransition(status, "cancelled"));
 
-    expect(cancellable).toEqual([
-      "draft",
-      "pending_approval",
-      "approved",
-      "scheduled",
-      "awaiting_manual_confirm",
-      "failed",
-    ]);
+    expect(cancellable).toEqual(["approved", "scheduled", "awaiting_manual_confirm", "failed"]);
   });
 });

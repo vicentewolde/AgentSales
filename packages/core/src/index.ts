@@ -66,6 +66,8 @@ export {
   LISTING_STATUS_TEXT,
   OPERATION_TEXT,
   PLATFORM_TEXT,
+  PUBLICATION_FORMAT_TEXT,
+  PUBLICATION_STATUS_TEXT,
   RUN_QUEUED_WARNING_TEXT,
 } from "./labels.js";
 export {
@@ -194,9 +196,25 @@ export {
 } from "./ports/slide-templates.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
+  type InstagramProgress,
+  instagramProgressSchema,
+  PUBLICATION_ACTORS,
+  PUBLICATION_EVENT_TYPES,
+  PUBLICATION_PROGRESS_SCHEMAS,
+  type Publication,
+  type PublicationActor,
+  type PublicationError,
+  type PublicationEvent,
+  type PublicationEventType,
+  publicationErrorSchema,
+  publicationEventSchema,
+  publicationSchema,
+} from "./publication.js";
+export {
   ACTIVE_PUBLICATION_STATUSES,
   canTransition,
   INITIAL_PUBLICATION_STATUSES,
+  PENDING_PUBLICATION_STATUSES,
   PUBLICATION_TRANSITIONS,
   TERMINAL_PUBLICATION_STATUSES,
   transition,

@@ -11,7 +11,7 @@ Aviso de método: las páginas de Meta se leyeron con una herramienta que extrae
 - **Mecanismo:** API de Instagram con Instagram Login (host `graph.instagram.com`). Se crea un contenedor por medio, se consulta su estado y se publica con `media_publish`. Madurez alta; riesgo bajo para cuentas propias.
 - **Cuenta y app (DOC):** cuenta profesional (Empresa o Creador), **sin** Página de Facebook obligatoria. App tipo **Business**. Con **acceso estándar** (el de por defecto) la app sirve solo a personas con rol en ella: alcanza para la demo con la cuenta del operador, sin App Review. Terceros (F7) exigen acceso avanzado: App Review y verificación del negocio.
 - **Autenticación (DOC):** OAuth con `https://www.instagram.com/oauth/authorize`; el código dura 1 hora; token corto de 1 hora; token largo de 60 días; refresco con `refresh_access_token` (token de al menos 24 h, vigente). El `client_id` y el `client_secret` son el **Instagram app ID y secret**, que **no** son los de Settings > Basic.
-- **Punto crítico para el plan:** la doc no dice si `http://localhost` se acepta como redirect URI. **NO VERIFICADO** (se comprueba en 1 minuto al guardar la URI en el panel). Hay tres salidas documentadas o razonables (sección 3.5).
+- **Punto crítico para el plan:** la doc no dice si `http://localhost` se acepta como redirect URI. **Verificado el 2026-10-05: el panel lo rechaza** (sección 3.6). En F3 la cuenta se conecta con el token de Generate token (spec F3, D4).
 - **Borrar:** la referencia oficial limita `DELETE /<media_id>` a Facebook Login. Con Instagram Login **no está documentado**; se borra a mano desde la app. Se puede probar una vez en la demo (sección 4).
 - **Límites:** el contenido ya verificado (sección 5), 400 contenedores y 100 publicaciones por 24 h móviles. Ojo: la doc de Meta se contradice (100 en la guía, 50 en la referencia de `content_publishing_limit`). El código debe leer `quota_total` en vez de fijar el número.
 - **Correcciones a `docs/03-plataformas.md`:** el rango de reels "5 a 90 s" no es un límite de la API (es una decisión de producto); el límite no es "50 a 100" sino lo anterior; el plazo de App Review "2 a 4 semanas" no figura en la doc (NO VERIFICADO); "la API no permite borrar" queda matizado (ver sección 4).
@@ -358,7 +358,7 @@ Para todos: parar, esperar y espaciar (la doc recomienda detener las llamadas de
 Orden sugerido, de menor a mayor riesgo; las primeras no publican nada:
 
 1. ~~Guardar `http://localhost:8787/oauth/instagram/callback` en "OAuth redirect URIs"~~ **Resuelto el 2026-10-05: el panel lo rechaza** (§3.6). Queda probar que el token de Generate token sirve para `/me`, publicar y refrescar.
-2. Confirmar que `META_APP_ID` es el Instagram app ID (sección 2.1).
+2. ~~Confirmar que `META_APP_ID` es el Instagram app ID~~ **Hecho el 2026-10-05:** las variables se llaman `INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET` y el operador confirmó el identificador de Instagram (sección 2.1).
 3. Canje del código: forma de la respuesta (con o sin `data`), y si `user_id` coincide con el `user_id` de `/me`.
 4. Refresco: token con más de 24 h, y si el token de **Generate token** también se refresca.
 5. `GET /me`, `GET /<IG_ID>/content_publishing_limit` en `graph.instagram.com` (¿responde? ¿`quota_total` 50 o 100?).
