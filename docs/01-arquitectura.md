@@ -144,7 +144,7 @@ CLI (publish) o panel (Publicar)
   → publishListing (core, con el candado): abre las que falten, approved/failed → publishing
     (fija dry_run con PUBLISH_MODE) y, ya confirmado, encola publication.publish
   → el worker corre publishPublication: solo si sigue en publishing
-  → publisher.validate() → publisher.publish()   (withDryRun si publication.dry_run)
+  → checkPublishInput() → publisher.publish()   (withDryRun si publication.dry_run)
     guardando el progreso (contenedores) antes del paso que publica
   → guarda external_id/url → published (el aviso pasa a active si fue en live)
   → error reintentable: pg-boss reintenta con backoff; la publicación sigue en
@@ -220,9 +220,10 @@ type PublishResult = { externalId: string; externalUrl: string | null; simulated
 ```
 
 `unpublish` y `getStatus` se suman cuando un canal los use (F4 y F6). Desde F3-T07 (`packages/core/src/ports/publisher.ts` y `packages/core/src/publish/`):
-- **`PublishInput`** = `publicationId`, `platform`, `format`, `title` (`null` en Instagram), `caption` y `media` (cada uno con `mediaId`, `kind`, `mime`, `storagePath`, `url` firmada, `bytes`, medidas y `durationS`). Lo arma `buildPublishInput`: el caption con `instagramCaption` (en los otros canales, el cuerpo) y los medios de `media_ids` en su orden, con URLs firmadas nuevas por 1 hora (`PUBLISH_MEDIA_URL_TTL_S`). Un medio fijado que falta es `PUBLICATION_MEDIA_MISSING`, y un texto que no es el de la publicación, `PUBLICATION_CONTENT_MISMATCH` (los dos no reintentables).
-- **`checkPublishInput(publisher, input)`** revisa la plataforma, el formato (`publisher.formats`) y `publisher.validate`; si algo falla, `PUBLISH_INPUT_INVALID` (no reintentable) con los motivos (`{ code, message }`, en español y sin datos del aviso) en el mensaje y en `details.issues`. Sirve igual en `live` y en `dry-run`.
-- **`withDryRun(publisher, { onRecord })`** (con `dry_run` en la publicación): `publish` corre `checkPublishInput`, entrega a `onRecord` lo que *habría* enviado (`dryRunRecord`: formato, título, caption completo, medios con su ruta de R2, tipo, tamaño y medidas, y la cuenta con su `@usuario`) y devuelve `{ externalId: "dry-run:<publicationId>", externalUrl: null, simulated: true }`. Nunca llama a `publish` del envuelto ni a `saveProgress`. El registro va a la bitácora (`publish_attempt`), no al log, y nunca lleva URLs firmadas ni credenciales: se arma campo por campo.
+- **`PublishInput`** = `publicationId`, `platform`, `format`, `title` (siempre `null` en Instagram), `caption` y `media` (cada uno con `mediaId`, `kind`, `mime`, `storagePath`, `url` firmada, `bytes`, medidas y `durationS`). Lo arma `buildPublishInput`: el caption con `instagramCaption` (en los otros canales, el cuerpo) y los medios de `media_ids` en su orden, con URLs firmadas nuevas por 1 hora (`PUBLISH_MEDIA_URL_TTL_S`). Un texto que no es el de la publicación (otro id o canal) es `PUBLICATION_CONTENT_MISMATCH`; uno que ya no está aprobado, `CONTENT_NOT_APPROVED`; y un medio fijado que falta, `PUBLICATION_MEDIA_MISSING` (los tres no reintentables, antes de firmar nada).
+- **`checkPublishInput(publisher, input)`** revisa la plataforma, el formato (`publisher.formats`) y `publisher.validate` (un rechazo sin motivos cuenta como rechazo); si algo falla, `PUBLISH_INPUT_INVALID` (no reintentable) con los motivos (`{ code, message }`, en español y sin datos del aviso) en el mensaje y en `details.issues`. En `live` la llama el intento (T11) antes de `publish`; en `dry-run`, `withDryRun`.
+- **`withDryRun(publisher)`** (con `dry_run` en la publicación): `publish` corre `checkPublishInput` y devuelve `{ externalId: "dry-run:<publicationId>", externalUrl: null, simulated: true }`. Nunca llama a `publish` del envuelto ni a `saveProgress`.
+- **`publishAttemptRecord(input, account)`**: lo que se envió en un intento, o lo que se habría enviado en `dry-run` (formato, título, caption completo, medios con su ruta de R2, tipo, tamaño y medidas, y la cuenta con su `@usuario`). Va en el evento `publish_attempt` de cada intento, en los dos modos (ADR-0014: después de publicada, una corrida nueva puede reemplazar los medios). Nunca va al log y nunca lleva URLs firmadas ni credenciales: se arma campo por campo.
 - Para los tests, `createFakePublisher` (`@agentsales/core/testing`): `validate` y `publish` guionados (progreso, error o resultado por llamada) y registrados.
 
 ## Cola de trabajos

@@ -5,6 +5,7 @@ import type { PublishContext, PublishInput } from "../ports/publisher.js";
 import { createFakePublisher } from "./fake-publisher.js";
 
 const at = new Date("2026-10-05T12:00:00Z");
+const TOKEN = "IGAA-secreto-xyz";
 const account: PlatformAccount = {
   id: "account-1",
   brokerId: "broker-1",
@@ -31,7 +32,7 @@ function context(progress: unknown = null) {
   const saved: unknown[] = [];
   const ctx: PublishContext = {
     account,
-    credentials: { accessToken: "token" },
+    credentials: { accessToken: TOKEN },
     progress,
     async saveProgress(value) {
       saved.push(value);
@@ -70,7 +71,7 @@ describe("createFakePublisher", () => {
       { containerId: "c-1" },
       null,
     ]);
-    expect(JSON.stringify(publisher.published)).not.toContain("token");
+    expect(JSON.stringify(publisher.published)).not.toContain(TOKEN);
   });
 
   it("validate devuelve los motivos guionados, fijos o según el input", () => {

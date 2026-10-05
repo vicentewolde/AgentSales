@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { PlatformAccount } from "../platform-account.js";
 import type { PublishContext, Publisher, PublishInput } from "../ports/publisher.js";
 import { createFakePublisher } from "../testing/index.js";
-import { type DryRunRecord, dryRunRecord, withDryRun } from "./dry-run.js";
+import { withDryRun } from "./dry-run.js";
+import { publishAttemptRecord } from "./input.js";
 
 const at = new Date("2026-10-05T12:00:00Z");
 const TOKEN = "IGAAtoken-secreto-123";
@@ -69,16 +70,11 @@ const untouchable = (): Publisher => ({
 
 describe("withDryRun", () => {
   it("nunca llama a publish del envuelto: devuelve un resultado simulado", async () => {
-    const records: DryRunRecord[] = [];
-    const publisher = withDryRun(untouchable(), {
-      onRecord: (record) => void records.push(record),
-    });
-    await expect(publisher.publish(input, context())).resolves.toEqual({
+    await expect(withDryRun(untouchable()).publish(input, context())).resolves.toEqual({
       externalId: "dry-run:pub-1",
       externalUrl: null,
       simulated: true,
     });
-    expect(records).toHaveLength(1);
 
     const fake = createFakePublisher();
     await withDryRun(fake).publish(input, context());
@@ -101,72 +97,40 @@ describe("withDryRun", () => {
     });
   });
 
-  it("un input inválido no se publica: PUBLISH_INPUT_INVALID con los motivos y sin registro", async () => {
-    const records: DryRunRecord[] = [];
+  it("un input inválido no se publica: PUBLISH_INPUT_INVALID con los motivos", async () => {
     const issues = [{ code: "TOO_MANY_ITEMS", message: "El carrusel tiene más de 10 imágenes" }];
     const fake = createFakePublisher({ issues });
-    await expect(
-      withDryRun(fake, { onRecord: (record) => void records.push(record) }).publish(
-        input,
-        context(),
-      ),
-    ).rejects.toMatchObject({
+    await expect(withDryRun(fake).publish(input, context())).rejects.toMatchObject({
       code: "PUBLISH_INPUT_INVALID",
       retriable: false,
       details: { publicationId: "pub-1", issues },
     });
-    expect(records).toEqual([]);
     expect(fake.published).toEqual([]);
   });
 
-  it("un formato que la plataforma no publica tampoco se simula", async () => {
-    const fake = createFakePublisher({ formats: ["post"] });
+  it("un formato que la plataforma no publica u otra plataforma tampoco se simulan", async () => {
+    const postOnly = createFakePublisher({ formats: ["post"] });
     await expect(
-      withDryRun(fake).publish({ ...input, format: "reel" }, context()),
+      withDryRun(postOnly).publish({ ...input, format: "reel" }, context()),
     ).rejects.toMatchObject({
       code: "PUBLISH_INPUT_INVALID",
       details: { issues: [expect.objectContaining({ code: "FORMAT_NOT_SUPPORTED" })] },
     });
-  });
-
-  it("espera a onRecord y un error al registrar sale tal cual", async () => {
-    const failure = new Error("no se pudo registrar");
-    let settled = false;
-    const publisher = withDryRun(untouchable(), {
-      async onRecord() {
-        await Promise.resolve();
-        settled = true;
-        throw failure;
-      },
-    });
-    await expect(publisher.publish(input, context())).rejects.toBe(failure);
-    expect(settled).toBe(true);
-  });
-});
-
-describe("dryRunRecord", () => {
-  it("registra formato, caption completo, medios (ruta, tipo, tamaño y medidas) y la cuenta", () => {
-    expect(dryRunRecord(input, account)).toEqual({
-      platform: "instagram",
-      format: "post",
-      title: null,
-      caption: input.caption,
-      media: input.media.map(({ url: _url, ...item }) => item),
-      account: { id: "account-1", displayName: "@corredora" },
+    const portal = createFakePublisher({ platform: "portal_inmobiliario", formats: ["post"] });
+    await expect(withDryRun(portal).publish(input, context())).rejects.toMatchObject({
+      code: "PUBLISH_INPUT_INVALID",
+      details: { issues: [expect.objectContaining({ code: "PLATFORM_MISMATCH" })] },
     });
   });
 
-  it("no lleva URLs firmadas ni tokens", async () => {
-    const records: DryRunRecord[] = [];
-    const result = await withDryRun(untouchable(), {
-      onRecord: (record) => void records.push(record),
-    }).publish(input, context());
-    const written = JSON.stringify({ records, result });
-    expect(records).toHaveLength(1);
+  it("ni el resultado ni el registro del intento llevan URLs firmadas ni tokens", async () => {
+    const result = await withDryRun(untouchable()).publish(input, context());
+    const record = publishAttemptRecord(input, account);
+    const written = JSON.stringify({ record, result });
     for (const item of input.media) expect(written).not.toContain(item.url);
     for (const secret of [TOKEN, SIGNATURE, "X-Amz-Credential", "https://", "?"]) {
       expect(written).not.toContain(secret);
     }
-    expect(records[0]?.media.every((item) => !("url" in item))).toBe(true);
+    expect(record.media.every((item) => !("url" in item))).toBe(true);
   });
 });

@@ -1,7 +1,9 @@
 import { instagramCaption } from "../content/assemble.js";
 import type { Content } from "../content.js";
+import type { MediaKind, Platform, PublicationFormat } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { Media } from "../media.js";
+import type { PlatformAccount } from "../platform-account.js";
 import type { MediaStorage } from "../ports/media-storage.js";
 import type {
   Publisher,
@@ -16,12 +18,15 @@ export const PUBLISH_MEDIA_URL_TTL_S = 3600;
 
 /**
  * Arma lo que se publica en un intento (spec F3 §4.4): el caption del texto aprobado (en
- * Instagram, `instagramCaption`) y los medios de `media_ids`, en su orden, con URLs firmadas
- * nuevas. `media` son los medios del aviso (`MediaRepository.listByListing`).
- * - `PUBLICATION_CONTENT_MISMATCH` si el texto no es el de la publicación;
- * - `PUBLICATION_MEDIA_MISSING` si falta un medio fijado (no debería pasar: no se reemplazan
- *   mientras la publicación está pendiente, ADR-0014).
- * Los dos son no reintentables. Un error de R2 al firmar pasa tal cual.
+ * Instagram, `instagramCaption`, sin título) y los medios de `media_ids`, en su orden, con URLs
+ * firmadas nuevas. `media` son los medios del aviso (`MediaRepository.listByListing`). Antes de
+ * firmar nada:
+ * - `PUBLICATION_CONTENT_MISMATCH` si el texto no es el de la publicación (otro id o canal);
+ * - `CONTENT_NOT_APPROVED` si el texto ya no está aprobado (no debería pasar: no se edita ni se
+ *   desaprueba con la publicación en curso, ADR-0014);
+ * - `PUBLICATION_MEDIA_MISSING` si falta un medio fijado (tampoco: no se reemplazan mientras la
+ *   publicación está pendiente).
+ * Los tres son no reintentables. Un error de R2 al firmar pasa tal cual.
  */
 export async function buildPublishInput(
   deps: { storage: Pick<MediaStorage, "signedReadUrl"> },
@@ -31,10 +36,17 @@ export async function buildPublishInput(
     media,
   }: { publication: Publication; content: Content; media: readonly Media[] },
 ): Promise<PublishInput> {
-  if (content.id !== publication.contentId) {
+  if (content.id !== publication.contentId || content.platform !== publication.platform) {
     throw new AppError(
       "PUBLICATION_CONTENT_MISMATCH",
       "El texto no es el aprobado para esta publicación",
+      { details: { publicationId: publication.id, contentId: content.id } },
+    );
+  }
+  if (content.status !== "approved") {
+    throw new AppError(
+      "CONTENT_NOT_APPROVED",
+      "El texto de la publicación ya no está aprobado: apruébalo de nuevo",
       { details: { publicationId: publication.id, contentId: content.id } },
     );
   }
@@ -68,9 +80,59 @@ export async function buildPublishInput(
     publicationId: publication.id,
     platform: publication.platform,
     format: publication.format,
-    title: content.title,
-    caption: publication.platform === "instagram" ? instagramCaption(content) : content.body,
+    ...(publication.platform === "instagram"
+      ? { title: null, caption: instagramCaption(content) }
+      : { title: content.title, caption: content.body }),
     media: signed,
+  };
+}
+
+/**
+ * Lo que se envió en un intento, o lo que se habría enviado en `dry-run` (spec F3 §4.3): formato,
+ * título, caption completo, medios (rutas de R2, tipo, tamaño y medidas) y la cuenta. Va en el
+ * evento `publish_attempt` de **cada** intento: después de publicada, una corrida nueva puede
+ * reemplazar los medios, y la bitácora es lo que queda (ADR-0014). Nunca va al log (el caption
+ * trae datos del aviso) y **nunca** lleva URLs firmadas ni credenciales.
+ */
+export type PublishAttemptRecord = {
+  platform: Platform;
+  format: PublicationFormat;
+  title: string | null;
+  caption: string;
+  media: {
+    mediaId: string;
+    storagePath: string;
+    kind: MediaKind;
+    mime: string;
+    bytes: number;
+    width: number | null;
+    height: number | null;
+    durationS: number | null;
+  }[];
+  account: { id: string; displayName: string };
+};
+
+/** Arma el registro de un intento campo por campo (no copia el `PublishInput`, que trae URLs). */
+export function publishAttemptRecord(
+  input: PublishInput,
+  account: Pick<PlatformAccount, "id" | "displayName">,
+): PublishAttemptRecord {
+  return {
+    platform: input.platform,
+    format: input.format,
+    title: input.title,
+    caption: input.caption,
+    media: input.media.map((item) => ({
+      mediaId: item.mediaId,
+      storagePath: item.storagePath,
+      kind: item.kind,
+      mime: item.mime,
+      bytes: item.bytes,
+      width: item.width,
+      height: item.height,
+      durationS: item.durationS,
+    })),
+    account: { id: account.id, displayName: account.displayName },
   };
 }
 
@@ -91,11 +153,16 @@ function publishIssues(publisher: Publisher, input: PublishInput): PublishIssue[
     return [{ code: "FORMAT_NOT_SUPPORTED", message: "La plataforma no publica este formato" }];
   }
   const validation = publisher.validate(input);
-  return validation.ok ? [] : validation.issues;
+  if (validation.ok) return [];
+  // Un rechazo sin motivos sigue siendo un rechazo.
+  return validation.issues.length > 0
+    ? validation.issues
+    : [{ code: "INPUT_REJECTED", message: "La plataforma rechazó la publicación" }];
 }
 
 /**
- * Revisa `input` antes de publicarlo, en `live` o en `dry-run` (`withDryRun`).
+ * Revisa `input` antes de publicarlo: en `live` la llama el intento (T11) antes de `publish`, y en
+ * `dry-run`, `withDryRun`.
  * `PUBLISH_INPUT_INVALID` (no reintentable: los mismos datos fallarían igual) con los motivos en
  * el mensaje y en `details.issues`.
  */

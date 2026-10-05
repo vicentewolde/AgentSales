@@ -2,10 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { Content } from "../content.js";
 import { AppError } from "../errors.js";
 import type { Media } from "../media.js";
-import type { PublishInput } from "../ports/publisher.js";
+import type { PlatformAccount } from "../platform-account.js";
+import type { Publisher, PublishInput } from "../ports/publisher.js";
 import type { Publication } from "../publication.js";
 import { createFakePublisher, createInMemoryMediaStorage } from "../testing/index.js";
-import { buildPublishInput, checkPublishInput, PUBLISH_MEDIA_URL_TTL_S } from "./input.js";
+import {
+  buildPublishInput,
+  checkPublishInput,
+  PUBLISH_MEDIA_URL_TTL_S,
+  publishAttemptRecord,
+} from "./input.js";
 
 const at = new Date("2026-10-05T12:00:00Z");
 
@@ -131,6 +137,14 @@ describe("buildPublishInput", () => {
     expect(input.media).toMatchObject([{ mediaId: "reel-1", kind: "video", durationS: 42.5 }]);
   });
 
+  it("en Instagram no hay título, aunque el texto traiga uno", async () => {
+    const input = await buildPublishInput(
+      { storage: createInMemoryMediaStorage() },
+      { publication: publication(), content: content({ title: "Sobra" }), media: listingMedia },
+    );
+    expect(input.title).toBeNull();
+  });
+
   it("en los otros canales el caption es el cuerpo y conserva el título", async () => {
     const input = await buildPublishInput(
       { storage: createInMemoryMediaStorage() },
@@ -168,13 +182,26 @@ describe("buildPublishInput", () => {
     expect(signed).toEqual([]);
   });
 
-  it("un texto que no es el de la publicación es PUBLICATION_CONTENT_MISMATCH", async () => {
-    await expect(
-      buildPublishInput(
-        { storage: createInMemoryMediaStorage() },
-        { publication: publication(), content: content({ id: "content-2" }), media: listingMedia },
-      ),
-    ).rejects.toMatchObject({ code: "PUBLICATION_CONTENT_MISMATCH", retriable: false });
+  it("un texto que no es el de la publicación (otro id o canal) es PUBLICATION_CONTENT_MISMATCH", async () => {
+    for (const other of [content({ id: "content-2" }), content({ platform: "fb_marketplace" })]) {
+      await expect(
+        buildPublishInput(
+          { storage: createInMemoryMediaStorage() },
+          { publication: publication(), content: other, media: listingMedia },
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_CONTENT_MISMATCH", retriable: false });
+    }
+  });
+
+  it("un texto que ya no está aprobado es CONTENT_NOT_APPROVED", async () => {
+    for (const status of ["draft", "edited"] as const) {
+      await expect(
+        buildPublishInput(
+          { storage: createInMemoryMediaStorage() },
+          { publication: publication(), content: content({ status }), media: listingMedia },
+        ),
+      ).rejects.toMatchObject({ code: "CONTENT_NOT_APPROVED", retriable: false });
+    }
   });
 
   it("un error de R2 al firmar pasa tal cual", async () => {
@@ -227,8 +254,25 @@ describe("checkPublishInput", () => {
       retriable: false,
       details: { publicationId: "pub-1", issues },
     });
-    expect((error as AppError).message).toContain("Falta el video del reel");
-    expect((error as AppError).message).toContain("El caption supera los 2.200 caracteres");
+    expect(error).toMatchObject({ message: expect.stringContaining("Falta el video del reel") });
+    expect(error).toMatchObject({
+      message: expect.stringContaining("El caption supera los 2.200 caracteres"),
+    });
+  });
+
+  it("un rechazo sin motivos sigue siendo un rechazo", () => {
+    const publisher: Publisher = {
+      ...createFakePublisher(),
+      validate: () => ({ ok: false, issues: [] }),
+    };
+    expect(() => checkPublishInput(publisher, input)).toThrow(
+      expect.objectContaining({
+        code: "PUBLISH_INPUT_INVALID",
+        details: expect.objectContaining({
+          issues: [expect.objectContaining({ code: "INPUT_REJECTED" })],
+        }),
+      }),
+    );
   });
 
   it("otra plataforma o un formato que no publica se rechazan sin llamar a validate", () => {
@@ -251,5 +295,29 @@ describe("checkPublishInput", () => {
     );
     expect(portal.validated).toEqual([]);
     expect(postOnly.validated).toEqual([]);
+  });
+});
+
+describe("publishAttemptRecord", () => {
+  const account: Pick<PlatformAccount, "id" | "displayName"> = {
+    id: "account-1",
+    displayName: "@corredora",
+  };
+
+  it("registra formato, caption completo, medios (ruta, tipo, tamaño y medidas) y la cuenta, sin URLs", async () => {
+    const input = await buildPublishInput(
+      { storage: createInMemoryMediaStorage() },
+      { publication: publication(), content: content(), media: listingMedia },
+    );
+    const record = publishAttemptRecord(input, account);
+    expect(record).toEqual({
+      platform: "instagram",
+      format: "post",
+      title: null,
+      caption: input.caption,
+      media: input.media.map(({ url: _url, ...item }) => item),
+      account: { id: "account-1", displayName: "@corredora" },
+    });
+    expect(JSON.stringify(record)).not.toContain("memory://");
   });
 });
