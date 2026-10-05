@@ -24,3 +24,10 @@ export {
   type InstagramMedia,
   type PublishingLimit,
 } from "./instagram/graph.js";
+export {
+  abortableSleep,
+  createInstagramPublisher,
+  type InstagramPublisherOptions,
+  type InstagramPublishNote,
+} from "./instagram/publisher.js";
+export { validateInstagramInput } from "./instagram/validate.js";
