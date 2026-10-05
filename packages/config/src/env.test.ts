@@ -202,6 +202,8 @@ describe("loadEnv", () => {
     ["DATABASE_URL", "SECRETVAL"],
     ["DATABASE_URL", "postgresql://u:SECRETVAL@ep-x-pooler.neon.tech/db?channel_binding=require"],
     ["APP_ENCRYPTION_KEY", "SECRETVAL"],
+    ["INSTAGRAM_REDIRECT_URI", "SECRETVAL"],
+    ["META_APP_SECRET", "SECRETVAL"],
   ])("el error de %s no muestra el valor recibido", (variable, value) => {
     const error = envErrorOf({ ...validSource, [variable]: value });
 
@@ -213,5 +215,51 @@ describe("loadEnv", () => {
     const error = envErrorOf({ ...validSource, API_PORT: "abc" });
 
     expect(error.message).toContain("API_PORT: debe ser un puerto entre 1 y 65535");
+  });
+
+  describe("Instagram (F3)", () => {
+    it("lee el par de la app de Instagram y la dirección de retorno por defecto", () => {
+      const env = loadEnv({
+        ...validSource,
+        INSTAGRAM_APP_ID: "123",
+        INSTAGRAM_APP_SECRET: "fake-secret",
+      });
+
+      expect(env).toMatchObject({
+        INSTAGRAM_APP_ID: "123",
+        INSTAGRAM_APP_SECRET: "fake-secret",
+        INSTAGRAM_REDIRECT_URI: "http://localhost:8787/oauth/instagram/callback",
+      });
+      expect(loadEnv(validSource).INSTAGRAM_APP_ID).toBeUndefined();
+    });
+
+    it("acepta una dirección https y rechaza una que no es URL http(s)", () => {
+      expect(
+        loadEnv({ ...validSource, INSTAGRAM_REDIRECT_URI: "https://agentsales.test/cb" })
+          .INSTAGRAM_REDIRECT_URI,
+      ).toBe("https://agentsales.test/cb");
+      expect(
+        envErrorOf({ ...validSource, INSTAGRAM_REDIRECT_URI: "ftp://x/cb" }).message,
+      ).toContain("INSTAGRAM_REDIRECT_URI: debe ser una URL http:// o https://");
+    });
+
+    it("avisa las variables META_* con su nombre nuevo, junto con los demás problemas", () => {
+      const error = envErrorOf({
+        ...validSource,
+        META_APP_ID: "1",
+        META_REDIRECT_URI: "http://localhost/cb",
+        API_PORT: "abc",
+      });
+
+      expect(error.issues).toEqual([
+        { variable: "META_APP_ID", message: "se renombró a INSTAGRAM_APP_ID" },
+        { variable: "META_REDIRECT_URI", message: "se renombró a INSTAGRAM_REDIRECT_URI" },
+        { variable: "API_PORT", message: "debe ser un puerto entre 1 y 65535" },
+      ]);
+    });
+
+    it("una META_* vacía no cuenta (como cualquier variable vacía)", () => {
+      expect(() => loadEnv({ ...validSource, META_APP_ID: "" })).not.toThrow();
+    });
   });
 });

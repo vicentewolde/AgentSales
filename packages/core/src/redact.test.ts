@@ -14,6 +14,36 @@ describe("redactText", () => {
     );
   });
 
+  it("oculta el code del OAuth y los secretos de un cuerpo de formulario (F3)", () => {
+    expect(redactText("GET /oauth/instagram/callback?code=AQBx123#_&state=s1 respondió 302")).toBe(
+      `GET /oauth/instagram/callback?code=${REDACTED}#_&state=s1 respondió 302`,
+    );
+    expect(
+      redactText("client_id=1&client_secret=s3cr3t&grant_type=authorization_code&code=AQB"),
+    ).toBe(`client_id=1&client_secret=${REDACTED}&grant_type=authorization_code&code=${REDACTED}`);
+    expect(redactText("cuerpo: access_token=IGAA1&user_id=9")).toBe(
+      `cuerpo: access_token=${REDACTED}&user_id=9`,
+    );
+  });
+
+  it("no confunde otros parámetros que terminan en code, ni code en un mensaje", () => {
+    expect(redactText("https://x.test/e?error_code=190&error_subcode=463")).toBe(
+      "https://x.test/e?error_code=190&error_subcode=463",
+    );
+    expect(redactText("status code=500 retry; Error code=ECONNRESET")).toBe(
+      "status code=500 retry; Error code=ECONNRESET",
+    );
+  });
+
+  it("oculta el code en un fragmento y los valores sensibles de un JSON", () => {
+    expect(redactText("https://x.test/cb#code=AQB&state=s")).toBe(
+      `https://x.test/cb#code=${REDACTED}&state=s`,
+    );
+    expect(redactText('{"access_token": "IGAA\\"x", "user_id": 9, "client_secret":"s"}')).toBe(
+      `{"access_token": "${REDACTED}", "user_id": 9, "client_secret":"${REDACTED}"}`,
+    );
+  });
+
   it("deja intacto un texto sin URLs sensibles", () => {
     expect(redactText("bucket inaccesible")).toBe("bucket inaccesible");
   });
