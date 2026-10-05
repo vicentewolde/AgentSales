@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { publicationEventSchema, publicationSchema } from "./publication.js";
+import {
+  checkPublicationProgress,
+  publicationEventSchema,
+  publicationSchema,
+} from "./publication.js";
 
 const base = {
   id: "p1",
@@ -99,5 +103,25 @@ describe("publicationEventSchema", () => {
   it("rechaza tipos y actores desconocidos", () => {
     expect(publicationEventSchema.safeParse({ ...event, type: "otro" }).success).toBe(false);
     expect(publicationEventSchema.safeParse({ ...event, actor: "web" }).success).toBe(false);
+  });
+});
+
+describe("checkPublicationProgress (Instagram)", () => {
+  const progress = {
+    attemptStartedAt: "2026-10-05T12:00:00.000Z",
+    childIds: ["c-1", "c-2"],
+    containerId: "c-3",
+  };
+
+  it("acepta el progreso con y sin la hora del pedido de media_publish", () => {
+    expect(checkPublicationProgress("instagram", progress)).toEqual(progress);
+    const requested = { ...progress, publishRequestedAt: "2026-10-05T12:01:00.000Z" };
+    expect(checkPublicationProgress("instagram", requested)).toEqual(requested);
+  });
+
+  it("una hora del pedido que no es una fecha es PUBLICATION_PROGRESS_INVALID", () => {
+    expect(() =>
+      checkPublicationProgress("instagram", { ...progress, publishRequestedAt: "ayer" }),
+    ).toThrow(expect.objectContaining({ code: "PUBLICATION_PROGRESS_INVALID" }));
   });
 });

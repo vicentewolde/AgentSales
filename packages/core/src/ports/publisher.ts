@@ -61,6 +61,8 @@ export type PublishResult = { externalId: string; externalUrl: string | null; si
  * Publica en una plataforma (ADR-0014, spec F3 §4.5). Lo implementan los adaptadores de
  * `packages/publishers`; en `dry-run`, `withDryRun` lo envuelve y nunca llama a `publish`.
  * - `validate` es pura (sin red ni cliente de la API): la usa también `withDryRun`.
+ * - `publish` recibe un input que ya pasó `checkPublishInput` (el intento la corre antes en `live`,
+ *   y `withDryRun` en `dry-run`); un adaptador puede volver a revisarlo, porque es barato.
  * - `publish` lanza `AppError` con `retriable` según la plataforma; puede llamar a `saveProgress`
  *   y retomar desde `ctx.progress`.
  * `unpublish` y `getStatus` se suman cuando un canal los use (F4 y F6).

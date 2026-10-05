@@ -59,6 +59,10 @@ export type InstagramMedia = {
   permalink: string | null;
   timestamp: Date | null;
   caption: string | null;
+  /** `IMAGE`, `VIDEO` o `CAROUSEL_ALBUM`. */
+  mediaType: string | null;
+  /** `FEED` o `REELS` (nota §4.6): distingue el carrusel del reel del mismo aviso. */
+  productType: string | null;
 };
 
 /** Cupo de publicaciones de 24 h (nota §6); `quotaTotal` `null` si no vino. */
@@ -132,11 +136,15 @@ const mediaSchema = z.object({
   permalink: z.string().nullish(),
   timestamp: z.string().nullish(),
   caption: z.string().nullish(),
+  media_type: z.string().nullish(),
+  media_product_type: z.string().nullish(),
 });
 const limitSchema = z.object({
   quota_usage: z.number().int().nonnegative(),
   config: z.object({ quota_total: z.number().int().positive().nullish() }).nullish(),
 });
+
+const MEDIA_FIELDS = "id,permalink,timestamp,caption,media_type,media_product_type";
 
 const toMedia = (raw: z.infer<typeof mediaSchema>): InstagramMedia => {
   const timestamp = raw.timestamp == null ? null : new Date(raw.timestamp);
@@ -145,6 +153,8 @@ const toMedia = (raw: z.infer<typeof mediaSchema>): InstagramMedia => {
     permalink: raw.permalink ?? null,
     timestamp: timestamp === null || Number.isNaN(timestamp.getTime()) ? null : timestamp,
     caption: raw.caption ?? null,
+    mediaType: raw.media_type ?? null,
+    productType: raw.media_product_type ?? null,
   };
 };
 
@@ -255,7 +265,7 @@ export function createInstagramGraph(options: InstagramGraphOptions = {}): Insta
       const body = await get(
         "media",
         accessToken,
-        url(encodeURIComponent(mediaId), { fields: "id,permalink,timestamp,caption" }),
+        url(encodeURIComponent(mediaId), { fields: MEDIA_FIELDS }),
         callOptions,
       );
       return toMedia(parseSingle("media", mediaSchema, body));
@@ -265,7 +275,7 @@ export function createInstagramGraph(options: InstagramGraphOptions = {}): Insta
         "recentMedia",
         accessToken,
         url(`${encodeURIComponent(igUserId)}/media`, {
-          fields: "id,permalink,timestamp,caption",
+          fields: MEDIA_FIELDS,
           limit: String(limit),
         }),
         callOptions,
