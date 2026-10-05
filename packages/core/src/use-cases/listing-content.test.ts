@@ -323,37 +323,104 @@ describe("editContent", () => {
     ).resolves.toMatchObject({ content: { status: "edited", body: "a mano" } });
   });
 
-  it("la ventana de F2 se cerró: un pedido de textos y una edición a la vez nunca pierden la edición", async () => {
-    for (const editFirst of [true, false]) {
+  describe("la ventana de F2 se cerró: un pedido de textos y una edición a la vez", () => {
+    /** Un `Deferred`: una promesa que el test resuelve cuando quiere. */
+    const deferred = () => {
+      let resolve: () => void = () => {};
+      const promise = new Promise<void>((done) => {
+        resolve = done;
+      });
+      return { promise, resolve };
+    };
+    /** Espera (con tope, en microtareas: core no usa timers de Node) a que `first` llegue a la puerta. */
+    const untilBusy = async (busy: () => boolean) => {
+      for (let i = 0; i < 1000 && !busy(); i += 1) await Promise.resolve();
+      expect(busy()).toBe(true);
+    };
+
+    /**
+     * Arranca primero `first` y lo detiene **dentro** del candado (en su escritura), lanza `second`
+     * mientras tanto y después suelta a `first`. `serialize: false` usa un "candado" que no
+     * serializa, para comprobar que el test detecta la falta de candado.
+     */
+    async function race(first: "edit" | "request", { serialize = true } = {}) {
       const t = await setup();
       const [instagram] = await t.current();
-      const runDeps = {
-        lock: t.lock,
-        contentRuns: t.repos.contentRuns,
-        queue: createInMemoryJobQueue(),
+      const gate = deferred();
+      let entered = false;
+      // Los repositorios del candado, con la escritura de `first` detenida en la puerta.
+      const contents = {
+        ...t.repos.contents,
+        update: async (...args: Parameters<typeof t.repos.contents.update>) => {
+          if (first === "edit") {
+            entered = true;
+            await gate.promise;
+          }
+          return t.repos.contents.update(...args);
+        },
       };
+      const contentRuns = {
+        ...t.repos.contentRuns,
+        create: async (...args: Parameters<typeof t.repos.contentRuns.create>) => {
+          if (first === "request") {
+            entered = true;
+            await gate.promise;
+          }
+          return t.repos.contentRuns.create(...args);
+        },
+      };
+      const locked = {
+        brokers: createInMemoryBrokerRepository([contentBrokerFixture()]),
+        listings: t.deps.listings,
+        media: t.deps.media,
+        contentRuns,
+        contents,
+        publications: t.publications,
+        platformAccounts: createInMemoryPlatformAccountRepository(),
+      };
+      const lock = serialize
+        ? createInMemoryListingLock(locked)
+        : { run: <T>(_id: string, fn: (repos: typeof locked) => Promise<T>) => fn(locked) };
       const startEdit = () =>
-        editContent(t.editDeps, { contentId: instagram?.id ?? "", edit: { body: "a mano" } });
-      const startRequest = () => requestContentRun(runDeps, { listingId: t.listingId });
-      // Las dos arrancan sin esperar a la otra; cambia solo cuál se pide primero.
-      const [edit, request] = editFirst
-        ? [startEdit(), startRequest()]
-        : (() => {
-            const first = startRequest();
-            return [startEdit(), first] as const;
-          })();
-      const settled = await Promise.allSettled([edit, request]);
-      const outcome = settled.map((result) =>
-        result.status === "fulfilled" ? "ok" : (result.reason as { code: string }).code,
-      );
+        editContent(
+          { ...t.editDeps, lock },
+          { contentId: instagram?.id ?? "", edit: { body: "a mano" } },
+        );
+      const startRequest = () =>
+        requestContentRun(
+          { lock, contentRuns: t.repos.contentRuns, queue: createInMemoryJobQueue() },
+          { listingId: t.listingId },
+        );
 
-      // Una de dos: la edición entró primero y el pedido avisa (`CONTENT_EDITED`), o el pedido
-      // entró primero y la edición espera a la corrida (`CONTENT_RUN_ACTIVE`). Nunca las dos.
-      expect([
-        ["ok", "CONTENT_EDITED"],
-        ["CONTENT_RUN_ACTIVE", "ok"],
-      ]).toContainEqual(outcome);
+      const firstCall = first === "edit" ? startEdit() : startRequest();
+      await untilBusy(() => entered);
+      const secondCall = first === "edit" ? startRequest() : startEdit();
+      // Que `second` alcance a llegar al candado (o, sin candado, a su escritura) antes de soltar.
+      for (let i = 0; i < 1000; i += 1) await Promise.resolve();
+      gate.resolve();
+      const [a, b] = await Promise.allSettled([firstCall, secondCall]);
+      const code = (result: PromiseSettledResult<unknown>) =>
+        result.status === "fulfilled" ? "ok" : (result.reason as { code: string }).code;
+      const [edit, request] = first === "edit" ? [code(a), code(b)] : [code(b), code(a)];
+      const body = (await t.repos.contents.get(instagram?.id ?? ""))?.body;
+      return { edit, request, body };
     }
+
+    it("si la edición entra primero, el pedido avisa con CONTENT_EDITED y la edición queda", async () => {
+      expect(await race("edit")).toEqual({
+        edit: "ok",
+        request: "CONTENT_EDITED",
+        body: "a mano",
+      });
+    });
+
+    it("si el pedido entra primero, la edición espera la corrida (CONTENT_RUN_ACTIVE)", async () => {
+      expect(await race("request")).toMatchObject({ edit: "CONTENT_RUN_ACTIVE", request: "ok" });
+    });
+
+    it("sin candado, las dos pasan y la corrida pisaría la edición (el test lo detecta)", async () => {
+      expect(await race("edit", { serialize: false })).toMatchObject({ edit: "ok", request: "ok" });
+    });
   });
 
   it("un texto que no existe → CONTENT_NOT_FOUND", async () => {

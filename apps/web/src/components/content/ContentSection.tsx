@@ -66,11 +66,12 @@ export function ContentSection({
     );
   };
   const busy = request.isPending || inProgress;
+  // Editados a mano o aprobados (F3): los dos son textos revisados que una regeneración reemplazaría.
   const editedPlatforms = (content.data?.contents ?? [])
-    .filter((item) => item.status === "edited")
+    .filter((item) => item.status === "edited" || item.status === "approved")
     .map((item) => PLATFORM_TEXT[item.platform]);
-  // Regenerar textos sobre una edición a mano: se confirma antes de pedir (la API igual lo revisa
-  // con `CONTENT_EDITED`, por si la edición se hizo en otra pestaña).
+  // Regenerar textos sobre una edición a mano o una aprobación: se confirma antes de pedir (la API
+  // igual lo revisa con `CONTENT_EDITED`, por si el cambio se hizo en otra pestaña).
   const prepare = () => (editedPlatforms.length > 0 ? setConfirmReplace(true) : start(true));
   // Mientras se regeneran los textos no se edita: la corrida reemplazaría la edición.
   const lockReason =
@@ -113,11 +114,11 @@ export function ContentSection({
 
       {confirmReplace && (
         <div role="alert" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
-          <p className="font-semibold text-amber-900">Hay textos editados a mano</p>
+          <p className="font-semibold text-amber-900">Hay textos editados a mano o aprobados</p>
           <p className="mt-1 text-sm text-amber-900">
             {editedPlatforms.length > 0
-              ? `Editaste ${editedPlatforms.join(", ")}: se reemplazará tu edición por textos nuevos.`
-              : "Se reemplazará tu edición por textos nuevos."}{" "}
+              ? `Revisaste ${editedPlatforms.join(", ")}: se reemplazarán por textos nuevos, que habrá que aprobar de nuevo.`
+              : "Se reemplazarán tus textos revisados por textos nuevos."}{" "}
             Puedes rehacer solo las imágenes y conservar tus textos.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">

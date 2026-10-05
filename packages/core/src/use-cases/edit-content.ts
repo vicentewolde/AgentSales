@@ -9,7 +9,7 @@ import {
 import { AppError } from "../errors.js";
 import type { ContentChanges } from "../ports/content-repository.js";
 import type { ListingLock } from "../ports/listing-lock.js";
-import { ACTIVE_PUBLICATION_STATUSES } from "../publication-state.js";
+import { ACTIVE_PUBLICATION_STATUSES, PENDING_PUBLICATION_STATUSES } from "../publication-state.js";
 
 export type EditContentDeps = ContentLockDeps & { lock: ListingLock };
 
@@ -52,9 +52,16 @@ export async function editContent(
       (item) => item.contentId === content.id && ACTIVE_PUBLICATION_STATUSES.includes(item.status),
     );
     if (publication !== undefined) {
+      // Qué hacer depende de la publicación: una que no salió se descarta o se le quita la
+      // aprobación al texto; una publicada se marca como retirada (en Instagram, tras borrarla a mano).
+      const pending = (PENDING_PUBLICATION_STATUSES as readonly string[]).includes(
+        publication.status,
+      );
       throw new AppError(
         "CONTENT_LOCKED",
-        "Este texto ya tiene una publicación: quita la aprobación o descarta la publicación para editarlo",
+        pending
+          ? "Este texto tiene una publicación aprobada que no ha salido: quita la aprobación o descarta la publicación para editarlo"
+          : "Este texto ya está publicado: para cambiarlo, retira la publicación y prepara un texto nuevo",
         { details: { contentId, publicationId: publication.id, status: publication.status } },
       );
     }

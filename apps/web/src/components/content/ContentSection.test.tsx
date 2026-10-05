@@ -216,7 +216,7 @@ describe("panel: sección Contenido", () => {
     await within(section).findByRole("tablist", { name: "Canales" });
 
     fireEvent.click(within(section).getByRole("button", { name: "Preparar contenido" }));
-    expect(await within(section).findByText("Hay textos editados a mano")).toBeTruthy();
+    expect(await within(section).findByText("Hay textos editados a mano o aprobados")).toBeTruthy();
     fireEvent.click(within(section).getByRole("button", { name: "Rehacer solo imágenes" }));
 
     await within(section).findByText("Preparando: en cola…");
@@ -224,7 +224,21 @@ describe("panel: sección Contenido", () => {
       status: "queued",
       texts: false,
     });
-    expect(within(section).queryByText("Hay textos editados a mano")).toBeNull();
+    expect(within(section).queryByText("Hay textos editados a mano o aprobados")).toBeNull();
+  });
+
+  it("con un texto aprobado también pregunta antes de reemplazarlo (F3)", async () => {
+    const t = await setup();
+    await t.prepared();
+    const [instagram] = await t.contents.listCurrent(t.listing.id);
+    await t.contents.update(instagram?.id ?? "", { status: "approved" });
+    const section = await t.open();
+    await within(section).findByRole("tablist", { name: "Canales" });
+
+    fireEvent.click(within(section).getByRole("button", { name: "Preparar contenido" }));
+
+    expect(await within(section).findByText("Hay textos editados a mano o aprobados")).toBeTruthy();
+    expect(within(section).getByText(/Revisaste Instagram/)).toBeTruthy();
   });
 
   it("una propiedad en borrador no deja preparar y explica por qué", async () => {
@@ -509,7 +523,7 @@ describe("panel: edición de textos", () => {
 
     fireEvent.click(within(section).getByRole("button", { name: "Preparar contenido" }));
     expect(
-      await within(section).findByText(/Editaste Instagram: se reemplazará tu edición/),
+      await within(section).findByText(/Revisaste Instagram: se reemplazarán por textos nuevos/),
     ).toBeTruthy();
     expect(t.requests.some((request) => request.startsWith("POST"))).toBe(false);
 

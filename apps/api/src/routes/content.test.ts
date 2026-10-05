@@ -169,6 +169,50 @@ async function setup(options: { queueDown?: boolean } = {}) {
 
 const errorOf = async (response: Response) => errorBodySchema.parse(await response.json());
 
+describe("testDeps · el candado por defecto", () => {
+  it("usa los mismos repositorios que la app, también los que llegan por overrides", async () => {
+    const listings = createInMemoryListingRepository({ nextId: randomUUID });
+    const media = createInMemoryMediaRepository();
+    const repos = createInMemoryContentRepositories({ nextId: randomUUID });
+    const queue = createInMemoryJobQueue();
+    const listing = await listings.create({
+      ...(contentListingFixture() as unknown as NewListing),
+      sourceHash: "h",
+    });
+    await listings.promoteToReady(listing.id);
+    await media.create({
+      listingId: listing.id,
+      brokerId: contentListingFixture().brokerId,
+      kind: "image",
+      storagePath: "foto.jpg",
+      mime: "image/jpeg",
+      bytes: 1,
+      checksum: "sha-foto",
+      sortOrder: 0,
+      isCover: true,
+    });
+    // Sin `lock`: lo arma `testDeps` sobre estos repositorios. Si usara otros, el aviso no existiría.
+    const app = createApp(
+      testDeps({
+        listings,
+        media,
+        contentRuns: repos.contentRuns,
+        contents: repos.contents,
+        queue,
+      }),
+    );
+
+    const response = await app.request(`/listings/${listing.id}/content-runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(202);
+    expect(await repos.contentRuns.latest(listing.id)).toMatchObject({ status: "queued" });
+  });
+});
+
 describe("POST /listings/:id/content-runs · publicaciones pendientes (F3)", () => {
   it("con una publicación aprobada que no salió es 409 PUBLICATION_PENDING, también sin textos", async () => {
     const t = await setup();

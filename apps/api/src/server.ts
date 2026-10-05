@@ -64,6 +64,10 @@ const queue = createJobQueue({
 // La API solo escribe en el staging: leer medios (con su tope de video) es del worker.
 const staging = createStaging({ root: stagingRootOf(findWorkspaceRoot()) });
 
+// Un solo `SecretBox` para toda la API: el candado y (desde T13) el repositorio de cuentas cifran y
+// descifran con la clave derivada de APP_ENCRYPTION_KEY (F3-T02).
+const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
+
 const app = createApp({
   checks: {
     db: () => pingDatabase(database.db),
@@ -82,8 +86,7 @@ const app = createApp({
   importRuns: createImportRunRepository(database.db),
   contentRuns: createContentRunRepository(database.db),
   contents: createContentRepository(database.db),
-  // Las credenciales de las cuentas se cifran con la clave derivada de APP_ENCRYPTION_KEY (F3-T02).
-  lock: createListingLock(database.db, { secretBox: createSecretBox(env.APP_ENCRYPTION_KEY) }),
+  lock: createListingLock(database.db, { secretBox }),
   queue,
   uploads: {
     save: (runId, fileName, bytes) => staging.saveInput(runId, fileName, bytes),
