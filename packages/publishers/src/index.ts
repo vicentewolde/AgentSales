@@ -7,6 +7,7 @@ export {
   INSTAGRAM_REEL_THUMB_OFFSET_MS,
   INSTAGRAM_SCOPES,
 } from "./instagram/constants.js";
+export { instagramContainerError } from "./instagram/errors.js";
 export {
   type CallOptions,
   type ContainerRequest,
@@ -18,6 +19,7 @@ export {
   type PublishingLimit,
 } from "./instagram/graph.js";
 export {
+  abortableSleep,
   createInstagramPublisher,
   INSTAGRAM_ATTEMPT_MAX_MS,
   type InstagramPublisherOptions,

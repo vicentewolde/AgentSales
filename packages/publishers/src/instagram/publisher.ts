@@ -10,7 +10,7 @@ import {
   type PublishResult,
 } from "@agentsales/core";
 import { INSTAGRAM_POLL, INSTAGRAM_REEL_THUMB_OFFSET_MS } from "./constants.js";
-import { INSTAGRAM_ERRORS, instagramError } from "./errors.js";
+import { INSTAGRAM_ERRORS, instagramContainerError, instagramError } from "./errors.js";
 import {
   type ContainerRequest,
   createInstagramGraph,
@@ -337,9 +337,7 @@ class Attempt {
     for (const id of containerIds) {
       const status = await this.graph.containerStatus(this.token, id, this.call);
       if (status.statusCode === "ERROR") {
-        throw status.subcode === null
-          ? instagramError({ code: 2 })
-          : instagramError({ subcode: status.subcode });
+        throw instagramContainerError(status.subcode);
       }
       if (status.statusCode === "EXPIRED") throw instagramError({ subcode: 2207020 });
       if (status.statusCode === "PUBLISHED") onPublished();

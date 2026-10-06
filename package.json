@@ -20,7 +20,8 @@
     "worker:ping": "pnpm --filter @agentsales/worker run job:ping",
     "cli": "pnpm --silent --filter @agentsales/cli run cli",
     "llm:smoke": "pnpm --filter @agentsales/llm run smoke",
-    "eval:content": "pnpm --silent --filter @agentsales/worker run eval:content"
+    "eval:content": "pnpm --silent --filter @agentsales/worker run eval:content",
+    "ig:smoke": "pnpm --silent --filter @agentsales/worker run ig:smoke"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

@@ -351,6 +351,7 @@ Para todos: parar, esperar y espaciar (la doc recomienda detener las llamadas de
 - **Local (F2):** salida JPEG sRGB 1080x1350, peso < 8 MB, no más de 10 slides; reel: ffprobe confirma códec, fps (23 a 60), duración, `moov` al inicio. Hecho.
 - **Tests de F3:** msw o fakes con los cuerpos de la sección 4; ningún test llama a Meta (regla del proyecto).
 - **Sandbox de Meta:** no existe un sandbox de publicación. Lo más cercano es la **app en modo desarrollo con acceso estándar y la cuenta del operador** (rol en la app). No hay "cuenta de prueba" separada con datos ficticios para Instagram Login.
+- **`pnpm ig:smoke` (F3-T19):** crea un contenedor de imagen desde una URL prefirmada de R2 (la portada de un aviso preparado) y espera `FINISHED` o error, **sin** `media_publish`. Comprueba que Meta acepta la URL firmada (con su query larga) y descarga la imagen (punto 8 de la lista), antes de publicar nada. Un `FINISHED` no dice si Meta hizo un `HEAD` antes del `GET`; eso solo se sabría si fallara con 403 o 2207052. El reel sigue sin verificar hasta la prueba en `live`.
 - **`dry-run` primero:** el publisher arma las solicitudes, valida y registra lo que enviaría, sin llamar a Meta. Luego `live` con una propiedad de muestra, solo con autorización explícita del operador en el chat, y la publicación se borra a mano.
 
 ### Lista de pruebas pendientes (NO VERIFICADO hasta la demo)
