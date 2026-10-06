@@ -68,6 +68,11 @@ export type AppDeps = {
   oauthState: OAuthDeps["oauthState"];
   /** La URL absoluta del panel, adonde vuelve el OAuth. */
   panelUrl: string;
+  /**
+   * El reloj de conectar y refrescar (la ventana de 24 h y 30 días, F3-T14); por defecto la hora
+   * actual. Lo fijan los tests.
+   */
+  now?: () => Date;
 };
 
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */

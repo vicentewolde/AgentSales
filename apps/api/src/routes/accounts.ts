@@ -7,22 +7,31 @@ import {
   isAppError,
   type PlatformAccount,
   type PlatformAccountRepository,
+  type RefreshAccountTokensDeps,
+  refreshAccountToken,
+  type TokenRefreshResult,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import {
   type AccountListResponse,
+  type AccountRefreshResponse,
   type AccountResponse,
+  accountRefreshBodySchema,
   connectTokenBodySchema,
   idParamSchema,
   type PlatformAccountView,
 } from "../contracts/index.js";
+import type { AppLogger } from "../logger.js";
 import { validated, validatedWithReason } from "../validation.js";
 
-export type AccountRoutesDeps = ConnectAccountDeps & {
-  platformAccounts: PlatformAccountRepository;
-  /** Si el panel puede ofrecer el OAuth (par de la app y URI `https://`). */
-  instagramOAuth: boolean;
-};
+export type AccountRoutesDeps = ConnectAccountDeps &
+  Omit<RefreshAccountTokensDeps, "onWarning"> & {
+    platformAccounts: PlatformAccountRepository;
+    /** Para los avisos del refresco a pedido (solo ids y códigos). */
+    logger: AppLogger;
+    /** Si el panel puede ofrecer el OAuth (par de la app y URI `https://`). */
+    instagramOAuth: boolean;
+  };
 
 /**
  * Con el token del panel, "reconecta la cuenta" no ayuda: lo que sirve es generar otro token. Los
@@ -71,11 +80,23 @@ export function accountView(account: PlatformAccount): PlatformAccountView {
   };
 }
 
+/** La respuesta del refresco a pedido: el resultado con la vista de la cuenta, sin el token. */
+function refreshView(result: TokenRefreshResult): AccountRefreshResponse {
+  const account = accountView(result.account);
+  if (result.outcome === "refreshed") return { outcome: "refreshed", account };
+  if (result.outcome === "skipped") {
+    const { reason, refreshableAt } = result;
+    return { outcome: "skipped", reason, refreshableAt, account };
+  }
+  return { outcome: "expired", reason: result.reason, account };
+}
+
 /**
  * `/accounts` (spec F3 §4.6 y §4.8): las cuentas conectadas, conectar con el token del panel de
- * Meta (D4: Meta no acepta `http://localhost` para el OAuth) y desconectar. Conectar llama a
- * Instagram de forma síncrona (`/me`; seguimiento de ADR-0014, punto 9). El token del cuerpo nunca
- * vuelve en la respuesta ni va al log (el log de la API no registra cuerpos).
+ * Meta (D4: Meta no acepta `http://localhost` para el OAuth), refrescar el token a pedido y
+ * desconectar. Conectar (`/me`) y refrescar llaman a Instagram de forma síncrona (seguimiento de
+ * ADR-0014, punto 9). El token nunca vuelve en la respuesta ni va al log (el log de la API no
+ * registra cuerpos, y la URL del refresco no sale del cliente de Instagram).
  */
 export function accountRoutes(deps: AccountRoutesDeps) {
   return new Hono()
@@ -99,6 +120,27 @@ export function accountRoutes(deps: AccountRoutesDeps) {
       const body: AccountResponse = { account: accountView(account) };
       return c.json(body, 200);
     })
+    .post(
+      "/:id/refresh",
+      validated("param", idParamSchema),
+      validated("json", accountRefreshBodySchema),
+      async (c) => {
+        const { force } = c.req.valid("json");
+        const result = await refreshAccountToken(
+          {
+            ...deps,
+            onWarning: ({ accountId, code }) =>
+              deps.logger.warn({ accountId, code }, "aviso del refresco de tokens"),
+          },
+          {
+            accountId: c.req.valid("param").id,
+            force: force ?? false,
+            signal: c.req.raw.signal,
+          },
+        );
+        return c.json(refreshView(result), 200);
+      },
+    )
     .post("/:id/disconnect", validated("param", idParamSchema), async (c) => {
       const account = await disconnectAccount(deps, { accountId: c.req.valid("param").id });
       const body: AccountResponse = { account: accountView(account) };

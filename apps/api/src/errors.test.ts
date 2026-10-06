@@ -13,6 +13,10 @@ describe("httpStatusFor", () => {
     ["IG_RATE_LIMITED", 429],
     ["OAUTH_STATE_INVALID", 400],
     ["ACCOUNT_NOT_FOUND", 404],
+    // Al refrescar a pedido (F3-T14).
+    ["ACCOUNT_NOT_CONNECTED", 409],
+    ["ACCOUNT_REFRESH_UNSUPPORTED", 409],
+    ["CREDENTIALS_UNREADABLE", 500],
     ["LISTING_NOT_READY", 409],
     ["CONTENT_EDITED", 409],
     ["CONTENT_NOT_CURRENT", 409],

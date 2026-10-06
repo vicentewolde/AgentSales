@@ -7,6 +7,12 @@ export type WorkerBoss = {
   createQueue(name: string, options: QueuePolicy): Promise<void>;
   updateQueue(name: string, options: Omit<QueuePolicy, "policy">): Promise<void>;
   getQueue(name: string): Promise<{ policy?: string } | null>;
+  schedule(
+    name: string,
+    cron: string,
+    data: object,
+    options: { tz: string; missed: "skip"; singletonKey?: string },
+  ): Promise<void>;
   work(
     name: string,
     options: { batchSize: 1; includeMetadata: true },
@@ -22,7 +28,8 @@ export type RegisterOptions = {
 };
 
 /**
- * Crea o actualiza la cola de cada job con su política y registra su handler.
+ * Crea o actualiza la cola de cada job con su política, registra su handler y, si tiene cron, lo
+ * programa (`schedule` exige que la cola exista).
  * - `batchSize: 1`: si un lote trae varios jobs y falla uno, pg-boss reintenta el lote completo.
  * - Un `AppError` no reintentable (datos inválidos, transición inválida…) se registra y el job se
  *   da por cerrado: reintentarlo no cambiaría el resultado. El caso de uso ya dejó el estado de
@@ -57,6 +64,15 @@ export async function registerJobs(
         );
       }
     });
+    if (job.schedule !== undefined) {
+      const { cron, tz, data, singletonKey } = job.schedule;
+      // `missed: "skip"`: un cron perdido con el worker apagado no se repite al arrancar.
+      await boss.schedule(job.name, cron, data, {
+        tz,
+        missed: "skip",
+        ...(singletonKey === undefined ? {} : { singletonKey }),
+      });
+    }
   }
   return !isStopping();
 }

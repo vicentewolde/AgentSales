@@ -31,6 +31,22 @@ export type QueuePolicy = {
   expireInSeconds: number;
 };
 
+/**
+ * Cron de un job periódico (ADR-0005), que el worker registra con `schedule` de pg-boss después de
+ * crear la cola. pg-boss guarda una fila por cola: registrarlo en cada arranque la actualiza. Si un
+ * job deja de tener cron, su fila sigue disparando: hay que borrarla a mano (`unschedule`).
+ */
+export type JobSchedule<N extends JobName = JobName> = {
+  /** Expresión cron de 5 campos. */
+  cron: string;
+  /** Zona horaria en que se lee `cron` (IANA, por ejemplo `America/Santiago`). */
+  tz: string;
+  /** Datos de cada job del cron, del tipo de `JOB_PAYLOADS[N]` (el handler los valida igual). */
+  data: JobPayload<N>;
+  /** Con una cola `exclusive`, el cron no encola si ya hay uno con la misma clave. */
+  singletonKey?: string;
+};
+
 /** Campos del log de un intento que falló (por defecto, el error completo: `{ err }`). */
 export type ErrorLogFields = (error: unknown) => Record<string, unknown>;
 
@@ -38,6 +54,8 @@ export type ErrorLogFields = (error: unknown) => Record<string, unknown>;
 export type Job = {
   name: JobName;
   queue: QueuePolicy;
+  /** Si además corre con un cron. */
+  schedule?: JobSchedule;
   run(data: unknown, context: JobContext): Promise<void>;
   /**
    * Qué se registra de un error. Un job cuyos errores pueden traer datos del aviso (por ejemplo, en
@@ -55,14 +73,16 @@ export type Job = {
 export function defineJob<N extends JobName>(definition: {
   name: N;
   queue: QueuePolicy;
+  schedule?: JobSchedule<N>;
   handler: (data: JobPayload<N>, context: JobContext) => Promise<void>;
   errorLogFields?: ErrorLogFields;
 }): Job {
-  const { name, queue, handler, errorLogFields } = definition;
+  const { name, queue, schedule, handler, errorLogFields } = definition;
   const schema = JOB_PAYLOADS[name];
   return {
     name,
     queue,
+    ...(schedule === undefined ? {} : { schedule }),
     ...(errorLogFields === undefined ? {} : { errorLogFields }),
     async run(data, context) {
       const parsed = schema.safeParse(data);

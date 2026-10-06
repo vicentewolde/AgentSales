@@ -33,4 +33,9 @@ describe("contrato de jobs", () => {
       JOB_PAYLOADS["publication.publish"].safeParse({ publicationId: "publication-1" }).success,
     ).toBe(false);
   });
+
+  it("tokens.refresh no lleva datos: lo que sobre se descarta", () => {
+    expect(JOB_PAYLOADS["tokens.refresh"].parse({ accountId: "x" })).toEqual({});
+    expect(JOB_PAYLOADS["tokens.refresh"].safeParse(null).success).toBe(false);
+  });
 });

@@ -23,6 +23,9 @@ const CONFLICTS = new Set([
   // F3 (ADR-0014): lo aprobado no cambia mientras tenga publicaciones activas o pendientes.
   "CONTENT_LOCKED",
   "PUBLICATION_PENDING",
+  // Refrescar (F3-T14) o publicar con una cuenta desconectada o vencida: hay que reconectarla.
+  "ACCOUNT_NOT_CONNECTED",
+  "ACCOUNT_REFRESH_UNSUPPORTED",
 ]);
 
 /**

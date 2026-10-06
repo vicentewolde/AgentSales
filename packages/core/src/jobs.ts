@@ -10,6 +10,7 @@ export const JOB_NAMES = [
   "import.run",
   "content.prepare",
   "publication.publish",
+  "tokens.refresh",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -28,6 +29,11 @@ export const JOB_PAYLOADS = {
   "content.prepare": z.object({ contentRunId: z.uuid() }),
   /** Un intento de publicación (spec F3 §4.4): la publicación guarda lo aprobado y el modo. */
   "publication.publish": z.object({ publicationId: z.uuid() }),
+  /**
+   * El refresco de los tokens de las cuentas conectadas (spec F3 §4.6): lo encola el worker al
+   * arrancar y su cron diario. Sin datos: el lote lee las cuentas de la base.
+   */
+  "tokens.refresh": z.object({}),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;
