@@ -240,13 +240,13 @@ Los jobs del worker (`apps/worker/src/jobs/`):
   - **`queue`:** política de la cola (`policy`, `retryLimit`, `retryDelay`, `retryBackoff`, `expireInSeconds`). Solo el worker la aplica al arrancar, así que el código es la fuente de verdad. Los productores no crean colas.
     - `createQueue` recibe todo.
     - `updateQueue` recibe todo **menos `policy`**, que es inmutable.
-  - **Contexto:** el handler recibe `isLastAttempt` (`retryCount >= retryLimit`, de `work` con `includeMetadata`), para dejar el estado de dominio en `failed` antes del último error.
+  - **Contexto:** el handler recibe `isLastAttempt` (`retryCount >= retryLimit`, de `work` con `includeMetadata`), para dejar el estado de dominio en `failed` antes del último error, y desde F3-T12 `retryCount` (el reintento, para la bitácora de una publicación).
 - **Payloads con solo ids** (`publicationId`, `mediaId`…), nunca secretos ni estado. El handler recarga el estado desde la base y verifica `external_id` y `status` antes de actuar, lo que lo hace idempotente (ADR-0005).
 - **Errores:**
   - Un `AppError` no reintentable se registra y el job se da por cerrado. El caso de uso ya dejó el estado de dominio, por ejemplo la publicación en `failed`.
   - Cualquier otro error se propaga y pg-boss reintenta según la política.
   - `batchSize: 1`: un fallo nunca repite jobs ajenos.
-- Los handlers son delgados: validan, arman dependencias y llaman un caso de uso de `core`. `buildJobs(deps)` arma la lista con las dependencias que compone `worker.ts` (db, R2, lector de xlsx y staging; desde F2-T11, también plantillas, renderizador, IA y el procesador de cada intento).
+- Los handlers son delgados: validan, arman dependencias y llaman un caso de uso de `core`. `buildJobs(deps)` arma la lista con las dependencias que compone `worker.ts` (db, R2, lector de xlsx y staging; desde F2-T11, también plantillas, renderizador, IA y el procesador de cada intento; desde F3-T12, los repositorios de publicaciones y cuentas, este último con el `SecretBox` de `APP_ENCRYPTION_KEY`, y el publisher de Instagram, registrado en los dos modos con su cliente perezoso y sus notas al log).
 - **El log de cada intento** lleva los datos del job, que son solo ids: así cada error queda con, por ejemplo, su `importRunId`. Un job puede fijar `errorLogFields` para registrar menos que el error completo: `content.prepare` registra solo el código (el mensaje o la causa pueden traer datos del aviso).
 - **Apagado (desde F2-T11, `stopWorker` en `apps/worker/src/shutdown.ts`):** en SIGINT o SIGTERM, el worker dispara el `AbortController` de los handlers, espera a que pg-boss los detenga (`stop` con `graceful`, hasta 30 s) y recién después cierra el Chromium del renderizador (también si detener pg-boss falla) y la base. `tsx watch` (`pnpm dev`) corta al worker sin esperar ese cierre si recibe la señal él solo; con Ctrl+C en la terminal la señal llega a los dos.
 
@@ -312,7 +312,7 @@ Política objetivo por cola (cada fase la confirma en su spec):
 | `system.ping` (F0) | — | 0 | no | 60 s |
 | `import.run` (F1) | `singletonKey = importRunId`; en el último intento deja el run en `failed` | 2 | sí, desde 30 s | 2 h (videos grandes) |
 | `content.prepare` (F2-T11) | `exclusive`, `singletonKey = contentRunId`; en el último intento deja la corrida en `failed`, salvo un corte por apagado. Reemplaza a `media.process` (ADR-0012, enmienda de ADR-0005) | 2 | sí, desde 30 s | 30 min (video, render e IA) |
-| `publication.publish` (F3) | `exclusive`, `singletonKey = publicationId`; en el último intento deja la publicación en `failed`; al arrancar se reencolan las `publishing` | 2 | sí, desde 60 s | 15 min (sondeo del reel de hasta 5 min) |
+| `publication.publish` (F3-T12) | `exclusive`, `singletonKey = publicationId`; en el último intento deja la publicación en `failed`; al arrancar se reencolan las `publishing`; registra solo el código y si se reintenta | 2 | sí, desde 60 s | 15 min (el intento tiene su propio tope de 12 min) |
 | `publication.sync` | cron, sin solaparse | 1 | no | ~10 min |
 | `tokens.refresh` (F3) | cron diario y al arrancar el worker | 3 | sí | ~5 min |
 
@@ -619,7 +619,7 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 
 ## Intento de publicación (`publishPublication`, F3-T11)
 
-- Es el handler del job `publication.publish` (el worker lo compone en T12): recibe los repositorios, el almacenamiento, los publishers por plataforma (`publishers`) y el `PUBLISH_MODE` del worker (`workerMode`).
+- Es el handler del job `publication.publish` (`apps/worker/src/jobs/publication-publish.ts`, F3-T12, que registra sus avisos con el paso y el código): recibe los repositorios, el almacenamiento, los publishers por plataforma (`publishers`) y el `PUBLISH_MODE` del worker (`workerMode`).
 - Recarga la publicación y sigue solo si está en `publishing` (si no, `skipped`). **El modo lo decide la publicación** (D11): `dry_run` se simula con `withDryRun`; una pedida en `live` con el worker en `dry-run` queda en `failed` con `PUBLISH_MODE_MISMATCH`, sin llamar a la plataforma.
 - La cuenta tiene que estar `connected` y sus credenciales legibles (`CREDENTIALS_UNREADABLE` pasa la cuenta a `error`); arma el input (`buildPublishInput`), lo revisa en `live` (`checkPublishInput`) y publica con el progreso guardado y `saveProgress`.
 - Éxito: `published` con `external_id`, `external_url` y `published_at`; en `live`, después de guardar, el aviso pasa de `ready` a `active` (condicional). Guardar va aparte de publicar: si falla, el medio ya salió, así que la publicación sigue en `publishing` (`PUBLISH_RESULT_NOT_SAVED`, reintentable) y el reintento la reconoce por el progreso. La bitácora y el `active` no cortan el intento (si fallan, `onWarning`), y un paso del job sobre una `published` en `live` vuelve a intentar el `active`. Error: con la señal disparada no toca nada (`PUBLISH_ABORTED`, reintentable); si no, un reintentable antes del último intento deja la publicación en `publishing` y relanza, y uno no reintentable o el último intento la deja en `failed` con su motivo. `IG_AUTH_INVALID` pasa la cuenta a `expired`.

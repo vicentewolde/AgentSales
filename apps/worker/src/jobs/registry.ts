@@ -48,7 +48,13 @@ export async function registerJobs(
     // `includeMetadata`: trae `retryLimit`, para saber si es el último intento.
     await boss.work(job.name, { batchSize: 1, includeMetadata: true }, async (batch) => {
       for (const { id, data, retryCount, retryLimit } of batch) {
-        await runOne(job, id, data, retryCount >= retryLimit, logger);
+        await runOne(
+          job,
+          id,
+          data,
+          { retryCount, isLastAttempt: retryCount >= retryLimit },
+          logger,
+        );
       }
     });
   }
@@ -77,7 +83,7 @@ async function runOne(
   job: Job,
   jobId: string,
   data: unknown,
-  isLastAttempt: boolean,
+  attempt: { retryCount: number; isLastAttempt: boolean },
   logger: Logger,
 ): Promise<void> {
   // Los datos de un job son solo ids (ADR-0005): van al contexto del log, así cada error de un
@@ -87,7 +93,7 @@ async function runOne(
   const ms = () => Math.round(performance.now() - start);
   jobLogger.info("job iniciado");
   try {
-    await job.run(data, { jobId, logger: jobLogger, isLastAttempt });
+    await job.run(data, { jobId, logger: jobLogger, ...attempt });
     jobLogger.info({ ms: ms() }, "job terminado");
   } catch (error) {
     const fields = { ...(job.errorLogFields ?? fullError)(error), ms: ms() };

@@ -159,6 +159,9 @@ importers:
       '@agentsales/media':
         specifier: workspace:*
         version: link:../../packages/media
+      '@agentsales/publishers':
+        specifier: workspace:*
+        version: link:../../packages/publishers
       '@agentsales/queue':
         specifier: workspace:*
         version: link:../../packages/queue

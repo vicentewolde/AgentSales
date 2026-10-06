@@ -15,6 +15,7 @@
     { "path": "../../packages/storage" },
     { "path": "../../packages/llm" },
     { "path": "../../packages/media" },
-    { "path": "../../packages/templates" }
+    { "path": "../../packages/templates" },
+    { "path": "../../packages/publishers" }
   ]
 }

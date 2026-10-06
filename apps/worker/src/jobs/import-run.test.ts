@@ -60,7 +60,10 @@ describe("job import.run", () => {
     });
 
     await expect(
-      importRunJob(d).run({ importRunId: run.id }, { jobId: "j1", logger, isLastAttempt: false }),
+      importRunJob(d).run(
+        { importRunId: run.id },
+        { jobId: "j1", logger, isLastAttempt: false, retryCount: 0 },
+      ),
     ).rejects.toMatchObject({ code: "IMPORT_FILE_INVALID" });
     expect(await d.importRuns.get(run.id)).toMatchObject({
       status: "failed",
@@ -72,7 +75,7 @@ describe("job import.run", () => {
     await expect(
       importRunJob(deps()).run(
         { importRunId: "run-1" },
-        { jobId: "j2", logger, isLastAttempt: true },
+        { jobId: "j2", logger, isLastAttempt: true, retryCount: 2 },
       ),
     ).rejects.toMatchObject({ code: "JOB_PAYLOAD_INVALID" });
   });

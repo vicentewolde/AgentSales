@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-05
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** F3-T11 · Intento de publicación en core
-**Siguiente paso:** `/tarea F3-T12` · Job `publication.publish`
+**Última tarea terminada:** F3-T12 · Job `publication.publish`
+**Siguiente paso:** `/tarea F3-T13` · Conectar Instagram
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -21,8 +21,8 @@
 | F3-T08 · Instagram: cliente de la API y OAuth | ✅ terminada | #61 |
 | F3-T09 · Instagram: publisher | ✅ terminada | #62 |
 | F3-T10 · Publicar, descartar y retirar en core | ✅ terminada | #63 |
-| F3-T11 · Intento de publicación en core | ✅ terminada | |
-| F3-T12 · Job `publication.publish` | ⏳ pendiente | |
+| F3-T11 · Intento de publicación en core | ✅ terminada | #64 |
+| F3-T12 · Job `publication.publish` | ✅ terminada | |
 | F3-T13 · Conectar Instagram | ⏳ pendiente | |
 | F3-T14 · Refresco de tokens | ⏳ pendiente | |
 | F3-T15 · API de aprobación y publicaciones | ⏳ pendiente | |
@@ -69,6 +69,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-06: **F3-T12.** Job `publication.publish` en el worker: corre el intento de T11 con el publisher de Instagram (registrado en los dos modos; el cliente se arma recién al primer intento en vivo), la señal de apagado y el número de reintento; al arrancar reencola las publicaciones en `publishing`; el log lleva solo ids y códigos. Seguimiento en ADR-0005.
 - 2026-10-05: **F3-T11.** Intento de publicación en core (`publishPublication`, el handler de `publication.publish`): el modo lo decide la publicación (`PUBLISH_MODE_MISMATCH` si se pidió en `live` y el worker está en `dry-run`), revisa la cuenta y sus credenciales, arma el input con URLs firmadas, publica con el progreso guardado y deja `published` (el aviso a `active` en `live`) o, según el error, sigue en `publishing` para reintentar o queda `failed` con su motivo; `IG_AUTH_INVALID` vence la cuenta. Un solo `publish_attempt` por intento, con lo enviado y sin secretos. Si la plataforma publicó y falla guardar el resultado, la publicación sigue en `publishing` (`PUBLISH_RESULT_NOT_SAVED`) y el reintento la reconoce sin publicar de nuevo.
 - 2026-10-05: **F3-T10.** Publicar en core: el canal (`publishListing`: abre las que faltan, pasa `approved`/`failed` a `publishing` con el modo de la API, reencola las que ya estaban en curso y encola después del candado) o una (`startPublication`); descartar (`cancelPublication`) y marcar como retirada (`retirePublication`: en `live` exige la confirmación de que se borró a mano, y la última en `live` devuelve el aviso a `ready`). Algo que empezó en `live` no se reintenta en `dry-run` (`PUBLISH_MODE_LOCKED`). Job `publication.publish` en el contrato de core (la cola la crea el worker en T12).
 - 2026-10-05: **F3-T09.** Publisher de Instagram (`createInstagramPublisher`): revisión previa pura (`validateInstagramInput`: imágenes, reel, proporción, caption, hashtags y menciones), cupo, carrusel o imagen suelta y reel, sondeo con reloj inyectable y tope de 12 min por intento, progreso guardado antes de sondear y antes de `media_publish`, y retoma sin duplicar (`FINISHED` publica, `PUBLISHED` busca el medio del mismo formato y caption, un contenedor trabado o `EXPIRED`/`ERROR` se rehace, un pedido sin respuesta se reconoce antes de repetirlo). Cliente perezoso: validar y simular no lo construyen. Probado con un Instagram simulado con estado y reloj falso. macOS borró la caché de Playwright con el disco al 95 %: si fallan las pruebas de render con "No se encontró Chromium", reinstalarlo (`pnpm --filter @agentsales/media exec playwright install chromium`).

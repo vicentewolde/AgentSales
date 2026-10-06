@@ -26,7 +26,10 @@ describe("apagado del worker", () => {
     const runId = await t.newRun();
     // El handler corre como lo haría pg-boss, y queda esperando a la IA.
     const handler = contentPrepareJob(t.deps)
-      .run({ contentRunId: runId }, { jobId: "j1", logger: silentLogger, isLastAttempt: true })
+      .run(
+        { contentRunId: runId },
+        { jobId: "j1", logger: silentLogger, isLastAttempt: true, retryCount: 2 },
+      )
       .catch((error: { code?: string }) => events.push(`handler termina con ${error.code}`));
     await called;
 

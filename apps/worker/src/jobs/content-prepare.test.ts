@@ -17,9 +17,15 @@ import {
   requeueQueuedContentRuns,
 } from "./content-prepare.js";
 import { buildJobs } from "./index.js";
+import type { PublicationPublishJobDeps } from "./publication-publish.js";
 import { registerJobs, type WorkerBoss } from "./registry.js";
 
-const context = (isLastAttempt: boolean) => ({ jobId: "j1", logger: silentLogger, isLastAttempt });
+const context = (isLastAttempt: boolean) => ({
+  jobId: "j1",
+  logger: silentLogger,
+  isLastAttempt,
+  retryCount: 0,
+});
 
 /** Una IA que espera el corte y responde como el adaptador: `LLM_ABORTED`. */
 function waitingLlm(onCall: () => void): LLMProvider {
@@ -52,8 +58,12 @@ describe("job content.prepare · cola", () => {
     const { deps } = await contentJobSetup();
     // Solo se miran los nombres: `import.run` no usa sus dependencias hasta correr.
     expect(
-      buildJobs({ importRun: {} as RunImportDeps, contentPrepare: deps }).map((job) => job.name),
-    ).toEqual(["system.ping", "import.run", "content.prepare"]);
+      buildJobs({
+        importRun: {} as RunImportDeps,
+        contentPrepare: deps,
+        publicationPublish: {} as PublicationPublishJobDeps,
+      }).map((job) => job.name),
+    ).toEqual(["system.ping", "import.run", "content.prepare", "publication.publish"]);
   });
 });
 

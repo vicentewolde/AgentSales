@@ -8,7 +8,7 @@ const logger = createLogger(
   new Writable({ write: (_chunk, _encoding, callback) => callback() }),
 );
 const policy = { retryLimit: 3, retryDelay: 30, retryBackoff: true, expireInSeconds: 600 };
-const context = (jobId: string) => ({ jobId, logger, isLastAttempt: false });
+const context = (jobId: string) => ({ jobId, logger, isLastAttempt: false, retryCount: 0 });
 
 describe("defineJob", () => {
   it("valida los datos con el esquema de core (JOB_PAYLOADS) y llama al handler con lo parseado", async () => {

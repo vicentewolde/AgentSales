@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   createErrorThrottle,
   createLogger,
+  createSecretBox,
   findWorkspaceRoot,
   loadEnv,
   loadEnvFile,
@@ -9,18 +10,22 @@ import {
 import type { RunImportDeps } from "@agentsales/core";
 import {
   createBrokerRepository,
+  createContentRepository,
   createContentRunRepository,
   createDb,
   createFieldDefinitionRepository,
   createImportRunRepository,
   createListingRepository,
   createMediaRepository,
+  createPlatformAccountRepository,
+  createPublicationRepository,
   toPgConnectionString,
 } from "@agentsales/db";
 import { readListingsWorkbook } from "@agentsales/importers";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import { createLlmProvider } from "@agentsales/llm";
 import { createHtmlRenderer, createMediaProcessor } from "@agentsales/media";
+import { createInstagramPublisher } from "@agentsales/publishers";
 import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { createSlideTemplates } from "@agentsales/templates";
@@ -28,6 +33,7 @@ import { cleanContentTmp, contentTmpRootOf } from "./content-tmp.js";
 import { failAbandonedContentRuns, requeueQueuedContentRuns } from "./jobs/content-prepare.js";
 import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
 import { buildJobs } from "./jobs/index.js";
+import { requeuePublishingPublications } from "./jobs/publication-publish.js";
 import { registerJobs } from "./jobs/registry.js";
 import { llmProviderOptions } from "./llm-options.js";
 import { stopWorker } from "./shutdown.js";
@@ -84,6 +90,17 @@ const renderer = createHtmlRenderer();
 // Se dispara al apagar: los handlers cortan ffmpeg, Chromium y la CLI de Claude (que corre en su
 // propio grupo de procesos y no recibe el Ctrl+C de la terminal).
 const jobsAbort = new AbortController();
+// Publicar (spec F3 §4.4): las credenciales se descifran con la clave de APP_ENCRYPTION_KEY.
+const publications = createPublicationRepository(database.db);
+const platformAccounts = createPlatformAccountRepository(database.db, {
+  secretBox: createSecretBox(env.APP_ENCRYPTION_KEY),
+});
+// Registrado en los dos modos: una publicación en `dry_run` también lo necesita (lo envuelve
+// `withDryRun`). El cliente de Instagram se arma recién al primer intento en `live` (perezoso).
+const instagram = createInstagramPublisher({
+  onNote: ({ publicationId, code, errorCode }) =>
+    logger.info({ publicationId, code, errorCode }, "nota del publicador de Instagram"),
+});
 const jobs = buildJobs({
   importRun,
   contentPrepare: {
@@ -104,6 +121,19 @@ const jobs = buildJobs({
         workDir,
       }),
     tmpRoot: contentTmpRoot,
+    signal: jobsAbort.signal,
+  },
+  publicationPublish: {
+    shared: {
+      publications,
+      platformAccounts,
+      contents: createContentRepository(database.db),
+      media: repositories.media,
+      listings: repositories.listings,
+      storage,
+      publishers: { instagram },
+      workerMode: env.PUBLISH_MODE,
+    },
     signal: jobsAbort.signal,
   },
 });
@@ -162,7 +192,8 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
  * 1. antes de conectar, borra el staging y los temporales de contenido de más de 24 h;
  * 2. ya conectado, cierra las cargas y corridas abandonadas en `running` y borra el staging de
  *    cargas terminadas;
- * 3. con las colas creadas, reencola las corridas de contenido en `queued`.
+ * 3. con las colas creadas, reencola las corridas de contenido en `queued` y las publicaciones en
+ *    `publishing` (spec F3 §4.4).
  */
 async function cleanStaging(withDatabase: boolean): Promise<void> {
   try {
@@ -227,6 +258,21 @@ async function requeueContent(): Promise<void> {
   }
 }
 
+async function requeuePublications(): Promise<void> {
+  try {
+    const { requeued, failed } = await requeuePublishingPublications(publications, queue);
+    if (requeued > 0) logger.info({ requeued }, "publicaciones en curso reencoladas");
+    if (failed.length > 0) {
+      logger.warn(
+        { publicationIds: failed },
+        "no se pudieron reencolar algunas publicaciones: se reintenta al próximo arranque o al publicar",
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron reencolar las publicaciones en curso");
+  }
+}
+
 try {
   await cleanStaging(false);
   await cleanContentTemps();
@@ -239,6 +285,7 @@ try {
     !shuttingDown && (await registerJobs(boss, jobs, logger, { isStopping: () => shuttingDown }));
   if (registered) {
     await requeueContent();
+    await requeuePublications();
     logger.info({ jobs: jobs.map((job) => job.name) }, "worker listo");
     logger.warn(
       "Mientras el worker corre, Neon no se suspende y consume CU-horas: apágalo al terminar (ADR-0007).",
