@@ -3,11 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   approveBlockedReason,
   editBlockedReason,
+  needsLiveConfirm,
   prepareBlockedReason,
   publicationActions,
   publishBlockedReason,
+  publishButtonText,
   retryBlockedReason,
+  safeExternalUrl,
   unapproveBlockedReason,
+  waitStart,
 } from "./publications.js";
 
 const NOW = new Date("2026-10-06T12:00:00Z");
@@ -79,6 +83,12 @@ describe("bloqueos", () => {
     expect(unapproveBlockedReason(content(), [publication({ status: "failed" })])).toBeNull();
   });
 
+  it("preparar: también con las programadas o esperando el clic final", () => {
+    for (const status of ["scheduled", "awaiting_manual_confirm"] as const) {
+      expect(prepareBlockedReason([publication({ status })])).not.toBeNull();
+    }
+  });
+
   it("publicar: aviso listo o activo y sin corrida", () => {
     expect(publishBlockedReason("ready", false)).toBeNull();
     expect(publishBlockedReason("active", false)).toBeNull();
@@ -116,5 +126,31 @@ describe("publicationActions", () => {
       cancel: false,
       retire: false,
     });
+  });
+});
+
+describe("modo, espera y enlace", () => {
+  it("se confirma en vivo y también si no se sabe el modo; solo la simulación conocida no pregunta", () => {
+    expect(needsLiveConfirm("live")).toBe(true);
+    expect(needsLiveConfirm(undefined)).toBe(true);
+    expect(needsLiveConfirm("dry-run")).toBe(false);
+    expect(publishButtonText(undefined)).toBe("Publicar en Instagram");
+    expect(publishButtonText("live")).toContain("en vivo");
+  });
+
+  it("la espera cuenta desde el más reciente entre el último cambio y el clic", () => {
+    const before = new Date(NOW.getTime() - 60_000);
+    expect(waitStart(NOW, null)).toEqual(NOW);
+    expect(waitStart(before, NOW)).toEqual(NOW);
+    expect(waitStart(NOW, before)).toEqual(NOW);
+  });
+
+  it("el enlace de una publicada solo si es https", () => {
+    expect(safeExternalUrl("https://www.instagram.com/p/x/")).toBe(
+      "https://www.instagram.com/p/x/",
+    );
+    expect(safeExternalUrl("javascript:alert(1)")).toBeNull();
+    expect(safeExternalUrl("http://instagram.com/p/x/")).toBeNull();
+    expect(safeExternalUrl(null)).toBeNull();
   });
 });

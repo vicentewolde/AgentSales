@@ -28,7 +28,7 @@
 | F3-T15 · API de aprobación y publicaciones | ✅ terminada | #68 |
 | F3-T16 · CLI | ✅ terminada | #69 |
 | F3-T17 · Panel: Cuentas | ✅ terminada | #70 |
-| F3-T18 · Panel: aprobar y publicar | ✅ terminada | |
+| F3-T18 · Panel: aprobar y publicar | ✅ terminada | #71 |
 | F3-T19 · `pnpm ig:smoke` | ⏳ pendiente | |
 | F3-T20 · Cierre de fase | ⏳ pendiente | |
 

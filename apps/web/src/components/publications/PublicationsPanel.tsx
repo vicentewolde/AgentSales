@@ -5,13 +5,19 @@ import {
   PUBLICATION_FORMAT_TEXT,
   type PublishMode,
 } from "@agentsales/core";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 import { ApiError } from "../../api/client.js";
+import { useFreshPublishMode } from "../../queries/health.js";
 import { usePublishListing } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { PublicationItem } from "./PublicationItem.js";
-import { publishBlockedReason } from "./publications.js";
+import {
+  needsLiveConfirm,
+  publishBlockedReason,
+  publishButtonText,
+  retryBlockedReason,
+} from "./publications.js";
 
 const PRIMARY =
   "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
@@ -40,8 +46,10 @@ export function PublicationsPanel({
   runActive: boolean;
 }) {
   const publish = usePublishListing(listingId);
+  const freshMode = useFreshPublishMode();
   const [confirming, setConfirming] = useState(false);
   const [requestedAt, setRequestedAt] = useState<Date | null>(null);
+  const publishButton = useRef<HTMLButtonElement>(null);
   const current = publications.filter((publication) => shown.has(publication.status));
   const past = publications.filter((publication) => !shown.has(publication.status));
   const ofContent = publications.filter((publication) => publication.contentId === content?.id);
@@ -51,13 +59,33 @@ export function PublicationsPanel({
     content?.status === "approved" &&
     (ofContent.length === 0 ||
       ofContent.some((p) => p.status === "approved" || p.status === "failed"));
-  const blocked = publishBlockedReason(listingStatus, runActive);
-  const live = publishMode === "live";
+  // Una fallida que empezó en vivo bloquea el canal entero en simulación (`PUBLISH_MODE_LOCKED`).
+  const lockedLive = ofContent
+    .filter((p) => p.status === "failed")
+    .map((p) => retryBlockedReason(p, publishMode))
+    .find((reason) => reason !== null);
+  const blocked =
+    publishBlockedReason(listingStatus, runActive) ??
+    (publishMode === undefined
+      ? "Todavía no se sabe si la API está en simulación o en vivo."
+      : (lockedLive ?? null));
 
   const start = () => {
     setConfirming(false);
-    setRequestedAt(new Date());
-    publish.mutate("instagram");
+    publish.mutate("instagram", { onSuccess: () => setRequestedAt(new Date()) });
+  };
+  // El modo lo pone la API al publicar (D11): con la API en vivo se confirma, y en simulación se
+  // vuelve a preguntar justo antes, por si cambió desde que se abrió la página.
+  const request = async () => {
+    publish.reset();
+    if (needsLiveConfirm(publishMode)) return setConfirming(true);
+    const mode = await freshMode().catch(() => undefined);
+    if (mode !== "dry-run") return setConfirming(true);
+    start();
+  };
+  const cancel = () => {
+    setConfirming(false);
+    requestAnimationFrame(() => publishButton.current?.focus());
   };
 
   return (
@@ -77,19 +105,21 @@ export function PublicationsPanel({
                 <button type="button" className={DANGER} onClick={start}>
                   Sí, publicar en vivo
                 </button>
-                <button type="button" className="underline" onClick={() => setConfirming(false)}>
+                {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
+                <button type="button" autoFocus className="underline" onClick={cancel}>
                   Cancelar
                 </button>
               </div>
             </div>
           ) : (
             <button
+              ref={publishButton}
               type="button"
               className={PRIMARY}
               disabled={publish.isPending || blocked !== null}
-              onClick={() => (live ? setConfirming(true) : start())}
+              onClick={() => void request()}
             >
-              {live ? "Publicar en Instagram (en vivo)" : "Publicar en Instagram (simulación)"}
+              {publishButtonText(publishMode)}
             </button>
           )}
           {blocked !== null && <p className="mt-1 text-xs text-amber-800">{blocked}</p>}

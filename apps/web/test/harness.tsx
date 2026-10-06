@@ -258,7 +258,8 @@ export async function publicationSetup(
     h.renderApp(`/propiedades/${t.listingId}`);
     return screen.findByRole("region", { name: "Contenido" });
   };
-  return { ...h, t, open };
+  // Solo lo que usa la API: los repositorios del arnés no son los del escenario (están en `t`).
+  return { client: h.client, requests: h.requests, renderApp: h.renderApp, t, open };
 }
 
 /** Corredor sintético (datos inventados). */

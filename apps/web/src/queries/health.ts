@@ -1,5 +1,6 @@
+import type { PublishMode } from "@agentsales/core";
 import { healthReportSchema } from "@agentsales/core";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
 
@@ -21,4 +22,22 @@ export function useHealth({ poll = false }: { poll?: boolean } = {}) {
     refetchInterval: poll ? HEALTH_REFETCH_MS : false,
     refetchIntervalInBackground: false,
   });
+}
+
+/**
+ * Pide `/health` de nuevo (sin caché) y devuelve el modo de la API: lo usa el panel justo antes de
+ * publicar, para no confiar en un modo leído al abrir la página (D11). Un pedido por clic.
+ */
+export function useFreshPublishMode() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return async (): Promise<PublishMode> =>
+    (
+      await queryClient.fetchQuery({
+        queryKey: healthKeys.all,
+        queryFn: ({ signal }) =>
+          unwrap(client.health.$get(undefined, { init: { signal } }), healthReportSchema),
+        staleTime: 0,
+      })
+    ).publishMode;
 }

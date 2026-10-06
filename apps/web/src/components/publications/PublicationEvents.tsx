@@ -32,7 +32,8 @@ function EventLine({ event }: { event: PublicationEventView }) {
   if (attempt === null || !attempt.success) {
     return (
       <li>
-        {timeText(event.createdAt)} · {who}: {event.type}
+        {timeText(event.createdAt)} · {who}:{" "}
+        {event.type === "publish_attempt" ? "intento (detalle ilegible)" : "otro evento"}
       </li>
     );
   }

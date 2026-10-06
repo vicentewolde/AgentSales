@@ -68,6 +68,7 @@ export {
   IMPORT_ROW_OUTCOME_TEXT,
   IMPORT_RUN_STATUS_TEXT,
   LISTING_NOT_PREPARABLE_TEXT,
+  LISTING_NOT_PUBLISHABLE_TEXT,
   LISTING_STATUS_TEXT,
   OPERATION_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
@@ -83,6 +84,7 @@ export {
 export {
   canChangeListingStatus,
   canPrepareContent,
+  canPublishListing,
   LISTING_MANUAL_TARGETS,
   LISTING_MANUAL_TRANSITIONS,
   type Listing,
@@ -248,6 +250,7 @@ export {
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   checkPublicationProgress,
+  hasStartedLive,
   type InstagramProgress,
   instagramProgressSchema,
   normalizeEventPayload,

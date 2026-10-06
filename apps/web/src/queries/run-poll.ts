@@ -57,6 +57,13 @@ export function usePolledRun<R extends PolledRun>(options: {
   // Fallas seguidas (con los reintentos): TanStack reinicia `fetchFailureCount` en cada consulta,
   // así que no sirve para contar consultas seguidas que fallan.
   const failures = useRef(0);
+  // Cada consulta cuenta sus fallas: si cambia la clave (otra corrida, otra versión), se reinicia.
+  const key = JSON.stringify(options.queryKey);
+  const lastKey = useRef(key);
+  if (lastKey.current !== key) {
+    lastKey.current = key;
+    failures.current = 0;
+  }
   const query = useQuery({
     queryKey: options.queryKey,
     enabled: options.enabled ?? true,

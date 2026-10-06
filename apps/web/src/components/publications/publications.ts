@@ -2,7 +2,10 @@ import type { ContentView, PublicationView } from "@agentsales/api/contracts";
 import {
   ACTIVE_PUBLICATION_STATUSES,
   canPrepareContent,
+  canPublishListing,
+  hasContentErrors,
   LISTING_NOT_PREPARABLE_TEXT,
+  LISTING_NOT_PUBLISHABLE_TEXT,
   type ListingStatus,
   PENDING_PUBLICATION_STATUSES,
   type PublishMode,
@@ -13,9 +16,6 @@ import {
 
 const pending = new Set<string>(PENDING_PUBLICATION_STATUSES);
 const active = new Set<string>(ACTIVE_PUBLICATION_STATUSES);
-
-const hasErrors = (content: ContentView) =>
-  content.checks.some((check) => check.severity === "error");
 
 /** Por qué no se puede preparar el contenido de nuevo: hay publicaciones pendientes (D3). */
 export function prepareBlockedReason(publications: readonly PublicationView[]): string | null {
@@ -44,7 +44,8 @@ export function approveBlockedReason(
 ): string | null {
   if (!canPrepareContent(listingStatus)) return `${LISTING_NOT_PREPARABLE_TEXT}.`;
   if (runActive) return "Se está preparando el contenido: espera a que termine.";
-  if (hasErrors(content)) return "La revisión tiene errores: corrígelos para poder aprobar.";
+  if (hasContentErrors(content.checks))
+    return "La revisión tiene errores: corrígelos para poder aprobar.";
   return null;
 }
 
@@ -65,9 +66,7 @@ export function publishBlockedReason(
   listingStatus: ListingStatus,
   runActive: boolean,
 ): string | null {
-  if (listingStatus !== "ready" && listingStatus !== "active") {
-    return "La propiedad tiene que estar lista o activa para publicar.";
-  }
+  if (!canPublishListing(listingStatus)) return `${LISTING_NOT_PUBLISHABLE_TEXT}.`;
   if (runActive) return "Se está preparando el contenido: espera a que termine.";
   return null;
 }
@@ -92,4 +91,31 @@ export function publicationActions(publication: PublicationView) {
     cancel: publication.status === "approved" || publication.status === "failed",
     retire: publication.status === "published",
   };
+}
+
+/**
+ * Si pedir una publicación necesita confirmar que va en vivo: con la API en vivo y también mientras
+ * no se sabe el modo (`/health` no respondió). Solo la simulación conocida no pregunta.
+ */
+export const needsLiveConfirm = (publishMode: PublishMode | undefined) => publishMode !== "dry-run";
+
+/** El texto del botón Publicar según el modo de la API (neutro si todavía no se sabe). */
+export function publishButtonText(publishMode: PublishMode | undefined): string {
+  if (publishMode === "live") return "Publicar en Instagram (en vivo)";
+  if (publishMode === "dry-run") return "Publicar en Instagram (simulación)";
+  return "Publicar en Instagram";
+}
+
+/**
+ * Desde cuándo cuenta el tope de espera de una publicación (spec F3-T18): el más reciente entre su
+ * último cambio y la hora del clic. Reencolar una que ya estaba en `publishing` no cambia
+ * `updatedAt`, y una aprobada hace días no debe cortar la espera.
+ */
+export function waitStart(updatedAt: Date, requestedAt: Date | null): Date {
+  return requestedAt !== null && requestedAt > updatedAt ? requestedAt : updatedAt;
+}
+
+/** El enlace de una publicada, solo si es `https` (viene de la API y va a un `href`). */
+export function safeExternalUrl(url: string | null): string | null {
+  return url?.startsWith("https://") ? url : null;
 }

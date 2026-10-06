@@ -47,6 +47,8 @@ type EditContext = {
   lockReason: string | null;
   onReload: () => void;
   listingStatus: ListingStatus;
+  /** Cualquier preparación en curso (también la de solo imágenes): bloquea aprobar y publicar. */
+  runActive: boolean;
   publications: readonly ListingPublicationView[];
   publishMode: PublishMode | undefined;
 };
@@ -61,14 +63,13 @@ function ApprovableText({
   edit: EditContext;
   children: ReactNode;
 }) {
-  const runActive = edit.lockReason !== null;
   return (
     <>
       <ApprovalBar
         content={content}
         listingId={edit.listingId}
         listingStatus={edit.listingStatus}
-        runActive={runActive}
+        runActive={edit.runActive}
         publications={edit.publications}
       />
       <EditableText
@@ -148,7 +149,7 @@ function InstagramPanel({
           content={content}
           publications={edit.publications.filter((p) => p.platform === "instagram")}
           publishMode={edit.publishMode}
-          runActive={edit.lockReason !== null}
+          runActive={edit.runActive}
         />
       </div>
     </div>

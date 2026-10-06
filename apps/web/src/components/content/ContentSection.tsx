@@ -212,6 +212,7 @@ export function ContentSection({
             lockReason={lockReason}
             onReload={() => void content.refetch()}
             listingStatus={listingStatus}
+            runActive={busy}
             publications={publications.data ?? []}
             publishMode={health.data?.publishMode}
           />

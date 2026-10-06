@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
+import { waitStart } from "../components/publications/publications.js";
 import { contentKeys } from "./content.js";
 import { LISTINGS_GC_MS, LISTINGS_STALE_MS, listingKeys } from "./listings.js";
 import { usePolledRun } from "./run-poll.js";
@@ -57,14 +58,22 @@ export function useListingPublications(listingId: string) {
   });
 }
 
-/** Lo que cambia al terminar o al hacer algo con una publicación: sus listas, el texto y el aviso. */
-function useRefreshAfter(listingId: string) {
+/**
+ * Lo que cambia al terminar o al hacer algo con una publicación: el listado del aviso, las bitácoras
+ * abiertas y el aviso (que pasa a `active` al publicar en vivo). El texto solo cambia al aprobar o
+ * quitar la aprobación (`withContent`). Las consultas de una publicación en curso se renuevan solas
+ * (llevan la versión del listado).
+ */
+function useRefreshAfter(listingId: string, { withContent = false } = {}) {
   const queryClient = useQueryClient();
   return () => {
-    void queryClient.invalidateQueries({ queryKey: publicationKeys.all });
-    void queryClient.invalidateQueries({ queryKey: contentKeys.listing(listingId) });
+    void queryClient.invalidateQueries({ queryKey: publicationKeys.listing(listingId) });
+    void queryClient.invalidateQueries({ queryKey: [...publicationKeys.all, "events"] });
     void queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
     void queryClient.invalidateQueries({ queryKey: listingKeys.lists() });
+    if (withContent) {
+      void queryClient.invalidateQueries({ queryKey: contentKeys.listing(listingId) });
+    }
   };
 }
 
@@ -92,8 +101,7 @@ export function usePublicationPoll(
         )
       ).publication,
     isTerminal: (status) => !isPublishing(status),
-    startedAt: (current) =>
-      requestedAt !== null && requestedAt > current.updatedAt ? requestedAt : current.updatedAt,
+    startedAt: (current) => waitStart(current.updatedAt, requestedAt),
   });
   // biome-ignore lint/correctness/useExhaustiveDependencies: `refresh` es nuevo en cada render; basta con el cambio de `finishedHere`.
   useEffect(() => {
@@ -121,7 +129,7 @@ export function usePublicationEvents(id: string, enabled: boolean) {
 /** `POST /contents/:id/approve` o `/unapprove`. */
 export function useApproval(listingId: string) {
   const client = useApiClient();
-  const refresh = useRefreshAfter(listingId);
+  const refresh = useRefreshAfter(listingId, { withContent: true });
   return useMutation({
     // Devuelve los formatos que no se abrieron (una publicación activa de un texto anterior).
     mutationFn: async ({
