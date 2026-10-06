@@ -1,6 +1,20 @@
-import type { ContentMedia, ContentView, ListingContentResponse } from "@agentsales/api/contracts";
-import { PLATFORM_TEXT, PLATFORMS, type Platform } from "@agentsales/core";
-import { type KeyboardEvent, useRef, useState } from "react";
+import type {
+  ContentMedia,
+  ContentView,
+  ListingContentResponse,
+  ListingPublicationView,
+} from "@agentsales/api/contracts";
+import {
+  type ListingStatus,
+  PLATFORM_TEXT,
+  PLATFORMS,
+  type Platform,
+  type PublishMode,
+} from "@agentsales/core";
+import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
+import { PublicationsPanel } from "../publications/PublicationsPanel.js";
+import { editBlockedReason } from "../publications/publications.js";
+import { ApprovalBar } from "./ApprovalBar.js";
 import { captionPreview } from "./caption.js";
 import { EditableText } from "./TextEditor.js";
 
@@ -24,8 +38,50 @@ function Caption({ content }: { content: ContentView }) {
   );
 }
 
-/** Lo que necesita un texto para poder editarse. */
-type EditContext = { listingId: string; lockReason: string | null; onReload: () => void };
+/**
+ * Lo que necesita un texto para poder editarse, aprobarse y publicarse (F3-T18): las publicaciones
+ * del aviso, el modo de la API, el estado del aviso y si hay una preparación en curso.
+ */
+type EditContext = {
+  listingId: string;
+  lockReason: string | null;
+  onReload: () => void;
+  listingStatus: ListingStatus;
+  publications: readonly ListingPublicationView[];
+  publishMode: PublishMode | undefined;
+};
+
+/** El texto con su aprobación y su edición (bloqueada si tiene publicaciones activas). */
+function ApprovableText({
+  content,
+  edit,
+  children,
+}: {
+  content: ContentView;
+  edit: EditContext;
+  children: ReactNode;
+}) {
+  const runActive = edit.lockReason !== null;
+  return (
+    <>
+      <ApprovalBar
+        content={content}
+        listingId={edit.listingId}
+        listingStatus={edit.listingStatus}
+        runActive={runActive}
+        publications={edit.publications}
+      />
+      <EditableText
+        content={content}
+        listingId={edit.listingId}
+        lockReason={edit.lockReason ?? editBlockedReason(content, edit.publications)}
+        onReload={edit.onReload}
+      >
+        {children}
+      </EditableText>
+    </>
+  );
+}
 
 function InstagramPanel({
   content,
@@ -82,10 +138,18 @@ function InstagramPanel({
         {content === undefined ? (
           <p className="text-sm text-slate-500">Sin texto todavía.</p>
         ) : (
-          <EditableText content={content} {...edit}>
+          <ApprovableText content={content} edit={edit}>
             <Caption content={content} />
-          </EditableText>
+          </ApprovableText>
         )}
+        <PublicationsPanel
+          listingId={edit.listingId}
+          listingStatus={edit.listingStatus}
+          content={content}
+          publications={edit.publications.filter((p) => p.platform === "instagram")}
+          publishMode={edit.publishMode}
+          runActive={edit.lockReason !== null}
+        />
       </div>
     </div>
   );
@@ -107,10 +171,10 @@ function ListingPanel({
       {content === undefined ? (
         <p className="text-sm text-slate-500">Sin texto todavía.</p>
       ) : (
-        <EditableText content={content} {...edit}>
+        <ApprovableText content={content} edit={edit}>
           <h3 className="mt-2 text-lg font-semibold">{content.title}</h3>
           <p className="mt-2 whitespace-pre-line text-sm">{content.body}</p>
-        </EditableText>
+        </ApprovableText>
       )}
       <h3 className="mt-4 text-sm font-semibold text-slate-700">Fotos ({photos.length})</h3>
       <ul className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">

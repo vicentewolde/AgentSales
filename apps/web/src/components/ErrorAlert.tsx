@@ -9,6 +9,8 @@ function hintFor(error: Error): string | null {
     return "Neon puede estar despertando: vuelve a intentar en unos segundos.";
   if (code === "STORAGE_UNAVAILABLE")
     return "Revisa las variables R2_* y corre pnpm storage:check.";
+  if (code === "QUEUE_UNAVAILABLE")
+    return "Arranca el worker (pnpm dev): retoma lo que quedó en curso al arrancar.";
   return null;
 }
 

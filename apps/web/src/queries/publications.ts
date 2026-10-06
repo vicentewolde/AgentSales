@@ -1,0 +1,205 @@
+import {
+  contentApproveResponseSchema,
+  contentUnapproveResponseSchema,
+  listingPublicationsResponseSchema,
+  listingPublishResponseSchema,
+  type PublicationView,
+  publicationEventsResponseSchema,
+  publicationPublishResponseSchema,
+  publicationResponseSchema,
+  publicationRetireResponseSchema,
+  type SkippedPublicationView,
+} from "@agentsales/api/contracts";
+import type { Platform } from "@agentsales/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { unwrap } from "../api/client.js";
+import { useApiClient } from "../api/context.js";
+import { contentKeys } from "./content.js";
+import { LISTINGS_GC_MS, LISTINGS_STALE_MS, listingKeys } from "./listings.js";
+import { usePolledRun } from "./run-poll.js";
+
+export const publicationKeys = {
+  all: ["publications"] as const,
+  listing: (listingId: string) => [...publicationKeys.all, "listing", listingId] as const,
+  /**
+   * Una, en la versión que trajo el listado (`updatedAt`): un reintento hecho desde otra pestaña o la
+   * CLI empieza un sondeo nuevo, en vez de quedarse con el resultado anterior (que, terminado, ya no
+   * se vuelve a pedir). En esta pestaña lo cubre además la invalidación después de cada acción.
+   */
+  one: (id: string, version: number) => [...publicationKeys.all, "one", id, version] as const,
+  events: (id: string) => [...publicationKeys.all, "events", id] as const,
+};
+
+/** Una publicación sigue en curso mientras está en `publishing` (la deja así la API al publicar). */
+export const isPublishing = (status: PublicationView["status"]) => status === "publishing";
+
+/**
+ * `GET /listings/:id/publications`: las publicaciones del aviso, con miniaturas firmadas (solo las
+ * pendientes). Se pide al cargar y después de cada acción; para sondear una, `usePublicationPoll`.
+ */
+export function useListingPublications(listingId: string) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: publicationKeys.listing(listingId),
+    queryFn: async ({ signal }) =>
+      (
+        await unwrap(
+          client.listings[":id"].publications.$get(
+            { param: { id: listingId } },
+            { init: { signal } },
+          ),
+          listingPublicationsResponseSchema,
+        )
+      ).publications,
+    staleTime: LISTINGS_STALE_MS,
+    gcTime: LISTINGS_GC_MS,
+  });
+}
+
+/** Lo que cambia al terminar o al hacer algo con una publicación: sus listas, el texto y el aviso. */
+function useRefreshAfter(listingId: string) {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: publicationKeys.all });
+    void queryClient.invalidateQueries({ queryKey: contentKeys.listing(listingId) });
+    void queryClient.invalidateQueries({ queryKey: listingKeys.detail(listingId) });
+    void queryClient.invalidateQueries({ queryKey: listingKeys.lists() });
+  };
+}
+
+/**
+ * `GET /publications/:id`, sondeada cada 2 s mientras está en `publishing` (`RUN_WAIT`, como una
+ * corrida). El tope de 2 h cuenta desde el más reciente entre `updatedAt` y `requestedAt` (la hora
+ * del clic): reencolar una que ya estaba en `publishing` no cambia `updatedAt` (spec F3-T18). Al
+ * terminar mientras se mira, vuelve a pedir el listado, el texto y el aviso.
+ */
+export function usePublicationPoll(
+  listingId: string,
+  publication: PublicationView,
+  requestedAt: Date | null,
+) {
+  const client = useApiClient();
+  const refresh = useRefreshAfter(listingId);
+  const polled = usePolledRun<PublicationView>({
+    queryKey: publicationKeys.one(publication.id, publication.updatedAt.getTime()),
+    enabled: isPublishing(publication.status),
+    fetch: async (signal) =>
+      (
+        await unwrap(
+          client.publications[":id"].$get({ param: { id: publication.id } }, { init: { signal } }),
+          publicationResponseSchema,
+        )
+      ).publication,
+    isTerminal: (status) => !isPublishing(status),
+    startedAt: (current) =>
+      requestedAt !== null && requestedAt > current.updatedAt ? requestedAt : current.updatedAt,
+  });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `refresh` es nuevo en cada render; basta con el cambio de `finishedHere`.
+  useEffect(() => {
+    if (polled.finishedHere) refresh();
+  }, [polled.finishedHere]);
+  return polled;
+}
+
+/** `GET /publications/:id/events`: la bitácora, solo cuando se abre. */
+export function usePublicationEvents(id: string, enabled: boolean) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: publicationKeys.events(id),
+    enabled,
+    queryFn: async ({ signal }) =>
+      (
+        await unwrap(
+          client.publications[":id"].events.$get({ param: { id } }, { init: { signal } }),
+          publicationEventsResponseSchema,
+        )
+      ).events,
+  });
+}
+
+/** `POST /contents/:id/approve` o `/unapprove`. */
+export function useApproval(listingId: string) {
+  const client = useApiClient();
+  const refresh = useRefreshAfter(listingId);
+  return useMutation({
+    // Devuelve los formatos que no se abrieron (una publicación activa de un texto anterior).
+    mutationFn: async ({
+      contentId,
+      approve,
+    }: {
+      contentId: string;
+      approve: boolean;
+    }): Promise<{ skipped: SkippedPublicationView[] }> => {
+      if (!approve) {
+        await unwrap(
+          client.contents[":id"].unapprove.$post({ param: { id: contentId } }),
+          contentUnapproveResponseSchema,
+        );
+        return { skipped: [] };
+      }
+      const { skipped } = await unwrap(
+        client.contents[":id"].approve.$post({ param: { id: contentId } }),
+        contentApproveResponseSchema,
+      );
+      return { skipped };
+    },
+    onSettled: refresh,
+  });
+}
+
+/** `POST /listings/:id/publish`: el canal; el modo lo pone la API (`PUBLISH_MODE`). */
+export function usePublishListing(listingId: string) {
+  const client = useApiClient();
+  const refresh = useRefreshAfter(listingId);
+  return useMutation({
+    mutationFn: (platform: Platform) =>
+      unwrap(
+        client.listings[":id"].publish.$post({ param: { id: listingId }, json: { platform } }),
+        listingPublishResponseSchema,
+      ),
+    onSettled: refresh,
+  });
+}
+
+export type PublicationAction =
+  | { kind: "publish"; id: string }
+  | { kind: "cancel"; id: string }
+  | { kind: "retire"; id: string; removedByHand: boolean };
+
+/** Publicar o reintentar una, descartarla o marcarla como retirada. */
+export function usePublicationAction(listingId: string) {
+  const client = useApiClient();
+  const refresh = useRefreshAfter(listingId);
+  return useMutation({
+    mutationFn: async (action: PublicationAction) => {
+      const param = { id: action.id };
+      if (action.kind === "publish") {
+        return (
+          await unwrap(
+            client.publications[":id"].publish.$post({ param }),
+            publicationPublishResponseSchema,
+          )
+        ).publication;
+      }
+      if (action.kind === "cancel") {
+        return (
+          await unwrap(
+            client.publications[":id"].cancel.$post({ param }),
+            publicationResponseSchema,
+          )
+        ).publication;
+      }
+      return (
+        await unwrap(
+          client.publications[":id"].retire.$post({
+            param,
+            json: action.removedByHand ? { removedByHand: true } : {},
+          }),
+          publicationRetireResponseSchema,
+        )
+      ).publication;
+    },
+    onSettled: refresh,
+  });
+}
