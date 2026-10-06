@@ -2,7 +2,7 @@
 
 Base de datos: Postgres en Neon (plan gratis, conexión directa). Esquema en `packages/db` con Drizzle; este documento es la referencia conceptual. Si difieren, **manda el código** y este documento se actualiza en la misma tarea.
 
-Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()`; `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `publication_format`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`, `import_run_status`, `content_run_status`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). `updated_at` lo fija la base (`now()`, la hora de inicio de la transacción) al crear y en cada `update` de Drizzle (`$onUpdate`); un SQL crudo o un `onConflictDoUpdate` lo fija explícitamente (como `seed.ts`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.status = queued`, `import_runs.dry_run = false`, `content_runs.status = queued`, `content_runs.texts = true`, `import_runs.rows_* = 0`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload` e `input` empiezan vacíos, e `import_runs.report`, `content_runs.report` y `publications.progress` empiezan en `null`. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES` (solo `approved`, ADR-0014).
+Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()` (salvo `platform_catalog`, que usa la llave `(platform, key)`); `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `publication_format`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`, `import_run_status`, `content_run_status`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`). `updated_at` lo fija la base (`now()`, la hora de inicio de la transacción) al crear y en cada `update` de Drizzle (`$onUpdate`); un SQL crudo o un `onConflictDoUpdate` lo fija explícitamente (como `seed.ts`). Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications`. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.status = queued`, `import_runs.dry_run = false`, `content_runs.status = queued`, `content_runs.texts = true`, `import_runs.rows_* = 0`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload` e `input` empiezan vacíos, e `import_runs.report`, `content_runs.report`, `publications.progress`, `publications.remote_state` y `publications.listing_source_hash` empiezan en `null`. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES` (solo `approved`, ADR-0014).
 
 ## Diagrama
 
@@ -46,10 +46,10 @@ erDiagram
 | platform | enum `platform` | `instagram`, `portal_inmobiliario`, `fb_marketplace` (luego `yapo`, `tiktok`) |
 | external_account_id | text | ID en la plataforma (Instagram: el `user_id` de `/me`). No cambia en una fila: es parte del único y de la AAD del cifrado |
 | display_name | text | Lo que ve el operador (Instagram: `@usuario`) |
-| credentials_encrypted | text null | `{ accessToken }` cifrado con AES-256-GCM (`v1.<iv>.<cifrado>.<tag>`, AAD `platform:broker_id:external_account_id`); `null` en una cuenta desconectada |
-| token_expires_at | timestamptz null | |
+| credentials_encrypted | text null | `{ accessToken, refreshToken? }` cifrado con AES-256-GCM (`v1.<iv>.<cifrado>.<tag>`, AAD `platform:broker_id:external_account_id`); `null` en una cuenta desconectada. `refreshToken` solo en Mercado Libre (ADR-0015) |
+| token_expires_at | timestamptz null | Cuándo la cuenta deja de funcionar sin que el operador haga algo. Instagram: el vencimiento del token largo. Mercado Libre: el horizonte estimado del `refresh_token` (último refresco + 6 meses); el del `access_token` (horas) va en `meta.accessTokenExpiresAt` (ADR-0015) |
 | status | enum `platform_account_status` | `connected`, `expired`, `revoked`, `error` |
-| meta | jsonb | Datos propios de la plataforma, sin secretos. Instagram (`instagramAccountMetaSchema`, F3-T13): `accountType`, `permissions` (`null` si se conectó con el token del panel: desconocidos), `connectedAt`, `tokenRefreshedAt` (`null` hasta el primer refresco con ese token) y `tokenExpiryEstimated` |
+| meta | jsonb | Datos propios de la plataforma, sin secretos. Instagram (`instagramAccountMetaSchema`, F3-T13): `accountType`, `permissions` (`null` si se conectó con el token del panel: desconocidos), `connectedAt`, `tokenRefreshedAt` (`null` hasta el primer refresco con ese token) y `tokenExpiryEstimated`. Mercado Libre (`mercadoLibreAccountMetaSchema`, F4-T01): `userId`, `nickname`, `siteId` (`MLC`), `userType`, `scopes`, `testUser`, `connectedAt`, `tokenRefreshedAt`, `accessTokenExpiresAt` y `tokenExpiryEstimated` |
 
 Único: `(broker_id, platform, external_account_id)`. Además, **una sola cuenta conectada por corredor y plataforma**: la impone `connectAccount` (al conectar otra, la anterior pasa a `revoked` en la misma transacción, con el corredor bloqueado), no un índice de la base (F3-T13). Entidad en core: `platformAccountSchema` (sin credenciales, con `hasCredentials`); las credenciales salen descifradas solo por `PlatformAccountRepository.getCredentials` (F3-T03).
 
@@ -169,9 +169,23 @@ Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `medi
 | attempts | int default 0 | Veces que se pidió publicarla (cada paso a `publishing`, F3-T10); los reintentos automáticos de la cola no lo suben |
 | last_error | jsonb null | `{ code, message, retriable }` |
 | dry_run | boolean | Modo del último intento: nace en `true` (el valor seguro) y la API lo fija al pasar a `publishing` (obligatorio); el worker lo respeta (spec F3 D11) |
-| progress | jsonb null | Lo que el publisher ya creó en la plataforma, para retomar sin publicar dos veces. Instagram: `{ attemptStartedAt, childIds, containerId, publishRequestedAt? }` (`instagramProgressSchema`); se valida con el esquema de su plataforma |
+| progress | jsonb null | Lo que el publisher ya creó en la plataforma, para retomar sin publicar dos veces. Instagram: `{ attemptStartedAt, childIds, containerId, publishRequestedAt? }` (`instagramProgressSchema`); Portal: `{ pictureIds, sellerContact?, createRequestedAt?, itemId?, descriptionDone?, addressHidden? }` (`portalProgressSchema`, F4-T01); se valida con el esquema de su plataforma |
+| remote_state | jsonb null | Lo último que informó la plataforma (`remoteStateSchema`, ADR-0015): `status` y `subStatus` tal cual, `stopTime`, `expirationTime`, `reason?` y `checkedAt`. `null` hasta el primer dato y en Instagram. Lo escribe `setRemoteState` (con su evento `sync`) o una transición (`changes.remoteState`) |
+| listing_source_hash | text null | `source_hash` del aviso al nacer la publicación (ADR-0015, spec F4 §4.6): las plataformas que envían datos del aviso (Portal) no publican si cambió. `null` en las anteriores a la migración `0007` |
 
 Único parcial `publications_one_active_per_format`: una publicación activa por `(listing_id, platform_account_id, format)`, con `WHERE status NOT IN ('unpublished', 'cancelled')` (los estados de `ACTIVE_PUBLICATION_STATUSES` en `core`): el carrusel y el reel de un aviso conviven. Índice `(listing_id)`. La migración `0006` (F3-T01) recreó el tipo `publication_status` con el SQL ajustado a mano (primero el índice viejo, después el tipo) y falla a propósito si la tabla tiene filas.
+
+### platform_catalog — catálogo de las plataformas (ADR-0015, F4-T01)
+Datos públicos que solo se leen con token y cambian con el tiempo: en Mercado Libre, categorías (con sus hijas y `settings`), atributos de una hoja y ubicaciones de Chile. Se bajan a pedido y vencen a los 7 días. Sin secretos ni datos del corredor. Entidad en core: `platformCatalogEntrySchema`.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| platform | enum `platform` | Parte de la llave |
+| key | text | `category:<id>`, `attributes:<hoja>` o `location:<id>`. Parte de la llave |
+| data | jsonb | Lo que respondió la plataforma, tal cual |
+| fetched_at | timestamptz | Cuándo se bajó: con más de 7 días se vuelve a pedir |
+
+Llave primaria `(platform, key)` (migración `0007`); no tiene `id`.
 
 ### publication_events — bitácora
 | Columna | Tipo | Notas |
@@ -181,7 +195,7 @@ Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `medi
 | type | text | `status_changed`, `publish_attempt`, `sync`, `manual_edit` (`PUBLICATION_EVENT_TYPES`) |
 | from_status, to_status | text null | `from_status` es `null` al nacer la publicación |
 | actor | text | `system`, `operator`, `cli` (`PUBLICATION_ACTORS`) |
-| payload | jsonb | Sin secretos. En `publish_attempt` (F3-T11), `publishAttemptPayloadSchema`: `mode`, `attempt` (= `publications.attempts`), `retry` (reintento de la cola), `result` (`published`, `retry` o `failed`), `error?` y `sent?` (lo enviado: formato, caption, rutas de R2 y medidas de los medios, y la cuenta; nunca URLs firmadas ni tokens) |
+| payload | jsonb | Sin secretos. En `sync` (F4), `syncPayloadSchema`: `{ remote }`, lo leído de la plataforma. En `publish_attempt` (F3-T11), `publishAttemptPayloadSchema`: `mode`, `attempt` (= `publications.attempts`), `retry` (reintento de la cola), `result` (`published`, `retry` o `failed`), `error?` y `sent?` (lo enviado: formato, caption, rutas de R2 y medidas de los medios, y la cuenta; nunca URLs firmadas ni tokens) |
 | created_at | timestamptz | |
 
 Índice `(publication_id, created_at)` para la bitácora de una publicación. `created_at` de los eventos y de las publicaciones se escribe con `clock_timestamp()` (no `now()`), para que el orden se mantenga dentro de una transacción. Entidad en core: `publicationEventSchema`.

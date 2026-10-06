@@ -224,10 +224,10 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Archivos:** `packages/core/src/{platform-account.ts,publication.ts,platform-catalog.ts}`, `packages/core/src/portal/progress.ts`, `packages/db/src/schema.ts`, `packages/db/drizzle/0007_*.sql`, `packages/db/src/repositories/publications.ts` (`setRemoteState`, `listing_source_hash` al crear), el doble de publicaciones, `docs/02-modelo-datos.md`
 - **Descripción:** `platform_catalog`, `publications.remote_state` y `publications.listing_source_hash`; `PlatformCredentials` con `refreshToken` opcional; `mercadoLibreAccountMetaSchema`, `portalProgressSchema`, `remoteStateSchema` y `syncPayloadSchema`; `MERCADOLIBRE_SITE_ID`.
 - **Hecho cuando:**
-  - [ ] La migración se aplica en PGlite y `pnpm db:generate` no genera nada después
-  - [ ] Tests de los esquemas (las credenciales de Instagram siguen válidas sin `refreshToken`) y de `setRemoteState` en los dos repositorios
-  - [ ] Probada en Neon con `BEGIN … ROLLBACK` antes del merge y aplicada justo después
-  - [ ] Doc 02 al día (tablas, `token_expires_at` de Mercado Libre y `credentials_encrypted`)
+  - [x] La migración se aplica en PGlite y `pnpm db:generate` no genera nada después
+  - [x] Tests de los esquemas (las credenciales de Instagram siguen válidas sin `refreshToken`) y de `setRemoteState` en los dos repositorios
+  - [ ] Probada en Neon con `BEGIN … ROLLBACK` antes del merge (2026-10-06: tabla y columnas creadas, las 5 publicaciones existentes con las columnas nuevas en `null`, sin dejar cambios) y aplicada justo después
+  - [x] Doc 02 al día (tablas, `token_expires_at` de Mercado Libre y `credentials_encrypted`)
 
 ### F4-T02 · Variables de Mercado Libre y redactor
 - **Depende de:** —
@@ -472,3 +472,4 @@ Respondidas por el operador el 2026-10-06:
 | 2026-10-06 | Respuestas del operador: `dry-run` valida contra Mercado Libre sin publicar (D2), el WhatsApp del corredor de pruebas (D5) y la demo con su cuenta real y un paquete pagado (D6) |
 | 2026-10-06 | Revisión del `arquitecto`: el input lleva el aviso y el contacto, y la publicación fija la versión del aviso (`listing_source_hash`, §4.6); `validate` sigue pura y lo que necesita el catálogo va en `publish` y en `preflight` (ADR-0016 aparte); `token_expires_at` de Mercado Libre es el horizonte del `refresh_token` y el del `access_token` va en `meta`, con política de refresco por plataforma; candado de credenciales con `FOR NO KEY UPDATE`, `lock_timeout` y nunca anidado con el del aviso, y topes de 10 s en la API; el sync no deshace lo del operador; `PUBLISH_MODE_MISMATCH` en las operaciones; `seller_contact` guardado en el progreso; nunca repetir `POST /items`; 508/509 y el límite de fotos; tabla de campos en core; sin `ML_SITE_ID`, sin `portal catalog`; `state` con la plataforma y ruta propia para conectar; URI en el puerto 443; `ml:smoke` partido (T10 y T23) y declarado como que escribe en la base; T04, T06, T11 y T16 partidas; tarea nueva de core (T16); 24 tareas |
 | 2026-10-06 | Spec **aprobado** (aprobación permanente del operador). ADR-0015 y ADR-0016 aceptados; seguimientos en ADR-0005 y ADR-0014; `03-plataformas.md`, `06-roadmap.md`, `07-checklist-cuentas.md` y `docs/ESTADO.md` al día |
+| 2026-10-06 | Desde F4-T01: `remoteStateSchema` acepta fechas con zona horaria (`stop_time` de Mercado Libre) y un `reason` opcional; `checkRemoteState` (`PUBLICATION_REMOTE_STATE_INVALID`); `syncPayloadSchema` = `{ remote }` (el cambio de estado va en su propio `status_changed`); `setRemoteState(id, remoteState, event?)` guarda en cualquier estado; `NewPublication.listingSourceHash` es opcional hasta T16; `portalSellerContactSchema` con el WhatsApp solo en dígitos; la llave de `platform_catalog` acepta `=` (ids de ubicación en base64) y `data` es JSON |

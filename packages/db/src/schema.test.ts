@@ -50,6 +50,7 @@ const EXPECTED_TABLES = [
   "listings",
   "media",
   "platform_accounts",
+  "platform_catalog",
   "publication_events",
   "publications",
 ];
@@ -86,7 +87,7 @@ describe("migraciones", () => {
     expect(sqlEnums(sql)).toEqual(EXPECTED_ENUMS);
   });
 
-  it("crean las 10 tablas del modelo de datos", () => {
+  it("crean las 11 tablas del modelo de datos", () => {
     const tables = [...sql.matchAll(/CREATE TABLE "(\w+)"/g)].map((match) => match[1]).sort();
 
     expect(tables).toEqual(EXPECTED_TABLES);
@@ -99,6 +100,14 @@ describe("migraciones", () => {
       `CREATE UNIQUE INDEX "publications_one_active_per_format" ON "publications" USING btree ("listing_id","platform_account_id","format") WHERE "status" NOT IN (${terminals});`,
     );
     expect(sql).toContain(`DROP INDEX "publications_one_active_per_account";`);
+  });
+
+  it("el catálogo tiene una entrada por plataforma y clave, y las publicaciones su estado remoto (0007)", () => {
+    expect(sql).toContain(
+      `CONSTRAINT "platform_catalog_platform_key_pk" PRIMARY KEY("platform","key")`,
+    );
+    expect(sql).toContain(`ALTER TABLE "publications" ADD COLUMN "remote_state" jsonb;`);
+    expect(sql).toContain(`ALTER TABLE "publications" ADD COLUMN "listing_source_hash" text;`);
   });
 
   it("mantienen las llaves de la importación idempotente y del seed", () => {

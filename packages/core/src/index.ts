@@ -138,12 +138,25 @@ export {
   INSTAGRAM_PUBLISH_SCOPE,
   type InstagramAccountMeta,
   instagramAccountMetaSchema,
+  MERCADOLIBRE_SITE_ID,
+  type MercadoLibreAccountMeta,
+  mercadoLibreAccountMetaSchema,
   normalizeAccountMeta,
   type PlatformAccount,
   type PlatformCredentials,
   platformAccountSchema,
   platformCredentialsSchema,
 } from "./platform-account.js";
+export {
+  type PlatformCatalogEntry,
+  platformCatalogEntrySchema,
+} from "./platform-catalog.js";
+export {
+  type PortalProgress,
+  type PortalSellerContact,
+  portalProgressSchema,
+  portalSellerContactSchema,
+} from "./portal/progress.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export {
   type ContentChanges,
@@ -250,6 +263,7 @@ export {
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   checkPublicationProgress,
+  checkRemoteState,
   hasStartedLive,
   type InstagramProgress,
   instagramProgressSchema,
@@ -271,7 +285,11 @@ export {
   publicationSchema,
   publishAttemptPayloadSchema,
   publishAttemptRecordSchema,
+  type RemoteState,
+  remoteStateSchema,
   requirePublicationMode,
+  type SyncPayload,
+  syncPayloadSchema,
 } from "./publication.js";
 export {
   ACTIVE_PUBLICATION_STATUSES,

@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-06
 **Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 24 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`), salvo la demo del refresco y el tag
-**Última tarea:** `/fase-plan 4` (spec F4 aprobado, ADR-0015 y ADR-0016). Antes, F3-T20 (cierre de F3), al que le faltan el refresco y el tag
-**Siguiente paso:** `/tarea F4-T01` (esquema y entidades, migración `0007`); T02 y T12 también pueden empezar. Desde el **2026-10-07 a las 16:31 (hora de Chile)**, la demo del refresco del token de Instagram (spec F3 §7, paso 7) y, con tu permiso, el tag `v0.3.0`
+**Última tarea:** F4-T01 · Esquema y entidades (migración `0007`). Antes, `/fase-plan 4` y F3-T20 (cierre de F3), al que le faltan el refresco y el tag
+**Siguiente paso:** `/tarea F4-T02` (variables de Mercado Libre y redactor); T12 y T13 también pueden empezar. Desde el **2026-10-07 a las 16:31 (hora de Chile)**, la demo del refresco del token de Instagram (spec F3 §7, paso 7) y, con tu permiso, el tag `v0.3.0`
 
 ## Pendiente del cierre de F3
 - [ ] **Refresco del token (demo):** la cuenta se conectó el 2026-10-06 a las 16:31 y el refresco exige 24 h (`--force` solo salta el tope de 30 días). Desde esa hora, `pnpm -s cli accounts refresh <id> --force` con la API corriendo, o el primer `pnpm dev` (el worker lo hace al arrancar, porque el vencimiento es estimado). Se ve en `pnpm -s cli accounts`: última renovación y el vencimiento real. Anotar el resultado en la nota de Instagram (§8, punto 4) y marcar el criterio de §6
@@ -16,7 +16,7 @@
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F4 (`/fase-plan 4`) | ✅ aprobado | |
-| F4-T01 · Esquema y entidades (migración `0007`) | ⏳ pendiente | |
+| F4-T01 · Esquema y entidades (migración `0007`) | ✅ terminada | |
 | F4-T02 · Variables de Mercado Libre y redactor | ⏳ pendiente | |
 | F4-T03 · Cliente: OAuth, usuario y errores | ⏳ pendiente | |
 | F4-T04 · Cliente: ítems y fotos | ⏳ pendiente | |
@@ -91,6 +91,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-06: **F4-T01.** Migración `0007`: tabla `platform_catalog` (catálogo de Mercado Libre, llave `(platform, key)`) y, en `publications`, `remote_state` (lo que informa la plataforma) y `listing_source_hash` (la versión del aviso al nacer). Las credenciales aceptan `refreshToken`; esquemas de la cuenta de Mercado Libre, del progreso de Portal (con el WhatsApp en dígitos), del estado remoto y del evento `sync`; `setRemoteState` en los dos repositorios. Probada en Neon con `BEGIN … ROLLBACK` (las 5 publicaciones existentes quedan con las columnas nuevas en `null`); se aplica justo después del merge. Mutaciones a mano en `setRemoteState`, `listingSourceHash` y el WhatsApp: las pruebas las detectan.
 - 2026-10-06: **`/fase-plan 4`.** La doc de Mercado Libre no se deja leer por WebFetch ni curl (403), y la API exige token también para leer categorías; se leyó con el navegador integrado (34 páginas) y la nota `docs/integraciones/mercadolibre.md` quedó verificada. Hallazgos: WhatsApp obligatorio en cada aviso desde el 01/10/2026, paquete `silver` pagado sin sandbox, `refresh_token` de un solo uso, `POST /items/validate` sin efectos, vigencia de 45 días en arriendo y 180 en venta. Spec F4 aprobado con 24 tareas, revisado por el `arquitecto` (datos del aviso fijos, dos vencimientos de la cuenta, candado de credenciales sin anidar, sync que no deshace lo del operador, modo en las operaciones). ADR-0015 y ADR-0016 aceptados; roadmap, plataformas, checklist y `CLAUDE.md` al día.
 - 2026-10-06: **Cierre de F3 (T20).** Demo en simulación hecha por Claude en el panel (aprobar P002, `PUBLICATION_PENDING`, `CONTENT_LOCKED`, publicar, bitácora y retirar) y en la CLI (P001). **Prueba en `live` con tu instrucción:** P002 salió en @vicentewoldec (carrusel de 5 imágenes en cerca de 1 min y reel en cerca de 2, con URLs prefirmadas de R2 y sus enlaces guardados); la borraste a mano, se marcó como retirada y P002 volvió a "Lista". Se usó `PUBLISH_MODE=live pnpm dev`, sin tocar `.env`, y después todo quedó apagado. El worker no tocó el token (`skipped: 1`). Auditoría del `arquitecto`: el código calza con el spec; se pusieron al día README, guía del operador, convenciones, plataformas, roadmap (deuda de F3 en F6 y F7), arquitectura, modelo de datos, la nota de Instagram, ADR-0007 y ADR-0011, y el CHANGELOG `[0.3.0]`. Falta la demo del refresco (desde el 2026-10-07 a las 16:31 (hora de Chile)) y el tag.
 - 2026-10-06: **Smoke de Instagram corrido** (con tu instrucción): la cuenta @vicentewoldec quedó conectada a `agentsales-pruebas` con el token de Generate token (vence el 2026-12-05, estimado), y `pnpm ig:smoke` dio `✓`: Instagram descargó la portada de P001 desde la URL firmada de R2 al instante, sin publicar. Solo corrió la API (en `dry-run`), sin el worker, y quedó apagada. Anotado en ADR-0007, la nota de Instagram y la checklist. Falta verificar el reel (`video_url`) en la prueba en `live`.

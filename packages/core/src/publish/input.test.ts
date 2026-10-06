@@ -75,6 +75,8 @@ function publication(overrides: Partial<Publication> = {}): Publication {
     lastError: null,
     dryRun: true,
     progress: null,
+    remoteState: null,
+    listingSourceHash: null,
     createdAt: at,
     updatedAt: at,
     ...overrides,

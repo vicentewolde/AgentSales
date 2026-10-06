@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { canPublishListing } from "./listing.js";
 import {
   checkPublicationProgress,
+  checkRemoteState,
   hasStartedLive,
   publicationEventSchema,
   publicationSchema,
+  remoteStateSchema,
+  syncPayloadSchema,
 } from "./publication.js";
 
 const base = {
@@ -24,6 +27,8 @@ const base = {
   lastError: null,
   dryRun: true,
   progress: null,
+  remoteState: null,
+  listingSourceHash: null,
   createdAt: new Date("2026-10-05T12:00:00Z"),
   updatedAt: new Date("2026-10-05T12:00:00Z"),
 } as const;
@@ -141,5 +146,61 @@ describe("hasStartedLive y canPublishListing", () => {
     for (const status of ["draft", "paused", "closed", "archived"] as const) {
       expect(canPublishListing(status)).toBe(false);
     }
+  });
+});
+
+describe("estado remoto (F4, ADR-0015)", () => {
+  const remote = {
+    status: "active",
+    subStatus: [],
+    stopTime: "2026-11-20T04:00:00.000-03:00",
+    expirationTime: "2026-12-01T00:00:00.000Z",
+    reason: null,
+    checkedAt: "2026-10-06T12:00:00.000Z",
+  };
+
+  it("acepta lo que informa Mercado Libre (con zona horaria) y el motivo es opcional", () => {
+    expect(remoteStateSchema.parse(remote)).toEqual(remote);
+    const { reason: _, ...sinMotivo } = remote;
+    expect(remoteStateSchema.safeParse(sinMotivo).success).toBe(true);
+    expect(syncPayloadSchema.parse({ remote })).toEqual({ remote });
+  });
+
+  it("checkRemoteState deja pasar null y rechaza lo que no calza", () => {
+    expect(checkRemoteState(null)).toBeNull();
+    expect(checkRemoteState(remote)).toEqual(remote);
+    for (const invalid of [
+      { ...remote, status: "" },
+      { ...remote, checkedAt: "ayer" },
+      { ...remote, subStatus: "paused" },
+      "active",
+    ]) {
+      expect(() => checkRemoteState(invalid)).toThrow(
+        expect.objectContaining({ code: "PUBLICATION_REMOTE_STATE_INVALID" }),
+      );
+    }
+  });
+
+  it("la publicación lleva el estado remoto y la versión del aviso", () => {
+    const publication = { ...base, remoteState: remote, listingSourceHash: "hash" };
+    expect(publicationSchema.parse(publication)).toMatchObject({
+      remoteState: remote,
+      listingSourceHash: "hash",
+    });
+    expect(
+      publicationSchema.safeParse({ ...base, remoteState: { status: "active" } }).success,
+    ).toBe(false);
+  });
+
+  it("el progreso de Portal se valida con su esquema", () => {
+    const portal = { pictureIds: ["f1"], itemId: "MLC1" };
+    expect(checkPublicationProgress("portal_inmobiliario", portal)).toEqual(portal);
+    expect(() => checkPublicationProgress("portal_inmobiliario", { itemId: "MLC1" })).toThrow(
+      expect.objectContaining({ code: "PUBLICATION_PROGRESS_INVALID" }),
+    );
+    // Marketplace aún no publica: no tiene esquema.
+    expect(() => checkPublicationProgress("fb_marketplace", portal)).toThrow(
+      expect.objectContaining({ code: "PUBLICATION_PROGRESS_INVALID" }),
+    );
   });
 });

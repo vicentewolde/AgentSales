@@ -5,6 +5,7 @@ import type {
   PublicationError,
   PublicationEvent,
   PublicationEventType,
+  RemoteState,
 } from "../publication.js";
 
 /** Una publicación que nace (ADR-0014): siempre en `approved`, con su texto y sus medios fijos. */
@@ -15,6 +16,11 @@ export type NewPublication = {
   format: PublicationFormat;
   contentId: string;
   mediaIds: readonly string[];
+  /**
+   * `source_hash` del aviso al nacer (ADR-0015, spec F4 §4.6). Opcional hasta que quien abre las
+   * publicaciones lo pase (F4-T16); sin él queda `null`.
+   */
+  listingSourceHash?: string | null;
 };
 
 /** Quién causó un cambio y qué se anota en la bitácora (sin secretos: se guarda tal cual). */
@@ -35,6 +41,8 @@ export type PublicationChanges = {
   lastError?: PublicationError | null;
   /** Se valida con el esquema de su plataforma (`PUBLICATION_PROGRESS_SCHEMAS`). */
   progress?: unknown;
+  /** Lo que informó la plataforma con el cambio (`remoteStateSchema`); `null` lo borra. */
+  remoteState?: RemoteState | null;
 };
 
 /** Un evento suelto de la bitácora (por ejemplo, `publish_attempt`), sin cambio de estado. */
@@ -53,8 +61,9 @@ export type NewPublicationEvent = PublicationEventInput & {
  *   `INVALID_TRANSITION` (sin escribir nada);
  * - pasar a `publishing` sin `changes.dryRun` → `PUBLICATION_MODE_REQUIRED` (el modo siempre se
  *   fija en ese paso, spec F3 §4.3 y D11);
- * - un `progress` que no calza con el esquema de su plataforma → `PUBLICATION_PROGRESS_INVALID`, y
- *   un `payload` de evento que no es objeto → `PUBLICATION_EVENT_INVALID`;
+ * - un `progress` que no calza con el esquema de su plataforma → `PUBLICATION_PROGRESS_INVALID`, un
+ *   `remoteState` que no calza → `PUBLICATION_REMOTE_STATE_INVALID`, y un `payload` de evento que
+ *   no es objeto → `PUBLICATION_EVENT_INVALID`;
  * - `saveProgress` fuera de `publishing` → `PUBLICATION_NOT_PUBLISHING`;
  * - una fila que no calza con la entidad → `PUBLICATION_ROW_INVALID` (o `PUBLICATION_EVENT_ROW_INVALID`);
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
@@ -86,6 +95,15 @@ export interface PublicationRepository {
    * Solo con la publicación en `publishing`; `null` lo borra.
    */
   saveProgress(id: string, progress: unknown): Promise<Publication>;
+  /**
+   * Guarda lo que informó la plataforma sin cambiar el estado (ADR-0015, spec F4 §4.9), en
+   * cualquier estado, y opcionalmente su evento (`sync`) en la misma transacción. `null` lo borra.
+   */
+  setRemoteState(
+    id: string,
+    remoteState: RemoteState | null,
+    event?: NewPublicationEvent,
+  ): Promise<Publication>;
   /** Anota un evento sin cambiar el estado (`publish_attempt`, `sync`, `manual_edit`). */
   addEvent(publicationId: string, event: NewPublicationEvent): Promise<PublicationEvent>;
   /** La bitácora de una publicación, de la más antigua a la más reciente. */

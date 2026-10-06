@@ -115,6 +115,19 @@ describe("cuentas conectadas · cifrado en la base (PGlite)", () => {
     expect(JSON.stringify(row)).not.toContain(input.credentials.accessToken);
   });
 
+  it("la columna tampoco guarda el token de renovar de Mercado Libre", async () => {
+    const input = connectedAccount(brokerId, {
+      platform: "portal_inmobiliario",
+      credentials: { accessToken: "APP_USR-crudo-1", refreshToken: "TG-crudo-1" },
+    });
+    const account = await repos.accounts.upsertConnected(input);
+    const row = await rawRow(account.id);
+
+    expect(row?.credentialsEncrypted).toMatch(/^v1\./);
+    expect(JSON.stringify(row)).not.toContain("TG-crudo-1");
+    expect(JSON.stringify(row)).not.toContain("APP_USR-crudo-1");
+  });
+
   it("un cifrado copiado a otra cuenta no se descifra (AAD): CREDENTIALS_UNREADABLE", async () => {
     const first = await repos.accounts.upsertConnected(connectedAccount(brokerId));
     const second = await repos.accounts.upsertConnected(connectedAccount(brokerId));

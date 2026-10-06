@@ -9,6 +9,7 @@ import {
   type PublicationStatus,
 } from "./enums.js";
 import { AppError } from "./errors.js";
+import { portalProgressSchema } from "./portal/progress.js";
 
 /**
  * Lo que el publisher de Instagram ya creó en la plataforma (`publications.progress`, ADR-0014):
@@ -33,6 +34,7 @@ export type InstagramProgress = z.infer<typeof instagramProgressSchema>;
 /** Esquema del progreso de cada plataforma; las que aún no publican no tienen. */
 export const PUBLICATION_PROGRESS_SCHEMAS = {
   instagram: instagramProgressSchema,
+  portal_inmobiliario: portalProgressSchema,
 } as const satisfies Readonly<Partial<Record<Platform, z.ZodType>>>;
 
 /**
@@ -53,6 +55,49 @@ export function checkPublicationProgress(platform: Platform, progress: unknown):
   }
   return parsed.data;
 }
+
+/**
+ * Lo último que informó la plataforma sobre lo publicado (`publications.remote_state`, ADR-0015):
+ * su estado y subestado tal cual (Mercado Libre: `active`, `paused`, `under_review`, `closed`…),
+ * cuándo vence y cuándo se consultó. No es el estado de la publicación (que es nuestro): el sync
+ * (spec F4 §4.9) lo usa para ajustarlo y el panel para mostrar "procesando fotos" o "en revisión".
+ * Es jsonb: las fechas van como texto ISO. Sin secretos.
+ */
+export const remoteStateSchema = z.object({
+  status: z.string().min(1),
+  subStatus: z.array(z.string()),
+  /** Fin de la vigencia del aviso en la plataforma (Mercado Libre: `stop_time`). */
+  stopTime: z.iso.datetime({ offset: true }).nullable(),
+  /** Vencimiento de lo que lo cubre (Mercado Libre: `expiration_time`, el del paquete). */
+  expirationTime: z.iso.datetime({ offset: true }).nullable(),
+  /** Motivo de una pausa o revisión de la plataforma, si se conoce (en español, sin datos del aviso). */
+  reason: z.string().nullable().optional(),
+  checkedAt: z.iso.datetime(),
+});
+export type RemoteState = z.infer<typeof remoteStateSchema>;
+
+/**
+ * Valida el estado remoto antes de guardarlo (`PublicationRepository`): `null` lo borra.
+ * `PUBLICATION_REMOTE_STATE_INVALID` (no reintentable) si no calza.
+ */
+export function checkRemoteState(remoteState: unknown): RemoteState | null {
+  if (remoteState === null) return null;
+  const parsed = remoteStateSchema.safeParse(remoteState);
+  if (!parsed.success) {
+    throw new AppError(
+      "PUBLICATION_REMOTE_STATE_INVALID",
+      "El estado informado por la plataforma no es válido",
+    );
+  }
+  return parsed.data;
+}
+
+/**
+ * `payload` de un evento `sync` (spec F4 §4.9): lo que se leyó de la plataforma. Si el sync
+ * cambió el estado, ese cambio va en su propio `status_changed`.
+ */
+export const syncPayloadSchema = z.object({ remote: remoteStateSchema });
+export type SyncPayload = z.infer<typeof syncPayloadSchema>;
 
 /**
  * `payload` de un evento tal como queda guardado (jsonb): un objeto JSON. `PUBLICATION_EVENT_INVALID`
@@ -118,6 +163,13 @@ export const publicationSchema = z
     /** Modo con que se pidió el último intento: lo respeta el worker (spec F3 §4.3, D11). */
     dryRun: z.boolean(),
     progress: z.unknown().nullable(),
+    /** Lo último que informó la plataforma (ADR-0015); `null` hasta el primer dato y en Instagram. */
+    remoteState: remoteStateSchema.nullable(),
+    /**
+     * `source_hash` del aviso al nacer (ADR-0015, spec F4 §4.6): las plataformas que envían datos
+     * del aviso no publican si cambió. `null` en las anteriores a la migración `0007`.
+     */
+    listingSourceHash: z.string().nullable(),
     createdAt: z.date(),
     updatedAt: z.date(),
   })

@@ -13,6 +13,21 @@ export type PublicationRepositories = {
   missingId: string;
 };
 
+const remote = {
+  status: "paused",
+  subStatus: ["picture_download_pending"],
+  stopTime: "2026-11-20T04:00:00.000Z",
+  expirationTime: null,
+  checkedAt: "2026-10-06T12:00:00.000Z",
+};
+
+const portalProgress = {
+  pictureIds: ["foto-1", "foto-2"],
+  sellerContact: { contact: "Vinny", email: null, countryCode2: "56", phone2: "912345678" },
+  createRequestedAt: "2026-10-06T12:00:00.000Z",
+  itemId: "MLC123",
+};
+
 const progress = {
   attemptStartedAt: "2026-10-05T12:00:00.000Z",
   childIds: ["hijo-1", "hijo-2"],
@@ -391,9 +406,117 @@ export function publicationRepositoryContract(
         () => repos.publications.transition(id, { from: "approved", to: "cancelled" }, operator),
         () => repos.publications.saveProgress(id, null),
         () => repos.publications.addEvent(id, { type: "sync", actor: "system" }),
+        () => repos.publications.setRemoteState(id, null),
       ]) {
         await expect(action()).rejects.toMatchObject({ code: "PUBLICATION_NOT_FOUND" });
       }
+    });
+    it("nace sin estado remoto y con la versión del aviso que recibe (F4)", async () => {
+      const sin = await repos.publications.create(await newPublication(), operator);
+      expect(sin).toMatchObject({ remoteState: null, listingSourceHash: null });
+
+      const con = await repos.publications.create(
+        await newPublication({ listingSourceHash: "hash-del-aviso" }),
+        operator,
+      );
+      expect(con.listingSourceHash).toBe("hash-del-aviso");
+      expect(await repos.publications.get(con.id)).toEqual(con);
+    });
+
+    it("setRemoteState guarda el estado remoto en cualquier estado, con su evento, y null lo borra", async () => {
+      const created = await repos.publications.create(await newPublication(), operator);
+
+      const saved = await repos.publications.setRemoteState(created.id, remote, {
+        type: "sync",
+        actor: "system",
+        payload: { remote },
+      });
+      expect(saved.status).toBe("approved");
+      expect(saved.remoteState).toEqual(remote);
+      expect(saved.updatedAt.getTime()).toBeGreaterThanOrEqual(created.updatedAt.getTime());
+      expect(await repos.publications.get(created.id)).toEqual(saved);
+      const events = await repos.publications.listEvents(created.id);
+      expect(events.at(-1)).toMatchObject({
+        type: "sync",
+        fromStatus: null,
+        toStatus: null,
+        actor: "system",
+        payload: { remote },
+      });
+
+      const sinEvento = await repos.publications.setRemoteState(created.id, null);
+      expect(sinEvento.remoteState).toBeNull();
+      expect(await repos.publications.listEvents(created.id)).toHaveLength(events.length);
+    });
+
+    it("transition guarda el estado remoto junto con el cambio de estado", async () => {
+      const created = await repos.publications.create(await newPublication(), operator);
+      await repos.publications.transition(
+        created.id,
+        { from: "approved", to: "publishing", changes: { dryRun: false } },
+        operator,
+      );
+      const published = await repos.publications.transition(
+        created.id,
+        { from: "publishing", to: "published", changes: { remoteState: remote } },
+        { actor: "system" },
+      );
+      expect(published.remoteState).toEqual(remote);
+
+      const paused = await repos.publications.transition(
+        created.id,
+        { from: "published", to: "paused" },
+        { actor: "system" },
+      );
+      // Sin `remoteState` en los cambios, no se toca.
+      expect(paused.remoteState).toEqual(remote);
+    });
+
+    it("un estado remoto inválido es PUBLICATION_REMOTE_STATE_INVALID, sin escribir", async () => {
+      const created = await repos.publications.create(await newPublication(), operator);
+      const before = await repos.publications.listEvents(created.id);
+      const invalid = { ...remote, checkedAt: "ayer" } as unknown as typeof remote;
+
+      await expect(
+        repos.publications.setRemoteState(created.id, invalid, { type: "sync", actor: "system" }),
+      ).rejects.toMatchObject({ code: "PUBLICATION_REMOTE_STATE_INVALID" });
+      await expect(
+        repos.publications.transition(
+          created.id,
+          { from: "approved", to: "cancelled", changes: { remoteState: invalid } },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_REMOTE_STATE_INVALID" });
+
+      expect(await repos.publications.get(created.id)).toEqual(created);
+      expect(await repos.publications.listEvents(created.id)).toEqual(before);
+    });
+
+    it("el progreso de Portal se valida con su esquema", async () => {
+      const created = await repos.publications.create(
+        await newPublication({ platform: "portal_inmobiliario" }),
+        operator,
+      );
+      await repos.publications.transition(
+        created.id,
+        { from: "approved", to: "publishing", changes: { dryRun: false } },
+        operator,
+      );
+
+      const saved = await repos.publications.saveProgress(created.id, portalProgress);
+      expect(saved.progress).toEqual(portalProgress);
+      // El de Instagram no calza con Portal.
+      await expect(repos.publications.saveProgress(created.id, progress)).rejects.toMatchObject({
+        code: "PUBLICATION_PROGRESS_INVALID",
+      });
+      // Un WhatsApp con símbolos tampoco: Mercado Libre exige solo dígitos.
+      await expect(
+        repos.publications.saveProgress(created.id, {
+          ...portalProgress,
+          sellerContact: { ...portalProgress.sellerContact, phone2: "+56 9 1234 5678" },
+        }),
+      ).rejects.toMatchObject({ code: "PUBLICATION_PROGRESS_INVALID" });
+      expect((await repos.publications.get(created.id))?.progress).toEqual(portalProgress);
     });
   });
 }
