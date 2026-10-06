@@ -323,7 +323,15 @@ export const platformAccountViewSchema = z.object({
 });
 export type PlatformAccountView = z.infer<typeof platformAccountViewSchema>;
 
-export const accountListResponseSchema = z.object({ accounts: z.array(platformAccountViewSchema) });
+/**
+ * `GET /accounts`: las cuentas y cómo se puede conectar cada plataforma. `oauth` es `true` solo si
+ * la API tiene el par de la app de Instagram y la URI de retorno es `https://` (F7); si no (F3 en
+ * local, D4), el panel muestra el comando de la CLI con `--token-stdin`.
+ */
+export const accountListResponseSchema = z.object({
+  accounts: z.array(platformAccountViewSchema),
+  connect: z.object({ instagram: z.object({ oauth: z.boolean() }) }),
+});
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
 
 export const accountResponseSchema = z.object({ account: platformAccountViewSchema });
@@ -339,11 +347,30 @@ const brokerSlugSchema = z.string().trim().min(1).max(100);
  */
 export const connectTokenBodySchema = z.object({
   broker: brokerSlugSchema,
-  platform: z.literal("instagram"),
-  token: z.string().trim().min(20).max(4096).regex(/^\S+$/, "el token no puede tener espacios"),
+  platform: z.literal("instagram", { error: "por ahora solo se conecta instagram" }),
+  token: z
+    .string({ error: "falta el token" })
+    .trim()
+    .min(20, "el token es demasiado corto: cópialo completo desde Generate token")
+    .max(4096, "el token es demasiado largo: copia solo el token")
+    .regex(/^\S+$/, "el token no puede tener espacios ni saltos de línea"),
 });
 export type ConnectTokenBody = z.infer<typeof connectTokenBodySchema>;
 
 /** `GET /oauth/instagram/start?broker=<slug>`. */
 export const oauthStartQuerySchema = z.object({ broker: brokerSlugSchema });
 export type OAuthStartQuery = z.infer<typeof oauthStartQuerySchema>;
+
+/**
+ * Códigos con que el OAuth vuelve al panel (`/cuentas?error=<código>`, spec F3 §4.6), además de los
+ * `IG_*` de Instagram: el panel (T17) los traduce sin copiarlos.
+ */
+export const OAUTH_REDIRECT_ERRORS = [
+  "OAUTH_DENIED",
+  "OAUTH_STATE_INVALID",
+  "OAUTH_CODE_MISSING",
+  "INSTAGRAM_NOT_CONFIGURED",
+  "BROKER_NOT_FOUND",
+  "INTERNAL_ERROR",
+] as const;
+export type OAuthRedirectError = (typeof OAUTH_REDIRECT_ERRORS)[number];

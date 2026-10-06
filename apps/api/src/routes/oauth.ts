@@ -11,6 +11,14 @@ import { oauthStartQuerySchema } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
 import { validated } from "../validation.js";
 
+/** Compara dos textos en tiempo constante (sin `node:crypto`: este módulo entra en `AppType`). */
+function sameText(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 /** Cookie del `state` del OAuth: solo la ve la ruta de vuelta (`/oauth`). */
 export const OAUTH_STATE_COOKIE = "agentsales_oauth_state";
 /** El `state` vale 10 minutos (spec F3 §4.6). */
@@ -85,7 +93,7 @@ export function oauthRoutes(deps: OAuthDeps) {
 
       let broker: string;
       try {
-        if (state === undefined || cookie === undefined || state !== cookie) {
+        if (state === undefined || cookie === undefined || !sameText(state, cookie)) {
           throw new Error("state distinto de la cookie");
         }
         const data = deps.oauthState.verify(state);
@@ -98,6 +106,10 @@ export function oauthRoutes(deps: OAuthDeps) {
       if (code === undefined || code === "") {
         return c.redirect(toPanel({ error: "OAUTH_CODE_MISSING" }), 302);
       }
+      // Sin el par de la app, el canje mandaría un `client_secret` vacío: ni se intenta.
+      if (!deps.instagram.oauthConfigured) {
+        return c.redirect(toPanel({ error: "INSTAGRAM_NOT_CONFIGURED" }), 302);
+      }
 
       try {
         await connectAccount(
@@ -107,8 +119,13 @@ export function oauthRoutes(deps: OAuthDeps) {
         return c.redirect(toPanel({ conectada: "instagram" }), 302);
       } catch (caught) {
         const reason = isAppError(caught) ? caught.code : "INTERNAL_ERROR";
-        // Solo el código: el error puede traer detalles del canje.
-        deps.logger.warn({ code: reason }, "no se pudo conectar la cuenta de Instagram");
+        // Solo el código (y el tipo, si no es de la app): el error puede traer detalles del canje.
+        deps.logger.warn(
+          isAppError(caught)
+            ? { code: reason }
+            : { code: reason, errorName: caught instanceof Error ? caught.name : typeof caught },
+          "no se pudo conectar la cuenta de Instagram",
+        );
         return c.redirect(toPanel({ error: reason }), 302);
       }
     });

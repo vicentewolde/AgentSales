@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { createStateSigner } from "@agentsales/config";
+import { Writable } from "node:stream";
+import { createLogger, createStateSigner } from "@agentsales/config";
 import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
@@ -181,5 +182,122 @@ describe("GET /oauth/instagram/callback", () => {
       error: "OAUTH_STATE_INVALID",
     });
     expect(auth.calls).toEqual(["exchange", "me"]);
+  });
+});
+
+describe("OAuth · seguridad", () => {
+  /** Un logger que guarda cada línea, para revisar que no se filtre nada. */
+  function capturing() {
+    const lines: string[] = [];
+    const logger = createLogger(
+      { level: "debug" },
+      new Writable({
+        write(chunk, _encoding, callback) {
+          lines.push(chunk.toString());
+          callback();
+        },
+      }),
+    );
+    return { logger, lines };
+  }
+
+  it("el corredor sale del state firmado: una query que nombra a otro no lo cambia", async () => {
+    const own = contentBrokerFixture();
+    const other = { ...contentBrokerFixture(), id: randomUUID(), slug: "otro-corredor" };
+    const brokers = createInMemoryBrokerRepository([own, other]);
+    const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+    const app = createApp(
+      testDeps({
+        brokers,
+        platformAccounts,
+        access: { allowedHosts: ["localhost:8787"], allowedOrigins: [PANEL] },
+        panelUrl: PANEL,
+      }),
+    );
+    const start = await app.request(`${API}/oauth/instagram/start?broker=${other.slug}`);
+    const state = decodeURIComponent(
+      /agentsales_oauth_state=([^;]+)/.exec(start.headers.get("set-cookie") ?? "")?.[1] ?? "",
+    );
+    const response = await app.request(
+      `${API}/oauth/instagram/callback?${new URLSearchParams({ code: "AQB", state, broker: own.slug })}`,
+      { headers: { Cookie: `${OAUTH_STATE_COOKIE}=${encodeURIComponent(state)}` } },
+    );
+    expect(panelRedirect(response)).toEqual({ conectada: "instagram" });
+    const [account] = await platformAccounts.list();
+    expect(account?.brokerId).toBe(other.id);
+  });
+
+  it("un state válido sin corredor es OAUTH_STATE_INVALID; uno de un corredor que no existe, BROKER_NOT_FOUND", async () => {
+    const { callback, auth } = setup();
+    const signer = createStateSigner(TEST_ENCRYPTION_KEY);
+    const withoutBroker = signer.sign({ otro: "dato" }, { ttlSeconds: 600 });
+    expect(
+      panelRedirect(await callback({ code: "c", state: withoutBroker }, withoutBroker)),
+    ).toEqual({ error: "OAUTH_STATE_INVALID" });
+    expect(auth.calls).toEqual([]);
+    const ghost = signer.sign({ broker: "ya-no-existe" }, { ttlSeconds: 600 });
+    expect(panelRedirect(await callback({ code: "c", state: ghost }, ghost))).toEqual({
+      error: "BROKER_NOT_FOUND",
+    });
+  });
+
+  it("sin el par de la app, la vuelta no canjea (INSTAGRAM_NOT_CONFIGURED)", async () => {
+    const { callback, auth } = setup({ oauthConfigured: false });
+    const state = createStateSigner(TEST_ENCRYPTION_KEY).sign(
+      { broker: "corredor-inventado" },
+      { ttlSeconds: 600 },
+    );
+    expect(panelRedirect(await callback({ code: "c", state }, state))).toEqual({
+      error: "INSTAGRAM_NOT_CONFIGURED",
+    });
+    expect(auth.calls).toEqual([]);
+  });
+
+  it("la cookie se borra con su Path (y Secure si corresponde)", async () => {
+    for (const secureCookie of [false, true]) {
+      const { start, callback } = setup({ secureCookie });
+      const { state } = await start();
+      const deleted = (await callback({ code: "AQB", state }, state)).headers.get("set-cookie");
+      expect(deleted).toMatch(/agentsales_oauth_state=;/);
+      expect(deleted).toMatch(/Path=\/oauth/);
+      expect(deleted).toMatch(/Max-Age=0/);
+      if (secureCookie) expect(deleted).toMatch(/Secure/);
+    }
+  });
+
+  it("las rutas del OAuth rechazan otro Host (403)", async () => {
+    const { app, broker } = setup();
+    const response = await app.request(
+      `http://evil.test:8787/oauth/instagram/start?broker=${broker.slug}`,
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("ni el código ni el token del canje llegan al log ni a la URL de vuelta", async () => {
+    const { logger, lines } = capturing();
+    const broker = contentBrokerFixture();
+    const app = createApp(
+      testDeps({
+        brokers: createInMemoryBrokerRepository([broker]),
+        logger,
+        access: { allowedHosts: ["localhost:8787"], allowedOrigins: [PANEL] },
+        panelUrl: PANEL,
+      }),
+    );
+    const start = await app.request(`${API}/oauth/instagram/start?broker=${broker.slug}`);
+    const state = decodeURIComponent(
+      /agentsales_oauth_state=([^;]+)/.exec(start.headers.get("set-cookie") ?? "")?.[1] ?? "",
+    );
+    for (const code of ["AQB-codigo-secreto", "malo-codigo-secreto"]) {
+      const response = await app.request(
+        `${API}/oauth/instagram/callback?${new URLSearchParams({ code, state })}`,
+        { headers: { Cookie: `${OAUTH_STATE_COOKIE}=${encodeURIComponent(state)}` } },
+      );
+      expect(response.headers.get("location")).not.toContain("codigo-secreto");
+    }
+    const written = lines.join("\n");
+    expect(written).not.toContain("codigo-secreto");
+    expect(written).not.toContain("IGAA-largo");
+    expect(written).not.toContain(state);
   });
 });

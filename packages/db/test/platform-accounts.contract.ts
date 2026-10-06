@@ -191,6 +191,30 @@ export function platformAccountRepositoryContract(
       expect(again).toMatchObject({ id: second.id, status: "connected" });
     });
 
+    it("revokeOthers no toca otra plataforma del corredor y desconecta también las vencidas o con error", async () => {
+      const own = (await repos.brokers.create(brokerData(unique("cuentas-revoca-mix")))).id;
+      const expired = await repos.accounts.upsertConnected(connectedAccount(own));
+      await repos.accounts.changeStatus(expired.id, "connected", "expired");
+      const broken = await repos.accounts.upsertConnected(connectedAccount(own));
+      await repos.accounts.changeStatus(broken.id, "connected", "error");
+      const portal = await repos.accounts.upsertConnected(
+        connectedAccount(own, { platform: "portal_inmobiliario" }),
+      );
+
+      await repos.accounts.upsertConnected(connectedAccount(own), { revokeOthers: true });
+
+      for (const id of [expired.id, broken.id]) {
+        expect(await repos.accounts.get(id)).toMatchObject({
+          status: "revoked",
+          hasCredentials: false,
+        });
+      }
+      expect(await repos.accounts.get(portal.id)).toMatchObject({
+        status: "connected",
+        hasCredentials: true,
+      });
+    });
+
     it("listByBroker filtra por corredor y plataforma, por fecha de creación; list las trae todas", async () => {
       const own = (await repos.brokers.create(brokerData(unique("cuentas-lista")))).id;
       const first = await repos.accounts.upsertConnected(connectedAccount(own));

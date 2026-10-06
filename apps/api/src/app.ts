@@ -93,7 +93,14 @@ export function createApp(deps: AppDeps) {
     .route("/contents", contentRoutes(deps))
     .route("/brokers", brokerRoutes(deps))
     .route("/imports", importRoutes(deps))
-    .route("/accounts", accountRoutes({ ...deps, instagram: deps.instagram.auth }))
+    .route(
+      "/accounts",
+      accountRoutes({
+        ...deps,
+        instagram: deps.instagram.auth,
+        instagramOAuth: deps.instagram.oauthConfigured && deps.instagram.secureCookie,
+      }),
+    )
     .route("/oauth", oauthRoutes(deps));
   app.onError(createErrorHandler(deps.logger));
   app.notFound(notFoundHandler);

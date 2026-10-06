@@ -54,6 +54,7 @@ flowchart LR
   STO --> R2
   LLM --> CL
   PUB --> IG & ML & FB
+  API -. solo conectar y refrescar a pedido (ADR-0014 p.9) .-> PUB
   API -. encola jobs (desde F1) .-> NEON
   API --> IMP
   WRK -. consume jobs .-> NEON
@@ -413,7 +414,7 @@ La CLI y el panel importan `type AppType = ReturnType<typeof createApp>`, que ar
   - `get(id)` lee cualquier medio (por ejemplo, el logo) y `listVariants(ids, variante)` trae una variante de varios originales en una consulta (las miniaturas de la lista de avisos).
 - **`BrokerRepository.findById`** (F2-T10): el corredor de un aviso, para preparar su contenido.
 - **`PlatformAccountRepository` (F3-T03):** `createPlatformAccountRepository(db, { secretBox })` cifra las credenciales al guardar (`upsertConnected`, `updateToken`) con la AAD `platform:broker_id:external_account_id`, armada solo en el repositorio, y las descifra solo en `getCredentials`. La entidad nunca las lleva (trae `hasCredentials`).
-  - `upsertConnected` crea o actualiza por `(broker_id, platform, external_account_id)` (un `ON CONFLICT DO UPDATE` que conserva `created_at`) y deja la cuenta en `connected`, también si estaba desconectada.
+  - `upsertConnected` crea o actualiza por `(broker_id, platform, external_account_id)` (un `ON CONFLICT DO UPDATE` que conserva `created_at`) y deja la cuenta en `connected`, también si estaba desconectada. Con `revokeOthers` (F3-T13), en la misma transacción bloquea la fila del corredor (`FOR NO KEY UPDATE`: las conexiones de un corredor van de a una) y deja `revoked` y sin credenciales a las demás cuentas del corredor en esa plataforma, también las `expired` o `error`; no toca otras plataformas ni otros corredores.
   - Condicionales, como `ListingRepository.changeStatus`: `updateToken` solo escribe si la cuenta sigue `connected` y con credenciales (si no, `ACCOUNT_NOT_CONNECTED`), y `changeStatus(id, from, to)` devuelve `false` si la cuenta ya no está en `from`. `updateToken` mezcla `meta` en la base (`||` de jsonb, a un nivel) y no cambia el estado. `disconnect` pasa a `revoked` y borra las credenciales.
   - Validación en los dos repositorios: credenciales vacías o con otra forma son `CREDENTIALS_INVALID` (sin el valor en el error) y `meta` se guarda como JSON (`normalizeAccountMeta`: sin `undefined`, las fechas como texto).
   - Errores: `BROKER_NOT_FOUND` (la FK, por su nombre; en el doble en memoria, solo si recibe `brokers`), `ACCOUNT_NOT_FOUND`, `ACCOUNT_NOT_CONNECTED`, `CREDENTIALS_UNREADABLE` (otra clave, otra AAD, alteradas u otra forma) y `PLATFORM_ACCOUNT_ROW_INVALID`.
@@ -612,10 +613,10 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 - **`connectAccount`** (core): el corredor por su slug (`BROKER_NOT_FOUND`), y el acceso de una de dos formas:
   - **token del panel de Meta** (`POST /accounts/connect-token`, D4: Meta no acepta `http://localhost`): sin canje, los permisos quedan `null` (desconocidos) y el vencimiento se estima a 60 días (`tokenExpiryEstimated`);
   - **código del OAuth** (`GET /oauth/instagram/callback`, para F7 con HTTPS): canje por el token largo y exige el permiso de publicar (`IG_PERMISSION_DENIED`).
-  Después lee `/me` y guarda la cuenta con `upsertConnected(..., { revokeOthers: true })`: en la misma transacción, desconecta las demás cuentas del corredor en la plataforma (una conectada por corredor y plataforma). Reconectar la misma cuenta actualiza su fila.
+  Después lee `/me` y guarda la cuenta con `upsertConnected(..., { revokeOthers: true })`: en la misma transacción, con el corredor bloqueado, desconecta las demás cuentas del corredor en la plataforma (una conectada por corredor y plataforma, también si se conectan dos a la vez). Reconectar la misma cuenta actualiza su fila. Con el token del panel, un token rechazado dice "genera uno nuevo con Generate token".
 - **`disconnectAccount`**: `revoked` y sin credenciales; la fila queda (la referencian sus publicaciones).
 - **OAuth** (`apps/api/src/routes/oauth.ts`): `start` firma el `state` (`createStateSigner`, 10 min) y lo deja en una cookie `HttpOnly`, `SameSite=Lax`, `Path=/oauth` (`Secure` si la URI de retorno es `https`); `callback` exige que el `state` de la URL sea el de la cookie y siga válido antes de llamar a Instagram, borra la cookie siempre (sirve una vez) y vuelve al panel (`/cuentas?conectada=instagram` o `?error=<código>`: `OAUTH_DENIED`, `OAUTH_STATE_INVALID`, `OAUTH_CODE_MISSING`, `INSTAGRAM_NOT_CONFIGURED`, `BROKER_NOT_FOUND` o el código de Instagram), sin datos de la cuenta ni el código en la URL.
-- **Vista HTTP** (`accountView`): nunca credenciales; de `meta` solo lo que muestra el panel. El log de la API no registra cuerpos ni queries, así que el token y el código no llegan al log.
+- **Vista HTTP** (`accountView`): nunca credenciales; de `meta` solo lo que muestra el panel. `GET /accounts` dice además si el panel puede ofrecer el OAuth (`connect.instagram.oauth`: par de la app y URI `https://`), y `OAUTH_REDIRECT_ERRORS` (contratos) lista los códigos de la vuelta al panel. El log de la API no registra cuerpos ni queries, así que el token y el código no llegan al log.
 - `server.ts` compone el repositorio de cuentas con el mismo `SecretBox` que el candado, `createInstagramAuth` (sin el par de la app, `/me` funciona igual y solo el OAuth queda deshabilitado) y la URL del panel (`http://localhost:<WEB_PORT>`). Un `POST` sin cuerpo (desconectar) va con `Content-Type: application/json`: sin él, el CSRF lo trata como un formulario.
 
 ## Aprobación (`approveContent` y `unapproveContent`, F3-T05)

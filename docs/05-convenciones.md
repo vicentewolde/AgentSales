@@ -40,7 +40,7 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
 
   | Código | HTTP |
   |---|---|
-  | `INVALID_TRANSITION`, `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT`, `CONTENT_RUN_ACTIVE` | 409 (un pedido válido que el estado actual no permite: esperar, recargar o confirmar) |
+  | `INVALID_TRANSITION`, `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT`, `CONTENT_RUN_ACTIVE`, `CONTENT_LOCKED`, `PUBLICATION_PENDING` | 409 (un pedido válido que el estado actual no permite: esperar, recargar o confirmar) |
   | `REQUEST_TOO_LARGE` | 413 |
   | `IG_AUTH_INVALID`, `IG_PERMISSION_DENIED`, `IG_REQUEST_REJECTED` | 400 (Instagram rechazó el token o el permiso al conectar; F3-T13) |
   | `IG_UNEXPECTED_RESPONSE` | 502 (Instagram respondió algo con otra forma) |

@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { Writable } from "node:stream";
+import { createLogger } from "@agentsales/config";
 import { AppError, type InstagramAuth } from "@agentsales/core";
 import {
   contentBrokerFixture,
@@ -147,5 +149,122 @@ describe("GET /accounts y POST /accounts/:id/disconnect", () => {
     );
     expect((await app.request("http://localhost:8787/accounts")).status).toBe(200);
     expect((await app.request("http://evil.test:8787/accounts")).status).toBe(403);
+  });
+});
+
+describe("cuentas · seguridad y mensajes", () => {
+  it("los mensajes del token dicen qué hacer, y la causa de un cuerpo inválido", async () => {
+    const auth: InstagramAuth = {
+      ...fakeInstagramAuth(),
+      me: async () => {
+        throw new AppError("IG_AUTH_INVALID", "El acceso venció: reconecta la cuenta", {
+          details: { token: TOKEN },
+          cause: new Error(TOKEN),
+        });
+      },
+    };
+    const { broker, connect } = setup(auth);
+    const rejected = await connect({ broker: broker.slug, platform: "instagram", token: TOKEN });
+    const text = await rejected.text();
+    expect(text).not.toContain(TOKEN);
+    expect(errorBodySchema.parse(JSON.parse(text)).error.message).toContain("Generate token");
+
+    const spaced = await connect({
+      broker: broker.slug,
+      platform: "instagram",
+      token: "IGAA con espacios 0123456789",
+    });
+    expect(errorBodySchema.parse(await spaced.json()).error.message).toContain("espacios");
+  });
+
+  it("ni el token ni sus detalles llegan al log, también cuando Instagram falla", async () => {
+    const lines: string[] = [];
+    const logger = createLogger(
+      { level: "debug" },
+      new Writable({
+        write(chunk, _encoding, callback) {
+          lines.push(chunk.toString());
+          callback();
+        },
+      }),
+    );
+    const broker = contentBrokerFixture();
+    const auth: InstagramAuth = {
+      ...fakeInstagramAuth(),
+      me: async () => {
+        throw new AppError("IG_UNEXPECTED_RESPONSE", "rara", { details: { call: "me" } });
+      },
+    };
+    const app = createApp(
+      testDeps({
+        logger,
+        brokers: createInMemoryBrokerRepository([broker]),
+        instagram: { auth, oauthConfigured: true, secureCookie: false },
+      }),
+    );
+    for (const token of [TOKEN, "IGAA con espacios 0123456789"]) {
+      await app.request("/accounts/connect-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ broker: broker.slug, platform: "instagram", token }),
+      });
+    }
+    const written = lines.join("\n");
+    expect(written).not.toContain(TOKEN);
+    expect(written).not.toContain("con espacios");
+  });
+
+  it("conectar una segunda cuenta por HTTP deja la primera desconectada", async () => {
+    const auth: InstagramAuth = {
+      ...fakeInstagramAuth(),
+      me: async (accessToken) => ({
+        userId: accessToken.endsWith("A") ? "17841400000000001" : "17841400000000002",
+        username: accessToken.endsWith("A") ? "primera" : "segunda",
+        accountType: "BUSINESS",
+      }),
+    };
+    const { app, broker, connect } = setup(auth);
+    await connect({ broker: broker.slug, platform: "instagram", token: `${TOKEN}A` });
+    await connect({ broker: broker.slug, platform: "instagram", token: `${TOKEN}B` });
+    const { accounts } = accountListResponseSchema.parse(
+      await (await app.request("/accounts")).json(),
+    );
+    expect(accounts.map((account) => [account.displayName, account.status])).toEqual([
+      ["@primera", "revoked"],
+      ["@segunda", "connected"],
+    ]);
+  });
+
+  it("GET /accounts dice si el panel puede ofrecer el OAuth (par de la app y https)", async () => {
+    for (const [oauthConfigured, secureCookie, oauth] of [
+      [true, true, true],
+      [true, false, false],
+      [false, true, false],
+    ] as const) {
+      const app = createApp(
+        testDeps({ instagram: { auth: fakeInstagramAuth(), oauthConfigured, secureCookie } }),
+      );
+      const body = accountListResponseSchema.parse(await (await app.request("/accounts")).json());
+      expect(body.connect.instagram.oauth).toBe(oauth);
+    }
+  });
+
+  it("desconectar dos veces deja la cuenta igual; sin JSON y desde otro origen, el CSRF la protege", async () => {
+    const { app, broker, platformAccounts, connect } = setup();
+    const { account } = accountResponseSchema.parse(
+      await (await connect({ broker: broker.slug, platform: "instagram", token: TOKEN })).json(),
+    );
+    const blocked = await app.request(`/accounts/${account.id}/disconnect`, {
+      method: "POST",
+      headers: { Origin: "http://evil.test" },
+    });
+    expect(blocked.status).toBe(403);
+    expect((await platformAccounts.get(account.id))?.status).toBe("connected");
+
+    for (let i = 0; i < 2; i += 1) {
+      const response = await app.request(`/accounts/${account.id}/disconnect`, emptyPost);
+      expect(response.status).toBe(200);
+      expect(accountResponseSchema.parse(await response.json()).account.status).toBe("revoked");
+    }
   });
 });

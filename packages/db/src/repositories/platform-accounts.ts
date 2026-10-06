@@ -12,7 +12,7 @@ import {
 import { and, asc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isForeignKeyViolation, withDbErrors } from "../errors.js";
-import { platformAccounts } from "../schema.js";
+import { brokers, platformAccounts } from "../schema.js";
 
 type Row = typeof platformAccounts.$inferSelect;
 
@@ -105,6 +105,17 @@ export function createPlatformAccountRepository(
       try {
         return await withDbErrors(() =>
           db.transaction(async (tx) => {
+            if (options.revokeOthers) {
+              // Las conexiones de un corredor van de a una (como `ListingLock` con el aviso): sin
+              // esto, dos cuentas nuevas conectadas a la vez no verían la otra y quedarían las dos
+              // conectadas, y dos que ya existían se bloquearían entre sí (deadlock). Un corredor que
+              // no existe sigue dando `BROKER_NOT_FOUND` por la FK del insert.
+              await tx
+                .select({ id: brokers.id })
+                .from(brokers)
+                .where(eq(brokers.id, account.brokerId))
+                .for("no key update");
+            }
             const [row] = await tx
               .insert(platformAccounts)
               .values(values)
@@ -126,7 +137,8 @@ export function createPlatformAccountRepository(
               .returning();
             if (row === undefined) throw new Error("upsert sin fila");
             if (options.revokeOthers) {
-              // En la misma transacción: nunca quedan dos conectadas del corredor en la plataforma.
+              // En la misma transacción, y con el corredor bloqueado: una sola conectada por corredor
+              // y plataforma (la regla es de `connectAccount`; la base no la impone con un índice).
               await tx
                 .update(platformAccounts)
                 .set({ status: "revoked", credentialsEncrypted: null })
