@@ -46,33 +46,42 @@ export function harness(options: HarnessOptions = {}) {
   const media = createInMemoryMediaRepository();
   const queue = createInMemoryJobQueue();
   const content = createInMemoryContentRepositories({ nextId: randomUUID });
-  // El candado con las publicaciones a mano, para armar casos como una publicación pendiente. La
-  // API y el candado comparten publicaciones y cuentas.
+  // La API y el candado comparten repositorios: el candado se arma con los que quedan después de
+  // los reemplazos de `options.deps`, salvo que el test traiga el suyo. Las publicaciones completas
+  // (la app solo lee) son del arnés; un test que trae las suyas trae también su candado.
+  if (options.deps?.publications !== undefined && options.deps.lock === undefined) {
+    throw new Error("harness: con publications, pasa también lock (el que las cambia)");
+  }
   const publications = createInMemoryPublicationRepository();
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
-  const lock = createInMemoryListingLock({
-    brokers,
+  const repos = {
     listings,
+    brokers,
     media,
     contentRuns: content.contentRuns,
     contents: content.contents,
-    publications,
     platformAccounts,
-  });
+    ...options.deps,
+  };
+  const lock =
+    options.deps?.lock ??
+    createInMemoryListingLock({
+      brokers: repos.brokers,
+      listings: repos.listings,
+      media: repos.media,
+      contentRuns: repos.contentRuns,
+      contents: repos.contents,
+      publications,
+      platformAccounts: repos.platformAccounts,
+    });
   const app = createApp(
     testDeps({
       access: localAccess(PORT, 5173),
       importRuns,
-      listings,
-      brokers,
-      media,
       queue,
-      contentRuns: content.contentRuns,
-      contents: content.contents,
       publications,
-      platformAccounts,
+      ...repos,
       lock,
-      ...options.deps,
     }),
   );
   const requests: string[] = [];
@@ -85,6 +94,12 @@ export function harness(options: HarnessOptions = {}) {
       return app.request(url, init);
     },
   });
+  const own = <T>(name: keyof AppDeps, repository: T): T => {
+    if (options.deps?.[name] !== undefined) {
+      throw new Error(`harness: ${name} vino en options.deps; usa el del test`);
+    }
+    return repository;
+  };
   const out: string[] = [];
   const err: string[] = [];
   const io: Io = {
@@ -101,14 +116,31 @@ export function harness(options: HarnessOptions = {}) {
     errors: () => err.join("\n"),
     requests,
     importRuns,
-    listings,
-    brokers,
-    media,
     queue,
-    contentRuns: content.contentRuns,
-    contents: content.contents,
-    publications,
-    platformAccounts,
+    // Los repositorios en memoria del arnés, para armar casos. Si el test reemplazó uno con
+    // `options.deps` (`publicationHarness`), ese no es el de la API: leerlo aquí falla, y el test
+    // usa el suyo.
+    get listings() {
+      return own("listings", listings);
+    },
+    get brokers() {
+      return own("brokers", brokers);
+    },
+    get media() {
+      return own("media", media);
+    },
+    get contentRuns() {
+      return own("contentRuns", content.contentRuns);
+    },
+    get contents() {
+      return own("contents", content.contents);
+    },
+    get publications() {
+      return own("publications", publications);
+    },
+    get platformAccounts() {
+      return own("platformAccounts", platformAccounts);
+    },
   };
 }
 

@@ -12,7 +12,7 @@ import type {
   PublicationStatus,
 } from "./enums.js";
 import type { ImportBrokerOutcome, ImportRowOutcome } from "./import-run.js";
-import type { PublishAttemptResult } from "./publication.js";
+import type { PublicationActor, PublishAttemptResult } from "./publication.js";
 
 // Textos para el operador, compartidos por la CLI y el panel (y las plantillas de F2): un solo
 // vocabulario. Las clases de color y los textos de botones son de cada interfaz.
@@ -109,6 +109,13 @@ export const PUBLISH_ATTEMPT_RESULT_TEXT: Readonly<Record<PublishAttemptResult, 
   published: "publicada",
   retry: "se reintenta",
   failed: "falló",
+};
+
+/** Quién hizo un cambio en la bitácora de una publicación. */
+export const PUBLICATION_ACTOR_TEXT: Readonly<Record<PublicationActor, string>> = {
+  system: "sistema",
+  operator: "panel",
+  cli: "CLI",
 };
 
 /** El estado de una cuenta conectada. */

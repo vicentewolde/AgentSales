@@ -5,9 +5,7 @@ import {
 } from "@agentsales/api/contracts";
 import {
   healthReportSchema,
-  PLATFORM_SHORT_NAMES,
   PLATFORM_TEXT,
-  type PlatformShortName,
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
   publicationModeText,
@@ -17,7 +15,7 @@ import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded } from "../output.js";
 import { renderPublicationResult } from "./publication-view.js";
-import { fetchBrokers, resolveListingId } from "./shared.js";
+import { fetchBrokers, platformOption, resolveListingId } from "./shared.js";
 import { type WaitDeps, waitForRun } from "./wait-run.js";
 
 export type PublishOptions = {
@@ -29,21 +27,6 @@ export type PublishOptions = {
 };
 
 export type PublishDeps = WaitDeps & Pick<Terminal, "confirm"> & { client: ApiClient };
-
-const SHORT_NAMES = Object.keys(PLATFORM_SHORT_NAMES);
-const isShortName = (name: string): name is PlatformShortName =>
-  Object.hasOwn(PLATFORM_SHORT_NAMES, name);
-
-function platformOf(option: string | undefined) {
-  const name = (option ?? "instagram").trim().toLowerCase();
-  if (!isShortName(name)) {
-    throw new CliError(
-      "PLATFORM_INVALID",
-      `--platform debe ser ${SHORT_NAMES.join(", ")}: "${option}"`,
-    );
-  }
-  return PLATFORM_SHORT_NAMES[name];
-}
 
 /** Los errores de `POST /listings/:id/publish`, con qué hacer en la CLI. */
 function explained(error: unknown, ref: string): unknown {
@@ -57,7 +40,7 @@ function explained(error: unknown, ref: string): unknown {
       "Conecta la cuenta con agentsales accounts connect instagram --broker <slug> --token-stdin",
     NOTHING_TO_PUBLISH: `Mira el estado con agentsales publications ${ref}`,
     PUBLISH_MODE_LOCKED:
-      "Reintenta con PUBLISH_MODE=live, o descártala con agentsales publications cancel <id>",
+      "Ya empezó en vivo y no se reintenta en simulación: descártala con agentsales publications cancel <id>, o reinicia la API en vivo si lo decides tú",
     LISTING_NOT_READY: `Revisa la propiedad con agentsales listing ${ref}`,
     CONTENT_RUN_ACTIVE:
       "Espera a que termine la preparación (agentsales content) y vuelve a publicar",
@@ -89,7 +72,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
   const c = deps.colors;
   return guarded(deps, async () => {
     const trimmed = ref.trim();
-    const platform = platformOf(options.platform);
+    const platform = platformOption(options.platform ?? "instagram");
     const brokers = await fetchBrokers(deps.client);
     const listingId = await resolveListingId(deps.client, trimmed, brokers, options.broker);
     // El modo lo decide la API (D11): solo se pregunta para confirmar una publicación en vivo.
@@ -112,7 +95,12 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
     });
 
     const targets = [...result.started, ...result.requeued];
-    const mode = publicationModeText(targets[0]?.dryRun ?? publishMode !== "live");
+    // Cada una conserva su modo: una reencolada pudo haberse pedido con otro.
+    const modes = new Set(targets.map((publication) => publication.dryRun));
+    const mode =
+      modes.size > 1
+        ? "modo mixto"
+        : publicationModeText(targets[0]?.dryRun ?? publishMode !== "live");
     deps.print(
       `Publicando ${trimmed} en ${PLATFORM_TEXT[platform]} (${mode}): ` +
         targets.map((publication) => PUBLICATION_FORMAT_TEXT[publication.format]).join(", "),
@@ -140,7 +128,9 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
       return 0;
     }
 
-    const startedAt = new Map(targets.map((p) => [p.id, p.updatedAt.getTime()]));
+    // Solo las que empezaron ahora sirven para saber si el worker las tomó: una reencolada ya estaba
+    // en curso, y su `updatedAt` no cambia hasta que el worker guarde progreso.
+    const startedAt = new Map(result.started.map((p) => [p.id, p.updatedAt.getTime()]));
     const snapshot = (publications: PublicationView[]): PublishWait => ({
       status: publications.some(inProgress) ? "publishing" : "done",
       publications,
@@ -166,10 +156,14 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
         wait.publications
           .map((p) => `${PUBLICATION_FORMAT_TEXT[p.format]}: ${PUBLICATION_STATUS_TEXT[p.status]}`)
           .join(" · "),
-      // Nadie la tocó desde que se pidió: el worker no la ha tomado (las publicaciones no tienen `queued`).
+      // Nadie tocó las que empezaron ahora (las publicaciones no tienen `queued`). Es una heurística:
+      // con la plataforma lenta, el primer contenedor puede tardar más de 20 s.
       isQueued: (wait) =>
+        startedAt.size > 0 &&
         wait.publications.every(
-          (p) => inProgress(p) && p.updatedAt.getTime() === startedAt.get(p.id),
+          (p) =>
+            !startedAt.has(p.id) ||
+            (inProgress(p) && p.updatedAt.getTime() === startedAt.get(p.id)),
         ),
       laterCommand: `agentsales publications ${trimmed}`,
       noun: "la publicación",
@@ -181,6 +175,16 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
       deps.print(renderPublicationResult(publication, c));
     }
     const failed = done.publications.filter((publication) => publication.status === "failed");
+    const changed = done.publications.filter(
+      (publication) => publication.status !== "failed" && publication.status !== "published",
+    );
+    if (failed.length === 0 && changed.length > 0) {
+      // Alguien la descartó o la retiró mientras se esperaba.
+      deps.printError(
+        c.yellow("✗ No todas quedaron publicadas: alguna cambió mientras se esperaba"),
+      );
+      return 1;
+    }
     if (failed.length > 0) {
       deps.printError(
         c.red(`✗ ${failed.length === 1 ? "Una publicación falló" : "Fallaron publicaciones"}`),

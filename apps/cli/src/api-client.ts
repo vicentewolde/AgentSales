@@ -7,8 +7,12 @@ import type { z } from "zod";
 /** Mayor que el peor caso de `/health` (25 s con Neon despertando). */
 export const API_TIMEOUT_MS = 30_000;
 
-/** La API solo escucha en IPv4 local (spec F0 §4.5). */
-export const apiUrl = (port: number) => `http://127.0.0.1:${port}`;
+/**
+ * La API solo escucha en IPv4 local (spec F0 §4.5). `localhost` solo para enlaces que abre el
+ * navegador y que tienen que coincidir con otro host (la cookie del OAuth, spec F3 §4.6).
+ */
+export const apiUrl = (port: number, host: "127.0.0.1" | "localhost" = "127.0.0.1") =>
+  `http://${host}:${port}`;
 
 /**
  * Fallo al hablar con la API. `code` es el de su `ErrorBody` o el de la red (`ECONNREFUSED`,
@@ -55,13 +59,16 @@ export type ApiClientOptions = {
   fetch?: Fetch;
 };
 
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 /**
- * Un `POST` sin cuerpo (aprobar, publicar una, descartar) va con `Content-Type: application/json`:
- * sin él, el CSRF de la API lo trata como un formulario y responde 403 (spec F3-T15). Uno con
- * cuerpo ya lo trae (`json`) o lleva el suyo (un formulario).
+ * Un pedido que cambia algo y va sin cuerpo (aprobar, publicar una, descartar) lleva
+ * `Content-Type: application/json`: sin él, el CSRF de la API lo trata como un formulario y responde
+ * 403 (spec F3-T15). Uno con cuerpo ya lo trae (`json`) o lleva el suyo (un formulario).
  */
 function withJsonType(init: RequestInit | undefined): RequestInit | undefined {
-  if (init?.method?.toUpperCase() !== "POST" || init.body != null) return init;
+  if (init === undefined || init.body != null) return init;
+  if (!UNSAFE_METHODS.has(init.method?.toUpperCase() ?? "GET")) return init;
   const headers = new Headers(init.headers);
   if (!headers.has("content-type")) headers.set("content-type", "application/json");
   return { ...init, headers };

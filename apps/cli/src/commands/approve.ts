@@ -1,31 +1,18 @@
 import {
-  type ContentView,
   contentApproveResponseSchema,
   contentUnapproveResponseSchema,
   listingContentResponseSchema,
 } from "@agentsales/api/contracts";
-import {
-  PLATFORM_SHORT_NAMES,
-  PLATFORM_TEXT,
-  type PlatformShortName,
-  PUBLICATION_FORMAT_TEXT,
-} from "@agentsales/core";
+import { PLATFORM_TEXT, type Platform, PUBLICATION_FORMAT_TEXT } from "@agentsales/core";
 import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
-import { fetchBrokers, resolveListingId } from "./shared.js";
+import { fetchBrokers, PLATFORM_OPTION_NAMES, platformOption, resolveListingId } from "./shared.js";
 
 export type ApproveDeps = Io & { client: ApiClient };
 
 export type ApproveOptions = { broker?: string; platform?: string; undo?: boolean };
-
-const SHORT_NAMES = Object.keys(PLATFORM_SHORT_NAMES);
-const isShortName = (name: string): name is PlatformShortName =>
-  Object.hasOwn(PLATFORM_SHORT_NAMES, name);
-
-const hasErrors = (content: ContentView) =>
-  content.checks.some((check) => check.severity === "error");
 
 const formats = (publications: readonly { format: keyof typeof PUBLICATION_FORMAT_TEXT }[]) =>
   publications.map((publication) => PUBLICATION_FORMAT_TEXT[publication.format]).join(" y ");
@@ -49,7 +36,8 @@ function reasonOf(error: unknown, ref: string): string {
 /**
  * `agentsales approve <propiedad> [--platform] [--undo]` (spec F3 §4.2 y §4.9): aprueba el texto
  * vigente de cada canal y abre sus publicaciones (Instagram: carrusel y reel) si hay una cuenta
- * conectada. Sin `--platform`, aprueba los canales con texto sin errores y avisa de los demás. Con
+ * conectada. Sin `--platform`, intenta todos los canales con texto: los que tienen errores en la
+ * revisión los rechaza la API (`CONTENT_HAS_ERRORS`) y se informan con qué hacer. Con
  * `--undo`, quita la aprobación y descarta lo que no salió. Informa cada canal y sale con 1 si
  * alguno no se pudo.
  */
@@ -57,17 +45,8 @@ export function runApprove(deps: ApproveDeps, ref: string, options: ApproveOptio
   const c = deps.colors;
   return guarded(deps, async () => {
     const trimmed = ref.trim();
-    let platform: (typeof PLATFORM_SHORT_NAMES)[PlatformShortName] | undefined;
-    if (options.platform !== undefined) {
-      const name = options.platform.trim().toLowerCase();
-      if (!isShortName(name)) {
-        throw new CliError(
-          "PLATFORM_INVALID",
-          `--platform debe ser ${SHORT_NAMES.join(", ")}: "${options.platform}"`,
-        );
-      }
-      platform = PLATFORM_SHORT_NAMES[name];
-    }
+    const platform: Platform | undefined =
+      options.platform === undefined ? undefined : platformOption(options.platform);
     const brokers = await fetchBrokers(deps.client);
     const listingId = await resolveListingId(deps.client, trimmed, brokers, options.broker);
     const { contents } = await unwrap(
@@ -90,14 +69,8 @@ export function runApprove(deps: ApproveDeps, ref: string, options: ApproveOptio
     let done = 0;
     for (const content of channel) {
       const name = PLATFORM_TEXT[content.platform];
-      // Sin --platform se eligen solos: los aprobables (sin errores) o, con --undo, los aprobados.
-      if (platform === undefined && !options.undo && hasErrors(content)) {
-        failed += 1;
-        deps.printError(
-          `${c.red("✗")} ${name}: tiene errores en la revisión → corrígelos (agentsales content ${trimmed}) o edítalo en el panel`,
-        );
-        continue;
-      }
+      // Sin --platform, con --undo, solo los aprobados. Los errores de la revisión los decide la API
+      // (`CONTENT_HAS_ERRORS`), y se informan con qué hacer, sin cortar los demás canales.
       if (platform === undefined && options.undo && content.status !== "approved") continue;
       try {
         if (options.undo) {
@@ -117,7 +90,7 @@ export function runApprove(deps: ApproveDeps, ref: string, options: ApproveOptio
             result.created.length > 0
               ? ` · listas para publicar: ${formats(result.created)}`
               : result.publications.length === 0
-                ? c.dim(" · sin cuenta conectada: se publica al conectarla")
+                ? c.dim(" · sin cuenta conectada: conéctala y publica con agentsales publish")
                 : "";
           deps.print(`${c.green("✓")} ${name}: aprobado${opened}`);
           for (const skipped of result.skipped) {
@@ -150,7 +123,7 @@ export function register(program: Command, ctx: CliContext): void {
     .command("approve")
     .description("Aprueba los textos de una propiedad (o quita la aprobación con --undo)")
     .argument("<propiedad>", "id_propiedad del Excel, o el id del aviso")
-    .option("--platform <canal>", `solo un canal: ${SHORT_NAMES.join(", ")}`)
+    .option("--platform <canal>", `solo un canal: ${PLATFORM_OPTION_NAMES.join(", ")}`)
     .option("--broker <slug>", "corredor, si el id_propiedad está en más de uno")
     .option("--undo", "quita la aprobación y descarta las publicaciones que no salieron")
     .action((ref: string, options: ApproveOptions) =>

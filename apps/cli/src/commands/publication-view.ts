@@ -1,6 +1,7 @@
 import type { PublicationEventView, PublicationView } from "@agentsales/api/contracts";
 import {
   PLATFORM_TEXT,
+  PUBLICATION_ACTOR_TEXT,
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
@@ -60,8 +61,6 @@ export function renderPublicationResult(publication: PublicationView, c: Colors)
   return outcome === "" ? head : `${head}\n  ${outcome}`;
 }
 
-const ACTOR_TEXT = { system: "sistema", operator: "panel", cli: "CLI" } as const;
-
 /**
  * La bitácora de una publicación: cambios de estado y un intento por línea, con lo que se envió (o
  * se habría enviado en simulación). El detalle de un intento se lee con `publishAttemptPayloadSchema`.
@@ -73,7 +72,7 @@ export function renderPublicationEvents(
   if (events.length === 0) return c.dim("  (sin eventos)");
   return events
     .map((event) => {
-      const when = `  ${c.dim(formatDateTime(event.createdAt))}  ${ACTOR_TEXT[event.actor].padEnd(7)}`;
+      const when = `  ${c.dim(formatDateTime(event.createdAt))}  ${PUBLICATION_ACTOR_TEXT[event.actor].padEnd(7)}`;
       if (event.type === "status_changed") {
         const from = event.fromStatus === null ? "nace" : PUBLICATION_STATUS_TEXT[event.fromStatus];
         const to = event.toStatus === null ? "?" : PUBLICATION_STATUS_TEXT[event.toStatus];

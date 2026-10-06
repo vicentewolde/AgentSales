@@ -36,16 +36,29 @@ async function confirm(question: string): Promise<boolean> {
   if (!process.stdin.isTTY) return false;
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
-    const answer = await rl.question(`${question} (s/N) `);
+    // Ctrl+C o el fin de la entrada cierran la pregunta: es un "no" (sale con 1, sin publicar).
+    const closed = new Promise<string>((resolve) => rl.once("close", () => resolve("")));
+    const answer = await Promise.race([rl.question(`${question} (s/N) `), closed]);
     return /^(s|si|sí|y|yes)$/i.test(answer.trim());
   } finally {
     rl.close();
   }
 }
 
+/** Tope de lo que se lee de la entrada estándar: un token largo tiene unos 200 caracteres. */
+export const STDIN_MAX_BYTES = 16 * 1024;
+
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  let bytes = 0;
+  for await (const chunk of process.stdin) {
+    const buffer = Buffer.from(chunk);
+    chunks.push(buffer);
+    bytes += buffer.length;
+    // Algo mucho más largo que un token no es un token: no se sigue leyendo (lo leído ya supera el
+    // largo máximo, y `accounts connect` lo rechaza sin mostrarlo).
+    if (bytes > STDIN_MAX_BYTES) break;
+  }
   return Buffer.concat(chunks).toString("utf8");
 }
 

@@ -161,7 +161,8 @@ export function runRetirePublication(
       deps.client.publications[":id"].$get({ param: { id: publicationId } }),
       publicationResponseSchema,
     );
-    const live = !current.dryRun;
+    // Solo una publicada en vivo hay que borrarla a mano; en otro estado, la API explica por qué no.
+    const live = !current.dryRun && current.status === "published";
     if (live && !options.yes) {
       const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
       const confirmed = await deps.confirm(

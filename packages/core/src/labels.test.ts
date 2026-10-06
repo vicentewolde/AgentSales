@@ -15,11 +15,12 @@ import {
   LISTING_STATUS_TEXT,
   OPERATION_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
+  PUBLICATION_ACTOR_TEXT,
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
 } from "./labels.js";
-import { PUBLISH_ATTEMPT_RESULTS } from "./publication.js";
+import { PUBLICATION_ACTORS, PUBLISH_ATTEMPT_RESULTS } from "./publication.js";
 
 describe("textos para el operador", () => {
   it("cubren todos los valores de cada enum, sin repetirse", () => {
@@ -33,6 +34,7 @@ describe("textos para el operador", () => {
       [PUBLICATION_FORMATS, PUBLICATION_FORMAT_TEXT],
       [PLATFORM_ACCOUNT_STATUSES, PLATFORM_ACCOUNT_STATUS_TEXT],
       [PUBLISH_ATTEMPT_RESULTS, PUBLISH_ATTEMPT_RESULT_TEXT],
+      [PUBLICATION_ACTORS, PUBLICATION_ACTOR_TEXT],
     ] as const) {
       const labels = values.map((value) => (text as Record<string, string>)[value]);
       expect(labels.every((label) => typeof label === "string" && label.length > 0)).toBe(true);

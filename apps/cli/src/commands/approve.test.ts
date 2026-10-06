@@ -17,7 +17,7 @@ describe("runApprove", () => {
     const text = setup.h.text();
     expect(text).toContain("✓ Instagram: aprobado · listas para publicar: carrusel y reel");
     expect(text).toContain("✓ Portal Inmobiliario: aprobado");
-    expect(text).toContain("sin cuenta conectada: se publica al conectarla");
+    expect(text).toContain("sin cuenta conectada: conéctala y publica con agentsales publish");
     expect(text).toContain("→ Publica con: agentsales publish");
     expect(
       setup.t.publications
@@ -39,7 +39,8 @@ describe("runApprove", () => {
     const code = await run(setup);
 
     expect(code).toBe(1);
-    expect(setup.h.errors()).toContain("✗ Instagram: tiene errores en la revisión");
+    expect(setup.h.errors()).toContain("✗ Instagram: CONTENT_HAS_ERRORS");
+    expect(setup.h.errors()).toContain("corrige los errores (agentsales content");
     expect(setup.h.text()).toContain("✓ Portal Inmobiliario: aprobado");
     expect(setup.t.publications.all()).toEqual([]);
   });

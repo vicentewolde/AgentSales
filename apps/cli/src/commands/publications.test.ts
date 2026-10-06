@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { Command } from "commander";
+import { afterEach, describe, expect, it } from "vitest";
 import { publicationHarness } from "../../test/harness.js";
-import { runCancelPublication, runPublications, runRetirePublication } from "./publications.js";
+import {
+  register,
+  runCancelPublication,
+  runPublications,
+  runRetirePublication,
+} from "./publications.js";
 
 type Setup = Awaited<ReturnType<typeof publicationHarness>>;
 
@@ -171,5 +177,55 @@ describe("runRetirePublication", () => {
         payload: { removedByHand: true },
       });
     }
+  });
+
+  it("una en vivo que no está publicada no pregunta: la API explica que no se puede", async () => {
+    const setup = await publicationHarness();
+    const id = setup.t.byFormat("post")?.id ?? "";
+    await setup.t.publications.transition(
+      id,
+      { from: "approved", to: "publishing", changes: { dryRun: false, incrementAttempts: true } },
+      { actor: "system" },
+    );
+    await setup.t.publications.transition(
+      id,
+      {
+        from: "publishing",
+        to: "failed",
+        changes: { lastError: { code: "X", message: "x", retriable: false } },
+      },
+      { actor: "system" },
+    );
+
+    expect(await runRetirePublication(deps(setup), id)).toBe(1);
+    expect(setup.h.errors()).toContain("INVALID_TRANSITION");
+  });
+});
+
+describe("publications · registro en commander", () => {
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
+  it("publications cancel <id> va al subcomando, no a una propiedad llamada cancel", async () => {
+    const setup = await publicationHarness();
+    const program = new Command().exitOverride();
+    register(program, {
+      ...setup.h.io,
+      api: () => setup.h.client,
+      cwd: ".",
+      confirm: async () => false,
+      stdinIsTty: () => false,
+      readStdin: async () => "",
+      openUrl: () => {},
+    });
+    const id = setup.t.byFormat("reel")?.id ?? "";
+
+    await program.parseAsync(["publications", "cancel", id], { from: "user" });
+
+    expect(setup.t.byFormat("reel")?.status).toBe("cancelled");
+    expect(process.exitCode).toBe(0);
+    await program.parseAsync(["publications", setup.t.listingId], { from: "user" });
+    expect(setup.h.text()).toContain("Publicaciones de");
   });
 });

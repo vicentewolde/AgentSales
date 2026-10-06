@@ -23,6 +23,9 @@ export type AccountsDeps = Io &
     now: () => Date;
   };
 
+/** El mismo tope que `connectTokenBodySchema` de la API. */
+const TOKEN_MAX_LENGTH = 4096;
+
 /** Con 10 días o menos, el panel y la CLI avisan (spec F3 §4.6). */
 const EXPIRY_WARNING_MS = 10 * 24 * 60 * 60 * 1000;
 
@@ -133,6 +136,14 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
         pipeCommand,
       );
     }
+    // Sin mostrar lo recibido: un pegado de varias líneas o de otra cosa no se manda a la API.
+    if (token.length > TOKEN_MAX_LENGTH || /\s/.test(token)) {
+      throw new CliError(
+        "TOKEN_INVALID",
+        "Lo que llegó por la entrada estándar no parece un token (tiene espacios o saltos de línea, o es demasiado largo)",
+        "Copia solo el token de Generate token y vuelve a intentarlo",
+      );
+    }
     const { account } = await unwrap(
       deps.client.accounts["connect-token"].$post({
         json: { broker, platform: "instagram", token },
@@ -217,9 +228,10 @@ export function register(program: Command, ctx: CliContext): void {
   const deps = (): AccountsDeps => ({
     ...ctx,
     client: ctx.api(),
-    // `localhost` (no 127.0.0.1): la cookie del OAuth distingue el host (spec F3 §4.6).
+    // `localhost` (no 127.0.0.1): la cookie del OAuth distingue el host (spec F3 §4.6). En F7, con
+    // https, el enlace lo debería dar la API (deuda en ESTADO).
     oauthStartUrl: (broker) =>
-      `${apiUrl(apiPort(loadEnvironment())).replace("127.0.0.1", "localhost")}/oauth/instagram/start?broker=${encodeURIComponent(broker)}`,
+      `${apiUrl(apiPort(loadEnvironment()), "localhost")}/oauth/instagram/start?broker=${encodeURIComponent(broker)}`,
     now: () => new Date(),
   });
   const accounts = program

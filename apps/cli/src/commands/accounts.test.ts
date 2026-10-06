@@ -88,6 +88,20 @@ describe("accounts connect", () => {
     expect(h.requests).toEqual([]);
   });
 
+  it("un pegado con espacios o demasiado largo no se manda ni se muestra (TOKEN_INVALID)", async () => {
+    const { h, deps } = await setup();
+    for (const pasted of [`${TOKEN}\notra-linea`, `${TOKEN} ${TOKEN}`, "x".repeat(5000)]) {
+      const code = await runConnect(deps(pasted), "instagram", {
+        broker: "marca",
+        tokenStdin: true,
+      });
+      expect(code).toBe(1);
+    }
+    expect(h.errors()).toContain("TOKEN_INVALID");
+    expect(h.errors()).not.toContain(TOKEN);
+    expect(h.requests).toEqual([]);
+  });
+
   it("un token que Instagram rechaza muestra el mensaje de la API, sin el token", async () => {
     const { h, deps } = await setup();
 

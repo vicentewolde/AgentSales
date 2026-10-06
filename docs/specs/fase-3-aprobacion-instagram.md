@@ -365,7 +365,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T16 · CLI
 - **Depende de:** T15
-- **Archivos:** `apps/cli/src/commands/{approve.ts,publish.ts,publications.ts,accounts.ts}`, `apps/cli/src/commands/wait-run.ts`
+- **Archivos:** `apps/cli/src/commands/{approve.ts,publish.ts,publications.ts,accounts.ts,publication-view.ts,shared.ts,wait-run.ts}`, `apps/cli/src/{api-client.ts,context.ts,index.ts}`, `apps/cli/test/harness.ts` y `packages/core/src/labels.ts`
 - **Descripción:** §4.9 (CLI): `approve`, `publish`, `publications` (con `cancel` y `retire`) y `accounts` (con `connect` y `refresh`), y `accounts connect instagram --token-stdin` si T13 lo sumó. Notas de la revisión de T15:
   - el cliente `hc` manda por defecto `X-AgentSales-Client: cli` (`CLIENT_HEADER` y `CLI_CLIENT` de los contratos) y `Content-Type: application/json` en los `POST` (sin cuerpo, el CSRF da 403);
   - `publications retire <id>` lee `GET /publications/:id` para saber si es `live` antes de pedir la confirmación;
@@ -382,6 +382,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 - **Depende de:** T13
 - **Archivos:** `apps/web/src/pages/AccountsPage.tsx`, `apps/web/src/queries/accounts.ts`, `apps/web/src/routes.tsx`, `apps/web/src/layout/Layout.tsx`
 - **Descripción:** §4.9 (Cuentas), con el mensaje de vuelta del OAuth y el enlace directo a la API. Desde T13, `GET /accounts` ya trae `connect.instagram.oauth` (mostrar el botón del OAuth solo si es `true`) y los contratos exportan `OAUTH_REDIRECT_ERRORS` (los códigos de `?error=`); `permissions: null` se muestra como "desconocidos", no como un error.
+  Nota de la revisión de T16: el cliente del panel (`apps/web/src/api/client.ts`) manda `Content-Type: application/json` en un pedido que cambia algo y va sin cuerpo (Desconectar), como la CLI; sin `X-AgentSales-Client` (el actor es `operator`).
 - **Hecho cuando:**
   - [ ] Tests de la página: conectada, vencida, por vencer, sin cuenta y error de vuelta
 
@@ -394,6 +395,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
   - `startedLive` explica por qué Reintentar en `dry-run` no se puede;
   - el medio del reel es el MP4 (`<video>` o un ícono);
   - las publicadas no traen medios: lo enviado está en la bitácora.
+  - (revisión de T16) quién hizo cada cambio se muestra con `PUBLICATION_ACTOR_TEXT` (core), y los pedidos sin cuerpo (quitar la aprobación, publicar una, descartar) van con `Content-Type: application/json`.
 - **Hecho cuando:**
   - [ ] Tests: aprobar y quitar la aprobación, publicar, sondeo hasta `published` con enlace, `failed` con su error, descartar y retirar con confirmación
   - [ ] `PolledRun` y `pollStop` (`run-poll.ts`) se generalizan con el inicio de la espera (`startedAt`: `createdAt` para corridas y cargas, `updatedAt` para publicaciones), con test de una aprobada hace días
@@ -503,3 +505,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-06 | Desde F3-T15: rutas de §4.8 en `routes/content.ts` (aprobar y quitar la aprobación) y `routes/publications.ts`; la vista de una publicación (`publicationView`) quita `progress` y `externalId`; `GET /listings/:id/publications` trae miniaturas firmadas y omite los medios que ya no están; publicar responde 202; el actor sale de la cabecera `X-AgentSales-Client` (`cli`) o es `operator`; los códigos de aprobar y publicar van a `CONFLICTS` (409); `AppDeps.publications`; el escenario de publicación de core acepta `nextId` (uuid para la API) |
 | 2026-10-06 | Revisión de F3-T15 (#68, `revisor` y `arquitecto`): `GET /publications/:id` para sondear sin firmar miniaturas; el listado trae medios solo de las pendientes (un medio se reemplaza en su misma fila); `startedLive` en la vista; el detalle de los eventos se filtra al leer (`publishAttemptPayloadSchema` y las claves conocidas); `AppDeps.publications` solo lee; `CLI_CLIENT`; `PUBLICATION_EVENT_INVALID`, `PUBLICATION_REFERENCE_INVALID` y `PUBLICATION_PROGRESS_INVALID` a 500; tabla de HTTP de `05-convenciones.md` al día; tests de CSRF en todas las rutas que cambian algo, `hostGuard`, `stranded`, `PUBLISH_MODE_LOCKED`, `CONTENT_HAS_ERRORS`, `PUBLICATION_IN_PROGRESS` al quitar la aprobación y `listingBackToReady: false`; notas para T16 y T18 |
 | 2026-10-06 | Desde F3-T16: `approve`, `publish`, `publications` (con `cancel` y `retire`) y `accounts` (con `connect` y `refresh`) en la CLI; `publish` lee el modo de `/health` para confirmar en `live`, y sin terminal interactiva pide `--yes`; `waitForRun` recibe `isQueued` (las publicaciones no tienen `queued`); el cliente manda `X-AgentSales-Client: cli` y JSON en los `POST` sin cuerpo; `accounts connect --token-stdin` exige una tubería (no lee el token tecleado); textos `PLATFORM_ACCOUNT_STATUS_TEXT`, `PUBLISH_ATTEMPT_RESULT_TEXT` y `publicationModeText` en core |
+| 2026-10-06 | Revisión de F3-T16 (#69, `revisor` y `arquitecto`): `approve` deja que la API decida los errores de la revisión; el mensaje sin cuenta conectada dice que se publica con `publish` (nada se publica solo); `retire` pregunta solo si está publicada en vivo; el aviso de cola cuenta solo las que empezaron ahora (heurística documentada) y la cabecera muestra "modo mixto"; `publish` sale con 1 salvo que todas queden `published`; Ctrl+C al confirmar es un "no"; el token por tubería tiene tope de lectura y rechaza espacios (`TOKEN_INVALID`); `platformOption` compartido; `PUBLICATION_ACTOR_TEXT` en core; el cliente cubre todos los métodos que cambian algo; el arnés arma el candado con los repositorios reemplazados; tests de tope, caídas de la API, reencoladas, `skipped`/`stranded`, una descartada mientras se espera y el registro en commander; notas para T17 y T18 |
