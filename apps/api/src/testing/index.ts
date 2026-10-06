@@ -102,6 +102,12 @@ export function fakeUploads(): FakeUploads {
  */
 export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   const content = createInMemoryContentRepositories({ nextId: randomUUID });
+  // La app solo lee las publicaciones; el candado las cambia. Un test que trae las suyas trae
+  // también su candado (como el escenario de publicación), para que los dos vean las mismas.
+  if (overrides.publications !== undefined && overrides.lock === undefined) {
+    throw new Error("testDeps: con publications, pasa también lock (el que las cambia)");
+  }
+  const publications = createInMemoryPublicationRepository();
   const deps: Omit<AppDeps, "lock"> & { lock?: AppDeps["lock"] } = {
     checks: { db: ok, storage: ok, queue: ok },
     publishMode: "dry-run",
@@ -122,7 +128,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     contentRuns: content.contentRuns,
     contents: content.contents,
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
-    publications: createInMemoryPublicationRepository(),
+    publications,
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
     oauthState: createStateSigner(TEST_ENCRYPTION_KEY),
     panelUrl: "http://localhost:5173",
@@ -138,7 +144,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
       contentRuns: deps.contentRuns,
       contents: deps.contents,
       // Los mismos repositorios de publicaciones y cuentas que la app (spec F3-T13 y T15).
-      publications: deps.publications,
+      publications,
       platformAccounts: deps.platformAccounts,
     });
   return { ...deps, lock };

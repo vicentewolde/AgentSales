@@ -3,9 +3,9 @@ import {
   type CancelPublicationDeps,
   cancelPublication,
   type ListingRepository,
-  type Media,
   type MediaRepository,
   type MediaStorage,
+  PENDING_PUBLICATION_STATUSES,
   type Platform,
   type PublicationRepository,
   type PublishListingDeps,
@@ -36,7 +36,11 @@ export type PublicationRoutesDeps = PublishListingDeps &
   StartPublicationDeps &
   CancelPublicationDeps &
   RetirePublicationDeps & {
-    publications: PublicationRepository;
+    /**
+     * Fuera del candado solo se lee: los cambios de estado van dentro, con sus repositorios
+     * (ADR-0014). El tipo lo hace cumplir.
+     */
+    publications: Pick<PublicationRepository, "get" | "listByListing" | "listEvents">;
     listings: Pick<ListingRepository, "get">;
     media: Pick<MediaRepository, "listByListing">;
     /** Solo para las miniaturas de `GET /listings/:id/publications` (R2 es privado, ADR-0007). */
@@ -44,6 +48,13 @@ export type PublicationRoutesDeps = PublishListingDeps &
     /** El modo de los intentos que se piden por la API (D11): nunca sale del cuerpo. */
     publishMode: PublishMode;
   };
+
+const pending = new Set<string>(PENDING_PUBLICATION_STATUSES);
+
+const publicationNotFound = (id: string) =>
+  new AppError("PUBLICATION_NOT_FOUND", `No existe la publicación ${id}`, {
+    details: { publicationId: id },
+  });
 
 const dryRunOf = (deps: Pick<PublicationRoutesDeps, "publishMode">) => deps.publishMode !== "live";
 
@@ -65,18 +76,21 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
         deps.publications.listByListing(id),
         deps.media.listByListing(id),
       ]);
-      const byId = new Map(media.map((item) => [item.id, item]));
+      // Cada medio se firma una vez, aunque lo compartan varias publicaciones. Solo los que siguen
+      // en R2 y no son originales (una publicación fija derivados y renders), y solo para las
+      // pendientes: en las demás, una corrida posterior pudo reemplazar la imagen en el mismo medio.
+      const thumbnails = new Map(
+        media.filter((item) => item.variant !== null).map((item) => [item.id, signed(item)]),
+      );
       const body: ListingPublicationsResponse = {
         publications: await Promise.all(
           publications.map(async (publication) => ({
             ...publicationView(publication),
-            // Solo los que siguen en R2 y no son originales (una publicación fija derivados).
-            media: await Promise.all(
-              publication.mediaIds
-                .map((mediaId) => byId.get(mediaId))
-                .filter((item): item is Media => item !== undefined && item.variant !== null)
-                .map(signed),
-            ),
+            media: pending.has(publication.status)
+              ? await Promise.all(
+                  publication.mediaIds.flatMap((mediaId) => thumbnails.get(mediaId) ?? []),
+                )
+              : [],
           })),
         ),
       };
@@ -114,6 +128,13 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
  */
 export function publicationRoutes(deps: PublicationRoutesDeps) {
   return new Hono()
+    .get("/:id", validated("param", idParamSchema), async (c) => {
+      const { id } = c.req.valid("param");
+      const publication = await deps.publications.get(id);
+      if (publication === null) throw publicationNotFound(id);
+      const body: PublicationResponse = { publication: publicationView(publication) };
+      return c.json(body, 200);
+    })
     .post("/:id/publish", validated("param", idParamSchema), async (c) => {
       const { publication, requeued } = await startPublication(deps, {
         publicationId: c.req.valid("param").id,
@@ -154,11 +175,7 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
     )
     .get("/:id/events", validated("param", idParamSchema), async (c) => {
       const { id } = c.req.valid("param");
-      if ((await deps.publications.get(id)) === null) {
-        throw new AppError("PUBLICATION_NOT_FOUND", `No existe la publicación ${id}`, {
-          details: { publicationId: id },
-        });
-      }
+      if ((await deps.publications.get(id)) === null) throw publicationNotFound(id);
       const events = await deps.publications.listEvents(id);
       const body: PublicationEventsResponse = { events: events.map(eventView) };
       return c.json(body, 200);

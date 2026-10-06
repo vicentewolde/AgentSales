@@ -66,7 +66,7 @@ export type AppDeps = {
    * Publicaciones (F3-T15): leer las de un aviso y su bitácora, y saber de qué aviso es una antes
    * del candado. Los cambios de estado van dentro del candado, con sus repositorios.
    */
-  publications: PublicationRepository;
+  publications: Pick<PublicationRepository, "get" | "listByListing" | "listEvents">;
   // Cuentas (F3-T13): conectar con el token del panel de Meta o por OAuth, y desconectar.
   platformAccounts: PlatformAccountRepository;
   /** Instagram Login, si el OAuth tiene su par de la app, y si la cookie va `Secure`. */

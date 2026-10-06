@@ -16,6 +16,7 @@ import {
   publicationRetireResponseSchema,
 } from "../contracts/index.js";
 import { testDeps } from "../testing/index.js";
+import { publicationView } from "./publication-views.js";
 
 const json = { "Content-Type": "application/json" };
 
@@ -138,6 +139,34 @@ describe("POST /contents/:id/approve y /unapprove", () => {
   });
 });
 
+describe("aprobar · más errores", () => {
+  it("con errores en la revisión es 409 CONTENT_HAS_ERRORS, sin aprobar", async () => {
+    const { t, post, errorOf } = await setup({ approve: false });
+    const contentId = await t.instagramId();
+    await t.contents.update(contentId, {
+      body: "Departamento con 99 estacionamientos",
+      status: "edited",
+    });
+
+    const response = await post(`/contents/${contentId}/approve`);
+
+    expect(response.status).toBe(409);
+    expect(await errorOf(response)).toBe("CONTENT_HAS_ERRORS");
+    expect((await t.contents.get(contentId))?.status).toBe("edited");
+  });
+
+  it("quitar la aprobación con una publicación en curso es 409 PUBLICATION_IN_PROGRESS", async () => {
+    const { t, post, errorOf } = await setup();
+    await post(`/publications/${t.byFormat("reel")?.id}/publish`);
+
+    const response = await post(`/contents/${await t.instagramId()}/unapprove`);
+
+    expect(response.status).toBe(409);
+    expect(await errorOf(response)).toBe("PUBLICATION_IN_PROGRESS");
+    expect(t.byFormat("post")?.status).toBe("approved");
+  });
+});
+
 describe("GET /listings/:id/publications", () => {
   it("lista las publicaciones con sus miniaturas firmadas, sin progress ni externalId", async () => {
     const { t, app } = await setup();
@@ -173,6 +202,7 @@ describe("GET /listings/:id/publications", () => {
                 (await t.media.listByListing(id)).filter((media) => media.id !== gone),
             },
             publications: t.publications,
+            lock: t.deps.lock,
             storage: t.storage,
           }),
         ).request(`/listings/${t.listingId}/publications`)
@@ -181,6 +211,24 @@ describe("GET /listings/:id/publications", () => {
     const listed = publications.find((publication) => publication.id === post?.id);
     expect(listed?.media.map((media) => media.id)).not.toContain(gone);
     expect(listed?.media).toHaveLength((post?.mediaIds.length ?? 0) - 1);
+  });
+
+  it("una publicada va sin medios (una corrida posterior puede haber cambiado la imagen)", async () => {
+    const { t, app, post } = await setup();
+    const id = t.byFormat("post")?.id ?? "";
+    await post(`/publications/${id}/publish`);
+    await t.publications.transition(
+      id,
+      { from: "publishing", to: "published", changes: { publishedAt: new Date() } },
+      { actor: "system" },
+    );
+
+    const { publications } = listingPublicationsResponseSchema.parse(
+      await (await app.request(`/listings/${t.listingId}/publications`)).json(),
+    );
+
+    expect(publications.find((p) => p.id === id)?.media).toEqual([]);
+    expect(publications.find((p) => p.format === "reel")?.media.length).toBeGreaterThan(0);
   });
 
   it("un aviso que no existe es 404", async () => {
@@ -266,7 +314,7 @@ describe("POST /listings/:id/publish", () => {
   });
 
   it("sin cola es 503 y las publicaciones quedan en publishing (se reencolan publicando otra vez)", async () => {
-    const { t, post, errorOf } = await setup({
+    const { t, post } = await setup({
       queueFails: () =>
         new AppError("QUEUE_UNAVAILABLE", "La cola no está disponible", { retriable: true }),
     });
@@ -274,8 +322,69 @@ describe("POST /listings/:id/publish", () => {
     const response = await post(`/listings/${t.listingId}/publish`, { platform: "instagram" });
 
     expect(response.status).toBe(503);
-    expect(await errorOf(response)).toBe("QUEUE_UNAVAILABLE");
+    const { error } = errorBodySchema.parse(await response.json());
+    expect(error.code).toBe("QUEUE_UNAVAILABLE");
+    // El cuerpo nunca lleva `details` (los ids que quedaron sin job van solo al log).
+    expect(Object.keys(error).sort()).toEqual(["code", "message"]);
     expect(t.publications.all().every((p) => p.status === "publishing")).toBe(true);
+  });
+
+  it("las pendientes de una cuenta desconectada vuelven en stranded; con otra cuenta, nacen las suyas", async () => {
+    const { t, post } = await setup();
+    const old = t.publications.all().map((publication) => publication.id);
+    await t.platformAccounts.disconnect(t.account?.id ?? "");
+    await t.platformAccounts.upsertConnected({
+      brokerId: t.account?.brokerId ?? "",
+      platform: "instagram",
+      externalAccountId: "17841400000000002",
+      displayName: "@otra",
+      tokenExpiresAt: null,
+      meta: {},
+      credentials: { accessToken: "IGAA-otra" },
+    });
+
+    const body = listingPublishResponseSchema.parse(
+      await (await post(`/listings/${t.listingId}/publish`, { platform: "instagram" })).json(),
+    );
+
+    expect(body.stranded.map((publication) => publication.id).sort()).toEqual([...old].sort());
+    expect(body.created).toHaveLength(2);
+    expect(body.started.map((p) => p.id).sort()).toEqual(body.created.map((p) => p.id).sort());
+  });
+
+  it("una fallida que empezó en live no se reintenta con la API en dry-run (409 PUBLISH_MODE_LOCKED)", async () => {
+    const { t, app, post, errorOf } = await setup();
+    const id = t.byFormat("post")?.id ?? "";
+    await t.publications.transition(
+      id,
+      { from: "approved", to: "publishing", changes: { dryRun: false, incrementAttempts: true } },
+      { actor: "system" },
+    );
+    await t.publications.saveProgress(id, {
+      attemptStartedAt: "2026-10-05T12:00:00.000Z",
+      childIds: [],
+      containerId: "c-1",
+    });
+    await t.publications.transition(
+      id,
+      {
+        from: "publishing",
+        to: "failed",
+        changes: { lastError: { code: "IG_UNAVAILABLE", message: "x", retriable: true } },
+      },
+      { actor: "system" },
+    );
+
+    const response = await post(`/publications/${id}/publish`);
+
+    expect(response.status).toBe(409);
+    expect(await errorOf(response)).toBe("PUBLISH_MODE_LOCKED");
+    expect(t.byFormat("post")?.status).toBe("failed");
+    // La vista lo anticipa, para que el panel explique por qué no se puede.
+    const one = publicationResponseSchema.parse(
+      await (await app.request(`/publications/${id}`)).json(),
+    );
+    expect(one.publication).toMatchObject({ status: "failed", startedLive: true });
   });
 
   it("con todo publicado no hay nada que publicar (409)", async () => {
@@ -366,6 +475,30 @@ describe("/publications/:id", () => {
     expect((await t.listings.get(t.listingId))?.status).toBe("ready");
   });
 
+  it("retirar en dry-run no pide confirmación ni cambia el aviso (listingBackToReady: false), y la CLI queda como actor", async () => {
+    const { t, app, post } = await setup();
+    const id = t.byFormat("post")?.id ?? "";
+    await post(`/publications/${id}/publish`);
+    await t.publications.transition(
+      id,
+      { from: "publishing", to: "published", changes: { publishedAt: new Date() } },
+      { actor: "system" },
+    );
+
+    const response = await post(`/publications/${id}/retire`, {}, { [CLIENT_HEADER]: " CLI " });
+
+    expect(response.status).toBe(200);
+    expect(publicationRetireResponseSchema.parse(await response.json())).toMatchObject({
+      publication: { status: "unpublished" },
+      listingBackToReady: false,
+    });
+    const events = publicationEventsResponseSchema.parse(
+      await (await app.request(`/publications/${id}/events`)).json(),
+    ).events;
+    expect(events.at(-1)).toMatchObject({ toStatus: "unpublished", actor: "cli" });
+    expect(events.find((event) => event.toStatus === "publishing")?.actor).toBe("operator");
+  });
+
   it("retirar una que no está publicada es 409; removedByHand que no es booleano, 400", async () => {
     const { t, post, errorOf } = await setup();
     const id = t.byFormat("post")?.id ?? "";
@@ -377,6 +510,27 @@ describe("/publications/:id", () => {
     expect(invalid.status).toBe(400);
   });
 
+  it("GET /publications/:id: una sin medios ni progress, para sondear; inexistente 404", async () => {
+    const { t, app, errorOf } = await setup();
+    const id = t.byFormat("reel")?.id ?? "";
+
+    const response = await app.request(`/publications/${id}`);
+
+    expect(response.status).toBe(200);
+    const raw = (await response.json()) as { publication: Record<string, unknown> };
+    expect(publicationResponseSchema.parse(raw).publication).toMatchObject({
+      id,
+      format: "reel",
+      status: "approved",
+      startedLive: false,
+    });
+    expect(raw.publication).not.toHaveProperty("media");
+    expect(raw.publication).not.toHaveProperty("progress");
+    const missing = await app.request(`/publications/${randomUUID()}`);
+    expect(missing.status).toBe(404);
+    expect(await errorOf(missing)).toBe("PUBLICATION_NOT_FOUND");
+  });
+
   it("la bitácora de una que no existe es 404", async () => {
     const { app, errorOf } = await setup();
     const response = await app.request(`/publications/${randomUUID()}/events`);
@@ -384,18 +538,53 @@ describe("/publications/:id", () => {
     expect(await errorOf(response)).toBe("PUBLICATION_NOT_FOUND");
   });
 
-  it("un formulario desde otro origen lo bloquea el CSRF, sin cambiar nada", async () => {
+  it("un formulario desde otro origen no llega a ninguna ruta que cambia algo (CSRF), sin encolar nada", async () => {
     const { t, app } = await setup();
+    const contentId = await t.instagramId();
     const id = t.byFormat("post")?.id ?? "";
+    const paths = [
+      `/contents/${contentId}/approve`,
+      `/contents/${contentId}/unapprove`,
+      `/listings/${t.listingId}/publish`,
+      `/publications/${id}/publish`,
+      `/publications/${id}/cancel`,
+      `/publications/${id}/retire`,
+    ];
+    for (const path of paths) {
+      const response = await app.request(path, {
+        method: "POST",
+        headers: { Origin: "http://evil.test" },
+        body: JSON.stringify({ platform: "instagram", removedByHand: true }),
+      });
+      expect(response.status, path).toBe(403);
+    }
+    expect(t.queue.jobs).toEqual([]);
+    expect(t.publications.all().every((p) => p.status === "approved")).toBe(true);
+  });
 
-    const response = await app.request(`/publications/${id}/cancel`, {
+  it("otro Host es 403 HOST_NOT_ALLOWED", async () => {
+    const { t, app, errorOf } = await setup();
+
+    const response = await app.request(`http://evil.test/listings/${t.listingId}/publish`, {
       method: "POST",
-      headers: { Origin: "http://evil.test" },
-      body: "{}",
+      headers: json,
+      body: JSON.stringify({ platform: "instagram" }),
     });
 
     expect(response.status).toBe(403);
-    expect((await t.publications.get(id))?.status).toBe("approved");
+    expect(await errorOf(response)).toBe("HOST_NOT_ALLOWED");
+    expect(t.queue.jobs).toEqual([]);
+  });
+
+  it("un POST sin Content-Type JSON lo frena el CSRF: la CLI y el panel mandan application/json", async () => {
+    const { t, app } = await setup();
+
+    const response = await app.request(`/publications/${t.byFormat("post")?.id}/cancel`, {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(403);
+    expect(t.byFormat("post")?.status).toBe("approved");
   });
 });
 
@@ -418,6 +607,17 @@ describe("respuestas sin secretos", () => {
         retry: 0,
         result: "retry",
         error: { code: "IG_UNAVAILABLE", message: "Instagram no responde", retriable: true },
+        // Lo que nunca debería escribirse: el filtro de la lectura lo descarta igual.
+        imageUrl: "https://r2.test/foto.jpg?X-Amz-Signature=firma-secreta",
+        sent: {
+          platform: "instagram",
+          format: "post",
+          title: null,
+          caption: "Depto en Ñuñoa",
+          media: [],
+          account: { id: "a", displayName: "@muestra" },
+          url: "https://r2.test/otra.jpg?X-Amz-Signature=firma-secreta",
+        },
       },
     });
 
@@ -425,6 +625,7 @@ describe("respuestas sin secretos", () => {
     for (const response of [
       await app.request(`/listings/${t.listingId}/publications`),
       await app.request(`/publications/${id}/events`),
+      await app.request(`/publications/${id}`),
       await post(`/publications/${id}/publish`),
       await post(`/listings/${t.listingId}/publish`, { platform: "instagram" }),
     ]) {
@@ -436,6 +637,24 @@ describe("respuestas sin secretos", () => {
       expect(text).not.toContain("contenedor-secreto");
       expect(text).not.toContain("contenedor-hijo-secreto");
       expect(text).not.toContain('"progress"');
+      expect(text).not.toContain("firma-secreta");
     }
+  });
+
+  it("la vista de una publicación nunca lleva progress ni externalId", async () => {
+    const { t, post } = await setup({ publishMode: "live" });
+    const id = t.byFormat("post")?.id ?? "";
+    await post(`/publications/${id}/publish`);
+    const saved = await t.publications.saveProgress(id, {
+      attemptStartedAt: new Date().toISOString(),
+      childIds: [],
+      containerId: "contenedor-secreto",
+    });
+
+    const view = publicationView({ ...saved, externalId: "1789" });
+
+    expect(view).not.toHaveProperty("progress");
+    expect(view).not.toHaveProperty("externalId");
+    expect(JSON.stringify(view)).not.toContain("contenedor-secreto");
   });
 });

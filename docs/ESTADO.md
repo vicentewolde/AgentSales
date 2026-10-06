@@ -25,7 +25,7 @@
 | F3-T12 · Job `publication.publish` | ✅ terminada | #65 |
 | F3-T13 · Conectar Instagram | ✅ terminada | #66 |
 | F3-T14 · Refresco de tokens | ✅ terminada | #67 |
-| F3-T15 · API de aprobación y publicaciones | ✅ terminada | |
+| F3-T15 · API de aprobación y publicaciones | ✅ terminada | #68 |
 | F3-T16 · CLI | ⏳ pendiente | |
 | F3-T17 · Panel: Cuentas | ⏳ pendiente | |
 | F3-T18 · Panel: aprobar y publicar | ⏳ pendiente | |
@@ -52,6 +52,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **F7:** `GET /listings` devuelve la entidad completa: notas internas, dirección exacta y todos los atributos. Es aceptable mientras la API sea local (`hostGuard`). Con autenticación y despliegue, usar una proyección acotada para la lista.
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
+- **F7, actor de la bitácora:** la API distingue la CLI del panel por la cabecera `X-AgentSales-Client`, que cualquier proceso local puede mandar. Con autenticación, el actor sale de la sesión.
 - **F7, refresco de tokens:** el job `tokens.refresh` expira a los 5 min y la expiración no corta el handler. Con una cuenta por corredor sobra; con muchas cuentas (llamadas de hasta 30 s), subir el tope o dejar de empezar cuentas nuevas pasados unos 4 min, para que un reintento no se cruce con el intento anterior.
 - **F6:** una publicación cuyo último intento terminó cortado (`PUBLISH_ABORTED`) o publicado sin guardar (`PUBLISH_RESULT_NOT_SAVED`) queda en `publishing` sin job hasta el próximo arranque del worker (que la reencola) o hasta publicarla de nuevo. En el segundo caso ya salió en Instagram. Que `publication.sync` o un reencolado periódico lo cubran.
 - **F7, cuentas:** `panelUrl` y `allowedHosts` están fijos en `localhost`; con varios corredores y la API expuesta, hay que autorizar quién puede conectar cada corredor (`/oauth/instagram/start?broker=` y `connect-token` hoy los acepta cualquiera que llegue a la API) y evitar repetir un `state` válido durante sus 10 min (guardar el nonce usado; hoy basta con que la cookie se borre).

@@ -320,6 +320,11 @@ export const publicationViewSchema = z.object({
   mediaIds: z.array(z.string()),
   status: z.enum(PUBLICATION_STATUSES),
   dryRun: z.boolean(),
+  /**
+   * Ya empezó en vivo en la plataforma (`dryRun: false` con progreso): reintentarla con la API en
+   * `dry-run` es `PUBLISH_MODE_LOCKED`. El panel lo usa para explicar por qué no se puede.
+   */
+  startedLive: z.boolean(),
   attempts: z.number().int().nonnegative(),
   lastError: publicationErrorSchema.nullable(),
   externalUrl: z.string().nullable(),
@@ -358,14 +363,24 @@ export const contentUnapproveResponseSchema = z.object({
 });
 export type ContentUnapproveResponse = z.infer<typeof contentUnapproveResponseSchema>;
 
-/** Una publicación con sus medios (miniaturas con URL de lectura temporal, para el panel). */
+/**
+ * Una publicación con sus medios, con URL de lectura temporal (en el reel, el MP4 completo: el panel
+ * lo muestra con `<video>` o un ícono).
+ */
 export const listingPublicationSchema = publicationViewSchema.extend({
-  /** Los medios que siguen en R2, en orden; una corrida posterior a publicar puede haberlos cambiado. */
+  /**
+   * Solo en las pendientes (`PENDING_PUBLICATION_STATUSES`), cuyos medios no cambian (D3). En las
+   * demás va vacío: una corrida posterior puede haber reemplazado la imagen en el mismo medio, y lo
+   * que se envió queda en la bitácora (`publish_attempt.sent`).
+   */
   media: z.array(contentMediaSchema),
 });
 export type ListingPublicationView = z.infer<typeof listingPublicationSchema>;
 
-/** `GET /listings/:id/publications`: todas las del aviso, de todos los canales. */
+/**
+ * `GET /listings/:id/publications`: todas las del aviso, de todos los canales. Para sondear una sola
+ * (sin volver a firmar miniaturas), `GET /publications/:id` (`publicationResponseSchema`).
+ */
 export const listingPublicationsResponseSchema = z.object({
   publications: z.array(listingPublicationSchema),
 });
@@ -441,6 +456,8 @@ export type PublicationEventsResponse = z.infer<typeof publicationEventsResponse
  * sin ella (el panel), `operator`.
  */
 export const CLIENT_HEADER = "X-AgentSales-Client";
+/** El valor de `CLIENT_HEADER` con que se identifica la CLI. */
+export const CLI_CLIENT = "cli";
 
 /**
  * Una cuenta conectada tal como la ve el operador (spec F3 §4.6 y §4.8, `GET /accounts`): nunca

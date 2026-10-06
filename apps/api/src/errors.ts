@@ -13,7 +13,8 @@ const INTERNAL_MESSAGE = "Error interno del servidor";
 
 /**
  * Pedidos válidos que el estado actual no permite (spec F2 §4.7): el cliente puede corregirlos
- * (esperar, recargar o confirmar), así que son 409 y no 500 como `*_CONFLICT`.
+ * (esperar, recargar, descartar o confirmar), así que son 409. Los demás `*_CONFLICT` (carreras
+ * entre intentos de un job) son 500; `PUBLICATION_CONFLICT` es 409 por el spec F3 §4.8.
  */
 const CONFLICTS = new Set([
   "LISTING_NOT_READY",
@@ -51,6 +52,18 @@ const PLATFORM_REJECTIONS = new Set([
 ]);
 
 /**
+ * Datos inválidos que arma el servidor, no el cliente: los de un job, un run guardado y lo que el
+ * repositorio de publicaciones recibe de core (F3-T15). Son 500 aunque terminen en `_INVALID`.
+ */
+const SERVER_INVALID = new Set([
+  "JOB_PAYLOAD_INVALID",
+  "IMPORT_RUN_INVALID",
+  "PUBLICATION_EVENT_INVALID",
+  "PUBLICATION_REFERENCE_INVALID",
+  "PUBLICATION_PROGRESS_INVALID",
+]);
+
+/**
  * Status HTTP de un `AppError` según su código (docs/05-convenciones.md). Se evalúa en orden:
  * primero los códigos exactos, luego los patrones; lo que no calza es 500.
  */
@@ -59,9 +72,9 @@ export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "REQUEST_TOO_LARGE") return 413;
   if (PLATFORM_REJECTIONS.has(code)) return 400;
   if (code === "IG_UNEXPECTED_RESPONSE") return 502;
-  // Datos inválidos que no vienen del cliente: los de un job los arma el servidor, y una fila
-  // corrupta en la base (`*_ROW_INVALID`, `IMPORT_RUN_INVALID`) es un fallo del servidor.
-  if (code === "JOB_PAYLOAD_INVALID" || code === "IMPORT_RUN_INVALID") return 500;
+  // Datos inválidos que no vienen del cliente (`SERVER_INVALID`), y una fila corrupta en la base
+  // (`*_ROW_INVALID`): son fallos del servidor.
+  if (SERVER_INVALID.has(code)) return 500;
   if (code.endsWith("_ROW_INVALID")) return 500;
   if (code.endsWith("_NOT_FOUND")) return 404;
   if (code.includes("_INVALID") || code.startsWith("INVALID_")) return 400;
