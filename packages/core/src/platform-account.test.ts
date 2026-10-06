@@ -45,8 +45,11 @@ describe("meta de Mercado Libre", () => {
     expect(mercadoLibreAccountMetaSchema.parse(meta)).toEqual(meta);
   });
 
-  it("rechaza otro sitio y una fecha que no es ISO", () => {
+  it("rechaza otro sitio, un vencimiento que no es estimado y una fecha que no es ISO", () => {
     expect(mercadoLibreAccountMetaSchema.safeParse({ ...meta, siteId: "MLA" }).success).toBe(false);
+    expect(
+      mercadoLibreAccountMetaSchema.safeParse({ ...meta, tokenExpiryEstimated: false }).success,
+    ).toBe(false);
     expect(
       mercadoLibreAccountMetaSchema.safeParse({ ...meta, accessTokenExpiresAt: "en 6 horas" })
         .success,

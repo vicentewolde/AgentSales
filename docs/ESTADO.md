@@ -5,7 +5,7 @@
 **Actualizado:** 2026-10-06
 **Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 24 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`), salvo la demo del refresco y el tag
 **Última tarea:** F4-T01 · Esquema y entidades (migración `0007`). Antes, `/fase-plan 4` y F3-T20 (cierre de F3), al que le faltan el refresco y el tag
-**Siguiente paso:** `/tarea F4-T02` (variables de Mercado Libre y redactor); T12 y T13 también pueden empezar. Desde el **2026-10-07 a las 16:31 (hora de Chile)**, la demo del refresco del token de Instagram (spec F3 §7, paso 7) y, con tu permiso, el tag `v0.3.0`
+**Siguiente paso:** merge de #76 y, justo después, `pnpm db:migrate` en Neon (antes del próximo `pnpm dev`: sin la `0007` el código nuevo falla con "column remote_state does not exist"). Luego `/tarea F4-T02` (variables de Mercado Libre y redactor); T12 y T13 también pueden empezar. Desde el **2026-10-07 a las 16:31 (hora de Chile)**, la demo del refresco del token de Instagram (spec F3 §7, paso 7) y, con tu permiso, el tag `v0.3.0`
 
 ## Pendiente del cierre de F3
 - [ ] **Refresco del token (demo):** la cuenta se conectó el 2026-10-06 a las 16:31 y el refresco exige 24 h (`--force` solo salta el tope de 30 días). Desde esa hora, `pnpm -s cli accounts refresh <id> --force` con la API corriendo, o el primer `pnpm dev` (el worker lo hace al arrancar, porque el vencimiento es estimado). Se ve en `pnpm -s cli accounts`: última renovación y el vencimiento real. Anotar el resultado en la nota de Instagram (§8, punto 4) y marcar el criterio de §6
@@ -16,7 +16,7 @@
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F4 (`/fase-plan 4`) | ✅ aprobado | |
-| F4-T01 · Esquema y entidades (migración `0007`) | ✅ terminada | |
+| F4-T01 · Esquema y entidades (migración `0007`) | 🔄 en revisión | #76 |
 | F4-T02 · Variables de Mercado Libre y redactor | ⏳ pendiente | |
 | F4-T03 · Cliente: OAuth, usuario y errores | ⏳ pendiente | |
 | F4-T04 · Cliente: ítems y fotos | ⏳ pendiente | |

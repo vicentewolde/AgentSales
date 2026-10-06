@@ -101,7 +101,7 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
         dryRun: true,
         progress: null,
         remoteState: null,
-        listingSourceHash: input.listingSourceHash ?? null,
+        listingSourceHash: input.listingSourceHash || null,
         createdAt: now,
         updatedAt: now,
       };

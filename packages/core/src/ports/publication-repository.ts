@@ -102,7 +102,7 @@ export interface PublicationRepository {
   setRemoteState(
     id: string,
     remoteState: RemoteState | null,
-    event?: NewPublicationEvent,
+    event?: NewPublicationEvent & { type: "sync" },
   ): Promise<Publication>;
   /** Anota un evento sin cambiar el estado (`publish_attempt`, `sync`, `manual_edit`). */
   addEvent(publicationId: string, event: NewPublicationEvent): Promise<PublicationEvent>;

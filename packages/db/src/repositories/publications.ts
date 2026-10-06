@@ -137,7 +137,8 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
                 format: input.format,
                 contentId: input.contentId,
                 mediaIds: [...input.mediaIds],
-                listingSourceHash: input.listingSourceHash ?? null,
+                // Vacío cuenta como sin versión: nunca se compara contra "".
+                listingSourceHash: input.listingSourceHash || null,
                 status: "approved",
                 // El valor seguro: el modo de verdad se fija al pasar a `publishing`.
                 dryRun: true,

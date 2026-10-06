@@ -17,7 +17,7 @@ describe("entrada del catálogo (ADR-0015)", () => {
   });
 
   it("rechaza una clave sin tipo o con espacios, y datos que no son JSON", () => {
-    for (const key of ["MLC1459", "category:", "category:MLC 1459", "Category:MLC1459"]) {
+    for (const key of ["MLC1459", "category:", "category:MLC 1459", "Category:MLC1459", ""]) {
       expect(platformCatalogEntrySchema.safeParse({ ...entry, key }).success).toBe(false);
     }
     expect(platformCatalogEntrySchema.safeParse({ ...entry, data: undefined }).success).toBe(false);

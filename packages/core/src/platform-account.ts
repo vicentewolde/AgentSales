@@ -111,6 +111,7 @@ export const mercadoLibreAccountMetaSchema = z.object({
   connectedAt: z.iso.datetime(),
   tokenRefreshedAt: z.iso.datetime().nullable(),
   accessTokenExpiresAt: z.iso.datetime(),
-  tokenExpiryEstimated: z.boolean(),
+  /** Siempre estimado: Mercado Libre no informa cuándo vence el `refresh_token`. */
+  tokenExpiryEstimated: z.literal(true),
 });
 export type MercadoLibreAccountMeta = z.infer<typeof mercadoLibreAccountMetaSchema>;

@@ -16,7 +16,8 @@ export type PublicationRepositories = {
 const remote = {
   status: "paused",
   subStatus: ["picture_download_pending"],
-  stopTime: "2026-11-20T04:00:00.000Z",
+  // Con la zona horaria de Chile, como lo entrega Mercado Libre: el jsonb la guarda tal cual.
+  stopTime: "2026-11-20T01:00:00.000-03:00",
   expirationTime: null,
   checkedAt: "2026-10-06T12:00:00.000Z",
 };
@@ -27,6 +28,9 @@ const portalProgress = {
   createRequestedAt: "2026-10-06T12:00:00.000Z",
   itemId: "MLC123",
 };
+
+/** Unos milisegundos reales: `updatedAt` de Postgres usa su reloj, no uno falso. */
+const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 const progress = {
   attemptStartedAt: "2026-10-05T12:00:00.000Z",
@@ -425,6 +429,7 @@ export function publicationRepositoryContract(
 
     it("setRemoteState guarda el estado remoto en cualquier estado, con su evento, y null lo borra", async () => {
       const created = await repos.publications.create(await newPublication(), operator);
+      await tick();
 
       const saved = await repos.publications.setRemoteState(created.id, remote, {
         type: "sync",
@@ -433,7 +438,8 @@ export function publicationRepositoryContract(
       });
       expect(saved.status).toBe("approved");
       expect(saved.remoteState).toEqual(remote);
-      expect(saved.updatedAt.getTime()).toBeGreaterThanOrEqual(created.updatedAt.getTime());
+      expect(saved.remoteState?.stopTime).toBe("2026-11-20T01:00:00.000-03:00");
+      expect(saved.updatedAt.getTime()).toBeGreaterThan(created.updatedAt.getTime());
       expect(await repos.publications.get(created.id)).toEqual(saved);
       const events = await repos.publications.listEvents(created.id);
       expect(events.at(-1)).toMatchObject({
@@ -456,12 +462,15 @@ export function publicationRepositoryContract(
         { from: "approved", to: "publishing", changes: { dryRun: false } },
         operator,
       );
+      const publishing = await repos.publications.get(created.id);
+      await tick();
       const published = await repos.publications.transition(
         created.id,
         { from: "publishing", to: "published", changes: { remoteState: remote } },
         { actor: "system" },
       );
       expect(published.remoteState).toEqual(remote);
+      expect(published.updatedAt.getTime()).toBeGreaterThan(publishing?.updatedAt.getTime() ?? 0);
 
       const paused = await repos.publications.transition(
         created.id,
@@ -490,6 +499,44 @@ export function publicationRepositoryContract(
 
       expect(await repos.publications.get(created.id)).toEqual(created);
       expect(await repos.publications.listEvents(created.id)).toEqual(before);
+    });
+
+    it("revisa el estado remoto y el evento antes que el estado, sin escribir nada", async () => {
+      const created = await repos.publications.create(await newPublication(), operator);
+      const before = await repos.publications.listEvents(created.id);
+      const invalid = { ...remote, status: "" };
+
+      // Una publicación que no existe con datos inválidos: primero los datos.
+      await expect(
+        repos.publications.setRemoteState(repos.missingId, invalid),
+      ).rejects.toMatchObject({ code: "PUBLICATION_REMOTE_STATE_INVALID" });
+      // Una transición que la máquina no permite con datos inválidos: primero los datos.
+      await expect(
+        repos.publications.transition(
+          created.id,
+          { from: "approved", to: "published", changes: { remoteState: invalid } },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_REMOTE_STATE_INVALID" });
+      // Un evento inválido no deja el estado remoto a medias: fila y evento van juntos.
+      await expect(
+        repos.publications.setRemoteState(created.id, remote, {
+          type: "sync",
+          actor: "system",
+          payload: [] as unknown as Record<string, unknown>,
+        }),
+      ).rejects.toMatchObject({ code: "PUBLICATION_EVENT_INVALID" });
+
+      expect(await repos.publications.get(created.id)).toEqual(created);
+      expect(await repos.publications.listEvents(created.id)).toEqual(before);
+    });
+
+    it("una versión del aviso vacía queda en null", async () => {
+      const created = await repos.publications.create(
+        await newPublication({ listingSourceHash: "" }),
+        operator,
+      );
+      expect(created.listingSourceHash).toBeNull();
     });
 
     it("el progreso de Portal se valida con su esquema", async () => {

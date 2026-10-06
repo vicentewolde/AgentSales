@@ -61,7 +61,8 @@ export function checkPublicationProgress(platform: Platform, progress: unknown):
  * su estado y subestado tal cual (Mercado Libre: `active`, `paused`, `under_review`, `closed`…),
  * cuándo vence y cuándo se consultó. No es el estado de la publicación (que es nuestro): el sync
  * (spec F4 §4.9) lo usa para ajustarlo y el panel para mostrar "procesando fotos" o "en revisión".
- * Es jsonb: las fechas van como texto ISO. Sin secretos.
+ * Es jsonb: las fechas van como texto ISO. Sin secretos. Solo se amplía con campos opcionales: si
+ * se endurece, las filas ya guardadas dejarían de calzar (`PUBLICATION_ROW_INVALID`).
  */
 export const remoteStateSchema = z.object({
   status: z.string().min(1),
@@ -70,8 +71,6 @@ export const remoteStateSchema = z.object({
   stopTime: z.iso.datetime({ offset: true }).nullable(),
   /** Vencimiento de lo que lo cubre (Mercado Libre: `expiration_time`, el del paquete). */
   expirationTime: z.iso.datetime({ offset: true }).nullable(),
-  /** Motivo de una pausa o revisión de la plataforma, si se conoce (en español, sin datos del aviso). */
-  reason: z.string().nullable().optional(),
   checkedAt: z.iso.datetime(),
 });
 export type RemoteState = z.infer<typeof remoteStateSchema>;
@@ -169,7 +168,7 @@ export const publicationSchema = z
      * `source_hash` del aviso al nacer (ADR-0015, spec F4 §4.6): las plataformas que envían datos
      * del aviso no publican si cambió. `null` en las anteriores a la migración `0007`.
      */
-    listingSourceHash: z.string().nullable(),
+    listingSourceHash: z.string().min(1).nullable(),
     createdAt: z.date(),
     updatedAt: z.date(),
   })

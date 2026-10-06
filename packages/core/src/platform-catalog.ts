@@ -10,7 +10,8 @@ import { PLATFORMS } from "./enums.js";
  */
 export const platformCatalogEntrySchema = z.object({
   platform: z.enum(PLATFORMS),
-  key: z.string().regex(/^[a-z_]+:[A-Za-z0-9_=-]+$/),
+  // Solo la forma `tipo:id`: el id lo pone la plataforma y puede cambiar de forma.
+  key: z.string().regex(/^[a-z_]+:\S+$/),
   data: z.json(),
   fetchedAt: z.date(),
 });

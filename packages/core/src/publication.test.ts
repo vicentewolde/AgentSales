@@ -155,14 +155,11 @@ describe("estado remoto (F4, ADR-0015)", () => {
     subStatus: [],
     stopTime: "2026-11-20T04:00:00.000-03:00",
     expirationTime: "2026-12-01T00:00:00.000Z",
-    reason: null,
     checkedAt: "2026-10-06T12:00:00.000Z",
   };
 
-  it("acepta lo que informa Mercado Libre (con zona horaria) y el motivo es opcional", () => {
+  it("acepta lo que informa Mercado Libre, con zona horaria", () => {
     expect(remoteStateSchema.parse(remote)).toEqual(remote);
-    const { reason: _, ...sinMotivo } = remote;
-    expect(remoteStateSchema.safeParse(sinMotivo).success).toBe(true);
     expect(syncPayloadSchema.parse({ remote })).toEqual({ remote });
   });
 
