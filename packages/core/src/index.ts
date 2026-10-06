@@ -247,14 +247,20 @@ export {
   PUBLICATION_ACTORS,
   PUBLICATION_EVENT_TYPES,
   PUBLICATION_PROGRESS_SCHEMAS,
+  PUBLISH_ATTEMPT_RESULTS,
   type Publication,
   type PublicationActor,
   type PublicationError,
   type PublicationEvent,
   type PublicationEventType,
+  type PublishAttemptPayload,
+  type PublishAttemptRecord,
+  type PublishAttemptResult,
   publicationErrorSchema,
   publicationEventSchema,
   publicationSchema,
+  publishAttemptPayloadSchema,
+  publishAttemptRecordSchema,
   requirePublicationMode,
 } from "./publication.js";
 export {
@@ -271,7 +277,6 @@ export {
   buildPublishInput,
   checkPublishInput,
   PUBLISH_MEDIA_URL_TTL_S,
-  type PublishAttemptRecord,
   publishAttemptRecord,
 } from "./publish/input.js";
 export * from "./redact.js";
@@ -343,6 +348,13 @@ export {
   type PublishListingResult,
   publishListing,
 } from "./use-cases/publish-listing.js";
+export {
+  type PublishPublicationDeps,
+  type PublishPublicationParams,
+  type PublishPublicationResult,
+  type PublishWarning,
+  publishPublication,
+} from "./use-cases/publish-publication.js";
 export {
   enqueueContentRun,
   type RequestContentRunDeps,

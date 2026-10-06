@@ -36,6 +36,7 @@ import {
   type SlideImageRef,
   type SlideTemplates,
 } from "../ports/slide-templates.js";
+import { scrubMessage } from "../redact.js";
 
 export type PrepareContentDeps = {
   contentRuns: ContentRunRepository;
@@ -102,11 +103,7 @@ const FIXED_MESSAGES: Readonly<Record<string, string>> = {
  * comando como `/login` queda).
  */
 export function contentRunErrorOf(error: AppError): { code: string; message: string } {
-  const message =
-    FIXED_MESSAGES[error.code] ??
-    error.message
-      .replace(/brokers\/\S+/g, "<archivo>")
-      .replace(/(?:^|\s)\/[^\s/]+\/\S+/g, " <ruta>");
+  const message = FIXED_MESSAGES[error.code] ?? scrubMessage(error.message);
   return { code: error.code, message };
 }
 

@@ -1,9 +1,11 @@
 import { z } from "zod";
 import {
+  MEDIA_KINDS,
   PLATFORMS,
   type Platform,
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
+  PUBLISH_MODES,
   type PublicationStatus,
 } from "./enums.js";
 import { AppError } from "./errors.js";
@@ -152,3 +154,49 @@ export const publicationEventSchema = z.object({
   createdAt: z.date(),
 });
 export type PublicationEvent = z.infer<typeof publicationEventSchema>;
+
+/**
+ * Lo que se envió en un intento (o se habría enviado en `dry-run`): formato, título, caption, medios
+ * (ruta de R2, tipo, tamaño y medidas) y la cuenta. **Nunca** URLs firmadas ni credenciales. Lo
+ * arma `publishAttemptRecord`.
+ */
+export const publishAttemptRecordSchema = z.object({
+  platform: z.enum(PLATFORMS),
+  format: z.enum(PUBLICATION_FORMATS),
+  title: z.string().nullable(),
+  caption: z.string(),
+  media: z.array(
+    z.object({
+      mediaId: z.string(),
+      storagePath: z.string(),
+      kind: z.enum(MEDIA_KINDS),
+      mime: z.string(),
+      bytes: z.number().int().nonnegative(),
+      width: z.number().int().nullable(),
+      height: z.number().int().nullable(),
+      durationS: z.number().nullable(),
+    }),
+  ),
+  account: z.object({ id: z.string(), displayName: z.string() }),
+});
+export type PublishAttemptRecord = z.infer<typeof publishAttemptRecordSchema>;
+
+/** Resultado de un intento: publicado, se reintenta (sigue en `publishing`) o quedó `failed`. */
+export const PUBLISH_ATTEMPT_RESULTS = ["published", "retry", "failed"] as const;
+export type PublishAttemptResult = (typeof PUBLISH_ATTEMPT_RESULTS)[number];
+
+/**
+ * `payload` del evento `publish_attempt` (spec F3 §4.3, F3-T11): uno por intento, salvo un corte
+ * por apagado. `attempt` = `publications.attempts` (veces que se pidió publicar) y `retry` = el
+ * reintento de la cola; `sent` falta si el intento falló antes de armar lo que se envía. Lo usan
+ * quien escribe (el intento) y quien lee (API, CLI y panel).
+ */
+export const publishAttemptPayloadSchema = z.object({
+  mode: z.enum(PUBLISH_MODES),
+  attempt: z.number().int().nonnegative(),
+  retry: z.number().int().nonnegative(),
+  result: z.enum(PUBLISH_ATTEMPT_RESULTS),
+  error: publicationErrorSchema.optional(),
+  sent: publishAttemptRecordSchema.optional(),
+});
+export type PublishAttemptPayload = z.infer<typeof publishAttemptPayloadSchema>;

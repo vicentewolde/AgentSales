@@ -65,6 +65,10 @@ export {
   type InMemoryPlatformAccountRepositoryOptions,
 } from "./platform-accounts.js";
 export {
+  createPublicationScenario,
+  type PublicationScenario,
+} from "./publication-scenario.js";
+export {
   createInMemoryListingLock,
   createInMemoryPublicationRepository,
   type InMemoryPublicationRepository,
