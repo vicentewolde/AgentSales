@@ -72,6 +72,24 @@ export function platformAccountRepositoryContract(
       expect(await repos.accounts.getCredentials(account.id)).toEqual(input.credentials);
     });
 
+    it("las credenciales de Mercado Libre guardan también el token de renovar (ADR-0015)", async () => {
+      const input = connectedAccount(brokerId, {
+        platform: "portal_inmobiliario",
+        credentials: { accessToken: unique("APP_USR-token"), refreshToken: unique("TG-refresh") },
+      });
+      const account = await repos.accounts.upsertConnected(input);
+
+      expect(JSON.stringify(account)).not.toContain(input.credentials.refreshToken);
+      expect(await repos.accounts.getCredentials(account.id)).toEqual(input.credentials);
+
+      const refreshed = { accessToken: unique("APP_USR-nuevo"), refreshToken: unique("TG-nuevo") };
+      await repos.accounts.updateToken(account.id, {
+        credentials: refreshed,
+        tokenExpiresAt: null,
+      });
+      expect(await repos.accounts.getCredentials(account.id)).toEqual(refreshed);
+    });
+
     it("reconectar la misma cuenta actualiza la fila (mismo id) y la deja conectada", async () => {
       const first = connectedAccount(brokerId);
       const created = await repos.accounts.upsertConnected(first);

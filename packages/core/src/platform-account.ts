@@ -36,7 +36,14 @@ export const INSTAGRAM_PUBLISH_SCOPE = "instagram_business_content_publish";
  * Credenciales de una cuenta, ya descifradas: solo viven en memoria, nunca van a un log, un error,
  * una respuesta HTTP ni a los datos de un job. Se guardan cifradas (`credentials_encrypted`).
  */
-export const platformCredentialsSchema = z.object({ accessToken: z.string().min(1) });
+export const platformCredentialsSchema = z.object({
+  accessToken: z.string().min(1),
+  /**
+   * Mercado Libre (ADR-0015): el token que renueva el acceso. Sirve una sola vez y solo vale el
+   * último, así que se refresca con el candado de la cuenta. Instagram no lo usa.
+   */
+  refreshToken: z.string().min(1).optional(),
+});
 export type PlatformCredentials = z.infer<typeof platformCredentialsSchema>;
 
 /**
@@ -78,3 +85,33 @@ export const instagramAccountMetaSchema = z.object({
   tokenExpiryEstimated: z.boolean(),
 });
 export type InstagramAccountMeta = z.infer<typeof instagramAccountMetaSchema>;
+
+/** Sitio de Mercado Libre donde se publica (Chile): fijo, no es una variable (spec F4 §4.2). */
+export const MERCADOLIBRE_SITE_ID = "MLC";
+
+/**
+ * `meta` de una cuenta de Mercado Libre (spec F4 §4.2 y §4.3, ADR-0015). No lleva secretos.
+ * - `accessTokenExpiresAt`: vence el `access_token` (horas; ahora + `expires_in`). Lo lee
+ *   `ensureAccessToken` para refrescar antes.
+ * - `token_expires_at` de la cuenta es otra cosa: el horizonte estimado del `refresh_token`
+ *   (último refresco + 6 meses), por eso `tokenExpiryEstimated` es `true`.
+ * - `tokenRefreshedAt` es `null` hasta el primer refresco (la conexión entrega un par nuevo).
+ */
+export const mercadoLibreAccountMetaSchema = z.object({
+  /** `user_id` de Mercado Libre, como texto. */
+  userId: z.string().min(1),
+  nickname: z.string(),
+  siteId: z.literal(MERCADOLIBRE_SITE_ID),
+  /** `user_type` de `/users/me` (por ejemplo, `normal` o `real_estate_agency`). */
+  userType: z.string().nullable(),
+  /** Los que entregó el canje: deben incluir `offline_access` y `write`. */
+  scopes: z.array(z.string()),
+  /** Si es un usuario de prueba de Mercado Libre (`tags` con `test_user`). */
+  testUser: z.boolean(),
+  connectedAt: z.iso.datetime(),
+  tokenRefreshedAt: z.iso.datetime().nullable(),
+  accessTokenExpiresAt: z.iso.datetime(),
+  /** Siempre estimado: Mercado Libre no informa cuándo vence el `refresh_token`. */
+  tokenExpiryEstimated: z.literal(true),
+});
+export type MercadoLibreAccountMeta = z.infer<typeof mercadoLibreAccountMetaSchema>;

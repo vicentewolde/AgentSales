@@ -30,6 +30,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -315,6 +316,10 @@ export const publications = pgTable(
     dryRun: boolean("dry_run").notNull(),
     /** Lo que el publisher ya creó en la plataforma, para retomar sin publicar dos veces (ADR-0014). */
     progress: jsonb("progress"),
+    /** Lo último que informó la plataforma (`remoteStateSchema`, ADR-0015). */
+    remoteState: jsonb("remote_state"),
+    /** `source_hash` del aviso al nacer la publicación (ADR-0015, spec F4 §4.6). */
+    listingSourceHash: text("listing_source_hash"),
     ...timestamps,
   },
   (t) => [
@@ -343,6 +348,23 @@ export const publicationEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("publication_events_publication_created_idx").on(t.publicationId, t.createdAt)],
+);
+
+/**
+ * Catálogo de una plataforma (ADR-0015, spec F4 §4.4): datos públicos que solo se leen con token
+ * (en Mercado Libre, categorías, atributos y ubicaciones), con 7 días de vida (`fetched_at`).
+ */
+export const platformCatalog = pgTable(
+  "platform_catalog",
+  {
+    platform: platformEnum("platform").notNull(),
+    /** `category:<id>`, `attributes:<hoja>` o `location:<id>`. */
+    key: text("key").notNull(),
+    data: jsonb("data").notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.platform, t.key] })],
 );
 
 export const importRuns = pgTable("import_runs", {

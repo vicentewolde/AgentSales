@@ -46,3 +46,4 @@ F4 publica en Portal Inmobiliario con la API de Mercado Libre (sitio MLC). La do
 - **Copiar los datos del aviso en la publicación:** duplica datos para algo que basta con detectar.
 
 ## Seguimiento
+- 2026-10-06 (revisión de F4-T01, `arquitecto`): el punto 9 compara el `updatedAt` de la publicación leído **antes** de consultar la plataforma con el que se relee dentro del candado, por igualdad: los dos salen de la base (`clock_timestamp()`), así un desfase entre el reloj de Neon y el del worker no deshace un cambio del operador. El publisher devuelve el estado sin `checkedAt` (lo pone core al guardar), y una publicación de Portal sin `listing_source_hash` no se publica (`PUBLICATION_LISTING_CHANGED`).

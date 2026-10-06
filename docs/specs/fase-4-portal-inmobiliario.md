@@ -105,7 +105,7 @@ El operador conecta la cuenta de Mercado Libre de un corredor, aprueba el texto 
 
 ### 4.6 Lo aprobado no cambia: también el aviso (seguimiento de ADR-0014)
 - El texto aprobado y los medios ya quedan fijos (ADR-0014, punto 5), pero Portal también envía **datos del aviso** (precio, superficies, ubicación). Hoy una carga del Excel actualiza un aviso aunque tenga publicaciones pendientes: el ítem saldría con un precio distinto del de la descripción aprobada.
-- **`publications.listing_source_hash`** (migración `0007`): el `source_hash` del aviso al nacer la publicación (todas las plataformas). `buildPublishInput` lo compara para las plataformas cuyo input lleva el aviso (Portal; Marketplace en F5): si cambió, `PUBLICATION_LISTING_CHANGED` (no reintentable; el mensaje dice que se descarte la publicación y se apruebe de nuevo). Instagram no cambia: su caption ya es lo aprobado.
+- **`publications.listing_source_hash`** (migración `0007`): el `source_hash` del aviso al nacer la publicación (todas las plataformas). `buildPublishInput` lo compara con el actual (`ListingRepository.getSourceHash(id)`, nuevo en T13; la entidad `Listing` no lo trae) para las plataformas cuyo input lleva el aviso (Portal; Marketplace en F5): si cambió **o falta** (`null`), `PUBLICATION_LISTING_CHANGED` (no reintentable; el mensaje dice que se descarte la publicación y se apruebe de nuevo). Así un olvido al abrir publicaciones nunca deja pasar un aviso cambiado. Instagram no cambia: su caption ya es lo aprobado.
 - **`PublishInput`** suma `listing` (tipo, operación, precio, moneda, región, comuna, dirección, unidad, `showExactAddress` y `attributes`, nunca `internal_notes`) y `brokerContact` (nombre, correo y WhatsApp), armados en `buildPublishInput`. `publishAttemptRecord` registra los campos del ítem enviados, con el WhatsApp enmascarado (`+56 9 ****5678`).
 
 ### 4.7 Reglas del texto de Portal
@@ -122,20 +122,21 @@ El operador conecta la cuenta de Mercado Libre de un corredor, aprueba el texto 
     validate(input: PublishInput): PublishValidation;                  // pura, como en F3
     publish(input: PublishInput, ctx: PublishContext): Promise<PublishResult>;
     preflight?(input: PublishInput, ctx: PlatformContext): Promise<PublishValidation>; // solo lee y valida (ADR-0016)
-    pause?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteState>;
-    resume?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteState>;
-    close?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteState>;
-    getStatus?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteState>;
+    pause?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
+    resume?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
+    close?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
+    getStatus?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
   }
   type PlatformContext = { account: PlatformAccount; accessToken(opts?: { refresh?: boolean }): Promise<string>; signal?: AbortSignalLike };
   type PublishContext = PlatformContext & { progress: unknown | null; saveProgress(progress: unknown): Promise<void> };
   type PublishedRef = { externalId: string; progress: unknown | null };
+  type RemoteStatus = Omit<RemoteState, "checkedAt">;              // core agrega `checkedAt` al guardar
   ```
   `accessToken` lo arma core con `ensureAccessToken` (`refresh: true` después de un 401): el publisher no conoce repositorios. `PublishContext.credentials` se mantiene para Instagram. `close` reemplaza el `unpublish` anunciado en ADR-0014. Instagram no implementa los opcionales.
 - **`withDryRun`:** `publish` corre `checkPublishInput` y, si el publisher tiene `preflight`, lo llama (ADR-0016: lecturas y `POST /items/validate`; nunca subir fotos, crear ni cambiar estados). Nunca llama a `publish`, `pause`, `resume` ni `close` del envuelto. En `dry-run` las fotos van a `validate` como `source` con su URL firmada (no se suben); lo que esto no cubre (que Mercado Libre descargue y acepte cada foto) se anota. Un `ML_UNAVAILABLE` en `preflight` es reintentable, como en `live`.
 - **Fotos por subida directa** (D4): el worker baja de R2 cada `pi_4x3` fijada en la publicación y la sube a `POST /pictures/items/upload` (`multipart`); con los `id` arma `pictures`. No depende de que Mercado Libre descargue una URL firmada (asíncrono y sin plazo documentado), y un error de foto se conoce al instante. El límite por minuto de esa subida responde 400: se clasifica `ML_RATE_LIMITED` (reintentable), no como rechazo.
 - **Pasos y progreso** (`portalProgressSchema` en core):
-  1. Sube las fotos que falten y guarda `pictureIds` en orden. Si un intento posterior recibe 508 o 509 (id de foto inválido), las vuelve a subir una vez.
+  1. Sube las fotos que falten y guarda `pictureIds` en orden. Si un intento posterior recibe 508 o 509 (id de foto inválido), las vuelve a subir una vez (`picturesReuploaded`, campo opcional que suma T14 al progreso).
   2. Guarda `sellerContact` y `createRequestedAt`, y crea el ítem (`POST /items`, con `seller_custom_field` = id de la publicación); guarda `itemId` apenas responde.
   3. Si la descripción no puede ir en el `POST` (la doc se contradice; `ml:smoke` lo confirma), `POST /items/{id}/description` y guarda `descriptionDone`.
   4. Si `show_exact_address = false` y Mercado Libre exige `address_line` (D7), `PUT /items/{id}/address_line_by_reference` y guarda `addressHidden`.
@@ -163,15 +164,15 @@ El operador conecta la cuenta de Mercado Libre de un corredor, aprueba el texto 
 - **El modo (D11 de F3):** una publicación de `dry-run` se pausa, reactiva o cierra en simulación, sin llamar a Mercado Libre (queda en la bitácora). Una de `live` exige la API en `live`; si no, `PUBLISH_MODE_MISMATCH` (409): nunca se cambia algo real estando en simulación.
 - **Cerrar** pide confirmación en `live` en el panel y la CLI (`{ confirmed: true }`; sin ella, `CLOSE_NOT_CONFIRMED`, como `REMOVAL_NOT_CONFIRMED` de F3): es irreversible, y volver a publicar crea un ítem nuevo y gasta otro cupo. Al cerrar la última publicación en `live` publicada o pausada del aviso, este vuelve a `ready` (como al retirar en F3). Pausar no cambia el aviso.
 - **Marcar como retirada** (F3) no aplica a Portal: se cierra por la API (`RETIRE_NOT_SUPPORTED`, con el mensaje de usar Cerrar).
-- **Sincronizar (`syncPublication`, job `publication.sync`):** solo actúa sobre publicaciones de Portal `published` o `paused` en `live`; lee `getStatus` (es solo lectura: corre en cualquier modo de la API y el worker) y guarda la hora de inicio de la lectura. Dentro del candado del aviso:
-  - si la publicación cambió después de esa hora (`updatedAt`; por ejemplo, el operador la pausó mientras se leía), no aplica nada y se reencola;
+- **Sincronizar (`syncPublication`, job `publication.sync`):** solo actúa sobre publicaciones de Portal `published` o `paused` en `live`; guarda el `updatedAt` de la publicación **antes** de leer `getStatus` (es solo lectura: corre en cualquier modo de la API y el worker). Dentro del candado del aviso:
+  - si el `updatedAt` releído no es igual al guardado (la publicación cambió mientras se leía; por ejemplo, el operador la pausó), no aplica nada y se reencola. Se compara por igualdad entre dos valores de la base (`clock_timestamp()`), nunca contra el reloj del worker;
   - guarda `remote_state` (`status`, `subStatus`, `stopTime`, `expirationTime`, `checkedAt`) con un evento `sync` (`syncPayloadSchema`: lo leído, sin secretos);
   - y ajusta el estado con actor `system`, condicional desde el estado leído: `closed` (también `expired` o `deleted`) → `unpublished` (y el aviso a `ready` si era la última); `paused` en Mercado Libre desde `published` → `paused` (moderación, con el motivo en `remote_state`); `active` desde `paused` → `published`. `under_review`, `not_yet_active`, `picture_download_pending` o un estado desconocido (`inactive`, `payment_required`…) solo se guardan en `remote_state` y se muestran ("en revisión", "procesando fotos").
 - **Cuándo corre:** a pedido (`POST /publications/:id/sync`, CLI `publications sync <id>`, botón Actualizar), 2 min después de cada publicación en `live` (`startAfter`, encolado después de guardar `published`) y al arrancar el worker para las de Portal `published` o `paused` en `live`. La sincronización periódica (cron) es de F6. Cola `exclusive` por `publicationId`, 2 reintentos desde 60 s, expira a los 2 min (reemplaza la fila objetivo de `01-arquitectura.md`).
 
 ### 4.10 Datos (migración `0007`, ADR-0015)
 - **`platform_catalog`:** `platform` (enum `platform`), `key text`, `data jsonb`, `fetched_at timestamptz`, `created_at`, `updated_at`; llave primaria `(platform, key)`.
-- **`publications.remote_state jsonb null`:** lo último que informó la plataforma (`remoteStateSchema` en core); `null` hasta el primer dato y en Instagram. Lo escribe `PublicationRepository.setRemoteState` (con el cambio de estado o solo).
+- **`publications.remote_state jsonb null`:** lo último que informó la plataforma (`remoteStateSchema` en core); `null` hasta el primer dato y en Instagram. Lo escribe `PublicationRepository.setRemoteState` (solo, con su evento `sync`) o una transición (`changes.remoteState`). El esquema solo se amplía con campos opcionales. El motivo de una pausa de Mercado Libre (`GET /moderations/last_moderation/{id}-ITM`, nota §4.4) se suma como campo opcional cuando T17 lo lea.
 - **`publications.listing_source_hash text null`:** el `source_hash` del aviso al nacer (§4.6); `null` en las publicaciones anteriores a la migración (Instagram no lo revisa).
 - `publications.progress` de Portal: `{ pictureIds, sellerContact?, createRequestedAt?, itemId?, descriptionDone?, addressHidden? }` (`portalProgressSchema`).
 - `platform_accounts` no cambia de columnas: el `refresh_token` va dentro de `credentials_encrypted`, y `token_expires_at` de Mercado Libre es el horizonte del `refresh_token` (§4.3).
@@ -224,10 +225,11 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Archivos:** `packages/core/src/{platform-account.ts,publication.ts,platform-catalog.ts}`, `packages/core/src/portal/progress.ts`, `packages/db/src/schema.ts`, `packages/db/drizzle/0007_*.sql`, `packages/db/src/repositories/publications.ts` (`setRemoteState`, `listing_source_hash` al crear), el doble de publicaciones, `docs/02-modelo-datos.md`
 - **Descripción:** `platform_catalog`, `publications.remote_state` y `publications.listing_source_hash`; `PlatformCredentials` con `refreshToken` opcional; `mercadoLibreAccountMetaSchema`, `portalProgressSchema`, `remoteStateSchema` y `syncPayloadSchema`; `MERCADOLIBRE_SITE_ID`.
 - **Hecho cuando:**
-  - [ ] La migración se aplica en PGlite y `pnpm db:generate` no genera nada después
-  - [ ] Tests de los esquemas (las credenciales de Instagram siguen válidas sin `refreshToken`) y de `setRemoteState` en los dos repositorios
-  - [ ] Probada en Neon con `BEGIN … ROLLBACK` antes del merge y aplicada justo después
-  - [ ] Doc 02 al día (tablas, `token_expires_at` de Mercado Libre y `credentials_encrypted`)
+  - [x] La migración se aplica en PGlite y `pnpm db:generate` no genera nada después
+  - [x] Tests de los esquemas (las credenciales de Instagram siguen válidas sin `refreshToken`) y de `setRemoteState` en los dos repositorios
+  - [x] Probada en Neon con `BEGIN … ROLLBACK` antes del merge (2026-10-06: tabla y columnas creadas, las 5 publicaciones existentes con las columnas nuevas en `null`, sin dejar cambios)
+  - [ ] Aplicada en Neon justo después del merge (`pnpm db:migrate`)
+  - [x] Doc 02 al día (tablas, `token_expires_at` de Mercado Libre y `credentials_encrypted`)
 
 ### F4-T02 · Variables de Mercado Libre y redactor
 - **Depende de:** —
@@ -265,13 +267,13 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Archivos:** `packages/core/src/use-cases/connect-mercadolibre-account.ts` (y lo compartido con `connect-account.ts`), `apps/api/src/routes/accounts.ts`, `apps/api/src/contracts/*`
 - **Descripción:** `connectMercadoLibreAccount`; `POST /accounts/mercadolibre/authorize-url` y `/connect` (§4.2); `state` con la plataforma; `GET /accounts` con `connect.mercadolibre`.
 - **Hecho cuando:**
-  - [ ] Tests: `state` vencido, de otra plataforma, de otro corredor o alterado; sitio que no es `MLC`; scopes sin `offline_access`; reconectar; una cuenta por corredor
+  - [ ] Tests: `state` vencido, de otra plataforma, de otro corredor o alterado; sitio que no es `MLC`; scopes sin `offline_access`; un canje sin `refresh_token` (`ML_UNEXPECTED_RESPONSE`, sin el valor en el error); reconectar; una cuenta por corredor
   - [ ] Ninguna respuesta ni log lleva el código ni los tokens (test)
 
 ### F4-T07 · Candado de credenciales y `ensureAccessToken`
 - **Depende de:** T06
 - **Archivos:** `packages/core/src/use-cases/ensure-access-token.ts`, `packages/core/src/ports/platform-account-repository.ts`, `packages/core/src/testing/*`, `packages/db/src/repositories/platform-accounts.ts`
-- **Descripción:** `withCredentialsLock` en los dos repositorios (`FOR NO KEY UPDATE`, `lock_timeout` de 10 s) y `ensureAccessToken` (§4.3).
+- **Descripción:** `withCredentialsLock` en los dos repositorios (`FOR NO KEY UPDATE`, `lock_timeout` de 10 s) y `ensureAccessToken` (§4.3). Lee `meta.accessTokenExpiresAt` aparte del resto de la `meta` (como `refreshClockSchema` de F3: una `meta` incompleta no deja la cuenta sin poder refrescarse) y exige `refreshToken` en las credenciales de Mercado Libre (sin él, `CREDENTIALS_INVALID` sin el valor). El guardado del refresco no reutiliza el de Instagram (que escribe `tokenExpiryEstimated: false` y solo `{ accessToken }`).
 - **Hecho cuando:**
   - [ ] Test de concurrencia: dos `ensureAccessToken` a la vez refrescan una sola vez (memoria y PGlite)
   - [ ] `invalid_grant` deja la cuenta `expired`; un corte de red no la cambia; el par nuevo se guarda antes de usarse (test con un guardado que falla)
@@ -283,6 +285,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Descripción:** la política de refresco por plataforma (§4.3); `tokens.refresh` y `POST /accounts/:id/refresh` con Mercado Libre.
 - **Hecho cuando:**
   - [ ] Tests de las dos políticas con reloj falso (Instagram sin cambios) y del lote con cuentas de las dos plataformas
+  - [ ] El refresco de Mercado Libre guarda el par completo (`refreshToken` incluido; hoy `refreshAccountToken` guarda solo `{ accessToken }`) y la vista de la cuenta lee la `meta` de Mercado Libre (hoy `accountView` asume la de Instagram)
   - [ ] Seguimiento en ADR-0005
 
 ### F4-T09 · Catálogo con caché
@@ -321,11 +324,11 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 
 ### F4-T13 · Contrato `Publisher` ampliado y el aviso en el input
 - **Depende de:** T01
-- **Archivos:** `packages/core/src/ports/publisher.ts`, `packages/core/src/publish/{dry-run.ts,input.ts}`, `packages/core/src/testing/*`, `docs/01-arquitectura.md`
+- **Archivos:** `packages/core/src/ports/{publisher.ts,listing-repository.ts}`, `packages/core/src/publish/{dry-run.ts,input.ts}`, `packages/core/src/testing/*`, `packages/db/src/repositories/listings.ts` (`getSourceHash`), `docs/01-arquitectura.md`
 - **Descripción:** `preflight`, `pause`, `resume`, `close` y `getStatus` opcionales, `PlatformContext` con `accessToken` (§4.8); `withDryRun` con `preflight`; `buildPublishInput` con `listing`, `brokerContact` y `PUBLICATION_LISTING_CHANGED` (§4.6); `publishAttemptRecord` con los campos del ítem y el WhatsApp enmascarado; el publisher falso con las operaciones.
 - **Hecho cuando:**
   - [ ] Tests de `withDryRun`: llama a `preflight` y nunca a `publish`, `pause`, `resume` ni `close` del envuelto
-  - [ ] Tests de `buildPublishInput` (aviso cambiado, sin `internal_notes`) y del registro (WhatsApp enmascarado)
+  - [ ] Tests de `buildPublishInput` (aviso cambiado, publicación de Portal sin versión, sin `internal_notes`) y del registro (WhatsApp enmascarado); `getSourceHash` en los dos repositorios de avisos
   - [ ] Instagram sigue igual (sus tests pasan sin cambios); doc 01 al día (contrato y `withDryRun`)
 
 ### F4-T14 · Publisher de Portal: publicar
@@ -346,8 +349,8 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 
 ### F4-T16 · Intento, publicar y aprobar con Portal
 - **Depende de:** T07, T11, T13
-- **Archivos:** `packages/core/src/use-cases/{publish-publication.ts,publish-listing.ts,publication-start.ts,approve-content.ts,open-publications.ts}`, `packages/core/src/labels.ts`
-- **Descripción:** el intento arma `accessToken` con `ensureAccessToken` (fuera del candado) y trata `ML_AUTH_INVALID` como `IG_AUTH_INVALID` (la cuenta a `expired`); `listing_source_hash` al abrir publicaciones; `PORTAL_NOT_READY` antes de pasar a `publishing`; la advertencia de `portalReadiness` al aprobar; el `remote_state` de la creación; textos para el operador del estado en Mercado Libre.
+- **Archivos:** `packages/core/src/use-cases/{publish-publication.ts,publish-listing.ts,publication-start.ts,approve-content.ts,open-publications.ts}`, `packages/core/src/ports/publication-repository.ts` (`listingSourceHash` obligatorio), `packages/core/src/labels.ts`
+- **Descripción:** el intento arma `accessToken` con `ensureAccessToken` (fuera del candado) y trata `ML_AUTH_INVALID` como `IG_AUTH_INVALID` (la cuenta a `expired`); `listing_source_hash` al abrir publicaciones (pasa a obligatorio en `NewPublication`: una de Portal sin versión no debe nacer); `PORTAL_NOT_READY` antes de pasar a `publishing`; la advertencia de `portalReadiness` al aprobar; el `remote_state` de la creación; textos para el operador del estado en Mercado Libre.
 - **Hecho cuando:**
   - [ ] Tests del intento con el publisher falso de Portal (en `live` y `dry-run`), de `PORTAL_NOT_READY` y de `PUBLICATION_LISTING_CHANGED`
   - [ ] Instagram sigue igual
@@ -358,7 +361,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Descripción:** casos de uso de §4.9: la llamada fuera del candado y la transición condicional dentro; el modo (`PUBLISH_MODE_MISMATCH`); cerrar con confirmación y el aviso a `ready` con la última; `RETIRE_NOT_SUPPORTED`; el sync con la hora de lectura y su tabla.
 - **Hecho cuando:**
   - [ ] Tests de cada transición, `dry-run` sin llamadas, `live` con la API en `dry-run`, confirmación al cerrar y la tabla de estados remotos (incluido uno desconocido)
-  - [ ] Un sync que leyó antes de que el operador pausara no deshace la pausa (test); si Mercado Libre respondió bien y falló guardar, el sync lo corrige (test)
+  - [ ] Un sync que leyó antes de que el operador pausara no deshace la pausa (test, comparando el `updatedAt` leído antes con el releído); si Mercado Libre respondió bien y falló guardar, el sync lo corrige (test)
 
 ### F4-T18 · Worker: publicar y sincronizar Portal
 - **Depende de:** T08, T15, T17
@@ -472,3 +475,5 @@ Respondidas por el operador el 2026-10-06:
 | 2026-10-06 | Respuestas del operador: `dry-run` valida contra Mercado Libre sin publicar (D2), el WhatsApp del corredor de pruebas (D5) y la demo con su cuenta real y un paquete pagado (D6) |
 | 2026-10-06 | Revisión del `arquitecto`: el input lleva el aviso y el contacto, y la publicación fija la versión del aviso (`listing_source_hash`, §4.6); `validate` sigue pura y lo que necesita el catálogo va en `publish` y en `preflight` (ADR-0016 aparte); `token_expires_at` de Mercado Libre es el horizonte del `refresh_token` y el del `access_token` va en `meta`, con política de refresco por plataforma; candado de credenciales con `FOR NO KEY UPDATE`, `lock_timeout` y nunca anidado con el del aviso, y topes de 10 s en la API; el sync no deshace lo del operador; `PUBLISH_MODE_MISMATCH` en las operaciones; `seller_contact` guardado en el progreso; nunca repetir `POST /items`; 508/509 y el límite de fotos; tabla de campos en core; sin `ML_SITE_ID`, sin `portal catalog`; `state` con la plataforma y ruta propia para conectar; URI en el puerto 443; `ml:smoke` partido (T10 y T23) y declarado como que escribe en la base; T04, T06, T11 y T16 partidas; tarea nueva de core (T16); 24 tareas |
 | 2026-10-06 | Spec **aprobado** (aprobación permanente del operador). ADR-0015 y ADR-0016 aceptados; seguimientos en ADR-0005 y ADR-0014; `03-plataformas.md`, `06-roadmap.md`, `07-checklist-cuentas.md` y `docs/ESTADO.md` al día |
+| 2026-10-06 | Desde F4-T01: `remoteStateSchema` acepta fechas con zona horaria (`stop_time` de Mercado Libre) y un `reason` opcional; `checkRemoteState` (`PUBLICATION_REMOTE_STATE_INVALID`); `syncPayloadSchema` = `{ remote }` (el cambio de estado va en su propio `status_changed`); `setRemoteState(id, remoteState, event?)` guarda en cualquier estado; `NewPublication.listingSourceHash` es opcional hasta T16; `portalSellerContactSchema` con el WhatsApp solo en dígitos; la llave de `platform_catalog` acepta `=` (ids de ubicación en base64) y `data` es JSON |
+| 2026-10-06 | Revisión de F4-T01 (#76, `revisor` y `arquitecto`): sin `reason` en `remoteStateSchema` hasta que T17 tenga su fuente; el publisher devuelve `RemoteStatus` (sin `checkedAt`, que pone core); `setRemoteState` solo con eventos `sync`; `listingSourceHash` vacío queda en `null`, pasa a obligatorio en T16, y `buildPublishInput` trata un `null` de Portal como `PUBLICATION_LISTING_CHANGED`; `ListingRepository.getSourceHash` en T13; el sync compara `updatedAt` por igualdad con el leído antes (dos valores de la base, nunca el reloj del worker); T06 y T07 exigen `refreshToken` y T07 lee el vencimiento del `access_token` aparte; `tokenExpiryEstimated` siempre `true` en Mercado Libre; la llave del catálogo solo exige `tipo:id`; T08 conserva el par completo al refrescar |

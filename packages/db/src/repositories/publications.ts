@@ -2,6 +2,7 @@ import {
   AppError,
   canTransition,
   checkPublicationProgress,
+  checkRemoteState,
   normalizeEventPayload,
   type Publication,
   type PublicationChanges,
@@ -41,6 +42,8 @@ function toPublication(row: Row): Publication {
     lastError: row.lastError,
     dryRun: row.dryRun,
     progress: row.progress,
+    remoteState: row.remoteState,
+    listingSourceHash: row.listingSourceHash,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -87,6 +90,9 @@ function columnsOf(publication: Pick<Row, "platform">, changes: PublicationChang
     ...(changes.progress === undefined
       ? {}
       : { progress: checkPublicationProgress(publication.platform, changes.progress) }),
+    ...(changes.remoteState === undefined
+      ? {}
+      : { remoteState: checkRemoteState(changes.remoteState) }),
   };
 }
 
@@ -131,6 +137,8 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
                 format: input.format,
                 contentId: input.contentId,
                 mediaIds: [...input.mediaIds],
+                // Vacío cuenta como sin versión: nunca se compara contra "".
+                listingSourceHash: input.listingSourceHash || null,
                 status: "approved",
                 // El valor seguro: el modo de verdad se fija al pasar a `publishing`.
                 dryRun: true,
@@ -250,6 +258,34 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           },
         );
       }
+      return toPublication(row);
+    },
+
+    async setRemoteState(id, remoteState, event) {
+      // Primero los datos, como el doble en memoria.
+      const checked = checkRemoteState(remoteState);
+      const payload = event === undefined ? undefined : normalizeEventPayload(event.payload);
+      const row = await withDbErrors(() =>
+        db.transaction(async (tx) => {
+          const [updated] = await tx
+            .update(publications)
+            .set({ remoteState: checked, updatedAt: sql`clock_timestamp()` })
+            .where(eq(publications.id, id))
+            .returning();
+          if (updated === undefined) return undefined;
+          if (event !== undefined) {
+            await insertEvent(tx, id, {
+              type: event.type,
+              fromStatus: null,
+              toStatus: null,
+              actor: event.actor,
+              payload,
+            });
+          }
+          return updated;
+        }),
+      );
+      if (row === undefined) throw notFound(id);
       return toPublication(row);
     },
 

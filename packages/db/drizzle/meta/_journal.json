@@ -50,6 +50,13 @@
       "when": 1791203064955,
       "tag": "0006_f3_publicaciones",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791326167059,
+      "tag": "0007_f4_portal",
+      "breakpoints": true
     }
   ]
 }

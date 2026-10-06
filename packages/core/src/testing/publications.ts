@@ -7,6 +7,7 @@ import type {
 } from "../ports/publication-repository.js";
 import {
   checkPublicationProgress,
+  checkRemoteState,
   normalizeEventPayload,
   type Publication,
   type PublicationEvent,
@@ -99,6 +100,8 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
         lastError: null,
         dryRun: true,
         progress: null,
+        remoteState: null,
+        listingSourceHash: input.listingSourceHash || null,
         createdAt: now,
         updatedAt: now,
       };
@@ -149,6 +152,20 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
       publications.set(id, { ...found, publication });
       return structuredCopy(publication);
     },
+    async setRemoteState(id, remoteState, event) {
+      // Primero los datos, como el de Drizzle.
+      const checked = checkRemoteState(remoteState);
+      if (event !== undefined) normalizeEventPayload(event.payload);
+      const found = find(id);
+      const publication = {
+        ...found.publication,
+        remoteState: structuredCopy(checked),
+        updatedAt: new Date(),
+      };
+      publications.set(id, { ...found, publication });
+      if (event !== undefined) pushEvent(id, event.type, null, null, event);
+      return structuredCopy(publication);
+    },
     async addEvent(publicationId, event) {
       normalizeEventPayload(event.payload);
       find(publicationId);
@@ -187,6 +204,9 @@ function applyChanges(
     ...(changes.progress === undefined
       ? {}
       : { progress: structuredCopy(checkPublicationProgress(current.platform, changes.progress)) }),
+    ...(changes.remoteState === undefined
+      ? {}
+      : { remoteState: structuredCopy(checkRemoteState(changes.remoteState)) }),
     updatedAt: new Date(),
   };
 }
