@@ -5,18 +5,20 @@ import {
   createInMemoryPublicationRepository,
   createPublicationScenario,
   type FakePublisherOptions,
+  PUBLICATION_SCENARIO_TOKEN,
 } from "@agentsales/core/testing";
 import { createInstagramPublisher } from "@agentsales/publishers";
 import { describe, expect, it, vi } from "vitest";
 import { captureLogger } from "../../test/content-fixture.js";
 import {
+  instagramNoteLogger,
   PUBLICATION_PUBLISH_QUEUE,
   publicationPublishJob,
   requeuePublishingPublications,
 } from "./publication-publish.js";
 import { registerJobs, type WorkerBoss } from "./registry.js";
 
-const TOKEN = "IGAA-prueba";
+const TOKEN = PUBLICATION_SCENARIO_TOKEN;
 
 /** Un pg-boss falso: guarda el handler de cada cola para llamarlo como lo haría `work`. */
 function fakeBoss() {
@@ -97,6 +99,43 @@ describe("job publication.publish · handler", () => {
       "job terminado",
     ]);
     expect(lines[1]).toMatchObject({ mode: "live", data: { publicationId: post.id } });
+  });
+
+  it("en dry-run el log dice que fue una simulación", async () => {
+    const { attempt, post, lines } = await setup({ dryRun: true });
+    await attempt(post);
+    expect(lines[1]).toMatchObject({
+      msg: "publicación simulada (dry-run): no se envió nada",
+      mode: "dry-run",
+    });
+  });
+
+  it("el apagado en el último intento deja la publicación en publishing, sin bitácora, y el arranque la reencola", async () => {
+    const holder: { controller?: AbortController } = {};
+    const waiting: Publisher = {
+      ...createFakePublisher(),
+      publish: (_input, ctx) =>
+        new Promise((_resolve, reject) => {
+          ctx.signal?.addEventListener(
+            "abort",
+            () => reject(new AppError("IG_ABORTED", "Se cortó la llamada", { retriable: true })),
+            { once: true },
+          );
+          holder.controller?.abort();
+        }),
+    };
+    const { t, attempt, post, current, controller, lines } = await setup({ publisher: waiting });
+    holder.controller = controller;
+    await expect(attempt(post, 2)).rejects.toMatchObject({ code: "IG_ABORTED", retriable: true });
+    expect(current(post.id)).toMatchObject({ status: "publishing", lastError: null });
+    const events = await t.publications.listEvents(post.id);
+    expect(events.filter((event) => event.type === "publish_attempt")).toEqual([]);
+    expect(lines.at(-1)).toMatchObject({ code: "IG_ABORTED", retriable: true });
+
+    const queue = createInMemoryJobQueue();
+    const { requeued } = await requeuePublishingPublications(t.publications, queue);
+    expect(requeued).toBe(2);
+    expect(queue.jobs.map((job) => job.data)).toContainEqual({ publicationId: post.id });
   });
 
   it("pasa el retryCount a la bitácora y el último intento deja failed; uno no reintentable cierra el job", async () => {
@@ -239,6 +278,25 @@ describe("requeuePublishingPublications", () => {
         data: { publicationId: ids[1] },
         options: { singletonKey: ids[1] },
       },
+    ]);
+  });
+});
+
+describe("instagramNoteLogger", () => {
+  it("registra la nota con el publicationId y su código, nada más", () => {
+    const { logger, lines } = captureLogger();
+    instagramNoteLogger(logger)({
+      publicationId: "p1",
+      code: "QUOTA_UNAVAILABLE",
+      errorCode: "IG_REQUEST_REJECTED",
+    });
+    expect(lines).toEqual([
+      expect.objectContaining({
+        msg: "nota del publicador de Instagram",
+        publicationId: "p1",
+        code: "QUOTA_UNAVAILABLE",
+        errorCode: "IG_REQUEST_REJECTED",
+      }),
     ]);
   });
 });

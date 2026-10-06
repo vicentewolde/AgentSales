@@ -33,7 +33,7 @@ import { cleanContentTmp, contentTmpRootOf } from "./content-tmp.js";
 import { failAbandonedContentRuns, requeueQueuedContentRuns } from "./jobs/content-prepare.js";
 import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
 import { buildJobs } from "./jobs/index.js";
-import { requeuePublishingPublications } from "./jobs/publication-publish.js";
+import { instagramNoteLogger, requeuePublishingPublications } from "./jobs/publication-publish.js";
 import { registerJobs } from "./jobs/registry.js";
 import { llmProviderOptions } from "./llm-options.js";
 import { stopWorker } from "./shutdown.js";
@@ -97,10 +97,7 @@ const platformAccounts = createPlatformAccountRepository(database.db, {
 });
 // Registrado en los dos modos: una publicación en `dry_run` también lo necesita (lo envuelve
 // `withDryRun`). El cliente de Instagram se arma recién al primer intento en `live` (perezoso).
-const instagram = createInstagramPublisher({
-  onNote: ({ publicationId, code, errorCode }) =>
-    logger.info({ publicationId, code, errorCode }, "nota del publicador de Instagram"),
-});
+const instagram = createInstagramPublisher({ onNote: instagramNoteLogger(logger) });
 const jobs = buildJobs({
   importRun,
   contentPrepare: {
@@ -286,7 +283,11 @@ try {
   if (registered) {
     await requeueContent();
     await requeuePublications();
-    logger.info({ jobs: jobs.map((job) => job.name) }, "worker listo");
+    // El modo del worker solo decide si una publicación pedida en `live` se puede publicar (D11).
+    logger.info(
+      { jobs: jobs.map((job) => job.name), publishMode: env.PUBLISH_MODE },
+      "worker listo",
+    );
     logger.warn(
       "Mientras el worker corre, Neon no se suspende y consume CU-horas: apágalo al terminar (ADR-0007).",
     );

@@ -1,3 +1,4 @@
+import type { Logger } from "@agentsales/config";
 import {
   type AbortSignalLike,
   enqueuePublication,
@@ -7,6 +8,7 @@ import {
   type PublishPublicationDeps,
   publishPublication,
 } from "@agentsales/core";
+import type { InstagramPublishNote } from "@agentsales/publishers";
 import { defineJob, type Job, type QueuePolicy } from "./define.js";
 
 /**
@@ -15,7 +17,8 @@ import { defineJob, type Job, type QueuePolicy } from "./define.js";
  *   un intento nunca se cruza con otro de la misma publicación;
  * - 2 reintentos con backoff desde 60 s;
  * - expira a los 15 min: el intento tiene su propio tope de 12 min (sondeo de un reel de hasta
- *   5 min, más el carrusel), así que nunca llega a expirar con un intento vivo.
+ *   5 min, más el carrusel); los 3 min de margen cubren lo que corre fuera de ese tope (firmar las
+ *   URLs, leer y guardar en la base). Si un intento llegara a cruzarse con su reintento, subirlo.
  */
 export const PUBLICATION_PUBLISH_QUEUE: QueuePolicy = {
   policy: "exclusive",
@@ -49,9 +52,10 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
   return defineJob({
     name: "publication.publish",
     queue: PUBLICATION_PUBLISH_QUEUE,
+    // `retriable` como lo ve el registro: lo que no es `AppError` sube y pg-boss lo reintenta.
     errorLogFields: (error) => ({
       code: codeOf(error),
-      retriable: isAppError(error) ? error.retriable : false,
+      retriable: !isAppError(error) || error.retriable,
     }),
     handler: async ({ publicationId }, { logger, isLastAttempt, retryCount }) => {
       const result = await publishPublication(
@@ -64,11 +68,10 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
       );
       if (result.outcome === "skipped") {
         logger.info({ status: result.status }, "la publicación no estaba en curso: nada que hacer");
+      } else if (result.publication.dryRun) {
+        logger.info({ mode: "dry-run" }, "publicación simulada (dry-run): no se envió nada");
       } else {
-        logger.info(
-          { mode: result.publication.dryRun ? "dry-run" : "live" },
-          "publicación publicada",
-        );
+        logger.info({ mode: "live" }, "publicación publicada");
       }
     },
   });
@@ -96,3 +99,12 @@ export async function requeuePublishingPublications(
   }
   return { requeued, failed };
 }
+
+/**
+ * Las notas del publisher de Instagram (`onNote`, por ejemplo el cupo que no respondió) al log del
+ * proceso: el publisher es uno por proceso, así que la nota lleva el `publicationId` y no el job.
+ */
+export const instagramNoteLogger =
+  (logger: Logger) =>
+  ({ publicationId, code, errorCode }: InstagramPublishNote) =>
+    logger.info({ publicationId, code, errorCode }, "nota del publicador de Instagram");

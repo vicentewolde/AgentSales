@@ -2,7 +2,7 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-05
+**Actualizado:** 2026-10-06
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
 **Última tarea terminada:** F3-T12 · Job `publication.publish`
 **Siguiente paso:** `/tarea F3-T13` · Conectar Instagram
@@ -53,6 +53,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - **F7:** `createInstagramAuth` exige `INSTAGRAM_APP_SECRET` aunque el refresco no lo use, así que el worker (T14) lo carga solo para refrescar. Aceptable en local; separar el refresco del canje si el worker se despliega aparte.
+- **F6:** una publicación cuyo último intento terminó cortado (`PUBLISH_ABORTED`) o publicado sin guardar (`PUBLISH_RESULT_NOT_SAVED`) queda en `publishing` sin job hasta el próximo arranque del worker (que la reencola) o hasta publicarla de nuevo. En el segundo caso ya salió en Instagram. Que `publication.sync` o un reencolado periódico lo cubran.
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.

@@ -25,6 +25,9 @@ import { createInMemoryPlatformAccountRepository } from "./platform-accounts.js"
 import { createInMemoryListingLock, createInMemoryPublicationRepository } from "./publications.js";
 import { createInMemoryHtmlRenderer, createInMemorySlideTemplates } from "./slides.js";
 
+/** El token de la cuenta del escenario: los tests revisan que no aparezca en logs ni bitácora. */
+export const PUBLICATION_SCENARIO_TOKEN = "IGAA-prueba";
+
 // Escenario de publicación para los tests de core (F3-T10 y T11): un aviso preparado con los
 // dobles, la cuenta de Instagram conectada y el texto aprobado, con un candado y una cola que
 // fallan si se usan donde no corresponde.
@@ -123,7 +126,7 @@ export async function createPublicationScenario(
       displayName: "@muestra",
       tokenExpiresAt: null,
       meta: {},
-      credentials: { accessToken: "IGAA-prueba" },
+      credentials: { accessToken: PUBLICATION_SCENARIO_TOKEN },
     });
   const account = options.account === false ? null : await connect();
   const instagramId = async () =>

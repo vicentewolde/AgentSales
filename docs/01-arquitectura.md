@@ -250,6 +250,14 @@ Los jobs del worker (`apps/worker/src/jobs/`):
 - **El log de cada intento** lleva los datos del job, que son solo ids: así cada error queda con, por ejemplo, su `importRunId`. Un job puede fijar `errorLogFields` para registrar menos que el error completo: `content.prepare` registra solo el código (el mensaje o la causa pueden traer datos del aviso).
 - **Apagado (desde F2-T11, `stopWorker` en `apps/worker/src/shutdown.ts`):** en SIGINT o SIGTERM, el worker dispara el `AbortController` de los handlers, espera a que pg-boss los detenga (`stop` con `graceful`, hasta 30 s) y recién después cierra el Chromium del renderizador (también si detener pg-boss falla) y la base. `tsx watch` (`pnpm dev`) corta al worker sin esperar ese cierre si recibe la señal él solo; con Ctrl+C en la terminal la señal llega a los dos.
 
+### Job `publication.publish` (F3-T12)
+
+- Corre `publishPublication` (ver "Intento de publicación") con la señal de apagado, `isLastAttempt` y `retryCount`. El publisher de Instagram se registra en los dos modos (lo necesita también una publicación en `dry_run`) y arma su cliente recién al primer intento en `live`; sus notas (`onNote`) van al log con el `publicationId`.
+- **Log:** el resultado (`publicación publicada` o `publicación simulada`), los avisos de pasos secundarios con su paso y código, y de un error solo `code` y `retriable`. Nunca tokens, URLs firmadas ni el caption.
+- **Al arrancar,** después de crear las colas, reencola todas las publicaciones en `publishing`. Un job reencolado parte de nuevo con `retryCount = 0`: en la bitácora, `retry` vuelve a 0 con el mismo `attempt`, y no es un intento duplicado.
+- **Hasta el próximo arranque:** un corte por apagado (`PUBLISH_ABORTED`) o un resultado sin guardar (`PUBLISH_RESULT_NOT_SAVED`) en el último intento dejan la publicación en `publishing` sin job; la recupera el reencolado al arrancar (o publicarla de nuevo).
+- **El modo del worker importa al reencolar** (D11): una publicación que quedó en `publishing` en `live` y se reencola con el worker en `dry-run` pasa a `failed` con `PUBLISH_MODE_MISMATCH`, sin publicar nada; se reintenta en `live` y retoma desde su progreso. Por eso "worker listo" registra el `publishMode`.
+
 ### Job `content.prepare` (F2-T11)
 - **Cola:** `exclusive` (un solo job por `singletonKey = contentRunId`), 2 reintentos con backoff desde 30 s, y expira a los 30 min.
 - **Handler:** corre `prepareContent` (core) con `isLastAttempt` y el `signal` de apagado. Cada intento arma su procesador de medios (`createMediaProcessor` sin `threads`: ffmpeg usa todos los núcleos) con su temporal `<workspace>/tmp/content/{contentRunId}/{uuid}/`, que se borra en un `finally` (y el de la corrida, si queda vacío). Lo demás es del proceso: repositorios, R2, plantillas, un renderizador (`createHtmlRenderer`) y el proveedor de IA según `LLM_PROVIDER` (con `fake`, `SAMPLE_CONTENT_DRAFT`).
