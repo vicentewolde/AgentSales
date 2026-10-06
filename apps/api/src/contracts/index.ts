@@ -18,6 +18,7 @@ import {
   MEDIA_KINDS,
   MEDIA_VARIANTS,
   OPERATIONS,
+  PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
 } from "@agentsales/core";
 import { z } from "zod";
@@ -296,3 +297,80 @@ export type ContentEditBody = z.infer<typeof contentEditBodySchema>;
 
 export const contentEditResponseSchema = z.object({ content: contentViewSchema });
 export type ContentEditResponse = z.infer<typeof contentEditResponseSchema>;
+
+/**
+ * Una cuenta conectada tal como la ve el operador (spec F3 §4.6 y §4.8, `GET /accounts`): nunca
+ * credenciales. De `meta` (Instagram) solo lo que muestra el panel; lo que falta va en `null`.
+ */
+export const platformAccountViewSchema = z.object({
+  id: z.string(),
+  brokerId: z.string(),
+  platform: z.enum(PLATFORMS),
+  /** `@usuario`. */
+  displayName: z.string(),
+  status: z.enum(PLATFORM_ACCOUNT_STATUSES),
+  tokenExpiresAt: z.coerce.date().nullable(),
+  /** El vencimiento es una estimación (token del panel de Meta, aún sin refrescar). */
+  tokenExpiryEstimated: z.boolean(),
+  connectedAt: z.coerce.date().nullable(),
+  tokenRefreshedAt: z.coerce.date().nullable(),
+  /** `BUSINESS` o `MEDIA_CREATOR`. */
+  accountType: z.string().nullable(),
+  /** `null` si no se conocen (token del panel). */
+  permissions: z.array(z.string()).nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type PlatformAccountView = z.infer<typeof platformAccountViewSchema>;
+
+/**
+ * `GET /accounts`: las cuentas y cómo se puede conectar cada plataforma. `oauth` es `true` solo si
+ * la API tiene el par de la app de Instagram y la URI de retorno es `https://` (F7); si no (F3 en
+ * local, D4), el panel muestra el comando de la CLI con `--token-stdin`.
+ */
+export const accountListResponseSchema = z.object({
+  accounts: z.array(platformAccountViewSchema),
+  connect: z.object({ instagram: z.object({ oauth: z.boolean() }) }),
+});
+export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
+
+export const accountResponseSchema = z.object({ account: platformAccountViewSchema });
+export type AccountResponse = z.infer<typeof accountResponseSchema>;
+
+/** El slug de un corredor en una query o un cuerpo. */
+const brokerSlugSchema = z.string().trim().min(1).max(100);
+
+/**
+ * `POST /accounts/connect-token` (D4): el token largo del botón Generate token del panel de Meta.
+ * Sin espacios: un token pegado con un salto de línea en medio no es válido. Nunca vuelve en la
+ * respuesta ni va al log.
+ */
+export const connectTokenBodySchema = z.object({
+  broker: brokerSlugSchema,
+  platform: z.literal("instagram", { error: "por ahora solo se conecta instagram" }),
+  token: z
+    .string({ error: "falta el token" })
+    .trim()
+    .min(20, "el token es demasiado corto: cópialo completo desde Generate token")
+    .max(4096, "el token es demasiado largo: copia solo el token")
+    .regex(/^\S+$/, "el token no puede tener espacios ni saltos de línea"),
+});
+export type ConnectTokenBody = z.infer<typeof connectTokenBodySchema>;
+
+/** `GET /oauth/instagram/start?broker=<slug>`. */
+export const oauthStartQuerySchema = z.object({ broker: brokerSlugSchema });
+export type OAuthStartQuery = z.infer<typeof oauthStartQuerySchema>;
+
+/**
+ * Códigos con que el OAuth vuelve al panel (`/cuentas?error=<código>`, spec F3 §4.6), además de los
+ * `IG_*` de Instagram: el panel (T17) los traduce sin copiarlos.
+ */
+export const OAUTH_REDIRECT_ERRORS = [
+  "OAUTH_DENIED",
+  "OAUTH_STATE_INVALID",
+  "OAUTH_CODE_MISSING",
+  "INSTAGRAM_NOT_CONFIGURED",
+  "BROKER_NOT_FOUND",
+  "INTERNAL_ERROR",
+] as const;
+export type OAuthRedirectError = (typeof OAUTH_REDIRECT_ERRORS)[number];

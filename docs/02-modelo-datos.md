@@ -49,9 +49,9 @@ erDiagram
 | credentials_encrypted | text null | `{ accessToken }` cifrado con AES-256-GCM (`v1.<iv>.<cifrado>.<tag>`, AAD `platform:broker_id:external_account_id`); `null` en una cuenta desconectada |
 | token_expires_at | timestamptz null | |
 | status | enum `platform_account_status` | `connected`, `expired`, `revoked`, `error` |
-| meta | jsonb | Datos propios de la plataforma, sin secretos (Instagram: tipo de cuenta, permisos, `tokenRefreshedAt`) |
+| meta | jsonb | Datos propios de la plataforma, sin secretos. Instagram (`instagramAccountMetaSchema`, F3-T13): `accountType`, `permissions` (`null` si se conectó con el token del panel: desconocidos), `connectedAt`, `tokenRefreshedAt` (`null` hasta el primer refresco con ese token) y `tokenExpiryEstimated` |
 
-Único: `(broker_id, platform, external_account_id)`. Entidad en core: `platformAccountSchema` (sin credenciales, con `hasCredentials`); las credenciales salen descifradas solo por `PlatformAccountRepository.getCredentials` (F3-T03).
+Único: `(broker_id, platform, external_account_id)`. Además, **una sola cuenta conectada por corredor y plataforma**: la impone `connectAccount` (al conectar otra, la anterior pasa a `revoked` en la misma transacción, con el corredor bloqueado), no un índice de la base (F3-T13). Entidad en core: `platformAccountSchema` (sin credenciales, con `hasCredentials`); las credenciales salen descifradas solo por `PlatformAccountRepository.getCredentials` (F3-T03).
 
 ### field_definitions — campos configurables
 | Columna | Tipo | Notas |

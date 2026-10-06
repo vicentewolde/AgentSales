@@ -43,9 +43,14 @@ export interface PlatformAccountRepository {
   /**
    * Crea la cuenta o, si ya existe (mismo corredor, plataforma y cuenta externa), la actualiza:
    * nombre, vencimiento, `meta` (se reemplaza) y credenciales, y conserva `createdAt`. Siempre
-   * queda en `connected`, también si estaba desconectada o vencida.
+   * queda en `connected`, también si estaba desconectada o vencida. Con `revokeOthers`, en la misma
+   * transacción desconecta (`revoked`, sin credenciales) las demás cuentas del corredor en esa
+   * plataforma: una sola conectada por corredor y plataforma (spec F3 §4.6).
    */
-  upsertConnected(account: ConnectedAccount): Promise<PlatformAccount>;
+  upsertConnected(
+    account: ConnectedAccount,
+    options?: { revokeOthers?: boolean },
+  ): Promise<PlatformAccount>;
   get(id: string): Promise<PlatformAccount | null>;
   /** Todas, por fecha de creación (las primeras primero). */
   list(): Promise<PlatformAccount[]>;

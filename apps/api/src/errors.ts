@@ -26,12 +26,26 @@ const CONFLICTS = new Set([
 ]);
 
 /**
+ * Errores de Instagram que llegan a la API al conectar (spec F3 §4.8; al publicar solo viajan en
+ * `last_error`): un token o permiso que Instagram rechaza es del cliente (400), y una respuesta con
+ * otra forma es un fallo de la plataforma (502). `IG_UNAVAILABLE` (503) e `IG_RATE_LIMITED` (429)
+ * siguen las reglas generales.
+ */
+const PLATFORM_REJECTIONS = new Set([
+  "IG_AUTH_INVALID",
+  "IG_PERMISSION_DENIED",
+  "IG_REQUEST_REJECTED",
+]);
+
+/**
  * Status HTTP de un `AppError` según su código (docs/05-convenciones.md). Se evalúa en orden:
  * primero los códigos exactos, luego los patrones; lo que no calza es 500.
  */
 export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "INVALID_TRANSITION" || CONFLICTS.has(code)) return 409;
   if (code === "REQUEST_TOO_LARGE") return 413;
+  if (PLATFORM_REJECTIONS.has(code)) return 400;
+  if (code === "IG_UNEXPECTED_RESPONSE") return 502;
   // Datos inválidos que no vienen del cliente: los de un job los arma el servidor, y una fila
   // corrupta en la base (`*_ROW_INVALID`, `IMPORT_RUN_INVALID`) es un fallo del servidor.
   if (code === "JOB_PAYLOAD_INVALID" || code === "IMPORT_RUN_INVALID") return 500;

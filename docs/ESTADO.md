@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-06
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** F3-T12 · Job `publication.publish`
-**Siguiente paso:** `/tarea F3-T13` · Conectar Instagram
+**Última tarea terminada:** F3-T13 · Conectar Instagram
+**Siguiente paso:** `/tarea F3-T14` · Refresco de tokens
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -22,8 +22,8 @@
 | F3-T09 · Instagram: publisher | ✅ terminada | #62 |
 | F3-T10 · Publicar, descartar y retirar en core | ✅ terminada | #63 |
 | F3-T11 · Intento de publicación en core | ✅ terminada | #64 |
-| F3-T12 · Job `publication.publish` | ✅ terminada | |
-| F3-T13 · Conectar Instagram | ⏳ pendiente | |
+| F3-T12 · Job `publication.publish` | ✅ terminada | #65 |
+| F3-T13 · Conectar Instagram | ✅ terminada | |
 | F3-T14 · Refresco de tokens | ⏳ pendiente | |
 | F3-T15 · API de aprobación y publicaciones | ⏳ pendiente | |
 | F3-T16 · CLI | ⏳ pendiente | |
@@ -42,7 +42,7 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - [ ] Demo de F3: la prueba en `live` usa tu cuenta (profesional, vinculada a la página AgentSales y tester de `AgentSales-IG`); se publica una propiedad de muestra (carrusel y reel) y se borra a mano después. `PUBLISH_MODE=live` solo con tu instrucción en el chat
 
 ## Decisiones de F3
-Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; OAuth con `http://localhost` o token del panel; sin `DELETE` (se borra a mano y se marca como retirada).
+Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
@@ -54,6 +54,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - **F7:** `createInstagramAuth` exige `INSTAGRAM_APP_SECRET` aunque el refresco no lo use, así que el worker (T14) lo carga solo para refrescar. Aceptable en local; separar el refresco del canje si el worker se despliega aparte.
 - **F6:** una publicación cuyo último intento terminó cortado (`PUBLISH_ABORTED`) o publicado sin guardar (`PUBLISH_RESULT_NOT_SAVED`) queda en `publishing` sin job hasta el próximo arranque del worker (que la reencola) o hasta publicarla de nuevo. En el segundo caso ya salió en Instagram. Que `publication.sync` o un reencolado periódico lo cubran.
+- **F7, cuentas:** `panelUrl` y `allowedHosts` están fijos en `localhost`; con varios corredores y la API expuesta, hay que autorizar quién puede conectar cada corredor (`/oauth/instagram/start?broker=` y `connect-token` hoy los acepta cualquiera que llegue a la API) y evitar repetir un `state` válido durante sus 10 min (guardar el nonce usado; hoy basta con que la cookie se borre).
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
@@ -70,6 +71,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-06: **F3-T13.** Conectar Instagram: con el token del panel de Meta (`POST /accounts/connect-token`, lo que se usa en F3) o por OAuth (implementado y probado con dobles para F7, con el `state` firmado en una cookie y la vuelta al panel con un código); una sola cuenta conectada por corredor y plataforma (la anterior se desconecta en la misma transacción); `GET /accounts` y desconectar. Ninguna respuesta ni log lleva el token o el código.
 - 2026-10-06: **F3-T12.** Job `publication.publish` en el worker: corre el intento de T11 con el publisher de Instagram (registrado en los dos modos; el cliente se arma recién al primer intento en vivo), la señal de apagado y el número de reintento; al arrancar reencola las publicaciones en `publishing`; el log lleva solo ids y códigos. Seguimiento en ADR-0005.
 - 2026-10-05: **F3-T11.** Intento de publicación en core (`publishPublication`, el handler de `publication.publish`): el modo lo decide la publicación (`PUBLISH_MODE_MISMATCH` si se pidió en `live` y el worker está en `dry-run`), revisa la cuenta y sus credenciales, arma el input con URLs firmadas, publica con el progreso guardado y deja `published` (el aviso a `active` en `live`) o, según el error, sigue en `publishing` para reintentar o queda `failed` con su motivo; `IG_AUTH_INVALID` vence la cuenta. Un solo `publish_attempt` por intento, con lo enviado y sin secretos. Si la plataforma publicó y falla guardar el resultado, la publicación sigue en `publishing` (`PUBLISH_RESULT_NOT_SAVED`) y el reintento la reconoce sin publicar de nuevo.
 - 2026-10-05: **F3-T10.** Publicar en core: el canal (`publishListing`: abre las que faltan, pasa `approved`/`failed` a `publishing` con el modo de la API, reencola las que ya estaban en curso y encola después del candado) o una (`startPublication`); descartar (`cancelPublication`) y marcar como retirada (`retirePublication`: en `live` exige la confirmación de que se borró a mano, y la última en `live` devuelve el aviso a `ready`). Algo que empezó en `live` no se reintenta en `dry-run` (`PUBLISH_MODE_LOCKED`). Job `publication.publish` en el contrato de core (la cola la crea el worker en T12).

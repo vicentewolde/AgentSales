@@ -4,6 +4,15 @@ import { httpStatusFor } from "./errors.js";
 describe("httpStatusFor", () => {
   it.each([
     ["INVALID_TRANSITION", 409],
+    // Al conectar una cuenta (F3-T13).
+    ["IG_AUTH_INVALID", 400],
+    ["IG_PERMISSION_DENIED", 400],
+    ["IG_REQUEST_REJECTED", 400],
+    ["IG_UNEXPECTED_RESPONSE", 502],
+    ["IG_UNAVAILABLE", 503],
+    ["IG_RATE_LIMITED", 429],
+    ["OAUTH_STATE_INVALID", 400],
+    ["ACCOUNT_NOT_FOUND", 404],
     ["LISTING_NOT_READY", 409],
     ["CONTENT_EDITED", 409],
     ["CONTENT_NOT_CURRENT", 409],

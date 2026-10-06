@@ -3,6 +3,7 @@ import {
   createErrorThrottle,
   createLogger,
   createSecretBox,
+  createStateSigner,
   findWorkspaceRoot,
   loadEnv,
   loadEnvFile,
@@ -17,10 +18,12 @@ import {
   createListingLock,
   createListingRepository,
   createMediaRepository,
+  createPlatformAccountRepository,
   pingDatabase,
   toPgConnectionString,
 } from "@agentsales/db";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
+import { createInstagramAuth } from "@agentsales/publishers";
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
@@ -87,6 +90,21 @@ const app = createApp({
   contentRuns: createContentRunRepository(database.db),
   contents: createContentRepository(database.db),
   lock: createListingLock(database.db, { secretBox }),
+  platformAccounts: createPlatformAccountRepository(database.db, { secretBox }),
+  instagram: {
+    // Sin el par de la app, `/me` (conectar con el token del panel) funciona igual; solo el canje
+    // del OAuth lo necesita, y `/oauth/instagram/start` vuelve al panel con INSTAGRAM_NOT_CONFIGURED.
+    auth: createInstagramAuth({
+      appId: env.INSTAGRAM_APP_ID ?? "",
+      appSecret: env.INSTAGRAM_APP_SECRET ?? "",
+      redirectUri: env.INSTAGRAM_REDIRECT_URI,
+    }),
+    oauthConfigured: Boolean(env.INSTAGRAM_APP_ID && env.INSTAGRAM_APP_SECRET),
+    secureCookie: env.INSTAGRAM_REDIRECT_URI.startsWith("https://"),
+  },
+  oauthState: createStateSigner(env.APP_ENCRYPTION_KEY),
+  // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).
+  panelUrl: `http://localhost:${env.WEB_PORT}`,
   queue,
   uploads: {
     save: (runId, fileName, bytes) => staging.saveInput(runId, fileName, bytes),

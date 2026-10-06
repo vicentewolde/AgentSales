@@ -29,3 +29,26 @@ export function validated<S extends z.ZodType, T extends Target>(target: T, sche
     return parsed.data;
   });
 }
+
+/**
+ * Como `validated`, pero el mensaje dice la causa (el de la primera falla), para un esquema cuyos
+ * mensajes están escritos para el operador (por ejemplo, el token de `connect-token`).
+ */
+export function validatedWithReason<S extends z.ZodType, T extends Target>(target: T, schema: S) {
+  return validator(target, (value): z.output<S> => {
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) {
+      const [first] = parsed.error.issues;
+      throw new AppError("REQUEST_INVALID", `Petición inválida: ${first?.message ?? target}`, {
+        details: {
+          target,
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        },
+      });
+    }
+    return parsed.data;
+  });
+}

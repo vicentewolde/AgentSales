@@ -129,6 +129,8 @@ export {
 export {
   checkCredentials,
   INSTAGRAM_PUBLISH_SCOPE,
+  type InstagramAccountMeta,
+  instagramAccountMetaSchema,
   normalizeAccountMeta,
   type PlatformAccount,
   type PlatformCredentials,
@@ -294,6 +296,16 @@ export {
   type ChangeListingStatusDeps,
   changeListingStatus,
 } from "./use-cases/change-listing-status.js";
+export {
+  type AccountGrant,
+  type ConnectAccountDeps,
+  connectAccount,
+  INSTAGRAM_TOKEN_DAYS,
+} from "./use-cases/connect-account.js";
+export {
+  type DisconnectAccountDeps,
+  disconnectAccount,
+} from "./use-cases/disconnect-account.js";
 export {
   type ContentEdit,
   type EditContentDeps,

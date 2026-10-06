@@ -30,6 +30,7 @@
     "@agentsales/core": "workspace:*",
     "@agentsales/db": "workspace:*",
     "@agentsales/importers": "workspace:*",
+    "@agentsales/publishers": "workspace:*",
     "@agentsales/queue": "workspace:*",
     "@agentsales/storage": "workspace:*",
     "@hono/node-server": "2.1.1",
