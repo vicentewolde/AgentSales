@@ -82,7 +82,8 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
       }
       const now = new Date();
       const publication: Publication = {
-        id: `publication-${++nextPublication}`,
+        // Con forma de uuid, como en Postgres: los datos del job `publication.publish` lo exigen.
+        id: `00000000-0000-4000-8000-${String(++nextPublication).padStart(12, "0")}`,
         listingId: input.listingId,
         platformAccountId: input.platformAccountId,
         platform: input.platform,

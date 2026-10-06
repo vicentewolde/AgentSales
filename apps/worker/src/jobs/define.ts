@@ -6,6 +6,8 @@ export type JobContext = {
   logger: Logger;
   /** Si es el último intento (`retryCount >= retryLimit`): un error ya no se reintentará. */
   isLastAttempt: boolean;
+  /** Reintento de este intento (0 en el primero), para la bitácora (F3-T12). */
+  retryCount: number;
 };
 
 /**

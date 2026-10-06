@@ -66,6 +66,7 @@ export {
 } from "./platform-accounts.js";
 export {
   createPublicationScenario,
+  PUBLICATION_SCENARIO_TOKEN,
   type PublicationScenario,
 } from "./publication-scenario.js";
 export {

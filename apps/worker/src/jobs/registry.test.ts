@@ -118,20 +118,27 @@ describe("registerJobs", () => {
     [0, 2, false],
     [1, 2, false],
     [2, 2, true],
-  ])("con retryCount %i de %i, isLastAttempt es %s", async (retryCount, retryLimit, last) => {
-    const { boss, workers } = fakeBoss();
-    const { logger } = capture();
-    const seen: boolean[] = [];
+  ])(
+    "con retryCount %i de %i, isLastAttempt es %s (y el job recibe el retryCount)",
+    async (retryCount, retryLimit, last) => {
+      const { boss, workers } = fakeBoss();
+      const { logger } = capture();
+      const seen: [boolean, number][] = [];
 
-    await registerJobs(
-      boss,
-      [job("import.run", async (_data, { isLastAttempt }) => void seen.push(isLastAttempt))],
-      logger,
-    );
-    await workers.get("import.run")?.([{ id: "j9", data: {}, retryCount, retryLimit }]);
+      await registerJobs(
+        boss,
+        [
+          job("import.run", async (_data, context) => {
+            seen.push([context.isLastAttempt, context.retryCount]);
+          }),
+        ],
+        logger,
+      );
+      await workers.get("import.run")?.([{ id: "j9", data: {}, retryCount, retryLimit }]);
 
-    expect(seen).toEqual([last]);
-  });
+      expect(seen).toEqual([[last, retryCount]]);
+    },
+  );
 
   it("pasa los datos y el id del job, y registra inicio y fin", async () => {
     const { boss, workers } = fakeBoss();

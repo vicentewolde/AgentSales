@@ -15,7 +15,10 @@ function run(data: unknown) {
       },
     }),
   );
-  return { promise: systemPing.run(data, { jobId: "j1", logger, isLastAttempt: true }), lines };
+  return {
+    promise: systemPing.run(data, { jobId: "j1", logger, isLastAttempt: true, retryCount: 0 }),
+    lines,
+  };
 }
 
 describe("systemPing", () => {

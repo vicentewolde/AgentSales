@@ -17,6 +17,7 @@
     "@agentsales/importers": "workspace:*",
     "@agentsales/llm": "workspace:*",
     "@agentsales/media": "workspace:*",
+    "@agentsales/publishers": "workspace:*",
     "@agentsales/queue": "workspace:*",
     "@agentsales/storage": "workspace:*",
     "@agentsales/templates": "workspace:*",
