@@ -39,12 +39,19 @@ const text = (value: string) => Uint8Array.from(value, (char) => char.charCodeAt
  * cuenta de Instagram conectada y el texto aprobado (nacen carrusel y reel en `approved`).
  */
 export async function createPublicationScenario(
-  options: { account?: boolean; approve?: boolean; queueFails?: () => AppError | undefined } = {},
+  options: {
+    account?: boolean;
+    approve?: boolean;
+    queueFails?: () => AppError | undefined;
+    /** Ids del aviso, los textos y la cuenta (la API exige uuid en sus rutas); por defecto, legibles. */
+    nextId?: () => string;
+  } = {},
 ) {
+  const ids = options.nextId === undefined ? {} : { nextId: options.nextId };
   const media = createInMemoryMediaRepository();
   const storage = createInMemoryMediaStorage();
   const broker = contentBrokerFixture();
-  const listings = createInMemoryListingRepository();
+  const listings = createInMemoryListingRepository(ids);
   const {
     id: _id,
     status: _s,
@@ -79,10 +86,10 @@ export async function createPublicationScenario(
       isCover: original.isCover ?? false,
     });
   }
-  const { contents, contentRuns } = createInMemoryContentRepositories();
+  const { contents, contentRuns } = createInMemoryContentRepositories(ids);
   const brokers = createInMemoryBrokerRepository([broker]);
   const fieldDefinitions = createInMemoryFieldDefinitionRepository(contentDefinitionsFixture());
-  const platformAccounts = createInMemoryPlatformAccountRepository();
+  const platformAccounts = createInMemoryPlatformAccountRepository(ids);
   const publications = createInMemoryPublicationRepository();
   const locked: LockedRepositories = {
     brokers,
@@ -187,6 +194,7 @@ export async function createPublicationScenario(
     byFormat,
     deps: { lock: watchedLock, queue: watchedQueue, publications: outsidePublications },
     approveDeps: { contents, listings, fieldDefinitions, lock },
+    fieldDefinitions,
     media,
     storage,
     brokers,

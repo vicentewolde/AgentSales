@@ -26,6 +26,16 @@ const CONFLICTS = new Set([
   // Refrescar (F3-T14) o publicar con una cuenta desconectada o vencida: hay que reconectarla.
   "ACCOUNT_NOT_CONNECTED",
   "ACCOUNT_REFRESH_UNSUPPORTED",
+  // Aprobar y publicar (F3-T05 y T10, spec F3 §4.8): el cliente corrige el estado (revisar el
+  // texto, esperar, descartar o confirmar) y vuelve a pedirlo.
+  "CONTENT_HAS_ERRORS",
+  "CONTENT_NOT_READY",
+  "CONTENT_NOT_APPROVED",
+  "PUBLICATION_IN_PROGRESS",
+  "PUBLICATION_CONFLICT",
+  "NOTHING_TO_PUBLISH",
+  "REMOVAL_NOT_CONFIRMED",
+  "PUBLISH_MODE_LOCKED",
 ]);
 
 /**

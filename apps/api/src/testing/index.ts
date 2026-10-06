@@ -122,6 +122,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     contentRuns: content.contentRuns,
     contents: content.contents,
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
+    publications: createInMemoryPublicationRepository(),
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
     oauthState: createStateSigner(TEST_ENCRYPTION_KEY),
     panelUrl: "http://localhost:5173",
@@ -136,8 +137,8 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
       media: deps.media,
       contentRuns: deps.contentRuns,
       contents: deps.contents,
-      publications: createInMemoryPublicationRepository(),
-      // El mismo repositorio de cuentas que la app (spec F3-T13).
+      // Los mismos repositorios de publicaciones y cuentas que la app (spec F3-T13 y T15).
+      publications: deps.publications,
       platformAccounts: deps.platformAccounts,
     });
   return { ...deps, lock };

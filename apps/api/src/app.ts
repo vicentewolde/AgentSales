@@ -11,6 +11,7 @@ import type {
   MediaRepository,
   MediaStorage,
   PlatformAccountRepository,
+  PublicationRepository,
   PublishMode,
 } from "@agentsales/core";
 import { Hono } from "hono";
@@ -24,6 +25,7 @@ import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/
 import { type ImportUploads, importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
+import { listingPublicationRoutes, publicationRoutes } from "./routes/publications.js";
 import { csrfGuard, hostGuard, type LocalAccess } from "./security.js";
 
 export type AppDeps = {
@@ -60,6 +62,11 @@ export type AppDeps = {
    * desde T15, aprobar y publicar). `server.ts` compone `createListingLock` sobre la misma base.
    */
   lock: ListingLock;
+  /**
+   * Publicaciones (F3-T15): leer las de un aviso y su bitácora, y saber de qué aviso es una antes
+   * del candado. Los cambios de estado van dentro del candado, con sus repositorios.
+   */
+  publications: PublicationRepository;
   // Cuentas (F3-T13): conectar con el token del panel de Meta o por OAuth, y desconectar.
   platformAccounts: PlatformAccountRepository;
   /** Instagram Login, si el OAuth tiene su par de la app, y si la cookie va `Secure`. */
@@ -94,6 +101,8 @@ export function createApp(deps: AppDeps) {
     // Encadenadas con `.route()`, así `AppType` conserva el esquema de cada ruta (ADR-0011).
     .route("/listings", listingRoutes(deps))
     .route("/listings", listingContentRoutes(deps))
+    .route("/listings", listingPublicationRoutes(deps))
+    .route("/publications", publicationRoutes(deps))
     .route("/content-runs", contentRunRoutes(deps))
     .route("/contents", contentRoutes(deps))
     .route("/brokers", brokerRoutes(deps))

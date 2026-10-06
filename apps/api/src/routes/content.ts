@@ -1,5 +1,6 @@
 import {
   AppError,
+  approveContent,
   type CheckedContent,
   type ContentRepository,
   type ContentRun,
@@ -13,14 +14,17 @@ import {
   type MediaStorage,
   type RequestContentRunDeps,
   requestContentRun,
+  unapproveContent,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import {
+  type ContentApproveResponse,
   type ContentEditResponse,
   type ContentMedia,
   type ContentRunRequestResponse,
   type ContentRunResponse,
   type ContentRunView,
+  type ContentUnapproveResponse,
   type ContentView,
   contentEditBodySchema,
   contentRunRequestBodySchema,
@@ -28,6 +32,7 @@ import {
   type ListingContentResponse,
 } from "../contracts/index.js";
 import { validated } from "../validation.js";
+import { actorOf, publicationView, skippedView } from "./publication-views.js";
 
 export type ContentRoutesDeps = RequestContentRunDeps &
   GetListingContentDeps &
@@ -60,7 +65,7 @@ export function contentRunView(run: ContentRun): ContentRunView {
 }
 
 /** Un medio de un canal con su URL firmada. Solo derivados y renders: nunca un original. */
-const contentMedia =
+export const contentMedia =
   (storage: Pick<MediaStorage, "signedReadUrl">) =>
   async (media: Media): Promise<ContentMedia> => {
     if (media.variant === null) throw new AppError("INTERNAL_ERROR", "Un original en un canal");
@@ -125,19 +130,48 @@ export function contentRunRoutes(deps: Pick<ContentRoutesDeps, "contentRuns">) {
   });
 }
 
-/** `PATCH /contents/:id`: editar el texto vigente de un canal (`editContent`). */
+/**
+ * `/contents/:id`: editar el texto vigente de un canal (`editContent`), aprobarlo y quitarle la
+ * aprobación (spec F3 §4.2, ADR-0014). Los tres corren dentro del candado del aviso (core).
+ */
 export function contentRoutes(deps: EditContentDeps) {
-  return new Hono().patch(
-    "/:id",
-    validated("param", idParamSchema),
-    validated("json", contentEditBodySchema),
-    async (c) => {
-      const result = await editContent(deps, {
+  return new Hono()
+    .patch(
+      "/:id",
+      validated("param", idParamSchema),
+      validated("json", contentEditBodySchema),
+      async (c) => {
+        const result = await editContent(deps, {
+          contentId: c.req.valid("param").id,
+          edit: c.req.valid("json"),
+        });
+        const body: ContentEditResponse = { content: contentView(result) };
+        return c.json(body, 200);
+      },
+    )
+    .post("/:id/approve", validated("param", idParamSchema), async (c) => {
+      const result = await approveContent(deps, {
         contentId: c.req.valid("param").id,
-        edit: c.req.valid("json"),
+        actor: actorOf(c),
       });
-      const body: ContentEditResponse = { content: contentView(result) };
+      const body: ContentApproveResponse = {
+        content: contentView(result),
+        created: result.created.map(publicationView),
+        skipped: result.skipped.map(skippedView),
+        publications: result.publications.map(publicationView),
+      };
       return c.json(body, 200);
-    },
-  );
+    })
+    .post("/:id/unapprove", validated("param", idParamSchema), async (c) => {
+      const result = await unapproveContent(deps, {
+        contentId: c.req.valid("param").id,
+        actor: actorOf(c),
+      });
+      const body: ContentUnapproveResponse = {
+        content: contentView(result),
+        cancelled: result.cancelled.map(publicationView),
+        publications: result.publications.map(publicationView),
+      };
+      return c.json(body, 200);
+    });
 }

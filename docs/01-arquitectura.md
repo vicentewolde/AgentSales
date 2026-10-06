@@ -339,7 +339,7 @@ Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al ar
   - los filtros (`listingQuerySchema`);
   - los cuerpos (`listingStatusBodySchema`; desde F2-T12, `contentRunRequestBodySchema` y `contentEditBodySchema`);
   - los formularios y cuerpos de importación (`importUploadFormSchema`, `localImportBodySchema`);
-  - los sobres de respuesta (`listingListResponseSchema`, `listingDetailResponseSchema`, `brokerListResponseSchema`, `importRunResponseSchema` e `importRunListResponseSchema`; desde F2-T12, `contentRunRequestResponseSchema`, `contentRunResponseSchema`, `listingContentResponseSchema` y `contentEditResponseSchema`, con las vistas `contentRunViewSchema`, `contentCheckSchema`, `contentViewSchema` y `contentMediaSchema`). Las fechas llegan como texto ISO y se vuelven `Date` (`z.coerce.date`).
+  - los sobres de respuesta (`listingListResponseSchema`, `listingDetailResponseSchema`, `brokerListResponseSchema`, `importRunResponseSchema` e `importRunListResponseSchema`; desde F2-T12, `contentRunRequestResponseSchema`, `contentRunResponseSchema`, `listingContentResponseSchema` y `contentEditResponseSchema`, con las vistas `contentRunViewSchema`, `contentCheckSchema`, `contentViewSchema` y `contentMediaSchema`; desde F3-T13 y T14, los de cuentas; desde F3-T15, los de aprobar y publicar, con las vistas `publicationViewSchema`, `listingPublicationSchema` y `publicationEventViewSchema`, y la cabecera `CLIENT_HEADER`). Las fechas llegan como texto ISO y se vuelven `Date` (`z.coerce.date`).
 - **Frontera:** Biome la limita a `zod`, `@agentsales/core` e imports de `./` (no `../`, que sale al código del servidor), y un test (`apps/api/test/contracts-boundary.test.ts`) prueba que rechaza `@agentsales/config`, `node:*` y `hono`.
 - **Validación de entrada:** `validated(target, schema)` (`apps/api/src/validation.ts`, sobre `hono/validator`). Un valor inválido es `REQUEST_INVALID` (400), con los campos en el mensaje.
 - **Importación (F1-T11, `apps/api/src/routes/imports.ts`):** la API solo crea el run y encola (`requestImport`, ADR-0005), y responde `202`.
@@ -662,6 +662,19 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 - **Si la cola no está** (`QUEUE_UNAVAILABLE`, 503): las publicaciones quedan en `publishing` (con `details.publicationIds` de las que no alcanzaron a encolarse). A diferencia de las cargas y las corridas, que quedan en `failed`, aquí basta con volver a publicar (las reencola) o con arrancar el worker, que reencola todas las `publishing`.
 - **`cancelPublication`** y **`retirePublication`** también corren en el candado, porque cambian qué está pendiente y el estado del aviso. Retirar en `live` exige la confirmación de que se borró a mano (`REMOVAL_NOT_CONFIRMED`) y, si era la última publicada en `live`, devuelve el aviso de `active` a `ready` (`listingBackToReady`). El paso a `active` al publicar en `live` lo hace el intento (T11), con su propio cambio condicional.
 - **Errores** (409 salvo los "no existe"): `LISTING_NOT_READY`, `CONTENT_RUN_ACTIVE`, `CONTENT_NOT_APPROVED`, `ACCOUNT_NOT_CONNECTED`, `PUBLISH_MODE_LOCKED`, `NOTHING_TO_PUBLISH` (con los formatos ocupados por un texto anterior en `details.skipped`), `PUBLICATION_IN_PROGRESS`, `REMOVAL_NOT_CONFIRMED` e `INVALID_TRANSITION`; `LISTING_NOT_FOUND` y `PUBLICATION_NOT_FOUND` (404).
+
+## API de aprobación y publicaciones (F3-T15)
+
+- **Rutas** (`apps/api/src/routes/content.ts` y `publications.ts`, spec F3 §4.8), cada una sobre su caso de uso de core, con el candado y la cola que compone `server.ts`:
+  - `POST /contents/:id/approve` y `/unapprove` (200): el texto con su revisión, lo que cambió (`created` y `skipped`, o `cancelled`) y todas las publicaciones del canal;
+  - `GET /listings/:id/publications` (200): todas las del aviso, cada una con sus medios como miniaturas con URL de lectura temporal (los que ya no están en R2, porque una corrida posterior a publicar los cambió, se omiten);
+  - `POST /listings/:id/publish` `{ platform }` y `POST /publications/:id/publish` (202, porque encolan): `started`, `requeued`, `created`, `skipped` y `stranded`, o la publicación y si solo se reencoló;
+  - `POST /publications/:id/cancel` y `/retire` `{ removedByHand? }` (200), con `listingBackToReady`;
+  - `GET /publications/:id/events` (200): la bitácora.
+- **El modo sale del `PUBLISH_MODE` de la API**, nunca del cuerpo (zod descarta un `dryRun` que llegue): `dry-run` pide simulaciones y `live` en vivo (D11).
+- **Actor de la bitácora:** `cli` si la petición trae `X-AgentSales-Client: cli` (`CLIENT_HEADER`, que la CLI manda desde T16); si no, `operator` (el panel). El worker escribe `system`.
+- **Vista** (`publicationView`, `routes/publication-views.ts`): sin `progress` ni `externalId`, y sin URLs de lo que se envía a la plataforma (las firma el intento, en el worker, y no se guardan). Las miniaturas del listado sí son URLs de lectura temporales, como las del contenido. Los eventos salen tal cual: quien los escribe no pone secretos ni URLs firmadas (`publishAttemptRecord`).
+- **HTTP de los errores:** `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_NOT_APPROVED`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH`, `REMOVAL_NOT_CONFIRMED` y `PUBLISH_MODE_LOCKED` son 409 (`CONFLICTS` en `errors.ts`); `QUEUE_UNAVAILABLE` es 503 (la publicación queda en `publishing` y se reencola publicando otra vez o al arrancar el worker).
 
 ## Intento de publicación (`publishPublication`, F3-T11)
 
