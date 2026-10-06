@@ -403,12 +403,12 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T19 · `pnpm ig:smoke`
 - **Depende de:** T09, T13
-- **Archivos:** `apps/worker/src/scripts/ig-smoke.ts`, `package.json`
+- **Archivos:** `apps/worker/src/scripts/ig-smoke.ts` (la lógica en `src/smoke/ig-smoke.ts`), `package.json`
 - **Descripción:** con la cuenta conectada, crea **un** contenedor de imagen desde una URL firmada de R2 de un render de muestra, sondea hasta `FINISHED` o error e imprime el resultado; **nunca** llama a `media_publish`. Comprueba que Meta descarga las URLs firmadas antes de la prueba en `live`. Lo corre el operador.
 - **Hecho cuando:**
-  - [ ] Test con msw que verifica que nunca se llama a `media_publish`
-  - [ ] Salida con el estado del contenedor y el código si falla, sin tokens
-  - [ ] `CLAUDE.md` (Comandos) con `pnpm ig:smoke`
+  - [x] Test con msw que verifica que nunca se llama a `media_publish`
+  - [x] Salida con el estado del contenedor y el código si falla, sin tokens
+  - [x] `CLAUDE.md` (Comandos) con `pnpm ig:smoke`
 
 ### F3-T20 · Cierre de fase
 - **Depende de:** todas
@@ -510,3 +510,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-06 | Revisión de F3-T17 (#70, `revisor` y `arquitecto`): `startUrl` validado como URL `http(s)` (la CLI la abre y el panel la enlaza) y derivado con `instagramStartUrlOf` (con test); Reconectar también con la cuenta por vencer o vencida; los pasos del comando en orden (el comando lee el token del portapapeles); `tokenStdinCommand` en core para la CLI y el panel; `?conectada=` solo con `instagram`; nombres accesibles por corredor (enlace, Copiar, sección por su título) y aviso de Copiar; Desconectar limpia el error y devuelve el foco; fechas en hora de Chile; la última desconectada por `updatedAt`; componentes en `components/accounts/` con la lógica pura testeada aparte; tests con un `startUrl` distinto del escrito a mano |
 | 2026-10-06 | Desde F3-T18: aprobar y publicar en la sección Contenido (`ApprovalBar` por canal y `PublicationsPanel` en Instagram, con `PublicationItem` y `PublicationEvents`); las reglas de los botones en `components/publications/publications.ts` (puras); `usePolledRun` recibe `startedAt` (el tope cuenta desde ahí) y la consulta de una publicación lleva la versión del listado (`updatedAt`); Publicar con la API en vivo, Descartar y Marcar como retirada piden confirmación; Rehacer imágenes también se bloquea con publicaciones pendientes; `QUEUE_UNAVAILABLE` sugiere arrancar el worker |
 | 2026-10-06 | Revisión de F3-T18 (#71, `revisor` y `arquitecto`): Reintentar en vivo pide confirmación, y un modo desconocido cuenta como en vivo (el botón espera a conocerlo); antes de publicar en simulación se vuelve a leer `/health` sin caché; cualquier corrida en curso (también la de solo imágenes) bloquea aprobar y publicar; el canal no se publica en simulación si una ya empezó en vivo; "Volver a encolar" en una `publishing`; `canPublishListing`, `LISTING_NOT_PUBLISHABLE_TEXT` y `hasStartedLive` en core (una sola regla para la API y el panel); foco y anuncio en las confirmaciones, casilla que se reinicia, nombres por formato y `aria-expanded`; enlace solo `https`; invalidaciones acotadas y fallas por consulta; error visible si el sondeo falla sin datos; tests de confirmación en vivo, modo desconocido o cambiado, corrida de imágenes, sondeo con fallas y desmontaje, retiro en simulación, sin cuenta y reencolar |
+| 2026-10-06 | Desde F3-T19: `pnpm ig:smoke [--broker <slug>] [--listing <id_propiedad>]` usa la portada renderizada (`rendered`/`cover`) del primer aviso del corredor con una, firmada por 1 h como al publicar, y el ritmo de sondeo del publisher; lee la base directo (sin `pnpm dev`) y no escribe en ella; recibe el cliente sin `publishContainer`; la lógica en `apps/worker/src/smoke/ig-smoke.ts`; `instagramContainerError` y `abortableSleep` se exportan de `@agentsales/publishers` (el publisher usa el mismo `instagramContainerError`); msw como `devDependency` del worker |

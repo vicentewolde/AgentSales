@@ -124,6 +124,14 @@ export function instagramError(info: InstagramErrorInfo): AppError {
   );
 }
 
+/**
+ * El error de un contenedor en `ERROR` (nota §4.4), por el subcódigo de su `status`. Sin subcódigo,
+ * `IG_UNAVAILABLE`: reintentable con contenedores nuevos.
+ */
+export function instagramContainerError(subcode: number | null): AppError {
+  return subcode === null ? instagramError({ code: 2 }) : instagramError({ subcode });
+}
+
 function publishLimit(info: InstagramErrorInfo) {
   return error(
     "IG_PUBLISH_LIMIT",

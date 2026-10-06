@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-06
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** F3-T18 · Panel: aprobar y publicar
-**Siguiente paso:** `/tarea F3-T19` · `pnpm ig:smoke`
+**Última tarea terminada:** F3-T19 · `pnpm ig:smoke`
+**Siguiente paso:** `/tarea F3-T20` · Cierre de fase (`/fase-cerrar 3`): demos, con la prueba en `live` autorizada en el chat
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -29,7 +29,7 @@
 | F3-T16 · CLI | ✅ terminada | #69 |
 | F3-T17 · Panel: Cuentas | ✅ terminada | #70 |
 | F3-T18 · Panel: aprobar y publicar | ✅ terminada | #71 |
-| F3-T19 · `pnpm ig:smoke` | ⏳ pendiente | |
+| F3-T19 · `pnpm ig:smoke` | ✅ terminada | |
 | F3-T20 · Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
@@ -74,6 +74,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-06: **F3-T19.** `pnpm ig:smoke` (lo corre el operador, con la cuenta conectada y sin `pnpm dev`): toma la portada ya armada de la primera propiedad preparada (`--listing` para elegir otra), le pide a Instagram que la prepare desde un enlace temporal de R2 y espera hasta 5 min. `✓` si Meta la descargó; si no, el código y el subcódigo de Meta. Nunca publica (el cliente que recibe no tiene `media_publish`, y un test con msw lo revisa en cada caso), no escribe en la base y no muestra el token ni el enlace. Es el paso 5 de la demo, antes de `live`.
 - 2026-10-06: **F3-T18.** Panel: en Contenido, cada canal se aprueba o se le quita la aprobación (con el motivo si no se puede), e Instagram muestra el carrusel y el reel con su estado, modo, enlace y error, Publicar (en vivo, con confirmación), Reintentar, Descartar y Marcar como retirada (en vivo, con la casilla de que se borró a mano), y la bitácora. Mientras publica, el panel consulta cada 2 s; el tope de 2 h cuenta desde que se pidió publicar. Con publicaciones pendientes no se prepara ni se edita el texto aprobado.
 - 2026-10-06: **F3-T17.** Panel: página **Cuentas** (en el menú): la cuenta de Instagram de cada corredor con su estado, vencimiento (aviso a 10 días), última renovación y permisos; Desconectar con confirmación; Conectar o Reconectar con el comando de la CLI para copiar (en F3) o el botón de Instagram (con https, F7); el mensaje de vuelta del OAuth. La API dice ahora dónde empieza el OAuth, y la CLI usa lo mismo.
 - 2026-10-06: **F3-T16.** CLI: `approve` (y `--undo`), `publish` (confirma en vivo, espera el carrusel y el reel y muestra los enlaces; sale con 1 si alguno falla), `publications` (con la bitácora, `cancel` y `retire`, que en vivo pregunta si ya se borró a mano) y `accounts` (con `connect instagram --token-stdin` por tubería, `pbpaste | …`, y `refresh`). La CLI se identifica ante la API, así que la bitácora dice "CLI".
