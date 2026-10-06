@@ -20,6 +20,11 @@ import {
   OPERATIONS,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  PUBLICATION_ACTORS,
+  PUBLICATION_EVENT_TYPES,
+  PUBLICATION_FORMATS,
+  PUBLICATION_STATUSES,
+  publicationErrorSchema,
   TOKEN_EXPIRED_REASONS,
   TOKEN_REFRESH_SKIP_REASONS,
 } from "@agentsales/core";
@@ -299,6 +304,160 @@ export type ContentEditBody = z.infer<typeof contentEditBodySchema>;
 
 export const contentEditResponseSchema = z.object({ content: contentViewSchema });
 export type ContentEditResponse = z.infer<typeof contentEditResponseSchema>;
+
+/**
+ * Una publicación tal como la ven el panel y la CLI (spec F3 §4.3 y §4.8): sin `progress` (lo que
+ * el publisher dejó en la plataforma para retomar, interno) y sin URLs de lo que se envía a la
+ * plataforma. `dryRun` es el modo del último intento pedido; `lastError`, el motivo legible.
+ */
+export const publicationViewSchema = z.object({
+  id: z.string(),
+  listingId: z.string(),
+  platformAccountId: z.string(),
+  platform: z.enum(PLATFORMS),
+  format: z.enum(PUBLICATION_FORMATS),
+  contentId: z.string(),
+  mediaIds: z.array(z.string()),
+  status: z.enum(PUBLICATION_STATUSES),
+  dryRun: z.boolean(),
+  /**
+   * Ya empezó en vivo en la plataforma (`dryRun: false` con progreso): reintentarla con la API en
+   * `dry-run` es `PUBLISH_MODE_LOCKED`. El panel lo usa para explicar por qué no se puede.
+   */
+  startedLive: z.boolean(),
+  attempts: z.number().int().nonnegative(),
+  lastError: publicationErrorSchema.nullable(),
+  externalUrl: z.string().nullable(),
+  scheduledAt: z.coerce.date().nullable(),
+  publishedAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type PublicationView = z.infer<typeof publicationViewSchema>;
+
+/** Un formato que no se abrió porque ya tenía una publicación activa de otro texto (`skipped`). */
+export const skippedPublicationSchema = z.object({
+  platformAccountId: z.string(),
+  format: z.enum(PUBLICATION_FORMATS),
+  publicationId: z.string(),
+});
+export type SkippedPublicationView = z.infer<typeof skippedPublicationSchema>;
+
+/**
+ * `POST /contents/:id/approve`: el texto con su revisión, las publicaciones que nacieron, los
+ * formatos saltados y todas las del canal del aviso.
+ */
+export const contentApproveResponseSchema = z.object({
+  content: contentViewSchema,
+  created: z.array(publicationViewSchema),
+  skipped: z.array(skippedPublicationSchema),
+  publications: z.array(publicationViewSchema),
+});
+export type ContentApproveResponse = z.infer<typeof contentApproveResponseSchema>;
+
+/** `POST /contents/:id/unapprove`: el texto (vuelve a `edited`) y las publicaciones descartadas. */
+export const contentUnapproveResponseSchema = z.object({
+  content: contentViewSchema,
+  cancelled: z.array(publicationViewSchema),
+  publications: z.array(publicationViewSchema),
+});
+export type ContentUnapproveResponse = z.infer<typeof contentUnapproveResponseSchema>;
+
+/**
+ * Una publicación con sus medios, con URL de lectura temporal (en el reel, el MP4 completo: el panel
+ * lo muestra con `<video>` o un ícono).
+ */
+export const listingPublicationSchema = publicationViewSchema.extend({
+  /**
+   * Solo en las pendientes (`PENDING_PUBLICATION_STATUSES`), cuyos medios no cambian (D3). En las
+   * demás va vacío: una corrida posterior puede haber reemplazado la imagen en el mismo medio, y lo
+   * que se envió queda en la bitácora (`publish_attempt.sent`).
+   */
+  media: z.array(contentMediaSchema),
+});
+export type ListingPublicationView = z.infer<typeof listingPublicationSchema>;
+
+/**
+ * `GET /listings/:id/publications`: todas las del aviso, de todos los canales. Para sondear una sola
+ * (sin volver a firmar miniaturas), `GET /publications/:id` (`publicationResponseSchema`).
+ */
+export const listingPublicationsResponseSchema = z.object({
+  publications: z.array(listingPublicationSchema),
+});
+export type ListingPublicationsResponse = z.infer<typeof listingPublicationsResponseSchema>;
+
+/** `POST /listings/:id/publish`: el canal; el modo lo pone la API (`PUBLISH_MODE`), nunca el cuerpo. */
+export const listingPublishBodySchema = z.object({ platform: z.enum(PLATFORMS) });
+export type ListingPublishBody = z.infer<typeof listingPublishBodySchema>;
+
+/**
+ * Lo que hizo publicar el canal: las que empezaron, las que ya estaban en curso y se reencolaron,
+ * las que nacieron ahora, los formatos saltados, las pendientes de una cuenta desconectada
+ * (`stranded`: descartarlas o reconectar) y todas las del canal.
+ */
+export const listingPublishResponseSchema = z.object({
+  started: z.array(publicationViewSchema),
+  requeued: z.array(publicationViewSchema),
+  created: z.array(publicationViewSchema),
+  skipped: z.array(skippedPublicationSchema),
+  stranded: z.array(publicationViewSchema),
+  publications: z.array(publicationViewSchema),
+});
+export type ListingPublishResponse = z.infer<typeof listingPublishResponseSchema>;
+
+/** `POST /publications/:id/publish`: `requeued` si ya estaba en curso y solo se volvió a encolar. */
+export const publicationPublishResponseSchema = z.object({
+  publication: publicationViewSchema,
+  requeued: z.boolean(),
+});
+export type PublicationPublishResponse = z.infer<typeof publicationPublishResponseSchema>;
+
+export const publicationResponseSchema = z.object({ publication: publicationViewSchema });
+export type PublicationResponse = z.infer<typeof publicationResponseSchema>;
+
+/**
+ * `POST /publications/:id/retire`: en `live`, `removedByHand: true` confirma que se borró a mano en
+ * la plataforma (Instagram Login no deja borrar por la API, D8). El cuerpo va siempre (`{}`).
+ */
+export const publicationRetireBodySchema = z.object({ removedByHand: z.boolean().optional() });
+export type PublicationRetireBody = z.infer<typeof publicationRetireBodySchema>;
+
+/** `listingBackToReady`: era la última publicada en `live` y el aviso volvió de `active` a `ready`. */
+export const publicationRetireResponseSchema = z.object({
+  publication: publicationViewSchema,
+  listingBackToReady: z.boolean(),
+});
+export type PublicationRetireResponse = z.infer<typeof publicationRetireResponseSchema>;
+
+/**
+ * Un evento de la bitácora (spec F3 §4.3): cambios de estado y un `publish_attempt` por intento,
+ * con lo que se envió (o se habría enviado: `publishAttemptPayloadSchema` de core). Sin secretos ni
+ * URLs firmadas: quien escribe el evento no los pone.
+ */
+export const publicationEventViewSchema = z.object({
+  id: z.string(),
+  type: z.enum(PUBLICATION_EVENT_TYPES),
+  fromStatus: z.enum(PUBLICATION_STATUSES).nullable(),
+  toStatus: z.enum(PUBLICATION_STATUSES).nullable(),
+  actor: z.enum(PUBLICATION_ACTORS),
+  payload: z.record(z.string(), z.unknown()),
+  createdAt: z.coerce.date(),
+});
+export type PublicationEventView = z.infer<typeof publicationEventViewSchema>;
+
+/** `GET /publications/:id/events`: la bitácora, de la más antigua a la más nueva. */
+export const publicationEventsResponseSchema = z.object({
+  events: z.array(publicationEventViewSchema),
+});
+export type PublicationEventsResponse = z.infer<typeof publicationEventsResponseSchema>;
+
+/**
+ * Cabecera con que la CLI se identifica (T16): con `cli`, la bitácora registra `actor: "cli"`;
+ * sin ella (el panel), `operator`.
+ */
+export const CLIENT_HEADER = "X-AgentSales-Client";
+/** El valor de `CLIENT_HEADER` con que se identifica la CLI. */
+export const CLI_CLIENT = "cli";
 
 /**
  * Una cuenta conectada tal como la ve el operador (spec F3 §4.6 y §4.8, `GET /accounts`): nunca

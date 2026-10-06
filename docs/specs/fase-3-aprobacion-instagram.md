@@ -179,7 +179,10 @@ El operador conecta su cuenta de Instagram, aprueba el texto de una propiedad ya
 | `GET /listings/:id/publications` | Publicaciones del aviso con su estado, enlace, error y medios (miniaturas firmadas) |
 | `POST /listings/:id/publish` `{ platform }` | Publicar el canal (§4.3) |
 | `POST /publications/:id/publish`, `/cancel` y `/retire` | Publicar o reintentar una, descartarla y marcarla como retirada (`retire` exige `{ removedByHand: true }` si es `live`) |
+| `GET /publications/:id` | Una publicación, sin medios: para sondear y para saber su modo antes de retirarla (T15, revisión del `arquitecto`) |
 | `GET /publications/:id/events` | Bitácora, sin secretos |
+
+Publicar (el canal o una) responde 202, porque encola; el resto, 200. La CLI se identifica con la cabecera `X-AgentSales-Client: cli` para que la bitácora registre `actor: "cli"`; sin ella, `operator` (T15).
 
 Códigos nuevos con su HTTP en `apps/api/src/errors.ts`: `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_LOCKED`, `CONTENT_NOT_APPROVED`, `PUBLICATION_PENDING`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH` y `ACCOUNT_NOT_CONNECTED` (409); `PUBLICATION_NOT_FOUND` y `ACCOUNT_NOT_FOUND` (404); `OAUTH_STATE_INVALID` (400); `REMOVAL_NOT_CONFIRMED` y `PUBLISH_MODE_LOCKED` (409, T10); `CREDENTIALS_UNREADABLE` (500); `PUBLISH_MODE_MISMATCH`, `PUBLISH_INPUT_INVALID`, `PUBLICATION_MEDIA_MISSING`, `PUBLICATION_CONTENT_MISMATCH` (T07), `PUBLISHER_NOT_CONFIGURED`, `CONTENT_NOT_FOUND` e `INTERNAL_ERROR` (T11) solo viajan dentro de `last_error` (`PUBLISH_ABORTED` y `PUBLISH_RESULT_NOT_SAVED` son reintentables y nunca llegan ahí) (también `CONTENT_NOT_APPROVED`, cuando sale de un intento). Los `IG_*` viajan en `last_error` al publicar, pero conectar y refrescar a pedido (T13 y T14) los devuelven en la respuesta: `IG_UNAVAILABLE` es 503 e `IG_RATE_LIMITED` 429 por las reglas que ya existen, y T13 agrega `IG_AUTH_INVALID`, `IG_PERMISSION_DENIED` e `IG_REQUEST_REJECTED` (400) e `IG_UNEXPECTED_RESPONSE` (502).
 
@@ -354,16 +357,22 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 
 ### F3-T15 · API de aprobación y publicaciones
 - **Depende de:** T06, T10, T13
-- **Archivos:** `apps/api/src/routes/{content.ts,publications.ts,listings.ts}`, `apps/api/src/contracts/index.ts`, `apps/api/src/errors.ts`, `apps/api/src/app.ts`
+- **Archivos:** `apps/api/src/routes/{content.ts,publications.ts,publication-views.ts}`, `apps/api/src/contracts/index.ts`, `apps/api/src/errors.ts`, `apps/api/src/app.ts`, `apps/api/src/server.ts`, `apps/api/src/testing/index.ts` y `packages/core/src/testing/publication-scenario.ts`
 - **Descripción:** rutas de §4.8 sobre los casos de uso, con la composición de los repositorios nuevos y el candado. Notas de la revisión de T10: `dryRun` sale del `PUBLISH_MODE` de la API, nunca del cuerpo; los códigos de T10 van a `CONFLICTS` (409) en `apps/api/src/errors.ts`; las respuestas quitan `progress` y muestran `requeued`, `stranded` y `listingBackToReady`.
 - **Hecho cuando:**
-  - [ ] Tests de cada ruta con sus errores y su HTTP
-  - [ ] Ninguna respuesta lleva credenciales, URLs firmadas de publicación ni `progress`
+  - [x] Tests de cada ruta con sus errores y su HTTP
+  - [x] Ninguna respuesta lleva credenciales, URLs firmadas de publicación ni `progress`
 
 ### F3-T16 · CLI
 - **Depende de:** T15
 - **Archivos:** `apps/cli/src/commands/{approve.ts,publish.ts,publications.ts,accounts.ts}`, `apps/cli/src/commands/wait-run.ts`
-- **Descripción:** §4.9 (CLI): `approve`, `publish`, `publications` (con `cancel` y `retire`) y `accounts` (con `connect` y `refresh`), y `accounts connect instagram --token-stdin` si T13 lo sumó.
+- **Descripción:** §4.9 (CLI): `approve`, `publish`, `publications` (con `cancel` y `retire`) y `accounts` (con `connect` y `refresh`), y `accounts connect instagram --token-stdin` si T13 lo sumó. Notas de la revisión de T15:
+  - el cliente `hc` manda por defecto `X-AgentSales-Client: cli` (`CLIENT_HEADER` y `CLI_CLIENT` de los contratos) y `Content-Type: application/json` en los `POST` (sin cuerpo, el CSRF da 403);
+  - `publications retire <id>` lee `GET /publications/:id` para saber si es `live` antes de pedir la confirmación;
+  - `publish` sondea con `GET /publications/:id` el carrusel y el reel a la vez;
+  - `waitForRun` generaliza el aviso de "sigue en cola" con un predicado, porque las publicaciones no tienen `queued`;
+  - un 503 al publicar deja la publicación en `publishing`: el mensaje dice que se arranque el worker;
+  - el `payload` de la bitácora se lee con `publishAttemptPayloadSchema`.
 - **Hecho cuando:**
   - [ ] Tests de cada comando con la API simulada; `publish` sale con 1 si queda `failed`
   - [ ] `publish` y `publications retire` en `live` piden confirmación (o `--yes`)
@@ -379,7 +388,12 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 ### F3-T18 · Panel: aprobar y publicar
 - **Depende de:** T15
 - **Archivos:** `apps/web/src/components/content/*`, `apps/web/src/components/publications/*`, `apps/web/src/queries/{publications.ts,run-poll.ts}`
-- **Descripción:** §4.9 (sección Contenido).
+- **Descripción:** §4.9 (sección Contenido). Notas de la revisión de T15:
+  - sondear con `GET /publications/:id` (el listado firma miniaturas: solo para la carga inicial y después de cada acción);
+  - el tope de espera cuenta desde el más reciente entre `updatedAt` y la hora del clic, porque reencolar una que ya está en `publishing` no cambia `updatedAt`, y `updatedAt` se mueve con el progreso;
+  - `startedLive` explica por qué Reintentar en `dry-run` no se puede;
+  - el medio del reel es el MP4 (`<video>` o un ícono);
+  - las publicadas no traen medios: lo enviado está en la bitácora.
 - **Hecho cuando:**
   - [ ] Tests: aprobar y quitar la aprobación, publicar, sondeo hasta `published` con enlace, `failed` con su error, descartar y retirar con confirmación
   - [ ] `PolledRun` y `pollStop` (`run-poll.ts`) se generalizan con el inicio de la espera (`startedAt`: `createdAt` para corridas y cargas, `updatedAt` para publicaciones), con test de una aprobada hace días
@@ -486,3 +500,5 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-06 | Revisión de F3-T13 (#66, `revisor` y `arquitecto`): `upsertConnected` con `revokeOthers` bloquea la fila del corredor (dos conexiones simultáneas van de a una, sin dos conectadas ni deadlock) y también pasa a `revoked` las `expired` y `error`; `GET /accounts` trae `connect.instagram.oauth`; `OAUTH_REDIRECT_ERRORS` en los contratos; `connect-token` explica el error (token rechazado: "genera uno nuevo con Generate token"; cuerpo inválido: la causa); la vuelta del OAuth no canjea sin el par de la app y compara el `state` en tiempo constante; tests de corredor manipulado, `state` sin corredor, log sin token ni código, CSRF y segunda cuenta; §4.9 de la CLI con `--token-stdin` como camino de F3; notas para T14 y T17; deuda de F7 en ESTADO |
 | 2026-10-06 | Desde F3-T14: `refreshAccountToken` (una cuenta, para la API) y `refreshAccountTokens` (el lote del job) en core, con resultados `refreshed`, `skipped` (`too_recent`, `not_due`, `unsupported`, con `refreshableAt`) y `expired` (`token_expired`, `token_rejected`); con justo 30 días de vigencia ya se refresca; credenciales ilegibles dejan la cuenta en `error`. Job `tokens.refresh` (`exclusive`, clave fija, 3 reintentos desde 60 s, 5 min) con cron diario a las 12:00 de `America/Santiago` (`Job.schedule`, `WorkerBoss.schedule`) y al arrancar; falla con `TOKENS_REFRESH_INCOMPLETE` (reintentable) si una cuenta falló por algo pasajero. `POST /accounts/:id/refresh` no exige el par de la app (como `connect-token`); `ACCOUNT_NOT_CONNECTED` pasa a 409 en `errors.ts`; `AppDeps.now` |
 | 2026-10-06 | Revisión de F3-T14 (#67, `revisor` y `arquitecto`): un vencimiento estimado (token del panel) no espera los 30 días: se refresca a las 24 h de conectarlo y se conoce el real; el worker refresca también sin el par de la app (el refresco solo usa el token, como en la API); el reloj de las 24 h se lee aparte del resto de `meta` (una `meta` incompleta conserva el tope; aviso `ACCOUNT_META_UNREADABLE`); `ACCOUNT_REFRESH_UNSUPPORTED` (409) en vez de `unsupported`; la respuesta del refresco es una unión por `outcome` con `TOKEN_REFRESH_OUTCOMES` de core; al marcar `expired` se relee la cuenta; avisos al log de la API; `JobSchedule<N>` tipado y `missed: "skip"` explícito; §4.6 con "30 días o menos" y `TOKENS_REFRESH_INCOMPLETE`; archivos de la API en T14 |
+| 2026-10-06 | Desde F3-T15: rutas de §4.8 en `routes/content.ts` (aprobar y quitar la aprobación) y `routes/publications.ts`; la vista de una publicación (`publicationView`) quita `progress` y `externalId`; `GET /listings/:id/publications` trae miniaturas firmadas y omite los medios que ya no están; publicar responde 202; el actor sale de la cabecera `X-AgentSales-Client` (`cli`) o es `operator`; los códigos de aprobar y publicar van a `CONFLICTS` (409); `AppDeps.publications`; el escenario de publicación de core acepta `nextId` (uuid para la API) |
+| 2026-10-06 | Revisión de F3-T15 (#68, `revisor` y `arquitecto`): `GET /publications/:id` para sondear sin firmar miniaturas; el listado trae medios solo de las pendientes (un medio se reemplaza en su misma fila); `startedLive` en la vista; el detalle de los eventos se filtra al leer (`publishAttemptPayloadSchema` y las claves conocidas); `AppDeps.publications` solo lee; `CLI_CLIENT`; `PUBLICATION_EVENT_INVALID`, `PUBLICATION_REFERENCE_INVALID` y `PUBLICATION_PROGRESS_INVALID` a 500; tabla de HTTP de `05-convenciones.md` al día; tests de CSRF en todas las rutas que cambian algo, `hostGuard`, `stranded`, `PUBLISH_MODE_LOCKED`, `CONTENT_HAS_ERRORS`, `PUBLICATION_IN_PROGRESS` al quitar la aprobación y `listingBackToReady: false`; notas para T16 y T18 |

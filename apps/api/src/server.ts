@@ -19,6 +19,7 @@ import {
   createListingRepository,
   createMediaRepository,
   createPlatformAccountRepository,
+  createPublicationRepository,
   pingDatabase,
   toPgConnectionString,
 } from "@agentsales/db";
@@ -90,6 +91,7 @@ const app = createApp({
   contentRuns: createContentRunRepository(database.db),
   contents: createContentRepository(database.db),
   lock: createListingLock(database.db, { secretBox }),
+  publications: createPublicationRepository(database.db),
   platformAccounts: createPlatformAccountRepository(database.db, { secretBox }),
   instagram: {
     // Sin el par de la app, `/me` (conectar con el token del panel) funciona igual; solo el canje

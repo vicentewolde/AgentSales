@@ -40,16 +40,16 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
 
   | Código | HTTP |
   |---|---|
-  | `INVALID_TRANSITION`, `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT`, `CONTENT_RUN_ACTIVE`, `CONTENT_LOCKED`, `PUBLICATION_PENDING` | 409 (un pedido válido que el estado actual no permite: esperar, recargar o confirmar) |
+  | `INVALID_TRANSITION`, `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT`, `CONTENT_RUN_ACTIVE`, `CONTENT_LOCKED`, `PUBLICATION_PENDING`; desde F3-T14, `ACCOUNT_NOT_CONNECTED` y `ACCOUNT_REFRESH_UNSUPPORTED`; desde F3-T15, `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_NOT_APPROVED`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH`, `REMOVAL_NOT_CONFIRMED` y `PUBLISH_MODE_LOCKED` | 409 (un pedido válido que el estado actual no permite: esperar, recargar, descartar o confirmar) |
   | `REQUEST_TOO_LARGE` | 413 |
   | `IG_AUTH_INVALID`, `IG_PERMISSION_DENIED`, `IG_REQUEST_REJECTED` | 400 (Instagram rechazó el token o el permiso al conectar; F3-T13) |
   | `IG_UNEXPECTED_RESPONSE` | 502 (Instagram respondió algo con otra forma) |
-  | `JOB_PAYLOAD_INVALID`, `IMPORT_RUN_INVALID`, `*_ROW_INVALID` | 500 (datos que arma el servidor, o una fila corrupta en la base: no es culpa del cliente) |
+  | `JOB_PAYLOAD_INVALID`, `IMPORT_RUN_INVALID`, `*_ROW_INVALID`; desde F3-T15, `PUBLICATION_EVENT_INVALID`, `PUBLICATION_REFERENCE_INVALID` y `PUBLICATION_PROGRESS_INVALID` | 500 (datos que arma el servidor, o una fila corrupta en la base: no es culpa del cliente) |
   | `*_NOT_FOUND` | 404 |
   | `*_INVALID*` o `INVALID_*` | 400 |
   | `*_RATE_LIMITED` | 429 |
   | `*_UNAVAILABLE` | 503 |
-  | cualquier otro | 500 (también `*_CONFLICT`: es una carrera entre intentos del job, no un error del cliente) |
+  | cualquier otro | 500 (también `*_CONFLICT`, salvo `PUBLICATION_CONFLICT`: es una carrera entre intentos del job, no un error del cliente. `PUBLICATION_CONFLICT` es 409 por el spec F3 §4.8: bajo el candado no debería ocurrir, y si ocurre, el operador puede recargar) |
 
   Además:
   - Un `AppError` que resulta en 500 mantiene su `code` pero responde un mensaje genérico; el detalle queda solo en el log.
