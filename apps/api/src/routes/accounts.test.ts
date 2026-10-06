@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import {
   accountListResponseSchema,
+  accountRefreshResponseSchema,
   accountResponseSchema,
   errorBodySchema,
 } from "../contracts/index.js";
@@ -266,5 +267,194 @@ describe("cuentas · seguridad y mensajes", () => {
       expect(response.status).toBe(200);
       expect(accountResponseSchema.parse(await response.json()).account.status).toBe("revoked");
     }
+  });
+});
+
+describe("POST /accounts/:id/refresh", () => {
+  const CONNECTED_AT = new Date("2026-10-06T12:00:00Z");
+  const HOUR = 60 * 60 * 1000;
+
+  /** La API con un reloj que avanza a mano (`AppDeps.now`) y una cuenta conectada con el token. */
+  async function refreshSetup(options: { logger?: ReturnType<typeof createLogger> } = {}) {
+    const broker = contentBrokerFixture();
+    const auth = fakeInstagramAuth();
+    const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+    let clock = CONNECTED_AT;
+    const app = createApp(
+      testDeps({
+        brokers: createInMemoryBrokerRepository([broker]),
+        platformAccounts,
+        instagram: { auth, oauthConfigured: true, secureCookie: false },
+        now: () => clock,
+        ...(options.logger === undefined ? {} : { logger: options.logger }),
+      }),
+    );
+    const connect = async (token: string) => {
+      const response = await app.request("/accounts/connect-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ broker: broker.slug, platform: "instagram", token }),
+      });
+      return accountResponseSchema.parse(await response.json()).account;
+    };
+    const refresh = (id: string, body: unknown = {}) =>
+      app.request(`/accounts/${id}/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const advance = (ms: number) => {
+      clock = new Date(clock.getTime() + ms);
+    };
+    const refreshCalls = () => auth.calls.filter((call) => call === "refresh").length;
+    return { app, auth, platformAccounts, connect, refresh, advance, refreshCalls };
+  }
+
+  it("recién conectada con el token del panel: ni con force se refresca antes de 24 h", async () => {
+    const { connect, refresh, refreshCalls } = await refreshSetup();
+    const account = await connect(TOKEN);
+
+    const response = await refresh(account.id, { force: true });
+
+    expect(response.status).toBe(200);
+    expect(accountRefreshResponseSchema.parse(await response.json())).toMatchObject({
+      outcome: "skipped",
+      reason: "too_recent",
+      refreshableAt: new Date(CONNECTED_AT.getTime() + 24 * HOUR),
+      account: { status: "connected", tokenExpiryEstimated: true },
+    });
+    expect(refreshCalls()).toBe(0);
+  });
+
+  it("pasadas 24 h: sin force no toca (le quedan 59 días); con force refresca y guarda el vencimiento real", async () => {
+    const { platformAccounts, connect, refresh, advance, refreshCalls } = await refreshSetup();
+    const account = await connect(TOKEN);
+    advance(25 * HOUR);
+
+    const notDue = accountRefreshResponseSchema.parse(await (await refresh(account.id)).json());
+    expect(notDue).toMatchObject({ outcome: "skipped", reason: "not_due" });
+    expect(notDue.refreshableAt).toEqual(new Date("2026-11-05T12:00:00Z"));
+    expect(refreshCalls()).toBe(0);
+
+    const response = await refresh(account.id, { force: true });
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain(TOKEN);
+    expect(accountRefreshResponseSchema.parse(JSON.parse(text))).toMatchObject({
+      outcome: "refreshed",
+      reason: null,
+      refreshableAt: null,
+      account: {
+        status: "connected",
+        tokenExpiresAt: new Date("2026-12-05T12:00:00Z"),
+        tokenExpiryEstimated: false,
+        tokenRefreshedAt: new Date(CONNECTED_AT.getTime() + 25 * HOUR),
+        permissions: null,
+      },
+    });
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({
+      accessToken: `${TOKEN}-refrescado`,
+    });
+  });
+
+  it("Instagram rechaza el token (190): 200 con la cuenta vencida", async () => {
+    const { platformAccounts, connect, refresh, advance } = await refreshSetup();
+    const account = await connect(TOKEN);
+    // El token guardado deja de servir después de conectar (por ejemplo, se cambió la contraseña).
+    await platformAccounts.upsertConnected({
+      brokerId: account.brokerId,
+      platform: "instagram",
+      externalAccountId: "17841400000000001",
+      displayName: account.displayName,
+      tokenExpiresAt: account.tokenExpiresAt,
+      meta: (await platformAccounts.get(account.id))?.meta ?? {},
+      credentials: { accessToken: "malo-token-0123456789" },
+    });
+    advance(25 * HOUR);
+
+    const response = await refresh(account.id, { force: true });
+
+    expect(response.status).toBe(200);
+    expect(accountRefreshResponseSchema.parse(await response.json())).toMatchObject({
+      outcome: "expired",
+      reason: "token_rejected",
+      account: { status: "expired" },
+    });
+  });
+
+  it("sin red con Instagram es 503 y la cuenta no cambia", async () => {
+    const { platformAccounts, connect, refresh, advance } = await refreshSetup();
+    const account = await connect(`caido-${TOKEN}`);
+    advance(25 * HOUR);
+
+    const response = await refresh(account.id, { force: true });
+
+    expect(response.status).toBe(503);
+    expect(errorBodySchema.parse(await response.json()).error.code).toBe("IG_UNAVAILABLE");
+    expect(await platformAccounts.get(account.id)).toMatchObject({
+      status: "connected",
+      tokenExpiresAt: account.tokenExpiresAt,
+    });
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({
+      accessToken: `caido-${TOKEN}`,
+    });
+  });
+
+  it("desconectada 409, inexistente 404, id que no es uuid o force que no es booleano 400", async () => {
+    const { app, connect, refresh, refreshCalls } = await refreshSetup();
+    const account = await connect(TOKEN);
+    await app.request(`/accounts/${account.id}/disconnect`, emptyPost);
+
+    const cases: [Response, number, string][] = [
+      [await refresh(account.id, { force: true }), 409, "ACCOUNT_NOT_CONNECTED"],
+      [await refresh(randomUUID()), 404, "ACCOUNT_NOT_FOUND"],
+      [await refresh("no-es-uuid"), 400, "REQUEST_INVALID"],
+      [await refresh(account.id, { force: "si" }), 400, "REQUEST_INVALID"],
+    ];
+    for (const [response, status, code] of cases) {
+      expect(response.status).toBe(status);
+      expect(errorBodySchema.parse(await response.json()).error.code).toBe(code);
+    }
+    expect(refreshCalls()).toBe(0);
+  });
+
+  it("un formulario desde otro origen lo bloquea el CSRF, sin llamar a Instagram", async () => {
+    const { app, connect, advance, refreshCalls } = await refreshSetup();
+    const account = await connect(TOKEN);
+    advance(25 * HOUR);
+
+    // Lo que puede mandar otra página sin preflight: un cuerpo de texto, no JSON.
+    const response = await app.request(`/accounts/${account.id}/refresh`, {
+      method: "POST",
+      headers: { Origin: "http://evil.test" },
+      body: JSON.stringify({ force: true }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(refreshCalls()).toBe(0);
+  });
+
+  it("ni el token viejo ni el nuevo llegan al log", async () => {
+    const lines: string[] = [];
+    const logger = createLogger(
+      { level: "debug" },
+      new Writable({
+        write(chunk, _encoding, callback) {
+          lines.push(chunk.toString());
+          callback();
+        },
+      }),
+    );
+    const ok = await refreshSetup({ logger });
+    const account = await ok.connect(TOKEN);
+    ok.advance(25 * HOUR);
+    expect((await ok.refresh(account.id, { force: true })).status).toBe(200);
+    const down = await refreshSetup({ logger });
+    const unreachable = await down.connect(`caido-${TOKEN}`);
+    down.advance(25 * HOUR);
+    expect((await down.refresh(unreachable.id, { force: true })).status).toBe(503);
+
+    const written = lines.join("\n");
+    expect(written).not.toContain(TOKEN);
   });
 });

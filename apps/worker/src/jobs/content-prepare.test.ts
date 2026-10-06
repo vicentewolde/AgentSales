@@ -19,6 +19,7 @@ import {
 import { buildJobs } from "./index.js";
 import type { PublicationPublishJobDeps } from "./publication-publish.js";
 import { registerJobs, type WorkerBoss } from "./registry.js";
+import type { TokensRefreshJobDeps } from "./tokens-refresh.js";
 
 const context = (isLastAttempt: boolean) => ({
   jobId: "j1",
@@ -62,8 +63,15 @@ describe("job content.prepare · cola", () => {
         importRun: {} as RunImportDeps,
         contentPrepare: deps,
         publicationPublish: {} as PublicationPublishJobDeps,
+        tokensRefresh: {} as TokensRefreshJobDeps,
       }).map((job) => job.name),
-    ).toEqual(["system.ping", "import.run", "content.prepare", "publication.publish"]);
+    ).toEqual([
+      "system.ping",
+      "import.run",
+      "content.prepare",
+      "publication.publish",
+      "tokens.refresh",
+    ]);
   });
 });
 
@@ -228,6 +236,7 @@ describe("job content.prepare · handler", () => {
         work = handler;
         return "w1";
       },
+      schedule: async () => {},
     };
     await registerJobs(boss, [contentPrepareJob(t.deps)], logger);
 

@@ -31,6 +31,7 @@ function fakeBoss() {
       workers.set(name, handler);
       return name;
     },
+    schedule: async () => {},
   };
   return { boss, workers };
 }

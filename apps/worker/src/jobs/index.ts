@@ -4,6 +4,7 @@ import type { Job } from "./define.js";
 import { importRunJob } from "./import-run.js";
 import { type PublicationPublishJobDeps, publicationPublishJob } from "./publication-publish.js";
 import { systemPing } from "./system-ping.js";
+import { type TokensRefreshJobDeps, tokensRefreshJob } from "./tokens-refresh.js";
 
 export type JobDeps = {
   /** Dependencias de `runImport` (repositorios, R2, lector de xlsx y staging). */
@@ -12,6 +13,8 @@ export type JobDeps = {
   contentPrepare: ContentPrepareJobDeps;
   /** Dependencias de `publishPublication`: repositorios, R2, publishers y el modo del worker. */
   publicationPublish: PublicationPublishJobDeps;
+  /** Cuentas conectadas e Instagram Login (o `null` sin el par de la app), para `tokens.refresh`. */
+  tokensRefresh: TokensRefreshJobDeps;
 };
 
 /** Jobs que procesa el worker, con sus dependencias inyectadas. Los de ADR-0005 llegan en su fase. */
@@ -21,5 +24,6 @@ export function buildJobs(deps: JobDeps): readonly Job[] {
     importRunJob(deps.importRun),
     contentPrepareJob(deps.contentPrepare),
     publicationPublishJob(deps.publicationPublish),
+    tokensRefreshJob(deps.tokensRefresh),
   ];
 }

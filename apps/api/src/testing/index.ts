@@ -23,8 +23,9 @@ import type { AppDeps } from "../app.js";
 export const TEST_ENCRYPTION_KEY = "clave-de-prueba-de-32-caracteres-o-mas-0123456789";
 
 /**
- * Instagram falso para la API: canjea un código conocido, responde `/me` por token y registra las
- * llamadas. Un código o token que empiece con `malo` es `IG_AUTH_INVALID`.
+ * Instagram falso para la API: canjea un código conocido, responde `/me` por token, refresca y
+ * registra las llamadas. Un código o token que empiece con `malo` es `IG_AUTH_INVALID`, y refrescar
+ * uno que empiece con `caido`, `IG_UNAVAILABLE`.
  */
 export function fakeInstagramAuth(): InstagramAuth & { calls: string[] } {
   const calls: string[] = [];
@@ -48,8 +49,18 @@ export function fakeInstagramAuth(): InstagramAuth & { calls: string[] } {
           : ["instagram_business_basic", "instagram_business_content_publish"],
       };
     },
-    async refresh() {
-      throw new Error("refresh no se usa en estos tests");
+    async refresh(accessToken) {
+      calls.push("refresh");
+      if (accessToken.startsWith("malo")) throw reject();
+      if (accessToken.startsWith("caido")) {
+        throw new AppError("IG_UNAVAILABLE", "Instagram no responde: intenta más tarde", {
+          retriable: true,
+        });
+      }
+      return {
+        accessToken: `${accessToken}-refrescado`,
+        expiresAt: new Date("2026-12-05T12:00:00Z"),
+      };
     },
     async me(accessToken) {
       calls.push("me");

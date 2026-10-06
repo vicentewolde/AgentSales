@@ -1,4 +1,5 @@
 import { createSecretBox } from "@agentsales/config";
+import { refreshAccountToken } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryPlatformAccountRepository,
@@ -58,6 +59,52 @@ describe("cuentas conectadas · cifrado en la base (PGlite)", () => {
     const [row] = await repos.db.select().from(platformAccounts).where(eq(platformAccounts.id, id));
     return row;
   };
+
+  it("el refresco (F3-T14) guarda el token nuevo cifrado, el vencimiento y la meta mezclada", async () => {
+    const now = new Date("2026-10-06T12:00:00Z");
+    const input = connectedAccount(brokerId, {
+      tokenExpiresAt: new Date("2026-10-26T12:00:00Z"),
+      meta: {
+        accountType: "BUSINESS",
+        permissions: null,
+        connectedAt: "2026-08-07T12:00:00.000Z",
+        tokenRefreshedAt: null,
+        tokenExpiryEstimated: true,
+      },
+    });
+    const account = await repos.accounts.upsertConnected(input);
+    const before = await rawRow(account.id);
+    const newToken = "IGAA-token-refrescado-en-pglite";
+
+    const result = await refreshAccountToken(
+      {
+        platformAccounts: repos.accounts,
+        instagram: {
+          refresh: async (accessToken) => {
+            expect(accessToken).toBe(input.credentials.accessToken);
+            return { accessToken: newToken, expiresAt: new Date("2026-12-05T12:00:00Z") };
+          },
+        },
+        now: () => now,
+      },
+      { accountId: account.id },
+    );
+
+    expect(result.outcome).toBe("refreshed");
+    const row = await rawRow(account.id);
+    expect(row?.credentialsEncrypted).toMatch(/^v1\./);
+    expect(row?.credentialsEncrypted).not.toBe(before?.credentialsEncrypted);
+    expect(JSON.stringify(row)).not.toContain(newToken);
+    expect(row?.tokenExpiresAt).toEqual(new Date("2026-12-05T12:00:00Z"));
+    expect(row?.meta).toEqual({
+      accountType: "BUSINESS",
+      permissions: null,
+      connectedAt: "2026-08-07T12:00:00.000Z",
+      tokenRefreshedAt: now.toISOString(),
+      tokenExpiryEstimated: false,
+    });
+    expect(await repos.accounts.getCredentials(account.id)).toEqual({ accessToken: newToken });
+  });
 
   it("la columna guarda el cifrado, nunca el token", async () => {
     const input = connectedAccount(brokerId);

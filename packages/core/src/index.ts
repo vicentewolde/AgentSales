@@ -368,6 +368,19 @@ export {
   publishPublication,
 } from "./use-cases/publish-publication.js";
 export {
+  type RefreshAccountTokensDeps,
+  refreshAccountToken,
+  refreshAccountTokens,
+  TOKEN_EXPIRED_REASONS,
+  TOKEN_REFRESH_MIN_AGE_MS,
+  TOKEN_REFRESH_SKIP_REASONS,
+  TOKEN_REFRESH_WINDOW_MS,
+  type TokenExpiredReason,
+  type TokenRefreshReport,
+  type TokenRefreshResult,
+  type TokenRefreshSkipReason,
+} from "./use-cases/refresh-account-tokens.js";
+export {
   enqueueContentRun,
   type RequestContentRunDeps,
   type RequestContentRunParams,

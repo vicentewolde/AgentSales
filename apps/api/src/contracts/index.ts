@@ -20,6 +20,8 @@ import {
   OPERATIONS,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  TOKEN_EXPIRED_REASONS,
+  TOKEN_REFRESH_SKIP_REASONS,
 } from "@agentsales/core";
 import { z } from "zod";
 
@@ -336,6 +338,26 @@ export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
 
 export const accountResponseSchema = z.object({ account: platformAccountViewSchema });
 export type AccountResponse = z.infer<typeof accountResponseSchema>;
+
+/**
+ * `POST /accounts/:id/refresh` (spec F3 §4.6): `force` salta solo el tope de 30 días de vigencia,
+ * nunca el mínimo de 24 h desde el último refresco. El cuerpo va siempre (`{}` sin `force`).
+ */
+export const accountRefreshBodySchema = z.object({ force: z.boolean().optional() });
+export type AccountRefreshBody = z.infer<typeof accountRefreshBodySchema>;
+
+/**
+ * Lo que pasó al refrescar: `refreshed` (token nuevo y vencimiento real), `skipped` (no tocaba:
+ * `reason` y desde cuándo, `refreshableAt`) o `expired` (la cuenta quedó vencida: hay que
+ * reconectarla). Nunca lleva el token.
+ */
+export const accountRefreshResponseSchema = z.object({
+  account: platformAccountViewSchema,
+  outcome: z.enum(["refreshed", "skipped", "expired"]),
+  reason: z.enum([...TOKEN_REFRESH_SKIP_REASONS, ...TOKEN_EXPIRED_REASONS]).nullable(),
+  refreshableAt: z.coerce.date().nullable(),
+});
+export type AccountRefreshResponse = z.infer<typeof accountRefreshResponseSchema>;
 
 /** El slug de un corredor en una query o un cuerpo. */
 const brokerSlugSchema = z.string().trim().min(1).max(100);

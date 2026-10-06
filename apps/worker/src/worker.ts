@@ -25,7 +25,7 @@ import { readListingsWorkbook } from "@agentsales/importers";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import { createLlmProvider } from "@agentsales/llm";
 import { createHtmlRenderer, createMediaProcessor } from "@agentsales/media";
-import { createInstagramPublisher } from "@agentsales/publishers";
+import { createInstagramAuth, createInstagramPublisher } from "@agentsales/publishers";
 import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { createSlideTemplates } from "@agentsales/templates";
@@ -35,6 +35,7 @@ import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-r
 import { buildJobs } from "./jobs/index.js";
 import { instagramNoteLogger, requeuePublishingPublications } from "./jobs/publication-publish.js";
 import { registerJobs } from "./jobs/registry.js";
+import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
 import { llmProviderOptions } from "./llm-options.js";
 import { stopWorker } from "./shutdown.js";
 
@@ -98,6 +99,16 @@ const platformAccounts = createPlatformAccountRepository(database.db, {
 // Registrado en los dos modos: una publicación en `dry_run` también lo necesita (lo envuelve
 // `withDryRun`). El cliente de Instagram se arma recién al primer intento en `live` (perezoso).
 const instagram = createInstagramPublisher({ onNote: instagramNoteLogger(logger) });
+// Refresco de tokens (spec F3 §4.6): solo con el par de la app de Instagram. Sin él, el job avisa
+// y no refresca; publicar sigue igual.
+const instagramAuth =
+  env.INSTAGRAM_APP_ID && env.INSTAGRAM_APP_SECRET
+    ? createInstagramAuth({
+        appId: env.INSTAGRAM_APP_ID,
+        appSecret: env.INSTAGRAM_APP_SECRET,
+        redirectUri: env.INSTAGRAM_REDIRECT_URI,
+      })
+    : null;
 const jobs = buildJobs({
   importRun,
   contentPrepare: {
@@ -133,6 +144,7 @@ const jobs = buildJobs({
     },
     signal: jobsAbort.signal,
   },
+  tokensRefresh: { platformAccounts, instagram: instagramAuth, signal: jobsAbort.signal },
 });
 
 const boss = createBoss({
@@ -190,7 +202,7 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
  * 2. ya conectado, cierra las cargas y corridas abandonadas en `running` y borra el staging de
  *    cargas terminadas;
  * 3. con las colas creadas, reencola las corridas de contenido en `queued` y las publicaciones en
- *    `publishing` (spec F3 §4.4).
+ *    `publishing` (spec F3 §4.4), y encola el refresco de tokens (spec F3 §4.6).
  */
 async function cleanStaging(withDatabase: boolean): Promise<void> {
   try {
@@ -270,6 +282,17 @@ async function requeuePublications(): Promise<void> {
   }
 }
 
+async function requestTokensRefresh(): Promise<void> {
+  try {
+    await enqueueTokensRefresh(queue);
+  } catch (error) {
+    logger.warn(
+      { err: error },
+      "no se pudo encolar el refresco de tokens: lo hace el cron diario o el próximo arranque",
+    );
+  }
+}
+
 try {
   await cleanStaging(false);
   await cleanContentTemps();
@@ -283,9 +306,14 @@ try {
   if (registered) {
     await requeueContent();
     await requeuePublications();
+    await requestTokensRefresh();
     // El modo del worker solo decide si una publicación pedida en `live` se puede publicar (D11).
     logger.info(
-      { jobs: jobs.map((job) => job.name), publishMode: env.PUBLISH_MODE },
+      {
+        jobs: jobs.map((job) => job.name),
+        publishMode: env.PUBLISH_MODE,
+        tokenRefresh: instagramAuth !== null,
+      },
       "worker listo",
     );
     logger.warn(

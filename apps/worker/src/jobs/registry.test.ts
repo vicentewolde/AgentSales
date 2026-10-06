@@ -49,6 +49,11 @@ function fakeBoss(options: { failCreate?: boolean; policies?: Record<string, str
       workers.set(name, handler);
       return `worker-${name}`;
     },
+    schedule: async (name, cron, data, scheduleOptions) => {
+      calls.push(
+        `schedule ${name} ${cron} ${JSON.stringify(data)} ${JSON.stringify(scheduleOptions)}`,
+      );
+    },
   };
   return { boss, calls, workers };
 }
@@ -75,6 +80,30 @@ describe("registerJobs", () => {
       "update import.run",
       'work import.run {"batchSize":1,"includeMetadata":true}',
     ]);
+  });
+
+  it("programa el cron de un job después de crear su cola y registrar su worker", async () => {
+    const { boss, calls } = fakeBoss();
+    const { logger } = capture();
+    const scheduled: Job = {
+      ...job("tokens.refresh"),
+      schedule: {
+        cron: "0 12 * * *",
+        tz: "America/Santiago",
+        data: {},
+        singletonKey: "tokens.refresh",
+      },
+    };
+
+    await registerJobs(boss, [job("system.ping"), scheduled], logger);
+
+    expect(calls.slice(3)).toEqual([
+      `create tokens.refresh ${JSON.stringify(policy)}`,
+      "update tokens.refresh",
+      'work tokens.refresh {"batchSize":1,"includeMetadata":true}',
+      'schedule tokens.refresh 0 12 * * * {} {"tz":"America/Santiago","singletonKey":"tokens.refresh"}',
+    ]);
+    expect(calls.filter((call) => call.startsWith("schedule"))).toHaveLength(1);
   });
 
   it("la política de pg-boss (policy) va solo al crear la cola, no al actualizarla", async () => {
