@@ -344,6 +344,12 @@ export {
   publishListing,
 } from "./use-cases/publish-listing.js";
 export {
+  type PublishPublicationDeps,
+  type PublishPublicationParams,
+  type PublishPublicationResult,
+  publishPublication,
+} from "./use-cases/publish-publication.js";
+export {
   enqueueContentRun,
   type RequestContentRunDeps,
   type RequestContentRunParams,

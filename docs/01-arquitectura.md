@@ -617,6 +617,15 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 - **`cancelPublication`** y **`retirePublication`** también corren en el candado, porque cambian qué está pendiente y el estado del aviso. Retirar en `live` exige la confirmación de que se borró a mano (`REMOVAL_NOT_CONFIRMED`) y, si era la última publicada en `live`, devuelve el aviso de `active` a `ready` (`listingBackToReady`). El paso a `active` al publicar en `live` lo hace el intento (T11), con su propio cambio condicional.
 - **Errores** (409 salvo los "no existe"): `LISTING_NOT_READY`, `CONTENT_RUN_ACTIVE`, `CONTENT_NOT_APPROVED`, `ACCOUNT_NOT_CONNECTED`, `PUBLISH_MODE_LOCKED`, `NOTHING_TO_PUBLISH` (con los formatos ocupados por un texto anterior en `details.skipped`), `PUBLICATION_IN_PROGRESS`, `REMOVAL_NOT_CONFIRMED` e `INVALID_TRANSITION`; `LISTING_NOT_FOUND` y `PUBLICATION_NOT_FOUND` (404).
 
+## Intento de publicación (`publishPublication`, F3-T11)
+
+- Es el handler del job `publication.publish` (el worker lo compone en T12): recibe los repositorios, el almacenamiento, los publishers por plataforma (`publishers`) y el `PUBLISH_MODE` del worker (`workerMode`).
+- Recarga la publicación y sigue solo si está en `publishing` (si no, `skipped`). **El modo lo decide la publicación** (D11): `dry_run` se simula con `withDryRun`; una pedida en `live` con el worker en `dry-run` queda en `failed` con `PUBLISH_MODE_MISMATCH`, sin llamar a la plataforma.
+- La cuenta tiene que estar `connected` y sus credenciales legibles (`CREDENTIALS_UNREADABLE` pasa la cuenta a `error`); arma el input (`buildPublishInput`), lo revisa en `live` (`checkPublishInput`) y publica con el progreso guardado y `saveProgress`.
+- Éxito: `published` con `external_id`, `external_url` y `published_at`; en `live`, después de guardar, el aviso pasa de `ready` a `active` (condicional). Error: con la señal disparada no toca nada (`PUBLISH_ABORTED`, reintentable); si no, un reintentable antes del último intento deja la publicación en `publishing` y relanza, y uno no reintentable o el último intento la deja en `failed` con su motivo. `IG_AUTH_INVALID` pasa la cuenta a `expired`.
+- Cada intento deja **un** evento `publish_attempt` (`{ mode, attempt, retry, result, error?, sent? }`, con `sent` = `publishAttemptRecord`, sin URLs firmadas ni tokens), antes del cambio de estado. `last_error` y la bitácora quitan rutas y pasan por el redactor.
+- Los tests usan `createPublicationScenario` y `createFakePublisher` (`@agentsales/core/testing`).
+
 ## Procesador de medios (`MediaProcessor`, F2-T07)
 
 ```ts
