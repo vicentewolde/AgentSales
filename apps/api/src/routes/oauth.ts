@@ -33,6 +33,15 @@ export type OAuthStateSigner = {
   verify(token: string): Readonly<Record<string, string | number | boolean>>;
 };
 
+/**
+ * Dónde empieza el OAuth (`connect.instagram.startUrl`, F3-T17): `/oauth/instagram/start` en el host
+ * de la URI de retorno, porque la cookie del `state` distingue el host. Asume la API en la raíz del
+ * host (deuda de F7 si se monta tras un prefijo).
+ */
+export function instagramStartUrlOf(redirectUri: string): string {
+  return new URL("/oauth/instagram/start", redirectUri).toString();
+}
+
 export type OAuthDeps = Omit<ConnectAccountDeps, "instagram"> & {
   brokers: Pick<BrokerRepository, "findBySlug">;
   instagram: {

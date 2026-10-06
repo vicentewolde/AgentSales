@@ -493,7 +493,10 @@ export type PlatformAccountView = z.infer<typeof platformAccountViewSchema>;
  */
 export const accountListResponseSchema = z.object({
   accounts: z.array(platformAccountViewSchema),
-  connect: z.object({ instagram: z.object({ oauth: z.boolean(), startUrl: z.string() }) }),
+  connect: z.object({
+    // Solo http(s): la CLI la abre en el navegador y el panel la pone en un enlace, y viene de la red.
+    instagram: z.object({ oauth: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) }),
+  }),
 });
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
 

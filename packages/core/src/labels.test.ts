@@ -19,6 +19,7 @@ import {
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  tokenStdinCommand,
 } from "./labels.js";
 import { PUBLICATION_ACTORS, PUBLISH_ATTEMPT_RESULTS } from "./publication.js";
 
@@ -40,5 +41,12 @@ describe("textos para el operador", () => {
       expect(labels.every((label) => typeof label === "string" && label.length > 0)).toBe(true);
       expect(new Set(labels).size).toBe(values.length);
     }
+  });
+
+  it("tokenStdinCommand: el slug tal cual, o entre comillas si trae otra cosa", () => {
+    expect(tokenStdinCommand("vp-propiedades")).toBe(
+      "pbpaste | pnpm -s cli accounts connect instagram --broker vp-propiedades --token-stdin",
+    );
+    expect(tokenStdinCommand("a b'; rm")).toContain("--broker 'a b'\\''; rm' --token-stdin");
   });
 });

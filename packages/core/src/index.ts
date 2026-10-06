@@ -78,6 +78,7 @@ export {
   PUBLISH_ATTEMPT_RESULT_TEXT,
   publicationModeText,
   RUN_QUEUED_WARNING_TEXT,
+  tokenStdinCommand,
 } from "./labels.js";
 export {
   canChangeListingStatus,

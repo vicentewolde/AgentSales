@@ -4,7 +4,7 @@ import {
   accountResponseSchema,
   type PlatformAccountView,
 } from "@agentsales/api/contracts";
-import { PLATFORM_ACCOUNT_STATUS_TEXT, PLATFORM_TEXT } from "@agentsales/core";
+import { PLATFORM_ACCOUNT_STATUS_TEXT, PLATFORM_TEXT, tokenStdinCommand } from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
@@ -100,7 +100,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
       throw new CliError("BROKER_REQUIRED", "Falta --broker <slug>: el corredor de la cuenta");
     }
     const broker = brokerSlugOf(options.broker);
-    const pipeCommand = `pbpaste | pnpm -s cli accounts connect instagram --broker ${broker} --token-stdin`;
+    const pipeCommand = tokenStdinCommand(broker);
 
     if (!options.tokenStdin) {
       const { connect } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
