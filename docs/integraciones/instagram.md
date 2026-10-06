@@ -266,7 +266,7 @@ La publicación necesita URLs públicas (DOC): "We cURL media used in publishing
 | Pregunta | Respuesta |
 |---|---|
 | ¿URL pública de cualquier host? | La doc exige "publicly accessible server at the time of the attempt". No impone dominio ni CDN (DOC por omisión) |
-| ¿Funcionan las URLs prefirmadas de R2/S3 con query larga? | **NO VERIFICADO.** La doc no habla de query strings, redirecciones, `Content-Type` ni longitud de URL |
+| ¿Funcionan las URLs prefirmadas de R2/S3 con query larga? | **Sí para imágenes (verificado el 2026-10-06 con `pnpm ig:smoke`):** un contenedor de imagen con la URL firmada de 1 h de una portada JPEG de 84 KB quedó `FINISHED` en la primera consulta. El reel (`video_url`) sigue sin verificar hasta la prueba en `live`. Lo que sigue es la nota original: **NO VERIFICADO.** La doc no habla de query strings, redirecciones, `Content-Type` ni longitud de URL |
 | ¿Exige `Content-Type` correcto? | No está documentado. Terceros reportan que el `Content-Type` incorrecto o la URL que redirige causan 2207052 (pista, no oficial). Dejar `image/jpeg` y `video/mp4` en el objeto (ya lo hacemos) |
 | ¿Cuándo descarga Meta? | Imágenes: "at the time of the attempt" (INFERENCIA: al crear el contenedor). Videos: el contenedor queda `IN_PROGRESS` mientras Meta procesa; **puede seguir descargando después del `POST`** (INFERENCIA). Por eso la URL debe seguir vigente hasta `FINISHED` |
 | ¿Tiempo de espera de descarga? | El subcódigo 2207003 ("it takes too long to download the media") indica que hay un tope; no se publica cuántos segundos |
@@ -365,7 +365,7 @@ Orden sugerido, de menor a mayor riesgo; las primeras no publican nada:
 5. `GET /me`, `GET /<IG_ID>/content_publishing_limit` en `graph.instagram.com` (¿responde? ¿`quota_total` 50 o 100?).
 6. Versión de API: ¿`graph.instagram.com` acepta `v25.0`, `v26.0` y la omisión?
 7. Cabeceras `X-App-Usage` y `X-Business-Use-Case-Usage` en las respuestas.
-8. **Publicación en vivo de muestra:** carrusel de 3 a 4 imágenes con URL prefirmada de R2 (¿acepta la query larga? ¿hace `HEAD`?), luego el reel (¿acepta el MP4 de `REEL_SPEC`?, tiempo hasta `FINISHED`, `cover_url`/`thumb_offset`, `share_to_feed` por defecto).
+8. **Imagen con URL prefirmada: verificado el 2026-10-06** (`pnpm ig:smoke`, cuenta @vicentewoldec conectada con el token de Generate token, `v25.0`): el contenedor de imagen con la URL firmada de R2 quedó `FINISHED` al instante, sin publicar. Con eso también quedó probado que el token de Generate token sirve para `/me` (al conectar) y para crear contenedores. Falta el resto de este punto en `live`. **Publicación en vivo de muestra:** carrusel de 3 a 4 imágenes con URL prefirmada de R2 (¿acepta la query larga? ¿hace `HEAD`?), luego el reel (¿acepta el MP4 de `REEL_SPEC`?, tiempo hasta `FINISHED`, `cover_url`/`thumb_offset`, `share_to_feed` por defecto).
 9. `permalink` del carrusel y del reel; tiempo hasta que el enlace funciona. Ver qué devuelve un segundo `media_publish` sobre un contenedor ya publicado (el publisher lo evita, pero un corte justo durante el pedido deja una ventana: spec F3 §4.4) y si `/<IG_ID>/media` trae `media_type` y `media_product_type` con Instagram Login.
 10. Intento de `DELETE` (opcional) y borrado manual.
 11. Cuántos contenedores y publicaciones suma `content_publishing_limit` tras la prueba (¿un reel cuenta 1?).
