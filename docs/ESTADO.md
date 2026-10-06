@@ -3,9 +3,9 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-06
-**Fase actual:** F4 · Portal Inmobiliario (spec por redactar). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`), salvo la demo del refresco y el tag
-**Última tarea:** F3-T20 · Cierre de fase, casi terminada: demos 1 a 6, prueba en `live` con P002, auditoría y registro; faltan el refresco y el tag
-**Siguiente paso:** desde el **2026-10-07 a las 16:31 (hora de Chile)**, la demo del refresco del token (spec F3 §7, paso 7) y, con tu permiso, el tag `v0.3.0`. Después, `/fase-plan 4`
+**Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 24 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`), salvo la demo del refresco y el tag
+**Última tarea:** `/fase-plan 4` (spec F4 aprobado, ADR-0015 y ADR-0016). Antes, F3-T20 (cierre de F3), al que le faltan el refresco y el tag
+**Siguiente paso:** `/tarea F4-T01` (esquema y entidades, migración `0007`); T02 y T12 también pueden empezar. Desde el **2026-10-07 a las 16:31 (hora de Chile)**, la demo del refresco del token de Instagram (spec F3 §7, paso 7) y, con tu permiso, el tag `v0.3.0`
 
 ## Pendiente del cierre de F3
 - [ ] **Refresco del token (demo):** la cuenta se conectó el 2026-10-06 a las 16:31 y el refresco exige 24 h (`--force` solo salta el tope de 30 días). Desde esa hora, `pnpm -s cli accounts refresh <id> --force` con la API corriendo, o el primer `pnpm dev` (el worker lo hace al arrancar, porque el vencimiento es estimado). Se ve en `pnpm -s cli accounts`: última renovación y el vencimiento real. Anotar el resultado en la nota de Instagram (§8, punto 4) y marcar el criterio de §6
@@ -15,12 +15,47 @@
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F4 (`/fase-plan 4`) | ⏳ pendiente | |
+| Spec F4 (`/fase-plan 4`) | ✅ aprobado | |
+| F4-T01 · Esquema y entidades (migración `0007`) | ⏳ pendiente | |
+| F4-T02 · Variables de Mercado Libre y redactor | ⏳ pendiente | |
+| F4-T03 · Cliente: OAuth, usuario y errores | ⏳ pendiente | |
+| F4-T04 · Cliente: ítems y fotos | ⏳ pendiente | |
+| F4-T05 · Cliente: catálogo y `validate` | ⏳ pendiente | |
+| F4-T06 · Conectar Mercado Libre | ⏳ pendiente | |
+| F4-T07 · Candado de credenciales y `ensureAccessToken` | ⏳ pendiente | |
+| F4-T08 · Refresco por plataforma: lote y a pedido | ⏳ pendiente | |
+| F4-T09 · Catálogo con caché | ⏳ pendiente | |
+| F4-T10 · `pnpm ml:smoke`: catálogo y `validate` | ⏳ pendiente | |
+| F4-T11 · Mapeo y revisión previa | ⏳ pendiente | |
+| F4-T12 · Reglas del texto de Portal | ⏳ pendiente | |
+| F4-T13 · Contrato `Publisher` ampliado y el aviso en el input | ⏳ pendiente | |
+| F4-T14 · Publisher de Portal: publicar | ⏳ pendiente | |
+| F4-T15 · Publisher de Portal: operaciones y `preflight` | ⏳ pendiente | |
+| F4-T16 · Intento, publicar y aprobar con Portal | ⏳ pendiente | |
+| F4-T17 · Pausar, reactivar, cerrar y sincronizar en core | ⏳ pendiente | |
+| F4-T18 · Worker: publicar y sincronizar Portal | ⏳ pendiente | |
+| F4-T19 · API de Portal | ⏳ pendiente | |
+| F4-T20 · CLI de Portal | ⏳ pendiente | |
+| F4-T21 · Panel: Cuentas con Mercado Libre | ⏳ pendiente | |
+| F4-T22 · Panel: Portal en Contenido | ⏳ pendiente | |
+| F4-T23 · `pnpm ml:smoke --listing` | ⏳ pendiente | |
+| F4-T24 · Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- Los trámites de F4 (Mercado Libre y Portal Inmobiliario) están en `docs/07-checklist-cuentas.md`.
+- **Trámites de F4** (`docs/07-checklist-cuentas.md`): cuenta de Mercado Libre Chile, app de developers (dirección de vuelta `https://localhost/oauth/mercadolibre/callback`, PKCE desactivado), `ML_APP_ID`, `ML_CLIENT_SECRET` y `ML_REDIRECT_URI` en `.env`, WhatsApp en la hoja Corredor, y el precio del paquete `silver`. No bloquean empezar: hasta T09 todo usa msw; T10 (`ml:smoke`) necesita la cuenta conectada.
+
+## Decisiones de F4
+Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
+- **Conexión:** la cuenta se conecta pegando la dirección de vuelta en la CLI, sin túnel.
+- **Tokens:** los tokens rotan y se refrescan de a uno por cuenta, con un candado.
+- **Catálogo:** el catálogo de Mercado Libre se guarda en la base, con 7 días de vida.
+- **Datos del aviso:** la publicación fija también los datos del aviso.
+- **Simulación:** `dry-run` valida contra Mercado Libre sin publicar (tu respuesta).
+- **Contacto:** el WhatsApp del aviso es el del corredor (tu respuesta).
+- **Pausar, reactivar y cerrar:** son inmediatos desde el panel y la CLI. Cerrar pide confirmación.
+- **Demo:** en `live` usa tu cuenta real con un paquete pagado, y el aviso se cierra al final (tu respuesta, en vez de un usuario de prueba).
 
 ## Decisiones de F3
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
@@ -56,6 +91,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-06: **`/fase-plan 4`.** La doc de Mercado Libre no se deja leer por WebFetch ni curl (403), y la API exige token también para leer categorías; se leyó con el navegador integrado (34 páginas) y la nota `docs/integraciones/mercadolibre.md` quedó verificada. Hallazgos: WhatsApp obligatorio en cada aviso desde el 01/10/2026, paquete `silver` pagado sin sandbox, `refresh_token` de un solo uso, `POST /items/validate` sin efectos, vigencia de 45 días en arriendo y 180 en venta. Spec F4 aprobado con 24 tareas, revisado por el `arquitecto` (datos del aviso fijos, dos vencimientos de la cuenta, candado de credenciales sin anidar, sync que no deshace lo del operador, modo en las operaciones). ADR-0015 y ADR-0016 aceptados; roadmap, plataformas, checklist y `CLAUDE.md` al día.
 - 2026-10-06: **Cierre de F3 (T20).** Demo en simulación hecha por Claude en el panel (aprobar P002, `PUBLICATION_PENDING`, `CONTENT_LOCKED`, publicar, bitácora y retirar) y en la CLI (P001). **Prueba en `live` con tu instrucción:** P002 salió en @vicentewoldec (carrusel de 5 imágenes en cerca de 1 min y reel en cerca de 2, con URLs prefirmadas de R2 y sus enlaces guardados); la borraste a mano, se marcó como retirada y P002 volvió a "Lista". Se usó `PUBLISH_MODE=live pnpm dev`, sin tocar `.env`, y después todo quedó apagado. El worker no tocó el token (`skipped: 1`). Auditoría del `arquitecto`: el código calza con el spec; se pusieron al día README, guía del operador, convenciones, plataformas, roadmap (deuda de F3 en F6 y F7), arquitectura, modelo de datos, la nota de Instagram, ADR-0007 y ADR-0011, y el CHANGELOG `[0.3.0]`. Falta la demo del refresco (desde el 2026-10-07 a las 16:31 (hora de Chile)) y el tag.
 - 2026-10-06: **Smoke de Instagram corrido** (con tu instrucción): la cuenta @vicentewoldec quedó conectada a `agentsales-pruebas` con el token de Generate token (vence el 2026-12-05, estimado), y `pnpm ig:smoke` dio `✓`: Instagram descargó la portada de P001 desde la URL firmada de R2 al instante, sin publicar. Solo corrió la API (en `dry-run`), sin el worker, y quedó apagada. Anotado en ADR-0007, la nota de Instagram y la checklist. Falta verificar el reel (`video_url`) en la prueba en `live`.
 - 2026-10-06: **F3-T19.** `pnpm ig:smoke` (lo corre el operador, con la cuenta conectada y sin `pnpm dev`): toma la portada ya armada de la primera propiedad preparada (`--listing` para elegir otra), le pide a Instagram que la prepare desde un enlace temporal de R2 y espera hasta 5 min. `✓` si Meta la descargó; si no, el código y el subcódigo de Meta. Nunca publica (el cliente que recibe no tiene `media_publish`, y un test con msw lo revisa en cada caso), no escribe en la base y no muestra el token ni el enlace. Antes revisa que la portada esté en R2, para no culpar al enlace por un archivo que falta. Es el paso 5 de la demo, antes de `live`.
@@ -80,5 +116,5 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - 2026-10-04: **`/fase-plan 3`.** Nota `docs/integraciones/instagram.md` completada (OAuth, tokens, publicación, borrado, límites y errores; lo no verificado se prueba en la demo). Spec F3 aprobado con 20 tareas, revisado por el `arquitecto` (encolar después del candado, modo por publicación, SQL de la migración `0006` a mano). ADR-0014 aceptado; arquitectura, formato, roadmap y glosario al día.
 - 2026-10-04: **Cierre de F2 (`v0.2.0`).** Las 3 muestras con contenido listo para revisar (P001, P002 con reel de 1080×1920, P003 con una edición a mano) y aprobadas por el operador; `pnpm eval:content` con la CLI de Claude, 3 de 3 sin errores; repetir la preparación no reprocesa nada; aviso de "sigue en cola" con el worker apagado; variantes sin EXIF ni GPS; 1661 tests sin llamar a Claude. Auditoría docs-código del `arquitecto` aplicada (README con los requisitos de F2, seguimientos de ADR-0003, 0011, 0012 y 0013). Detalle en `CHANGELOG.md` y en el spec F2.
 - 2026-10-03: **Tras la demo de F2-T16:** `INTERNAL_NOTES_LEAK` no cuenta las URLs de las notas y compara con los fines de frase en el mismo lugar (falso positivo en P003; #50).
-- **Pendientes de verificar:** la orientación y el color de un HEIC real de iPhone (se probó con uno sintético en F2-T07), un video HDR de iPhone en el reel (deuda), y el largo del título y las reglas de contacto de Mercado Libre (F4: la doc dio 403).
+- **Pendientes de verificar:** la orientación y el color de un HEIC real de iPhone (se probó con uno sintético en F2-T07), un video HDR de iPhone en el reel (deuda), y el largo del título de Mercado Libre en MLC (lo da `ml:smoke`, F4-T10; las reglas de contacto ya se leyeron).
 - **Para la próxima demo:** las variantes del Excel se arman en Google Sheets y se exportan como xlsx; la planilla queda como estaba. Neon tiene las 3 propiedades de muestra tal como están en `data/muestras/propiedades.xlsx` (cierre de F1, `v0.1.0`; detalle en `CHANGELOG.md`).

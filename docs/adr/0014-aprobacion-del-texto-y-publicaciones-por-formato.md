@@ -50,3 +50,4 @@ Detalle en el spec F3 (§4.2 a §4.7). Migración `0006` en F3-T01.
 
 ## Seguimiento
 - 2026-10-05 (F3-T08, revisión del `arquitecto`): el punto 9 cubre también conectar con el token del panel (`POST /accounts/connect-token`, D4 del spec F3), que llama a `/me` de forma síncrona, y el refresco a pedido de una cuenta (`POST /accounts/:id/refresh`): son operaciones de cuenta cuyo resultado el operador espera en pantalla. El refresco diario sigue en el worker (`tokens.refresh`).
+- 2026-10-06 (`/fase-plan 4`, ADR-0015): el punto 5 se extiende a los datos del aviso (`publications.listing_source_hash`: Portal no publica si el aviso cambió después de aprobar, `PUBLICATION_LISTING_CHANGED`); el contrato del punto 8 suma `preflight`, `pause`, `resume`, `close` (en lugar de `unpublish`) y `getStatus` opcionales y `accessToken` en el contexto; el punto 9 cubre también conectar Mercado Libre con el código pegado y pausar, reactivar y cerrar una publicación de Portal.
