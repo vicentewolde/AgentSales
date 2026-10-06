@@ -9,7 +9,7 @@ import {
   platformCredentialsSchema,
   type SecretBox,
 } from "@agentsales/core";
-import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isForeignKeyViolation, withDbErrors } from "../errors.js";
 import { platformAccounts } from "../schema.js";
@@ -89,7 +89,7 @@ export function createPlatformAccountRepository(
     });
 
   return {
-    async upsertConnected(account) {
+    async upsertConnected(account, options = {}) {
       const credentials = checkCredentials(account.credentials);
       const meta = normalizeAccountMeta(account.meta);
       const values = {
@@ -103,29 +103,45 @@ export function createPlatformAccountRepository(
         meta,
       };
       try {
-        return await withDbErrors(async () => {
-          const [row] = await db
-            .insert(platformAccounts)
-            .values(values)
-            .onConflictDoUpdate({
-              target: [
-                platformAccounts.brokerId,
-                platformAccounts.platform,
-                platformAccounts.externalAccountId,
-              ],
-              set: {
-                displayName: values.displayName,
-                credentialsEncrypted: values.credentialsEncrypted,
-                tokenExpiresAt: values.tokenExpiresAt,
-                status: values.status,
-                meta: values.meta,
-                updatedAt: sql`now()`,
-              },
-            })
-            .returning();
-          if (row === undefined) throw new Error("upsert sin fila");
-          return toAccount(row);
-        });
+        return await withDbErrors(() =>
+          db.transaction(async (tx) => {
+            const [row] = await tx
+              .insert(platformAccounts)
+              .values(values)
+              .onConflictDoUpdate({
+                target: [
+                  platformAccounts.brokerId,
+                  platformAccounts.platform,
+                  platformAccounts.externalAccountId,
+                ],
+                set: {
+                  displayName: values.displayName,
+                  credentialsEncrypted: values.credentialsEncrypted,
+                  tokenExpiresAt: values.tokenExpiresAt,
+                  status: values.status,
+                  meta: values.meta,
+                  updatedAt: sql`now()`,
+                },
+              })
+              .returning();
+            if (row === undefined) throw new Error("upsert sin fila");
+            if (options.revokeOthers) {
+              // En la misma transacción: nunca quedan dos conectadas del corredor en la plataforma.
+              await tx
+                .update(platformAccounts)
+                .set({ status: "revoked", credentialsEncrypted: null })
+                .where(
+                  and(
+                    eq(platformAccounts.brokerId, row.brokerId),
+                    eq(platformAccounts.platform, row.platform),
+                    ne(platformAccounts.id, row.id),
+                    ne(platformAccounts.status, "revoked"),
+                  ),
+                );
+            }
+            return toAccount(row);
+          }),
+        );
       } catch (error) {
         if (isForeignKeyViolation(error, BROKER_FK)) {
           throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${account.brokerId}`, {

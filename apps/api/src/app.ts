@@ -10,6 +10,7 @@ import type {
   ListingRepository,
   MediaRepository,
   MediaStorage,
+  PlatformAccountRepository,
   PublishMode,
 } from "@agentsales/core";
 import { Hono } from "hono";
@@ -17,10 +18,12 @@ import { createErrorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
 import { requestLogger } from "./request-logger.js";
+import { accountRoutes } from "./routes/accounts.js";
 import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
 import { type ImportUploads, importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
+import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
 import { csrfGuard, hostGuard, type LocalAccess } from "./security.js";
 
 export type AppDeps = {
@@ -57,6 +60,14 @@ export type AppDeps = {
    * desde T15, aprobar y publicar). `server.ts` compone `createListingLock` sobre la misma base.
    */
   lock: ListingLock;
+  // Cuentas (F3-T13): conectar con el token del panel de Meta o por OAuth, y desconectar.
+  platformAccounts: PlatformAccountRepository;
+  /** Instagram Login, si el OAuth tiene su par de la app, y si la cookie va `Secure`. */
+  instagram: OAuthDeps["instagram"];
+  /** Firma del `state` del OAuth (`createStateSigner`, que compone `server.ts`). */
+  oauthState: OAuthDeps["oauthState"];
+  /** La URL absoluta del panel, adonde vuelve el OAuth. */
+  panelUrl: string;
 };
 
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
@@ -81,7 +92,9 @@ export function createApp(deps: AppDeps) {
     .route("/content-runs", contentRunRoutes(deps))
     .route("/contents", contentRoutes(deps))
     .route("/brokers", brokerRoutes(deps))
-    .route("/imports", importRoutes(deps));
+    .route("/imports", importRoutes(deps))
+    .route("/accounts", accountRoutes({ ...deps, instagram: deps.instagram.auth }))
+    .route("/oauth", oauthRoutes(deps));
   app.onError(createErrorHandler(deps.logger));
   app.notFound(notFoundHandler);
   return app;

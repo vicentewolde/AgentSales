@@ -24,6 +24,9 @@
     },
     {
       "path": "../../packages/importers"
+    },
+    {
+      "path": "../../packages/publishers"
     }
   ]
 }

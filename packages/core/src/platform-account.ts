@@ -62,3 +62,19 @@ export function normalizeAccountMeta(meta: unknown): Record<string, unknown> {
   }
   return json as Record<string, unknown>;
 }
+
+/**
+ * `meta` de una cuenta de Instagram (spec F3 §4.6, T13): lo que muestra el panel y lo que lee el
+ * refresco (T14). Con el token del panel de Meta (`connect-token`) no hay canje, así que los permisos
+ * son `null` (desconocidos; nunca `[]`, que se leería como "ninguno"), `tokenRefreshedAt` es `null`
+ * y el vencimiento es una estimación (`tokenExpiryEstimated`).
+ */
+export const instagramAccountMetaSchema = z.object({
+  /** `BUSINESS` o `MEDIA_CREATOR`. */
+  accountType: z.string(),
+  permissions: z.array(z.string()).nullable(),
+  connectedAt: z.iso.datetime(),
+  tokenRefreshedAt: z.iso.datetime().nullable(),
+  tokenExpiryEstimated: z.boolean(),
+});
+export type InstagramAccountMeta = z.infer<typeof instagramAccountMetaSchema>;

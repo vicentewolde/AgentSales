@@ -3,7 +3,8 @@
 // Solo para tests: Biome prohíbe importarlo desde código de aplicación.
 import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
-import { createLogger, type Logger } from "@agentsales/config";
+import { createLogger, createStateSigner, type Logger } from "@agentsales/config";
+import { AppError, type InstagramAuth } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
@@ -17,6 +18,46 @@ import {
   createInMemoryPublicationRepository,
 } from "@agentsales/core/testing";
 import type { AppDeps } from "../app.js";
+
+/** Clave de prueba para el `state` del OAuth (nunca la de `.env`). */
+export const TEST_ENCRYPTION_KEY = "clave-de-prueba-de-32-caracteres-o-mas-0123456789";
+
+/**
+ * Instagram falso para la API: canjea un código conocido, responde `/me` por token y registra las
+ * llamadas. Un código o token que empiece con `malo` es `IG_AUTH_INVALID`.
+ */
+export function fakeInstagramAuth(): InstagramAuth & { calls: string[] } {
+  const calls: string[] = [];
+  const reject = () =>
+    new AppError(
+      "IG_AUTH_INVALID",
+      "El acceso a Instagram venció o ya no es válido: reconecta la cuenta",
+    );
+  return {
+    calls,
+    authorizeUrl: (state) =>
+      `https://www.instagram.com/oauth/authorize?client_id=app&state=${encodeURIComponent(state)}`,
+    async exchangeCode(code) {
+      calls.push("exchange");
+      if (code.startsWith("malo")) throw reject();
+      return {
+        accessToken: `IGAA-largo-${code}`,
+        expiresAt: new Date("2026-12-05T12:00:00Z"),
+        permissions: code.includes("sin-publicar")
+          ? ["instagram_business_basic"]
+          : ["instagram_business_basic", "instagram_business_content_publish"],
+      };
+    },
+    async refresh() {
+      throw new Error("refresh no se usa en estos tests");
+    },
+    async me(accessToken) {
+      calls.push("me");
+      if (accessToken.startsWith("malo")) throw reject();
+      return { userId: "17841400000000001", username: "corredora", accountType: "BUSINESS" };
+    },
+  };
+}
 
 export const silentLogger: Logger = createLogger(
   { level: "silent" },
@@ -69,6 +110,10 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     maxUploadBytes: 50 * 1024 * 1024,
     contentRuns: content.contentRuns,
     contents: content.contents,
+    platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
+    instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
+    oauthState: createStateSigner(TEST_ENCRYPTION_KEY),
+    panelUrl: "http://localhost:5173",
     ...overrides,
   };
   // El candado entrega los mismos repositorios que la app (también los que pisó `overrides`).
@@ -81,7 +126,8 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
       contentRuns: deps.contentRuns,
       contents: deps.contents,
       publications: createInMemoryPublicationRepository(),
-      platformAccounts: createInMemoryPlatformAccountRepository(),
+      // El mismo repositorio de cuentas que la app (spec F3-T13).
+      platformAccounts: deps.platformAccounts,
     });
   return { ...deps, lock };
 }

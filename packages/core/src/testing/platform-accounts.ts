@@ -6,7 +6,10 @@ import {
   type PlatformCredentials,
 } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
-import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
+import type {
+  ConnectedAccount,
+  PlatformAccountRepository,
+} from "../ports/platform-account-repository.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryPlatformAccountRepository = PlatformAccountRepository & {
@@ -22,6 +25,8 @@ export type InMemoryPlatformAccountRepository = PlatformAccountRepository & {
 export type InMemoryPlatformAccountRepositoryOptions = {
   /** Para rechazar un corredor que no existe como Postgres (`BROKER_NOT_FOUND`); sin él, no valida. */
   brokers?: Pick<BrokerRepository, "findById">;
+  /** Ids de las cuentas nuevas (por defecto `account-N`; la API usa uuid, como Postgres). */
+  nextId?: () => string;
 };
 
 type Stored = {
@@ -73,6 +78,42 @@ export function createInMemoryPlatformAccountRepository(
     });
     return structuredCopy(account);
   };
+  const upsert = async (input: ConnectedAccount): Promise<PlatformAccount> => {
+    const credentials = checkCredentials(input.credentials);
+    const meta = normalizeAccountMeta(input.meta);
+    if (options.brokers && (await options.brokers.findById(input.brokerId)) === null) {
+      throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${input.brokerId}`, {
+        details: { brokerId: input.brokerId },
+      });
+    }
+    const changes = {
+      displayName: input.displayName,
+      tokenExpiresAt: input.tokenExpiresAt === null ? null : new Date(input.tokenExpiresAt),
+      meta,
+      status: "connected" as const,
+    };
+    const existing = [...stored.values()].find(
+      ({ account }) =>
+        account.brokerId === input.brokerId &&
+        account.platform === input.platform &&
+        account.externalAccountId === input.externalAccountId,
+    );
+    if (existing !== undefined) return save(existing.account.id, changes, credentials);
+    const now = new Date();
+    const account: PlatformAccount = {
+      id: options.nextId?.() ?? `account-${next + 1}`,
+      brokerId: input.brokerId,
+      platform: input.platform,
+      externalAccountId: input.externalAccountId,
+      ...changes,
+      hasCredentials: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    next += 1;
+    stored.set(account.id, { sequence: next, account, credentials, unreadable: false });
+    return structuredCopy(account);
+  };
   const ordered = (filter: (account: PlatformAccount) => boolean) =>
     [...stored.values()]
       .filter(({ account }) => filter(account))
@@ -80,40 +121,21 @@ export function createInMemoryPlatformAccountRepository(
       .map(({ account }) => structuredCopy(account));
 
   return {
-    async upsertConnected(input) {
-      const credentials = checkCredentials(input.credentials);
-      const meta = normalizeAccountMeta(input.meta);
-      if (options.brokers && (await options.brokers.findById(input.brokerId)) === null) {
-        throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${input.brokerId}`, {
-          details: { brokerId: input.brokerId },
-        });
+    async upsertConnected(input, { revokeOthers = false } = {}) {
+      const account = await upsert(input);
+      if (revokeOthers) {
+        for (const { account: other } of stored.values()) {
+          if (
+            other.id !== account.id &&
+            other.brokerId === account.brokerId &&
+            other.platform === account.platform &&
+            other.status !== "revoked"
+          ) {
+            save(other.id, { status: "revoked" }, null);
+          }
+        }
       }
-      const changes = {
-        displayName: input.displayName,
-        tokenExpiresAt: input.tokenExpiresAt === null ? null : new Date(input.tokenExpiresAt),
-        meta,
-        status: "connected" as const,
-      };
-      const existing = [...stored.values()].find(
-        ({ account }) =>
-          account.brokerId === input.brokerId &&
-          account.platform === input.platform &&
-          account.externalAccountId === input.externalAccountId,
-      );
-      if (existing !== undefined) return save(existing.account.id, changes, credentials);
-      const now = new Date();
-      const account: PlatformAccount = {
-        id: `account-${++next}`,
-        brokerId: input.brokerId,
-        platform: input.platform,
-        externalAccountId: input.externalAccountId,
-        ...changes,
-        hasCredentials: true,
-        createdAt: now,
-        updatedAt: now,
-      };
-      stored.set(account.id, { sequence: next, account, credentials, unreadable: false });
-      return structuredCopy(account);
+      return account;
     },
     async get(id) {
       const found = stored.get(id);

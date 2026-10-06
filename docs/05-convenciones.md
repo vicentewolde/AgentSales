@@ -42,6 +42,8 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
   |---|---|
   | `INVALID_TRANSITION`, `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT`, `CONTENT_RUN_ACTIVE` | 409 (un pedido válido que el estado actual no permite: esperar, recargar o confirmar) |
   | `REQUEST_TOO_LARGE` | 413 |
+  | `IG_AUTH_INVALID`, `IG_PERMISSION_DENIED`, `IG_REQUEST_REJECTED` | 400 (Instagram rechazó el token o el permiso al conectar; F3-T13) |
+  | `IG_UNEXPECTED_RESPONSE` | 502 (Instagram respondió algo con otra forma) |
   | `JOB_PAYLOAD_INVALID`, `IMPORT_RUN_INVALID`, `*_ROW_INVALID` | 500 (datos que arma el servidor, o una fila corrupta en la base: no es culpa del cliente) |
   | `*_NOT_FOUND` | 404 |
   | `*_INVALID*` o `INVALID_*` | 400 |

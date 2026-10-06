@@ -18,6 +18,7 @@ import {
   MEDIA_KINDS,
   MEDIA_VARIANTS,
   OPERATIONS,
+  PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
 } from "@agentsales/core";
 import { z } from "zod";
@@ -296,3 +297,53 @@ export type ContentEditBody = z.infer<typeof contentEditBodySchema>;
 
 export const contentEditResponseSchema = z.object({ content: contentViewSchema });
 export type ContentEditResponse = z.infer<typeof contentEditResponseSchema>;
+
+/**
+ * Una cuenta conectada tal como la ve el operador (spec F3 §4.6 y §4.8, `GET /accounts`): nunca
+ * credenciales. De `meta` (Instagram) solo lo que muestra el panel; lo que falta va en `null`.
+ */
+export const platformAccountViewSchema = z.object({
+  id: z.string(),
+  brokerId: z.string(),
+  platform: z.enum(PLATFORMS),
+  /** `@usuario`. */
+  displayName: z.string(),
+  status: z.enum(PLATFORM_ACCOUNT_STATUSES),
+  tokenExpiresAt: z.coerce.date().nullable(),
+  /** El vencimiento es una estimación (token del panel de Meta, aún sin refrescar). */
+  tokenExpiryEstimated: z.boolean(),
+  connectedAt: z.coerce.date().nullable(),
+  tokenRefreshedAt: z.coerce.date().nullable(),
+  /** `BUSINESS` o `MEDIA_CREATOR`. */
+  accountType: z.string().nullable(),
+  /** `null` si no se conocen (token del panel). */
+  permissions: z.array(z.string()).nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type PlatformAccountView = z.infer<typeof platformAccountViewSchema>;
+
+export const accountListResponseSchema = z.object({ accounts: z.array(platformAccountViewSchema) });
+export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
+
+export const accountResponseSchema = z.object({ account: platformAccountViewSchema });
+export type AccountResponse = z.infer<typeof accountResponseSchema>;
+
+/** El slug de un corredor en una query o un cuerpo. */
+const brokerSlugSchema = z.string().trim().min(1).max(100);
+
+/**
+ * `POST /accounts/connect-token` (D4): el token largo del botón Generate token del panel de Meta.
+ * Sin espacios: un token pegado con un salto de línea en medio no es válido. Nunca vuelve en la
+ * respuesta ni va al log.
+ */
+export const connectTokenBodySchema = z.object({
+  broker: brokerSlugSchema,
+  platform: z.literal("instagram"),
+  token: z.string().trim().min(20).max(4096).regex(/^\S+$/, "el token no puede tener espacios"),
+});
+export type ConnectTokenBody = z.infer<typeof connectTokenBodySchema>;
+
+/** `GET /oauth/instagram/start?broker=<slug>`. */
+export const oauthStartQuerySchema = z.object({ broker: brokerSlugSchema });
+export type OAuthStartQuery = z.infer<typeof oauthStartQuerySchema>;
