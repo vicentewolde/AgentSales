@@ -166,7 +166,7 @@ Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `medi
 | scheduled_at | timestamptz null | |
 | published_at | timestamptz null | |
 | external_id, external_url | text null | |
-| attempts | int default 0 | |
+| attempts | int default 0 | Veces que se pidió publicarla (cada paso a `publishing`, F3-T10); los reintentos automáticos de la cola no lo suben |
 | last_error | jsonb null | `{ code, message, retriable }` |
 | dry_run | boolean | Modo del último intento: nace en `true` (el valor seguro) y la API lo fija al pasar a `publishing` (obligatorio); el worker lo respeta (spec F3 D11) |
 | progress | jsonb null | Lo que el publisher ya creó en la plataforma, para retomar sin publicar dos veces. Instagram: `{ attemptStartedAt, childIds, containerId }` (`instagramProgressSchema`); se valida con el esquema de su plataforma |

@@ -143,6 +143,7 @@ CLI (approve) o panel (Aprobar)
 CLI (publish) o panel (Publicar)
   → publishListing (core, con el candado): abre las que falten, approved/failed → publishing
     (fija dry_run con PUBLISH_MODE) y, ya confirmado, encola publication.publish
+    (una sola: startPublication; las que ya están en publishing se reencolan)
   → el worker corre publishPublication: solo si sigue en publishing
   → checkPublishInput() → publisher.publish()   (withDryRun si publication.dry_run)
     guardando el progreso (contenedores) antes del paso que publica
@@ -151,6 +152,9 @@ CLI (publish) o panel (Publicar)
     publishing y el reintento retoma desde el progreso, sin publicar dos veces
   → error no reintentable o reintentos agotados: failed con causa legible
   → cada transición queda en publication_events
+CLI o panel: descartar (cancelPublication: approved/failed → cancelled) y marcar como
+  retirada (retirePublication: published → unpublished; en live con la confirmación de que
+  se borró a mano; la última en live devuelve el aviso de active a ready)
 ```
 
 ### 4. Seguimiento (job `publication.sync`, periódico)
@@ -284,7 +288,7 @@ Los jobs del worker (`apps/worker/src/jobs/`):
   - **Los medios de la CLI** (`--media <dir>`) se leen en su lugar: el staging nunca borra archivos del operador.
 
 Para encolar (`packages/queue`, desde F1-T08):
-- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` (`system.ping`, `import.run` y, desde F2-T02, `content.prepare`) y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API, los scripts y el worker comparten el contrato sin repetir literales.
+- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` (`system.ping`, `import.run`, desde F2-T02 `content.prepare` y desde F3-T10 `publication.publish`) y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API, los scripts y el worker comparten el contrato sin repetir literales.
 - **Puerto `JobQueue`** en `core/src/ports/job-queue.ts`: `enqueue<N extends JobName>(name: N, data: JobPayload<N>, opts?: { startAfter?: Date; singletonKey?: string }): Promise<string | null>`. Devuelve `null` si ya había un job activo con el mismo `singletonKey`.
 - **Adaptador `createJobQueue({ connectionString, onError })`**, sobre pg-boss en rol `producer`:
   - Arranca pg-boss recién en el primer `enqueue`, así la API levanta aunque el esquema `pgboss` no exista. Si el arranque falla, el siguiente `enqueue` lo reintenta.
@@ -603,6 +607,15 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 - **`unapproveContent`**: revisa y después escribe: deja el texto en `edited` y cancela sus publicaciones que se pueden descartar; con una en `publishing`, `PUBLICATION_IN_PROGRESS` sin cambiar nada. Las publicadas no cambian.
 - **`editContent`** (desde F3-T06) usa los mismos pasos: dentro del candado, un texto con una publicación activa (pendiente o `published`) es `CONTENT_LOCKED`, y uno aprobado sin publicaciones activas se edita y vuelve a `edited`. Con el candado, la ventana de F2 (un pedido de textos entre la revisión y el guardado de una edición) se cerró.
 - Los dos devuelven el texto con su revisión (`CheckedContent`), lo que cambió (`created` y `skipped`, o `cancelled`) y `publications`: todas las del canal, leídas en el candado (para la API y la CLI). El actor (`operator` o `cli`) queda en la bitácora.
+
+## Publicar, descartar y retirar (F3-T10)
+
+- **Piezas comunes** (`use-cases/publication-start.ts`): el aviso tiene que estar en `ready` o `active`, sin corridas activas; `startOne` pasa una publicación `approved` o `failed` a `publishing` con el modo de la API (`dry_run`, D11), suma 1 a `attempts` (las veces que se pidió publicarla: los reintentos de la cola no lo suben), borra el `last_error` anterior y conserva `progress`; `requireCompatibleMode` no deja reintentar en `dry-run` algo que ya empezó en `live` (`PUBLISH_MODE_LOCKED`); `enqueuePublication` encola con `singletonKey` y `enqueuePublications` intenta todas aunque una falle.
+- **`publishListing`** (el canal): dentro del candado revisa el aviso, la corrida, que el texto vigente esté aprobado y que haya una cuenta conectada, planifica las que faltan (`planPublications`) y recién después escribe: abre las nuevas y pasa a `publishing` las pendientes de cuentas conectadas. Las de una cuenta desconectada se informan (`stranded`) y las que ya estaban en `publishing` se reencolan (`requeued`). Encola **después** del candado.
+- **`startPublication`** (una): lo mismo sobre su propio texto (el fijado al nacer); una en `publishing` se reencola sin cambiarla.
+- **Si la cola no está** (`QUEUE_UNAVAILABLE`, 503): las publicaciones quedan en `publishing` (con `details.publicationIds` de las que no alcanzaron a encolarse). A diferencia de las cargas y las corridas, que quedan en `failed`, aquí basta con volver a publicar (las reencola) o con arrancar el worker, que reencola todas las `publishing`.
+- **`cancelPublication`** y **`retirePublication`** también corren en el candado, porque cambian qué está pendiente y el estado del aviso. Retirar en `live` exige la confirmación de que se borró a mano (`REMOVAL_NOT_CONFIRMED`) y, si era la última publicada en `live`, devuelve el aviso de `active` a `ready` (`listingBackToReady`). El paso a `active` al publicar en `live` lo hace el intento (T11), con su propio cambio condicional.
+- **Errores** (409 salvo los "no existe"): `LISTING_NOT_READY`, `CONTENT_RUN_ACTIVE`, `CONTENT_NOT_APPROVED`, `ACCOUNT_NOT_CONNECTED`, `PUBLISH_MODE_LOCKED`, `NOTHING_TO_PUBLISH` (con los formatos ocupados por un texto anterior en `details.skipped`), `PUBLICATION_IN_PROGRESS`, `REMOVAL_NOT_CONFIRMED` e `INVALID_TRANSITION`; `LISTING_NOT_FOUND` y `PUBLICATION_NOT_FOUND` (404).
 
 ## Procesador de medios (`MediaProcessor`, F2-T07)
 

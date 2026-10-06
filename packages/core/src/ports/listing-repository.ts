@@ -51,9 +51,10 @@ export interface ListingRepository {
   /** `null` si no existe. */
   get(id: string): Promise<Listing | null>;
   /**
-   * Cambio manual de estado, **condicional**: solo si el aviso sigue en `from`. Devuelve si
-   * cambió (`false` si otro cambio llegó antes, o si no existe). Las reglas las aplica
-   * `changeListingStatus`.
+   * Cambio de estado **condicional**: solo si el aviso sigue en `from`. Devuelve si cambió
+   * (`false` si otro cambio llegó antes, o si no existe). Lo usan el cambio manual
+   * (`changeListingStatus`, que aplica sus reglas) y el sistema al publicar o retirar en `live`
+   * (`ready` ↔ `active`, spec F3 §4.3).
    */
   changeStatus(id: string, from: ListingStatus, to: ListingStatus): Promise<boolean>;
 }
