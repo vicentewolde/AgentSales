@@ -48,10 +48,18 @@ Hecho el 2026-10-02: 3 propiedades de muestra (P001, P002 y P003, corredor `agen
 
 ## En paralelo, antes de F4 (Portal Inmobiliario)
 
-- [ ] Crear tu cuenta en Portal Inmobiliario / Mercado Libre Chile y revisar qué plan o créditos exige publicar un inmueble
-- [ ] Crear una app en el portal de developers de Mercado Libre Chile
-- [ ] Anotar `ML_APP_ID` y `ML_CLIENT_SECRET` en `.env`
-- [ ] Instalar `cloudflared` por si el redirect OAuth exige HTTPS público
+Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4 (§4.2, D6). Nada de esto bloquea empezar F4: hasta T16 todo se prueba con simulaciones.
+
+- [ ] Crear tu cuenta en Mercado Libre Chile (mercadolibre.cl) con tus datos reales: la app solo se puede crear con los datos del titular validados
+- [ ] Crear una app en el DevCenter de Mercado Libre (developers.mercadolibre.cl > Mis aplicaciones > Crear nueva aplicación):
+  - [ ] Dirección de retorno (redirect URI): `https://localhost/oauth/mercadolibre/callback`. Si el panel no la acepta, cualquier dirección `https` tuya (no necesita cargar) y la anotas también en `ML_REDIRECT_URI`
+  - [ ] **PKCE desactivado** (si se activa, Mercado Libre lo exige y F4 no lo usa)
+  - [ ] Scopes de lectura, escritura y `offline_access`, y el permiso funcional "Publicación y sincronización"
+  - [ ] Solo Mercado Libre (sin permisos de Mercado Pago)
+- [ ] Anotar `ML_APP_ID`, `ML_CLIENT_SECRET` y `ML_REDIRECT_URI` en `.env` (nunca se pegan en el chat)
+- [ ] Revisar el precio del paquete de publicación de inmuebles (`silver`) y si tu cuenta necesita que soporte la active para verlo. Se contrata **recién antes de la prueba en `live`** (demo de F4, paso 6): la demo usa tu cuenta real y un aviso que se cierra al final (D6)
+- [ ] Confirmar que el corredor `agentsales-pruebas` tiene WhatsApp en la hoja Corredor: Mercado Libre lo exige y sale en el aviso (D5)
+- [ ] Cuando exista `pnpm ml:smoke` (F4-T17): conectar la cuenta y correrlo en tu terminal; no publica nada
 
 ## Antes de F5 (Marketplace)
 

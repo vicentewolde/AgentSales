@@ -29,16 +29,19 @@ Resumen de cómo se integra cada canal. Antes de implementar un publisher, el su
 
 ## Portal Inmobiliario (vía Mercado Libre)
 
-- Portal Inmobiliario está integrado a Mercado Libre. Se publica en el sitio **MLC** con la API de ML.
-- **Clave:** en Chile hay que incluir el atributo `CMG_SITE` en el body del ítem para que el aviso aparezca en Portal Inmobiliario además de Mercado Libre.
-- **Setup:** app en el portal de developers de Mercado Libre Chile, OAuth 2.0 (authorization code), redirect URI **HTTPS** (en local puede requerir un túnel como cloudflared o ngrok; verificar si acepta `https://localhost`).
-- **Tokens:** el access token es de corta duración (horas) y se renueva con el refresh token.
-- **Título y fotos (parcialmente verificado 2026-10-02, `integraciones/mercadolibre.md`):** el largo máximo del título de inmuebles en MLC sería **60 caracteres** (antes 200) y la doc recomienda evitar adjetivos y abreviaturas; las fotos: mínimo 500×500 px, recomendado 1200×1200 px, máximo 1920×1920 px, hasta 10 MB, JPG, JPEG o PNG. Ambos datos salen de resúmenes de buscador porque la doc de ML respondió 403; confirmar en el navegador o con la cuenta de prueba (verificar). Leer el máximo real de `settings.max_title_length` de la categoría (verificar).
-- **Categorías y atributos:** se descubren por API (árbol de categorías de inmuebles MLC y atributos requeridos por categoría). No se escriben a mano en el código: se consultan y se cachean.
-- **Moneda:** UF probablemente como `currency_id` `CLF` (verificar).
-- **Tipos de publicación:** los inmuebles usan listing types pagados o con cupos según el plan del corredor (verificar costo en la cuenta de prueba). Con `requires_picture: true` se exige al menos 1 imagen.
-- **Seguimiento:** el API permite consultar estado, pausar (`paused`) y cerrar (`closed`) ítems.
-- **Consultas de interesados:** llegan como preguntas o contactos (fase de respuestas, fuera del MVP).
+Detalle verificado en `docs/integraciones/mercadolibre.md` (2026-10-06, leyendo la doc oficial con el navegador) y diseño en el spec F4.
+
+- Portal Inmobiliario está integrado a Mercado Libre. Se publica en el sitio **MLC** con la API de ML (`POST /items`).
+- **Clave:** en Chile hay que incluir el atributo `CMG_SITE` con `value_name: "POI"` para que el aviso aparezca en Portal Inmobiliario además de Mercado Libre.
+- **Cuenta y costo:** publicar un inmueble exige un **paquete de publicación** (`silver`) con cupo; no hay publicación gratis ni sandbox. La app se crea con los datos del titular validados.
+- **Setup:** app en el DevCenter de Mercado Libre, OAuth 2.0 (authorization code) con redirect URI **HTTPS** (no necesita cargar). En F4 el operador pega la dirección de vuelta en la CLI, sin túnel (spec F4, D1).
+- **Tokens:** `access_token` de unas 6 h (se lee `expires_in`); `refresh_token` de 6 meses, **de un solo uso** y que rota en cada refresco: se refresca con un candado por cuenta (ADR-0015).
+- **Contacto:** desde el 01/10/2026, `seller_contact` con WhatsApp (`country_code2` y `phone2`) es obligatorio al crear y actualizar. La descripción no puede llevar teléfono, dirección ni sitio web (moderación).
+- **Título y fotos:** el largo máximo lo da `settings.max_title_length` de cada categoría (la cifra de MLC se confirma con `ml:smoke`; AgentSales usa 60). Fotos JPG o PNG de hasta 10 MB, recomendado 1200 px, al menos 1 obligatoria (12 como objetivo de calidad en casas y departamentos). F4 las sube directo (`/pictures/items/upload`).
+- **Categorías, atributos y ubicación:** se descubren por API con token (árbol desde `MLC1459`, atributos con `tags.required`, `classified_locations` de Chile) y se cachean en la base. No se escriben a mano.
+- **Moneda:** UF es `CLF` (2 decimales); CLP sin decimales.
+- **Estados:** `active`, `paused` (también por moderación o mientras procesa fotos), `under_review`, `closed` (definitivo; republicar crea otro id). En MLC, casas y departamentos vencen a los 180 días en venta y a los 45 en arriendo. Validar sin publicar: `POST /items/validate` (usado en `dry-run`, ADR-0016).
+- **Consultas de interesados:** llegan como preguntas o leads (fase de respuestas, fuera del MVP).
 
 ## Facebook Marketplace
 

@@ -57,12 +57,14 @@ Spec detallado: `docs/specs/fase-3-aprobacion-instagram.md`.
 **Aceptación:** una propiedad aprobada aparece publicada en la cuenta de Instagram del operador y el sistema guarda su URL.
 
 ## F4 · Portal Inmobiliario
-- OAuth de Mercado Libre, con refresh.
-- Descubrimiento y caché de categorías y atributos MLC de inmuebles.
-- Mapeo de campos → atributos, con validación previa de obligatorios.
-- Publicar con `CMG_SITE`; pausar, reactivar y cerrar; sincronizar estado.
+Spec detallado: `docs/specs/fase-4-portal-inmobiliario.md`.
 
-**Aceptación:** una propiedad visible en Portal Inmobiliario desde la cuenta de prueba, y pausable desde el panel.
+- OAuth de Mercado Libre pegando la dirección de vuelta en la CLI (sin túnel), con tokens que rotan y un candado por cuenta (ADR-0015).
+- Descubrimiento y caché en la base de las categorías, atributos y ubicaciones MLC de inmuebles que se usan.
+- Mapeo de campos → atributos, con validación previa de obligatorios (sin inventar datos) y, en `dry-run`, la validación de Mercado Libre sin publicar (ADR-0016).
+- Publicar con `CMG_SITE` y el WhatsApp del corredor; pausar, reactivar y cerrar; sincronizar estado (a pedido y después de publicar).
+
+**Aceptación:** una propiedad visible en Portal Inmobiliario desde la cuenta del operador (con un paquete pagado; el aviso se cierra al final, spec F4 D6), y pausable desde el panel.
 
 ## F5 · Marketplace
 - Perfil de navegador persistente por corredor (login manual una vez).
@@ -74,7 +76,8 @@ Spec detallado: `docs/specs/fase-3-aprobacion-instagram.md`.
 ## F6 · Calendario + seguimiento
 - Programar por publicación y por lote ("publicar estas 5 el lunes a las 10:00").
 - Reintentos con backoff exponencial; `failed` con causa legible.
-- Job de sincronización periódica.
+- Job de sincronización periódica (F4 deja `publication.sync` a pedido, después de publicar y al arrancar el worker).
+- Portal Inmobiliario: editar un aviso publicado, republicar (`relist`) uno vencido o cerrado y avisar antes del vencimiento (spec F4, §3).
 - Cerrar un listing (vendido/arrendado) despublica o pausa en todas las plataformas.
 - Vista de seguimiento: matriz de propiedad × plataforma con estado y enlace.
 - `auto_publish` por corredor.

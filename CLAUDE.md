@@ -75,7 +75,7 @@ corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) →
 9. **Si algo es ambiguo, pregunta.** Mejor una pregunta que una suposición cara.
 
 ## Reglas de seguridad (no negociables)
-- `PUBLISH_MODE=dry-run` por defecto. **Nunca** cambies a `live` ni publiques de verdad sin instrucción explícita del operador en el chat.
+- `PUBLISH_MODE=dry-run` por defecto. **Nunca** cambies a `live` ni publiques de verdad sin instrucción explícita del operador en el chat. En `dry-run`, Portal puede leer de Mercado Libre y validar sin publicar (ADR-0016), nunca crear ni cambiar un aviso.
 - Ningún test llama APIs reales de Instagram, Mercado Libre, Facebook ni Anthropic. Usa msw o fakes.
 - No leas, muestres ni commitees `.env`. No loguees tokens ni secretos.
 - No subas datos reales de clientes (`data/muestras/`) a git.
