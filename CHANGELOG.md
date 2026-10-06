@@ -4,13 +4,13 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
-## [0.3.0] - 2026-10-06 · F3 Aprobación + Instagram
+## [0.3.0] - sin tag (se fecha al crear `v0.3.0`) · F3 Aprobación + Instagram
 Ahora se aprueba el texto de cada canal y la propiedad se publica en Instagram: el carrusel y, si tiene video, el reel. Todo se prueba primero en simulación (`dry-run`), que registra lo que se habría enviado sin llamar a Instagram. Se probó en vivo, con tu instrucción, en tu cuenta @vicentewoldec: P002 salió como carrusel de 5 imágenes (en cerca de 1 minuto) y como reel (en cerca de 2), con sus enlaces guardados, y después se borraron a mano y se marcaron como retiradas.
 
 ### Añadido
 - **Conectar Instagram:** `pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin`, con el token del botón "Generate token" del panel de Meta (Meta no acepta `http://localhost` para el OAuth). El token se guarda cifrado y nunca aparece en logs, errores ni respuestas. El OAuth completo queda listo para F7, con HTTPS.
 - **Página Cuentas** en el panel: la cuenta de cada corredor con su estado, vencimiento (avisa con 10 días), última renovación y permisos; desconectar, y el comando para conectar o reconectar. En la CLI, `agentsales accounts`.
-- **Refresco del token:** el worker lo renueva al arrancar y todos los días a las 12:00, cuando han pasado 24 h desde el último refresco y le quedan 30 días o menos (con el token del panel, a las 24 h de conectarlo). Un token vencido deja la cuenta como vencida. A pedido: `agentsales accounts refresh <id> [--force]`.
+- **Refresco del token:** el worker lo renueva al arrancar y todos los días a las 12:00 (hora de Chile), cuando han pasado 24 h desde el último refresco y le quedan 30 días o menos (con el token del panel, a las 24 h de conectarlo). Un token vencido deja la cuenta como vencida. A pedido: `agentsales accounts refresh <id> [--force]`.
 - **Aprobar:** en la sección Contenido del panel ("Aprobar Instagram") o con `agentsales approve <propiedad> [--platform]`; `--undo` o "Quitar aprobación" la quitan. Al aprobar nacen las publicaciones (carrusel y reel) con el texto y las fotos fijos: mientras no salgan, no se puede preparar de nuevo ni editar ese texto.
 - **Publicar:** el botón "Publicar en Instagram" del panel o `agentsales publish <propiedad>`. En vivo pide confirmación; espera el carrusel y el reel y muestra sus enlaces. En simulación queda marcada como tal y la propiedad no cambia; en vivo pasa a "Publicada".
 - **Publicaciones:** estado, modo, intentos, enlace o error, y la bitácora de cada una (quién hizo qué y qué se envió: cantidad de fotos, largo del caption y la cuenta), en el panel y con `agentsales publications <propiedad> [--events]`. Descartar las que no salieron, reintentar las que fallaron y marcar como retiradas las que borraste a mano en Instagram (en vivo pide confirmar que la borraste); al retirar la última publicada, la propiedad vuelve a "Lista".

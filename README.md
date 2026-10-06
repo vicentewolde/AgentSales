@@ -2,7 +2,7 @@
 
 Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento.
 
-> Estado: **F3 · Aprobación + Instagram cerrada (`v0.3.0`)**. Siguiente: F4 · Portal Inmobiliario. Ver `docs/ESTADO.md`.
+> Estado: **F3 · Aprobación + Instagram cerrada**; faltan la demo del refresco del token y el tag `v0.3.0`. Siguiente: F4 · Portal Inmobiliario. Ver `docs/ESTADO.md`.
 
 ## Requisitos
 - Node.js 26 (`.nvmrc`) y pnpm 11 (`npm i -g pnpm@11`; Node 26 ya no trae corepack)

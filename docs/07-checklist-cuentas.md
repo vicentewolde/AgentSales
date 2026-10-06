@@ -43,7 +43,7 @@ Hecho el 2026-10-02: 3 propiedades de muestra (P001, P002 y P003, corredor `agen
 - [x] Probar la dirección de retorno local: Meta rechaza `http://localhost` (2026-10-05). En F3 la cuenta se conecta con el token del botón **Generate token** (paso 2 de esa pantalla, con tu cuenta como tester de Instagram)
 - [x] (2026-10-06: `✓`, Meta descargó la portada de P001 al instante; cuenta @vicentewoldec conectada con el token de Generate token) Antes de la prueba en `live` (demo de F3): con la cuenta conectada, `pnpm ig:smoke` en tu terminal. Le pide a Instagram que prepare una portada desde un enlace temporal de R2 y espera, **sin publicar nada** (lo preparado vence solo en 24 h). Cuéntale a Claude lo que imprime: `✓` o el código del error
 - [x] Prueba en `live` de la demo de F3 (2026-10-06): P002 publicada en @vicentewoldec (carrusel y reel), borrada a mano y marcada como retirada
-- [ ] Desde el 2026-10-07 a las 16:31: el refresco del token (cuéntale a Claude y lo corre contigo); falta también confirmar si la portada del reel fue el cuadro del segundo 1
+- [ ] Desde el 2026-10-07 a las 16:31 (hora de Chile): el refresco del token (cuéntale a Claude y lo corre contigo); falta también confirmar si la portada del reel fue el cuadro del segundo 1
 - [ ] (Para terceros, en F7) Verificación del negocio y App Review de `instagram_business_content_publish`
 
 ## En paralelo, antes de F4 (Portal Inmobiliario)

@@ -1,6 +1,6 @@
 # Spec F3 · Aprobación + Instagram
 
-- **Estado:** Cerrado (2026-10-06), salvo la demo del refresco del token (§7, paso 7), que se puede hacer desde el 2026-10-07 a las 16:31 y va antes del tag `v0.3.0`. Aprobado el 2026-10-04 (aprobación permanente del operador)
+- **Estado:** Cerrado (2026-10-06), salvo la demo del refresco del token (§7, paso 7), que se puede hacer desde el 2026-10-07 a las 16:31 (hora de Chile) y va antes del tag `v0.3.0`. Aprobado el 2026-10-04 (aprobación permanente del operador)
 - **Rama base:** `main`
 - **Tag al cerrar:** `v0.3.0`
 - **Referencias:** `docs/06-roadmap.md#f3--aprobación--instagram`, ADR-0005, ADR-0011, ADR-0012, ADR-0014 (nuevo), `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/03-plataformas.md`, `docs/04-formato-publicaciones.md`, `docs/integraciones/instagram.md` (completada el 2026-10-04)
@@ -414,7 +414,7 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
 - **Depende de:** todas
 - **Descripción:** `/fase-cerrar 3`.
 - **Hecho cuando:**
-  - [ ] Demos del plan (§7), con la prueba en `live` autorizada por el operador en el chat. Hechos los pasos 1 a 6 el 2026-10-06; falta el 7 (refresco), desde el 2026-10-07 a las 16:31
+  - [ ] Demos del plan (§7), con la prueba en `live` autorizada por el operador en el chat. Hechos los pasos 1 a 6 el 2026-10-06; falta el 7 (refresco), desde el 2026-10-07 a las 16:31 (hora de Chile)
   - [x] `docs/integraciones/instagram.md` con los resultados de la prueba real (los NO VERIFICADO que se resolvieron)
   - [x] Criterios de §6 con evidencia; auditoría docs-código del `arquitecto` (sin desvíos en el código; docs al día)
   - [x] `CHANGELOG.md` `[0.3.0]`, spec cerrado, `docs/ESTADO.md` apuntando a F4
@@ -424,10 +424,10 @@ Orden: T01 y T02 primero (independientes). T03 después de T02; T04 después de 
 
 ## 6. Criterios de aceptación de la fase
 - [x] Una propiedad de muestra aprobada aparece publicada en la cuenta de Instagram del operador (carrusel y reel), y el sistema guarda el enlace de cada una (roadmap). *Evidencia:* demo en `live` del 2026-10-06, P002 en @vicentewoldec, `publications P002` con los enlaces `/p/…` y `/reel/…`; el aviso pasó a `active` y volvió a `ready` al retirarlas.
-- [x] En `dry-run`, publicar registra lo que se habría enviado y no llama a Instagram (test y demo). *Evidencia:* `packages/core/src/publish/dry-run.test.ts` y `publish-publication.test.ts`; demo: P002 en el panel y P001 en la CLI, con "intento 1 en simulación" y lo enviado en la bitácora.
-- [x] Un texto aprobado no cambia hasta publicarse o descartarse; un texto nuevo pide una aprobación nueva. *Evidencia:* `approve-content.test.ts`, `request-content-run.test.ts` y los tests de edición de core; demo: `PUBLICATION_PENDING` al preparar y `CONTENT_LOCKED` (409) al editar el texto aprobado de P002.
-- [ ] Los tokens se guardan cifrados y no aparecen en logs, errores ni respuestas; el refresco funciona (tests y demo). *Evidencia de tests:* `packages/db/test/platform-accounts.test.ts` (cifrado en la fila), `redact.test.ts`, `refresh-account-tokens.test.ts` y `apps/worker/src/jobs/tokens-refresh.test.ts`. *Demo:* falta el refresco (paso 7), posible desde el 2026-10-07 a las 16:31; el arranque del worker saltó la cuenta, como corresponde (`skipped: 1`).
-- [x] Un reintento nunca publica dos veces la misma publicación (tests de retoma). *Evidencia:* `packages/publishers/src/instagram/publisher.test.ts` ("retoma desde el progreso") y `publish-publication.test.ts`.
+- [x] En `dry-run`, publicar registra lo que se habría enviado y no llama a Instagram (test y demo). *Evidencia:* `packages/core/src/publish/dry-run.test.ts` y `packages/core/src/use-cases/publish-publication.test.ts`; demo: P002 en el panel y P001 en la CLI, con "intento 1 en simulación" y lo enviado en la bitácora.
+- [x] Un texto aprobado no cambia hasta publicarse o descartarse; un texto nuevo pide una aprobación nueva. *Evidencia:* `packages/core/src/use-cases/approve-content.test.ts`, `request-content-run.test.ts` y los tests de edición de core; demo: `PUBLICATION_PENDING` al preparar y `CONTENT_LOCKED` (409) al editar el texto aprobado de P002.
+- [ ] Los tokens se guardan cifrados y no aparecen en logs, errores ni respuestas; el refresco funciona (tests y demo). *Evidencia de tests:* `packages/db/test/platform-accounts.test.ts` (cifrado en la fila), `redact.test.ts`, `refresh-account-tokens.test.ts` y `apps/worker/src/jobs/tokens-refresh.test.ts`. *Demo:* falta el refresco (paso 7), posible desde el 2026-10-07 a las 16:31 (hora de Chile); el arranque del worker saltó la cuenta, como corresponde (`skipped: 1`).
+- [x] Un reintento nunca publica dos veces la misma publicación (tests de retoma). *Evidencia:* `packages/publishers/src/instagram/publisher.test.ts` ("retoma desde el progreso") y `packages/core/src/use-cases/publish-publication.test.ts`.
 - [x] Aprobar, quitar la aprobación y publicar funcionan desde el panel y la CLI. *Evidencia:* demo (panel con P002, CLI con P001 y P002 en `live`); tests de `apps/cli/src/commands/approve.test.ts`, `publish.test.ts` y `apps/web/src/components/publications/`.
 - [x] Ningún test llama a Instagram, Mercado Libre, Facebook ni Anthropic; `pnpm check` en verde. *Evidencia:* msw con `onUnhandledFrame: "error"` y la guardia de `CLAUDE_CLI_PATH`; `pnpm check` con 2250 tests.
 
