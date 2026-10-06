@@ -99,16 +99,13 @@ const platformAccounts = createPlatformAccountRepository(database.db, {
 // Registrado en los dos modos: una publicación en `dry_run` también lo necesita (lo envuelve
 // `withDryRun`). El cliente de Instagram se arma recién al primer intento en `live` (perezoso).
 const instagram = createInstagramPublisher({ onNote: instagramNoteLogger(logger) });
-// Refresco de tokens (spec F3 §4.6): solo con el par de la app de Instagram. Sin él, el job avisa
-// y no refresca; publicar sigue igual.
-const instagramAuth =
-  env.INSTAGRAM_APP_ID && env.INSTAGRAM_APP_SECRET
-    ? createInstagramAuth({
-        appId: env.INSTAGRAM_APP_ID,
-        appSecret: env.INSTAGRAM_APP_SECRET,
-        redirectUri: env.INSTAGRAM_REDIRECT_URI,
-      })
-    : null;
+// Refresco de tokens (spec F3 §4.6): solo usa el token, así que funciona sin el par de la app
+// (como en la API); el par lo necesita solo el canje del OAuth, que el worker no hace.
+const instagramAuth = createInstagramAuth({
+  appId: env.INSTAGRAM_APP_ID ?? "",
+  appSecret: env.INSTAGRAM_APP_SECRET ?? "",
+  redirectUri: env.INSTAGRAM_REDIRECT_URI,
+});
 const jobs = buildJobs({
   importRun,
   contentPrepare: {
@@ -312,7 +309,6 @@ try {
       {
         jobs: jobs.map((job) => job.name),
         publishMode: env.PUBLISH_MODE,
-        tokenRefresh: instagramAuth !== null,
       },
       "worker listo",
     );

@@ -326,24 +326,17 @@ describe("POST /accounts/:id/refresh", () => {
     expect(refreshCalls()).toBe(0);
   });
 
-  it("pasadas 24 h: sin force no toca (le quedan 59 días); con force refresca y guarda el vencimiento real", async () => {
+  it("pasadas 24 h refresca sin force (el vencimiento era estimado) y guarda el real; después rige la ventana de 30 días", async () => {
     const { platformAccounts, connect, refresh, advance, refreshCalls } = await refreshSetup();
     const account = await connect(TOKEN);
     advance(25 * HOUR);
 
-    const notDue = accountRefreshResponseSchema.parse(await (await refresh(account.id)).json());
-    expect(notDue).toMatchObject({ outcome: "skipped", reason: "not_due" });
-    expect(notDue.refreshableAt).toEqual(new Date("2026-11-05T12:00:00Z"));
-    expect(refreshCalls()).toBe(0);
-
-    const response = await refresh(account.id, { force: true });
+    const response = await refresh(account.id);
     expect(response.status).toBe(200);
     const text = await response.text();
     expect(text).not.toContain(TOKEN);
     expect(accountRefreshResponseSchema.parse(JSON.parse(text))).toMatchObject({
       outcome: "refreshed",
-      reason: null,
-      refreshableAt: null,
       account: {
         status: "connected",
         tokenExpiresAt: new Date("2026-12-05T12:00:00Z"),
@@ -355,6 +348,20 @@ describe("POST /accounts/:id/refresh", () => {
     expect(platformAccounts.storedCredentials(account.id)).toEqual({
       accessToken: `${TOKEN}-refrescado`,
     });
+
+    advance(25 * HOUR);
+    expect(accountRefreshResponseSchema.parse(await (await refresh(account.id)).json())).toEqual(
+      expect.objectContaining({
+        outcome: "skipped",
+        reason: "not_due",
+        refreshableAt: new Date("2026-11-05T12:00:00Z"),
+      }),
+    );
+    expect(refreshCalls()).toBe(1);
+
+    const forced = await refresh(account.id, { force: true });
+    expect(accountRefreshResponseSchema.parse(await forced.json()).outcome).toBe("refreshed");
+    expect(refreshCalls()).toBe(2);
   });
 
   it("Instagram rechaza el token (190): 200 con la cuenta vencida", async () => {
@@ -456,5 +463,41 @@ describe("POST /accounts/:id/refresh", () => {
 
     const written = lines.join("\n");
     expect(written).not.toContain(TOKEN);
+  });
+
+  it("los avisos del refresco (una meta que no calza) van al log con id y código", async () => {
+    const lines: Record<string, unknown>[] = [];
+    const logger = createLogger(
+      { level: "debug" },
+      new Writable({
+        write(chunk, _encoding, callback) {
+          lines.push(JSON.parse(chunk.toString()));
+          callback();
+        },
+      }),
+    );
+    const { platformAccounts, refresh } = await refreshSetup({ logger });
+    const broker = (await platformAccounts.list())[0]?.brokerId ?? randomUUID();
+    const account = await platformAccounts.upsertConnected({
+      brokerId: broker,
+      platform: "instagram",
+      externalAccountId: "17841400000000009",
+      displayName: "@vieja",
+      tokenExpiresAt: new Date(CONNECTED_AT.getTime() + 10 * 24 * HOUR),
+      meta: { connectedAt: "2026-08-01T12:00:00.000Z" },
+      credentials: { accessToken: TOKEN },
+    });
+
+    expect((await refresh(account.id)).status).toBe(200);
+
+    expect(lines).toContainEqual(
+      expect.objectContaining({
+        level: 40,
+        msg: "aviso del refresco de tokens",
+        accountId: account.id,
+        code: "ACCOUNT_META_UNREADABLE",
+      }),
+    );
+    expect(JSON.stringify(lines)).not.toContain(TOKEN);
   });
 });

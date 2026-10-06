@@ -10,8 +10,8 @@ export type WorkerBoss = {
   schedule(
     name: string,
     cron: string,
-    data: Record<string, unknown>,
-    options: { tz: string; singletonKey?: string },
+    data: object,
+    options: { tz: string; missed: "skip"; singletonKey?: string },
   ): Promise<void>;
   work(
     name: string,
@@ -66,8 +66,10 @@ export async function registerJobs(
     });
     if (job.schedule !== undefined) {
       const { cron, tz, data, singletonKey } = job.schedule;
+      // `missed: "skip"`: un cron perdido con el worker apagado no se repite al arrancar.
       await boss.schedule(job.name, cron, data, {
         tz,
+        missed: "skip",
         ...(singletonKey === undefined ? {} : { singletonKey }),
       });
     }

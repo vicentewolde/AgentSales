@@ -25,6 +25,7 @@ const CONFLICTS = new Set([
   "PUBLICATION_PENDING",
   // Refrescar (F3-T14) o publicar con una cuenta desconectada o vencida: hay que reconectarla.
   "ACCOUNT_NOT_CONNECTED",
+  "ACCOUNT_REFRESH_UNSUPPORTED",
 ]);
 
 /**

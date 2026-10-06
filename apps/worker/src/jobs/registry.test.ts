@@ -101,7 +101,7 @@ describe("registerJobs", () => {
       `create tokens.refresh ${JSON.stringify(policy)}`,
       "update tokens.refresh",
       'work tokens.refresh {"batchSize":1,"includeMetadata":true}',
-      'schedule tokens.refresh 0 12 * * * {} {"tz":"America/Santiago","singletonKey":"tokens.refresh"}',
+      'schedule tokens.refresh 0 12 * * * {} {"tz":"America/Santiago","missed":"skip","singletonKey":"tokens.refresh"}',
     ]);
     expect(calls.filter((call) => call.startsWith("schedule"))).toHaveLength(1);
   });

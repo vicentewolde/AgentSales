@@ -242,13 +242,13 @@ Los jobs del worker (`apps/worker/src/jobs/`):
     - `createQueue` recibe todo.
     - `updateQueue` recibe todo **menos `policy`**, que es inmutable.
   - **Contexto:** el handler recibe `isLastAttempt` (`retryCount >= retryLimit`, de `work` con `includeMetadata`), para dejar el estado de dominio en `failed` antes del último error, y desde F3-T12 `retryCount` (el reintento, para la bitácora de una publicación).
-  - **`schedule` (desde F3-T14):** cron opcional (`JobSchedule`: expresión, zona horaria, datos y `singletonKey`). `registerJobs` lo programa con `schedule` de pg-boss después de crear la cola y registrar su worker (pg-boss exige la cola). pg-boss guarda una fila por cola, así que registrarlo en cada arranque la actualiza. Lo usa `tokens.refresh`.
+  - **`schedule` (desde F3-T14):** cron opcional (`JobSchedule<N>`: expresión, zona horaria, datos con el tipo de `JOB_PAYLOADS[N]` y `singletonKey`). `registerJobs` lo programa con `schedule` de pg-boss después de crear la cola y registrar su worker (pg-boss exige la cola), con `missed: "skip"`. pg-boss guarda una fila por cola, así que registrarlo en cada arranque la actualiza; si un job deja de tener cron, su fila sigue disparando y hay que borrarla a mano (`unschedule`). Lo usa `tokens.refresh`.
 - **Payloads con solo ids** (`publicationId`, `mediaId`…), nunca secretos ni estado. El handler recarga el estado desde la base y verifica `external_id` y `status` antes de actuar, lo que lo hace idempotente (ADR-0005).
 - **Errores:**
   - Un `AppError` no reintentable se registra y el job se da por cerrado. El caso de uso ya dejó el estado de dominio, por ejemplo la publicación en `failed`.
   - Cualquier otro error se propaga y pg-boss reintenta según la política.
   - `batchSize: 1`: un fallo nunca repite jobs ajenos.
-- Los handlers son delgados: validan, arman dependencias y llaman un caso de uso de `core`. `buildJobs(deps)` arma la lista con las dependencias que compone `worker.ts` (db, R2, lector de xlsx y staging; desde F2-T11, también plantillas, renderizador, IA y el procesador de cada intento; desde F3-T12, los repositorios de publicaciones y cuentas, este último con el `SecretBox` de `APP_ENCRYPTION_KEY`, y el publisher de Instagram, registrado en los dos modos con su cliente perezoso y sus notas al log; desde F3-T14, Instagram Login para el refresco, o `null` sin el par de la app).
+- Los handlers son delgados: validan, arman dependencias y llaman un caso de uso de `core`. `buildJobs(deps)` arma la lista con las dependencias que compone `worker.ts` (db, R2, lector de xlsx y staging; desde F2-T11, también plantillas, renderizador, IA y el procesador de cada intento; desde F3-T12, los repositorios de publicaciones y cuentas, este último con el `SecretBox` de `APP_ENCRYPTION_KEY`, y el publisher de Instagram, registrado en los dos modos con su cliente perezoso y sus notas al log; desde F3-T14, Instagram Login para el refresco).
 - **El log de cada intento** lleva los datos del job, que son solo ids: así cada error queda con, por ejemplo, su `importRunId`. Un job puede fijar `errorLogFields` para registrar menos que el error completo: `content.prepare` registra solo el código (el mensaje o la causa pueden traer datos del aviso).
 - **Apagado (desde F2-T11, `stopWorker` en `apps/worker/src/shutdown.ts`):** en SIGINT o SIGTERM, el worker dispara el `AbortController` de los handlers, espera a que pg-boss los detenga (`stop` con `graceful`, hasta 30 s) y recién después cierra el Chromium del renderizador (también si detener pg-boss falla) y la base. `tsx watch` (`pnpm dev`) corta al worker sin esperar ese cierre si recibe la señal él solo; con Ctrl+C en la terminal la señal llega a los dos.
 
@@ -622,26 +622,27 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 
 ## Refresco de tokens (`refreshAccountToken` y `refreshAccountTokens`, F3-T14)
 
-- **Ventana** (`refreshAccountToken`, core, una cuenta `connected`; si no, `ACCOUNT_NOT_CONNECTED`, 409):
+- **Ventana** (`refreshAccountToken`, core, una cuenta de Instagram `connected`; otra plataforma es `ACCOUNT_REFRESH_UNSUPPORTED` y una no conectada `ACCOUNT_NOT_CONNECTED`, los dos 409):
   1. Un token vencido deja la cuenta en `expired` sin llamar a Instagram (`token_expired`).
-  2. Con menos de 24 h desde el último refresco no se refresca, tampoco con `force` (`too_recent`, con `refreshableAt`). El último refresco es `meta.tokenRefreshedAt` o, si es `null` (token del panel), `meta.connectedAt`. Una `meta` que no calza con `instagramAccountMetaSchema` se refresca con un aviso (`ACCOUNT_META_INVALID`): Instagram revisa las 24 h.
-  3. Con más de 30 días de vigencia no se refresca, salvo con `force` (`not_due`). Sin vencimiento guardado, sí.
+  2. Con menos de 24 h desde el último refresco no se refresca, tampoco con `force` (`too_recent`, con `refreshableAt`). El último refresco es `meta.tokenRefreshedAt` o, si es `null` (token del panel), `meta.connectedAt`. Esas dos fechas se leen con un esquema propio, aparte del resto de `meta`: una `meta` que no calza con `instagramAccountMetaSchema` se refresca con un aviso (`ACCOUNT_META_UNREADABLE`) pero conserva las 24 h; solo sin ninguna de las dos fechas se refresca sin ese tope (Instagram lo revisa).
+  3. Con más de 30 días de vigencia no se refresca, salvo con `force` (`not_due`). Sin vencimiento guardado, o con uno estimado (`meta.tokenExpiryEstimated`: token del panel aún sin refrescar), sí: el token pudo generarse antes de conectarlo, así que se refresca en cuanto pasan las 24 h y se conoce el vencimiento real.
   4. Refresca y guarda con `updateToken` el token nuevo (cifrado por el repositorio), el vencimiento real y, en `meta`, `tokenRefreshedAt` y `tokenExpiryEstimated: false`. Los permisos no cambian: el refresco no los devuelve.
 - **Errores:**
   - un 190 (`IG_AUTH_INVALID`) deja la cuenta en `expired` (`token_rejected`) y es un resultado, no un error;
   - credenciales ilegibles la dejan en `error` y suben (`CREDENTIALS_UNREADABLE`, 500);
   - cualquier otro error (red, cupo, base) sube **sin cambiar la cuenta**.
-  `updateToken` es condicional: una cuenta desconectada mientras se refrescaba no revive.
+  `updateToken` es condicional: una cuenta desconectada mientras se refrescaba no revive. Al marcarla `expired` o `error`, el resultado lleva la cuenta releída; si guardar el estado falla, la cuenta sin cambiar y un aviso (`ACCOUNT_STATUS_NOT_SAVED`).
 - **Lote** (`refreshAccountTokens`): las cuentas de Instagram conectadas con credenciales, sin `force`. Una que falla no corta las demás, y el informe lleva solo ids y códigos. Con la señal de apagado no empieza otra cuenta.
 - **Job `tokens.refresh`** (`apps/worker/src/jobs/tokens-refresh.ts`):
-  - el worker lo encola al arrancar (`enqueueTokensRefresh`) y lo programa todos los días a las 12:00 de Chile (el worker corre solo con `pnpm dev`; un cron perdido lo cubre el arranque);
-  - sin `INSTAGRAM_APP_ID` o `INSTAGRAM_APP_SECRET` el worker no arma Instagram Login: el job avisa en el log y no refresca, y publicar sigue igual ("worker listo" lleva `tokenRefresh`);
-  - registra cuántas se refrescaron, las vencidas (con un aviso para reconectarlas) y las fallidas, sin tokens.
+  - el worker lo encola al arrancar (`enqueueTokensRefresh`) y lo programa todos los días a las 12:00 de Chile, con `missed: "skip"` (el worker corre solo con `pnpm dev`; un cron perdido lo cubre el arranque);
+  - el worker arma Instagram Login siempre, también sin `INSTAGRAM_APP_ID` o `INSTAGRAM_APP_SECRET`, como la API: el refresco solo usa el token (el par lo necesita el canje del OAuth), así que una cuenta conectada con el token del panel no vence por falta del par;
+  - registra cuántas se refrescaron, las vencidas (con un aviso para reconectarlas) y las fallidas, sin tokens; los avisos van con id y código;
+  - la expiración de 5 min no corta el handler (solo lo hace la señal de apagado): si un intento se pasara y pg-boss lo reintentara, los dos podrían refrescar la misma cuenta. Con una cuenta por corredor no pasa; con muchas (F7), revisar el tope.
 - **A pedido** (`POST /accounts/:id/refresh` `{ force? }`, síncrono, seguimiento de ADR-0014 punto 9):
-  - responde `{ account, outcome, reason, refreshableAt }`;
-  - los `IG_*` tienen su HTTP (§4.8 del spec F3);
-  - `AppDeps.now` fija el reloj en los tests;
-  - como `connect-token`, no exige el par de la app, porque el refresco solo usa el token.
+  - responde una unión por `outcome` (`accountRefreshResponseSchema`): `refreshed`; `skipped` con `reason` (`too_recent`, `not_due`) y `refreshableAt`; o `expired` con `reason` (`token_expired`, `token_rejected`); los valores vienen de core (`TOKEN_REFRESH_OUTCOMES` y los motivos);
+  - los `IG_*` tienen su HTTP (§4.8 del spec F3), y los avisos van al log de la API con id y código;
+  - `AppDeps.now` fija el reloj en los tests.
+- **También en `dry-run`:** refrescar llama a Instagram con cualquier `PUBLISH_MODE`, como conectar: no publica nada.
 - **El token viaja en la URL** del refresco (`refresh_access_token`, como lo documenta Meta). Esa URL no sale del cliente de Instagram: ni los errores ni los logs la llevan.
 
 ## Aprobación (`approveContent` y `unapproveContent`, F3-T05)

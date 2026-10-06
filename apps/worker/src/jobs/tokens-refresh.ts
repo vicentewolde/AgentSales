@@ -30,10 +30,10 @@ export const TOKENS_REFRESH_QUEUE: QueuePolicy = {
 
 /**
  * Una vez al día, a mediodía de Chile: el worker corre solo con `pnpm dev` (ADR-0007), así que se
- * elige una hora de trabajo. Si el worker estaba apagado, el cron perdido no se repite: lo cubre el
- * refresco del arranque.
+ * elige una hora de trabajo. Si el worker estaba apagado, el cron perdido no se repite
+ * (`missed: "skip"`): lo cubre el refresco del arranque.
  */
-export const TOKENS_REFRESH_SCHEDULE: JobSchedule = {
+export const TOKENS_REFRESH_SCHEDULE: JobSchedule<"tokens.refresh"> = {
   cron: "0 12 * * *",
   tz: "America/Santiago",
   data: {},
@@ -43,10 +43,10 @@ export const TOKENS_REFRESH_SCHEDULE: JobSchedule = {
 export type TokensRefreshJobDeps = {
   platformAccounts: RefreshAccountTokensDeps["platformAccounts"];
   /**
-   * Instagram Login con el par de la app, o `null` si faltan `INSTAGRAM_APP_ID` o
-   * `INSTAGRAM_APP_SECRET`: entonces el job avisa y no refresca (publicar sigue funcionando).
+   * Instagram Login. El refresco solo usa el token (no el par de la app), así que el worker lo arma
+   * siempre, como la API: una cuenta conectada con el token del panel no vence por falta del par.
    */
-  instagram: RefreshAccountTokensDeps["instagram"] | null;
+  instagram: RefreshAccountTokensDeps["instagram"];
   /** Se dispara al apagar el worker: no se empieza otra cuenta y se corta la llamada en curso. */
   signal: AbortSignalLike;
   now?: () => Date;
@@ -74,12 +74,6 @@ export function tokensRefreshJob(deps: TokensRefreshJobDeps): Job {
         : {}),
     }),
     handler: async (_data, { logger }) => {
-      if (deps.instagram === null) {
-        logger.warn(
-          "faltan INSTAGRAM_APP_ID o INSTAGRAM_APP_SECRET: no se refrescan los tokens de Instagram (publicar sigue funcionando)",
-        );
-        return;
-      }
       const report = await refreshAccountTokens(
         {
           platformAccounts: deps.platformAccounts,

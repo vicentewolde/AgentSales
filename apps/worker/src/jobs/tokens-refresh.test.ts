@@ -41,7 +41,7 @@ function fakeBoss() {
   return { boss, bossCalls, run };
 }
 
-async function setup(options: { instagram?: Pick<InstagramAuth, "refresh"> | null } = {}) {
+async function setup() {
   const platformAccounts = createInMemoryPlatformAccountRepository();
   const add = (externalAccountId: string, token: string) =>
     platformAccounts.upsertConnected({
@@ -76,7 +76,7 @@ async function setup(options: { instagram?: Pick<InstagramAuth, "refresh"> | nul
   const boss = fakeBoss();
   const job = tokensRefreshJob({
     platformAccounts,
-    instagram: options.instagram === undefined ? instagram : options.instagram,
+    instagram,
     signal: new AbortController().signal,
     now: () => NOW,
   });
@@ -103,7 +103,7 @@ describe("tokens.refresh", () => {
           "tokens.refresh",
           "0 12 * * *",
           {},
-          { tz: "America/Santiago", singletonKey: TOKENS_REFRESH_KEY },
+          { tz: "America/Santiago", missed: "skip", singletonKey: TOKENS_REFRESH_KEY },
         ],
       },
     ]);
@@ -166,22 +166,6 @@ describe("tokens.refresh", () => {
     await run();
 
     expect((await platformAccounts.get(account.id))?.status).toBe("error");
-  });
-
-  it("sin el par de la app avisa en el log y no refresca", async () => {
-    const { platformAccounts, add, lines, run } = await setup({ instagram: null });
-    const account = await add("1", TOKEN);
-
-    await run();
-
-    expect(lines).toContainEqual(
-      expect.objectContaining({
-        level: 40,
-        msg: "faltan INSTAGRAM_APP_ID o INSTAGRAM_APP_SECRET: no se refrescan los tokens de Instagram (publicar sigue funcionando)",
-      }),
-    );
-    expect(platformAccounts.storedCredentials(account.id)).toEqual({ accessToken: TOKEN });
-    expect(lines.find((line) => line.msg === "job terminado")).toBeDefined();
   });
 
   it("el refresco del arranque se encola con la clave fija, sin datos", async () => {

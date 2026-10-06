@@ -21,11 +21,14 @@ import {
   idParamSchema,
   type PlatformAccountView,
 } from "../contracts/index.js";
+import type { AppLogger } from "../logger.js";
 import { validated, validatedWithReason } from "../validation.js";
 
 export type AccountRoutesDeps = ConnectAccountDeps &
-  RefreshAccountTokensDeps & {
+  Omit<RefreshAccountTokensDeps, "onWarning"> & {
     platformAccounts: PlatformAccountRepository;
+    /** Para los avisos del refresco a pedido (solo ids y códigos). */
+    logger: AppLogger;
     /** Si el panel puede ofrecer el OAuth (par de la app y URI `https://`). */
     instagramOAuth: boolean;
   };
@@ -79,12 +82,13 @@ export function accountView(account: PlatformAccount): PlatformAccountView {
 
 /** La respuesta del refresco a pedido: el resultado con la vista de la cuenta, sin el token. */
 function refreshView(result: TokenRefreshResult): AccountRefreshResponse {
-  return {
-    account: accountView(result.account),
-    outcome: result.outcome,
-    reason: result.outcome === "refreshed" ? null : result.reason,
-    refreshableAt: result.outcome === "skipped" ? result.refreshableAt : null,
-  };
+  const account = accountView(result.account);
+  if (result.outcome === "refreshed") return { outcome: "refreshed", account };
+  if (result.outcome === "skipped") {
+    const { reason, refreshableAt } = result;
+    return { outcome: "skipped", reason, refreshableAt, account };
+  }
+  return { outcome: "expired", reason: result.reason, account };
 }
 
 /**
@@ -122,11 +126,18 @@ export function accountRoutes(deps: AccountRoutesDeps) {
       validated("json", accountRefreshBodySchema),
       async (c) => {
         const { force } = c.req.valid("json");
-        const result = await refreshAccountToken(deps, {
-          accountId: c.req.valid("param").id,
-          force: force ?? false,
-          signal: c.req.raw.signal,
-        });
+        const result = await refreshAccountToken(
+          {
+            ...deps,
+            onWarning: ({ accountId, code }) =>
+              deps.logger.warn({ accountId, code }, "aviso del refresco de tokens"),
+          },
+          {
+            accountId: c.req.valid("param").id,
+            force: force ?? false,
+            signal: c.req.raw.signal,
+          },
+        );
         return c.json(refreshView(result), 200);
       },
     )

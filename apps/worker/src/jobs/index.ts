@@ -13,7 +13,7 @@ export type JobDeps = {
   contentPrepare: ContentPrepareJobDeps;
   /** Dependencias de `publishPublication`: repositorios, R2, publishers y el modo del worker. */
   publicationPublish: PublicationPublishJobDeps;
-  /** Cuentas conectadas e Instagram Login (o `null` sin el par de la app), para `tokens.refresh`. */
+  /** Cuentas conectadas e Instagram Login, para `tokens.refresh`. */
   tokensRefresh: TokensRefreshJobDeps;
 };
 

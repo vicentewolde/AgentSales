@@ -152,7 +152,7 @@ describe("refreshAccountToken · ventana", () => {
     expect((await refreshAccountToken(deps, { accountId: border.id })).outcome).toBe("refreshed");
   });
 
-  it("token del panel (tokenRefreshedAt null): cuenta las 24 h desde connectedAt y obtiene el vencimiento real", async () => {
+  it("token del panel (tokenRefreshedAt null): a las 24 h desde connectedAt refresca sin esperar los 30 días de la estimación", async () => {
     const { calls, deps, add } = setup();
     const fresh = await add({
       expiresAt: fromNow(60 * DAY - 23 * HOUR),
@@ -179,16 +179,36 @@ describe("refreshAccountToken · ventana", () => {
         tokenExpiryEstimated: true,
       },
     });
-    // Sin force, igual queda fuera por los 59 días: el lote no lo toma hasta que falten 30.
-    expect((await refreshAccountToken(deps, { accountId: day.id })).outcome).toBe("skipped");
-    const result = await refreshAccountToken(deps, { accountId: day.id, force: true });
+    // Sin force: los 59 días son una estimación (el token pudo generarse antes de conectarlo).
+    const result = await refreshAccountToken(deps, { accountId: day.id });
     expect(result.outcome).toBe("refreshed");
+    expect(result.account.tokenExpiresAt).toEqual(fromNow(60 * DAY));
     expect(result.account.meta).toMatchObject({
       tokenRefreshedAt: NOW.toISOString(),
       tokenExpiryEstimated: false,
       permissions: null,
     });
     expect(calls).toEqual(["IGAA-panel"]);
+
+    // Ya con el vencimiento real, vuelve la ventana de 30 días.
+    expect(await refreshAccountToken(deps, { accountId: day.id })).toMatchObject({
+      outcome: "skipped",
+      reason: "too_recent",
+    });
+  });
+
+  it("el lote refresca el token del panel a las 24 h, con un vencimiento estimado lejano", async () => {
+    const { deps, add } = setup();
+    const account = await add({
+      expiresAt: fromNow(59 * DAY),
+      meta: {
+        connectedAt: ago(24 * HOUR).toISOString(),
+        tokenRefreshedAt: null,
+        tokenExpiryEstimated: true,
+      },
+    });
+
+    expect(await refreshAccountTokens(deps)).toMatchObject({ refreshed: [account.id] });
   });
 
   it("sin vencimiento guardado, refresca para conocerlo", async () => {
@@ -267,24 +287,67 @@ describe("refreshAccountToken · vencimiento y errores", () => {
     expect(calls).toEqual([]);
   });
 
-  it("una meta ilegible se refresca con un aviso", async () => {
-    const { warnings, deps, add } = setup();
-    const account = await add({ meta: { connectedAt: "ayer", tokenRefreshedAt: ago(HOUR) } });
+  it("una meta que no calza con el esquema se refresca con un aviso, y respeta las 24 h después", async () => {
+    const { calls, warnings, deps, add } = setup();
+    // Una fila vieja sin `accountType` ni `tokenExpiryEstimated`, pero con su reloj.
+    const account = await add({
+      meta: { accountType: undefined, tokenExpiryEstimated: "no" },
+    });
 
     const result = await refreshAccountToken(deps, { accountId: account.id });
-
     expect(result.outcome).toBe("refreshed");
-    expect(warnings).toEqual([{ accountId: account.id, code: "ACCOUNT_META_INVALID" }]);
+    expect(warnings).toEqual([{ accountId: account.id, code: "ACCOUNT_META_UNREADABLE" }]);
+
+    // El refresco escribió `tokenRefreshedAt`: un reintento inmediato (o force) ya no llama.
+    expect(await refreshAccountToken(deps, { accountId: account.id, force: true })).toMatchObject({
+      outcome: "skipped",
+      reason: "too_recent",
+      refreshableAt: fromNow(24 * HOUR),
+    });
+    expect(calls).toHaveLength(1);
   });
 
-  it("otra plataforma no se refresca (unsupported)", async () => {
+  it("una meta ilegible con un tokenRefreshedAt reciente igual respeta las 24 h", async () => {
     const { calls, deps, add } = setup();
-    const account = await add({ platform: "portal_inmobiliario" });
+    const account = await add({
+      meta: { connectedAt: "ayer", tokenRefreshedAt: ago(HOUR).toISOString() },
+    });
 
     expect(await refreshAccountToken(deps, { accountId: account.id })).toMatchObject({
       outcome: "skipped",
-      reason: "unsupported",
-      refreshableAt: null,
+      reason: "too_recent",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("una meta sin ninguna fecha legible se refresca (Instagram revisa las 24 h)", async () => {
+    const { platformAccounts, warnings, deps } = setup();
+    const account = await platformAccounts.upsertConnected({
+      brokerId: "broker-1",
+      platform: "instagram",
+      externalAccountId: "17841400000000009",
+      displayName: "@vieja",
+      tokenExpiresAt: fromNow(10 * DAY),
+      meta: { connectedAt: "ayer" },
+      credentials: { accessToken: "IGAA-vieja" },
+    });
+
+    expect((await refreshAccountToken(deps, { accountId: account.id })).outcome).toBe("refreshed");
+    expect(warnings).toEqual([{ accountId: account.id, code: "ACCOUNT_META_UNREADABLE" }]);
+  });
+
+  it("otra plataforma no se refresca: ACCOUNT_REFRESH_UNSUPPORTED, y el lote ni la mira", async () => {
+    const { calls, deps, add } = setup();
+    const account = await add({ platform: "portal_inmobiliario" });
+
+    await expect(refreshAccountToken(deps, { accountId: account.id })).rejects.toMatchObject({
+      code: "ACCOUNT_REFRESH_UNSUPPORTED",
+    });
+    expect(await refreshAccountTokens(deps)).toEqual({
+      refreshed: [],
+      expired: [],
+      skipped: 0,
+      failed: [],
     });
     expect(calls).toEqual([]);
   });
@@ -305,7 +368,28 @@ describe("refreshAccountToken · vencimiento y errores", () => {
     const result = await refreshAccountToken(failing, { accountId: account.id });
 
     expect(result).toMatchObject({ outcome: "expired", reason: "token_expired" });
+    // La cuenta va como quedó en la base (no se pudo guardar): el aviso lo explica.
+    expect(result.account.status).toBe("connected");
     expect(warnings).toEqual([{ accountId: account.id, code: "ACCOUNT_STATUS_NOT_SAVED" }]);
+  });
+
+  it("si la cuenta cambió en paralelo al marcarla vencida, devuelve cómo quedó", async () => {
+    const { platformAccounts, deps, add } = setup();
+    const account = await add({ token: "malo-token" });
+    const racing: RefreshAccountTokensDeps = {
+      ...deps,
+      instagram: {
+        async refresh() {
+          await platformAccounts.disconnect(account.id);
+          throw new AppError("IG_AUTH_INVALID", "El acceso a Instagram venció");
+        },
+      },
+    };
+
+    const result = await refreshAccountToken(racing, { accountId: account.id });
+
+    expect(result).toMatchObject({ outcome: "expired", reason: "token_rejected" });
+    expect(result.account.status).toBe("revoked");
   });
 
   it("si la cuenta se desconecta mientras se refresca, no la revive (ACCOUNT_NOT_CONNECTED)", async () => {

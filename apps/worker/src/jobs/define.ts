@@ -33,15 +33,16 @@ export type QueuePolicy = {
 
 /**
  * Cron de un job periódico (ADR-0005), que el worker registra con `schedule` de pg-boss después de
- * crear la cola. pg-boss guarda una fila por cola: registrarlo en cada arranque la actualiza.
+ * crear la cola. pg-boss guarda una fila por cola: registrarlo en cada arranque la actualiza. Si un
+ * job deja de tener cron, su fila sigue disparando: hay que borrarla a mano (`unschedule`).
  */
-export type JobSchedule = {
+export type JobSchedule<N extends JobName = JobName> = {
   /** Expresión cron de 5 campos. */
   cron: string;
   /** Zona horaria en que se lee `cron` (IANA, por ejemplo `America/Santiago`). */
   tz: string;
-  /** Datos de cada job del cron: los valida `JOB_PAYLOADS`, como los encolados. */
-  data: Record<string, unknown>;
+  /** Datos de cada job del cron, del tipo de `JOB_PAYLOADS[N]` (el handler los valida igual). */
+  data: JobPayload<N>;
   /** Con una cola `exclusive`, el cron no encola si ya hay uno con la misma clave. */
   singletonKey?: string;
 };
@@ -72,7 +73,7 @@ export type Job = {
 export function defineJob<N extends JobName>(definition: {
   name: N;
   queue: QueuePolicy;
-  schedule?: JobSchedule;
+  schedule?: JobSchedule<N>;
   handler: (data: JobPayload<N>, context: JobContext) => Promise<void>;
   errorLogFields?: ErrorLogFields;
 }): Job {
