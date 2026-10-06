@@ -26,7 +26,7 @@ Node 26 · pnpm 11 workspaces · TypeScript 7 strict · Hono (+ cliente RPC `hc`
 ## Estructura
 ```
 apps/     api · worker · cli · web
-packages/ config · core · db · storage · queue · importers · llm · media · templates  (desde F3: publishers)
+packages/ config · core · db · storage · queue · importers · llm · media · templates · publishers
 docs/     documentación, specs y ADRs
 data/     plantillas (en git) y muestras (fuera de git)
 ```

@@ -160,7 +160,7 @@ Una subruta (por ejemplo `./contracts` y `./testing` en `apps/api`, `./testing` 
 
 ## Seguridad operacional
 
-- `PUBLISH_MODE=dry-run` es el default. Solo se cambia a `live` a mano en `.env`, y el sistema lo muestra en rojo en el panel y la CLI.
+- `PUBLISH_MODE=dry-run` es el default. Solo se cambia a `live` a mano: en `.env` o, para una sesión, `PUBLISH_MODE=live pnpm dev` (la variable del entorno gana sobre `.env`, y la API y el worker la reciben juntos), y el sistema lo muestra en rojo en el panel y la CLI.
 - Primeras publicaciones `live`: solo en cuentas de prueba del operador.
 - Los logs pasan por el redactor de `@agentsales/config`:
   - Oculta el valor de toda clave que contenga `token`, `secret`, `password`, `authorization` o `key`, a cualquier profundidad, también dentro de errores y bindings.

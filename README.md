@@ -2,7 +2,7 @@
 
 Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento.
 
-> Estado: **F2 · Contenido cerrada (`v0.2.0`)**. Siguiente: F3 · Instagram. Ver `docs/ESTADO.md`.
+> Estado: **F3 · Aprobación + Instagram cerrada**; faltan la demo del refresco del token y el tag `v0.3.0`. Siguiente: F4 · Portal Inmobiliario. Ver `docs/ESTADO.md`.
 
 ## Requisitos
 - Node.js 26 (`.nvmrc`) y pnpm 11 (`npm i -g pnpm@11`; Node 26 ya no trae corepack)
@@ -43,7 +43,18 @@ pnpm -s cli content <id_propiedad> [--platform portal] [--json]
 pnpm eval:content                                    # evalúa los textos de la IA sin guardar nada (gasta cuota; --provider fake no)
 pnpm llm:smoke                                       # una llamada corta a la CLI de Claude con datos inventados
 ```
-En el panel, el detalle de cada propiedad tiene la sección **Contenido**: preparar, el avance, la vista previa por canal (carrusel, caption, reel, Portal y Marketplace) con su revisión editorial y la edición de los textos. En F2 no se publica nada: el contenido queda listo para revisar (las publicaciones llegan en F3).
+En el panel, el detalle de cada propiedad tiene la sección **Contenido**: preparar, el avance, la vista previa por canal (carrusel, caption, reel, Portal y Marketplace) con su revisión editorial y la edición de los textos.
+
+Conectar Instagram y publicar (F3), con `pnpm dev` corriendo. La cuenta se conecta con el token del botón **Generate token** del panel de Meta (copiado al portapapeles); las variables `INSTAGRAM_*` solo las necesita el OAuth, que llega en F7:
+```bash
+pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin
+pnpm -s cli accounts [refresh <id> [--force]]        # cuentas, vencimiento y refresco
+pnpm -s cli approve <id_propiedad> [--platform instagram] [--undo]
+pnpm -s cli publish <id_propiedad>                   # en dry-run simula; en live pide confirmación
+pnpm -s cli publications <id_propiedad> [--events]   # estado, enlace y bitácora; cancel | retire <id>
+pnpm ig:smoke                                        # comprueba que Instagram descarga desde R2, sin publicar (no necesita pnpm dev)
+```
+En el panel: la página **Cuentas** (http://localhost:5173/cuentas) y, en la sección Contenido de cada propiedad, aprobar por canal y las publicaciones de Instagram (publicar, reintentar, descartar, marcar como retirada y la bitácora). Para publicar de verdad en una sesión, `PUBLISH_MODE=live pnpm dev` (la API y el worker lo reciben juntos, sin tocar `.env`); al terminar, arranca de nuevo sin la variable. Lo publicado en vivo se borra a mano en Instagram y se marca como retirado.
 - **`PUBLISH_MODE=dry-run` por defecto:** no se publica nada de verdad. En `live` se ve en rojo en el panel y la CLI.
 - **La cola la inicializa el worker:** la primera vez aparece con error hasta que el worker arranca (lo hace `pnpm dev`); refresca el panel.
 - **Detén `pnpm dev` al terminar** (Ctrl+C): el worker y el panel mantienen Neon despierto y consumen las horas del plan gratis.
