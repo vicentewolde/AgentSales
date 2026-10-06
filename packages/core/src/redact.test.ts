@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { REDACTED, redactText } from "./redact.js";
+import { REDACTED, redactText, scrubMessage } from "./redact.js";
 
 describe("redactText", () => {
   it("oculta credenciales y parámetros sensibles de URLs en un texto libre", () => {
@@ -46,5 +46,36 @@ describe("redactText", () => {
 
   it("deja intacto un texto sin URLs sensibles", () => {
     expect(redactText("bucket inaccesible")).toBe("bucket inaccesible");
+  });
+});
+
+describe("scrubMessage", () => {
+  it("quita claves de R2, rutas de disco (también entre comillas) y secretos de URLs firmadas", () => {
+    const message = [
+      "No existe brokers/b1/listings/l1/a.jpg",
+      "ENOENT: no such file '/Users/op/tmp/x.jpg' (/var/folders/a/b)",
+      "leyendo data/muestras/propiedades.xlsx y ./tmp/imports/x",
+      "https://bucket.r2.cloudflarestorage.com/k?X-Amz-Credential=AKIA&X-Amz-Signature=abc123",
+      "y .env",
+    ].join(" ");
+    const scrubbed = scrubMessage(message);
+    for (const leak of [
+      "brokers/",
+      "/Users/op",
+      "/var/folders",
+      "data/muestras",
+      "./tmp",
+      "AKIA",
+      "abc123",
+      ".env",
+    ]) {
+      expect(scrubbed).not.toContain(leak);
+    }
+    expect(scrubbed).toContain("https://bucket.r2.cloudflarestorage.com/k");
+  });
+
+  it("deja visibles un comando de un tramo, una proporción y el texto normal", () => {
+    const message = "Abre `claude` y usa /login; proporción 4:5 a 1,91:1 en dry-run";
+    expect(scrubMessage(message)).toBe(message);
   });
 });

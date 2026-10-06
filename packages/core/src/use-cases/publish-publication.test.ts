@@ -40,7 +40,7 @@ async function setup(
     media: t.media,
     listings: t.listings,
     storage: options.storage ?? t.storage,
-    publishers: { instagram: fake } as Record<string, Publisher>,
+    publishers: { instagram: fake },
     workerMode: options.workerMode ?? "live",
     now: () => NOW,
   };
@@ -81,9 +81,9 @@ describe("publishPublication · éxito", () => {
     });
     expect((await t.listings.get(t.listingId))?.status).toBe("active");
     expect(fake.published).toHaveLength(1);
-    expect(fake.published[0]?.input.media.every((item) => item.url.includes("ttl=3600"))).toBe(
-      true,
-    );
+    const sentMedia = fake.published[0]?.input.media ?? [];
+    expect(sentMedia.length).toBeGreaterThan(0);
+    expect(sentMedia.every((item) => item.url.includes("ttl=3600"))).toBe(true);
 
     const [attempt] = await attempts(post);
     expect(attempt?.payload).toMatchObject({
@@ -152,12 +152,24 @@ describe("publishPublication · éxito", () => {
 });
 
 describe("publishPublication · nada que hacer", () => {
-  it("una que no está en publishing no se toca (idempotente)", async () => {
-    const { t, fake, post, run } = await setup();
+  it("una que no está en publishing no se toca (idempotente): sin eventos ni cambios", async () => {
+    const { t, fake, post, reel, run } = await setup();
     await run(post);
+    const before = await t.publications.listEvents(post.id);
     await expect(run(post)).resolves.toEqual({ outcome: "skipped", status: "published" });
-    const approved = t.publications.all().find((p) => p.status === "publishing");
-    expect(approved).toBeDefined();
+    expect(await t.publications.listEvents(post.id)).toEqual(before);
+    expect(current(t, post.id)?.attempts).toBe(1);
+
+    await t.publications.transition(
+      reel.id,
+      {
+        from: "publishing",
+        to: "failed",
+        changes: { lastError: { code: "X", message: "x", retriable: true } },
+      },
+      { actor: "system" },
+    );
+    await expect(run(reel)).resolves.toEqual({ outcome: "skipped", status: "failed" });
     expect(fake.published).toHaveLength(1);
   });
 
@@ -333,5 +345,180 @@ describe("publishPublication · apagado", () => {
     ).rejects.toMatchObject({ code: "PUBLISH_ABORTED", retriable: true });
     expect(current(t, post.id)?.status).toBe("publishing");
     expect(await attempts(post)).toEqual([]);
+  });
+});
+
+/** Un repositorio cuyo `method` falla las próximas `times` veces con `error`. */
+function failing<T extends object>(repo: T, method: keyof T, error: Error, times = 1): T {
+  let left = times;
+  return new Proxy(repo, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver);
+      if (typeof value !== "function") return value;
+      if (key !== method) return value.bind(target);
+      return (...args: unknown[]) => {
+        if (left > 0) {
+          left -= 1;
+          return Promise.reject(error);
+        }
+        return value.apply(target, args);
+      };
+    },
+  });
+}
+
+const dbDown = () => new AppError("DB_UNAVAILABLE", "La base no respondió", { retriable: true });
+
+describe("publishPublication · guardar después de publicar", () => {
+  const progress = {
+    attemptStartedAt: "2026-10-05T12:00:00.000Z",
+    childIds: [],
+    containerId: "c-1",
+  };
+
+  it("si falla guardar published, sigue en publishing (PUBLISH_RESULT_NOT_SAVED, reintentable) y el reintento guarda sin publicar de nuevo", async () => {
+    const { t, fake, deps, post, attempts } = await setup({ publisher: { steps: [{ progress }] } });
+    const flaky = { ...deps, publications: failing(t.publications, "transition", dbDown()) };
+    await expect(
+      publishPublication(flaky, { publicationId: post.id, isLastAttempt: true }),
+    ).rejects.toMatchObject({ code: "PUBLISH_RESULT_NOT_SAVED", retriable: true });
+    expect(current(t, post.id)).toMatchObject({ status: "publishing", lastError: null });
+    expect(await attempts(post)).toEqual([]);
+
+    await publishPublication(deps, { publicationId: post.id, isLastAttempt: true, retryCount: 1 });
+    expect(current(t, post.id)?.status).toBe("published");
+    // El reintento recibe el progreso: el publisher real reconoce el medio ya publicado.
+    expect(fake.published.map((call) => call.progress)).toEqual([null, progress]);
+    expect((await attempts(post)).map((e) => e.payload.result)).toEqual(["published"]);
+  });
+
+  it("si falla la bitácora después de publicar, queda published igual y se avisa", async () => {
+    const warnings: unknown[] = [];
+    const { t, deps, post } = await setup();
+    const flaky = {
+      ...deps,
+      publications: failing(t.publications, "addEvent", dbDown()),
+      onWarning: (warning: unknown) => warnings.push(warning),
+    };
+    await expect(
+      publishPublication(flaky, { publicationId: post.id, isLastAttempt: false }),
+    ).resolves.toMatchObject({ outcome: "published" });
+    expect(warnings).toEqual([
+      { publicationId: post.id, step: "attempt_event", code: "DB_UNAVAILABLE" },
+    ]);
+  });
+
+  it("si falla subir el aviso a active, queda published, se avisa, y un nuevo paso del job lo sube", async () => {
+    const warnings: unknown[] = [];
+    const { t, deps, post } = await setup();
+    const flaky = {
+      ...deps,
+      listings: failing(t.listings, "changeStatus", dbDown()),
+      onWarning: (warning: unknown) => warnings.push(warning),
+    };
+    await expect(
+      publishPublication(flaky, { publicationId: post.id, isLastAttempt: false }),
+    ).resolves.toMatchObject({ outcome: "published" });
+    expect((await t.listings.get(t.listingId))?.status).toBe("ready");
+    expect(warnings).toEqual([
+      { publicationId: post.id, step: "listing_active", code: "DB_UNAVAILABLE" },
+    ]);
+    await expect(
+      publishPublication(deps, { publicationId: post.id, isLastAttempt: false }),
+    ).resolves.toEqual({ outcome: "skipped", status: "published" });
+    expect((await t.listings.get(t.listingId))?.status).toBe("active");
+  });
+
+  it("si falla marcar failed porque la base no responde, relanza reintentable para que la cola reintente", async () => {
+    const { t, deps, post } = await setup({
+      publisher: { steps: [{ error: new AppError("IG_MEDIA_REJECTED", "rechazado") }] },
+    });
+    const flaky = { ...deps, publications: failing(t.publications, "transition", dbDown()) };
+    await expect(
+      publishPublication(flaky, { publicationId: post.id, isLastAttempt: false }),
+    ).rejects.toMatchObject({ code: "DB_UNAVAILABLE", retriable: true });
+    expect(current(t, post.id)?.status).toBe("publishing");
+  });
+
+  it("el aviso sube a active según la publicación (live), aunque el publisher diga simulated", async () => {
+    const { t, post, run } = await setup({
+      publisher: { steps: [{ result: { externalId: "x", externalUrl: null, simulated: true } }] },
+    });
+    await run(post);
+    expect((await t.listings.get(t.listingId))?.status).toBe("active");
+  });
+});
+
+describe("publishPublication · más rechazos", () => {
+  it("un texto que no existe es CONTENT_NOT_FOUND; uno ya no aprobado, CONTENT_NOT_APPROVED", async () => {
+    const missing = await setup();
+    const noContent = { ...missing.deps, contents: { get: async () => null } };
+    await expect(
+      publishPublication(noContent, { publicationId: missing.post.id, isLastAttempt: false }),
+    ).rejects.toMatchObject({ code: "CONTENT_NOT_FOUND" });
+
+    const edited = await setup();
+    await edited.t.contents.update(edited.post.contentId, { status: "edited" });
+    await expect(edited.run(edited.post)).rejects.toMatchObject({ code: "CONTENT_NOT_APPROVED" });
+    expect(current(edited.t, edited.post.id)?.status).toBe("failed");
+  });
+
+  it("credenciales ilegibles también detienen una simulación", async () => {
+    const { t, post, run } = await setup({ dryRun: true });
+    t.platformAccounts.corruptCredentials(t.account?.id ?? "");
+    await expect(run(post)).rejects.toMatchObject({ code: "CREDENTIALS_UNREADABLE" });
+    expect((await t.platformAccounts.get(t.account?.id ?? ""))?.status).toBe("error");
+  });
+
+  it("el evento del intento también lleva el motivo limpio", async () => {
+    const { post, run, attempts } = await setup({
+      publisher: {
+        steps: [
+          {
+            error: new AppError(
+              "STORAGE_NOT_FOUND",
+              "No existe brokers/b/listings/l/a.jpg ni '/Users/op/tmp/x.jpg' ?X-Amz-Signature=firma",
+            ),
+          },
+        ],
+      },
+    });
+    await expect(run(post)).rejects.toMatchObject({ code: "STORAGE_NOT_FOUND" });
+    // `sent` sí lleva las rutas de R2 (spec F3 §4.3); el motivo del error, no.
+    const [attempt] = await attempts(post);
+    expect(JSON.stringify(attempt?.payload.error)).not.toMatch(/brokers\/|\/Users\/|firma/);
+    expect(attempt?.payload.error).toMatchObject({ code: "STORAGE_NOT_FOUND" });
+  });
+});
+
+describe("publishPublication · apagado, más casos", () => {
+  const manualSignal = () => ({ aborted: false, addEventListener() {}, removeEventListener() {} });
+
+  it("un error reintentable con la señal se relanza tal cual; IG_AUTH_INVALID no vence la cuenta", async () => {
+    for (const error of [
+      new AppError("IG_UNAVAILABLE", "Instagram no respondió", { retriable: true }),
+      new AppError("IG_AUTH_INVALID", "venció"),
+    ]) {
+      const signal = manualSignal();
+      const { t, deps, post } = await setup();
+      const fake = createFakePublisher({ steps: [{ error }] });
+      const aborting: Publisher = {
+        ...fake,
+        async publish(input, ctx) {
+          signal.aborted = true;
+          return fake.publish(input, ctx);
+        },
+      };
+      const rejection = await publishPublication(
+        { ...deps, publishers: { instagram: aborting } },
+        { publicationId: post.id, isLastAttempt: true, signal },
+      ).catch((caught: unknown) => caught);
+      expect(rejection).toMatchObject({
+        code: error.retriable ? error.code : "PUBLISH_ABORTED",
+        retriable: true,
+      });
+      expect(current(t, post.id)).toMatchObject({ status: "publishing", lastError: null });
+      expect((await t.platformAccounts.get(t.account?.id ?? ""))?.status).toBe("connected");
+    }
   });
 });

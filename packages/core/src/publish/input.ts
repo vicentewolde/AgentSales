@@ -1,6 +1,5 @@
 import { instagramCaption } from "../content/assemble.js";
 import type { Content } from "../content.js";
-import type { MediaKind, Platform, PublicationFormat } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { Media } from "../media.js";
 import type { PlatformAccount } from "../platform-account.js";
@@ -11,7 +10,7 @@ import type {
   PublishIssue,
   PublishMediaItem,
 } from "../ports/publisher.js";
-import type { Publication } from "../publication.js";
+import type { Publication, PublishAttemptRecord } from "../publication.js";
 
 /** Vigencia de las URLs firmadas de un intento (spec F3 §4.4): 1 hora, recién creadas. */
 export const PUBLISH_MEDIA_URL_TTL_S = 3600;
@@ -86,31 +85,6 @@ export async function buildPublishInput(
     media: signed,
   };
 }
-
-/**
- * Lo que se envió en un intento, o lo que se habría enviado en `dry-run` (spec F3 §4.3): formato,
- * título, caption completo, medios (rutas de R2, tipo, tamaño y medidas) y la cuenta. Va en el
- * evento `publish_attempt` de **cada** intento: después de publicada, una corrida nueva puede
- * reemplazar los medios, y la bitácora es lo que queda (ADR-0014). Nunca va al log (el caption
- * trae datos del aviso) y **nunca** lleva URLs firmadas ni credenciales.
- */
-export type PublishAttemptRecord = {
-  platform: Platform;
-  format: PublicationFormat;
-  title: string | null;
-  caption: string;
-  media: {
-    mediaId: string;
-    storagePath: string;
-    kind: MediaKind;
-    mime: string;
-    bytes: number;
-    width: number | null;
-    height: number | null;
-    durationS: number | null;
-  }[];
-  account: { id: string; displayName: string };
-};
 
 /** Arma el registro de un intento campo por campo (no copia el `PublishInput`, que trae URLs). */
 export function publishAttemptRecord(

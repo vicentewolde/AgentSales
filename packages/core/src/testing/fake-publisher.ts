@@ -15,7 +15,7 @@ import { structuredCopy } from "./copy.js";
 export type FakePublishStep = {
   progress?: unknown;
   error?: Error;
-  result?: { externalId: string; externalUrl: string | null };
+  result?: { externalId: string; externalUrl: string | null; simulated?: boolean };
 };
 
 export type FakePublisherOptions = {
@@ -71,7 +71,7 @@ export function createFakePublisher(options: FakePublisherOptions = {}): FakePub
         externalId: `fake-${input.publicationId}-${published.length}`,
         externalUrl: `https://example.test/p/${input.publicationId}`,
       };
-      return { ...result, simulated: false };
+      return { simulated: false, ...result };
     },
   };
 }

@@ -29,3 +29,25 @@ export function redactText(text: string): string {
     .replace(OAUTH_CODE_PARAM, `$1${REDACTED}`)
     .replace(SENSITIVE_JSON_VALUE, `$1${REDACTED}"`);
 }
+
+/** Claves de R2 de un corredor: `brokers/<id>/listings/...`. */
+const STORAGE_KEY = /brokers\/\S+/g;
+/**
+ * Rutas de disco absolutas de dos tramos o más (también entre comillas o paréntesis) que no son
+ * parte de una URL: la barra no viene después de una letra, un número, `:` ni otra barra. Un solo
+ * tramo (`/login`, un comando) queda visible.
+ */
+const ABSOLUTE_PATH = /(?<![\w:/.])\/(?:[^\s'"()/]+\/)+[^\s'"()/,;]+/g;
+/** Rutas relativas que delatan archivos locales: `./x`, `../x`, `data/muestras/...`, `.env`. */
+const RELATIVE_PATH = /(?<![\w/])(?:\.{1,2}\/[^\s'"()]+|data\/muestras\/[^\s'"()]*|\.env\b)/g;
+
+/**
+ * Un mensaje de error apto para guardarlo donde lo ve el operador (`last_error`, el reporte de una
+ * corrida): sin secretos (`redactText`), sin claves de R2 ni rutas de disco.
+ */
+export function scrubMessage(message: string): string {
+  return redactText(message)
+    .replace(STORAGE_KEY, "<archivo>")
+    .replace(RELATIVE_PATH, "<ruta>")
+    .replace(ABSOLUTE_PATH, "<ruta>");
+}

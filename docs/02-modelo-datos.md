@@ -181,7 +181,7 @@ Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `medi
 | type | text | `status_changed`, `publish_attempt`, `sync`, `manual_edit` (`PUBLICATION_EVENT_TYPES`) |
 | from_status, to_status | text null | `from_status` es `null` al nacer la publicación |
 | actor | text | `system`, `operator`, `cli` (`PUBLICATION_ACTORS`) |
-| payload | jsonb | Sin secretos |
+| payload | jsonb | Sin secretos. En `publish_attempt` (F3-T11), `publishAttemptPayloadSchema`: `mode`, `attempt` (= `publications.attempts`), `retry` (reintento de la cola), `result` (`published`, `retry` o `failed`), `error?` y `sent?` (lo enviado: formato, caption, rutas de R2 y medidas de los medios, y la cuenta; nunca URLs firmadas ni tokens) |
 | created_at | timestamptz | |
 
 Índice `(publication_id, created_at)` para la bitácora de una publicación. `created_at` de los eventos y de las publicaciones se escribe con `clock_timestamp()` (no `now()`), para que el orden se mantenga dentro de una transacción. Entidad en core: `publicationEventSchema`.
