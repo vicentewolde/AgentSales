@@ -4,21 +4,18 @@ import {
   accountResponseSchema,
   type PlatformAccountView,
 } from "@agentsales/api/contracts";
-import { PLATFORM_ACCOUNT_STATUS_TEXT, PLATFORM_TEXT } from "@agentsales/core";
+import { PLATFORM_ACCOUNT_STATUS_TEXT, PLATFORM_TEXT, tokenStdinCommand } from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
-import { ApiCallError, type ApiClient, apiUrl, unwrap } from "../api-client.js";
+import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import type { Colors } from "../colors.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
-import { apiPort, loadEnvironment } from "../env.js";
 import { CliError, formatDateTime, guarded, type Io, renderTable } from "../output.js";
 import { brokerSlugOf, fetchBrokers } from "./shared.js";
 
 export type AccountsDeps = Io &
   Pick<Terminal, "stdinIsTty" | "readStdin" | "openUrl"> & {
     client: ApiClient;
-    /** El inicio del OAuth para un corredor (`http://localhost:<API_PORT>/oauth/instagram/start`). */
-    oauthStartUrl: (broker: string) => string;
     /** Para avisar de un vencimiento cercano. */
     now: () => Date;
   };
@@ -103,7 +100,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
       throw new CliError("BROKER_REQUIRED", "Falta --broker <slug>: el corredor de la cuenta");
     }
     const broker = brokerSlugOf(options.broker);
-    const pipeCommand = `pbpaste | pnpm -s cli accounts connect instagram --broker ${broker} --token-stdin`;
+    const pipeCommand = tokenStdinCommand(broker);
 
     if (!options.tokenStdin) {
       const { connect } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
@@ -114,7 +111,8 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
           `Copia el token y corre: ${pipeCommand}`,
         );
       }
-      const url = deps.oauthStartUrl(broker);
+      // El host lo decide la API (el de la URI de retorno: la cookie del `state` lo distingue).
+      const url = `${connect.instagram.startUrl}?broker=${encodeURIComponent(broker)}`;
       deps.print(`Abre este enlace para conectar Instagram: ${url}`);
       deps.openUrl(url);
       deps.print(c.dim("→ Al terminar, revisa la cuenta con: agentsales accounts"));
@@ -228,10 +226,6 @@ export function register(program: Command, ctx: CliContext): void {
   const deps = (): AccountsDeps => ({
     ...ctx,
     client: ctx.api(),
-    // `localhost` (no 127.0.0.1): la cookie del OAuth distingue el host (spec F3 §4.6). En F7, con
-    // https, el enlace lo debería dar la API (deuda en ESTADO).
-    oauthStartUrl: (broker) =>
-      `${apiUrl(apiPort(loadEnvironment()), "localhost")}/oauth/instagram/start?broker=${encodeURIComponent(broker)}`,
     now: () => new Date(),
   });
   const accounts = program

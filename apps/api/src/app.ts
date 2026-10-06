@@ -76,6 +76,12 @@ export type AppDeps = {
   /** La URL absoluta del panel, adonde vuelve el OAuth. */
   panelUrl: string;
   /**
+   * El inicio del OAuth (`/oauth/instagram/start`) en el host de `INSTAGRAM_REDIRECT_URI`: la cookie
+   * del `state` distingue `localhost` de `127.0.0.1`, así que el enlace del panel y la CLI usa ese
+   * host (F3-T17).
+   */
+  instagramStartUrl: string;
+  /**
    * El reloj de conectar y refrescar (la ventana de 24 h y 30 días, F3-T14); por defecto la hora
    * actual. Lo fijan los tests.
    */

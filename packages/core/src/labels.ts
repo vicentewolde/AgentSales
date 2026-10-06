@@ -118,6 +118,16 @@ export const PUBLICATION_ACTOR_TEXT: Readonly<Record<PublicationActor, string>> 
   cli: "CLI",
 };
 
+/**
+ * El comando para conectar Instagram con el token del panel de Meta (D4 del spec F3): lo muestran
+ * la CLI y el panel. El slug sale de `slugify` (minúsculas, números y guiones); si alguno trajera
+ * otra cosa, va entre comillas simples para la terminal.
+ */
+export function tokenStdinCommand(slug: string): string {
+  const quoted = /^[a-z0-9-]+$/.test(slug) ? slug : `'${slug.replaceAll("'", `'\\''`)}'`;
+  return `pbpaste | pnpm -s cli accounts connect instagram --broker ${quoted} --token-stdin`;
+}
+
 /** El estado de una cuenta conectada. */
 export const PLATFORM_ACCOUNT_STATUS_TEXT: Readonly<Record<PlatformAccountStatus, string>> = {
   connected: "conectada",

@@ -31,6 +31,8 @@ export type AccountRoutesDeps = ConnectAccountDeps &
     logger: AppLogger;
     /** Si el panel puede ofrecer el OAuth (par de la app y URI `https://`). */
     instagramOAuth: boolean;
+    /** El inicio del OAuth, en el host de la URI de retorno (`AppDeps.instagramStartUrl`). */
+    instagramStartUrl: string;
   };
 
 /**
@@ -104,7 +106,9 @@ export function accountRoutes(deps: AccountRoutesDeps) {
       const accounts = await deps.platformAccounts.list();
       const body: AccountListResponse = {
         accounts: accounts.map(accountView),
-        connect: { instagram: { oauth: deps.instagramOAuth } },
+        connect: {
+          instagram: { oauth: deps.instagramOAuth, startUrl: deps.instagramStartUrl },
+        },
       };
       return c.json(body, 200);
     })

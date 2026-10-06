@@ -7,12 +7,8 @@ import type { z } from "zod";
 /** Mayor que el peor caso de `/health` (25 s con Neon despertando). */
 export const API_TIMEOUT_MS = 30_000;
 
-/**
- * La API solo escucha en IPv4 local (spec F0 §4.5). `localhost` solo para enlaces que abre el
- * navegador y que tienen que coincidir con otro host (la cookie del OAuth, spec F3 §4.6).
- */
-export const apiUrl = (port: number, host: "127.0.0.1" | "localhost" = "127.0.0.1") =>
-  `http://${host}:${port}`;
+/** La API solo escucha en IPv4 local (spec F0 §4.5). */
+export const apiUrl = (port: number) => `http://127.0.0.1:${port}`;
 
 /**
  * Fallo al hablar con la API. `code` es el de su `ErrorBody` o el de la red (`ECONNREFUSED`,

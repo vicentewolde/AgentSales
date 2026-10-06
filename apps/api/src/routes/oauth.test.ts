@@ -9,7 +9,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { fakeInstagramAuth, TEST_ENCRYPTION_KEY, testDeps } from "../testing/index.js";
-import { OAUTH_STATE_COOKIE } from "./oauth.js";
+import { instagramStartUrlOf, OAUTH_STATE_COOKIE } from "./oauth.js";
 
 const API = "http://localhost:8787";
 const PANEL = "http://localhost:5173";
@@ -299,5 +299,16 @@ describe("OAuth · seguridad", () => {
     expect(written).not.toContain("codigo-secreto");
     expect(written).not.toContain("IGAA-largo");
     expect(written).not.toContain(state);
+  });
+});
+
+describe("instagramStartUrlOf", () => {
+  it("el inicio del OAuth va en el host de la URI de retorno, sin su ruta", () => {
+    expect(instagramStartUrlOf("http://localhost:8787/oauth/instagram/callback")).toBe(
+      "http://localhost:8787/oauth/instagram/start",
+    );
+    expect(instagramStartUrlOf("https://agentsales.test/oauth/instagram/callback")).toBe(
+      "https://agentsales.test/oauth/instagram/start",
+    );
   });
 });

@@ -131,3 +131,27 @@ describe("createApiClient + unwrap", () => {
     });
   });
 });
+
+describe("createApiClient · Content-Type", () => {
+  it("un pedido que cambia algo sin cuerpo va como JSON; una consulta y una subida no se tocan", async () => {
+    const seen: Headers[] = [];
+    const client = createApiClient("/api", {
+      fetch: async (_input, init) => {
+        seen.push(new Headers(init?.headers));
+        return new Response("{}", { headers: { "content-type": "application/json" } });
+      },
+    });
+    const id = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
+
+    await client.accounts[":id"].disconnect.$post({ param: { id } });
+    await client.accounts.$get();
+    await client.imports.$post({ form: { file: new File(["x"], "a.xlsx") } });
+
+    const [disconnect, list, upload] = seen;
+    expect(disconnect?.get("content-type")).toBe("application/json");
+    expect(list?.get("content-type")).toBeNull();
+    expect(upload?.get("content-type") ?? "").not.toContain("application/json");
+    // El panel no se identifica como la CLI: el actor de la bitácora queda `operator`.
+    expect(disconnect?.get("x-agentsales-client")).toBeNull();
+  });
+});

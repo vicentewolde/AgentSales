@@ -10,6 +10,7 @@ export const MENU: readonly MenuItem[] = [
   // Sin `end`: también queda marcada en el detalle (`/propiedades/:id`).
   { label: "Propiedades", to: "/propiedades" },
   { label: "Importar", to: "/importar" },
+  { label: "Cuentas", to: "/cuentas" },
   { label: "Publicaciones", phase: "F3" },
 ];
 

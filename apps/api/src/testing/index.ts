@@ -132,6 +132,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
     oauthState: createStateSigner(TEST_ENCRYPTION_KEY),
     panelUrl: "http://localhost:5173",
+    instagramStartUrl: "http://localhost:8787/oauth/instagram/start",
     ...overrides,
   };
   // El candado entrega los mismos repositorios que la app (también los que pisó `overrides`).

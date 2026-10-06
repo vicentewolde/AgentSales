@@ -25,6 +25,8 @@ async function setup(options: { oauth?: boolean } = {}) {
         oauthConfigured: true,
         secureCookie: options.oauth ?? false,
       },
+      // Distinto del que escribiría alguien a mano: el enlace tiene que venir de la API.
+      instagramStartUrl: "https://agentsales.test/oauth/instagram/start",
     },
   });
   await h.brokers.create(brokerData("marca"));
@@ -34,7 +36,6 @@ async function setup(options: { oauth?: boolean } = {}) {
     stdinIsTty: () => stdin === null,
     readStdin: async () => stdin ?? "",
     openUrl: (url) => opened.push(url),
-    oauthStartUrl: (broker) => `http://localhost:8787/oauth/instagram/start?broker=${broker}`,
     now: () => clock,
   });
   const connect = (options: ConnectOptions = { broker: "marca", tokenStdin: true }) =>
@@ -129,7 +130,7 @@ describe("accounts connect", () => {
     const { h, opened, connect } = await setup({ oauth: true });
 
     expect(await connect({ broker: "Marca" })).toBe(0);
-    expect(opened).toEqual(["http://localhost:8787/oauth/instagram/start?broker=marca"]);
+    expect(opened).toEqual(["https://agentsales.test/oauth/instagram/start?broker=marca"]);
     expect(h.text()).toContain(opened[0]);
   });
 });

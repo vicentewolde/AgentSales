@@ -30,6 +30,21 @@ export class ApiError extends Error {
 
 type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Un pedido que cambia algo y va sin cuerpo (Desconectar; en T18, aprobar y publicar) lleva
+ * `Content-Type: application/json`, como la CLI: sin él, el CSRF de la API lo trata como un
+ * formulario si no llega el `Origin` (spec F3-T16). Uno con cuerpo ya trae el suyo.
+ */
+function withJsonType(init: RequestInit | undefined): RequestInit | undefined {
+  if (init === undefined || init.body != null) return init;
+  if (!UNSAFE_METHODS.has(init.method?.toUpperCase() ?? "GET")) return init;
+  const headers = new Headers(init.headers);
+  if (!headers.has("content-type")) headers.set("content-type", "application/json");
+  return { ...init, headers };
+}
+
 export type ApiClientOptions = {
   timeoutMs?: number;
   uploadTimeoutMs?: number;
@@ -54,7 +69,7 @@ export function createApiClient(baseUrl = "/api", options: ApiClientOptions = {}
       const timeout = AbortSignal.timeout(limitMs);
       const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
       try {
-        return await send(input, { ...init, signal });
+        return await send(input, { ...withJsonType(init), signal });
       } catch (error) {
         if (error instanceof Error && error.name === "TimeoutError") {
           // La API pudo recibir la subida igual: antes de reintentar, mira "Cargas anteriores".

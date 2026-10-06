@@ -236,6 +236,19 @@ describe("cuentas · seguridad y mensajes", () => {
     ]);
   });
 
+  it("el contrato solo acepta un startUrl http(s): la CLI lo abre y el panel lo enlaza", () => {
+    const body = (startUrl: string) => ({
+      accounts: [],
+      connect: { instagram: { oauth: true, startUrl } },
+    });
+    expect(accountListResponseSchema.safeParse(body("https://agentsales.test/x")).success).toBe(
+      true,
+    );
+    for (const bad of ["javascript:alert(1)", "file:///etc/passwd", "no es una url"]) {
+      expect(accountListResponseSchema.safeParse(body(bad)).success).toBe(false);
+    }
+  });
+
   it("GET /accounts dice si el panel puede ofrecer el OAuth (par de la app y https)", async () => {
     for (const [oauthConfigured, secureCookie, oauth] of [
       [true, true, true],
@@ -247,6 +260,7 @@ describe("cuentas · seguridad y mensajes", () => {
       );
       const body = accountListResponseSchema.parse(await (await app.request("/accounts")).json());
       expect(body.connect.instagram.oauth).toBe(oauth);
+      expect(body.connect.instagram.startUrl).toBe("http://localhost:8787/oauth/instagram/start");
     }
   });
 

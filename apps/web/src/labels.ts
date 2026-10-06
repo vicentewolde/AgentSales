@@ -1,4 +1,8 @@
-import { LISTING_MANUAL_TARGETS, type ListingStatus } from "@agentsales/core";
+import {
+  LISTING_MANUAL_TARGETS,
+  type ListingStatus,
+  type PlatformAccountStatus,
+} from "@agentsales/core";
 
 // Los textos de estados y operaciones viven en core (los comparte la CLI). Aquí, solo lo propio
 // de la interfaz: colores y botones.
@@ -11,6 +15,14 @@ export const LISTING_STATUS_TONE: Readonly<Record<ListingStatus, string>> = {
   paused: "bg-amber-100 text-amber-800",
   closed: "bg-slate-200 text-slate-600",
   archived: "bg-slate-200 text-slate-600",
+};
+
+/** Colores de la etiqueta de estado de una cuenta conectada. */
+export const ACCOUNT_STATUS_TONE: Readonly<Record<PlatformAccountStatus, string>> = {
+  connected: "bg-emerald-100 text-emerald-800",
+  expired: "bg-red-100 text-red-800",
+  revoked: "bg-slate-200 text-slate-600",
+  error: "bg-red-100 text-red-800",
 };
 
 export type ManualTarget = (typeof LISTING_MANUAL_TARGETS)[number];
