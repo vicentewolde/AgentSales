@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-06
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** F3-T16 · CLI
-**Siguiente paso:** `/tarea F3-T17` · Panel: Cuentas
+**Última tarea terminada:** F3-T17 · Panel: Cuentas
+**Siguiente paso:** `/tarea F3-T18` · Panel: aprobar y publicar
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -27,7 +27,7 @@
 | F3-T14 · Refresco de tokens | ✅ terminada | #67 |
 | F3-T15 · API de aprobación y publicaciones | ✅ terminada | #68 |
 | F3-T16 · CLI | ✅ terminada | #69 |
-| F3-T17 · Panel: Cuentas | ⏳ pendiente | |
+| F3-T17 · Panel: Cuentas | ✅ terminada | |
 | F3-T18 · Panel: aprobar y publicar | ⏳ pendiente | |
 | F3-T19 · `pnpm ig:smoke` | ⏳ pendiente | |
 | F3-T20 · Cierre de fase | ⏳ pendiente | |
@@ -52,7 +52,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **F7:** `GET /listings` devuelve la entidad completa: notas internas, dirección exacta y todos los atributos. Es aceptable mientras la API sea local (`hostGuard`). Con autenticación y despliegue, usar una proyección acotada para la lista.
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
 - F7: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
-- **F7, OAuth desde la CLI:** `accounts connect` sin `--token-stdin` arma el enlace con `http://localhost:<API_PORT>`. Con https, el host tiene que ser el de `INSTAGRAM_REDIRECT_URI` (la cookie lo distingue): que `GET /accounts` devuelva `connect.instagram.startUrl` y lo usen la CLI y el panel. Además, `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
+- **F7, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global. (El enlace del OAuth ya lo da la API: `connect.instagram.startUrl`, T17.)
 - **F7, actor de la bitácora:** la API distingue la CLI del panel por la cabecera `X-AgentSales-Client`, que cualquier proceso local puede mandar. Con autenticación, el actor sale de la sesión.
 - **F7, refresco de tokens:** el job `tokens.refresh` expira a los 5 min y la expiración no corta el handler. Con una cuenta por corredor sobra; con muchas cuentas (llamadas de hasta 30 s), subir el tope o dejar de empezar cuentas nuevas pasados unos 4 min, para que un reintento no se cruce con el intento anterior.
 - **F6:** una publicación cuyo último intento terminó cortado (`PUBLISH_ABORTED`) o publicado sin guardar (`PUBLISH_RESULT_NOT_SAVED`) queda en `publishing` sin job hasta el próximo arranque del worker (que la reencola) o hasta publicarla de nuevo. En el segundo caso ya salió en Instagram. Que `publication.sync` o un reencolado periódico lo cubran.
@@ -73,6 +73,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-06: **F3-T17.** Panel: página **Cuentas** (en el menú): la cuenta de Instagram de cada corredor con su estado, vencimiento (aviso a 10 días), última renovación y permisos; Desconectar con confirmación; Conectar o Reconectar con el comando de la CLI para copiar (en F3) o el botón de Instagram (con https, F7); el mensaje de vuelta del OAuth. La API dice ahora dónde empieza el OAuth, y la CLI usa lo mismo.
 - 2026-10-06: **F3-T16.** CLI: `approve` (y `--undo`), `publish` (confirma en vivo, espera el carrusel y el reel y muestra los enlaces; sale con 1 si alguno falla), `publications` (con la bitácora, `cancel` y `retire`, que en vivo pregunta si ya se borró a mano) y `accounts` (con `connect instagram --token-stdin` por tubería, `pbpaste | …`, y `refresh`). La CLI se identifica ante la API, así que la bitácora dice "CLI".
 - 2026-10-06: **F3-T15.** API de aprobación y publicaciones: aprobar y quitar la aprobación de un texto, ver las publicaciones de un aviso (con miniaturas), publicar el canal o una, descartar, marcar como retirada (en `live`, con la confirmación de que se borró a mano) y la bitácora. El modo lo pone la configuración de la API, nunca quien llama; la CLI se identifica con una cabecera para que la bitácora diga `cli`. Ninguna respuesta lleva tokens, progreso interno ni URLs de lo enviado a Instagram.
 - 2026-10-06: **F3-T14.** Refresco de tokens: la regla en core (24 h desde el último refresco o desde la conexión con el token del panel; 30 días o menos de vigencia, que `force` salta; vencido o 190 → `expired`; un error de red no cambia la cuenta), el job `tokens.refresh` (al arrancar el worker y todos los días a las 12:00 de Chile, sin pisarse; también sin el par de la app, porque el refresco solo usa el token) y `POST /accounts/:id/refresh` síncrono con lo que pasó (`refreshed`, `skipped` con desde cuándo, o `expired`). Una cuenta conectada con el token del panel se refresca a las 24 h aunque su vencimiento estimado diga 60 días. Ningún log ni respuesta lleva el token. Para la demo: con `pnpm dev`, revisar que el cron quedó en `pgboss.schedule` y que el refresco del arranque no se duplica con el del cron (las pruebas usan un pg-boss falso).

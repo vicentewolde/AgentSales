@@ -487,11 +487,13 @@ export type PlatformAccountView = z.infer<typeof platformAccountViewSchema>;
 /**
  * `GET /accounts`: las cuentas y cómo se puede conectar cada plataforma. `oauth` es `true` solo si
  * la API tiene el par de la app de Instagram y la URI de retorno es `https://` (F7); si no (F3 en
- * local, D4), el panel muestra el comando de la CLI con `--token-stdin`.
+ * local, D4), el panel muestra el comando de la CLI con `--token-stdin`. `startUrl` es el inicio del
+ * OAuth en el mismo host que la URI de retorno (la cookie del `state` lo distingue): el panel y la
+ * CLI le suman `?broker=<slug>` y lo abren directo, no por el proxy `/api` (F3-T17).
  */
 export const accountListResponseSchema = z.object({
   accounts: z.array(platformAccountViewSchema),
-  connect: z.object({ instagram: z.object({ oauth: z.boolean() }) }),
+  connect: z.object({ instagram: z.object({ oauth: z.boolean(), startUrl: z.string() }) }),
 });
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
 

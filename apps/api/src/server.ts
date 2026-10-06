@@ -107,6 +107,7 @@ const app = createApp({
   oauthState: createStateSigner(env.APP_ENCRYPTION_KEY),
   // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).
   panelUrl: `http://localhost:${env.WEB_PORT}`,
+  instagramStartUrl: new URL("/oauth/instagram/start", env.INSTAGRAM_REDIRECT_URI).toString(),
   queue,
   uploads: {
     save: (runId, fileName, bytes) => staging.saveInput(runId, fileName, bytes),

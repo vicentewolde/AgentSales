@@ -21,6 +21,7 @@ import {
   createInMemoryMediaProcessor,
   createInMemoryMediaRepository,
   createInMemoryMediaStorage,
+  createInMemoryPlatformAccountRepository,
   createInMemorySlideTemplates,
   fakeHash,
 } from "@agentsales/core/testing";
@@ -60,6 +61,7 @@ export function harness(options: HarnessOptions = {}) {
   const media = createInMemoryMediaRepository();
   const importRuns = createInMemoryImportRunRepository({ nextId: randomUUID });
   const content = createInMemoryContentRepositories({ nextId: randomUUID });
+  const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
   const app = createApp(
     testDeps({
       access: localAccess(8787, 5173),
@@ -69,6 +71,7 @@ export function harness(options: HarnessOptions = {}) {
       importRuns,
       contentRuns: content.contentRuns,
       contents: content.contents,
+      platformAccounts,
       ...options.deps,
     }),
   );
@@ -151,6 +154,7 @@ export function harness(options: HarnessOptions = {}) {
     importRuns,
     contentRuns: content.contentRuns,
     contents: content.contents,
+    platformAccounts,
     renderApp,
   };
 }

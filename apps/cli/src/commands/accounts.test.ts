@@ -34,7 +34,6 @@ async function setup(options: { oauth?: boolean } = {}) {
     stdinIsTty: () => stdin === null,
     readStdin: async () => stdin ?? "",
     openUrl: (url) => opened.push(url),
-    oauthStartUrl: (broker) => `http://localhost:8787/oauth/instagram/start?broker=${broker}`,
     now: () => clock,
   });
   const connect = (options: ConnectOptions = { broker: "marca", tokenStdin: true }) =>
