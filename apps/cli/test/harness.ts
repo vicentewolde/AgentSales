@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto";
 import { type AppDeps, createApp, localAccess } from "@agentsales/api";
 import { testDeps } from "@agentsales/api/testing";
 import type {
+  AppError,
   BrokerData,
   ContentRunReport,
   ContentRunStage,
   ImportReport,
   NewContent,
   NewListing,
+  PublishMode,
 } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
@@ -19,6 +21,7 @@ import {
   createInMemoryMediaRepository,
   createInMemoryPlatformAccountRepository,
   createInMemoryPublicationRepository,
+  createPublicationScenario,
 } from "@agentsales/core/testing";
 import { createApiClient } from "../src/api-client.js";
 import { createColors } from "../src/colors.js";
@@ -43,8 +46,10 @@ export function harness(options: HarnessOptions = {}) {
   const media = createInMemoryMediaRepository();
   const queue = createInMemoryJobQueue();
   const content = createInMemoryContentRepositories({ nextId: randomUUID });
-  // El candado con las publicaciones a mano, para armar casos como una publicación pendiente.
+  // El candado con las publicaciones a mano, para armar casos como una publicación pendiente. La
+  // API y el candado comparten publicaciones y cuentas.
   const publications = createInMemoryPublicationRepository();
+  const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
   const lock = createInMemoryListingLock({
     brokers,
     listings,
@@ -52,7 +57,7 @@ export function harness(options: HarnessOptions = {}) {
     contentRuns: content.contentRuns,
     contents: content.contents,
     publications,
-    platformAccounts: createInMemoryPlatformAccountRepository(),
+    platformAccounts,
   });
   const app = createApp(
     testDeps({
@@ -64,6 +69,8 @@ export function harness(options: HarnessOptions = {}) {
       queue,
       contentRuns: content.contentRuns,
       contents: content.contents,
+      publications,
+      platformAccounts,
       lock,
       ...options.deps,
     }),
@@ -101,7 +108,46 @@ export function harness(options: HarnessOptions = {}) {
     contentRuns: content.contentRuns,
     contents: content.contents,
     publications,
+    platformAccounts,
   };
+}
+
+/**
+ * Un aviso preparado con la cuenta de Instagram conectada (el escenario de publicación de core, con
+ * ids uuid) y la CLI sobre la API real en proceso. `h.*` son los repositorios del arnés; los del
+ * escenario están en `t`.
+ */
+export async function publicationHarness(
+  options: {
+    approve?: boolean;
+    account?: boolean;
+    publishMode?: PublishMode;
+    queueFails?: () => AppError | undefined;
+  } = {},
+) {
+  const t = await createPublicationScenario({
+    nextId: randomUUID,
+    approve: options.approve ?? true,
+    account: options.account ?? true,
+    ...(options.queueFails === undefined ? {} : { queueFails: options.queueFails }),
+  });
+  const h = harness({
+    deps: {
+      listings: t.listings,
+      brokers: t.brokers,
+      media: t.media,
+      fieldDefinitions: t.fieldDefinitions,
+      storage: t.storage,
+      contents: t.contents,
+      contentRuns: t.contentRuns,
+      platformAccounts: t.platformAccounts,
+      publications: t.publications,
+      lock: t.deps.lock,
+      queue: t.deps.queue,
+      publishMode: options.publishMode ?? "dry-run",
+    },
+  });
+  return { h, t };
 }
 
 /** Reloj falso: `sleep` avanza el tiempo y avisa a `onTick` (que hace de worker). */

@@ -374,9 +374,9 @@ Ninguna. El cliente de Instagram usa `fetch` de Node; el cifrado, `node:crypto`;
   - un 503 al publicar deja la publicación en `publishing`: el mensaje dice que se arranque el worker;
   - el `payload` de la bitácora se lee con `publishAttemptPayloadSchema`.
 - **Hecho cuando:**
-  - [ ] Tests de cada comando con la API simulada; `publish` sale con 1 si queda `failed`
-  - [ ] `publish` y `publications retire` en `live` piden confirmación (o `--yes`)
-  - [ ] `CLAUDE.md` (Comandos) con los comandos nuevos
+  - [x] Tests de cada comando con la API simulada; `publish` sale con 1 si queda `failed`
+  - [x] `publish` y `publications retire` en `live` piden confirmación (o `--yes`)
+  - [x] `CLAUDE.md` (Comandos) con los comandos nuevos
 
 ### F3-T17 · Panel: Cuentas
 - **Depende de:** T13
@@ -502,3 +502,4 @@ Pendientes del operador (no bloquean el inicio):
 | 2026-10-06 | Revisión de F3-T14 (#67, `revisor` y `arquitecto`): un vencimiento estimado (token del panel) no espera los 30 días: se refresca a las 24 h de conectarlo y se conoce el real; el worker refresca también sin el par de la app (el refresco solo usa el token, como en la API); el reloj de las 24 h se lee aparte del resto de `meta` (una `meta` incompleta conserva el tope; aviso `ACCOUNT_META_UNREADABLE`); `ACCOUNT_REFRESH_UNSUPPORTED` (409) en vez de `unsupported`; la respuesta del refresco es una unión por `outcome` con `TOKEN_REFRESH_OUTCOMES` de core; al marcar `expired` se relee la cuenta; avisos al log de la API; `JobSchedule<N>` tipado y `missed: "skip"` explícito; §4.6 con "30 días o menos" y `TOKENS_REFRESH_INCOMPLETE`; archivos de la API en T14 |
 | 2026-10-06 | Desde F3-T15: rutas de §4.8 en `routes/content.ts` (aprobar y quitar la aprobación) y `routes/publications.ts`; la vista de una publicación (`publicationView`) quita `progress` y `externalId`; `GET /listings/:id/publications` trae miniaturas firmadas y omite los medios que ya no están; publicar responde 202; el actor sale de la cabecera `X-AgentSales-Client` (`cli`) o es `operator`; los códigos de aprobar y publicar van a `CONFLICTS` (409); `AppDeps.publications`; el escenario de publicación de core acepta `nextId` (uuid para la API) |
 | 2026-10-06 | Revisión de F3-T15 (#68, `revisor` y `arquitecto`): `GET /publications/:id` para sondear sin firmar miniaturas; el listado trae medios solo de las pendientes (un medio se reemplaza en su misma fila); `startedLive` en la vista; el detalle de los eventos se filtra al leer (`publishAttemptPayloadSchema` y las claves conocidas); `AppDeps.publications` solo lee; `CLI_CLIENT`; `PUBLICATION_EVENT_INVALID`, `PUBLICATION_REFERENCE_INVALID` y `PUBLICATION_PROGRESS_INVALID` a 500; tabla de HTTP de `05-convenciones.md` al día; tests de CSRF en todas las rutas que cambian algo, `hostGuard`, `stranded`, `PUBLISH_MODE_LOCKED`, `CONTENT_HAS_ERRORS`, `PUBLICATION_IN_PROGRESS` al quitar la aprobación y `listingBackToReady: false`; notas para T16 y T18 |
+| 2026-10-06 | Desde F3-T16: `approve`, `publish`, `publications` (con `cancel` y `retire`) y `accounts` (con `connect` y `refresh`) en la CLI; `publish` lee el modo de `/health` para confirmar en `live`, y sin terminal interactiva pide `--yes`; `waitForRun` recibe `isQueued` (las publicaciones no tienen `queued`); el cliente manda `X-AgentSales-Client: cli` y JSON en los `POST` sin cuerpo; `accounts connect --token-stdin` exige una tubería (no lee el token tecleado); textos `PLATFORM_ACCOUNT_STATUS_TEXT`, `PUBLISH_ATTEMPT_RESULT_TEXT` y `publicationModeText` en core |

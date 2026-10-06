@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-06
 **Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** F3-T15 · API de aprobación y publicaciones
-**Siguiente paso:** `/tarea F3-T16` · CLI
+**Última tarea terminada:** F3-T16 · CLI
+**Siguiente paso:** `/tarea F3-T17` · Panel: Cuentas
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
@@ -26,7 +26,7 @@
 | F3-T13 · Conectar Instagram | ✅ terminada | #66 |
 | F3-T14 · Refresco de tokens | ✅ terminada | #67 |
 | F3-T15 · API de aprobación y publicaciones | ✅ terminada | #68 |
-| F3-T16 · CLI | ⏳ pendiente | |
+| F3-T16 · CLI | ✅ terminada | |
 | F3-T17 · Panel: Cuentas | ⏳ pendiente | |
 | F3-T18 · Panel: aprobar y publicar | ⏳ pendiente | |
 | F3-T19 · `pnpm ig:smoke` | ⏳ pendiente | |
@@ -72,6 +72,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-06: **F3-T16.** CLI: `approve` (y `--undo`), `publish` (confirma en vivo, espera el carrusel y el reel y muestra los enlaces; sale con 1 si alguno falla), `publications` (con la bitácora, `cancel` y `retire`, que en vivo pregunta si ya se borró a mano) y `accounts` (con `connect instagram --token-stdin` por tubería, `pbpaste | …`, y `refresh`). La CLI se identifica ante la API, así que la bitácora dice "CLI".
 - 2026-10-06: **F3-T15.** API de aprobación y publicaciones: aprobar y quitar la aprobación de un texto, ver las publicaciones de un aviso (con miniaturas), publicar el canal o una, descartar, marcar como retirada (en `live`, con la confirmación de que se borró a mano) y la bitácora. El modo lo pone la configuración de la API, nunca quien llama; la CLI se identifica con una cabecera para que la bitácora diga `cli`. Ninguna respuesta lleva tokens, progreso interno ni URLs de lo enviado a Instagram.
 - 2026-10-06: **F3-T14.** Refresco de tokens: la regla en core (24 h desde el último refresco o desde la conexión con el token del panel; 30 días o menos de vigencia, que `force` salta; vencido o 190 → `expired`; un error de red no cambia la cuenta), el job `tokens.refresh` (al arrancar el worker y todos los días a las 12:00 de Chile, sin pisarse; también sin el par de la app, porque el refresco solo usa el token) y `POST /accounts/:id/refresh` síncrono con lo que pasó (`refreshed`, `skipped` con desde cuándo, o `expired`). Una cuenta conectada con el token del panel se refresca a las 24 h aunque su vencimiento estimado diga 60 días. Ningún log ni respuesta lleva el token. Para la demo: con `pnpm dev`, revisar que el cron quedó en `pgboss.schedule` y que el refresco del arranque no se duplica con el del cron (las pruebas usan un pg-boss falso).
 - 2026-10-06: **F3-T13.** Conectar Instagram: con el token del panel de Meta (`POST /accounts/connect-token`, lo que se usa en F3) o por OAuth (implementado y probado con dobles para F7, con el `state` firmado en una cookie y la vuelta al panel con un código); una sola cuenta conectada por corredor y plataforma (la anterior se desconecta en la misma transacción); `GET /accounts` y desconectar. Ninguna respuesta ni log lleva el token o el código.
