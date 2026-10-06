@@ -23,6 +23,11 @@ export type WaitOptions<R extends WaitedRun> = {
   laterCommand: string;
   /** Cómo se llama en los mensajes (`la carga`, `la preparación`). */
   noun: string;
+  /**
+   * Si todavía nadie la tomó, para avisar a los 20 s que el worker puede estar apagado. Por defecto,
+   * `status === "queued"`; las publicaciones no tienen ese estado y pasan su propio criterio.
+   */
+  isQueued?: (run: R) => boolean;
 };
 
 /** Puede volver a consultar: la API no respondió, o respondió un error de su lado (503, 500). */
@@ -46,6 +51,7 @@ export async function waitForRun<R extends WaitedRun>(
   let shown = options.progress(run);
   let warned = false;
   let failures = 0;
+  const isQueued = options.isQueued ?? ((current: R) => current.status === "queued");
   while (!options.isTerminal(run)) {
     if (deps.now() - started >= timing.maxWaitMs) {
       deps.print(c.yellow(`Sigue en curso: revisa más tarde con ${options.laterCommand}`));
@@ -69,7 +75,7 @@ export async function waitForRun<R extends WaitedRun>(
     const progress = options.progress(run);
     if (progress !== shown && !options.isTerminal(run)) deps.print(`${progress}…`);
     shown = progress;
-    if (run.status === "queued" && !warned && deps.now() - started >= timing.queuedWarningMs) {
+    if (isQueued(run) && !warned && deps.now() - started >= timing.queuedWarningMs) {
       warned = true;
       deps.print(c.yellow(RUN_QUEUED_WARNING_TEXT));
     }

@@ -137,3 +137,32 @@ describe("unwrap", () => {
     });
   });
 });
+
+describe("createApiClient · cabeceras", () => {
+  it("se identifica como la CLI y manda JSON en un POST sin cuerpo, sin pisar el de un formulario", async () => {
+    const seen: { method: string; path: string; headers: Headers }[] = [];
+    const client = createApiClient(8787, {
+      fetch: async (input, init) => {
+        const url = new URL(input instanceof Request ? input.url : String(input));
+        seen.push({
+          method: init?.method ?? "GET",
+          path: url.pathname,
+          headers: new Headers(init?.headers),
+        });
+        return new Response("{}", { headers: { "content-type": "application/json" } });
+      },
+    });
+    const id = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
+
+    await client.publications[":id"].cancel.$post({ param: { id } });
+    await client.health.$get();
+    await client.imports.$post({ form: { broker: "marca", file: new File(["x"], "a.xlsx") } });
+
+    const [cancel, health, upload] = seen;
+    expect(cancel?.headers.get("x-agentsales-client")).toBe("cli");
+    expect(cancel?.headers.get("content-type")).toBe("application/json");
+    expect(health?.headers.get("x-agentsales-client")).toBe("cli");
+    expect(health?.headers.get("content-type")).toBeNull();
+    expect(upload?.headers.get("content-type") ?? "").not.toContain("application/json");
+  });
+});

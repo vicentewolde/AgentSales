@@ -1,10 +1,34 @@
 import { brokerListResponseSchema, listingListResponseSchema } from "@agentsales/api/contracts";
-import { type Broker, slugify } from "@agentsales/core";
+import {
+  type Broker,
+  PLATFORM_SHORT_NAMES,
+  type Platform,
+  type PlatformShortName,
+  slugify,
+} from "@agentsales/core";
 import { z } from "zod";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { CliError } from "../output.js";
 
 /** Lo que usan varios comandos. */
+
+/** Los nombres cortos de `--platform` (`instagram`, `portal`, `marketplace`). */
+export const PLATFORM_OPTION_NAMES = Object.keys(PLATFORM_SHORT_NAMES);
+
+const isShortName = (name: string): name is PlatformShortName =>
+  Object.hasOwn(PLATFORM_SHORT_NAMES, name);
+
+/** `--platform portal` → `portal_inmobiliario`; `PLATFORM_INVALID` si no es uno de los cortos. */
+export function platformOption(option: string): Platform {
+  const name = option.trim().toLowerCase();
+  if (!isShortName(name)) {
+    throw new CliError(
+      "PLATFORM_INVALID",
+      `--platform debe ser ${PLATFORM_OPTION_NAMES.join(", ")}: "${option}"`,
+    );
+  }
+  return PLATFORM_SHORT_NAMES[name];
+}
 
 /** `--broker` como slug (`Mi-Corredor` → `mi-corredor`), igual que el que sale de la hoja. */
 export function brokerSlugOf(broker: string): string {

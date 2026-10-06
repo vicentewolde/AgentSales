@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto";
 import { type AppDeps, createApp, localAccess } from "@agentsales/api";
 import { testDeps } from "@agentsales/api/testing";
 import type {
+  AppError,
   BrokerData,
   ContentRunReport,
   ContentRunStage,
   ImportReport,
   NewContent,
   NewListing,
+  PublishMode,
 } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
@@ -19,6 +21,7 @@ import {
   createInMemoryMediaRepository,
   createInMemoryPlatformAccountRepository,
   createInMemoryPublicationRepository,
+  createPublicationScenario,
 } from "@agentsales/core/testing";
 import { createApiClient } from "../src/api-client.js";
 import { createColors } from "../src/colors.js";
@@ -43,29 +46,42 @@ export function harness(options: HarnessOptions = {}) {
   const media = createInMemoryMediaRepository();
   const queue = createInMemoryJobQueue();
   const content = createInMemoryContentRepositories({ nextId: randomUUID });
-  // El candado con las publicaciones a mano, para armar casos como una publicación pendiente.
+  // La API y el candado comparten repositorios: el candado se arma con los que quedan después de
+  // los reemplazos de `options.deps`, salvo que el test traiga el suyo. Las publicaciones completas
+  // (la app solo lee) son del arnés; un test que trae las suyas trae también su candado.
+  if (options.deps?.publications !== undefined && options.deps.lock === undefined) {
+    throw new Error("harness: con publications, pasa también lock (el que las cambia)");
+  }
   const publications = createInMemoryPublicationRepository();
-  const lock = createInMemoryListingLock({
-    brokers,
+  const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+  const repos = {
     listings,
+    brokers,
     media,
     contentRuns: content.contentRuns,
     contents: content.contents,
-    publications,
-    platformAccounts: createInMemoryPlatformAccountRepository(),
-  });
+    platformAccounts,
+    ...options.deps,
+  };
+  const lock =
+    options.deps?.lock ??
+    createInMemoryListingLock({
+      brokers: repos.brokers,
+      listings: repos.listings,
+      media: repos.media,
+      contentRuns: repos.contentRuns,
+      contents: repos.contents,
+      publications,
+      platformAccounts: repos.platformAccounts,
+    });
   const app = createApp(
     testDeps({
       access: localAccess(PORT, 5173),
       importRuns,
-      listings,
-      brokers,
-      media,
       queue,
-      contentRuns: content.contentRuns,
-      contents: content.contents,
+      publications,
+      ...repos,
       lock,
-      ...options.deps,
     }),
   );
   const requests: string[] = [];
@@ -78,6 +94,12 @@ export function harness(options: HarnessOptions = {}) {
       return app.request(url, init);
     },
   });
+  const own = <T>(name: keyof AppDeps, repository: T): T => {
+    if (options.deps?.[name] !== undefined) {
+      throw new Error(`harness: ${name} vino en options.deps; usa el del test`);
+    }
+    return repository;
+  };
   const out: string[] = [];
   const err: string[] = [];
   const io: Io = {
@@ -94,14 +116,70 @@ export function harness(options: HarnessOptions = {}) {
     errors: () => err.join("\n"),
     requests,
     importRuns,
-    listings,
-    brokers,
-    media,
     queue,
-    contentRuns: content.contentRuns,
-    contents: content.contents,
-    publications,
+    // Los repositorios en memoria del arnés, para armar casos. Si el test reemplazó uno con
+    // `options.deps` (`publicationHarness`), ese no es el de la API: leerlo aquí falla, y el test
+    // usa el suyo.
+    get listings() {
+      return own("listings", listings);
+    },
+    get brokers() {
+      return own("brokers", brokers);
+    },
+    get media() {
+      return own("media", media);
+    },
+    get contentRuns() {
+      return own("contentRuns", content.contentRuns);
+    },
+    get contents() {
+      return own("contents", content.contents);
+    },
+    get publications() {
+      return own("publications", publications);
+    },
+    get platformAccounts() {
+      return own("platformAccounts", platformAccounts);
+    },
   };
+}
+
+/**
+ * Un aviso preparado con la cuenta de Instagram conectada (el escenario de publicación de core, con
+ * ids uuid) y la CLI sobre la API real en proceso. `h.*` son los repositorios del arnés; los del
+ * escenario están en `t`.
+ */
+export async function publicationHarness(
+  options: {
+    approve?: boolean;
+    account?: boolean;
+    publishMode?: PublishMode;
+    queueFails?: () => AppError | undefined;
+  } = {},
+) {
+  const t = await createPublicationScenario({
+    nextId: randomUUID,
+    approve: options.approve ?? true,
+    account: options.account ?? true,
+    ...(options.queueFails === undefined ? {} : { queueFails: options.queueFails }),
+  });
+  const h = harness({
+    deps: {
+      listings: t.listings,
+      brokers: t.brokers,
+      media: t.media,
+      fieldDefinitions: t.fieldDefinitions,
+      storage: t.storage,
+      contents: t.contents,
+      contentRuns: t.contentRuns,
+      platformAccounts: t.platformAccounts,
+      publications: t.publications,
+      lock: t.deps.lock,
+      queue: t.deps.queue,
+      publishMode: options.publishMode ?? "dry-run",
+    },
+  });
+  return { h, t };
 }
 
 /** Reloj falso: `sleep` avanza el tiempo y avisa a `onTick` (que hace de worker). */

@@ -7,10 +7,12 @@ import type {
   ListingStatus,
   Operation,
   Platform,
+  PlatformAccountStatus,
   PublicationFormat,
   PublicationStatus,
 } from "./enums.js";
 import type { ImportBrokerOutcome, ImportRowOutcome } from "./import-run.js";
+import type { PublicationActor, PublishAttemptResult } from "./publication.js";
 
 // Textos para el operador, compartidos por la CLI y el panel (y las plantillas de F2): un solo
 // vocabulario. Las clases de color y los textos de botones son de cada interfaz.
@@ -97,6 +99,31 @@ export const PUBLICATION_STATUS_TEXT: Readonly<Record<PublicationStatus, string>
 export const PUBLICATION_FORMAT_TEXT: Readonly<Record<PublicationFormat, string>> = {
   post: "carrusel",
   reel: "reel",
+};
+
+/** El modo de un intento de publicación (`publications.dry_run`, D11 del spec F3). */
+export const publicationModeText = (dryRun: boolean): string => (dryRun ? "simulación" : "en vivo");
+
+/** El resultado de un intento (`publish_attempt` de la bitácora). */
+export const PUBLISH_ATTEMPT_RESULT_TEXT: Readonly<Record<PublishAttemptResult, string>> = {
+  published: "publicada",
+  retry: "se reintenta",
+  failed: "falló",
+};
+
+/** Quién hizo un cambio en la bitácora de una publicación. */
+export const PUBLICATION_ACTOR_TEXT: Readonly<Record<PublicationActor, string>> = {
+  system: "sistema",
+  operator: "panel",
+  cli: "CLI",
+};
+
+/** El estado de una cuenta conectada. */
+export const PLATFORM_ACCOUNT_STATUS_TEXT: Readonly<Record<PlatformAccountStatus, string>> = {
+  connected: "conectada",
+  expired: "vencida",
+  revoked: "desconectada",
+  error: "con error",
 };
 
 /** Qué pasó con el reel en una corrida (`report.reel`). */

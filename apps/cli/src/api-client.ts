@@ -1,5 +1,5 @@
 import type { AppType } from "@agentsales/api";
-import { errorBodySchema } from "@agentsales/api/contracts";
+import { CLI_CLIENT, CLIENT_HEADER, errorBodySchema } from "@agentsales/api/contracts";
 import { type HealthReport, healthReportSchema } from "@agentsales/core";
 import { hc } from "hono/client";
 import type { z } from "zod";
@@ -7,8 +7,12 @@ import type { z } from "zod";
 /** Mayor que el peor caso de `/health` (25 s con Neon despertando). */
 export const API_TIMEOUT_MS = 30_000;
 
-/** La API solo escucha en IPv4 local (spec F0 §4.5). */
-export const apiUrl = (port: number) => `http://127.0.0.1:${port}`;
+/**
+ * La API solo escucha en IPv4 local (spec F0 §4.5). `localhost` solo para enlaces que abre el
+ * navegador y que tienen que coincidir con otro host (la cookie del OAuth, spec F3 §4.6).
+ */
+export const apiUrl = (port: number, host: "127.0.0.1" | "localhost" = "127.0.0.1") =>
+  `http://${host}:${port}`;
 
 /**
  * Fallo al hablar con la API. `code` es el de su `ErrorBody` o el de la red (`ECONNREFUSED`,
@@ -55,19 +59,36 @@ export type ApiClientOptions = {
   fetch?: Fetch;
 };
 
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Un pedido que cambia algo y va sin cuerpo (aprobar, publicar una, descartar) lleva
+ * `Content-Type: application/json`: sin él, el CSRF de la API lo trata como un formulario y responde
+ * 403 (spec F3-T15). Uno con cuerpo ya lo trae (`json`) o lleva el suyo (un formulario).
+ */
+function withJsonType(init: RequestInit | undefined): RequestInit | undefined {
+  if (init === undefined || init.body != null) return init;
+  if (!UNSAFE_METHODS.has(init.method?.toUpperCase() ?? "GET")) return init;
+  const headers = new Headers(init.headers);
+  if (!headers.has("content-type")) headers.set("content-type", "application/json");
+  return { ...init, headers };
+}
+
 /**
  * Cliente RPC tipado (`hc<AppType>`) con toda la API. Cada petición tiene timeout, y un fallo de
- * red o de timeout llega como `ApiCallError`. La respuesta se lee con `unwrap`.
+ * red o de timeout llega como `ApiCallError`. La respuesta se lee con `unwrap`. Toda petición se
+ * identifica como la CLI (`X-AgentSales-Client: cli`), para que la bitácora registre `actor: cli`.
  */
 export function createApiClient(port: number, options: ApiClientOptions = {}) {
   const timeoutMs = options.timeoutMs ?? API_TIMEOUT_MS;
   const send = options.fetch ?? fetch;
   return hc<AppType>(apiUrl(port), {
+    headers: { [CLIENT_HEADER]: CLI_CLIENT },
     fetch: async (input: string | URL | Request, init?: RequestInit) => {
       const timeout = AbortSignal.timeout(timeoutMs);
       const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
       try {
-        return await send(input, { ...init, signal });
+        return await send(input, { ...withJsonType(init), signal });
       } catch (error) {
         throw describeFetchError(error, timeoutMs);
       }
