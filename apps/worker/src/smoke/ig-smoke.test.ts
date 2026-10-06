@@ -1,5 +1,6 @@
-import type { Media, PlatformAccount } from "@agentsales/core";
+import { AppError, type ListingStatus, type Media, type PlatformAccount } from "@agentsales/core";
 import {
+  abortableSleep,
   createInstagramGraph,
   INSTAGRAM_GRAPH_VERSION,
   INSTAGRAM_POLL,
@@ -7,7 +8,13 @@ import {
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { IG_SMOKE_CAPTION, type IgSmokeDeps, runIgSmoke } from "./ig-smoke.js";
+import {
+  describeUnexpected,
+  IG_SMOKE_CAPTION,
+  type IgSmokeDeps,
+  runIgSmoke,
+  smokeGraph,
+} from "./ig-smoke.js";
 
 const GRAPH = `https://graph.instagram.com/${INSTAGRAM_GRAPH_VERSION}`;
 const TOKEN = "IGAAsmoke-token-secreto";
@@ -92,10 +99,15 @@ const cover = (
   ...overrides,
 });
 
+type ListingRow = { id: string; brokerId: string; externalRef: string; status?: ListingStatus };
+
 type Setup = {
   accounts?: ReturnType<typeof account>[];
-  listings?: { id: string; brokerId: string; externalRef: string }[];
+  /** Por defecto en `ready`. */
+  listings?: ListingRow[];
   media?: Record<string, ReturnType<typeof cover>[]>;
+  /** Tipo de cada objeto en R2 por ruta; `null` si no está. Por defecto, todos `image/jpeg`. */
+  stored?: Record<string, string | null>;
 };
 
 /** Dependencias del smoke con datos a mano, el cliente de Instagram real (contra msw) y reloj falso. */
@@ -109,6 +121,7 @@ function setup({
     "listing-1": [cover("p001/cover.jpg")],
     "listing-2": [cover("p002/cover.jpg")],
   },
+  stored = {},
 }: Setup = {}) {
   let clock = 0;
   const sleeps: number[] = [];
@@ -130,15 +143,21 @@ function setup({
         { id: "broker-2", slug: "corredora-dos" },
       ],
     },
-    listings: { list: async () => listings },
+    listings: {
+      list: async () => listings.map((listing) => ({ status: "ready" as const, ...listing })),
+    },
     media: { listByListing: async (id) => media[id] ?? [] },
     storage: {
+      head: async (path) => {
+        const contentType = path in stored ? stored[path] : "image/jpeg";
+        return contentType === null ? null : { size: 300 * 1024, contentType };
+      },
       signedReadUrl: async (path, ttl) => {
         signed.push({ path, ttl });
         return SIGNED_URL;
       },
     },
-    graph: createInstagramGraph(),
+    graph: smokeGraph(createInstagramGraph()),
     sleep: async (ms) => {
       sleeps.push(ms);
       clock += ms;
@@ -230,7 +249,7 @@ describe("runIgSmoke", () => {
     expect(await run(ctx)).toBe(1);
     expect(ctx.out.at(-1)).toBe("  ERROR (0 s)");
     expect(ctx.err).toEqual([
-      "✗ IG_MEDIA_FETCH_FAILED: El contenedor quedó en ERROR (subcódigo 2207052)",
+      "✗ IG_MEDIA_FETCH_FAILED: Instagram no pudo descargar una foto o el video (subcódigo 2207052)",
       "  → Meta no pudo descargar la URL firmada de R2: es el riesgo de la nota §5 (plan B: prefijo público)",
     ]);
   });
@@ -240,7 +259,18 @@ describe("runIgSmoke", () => {
     const ctx = setup();
 
     expect(await run(ctx)).toBe(1);
-    expect(ctx.err).toEqual(["✗ IG_UNAVAILABLE: El contenedor quedó en ERROR"]);
+    expect(ctx.err).toEqual(["✗ IG_UNAVAILABLE: El contenedor quedó en ERROR, sin subcódigo"]);
+  });
+
+  it("un ERROR por la imagen dice qué tiene, no solo el código", async () => {
+    useInstagram({ statuses: [{ status_code: "ERROR", status: "Error: 2207004" }] });
+    const ctx = setup();
+
+    expect(await run(ctx)).toBe(1);
+    expect(ctx.err).toEqual([
+      "✗ IG_MEDIA_REJECTED: Una imagen pesa más de 8 MB (subcódigo 2207004)",
+      "  → Meta descargó la imagen pero la rechazó: revisa el formato de la portada",
+    ]);
   });
 
   it("si Meta rechaza crear el contenedor, muestra el código y el subcódigo de Meta sin su mensaje", async () => {
@@ -279,6 +309,8 @@ describe("runIgSmoke", () => {
     const ctx = setup();
 
     expect(await run(ctx)).toBe(1);
+    // 5, 10, 20 y 30 s, después cada 60 s, y la última espera recortada para consultar justo en el plazo.
+    expect(ctx.sleeps).toEqual([5, 10, 20, 30, 60, 60, 60, 55].map((s) => s * 1000));
     expect(ctx.sleeps.reduce((total, ms) => total + ms, 0)).toBe(INSTAGRAM_POLL.maxWaitMs);
     expect(ctx.out.at(-1)).toBe("  IN_PROGRESS (300 s)");
     expect(ig.polls()).toBe(ctx.sleeps.length + 1);
@@ -387,6 +419,27 @@ describe("runIgSmoke", () => {
       expect(byId.signed.map((item) => item.path)).toEqual(["p003/cover.jpg"]);
     });
 
+    it("por defecto elige entre los avisos que se pueden preparar; con --listing, cualquiera", async () => {
+      useInstagram();
+      const listings: ListingRow[] = [
+        { id: "listing-1", brokerId: "broker-1", externalRef: "P001", status: "archived" },
+        { id: "listing-2", brokerId: "broker-1", externalRef: "P002", status: "draft" },
+        { id: "listing-3", brokerId: "broker-1", externalRef: "P003", status: "paused" },
+      ];
+      const media = {
+        "listing-1": [cover("p001/cover.jpg")],
+        "listing-2": [cover("p002/cover.jpg")],
+        "listing-3": [cover("p003/cover.jpg")],
+      };
+      const byDefault = setup({ listings, media });
+      expect(await run(byDefault)).toBe(0);
+      expect(byDefault.signed.map((item) => item.path)).toEqual(["p003/cover.jpg"]);
+
+      const archived = setup({ listings, media });
+      expect(await run(archived, { listingRef: "P001" })).toBe(0);
+      expect(archived.signed.map((item) => item.path)).toEqual(["p001/cover.jpg"]);
+    });
+
     it("sin portada renderizada o con un aviso que no es del corredor", async () => {
       const none = setup({ media: {} });
       expect(await run(none)).toBe(1);
@@ -405,6 +458,124 @@ describe("runIgSmoke", () => {
       expect(await run(foreign, { listingRef: "P009" })).toBe(1);
       expect(foreign.err).toEqual(["✗ LISTING_NOT_FOUND: El corredor no tiene el aviso P009"]);
       expect(requests).toEqual([]);
+    });
+  });
+  describe("cortes y fallos de la base, R2 o las credenciales", () => {
+    it("Ctrl+C durante el sondeo corta con IG_ABORTED", async () => {
+      useInstagram({ statuses: [{ status_code: "IN_PROGRESS" }] });
+      const ctx = setup();
+      const abort = new AbortController();
+      ctx.deps.sleep = (ms, signal) => {
+        abort.abort();
+        return abortableSleep(ms, signal);
+      };
+
+      expect(await run(ctx, { signal: abort.signal })).toBe(1);
+      expect(ctx.err).toEqual(["✗ IG_ABORTED: Se cortó la llamada a Instagram"]);
+    });
+
+    it("con la señal ya disparada no llama a Instagram", async () => {
+      useInstagram();
+      const ctx = setup();
+      const abort = new AbortController();
+      abort.abort();
+
+      expect(await run(ctx, { signal: abort.signal })).toBe(1);
+      expect(ctx.err).toEqual(["✗ IG_ABORTED: Se cortó la llamada a Instagram"]);
+      expect(requests).toEqual([]);
+    });
+
+    it("un token ilegible pide reconectar, sin llamar a Instagram", async () => {
+      const ctx = setup();
+      ctx.deps.accounts.getCredentials = async () => {
+        throw new AppError("CREDENTIALS_UNREADABLE", "No se pudieron leer las credenciales");
+      };
+
+      expect(await run(ctx)).toBe(1);
+      expect(ctx.err).toEqual([
+        "✗ CREDENTIALS_UNREADABLE: No se pudieron leer las credenciales",
+        "  → El token guardado no se puede leer (¿cambió APP_ENCRYPTION_KEY?): vuelve a conectar la cuenta",
+      ]);
+      expect(requests).toEqual([]);
+    });
+
+    it("Neon dormido: el código y la pista", async () => {
+      const ctx = setup();
+      ctx.deps.accounts.list = async () => {
+        throw new AppError("DB_UNAVAILABLE", "La base de datos no responde", { retriable: true });
+      };
+
+      expect(await run(ctx)).toBe(1);
+      expect(ctx.err).toEqual([
+        "✗ DB_UNAVAILABLE: La base de datos no responde",
+        "  → Neon puede estar despertando: reintenta en unos segundos",
+      ]);
+    });
+
+    it("una portada que falta en R2 no se culpa a la URL firmada", async () => {
+      const ctx = setup({ stored: { "p001/cover.jpg": null } });
+
+      expect(await run(ctx)).toBe(1);
+      expect(ctx.err).toEqual([
+        "✗ STORAGE_NOT_FOUND: La portada de P001 está en la base pero no en R2",
+        "  → Vuelve a armar las imágenes del aviso: pnpm -s cli prepare <id_propiedad> --no-texts",
+      ]);
+      expect(ctx.signed).toEqual([]);
+      expect(requests).toEqual([]);
+    });
+
+    it("R2 caído: el código y la pista", async () => {
+      const ctx = setup();
+      ctx.deps.storage.head = async () => {
+        throw new AppError("STORAGE_UNAVAILABLE", "El almacenamiento no responde", {
+          retriable: true,
+        });
+      };
+
+      expect(await run(ctx)).toBe(1);
+      expect(ctx.err).toEqual([
+        "✗ STORAGE_UNAVAILABLE: El almacenamiento no responde",
+        "  → R2 no respondió: revisa la conexión y reintenta",
+      ]);
+    });
+
+    it("avisa si la portada en R2 no tiene el tipo image/jpeg, y sigue", async () => {
+      useInstagram();
+      const ctx = setup({ stored: { "p001/cover.jpg": "application/octet-stream" } });
+
+      expect(await run(ctx)).toBe(0);
+      expect(ctx.out).toContain(
+        "  Aviso: la portada está guardada con el tipo application/octet-stream, no image/jpeg; Meta podría rechazarla",
+      );
+    });
+
+    it("un error que no es AppError se deja al script", async () => {
+      const ctx = setup();
+      ctx.deps.listings.list = async () => {
+        throw new Error("fallo inesperado");
+      };
+
+      await expect(run(ctx)).rejects.toThrow("fallo inesperado");
+    });
+  });
+
+  describe("salvaguardas", () => {
+    it("smokeGraph no deja publicar ni con un cast", () => {
+      const graph = smokeGraph(createInstagramGraph());
+
+      expect(Object.keys(graph).sort()).toEqual(["containerStatus", "createContainer"]);
+      expect("publishContainer" in graph).toBe(false);
+    });
+
+    it("describeUnexpected quita las URLs y los secretos del mensaje", () => {
+      const text = describeUnexpected(
+        new Error(`No se pudo leer ${SIGNED_URL} (access_token=${TOKEN})`),
+      );
+
+      expect(text).not.toContain("firma-secreta");
+      expect(text).not.toContain(TOKEN);
+      expect(text).toContain("<url>");
+      expect(describeUnexpected("texto suelto")).toBe("texto suelto");
     });
   });
 });

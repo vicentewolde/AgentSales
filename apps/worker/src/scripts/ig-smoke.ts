@@ -9,7 +9,7 @@ import {
 } from "@agentsales/db";
 import { abortableSleep, createInstagramGraph } from "@agentsales/publishers";
 import { createR2Storage } from "@agentsales/storage";
-import { runIgSmoke } from "../smoke/ig-smoke.js";
+import { describeUnexpected, runIgSmoke, smokeGraph } from "../smoke/ig-smoke.js";
 
 // `pnpm ig:smoke [--broker <slug>] [--listing <id_propiedad>]` (spec F3-T19): crea un contenedor de
 // imagen en Instagram desde una URL firmada de R2 y espera a que Meta lo procese, **sin publicar**.
@@ -53,7 +53,7 @@ try {
         bucket: env.R2_BUCKET,
         signedUrlTtlSeconds: env.SIGNED_URL_TTL_SECONDS,
       }),
-      graph: createInstagramGraph(),
+      graph: smokeGraph(createInstagramGraph()),
       sleep: abortableSleep,
       now: () => performance.now(),
       print: (line) => console.log(line),
@@ -66,8 +66,8 @@ try {
     },
   );
 } catch (error) {
-  // Un `.env` inválido, una opción desconocida o un fallo inesperado: el mensaje, sin la pila.
-  console.error(`✗ ${error instanceof Error ? error.message : String(error)}`);
+  // Un `.env` inválido, una opción desconocida o un fallo inesperado: el mensaje, sin la pila ni URLs.
+  console.error(`✗ ${describeUnexpected(error)}`);
   process.exitCode = 1;
 } finally {
   await database?.close();

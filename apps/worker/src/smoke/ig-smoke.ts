@@ -2,6 +2,7 @@ import {
   type AbortSignalLike,
   AppError,
   type Broker,
+  canPrepareContent,
   isAppError,
   type Listing,
   type Media,
@@ -9,6 +10,7 @@ import {
   type PlatformAccount,
   type PlatformCredentials,
   PUBLISH_MEDIA_URL_TTL_S,
+  redactText,
 } from "@agentsales/core";
 import {
   INSTAGRAM_POLL,
@@ -19,9 +21,10 @@ import {
 // `pnpm ig:smoke` (spec F3-T19): con la cuenta conectada, crea **un** contenedor de imagen desde una
 // URL firmada de R2 (la portada ya renderizada de un aviso de muestra), sondea hasta `FINISHED` o
 // error e imprime el resultado. Comprueba que Meta descarga las URLs firmadas antes de la prueba en
-// `live` (spec F3 §8). **Nunca** publica: `graph` no trae `publishContainer` (`media_publish`), y el
-// contenedor sin publicar vence solo a las 24 h (nota de Instagram §4.4). No escribe en la base.
-// Nunca imprime el token ni la URL firmada (la firma da acceso de lectura).
+// `live` (spec F3 §8). **Nunca** publica: `graph` no trae `publishContainer` (`media_publish`), ni
+// en los tipos ni al ejecutar (`smokeGraph`), y el contenedor sin publicar vence solo a las 24 h
+// (nota de Instagram §4.4). No depende de `PUBLISH_MODE` (habla con Meta siempre, sin publicar) y no
+// escribe en la base. Nunca imprime el token ni la URL firmada (la firma da acceso de lectura).
 
 /** Caption del contenedor de prueba: nunca se publica, pero queda claro de dónde salió. */
 export const IG_SMOKE_CAPTION = "AgentSales ig:smoke: contenedor de prueba, no se publica";
@@ -44,7 +47,7 @@ export type IgSmokeDeps = {
     getCredentials(id: string): Promise<PlatformCredentials>;
   };
   brokers: { list(): Promise<Pick<Broker, "id" | "slug">[]> };
-  listings: { list(): Promise<Pick<Listing, "id" | "brokerId" | "externalRef">[]> };
+  listings: { list(): Promise<Pick<Listing, "id" | "brokerId" | "externalRef" | "status">[]> };
   media: {
     listByListing(
       listingId: string,
@@ -55,7 +58,8 @@ export type IgSmokeDeps = {
       >[]
     >;
   };
-  storage: Pick<MediaStorage, "signedReadUrl">;
+  /** `head` revisa que la portada esté en R2 antes de culpar a la URL firmada. */
+  storage: Pick<MediaStorage, "head" | "signedReadUrl">;
   /** Sin `publishContainer`: el smoke no puede publicar ni por error. */
   graph: Pick<InstagramGraph, "createContainer" | "containerStatus">;
   sleep(ms: number, signal?: AbortSignalLike): Promise<void>;
@@ -68,7 +72,10 @@ export type IgSmokeDeps = {
 export type IgSmokeOptions = {
   /** Slug del corredor; hace falta solo si hay cuentas conectadas en más de uno. */
   brokerSlug?: string;
-  /** `id_propiedad` o id del aviso; por defecto, el primero (por `id_propiedad`) con portada. */
+  /**
+   * `id_propiedad` o id del aviso, en cualquier estado; por defecto, el primero (por `id_propiedad`)
+   * con portada entre los que se pueden preparar (`ready`, `active` o `paused`).
+   */
   listingRef?: string;
   signal?: AbortSignalLike;
 };
@@ -82,12 +89,38 @@ const HINTS: Readonly<Record<string, string>> = {
   IG_MEDIA_FETCH_FAILED:
     "Meta no pudo descargar la URL firmada de R2: es el riesgo de la nota §5 (plan B: prefijo público)",
   IG_MEDIA_REJECTED: "Meta descargó la imagen pero la rechazó: revisa el formato de la portada",
+  IG_ACCOUNT_RESTRICTED: "Revisa la cuenta en la app de Instagram",
+  CREDENTIALS_UNREADABLE:
+    "El token guardado no se puede leer (¿cambió APP_ENCRYPTION_KEY?): vuelve a conectar la cuenta",
   RENDER_NOT_FOUND: "Prepara el aviso primero: pnpm -s cli prepare <id_propiedad>",
+  STORAGE_NOT_FOUND:
+    "Vuelve a armar las imágenes del aviso: pnpm -s cli prepare <id_propiedad> --no-texts",
   DB_UNAVAILABLE: "Neon puede estar despertando: reintenta en unos segundos",
   STORAGE_UNAVAILABLE: "R2 no respondió: revisa la conexión y reintenta",
 };
 
 const smokeError = (code: string, message: string) => new AppError(code, message);
+
+/**
+ * Solo las dos llamadas que usa el smoke, también al ejecutar: el objeto que recibe no tiene
+ * `publishContainer`, así que ni un cast lo deja publicar.
+ */
+export function smokeGraph(graph: InstagramGraph): IgSmokeDeps["graph"] {
+  return {
+    createContainer: (...args) => graph.createContainer(...args),
+    containerStatus: (...args) => graph.containerStatus(...args),
+  };
+}
+
+/**
+ * Un error que no es `AppError` (un `.env` inválido, una opción desconocida o un fallo inesperado
+ * de una librería), listo para imprimir: sin la pila, sin URLs (podrían llevar la firma) y con
+ * `redactText` para los secretos conocidos.
+ */
+export function describeUnexpected(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return redactText(message).replace(/https?:\/\/\S+/g, "<url>");
+}
 
 /** La cuenta de Instagram conectada (del corredor pedido, si hay más de una). */
 async function findAccount(deps: IgSmokeDeps, brokerSlug: string | undefined) {
@@ -127,9 +160,10 @@ async function findAccount(deps: IgSmokeDeps, brokerSlug: string | undefined) {
 async function findRender(deps: IgSmokeDeps, brokerId: string, listingRef: string | undefined) {
   const listings = (await deps.listings.list())
     .filter((listing) => listing.brokerId === brokerId)
-    .filter(
-      (listing) =>
-        listingRef === undefined || listing.externalRef === listingRef || listing.id === listingRef,
+    .filter((listing) =>
+      listingRef === undefined
+        ? canPrepareContent(listing.status)
+        : listing.externalRef === listingRef || listing.id === listingRef,
     )
     .sort((a, b) => a.externalRef.localeCompare(b.externalRef));
   if (listingRef !== undefined && listings.length === 0) {
@@ -184,6 +218,20 @@ export async function runIgSmoke(deps: IgSmokeDeps, options: IgSmokeOptions = {}
       cover.width === null || cover.height === null ? "" : `${cover.width}×${cover.height}, `;
     deps.print(`Imagen: portada de ${listing.externalRef} (${size}${kilobytes(cover.bytes)})`);
 
+    // Firmar no consulta R2: sin esta revisión, una portada que falta en el bucket se vería como
+    // que Meta no acepta la URL firmada (y llevaría al plan B sin motivo).
+    const stored = await deps.storage.head(cover.storagePath);
+    if (stored === null) {
+      throw smokeError(
+        "STORAGE_NOT_FOUND",
+        `La portada de ${listing.externalRef} está en la base pero no en R2`,
+      );
+    }
+    if (stored.contentType !== "image/jpeg") {
+      deps.print(
+        `  Aviso: la portada está guardada con el tipo ${stored.contentType ?? "(sin tipo)"}, no image/jpeg; Meta podría rechazarla`,
+      );
+    }
     // La misma vida que las URLs de una publicación (core, `buildPublishInput`).
     const imageUrl = await deps.storage.signedReadUrl(cover.storagePath, PUBLISH_MEDIA_URL_TTL_S);
     const { accessToken } = await deps.accounts.getCredentials(account.id);
@@ -195,7 +243,8 @@ export async function runIgSmoke(deps: IgSmokeDeps, options: IgSmokeOptions = {}
     );
     deps.print(`Contenedor ${containerId} creado; esperando a que Instagram lo procese…`);
 
-    // El ritmo del publisher (spec F3 §4.5): al tiro, a los 5, 10, 20 y 30 s y cada 60 s, hasta 5 min.
+    // El ritmo del publisher (spec F3 §4.5): al tiro, después de 5, 10, 20 y 30 s y cada 60 s, hasta
+    // 5 min.
     const startedAt = deps.now();
     for (let round = 0; ; round += 1) {
       const status = await deps.graph.containerStatus(accessToken, containerId, call);
@@ -208,12 +257,12 @@ export async function runIgSmoke(deps: IgSmokeDeps, options: IgSmokeOptions = {}
         return 0;
       }
       if (status.statusCode === "ERROR") {
-        // El código que daría el publisher para ese subcódigo, y el subcódigo tal cual.
-        throw new AppError(
-          instagramContainerError(status.subcode).code,
-          "El contenedor quedó en ERROR",
-          { details: { graphSubcode: status.subcode } },
-        );
+        // El error que daría el publisher, con su explicación (por ejemplo, "pesa más de 8 MB").
+        // Sin subcódigo no hay explicación: se dice tal cual (el publisher lo trata como pasajero).
+        if (status.subcode === null) {
+          throw smokeError("IG_UNAVAILABLE", "El contenedor quedó en ERROR, sin subcódigo");
+        }
+        throw instagramContainerError(status.subcode);
       }
       if (status.statusCode === "EXPIRED" || status.statusCode === "PUBLISHED") {
         // Un contenedor recién creado no debería estar así: se informa tal cual.
