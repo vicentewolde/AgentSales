@@ -4,6 +4,29 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [0.3.0] - 2026-10-06 · F3 Aprobación + Instagram
+Ahora se aprueba el texto de cada canal y la propiedad se publica en Instagram: el carrusel y, si tiene video, el reel. Todo se prueba primero en simulación (`dry-run`), que registra lo que se habría enviado sin llamar a Instagram. Se probó en vivo, con tu instrucción, en tu cuenta @vicentewoldec: P002 salió como carrusel de 5 imágenes (en cerca de 1 minuto) y como reel (en cerca de 2), con sus enlaces guardados, y después se borraron a mano y se marcaron como retiradas.
+
+### Añadido
+- **Conectar Instagram:** `pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin`, con el token del botón "Generate token" del panel de Meta (Meta no acepta `http://localhost` para el OAuth). El token se guarda cifrado y nunca aparece en logs, errores ni respuestas. El OAuth completo queda listo para F7, con HTTPS.
+- **Página Cuentas** en el panel: la cuenta de cada corredor con su estado, vencimiento (avisa con 10 días), última renovación y permisos; desconectar, y el comando para conectar o reconectar. En la CLI, `agentsales accounts`.
+- **Refresco del token:** el worker lo renueva al arrancar y todos los días a las 12:00, cuando han pasado 24 h desde el último refresco y le quedan 30 días o menos (con el token del panel, a las 24 h de conectarlo). Un token vencido deja la cuenta como vencida. A pedido: `agentsales accounts refresh <id> [--force]`.
+- **Aprobar:** en la sección Contenido del panel ("Aprobar Instagram") o con `agentsales approve <propiedad> [--platform]`; `--undo` o "Quitar aprobación" la quitan. Al aprobar nacen las publicaciones (carrusel y reel) con el texto y las fotos fijos: mientras no salgan, no se puede preparar de nuevo ni editar ese texto.
+- **Publicar:** el botón "Publicar en Instagram" del panel o `agentsales publish <propiedad>`. En vivo pide confirmación; espera el carrusel y el reel y muestra sus enlaces. En simulación queda marcada como tal y la propiedad no cambia; en vivo pasa a "Publicada".
+- **Publicaciones:** estado, modo, intentos, enlace o error, y la bitácora de cada una (quién hizo qué y qué se envió: cantidad de fotos, largo del caption y la cuenta), en el panel y con `agentsales publications <propiedad> [--events]`. Descartar las que no salieron, reintentar las que fallaron y marcar como retiradas las que borraste a mano en Instagram (en vivo pide confirmar que la borraste); al retirar la última publicada, la propiedad vuelve a "Lista".
+- **Reintentos que no publican dos veces:** si algo se corta a mitad de camino, el reintento retoma lo que ya estaba en Instagram en vez de crear otra publicación.
+- **`pnpm ig:smoke`:** comprueba, sin publicar nada, que Instagram descarga una foto desde el enlace temporal de R2. Funcionó a la primera.
+- **Base de datos:** migración `0006` (publicaciones por formato, con su progreso), aplicada en Neon.
+- **Documentación:** ADR-0014 (se aprueba el texto; publicaciones por formato) y la nota de Instagram con lo verificado en la prueba real.
+
+### Cambiado
+- El modo (`dry-run` o `live`) lo decide cada publicación al pedirla, no el worker: algo pedido en simulación nunca sale de verdad.
+- Las variables de Instagram se llaman `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` e `INSTAGRAM_REDIRECT_URI` (antes `META_*`). `doctor` avisa si faltan.
+- Las credenciales se cifran con una clave derivada de `APP_ENCRYPTION_KEY`.
+
+### Corregido
+- Pedir textos y editar ya no se pueden cruzar: el candado por propiedad cerró la ventana que quedaba de F2.
+
 ## [0.2.0] - 2026-10-04 · F2 Contenido
 Ahora cada propiedad lista puede prepararse para publicar: el sistema procesa sus fotos y videos para cada canal, arma la portada y la ficha del carrusel, el reel de Instagram, y la IA (tu CLI de Claude) redacta los textos de Instagram, Portal Inmobiliario y Marketplace, que se revisan solos contra los datos de la propiedad. Todo se ve y se edita en el panel. Se probó con las 3 propiedades de muestra: las tres quedaron con contenido listo para revisar, sin errores en la revisión. No se publica nada: las publicaciones llegan en F3.
 

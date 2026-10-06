@@ -3,48 +3,30 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-06
-**Fase actual:** F3 · Aprobación + Instagram (spec aprobado: `docs/specs/fase-3-aprobacion-instagram.md`)
-**Última tarea terminada:** F3-T19 · `pnpm ig:smoke`
-**Siguiente paso:** `/tarea F3-T20` · Cierre de fase (`/fase-cerrar 3`): demos, con la prueba en `live` autorizada en el chat
+**Fase actual:** F4 · Portal Inmobiliario (spec por redactar). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`), salvo la demo del refresco y el tag
+**Última tarea terminada:** F3-T20 · Cierre de fase (demos 1 a 6, prueba en `live` con P002, auditoría y registro)
+**Siguiente paso:** desde el **2026-10-07 a las 16:31**, la demo del refresco del token (spec F3 §7, paso 7) y, con tu permiso, el tag `v0.3.0`. Después, `/fase-plan 4`
+
+## Pendiente del cierre de F3
+- [ ] **Refresco del token (demo):** la cuenta se conectó el 2026-10-06 a las 16:31 y el refresco exige 24 h (`--force` solo salta el tope de 30 días). Desde esa hora, `pnpm -s cli accounts refresh <id> --force` con la API corriendo, o el primer `pnpm dev` (el worker lo hace al arrancar, porque el vencimiento es estimado). Se ve en `pnpm -s cli accounts`: última renovación y el vencimiento real. Anotar el resultado en la nota de Instagram (§8, punto 4) y marcar el criterio de §6
+- [ ] Tag `v0.3.0` desde `main`, con tu permiso, después del refresco
+- [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota §8, punto 8)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F3 (`/fase-plan 3`) | ✅ terminada | |
-| F3-T01 · Esquema de publicaciones (migración `0006`) | ✅ terminada | #54 |
-| F3-T02 · Cifrado, firma y variables de Instagram | ✅ terminada | #55 |
-| F3-T03 · Cuentas conectadas: puerto y repositorio | ✅ terminada | #56 |
-| F3-T04 · Publicaciones: repositorio, bitácora y candado por aviso | ✅ terminada | #57 |
-| F3-T05 · Aprobación en core | ✅ terminada | #58 |
-| F3-T06 · Lo aprobado no cambia: edición y corridas con el candado | ✅ terminada | #59 |
-| F3-T07 · Puerto `Publisher` y `dry-run` | ✅ terminada | #60 |
-| F3-T08 · Instagram: cliente de la API y OAuth | ✅ terminada | #61 |
-| F3-T09 · Instagram: publisher | ✅ terminada | #62 |
-| F3-T10 · Publicar, descartar y retirar en core | ✅ terminada | #63 |
-| F3-T11 · Intento de publicación en core | ✅ terminada | #64 |
-| F3-T12 · Job `publication.publish` | ✅ terminada | #65 |
-| F3-T13 · Conectar Instagram | ✅ terminada | #66 |
-| F3-T14 · Refresco de tokens | ✅ terminada | #67 |
-| F3-T15 · API de aprobación y publicaciones | ✅ terminada | #68 |
-| F3-T16 · CLI | ✅ terminada | #69 |
-| F3-T17 · Panel: Cuentas | ✅ terminada | #70 |
-| F3-T18 · Panel: aprobar y publicar | ✅ terminada | #71 |
-| F3-T19 · `pnpm ig:smoke` | ✅ terminada | #72 |
-| F3-T20 · Cierre de fase | ⏳ pendiente | |
+| Spec F4 (`/fase-plan 4`) | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- [x] Trámite de la app de Meta: cuenta profesional, app `AgentSales-IG`, tester aceptado (2026-10-02) y el ID y la clave de la app de Instagram en `.env` (2026-10-03). La verificación del negocio y el App Review quedan para F7
-- [x] Variables renombradas en `.env` a `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` e `INSTAGRAM_REDIRECT_URI` (2026-10-05)
-- [x] `INSTAGRAM_APP_ID` es el "Identificador de la aplicación de Instagram" (Casos de uso > Administrar mensajes y contenido en Instagram > Personalizar > Configuración de la API con el inicio de sesión de Instagram), no el identificador general de la app (confirmado por el operador, 2026-10-05)
-- [x] Dirección de retorno local: Meta rechazó `http://localhost:8787/oauth/instagram/callback` (2026-10-05). En F3 la cuenta se conecta con el token del botón "Generate token" (spec F3, D4). Permisos `instagram_business_basic` e `instagram_business_content_publish` agregados a la app (2026-10-05)
-- [ ] Demo de F3: la prueba en `live` usa tu cuenta (profesional, vinculada a la página AgentSales y tester de `AgentSales-IG`); se publica una propiedad de muestra (carrusel y reel) y se borra a mano después. `PUBLISH_MODE=live` solo con tu instrucción en el chat
+- Los trámites de F4 (Mercado Libre y Portal Inmobiliario) están en `docs/07-checklist-cuentas.md`.
 
 ## Decisiones de F3
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **CLI, aviso falso de cola en `publish` (F3, demo):** `agentsales publish` avisa "Sigue en cola: ¿está corriendo el worker?" si ninguna publicación cambia en 20 s. El worker publica de a una y el carrusel guarda su primer progreso después de crear los hijos y esperar a que estén listos (más de 20 s), así que el aviso sale aunque el worker corra. Arreglo: guardar el progreso con `childIds` apenas se crean los hijos, o un texto propio para publicaciones ("en cola o esperando su turno").
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
 - **F7, campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
 - **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
@@ -74,6 +56,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-06: **Cierre de F3 (T20).** Demo en simulación hecha por Claude en el panel (aprobar P002, `PUBLICATION_PENDING`, `CONTENT_LOCKED`, publicar, bitácora y retirar) y en la CLI (P001). **Prueba en `live` con tu instrucción:** P002 salió en @vicentewoldec (carrusel de 5 imágenes en cerca de 1 min y reel en cerca de 2, con URLs prefirmadas de R2 y sus enlaces guardados); la borraste a mano, se marcó como retirada y P002 volvió a "Lista". Se usó `PUBLISH_MODE=live pnpm dev`, sin tocar `.env`, y después todo quedó apagado. El worker no tocó el token (`skipped: 1`). Auditoría del `arquitecto`: el código calza con el spec; se pusieron al día README, guía del operador, convenciones, plataformas, roadmap (deuda de F3 en F6 y F7), arquitectura, modelo de datos, la nota de Instagram, ADR-0007 y ADR-0011, y el CHANGELOG `[0.3.0]`. Falta la demo del refresco (desde el 2026-10-07 a las 16:31) y el tag.
 - 2026-10-06: **Smoke de Instagram corrido** (con tu instrucción): la cuenta @vicentewoldec quedó conectada a `agentsales-pruebas` con el token de Generate token (vence el 2026-12-05, estimado), y `pnpm ig:smoke` dio `✓`: Instagram descargó la portada de P001 desde la URL firmada de R2 al instante, sin publicar. Solo corrió la API (en `dry-run`), sin el worker, y quedó apagada. Anotado en ADR-0007, la nota de Instagram y la checklist. Falta verificar el reel (`video_url`) en la prueba en `live`.
 - 2026-10-06: **F3-T19.** `pnpm ig:smoke` (lo corre el operador, con la cuenta conectada y sin `pnpm dev`): toma la portada ya armada de la primera propiedad preparada (`--listing` para elegir otra), le pide a Instagram que la prepare desde un enlace temporal de R2 y espera hasta 5 min. `✓` si Meta la descargó; si no, el código y el subcódigo de Meta. Nunca publica (el cliente que recibe no tiene `media_publish`, y un test con msw lo revisa en cada caso), no escribe en la base y no muestra el token ni el enlace. Antes revisa que la portada esté en R2, para no culpar al enlace por un archivo que falta. Es el paso 5 de la demo, antes de `live`.
 - 2026-10-06: **F3-T18.** Panel: en Contenido, cada canal se aprueba o se le quita la aprobación (con el motivo si no se puede), e Instagram muestra el carrusel y el reel con su estado, modo, enlace y error, Publicar (en vivo, con confirmación), Reintentar, Descartar y Marcar como retirada (en vivo, con la casilla de que se borró a mano), y la bitácora. Mientras publica, el panel consulta cada 2 s; el tope de 2 h cuenta desde que se pidió publicar. Con publicaciones pendientes no se prepara ni se edita el texto aprobado.

@@ -51,7 +51,7 @@ Spec detallado: `docs/specs/fase-3-aprobacion-instagram.md`.
 
 - Se aprueba el texto de cada canal; las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo (ADR-0014). Máquina de estados con eventos.
 - Aprobar y quitar la aprobación desde el panel y la CLI (`agentsales approve <id>`); los textos se editan en el panel (spec F3, D9).
-- OAuth Instagram Login; tokens cifrados y refresco automático.
+- Conectar la cuenta con el token del panel de Meta (spec F3, D4; el OAuth de Instagram Login queda implementado y se usa en F7, con HTTPS); tokens cifrados y refresco automático.
 - Publicar carrusel y reel en la cuenta del operador, primero en `dry-run` y luego en `live`.
 
 **Aceptación:** una propiedad aprobada aparece publicada en la cuenta de Instagram del operador y el sistema guarda su URL.
@@ -79,6 +79,10 @@ Spec detallado: `docs/specs/fase-3-aprobacion-instagram.md`.
 - Vista de seguimiento: matriz de propiedad × plataforma con estado y enlace.
 - `auto_publish` por corredor.
 - Respaldo local periódico de la base (`pg_dump`): el plan gratis de Neon solo conserva 6 horas de historial.
+- **Deuda heredada de F3** (detalle en `docs/ESTADO.md` → Deuda técnica):
+  - las publicaciones que quedan en `publishing` sin job (`PUBLISH_ABORTED`, `PUBLISH_RESULT_NOT_SAVED`) las cubre `publication.sync` o un reencolado periódico;
+  - redefinir los cambios manuales del aviso (`LISTING_MANUAL_TRANSITIONS`) para que pausar, archivar o cerrar orquesten sus publicaciones (spec F3 §3);
+  - la espera automática ante `IG_RATE_LIMITED` (spec F3, D10).
 
 ## F7 · Listo para terceros
 - Proveedor `anthropic-api` como default para terceros.
@@ -90,6 +94,12 @@ Spec detallado: `docs/specs/fase-3-aprobacion-instagram.md`.
   - se quita `POST /imports/local` y el staging compartido en disco entre la API y el worker;
   - el despliegue fija `NODE_ENV=production`, porque `/imports/local` depende de ese valor;
   - `GET /listings` pasa a una proyección acotada (hoy entrega notas internas y la dirección exacta).
+- **Deuda heredada de F3** (detalle en `docs/ESTADO.md` → Deuda técnica):
+  - probar el OAuth de Instagram de verdad, con HTTPS;
+  - el actor de la bitácora sale de la sesión, no de la cabecera `X-AgentSales-Client`;
+  - autorizar quién conecta cada corredor y no repetir un `state` válido (guardar el nonce usado);
+  - derivar el inicio del OAuth si la API queda tras un prefijo;
+  - el tope de tiempo de `tokens.refresh` con muchas cuentas.
 - Términos de uso y privacidad básicos.
 
 ## Post-MVP (backlog)

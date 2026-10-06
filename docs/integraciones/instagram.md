@@ -8,6 +8,7 @@ Aviso de método: las páginas de Meta se leyeron con una herramienta que extrae
 
 ## 1. Resumen
 
+- **Prueba real (2026-10-06, demo de F3, cuenta @vicentewoldec, `v25.0`):** con el token de Generate token y URLs prefirmadas de R2 se publicó un carrusel de 5 imágenes (cerca de 1 min) y un reel (cerca de 2 min), con sus `permalink` (`/p/…` y `/reel/…`), y se borraron a mano. Detalle en la lista de la sección 8.
 - **Mecanismo:** API de Instagram con Instagram Login (host `graph.instagram.com`). Se crea un contenedor por medio, se consulta su estado y se publica con `media_publish`. Madurez alta; riesgo bajo para cuentas propias.
 - **Cuenta y app (DOC):** cuenta profesional (Empresa o Creador), **sin** Página de Facebook obligatoria. App tipo **Business**. Con **acceso estándar** (el de por defecto) la app sirve solo a personas con rol en ella: alcanza para la demo con la cuenta del operador, sin App Review. Terceros (F7) exigen acceso avanzado: App Review y verificación del negocio.
 - **Autenticación (DOC):** OAuth con `https://www.instagram.com/oauth/authorize`; el código dura 1 hora; token corto de 1 hora; token largo de 60 días; refresco con `refresh_access_token` (token de al menos 24 h, vigente). El `client_id` y el `client_secret` son el **Instagram app ID y secret**, que **no** son los de Settings > Basic.
@@ -124,7 +125,7 @@ Condiciones:
 
 - **DOC:** solo dice que la URI debe coincidir exactamente con la lista del panel. **No dice nada** sobre HTTP, HTTPS ni `localhost` para Instagram Login. La página de seguridad de Facebook Login define "Enforce HTTPS" (exige HTTPS en las redirecciones OAuth), pero tampoco menciona `localhost`, y es de otro producto.
 - **Pistas no oficiales (contradictorias):** hay reportes de que Instagram rechaza `http://localhost` (error "invalid redirect_uri") y se arregló con `https://localhost:...`, y otros de que en modo desarrollo `http://localhost` funciona (en Facebook Login se dice que HTTP en `localhost` está permitido solo mientras la app está en modo desarrollo; sin cita oficial).
-- **Conclusión: NO VERIFICADO.** La prueba es inmediata y sin riesgo: pegar `http://localhost:8787/oauth/instagram/callback` en "OAuth redirect URIs" y guardar. Si el panel lo rechaza, la respuesta está ahí. Si lo guarda, aun así hay que ver que la pantalla de autorización no falle (punto 8 de la sección 2.1).
+- **Conclusión (antes de la prueba; resuelta arriba, el panel lo rechaza):** La prueba es inmediata y sin riesgo: pegar `http://localhost:8787/oauth/instagram/callback` en "OAuth redirect URIs" y guardar. Si el panel lo rechaza, la respuesta está ahí. Si lo guarda, aun así hay que ver que la pantalla de autorización no falle (punto 8 de la sección 2.1).
 
 Alternativas si no acepta HTTP (de menos a más esfuerzo):
 
@@ -177,7 +178,7 @@ Luego se consulta el estado hasta `FINISHED` y se publica con `media_publish`.
 - **Ritmo recomendado por Meta:** "querying a container's status once per minute, for no more than 5 minutes".
 - **Vida del contenedor:** 24 horas (DOC: "Containers expire after 24 hours").
 - La doc dice que consultar el estado sirve "si `POST /media_publish` no devuelve el ID del medio publicado".
-- Las imágenes suelen quedar `FINISHED` casi al instante, y los videos tardan más; los plazos reales: NO VERIFICADO.
+- Las imágenes suelen quedar `FINISHED` casi al instante, y los videos tardan más. **Medido el 2026-10-06:** una imagen suelta quedó `FINISHED` en la primera consulta (`pnpm ig:smoke`); en `live`, el carrusel de 5 imágenes salió en cerca de 1 min y el reel en cerca de 2 min, de punta a punta.
 
 ### 4.5 Subida reanudable para reels (DOC)
 
@@ -252,7 +253,7 @@ La publicación necesita URLs públicas (DOC): "We cURL media used in publishing
   - AAC estéreo a 48 kHz y 128 kb/s.
   - `-movflags +faststart` (`moov` antes de `mdat`) y `-use_editlist 0` (sin `elst`).
 
-  Hay un desfase de ~67 ms entre el inicio del video y el del audio (dos B-frames de x264), sin edit list que lo corrija; es inocuo, y `-bf 0` lo quita si molestara. **Falta verificar que Meta acepte el reel** (demo de F3).
+  Hay un desfase de ~67 ms entre el inicio del video y el del audio (dos B-frames de x264), sin edit list que lo corrija; es inocuo, y `-bf 0` lo quita si molestara. **Meta aceptó el reel** en la prueba en `live` del 2026-10-06 (`video_url` con URL prefirmada de R2, `thumb_offset=1000`, `share_to_feed=true`, sin `cover_url`).
 - Si el video de origen ya cumple, evitar recodificar; en otro caso, `media.process` genera `ig_reel` (`docs/02-modelo-datos.md`).
 - La portada del reel (`cover_url`) pide otra URL pública. Si no hay una imagen 9:16 lista, se puede omitir y dejar que Instagram use el primer cuadro (INFERENCIA), o pasar `thumb_offset`. Decisión de spec.
 
@@ -266,7 +267,7 @@ La publicación necesita URLs públicas (DOC): "We cURL media used in publishing
 | Pregunta | Respuesta |
 |---|---|
 | ¿URL pública de cualquier host? | La doc exige "publicly accessible server at the time of the attempt". No impone dominio ni CDN (DOC por omisión) |
-| ¿Funcionan las URLs prefirmadas de R2/S3 con query larga? | **Sí para imágenes (verificado el 2026-10-06 con `pnpm ig:smoke`):** un contenedor de imagen con la URL firmada de 1 h de una portada JPEG de 84 KB quedó `FINISHED` en la primera consulta. El reel (`video_url`) sigue sin verificar hasta la prueba en `live`. Lo que sigue es la nota original: **NO VERIFICADO.** La doc no habla de query strings, redirecciones, `Content-Type` ni longitud de URL |
+| ¿Funcionan las URLs prefirmadas de R2/S3 con query larga? | **Sí para imágenes (verificado el 2026-10-06 con `pnpm ig:smoke`):** un contenedor de imagen con la URL firmada de 1 h de una portada JPEG de 84 KB quedó `FINISHED` en la primera consulta. **Y para el reel (`video_url`), verificado en la prueba en `live` del mismo día.** Lo que sigue es la nota original: **NO VERIFICADO.** La doc no habla de query strings, redirecciones, `Content-Type` ni longitud de URL |
 | ¿Exige `Content-Type` correcto? | No está documentado. Terceros reportan que el `Content-Type` incorrecto o la URL que redirige causan 2207052 (pista, no oficial). Dejar `image/jpeg` y `video/mp4` en el objeto (ya lo hacemos) |
 | ¿Cuándo descarga Meta? | Imágenes: "at the time of the attempt" (INFERENCIA: al crear el contenedor). Videos: el contenedor queda `IN_PROGRESS` mientras Meta procesa; **puede seguir descargando después del `POST`** (INFERENCIA). Por eso la URL debe seguir vigente hasta `FINISHED` |
 | ¿Tiempo de espera de descarga? | El subcódigo 2207003 ("it takes too long to download the media") indica que hay un tope; no se publica cuántos segundos |
@@ -351,24 +352,24 @@ Para todos: parar, esperar y espaciar (la doc recomienda detener las llamadas de
 - **Local (F2):** salida JPEG sRGB 1080x1350, peso < 8 MB, no más de 10 slides; reel: ffprobe confirma códec, fps (23 a 60), duración, `moov` al inicio. Hecho.
 - **Tests de F3:** msw o fakes con los cuerpos de la sección 4; ningún test llama a Meta (regla del proyecto).
 - **Sandbox de Meta:** no existe un sandbox de publicación. Lo más cercano es la **app en modo desarrollo con acceso estándar y la cuenta del operador** (rol en la app). No hay "cuenta de prueba" separada con datos ficticios para Instagram Login.
-- **`pnpm ig:smoke` (F3-T19):** crea un contenedor de imagen desde una URL prefirmada de R2 (la portada de un aviso preparado) y espera `FINISHED` o error, **sin** `media_publish`. Comprueba que Meta acepta la URL firmada (con su query larga) y descarga la imagen (punto 8 de la lista), antes de publicar nada. Un `FINISHED` no dice si Meta hizo un `HEAD` antes del `GET`; eso solo se sabría si fallara con 403 o 2207052. El reel sigue sin verificar hasta la prueba en `live`.
+- **`pnpm ig:smoke` (F3-T19):** crea un contenedor de imagen desde una URL prefirmada de R2 (la portada de un aviso preparado) y espera `FINISHED` o error, **sin** `media_publish`. Comprueba que Meta acepta la URL firmada (con su query larga) y descarga la imagen (punto 8 de la lista), antes de publicar nada. Un `FINISHED` no dice si Meta hizo un `HEAD` antes del `GET`; eso solo se sabría si fallara con 403 o 2207052. El reel se verificó después, en la prueba en `live` del mismo día.
 - **`dry-run` primero:** el publisher arma las solicitudes, valida y registra lo que enviaría, sin llamar a Meta. Luego `live` con una propiedad de muestra, solo con autorización explícita del operador en el chat, y la publicación se borra a mano.
 
-### Lista de pruebas pendientes (NO VERIFICADO hasta la demo)
+### Lista de pruebas (actualizada con la demo de F3, 2026-10-06)
 
 Orden sugerido, de menor a mayor riesgo; las primeras no publican nada:
 
-1. ~~Guardar `http://localhost:8787/oauth/instagram/callback` en "OAuth redirect URIs"~~ **Resuelto el 2026-10-05: el panel lo rechaza** (§3.6). Queda probar que el token de Generate token sirve para `/me`, publicar y refrescar, y cuál es su vencimiento real (el sistema lo estima en 60 días hasta el primer refresco; spec F3 §4.6).
+1. ~~Guardar `http://localhost:8787/oauth/instagram/callback` en "OAuth redirect URIs"~~ **Resuelto el 2026-10-05: el panel lo rechaza** (§3.6). **2026-10-06:** el token de Generate token sirvió para `/me` (al conectar), crear contenedores y publicar; el sistema estima su vencimiento en 60 días hasta el primer refresco. Queda probar que el token de Generate token sirve para `/me`, publicar y refrescar, y cuál es su vencimiento real (el sistema lo estima en 60 días hasta el primer refresco; spec F3 §4.6).
 2. ~~Confirmar que `META_APP_ID` es el Instagram app ID~~ **Hecho el 2026-10-05:** las variables se llaman `INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET` y el operador confirmó el identificador de Instagram (sección 2.1).
 3. Canje del código: forma de la respuesta (con o sin `data`), y si `user_id` coincide con el `user_id` de `/me`. Ver también qué devuelve un secret o una `redirect_uri` equivocados: hoy cualquier rechazo del canje se informa como "el código venció, ya se usó o la dirección de retorno no coincide" (F3-T08); afinarlo en F7, con el OAuth en uso.
-4. Refresco: token con más de 24 h, y si el token de **Generate token** también se refresca. El código (F3-T08) manda el token y el secret del canje largo y del refresco en la URL, como la doc; probar si esas rutas aceptan la cabecera `Bearer` (el resto de las llamadas ya la usa).
-5. `GET /me`, `GET /<IG_ID>/content_publishing_limit` en `graph.instagram.com` (¿responde? ¿`quota_total` 50 o 100?).
-6. Versión de API: ¿`graph.instagram.com` acepta `v25.0`, `v26.0` y la omisión?
-7. Cabeceras `X-App-Usage` y `X-Business-Use-Case-Usage` en las respuestas.
-8. **Imagen con URL prefirmada: verificado el 2026-10-06** (`pnpm ig:smoke`, cuenta @vicentewoldec conectada con el token de Generate token, `v25.0`): el contenedor de imagen con la URL firmada de R2 quedó `FINISHED` al instante, sin publicar. Con eso también quedó probado que el token de Generate token sirve para `/me` (al conectar) y para crear contenedores. Falta el resto de este punto en `live`. **Publicación en vivo de muestra:** carrusel de 3 a 4 imágenes con URL prefirmada de R2 (¿acepta la query larga? ¿hace `HEAD`?), luego el reel (¿acepta el MP4 de `REEL_SPEC`?, tiempo hasta `FINISHED`, `cover_url`/`thumb_offset`, `share_to_feed` por defecto).
-9. `permalink` del carrusel y del reel; tiempo hasta que el enlace funciona. Ver qué devuelve un segundo `media_publish` sobre un contenedor ya publicado (el publisher lo evita, pero un corte justo durante el pedido deja una ventana: spec F3 §4.4) y si `/<IG_ID>/media` trae `media_type` y `media_product_type` con Instagram Login.
-10. Intento de `DELETE` (opcional) y borrado manual.
-11. Cuántos contenedores y publicaciones suma `content_publishing_limit` tras la prueba (¿un reel cuenta 1?).
+4. **Pendiente** (la cuenta se conectó el 2026-10-06 a las 16:31; el refresco exige 24 h y `--force` no las salta). Refresco: token con más de 24 h, y si el token de **Generate token** también se refresca. El código (F3-T08) manda el token y el secret del canje largo y del refresco en la URL, como la doc; probar si esas rutas aceptan la cabecera `Bearer` (el resto de las llamadas ya la usa).
+5. **2026-10-06:** `GET /me` y `content_publishing_limit` responden en `graph.instagram.com` con Instagram Login (el publisher no dejó nota de cupo). El valor de `quota_total` no se registró: 50 o 100 sigue sin verificar.
+6. Versión de API: `v25.0` funciona (2026-10-06); `v26.0` y la omisión no se probaron.
+7. Cabeceras `X-App-Usage` y `X-Business-Use-Case-Usage` en las respuestas: no observadas (no se registran).
+8. **Imagen con URL prefirmada: verificado el 2026-10-06** (`pnpm ig:smoke`, cuenta @vicentewoldec conectada con el token de Generate token, `v25.0`): el contenedor de imagen con la URL firmada de R2 quedó `FINISHED` al instante, sin publicar. Con eso también quedó probado que el token de Generate token sirve para `/me` (al conectar) y para crear contenedores. **Publicación en vivo de muestra, verificada el 2026-10-06** (P002, con la instrucción del operador): carrusel de 5 imágenes y reel de `REEL_SPEC`, ambos con URLs prefirmadas de R2, publicados al primer intento. Meta acepta la query larga de R2 también para el video; si hace `HEAD`, no lo rechaza. Falta que el operador confirme que la portada del reel fue el cuadro del segundo 1. Lo que sigue es el plan original: carrusel de 3 a 4 imágenes con URL prefirmada de R2 (¿acepta la query larga? ¿hace `HEAD`?), luego el reel (¿acepta el MP4 de `REEL_SPEC`?, tiempo hasta `FINISHED`, `cover_url`/`thumb_offset`, `share_to_feed` por defecto).
+9. **2026-10-06:** se guardaron los `permalink` del carrusel (`/p/…`) y del reel (`/reel/…`, así que el formato del enlace del reel queda verificado). No hubo retoma: un segundo `media_publish` y `media_product_type` en `/media` no se ejercitaron. Plan original: `permalink` del carrusel y del reel; tiempo hasta que el enlace funciona. Ver qué devuelve un segundo `media_publish` sobre un contenedor ya publicado (el publisher lo evita, pero un corte justo durante el pedido deja una ventana: spec F3 §4.4) y si `/<IG_ID>/media` trae `media_type` y `media_product_type` con Instagram Login.
+10. `DELETE` no se intentó (spec F3, D8); el borrado manual desde la app funcionó (2026-10-06).
+11. Cuántos contenedores y publicaciones suma `content_publishing_limit` tras la prueba (¿un reel cuenta 1?): no se midió.
 
 ## 9. Riesgos y términos de uso relevantes
 
