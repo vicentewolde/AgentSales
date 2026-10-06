@@ -56,6 +56,7 @@ export function useImportRun(id: string) {
         )
       ).importRun,
     isTerminal: isTerminalImportRun,
+    startedAt: (run) => run.createdAt,
   });
   useEffect(() => {
     if (!finishedHere) return;

@@ -4,33 +4,40 @@ import { useRef } from "react";
 
 export type PollStop = "failures" | "max-wait";
 
-/** Lo que el sondeo mira de una corrida: una carga o una preparación de contenido. */
-export type PolledRun = { status: string; createdAt: Date };
+/**
+ * Lo que el sondeo mira: una carga, una preparación de contenido o una publicación. El inicio de la
+ * espera lo da quien sondea (`startedAt`): `createdAt` para una corrida, que nace en cola; para una
+ * publicación, el más reciente entre `updatedAt` y la hora del clic (puede llevar días aprobada).
+ */
+export type PolledRun = { status: string };
 
 /** La regla de "terminada" de cada tipo de corrida (`isTerminalImportRun`, `isTerminalContentRun`). */
 export type IsTerminal<R extends PolledRun> = (status: R["status"]) => boolean;
 
 /**
- * Por qué se deja de consultar una corrida que sigue en curso (`RUN_WAIT`, igual que la CLI): tras
- * 3 fallas seguidas (contando el reintento de cada consulta) o a las 2 h de creada, así una corrida
- * atascada no mantiene Neon despierto con la pestaña abierta. `checkedAt` es la hora de la última
- * respuesta; `createdAt` lo pone la base (Neon), con un desfase de reloj despreciable.
+ * Por qué se deja de consultar algo que sigue en curso (`RUN_WAIT`, igual que la CLI): tras 3 fallas
+ * seguidas (contando el reintento de cada consulta) o a las 2 h de empezada la espera
+ * (`startedAt`), así algo atascado no mantiene Neon despierto con la pestaña abierta. `checkedAt` es
+ * la hora de la última respuesta; las fechas las pone la base (Neon), con un desfase despreciable.
  */
 export function pollStop<R extends PolledRun>(
   run: R,
   isTerminal: IsTerminal<R>,
   failures: number,
   checkedAt: number,
+  startedAt: Date,
 ): PollStop | null {
   if (isTerminal(run.status)) return null;
   if (failures >= RUN_WAIT.maxPollFailures) return "failures";
-  if (checkedAt - run.createdAt.getTime() >= RUN_WAIT.maxWaitMs) return "max-wait";
+  if (checkedAt - startedAt.getTime() >= RUN_WAIT.maxWaitMs) return "max-wait";
   return null;
 }
 
-/** ¿Lleva más de 20 s en cola? Se mide con la hora de cada respuesta (`dataUpdatedAt`). */
-export const stuckInQueue = (run: PolledRun | undefined, checkedAt: number) =>
-  run?.status === "queued" && checkedAt - run.createdAt.getTime() >= RUN_WAIT.queuedWarningMs;
+/** ¿Una corrida lleva más de 20 s en cola? Se mide con la hora de cada respuesta (`dataUpdatedAt`). */
+export const stuckInQueue = (
+  run: { status: string; createdAt: Date } | undefined,
+  checkedAt: number,
+) => run?.status === "queued" && checkedAt - run.createdAt.getTime() >= RUN_WAIT.queuedWarningMs;
 
 /**
  * Una corrida sondeada cada 2 s mientras no termina y sin pasar los topes de `pollStop` (spec F1
@@ -42,12 +49,21 @@ export function usePolledRun<R extends PolledRun>(options: {
   queryKey: QueryKey;
   fetch: (signal: AbortSignal) => Promise<R>;
   isTerminal: IsTerminal<R>;
+  /** Desde cuándo cuenta el tope de 2 h (ver `PolledRun`). */
+  startedAt: (run: R) => Date;
   enabled?: boolean;
 }) {
-  const { isTerminal } = options;
+  const { isTerminal, startedAt } = options;
   // Fallas seguidas (con los reintentos): TanStack reinicia `fetchFailureCount` en cada consulta,
   // así que no sirve para contar consultas seguidas que fallan.
   const failures = useRef(0);
+  // Cada consulta cuenta sus fallas: si cambia la clave (otra corrida, otra versión), se reinicia.
+  const key = JSON.stringify(options.queryKey);
+  const lastKey = useRef(key);
+  if (lastKey.current !== key) {
+    lastKey.current = key;
+    failures.current = 0;
+  }
   const query = useQuery({
     queryKey: options.queryKey,
     enabled: options.enabled ?? true,
@@ -65,7 +81,7 @@ export function usePolledRun<R extends PolledRun>(options: {
     refetchInterval: (current) => {
       const { data, dataUpdatedAt } = current.state;
       if (data === undefined || isTerminal(data.status)) return false;
-      return pollStop(data, isTerminal, failures.current, dataUpdatedAt) === null
+      return pollStop(data, isTerminal, failures.current, dataUpdatedAt, startedAt(data)) === null
         ? RUN_WAIT.pollMs
         : false;
     },
@@ -81,6 +97,12 @@ export function usePolledRun<R extends PolledRun>(options: {
   const stopped =
     query.data === undefined
       ? null
-      : pollStop(query.data, isTerminal, failures.current, query.dataUpdatedAt);
+      : pollStop(
+          query.data,
+          isTerminal,
+          failures.current,
+          query.dataUpdatedAt,
+          startedAt(query.data),
+        );
   return { query, stopped, finishedHere: terminal && sawInProgress.current };
 }

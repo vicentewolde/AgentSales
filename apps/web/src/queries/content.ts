@@ -59,6 +59,8 @@ export function useContentRun(listingId: string, runId: string | null) {
         )
       ).contentRun,
     isTerminal: isTerminalContentRun,
+    // Una corrida nace en cola: la espera cuenta desde que se pidió.
+    startedAt: (run) => run.createdAt,
   });
   useEffect(() => {
     if (!polled.finishedHere) return;

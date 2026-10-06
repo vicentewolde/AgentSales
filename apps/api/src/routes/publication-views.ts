@@ -1,4 +1,5 @@
 import {
+  hasStartedLive,
   type Publication,
   type PublicationActor,
   type PublicationEvent,
@@ -28,7 +29,7 @@ export const publicationView = (publication: Publication): PublicationView => ({
   mediaIds: publication.mediaIds,
   status: publication.status,
   dryRun: publication.dryRun,
-  startedLive: !publication.dryRun && publication.progress !== null,
+  startedLive: hasStartedLive(publication),
   attempts: publication.attempts,
   lastError: publication.lastError,
   externalUrl: publication.externalUrl,

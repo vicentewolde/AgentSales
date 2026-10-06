@@ -9,7 +9,10 @@ import {
 import { useState } from "react";
 import { ApiError } from "../../api/client.js";
 import { useContentRun, useListingContent, useRequestContentRun } from "../../queries/content.js";
+import { useHealth } from "../../queries/health.js";
+import { useListingPublications } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
+import { prepareBlockedReason } from "../publications/publications.js";
 import { Preview } from "./Preview.js";
 import { RunProgress, RunResult } from "./RunStatus.js";
 
@@ -35,6 +38,10 @@ export function ContentSection({
 }) {
   const content = useListingContent(listingId);
   const request = useRequestContentRun(listingId);
+  // F3-T18: las publicaciones del aviso (aprobar, publicar y los bloqueos) y el modo de la API.
+  const publications = useListingPublications(listingId);
+  const health = useHealth();
+  const pendingReason = prepareBlockedReason(publications.data ?? []);
   const [requestedId, setRequestedId] = useState<string | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [reused, setReused] = useState(false);
@@ -47,7 +54,8 @@ export function ContentSection({
   const tracked = run.data ?? (activeId === latestActive?.id ? latestActive : null);
   const inProgress = tracked !== null && !isTerminalContentRun(tracked.status);
   const shown = tracked ?? latest;
-  const preparable = canPrepareContent(listingStatus);
+  // Con publicaciones pendientes no se prepara de nuevo (D3: cambiaría lo aprobado).
+  const preparable = canPrepareContent(listingStatus) && pendingReason === null;
 
   const start = (texts: boolean, replaceEdits = false) => {
     setConfirmReplace(false);
@@ -110,7 +118,19 @@ export function ContentSection({
           </button>
         </div>
       </div>
-      {!preparable && <p className="mt-2 text-sm text-slate-600">{LISTING_NOT_PREPARABLE_TEXT}.</p>}
+      {!canPrepareContent(listingStatus) && (
+        <p className="mt-2 text-sm text-slate-600">{LISTING_NOT_PREPARABLE_TEXT}.</p>
+      )}
+      {canPrepareContent(listingStatus) && pendingReason !== null && (
+        <p className="mt-2 text-sm text-slate-600">{pendingReason}</p>
+      )}
+      {publications.error && (
+        <ErrorAlert
+          error={publications.error}
+          onRetry={() => void publications.refetch()}
+          retrying={publications.isFetching}
+        />
+      )}
 
       {confirmReplace && (
         <div role="alert" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
@@ -191,6 +211,10 @@ export function ContentSection({
             listingId={listingId}
             lockReason={lockReason}
             onReload={() => void content.refetch()}
+            listingStatus={listingStatus}
+            runActive={busy}
+            publications={publications.data ?? []}
+            publishMode={health.data?.publishMode}
           />
         ))}
     </section>

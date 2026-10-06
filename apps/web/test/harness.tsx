@@ -23,10 +23,11 @@ import {
   createInMemoryMediaStorage,
   createInMemoryPlatformAccountRepository,
   createInMemorySlideTemplates,
+  createPublicationScenario,
   fakeHash,
 } from "@agentsales/core/testing";
 import { QueryClient } from "@tanstack/react-query";
-import { configure, render } from "@testing-library/react";
+import { configure, render, screen } from "@testing-library/react";
 import { App } from "../src/App.js";
 import { createApiClient } from "../src/api/client.js";
 
@@ -218,6 +219,47 @@ export async function contentSetup(
     );
   };
   return { listing, broker, fieldDefinitions, prepare };
+}
+
+/**
+ * Un aviso preparado con la cuenta de Instagram conectada (el escenario de publicación de core, con
+ * ids uuid) y el panel sobre la API en proceso (F3-T18). Los repositorios del escenario están en
+ * `t`; `open` abre el detalle y devuelve la sección Contenido.
+ */
+export async function publicationSetup(
+  options: {
+    approve?: boolean;
+    publishMode?: "dry-run" | "live";
+    intercept?: HarnessOptions["intercept"];
+  } = {},
+) {
+  const t = await createPublicationScenario({
+    nextId: randomUUID,
+    approve: options.approve ?? true,
+  });
+  const h = harness({
+    deps: {
+      listings: t.listings,
+      brokers: t.brokers,
+      media: t.media,
+      fieldDefinitions: t.fieldDefinitions,
+      storage: t.storage,
+      contents: t.contents,
+      contentRuns: t.contentRuns,
+      platformAccounts: t.platformAccounts,
+      publications: t.publications,
+      lock: t.deps.lock,
+      queue: t.deps.queue,
+      publishMode: options.publishMode ?? "dry-run",
+    },
+    ...(options.intercept === undefined ? {} : { intercept: options.intercept }),
+  });
+  const open = async () => {
+    h.renderApp(`/propiedades/${t.listingId}`);
+    return screen.findByRole("region", { name: "Contenido" });
+  };
+  // Solo lo que usa la API: los repositorios del arnés no son los del escenario (están en `t`).
+  return { client: h.client, requests: h.requests, renderApp: h.renderApp, t, open };
 }
 
 /** Corredor sintético (datos inventados). */

@@ -79,6 +79,13 @@ export function requirePublicationMode(to: PublicationStatus, dryRun: boolean | 
   }
 }
 
+/**
+ * Si una publicación ya empezó en vivo en la plataforma (`dryRun: false` con progreso guardado): no
+ * se reintenta en `dry-run` (`PUBLISH_MODE_LOCKED`, D11) y la API lo anticipa (`startedLive`).
+ */
+export const hasStartedLive = (publication: { dryRun: boolean; progress: unknown }): boolean =>
+  !publication.dryRun && publication.progress !== null;
+
 /** Motivo del último intento fallido (`publications.last_error`): legible y sin secretos. */
 export const publicationErrorSchema = z.object({
   code: z.string(),

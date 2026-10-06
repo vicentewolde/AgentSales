@@ -82,3 +82,12 @@ export const PREPARABLE_LISTING_STATUSES: readonly ListingStatus[] = ["ready", "
 
 export const canPrepareContent = (status: ListingStatus): boolean =>
   PREPARABLE_LISTING_STATUSES.includes(status);
+
+/**
+ * Estados en que un aviso puede publicarse (spec F3 §4.3): listo o ya publicado. Lo revisan
+ * `requirePublishableListing` y el panel (para desactivar Publicar), con el mismo texto.
+ */
+export const PUBLISHABLE_LISTING_STATUSES: readonly ListingStatus[] = ["ready", "active"];
+
+export const canPublishListing = (status: ListingStatus): boolean =>
+  PUBLISHABLE_LISTING_STATUSES.includes(status);

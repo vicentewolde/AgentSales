@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { canPublishListing } from "./listing.js";
 import {
   checkPublicationProgress,
+  hasStartedLive,
   publicationEventSchema,
   publicationSchema,
 } from "./publication.js";
@@ -123,5 +125,21 @@ describe("checkPublicationProgress (Instagram)", () => {
     expect(() =>
       checkPublicationProgress("instagram", { ...progress, publishRequestedAt: "ayer" }),
     ).toThrow(expect.objectContaining({ code: "PUBLICATION_PROGRESS_INVALID" }));
+  });
+});
+
+describe("hasStartedLive y canPublishListing", () => {
+  it("empezó en vivo solo si no es simulación y tiene progreso guardado", () => {
+    expect(hasStartedLive({ dryRun: false, progress: { containerId: "c" } })).toBe(true);
+    expect(hasStartedLive({ dryRun: false, progress: null })).toBe(false);
+    expect(hasStartedLive({ dryRun: true, progress: { containerId: "c" } })).toBe(false);
+  });
+
+  it("se publica un aviso listo o ya publicado", () => {
+    expect(canPublishListing("ready")).toBe(true);
+    expect(canPublishListing("active")).toBe(true);
+    for (const status of ["draft", "paused", "closed", "archived"] as const) {
+      expect(canPublishListing(status)).toBe(false);
+    }
   });
 });

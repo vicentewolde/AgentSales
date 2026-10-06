@@ -6,7 +6,7 @@ describe("pollStop", () => {
   const createdAt = new Date(2026, 9, 2, 10, 0);
   const at = (ms: number) => createdAt.getTime() + ms;
   const stop = (status: "queued" | "running" | "failed", failures: number, ms: number) =>
-    pollStop({ status, createdAt }, isTerminalImportRun, failures, at(ms));
+    pollStop({ status, createdAt }, isTerminalImportRun, failures, at(ms), createdAt);
 
   it("sigue mientras la corrida corre, sin fallas y antes de las 2 h", () => {
     expect(stop("running", 2, RUN_WAIT.maxWaitMs - 1)).toBeNull();
@@ -16,5 +16,19 @@ describe("pollStop", () => {
     expect(stop("queued", 3, 0)).toBe("failures");
     expect(stop("running", 0, RUN_WAIT.maxWaitMs)).toBe("max-wait");
     expect(stop("failed", 5, RUN_WAIT.maxWaitMs)).toBeNull();
+  });
+
+  it("una publicación aprobada hace días no corta la espera: cuenta desde que pasó a publicar", () => {
+    const createdAt = new Date(2026, 9, 2, 10, 0);
+    const updatedAt = new Date(createdAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const isTerminal = (status: string) => status !== "publishing";
+    const checkedAt = updatedAt.getTime() + 60_000;
+    const publication = { status: "publishing", createdAt, updatedAt };
+    // Contada desde que nació, ya habría pasado el tope; desde `updatedAt`, recién empieza.
+    expect(pollStop(publication, isTerminal, 0, checkedAt, createdAt)).toBe("max-wait");
+    expect(pollStop(publication, isTerminal, 0, checkedAt, updatedAt)).toBeNull();
+    expect(
+      pollStop({ ...publication, status: "published" }, isTerminal, 0, checkedAt, createdAt),
+    ).toBeNull();
   });
 });

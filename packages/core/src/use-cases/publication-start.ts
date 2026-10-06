@@ -1,14 +1,13 @@
 import { AppError, isAppError } from "../errors.js";
-import type { Listing } from "../listing.js";
+import { LISTING_NOT_PUBLISHABLE_TEXT } from "../labels.js";
+import { canPublishListing, type Listing } from "../listing.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
-import type { Publication, PublicationActor } from "../publication.js";
+import { hasStartedLive, type Publication, type PublicationActor } from "../publication.js";
 
 // Piezas comunes de publicar el canal (`publishListing`), publicar una (`startPublication`),
 // descartar y retirar (spec F3 §4.3).
 
-/** Estados del aviso en que se puede publicar (spec F3 §4.3): listo o ya publicado. */
-const PUBLISHABLE_LISTING_STATUSES: readonly Listing["status"][] = ["ready", "active"];
 /** Estados de una publicación que se pueden pasar a `publishing`. */
 export const STARTABLE_STATUSES: readonly Publication["status"][] = ["approved", "failed"];
 
@@ -64,12 +63,10 @@ export function requirePublishableListing(listing: Listing | null, listingId: st
       details: { listingId },
     });
   }
-  if (!PUBLISHABLE_LISTING_STATUSES.includes(listing.status)) {
-    throw new AppError(
-      "LISTING_NOT_READY",
-      "La propiedad tiene que estar lista o publicada para publicar",
-      { details: { listingId, status: listing.status } },
-    );
+  if (!canPublishListing(listing.status)) {
+    throw new AppError("LISTING_NOT_READY", LISTING_NOT_PUBLISHABLE_TEXT, {
+      details: { listingId, status: listing.status },
+    });
   }
   return listing;
 }
@@ -95,7 +92,7 @@ export async function requireNoActiveRun(
  * `PUBLISH_MODE_LOCKED` (409): se reintenta en `live` o se descarta.
  */
 export function requireCompatibleMode(publication: Publication, dryRun: boolean): void {
-  if (dryRun && !publication.dryRun && publication.progress !== null) {
+  if (dryRun && hasStartedLive(publication)) {
     throw new AppError(
       "PUBLISH_MODE_LOCKED",
       "Esta publicación ya empezó en vivo en la plataforma: reintenta en vivo o descártala",

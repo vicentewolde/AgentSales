@@ -154,6 +154,10 @@ export function contentRunProgressText(run: Pick<ContentRun, "status" | "stage">
 /** Lo que muestran la CLI y el panel cuando una corrida sigue en cola a los 20 s (`RUN_WAIT`). */
 export const RUN_QUEUED_WARNING_TEXT = "Sigue en cola: ¿está corriendo el worker? (pnpm dev)";
 
+/** Por qué un aviso no puede publicarse (`LISTING_NOT_READY` al publicar y el panel). */
+export const LISTING_NOT_PUBLISHABLE_TEXT =
+  "La propiedad tiene que estar lista o publicada para publicar";
+
 /** Por qué un aviso no puede preparar contenido (`LISTING_NOT_READY` y el panel). */
 export const LISTING_NOT_PREPARABLE_TEXT =
   "La propiedad tiene que estar lista, pausada o publicada para preparar su contenido";
