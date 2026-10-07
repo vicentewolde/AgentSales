@@ -90,6 +90,13 @@ export type InstagramAccountMeta = z.infer<typeof instagramAccountMetaSchema>;
 export const MERCADOLIBRE_SITE_ID = "MLC";
 
 /**
+ * Horizonte del `refresh_token` de Mercado Libre: 6 meses desde la conexión o el último refresco
+ * (nota §3.2). Es `token_expires_at` de la cuenta, siempre estimado (spec F4 §4.3): lo fijan
+ * conectar (T06) y cada refresco (T08).
+ */
+export const MERCADOLIBRE_REFRESH_TOKEN_DAYS = 180;
+
+/**
  * `meta` de una cuenta de Mercado Libre (spec F4 §4.2 y §4.3, ADR-0015). No lleva secretos.
  * - `accessTokenExpiresAt`: vence el `access_token` (horas; ahora + `expires_in`). Lo lee
  *   `ensureAccessToken` para refrescar antes.

@@ -460,24 +460,28 @@ export const CLIENT_HEADER = "X-AgentSales-Client";
 export const CLI_CLIENT = "cli";
 
 /**
- * Una cuenta conectada tal como la ve el operador (spec F3 §4.6 y §4.8, `GET /accounts`): nunca
- * credenciales. De `meta` (Instagram) solo lo que muestra el panel; lo que falta va en `null`.
+ * Una cuenta conectada tal como la ve el operador (spec F3 §4.6 y §4.8, spec F4 §4.2,
+ * `GET /accounts`): nunca credenciales. De `meta` solo lo que muestra el panel, según la plataforma
+ * (Instagram o Mercado Libre); lo que falta va en `null`.
  */
 export const platformAccountViewSchema = z.object({
   id: z.string(),
   brokerId: z.string(),
   platform: z.enum(PLATFORMS),
-  /** `@usuario`. */
+  /** Instagram: `@usuario`; Mercado Libre: el `nickname`, tal cual. */
   displayName: z.string(),
   status: z.enum(PLATFORM_ACCOUNT_STATUSES),
   tokenExpiresAt: z.coerce.date().nullable(),
-  /** El vencimiento es una estimación (token del panel de Meta, aún sin refrescar). */
+  /**
+   * El vencimiento es una estimación: en Instagram, el token del panel de Meta aún sin refrescar; en
+   * Mercado Libre, siempre (es el horizonte del `refresh_token`, ADR-0015).
+   */
   tokenExpiryEstimated: z.boolean(),
   connectedAt: z.coerce.date().nullable(),
   tokenRefreshedAt: z.coerce.date().nullable(),
-  /** `BUSINESS` o `MEDIA_CREATOR`. */
+  /** Instagram: `BUSINESS` o `MEDIA_CREATOR`; Mercado Libre: el `user_type` (`normal`, …). */
   accountType: z.string().nullable(),
-  /** `null` si no se conocen (token del panel). */
+  /** Instagram: los permisos (`null` con el token del panel); Mercado Libre: los `scopes`. */
   permissions: z.array(z.string()).nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),

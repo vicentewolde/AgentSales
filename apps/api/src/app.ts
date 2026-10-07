@@ -125,7 +125,6 @@ export function createApp(deps: AppDeps) {
         ...deps,
         instagram: deps.instagram.auth,
         instagramOAuth: deps.instagram.oauthConfigured && deps.instagram.secureCookie,
-        mercadoLibre: deps.mercadoLibre,
       }),
     )
     .route("/oauth", oauthRoutes(deps));

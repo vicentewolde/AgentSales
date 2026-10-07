@@ -205,7 +205,9 @@ describe("POST /accounts/mercadolibre/connect", () => {
 
   it.each([
     ["malo-vencido", 400, "ML_AUTH_INVALID"],
+    ["rechazado", 400, "ML_REQUEST_REJECTED"],
     ["sin-offline", 400, "ML_PERMISSION_DENIED"],
+    ["sin-write", 400, "ML_PERMISSION_DENIED"],
     ["sin-refresh", 502, "ML_UNEXPECTED_RESPONSE"],
     ["otro-usuario", 502, "ML_UNEXPECTED_RESPONSE"],
     ["argentina", 400, "ML_SITE_MISMATCH"],
@@ -229,6 +231,44 @@ describe("POST /accounts/mercadolibre/connect", () => {
       await expect(platformAccounts.list()).resolves.toEqual([]);
     },
   );
+
+  it("al conectar, los mensajes dicen qué hacer con la dirección pegada", async () => {
+    const { connect, freshState, broker } = setup();
+
+    const expired = await connect({
+      broker: broker.slug,
+      code: "malo-TG",
+      state: await freshState(),
+    });
+    const rejected = await connect({
+      broker: broker.slug,
+      code: "rechazado-TG",
+      state: await freshState(),
+    });
+
+    expect(errorBodySchema.parse(await expired.json()).error.message).toContain(
+      "pide el enlace de nuevo",
+    );
+    expect(errorBodySchema.parse(await rejected.json()).error.message).toContain("ML_REDIRECT_URI");
+  });
+
+  it("otra cuenta de Mercado Libre del corredor desconecta la anterior", async () => {
+    const { connect, freshState, broker, platformAccounts } = setup();
+
+    const first = accountResponseSchema.parse(
+      await (await connect({ broker: broker.slug, code: CODE, state: await freshState() })).json(),
+    );
+    const second = accountResponseSchema.parse(
+      await (
+        await connect({ broker: broker.slug, code: "otra-cuenta-TG", state: await freshState() })
+      ).json(),
+    );
+
+    expect(second.account).toMatchObject({ displayName: "OTRA_CUENTA", status: "connected" });
+    const accounts = await platformAccounts.list();
+    expect(accounts.find((account) => account.id === first.account.id)?.status).toBe("revoked");
+    expect(accounts.filter((account) => account.status === "connected")).toHaveLength(1);
+  });
 
   it("un código o un state con espacios es 400 con el motivo, sin llamar", async () => {
     const { connect, freshState, broker, auth } = setup();

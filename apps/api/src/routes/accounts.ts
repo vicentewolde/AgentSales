@@ -12,6 +12,7 @@ import {
   type PlatformAccountRepository,
   type RefreshAccountTokensDeps,
   refreshAccountToken,
+  requireBroker,
   type TokenRefreshResult,
 } from "@agentsales/core";
 import { Hono } from "hono";
@@ -29,7 +30,12 @@ import {
 } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
 import { validated, validatedWithReason } from "../validation.js";
-import { OAUTH_STATE_TTL_SECONDS, type OAuthStateSigner } from "./oauth.js";
+import {
+  OAUTH_STATE_PLATFORMS,
+  OAUTH_STATE_TTL_SECONDS,
+  type OAuthStateSigner,
+  verifyOAuthState,
+} from "./oauth.js";
 
 export type AccountRoutesDeps = ConnectAccountDeps &
   Omit<RefreshAccountTokensDeps, "onWarning"> & {
@@ -46,15 +52,35 @@ export type AccountRoutesDeps = ConnectAccountDeps &
     oauthState: OAuthStateSigner;
   };
 
-/** El `state` de Mercado Libre lleva la plataforma: uno de Instagram no sirve aquí (ni al revés). */
-const MERCADOLIBRE_STATE_PLATFORM = "mercadolibre";
-
 /** Sin el par de la app no se arma la URL ni se canjea: el canje mandaría un secret vacío. */
 function mercadoLibreNotConfigured() {
   return new AppError(
     "MERCADOLIBRE_NOT_CONFIGURED",
     "Falta configurar la app de Mercado Libre: anota ML_APP_ID y ML_CLIENT_SECRET en .env y reinicia la API (docs/07-checklist-cuentas.md)",
   );
+}
+
+/**
+ * Al conectar, los errores de Mercado Libre dicen qué hacer con la dirección pegada: un código que
+ * no sirve se pide de nuevo, y un rechazo de la petición suele ser la dirección de retorno.
+ */
+function mercadoLibreConnectError(error: unknown): unknown {
+  if (!isAppError(error)) return error;
+  if (error.code === "ML_AUTH_INVALID") {
+    return new AppError(
+      error.code,
+      "Mercado Libre no aceptó la conexión (el código venció o ya se usó): pide el enlace de nuevo, autoriza y pega la dirección en seguida",
+      { details: error.details, cause: error },
+    );
+  }
+  if (error.code === "ML_REQUEST_REJECTED") {
+    return new AppError(
+      error.code,
+      `${error.message}: revisa que ML_REDIRECT_URI sea la misma dirección registrada en la app de Mercado Libre`,
+      { details: error.details, cause: error },
+    );
+  }
+  return error;
 }
 
 /** Un `state` vencido, alterado, de otra plataforma o de otro corredor: no se canjea nada. */
@@ -193,13 +219,9 @@ export function accountRoutes(deps: AccountRoutesDeps) {
       async (c) => {
         if (!deps.mercadoLibre.configured) throw mercadoLibreNotConfigured();
         const { broker } = c.req.valid("json");
-        if ((await deps.brokers.findBySlug(broker)) === null) {
-          throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${broker}`, {
-            details: { broker },
-          });
-        }
+        await requireBroker(deps.brokers, broker);
         const state = deps.oauthState.sign(
-          { platform: MERCADOLIBRE_STATE_PLATFORM, broker },
+          { platform: OAUTH_STATE_PLATFORMS.mercadolibre, broker },
           { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
         );
         const body: MercadoLibreAuthorizeUrlResponse = {
@@ -215,19 +237,19 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         if (!deps.mercadoLibre.configured) throw mercadoLibreNotConfigured();
         const { broker, code, state } = c.req.valid("json");
         // Antes de llamar a Mercado Libre: un `state` ajeno o vencido no canjea nada.
-        let data: Readonly<Record<string, string | number | boolean>>;
-        try {
-          data = deps.oauthState.verify(state);
-        } catch {
-          throw stateInvalid();
-        }
-        if (data.platform !== MERCADOLIBRE_STATE_PLATFORM || data.broker !== broker) {
-          throw stateInvalid();
-        }
+        const expected = { platform: OAUTH_STATE_PLATFORMS.mercadolibre, broker };
+        if (verifyOAuthState(deps.oauthState, state, expected) === null) throw stateInvalid();
         const account = await connectMercadoLibreAccount(
-          { ...deps, mercadoLibre: deps.mercadoLibre.auth },
+          {
+            brokers: deps.brokers,
+            platformAccounts: deps.platformAccounts,
+            mercadoLibre: deps.mercadoLibre.auth,
+            ...(deps.now === undefined ? {} : { now: deps.now }),
+          },
           { broker, code, signal: c.req.raw.signal },
-        );
+        ).catch((error: unknown) => {
+          throw mercadoLibreConnectError(error);
+        });
         const body: AccountResponse = { account: accountView(account) };
         return c.json(body, 200);
       },

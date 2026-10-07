@@ -42,9 +42,10 @@ Cualquier dependencia nueva que no esté en esta tabla requiere justificación e
   |---|---|
   | `INVALID_TRANSITION`, `LISTING_NOT_READY`, `CONTENT_EDITED`, `CONTENT_NOT_CURRENT`, `CONTENT_RUN_ACTIVE`, `CONTENT_LOCKED`, `PUBLICATION_PENDING`; desde F3-T14, `ACCOUNT_NOT_CONNECTED` y `ACCOUNT_REFRESH_UNSUPPORTED`; desde F3-T15, `CONTENT_HAS_ERRORS`, `CONTENT_NOT_READY`, `CONTENT_NOT_APPROVED`, `PUBLICATION_IN_PROGRESS`, `PUBLICATION_CONFLICT`, `NOTHING_TO_PUBLISH`, `REMOVAL_NOT_CONFIRMED` y `PUBLISH_MODE_LOCKED` | 409 (un pedido válido que el estado actual no permite: esperar, recargar, descartar o confirmar) |
   | `REQUEST_TOO_LARGE` | 413 |
-  | `IG_AUTH_INVALID`, `IG_PERMISSION_DENIED`, `IG_REQUEST_REJECTED` | 400 (Instagram rechazó el token o el permiso al conectar; F3-T13) |
-  | `IG_UNEXPECTED_RESPONSE` | 502 (Instagram respondió algo con otra forma) |
-  | `JOB_PAYLOAD_INVALID`, `IMPORT_RUN_INVALID`, `*_ROW_INVALID`; desde F3-T15, `PUBLICATION_EVENT_INVALID`, `PUBLICATION_REFERENCE_INVALID` y `PUBLICATION_PROGRESS_INVALID` | 500 (datos que arma el servidor, o una fila corrupta en la base: no es culpa del cliente) |
+  | `IG_AUTH_INVALID`, `IG_PERMISSION_DENIED`, `IG_REQUEST_REJECTED`; desde F4-T06, `ML_AUTH_INVALID`, `ML_PERMISSION_DENIED`, `ML_SITE_MISMATCH` y `ML_REQUEST_REJECTED` | 400 (la plataforma rechazó el código, el token, el permiso o la cuenta al conectar; F3-T13 y F4-T06. Al refrescar, T08 revisa si `ML_AUTH_INVALID` debe ser 409, como `ACCOUNT_NOT_CONNECTED`) |
+  | `IG_UNEXPECTED_RESPONSE`, `ML_UNEXPECTED_RESPONSE` | 502 (la plataforma respondió algo con otra forma) |
+  | `MERCADOLIBRE_NOT_CONFIGURED`, `ML_APP_CREDENTIALS_INVALID` (F4-T06) | 503 (falta el par de la app en `.env`, o Mercado Libre no lo reconoce: lo corrige el operador y reinicia la API) |
+  | `JOB_PAYLOAD_INVALID`, `IMPORT_RUN_INVALID`, `*_ROW_INVALID`; desde F3-T15, `PUBLICATION_EVENT_INVALID`, `PUBLICATION_REFERENCE_INVALID` y `PUBLICATION_PROGRESS_INVALID`; desde F4-T06, `ML_ID_INVALID`, `ML_BODY_INVALID` y `ML_PICTURE_INVALID` | 500 (datos que arma el servidor, o una fila corrupta en la base: no es culpa del cliente) |
   | `*_NOT_FOUND` | 404 |
   | `*_INVALID*` o `INVALID_*` | 400 |
   | `*_RATE_LIMITED` | 429 |

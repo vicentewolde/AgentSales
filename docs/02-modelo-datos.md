@@ -44,14 +44,14 @@ erDiagram
 | id | uuid PK | |
 | broker_id | uuid FK | |
 | platform | enum `platform` | `instagram`, `portal_inmobiliario`, `fb_marketplace` (luego `yapo`, `tiktok`) |
-| external_account_id | text | ID en la plataforma (Instagram: el `user_id` de `/me`). No cambia en una fila: es parte del único y de la AAD del cifrado |
-| display_name | text | Lo que ve el operador (Instagram: `@usuario`) |
+| external_account_id | text | ID en la plataforma (Instagram: el `user_id` de `/me`; Mercado Libre: el `user_id` de `/users/me`, el mismo del canje). No cambia en una fila: es parte del único y de la AAD del cifrado |
+| display_name | text | Lo que ve el operador (Instagram: `@usuario`; Mercado Libre: el `nickname`, tal cual) |
 | credentials_encrypted | text null | `{ accessToken, refreshToken? }` cifrado con AES-256-GCM (`v1.<iv>.<cifrado>.<tag>`, AAD `platform:broker_id:external_account_id`); `null` en una cuenta desconectada. `refreshToken` solo en Mercado Libre (ADR-0015) |
 | token_expires_at | timestamptz null | Cuándo la cuenta deja de funcionar sin que el operador haga algo. Instagram: el vencimiento del token largo. Mercado Libre: el horizonte estimado del `refresh_token` (último refresco + 6 meses); el del `access_token` (horas) va en `meta.accessTokenExpiresAt` (ADR-0015) |
 | status | enum `platform_account_status` | `connected`, `expired`, `revoked`, `error` |
 | meta | jsonb | Datos propios de la plataforma, sin secretos. Instagram (`instagramAccountMetaSchema`, F3-T13): `accountType`, `permissions` (`null` si se conectó con el token del panel: desconocidos), `connectedAt`, `tokenRefreshedAt` (`null` hasta el primer refresco con ese token) y `tokenExpiryEstimated`. Mercado Libre (`mercadoLibreAccountMetaSchema`, F4-T01): `userId`, `nickname`, `siteId` (`MLC`), `userType`, `scopes`, `testUser`, `connectedAt`, `tokenRefreshedAt`, `accessTokenExpiresAt` y `tokenExpiryEstimated` |
 
-Único: `(broker_id, platform, external_account_id)`. Además, **una sola cuenta conectada por corredor y plataforma**: la impone `connectAccount` (al conectar otra, la anterior pasa a `revoked` en la misma transacción, con el corredor bloqueado), no un índice de la base (F3-T13). Entidad en core: `platformAccountSchema` (sin credenciales, con `hasCredentials`); las credenciales salen descifradas solo por `PlatformAccountRepository.getCredentials` (F3-T03).
+Único: `(broker_id, platform, external_account_id)`. Además, **una sola cuenta conectada por corredor y plataforma**: la imponen `connectAccount` y `connectMercadoLibreAccount` (F4-T06) (al conectar otra, la anterior pasa a `revoked` en la misma transacción, con el corredor bloqueado), no un índice de la base (F3-T13). Entidad en core: `platformAccountSchema` (sin credenciales, con `hasCredentials`); las credenciales salen descifradas solo por `PlatformAccountRepository.getCredentials` (F3-T03).
 
 ### field_definitions — campos configurables
 | Columna | Tipo | Notas |

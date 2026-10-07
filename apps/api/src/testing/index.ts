@@ -76,8 +76,9 @@ export const TEST_ML_REDIRECT_URI = "https://localhost/oauth/mercadolibre/callba
 /**
  * Mercado Libre falso para la API (spec F4 §4.2): canjea un código y responde `/users/me`, y
  * registra las llamadas (sin valores). El código decide el caso: `malo…` es `ML_AUTH_INVALID`,
- * `sin-offline…` no trae `offline_access`, `sin-refresh…` no trae `refresh_token`,
- * `otro-usuario…` responde otro `user_id` en `/users/me` y `argentina…` es una cuenta de `MLA`.
+ * `rechazado…` es `ML_REQUEST_REJECTED`, `sin-offline…` y `sin-write…` no traen ese permiso,
+ * `sin-refresh…` no trae `refresh_token`, `otro-usuario…` responde otro `user_id` en `/users/me`,
+ * `otra-cuenta…` es otra cuenta del vendedor (`user_id` 777) y `argentina…` es una cuenta de `MLA`.
  * Los tokens llevan el código, para que un test revise que no aparecen en la respuesta ni el log.
  */
 export function fakeMercadoLibreAuth(): MercadoLibreAuth & { calls: string[] } {
@@ -95,14 +96,24 @@ export function fakeMercadoLibreAuth(): MercadoLibreAuth & { calls: string[] } {
           { details: { httpStatus: 400, error: "invalid_grant", causes: [] } },
         );
       }
+      if (code.startsWith("rechazado")) {
+        throw new AppError(
+          "ML_REQUEST_REJECTED",
+          "Mercado Libre rechazó la petición (invalid_request)",
+          { details: { httpStatus: 400, error: "invalid_request", causes: [] } },
+        );
+      }
+      const scopes = ["offline_access", "read", "write"].filter(
+        (scope) =>
+          !(code.startsWith("sin-offline") && scope === "offline_access") &&
+          !(code.startsWith("sin-write") && scope === "write"),
+      );
       return {
         accessToken: `APP_USR-fake-${code}`,
         refreshToken: code.startsWith("sin-refresh") ? null : `TG-fake-${code}`,
         accessTokenExpiresAt: new Date("2026-10-07T18:00:00Z"),
-        scopes: code.startsWith("sin-offline")
-          ? ["read", "write"]
-          : ["offline_access", "read", "write"],
-        userId: "8035443",
+        scopes,
+        userId: code.startsWith("otra-cuenta") ? "777" : "8035443",
       };
     },
     async refresh() {
@@ -113,9 +124,10 @@ export function fakeMercadoLibreAuth(): MercadoLibreAuth & { calls: string[] } {
     },
     async me(accessToken) {
       calls.push("me");
+      const other = accessToken.includes("otra-cuenta");
       return {
-        userId: accessToken.includes("otro-usuario") ? "999" : "8035443",
-        nickname: "CORREDORA_PRUEBA",
+        userId: accessToken.includes("otro-usuario") ? "999" : other ? "777" : "8035443",
+        nickname: other ? "OTRA_CUENTA" : "CORREDORA_PRUEBA",
         siteId: accessToken.includes("argentina") ? "MLA" : "MLC",
         userType: "normal",
         tags: ["normal"],

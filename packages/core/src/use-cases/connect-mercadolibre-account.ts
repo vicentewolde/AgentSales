@@ -1,6 +1,7 @@
 import type { AbortSignalLike } from "../abort.js";
 import { AppError } from "../errors.js";
 import {
+  MERCADOLIBRE_REFRESH_TOKEN_DAYS,
   MERCADOLIBRE_SITE_ID,
   type MercadoLibreAccountMeta,
   mercadoLibreAccountMetaSchema,
@@ -10,12 +11,6 @@ import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { MercadoLibreAuth } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import { requireBroker } from "./connect-account.js";
-
-/**
- * Horizonte del `refresh_token` de Mercado Libre: 6 meses desde la conexión o el último refresco
- * (nota §3.2). Es `token_expires_at` de la cuenta, siempre estimado (spec F4 §4.3).
- */
-export const MERCADOLIBRE_REFRESH_TOKEN_DAYS = 180;
 
 /** Permisos que exige conectar (spec F4 §4.2): refrescar sin el operador y publicar. */
 export const MERCADOLIBRE_REQUIRED_SCOPES = ["offline_access", "write"] as const;
