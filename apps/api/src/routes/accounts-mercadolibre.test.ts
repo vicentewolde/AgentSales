@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger, createStateSigner } from "@agentsales/config";
+import { AppError } from "@agentsales/core";
 import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
@@ -10,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import {
   accountListResponseSchema,
+  accountRefreshResponseSchema,
   accountResponseSchema,
   errorBodySchema,
   mercadoLibreAuthorizeUrlResponseSchema,
@@ -28,7 +30,7 @@ const json = (body: unknown) => ({
   body: JSON.stringify(body),
 });
 
-function setup(options: { configured?: boolean; logLines?: string[] } = {}) {
+function setup(options: { configured?: boolean; logLines?: string[]; now?: () => Date } = {}) {
   const broker = contentBrokerFixture();
   const otherBroker = { ...contentBrokerFixture(), id: randomUUID(), slug: "otro-corredor" };
   const brokers = createInMemoryBrokerRepository([broker, otherBroker]);
@@ -52,6 +54,7 @@ function setup(options: { configured?: boolean; logLines?: string[] } = {}) {
       brokers,
       platformAccounts,
       ...(logger === undefined ? {} : { logger }),
+      ...(options.now === undefined ? {} : { now: options.now }),
       mercadoLibre: {
         auth,
         configured: options.configured ?? true,
@@ -319,6 +322,178 @@ describe("POST /accounts/mercadolibre/connect", () => {
     for (const secret of [CODE, "malo-TG", "sin-refresh-TG", "con espacio", ...states]) {
       expect(written).not.toContain(secret);
     }
+    expect(written).not.toMatch(/APP_USR|TG-fake/);
+  });
+});
+
+describe("POST /accounts/:id/refresh con Mercado Libre", () => {
+  const CONNECTED_AT = new Date("2026-10-07T12:00:00Z");
+  const DAY = 24 * 60 * 60 * 1000;
+
+  /** La API con un reloj que avanza a mano y una cuenta conectada con el código pedido. */
+  async function refreshSetup(options: { configured?: boolean; logLines?: string[] } = {}) {
+    let clock = CONNECTED_AT;
+    const base = setup({ ...options, now: () => clock });
+    const connectWith = async (code: string) => {
+      const state = await base.freshState();
+      const response = await base.connect({ broker: base.broker.slug, code, state });
+      return accountResponseSchema.parse(await response.json()).account;
+    };
+    const refresh = (id: string, body: unknown = {}) =>
+      base.app.request(`/accounts/${id}/refresh`, json(body));
+    const advance = (ms: number) => {
+      clock = new Date(clock.getTime() + ms);
+    };
+    const refreshCalls = () => base.auth.calls.filter((call) => call === "refresh").length;
+    return { ...base, connectWith, refresh, advance, refreshCalls };
+  }
+
+  it("recién conectada no toca (not_due, a los 7 días); con force se refresca y guarda el par completo", async () => {
+    const { connectWith, refresh, platformAccounts, refreshCalls } = await refreshSetup();
+    const account = await connectWith("codigo-ok");
+
+    const skipped = await refresh(account.id);
+    expect(skipped.status).toBe(200);
+    expect(accountRefreshResponseSchema.parse(await skipped.json())).toMatchObject({
+      outcome: "skipped",
+      reason: "not_due",
+      refreshableAt: new Date(CONNECTED_AT.getTime() + 7 * DAY),
+    });
+    expect(refreshCalls()).toBe(0);
+
+    const forced = await refresh(account.id, { force: true });
+    expect(forced.status).toBe(200);
+    const text = await forced.text();
+    expect(text).not.toMatch(/APP_USR|TG-/);
+    expect(accountRefreshResponseSchema.parse(JSON.parse(text))).toMatchObject({
+      outcome: "refreshed",
+      account: {
+        id: account.id,
+        platform: "portal_inmobiliario",
+        status: "connected",
+        tokenExpiresAt: new Date(CONNECTED_AT.getTime() + 180 * DAY),
+        tokenRefreshedAt: CONNECTED_AT,
+      },
+    });
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({
+      accessToken: "APP_USR-fake-refrescado-1",
+      refreshToken: "TG-fake-refrescado-1",
+    });
+    expect(refreshCalls()).toBe(1);
+  });
+
+  it("sin force, a los 7 días del último refresco sí toca", async () => {
+    const { connectWith, refresh, advance, refreshCalls } = await refreshSetup();
+    const account = await connectWith("codigo-ok");
+    advance(7 * DAY);
+
+    const response = await refresh(account.id);
+
+    expect(accountRefreshResponseSchema.parse(await response.json()).outcome).toBe("refreshed");
+    expect(refreshCalls()).toBe(1);
+  });
+
+  it("un rechazo de Mercado Libre es 200 expired (token_rejected) y la cuenta queda vencida", async () => {
+    const { connectWith, refresh } = await refreshSetup();
+    const account = await connectWith("vence-codigo");
+
+    const response = await refresh(account.id, { force: true });
+
+    expect(response.status).toBe(200);
+    expect(accountRefreshResponseSchema.parse(await response.json())).toMatchObject({
+      outcome: "expired",
+      reason: "token_rejected",
+      account: { id: account.id, status: "expired" },
+    });
+    const again = await refresh(account.id, { force: true });
+    expect(again.status).toBe(409);
+    expect(errorBodySchema.parse(await again.json()).error.code).toBe("ACCOUNT_NOT_CONNECTED");
+  });
+
+  it("si Mercado Libre no responde: 503 ML_UNAVAILABLE y la cuenta no cambia", async () => {
+    const { connectWith, refresh, platformAccounts } = await refreshSetup();
+    const account = await connectWith("caida-codigo");
+
+    const response = await refresh(account.id, { force: true });
+
+    expect(response.status).toBe(503);
+    expect(errorBodySchema.parse(await response.json()).error.code).toBe("ML_UNAVAILABLE");
+    expect(await platformAccounts.get(account.id)).toMatchObject({ status: "connected" });
+    expect(platformAccounts.storedCredentials(account.id)?.refreshToken).toBe(
+      "TG-fake-caida-codigo",
+    );
+  });
+
+  it("sin el par de la app: 503 MERCADOLIBRE_NOT_CONFIGURED sin llamar ni cambiar la cuenta", async () => {
+    const { refresh, platformAccounts, broker, refreshCalls } = await refreshSetup({
+      configured: false,
+    });
+    const account = await platformAccounts.upsertConnected({
+      brokerId: broker.id,
+      platform: "portal_inmobiliario",
+      externalAccountId: "8035443",
+      displayName: "CORREDORA_PRUEBA",
+      tokenExpiresAt: new Date(CONNECTED_AT.getTime() + 180 * DAY),
+      meta: {
+        userId: "8035443",
+        nickname: "CORREDORA_PRUEBA",
+        siteId: "MLC",
+        userType: "normal",
+        scopes: ["offline_access", "read", "write"],
+        testUser: false,
+        connectedAt: CONNECTED_AT.toISOString(),
+        tokenRefreshedAt: null,
+        accessTokenExpiresAt: CONNECTED_AT.toISOString(),
+        tokenExpiryEstimated: true,
+      },
+      credentials: { accessToken: "APP_USR-guardado", refreshToken: "TG-guardado" },
+    });
+
+    const response = await refresh(account.id, { force: true });
+
+    expect(response.status).toBe(503);
+    const { error } = errorBodySchema.parse(await response.json());
+    expect(error.code).toBe("MERCADOLIBRE_NOT_CONFIGURED");
+    expect(error.message).toContain("ML_APP_ID");
+    expect(refreshCalls()).toBe(0);
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({
+      accessToken: "APP_USR-guardado",
+      refreshToken: "TG-guardado",
+    });
+  });
+
+  it("si otro proceso la está renovando: 503 ACCOUNT_LOCK_TIMEOUT, que se reintenta en un momento", async () => {
+    const { connectWith, refresh, platformAccounts, refreshCalls } = await refreshSetup();
+    const account = await connectWith("codigo-ok");
+    platformAccounts.withCredentialsLock = async () => {
+      throw new AppError(
+        "ACCOUNT_LOCK_TIMEOUT",
+        "Otro proceso está renovando el acceso de la cuenta: se reintenta en un momento",
+        { retriable: true },
+      );
+    };
+
+    const response = await refresh(account.id, { force: true });
+
+    expect(response.status).toBe(503);
+    const { error } = errorBodySchema.parse(await response.json());
+    expect(error).toEqual({
+      code: "ACCOUNT_LOCK_TIMEOUT",
+      message: "Otro proceso está renovando el acceso de la cuenta: se reintenta en un momento",
+    });
+    expect(refreshCalls()).toBe(0);
+  });
+
+  it("ningún token llega al log, tampoco cuando el refresco falla", async () => {
+    const lines: string[] = [];
+    const { connectWith, refresh } = await refreshSetup({ logLines: lines });
+    for (const code of ["codigo-ok", "vence-codigo", "caida-codigo"]) {
+      const account = await connectWith(code);
+      await refresh(account.id, { force: true });
+    }
+
+    const written = lines.join("\n");
+    expect(written.length).toBeGreaterThan(0);
     expect(written).not.toMatch(/APP_USR|TG-fake/);
   });
 });

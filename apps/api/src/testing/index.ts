@@ -79,6 +79,8 @@ export const TEST_ML_REDIRECT_URI = "https://localhost/oauth/mercadolibre/callba
  * `rechazado…` es `ML_REQUEST_REJECTED`, `sin-offline…` y `sin-write…` no traen ese permiso,
  * `sin-refresh…` no trae `refresh_token`, `otro-usuario…` responde otro `user_id` en `/users/me`,
  * `otra-cuenta…` es otra cuenta del vendedor (`user_id` 777) y `argentina…` es una cuenta de `MLA`.
+ * El refresco (F4-T08) entrega un par nuevo (`…-refrescado-<n>`), salvo que el `refresh_token` lleve
+ * `vence` (`invalid_grant`) o `caida` (`ML_UNAVAILABLE`).
  * Los tokens llevan el código, para que un test revise que no aparecen en la respuesta ni el log.
  */
 export function fakeMercadoLibreAuth(): MercadoLibreAuth & { calls: string[] } {
@@ -116,11 +118,28 @@ export function fakeMercadoLibreAuth(): MercadoLibreAuth & { calls: string[] } {
         userId: code.startsWith("otra-cuenta") ? "777" : "8035443",
       };
     },
-    async refresh() {
+    async refresh(refreshToken) {
       calls.push("refresh");
-      throw new AppError("ML_UNAVAILABLE", "No hubo conexión con Mercado Libre: se reintenta", {
-        retriable: true,
-      });
+      if (refreshToken.includes("vence")) {
+        throw new AppError(
+          "ML_AUTH_INVALID",
+          "Mercado Libre ya no acepta el acceso de la cuenta: reconéctala",
+          { details: { httpStatus: 400, error: "invalid_grant", causes: [] } },
+        );
+      }
+      if (refreshToken.includes("caida")) {
+        throw new AppError("ML_UNAVAILABLE", "No hubo conexión con Mercado Libre: se reintenta", {
+          retriable: true,
+        });
+      }
+      const n = calls.filter((call) => call === "refresh").length;
+      return {
+        accessToken: `APP_USR-fake-refrescado-${n}`,
+        refreshToken: `TG-fake-refrescado-${n}`,
+        accessTokenExpiresAt: new Date("2026-10-08T18:00:00Z"),
+        scopes: ["offline_access", "read", "write"],
+        userId: "8035443",
+      };
     },
     async me(accessToken) {
       calls.push("me");

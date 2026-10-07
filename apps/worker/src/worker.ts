@@ -25,7 +25,12 @@ import { readListingsWorkbook } from "@agentsales/importers";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import { createLlmProvider } from "@agentsales/llm";
 import { createHtmlRenderer, createMediaProcessor } from "@agentsales/media";
-import { createInstagramAuth, createInstagramPublisher } from "@agentsales/publishers";
+import {
+  createInstagramAuth,
+  createInstagramPublisher,
+  createMercadoLibreAuth,
+  MERCADOLIBRE_API_TIMEOUT_MS,
+} from "@agentsales/publishers";
 import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { createSlideTemplates } from "@agentsales/templates";
@@ -106,6 +111,17 @@ const instagramAuth = createInstagramAuth({
   appSecret: env.INSTAGRAM_APP_SECRET ?? "",
   redirectUri: env.INSTAGRAM_REDIRECT_URI,
 });
+// Mercado Libre exige el par de la app también para refrescar (spec F4 §4.3): sin él, `null`, y el
+// lote salta las cuentas de Portal sin cambiarlas. El refresco tiene su propio tope de 10 s.
+const mercadoLibreAuth =
+  env.ML_APP_ID && env.ML_CLIENT_SECRET
+    ? createMercadoLibreAuth({
+        appId: env.ML_APP_ID,
+        clientSecret: env.ML_CLIENT_SECRET,
+        redirectUri: env.ML_REDIRECT_URI,
+        timeoutMs: MERCADOLIBRE_API_TIMEOUT_MS,
+      })
+    : null;
 const jobs = buildJobs({
   importRun,
   contentPrepare: {
@@ -141,7 +157,12 @@ const jobs = buildJobs({
     },
     signal: jobsAbort.signal,
   },
-  tokensRefresh: { platformAccounts, instagram: instagramAuth, signal: jobsAbort.signal },
+  tokensRefresh: {
+    platformAccounts,
+    instagram: instagramAuth,
+    mercadoLibre: mercadoLibreAuth,
+    signal: jobsAbort.signal,
+  },
 });
 
 const boss = createBoss({

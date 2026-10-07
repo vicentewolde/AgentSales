@@ -67,6 +67,12 @@ const PLATFORM_UNEXPECTED = new Set(["IG_UNEXPECTED_RESPONSE", "ML_UNEXPECTED_RE
 const NOT_CONFIGURED = new Set(["MERCADOLIBRE_NOT_CONFIGURED", "ML_APP_CREDENTIALS_INVALID"]);
 
 /**
+ * Otro proceso tiene el recurso un momento (F4-T08: el candado de credenciales, mientras el worker
+ * o la API renuevan el acceso de la cuenta): 503, y el pedido se repite en un momento.
+ */
+const BUSY = new Set(["ACCOUNT_LOCK_TIMEOUT"]);
+
+/**
  * Datos inválidos que arma el servidor, no el cliente: los de un job, un run guardado y lo que el
  * repositorio de publicaciones recibe de core (F3-T15). Son 500 aunque terminen en `_INVALID`.
  */
@@ -76,6 +82,9 @@ const SERVER_INVALID = new Set([
   "PUBLICATION_EVENT_INVALID",
   "PUBLICATION_REFERENCE_INVALID",
   "PUBLICATION_PROGRESS_INVALID",
+  // Credenciales guardadas que no sirven (F4-T08: sin el `refresh_token` de Mercado Libre al
+  // refrescar a pedido): la cuenta queda en `error`, como con CREDENTIALS_UNREADABLE (500).
+  "CREDENTIALS_INVALID",
   // Lo que el cliente de Mercado Libre rechaza antes de enviar: datos del servidor, no del cliente.
   "ML_ID_INVALID",
   "ML_BODY_INVALID",
@@ -91,7 +100,7 @@ export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "REQUEST_TOO_LARGE") return 413;
   if (PLATFORM_REJECTIONS.has(code)) return 400;
   if (PLATFORM_UNEXPECTED.has(code)) return 502;
-  if (NOT_CONFIGURED.has(code)) return 503;
+  if (NOT_CONFIGURED.has(code) || BUSY.has(code)) return 503;
   // Datos inválidos que no vienen del cliente (`SERVER_INVALID`), y una fila corrupta en la base
   // (`*_ROW_INVALID`): son fallos del servidor.
   if (SERVER_INVALID.has(code)) return 500;

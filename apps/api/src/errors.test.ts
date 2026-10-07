@@ -16,6 +16,10 @@ describe("httpStatusFor", () => {
     // Al refrescar a pedido (F3-T14).
     ["ACCOUNT_NOT_CONNECTED", 409],
     ["ACCOUNT_REFRESH_UNSUPPORTED", 409],
+    // Al refrescar Mercado Libre a pedido (F4-T08): el candado ocupado se reintenta en un momento,
+    // y unas credenciales guardadas sin `refresh_token` son un fallo del servidor.
+    ["ACCOUNT_LOCK_TIMEOUT", 503],
+    ["CREDENTIALS_INVALID", 500],
     // Aprobar y publicar (F3-T15).
     ["CONTENT_HAS_ERRORS", 409],
     ["CONTENT_NOT_READY", 409],

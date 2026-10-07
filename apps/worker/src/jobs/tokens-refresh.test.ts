@@ -1,4 +1,4 @@
-import { AppError, type InstagramAuth } from "@agentsales/core";
+import { AppError, type InstagramAuth, type MercadoLibreAuth } from "@agentsales/core";
 import {
   createInMemoryJobQueue,
   createInMemoryPlatformAccountRepository,
@@ -41,7 +41,7 @@ function fakeBoss() {
   return { boss, bossCalls, run };
 }
 
-async function setup() {
+async function setup(options: { mercadoLibreConfigured?: boolean } = {}) {
   const platformAccounts = createInMemoryPlatformAccountRepository();
   const add = (externalAccountId: string, token: string) =>
     platformAccounts.upsertConnected({
@@ -59,6 +59,44 @@ async function setup() {
       },
       credentials: { accessToken: token },
     });
+  /** Una cuenta de Mercado Libre refrescada hace 8 días: al lote le toca. */
+  const addMl = (externalAccountId: string, refreshToken: string) =>
+    platformAccounts.upsertConnected({
+      brokerId: "broker-1",
+      platform: "portal_inmobiliario",
+      externalAccountId,
+      displayName: `CUENTA_${externalAccountId}`,
+      tokenExpiresAt: new Date(NOW.getTime() + 170 * DAY),
+      meta: {
+        userId: externalAccountId,
+        nickname: `CUENTA_${externalAccountId}`,
+        siteId: "MLC",
+        userType: "normal",
+        scopes: ["offline_access", "read", "write"],
+        testUser: false,
+        connectedAt: new Date(NOW.getTime() - 30 * DAY).toISOString(),
+        tokenRefreshedAt: new Date(NOW.getTime() - 8 * DAY).toISOString(),
+        accessTokenExpiresAt: new Date(NOW.getTime() - DAY).toISOString(),
+        tokenExpiryEstimated: true,
+      },
+      credentials: { accessToken: `APP_USR-${refreshToken}`, refreshToken },
+    });
+  const mlCalls: string[] = [];
+  const mercadoLibre: Pick<MercadoLibreAuth, "refresh"> = {
+    async refresh(refreshToken) {
+      mlCalls.push(refreshToken);
+      if (refreshToken.startsWith("TG-vencido")) {
+        throw new AppError("ML_AUTH_INVALID", "Mercado Libre ya no acepta el acceso");
+      }
+      return {
+        accessToken: `APP_USR-nuevo-${refreshToken}`,
+        refreshToken: `TG-nuevo-${refreshToken}`,
+        accessTokenExpiresAt: new Date(NOW.getTime() + 6 * 60 * 60 * 1000),
+        scopes: ["offline_access", "read", "write"],
+        userId: null,
+      };
+    },
+  };
   const calls: string[] = [];
   const instagram: Pick<InstagramAuth, "refresh"> = {
     async refresh(accessToken) {
@@ -77,11 +115,12 @@ async function setup() {
   const job = tokensRefreshJob({
     platformAccounts,
     instagram,
+    mercadoLibre: options.mercadoLibreConfigured === false ? null : mercadoLibre,
     signal: new AbortController().signal,
     now: () => NOW,
   });
   await registerJobs(boss.boss, [job], logger);
-  return { platformAccounts, add, calls, lines, ...boss };
+  return { platformAccounts, add, addMl, calls, mlCalls, lines, ...boss };
 }
 
 describe("tokens.refresh", () => {
@@ -166,6 +205,53 @@ describe("tokens.refresh", () => {
     await run();
 
     expect((await platformAccounts.get(account.id))?.status).toBe("error");
+  });
+
+  it("refresca también Mercado Libre (el par completo) y marca la rechazada, sin tokens en el log", async () => {
+    const { platformAccounts, add, addMl, calls, mlCalls, lines, run } = await setup();
+    const instagram = await add("1", TOKEN);
+    const ml = await addMl("8035443", "TG-secreto-del-test");
+    const mlRejected = await addMl("8035444", "TG-vencido-del-test");
+
+    await run();
+
+    expect(calls).toEqual([TOKEN]);
+    expect(mlCalls).toEqual(["TG-secreto-del-test", "TG-vencido-del-test"]);
+    expect(platformAccounts.storedCredentials(ml.id)).toEqual({
+      accessToken: "APP_USR-nuevo-TG-secreto-del-test",
+      refreshToken: "TG-nuevo-TG-secreto-del-test",
+    });
+    expect((await platformAccounts.get(mlRejected.id))?.status).toBe("expired");
+    expect(lines.find((line) => line.msg === "tokens revisados")).toMatchObject({
+      refreshed: [instagram.id, ml.id],
+      expired: [mlRejected.id],
+      failed: [],
+    });
+    expect(JSON.stringify(lines)).not.toMatch(/IGAA|APP_USR|TG-/);
+  });
+
+  it("sin el par de Mercado Libre salta esas cuentas sin cambiarlas, sigue con Instagram, avisa y no reintenta", async () => {
+    const { platformAccounts, add, addMl, calls, mlCalls, lines, run } = await setup({
+      mercadoLibreConfigured: false,
+    });
+    const instagram = await add("1", TOKEN);
+    const ml = await addMl("8035443", "TG-secreto-del-test");
+    const before = await platformAccounts.get(ml.id);
+
+    await run();
+
+    expect(calls).toEqual([TOKEN]);
+    expect(mlCalls).toEqual([]);
+    expect(await platformAccounts.get(ml.id)).toEqual(before);
+    expect(lines.find((line) => line.msg === "tokens revisados")).toMatchObject({
+      refreshed: [instagram.id],
+      failed: [{ accountId: ml.id, code: "MERCADOLIBRE_NOT_CONFIGURED", retriable: false }],
+    });
+    expect(lines.find((line) => String(line.msg).startsWith("cuentas sin renovar"))).toMatchObject({
+      level: 40,
+      failed: [{ accountId: ml.id, code: "MERCADOLIBRE_NOT_CONFIGURED", retriable: false }],
+    });
+    expect(lines.some((line) => line.level === 50)).toBe(false);
   });
 
   it("el refresco del arranque se encola con la clave fija, sin datos", async () => {
