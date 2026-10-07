@@ -21,13 +21,22 @@ const OAUTH_CODE_PARAM = /((?:^|[?&#])code=)[^&#\s]+/gi;
 const SENSITIVE_JSON_VALUE =
   /("[^"]*(?:token|secret|password|key|signature|credential)[^"]*"\s*:\s*")(?:[^"\\]|\\.)*"/gi;
 
+/**
+ * Tokens de Mercado Libre donde aparezcan, también fuera de un parámetro o una clave sensible
+ * (`Bearer APP_USR-…`, `"code": "TG-…"`): el `access_token` (`APP_USR-…`), y el `refresh_token` y el
+ * `code` del OAuth (`TG-…`, spec F4 §4.2). `TG-` solo con 8 o más caracteres seguidos y sin una letra
+ * o un número antes, para no tapar palabras como `STG-1`.
+ */
+const MERCADOLIBRE_TOKEN = /APP_USR-[\w-]+|(?<![A-Za-z0-9])TG-[A-Za-z0-9]{8,}[\w-]*/g;
+
 /** Oculta credenciales y parámetros sensibles de URLs, formularios y JSON dentro de un texto. */
 export function redactText(text: string): string {
   return text
     .replace(URL_CREDENTIALS, `$1${REDACTED}@`)
     .replace(SENSITIVE_PARAM, `$1${REDACTED}`)
     .replace(OAUTH_CODE_PARAM, `$1${REDACTED}`)
-    .replace(SENSITIVE_JSON_VALUE, `$1${REDACTED}"`);
+    .replace(SENSITIVE_JSON_VALUE, `$1${REDACTED}"`)
+    .replace(MERCADOLIBRE_TOKEN, REDACTED);
 }
 
 /** Claves de R2 de un corredor: `brokers/<id>/listings/...`. */

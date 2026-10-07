@@ -12,6 +12,7 @@ import {
   checkEnv,
   checkFfmpegTool,
   checkInstagram,
+  checkMercadoLibre,
   checkNode,
   checkPublishMode,
   checkServices,
@@ -43,11 +44,13 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const ffmpegPath = deps.env.ok ? deps.env.env.FFMPEG_PATH : "ffmpeg";
   const ffprobePath = deps.env.ok ? deps.env.env.FFPROBE_PATH : "ffprobe";
   const instagram = checkInstagram(deps.env);
+  const mercadoLibre = checkMercadoLibre(deps.env);
   const items: CheckItem[] = [
     checkNode(deps.nodeVersion),
     checkEnv(deps.env),
     ...(publishMode ? [publishMode] : []),
     ...(instagram ? [instagram] : []),
+    ...(mercadoLibre ? [mercadoLibre] : []),
     ...services.items,
     await checkFfmpegTool(deps.run, "ffmpeg", ffmpegPath),
     await checkFfmpegTool(deps.run, "ffprobe", ffprobePath),

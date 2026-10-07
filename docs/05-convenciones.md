@@ -165,6 +165,7 @@ Una subruta (por ejemplo `./contracts` y `./testing` en `apps/api`, `./testing` 
 - Los logs pasan por el redactor de `@agentsales/config`:
   - Oculta el valor de toda clave que contenga `token`, `secret`, `password`, `authorization` o `key`, a cualquier profundidad, también dentro de errores y bindings.
   - Oculta las credenciales de URLs (`usuario:clave@`) y los parámetros sensibles (`access_token=`, `X-Amz-Signature=`…) en cualquier texto.
+  - Oculta los tokens de Mercado Libre (`APP_USR-…`, `TG-…`) en cualquier texto, aunque no vayan en un parámetro sensible (F4-T02).
 - Aun así, no se loguea el objeto `env` completo ni respuestas crudas de APIs externas.
 - Como `key` también oculta nombres como `objectKey`, en los logs se usan nombres como `objectPath`.
 

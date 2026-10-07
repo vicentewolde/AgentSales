@@ -14,6 +14,8 @@ const env = loadEnv({
   APP_ENCRYPTION_KEY: "k".repeat(32),
   INSTAGRAM_APP_ID: "fake-ig-app",
   INSTAGRAM_APP_SECRET: "fake-ig-secret",
+  ML_APP_ID: "fake-ml-app",
+  ML_CLIENT_SECRET: "fake-ml-secret",
 });
 
 const healthy: HealthReport = {
@@ -62,6 +64,30 @@ describe("runDoctor", () => {
     expect(JSON.stringify(report.items)).not.toContain("fake-ig");
   });
 
+  it("avisa (sin cortar) si falta el par de Mercado Libre, con la dirección de retorno y sin valores", async () => {
+    const { ML_APP_ID: _id, ML_CLIENT_SECRET: _secret, ...withoutPair } = env;
+    const report = await runDoctor(deps({ env: { ok: true, env: withoutPair } }));
+    const item = report.items.find((entry) => entry.name === "Mercado Libre");
+
+    expect(report.exitCode).toBe(0);
+    expect(item).toMatchObject({ level: "warn" });
+    expect(item?.detail).toContain("falta ML_APP_ID y ML_CLIENT_SECRET");
+    expect(item?.detail).toContain("https://localhost/oauth/mercadolibre/callback");
+    expect(item?.hint).toContain("docs/07-checklist-cuentas.md");
+  });
+
+  it("nombra solo la variable de Mercado Libre que falta y nunca muestra el par", async () => {
+    const { ML_CLIENT_SECRET: _secret, ...withoutSecret } = env;
+    const report = await runDoctor(deps({ env: { ok: true, env: withoutSecret } }));
+    const item = report.items.find((entry) => entry.name === "Mercado Libre");
+
+    expect(item).toMatchObject({ level: "warn" });
+    expect(item?.detail).toContain("falta ML_CLIENT_SECRET:");
+    expect(item?.detail).not.toContain("ML_APP_ID");
+    expect(JSON.stringify(report.items)).not.toContain("fake-ml");
+    expect(JSON.stringify((await runDoctor(deps())).items)).not.toContain("fake-ml");
+  });
+
   it("no revisa Instagram si el .env es inválido (ya lo dice .env)", async () => {
     const report = await runDoctor(
       deps({
@@ -74,6 +100,7 @@ describe("runDoctor", () => {
     );
 
     expect(report.items.some((item) => item.name === "Instagram")).toBe(false);
+    expect(report.items.some((item) => item.name === "Mercado Libre")).toBe(false);
     expect(report.items.find((item) => item.name === ".env")?.detail).toBe(
       "META_APP_ID (se renombró a INSTAGRAM_APP_ID)",
     );
@@ -88,6 +115,7 @@ describe("runDoctor", () => {
       ".env": "ok",
       PUBLISH_MODE: "ok",
       Instagram: "ok",
+      "Mercado Libre": "ok",
       API: "ok",
       "Base de datos": "ok",
       Almacenamiento: "ok",
@@ -97,6 +125,9 @@ describe("runDoctor", () => {
       "Chromium (Playwright)": "ok",
       "Claude Code": "ok",
     });
+    expect(report.items.find((item) => item.name === "Mercado Libre")?.detail).toBe(
+      "ML_APP_ID y ML_CLIENT_SECRET definidas; dirección de retorno https://localhost/oauth/mercadolibre/callback",
+    );
     expect(report.items.find((item) => item.name === "ffmpeg")?.detail).toBe(
       "ffmpeg version 9.0.1 Copyright",
     );

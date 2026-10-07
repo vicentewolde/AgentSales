@@ -228,7 +228,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
   - [x] La migración se aplica en PGlite y `pnpm db:generate` no genera nada después
   - [x] Tests de los esquemas (las credenciales de Instagram siguen válidas sin `refreshToken`) y de `setRemoteState` en los dos repositorios
   - [x] Probada en Neon con `BEGIN … ROLLBACK` antes del merge (2026-10-06: tabla y columnas creadas, las 5 publicaciones existentes con las columnas nuevas en `null`, sin dejar cambios)
-  - [ ] Aplicada en Neon justo después del merge (`pnpm db:migrate`)
+  - [x] Aplicada en Neon justo después del merge (2026-10-06, `pnpm db:migrate`: `platform_catalog` y las dos columnas de `publications` creadas; las 5 publicaciones de Instagram intactas)
   - [x] Doc 02 al día (tablas, `token_expires_at` de Mercado Libre y `credentials_encrypted`)
 
 ### F4-T02 · Variables de Mercado Libre y redactor
@@ -236,8 +236,8 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Archivos:** `packages/config/src/env.ts`, `packages/core/src/redact.ts`, `apps/cli/src/commands/doctor/*`, `.env.example`
 - **Descripción:** `ML_APP_ID`, `ML_CLIENT_SECRET` y `ML_REDIRECT_URI` (`https://`, por defecto el de §4.2); se quita `ML_SITE_ID`; `doctor` avisa si falta el trío; el redactor oculta `refresh_token`, `APP_USR-…` y `TG-…`.
 - **Hecho cuando:**
-  - [ ] Tests del entorno (una URI `http://` se rechaza) y de `doctor`
-  - [ ] Tests del redactor con un token y un refresh de Mercado Libre en una URL, un formulario y un JSON
+  - [x] Tests del entorno (una URI `http://` se rechaza) y de `doctor`
+  - [x] Tests del redactor con un token y un refresh de Mercado Libre en una URL, un formulario y un JSON
 
 ### F4-T03 · Cliente de Mercado Libre: OAuth, usuario y errores
 - **Depende de:** T01, T02
@@ -477,3 +477,4 @@ Respondidas por el operador el 2026-10-06:
 | 2026-10-06 | Spec **aprobado** (aprobación permanente del operador). ADR-0015 y ADR-0016 aceptados; seguimientos en ADR-0005 y ADR-0014; `03-plataformas.md`, `06-roadmap.md`, `07-checklist-cuentas.md` y `docs/ESTADO.md` al día |
 | 2026-10-06 | Desde F4-T01: `remoteStateSchema` acepta fechas con zona horaria (`stop_time` de Mercado Libre) y un `reason` opcional; `checkRemoteState` (`PUBLICATION_REMOTE_STATE_INVALID`); `syncPayloadSchema` = `{ remote }` (el cambio de estado va en su propio `status_changed`); `setRemoteState(id, remoteState, event?)` guarda en cualquier estado; `NewPublication.listingSourceHash` es opcional hasta T16; `portalSellerContactSchema` con el WhatsApp solo en dígitos; la llave de `platform_catalog` acepta `=` (ids de ubicación en base64) y `data` es JSON |
 | 2026-10-06 | Revisión de F4-T01 (#76, `revisor` y `arquitecto`): sin `reason` en `remoteStateSchema` hasta que T17 tenga su fuente; el publisher devuelve `RemoteStatus` (sin `checkedAt`, que pone core); `setRemoteState` solo con eventos `sync`; `listingSourceHash` vacío queda en `null`, pasa a obligatorio en T16, y `buildPublishInput` trata un `null` de Portal como `PUBLICATION_LISTING_CHANGED`; `ListingRepository.getSourceHash` en T13; el sync compara `updatedAt` por igualdad con el leído antes (dos valores de la base, nunca el reloj del worker); T06 y T07 exigen `refreshToken` y T07 lee el vencimiento del `access_token` aparte; `tokenExpiryEstimated` siempre `true` en Mercado Libre; la llave del catálogo solo exige `tipo:id`; T08 conserva el par completo al refrescar |
+| 2026-10-06 | Desde F4-T02: un `ML_SITE_ID` que quede en `.env` se ignora si dice `MLC` (el valor que traía `.env.example`) y es un error de `.env` con cualquier otro sitio (se publicaría igual en Chile); `doctor` revisa el par (`ML_APP_ID` y `ML_CLIENT_SECRET`, advertencia) y muestra la dirección de retorno, que siempre tiene valor; el redactor oculta `APP_USR-…` y `TG-…` también fuera de un parámetro o una clave sensible |

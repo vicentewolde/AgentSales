@@ -204,6 +204,8 @@ describe("loadEnv", () => {
     ["APP_ENCRYPTION_KEY", "SECRETVAL"],
     ["INSTAGRAM_REDIRECT_URI", "SECRETVAL"],
     ["META_APP_SECRET", "SECRETVAL"],
+    ["ML_REDIRECT_URI", "http://SECRETVAL.test/cb"],
+    ["ML_SITE_ID", "SECRETVAL"],
   ])("el error de %s no muestra el valor recibido", (variable, value) => {
     const error = envErrorOf({ ...validSource, [variable]: value });
 
@@ -260,6 +262,60 @@ describe("loadEnv", () => {
 
     it("una META_* vacía no cuenta (como cualquier variable vacía)", () => {
       expect(() => loadEnv({ ...validSource, META_APP_ID: "" })).not.toThrow();
+    });
+  });
+
+  describe("Mercado Libre (F4)", () => {
+    it("lee el par de la app y usa la dirección de retorno https por defecto", () => {
+      const env = loadEnv({ ...validSource, ML_APP_ID: "123", ML_CLIENT_SECRET: "fake-secret" });
+
+      expect(env).toMatchObject({
+        ML_APP_ID: "123",
+        ML_CLIENT_SECRET: "fake-secret",
+        ML_REDIRECT_URI: "https://localhost/oauth/mercadolibre/callback",
+      });
+      expect(loadEnv(validSource).ML_APP_ID).toBeUndefined();
+      expect(loadEnv({ ...validSource, ML_REDIRECT_URI: "" }).ML_REDIRECT_URI).toBe(
+        "https://localhost/oauth/mercadolibre/callback",
+      );
+    });
+
+    it("acepta otra dirección https", () => {
+      expect(
+        loadEnv({ ...validSource, ML_REDIRECT_URI: "https://agentsales.test/ml/cb" })
+          .ML_REDIRECT_URI,
+      ).toBe("https://agentsales.test/ml/cb");
+    });
+
+    it.each([
+      "http://localhost/oauth/mercadolibre/callback",
+      "HTTP://localhost:8787/cb",
+      "ftp://agentsales.test/cb",
+      "localhost/oauth/mercadolibre/callback",
+    ])("rechaza la dirección de retorno %s (Mercado Libre exige https)", (value) => {
+      expect(envErrorOf({ ...validSource, ML_REDIRECT_URI: value }).issues).toEqual([
+        { variable: "ML_REDIRECT_URI", message: "debe ser una URL https://" },
+      ]);
+    });
+
+    it("ignora ML_SITE_ID con MLC, el valor del ejemplo, y no la devuelve", () => {
+      for (const value of ["MLC", "mlc"]) {
+        const env = loadEnv({ ...validSource, ML_SITE_ID: value });
+
+        expect(env).not.toHaveProperty("ML_SITE_ID");
+      }
+    });
+
+    it("rechaza ML_SITE_ID con otro sitio, junto con los demás problemas", () => {
+      const error = envErrorOf({ ...validSource, ML_SITE_ID: "MLA", API_PORT: "abc" });
+
+      expect(error.issues).toEqual([
+        {
+          variable: "ML_SITE_ID",
+          message: "ya no se usa: el sitio es fijo (MLC); quítala del .env",
+        },
+        { variable: "API_PORT", message: "debe ser un puerto entre 1 y 65535" },
+      ]);
     });
   });
 });
