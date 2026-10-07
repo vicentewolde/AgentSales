@@ -3,8 +3,10 @@ import type { AbortSignalLike } from "../abort.js";
 import { AppError } from "../errors.js";
 import type { InstagramAccountMeta } from "../platform-account.js";
 import type { InstagramAuth } from "../ports/instagram-auth.js";
+import type { MercadoLibreAuth, MercadoLibreRefresh } from "../ports/mercadolibre-auth.js";
 import { createInMemoryPlatformAccountRepository } from "../testing/index.js";
 import {
+  MERCADOLIBRE_REFRESH_AGE_MS,
   type RefreshAccountTokensDeps,
   refreshAccountToken,
   refreshAccountTokens,
@@ -32,21 +34,59 @@ function fakeInstagram(options: { error?: AppError } = {}) {
   return { instagram, calls };
 }
 
+/** El `refresh_token` guardado de una cuenta de Mercado Libre decide el caso (`TG-vencido…`, `TG-caido…`). */
+const ML_OLD = { accessToken: "APP_USR-viejo-8035443", refreshToken: "TG-viejo-8035443" };
+
+/**
+ * Mercado Libre falso: registra el `refresh_token` de cada refresco y entrega un par nuevo que lo
+ * lleva (`APP_USR-nuevo-<n>`, `TG-nuevo-<n>`). `TG-vencido…` es el `invalid_grant` y `TG-caido…`,
+ * un corte de red.
+ */
+function fakeMercadoLibre() {
+  const calls: string[] = [];
+  const mercadoLibre: Pick<MercadoLibreAuth, "refresh"> = {
+    async refresh(refreshToken): Promise<MercadoLibreRefresh> {
+      calls.push(refreshToken);
+      if (refreshToken.startsWith("TG-vencido")) {
+        throw new AppError("ML_AUTH_INVALID", "Mercado Libre ya no acepta el acceso", {
+          details: { httpStatus: 400, error: "invalid_grant", causes: [] },
+        });
+      }
+      if (refreshToken.startsWith("TG-caido")) {
+        throw new AppError("ML_UNAVAILABLE", "No hubo conexión con Mercado Libre", {
+          retriable: true,
+        });
+      }
+      return {
+        accessToken: `APP_USR-nuevo-${calls.length}`,
+        refreshToken: `TG-nuevo-${calls.length}`,
+        accessTokenExpiresAt: fromNow(6 * HOUR),
+        scopes: ["offline_access", "read", "write"],
+        // Sin `user_id`: el núcleo no descarta el par por eso (el otro usuario lo prueba F4-T07).
+        userId: null,
+      };
+    },
+  };
+  return { mercadoLibre, mlCalls: calls };
+}
+
 type AccountSetup = {
   token?: string;
   expiresAt?: Date | null;
   meta?: Partial<InstagramAccountMeta> | Record<string, unknown>;
   externalAccountId?: string;
-  platform?: "instagram" | "portal_inmobiliario";
+  platform?: "instagram" | "portal_inmobiliario" | "fb_marketplace";
 };
 
 function setup(options: { error?: AppError } = {}) {
   const platformAccounts = createInMemoryPlatformAccountRepository();
   const { instagram, calls } = fakeInstagram(options);
+  const { mercadoLibre, mlCalls } = fakeMercadoLibre();
   const warnings: { accountId: string; code: string }[] = [];
   const deps: RefreshAccountTokensDeps = {
     platformAccounts,
     instagram,
+    mercadoLibre,
     now: () => NOW,
     onWarning: (warning) => warnings.push(warning),
   };
@@ -73,7 +113,42 @@ function setup(options: { error?: AppError } = {}) {
       },
       credentials: { accessToken: token },
     });
-  return { platformAccounts, calls, warnings, deps, add };
+  /** Una cuenta de Mercado Libre como la deja conectar (F4-T06), refrescada hace `refreshedAgo`. */
+  const addMl = ({
+    refreshedAgo = 8 * DAY,
+    credentials = ML_OLD,
+    externalAccountId = "8035443",
+    meta = {},
+    expiresAt = fromNow(150 * DAY),
+  }: {
+    refreshedAgo?: number | null;
+    credentials?: { accessToken: string; refreshToken?: string };
+    externalAccountId?: string;
+    meta?: Record<string, unknown>;
+    expiresAt?: Date;
+  } = {}) =>
+    platformAccounts.upsertConnected({
+      brokerId: "broker-1",
+      platform: "portal_inmobiliario",
+      externalAccountId,
+      displayName: "CORREDORA_PRUEBA",
+      tokenExpiresAt: expiresAt,
+      meta: {
+        userId: externalAccountId,
+        nickname: "CORREDORA_PRUEBA",
+        siteId: "MLC",
+        userType: "normal",
+        scopes: ["offline_access", "read", "write"],
+        testUser: false,
+        connectedAt: ago(60 * DAY).toISOString(),
+        tokenRefreshedAt: refreshedAgo === null ? null : ago(refreshedAgo).toISOString(),
+        accessTokenExpiresAt: ago(HOUR).toISOString(),
+        tokenExpiryEstimated: true,
+        ...meta,
+      },
+      credentials,
+    });
+  return { platformAccounts, calls, mlCalls, warnings, deps, add, addMl };
 }
 
 describe("refreshAccountToken · ventana", () => {
@@ -336,13 +411,13 @@ describe("refreshAccountToken · vencimiento y errores", () => {
     expect(warnings).toEqual([{ accountId: account.id, code: "ACCOUNT_META_UNREADABLE" }]);
   });
 
-  it("otra plataforma no se refresca: ACCOUNT_REFRESH_UNSUPPORTED, y el lote ni la mira", async () => {
-    const { calls, deps, add } = setup();
-    const account = await add({ platform: "portal_inmobiliario" });
+  it("Marketplace no se refresca: ACCOUNT_REFRESH_UNSUPPORTED, y el lote ni la mira", async () => {
+    const { calls, mlCalls, deps, add } = setup();
+    const account = await add({ platform: "fb_marketplace" });
 
-    await expect(refreshAccountToken(deps, { accountId: account.id })).rejects.toMatchObject({
-      code: "ACCOUNT_REFRESH_UNSUPPORTED",
-    });
+    await expect(
+      refreshAccountToken(deps, { accountId: account.id, force: true }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_REFRESH_UNSUPPORTED" });
     expect(await refreshAccountTokens(deps)).toEqual({
       refreshed: [],
       expired: [],
@@ -350,6 +425,7 @@ describe("refreshAccountToken · vencimiento y errores", () => {
       failed: [],
     });
     expect(calls).toEqual([]);
+    expect(mlCalls).toEqual([]);
   });
 
   it("si no se puede guardar el vencimiento, avisa y devuelve el resultado igual", async () => {
@@ -409,6 +485,295 @@ describe("refreshAccountToken · vencimiento y errores", () => {
       code: "ACCOUNT_NOT_CONNECTED",
     });
     expect((await platformAccounts.get(account.id))?.status).toBe("revoked");
+  });
+});
+
+describe("refreshAccountToken · Mercado Libre", () => {
+  it("sin force, con 7 días o más desde el último refresco: refresca y guarda el par completo, los vencimientos y meta", async () => {
+    const { platformAccounts, mlCalls, deps, addMl } = setup();
+    const account = await addMl({ refreshedAgo: MERCADOLIBRE_REFRESH_AGE_MS });
+
+    const result = await refreshAccountToken(deps, { accountId: account.id });
+
+    expect(result.outcome).toBe("refreshed");
+    expect(mlCalls).toEqual([ML_OLD.refreshToken]);
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({
+      accessToken: "APP_USR-nuevo-1",
+      refreshToken: "TG-nuevo-1",
+    });
+    expect(result.account).toMatchObject({
+      status: "connected",
+      tokenExpiresAt: fromNow(180 * DAY),
+      meta: {
+        nickname: "CORREDORA_PRUEBA",
+        scopes: ["offline_access", "read", "write"],
+        connectedAt: ago(60 * DAY).toISOString(),
+        tokenRefreshedAt: NOW.toISOString(),
+        accessTokenExpiresAt: fromNow(6 * HOUR).toISOString(),
+        tokenExpiryEstimated: true,
+      },
+    });
+    expect(JSON.stringify(result)).not.toMatch(/APP_USR|TG-/);
+  });
+
+  it("sin force, con menos de 7 días: no toma el candado ni llama (not_due, desde cuándo)", async () => {
+    const { platformAccounts, mlCalls, deps, addMl } = setup();
+    const account = await addMl({ refreshedAgo: 7 * DAY - 1 });
+    let locks = 0;
+    const counting: RefreshAccountTokensDeps = {
+      ...deps,
+      platformAccounts: {
+        ...platformAccounts,
+        withCredentialsLock: (id, fn) => {
+          locks += 1;
+          return platformAccounts.withCredentialsLock(id, fn);
+        },
+      } as RefreshAccountTokensDeps["platformAccounts"],
+    };
+
+    const result = await refreshAccountToken(counting, { accountId: account.id });
+
+    expect(result).toMatchObject({
+      outcome: "skipped",
+      reason: "not_due",
+      refreshableAt: new Date(NOW.getTime() + 1),
+    });
+    expect(mlCalls).toEqual([]);
+    expect(locks).toBe(0);
+    expect(platformAccounts.storedCredentials(account.id)).toEqual(ML_OLD);
+  });
+
+  it("sin refresco previo cuenta desde la conexión; sin ninguna fecha legible, refresca", async () => {
+    const { mlCalls, deps, addMl } = setup();
+    const fresh = await addMl({
+      refreshedAgo: null,
+      meta: { connectedAt: ago(2 * DAY).toISOString() },
+    });
+    expect(await refreshAccountToken(deps, { accountId: fresh.id })).toMatchObject({
+      outcome: "skipped",
+      reason: "not_due",
+      refreshableAt: fromNow(5 * DAY),
+    });
+
+    const old = await addMl({
+      externalAccountId: "8035444",
+      refreshedAgo: null,
+      meta: { connectedAt: ago(7 * DAY).toISOString() },
+    });
+    expect((await refreshAccountToken(deps, { accountId: old.id })).outcome).toBe("refreshed");
+
+    const unreadable = await addMl({
+      externalAccountId: "8035445",
+      meta: { connectedAt: "ayer", tokenRefreshedAt: 42 },
+    });
+    expect((await refreshAccountToken(deps, { accountId: unreadable.id })).outcome).toBe(
+      "refreshed",
+    );
+    expect(mlCalls).toHaveLength(2);
+  });
+
+  it("una fecha de refresco futura (reloj descuadrado) espera como mucho 7 días desde ahora", async () => {
+    const { deps, addMl } = setup();
+    const account = await addMl({ refreshedAgo: -30 * DAY });
+
+    expect(await refreshAccountToken(deps, { accountId: account.id })).toMatchObject({
+      outcome: "skipped",
+      reason: "not_due",
+      refreshableAt: fromNow(7 * DAY),
+    });
+  });
+
+  it("force refresca siempre, sin mínimo: también recién refrescada", async () => {
+    const { platformAccounts, mlCalls, deps, addMl } = setup();
+    const account = await addMl({ refreshedAgo: 0 });
+
+    const first = await refreshAccountToken(deps, { accountId: account.id, force: true });
+    const second = await refreshAccountToken(deps, { accountId: account.id, force: true });
+
+    expect([first.outcome, second.outcome]).toEqual(["refreshed", "refreshed"]);
+    expect(mlCalls).toEqual([ML_OLD.refreshToken, "TG-nuevo-1"]);
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({
+      accessToken: "APP_USR-nuevo-2",
+      refreshToken: "TG-nuevo-2",
+    });
+  });
+
+  it("la regla se revisa otra vez dentro del candado: si otro la refrescó mientras esperaba, no llama (skipped)", async () => {
+    const { platformAccounts, mlCalls, deps, addMl } = setup();
+    const account = await addMl();
+    // Otro proceso refresca justo antes de que esta llamada entre al candado.
+    const racing: RefreshAccountTokensDeps = {
+      ...deps,
+      platformAccounts: {
+        ...platformAccounts,
+        withCredentialsLock: async (id, fn) => {
+          await platformAccounts.updateToken(id, {
+            credentials: { accessToken: "APP_USR-otro", refreshToken: "TG-otro" },
+            tokenExpiresAt: fromNow(180 * DAY),
+            meta: { tokenRefreshedAt: NOW.toISOString() },
+          });
+          return platformAccounts.withCredentialsLock(id, fn);
+        },
+      } as RefreshAccountTokensDeps["platformAccounts"],
+    };
+
+    const result = await refreshAccountToken(racing, { accountId: account.id });
+
+    expect(result).toMatchObject({
+      outcome: "skipped",
+      reason: "not_due",
+      refreshableAt: fromNow(7 * DAY),
+      account: { meta: { tokenRefreshedAt: NOW.toISOString() } },
+    });
+    expect(mlCalls).toEqual([]);
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({
+      accessToken: "APP_USR-otro",
+      refreshToken: "TG-otro",
+    });
+  });
+
+  it("dos refrescos sin force a la vez refrescan una sola vez (el segundo ve el par nuevo)", async () => {
+    const { mlCalls, deps, addMl } = setup();
+    const account = await addMl();
+
+    const results = await Promise.all([
+      refreshAccountToken(deps, { accountId: account.id }),
+      refreshAccountToken(deps, { accountId: account.id }),
+    ]);
+
+    expect(results.map((result) => result.outcome).sort()).toEqual(["refreshed", "skipped"]);
+    expect(mlCalls).toEqual([ML_OLD.refreshToken]);
+  });
+
+  it("un rechazo (invalid_grant) deja la cuenta expired y es un resultado (token_rejected), también con force", async () => {
+    const { platformAccounts, deps, addMl } = setup();
+    const credentials = { accessToken: "APP_USR-x", refreshToken: "TG-vencido-1" };
+    const account = await addMl({ credentials });
+
+    const result = await refreshAccountToken(deps, { accountId: account.id, force: true });
+
+    expect(result).toMatchObject({
+      outcome: "expired",
+      reason: "token_rejected",
+      account: { id: account.id, status: "expired" },
+    });
+    expect(platformAccounts.storedCredentials(account.id)).toEqual(credentials);
+  });
+
+  it("un vencimiento estimado ya pasado no la deja expired sin preguntar: se intenta", async () => {
+    const { mlCalls, deps, addMl } = setup();
+    const account = await addMl({ expiresAt: ago(DAY) });
+
+    const result = await refreshAccountToken(deps, { accountId: account.id });
+
+    expect(result).toMatchObject({ outcome: "refreshed", account: { status: "connected" } });
+    expect(mlCalls).toHaveLength(1);
+  });
+
+  it("un corte de red sube sin cambiar la cuenta", async () => {
+    const { platformAccounts, deps, addMl } = setup();
+    const credentials = { accessToken: "APP_USR-x", refreshToken: "TG-caido-1" };
+    const account = await addMl({ credentials });
+
+    await expect(
+      refreshAccountToken(deps, { accountId: account.id, force: true }),
+    ).rejects.toMatchObject({ code: "ML_UNAVAILABLE", retriable: true });
+    expect(await platformAccounts.get(account.id)).toMatchObject({
+      status: "connected",
+      meta: { tokenRefreshedAt: ago(8 * DAY).toISOString() },
+    });
+    expect(platformAccounts.storedCredentials(account.id)).toEqual(credentials);
+  });
+
+  it("sin el par de la app: MERCADOLIBRE_NOT_CONFIGURED sin llamar ni cambiarla; si no toca, skipped igual", async () => {
+    const { platformAccounts, deps, addMl } = setup();
+    const unconfigured: RefreshAccountTokensDeps = { ...deps, mercadoLibre: null };
+    const due = await addMl();
+    const recent = await addMl({ externalAccountId: "8035444", refreshedAgo: DAY });
+
+    await expect(
+      refreshAccountToken(unconfigured, { accountId: due.id, force: true }),
+    ).rejects.toMatchObject({ code: "MERCADOLIBRE_NOT_CONFIGURED", retriable: false });
+    expect(await platformAccounts.get(due.id)).toMatchObject({ status: "connected" });
+    expect(platformAccounts.storedCredentials(due.id)).toEqual(ML_OLD);
+    expect((await refreshAccountToken(unconfigured, { accountId: recent.id })).outcome).toBe(
+      "skipped",
+    );
+  });
+
+  it("sin refreshToken guardado la cuenta queda en error (CREDENTIALS_INVALID) sin llamar", async () => {
+    const { platformAccounts, mlCalls, deps, addMl } = setup();
+    const account = await addMl({ credentials: { accessToken: "APP_USR-solo" } });
+
+    await expect(
+      refreshAccountToken(deps, { accountId: account.id, force: true }),
+    ).rejects.toMatchObject({ code: "CREDENTIALS_INVALID" });
+    expect((await platformAccounts.get(account.id))?.status).toBe("error");
+    expect(mlCalls).toEqual([]);
+  });
+
+  it("el candado ocupado (ACCOUNT_LOCK_TIMEOUT) sube reintentable sin cambiar la cuenta", async () => {
+    const { platformAccounts, mlCalls, deps, addMl } = setup();
+    const account = await addMl();
+    const busy: RefreshAccountTokensDeps = {
+      ...deps,
+      platformAccounts: {
+        ...platformAccounts,
+        withCredentialsLock: async () => {
+          throw new AppError("ACCOUNT_LOCK_TIMEOUT", "ocupado", { retriable: true });
+        },
+      } as RefreshAccountTokensDeps["platformAccounts"],
+    };
+
+    await expect(refreshAccountToken(busy, { accountId: account.id })).rejects.toMatchObject({
+      code: "ACCOUNT_LOCK_TIMEOUT",
+      retriable: true,
+    });
+    expect((await platformAccounts.get(account.id))?.status).toBe("connected");
+    expect(mlCalls).toEqual([]);
+  });
+
+  it("una cuenta desconectada es ACCOUNT_NOT_CONNECTED sin llamar", async () => {
+    const { platformAccounts, mlCalls, deps, addMl } = setup();
+    const account = await addMl();
+    await platformAccounts.disconnect(account.id);
+
+    await expect(
+      refreshAccountToken(deps, { accountId: account.id, force: true }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_NOT_CONNECTED" });
+    expect(mlCalls).toEqual([]);
+  });
+
+  it("con la señal disparada no refresca (ML_ABORTED) y no se la pasa a un refresco enviado", async () => {
+    const { platformAccounts, deps, addMl } = setup();
+    const account = await addMl();
+    const signal: AbortSignalLike & { aborted: boolean } = {
+      aborted: true,
+      addEventListener() {},
+      removeEventListener() {},
+    };
+    const seen: unknown[] = [];
+    const mercadoLibre = deps.mercadoLibre;
+    const spying: RefreshAccountTokensDeps = {
+      ...deps,
+      mercadoLibre: {
+        async refresh(refreshToken, options) {
+          seen.push(options?.signal);
+          if (mercadoLibre === null) throw new Error("sin Mercado Libre");
+          return mercadoLibre.refresh(refreshToken, options);
+        },
+      },
+    };
+
+    await expect(
+      refreshAccountToken(spying, { accountId: account.id, signal }),
+    ).rejects.toMatchObject({ code: "ML_ABORTED", retriable: true });
+    expect(seen).toEqual([]);
+    expect(platformAccounts.storedCredentials(account.id)).toEqual(ML_OLD);
+
+    signal.aborted = false;
+    await refreshAccountToken(spying, { accountId: account.id, signal });
+    expect(seen).toEqual([undefined]);
   });
 });
 
@@ -525,5 +890,70 @@ describe("refreshAccountTokens · lote", () => {
       { signal },
     );
     expect(seen).toEqual([signal]);
+  });
+
+  it("con las dos plataformas: refresca a cada una según su política y una que falla no corta", async () => {
+    const { platformAccounts, calls, mlCalls, deps, add, addMl } = setup();
+    const instagram = await add({ externalAccountId: "1" });
+    const instagramRecent = await add({
+      externalAccountId: "2",
+      meta: { tokenRefreshedAt: ago(HOUR).toISOString() },
+    });
+    const mlDue = await addMl({ externalAccountId: "11" });
+    const mlRecent = await addMl({ externalAccountId: "12", refreshedAgo: 6 * DAY });
+    const mlRejected = await addMl({
+      externalAccountId: "13",
+      credentials: { accessToken: "APP_USR-13", refreshToken: "TG-vencido-13" },
+    });
+    const mlDown = await addMl({
+      externalAccountId: "14",
+      credentials: { accessToken: "APP_USR-14", refreshToken: "TG-caido-14" },
+    });
+
+    const report = await refreshAccountTokens(deps);
+
+    expect(report).toEqual({
+      refreshed: [instagram.id, mlDue.id],
+      expired: [mlRejected.id],
+      skipped: 2,
+      failed: [{ accountId: mlDown.id, code: "ML_UNAVAILABLE", retriable: true }],
+    });
+    expect(calls).toEqual(["IGAA-token"]);
+    expect(mlCalls).toEqual([ML_OLD.refreshToken, "TG-vencido-13", "TG-caido-14"]);
+    expect(platformAccounts.storedCredentials(mlDue.id)).toEqual({
+      accessToken: "APP_USR-nuevo-1",
+      refreshToken: "TG-nuevo-1",
+    });
+    expect((await platformAccounts.get(mlRecent.id))?.meta).toMatchObject({
+      tokenRefreshedAt: ago(6 * DAY).toISOString(),
+    });
+    expect((await platformAccounts.get(instagramRecent.id))?.status).toBe("connected");
+    expect((await platformAccounts.get(mlDown.id))?.status).toBe("connected");
+    expect(JSON.stringify(report)).not.toMatch(/IGAA|APP_USR|TG-/);
+
+    // Repetir el lote (el reintento del job) no refresca de nuevo lo hecho.
+    expect(await refreshAccountTokens(deps)).toMatchObject({ refreshed: [], skipped: 4 });
+    expect(mlCalls).toEqual([ML_OLD.refreshToken, "TG-vencido-13", "TG-caido-14", "TG-caido-14"]);
+  });
+
+  it("sin el par de Mercado Libre salta esas cuentas sin cambiarlas y sigue con Instagram", async () => {
+    const { platformAccounts, calls, deps, add, addMl } = setup();
+    const mlDue = await addMl({ externalAccountId: "11" });
+    const mlRecent = await addMl({ externalAccountId: "12", refreshedAgo: DAY });
+    const instagram = await add({ externalAccountId: "1" });
+    const before = await platformAccounts.get(mlDue.id);
+
+    const report = await refreshAccountTokens({ ...deps, mercadoLibre: null });
+
+    expect(report).toEqual({
+      refreshed: [instagram.id],
+      expired: [],
+      skipped: 1,
+      failed: [{ accountId: mlDue.id, code: "MERCADOLIBRE_NOT_CONFIGURED", retriable: false }],
+    });
+    expect(calls).toEqual(["IGAA-token"]);
+    expect(await platformAccounts.get(mlDue.id)).toEqual(before);
+    expect(platformAccounts.storedCredentials(mlDue.id)).toEqual(ML_OLD);
+    expect((await platformAccounts.get(mlRecent.id))?.status).toBe("connected");
   });
 });

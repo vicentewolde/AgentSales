@@ -38,7 +38,7 @@ import {
 } from "./oauth.js";
 
 export type AccountRoutesDeps = ConnectAccountDeps &
-  Omit<RefreshAccountTokensDeps, "onWarning"> & {
+  Omit<RefreshAccountTokensDeps, "onWarning" | "mercadoLibre"> & {
     platformAccounts: PlatformAccountRepository;
     /** Para los avisos del refresco a pedido (solo ids y códigos). */
     logger: AppLogger;
@@ -178,12 +178,13 @@ function refreshView(result: TokenRefreshResult): AccountRefreshResponse {
 }
 
 /**
- * `/accounts` (spec F3 §4.6 y §4.8, spec F4 §4.2): las cuentas conectadas, conectar con el token del
- * panel de Meta (D4: Meta no acepta `http://localhost` para el OAuth), conectar Mercado Libre con la
- * dirección de vuelta pegada (la URL de autorización y el canje del código), refrescar el token a
- * pedido y desconectar. Conectar (`/me`) y refrescar llaman a Instagram de forma síncrona (seguimiento de
- * ADR-0014, punto 9). El token nunca vuelve en la respuesta ni va al log (el log de la API no
- * registra cuerpos, y la URL del refresco no sale del cliente de Instagram).
+ * `/accounts` (spec F3 §4.6 y §4.8, spec F4 §4.2 y §4.3): las cuentas conectadas, conectar con el
+ * token del panel de Meta (D4: Meta no acepta `http://localhost` para el OAuth), conectar Mercado
+ * Libre con la dirección de vuelta pegada (la URL de autorización y el canje del código), refrescar
+ * el token a pedido (Instagram o Mercado Libre, cada una con su política) y desconectar. Conectar y
+ * refrescar llaman a la plataforma de forma síncrona (seguimiento de ADR-0014, punto 9). El token
+ * nunca vuelve en la respuesta ni va al log (el log de la API no registra cuerpos, y la URL del
+ * refresco de Instagram no sale de su cliente).
  */
 export function accountRoutes(deps: AccountRoutesDeps) {
   return new Hono()
@@ -263,6 +264,9 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         const result = await refreshAccountToken(
           {
             ...deps,
+            // Sin el par, una cuenta de Mercado Libre a la que le toca es MERCADOLIBRE_NOT_CONFIGURED
+            // (503) sin llamar ni cambiarla.
+            mercadoLibre: deps.mercadoLibre.configured ? deps.mercadoLibre.auth : null,
             onWarning: ({ accountId, code }) =>
               deps.logger.warn({ accountId, code }, "aviso del refresco de tokens"),
           },

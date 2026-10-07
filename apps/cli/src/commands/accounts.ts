@@ -4,7 +4,12 @@ import {
   accountResponseSchema,
   type PlatformAccountView,
 } from "@agentsales/api/contracts";
-import { PLATFORM_ACCOUNT_STATUS_TEXT, PLATFORM_TEXT, tokenStdinCommand } from "@agentsales/core";
+import {
+  MERCADOLIBRE_REFRESH_AGE_MS,
+  PLATFORM_ACCOUNT_STATUS_TEXT,
+  PLATFORM_TEXT,
+  tokenStdinCommand,
+} from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
@@ -162,10 +167,13 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
 
 export type RefreshOptions = { force?: boolean };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * `agentsales accounts refresh <id> [--force]` (spec F3 §4.6): renueva el token de una cuenta y
- * espera el resultado. `--force` salta solo el tope de 30 días, nunca el mínimo de 24 h. Sale con 1
- * si la cuenta quedó vencida.
+ * `agentsales accounts refresh <id> [--force]` (spec F3 §4.6 y F4 §4.3): renueva el acceso de una
+ * cuenta con la política de su plataforma y espera el resultado. En Instagram, `--force` salta solo
+ * el tope de 30 días, nunca el mínimo de 24 h; en Mercado Libre, sin `--force` renueva si pasaron
+ * 7 días, y con `--force` siempre. Sale con 1 si la cuenta quedó vencida.
  */
 export function runRefresh(deps: AccountsDeps, id: string, options: RefreshOptions = {}) {
   const c = deps.colors;
@@ -201,20 +209,24 @@ export function runRefresh(deps: AccountsDeps, id: string, options: RefreshOptio
       deps.print(`${c.green("✓")} Acceso de ${account.displayName} renovado${expiry}`);
       return 0;
     }
+    const mercadoLibre = account.platform === "portal_inmobiliario";
     if (result.outcome === "skipped") {
       const when = formatDateTime(result.refreshableAt);
       deps.print(
         result.reason === "too_recent"
           ? `Sin cambios: ${account.displayName} se renovó o conectó hace menos de 24 h; se puede desde ${when}`
-          : `Sin cambios: a ${account.displayName} le quedan más de 30 días${expiry}. Usa --force para renovarlo igual`,
+          : mercadoLibre
+            ? `Sin cambios: ${account.displayName} se renovó o conectó hace menos de ${MERCADOLIBRE_REFRESH_AGE_MS / DAY_MS} días; toca desde ${when}. Usa --force para renovarlo igual`
+            : `Sin cambios: a ${account.displayName} le quedan más de 30 días${expiry}. Usa --force para renovarlo igual`,
       );
       return 0;
     }
+    const platformName = mercadoLibre ? "Mercado Libre" : "Instagram";
     deps.printError(
       c.red(
         result.reason === "token_expired"
           ? `✗ El acceso de ${account.displayName} ya había vencido: la cuenta quedó vencida`
-          : `✗ Instagram rechazó el acceso de ${account.displayName}: la cuenta quedó vencida`,
+          : `✗ ${platformName} rechazó el acceso de ${account.displayName}: la cuenta quedó vencida`,
       ),
     );
     deps.printError(c.dim("→ Reconéctala con agentsales accounts connect"));
@@ -243,9 +255,11 @@ export function register(program: Command, ctx: CliContext): void {
     );
   accounts
     .command("refresh")
-    .description("Renueva el acceso de una cuenta (--force sin esperar a que falten 30 días)")
+    .description(
+      "Renueva el acceso de una cuenta (--force sin esperar: 30 días en Instagram, 7 en Mercado Libre)",
+    )
     .argument("<id>", "id de la cuenta (agentsales accounts)")
-    .option("--force", "renueva aunque le queden más de 30 días (nunca antes de 24 h)")
+    .option("--force", "renueva aunque no toque todavía (en Instagram, nunca antes de 24 h)")
     .action((id: string, options: RefreshOptions) =>
       exitWith(() => runRefresh(deps(), id, options)),
     );

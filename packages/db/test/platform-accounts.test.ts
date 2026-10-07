@@ -1,5 +1,5 @@
 import { createSecretBox } from "@agentsales/config";
-import { AppError, ensureAccessToken, refreshAccountToken } from "@agentsales/core";
+import { ensureAccessToken, refreshAccountToken } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryPlatformAccountRepository,
@@ -86,6 +86,7 @@ describe("cuentas conectadas · cifrado en la base (PGlite)", () => {
             return { accessToken: newToken, expiresAt: new Date("2026-12-05T12:00:00Z") };
           },
         },
+        mercadoLibre: null,
         now: () => now,
       },
       { accountId: account.id },
@@ -105,6 +106,70 @@ describe("cuentas conectadas · cifrado en la base (PGlite)", () => {
       tokenExpiryEstimated: false,
     });
     expect(await repos.accounts.getCredentials(account.id)).toEqual({ accessToken: newToken });
+  });
+
+  it("el refresco de Mercado Libre (F4-T08) guarda el par completo cifrado, los vencimientos y la meta mezclada", async () => {
+    const now = new Date("2026-10-07T12:00:00Z");
+    const meta = {
+      userId: "8035443",
+      nickname: "CORREDORA_PRUEBA",
+      siteId: "MLC",
+      userType: "normal",
+      scopes: ["offline_access", "read", "write"],
+      testUser: false,
+      connectedAt: "2026-09-20T12:00:00.000Z",
+      tokenRefreshedAt: null,
+      accessTokenExpiresAt: "2026-09-20T18:00:00.000Z",
+      tokenExpiryEstimated: true,
+    };
+    const account = await repos.accounts.upsertConnected(
+      connectedAccount(brokerId, {
+        platform: "portal_inmobiliario",
+        externalAccountId: "8035443",
+        tokenExpiresAt: new Date("2027-03-19T12:00:00Z"),
+        meta,
+        credentials: { accessToken: "APP_USR-viejo-pglite", refreshToken: "TG-viejo-pglite" },
+      }),
+    );
+
+    const result = await refreshAccountToken(
+      {
+        platformAccounts: repos.accounts,
+        instagram: {
+          refresh: async () => {
+            throw new Error("no se llama a Instagram");
+          },
+        },
+        mercadoLibre: {
+          refresh: async (refreshToken) => {
+            expect(refreshToken).toBe("TG-viejo-pglite");
+            return {
+              accessToken: "APP_USR-nuevo-pglite",
+              refreshToken: "TG-nuevo-pglite",
+              accessTokenExpiresAt: new Date("2026-10-07T18:00:00Z"),
+              scopes: ["offline_access", "read", "write"],
+              userId: "8035443",
+            };
+          },
+        },
+        now: () => now,
+      },
+      { accountId: account.id },
+    );
+
+    expect(result.outcome).toBe("refreshed");
+    const row = await rawRow(account.id);
+    expect(JSON.stringify(row)).not.toMatch(/APP_USR|TG-/);
+    expect(row?.tokenExpiresAt).toEqual(new Date("2027-04-05T12:00:00Z"));
+    expect(row?.meta).toEqual({
+      ...meta,
+      tokenRefreshedAt: now.toISOString(),
+      accessTokenExpiresAt: "2026-10-07T18:00:00.000Z",
+    });
+    expect(await repos.accounts.getCredentials(account.id)).toEqual({
+      accessToken: "APP_USR-nuevo-pglite",
+      refreshToken: "TG-nuevo-pglite",
+    });
   });
 
   it("la columna guarda el cifrado, nunca el token", async () => {

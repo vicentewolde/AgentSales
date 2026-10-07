@@ -300,7 +300,7 @@ describe("ensureAccessToken", () => {
     await expect(ensureAccessToken(deps, account.id)).resolves.toBe(NEW.accessToken);
   });
 
-  it("la señal llega al refresco", async () => {
+  it("la señal no llega al refresco enviado (cortarlo perdería el par ya rotado)", async () => {
     const signals: unknown[] = [];
     const { account, deps } = await setup({ signals });
     const signal: AbortSignalLike = {
@@ -309,9 +309,52 @@ describe("ensureAccessToken", () => {
       removeEventListener: () => {},
     };
 
-    await ensureAccessToken(deps, account.id, { signal });
+    await expect(ensureAccessToken(deps, account.id, { signal })).resolves.toBe(NEW.accessToken);
 
-    expect(signals).toEqual([signal]);
+    expect(signals).toEqual([undefined]);
+  });
+
+  it("con la señal ya disparada no refresca (ML_ABORTED) ni cambia la cuenta", async () => {
+    const { account, repository, deps, calls, locks } = await setup();
+    const signal: AbortSignalLike = {
+      aborted: true,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+
+    await expect(ensureAccessToken(deps, account.id, { signal })).rejects.toMatchObject({
+      code: "ML_ABORTED",
+      retriable: true,
+    });
+    expect(calls).toEqual([]);
+    expect(locks()).toBe(0);
+    expect(repository.storedCredentials(account.id)).toEqual(OLD);
+    expect((await repository.get(account.id))?.status).toBe("connected");
+  });
+
+  it("si la señal se dispara mientras espera el candado, no llama al entrar", async () => {
+    const { account, repository, deps, calls } = await setup();
+    const signal: AbortSignalLike & { aborted: boolean } = {
+      aborted: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+    const waiting = {
+      ...deps,
+      platformAccounts: {
+        ...deps.platformAccounts,
+        withCredentialsLock: ((id, fn) => {
+          signal.aborted = true;
+          return deps.platformAccounts.withCredentialsLock(id, fn);
+        }) as typeof deps.platformAccounts.withCredentialsLock,
+      },
+    };
+
+    await expect(ensureAccessToken(waiting, account.id, { signal })).rejects.toMatchObject({
+      code: "ML_ABORTED",
+    });
+    expect(calls).toEqual([]);
+    expect(repository.storedCredentials(account.id)).toEqual(OLD);
   });
 
   it("el candado ocupado (ACCOUNT_LOCK_TIMEOUT) sube sin llamar ni cambiar la cuenta", async () => {

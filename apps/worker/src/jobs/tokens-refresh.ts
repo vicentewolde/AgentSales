@@ -18,7 +18,8 @@ export const TOKENS_REFRESH_KEY = "tokens.refresh";
  * Política de `tokens.refresh` (spec F3 §4.6, `docs/01-arquitectura.md` → Cola de trabajos):
  * `exclusive` con `singletonKey` fijo (la política no se puede cambiar después de crear la cola),
  * 3 reintentos con backoff desde 60 s y expiración a los 5 min (cada llamada a Instagram tiene su
- * tope de 30 s, y en F3 hay una cuenta por corredor).
+ * tope de 30 s; la de Mercado Libre, 10 s más hasta 10 s esperando el candado; hay una cuenta por
+ * corredor y plataforma).
  */
 export const TOKENS_REFRESH_QUEUE: QueuePolicy = {
   policy: "exclusive",
@@ -47,6 +48,12 @@ export type TokensRefreshJobDeps = {
    * siempre, como la API: una cuenta conectada con el token del panel no vence por falta del par.
    */
   instagram: RefreshAccountTokensDeps["instagram"];
+  /**
+   * El refresco de Mercado Libre, o `null` sin `ML_APP_ID` y `ML_CLIENT_SECRET`: entonces las
+   * cuentas de Portal a las que les toca se saltan sin cambiarlas (`MERCADOLIBRE_NOT_CONFIGURED`)
+   * y el lote sigue con Instagram.
+   */
+  mercadoLibre: RefreshAccountTokensDeps["mercadoLibre"];
   /** Se dispara al apagar el worker: no se empieza otra cuenta y se corta la llamada en curso. */
   signal: AbortSignalLike;
   now?: () => Date;
@@ -55,11 +62,14 @@ export type TokensRefreshJobDeps = {
 const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_ERROR");
 
 /**
- * Job `tokens.refresh`: corre el lote `refreshAccountTokens` de core. El log lleva solo ids de
- * cuentas y códigos, nunca tokens (la URL del refresco lleva el token y no sale del cliente de
- * Instagram). Si alguna cuenta falló por algo pasajero (red, cupo, base), el job falla con
- * `TOKENS_REFRESH_INCOMPLETE` y pg-boss lo reintenta: las que ya se refrescaron quedan fuera por
- * las 24 h, así que repetir el lote no las refresca de nuevo.
+ * Job `tokens.refresh`: corre el lote `refreshAccountTokens` de core (Instagram y Mercado Libre,
+ * cada una con su política). El log lleva solo ids de cuentas y códigos, nunca tokens (la URL del
+ * refresco de Instagram lleva el token y no sale de su cliente). Si alguna cuenta falló por algo
+ * pasajero (red, cupo, base, el candado ocupado), el job falla con `TOKENS_REFRESH_INCOMPLETE` y
+ * pg-boss lo reintenta: las que ya se refrescaron quedan fuera por su política (24 h en Instagram,
+ * 7 días en Mercado Libre), así que repetir el lote no las refresca de nuevo. Las que fallaron por
+ * algo que un reintento no arregla (la falta del par de Mercado Libre, credenciales que no sirven)
+ * van en un aviso aparte.
  */
 export function tokensRefreshJob(deps: TokensRefreshJobDeps): Job {
   return defineJob({
@@ -78,6 +88,7 @@ export function tokensRefreshJob(deps: TokensRefreshJobDeps): Job {
         {
           platformAccounts: deps.platformAccounts,
           instagram: deps.instagram,
+          mercadoLibre: deps.mercadoLibre,
           ...(deps.now === undefined ? {} : { now: deps.now }),
           onWarning: ({ accountId, code }) =>
             logger.warn({ accountId, code }, "aviso del refresco de tokens"),
@@ -97,6 +108,13 @@ export function tokensRefreshJob(deps: TokensRefreshJobDeps): Job {
         logger.warn(
           { accountIds: report.expired },
           "cuentas con el acceso vencido: hay que reconectarlas",
+        );
+      }
+      const blocked = report.failed.filter((failure) => !failure.retriable);
+      if (blocked.length > 0) {
+        logger.warn(
+          { failed: blocked },
+          "cuentas sin renovar que un reintento no arregla: revisa el código (MERCADOLIBRE_NOT_CONFIGURED: falta ML_APP_ID o ML_CLIENT_SECRET en .env)",
         );
       }
       const pending = report.failed.filter((failure) => failure.retriable);

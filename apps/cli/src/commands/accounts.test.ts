@@ -194,4 +194,52 @@ describe("accounts y accounts refresh", () => {
     expect(await runRefresh(deps(), randomUUID())).toBe(1);
     expect(h.errors()).toContain("ACCOUNT_NOT_FOUND");
   });
+
+  it("refresh de Mercado Libre: sin --force espera los 7 días; con --force renueva; un rechazo la deja vencida", async () => {
+    const { h, deps, advance } = await setup();
+    const broker = (await h.brokers.list())[0];
+    const addMl = (externalAccountId: string, refreshToken: string) =>
+      h.platformAccounts.upsertConnected({
+        brokerId: broker?.id ?? "",
+        platform: "portal_inmobiliario",
+        externalAccountId,
+        displayName: `CORREDORA_${externalAccountId}`,
+        tokenExpiresAt: new Date("2027-04-04T12:00:00Z"),
+        meta: {
+          userId: externalAccountId,
+          nickname: `CORREDORA_${externalAccountId}`,
+          siteId: "MLC",
+          userType: "normal",
+          scopes: ["offline_access", "read", "write"],
+          testUser: false,
+          connectedAt: "2026-10-06T12:00:00.000Z",
+          tokenRefreshedAt: null,
+          accessTokenExpiresAt: "2026-10-06T18:00:00.000Z",
+          tokenExpiryEstimated: true,
+        },
+        credentials: { accessToken: `APP_USR-${externalAccountId}`, refreshToken },
+      });
+    const account = await addMl("8035443", "TG-guardado-8035443");
+
+    expect(await runRefresh(deps(), account.id)).toBe(0);
+    expect(h.text()).toContain(
+      "Sin cambios: CORREDORA_8035443 se renovó o conectó hace menos de 7 días; toca desde",
+    );
+    expect(h.text()).toContain("Usa --force");
+
+    expect(await runRefresh(deps(), account.id, { force: true })).toBe(0);
+    expect(h.text()).toContain("✓ Acceso de CORREDORA_8035443 renovado · vence");
+
+    advance(7 * 24 * HOUR);
+    expect(await runRefresh(deps(), account.id)).toBe(0);
+    expect(h.platformAccounts.storedCredentials(account.id)?.refreshToken).toBe(
+      "TG-fake-refrescado-2",
+    );
+
+    const rejected = await addMl("8035444", "TG-vence-8035444");
+    expect(await runRefresh(deps(), rejected.id, { force: true })).toBe(1);
+    expect(h.errors()).toContain("✗ Mercado Libre rechazó el acceso de CORREDORA_8035444");
+    expect(h.errors()).toContain("Reconéctala");
+    expect(`${h.text()}\n${h.errors()}`).not.toMatch(/APP_USR|TG-/);
+  });
 });
