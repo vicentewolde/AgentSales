@@ -1,5 +1,5 @@
 import { createSecretBox } from "@agentsales/config";
-import { refreshAccountToken } from "@agentsales/core";
+import { AppError, ensureAccessToken, refreshAccountToken } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryPlatformAccountRepository,
@@ -241,5 +241,96 @@ describe("cuentas conectadas · doble en memoria", () => {
     });
     await accounts.upsertConnected(input);
     expect(await accounts.getCredentials(account.id)).toEqual(input.credentials);
+  });
+});
+
+describe("candado de credenciales · Drizzle sobre PGlite (spec F4 §4.3)", () => {
+  const portalInput = (brokerId: string, accessTokenExpiresAt: string) =>
+    connectedAccount(brokerId, {
+      platform: "portal_inmobiliario",
+      externalAccountId: "8035443",
+      displayName: "CORREDORA_PRUEBA",
+      meta: { nickname: "CORREDORA_PRUEBA", accessTokenExpiresAt },
+      credentials: { accessToken: "APP_USR-viejo-8035443", refreshToken: "TG-viejo-8035443" },
+    });
+
+  it("bloquea la fila con FOR NO KEY UPDATE y lock_timeout de 10 s (no choca con la FK de publications)", async () => {
+    const queries: string[] = [];
+    const database = await createTestDatabase({
+      logger: { logQuery: (query) => queries.push(query) },
+    });
+    databases.push(database);
+    const brokers = createBrokerRepository(database.db);
+    const accounts = createPlatformAccountRepository(database.db, {
+      secretBox: createSecretBox(APP_KEY),
+    });
+    const brokerId = (await brokers.create(brokerData("candado-sql"))).id;
+    const account = await accounts.upsertConnected(portalInput(brokerId, "2026-10-07T12:00:00Z"));
+    queries.length = 0;
+
+    await accounts.withCredentialsLock(account.id, async () => undefined);
+
+    expect(queries[0]).toMatch(/^SET LOCAL lock_timeout = '10000ms'$/);
+    const lockQuery = queries.find((query) => /"platform_accounts"/.test(query));
+    expect(lockQuery).toMatch(/for no key update$/i);
+    expect(lockQuery).not.toMatch(/for update$/i);
+  });
+
+  it("dos ensureAccessToken a la vez refrescan una sola vez: el segundo relee el par guardado", async () => {
+    const repos = await pgliteRepositories();
+    const brokerId = (await repos.brokers.create(brokerData("candado-concurrencia"))).id;
+    const account = await repos.accounts.upsertConnected(
+      portalInput(brokerId, "2026-10-07T12:05:00.000Z"),
+    );
+    const refreshes: string[] = [];
+    const mercadoLibre = {
+      async refresh(refreshToken: string) {
+        refreshes.push(refreshToken);
+        return {
+          accessToken: "APP_USR-nuevo-8035443",
+          refreshToken: "TG-nuevo-8035443",
+          accessTokenExpiresAt: new Date("2026-10-07T18:00:00Z"),
+          scopes: ["offline_access", "read", "write"],
+          userId: "8035443",
+        };
+      },
+    };
+    const deps = {
+      platformAccounts: repos.accounts,
+      mercadoLibre,
+      now: () => new Date("2026-10-07T12:00:00Z"),
+    };
+
+    const tokens = await Promise.all([
+      ensureAccessToken(deps, account.id),
+      ensureAccessToken(deps, account.id),
+    ]);
+
+    expect(tokens).toEqual(["APP_USR-nuevo-8035443", "APP_USR-nuevo-8035443"]);
+    expect(refreshes).toEqual(["TG-viejo-8035443"]);
+    await expect(repos.accounts.getCredentials(account.id)).resolves.toEqual({
+      accessToken: "APP_USR-nuevo-8035443",
+      refreshToken: "TG-nuevo-8035443",
+    });
+  });
+
+  it("el candado ocupado más de 10 s (55P03) es ACCOUNT_LOCK_TIMEOUT, reintentable", async () => {
+    const repos = await pgliteRepositories();
+    const brokerId = (await repos.brokers.create(brokerData("candado-timeout"))).id;
+    const account = await repos.accounts.upsertConnected(
+      portalInput(brokerId, "2026-10-07T12:00:00Z"),
+    );
+    // Postgres lo informa con SQLSTATE 55P03; `withDbErrors` lo deja como DB_QUERY_FAILED.
+    const failures = [
+      Object.assign(new Error("canceling statement due to lock timeout"), { code: "55P03" }),
+      new AppError("DB_QUERY_FAILED", "Falló una consulta", { details: { sqlState: "55P03" } }),
+    ];
+    for (const failure of failures) {
+      await expect(
+        repos.accounts.withCredentialsLock(account.id, async () => {
+          throw failure;
+        }),
+      ).rejects.toMatchObject({ code: "ACCOUNT_LOCK_TIMEOUT", retriable: true });
+    }
   });
 });

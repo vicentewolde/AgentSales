@@ -1,6 +1,8 @@
 import {
   AppError,
+  CREDENTIALS_LOCK_TIMEOUT_MS,
   checkCredentials,
+  isAppError,
   normalizeAccountMeta,
   type PlatformAccount,
   type PlatformAccountRepository,
@@ -11,7 +13,7 @@ import {
 } from "@agentsales/core";
 import { and, asc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
-import { isForeignKeyViolation, withDbErrors } from "../errors.js";
+import { isForeignKeyViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { brokers, platformAccounts } from "../schema.js";
 
 type Row = typeof platformAccounts.$inferSelect;
@@ -68,6 +70,16 @@ const unreadable = (id: string) =>
     { details: { reason: "shape", accountId: id } },
   );
 
+/** SQLSTATE `55P03` (`lock_not_available`): venció el `lock_timeout` esperando la fila. */
+const LOCK_NOT_AVAILABLE = "55P03";
+
+const lockTimeout = (id: string) =>
+  new AppError(
+    "ACCOUNT_LOCK_TIMEOUT",
+    "Otro proceso está renovando el acceso de la cuenta: se reintenta en un momento",
+    { retriable: true, details: { accountId: id } },
+  );
+
 /**
  * `PlatformAccountRepository` sobre Drizzle (spec F3 §4.6). Cifra las credenciales con el
  * `SecretBox` que inyecta la app (`createSecretBox(APP_ENCRYPTION_KEY)` de config) y nunca las
@@ -81,6 +93,21 @@ export function createPlatformAccountRepository(
     owner: Pick<Row, "brokerId" | "platform" | "externalAccountId">,
     credentials: PlatformCredentials,
   ) => secretBox.encrypt(JSON.stringify(credentials), credentialsAad(owner));
+
+  /** Descifra las credenciales de una fila; `CREDENTIALS_UNREADABLE` si no se pueden leer. */
+  const openCredentials = (row: Row): PlatformCredentials => {
+    if (row.credentialsEncrypted === null) throw notConnected(row.id);
+    const plaintext = secretBox.decrypt(row.credentialsEncrypted, credentialsAad(row));
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(plaintext);
+    } catch {
+      throw unreadable(row.id);
+    }
+    const credentials = platformCredentialsSchema.safeParse(parsed);
+    if (!credentials.success) throw unreadable(row.id);
+    return credentials.data;
+  };
 
   const findRow = (id: string) =>
     withDbErrors(async () => {
@@ -198,17 +225,7 @@ export function createPlatformAccountRepository(
     async getCredentials(id) {
       const row = await findRow(id);
       if (row === undefined) throw notFound(id);
-      if (row.credentialsEncrypted === null) throw notConnected(id);
-      const plaintext = secretBox.decrypt(row.credentialsEncrypted, credentialsAad(row));
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(plaintext);
-      } catch {
-        throw unreadable(id);
-      }
-      const credentials = platformCredentialsSchema.safeParse(parsed);
-      if (!credentials.success) throw unreadable(id);
-      return credentials.data;
+      return openCredentials(row);
     },
 
     async updateToken(id, { credentials, tokenExpiresAt, meta }) {
@@ -251,6 +268,44 @@ export function createPlatformAccountRepository(
       if (changed.length > 0) return true;
       if ((await findRow(id)) === undefined) throw notFound(id);
       return false;
+    },
+
+    async withCredentialsLock(id, fn) {
+      try {
+        return await withDbErrors(() =>
+          db.transaction(async (tx) => {
+            // Solo para esta transacción: quien espera la fila se rinde a los 10 s (ADR-0015).
+            await tx.execute(
+              sql.raw(`SET LOCAL lock_timeout = '${CREDENTIALS_LOCK_TIMEOUT_MS}ms'`),
+            );
+            // `FOR NO KEY UPDATE`, como el candado por aviso: no choca con el `FOR KEY SHARE` que
+            // toma la FK de `publications` al aprobar o publicar.
+            const [row] = await tx
+              .select()
+              .from(platformAccounts)
+              .where(eq(platformAccounts.id, id))
+              .for("no key update");
+            if (row === undefined) throw notFound(id);
+            if (row.status !== "connected") throw notConnected(id);
+            const credentials = openCredentials(row);
+            const inside = createPlatformAccountRepository(tx, { secretBox });
+            return fn({
+              account: toAccount(row),
+              credentials,
+              save: (update) => inside.updateToken(id, update),
+            });
+          }),
+        );
+      } catch (error) {
+        // `withDbErrors` lo deja como `DB_QUERY_FAILED` con el SQLSTATE en los detalles.
+        const state =
+          sqlStateOf(error) ??
+          (isAppError(error)
+            ? (error.details as { sqlState?: unknown } | undefined)?.sqlState
+            : null);
+        if (state === LOCK_NOT_AVAILABLE) throw lockTimeout(id);
+        throw error;
+      }
     },
 
     async disconnect(id) {
