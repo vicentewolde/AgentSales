@@ -220,6 +220,14 @@ export {
 } from "./ports/media-repository.js";
 export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
 export type {
+  MercadoLibreAuth,
+  MercadoLibreCodeExchange,
+  MercadoLibreRefresh,
+  MercadoLibreTokens,
+  MercadoLibreUser,
+} from "./ports/mercadolibre-auth.js";
+export { isMercadoLibreTokenRejected } from "./ports/mercadolibre-auth.js";
+export type {
   ConnectedAccount,
   PlatformAccountProblemStatus,
   PlatformAccountRepository,

@@ -8,7 +8,7 @@ import {
 } from "@agentsales/core";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
-import { useInstagramServer } from "../../test/instagram-server.js";
+import { usePlatformServer } from "../../test/msw-server.js";
 import { INSTAGRAM_ERRORS } from "./errors.js";
 import { createInstagramGraph } from "./graph.js";
 import {
@@ -24,7 +24,7 @@ const TOKEN = "IGAA-token-de-prueba";
 const START = Date.parse("2026-10-05T12:00:00Z");
 const MIN = 60_000;
 
-const { server, requests } = useInstagramServer();
+const { server, requests } = usePlatformServer();
 
 /**
  * Qué hace `media_publish`: publicar (`ok`), publicar y cortar la respuesta (`*-after-publish`),

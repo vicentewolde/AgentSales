@@ -64,6 +64,8 @@ El operador conecta la cuenta de Mercado Libre de un corredor, aprueba el texto 
   - **`PlatformAccountRepository.withCredentialsLock(id, fn)`**: transacción que bloquea la fila de la cuenta con `FOR NO KEY UPDATE` (como `upsertConnected` y el candado por aviso: no choca con las FK de `publications`) y `lock_timeout` de 10 s; descifra y entrega a `fn` las credenciales, la cuenta y `save(update)`. Es la **única** excepción a "nada externo dentro de un candado": `fn` hace **una** llamada de refresco (tope de 10 s) y guarda el par nuevo **antes** de que se use. **Nunca se anida con el `ListingLock`** (ni uno dentro del otro). El doble en memoria serializa por cuenta.
   - **`ensureAccessToken(deps, accountId)`** (core): si a `meta.accessTokenExpiresAt` le quedan más de 30 min, devuelve el token sin bloquear; si no, entra al candado, **vuelve a leer** (otro proceso pudo refrescarlo mientras esperaba) y refresca solo si sigue por vencer. Con `{ force: true }` refresca igual (un 401 con un token que parecía vigente). Lo usan el intento de publicación, `preflight`, las operaciones, el sync, el catálogo y `ml:smoke`, siempre **fuera** del `ListingLock`.
   - `invalid_grant` (vencido, revocado, cambio de contraseña, 4 meses sin uso) deja la cuenta en `expired` y el error `ML_AUTH_INVALID` pide reconectar. Un corte de red no cambia la cuenta.
+  - El refresco del cliente tiene un tope de **10 s** aunque el cliente tenga uno mayor (`MERCADOLIBRE_REFRESH_TIMEOUT_MS`), y de la respuesta **solo exige el par**: Mercado Libre ya invalidó el `refresh_token` anterior, así que un `user_id` o un `expires_in` que falte no la descarta (vencimiento supuesto de 1 h).
+  - **Qué deja la cuenta `expired`:** cualquier `ML_AUTH_INVALID` que lance `refresh()` (`invalid_grant`, 401 o el refresh guardado mal formado), o un 401 de un recurso que se repite después de refrescar una vez. No la cambian: `ML_APP_CREDENTIALS_INVALID`, `ML_PERMISSION_DENIED`, la red, el tope ni `MERCADOLIBRE_NOT_CONFIGURED`. El primer 401 de un recurso se reconoce con `isMercadoLibreTokenRejected` (core).
   - Riesgo aceptado: si el proceso muere después de que Mercado Libre rotó el token y antes de confirmar la transacción, el par nuevo se pierde y hay que reconectar (§8).
 - **Política de refresco por plataforma** (core; hoy las reglas de Instagram están fijas en `refreshAccountToken`): Instagram sigue igual (24 h mínimo, ventana de 30 días). Mercado Libre: sin mínimo, `force` siempre refresca, y el lote (`tokens.refresh`, al arrancar el worker y a diario) refresca las que tienen más de 7 días desde el último refresco, para que el `refresh_token` no venza (6 meses) ni caiga por 4 meses sin uso. `POST /accounts/:id/refresh` acepta Mercado Libre.
 
@@ -147,18 +149,20 @@ El operador conecta la cuenta de Mercado Libre de un corredor, aprueba el texto 
 - **Errores** (`AppError`, nota §7):
   | Código | Casos | Reintentable |
   |---|---|---|
-  | `ML_AUTH_INVALID` | 401 después de refrescar una vez, `invalid_grant` | No (la cuenta pasa a `expired`) |
-  | `ML_PERMISSION_DENIED` | 403 `forbidden`, scopes faltantes, `unauthorized_application` | No |
+  | `ML_AUTH_INVALID` | 401 (el primero llega con `httpStatus: 401` y quien llama refresca una vez y repite; si vuelve, la cuenta pasa a `expired`), `invalid_grant`, un token guardado mal formado | No (la cuenta pasa a `expired`, §4.3) |
+  | `ML_PERMISSION_DENIED` | 403 `forbidden`, scopes faltantes, `unauthorized_application`, `invalid_operator_user_id` (autorizó un colaborador) | No |
   | `ML_APP_CREDENTIALS_INVALID` | `invalid_client` o `unauthorized_client` en el canje o el refresco (el par de la app mal copiado o renovado en el panel) | No; la cuenta **no** pasa a `expired`: se corrige `.env` y se reintenta |
   | `MERCADOLIBRE_NOT_CONFIGURED` | Falta `ML_APP_ID` o `ML_CLIENT_SECRET` (lo lanzan la API, `ensureAccessToken` y el lote antes de llamar) | No; la cuenta no cambia |
   | `ML_ITEM_REJECTED` | 400 con `cause[]` de tipo `error` (126, 147, 7810, 173, 201, 3703, 109/129, 398, `seller_contact.*`) | No; el mensaje lista las causas en español, sin datos del aviso |
   | `ML_NO_QUOTA` | Sin cupo `silver` en el paquete | No |
   | `ML_RATE_LIMITED` | 429, y el 400 por límite de subida de fotos | Sí (backoff de la cola) |
-  | `ML_UNAVAILABLE` | 5xx, red, tope de tiempo | Sí |
+  | `ML_UNAVAILABLE` | 5xx, 408, 425, red, tope de tiempo | Sí |
   | `ML_CONFLICT` | 409 "optimistic locking" | Sí |
   | `ML_PUBLISH_OUTCOME_UNKNOWN` | `POST /items` sin respuesta y sin poder encontrarlo | No |
   | `ML_UNEXPECTED_RESPONSE` | Otra forma de respuesta | No |
-  Las advertencias (`cause[].type = "warning"`) no bloquean y van a la bitácora. Ningún error lleva el token, el refresh, el secret, el código ni el WhatsApp.
+  | `ML_REQUEST_REJECTED` | Otro 4xx sin causas que bloqueen (`invalid_request`, `invalid_scope`, `not_found`, …): el mensaje nombra el código de Mercado Libre o el status | No |
+  | `ML_ABORTED` | La señal cortó la llamada (apagado del worker) | Sí |
+  `ML_NO_QUOTA` todavía no se reconoce: la doc no dice con qué código responde Mercado Libre sin cupo; hasta que `ml:smoke` o la demo lo muestren (T10, T23), llega como `ML_ITEM_REJECTED` o `ML_REQUEST_REJECTED` con el código tal cual. Las advertencias (`cause[].type = "warning"`) no bloquean y van a la bitácora. Ningún error lleva el token, el refresh, el secret, el código ni el WhatsApp.
 
 ### 4.9 Pausar, reactivar, cerrar y sincronizar
 - **Estados** (la máquina de F3 ya los tiene): `published` → `paused` (pausar) → `published` (reactivar); `published` o `paused` → `unpublished` (cerrar). Una `paused` cuenta como activa, no como pendiente: no bloquea preparar contenido.
@@ -246,13 +250,13 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Archivos:** `packages/publishers/src/mercadolibre/{auth.ts,http.ts,errors.ts,constants.ts}`, `packages/core/src/ports/mercadolibre-auth.ts`
 - **Descripción:** `createMercadoLibreAuth` (puerto `MercadoLibreAuth`): URL de autorización, canje y refresco (parámetros en el cuerpo), `GET /users/me`; base HTTP con `Bearer`, tope configurable (30 s en el worker, 10 s en la API), señal, y la tabla de errores `ML_*` (§4.8) con `cause[]` traducido.
 - **Hecho cuando:**
-  - [ ] Tests con msw: canje, refresco que rota, `invalid_grant`, `invalid_client` y `unauthorized_client` (`ML_APP_CREDENTIALS_INVALID`), 401, 403, 429, 5xx, red, tope y forma inesperada
-  - [ ] Ningún error ni log lleva el token, el refresh, el secret ni el código (test)
+  - [x] Tests con msw: canje, refresco que rota, `invalid_grant`, `invalid_client` y `unauthorized_client` (`ML_APP_CREDENTIALS_INVALID`), 401, 403, 429, 5xx, red, tope y forma inesperada
+  - [x] Ningún error ni log lleva el token, el refresh, el secret ni el código (test)
 
 ### F4-T04 · Cliente de Mercado Libre: ítems y fotos
 - **Depende de:** T03
 - **Archivos:** `packages/publishers/src/mercadolibre/{items.ts,pictures.ts}`
-- **Descripción:** `POST /items`, `GET /items/{id}`, `PUT /items/{id}` (estado, con `seller_contact`), `POST /items/{id}/description`, `PUT /items/{id}/address_line_by_reference`, `GET /users/{id}/items/search` por `seller_custom_field` (todos los estados) y `POST /pictures/items/upload` (`multipart`; el 400 por límite es `ML_RATE_LIMITED`).
+- **Descripción:** `POST /items`, `GET /items/{id}`, `PUT /items/{id}` (estado, con `seller_contact`), `POST /items/{id}/description`, `PUT /items/{id}/address_line_by_reference`, `GET /users/{id}/items/search` por `seller_custom_field` (todos los estados) y `POST /pictures/items/upload` (`multipart`; el 400 por límite es `ML_RATE_LIMITED`). La base de T03 (`mercadoLibreRequest`) suma el cuerpo JSON (`Content-Type: application/json`), el `multipart` (`FormData`, sin fijar el `Content-Type`) y un `classify?(info)` que se consulta antes de `mercadoLibreError` (para el 400 por límite de fotos); `usePlatformServer` registra el cuerpo crudo y su tipo. Si 508 y 509 resultan ser status HTTP y no `cause_id`, caerían en `ML_UNAVAILABLE`: clasificarlos para volver a subir las fotos una vez (§4.8, T14).
 - **Hecho cuando:**
   - [ ] Tests con msw de cada llamada, con advertencias en `cause[]` y la forma del `multipart`
   - [ ] El cliente no tiene ninguna llamada que borre ítems (test)
@@ -269,7 +273,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Archivos:** `packages/core/src/use-cases/connect-mercadolibre-account.ts` (y lo compartido con `connect-account.ts`), `apps/api/src/routes/accounts.ts`, `apps/api/src/contracts/*`
 - **Descripción:** `connectMercadoLibreAccount`; `POST /accounts/mercadolibre/authorize-url` y `/connect` (§4.2); `state` con la plataforma; `GET /accounts` con `connect.mercadolibre`.
 - **Hecho cuando:**
-  - [ ] Tests: `state` vencido, de otra plataforma, de otro corredor o alterado; sitio que no es `MLC`; scopes sin `offline_access`; un canje sin `refresh_token` (`ML_UNEXPECTED_RESPONSE`, sin el valor en el error); reconectar; una cuenta por corredor; sin el par de la app, `authorize-url` y `/connect` responden `MERCADOLIBRE_NOT_CONFIGURED` sin llamar a Mercado Libre
+  - [ ] Tests: `state` vencido, de otra plataforma, de otro corredor o alterado; sitio que no es `MLC`; scopes sin `offline_access`; un canje sin `refresh_token` (`ML_UNEXPECTED_RESPONSE`, sin el valor en el error); un `user_id` del canje distinto del de `/users/me` (`ML_UNEXPECTED_RESPONSE`); reconectar; una cuenta por corredor; sin el par de la app, `authorize-url` y `/connect` responden `MERCADOLIBRE_NOT_CONFIGURED` sin llamar a Mercado Libre
   - [ ] Ninguna respuesta ni log lleva el código ni los tokens (test)
 
 ### F4-T07 · Candado de credenciales y `ensureAccessToken`
@@ -481,3 +485,5 @@ Respondidas por el operador el 2026-10-06:
 | 2026-10-06 | Revisión de F4-T01 (#76, `revisor` y `arquitecto`): sin `reason` en `remoteStateSchema` hasta que T17 tenga su fuente; el publisher devuelve `RemoteStatus` (sin `checkedAt`, que pone core); `setRemoteState` solo con eventos `sync`; `listingSourceHash` vacío queda en `null`, pasa a obligatorio en T16, y `buildPublishInput` trata un `null` de Portal como `PUBLICATION_LISTING_CHANGED`; `ListingRepository.getSourceHash` en T13; el sync compara `updatedAt` por igualdad con el leído antes (dos valores de la base, nunca el reloj del worker); T06 y T07 exigen `refreshToken` y T07 lee el vencimiento del `access_token` aparte; `tokenExpiryEstimated` siempre `true` en Mercado Libre; la llave del catálogo solo exige `tipo:id`; T08 conserva el par completo al refrescar |
 | 2026-10-06 | Desde F4-T02: un `ML_SITE_ID` que quede en `.env` se ignora si dice `MLC` (el valor que traía `.env.example`) y es un error de `.env` con cualquier otro sitio (se publicaría igual en Chile); `doctor` revisa el par (`ML_APP_ID` y `ML_CLIENT_SECRET`, advertencia) y muestra la dirección de retorno, que siempre tiene valor; el redactor oculta `APP_USR-…` y `TG-…` también fuera de un parámetro o una clave sensible |
 | 2026-10-06 | Revisión de F4-T02 (#77, `revisor` y `arquitecto`): `ML_REDIRECT_URI` sin usuario, clave ni fragmento; el redactor oculta `TG-…` sin mirar qué viene antes (también codificado: `%3D`, `\n`); **sin el par de la app** no se conecta ni se refresca (Mercado Libre lo exige también para refrescar): `MERCADOLIBRE_NOT_CONFIGURED` en T06, y T07 y T08 no llaman ni cambian la cuenta; `invalid_client` y `unauthorized_client` son `ML_APP_CREDENTIALS_INVALID` (T03), que no deja la cuenta `expired`; `doctor` lo dice en su advertencia |
+| 2026-10-06 | Desde F4-T03: `MercadoLibreAuth` devuelve el vencimiento del `access_token` (`accessTokenExpiresAt`), los permisos y el `user_id`; en el canje `refreshToken` es `null` si no vino (T06 lo explica con los permisos) y en el refresco es obligatorio; `/users/me` devuelve `userId`, `nickname`, `siteId`, `userType` y `tags`. Errores nuevos en la tabla: `ML_REQUEST_REJECTED` (otro 4xx) y `ML_ABORTED` (la señal); `ML_NO_QUOTA` espera el código real (T10, T23). Un 401 es `ML_AUTH_INVALID` con `httpStatus: 401`, para que quien llama refresque una vez. Las causas de un rechazo se guardan solo con `code`, `cause_id` y `type` (nunca el `message` de Mercado Libre) |
+| 2026-10-06 | Revisión de F4-T03 (#78, `revisor` y `arquitecto`): el refresco tiene un tope de 10 s y solo exige el par (§4.3); qué errores dejan la cuenta `expired` (§4.3 y seguimiento de ADR-0015) y `isMercadoLibreTokenRejected` en core para el primer 401; `invalid_operator_user_id` → `ML_PERMISSION_DENIED`; 408 y 425 → `ML_UNAVAILABLE`; sin seguir redirecciones; del cuerpo no se guarda nada con forma de token y como máximo 20 causas; T04 extiende la base (JSON, `multipart`, `classify`); T06 compara el `user_id` del canje con el de `/users/me` |

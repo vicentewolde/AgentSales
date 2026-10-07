@@ -1,14 +1,14 @@
 import type { AbortSignalLike } from "@agentsales/core";
 import { delay, HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
-import { errorText, useInstagramServer } from "../../test/instagram-server.js";
+import { errorText, usePlatformServer } from "../../test/msw-server.js";
 import { createInstagramGraph, subcodeOfStatus } from "./graph.js";
 
 const BASE = "https://graph.instagram.com/v25.0";
 const TOKEN = "IGAA-token-secreto-123";
 const IG_USER = "17841400000000001";
 
-const { server, requests } = useInstagramServer();
+const { server, requests } = usePlatformServer();
 const graph = createInstagramGraph();
 
 /** Responde `body` en cada forma: tal cual y dentro de la envoltura `data: [ … ]`. */

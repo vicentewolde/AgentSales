@@ -1,7 +1,7 @@
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
-/** Lo que recibió el Instagram simulado, para afirmar en los tests (nunca sale a internet). */
+/** Lo que recibió la plataforma simulada, para afirmar en los tests (nunca sale a internet). */
 export type RecordedRequest = {
   method: string;
   url: URL;
@@ -10,10 +10,11 @@ export type RecordedRequest = {
 };
 
 /**
- * Servidor msw de los tests de Instagram: una petición sin handler falla el test
- * (`onUnhandledFrame: "error"`), así nada llega a Meta. `requests` se vacía entre tests.
+ * Servidor msw de los tests de Instagram y Mercado Libre: una petición sin handler falla el test
+ * (`onUnhandledFrame: "error"`), así nada llega a Meta ni a Mercado Libre. `requests` se vacía
+ * entre tests.
  */
-export function useInstagramServer() {
+export function usePlatformServer() {
   const server = setupServer();
   const requests: RecordedRequest[] = [];
   server.events.on("request:start", async ({ request }) => {
