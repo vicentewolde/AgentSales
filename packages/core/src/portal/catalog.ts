@@ -12,12 +12,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Una entrada del catálogo vale 7 días desde que se bajó (`fetched_at`); después se pide de nuevo. */
 export const PORTAL_CATALOG_TTL_MS = 7 * DAY_MS;
 
-/** Inmuebles en Mercado Libre Chile: la raíz desde la que se baja por nombres (nota §4.6). */
-export const PORTAL_ROOT_CATEGORY_ID = "MLC1459";
-
-/** Chile en `classified_locations` (nota §4.7): trae los estados (regiones). */
-export const PORTAL_COUNTRY_ID = "CL";
-
 /** Las claves de `platform_catalog` (forma `tipo:id`). */
 export const portalCatalogKeys = {
   category: (id: string) => `category:${id}`,

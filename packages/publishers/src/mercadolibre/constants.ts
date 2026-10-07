@@ -28,3 +28,8 @@ export const MERCADOLIBRE_MAX_EXPIRES_IN_S = 365 * 24 * 60 * 60;
  * descarta por eso, pero el `access_token` se renueva pronto (spec F4 §4.3).
  */
 export const MERCADOLIBRE_FALLBACK_EXPIRES_IN_S = 60 * 60;
+
+/** Inmuebles en Mercado Libre Chile: la raíz desde la que el catálogo baja por nombres (nota §4.6). */
+export const MERCADOLIBRE_REAL_ESTATE_CATEGORY_ID = "MLC1459";
+/** Chile en `classified_locations` (nota §4.7): trae los estados (regiones). */
+export const MERCADOLIBRE_COUNTRY_ID = "CL";

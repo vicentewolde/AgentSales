@@ -156,9 +156,7 @@ export {
   normalizePortalName,
   normalizePortalRegion,
   PORTAL_CATALOG_TTL_MS,
-  PORTAL_COUNTRY_ID,
   PORTAL_LOCATION_ALIASES,
-  PORTAL_ROOT_CATEGORY_ID,
   type PortalAttribute,
   type PortalCategory,
   type PortalLocation,
@@ -247,7 +245,10 @@ export type {
   MercadoLibreTokens,
   MercadoLibreUser,
 } from "./ports/mercadolibre-auth.js";
-export { isMercadoLibreTokenRejected } from "./ports/mercadolibre-auth.js";
+export {
+  isMercadoLibreTokenRejected,
+  MERCADOLIBRE_REJECTED_AFTER_REFRESH,
+} from "./ports/mercadolibre-auth.js";
 export {
   type ConnectedAccount,
   CREDENTIALS_LOCK_TIMEOUT_MS,

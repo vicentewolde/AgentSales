@@ -48,6 +48,8 @@ export {
 } from "./mercadolibre/catalog-api.js";
 export {
   MERCADOLIBRE_API_TIMEOUT_MS,
+  MERCADOLIBRE_COUNTRY_ID,
+  MERCADOLIBRE_REAL_ESTATE_CATEGORY_ID,
   MERCADOLIBRE_REFRESH_TIMEOUT_MS,
   MERCADOLIBRE_REQUEST_TIMEOUT_MS,
 } from "./mercadolibre/constants.js";

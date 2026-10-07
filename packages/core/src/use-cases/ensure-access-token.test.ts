@@ -4,7 +4,7 @@ import { AppError } from "../errors.js";
 import type { MercadoLibreAuth, MercadoLibreRefresh } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import { createInMemoryPlatformAccountRepository } from "../testing/index.js";
-import { ensureAccessToken } from "./ensure-access-token.js";
+import { accessTokenProvider, ensureAccessToken } from "./ensure-access-token.js";
 
 const NOW = new Date("2026-10-07T12:00:00Z");
 const MINUTE = 60 * 1000;
@@ -433,6 +433,25 @@ describe("ensureAccessToken", () => {
     await other.repository.disconnect(other.account.id);
     await expect(ensureAccessToken(other.deps, other.account.id)).rejects.toMatchObject({
       code: "ACCOUNT_NOT_CONNECTED",
+    });
+  });
+});
+
+describe("accessTokenProvider", () => {
+  it("pide el token de esa cuenta con ensureAccessToken, también después de un 401", async () => {
+    const { account, deps, calls } = await setup({ expiresIn: 31 * MINUTE });
+    const provider = accessTokenProvider(deps, account.id);
+
+    await expect(provider()).resolves.toBe(OLD.accessToken);
+    expect(calls).toEqual([]);
+    await expect(provider({ rejectedToken: OLD.accessToken })).resolves.toBe(NEW.accessToken);
+    expect(calls).toEqual([OLD.refreshToken]);
+  });
+
+  it("sus errores suben tal cual", async () => {
+    const { deps } = await setup();
+    await expect(accessTokenProvider(deps, "no-existe")()).rejects.toMatchObject({
+      code: "ACCOUNT_NOT_FOUND",
     });
   });
 });

@@ -1,7 +1,8 @@
-import type {
-  AbortSignalLike,
-  EnsureAccessTokenOptions,
-  PortalLocationAliases,
+import {
+  type AbortSignalLike,
+  type EnsureAccessTokenOptions,
+  isMercadoLibreTokenRejected,
+  type PortalLocationAliases,
 } from "@agentsales/core";
 import { createInMemoryPlatformCatalogRepository } from "@agentsales/core/testing";
 import { HttpResponse, http } from "msw";
@@ -95,6 +96,8 @@ const STATES: Record<string, unknown> = {
       { id: "TUxDQ05VTmE", name: "Ñuñoa" },
       { id: "TUxDQ1BFTmE", name: "Peñalolén" },
       { id: SANTIAGO, name: "Santiago" },
+      { id: "TUxDQ0NPTDE", name: "Colina" },
+      { id: "TUxDQ0NPTDI", name: "COLINA" },
     ],
   },
   [OHIGGINS]: {
@@ -294,27 +297,72 @@ describe("leafCategory", () => {
     });
   });
 
-  it("un token rechazado (401) se pide de nuevo una vez con el rechazado; un segundo 401 sube", async () => {
+  it("un token rechazado (401) se pide de nuevo una vez, con el rechazado, y la llamada se repite", async () => {
     useMercadoLibre({ rejectFirst: 1 });
     const { catalog, ctx, tokenCalls } = setup();
 
-    await expect(catalog.leafCategory(["Departamentos"], ctx)).rejects.toMatchObject({
-      code: "PORTAL_CATEGORY_NOT_FOUND",
-    });
-    expect(tokenCalls.slice(0, 2)).toEqual([{}, { rejectedToken: "APP_USR-token-1" }]);
-    const requests = await recorded();
-    expect(requests.slice(0, 2).map((request) => request.authorization)).toEqual([
+    await expect(catalog.attributes("MLC1480", ctx)).resolves.toHaveLength(2);
+
+    expect(tokenCalls).toEqual([{}, { rejectedToken: "APP_USR-token-1" }]);
+    expect((await recorded()).map((request) => request.authorization)).toEqual([
       "Bearer APP_USR-token-1",
       "Bearer APP_USR-token-2",
     ]);
+  });
+
+  it("un segundo 401 sube marcado (no se vuelve a refrescar más arriba) y sin el token", async () => {
+    useMercadoLibre({ rejectFirst: 2 });
+    const { catalog, ctx, tokenCalls } = setup();
+
+    const error = await catalog.attributes("MLC1480", ctx).catch((e) => e);
+
+    expect(error).toMatchObject({
+      code: "ML_AUTH_INVALID",
+      retriable: false,
+      details: { httpStatus: 401, reason: "rejected_after_refresh" },
+    });
+    expect(isMercadoLibreTokenRejected(error)).toBe(false);
+    expect(tokenCalls).toHaveLength(2);
+    expect(errorText(error)).not.toContain("APP_USR");
+  });
+
+  it("con una copia vencida, un error que no se reintenta (401 repetido, 404) sube sin usarla", async () => {
+    useMercadoLibre();
+    const { catalog, repository, ctx, advance, notes } = setup();
+    await catalog.attributes("MLC1480", ctx);
+    advance(8 * DAY);
 
     server.resetHandlers();
     useMercadoLibre({ rejectFirst: 2 });
-    const twice = setup();
-    const error = await twice.catalog.leafCategory(LEAF_PATH, twice.ctx).catch((e) => e);
-    expect(error).toMatchObject({ code: "ML_AUTH_INVALID" });
-    expect(twice.tokenCalls).toHaveLength(2);
-    expect(errorText(error)).not.toContain("APP_USR");
+    await expect(catalog.attributes("MLC1480", ctx)).rejects.toMatchObject({
+      code: "ML_AUTH_INVALID",
+    });
+
+    server.resetHandlers();
+    server.use(
+      http.get(`${API}/categories/:id/attributes`, () =>
+        HttpResponse.json({ message: "not found" }, { status: 404 }),
+      ),
+    );
+    await expect(catalog.attributes("MLC1480", ctx)).rejects.toMatchObject({ retriable: false });
+    expect(notes).toEqual([]);
+    expect(repository.keys()).toEqual(["attributes:MLC1480"]);
+  });
+
+  it("una fecha de bajada futura (reloj descuadrado) cuenta como vencida", async () => {
+    useMercadoLibre();
+    const { catalog, repository, ctx, paths } = setup();
+    await catalog.attributes("MLC1480", ctx);
+    const stored = await repository.get("portal_inmobiliario", "attributes:MLC1480");
+    if (stored === null) throw new Error("no se guardó");
+    await repository.put({ ...stored, fetchedAt: new Date(NOW.getTime() + 30 * DAY) });
+
+    await catalog.attributes("MLC1480", ctx);
+
+    expect(await paths()).toEqual([
+      "/categories/MLC1480/attributes",
+      "/categories/MLC1480/attributes",
+    ]);
   });
 
   it("si no se puede guardar, avisa y usa lo bajado", async () => {
@@ -384,7 +432,7 @@ describe("location", () => {
     ]);
   });
 
-  it("la región por su nombre en Mercado Libre, con tildes y apóstrofo, o por alias", async () => {
+  it("la región por su nombre en Mercado Libre, con tildes y apóstrofo", async () => {
     useMercadoLibre();
     const { catalog, ctx } = setup();
 
@@ -394,6 +442,25 @@ describe("location", () => {
     );
     expect(byName.state).toEqual({ id: OHIGGINS, name: "Libertador B. O'Higgins" });
     expect(byName.city.name).toBe("La Estrella");
+  });
+
+  it("los alias reales de core: O'Higgins como la escribe el Excel", async () => {
+    useMercadoLibre();
+    const { repository, ctx } = setup();
+    const catalog = createPortalCatalog({
+      api: createMercadoLibreCatalogApi(),
+      repository,
+      now: () => NOW,
+    });
+
+    for (const region of [
+      "O'Higgins",
+      "Región del Libertador General Bernardo O'Higgins",
+      "Libertador Bernardo O'Higgins",
+    ]) {
+      const place = await catalog.location({ region, commune: "La Estrella" }, ctx);
+      expect(place.state).toEqual({ id: OHIGGINS, name: "Libertador B. O'Higgins" });
+    }
   });
 
   it("una comuna con alias: la ciudad que la contiene y, si el alias lo dice, el barrio", async () => {
@@ -414,10 +481,13 @@ describe("location", () => {
   });
 
   it.each([
-    [{ region: "Atacama", commune: "Copiapó" }, "region"],
-    [{ region: "Metropolitana", commune: "Maipú" }, "commune"],
-    [{ region: "Metropolitana", commune: "Las Condes" }, "commune"],
-  ])("%j: PORTAL_LOCATION_NOT_FOUND (%s)", async (place, level) => {
+    [{ region: "Atacama", commune: "Copiapó" }, "region", "missing"],
+    [{ region: "Metropolitana", commune: "Maipú" }, "commune", "missing"],
+    [{ region: "Metropolitana", commune: "Las Condes" }, "commune", "missing"],
+    [{ region: "Metropolitana", commune: "Colina" }, "commune", "ambiguous"],
+    [{ region: "Metropolitana", commune: "constructor" }, "commune", "missing"],
+    [{ region: "toString", commune: "Ñuñoa" }, "region", "missing"],
+  ])("%j: PORTAL_LOCATION_NOT_FOUND (%s, %s)", async (place, level, reason) => {
     useMercadoLibre();
     const { catalog, ctx } = setup();
 
@@ -425,7 +495,7 @@ describe("location", () => {
     expect(error).toMatchObject({
       code: "PORTAL_LOCATION_NOT_FOUND",
       retriable: false,
-      details: { region: place.region, commune: place.commune, level },
+      details: { region: place.region, commune: place.commune, level, reason },
     });
     expect(error.message).toContain(level === "region" ? place.region : place.commune);
   });

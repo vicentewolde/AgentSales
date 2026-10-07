@@ -4,14 +4,13 @@ import {
   AppError,
   isAppError,
   isMercadoLibreTokenRejected,
+  MERCADOLIBRE_REJECTED_AFTER_REFRESH,
   normalizePortalName,
   normalizePortalRegion,
   type PlatformCatalogEntry,
   type PlatformCatalogRepository,
   PORTAL_CATALOG_TTL_MS,
-  PORTAL_COUNTRY_ID,
   PORTAL_LOCATION_ALIASES,
-  PORTAL_ROOT_CATEGORY_ID,
   type PortalAttribute,
   type PortalCategory,
   type PortalLocation,
@@ -25,6 +24,7 @@ import {
 } from "@agentsales/core";
 import type { z } from "zod";
 import type { MercadoLibreCatalogApi } from "./catalog-api.js";
+import { MERCADOLIBRE_COUNTRY_ID, MERCADOLIBRE_REAL_ESTATE_CATEGORY_ID } from "./constants.js";
 
 /** El catálogo de Mercado Libre se guarda como de Portal Inmobiliario (la plataforma del enum). */
 const PLATFORM = "portal_inmobiliario";
@@ -84,6 +84,20 @@ export type PortalCatalogOptions = {
   onNote?: (note: PortalCatalogNote) => void;
 };
 
+/**
+ * Un 401 que se repite con el token nuevo: se marca para que nadie más arriba vuelva a refrescar
+ * (`isMercadoLibreTokenRejected` ya no lo reconoce) y quien lo recibe deje la cuenta `expired`
+ * (spec F4 §4.3, seguimiento de F4-T03 en ADR-0015).
+ */
+const rejectedAfterRefresh = (error: unknown) =>
+  isAppError(error)
+    ? new AppError(error.code, error.message, {
+        retriable: false,
+        details: { ...error.details, reason: MERCADOLIBRE_REJECTED_AFTER_REFRESH },
+        cause: error,
+      })
+    : error;
+
 const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_ERROR");
 
 /**
@@ -94,6 +108,13 @@ const usesStaleCopy = (error: unknown) =>
   isAppError(error) && error.retriable && error.code !== "ML_ABORTED";
 
 type Match = { ref: PortalNamedRef } | { problem: "missing" | "ambiguous" };
+
+/**
+ * El alias de una llave, solo si es propia de la tabla: una comuna escrita `constructor` en el
+ * Excel no debe encontrar lo que hereda un objeto.
+ */
+const aliasOf = <V>(table: Readonly<Record<string, V>>, key: string): V | undefined =>
+  Object.hasOwn(table, key) ? table[key] : undefined;
 
 /** El único hijo cuyo nombre normalizado calza; dos que calzan es ambiguo (no se adivina). */
 function findOne(
@@ -139,7 +160,8 @@ const locationNotFound = (
  * `PortalCatalog` sobre `platform_catalog` (spec F4 §4.4): lee la tabla y, si falta, no calza con
  * su esquema o tiene 7 días o más, consulta a Mercado Libre y la guarda. Si Mercado Libre falla por
  * algo pasajero y hay una copia vencida, la usa y avisa (`onNote`); sin copia, el error sube. Un
- * token rechazado (401) se pide de nuevo una vez (`rejectedToken`); un segundo 401 sube.
+ * token rechazado (401) se pide de nuevo una vez (`rejectedToken`); un segundo 401 sube marcado
+ * (`details.reason: "rejected_after_refresh"`), que ya no cuenta como "refrescar y repetir".
  */
 export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalog {
   const now = options.now ?? (() => new Date());
@@ -159,7 +181,12 @@ export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalo
       return await call(token, signal);
     } catch (error) {
       if (!isMercadoLibreTokenRejected(error)) throw error;
-      return call(await ctx.accessToken({ ...withSignal, rejectedToken: token }), signal);
+    }
+    const fresh = await ctx.accessToken({ ...withSignal, rejectedToken: token });
+    try {
+      return await call(fresh, signal);
+    } catch (error) {
+      throw isMercadoLibreTokenRejected(error) ? rejectedAfterRefresh(error) : error;
     }
   }
 
@@ -172,13 +199,11 @@ export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalo
     const entry = await options.repository.get(PLATFORM, key);
     const stored = entry === null ? null : schema.safeParse(entry.data);
     const copy = stored?.success === true ? stored.data : null;
-    if (
-      copy !== null &&
-      entry !== null &&
-      now().getTime() - entry.fetchedAt.getTime() < PORTAL_CATALOG_TTL_MS
-    ) {
-      return copy;
-    }
+    // Una fecha futura (reloj descuadrado) cuenta como vencida: si no, nunca se volvería a bajar.
+    const age = entry === null ? null : now().getTime() - entry.fetchedAt.getTime();
+    if (copy !== null && age !== null && age >= 0 && age < PORTAL_CATALOG_TTL_MS) return copy;
+    // Dos lecturas a la vez de un nodo vencido lo bajan dos veces: es un duplicado benigno (la
+    // segunda reemplaza a la primera con lo mismo).
     let fresh: T;
     try {
       fresh = await withToken(ctx, fetch);
@@ -193,6 +218,7 @@ export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalo
       await options.repository.put({
         platform: PLATFORM,
         key,
+        // `T` sale siempre de los esquemas de core del catálogo, que son JSON.
         data: fresh as PlatformCatalogEntry["data"],
         fetchedAt: now(),
       });
@@ -219,7 +245,7 @@ export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalo
   return {
     async leafCategory(path, ctx) {
       if (path.length === 0) throw categoryNotFound(path, { reason: "empty" });
-      let node = await category(PORTAL_ROOT_CATEGORY_ID, ctx);
+      let node = await category(MERCADOLIBRE_REAL_ESTATE_CATEGORY_ID, ctx);
       for (const name of path) {
         const match = findOne(
           node.childrenCategories,
@@ -246,10 +272,10 @@ export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalo
     },
 
     async location(place, ctx) {
-      const country = await location("country", PORTAL_COUNTRY_ID, ctx);
+      const country = await location("country", MERCADOLIBRE_COUNTRY_ID, ctx);
       const region = normalizePortalRegion(place.region);
       let stateMatch = findOne(country.children, region, normalizePortalRegion);
-      const regionAlias = aliases.regions[region];
+      const regionAlias = aliasOf(aliases.regions, region);
       if (
         "problem" in stateMatch &&
         stateMatch.problem === "missing" &&
@@ -268,7 +294,7 @@ export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalo
       const commune = normalizePortalName(place.commune);
       const cityMatch = findOne(state.children, commune, normalizePortalName);
       if ("ref" in cityMatch) return { state: stateRef, city: cityMatch.ref, neighborhood: null };
-      const alias = aliases.communes[commune];
+      const alias = aliasOf(aliases.communes, commune);
       if (cityMatch.problem === "ambiguous" || alias === undefined) {
         throw locationNotFound(place, "commune", cityMatch.problem);
       }
