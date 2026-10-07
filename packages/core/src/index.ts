@@ -153,6 +153,24 @@ export {
   platformCatalogEntrySchema,
 } from "./platform-catalog.js";
 export {
+  normalizePortalName,
+  normalizePortalRegion,
+  PORTAL_CATALOG_TTL_MS,
+  PORTAL_LOCATION_ALIASES,
+  type PortalAttribute,
+  type PortalCategory,
+  type PortalLocation,
+  type PortalLocationAliases,
+  type PortalLocationMatch,
+  type PortalNamedRef,
+  portalAttributeSchema,
+  portalAttributesSchema,
+  portalCatalogKeys,
+  portalCategorySchema,
+  portalLocationSchema,
+  portalNamedRefSchema,
+} from "./portal/catalog.js";
+export {
   type PortalProgress,
   type PortalSellerContact,
   portalProgressSchema,
@@ -227,7 +245,10 @@ export type {
   MercadoLibreTokens,
   MercadoLibreUser,
 } from "./ports/mercadolibre-auth.js";
-export { isMercadoLibreTokenRejected } from "./ports/mercadolibre-auth.js";
+export {
+  isMercadoLibreTokenRejected,
+  MERCADOLIBRE_REJECTED_AFTER_REFRESH,
+} from "./ports/mercadolibre-auth.js";
 export {
   type ConnectedAccount,
   CREDENTIALS_LOCK_TIMEOUT_MS,
@@ -236,6 +257,7 @@ export {
   type PlatformAccountRepository,
   type TokenUpdate,
 } from "./ports/platform-account-repository.js";
+export type { PlatformCatalogRepository } from "./ports/platform-catalog-repository.js";
 export type {
   NewPublication,
   NewPublicationEvent,
@@ -356,6 +378,8 @@ export {
 } from "./use-cases/edit-content.js";
 export {
   ACCESS_TOKEN_REFRESH_MARGIN_MS,
+  type AccessTokenProvider,
+  accessTokenProvider,
   type EnsureAccessTokenOptions,
   ensureAccessToken,
   type MercadoLibreRefreshResult,

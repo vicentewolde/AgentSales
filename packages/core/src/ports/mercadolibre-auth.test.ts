@@ -18,6 +18,10 @@ describe("isMercadoLibreTokenRejected", () => {
     new AppError("ML_AUTH_INVALID", "mal formado", { details: { reason: "token_malformed" } }),
     new AppError("ML_PERMISSION_DENIED", "403", { details: { httpStatus: 401 } }),
     new AppError("IG_AUTH_INVALID", "otra plataforma", { details: { httpStatus: 401 } }),
+    // Un 401 que se repitió después de refrescar (F4-T09): no se refresca de nuevo.
+    new AppError("ML_AUTH_INVALID", "otra vez", {
+      details: { httpStatus: 401, reason: "rejected_after_refresh" },
+    }),
     new Error("ML_AUTH_INVALID"),
     null,
   ])("no lo es: %o", (error) => {

@@ -230,6 +230,19 @@ async function markOutside(
 }
 
 /**
+ * Quien necesita un token de Mercado Libre sin conocer repositorios (el catálogo, F4-T09; el
+ * contexto del publisher, ADR-0015 punto 7): lo pide y, después de un 401, lo vuelve a pedir con el
+ * rechazado (`rejectedToken`).
+ */
+export type AccessTokenProvider = (options?: EnsureAccessTokenOptions) => Promise<string>;
+
+/** El proveedor de token de una cuenta de Portal, con `ensureAccessToken`. */
+export const accessTokenProvider =
+  (deps: MercadoLibreTokenDeps, accountId: string): AccessTokenProvider =>
+  (options) =>
+    ensureAccessToken(deps, accountId, options);
+
+/**
  * Un `access_token` vigente de una cuenta de Mercado Libre (spec F4 §4.3, ADR-0015), para publicar,
  * `preflight`, las operaciones, el sync, el catálogo y `ml:smoke`, **siempre fuera** del
  * `ListingLock`:

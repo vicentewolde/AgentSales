@@ -1,3 +1,9 @@
+import type {
+  PortalAttribute,
+  PortalCategory,
+  PortalLocation,
+  PortalNamedRef,
+} from "@agentsales/core";
 import { z } from "zod";
 import { MERCADOLIBRE_API_ORIGIN, MERCADOLIBRE_REQUEST_TIMEOUT_MS } from "./constants.js";
 import { MERCADOLIBRE_ERRORS } from "./errors.js";
@@ -18,65 +24,16 @@ const COUNTRY_ID = /^[A-Z]{2}$/;
  */
 const LOCATION_ID = /^[A-Za-z0-9_=-]{1,64}$/;
 
-/** Un nodo con nombre (una categoría hija, un estado, una ciudad, un barrio). */
-export type MercadoLibreNamedRef = { id: string; name: string };
-
 /**
- * Una categoría (nota §4.6): sus hijas y los `settings` que usa el mapeo (spec F4 §4.5). Una hoja
- * es la que tiene `listingAllowed === true` (y no tiene hijas): no basta con que no tenga hijas.
- * Un `setting` que no venga o no se entienda queda en `null`: el mapeo lo trata como "sin límite
- * conocido", nunca lo inventa. Las hijas, en cambio, tienen que entenderse todas.
+ * Las formas normalizadas del catálogo son las de core (`portal/catalog.ts`, F4-T09): lo que se
+ * guarda en `platform_catalog` y se lee de vuelta con esos esquemas. Una hoja es la que tiene
+ * `listingAllowed === true` (no basta con no tener hijas); un `setting` que no venga o no se
+ * entienda queda en `null` (nunca inventado), y las hijas tienen que entenderse todas.
  */
-export type MercadoLibreCategory = {
-  id: string;
-  name: string;
-  childrenCategories: MercadoLibreNamedRef[];
-  settings: {
-    /** `listing_allowed`: si se puede publicar en ella (solo las hojas). */
-    listingAllowed: boolean | null;
-    maxTitleLength: number | null;
-    maxPicturesPerItem: number | null;
-    maxDescriptionLength: number | null;
-    /**
-     * Monedas permitidas (`CLP`, `CLF`): fuera de ellas, `PORTAL_CURRENCY_NOT_ALLOWED`. `null` si
-     * no vinieron (sin dato), distinto de `[]` (ninguna).
-     */
-    currencies: string[] | null;
-    minimumPrice: number | null;
-    maximumPrice: number | null;
-  };
-};
-
-/** Un atributo de una hoja (`GET /categories/{hoja}/attributes`, nota §4.6). */
-export type MercadoLibreAttribute = {
-  id: string;
-  name: string;
-  /** `number`, `number_unit`, `list`, `boolean`, `string`, … */
-  valueType: string | null;
-  /** `tags.required`. */
-  required: boolean;
-  /** `tags.conditional_required` (error 7810 si falta cuando corresponde). */
-  conditionalRequired: boolean;
-  /**
-   * Los tags en `true` (`required`, `read_only`, `fixed`, `hidden`, …): el mapeo (T11) no exige ni
-   * envía los que Mercado Libre completa solo (`PROPERTY_TYPE`, `OPERATION`, nota §4.1).
-   */
-  tags: string[];
-  /** Valores de una lista (Sí y No con su `value_id`, por ejemplo). */
-  values: MercadoLibreNamedRef[];
-  /** Unidades de un `number_unit` (`m²`). */
-  allowedUnits: MercadoLibreNamedRef[];
-  defaultUnit: string | null;
-  valueMaxLength: number | null;
-};
-
-/** Un nivel de `classified_locations` con los del nivel de abajo (nota §4.7). */
-export type MercadoLibreLocation = {
-  id: string;
-  name: string;
-  /** Los estados de un país, las ciudades de un estado o los barrios de una ciudad. */
-  children: MercadoLibreNamedRef[];
-};
+export type MercadoLibreNamedRef = PortalNamedRef;
+export type MercadoLibreCategory = PortalCategory;
+export type MercadoLibreAttribute = PortalAttribute;
+export type MercadoLibreLocation = PortalLocation;
 
 /**
  * Lectura del catálogo de Mercado Libre (spec F4 §4.4): categorías, atributos de una hoja y

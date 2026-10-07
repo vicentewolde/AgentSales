@@ -88,11 +88,23 @@ export interface MercadoLibreAuth {
 }
 
 /**
- * ¿Mercado Libre rechazó el `access_token` en una llamada a un recurso (401)? Entonces se refresca
- * una vez con `force` y se repite; si vuelve a pasar, la cuenta pasa a `expired` (ADR-0015,
- * seguimiento de F4-T03). No incluye `invalid_grant` ni un token mal formado: refrescar no los
- * arregla.
+ * El motivo de un 401 que se repitió después de refrescar una vez (F4-T09): ya no se refresca de
+ * nuevo, y quien lo recibe deja la cuenta `expired`.
+ */
+export const MERCADOLIBRE_REJECTED_AFTER_REFRESH = "rejected_after_refresh";
+
+/**
+ * ¿Mercado Libre rechazó el `access_token` en una llamada a un recurso (401)? Entonces se pide otro
+ * token con el rechazado (`rejectedToken`) y se repite una vez; si vuelve a pasar, el error sube
+ * marcado (`MERCADOLIBRE_REJECTED_AFTER_REFRESH`), esta función ya no lo reconoce y la cuenta pasa a
+ * `expired` (ADR-0015, seguimiento de F4-T03). No incluye `invalid_grant` ni un token mal formado:
+ * refrescar no los arregla.
  */
 export function isMercadoLibreTokenRejected(error: unknown): boolean {
-  return isAppError(error) && error.code === "ML_AUTH_INVALID" && error.details?.httpStatus === 401;
+  return (
+    isAppError(error) &&
+    error.code === "ML_AUTH_INVALID" &&
+    error.details?.httpStatus === 401 &&
+    error.details.reason !== MERCADOLIBRE_REJECTED_AFTER_REFRESH
+  );
 }
