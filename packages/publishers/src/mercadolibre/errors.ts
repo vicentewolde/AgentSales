@@ -332,7 +332,7 @@ export const MERCADOLIBRE_ERRORS = {
    * Un id que va en la dirección de la llamada (ítem o usuario) con una forma que no es la de
    * Mercado Libre: no se llama, para no armar otra ruta. El valor no va en el error.
    */
-  invalidId: (kind: "item" | "user") =>
+  invalidId: (kind: "item" | "user" | "category" | "location") =>
     new AppError("ML_ID_INVALID", "El id guardado de Mercado Libre no es válido", {
       details: { kind },
     }),

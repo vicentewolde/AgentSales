@@ -160,7 +160,7 @@ El operador conecta la cuenta de Mercado Libre de un corredor, aprueba el texto 
   | `ML_CONFLICT` | 409 "optimistic locking" | Sí |
   | `ML_PUBLISH_OUTCOME_UNKNOWN` | `POST /items` sin respuesta y sin poder encontrarlo | No |
   | `ML_UNEXPECTED_RESPONSE` | Otra forma de respuesta | No |
-  | `ML_ID_INVALID` | Un id guardado (ítem o usuario) que va en la ruta y no tiene la forma de Mercado Libre: no se llama | No |
+  | `ML_ID_INVALID` | Un id (ítem, usuario, categoría o ubicación) que va en la ruta y no tiene la forma de Mercado Libre: no se llama | No |
   | `ML_BODY_INVALID` | Un cuerpo que no se puede convertir a JSON: no se envía (el ítem no se creó) | No |
   | `ML_PICTURE_INVALID` | Una foto vacía o que no es JPEG ni PNG: no se sube | No |
   | `ML_STATUS_NOT_ALLOWED` | Un cambio de estado que no es pausar, reactivar ni cerrar (nunca se envía `deleted`) | No |
@@ -270,7 +270,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Archivos:** `packages/publishers/src/mercadolibre/{catalog-api.ts,validate.ts}`
 - **Descripción:** `GET /categories/{id}`, `GET /categories/{id}/attributes`, `classified_locations` (país, estado y ciudad) y `POST /items/validate` (`204` o las causas).
 - **Hecho cuando:**
-  - [ ] Tests con msw de cada llamada, incluida la respuesta de `validate` con errores y advertencias
+  - [x] Tests con msw de cada llamada, incluida la respuesta de `validate` con errores y advertencias
 
 ### F4-T06 · Conectar Mercado Libre
 - **Depende de:** T03
@@ -493,3 +493,4 @@ Respondidas por el operador el 2026-10-06:
 | 2026-10-06 | Revisión de F4-T03 (#78, `revisor` y `arquitecto`): el refresco tiene un tope de 10 s y solo exige el par (§4.3); qué errores dejan la cuenta `expired` (§4.3 y seguimiento de ADR-0015) y `isMercadoLibreTokenRejected` en core para el primer 401; `invalid_operator_user_id` → `ML_PERMISSION_DENIED`; 408 y 425 → `ML_UNAVAILABLE`; sin seguir redirecciones; del cuerpo no se guarda nada con forma de token y como máximo 20 causas; T04 extiende la base (JSON, `multipart`, `classify`); T06 compara el `user_id` del canje con el de `/users/me` |
 | 2026-10-07 | Desde F4-T04 (doc re-leída con el navegador): la búsqueda por `seller_custom_field` es `GET /users/{id}/items/search?sku=<valor>` (solo ids; sin filtro de estado, y si trae los cerrados queda NO VERIFICADO); 508 y 509 son `cause_id` de un 400 y no status; el límite de la subida de fotos es un 400 sin código documentado, que se trata como `ML_RATE_LIMITED` si no trae causas que bloqueen; la respuesta de un ítem puede traer advertencias (`warnings` o `cause[]` con `type: warning`, INFERENCIA) que se devuelven sin bloquear; errores nuevos `ML_ID_INVALID` y `ML_STATUS_NOT_ALLOWED`; `/items?ids=` se depreca en favor de `/items/bulk` (no se usa en F4) |
 | 2026-10-07 | Revisión de F4-T04 (#79, `revisor` y `arquitecto`): el límite de la subida de fotos se reconoce solo con `error` vacío o `bad_request` y sin causas que bloqueen, y una foto vacía o de otro tipo no se sube (`ML_PICTURE_INVALID`); `itemCreationOutcome` (4xx salvo 408/425 o pedido no enviado → no se creó; lo demás → no se sabe) y `hasMercadoLibreCause` para T14; `getDescription` para no repetir el `POST` de la descripción al retomar (§4.8 paso 3); `pictureIds` se guardan por foto; la búsqueda sin filtro de estado queda NO VERIFICADA y la revisa T10; con más de un resultado, `ML_PUBLISH_OUTCOME_UNKNOWN`; el motivo de una pausa por moderación lo lee T15; el cliente valida las fechas (ISO con zona), conserva advertencias sin `type`, rechaza la respuesta de otro ítem y un cuerpo que no se puede armar (`ML_BODY_INVALID`); un `cause_id` solo manda sobre un código desconocido en 508 y 509 |
+| 2026-10-07 | Desde F4-T05: el cliente del catálogo devuelve formas propias (`MercadoLibreCategory` con `childrenCategories` y los `settings` que usa el mapeo; `MercadoLibreAttribute` con `required`, `conditionalRequired`, valores y unidades; `MercadoLibreLocation` con `children`), sin inventar límites (lo que no se entiende queda `null` o vacío) y rechazando la respuesta de otro id; `validate` devuelve el rechazo del aviso como resultado (`valid: false`, causas, advertencias y motivos en español) y lanza los demás errores (token, permiso, red, 5xx, un 400 sin causas que bloqueen) |

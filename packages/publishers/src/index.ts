@@ -31,6 +31,14 @@ export {
   type MercadoLibreAuthOptions,
 } from "./mercadolibre/auth.js";
 export {
+  createMercadoLibreCatalogApi,
+  type MercadoLibreAttribute,
+  type MercadoLibreCatalogApi,
+  type MercadoLibreCategory,
+  type MercadoLibreLocation,
+  type MercadoLibreNamedRef,
+} from "./mercadolibre/catalog-api.js";
+export {
   MERCADOLIBRE_API_TIMEOUT_MS,
   MERCADOLIBRE_REFRESH_TIMEOUT_MS,
   MERCADOLIBRE_REQUEST_TIMEOUT_MS,
@@ -55,3 +63,8 @@ export {
   type MercadoLibrePictureFile,
   type MercadoLibrePictures,
 } from "./mercadolibre/pictures.js";
+export {
+  createMercadoLibreValidator,
+  type MercadoLibreValidation,
+  type MercadoLibreValidator,
+} from "./mercadolibre/validate.js";
