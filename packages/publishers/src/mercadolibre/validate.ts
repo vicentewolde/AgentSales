@@ -1,6 +1,14 @@
 import { isAppError } from "@agentsales/core";
 import { MERCADOLIBRE_API_ORIGIN, MERCADOLIBRE_REQUEST_TIMEOUT_MS } from "./constants.js";
-import { describeCause, MAX_CAUSES, type MercadoLibreCause, parseCauses } from "./errors.js";
+import {
+  describeCause,
+  isBlockingCause,
+  MAX_CAUSES,
+  MERCADOLIBRE_ERRORS,
+  type MercadoLibreCause,
+  mercadoLibreCausesOf,
+  parseCauses,
+} from "./errors.js";
 import {
   type MercadoLibreCallOptions,
   type MercadoLibreHttpOptions,
@@ -9,10 +17,17 @@ import {
 import type { MercadoLibreItemBody } from "./items.js";
 
 /**
+ * Un motivo de rechazo, con la forma de `PublishIssue` de core (`{ code, message }`): `code` es el
+ * código de Mercado Libre (o `cause_<id>` si solo vino el id) y `message`, la causa en español
+ * (`describeCause`), sin el `message` de Mercado Libre ni datos del aviso.
+ */
+export type MercadoLibreValidationIssue = { code: string; message: string };
+
+/**
  * Lo que dijo Mercado Libre de un aviso sin crearlo (`POST /items/validate`, nota §4.1):
- * - `valid: true`: `204` (o un 2xx), con las advertencias que trajera;
- * - `valid: false`: un 4xx con al menos una causa que bloquea; `reasons` las explica en español
- *   (sin el `message` de Mercado Libre ni datos del aviso) y `warnings` trae las que no bloquean.
+ * - `valid: true`: `204` (o un 2xx sin causas que bloqueen), con las advertencias que trajera;
+ * - `valid: false`: un 400 o 422 con al menos una causa que bloquea; `issues` las explica (sin
+ *   repetir) y `warnings` trae las que no bloquean.
  */
 export type MercadoLibreValidation =
   | { valid: true; warnings: MercadoLibreCause[] }
@@ -20,15 +35,16 @@ export type MercadoLibreValidation =
       valid: false;
       errors: MercadoLibreCause[];
       warnings: MercadoLibreCause[];
-      reasons: string[];
+      issues: MercadoLibreValidationIssue[];
     };
 
 /**
  * `POST /items/validate` con el mismo cuerpo que `POST /items` (nota §4.1): revisa categoría,
- * atributos, moneda, ubicación, contacto y título **sin crear nada ni gastar cupo** (ADR-0016: se
- * permite en `dry-run`). Un rechazo del aviso es un resultado, no un error: es justo lo que se
- * pregunta. Los demás errores (token, permiso, red, tope, 5xx, un 400 sin causas que bloqueen) se
- * lanzan como `ML_*`, igual que las otras llamadas.
+ * atributos, moneda, ubicación, contacto y título sin crear nada ni gastar cupo (INFERENCIA de la
+ * nota §8; `ml:smoke` lo confirma). ADR-0016 lo permite en `dry-run`. Un rechazo del aviso es un
+ * resultado, no un error: es justo lo que se pregunta. Los demás errores (token, permiso, límite,
+ * red, tope, 5xx, otro 4xx, un 400 sin causas que bloqueen) se lanzan como `ML_*`, igual que las
+ * otras llamadas.
  */
 export interface MercadoLibreValidator {
   validate(
@@ -38,14 +54,21 @@ export interface MercadoLibreValidator {
   ): Promise<MercadoLibreValidation>;
 }
 
-/**
- * Las causas de un rechazo del aviso: un `ML_ITEM_REJECTED` (un 4xx con al menos una causa que
- * bloquea, `mercadoLibreError`), con las causas ya leídas en sus detalles. `null` en otro error.
- */
-function rejectionCauses(error: unknown): MercadoLibreCause[] | null {
-  if (!isAppError(error) || error.code !== "ML_ITEM_REJECTED") return null;
-  const causes = error.details?.causes;
-  return Array.isArray(causes) ? (causes as MercadoLibreCause[]) : null;
+/** Un rechazo del aviso: un 400 o 422 que `mercadoLibreError` clasificó como `ML_ITEM_REJECTED`. */
+function isItemRejection(error: unknown): boolean {
+  if (!isAppError(error) || error.code !== "ML_ITEM_REJECTED") return false;
+  const status = error.details?.httpStatus;
+  return status === 400 || status === 422;
+}
+
+/** Los motivos, sin repetir: uno por código (o por id, si no vino código). */
+function issuesOf(errors: readonly MercadoLibreCause[]): MercadoLibreValidationIssue[] {
+  const issues = new Map<string, MercadoLibreValidationIssue>();
+  for (const cause of errors) {
+    const code = cause.code ?? (cause.causeId === null ? "unknown" : `cause_${cause.causeId}`);
+    if (!issues.has(code)) issues.set(code, { code, message: describeCause(cause) });
+  }
+  return [...issues.values()];
 }
 
 export function createMercadoLibreValidator(
@@ -65,26 +88,27 @@ export function createMercadoLibreValidator(
           { signal, timeoutMs },
         );
       } catch (error) {
-        const causes = rejectionCauses(error);
-        if (causes === null) throw error;
-        const errors = causes.filter((cause) => cause.type !== "warning");
-        const warnings = causes.filter((cause) => cause.type === "warning");
+        if (!isItemRejection(error)) throw error;
+        const causes = mercadoLibreCausesOf(error);
+        const errors = causes.filter(isBlockingCause);
         return {
           valid: false,
           errors,
-          warnings,
-          reasons: [...new Set(errors.map(describeCause))],
+          warnings: causes.filter((cause) => !isBlockingCause(cause)),
+          issues: issuesOf(errors),
         };
       }
-      // `204` llega vacío; si algún día trae cuerpo, se rescatan sus advertencias.
+      // `204` llega vacío. Si un 2xx trae cuerpo (forma no documentada, INFERENCIA), se rescatan
+      // sus advertencias; una causa que bloquea en un 2xx no se declara válida.
       const record =
         typeof response === "object" && response !== null
           ? (response as Record<string, unknown>)
           : {};
-      const warnings = [...parseCauses(record.warnings), ...parseCauses(record.cause)]
-        .filter((cause) => cause.type !== "error")
-        .slice(0, MAX_CAUSES);
-      return { valid: true, warnings };
+      const causes = [...parseCauses(record.warnings), ...parseCauses(record.cause)];
+      if (causes.some((cause) => cause.type === "error")) {
+        throw MERCADOLIBRE_ERRORS.unexpectedResponse("validateItem");
+      }
+      return { valid: true, warnings: causes.slice(0, MAX_CAUSES) };
     },
   };
 }

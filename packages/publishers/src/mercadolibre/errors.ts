@@ -154,7 +154,7 @@ export function describeCause(cause: MercadoLibreCause): string {
 }
 
 /** Una causa sin `type` cuenta como error: dejar pasar un rechazo sería peor. */
-const isBlocking = (cause: MercadoLibreCause) => cause.type !== "warning";
+export const isBlockingCause = (cause: MercadoLibreCause) => cause.type !== "warning";
 
 const error = (code: string, message: string, retriable: boolean, info: MercadoLibreErrorInfo) =>
   new AppError(code, message, {
@@ -233,7 +233,7 @@ export function mercadoLibreError(info: MercadoLibreErrorInfo): AppError {
   if (httpStatus !== null && (httpStatus >= 500 || httpStatus === 408 || httpStatus === 425)) {
     return unavailable(info);
   }
-  const blocking = info.causes.filter(isBlocking);
+  const blocking = info.causes.filter(isBlockingCause);
   if (httpStatus !== null && httpStatus >= 400 && blocking.length > 0) {
     const reasons = [...new Set(blocking.map(describeCause))];
     return error(
@@ -274,15 +274,25 @@ function unavailable(info: MercadoLibreErrorInfo) {
  * reconocer 508 y 509 (`MERCADOLIBRE_PICTURE_ID_CAUSES`) sin leer `details` a mano.
  */
 export function hasMercadoLibreCause(error: unknown, causeIds: readonly number[]): boolean {
-  if (!isAppError(error)) return false;
-  const causes = (error.details as { causes?: unknown } | undefined)?.causes;
-  return (
-    Array.isArray(causes) &&
-    causes.some(
-      (cause: MercadoLibreCause) =>
-        cause.type !== "warning" && cause.causeId !== null && causeIds.includes(cause.causeId),
-    )
+  return mercadoLibreCausesOf(error).some(
+    (cause) => isBlockingCause(cause) && cause.causeId !== null && causeIds.includes(cause.causeId),
   );
+}
+
+const storedCauseSchema = z.object({
+  code: z.string().nullable(),
+  causeId: z.number().int().nullable(),
+  type: z.string().nullable(),
+});
+
+/**
+ * Las causas que `mercadoLibreError` guardó en los detalles de un `AppError`, revisadas (no un
+ * cast): `[]` si no es un `AppError` o si sus detalles no tienen esa forma.
+ */
+export function mercadoLibreCausesOf(error: unknown): MercadoLibreCause[] {
+  if (!isAppError(error)) return [];
+  const parsed = z.array(storedCauseSchema).safeParse(error.details?.causes);
+  return parsed.success ? parsed.data : [];
 }
 
 /**

@@ -46,9 +46,11 @@ export {
 export {
   describeCause,
   hasMercadoLibreCause,
+  isBlockingCause,
   itemCreationOutcome,
   MERCADOLIBRE_PICTURE_ID_CAUSES,
   type MercadoLibreCause,
+  mercadoLibreCausesOf,
 } from "./mercadolibre/errors.js";
 export {
   createMercadoLibreItems,
@@ -66,5 +68,6 @@ export {
 export {
   createMercadoLibreValidator,
   type MercadoLibreValidation,
+  type MercadoLibreValidationIssue,
   type MercadoLibreValidator,
 } from "./mercadolibre/validate.js";

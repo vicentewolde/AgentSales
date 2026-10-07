@@ -8,8 +8,10 @@ import {
   parseBody,
 } from "./http.js";
 
-/** Una categoría de Mercado Libre (`MLC1459`). Va en la ruta de la llamada. */
-const CATEGORY_ID = /^[A-Z]{3}\d{1,20}$/;
+/** Una categoría de Mercado Libre Chile (`MLC1459`; el sitio es fijo). Va en la ruta de la llamada. */
+const CATEGORY_ID = /^MLC\d{1,20}$/;
+/** Un país de `classified_locations` (`CL`). */
+const COUNTRY_ID = /^[A-Z]{2}$/;
 /**
  * Una ubicación de `classified_locations`: el país (`CL`) o un id en base64 (`TUxDUE9IUzFjODg`,
  * nota §4.7). Va en la ruta de la llamada.
@@ -20,9 +22,10 @@ const LOCATION_ID = /^[A-Za-z0-9_=-]{1,64}$/;
 export type MercadoLibreNamedRef = { id: string; name: string };
 
 /**
- * Una categoría (nota §4.6): sus hijas y los `settings` que usa el mapeo (spec F4 §4.5). Es una
- * hoja si no tiene hijas. Lo que no venga o no se entienda queda en `null` (o `[]`): el mapeo lo
- * trata como "sin límite conocido", nunca lo inventa.
+ * Una categoría (nota §4.6): sus hijas y los `settings` que usa el mapeo (spec F4 §4.5). Una hoja
+ * es la que tiene `listingAllowed === true` (y no tiene hijas): no basta con que no tenga hijas.
+ * Un `setting` que no venga o no se entienda queda en `null`: el mapeo lo trata como "sin límite
+ * conocido", nunca lo inventa. Las hijas, en cambio, tienen que entenderse todas.
  */
 export type MercadoLibreCategory = {
   id: string;
@@ -34,8 +37,11 @@ export type MercadoLibreCategory = {
     maxTitleLength: number | null;
     maxPicturesPerItem: number | null;
     maxDescriptionLength: number | null;
-    /** Monedas permitidas (`CLP`, `CLF`): fuera de ellas, `PORTAL_CURRENCY_NOT_ALLOWED`. */
-    currencies: string[];
+    /**
+     * Monedas permitidas (`CLP`, `CLF`): fuera de ellas, `PORTAL_CURRENCY_NOT_ALLOWED`. `null` si
+     * no vinieron (sin dato), distinto de `[]` (ninguna).
+     */
+    currencies: string[] | null;
     minimumPrice: number | null;
     maximumPrice: number | null;
   };
@@ -51,6 +57,11 @@ export type MercadoLibreAttribute = {
   required: boolean;
   /** `tags.conditional_required` (error 7810 si falta cuando corresponde). */
   conditionalRequired: boolean;
+  /**
+   * Los tags en `true` (`required`, `read_only`, `fixed`, `hidden`, …): el mapeo (T11) no exige ni
+   * envía los que Mercado Libre completa solo (`PROPERTY_TYPE`, `OPERATION`, nota §4.1).
+   */
+  tags: string[];
   /** Valores de una lista (Sí y No con su `value_id`, por ejemplo). */
   values: MercadoLibreNamedRef[];
   /** Unidades de un `number_unit` (`m²`). */
@@ -118,35 +129,37 @@ const namedRef = z.object({
   id: z.union([z.string().min(1), z.number().int()]).transform(String),
   name: z.string(),
 });
-/** Una lista de nodos con nombre: los que no se entiendan se descartan, no rompen la lectura. */
-const namedRefs = z
-  .array(z.unknown())
-  .nullish()
-  .catch(null)
+/**
+ * Una lista de nodos con nombre que **tiene** que venir (las hijas de una categoría, los estados de
+ * un país, las ciudades de un estado): si falta o una entrada no se entiende, la respuesta entera es
+ * inesperada. Descartar en silencio haría parecer final una categoría o dejaría a una región sin
+ * comunas.
+ */
+const requiredRefs = z.array(namedRef);
+/** Igual, pero puede faltar (`[]`): los barrios de una ciudad, los valores de un atributo. */
+const optionalRefs = requiredRefs.nullish().transform((value) => value ?? []);
+
+/** Las monedas: `null` si no vinieron o no son una lista; de la lista, solo los textos. */
+const currencies = z
+  .unknown()
   .transform((value) =>
-    (value ?? []).flatMap((entry) => {
-      const parsed = namedRef.safeParse(entry);
-      return parsed.success ? [parsed.data] : [];
-    }),
+    Array.isArray(value)
+      ? value.filter((currency): currency is string => typeof currency === "string")
+      : null,
   );
-const textList = z
-  .array(z.string())
-  .nullish()
-  .catch(null)
-  .transform((value) => value ?? []);
 
 const categorySchema = z
   .object({
     id: z.string().regex(CATEGORY_ID),
     name: z.string(),
-    children_categories: namedRefs,
+    children_categories: requiredRefs,
     settings: z
       .object({
         listing_allowed: z.boolean().nullish().catch(null),
         max_title_length: positiveOrNull,
         max_pictures_per_item: positiveOrNull,
         max_description_length: positiveOrNull,
-        currencies: textList,
+        currencies,
         minimum_price: positiveOrNull,
         maximum_price: positiveOrNull,
       })
@@ -163,11 +176,26 @@ const categorySchema = z
         maxTitleLength: category.settings?.max_title_length ?? null,
         maxPicturesPerItem: category.settings?.max_pictures_per_item ?? null,
         maxDescriptionLength: category.settings?.max_description_length ?? null,
-        currencies: category.settings?.currencies ?? [],
+        currencies: category.settings?.currencies ?? null,
         minimumPrice: category.settings?.minimum_price ?? null,
         maximumPrice: category.settings?.maximum_price ?? null,
       },
     }),
+  );
+
+/** Un tag de Mercado Libre (`required`, `read_only`, `fixed`, `hidden`, …). */
+const TAG_NAME = /^[a-z_]{1,50}$/;
+/**
+ * Los tags de un atributo: un objeto de booleanos. Otra forma (una lista, un texto, un `"true"`)
+ * es inesperada: leerla como "sin tags" dejaría un obligatorio como opcional sin avisar.
+ */
+const tagsSchema = z
+  .record(z.string(), z.boolean())
+  .nullish()
+  .transform((tags) =>
+    Object.entries(tags ?? {})
+      .filter(([name, on]) => on && TAG_NAME.test(name))
+      .map(([name]) => name),
   );
 
 const attributeSchema = z
@@ -179,9 +207,9 @@ const attributeSchema = z
       .nullish()
       .catch(null)
       .transform((value) => value ?? null),
-    tags: z.record(z.string(), z.unknown()).nullish().catch(null),
-    values: namedRefs,
-    allowed_units: namedRefs,
+    tags: tagsSchema,
+    values: optionalRefs,
+    allowed_units: optionalRefs,
     default_unit: z
       .string()
       .nullish()
@@ -194,8 +222,9 @@ const attributeSchema = z
       id: attribute.id,
       name: attribute.name,
       valueType: attribute.value_type,
-      required: attribute.tags?.required === true,
-      conditionalRequired: attribute.tags?.conditional_required === true,
+      required: attribute.tags.includes("required"),
+      conditionalRequired: attribute.tags.includes("conditional_required"),
+      tags: attribute.tags,
       values: attribute.values,
       allowedUnits: attribute.allowed_units,
       defaultUnit: attribute.default_unit,
@@ -203,13 +232,11 @@ const attributeSchema = z
     }),
   );
 
-/** Los atributos: uno que no se entienda se descarta (Mercado Libre agrega formas nuevas). */
-const attributesSchema = z.array(z.unknown()).transform((entries) =>
-  entries.flatMap((entry) => {
-    const parsed = attributeSchema.safeParse(entry);
-    return parsed.success ? [parsed.data] : [];
-  }),
-);
+/**
+ * Los atributos de una hoja: todos deben entenderse, y la lista no viene vacía (una hoja de
+ * inmuebles siempre los tiene). Uno que no se entienda podría ser un obligatorio perdido.
+ */
+const attributesSchema = z.array(attributeSchema).min(1);
 
 /** Un nivel de ubicación; la lista del nivel de abajo se llama distinto en cada uno (nota §4.7). */
 const locationBase = { id: z.string().min(1), name: z.string() };
@@ -219,17 +246,18 @@ const toLocation = (id: string, name: string, children: MercadoLibreNamedRef[]) 
   children,
 });
 const countrySchema = z
-  .object({ ...locationBase, states: namedRefs })
+  .object({ ...locationBase, states: requiredRefs })
   .transform(
     (location): MercadoLibreLocation => toLocation(location.id, location.name, location.states),
   );
 const stateSchema = z
-  .object({ ...locationBase, cities: namedRefs })
+  .object({ ...locationBase, cities: requiredRefs })
   .transform(
     (location): MercadoLibreLocation => toLocation(location.id, location.name, location.cities),
   );
+/** Una ciudad puede no tener barrios (el ejemplo chileno de la doc los trae vacíos). */
 const citySchema = z
-  .object({ ...locationBase, neighborhoods: namedRefs })
+  .object({ ...locationBase, neighborhoods: optionalRefs })
   .transform(
     (location): MercadoLibreLocation =>
       toLocation(location.id, location.name, location.neighborhoods),
@@ -259,7 +287,8 @@ export function createMercadoLibreCatalogApi(
     return `/categories/${categoryId}${suffix}`;
   };
   const locationPath = (level: "countries" | "states" | "cities", locationId: string) => {
-    if (!LOCATION_ID.test(locationId)) throw MERCADOLIBRE_ERRORS.invalidId("location");
+    const pattern = level === "countries" ? COUNTRY_ID : LOCATION_ID;
+    if (!pattern.test(locationId)) throw MERCADOLIBRE_ERRORS.invalidId("location");
     return `/classified_locations/${level}/${locationId}`;
   };
   /** La respuesta debe ser del id pedido: otra cosa guardaría datos ajenos en el catálogo. */

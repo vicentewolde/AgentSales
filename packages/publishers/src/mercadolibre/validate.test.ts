@@ -34,21 +34,35 @@ describe("createMercadoLibreValidator", () => {
     expect(requests[0]?.url.toString()).toBe(VALIDATE_URL);
   });
 
-  it("un 2xx con advertencias: válido y las devuelve", async () => {
+  it("un 2xx con advertencias (sin type o warning): válido y las devuelve", async () => {
     server.use(
       http.post(VALIDATE_URL, () =>
         HttpResponse.json({
-          cause: [
-            { cause_id: 1, type: "warning", code: "item.title.length" },
-            { cause_id: 2, type: "error", code: "no.cuenta.en.un.2xx" },
-          ],
+          warnings: [{ cause_id: 9, code: "item.sin.tipo" }],
+          cause: [{ cause_id: 1, type: "warning", code: "item.title.length" }],
         }),
       ),
     );
 
     await expect(validator.validate(ACCESS, BODY)).resolves.toEqual({
       valid: true,
-      warnings: [{ code: "item.title.length", causeId: 1, type: "warning" }],
+      warnings: [
+        { code: "item.sin.tipo", causeId: 9, type: null },
+        { code: "item.title.length", causeId: 1, type: "warning" },
+      ],
+    });
+  });
+
+  it("un 2xx con una causa de tipo error no se declara válido (ML_UNEXPECTED_RESPONSE)", async () => {
+    server.use(
+      http.post(VALIDATE_URL, () =>
+        HttpResponse.json({ cause: [{ cause_id: 2, type: "error", code: "x.y" }] }),
+      ),
+    );
+
+    await expect(validator.validate(ACCESS, BODY)).rejects.toMatchObject({
+      code: "ML_UNEXPECTED_RESPONSE",
+      details: { call: "validateItem" },
     });
   });
 
@@ -89,12 +103,47 @@ describe("createMercadoLibreValidator", () => {
         { code: "seller_contact.phone2.invalid", causeId: null, type: "error" },
       ],
       warnings: [{ code: "item.title.length", causeId: 3, type: "warning" }],
-      reasons: [
-        "falta un atributo obligatorio de la categoría",
-        "falta el contacto del corredor o está mal escrito (WhatsApp)",
+      issues: [
+        {
+          code: "item.attributes.missing_required",
+          message: "falta un atributo obligatorio de la categoría",
+        },
+        {
+          code: "seller_contact.phone2.invalid",
+          message: "falta el contacto del corredor o está mal escrito (WhatsApp)",
+        },
       ],
     });
     expect(JSON.stringify(result)).not.toMatch(/Siempre Viva|TOTAL_AREA/);
+  });
+
+  it("un 422 con causas también es un rechazo; un issue sin código usa el cause_id", async () => {
+    server.use(
+      http.post(VALIDATE_URL, () =>
+        HttpResponse.json({ cause: [{ cause_id: 129, type: "error" }] }, { status: 422 }),
+      ),
+    );
+
+    await expect(validator.validate(ACCESS, BODY)).resolves.toMatchObject({
+      valid: false,
+      issues: [{ code: "cause_129", message: "el precio está bajo el mínimo o sobre el máximo" }],
+    });
+  });
+
+  it("un 404 con causas no es un rechazo del aviso (la ruta): se lanza", async () => {
+    server.use(
+      http.post(VALIDATE_URL, () =>
+        HttpResponse.json(
+          { cause: [{ cause_id: 1, type: "error", code: "x.y" }] },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    await expect(validator.validate(ACCESS, BODY)).rejects.toMatchObject({
+      code: "ML_ITEM_REJECTED",
+      details: { httpStatus: 404 },
+    });
   });
 
   it("un 400 sin causas que bloqueen (solo advertencias o ninguna) se lanza, no es un resultado", async () => {
@@ -142,7 +191,9 @@ describe("createMercadoLibreValidator", () => {
     await validator.validate(ACCESS, BODY);
     await validator.validate(ACCESS, { ...BODY, title: "Otro" });
 
-    for (const request of await recorded()) {
+    const requests = await recorded();
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
       expect(`${request.method} ${request.url.pathname}`).toBe("POST /items/validate");
     }
   });
