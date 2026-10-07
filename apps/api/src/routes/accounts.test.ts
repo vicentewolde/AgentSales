@@ -237,15 +237,27 @@ describe("cuentas · seguridad y mensajes", () => {
   });
 
   it("el contrato solo acepta un startUrl http(s): la CLI lo abre y el panel lo enlaza", () => {
-    const body = (startUrl: string) => ({
+    const body = (
+      startUrl: string,
+      redirectUri = "https://localhost/oauth/mercadolibre/callback",
+    ) => ({
       accounts: [],
-      connect: { instagram: { oauth: true, startUrl } },
+      connect: {
+        instagram: { oauth: true, startUrl },
+        mercadolibre: { configured: true, redirectUri },
+      },
     });
     expect(accountListResponseSchema.safeParse(body("https://agentsales.test/x")).success).toBe(
       true,
     );
     for (const bad of ["javascript:alert(1)", "file:///etc/passwd", "no es una url"]) {
       expect(accountListResponseSchema.safeParse(body(bad)).success).toBe(false);
+    }
+    // La dirección de retorno de Mercado Libre solo puede ser https (spec F4 §4.2).
+    for (const bad of ["http://localhost/cb", "javascript:alert(1)"]) {
+      expect(
+        accountListResponseSchema.safeParse(body("https://agentsales.test/x", bad)).success,
+      ).toBe(false);
     }
   });
 

@@ -49,7 +49,22 @@ const PLATFORM_REJECTIONS = new Set([
   "IG_AUTH_INVALID",
   "IG_PERMISSION_DENIED",
   "IG_REQUEST_REJECTED",
+  // Mercado Libre al conectar (spec F4 §4.11): un código o permiso rechazado, o una cuenta de otro
+  // país, son del cliente; reconectar los arregla.
+  "ML_AUTH_INVALID",
+  "ML_PERMISSION_DENIED",
+  "ML_SITE_MISMATCH",
+  "ML_REQUEST_REJECTED",
 ]);
+
+/** Una respuesta de la plataforma con otra forma: un fallo de ella (502). */
+const PLATFORM_UNEXPECTED = new Set(["IG_UNEXPECTED_RESPONSE", "ML_UNEXPECTED_RESPONSE"]);
+
+/**
+ * La API no puede hablar con la plataforma por su propia configuración (falta el par de la app, o
+ * Mercado Libre no lo reconoce): 503 hasta que el operador corrija `.env` y reinicie.
+ */
+const NOT_CONFIGURED = new Set(["MERCADOLIBRE_NOT_CONFIGURED", "ML_APP_CREDENTIALS_INVALID"]);
 
 /**
  * Datos inválidos que arma el servidor, no el cliente: los de un job, un run guardado y lo que el
@@ -61,6 +76,10 @@ const SERVER_INVALID = new Set([
   "PUBLICATION_EVENT_INVALID",
   "PUBLICATION_REFERENCE_INVALID",
   "PUBLICATION_PROGRESS_INVALID",
+  // Lo que el cliente de Mercado Libre rechaza antes de enviar: datos del servidor, no del cliente.
+  "ML_ID_INVALID",
+  "ML_BODY_INVALID",
+  "ML_PICTURE_INVALID",
 ]);
 
 /**
@@ -71,7 +90,8 @@ export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "INVALID_TRANSITION" || CONFLICTS.has(code)) return 409;
   if (code === "REQUEST_TOO_LARGE") return 413;
   if (PLATFORM_REJECTIONS.has(code)) return 400;
-  if (code === "IG_UNEXPECTED_RESPONSE") return 502;
+  if (PLATFORM_UNEXPECTED.has(code)) return 502;
+  if (NOT_CONFIGURED.has(code)) return 503;
   // Datos inválidos que no vienen del cliente (`SERVER_INVALID`), y una fila corrupta en la base
   // (`*_ROW_INVALID`): son fallos del servidor.
   if (SERVER_INVALID.has(code)) return 500;

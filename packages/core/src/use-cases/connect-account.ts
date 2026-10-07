@@ -22,6 +22,20 @@ export type ConnectAccountDeps = {
 };
 
 /**
+ * El corredor de una conexión por su slug, o `BROKER_NOT_FOUND` (lo comparten Instagram y Mercado
+ * Libre).
+ */
+export async function requireBroker(brokers: Pick<BrokerRepository, "findBySlug">, slug: string) {
+  const broker = await brokers.findBySlug(slug);
+  if (broker === null) {
+    throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${slug}`, {
+      details: { broker: slug },
+    });
+  }
+  return broker;
+}
+
+/**
  * Cómo llega el acceso: el código de la vuelta del OAuth, o el token largo del botón Generate token
  * del panel de Meta (spec F3 §4.6 y D4: Meta no acepta `http://localhost`).
  */
@@ -48,12 +62,7 @@ export async function connectAccount(
     signal,
   }: { broker: string; grant: AccountGrant; signal?: AbortSignalLike },
 ): Promise<PlatformAccount> {
-  const broker = await deps.brokers.findBySlug(slug);
-  if (broker === null) {
-    throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${slug}`, {
-      details: { broker: slug },
-    });
-  }
+  const broker = await requireBroker(deps.brokers, slug);
   const now = deps.now ?? (() => new Date());
   const options = signal === undefined ? {} : { signal };
 

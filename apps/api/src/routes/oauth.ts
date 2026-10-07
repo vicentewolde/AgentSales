@@ -34,6 +34,39 @@ export type OAuthStateSigner = {
 };
 
 /**
+ * La plataforma que va en el `state` (spec F4 §4.2): el nombre del proveedor del OAuth
+ * (`mercadolibre`), no el valor del enum de la cuenta (`portal_inmobiliario`). Cada vuelta rechaza el
+ * `state` de la otra.
+ */
+export const OAUTH_STATE_PLATFORMS = {
+  instagram: "instagram",
+  mercadolibre: "mercadolibre",
+} as const;
+export type OAuthStatePlatform = (typeof OAUTH_STATE_PLATFORMS)[keyof typeof OAUTH_STATE_PLATFORMS];
+
+/**
+ * Verifica un `state`: firma, vencimiento, la plataforma esperada y, si se pide, el corredor.
+ * Devuelve el corredor, o `null` si algo no calza (quien llama responde `OAUTH_STATE_INVALID` sin
+ * llamar a la plataforma). No es de un solo uso: el de Instagram se amarra a una cookie que se borra;
+ * el de Mercado Libre vale sus 10 min (el código, en cambio, se canjea una sola vez; deuda de F7).
+ */
+export function verifyOAuthState(
+  signer: OAuthStateSigner,
+  state: string,
+  expected: { platform: OAuthStatePlatform; broker?: string },
+): string | null {
+  let data: Readonly<Record<string, string | number | boolean>>;
+  try {
+    data = signer.verify(state);
+  } catch {
+    return null;
+  }
+  if (data.platform !== expected.platform || typeof data.broker !== "string") return null;
+  if (expected.broker !== undefined && data.broker !== expected.broker) return null;
+  return data.broker;
+}
+
+/**
  * Dónde empieza el OAuth (`connect.instagram.startUrl`, F3-T17): `/oauth/instagram/start` en el host
  * de la URI de retorno, porque la cookie del `state` distingue el host. Asume la API en la raíz del
  * host (deuda de F7 si se monta tras un prefijo).
@@ -85,7 +118,11 @@ export function oauthRoutes(deps: OAuthDeps) {
       if ((await deps.brokers.findBySlug(broker)) === null) {
         return c.redirect(toPanel({ error: "BROKER_NOT_FOUND" }), 302);
       }
-      const state = deps.oauthState.sign({ broker }, { ttlSeconds: OAUTH_STATE_TTL_SECONDS });
+      // Con la plataforma: un `state` de Mercado Libre no sirve en esta vuelta (spec F4 §4.2).
+      const state = deps.oauthState.sign(
+        { platform: OAUTH_STATE_PLATFORMS.instagram, broker },
+        { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
+      );
       setCookie(c, OAUTH_STATE_COOKIE, state, {
         ...cookieOptions,
         maxAge: OAUTH_STATE_TTL_SECONDS,
@@ -100,18 +137,12 @@ export function oauthRoutes(deps: OAuthDeps) {
       // El operador rechazó en Instagram: no es un error de la app, solo un aviso para el panel.
       if (error !== undefined) return c.redirect(toPanel({ error: "OAUTH_DENIED" }), 302);
 
-      let broker: string;
-      try {
-        if (state === undefined || cookie === undefined || !sameText(state, cookie)) {
-          throw new Error("state distinto de la cookie");
-        }
-        const data = deps.oauthState.verify(state);
-        if (typeof data.broker !== "string") throw new Error("state sin corredor");
-        broker = data.broker;
-      } catch {
-        // Sin llamar a Instagram: un `state` ajeno, vencido o sin cookie no canjea nada.
-        return c.redirect(toPanel({ error: "OAUTH_STATE_INVALID" }), 302);
-      }
+      // Sin llamar a Instagram: un `state` ajeno, vencido, de otra plataforma o sin cookie no canjea.
+      const broker =
+        state === undefined || cookie === undefined || !sameText(state, cookie)
+          ? null
+          : verifyOAuthState(deps.oauthState, state, { platform: OAUTH_STATE_PLATFORMS.instagram });
+      if (broker === null) return c.redirect(toPanel({ error: "OAUTH_STATE_INVALID" }), 302);
       if (code === undefined || code === "") {
         return c.redirect(toPanel({ error: "OAUTH_CODE_MISSING" }), 302);
       }

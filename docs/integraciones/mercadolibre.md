@@ -99,6 +99,8 @@ Authorization code "server side":
 
 ### 3.4 Conectar la cuenta en local sin túnel (de menos a más esfuerzo)
 
+> **Superado por el spec F4** (D1 y D3, implementado en F4-T06): se registra `https://localhost/oauth/mercadolibre/callback` (puerto 443, sin servidor), PKCE desactivado, y la CLI recibe la **dirección completa** pegada (`--url-stdin`), no el `code` suelto. Lo que sigue es la investigación previa.
+
 1. **Redirect HTTPS que no necesita cargar** (respaldado por la doc: "incluso si no existe"): registrar `https://localhost:8787/oauth/mercadolibre/callback` (o, si el panel rechaza `localhost`, cualquier URL HTTPS del operador). Tras autorizar, el navegador queda en esa dirección con `?code=...&state=...`; el operador copia el `code` y lo pega en la CLI (`accounts connect mercadolibre --code`), que lo canjea en seguida.
 2. **`https://localhost` con certificado local (mkcert)** servido por Hono: el callback carga y canjea solo. Sin dependencias de producción.
 3. **Túnel** (cloudflared o ngrok): último recurso; la URL cambia y obliga a re-registrar.
@@ -384,6 +386,8 @@ Pista no oficial (no se usa como fuente final): issue del SDK .NET de ML con `ht
 **Leads, en dos líneas:** un lead es un contacto de un interesado (WhatsApp, pregunta, llamada, visita agendada o cotización). Se consultan con `GET /vis/users/{USER_ID}/leads/buyers` (filtros por fecha, tipo e ítem); útil para una fase posterior, no para F4.
 
 ## 11. Implicaciones para el spec de F4
+
+> Propuestas previas al spec: varias quedaron superadas (D1: dirección pegada sin puerto; D3: sin PKCE; variables `ML_APP_ID`, `ML_CLIENT_SECRET` y `ML_REDIRECT_URI`, F4-T02). Manda el spec F4.
 
 1. **Conectar la cuenta:** registrar `https://localhost:<puerto>/oauth/mercadolibre/callback` (primero probar en el panel). `accounts connect mercadolibre` imprime la URL de `auth.mercadolibre.cl` con `state` y PKCE `S256`, y acepta el `code` pegado (`--code`); el callback con mkcert es opcional. Sin túnel.
 2. **App:** permiso "Publicación y sincronización", scopes `read`, `write`, `offline_access`, PKCE activo. La app debe ser solo de ML (no MP).
