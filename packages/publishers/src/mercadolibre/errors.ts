@@ -1,4 +1,4 @@
-import { AppError, redactText } from "@agentsales/core";
+import { AppError, isAppError, redactText } from "@agentsales/core";
 import { z } from "zod";
 
 /** Una causa de un rechazo (`cause[]`, nota §7), sin su `message`, que puede traer datos del aviso. */
@@ -43,7 +43,7 @@ const causeSchema = z
   .transform(({ code, cause_id, type }) => ({ code, causeId: cause_id, type }));
 
 /** Causas que se guardan como máximo: basta para explicar el rechazo sin inflar la bitácora. */
-const MAX_CAUSES = 20;
+export const MAX_CAUSES = 20;
 
 /**
  * El error dentro de un cuerpo de Mercado Libre: `error` y `cause[]` (nota §7), con lo que no se
@@ -54,20 +54,27 @@ export function mercadoLibreErrorOf(
 ): Omit<MercadoLibreErrorInfo, "httpStatus"> | null {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
   const record = body as Record<string, unknown>;
-  const causes = Array.isArray(record.cause)
-    ? record.cause
-        .flatMap((cause) => {
-          const parsed = causeSchema.safeParse(cause);
-          return parsed.success ? [parsed.data] : [];
-        })
-        .slice(0, MAX_CAUSES)
-    : [];
-  return { error: identifierSchema.parse(record.error), causes };
+  return { error: identifierSchema.parse(record.error), causes: parseCauses(record.cause) };
 }
 
 /**
- * Causas conocidas de un rechazo (nota §7), por `code` o, si no vino, por `cause_id`. Los textos
- * son en español y sin datos del aviso.
+ * Una lista de causas (`cause[]` de un error, o las advertencias de una respuesta que salió bien),
+ * con lo que no se entiende descartado y como máximo `MAX_CAUSES`. `[]` si no es una lista.
+ */
+export function parseCauses(value: unknown): MercadoLibreCause[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((cause) => {
+      const parsed = causeSchema.safeParse(cause);
+      return parsed.success ? [parsed.data] : [];
+    })
+    .slice(0, MAX_CAUSES);
+}
+
+/**
+ * Causas conocidas de un rechazo (nota §7), por `code` o, si no vino, por `cause_id` (508 y 509,
+ * que llegan con un código que la doc no muestra, siempre por `cause_id`). Los textos son en
+ * español y sin datos del aviso.
  */
 const CAUSE_MESSAGES: ReadonlyArray<{
   codes: readonly string[];
@@ -110,15 +117,35 @@ const CAUSE_MESSAGES: ReadonlyArray<{
     ids: [398],
     text: "la descripción tiene caracteres que Mercado Libre no acepta",
   },
+  // 508 y 509 llegan como causas de un 400 `validation_error` (doc de imágenes, leída el
+  // 2026-10-07), con un código que la doc no muestra: se reconocen por `cause_id`.
+  {
+    codes: [],
+    ids: [508],
+    text: "una foto subida quedó con error en Mercado Libre: hay que subirla de nuevo",
+  },
+  {
+    codes: [],
+    ids: [509],
+    text: "una foto subida es más chica que el mínimo de Mercado Libre",
+  },
 ];
 
-/** Una causa en español: la de la tabla, la del contacto, o el código tal cual. */
+/** Fotos subidas que Mercado Libre no acepta al usarlas en un ítem: se suben de nuevo una vez. */
+export const MERCADOLIBRE_PICTURE_ID_CAUSES: readonly number[] = [508, 509];
+
+/**
+ * Una causa en español: la de la tabla (por `code`; por `cause_id` si no vino código o si es 508
+ * o 509), la del contacto, o el código tal cual. Un `cause_id` no manda sobre un código desconocido:
+ * los ids podrían repetirse entre códigos distintos.
+ */
 export function describeCause(cause: MercadoLibreCause): string {
-  const known = CAUSE_MESSAGES.find(
-    (entry) =>
-      (cause.code !== null && entry.codes.includes(cause.code)) ||
-      (cause.code === null && cause.causeId !== null && entry.ids.includes(cause.causeId)),
-  );
+  const byId =
+    cause.causeId !== null &&
+    (cause.code === null || MERCADOLIBRE_PICTURE_ID_CAUSES.includes(cause.causeId));
+  const known =
+    CAUSE_MESSAGES.find((entry) => cause.code !== null && entry.codes.includes(cause.code)) ??
+    (byId ? CAUSE_MESSAGES.find((entry) => entry.ids.includes(cause.causeId ?? -1)) : undefined);
   if (known) return known.text;
   if (cause.code?.startsWith("seller_contact.")) {
     return "falta el contacto del corredor o está mal escrito (WhatsApp)";
@@ -242,6 +269,44 @@ function unavailable(info: MercadoLibreErrorInfo) {
   );
 }
 
+/**
+ * ¿El error trae alguna de estas causas que bloquean (`cause_id`)? Lo usa el publisher para
+ * reconocer 508 y 509 (`MERCADOLIBRE_PICTURE_ID_CAUSES`) sin leer `details` a mano.
+ */
+export function hasMercadoLibreCause(error: unknown, causeIds: readonly number[]): boolean {
+  if (!isAppError(error)) return false;
+  const causes = (error.details as { causes?: unknown } | undefined)?.causes;
+  return (
+    Array.isArray(causes) &&
+    causes.some(
+      (cause: MercadoLibreCause) =>
+        cause.type !== "warning" && cause.causeId !== null && causeIds.includes(cause.causeId),
+    )
+  );
+}
+
+/**
+ * Después de un `POST /items` que falló (spec F4 §4.8): `not_created` si Mercado Libre respondió
+ * un 4xx (salvo 408 y 425, que no atendió) o si el pedido no se envió (cuerpo o token inválidos):
+ * se puede corregir y crear de nuevo. `unknown` en lo demás (5xx, 408, 425, red, tope, señal o un
+ * 2xx con otra forma): el ítem **pudo** crearse y se busca antes de repetir (nunca a ciegas).
+ */
+export function itemCreationOutcome(error: unknown): "not_created" | "unknown" {
+  if (!isAppError(error)) return "unknown";
+  const details = (error.details ?? {}) as { httpStatus?: unknown; reason?: unknown };
+  if (error.code === "ML_BODY_INVALID" || details.reason === "token_malformed") {
+    return "not_created";
+  }
+  const status = details.httpStatus;
+  return typeof status === "number" &&
+    status >= 400 &&
+    status < 500 &&
+    status !== 408 &&
+    status !== 425
+    ? "not_created"
+    : "unknown";
+}
+
 /** Errores que arma el cliente, no Mercado Libre (spec F4 §4.8). */
 export const MERCADOLIBRE_ERRORS = {
   /** Sin respuesta, se cortó la conexión o pasó el tope de la llamada. */
@@ -262,6 +327,34 @@ export const MERCADOLIBRE_ERRORS = {
       "ML_AUTH_INVALID",
       "El acceso guardado de Mercado Libre no es válido: reconecta la cuenta",
       { details: { reason: "token_malformed" } },
+    ),
+  /**
+   * Un id que va en la dirección de la llamada (ítem o usuario) con una forma que no es la de
+   * Mercado Libre: no se llama, para no armar otra ruta. El valor no va en el error.
+   */
+  invalidId: (kind: "item" | "user") =>
+    new AppError("ML_ID_INVALID", "El id guardado de Mercado Libre no es válido", {
+      details: { kind },
+    }),
+  /** Un cuerpo que no se puede convertir a JSON (por ejemplo, un `BigInt`): no se envía. */
+  invalidBody: (call: string) =>
+    new AppError("ML_BODY_INVALID", "No se pudo armar el pedido a Mercado Libre", {
+      details: { call },
+    }),
+  /** Una foto vacía o de un tipo que Mercado Libre no acepta (JPEG o PNG, nota §5): no se sube. */
+  invalidPicture: (reason: "empty" | "type") =>
+    new AppError(
+      "ML_PICTURE_INVALID",
+      reason === "empty"
+        ? "La foto está vacía: revisa el archivo y prepara de nuevo"
+        : "Mercado Libre solo acepta fotos JPEG o PNG",
+      { details: { reason } },
+    ),
+  /** Un estado que el cliente no escribe (solo pausar, reactivar o cerrar): nunca se envía. */
+  statusNotAllowed: () =>
+    new AppError(
+      "ML_STATUS_NOT_ALLOWED",
+      "Ese cambio de estado no está permitido en Mercado Libre",
     ),
   /** Una respuesta con otra forma: reintentar no la cambia. */
   unexpectedResponse: (call: string) =>

@@ -1,6 +1,11 @@
-import { type AbortSignalLike, isAppError } from "@agentsales/core";
+import { type AbortSignalLike, type AppError, isAppError } from "@agentsales/core";
 import { z } from "zod";
-import { MERCADOLIBRE_ERRORS, mercadoLibreError, mercadoLibreErrorOf } from "./errors.js";
+import {
+  MERCADOLIBRE_ERRORS,
+  type MercadoLibreErrorInfo,
+  mercadoLibreError,
+  mercadoLibreErrorOf,
+} from "./errors.js";
 
 /** Opciones de cada llamada (el nombre no choca con `CallOptions` de Instagram). */
 export type MercadoLibreCallOptions = { signal?: AbortSignalLike };
@@ -13,14 +18,43 @@ export type MercadoLibreHttpOptions = {
 };
 
 /**
+ * El cuerpo de una petición: un formulario (canje y refresco), JSON (ítems) o `multipart` (fotos,
+ * nota §5). En `multipart` no se fija el `Content-Type`: `fetch` lo arma con su separador.
+ */
+export type RequestBody =
+  | { form: Record<string, string> }
+  | { json: unknown }
+  | { multipart: FormData };
+
+/**
  * Una petición: el token va en la cabecera `Authorization: Bearer`, nunca en la URL (nota §3.1);
- * el canje y el refresco van sin token y con los parámetros en un formulario.
+ * el canje y el refresco van sin token y con los parámetros en un formulario. No hay `DELETE`: el
+ * cliente nunca borra (spec F4 §3).
  */
 export type RequestSpec = {
   method: "GET" | "POST" | "PUT";
   accessToken?: string;
-  form?: Record<string, string>;
+  body?: RequestBody;
+  /**
+   * Clasifica un error antes de la tabla general (`mercadoLibreError`); `null` para seguir con
+   * ella. Lo usa la subida de fotos: su límite por minuto responde 400 (nota §5).
+   */
+  classify?: (info: MercadoLibreErrorInfo) => AppError | null;
 };
+
+/** El cuerpo y su cabecera, listos para `fetch`. */
+function encodeBody(body: RequestBody | undefined): {
+  body?: URLSearchParams | string | FormData;
+  contentType?: string;
+} {
+  if (body === undefined) return {};
+  // `URLSearchParams` pone `application/x-www-form-urlencoded`, como pide el OAuth (nota §3.1).
+  if ("form" in body) return { body: new URLSearchParams(body.form) };
+  if ("json" in body) {
+    return { body: JSON.stringify(body.json), contentType: "application/json" };
+  }
+  return { body: body.multipart };
+}
 
 /** Un token o un valor de formulario aceptable: solo caracteres visibles de ASCII, sin espacios. */
 const TOKEN_PATTERN = /^[\x21-\x7e]+$/;
@@ -48,20 +82,27 @@ export async function mercadoLibreRequest(
   if (init.accessToken !== undefined && !isWellFormedToken(init.accessToken)) {
     throw MERCADOLIBRE_ERRORS.malformedToken();
   }
+  // Antes de escuchar la señal: un cuerpo que no se puede armar no deja nada colgando.
+  let encoded: ReturnType<typeof encodeBody>;
+  try {
+    encoded = encodeBody(init.body);
+  } catch {
+    throw MERCADOLIBRE_ERRORS.invalidBody(call);
+  }
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (init.accessToken !== undefined) headers.Authorization = `Bearer ${init.accessToken}`;
+  if (encoded.contentType !== undefined) headers["Content-Type"] = encoded.contentType;
   const caller = new AbortController();
   const onAbort = () => caller.abort();
   signal?.addEventListener("abort", onAbort, { once: true });
   const timeout = AbortSignal.timeout(timeoutMs);
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (init.accessToken !== undefined) headers.Authorization = `Bearer ${init.accessToken}`;
   try {
     let response: Response;
     try {
       response = await fetch(target, {
         method: init.method,
         headers,
-        // `URLSearchParams` pone `application/x-www-form-urlencoded`, como pide el OAuth (nota §3.1).
-        body: init.form === undefined ? undefined : new URLSearchParams(init.form),
+        body: encoded.body,
         redirect: "manual",
         signal: AbortSignal.any([caller.signal, timeout]),
       });
@@ -89,11 +130,12 @@ export async function mercadoLibreRequest(
     if (!response.ok) {
       // Un cuerpo que no es JSON (una página de un proxy): lo decide el status.
       const fields = mercadoLibreErrorOf(body);
-      throw mercadoLibreError({
+      const info: MercadoLibreErrorInfo = {
         httpStatus: response.status,
         error: fields?.error ?? null,
         causes: fields?.causes ?? [],
-      });
+      };
+      throw init.classify?.(info) ?? mercadoLibreError(info);
     }
     if (!parsed) throw MERCADOLIBRE_ERRORS.unexpectedResponse(call);
     return body;

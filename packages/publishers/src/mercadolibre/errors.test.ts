@@ -1,6 +1,10 @@
+import { AppError } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import {
   describeCause,
+  hasMercadoLibreCause,
+  itemCreationOutcome,
+  MERCADOLIBRE_ERRORS,
   type MercadoLibreErrorInfo,
   mercadoLibreError,
   mercadoLibreErrorOf,
@@ -118,8 +122,20 @@ describe("describeCause", () => {
     expect(describeCause(input)).toBe(text);
   });
 
-  it("con code, el cause_id no lo cambia (el code manda)", () => {
+  it("el code manda: uno conocido gana al cause_id y uno desconocido no cede ante él", () => {
+    expect(describeCause(cause("item.pictures.max", 147))).toBe(
+      "el aviso tiene más fotos de las permitidas",
+    );
     expect(describeCause(cause("item.otra.cosa", 147))).toBe("otra causa (item.otra.cosa)");
+  });
+
+  it("508 y 509 (fotos subidas) se reconocen por cause_id, con cualquier código", () => {
+    expect(describeCause(cause("item.pictures.invalid_status", 508))).toBe(
+      "una foto subida quedó con error en Mercado Libre: hay que subirla de nuevo",
+    );
+    expect(describeCause(cause(null, 509))).toBe(
+      "una foto subida es más chica que el mínimo de Mercado Libre",
+    );
   });
 });
 
@@ -220,5 +236,55 @@ describe("mercadoLibreErrorOf", () => {
 
   it("null si el cuerpo no es un objeto", () => {
     for (const body of [null, "texto", 42, [1, 2]]) expect(mercadoLibreErrorOf(body)).toBeNull();
+  });
+});
+
+describe("hasMercadoLibreCause", () => {
+  const rejected = (causes: unknown) =>
+    new AppError("ML_ITEM_REJECTED", "x", { details: { httpStatus: 400, causes } });
+
+  it("reconoce 508 o 509 entre las causas que bloquean", () => {
+    expect(hasMercadoLibreCause(rejected([cause("x", 508)]), [508, 509])).toBe(true);
+    expect(hasMercadoLibreCause(rejected([cause(null, 147), cause(null, 509)]), [508, 509])).toBe(
+      true,
+    );
+  });
+
+  it("no cuenta advertencias, otras causas, otros errores ni detalles raros", () => {
+    expect(hasMercadoLibreCause(rejected([cause("x", 508, "warning")]), [508])).toBe(false);
+    expect(hasMercadoLibreCause(rejected([cause("x", 147)]), [508])).toBe(false);
+    expect(hasMercadoLibreCause(rejected("no es lista"), [508])).toBe(false);
+    expect(hasMercadoLibreCause(new Error("508"), [508])).toBe(false);
+    expect(hasMercadoLibreCause(new AppError("ML_UNAVAILABLE", "x"), [508])).toBe(false);
+  });
+});
+
+describe("itemCreationOutcome", () => {
+  const withStatus = (httpStatus: number) =>
+    mercadoLibreError({ httpStatus, error: null, causes: [] });
+
+  it.each([400, 401, 403, 404, 409, 429])(
+    "un %i: Mercado Libre respondió, no se creó",
+    (status) => {
+      expect(itemCreationOutcome(withStatus(status))).toBe("not_created");
+    },
+  );
+
+  it("un cuerpo inválido o un token mal formado no se enviaron: no se creó", () => {
+    expect(itemCreationOutcome(MERCADOLIBRE_ERRORS.invalidBody("createItem"))).toBe("not_created");
+    expect(itemCreationOutcome(MERCADOLIBRE_ERRORS.malformedToken())).toBe("not_created");
+  });
+
+  it.each([
+    ["500", withStatus(500)],
+    ["408", withStatus(408)],
+    ["425", withStatus(425)],
+    ["sin red", MERCADOLIBRE_ERRORS.unavailable("network")],
+    ["tope", MERCADOLIBRE_ERRORS.unavailable("timeout")],
+    ["señal", MERCADOLIBRE_ERRORS.aborted()],
+    ["2xx raro", MERCADOLIBRE_ERRORS.unexpectedResponse("createItem")],
+    ["otro error", new Error("x")],
+  ])("%s: no se sabe (buscar antes de repetir)", (_name, error) => {
+    expect(itemCreationOutcome(error)).toBe("unknown");
   });
 });
