@@ -123,7 +123,63 @@ describe("describeCause", () => {
   });
 });
 
+describe("errores agregados en la revisión", () => {
+  it("invalid_operator_user_id pide la cuenta administradora", () => {
+    const error = mercadoLibreError(info({ error: "invalid_operator_user_id" }));
+
+    expect(error.code).toBe("ML_PERMISSION_DENIED");
+    expect(error.message).toContain("cuenta administradora");
+  });
+
+  it.each([408, 425])("un %i es ML_UNAVAILABLE (reintentable)", (httpStatus) => {
+    expect(mercadoLibreError(info({ httpStatus }))).toMatchObject({
+      code: "ML_UNAVAILABLE",
+      retriable: true,
+    });
+  });
+});
+
 describe("mercadoLibreErrorOf", () => {
+  it("descarta un error o un código con forma de token (podría ser un secreto)", () => {
+    const access = "APP_USR-1234567890123456-100612-0f1e2d3c4b5a69788796a5b4c3d2e1f0-8035443";
+    const refresh = "TG-5b9032b4e23464aed1f959f-8035443";
+    const fields = mercadoLibreErrorOf({
+      error: refresh,
+      cause: [
+        { code: access, cause_id: 1, type: "error" },
+        { code: "algo-8035443", cause_id: 2, type: "error" },
+        { code: "item.price.invalid", cause_id: 109, type: "error" },
+      ],
+    });
+
+    expect(fields).toEqual({
+      error: null,
+      causes: [
+        { code: null, causeId: 1, type: "error" },
+        { code: null, causeId: 2, type: "error" },
+        { code: "item.price.invalid", causeId: 109, type: "error" },
+      ],
+    });
+    const error = mercadoLibreError({
+      httpStatus: 400,
+      ...(fields ?? { error: null, causes: [] }),
+    });
+    expect(JSON.stringify({ message: error.message, details: error.details })).not.toMatch(
+      /APP_USR|TG-|8035443/,
+    );
+  });
+
+  it("guarda como máximo 20 causas", () => {
+    const fields = mercadoLibreErrorOf({
+      cause: Array.from({ length: 50 }, (_, index) => ({
+        code: `item.causa.${index}`,
+        type: "error",
+      })),
+    });
+
+    expect(fields?.causes).toHaveLength(20);
+  });
+
   it("lee error y cause[], sin el message de Mercado Libre", () => {
     const fields = mercadoLibreErrorOf({
       message: "Validation error con datos del aviso: Av. Siempre Viva 742",

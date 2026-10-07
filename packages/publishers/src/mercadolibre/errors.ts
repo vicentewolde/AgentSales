@@ -1,4 +1,4 @@
-import { AppError } from "@agentsales/core";
+import { AppError, redactText } from "@agentsales/core";
 import { z } from "zod";
 
 /** Una causa de un rechazo (`cause[]`, nota §7), sin su `message`, que puede traer datos del aviso. */
@@ -21,12 +21,15 @@ export type MercadoLibreErrorInfo = {
 
 /**
  * Un identificador de Mercado Libre (`item.price.invalid`, `invalid_grant`). Otra cosa (con espacios
- * o comillas) podría ser un texto con datos de la petición y no se guarda.
+ * o comillas) podría ser un texto con datos de la petición, y algo con forma de token (`APP_USR-…`,
+ * `TG-…`, o que termina en un id de usuario como ellos) podría ser un secreto: no se guardan.
  */
 const IDENTIFIER = /^[A-Za-z0-9_.-]{1,100}$/;
+const looksLikeToken = (value: string) => redactText(value) !== value || /-\d{5,}$/.test(value);
 const identifierSchema = z
   .string()
   .regex(IDENTIFIER)
+  .refine((value) => !looksLikeToken(value))
   .nullish()
   .catch(null)
   .transform((value) => value ?? null);
@@ -39,6 +42,9 @@ const causeSchema = z
   .object({ code: identifierSchema, cause_id: causeIdSchema, type: identifierSchema })
   .transform(({ code, cause_id, type }) => ({ code, causeId: cause_id, type }));
 
+/** Causas que se guardan como máximo: basta para explicar el rechazo sin inflar la bitácora. */
+const MAX_CAUSES = 20;
+
 /**
  * El error dentro de un cuerpo de Mercado Libre: `error` y `cause[]` (nota §7), con lo que no se
  * entiende descartado. `null` si el cuerpo no es un objeto.
@@ -49,10 +55,12 @@ export function mercadoLibreErrorOf(
   if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
   const record = body as Record<string, unknown>;
   const causes = Array.isArray(record.cause)
-    ? record.cause.flatMap((cause) => {
-        const parsed = causeSchema.safeParse(cause);
-        return parsed.success ? [parsed.data] : [];
-      })
+    ? record.cause
+        .flatMap((cause) => {
+          const parsed = causeSchema.safeParse(cause);
+          return parsed.success ? [parsed.data] : [];
+        })
+        .slice(0, MAX_CAUSES)
     : [];
   return { error: identifierSchema.parse(record.error), causes };
 }
@@ -159,6 +167,13 @@ export function mercadoLibreError(info: MercadoLibreErrorInfo): AppError {
         false,
         info,
       );
+    case "invalid_operator_user_id":
+      return error(
+        "ML_PERMISSION_DENIED",
+        "Se autorizó con un colaborador: conecta de nuevo con la cuenta administradora de Mercado Libre",
+        false,
+        info,
+      );
     case "local_rate_limited":
       return rateLimited(info);
   }
@@ -187,7 +202,10 @@ export function mercadoLibreError(info: MercadoLibreErrorInfo): AppError {
       info,
     );
   }
-  if (httpStatus !== null && httpStatus >= 500) return unavailable(info);
+  // 408 y 425: Mercado Libre no alcanzó a atender la petición; reintentar es seguro.
+  if (httpStatus !== null && (httpStatus >= 500 || httpStatus === 408 || httpStatus === 425)) {
+    return unavailable(info);
+  }
   const blocking = info.causes.filter(isBlocking);
   if (httpStatus !== null && httpStatus >= 400 && blocking.length > 0) {
     const reasons = [...new Set(blocking.map(describeCause))];

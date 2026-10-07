@@ -226,6 +226,7 @@ export type {
   MercadoLibreTokens,
   MercadoLibreUser,
 } from "./ports/mercadolibre-auth.js";
+export { isMercadoLibreTokenRejected } from "./ports/mercadolibre-auth.js";
 export type {
   ConnectedAccount,
   PlatformAccountProblemStatus,

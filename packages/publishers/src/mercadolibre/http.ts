@@ -2,8 +2,8 @@ import { type AbortSignalLike, isAppError } from "@agentsales/core";
 import { z } from "zod";
 import { MERCADOLIBRE_ERRORS, mercadoLibreError, mercadoLibreErrorOf } from "./errors.js";
 
-/** Opciones de cada llamada. */
-export type CallOptions = { signal?: AbortSignalLike };
+/** Opciones de cada llamada (el nombre no choca con `CallOptions` de Instagram). */
+export type MercadoLibreCallOptions = { signal?: AbortSignalLike };
 
 export type MercadoLibreHttpOptions = {
   /** Por defecto `https://api.mercadolibre.com` (los tests usan el mismo, con msw). */
@@ -31,15 +31,16 @@ export const isWellFormedToken = (token: string) => TOKEN_PATTERN.test(token);
 /**
  * Hace una llamada y devuelve el JSON (`null` si vino vacío, como el `204` de `validate`), o lanza
  * el `AppError` que corresponde (`mercadoLibreError`, `ML_UNAVAILABLE` por red o tope, `ML_ABORTED`
- * por la señal, `ML_UNEXPECTED_RESPONSE` si un 2xx no es JSON). Ningún error lleva la URL, el
- * formulario (secret, código, refresh), el token, la causa de `fetch` ni el mensaje de Mercado
- * Libre. No escribe logs.
+ * por la señal, `ML_UNEXPECTED_RESPONSE` si un 2xx no es JSON o si responde con una redirección).
+ * No sigue redirecciones: un 307 o 308 reenviaría el formulario (secret, código, refresh) a otra
+ * dirección. Ningún error lleva la URL, el formulario, el token, la causa de `fetch` ni el mensaje
+ * de Mercado Libre. No escribe logs.
  */
 export async function mercadoLibreRequest(
   call: string,
   target: URL,
   init: RequestSpec,
-  { signal, timeoutMs }: CallOptions & { timeoutMs: number },
+  { signal, timeoutMs }: MercadoLibreCallOptions & { timeoutMs: number },
 ): Promise<unknown> {
   if (signal?.aborted) throw MERCADOLIBRE_ERRORS.aborted();
   // Un token con caracteres que no caben en una cabecera (por ejemplo, un salto de línea) haría
@@ -61,6 +62,7 @@ export async function mercadoLibreRequest(
         headers,
         // `URLSearchParams` pone `application/x-www-form-urlencoded`, como pide el OAuth (nota §3.1).
         body: init.form === undefined ? undefined : new URLSearchParams(init.form),
+        redirect: "manual",
         signal: AbortSignal.any([caller.signal, timeout]),
       });
     } catch {
@@ -80,6 +82,9 @@ export async function mercadoLibreRequest(
       body = text === "" ? null : JSON.parse(text);
     } catch {
       parsed = false;
+    }
+    if (response.status >= 300 && response.status < 400) {
+      throw MERCADOLIBRE_ERRORS.unexpectedResponse(call);
     }
     if (!response.ok) {
       // Un cuerpo que no es JSON (una página de un proxy): lo decide el status.

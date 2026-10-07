@@ -30,4 +30,8 @@ export {
   createMercadoLibreAuth,
   type MercadoLibreAuthOptions,
 } from "./mercadolibre/auth.js";
-export { MERCADOLIBRE_REQUEST_TIMEOUT_MS } from "./mercadolibre/constants.js";
+export {
+  MERCADOLIBRE_API_TIMEOUT_MS,
+  MERCADOLIBRE_REFRESH_TIMEOUT_MS,
+  MERCADOLIBRE_REQUEST_TIMEOUT_MS,
+} from "./mercadolibre/constants.js";

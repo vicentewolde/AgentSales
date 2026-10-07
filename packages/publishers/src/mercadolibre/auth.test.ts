@@ -1,8 +1,9 @@
 import { type AbortSignalLike, redactText } from "@agentsales/core";
 import { delay, HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { errorText, usePlatformServer } from "../../test/msw-server.js";
 import { createMercadoLibreAuth } from "./auth.js";
+import { MERCADOLIBRE_REFRESH_TIMEOUT_MS } from "./constants.js";
 
 const APP_ID = "1234567890123456";
 const SECRET = "secreto-de-prueba-ml-xyz";
@@ -328,7 +329,7 @@ describe("createMercadoLibreAuth", () => {
     );
     const controller = new AbortController();
     const pending = auth.refresh(REFRESH, { signal: controller.signal });
-    await delay(10);
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
     controller.abort();
 
     await expect(pending).rejects.toMatchObject({ code: "ML_ABORTED", retriable: true });
@@ -383,5 +384,212 @@ describe("createMercadoLibreAuth", () => {
     for (const secret of [CODE, REFRESH, NEW_ACCESS, NEW_REFRESH]) {
       expect(redactText(line)).not.toContain(secret);
     }
+  });
+
+  it.each([
+    ["cero", 0],
+    ["negativo", -5],
+    ["booleano", true],
+    ["notación científica", "1e3"],
+    ["con decimales", 21600.5],
+    ["más de un año", 31_536_001],
+    ["enorme", 1e20],
+  ])(
+    "exchangeCode con expires_in %s es ML_UNEXPECTED_RESPONSE (no deja una fecha inválida)",
+    async (_name, expiresIn) => {
+      server.use(
+        http.post(TOKEN_URL, () => HttpResponse.json(tokenBody({ expires_in: expiresIn }))),
+      );
+
+      await expect(auth.exchangeCode(CODE)).rejects.toMatchObject({
+        code: "ML_UNEXPECTED_RESPONSE",
+        details: { call: "exchangeCode" },
+      });
+    },
+  );
+
+  it("refresh no descarta el par nuevo por un dato accesorio: sin user_id ni expires_in válido", async () => {
+    server.use(
+      http.post(TOKEN_URL, () =>
+        HttpResponse.json({
+          access_token: NEW_ACCESS,
+          refresh_token: NEW_REFRESH,
+          expires_in: "pronto",
+          scope: 42,
+        }),
+      ),
+    );
+
+    const tokens = await auth.refresh(REFRESH);
+
+    expect(tokens).toEqual({
+      accessToken: NEW_ACCESS,
+      refreshToken: NEW_REFRESH,
+      accessTokenExpiresAt: new Date(NOW.getTime() + 3600 * 1000),
+      scopes: [],
+      userId: null,
+    });
+  });
+
+  it("refresh lee user_id y expires_in cuando vienen", async () => {
+    server.use(http.post(TOKEN_URL, () => HttpResponse.json(tokenBody({ expires_in: 10800 }))));
+
+    await expect(auth.refresh(REFRESH)).resolves.toMatchObject({
+      userId: "8035443",
+      accessTokenExpiresAt: new Date(NOW.getTime() + 10800 * 1000),
+      scopes: ["offline_access", "read", "write"],
+    });
+  });
+
+  it("refresh sin access_token o con uno mal formado es ML_UNEXPECTED_RESPONSE", async () => {
+    for (const body of [
+      { refresh_token: NEW_REFRESH },
+      { access_token: "APP_USR-a b", refresh_token: NEW_REFRESH },
+    ]) {
+      server.use(http.post(TOKEN_URL, () => HttpResponse.json(body)));
+      await expect(auth.refresh(REFRESH)).rejects.toMatchObject({ code: "ML_UNEXPECTED_RESPONSE" });
+    }
+  });
+
+  describe("tope del refresco (dentro del candado de la cuenta)", () => {
+    const hang = () =>
+      server.use(
+        http.post(TOKEN_URL, async () => {
+          await delay("infinite");
+          return HttpResponse.json(tokenBody());
+        }),
+      );
+    const withTimeouts = (timeoutMs: number, refreshTimeoutMs: number) =>
+      createMercadoLibreAuth({
+        appId: APP_ID,
+        clientSecret: SECRET,
+        redirectUri: REDIRECT,
+        timeoutMs,
+        refreshTimeoutMs,
+      });
+
+    it("por defecto es de 10 s", () => {
+      expect(MERCADOLIBRE_REFRESH_TIMEOUT_MS).toBe(10_000);
+    });
+
+    it("usa el del refresco aunque el cliente tenga uno mayor", async () => {
+      hang();
+      await expect(withTimeouts(60_000, 30).refresh(REFRESH)).rejects.toMatchObject({
+        code: "ML_UNAVAILABLE",
+        details: { reason: "timeout" },
+      });
+    });
+
+    it("usa el del cliente si es menor", async () => {
+      hang();
+      await expect(withTimeouts(30, 60_000).refresh(REFRESH)).rejects.toMatchObject({
+        code: "ML_UNAVAILABLE",
+        details: { reason: "timeout" },
+      });
+    });
+  });
+
+  it.each([
+    [401, { message: "unauthorized", status: 401 }, "ML_AUTH_INVALID", "conecta de nuevo"],
+    [403, { error: "forbidden", status: 403 }, "ML_PERMISSION_DENIED", "cuenta administradora"],
+    [
+      400,
+      { error: "invalid_operator_user_id", status: 400 },
+      "ML_PERMISSION_DENIED",
+      "colaborador",
+    ],
+    [403, { error: "unauthorized_application" }, "ML_PERMISSION_DENIED", "bloqueó la app"],
+    [429, { error: "local_rate_limited", status: 429 }, "ML_RATE_LIMITED", "se reintenta"],
+    [503, "<html>mantención</html>", "ML_UNAVAILABLE", "se reintenta"],
+    [400, { error: "invalid_scope" }, "ML_REQUEST_REJECTED", "invalid_scope"],
+  ] as const)("exchangeCode con %i y %o es %s", async (status, body, code, text) => {
+    server.use(
+      http.post(TOKEN_URL, () =>
+        typeof body === "string"
+          ? HttpResponse.text(body, { status })
+          : HttpResponse.json(body, { status }),
+      ),
+    );
+
+    const error = await auth.exchangeCode(CODE).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code, details: { httpStatus: status } });
+    expect((error as Error).message).toContain(text);
+    expectNoSecrets(error);
+  });
+
+  it("un 2xx vacío o que no es JSON en /oauth/token es ML_UNEXPECTED_RESPONSE", async () => {
+    const replies = [
+      () => new HttpResponse(null, { status: 204 }),
+      () => HttpResponse.text("<html>ok</html>"),
+      () => HttpResponse.json([tokenBody()]),
+    ];
+    for (const reply of replies) {
+      server.use(http.post(TOKEN_URL, reply));
+      await expect(auth.exchangeCode(CODE)).rejects.toMatchObject({
+        code: "ML_UNEXPECTED_RESPONSE",
+      });
+      await expect(auth.refresh(REFRESH)).rejects.toMatchObject({ code: "ML_UNEXPECTED_RESPONSE" });
+    }
+  });
+
+  it("no sigue una redirección: el secret, el código y el refresh no viajan a otra dirección", async () => {
+    server.use(
+      http.post(
+        TOKEN_URL,
+        () =>
+          new HttpResponse(null, {
+            status: 307,
+            headers: { Location: "https://otro-sitio.test/oauth/token" },
+          }),
+      ),
+    );
+
+    await expect(auth.refresh(REFRESH)).rejects.toMatchObject({ code: "ML_UNEXPECTED_RESPONSE" });
+    await expect(auth.exchangeCode(CODE)).rejects.toMatchObject({
+      code: "ML_UNEXPECTED_RESPONSE",
+    });
+    expect(requests.map((request) => request.url.host)).toEqual([
+      "api.mercadolibre.com",
+      "api.mercadolibre.com",
+    ]);
+  });
+
+  it("me con un token que no cabe en una cabecera no llama", async () => {
+    await expect(auth.me(`${ACCESS}\n`)).rejects.toMatchObject({
+      code: "ML_AUTH_INVALID",
+      details: { reason: "token_malformed" },
+    });
+    expect(requests).toHaveLength(0);
+  });
+
+  it("me con 409 es ML_CONFLICT (reintentable)", async () => {
+    server.use(http.get(ME_URL, () => HttpResponse.json({ error: "conflict" }, { status: 409 })));
+
+    await expect(auth.me(ACCESS)).rejects.toMatchObject({ code: "ML_CONFLICT", retriable: true });
+  });
+
+  describe("no escribe en la consola ni en la salida", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it("ni al acertar ni al fallar", async () => {
+      const writes = [
+        ...(["log", "info", "warn", "error", "debug"] as const).map((method) =>
+          vi.spyOn(console, method).mockImplementation(() => undefined),
+        ),
+        vi.spyOn(process.stdout, "write").mockImplementation(() => true),
+        vi.spyOn(process.stderr, "write").mockImplementation(() => true),
+      ];
+      server.use(
+        http.post(TOKEN_URL, () => oauthError("invalid_grant")),
+        http.get(ME_URL, () => HttpResponse.json({ id: 1, nickname: "C", site_id: "MLC" })),
+      );
+
+      await auth.exchangeCode(CODE).catch(() => undefined);
+      await auth.refresh(REFRESH).catch(() => undefined);
+      await auth.me(ACCESS);
+
+      for (const write of writes) expect(write).not.toHaveBeenCalled();
+    });
   });
 });
