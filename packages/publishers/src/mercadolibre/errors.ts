@@ -54,15 +54,21 @@ export function mercadoLibreErrorOf(
 ): Omit<MercadoLibreErrorInfo, "httpStatus"> | null {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
   const record = body as Record<string, unknown>;
-  const causes = Array.isArray(record.cause)
-    ? record.cause
-        .flatMap((cause) => {
-          const parsed = causeSchema.safeParse(cause);
-          return parsed.success ? [parsed.data] : [];
-        })
-        .slice(0, MAX_CAUSES)
-    : [];
-  return { error: identifierSchema.parse(record.error), causes };
+  return { error: identifierSchema.parse(record.error), causes: parseCauses(record.cause) };
+}
+
+/**
+ * Una lista de causas (`cause[]` de un error, o las advertencias de una respuesta que salió bien),
+ * con lo que no se entiende descartado y como máximo `MAX_CAUSES`. `[]` si no es una lista.
+ */
+export function parseCauses(value: unknown): MercadoLibreCause[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((cause) => {
+      const parsed = causeSchema.safeParse(cause);
+      return parsed.success ? [parsed.data] : [];
+    })
+    .slice(0, MAX_CAUSES);
 }
 
 /**
@@ -110,15 +116,28 @@ const CAUSE_MESSAGES: ReadonlyArray<{
     ids: [398],
     text: "la descripción tiene caracteres que Mercado Libre no acepta",
   },
+  // 508 y 509 llegan como causas de un 400 `validation_error` (doc de imágenes, leída el
+  // 2026-10-07), con un código que la doc no muestra: se reconocen por `cause_id`.
+  {
+    codes: [],
+    ids: [508],
+    text: "una foto subida quedó con error en Mercado Libre: hay que subirla de nuevo",
+  },
+  {
+    codes: [],
+    ids: [509],
+    text: "una foto subida es más chica que el mínimo de Mercado Libre",
+  },
 ];
 
-/** Una causa en español: la de la tabla, la del contacto, o el código tal cual. */
+/**
+ * Una causa en español: la de la tabla (por `code` y, si el código no está en ella, por
+ * `cause_id`), la del contacto, o el código tal cual.
+ */
 export function describeCause(cause: MercadoLibreCause): string {
-  const known = CAUSE_MESSAGES.find(
-    (entry) =>
-      (cause.code !== null && entry.codes.includes(cause.code)) ||
-      (cause.code === null && cause.causeId !== null && entry.ids.includes(cause.causeId)),
-  );
+  const known =
+    CAUSE_MESSAGES.find((entry) => cause.code !== null && entry.codes.includes(cause.code)) ??
+    CAUSE_MESSAGES.find((entry) => cause.causeId !== null && entry.ids.includes(cause.causeId));
   if (known) return known.text;
   if (cause.code?.startsWith("seller_contact.")) {
     return "falta el contacto del corredor o está mal escrito (WhatsApp)";
@@ -262,6 +281,20 @@ export const MERCADOLIBRE_ERRORS = {
       "ML_AUTH_INVALID",
       "El acceso guardado de Mercado Libre no es válido: reconecta la cuenta",
       { details: { reason: "token_malformed" } },
+    ),
+  /**
+   * Un id que va en la dirección de la llamada (ítem o usuario) con una forma que no es la de
+   * Mercado Libre: no se llama, para no armar otra ruta. El valor no va en el error.
+   */
+  invalidId: (kind: "item" | "user") =>
+    new AppError("ML_ID_INVALID", "El id guardado de Mercado Libre no es válido", {
+      details: { kind },
+    }),
+  /** Un estado que el cliente no escribe (solo pausar, reactivar o cerrar): nunca se envía. */
+  statusNotAllowed: () =>
+    new AppError(
+      "ML_STATUS_NOT_ALLOWED",
+      "Ese cambio de estado no está permitido en Mercado Libre",
     ),
   /** Una respuesta con otra forma: reintentar no la cambia. */
   unexpectedResponse: (call: string) =>

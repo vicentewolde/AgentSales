@@ -203,7 +203,7 @@ export function createMercadoLibreAuth(options: MercadoLibreAuthOptions): Mercad
     return mercadoLibreRequest(
       call,
       new URL(MERCADOLIBRE_TOKEN_PATH, origin),
-      { method: "POST", form },
+      { method: "POST", body: { form } },
       { signal, timeoutMs: callTimeoutMs },
     );
   }

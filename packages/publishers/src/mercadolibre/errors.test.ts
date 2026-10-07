@@ -118,8 +118,22 @@ describe("describeCause", () => {
     expect(describeCause(input)).toBe(text);
   });
 
-  it("con code, el cause_id no lo cambia (el code manda)", () => {
-    expect(describeCause(cause("item.otra.cosa", 147))).toBe("otra causa (item.otra.cosa)");
+  it("un code conocido manda sobre el cause_id; uno desconocido deja decidir al cause_id", () => {
+    expect(describeCause(cause("item.pictures.max", 147))).toBe(
+      "el aviso tiene más fotos de las permitidas",
+    );
+    expect(describeCause(cause("item.otra.cosa", 147))).toBe(
+      "falta un atributo obligatorio de la categoría",
+    );
+  });
+
+  it("508 y 509 (fotos subidas) se reconocen por cause_id, con cualquier código", () => {
+    expect(describeCause(cause("item.pictures.invalid_status", 508))).toBe(
+      "una foto subida quedó con error en Mercado Libre: hay que subirla de nuevo",
+    );
+    expect(describeCause(cause(null, 509))).toBe(
+      "una foto subida es más chica que el mínimo de Mercado Libre",
+    );
   });
 });
 

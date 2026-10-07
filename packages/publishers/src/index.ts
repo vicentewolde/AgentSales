@@ -35,3 +35,17 @@ export {
   MERCADOLIBRE_REFRESH_TIMEOUT_MS,
   MERCADOLIBRE_REQUEST_TIMEOUT_MS,
 } from "./mercadolibre/constants.js";
+export { describeCause, type MercadoLibreCause } from "./mercadolibre/errors.js";
+export {
+  createMercadoLibreItems,
+  MERCADOLIBRE_WRITABLE_STATUSES,
+  type MercadoLibreItem,
+  type MercadoLibreItemBody,
+  type MercadoLibreItems,
+  type MercadoLibreWritableStatus,
+} from "./mercadolibre/items.js";
+export {
+  createMercadoLibrePictures,
+  type MercadoLibrePictureFile,
+  type MercadoLibrePictures,
+} from "./mercadolibre/pictures.js";

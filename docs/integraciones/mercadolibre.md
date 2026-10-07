@@ -177,7 +177,8 @@ Con eso el ítem lleva `listing_source: portalinmobiliario` y se ve en Mercado L
 
 - `GET /items/{id}` (con `?attributes=campo1,campo2` para traer solo lo necesario). Campos útiles: `status`, `sub_status`, `permalink`, `start_time`, `stop_time`, `expiration_time`, `last_updated`, `tags`, `listing_source`.
 - Calidad: `GET /items/{id}/health` (porcentaje y objetivos pendientes: fotos con mínimo, ficha técnica, video) y `GET /items/{id}/health/actions`; niveles por sitio en `GET /sites/MLC/health_levels`. Solo para ítems activos sin penalización.
-- Multiget `GET /items?ids=...`: no figura en las páginas leídas en esta ronda (NO VERIFICADO el máximo de ids).
+- Multiget: `GET /items?ids=...` (hasta 20) **se depreca**: desde octubre de 2026 se usa `GET /items/bulk?ids=...` (`code` pasa a `status_code` y los campos se piden con `attributes=body.<campo>`); los endpoints conviven hasta el 25/10/2026 (DOC, items-y-busquedas, leída el 2026-10-07).
+- **Buscar los ítems del vendedor** (DOC, items-y-busquedas): `GET /users/{id}/items/search` devuelve `{ seller_id, paging: { limit, offset, total }, results: ["MLA…"] }` (solo ids; 50 por defecto, `limit` hasta 100). Por `seller_custom_field`: `?sku=<valor>` (por el atributo `SELLER_SKU` es `?seller_sku=`). Por estado: `?status=active`; los estados del filtro son `pending`, `not_yet_active`, `programmed`, `active`, `paused` y `closed`. Qué estados trae sin `status`: NO VERIFICADO (el publisher busca sin filtro, F4-T04).
 - **Notificaciones:** topic `items` a la URL de callback de la app (DOC). Exige URL pública; **en F4, sondeo** (como en Instagram).
 
 ### 4.6 Categorías y atributos (DOC)
@@ -239,7 +240,7 @@ Además son obligatorios en el body: precio, moneda (`currency_id` entre las de 
 | Máximo por ítem | `settings.max_pictures_per_item` de la categoría (30 en el ejemplo MLA de Inmuebles); superarlo da el error 201. Valor en MLC: NO VERIFICADO | DOC / NO VERIFICADO |
 | Mínimo de calidad | **12** fotos para casas, departamentos, oficinas y parcelas; **6** para locales, agrícolas, sitios, terrenos, bodegas y loteos; **4** para estacionamientos. Es un objetivo de calidad (`health`), no un rechazo | DOC |
 | Por URL | `pictures: [{ "source": "<url>" }]` en `POST` y `PUT` | DOC |
-| Subida directa | `POST /pictures/items/upload`, solo `multipart/form-data` (`file=@...`); devuelve `id` y variantes; el `id` se usa en `pictures: [{ "id": "..." }]` o se vincula con `POST /items/{id}/pictures` `{ "id": "..." }`. El endpoint limita peticiones por minuto por app (400 si se supera) | DOC |
+| Subida directa | `POST /pictures/items/upload`, solo `multipart/form-data` (`file=@...`); devuelve `{ id, variations: [{ size, url, secure_url }] }` (id como `123-MLA456_112021`); el `id` se usa en `pictures: [{ "id": "..." }]` o se vincula con `POST /items/{id}/pictures` `{ "id": "..." }`. El endpoint limita peticiones por minuto por app: **400** "Bad_request" (la doc no da el cuerpo; F4-T04 trata un 400 sin causas que bloqueen como ese límite). Un `id` de foto en estado `ERROR` o más chico que el mínimo da **400 `validation_error` con `cause_id` 508 o 509** al usarlo en un ítem (re-leída el 2026-10-07) | DOC |
 | Errores de una foto | `GET /pictures/{picture_id}/errors` muestra por qué no se descargó (403, 404, timeout, etc.) | DOC |
 | Video | `video_id` = `<id>;youtube` (solo videos) o `<id>;matterport` (solo tours); uno solo y sin parámetros extra | DOC |
 
@@ -369,7 +370,8 @@ Guía de inmuebles:
 Generales:
 
 - tipos-de-publicacion-y-actualizaciones-de-articulos (01/06/2026): listing types, `available_listing_types`.
-- trabajar-con-imagenes (24/03/2026): formatos, tamaños, upload, errores, sin redirecciones, IPs.
+- trabajar-con-imagenes (24/03/2026; re-leída el 2026-10-07): formatos, tamaños, upload (respuesta), errores (400 por minuto, 508 y 509 como `cause_id`), sin redirecciones, IPs.
+- items-y-busquedas (10/09/2026; leída el 2026-10-07): búsqueda de ítems del vendedor (`?sku=` para `seller_custom_field`, `?status=`), `/items/bulk`.
 - moderaciones-con-pausado (12/06/2026): fotos por URL, pausas por moderación, inmueble no disponible.
 - ubicacion-y-monedas (27/03/2025): `CLF`, zip codes en Chile.
 - dominios-y-categorias (30/12/2025): `settings` (ejemplo de producto con `max_title_length` 60).
