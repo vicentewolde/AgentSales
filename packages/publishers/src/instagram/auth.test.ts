@@ -1,7 +1,7 @@
 import { redactText } from "@agentsales/core";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
-import { errorText, useInstagramServer } from "../../test/instagram-server.js";
+import { errorText, usePlatformServer } from "../../test/msw-server.js";
 import { cleanAuthorizationCode, createInstagramAuth } from "./auth.js";
 
 const APP_ID = "990011223344";
@@ -13,7 +13,7 @@ const LONG = "IGAA-token-largo-456";
 const NEW_LONG = "IGAA-token-nuevo-789";
 const NOW = new Date("2026-10-05T12:00:00Z");
 
-const { server, requests } = useInstagramServer();
+const { server, requests } = usePlatformServer();
 const auth = createInstagramAuth({
   appId: APP_ID,
   appSecret: SECRET,
