@@ -47,3 +47,4 @@ F4 publica en Portal Inmobiliario con la API de Mercado Libre (sitio MLC). La do
 
 ## Seguimiento
 - 2026-10-06 (revisión de F4-T01, `arquitecto`): el punto 9 compara el `updatedAt` de la publicación leído **antes** de consultar la plataforma con el que se relee dentro del candado, por igualdad: los dos salen de la base (`clock_timestamp()`), así un desfase entre el reloj de Neon y el del worker no deshace un cambio del operador. El publisher devuelve el estado sin `checkedAt` (lo pone core al guardar), y una publicación de Portal sin `listing_source_hash` no se publica (`PUBLICATION_LISTING_CHANGED`).
+- 2026-10-06 (revisión de F4-T02, `arquitecto`): solo `invalid_grant` deja la cuenta `expired` (punto 4). `invalid_client` o `unauthorized_client` (`ML_APP_CREDENTIALS_INVALID`) y la falta del par de la app (`MERCADOLIBRE_NOT_CONFIGURED`, sin llamar a Mercado Libre) no la cambian: el problema está en `.env`, no en la cuenta del corredor.

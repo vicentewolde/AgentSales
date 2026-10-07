@@ -1,4 +1,4 @@
-import { LLM_PROVIDERS, PUBLISH_MODES } from "@agentsales/core";
+import { LLM_PROVIDERS, MERCADOLIBRE_SITE_ID, PUBLISH_MODES } from "@agentsales/core";
 import { z } from "zod";
 
 /** `["a", "b", "c"]` → `"a", "b" o "c"` (para mensajes de error). */
@@ -34,12 +34,45 @@ const httpUrl = z.string().refine((value) => {
   return url !== null && (url.protocol === "http:" || url.protocol === "https:");
 }, "debe ser una URL http:// o https://");
 
-/** Variables que cambiaron de nombre: se avisa en vez de ignorarlas en silencio (spec F3, D5). */
+/**
+ * Dirección de retorno de Mercado Libre (spec F4 §4.2): solo `https://`, y sin usuario, clave ni
+ * fragmento. Mercado Libre la compara exacta (un `#` rompe el canje), y `doctor` la muestra.
+ */
+const mercadoLibreRedirectUri = z.string().superRefine((value, ctx) => {
+  const url = URL.parse(value);
+  if (url?.protocol !== "https:") {
+    ctx.addIssue({ code: "custom", message: "debe ser una URL https://" });
+    return;
+  }
+  if (url.username !== "" || url.password !== "" || value.includes("#")) {
+    ctx.addIssue({ code: "custom", message: "no debe llevar usuario, clave ni fragmento (#)" });
+  }
+});
+
+// Variables obsoletas: una que cambiaría el comportamiento se avisa en vez de ignorarla en silencio.
+
+/** Variables que cambiaron de nombre (spec F3, D5). */
 const RENAMED_VARIABLES: Readonly<Record<string, string>> = {
   META_APP_ID: "INSTAGRAM_APP_ID",
   META_APP_SECRET: "INSTAGRAM_APP_SECRET",
   META_REDIRECT_URI: "INSTAGRAM_REDIRECT_URI",
 };
+
+/**
+ * `ML_SITE_ID` ya no se usa: el sitio es fijo (`MERCADOLIBRE_SITE_ID`, spec F4 §4.2). Con `MLC`, el
+ * valor que traía `.env.example`, se ignora; con otro es un error, porque se publicaría igual en Chile.
+ */
+function removedSiteId(source: Record<string, string | undefined>): EnvIssue[] {
+  const value = source.ML_SITE_ID;
+  return value === undefined || value.toUpperCase() === MERCADOLIBRE_SITE_ID
+    ? []
+    : [
+        {
+          variable: "ML_SITE_ID",
+          message: `ya no se usa: el sitio es fijo (${MERCADOLIBRE_SITE_ID}); quítala del .env`,
+        },
+      ];
+}
 
 const databaseUrl = requiredText.superRefine((value, ctx) => {
   const url = URL.parse(value);
@@ -137,11 +170,14 @@ const envSchema = z
     INSTAGRAM_APP_SECRET: z.string().optional(),
     INSTAGRAM_REDIRECT_URI: httpUrl.default("http://localhost:8787/oauth/instagram/callback"),
 
-    // Mercado Libre / Portal Inmobiliario (F4)
+    // Mercado Libre / Portal Inmobiliario (F4): la app de developers.mercadolibre.cl. La dirección
+    // de retorno es la misma registrada en la app (comparación exacta) y no necesita cargar: el
+    // operador copia la dirección de la barra y la pega en la CLI (spec F4 §4.2).
     ML_APP_ID: z.string().optional(),
     ML_CLIENT_SECRET: z.string().optional(),
-    ML_REDIRECT_URI: z.string().optional(),
-    ML_SITE_ID: z.string().default("MLC"),
+    ML_REDIRECT_URI: mercadoLibreRedirectUri.default(
+      "https://localhost/oauth/mercadolibre/callback",
+    ),
 
     // Facebook Marketplace (F5)
     MARKETPLACE_DAILY_LIMIT: positiveInt("un número entero mayor que 0").default(3),
@@ -185,13 +221,16 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
       .map(([name, value]) => [name, value?.trim()] as const)
       .filter(([, value]) => value !== undefined && value !== ""),
   );
-  const renamed: EnvIssue[] = Object.entries(RENAMED_VARIABLES)
-    .filter(([old]) => old in cleaned)
-    .map(([old, current]) => ({ variable: old, message: `se renombró a ${current}` }));
+  const outdated: EnvIssue[] = [
+    ...Object.entries(RENAMED_VARIABLES)
+      .filter(([old]) => old in cleaned)
+      .map(([old, current]) => ({ variable: old, message: `se renombró a ${current}` })),
+    ...removedSiteId(cleaned),
+  ];
   const result = envSchema.safeParse(cleaned);
-  if (!result.success || renamed.length > 0) {
+  if (!result.success || outdated.length > 0) {
     throw new EnvError([
-      ...renamed,
+      ...outdated,
       ...(result.success
         ? []
         : result.error.issues.map((issue) => ({

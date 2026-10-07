@@ -48,18 +48,18 @@ Hecho el 2026-10-02: 3 propiedades de muestra (P001, P002 y P003, corredor `agen
 
 ## En paralelo, antes de F4 (Portal Inmobiliario)
 
-Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4 (§4.2, D6). Nada de esto bloquea empezar F4: hasta T16 todo se prueba con simulaciones.
+Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4 (§4.2, D6). Nada de esto bloquea empezar F4: hasta T09 todo se prueba con simulaciones; T10 (`ml:smoke`) necesita la cuenta conectada.
 
 - [ ] Crear tu cuenta en Mercado Libre Chile (mercadolibre.cl) con tus datos reales: la app solo se puede crear con los datos del titular validados
 - [ ] Crear una app en el DevCenter de Mercado Libre (developers.mercadolibre.cl > Mis aplicaciones > Crear nueva aplicación):
-  - [ ] Dirección de retorno (redirect URI): `https://localhost/oauth/mercadolibre/callback`. Si el panel no la acepta, cualquier dirección `https` tuya (no necesita cargar) y la anotas también en `ML_REDIRECT_URI`
+  - [ ] Dirección de retorno (redirect URI): `https://localhost/oauth/mercadolibre/callback` (el valor por defecto de `ML_REDIRECT_URI`). Si el panel no la acepta, cualquier dirección `https` tuya (no necesita cargar) y la anotas también en `ML_REDIRECT_URI`; `http://` no sirve (Mercado Libre lo exige y `.env` la rechaza)
   - [ ] **PKCE desactivado** (si se activa, Mercado Libre lo exige y F4 no lo usa)
   - [ ] Scopes de lectura, escritura y `offline_access`, y el permiso funcional "Publicación y sincronización"
   - [ ] Solo Mercado Libre (sin permisos de Mercado Pago)
-- [ ] Anotar `ML_APP_ID`, `ML_CLIENT_SECRET` y `ML_REDIRECT_URI` en `.env` (nunca se pegan en el chat)
+- [ ] Anotar `ML_APP_ID` y `ML_CLIENT_SECRET` en `.env`, y `ML_REDIRECT_URI` solo si registraste otra dirección (nunca se pegan en el chat). `pnpm -s cli doctor` avisa si falta el par y muestra la dirección de retorno que usa. `ML_SITE_ID` ya no se usa (el sitio es fijo, Chile): si la tienes con `MLC` se ignora, y con otro valor `.env` da error; puedes borrarla
 - [ ] Revisar el precio del paquete de publicación de inmuebles (`silver`) y si tu cuenta necesita que soporte la active para verlo. Se contrata **recién antes de la prueba en `live`** (demo de F4, paso 6): la demo usa tu cuenta real y un aviso que se cierra al final (D6)
 - [ ] Confirmar que el corredor `agentsales-pruebas` tiene WhatsApp en la hoja Corredor: Mercado Libre lo exige y sale en el aviso (D5)
-- [ ] Cuando exista `pnpm ml:smoke` (F4-T17): conectar la cuenta y correrlo en tu terminal; no publica nada
+- [ ] Cuando exista `pnpm ml:smoke` (F4-T10): conectar la cuenta y correrlo en tu terminal; no publica nada
 
 ## Antes de F5 (Marketplace)
 
