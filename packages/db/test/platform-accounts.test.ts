@@ -4,8 +4,9 @@ import {
   createInMemoryBrokerRepository,
   createInMemoryPlatformAccountRepository,
 } from "@agentsales/core/testing";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { withDbErrors } from "../src/errors.js";
 import { createBrokerRepository } from "../src/repositories/brokers.js";
 import { createPlatformAccountRepository } from "../src/repositories/platform-accounts.js";
 import { platformAccounts } from "../src/schema.js";
@@ -276,6 +277,41 @@ describe("candado de credenciales · Drizzle sobre PGlite (spec F4 §4.3)", () =
     expect(lockQuery).not.toMatch(/for update$/i);
   });
 
+  it("un 401 que llega después de que otro refrescó no rota el par de nuevo", async () => {
+    const repos = await pgliteRepositories();
+    const brokerId = (await repos.brokers.create(brokerData("candado-rechazado"))).id;
+    const account = await repos.accounts.upsertConnected(
+      portalInput(brokerId, "2026-10-07T18:00:00.000Z"),
+    );
+    let refreshes = 0;
+    const deps = {
+      platformAccounts: repos.accounts,
+      mercadoLibre: {
+        async refresh() {
+          refreshes += 1;
+          return {
+            accessToken: `APP_USR-nuevo-${refreshes}`,
+            refreshToken: `TG-nuevo-${refreshes}`,
+            accessTokenExpiresAt: new Date("2026-10-07T18:00:00Z"),
+            scopes: ["offline_access", "read", "write"],
+            userId: "8035443",
+          };
+        },
+      },
+      now: () => new Date("2026-10-07T12:00:00Z"),
+    };
+
+    const first = await ensureAccessToken(deps, account.id, {
+      rejectedToken: "APP_USR-viejo-8035443",
+    });
+    const second = await ensureAccessToken(deps, account.id, {
+      rejectedToken: "APP_USR-viejo-8035443",
+    });
+
+    expect([first, second]).toEqual(["APP_USR-nuevo-1", "APP_USR-nuevo-1"]);
+    expect(refreshes).toBe(1);
+  });
+
   it("dos ensureAccessToken a la vez refrescan una sola vez: el segundo relee el par guardado", async () => {
     const repos = await pgliteRepositories();
     const brokerId = (await repos.brokers.create(brokerData("candado-concurrencia"))).id;
@@ -320,10 +356,17 @@ describe("candado de credenciales · Drizzle sobre PGlite (spec F4 §4.3)", () =
     const account = await repos.accounts.upsertConnected(
       portalInput(brokerId, "2026-10-07T12:00:00Z"),
     );
-    // Postgres lo informa con SQLSTATE 55P03; `withDbErrors` lo deja como DB_QUERY_FAILED.
+    // Un 55P03 real del driver, pasado por `withDbErrors` (queda como DB_QUERY_FAILED con el
+    // código en su `cause`), como el que daría el SELECT del candado al vencer el `lock_timeout`.
+    const real = await withDbErrors(() =>
+      repos.db.execute(
+        sql.raw("DO $$ BEGIN RAISE EXCEPTION 'lock timeout' USING ERRCODE = '55P03'; END $$"),
+      ),
+    ).catch((caught: unknown) => caught);
+    expect(real).toMatchObject({ code: "DB_QUERY_FAILED" });
     const failures = [
+      real,
       Object.assign(new Error("canceling statement due to lock timeout"), { code: "55P03" }),
-      new AppError("DB_QUERY_FAILED", "Falló una consulta", { details: { sqlState: "55P03" } }),
     ];
     for (const failure of failures) {
       await expect(

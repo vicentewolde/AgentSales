@@ -24,13 +24,17 @@ export type TokenUpdate = {
 
 /**
  * Lo que entrega `withCredentialsLock` dentro del candado (spec F4 §4.3, ADR-0015): la cuenta y sus
- * credenciales **releídas** con la fila bloqueada, y `save`, que guarda el par nuevo en la misma
- * transacción (como `updateToken`). Lo guardado se confirma recién cuando `fn` termina bien.
+ * credenciales **releídas** con la fila bloqueada, `save`, que guarda el par nuevo en la misma
+ * transacción (como `updateToken`), y `markProblem`, que la pasa de `connected` a `expired` o
+ * `error` también ahí: quien espera el candado ya la ve así y no llama a la plataforma, y una
+ * reconexión que esperaba la fila no queda vencida por error. Todo se confirma recién cuando `fn`
+ * termina bien: por eso `fn` devuelve el problema y quien llama lanza el error **después**.
  */
 export type LockedCredentials = {
   account: PlatformAccount;
   credentials: PlatformCredentials;
   save(update: TokenUpdate): Promise<PlatformAccount>;
+  markProblem(to: PlatformAccountProblemStatus): Promise<void>;
 };
 
 /** Cuánto espera el candado de credenciales a que otro lo suelte (`lock_timeout`). */

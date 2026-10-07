@@ -199,7 +199,9 @@ export function createInMemoryPlatformAccountRepository(
     },
     async withCredentialsLock(id, fn) {
       // Serializa por cuenta, como `FOR NO KEY UPDATE`: el siguiente empieza cuando termina el
-      // anterior (bien o mal). Lo guardado con `save` se deshace si `fn` falla.
+      // anterior (bien o mal). Lo guardado con `save` se deshace si `fn` falla. Es menos estricto
+      // que Postgres: no tiene `lock_timeout`, y al deshacer pisa lo que otro escribió sin candado
+      // mientras tanto (en Postgres, ese otro esperaría la fila).
       const previous = locks.get(id) ?? Promise.resolve();
       let release: () => void = () => {};
       const mine = new Promise<void>((resolve) => {
@@ -220,6 +222,9 @@ export function createInMemoryPlatformAccountRepository(
             account: structuredCopy(found.account),
             credentials,
             save: (update) => repository.updateToken(id, update),
+            markProblem: async (to) => {
+              await repository.changeStatus(id, "connected", to);
+            },
           });
         } catch (error) {
           stored.set(id, snapshot);

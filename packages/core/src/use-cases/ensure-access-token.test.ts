@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { AbortSignalLike } from "../abort.js";
 import { AppError } from "../errors.js";
 import type { MercadoLibreAuth, MercadoLibreRefresh } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
@@ -27,14 +28,21 @@ const meta = (accessTokenExpiresAt: Date | null) => ({
   tokenExpiryEstimated: true,
 });
 
-type FakeOptions = { error?: AppError; userId?: string | null; wait?: Promise<void> };
+type FakeOptions = {
+  error?: AppError;
+  userId?: string | null;
+  wait?: Promise<void>;
+  /** Para revisar que la señal llega al refresco. */
+  signals?: unknown[];
+};
 
 /** Mercado Libre falso: cuenta los refrescos y entrega el par nuevo (o el error pedido). */
 function fakeMercadoLibre(options: FakeOptions = {}) {
   const calls: string[] = [];
   const mercadoLibre: Pick<MercadoLibreAuth, "refresh"> = {
-    async refresh(refreshToken): Promise<MercadoLibreRefresh> {
+    async refresh(refreshToken, callOptions): Promise<MercadoLibreRefresh> {
       calls.push(refreshToken);
+      options.signals?.push(callOptions?.signal);
       await options.wait;
       if (options.error) throw options.error;
       return {
@@ -132,24 +140,40 @@ describe("ensureAccessToken", () => {
 
     const first = ensureAccessToken(deps, account.id);
     const second = ensureAccessToken(deps, account.id);
-    // Unas vueltas de microtareas: los dos ya leyeron y el primero espera a Mercado Libre.
-    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    // Hasta que el primero esté esperando a Mercado Libre (el segundo, el candado).
+    for (let turn = 0; turn < 1000 && calls.length === 0; turn += 1) await Promise.resolve();
+    expect(calls).toHaveLength(1);
     release();
 
     await expect(Promise.all([first, second])).resolves.toEqual([NEW.accessToken, NEW.accessToken]);
     expect(calls).toEqual([OLD.refreshToken]);
   });
 
-  it("force refresca un token que parecía vigente (un 401), y dos force a la vez refrescan una vez", async () => {
+  it("un token rechazado (401) se refresca aunque parezca vigente; dos rechazos a la vez refrescan una vez", async () => {
     const { account, deps, calls } = await setup({ expiresIn: 5 * 60 * MINUTE });
 
     const results = await Promise.all([
-      ensureAccessToken(deps, account.id, { force: true }),
-      ensureAccessToken(deps, account.id, { force: true }),
+      ensureAccessToken(deps, account.id, { rejectedToken: OLD.accessToken }),
+      ensureAccessToken(deps, account.id, { rejectedToken: OLD.accessToken }),
     ]);
 
     expect(results).toEqual([NEW.accessToken, NEW.accessToken]);
     expect(calls).toEqual([OLD.refreshToken]);
+  });
+
+  it("un rechazo que llega después de que otro ya refrescó usa el token nuevo, sin rotar de nuevo", async () => {
+    const { account, deps, calls, locks } = await setup({ expiresIn: 5 * 60 * MINUTE });
+
+    await expect(
+      ensureAccessToken(deps, account.id, { rejectedToken: OLD.accessToken }),
+    ).resolves.toBe(NEW.accessToken);
+    // Otro proceso tenía el token viejo y recién ahora recibe su 401.
+    await expect(
+      ensureAccessToken(deps, account.id, { rejectedToken: OLD.accessToken }),
+    ).resolves.toBe(NEW.accessToken);
+
+    expect(calls).toEqual([OLD.refreshToken]);
+    expect(locks()).toBe(1);
   });
 
   it("invalid_grant deja la cuenta expired y no cambia las credenciales", async () => {
@@ -274,6 +298,81 @@ describe("ensureAccessToken", () => {
     const { account, deps } = await setup({ userId: null });
 
     await expect(ensureAccessToken(deps, account.id)).resolves.toBe(NEW.accessToken);
+  });
+
+  it("la señal llega al refresco", async () => {
+    const signals: unknown[] = [];
+    const { account, deps } = await setup({ signals });
+    const signal: AbortSignalLike = {
+      aborted: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+
+    await ensureAccessToken(deps, account.id, { signal });
+
+    expect(signals).toEqual([signal]);
+  });
+
+  it("el candado ocupado (ACCOUNT_LOCK_TIMEOUT) sube sin llamar ni cambiar la cuenta", async () => {
+    const { account, repository, deps, calls } = await setup();
+    const busy = {
+      ...deps,
+      platformAccounts: {
+        ...deps.platformAccounts,
+        withCredentialsLock: async () => {
+          throw new AppError("ACCOUNT_LOCK_TIMEOUT", "ocupado", { retriable: true });
+        },
+      },
+    };
+
+    await expect(ensureAccessToken(busy, account.id)).rejects.toMatchObject({
+      code: "ACCOUNT_LOCK_TIMEOUT",
+      retriable: true,
+    });
+    expect(calls).toEqual([]);
+    expect(await repository.get(account.id)).toMatchObject({ status: "connected" });
+  });
+
+  it("si no se puede marcar la cuenta en error, lo avisa y sube el error original", async () => {
+    const { account, repository, deps } = await setup();
+    repository.corruptCredentials(account.id);
+    const warnings: unknown[] = [];
+    const failingStatus = {
+      ...deps,
+      onWarning: (warning: unknown) => warnings.push(warning),
+      platformAccounts: {
+        ...deps.platformAccounts,
+        changeStatus: async () => {
+          throw new AppError("DB_UNAVAILABLE", "sin base", { retriable: true });
+        },
+      },
+    };
+
+    await expect(ensureAccessToken(failingStatus, account.id)).rejects.toMatchObject({
+      code: "CREDENTIALS_UNREADABLE",
+    });
+    expect(warnings).toEqual([{ accountId: account.id, code: "ACCOUNT_STATUS_NOT_SAVED" }]);
+  });
+
+  it("invalid_grant marca la cuenta dentro del candado: quien esperaba ya no llama a Mercado Libre", async () => {
+    let release: () => void = () => {};
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const rejected = new AppError("ML_AUTH_INVALID", "venció", {
+      details: { httpStatus: 400, error: "invalid_grant" },
+    });
+    const { account, deps, calls } = await setup({ error: rejected, wait });
+
+    const first = ensureAccessToken(deps, account.id).catch((caught: unknown) => caught);
+    const second = ensureAccessToken(deps, account.id).catch((caught: unknown) => caught);
+    for (let turn = 0; turn < 1000 && calls.length === 0; turn += 1) await Promise.resolve();
+    release();
+
+    expect(await first).toMatchObject({ code: "ML_AUTH_INVALID" });
+    expect(await second).toMatchObject({ code: "ACCOUNT_NOT_CONNECTED" });
+    expect(calls).toEqual([OLD.refreshToken]);
   });
 
   it("una cuenta que no existe, de Instagram o desconectada no se toca", async () => {

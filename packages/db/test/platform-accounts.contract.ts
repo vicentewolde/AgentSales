@@ -393,6 +393,23 @@ export function platformAccountRepositoryContract(
         });
       });
 
+      it("markProblem cambia el estado dentro del candado; si fn falla después, se deshace", async () => {
+        const marked = await repos.accounts.upsertConnected(portalAccount());
+        await repos.accounts.withCredentialsLock(marked.id, async (locked) => {
+          await locked.markProblem("expired");
+        });
+        expect((await repos.accounts.get(marked.id))?.status).toBe("expired");
+
+        const undone = await repos.accounts.upsertConnected(portalAccount());
+        await expect(
+          repos.accounts.withCredentialsLock(undone.id, async (locked) => {
+            await locked.markProblem("error");
+            throw new Error("falla después de marcar");
+          }),
+        ).rejects.toThrow("falla después de marcar");
+        expect((await repos.accounts.get(undone.id))?.status).toBe("connected");
+      });
+
       it("una cuenta desconectada o vencida es ACCOUNT_NOT_CONNECTED; una que no existe, ACCOUNT_NOT_FOUND", async () => {
         const revoked = await repos.accounts.upsertConnected(portalAccount());
         await repos.accounts.disconnect(revoked.id);

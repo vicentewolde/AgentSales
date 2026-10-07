@@ -2,7 +2,6 @@ import {
   AppError,
   CREDENTIALS_LOCK_TIMEOUT_MS,
   checkCredentials,
-  isAppError,
   normalizeAccountMeta,
   type PlatformAccount,
   type PlatformAccountRepository,
@@ -293,17 +292,15 @@ export function createPlatformAccountRepository(
               account: toAccount(row),
               credentials,
               save: (update) => inside.updateToken(id, update),
+              markProblem: async (to) => {
+                await inside.changeStatus(id, "connected", to);
+              },
             });
           }),
         );
       } catch (error) {
-        // `withDbErrors` lo deja como `DB_QUERY_FAILED` con el SQLSTATE en los detalles.
-        const state =
-          sqlStateOf(error) ??
-          (isAppError(error)
-            ? (error.details as { sqlState?: unknown } | undefined)?.sqlState
-            : null);
-        if (state === LOCK_NOT_AVAILABLE) throw lockTimeout(id);
+        // `withDbErrors` lo deja como `DB_QUERY_FAILED`, con el código del driver en su `cause`.
+        if (sqlStateOf(error) === LOCK_NOT_AVAILABLE) throw lockTimeout(id);
         throw error;
       }
     },

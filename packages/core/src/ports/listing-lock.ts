@@ -17,7 +17,11 @@ export type LockedRepositories = {
   contentRuns: ContentRunRepository;
   contents: ContentRepository;
   publications: PublicationRepository;
-  platformAccounts: PlatformAccountRepository;
+  /**
+   * Sin `withCredentialsLock`: el candado de credenciales nunca se anida con el del aviso (ADR-0015),
+   * y el tipo lo impide.
+   */
+  platformAccounts: Omit<PlatformAccountRepository, "withCredentialsLock">;
 };
 
 /**

@@ -356,9 +356,12 @@ export {
 } from "./use-cases/edit-content.js";
 export {
   ACCESS_TOKEN_REFRESH_MARGIN_MS,
-  type EnsureAccessTokenDeps,
   type EnsureAccessTokenOptions,
   ensureAccessToken,
+  type MercadoLibreRefreshResult,
+  type MercadoLibreTokenDeps,
+  mercadoLibreTokenStillFresh,
+  refreshMercadoLibreToken,
 } from "./use-cases/ensure-access-token.js";
 export {
   type EvaluatedText,
