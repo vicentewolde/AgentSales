@@ -85,7 +85,11 @@ export function oauthRoutes(deps: OAuthDeps) {
       if ((await deps.brokers.findBySlug(broker)) === null) {
         return c.redirect(toPanel({ error: "BROKER_NOT_FOUND" }), 302);
       }
-      const state = deps.oauthState.sign({ broker }, { ttlSeconds: OAUTH_STATE_TTL_SECONDS });
+      // Con la plataforma: un `state` de Mercado Libre no sirve en esta vuelta (spec F4 §4.2).
+      const state = deps.oauthState.sign(
+        { platform: "instagram", broker },
+        { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
+      );
       setCookie(c, OAUTH_STATE_COOKIE, state, {
         ...cookieOptions,
         maxAge: OAUTH_STATE_TTL_SECONDS,
@@ -106,6 +110,7 @@ export function oauthRoutes(deps: OAuthDeps) {
           throw new Error("state distinto de la cookie");
         }
         const data = deps.oauthState.verify(state);
+        if (data.platform !== "instagram") throw new Error("state de otra plataforma");
         if (typeof data.broker !== "string") throw new Error("state sin corredor");
         broker = data.broker;
       } catch {

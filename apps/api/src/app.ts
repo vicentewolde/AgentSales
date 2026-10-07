@@ -10,6 +10,7 @@ import type {
   ListingRepository,
   MediaRepository,
   MediaStorage,
+  MercadoLibreAuth,
   PlatformAccountRepository,
   PublicationRepository,
   PublishMode,
@@ -71,6 +72,11 @@ export type AppDeps = {
   platformAccounts: PlatformAccountRepository;
   /** Instagram Login, si el OAuth tiene su par de la app, y si la cookie va `Secure`. */
   instagram: OAuthDeps["instagram"];
+  /**
+   * Mercado Libre (spec F4 §4.2): el OAuth con la dirección pegada, `configured` si está el par de
+   * la app (sin él, conectar no llama) y la dirección de retorno que se muestra (`ML_REDIRECT_URI`).
+   */
+  mercadoLibre: { auth: MercadoLibreAuth; configured: boolean; redirectUri: string };
   /** Firma del `state` del OAuth (`createStateSigner`, que compone `server.ts`). */
   oauthState: OAuthDeps["oauthState"];
   /** La URL absoluta del panel, adonde vuelve el OAuth. */
@@ -119,6 +125,7 @@ export function createApp(deps: AppDeps) {
         ...deps,
         instagram: deps.instagram.auth,
         instagramOAuth: deps.instagram.oauthConfigured && deps.instagram.secureCookie,
+        mercadoLibre: deps.mercadoLibre,
       }),
     )
     .route("/oauth", oauthRoutes(deps));

@@ -24,7 +24,11 @@ import {
   toPgConnectionString,
 } from "@agentsales/db";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
-import { createInstagramAuth } from "@agentsales/publishers";
+import {
+  createInstagramAuth,
+  createMercadoLibreAuth,
+  MERCADOLIBRE_API_TIMEOUT_MS,
+} from "@agentsales/publishers";
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
@@ -104,6 +108,18 @@ const app = createApp({
     }),
     oauthConfigured: Boolean(env.INSTAGRAM_APP_ID && env.INSTAGRAM_APP_SECRET),
     secureCookie: env.INSTAGRAM_REDIRECT_URI.startsWith("https://"),
+  },
+  mercadoLibre: {
+    // Sin el par de la app, conectar responde MERCADOLIBRE_NOT_CONFIGURED sin llamar (el canje
+    // mandaría un secret vacío). Tope de 10 s: el operador espera la respuesta (spec F4 §4.3).
+    auth: createMercadoLibreAuth({
+      appId: env.ML_APP_ID ?? "",
+      clientSecret: env.ML_CLIENT_SECRET ?? "",
+      redirectUri: env.ML_REDIRECT_URI,
+      timeoutMs: MERCADOLIBRE_API_TIMEOUT_MS,
+    }),
+    configured: Boolean(env.ML_APP_ID && env.ML_CLIENT_SECRET),
+    redirectUri: env.ML_REDIRECT_URI,
   },
   oauthState: createStateSigner(env.APP_ENCRYPTION_KEY),
   // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).

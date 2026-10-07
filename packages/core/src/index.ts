@@ -337,6 +337,12 @@ export {
   INSTAGRAM_TOKEN_DAYS,
 } from "./use-cases/connect-account.js";
 export {
+  type ConnectMercadoLibreAccountDeps,
+  connectMercadoLibreAccount,
+  MERCADOLIBRE_REFRESH_TOKEN_DAYS,
+  MERCADOLIBRE_REQUIRED_SCOPES,
+} from "./use-cases/connect-mercadolibre-account.js";
+export {
   type DisconnectAccountDeps,
   disconnectAccount,
 } from "./use-cases/disconnect-account.js";

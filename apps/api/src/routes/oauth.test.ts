@@ -68,6 +68,7 @@ describe("GET /oauth/instagram/start", () => {
     expect(cookie).toMatch(/Max-Age=600/);
     expect(cookie).not.toMatch(/Secure/);
     expect(createStateSigner(TEST_ENCRYPTION_KEY).verify(state)).toMatchObject({
+      platform: "instagram",
       broker: "corredor-inventado",
     });
   });
@@ -235,16 +236,35 @@ describe("OAuth · seguridad", () => {
       panelRedirect(await callback({ code: "c", state: withoutBroker }, withoutBroker)),
     ).toEqual({ error: "OAUTH_STATE_INVALID" });
     expect(auth.calls).toEqual([]);
-    const ghost = signer.sign({ broker: "ya-no-existe" }, { ttlSeconds: 600 });
+    const ghost = signer.sign(
+      { platform: "instagram", broker: "ya-no-existe" },
+      { ttlSeconds: 600 },
+    );
     expect(panelRedirect(await callback({ code: "c", state: ghost }, ghost))).toEqual({
       error: "BROKER_NOT_FOUND",
     });
   });
 
+  it("un state de Mercado Libre (o sin plataforma) no sirve en la vuelta de Instagram", async () => {
+    const { callback, auth } = setup();
+    const signer = createStateSigner(TEST_ENCRYPTION_KEY);
+    const states: Record<string, string>[] = [
+      { platform: "mercadolibre", broker: "corredor-inventado" },
+      { broker: "corredor-inventado" },
+    ];
+    for (const data of states) {
+      const state = signer.sign(data, { ttlSeconds: 600 });
+      expect(panelRedirect(await callback({ code: "c", state }, state))).toEqual({
+        error: "OAUTH_STATE_INVALID",
+      });
+    }
+    expect(auth.calls).toEqual([]);
+  });
+
   it("sin el par de la app, la vuelta no canjea (INSTAGRAM_NOT_CONFIGURED)", async () => {
     const { callback, auth } = setup({ oauthConfigured: false });
     const state = createStateSigner(TEST_ENCRYPTION_KEY).sign(
-      { broker: "corredor-inventado" },
+      { platform: "instagram", broker: "corredor-inventado" },
       { ttlSeconds: 600 },
     );
     expect(panelRedirect(await callback({ code: "c", state }, state))).toEqual({

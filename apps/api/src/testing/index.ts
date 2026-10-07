@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger, createStateSigner, type Logger } from "@agentsales/config";
-import { AppError, type InstagramAuth } from "@agentsales/core";
+import { AppError, type InstagramAuth, type MercadoLibreAuth } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
@@ -70,6 +70,60 @@ export function fakeInstagramAuth(): InstagramAuth & { calls: string[] } {
   };
 }
 
+/** La dirección de retorno de Mercado Libre de los tests (la de `.env.example`). */
+export const TEST_ML_REDIRECT_URI = "https://localhost/oauth/mercadolibre/callback";
+
+/**
+ * Mercado Libre falso para la API (spec F4 §4.2): canjea un código y responde `/users/me`, y
+ * registra las llamadas (sin valores). El código decide el caso: `malo…` es `ML_AUTH_INVALID`,
+ * `sin-offline…` no trae `offline_access`, `sin-refresh…` no trae `refresh_token`,
+ * `otro-usuario…` responde otro `user_id` en `/users/me` y `argentina…` es una cuenta de `MLA`.
+ * Los tokens llevan el código, para que un test revise que no aparecen en la respuesta ni el log.
+ */
+export function fakeMercadoLibreAuth(): MercadoLibreAuth & { calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    authorizeUrl: (state) =>
+      `https://auth.mercadolibre.cl/authorization?response_type=code&client_id=app&redirect_uri=${encodeURIComponent(TEST_ML_REDIRECT_URI)}&state=${encodeURIComponent(state)}`,
+    async exchangeCode(code) {
+      calls.push("exchange");
+      if (code.startsWith("malo")) {
+        throw new AppError(
+          "ML_AUTH_INVALID",
+          "Mercado Libre no aceptó el código de conexión: conecta de nuevo",
+          { details: { httpStatus: 400, error: "invalid_grant", causes: [] } },
+        );
+      }
+      return {
+        accessToken: `APP_USR-fake-${code}`,
+        refreshToken: code.startsWith("sin-refresh") ? null : `TG-fake-${code}`,
+        accessTokenExpiresAt: new Date("2026-10-07T18:00:00Z"),
+        scopes: code.startsWith("sin-offline")
+          ? ["read", "write"]
+          : ["offline_access", "read", "write"],
+        userId: "8035443",
+      };
+    },
+    async refresh() {
+      calls.push("refresh");
+      throw new AppError("ML_UNAVAILABLE", "No hubo conexión con Mercado Libre: se reintenta", {
+        retriable: true,
+      });
+    },
+    async me(accessToken) {
+      calls.push("me");
+      return {
+        userId: accessToken.includes("otro-usuario") ? "999" : "8035443",
+        nickname: "CORREDORA_PRUEBA",
+        siteId: accessToken.includes("argentina") ? "MLA" : "MLC",
+        userType: "normal",
+        tags: ["normal"],
+      };
+    },
+  };
+}
+
 export const silentLogger: Logger = createLogger(
   { level: "silent" },
   new Writable({ write: (_chunk, _encoding, callback) => callback() }),
@@ -130,6 +184,11 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
     publications,
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
+    mercadoLibre: {
+      auth: fakeMercadoLibreAuth(),
+      configured: true,
+      redirectUri: TEST_ML_REDIRECT_URI,
+    },
     oauthState: createStateSigner(TEST_ENCRYPTION_KEY),
     panelUrl: "http://localhost:5173",
     instagramStartUrl: "http://localhost:8787/oauth/instagram/start",

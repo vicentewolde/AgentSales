@@ -496,6 +496,15 @@ export const accountListResponseSchema = z.object({
   connect: z.object({
     // Solo http(s): la CLI la abre en el navegador y el panel la pone en un enlace, y viene de la red.
     instagram: z.object({ oauth: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) }),
+    /**
+     * Mercado Libre (spec F4 §4.2): `configured` si la API tiene el par de la app (sin él, conectar
+     * responde `MERCADOLIBRE_NOT_CONFIGURED`), y la dirección de retorno que el operador registra en
+     * la app y desde la que copia la dirección de la barra (no es secreta).
+     */
+    mercadolibre: z.object({
+      configured: z.boolean(),
+      redirectUri: z.url({ protocol: /^https$/ }),
+    }),
   }),
 });
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
@@ -550,6 +559,41 @@ export const connectTokenBodySchema = z.object({
     .regex(/^\S+$/, "el token no puede tener espacios ni saltos de línea"),
 });
 export type ConnectTokenBody = z.infer<typeof connectTokenBodySchema>;
+
+/** `POST /accounts/mercadolibre/authorize-url` (spec F4 §4.2): el corredor que se conecta. */
+export const mercadoLibreAuthorizeUrlBodySchema = z.object({ broker: brokerSlugSchema });
+export type MercadoLibreAuthorizeUrlBody = z.infer<typeof mercadoLibreAuthorizeUrlBodySchema>;
+
+/**
+ * La URL de autorización de Mercado Libre con el `state` firmado (vale 10 min). Solo `https`: la
+ * CLI la abre en el navegador.
+ */
+export const mercadoLibreAuthorizeUrlResponseSchema = z.object({
+  url: z.url({ protocol: /^https$/ }),
+});
+export type MercadoLibreAuthorizeUrlResponse = z.infer<
+  typeof mercadoLibreAuthorizeUrlResponseSchema
+>;
+
+/** Un valor de la dirección de vuelta pegada: sin espacios ni saltos de línea. */
+const pastedValue = (what: string) =>
+  z
+    .string({ error: `falta el ${what}` })
+    .trim()
+    .min(1, `falta el ${what}`)
+    .max(4096, `el ${what} es demasiado largo`)
+    .regex(/^\S+$/, `el ${what} no puede tener espacios ni saltos de línea`);
+
+/**
+ * `POST /accounts/mercadolibre/connect` (spec F4 §4.2): el `code` y el `state` que la CLI saca de
+ * la dirección de vuelta pegada. Nunca vuelven en la respuesta ni van al log.
+ */
+export const mercadoLibreConnectBodySchema = z.object({
+  broker: brokerSlugSchema,
+  code: pastedValue("código"),
+  state: pastedValue("state"),
+});
+export type MercadoLibreConnectBody = z.infer<typeof mercadoLibreConnectBodySchema>;
 
 /** `GET /oauth/instagram/start?broker=<slug>`. */
 export const oauthStartQuerySchema = z.object({ broker: brokerSlugSchema });
