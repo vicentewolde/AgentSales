@@ -228,11 +228,13 @@ export type {
   MercadoLibreUser,
 } from "./ports/mercadolibre-auth.js";
 export { isMercadoLibreTokenRejected } from "./ports/mercadolibre-auth.js";
-export type {
-  ConnectedAccount,
-  PlatformAccountProblemStatus,
-  PlatformAccountRepository,
-  TokenUpdate,
+export {
+  type ConnectedAccount,
+  CREDENTIALS_LOCK_TIMEOUT_MS,
+  type LockedCredentials,
+  type PlatformAccountProblemStatus,
+  type PlatformAccountRepository,
+  type TokenUpdate,
 } from "./ports/platform-account-repository.js";
 export type {
   NewPublication,
@@ -352,6 +354,15 @@ export {
   type EditContentDeps,
   editContent,
 } from "./use-cases/edit-content.js";
+export {
+  ACCESS_TOKEN_REFRESH_MARGIN_MS,
+  type EnsureAccessTokenOptions,
+  ensureAccessToken,
+  type MercadoLibreRefreshResult,
+  type MercadoLibreTokenDeps,
+  mercadoLibreTokenStillFresh,
+  refreshMercadoLibreToken,
+} from "./use-cases/ensure-access-token.js";
 export {
   type EvaluatedText,
   type EvaluateListingContentDeps,

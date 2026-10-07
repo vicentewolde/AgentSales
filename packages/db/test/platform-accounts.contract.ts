@@ -336,6 +336,134 @@ export function platformAccountRepositoryContract(
       }
     });
 
+    describe("withCredentialsLock (spec F4 §4.3)", () => {
+      const portalAccount = () =>
+        connectedAccount(brokerId, {
+          platform: "portal_inmobiliario",
+          externalAccountId: unique("8035"),
+          displayName: "CORREDORA_PRUEBA",
+          meta: { nickname: "CORREDORA_PRUEBA", accessTokenExpiresAt: "2026-10-07T12:00:00.000Z" },
+          credentials: { accessToken: unique("APP_USR"), refreshToken: unique("TG") },
+        });
+
+      it("entrega la cuenta y las credenciales releídas, y save guarda el par en la transacción", async () => {
+        const input = portalAccount();
+        const account = await repos.accounts.upsertConnected(input);
+        const next = { accessToken: unique("APP_USR-nuevo"), refreshToken: unique("TG-nuevo") };
+
+        const result = await repos.accounts.withCredentialsLock(account.id, async (locked) => {
+          expect(locked.account).toMatchObject({ id: account.id, status: "connected" });
+          expect(locked.credentials).toEqual(input.credentials);
+          const saved = await locked.save({
+            credentials: next,
+            tokenExpiresAt: new Date("2027-04-05T12:00:00Z"),
+            meta: { accessTokenExpiresAt: "2026-10-07T18:00:00.000Z" },
+          });
+          expect(saved.meta).toMatchObject({ nickname: "CORREDORA_PRUEBA" });
+          return "listo";
+        });
+
+        expect(result).toBe("listo");
+        await expect(repos.accounts.getCredentials(account.id)).resolves.toEqual(next);
+        expect(await repos.accounts.get(account.id)).toMatchObject({
+          tokenExpiresAt: new Date("2027-04-05T12:00:00Z"),
+          meta: { nickname: "CORREDORA_PRUEBA", accessTokenExpiresAt: "2026-10-07T18:00:00.000Z" },
+        });
+      });
+
+      it("si fn falla después de save, no queda nada guardado", async () => {
+        const input = portalAccount();
+        const account = await repos.accounts.upsertConnected(input);
+
+        await expect(
+          repos.accounts.withCredentialsLock(account.id, async (locked) => {
+            await locked.save({
+              credentials: { accessToken: "APP_USR-a-medias", refreshToken: "TG-a-medias" },
+              tokenExpiresAt: null,
+              meta: { accessTokenExpiresAt: "2030-01-01T00:00:00.000Z" },
+            });
+            throw new Error("falla después de guardar");
+          }),
+        ).rejects.toThrow("falla después de guardar");
+
+        await expect(repos.accounts.getCredentials(account.id)).resolves.toEqual(input.credentials);
+        expect(await repos.accounts.get(account.id)).toMatchObject({
+          tokenExpiresAt: input.tokenExpiresAt,
+          meta: input.meta,
+        });
+      });
+
+      it("markProblem cambia el estado dentro del candado; si fn falla después, se deshace", async () => {
+        const marked = await repos.accounts.upsertConnected(portalAccount());
+        await repos.accounts.withCredentialsLock(marked.id, async (locked) => {
+          await locked.markProblem("expired");
+        });
+        expect((await repos.accounts.get(marked.id))?.status).toBe("expired");
+
+        const undone = await repos.accounts.upsertConnected(portalAccount());
+        await expect(
+          repos.accounts.withCredentialsLock(undone.id, async (locked) => {
+            await locked.markProblem("error");
+            throw new Error("falla después de marcar");
+          }),
+        ).rejects.toThrow("falla después de marcar");
+        expect((await repos.accounts.get(undone.id))?.status).toBe("connected");
+      });
+
+      it("una cuenta desconectada o vencida es ACCOUNT_NOT_CONNECTED; una que no existe, ACCOUNT_NOT_FOUND", async () => {
+        const revoked = await repos.accounts.upsertConnected(portalAccount());
+        await repos.accounts.disconnect(revoked.id);
+        const expired = await repos.accounts.upsertConnected(portalAccount());
+        await repos.accounts.changeStatus(expired.id, "connected", "expired");
+        let called = false;
+        const fn = async () => {
+          called = true;
+        };
+
+        for (const id of [revoked.id, expired.id]) {
+          await expect(repos.accounts.withCredentialsLock(id, fn)).rejects.toMatchObject({
+            code: "ACCOUNT_NOT_CONNECTED",
+          });
+        }
+        await expect(repos.accounts.withCredentialsLock(repos.missingId, fn)).rejects.toMatchObject(
+          { code: "ACCOUNT_NOT_FOUND" },
+        );
+        expect(called).toBe(false);
+      });
+
+      it("dos candados de la misma cuenta se esperan: el segundo ve lo que guardó el primero", async () => {
+        const account = await repos.accounts.upsertConnected(portalAccount());
+        const order: string[] = [];
+        let release: () => void = () => {};
+        const blocked = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+
+        const first = repos.accounts.withCredentialsLock(account.id, async (locked) => {
+          order.push("primero empieza");
+          await blocked;
+          await locked.save({
+            credentials: { accessToken: "APP_USR-del-primero", refreshToken: "TG-del-primero" },
+            tokenExpiresAt: null,
+          });
+          order.push("primero termina");
+        });
+        const second = repos.accounts.withCredentialsLock(account.id, async (locked) => {
+          order.push(`segundo ve ${locked.credentials.accessToken}`);
+        });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(order).toEqual(["primero empieza"]);
+
+        release();
+        await Promise.all([first, second]);
+        expect(order).toEqual([
+          "primero empieza",
+          "primero termina",
+          "segundo ve APP_USR-del-primero",
+        ]);
+      });
+    });
+
     it("un corredor que no existe es BROKER_NOT_FOUND", async () => {
       await expect(
         repos.accounts.upsertConnected(connectedAccount(repos.missingId)),

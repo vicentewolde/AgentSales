@@ -51,6 +51,8 @@ export function createInMemoryPlatformAccountRepository(
 ): InMemoryPlatformAccountRepository {
   let next = 0;
   const stored = new Map<string, Stored>();
+  /** El último candado pedido por cuenta: el siguiente espera a que termine. */
+  const locks = new Map<string, Promise<void>>();
   const find = (id: string) => {
     const found = stored.get(id);
     if (found === undefined) throw notFound(id);
@@ -120,7 +122,7 @@ export function createInMemoryPlatformAccountRepository(
       .sort((a, b) => a.sequence - b.sequence)
       .map(({ account }) => structuredCopy(account));
 
-  return {
+  const repository: InMemoryPlatformAccountRepository = {
     async upsertConnected(input, { revokeOthers = false } = {}) {
       const account = await upsert(input);
       if (revokeOthers) {
@@ -195,5 +197,44 @@ export function createInMemoryPlatformAccountRepository(
       const found = find(id);
       stored.set(id, { ...found, unreadable: true });
     },
+    async withCredentialsLock(id, fn) {
+      // Serializa por cuenta, como `FOR NO KEY UPDATE`: el siguiente empieza cuando termina el
+      // anterior (bien o mal). Lo guardado con `save` se deshace si `fn` falla. Es menos estricto
+      // que Postgres: no tiene `lock_timeout`, y al deshacer pisa lo que otro escribió sin candado
+      // mientras tanto (en Postgres, ese otro esperaría la fila).
+      const previous = locks.get(id) ?? Promise.resolve();
+      let release: () => void = () => {};
+      const mine = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const chained = previous.then(() => mine);
+      locks.set(id, chained);
+      await previous;
+      try {
+        const found = find(id);
+        if (found.account.status !== "connected" || found.credentials === null) {
+          throw notConnected(id);
+        }
+        const credentials = await repository.getCredentials(id);
+        const snapshot = stored.get(id) as Stored;
+        try {
+          return await fn({
+            account: structuredCopy(found.account),
+            credentials,
+            save: (update) => repository.updateToken(id, update),
+            markProblem: async (to) => {
+              await repository.changeStatus(id, "connected", to);
+            },
+          });
+        } catch (error) {
+          stored.set(id, snapshot);
+          throw error;
+        }
+      } finally {
+        release();
+        if (locks.get(id) === chained) locks.delete(id);
+      }
+    },
   };
+  return repository;
 }
