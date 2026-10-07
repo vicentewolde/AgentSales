@@ -182,7 +182,7 @@ Datos públicos que solo se leen con token y cambian con el tiempo: en Mercado L
 |---|---|---|
 | platform | enum `platform` | Parte de la llave |
 | key | text | `category:<id>`, `attributes:<hoja>` o `location:<id>`. Parte de la llave |
-| data | jsonb | La forma normalizada del cliente (en Mercado Libre, `MercadoLibreCategory`, `MercadoLibreAttribute` o `MercadoLibreLocation`: solo lo que se usa), no la respuesta cruda. Una entrada que ya no calce con su esquema se trata como ausente y se vuelve a bajar: sumar un campo no obliga a migrar |
+| data | jsonb | La forma normalizada del cliente (en Mercado Libre, desde F4-T09, los esquemas de core `portalCategorySchema`, `portalAttributesSchema` o `portalLocationSchema`: solo lo que se usa), no la respuesta cruda. Una entrada que ya no calce con su esquema se trata como ausente y se vuelve a bajar: sumar un campo no obliga a migrar |
 | fetched_at | timestamptz | Cuándo se bajó: con más de 7 días se vuelve a pedir |
 
 Llave primaria `(platform, key)` (migración `0007`); no tiene `id`.

@@ -65,6 +65,10 @@ export {
   type InMemoryPlatformAccountRepositoryOptions,
 } from "./platform-accounts.js";
 export {
+  createInMemoryPlatformCatalogRepository,
+  type InMemoryPlatformCatalogRepository,
+} from "./platform-catalog.js";
+export {
   createPublicationScenario,
   PUBLICATION_SCENARIO_TOKEN,
   type PublicationScenario,

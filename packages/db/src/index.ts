@@ -24,6 +24,7 @@ export { createImportRunRepository } from "./repositories/import-runs.js";
 export { createListingRepository } from "./repositories/listings.js";
 export { createMediaRepository } from "./repositories/media.js";
 export { createPlatformAccountRepository } from "./repositories/platform-accounts.js";
+export { createPlatformCatalogRepository } from "./repositories/platform-catalog.js";
 export { createPublicationRepository } from "./repositories/publications.js";
 export * as schema from "./schema.js";
 export {

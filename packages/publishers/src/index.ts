@@ -31,6 +31,14 @@ export {
   type MercadoLibreAuthOptions,
 } from "./mercadolibre/auth.js";
 export {
+  createPortalCatalog,
+  type PortalCatalog,
+  type PortalCatalogContext,
+  type PortalCatalogNote,
+  type PortalCatalogOptions,
+  type PortalPlace,
+} from "./mercadolibre/catalog.js";
+export {
   createMercadoLibreCatalogApi,
   type MercadoLibreAttribute,
   type MercadoLibreCatalogApi,
