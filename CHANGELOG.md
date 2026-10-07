@@ -4,8 +4,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
-## [0.3.0] - sin tag (se fecha al crear `v0.3.0`) · F3 Aprobación + Instagram
-Ahora se aprueba el texto de cada canal y la propiedad se publica en Instagram: el carrusel y, si tiene video, el reel. Todo se prueba primero en simulación (`dry-run`), que registra lo que se habría enviado sin llamar a Instagram. Se probó en vivo, con tu instrucción, en tu cuenta @vicentewoldec: P002 salió como carrusel de 5 imágenes (en cerca de 1 minuto) y como reel (en cerca de 2), con sus enlaces guardados, y después se borraron a mano y se marcaron como retiradas.
+## [0.3.0] - 2026-10-07 · F3 Aprobación + Instagram
+Ahora se aprueba el texto de cada canal y la propiedad se publica en Instagram: el carrusel y, si tiene video, el reel. Todo se prueba primero en simulación (`dry-run`), que registra lo que se habría enviado sin llamar a Instagram. Se probó en vivo, con tu instrucción, en tu cuenta @vicentewoldec: P002 salió como carrusel de 5 imágenes (en cerca de 1 minuto) y como reel (en cerca de 2), con sus enlaces guardados, y después se borraron a mano y se marcaron como retiradas. El 2026-10-07 el worker renovó el token al arrancar y el vencimiento pasó de estimado a real (6 de diciembre).
 
 ### Añadido
 - **Conectar Instagram:** `pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin`, con el token del botón "Generate token" del panel de Meta (Meta no acepta `http://localhost` para el OAuth). El token se guarda cifrado y nunca aparece en logs, errores ni respuestas. El OAuth completo queda listo para F7, con HTTPS.
