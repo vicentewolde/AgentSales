@@ -72,6 +72,7 @@ describe("runDoctor", () => {
     expect(report.exitCode).toBe(0);
     expect(item).toMatchObject({ level: "warn" });
     expect(item?.detail).toContain("falta ML_APP_ID y ML_CLIENT_SECRET");
+    expect(item?.detail).toContain("ni refrescar el token de una ya conectada");
     expect(item?.detail).toContain("https://localhost/oauth/mercadolibre/callback");
     expect(item?.hint).toContain("docs/07-checklist-cuentas.md");
   });
@@ -86,6 +87,13 @@ describe("runDoctor", () => {
     expect(item?.detail).not.toContain("ML_APP_ID");
     expect(JSON.stringify(report.items)).not.toContain("fake-ml");
     expect(JSON.stringify((await runDoctor(deps())).items)).not.toContain("fake-ml");
+
+    const { ML_APP_ID: _id, ...withoutId } = env;
+    const onlyId = (await runDoctor(deps({ env: { ok: true, env: withoutId } }))).items.find(
+      (entry) => entry.name === "Mercado Libre",
+    );
+    expect(onlyId?.detail).toContain("falta ML_APP_ID:");
+    expect(onlyId?.detail).not.toContain("ML_CLIENT_SECRET");
   });
 
   it("no revisa Instagram si el .env es inválido (ya lo dice .env)", async () => {

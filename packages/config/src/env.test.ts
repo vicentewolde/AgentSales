@@ -298,6 +298,19 @@ describe("loadEnv", () => {
       ]);
     });
 
+    it.each([
+      "https://usuario:clave@localhost/oauth/mercadolibre/callback",
+      "https://localhost/oauth/mercadolibre/callback#x",
+      "https://localhost/oauth/mercadolibre/callback#",
+    ])("rechaza la dirección de retorno con usuario, clave o fragmento (%s)", (value) => {
+      const error = envErrorOf({ ...validSource, ML_REDIRECT_URI: value });
+
+      expect(error.issues).toEqual([
+        { variable: "ML_REDIRECT_URI", message: "no debe llevar usuario, clave ni fragmento (#)" },
+      ]);
+      expect(error.message).not.toContain("clave@");
+    });
+
     it("ignora ML_SITE_ID con MLC, el valor del ejemplo, y no la devuelve", () => {
       for (const value of ["MLC", "mlc"]) {
         const env = loadEnv({ ...validSource, ML_SITE_ID: value });

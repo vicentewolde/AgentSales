@@ -101,9 +101,18 @@ describe("redactText", () => {
       );
     });
 
+    it("codificados en una URL o escapados en un JSON", () => {
+      expect(redactText(`https://x.test/r?next=%2Fcb%3Fcode%3D${CODE}%26state%3Ds`)).toBe(
+        `https://x.test/r?next=%2Fcb%3Fcode%3D${REDACTED}%26state%3Ds`,
+      );
+      expect(redactText(`Authorization: Bearer%20${ACCESS}`)).toBe(
+        `Authorization: Bearer%20${REDACTED}`,
+      );
+      expect(redactText(`{"msg":"falló\\n${REFRESH}"}`)).toBe(`{"msg":"falló\\n${REDACTED}"}`);
+    });
+
     it("deja visibles los códigos de error, el sitio y palabras parecidas", () => {
-      const text =
-        "ML_AUTH_INVALID en MLC: invalid_grant (STG-12345678abc, TG-1, APP_USR sin guion)";
+      const text = "ML_AUTH_INVALID en MLC: invalid_grant (TG-1, TG-ab12, APP_USR sin guion)";
 
       expect(redactText(text)).toBe(text);
     });

@@ -34,10 +34,29 @@ const httpUrl = z.string().refine((value) => {
   return url !== null && (url.protocol === "http:" || url.protocol === "https:");
 }, "debe ser una URL http:// o https://");
 
-/** URL `https://`: Mercado Libre no acepta otra dirección de retorno (spec F4 §4.2). */
-const httpsUrl = z
-  .string()
-  .refine((value) => URL.parse(value)?.protocol === "https:", "debe ser una URL https://");
+/**
+ * Dirección de retorno de Mercado Libre (spec F4 §4.2): solo `https://`, y sin usuario, clave ni
+ * fragmento. Mercado Libre la compara exacta (un `#` rompe el canje), y `doctor` la muestra.
+ */
+const mercadoLibreRedirectUri = z.string().superRefine((value, ctx) => {
+  const url = URL.parse(value);
+  if (url?.protocol !== "https:") {
+    ctx.addIssue({ code: "custom", message: "debe ser una URL https://" });
+    return;
+  }
+  if (url.username !== "" || url.password !== "" || value.includes("#")) {
+    ctx.addIssue({ code: "custom", message: "no debe llevar usuario, clave ni fragmento (#)" });
+  }
+});
+
+// Variables obsoletas: una que cambiaría el comportamiento se avisa en vez de ignorarla en silencio.
+
+/** Variables que cambiaron de nombre (spec F3, D5). */
+const RENAMED_VARIABLES: Readonly<Record<string, string>> = {
+  META_APP_ID: "INSTAGRAM_APP_ID",
+  META_APP_SECRET: "INSTAGRAM_APP_SECRET",
+  META_REDIRECT_URI: "INSTAGRAM_REDIRECT_URI",
+};
 
 /**
  * `ML_SITE_ID` ya no se usa: el sitio es fijo (`MERCADOLIBRE_SITE_ID`, spec F4 §4.2). Con `MLC`, el
@@ -54,13 +73,6 @@ function removedSiteId(source: Record<string, string | undefined>): EnvIssue[] {
         },
       ];
 }
-
-/** Variables que cambiaron de nombre: se avisa en vez de ignorarlas en silencio (spec F3, D5). */
-const RENAMED_VARIABLES: Readonly<Record<string, string>> = {
-  META_APP_ID: "INSTAGRAM_APP_ID",
-  META_APP_SECRET: "INSTAGRAM_APP_SECRET",
-  META_REDIRECT_URI: "INSTAGRAM_REDIRECT_URI",
-};
 
 const databaseUrl = requiredText.superRefine((value, ctx) => {
   const url = URL.parse(value);
@@ -163,7 +175,9 @@ const envSchema = z
     // operador copia la dirección de la barra y la pega en la CLI (spec F4 §4.2).
     ML_APP_ID: z.string().optional(),
     ML_CLIENT_SECRET: z.string().optional(),
-    ML_REDIRECT_URI: httpsUrl.default("https://localhost/oauth/mercadolibre/callback"),
+    ML_REDIRECT_URI: mercadoLibreRedirectUri.default(
+      "https://localhost/oauth/mercadolibre/callback",
+    ),
 
     // Facebook Marketplace (F5)
     MARKETPLACE_DAILY_LIMIT: positiveInt("un número entero mayor que 0").default(3),
