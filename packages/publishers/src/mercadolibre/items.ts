@@ -1,7 +1,7 @@
-import type { PortalSellerContact } from "@agentsales/core";
+import { isAppError, type PortalSellerContact } from "@agentsales/core";
 import { z } from "zod";
 import { MERCADOLIBRE_API_ORIGIN, MERCADOLIBRE_REQUEST_TIMEOUT_MS } from "./constants.js";
-import { MERCADOLIBRE_ERRORS, type MercadoLibreCause, parseCauses } from "./errors.js";
+import { MAX_CAUSES, MERCADOLIBRE_ERRORS, type MercadoLibreCause, parseCauses } from "./errors.js";
 import {
   type MercadoLibreCallOptions,
   type MercadoLibreHttpOptions,
@@ -83,14 +83,30 @@ export interface MercadoLibreItems {
     sellerContact: PortalSellerContact,
     options?: MercadoLibreCallOptions,
   ): Promise<MercadoLibreItem>;
-  /** `POST /items/{id}/description` con texto plano (nota §4.1); sobre una que ya existe, falla. */
+  /**
+   * `GET /items/{id}/description`: el texto plano, o `null` si el ítem no tiene descripción (404,
+   * NO VERIFICADO). Es una lectura: la retoma la consulta antes de `addDescription`, que falla sobre
+   * una descripción que ya existe (spec F4 §4.8, paso 3).
+   */
+  getDescription(
+    accessToken: string,
+    itemId: string,
+    options?: MercadoLibreCallOptions,
+  ): Promise<string | null>;
+  /**
+   * `POST /items/{id}/description` con texto plano (nota §4.1); sobre una que ya existe, falla. No
+   * manda `seller_contact`: si un sub-recurso del ítem también lo exige, NO VERIFICADO (nota §4.2).
+   */
   addDescription(
     accessToken: string,
     itemId: string,
     plainText: string,
     options?: MercadoLibreCallOptions,
   ): Promise<void>;
-  /** `PUT /items/{id}/address_line_by_reference`, sin cuerpo: oculta la dirección exacta (D7). */
+  /**
+   * `PUT /items/{id}/address_line_by_reference`, sin cuerpo: oculta la dirección exacta (D7). Sin
+   * `seller_contact`, como `addDescription` (NO VERIFICADO).
+   */
   hideAddress(
     accessToken: string,
     itemId: string,
@@ -119,6 +135,15 @@ const textList = z
   .nullish()
   .catch(null)
   .transform((value) => value ?? []);
+/**
+ * Una fecha de Mercado Libre: ISO con zona (`…-03:00` o `Z`), como la exige `remoteStateSchema` de
+ * core. Otra forma queda en `null`, para que guardar el estado no falle después de cerrar un aviso.
+ */
+const dateText = z.iso
+  .datetime({ offset: true })
+  .nullish()
+  .catch(null)
+  .transform((value) => value ?? null);
 
 const itemSchema = z
   .object({
@@ -126,10 +151,10 @@ const itemSchema = z
     permalink: nullableText,
     status: z.string().min(1),
     sub_status: textList,
-    start_time: nullableText,
-    stop_time: nullableText,
-    expiration_time: nullableText,
-    last_updated: nullableText,
+    start_time: dateText,
+    stop_time: dateText,
+    expiration_time: dateText,
+    last_updated: dateText,
     tags: textList,
     listing_source: nullableText,
     seller_custom_field: nullableText,
@@ -149,13 +174,22 @@ const itemSchema = z
       tags: item.tags,
       listingSource: item.listing_source,
       sellerCustomField: item.seller_custom_field,
-      warnings: [...parseCauses(item.warnings), ...parseCauses(item.cause)].filter(
-        (cause) => cause.type === "warning",
-      ),
+      // De `warnings`, todo lo que no diga ser un error (puede venir sin `type`); de `cause[]` en una
+      // respuesta que salió bien, solo las marcadas como advertencia.
+      warnings: [
+        ...parseCauses(item.warnings).filter((cause) => cause.type !== "error"),
+        ...parseCauses(item.cause).filter((cause) => cause.type === "warning"),
+      ].slice(0, MAX_CAUSES),
     }),
   );
 
 const searchSchema = z.object({ results: z.array(z.string().regex(ITEM_ID)) });
+const descriptionSchema = z.object({
+  plain_text: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? ""),
+});
 
 /** El `seller_contact` como lo pide Mercado Libre (nota §4.2): solo dígitos y sin los nulos. */
 export function sellerContactBody(contact: PortalSellerContact): Record<string, string> {
@@ -186,6 +220,12 @@ export function createMercadoLibreItems(options: MercadoLibreHttpOptions = {}): 
       { signal, timeoutMs },
     );
 
+  /** El ítem que respondió debe ser el pedido: otro sería guardar el estado de un ítem ajeno. */
+  const sameItem = (name: string, itemId: string, item: MercadoLibreItem) => {
+    if (item.id !== itemId) throw MERCADOLIBRE_ERRORS.unexpectedResponse(name);
+    return item;
+  };
+
   /** La ruta de un ítem, o `ML_ID_INVALID` sin llamar. */
   const itemPath = (itemId: string, suffix = "") => {
     if (!ITEM_ID.test(itemId)) throw MERCADOLIBRE_ERRORS.invalidId("item");
@@ -208,7 +248,7 @@ export function createMercadoLibreItems(options: MercadoLibreHttpOptions = {}): 
     async get(accessToken, itemId, callOptions) {
       const path = itemPath(itemId);
       const response = await call("getItem", "GET", path, accessToken, undefined, callOptions);
-      return parseBody("getItem", itemSchema, response);
+      return sameItem("getItem", itemId, parseBody("getItem", itemSchema, response));
     },
 
     async setStatus(accessToken, itemId, status, sellerContact, callOptions) {
@@ -225,7 +265,19 @@ export function createMercadoLibreItems(options: MercadoLibreHttpOptions = {}): 
         { json: { status, seller_contact: sellerContactBody(sellerContact) } },
         callOptions,
       );
-      return parseBody("setItemStatus", itemSchema, response);
+      return sameItem("setItemStatus", itemId, parseBody("setItemStatus", itemSchema, response));
+    },
+
+    async getDescription(accessToken, itemId, callOptions) {
+      const path = itemPath(itemId, "/description");
+      let response: unknown;
+      try {
+        response = await call("getDescription", "GET", path, accessToken, undefined, callOptions);
+      } catch (error) {
+        if (isAppError(error) && error.details?.httpStatus === 404) return null;
+        throw error;
+      }
+      return parseBody("getDescription", descriptionSchema, response).plain_text;
     },
 
     async addDescription(accessToken, itemId, plainText, callOptions) {

@@ -9,7 +9,7 @@ const UPLOAD_URL = "https://api.mercadolibre.com/pictures/items/upload";
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 0xff, 0xd9]);
 const FILE = { bytes: JPEG, mime: "image/jpeg", filename: "foto-1.jpg" };
 
-const { server, requests } = usePlatformServer();
+const { server, recorded } = usePlatformServer();
 const pictures = createMercadoLibrePictures();
 
 /** La respuesta de la doc de imágenes (con los dominios nuevos `D_NQ_NP_`). */
@@ -46,6 +46,7 @@ describe("createMercadoLibrePictures", () => {
 
     await expect(pictures.upload(ACCESS, FILE)).resolves.toEqual({ id: "123-MLC456_102026" });
 
+    const requests = await recorded();
     expect(requests).toHaveLength(1);
     const [request] = requests;
     expect(request?.method).toBe("POST");
@@ -131,6 +132,56 @@ describe("createMercadoLibrePictures", () => {
       await expect(pictures.upload(ACCESS, FILE)).rejects.toMatchObject({ code, retriable });
     },
   );
+
+  it("una foto vacía o de otro tipo no se sube (ML_PICTURE_INVALID, no reintentable)", async () => {
+    await expect(
+      pictures.upload(ACCESS, { ...FILE, bytes: new Uint8Array() }),
+    ).rejects.toMatchObject({
+      code: "ML_PICTURE_INVALID",
+      retriable: false,
+      details: { reason: "empty" },
+    });
+    for (const mime of ["image/heic", "image/webp", "application/octet-stream"]) {
+      await expect(pictures.upload(ACCESS, { ...FILE, mime })).rejects.toMatchObject({
+        code: "ML_PICTURE_INVALID",
+        details: { reason: "type" },
+      });
+    }
+    expect(await recorded()).toHaveLength(0);
+  });
+
+  it("un 400 con otro código no es el límite: sigue la tabla general", async () => {
+    const replies = [
+      [{ error: "unauthorized_application", cause: [] }, "ML_PERMISSION_DENIED"],
+      [{ error: "invalid_request", cause: [] }, "ML_REQUEST_REJECTED"],
+    ] as const;
+    for (const [body, code] of replies) {
+      server.use(http.post(UPLOAD_URL, () => HttpResponse.json(body, { status: 400 })));
+      await expect(pictures.upload(ACCESS, FILE)).rejects.toMatchObject({ code, retriable: false });
+    }
+  });
+
+  it("un 400 con solo advertencias y Bad_request (como lo escribe la doc) es el límite", async () => {
+    server.use(
+      http.post(UPLOAD_URL, () =>
+        HttpResponse.json(
+          { error: "Bad_request", cause: [{ cause_id: 1, type: "warning", code: "x.y" }] },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    await expect(pictures.upload(ACCESS, FILE)).rejects.toMatchObject({ code: "ML_RATE_LIMITED" });
+  });
+
+  it("sin conexión es ML_UNAVAILABLE (reintentable)", async () => {
+    server.use(http.post(UPLOAD_URL, () => HttpResponse.error()));
+
+    await expect(pictures.upload(ACCESS, FILE)).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+      retriable: true,
+    });
+  });
 
   it("una respuesta sin id es ML_UNEXPECTED_RESPONSE", async () => {
     server.use(http.post(UPLOAD_URL, () => HttpResponse.json({ variations: [] })));

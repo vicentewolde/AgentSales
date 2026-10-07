@@ -1,7 +1,7 @@
 import { AppError } from "@agentsales/core";
 import { z } from "zod";
 import { MERCADOLIBRE_API_ORIGIN, MERCADOLIBRE_REQUEST_TIMEOUT_MS } from "./constants.js";
-import type { MercadoLibreErrorInfo } from "./errors.js";
+import { MERCADOLIBRE_ERRORS, type MercadoLibreErrorInfo } from "./errors.js";
 import {
   type MercadoLibreCallOptions,
   type MercadoLibreHttpOptions,
@@ -32,14 +32,20 @@ export interface MercadoLibrePictures {
 
 const uploadSchema = z.object({ id: z.string().min(1).max(200) });
 
+/** Tipos que acepta Mercado Libre (nota §5). */
+const PICTURE_TYPES = ["image/jpeg", "image/png"];
+
 /**
- * El límite por minuto de la subida responde **400** (doc de imágenes: "limitamos los request por
- * minuto (RPM) por cada app_id"), sin un código documentado: un 400 sin causas que bloqueen es ese
- * límite y se reintenta (spec F4 §4.8). Con causas, es un rechazo de la foto (tabla general).
+ * El límite por minuto de la subida responde **400** "Bad_request" (doc de imágenes: "limitamos los
+ * request por minuto (RPM) por cada app_id"), sin más detalle: un 400 sin causas que bloqueen y sin
+ * otro código (`error` vacío o `bad_request`) es ese límite y se reintenta (spec F4 §4.8). Con
+ * causas o con otro código (`unauthorized_application`, …), sigue la tabla general, para que una
+ * foto mala o un permiso no gasten los reintentos como si fueran el límite.
  */
 function classifyUploadError(info: MercadoLibreErrorInfo): AppError | null {
   const blocking = info.causes.some((cause) => cause.type !== "warning");
-  if (info.httpStatus !== 400 || blocking) return null;
+  const generic = info.error === null || info.error.toLowerCase() === "bad_request";
+  if (info.httpStatus !== 400 || blocking || !generic) return null;
   return new AppError(
     "ML_RATE_LIMITED",
     "Mercado Libre limitó la subida de fotos por minuto: se reintenta",
@@ -58,6 +64,9 @@ export function createMercadoLibrePictures(
 
   return {
     async upload(accessToken, file, { signal } = {}) {
+      // Antes de llamar: una foto vacía o de otro tipo daría un 400 que parece el límite por minuto.
+      if (file.bytes.length === 0) throw MERCADOLIBRE_ERRORS.invalidPicture("empty");
+      if (!PICTURE_TYPES.includes(file.mime)) throw MERCADOLIBRE_ERRORS.invalidPicture("type");
       const form = new FormData();
       // Una copia con su propio `ArrayBuffer`: `Blob` no acepta uno compartido (`SharedArrayBuffer`).
       form.append(

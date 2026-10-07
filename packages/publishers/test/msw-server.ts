@@ -26,7 +26,13 @@ async function recordBody(request: Request) {
   if (contentType?.startsWith("multipart/form-data")) return empty;
   const rawBody = await request.clone().text();
   if (contentType?.startsWith("application/json")) {
-    return { ...empty, rawBody, json: rawBody === "" ? undefined : JSON.parse(rawBody) };
+    let json: unknown;
+    try {
+      json = rawBody === "" ? undefined : JSON.parse(rawBody);
+    } catch {
+      // Un JSON inválido queda solo en `rawBody`: el test lo revisa ahí.
+    }
+    return { ...empty, rawBody, json };
   }
   return { ...empty, rawBody, form: new URLSearchParams(rawBody) };
 }
@@ -52,7 +58,8 @@ export function usePlatformServer() {
       });
     });
     pending.add(recording);
-    void recording.finally(() => pending.delete(recording));
+    // Un cuerpo que no se pudo leer no rompe el run con un rechazo sin manejar.
+    void recording.catch(() => undefined).finally(() => pending.delete(recording));
   });
   beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
   afterEach(async () => {
@@ -61,7 +68,15 @@ export function usePlatformServer() {
     requests.length = 0;
   });
   afterAll(() => server.close());
-  return { server, requests };
+  /**
+   * Las peticiones, después de terminar de registrar sus cuerpos (el registro es asíncrono): los
+   * tests que revisan lo enviado usan esto en vez de leer `requests` directo.
+   */
+  const recorded = async () => {
+    await Promise.allSettled([...pending]);
+    return requests;
+  };
+  return { server, requests, recorded };
 }
 
 /** Todo lo que un error deja ver: mensaje, detalles, pila y causa. */

@@ -82,14 +82,20 @@ export async function mercadoLibreRequest(
   if (init.accessToken !== undefined && !isWellFormedToken(init.accessToken)) {
     throw MERCADOLIBRE_ERRORS.malformedToken();
   }
+  // Antes de escuchar la señal: un cuerpo que no se puede armar no deja nada colgando.
+  let encoded: ReturnType<typeof encodeBody>;
+  try {
+    encoded = encodeBody(init.body);
+  } catch {
+    throw MERCADOLIBRE_ERRORS.invalidBody(call);
+  }
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (init.accessToken !== undefined) headers.Authorization = `Bearer ${init.accessToken}`;
+  if (encoded.contentType !== undefined) headers["Content-Type"] = encoded.contentType;
   const caller = new AbortController();
   const onAbort = () => caller.abort();
   signal?.addEventListener("abort", onAbort, { once: true });
   const timeout = AbortSignal.timeout(timeoutMs);
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (init.accessToken !== undefined) headers.Authorization = `Bearer ${init.accessToken}`;
-  const encoded = encodeBody(init.body);
-  if (encoded.contentType !== undefined) headers["Content-Type"] = encoded.contentType;
   try {
     let response: Response;
     try {

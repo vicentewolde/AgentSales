@@ -3,6 +3,7 @@ import type { PortalSellerContact } from "@agentsales/core";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { errorText, usePlatformServer } from "../../test/msw-server.js";
+import { hasMercadoLibreCause, itemCreationOutcome } from "./errors.js";
 import { createMercadoLibreItems, type MercadoLibreItems } from "./items.js";
 
 const ACCESS = "APP_USR-1234567890123456-100612-0f1e2d3c4b5a69788796a5b4c3d2e1f0-8035443";
@@ -17,7 +18,7 @@ const CONTACT: PortalSellerContact = {
   phone2: "912345678",
 };
 
-const { server, requests } = usePlatformServer();
+const { server, recorded } = usePlatformServer();
 const items = createMercadoLibreItems();
 
 /** Un ítem como lo devuelve Mercado Libre (nota §4.1, ejemplo MLA adaptado a MLC). */
@@ -40,8 +41,8 @@ const itemBody = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const expectBearer = () => {
-  for (const request of requests) {
+const expectBearer = async () => {
+  for (const request of await recorded()) {
     expect(request.authorization).toBe(`Bearer ${ACCESS}`);
     expect(request.url.toString()).not.toContain(ACCESS);
   }
@@ -74,13 +75,13 @@ describe("createMercadoLibreItems", () => {
       sellerCustomField: PUBLICATION_ID,
       warnings: [],
     });
-    expect(requests).toHaveLength(1);
-    expect(requests[0]).toMatchObject({
+    expect(await recorded()).toHaveLength(1);
+    expect((await recorded())[0]).toMatchObject({
       method: "POST",
       contentType: "application/json",
       json: body,
     });
-    expectBearer();
+    await expectBearer();
   });
 
   it("create devuelve las advertencias (warnings o cause[] con type warning) sin bloquear", async () => {
@@ -166,8 +167,8 @@ describe("createMercadoLibreItems", () => {
       stopTime: null,
       warnings: [],
     });
-    expect(requests[0]).toMatchObject({ method: "GET", rawBody: null });
-    expectBearer();
+    expect((await recorded())[0]).toMatchObject({ method: "GET", rawBody: null });
+    await expectBearer();
   });
 
   it.each([["paused"], ["active"], ["closed"]] as const)(
@@ -180,7 +181,7 @@ describe("createMercadoLibreItems", () => {
       const item = await items.setStatus(ACCESS, ITEM_ID, status, CONTACT);
 
       expect(item.status).toBe(status);
-      expect(requests[0]).toMatchObject({
+      expect((await recorded())[0]).toMatchObject({
         method: "PUT",
         contentType: "application/json",
         json: {
@@ -193,7 +194,7 @@ describe("createMercadoLibreItems", () => {
           },
         },
       });
-      expectBearer();
+      await expectBearer();
     },
   );
 
@@ -202,7 +203,7 @@ describe("createMercadoLibreItems", () => {
 
     await items.setStatus(ACCESS, ITEM_ID, "paused", { ...CONTACT, contact: null, email: null });
 
-    expect(requests[0]?.json).toEqual({
+    expect((await recorded())[0]?.json).toEqual({
       status: "paused",
       seller_contact: { country_code2: "56", phone2: "912345678" },
     });
@@ -253,11 +254,11 @@ describe("createMercadoLibreItems", () => {
 
     await items.addDescription(ACCESS, ITEM_ID, "Línea 1\nLínea 2");
 
-    expect(requests[0]).toMatchObject({
+    expect((await recorded())[0]).toMatchObject({
       method: "POST",
       json: { plain_text: "Línea 1\nLínea 2" },
     });
-    expectBearer();
+    await expectBearer();
   });
 
   it("hideAddress: PUT /items/{id}/address_line_by_reference sin cuerpo", async () => {
@@ -270,8 +271,8 @@ describe("createMercadoLibreItems", () => {
 
     await items.hideAddress(ACCESS, ITEM_ID);
 
-    expect(requests[0]).toMatchObject({ method: "PUT", rawBody: "", contentType: null });
-    expectBearer();
+    expect((await recorded())[0]).toMatchObject({ method: "PUT", rawBody: "", contentType: null });
+    await expectBearer();
   });
 
   it("findBySellerCustomField: ?sku=<id de la publicación> y los ids encontrados", async () => {
@@ -290,10 +291,10 @@ describe("createMercadoLibreItems", () => {
     const found = await items.findBySellerCustomField(ACCESS, USER_ID, PUBLICATION_ID);
 
     expect(found).toEqual([ITEM_ID]);
-    expect(Object.fromEntries(requests[0]?.url.searchParams ?? [])).toEqual({
+    expect(Object.fromEntries((await recorded())[0]?.url.searchParams ?? [])).toEqual({
       sku: PUBLICATION_ID,
     });
-    expectBearer();
+    await expectBearer();
   });
 
   it("findBySellerCustomField sin resultados devuelve una lista vacía", async () => {
@@ -323,7 +324,7 @@ describe("createMercadoLibreItems", () => {
     await expect(
       items.findBySellerCustomField(ACCESS, "8035443/../..", PUBLICATION_ID),
     ).rejects.toMatchObject({ code: "ML_ID_INVALID", details: { kind: "user" } });
-    expect(requests).toHaveLength(0);
+    expect(await recorded()).toHaveLength(0);
   });
 
   it("una respuesta sin id válido o un resultado de búsqueda raro es ML_UNEXPECTED_RESPONSE", async () => {
@@ -352,6 +353,155 @@ describe("createMercadoLibreItems", () => {
     });
   });
 
+  it("las advertencias de warnings sin type se conservan; las de cause[] solo con type warning", async () => {
+    server.use(
+      http.post(`${API}/items`, () =>
+        HttpResponse.json(
+          itemBody({
+            warnings: [
+              { cause_id: 3, code: "item.sin.tipo" },
+              { cause_id: 4, type: "error", code: "x.y" },
+            ],
+            cause: [{ cause_id: 5, code: "sin.tipo.en.cause" }],
+          }),
+          { status: 201 },
+        ),
+      ),
+    );
+
+    const item = await items.create(ACCESS, {});
+
+    expect(item.warnings).toEqual([{ code: "item.sin.tipo", causeId: 3, type: null }]);
+  });
+
+  it("guarda como máximo 20 advertencias", async () => {
+    const many = Array.from({ length: 30 }, (_, index) => ({ cause_id: index, type: "warning" }));
+    server.use(
+      http.post(`${API}/items`, () =>
+        HttpResponse.json(itemBody({ warnings: many, cause: many }), { status: 201 }),
+      ),
+    );
+
+    expect((await items.create(ACCESS, {})).warnings).toHaveLength(20);
+  });
+
+  it("una fecha sin zona o con otra forma queda en null (remoteStateSchema exige ISO con zona)", async () => {
+    server.use(
+      http.get(`${API}/items/${ITEM_ID}`, () =>
+        HttpResponse.json(
+          itemBody({
+            stop_time: "2026-11-21 12:00:00",
+            expiration_time: "mañana",
+            start_time: "2026-10-07T12:00:00Z",
+            last_updated: 1_700_000_000,
+          }),
+        ),
+      ),
+    );
+
+    await expect(items.get(ACCESS, ITEM_ID)).resolves.toMatchObject({
+      stopTime: null,
+      expirationTime: null,
+      startTime: "2026-10-07T12:00:00Z",
+      lastUpdated: null,
+    });
+  });
+
+  it("get y setStatus rechazan la respuesta de otro ítem (ML_UNEXPECTED_RESPONSE)", async () => {
+    server.use(
+      http.get(`${API}/items/${ITEM_ID}`, () => HttpResponse.json(itemBody({ id: "MLC999" }))),
+      http.put(`${API}/items/${ITEM_ID}`, () => HttpResponse.json(itemBody({ id: "MLC999" }))),
+    );
+
+    await expect(items.get(ACCESS, ITEM_ID)).rejects.toMatchObject({
+      code: "ML_UNEXPECTED_RESPONSE",
+      details: { call: "getItem" },
+    });
+    await expect(items.setStatus(ACCESS, ITEM_ID, "paused", CONTACT)).rejects.toMatchObject({
+      code: "ML_UNEXPECTED_RESPONSE",
+      details: { call: "setItemStatus" },
+    });
+  });
+
+  it("create con un id de respuesta que no es de Mercado Libre es ML_UNEXPECTED_RESPONSE", async () => {
+    server.use(http.post(`${API}/items`, () => HttpResponse.json(itemBody({ id: "otro" }))));
+
+    await expect(items.create(ACCESS, {})).rejects.toMatchObject({
+      code: "ML_UNEXPECTED_RESPONSE",
+      details: { call: "createItem" },
+    });
+  });
+
+  it("create rechazado por una foto subida (509): se reconoce la causa y el ítem no se creó", async () => {
+    server.use(
+      http.post(`${API}/items`, () =>
+        HttpResponse.json(
+          {
+            error: "validation_error",
+            status: 400,
+            cause: [{ cause_id: 509, type: "error", code: "item.pictures.below_minimum" }],
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    const error = await items.create(ACCESS, {}).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "ML_ITEM_REJECTED",
+      message: expect.stringContaining("más chica que el mínimo"),
+    });
+    expect(hasMercadoLibreCause(error, [508, 509])).toBe(true);
+    expect(itemCreationOutcome(error)).toBe("not_created");
+  });
+
+  it("create con un cuerpo que no se puede armar no llama (ML_BODY_INVALID, no se creó)", async () => {
+    const circular: Record<string, unknown> = { title: "x" };
+    circular.self = circular;
+
+    for (const body of [{ price: 10n }, circular]) {
+      const error = await items.create(ACCESS, body).catch((caught: unknown) => caught);
+      expect(error).toMatchObject({ code: "ML_BODY_INVALID", details: { call: "createItem" } });
+      expect(itemCreationOutcome(error)).toBe("not_created");
+    }
+    expect(await recorded()).toHaveLength(0);
+  });
+
+  it("getDescription: el texto plano; null si no hay (404); otro error se propaga", async () => {
+    server.use(
+      http.get(`${API}/items/${ITEM_ID}/description`, () =>
+        HttpResponse.json({
+          text: "",
+          plain_text: "Hola\nmundo",
+          last_updated: "2026-10-07T12:00:00Z",
+        }),
+      ),
+    );
+    await expect(items.getDescription(ACCESS, ITEM_ID)).resolves.toBe("Hola\nmundo");
+
+    server.use(
+      http.get(`${API}/items/${ITEM_ID}/description`, () =>
+        HttpResponse.json(
+          { message: "not found", error: "not_found", status: 404 },
+          { status: 404 },
+        ),
+      ),
+    );
+    await expect(items.getDescription(ACCESS, ITEM_ID)).resolves.toBeNull();
+
+    server.use(
+      http.get(`${API}/items/${ITEM_ID}/description`, () => HttpResponse.json({}, { status: 500 })),
+    );
+    await expect(items.getDescription(ACCESS, ITEM_ID)).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+    });
+    await expect(items.getDescription(ACCESS, "../x")).rejects.toMatchObject({
+      code: "ML_ID_INVALID",
+    });
+    await expectBearer();
+  });
+
   describe("nunca borra ítems", () => {
     it("setStatus no acepta otro estado (deleted), ni con un cast: no llama", async () => {
       for (const status of ["deleted", "DELETED", "inactive"]) {
@@ -359,7 +509,7 @@ describe("createMercadoLibreItems", () => {
           items.setStatus(ACCESS, ITEM_ID, status as "closed", CONTACT),
         ).rejects.toMatchObject({ code: "ML_STATUS_NOT_ALLOWED" });
       }
-      expect(requests).toHaveLength(0);
+      expect(await recorded()).toHaveLength(0);
     });
 
     it("ninguna operación manda DELETE ni deleted, y el código no los tiene", async () => {
@@ -368,6 +518,9 @@ describe("createMercadoLibreItems", () => {
         http.get(`${API}/items/${ITEM_ID}`, () => HttpResponse.json(itemBody())),
         http.put(`${API}/items/${ITEM_ID}`, () => HttpResponse.json(itemBody())),
         http.post(`${API}/items/${ITEM_ID}/description`, () => HttpResponse.json({})),
+        http.get(`${API}/items/${ITEM_ID}/description`, () =>
+          HttpResponse.json({ plain_text: "" }),
+        ),
         http.put(`${API}/items/${ITEM_ID}/address_line_by_reference`, () => HttpResponse.json({})),
         http.get(`${API}/users/${USER_ID}/items/search`, () => HttpResponse.json({ results: [] })),
       );
@@ -377,12 +530,13 @@ describe("createMercadoLibreItems", () => {
       for (const status of ["paused", "active", "closed"] as const) {
         await items.setStatus(ACCESS, ITEM_ID, status, CONTACT);
       }
+      await items.getDescription(ACCESS, ITEM_ID);
       await items.addDescription(ACCESS, ITEM_ID, "x");
       await items.hideAddress(ACCESS, ITEM_ID);
       await items.findBySellerCustomField(ACCESS, USER_ID, PUBLICATION_ID);
 
-      expect(requests).toHaveLength(8);
-      for (const request of requests) {
+      expect(await recorded()).toHaveLength(9);
+      for (const request of await recorded()) {
         expect(request.method).not.toBe("DELETE");
         expect(request.rawBody ?? "").not.toContain("deleted");
       }
