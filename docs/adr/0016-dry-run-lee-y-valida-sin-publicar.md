@@ -29,3 +29,6 @@
 - **`dry-run` sin conexión, como en Instagram:** los errores de Mercado Libre aparecerían recién al pagar el cupo.
 - **Validar solo en un script del operador (`ml:smoke`):** sirve una vez, pero no revisa cada aviso que se aprueba.
 - **Un tercer modo (`validate`) además de `dry-run` y `live`:** suma un valor a `PUBLISH_MODE` y a cada publicación para algo que cabe en `dry-run`.
+
+## Seguimiento
+- 2026-10-07 (revisión de F4-T05, `arquitecto`): el rechazo de `POST /items/validate` vuelve del cliente como resultado (`valid: false` con `issues` de código y motivo), no como error; `preflight` lo devuelve como `{ ok: false, issues }` y `withDryRun` lo convierte en `PUBLISH_INPUT_INVALID` con los motivos (la publicación queda `failed`, como en `live`). Las advertencias van a la bitácora con `notes` en `{ ok: true }` (T13). Una caída o un token rechazado se lanzan como en `live` (reintentable o la cuenta vencida).
