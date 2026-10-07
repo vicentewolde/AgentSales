@@ -15,6 +15,7 @@ import { buildContentBrief, type ContentBrief } from "./brief.js";
 import {
   AMENITY_EXACT,
   AMENITY_TERMS,
+  CONTACT_PATTERNS,
   DISCRIMINATORY_PATTERNS,
   DISTANCE_UNITS,
   NUMBER_WORDS,
@@ -28,6 +29,7 @@ export const CONTENT_CHECK_SEVERITY_LEVELS = ["error", "warning"] as const;
 export const CONTENT_CHECK_SEVERITIES = {
   NUMBER_NOT_IN_DATA: "error",
   ADDRESS_EXPOSED: "error",
+  CONTACT_IN_TEXT: "error",
   INTERNAL_NOTES_LEAK: "error",
   DISCRIMINATORY: "error",
   EMOJI_NOT_ALLOWED: "error",
@@ -257,11 +259,18 @@ export function checkContent(
     add("NUMBER_NOT_IN_DATA", `«${match[0]}» no está en los datos del aviso`);
   }
 
-  // Dirección y número de unidad, si no se pueden mostrar (y no son ya parte de los datos). La
-  // calle se busca también en los hashtags, que se publican con el caption.
+  // Dirección y número de unidad, si no se pueden mostrar (y no son parte de otros datos). En
+  // Portal nunca van en el texto, aunque `show_exact_address = true`: la dirección va en la
+  // ubicación del ítem (spec F4 §4.7). La calle se busca también en los hashtags, que se publican
+  // con el caption.
   const contentWords = words(content);
-  const dataWords = new Set(words(dataText));
-  if (ctx.brief.address === null) {
+  if (ctx.brief.address === null || platform === "portal_inmobiliario") {
+    // Los datos sin la dirección ni la unidad: lo que el texto sí puede repetir.
+    const otherData = briefValues({ ...ctx.brief, address: null, unitNumber: null }).join("\n");
+    const dataWords = new Set(words(otherData));
+    const otherNumbers = new Set(
+      numbersIn(`${otherData}\n${ctx.contact.whatsapp ?? ""}`).map((number) => number.key),
+    );
     const street = streetWords(ctx.private.address ?? "").filter((word) => !dataWords.has(word));
     const tags = text.hashtags.map((tag) => foldText(tag).replace(/[^a-z0-9]/g, ""));
     const inWords = new Set([...contentWords, ...tags.flatMap((tag) => words(tag))]);
@@ -274,8 +283,31 @@ export function checkContent(
     }
     const unit = (ctx.private.unitNumber ?? "").match(/\d+/g) ?? [];
     const shown = new Set(numbersIn(content).map((number) => number.key));
-    if (unit.some((digits) => shown.has(numberKey(digits)) && !known.has(numberKey(digits)))) {
+    const exposed = (digits: string) =>
+      shown.has(numberKey(digits)) && !otherNumbers.has(numberKey(digits));
+    if (unit.some(exposed)) {
       add("ADDRESS_EXPOSED", "Menciona el número de la unidad, que no se puede mostrar");
+    }
+    // El número de la calle: en los demás canales ya lo marca NUMBER_NOT_IN_DATA (no está en los
+    // datos); en Portal puede estarlo (`show_exact_address = true`) y aun así no va en el texto.
+    const streetNumbers = (ctx.private.address ?? "").match(/\d+/g) ?? [];
+    if (platform === "portal_inmobiliario" && streetNumbers.some(exposed)) {
+      add(
+        "ADDRESS_EXPOSED",
+        "Menciona el número de la dirección, que en Portal va en la ubicación",
+      );
+    }
+  }
+
+  // Portal modera el título o la descripción con datos de contacto: van solo en el aviso.
+  if (platform === "portal_inmobiliario") {
+    for (const { kind, pattern } of CONTACT_PATTERNS) {
+      if (pattern.test(content)) {
+        add(
+          "CONTACT_IN_TEXT",
+          `Tiene ${kind}: Portal Inmobiliario modera los datos de contacto en el texto (el contacto va en el aviso)`,
+        );
+      }
     }
   }
 

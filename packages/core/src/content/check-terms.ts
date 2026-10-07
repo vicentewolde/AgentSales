@@ -153,3 +153,26 @@ export const NUMBER_WORDS: Readonly<Record<string, number>> = {
   cien: 100,
 };
 export const DISTANCE_UNITS = "(?:minutos?|cuadras?|metros|kilometros?|km|horas?)";
+
+/**
+ * Datos de contacto que Portal Inmobiliario modera en el título o la descripción (nota de Mercado
+ * Libre §9, spec F4 §4.7): el contacto va solo en el aviso (`seller_contact`). Se buscan en el texto
+ * sin plegar.
+ * - Teléfono: 9 dígitos chilenos (el primero de 2 a 9), con `+56` opcional y separados como mucho
+ *   por un espacio, un guion o un paréntesis. Un punto no separa: así `$120.000.000` o `UF 5.800`
+ *   no son teléfonos, ni los años o superficies sueltos.
+ * - Correo: `algo@dominio.tld`.
+ * - Dirección web: con `http`, `www.` o un dominio de los comunes (`.cl`, `.com`…).
+ */
+export const CONTACT_PATTERNS: readonly { kind: string; pattern: RegExp }[] = [
+  {
+    kind: "un teléfono",
+    pattern: /(?<![\d.,+])(?:\+\s?56[\s-]?)?\(?[2-9]\)?(?:[\s-]?\d){8}(?!\d|[.,]\d)/,
+  },
+  { kind: "un correo", pattern: /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/i },
+  {
+    kind: "una dirección web",
+    pattern:
+      /\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:cl|com|net|org|info|io|app|co|me|site|online|store|es)\b(?:\/\S*)?/i,
+  },
+];

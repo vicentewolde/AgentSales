@@ -3,13 +3,13 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-07
-**Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 24 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`), salvo el tag `v0.3.0`
-**Última tarea:** F4-T09 · Catálogo con caché. Antes, F4-T08 (refresco por plataforma) y F3-T20 (cierre de F3), al que le falta el tag
-**Siguiente paso:** `/tarea F4-T12` (reglas del texto de Portal) o `/tarea F4-T13` (contrato `Publisher` ampliado); T10 (`ml:smoke`) ya se puede escribir, pero correrlo necesita la cuenta y la app de Mercado Libre. Para probar la conexión de verdad (T20 y T10) hacen falta la cuenta y la app de developers de Mercado Libre, con el par en `.env`. Con tu permiso, el tag `v0.3.0` (F3).
+**Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 24 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
+**Última tarea:** F4-T12 · Reglas del texto de Portal. Antes, F4-T09 (catálogo con caché) y el tag `v0.3.0` de F3
+**Siguiente paso:** `/tarea F4-T13` (contrato `Publisher` ampliado). T10 (`ml:smoke`) ya se puede escribir, pero correrlo necesita la cuenta y la app de Mercado Libre, con `ML_APP_ID` y `ML_CLIENT_SECRET` en `.env`; T11 viene después de T10. La evaluación del prompt nuevo con Claude (`pnpm eval:content`) la corres tú cuando quieras
 
 ## Pendiente del cierre de F3
 - [x] **Refresco del token (demo), 2026-10-07 20:05:** el primer `pnpm dev` lo refrescó al arrancar; vence el 2026-12-06 20:05 (real, ya no estimado). Anotado en la nota de Instagram (§8, punto 4) y en §6 del spec F3
-- [ ] Tag `v0.3.0` desde `main`, con tu permiso, después del refresco
+- [x] Tag `v0.3.0` desde `main` (2026-10-07, con tu permiso; CHANGELOG fechado)
 - [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota §8, punto 8)
 
 ## Progreso de la fase
@@ -27,7 +27,7 @@
 | F4-T09 · Catálogo con caché | ✅ | #84 |
 | F4-T10 · `pnpm ml:smoke`: catálogo y `validate` | ⏳ pendiente | |
 | F4-T11 · Mapeo y revisión previa | ⏳ pendiente | |
-| F4-T12 · Reglas del texto de Portal | ⏳ pendiente | |
+| F4-T12 · Reglas del texto de Portal | ✅ | |
 | F4-T13 · Contrato `Publisher` ampliado y el aviso en el input | ⏳ pendiente | |
 | F4-T14 · Publisher de Portal: publicar | ⏳ pendiente | |
 | F4-T15 · Publisher de Portal: operaciones y `preflight` | ⏳ pendiente | |
@@ -92,6 +92,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-07: **F4-T12.** El texto de Portal ya no puede llevar la dirección (tampoco cuando se permite mostrarla: en Portal va en la ubicación del aviso) ni datos de contacto (teléfonos, correos o sitios web), porque Mercado Libre modera esos avisos. La revisión los marca como error (`ADDRESS_EXPOSED` y la regla nueva `CONTACT_IN_TEXT`), sin confundir precios, superficies, años, un RUT ni el cierre de Portal. El prompt pasa a `listing-content-v2` ("en Portal no escribas la dirección"): la próxima preparación de una propiedad regenera sus textos. `pnpm eval:content --provider fake` dio 3 de 3 sin errores; la evaluación con Claude la corres tú. **Tag `v0.3.0`** creado en `main` con el CHANGELOG fechado.
 - 2026-10-07: **Demo del refresco de Instagram (F3, paso 7)**, con tu autorización. El primer `pnpm dev` renovó el token al arrancar (en 1 s) y el vencimiento pasó de estimado a real: 6 de diciembre de 2026. Un segundo intento con `--force` no lo repitió (mínimo de 24 h), el registro no mostró el token y la renovación diaria de mediodía quedó programada una sola vez. Todo apagado al terminar. Falta el tag `v0.3.0` (con tu permiso).
 - 2026-10-07: **F4-T09.** El catálogo de Mercado Libre con caché: la categoría exacta de cada tipo y operación (bajando por los nombres desde Inmuebles, sin importar mayúsculas ni tildes, y solo por el camino pedido), los datos que pide esa categoría y la región y comuna de un aviso. Lo bajado se guarda en la base y sirve 7 días; si Mercado Libre no responde y hay una copia vieja, se usa con un aviso. Si el token fue rechazado, pide otro una vez. Las comunas que Mercado Libre nombre distinto se cubren con una tabla de equivalencias en core, que se completa cuando `ml:smoke` (T10) muestre los nombres reales (hoy solo trae O'Higgins, el único verificado en la doc). Como solo lo usa el publicador de Portal, el catálogo vive en publishers (anotado en ADR-0015). Probado con un Mercado Libre simulado y en PGlite; 15 mutaciones a mano detectadas. La revisión dejó: el catálogo y el publicador piden el token de la misma forma; si Mercado Libre rechaza el token nuevo después de renovarlo, el error sube marcado para que nadie más lo vuelva a renovar, y la cuenta queda vencida (lo hacen T16 y T17); T10 completa la tabla de regiones y comunas con los nombres reales; una fecha de bajada en el futuro cuenta como vencida; más pruebas (comuna ambigua, copia vieja con un error que no se reintenta, el alias real de O'Higgins y el proveedor de token).
 - 2026-10-07: **F4-T08.** El acceso a Mercado Libre se renueva solo, igual que el de Instagram: el worker (al arrancar y a mediodía) renueva las cuentas que llevan 7 días o más sin renovarse, y vuelve a revisarlo con la cuenta bloqueada (si otro proceso ya la renovó, no la renueva de nuevo). A pedido (`accounts refresh <id>`), sin `--force` sigue la misma regla y con `--force` renueva siempre. Cada renovación guarda el par completo y el nuevo horizonte de 180 días. Si Mercado Libre la rechaza, la cuenta queda vencida y la respuesta lo dice como resultado (no como error), igual que Instagram; si otro proceso la está renovando, la API responde "se reintenta en un momento" (503). Sin `ML_APP_ID` o `ML_CLIENT_SECRET`, el worker salta esas cuentas sin tocarlas, avisa en el log y sigue con Instagram. Instagram no cambia. La CLI dice la plataforma en sus mensajes. Probado con dobles y 15 mutaciones a mano detectadas. La revisión dejó: cortar un pedido (Ctrl-C, cerrar el panel, apagar el worker) ya no corta una renovación de Mercado Libre en curso, que perdería el acceso nuevo; solo evita empezarla (también al publicar, `ensureAccessToken`). También: una fecha de renovación en el futuro espera como mucho 7 días, la prueba del candado ocupado en el lote, el seguimiento en ADR-0015 y el aviso en la guía de que con 4 meses sin abrir el worker la cuenta de Mercado Libre hay que reconectarla.

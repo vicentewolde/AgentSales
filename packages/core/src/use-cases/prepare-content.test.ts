@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_CONTENT_DRAFT } from "../content/draft.js";
+import { CONTENT_PROMPT_VERSION } from "../content/prompt.js";
 import { AppError } from "../errors.js";
 import type { Listing } from "../listing.js";
 import type { Media } from "../media.js";
@@ -184,7 +185,7 @@ describe("prepareContent · corrida completa", () => {
       llm: {
         provider: "fake",
         model: "modelo-falso",
-        promptVersion: "listing-content-v1",
+        promptVersion: CONTENT_PROMPT_VERSION,
         attempts: 1,
       },
       checks: { instagram: [], portal_inmobiliario: [], fb_marketplace: [] },

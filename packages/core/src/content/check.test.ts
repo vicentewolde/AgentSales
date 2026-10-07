@@ -158,6 +158,125 @@ describe("checkContent · ADDRESS_EXPOSED", () => {
   });
 });
 
+describe("checkContent · ADDRESS_EXPOSED en Portal (F4-T12)", () => {
+  const exact = {
+    showExactAddress: true,
+    address: "Av. Irarrázaval 1234",
+    unitNumber: "Depto 506",
+  };
+
+  it("con show_exact_address = true, en Portal la calle, la unidad y el número se marcan igual", () => {
+    const messages = (body: string) =>
+      checkContent("portal_inmobiliario", text(body, { hashtags: [] }), contextOf(exact))
+        .filter((check) => check.code === "ADDRESS_EXPOSED")
+        .map((check) => check.message);
+
+    expect(messages("Ubicado en Irarrázaval, cerca de todo")).toEqual([
+      "Menciona la calle del aviso, que no se puede mostrar",
+    ]);
+    expect(messages("Departamento 506 con vista")).toEqual([
+      "Menciona el número de la unidad, que no se puede mostrar",
+    ]);
+    expect(messages("En el 1234, frente a la plaza")).toEqual([
+      "Menciona el número de la dirección, que en Portal va en la ubicación",
+    ]);
+    expect(messages("Ubicado en Ñuñoa, cerca de todo")).toEqual([]);
+  });
+
+  it("en Instagram y Marketplace la dirección visible sigue permitida", () => {
+    for (const platform of ["instagram", "fb_marketplace"] as const) {
+      expect(
+        codesOf("En Av. Irarrázaval 1234, depto 506", { platform, listing: exact }),
+        platform,
+      ).not.toContain("ADDRESS_EXPOSED");
+    }
+  });
+
+  it("en Portal sin dirección visible, igual que antes", () => {
+    expect(
+      codesOf("Ubicado en Irarrázaval", {
+        platform: "portal_inmobiliario",
+        listing: { address: "Av. Irarrázaval 1234" },
+      }),
+    ).toContain("ADDRESS_EXPOSED");
+  });
+
+  it("un número de la dirección que también es otro dato (los dormitorios) no se marca", () => {
+    const listing = { showExactAddress: true, address: "Pasaje Inventado 3" };
+    expect(
+      codesOf("Tiene 3 dormitorios", { platform: "portal_inmobiliario", listing }),
+    ).not.toContain("ADDRESS_EXPOSED");
+  });
+});
+
+describe("checkContent · CONTACT_IN_TEXT (Portal, F4-T12)", () => {
+  const portalCodes = (body: string, title: string | null = null) =>
+    codesOf(body, { platform: "portal_inmobiliario", title });
+
+  it.each([
+    ["un celular con +56 y espacios", "Llama al +56 9 1234 5678"],
+    ["un celular sin prefijo", "Llama al 9 1234 5678"],
+    ["un celular junto", "Llama al 912345678"],
+    ["un celular con guion", "Llama al 9 1234-5678"],
+    ["un fijo de Santiago", "Llama al +56 2 2345 6789"],
+    ["un fijo con paréntesis", "Llama al (2) 2345 6789"],
+    ["el WhatsApp del corredor", "Escríbeme al +56 9 1111 2222"],
+    ["un correo", "Escribe a ventas@corredora.cl"],
+    ["una URL con https", "Más fotos en https://corredora.cl/aviso/123"],
+    ["una URL con www", "Visita www.corredora.cl"],
+    ["un dominio suelto", "Detalles en corredora.cl/aviso"],
+    ["un dominio .com", "Síguenos en Instagram.com"],
+  ])("marca %s", (_, body) => {
+    expect(portalCodes(body)).toContain("CONTACT_IN_TEXT");
+  });
+
+  it("también en el título, y el mensaje no cita el dato", () => {
+    const checks = checkContent(
+      "portal_inmobiliario",
+      text("Texto", { title: "Depto en venta 912345678", hashtags: [] }),
+      contextOf(),
+    );
+    const contact = checks.filter((check) => check.code === "CONTACT_IN_TEXT");
+    expect(contact).toEqual([
+      {
+        code: "CONTACT_IN_TEXT",
+        severity: "error",
+        message:
+          "Tiene un teléfono: Portal Inmobiliario modera los datos de contacto en el texto (el contacto va en el aviso)",
+      },
+    ]);
+    expect(JSON.stringify(contact)).not.toContain("912345678");
+  });
+
+  it("teléfono, correo y web en el mismo texto: un aviso por cada uno", () => {
+    const codes = portalCodes("Llama al 912345678, escribe a a@b.cl o mira www.b.cl");
+    expect(codes.filter((code) => code === "CONTACT_IN_TEXT")).toHaveLength(3);
+  });
+
+  it.each([
+    ["el precio en UF", "Precio UF 5.800"],
+    ["el precio en pesos", "Arriendo $650.000 mensuales"],
+    ["un precio grande", "Valor $250.000.000"],
+    ["los gastos comunes", "Gastos comunes aprox. $120.000."],
+    ["la superficie", "72,5 m² útiles y 80 m² totales"],
+    ["un año", "Construido en 2018, entrega 2019-2020"],
+    ["dormitorios y baños", "3 dormitorios y 2 baños, 1 estacionamiento"],
+    ["el cierre de Portal", "Si te interesa, coordina una visita a través de Portal Inmobiliario."],
+    ["abreviaturas con punto", "Depto. en Av. Grecia, aprox. a 2 cuadras, etc."],
+    ["un RUT", "Propietario RUT 23.456.789-0"],
+  ])("no marca %s", (_, body) => {
+    expect(portalCodes(body)).not.toContain("CONTACT_IN_TEXT");
+  });
+
+  it("en Instagram y Marketplace el WhatsApp sí va en el texto", () => {
+    for (const platform of ["instagram", "fb_marketplace"] as const) {
+      expect(codesOf("Escríbeme al +56 9 1111 2222", { platform }), platform).not.toContain(
+        "CONTACT_IN_TEXT",
+      );
+    }
+  });
+});
+
 describe("checkContent · INTERNAL_NOTES_LEAK", () => {
   it("marca 6 palabras seguidas de las notas internas, sin importar tildes ni mayúsculas", () => {
     // Notas: "Dueño acepta ofertas bajo el precio publicado si pagan al contado".
