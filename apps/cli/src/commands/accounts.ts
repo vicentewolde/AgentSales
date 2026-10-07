@@ -4,7 +4,12 @@ import {
   accountResponseSchema,
   type PlatformAccountView,
 } from "@agentsales/api/contracts";
-import { PLATFORM_ACCOUNT_STATUS_TEXT, PLATFORM_TEXT, tokenStdinCommand } from "@agentsales/core";
+import {
+  MERCADOLIBRE_REFRESH_AGE_MS,
+  PLATFORM_ACCOUNT_STATUS_TEXT,
+  PLATFORM_TEXT,
+  tokenStdinCommand,
+} from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
@@ -162,6 +167,8 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
 
 export type RefreshOptions = { force?: boolean };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
  * `agentsales accounts refresh <id> [--force]` (spec F3 §4.6 y F4 §4.3): renueva el acceso de una
  * cuenta con la política de su plataforma y espera el resultado. En Instagram, `--force` salta solo
@@ -209,7 +216,7 @@ export function runRefresh(deps: AccountsDeps, id: string, options: RefreshOptio
         result.reason === "too_recent"
           ? `Sin cambios: ${account.displayName} se renovó o conectó hace menos de 24 h; se puede desde ${when}`
           : mercadoLibre
-            ? `Sin cambios: ${account.displayName} se renovó o conectó hace menos de 7 días; toca desde ${when}. Usa --force para renovarlo igual`
+            ? `Sin cambios: ${account.displayName} se renovó o conectó hace menos de ${MERCADOLIBRE_REFRESH_AGE_MS / DAY_MS} días; toca desde ${when}. Usa --force para renovarlo igual`
             : `Sin cambios: a ${account.displayName} le quedan más de 30 días${expiry}. Usa --force para renovarlo igual`,
       );
       return 0;

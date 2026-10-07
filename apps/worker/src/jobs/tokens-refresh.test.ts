@@ -254,6 +254,26 @@ describe("tokens.refresh", () => {
     expect(lines.some((line) => line.level === 50)).toBe(false);
   });
 
+  it("el candado de una cuenta de Mercado Libre ocupado falla el job para reintentarlo, sin el aviso de no reintentables", async () => {
+    const { platformAccounts, add, addMl, calls, lines, run } = await setup();
+    await add("1", TOKEN);
+    const ml = await addMl("8035443", "TG-secreto-del-test");
+    platformAccounts.withCredentialsLock = async () => {
+      throw new AppError("ACCOUNT_LOCK_TIMEOUT", "ocupado", { retriable: true });
+    };
+
+    await expect(run()).rejects.toMatchObject({
+      code: "TOKENS_REFRESH_INCOMPLETE",
+      retriable: true,
+    });
+    expect(calls).toEqual([TOKEN]);
+    expect(lines.find((line) => line.msg === "tokens revisados")).toMatchObject({
+      failed: [{ accountId: ml.id, code: "ACCOUNT_LOCK_TIMEOUT", retriable: true }],
+    });
+    expect(lines.some((line) => String(line.msg).startsWith("cuentas sin renovar"))).toBe(false);
+    expect((await platformAccounts.get(ml.id))?.status).toBe("connected");
+  });
+
   it("el refresco del arranque se encola con la clave fija, sin datos", async () => {
     const queue = createInMemoryJobQueue();
 

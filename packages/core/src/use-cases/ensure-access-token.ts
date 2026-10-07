@@ -43,7 +43,11 @@ export type EnsureAccessTokenOptions = {
    * un proceso con un token viejo no rota el par de nuevo (ADR-0015, seguimiento de F4-T07).
    */
   rejectedToken?: string;
-  /** Corta el refresco; la espera del candado la acota `lock_timeout` (10 s), no la señal. */
+  /**
+   * Si ya se disparó, no se refresca (`ML_ABORTED`). No corta un refresco en curso: el par ya pudo
+   * rotar, y perderlo obliga a reconectar; lo acota el tope de 10 s del cliente. La espera del
+   * candado la acota `lock_timeout` (10 s).
+   */
   signal?: AbortSignalLike;
 };
 
@@ -72,6 +76,13 @@ function withRefreshToken(credentials: PlatformCredentials): Required<PlatformCr
     : { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken };
 }
 
+/** La señal ya se disparó: no se empieza un refresco (nada cambió). */
+const aborted = (accountId: string) =>
+  new AppError("ML_ABORTED", "Se cortó el pedido antes de renovar el acceso de Mercado Libre", {
+    retriable: true,
+    details: { accountId },
+  });
+
 const missingRefreshToken = (accountId: string) =>
   new AppError(
     "CREDENTIALS_INVALID",
@@ -97,7 +108,9 @@ export type MercadoLibreRefreshResult = {
  * pregunta a `shouldRefresh` con la cuenta y el token **releídos**, y solo entonces refresca.
  * Guarda el par, `tokenRefreshedAt`, `accessTokenExpiresAt` y `token_expires_at` = ahora + 180 días
  * (conserva `tokenExpiryEstimated: true`) **antes** de devolver el token: si guardar falla, no se
- * entrega. Sin el par de la app, `MERCADOLIBRE_NOT_CONFIGURED` sin llamar.
+ * entrega. Sin el par de la app, `MERCADOLIBRE_NOT_CONFIGURED` sin llamar. Con la señal ya
+ * disparada, `ML_ABORTED` sin llamar; una vez enviado, el refresco no se corta con la señal (el par
+ * ya pudo rotar): lo acota el tope de 10 s del cliente.
  * Lo que cambia la cuenta queda marcado **dentro** del candado (`markProblem`), y el error se lanza
  * después: `invalid_grant` la deja `expired` (`ML_AUTH_INVALID`); sin `refreshToken`
  * (`CREDENTIALS_INVALID`) o un refresco de otro `user_id` (`ML_UNEXPECTED_RESPONSE`, el par se
@@ -126,6 +139,7 @@ export async function refreshMercadoLibreToken(
     );
   }
   const now = deps.now ?? (() => new Date());
+  if (signal?.aborted) throw aborted(accountId);
 
   let outcome: LockedOutcome;
   try {
@@ -140,12 +154,12 @@ export async function refreshMercadoLibreToken(
         if (!shouldRefresh({ account, accessToken: current.accessToken })) {
           return { kind: "kept", accessToken: current.accessToken, account };
         }
+        if (signal?.aborted) throw aborted(accountId);
         let refreshed: Awaited<ReturnType<MercadoLibreAuth["refresh"]>>;
         try {
-          refreshed = await mercadoLibre.refresh(
-            current.refreshToken,
-            signal === undefined ? {} : { signal },
-          );
+          // Sin la señal: cortar después de enviar el pedido perdería el par que Mercado Libre ya
+          // rotó (seguimiento de F4-T08 en ADR-0015). Lo acota el tope de 10 s del cliente.
+          refreshed = await mercadoLibre.refresh(current.refreshToken);
         } catch (error) {
           if (isAppError(error) && error.code === "ML_AUTH_INVALID") {
             await markProblem("expired");

@@ -4,7 +4,6 @@ import { AppError } from "../errors.js";
 import type { InstagramAccountMeta } from "../platform-account.js";
 import type { InstagramAuth } from "../ports/instagram-auth.js";
 import type { MercadoLibreAuth, MercadoLibreRefresh } from "../ports/mercadolibre-auth.js";
-import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import { createInMemoryPlatformAccountRepository } from "../testing/index.js";
 import {
   MERCADOLIBRE_REFRESH_AGE_MS,
@@ -573,6 +572,17 @@ describe("refreshAccountToken · Mercado Libre", () => {
     expect(mlCalls).toHaveLength(2);
   });
 
+  it("una fecha de refresco futura (reloj descuadrado) espera como mucho 7 días desde ahora", async () => {
+    const { deps, addMl } = setup();
+    const account = await addMl({ refreshedAgo: -30 * DAY });
+
+    expect(await refreshAccountToken(deps, { accountId: account.id })).toMatchObject({
+      outcome: "skipped",
+      reason: "not_due",
+      refreshableAt: fromNow(7 * DAY),
+    });
+  });
+
   it("force refresca siempre, sin mínimo: también recién refrescada", async () => {
     const { platformAccounts, mlCalls, deps, addMl } = setup();
     const account = await addMl({ refreshedAgo: 0 });
@@ -734,30 +744,36 @@ describe("refreshAccountToken · Mercado Libre", () => {
     expect(mlCalls).toEqual([]);
   });
 
-  it("pasa la señal al refresco de Mercado Libre", async () => {
-    const { deps, addMl } = setup();
+  it("con la señal disparada no refresca (ML_ABORTED) y no se la pasa a un refresco enviado", async () => {
+    const { platformAccounts, deps, addMl } = setup();
     const account = await addMl();
-    const signal: AbortSignalLike = {
-      aborted: false,
+    const signal: AbortSignalLike & { aborted: boolean } = {
+      aborted: true,
       addEventListener() {},
       removeEventListener() {},
     };
     const seen: unknown[] = [];
     const mercadoLibre = deps.mercadoLibre;
-    await refreshAccountToken(
-      {
-        ...deps,
-        mercadoLibre: {
-          async refresh(refreshToken, options) {
-            seen.push(options?.signal);
-            if (mercadoLibre === null) throw new Error("sin Mercado Libre");
-            return mercadoLibre.refresh(refreshToken, options);
-          },
+    const spying: RefreshAccountTokensDeps = {
+      ...deps,
+      mercadoLibre: {
+        async refresh(refreshToken, options) {
+          seen.push(options?.signal);
+          if (mercadoLibre === null) throw new Error("sin Mercado Libre");
+          return mercadoLibre.refresh(refreshToken, options);
         },
       },
-      { accountId: account.id, signal },
-    );
-    expect(seen).toEqual([signal]);
+    };
+
+    await expect(
+      refreshAccountToken(spying, { accountId: account.id, signal }),
+    ).rejects.toMatchObject({ code: "ML_ABORTED", retriable: true });
+    expect(seen).toEqual([]);
+    expect(platformAccounts.storedCredentials(account.id)).toEqual(ML_OLD);
+
+    signal.aborted = false;
+    await refreshAccountToken(spying, { accountId: account.id, signal });
+    expect(seen).toEqual([undefined]);
   });
 });
 

@@ -122,14 +122,25 @@ export async function refreshAccountToken(
 }
 
 /** La política de la plataforma, sobre una cuenta ya revisada (con refresco y conectada). */
-const refreshConnected = (
+function refreshConnected(
   deps: RefreshAccountTokensDeps,
   account: PlatformAccount,
   options: RefreshOptions,
-): Promise<TokenRefreshResult> =>
-  account.platform === "portal_inmobiliario"
-    ? refreshMercadoLibre(deps, account, options)
-    : refreshInstagram(deps, account, options);
+): Promise<TokenRefreshResult> {
+  switch (account.platform) {
+    case "instagram":
+      return refreshInstagram(deps, account, options);
+    case "portal_inmobiliario":
+      return refreshMercadoLibre(deps, account, options);
+    case "fb_marketplace":
+      // `REFRESHABLE_PLATFORMS` ya la dejó fuera; el `switch` obliga a decidir al sumar otra.
+      throw new AppError(
+        "ACCOUNT_REFRESH_UNSUPPORTED",
+        `El acceso de ${account.platform} no se refresca`,
+        { details: { accountId: account.id, platform: account.platform } },
+      );
+  }
+}
 
 /** Lo que dejó el lote: ids y códigos, nunca tokens. */
 export type TokenRefreshReport = {
@@ -203,7 +214,8 @@ function lastRefreshOf(meta: Record<string, unknown>): Date | null {
  * credenciales y el guardado del par, los mismos de `ensureAccessToken`):
  * 1. Sin mínimo: con `force` (el refresco a pedido) siempre refresca.
  * 2. Sin `force`, solo si pasaron 7 días o más desde el último refresco (`meta.tokenRefreshedAt` o,
- *    si es `null`, `meta.connectedAt`; sin ninguna de las dos, refresca). Si no, `skipped`
+ *    si es `null`, `meta.connectedAt`; sin ninguna de las dos, refresca; una fecha futura, por un
+ *    reloj descuadrado, espera como mucho 7 días desde ahora). Si no, `skipped`
  *    (`not_due`) sin tomar el candado ni pedir el par de la app. La regla se revisa **otra vez
  *    dentro del candado**, con la cuenta releída: si otro la refrescó mientras se esperaba (el
  *    núcleo responde `kept`), también es `skipped`.
@@ -228,8 +240,10 @@ async function refreshMercadoLibre(
   const notDueUntil = (current: PlatformAccount): Date | null => {
     const last = lastRefreshOf(current.meta);
     if (last === null) return null;
-    const dueAt = new Date(last.getTime() + MERCADOLIBRE_REFRESH_AGE_MS);
-    return now().getTime() < dueAt.getTime() ? dueAt : null;
+    const at = now().getTime();
+    // Una fecha futura (reloj descuadrado) no la deja sin refrescar para siempre.
+    const dueAt = Math.min(last.getTime(), at) + MERCADOLIBRE_REFRESH_AGE_MS;
+    return at < dueAt ? new Date(dueAt) : null;
   };
 
   if (!force) {
@@ -238,23 +252,26 @@ async function refreshMercadoLibre(
       return { outcome: "skipped", reason: "not_due", account, refreshableAt };
     }
   }
-  let keptUntil: Date | null = null;
+  // Lo que respondió la regla dentro del candado (un objeto: TypeScript no sigue una asignación
+  // hecha dentro de `shouldRefresh`).
+  const inside: { refreshableAt: Date | null } = { refreshableAt: null };
   try {
     const result = await refreshMercadoLibreToken(deps, account.id, {
       shouldRefresh: ({ account: current }) => {
         if (force) return true;
-        keptUntil = notDueUntil(current);
-        return keptUntil === null;
+        inside.refreshableAt = notDueUntil(current);
+        return inside.refreshableAt === null;
       },
       ...(signal === undefined ? {} : { signal }),
     });
     if (result.outcome === "refreshed") return { outcome: "refreshed", account: result.account };
-    // Otro la refrescó mientras se esperaba el candado.
+    // Otro la refrescó mientras se esperaba el candado. `kept` solo sale de una regla que dijo "no
+    // toca", que dejó `refreshableAt` (el `?? now()` es solo para el tipo).
     return {
       outcome: "skipped",
       reason: "not_due",
       account: result.account,
-      refreshableAt: keptUntil ?? now(),
+      refreshableAt: inside.refreshableAt ?? now(),
     };
   } catch (error) {
     if (isAppError(error) && error.code === "ML_AUTH_INVALID") {

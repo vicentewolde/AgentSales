@@ -1,5 +1,5 @@
 import { createSecretBox } from "@agentsales/config";
-import { AppError, ensureAccessToken, refreshAccountToken } from "@agentsales/core";
+import { ensureAccessToken, refreshAccountToken } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryPlatformAccountRepository,
