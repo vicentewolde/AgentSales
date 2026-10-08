@@ -35,7 +35,7 @@
 | F4-T17 · Pausar, reactivar, cerrar y sincronizar en core | ⏳ pendiente | |
 | F4-T18 · Worker: publicar y sincronizar Portal | ⏳ pendiente | |
 | F4-T19 · API de Portal | ⏳ pendiente | |
-| F4-T20 · CLI de Portal | 🔨 conectar Mercado Libre adelantado | |
+| F4-T20 · CLI de Portal | 🔨 conectar Mercado Libre adelantado | #89 |
 | F4-T21 · Panel: Cuentas con Mercado Libre | ⏳ pendiente | |
 | F4-T22 · Panel: Portal en Contenido | ⏳ pendiente | |
 | F4-T23 · `pnpm ml:smoke --listing` | ⏳ pendiente | |
@@ -44,7 +44,7 @@
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- **Trámites de F4** (`docs/07-checklist-cuentas.md`): cuenta de Mercado Libre Chile, app de developers (dirección de vuelta `https://localhost/oauth/mercadolibre/callback`, PKCE desactivado), `ML_APP_ID`, `ML_CLIENT_SECRET` y `ML_REDIRECT_URI` en `.env`, WhatsApp en la hoja Corredor, y el precio del paquete `silver`. No bloquean empezar: hasta T09 todo usa msw; T10 (`ml:smoke`) necesita la cuenta conectada.
+- **Trámites de F4** (`docs/07-checklist-cuentas.md`): cuenta de Mercado Libre Chile, app de developers (dirección de vuelta `https://agentsales.test/oauth/mercadolibre/callback`, PKCE desactivado; creada el 2026-10-08), `ML_APP_ID`, `ML_CLIENT_SECRET` y `ML_REDIRECT_URI` en `.env`, WhatsApp en la hoja Corredor, y el precio del paquete `silver`. No bloquean empezar: hasta T09 todo usa msw; T10 (`ml:smoke`) necesita la cuenta conectada.
 
 ## Decisiones de F4
 Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
@@ -74,7 +74,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **F7, actor de la bitácora:** la API distingue la CLI del panel por la cabecera `X-AgentSales-Client`, que cualquier proceso local puede mandar. Con autenticación, el actor sale de la sesión.
 - **F7, refresco de tokens:** el job `tokens.refresh` expira a los 5 min y la expiración no corta el handler. Con una cuenta por corredor sobra; con muchas cuentas (llamadas de hasta 30 s), subir el tope o dejar de empezar cuentas nuevas pasados unos 4 min, para que un reintento no se cruce con el intento anterior.
 - **F6:** una publicación cuyo último intento terminó cortado (`PUBLISH_ABORTED`) o publicado sin guardar (`PUBLISH_RESULT_NOT_SAVED`) queda en `publishing` sin job hasta el próximo arranque del worker (que la reencola) o hasta publicarla de nuevo. En el segundo caso ya salió en Instagram. Que `publication.sync` o un reencolado periódico lo cubran.
-- **F7, `state` de Mercado Libre:** vale sus 10 min y no es de un solo uso (el código sí se canjea una vez; F4-T06). Con la vuelta automática (`/oauth/mercadolibre/callback`), amarrarlo a una cookie o a un nonce de un solo uso, como el de Instagram.
+- **F7, `state` de Mercado Libre:** vale sus 10 min y no es de un solo uso (el código sí se canjea una vez; F4-T06). Con la vuelta automática (`/oauth/mercadolibre/callback`), amarrarlo a una cookie o a un nonce de un solo uso, como el de Instagram. Además, `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática: F7 registra en la app una segunda dirección de su dominio real (o, en local, ese nombre apuntando al propio equipo con un certificado local, que merecería un ADR), y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
 - **F7, cuentas:** `panelUrl` y `allowedHosts` están fijos en `localhost`; con varios corredores y la API expuesta, hay que autorizar quién puede conectar cada corredor (`/oauth/instagram/start?broker=` y `connect-token` hoy los acepta cualquiera que llegue a la API) y evitar repetir un `state` válido durante sus 10 min (guardar el nonce usado; hoy basta con que la cookie se borre).
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace.

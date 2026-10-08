@@ -15,7 +15,7 @@ import {
   accountResponseSchema,
   errorBodySchema,
 } from "../contracts/index.js";
-import { fakeInstagramAuth, testDeps } from "../testing/index.js";
+import { fakeInstagramAuth, TEST_ML_REDIRECT_URI, testDeps } from "../testing/index.js";
 
 const TOKEN = "IGAA-token-del-panel-0123456789";
 /** Un POST sin cuerpo: con `Content-Type` JSON, como la CLI (sin él, el CSRF lo trata como formulario). */
@@ -237,10 +237,7 @@ describe("cuentas · seguridad y mensajes", () => {
   });
 
   it("el contrato solo acepta un startUrl http(s): la CLI lo abre y el panel lo enlaza", () => {
-    const body = (
-      startUrl: string,
-      redirectUri = "https://localhost/oauth/mercadolibre/callback",
-    ) => ({
+    const body = (startUrl: string, redirectUri = TEST_ML_REDIRECT_URI) => ({
       accounts: [],
       connect: {
         instagram: { oauth: true, startUrl },

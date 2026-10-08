@@ -354,16 +354,70 @@ describe("accounts connect mercadolibre (F4-T20, adelantado)", () => {
     expect(auth.calls).toEqual([]);
   });
 
-  it("una autorización cancelada es OAUTH_DENIED; sin código o sin state, URL_INCOMPLETE", async () => {
+  it.each([
+    ["cancelada", (state: string) => `error=access_denied&state=${state}`, "OAUTH_DENIED"],
+    [
+      "con error aunque traiga código",
+      (state: string) => `error=access_denied&code=${CODE}&state=${state}`,
+      "OAUTH_DENIED",
+    ],
+    ["sin código", (state: string) => `state=${state}`, "URL_INCOMPLETE"],
+    ["sin state", () => `code=${CODE}`, "URL_INCOMPLETE"],
+    ["con el código vacío", (state: string) => `code=&state=${state}`, "URL_INCOMPLETE"],
+  ])("una dirección %s se rechaza sin canjear nada", async (_, query, error) => {
     const { h, auth, freshState, paste } = await mlSetup();
     const state = await freshState();
 
-    expect(await paste(`${TEST_ML_REDIRECT_URI}?error=access_denied&state=${state}`)).toBe(1);
-    expect(h.errors()).toContain("OAUTH_DENIED");
-    expect(await paste(`${TEST_ML_REDIRECT_URI}?state=${state}`)).toBe(1);
-    expect(await paste(`${TEST_ML_REDIRECT_URI}?code=${CODE}`)).toBe(1);
-    expect(h.errors()).toContain("URL_INCOMPLETE");
+    expect(await paste(`${TEST_ML_REDIRECT_URI}?${query(state)}`)).toBe(1);
+
+    expect(h.errors()).toContain(error);
+    expect(h.errors()).not.toContain(CODE);
     expect(auth.calls).toEqual([]);
+  });
+
+  it.each([
+    ["con http", TEST_ML_REDIRECT_URI.replace("https://", "http://")],
+    ["con otro puerto", TEST_ML_REDIRECT_URI.replace("agentsales.test", "agentsales.test:8443")],
+    ["con otra ruta", `${TEST_ML_REDIRECT_URI}/otra`],
+    ["con una barra final", `${TEST_ML_REDIRECT_URI}/`],
+  ])("una dirección de vuelta %s es URL_NOT_REDIRECT", async (_, base) => {
+    const { h, auth, freshState, paste } = await mlSetup();
+    const state = await freshState();
+
+    expect(await paste(`${base}?code=${CODE}&state=${state}`)).toBe(1);
+
+    expect(h.errors()).toContain("URL_NOT_REDIRECT");
+    expect(auth.calls).toEqual([]);
+  });
+
+  it("el host en mayúsculas es la misma dirección", async () => {
+    const { h, freshState, paste } = await mlSetup();
+    const state = await freshState();
+    const upper = TEST_ML_REDIRECT_URI.replace("agentsales.test", "AgentSales.TEST");
+
+    expect(await paste(`${upper}?code=${CODE}&state=${state}`)).toBe(0);
+    expect(h.text()).toContain("✓ Conectada");
+  });
+
+  it("un --broker inválido da un mensaje claro, sin llamar a la API", async () => {
+    const { h, deps } = await mlSetup();
+
+    expect(await runConnect(deps(), "mercadolibre", { broker: "!!!" })).toBe(1);
+
+    expect(h.errors()).toContain("BROKER_INVALID");
+    expect(h.requests).toEqual([]);
+  });
+
+  it("una opción del otro canal se rechaza en vez de ignorarse", async () => {
+    const { h, deps } = await mlSetup();
+
+    expect(await runConnect(deps("x"), "mercadolibre", { broker: "marca", tokenStdin: true })).toBe(
+      1,
+    );
+    expect(await runConnect(deps("x"), "instagram", { broker: "marca", urlStdin: true })).toBe(1);
+
+    expect(h.errors()).toContain("OPTION_NOT_FOR_PLATFORM");
+    expect(h.requests).toEqual([]);
   });
 
   it("un código que Mercado Libre rechaza muestra el mensaje de la API (pedir el enlace de nuevo)", async () => {

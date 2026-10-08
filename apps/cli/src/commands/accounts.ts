@@ -113,99 +113,101 @@ const withoutQuery = (url: URL) => `${url.origin}${url.pathname}`;
  *   revisa que sea la registrada, saca el `code` y el `state` y conecta. Nunca muestra la dirección
  *   ni el código, ni los pone en un error.
  */
-function runConnectMercadoLibre(deps: AccountsDeps, broker: string, urlStdin: boolean) {
+async function connectMercadoLibre(
+  deps: AccountsDeps,
+  broker: string,
+  urlStdin: boolean,
+): Promise<number> {
   const c = deps.colors;
   const pipeCommand = urlStdinCommand(broker);
-  return guarded(deps, async () => {
-    if (!urlStdin) {
-      const { url } = await unwrap(
-        deps.client.accounts.mercadolibre["authorize-url"].$post({ json: { broker } }),
-        mercadoLibreAuthorizeUrlResponseSchema,
-      );
-      deps.print(`Abre este enlace y autoriza con la cuenta administradora: ${url}`);
-      deps.openUrl(url);
-      deps.print(
-        c.dim(
-          "→ Después de autorizar, el navegador muestra un error de conexión: es lo esperado. Copia la dirección completa de la barra (vale 10 min) y corre:",
-        ),
-      );
-      deps.print(`  ${pipeCommand}`);
-      return 0;
-    }
-
-    if (deps.stdinIsTty()) {
-      throw new CliError(
-        "URL_STDIN_REQUIRED",
-        "La dirección va por la entrada estándar, no escrita en la terminal",
-        `Copia la dirección de la barra y corre: ${pipeCommand}`,
-      );
-    }
-    const pasted = (await deps.readStdin()).trim();
-    if (pasted === "") {
-      throw new CliError(
-        "URL_MISSING",
-        "No llegó ninguna dirección por la entrada estándar",
-        pipeCommand,
-      );
-    }
-    let url: URL | null = null;
-    if (pasted.length <= PASTED_URL_MAX_LENGTH && !/\s/.test(pasted)) {
-      try {
-        url = new URL(pasted);
-      } catch {
-        url = null;
-      }
-    }
-    // Sin mostrar lo recibido: puede traer el código.
-    if (url === null) {
-      throw new CliError(
-        "URL_INVALID",
-        "Lo que llegó por la entrada estándar no parece una dirección (tiene espacios o saltos de línea, o es demasiado largo)",
-        "Copia solo la dirección de la barra después de autorizar y vuelve a intentarlo",
-      );
-    }
-    const { connect } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
-    const expected = new URL(connect.mercadolibre.redirectUri);
-    if (withoutQuery(url) !== withoutQuery(expected)) {
-      throw new CliError(
-        "URL_NOT_REDIRECT",
-        `La dirección pegada no es la de vuelta registrada (${connect.mercadolibre.redirectUri})`,
-        "Copia la dirección de la pestaña que quedó con el error de conexión, después de autorizar",
-      );
-    }
-    if (url.searchParams.has("error")) {
-      throw new CliError(
-        "OAUTH_DENIED",
-        "Mercado Libre no entregó la autorización (se canceló o se rechazó)",
-        `Pide el enlace de nuevo con: pnpm -s cli accounts connect mercadolibre --broker ${broker}`,
-      );
-    }
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    if (code === null || code === "" || state === null || state === "") {
-      throw new CliError(
-        "URL_INCOMPLETE",
-        "A la dirección pegada le falta el código o el state: cópiala completa, después de autorizar",
-        `Pide el enlace de nuevo con: pnpm -s cli accounts connect mercadolibre --broker ${broker}`,
-      );
-    }
-    const { account } = await unwrap(
-      deps.client.accounts.mercadolibre.connect.$post({ json: { broker, code, state } }),
-      accountResponseSchema,
+  if (!urlStdin) {
+    const { url } = await unwrap(
+      deps.client.accounts.mercadolibre["authorize-url"].$post({ json: { broker } }),
+      mercadoLibreAuthorizeUrlResponseSchema,
     );
-    deps.print(`${c.green("✓")} Conectada ${account.displayName} (${broker})`);
-    if (account.permissions !== null) {
-      deps.print(c.dim(`  Permisos: ${account.permissions.join(", ")}`));
-    }
-    if (account.tokenExpiresAt !== null) {
-      deps.print(
-        c.dim(
-          `  El acceso se renueva solo; si no se usa, vence ${formatDateTime(account.tokenExpiresAt)} (estimado)`,
-        ),
-      );
-    }
+    deps.print(`Abre este enlace y autoriza con la cuenta administradora: ${url}`);
+    deps.openUrl(url);
+    deps.print(
+      c.dim(
+        "→ Después de autorizar, el navegador muestra un error de conexión: es lo esperado. Si en cambio muestra un aviso de certificado, no continúes. En los dos casos, copia la dirección completa de la barra (vale 10 min) y corre:",
+      ),
+    );
+    deps.print(`  ${pipeCommand}`);
     return 0;
-  });
+  }
+
+  if (deps.stdinIsTty()) {
+    throw new CliError(
+      "URL_STDIN_REQUIRED",
+      "La dirección va por la entrada estándar, no escrita en la terminal",
+      `Copia la dirección de la barra y corre: ${pipeCommand}`,
+    );
+  }
+  const pasted = (await deps.readStdin()).trim();
+  if (pasted === "") {
+    throw new CliError(
+      "URL_MISSING",
+      "No llegó ninguna dirección por la entrada estándar",
+      pipeCommand,
+    );
+  }
+  let url: URL | null = null;
+  if (pasted.length <= PASTED_URL_MAX_LENGTH && !/\s/.test(pasted)) {
+    try {
+      url = new URL(pasted);
+    } catch {
+      url = null;
+    }
+  }
+  // Sin mostrar lo recibido: puede traer el código.
+  if (url === null) {
+    throw new CliError(
+      "URL_INVALID",
+      "Lo que llegó por la entrada estándar no parece una dirección (tiene espacios o saltos de línea, o es demasiado largo)",
+      "Copia solo la dirección de la barra después de autorizar y vuelve a intentarlo",
+    );
+  }
+  const { connect } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
+  const expected = new URL(connect.mercadolibre.redirectUri);
+  if (withoutQuery(url) !== withoutQuery(expected)) {
+    throw new CliError(
+      "URL_NOT_REDIRECT",
+      `La dirección pegada no es la de vuelta registrada (${connect.mercadolibre.redirectUri})`,
+      "Copia la dirección de la pestaña que quedó con el error de conexión, después de autorizar",
+    );
+  }
+  if (url.searchParams.has("error")) {
+    throw new CliError(
+      "OAUTH_DENIED",
+      "Mercado Libre no entregó la autorización (se canceló o se rechazó)",
+      `Pide el enlace de nuevo con: pnpm -s cli accounts connect mercadolibre --broker ${broker}`,
+    );
+  }
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  if (code === null || code === "" || state === null || state === "") {
+    throw new CliError(
+      "URL_INCOMPLETE",
+      "A la dirección pegada le falta el código o el state: cópiala completa, después de autorizar",
+      `Pide el enlace de nuevo con: pnpm -s cli accounts connect mercadolibre --broker ${broker}`,
+    );
+  }
+  const { account } = await unwrap(
+    deps.client.accounts.mercadolibre.connect.$post({ json: { broker, code, state } }),
+    accountResponseSchema,
+  );
+  deps.print(`${c.green("✓")} Conectada ${account.displayName} (${broker})`);
+  if (account.permissions !== null) {
+    deps.print(c.dim(`  Permisos: ${account.permissions.join(", ")}`));
+  }
+  if (account.tokenExpiresAt !== null) {
+    deps.print(
+      c.dim(
+        `  El acceso se renueva solo; si no se usa, vence ${formatDateTime(account.tokenExpiresAt)} (estimado)`,
+      ),
+    );
+  }
+  return 0;
 }
 
 /**
@@ -217,17 +219,31 @@ function runConnectMercadoLibre(deps: AccountsDeps, broker: string, urlStdin: bo
 export function runConnect(deps: AccountsDeps, platform: string, options: ConnectOptions = {}) {
   const c = deps.colors;
   const channel = platform.trim().toLowerCase();
-  if (channel === "mercadolibre" && options.broker !== undefined) {
-    return runConnectMercadoLibre(deps, brokerSlugOf(options.broker), options.urlStdin === true);
-  }
   return guarded(deps, async () => {
     if (channel !== "instagram" && channel !== "mercadolibre") {
       throw new CliError("PLATFORM_INVALID", `Se conecta instagram o mercadolibre: "${platform}"`);
+    }
+    // Una opción del otro canal no se ignora en silencio.
+    const foreign =
+      channel === "instagram"
+        ? options.urlStdin
+          ? "--url-stdin"
+          : null
+        : options.tokenStdin
+          ? "--token-stdin"
+          : null;
+    if (foreign !== null) {
+      throw new CliError(
+        "OPTION_NOT_FOR_PLATFORM",
+        `${foreign} no es para ${channel}: Instagram usa --token-stdin y Mercado Libre, --url-stdin`,
+      );
     }
     if (options.broker === undefined) {
       throw new CliError("BROKER_REQUIRED", "Falta --broker <slug>: el corredor de la cuenta");
     }
     const broker = brokerSlugOf(options.broker);
+    if (channel === "mercadolibre")
+      return connectMercadoLibre(deps, broker, options.urlStdin === true);
     const pipeCommand = tokenStdinCommand(broker);
 
     if (!options.tokenStdin) {
