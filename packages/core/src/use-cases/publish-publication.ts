@@ -8,7 +8,16 @@ import type { MediaRepository } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
-import type { Publisher, PublishInput, PublishResult } from "../ports/publisher.js";
+import {
+  type Publisher,
+  type PublishInput,
+  type PublishResult,
+  storedAccessToken,
+} from "../ports/publisher.js";
+
+/** Advertencias de un intento que van a la bitácora, como mucho (las causas de Mercado Libre, 20). */
+const MAX_ATTEMPT_NOTES = 20;
+
 import {
   type Publication,
   type PublicationError,
@@ -143,7 +152,10 @@ export async function publishPublication(
       result,
       ...(extra.error === undefined ? {} : { error: extra.error }),
       ...(extra.sent == null ? {} : { sent: extra.sent }),
-      ...(extra.notes === undefined || extra.notes.length === 0 ? {} : { notes: extra.notes }),
+      // Las advertencias, limpias (sin secretos, claves de R2 ni rutas) y como mucho 20.
+      ...(extra.notes === undefined || extra.notes.length === 0
+        ? {}
+        : { notes: extra.notes.slice(0, MAX_ATTEMPT_NOTES).map(scrubMessage) }),
     });
     await deps.publications
       .addEvent(publicationId, { type: "publish_attempt", actor: "system", payload })
@@ -158,8 +170,9 @@ export async function publishPublication(
     result = await attempt.target.publish(attempt.input, {
       account: attempt.account,
       credentials: attempt.credentials,
-      // Instagram usa el token guardado; Portal arma aquí su proveedor (`ensureAccessToken`, T16).
-      accessToken: async () => attempt.credentials.accessToken,
+      // Instagram usa el token guardado (falla cerrado ante `rejectedToken`); Portal arma aquí su
+      // proveedor (`accessTokenProvider`, T16).
+      accessToken: storedAccessToken(attempt.credentials),
       progress: publication.progress,
       saveProgress: async (progress) => {
         await deps.publications.saveProgress(publicationId, progress);

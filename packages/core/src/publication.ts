@@ -237,8 +237,9 @@ export const publishAttemptRecordSchema = z.object({
   ),
   account: z.object({ id: z.string(), displayName: z.string() }),
   /**
-   * Portal y Marketplace (spec F4 §4.6): los datos del aviso enviados, nunca `internal_notes`. Solo
-   * se amplía con campos opcionales (las filas guardadas tienen que seguir leyéndose).
+   * Portal y Marketplace (spec F4 §4.6): los datos del aviso enviados, nunca `internal_notes` ni
+   * `attributes._extra`; la dirección y la unidad en `null` si el aviso no las muestra. Solo se
+   * amplía con campos opcionales (las filas guardadas tienen que seguir leyéndose).
    */
   listing: z
     .object({
@@ -280,7 +281,10 @@ export const publishAttemptPayloadSchema = z.object({
   result: z.enum(PUBLISH_ATTEMPT_RESULTS),
   error: publicationErrorSchema.optional(),
   sent: publishAttemptRecordSchema.optional(),
-  /** Advertencias que no bloquearon (las de `preflight` en `dry-run`, F4-T13). */
+  /**
+   * Advertencias que no bloquearon (F4-T13): las de `preflight` en `dry-run` o las de crear el ítem
+   * en `live`, limpias (`scrubMessage`) y como mucho 20.
+   */
   notes: z.array(z.string()).optional(),
 });
 export type PublishAttemptPayload = z.infer<typeof publishAttemptPayloadSchema>;

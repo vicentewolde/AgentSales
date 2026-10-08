@@ -25,6 +25,7 @@ const at = new Date("2026-10-05T12:00:00Z");
 const LISTING = contentListingFixture({ id: "listing-1" });
 const BROKER = contentBrokerFixture();
 const HASH = "hash-del-aviso-1";
+const { _extra: _unknownColumns, ...PUBLIC_ATTRIBUTES } = LISTING.attributes;
 /** Repositorios con el aviso y su versión actual (`hash`, o `null` si el aviso no existe). */
 const withListing = (hash: string | null = HASH, broker = BROKER) => ({
   listings: {
@@ -222,7 +223,7 @@ describe("buildPublishInput", () => {
         showExactAddress: LISTING.showExactAddress,
         priceAmount: LISTING.priceAmount,
         priceCurrency: LISTING.priceCurrency,
-        attributes: LISTING.attributes,
+        attributes: PUBLIC_ATTRIBUTES,
       });
       expect(input.brokerContact, platform).toEqual({
         name: BROKER.name,
@@ -230,6 +231,8 @@ describe("buildPublishInput", () => {
         whatsapp: BROKER.whatsapp,
       });
       expect(JSON.stringify(input)).not.toContain(LISTING.internalNotes ?? "-");
+      // Las columnas desconocidas del Excel (`_extra`) tampoco: pueden traer la comisión.
+      expect(JSON.stringify(input)).not.toContain("comision");
     }
   });
 
@@ -278,6 +281,38 @@ describe("buildPublishInput", () => {
       expect(signed).toEqual([]);
     },
   );
+
+  it("una carga del Excel que se cruza entre leer el aviso y su versión corta igual", async () => {
+    let read = false;
+    const racing = {
+      listings: {
+        // Leer el aviso "dispara" la carga: la versión ya es otra cuando se pregunta.
+        get: async () => {
+          read = true;
+          return LISTING;
+        },
+        getSourceHash: async () => (read ? "hash-de-la-carga-nueva" : HASH),
+      },
+      brokers: { findById: async () => BROKER },
+    };
+    await expect(
+      buildPublishInput(
+        { storage: createInMemoryMediaStorage(), ...racing },
+        {
+          publication: publication({
+            platform: "portal_inmobiliario",
+            mediaIds: ["m-1"],
+            listingSourceHash: HASH,
+          }),
+          content: content({ platform: "portal_inmobiliario", title: "Depto" }),
+          media: listingMedia,
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "PUBLICATION_LISTING_CHANGED",
+      details: { reason: "changed" },
+    });
+  });
 
   it("sin el corredor del aviso: BROKER_NOT_FOUND", async () => {
     const deps = {
@@ -477,7 +512,10 @@ describe("publishAttemptRecord con el aviso (F4-T13)", () => {
     );
     const record = publishAttemptRecord(input, { id: "account-1", displayName: "CORREDORA" });
 
-    expect(record.listing).toEqual(input.listing);
+    // El aviso de ejemplo no muestra la dirección: la bitácora tampoco la guarda.
+    expect(LISTING.showExactAddress).toBe(false);
+    expect(record.listing).toEqual({ ...input.listing, address: null, unitNumber: null });
+    expect(JSON.stringify(record)).not.toContain(LISTING.address ?? "-");
     expect(record.brokerContact).toEqual({
       name: BROKER.name,
       email: BROKER.email,
@@ -498,7 +536,31 @@ describe("publishAttemptRecord con el aviso (F4-T13)", () => {
     expect(maskWhatsapp(whatsapp)).toBe(masked);
   });
 
-  it("maskWhatsapp(null) es null", () => {
+  it("maskWhatsapp(null) es null; con menos de 8 dígitos, todo oculto", () => {
     expect(maskWhatsapp(null)).toBeNull();
+    expect(maskWhatsapp("1234")).toBe("****");
+    expect(maskWhatsapp("+56 9 123")).toBe("****");
+  });
+
+  it("con la dirección visible, la bitácora guarda la dirección enviada", async () => {
+    const shown = contentListingFixture({ id: "listing-1", showExactAddress: true });
+    const input = await buildPublishInput(
+      {
+        storage: createInMemoryMediaStorage(),
+        listings: { get: async () => shown, getSourceHash: async () => HASH },
+        brokers: { findById: async () => BROKER },
+      },
+      {
+        publication: publication({
+          platform: "portal_inmobiliario",
+          mediaIds: ["m-1"],
+          listingSourceHash: HASH,
+        }),
+        content: content({ platform: "portal_inmobiliario", title: "Depto" }),
+        media: listingMedia,
+      },
+    );
+    const record = publishAttemptRecord(input, { id: "account-1", displayName: "CORREDORA" });
+    expect(record.listing?.address).toBe(shown.address);
   });
 });

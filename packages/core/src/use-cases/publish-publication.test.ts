@@ -130,6 +130,20 @@ describe("publishPublication · éxito", () => {
     });
   });
 
+  it("las advertencias se guardan limpias y como mucho 20, también las de live", async () => {
+    const notes = [
+      "Mercado Libre avisa por brokers/b/listings/l/a.jpg ?access_token=IGAA-x",
+      ...Array.from({ length: 25 }, (_, i) => `aviso ${i}`),
+    ];
+    const { post, run, attempts } = await setup({
+      publisher: { steps: [{ result: { externalId: "X1", externalUrl: null, notes } }] },
+    });
+    await expect(run(post)).resolves.toMatchObject({ outcome: "published" });
+    const saved = (await attempts(post))[0]?.payload as { notes?: string[] };
+    expect(saved.notes).toHaveLength(20);
+    expect(JSON.stringify(saved.notes)).not.toMatch(/brokers\/|IGAA-x/);
+  });
+
   it("dry_run con preflight que rechaza: failed con PUBLISH_INPUT_INVALID", async () => {
     const { t, fake, post, run } = await setup({
       dryRun: true,

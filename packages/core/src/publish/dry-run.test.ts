@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { PlatformAccount } from "../platform-account.js";
-import type { PublishContext, Publisher, PublishInput } from "../ports/publisher.js";
+import {
+  type PublishContext,
+  type Publisher,
+  type PublishInput,
+  platformContextOf,
+  storedAccessToken,
+} from "../ports/publisher.js";
 import { createFakePublisher } from "../testing/index.js";
 import { withDryRun } from "./dry-run.js";
 import { publishAttemptRecord } from "./input.js";
@@ -237,5 +243,24 @@ describe("withDryRun con preflight (F4-T13, ADR-0016)", () => {
     });
     await withDryRun(publisher).publish(portalInput, context());
     expect(seen).toEqual(["APP_USR-del-proveedor", TOKEN]);
+  });
+});
+
+describe("storedAccessToken (F4-T13)", () => {
+  it("entrega el token guardado, y falla cerrado si piden otro tras un 401", async () => {
+    const provider = storedAccessToken({ accessToken: TOKEN });
+    await expect(provider()).resolves.toBe(TOKEN);
+    await expect(provider({ rejectedToken: TOKEN })).rejects.toMatchObject({
+      code: "ACCESS_TOKEN_REFRESH_UNSUPPORTED",
+      retriable: false,
+    });
+  });
+
+  it("platformContextOf sin accessToken usa ese respaldo", async () => {
+    const ctx = platformContextOf(context());
+    await expect(ctx.accessToken()).resolves.toBe(TOKEN);
+    await expect(ctx.accessToken({ rejectedToken: TOKEN })).rejects.toMatchObject({
+      code: "ACCESS_TOKEN_REFRESH_UNSUPPORTED",
+    });
   });
 });

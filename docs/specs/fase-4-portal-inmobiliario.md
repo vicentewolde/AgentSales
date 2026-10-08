@@ -130,7 +130,7 @@ El operador conecta la cuenta de Mercado Libre de un corredor, aprueba el texto 
     getStatus?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
   }
   type PlatformContext = { account: PlatformAccount; accessToken: AccessTokenProvider; signal?: AbortSignalLike };
-  type PublishContext = PlatformContext & { progress: unknown | null; saveProgress(progress: unknown): Promise<void> };
+  type PublishContext = Omit<PlatformContext, "accessToken"> & { accessToken?: AccessTokenProvider; credentials: PlatformCredentials; progress: unknown | null; saveProgress(progress: unknown): Promise<void> };
   type PublishedRef = { externalId: string; progress: unknown | null };
   type RemoteStatus = Omit<RemoteState, "checkedAt">;              // core agrega `checkedAt` al guardar
   ```
@@ -337,7 +337,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 
 ### F4-T13 · Contrato `Publisher` ampliado y el aviso en el input
 - **Depende de:** T01
-- **Archivos:** `packages/core/src/ports/{publisher.ts,listing-repository.ts}`, `packages/core/src/publish/{dry-run.ts,input.ts}`, `packages/core/src/testing/*`, `packages/db/src/repositories/listings.ts` (`getSourceHash`), `docs/01-arquitectura.md`
+- **Archivos:** `packages/core/src/ports/{publisher.ts,listing-repository.ts}`, `packages/core/src/publish/{dry-run.ts,input.ts}`, `packages/core/src/use-cases/publish-publication.ts`, `packages/core/src/testing/*`, `packages/db/src/repositories/listings.ts` (`getSourceHash`), `apps/worker/src/worker.ts` (`brokers` en el intento), `docs/01-arquitectura.md`
 - **Descripción:** `preflight`, `pause`, `resume`, `close` y `getStatus` opcionales, `PlatformContext` con `accessToken` (§4.8), que core arma con `accessTokenProvider` (sin estado: quien recibió el 401 pasa `rejectedToken`); `withDryRun` con `preflight`; `buildPublishInput` con `listing`, `brokerContact` y `PUBLICATION_LISTING_CHANGED` (§4.6); `publishAttemptRecord` con los campos del ítem y el WhatsApp enmascarado; el publisher falso con las operaciones.
 - **Hecho cuando:**
   - [x] Tests de `withDryRun`: llama a `preflight` y nunca a `publish`, `pause`, `resume` ni `close` del envuelto
@@ -350,6 +350,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Descripción:** `createPortalPublisher` con `validate` y `publish` (§4.8): fotos, ítem, descripción, dirección oculta, progreso y retoma.
 - **Hecho cuando:**
   - [ ] Tests con un Mercado Libre simulado con estado: publica, retoma desde cada paso del progreso sin duplicar (también con la descripción ya cargada y sin `descriptionDone`), vuelve a subir fotos ante 508/509, guarda `pictureIds` por foto, crea de nuevo solo si `itemCreationOutcome` dice `not_created`, encuentra el ítem por `seller_custom_field` y da `ML_PUBLISH_OUTCOME_UNKNOWN` si no lo encuentra o si encuentra más de uno (nunca repite `POST /items` a ciegas)
+  - [ ] `validate` da un motivo propio si el input no trae `listing` o `brokerContact` (no lo supone)
   - [ ] Un 401 refresca una vez con `accessToken({ rejectedToken })`; ese reintento cubre solo las llamadas del publisher al cliente: un error del catálogo marcado `rejected_after_refresh` no se reintenta (test)
 
 ### F4-T15 · Publisher de Portal: operaciones y `preflight`
@@ -359,6 +360,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Hecho cuando:**
   - [ ] Tests de cada operación y del `remote_state` que devuelven
   - [ ] `preflight` nunca sube fotos ni crea o modifica ítems (test)
+  - [ ] Las advertencias (`notes`, de `preflight` y de crear el ítem) se arman con el código, el `cause_id` y un texto propio en español, nunca con el `message` de Mercado Libre
 
 ### F4-T16 · Intento, publicar y aprobar con Portal
 - **Depende de:** T07, T11, T13
@@ -367,6 +369,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Hecho cuando:**
   - [ ] Tests del intento con el publisher falso de Portal (en `live` y `dry-run`), de `PORTAL_NOT_READY` y de `PUBLICATION_LISTING_CHANGED`
   - [ ] Un `ML_AUTH_INVALID` que llega al intento (también el 401 repetido, `rejected_after_refresh`, del catálogo o del publisher) deja la cuenta `expired` (test)
+  - [ ] En Portal, el intento y `preflight` usan `accessTokenProvider` y nunca el respaldo del token guardado (`storedAccessToken`, que falla cerrado ante `rejectedToken`); el contexto lleva las credenciales sin `refreshToken` (es de un solo uso y queda vieja tras refrescar) (test)
   - [ ] Antes de pasar una publicación de Portal a `publishing`, se vuelve a correr `checkContent` y un error bloquea con `CONTENT_HAS_ERRORS` (no reintentable; "quita la aprobación y corrige"): un texto aprobado antes de una regla nueva (F4-T12) no llega a Mercado Libre a gastar un cupo (test)
   - [ ] Instagram sigue igual
 
@@ -376,6 +379,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Descripción:** casos de uso de §4.9: la llamada fuera del candado y la transición condicional dentro; el modo (`PUBLISH_MODE_MISMATCH`); cerrar con confirmación y el aviso a `ready` con la última; `RETIRE_NOT_SUPPORTED`; el sync con la hora de lectura y su tabla.
 - **Hecho cuando:**
   - [ ] Tests de cada transición, `dry-run` sin llamadas, `live` con la API en `dry-run`, confirmación al cerrar y la tabla de estados remotos (incluido uno desconocido)
+  - [ ] El modo lo decide `publication.dryRun` antes de elegir el publisher, nunca la falta de `pause` en uno envuelto por `withDryRun` (que no expone las operaciones) (test)
   - [ ] Un `ML_AUTH_INVALID` en `preflight`, las operaciones o el sync (también `rejected_after_refresh`) deja la cuenta `expired` (test)
   - [ ] Un sync que leyó antes de que el operador pausara no deshace la pausa (test, comparando el `updatedAt` leído antes con el releído); si Mercado Libre respondió bien y falló guardar, el sync lo corrige (test)
 
@@ -511,3 +515,4 @@ Respondidas por el operador el 2026-10-06:
 | 2026-10-07 | Revisión de F4-T09 (#84, `revisor` y `arquitecto`): `PlatformContext.accessToken` es el mismo `AccessTokenProvider` del catálogo, sin estado (`rejectedToken`; §4.8, T13 y T14); el 401 que se repite tras refrescar sube marcado (`details.reason: "rejected_after_refresh"`) y `isMercadoLibreTokenRejected` ya no lo reconoce, así nadie más arriba vuelve a refrescar; lo deja `expired` el caso de uso que lo recibe (criterios en T16 y T17; `ml:smoke` no la marca, T10); T10 completa `PORTAL_LOCATION_ALIASES` y verifica que Chile no exige `neighborhood`; `MLC1459` y `CL` pasan a las constantes de publishers (`MERCADOLIBRE_REAL_ESTATE_CATEGORY_ID`, `MERCADOLIBRE_COUNTRY_ID`); una fecha de bajada futura cuenta como vencida; los alias solo con llaves propias de la tabla; "7 días o más" (§4.4 y doc 02); §4.1 y §4.4 ponen el puerto en publishers |
 | 2026-10-07 | Desde F4-T12: en Portal, `ADDRESS_EXPOSED` compara contra los datos **sin** la dirección ni la unidad (con `show_exact_address = true` están en el brief) y marca también el número de la dirección; `CONTACT_IN_TEXT` (error, solo Portal) busca un teléfono chileno de 9 dígitos (con `+56` opcional y separado solo por espacio, guion o paréntesis: un precio con puntos, un año o un RUT no cuentan), un correo o una dirección web (`http`, `www.` o un dominio común), sin citar el dato en el mensaje; el prompt `listing-content-v2` dice "nunca en los textos de Portal Inmobiliario" en la regla de la ubicación; los textos guardados conservan v1 (nada se regenera solo) y, como la revisión se calcula al leer, T16 revisa de nuevo el texto antes de publicar en Portal; en Portal sin la dirección visible, el número de la calle lo marca solo `NUMBER_NOT_IN_DATA`; el dominio suelto exige un TLD en minúsculas sin una letra pegada antes (`Ñuñoa.Es` no es web) |
 | 2026-10-08 | Desde F4-T13: `PublishContext.accessToken` es **opcional** (el intento siempre lo arma; así el contexto y los tests de Instagram no cambian) y `platformContextOf(ctx)` usa el token de `credentials` si falta; `AccessTokenProvider` pasa al puerto `publisher.ts` (lo reexporta core); `PublishInput.listing` y `brokerContact` son opcionales y solo los llevan Portal y Marketplace (`PUBLISH_LISTING_PLATFORMS`); `PUBLICATION_LISTING_CHANGED` con `details.reason` (`changed`, `missing_version`) también si el aviso ya no existe, y `BROKER_NOT_FOUND` sin el corredor; `PublishResult.notes` lleva las advertencias de `preflight` y van a `publish_attempt.notes`; `withDryRun` expone `preflight` pero no `pause`, `resume`, `close` ni `getStatus`; el intento recibe `brokers` y, en Instagram, `accessToken` = el token guardado (Portal arma el suyo en T16); `publishAttemptRecord` registra el aviso enviado y el contacto con `maskWhatsapp`; el publisher falso suma `preflight` y las operaciones (`preflighted`, `operated`) |
+| 2026-10-08 | Revisión de F4-T13 (#87, `revisor` y `arquitecto`): `buildPublishInput` lee primero el aviso y después su versión (una carga que se cruce corta con `PUBLICATION_LISTING_CHANGED`); el input no lleva `attributes._extra` (columnas desconocidas del Excel); el respaldo del token guardado (`storedAccessToken`) falla cerrado ante `rejectedToken` (`ACCESS_TOKEN_REFRESH_UNSUPPORTED`, no `ML_AUTH_INVALID`), para no dar por vencida una cuenta sana; `notes` se limpian con `scrubMessage` y van como mucho 20; la bitácora guarda la dirección y la unidad en `null` si el aviso no las muestra; `maskWhatsapp` oculta todo con menos de 8 dígitos; criterios nuevos en T14 (`validate` sin `listing`), T15 (notas con código y texto propio), T16 (el proveedor de Portal y credenciales sin `refreshToken`) y T17 (el modo por `publication.dryRun`); §4.8 con el `PublishContext` real |

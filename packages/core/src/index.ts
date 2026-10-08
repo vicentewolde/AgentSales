@@ -280,7 +280,7 @@ export type {
   PublishValidation,
   RemoteStatus,
 } from "./ports/publisher.js";
-export { platformContextOf } from "./ports/publisher.js";
+export { platformContextOf, storedAccessToken } from "./ports/publisher.js";
 export type { SecretBox } from "./ports/secret-box.js";
 export {
   type CoverData,

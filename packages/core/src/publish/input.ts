@@ -44,8 +44,12 @@ const listingChanged = (publicationId: string, reason: "changed" | "missing_vers
     { details: { publicationId, reason } },
   );
 
-/** Los datos del aviso que van en el input: nunca `internal_notes`. */
+/**
+ * Los datos del aviso que van en el input: nunca `internal_notes` ni `attributes._extra` (columnas
+ * desconocidas del Excel, que tampoco ve la IA: pueden traer datos privados como la comisión).
+ */
 function publishListing(listing: Listing): PublishListing {
+  const { _extra: _unknownColumns, ...attributes } = listing.attributes;
   return {
     id: listing.id,
     externalRef: listing.externalRef,
@@ -58,7 +62,7 @@ function publishListing(listing: Listing): PublishListing {
     showExactAddress: listing.showExactAddress,
     priceAmount: listing.priceAmount,
     priceCurrency: listing.priceCurrency,
-    attributes: listing.attributes,
+    attributes,
   };
 }
 
@@ -74,9 +78,12 @@ async function listingPart(
   if (publication.listingSourceHash === null) {
     throw listingChanged(publication.id, "missing_version");
   }
-  const current = await deps.listings.getSourceHash(publication.listingId);
-  const listing = current === null ? null : await deps.listings.get(publication.listingId);
-  if (current !== publication.listingSourceHash || listing === null) {
+  // Primero el aviso y después su versión: una carga del Excel que se cruce entre las dos lecturas
+  // cambia la versión y corta aquí, en vez de colar datos nuevos con la versión vieja.
+  const listing = await deps.listings.get(publication.listingId);
+  const current =
+    listing === null ? null : await deps.listings.getSourceHash(publication.listingId);
+  if (listing === null || current !== publication.listingSourceHash) {
     throw listingChanged(publication.id, "changed");
   }
   const broker = await deps.brokers.findById(listing.brokerId);
@@ -171,11 +178,12 @@ export async function buildPublishInput(
 
 /**
  * El WhatsApp para la bitácora, con los dígitos del medio ocultos: `+56 9 ****5678` (un celular
- * chileno) o `****5678`. `null` si no hay.
+ * chileno) o `****5678`; con menos de 8 dígitos, todo oculto (`****`). `null` si no hay.
  */
 export function maskWhatsapp(whatsapp: string | null): string | null {
   if (whatsapp === null) return null;
   const digits = whatsapp.replace(/\D/g, "");
+  if (digits.length < 8) return "****";
   const last = digits.slice(-4);
   if (digits.length === 11 && digits.startsWith("569")) return `+56 9 ****${last}`;
   return `****${last}`;
@@ -202,8 +210,15 @@ export function publishAttemptRecord(
       durationS: item.durationS,
     })),
     account: { id: account.id, displayName: account.displayName },
-    // Portal y Marketplace: el aviso enviado y el contacto, con el WhatsApp enmascarado.
-    ...(input.listing === undefined ? {} : { listing: input.listing }),
+    // Portal y Marketplace: el aviso enviado (sin la dirección ni la unidad si no se muestran) y
+    // el contacto, con el WhatsApp enmascarado.
+    ...(input.listing === undefined
+      ? {}
+      : {
+          listing: input.listing.showExactAddress
+            ? input.listing
+            : { ...input.listing, address: null, unitNumber: null },
+        }),
     ...(input.brokerContact === undefined
       ? {}
       : {

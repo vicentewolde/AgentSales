@@ -6,6 +6,7 @@ import {
   hasStartedLive,
   publicationEventSchema,
   publicationSchema,
+  publishAttemptPayloadSchema,
   remoteStateSchema,
   syncPayloadSchema,
 } from "./publication.js";
@@ -199,5 +200,25 @@ describe("estado remoto (F4, ADR-0015)", () => {
     expect(() => checkPublicationProgress("fb_marketplace", portal)).toThrow(
       expect.objectContaining({ code: "PUBLICATION_PROGRESS_INVALID" }),
     );
+  });
+});
+
+describe("publishAttemptPayloadSchema (F4-T13)", () => {
+  it("lee un intento guardado antes de F4-T13 (sin notes, listing ni brokerContact)", () => {
+    const old = {
+      mode: "live",
+      attempt: 1,
+      retry: 0,
+      result: "published",
+      sent: {
+        platform: "instagram",
+        format: "post",
+        title: null,
+        caption: "Hola",
+        media: [],
+        account: { id: "account-1", displayName: "@corredora" },
+      },
+    };
+    expect(publishAttemptPayloadSchema.parse(old)).toEqual(old);
   });
 });

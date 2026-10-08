@@ -1,6 +1,7 @@
 import type { AbortSignalLike } from "../abort.js";
 import type { Broker } from "../broker.js";
 import type { MediaKind, Platform, PublicationFormat } from "../enums.js";
+import { AppError } from "../errors.js";
 import type { Listing } from "../listing.js";
 import type { PlatformAccount, PlatformCredentials } from "../platform-account.js";
 import type { RemoteState } from "../publication.js";
@@ -116,7 +117,8 @@ export type PublishContext = Omit<PlatformContext, "accessToken"> & {
 
 /**
  * Resultado de un intento: el id y el enlace en la plataforma; `simulated` en `dry-run`. `notes`:
- * advertencias que no bloquearon (las de `preflight` en `dry-run`), para la bitácora.
+ * advertencias que no bloquearon (las de `preflight` en `dry-run`, o las de crear el ítem en
+ * `live`), para la bitácora: textos propios en español, sin el mensaje de la plataforma.
  */
 export type PublishResult = {
   externalId: string;
@@ -132,8 +134,26 @@ export type PublishResult = {
 export function platformContextOf(ctx: PublishContext): PlatformContext {
   return {
     account: ctx.account,
-    accessToken: ctx.accessToken ?? (async () => ctx.credentials.accessToken),
+    accessToken: ctx.accessToken ?? storedAccessToken(ctx.credentials),
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+  };
+}
+
+/**
+ * Un proveedor que entrega el token guardado, sin refrescar (Instagram). Falla cerrado: si quien
+ * llama recibió un 401 y pide otro (`rejectedToken`), `ACCESS_TOKEN_REFRESH_UNSUPPORTED` (no
+ * reintentable, y no `ML_AUTH_INVALID`): devolver el mismo token llevaría a un segundo 401 y a dar
+ * por vencida una cuenta sana (ADR-0015 punto 4). Portal usa `accessTokenProvider`.
+ */
+export function storedAccessToken(credentials: PlatformCredentials): AccessTokenProvider {
+  return async (options) => {
+    if (options?.rejectedToken !== undefined) {
+      throw new AppError(
+        "ACCESS_TOKEN_REFRESH_UNSUPPORTED",
+        "Este acceso no se renueva al vuelo: el intento debía armar el proveedor de token de la plataforma",
+      );
+    }
+    return credentials.accessToken;
   };
 }
 

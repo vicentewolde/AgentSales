@@ -19,7 +19,12 @@ import { structuredCopy } from "./copy.js";
 export type FakePublishStep = {
   progress?: unknown;
   error?: Error;
-  result?: { externalId: string; externalUrl: string | null; simulated?: boolean };
+  result?: {
+    externalId: string;
+    externalUrl: string | null;
+    simulated?: boolean;
+    notes?: string[];
+  };
 };
 
 export type FakePublisherOptions = {
