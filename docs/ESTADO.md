@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-08
 **Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 25 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
-**Última tarea:** F4-T10 · `pnpm ml:smoke`: catálogo y `validate` (corrido por el operador el 2026-10-08). Antes, conectar Mercado Libre (parte de T20) y F4-T13
-**Siguiente paso:** `/tarea F4-T11` (mapeo y revisión previa, con los nombres reales de la nota §12). En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
+**Última tarea:** F4-T11 · Mapeo y revisión previa. Antes, F4-T10 (`ml:smoke`, corrido el 2026-10-08) y las decisiones D14 y D15
+**Siguiente paso:** `/tarea F4-T14` (publisher de Portal: publicar) o `/tarea F4-T16` (intento, publicar y aprobar con Portal), que ya tienen sus dependencias. En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
 
 ## Pendiente del cierre de F3
 - [x] **Refresco del token (demo), 2026-10-07 20:05:** el primer `pnpm dev` lo refrescó al arrancar; vence el 2026-12-06 20:05 (real, ya no estimado). Anotado en la nota de Instagram (§8, punto 4) y en §6 del spec F3
@@ -26,7 +26,7 @@
 | F4-T08 · Refresco por plataforma: lote y a pedido | ✅ | #83 |
 | F4-T09 · Catálogo con caché | ✅ | #84 |
 | F4-T10 · `pnpm ml:smoke`: catálogo y `validate` | ✅ | #90 |
-| F4-T11 · Mapeo y revisión previa | ⏳ pendiente | |
+| F4-T11 · Mapeo y revisión previa | ✅ | |
 | F4-T12 · Reglas del texto de Portal | ✅ | #86 |
 | F4-T13 · Contrato `Publisher` ampliado y el aviso en el input | ✅ | #87 |
 | F4-T14 · Publisher de Portal: publicar | ⏳ pendiente | |
@@ -94,6 +94,11 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-08: **F4-T11.** El aviso ya se traduce a Mercado Libre:
+  - **Tabla de equivalencias (core):** cada tipo del Excel → su categoría (Local comercial → `Locales`; departamento en venta → `Departamentos > Venta > Propiedades usadas`), cada dato → su atributo (también piso, orientación y antigüedad, que encontré en el catálogo guardado) y qué exige cada tipo y operación según lo que mostró el smoke.
+  - **"¿Está listo para Portal?":** dice qué falta, con el campo de la planilla: la superficie total, Sí o No en mascotas (solo en arriendo), el WhatsApp del corredor o la dirección si se muestra. Una venta no pide mascotas, amoblado, bodegas ni gastos comunes.
+  - **El aviso para Mercado Libre:** precio en UF con 2 decimales o en pesos enteros, ubicación por código, la dirección solo si se muestra, el contacto y la marca de Portal. Revisa de nuevo contra la categoría real (lo que exige, el título, las fotos y la moneda) y nunca envía notas internas ni campos sin equivalencia. La descripción va aparte.
+  - 11 mutaciones a mano detectadas. El smoke usa la misma conversión del WhatsApp.
 - 2026-10-08: **F4-T10.** `pnpm ml:smoke` (lo corriste tú): solo lee y pregunta a Mercado Libre, nunca crea, cambia ni sube nada (una prueba lo revisa con un Mercado Libre que sí aceptaría hacerlo). Lo aprendido, en la nota (§12):
   - **Categorías:** 40 categorías finales, con sus ids. Los nombres son `Departamentos`, `Casas`, `Oficinas`, `Locales`, etc.; `Venta` y `Arriendo`; `Propiedades usadas` o `Proyectos`. Título de 60 y 30 fotos; todas aceptan UF. Los datos obligatorios son menos de lo que decía la guía y cambian por operación (en venta de usados no piden gastos comunes, mascotas, bodegas ni amoblado). La marca de Portal (`CMG_SITE`) viene marcada como oculta, pero hay que enviarla.
   - **Regiones y comunas:** Mercado Libre usa nombres cortos (`RM (Metropolitana)`, `Aysén`, `Magallanes`) y una ciudad por comuna. La tabla de equivalencias quedó con las regiones y 19 comunas que se escriben distinto (Coyhaique → Coihaique, La Calera → Calera, …); no hacen falta barrios. Tus P001 a P003 no se ubicaban solo porque el Excel dice "Metropolitana".

@@ -14,6 +14,7 @@ import {
   type PortalAttribute,
   type PortalCategory,
   type PortalNamedRef,
+  portalSellerContact,
 } from "@agentsales/core";
 import {
   describeCause,
@@ -360,9 +361,9 @@ async function findAccount(deps: MlSmokeDeps, brokerSlug: string | undefined) {
 
 /** El `seller_contact` del corredor (solo dígitos, nota §4.2), o uno de muestra si no tiene WhatsApp. */
 function sellerContact(broker: Pick<Broker, "name" | "email" | "whatsapp"> | undefined) {
-  const digits = broker?.whatsapp?.replace(/\D/g, "") ?? "";
-  const local = digits.length === 11 && digits.startsWith("56") ? digits.slice(2) : digits;
-  if (local.length !== 9) {
+  // La misma conversión que usa el ítem de Portal (core, F4-T11).
+  const contact = broker === undefined ? null : portalSellerContact(broker);
+  if (contact === null) {
     return {
       source: "sample" as const,
       body: { contact: "AgentSales ml:smoke", country_code2: "56", phone2: "900000000" },
@@ -371,10 +372,10 @@ function sellerContact(broker: Pick<Broker, "name" | "email" | "whatsapp"> | und
   return {
     source: "broker" as const,
     body: {
-      ...(broker?.name ? { contact: broker.name } : {}),
-      ...(broker?.email ? { email: broker.email } : {}),
-      country_code2: "56",
-      phone2: local,
+      ...(contact.contact === null ? {} : { contact: contact.contact }),
+      ...(contact.email === null ? {} : { email: contact.email }),
+      country_code2: contact.countryCode2,
+      phone2: contact.phone2,
     },
   };
 }
