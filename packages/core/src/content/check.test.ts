@@ -192,6 +192,14 @@ describe("checkContent · ADDRESS_EXPOSED en Portal (F4-T12)", () => {
     }
   });
 
+  it("en Portal con la dirección oculta, el número de la calle sale una vez (NUMBER_NOT_IN_DATA)", () => {
+    const codes = codesOf("En el 1234, frente a la plaza", {
+      platform: "portal_inmobiliario",
+      listing: { address: "Av. Irarrázaval 1234" },
+    });
+    expect(codes).toEqual(["NUMBER_NOT_IN_DATA"]);
+  });
+
   it("en Portal sin dirección visible, igual que antes", () => {
     expect(
       codesOf("Ubicado en Irarrázaval", {
@@ -220,6 +228,9 @@ describe("checkContent · CONTACT_IN_TEXT (Portal, F4-T12)", () => {
     ["un celular con guion", "Llama al 9 1234-5678"],
     ["un fijo de Santiago", "Llama al +56 2 2345 6789"],
     ["un fijo con paréntesis", "Llama al (2) 2345 6789"],
+    ["un celular con 0 delante", "Llama al 09 1234 5678"],
+    ["un celular con 56 sin +", "Llama al 56912345678"],
+    ["un enlace acortado", "Fotos en bit.ly/depto-nunoa"],
     ["el WhatsApp del corredor", "Escríbeme al +56 9 1111 2222"],
     ["un correo", "Escribe a ventas@corredora.cl"],
     ["una URL con https", "Más fotos en https://corredora.cl/aviso/123"],
@@ -248,6 +259,18 @@ describe("checkContent · CONTACT_IN_TEXT (Portal, F4-T12)", () => {
     expect(JSON.stringify(contact)).not.toContain("912345678");
   });
 
+  it("un correo es un solo aviso (su dominio no cuenta además como web)", () => {
+    const messages = checkContent(
+      "portal_inmobiliario",
+      text("Escribe a ventas@corredora.cl", { hashtags: [] }),
+      contextOf(),
+    )
+      .filter((check) => check.code === "CONTACT_IN_TEXT")
+      .map((check) => check.message);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatch(/^Tiene un correo/);
+  });
+
   it("teléfono, correo y web en el mismo texto: un aviso por cada uno", () => {
     const codes = portalCodes("Llama al 912345678, escribe a a@b.cl o mira www.b.cl");
     expect(codes.filter((code) => code === "CONTACT_IN_TEXT")).toHaveLength(3);
@@ -264,6 +287,17 @@ describe("checkContent · CONTACT_IN_TEXT (Portal, F4-T12)", () => {
     ["el cierre de Portal", "Si te interesa, coordina una visita a través de Portal Inmobiliario."],
     ["abreviaturas con punto", "Depto. en Av. Grecia, aprox. a 2 cuadras, etc."],
     ["un RUT", "Propietario RUT 23.456.789-0"],
+    ["un punto sin espacio tras una comuna con ñ", "Ubicado en Ñuñoa.Es un departamento amplio"],
+    ["un punto sin espacio tras una palabra", "Cerca de Santiago.Es luminoso"],
+    ["un horario", "Visitas de 9:00 a 18:00 hrs."],
+    ["una sociedad", "Inmobiliaria Los Robles S.A."],
+    ["un rango de tiempo", "Entre 10 y 20 minutos del centro"],
+    ["un rango de superficie", "Terrenos de 5.000 a 10.000 m²"],
+    ["un decimal", "1,5 baños"],
+    ["un código interno", "Código 4521"],
+    ["un monto sin puntos tras $", "Valor $650000000"],
+    ["un monto con espacios tras $", "Valor $ 250 000 000"],
+    ["un RUT sin puntos tras la palabra RUT", "RUT: 23456789-0"],
   ])("no marca %s", (_, body) => {
     expect(portalCodes(body)).not.toContain("CONTACT_IN_TEXT");
   });

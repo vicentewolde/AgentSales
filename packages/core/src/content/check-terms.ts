@@ -158,21 +158,26 @@ export const DISTANCE_UNITS = "(?:minutos?|cuadras?|metros|kilometros?|km|horas?
  * Datos de contacto que Portal Inmobiliario modera en el título o la descripción (nota de Mercado
  * Libre §9, spec F4 §4.7): el contacto va solo en el aviso (`seller_contact`). Se buscan en el texto
  * sin plegar.
- * - Teléfono: 9 dígitos chilenos (el primero de 2 a 9), con `+56` opcional y separados como mucho
- *   por un espacio, un guion o un paréntesis. Un punto no separa: así `$120.000.000` o `UF 5.800`
- *   no son teléfonos, ni los años o superficies sueltos.
+ * - Teléfono: 9 dígitos chilenos (el primero de 2 a 9), con `+56`, `56` o `0` delante (opcional) y
+ *   separados como mucho por un espacio, un guion o un paréntesis. Un punto no separa: así
+ *   `$120.000.000` o `UF 5.800` no son teléfonos, ni los años o superficies sueltos. Tampoco un
+ *   monto después de `$` o `UF` (`$650000000`, `$ 250 000 000`) ni un RUT después de "RUT". Límite
+ *   aceptado: los teléfonos con puntos (`9.1234.5678`) o de 8 dígitos no se reconocen.
  * - Correo: `algo@dominio.tld`.
- * - Dirección web: con `http`, `www.` o un dominio de los comunes (`.cl`, `.com`…).
+ * - Dirección web: con `http`, `www.` o un dominio de los comunes (`.cl`, `.com`…) en minúsculas,
+ *   sin una letra (también `ñ` o con tilde) pegada antes: "Ñuñoa.Es amplio" o "Santiago.Es…" (un
+ *   punto sin espacio) no son dominios.
  */
 export const CONTACT_PATTERNS: readonly { kind: string; pattern: RegExp }[] = [
   {
     kind: "un teléfono",
-    pattern: /(?<![\d.,+])(?:\+\s?56[\s-]?)?\(?[2-9]\)?(?:[\s-]?\d){8}(?!\d|[.,]\d)/,
+    pattern:
+      /(?<![\d.,+])(?<!(?:\$|UF|uf|[Rr][Uu][Tt]:?)\s?)(?:\+?\s?56[\s-]?|0)?\(?[2-9]\)?(?:[\s-]?\d){8}(?!\d|[.,]\d)/,
   },
   { kind: "un correo", pattern: /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/i },
   {
     kind: "una dirección web",
     pattern:
-      /\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:cl|com|net|org|info|io|app|co|me|site|online|store|es)\b(?:\/\S*)?/i,
+      /\b(?:[hH][tT]{2}[pP][sS]?:\/\/|[wW]{3}\.)\S+|(?<![\p{L}\p{N}.@-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:cl|com|net|org|info|io|app|co|me|site|online|store|es|ly|gl)(?![\p{L}\p{N}-])(?:\/\S*)?/u,
   },
 ];

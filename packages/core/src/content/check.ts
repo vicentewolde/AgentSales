@@ -25,7 +25,7 @@ import {
 /** Severidades de la revisión: los errores bloquean, las advertencias no. */
 export const CONTENT_CHECK_SEVERITY_LEVELS = ["error", "warning"] as const;
 
-/** Códigos de la revisión editorial (spec F2 §4.6), con su severidad. */
+/** Códigos de la revisión editorial (spec F2 §4.6 y F4 §4.7), con su severidad. */
 export const CONTENT_CHECK_SEVERITIES = {
   NUMBER_NOT_IN_DATA: "error",
   ADDRESS_EXPOSED: "error",
@@ -288,10 +288,10 @@ export function checkContent(
     if (unit.some(exposed)) {
       add("ADDRESS_EXPOSED", "Menciona el número de la unidad, que no se puede mostrar");
     }
-    // El número de la calle: en los demás canales ya lo marca NUMBER_NOT_IN_DATA (no está en los
-    // datos); en Portal puede estarlo (`show_exact_address = true`) y aun así no va en el texto.
+    // El número de la calle: sin la dirección en los datos ya lo marca NUMBER_NOT_IN_DATA; en
+    // Portal con `show_exact_address = true` sí está en los datos y aun así no va en el texto.
     const streetNumbers = (ctx.private.address ?? "").match(/\d+/g) ?? [];
-    if (platform === "portal_inmobiliario" && streetNumbers.some(exposed)) {
+    if (ctx.brief.address !== null && streetNumbers.some(exposed)) {
       add(
         "ADDRESS_EXPOSED",
         "Menciona el número de la dirección, que en Portal va en la ubicación",
