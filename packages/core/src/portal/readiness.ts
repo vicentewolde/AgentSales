@@ -1,7 +1,10 @@
 import type { PublishBrokerContact, PublishIssue, PublishListing } from "../ports/publisher.js";
 import {
   PORTAL_ATTRIBUTE_FIELDS,
+  PORTAL_ISSUE_MESSAGES,
+  portalFieldHasValue,
   portalPetsAnswer,
+  portalPrice,
   portalPropertyType,
   portalWhatsappParts,
 } from "./fields.js";
@@ -30,13 +33,6 @@ const missing = (field: string, label: string): PortalReadinessIssue => ({
   field,
   message: `Falta ${label}: complétalo en la planilla`,
 });
-
-/** Un dato del Excel que cuenta como presente: un número, un booleano o un texto no vacío. */
-function present(value: unknown): boolean {
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value === "boolean") return true;
-  return typeof value === "string" && value.trim() !== "";
-}
 
 /**
  * ¿Está el aviso listo para Portal Inmobiliario? (spec F4 §4.5): lo que AgentSales sabe que pide
@@ -68,17 +64,11 @@ export function portalReadiness(
   if (listing.showExactAddress && listing.address === null) {
     issues.push(missing("direccion", "la dirección (se muestra en el aviso)"));
   }
-  if (!(listing.priceAmount > 0)) {
+  if (portalPrice(listing.priceAmount, listing.priceCurrency) === null) {
     issues.push({
       code: "PORTAL_PRICE_INVALID",
       field: "precio",
-      message: "El precio tiene que ser mayor que 0",
-    });
-  } else if (listing.priceCurrency === "CLP" && !Number.isInteger(listing.priceAmount)) {
-    issues.push({
-      code: "PORTAL_PRICE_INVALID",
-      field: "precio",
-      message: "Un precio en pesos va sin decimales",
+      message: "El precio tiene que ser mayor que 0 (y sin decimales si está en pesos)",
     });
   }
 
@@ -91,10 +81,9 @@ export function portalReadiness(
         issues.push({
           code: "PORTAL_PETS_UNDECIDED",
           field: entry.field,
-          message:
-            "Mercado Libre pide Sí o No en «Acepta mascotas» (no existe «A consultar»): elige uno en la planilla",
+          message: PORTAL_ISSUE_MESSAGES.petsUndecided,
         });
-      } else if (!present(value)) {
+      } else if (!portalFieldHasValue(entry.kind, value)) {
         issues.push(missing(entry.field, entry.label));
       }
     }
@@ -104,15 +93,13 @@ export function portalReadiness(
     issues.push({
       code: "PORTAL_WHATSAPP_MISSING",
       field: null,
-      message:
-        "Mercado Libre exige el WhatsApp del corredor: complétalo en la hoja Corredor y vuelve a cargar la planilla",
+      message: PORTAL_ISSUE_MESSAGES.whatsappMissing,
     });
   } else if (portalWhatsappParts(broker.whatsapp) === null) {
     issues.push({
       code: "PORTAL_WHATSAPP_INVALID",
       field: null,
-      message:
-        "El WhatsApp del corredor no se entiende: escríbelo como +56 9 1234 5678 en la hoja Corredor",
+      message: PORTAL_ISSUE_MESSAGES.whatsappInvalid,
     });
   }
   return issues.length === 0 ? { ready: true } : { ready: false, issues };

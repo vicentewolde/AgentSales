@@ -9,11 +9,16 @@ import {
   type MercadoLibreTokenDeps,
   maskWhatsapp,
   normalizePortalName,
+  OPERATIONS,
   type PlatformAccount,
   type PlatformAccountRepository,
+  PORTAL_ATTRIBUTE_FIELDS,
+  PORTAL_PROPERTY_TYPE_KEYS,
   type PortalAttribute,
   type PortalCategory,
   type PortalNamedRef,
+  portalCategoryPath,
+  portalPropertyType,
   portalSellerContact,
 } from "@agentsales/core";
 import {
@@ -32,6 +37,7 @@ import {
   type MercadoLibreValidator,
   mercadoLibreCausesOf,
   type PortalCatalog,
+  sellerContactBody,
   withMercadoLibreToken,
 } from "@agentsales/publishers";
 import { z } from "zod";
@@ -130,6 +136,17 @@ export type MlSmokeReport = {
     deadEnds: Array<{ path: string[]; id: string }>;
     /** Tags de los atributos obligatorios y condicionales, con los ids que los traen. */
     requiredTags: Record<string, string[]>;
+    /**
+     * Donde la tabla de Portal (core, F4-T11) no calza con la hoja real: lo que la tabla pide y la
+     * hoja no (`onlyTable`: la tabla quedó más estricta) y lo que la hoja pide y la tabla no
+     * (`onlyLeaf`: lo atrapa `buildPortalItem`). `leafId: null` si la hoja no apareció.
+     */
+    tableCheck: Array<{
+      path: string[];
+      leafId: string | null;
+      onlyTable: string[];
+      onlyLeaf: string[];
+    }>;
   };
   locations: {
     states: Array<{
@@ -369,15 +386,7 @@ function sellerContact(broker: Pick<Broker, "name" | "email" | "whatsapp"> | und
       body: { contact: "AgentSales ml:smoke", country_code2: "56", phone2: "900000000" },
     };
   }
-  return {
-    source: "broker" as const,
-    body: {
-      ...(contact.contact === null ? {} : { contact: contact.contact }),
-      ...(contact.email === null ? {} : { email: contact.email }),
-      country_code2: contact.countryCode2,
-      phone2: contact.phone2,
-    },
-  };
+  return { source: "broker" as const, body: sellerContactBody(contact) };
 }
 
 /** Un atributo de muestra con el valor y la unidad que acepta la hoja. */
@@ -433,7 +442,14 @@ export async function runMlSmoke(deps: MlSmokeDeps, options: MlSmokeOptions = {}
   const report: MlSmokeReport = {
     generatedAt: deps.now().toISOString(),
     account: { displayName: "", userType: null },
-    categories: { visited: 0, truncated: false, leaves: [], deadEnds: [], requiredTags: {} },
+    categories: {
+      visited: 0,
+      truncated: false,
+      leaves: [],
+      deadEnds: [],
+      requiredTags: {},
+      tableCheck: [],
+    },
     locations: { states: [], listings: [], sampleCity: null },
     validate: { leaf: null, missingSamples: [], contact: "sample", variants: [] },
     search: null,
@@ -634,12 +650,57 @@ async function walkCategories(
   deps.print(
     `  ${report.categories.leaves.length} hojas en ${report.categories.visited} categorías; largo del título: ${[...titleLengths].join(", ") || "?"}`,
   );
+  checkPortalTable(deps, report);
   const tagLines = Object.entries(report.categories.requiredTags);
   deps.print(
     tagLines.length === 0
       ? "  Tags de los obligatorios: ninguno aparte de required"
       : `  Tags de los obligatorios: ${tagLines.map(([tag, ids]) => `${tag} (${ids.join(", ")})`).join("; ")}`,
   );
+}
+
+/**
+ * Compara la tabla de obligatorios de Portal (core) con cada hoja que usa AgentSales (por tipo y
+ * operación): si Mercado Libre sumó o quitó un obligatorio, se ve aquí y la tabla se pone al día.
+ */
+function checkPortalTable(deps: MlSmokeDeps, report: MlSmokeReport) {
+  const same = (a: readonly string[], b: readonly string[]) =>
+    a.length === b.length &&
+    a.every((name, index) => normalizePortalName(name) === normalizePortalName(b[index] ?? ""));
+  for (const typeKey of PORTAL_PROPERTY_TYPE_KEYS) {
+    const type = portalPropertyType(typeKey);
+    for (const operation of OPERATIONS) {
+      const path = portalCategoryPath(typeKey, operation);
+      if (type === null || path === null) continue;
+      const leaf = report.categories.leaves.find((item) => same(item.path, path));
+      const table = PORTAL_ATTRIBUTE_FIELDS.filter((entry) => entry.required(type, operation)).map(
+        (entry) => entry.attribute,
+      );
+      // Lo que completa la categoría (`read_only`, `fixed`, `hidden`) no lo pide la tabla.
+      const required = (leaf?.required ?? [])
+        .filter((attribute) => !attribute.tags.some((tag) => CATEGORY_TAGS.includes(tag)))
+        .map((attribute) => attribute.id);
+      const onlyTable = table.filter((id) => !required.includes(id));
+      const onlyLeaf = required.filter((id) => !table.includes(id));
+      if (leaf !== undefined && onlyTable.length === 0 && onlyLeaf.length === 0) continue;
+      report.categories.tableCheck.push({ path, leafId: leaf?.id ?? null, onlyTable, onlyLeaf });
+    }
+  }
+  if (report.categories.tableCheck.length === 0) {
+    deps.print("  Tabla de Portal (obligatorios por tipo y operación): calza con las hojas reales");
+    return;
+  }
+  deps.printError(
+    "  Tabla de Portal: no calza con las hojas reales (ponla al día en core, portal/fields.ts):",
+  );
+  for (const diff of report.categories.tableCheck) {
+    const parts = [
+      diff.leafId === null ? "la hoja no apareció" : null,
+      diff.onlyTable.length > 0 ? `la tabla pide de más: ${diff.onlyTable.join(", ")}` : null,
+      diff.onlyLeaf.length > 0 ? `Mercado Libre pide además: ${diff.onlyLeaf.join(", ")}` : null,
+    ].filter((part) => part !== null);
+    deps.printError(`    ${diff.path.join(" > ")}: ${parts.join("; ")}`);
+  }
 }
 
 /** Estados y ciudades de Chile (con la forma de sus ids) y la ubicación de los avisos del corredor. */

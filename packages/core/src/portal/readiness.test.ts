@@ -142,6 +142,30 @@ describe("portalReadiness", () => {
     ]);
   });
 
+  it.each([
+    ["dormitorios", "2"],
+    ["sup_total_m2", true],
+    ["amoblado", "Sí"],
+    ["acepta_mascotas", "Tal vez"],
+    ["gastos_comunes_clp", Number.NaN],
+  ])(
+    "un dato con el tipo equivocado (%s = %j) cuenta como faltante, como en buildPortalItem",
+    (field, value) => {
+      const attributes = { ...listing().attributes, [field]: value };
+      expect(fields(portalReadiness(listing({ attributes }), BROKER))).toEqual([
+        ["PORTAL_FIELD_MISSING", field],
+      ]);
+    },
+  );
+
+  it("un precio en UF que redondea a 0, o infinito, no sirve", () => {
+    for (const priceAmount of [0.004, Number.POSITIVE_INFINITY]) {
+      expect(
+        fields(portalReadiness(listing({ priceAmount, priceCurrency: "UF" }), BROKER)),
+      ).toEqual([["PORTAL_PRICE_INVALID", "precio"]]);
+    }
+  });
+
   it("un dato con otro tipo (texto vacío) cuenta como faltante; un campo renombrado también", () => {
     const attributes = { ...listing().attributes, sup_total_m2: "" };
     delete (attributes as Record<string, unknown>).dormitorios;

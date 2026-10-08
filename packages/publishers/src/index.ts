@@ -86,6 +86,7 @@ export {
   type MercadoLibreSearchFilterValue,
   type MercadoLibreSearchStatus,
   type MercadoLibreWritableStatus,
+  sellerContactBody,
 } from "./mercadolibre/items.js";
 export {
   createMercadoLibrePacks,

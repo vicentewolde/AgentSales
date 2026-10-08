@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   PORTAL_ATTRIBUTE_FIELDS,
   portalCategoryPath,
+  portalFieldHasValue,
   portalPetsAnswer,
+  portalPrice,
   portalPropertyType,
   portalSellerContact,
   portalWhatsappParts,
@@ -81,6 +83,71 @@ describe("tabla de atributos", () => {
       "COVERED_AREA",
       "TOTAL_AREA",
     ]);
+  });
+});
+
+describe("obligatorios sin catálogo por tipo y operación (las hojas de usados, nota §12.1)", () => {
+  const HOME_RENT = ["WAREHOUSES", "FURNISHED", "IS_SUITABLE_FOR_PETS"];
+  const BUILT = ["FULL_BATHROOMS", "PARKING_LOTS", "COVERED_AREA", "TOTAL_AREA"];
+  it.each([
+    ["Departamentos", "sale", ["BEDROOMS", ...BUILT]],
+    ["Departamentos", "rent", ["BEDROOMS", ...BUILT, "MAINTENANCE_FEE", ...HOME_RENT]],
+    ["Casas", "sale", ["BEDROOMS", ...BUILT]],
+    ["Casas", "rent", ["BEDROOMS", ...BUILT, ...HOME_RENT]],
+    ["Oficinas", "sale", BUILT],
+    ["Oficinas", "rent", BUILT],
+    ["Locales", "sale", BUILT],
+    ["Locales", "rent", BUILT],
+    ["Bodegas", "sale", BUILT],
+    ["Bodegas", "rent", BUILT],
+    ["Parcelas", "sale", ["BEDROOMS", ...BUILT]],
+    ["Parcelas", "rent", ["BEDROOMS", ...BUILT]],
+    ["Terrenos", "sale", ["TOTAL_AREA"]],
+    ["Terrenos", "rent", ["TOTAL_AREA"]],
+    ["Estacionamientos", "sale", ["TOTAL_AREA"]],
+    ["Estacionamientos", "rent", ["TOTAL_AREA"]],
+  ] as const)("%s en %s", (type, operation, expected) => {
+    const required = PORTAL_ATTRIBUTE_FIELDS.filter((entry) => entry.required(type, operation)).map(
+      (entry) => entry.attribute,
+    );
+    expect([...required].sort()).toEqual([...expected].sort());
+  });
+});
+
+describe("portalFieldHasValue (la misma regla en las dos revisiones)", () => {
+  it.each([
+    ["number", 2, true],
+    ["number", 0, true],
+    ["number", "2", false],
+    ["number", Number.NaN, false],
+    ["area", 72.5, true],
+    ["area", true, false],
+    ["fee", Number.POSITIVE_INFINITY, false],
+    ["yes_no", false, true],
+    ["yes_no", "Sí", false],
+    ["pets", "No", true],
+    ["pets", "A consultar", false],
+    ["pets", "Tal vez", false],
+    ["facing", "Nororiente", true],
+    ["facing", "Arriba", false],
+    ["age", 2015, true],
+    ["age", null, false],
+  ] as const)("%s con %j → %s", (kind, value, has) => {
+    expect(portalFieldHasValue(kind, value)).toBe(has);
+  });
+});
+
+describe("portalPrice", () => {
+  it.each([
+    [5800.456, "UF", { price: 5800.46, currency: "CLF" }],
+    [0.004, "UF", null],
+    [Number.POSITIVE_INFINITY, "UF", null],
+    [650000, "CLP", { price: 650000, currency: "CLP" }],
+    [650000.5, "CLP", null],
+    [0, "CLP", null],
+    [-1, "CLP", null],
+  ] as const)("%s %s → %j", (amount, currency, price) => {
+    expect(portalPrice(amount, currency)).toEqual(price);
   });
 });
 

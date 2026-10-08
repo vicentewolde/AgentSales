@@ -1,4 +1,4 @@
-import type { Operation } from "../enums.js";
+import type { Currency, Operation } from "../enums.js";
 import type { PublishBrokerContact } from "../ports/publisher.js";
 import { normalizePortalName } from "./catalog.js";
 import type { PortalSellerContact } from "./progress.js";
@@ -7,9 +7,21 @@ import type { PortalSellerContact } from "./progress.js";
  * La tabla de campos de Portal Inmobiliario (spec F4 §4.5): del aviso de AgentSales a la categoría
  * y los atributos de Mercado Libre. La usan las dos revisiones: `portalReadiness` (core, sin
  * catálogo) y `buildPortalItem` (publishers, con la hoja real). Los nombres y los obligatorios son
- * los que leyó `ml:smoke` el 2026-10-08 (nota de Mercado Libre §12.1); si Mercado Libre los cambia,
- * `buildPortalItem` lo nota con la hoja real y esta tabla se pone al día.
+ * los que leyó `ml:smoke` el 2026-10-08 (nota de Mercado Libre §12.1). Si Mercado Libre **suma** un
+ * obligatorio, `buildPortalItem` lo nota con la hoja real; si **quita** uno, esta tabla queda más
+ * estricta (falla del lado seguro: `portalReadiness` lo sigue pidiendo) y `ml:smoke` muestra la
+ * diferencia para ponerla al día.
  */
+
+/** Los motivos que dan las dos revisiones con el mismo texto. */
+export const PORTAL_ISSUE_MESSAGES = {
+  petsUndecided:
+    "Mercado Libre pide Sí o No en «Acepta mascotas» (no existe «A consultar»): elige uno en la planilla",
+  whatsappMissing:
+    "Mercado Libre exige el WhatsApp del corredor: complétalo en la hoja Corredor y vuelve a cargar la planilla",
+  whatsappInvalid:
+    "El WhatsApp del corredor no se entiende: escríbelo como +56 9 1234 5678 en la hoja Corredor y vuelve a cargar la planilla",
+} as const;
 
 /** Los tipos de Mercado Libre que usa AgentSales (el nombre de la categoría bajo Inmuebles). */
 export type PortalPropertyType =
@@ -47,6 +59,9 @@ const WITH_SUBTYPE: Readonly<Partial<Record<PortalPropertyType, readonly Operati
   Oficinas: ["sale", "rent"],
   Parcelas: ["sale"],
 };
+
+/** Los `tipo` del Excel que se publican en Portal (normalizados), para recorrer la tabla. */
+export const PORTAL_PROPERTY_TYPE_KEYS: readonly string[] = Object.keys(PROPERTY_TYPES);
 
 /** El tipo de Mercado Libre de un `tipo` del Excel, o `null` si AgentSales no lo publica en Portal. */
 export function portalPropertyType(propertyType: string | null): PortalPropertyType | null {
@@ -202,6 +217,49 @@ export function portalPetsAnswer(value: unknown): "si" | "no" | "undecided" | nu
   const answer = normalizePortalName(value);
   if (answer === "si" || answer === "no") return answer;
   return answer === "a consultar" ? "undecided" : null;
+}
+
+/**
+ * ¿Trae el Excel un valor que se puede enviar en este campo? La misma regla para `portalReadiness`
+ * y `buildPortalItem`: un número finito en los numéricos, un booleano en amoblado, `Sí` o `No` en
+ * mascotas y una orientación conocida. Otro tipo (un `"2"` de texto, un `true` en una superficie)
+ * cuenta como faltante: no se adivina.
+ */
+export function portalFieldHasValue(kind: PortalFieldKind, value: unknown): boolean {
+  switch (kind) {
+    case "number":
+    case "area":
+    case "fee":
+    case "age":
+      return typeof value === "number" && Number.isFinite(value);
+    case "yes_no":
+      return typeof value === "boolean";
+    case "pets": {
+      const answer = portalPetsAnswer(value);
+      return answer === "si" || answer === "no";
+    }
+    case "facing":
+      return (
+        typeof value === "string" && Object.hasOwn(PORTAL_FACING_CODES, normalizePortalName(value))
+      );
+  }
+}
+
+/**
+ * El precio para Mercado Libre (spec F4 §4.5): UF → `CLF` con 2 decimales; pesos → `CLP` entero.
+ * Nunca se convierte una moneda en otra (doc 02). `null` si no es un número finito mayor que 0
+ * (después de redondear) o si un precio en pesos trae decimales.
+ */
+export function portalPrice(
+  amount: number,
+  currency: Currency,
+): { price: number; currency: "CLF" | "CLP" } | null {
+  if (!Number.isFinite(amount)) return null;
+  if (currency === "UF") {
+    const price = Math.round(amount * 100) / 100;
+    return price > 0 ? { price, currency: "CLF" } : null;
+  }
+  return Number.isInteger(amount) && amount > 0 ? { price: amount, currency: "CLP" } : null;
 }
 
 /**

@@ -495,6 +495,107 @@ describe("buildPortalItem", () => {
     ]);
   });
 
+  it.each([
+    ["dormitorios", "2"],
+    ["sup_total_m2", true],
+    ["amoblado", "Sí"],
+    ["acepta_mascotas", "Tal vez"],
+  ])(
+    "un obligatorio con el tipo equivocado (%s = %j) no se envía ni se adivina",
+    (field, value) => {
+      const attributes = { ...listing().attributes, [field]: value };
+      expect(codes(build(input({ listing: listing({ attributes }) })))).toEqual([
+        "PORTAL_FIELD_MISSING",
+      ]);
+    },
+  );
+
+  it("un precio en UF que redondea a 0 no se envía", () => {
+    expect(
+      codes(build(input({ listing: listing({ priceAmount: 0.004, priceCurrency: "UF" }) }))),
+    ).toEqual(["PORTAL_PRICE_INVALID"]);
+  });
+
+  it("una unidad que la hoja no acepta: bloquea si es obligatorio, se omite con aviso si no (nunca se convierte)", () => {
+    const hectares = (attribute: PortalAttribute) =>
+      attribute.id === "TOTAL_AREA" || attribute.id === "MAINTENANCE_FEE"
+        ? { ...attribute, allowedUnits: [{ id: "ha", name: "ha" }] }
+        : attribute;
+    expect(
+      codes(build(input(), { catalog: catalog({ attributes: RENT_ATTRIBUTES.map(hectares) }) })),
+    ).toEqual(["PORTAL_UNIT_NOT_ALLOWED", "PORTAL_UNIT_NOT_ALLOWED"]);
+    const sale = build(input({ listing: listing({ operation: "sale", priceAmount: 150000000 }) }), {
+      catalog: catalog({ attributes: SALE_ATTRIBUTES.map(hectares) }),
+    });
+    expect(codes(sale)).toEqual(["PORTAL_UNIT_NOT_ALLOWED"]);
+    expect(
+      itemOf(
+        build(input({ listing: listing({ operation: "sale", priceAmount: 150000000 }) }), {
+          catalog: catalog({
+            attributes: SALE_ATTRIBUTES.map((attribute) =>
+              attribute.id === "MAINTENANCE_FEE"
+                ? { ...attribute, allowedUnits: [{ id: "USD", name: "USD" }] }
+                : attribute,
+            ),
+          }),
+        }),
+      ).notes,
+    ).toEqual([
+      "La categoría no acepta Gastos comunes (CLP) en esa unidad (nunca se convierte): no se envía",
+    ]);
+  });
+
+  it("CMG_SITE marcado obligatorio en la hoja no se pide: va siempre, fijo", () => {
+    const attributes = RENT_ATTRIBUTES.map((attribute) =>
+      attribute.id === "CMG_SITE"
+        ? { ...attribute, tags: ["required"], required: true }
+        : attribute,
+    );
+    const ids = attributesOf(build(input(), { catalog: catalog({ attributes }) }));
+    expect(ids.filter((id) => id === "CMG_SITE")).toHaveLength(1);
+  });
+
+  it.each([
+    ["Oficina", "rent", ["FULL_BATHROOMS", "PARKING_LOTS", "COVERED_AREA", "TOTAL_AREA"]],
+    ["Local comercial", "sale", ["FULL_BATHROOMS", "PARKING_LOTS", "COVERED_AREA", "TOTAL_AREA"]],
+    ["Bodega", "rent", ["FULL_BATHROOMS", "PARKING_LOTS", "COVERED_AREA", "TOTAL_AREA"]],
+    [
+      "Parcela",
+      "sale",
+      ["BEDROOMS", "FULL_BATHROOMS", "PARKING_LOTS", "COVERED_AREA", "TOTAL_AREA"],
+    ],
+    ["Estacionamiento", "rent", ["TOTAL_AREA"]],
+  ] as const)(
+    "%s en %s: envía lo que la hoja tiene y no pide de más",
+    (propertyType, operation, ids) => {
+      // Una hoja con solo esos atributos, obligatorios (como las reales de esos tipos, nota §12.1).
+      const attributes = [
+        ...ids.map((id) => (id.endsWith("AREA") ? area(id) : attr(id, { required: true }))),
+        attr("CMG_SITE", { valueType: "string", tags: ["hidden"] }),
+      ];
+      const result = build(
+        input({ listing: listing({ propertyType, operation, priceAmount: 150000000 }) }),
+        { catalog: catalog({ attributes }) },
+      );
+      expect(attributesOf(result)).toEqual([...ids, "CMG_SITE"]);
+    },
+  );
+
+  it("una descripción más larga que el máximo de la hoja no se arma (iría después de crear el ítem)", () => {
+    expect(
+      codes(
+        build(input({ caption: "x".repeat(101) }), {
+          catalog: catalog({ leaf: leaf({ maxDescriptionLength: 100 }) }),
+        }),
+      ),
+    ).toEqual(["PORTAL_DESCRIPTION_TOO_LONG"]);
+    expect(
+      build(input({ caption: "x".repeat(100) }), {
+        catalog: catalog({ leaf: leaf({ maxDescriptionLength: 100 }) }),
+      }).ok,
+    ).toBe(true);
+  });
+
   it("sin el aviso o sin el contacto en el input, no lo supone", () => {
     expect(codes(build(input({ listing: undefined })))).toEqual(["PORTAL_INPUT_INCOMPLETE"]);
     expect(codes(build(input({ brokerContact: undefined })))).toEqual(["PORTAL_INPUT_INCOMPLETE"]);

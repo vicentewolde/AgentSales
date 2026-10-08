@@ -3,6 +3,7 @@ import {
   normalizePortalName,
   PORTAL_ATTRIBUTE_FIELDS,
   PORTAL_FACING_CODES,
+  PORTAL_ISSUE_MESSAGES,
   type PortalAttribute,
   type PortalAttributeField,
   type PortalCategory,
@@ -13,6 +14,7 @@ import {
   type PublishListing,
   portalCategoryPath,
   portalPetsAnswer,
+  portalPrice,
   portalSellerContact,
 } from "@agentsales/core";
 import type { PortalCatalog, PortalCatalogContext } from "./catalog.js";
@@ -99,7 +101,14 @@ const withUnit = (attribute: PortalAttribute, amount: number, unit: string) => (
 type Mapped =
   | { kind: "value"; value: Record<string, unknown> }
   | { kind: "none" }
-  | { kind: "undecided" };
+  | { kind: "undecided" }
+  /** La hoja no acepta la unidad del Excel (m² o CLP): nunca se convierte. */
+  | { kind: "unit" };
+
+/** ¿Acepta la hoja esa unidad? Sin unidades informadas, no se sabe y no bloquea. */
+const unitAllowed = (attribute: PortalAttribute, unit: string) =>
+  attribute.allowedUnits.length === 0 ||
+  attribute.allowedUnits.some((option) => option.name === unit || option.id === unit);
 
 /** El atributo de Mercado Libre para un campo del Excel, o `none` si no hay dato que enviar. */
 function mapField(
@@ -118,15 +127,15 @@ function mapField(
     }
     case "area": {
       const amount = numberOf(raw);
-      return amount === null
-        ? { kind: "none" }
-        : { kind: "value", value: withUnit(attribute, amount, SQUARE_METERS) };
+      if (amount === null) return { kind: "none" };
+      if (!unitAllowed(attribute, SQUARE_METERS)) return { kind: "unit" };
+      return { kind: "value", value: withUnit(attribute, amount, SQUARE_METERS) };
     }
     case "fee": {
       const amount = numberOf(raw);
-      return amount === null
-        ? { kind: "none" }
-        : { kind: "value", value: withUnit(attribute, amount, PESOS) };
+      if (amount === null) return { kind: "none" };
+      if (!unitAllowed(attribute, PESOS)) return { kind: "unit" };
+      return { kind: "value", value: withUnit(attribute, amount, PESOS) };
     }
     case "yes_no":
       return typeof raw === "boolean"
@@ -161,17 +170,6 @@ function mapField(
       return { kind: "value", value: withUnit(attribute, age, attribute.defaultUnit ?? AGE_UNIT) };
     }
   }
-}
-
-/** El precio para Mercado Libre: UF → `CLF` con 2 decimales; pesos → `CLP` entero (nunca se convierte). */
-function priceOf(listing: PublishListing): { price: number; currency: "CLF" | "CLP" } | null {
-  if (!(listing.priceAmount > 0)) return null;
-  if (listing.priceCurrency === "UF") {
-    return { price: Math.round(listing.priceAmount * 100) / 100, currency: "CLF" };
-  }
-  return Number.isInteger(listing.priceAmount)
-    ? { price: listing.priceAmount, currency: "CLP" }
-    : null;
 }
 
 /**
@@ -224,6 +222,18 @@ export function buildPortalItem(
     );
   }
 
+  // La descripción va después de crear el ítem: si fuera demasiado larga, el ítem quedaría vivo
+  // con la publicación fallida (§4.8, paso 3). Se revisa aquí, antes de crear.
+  const maxDescription = leaf.settings.maxDescriptionLength;
+  if (maxDescription !== null && [...input.caption].length > maxDescription) {
+    issues.push(
+      issue(
+        "PORTAL_DESCRIPTION_TOO_LONG",
+        `La descripción de Portal pasa de ${maxDescription} caracteres (el máximo de la categoría)`,
+      ),
+    );
+  }
+
   const maxPictures = leaf.settings.maxPicturesPerItem;
   if (options.pictures.length === 0) {
     issues.push(issue("PORTAL_PICTURES_MISSING", "Mercado Libre exige al menos una foto"));
@@ -233,7 +243,7 @@ export function buildPortalItem(
     );
   }
 
-  const price = priceOf(listing);
+  const price = portalPrice(listing.priceAmount, listing.priceCurrency);
   if (price === null) {
     issues.push(
       issue(
@@ -247,7 +257,7 @@ export function buildPortalItem(
       issues.push(
         issue(
           "PORTAL_CURRENCY_NOT_ALLOWED",
-          `La categoría no acepta precios en ${listing.priceCurrency} (nunca se convierte)`,
+          "La categoría no acepta la moneda del precio (nunca se convierte)",
         ),
       );
     }
@@ -264,14 +274,8 @@ export function buildPortalItem(
     const blank = brokerContact.whatsapp === null || brokerContact.whatsapp.trim() === "";
     issues.push(
       blank
-        ? issue(
-            "PORTAL_WHATSAPP_MISSING",
-            "Mercado Libre exige el WhatsApp del corredor: complétalo en la hoja Corredor",
-          )
-        : issue(
-            "PORTAL_WHATSAPP_INVALID",
-            "El WhatsApp del corredor no se entiende: escríbelo como +56 9 1234 5678 en la hoja Corredor",
-          ),
+        ? issue("PORTAL_WHATSAPP_MISSING", PORTAL_ISSUE_MESSAGES.whatsappMissing)
+        : issue("PORTAL_WHATSAPP_INVALID", PORTAL_ISSUE_MESSAGES.whatsappInvalid),
     );
   }
 
@@ -292,13 +296,16 @@ export function buildPortalItem(
       sent.push(mapped.value);
       continue;
     }
+    if (mapped.kind === "unit") {
+      const message = `La categoría no acepta ${entry.label} en esa unidad (nunca se convierte)`;
+      if (attribute.required) issues.push(issue("PORTAL_UNIT_NOT_ALLOWED", message));
+      else notes.push(`${message}: no se envía`);
+      continue;
+    }
     if (!attribute.required) continue;
     issues.push(
       mapped.kind === "undecided"
-        ? issue(
-            "PORTAL_PETS_UNDECIDED",
-            "Mercado Libre pide Sí o No en «Acepta mascotas» (no existe «A consultar»): elige uno en la planilla",
-          )
+        ? issue("PORTAL_PETS_UNDECIDED", PORTAL_ISSUE_MESSAGES.petsUndecided)
         : issue(
             "PORTAL_FIELD_MISSING",
             `Falta ${entry.label}: Mercado Libre la pide en esta categoría`,
@@ -307,7 +314,9 @@ export function buildPortalItem(
   }
   // Lo que la hoja exige y AgentSales no tiene: no se inventa (D8).
   for (const attribute of catalog.attributes) {
-    if (covered.has(attribute.id) || byCategory(attribute)) continue;
+    // `CMG_SITE` va siempre, fijo: aunque la hoja lo marque obligatorio, no falta.
+    if (covered.has(attribute.id) || byCategory(attribute) || attribute.id === CMG_SITE.id)
+      continue;
     if (attribute.required) {
       issues.push(
         issue(
