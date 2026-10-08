@@ -1,6 +1,10 @@
-import { AppError, type EnsureAccessTokenOptions } from "@agentsales/core";
+import {
+  AppError,
+  type EnsureAccessTokenOptions,
+  isMercadoLibreRejectedAfterRefresh,
+} from "@agentsales/core";
 import { describe, expect, it } from "vitest";
-import { isRejectedAfterRefresh, withMercadoLibreToken } from "./token.js";
+import { withMercadoLibreToken } from "./token.js";
 
 const rejected = () =>
   new AppError("ML_AUTH_INVALID", "token rechazado", { details: { httpStatus: 401 } });
@@ -41,10 +45,10 @@ describe("withMercadoLibreToken", () => {
       throw rejected();
     }).catch((caught: unknown) => caught);
 
-    expect(isRejectedAfterRefresh(error)).toBe(true);
+    expect(isMercadoLibreRejectedAfterRefresh(error)).toBe(true);
     expect(error).toMatchObject({ retriable: false, details: { httpStatus: 401 } });
     expect(calls).toHaveLength(2);
-    expect(isRejectedAfterRefresh(rejected())).toBe(false);
+    expect(isMercadoLibreRejectedAfterRefresh(rejected())).toBe(false);
   });
 
   it("otro error sube tal cual, sin pedir otro token", async () => {

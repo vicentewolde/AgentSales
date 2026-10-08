@@ -188,6 +188,10 @@ function useMercadoLibre(
     validateDown?: boolean;
     /** Como la cuenta real el 2026-10-08: sin paquetes (404) y `validate` en 402 salvo el título. */
     noQuota?: boolean;
+    /** Status fijo para `validate`, las categorías o los paquetes del usuario. */
+    validateStatus?: number;
+    categoryStatus?: number;
+    userPacksStatus?: number;
   } = {},
 ) {
   const respond = (body: unknown) => {
@@ -212,7 +216,11 @@ function useMercadoLibre(
         results: [{ id: "PACK-1", description: "Publicaciones Plata", price: 345.1, duration: 30 }],
       }),
     ),
-    http.get(`${API}/categories/:id`, ({ params }) => respond(CATEGORIES[String(params.id)])),
+    http.get(`${API}/categories/:id`, ({ params }) =>
+      options.categoryStatus === undefined
+        ? respond(CATEGORIES[String(params.id)])
+        : HttpResponse.json({ error: "forbidden" }, { status: options.categoryStatus }),
+    ),
     http.get(`${API}/classified_locations/countries/CL`, () => respond(COUNTRY)),
     http.get(`${API}/classified_locations/states/:id`, ({ params }) =>
       respond(STATES[String(params.id)]),
@@ -223,6 +231,9 @@ function useMercadoLibre(
     http.post(`${API}/items/validate`, async ({ request }) => {
       if (options.unauthorized) return respond(null);
       if (options.validateDown) return HttpResponse.json({ message: "boom" }, { status: 503 });
+      if (options.validateStatus !== undefined) {
+        return HttpResponse.json({ error: "forbidden" }, { status: options.validateStatus });
+      }
       const body = (await request.json()) as Body;
       const reject = (cause: Record<string, unknown>) =>
         HttpResponse.json(
@@ -264,12 +275,14 @@ function useMercadoLibre(
       }),
     ),
     http.get(`${API}/users/:user/classifieds_promotion_packs`, () =>
-      options.noQuota
-        ? HttpResponse.json(
-            { message: "not found", error: "not_found", status: 404 },
-            { status: 404 },
-          )
-        : respond([]),
+      options.userPacksStatus !== undefined
+        ? HttpResponse.json({ message: "boom" }, { status: options.userPacksStatus })
+        : options.noQuota
+          ? HttpResponse.json(
+              { message: "not found", error: "not_found", status: 404 },
+              { status: 404 },
+            )
+          : respond([]),
     ),
     // Lo que el smoke nunca debe llamar: responde como Mercado Libre.
     http.post(`${API}/items`, () => HttpResponse.json({ id: "MLC1", status: "active" })),
@@ -786,6 +799,100 @@ describe("runMlSmoke", () => {
     expect(report.validate.variants).toHaveLength(7);
     expect(report.search).not.toBeNull();
     expect(errors).toContain("✗ 8 lectura(s) fallaron: revisa los ✗ de arriba");
+  });
+
+  it("un 403 en validate no es un resultado: error con su pista y sale con 1", async () => {
+    useMercadoLibre({ validateStatus: 403 });
+    const { deps, reports, errors, lines } = await setup();
+
+    expect(await runMlSmoke(deps)).toBe(1);
+
+    const report = reports[0] as MlSmokeReport;
+    expect(report.errors).toHaveLength(7);
+    expect(report.errors.every((error) => error.code === "ML_PERMISSION_DENIED")).toBe(true);
+    expect(lines).toContain(
+      "  base (CLP, con dirección y CMG_SITE completo): ✗ no se pudo validar",
+    );
+    expect(errors).toContain(
+      "    → Revisa que la app tenga el permiso de publicación y que autorizó la cuenta administradora",
+    );
+  });
+
+  it("el recorrido se corta en el tope, y un 403 en Inmuebles no deja nada más que recorrer", async () => {
+    useMercadoLibre();
+    const capped = await setup();
+    await runMlSmoke(capped.deps, { maxCategories: 3 });
+    expect(capped.reports[0]?.categories).toMatchObject({ visited: 3, truncated: true });
+    expect(capped.errors).toContain("  Aviso: se cortó el recorrido en 3 categorías");
+
+    requests.length = 0;
+    server.resetHandlers();
+    useMercadoLibre({ categoryStatus: 403 });
+    const denied = await setup();
+    expect(await runMlSmoke(denied.deps)).toBe(1);
+    const categoryCalls = (await recorded()).filter((request) =>
+      /^\/categories\/MLC\d+$/.test(request.path),
+    );
+    expect(categoryCalls).toHaveLength(1);
+    expect(denied.reports[0]?.errors[0]).toMatchObject({
+      section: "category:MLC1459",
+      code: "ML_PERMISSION_DENIED",
+    });
+  });
+
+  it("deja de insistir tras 3 categorías seguidas con error (un 403 se repetiría en todas)", async () => {
+    useMercadoLibre();
+    const children: [string, string][] = [
+      ["MLC1", "Uno"],
+      ["MLC2", "Dos"],
+      ["MLC3", "Tres"],
+      ["MLC4", "Cuatro"],
+    ];
+    server.use(
+      http.get(`${API}/categories/:id`, ({ params }) =>
+        params.id === "MLC1459"
+          ? HttpResponse.json(category("MLC1459", "Inmuebles", children))
+          : HttpResponse.json({ error: "forbidden" }, { status: 403 }),
+      ),
+    );
+    const { deps, reports, errors } = await setup();
+
+    expect(await runMlSmoke(deps)).toBe(1);
+    expect(reports[0]?.categories).toMatchObject({ visited: 4, truncated: true });
+    const categoryCalls = (await recorded())
+      .map((request) => request.path)
+      .filter((path) => /^\/categories\/MLC\d+$/.test(path));
+    expect(categoryCalls).toEqual([
+      "/categories/MLC1459",
+      "/categories/MLC1",
+      "/categories/MLC2",
+      "/categories/MLC3",
+    ]);
+    expect(errors).toContain(
+      "  Aviso: se cortó el recorrido después de 3 categorías seguidas con error",
+    );
+  });
+
+  it("Ctrl-C (la señal) corta todo: ML_ABORTED, sin seguir llamando, y sale con 1", async () => {
+    useMercadoLibre();
+    const { deps, errors } = await setup();
+    const controller = new AbortController();
+    controller.abort();
+
+    expect(await runMlSmoke(deps, { signal: controller.signal })).toBe(1);
+    expect(await recorded()).toEqual([]);
+    expect(errors[0]).toMatch(/^✗ ML_ABORTED: /);
+  });
+
+  it("una caída de los paquetes del usuario (500) sí es un error", async () => {
+    useMercadoLibre({ userPacksStatus: 500 });
+    const { deps, reports } = await setup();
+
+    expect(await runMlSmoke(deps)).toBe(1);
+    expect(reports[0]?.packs.userNotFound).toBe(false);
+    expect(reports[0]?.errors).toEqual([
+      expect.objectContaining({ section: "packs:user", code: "ML_UNAVAILABLE" }),
+    ]);
   });
 
   it("smokeItems solo expone la búsqueda", () => {

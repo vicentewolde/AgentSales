@@ -246,6 +246,7 @@ export type {
   MercadoLibreUser,
 } from "./ports/mercadolibre-auth.js";
 export {
+  isMercadoLibreRejectedAfterRefresh,
   isMercadoLibreTokenRejected,
   MERCADOLIBRE_REJECTED_AFTER_REFRESH,
 } from "./ports/mercadolibre-auth.js";

@@ -4,6 +4,7 @@ import {
   accessTokenProvider,
   type Broker,
   isAppError,
+  isMercadoLibreRejectedAfterRefresh,
   type Listing,
   type MercadoLibreTokenDeps,
   maskWhatsapp,
@@ -17,7 +18,6 @@ import {
 import {
   describeCause,
   isMercadoLibreLocationId,
-  isRejectedAfterRefresh,
   MERCADOLIBRE_COUNTRY_ID,
   MERCADOLIBRE_REAL_ESTATE_CATEGORY_ID,
   type MercadoLibreCause,
@@ -33,6 +33,7 @@ import {
   type PortalCatalog,
   withMercadoLibreToken,
 } from "@agentsales/publishers";
+import { z } from "zod";
 
 // `pnpm ml:smoke` (spec F4-T10): con la cuenta de Mercado Libre conectada, recorre el árbol de
 // Inmuebles hasta las hojas (con sus `settings` y obligatorios), baja los estados y ciudades de
@@ -40,8 +41,10 @@ import {
 // estados trae la búsqueda de ítems sin filtro y lee los paquetes de publicación. **Nunca** sube
 // fotos, crea ni modifica ítems: `items` solo trae `searchItems` (ni en los tipos ni al ejecutar,
 // `smokeItems`) y no recibe el cliente de fotos. Sí escribe en la base: el catálogo (7 días) y, si
-// refresca, el par de tokens (con el candado). No imprime tokens ni el WhatsApp del corredor, y un
-// 401 que se repite después de refrescar se informa sin marcar la cuenta `expired` (spec F4-T10).
+// refresca, el par de tokens (con el candado). No imprime tokens ni el WhatsApp del corredor. Un
+// 401 que se repite después de refrescar se informa sin marcar la cuenta `expired` (spec F4-T10);
+// en cambio, si el refresco mismo es rechazado (`invalid_grant`), `ensureAccessToken` sí la deja
+// `expired`, como en cualquier refresco (ADR-0015 punto 4).
 
 /** Título del aviso de prueba (el que sugiere la doc de inmuebles para pruebas, nota §8). */
 export const ML_SMOKE_TITLE = "Propiedad de Test por favor no contactar";
@@ -49,6 +52,8 @@ export const ML_SMOKE_TITLE = "Propiedad de Test por favor no contactar";
 export const ML_SMOKE_PICTURE = "https://agentsales.test/ml-smoke/foto-1.jpg";
 /** Tope de categorías que se recorren (el árbol de Inmuebles tiene decenas): evita un bucle. */
 export const ML_SMOKE_MAX_CATEGORIES = 400;
+/** Categorías seguidas con error tras las que se deja de recorrer (un 403 se repetiría en todas). */
+export const ML_SMOKE_MAX_FAILURES_IN_A_ROW = 3;
 
 /** Lo que el smoke lee: lo justo, para probarlo con dobles. */
 export type MlSmokeDeps = {
@@ -82,6 +87,8 @@ export type MlSmokeOptions = {
   brokerSlug?: string;
   /** La hoja para `validate` (`MLC…`); por defecto, la de departamentos en venta. */
   categoryId?: string;
+  /** Tope del recorrido del árbol (por defecto `ML_SMOKE_MAX_CATEGORIES`). */
+  maxCategories?: number;
   signal?: AbortSignalLike;
 };
 
@@ -90,7 +97,9 @@ export type MlSmokeError = {
   section: string;
   code: string;
   message: string;
+  /** `httpStatus`, `error` de Mercado Libre, `reason`, … (sin las causas, que van aparte). */
   details?: Record<string, unknown>;
+  causes?: MercadoLibreCause[];
 };
 
 type AttributeSummary = Pick<
@@ -159,6 +168,17 @@ export type MlSmokeReport = {
   };
   errors: MlSmokeError[];
 };
+
+/**
+ * Errores de `validate` que son un resultado (lo que se busca ver), no un fallo del smoke: sin
+ * cupo (402), o un rechazo con o sin causas.
+ */
+const VALIDATE_RESULTS = new Set(["ML_NO_QUOTA", "ML_ITEM_REJECTED", "ML_REQUEST_REJECTED"]);
+
+/** El tipo de usuario de la `meta` de la cuenta (solo eso; el resto no se usa aquí). */
+const userTypeSchema = z.object({
+  userType: z.string().optional().catch(undefined),
+});
 
 /** Errores que cortan todo el smoke: sin token o sin base, ninguna otra parte puede andar. */
 const STOP_CODES = new Set([
@@ -253,12 +273,12 @@ const errorOf = (section: string, error: AppError): MlSmokeError => {
     if (value !== undefined && value !== null) details[key] = value;
   }
   const causes = mercadoLibreCausesOf(error);
-  if (causes.length > 0) details.causes = causes;
   return {
     section,
     code: error.code,
     message: error.message,
     ...(Object.keys(details).length === 0 ? {} : { details }),
+    ...(causes.length === 0 ? {} : { causes }),
   };
 };
 
@@ -268,7 +288,7 @@ function mercadoLibreCodes(error: MlSmokeError): string {
   const parts: string[] = [];
   if (typeof details.httpStatus === "number") parts.push(`HTTP ${details.httpStatus}`);
   if (typeof details.error === "string") parts.push(`error ${details.error}`);
-  const causes = (details.causes as MercadoLibreCause[] | undefined) ?? [];
+  const causes = error.causes ?? [];
   if (causes.length > 0) parts.push(`causas ${causes.map(causeLabel).join(", ")}`);
   return parts.length === 0 ? "" : ` (${parts.join("; ")})`;
 }
@@ -419,8 +439,7 @@ export async function runMlSmoke(deps: MlSmokeDeps, options: MlSmokeOptions = {}
     packs: { user: null, userNotFound: false, category: null },
     errors: [],
   };
-  const failure = (section: string, error: AppError) => {
-    const recorded = errorOf(section, error);
+  const failure = (recorded: MlSmokeError) => {
     report.errors.push(recorded);
     deps.printError(`  ✗ ${recorded.code}: ${recorded.message}${mercadoLibreCodes(recorded)}`);
     const hint = HINTS[recorded.code];
@@ -433,7 +452,7 @@ export async function runMlSmoke(deps: MlSmokeDeps, options: MlSmokeOptions = {}
     } catch (error) {
       if (!isAppError(error)) throw error;
       if (STOP_CODES.has(error.code)) throw new StopSmoke(error);
-      failure(section, error);
+      failure(errorOf(section, error));
       return null;
     }
   };
@@ -442,11 +461,10 @@ export async function runMlSmoke(deps: MlSmokeDeps, options: MlSmokeOptions = {}
   let stopped: AppError | null = null;
   try {
     const found = await findAccount(deps, options.brokerSlug);
-    account = found.account as PlatformAccount;
-    const meta = account.meta as { userType?: unknown };
+    account = found.account;
     report.account = {
       displayName: account.displayName,
-      userType: typeof meta.userType === "string" ? meta.userType : null,
+      userType: userTypeSchema.parse(account.meta).userType ?? null,
     };
     deps.print(`Cuenta: ${account.displayName} (${found.slug})`);
     const ctx: MercadoLibreTokenContext = {
@@ -464,9 +482,15 @@ export async function runMlSmoke(deps: MlSmokeDeps, options: MlSmokeOptions = {}
       throw error;
     }
 
-    await walkCategories(deps, ctx, report, attempt);
+    await walkCategories(
+      deps,
+      ctx,
+      report,
+      attempt,
+      options.maxCategories ?? ML_SMOKE_MAX_CATEGORIES,
+    );
     await readLocations(deps, ctx, report, attempt, account.brokerId);
-    await validateVariants(deps, ctx, report, attempt, {
+    await validateVariants(deps, ctx, report, attempt, failure, {
       broker: found.broker,
       categoryId: options.categoryId,
     });
@@ -485,7 +509,7 @@ export async function runMlSmoke(deps: MlSmokeDeps, options: MlSmokeOptions = {}
   if (stopped !== null) {
     report.errors.push(errorOf("stop", stopped));
     deps.printError(`✗ ${stopped.code}: ${stopped.message}`);
-    const hint = isRejectedAfterRefresh(stopped)
+    const hint = isMercadoLibreRejectedAfterRefresh(stopped)
       ? REJECTED_AFTER_REFRESH_HINT
       : HINTS[stopped.code];
     if (hint !== undefined) deps.printError(`  → ${hint}`);
@@ -518,6 +542,7 @@ async function walkCategories(
   ctx: MercadoLibreTokenContext,
   report: MlSmokeReport,
   attempt: Attempt,
+  maxCategories: number,
 ) {
   deps.print(`\nCategorías de Inmuebles (${MERCADOLIBRE_REAL_ESTATE_CATEGORY_ID}):`);
   const stack: Array<{ id: string; path: string[] }> = [
@@ -525,17 +550,30 @@ async function walkCategories(
   ];
   const tags = new Map<string, Set<string>>();
   const titleLengths = new Set<string>();
+  let failedInARow = 0;
   while (stack.length > 0) {
     const next = stack.pop();
     if (next === undefined) break;
-    if (report.categories.visited >= ML_SMOKE_MAX_CATEGORIES) {
+    if (report.categories.visited >= maxCategories) {
       report.categories.truncated = true;
-      deps.printError(`  Aviso: se cortó el recorrido en ${ML_SMOKE_MAX_CATEGORIES} categorías`);
+      deps.printError(`  Aviso: se cortó el recorrido en ${maxCategories} categorías`);
       break;
     }
     report.categories.visited += 1;
     const node = await attempt(`category:${next.id}`, () => deps.catalog.category(next.id, ctx));
-    if (node === null) continue;
+    if (node === null) {
+      // Un 403 o un límite que se repite fallaría igual en cada categoría: no se insiste.
+      failedInARow += 1;
+      if (failedInARow >= ML_SMOKE_MAX_FAILURES_IN_A_ROW) {
+        report.categories.truncated = true;
+        deps.printError(
+          `  Aviso: se cortó el recorrido después de ${failedInARow} categorías seguidas con error`,
+        );
+        break;
+      }
+      continue;
+    }
+    failedInARow = 0;
     // Al revés, para recorrer en el orden de Mercado Libre.
     for (const child of [...node.childrenCategories].reverse()) {
       stack.push({ id: child.id, path: [...next.path, child.name] });
@@ -701,6 +739,7 @@ async function validateVariants(
   ctx: MercadoLibreTokenContext,
   report: MlSmokeReport,
   attempt: Attempt,
+  failure: (error: MlSmokeError) => void,
   options: { broker: Pick<Broker, "name" | "email" | "whatsapp"> | undefined; categoryId?: string },
 ) {
   deps.print("\nValidar sin publicar (POST /items/validate):");
@@ -817,13 +856,16 @@ async function validateVariants(
     } catch (error) {
       if (!isAppError(error)) throw error;
       if (STOP_CODES.has(error.code)) throw new StopSmoke(error);
-      // Un error que no es un rechazo del aviso (otro 4xx, sin cupo, 5xx): es lo que se busca ver.
-      // Una caída o una respuesta rara no enseñan nada: cuentan como error del smoke.
       entry.error = errorOf(`validate:${name}`, error);
-      if (error.retriable || error.code === "ML_UNEXPECTED_RESPONSE") {
-        report.errors.push(entry.error);
+      // Sin cupo, un rechazo sin causas o con ellas: es lo que se busca ver (un resultado). Lo
+      // demás (permiso, caída, respuesta rara, un cuerpo que no se armó) no enseña nada: es un
+      // error del smoke, con su pista.
+      if (VALIDATE_RESULTS.has(error.code)) {
+        deps.print(`  ${name}: ✗ ${error.code}${mercadoLibreCodes(entry.error)}`);
+      } else {
+        deps.print(`  ${name}: ✗ no se pudo validar`);
+        failure(entry.error);
       }
-      deps.print(`  ${name}: ✗ ${error.code}${mercadoLibreCodes(entry.error)}`);
       continue;
     }
     entry.valid = result.valid;

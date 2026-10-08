@@ -227,18 +227,6 @@ export function mercadoLibreError(info: MercadoLibreErrorInfo): AppError {
       info,
     );
   }
-  // 402 sin cuerpo útil: lo vio `ml:smoke` el 2026-10-08 en `POST /items/validate` con una cuenta
-  // sin paquetes (`classifieds_promotion_packs` respondía 404), después de revisar el título (un
-  // título largo dio 400 con su causa). Que 402 sea "sin cupo" es INFERENCIA: lo confirma la demo
-  // con el paquete contratado (T23).
-  if (httpStatus === 402) {
-    return error(
-      "ML_NO_QUOTA",
-      "La cuenta de Mercado Libre no tiene un paquete de publicación con cupo: contrata uno en Mercado Libre",
-      false,
-      info,
-    );
-  }
   if (httpStatus === 409) {
     return error(
       "ML_CONFLICT",
@@ -257,6 +245,18 @@ export function mercadoLibreError(info: MercadoLibreErrorInfo): AppError {
     return error(
       "ML_ITEM_REJECTED",
       `Mercado Libre rechazó el aviso: ${reasons.join("; ")}`,
+      false,
+      info,
+    );
+  }
+  // Un 402 sin causas que bloqueen (con causas, es un rechazo del aviso, arriba): lo vio `ml:smoke`
+  // el 2026-10-08 en `POST /items/validate` con una cuenta sin paquetes (`classifieds_promotion_packs`
+  // respondía 404), después de revisar el título (un título largo dio 400 con su causa). Que 402 sea
+  // "sin cupo" es INFERENCIA: lo confirma la demo con el paquete contratado (T23).
+  if (httpStatus === 402) {
+    return error(
+      "ML_NO_QUOTA",
+      "Mercado Libre pide un pago (402): probablemente la cuenta no tiene un paquete de publicación con cupo; revísalo en Mercado Libre",
       false,
       info,
     );

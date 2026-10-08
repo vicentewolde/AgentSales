@@ -53,9 +53,3 @@ export async function withMercadoLibreToken<T>(
     throw isMercadoLibreTokenRejected(error) ? rejectedAfterRefresh(error) : error;
   }
 }
-
-/** ¿Es el 401 que se repitió después de refrescar (`withMercadoLibreToken`)? */
-export const isRejectedAfterRefresh = (error: unknown): boolean =>
-  isAppError(error) &&
-  error.code === "ML_AUTH_INVALID" &&
-  error.details?.reason === MERCADOLIBRE_REJECTED_AFTER_REFRESH;

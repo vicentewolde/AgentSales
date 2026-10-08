@@ -99,7 +99,8 @@ export type PortalCatalogOptions = {
 const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_ERROR");
 
 /**
- * Si falla la red (o algo pasajero: el cupo, el candado del token) y hay una copia vencida, se usa.
+ * Si falla la red (o algo pasajero: el límite de llamadas, el candado del token) y hay una copia
+ * vencida, se usa.
  * Un corte pedido (`ML_ABORTED`) no: quien cortó no espera un resultado.
  */
 const usesStaleCopy = (error: unknown) =>

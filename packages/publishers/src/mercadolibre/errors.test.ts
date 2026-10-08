@@ -33,7 +33,9 @@ describe("mercadoLibreError", () => {
     [{ httpStatus: 401 }, "ML_AUTH_INVALID", false],
     [{ httpStatus: 403, error: "forbidden" }, "ML_PERMISSION_DENIED", false],
     [{ httpStatus: 402 }, "ML_NO_QUOTA", false],
-    [{ httpStatus: 402, causes: [cause("item.price.invalid", 109)] }, "ML_NO_QUOTA", false],
+    // Con causas que bloquean, un 402 es un rechazo del aviso (no se supone el cupo).
+    [{ httpStatus: 402, causes: [cause("item.price.invalid", 109)] }, "ML_ITEM_REJECTED", false],
+    [{ httpStatus: 402, causes: [cause("x.y", 1, "warning")] }, "ML_NO_QUOTA", false],
     [{ httpStatus: 409 }, "ML_CONFLICT", true],
     [{ httpStatus: 500 }, "ML_UNAVAILABLE", true],
     [{ httpStatus: 503, error: "service_unavailable" }, "ML_UNAVAILABLE", true],

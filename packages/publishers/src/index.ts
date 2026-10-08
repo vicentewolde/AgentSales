@@ -91,7 +91,6 @@ export {
   type MercadoLibrePictures,
 } from "./mercadolibre/pictures.js";
 export {
-  isRejectedAfterRefresh,
   type MercadoLibreTokenContext,
   withMercadoLibreToken,
 } from "./mercadolibre/token.js";
