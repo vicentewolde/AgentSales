@@ -3,9 +3,9 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-08
-**Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 24 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
+**Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 25 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
 **Última tarea:** F4-T10 · `pnpm ml:smoke`: catálogo y `validate` (corrido por el operador el 2026-10-08). Antes, conectar Mercado Libre (parte de T20) y F4-T13
-**Siguiente paso:** `/tarea F4-T11` (mapeo y revisión previa, con los nombres reales de la nota §12). Antes de T15, la pregunta D14 del spec (qué hace la simulación sin paquete `silver`)
+**Siguiente paso:** `/tarea F4-T11` (mapeo y revisión previa, con los nombres reales de la nota §12). En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
 
 ## Pendiente del cierre de F3
 - [x] **Refresco del token (demo), 2026-10-07 20:05:** el primer `pnpm dev` lo refrescó al arrancar; vence el 2026-12-06 20:05 (real, ya no estimado). Anotado en la nota de Instagram (§8, punto 4) y en §6 del spec F3
@@ -39,13 +39,14 @@
 | F4-T21 · Panel: Cuentas con Mercado Libre | ⏳ pendiente | |
 | F4-T22 · Panel: Portal en Contenido | ⏳ pendiente | |
 | F4-T23 · `pnpm ml:smoke --listing` | ⏳ pendiente | |
+| F4-T25 · Usuario de prueba de Mercado Libre (D15) | ⏳ pendiente | |
 | F4-T24 · Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- **Trámites de F4** (`docs/07-checklist-cuentas.md`): cuenta, app y `.env` listos, y la cuenta **conectada** el 2026-10-08 (`VICENTEWOLDE` en `agentsales-pruebas`). Falta el **WhatsApp en la hoja Corredor** (Mercado Libre lo exige; `ml:smoke` usó uno de muestra) y **contratar el paquete `silver`** (no tienes ninguno; cuándo, según D14).
-- **D14 (antes de T15):** sin paquete, `validate` responde 402 y no revisa el aviso, así que la simulación de Portal fallaría con `ML_NO_QUOTA`. ¿Contratar el paquete más barato (5 publicaciones, 1,32, probablemente UF) antes de la demo en simulación, o que la simulación lo tome como advertencia?
+- **Trámites de F4** (`docs/07-checklist-cuentas.md`): cuenta, app y `.env` listos, y la cuenta **conectada** el 2026-10-08 (`VICENTEWOLDE` en `agentsales-pruebas`). Falta cargar el **WhatsApp del corredor** en la base: está en la copia de Google Sheets, pero no llegó a la base (`ml:smoke` usó uno de muestra); se carga reimportando la planilla con la hoja Corredor completa.
+- **Sin paquete pagado (tu decisión, 2026-10-08):** la simulación toma "sin cupo" como advertencia (D14), y la prueba real usa un **usuario de prueba** de Mercado Libre activado por soporte (D15, F4-T25). Si la activación no llega antes del cierre, F4 se cierra con la simulación.
 
 ## Decisiones de F4
 Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
@@ -96,7 +97,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - 2026-10-08: **F4-T10.** `pnpm ml:smoke` (lo corriste tú): solo lee y pregunta a Mercado Libre, nunca crea, cambia ni sube nada (una prueba lo revisa con un Mercado Libre que sí aceptaría hacerlo). Lo aprendido, en la nota (§12):
   - **Categorías:** 40 categorías finales, con sus ids. Los nombres son `Departamentos`, `Casas`, `Oficinas`, `Locales`, etc.; `Venta` y `Arriendo`; `Propiedades usadas` o `Proyectos`. Título de 60 y 30 fotos; todas aceptan UF. Los datos obligatorios son menos de lo que decía la guía y cambian por operación (en venta de usados no piden gastos comunes, mascotas, bodegas ni amoblado). La marca de Portal (`CMG_SITE`) viene marcada como oculta, pero hay que enviarla.
   - **Regiones y comunas:** Mercado Libre usa nombres cortos (`RM (Metropolitana)`, `Aysén`, `Magallanes`) y una ciudad por comuna. La tabla de equivalencias quedó con las regiones y 19 comunas que se escriben distinto (Coyhaique → Coihaique, La Calera → Calera, …); no hacen falta barrios. Tus P001 a P003 no se ubicaban solo porque el Excel dice "Metropolitana".
-  - **Validar sin publicar:** sin paquete, Mercado Libre responde 402 a todo y solo revisa el título (61 caracteres se rechazan). El 402 pasa a ser "sin cupo" (`ML_NO_QUOTA`). Lo demás (UF, `CMG_SITE` corto, descripción en el cuerpo) se sabrá con el paquete. Pregunta D14 abierta.
+  - **Validar sin publicar:** sin paquete, Mercado Libre responde 402 a todo y solo revisa el título (61 caracteres se rechazan). El 402 pasa a ser "sin cupo" (`ML_NO_QUOTA`). Lo demás (UF, `CMG_SITE` corto, descripción en el cuerpo) se sabrá con el usuario de prueba. Respondiste D14 y D15: no se paga el paquete.
   - **Búsqueda de avisos:** sin estado no aplica filtro, pero como no tienes avisos no se sabe si trae los pausados o los que están procesando fotos: T14 repite la búsqueda con esos estados.
   - **Paquetes:** no tienes ninguno (Mercado Libre responde "no encontrado"). Hay 31 paquetes de 30 días, desde 5 publicaciones a 1,32 (precio sin moneda, probablemente UF).
   - **Cambios en el código:** el reintento ante un token rechazado quedó compartido (catálogo, smoke y el publicador de T14), y el catálogo suma dos lecturas para recorrer. 11 mutaciones a mano detectadas.

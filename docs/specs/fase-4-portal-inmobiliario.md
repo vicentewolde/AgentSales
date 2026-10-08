@@ -1,6 +1,6 @@
 # Spec F4 · Portal Inmobiliario
 
-- **Estado:** Aprobado (2026-10-06, aprobación permanente del operador; D2, D5 y D6 respondidas por él)
+- **Estado:** Aprobado (2026-10-06, aprobación permanente del operador; D2, D5 y D6 respondidas por él; D14 y D15, el 2026-10-08)
 - **Rama base:** `main`
 - **Tag al cerrar:** `v0.4.0`
 - **Referencias:** `docs/06-roadmap.md#f4--portal-inmobiliario`, ADR-0005, ADR-0006, ADR-0007, ADR-0011, ADR-0014, ADR-0015 y ADR-0016 (nuevos), `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/03-plataformas.md`, `docs/04-formato-publicaciones.md`, `docs/integraciones/mercadolibre.md` (verificada el 2026-10-06 leyendo la doc oficial con el navegador)
@@ -30,7 +30,7 @@ El operador conecta la cuenta de Mercado Libre de un corredor, aprueba el texto 
 - Mapeo configurable de campos propios del corredor a atributos: F4 mapea los campos globales de la plantilla con una tabla en core; la configuración por corredor es de F7.
 - OAuth con vuelta automática (`/oauth/mercadolibre/callback` con cookie) y PKCE: F7, con HTTPS y despliegue.
 - Pausar o cerrar un aviso y que eso orqueste sus publicaciones en todas las plataformas (`LISTING_MANUAL_TRANSITIONS`): sigue en F6. En F4 se pausa o cierra **la publicación de Portal**.
-- Usuarios de prueba de Mercado Libre: exigen una activación de soporte; la demo usa la cuenta real (D6).
+- ~~Usuarios de prueba de Mercado Libre: exigen una activación de soporte; la demo usa la cuenta real (D6).~~ Desde el 2026-10-08 la prueba en `live` usa un usuario de prueba (D15, F4-T25).
 
 ## 4. Diseño
 
@@ -215,7 +215,9 @@ La vista de una publicación suma `remoteState`. Códigos nuevos con su HTTP en 
 - **D3 · Sin PKCE en F4:** el canje es del servidor, con el secret.
 - **D4 · Fotos por subida directa** (`/pictures/items/upload`), no por URL firmada de R2.
 - **D5 · El WhatsApp del aviso es el del corredor** (hoja Corredor); sin él no se publica. En la demo sale el del corredor `agentsales-pruebas` (respuesta del operador).
-- **D6 · La demo en `live` usa la cuenta real del operador con un paquete pagado** (respuesta del operador, en vez de un usuario de prueba, que exige una activación de soporte sin plazo conocido). El aviso es real y se cierra al final; cerrar es irreversible y el cupo usado no vuelve. Antes de contratar, el operador revisa el precio y si su cuenta necesita activación para verlo (nota §2).
+- **D6 · (reemplazada por D15 el 2026-10-08) La demo en `live` usa la cuenta real del operador con un paquete pagado** (respuesta del operador, en vez de un usuario de prueba, que exige una activación de soporte sin plazo conocido). El aviso es real y se cierra al final; cerrar es irreversible y el cupo usado no vuelve. Antes de contratar, el operador revisa el precio y si su cuenta necesita activación para verlo (nota §2).
+- **D14 · Sin paquete, la simulación no falla por el cupo** (respuesta del operador, 2026-10-08: no se paga el paquete). Sin cupo, `POST /items/validate` responde 402 y solo revisa el título (nota §12.3). En `preflight` (solo en `dry-run`), el publisher traduce `ML_NO_QUOTA` a `{ ok: true, notes }` con la advertencia "Mercado Libre no revisó el aviso: la cuenta no tiene un paquete con cupo"; la simulación pasa con las revisiones de AgentSales (`portalReadiness` y `buildPortalItem`) y la bitácora lo dice. En `live`, `ML_NO_QUOTA` sigue siendo un error no reintentable. Core no nombra códigos `ML_*` (§4.8). Seguimiento en ADR-0016.
+- **D15 · La prueba en `live` usa un usuario de prueba de Mercado Libre** (respuesta del operador, 2026-10-08, en vez de la cuenta real con un paquete pagado, D6). Según la doc (nota §8), un usuario de prueba contrata paquetes sin cargo después de que soporte lo active. Lo crea y lo activa el operador (Claude no crea cuentas); F4-T25 investiga y deja el paso a paso. El usuario de prueba se conecta a un corredor de prueba (como en §4.2) y el aviso sale marcado `test_item`: si se ve en el buscador de Portal Inmobiliario está NO VERIFICADO (nota §8), así que el criterio de "visible en Portal" se cumple con el enlace del ítem. Si la activación de soporte no llega antes del cierre, F4 se cierra con la simulación y la prueba en `live` pasa a la fase siguiente (con nota en ESTADO).
 - **D7 · `show_exact_address`:** con `true`, `address_line` con calle, número y unidad; con `false`, solo región, comuna y barrio por id. Si `ml:smoke` muestra que `address_line` es obligatoria, se envía y se oculta con `address_line_by_reference`.
 - **D8 · Nada se inventa para cumplir con Mercado Libre:** si falta la superficie total o los gastos comunes, o mascotas dice "A consultar", `portalReadiness` lo pide y el operador lo completa en la planilla.
 - **D9 · Pausar, reactivar y cerrar son síncronos en la API** (§4.9, ADR-0015).
@@ -361,7 +363,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Hecho cuando:**
   - [ ] Tests de cada operación y del `remote_state` que devuelven
   - [ ] `preflight` nunca sube fotos ni crea o modifica ítems (test)
-  - [ ] `preflight` sin cupo: `validate` responde 402 (`ML_NO_QUOTA`) y no revisa más que el título (nota §12.3). Qué hace la simulación en ese caso lo decide el operador antes de T15 (pregunta abierta en §9)
+  - [ ] `preflight` sin cupo: `validate` responde 402 (`ML_NO_QUOTA`) y no revisa más que el título (nota §12.3); el publisher lo devuelve como `{ ok: true, notes }` con la advertencia (D14), solo en `preflight`; en `publish` (`live`) sigue siendo error (test)
   - [ ] Las advertencias (`notes`, de `preflight` y de crear el ítem) se arman con el código, el `cause_id` y un texto propio en español, nunca con el `message` de Mercado Libre
 
 ### F4-T16 · Intento, publicar y aprobar con Portal
@@ -433,6 +435,14 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
 - **Hecho cuando:**
   - [ ] Test con msw que verifica que nunca se sube una foto ni se crea o modifica un ítem
 
+### F4-T25 · Usuario de prueba de Mercado Libre (D15)
+- **Depende de:** T10
+- **Archivos:** `docs/integraciones/mercadolibre.md`, `docs/07-checklist-cuentas.md`, `docs/08-guia-operador.md` (y un comando solo si la investigación lo justifica, con su spec antes)
+- **Descripción:** el subagente `integraciones` relee con el navegador la doc de usuarios de prueba (`POST /users/test_user`, activación de soporte, paquetes sin cargo, si el ítem de prueba se ve en Portal) y deja el paso a paso para el operador: crear el usuario (lo hace el operador: Claude no crea cuentas ni maneja su clave), pedir la activación, contratar el paquete sin cargo y conectarlo a un corredor de prueba con `accounts connect mercadolibre`. La clave del usuario de prueba la guarda el operador y nunca pasa por el chat, el repo ni los logs.
+- **Hecho cuando:**
+  - [ ] La nota y la checklist con el paso a paso verificado en la doc
+  - [ ] El operador pidió la activación a soporte (se anota la fecha en ESTADO)
+
 ### F4-T24 · Cierre de fase
 - **Depende de:** todas
 - **Descripción:** `/fase-cerrar 4`.
@@ -442,7 +452,7 @@ ADR-0015 y ADR-0016 se registran con la aprobación del spec (en su mismo PR), a
   - [ ] `CHANGELOG.md` `[0.4.0]`, spec cerrado, `docs/ESTADO.md` apuntando a F5
   - [ ] Tag `v0.4.0`, con permiso del operador
 
-Orden: T01, T02 y T12 primero (independientes). T03 después de T01 y T02; T04, T05 y T06 después de T03; T07 después de T06 y T08 después de T07. T09 cuando estén T05 y T07, y T10 después (el operador lo corre apenas exista: fija los nombres de las categorías y la ubicación). T11 cuando estén T09 y T10. T13 después de T01. T14 cuando estén T04, T11 y T13, y T15 después. T16 cuando estén T07, T11 y T13; T17 después de T16. T18 cuando estén T08, T15 y T17. T19 cuando estén T06, T16 y T17; luego T20, T21 y T22. T23 cuando estén T15 y T16. Al final, T24. Si la cuenta de Mercado Libre no está lista para T10, T11 se escribe con los nombres de la nota y T10 se corre después (T11 se ajusta en un PR chico). Conectar Mercado Libre (parte de T20) se adelantó tras T06, el 2026-10-08, para correr T10; el resto de T20 sigue después de T19.
+Orden: T01, T02 y T12 primero (independientes). T03 después de T01 y T02; T04, T05 y T06 después de T03; T07 después de T06 y T08 después de T07. T09 cuando estén T05 y T07, y T10 después (el operador lo corre apenas exista: fija los nombres de las categorías y la ubicación). T11 cuando estén T09 y T10. T13 después de T01. T14 cuando estén T04, T11 y T13, y T15 después. T16 cuando estén T07, T11 y T13; T17 después de T16. T18 cuando estén T08, T15 y T17. T19 cuando estén T06, T16 y T17; luego T20, T21 y T22. T23 cuando estén T15 y T16. T25 cuando esté T10 (en paralelo: la activación de soporte puede tardar). Al final, T24. Si la cuenta de Mercado Libre no está lista para T10, T11 se escribe con los nombres de la nota y T10 se corre después (T11 se ajusta en un PR chico). Conectar Mercado Libre (parte de T20) se adelantó tras T06, el 2026-10-08, para correr T10; el resto de T20 sigue después de T19.
 
 ## 6. Criterios de aceptación de la fase
 - [ ] Una propiedad de muestra aprobada queda visible en Portal Inmobiliario desde la cuenta del operador, y el sistema guarda su enlace (roadmap).
@@ -455,18 +465,20 @@ Orden: T01, T02 y T12 primero (independientes). T03 después de T01 y T02; T04, 
 - [ ] Ningún test llama a Mercado Libre, Instagram, Facebook ni Anthropic; `pnpm check` en verde.
 
 ## 7. Plan de demo
-1. **Operador, sin publicar:** cuenta de Mercado Libre Chile; app de developers con la URI `https://agentsales.test/oauth/mercadolibre/callback` (hecho el 2026-10-08), PKCE desactivado y el permiso "Publicación y sincronización"; `ML_*` en `.env`. El paquete se contrata recién antes del paso 6.
+1. **Operador, sin publicar:** cuenta de Mercado Libre Chile; app de developers con la URI `https://agentsales.test/oauth/mercadolibre/callback` (hecho el 2026-10-08), PKCE desactivado y el permiso "Publicación y sincronización"; `ML_*` en `.env`. Sin paquete pagado (D14); para el paso 6, un usuario de prueba activado por soporte, con un paquete sin cargo (D15, F4-T25).
 2. Conectar la cuenta del operador al corredor `agentsales-pruebas` (§4.2). Ver el `nickname` y el vencimiento en la CLI y en **Cuentas**.
-3. `pnpm ml:smoke` y `pnpm ml:smoke --listing P001` (operador): hojas, obligatorios y `validate` en `204`.
+3. `pnpm ml:smoke` y `pnpm ml:smoke --listing P001` (operador): hojas, obligatorios y `validate` (con la cuenta sin paquete, 402 "sin cupo" salvo el título, D14; con el usuario de prueba y su paquete, `204`).
 4. **`dry-run`:** en el panel, ver lo que falta para Portal en P001, completarlo en la planilla si hace falta (reimportar), aprobar Portal y publicar: queda `published` en simulación, con lo que se habría enviado y la validación de Mercado Libre en la bitácora. Pausar, reactivar y cerrar en simulación.
 5. CLI: `approve P002 --platform portal`, `publish P002 --platform portal`, `publications P002 --events`.
-6. **`live`, solo con la instrucción del operador en el chat y con el paquete `silver` contratado:** `PUBLISH_MODE=live pnpm dev`, publicar P001 en Portal, abrir el enlace y buscarlo en Portal Inmobiliario; ver "procesando fotos" y luego "activa" (Actualizar); pausar y reactivar desde el panel; cerrar con confirmación; ver `unpublished` y P001 de vuelta en "Lista". Apagar todo y volver a arrancar sin la variable.
+6. **`live`, solo con la instrucción del operador en el chat, con el usuario de prueba conectado y su paquete sin cargo (D15):** `PUBLISH_MODE=live pnpm dev`, publicar P001 en Portal, abrir el enlace y buscarlo en Portal Inmobiliario; ver "procesando fotos" y luego "activa" (Actualizar); pausar y reactivar desde el panel; cerrar con confirmación; ver `unpublished` y P001 de vuelta en "Lista". Apagar todo y volver a arrancar sin la variable.
 7. Refresco: `pnpm -s cli accounts refresh <id> --force` y ver la última renovación (el `refresh_token` rotó sin perder la cuenta).
 
 ## 8. Riesgos y mitigaciones
 | Riesgo | Mitigación |
 |---|---|
-| La prueba en `live` gasta un cupo pagado y deja un aviso real (D6) | Todo antes se prueba con msw y `validate` (`dry-run` y `ml:smoke`); una sola publicación en la demo, cerrada al final; el paquete se contrata recién antes del paso 6 |
+| La prueba en `live` deja un aviso visible (no hay sandbox) | Usuario de prueba con paquete sin cargo (D15); una sola publicación, marcada `test_item` y cerrada al final |
+| Soporte no activa el usuario de prueba a tiempo | F4 se cierra con la simulación y la prueba en `live` pasa a la fase siguiente (D15) |
+| Sin paquete, `validate` no revisa el aviso (402) | La simulación lo dice como advertencia (D14) y se apoya en `portalReadiness` y `buildPortalItem`; la validación completa llega con el usuario de prueba |
 | La cuenta necesita activación de soporte para contratar paquetes (la doc lo dice para usuarios de prueba; para cuentas reales no está claro) | El operador lo revisa al crear la cuenta; si hace falta, se pide de inmediato |
 | El panel de la app rechaza `https://localhost` | **Ocurrió el 2026-10-08:** se registró `https://agentsales.test/oauth/mercadolibre/callback` (`.test` nunca resuelve; nota §3.3) y pasó a ser el valor por defecto de `ML_REDIRECT_URI` |
 | Perder el `refresh_token` por dos refrescos o un corte a mitad de camino | Candado por cuenta, relectura dentro del candado y el par guardado antes de usarse; si igual se pierde, reconectar (dos pasos) |
@@ -485,8 +497,9 @@ Orden: T01, T02 y T12 primero (independientes). T03 después de T01 y T02; T04, 
 | El WhatsApp del corredor aparece en el aviso de la demo | Decidido por el operador (D5); el aviso se cierra al final |
 
 ## 9. Preguntas abiertas
-Abierta desde F4-T10 (2026-10-08), antes de T15:
-- [ ] D14: sin paquete `silver`, `POST /items/validate` responde 402 y no revisa el aviso, así que la simulación de Portal (`dry-run`, paso 4 de la demo) fallaría con `ML_NO_QUOTA`. ¿Se contrata el paquete más barato (5 publicaciones por 30 días, 1,32 en el precio de Mercado Libre, probablemente UF) antes del paso 3, o la simulación trata `ML_NO_QUOTA` como una advertencia y pasa solo con las revisiones locales?
+Respondidas por el operador el 2026-10-08:
+- [x] D14: sin paquete `silver`, `POST /items/validate` responde 402 y no revisa el aviso, así que la simulación de Portal (`dry-run`, paso 4 de la demo) fallaría con `ML_NO_QUOTA`. ¿Se contrata el paquete más barato (5 publicaciones por 30 días, 1,32 en el precio de Mercado Libre, probablemente UF) antes del paso 3, o la simulación trata `ML_NO_QUOTA` como una advertencia y pasa solo con las revisiones locales? **No se paga el paquete: advertencia (§4.13, D14).**
+- [x] D15: sin paquete pagado, ¿cómo se hace la prueba en `live`? Con un usuario de prueba de Mercado Libre, activado por soporte (§4.13, D15; F4-T25).
 
 Respondidas por el operador el 2026-10-06:
 - [x] D2: ¿`dry-run` puede leer de Mercado Libre y llamar a `POST /items/validate`? Sí, sin publicar (ADR-0016).
@@ -526,3 +539,4 @@ Respondidas por el operador el 2026-10-06:
 | 2026-10-08 | Desde F4-T10: `ml:smoke` recorre **todo** el árbol de Inmuebles (no solo las hojas que pide el mapeo: los nombres reales son lo que se busca), con un tope de 400 categorías, y revisa que cada hoja se encuentre por sus nombres (`leafCategory`); `PortalCatalog` suma `category(id)` y `locationNode(level, id)`, dos lecturas con la misma caché; el reintento ante un 401 pasa a `withMercadoLibreToken` (publishers, `mercadolibre/token.ts`), que comparten el catálogo, el smoke y el publisher de T14; el cliente de ítems suma `searchItems` (estado opcional e `include_filters`) y uno nuevo, `createMercadoLibrePacks` (paquetes contratados y para contratar, solo lectura, con la forma NO VERIFICADA: guarda los nombres de los campos); el aviso de prueba usa una foto en `agentsales.test` (no se sube nada; las URLs firmadas de R2 las prueba T23), el WhatsApp del corredor (o uno de muestra, y lo dice) y, además de las variantes del spec, sin `CMG_SITE` y un título de un carácter más que el máximo de la hoja; un rechazo de `validate` o un 4xx sin causas (como un "sin cupo" desconocido) es un resultado, y una caída cuenta como error; el informe completo queda en `tmp/ml-smoke/` (fuera de git) |
 | 2026-10-08 | `ml:smoke` corrido por el operador (nota §12): 40 hojas con sus ids, título de 60 (140 en un proyecto), 30 fotos, `CLP`/`USD`/`CLF` en todas; los obligatorios reales cambian por operación; `CMG_SITE` viene `hidden` y se envía igual (T11); `Proyectos` y `Arriendo Temporal` fuera del mapeo; estados con nombres cortos (`RM (Metropolitana)`, `Aysén`, `Magallanes`) y una ciudad por comuna: `PORTAL_LOCATION_ALIASES` con las regiones y 19 comunas, sin barrios; un 402 en `validate` es `ML_NO_QUOTA` (la cuenta sin paquetes; `classifieds_promotion_packs` responde 404 `not_found`) y la causa 134 es el título largo; la búsqueda sin estado no aplica filtro, pero con la cuenta sin ítems no se sabe si trae `paused` o `not_yet_active`: T14 repite con esos estados; pregunta D14 (simulación sin paquete) |
 | 2026-10-08 | Revisión de F4-T10 (#90, `revisor` y `arquitecto`): un 402 **con** causas que bloquean sigue siendo `ML_ITEM_REJECTED` (solo sin ellas es `ML_NO_QUOTA`, cuyo mensaje dice "probablemente"); en el smoke, de `validate` solo son resultado `ML_NO_QUOTA`, `ML_ITEM_REJECTED` y `ML_REQUEST_REJECTED` (un 403, una caída o una respuesta rara son errores) y el recorrido se corta tras 3 categorías seguidas con error; `isMercadoLibreRejectedAfterRefresh` pasa a core (T16 y T17 lo usan); obligatorios por operación en la tabla de §4.5 (en venta de usados no se piden amoblado, mascotas, bodegas ni gastos comunes); los subtipos de §4.4 precisados (también en arriendo); T11 no bloquea por precio mínimo; enviar `CMG_SITE` siendo `hidden`, la descripción en el `POST` y el `seller_contact` en un `PUT` de estado quedan para T23 o la demo; T14 busca también con `status` (`findBySellerCustomField` con estado); seguimientos en ADR-0015 y ADR-0016 |
+| 2026-10-08 | Respuestas del operador: no se paga el paquete `silver`. **D14:** en `dry-run`, `ML_NO_QUOTA` en `preflight` es una advertencia y la simulación pasa con las revisiones de AgentSales (criterio en T15; seguimiento en ADR-0016). **D15** (reemplaza a D6): la prueba en `live` usa un usuario de prueba de Mercado Libre activado por soporte, con paquete sin cargo; si no llega a tiempo, F4 cierra con la simulación. Tarea nueva F4-T25 (25 tareas); §3, §7 y §8 al día |
