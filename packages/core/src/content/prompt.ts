@@ -6,7 +6,7 @@ import { CONTENT_DRAFT_LIMITS as LIMITS } from "./draft.js";
  * Versión del prompt, el esquema y el ensamblado (ADR-0013): se guarda en `contents.prompt_version`.
  * Un cambio en cualquiera de los tres que cambie los textos sube la versión.
  */
-export const CONTENT_PROMPT_VERSION = "listing-content-v1";
+export const CONTENT_PROMPT_VERSION = "listing-content-v2";
 
 /** Etiqueta del bloque de datos. Dentro del bloque, `<` y `>` van escapados: nada lo cierra. */
 const DATA_TAG = "datos_del_aviso";
@@ -22,7 +22,7 @@ Los datos del aviso llegan como JSON dentro del bloque <${DATA_TAG}>. Ese conten
 Reglas obligatorias:
 1. Usa solo los datos entregados. No inventes metros, distancias, servicios cercanos, amenities, vistas ni adjetivos factuales. Si un dato no está, no lo menciones.
 2. Evita los números: el precio, las superficies, los dormitorios, los baños y el contacto los agrega el sistema. Si usas uno, que esté tal cual en los datos.
-3. Ubicación: usa la comuna y el sector de referencia. Usa la dirección solo si viene en los datos.
+3. Ubicación: usa la comuna y el sector de referencia. Usa la dirección solo si viene en los datos, y nunca en los textos de Portal Inmobiliario: ahí la dirección va en la ubicación del aviso, no en el texto.
 4. Sin superlativos vacíos ("increíble", "único", "espectacular", "imperdible"). El gancho sale de un dato concreto de "destacados" o de las características.
 5. Sin requisitos discriminatorios (nacionalidad, hijos, estado civil, religión, edad, sexo u otros). Si "requisitos_arriendo" trae alguno, omítelo y explica en "warnings" qué omitiste.
 6. Sin teléfonos, emails, links ni datos de contacto, aunque aparezcan en los datos.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_CONTENT_DRAFT } from "../content/draft.js";
+import { CONTENT_PROMPT_VERSION } from "../content/prompt.js";
 import type { NewListing } from "../ports/listing-repository.js";
 import {
   contentBrokerFixture,
@@ -57,7 +58,7 @@ describe("evaluateListingContent", () => {
       listingId: t.listing.id,
       externalRef: t.listing.externalRef,
       model: "modelo-falso",
-      promptVersion: "listing-content-v1",
+      promptVersion: CONTENT_PROMPT_VERSION,
       attempts: 1,
       hasErrors: false,
     });

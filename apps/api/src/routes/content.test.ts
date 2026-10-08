@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { AppError, type NewListing, prepareContent, SAMPLE_CONTENT_DRAFT } from "@agentsales/core";
+import {
+  AppError,
+  CONTENT_PROMPT_VERSION,
+  type NewListing,
+  prepareContent,
+  SAMPLE_CONTENT_DRAFT,
+} from "@agentsales/core";
 import {
   contentBrokerFixture,
   contentDefinitionsFixture,
@@ -312,7 +318,7 @@ describe("GET /content-runs/:id", () => {
     expect(contentRun.finishedAt).toBeInstanceOf(Date);
     // La llamada a la IA sin proveedor ni modelo, como la vista del texto.
     expect(contentRun.report?.llm).toEqual({
-      promptVersion: "listing-content-v1",
+      promptVersion: CONTENT_PROMPT_VERSION,
       attempts: 1,
       durationMs: expect.any(Number),
     });
