@@ -32,6 +32,10 @@ describe("mercadoLibreError", () => {
     [{ httpStatus: 429 }, "ML_RATE_LIMITED", true],
     [{ httpStatus: 401 }, "ML_AUTH_INVALID", false],
     [{ httpStatus: 403, error: "forbidden" }, "ML_PERMISSION_DENIED", false],
+    [{ httpStatus: 402 }, "ML_NO_QUOTA", false],
+    // Con causas que bloquean, un 402 es un rechazo del aviso (no se supone el cupo).
+    [{ httpStatus: 402, causes: [cause("item.price.invalid", 109)] }, "ML_ITEM_REJECTED", false],
+    [{ httpStatus: 402, causes: [cause("x.y", 1, "warning")] }, "ML_NO_QUOTA", false],
     [{ httpStatus: 409 }, "ML_CONFLICT", true],
     [{ httpStatus: 500 }, "ML_UNAVAILABLE", true],
     [{ httpStatus: 503, error: "service_unavailable" }, "ML_UNAVAILABLE", true],
@@ -105,6 +109,11 @@ describe("describeCause", () => {
     [cause("LTP_PICTURE_REQUIRED"), "el aviso necesita al menos una foto"],
     [cause(null, 173), "el aviso necesita al menos una foto"],
     [cause("item.pictures.max"), "el aviso tiene más fotos de las permitidas"],
+    [
+      cause("item.title.length.invalid", 134),
+      "el título es más largo de lo que permite la categoría",
+    ],
+    [cause(null, 134), "el título es más largo de lo que permite la categoría"],
     [cause(null, 3703), "una foto es demasiado chica o tiene un error"],
     [cause("item.price.invalid", 109), "el precio está bajo el mínimo o sobre el máximo"],
     [
@@ -263,7 +272,7 @@ describe("itemCreationOutcome", () => {
   const withStatus = (httpStatus: number) =>
     mercadoLibreError({ httpStatus, error: null, causes: [] });
 
-  it.each([400, 401, 403, 404, 409, 429])(
+  it.each([400, 401, 402, 403, 404, 409, 429])(
     "un %i: Mercado Libre respondió, no se creó",
     (status) => {
       expect(itemCreationOutcome(withStatus(status))).toBe("not_created");

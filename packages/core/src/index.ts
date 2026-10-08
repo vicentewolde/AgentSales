@@ -246,6 +246,7 @@ export type {
   MercadoLibreUser,
 } from "./ports/mercadolibre-auth.js";
 export {
+  isMercadoLibreRejectedAfterRefresh,
   isMercadoLibreTokenRejected,
   MERCADOLIBRE_REJECTED_AFTER_REFRESH,
 } from "./ports/mercadolibre-auth.js";
@@ -344,6 +345,7 @@ export { dryRunExternalId, withDryRun } from "./publish/dry-run.js";
 export {
   buildPublishInput,
   checkPublishInput,
+  maskWhatsapp,
   PUBLISH_MEDIA_URL_TTL_S,
   publishAttemptRecord,
 } from "./publish/input.js";

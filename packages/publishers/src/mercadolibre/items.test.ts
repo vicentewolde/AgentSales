@@ -4,7 +4,11 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { errorText, usePlatformServer } from "../../test/msw-server.js";
 import { hasMercadoLibreCause, itemCreationOutcome } from "./errors.js";
-import { createMercadoLibreItems, type MercadoLibreItems } from "./items.js";
+import {
+  createMercadoLibreItems,
+  type MercadoLibreItems,
+  type MercadoLibreSearchStatus,
+} from "./items.js";
 
 const ACCESS = "APP_USR-1234567890123456-100612-0f1e2d3c4b5a69788796a5b4c3d2e1f0-8035443";
 const API = "https://api.mercadolibre.com";
@@ -307,6 +311,86 @@ describe("createMercadoLibreItems", () => {
     await expect(items.findBySellerCustomField(ACCESS, USER_ID, PUBLICATION_ID)).resolves.toEqual(
       [],
     );
+  });
+
+  it("searchItems sin estado ni filtros no manda parámetros y trae el total y los ids", async () => {
+    server.use(
+      http.get(`${API}/users/${USER_ID}/items/search`, () =>
+        HttpResponse.json({ results: [ITEM_ID], paging: { limit: 50, offset: 0, total: 1 } }),
+      ),
+    );
+
+    const search = await items.searchItems(ACCESS, USER_ID);
+
+    expect(search).toEqual({ total: 1, results: [ITEM_ID], filters: [], availableFilters: [] });
+    expect((await recorded())[0]?.url.search).toBe("");
+    await expectBearer();
+  });
+
+  it("searchItems con include_filters y estado: los filtros aplicados y los disponibles, con lo raro fuera", async () => {
+    server.use(
+      http.get(`${API}/users/${USER_ID}/items/search`, () =>
+        HttpResponse.json({
+          results: [],
+          paging: { total: "dos" },
+          filters: [
+            { id: "status", name: "Estado", values: [{ id: "paused", name: "Pausadas" }] },
+            { id: "con espacios", values: [] },
+          ],
+          available_filters: [
+            {
+              id: "status",
+              name: "Estado",
+              values: [
+                { id: "active", name: "Activas", results: 3 },
+                { id: "closed", name: "Finalizadas", results: "x" },
+                { id: "otro valor", results: 1 },
+              ],
+            },
+            { id: "listing_type", values: null },
+            "no es un filtro",
+          ],
+        }),
+      ),
+    );
+
+    const search = await items.searchItems(ACCESS, USER_ID, {
+      status: "paused",
+      includeFilters: true,
+    });
+
+    expect(search).toEqual({
+      total: null,
+      results: [],
+      filters: [{ id: "status", values: [{ id: "paused", name: "Pausadas", results: null }] }],
+      availableFilters: [
+        {
+          id: "status",
+          values: [
+            { id: "active", name: "Activas", results: 3 },
+            { id: "closed", name: "Finalizadas", results: null },
+          ],
+        },
+        { id: "listing_type", values: [] },
+      ],
+    });
+    expect(Object.fromEntries((await recorded())[0]?.url.searchParams ?? [])).toEqual({
+      status: "paused",
+      include_filters: "true",
+    });
+  });
+
+  it("searchItems no llama con un usuario o un estado que no son de Mercado Libre", async () => {
+    await expect(items.searchItems(ACCESS, "8035443?x=1")).rejects.toMatchObject({
+      code: "ML_ID_INVALID",
+      details: { kind: "user" },
+    });
+    await expect(
+      items.searchItems(ACCESS, USER_ID, {
+        status: "deleted" as unknown as MercadoLibreSearchStatus,
+      }),
+    ).rejects.toMatchObject({ code: "ML_ID_INVALID", details: { kind: "status" } });
+    expect(await recorded()).toHaveLength(0);
   });
 
   it("un id que no es de Mercado Libre no se llama (ML_ID_INVALID, sin el valor)", async () => {

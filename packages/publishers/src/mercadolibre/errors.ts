@@ -102,6 +102,12 @@ const CAUSE_MESSAGES: ReadonlyArray<{
     text: "el aviso necesita al menos una foto",
   },
   { codes: ["item.pictures.max"], ids: [201], text: "el aviso tiene más fotos de las permitidas" },
+  // Visto con `ml:smoke` el 2026-10-08: un título de 61 caracteres en una hoja de 60.
+  {
+    codes: ["item.title.length.invalid"],
+    ids: [134],
+    text: "el título es más largo de lo que permite la categoría",
+  },
   {
     codes: ["item.pictures.invalid_size"],
     ids: [3703],
@@ -243,6 +249,18 @@ export function mercadoLibreError(info: MercadoLibreErrorInfo): AppError {
       info,
     );
   }
+  // Un 402 sin causas que bloqueen (con causas, es un rechazo del aviso, arriba): lo vio `ml:smoke`
+  // el 2026-10-08 en `POST /items/validate` con una cuenta sin paquetes (`classifieds_promotion_packs`
+  // respondía 404), después de revisar el título (un título largo dio 400 con su causa). Que 402 sea
+  // "sin cupo" es INFERENCIA: lo confirma la demo con el paquete contratado (T23).
+  if (httpStatus === 402) {
+    return error(
+      "ML_NO_QUOTA",
+      "Mercado Libre pide un pago (402): probablemente la cuenta no tiene un paquete de publicación con cupo; revísalo en Mercado Libre",
+      false,
+      info,
+    );
+  }
   return error(
     "ML_REQUEST_REJECTED",
     `Mercado Libre rechazó la petición (${info.error ?? `código ${httpStatus ?? "desconocido"}`})`,
@@ -339,10 +357,11 @@ export const MERCADOLIBRE_ERRORS = {
       { details: { reason: "token_malformed" } },
     ),
   /**
-   * Un id que va en la dirección de la llamada (ítem o usuario) con una forma que no es la de
-   * Mercado Libre: no se llama, para no armar otra ruta. El valor no va en el error.
+   * Un id que va en la dirección de la llamada (ítem, usuario o el estado de una búsqueda) con una
+   * forma que no es la de Mercado Libre: no se llama, para no armar otra ruta. El valor no va en el
+   * error.
    */
-  invalidId: (kind: "item" | "user" | "category" | "location") =>
+  invalidId: (kind: "item" | "user" | "category" | "location" | "status") =>
     new AppError("ML_ID_INVALID", "El id guardado de Mercado Libre no es válido", {
       details: { kind },
     }),

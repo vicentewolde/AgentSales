@@ -108,3 +108,16 @@ export function isMercadoLibreTokenRejected(error: unknown): boolean {
     error.details.reason !== MERCADOLIBRE_REJECTED_AFTER_REFRESH
   );
 }
+
+/**
+ * ¿Es el 401 que se repitió después de refrescar una vez (`MERCADOLIBRE_REJECTED_AFTER_REFRESH`)?
+ * Quien lo recibe decide: el intento (T16), las operaciones y el sync (T17) dejan la cuenta
+ * `expired`; `ml:smoke` solo lo informa (F4-T10).
+ */
+export function isMercadoLibreRejectedAfterRefresh(error: unknown): boolean {
+  return (
+    isAppError(error) &&
+    error.code === "ML_AUTH_INVALID" &&
+    error.details?.reason === MERCADOLIBRE_REJECTED_AFTER_REFRESH
+  );
+}

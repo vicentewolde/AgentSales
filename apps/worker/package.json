@@ -9,7 +9,8 @@
     "start": "node dist/src/worker.js",
     "job:ping": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ping.ts",
     "eval:content": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/eval-content.ts",
-    "ig:smoke": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ig-smoke.ts"
+    "ig:smoke": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ig-smoke.ts",
+    "ml:smoke": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ml-smoke.ts"
   },
   "dependencies": {
     "@agentsales/config": "workspace:*",

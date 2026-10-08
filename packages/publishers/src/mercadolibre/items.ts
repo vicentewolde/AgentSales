@@ -49,6 +49,45 @@ export type MercadoLibreItem = {
   warnings: MercadoLibreCause[];
 };
 
+/** Los estados por los que se puede filtrar la búsqueda de ítems del vendedor (nota §4.5). */
+export const MERCADOLIBRE_SEARCH_STATUSES = [
+  "pending",
+  "not_yet_active",
+  "programmed",
+  "active",
+  "paused",
+  "closed",
+] as const;
+export type MercadoLibreSearchStatus = (typeof MERCADOLIBRE_SEARCH_STATUSES)[number];
+
+/** Un valor de un filtro de la búsqueda (`active` en `status`), con cuántos ítems trae. */
+export type MercadoLibreSearchFilterValue = {
+  id: string;
+  name: string | null;
+  results: number | null;
+};
+/** Un filtro de la búsqueda (`status`, `listing_type`, …) con sus valores. */
+export type MercadoLibreSearchFilter = { id: string; values: MercadoLibreSearchFilterValue[] };
+
+/**
+ * Una búsqueda de ítems del vendedor (`GET /users/{id}/items/search`, nota §4.5): los ids, el total
+ * y los filtros. Con `include_filters=true`, `filters` dice lo que la búsqueda aplicó (también por
+ * defecto) y `availableFilters`, por qué más se puede filtrar y cuántos ítems hay en cada valor.
+ * La forma de los filtros: NO VERIFICADO (la lee `ml:smoke`, F4-T10); lo que no se entienda queda
+ * fuera, sin inventar.
+ */
+export type MercadoLibreItemSearch = {
+  total: number | null;
+  results: string[];
+  filters: MercadoLibreSearchFilter[];
+  availableFilters: MercadoLibreSearchFilter[];
+};
+
+export type MercadoLibreItemSearchQuery = {
+  status?: MercadoLibreSearchStatus;
+  includeFilters?: boolean;
+};
+
 /**
  * Ítems de Mercado Libre (spec F4 §4.8, nota §4): crear, leer, cambiar el estado, cargar la
  * descripción, ocultar la dirección y buscar por `seller_custom_field`. **No borra**: no hay
@@ -123,6 +162,17 @@ export interface MercadoLibreItems {
     sellerCustomField: string,
     options?: MercadoLibreCallOptions,
   ): Promise<string[]>;
+  /**
+   * `GET /users/{id}/items/search` con un estado opcional y, si se pide, los filtros
+   * (`include_filters=true`). Solo lee. `ml:smoke` (F4-T10) la usa para ver qué estados trae sin
+   * `status`; T14 decide con eso cómo encuentra un ítem recién creado.
+   */
+  searchItems(
+    accessToken: string,
+    userId: string,
+    query?: MercadoLibreItemSearchQuery,
+    options?: MercadoLibreCallOptions,
+  ): Promise<MercadoLibreItemSearch>;
 }
 
 const nullableText = z
@@ -184,6 +234,67 @@ const itemSchema = z
   );
 
 const searchSchema = z.object({ results: z.array(z.string().regex(ITEM_ID)) });
+
+/** Un id de un filtro o de su valor: un identificador, nunca un texto libre. */
+const filterId = z.string().regex(/^[A-Za-z0-9_.-]{1,100}$/);
+const filterValueSchema = z.object({
+  id: filterId,
+  name: z
+    .string()
+    .max(100)
+    .nullish()
+    .catch(null)
+    .transform((value) => value ?? null),
+  results: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullish()
+    .catch(null)
+    .transform((value) => value ?? null),
+});
+const filterSchema = z.object({
+  id: filterId,
+  values: z
+    .array(z.unknown())
+    .nullish()
+    .catch(null)
+    .transform((values) =>
+      (values ?? []).flatMap((value) => {
+        const parsed = filterValueSchema.safeParse(value);
+        return parsed.success ? [parsed.data] : [];
+      }),
+    ),
+});
+/** Los filtros que se entienden; los demás quedan fuera (es información, no define nada). */
+const filtersSchema = z
+  .array(z.unknown())
+  .nullish()
+  .catch(null)
+  .transform((filters) =>
+    (filters ?? []).flatMap((filter) => {
+      const parsed = filterSchema.safeParse(filter);
+      return parsed.success ? [parsed.data] : [];
+    }),
+  );
+const itemSearchSchema = z
+  .object({
+    results: z.array(z.string().regex(ITEM_ID)),
+    paging: z
+      .object({ total: z.number().int().nonnegative().nullish().catch(null) })
+      .nullish()
+      .catch(null),
+    filters: filtersSchema,
+    available_filters: filtersSchema,
+  })
+  .transform(
+    (search): MercadoLibreItemSearch => ({
+      total: search.paging?.total ?? null,
+      results: search.results,
+      filters: search.filters,
+      availableFilters: search.available_filters,
+    }),
+  );
 const descriptionSchema = z.object({
   plain_text: z
     .string()
@@ -309,6 +420,29 @@ export function createMercadoLibreItems(options: MercadoLibreHttpOptions = {}): 
         callOptions,
       );
       return parseBody("findBySellerCustomField", searchSchema, response).results;
+    },
+
+    async searchItems(accessToken, userId, query = {}, callOptions) {
+      if (!USER_ID.test(userId)) throw MERCADOLIBRE_ERRORS.invalidId("user");
+      const params = new URLSearchParams();
+      if (query.status !== undefined) {
+        // El tipo ya lo limita; esto lo asegura para quien llama sin tipos (va en la URL).
+        if (!(MERCADOLIBRE_SEARCH_STATUSES as readonly string[]).includes(query.status)) {
+          throw MERCADOLIBRE_ERRORS.invalidId("status");
+        }
+        params.set("status", query.status);
+      }
+      if (query.includeFilters === true) params.set("include_filters", "true");
+      const search = params.size === 0 ? "" : `?${params}`;
+      const response = await call(
+        "searchItems",
+        "GET",
+        `/users/${userId}/items/search${search}`,
+        accessToken,
+        undefined,
+        callOptions,
+      );
+      return parseBody("searchItems", itemSearchSchema, response);
     },
   };
 }
