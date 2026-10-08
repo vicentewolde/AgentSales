@@ -182,7 +182,13 @@ type Body = Record<string, unknown>;
  * para que una llamada no se note en la salida: solo la detecta `writes`.
  */
 function useMercadoLibre(
-  options: { unauthorized?: boolean; attributesDown?: string; validateDown?: boolean } = {},
+  options: {
+    unauthorized?: boolean;
+    attributesDown?: string;
+    validateDown?: boolean;
+    /** Como la cuenta real el 2026-10-08: sin paquetes (404) y `validate` en 402 salvo el título. */
+    noQuota?: boolean;
+  } = {},
 ) {
   const respond = (body: unknown) => {
     if (options.unauthorized) {
@@ -223,11 +229,13 @@ function useMercadoLibre(
           { message: "Validation error", error: "validation_error", status: 400, cause: [cause] },
           { status: 400 },
         );
+      if (String(body.title).length > 60) {
+        return reject({ code: "item.title.length.invalid", cause_id: 134, type: "error" });
+      }
+      // Como Mercado Libre el 2026-10-08: el título se revisa antes que el cupo.
+      if (options.noQuota) return new HttpResponse(null, { status: 402 });
       if (body.currency_id === "CLF") {
         return reject({ code: "item.currency_id.invalid", cause_id: 1001, type: "error" });
-      }
-      if (String(body.title).length > 60) {
-        return reject({ code: "item.title.length.invalid", cause_id: 1002, type: "error" });
       }
       const location = body.location as Body;
       if (location.address_line === undefined) {
@@ -255,7 +263,14 @@ function useMercadoLibre(
         ],
       }),
     ),
-    http.get(`${API}/users/:user/classifieds_promotion_packs`, () => respond([])),
+    http.get(`${API}/users/:user/classifieds_promotion_packs`, () =>
+      options.noQuota
+        ? HttpResponse.json(
+            { message: "not found", error: "not_found", status: 404 },
+            { status: 404 },
+          )
+        : respond([]),
+    ),
     // Lo que el smoke nunca debe llamar: responde como Mercado Libre.
     http.post(`${API}/items`, () => HttpResponse.json({ id: "MLC1", status: "active" })),
     http.put(`${API}/items/:id`, () => HttpResponse.json({ id: "MLC1", status: "paused" })),
@@ -597,6 +612,37 @@ describe("runMlSmoke", () => {
       "  CLF (UF con 2 decimales): rechazado: item.currency_id.invalid #1001 error",
     );
     expect(lines).toContain("  Contacto: el del corredor (WhatsApp +56 9 ****5678)");
+  });
+
+  it("sin paquetes (como la cuenta real): 404 de paquetes y 402 de validate son resultados, con la pista", async () => {
+    useMercadoLibre({ noQuota: true });
+    const { deps, reports, lines } = await setup();
+
+    expect(await runMlSmoke(deps)).toBe(0);
+
+    const report = reports[0] as MlSmokeReport;
+    expect(report.errors).toEqual([]);
+    expect(report.packs).toMatchObject({ user: null, userNotFound: true });
+    expect(lines).toContain(
+      "  Contratados por la cuenta: ninguno (Mercado Libre respondió 404 not_found)",
+    );
+    expect(report.validate.variants.map((variant) => variant.error?.code ?? variant.valid)).toEqual(
+      [
+        "ML_NO_QUOTA",
+        "ML_NO_QUOTA",
+        "ML_NO_QUOTA",
+        "ML_NO_QUOTA",
+        "ML_NO_QUOTA",
+        "ML_NO_QUOTA",
+        false,
+      ],
+    );
+    expect(lines).toContain(
+      "  base (CLP, con dirección y CMG_SITE completo): ✗ ML_NO_QUOTA (HTTP 402)",
+    );
+    expect(lines).toContain(
+      "  → Sin un paquete silver con cupo, Mercado Libre responde 402 y no revisa el resto del aviso (sí el título): contrátalo antes de la prueba con paquete",
+    );
   });
 
   it("sin WhatsApp del corredor, usa un contacto de muestra y lo dice", async () => {

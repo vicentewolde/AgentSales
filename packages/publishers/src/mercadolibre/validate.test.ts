@@ -161,6 +161,8 @@ describe("createMercadoLibreValidator", () => {
 
   it.each([
     [401, "ML_AUTH_INVALID", false],
+    // Sin paquete con cupo (visto con `ml:smoke` el 2026-10-08): no es un rechazo del aviso.
+    [402, "ML_NO_QUOTA", false],
     [403, "ML_PERMISSION_DENIED", false],
     [429, "ML_RATE_LIMITED", true],
     [503, "ML_UNAVAILABLE", true],

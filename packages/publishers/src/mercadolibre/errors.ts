@@ -102,6 +102,12 @@ const CAUSE_MESSAGES: ReadonlyArray<{
     text: "el aviso necesita al menos una foto",
   },
   { codes: ["item.pictures.max"], ids: [201], text: "el aviso tiene más fotos de las permitidas" },
+  // Visto con `ml:smoke` el 2026-10-08: un título de 61 caracteres en una hoja de 60.
+  {
+    codes: ["item.title.length.invalid"],
+    ids: [134],
+    text: "el título es más largo de lo que permite la categoría",
+  },
   {
     codes: ["item.pictures.invalid_size"],
     ids: [3703],
@@ -217,6 +223,18 @@ export function mercadoLibreError(info: MercadoLibreErrorInfo): AppError {
     return error(
       "ML_PERMISSION_DENIED",
       "La cuenta de Mercado Libre no dio permiso para esto: reconéctala con la cuenta administradora y acepta los permisos",
+      false,
+      info,
+    );
+  }
+  // 402 sin cuerpo útil: lo vio `ml:smoke` el 2026-10-08 en `POST /items/validate` con una cuenta
+  // sin paquetes (`classifieds_promotion_packs` respondía 404), después de revisar el título (un
+  // título largo dio 400 con su causa). Que 402 sea "sin cupo" es INFERENCIA: lo confirma la demo
+  // con el paquete contratado (T23).
+  if (httpStatus === 402) {
+    return error(
+      "ML_NO_QUOTA",
+      "La cuenta de Mercado Libre no tiene un paquete de publicación con cupo: contrata uno en Mercado Libre",
       false,
       info,
     );

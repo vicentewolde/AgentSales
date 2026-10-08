@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-08
 **Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 24 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
-**Última tarea:** F4-T13 · Contrato `Publisher` ampliado y el aviso en el input. Antes, F4-T12 (reglas del texto de Portal) y el tag `v0.3.0` de F3
-**Siguiente paso:** conectar tu cuenta de Mercado Libre con `pnpm -s cli accounts connect mercadolibre --broker agentsales-pruebas` y `--url-stdin` (con `pnpm dev`), y después `/tarea F4-T10` (`ml:smoke`, solo lee). T11, T14 y T16 esperan a T10
+**Última tarea:** F4-T10 · `pnpm ml:smoke`: catálogo y `validate` (corrido por el operador el 2026-10-08). Antes, conectar Mercado Libre (parte de T20) y F4-T13
+**Siguiente paso:** `/tarea F4-T11` (mapeo y revisión previa, con los nombres reales de la nota §12). Antes de T15, la pregunta D14 del spec (qué hace la simulación sin paquete `silver`)
 
 ## Pendiente del cierre de F3
 - [x] **Refresco del token (demo), 2026-10-07 20:05:** el primer `pnpm dev` lo refrescó al arrancar; vence el 2026-12-06 20:05 (real, ya no estimado). Anotado en la nota de Instagram (§8, punto 4) y en §6 del spec F3
@@ -25,7 +25,7 @@
 | F4-T07 · Candado de credenciales y `ensureAccessToken` | ✅ | #82 |
 | F4-T08 · Refresco por plataforma: lote y a pedido | ✅ | #83 |
 | F4-T09 · Catálogo con caché | ✅ | #84 |
-| F4-T10 · `pnpm ml:smoke`: catálogo y `validate` | 🔨 en curso | |
+| F4-T10 · `pnpm ml:smoke`: catálogo y `validate` | ✅ | |
 | F4-T11 · Mapeo y revisión previa | ⏳ pendiente | |
 | F4-T12 · Reglas del texto de Portal | ✅ | #86 |
 | F4-T13 · Contrato `Publisher` ampliado y el aviso en el input | ✅ | #87 |
@@ -44,7 +44,8 @@
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- **Trámites de F4** (`docs/07-checklist-cuentas.md`): cuenta de Mercado Libre Chile, app de developers (dirección de vuelta `https://agentsales.test/oauth/mercadolibre/callback`, PKCE desactivado; creada el 2026-10-08), `ML_APP_ID`, `ML_CLIENT_SECRET` y `ML_REDIRECT_URI` en `.env`, WhatsApp en la hoja Corredor, y el precio del paquete `silver`. No bloquean empezar: hasta T09 todo usa msw; T10 (`ml:smoke`) necesita la cuenta conectada.
+- **Trámites de F4** (`docs/07-checklist-cuentas.md`): cuenta, app y `.env` listos, y la cuenta **conectada** el 2026-10-08 (`VICENTEWOLDE` en `agentsales-pruebas`). Falta el **WhatsApp en la hoja Corredor** (Mercado Libre lo exige; `ml:smoke` usó uno de muestra) y **contratar el paquete `silver`** (no tienes ninguno; cuándo, según D14).
+- **D14 (antes de T15):** sin paquete, `validate` responde 402 y no revisa el aviso, así que la simulación de Portal fallaría con `ML_NO_QUOTA`. ¿Contratar el paquete más barato (5 publicaciones, 1,32, probablemente UF) antes de la demo en simulación, o que la simulación lo tome como advertencia?
 
 ## Decisiones de F4
 Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
@@ -92,6 +93,13 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-08: **F4-T10.** `pnpm ml:smoke` (lo corriste tú): solo lee y pregunta a Mercado Libre, nunca crea, cambia ni sube nada (una prueba lo revisa con un Mercado Libre que sí aceptaría hacerlo). Lo aprendido, en la nota (§12):
+  - **Categorías:** 40 categorías finales, con sus ids. Los nombres son `Departamentos`, `Casas`, `Oficinas`, `Locales`, etc.; `Venta` y `Arriendo`; `Propiedades usadas` o `Proyectos`. Título de 60 y 30 fotos; todas aceptan UF. Los datos obligatorios son menos de lo que decía la guía y cambian por operación (en venta de usados no piden gastos comunes, mascotas, bodegas ni amoblado). La marca de Portal (`CMG_SITE`) viene marcada como oculta, pero hay que enviarla.
+  - **Regiones y comunas:** Mercado Libre usa nombres cortos (`RM (Metropolitana)`, `Aysén`, `Magallanes`) y una ciudad por comuna. La tabla de equivalencias quedó con las regiones y 19 comunas que se escriben distinto (Coyhaique → Coihaique, La Calera → Calera, …); no hacen falta barrios. Tus P001 a P003 no se ubicaban solo porque el Excel dice "Metropolitana".
+  - **Validar sin publicar:** sin paquete, Mercado Libre responde 402 a todo y solo revisa el título (61 caracteres se rechazan). El 402 pasa a ser "sin cupo" (`ML_NO_QUOTA`). Lo demás (UF, `CMG_SITE` corto, descripción en el cuerpo) se sabrá con el paquete. Pregunta D14 abierta.
+  - **Búsqueda de avisos:** sin estado no aplica filtro, pero como no tienes avisos no se sabe si trae los pausados o los que están procesando fotos: T14 repite la búsqueda con esos estados.
+  - **Paquetes:** no tienes ninguno (Mercado Libre responde "no encontrado"). Hay 31 paquetes de 30 días, desde 5 publicaciones a 1,32 (precio sin moneda, probablemente UF).
+  - **Cambios en el código:** el reintento ante un token rechazado quedó compartido (catálogo, smoke y el publicador de T14), y el catálogo suma dos lecturas para recorrer. 5 mutaciones a mano detectadas.
 - 2026-10-08: **F4-T20 adelantado: conectar Mercado Libre desde la CLI.** `accounts connect mercadolibre --broker <slug>` abre el enlace de autorización; después de autorizar, el navegador queda con un error de conexión (es lo esperado) y `pbpaste | … --url-stdin` conecta la cuenta con la dirección copiada, sin mostrarla. Revisa que la dirección sea la registrada y explica qué hacer si se canceló, si falta algo o si el código venció. La dirección de vuelta por defecto pasa a `https://agentsales.test/...` (la que aceptó Mercado Libre). El resto de T20 (publicar y operar en Portal) sigue después de T19.
 - 2026-10-08: **App de Mercado Libre creada** ("AgentSales VW Portal") desde Chrome, con tu autorización: el DevCenter pedía vincular la cuenta, un logo PNG, reCAPTCHA (lo resolviste tú) y un QR para editarla. El panel rechazó `https://localhost/...` como dirección de vuelta: quedó `https://agentsales.test/oauth/mercadolibre/callback` (`.test` no existe en internet) y está en tu `.env` con `ML_APP_ID` y `ML_CLIENT_SECRET`, que copiaste tú.
 - 2026-10-08: **F4-T13.** El contrato del publicador ya sabe lo que necesita Portal: revisar contra Mercado Libre sin publicar (`preflight`), pausar, reactivar, cerrar y leer el estado del aviso, y recibir un token que se renueva solo. La simulación (`dry-run`) ahora llama a esa revisión y nunca publica ni cambia nada; sus advertencias quedan en la bitácora. El input de Portal y Marketplace lleva los datos del aviso (nunca las notas internas) y el contacto del corredor, y si el aviso cambió desde que se aprobó (por ejemplo, otra carga del Excel), no se publica: hay que descartar y aprobar de nuevo. La bitácora guarda el WhatsApp oculto (`+56 9 ****5678`). Instagram no cambió: sus pruebas pasan igual. 13 mutaciones a mano detectadas. La revisión dejó: el aviso se lee antes que su versión (una carga del Excel que se cruce no cuela datos nuevos), las columnas desconocidas del Excel no viajan a Portal, el respaldo del token guardado no da por vencida una cuenta sana, las advertencias se guardan limpias (como mucho 20) y la bitácora no guarda la dirección si el aviso no la muestra.
@@ -131,5 +139,5 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - 2026-10-04: **`/fase-plan 3`.** Nota `docs/integraciones/instagram.md` completada (OAuth, tokens, publicación, borrado, límites y errores; lo no verificado se prueba en la demo). Spec F3 aprobado con 20 tareas, revisado por el `arquitecto` (encolar después del candado, modo por publicación, SQL de la migración `0006` a mano). ADR-0014 aceptado; arquitectura, formato, roadmap y glosario al día.
 - 2026-10-04: **Cierre de F2 (`v0.2.0`).** Las 3 muestras con contenido listo para revisar (P001, P002 con reel de 1080×1920, P003 con una edición a mano) y aprobadas por el operador; `pnpm eval:content` con la CLI de Claude, 3 de 3 sin errores; repetir la preparación no reprocesa nada; aviso de "sigue en cola" con el worker apagado; variantes sin EXIF ni GPS; 1661 tests sin llamar a Claude. Auditoría docs-código del `arquitecto` aplicada (README con los requisitos de F2, seguimientos de ADR-0003, 0011, 0012 y 0013). Detalle en `CHANGELOG.md` y en el spec F2.
 - 2026-10-03: **Tras la demo de F2-T16:** `INTERNAL_NOTES_LEAK` no cuenta las URLs de las notas y compara con los fines de frase en el mismo lugar (falso positivo en P003; #50).
-- **Pendientes de verificar:** la orientación y el color de un HEIC real de iPhone (se probó con uno sintético en F2-T07), un video HDR de iPhone en el reel (deuda), y el largo del título de Mercado Libre en MLC (lo da `ml:smoke`, F4-T10; las reglas de contacto ya se leyeron).
+- **Pendientes de verificar:** la orientación y el color de un HEIC real de iPhone (se probó con uno sintético en F2-T07), un video HDR de iPhone en el reel (deuda), y, de Mercado Libre, `CLF`, `CMG_SITE` corto y la descripción en el cuerpo (sin paquete, `validate` no los revisa; nota §12.3). El largo del título en MLC es 60 (verificado con `ml:smoke`).
 - **Para la próxima demo:** las variantes del Excel se arman en Google Sheets y se exportan como xlsx; la planilla queda como estaba. Neon tiene las 3 propiedades de muestra tal como están en `data/muestras/propiedades.xlsx` (cierre de F1, `v0.1.0`; detalle en `CHANGELOG.md`).

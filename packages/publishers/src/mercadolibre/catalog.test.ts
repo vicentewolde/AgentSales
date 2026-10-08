@@ -500,6 +500,30 @@ describe("location", () => {
     }
   });
 
+  it("los alias reales de core: la Región Metropolitana y una comuna con otro nombre (ml:smoke)", async () => {
+    useMercadoLibre();
+    const { repository, ctx } = setup();
+    const catalog = createPortalCatalog({
+      api: createMercadoLibreCatalogApi(),
+      repository,
+      now: () => NOW,
+    });
+
+    for (const region of ["Metropolitana", "Región Metropolitana de Santiago", "RM"]) {
+      const place = await catalog.location({ region, commune: "Ñuñoa" }, ctx);
+      expect(place.state).toEqual({ id: RM, name: "RM (Metropolitana)" });
+    }
+    const centro = await catalog.location(
+      { region: "Metropolitana", commune: "Santiago Centro" },
+      ctx,
+    );
+    expect(centro).toEqual({
+      state: { id: RM, name: "RM (Metropolitana)" },
+      city: { id: SANTIAGO, name: "Santiago" },
+      neighborhood: null,
+    });
+  });
+
   it("una comuna con alias: la ciudad que la contiene y, si el alias lo dice, el barrio", async () => {
     useMercadoLibre();
     const { catalog, ctx, paths } = setup();

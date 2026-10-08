@@ -23,7 +23,7 @@ Convención: **DOC** = leído en la página oficial (la URL y su fecha de "Últi
 - **Fotos por URL:** el ítem queda `paused` o `not_yet_active` con `sub_status` `picture_download_pending` y **se activa solo** cuando ML descarga las fotos; si fallan, pasa a `under_review` (DOC). ML **no sigue redirecciones** (DOC).
 - **Vigencia en MLC:** casas y departamentos en venta **180 días**, en arriendo **45 días**; después el ítem pasa a `closed` / `expired` (DOC).
 - **Cerrar es definitivo:** un `closed` no se reactiva; se republica con `relist` y queda con **id nuevo** (DOC).
-- **Sigue NO VERIFICADO (lo más importante):** los ids MLC de las categorías hoja (solo se conoce `MLC1459` = Inmuebles), los `settings` de esas categorías (`max_title_length`, `max_pictures_per_item`, `currencies`), si `CLF` se acepta en cada hoja, el precio real del paquete para un corredor y si ML descarga bien una URL prefirmada de R2 (que `https://localhost` no se acepta como redirect quedó verificado el 2026-10-08, §3.3).
+- **Verificado con `ml:smoke` el 2026-10-08 (§12):** los ids de las 40 hojas, sus `settings` (título de 60, 30 fotos, `CLP`/`USD`/`CLF` en todas), los obligatorios reales, los estados y ciudades de Chile, el precio de los paquetes y que sin cupo `validate` responde 402. **Seguía NO VERIFICADO antes de eso:** los ids MLC de las categorías hoja (solo se conoce `MLC1459` = Inmuebles), los `settings` de esas categorías (`max_title_length`, `max_pictures_per_item`, `currencies`), si `CLF` se acepta en cada hoja, el precio real del paquete para un corredor y si ML descarga bien una URL prefirmada de R2 (que `https://localhost` no se acepta como redirect quedó verificado el 2026-10-08, §3.3).
 
 ## 2. Requisitos de cuenta y app
 
@@ -46,7 +46,7 @@ Convención: **DOC** = leído en la página oficial (la URL y su fecha de "Últi
 | Tipo de usuario | `GET /users/me` trae `user_type` (por ejemplo `real_estate_agency`) y `tags`. La doc de moderaciones distingue inmuebles de `user_type` `normal` y `real_estate_agency`, así que un vendedor que no es inmobiliaria también publica inmuebles | DOC; lo de "normal": INFERENCIA |
 | Revisión de la app | No hay un proceso de revisión previo como el de Meta. Existe una certificación opcional (DPP) que se muestra al vendedor al autorizar | DOC (no se encontró revisión obligatoria) |
 
-**Pregunta abierta para el operador:** si el corredor ya tiene un plan pagado de Portal Inmobiliario, ¿ese plan aparece como `classifieds_promotion_packs` con cupo `silver` para la API? Se responde con `GET /users/$USER_ID/classifieds_promotion_packs` una vez conectada su cuenta (NO VERIFICADO).
+**Pregunta abierta para el operador** (respondida para la cuenta del operador en §12.4: sin paquetes, 404): si el corredor ya tiene un plan pagado de Portal Inmobiliario, ¿ese plan aparece como `classifieds_promotion_packs` con cupo `silver` para la API? Se responde con `GET /users/$USER_ID/classifieds_promotion_packs` una vez conectada su cuenta (NO VERIFICADO).
 
 ## 3. Autenticación
 
@@ -128,7 +128,7 @@ Todas con `Authorization: Bearer <access_token>`, host `https://api.mercadolibre
 { "id": "CMG_SITE", "name": "Site de origen", "value_id": null, "value_name": "POI", "value_struct": null, "attribute_group_id": "OTHERS", "attribute_group_name": "Otros" }
 ```
 
-Con eso el ítem lleva `listing_source: portalinmobiliario` y se ve en Mercado Libre y en Portal Inmobiliario. Si basta con `{ "id": "CMG_SITE", "value_name": "POI" }`: NO VERIFICADO (probar con `validate`).
+Con eso el ítem lleva `listing_source: portalinmobiliario` y se ve en Mercado Libre y en Portal Inmobiliario. Si basta con `{ "id": "CMG_SITE", "value_name": "POI" }`: NO VERIFICADO (sin paquete, `validate` responde 402 antes de revisarlo, §12.3). En el catálogo, `CMG_SITE` viene con el tag `hidden` (§12.1).
 
 **Respuesta (DOC, ejemplo MLA):** `id`, `permalink`, `status` (`active` en el ejemplo, con la imagen "procesando"), `sub_status`, `start_time`, `stop_time`, `end_time`, `expiration_time`, `pictures` (con `id`), `tags` (`test_item` en un ítem de prueba), `domain_id`, `listing_source` y los atributos `PROPERTY_TYPE`, `OPERATION`, `OPERATION_SUBTYPE` **completados desde la categoría** (no se enviaron; INFERENCIA de que los pone la categoría).
 
@@ -187,7 +187,7 @@ Con eso el ítem lleva `listing_source: portalinmobiliario` y se ve en Mercado L
 - `GET /items/{id}` (con `?attributes=campo1,campo2` para traer solo lo necesario). Campos útiles: `status`, `sub_status`, `permalink`, `start_time`, `stop_time`, `expiration_time`, `last_updated`, `tags`, `listing_source`.
 - Calidad: `GET /items/{id}/health` (porcentaje y objetivos pendientes: fotos con mínimo, ficha técnica, video) y `GET /items/{id}/health/actions`; niveles por sitio en `GET /sites/MLC/health_levels`. Solo para ítems activos sin penalización.
 - Multiget: `GET /items?ids=...` (hasta 20) **se depreca**: desde octubre de 2026 se usa `GET /items/bulk?ids=...` (`code` pasa a `status_code` y los campos se piden con `attributes=body.<campo>`); los endpoints conviven hasta el 25/10/2026 (DOC, items-y-busquedas, leída el 2026-10-07).
-- **Buscar los ítems del vendedor** (DOC, items-y-busquedas): `GET /users/{id}/items/search` devuelve `{ seller_id, paging: { limit, offset, total }, results: ["MLA…"] }` (solo ids; 50 por defecto, `limit` hasta 100). Por `seller_custom_field`: `?sku=<valor>` (por el atributo `SELLER_SKU` es `?seller_sku=`). Por estado: `?status=active`; los estados del filtro son `pending`, `not_yet_active`, `programmed`, `active`, `paused` y `closed`. Qué estados trae sin `status`: NO VERIFICADO (el publisher busca sin filtro, F4-T04).
+- **Buscar los ítems del vendedor** (DOC, items-y-busquedas): `GET /users/{id}/items/search` devuelve `{ seller_id, paging: { limit, offset, total }, results: ["MLA…"] }` (solo ids; 50 por defecto, `limit` hasta 100). Por `seller_custom_field`: `?sku=<valor>` (por el atributo `SELLER_SKU` es `?seller_sku=`). Por estado: `?status=active`; los estados del filtro son `pending`, `not_yet_active`, `programmed`, `active`, `paused` y `closed`. Qué estados trae sin `status`: sigue NO VERIFICADO (la cuenta del operador no tiene ítems; sin `status` no se aplica un filtro de estado, §12.4): T14 busca sin estado y, si no encuentra, con `status=not_yet_active` y `status=paused`.
 - **Notificaciones:** topic `items` a la URL de callback de la app (DOC). Exige URL pública; **en F4, sondeo** (como en Instagram).
 
 ### 4.6 Categorías y atributos (DOC)
@@ -199,14 +199,14 @@ Con eso el ítem lleva `listing_source: portalinmobiliario` y se ve en Mercado L
 | Id | Qué es | Confianza |
 |---|---|---|
 | `MLC1459` | Inmuebles (Chile) | DOC (ejemplo de paquetes para "la categoría de inmuebles de Chile"; mismo sufijo que `MLA1459`) |
-| `MLC157520` | Usado en el ejemplo de publicación de prueba, "**asumiendo** que este ID corresponde a Propiedades Usadas dentro de Venta de Casas en Chile" | **NO VERIFICADO**: la propia doc lo da como supuesto |
+| `MLC157520` | Usado en el ejemplo de publicación de prueba, "**asumiendo** que este ID corresponde a Propiedades Usadas dentro de Venta de Casas en Chile" | **VERIFICADO** el 2026-10-08: es Casas > Venta > Propiedades usadas (§12.1) |
 | `MLC5628` | Ejemplo hipotético de hoja ("si no hubiera children_categories al consultar MLC5628") | NO VERIFICADO; no usar |
 
 Los ids de departamentos, casas, oficinas, terrenos, parcelas, bodegas, estacionamientos y locales, por venta, arriendo y arriendo temporal, **no figuran** para MLC: se obtienen con el token (sección 8). Como referencia, MLA usa nombres de operación "Alquiler", "Alquiler Temporario" y "Venta", y subtipos "Propiedades Individuales" y "Emprendimientos" (DOC, MLA). Los nombres en MLC (por ejemplo "Arriendo", "Propiedades Usadas"): NO VERIFICADO.
 
 **Atributos:** `GET /categories/{hoja}/attributes`. Cada uno trae `id`, `name`, `tags`, `hierarchy`, `relevance`, `value_type`, `value_max_length`, `allowed_units`, `default_unit` y el grupo. **Obligatorio = `tags.required: true`**; también existen los obligatorios condicionales (`conditional_required: true`, error 7810 `item.attribute.missing_conditional_required`). Faltar uno requerido da el error 147 `item.attributes.missing_required`.
 
-La guía de atributos de inmuebles marca como **obligatorios**:
+La guía de atributos de inmuebles marca como **obligatorios** (lo real por hoja, leído con `ml:smoke`, está en §12.1: en venta de usados son menos):
 
 | Atributo | Qué es | Cómo se envía (DOC) |
 |---|---|---|
@@ -234,7 +234,7 @@ Además son obligatorios en el body: precio, moneda (`currency_id` entre las de 
 ### 4.8 Moneda y precio (DOC)
 
 - **`CLF` = Unidad de Fomento**, símbolo `UF`, **2 decimales**; `CLP` = Peso Chileno, 0 decimales (`GET /currencies`).
-- Las monedas permitidas por categoría están en `settings.currencies` (el ejemplo MLA de Inmuebles trae `["USD", "ARS"]`). Que las hojas de MLC acepten `CLF`: muy probable (Portal Inmobiliario publica en UF) pero **NO VERIFICADO**; el ejemplo chileno usa `CLP`.
+- Las monedas permitidas por categoría están en `settings.currencies` (el ejemplo MLA de Inmuebles trae `["USD", "ARS"]`). Que las hojas de MLC acepten `CLF`: muy probable (Portal Inmobiliario publica en UF) pero **NO VERIFICADO**; el ejemplo chileno usa `CLP`. **VERIFICADO el 2026-10-08:** las 40 hojas de MLC aceptan `CLP`, `USD` y `CLF` (§12.1); que `validate` acepte un precio en `CLF` con 2 decimales sigue sin probarse (402 sin paquete, §12.3).
 - Precio mínimo y máximo: `settings.minimum_price` y error 129 si `price` supera 9.999.999.999.
 
 ## 5. Medios
@@ -276,9 +276,9 @@ Además son obligatorios en el body: precio, moneda (`currency_id` entre las de 
 | Rate limit | 429 por exceso de peticiones en poco tiempo; se controla **por Client ID y por endpoint**; el tamaño del body no cuenta. **No hay cifra publicada** | DOC |
 | Ante 429 | Backoff exponencial con jitter, menos concurrencia, agrupar llamadas; se pueden pedir cupos mayores con evidencia de uso | DOC |
 | Subida de fotos | RPM limitado por `app_id` (400 al superarlo) | DOC |
-| Título | `settings.max_title_length` de la categoría. En el ejemplo de Inmuebles de **MLA** es **200**; en una categoría de productos de MLA es 60. **En MLC: NO VERIFICADO** | DOC / NO VERIFICADO |
+| Título | `settings.max_title_length` de la categoría. En el ejemplo de Inmuebles de **MLA** es **200**; en una categoría de productos de MLA es 60. **En MLC: 60** (140 en Departamentos > Venta > Proyectos); 61 da 400 `item.title.length.invalid` (§12) | DOC / VERIFICADO |
 | Descripción | `settings.max_description_length` (50.000 en los ejemplos MLA) | DOC |
-| Fotos por ítem | `settings.max_pictures_per_item` (30 en el ejemplo MLA de Inmuebles) | DOC / NO VERIFICADO en MLC |
+| Fotos por ítem | `settings.max_pictures_per_item` (30 en el ejemplo MLA de Inmuebles; **30 en MLC**, 200 en algunos proyectos, §12.1) | DOC / VERIFICADO |
 | Valor de un atributo | `value_max_length` (255 en general; 18 en `BEDROOMS`) | DOC |
 | Precio | Menor que 9.999.999.999 | DOC |
 | Usuarios de prueba | Hasta 10 por cuenta; vencen; se borran tras 60 días sin actividad | DOC |
@@ -297,6 +297,8 @@ Además son obligatorios en el body: precio, moneda (`currency_id` entre las de 
 | Demasiadas fotos | 400, 201 `item.pictures.max` | No |
 | Foto chica o con error | 400, 3703 `item.pictures.invalid_size`; 508 y 509 al usar un `id` de foto inválido o pequeño | No |
 | Precio bajo el mínimo o sobre el máximo | 400, 109 / 129 `item.price.invalid` | No |
+| Título más largo que el de la hoja | 400, 134 `item.title.length.invalid` (visto con `ml:smoke`, §12.3) | No |
+| Sin paquete con cupo | **402** sin `error` ni causas (visto en `validate` con `ml:smoke`, §12.3; que sea el cupo es INFERENCIA fuerte): `ML_NO_QUOTA` | No |
 | `seller_contact` faltante o mal formado | 400, `seller_contact.*` (sección 4.2) | No |
 | Descripción con caracteres no aceptados | 400, 398 `item.description.type.invalid` | No |
 | Token vencido o inválido | 401 | Una vez, tras refrescar; si el refresco falla, `needs_reconnect` |
@@ -411,3 +413,87 @@ Pista no oficial (no se usa como fuente final): issue del SDK .NET de ML con `ht
 13. **Estado por sondeo**, sin webhooks: reflejar `paused` (moderación con su `REASON`), `under_review`, `not_yet_active`, `closed`/`expired` y mostrar `stop_time` (45 días en arriendo).
 14. **`dry-run`:** el publisher arma el body; llamar a `items/validate` en dry-run toca la API real aunque no publica: decisión del operador.
 15. **Preguntas para el operador:** (a) ¿el corredor de prueba tiene plan de Portal Inmobiliario y aparece como cupo `silver` por API?; (b) ¿se crea un usuario de prueba MLC y se pide su activación a soporte antes de empezar F4?; (c) ¿multipart o URL de R2 para las fotos?; (d) ¿`items/validate` cuenta como "no publicar" en `dry-run`?
+
+## 12. Verificado con `ml:smoke` (2026-10-08)
+
+`pnpm ml:smoke` (F4-T10) corrido por el operador con su cuenta conectada (`VICENTEWOLDE`, `user_type` `normal`, sin paquetes). Solo lecturas y `POST /items/validate`: no se creó ni se cambió nada. El informe completo quedó en `tmp/ml-smoke/` (fuera de git). Lo de esta sección es **VERIFICADO** salvo donde dice INFERENCIA.
+
+### 12.1 Categorías (64 recorridas, 40 hojas, todas con `listing_allowed: true`)
+
+- **Árbol:** Inmuebles (`MLC1459`) > tipo > operación (`Venta`, `Arriendo`, `Arriendo Temporal`) > subtipo (`Propiedades usadas` o `Proyectos`) solo en casas, departamentos, oficinas, loteos (venta), parcelas (venta) y sitios (venta). Los demás tipos terminan en la operación. Las 40 hojas se encuentran bajando por los nombres (`leafCategory`), sin ambigüedades. `MLC157520` (el supuesto de la doc) **sí** es Casas > Venta > Propiedades usadas.
+- **Tipos:** `Agrícolas`, `Bodegas`, `Casas`, `Departamentos`, `Estacionamientos`, `Industriales`, `Locales`, `Loteos`, `Lotes de Cementerio`, `Oficinas`, `Otros Inmuebles`, `Parcelas`, `Sitios` y `Terrenos` (no hay "Local comercial": es `Locales`). `Parcelas > Venta` escribe su subtipo `Propiedades Usadas` con mayúscula (la normalización lo cubre).
+- **`settings`:** título de **60** caracteres en 39 hojas (140 en Departamentos > Venta > Proyectos); 30 fotos (200 en algunos proyectos); monedas `CLP`, `USD` y `CLF` en **todas** las hojas; descripción de 50.000. El precio mínimo varía por hoja y no trae moneda (los montos, como 15.000.000 en venta de departamentos, son de pesos: INFERENCIA; T11 no los compara con un precio en UF).
+- **Tags de los atributos:** ningún obligatorio trae `read_only`, `fixed` ni `hidden`; traen `required`, `catalog_listing_required` y, algunos, `allow_variations`. `PROPERTY_TYPE`, `OPERATION` y `OPERATION_SUBTYPE` son `fixed` y `hidden` (los completa la categoría). **`CMG_SITE` es `hidden`, pero se envía**: es la marca de Portal Inmobiliario (T11 lo envía siempre, aunque no envíe los demás `hidden`). Otros `hidden` (opcionales): `PROPERTY_AGE`, `WITH_VIRTUAL_TOUR`, `SOCIAL_STRATUM`, `PHONE_ID`, `ITEM_CONDITION`, …; `read_only`: `CANONICAL_URL`, `PREVIOUS_PRICE`, `HAS_FLOOR_PLAN`, …
+- **Tipos de valor:** `TOTAL_AREA`, `COVERED_AREA` y `MAINTENANCE_FEE` son `number_unit`; `BEDROOMS`, `FULL_BATHROOMS`, `PARKING_LOTS` y `WAREHOUSES`, `number`; `FURNISHED` e `IS_SUITABLE_FOR_PETS`, `boolean` con valores `Sí`/`No` (con `value_id`).
+- **Obligatorios:** menos de los que decía la guía (§4.6). En **venta** de departamentos y casas usados solo `TOTAL_AREA`, `COVERED_AREA`, `BEDROOMS`, `FULL_BATHROOMS` y `PARKING_LOTS`; en **arriendo** se suman `FURNISHED`, `IS_SUITABLE_FOR_PETS` y `WAREHOUSES` (y `MAINTENANCE_FEE` en departamentos). Los proyectos piden datos del proyecto (`DEVELOPMENT_NAME`, `MODEL_NAME`, `UNIT_NAME`, `PROPERTY_CODE`, `POSSESSION_STATUS`, `FACING`, …), que AgentSales no tiene: T11 mapea solo `Propiedades usadas`. Ninguna hoja trae obligatorios condicionales.
+
+| Hoja (tipo > operación > subtipo) | Id | Título | Fotos | Precio mínimo | Obligatorios |
+|---|---|---|---|---|---|
+| Agrícolas > Arriendo | `MLC50624` | 60 | 30 | 300.000 | `TOTAL_AREA`, `BEDROOMS`, `FULL_BATHROOMS` |
+| Agrícolas > Venta | `MLC50625` | 60 | 30 | 1.000.000 | `TOTAL_AREA`, `BEDROOMS`, `FULL_BATHROOMS` |
+| Bodegas > Arriendo | `MLC50565` | 60 | 30 | 40.000 | `TOTAL_AREA`, `COVERED_AREA`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Bodegas > Venta | `MLC50566` | 60 | 30 | 500.000 | `TOTAL_AREA`, `COVERED_AREA`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Casas > Arriendo > Propiedades usadas | `MLC183184` | 60 | 30 | 150.000 | `TOTAL_AREA`, `COVERED_AREA`, `BEDROOMS`, `FULL_BATHROOMS`, `PARKING_LOTS`, `FURNISHED`, `WAREHOUSES`, `IS_SUITABLE_FOR_PETS` |
+| Casas > Arriendo > Proyectos | `MLC183185` | 60 | 30 | 250.000 | `PROPERTY_CODE`, `MODEL_NAME`, `COVERED_AREA`, `LAND_AREA`, `BEDROOMS`, `FULL_BATHROOMS`, `FACING`, `UNIT_NAME`, `TOTAL_AREA`, `DEVELOPMENT_NAME`, `POSSESSION_STATUS`, `MAINTENANCE_FEE` |
+| Casas > Arriendo Temporal | `MLC116364` | 60 | 30 | 59.000 | `TOTAL_AREA`, `COVERED_AREA`, `GUESTS`, `BEDROOMS`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Casas > Venta > Propiedades usadas | `MLC157520` | 60 | 30 | 15.000.000 | `TOTAL_AREA`, `COVERED_AREA`, `BEDROOMS`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Casas > Venta > Proyectos | `MLC157521` | 60 | 200 | 15.000.000 | `PROPERTY_CODE`, `MODEL_NAME`, `COVERED_AREA`, `LAND_AREA`, `BEDROOMS`, `FULL_BATHROOMS`, `FACING`, `PARKING_LOTS`, `UNIT_NAME`, `TOTAL_AREA`, `DEVELOPMENT_NAME`, `POSSESSION_STATUS` |
+| Departamentos > Arriendo > Propiedades usadas | `MLC183186` | 60 | 30 | 150.000 | `TOTAL_AREA`, `COVERED_AREA`, `BEDROOMS`, `FULL_BATHROOMS`, `PARKING_LOTS`, `IS_SUITABLE_FOR_PETS`, `WAREHOUSES`, `MAINTENANCE_FEE`, `FURNISHED` |
+| Departamentos > Arriendo > Proyectos | `MLC183189` | 60 | 200 | 200 | `MODEL_NAME`, `COVERED_AREA`, `BALCONY_AREA`, `TOTAL_AREA`, `BEDROOMS`, `FULL_BATHROOMS`, `FACING`, `UNIT_NAME`, `UNIT_FLOOR`, `PARKING_LOTS`, `DEVELOPMENT_NAME`, `POSSESSION_STATUS`, `PROPERTY_CODE` |
+| Departamentos > Arriendo Temporal | `MLC116367` | 60 | 30 | 50 | `TOTAL_AREA`, `COVERED_AREA`, `GUESTS`, `BEDROOMS`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Departamentos > Venta > Propiedades usadas | `MLC157522` | 60 | 30 | 15.000.000 | `TOTAL_AREA`, `COVERED_AREA`, `BEDROOMS`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Departamentos > Venta > Proyectos | `MLC157523` | 140 | 200 | 15.000.000 | `MODEL_NAME`, `COVERED_AREA`, `BALCONY_AREA`, `TOTAL_AREA`, `BEDROOMS`, `FULL_BATHROOMS`, `FACING`, `UNIT_NAME`, `UNIT_FLOOR`, `PARKING_LOTS`, `DEVELOPMENT_NAME`, `POSSESSION_STATUS`, `PROPERTY_CODE`, `MAINTENANCE_FEE` |
+| Estacionamientos > Arriendo | `MLC50621` | 60 | 30 | 40 | `TOTAL_AREA` |
+| Estacionamientos > Venta | `MLC50622` | 60 | 30 | 1.000.000 | `TOTAL_AREA` |
+| Industriales > Arriendo | `MLC50618` | 60 | 30 | 500 | `TOTAL_AREA`, `COVERED_AREA`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Industriales > Venta | `MLC50619` | 60 | 30 | 30.000.000 | `TOTAL_AREA`, `COVERED_AREA`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Locales > Arriendo | `MLC50611` | 60 | 30 | 200 | `TOTAL_AREA`, `COVERED_AREA`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Locales > Venta | `MLC50612` | 60 | 30 | 5.000.000 | `TOTAL_AREA`, `COVERED_AREA`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Loteos > Arriendo | `MLC50177` | 60 | 30 | 600.000 | `TOTAL_AREA` |
+| Loteos > Venta > Propiedades usadas | `MLC183190` | 60 | 30 | 10.000.000 | `TOTAL_AREA` |
+| Loteos > Venta > Proyectos | `MLC183191` | 60 | 30 | 10.000.000 | `PROPERTY_CODE`, `MODEL_NAME`, `TOTAL_AREA`, `UNIT_NAME`, `DEVELOPMENT_NAME`, `POSSESSION_STATUS` |
+| Lotes de Cementerio > Venta | `MLC175563` | 60 | 30 | 5.000.000 | `WIDTH`, `LENGTH`, `DEPTH` |
+| Oficinas > Arriendo > Propiedades usadas | `MLC183187` | 60 | 30 | 100.000 | `TOTAL_AREA`, `COVERED_AREA`, `PARKING_LOTS`, `FULL_BATHROOMS` |
+| Oficinas > Arriendo > Proyectos | `MLC183188` | 60 | 30 | 200.000 | `MODEL_NAME`, `COVERED_AREA`, `FULL_BATHROOMS`, `PROPERTY_CODE`, `UNIT_NAME`, `DEVELOPMENT_NAME`, `POSSESSION_STATUS`, `MAINTENANCE_FEE` |
+| Oficinas > Venta > Propiedades usadas | `MLC157413` | 60 | 30 | 20.000.000 | `TOTAL_AREA`, `COVERED_AREA`, `PARKING_LOTS`, `FULL_BATHROOMS` |
+| Oficinas > Venta > Proyectos | `MLC157414` | 60 | 30 | 20.000.000 | `MODEL_NAME`, `COVERED_AREA`, `FULL_BATHROOMS`, `OFFICES`, `FACING`, `PROPERTY_CODE`, `UNIT_NAME`, `UNIT_FLOOR`, `PARKING_LOTS`, `WAREHOUSES`, `DEVELOPMENT_NAME`, `POSSESSION_STATUS` |
+| Otros Inmuebles > Arriendo | `MLC6410` | 60 | 30 | 100.000 | `TOTAL_AREA`, `COVERED_AREA` |
+| Otros Inmuebles > Arriendo Temporal | `MLC116369` | 60 | 30 | 200.000 | `TOTAL_AREA`, `COVERED_AREA` |
+| Otros Inmuebles > Venta | `MLC6396` | 60 | 30 | 6.000.000 | `TOTAL_AREA`, `COVERED_AREA` |
+| Parcelas > Arriendo | `MLC6404` | 60 | 30 | 500.000 | `TOTAL_AREA`, `COVERED_AREA`, `BEDROOMS`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Parcelas > Arriendo Temporal | `MLC183298` | 60 | 30 | 150.000 | `TOTAL_AREA`, `COVERED_AREA`, `GUESTS`, `BEDROOMS`, `FULL_BATHROOMS` |
+| Parcelas > Venta > Propiedades Usadas | `MLC458189` | 60 | 30 | 10.000.000 | `TOTAL_AREA`, `COVERED_AREA`, `BEDROOMS`, `FULL_BATHROOMS`, `PARKING_LOTS` |
+| Parcelas > Venta > Proyectos | `MLC458190` | 60 | 30 | 10.000.000 | `PROPERTY_CODE`, `MODEL_NAME`, `TOTAL_AREA`, `UNIT_NAME`, `DEVELOPMENT_NAME`, `POSSESSION_STATUS` |
+| Sitios > Arriendo | `MLC50614` | 60 | 30 | 500.000 | `TOTAL_AREA` |
+| Sitios > Venta > Propiedades usadas | `MLC183202` | 60 | 30 | 15.000.000 | `TOTAL_AREA` |
+| Sitios > Venta > Proyectos | `MLC183203` | 60 | 30 | 20.000.000 | `PROPERTY_CODE`, `MODEL_NAME`, `TOTAL_AREA`, `UNIT_NAME`, `DEVELOPMENT_NAME`, `POSSESSION_STATUS` |
+| Terrenos > Arriendo | `MLC152994` | 60 | 30 | 600.000 | `TOTAL_AREA` |
+| Terrenos > Venta | `MLC152993` | 60 | 30 | 8.000.000 | `TOTAL_AREA` |
+
+### 12.2 Ubicaciones
+
+- **Estados:** 19 (los 16 de Chile y, además, `China`, `Inglaterra` y `USA`, con una ciudad cada uno). Nombres de Mercado Libre: `Arica y Parinacota`, `Tarapacá`, `Antofagasta`, `Atacama`, `Coquimbo`, `Valparaíso`, `RM (Metropolitana)`, `Libertador B. O'Higgins`, `Maule`, `Ñuble`, `Biobío`, `La Araucanía`, `Los Ríos`, `Los Lagos`, `Aysén` y `Magallanes`.
+- **Ciudades = comunas:** cada estado trae sus comunas como ciudades (53 en la RM, 39 en Valparaíso). Difieren del nombre oficial: `Calera` (La Calera), `Llaillay` (Llay-Llay), `Marchihue` (Marchigüe), `Mostazal` (San Francisco de Mostazal), `San Vicente` (de Tagua Tagua), `Mariquina` (San José de la Mariquina), `Coihaique` (Coyhaique), `Aysén` (Puerto Aysén), `O'Higgins` (Villa O'Higgins), `Tortel`, `Natales`, `Paiguano` (Paihuano), `Tiltil`, `Cholchol` y `Alto Bíobío`. Extras que no son comunas: `San José de Melipilla` (RM), `Isla Negra` (Valparaíso), `Bucalemu` y `Santa Amelia` (O'Higgins); `Lago Ranco` aparece en Los Ríos y en Los Lagos. `Los Vilos ` viene con un espacio al final.
+- **Ids:** los 19 estados y las 354 ciudades (351 de Chile) tienen la forma que acepta el cliente (`[A-Za-z0-9_=-]`, base64 sin `+` ni `/`).
+- **Barrios:** no hacen falta. El aviso de prueba fue sin `neighborhood` y el único rechazo con causas (el título largo) no se quejó de la ubicación. `PORTAL_LOCATION_ALIASES` no usa barrios.
+- **Los avisos de muestra** (`Metropolitana` / `Ñuñoa`, `La Reina`, `Providencia`) no calzaban por la región: el Excel dice `Metropolitana` y Mercado Libre `RM (Metropolitana)`. Se agregó el alias (y los de las demás regiones y comunas de arriba) en core.
+
+### 12.3 `POST /items/validate`
+
+Aviso de prueba en Departamentos > Venta > Propiedades usadas (`MLC157522`), con una foto en `agentsales.test` (no existe), dirección, `CMG_SITE` completo y un contacto de muestra (el corredor aún no tiene WhatsApp en su hoja).
+
+| Variante | Respuesta |
+|---|---|
+| Base (CLP), sin dirección, descripción en el cuerpo, `CMG_SITE` corto, sin `CMG_SITE`, `CLF` | **402** sin `error` ni causas |
+| Título de 61 caracteres | **400** con una causa: `item.title.length.invalid` (`cause_id` 134) |
+
+- **Sin cupo = 402 (INFERENCIA fuerte):** la cuenta no tiene paquetes (`GET /users/{id}/classifieds_promotion_packs` responde 404 `not_found`), y `validate` revisa el título **antes** del cupo. Desde F4-T10 el cliente trata 402 como `ML_NO_QUOTA` (no reintentable); lo confirma la prueba con paquete (T23).
+- **Consecuencia:** sin paquete, `validate` no revisa el resto del aviso, así que `CLF`, `CMG_SITE` corto o ausente, la descripción en el cuerpo y la dirección siguen **NO VERIFICADOS** hasta contratar un paquete. Lo que sí se sabe: con el título largo (400), Mercado Libre no reportó atributos faltantes, moneda, ubicación sin barrio, foto ni contacto (INFERENCIA: un 400 trae todas las causas que bloquean).
+- **Largo del título:** 60 confirmado (61 se rechaza).
+
+### 12.4 Búsqueda de ítems y paquetes
+
+- **`GET /users/{id}/items/search?include_filters=true` sin `status`:** `filters` vuelve vacío (la búsqueda no aplica un estado por defecto, INFERENCIA) y `available_filters` ofrece `status` con `pending`, `not_yet_active`, `programmed`, `active`, `paused` y `closed`, más `sub_status`, `buying_mode`, `listing_type_id`, `listing_source` y `labels`. La cuenta no tiene ítems (0 en todo), así que si la búsqueda sin estado trae un ítem `paused` o `not_yet_active` sigue **NO VERIFICADO**: T14 busca sin estado y, si no encuentra, repite con `status=not_yet_active` y `status=paused`.
+- **Paquetes contratados:** ninguno; Mercado Libre responde **404 `not_found`** (no una lista vacía).
+- **Paquetes para contratar en `MLC1459`:** 31 paquetes `silver` de 30 días ("N Publicaciones Plata", ids `IP<N>P30`), con `price` sin moneda. Por ejemplo: 5 publicaciones a 1,32; 10 a 1,59; 20 a 2,51; 30 a 2,64; 50 a 3,7; 100 a 3,96. Que el precio esté en UF es INFERENCIA (por los montos). Campos de cada paquete: `id`, `category_id`, `brand`, `description`, `price`, `package_type`, `package_content`, `duration`, `status`, `charge_type_id`, `max_upgrades`, `quota_type`, `listing_details`, `metadata`, `visibility`.
+- Responde la pregunta abierta de §2 para esta cuenta: sin plan de Portal Inmobiliario, no hay cupo `silver` por API.

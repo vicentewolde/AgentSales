@@ -151,7 +151,12 @@ export type MlSmokeReport = {
     }>;
   };
   search: MercadoLibreItemSearch | null;
-  packs: { user: MercadoLibrePackList | null; category: MercadoLibrePackList | null };
+  packs: {
+    user: MercadoLibrePackList | null;
+    /** La cuenta sin paquetes: Mercado Libre responde 404 `not_found` (visto el 2026-10-08). */
+    userNotFound: boolean;
+    category: MercadoLibrePackList | null;
+  };
   errors: MlSmokeError[];
 };
 
@@ -411,7 +416,7 @@ export async function runMlSmoke(deps: MlSmokeDeps, options: MlSmokeOptions = {}
     locations: { states: [], listings: [], sampleCity: null },
     validate: { leaf: null, missingSamples: [], contact: "sample", variants: [] },
     search: null,
-    packs: { user: null, category: null },
+    packs: { user: null, userNotFound: false, category: null },
     errors: [],
   };
   const failure = (section: string, error: AppError) => {
@@ -836,6 +841,11 @@ async function validateVariants(
     deps.print(`  ${name}: rechazado: ${result.errors.map(causeLabel).join(", ")}${warnings}`);
     for (const cause of result.errors) deps.print(`    · ${describeCause(cause)}`);
   }
+  if (report.validate.variants.some((variant) => variant.error?.code === "ML_NO_QUOTA")) {
+    deps.print(
+      "  → Sin un paquete silver con cupo, Mercado Libre responde 402 y no revisa el resto del aviso (sí el título): contrátalo antes de la prueba con paquete",
+    );
+  }
 }
 
 /** Qué estados trae la búsqueda de ítems sin `status` (la retoma de T14 depende de esto). */
@@ -916,9 +926,19 @@ async function readPacks(
   };
 
   deps.print("\nPaquetes de publicación:");
-  report.packs.user = await attempt("packs:user", () =>
-    call((token, callOptions) => deps.packs.userPacks(token, userId, callOptions)),
-  );
+  report.packs.user = await attempt("packs:user", async () => {
+    try {
+      return await call((token, callOptions) => deps.packs.userPacks(token, userId, callOptions));
+    } catch (error) {
+      // Sin paquetes contratados, Mercado Libre responde 404 `not_found`: es un resultado.
+      if (!isAppError(error) || error.details?.httpStatus !== 404) throw error;
+      report.packs.userNotFound = true;
+      return null;
+    }
+  });
+  if (report.packs.userNotFound) {
+    deps.print("  Contratados por la cuenta: ninguno (Mercado Libre respondió 404 not_found)");
+  }
   show("Contratados por la cuenta", report.packs.user);
   report.packs.category = await attempt("packs:category", () =>
     call((token, callOptions) =>

@@ -115,15 +115,47 @@ export type PortalLocationAliases = {
 };
 
 /**
- * Las equivalencias conocidas. Solo lo verificado en la doc (el estado `Libertador B. O'Higgins`,
- * nota §4.7); `ml:smoke` (T10) imprime los nombres reales de los estados y ciudades y se completan
- * aquí antes del mapeo (T11).
+ * Las equivalencias conocidas, con los nombres reales de Mercado Libre que leyó `ml:smoke` el
+ * 2026-10-08 (nota de Mercado Libre §4.7): 16 estados con los nombres cortos (`RM (Metropolitana)`,
+ * `Aysén`, `Magallanes`, `Libertador B. O'Higgins`) y una ciudad por comuna, salvo los nombres
+ * oficiales o usuales que Mercado Libre escribe distinto. Chile no necesita barrios: ningún alias
+ * usa `neighborhood`.
  */
 export const PORTAL_LOCATION_ALIASES: PortalLocationAliases = {
   regions: {
+    metropolitana: "RM (Metropolitana)",
+    "metropolitana de santiago": "RM (Metropolitana)",
+    rm: "RM (Metropolitana)",
     ohiggins: "Libertador B. O'Higgins",
     "libertador general bernardo ohiggins": "Libertador B. O'Higgins",
     "libertador bernardo ohiggins": "Libertador B. O'Higgins",
+    "bio bio": "Biobío",
+    araucania: "La Araucanía",
+    aisen: "Aysén",
+    "aysen del general carlos ibanez del campo": "Aysén",
+    "aisen del general carlos ibanez del campo": "Aysén",
+    "magallanes y de la antartica chilena": "Magallanes",
+    "magallanes y antartica chilena": "Magallanes",
   },
-  communes: {},
+  communes: {
+    "santiago centro": { city: "Santiago" },
+    "til til": { city: "Tiltil" },
+    "la calera": { city: "Calera" },
+    "llay llay": { city: "Llaillay" },
+    marchigue: { city: "Marchihue" },
+    "san francisco de mostazal": { city: "Mostazal" },
+    "san vicente de tagua tagua": { city: "San Vicente" },
+    "alto bio bio": { city: "Alto Bíobío" },
+    "chol chol": { city: "Cholchol" },
+    "puerto saavedra": { city: "Saavedra" },
+    "san jose de la mariquina": { city: "Mariquina" },
+    coyhaique: { city: "Coihaique" },
+    aisen: { city: "Aysén" },
+    "puerto aysen": { city: "Aysén" },
+    "puerto aisen": { city: "Aysén" },
+    "villa ohiggins": { city: "O'Higgins" },
+    "caleta tortel": { city: "Tortel" },
+    "puerto natales": { city: "Natales" },
+    paihuano: { city: "Paiguano" },
+  },
 };
