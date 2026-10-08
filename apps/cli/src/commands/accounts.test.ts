@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { fakeInstagramAuth } from "@agentsales/api/testing";
+import {
+  fakeInstagramAuth,
+  fakeMercadoLibreAuth,
+  TEST_ML_REDIRECT_URI,
+} from "@agentsales/api/testing";
 import { describe, expect, it } from "vitest";
 import { brokerData, harness } from "../../test/harness.js";
 import {
@@ -241,5 +245,154 @@ describe("accounts y accounts refresh", () => {
     expect(h.errors()).toContain("✗ Mercado Libre rechazó el acceso de CORREDORA_8035444");
     expect(h.errors()).toContain("Reconéctala");
     expect(`${h.text()}\n${h.errors()}`).not.toMatch(/APP_USR|TG-/);
+  });
+});
+
+describe("accounts connect mercadolibre (F4-T20, adelantado)", () => {
+  const CODE = "TG-codigo-pegado-8035443";
+
+  async function mlSetup(options: { configured?: boolean } = {}) {
+    const opened: string[] = [];
+    const auth = fakeMercadoLibreAuth();
+    const h = harness({
+      deps: {
+        mercadoLibre: {
+          auth,
+          configured: options.configured ?? true,
+          redirectUri: TEST_ML_REDIRECT_URI,
+        },
+      },
+    });
+    await h.brokers.create(brokerData("marca"));
+    const deps = (stdin: string | null = null): AccountsDeps => ({
+      ...h.io,
+      client: h.client,
+      stdinIsTty: () => stdin === null,
+      readStdin: async () => stdin ?? "",
+      openUrl: (url) => opened.push(url),
+      now: () => new Date("2026-10-08T12:00:00Z"),
+    });
+    /** Pide el enlace como lo haría el operador y devuelve el `state` que trae. */
+    const freshState = async () => {
+      expect(await runConnect(deps(), "mercadolibre", { broker: "marca" })).toBe(0);
+      return new URL(opened.at(-1) ?? "").searchParams.get("state") ?? "";
+    };
+    const paste = (pasted: string) =>
+      runConnect(deps(pasted), "mercadolibre", { broker: "marca", urlStdin: true });
+    return { h, auth, opened, deps, freshState, paste };
+  }
+
+  it("sin --url-stdin imprime y abre el enlace de autorización, y dice el paso siguiente", async () => {
+    const { h, opened, freshState } = await mlSetup();
+
+    const state = await freshState();
+
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatch(/^https:\/\/auth\.mercadolibre\.cl\/authorization\?/);
+    expect(state.length).toBeGreaterThan(0);
+    expect(h.text()).toContain(opened[0]);
+    expect(h.text()).toContain("error de conexión: es lo esperado");
+    expect(h.text()).toContain(
+      "pbpaste | pnpm -s cli accounts connect mercadolibre --broker marca --url-stdin",
+    );
+  });
+
+  it("con la dirección pegada conecta la cuenta, sin mostrar la dirección ni el código", async () => {
+    const { h, freshState, paste } = await mlSetup();
+    const state = await freshState();
+
+    const code = await paste(`${TEST_ML_REDIRECT_URI}?code=${CODE}&state=${state}`);
+
+    expect(code).toBe(0);
+    expect(h.text()).toContain("✓ Conectada CORREDORA_PRUEBA (marca)");
+    expect(h.text()).toContain("Permisos: offline_access, read, write");
+    const [account] = await h.platformAccounts.list();
+    expect(account).toMatchObject({ platform: "portal_inmobiliario", status: "connected" });
+    const everything = `${h.text()}\n${h.errors()}\n${h.requests.join("\n")}`;
+    // El `state` sí está en el enlace del primer paso (no es secreto); el código, nunca.
+    expect(everything).not.toContain(CODE);
+    expect(h.requests).toContain("POST /accounts/mercadolibre/connect");
+  });
+
+  it("en una terminal (sin tubería) no lee: pide pasar la dirección por la entrada estándar", async () => {
+    const { h, deps } = await mlSetup();
+
+    const code = await runConnect(deps(null), "mercadolibre", { broker: "marca", urlStdin: true });
+
+    expect(code).toBe(1);
+    expect(h.errors()).toContain("URL_STDIN_REQUIRED");
+    expect(h.errors()).toContain("--url-stdin");
+    expect(h.requests).toEqual([]);
+  });
+
+  it.each([
+    ["vacía", "  \n", "URL_MISSING"],
+    ["con espacios", `${TEST_ML_REDIRECT_URI}?code=${CODE} otra cosa`, "URL_INVALID"],
+    ["que no es una dirección", "TG-solo-el-codigo", "URL_INVALID"],
+  ])(
+    "una entrada %s se rechaza sin llamar a Mercado Libre ni mostrarla",
+    async (_, pasted, error) => {
+      const { h, auth, paste } = await mlSetup();
+
+      expect(await paste(pasted)).toBe(1);
+
+      expect(h.errors()).toContain(error);
+      expect(h.errors()).not.toContain(CODE);
+      expect(auth.calls).toEqual([]);
+    },
+  );
+
+  it("otra dirección (otra pestaña) es URL_NOT_REDIRECT, sin canjear nada", async () => {
+    const { h, auth, freshState, paste } = await mlSetup();
+    const state = await freshState();
+
+    expect(await paste(`https://otra.test/callback?code=${CODE}&state=${state}`)).toBe(1);
+
+    expect(h.errors()).toContain("URL_NOT_REDIRECT");
+    expect(h.errors()).toContain(TEST_ML_REDIRECT_URI);
+    expect(h.errors()).not.toContain(CODE);
+    expect(auth.calls).toEqual([]);
+  });
+
+  it("una autorización cancelada es OAUTH_DENIED; sin código o sin state, URL_INCOMPLETE", async () => {
+    const { h, auth, freshState, paste } = await mlSetup();
+    const state = await freshState();
+
+    expect(await paste(`${TEST_ML_REDIRECT_URI}?error=access_denied&state=${state}`)).toBe(1);
+    expect(h.errors()).toContain("OAUTH_DENIED");
+    expect(await paste(`${TEST_ML_REDIRECT_URI}?state=${state}`)).toBe(1);
+    expect(await paste(`${TEST_ML_REDIRECT_URI}?code=${CODE}`)).toBe(1);
+    expect(h.errors()).toContain("URL_INCOMPLETE");
+    expect(auth.calls).toEqual([]);
+  });
+
+  it("un código que Mercado Libre rechaza muestra el mensaje de la API (pedir el enlace de nuevo)", async () => {
+    const { h, freshState, paste } = await mlSetup();
+    const state = await freshState();
+
+    expect(await paste(`${TEST_ML_REDIRECT_URI}?code=malo-${CODE}&state=${state}`)).toBe(1);
+
+    expect(h.errors()).toContain("ML_AUTH_INVALID");
+    expect(h.errors()).toContain("pide el enlace de nuevo");
+    expect(h.errors()).not.toContain(CODE);
+  });
+
+  it("sin el par de la app en .env: MERCADOLIBRE_NOT_CONFIGURED con el paso a seguir", async () => {
+    const { h, opened, deps } = await mlSetup({ configured: false });
+
+    expect(await runConnect(deps(), "mercadolibre", { broker: "marca" })).toBe(1);
+
+    expect(h.errors()).toContain("MERCADOLIBRE_NOT_CONFIGURED");
+    expect(h.errors()).toContain("ML_APP_ID");
+    expect(opened).toEqual([]);
+  });
+
+  it("sin --broker se pide antes de llamar a la API", async () => {
+    const { h, deps } = await mlSetup();
+
+    expect(await runConnect(deps(), "mercadolibre", {})).toBe(1);
+
+    expect(h.errors()).toContain("BROKER_REQUIRED");
+    expect(h.requests).toEqual([]);
   });
 });

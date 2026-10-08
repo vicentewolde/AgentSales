@@ -106,7 +106,7 @@ Authorization code "server side":
 
 ### 3.4 Conectar la cuenta en local sin túnel (de menos a más esfuerzo)
 
-> **Superado por el spec F4** (D1 y D3, implementado en F4-T06): se registra `https://localhost/oauth/mercadolibre/callback` (puerto 443, sin servidor), PKCE desactivado, y la CLI recibe la **dirección completa** pegada (`--url-stdin`), no el `code` suelto. Lo que sigue es la investigación previa.
+> **Superado por el spec F4** (D1 y D3, implementado en F4-T06): se registra una dirección `https` que no necesita servidor (al final `https://agentsales.test/oauth/mercadolibre/callback`, porque el panel rechazó `localhost`, §3.3), PKCE desactivado, y la CLI recibe la **dirección completa** pegada (`--url-stdin`), no el `code` suelto. Lo que sigue es la investigación previa.
 
 1. **Redirect HTTPS que no necesita cargar** (respaldado por la doc: "incluso si no existe"): registrar `https://localhost:8787/oauth/mercadolibre/callback` (o, si el panel rechaza `localhost`, cualquier URL HTTPS del operador). Tras autorizar, el navegador queda en esa dirección con `?code=...&state=...`; el operador copia el `code` y lo pega en la CLI (`accounts connect mercadolibre --code`), que lo canjea en seguida.
 2. **`https://localhost` con certificado local (mkcert)** servido por Hono: el callback carga y canjea solo. Sin dependencias de producción.

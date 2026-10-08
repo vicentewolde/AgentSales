@@ -71,7 +71,7 @@ export function fakeInstagramAuth(): InstagramAuth & { calls: string[] } {
 }
 
 /** La dirección de retorno de Mercado Libre de los tests (la de `.env.example`). */
-export const TEST_ML_REDIRECT_URI = "https://localhost/oauth/mercadolibre/callback";
+export const TEST_ML_REDIRECT_URI = "https://agentsales.test/oauth/mercadolibre/callback";
 
 /**
  * Mercado Libre falso para la API (spec F4 §4.2): canjea un código y responde `/users/me`, y

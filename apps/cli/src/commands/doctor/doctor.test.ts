@@ -73,7 +73,7 @@ describe("runDoctor", () => {
     expect(item).toMatchObject({ level: "warn" });
     expect(item?.detail).toContain("falta ML_APP_ID y ML_CLIENT_SECRET");
     expect(item?.detail).toContain("ni refrescar el token de una ya conectada");
-    expect(item?.detail).toContain("https://localhost/oauth/mercadolibre/callback");
+    expect(item?.detail).toContain("https://agentsales.test/oauth/mercadolibre/callback");
     expect(item?.hint).toContain("docs/07-checklist-cuentas.md");
   });
 
@@ -134,7 +134,7 @@ describe("runDoctor", () => {
       "Claude Code": "ok",
     });
     expect(report.items.find((item) => item.name === "Mercado Libre")?.detail).toBe(
-      "ML_APP_ID y ML_CLIENT_SECRET definidas; dirección de retorno https://localhost/oauth/mercadolibre/callback",
+      "ML_APP_ID y ML_CLIENT_SECRET definidas; dirección de retorno https://agentsales.test/oauth/mercadolibre/callback",
     );
     expect(report.items.find((item) => item.name === "ffmpeg")?.detail).toBe(
       "ffmpeg version 9.0.1 Copyright",

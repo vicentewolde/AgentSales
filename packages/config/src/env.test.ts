@@ -272,11 +272,11 @@ describe("loadEnv", () => {
       expect(env).toMatchObject({
         ML_APP_ID: "123",
         ML_CLIENT_SECRET: "fake-secret",
-        ML_REDIRECT_URI: "https://localhost/oauth/mercadolibre/callback",
+        ML_REDIRECT_URI: "https://agentsales.test/oauth/mercadolibre/callback",
       });
       expect(loadEnv(validSource).ML_APP_ID).toBeUndefined();
       expect(loadEnv({ ...validSource, ML_REDIRECT_URI: "" }).ML_REDIRECT_URI).toBe(
-        "https://localhost/oauth/mercadolibre/callback",
+        "https://agentsales.test/oauth/mercadolibre/callback",
       );
     });
 

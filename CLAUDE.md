@@ -56,7 +56,7 @@ pnpm -s cli content <id_propiedad>  # textos por canal con su revisión (--platf
 pnpm -s cli approve <id_propiedad>  # aprueba los textos sin errores (--platform, --undo para quitar la aprobación)
 pnpm -s cli publish <id_propiedad>  # publica carrusel y reel y espera (en live pide confirmación; --yes, --no-wait)
 pnpm -s cli publications [<id_propiedad>]  # estado, modo y enlace (--events; publications cancel|retire <id>)
-pnpm -s cli accounts     # cuentas y vencimiento (pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin; accounts refresh <id> [--force])
+pnpm -s cli accounts     # cuentas y vencimiento (pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin; Mercado Libre: accounts connect mercadolibre --broker <slug> y después pbpaste | … --url-stdin; accounts refresh <id> [--force])
 ```
 (Los comandos existen desde F0; si alguno falta, la tarea que lo introduce debe crearlo.)
 
