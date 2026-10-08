@@ -8,6 +8,7 @@ import {
 } from "../platform-account.js";
 import type { MercadoLibreAuth } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
+import type { AccessTokenProvider } from "../ports/publisher.js";
 
 /** Con menos de esto de vida, el `access_token` se refresca antes de usarlo (spec F4 §4.3). */
 export const ACCESS_TOKEN_REFRESH_MARGIN_MS = 30 * 60 * 1000;
@@ -230,13 +231,9 @@ async function markOutside(
 }
 
 /**
- * Quien necesita un token de Mercado Libre sin conocer repositorios (el catálogo, F4-T09; el
- * contexto del publisher, ADR-0015 punto 7): lo pide y, después de un 401, lo vuelve a pedir con el
- * rechazado (`rejectedToken`).
+ * El proveedor de token de una cuenta de Portal (`AccessTokenProvider`, el del catálogo y el del
+ * contexto del publisher, ADR-0015 punto 7), con `ensureAccessToken`.
  */
-export type AccessTokenProvider = (options?: EnsureAccessTokenOptions) => Promise<string>;
-
-/** El proveedor de token de una cuenta de Portal, con `ensureAccessToken`. */
 export const accessTokenProvider =
   (deps: MercadoLibreTokenDeps, accountId: string): AccessTokenProvider =>
   (options) =>

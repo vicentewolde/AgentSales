@@ -151,6 +151,7 @@ const jobs = buildJobs({
       contents: createContentRepository(database.db),
       media: repositories.media,
       listings: repositories.listings,
+      brokers: repositories.brokers,
       storage,
       publishers: { instagram },
       workerMode: env.PUBLISH_MODE,

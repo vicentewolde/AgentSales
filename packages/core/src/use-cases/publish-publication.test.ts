@@ -39,6 +39,7 @@ async function setup(
     contents: t.contents,
     media: t.media,
     listings: t.listings,
+    brokers: t.brokers,
     storage: options.storage ?? t.storage,
     publishers: { instagram: fake },
     workerMode: options.workerMode ?? "live",
@@ -111,6 +112,39 @@ describe("publishPublication · éxito", () => {
       mode: "dry-run",
       result: "published",
       sent: { caption: expect.any(String) },
+    });
+  });
+
+  it("dry_run con preflight (F4-T13): sus advertencias van a la bitácora del intento, sin publicar", async () => {
+    const { fake, post, run, attempts } = await setup({
+      dryRun: true,
+      publisher: { preflight: { ok: true, notes: ["Conviene sumar más fotos"] } },
+    });
+    await expect(run(post)).resolves.toMatchObject({ outcome: "published" });
+    expect(fake.preflighted).toHaveLength(1);
+    expect(fake.published).toEqual([]);
+    expect((await attempts(post))[0]?.payload).toMatchObject({
+      mode: "dry-run",
+      result: "published",
+      notes: ["Conviene sumar más fotos"],
+    });
+  });
+
+  it("dry_run con preflight que rechaza: failed con PUBLISH_INPUT_INVALID", async () => {
+    const { t, fake, post, run } = await setup({
+      dryRun: true,
+      publisher: {
+        preflight: { ok: false, issues: [{ code: "X", message: "Mercado Libre no lo acepta" }] },
+      },
+    });
+    await expect(run(post)).rejects.toMatchObject({ code: "PUBLISH_INPUT_INVALID" });
+    expect(fake.published).toEqual([]);
+    expect(current(t, post.id)).toMatchObject({
+      status: "failed",
+      lastError: {
+        code: "PUBLISH_INPUT_INVALID",
+        message: expect.stringContaining("no lo acepta"),
+      },
     });
   });
 

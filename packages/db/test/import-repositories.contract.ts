@@ -273,6 +273,23 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(updated).toEqual({ ...created, status: "paused", sourceHash: "hash-2" });
     });
 
+    it("getSourceHash devuelve la versión actual del aviso (F4-T13); un id inexistente es null", async () => {
+      const ref = unique("P");
+      const created = await repos.listings.create(newListing(brokerId, ref));
+      expect(await repos.listings.getSourceHash(created.id)).toBe("hash-1");
+      const {
+        brokerId: _b,
+        category: _c,
+        source: _s,
+        ...data
+      } = newListing(brokerId, ref, {
+        sourceHash: "hash-2",
+      });
+      await repos.listings.update(created.id, data);
+      expect(await repos.listings.getSourceHash(created.id)).toBe("hash-2");
+      expect(await repos.listings.getSourceHash(repos.missingId)).toBeNull();
+    });
+
     it("update de un id inexistente → LISTING_NOT_FOUND", async () => {
       const { brokerId: _b, category: _c, source: _s, ...data } = newListing(brokerId, unique("P"));
       await expectAppError(repos.listings.update(repos.missingId, data), "LISTING_NOT_FOUND");

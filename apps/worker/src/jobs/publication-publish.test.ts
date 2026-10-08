@@ -56,6 +56,7 @@ async function setup(
       contents: t.contents,
       media: t.media,
       listings: t.listings,
+      brokers: t.brokers,
       storage: t.storage,
       publishers: { instagram: options.publisher ?? fake },
       workerMode: "live",

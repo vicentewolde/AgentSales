@@ -195,6 +195,9 @@ export function createInMemoryListingRepository(
       const listing = stored.get(id);
       return listing === undefined ? null : entity(listing);
     },
+    async getSourceHash(id) {
+      return stored.get(id)?.sourceHash ?? null;
+    },
     async changeStatus(id, from, to) {
       const current = stored.get(id);
       if (current?.status !== from) return false;

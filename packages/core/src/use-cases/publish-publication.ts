@@ -1,6 +1,7 @@
 import type { AbortSignalLike } from "../abort.js";
 import type { Platform, PublishMode } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
+import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
 import type { MediaRepository } from "../ports/media-repository.js";
@@ -36,7 +37,10 @@ export type PublishPublicationDeps = {
   platformAccounts: Pick<PlatformAccountRepository, "get" | "getCredentials" | "changeStatus">;
   contents: Pick<ContentRepository, "get">;
   media: Pick<MediaRepository, "listByListing">;
-  listings: Pick<ListingRepository, "changeStatus">;
+  /** `get` y `getSourceHash`: el aviso de Portal y Marketplace en el input (spec F4 §4.6). */
+  listings: Pick<ListingRepository, "changeStatus" | "get" | "getSourceHash">;
+  /** El contacto del corredor en el input de Portal y Marketplace. */
+  brokers: Pick<BrokerRepository, "findById">;
   storage: Pick<MediaStorage, "signedReadUrl">;
   /**
    * El publisher de cada plataforma que el worker sabe publicar. Va en los dos modos: una
@@ -130,7 +134,7 @@ export async function publishPublication(
   const mode = modeOf(publication.dryRun);
   const addAttempt = async (
     result: PublishAttemptResult,
-    extra: { error?: PublicationError; sent?: PublishAttemptRecord | null },
+    extra: { error?: PublicationError; sent?: PublishAttemptRecord | null; notes?: string[] },
   ) => {
     const payload: PublishAttemptPayload = publishAttemptPayloadSchema.parse({
       mode,
@@ -139,6 +143,7 @@ export async function publishPublication(
       result,
       ...(extra.error === undefined ? {} : { error: extra.error }),
       ...(extra.sent == null ? {} : { sent: extra.sent }),
+      ...(extra.notes === undefined || extra.notes.length === 0 ? {} : { notes: extra.notes }),
     });
     await deps.publications
       .addEvent(publicationId, { type: "publish_attempt", actor: "system", payload })
@@ -153,6 +158,8 @@ export async function publishPublication(
     result = await attempt.target.publish(attempt.input, {
       account: attempt.account,
       credentials: attempt.credentials,
+      // Instagram usa el token guardado; Portal arma aquí su proveedor (`ensureAccessToken`, T16).
+      accessToken: async () => attempt.credentials.accessToken,
       progress: publication.progress,
       saveProgress: async (progress) => {
         await deps.publications.saveProgress(publicationId, progress);
@@ -217,7 +224,10 @@ export async function publishPublication(
       { retriable: true, cause: failure, details: { publicationId } },
     );
   }
-  await addAttempt("published", { sent });
+  await addAttempt("published", {
+    sent,
+    ...(result.notes === undefined ? {} : { notes: result.notes }),
+  });
   // Después de guardar `published`: una retirada que se cruce deja el aviso bien (spec F3 §4.3).
   await listingToActive();
   return { outcome: "published", publication: published };

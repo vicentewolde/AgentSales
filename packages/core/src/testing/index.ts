@@ -13,6 +13,7 @@ export {
 export { fakeHash } from "./fake-hash.js";
 export {
   createFakePublisher,
+  type FakeOperationCall,
   type FakePublishCall,
   type FakePublisher,
   type FakePublisherOptions,

@@ -134,3 +134,108 @@ describe("withDryRun", () => {
     expect(record.media.every((item) => !("url" in item))).toBe(true);
   });
 });
+
+describe("withDryRun con preflight (F4-T13, ADR-0016)", () => {
+  const portalInput: PublishInput = { ...input, platform: "portal_inmobiliario", title: "Depto" };
+  const portal = (options: Parameters<typeof createFakePublisher>[0] = {}) =>
+    createFakePublisher({
+      platform: "portal_inmobiliario",
+      formats: ["post"],
+      operations: {},
+      ...options,
+    });
+
+  it("llama a preflight y nunca a publish, pause, resume ni close del envuelto; las advertencias vuelven en notes", async () => {
+    const fake = portal({ preflight: { ok: true, notes: ["Mercado Libre sugiere más fotos"] } });
+    const wrapped = withDryRun(fake);
+
+    const result = await wrapped.publish(portalInput, context());
+
+    expect(result).toEqual({
+      externalId: "dry-run:pub-1",
+      externalUrl: null,
+      simulated: true,
+      notes: ["Mercado Libre sugiere más fotos"],
+    });
+    expect(fake.preflighted).toHaveLength(1);
+    expect(fake.published).toEqual([]);
+    expect(fake.operated).toEqual([]);
+    expect(wrapped.pause).toBeUndefined();
+    expect(wrapped.resume).toBeUndefined();
+    expect(wrapped.close).toBeUndefined();
+    expect(wrapped.getStatus).toBeUndefined();
+    expect(wrapped.preflight).toBeDefined();
+  });
+
+  it("sin advertencias no hay notes", async () => {
+    const result = await withDryRun(portal({ preflight: { ok: true } })).publish(
+      portalInput,
+      context(),
+    );
+    expect(result).not.toHaveProperty("notes");
+  });
+
+  it("un rechazo de preflight es PUBLISH_INPUT_INVALID con sus motivos, como en live", async () => {
+    const fake = portal({
+      preflight: {
+        ok: false,
+        issues: [{ code: "item.attributes.missing_required", message: "Falta la superficie" }],
+      },
+    });
+
+    await expect(withDryRun(fake).publish(portalInput, context())).rejects.toMatchObject({
+      code: "PUBLISH_INPUT_INVALID",
+      retriable: false,
+      message: expect.stringContaining("Falta la superficie"),
+      details: {
+        issues: [{ code: "item.attributes.missing_required", message: "Falta la superficie" }],
+      },
+    });
+    expect(fake.published).toEqual([]);
+  });
+
+  it("un rechazo sin motivos sigue siendo un rechazo", async () => {
+    const fake = portal({ preflight: { ok: false, issues: [] } });
+    await expect(withDryRun(fake).publish(portalInput, context())).rejects.toMatchObject({
+      code: "PUBLISH_INPUT_INVALID",
+      details: { issues: [{ code: "INPUT_REJECTED" }] },
+    });
+  });
+
+  it("un input inválido no llega a preflight", async () => {
+    const fake = portal({
+      preflight: { ok: true },
+      issues: [{ code: "TITLE_MISSING", message: "Falta el título" }],
+    });
+    await expect(withDryRun(fake).publish(portalInput, context())).rejects.toMatchObject({
+      code: "PUBLISH_INPUT_INVALID",
+    });
+    expect(fake.preflighted).toEqual([]);
+  });
+
+  it("un error de preflight (la red) sube tal cual, con su retriable", async () => {
+    const down = Object.assign(new Error("Mercado Libre no responde"), {
+      code: "ML_UNAVAILABLE",
+      retriable: true,
+    });
+    const fake = portal({ preflight: down });
+    await expect(withDryRun(fake).publish(portalInput, context())).rejects.toBe(down);
+  });
+
+  it("preflight recibe el contexto de la plataforma: el proveedor de token del intento o, sin él, el token guardado", async () => {
+    const seen: string[] = [];
+    const publisher: Publisher = {
+      ...portal(),
+      async preflight(_input, ctx) {
+        seen.push(await ctx.accessToken());
+        return { ok: true };
+      },
+    };
+    await withDryRun(publisher).publish(portalInput, {
+      ...context(),
+      accessToken: async () => "APP_USR-del-proveedor",
+    });
+    await withDryRun(publisher).publish(portalInput, context());
+    expect(seen).toEqual(["APP_USR-del-proveedor", TOKEN]);
+  });
+});

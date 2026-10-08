@@ -1,6 +1,9 @@
 import type { AbortSignalLike } from "../abort.js";
+import type { Broker } from "../broker.js";
 import type { MediaKind, Platform, PublicationFormat } from "../enums.js";
+import type { Listing } from "../listing.js";
 import type { PlatformAccount, PlatformCredentials } from "../platform-account.js";
+import type { RemoteState } from "../publication.js";
 
 /**
  * Un medio tal como se envía a la plataforma (spec F3 §4.4): sus datos y una URL de lectura
@@ -23,8 +26,35 @@ export type PublishMediaItem = {
 };
 
 /**
+ * Los datos del aviso que van en el input de las plataformas que publican el aviso, no solo el
+ * texto (Portal; Marketplace en F5; spec F4 §4.6): tipo, operación, precio, ubicación y atributos.
+ * **Nunca** `internal_notes`. La dirección y la unidad van aunque `showExactAddress = false`: la
+ * plataforma las necesita para ubicar el aviso y las oculta ella (Mercado Libre:
+ * `address_line_by_reference`).
+ */
+export type PublishListing = Pick<
+  Listing,
+  | "id"
+  | "externalRef"
+  | "operation"
+  | "propertyType"
+  | "region"
+  | "comuna"
+  | "address"
+  | "unitNumber"
+  | "showExactAddress"
+  | "priceAmount"
+  | "priceCurrency"
+  | "attributes"
+>;
+
+/** El contacto del corredor que exige la plataforma en el aviso (Mercado Libre: `seller_contact`). */
+export type PublishBrokerContact = Pick<Broker, "name" | "email" | "whatsapp">;
+
+/**
  * Lo que se publica en un intento (`buildPublishInput`): el texto aprobado y los medios fijados al
- * nacer la publicación, en orden.
+ * nacer la publicación, en orden. Portal y Marketplace suman el aviso y el contacto del corredor
+ * (`PUBLISH_LISTING_PLATFORMS`); Instagram no los recibe.
  */
 export type PublishInput = {
   publicationId: string;
@@ -35,37 +65,97 @@ export type PublishInput = {
   /** Instagram: el cuerpo y los hashtags (`instagramCaption`); los demás canales: el cuerpo. */
   caption: string;
   media: PublishMediaItem[];
+  /** Portal y Marketplace: el aviso, tal como se aprobó (`listing_source_hash`, spec F4 §4.6). */
+  listing?: PublishListing;
+  /** Portal y Marketplace. */
+  brokerContact?: PublishBrokerContact;
 };
 
 /** Un motivo por el que la plataforma no aceptaría el `PublishInput`, en español y sin datos del aviso. */
 export type PublishIssue = { code: string; message: string };
 
-export type PublishValidation = { ok: true } | { ok: false; issues: PublishIssue[] };
+/**
+ * `ok: true` puede traer `notes`: advertencias que no bloquean (Mercado Libre: `cause[]` de tipo
+ * `warning` en `preflight`), que van a la bitácora.
+ */
+export type PublishValidation =
+  | { ok: true; notes?: string[] }
+  | { ok: false; issues: PublishIssue[] };
 
-/** Lo que un intento necesita además del `PublishInput` (ADR-0014). */
-export type PublishContext = {
+/**
+ * Un token de la plataforma sin conocer repositorios (ADR-0015 punto 7): lo arma core
+ * (`accessTokenProvider`, con `ensureAccessToken`, en Portal). Sin estado: después de un 401, quien
+ * llama pasa el token rechazado (`rejectedToken`) y recibe uno nuevo.
+ */
+export type AccessTokenProvider = (options?: {
+  rejectedToken?: string;
+  signal?: AbortSignalLike;
+}) => Promise<string>;
+
+/** Lo que una llamada a la plataforma necesita (las operaciones, `preflight`, el sync). */
+export type PlatformContext = {
   account: PlatformAccount;
-  /** Ya descifradas: solo en memoria, nunca en un log, un error ni la bitácora. */
+  accessToken: AccessTokenProvider;
+  signal?: AbortSignalLike;
+};
+
+/**
+ * Lo que un intento necesita además del `PublishInput` (ADR-0014). `accessToken` es opcional para
+ * que el contexto de Instagram (que usa `credentials`) no cambie: el intento siempre lo arma, y
+ * `platformContextOf` usa el token de `credentials` si falta.
+ */
+export type PublishContext = Omit<PlatformContext, "accessToken"> & {
+  accessToken?: AccessTokenProvider;
+  /** Ya descifradas (Instagram): solo en memoria, nunca en un log, un error ni la bitácora. */
   credentials: PlatformCredentials;
   /** Lo que guardó un intento anterior (`publications.progress`), para retomar sin duplicar. */
   progress: unknown | null;
   /** Guarda el progreso **antes** del paso que publica (Instagram: antes de `media_publish`). */
   saveProgress(progress: unknown): Promise<void>;
-  signal?: AbortSignalLike;
 };
 
-/** Resultado de un intento: el id y el enlace en la plataforma; `simulated` en `dry-run`. */
-export type PublishResult = { externalId: string; externalUrl: string | null; simulated: boolean };
+/**
+ * Resultado de un intento: el id y el enlace en la plataforma; `simulated` en `dry-run`. `notes`:
+ * advertencias que no bloquearon (las de `preflight` en `dry-run`), para la bitácora.
+ */
+export type PublishResult = {
+  externalId: string;
+  externalUrl: string | null;
+  simulated: boolean;
+  notes?: string[];
+};
 
 /**
- * Publica en una plataforma (ADR-0014, spec F3 §4.5). Lo implementan los adaptadores de
- * `packages/publishers`; en `dry-run`, `withDryRun` lo envuelve y nunca llama a `publish`.
+ * El `PlatformContext` de un intento (para `preflight` o el publisher de Portal): su `accessToken`
+ * o, si no vino, uno que entrega el token de `credentials` (sin refrescar).
+ */
+export function platformContextOf(ctx: PublishContext): PlatformContext {
+  return {
+    account: ctx.account,
+    accessToken: ctx.accessToken ?? (async () => ctx.credentials.accessToken),
+    ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+  };
+}
+
+/** Lo publicado, para operar sobre ello: el id en la plataforma y el progreso guardado. */
+export type PublishedRef = { externalId: string; progress: unknown | null };
+
+/** Lo que informa la plataforma; core le suma `checkedAt` al guardarlo (`remote_state`). */
+export type RemoteStatus = Omit<RemoteState, "checkedAt">;
+
+/**
+ * Publica en una plataforma (ADR-0014, spec F3 §4.5; ampliado en ADR-0015 punto 7 y spec F4 §4.8).
+ * Lo implementan los adaptadores de `packages/publishers`; en `dry-run`, `withDryRun` lo envuelve
+ * y nunca llama a `publish` ni a las operaciones.
  * - `validate` es pura (sin red ni cliente de la API): la usa también `withDryRun`.
  * - `publish` recibe un input que ya pasó `checkPublishInput` (el intento la corre antes en `live`,
  *   y `withDryRun` en `dry-run`); un adaptador puede volver a revisarlo, porque es barato.
  * - `publish` lanza `AppError` con `retriable` según la plataforma; puede llamar a `saveProgress`
  *   y retomar desde `ctx.progress`.
- * `unpublish` y `getStatus` se suman cuando un canal los use (F4 y F6).
+ * - Opcionales (Portal; Instagram no los implementa): `preflight` solo lee y valida contra la
+ *   plataforma (ADR-0016: nunca sube fotos, crea ni cambia estados; lo llama `withDryRun`);
+ *   `pause`, `resume` y `close` cambian el estado de lo publicado (`close` es irreversible y
+ *   reemplaza el `unpublish` de ADR-0014), y `getStatus` lo lee.
  */
 export interface Publisher {
   readonly platform: Platform;
@@ -73,4 +163,9 @@ export interface Publisher {
   readonly formats: readonly PublicationFormat[];
   validate(input: PublishInput): PublishValidation;
   publish(input: PublishInput, ctx: PublishContext): Promise<PublishResult>;
+  preflight?(input: PublishInput, ctx: PlatformContext): Promise<PublishValidation>;
+  pause?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
+  resume?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
+  close?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
+  getStatus?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
 }

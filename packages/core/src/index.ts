@@ -266,14 +266,21 @@ export type {
   PublicationRepository,
 } from "./ports/publication-repository.js";
 export type {
+  AccessTokenProvider,
+  PlatformContext,
+  PublishBrokerContact,
   PublishContext,
+  PublishedRef,
   Publisher,
   PublishInput,
   PublishIssue,
+  PublishListing,
   PublishMediaItem,
   PublishResult,
   PublishValidation,
+  RemoteStatus,
 } from "./ports/publisher.js";
+export { platformContextOf } from "./ports/publisher.js";
 export type { SecretBox } from "./ports/secret-box.js";
 export {
   type CoverData,
@@ -378,7 +385,6 @@ export {
 } from "./use-cases/edit-content.js";
 export {
   ACCESS_TOKEN_REFRESH_MARGIN_MS,
-  type AccessTokenProvider,
   accessTokenProvider,
   type EnsureAccessTokenOptions,
   ensureAccessToken,

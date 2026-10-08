@@ -51,6 +51,12 @@ export interface ListingRepository {
   /** `null` si no existe. */
   get(id: string): Promise<Listing | null>;
   /**
+   * La versión actual del aviso (`source_hash`, que la entidad no trae), o `null` si no existe. La
+   * usa `buildPublishInput` para saber si el aviso cambió desde que nació la publicación (spec F4
+   * §4.6, `listing_source_hash`).
+   */
+  getSourceHash(id: string): Promise<string | null>;
+  /**
    * Cambio de estado **condicional**: solo si el aviso sigue en `from`. Devuelve si cambió
    * (`false` si otro cambio llegó antes, o si no existe). Lo usan el cambio manual
    * (`changeListingStatus`, que aplica sus reglas) y el sistema al publicar o retirar en `live`

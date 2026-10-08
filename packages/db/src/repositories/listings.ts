@@ -161,6 +161,16 @@ export function createListingRepository(db: SchemaDatabase): ListingRepository {
       });
     },
 
+    getSourceHash(id) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .select({ sourceHash: listings.sourceHash })
+          .from(listings)
+          .where(eq(listings.id, id));
+        return row?.sourceHash ?? null;
+      });
+    },
+
     changeStatus(id, from, to) {
       return withDbErrors(async () => {
         const updated = await db

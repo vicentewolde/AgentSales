@@ -1,10 +1,14 @@
 import type { Platform, PublicationFormat } from "../enums.js";
 import type {
+  PlatformContext,
   PublishContext,
+  PublishedRef,
   Publisher,
   PublishInput,
   PublishIssue,
   PublishResult,
+  PublishValidation,
+  RemoteStatus,
 } from "../ports/publisher.js";
 import { structuredCopy } from "./copy.js";
 
@@ -25,6 +29,23 @@ export type FakePublisherOptions = {
   issues?: readonly PublishIssue[] | ((input: PublishInput) => readonly PublishIssue[]);
   /** Un paso por llamada a `publish`, en orden; sin pasos pendientes, publica. */
   steps?: readonly FakePublishStep[];
+  /**
+   * Con esto el falso tiene `preflight` (como Portal; sin esto, no, como Instagram): lo que
+   * devuelve, o el error que lanza.
+   */
+  preflight?: PublishValidation | Error;
+  /**
+   * Con esto el falso tiene `pause`, `resume`, `close` y `getStatus` (como Portal): el estado que
+   * devuelven (por defecto, el de cada operación), o el error que lanzan.
+   */
+  operations?: { status?: RemoteStatus; error?: Error };
+};
+
+/** Una operación sobre lo publicado, sin el token. */
+export type FakeOperationCall = {
+  operation: "pause" | "resume" | "close" | "getStatus";
+  ref: PublishedRef;
+  accountId: string;
 };
 
 /** Una llamada a `publish`, sin las credenciales ni `saveProgress`. */
@@ -39,6 +60,18 @@ export type FakePublisher = Publisher & {
   validated: PublishInput[];
   /** Las llamadas a `publish`, en orden. */
   published: FakePublishCall[];
+  /** Los inputs que recibió `preflight`, en orden. */
+  preflighted: PublishInput[];
+  /** Las operaciones, en orden. */
+  operated: FakeOperationCall[];
+};
+
+/** El estado que deja cada operación en el falso, como lo informaría Mercado Libre. */
+const OPERATION_STATUS: Record<FakeOperationCall["operation"], string> = {
+  pause: "paused",
+  resume: "active",
+  close: "closed",
+  getStatus: "active",
 };
 
 /**
@@ -49,11 +82,48 @@ export function createFakePublisher(options: FakePublisherOptions = {}): FakePub
   const steps = [...(options.steps ?? [])];
   const validated: PublishInput[] = [];
   const published: FakePublishCall[] = [];
+  const preflighted: PublishInput[] = [];
+  const operated: FakeOperationCall[] = [];
+  const preflightResult = options.preflight;
+  const operations = options.operations;
+  const operation =
+    (name: FakeOperationCall["operation"]) =>
+    async (ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus> => {
+      operated.push(structuredCopy({ operation: name, ref, accountId: ctx.account.id }));
+      if (operations?.error !== undefined) throw operations.error;
+      return (
+        operations?.status ?? {
+          status: OPERATION_STATUS[name],
+          subStatus: [],
+          stopTime: null,
+          expirationTime: null,
+        }
+      );
+    };
   return {
     platform: options.platform ?? "instagram",
     formats: options.formats ?? ["post", "reel"],
     validated,
     published,
+    preflighted,
+    operated,
+    ...(preflightResult === undefined
+      ? {}
+      : {
+          async preflight(input: PublishInput): Promise<PublishValidation> {
+            preflighted.push(structuredCopy(input));
+            if (preflightResult instanceof Error) throw preflightResult;
+            return structuredCopy(preflightResult);
+          },
+        }),
+    ...(operations === undefined
+      ? {}
+      : {
+          pause: operation("pause"),
+          resume: operation("resume"),
+          close: operation("close"),
+          getStatus: operation("getStatus"),
+        }),
     validate(input) {
       validated.push(structuredCopy(input));
       const issues =
