@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { PlatformAccount } from "../platform-account.js";
-import type { PublishContext, Publisher, PublishInput } from "../ports/publisher.js";
+import {
+  type PublishContext,
+  type Publisher,
+  type PublishInput,
+  platformContextOf,
+  storedAccessToken,
+} from "../ports/publisher.js";
 import { createFakePublisher } from "../testing/index.js";
 import { withDryRun } from "./dry-run.js";
 import { publishAttemptRecord } from "./input.js";
@@ -132,5 +138,129 @@ describe("withDryRun", () => {
       expect(written).not.toContain(secret);
     }
     expect(record.media.every((item) => !("url" in item))).toBe(true);
+  });
+});
+
+describe("withDryRun con preflight (F4-T13, ADR-0016)", () => {
+  const portalInput: PublishInput = { ...input, platform: "portal_inmobiliario", title: "Depto" };
+  const portal = (options: Parameters<typeof createFakePublisher>[0] = {}) =>
+    createFakePublisher({
+      platform: "portal_inmobiliario",
+      formats: ["post"],
+      operations: {},
+      ...options,
+    });
+
+  it("llama a preflight y nunca a publish, pause, resume ni close del envuelto; las advertencias vuelven en notes", async () => {
+    const fake = portal({ preflight: { ok: true, notes: ["Mercado Libre sugiere más fotos"] } });
+    const wrapped = withDryRun(fake);
+
+    const result = await wrapped.publish(portalInput, context());
+
+    expect(result).toEqual({
+      externalId: "dry-run:pub-1",
+      externalUrl: null,
+      simulated: true,
+      notes: ["Mercado Libre sugiere más fotos"],
+    });
+    expect(fake.preflighted).toHaveLength(1);
+    expect(fake.published).toEqual([]);
+    expect(fake.operated).toEqual([]);
+    expect(wrapped.pause).toBeUndefined();
+    expect(wrapped.resume).toBeUndefined();
+    expect(wrapped.close).toBeUndefined();
+    expect(wrapped.getStatus).toBeUndefined();
+    expect(wrapped.preflight).toBeDefined();
+  });
+
+  it("sin advertencias no hay notes", async () => {
+    const result = await withDryRun(portal({ preflight: { ok: true } })).publish(
+      portalInput,
+      context(),
+    );
+    expect(result).not.toHaveProperty("notes");
+  });
+
+  it("un rechazo de preflight es PUBLISH_INPUT_INVALID con sus motivos, como en live", async () => {
+    const fake = portal({
+      preflight: {
+        ok: false,
+        issues: [{ code: "item.attributes.missing_required", message: "Falta la superficie" }],
+      },
+    });
+
+    await expect(withDryRun(fake).publish(portalInput, context())).rejects.toMatchObject({
+      code: "PUBLISH_INPUT_INVALID",
+      retriable: false,
+      message: expect.stringContaining("Falta la superficie"),
+      details: {
+        issues: [{ code: "item.attributes.missing_required", message: "Falta la superficie" }],
+      },
+    });
+    expect(fake.published).toEqual([]);
+  });
+
+  it("un rechazo sin motivos sigue siendo un rechazo", async () => {
+    const fake = portal({ preflight: { ok: false, issues: [] } });
+    await expect(withDryRun(fake).publish(portalInput, context())).rejects.toMatchObject({
+      code: "PUBLISH_INPUT_INVALID",
+      details: { issues: [{ code: "INPUT_REJECTED" }] },
+    });
+  });
+
+  it("un input inválido no llega a preflight", async () => {
+    const fake = portal({
+      preflight: { ok: true },
+      issues: [{ code: "TITLE_MISSING", message: "Falta el título" }],
+    });
+    await expect(withDryRun(fake).publish(portalInput, context())).rejects.toMatchObject({
+      code: "PUBLISH_INPUT_INVALID",
+    });
+    expect(fake.preflighted).toEqual([]);
+  });
+
+  it("un error de preflight (la red) sube tal cual, con su retriable", async () => {
+    const down = Object.assign(new Error("Mercado Libre no responde"), {
+      code: "ML_UNAVAILABLE",
+      retriable: true,
+    });
+    const fake = portal({ preflight: down });
+    await expect(withDryRun(fake).publish(portalInput, context())).rejects.toBe(down);
+  });
+
+  it("preflight recibe el contexto de la plataforma: el proveedor de token del intento o, sin él, el token guardado", async () => {
+    const seen: string[] = [];
+    const publisher: Publisher = {
+      ...portal(),
+      async preflight(_input, ctx) {
+        seen.push(await ctx.accessToken());
+        return { ok: true };
+      },
+    };
+    await withDryRun(publisher).publish(portalInput, {
+      ...context(),
+      accessToken: async () => "APP_USR-del-proveedor",
+    });
+    await withDryRun(publisher).publish(portalInput, context());
+    expect(seen).toEqual(["APP_USR-del-proveedor", TOKEN]);
+  });
+});
+
+describe("storedAccessToken (F4-T13)", () => {
+  it("entrega el token guardado, y falla cerrado si piden otro tras un 401", async () => {
+    const provider = storedAccessToken({ accessToken: TOKEN });
+    await expect(provider()).resolves.toBe(TOKEN);
+    await expect(provider({ rejectedToken: TOKEN })).rejects.toMatchObject({
+      code: "ACCESS_TOKEN_REFRESH_UNSUPPORTED",
+      retriable: false,
+    });
+  });
+
+  it("platformContextOf sin accessToken usa ese respaldo", async () => {
+    const ctx = platformContextOf(context());
+    await expect(ctx.accessToken()).resolves.toBe(TOKEN);
+    await expect(ctx.accessToken({ rejectedToken: TOKEN })).rejects.toMatchObject({
+      code: "ACCESS_TOKEN_REFRESH_UNSUPPORTED",
+    });
   });
 });

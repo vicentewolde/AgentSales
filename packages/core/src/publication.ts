@@ -236,6 +236,31 @@ export const publishAttemptRecordSchema = z.object({
     }),
   ),
   account: z.object({ id: z.string(), displayName: z.string() }),
+  /**
+   * Portal y Marketplace (spec F4 §4.6): los datos del aviso enviados, nunca `internal_notes` ni
+   * `attributes._extra`; la dirección y la unidad en `null` si el aviso no las muestra. Solo se
+   * amplía con campos opcionales (las filas guardadas tienen que seguir leyéndose).
+   */
+  listing: z
+    .object({
+      id: z.string(),
+      externalRef: z.string(),
+      operation: z.string().nullable(),
+      propertyType: z.string().nullable(),
+      region: z.string().nullable(),
+      comuna: z.string().nullable(),
+      address: z.string().nullable(),
+      unitNumber: z.string().nullable(),
+      showExactAddress: z.boolean(),
+      priceAmount: z.number(),
+      priceCurrency: z.string(),
+      attributes: z.record(z.string(), z.unknown()),
+    })
+    .optional(),
+  /** El contacto del corredor enviado, con el WhatsApp enmascarado (`maskWhatsapp`). */
+  brokerContact: z
+    .object({ name: z.string(), email: z.string().nullable(), whatsapp: z.string().nullable() })
+    .optional(),
 });
 export type PublishAttemptRecord = z.infer<typeof publishAttemptRecordSchema>;
 
@@ -256,5 +281,10 @@ export const publishAttemptPayloadSchema = z.object({
   result: z.enum(PUBLISH_ATTEMPT_RESULTS),
   error: publicationErrorSchema.optional(),
   sent: publishAttemptRecordSchema.optional(),
+  /**
+   * Advertencias que no bloquearon (F4-T13): las de `preflight` en `dry-run` o las de crear el ítem
+   * en `live`, limpias (`scrubMessage`) y como mucho 20.
+   */
+  notes: z.array(z.string()).optional(),
 });
 export type PublishAttemptPayload = z.infer<typeof publishAttemptPayloadSchema>;

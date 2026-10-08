@@ -5,15 +5,52 @@ import type { Media } from "../media.js";
 import type { PlatformAccount } from "../platform-account.js";
 import type { Publisher, PublishInput } from "../ports/publisher.js";
 import type { Publication } from "../publication.js";
-import { createFakePublisher, createInMemoryMediaStorage } from "../testing/index.js";
+import {
+  contentBrokerFixture,
+  contentListingFixture,
+  createFakePublisher,
+  createInMemoryMediaStorage,
+} from "../testing/index.js";
 import {
   buildPublishInput,
   checkPublishInput,
+  maskWhatsapp,
   PUBLISH_MEDIA_URL_TTL_S,
   publishAttemptRecord,
 } from "./input.js";
 
 const at = new Date("2026-10-05T12:00:00Z");
+
+/** El aviso de Portal y Marketplace (con notas internas, que nunca van al input) y su corredor. */
+const LISTING = contentListingFixture({ id: "listing-1" });
+const BROKER = contentBrokerFixture();
+const HASH = "hash-del-aviso-1";
+const { _extra: _unknownColumns, ...PUBLIC_ATTRIBUTES } = LISTING.attributes;
+/** Repositorios con el aviso y su versión actual (`hash`, o `null` si el aviso no existe). */
+const withListing = (hash: string | null = HASH, broker = BROKER) => ({
+  listings: {
+    get: async (id: string) => (id === LISTING.id && hash !== null ? LISTING : null),
+    getSourceHash: async (id: string) => (id === LISTING.id ? hash : null),
+  },
+  brokers: { findById: async (id: string) => (id === broker.id ? broker : null) },
+});
+
+/** Instagram no lee el aviso ni el corredor: si los pidiera, el test lo notaría. */
+const NO_LISTING = {
+  listings: {
+    get: async () => {
+      throw new Error("Instagram no lee el aviso");
+    },
+    getSourceHash: async () => {
+      throw new Error("Instagram no lee la versión del aviso");
+    },
+  },
+  brokers: {
+    findById: async () => {
+      throw new Error("Instagram no lee el corredor");
+    },
+  },
+};
 
 function mediaItem(id: string, overrides: Partial<Media> = {}): Media {
   return {
@@ -89,7 +126,7 @@ describe("buildPublishInput", () => {
   it("arma el caption de Instagram y los medios de media_ids en su orden, con URLs nuevas de 1 h", async () => {
     const storage = createInMemoryMediaStorage();
     const input = await buildPublishInput(
-      { storage },
+      { storage, ...NO_LISTING },
       { publication: publication(), content: content(), media: listingMedia },
     );
     expect(input).toEqual({
@@ -127,7 +164,7 @@ describe("buildPublishInput", () => {
       storagePath: "brokers/broker-1/listings/listing-1/processed/ig_reel/a-b.mp4",
     });
     const input = await buildPublishInput(
-      { storage: createInMemoryMediaStorage() },
+      { storage: createInMemoryMediaStorage(), ...NO_LISTING },
       {
         publication: publication({ format: "reel", mediaIds: ["reel-1"] }),
         content: content({ hashtags: [] }),
@@ -141,7 +178,7 @@ describe("buildPublishInput", () => {
 
   it("en Instagram no hay título, aunque el texto traiga uno", async () => {
     const input = await buildPublishInput(
-      { storage: createInMemoryMediaStorage() },
+      { storage: createInMemoryMediaStorage(), ...NO_LISTING },
       { publication: publication(), content: content({ title: "Sobra" }), media: listingMedia },
     );
     expect(input.title).toBeNull();
@@ -149,15 +186,150 @@ describe("buildPublishInput", () => {
 
   it("en los otros canales el caption es el cuerpo y conserva el título", async () => {
     const input = await buildPublishInput(
-      { storage: createInMemoryMediaStorage() },
+      { storage: createInMemoryMediaStorage(), ...withListing() },
       {
-        publication: publication({ platform: "portal_inmobiliario", mediaIds: ["m-1"] }),
+        publication: publication({
+          platform: "portal_inmobiliario",
+          mediaIds: ["m-1"],
+          listingSourceHash: HASH,
+        }),
         content: content({ platform: "portal_inmobiliario", title: "Depto en Ñuñoa" }),
         media: listingMedia,
       },
     );
     expect(input.title).toBe("Depto en Ñuñoa");
     expect(input.caption).toBe("Departamento luminoso en Ñuñoa.");
+  });
+
+  it("Portal y Marketplace suman el aviso (sin notas internas) y el contacto del corredor", async () => {
+    for (const platform of ["portal_inmobiliario", "fb_marketplace"] as const) {
+      const input = await buildPublishInput(
+        { storage: createInMemoryMediaStorage(), ...withListing() },
+        {
+          publication: publication({ platform, mediaIds: ["m-1"], listingSourceHash: HASH }),
+          content: content({ platform, title: "Depto en Ñuñoa" }),
+          media: listingMedia,
+        },
+      );
+      expect(input.listing, platform).toEqual({
+        id: LISTING.id,
+        externalRef: LISTING.externalRef,
+        operation: LISTING.operation,
+        propertyType: LISTING.propertyType,
+        region: LISTING.region,
+        comuna: LISTING.comuna,
+        address: LISTING.address,
+        unitNumber: LISTING.unitNumber,
+        showExactAddress: LISTING.showExactAddress,
+        priceAmount: LISTING.priceAmount,
+        priceCurrency: LISTING.priceCurrency,
+        attributes: PUBLIC_ATTRIBUTES,
+      });
+      expect(input.brokerContact, platform).toEqual({
+        name: BROKER.name,
+        email: BROKER.email,
+        whatsapp: BROKER.whatsapp,
+      });
+      expect(JSON.stringify(input)).not.toContain(LISTING.internalNotes ?? "-");
+      // Las columnas desconocidas del Excel (`_extra`) tampoco: pueden traer la comisión.
+      expect(JSON.stringify(input)).not.toContain("comision");
+    }
+  });
+
+  it("Instagram no lleva el aviso ni el contacto, ni los lee", async () => {
+    const input = await buildPublishInput(
+      { storage: createInMemoryMediaStorage(), ...NO_LISTING },
+      { publication: publication(), content: content(), media: listingMedia },
+    );
+    expect(input).not.toHaveProperty("listing");
+    expect(input).not.toHaveProperty("brokerContact");
+  });
+
+  const changedCases: [string, string | null, string | null, string][] = [
+    ["el aviso cambió (otra carga del Excel)", HASH, "otro-hash", "changed"],
+    ["la publicación no tiene versión", null, HASH, "missing_version"],
+    ["el aviso ya no existe", HASH, null, "changed"],
+  ];
+  it.each(changedCases)(
+    "PUBLICATION_LISTING_CHANGED si %s, sin firmar nada",
+    async (_, version, current, reason) => {
+      const signed: string[] = [];
+      const storage = {
+        async signedReadUrl(path: string) {
+          signed.push(path);
+          return path;
+        },
+      };
+      await expect(
+        buildPublishInput(
+          { storage, ...withListing(current) },
+          {
+            publication: publication({
+              platform: "portal_inmobiliario",
+              mediaIds: ["m-1"],
+              listingSourceHash: version,
+            }),
+            content: content({ platform: "portal_inmobiliario", title: "Depto" }),
+            media: listingMedia,
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: "PUBLICATION_LISTING_CHANGED",
+        retriable: false,
+        details: { publicationId: "pub-1", reason },
+      });
+      expect(signed).toEqual([]);
+    },
+  );
+
+  it("una carga del Excel que se cruza entre leer el aviso y su versión corta igual", async () => {
+    let read = false;
+    const racing = {
+      listings: {
+        // Leer el aviso "dispara" la carga: la versión ya es otra cuando se pregunta.
+        get: async () => {
+          read = true;
+          return LISTING;
+        },
+        getSourceHash: async () => (read ? "hash-de-la-carga-nueva" : HASH),
+      },
+      brokers: { findById: async () => BROKER },
+    };
+    await expect(
+      buildPublishInput(
+        { storage: createInMemoryMediaStorage(), ...racing },
+        {
+          publication: publication({
+            platform: "portal_inmobiliario",
+            mediaIds: ["m-1"],
+            listingSourceHash: HASH,
+          }),
+          content: content({ platform: "portal_inmobiliario", title: "Depto" }),
+          media: listingMedia,
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "PUBLICATION_LISTING_CHANGED",
+      details: { reason: "changed" },
+    });
+  });
+
+  it("sin el corredor del aviso: BROKER_NOT_FOUND", async () => {
+    const deps = {
+      storage: createInMemoryMediaStorage(),
+      ...withListing(HASH, contentBrokerFixture({ id: "otro-corredor" })),
+    };
+    await expect(
+      buildPublishInput(deps, {
+        publication: publication({
+          platform: "portal_inmobiliario",
+          mediaIds: ["m-1"],
+          listingSourceHash: HASH,
+        }),
+        content: content({ platform: "portal_inmobiliario", title: "Depto" }),
+        media: listingMedia,
+      }),
+    ).rejects.toMatchObject({ code: "BROKER_NOT_FOUND" });
   });
 
   it("un medio fijado que falta es PUBLICATION_MEDIA_MISSING, sin firmar nada", async () => {
@@ -171,7 +343,7 @@ describe("buildPublishInput", () => {
     const otherListing = mediaItem("m-9", { listingId: "listing-2" });
     for (const mediaIds of [["m-1", "m-404"], ["m-9"]]) {
       const error = await buildPublishInput(
-        { storage },
+        { storage, ...NO_LISTING },
         {
           publication: publication({ mediaIds }),
           content: content(),
@@ -188,7 +360,7 @@ describe("buildPublishInput", () => {
     for (const other of [content({ id: "content-2" }), content({ platform: "fb_marketplace" })]) {
       await expect(
         buildPublishInput(
-          { storage: createInMemoryMediaStorage() },
+          { storage: createInMemoryMediaStorage(), ...NO_LISTING },
           { publication: publication(), content: other, media: listingMedia },
         ),
       ).rejects.toMatchObject({ code: "PUBLICATION_CONTENT_MISMATCH", retriable: false });
@@ -199,7 +371,7 @@ describe("buildPublishInput", () => {
     for (const status of ["draft", "edited"] as const) {
       await expect(
         buildPublishInput(
-          { storage: createInMemoryMediaStorage() },
+          { storage: createInMemoryMediaStorage(), ...NO_LISTING },
           { publication: publication(), content: content({ status }), media: listingMedia },
         ),
       ).rejects.toMatchObject({ code: "CONTENT_NOT_APPROVED", retriable: false });
@@ -215,7 +387,7 @@ describe("buildPublishInput", () => {
     };
     await expect(
       buildPublishInput(
-        { storage },
+        { storage, ...NO_LISTING },
         { publication: publication(), content: content(), media: listingMedia },
       ),
     ).rejects.toBe(unavailable);
@@ -308,7 +480,7 @@ describe("publishAttemptRecord", () => {
 
   it("registra formato, caption completo, medios (ruta, tipo, tamaño y medidas) y la cuenta, sin URLs", async () => {
     const input = await buildPublishInput(
-      { storage: createInMemoryMediaStorage() },
+      { storage: createInMemoryMediaStorage(), ...NO_LISTING },
       { publication: publication(), content: content(), media: listingMedia },
     );
     const record = publishAttemptRecord(input, account);
@@ -321,5 +493,74 @@ describe("publishAttemptRecord", () => {
       account: { id: "account-1", displayName: "@corredora" },
     });
     expect(JSON.stringify(record)).not.toContain("memory://");
+  });
+});
+
+describe("publishAttemptRecord con el aviso (F4-T13)", () => {
+  it("registra el aviso enviado y el contacto con el WhatsApp enmascarado", async () => {
+    const input = await buildPublishInput(
+      { storage: createInMemoryMediaStorage(), ...withListing() },
+      {
+        publication: publication({
+          platform: "portal_inmobiliario",
+          mediaIds: ["m-1"],
+          listingSourceHash: HASH,
+        }),
+        content: content({ platform: "portal_inmobiliario", title: "Depto" }),
+        media: listingMedia,
+      },
+    );
+    const record = publishAttemptRecord(input, { id: "account-1", displayName: "CORREDORA" });
+
+    // El aviso de ejemplo no muestra la dirección: la bitácora tampoco la guarda.
+    expect(LISTING.showExactAddress).toBe(false);
+    expect(record.listing).toEqual({ ...input.listing, address: null, unitNumber: null });
+    expect(JSON.stringify(record)).not.toContain(LISTING.address ?? "-");
+    expect(record.brokerContact).toEqual({
+      name: BROKER.name,
+      email: BROKER.email,
+      whatsapp: "+56 9 ****2222",
+    });
+    const text = JSON.stringify(record);
+    expect(text).not.toContain("1111 2222");
+    expect(text).not.toContain("memory://");
+    expect(text).not.toContain(LISTING.internalNotes ?? "-");
+  });
+
+  it.each([
+    ["+56 9 1111 2222", "+56 9 ****2222"],
+    ["+56911112222", "+56 9 ****2222"],
+    ["912345678", "****5678"],
+    ["+1 (555) 010-9999", "****9999"],
+  ])("maskWhatsapp(%s) → %s", (whatsapp, masked) => {
+    expect(maskWhatsapp(whatsapp)).toBe(masked);
+  });
+
+  it("maskWhatsapp(null) es null; con menos de 8 dígitos, todo oculto", () => {
+    expect(maskWhatsapp(null)).toBeNull();
+    expect(maskWhatsapp("1234")).toBe("****");
+    expect(maskWhatsapp("+56 9 123")).toBe("****");
+  });
+
+  it("con la dirección visible, la bitácora guarda la dirección enviada", async () => {
+    const shown = contentListingFixture({ id: "listing-1", showExactAddress: true });
+    const input = await buildPublishInput(
+      {
+        storage: createInMemoryMediaStorage(),
+        listings: { get: async () => shown, getSourceHash: async () => HASH },
+        brokers: { findById: async () => BROKER },
+      },
+      {
+        publication: publication({
+          platform: "portal_inmobiliario",
+          mediaIds: ["m-1"],
+          listingSourceHash: HASH,
+        }),
+        content: content({ platform: "portal_inmobiliario", title: "Depto" }),
+        media: listingMedia,
+      },
+    );
+    const record = publishAttemptRecord(input, { id: "account-1", displayName: "CORREDORA" });
+    expect(record.listing?.address).toBe(shown.address);
   });
 });
