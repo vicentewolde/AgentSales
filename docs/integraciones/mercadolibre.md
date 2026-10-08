@@ -90,11 +90,18 @@ Authorization code "server side":
 
 **Consecuencia de diseño (INFERENCIA, por la rotación):** el refresco va **serializado por cuenta** (un candado) y el par nuevo se **guarda antes** de usar el access token nuevo; dos refrescos simultáneos dejarían la cuenta en `needs_reconnect`. Un job de refresco periódico evita también la regla de 4 meses sin uso.
 
+### 3.2.1 Crear la app en el DevCenter (VERIFICADO el 2026-10-08)
+
+- Antes de "Mis aplicaciones", el DevCenter pide **vincular** la cuenta de Mercado Libre ("¿Deseas vincular tu cuenta de Mercado Libre para trabajar con nuestra API?"); sin eso no aparece la lista de apps.
+- **Paso 1 (información básica):** nombre (hasta 50 caracteres), nombre corto (letras, números y guion bajo), descripción (hasta 150), propósito, rango de usuarios y **logo PNG obligatorio** (hasta 1 MB). El aviso rojo "La app ya está creada, por favor elija otro nombre" aparece con **cualquier** nombre (`/devcenter/internal/validate-app` responde `true` siempre): no bloquea, "Continuar" avanza igual.
+- **Paso 2 (configuración y scopes):** redirect URIs (`https`, ver §3.3), flujos OAuth (Authorization Code y Client Credentials vienen marcados; **Refresh Token hay que marcarlo**), PKCE (desmarcado), unidades de negocio (**Mercado Libre** y **VIS**, la de Vehículos, Inmuebles y Servicios), permisos (cada uno con su nivel: "Publicación y sincronización" en lectura y escritura; "Usuarios" viene fijo en lectura y escritura), tópicos y URL de notificaciones (opcionales, vacíos).
+- **Crear:** aceptar los términos y un **reCAPTCHA** (lo resuelve el operador). Después, ver o editar la app (y el Client Secret) pide una **verificación por QR** con la app de Mercado Libre del teléfono.
+
 ### 3.3 Redirect URI
 
 - **DOC (crear app, 06/08/2026):** "es obligatorio utilizar el protocolo HTTPS en su URI de redireccionamiento". Se pueden registrar varias URIs ("Completa con la raíz del dominio").
 - **DOC (requisitos previos de inmuebles):** "Puedes ingresar una URL de prueba (incluso si no existe)". Es decir, ML no exige que la URL responda.
-- **`localhost`:** ninguna página lo menciona (NO VERIFICADO). Con la regla HTTPS, `http://localhost` probablemente se rechaza y `https://localhost:<puerto>/...` probablemente se acepta (INFERENCIA; un issue antiguo del SDK .NET de ML registró `https://localhost:44300/...`). Se prueba en el panel en un minuto.
+- **`localhost` (VERIFICADO el 2026-10-08, al crear la app de AgentSales):** el panel rechaza `https://localhost/oauth/mercadolibre/callback` ("La dirección debe ser válida"). Acepta `https://agentsales.test/oauth/mercadolibre/callback`: `.test` es un dominio reservado que nunca resuelve en internet, así que el código de autorización no llega a ningún servidor ajeno; el navegador muestra un error y el operador copia la dirección, como estaba previsto con `localhost`. Es la que quedó registrada y la que va en `ML_REDIRECT_URI`.
 - Coincidencia **exacta** con la registrada, sin partes variables (DOC).
 
 ### 3.4 Conectar la cuenta en local sin túnel (de menos a más esfuerzo)
