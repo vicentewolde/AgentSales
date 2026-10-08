@@ -344,6 +344,7 @@ export { dryRunExternalId, withDryRun } from "./publish/dry-run.js";
 export {
   buildPublishInput,
   checkPublishInput,
+  maskWhatsapp,
   PUBLISH_MEDIA_URL_TTL_S,
   publishAttemptRecord,
 } from "./publish/input.js";

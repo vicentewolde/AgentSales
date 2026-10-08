@@ -25,7 +25,7 @@
 | F4-T07 · Candado de credenciales y `ensureAccessToken` | ✅ | #82 |
 | F4-T08 · Refresco por plataforma: lote y a pedido | ✅ | #83 |
 | F4-T09 · Catálogo con caché | ✅ | #84 |
-| F4-T10 · `pnpm ml:smoke`: catálogo y `validate` | ⏳ pendiente | |
+| F4-T10 · `pnpm ml:smoke`: catálogo y `validate` | 🔨 en curso | |
 | F4-T11 · Mapeo y revisión previa | ⏳ pendiente | |
 | F4-T12 · Reglas del texto de Portal | ✅ | #86 |
 | F4-T13 · Contrato `Publisher` ampliado y el aviso en el input | ✅ | #87 |

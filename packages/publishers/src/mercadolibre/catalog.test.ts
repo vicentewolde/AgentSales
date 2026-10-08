@@ -412,6 +412,43 @@ describe("attributes", () => {
   });
 });
 
+describe("category y locationNode (para recorrer, ml:smoke)", () => {
+  it("una categoría por su id, guardada con la misma clave que usa leafCategory", async () => {
+    useMercadoLibre();
+    const { catalog, repository, ctx, paths } = setup();
+
+    const node = await catalog.category("MLC1472", ctx);
+    await catalog.leafCategory(["Departamentos", "Venta", "Propiedades Usadas"], ctx);
+
+    expect(node.childrenCategories.map((child) => child.name)).toEqual(["Venta", "Arriendo"]);
+    // `MLC1472` ya estaba guardada: leafCategory no la vuelve a bajar.
+    expect((await paths()).filter((path) => path === "/categories/MLC1472")).toHaveLength(1);
+    expect(repository.keys()).toContain("category:MLC1472");
+  });
+
+  it("cada nivel de ubicación por su id, guardado como los de location", async () => {
+    useMercadoLibre();
+    const { catalog, repository, ctx, paths } = setup();
+
+    const country = await catalog.locationNode("country", "CL", ctx);
+    const state = await catalog.locationNode("state", RM, ctx);
+    const city = await catalog.locationNode("city", SANTIAGO, ctx);
+    await catalog.location({ region: "Metropolitana", commune: "Ñuñoa" }, ctx);
+
+    expect(country.children.map((child) => child.id)).toEqual([OHIGGINS, RM]);
+    expect(state.children).toHaveLength(5);
+    expect(city.children.map((child) => child.name)).toEqual(["Providencia", "Las Condes"]);
+    expect(await paths()).toEqual([
+      "/classified_locations/countries/CL",
+      `/classified_locations/states/${RM}`,
+      `/classified_locations/cities/${SANTIAGO}`,
+    ]);
+    expect(repository.keys().sort()).toEqual(
+      [`location:CL`, `location:${RM}`, `location:${SANTIAGO}`].sort(),
+    );
+  });
+});
+
 describe("location", () => {
   it("la comuna entre las ciudades del estado, sin mayúsculas ni tildes; solo baja Chile y ese estado", async () => {
     useMercadoLibre();

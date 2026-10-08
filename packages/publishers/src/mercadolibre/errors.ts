@@ -339,10 +339,11 @@ export const MERCADOLIBRE_ERRORS = {
       { details: { reason: "token_malformed" } },
     ),
   /**
-   * Un id que va en la dirección de la llamada (ítem o usuario) con una forma que no es la de
-   * Mercado Libre: no se llama, para no armar otra ruta. El valor no va en el error.
+   * Un id que va en la dirección de la llamada (ítem, usuario o el estado de una búsqueda) con una
+   * forma que no es la de Mercado Libre: no se llama, para no armar otra ruta. El valor no va en el
+   * error.
    */
-  invalidId: (kind: "item" | "user" | "category" | "location") =>
+  invalidId: (kind: "item" | "user" | "category" | "location" | "status") =>
     new AppError("ML_ID_INVALID", "El id guardado de Mercado Libre no es válido", {
       details: { kind },
     }),

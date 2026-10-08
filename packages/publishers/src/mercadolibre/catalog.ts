@@ -1,10 +1,7 @@
 import {
   type AbortSignalLike,
-  type AccessTokenProvider,
   AppError,
   isAppError,
-  isMercadoLibreTokenRejected,
-  MERCADOLIBRE_REJECTED_AFTER_REFRESH,
   normalizePortalName,
   normalizePortalRegion,
   type PlatformCatalogEntry,
@@ -25,6 +22,7 @@ import {
 import type { z } from "zod";
 import type { MercadoLibreCatalogApi } from "./catalog-api.js";
 import { MERCADOLIBRE_COUNTRY_ID, MERCADOLIBRE_REAL_ESTATE_CATEGORY_ID } from "./constants.js";
+import { type MercadoLibreTokenContext, withMercadoLibreToken } from "./token.js";
 
 /** El catálogo de Mercado Libre se guarda como de Portal Inmobiliario (la plataforma del enum). */
 const PLATFORM = "portal_inmobiliario";
@@ -34,10 +32,7 @@ const PLATFORM = "portal_inmobiliario";
  * catálogo no conoce repositorios de cuentas, ADR-0015 punto 7) y la señal, que corta las llamadas.
  * El catálogo es público: sirve el token de cualquier cuenta conectada.
  */
-export type PortalCatalogContext = {
-  accessToken: AccessTokenProvider;
-  signal?: AbortSignalLike;
-};
+export type PortalCatalogContext = MercadoLibreTokenContext;
 
 /**
  * Algo que no corta la lectura (solo la clave y códigos):
@@ -73,7 +68,24 @@ export interface PortalCatalog {
    * tildes; lo que no calce por nombre, con los alias de core. Si no, `PORTAL_LOCATION_NOT_FOUND`.
    */
   location(place: PortalPlace, ctx: PortalCatalogContext): Promise<PortalLocationMatch>;
+  /**
+   * Una categoría por su id, con sus hijas y `settings` (guardada como las de `leafCategory`). La
+   * usa `ml:smoke` (F4-T10) para recorrer el árbol y mostrar los nombres reales.
+   */
+  category(id: string, ctx: PortalCatalogContext): Promise<PortalCategory>;
+  /**
+   * Un nivel de ubicación por su id: Chile con sus estados, un estado con sus ciudades o una ciudad
+   * con sus barrios (guardado como los de `location`). Lo usa `ml:smoke` (F4-T10).
+   */
+  locationNode(
+    level: PortalLocationLevel,
+    id: string,
+    ctx: PortalCatalogContext,
+  ): Promise<PortalLocation>;
 }
+
+/** Los niveles de `classified_locations` que se leen (nota §4.7). */
+export type PortalLocationLevel = "country" | "state" | "city";
 
 export type PortalCatalogOptions = {
   api: MercadoLibreCatalogApi;
@@ -83,20 +95,6 @@ export type PortalCatalogOptions = {
   aliases?: PortalLocationAliases;
   onNote?: (note: PortalCatalogNote) => void;
 };
-
-/**
- * Un 401 que se repite con el token nuevo: se marca para que nadie más arriba vuelva a refrescar
- * (`isMercadoLibreTokenRejected` ya no lo reconoce) y quien lo recibe deje la cuenta `expired`
- * (spec F4 §4.3, seguimiento de F4-T03 en ADR-0015).
- */
-const rejectedAfterRefresh = (error: unknown) =>
-  isAppError(error)
-    ? new AppError(error.code, error.message, {
-        retriable: false,
-        details: { ...error.details, reason: MERCADOLIBRE_REJECTED_AFTER_REFRESH },
-        cause: error,
-      })
-    : error;
 
 const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_ERROR");
 
@@ -169,27 +167,6 @@ export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalo
   const note = (code: PortalCatalogNote["code"], key: string, error: unknown) =>
     options.onNote?.({ code, key, errorCode: codeOf(error) });
 
-  /** Una llamada con el token; después de un 401, una vez más con uno nuevo. */
-  async function withToken<T>(
-    ctx: PortalCatalogContext,
-    call: (token: string, signal: AbortSignalLike | undefined) => Promise<T>,
-  ): Promise<T> {
-    const signal = ctx.signal;
-    const withSignal = signal === undefined ? {} : { signal };
-    const token = await ctx.accessToken(withSignal);
-    try {
-      return await call(token, signal);
-    } catch (error) {
-      if (!isMercadoLibreTokenRejected(error)) throw error;
-    }
-    const fresh = await ctx.accessToken({ ...withSignal, rejectedToken: token });
-    try {
-      return await call(fresh, signal);
-    } catch (error) {
-      throw isMercadoLibreTokenRejected(error) ? rejectedAfterRefresh(error) : error;
-    }
-  }
-
   async function cached<T>(
     key: string,
     schema: z.ZodType<T>,
@@ -206,7 +183,7 @@ export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalo
     // segunda reemplaza a la primera con lo mismo).
     let fresh: T;
     try {
-      fresh = await withToken(ctx, fetch);
+      fresh = await withMercadoLibreToken(ctx, fetch);
     } catch (error) {
       if (copy !== null && usesStaleCopy(error)) {
         note("PORTAL_CATALOG_STALE", key, error);
@@ -234,7 +211,7 @@ export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalo
     );
 
   const location = (
-    level: "country" | "state" | "city",
+    level: PortalLocationLevel,
     id: string,
     ctx: PortalCatalogContext,
   ): Promise<PortalLocation> =>
@@ -243,6 +220,9 @@ export function createPortalCatalog(options: PortalCatalogOptions): PortalCatalo
     );
 
   return {
+    category,
+    locationNode: location,
+
     async leafCategory(path, ctx) {
       if (path.length === 0) throw categoryNotFound(path, { reason: "empty" });
       let node = await category(MERCADOLIBRE_REAL_ESTATE_CATEGORY_ID, ctx);

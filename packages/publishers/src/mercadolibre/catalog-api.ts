@@ -25,6 +25,12 @@ const COUNTRY_ID = /^[A-Z]{2}$/;
 const LOCATION_ID = /^[A-Za-z0-9_=-]{1,64}$/;
 
 /**
+ * ¿Tiene un id de ubicación la forma que acepta el cliente en la ruta? `ml:smoke` (F4-T10) lo
+ * revisa con los ids reales de los estados y ciudades de Chile.
+ */
+export const isMercadoLibreLocationId = (id: string) => LOCATION_ID.test(id);
+
+/**
  * Las formas normalizadas del catálogo son las de core (`portal/catalog.ts`, F4-T09): lo que se
  * guarda en `platform_catalog` y se lee de vuelta con esos esquemas. Una hoja es la que tiene
  * `listingAllowed === true` (no basta con no tener hijas); un `setting` que no venga o no se

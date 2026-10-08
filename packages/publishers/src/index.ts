@@ -36,10 +36,12 @@ export {
   type PortalCatalogContext,
   type PortalCatalogNote,
   type PortalCatalogOptions,
+  type PortalLocationLevel,
   type PortalPlace,
 } from "./mercadolibre/catalog.js";
 export {
   createMercadoLibreCatalogApi,
+  isMercadoLibreLocationId,
   type MercadoLibreAttribute,
   type MercadoLibreCatalogApi,
   type MercadoLibreCategory,
@@ -64,17 +66,35 @@ export {
 } from "./mercadolibre/errors.js";
 export {
   createMercadoLibreItems,
+  MERCADOLIBRE_SEARCH_STATUSES,
   MERCADOLIBRE_WRITABLE_STATUSES,
   type MercadoLibreItem,
   type MercadoLibreItemBody,
+  type MercadoLibreItemSearch,
+  type MercadoLibreItemSearchQuery,
   type MercadoLibreItems,
+  type MercadoLibreSearchFilter,
+  type MercadoLibreSearchFilterValue,
+  type MercadoLibreSearchStatus,
   type MercadoLibreWritableStatus,
 } from "./mercadolibre/items.js";
+export {
+  createMercadoLibrePacks,
+  type MercadoLibrePack,
+  type MercadoLibrePackList,
+  type MercadoLibrePackListing,
+  type MercadoLibrePacks,
+} from "./mercadolibre/packs.js";
 export {
   createMercadoLibrePictures,
   type MercadoLibrePictureFile,
   type MercadoLibrePictures,
 } from "./mercadolibre/pictures.js";
+export {
+  isRejectedAfterRefresh,
+  type MercadoLibreTokenContext,
+  withMercadoLibreToken,
+} from "./mercadolibre/token.js";
 export {
   createMercadoLibreValidator,
   type MercadoLibreValidation,
