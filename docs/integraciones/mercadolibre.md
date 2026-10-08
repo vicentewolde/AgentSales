@@ -17,13 +17,13 @@ Convención: **DOC** = leído en la página oficial (la URL y su fecha de "Últi
 - **Mecanismo:** API de Mercado Libre (`https://api.mercadolibre.com`), sitio **MLC**. Se publica con `POST /items`; en Chile el atributo `CMG_SITE` con `value_name: "POI"` hace que el aviso salga también en Portal Inmobiliario (DOC).
 - **Madurez:** alta: hay una guía completa de inmuebles (categorías, atributos, ubicación, paquetes, publicar, actualizar, ciclo de vida, calidad, leads). **Riesgo: medio**, por la cuenta, no por la técnica: hace falta un **paquete de publicación `silver`** con cupo (no hay publicación gratis de inmuebles) y, en la cuenta de prueba, pedir a soporte la activación del usuario (sección 2).
 - **Autenticación:** OAuth 2.0 authorization code; `access_token` de **6 horas** según el texto (los ejemplos traen `expires_in` 10800 y 21600: leer `expires_in`); `refresh_token` de **6 meses, de un solo uso** y que rota en cada refresco (DOC).
-- **Redirect URI:** **HTTPS obligatorio** al crear la app (DOC); la guía de inmuebles dice que se puede poner **una URL de prueba "incluso si no existe"** (DOC). `localhost` no se menciona (NO VERIFICADO).
+- **Redirect URI:** **HTTPS obligatorio** al crear la app (DOC); la guía de inmuebles dice que se puede poner **una URL de prueba "incluso si no existe"** (DOC). `localhost`: VERIFICADO el 2026-10-08, el panel lo rechaza; quedó `https://agentsales.test/oauth/mercadolibre/callback` (§3.3).
 - **Probar sin pagar:** usuarios de prueba (`POST /users/test_user`); con un usuario de prueba **se puede contratar cualquier paquete sin cargo** (DOC). `POST /items/validate` valida el body sin publicar y responde `204` (DOC). No hay sandbox (DOC).
 - **Desde el 01/10/2026** (ya vigente), `seller_contact` con `country_code2` y `phone2` (WhatsApp) es **obligatorio al crear y al actualizar** cualquier inmueble (DOC).
 - **Fotos por URL:** el ítem queda `paused` o `not_yet_active` con `sub_status` `picture_download_pending` y **se activa solo** cuando ML descarga las fotos; si fallan, pasa a `under_review` (DOC). ML **no sigue redirecciones** (DOC).
 - **Vigencia en MLC:** casas y departamentos en venta **180 días**, en arriendo **45 días**; después el ítem pasa a `closed` / `expired` (DOC).
 - **Cerrar es definitivo:** un `closed` no se reactiva; se republica con `relist` y queda con **id nuevo** (DOC).
-- **Sigue NO VERIFICADO (lo más importante):** los ids MLC de las categorías hoja (solo se conoce `MLC1459` = Inmuebles), los `settings` de esas categorías (`max_title_length`, `max_pictures_per_item`, `currencies`), si `CLF` se acepta en cada hoja, el precio real del paquete para un corredor, si `https://localhost` se registra como redirect y si ML descarga bien una URL prefirmada de R2.
+- **Sigue NO VERIFICADO (lo más importante):** los ids MLC de las categorías hoja (solo se conoce `MLC1459` = Inmuebles), los `settings` de esas categorías (`max_title_length`, `max_pictures_per_item`, `currencies`), si `CLF` se acepta en cada hoja, el precio real del paquete para un corredor y si ML descarga bien una URL prefirmada de R2 (que `https://localhost` no se acepta como redirect quedó verificado el 2026-10-08, §3.3).
 
 ## 2. Requisitos de cuenta y app
 
@@ -106,7 +106,7 @@ Authorization code "server side":
 
 ### 3.4 Conectar la cuenta en local sin túnel (de menos a más esfuerzo)
 
-> **Superado por el spec F4** (D1 y D3, implementado en F4-T06): se registra `https://localhost/oauth/mercadolibre/callback` (puerto 443, sin servidor), PKCE desactivado, y la CLI recibe la **dirección completa** pegada (`--url-stdin`), no el `code` suelto. Lo que sigue es la investigación previa.
+> **Superado por el spec F4** (D1 y D3, implementado en F4-T06): se registra una dirección `https` que no necesita servidor (al final `https://agentsales.test/oauth/mercadolibre/callback`, porque el panel rechazó `localhost`, §3.3), PKCE desactivado, y la CLI recibe la **dirección completa** pegada (`--url-stdin`), no el `code` suelto. Lo que sigue es la investigación previa.
 
 1. **Redirect HTTPS que no necesita cargar** (respaldado por la doc: "incluso si no existe"): registrar `https://localhost:8787/oauth/mercadolibre/callback` (o, si el panel rechaza `localhost`, cualquier URL HTTPS del operador). Tras autorizar, el navegador queda en esa dirección con `?code=...&state=...`; el operador copia el `code` y lo pega en la CLI (`accounts connect mercadolibre --code`), que lo canjea en seguida.
 2. **`https://localhost` con certificado local (mkcert)** servido por Hono: el callback carga y canjea solo. Sin dependencias de producción.
@@ -320,7 +320,7 @@ Los títulos demasiado largos, la moneda no permitida y los `cause_id` específi
 - **3. Cuenta real (último recurso):** solo con autorización explícita del operador; gasta cupo del paquete real.
 - **`ml:smoke` (propuesta para F4):** como `pnpm ig:smoke`: con el token, recorre `GET /sites/MLC/categories` y `/categories/MLC1459` hasta las hojas, baja `/attributes` de las hojas que usa AgentSales, lee `settings` (`max_title_length`, `max_pictures_per_item`, `currencies`) y llama a `items/validate` con un aviso de muestra, sin publicar. Deja los ids reales en esta nota.
 - **Pruebas pendientes, de menor a mayor riesgo:**
-  1. Panel de la app: registrar `https://localhost:8787/oauth/mercadolibre/callback`; ver si lo acepta (y confirmar que rechaza `http://localhost`).
+  1. ~~Panel de la app: registrar `https://localhost:8787/oauth/mercadolibre/callback`~~ Hecho el 2026-10-08: el panel rechaza `localhost`; quedó `https://agentsales.test/…` (§3.3).
   2. Autorizar con `auth.mercadolibre.cl`, copiar el `code`, canjear; anotar `expires_in` y `scope`.
   3. `GET /users/me`; refrescar y confirmar que el `refresh_token` cambia y que el anterior da `invalid_grant`.
   4. Con token: árbol de `MLC1459` hasta las hojas de departamentos y casas (venta y arriendo) y de las demás propiedades; `/attributes` de esas hojas; `GET /sites/MLC/listing_types`; `GET /categories/MLC1459/classifieds_promotion_packs`.

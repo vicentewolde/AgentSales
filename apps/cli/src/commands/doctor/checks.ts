@@ -91,7 +91,7 @@ export function checkInstagram(result: EnvResult): CheckItem | null {
  * El par de la app de Mercado Libre (spec F4 §4.2): sin él no se conecta la cuenta ni se refresca su
  * token (a diferencia de Instagram, el refresco lo exige). Es una advertencia, como Instagram: el
  * resto del sistema funciona sin Portal. La dirección de
- * retorno siempre tiene valor (por defecto `https://localhost/…`) y se muestra, porque debe ser la
+ * retorno siempre tiene valor (por defecto `https://agentsales.test/…`) y se muestra, porque debe ser la
  * misma registrada en la app; no es secreta. Nunca muestra el par. `null` si el `.env` no es válido.
  */
 export function checkMercadoLibre(result: EnvResult): CheckItem | null {

@@ -172,11 +172,13 @@ const envSchema = z
 
     // Mercado Libre / Portal Inmobiliario (F4): la app de developers.mercadolibre.cl. La dirección
     // de retorno es la misma registrada en la app (comparación exacta) y no necesita cargar: el
-    // operador copia la dirección de la barra y la pega en la CLI (spec F4 §4.2).
+    // operador copia la dirección de la barra y la pega en la CLI (spec F4 §4.2). El panel de
+    // Mercado Libre rechaza `https://localhost`; `.test` es un dominio reservado que nunca resuelve,
+    // así que el código no llega a ningún servidor ajeno (nota de Mercado Libre §3.3).
     ML_APP_ID: z.string().optional(),
     ML_CLIENT_SECRET: z.string().optional(),
     ML_REDIRECT_URI: mercadoLibreRedirectUri.default(
-      "https://localhost/oauth/mercadolibre/callback",
+      "https://agentsales.test/oauth/mercadolibre/callback",
     ),
 
     // Facebook Marketplace (F5)

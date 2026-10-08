@@ -56,10 +56,11 @@ Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4
   - [x] **PKCE desactivado** (si se activa, Mercado Libre lo exige y F4 no lo usa)
   - [x] Scopes de lectura, escritura y `offline_access` (el flujo "Refresh Token"), y el permiso funcional "Publicación y sincronización" en lectura y escritura (se comprueba al conectar: sin `write` y `offline_access` la conexión falla con `ML_PERMISSION_DENIED`)
   - [x] Unidades Mercado Libre y VIS (Vehículos, Inmuebles y Servicios), sin Mercado Pago
-- [x] Anotar `ML_APP_ID` y `ML_CLIENT_SECRET` en `.env`, y `ML_REDIRECT_URI` solo si registraste otra dirección (nunca se pegan en el chat). `pnpm -s cli doctor` avisa si falta el par y muestra la dirección de retorno que usa. `ML_SITE_ID` ya no se usa (el sitio es fijo, Chile): si la tienes con `MLC` se ignora, y con otro valor `.env` da error; puedes borrarla
+- [x] Anotar `ML_APP_ID` y `ML_CLIENT_SECRET` en `.env`, y `ML_REDIRECT_URI` solo si registraste otra dirección que la de por defecto (`https://agentsales.test/oauth/mercadolibre/callback` desde el 2026-10-08) (nunca se pegan en el chat). `pnpm -s cli doctor` avisa si falta el par y muestra la dirección de retorno que usa. `ML_SITE_ID` ya no se usa (el sitio es fijo, Chile): si la tienes con `MLC` se ignora, y con otro valor `.env` da error; puedes borrarla
 - [ ] Revisar el precio del paquete de publicación de inmuebles (`silver`) y si tu cuenta necesita que soporte la active para verlo. Se contrata **recién antes de la prueba en `live`** (demo de F4, paso 6): la demo usa tu cuenta real y un aviso que se cierra al final (D6)
 - [ ] Confirmar que el corredor `agentsales-pruebas` tiene WhatsApp en la hoja Corredor: Mercado Libre lo exige y sale en el aviso (D5)
-- [ ] Cuando exista `pnpm ml:smoke` (F4-T10): conectar la cuenta y correrlo en tu terminal; no publica nada
+- [ ] Conectar la cuenta: `pnpm -s cli accounts connect mercadolibre --broker <slug>` (con `pnpm dev` corriendo), autorizar con la cuenta administradora, copiar la dirección que queda con error de conexión y correr `pbpaste | pnpm -s cli accounts connect mercadolibre --broker <slug> --url-stdin`
+- [ ] Cuando exista `pnpm ml:smoke` (F4-T10): correrlo en tu terminal; no publica nada
 
 ## Antes de F5 (Marketplace)
 
