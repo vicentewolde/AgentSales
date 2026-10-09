@@ -62,6 +62,7 @@ async function setup(
       workerMode: "live",
       mercadoLibre: null,
     },
+    queue: t.queue,
     signal: controller.signal,
   });
   const { logger, lines } = captureLogger();
@@ -92,8 +93,10 @@ describe("job publication.publish · cola", () => {
 
 describe("job publication.publish · handler", () => {
   it("publica con el publisher y registra solo el resultado", async () => {
-    const { fake, lines, attempt, post, current } = await setup();
+    const { t, fake, lines, attempt, post, current } = await setup();
     await attempt(post);
+    // Instagram no se sincroniza (F4-T18): solo Portal pide su sync después de publicar.
+    expect(t.queue.jobs.filter((job) => job.name === "publication.sync")).toEqual([]);
     expect(current(post.id)).toMatchObject({ status: "published" });
     expect(fake.published).toHaveLength(1);
     expect(lines.map((line) => line.msg)).toEqual([

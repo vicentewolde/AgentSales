@@ -18,6 +18,7 @@ import {
 } from "./content-prepare.js";
 import { buildJobs } from "./index.js";
 import type { PublicationPublishJobDeps } from "./publication-publish.js";
+import type { PublicationSyncJobDeps } from "./publication-sync.js";
 import { registerJobs, type WorkerBoss } from "./registry.js";
 import type { TokensRefreshJobDeps } from "./tokens-refresh.js";
 
@@ -63,6 +64,7 @@ describe("job content.prepare · cola", () => {
         importRun: {} as RunImportDeps,
         contentPrepare: deps,
         publicationPublish: {} as PublicationPublishJobDeps,
+        publicationSync: {} as PublicationSyncJobDeps,
         tokensRefresh: {} as TokensRefreshJobDeps,
       }).map((job) => job.name),
     ).toEqual([
@@ -70,6 +72,7 @@ describe("job content.prepare · cola", () => {
       "import.run",
       "content.prepare",
       "publication.publish",
+      "publication.sync",
       "tokens.refresh",
     ]);
   });
