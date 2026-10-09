@@ -114,7 +114,8 @@ export async function createPublications(
   const created: Publication[] = [];
   if (planned.length === 0) return created;
   const listingSourceHash = await repos.listings.getSourceHash(listing.id);
-  if (listingSourceHash === null) {
+  // Una versión vacía tampoco sirve: el repositorio la guardaría como "sin versión".
+  if (listingSourceHash === null || listingSourceHash === "") {
     throw new AppError("LISTING_NOT_FOUND", `No existe el aviso ${listing.id}`, {
       details: { listingId: listing.id },
     });

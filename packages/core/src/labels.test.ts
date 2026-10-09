@@ -69,6 +69,17 @@ describe("remoteStatusText (estado en Mercado Libre, F4-T16)", () => {
     expect(text("under_review", ["picture_download_pending"])).toBe("fotos rechazadas: revísalas");
   });
 
+  it("una pausa con motivo es de Mercado Libre; la otra grafía de procesar fotos también vale", () => {
+    expect(
+      remoteStatusText({
+        status: "paused",
+        subStatus: [],
+        reason: { code: "ABANDONED_ITEM_REX_DEN", message: "La reportaron como no disponible" },
+      }),
+    ).toBe("pausado por Mercado Libre");
+    expect(text("paused", ["picture_downloading_pending"])).toBe("procesando fotos");
+  });
+
   it("un estado desconocido se muestra tal cual, sin adivinar", () => {
     expect(text("payment_required")).toBe("otro estado (payment_required)");
   });

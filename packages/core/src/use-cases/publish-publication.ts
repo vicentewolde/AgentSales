@@ -345,7 +345,9 @@ async function prepareAttempt(deps: PublishPublicationDeps, publication: Publica
   });
   if (!publication.dryRun) checkPublishInput(publisher, input);
   // Portal: el token lo asegura `ensureAccessToken` (fuera del candado del aviso), y el contexto no
-  // lleva el `refreshToken`. Instagram: el guardado, que falla cerrado ante `rejectedToken`.
+  // lleva el `refreshToken`. `credentials.accessToken` puede estar vencido o ya rotado: el
+  // publisher de Portal usa siempre `ctx.accessToken` (`platformContextOf` solo cae en él sin
+  // proveedor). Instagram: el guardado, que falla cerrado ante `rejectedToken`.
   const portal = publication.platform === "portal_inmobiliario";
   const credentials = portal ? { accessToken: stored.accessToken } : stored;
   const accessToken: AccessTokenProvider = portal

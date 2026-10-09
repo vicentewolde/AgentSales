@@ -75,17 +75,30 @@ export async function approveContent(
       throw new AppError(
         "CONTENT_HAS_ERRORS",
         "La revisión encontró errores en el texto: corrígelos antes de aprobar",
-        { details: { contentId, codes: review.checks.map((check) => check.code) } },
+        {
+          details: {
+            contentId,
+            // Solo los errores, como al publicar (`requirePortalPublishable`).
+            codes: review.checks
+              .filter((check) => check.severity === "error")
+              .map((check) => check.code),
+          },
+        },
       );
     }
     const opening = await planPublications(locked, { listing, content });
     let readiness: PortalReadiness | undefined;
     if (content.platform === "portal_inmobiliario") {
       const broker = await locked.brokers.findById(listing.brokerId);
+      if (broker === null) {
+        throw new AppError("BROKER_NOT_FOUND", "No existe el corredor del aviso", {
+          details: { listingId: listing.id },
+        });
+      }
       readiness = portalReadiness(listing, {
-        name: broker?.name ?? "",
-        email: broker?.email ?? null,
-        whatsapp: broker?.whatsapp ?? null,
+        name: broker.name,
+        email: broker.email,
+        whatsapp: broker.whatsapp,
       });
     }
 

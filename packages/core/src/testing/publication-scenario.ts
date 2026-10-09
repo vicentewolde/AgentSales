@@ -187,6 +187,20 @@ export async function createPublicationScenario(
       return publications.get(id);
     },
   };
+  // Lo que publicar lee antes del candado en Portal (las definiciones de campos): en PGlite, una
+  // lectura de la conexión general dentro del candado se quedaría esperando.
+  const outsideListings = {
+    async get(id: string) {
+      if (insideLock) throw new Error("listings.get se llamó dentro del candado");
+      return listings.get(id);
+    },
+  };
+  const outsideFieldDefinitions = {
+    async list(filter: Parameters<typeof fieldDefinitions.list>[0]) {
+      if (insideLock) throw new Error("fieldDefinitions.list se llamó dentro del candado");
+      return fieldDefinitions.list(filter);
+    },
+  };
   // La cola se usa después del candado: falla si se encola dentro.
   const watchedQueue: typeof queue = {
     jobs: queue.jobs,
@@ -217,8 +231,8 @@ export async function createPublicationScenario(
       lock: watchedLock,
       queue: watchedQueue,
       publications: outsidePublications,
-      listings,
-      fieldDefinitions,
+      listings: outsideListings,
+      fieldDefinitions: outsideFieldDefinitions,
     },
     approveDeps: { contents, listings, fieldDefinitions, lock },
     fieldDefinitions,

@@ -164,20 +164,24 @@ export const LISTING_NOT_PREPARABLE_TEXT =
 
 /**
  * El estado del aviso en la plataforma (`remote_state`, Mercado Libre: `status` y `sub_status`,
- * spec F4 §4.9), como lo ve el operador. Lo que la plataforma informa sin que AgentSales lo haya
- * pedido (en revisión, procesando fotos, vencido) se nombra aparte; un estado desconocido se muestra
- * tal cual, sin adivinar.
+ * y el motivo de una pausa, spec F4 §4.9 y §4.12), como lo ve el operador. Lo que la plataforma
+ * informa sin que AgentSales lo haya pedido (en revisión, procesando fotos, vencido, pausado por
+ * moderación) se nombra aparte; un estado desconocido se muestra tal cual, sin adivinar.
  */
-export function remoteStatusText(remote: Pick<RemoteState, "status" | "subStatus">): string {
+export function remoteStatusText(
+  remote: Pick<RemoteState, "status" | "subStatus" | "reason">,
+): string {
   const sub = new Set(remote.subStatus);
-  if (sub.has("picture_download_pending")) {
+  // La doc de Mercado Libre usa las dos grafías (nota §5).
+  if (sub.has("picture_download_pending") || sub.has("picture_downloading_pending")) {
     return remote.status === "under_review" ? "fotos rechazadas: revísalas" : "procesando fotos";
   }
   switch (remote.status) {
     case "active":
       return "activo";
     case "paused":
-      return "pausado";
+      // Con motivo, la pausó Mercado Libre (moderación); el motivo lo muestra cada interfaz.
+      return remote.reason === undefined ? "pausado" : "pausado por Mercado Libre";
     case "closed":
       if (sub.has("expired")) return "vencido";
       if (sub.has("deleted")) return "eliminado";

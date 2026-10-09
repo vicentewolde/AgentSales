@@ -268,6 +268,58 @@ describe("publicar Portal: revisiones antes de pasar a publishing", () => {
     ).resolves.toMatchObject({ started: [expect.anything(), expect.anything()] });
   });
 
+  it("reintentar una fallida también revisa; si solo hay que reencolar, no", async () => {
+    const { t, start, run } = await setup({
+      publisher: portalPublisher(async () => {
+        throw new AppError("ML_ITEM_REJECTED", "Mercado Libre rechazó el aviso");
+      }).publisher,
+    });
+    const [post] = (await start()).started;
+    if (post === undefined) throw new Error("falta el post");
+    await run(post).catch(() => undefined);
+    expect(t.publications.all()[0]?.status).toBe("failed");
+    await withoutWhatsapp(t);
+
+    // La fallida vuelve a `publishing`: se revisa y falta el WhatsApp.
+    await expect(start()).rejects.toMatchObject({ code: "PORTAL_NOT_READY" });
+    expect(t.publications.all()[0]?.status).toBe("failed");
+
+    // Ya en `publishing` (un job perdido): se reencola sin revisar, el intento revisa todo.
+    await t.publications.transition(
+      post.id,
+      { from: "failed", to: "publishing", changes: { dryRun: true } },
+      { actor: "system" },
+    );
+    await expect(start()).resolves.toMatchObject({ started: [], requeued: [{ id: post.id }] });
+  });
+
+  it("la revisión usa las definiciones leídas antes del candado (un dato del aviso no es error)", async () => {
+    const { t, start } = await setup();
+    const contentId = await t.portalId();
+    const content = await t.contents.get(contentId);
+    // 80 m² es la superficie total del aviso: está en el brief, armado con las definiciones.
+    await t.contents.update(contentId, {
+      body: `${content?.body ?? ""}
+Superficie total de 80 m².`,
+    });
+
+    await expect(start()).resolves.toMatchObject({ started: [expect.anything()] });
+  });
+
+  it("sin la versión del aviso no nace ninguna publicación (LISTING_NOT_FOUND)", async () => {
+    const t = await createPublicationScenario({ platform: PORTAL, approve: false });
+    const getSourceHash = t.listings.getSourceHash;
+    t.listings.getSourceHash = async () => "";
+    try {
+      await expect(
+        approveContent(t.approveDeps, { contentId: await t.portalId(), actor: "operator" }),
+      ).rejects.toMatchObject({ code: "LISTING_NOT_FOUND" });
+    } finally {
+      t.listings.getSourceHash = getSourceHash;
+    }
+    expect(t.publications.all()).toEqual([]);
+  });
+
   it("con todo en orden pasa a publishing y encola", async () => {
     const { t, start } = await setup();
     const result = await start();
