@@ -1,5 +1,5 @@
 import type { ContentView, PublicationView } from "@agentsales/api/contracts";
-import { type ListingStatus, PLATFORM_TEXT, PUBLICATION_FORMAT_TEXT } from "@agentsales/core";
+import { type ListingStatus, PLATFORM_TEXT, publicationFormatText } from "@agentsales/core";
 import { useApproval } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { approveBlockedReason, unapproveBlockedReason } from "../publications/publications.js";
@@ -54,8 +54,8 @@ export function ApprovalBar({
       {blocked !== null && <p className="mt-1 text-xs text-amber-800">{blocked}</p>}
       {approval.data?.skipped.map((skipped) => (
         <p key={skipped.publicationId} className="mt-1 text-xs text-amber-800">
-          El {PUBLICATION_FORMAT_TEXT[skipped.format]} ya tiene una publicación activa de un texto
-          anterior: retírala o descártala para publicar este.
+          El {publicationFormatText(content.platform, skipped.format)} ya tiene una publicación
+          activa de un texto anterior: retírala o descártala para publicar este.
         </p>
       ))}
       {approval.error && <ErrorAlert error={approval.error} />}

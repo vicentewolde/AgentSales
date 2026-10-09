@@ -67,10 +67,10 @@ corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) →
 
 ## Reglas de trabajo (obligatorias)
 1. **Spec primero.** No implementes nada que no esté en el spec aprobado de la fase. Si falta algo, propónlo y actualiza el spec antes.
-2. **Una tarea a la vez**, en su propia rama `<tipo>/<id-tarea>-<resumen>`, con commits Conventional Commits.
+2. **Una tarea, o un lote de tareas relacionadas, a la vez** (desde 2026-10-09: tareas de la misma zona van juntas), en su propia rama `<tipo>/<id-tarea(s)>-<resumen>` (ej. `feat/f4-t21-t22-panel-portal`), con commits Conventional Commits. Nunca dos ramas en paralelo: la Mac de 8 GB no aguanta dos `pnpm check` a la vez.
 3. **Planifica antes de editar:** para tareas de más de un archivo, presenta el plan (archivos, pasos, tests) y espera el OK del operador.
 4. **Tests con el código:** el caso de uso o adaptador nuevo viene con sus tests en el mismo commit. Nunca debilites un test para que pase.
-5. **`pnpm check` en verde** antes de dar una tarea por terminada.
+5. **`pnpm check` en verde** antes de dar una tarea por terminada (una vez; se repite solo si falla por "timed out" de PGlite o del panel). La CI de GitHub corre en un clon limpio y el merge la exige en verde sobre el último commit.
 6. **Documentación viva:** si el código cambia algo documentado, actualiza el doc en el mismo PR. Al terminar la tarea, actualiza `docs/ESTADO.md`.
 7. **Decisiones estructurales → ADR** (`/adr`). No cambies stack, patrones ni contratos en silencio.
 8. **Dependencias:** solo las del stack. Una nueva requiere justificación en el PR.

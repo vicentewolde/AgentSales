@@ -3,6 +3,7 @@ import type {
   ContentView,
   ListingContentResponse,
   ListingPublicationView,
+  PortalReadinessView,
 } from "@agentsales/api/contracts";
 import {
   type ListingStatus,
@@ -144,6 +145,7 @@ function InstagramPanel({
           </ApprovableText>
         )}
         <PublicationsPanel
+          platform="instagram"
           listingId={edit.listingId}
           listingStatus={edit.listingStatus}
           content={content}
@@ -156,19 +158,56 @@ function InstagramPanel({
   );
 }
 
+/**
+ * Lo que le falta al aviso para Portal (`portalReadiness`, spec F4 §4.5 y §4.12), solo en su
+ * pestaña: se aprueba igual, pero Publicar lo exige.
+ */
+function PortalReadiness({ readiness }: { readiness: PortalReadinessView }) {
+  if (readiness.ready) {
+    return (
+      <p className="mb-3 text-sm text-emerald-800">
+        El aviso tiene lo que pide Portal Inmobiliario.
+      </p>
+    );
+  }
+  return (
+    <section
+      aria-label="Lo que falta para Portal"
+      className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"
+    >
+      <p className="font-semibold text-amber-900">Para publicar en Portal falta:</p>
+      <ul className="mt-1 list-disc pl-5 text-amber-900">
+        {readiness.issues.map((issue) => (
+          <li key={`${issue.code}-${issue.field ?? ""}-${issue.message}`}>
+            {issue.message}
+            {issue.field !== null && <span className="text-amber-800"> ({issue.field})</span>}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 text-xs text-amber-800">
+        Complétalo en la planilla y vuelve a importarla; el WhatsApp es el de la hoja Corredor.
+      </p>
+    </section>
+  );
+}
+
 function ListingPanel({
   platform,
   content,
   photos,
   edit,
+  portalReadiness,
 }: {
   platform: Platform;
   content: ContentView | undefined;
   photos: ContentMedia[];
   edit: EditContext;
+  portalReadiness: PortalReadinessView;
 }) {
+  const portal = platform === "portal_inmobiliario";
   return (
     <div>
+      {portal && <PortalReadiness readiness={portalReadiness} />}
       {content === undefined ? (
         <p className="text-sm text-slate-500">Sin texto todavía.</p>
       ) : (
@@ -190,6 +229,18 @@ function ListingPanel({
           </li>
         ))}
       </ul>
+      {portal && (
+        <PublicationsPanel
+          platform={platform}
+          listingId={edit.listingId}
+          listingStatus={edit.listingStatus}
+          content={content}
+          publications={edit.publications.filter((p) => p.platform === platform)}
+          publishMode={edit.publishMode}
+          runActive={edit.runActive}
+          portalReadiness={portalReadiness}
+        />
+      )}
     </div>
   );
 }
@@ -287,6 +338,7 @@ export function Preview({ content, ...edit }: { content: ListingContentResponse 
               content={textOf(target)}
               photos={content.photos}
               edit={edit}
+              portalReadiness={content.portalReadiness}
             />
           )}
         </div>

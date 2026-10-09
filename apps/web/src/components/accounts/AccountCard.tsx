@@ -7,7 +7,10 @@ import { ErrorAlert } from "../ErrorAlert.js";
 import { AccountExpiry } from "./AccountExpiry.js";
 import { accountDateText } from "./accounts.js";
 
-/** Una cuenta conectada: estado, vencimiento, renovación, permisos y Desconectar con confirmación. */
+/**
+ * Una cuenta conectada (Instagram o Mercado Libre, desde F4-T21): estado, vencimiento, renovación,
+ * permisos y Desconectar con confirmación. El nombre va tal cual (Mercado Libre: el `nickname`).
+ */
 export function AccountCard({ account, now }: { account: PlatformAccountView; now: Date }) {
   const disconnect = useDisconnectAccount();
   const [confirming, setConfirming] = useState(false);
@@ -43,7 +46,9 @@ export function AccountCard({ account, now }: { account: PlatformAccountView; no
         <dt className="text-slate-500">Última renovación</dt>
         <dd>
           {account.tokenRefreshedAt === null
-            ? "Todavía no (se renueva sola a las 24 h de conectarla)"
+            ? account.platform === "portal_inmobiliario"
+              ? "Todavía no (se renueva sola cada 7 días mientras el worker corre)"
+              : "Todavía no (se renueva sola a las 24 h de conectarla)"
             : accountDateText(account.tokenRefreshedAt)}
         </dd>
         <dt className="text-slate-500">Tipo</dt>
@@ -51,7 +56,9 @@ export function AccountCard({ account, now }: { account: PlatformAccountView; no
         <dt className="text-slate-500">Permisos</dt>
         <dd>
           {account.permissions === null
-            ? "Desconocidos (se conectó con el token del panel de Meta)"
+            ? account.platform === "instagram"
+              ? "Desconocidos (se conectó con el token del panel de Meta)"
+              : "Desconocidos"
             : account.permissions.join(", ") || "Ninguno"}
         </dd>
       </dl>

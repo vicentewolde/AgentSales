@@ -4,6 +4,7 @@ import {
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
   publishAttemptPayloadSchema,
+  remoteStatusText,
 } from "@agentsales/core";
 import { usePublicationEvents } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
@@ -21,9 +22,24 @@ function EventLine({ event }: { event: PublicationEventView }) {
   if (event.type === "status_changed") {
     const from = event.fromStatus === null ? "nace" : PUBLICATION_STATUS_TEXT[event.fromStatus];
     const to = event.toStatus === null ? "?" : PUBLICATION_STATUS_TEXT[event.toStatus];
+    // Un cambio que vino de leer Mercado Libre (el sync de Portal) dice qué leyó; la API solo expone
+    // el `status` (sin `subStatus` ni el motivo), como en la CLI.
+    const { sync, remoteStatus } = event.payload;
+    const read =
+      sync === true && typeof remoteStatus === "string"
+        ? ` · leído de Mercado Libre: ${remoteStatusText({ status: remoteStatus, subStatus: [] })}`
+        : "";
     return (
       <li>
         {timeText(event.createdAt)} · {who}: {from} → {to}
+        {read}
+      </li>
+    );
+  }
+  if (event.type === "sync") {
+    return (
+      <li>
+        {timeText(event.createdAt)} · {who}: lectura de Mercado Libre
       </li>
     );
   }

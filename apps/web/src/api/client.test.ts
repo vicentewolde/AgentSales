@@ -53,6 +53,22 @@ describe("createApiClient + unwrap", () => {
     await expect(health()).rejects.toMatchObject({ code: undefined, status: 418 });
   });
 
+  it("PORTAL_NOT_READY trae la lista de lo que falta (F4-T22); los demás errores, sin lista", async () => {
+    const issue = { code: "PORTAL_WHATSAPP_MISSING", field: null, message: "Falta el WhatsApp" };
+    stubFetch(() =>
+      Response.json(
+        { error: { code: "PORTAL_NOT_READY", message: "Falta información", issues: [issue] } },
+        { status: 409 },
+      ),
+    );
+    await expect(health()).rejects.toMatchObject({ code: "PORTAL_NOT_READY", issues: [issue] });
+
+    stubFetch(() =>
+      Response.json({ error: { code: "INVALID_TRANSITION", message: "no" } }, { status: 409 }),
+    );
+    await expect(health()).rejects.toMatchObject({ issues: undefined });
+  });
+
   it("un error de la API se muestra como CODE: mensaje, con su status", async () => {
     stubFetch(() =>
       Response.json(

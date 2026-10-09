@@ -36,8 +36,8 @@
 | F4-T18 · Worker: publicar y sincronizar Portal | ✅ | #97 |
 | F4-T19 · API de Portal | ✅ | #98 |
 | F4-T20 · CLI de Portal | ✅ | #89, #99 |
-| F4-T21 · Panel: Cuentas con Mercado Libre | ⏳ pendiente | |
-| F4-T22 · Panel: Portal en Contenido | ⏳ pendiente | |
+| F4-T21 · Panel: Cuentas con Mercado Libre | 🔨 falta la revisión visual | #100 |
+| F4-T22 · Panel: Portal en Contenido | 🔨 falta la revisión visual | #100 |
 | F4-T23 · `pnpm ml:smoke --listing` | ⏳ pendiente | |
 | F4-T25 · Usuario de prueba de Mercado Libre (D15) | ⏳ pendiente | |
 | F4-T24 · Cierre de fase | ⏳ pendiente | |
@@ -94,6 +94,11 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-09: **Forma de trabajo nueva (tu decisión):** las tareas relacionadas van en lotes (una rama y un PR), con un solo `pnpm check` y sin simulación local de la CI (la de GitHub corre en un clon limpio y el merge la exige en verde). Lotes de F4: A = T21 + T22 (panel), B = T23 + T25 (Mercado Libre), después T24. `CLAUDE.md` (reglas 2 y 5) y la skill `/tarea` al día.
+- 2026-10-09: **F4-T21 y F4-T22 (lote A).** El panel ya maneja Portal:
+  - **Cuentas:** por corredor, Instagram y Mercado Libre. Mercado Libre muestra su cuenta (el nombre tal cual, vencimiento estimado, permisos) y, si no está conectada o vence, los dos comandos para copiar (los mismos de la CLI). Sin el par de la app en la API, dice qué falta.
+  - **Contenido > Portal:** lo que falta al aviso (solo en esa pestaña); Publicar bloqueado si falta algo o si el texto aprobado tiene errores; el aviso publicado con su estado en Mercado Libre, el vencimiento, el motivo si Mercado Libre lo pausó, y Pausar, Reactivar, Cerrar (pide confirmación; en vivo, irreversible) y Actualizar (solo en vivo).
+  - 9 mutaciones a mano detectadas.
 - 2026-10-09: **F4-T20.** La CLI ya maneja Portal de punta a punta:
   - **Publicar:** `publish P001 --platform portal` (en vivo pregunta y avisa que usa un cupo). Si al aviso le falta algo, lista los motivos con su columna del Excel, una sola vez. `approve --platform portal` avisa lo que falta, sin dejar de aprobar.
   - **Operar:** `publications pause|resume|close|sync <id>`. Cerrar en vivo pregunta (`--yes`). Si la API tarda más de 30 s, no reintenta: dice que el cambio pudo aplicarse y cómo revisarlo. `sync` dice si ya había una lectura programada.

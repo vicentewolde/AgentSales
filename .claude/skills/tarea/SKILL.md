@@ -1,7 +1,7 @@
 ---
 name: tarea
 description: Ejecuta una tarea del spec de punta a punta — rama, plan, implementación con tests, verificación, docs y commit.
-argument-hint: "[id-tarea, ej. F0-T01]"
+argument-hint: "[id-tarea o lote, ej. F0-T01 o F4-T21 F4-T22]"
 disable-model-invocation: true
 ---
 
@@ -16,7 +16,8 @@ Estado del repositorio:
 - Verifica que sus dependencias estén ✅ en ESTADO. Si no, detente y avisa.
 - El spec debe estar **Aprobado**. Si no, detente y sugiere `/fase-plan`.
 - Si hay cambios sin commitear que no son de esta tarea, detente y pregunta qué hacer con ellos.
-- Parte desde `main` actualizado y crea la rama `<tipo>/<id-en-minúsculas>-<resumen-corto>` (ej. `feat/f0-t02-config`).
+- Un **lote** (varias tareas relacionadas, desde 2026-10-09) va en una sola rama y un solo PR; cada tarea conserva sus criterios "Hecho cuando".
+- Parte desde `main` actualizado y crea la rama `<tipo>/<id-en-minúsculas>-<resumen-corto>` (ej. `feat/f0-t02-config` o `feat/f4-t21-t22-panel-portal`).
 - Marca la tarea como 🔨 en `docs/ESTADO.md`.
 
 ## 2. Planificar
@@ -40,18 +41,9 @@ Lee los docs que la tarea toca (modelo de datos, plataformas, convenciones, ADRs
   3. Instala la versión anterior que sí tenga la antigüedad mínima (`pnpm add <paquete>@<versión>`) y vuelve a revisar el diff.
 
 ## 4. Verificar
-- `pnpm check` debe pasar completo. Si falla, arréglalo; nunca desactives reglas ni tests para pasar.
+- `pnpm check` debe pasar completo, una vez (si solo fallan pruebas por "timed out" de PGlite o del panel, repítelo). Si falla, arréglalo; nunca desactives reglas ni tests para pasar.
 - Revisa uno por uno los criterios "Hecho cuando" de la tarea y demuestra cada uno (comando, salida o test).
-- **Simulación de la CI** antes de proponer el PR: en un clon limpio de la rama en el scratchpad, sin `.env`, `node_modules` ni artefactos de build locales (`*.tsbuildinfo`, `dist`). En F0 esto destapó los tipos de Node filtrados a la web, que la caché local ocultaba. Como clona lo commiteado, se corre después del commit (paso 6) y se repite si agregas commits. Cada paso corta si falla (`&&`). No uses pipes (`| tail`, `| grep`) que oculten el código de salida: la salida de cada paso va a su log y se lee después.
-  1. Clona en un directorio nuevo (sufijo `-2`, `-3`… si repites; no uses `rm -rf`):
-     ```bash
-     git clone --quiet --branch <rama> --single-branch <raíz-del-repo> <scratchpad>/ci-<rama>
-     ```
-  2. Desde el clon, corre los pasos de `.github/workflows/ci.yml` en orden:
-     ```bash
-     pnpm install --frozen-lockfile > ../ci-install.log 2>&1 && echo "install OK" && pnpm check > ../ci-check.log 2>&1 && echo "check OK" && pnpm db:generate > ../ci-gen.log 2>&1 && test -z "$(git status --porcelain packages/db/drizzle)" && echo "db:generate sin cambios OK" && pnpm --filter @agentsales/web build > ../ci-build.log 2>&1 && echo "web build OK"
-     ```
-  3. Si falta algún `OK`, lee el log de ese paso. Si `db:generate` deja cambios en `packages/db/drizzle`, falta una migración: genérala y commitéala en la rama.
+- **CI:** desde 2026-10-09 no se simula en local: la CI de GitHub corre en un clon limpio, sin `.env` ni artefactos de build, y el merge la exige en verde sobre el último commit. Si falla, lee el log (`gh run view <id> --log-failed`), arréglalo en la rama y vuelve a hacer push. Si falla `db:generate`, falta una migración: genérala y commitéala.
 
 ## 5. Documentar
 - Actualiza los docs afectados si el comportamiento o los contratos cambiaron.
@@ -59,7 +51,6 @@ Lee los docs que la tarea toca (modelo de datos, plataformas, convenciones, ADRs
 
 ## 6. Commit
 - Uno o más commits Conventional Commits (tipo y ámbito en inglés, descripción en español).
-- Después del commit, corre la simulación de la CI del paso 4.
 - **`push`, PR y merge solo con autorización explícita del operador para esta rama.** Un permiso anterior no sirve para otra rama.
 - El repo es **público**: nada de secretos, `.env`, tokens ni datos reales de clientes en commits, PRs ni capturas.
 

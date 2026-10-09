@@ -6,6 +6,7 @@ import {
   type FieldDefinition,
   type LLMProvider,
   type NewListing,
+  type PublicationOperations,
   prepareContent,
   SAMPLE_CONTENT_DRAFT,
 } from "@agentsales/core";
@@ -231,12 +232,18 @@ export async function publicationSetup(
     approve?: boolean;
     publishMode?: "dry-run" | "live";
     intercept?: HarnessOptions["intercept"];
+    /** Portal (F4-T22): la cuenta y el texto aprobado son de Portal. */
+    platform?: "instagram" | "portal_inmobiliario";
+    /** Las operaciones de Portal que usa la API (dobles: nunca Mercado Libre). */
+    operations?: PublicationOperations;
   } = {},
 ) {
   const t = await createPublicationScenario({
     nextId: randomUUID,
     approve: options.approve ?? true,
+    ...(options.platform === undefined ? {} : { platform: options.platform }),
   });
+  const operations = options.operations;
   const h = harness({
     deps: {
       listings: t.listings,
@@ -251,6 +258,7 @@ export async function publicationSetup(
       lock: t.deps.lock,
       queue: t.deps.queue,
       publishMode: options.publishMode ?? "dry-run",
+      operationsFor: (platform) => (platform === "portal_inmobiliario" ? operations : undefined),
     },
     ...(options.intercept === undefined ? {} : { intercept: options.intercept }),
   });
