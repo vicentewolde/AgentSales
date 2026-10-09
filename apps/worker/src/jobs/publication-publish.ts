@@ -1,6 +1,5 @@
 import type { Logger } from "@agentsales/config";
 import {
-  type AbortSignalLike,
   enqueuePublication,
   enqueueSync,
   isAppError,
@@ -19,9 +18,10 @@ import { PUBLISHED_SYNC_DELAY_MS } from "./publication-sync.js";
  * - `exclusive`: un solo job en cola, en reintento o activo por `singletonKey = publicationId`, así
  *   un intento nunca se cruza con otro de la misma publicación;
  * - 2 reintentos con backoff desde 60 s;
- * - expira a los 15 min: el intento tiene su propio tope de 12 min (sondeo de un reel de hasta
- *   5 min, más el carrusel); los 3 min de margen cubren lo que corre fuera de ese tope (firmar las
- *   URLs, leer y guardar en la base). Si un intento llegara a cruzarse con su reintento, subirlo.
+ * - expira a los 15 min: cada intento se corta a los 12 min (`PUBLICATION_ATTEMPT_MAX_MS`: el
+ *   sondeo de un reel de Instagram, o hasta 30 fotos de Portal a 30 s cada una), y los 3 min de
+ *   margen cubren lo que corre fuera (firmar las URLs, leer y guardar en la base). Así un intento
+ *   nunca se cruza con su reintento: dos intentos de Portal a la vez podrían crear dos ítems.
  */
 export const PUBLICATION_PUBLISH_QUEUE: QueuePolicy = {
   policy: "exclusive",
@@ -30,6 +30,14 @@ export const PUBLICATION_PUBLISH_QUEUE: QueuePolicy = {
   retryBackoff: true,
   expireInSeconds: 15 * 60,
 };
+
+/**
+ * Tope de un intento, cualquiera sea la plataforma (desde la revisión de F4-T18): al vencer, la señal
+ * corta la llamada en curso y el intento queda en `publishing` (`PUBLISH_ABORTED`, reintentable),
+ * como en un apagado; el reintento retoma desde el progreso (en Portal, sin repetir `POST /items` a
+ * ciegas). Instagram tiene además su propio tope, igual.
+ */
+export const PUBLICATION_ATTEMPT_MAX_MS = 12 * 60_000;
 
 export type PublicationPublishJobDeps = {
   /**
@@ -40,7 +48,8 @@ export type PublicationPublishJobDeps = {
   /** Para el sync de Portal 2 min después de publicar en `live` (spec F4 §4.9). */
   queue: JobQueue;
   /** Se dispara al apagar el worker: corta el sondeo y las llamadas a la plataforma. */
-  signal: AbortSignalLike;
+  signal: AbortSignal;
+  /** Reloj para el `startAfter` del sync (los tests fijan uno). */
   now?: () => Date;
 };
 
@@ -73,7 +82,12 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
           onWarning: ({ step, code }) =>
             logger.warn({ step, code }, "un paso secundario de la publicación falló"),
         },
-        { publicationId, isLastAttempt, retryCount, signal: deps.signal },
+        {
+          publicationId,
+          isLastAttempt,
+          retryCount,
+          signal: AbortSignal.any([deps.signal, AbortSignal.timeout(PUBLICATION_ATTEMPT_MAX_MS)]),
+        },
       );
       if (result.outcome === "skipped") {
         logger.info({ status: result.status }, "la publicación no estaba en curso: nada que hacer");
@@ -83,14 +97,17 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
         logger.info({ mode: "live" }, "publicación publicada");
         if (OPERATION_PLATFORMS.has(result.publication.platform)) {
           const now = deps.now ?? (() => new Date());
-          await enqueueSync(deps.queue, publicationId, {
-            startAfter: new Date(now().getTime() + PUBLISHED_SYNC_DELAY_MS),
-          }).catch((error: unknown) =>
+          try {
+            const jobId = await enqueueSync(deps.queue, publicationId, {
+              startAfter: new Date(now().getTime() + PUBLISHED_SYNC_DELAY_MS),
+            });
+            if (jobId === null) logger.info("ya había un sync de la publicación en la cola");
+          } catch (error) {
             logger.warn(
               { code: codeOf(error) },
               "no se pudo encolar el sync de la publicación: lo hace el arranque o Actualizar",
-            ),
-          );
+            );
+          }
         }
       }
     },

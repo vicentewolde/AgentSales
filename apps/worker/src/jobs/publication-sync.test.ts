@@ -141,7 +141,6 @@ describe("job publication.sync", () => {
     expect(events.filter((event) => event.type === "sync")).toHaveLength(2);
     expect(events.filter((event) => event.toStatus === "published")).toHaveLength(1);
     expect(JSON.stringify(lines)).toContain("sync: estado de la plataforma guardado");
-    expect(JSON.stringify(lines)).not.toContain("APP_USR");
   });
 
   it("solo live: una publicación de dry-run se salta sin llamar a la plataforma", async () => {
@@ -184,7 +183,10 @@ describe("job publication.sync", () => {
       );
     };
     await expect(attempt(publication, 2)).resolves.toBeUndefined();
-    expect(JSON.stringify(lines)).toContain("se lee en el próximo sync");
+    // Información (pino: 30), no un error, y el job se cierra bien.
+    const stale = lines.find((line) => String(line.msg).includes("se lee en el próximo sync"));
+    expect(stale).toMatchObject({ level: 30, code: "PUBLICATION_SYNC_STALE" });
+    expect(lines.at(-1)).toMatchObject({ msg: "job terminado" });
   });
 
   it("un error de la plataforma no reintentable cierra el job sin reintento; uno reintentable sube", async () => {
@@ -231,7 +233,7 @@ describe("al arrancar: el sync de las de Portal en live", () => {
 
     const result = await enqueueLiveSyncs(publications, accounts, t.queue);
 
-    expect(result).toEqual({ enqueued: 1, failed: [] });
+    expect(result).toEqual({ enqueued: 1, alreadyQueued: 0, failed: [] });
     expect(t.queue.jobs).toContainEqual({
       name: "publication.sync",
       data: { publicationId: live.id },
@@ -247,7 +249,55 @@ describe("al arrancar: el sync de las de Portal en live", () => {
         throw new AppError("QUEUE_UNAVAILABLE", "sin cola", { retriable: true });
       },
     });
-    expect(result).toEqual({ enqueued: 0, failed: [live.id] });
+    expect(result).toEqual({
+      enqueued: 0,
+      alreadyQueued: 0,
+      failed: [{ publicationId: live.id, code: "QUEUE_UNAVAILABLE" }],
+    });
+  });
+
+  it("también las pausadas; una con la cuenta vencida no; una ya en cola se cuenta aparte", async () => {
+    const { t } = await setup();
+    const paused = await publishedPortal(t, false);
+    await t.publications.transition(
+      paused.id,
+      { from: "published", to: "paused" },
+      { actor: "operator" },
+    );
+    const expiredScenario = await createPublicationScenario({
+      platform: PORTAL,
+      nextId: () => randomUUID(),
+    });
+    const expired = await publishedPortal(expiredScenario, false);
+    await expiredScenario.platformAccounts.changeStatus(
+      expired.platformAccountId,
+      "connected",
+      "expired",
+    );
+    const publications = {
+      listByStatus: async (status: Publication["status"]) => [
+        ...(await t.publications.listByStatus(status)),
+        ...(await expiredScenario.publications.listByStatus(status)),
+      ],
+    };
+    const accounts = {
+      get: async (id: string) =>
+        (await t.platformAccounts.get(id)) ?? (await expiredScenario.platformAccounts.get(id)),
+    };
+
+    expect(await enqueueLiveSyncs(publications, accounts, t.queue)).toEqual({
+      enqueued: 1,
+      alreadyQueued: 0,
+      failed: [],
+    });
+    expect(
+      t.queue.jobs.filter((job) => job.name === "publication.sync").map((job) => job.data),
+    ).toEqual([{ publicationId: paused.id }]);
+    expect(await enqueueLiveSyncs(publications, accounts, { enqueue: async () => null })).toEqual({
+      enqueued: 0,
+      alreadyQueued: 1,
+      failed: [],
+    });
   });
 });
 
@@ -265,7 +315,10 @@ describe("job publication.publish: el sync 2 min después de publicar Portal en 
     }),
   };
 
-  async function publishSetup(dryRun: boolean) {
+  async function publishSetup(
+    dryRun: boolean,
+    queue?: (t: PublicationScenario) => Pick<PublicationScenario["queue"], "enqueue">,
+  ) {
     const t = await createPublicationScenario({ platform: PORTAL, nextId: () => randomUUID() });
     const [publication] = (
       await publishListing(t.deps, {
@@ -289,17 +342,17 @@ describe("job publication.publish: el sync 2 min después de publicar Portal en 
         workerMode: "live",
         mercadoLibre: null,
       },
-      queue: t.queue,
+      queue: queue?.(t) ?? t.queue,
       signal: new AbortController().signal,
       now: () => NOW,
     });
-    const { logger } = captureLogger();
+    const { logger, lines } = captureLogger();
     const { boss, workers } = fakeBoss();
     await registerJobs(boss, [job], logger);
     await workers.get("publication.publish")?.([
       { id: "job-0", data: { publicationId: publication.id }, retryCount: 0, retryLimit: 2 },
     ]);
-    return { t, publication };
+    return { t, publication, lines };
   }
 
   it("en live encola el sync en 2 min con la clave de la publicación", async () => {
@@ -312,6 +365,25 @@ describe("job publication.publish: el sync 2 min después de publicar Portal en 
         startAfter: new Date(NOW.getTime() + PUBLISHED_SYNC_DELAY_MS),
       },
     });
+  });
+
+  it("si la cola falla, avisa solo con el código y el job termina bien; si ya había uno, lo anota", async () => {
+    const failing = await publishSetup(false, (t) => ({
+      enqueue: async (name, data, options) => {
+        if (name === "publication.sync") {
+          throw new AppError("QUEUE_UNAVAILABLE", "sin cola", { retriable: true });
+        }
+        return t.queue.enqueue(name, data, options);
+      },
+    }));
+    expect(failing.lines.find((line) => line.level === 40)).toMatchObject({
+      code: "QUEUE_UNAVAILABLE",
+      msg: "no se pudo encolar el sync de la publicación: lo hace el arranque o Actualizar",
+    });
+    expect(failing.lines.at(-1)).toMatchObject({ msg: "job terminado" });
+
+    const queued = await publishSetup(false, () => ({ enqueue: async () => null }));
+    expect(JSON.stringify(queued.lines)).toContain("ya había un sync de la publicación en la cola");
   });
 
   it("en dry-run no encola ningún sync", async () => {

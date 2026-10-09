@@ -31,7 +31,7 @@ import {
   createInstagramAuth,
   createInstagramPublisher,
   createMercadoLibreAuth,
-  MERCADOLIBRE_API_TIMEOUT_MS,
+  MERCADOLIBRE_REFRESH_TIMEOUT_MS,
 } from "@agentsales/publishers";
 import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
@@ -122,7 +122,7 @@ const mercadoLibreAuth =
         appId: env.ML_APP_ID,
         clientSecret: env.ML_CLIENT_SECRET,
         redirectUri: env.ML_REDIRECT_URI,
-        timeoutMs: MERCADOLIBRE_API_TIMEOUT_MS,
+        timeoutMs: MERCADOLIBRE_REFRESH_TIMEOUT_MS,
       })
     : null;
 // Portal (spec F4 §4.8 y T18): el publisher en los dos modos (como Instagram) y las operaciones sin
@@ -328,11 +328,17 @@ async function requeuePublications(): Promise<void> {
 
 async function requestLiveSyncs(): Promise<void> {
   try {
-    const { enqueued, failed } = await enqueueLiveSyncs(publications, platformAccounts, queue);
-    if (enqueued > 0) logger.info({ enqueued }, "sync de las publicaciones de Portal encolado");
+    const { enqueued, alreadyQueued, failed } = await enqueueLiveSyncs(
+      publications,
+      platformAccounts,
+      queue,
+    );
+    if (enqueued + alreadyQueued > 0) {
+      logger.info({ enqueued, alreadyQueued }, "sync de las publicaciones de Portal encolado");
+    }
     if (failed.length > 0) {
       logger.warn(
-        { publicationIds: failed },
+        { failed },
         "no se pudo encolar el sync de algunas publicaciones: se reintenta al próximo arranque o con Actualizar",
       );
     }

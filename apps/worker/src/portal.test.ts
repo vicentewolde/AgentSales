@@ -3,6 +3,7 @@ import {
   createInMemoryMediaStorage,
   createInMemoryPlatformCatalogRepository,
 } from "@agentsales/core/testing";
+import type { MercadoLibreItem, MercadoLibreItems } from "@agentsales/publishers";
 import { describe, expect, it } from "vitest";
 import { captureLogger } from "../test/content-fixture.js";
 import { createWorkerPortal, readPictureFrom } from "./portal.js";
@@ -43,5 +44,73 @@ describe("Portal en el worker (F4-T18)", () => {
     };
 
     expect(await readPictureFrom(storage)(media)).toEqual(bytes);
+  });
+
+  it("el sync con las operaciones reales solo lee el ítem: nunca cambia nada en Mercado Libre", async () => {
+    const { logger } = captureLogger();
+    const calls: string[] = [];
+    const refuse = async (): Promise<never> => {
+      throw new Error("el sync no escribe");
+    };
+    const item: MercadoLibreItem = {
+      id: "MLC1234567890",
+      permalink: null,
+      status: "active",
+      subStatus: [],
+      startTime: null,
+      stopTime: null,
+      expirationTime: null,
+      lastUpdated: null,
+      tags: [],
+      listingSource: null,
+      sellerCustomField: null,
+      warnings: [],
+    };
+    const items: MercadoLibreItems = {
+      create: refuse,
+      setStatus: refuse,
+      addDescription: refuse,
+      hideAddress: refuse,
+      getDescription: refuse,
+      findBySellerCustomField: refuse,
+      searchItems: refuse,
+      getLastModeration: async () => {
+        calls.push("getLastModeration");
+        return null;
+      },
+      get: async () => {
+        calls.push("get");
+        return item;
+      },
+    };
+    const portal = createWorkerPortal({
+      catalogRepository: createInMemoryPlatformCatalogRepository(),
+      storage: createInMemoryMediaStorage(),
+      logger,
+      clients: { items },
+    });
+
+    const status = await portal.operationsFor("portal_inmobiliario")?.getStatus?.(
+      { externalId: "MLC1234567890", progress: null },
+      {
+        account: {
+          id: "cuenta",
+          brokerId: "corredor",
+          platform: "portal_inmobiliario",
+          externalAccountId: "8035443",
+          displayName: "VICENTEWOLDE",
+          status: "connected",
+          tokenExpiresAt: null,
+          meta: {},
+          hasCredentials: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        accessToken: async () => "APP_USR-prueba",
+      },
+    );
+
+    expect(status).toMatchObject({ status: "active" });
+    expect(calls).toEqual(["get"]);
   });
 });
