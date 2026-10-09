@@ -50,7 +50,7 @@ Detalle verificado en `docs/integraciones/mercadolibre.md` (2026-10-06, leyendo 
 - **Flujo:** el worker abre el formulario de "Propiedad en venta o alquiler", llena campos, sube fotos y deja todo listo. El estado pasa a `awaiting_manual_confirm` y el operador hace el **clic final**. Luego pega la URL o el sistema la detecta.
 - **Riesgos:** cambia el HTML sin aviso (los selectores se rompen), y Meta puede restringir cuentas por automatización. Mitigaciones:
   - Clic final humano.
-  - Ritmo lento, con pausas aleatorias.
+  - Ritmo lento, con pausas fijas entre acciones (desde ADR-0017: sin variaciones al azar que imiten a una persona).
   - Máximo N avisos por día (configurable).
   - Selectores centralizados en un solo archivo.
   - Capturas de pantalla ante errores.
