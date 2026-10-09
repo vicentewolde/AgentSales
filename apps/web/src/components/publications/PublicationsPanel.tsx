@@ -23,6 +23,7 @@ import {
   portalPublishBlockedReason,
   publishBlockedReason,
   publishButtonText,
+  retireVerb,
   retryBlockedReason,
 } from "./publications.js";
 
@@ -68,6 +69,7 @@ export function PublicationsPanel({
   const freshMode = useFreshPublishMode();
   const [confirming, setConfirming] = useState(false);
   const [requestedAt, setRequestedAt] = useState<Date | null>(null);
+  const [backToReady, setBackToReady] = useState(false);
   const publishButton = useRef<HTMLButtonElement>(null);
   const current = publications.filter((publication) => shown.has(publication.status));
   const past = publications.filter((publication) => !shown.has(publication.status));
@@ -95,6 +97,7 @@ export function PublicationsPanel({
 
   const start = () => {
     setConfirming(false);
+    setBackToReady(false);
     publish.mutate(platform, { onSuccess: () => setRequestedAt(new Date()) });
   };
   // El modo lo pone la API al publicar (D11): con la API en vivo se confirma, y en simulación se
@@ -152,7 +155,7 @@ export function PublicationsPanel({
       {publish.data?.skipped.map((skipped) => (
         <p key={skipped.publicationId} className="mt-2 text-sm text-amber-800">
           El {publicationFormatText(platform, skipped.format)} tiene una publicación activa de un
-          texto anterior: retírala o descártala para publicar el nuevo.
+          texto anterior: {retireVerb(platform)} o descártala para publicar el nuevo.
         </p>
       ))}
       {publish.data !== undefined && publish.data.stranded.length > 0 && (
@@ -178,6 +181,11 @@ export function PublicationsPanel({
           )}
         </>
       )}
+      {backToReady && (
+        <p role="status" className="mt-2 text-sm text-slate-700">
+          Era la última publicada en vivo: la propiedad volvió a lista.
+        </p>
+      )}
       <div className="mt-3 flex flex-col gap-3">
         {current.map((publication) => (
           <PublicationItem
@@ -186,6 +194,7 @@ export function PublicationsPanel({
             listingId={listingId}
             publishMode={publishMode}
             requestedAt={requestedAt}
+            onListingBackToReady={() => setBackToReady(true)}
           />
         ))}
       </div>

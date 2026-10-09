@@ -69,7 +69,8 @@ export function AccountCard({ account, now }: { account: PlatformAccountView; no
       )}
       {account.status === "error" && (
         <p className="mt-3 text-sm text-red-700">
-          No se pudieron leer sus credenciales: reconecta la cuenta.
+          La cuenta quedó con un error (sus credenciales no se pudieron leer o no sirven):
+          reconéctala.
         </p>
       )}
       {account.status !== "revoked" &&

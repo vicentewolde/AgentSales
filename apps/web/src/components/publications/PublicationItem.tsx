@@ -14,6 +14,7 @@ import { PUBLICATION_STATUS_TONE } from "../../labels.js";
 import { useFreshPublishMode } from "../../queries/health.js";
 import {
   isPublishing,
+  type PublicationAction,
   SYNC_REFRESH_MS,
   usePublicationAction,
   usePublicationPoll,
@@ -34,6 +35,23 @@ const BUTTON =
 const DANGER = "rounded-md bg-red-700 px-2 py-1 text-xs font-medium text-white disabled:opacity-50";
 
 type Confirming = "cancel" | "retire" | "live-retry" | "close" | null;
+
+/**
+ * Si un pedido sobre un aviso de Portal se cortó (la API no contestó a tiempo o se cayó a mitad),
+ * el cambio pudo aplicarse en Mercado Libre: no se invita a repetir, como en la CLI
+ * (`OPERATION_UNCONFIRMED`, spec F4-T20). Pedir la lectura se puede repetir: no duplica nada.
+ */
+function cutHint(error: Error, kind: PublicationAction["kind"] | undefined): string | undefined {
+  if (!(error instanceof ApiError) || (error.code !== "TIMEOUT" && error.code !== "UNREACHABLE")) {
+    return undefined;
+  }
+  if (kind === "pause" || kind === "resume" || kind === "close") {
+    return "Pudo haberse aplicado en Mercado Libre: no lo repitas todavía. Usa Actualizar en un momento o recarga la página.";
+  }
+  if (kind === "sync")
+    return "No se supo si la lectura quedó pedida: puedes repetirla (no duplica nada).";
+  return undefined;
+}
 
 /** Una fecha en hora de Chile (el vencimiento en la plataforma). */
 const dateText = (iso: string) =>
@@ -105,11 +123,14 @@ export function PublicationItem({
   listingId,
   publishMode,
   requestedAt: panelRequestedAt,
+  onListingBackToReady,
 }: {
   publication: ListingPublicationView;
   listingId: string;
   publishMode: PublishMode | undefined;
   requestedAt: Date | null;
+  /** Retirar o cerrar la última en vivo devolvió el aviso a `ready`. */
+  onListingBackToReady?: () => void;
 }) {
   const [ownRequestedAt, setOwnRequestedAt] = useState<Date | null>(null);
   const requestedAt =
@@ -162,9 +183,9 @@ export function PublicationItem({
     action.mutate(next, {
       onSuccess: (result) => {
         if (next.kind === "publish") setOwnRequestedAt(new Date());
-        if (result.listingBackToReady) {
-          setNotice("Era la última publicada en vivo: la propiedad volvió a lista.");
-        }
+        // Lo muestra el panel: la publicación pasa a "Descartadas y retiradas" y esta tarjeta se
+        // vuelve a montar ahí, así que un aviso propio se perdería.
+        if (result.listingBackToReady) onListingBackToReady?.();
         if (next.kind === "sync") {
           setNotice(
             result.queued
@@ -364,7 +385,8 @@ export function PublicationItem({
       {confirming === "live-retry" && (
         <div role="alert" className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-sm">
           <p className="font-semibold text-red-800">
-            La API está en vivo: el {format} se publicará de verdad en {channel}.
+            La API está en vivo: el {format} se publicará de verdad en {channel}
+            {portal ? " y usará un cupo de tu paquete" : ""}.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button
@@ -464,16 +486,25 @@ export function PublicationItem({
           {notice}
         </p>
       )}
-      {action.error && <ErrorAlert error={action.error} />}
-      {action.error instanceof ApiError && action.error.code === "ML_AUTH_INVALID" && (
-        <p className="mt-2 text-sm">
-          Reconecta la cuenta de Mercado Libre del corredor en{" "}
-          <Link to="/cuentas" className="underline">
-            Cuentas
-          </Link>
-          .
-        </p>
+      {action.error && (
+        <ErrorAlert
+          error={action.error}
+          {...(cutHint(action.error, action.variables?.kind) === undefined
+            ? {}
+            : { hint: cutHint(action.error, action.variables?.kind) })}
+        />
       )}
+      {action.error instanceof ApiError &&
+        (action.error.code === "ML_AUTH_INVALID" ||
+          action.error.code === "ACCOUNT_NOT_CONNECTED") && (
+          <p className="mt-2 text-sm">
+            Reconecta la cuenta de {portal ? "Mercado Libre" : "Instagram"} del corredor en{" "}
+            <Link to="/cuentas" className="underline">
+              Cuentas
+            </Link>
+            .
+          </p>
+        )}
       {action.error instanceof ApiError &&
         (action.error.code === "ML_ABORTED" || action.error.code === "ML_CONFLICT") &&
         actions.sync && (

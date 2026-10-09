@@ -294,15 +294,8 @@ describe("panel: Cuentas", () => {
       return { ...h, broker, account };
     }
 
-    const mlChannel = async () => {
-      const section = await screen.findByRole("region", { name: /marca/ });
-      const heading = within(section).getByRole("heading", {
-        name: "Mercado Libre (Portal Inmobiliario)",
-      });
-      const channel = heading.parentElement;
-      if (channel === null) throw new Error("falta el bloque de Mercado Libre");
-      return channel;
-    };
+    const mlChannel = () =>
+      screen.findByRole("region", { name: "Mercado Libre (Portal Inmobiliario)" });
 
     it("conectada: el nickname tal cual, vencimiento estimado, tipo y permisos; sin pasos ni tokens", async () => {
       const { renderApp } = await withMercadoLibre();

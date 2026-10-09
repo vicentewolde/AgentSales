@@ -68,7 +68,7 @@ corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) →
 ## Reglas de trabajo (obligatorias)
 1. **Spec primero.** No implementes nada que no esté en el spec aprobado de la fase. Si falta algo, propónlo y actualiza el spec antes.
 2. **Una tarea, o un lote de tareas relacionadas, a la vez** (desde 2026-10-09: tareas de la misma zona van juntas), en su propia rama `<tipo>/<id-tarea(s)>-<resumen>` (ej. `feat/f4-t21-t22-panel-portal`), con commits Conventional Commits. Nunca dos ramas en paralelo: la Mac de 8 GB no aguanta dos `pnpm check` a la vez.
-3. **Planifica antes de editar:** para tareas de más de un archivo, presenta el plan (archivos, pasos, tests) y espera el OK del operador.
+3. **Planifica antes de editar:** para tareas de más de un archivo, presenta el plan (archivos, pasos, tests) y espera el OK del operador, salvo su aprobación permanente (desde 2026-10-01: aplica tu recomendación y cuéntale después; las preguntas de sus cuentas o de producto sí se hacen).
 4. **Tests con el código:** el caso de uso o adaptador nuevo viene con sus tests en el mismo commit. Nunca debilites un test para que pase.
 5. **`pnpm check` en verde** antes de dar una tarea por terminada (una vez; se repite solo si falla por "timed out" de PGlite o del panel). La CI de GitHub corre en un clon limpio y el merge la exige en verde sobre el último commit.
 6. **Documentación viva:** si el código cambia algo documentado, actualiza el doc en el mismo PR. Al terminar la tarea, actualiza `docs/ESTADO.md`.
@@ -90,7 +90,7 @@ Solo datos entregados; nunca inventar. Respetar `show_exact_address`. Precio con
 ## Flujo con skills del proyecto
 - `/estado` — dónde estamos y qué sigue (usar al abrir sesión).
 - `/fase-plan N` — redactar o revisar el spec de la fase N.
-- `/tarea FN-TXX` — ejecutar una tarea del spec de punta a punta.
+- `/tarea FN-TXX` — ejecutar una tarea (o un lote: `/tarea F4-T21 F4-T22`) del spec de punta a punta.
 - `/revisar` — revisión del diff actual con el subagente `revisor`.
 - `/adr "título"` — registrar una decisión.
 - `/fase-cerrar N` — verificar criterios, changelog y tag.
@@ -101,5 +101,5 @@ Subagentes: `arquitecto` (coherencia con ADRs y diseño), `revisor` (calidad, te
 - [ ] Criterios "Hecho cuando" del spec cumplidos
 - [ ] Tests nuevos o actualizados, y `pnpm check` en verde
 - [ ] Docs afectados actualizados, y `docs/ESTADO.md` al día
-- [ ] Commit(s) convencional(es) en la rama de la tarea
+- [ ] Commit(s) convencional(es) en la rama de la tarea o del lote
 - [ ] Resumen al operador: qué cambió, cómo probarlo y siguiente paso

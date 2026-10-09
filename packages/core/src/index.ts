@@ -477,6 +477,7 @@ export {
   prepareContent,
 } from "./use-cases/prepare-content.js";
 export {
+  availablePublicationOperations,
   enqueueSync,
   OPERATION_PLATFORMS,
   OPERATION_SYNC_DELAY_MS,

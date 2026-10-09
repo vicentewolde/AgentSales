@@ -13,6 +13,7 @@ import {
   type PublishMode,
 } from "@agentsales/core";
 import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
+import { PortalIssueList, portalIssuesHint } from "../PortalIssueList.js";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
 import { editBlockedReason } from "../publications/publications.js";
 import { ApprovalBar } from "./ApprovalBar.js";
@@ -176,17 +177,8 @@ function PortalReadiness({ readiness }: { readiness: PortalReadinessView }) {
       className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"
     >
       <p className="font-semibold text-amber-900">Para publicar en Portal falta:</p>
-      <ul className="mt-1 list-disc pl-5 text-amber-900">
-        {readiness.issues.map((issue) => (
-          <li key={`${issue.code}-${issue.field ?? ""}-${issue.message}`}>
-            {issue.message}
-            {issue.field !== null && <span className="text-amber-800"> ({issue.field})</span>}
-          </li>
-        ))}
-      </ul>
-      <p className="mt-1 text-xs text-amber-800">
-        Complétalo en la planilla y vuelve a importarla; el WhatsApp es el de la hoja Corredor.
-      </p>
+      <PortalIssueList issues={readiness.issues} className="text-amber-900" />
+      <p className="mt-1 text-xs text-amber-800">{portalIssuesHint(readiness.issues)}</p>
     </section>
   );
 }

@@ -19,7 +19,10 @@ import type {
   PublicationOperation,
   PublicationOperations,
 } from "./publication-operations.js";
-import { requestPublicationSync } from "./publication-operations.js";
+import {
+  availablePublicationOperations,
+  requestPublicationSync,
+} from "./publication-operations.js";
 import { publishListing } from "./publish-listing.js";
 import { resumePublication } from "./resume-publication.js";
 import { retirePublication } from "./retire-publication.js";
@@ -696,5 +699,52 @@ describe("requestPublicationSync (Actualizar, F4-T19)", () => {
       requestPublicationSync(deps, { publicationId: instagram.id }),
     ).rejects.toMatchObject({ code: "OPERATION_NOT_SUPPORTED" });
     expect(syncJobs(t)).toEqual([]);
+  });
+});
+
+describe("availablePublicationOperations (desde la revisión de F4-T21 y T22)", () => {
+  const of = (
+    status: Publication["status"],
+    options: { platform?: Publication["platform"]; dryRun?: boolean } = {},
+  ) =>
+    availablePublicationOperations({
+      platform: options.platform ?? "portal_inmobiliario",
+      status,
+      dryRun: options.dryRun ?? false,
+    });
+  const none = {
+    pause: false,
+    resume: false,
+    close: false,
+    sync: false,
+    closeNeedsConfirmation: false,
+  };
+
+  it("las mismas reglas que operar y Actualizar: por estado, solo Portal, y lo que pide confirmar", () => {
+    expect(of("published")).toEqual({
+      ...none,
+      pause: true,
+      close: true,
+      sync: true,
+      closeNeedsConfirmation: true,
+    });
+    expect(of("paused")).toEqual({
+      ...none,
+      resume: true,
+      close: true,
+      sync: true,
+      closeNeedsConfirmation: true,
+    });
+    expect(of("published", { dryRun: true })).toEqual({ ...none, pause: true, close: true });
+    for (const status of [
+      "approved",
+      "publishing",
+      "failed",
+      "unpublished",
+      "cancelled",
+    ] as const) {
+      expect(of(status), status).toEqual(none);
+    }
+    expect(of("published", { platform: "instagram" })).toEqual(none);
   });
 });

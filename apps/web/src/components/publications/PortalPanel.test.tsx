@@ -6,10 +6,11 @@ import {
   type PublicationOperations,
   type RemoteStatus,
 } from "@agentsales/core";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { publicationSetup } from "../../../test/harness.js";
+import { type HarnessOptions, publicationSetup } from "../../../test/harness.js";
 import { ApiError } from "../../api/client.js";
+import { SYNC_REFRESH_MS } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 
 // F4-T22: la pestaña Portal en Contenido (spec F4 §4.12), sobre la API en proceso con operaciones
@@ -58,16 +59,25 @@ async function setup(
     publishMode?: "dry-run" | "live";
     approve?: boolean;
     operations?: PublicationOperations;
+    intercept?: HarnessOptions["intercept"];
   } = {},
 ) {
   const fake = fakeOperations();
+  // Lo que el panel mandó en cada POST (el cuerpo), para afirmar `confirmed`.
+  const bodies: Array<{ path: string; body: unknown }> = [];
   const s = await publicationSetup({
     platform: PORTAL,
     publishMode: options.publishMode ?? "live",
     approve: options.approve ?? true,
     operations: options.operations ?? fake.operations,
+    intercept: (method, path, init) => {
+      if (method === "POST" && typeof init?.body === "string") {
+        bodies.push({ path, body: JSON.parse(init.body) });
+      }
+      return options.intercept?.(method, path, init);
+    },
   });
-  return { ...s, calls: fake.calls };
+  return { ...s, calls: fake.calls, bodies };
 }
 
 type Setup = Awaited<ReturnType<typeof setup>>;
@@ -243,6 +253,7 @@ describe("panel: Portal en Contenido", () => {
     const s = await setup();
     await published(s.t, { live: true });
     const panel = await portalTab(s);
+    expect(within(await aviso(panel)).queryByRole("button", { name: /retirad/ })).toBeNull();
 
     fireEvent.click(within(await aviso(panel)).getByRole("button", { name: "Pausar el aviso" }));
     expect(await within(await aviso(panel)).findByText("pausada")).toBeTruthy();
@@ -270,8 +281,14 @@ describe("panel: Portal en Contenido", () => {
     fireEvent.click(within(await aviso(panel)).getByRole("button", { name: "Cerrar el aviso" }));
     fireEvent.click(within(await aviso(panel)).getByRole("button", { name: "Sí, cerrar" }));
 
-    expect(await within(panel).findByText(/la propiedad volvió a lista/)).toBeTruthy();
+    // La publicación pasa a "Descartadas y retiradas" y el aviso sigue a la vista (lo muestra el panel).
+    expect(await within(panel).findByText("Descartadas y retiradas (1)")).toBeTruthy();
+    expect(within(panel).getByText(/la propiedad volvió a lista/)).toBeTruthy();
     expect(s.calls).toEqual(["close"]);
+    expect(s.bodies).toContainEqual({
+      path: `/publications/${publication.id}/close`,
+      body: { confirmed: true },
+    });
     expect((await s.t.publications.get(publication.id))?.status).toBe("unpublished");
   });
 
@@ -316,6 +333,92 @@ describe("panel: Portal en Contenido", () => {
         );
       }
       cleanup();
+    }
+  });
+  it("Cerrar en simulación pregunta sin decir irreversible y no manda confirmed", async () => {
+    const s = await setup({ publishMode: "dry-run" });
+    const publication = await published(s.t, { live: false });
+    const panel = await portalTab(s);
+
+    fireEvent.click(within(await aviso(panel)).getByRole("button", { name: "Cerrar el aviso" }));
+    expect((await aviso(panel)).textContent).toContain("Es una simulación");
+    fireEvent.click(within(await aviso(panel)).getByRole("button", { name: "Sí, cerrar" }));
+
+    expect(await within(panel).findByText("Descartadas y retiradas (1)")).toBeTruthy();
+    expect(s.bodies).toContainEqual({ path: `/publications/${publication.id}/close`, body: {} });
+    expect(s.calls).toEqual([]);
+  });
+
+  it("si el pedido se corta, no invita a repetir: pudo haberse aplicado", async () => {
+    const s = await setup({
+      intercept: (method, path) => {
+        if (method === "POST" && path.endsWith("/pause")) throw new Error("red caída");
+        return undefined;
+      },
+    });
+    await published(s.t, { live: true });
+    const panel = await portalTab(s);
+
+    fireEvent.click(within(await aviso(panel)).getByRole("button", { name: "Pausar el aviso" }));
+    const alert = await within(panel).findByRole("alert");
+    expect(alert.textContent).toContain("Pudo haberse aplicado en Mercado Libre");
+    expect(alert.textContent).not.toContain("vuelve a intentar");
+  });
+
+  it("una en vivo con la API en simulación: lo explica sin dar por hecho cuál está mal", async () => {
+    const s = await setup({ publishMode: "dry-run" });
+    await published(s.t, { live: true });
+    const panel = await portalTab(s);
+
+    fireEvent.click(within(await aviso(panel)).getByRole("button", { name: "Pausar el aviso" }));
+    const alert = await within(panel).findByRole("alert");
+    expect(alert.textContent).toContain("PUBLISH_MODE_MISMATCH");
+    expect(alert.textContent).toContain("no están en el mismo modo");
+    expect(s.calls).toEqual([]);
+  });
+
+  it("Actualizar vuelve a pedir el listado a los 8 s, una vez; pedirlo de nuevo reprograma, no suma", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const s = await setup();
+      await published(s.t, { live: true });
+      const panel = await portalTab(s);
+      const listed = () =>
+        s.requests.filter((r) => r === `GET /listings/${s.t.listingId}/publications`).length;
+      const update = async () => {
+        fireEvent.click(
+          within(await aviso(panel)).getByRole("button", {
+            name: "Actualizar el estado del aviso",
+          }),
+        );
+        await within(panel).findByText(/Se pidió leer el estado/);
+        // Lo que se vuelve a pedir al terminar la acción (no es el temporizador).
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1_000);
+        });
+      };
+
+      await update();
+      const before = listed();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SYNC_REFRESH_MS);
+      });
+      expect(listed()).toBe(before + 1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SYNC_REFRESH_MS * 2);
+      });
+      expect(listed()).toBe(before + 1);
+
+      // Dos pedidos seguidos: el segundo reprograma (el primer temporizador se cancela).
+      await update();
+      await update();
+      const twice = listed();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SYNC_REFRESH_MS * 2);
+      });
+      expect(listed()).toBe(twice + 1);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

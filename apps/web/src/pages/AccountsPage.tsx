@@ -1,6 +1,6 @@
 import type { AccountListResponse, PlatformAccountView } from "@agentsales/api/contracts";
 import type { Broker } from "@agentsales/core";
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { AccountCard } from "../components/accounts/AccountCard.js";
 import { expiryState, visibleAccounts } from "../components/accounts/accounts.js";
 import { ConnectBox } from "../components/accounts/ConnectBox.js";
@@ -40,9 +40,12 @@ function Channel({
   now: Date;
   children: ReactNode;
 }) {
+  const headingId = useId();
   return (
-    <div className="mt-3">
-      <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
+    <section aria-labelledby={headingId} className="mt-3">
+      <h3 id={headingId} className="text-sm font-semibold text-slate-700">
+        {title}
+      </h3>
       {accounts.length === 0 && <p className="mt-1 text-sm text-slate-600">{empty}</p>}
       <div className="mt-2 flex flex-col gap-3">
         {accounts.map((account) => (
@@ -50,7 +53,7 @@ function Channel({
         ))}
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 

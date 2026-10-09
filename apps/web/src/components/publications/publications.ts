@@ -1,12 +1,14 @@
 import type { ContentView, PortalReadinessView, PublicationView } from "@agentsales/api/contracts";
 import {
   ACTIVE_PUBLICATION_STATUSES,
+  availablePublicationOperations,
   canPrepareContent,
   canPublishListing,
   hasContentErrors,
   LISTING_NOT_PREPARABLE_TEXT,
   LISTING_NOT_PUBLISHABLE_TEXT,
   type ListingStatus,
+  OPERATION_PLATFORMS,
   PENDING_PUBLICATION_STATUSES,
   PLATFORM_TEXT,
   type Platform,
@@ -26,6 +28,10 @@ export function prepareBlockedReason(publications: readonly PublicationView[]): 
     : null;
 }
 
+/** Cómo se saca de circulación una publicación activa: en Portal se cierra; en Instagram se retira. */
+export const retireVerb = (platform: Platform) =>
+  OPERATION_PLATFORMS.has(platform) ? "ciérrala" : "retírala";
+
 /** Por qué no se puede editar un texto: tiene una publicación activa (pendiente o publicada). */
 export function editBlockedReason(
   content: ContentView,
@@ -34,7 +40,7 @@ export function editBlockedReason(
   return publications.some(
     (publication) => publication.contentId === content.id && active.has(publication.status),
   )
-    ? "Este texto tiene publicaciones activas: es el registro de lo aprobado. Para cambiarlo, descarta o retira sus publicaciones."
+    ? `Este texto tiene publicaciones activas: es el registro de lo aprobado. Para cambiarlo, descarta o ${OPERATION_PLATFORMS.has(content.platform) ? "cierra" : "retira"} sus publicaciones.`
     : null;
 }
 
@@ -110,17 +116,16 @@ export function retryBlockedReason(
  * (solo en vivo: en simulación no hay nada que leer; spec F4 §4.9).
  */
 export function publicationActions(publication: PublicationView) {
-  const portal = publication.platform === "portal_inmobiliario";
+  const { pause, resume, close, sync } = availablePublicationOperations(publication);
   const { status } = publication;
-  const onPlatform = status === "published" || status === "paused";
   return {
     retry: status === "failed",
     cancel: status === "approved" || status === "failed",
-    retire: !portal && status === "published",
-    pause: portal && status === "published",
-    resume: portal && status === "paused",
-    close: portal && onPlatform,
-    sync: portal && onPlatform && !publication.dryRun,
+    retire: !OPERATION_PLATFORMS.has(publication.platform) && status === "published",
+    pause,
+    resume,
+    close,
+    sync,
   };
 }
 

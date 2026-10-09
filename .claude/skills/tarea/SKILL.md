@@ -28,7 +28,7 @@ Lee los docs que la tarea toca (modelo de datos, plataformas, convenciones, ADRs
 - **Sin red:** cómo se comporta la tarea si Neon, R2 o una API externa no responden. Qué ve el operador (un mensaje claro, no un stack trace), que el proceso no se caiga, y que los logs no se inunden (los errores repetidos se resumen, como en el worker de F0-T10)
 - Dudas o supuestos
 
-**Espera su OK antes de editar**, salvo que la tarea sea trivial (1–2 archivos sin decisiones).
+**Espera su OK antes de editar**, salvo que la tarea sea trivial (1–2 archivos sin decisiones) o que el operador haya dado aprobación permanente (la dio el 2026-10-01: aplica tu recomendación y cuéntale después; las preguntas de sus cuentas o de producto sí se hacen).
 
 ## 3. Implementar
 - En incrementos pequeños; escribe los tests del comportamiento junto con el código (o antes).
@@ -51,13 +51,13 @@ Lee los docs que la tarea toca (modelo de datos, plataformas, convenciones, ADRs
 
 ## 6. Commit
 - Uno o más commits Conventional Commits (tipo y ámbito en inglés, descripción en español).
-- **`push`, PR y merge solo con autorización explícita del operador para esta rama.** Un permiso anterior no sirve para otra rama.
+- **`push`, PR y merge:** desde el 2026-10-01 el operador los autorizó en cada rama sin preguntar, salvo que diga lo contrario. El merge, solo con `CI / check` en verde sobre el último commit.
 - El repo es **público**: nada de secretos, `.env`, tokens ni datos reales de clientes en commits, PRs ni capturas.
 
 ## 7. Cerrar
 Responde al operador con:
 1. **Qué se hizo** (3–5 viñetas)
 2. **Cómo probarlo** (comandos exactos)
-3. **Siguiente paso:** `/revisar`, luego push y PR. Ofrece ejecutar tú `git push -u origin <rama>` y `gh pr create` con título y descripción que enlacen la tarea del spec, y espera su autorización.
+3. **Siguiente paso:** el PR (push con `git push origin <rama>`, por nombre: otra sesión puede usar la carpeta) y `/revisar` con `revisor` y `arquitecto` en paralelo; luego las correcciones y el merge.
 
-**Merge:** `main` está protegida y el merge exige el check `CI / check` en verde sobre el último commit de la rama. Revísalo con el estado del PR (`gh pr checks <n>` o `gh pr view <n> --json statusCheckRollup`), una vez cuando el operador lo pida, sin sondear en bucle. Si está en verde, haz el merge solo con su autorización explícita; si falla, lee el log, arréglalo en la rama y vuelve a simular la CI.
+**Merge:** `main` está protegida y el merge exige el check `CI / check` en verde sobre el último commit de la rama. Espéralo en segundo plano (`gh run watch` sobre el run del sha exacto del último commit), sin sondear en bucle. Si está en verde, haz el merge; si falla, lee el log, arréglalo en la rama y vuelve a hacer push.

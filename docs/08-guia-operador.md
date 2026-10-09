@@ -40,7 +40,7 @@ git tag -a v0.0.1 -m "F0"        # marcar el cierre de fase
 git push origin --tags
 ```
 
-Reglas: `main` solo recibe cambios por PR; una rama por tarea; nunca `--force` sobre `main`.
+Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tareas relacionadas; nunca `--force` sobre `main`.
 
 ## Atajos útiles de Claude Code
 - **Shift+Tab**: cambia de modo; incluye el **modo plan**, en el que Claude solo analiza y no edita. Útil para preguntas de diseño.

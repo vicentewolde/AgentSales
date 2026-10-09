@@ -146,14 +146,14 @@ Una subruta (por ejemplo `./contracts` y `./testing` en `apps/api`, `./testing` 
 - **LLM:** los tests de core usan `createInMemoryLlmProvider` (`@agentsales/core/testing`), con respuestas en orden. El adaptador `claude-cli` se prueba con un ejecutable falso que se genera en el temporal (`packages/llm/test/fake-claude.ts`) e imita los sobres de la CLI, incluido uno real de sesión vencida. **Guardia:** `vitest.config.ts` fija `CLAUDE_CLI_PATH` a un ejecutable que no existe, así ningún test llama a la CLI real. La prueba con la CLI real es manual (`pnpm llm:smoke`). Evaluación de prompts aparte con `pnpm eval:content` (F2-T16).
 - Ubicación: `src/**/*.test.ts(x)` o `test/**/*.test.ts(x)` dentro de cada paquete. Es el patrón que busca `vitest.config.ts`; un test fuera de él no corre.
 - Tope por test: 20 s (`testTimeout` en `vitest.config.ts`, desde F2-T09). Los tests de medios cargan el procesador y atrasaban a otros; el tope solo da margen.
-- `pnpm check` = lint + typecheck + tests. Debe pasar antes de cada commit.
+- `pnpm check` = lint + typecheck + tests. Debe pasar antes de cada commit (una vez; desde 2026-10-09 se repite solo si fallan pruebas por "timed out" de PGlite o del panel).
 
 ## Git
 
 - Rama principal: `main`, siempre estable.
-- Una rama por tarea: `<tipo>/<id-tarea>-<resumen>`. Ejemplo: `feat/f1-t03-import-xlsx`.
+- Una rama por tarea o por lote de tareas relacionadas (desde 2026-10-09): `<tipo>/<id-tarea(s)>-<resumen>`. Ejemplos: `feat/f1-t03-import-xlsx`, `feat/f4-t21-t22-panel-portal`.
 - **Conventional Commits:** `feat(importers): importa hoja Propiedades desde xlsx`. Tipos: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `build`, `ci`.
-- Un PR por tarea, con squash merge a `main`. La descripción del PR enlaza la tarea del spec.
+- Un PR por tarea o por lote, con squash merge a `main`. La descripción del PR enlaza las tareas del spec.
 - **`main` está protegida:** todo cambio entra por PR, y el merge exige el check `check` de `.github/workflows/ci.yml` en verde sobre el último commit, con la rama al día respecto de `main`. La regla aplica también a los administradores, y bloquea el force push y el borrado.
 - **La CI** instala con el lockfile congelado y corre `pnpm check`. También verifica que `pnpm db:generate` no produzca cambios y hace el build del panel. No usa secretos.
 - **El repositorio es público:** nada de secretos, datos de clientes ni capturas con datos reales en commits, issues o PRs.

@@ -50,7 +50,11 @@ export type HarnessOptions = {
    * Responde en lugar de la API (devolver `undefined` deja pasar la petición). Lanzar simula una
    * falla de red; una promesa que no termina, una API colgada.
    */
-  intercept?: (method: string, path: string) => Promise<Response> | Response | undefined;
+  intercept?: (
+    method: string,
+    path: string,
+    init?: RequestInit,
+  ) => Promise<Response> | Response | undefined;
 };
 
 /**
@@ -89,7 +93,7 @@ export function harness(options: HarnessOptions = {}) {
       const path = url.pathname.replace(/^\/api/, "") + url.search;
       const method = init?.method ?? "GET";
       requests.push(`${method} ${path}`);
-      const intercepted = options.intercept?.(method, path);
+      const intercepted = options.intercept?.(method, path, init);
       if (intercepted !== undefined) return intercepted;
       // El navegador manda `Origin` en un POST: sin él, `csrf()` rechaza el multipart.
       const headers = new Headers(init?.headers);

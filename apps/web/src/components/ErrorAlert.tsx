@@ -1,4 +1,5 @@
 import { ApiError } from "../api/client.js";
+import { PortalIssueList, portalIssuesHint } from "./PortalIssueList.js";
 
 /** Qué hacer ante los errores de la API que tienen arreglo del lado del operador. */
 function hintFor(error: Error): string | null {
@@ -12,9 +13,13 @@ function hintFor(error: Error): string | null {
   if (code === "QUEUE_UNAVAILABLE")
     return "Arranca el worker (pnpm dev): retoma lo que quedó en curso al arrancar.";
   if (code === "PUBLISH_MODE_MISMATCH")
-    return "Está publicada en vivo: reinicia la API en vivo (PUBLISH_MODE=live pnpm dev) si lo decides tú.";
+    return "La publicación y la API no están en el mismo modo (simulación o en vivo): arranca la API en vivo (PUBLISH_MODE=live pnpm dev) solo si lo decides tú.";
   if (code === "PORTAL_NOT_READY")
-    return "Complétalo en la planilla y vuelve a importarla; el WhatsApp es el de la hoja Corredor.";
+    return portalIssuesHint(error instanceof ApiError ? (error.issues ?? []) : []);
+  if (code === "PUBLISHER_NOT_CONFIGURED")
+    return "Revisa ML_APP_ID y ML_CLIENT_SECRET en el .env (pnpm -s cli doctor) y reinicia pnpm dev.";
+  if (code === "CLOSE_NOT_CONFIRMED")
+    return "La página estaba desactualizada: recárgala y vuelve a cerrar.";
   return null;
 }
 
@@ -28,29 +33,27 @@ function IssueList({ error }: { error: Error }) {
   return (
     <>
       <p className="font-semibold text-red-800">Falta información para publicar en Portal:</p>
-      <ul className="mt-1 list-disc pl-5 text-sm text-red-800">
-        {issues.map((issue) => (
-          <li key={`${issue.code}-${issue.field ?? ""}-${issue.message}`}>
-            {issue.message}
-            {issue.field !== null && <span className="text-red-700"> ({issue.field})</span>}
-          </li>
-        ))}
-      </ul>
+      <PortalIssueList issues={issues} className="text-red-800" />
     </>
   );
 }
 
-/** Un error de la API, con su sugerencia y, si se puede, un botón para reintentar. */
+/**
+ * Un error de la API, con su sugerencia y, si se puede, un botón para reintentar. `hint` reemplaza
+ * la sugerencia por código cuando quien llama sabe más (un corte al operar un aviso de Portal).
+ */
 export function ErrorAlert({
   error,
   onRetry,
   retrying = false,
+  hint: ownHint,
 }: {
   error: Error;
   onRetry?: () => void;
   retrying?: boolean;
+  hint?: string;
 }) {
-  const hint = hintFor(error);
+  const hint = ownHint ?? hintFor(error);
   return (
     <div role="alert" className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4">
       <IssueList error={error} />
