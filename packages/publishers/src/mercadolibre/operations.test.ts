@@ -133,15 +133,18 @@ describe("createPortalOperations · pausar, reactivar y cerrar", () => {
     for (const request of requests) expect(request.rawBody).not.toContain("deleted");
   });
 
-  it("sin el contacto guardado, o con el progreso de otro ítem: PORTAL_PROGRESS_UNUSABLE sin llamar", async () => {
+  it("sin el contacto guardado, ilegible o de otro ítem: PORTAL_PROGRESS_UNUSABLE sin llamar", async () => {
     usePut();
     const { operations, ctx, tokenCalls } = client();
     const { sellerContact: _none, ...withoutContact } = PROGRESS;
+    // `publish` guarda el `itemId` antes de devolver: sin él, el progreso no es de este ítem.
+    const { itemId: _id, ...withoutItemId } = PROGRESS;
     const cases: Array<[unknown, string]> = [
-      [null, "missing_contact"],
-      [withoutContact, "missing_contact"],
+      [null, "missing"],
+      [withoutContact, "missing"],
       [{ pictureIds: "no es una lista" }, "unreadable"],
       [{ ...PROGRESS, itemId: "MLC9999999999" }, "other_item"],
+      [withoutItemId, "other_item"],
     ];
     for (const [progress, reason] of cases) {
       for (const operation of [operations.pause, operations.resume, operations.close]) {
@@ -156,14 +159,22 @@ describe("createPortalOperations · pausar, reactivar y cerrar", () => {
     expect(tokenCalls).toEqual([]);
   });
 
-  it("un progreso sin itemId (encontrado por la búsqueda) sirve si trae el contacto", async () => {
-    usePut();
+  it("cada problema del progreso tiene su propio mensaje", async () => {
     const { operations, ctx } = client();
-    const { itemId: _found, ...withoutItemId } = PROGRESS;
+    const messageOf = async (progress: unknown) =>
+      (
+        (await operations
+          .close({ externalId: ITEM_ID, progress }, ctx)
+          .catch((e: unknown) => e)) as Error
+      ).message;
 
-    expect(
-      await operations.pause({ externalId: ITEM_ID, progress: withoutItemId }, ctx),
-    ).toMatchObject({ status: "paused" });
+    const messages = new Set([
+      await messageOf(null),
+      await messageOf({ pictureIds: 1 }),
+      await messageOf({ ...PROGRESS, itemId: "MLC9999999999" }),
+    ]);
+    expect(messages.size).toBe(3);
+    expect(await messageOf({ pictureIds: 1 })).toContain("no se puede leer");
   });
 
   it("un 401 refresca una vez con el token rechazado y repite solo esa llamada", async () => {
@@ -314,6 +325,12 @@ describe("createPortalOperations · getStatus", () => {
       code: "NEW_FILTER_2027",
       message: "Mercado Libre la pausó por moderación (NEW_FILTER_2027)",
     });
+    // Un nombre que existe en los objetos de JavaScript no da una función como texto.
+    useModeration(() => HttpResponse.json([{ name: "constructor" }]));
+    expect((await operations.getStatus(REF, ctx)).reason).toEqual({
+      code: "constructor",
+      message: "Mercado Libre la pausó por moderación (constructor)",
+    });
     useModeration(() => HttpResponse.json([{ name: "con espacios y datos" }]));
     expect((await operations.getStatus(REF, ctx)).reason).toEqual({
       code: "unknown",
@@ -373,6 +390,28 @@ describe("createPortalOperations · getStatus", () => {
     });
     await expect(aborted.operations.getStatus(REF, aborted.ctx)).rejects.toMatchObject({
       code: "ML_ABORTED",
+    });
+  });
+
+  it("si al leer el motivo el refresco del token es rechazado (invalid_grant), sube: no se esconde", async () => {
+    useItem(itemBody("paused", { tags: [MERCADOLIBRE_MODERATION_TAG] }));
+    useModeration(unauthorized);
+    const ctx: PlatformContext = {
+      account: ACCOUNT,
+      accessToken: async (opts = {}) => {
+        if (opts.rejectedToken !== undefined) {
+          throw new AppError("ML_AUTH_INVALID", "refresco rechazado", {
+            details: { error: "invalid_grant" },
+          });
+        }
+        return "APP_USR-token-1";
+      },
+    };
+    const { operations } = client();
+
+    await expect(operations.getStatus(REF, ctx)).rejects.toMatchObject({
+      code: "ML_AUTH_INVALID",
+      details: { error: "invalid_grant" },
     });
   });
 

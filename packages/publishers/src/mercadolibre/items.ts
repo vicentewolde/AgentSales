@@ -1,4 +1,4 @@
-import { isAppError, type PortalSellerContact } from "@agentsales/core";
+import { isAppError, type PortalSellerContact, REMOTE_REASON_CODE } from "@agentsales/core";
 import { z } from "zod";
 import { MERCADOLIBRE_API_ORIGIN, MERCADOLIBRE_REQUEST_TIMEOUT_MS } from "./constants.js";
 import { MAX_CAUSES, MERCADOLIBRE_ERRORS, type MercadoLibreCause, parseCauses } from "./errors.js";
@@ -321,7 +321,7 @@ const moderationsSchema = z.array(
   z.object({
     name: z
       .string()
-      .regex(/^[A-Za-z0-9_.-]{1,100}$/)
+      .regex(REMOTE_REASON_CODE)
       .nullish()
       .catch(null)
       .transform((value) => value ?? null),

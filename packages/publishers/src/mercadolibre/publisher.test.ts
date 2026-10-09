@@ -1080,6 +1080,8 @@ describe("createPortalPublisher · preflight", () => {
                 message: "Price 5800 below suggested for Ñuñoa",
               },
               { cause_id: 508, type: "warning", message: "Picture firma-secreta" },
+              { code: "item.new_rule", cause_id: 4321, type: "warning", message: "New rule" },
+              { type: "warning", message: "Sin código" },
             ],
           }),
       },
@@ -1090,13 +1092,16 @@ describe("createPortalPublisher · preflight", () => {
 
     expect(result).toEqual({
       ok: true,
+      // Las notas fijas primero (el intento guarda como mucho 20) y después las advertencias.
       notes: [
+        PORTAL_PICTURES_NOT_CHECKED_NOTE,
         "Mercado Libre advirtió: el precio está bajo el mínimo o sobre el máximo (código item.price.invalid, causa 109)",
         "Mercado Libre advirtió: una foto subida quedó con error en Mercado Libre: hay que subirla de nuevo (causa 508)",
-        PORTAL_PICTURES_NOT_CHECKED_NOTE,
+        "Mercado Libre advirtió: otra causa (código item.new_rule, causa 4321)",
+        "Mercado Libre advirtió: otra causa (sin código)",
       ],
     });
-    expect(JSON.stringify(result)).not.toMatch(/below|firma-secreta|Picture/);
+    expect(JSON.stringify(result)).not.toMatch(/below|firma-secreta|Picture|New rule|Sin código/);
   });
 
   it("lo que la revisión local rechaza es ok: false sin llamar a validate", async () => {

@@ -17,7 +17,7 @@ import {
 } from "@agentsales/core";
 import type { PortalCatalog } from "./catalog.js";
 import {
-  describeCause,
+  describeKnownCause,
   hasMercadoLibreCause,
   itemCreationOutcome,
   MERCADOLIBRE_ERRORS,
@@ -120,7 +120,10 @@ function causeRef(cause: MercadoLibreCause): string {
  * un texto propio en español con el código y el `cause_id`, nunca el `message` de Mercado Libre.
  */
 export const warningNotes = (warnings: readonly MercadoLibreCause[]) =>
-  warnings.map((cause) => `Mercado Libre advirtió: ${describeCause(cause)} (${causeRef(cause)})`);
+  warnings.map(
+    (cause) =>
+      `Mercado Libre advirtió: ${describeKnownCause(cause) ?? "otra causa"} (${causeRef(cause)})`,
+  );
 
 /**
  * La advertencia de `preflight` sin cupo (D14 del spec F4, seguimiento de ADR-0016): sin un paquete
@@ -188,7 +191,9 @@ export function createPortalPublisher(options: PortalPublisherOptions): Publishe
       const catalog = await resolvePortalItemCatalog(listing, options.catalog, tokenCtx);
       const built = buildPortalItemWithSources(input, catalog, { now });
       if (!built.ok) return { ok: false, issues: built.issues };
-      const notes = [...built.item.notes];
+      // Las notas fijas van primero: el intento guarda como mucho 20 y no deben perderse.
+      const notes = [PORTAL_PICTURES_NOT_CHECKED_NOTE];
+      const advice: string[] = [...built.item.notes];
       try {
         const result = await withMercadoLibreToken(tokenCtx, (token, signal) =>
           options.validator.validate(
@@ -198,13 +203,12 @@ export function createPortalPublisher(options: PortalPublisherOptions): Publishe
           ),
         );
         if (!result.valid) return { ok: false, issues: result.issues };
-        notes.push(...warningNotes(result.warnings));
+        advice.push(...warningNotes(result.warnings));
       } catch (error) {
         if (!isAppError(error) || error.code !== "ML_NO_QUOTA") throw error;
-        notes.push(PORTAL_NO_QUOTA_NOTE);
+        notes.unshift(PORTAL_NO_QUOTA_NOTE);
       }
-      notes.push(PORTAL_PICTURES_NOT_CHECKED_NOTE);
-      return { ok: true, notes };
+      return { ok: true, notes: [...notes, ...advice] };
     },
 
     async publish(input: PublishInput, ctx: PublishContext): Promise<PublishResult> {
