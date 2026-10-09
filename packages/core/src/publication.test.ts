@@ -164,6 +164,22 @@ describe("estado remoto (F4, ADR-0015)", () => {
     expect(syncPayloadSchema.parse({ remote })).toEqual({ remote });
   });
 
+  it("el motivo de una pausa por moderación es opcional: código y texto propio", () => {
+    const paused = {
+      ...remote,
+      status: "paused",
+      reason: { code: "ABANDONED_ITEM_REX_DEN", message: "La reportaron como no disponible" },
+    };
+    expect(remoteStateSchema.parse(paused)).toEqual(paused);
+    for (const reason of [
+      { code: "con espacios", message: "x" },
+      { code: "X", message: "" },
+      { code: "X" },
+    ]) {
+      expect(remoteStateSchema.safeParse({ ...remote, reason }).success).toBe(false);
+    }
+  });
+
   it("checkRemoteState deja pasar null y rechaza lo que no calza", () => {
     expect(checkRemoteState(null)).toBeNull();
     expect(checkRemoteState(remote)).toEqual(remote);

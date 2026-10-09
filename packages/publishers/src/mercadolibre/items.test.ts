@@ -608,6 +608,57 @@ describe("createMercadoLibreItems", () => {
     await expectBearer();
   });
 
+  it("getLastModeration: GET /moderations/last_moderation/{id}-ITM y solo el nombre de la primera", async () => {
+    server.use(
+      http.get(`${API}/moderations/last_moderation/${ITEM_ID}-ITM`, () =>
+        HttpResponse.json([
+          {
+            name: "PAUSED_PREVENTION_PRICE",
+            id: "7123400818",
+            date_created: "2022-10-25 15:57:46.0",
+            wordings: [{ type: "REASON", value: "La pausamos por el precio" }],
+            evidence: [{ text_matched: "El precio alertado es 77393.72", section_name: "item" }],
+          },
+          { name: "OTRA_ANTERIOR" },
+        ]),
+      ),
+    );
+
+    expect(await items.getLastModeration(ACCESS, ITEM_ID)).toEqual({
+      name: "PAUSED_PREVENTION_PRICE",
+    });
+    const [request] = await recorded();
+    expect(request?.method).toBe("GET");
+    await expectBearer();
+  });
+
+  it("getLastModeration: null sin moderación (404 o lista vacía); un nombre raro queda en null", async () => {
+    const respond = (response: () => Response) =>
+      server.use(http.get(`${API}/moderations/last_moderation/${ITEM_ID}-ITM`, response));
+
+    respond(() => HttpResponse.json({ message: "not found" }, { status: 404 }));
+    expect(await items.getLastModeration(ACCESS, ITEM_ID)).toBeNull();
+    respond(() => HttpResponse.json([]));
+    expect(await items.getLastModeration(ACCESS, ITEM_ID)).toBeNull();
+    respond(() => HttpResponse.json([{ name: "con espacios" }, { name: "SEGUNDA" }]));
+    expect(await items.getLastModeration(ACCESS, ITEM_ID)).toEqual({ name: null });
+    respond(() => HttpResponse.json({ name: "NO_ES_LISTA" }));
+    await expect(items.getLastModeration(ACCESS, ITEM_ID)).rejects.toMatchObject({
+      code: "ML_UNEXPECTED_RESPONSE",
+    });
+    respond(() => HttpResponse.json({ message: "boom" }, { status: 500 }));
+    await expect(items.getLastModeration(ACCESS, ITEM_ID)).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+    });
+  });
+
+  it("getLastModeration con un id que no es de Mercado Libre no llama", async () => {
+    await expect(items.getLastModeration(ACCESS, "MLC1/../users")).rejects.toMatchObject({
+      code: "ML_ID_INVALID",
+    });
+    expect(await recorded()).toHaveLength(0);
+  });
+
   describe("nunca borra ítems", () => {
     it("setStatus no acepta otro estado (deleted), ni con un cast: no llama", async () => {
       for (const status of ["deleted", "DELETED", "inactive"]) {
@@ -629,6 +680,7 @@ describe("createMercadoLibreItems", () => {
         ),
         http.put(`${API}/items/${ITEM_ID}/address_line_by_reference`, () => HttpResponse.json({})),
         http.get(`${API}/users/${USER_ID}/items/search`, () => HttpResponse.json({ results: [] })),
+        http.get(`${API}/moderations/last_moderation/${ITEM_ID}-ITM`, () => HttpResponse.json([])),
       );
 
       await items.create(ACCESS, { title: "x" });
@@ -640,13 +692,14 @@ describe("createMercadoLibreItems", () => {
       await items.addDescription(ACCESS, ITEM_ID, "x");
       await items.hideAddress(ACCESS, ITEM_ID);
       await items.findBySellerCustomField(ACCESS, USER_ID, PUBLICATION_ID);
+      await items.getLastModeration(ACCESS, ITEM_ID);
 
-      expect(await recorded()).toHaveLength(9);
+      expect(await recorded()).toHaveLength(10);
       for (const request of await recorded()) {
         expect(request.method).not.toBe("DELETE");
         expect(request.rawBody ?? "").not.toContain("deleted");
       }
-      for (const file of ["items.ts", "http.ts", "pictures.ts"]) {
+      for (const file of ["items.ts", "http.ts", "pictures.ts", "operations.ts", "publisher.ts"]) {
         const source = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
         expect(source).not.toMatch(/"DELETE"|deleted:\s*true|"deleted"/);
       }

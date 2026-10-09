@@ -83,6 +83,15 @@ export type MercadoLibreItemSearch = {
   availableFilters: MercadoLibreSearchFilter[];
 };
 
+/**
+ * La última moderación de un ítem (`GET /moderations/last_moderation/{id}-ITM`, doc "Moderaciones
+ * con pausado", leída el 2026-10-08): solo su `name` (`ABANDONED_ITEM_REX_DEN`, …), el filtro que
+ * la generó. Sus textos (`REASON`, `REMEDY`) y la evidencia no se guardan: son de Mercado Libre y
+ * la evidencia puede traer datos del aviso (el precio). `name: null` si no vino o no tiene forma de
+ * identificador.
+ */
+export type MercadoLibreModeration = { name: string | null };
+
 export type MercadoLibreItemSearchQuery = {
   status?: MercadoLibreSearchStatus;
   includeFilters?: boolean;
@@ -90,10 +99,11 @@ export type MercadoLibreItemSearchQuery = {
 
 /**
  * Ítems de Mercado Libre (spec F4 §4.8, nota §4): crear, leer, cambiar el estado, cargar la
- * descripción, ocultar la dirección y buscar por `seller_custom_field`. **No borra**: no hay
- * método de borrado ni la marca de borrado del ítem, y el estado solo puede ser `paused`, `active`
- * o `closed` (cerrar basta, spec F4 §3). Errores: los `ML_*` de `mercadoLibreRequest`, más
- * `ML_ID_INVALID` si un id que va en la ruta no tiene la forma de Mercado Libre (no se llama).
+ * descripción, ocultar la dirección, leer la última moderación y buscar por `seller_custom_field`.
+ * **No borra**: no hay método de borrado ni la marca de borrado del ítem, y el estado solo puede
+ * ser `paused`, `active` o `closed` (cerrar basta, spec F4 §3). Errores: los `ML_*` de
+ * `mercadoLibreRequest`, más `ML_ID_INVALID` si un id que va en la ruta no tiene la forma de
+ * Mercado Libre (no se llama).
  */
 export interface MercadoLibreItems {
   /**
@@ -151,6 +161,15 @@ export interface MercadoLibreItems {
     itemId: string,
     options?: MercadoLibreCallOptions,
   ): Promise<void>;
+  /**
+   * `GET /moderations/last_moderation/{id}-ITM`: la última moderación del ítem, para explicar una
+   * pausa (spec F4 §4.9). `null` si no tiene (404 o una lista vacía, NO VERIFICADO). Solo lee.
+   */
+  getLastModeration(
+    accessToken: string,
+    itemId: string,
+    options?: MercadoLibreCallOptions,
+  ): Promise<MercadoLibreModeration | null>;
   /**
    * `GET /users/{id}/items/search?sku=…`: los ids de los ítems del vendedor con ese
    * `seller_custom_field` (doc "Ítems y Búsquedas", leída el 2026-10-07). Sin `status`, sin filtro
@@ -297,6 +316,17 @@ const itemSearchSchema = z
       availableFilters: search.available_filters,
     }),
   );
+/** La respuesta es una lista (la doc muestra una sola entrada): se toma la primera. */
+const moderationsSchema = z.array(
+  z.object({
+    name: z
+      .string()
+      .regex(/^[A-Za-z0-9_.-]{1,100}$/)
+      .nullish()
+      .catch(null)
+      .transform((value) => value ?? null),
+  }),
+);
 const descriptionSchema = z.object({
   plain_text: z
     .string()
@@ -391,6 +421,28 @@ export function createMercadoLibreItems(options: MercadoLibreHttpOptions = {}): 
         throw error;
       }
       return parseBody("getDescription", descriptionSchema, response).plain_text;
+    },
+
+    async getLastModeration(accessToken, itemId, callOptions) {
+      // El id va en la ruta con el sufijo `-ITM` (la referencia de moderación de un ítem).
+      if (!ITEM_ID.test(itemId)) throw MERCADOLIBRE_ERRORS.invalidId("item");
+      const path = `/moderations/last_moderation/${itemId}-ITM`;
+      let response: unknown;
+      try {
+        response = await call(
+          "getLastModeration",
+          "GET",
+          path,
+          accessToken,
+          undefined,
+          callOptions,
+        );
+      } catch (error) {
+        if (isAppError(error) && error.details?.httpStatus === 404) return null;
+        throw error;
+      }
+      const [last] = parseBody("getLastModeration", moderationsSchema, response);
+      return last === undefined ? null : { name: last.name };
     },
 
     async addDescription(accessToken, itemId, plainText, callOptions) {

@@ -1,6 +1,8 @@
 import {
   type AbortSignalLike,
   checkPublishInput,
+  isAppError,
+  type PlatformContext,
   type PortalProgress,
   type PublishContext,
   type Publisher,
@@ -12,7 +14,6 @@ import {
   platformContextOf,
   portalProgressSchema,
   publishInputInvalid,
-  type RemoteStatus,
 } from "@agentsales/core";
 import type { PortalCatalog } from "./catalog.js";
 import {
@@ -21,6 +22,7 @@ import {
   itemCreationOutcome,
   MERCADOLIBRE_ERRORS,
   MERCADOLIBRE_PICTURE_ID_CAUSES,
+  type MercadoLibreCause,
 } from "./errors.js";
 import type { MercadoLibreCallOptions } from "./http.js";
 import {
@@ -30,19 +32,32 @@ import {
   resolvePortalItemCatalog,
 } from "./item.js";
 import type { MercadoLibreItem, MercadoLibreItems } from "./items.js";
+import { createPortalOperations, remoteStatusOf } from "./operations.js";
 import type { MercadoLibrePictures } from "./pictures.js";
 import { type MercadoLibreTokenContext, withMercadoLibreToken } from "./token.js";
+import type { MercadoLibreValidator } from "./validate.js";
 
 /** Lo que `validate` revisa sin catálogo (spec F4 §4.5); la hoja real lo afina en `buildPortalItem`. */
 export const PORTAL_LIMITS = { titleMaxLength: 60, picturesMax: 30 } as const;
 
 export type PortalPublisherOptions = {
-  /** Solo lo que publica: crear, leer, la descripción y la búsqueda para retomar. */
+  /**
+   * Lo que publica (crear, leer, la descripción y la búsqueda para retomar) y lo que usan las
+   * operaciones (el estado y la última moderación).
+   */
   items: Pick<
     MercadoLibreItems,
-    "create" | "get" | "getDescription" | "addDescription" | "findBySellerCustomField"
+    | "create"
+    | "get"
+    | "getDescription"
+    | "addDescription"
+    | "findBySellerCustomField"
+    | "setStatus"
+    | "getLastModeration"
   >;
   pictures: MercadoLibrePictures;
+  /** `POST /items/validate`: lo usa solo `preflight` (ADR-0016). */
+  validator: MercadoLibreValidator;
   catalog: Pick<PortalCatalog, "leafCategory" | "attributes" | "location">;
   /**
    * Los bytes de una foto fijada en la publicación (la variante `pi_4x3`, JPEG): el worker la lee
@@ -91,22 +106,32 @@ export function validatePortalInput(input: PublishInput): PublishValidation {
   return issues.length === 0 ? { ok: true } : { ok: false, issues };
 }
 
-/** El estado de un ítem como lo guarda core (`remote_state`, sin `checkedAt`, que pone core). */
-export function remoteStatusOf(item: MercadoLibreItem): RemoteStatus {
-  return {
-    status: item.status,
-    subStatus: item.subStatus,
-    stopTime: item.stopTime,
-    expirationTime: item.expirationTime,
-  };
+/** El código y el `cause_id` de una causa, como van en una nota: `(código X, causa N)`. */
+function causeRef(cause: MercadoLibreCause): string {
+  const parts = [
+    ...(cause.code === null ? [] : [`código ${cause.code}`]),
+    ...(cause.causeId === null ? [] : [`causa ${cause.causeId}`]),
+  ];
+  return parts.length === 0 ? "sin código" : parts.join(", ");
 }
 
-/** Las advertencias del ítem creado, con texto propio (nunca el `message` de Mercado Libre). */
-const warningNotes = (item: MercadoLibreItem) =>
-  item.warnings.map(
-    (cause) =>
-      `Mercado Libre advirtió: ${describeCause(cause)} (${cause.code ?? `causa ${cause.causeId ?? "sin código"}`})`,
-  );
+/**
+ * Las advertencias de Mercado Libre (al crear el ítem o en `validate`) como notas para la bitácora:
+ * un texto propio en español con el código y el `cause_id`, nunca el `message` de Mercado Libre.
+ */
+export const warningNotes = (warnings: readonly MercadoLibreCause[]) =>
+  warnings.map((cause) => `Mercado Libre advirtió: ${describeCause(cause)} (${causeRef(cause)})`);
+
+/**
+ * La advertencia de `preflight` sin cupo (D14 del spec F4, seguimiento de ADR-0016): sin un paquete
+ * con cupo, `validate` responde 402 y solo revisa el título.
+ */
+export const PORTAL_NO_QUOTA_NOTE =
+  "Mercado Libre no revisó el aviso: la cuenta no tiene un paquete con cupo (ML_NO_QUOTA). La simulación siguió solo con las revisiones de AgentSales";
+
+/** Lo que la simulación no cubre: las fotos van por URL a `validate` y no se suben (spec F4 §4.8). */
+export const PORTAL_PICTURES_NOT_CHECKED_NOTE =
+  "La simulación no sube las fotos: si Mercado Libre las acepta se sabe al publicar";
 
 /**
  * El publisher de Portal Inmobiliario (spec F4 §4.8, ADR-0015): sube las fotos, crea el ítem,
@@ -124,13 +149,63 @@ const warningNotes = (item: MercadoLibreItem) =>
  * Un 401 se refresca una vez con `rejectedToken` en cada llamada al cliente (`withMercadoLibreToken`);
  * el catálogo tiene su propio reintento, y su `rejected_after_refresh` sube tal cual. El cuerpo
  * lleva URLs firmadas y el WhatsApp: no se registra aquí (lo hace `publishAttemptRecord`).
+ *
+ * `preflight` (solo lee y valida, ADR-0016; lo llama `withDryRun`) y las operaciones
+ * (`createPortalOperations`) completan el contrato de spec F4 §4.8.
  */
 export function createPortalPublisher(options: PortalPublisherOptions): Publisher {
   const now = options.now ?? (() => new Date());
+  const operations = createPortalOperations({ items: options.items });
   const publisher: Publisher = {
     platform: "portal_inmobiliario",
     formats: ["post"],
     validate: validatePortalInput,
+    ...operations,
+
+    /**
+     * Lo que diría Mercado Libre del aviso sin publicarlo (spec F4 §4.8, ADR-0016): baja la hoja,
+     * sus atributos y la ubicación (`resolvePortalItemCatalog`), arma el ítem con las fotos por su
+     * URL firmada (`buildPortalItemWithSources`, la misma revisión que hace `publish` antes de subir
+     * las fotos) y lo pasa por `POST /items/validate`. **Nunca** sube fotos, crea ni cambia ítems.
+     * - Un motivo propio (el input, la revisión local) o el rechazo de Mercado Libre:
+     *   `{ ok: false, issues }` (`withDryRun` lo convierte en `PUBLISH_INPUT_INVALID`).
+     * - Sin cupo (`ML_NO_QUOTA`, 402): `{ ok: true, notes }` con la advertencia (D14). Solo aquí:
+     *   en `publish` sigue siendo un error.
+     * - Los demás errores suben tal cual: los del catálogo (`PORTAL_TYPE_UNSUPPORTED`,
+     *   `PORTAL_CATEGORY_NOT_FOUND`, `PORTAL_LOCATION_NOT_FOUND`, no reintentables), la red o un
+     *   5xx (reintentables) y un token rechazado otra vez (`rejected_after_refresh`).
+     */
+    async preflight(input: PublishInput, ctx: PlatformContext): Promise<PublishValidation> {
+      const checked = validatePortalInput(input);
+      if (!checked.ok) return checked;
+      const { listing } = input;
+      // `validatePortalInput` ya lo exige (`PORTAL_INPUT_INCOMPLETE`); esto estrecha el tipo.
+      if (listing === undefined) return { ok: false, issues: [] };
+      const tokenCtx: MercadoLibreTokenContext = {
+        accessToken: ctx.accessToken,
+        ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+      };
+      const catalog = await resolvePortalItemCatalog(listing, options.catalog, tokenCtx);
+      const built = buildPortalItemWithSources(input, catalog, { now });
+      if (!built.ok) return { ok: false, issues: built.issues };
+      const notes = [...built.item.notes];
+      try {
+        const result = await withMercadoLibreToken(tokenCtx, (token, signal) =>
+          options.validator.validate(
+            token,
+            built.item.body,
+            signal === undefined ? {} : { signal },
+          ),
+        );
+        if (!result.valid) return { ok: false, issues: result.issues };
+        notes.push(...warningNotes(result.warnings));
+      } catch (error) {
+        if (!isAppError(error) || error.code !== "ML_NO_QUOTA") throw error;
+        notes.push(PORTAL_NO_QUOTA_NOTE);
+      }
+      notes.push(PORTAL_PICTURES_NOT_CHECKED_NOTE);
+      return { ok: true, notes };
+    },
 
     async publish(input: PublishInput, ctx: PublishContext): Promise<PublishResult> {
       checkPublishInput(publisher, input);
@@ -257,7 +332,7 @@ export function createPortalPublisher(options: PortalPublisherOptions): Publishe
           // un rechazo) y con un segundo intento; si igual falla, el próximo intento lo busca.
           const withItem = { ...progress, itemId: item.id };
           await save(withItem).catch(() => save(withItem));
-          notes.push(...built.item.notes, ...warningNotes(item));
+          notes.push(...built.item.notes, ...warningNotes(item.warnings));
           return item;
         }
       }

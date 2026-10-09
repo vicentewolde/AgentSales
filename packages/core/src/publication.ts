@@ -71,6 +71,17 @@ export const remoteStateSchema = z.object({
   stopTime: z.iso.datetime({ offset: true }).nullable(),
   /** Vencimiento de lo que lo cubre (Mercado Libre: `expiration_time`, el del paquete). */
   expirationTime: z.iso.datetime({ offset: true }).nullable(),
+  /**
+   * Por qué la plataforma la pausó (Mercado Libre: la última moderación, desde F4-T15): el código
+   * de la moderación (`ABANDONED_ITEM_REX_DEN`) y un texto propio en español, nunca el de la
+   * plataforma. Opcional: solo en una pausa por moderación.
+   */
+  reason: z
+    .object({
+      code: z.string().regex(/^[A-Za-z0-9_.-]{1,100}$/),
+      message: z.string().min(1).max(300),
+    })
+    .optional(),
   checkedAt: z.iso.datetime(),
 });
 export type RemoteState = z.infer<typeof remoteStateSchema>;

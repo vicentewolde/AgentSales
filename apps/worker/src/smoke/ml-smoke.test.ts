@@ -683,7 +683,7 @@ describe("runMlSmoke", () => {
       "  base (CLP, con dirección y CMG_SITE completo): ✗ ML_NO_QUOTA (HTTP 402)",
     );
     expect(lines).toContain(
-      "  → Sin un paquete silver con cupo, Mercado Libre responde 402 y no revisa el resto del aviso (sí el título): contrátalo antes de la prueba con paquete",
+      "  → Sin un paquete silver con cupo, Mercado Libre responde 402 y no revisa el resto del aviso (sí el título): la simulación sigue con una advertencia y las revisiones de AgentSales (D14); la revisión completa llega con el usuario de prueba (D15)",
     );
   });
 
