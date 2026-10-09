@@ -2,7 +2,7 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-08
+**Actualizado:** 2026-10-09
 **Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 25 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
 **Última tarea:** F4-T17 · Pausar, reactivar, cerrar y sincronizar en core. Antes, F4-T16 (intento, publicar y aprobar con Portal) y F4-T15 (operaciones y `preflight`)
 **Siguiente paso:** `/tarea F4-T18` (worker: publicar y sincronizar Portal; registra el publisher y la cola del sync). T19 (API de Portal) y T23 (`ml:smoke --listing`) también tienen sus dependencias. En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)

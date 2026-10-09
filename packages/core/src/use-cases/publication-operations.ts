@@ -38,7 +38,7 @@ export type PublicationOperation = "pause" | "resume" | "close";
 /** Algo secundario que falló sin cortar (el estado de la cuenta o del aviso, el sync, el estado remoto). */
 export type OperationWarning = {
   publicationId: string;
-  step: "account_status" | "enqueue_sync" | "remote_state";
+  step: "account_status" | "enqueue_sync" | "mark_changed" | "remote_state";
   code: string;
 };
 
@@ -197,19 +197,57 @@ export function remoteStateFrom(
 }
 
 /**
- * Encola `publication.sync` (idempotente por publicación) para que el estado converja: después de
- * una respuesta perdida o de un guardado que falló. No corta: un fallo de la cola va a `onWarning`
- * (el sync al arrancar el worker o el botón Actualizar lo cubren).
+ * Encola el sync de una publicación (job `publication.sync`, cola `exclusive` por publicación: la
+ * clave es su id). Lo usan las operaciones (T17), el worker después de publicar y al arrancar (T18)
+ * y la API a pedido (T19). `null` = ya había uno en cola o en curso, que la va a leer.
  */
-export async function requestSync(
-  deps: Pick<PublicationPlatformDeps, "onWarning"> & { queue: JobQueue },
+export const enqueueSync = (
+  queue: JobQueue,
   publicationId: string,
+  options: { startAfter?: Date } = {},
+) =>
+  queue.enqueue("publication.sync", { publicationId }, { ...options, singletonKey: publicationId });
+
+/**
+ * Cuánto espera el sync que piden las operaciones: si la respuesta se perdió, Mercado Libre pudo no
+ * haber aplicado el cambio todavía, y un sync inmediato leería el estado anterior.
+ */
+export const OPERATION_SYNC_DELAY_MS = 30_000;
+
+/**
+ * Después de una respuesta perdida o de un guardado que falló (la plataforma pudo cambiar sin que
+ * la base lo sepa):
+ * 1. toca la publicación (`setRemoteState` con lo que ya tenía, sin evento): sube `updatedAt`, así
+ *    un sync que ya estaba leyendo queda viejo (`PUBLICATION_SYNC_STALE`) y vuelve a leer;
+ * 2. encola un sync en `OPERATION_SYNC_DELAY_MS`. Si ya había uno, el punto 1 hace que relea.
+ * No corta: los fallos van a `onWarning` (el sync al arrancar el worker o Actualizar lo cubren).
+ */
+async function requestSync(
+  deps: Pick<PublicationPlatformDeps, "onWarning" | "now" | "lock"> & { queue: JobQueue },
+  publication: Publication,
 ): Promise<void> {
-  await deps.queue
-    .enqueue("publication.sync", { publicationId }, { singletonKey: publicationId })
+  const publicationId = publication.id;
+  await deps.lock
+    .run(publication.listingId, async (locked) => {
+      const current = await locked.publications.get(publicationId);
+      if (current !== null) {
+        await locked.publications.setRemoteState(publicationId, current.remoteState);
+      }
+    })
     .catch((failure: unknown) =>
-      deps.onWarning?.({ publicationId, step: "enqueue_sync", code: codeOf(failure) }),
+      deps.onWarning?.({ publicationId, step: "mark_changed", code: codeOf(failure) }),
     );
+  const now = deps.now ?? (() => new Date());
+  try {
+    const jobId = await enqueueSync(deps.queue, publicationId, {
+      startAfter: new Date(now().getTime() + OPERATION_SYNC_DELAY_MS),
+    });
+    if (jobId === null) {
+      deps.onWarning?.({ publicationId, step: "enqueue_sync", code: "SYNC_ALREADY_QUEUED" });
+    }
+  } catch (failure) {
+    deps.onWarning?.({ publicationId, step: "enqueue_sync", code: codeOf(failure) });
+  }
 }
 
 /**
@@ -261,12 +299,14 @@ export type OperatedPublication = {
  *    (`PUBLISH_MODE_MISMATCH`: nunca se cambia algo real estando en simulación) y, al cerrar, la
  *    confirmación (`CLOSE_NOT_CONFIRMED`: es irreversible).
  * 3. En `live`, llama a la plataforma **antes y fuera** del `ListingLock` (con su token). Un
- *    `ML_AUTH_INVALID` deja la cuenta `expired`; un `ML_UNAVAILABLE` o `ML_ABORTED` (la respuesta
- *    pudo perderse con el cambio aplicado) encola un sync. El error se relanza.
+ *    acceso rechazado deja la cuenta `expired`; un error reintentable (red, tope, corte: la
+ *    respuesta pudo perderse con el cambio aplicado) pide un sync (`requestSync`). Core no nombra
+ *    códigos de la plataforma. El error se relanza.
  * 4. Dentro del candado, aplica la transición **condicional** desde el estado leído, con su evento
- *    (`mode`, `operation` y lo que informó la plataforma) y el `remote_state`. Si eso falla, se
- *    encola un sync (Mercado Libre ya cambió) y el error se relanza. Al cerrar en `live` la última
- *    publicada o pausada del aviso, este vuelve a `ready`.
+ *    (`mode`, `operation` y lo que informó la plataforma) y el `remote_state`. Si un sync ya la
+ *    dejó en el estado pedido (leyó Mercado Libre justo después del cambio), devuelve ese estado
+ *    como éxito. Si guardar falla, pide un sync (Mercado Libre ya cambió) y relanza. Al cerrar en
+ *    `live` la última publicada o pausada del aviso, este vuelve a `ready`.
  */
 export async function operatePublication(
   deps: PublicationPlatformDeps & OperationModeDeps,
@@ -310,27 +350,21 @@ export async function operatePublication(
         { details: { publicationId } },
       );
     }
+    const externalId = found.externalId;
+    if (externalId === null) {
+      throw new AppError(
+        "PUBLICATION_NOT_PUBLISHED",
+        "La publicación no tiene id en la plataforma",
+        { details: { publicationId } },
+      );
+    }
     const operations = operationsOf(deps, found);
     const ctx = await platformContextFor(deps, found, signal);
     let reported: RemoteStatus;
     try {
-      if (found.externalId === null) {
-        throw new AppError(
-          "PUBLICATION_NOT_PUBLISHED",
-          "La publicación no tiene id en la plataforma",
-          {
-            details: { publicationId },
-          },
-        );
-      }
-      reported = await operations[operation](
-        { externalId: found.externalId, progress: found.progress },
-        ctx,
-      );
+      reported = await operations[operation]({ externalId, progress: found.progress }, ctx);
     } catch (error) {
-      if (isAppError(error) && LOST_RESPONSE_CODES.has(error.code)) {
-        await requestSync(deps, publicationId);
-      }
+      if (isAppError(error) && error.retriable) await requestSync(deps, found);
       return failedCall(deps, found, error);
     }
     remote = remoteStateFrom(deps, publicationId, reported);
@@ -338,6 +372,17 @@ export async function operatePublication(
 
   try {
     return await deps.lock.run(found.listingId, async (locked) => {
+      const current = await locked.publications.get(publicationId);
+      if (current !== null && current.status === move.to && live) {
+        // Un sync leyó Mercado Libre justo después del cambio y ya lo aplicó: lo pedido está hecho.
+        const publication =
+          remote === undefined
+            ? current
+            : await locked.publications.setRemoteState(publicationId, remote);
+        const listingBackToReady =
+          operation === "close" ? await listingBackToReadyIfLast(locked, found.listingId) : false;
+        return { publication, listingBackToReady };
+      }
       const publication = await locked.publications.transition(
         publicationId,
         {
@@ -363,13 +408,10 @@ export async function operatePublication(
     });
   } catch (error) {
     // La plataforma ya cambió: el sync deja la publicación como está allá.
-    if (live) await requestSync(deps, publicationId);
+    if (live) await requestSync(deps, found);
     throw error;
   }
 }
-
-/** Errores después de los cuales la plataforma pudo aplicar el cambio sin que llegara la respuesta. */
-const LOST_RESPONSE_CODES = new Set(["ML_UNAVAILABLE", "ML_ABORTED"]);
 
 const OPERATION_NOT_ALLOWED_TEXT: Readonly<Record<PublicationOperation, string>> = {
   pause: "Solo se pausa una publicación publicada",

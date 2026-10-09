@@ -143,6 +143,32 @@ async function setup(
 const syncJobs = (t: PublicationScenario) =>
   t.queue.jobs.filter((job) => job.name === "publication.sync");
 
+/** Otra publicación del mismo aviso, ya publicada (de Instagram, para no chocar con el post de Portal). */
+async function otherPublished(t: PublicationScenario, dryRun: boolean): Promise<Publication> {
+  const other = await t.publications.create(
+    {
+      listingId: t.listingId,
+      platformAccountId: "cuenta-instagram",
+      platform: "instagram",
+      format: "post",
+      contentId: await t.instagramId(),
+      mediaIds: [],
+      listingSourceHash: "h",
+    },
+    { actor: "operator" },
+  );
+  await t.publications.transition(
+    other.id,
+    { from: "approved", to: "publishing", changes: { dryRun } },
+    { actor: "operator" },
+  );
+  return t.publications.transition(
+    other.id,
+    { from: "publishing", to: "published", changes: { externalId: "ig-1" } },
+    { actor: "system" },
+  );
+}
+
 describe("pausar, reactivar y cerrar en live", () => {
   it("pausar llama fuera del candado con el progreso y el token, y guarda paused con lo informado", async () => {
     const { t, deps, id, calls, current } = await setup();
@@ -501,5 +527,138 @@ describe("sincronizar", () => {
       code: "ACCOUNT_NOT_CONNECTED",
     });
     expect(calls).toEqual([]);
+  });
+});
+
+describe("revisión de F4-T17", () => {
+  it("cerrar no devuelve el aviso a ready si queda otra publicada en live; una de dry-run no cuenta", async () => {
+    const { t, deps, id } = await setup();
+    await otherPublished(t, false);
+    await expect(
+      closePublication(deps, { publicationId: id, actor: "operator", confirmed: true }),
+    ).resolves.toMatchObject({ listingBackToReady: false });
+    expect((await t.listings.get(t.listingId))?.status).toBe("active");
+
+    const second = await setup();
+    await otherPublished(second.t, true);
+    await expect(
+      closePublication(second.deps, {
+        publicationId: second.id,
+        actor: "operator",
+        confirmed: true,
+      }),
+    ).resolves.toMatchObject({ listingBackToReady: true });
+  });
+
+  it("cerrar una publicación de dry-run no toca el aviso", async () => {
+    const { t, deps, id } = await setup({ dryRun: true });
+    await t.listings.changeStatus(t.listingId, "ready", "active");
+    await expect(
+      closePublication(deps, { publicationId: id, actor: "operator" }),
+    ).resolves.toMatchObject({ listingBackToReady: false });
+    expect((await t.listings.get(t.listingId))?.status).toBe("active");
+  });
+
+  it("si un sync ya aplicó lo pedido mientras se llamaba, la operación termina bien (sin INVALID_TRANSITION)", async () => {
+    let syncApplies: (() => Promise<unknown>) | undefined;
+    const fake = fakeOperations(async () => {
+      await syncApplies?.();
+      return status("paused");
+    });
+    const { t, deps, id, current } = await setup({ operations: fake.operations });
+    syncApplies = () =>
+      t.publications.transition(
+        id,
+        { from: "published", to: "paused" },
+        { actor: "system", payload: { mode: "live", sync: true, remoteStatus: "paused" } },
+      );
+
+    await expect(
+      pausePublication(deps, { publicationId: id, actor: "operator" }),
+    ).resolves.toMatchObject({
+      publication: { status: "paused", remoteState: { status: "paused" } },
+    });
+    expect(current().status).toBe("paused");
+    expect(syncJobs(t)).toEqual([]);
+  });
+
+  it("una respuesta perdida marca la publicación (un sync en curso queda viejo) y pide el sync en 30 s", async () => {
+    const fake = fakeOperations(async () => {
+      throw new AppError("ML_UNAVAILABLE", "sin respuesta", { retriable: true });
+    });
+    const { t, deps, id, current } = await setup({ operations: fake.operations });
+    const before = current().updatedAt.getTime();
+
+    await expect(
+      pausePublication(deps, { publicationId: id, actor: "operator" }),
+    ).rejects.toMatchObject({ code: "ML_UNAVAILABLE" });
+
+    expect(current().updatedAt.getTime()).toBeGreaterThan(before);
+    expect(current().status).toBe("published");
+    const [job] = syncJobs(t);
+    expect(job?.options).toMatchObject({
+      singletonKey: id,
+      startAfter: new Date(NOW.getTime() + 30_000),
+    });
+  });
+
+  it("si la cola falla o ya había un sync, se avisa sin cortar", async () => {
+    const fake = fakeOperations(async () => {
+      throw new AppError("ML_ABORTED", "cortada", { retriable: true });
+    });
+    for (const [queue, code] of [
+      [
+        {
+          enqueue: async () => {
+            throw new AppError("QUEUE_UNAVAILABLE", "sin cola", { retriable: true });
+          },
+        },
+        "QUEUE_UNAVAILABLE",
+      ],
+      [{ enqueue: async () => null }, "SYNC_ALREADY_QUEUED"],
+    ] as const) {
+      const { deps, id, warnings } = await setup({ operations: fake.operations });
+      await expect(
+        pausePublication({ ...deps, queue }, { publicationId: id, actor: "operator" }),
+      ).rejects.toMatchObject({ code: "ML_ABORTED" });
+      expect(warnings).toContainEqual({ publicationId: id, step: "enqueue_sync", code });
+    }
+  });
+
+  it("si no se puede marcar la cuenta vencida, se avisa y el error de la plataforma sube igual", async () => {
+    const fake = fakeOperations(async () => {
+      throw new AppError("ML_AUTH_INVALID", "rechazado otra vez");
+    });
+    const { deps, id, warnings } = await setup({ operations: fake.operations });
+    const platformAccounts = {
+      ...deps.platformAccounts,
+      changeStatus: async () => {
+        throw new AppError("DB_UNAVAILABLE", "sin base", { retriable: true });
+      },
+    };
+
+    await expect(
+      pausePublication({ ...deps, platformAccounts }, { publicationId: id, actor: "operator" }),
+    ).rejects.toMatchObject({ code: "ML_AUTH_INVALID" });
+    expect(warnings).toContainEqual({
+      publicationId: id,
+      step: "account_status",
+      code: "DB_UNAVAILABLE",
+    });
+  });
+
+  it("el sync se salta Instagram y la tabla trata las dos grafías de procesar fotos", async () => {
+    const { t, deps } = await setup();
+    const instagram = await otherPublished(t, false);
+    await expect(syncPublication(deps, { publicationId: instagram.id })).resolves.toMatchObject({
+      outcome: "skipped",
+      reason: "not_supported",
+    });
+    expect(
+      syncTarget("published", { status: "paused", subStatus: ["picture_downloading_pending"] }),
+    ).toBeNull();
+    expect(
+      syncTarget("paused", { status: "paused", subStatus: ["picture_download_pending"] }),
+    ).toBeNull();
   });
 });

@@ -2,7 +2,7 @@ import type { AbortSignalLike } from "../abort.js";
 import type { PublicationStatus } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { RemoteStatus } from "../ports/publisher.js";
-import type { Publication, RemoteState } from "../publication.js";
+import type { Publication, RemoteState, SyncPayload } from "../publication.js";
 import {
   failedCall,
   findPublication,
@@ -67,8 +67,9 @@ export function syncTarget(
  * modo:
  * 1. guarda el `updatedAt` de la publicación **antes** de leer (`getStatus`, fuera del candado);
  * 2. dentro del candado del aviso, si el `updatedAt` releído no es igual al guardado (la
- *    publicación cambió mientras se leía; por ejemplo, el operador la pausó), no aplica nada y
- *    lanza `PUBLICATION_SYNC_STALE` (reintentable: la cola la vuelve a leer). Se compara por
+ *    publicación cambió mientras se leía; por ejemplo, el operador la pausó, o una operación perdió
+ *    la respuesta y la marcó), no aplica nada y lanza `PUBLICATION_SYNC_STALE` (reintentable: la
+ *    cola la vuelve a leer). Se compara por
  *    igualdad entre dos valores de la base (`clock_timestamp()`), nunca contra el reloj del worker;
  * 3. guarda `remote_state` con un evento `sync` (lo leído, sin secretos) y, según `syncTarget`,
  *    cambia el estado con actor `system` (condicional desde el estado leído); al pasar a
@@ -125,7 +126,7 @@ export async function syncPublication(
     let publication = await locked.publications.setRemoteState(publicationId, remote, {
       type: "sync",
       actor: "system",
-      payload: { remote },
+      payload: { remote } satisfies SyncPayload,
     });
     const target = syncTarget(current.status, remote);
     if (target === null) {
