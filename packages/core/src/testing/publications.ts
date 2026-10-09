@@ -147,7 +147,7 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
       const publication = {
         ...found.publication,
         progress: structuredCopy(checked),
-        updatedAt: new Date(),
+        updatedAt: later(found.publication.updatedAt),
       };
       publications.set(id, { ...found, publication });
       return structuredCopy(publication);
@@ -160,7 +160,7 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
       const publication = {
         ...found.publication,
         remoteState: structuredCopy(checked),
-        updatedAt: new Date(),
+        updatedAt: later(found.publication.updatedAt),
       };
       publications.set(id, { ...found, publication });
       if (event !== undefined) pushEvent(id, event.type, null, null, event);
@@ -207,9 +207,16 @@ function applyChanges(
     ...(changes.remoteState === undefined
       ? {}
       : { remoteState: structuredCopy(checkRemoteState(changes.remoteState)) }),
-    updatedAt: new Date(),
+    updatedAt: later(current.updatedAt),
   };
 }
+
+/**
+ * El `updatedAt` de un cambio: siempre después del anterior, como `clock_timestamp()` en Postgres
+ * (doc 02). Dos cambios en el mismo milisegundo no deben verse iguales: el sync (F4-T17) compara
+ * `updatedAt` por igualdad para saber si la publicación cambió mientras leía.
+ */
+const later = (previous: Date) => new Date(Math.max(Date.now(), previous.getTime() + 1));
 
 /**
  * Candado en memoria: serializa los `run` del mismo aviso (uno espera al anterior) y entrega los

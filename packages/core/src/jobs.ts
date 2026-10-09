@@ -10,6 +10,7 @@ export const JOB_NAMES = [
   "import.run",
   "content.prepare",
   "publication.publish",
+  "publication.sync",
   "tokens.refresh",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
@@ -29,6 +30,12 @@ export const JOB_PAYLOADS = {
   "content.prepare": z.object({ contentRunId: z.uuid() }),
   /** Un intento de publicación (spec F3 §4.4): la publicación guarda lo aprobado y el modo. */
   "publication.publish": z.object({ publicationId: z.uuid() }),
+  /**
+   * Leer el estado de una publicación de Portal en Mercado Libre y ajustarlo (spec F4 §4.9): lo
+   * encolan las operaciones si la respuesta se perdió (F4-T17), el worker después de publicar y al
+   * arrancar (T18) y la API a pedido (T19). La cola y su política las define el worker (T18).
+   */
+  "publication.sync": z.object({ publicationId: z.uuid() }),
   /**
    * El refresco de los tokens de las cuentas conectadas (spec F3 §4.6): lo encola el worker al
    * arrancar y su cron diario. Sin datos: el lote lee las cuentas de la base.

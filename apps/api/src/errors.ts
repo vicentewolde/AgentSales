@@ -40,6 +40,9 @@ const CONFLICTS = new Set([
   // F4-T16: al aviso le falta lo que pide Portal; se completa la planilla y se publica de nuevo.
   // La lista de lo que falta (`details.issues`) la expone T19 (ADR-0011).
   "PORTAL_NOT_READY",
+  // F4-T17: una publicación de Portal se cierra, no se marca como retirada (la ruta de retirar ya
+  // existe). Los demás códigos de las operaciones los mapea T19 con sus rutas.
+  "RETIRE_NOT_SUPPORTED",
 ]);
 
 /**

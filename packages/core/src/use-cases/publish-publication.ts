@@ -34,6 +34,7 @@ import { withDryRun } from "../publish/dry-run.js";
 import { buildPublishInput, checkPublishInput, publishAttemptRecord } from "../publish/input.js";
 import { scrubMessage } from "../redact.js";
 import { accessTokenProvider } from "./ensure-access-token.js";
+import { expireAccountIfRejected } from "./platform-auth.js";
 import { modeOf, publicationNotFound } from "./publication-start.js";
 
 /**
@@ -211,11 +212,12 @@ export async function publishPublication(
             cause: error,
           });
     }
-    if (error.code === "IG_AUTH_INVALID" || error.code === "ML_AUTH_INVALID") {
-      await deps.platformAccounts
-        .changeStatus(publication.platformAccountId, "connected", "expired")
-        .catch((failure: unknown) => warn("account_status", failure));
-    }
+    await expireAccountIfRejected(
+      deps.platformAccounts,
+      publication.platformAccountId,
+      error,
+      (failure) => warn("account_status", failure),
+    );
     const final = !error.retriable || isLastAttempt;
     await addAttempt(final ? "failed" : "retry", { error: lastErrorOf(error), sent });
     if (final) {

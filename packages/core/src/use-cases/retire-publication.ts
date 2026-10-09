@@ -2,6 +2,7 @@ import { AppError } from "../errors.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { listingBackToReadyIfLast, OPERATION_PLATFORMS } from "./publication-operations.js";
 import { publicationNotFound } from "./publication-start.js";
 
 export type RetirePublicationDeps = {
@@ -24,6 +25,8 @@ export type RetiredPublication = {
  * aviso, el aviso vuelve de `active` a `ready` (cambio del sistema, condicional: si el aviso ya
  * cambió, no se toca). Errores (`AppError`):
  * - no existe → `PUBLICATION_NOT_FOUND` (404);
+ * - es de una plataforma que se cierra desde AgentSales (Portal) → `RETIRE_NOT_SUPPORTED` (409, spec
+ *   F4 §4.9): se usa Cerrar;
  * - en `live` sin la confirmación → `REMOVAL_NOT_CONFIRMED` (409), sin cambiar nada;
  * - no está publicada → `INVALID_TRANSITION` (409).
  */
@@ -37,6 +40,13 @@ export async function retirePublication(
 ): Promise<RetiredPublication> {
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
+  if (OPERATION_PLATFORMS.has(found.platform)) {
+    throw new AppError(
+      "RETIRE_NOT_SUPPORTED",
+      "Esta publicación se cierra desde AgentSales: usa Cerrar en vez de marcarla como retirada",
+      { details: { publicationId, platform: found.platform } },
+    );
+  }
 
   return deps.lock.run(found.listingId, async (locked) => {
     const publication = await locked.publications.get(publicationId);
@@ -59,21 +69,9 @@ export async function retirePublication(
       { from: "published", to: "unpublished" },
       { actor, payload: { mode: live ? "live" : "dry-run", removedByHand: live } },
     );
-    let listingBackToReady = false;
-    if (live) {
-      // Una que se está publicando en `live` no cuenta: si sale, el intento (T11) sube el aviso a
-      // `active` otra vez, con su propio cambio condicional.
-      const stillLive = (await locked.publications.listByListing(publication.listingId)).some(
-        (other) => !other.dryRun && (other.status === "published" || other.status === "paused"),
-      );
-      if (!stillLive) {
-        listingBackToReady = await locked.listings.changeStatus(
-          publication.listingId,
-          "active",
-          "ready",
-        );
-      }
-    }
+    const listingBackToReady = live
+      ? await listingBackToReadyIfLast(locked, publication.listingId)
+      : false;
     return { publication: retired, listingBackToReady };
   });
 }

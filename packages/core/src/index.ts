@@ -392,6 +392,10 @@ export {
   changeListingStatus,
 } from "./use-cases/change-listing-status.js";
 export {
+  type ClosePublicationDeps,
+  closePublication,
+} from "./use-cases/close-publication.js";
+export {
   type AccountGrant,
   type ConnectAccountDeps,
   connectAccount,
@@ -460,11 +464,25 @@ export {
   type SkippedPublication,
 } from "./use-cases/open-publications.js";
 export {
+  type PausePublicationDeps,
+  pausePublication,
+} from "./use-cases/pause-publication.js";
+export { expireAccountIfRejected, isAccessRejected } from "./use-cases/platform-auth.js";
+export {
   type PrepareContentDeps,
   type PrepareContentParams,
   type PrepareContentResult,
   prepareContent,
 } from "./use-cases/prepare-content.js";
+export {
+  OPERATION_PLATFORMS,
+  type OperatedPublication,
+  type OperationModeDeps,
+  type OperationWarning,
+  type PublicationOperation,
+  type PublicationOperations,
+  type PublicationPlatformDeps,
+} from "./use-cases/publication-operations.js";
 export { enqueuePublication, type PortalCheckDeps } from "./use-cases/publication-start.js";
 export {
   type PublishListingDeps,
@@ -506,6 +524,10 @@ export {
   requestImport,
 } from "./use-cases/request-import.js";
 export {
+  type ResumePublicationDeps,
+  resumePublication,
+} from "./use-cases/resume-publication.js";
+export {
   type RetiredPublication,
   type RetirePublicationDeps,
   retirePublication,
@@ -522,6 +544,12 @@ export {
   type StartPublicationResult,
   startPublication,
 } from "./use-cases/start-publication.js";
+export {
+  type SyncPublicationDeps,
+  type SyncPublicationResult,
+  syncPublication,
+  syncTarget,
+} from "./use-cases/sync-publication.js";
 export {
   type UnapproveContentDeps,
   type UnapprovedContent,
