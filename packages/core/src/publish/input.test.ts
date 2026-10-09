@@ -12,11 +12,13 @@ import {
   createInMemoryMediaStorage,
 } from "../testing/index.js";
 import {
+  assemblePublishInput,
   buildPublishInput,
   checkPublishInput,
   maskWhatsapp,
   PUBLISH_MEDIA_URL_TTL_S,
   publishAttemptRecord,
+  toPublishListing,
 } from "./input.js";
 
 const at = new Date("2026-10-05T12:00:00Z");
@@ -391,6 +393,75 @@ describe("buildPublishInput", () => {
         { publication: publication(), content: content(), media: listingMedia },
       ),
     ).rejects.toBe(unavailable);
+  });
+});
+
+describe("assemblePublishInput y toPublishListing (F4-T23)", () => {
+  const media = [
+    {
+      mediaId: "m-1",
+      kind: "image" as const,
+      mime: "image/jpeg",
+      storagePath: "a/b.jpg",
+      url: "https://r2.example/b.jpg?firma",
+      bytes: 10,
+      width: 1440,
+      height: 1080,
+      durationS: null,
+    },
+  ];
+  const content = { title: "Depto en Ñuñoa", body: "Luminoso.", hashtags: ["#nunoa"] };
+
+  it("Instagram: el caption con los hashtags y sin título; Portal: el título, el cuerpo y el aviso", () => {
+    expect(
+      assemblePublishInput({
+        publicationId: "p-1",
+        platform: "instagram",
+        format: "post",
+        content,
+        media,
+        listingData: null,
+      }),
+    ).toEqual({
+      publicationId: "p-1",
+      platform: "instagram",
+      format: "post",
+      title: null,
+      caption: "Luminoso.\n\n#nunoa",
+      media,
+    });
+    const listing = toPublishListing(contentListingFixture());
+    const brokerContact = { name: "Corredora", email: null, whatsapp: "+56 9 1111 2222" };
+    expect(
+      assemblePublishInput({
+        publicationId: "p-2",
+        platform: "portal_inmobiliario",
+        format: "post",
+        content,
+        media,
+        listingData: { listing, brokerContact },
+      }),
+    ).toMatchObject({ title: "Depto en Ñuñoa", caption: "Luminoso.", listing, brokerContact });
+  });
+
+  it("el aviso va solo (y siempre) en las plataformas que lo publican", () => {
+    const listingData = {
+      listing: toPublishListing(contentListingFixture()),
+      brokerContact: { name: "Corredora", email: null, whatsapp: null },
+    };
+    const base = { publicationId: "p-3", format: "post" as const, content, media };
+    expect(() => assemblePublishInput({ ...base, platform: "instagram", listingData })).toThrow(
+      /sobra/,
+    );
+    expect(() =>
+      assemblePublishInput({ ...base, platform: "portal_inmobiliario", listingData: null }),
+    ).toThrow(/falta/);
+  });
+
+  it("toPublishListing nunca lleva las notas internas ni las columnas desconocidas", () => {
+    const listing = toPublishListing(contentListingFixture());
+    expect(JSON.stringify(listing)).not.toContain("Dueño acepta");
+    expect(listing.attributes).not.toHaveProperty("_extra");
   });
 });
 

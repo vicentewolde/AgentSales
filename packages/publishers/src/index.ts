@@ -120,6 +120,11 @@ export {
   warningNotes,
 } from "./mercadolibre/publisher.js";
 export {
+  createMercadoLibreTestUsers,
+  type MercadoLibreTestUser,
+  type MercadoLibreTestUsers,
+} from "./mercadolibre/test-users.js";
+export {
   type MercadoLibreTokenContext,
   withMercadoLibreToken,
 } from "./mercadolibre/token.js";

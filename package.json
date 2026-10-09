@@ -22,7 +22,8 @@
     "llm:smoke": "pnpm --filter @agentsales/llm run smoke",
     "eval:content": "pnpm --silent --filter @agentsales/worker run eval:content",
     "ig:smoke": "pnpm --silent --filter @agentsales/worker run ig:smoke",
-    "ml:smoke": "pnpm --silent --filter @agentsales/worker run ml:smoke"
+    "ml:smoke": "pnpm --silent --filter @agentsales/worker run ml:smoke",
+    "ml:test-user": "pnpm --silent --filter @agentsales/worker run ml:test-user"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
