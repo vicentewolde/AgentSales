@@ -207,3 +207,31 @@ export async function requirePortalPublishable(
     );
   }
 }
+
+/**
+ * En las plataformas que publican el aviso (Portal; spec F4 §4.6), una publicación que ya existía
+ * (`failed` o `approved`) tiene que tener la versión del aviso de hoy: si una carga del Excel lo
+ * cambió, `PUBLICATION_LISTING_CHANGED` (409) **antes** de pasarla a `publishing`, en vez de que
+ * falle en el worker (desde F4-T19). La versión se lee dentro del candado.
+ */
+export async function requireCurrentListingVersion(
+  locked: Pick<LockedRepositories, "listings">,
+  listingId: string,
+  publications: readonly Publication[],
+): Promise<void> {
+  if (publications.length === 0) return;
+  const current = await locked.listings.getSourceHash(listingId);
+  const changed = publications.find((publication) => publication.listingSourceHash !== current);
+  if (changed !== undefined) {
+    throw new AppError(
+      "PUBLICATION_LISTING_CHANGED",
+      "El aviso cambió desde que se aprobó el texto (por ejemplo, una carga del Excel): descarta la publicación y aprueba de nuevo",
+      {
+        details: {
+          publicationId: changed.id,
+          reason: changed.listingSourceHash === null ? "missing_version" : "changed",
+        },
+      },
+    );
+  }
+}

@@ -539,3 +539,26 @@ describe("el intento de Portal", () => {
     expect(seen).toEqual([{ accessToken: "IGAA-prueba" }]);
   });
 });
+
+describe("la versión del aviso al publicar (F4-T19)", () => {
+  it("una fallida cuyo aviso cambió no vuelve a publishing: PUBLICATION_LISTING_CHANGED al instante", async () => {
+    const { t, start, run } = await setup({
+      publisher: portalPublisher(async () => {
+        throw new AppError("ML_ITEM_REJECTED", "Mercado Libre rechazó el aviso");
+      }).publisher,
+    });
+    const [post] = (await start()).started;
+    if (post === undefined) throw new Error("falta el post");
+    await run(post).catch(() => undefined);
+    await reimport(t, (listing) => ({ priceAmount: (listing.priceAmount ?? 0) + 100 }));
+
+    await expect(start()).rejects.toMatchObject({
+      code: "PUBLICATION_LISTING_CHANGED",
+      details: { publicationId: post.id, reason: "changed" },
+    });
+    await expect(
+      startPublication(t.deps, { publicationId: post.id, dryRun: false, actor: "operator" }),
+    ).rejects.toMatchObject({ code: "PUBLICATION_LISTING_CHANGED" });
+    expect(t.publications.all()[0]?.status).toBe("failed");
+  });
+});

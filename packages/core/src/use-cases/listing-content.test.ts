@@ -159,6 +159,8 @@ describe("getListingContent", () => {
       photos: [],
       reel: null,
       latestRun: null,
+      // El aviso de prueba tiene todo lo que pide Portal (F4-T19).
+      portalReadiness: { ready: true },
     });
   });
 

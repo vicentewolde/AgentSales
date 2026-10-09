@@ -223,6 +223,8 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     oauthState: createStateSigner(TEST_ENCRYPTION_KEY),
     panelUrl: "http://localhost:5173",
     instagramStartUrl: "http://localhost:8787/oauth/instagram/start",
+    // Sin operaciones: los tests de Portal pasan las suyas (nunca llaman a Mercado Libre).
+    operationsFor: () => undefined,
     ...overrides,
   };
   // El candado entrega los mismos repositorios que la app (también los que pisó `overrides`).

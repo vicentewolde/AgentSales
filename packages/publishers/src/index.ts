@@ -64,6 +64,7 @@ export {
   type MercadoLibreCause,
   mercadoLibreCausesOf,
 } from "./mercadolibre/errors.js";
+export type { MercadoLibreHttpOptions } from "./mercadolibre/http.js";
 export {
   buildPortalItem,
   buildPortalItemWithSources,
