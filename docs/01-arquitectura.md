@@ -158,11 +158,14 @@ CLI o panel: descartar (cancelPublication: approved/failed → cancelled) y marc
   se borró a mano; la última en live devuelve el aviso de active a ready)
 ```
 
-### 4. Seguimiento (job `publication.sync`, periódico)
+### 4. Seguimiento (job `publication.sync`, F4; el cron periódico es de F6)
 
 ```
-publicaciones activas → publisher.getStatus() → actualiza estado
-listing cerrado (vendido/arrendado) → publisher.unpublish() en todas
+publicación de Portal en live (published o paused) → getStatus() fuera del candado
+  → dentro del candado: si cambió mientras se leía, PUBLICATION_SYNC_STALE (se reintenta)
+  → si no, remote_state con su evento sync y, según la tabla, paused / published / unpublished
+pausar, reactivar o cerrar → la plataforma fuera del candado y la transición dentro
+  (ADR-0015 reemplaza unpublish() por close(); cerrar el aviso vendido es de F6)
 ```
 
 ## Máquina de estados de una publicación
@@ -311,7 +314,7 @@ Los jobs del worker (`apps/worker/src/jobs/`):
   - **Los medios de la CLI** (`--media <dir>`) se leen en su lugar: el staging nunca borra archivos del operador.
 
 Para encolar (`packages/queue`, desde F1-T08):
-- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` (`system.ping`, `import.run`, desde F2-T02 `content.prepare`, desde F3-T10 `publication.publish` y desde F3-T14 `tokens.refresh`) y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API, los scripts y el worker comparten el contrato sin repetir literales.
+- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` (`system.ping`, `import.run`, desde F2-T02 `content.prepare`, desde F3-T10 `publication.publish`, desde F3-T14 `tokens.refresh` y desde F4-T17 `publication.sync`, cuya cola define T18) y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API, los scripts y el worker comparten el contrato sin repetir literales.
 - **Puerto `JobQueue`** en `core/src/ports/job-queue.ts`: `enqueue<N extends JobName>(name: N, data: JobPayload<N>, opts?: { startAfter?: Date; singletonKey?: string }): Promise<string | null>`. Devuelve `null` si ya había un job activo con el mismo `singletonKey`.
 - **Adaptador `createJobQueue({ connectionString, onError })`**, sobre pg-boss en rol `producer`:
   - Arranca pg-boss recién en el primer `enqueue`, así la API levanta aunque el esquema `pgboss` no exista. Si el arranque falla, el siguiente `enqueue` lo reintenta.
@@ -671,6 +674,14 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 `packages/publishers/src/mercadolibre/publisher.ts`: `validatePortalInput` (pura) y `publish`, que sube las fotos (bytes por `readPicture`, que arma el worker), crea el ítem y carga la descripción aparte, guardando el progreso (`portalProgressSchema`) antes de cada paso que crea algo. Antes de subir nada arma el ítem con las fotos por URL (`buildPortalItem`): un aviso que la revisión local rechaza no gasta subidas. **Retoma sin duplicar:** con `itemId`, ni arma ni crea (termina la descripción, leyéndola antes, y lee el ítem); con `createRequestedAt` y sin `itemId`, nunca repite `POST /items`: lo busca por `seller_custom_field` (sin estado y, si no aparece, con `not_yet_active` y `paused`), confirma que sea de la publicación y, si no hay exactamente uno, `ML_PUBLISH_OUTCOME_UNKNOWN`. Una respuesta que dice que no se creó (`itemCreationOutcome`), o un fallo antes de que el pedido salga (el token, el candado, un corte antes de enviar), deja crear de nuevo; ante 508 o 509, vuelve a subir las fotos una vez. Cada llamada al cliente refresca una vez ante un 401 (`withMercadoLibreToken`); el `rejected_after_refresh` del catálogo sube tal cual. El resultado lleva `remote` (el estado del ítem) para el `remote_state` (T16).
 
 **`preflight` y operaciones (F4-T15).** `preflight` (lo llama `withDryRun`, ADR-0016) revisa el input, baja la hoja, sus atributos y la ubicación, arma el ítem con las fotos por su URL firmada (`buildPortalItemWithSources`, la misma revisión de `publish`) y pregunta a `POST /items/validate`: un rechazo o un motivo propio es `{ ok: false, issues }`; sin cupo (`ML_NO_QUOTA`), `{ ok: true, notes }` con la advertencia (D14); siempre anota que las fotos no se subieron. Nunca sube fotos, crea ni cambia ítems. Las operaciones viven en `createPortalOperations({ items })` (`mercadolibre/operations.ts`), al que delega el publisher y que la API compone sola (con el cliente de 10 s): pausar, reactivar y cerrar mandan el estado con el `seller_contact` guardado al crear (sin el progreso del ítem o sin el contacto, `PORTAL_PROGRESS_UNUSABLE` sin llamar); `getStatus` lee el ítem y, si está pausado con `moderation_penalty`, el motivo de la última moderación (`reason`, con texto propio; si esa lectura falla por la red o un permiso, el estado vuelve sin motivo, pero un problema del acceso sube). Las notas fijas de `preflight` van primero y las advertencias llevan el código y el `cause_id`, nunca el `message` de Mercado Libre.
+
+## Pausar, reactivar, cerrar y sincronizar (F4-T17)
+
+`packages/core/src/use-cases/{pause,resume,close}-publication.ts` delegan en `operatePublication` (`publication-operations.ts`); `sync-publication.ts` es el sync. Dependen de las operaciones por plataforma (`operationsFor(platform)`, un `Pick<Publisher, "pause" | "resume" | "close" | "getStatus">` sin envolver: la API compone `createPortalOperations` sin fotos ni catálogo) y del token de Portal (`accessTokenProvider`, con `mercadoLibre` y `platformAccounts.withCredentialsLock`).
+- **Operaciones** (síncronas en la API, spec F4 §4.9): solo Portal (`OPERATION_PLATFORMS`; Instagram es `OPERATION_NOT_SUPPORTED` y se retira). Revisan el estado (`INVALID_TRANSITION`) y **el modo lo decide `publication.dryRun`** antes de pedir las operaciones: una de `dry-run` se cambia en simulación sin llamar; una de `live` exige la API en `live` (`PUBLISH_MODE_MISMATCH`) y, al cerrar, `confirmed` (`CLOSE_NOT_CONFIRMED`). En `live` llaman a la plataforma **antes y fuera** del `ListingLock`; dentro, la transición condicional desde el estado leído, con el evento (`mode`, `operation`, `remote`) y el `remote_state`. Al cerrar la última publicada o pausada en `live`, el aviso vuelve a `ready` (`listingBackToReadyIfLast`, que comparte retirar). Un error reintentable de la plataforma (la respuesta pudo perderse con el cambio aplicado) o un guardado que falla después de que respondió piden un sync (`requestSync`): primero marcan la publicación (`setRemoteState` con lo que tenía, que sube `updatedAt`: un sync que ya estaba leyendo queda viejo y relee) y después encolan `publication.sync` en 30 s (`enqueueSync`, clave = la publicación; `null` = ya había uno, `SYNC_ALREADY_QUEUED` a `onWarning`). Si un sync ya dejó la publicación en el estado pedido, la operación termina bien.
+- **Sync** (`syncPublication`, job `publication.sync`; la cola y su política son de T18): solo Portal en `live`, `published` o `paused` (si no, `skipped`); solo lee, así que corre en cualquier modo. Guarda el `updatedAt` antes de `getStatus` y, dentro del candado, si el releído no es igual lanza `PUBLICATION_SYNC_STALE` (reintentable, sin aplicar nada: no deshace lo que hizo el operador). Si no, guarda `remote_state` con un evento `sync` y aplica `syncTarget`: `closed`/`expired`/`deleted` → `unpublished` (y el aviso a `ready` si era la última); procesando fotos → nada; `paused` desde `published` → `paused`; `active` desde `paused` → `published`; lo demás solo se guarda.
+- **Acceso rechazado:** `expireAccountIfRejected` (`platform-auth.ts`) deja la cuenta `expired` ante `IG_AUTH_INVALID` o `ML_AUTH_INVALID`; la comparten el intento, las operaciones y el sync.
+- **Retirar** (F3) no aplica a Portal: `RETIRE_NOT_SUPPORTED` (409), con el mensaje de usar Cerrar.
 
 ## `pnpm ml:smoke` (F4-T10)
 
