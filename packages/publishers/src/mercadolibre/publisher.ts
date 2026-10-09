@@ -23,7 +23,12 @@ import {
   MERCADOLIBRE_PICTURE_ID_CAUSES,
 } from "./errors.js";
 import type { MercadoLibreCallOptions } from "./http.js";
-import { buildPortalItem, type PortalItemCatalog, resolvePortalItemCatalog } from "./item.js";
+import {
+  buildPortalItem,
+  buildPortalItemWithSources,
+  type PortalItemCatalog,
+  resolvePortalItemCatalog,
+} from "./item.js";
 import type { MercadoLibreItem, MercadoLibreItems } from "./items.js";
 import type { MercadoLibrePictures } from "./pictures.js";
 import { type MercadoLibreTokenContext, withMercadoLibreToken } from "./token.js";
@@ -184,6 +189,9 @@ export function createPortalPublisher(options: PortalPublisherOptions): Publishe
 
       /** Sube las fotos que falten, en orden, guardando cada id apenas responde. */
       async function uploadMissing() {
+        // Un progreso con más fotos que la publicación no calza: se suben de nuevo, en orden.
+        if (progress.pictureIds.length > input.media.length)
+          await save({ ...progress, pictureIds: [] });
         for (let index = progress.pictureIds.length; index < input.media.length; index += 1) {
           const media = input.media[index];
           if (media === undefined) break;
@@ -202,10 +210,7 @@ export function createPortalPublisher(options: PortalPublisherOptions): Publishe
       /** Arma, sube las fotos y crea el ítem (pasos 1 y 2 de §4.8). */
       async function createItem(catalog: PortalItemCatalog): Promise<MercadoLibreItem> {
         // La revisión local antes de subir nada: con las fotos por URL, la cuenta es la misma.
-        const precheck = buildPortalItem(input, catalog, {
-          pictures: input.media.map((media) => ({ source: media.url })),
-          now,
-        });
+        const precheck = buildPortalItemWithSources(input, catalog, { now });
         if (!precheck.ok) throw publishInputInvalid(input.publicationId, precheck.issues);
         for (;;) {
           await uploadMissing();
@@ -219,16 +224,22 @@ export function createPortalPublisher(options: PortalPublisherOptions): Publishe
             sellerContact: built.item.sellerContact,
             createRequestedAt: now().toISOString(),
           });
+          // `possiblyCreated` solo se marca si un `POST /items` que salió no dice que no se creó:
+          // si falla antes (pedir o renovar el token) o Mercado Libre responde que no, se puede
+          // crear de nuevo; si no, el próximo intento lo busca y nunca repite el pedido a ciegas.
+          let possiblyCreated = false;
+          let item: MercadoLibreItem;
           try {
-            const item = await call((token, callOptions) =>
-              options.items.create(token, built.item.body, callOptions),
-            );
-            await save({ ...progress, itemId: item.id });
-            notes.push(...built.item.notes, ...warningNotes(item));
-            return item;
+            item = await call(async (token, callOptions) => {
+              try {
+                return await options.items.create(token, built.item.body, callOptions);
+              } catch (error) {
+                if (itemCreationOutcome(error) === "unknown") possiblyCreated = true;
+                throw error;
+              }
+            });
           } catch (error) {
-            // Pudo crearse: el próximo intento lo busca, nunca repite el pedido a ciegas.
-            if (itemCreationOutcome(error) === "unknown") throw error;
+            if (possiblyCreated) throw error;
             const { createRequestedAt: _notCreated, ...rest } = progress;
             if (
               progress.picturesReuploaded !== true &&
@@ -237,23 +248,30 @@ export function createPortalPublisher(options: PortalPublisherOptions): Publishe
               await save({ ...rest, pictureIds: [], picturesReuploaded: true });
               continue;
             }
-            await save(rest);
+            // Si no se puede borrar la hora del pedido, el próximo intento buscará el ítem y dirá
+            // que no se sabe (el lado seguro); el error que se ve es el de Mercado Libre.
+            await save(rest).catch(() => undefined);
             throw error;
           }
+          // Mercado Libre ya creó el ítem: guardar su id fuera del `try` (un fallo al guardar no es
+          // un rechazo) y con un segundo intento; si igual falla, el próximo intento lo busca.
+          const withItem = { ...progress, itemId: item.id };
+          await save(withItem).catch(() => save(withItem));
+          notes.push(...built.item.notes, ...warningNotes(item));
+          return item;
         }
       }
 
       let created: MercadoLibreItem | null = null;
       if (progress.itemId === undefined) {
         if (progress.createRequestedAt !== undefined) {
+          // Las advertencias del armado del intento anterior no se repiten: ya quedaron en su bitácora.
           created = await findCreated();
           await save({ ...progress, itemId: created.id });
         } else {
           const { listing } = input;
-          // `validate` ya lo exige; esto lo asegura para el tipo.
-          if (listing === undefined) {
-            throw publishInputInvalid(input.publicationId, validatePortalInputIssues(input));
-          }
+          // `checkPublishInput` ya lo rechazó (`PORTAL_INPUT_INCOMPLETE`); esto estrecha el tipo.
+          if (listing === undefined) throw publishInputInvalid(input.publicationId, []);
           const catalog = await resolvePortalItemCatalog(listing, options.catalog, tokenCtx);
           created = await createItem(catalog);
         }
@@ -289,8 +307,3 @@ export function createPortalPublisher(options: PortalPublisherOptions): Publishe
   };
   return publisher;
 }
-
-const validatePortalInputIssues = (input: PublishInput): PublishIssue[] => {
-  const validation = validatePortalInput(input);
-  return validation.ok ? [] : validation.issues;
-};

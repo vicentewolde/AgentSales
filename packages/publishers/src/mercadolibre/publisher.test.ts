@@ -59,6 +59,8 @@ type Faults = {
   addDescription?: Record<number, () => Response>;
   /** Un 401 en la primera llamada a cada recurso que lo pida. */
   unauthorizedOnce?: Array<"upload" | "create" | "description">;
+  /** `POST /items` responde 401 siempre (el token nuevo también se rechaza). */
+  createAlwaysUnauthorized?: boolean;
 };
 
 function useMercadoLibre(faults: Faults = {}) {
@@ -113,6 +115,12 @@ function useMercadoLibre(faults: Faults = {}) {
     http.post(`${API}/items`, async ({ request }) => {
       const denied = rejectOnce("create");
       if (denied) return denied;
+      if (faults.createAlwaysUnauthorized) {
+        return HttpResponse.json(
+          { message: "invalid token", error: "unauthorized" },
+          { status: 401 },
+        );
+      }
       counts.create += 1;
       const body = (await request.json()) as Record<string, unknown>;
       const fault = faults.create?.[counts.create];
@@ -264,6 +272,21 @@ const photo = (index: number): PublishMediaItem => ({
   durationS: null,
 });
 
+const LISTING: NonNullable<PublishInput["listing"]> = {
+  id: "listing-1",
+  externalRef: "P001",
+  operation: "sale",
+  propertyType: "Departamento",
+  region: "Metropolitana",
+  comuna: "Ñuñoa",
+  address: "Av. Irarrázaval 1234",
+  unitNumber: null,
+  showExactAddress: false,
+  priceAmount: 5800,
+  priceCurrency: "UF",
+  attributes: { dormitorios: 2, banos: 1, estacionamientos: 1, sup_util_m2: 60, sup_total_m2: 65 },
+};
+
 const input = (overrides: Partial<PublishInput> = {}): PublishInput => ({
   publicationId: PUBLICATION_ID,
   platform: "portal_inmobiliario",
@@ -271,26 +294,7 @@ const input = (overrides: Partial<PublishInput> = {}): PublishInput => ({
   title: "Departamento en venta 2 dormitorios 1 baño en Ñuñoa",
   caption: "Departamento luminoso, a pasos del metro.",
   media: [photo(1), photo(2), photo(3)],
-  listing: {
-    id: "listing-1",
-    externalRef: "P001",
-    operation: "sale",
-    propertyType: "Departamento",
-    region: "Metropolitana",
-    comuna: "Ñuñoa",
-    address: "Av. Irarrázaval 1234",
-    unitNumber: null,
-    showExactAddress: false,
-    priceAmount: 5800,
-    priceCurrency: "UF",
-    attributes: {
-      dormitorios: 2,
-      banos: 1,
-      estacionamientos: 1,
-      sup_util_m2: 60,
-      sup_total_m2: 65,
-    },
-  },
+  listing: LISTING,
   brokerContact: { name: "Corredora", email: "c@corredor.test", whatsapp: "+56 9 1234 5678" },
   ...overrides,
 });
@@ -309,7 +313,16 @@ const ACCOUNT: PlatformAccount = {
   updatedAt: NOW,
 };
 
-function setup(options: { progress?: PortalProgress | unknown; catalogFault?: AppError } = {}) {
+function setup(
+  options: {
+    progress?: PortalProgress | unknown;
+    catalogFault?: AppError;
+    /** El pedido de token número N (desde 1) falla como una red caída. */
+    tokenFailsAt?: number;
+    /** Un guardado del progreso que cumple esto falla (la base no respondió). */
+    saveFails?: (progress: PortalProgress) => boolean;
+  } = {},
+) {
   const tokenCalls: EnsureAccessTokenOptions[] = [];
   const saved: PortalProgress[] = [];
   const read: string[] = [];
@@ -330,10 +343,14 @@ function setup(options: { progress?: PortalProgress | unknown; catalogFault?: Ap
     credentials: { accessToken: "APP_USR-guardado" },
     accessToken: async (opts = {}) => {
       tokenCalls.push(opts);
+      if (tokenCalls.length === options.tokenFailsAt) {
+        throw new AppError("ML_UNAVAILABLE", "sin red al renovar", { retriable: true });
+      }
       return `APP_USR-token-${tokenCalls.length}`;
     },
     progress: current,
     saveProgress: async (progress) => {
+      if (options.saveFails?.(progress as PortalProgress)) throw new Error("DB caída");
       saved.push(structuredClone(progress as PortalProgress));
       current = progress;
     },
@@ -410,7 +427,7 @@ describe("createPortalPublisher · publicar", () => {
       "POST /pictures/items/upload",
       "POST /pictures/items/upload",
       "POST /items",
-      "POST /items/" + item?.id + "/description",
+      `POST /items/${item?.id}/description`,
     ]);
     // El progreso, foto por foto y antes de crear (con el contacto enviado y la hora del pedido).
     expect(saved.map((progress) => progress.pictureIds.length)).toEqual([1, 2, 3, 3, 3, 3]);
@@ -443,10 +460,7 @@ describe("createPortalPublisher · publicar", () => {
     const { publisher, ctx, read } = setup();
 
     const error = await publisher
-      .publish(
-        input({ listing: { ...input().listing!, priceCurrency: "CLP", priceAmount: 10.5 } }),
-        ctx(),
-      )
+      .publish(input({ listing: { ...LISTING, priceCurrency: "CLP", priceAmount: 10.5 } }), ctx())
       .catch((caught: unknown) => caught);
 
     expect(error).toMatchObject({ code: "PUBLISH_INPUT_INVALID", retriable: false });
@@ -759,7 +773,7 @@ describe("createPortalPublisher · publicar", () => {
     expect(await recorded()).toEqual([]);
   });
 
-  it("ningún error ni progreso lleva el token, la URL firmada ni el WhatsApp", async () => {
+  it("ningún error ni nota lleva el token, la URL firmada ni el WhatsApp; el progreso, solo el contacto enviado", async () => {
     useMercadoLibre({
       create: {
         1: () => HttpResponse.json({ message: `APP_USR-token-1 ${SIGNED}` }, { status: 500 }),
@@ -769,9 +783,141 @@ describe("createPortalPublisher · publicar", () => {
 
     const error = await publisher.publish(input(), ctx()).catch((caught: unknown) => caught);
 
-    const text = `${errorText(error)} ${JSON.stringify(saved)}`;
-    expect(text).not.toContain("APP_USR-token");
-    expect(text).not.toContain("firma-secreta");
-    expect(text).not.toContain("+56 9 1234 5678");
+    const errorPart = errorText(error);
+    for (const secret of ["APP_USR-token", "firma-secreta", "912345678", "1234 5678"]) {
+      expect(errorPart).not.toContain(secret);
+    }
+    const progressPart = JSON.stringify(saved);
+    expect(progressPart).not.toContain("APP_USR-token");
+    expect(progressPart).not.toContain("firma-secreta");
+    // El progreso guarda el `seller_contact` enviado, para pausar y cerrar con el mismo (T17).
+    expect(saved.at(-1)?.sellerContact?.phone2).toBe("912345678");
+
+    useMercadoLibre();
+    const ok = setup();
+    const result = await ok.publisher.publish(input(), ok.ctx());
+    expect(JSON.stringify(result)).not.toMatch(/firma-secreta|912345678|APP_USR-/);
+  });
+
+  it("si falla pedir el token justo antes de crear, no queda como si el pedido hubiera salido", async () => {
+    const ml = useMercadoLibre();
+    // 3 tokens para las fotos; el cuarto, el de POST /items, falla.
+    const first = setup({ tokenFailsAt: 4 });
+    await expect(first.publisher.publish(input(), first.ctx())).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+      retriable: true,
+    });
+    expect(ml.counts.create).toBe(0);
+    expect(first.progress()?.createRequestedAt).toBeUndefined();
+
+    const second = setup({ progress: first.progress() });
+    await second.publisher.publish(input(), second.ctx());
+    expect(ml.counts.create).toBe(1);
+    expect(
+      (await recorded()).some((request) => request.url.pathname.endsWith("/items/search")),
+    ).toBe(false);
+  });
+
+  it("un 401 al crear y después falla renovar el token: no se creó, el próximo intento crea sin buscar", async () => {
+    const ml = useMercadoLibre({ unauthorizedOnce: ["create"] });
+    // 3 tokens para las fotos, el 4.º para POST /items (401) y el 5.º, la renovación, falla.
+    const first = setup({ tokenFailsAt: 5 });
+    await expect(first.publisher.publish(input(), first.ctx())).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+    });
+    expect(first.progress()?.createRequestedAt).toBeUndefined();
+
+    const second = setup({ progress: first.progress() });
+    await second.publisher.publish(input(), second.ctx());
+    expect(ml.items.size).toBe(1);
+    expect(
+      (await recorded()).some((request) => request.url.pathname.endsWith("/items/search")),
+    ).toBe(false);
+  });
+
+  it("un 401 que se repite al crear: sube marcado, sin un tercer intento y sin hora de pedido (no se creó)", async () => {
+    const ml = useMercadoLibre({ createAlwaysUnauthorized: true });
+    const { publisher, ctx, tokenCalls, progress } = setup();
+
+    await expect(publisher.publish(input(), ctx())).rejects.toMatchObject({
+      code: "ML_AUTH_INVALID",
+      details: { reason: MERCADOLIBRE_REJECTED_AFTER_REFRESH },
+    });
+    expect((await writes()).filter((call) => call === "POST /items")).toHaveLength(2);
+    expect(tokenCalls.filter((call) => call.rejectedToken !== undefined)).toHaveLength(1);
+    expect(progress()?.createRequestedAt).toBeUndefined();
+    expect(ml.items.size).toBe(0);
+  });
+
+  it("si falla guardar el id del ítem creado (dos veces), el próximo intento lo encuentra y no crea otro", async () => {
+    const ml = useMercadoLibre();
+    const first = setup({ saveFails: (progress) => progress.itemId !== undefined });
+    await expect(first.publisher.publish(input(), first.ctx())).rejects.toThrow("DB caída");
+    expect(first.progress()).toMatchObject({ createRequestedAt: NOW.toISOString() });
+
+    const second = setup({ progress: first.progress() });
+    const result = await second.publisher.publish(input(), second.ctx());
+
+    expect(ml.counts.create).toBe(1);
+    expect(result.externalId).toBe([...ml.items.keys()][0]);
+  });
+
+  it("guardar el id falla una vez: se reintenta el guardado y sigue sin buscar", async () => {
+    const ml = useMercadoLibre();
+    let failures = 0;
+    const { publisher, ctx } = setup({
+      saveFails: (progress) => progress.itemId !== undefined && failures++ === 0,
+    });
+    await publisher.publish(input(), ctx());
+    expect(ml.counts.create).toBe(1);
+    expect(
+      (await recorded()).some((request) => request.url.pathname.endsWith("/items/search")),
+    ).toBe(false);
+  });
+
+  it("una búsqueda caída y después sana: el intento siguiente encuentra el ítem", async () => {
+    const ml = useMercadoLibre({ create: { 1: "createdThenLost" }, searchStatus: 503 });
+    const first = setup();
+    await first.publisher.publish(input(), first.ctx()).catch(() => undefined);
+    const second = setup({ progress: first.progress() });
+    await second.publisher.publish(input(), second.ctx()).catch(() => undefined);
+
+    server.resetHandlers();
+    const healthy = useMercadoLibre();
+    for (const [id, item] of ml.items) healthy.items.set(id, item);
+    const third = setup({ progress: second.progress() });
+    const result = await third.publisher.publish(input(), third.ctx());
+
+    expect(result.externalId).toBe([...ml.items.keys()][0]);
+    expect(healthy.counts.create).toBe(0);
+  });
+
+  it("el ítem encontrado sin seller_custom_field no se toma", async () => {
+    const ml = useMercadoLibre({
+      create: { 1: "createdThenLost" },
+      searchResults: ["MLC8888888888"],
+    });
+    ml.items.set("MLC8888888888", {
+      id: "MLC8888888888",
+      seller_custom_field: null as unknown as string,
+      status: "active",
+      sub_status: [],
+      permalink: "https://departamento.mercadolibre.cl/MLC-8888888888-_JM",
+      pictures: [],
+      description: null,
+    });
+    const first = setup();
+    await first.publisher.publish(input(), first.ctx()).catch(() => undefined);
+    const second = setup({ progress: first.progress() });
+    await expect(second.publisher.publish(input(), second.ctx())).rejects.toMatchObject({
+      code: "ML_PUBLISH_OUTCOME_UNKNOWN",
+    });
+  });
+
+  it("un progreso con más fotos que la publicación vuelve a subirlas en orden", async () => {
+    const ml = useMercadoLibre();
+    const { publisher, ctx } = setup({ progress: { pictureIds: ["a", "b", "c", "d"] } });
+    await publisher.publish(input(), ctx());
+    expect([...ml.items.values()][0]?.pictures).toEqual(["1-MLC_PIC", "2-MLC_PIC", "3-MLC_PIC"]);
   });
 });

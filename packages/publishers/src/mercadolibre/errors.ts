@@ -322,7 +322,11 @@ export function mercadoLibreCausesOf(error: unknown): MercadoLibreCause[] {
 export function itemCreationOutcome(error: unknown): "not_created" | "unknown" {
   if (!isAppError(error)) return "unknown";
   const details = (error.details ?? {}) as { httpStatus?: unknown; reason?: unknown };
-  if (error.code === "ML_BODY_INVALID" || details.reason === "token_malformed") {
+  if (
+    error.code === "ML_BODY_INVALID" ||
+    details.reason === "token_malformed" ||
+    details.reason === "not_sent"
+  ) {
     return "not_created";
   }
   const status = details.httpStatus;
@@ -347,8 +351,12 @@ export const MERCADOLIBRE_ERRORS = {
       { retriable: true, details: { reason } },
     ),
   /** Se cortó con la señal (apagado del worker): el reintento retoma. */
-  aborted: () =>
-    new AppError("ML_ABORTED", "Se cortó la llamada a Mercado Libre", { retriable: true }),
+  aborted: (when: "before_send" | "in_flight" = "in_flight") =>
+    new AppError("ML_ABORTED", "Se cortó la llamada a Mercado Libre", {
+      retriable: true,
+      // Cortada antes de enviarse: Mercado Libre no la recibió (`itemCreationOutcome`).
+      ...(when === "before_send" ? { details: { reason: "not_sent" } } : {}),
+    }),
   /** Un token que no puede ir en una cabecera ni en un formulario (por ejemplo, con un salto de línea). */
   malformedToken: () =>
     new AppError(

@@ -66,6 +66,7 @@ export {
 } from "./mercadolibre/errors.js";
 export {
   buildPortalItem,
+  buildPortalItemWithSources,
   type PortalItem,
   type PortalItemCatalog,
   type PortalItemOptions,

@@ -229,7 +229,7 @@ type PublishContext = Omit<PlatformContext, "accessToken"> & {
   saveProgress(progress: unknown): Promise<void>;           // antes del paso que publica
 };
 type PublishValidation = { ok: true; notes?: string[] } | { ok: false; issues: PublishIssue[] };
-type PublishResult = { externalId: string; externalUrl: string | null; simulated: boolean; notes?: string[] };
+type PublishResult = { externalId: string; externalUrl: string | null; simulated: boolean; notes?: string[]; remote?: RemoteStatus };
 type PublishedRef = { externalId: string; progress: unknown | null };
 type RemoteStatus = Omit<RemoteState, "checkedAt">;         // core suma checkedAt al guardar
 ```
@@ -668,7 +668,7 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 
 ## Publisher de Portal (`createPortalPublisher`, F4-T14)
 
-`packages/publishers/src/mercadolibre/publisher.ts`: `validatePortalInput` (pura) y `publish`, que sube las fotos (bytes por `readPicture`, que arma el worker), crea el ítem y carga la descripción aparte, guardando el progreso (`portalProgressSchema`) antes de cada paso que crea algo. Antes de subir nada arma el ítem con las fotos por URL (`buildPortalItem`): un aviso que la revisión local rechaza no gasta subidas. **Retoma sin duplicar:** con `itemId`, ni arma ni crea (termina la descripción, leyéndola antes, y lee el ítem); con `createRequestedAt` y sin `itemId`, nunca repite `POST /items`: lo busca por `seller_custom_field` (sin estado y, si no aparece, con `not_yet_active` y `paused`), confirma que sea de la publicación y, si no hay exactamente uno, `ML_PUBLISH_OUTCOME_UNKNOWN`. Una respuesta que dice que no se creó (`itemCreationOutcome`) deja crear de nuevo; ante 508 o 509, vuelve a subir las fotos una vez. Cada llamada al cliente refresca una vez ante un 401 (`withMercadoLibreToken`); el `rejected_after_refresh` del catálogo sube tal cual. El resultado lleva `remote` (el estado del ítem) para el `remote_state` (T16).
+`packages/publishers/src/mercadolibre/publisher.ts`: `validatePortalInput` (pura) y `publish`, que sube las fotos (bytes por `readPicture`, que arma el worker), crea el ítem y carga la descripción aparte, guardando el progreso (`portalProgressSchema`) antes de cada paso que crea algo. Antes de subir nada arma el ítem con las fotos por URL (`buildPortalItem`): un aviso que la revisión local rechaza no gasta subidas. **Retoma sin duplicar:** con `itemId`, ni arma ni crea (termina la descripción, leyéndola antes, y lee el ítem); con `createRequestedAt` y sin `itemId`, nunca repite `POST /items`: lo busca por `seller_custom_field` (sin estado y, si no aparece, con `not_yet_active` y `paused`), confirma que sea de la publicación y, si no hay exactamente uno, `ML_PUBLISH_OUTCOME_UNKNOWN`. Una respuesta que dice que no se creó (`itemCreationOutcome`), o un fallo antes de que el pedido salga (el token, el candado, un corte antes de enviar), deja crear de nuevo; ante 508 o 509, vuelve a subir las fotos una vez. Cada llamada al cliente refresca una vez ante un 401 (`withMercadoLibreToken`); el `rejected_after_refresh` del catálogo sube tal cual. El resultado lleva `remote` (el estado del ítem) para el `remote_state` (T16).
 
 ## `pnpm ml:smoke` (F4-T10)
 

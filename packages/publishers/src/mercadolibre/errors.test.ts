@@ -279,9 +279,14 @@ describe("itemCreationOutcome", () => {
     },
   );
 
-  it("un cuerpo inválido o un token mal formado no se enviaron: no se creó", () => {
+  it("un cuerpo inválido, un token mal formado o un corte antes de enviar no salieron: no se creó", () => {
     expect(itemCreationOutcome(MERCADOLIBRE_ERRORS.invalidBody("createItem"))).toBe("not_created");
     expect(itemCreationOutcome(MERCADOLIBRE_ERRORS.malformedToken())).toBe("not_created");
+    expect(itemCreationOutcome(MERCADOLIBRE_ERRORS.aborted("before_send"))).toBe("not_created");
+    expect(MERCADOLIBRE_ERRORS.aborted("before_send")).toMatchObject({
+      code: "ML_ABORTED",
+      retriable: true,
+    });
   });
 
   it.each([

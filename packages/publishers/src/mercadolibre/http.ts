@@ -76,7 +76,7 @@ export async function mercadoLibreRequest(
   init: RequestSpec,
   { signal, timeoutMs }: MercadoLibreCallOptions & { timeoutMs: number },
 ): Promise<unknown> {
-  if (signal?.aborted) throw MERCADOLIBRE_ERRORS.aborted();
+  if (signal?.aborted) throw MERCADOLIBRE_ERRORS.aborted("before_send");
   // Un token con caracteres que no caben en una cabecera (por ejemplo, un salto de línea) haría
   // fallar a `fetch` como si fuera la red, y se reintentaría en vano.
   if (init.accessToken !== undefined && !isWellFormedToken(init.accessToken)) {
