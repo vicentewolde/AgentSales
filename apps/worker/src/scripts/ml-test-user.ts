@@ -17,6 +17,8 @@ function pbcopy(text: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn("pbcopy", [], { stdio: ["pipe", "ignore", "ignore"] });
     child.on("error", reject);
+    // `pbcopy` puede terminar antes de leer: el `EPIPE` llega aquí, no como excepción suelta.
+    child.stdin.on("error", reject);
     child.on("close", (code) =>
       code === 0 ? resolve() : reject(new Error(`pbcopy terminó con ${code}`)),
     );

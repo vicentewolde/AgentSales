@@ -98,13 +98,22 @@ export function useMercadoLibreSim() {
   const pending = new Set<Promise<void>>();
   const server = setupServer();
   server.events.on("request:start", ({ request }) => {
+    // Método y ruta siempre (también un `multipart`, como la subida de fotos); el cuerpo solo si
+    // es JSON. Un registro que fallara escondería justo la escritura que se busca.
+    const method = request.method;
+    const path = new URL(request.url).pathname;
+    const json = request.headers.get("content-type")?.startsWith("application/json");
     const recording = (async () => {
-      const text = request.method === "GET" ? "" : await request.clone().text();
-      requests.push({
-        method: request.method,
-        path: new URL(request.url).pathname,
-        json: text === "" ? undefined : JSON.parse(text),
-      });
+      let body: unknown;
+      if (json) {
+        const text = await request.clone().text();
+        try {
+          body = text === "" ? undefined : JSON.parse(text);
+        } catch {
+          body = undefined;
+        }
+      }
+      requests.push({ method, path, json: body });
     })();
     pending.add(recording);
     void recording.catch(() => undefined).finally(() => pending.delete(recording));

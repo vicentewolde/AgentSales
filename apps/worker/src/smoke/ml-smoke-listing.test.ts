@@ -7,9 +7,12 @@ import {
 } from "@agentsales/core/testing";
 import {
   createMercadoLibreItems,
+  createMercadoLibrePictures,
   createMercadoLibreValidator,
+  type MercadoLibreItemBody,
   type MercadoLibreItems,
 } from "@agentsales/publishers";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { captureLogger } from "../../test/content-fixture.js";
 import { useMercadoLibreSim } from "../../test/mercadolibre-sim.js";
@@ -20,6 +23,7 @@ import {
   NO_PICTURES,
   readOnlyItems,
   recordingValidator,
+  redactedBody,
   runMlSmokeListing,
 } from "./ml-smoke-listing.js";
 
@@ -28,7 +32,7 @@ import {
 
 const sim = useMercadoLibreSim();
 
-async function setup(options: { account?: boolean; approve?: boolean } = {}) {
+async function setup(options: { account?: boolean; approve?: boolean; brokerSlug?: string } = {}) {
   const t = await createPublicationScenario({
     platform: "portal_inmobiliario",
     nextId: randomUUID,
@@ -71,7 +75,10 @@ async function setup(options: { account?: boolean; approve?: boolean } = {}) {
         print: (line) => out.push(line),
         printError: (line) => err.push(line),
       },
-      { listingRef },
+      {
+        listingRef,
+        ...(options.brokerSlug === undefined ? {} : { brokerSlug: options.brokerSlug }),
+      },
     );
   const text = () => [...out, ...err].join("\n");
   return { t, run, text, reports, listing };
@@ -215,5 +222,65 @@ describe("ml:smoke --listing", () => {
     expect(await blocked(() => NO_PICTURE_BYTES.get("a/b.jpg"))).toBe("ML_SMOKE_WRITE_BLOCKED");
     await items.get("t", "MLC1");
     expect(calls).toEqual(["get"]);
+  });
+
+  it("el simulador sí ve una subida de foto (multipart): writes() la detectaría", async () => {
+    sim.use("accept");
+    await createMercadoLibrePictures().upload(PORTAL_SCENARIO_TOKENS.accessToken, {
+      bytes: new Uint8Array([0xff, 0xd8, 0xff, 1]),
+      mime: "image/jpeg",
+      filename: "1.jpg",
+    });
+    expect(await sim.writes()).toEqual([
+      { method: "POST", path: "/pictures/items/upload", json: undefined },
+    ]);
+  });
+
+  it("redactedBody oculta el contacto, la dirección y las URLs firmadas", () => {
+    const body = {
+      title: "Depto",
+      category_id: "MLC1480",
+      seller_contact: { contact: "Corredora", country_code2: "56", phone2: "911112222" },
+      pictures: [{ source: "https://r2.example/1.jpg?X-Amz-Signature=firma" }],
+      location: { address_line: "Calle Inventada 1234", city: { id: "TUxDQ05VTmE" } },
+    } as unknown as MercadoLibreItemBody;
+
+    const redacted = JSON.stringify(redactedBody(body));
+    expect(redacted).not.toContain("911112222");
+    expect(redacted).not.toContain("Calle Inventada");
+    expect(redacted).not.toContain("X-Amz-Signature");
+    expect(redactedBody(body)).toMatchObject({
+      title: "Depto",
+      pictures: "1 foto(s) por URL firmada",
+      location: { address_line: "(presente, oculta en el informe)", city: { id: "TUxDQ05VTmE" } },
+    });
+  });
+
+  it("un corredor que no existe, sin fotos, texto sin aprobar y una caída de Mercado Libre", async () => {
+    sim.use("accept");
+    const wrongBroker = await setup({ brokerSlug: "no-existe" });
+    expect(await wrongBroker.run()).toBe(1);
+    expect(wrongBroker.text()).toContain("BROKER_NOT_FOUND");
+
+    const noPhotos = await setup();
+    vi.spyOn(noPhotos.t.media, "listByListing").mockResolvedValue([]);
+    expect(await noPhotos.run()).toBe(1);
+    expect(noPhotos.text()).toContain("CONTENT_NOT_READY");
+    expect(await sim.recorded()).toEqual([]);
+
+    const draft = await setup({ approve: false });
+    expect(await draft.run()).toBe(0);
+    expect(draft.text()).toContain("el texto no está aprobado: se revisa igual");
+
+    sim.server.use(
+      http.post("https://api.mercadolibre.com/items/validate", () =>
+        HttpResponse.json({ message: "boom" }, { status: 503 }),
+      ),
+    );
+    const down = await setup();
+    expect(await down.run()).toBe(1);
+    expect(down.reports[0]?.outcome).toBe("error");
+    expect(down.text()).toContain("ML_UNAVAILABLE");
+    expect(await sim.writes()).toEqual([]);
   });
 });

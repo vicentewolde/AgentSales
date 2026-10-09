@@ -99,7 +99,9 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
   - **Usuario de prueba:** la doc dice que se crea con el acceso de tu cuenta real (no con el de la app). Por eso existe **`pnpm ml:test-user --broker agentsales-pruebas`** (tu decisión): crea uno, muestra el id y el apodo y deja la clave en tu portapapeles, sin imprimirla. El paso a paso completo (activación con el formulario de soporte, paquete sin cargo, conectarlo a `agentsales-pruebas`) está en la checklist.
   - **Ojo:** conectar el usuario de prueba a `agentsales-pruebas` reemplaza tu cuenta real ahí durante la prueba; al final se reconecta la real.
   - **NO VERIFICADO en la doc:** cuánto tarda la activación, si el aviso de prueba se ve en el buscador de Portal y si pide otras verificaciones al entrar.
-  - 6 mutaciones a mano detectadas.
+  - La descripción en el cuerpo no la confirma el smoke (no la manda); se verá en la prueba en `live`.
+  - **La revisión dejó:** el simulador de las pruebas ahora ve una subida de foto (antes se le escapaba); el informe oculta la dirección con prueba; `ml:test-user` solo dice "pudo crearse" si el pedido alcanzó a salir, se niega si no puede leer si la cuenta es de prueba y avisa que vacía el portapapeles; más pruebas (acceso rechazado y renovado, corte, sin fotos, caída).
+  - 10 mutaciones a mano detectadas.
 - 2026-10-09: **Forma de trabajo nueva (tu decisión):** las tareas relacionadas van en lotes (una rama y un PR), con un solo `pnpm check` y sin simulación local de la CI (la de GitHub corre en un clon limpio y el merge la exige en verde). Lotes de F4: A = T21 + T22 (panel), B = T23 + T25 (Mercado Libre), después T24. `CLAUDE.md` (reglas 2 y 5) y la skill `/tarea` al día.
 - 2026-10-09: **F4-T21 y F4-T22 (lote A).** El panel ya maneja Portal:
   - **Cuentas:** por corredor, Instagram y Mercado Libre. Mercado Libre muestra su cuenta (el nombre tal cual, vencimiento estimado, permisos) y, si no está conectada o vence, los dos comandos para copiar (los mismos de la CLI). Sin el par de la app en la API, dice qué falta.

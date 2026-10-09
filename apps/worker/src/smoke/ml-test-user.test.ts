@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { MercadoLibreAuth } from "@agentsales/core";
 import { createPublicationScenario, PORTAL_SCENARIO_TOKENS } from "@agentsales/core/testing";
 import { createMercadoLibreTestUsers } from "@agentsales/publishers";
 import { HttpResponse, http } from "msw";
@@ -11,26 +12,53 @@ import { runMlTestUser } from "./ml-test-user.js";
 
 const API = "https://api.mercadolibre.com";
 const PASSWORD = "clave-qwerty-1234";
+const NEW_ACCESS = "APP_USR-6543210987654321-100912-aaaabbbbccccddddeeeeffff00001111-8035443";
+const CREATED = () =>
+  HttpResponse.json(
+    { id: 1234567890, nickname: "TESTUSER123", password: PASSWORD, site_status: "active" },
+    { status: 201 },
+  );
 const sim = useMercadoLibreSim();
+
+/** Un refresco de Mercado Libre falso: entrega el par nuevo para la misma cuenta. */
+function fakeAuth() {
+  const calls: string[] = [];
+  const auth: MercadoLibreAuth = {
+    authorizeUrl: () => "https://auth.mercadolibre.cl/authorization",
+    exchangeCode: async () => {
+      throw new Error("no se canjea en esta prueba");
+    },
+    me: async () => {
+      throw new Error("no se lee el usuario en esta prueba");
+    },
+    refresh: async () => {
+      calls.push("refresh");
+      return {
+        accessToken: NEW_ACCESS,
+        refreshToken: "TG-0f1e2d3c4b5a69788796a5b4-8035443",
+        accessTokenExpiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+        scopes: ["offline_access", "read", "write"],
+        userId: "8035443",
+      };
+    },
+  };
+  return { auth, calls };
+}
 
 async function setup(
   options: {
-    reply?: () => Response;
+    reply?: (request: Request) => Response | Promise<Response>;
     clipboard?: boolean;
     copyFails?: boolean;
     account?: boolean;
     testUser?: boolean;
+    auth?: MercadoLibreAuth | null;
+    signal?: AbortSignal;
   } = {},
 ) {
   sim.server.use(
-    http.post(
-      `${API}/users/test_user`,
-      options.reply ??
-        (() =>
-          HttpResponse.json(
-            { id: 1234567890, nickname: "TESTUSER123", password: PASSWORD, site_status: "active" },
-            { status: 201 },
-          )),
+    http.post(`${API}/users/test_user`, ({ request }) =>
+      options.reply === undefined ? CREATED() : options.reply(request),
     ),
   );
   const t = await createPublicationScenario({
@@ -61,7 +89,7 @@ async function setup(
       {
         accounts: t.platformAccounts,
         brokers: t.brokers,
-        mercadoLibre: null,
+        mercadoLibre: options.auth ?? null,
         testUsers: createMercadoLibreTestUsers(),
         clipboardReady: async () => options.clipboard ?? true,
         copyToClipboard: async (text) => {
@@ -72,7 +100,7 @@ async function setup(
         print: (line) => out.push(line),
         printError: (line) => out.push(line),
       },
-      { brokerSlug: slug },
+      { brokerSlug: slug, ...(options.signal === undefined ? {} : { signal: options.signal }) },
     );
   const posts = async () =>
     (await sim.recorded()).filter((r) => r.method === "POST" && r.path === "/users/test_user");
@@ -133,6 +161,75 @@ describe("ml:test-user", () => {
 
     expect(await s.run()).toBe(1);
     expect(s.text()).toContain("ACCOUNT_NOT_CONNECTED");
+    expect(await s.posts()).toEqual([]);
+  });
+
+  it("un 401 se refresca y se repite una vez (no había creado nada): dos POST como mucho", async () => {
+    const { auth, calls } = fakeAuth();
+    const s = await setup({
+      auth,
+      reply: (request) =>
+        request.headers.get("authorization") === `Bearer ${NEW_ACCESS}`
+          ? CREATED()
+          : HttpResponse.json({ message: "invalid token", error: "unauthorized" }, { status: 401 }),
+    });
+
+    expect(await s.run()).toBe(0);
+    expect(calls).toEqual(["refresh"]);
+    expect(await s.posts()).toHaveLength(2);
+    expect(s.copied).toEqual([PASSWORD]);
+    const [account] = await s.t.platformAccounts.list();
+    expect(account?.status).toBe("connected");
+    // El par nuevo quedó guardado (con el candado): el refresco no deja tokens viejos.
+    const credentials = await s.t.platformAccounts.getCredentials(account?.id ?? "");
+    expect(credentials).toMatchObject({ accessToken: NEW_ACCESS });
+  });
+
+  it("una respuesta con otra forma que trae la clave: pudo crearse, y la clave no se muestra", async () => {
+    const s = await setup({
+      reply: () => HttpResponse.json({ id: "no-es-numero", password: PASSWORD }),
+    });
+
+    expect(await s.run()).toBe(1);
+    expect(s.text()).toContain("pudo haberse creado");
+    expect(s.text()).not.toContain(PASSWORD);
+    expect(await s.posts()).toHaveLength(1);
+  });
+
+  it("un corte en vuelo (Ctrl+C) avisa que pudo crearse y no repite", async () => {
+    const controller = new AbortController();
+    const s = await setup({
+      signal: controller.signal,
+      reply: async () => {
+        controller.abort();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return CREATED();
+      },
+    });
+
+    expect(await s.run()).toBe(1);
+    expect(s.text()).toContain("ML_ABORTED");
+    expect(s.text()).toContain("pudo haberse creado");
+    expect(s.text()).not.toContain(PASSWORD);
+    expect(s.copied).toEqual([]);
+  });
+
+  it("con el acceso vencido y sin el par de la app: lo dice sin crear nada", async () => {
+    const s = await setup();
+    const [account] = await s.t.platformAccounts.list();
+    if (account === undefined) throw new Error("falta la cuenta");
+    await s.t.platformAccounts.upsertConnected({
+      brokerId: account.brokerId,
+      platform: "portal_inmobiliario",
+      externalAccountId: account.externalAccountId,
+      displayName: account.displayName,
+      tokenExpiresAt: account.tokenExpiresAt,
+      meta: { ...account.meta, accessTokenExpiresAt: new Date(Date.now() - 1000).toISOString() },
+      credentials: { ...PORTAL_SCENARIO_TOKENS },
+    });
+
+    expect(await s.run()).toBe(1);
+    expect(s.text()).toContain("MERCADOLIBRE_NOT_CONFIGURED");
     expect(await s.posts()).toEqual([]);
   });
 });

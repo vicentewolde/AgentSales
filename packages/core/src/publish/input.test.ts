@@ -444,6 +444,20 @@ describe("assemblePublishInput y toPublishListing (F4-T23)", () => {
     ).toMatchObject({ title: "Depto en Ñuñoa", caption: "Luminoso.", listing, brokerContact });
   });
 
+  it("el aviso va solo (y siempre) en las plataformas que lo publican", () => {
+    const listingData = {
+      listing: toPublishListing(contentListingFixture()),
+      brokerContact: { name: "Corredora", email: null, whatsapp: null },
+    };
+    const base = { publicationId: "p-3", format: "post" as const, content, media };
+    expect(() => assemblePublishInput({ ...base, platform: "instagram", listingData })).toThrow(
+      /sobra/,
+    );
+    expect(() =>
+      assemblePublishInput({ ...base, platform: "portal_inmobiliario", listingData: null }),
+    ).toThrow(/falta/);
+  });
+
   it("toPublishListing nunca lleva las notas internas ni las columnas desconocidas", () => {
     const listing = toPublishListing(contentListingFixture());
     expect(JSON.stringify(listing)).not.toContain("Dueño acepta");

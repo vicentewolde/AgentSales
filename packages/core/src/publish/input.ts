@@ -140,6 +140,14 @@ export function assemblePublishInput({
   media: PublishMediaItem[];
   listingData: { listing: PublishListing; brokerContact: PublishBrokerContact } | null;
 }): PublishInput {
+  // El aviso va solo en las plataformas que lo publican (Portal y Marketplace), y en ellas siempre.
+  if ((listingData !== null) !== PUBLISH_LISTING_PLATFORMS.has(platform)) {
+    throw new AppError(
+      "PUBLISH_INPUT_INVALID",
+      `El aviso ${listingData === null ? "falta" : "sobra"} en el input de ${platform}`,
+      { details: { publicationId, platform } },
+    );
+  }
   return {
     publicationId,
     platform,

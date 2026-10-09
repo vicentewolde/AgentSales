@@ -110,19 +110,22 @@ export function recordingValidator(validator: MercadoLibreValidator) {
   };
 }
 
-/** El cuerpo para el informe: lo que confirma T23 (atributos, ubicación, descripción), sin datos de contacto. */
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * El cuerpo para el informe: lo que confirma T23 (atributos, ubicación, categoría), sin datos de
+ * contacto. `preflight` manda el cuerpo sin la descripción (va aparte al publicar), así que el smoke
+ * no confirma si la descripción puede ir en el cuerpo.
+ */
 export function redactedBody(body: MercadoLibreItemBody): Record<string, unknown> {
   const copy: Record<string, unknown> = JSON.parse(JSON.stringify(body));
   if ("seller_contact" in copy) copy.seller_contact = "(presente, oculto en el informe)";
   if (Array.isArray(copy.pictures))
     copy.pictures = `${copy.pictures.length} foto(s) por URL firmada`;
   const location = copy.location;
-  if (typeof location === "object" && location !== null && "address_line" in location) {
-    (location as Record<string, unknown>).address_line = "(presente, oculta en el informe)";
-  }
-  if (typeof copy.description === "object" && copy.description !== null) {
-    const text = (copy.description as Record<string, unknown>).plain_text;
-    copy.description = typeof text === "string" ? `${text.length} caracteres` : "(presente)";
+  if (isRecord(location) && "address_line" in location) {
+    location.address_line = "(presente, oculta en el informe)";
   }
   return copy;
 }

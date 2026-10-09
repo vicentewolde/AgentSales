@@ -5,14 +5,15 @@ import {
   isAppError,
   isMercadoLibreRejectedAfterRefresh,
   type MercadoLibreTokenDeps,
+  mercadoLibreAccountMetaSchema,
   type PlatformAccountRepository,
 } from "@agentsales/core";
 import {
+  itemCreationOutcome,
   type MercadoLibreTestUser,
   type MercadoLibreTestUsers,
   withMercadoLibreToken,
 } from "@agentsales/publishers";
-import { z } from "zod";
 import { HINTS, REJECTED_AFTER_REFRESH_HINT } from "./ml-smoke.js";
 
 // `pnpm ml:test-user --broker <slug>` (spec F4-T25): crea **un** usuario de prueba de Mercado Libre
@@ -20,8 +21,11 @@ import { HINTS, REJECTED_AFTER_REFRESH_HINT } from "./ml-smoke.js";
 // operador. La clave sale una sola vez: va al portapapeles, nunca a la salida, a un log ni a la
 // base. Antes de crear nada revisa que el portapapeles funcione (sin él, la clave se perdería).
 
-/** Si la cuenta conectada ya es un usuario de prueba (`meta.testUser`, F4-T06). */
-const testUserMetaSchema = z.object({ testUser: z.boolean().optional().catch(undefined) });
+/**
+ * Si la cuenta conectada ya es un usuario de prueba (`meta.testUser`, F4-T06), con el esquema de
+ * core: un valor que no calza no se toma como "cuenta real".
+ */
+const testUserMetaSchema = mercadoLibreAccountMetaSchema.pick({ testUser: true }).partial();
 
 export type MlTestUserDeps = {
   accounts: Pick<
@@ -41,9 +45,6 @@ export type MlTestUserDeps = {
 };
 
 export type MlTestUserOptions = { brokerSlug: string; signal?: AbortSignalLike };
-
-/** Los errores de una llamada que pudo crear el usuario sin que se supiera (la clave se perdió). */
-const MAYBE_CREATED = new Set(["ML_UNAVAILABLE", "ML_UNEXPECTED_RESPONSE"]);
 
 /**
  * Crea el usuario de prueba y deja la clave en el portapapeles. Sale con 0 solo si se creó y se
@@ -76,13 +77,23 @@ export async function runMlTestUser(
       `Conecta tu cuenta real (con pnpm dev): pnpm -s cli accounts connect mercadolibre --broker ${broker.slug}`,
     );
   }
-  if (testUserMetaSchema.safeParse(account.meta).data?.testUser === true) {
+  const meta = testUserMetaSchema.safeParse(account.meta);
+  if (!meta.success) {
+    return fail(
+      "ACCOUNT_META_UNREADABLE",
+      `No se puede saber si la cuenta conectada a ${broker.slug} es la real o una de prueba`,
+      `Reconéctala (con pnpm dev): pnpm -s cli accounts connect mercadolibre --broker ${broker.slug}`,
+    );
+  }
+  if (meta.data.testUser === true) {
     return fail(
       "ACCOUNT_IS_TEST_USER",
       `La cuenta conectada a ${broker.slug} (${account.displayName}) ya es un usuario de prueba`,
       "Los usuarios de prueba se crean desde tu cuenta real: reconéctala y vuelve a correrlo",
     );
   }
+  // Probar el portapapeles lo vacía (copia un texto vacío): se avisa.
+  deps.print("Revisando el portapapeles (queda vacío)…");
   if (!(await deps.clipboardReady())) {
     return fail(
       "CLIPBOARD_UNAVAILABLE",
@@ -95,6 +106,10 @@ export async function runMlTestUser(
     `Creando un usuario de prueba de Mercado Libre Chile con la cuenta ${account.displayName}…`,
   );
   let created: MercadoLibreTestUser;
+  // Si el `POST` salió y no se sabe cómo terminó (red, 5xx, tope, corte en vuelo, otra forma), el
+  // usuario pudo crearse: la misma regla que crear un ítem (`itemCreationOutcome`). Un error del
+  // token o del refresco, antes del `POST`, no creó nada.
+  let maybeCreated = false;
   try {
     created = await withMercadoLibreToken(
       {
@@ -104,13 +119,18 @@ export async function runMlTestUser(
         ),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
-      (token, signal) =>
-        deps.testUsers.create(token, "MLC", signal === undefined ? {} : { signal }),
+      async (token, signal) => {
+        try {
+          return await deps.testUsers.create(token, "MLC", signal === undefined ? {} : { signal });
+        } catch (error) {
+          if (itemCreationOutcome(error) === "unknown") maybeCreated = true;
+          throw error;
+        }
+      },
     );
   } catch (error) {
     if (!isAppError(error)) throw error;
-    const inFlight = error.code === "ML_ABORTED" && error.details?.reason !== "not_sent";
-    if (MAYBE_CREATED.has(error.code) || inFlight) {
+    if (maybeCreated) {
       return fail(
         error.code,
         `${error.message}. El usuario pudo haberse creado, pero su clave no llegó y no se recupera`,
@@ -119,7 +139,9 @@ export async function runMlTestUser(
     }
     const hint = isMercadoLibreRejectedAfterRefresh(error)
       ? REJECTED_AFTER_REFRESH_HINT
-      : HINTS[error.code];
+      : error.code === "ML_REQUEST_REJECTED"
+        ? "Mercado Libre admite hasta 10 usuarios de prueba por cuenta: si ya tienes 10, usa uno de ellos"
+        : HINTS[error.code];
     return fail(error.code, error.message, hint);
   }
 
