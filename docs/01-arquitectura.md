@@ -275,6 +275,11 @@ Los jobs del worker (`apps/worker/src/jobs/`):
 - **Al arrancar,** después de crear las colas, reencola todas las publicaciones en `publishing`. Un job reencolado parte de nuevo con `retryCount = 0`: en la bitácora, `retry` vuelve a 0 con el mismo `attempt`, y no es un intento duplicado.
 - **Hasta el próximo arranque:** un corte por apagado (`PUBLISH_ABORTED`) o un resultado sin guardar (`PUBLISH_RESULT_NOT_SAVED`) en el último intento dejan la publicación en `publishing` sin job; la recupera el reencolado al arrancar (o publicarla de nuevo).
 - **El modo del worker importa al reencolar** (D11): una publicación que quedó en `publishing` en `live` y se reencola con el worker en `dry-run` pasa a `failed` con `PUBLISH_MODE_MISMATCH`, sin publicar nada; se reintenta en `live` y retoma desde su progreso. Por eso "worker listo" registra el `publishMode`.
+- Desde F4-T18 también publica Portal: `createWorkerPortal` (`apps/worker/src/portal.ts`) arma el publisher de Portal (registrado en los dos modos, como Instagram) con el catálogo guardado en la base, el validador para `preflight`, el cliente de ítems y las fotos leídas de R2 (`readPictureFrom`); el token lo asegura el intento con `mercadoLibreAuth`. Una de Portal publicada en `live` encola su `publication.sync` en 2 min (si falla, un aviso).
+
+### Job `publication.sync` (F4-T18)
+
+- Corre `syncPublication` (ver "Pausar, reactivar, cerrar y sincronizar") con la señal de apagado. Las operaciones vienen de `createWorkerPortal().operationsFor`, **sin envolver** (`withDryRun` no expone `getStatus`): el sync no mira el `PUBLISH_MODE` del worker. Registra el resultado, el estado remoto y el cambio aplicado, sin tokens ni datos del aviso. Al arrancar, `enqueueLiveSyncs` encola el sync de las de Portal en `live`, `published` o `paused`, con la cuenta conectada.
 
 ### Job `content.prepare` (F2-T11)
 - **Cola:** `exclusive` (un solo job por `singletonKey = contentRunId`), 2 reintentos con backoff desde 30 s, y expira a los 30 min.
@@ -339,7 +344,7 @@ Política objetivo por cola (cada fase la confirma en su spec):
 | `import.run` (F1) | `singletonKey = importRunId`; en el último intento deja el run en `failed` | 2 | sí, desde 30 s | 2 h (videos grandes) |
 | `content.prepare` (F2-T11) | `exclusive`, `singletonKey = contentRunId`; en el último intento deja la corrida en `failed`, salvo un corte por apagado. Reemplaza a `media.process` (ADR-0012, enmienda de ADR-0005) | 2 | sí, desde 30 s | 30 min (video, render e IA) |
 | `publication.publish` (F3-T12) | `exclusive`, `singletonKey = publicationId`; en el último intento deja la publicación en `failed`; al arrancar se reencolan las `publishing`; registra solo el código y si se reintenta | 2 | sí, desde 60 s | 15 min (el intento tiene su propio tope de 12 min) |
-| `publication.sync` | cron, sin solaparse | 1 | no | ~10 min |
+| `publication.sync` (F4-T18) | `exclusive`, `singletonKey = publicationId` (`enqueueSync`); lo encolan el intento de Portal en `live` (2 min después de publicar), el arranque (Portal en `live`, `published` o `paused`, con la cuenta conectada), las operaciones con una respuesta perdida (30 s) y la API a pedido (T19); solo lee de la plataforma, así que corre aunque el worker esté en `dry-run`; `PUBLICATION_SYNC_STALE` en el último intento se registra como información. El cron periódico es de F6 | 2 | sí, desde 60 s | 2 min |
 | `tokens.refresh` (F3-T14; Mercado Libre desde F4-T08) | `exclusive`, `singletonKey` fijo (`tokens.refresh`): el job del arranque y el del cron (12:00, `America/Santiago`) no se pisan ni se acumulan; falla con `TOKENS_REFRESH_INCOMPLETE` si una cuenta falló por algo pasajero, y el reintento salta las ya refrescadas | 3 | sí, desde 60 s | 5 min |
 
 Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al arrancar y los cron del período apagado se pierden. Eso afecta al calendario de F6.

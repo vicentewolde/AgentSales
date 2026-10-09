@@ -2,14 +2,17 @@ import type { Logger } from "@agentsales/config";
 import {
   type AbortSignalLike,
   enqueuePublication,
+  enqueueSync,
   isAppError,
   type JobQueue,
+  OPERATION_PLATFORMS,
   type PublicationRepository,
   type PublishPublicationDeps,
   publishPublication,
 } from "@agentsales/core";
 import type { InstagramPublishNote } from "@agentsales/publishers";
 import { defineJob, type Job, type QueuePolicy } from "./define.js";
+import { PUBLISHED_SYNC_DELAY_MS } from "./publication-sync.js";
 
 /**
  * Política de `publication.publish` (spec F3 §4.4, `docs/01-arquitectura.md` → Cola de trabajos):
@@ -34,8 +37,11 @@ export type PublicationPublishJobDeps = {
    * los dos modos, con su cliente perezoso) y el `PUBLISH_MODE` del worker.
    */
   shared: Omit<PublishPublicationDeps, "onWarning">;
+  /** Para el sync de Portal 2 min después de publicar en `live` (spec F4 §4.9). */
+  queue: JobQueue;
   /** Se dispara al apagar el worker: corta el sondeo y las llamadas a la plataforma. */
   signal: AbortSignalLike;
+  now?: () => Date;
 };
 
 /** Solo el código: el mensaje o la causa de un error pueden traer el caption o datos del aviso. */
@@ -46,7 +52,10 @@ const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_E
  * la publicación; core deja el estado (`published`, sigue en `publishing` o `failed`) y aquí solo
  * se registra, con el `publicationId` (en los datos del job), el código y el resultado: nunca
  * tokens, URLs firmadas ni el caption. Un error no reintentable ya dejó la publicación en `failed`:
- * el registro lo anota y cierra el job; uno reintentable sube para que pg-boss reintente.
+ * el registro lo anota y cierra el job; uno reintentable sube para que pg-boss reintente. Una de
+ * Portal publicada en `live` encola su sync en 2 min (`enqueueSync`): el ítem suele nacer pausado
+ * mientras Mercado Libre procesa las fotos. Si encolarlo falla, se avisa y el job termina bien (el
+ * sync al arrancar o Actualizar lo cubren).
  */
 export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
   return defineJob({
@@ -72,6 +81,17 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
         logger.info({ mode: "dry-run" }, "publicación simulada (dry-run): no se envió nada");
       } else {
         logger.info({ mode: "live" }, "publicación publicada");
+        if (OPERATION_PLATFORMS.has(result.publication.platform)) {
+          const now = deps.now ?? (() => new Date());
+          await enqueueSync(deps.queue, publicationId, {
+            startAfter: new Date(now().getTime() + PUBLISHED_SYNC_DELAY_MS),
+          }).catch((error: unknown) =>
+            logger.warn(
+              { code: codeOf(error) },
+              "no se pudo encolar el sync de la publicación: lo hace el arranque o Actualizar",
+            ),
+          );
+        }
       }
     },
   });

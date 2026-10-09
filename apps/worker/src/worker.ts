@@ -15,9 +15,11 @@ import {
   createDb,
   createFieldDefinitionRepository,
   createImportRunRepository,
+  createListingLock,
   createListingRepository,
   createMediaRepository,
   createPlatformAccountRepository,
+  createPlatformCatalogRepository,
   createPublicationRepository,
   toPgConnectionString,
 } from "@agentsales/db";
@@ -39,9 +41,11 @@ import { failAbandonedContentRuns, requeueQueuedContentRuns } from "./jobs/conte
 import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
 import { buildJobs } from "./jobs/index.js";
 import { instagramNoteLogger, requeuePublishingPublications } from "./jobs/publication-publish.js";
+import { enqueueLiveSyncs } from "./jobs/publication-sync.js";
 import { registerJobs } from "./jobs/registry.js";
 import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
 import { llmProviderOptions } from "./llm-options.js";
+import { createWorkerPortal } from "./portal.js";
 import { stopWorker } from "./shutdown.js";
 
 /** Tiempo que se espera a que terminen los jobs en curso al apagar. */
@@ -98,9 +102,8 @@ const renderer = createHtmlRenderer();
 const jobsAbort = new AbortController();
 // Publicar (spec F3 §4.4): las credenciales se descifran con la clave de APP_ENCRYPTION_KEY.
 const publications = createPublicationRepository(database.db);
-const platformAccounts = createPlatformAccountRepository(database.db, {
-  secretBox: createSecretBox(env.APP_ENCRYPTION_KEY),
-});
+const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
+const platformAccounts = createPlatformAccountRepository(database.db, { secretBox });
 // Registrado en los dos modos: una publicación en `dry_run` también lo necesita (lo envuelve
 // `withDryRun`). El cliente de Instagram se arma recién al primer intento en `live` (perezoso).
 const instagram = createInstagramPublisher({ onNote: instagramNoteLogger(logger) });
@@ -122,6 +125,13 @@ const mercadoLibreAuth =
         timeoutMs: MERCADOLIBRE_API_TIMEOUT_MS,
       })
     : null;
+// Portal (spec F4 §4.8 y T18): el publisher en los dos modos (como Instagram) y las operaciones sin
+// envolver para el sync, que solo lee. El catálogo se guarda en la base; las fotos salen de R2.
+const portal = createWorkerPortal({
+  catalogRepository: createPlatformCatalogRepository(database.db),
+  storage,
+  logger,
+});
 const jobs = buildJobs({
   importRun,
   contentPrepare: {
@@ -153,10 +163,22 @@ const jobs = buildJobs({
       listings: repositories.listings,
       brokers: repositories.brokers,
       storage,
-      publishers: { instagram },
+      publishers: { instagram, portal_inmobiliario: portal.publisher },
       workerMode: env.PUBLISH_MODE,
       // El token de Portal se asegura (y se refresca) con el par de la app (spec F4 §4.3).
       mercadoLibre: mercadoLibreAuth,
+    },
+    // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
+    queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
+    signal: jobsAbort.signal,
+  },
+  publicationSync: {
+    shared: {
+      lock: createListingLock(database.db, { secretBox }),
+      publications,
+      platformAccounts,
+      mercadoLibre: mercadoLibreAuth,
+      operationsFor: portal.operationsFor,
     },
     signal: jobsAbort.signal,
   },
@@ -223,7 +245,8 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
  * 2. ya conectado, cierra las cargas y corridas abandonadas en `running` y borra el staging de
  *    cargas terminadas;
  * 3. con las colas creadas, reencola las corridas de contenido en `queued` y las publicaciones en
- *    `publishing` (spec F3 §4.4), y encola el refresco de tokens (spec F3 §4.6).
+ *    `publishing` (spec F3 §4.4), encola el sync de las de Portal en `live` (spec F4 §4.9) y el
+ *    refresco de tokens (spec F3 §4.6).
  */
 async function cleanStaging(withDatabase: boolean): Promise<void> {
   try {
@@ -303,6 +326,21 @@ async function requeuePublications(): Promise<void> {
   }
 }
 
+async function requestLiveSyncs(): Promise<void> {
+  try {
+    const { enqueued, failed } = await enqueueLiveSyncs(publications, platformAccounts, queue);
+    if (enqueued > 0) logger.info({ enqueued }, "sync de las publicaciones de Portal encolado");
+    if (failed.length > 0) {
+      logger.warn(
+        { publicationIds: failed },
+        "no se pudo encolar el sync de algunas publicaciones: se reintenta al próximo arranque o con Actualizar",
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudo encolar el sync de las publicaciones de Portal");
+  }
+}
+
 async function requestTokensRefresh(): Promise<void> {
   try {
     await enqueueTokensRefresh(queue);
@@ -327,6 +365,7 @@ try {
   if (registered) {
     await requeueContent();
     await requeuePublications();
+    await requestLiveSyncs();
     await requestTokensRefresh();
     // El modo del worker solo decide si una publicación pedida en `live` se puede publicar (D11).
     logger.info(

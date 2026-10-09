@@ -3,6 +3,7 @@ import { type ContentPrepareJobDeps, contentPrepareJob } from "./content-prepare
 import type { Job } from "./define.js";
 import { importRunJob } from "./import-run.js";
 import { type PublicationPublishJobDeps, publicationPublishJob } from "./publication-publish.js";
+import { type PublicationSyncJobDeps, publicationSyncJob } from "./publication-sync.js";
 import { systemPing } from "./system-ping.js";
 import { type TokensRefreshJobDeps, tokensRefreshJob } from "./tokens-refresh.js";
 
@@ -13,6 +14,8 @@ export type JobDeps = {
   contentPrepare: ContentPrepareJobDeps;
   /** Dependencias de `publishPublication`: repositorios, R2, publishers y el modo del worker. */
   publicationPublish: PublicationPublishJobDeps;
+  /** Dependencias de `syncPublication`: el candado, el token de Portal y las operaciones. */
+  publicationSync: PublicationSyncJobDeps;
   /** Cuentas conectadas e Instagram Login, para `tokens.refresh`. */
   tokensRefresh: TokensRefreshJobDeps;
 };
@@ -24,6 +27,7 @@ export function buildJobs(deps: JobDeps): readonly Job[] {
     importRunJob(deps.importRun),
     contentPrepareJob(deps.contentPrepare),
     publicationPublishJob(deps.publicationPublish),
+    publicationSyncJob(deps.publicationSync),
     tokensRefreshJob(deps.tokensRefresh),
   ];
 }
