@@ -141,11 +141,11 @@ const CAUSE_MESSAGES: ReadonlyArray<{
 export const MERCADOLIBRE_PICTURE_ID_CAUSES: readonly number[] = [508, 509];
 
 /**
- * Una causa en español: la de la tabla (por `code`; por `cause_id` si no vino código o si es 508
- * o 509), la del contacto, o el código tal cual. Un `cause_id` no manda sobre un código desconocido:
- * los ids podrían repetirse entre códigos distintos.
+ * Una causa conocida en español: la de la tabla (por `code`; por `cause_id` si no vino código o si
+ * es 508 o 509) o la del contacto; `null` si no se conoce. Un `cause_id` no manda sobre un código
+ * desconocido: los ids podrían repetirse entre códigos distintos.
  */
-export function describeCause(cause: MercadoLibreCause): string {
+export function describeKnownCause(cause: MercadoLibreCause): string | null {
   const byId =
     cause.causeId !== null &&
     (cause.code === null || MERCADOLIBRE_PICTURE_ID_CAUSES.includes(cause.causeId));
@@ -156,7 +156,12 @@ export function describeCause(cause: MercadoLibreCause): string {
   if (cause.code?.startsWith("seller_contact.")) {
     return "falta el contacto del corredor o está mal escrito (WhatsApp)";
   }
-  return `otra causa (${cause.code ?? cause.causeId ?? "sin código"})`;
+  return null;
+}
+
+/** Una causa en español (`describeKnownCause`) o, si no se conoce, el código tal cual. */
+export function describeCause(cause: MercadoLibreCause): string {
+  return describeKnownCause(cause) ?? `otra causa (${cause.code ?? cause.causeId ?? "sin código"})`;
 }
 
 /** Una causa sin `type` cuenta como error: dejar pasar un rechazo sería peor. */

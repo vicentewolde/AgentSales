@@ -3,6 +3,7 @@ import {
   type EnsureAccessTokenOptions,
   MERCADOLIBRE_REJECTED_AFTER_REFRESH,
   type PlatformAccount,
+  type PlatformContext,
   type PortalAttribute,
   type PortalCategory,
   type PortalLocationMatch,
@@ -10,6 +11,7 @@ import {
   type PublishContext,
   type PublishInput,
   type PublishMediaItem,
+  withDryRun,
 } from "@agentsales/core";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
@@ -17,7 +19,13 @@ import { errorText, usePlatformServer } from "../../test/msw-server.js";
 import type { PortalCatalog } from "./catalog.js";
 import { createMercadoLibreItems } from "./items.js";
 import { createMercadoLibrePictures } from "./pictures.js";
-import { createPortalPublisher, validatePortalInput } from "./publisher.js";
+import {
+  createPortalPublisher,
+  PORTAL_NO_QUOTA_NOTE,
+  PORTAL_PICTURES_NOT_CHECKED_NOTE,
+  validatePortalInput,
+} from "./publisher.js";
+import { createMercadoLibreValidator } from "./validate.js";
 
 const API = "https://api.mercadolibre.com";
 const NOW = new Date("2026-10-08T12:00:00Z");
@@ -61,12 +69,14 @@ type Faults = {
   unauthorizedOnce?: Array<"upload" | "create" | "description">;
   /** `POST /items` responde 401 siempre (el token nuevo también se rechaza). */
   createAlwaysUnauthorized?: boolean;
+  /** Lo que responde `POST /items/validate` número N (por defecto, 204: válido). */
+  validate?: Record<number, () => Response>;
 };
 
 function useMercadoLibre(faults: Faults = {}) {
   const items = new Map<string, Item>();
   const uploaded: string[] = [];
-  const counts = { upload: 0, create: 0, addDescription: 0 };
+  const counts = { upload: 0, create: 0, addDescription: 0, validate: 0 };
   let nextItem = 1;
   const unauthorized = new Set(faults.unauthorizedOnce ?? []);
   const rejectOnce = (kind: "upload" | "create" | "description") => {
@@ -111,6 +121,18 @@ function useMercadoLibre(faults: Faults = {}) {
       const id = `${counts.upload}-MLC_PIC`;
       uploaded.push(id);
       return HttpResponse.json({ id, variations: [] });
+    }),
+    http.post(`${API}/items/validate`, () => {
+      counts.validate += 1;
+      const fault = faults.validate?.[counts.validate];
+      return fault ? fault() : new HttpResponse(null, { status: 204 });
+    }),
+    http.put(`${API}/items/:id`, async ({ params, request }) => {
+      const item = items.get(String(params.id));
+      if (item === undefined) return HttpResponse.json({ message: "not found" }, { status: 404 });
+      item.status = ((await request.json()) as { status: string }).status;
+      item.sub_status = [];
+      return HttpResponse.json(itemBody(item));
     }),
     http.post(`${API}/items`, async ({ request }) => {
       const denied = rejectOnce("create");
@@ -330,6 +352,7 @@ function setup(
   const publisher = createPortalPublisher({
     items: createMercadoLibreItems(),
     pictures: createMercadoLibrePictures(),
+    validator: createMercadoLibreValidator(),
     catalog,
     readPicture: async (media) => {
       read.push(media.mediaId);
@@ -919,5 +942,310 @@ describe("createPortalPublisher · publicar", () => {
     const { publisher, ctx } = setup({ progress: { pictureIds: ["a", "b", "c", "d"] } });
     await publisher.publish(input(), ctx());
     expect([...ml.items.values()][0]?.pictures).toEqual(["1-MLC_PIC", "2-MLC_PIC", "3-MLC_PIC"]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// preflight (F4-T15, ADR-0016 y D14)
+// ---------------------------------------------------------------------------------------------
+
+/** Un 402 sin causas: lo que respondió `validate` con la cuenta sin paquetes (nota §12.3). */
+const noQuota = () =>
+  HttpResponse.json({ message: "Payment required", status: 402 }, { status: 402 });
+
+describe("createPortalPublisher · preflight", () => {
+  /** El contexto de `preflight` (sin progreso ni credenciales), con el mismo token contado. */
+  const platform = (ctx: PublishContext): PlatformContext => ({
+    account: ctx.account,
+    accessToken: ctx.accessToken ?? (async () => "APP_USR-sin-proveedor"),
+  });
+
+  it("arma el cuerpo con las fotos por su URL firmada y lo pasa por validate, sin subir ni crear nada", async () => {
+    const ml = useMercadoLibre();
+    const { publisher, ctx, read, catalogCalls, saved } = setup();
+
+    const result = await publisher.preflight?.(input(), platform(ctx()));
+
+    expect(result).toEqual({ ok: true, notes: [PORTAL_PICTURES_NOT_CHECKED_NOTE] });
+    expect(await writes()).toEqual(["POST /items/validate"]);
+    const [validate] = await recorded();
+    expect(validate?.json).toMatchObject({
+      category_id: "MLC157522",
+      seller_custom_field: PUBLICATION_ID,
+      pictures: [1, 2, 3].map((index) => ({ source: `${SIGNED}&n=${index}` })),
+    });
+    expect(validate?.json).not.toHaveProperty("description");
+    expect(catalogCalls).toEqual([
+      "leaf:Departamentos>Venta>Propiedades usadas",
+      "attributes",
+      "location",
+    ]);
+    expect(read).toEqual([]);
+    expect(saved).toEqual([]);
+    expect(ml.items.size).toBe(0);
+    expect(ml.uploaded).toEqual([]);
+  });
+
+  it("sin cupo (402, ML_NO_QUOTA): ok con la advertencia de D14; la simulación pasa", async () => {
+    useMercadoLibre({ validate: { 1: noQuota } });
+    const { publisher, ctx } = setup();
+
+    expect(await publisher.preflight?.(input(), platform(ctx()))).toEqual({
+      ok: true,
+      notes: [PORTAL_NO_QUOTA_NOTE, PORTAL_PICTURES_NOT_CHECKED_NOTE],
+    });
+    expect(PORTAL_NO_QUOTA_NOTE).toContain("ML_NO_QUOTA");
+  });
+
+  it("withDryRun con sin cupo: resultado simulado con las notas y nada creado ni subido", async () => {
+    const ml = useMercadoLibre({ validate: { 1: noQuota } });
+    const { publisher, ctx, saved } = setup();
+
+    const result = await withDryRun(publisher).publish(input(), ctx());
+
+    expect(result).toEqual({
+      externalId: `dry-run:${PUBLICATION_ID}`,
+      externalUrl: null,
+      simulated: true,
+      notes: [PORTAL_NO_QUOTA_NOTE, PORTAL_PICTURES_NOT_CHECKED_NOTE],
+    });
+    expect(await writes()).toEqual(["POST /items/validate"]);
+    expect(saved).toEqual([]);
+    expect(ml.items.size).toBe(0);
+  });
+
+  it("en publish (live), sin cupo sigue siendo un error no reintentable", async () => {
+    const ml = useMercadoLibre({ create: { 1: noQuota } });
+    const { publisher, ctx, progress } = setup();
+
+    await expect(publisher.publish(input(), ctx())).rejects.toMatchObject({
+      code: "ML_NO_QUOTA",
+      retriable: false,
+    });
+    expect(ml.counts.validate).toBe(0);
+    // No se creó (un 4xx): sin hora de pedido, el próximo intento crea sin buscar.
+    expect(progress()).not.toHaveProperty("createRequestedAt");
+  });
+
+  it("un rechazo de validate es ok: false con los motivos; withDryRun lo vuelve PUBLISH_INPUT_INVALID", async () => {
+    const rejection = () =>
+      HttpResponse.json(
+        {
+          message: "Validation error",
+          error: "validation_error",
+          status: 400,
+          cause: [
+            {
+              code: "item.attributes.missing_required",
+              cause_id: 147,
+              type: "error",
+              message: "Atributo TOTAL_AREA requerido en Av. Irarrázaval 1234",
+            },
+          ],
+        },
+        { status: 400 },
+      );
+    useMercadoLibre({ validate: { 1: rejection, 2: rejection } });
+    const { publisher, ctx } = setup();
+
+    const result = await publisher.preflight?.(input(), platform(ctx()));
+    expect(result).toEqual({
+      ok: false,
+      issues: [
+        {
+          code: "item.attributes.missing_required",
+          message: expect.stringContaining("falta"),
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("Irarrázaval");
+
+    const error = await withDryRun(publisher)
+      .publish(input(), ctx())
+      .catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ code: "PUBLISH_INPUT_INVALID", retriable: false });
+    expect(await writes()).toEqual(["POST /items/validate", "POST /items/validate"]);
+  });
+
+  it("las advertencias de validate van a notes con el código, el cause_id y un texto propio, nunca su message", async () => {
+    useMercadoLibre({
+      validate: {
+        1: () =>
+          HttpResponse.json({
+            warnings: [
+              {
+                code: "item.price.invalid",
+                cause_id: 109,
+                type: "warning",
+                message: "Price 5800 below suggested for Ñuñoa",
+              },
+              { cause_id: 508, type: "warning", message: "Picture firma-secreta" },
+              { code: "item.new_rule", cause_id: 4321, type: "warning", message: "New rule" },
+              { type: "warning", message: "Sin código" },
+            ],
+          }),
+      },
+    });
+    const { publisher, ctx } = setup();
+
+    const result = await publisher.preflight?.(input(), platform(ctx()));
+
+    expect(result).toEqual({
+      ok: true,
+      // Las notas fijas primero (el intento guarda como mucho 20) y después las advertencias.
+      notes: [
+        PORTAL_PICTURES_NOT_CHECKED_NOTE,
+        "Mercado Libre advirtió: el precio está bajo el mínimo o sobre el máximo (código item.price.invalid, causa 109)",
+        "Mercado Libre advirtió: una foto subida quedó con error en Mercado Libre: hay que subirla de nuevo (causa 508)",
+        "Mercado Libre advirtió: otra causa (código item.new_rule, causa 4321)",
+        "Mercado Libre advirtió: otra causa (sin código)",
+      ],
+    });
+    expect(JSON.stringify(result)).not.toMatch(/below|firma-secreta|Picture|New rule|Sin código/);
+  });
+
+  it("lo que la revisión local rechaza es ok: false sin llamar a validate", async () => {
+    useMercadoLibre();
+    const { publisher, ctx } = setup();
+
+    const result = await publisher.preflight?.(
+      input({ listing: { ...LISTING, priceCurrency: "CLP", priceAmount: 10.5 } }),
+      platform(ctx()),
+    );
+
+    expect(result?.ok).toBe(false);
+    expect(await recorded()).toEqual([]);
+  });
+
+  it("un input sin aviso es ok: false (PORTAL_INPUT_INCOMPLETE) sin bajar el catálogo", async () => {
+    useMercadoLibre();
+    const { publisher, ctx, catalogCalls, tokenCalls } = setup();
+
+    const result = await publisher.preflight?.(input({ listing: undefined }), platform(ctx()));
+
+    expect(result).toMatchObject({ ok: false, issues: [{ code: "PORTAL_INPUT_INCOMPLETE" }] });
+    expect(catalogCalls).toEqual([]);
+    expect(tokenCalls).toEqual([]);
+  });
+
+  it("los errores del catálogo suben no reintentables: con withDryRun la publicación queda failed sin reintento", async () => {
+    useMercadoLibre();
+    const cases: Array<{ code: string; options: Parameters<typeof setup>[0]; listing?: object }> = [
+      { code: "PORTAL_TYPE_UNSUPPORTED", options: {}, listing: { propertyType: "Castillo" } },
+      { code: "PORTAL_LOCATION_NOT_FOUND", options: {}, listing: { comuna: null } },
+      {
+        code: "PORTAL_CATEGORY_NOT_FOUND",
+        options: {
+          catalogFault: new AppError("PORTAL_CATEGORY_NOT_FOUND", "sin hoja", {
+            details: { reason: "missing" },
+          }),
+        },
+      },
+      {
+        code: "PORTAL_LOCATION_NOT_FOUND",
+        options: {
+          catalogFault: new AppError("PORTAL_LOCATION_NOT_FOUND", "sin comuna", {
+            details: { level: "commune", reason: "missing" },
+          }),
+        },
+      },
+    ];
+    for (const { code, options, listing } of cases) {
+      const { publisher, ctx } = setup(options);
+      const withListing = input({ listing: { ...LISTING, ...listing } });
+      await expect(publisher.preflight?.(withListing, platform(ctx()))).rejects.toMatchObject({
+        code,
+        retriable: false,
+      });
+      await expect(withDryRun(publisher).publish(withListing, ctx())).rejects.toMatchObject({
+        code,
+        retriable: false,
+      });
+    }
+    expect(await recorded()).toEqual([]);
+  });
+
+  it("Mercado Libre caído en validate: ML_UNAVAILABLE reintentable, como en live", async () => {
+    useMercadoLibre({
+      validate: { 1: () => HttpResponse.json({ message: "boom" }, { status: 503 }) },
+    });
+    const { publisher, ctx } = setup();
+
+    await expect(publisher.preflight?.(input(), platform(ctx()))).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+      retriable: true,
+    });
+  });
+
+  it("un 401 en validate refresca una vez con el token rechazado; si se repite, sube marcado", async () => {
+    const unauthorized = () =>
+      HttpResponse.json({ message: "invalid token", error: "unauthorized" }, { status: 401 });
+    useMercadoLibre({ validate: { 1: unauthorized, 3: unauthorized, 4: unauthorized } });
+    const first = setup();
+
+    expect(await first.publisher.preflight?.(input(), platform(first.ctx()))).toMatchObject({
+      ok: true,
+    });
+    expect(first.tokenCalls).toEqual([{}, { rejectedToken: "APP_USR-token-1" }]);
+    const validates = (await recorded()).filter(
+      (request) => request.url.pathname === "/items/validate",
+    );
+    expect(validates.map((request) => request.authorization)).toEqual([
+      "Bearer APP_USR-token-1",
+      "Bearer APP_USR-token-2",
+    ]);
+
+    const second = setup();
+    await expect(
+      second.publisher.preflight?.(input(), platform(second.ctx())),
+    ).rejects.toMatchObject({
+      code: "ML_AUTH_INVALID",
+      details: { reason: MERCADOLIBRE_REJECTED_AFTER_REFRESH },
+    });
+    expect(second.tokenCalls).toHaveLength(2);
+  });
+
+  it("en ningún caso sube fotos, crea ni cambia ítems: solo lee el catálogo y llama a validate", async () => {
+    const ml = useMercadoLibre({
+      validate: { 1: noQuota, 2: () => HttpResponse.json({ message: "boom" }, { status: 500 }) },
+    });
+    for (let run = 0; run < 3; run += 1) {
+      const { publisher, ctx } = setup();
+      await publisher.preflight?.(input(), platform(ctx())).catch(() => undefined);
+      await withDryRun(publisher)
+        .publish(input(), ctx())
+        .catch(() => undefined);
+    }
+    expect(new Set(await writes())).toEqual(new Set(["POST /items/validate"]));
+    expect(ml.counts).toMatchObject({ upload: 0, create: 0, addDescription: 0 });
+  });
+});
+
+describe("createPortalPublisher · operaciones", () => {
+  it("delega en createPortalOperations: pausa, reactiva y cierra con el contacto guardado al crear", async () => {
+    const ml = useMercadoLibre();
+    const { publisher, ctx, progress } = setup();
+    const published = await publisher.publish(input(), ctx());
+    const platform = { account: ACCOUNT, accessToken: async () => "APP_USR-token-op" };
+    const ref = { externalId: published.externalId, progress: progress() };
+
+    expect(await publisher.pause?.(ref, platform)).toMatchObject({ status: "paused" });
+    expect(await publisher.resume?.(ref, platform)).toMatchObject({ status: "active" });
+    expect(await publisher.close?.(ref, platform)).toMatchObject({ status: "closed" });
+    expect(await publisher.getStatus?.(ref, platform)).toMatchObject({ status: "closed" });
+
+    const puts = (await recorded()).filter((request) => request.method === "PUT");
+    expect(puts.map((request) => (request.json as { status: string }).status)).toEqual([
+      "paused",
+      "active",
+      "closed",
+    ]);
+    for (const request of puts) {
+      expect(request.url.pathname).toBe(`/items/${published.externalId}`);
+      expect(request.json).toMatchObject({
+        seller_contact: { country_code2: "56", phone2: "912345678" },
+      });
+    }
+    expect(ml.items.get(published.externalId)?.status).toBe("closed");
   });
 });

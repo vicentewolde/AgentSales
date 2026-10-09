@@ -350,6 +350,7 @@ export {
   publicationSchema,
   publishAttemptPayloadSchema,
   publishAttemptRecordSchema,
+  REMOTE_REASON_CODE,
   type RemoteState,
   remoteStateSchema,
   requirePublicationMode,

@@ -947,7 +947,7 @@ async function validateVariants(
   }
   if (report.validate.variants.some((variant) => variant.error?.code === "ML_NO_QUOTA")) {
     deps.print(
-      "  → Sin un paquete silver con cupo, Mercado Libre responde 402 y no revisa el resto del aviso (sí el título): contrátalo antes de la prueba con paquete",
+      "  → Sin un paquete silver con cupo, Mercado Libre responde 402 y no revisa el resto del aviso (sí el título): la simulación sigue con una advertencia y las revisiones de AgentSales (D14); la revisión completa llega con el usuario de prueba (D15)",
     );
   }
 }

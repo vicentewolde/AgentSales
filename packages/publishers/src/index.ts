@@ -83,12 +83,20 @@ export {
   type MercadoLibreItemSearch,
   type MercadoLibreItemSearchQuery,
   type MercadoLibreItems,
+  type MercadoLibreModeration,
   type MercadoLibreSearchFilter,
   type MercadoLibreSearchFilterValue,
   type MercadoLibreSearchStatus,
   type MercadoLibreWritableStatus,
   sellerContactBody,
 } from "./mercadolibre/items.js";
+export {
+  createPortalOperations,
+  MERCADOLIBRE_MODERATION_TAG,
+  type PortalOperations,
+  type PortalOperationsOptions,
+  remoteStatusOf,
+} from "./mercadolibre/operations.js";
 export {
   createMercadoLibrePacks,
   type MercadoLibrePack,
@@ -104,9 +112,11 @@ export {
 export {
   createPortalPublisher,
   PORTAL_LIMITS,
+  PORTAL_NO_QUOTA_NOTE,
+  PORTAL_PICTURES_NOT_CHECKED_NOTE,
   type PortalPublisherOptions,
-  remoteStatusOf,
   validatePortalInput,
+  warningNotes,
 } from "./mercadolibre/publisher.js";
 export {
   type MercadoLibreTokenContext,

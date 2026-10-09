@@ -57,6 +57,12 @@ export function checkPublicationProgress(platform: Platform, progress: unknown):
 }
 
 /**
+ * El código de un motivo de `remote_state` (Mercado Libre: el `name` de la moderación): un
+ * identificador, nunca un texto libre. Lo comparten el esquema y el cliente que lo lee.
+ */
+export const REMOTE_REASON_CODE = /^[A-Za-z0-9_.-]{1,100}$/;
+
+/**
  * Lo último que informó la plataforma sobre lo publicado (`publications.remote_state`, ADR-0015):
  * su estado y subestado tal cual (Mercado Libre: `active`, `paused`, `under_review`, `closed`…),
  * cuándo vence y cuándo se consultó. No es el estado de la publicación (que es nuestro): el sync
@@ -71,6 +77,17 @@ export const remoteStateSchema = z.object({
   stopTime: z.iso.datetime({ offset: true }).nullable(),
   /** Vencimiento de lo que lo cubre (Mercado Libre: `expiration_time`, el del paquete). */
   expirationTime: z.iso.datetime({ offset: true }).nullable(),
+  /**
+   * Por qué la plataforma la pausó (Mercado Libre: la última moderación, desde F4-T15): el código
+   * de la moderación (`ABANDONED_ITEM_REX_DEN`) y un texto propio en español, nunca el de la
+   * plataforma. Opcional: solo en una pausa por moderación.
+   */
+  reason: z
+    .object({
+      code: z.string().regex(REMOTE_REASON_CODE),
+      message: z.string().min(1).max(300),
+    })
+    .optional(),
   checkedAt: z.iso.datetime(),
 });
 export type RemoteState = z.infer<typeof remoteStateSchema>;
