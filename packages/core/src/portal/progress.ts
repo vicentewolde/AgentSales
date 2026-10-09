@@ -26,6 +26,11 @@ export type PortalSellerContact = z.infer<typeof portalSellerContactSchema>;
 export const portalProgressSchema = z.object({
   /** Fotos ya subidas a `/pictures/items/upload`, en el orden de la publicación. */
   pictureIds: z.array(z.string().min(1)),
+  /**
+   * Si las fotos ya se volvieron a subir una vez porque Mercado Libre rechazó sus ids (508 o 509,
+   * spec F4 §4.8, paso 1): una segunda vez no se repite.
+   */
+  picturesReuploaded: z.boolean().optional(),
   /** El `seller_contact` enviado al crear el ítem. */
   sellerContact: portalSellerContactSchema.optional(),
   /** Cuándo se pidió `POST /items`: con esto y sin `itemId`, nunca se repite el pedido solo. */

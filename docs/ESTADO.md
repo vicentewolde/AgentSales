@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-08
 **Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 25 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
-**Última tarea:** F4-T11 · Mapeo y revisión previa. Antes, F4-T10 (`ml:smoke`, corrido el 2026-10-08) y las decisiones D14 y D15
-**Siguiente paso:** `/tarea F4-T14` (publisher de Portal: publicar) o `/tarea F4-T16` (intento, publicar y aprobar con Portal), que ya tienen sus dependencias. En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
+**Última tarea:** F4-T14 · Publisher de Portal: publicar. Antes, F4-T11 (mapeo y revisión previa) y F4-T10 (`ml:smoke`)
+**Siguiente paso:** `/tarea F4-T15` (operaciones y `preflight`, con D14) o `/tarea F4-T16` (intento, publicar y aprobar con Portal), que ya tienen sus dependencias. En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
 
 ## Pendiente del cierre de F3
 - [x] **Refresco del token (demo), 2026-10-07 20:05:** el primer `pnpm dev` lo refrescó al arrancar; vence el 2026-12-06 20:05 (real, ya no estimado). Anotado en la nota de Instagram (§8, punto 4) y en §6 del spec F3
@@ -29,7 +29,7 @@
 | F4-T11 · Mapeo y revisión previa | ✅ | #92 |
 | F4-T12 · Reglas del texto de Portal | ✅ | #86 |
 | F4-T13 · Contrato `Publisher` ampliado y el aviso en el input | ✅ | #87 |
-| F4-T14 · Publisher de Portal: publicar | ⏳ pendiente | |
+| F4-T14 · Publisher de Portal: publicar | ✅ | |
 | F4-T15 · Publisher de Portal: operaciones y `preflight` | ⏳ pendiente | |
 | F4-T16 · Intento, publicar y aprobar con Portal | ⏳ pendiente | |
 | F4-T17 · Pausar, reactivar, cerrar y sincronizar en core | ⏳ pendiente | |
@@ -94,6 +94,13 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-08: **F4-T14.** El publicador de Portal ya publica:
+  - **Pasos:** revisa el aviso antes de subir nada, sube las fotos de a una (guarda cada una), crea el aviso, carga la descripción y devuelve el enlace y el estado que informa Mercado Libre (por ejemplo, "procesando fotos").
+  - **Retomar sin duplicar:** si el aviso ya existe, no se vuelve a armar ni a crear; si la descripción ya está, no se repite; si no se sabe si se creó, lo busca por la marca de la publicación (también entre los pausados y los que procesan fotos) y confirma que sea suyo. Si no aparece o aparecen dos, se detiene y pide revisar a mano: nunca crea dos avisos.
+  - **Fotos rechazadas:** se vuelven a subir una vez. Un token rechazado se renueva una vez por llamada.
+  - **Decisión:** si la búsqueda falla por la red, se reintenta más tarde (solo lee).
+  - **Para T18:** el worker le pasa las fotos leídas de R2.
+  - 10 mutaciones a mano detectadas (una sobrevivió al principio y se le sumó su prueba).
 - 2026-10-08: **F4-T11.** El aviso ya se traduce a Mercado Libre:
   - **Tabla de equivalencias (core):** cada tipo del Excel → su categoría (Local comercial → `Locales`; departamento en venta → `Departamentos > Venta > Propiedades usadas`), cada dato → su atributo (también piso y orientación, que encontré en el catálogo guardado; la antigüedad está en la tabla, pero Mercado Libre la trae oculta, así que hoy no se envía) y qué exige cada tipo y operación según lo que mostró el smoke.
   - **"¿Está listo para Portal?":** dice qué falta, con el campo de la planilla: la superficie total, Sí o No en mascotas (solo en arriendo), el WhatsApp del corredor o la dirección si se muestra. Una venta no pide mascotas, amoblado, bodegas ni gastos comunes.

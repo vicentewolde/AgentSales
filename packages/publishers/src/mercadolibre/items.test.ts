@@ -301,6 +301,28 @@ describe("createMercadoLibreItems", () => {
     await expectBearer();
   });
 
+  it("findBySellerCustomField con estado: ?sku= y ?status=, y un estado que no existe no se llama", async () => {
+    server.use(
+      http.get(`${API}/users/${USER_ID}/items/search`, () =>
+        HttpResponse.json({ results: [ITEM_ID], paging: { total: 1 } }),
+      ),
+    );
+
+    await expect(
+      items.findBySellerCustomField(ACCESS, USER_ID, PUBLICATION_ID, { status: "not_yet_active" }),
+    ).resolves.toEqual([ITEM_ID]);
+    expect(Object.fromEntries((await recorded())[0]?.url.searchParams ?? [])).toEqual({
+      sku: PUBLICATION_ID,
+      status: "not_yet_active",
+    });
+    await expect(
+      items.findBySellerCustomField(ACCESS, USER_ID, PUBLICATION_ID, {
+        status: "deleted" as unknown as MercadoLibreSearchStatus,
+      }),
+    ).rejects.toMatchObject({ code: "ML_ID_INVALID", details: { kind: "status" } });
+    expect(await recorded()).toHaveLength(1);
+  });
+
   it("findBySellerCustomField sin resultados devuelve una lista vacía", async () => {
     server.use(
       http.get(`${API}/users/${USER_ID}/items/search`, () =>

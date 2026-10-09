@@ -101,6 +101,13 @@ export {
   type MercadoLibrePictures,
 } from "./mercadolibre/pictures.js";
 export {
+  createPortalPublisher,
+  PORTAL_LIMITS,
+  type PortalPublisherOptions,
+  remoteStatusOf,
+  validatePortalInput,
+} from "./mercadolibre/publisher.js";
+export {
   type MercadoLibreTokenContext,
   withMercadoLibreToken,
 } from "./mercadolibre/token.js";
