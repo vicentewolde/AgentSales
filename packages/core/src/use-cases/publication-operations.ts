@@ -418,3 +418,29 @@ const OPERATION_NOT_ALLOWED_TEXT: Readonly<Record<PublicationOperation, string>>
   resume: "Solo se reactiva una publicación pausada",
   close: "Solo se cierra una publicación publicada o pausada",
 };
+
+/**
+ * Pide leer una publicación en la plataforma (Actualizar, `POST /publications/:id/sync`, spec F4
+ * §4.9): revisa que haya algo que leer (`OPERATION_NOT_SUPPORTED` en Instagram;
+ * `PUBLICATION_NOT_PUBLISHED`, 409, si es una simulación o no está `published` ni `paused`) y encola
+ * el sync. `queued: false` si ya había uno programado (después de publicar, o en reintento), que la
+ * va a leer.
+ */
+export async function requestPublicationSync(
+  deps: Pick<PublicationPlatformDeps, "publications"> & { queue: JobQueue },
+  { publicationId }: { publicationId: string },
+): Promise<{ queued: boolean }> {
+  const publication = await findPublication(deps, publicationId);
+  requireOperationPlatform(publication);
+  if (
+    publication.dryRun ||
+    (publication.status !== "published" && publication.status !== "paused")
+  ) {
+    throw new AppError(
+      "PUBLICATION_NOT_PUBLISHED",
+      "No hay nada que leer en la plataforma: la publicación no está publicada en vivo",
+      { details: { publicationId, status: publication.status, dryRun: publication.dryRun } },
+    );
+  }
+  return { queued: (await enqueueSync(deps.queue, publicationId)) !== null };
+}

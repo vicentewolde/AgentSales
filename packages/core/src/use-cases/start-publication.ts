@@ -3,6 +3,7 @@ import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
 import {
   enqueuePublications,
   type PortalCheckDeps,
@@ -98,9 +99,11 @@ export async function startPublication(
       );
     }
     requireCompatibleMode(publication, dryRun);
+    if (PUBLISH_LISTING_PLATFORMS.has(publication.platform)) {
+      await requireCurrentListingVersion(locked, listing.id, [publication]);
+    }
     if (definitions !== null) {
       await requirePortalPublishable(locked, { listing, content, definitions });
-      await requireCurrentListingVersion(locked, listing.id, [publication]);
     }
     return {
       publication: await startOne(locked.publications, publication, { dryRun, actor }),

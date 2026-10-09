@@ -3,6 +3,7 @@ import { AppError } from "../errors.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
 import {
   channelPublications,
   createPublications,
@@ -124,9 +125,13 @@ export async function publishListing(
       );
     }
 
+    // Primero la versión: con un aviso recargado, descartar y aprobar de nuevo es inevitable, y así
+    // el operador no completa la planilla para recién después enterarse.
+    if (PUBLISH_LISTING_PLATFORMS.has(platform)) {
+      await requireCurrentListingVersion(locked, listing.id, startable);
+    }
     if (definitions !== null && startable.length + opening.toCreate.length > 0) {
       await requirePortalPublishable(locked, { listing, content, definitions });
-      await requireCurrentListingVersion(locked, listing.id, startable);
     }
 
     // Recién aquí se escribe.

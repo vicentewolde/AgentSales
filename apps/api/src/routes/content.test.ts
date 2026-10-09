@@ -381,7 +381,7 @@ describe("GET /listings/:id/content", () => {
       reel: null,
       latestRun: null,
       // Lo que le falta al aviso para Portal (F4-T19): la lista completa, con su motivo.
-      portalReadiness: expect.objectContaining({ ready: expect.any(Boolean) }),
+      portalReadiness: { ready: true, issues: [] },
     });
     expect((await t.app.request(`/listings/${randomUUID()}/content`)).status).toBe(404);
   });

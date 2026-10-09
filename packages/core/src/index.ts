@@ -484,6 +484,7 @@ export {
   type PublicationOperation,
   type PublicationOperations,
   type PublicationPlatformDeps,
+  requestPublicationSync,
 } from "./use-cases/publication-operations.js";
 export { enqueuePublication, type PortalCheckDeps } from "./use-cases/publication-start.js";
 export {

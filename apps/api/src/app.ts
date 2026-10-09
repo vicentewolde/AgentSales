@@ -85,6 +85,8 @@ export type AppDeps = {
    * Portal con un cliente de ítems de 10 s por llamada (`MERCADOLIBRE_API_TIMEOUT_MS`).
    */
   operationsFor(platform: Platform): PublicationOperations | undefined;
+  /** Solo para tests; por defecto `OPERATION_TIMEOUT_MS` (15 s). */
+  operationTimeoutMs?: number;
   /** Firma del `state` del OAuth (`createStateSigner`, que compone `server.ts`). */
   oauthState: OAuthDeps["oauthState"];
   /** La URL absoluta del panel, adonde vuelve el OAuth. */

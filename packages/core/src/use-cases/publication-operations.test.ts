@@ -19,6 +19,7 @@ import type {
   PublicationOperation,
   PublicationOperations,
 } from "./publication-operations.js";
+import { requestPublicationSync } from "./publication-operations.js";
 import { publishListing } from "./publish-listing.js";
 import { resumePublication } from "./resume-publication.js";
 import { retirePublication } from "./retire-publication.js";
@@ -660,5 +661,40 @@ describe("revisión de F4-T17", () => {
     expect(
       syncTarget("paused", { status: "paused", subStatus: ["picture_download_pending"] }),
     ).toBeNull();
+  });
+});
+
+describe("requestPublicationSync (Actualizar, F4-T19)", () => {
+  it("encola la lectura de una publicada en live; queued: false si ya había una", async () => {
+    const { t, deps, id } = await setup();
+    await expect(requestPublicationSync(deps, { publicationId: id })).resolves.toEqual({
+      queued: true,
+    });
+    expect(syncJobs(t).map((job) => job.options)).toEqual([{ singletonKey: id }]);
+    await expect(
+      requestPublicationSync(
+        { ...deps, queue: { enqueue: async () => null } },
+        { publicationId: id },
+      ),
+    ).resolves.toEqual({ queued: false });
+  });
+
+  it("una simulación, una cerrada o una de Instagram no tienen nada que leer", async () => {
+    const dryRun = await setup({ dryRun: true });
+    await expect(
+      requestPublicationSync(dryRun.deps, { publicationId: dryRun.id }),
+    ).rejects.toMatchObject({ code: "PUBLICATION_NOT_PUBLISHED" });
+
+    const { t, deps, id } = await setup();
+    await closePublication(deps, { publicationId: id, actor: "operator", confirmed: true });
+    await expect(requestPublicationSync(deps, { publicationId: id })).rejects.toMatchObject({
+      code: "PUBLICATION_NOT_PUBLISHED",
+    });
+
+    const instagram = await otherPublished(t, false);
+    await expect(
+      requestPublicationSync(deps, { publicationId: instagram.id }),
+    ).rejects.toMatchObject({ code: "OPERATION_NOT_SUPPORTED" });
+    expect(syncJobs(t)).toEqual([]);
   });
 });

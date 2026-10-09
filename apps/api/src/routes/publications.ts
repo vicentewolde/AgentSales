@@ -3,12 +3,11 @@ import {
   type CancelPublicationDeps,
   cancelPublication,
   closePublication,
-  enqueueSync,
+  isAppError,
   type ListingRepository,
   type MediaRepository,
   type MediaStorage,
   type MercadoLibreAuth,
-  OPERATION_PLATFORMS,
   type OperatedPublication,
   PENDING_PUBLICATION_STATUSES,
   type Platform,
@@ -20,6 +19,7 @@ import {
   pausePublication,
   publishListing,
   type RetirePublicationDeps,
+  requestPublicationSync,
   resumePublication,
   retirePublication,
   type StartPublicationDeps,
@@ -73,15 +73,42 @@ export type PublicationRoutesDeps = PublishListingDeps &
     >;
     mercadoLibreRefresh: Pick<MercadoLibreAuth, "refresh"> | null;
     logger: AppLogger;
+    /** Por defecto `OPERATION_TIMEOUT_MS`; los tests lo bajan para ver el corte. */
+    operationTimeoutMs?: number;
   };
 
 /**
- * Tope de una operación desde la API (spec F4 §4.9 y T19): queda bajo los 30 s de la CLI (y los
- * 35 s del panel) aun con el candado de credenciales (10 s), un refresco (10 s) y la llamada (10 s).
- * Al vencer se corta (`ML_ABORTED`) y la operación pide un sync, que deja el estado como está en
- * la plataforma.
+ * Tope de una operación desde la API (spec F4 §4.9 y T19). La señal corta las llamadas a Mercado
+ * Libre, pero no la espera del candado de credenciales (hasta 10 s) ni un refresco ya enviado
+ * (hasta 10 s: cortarlo perdería el par rotado, ADR-0015). Peor caso: una llamada que se cuelga y
+ * da 401 cerca del tope, más el candado y el refresco, unos 25 s más la base: bajo los 30 s de la
+ * CLI y los 35 s del panel. Al vencer se corta (`ML_ABORTED`) y la operación pide un sync.
  */
-export const OPERATION_TIMEOUT_MS = 20_000;
+export const OPERATION_TIMEOUT_MS = 15_000;
+
+/**
+ * Mensajes propios de pausar, reactivar y cerrar cuando la operación ya pidió el sync (spec F4
+ * §4.9): el de la plataforma habla de la llamada; el operador necesita saber qué pasa con el estado.
+ */
+const OPERATION_MESSAGES: Readonly<Record<string, string>> = {
+  ML_ABORTED:
+    "Mercado Libre tardó demasiado en responder: AgentSales revisará el estado en un momento (Actualizar)",
+  ML_CONFLICT:
+    "Mercado Libre está procesando otro cambio del aviso: AgentSales revisará el estado en un momento (Actualizar)",
+};
+
+/** Relanza el error de una operación con el mensaje propio, si lo tiene (mismo código). */
+function operationError(error: unknown): unknown {
+  if (!isAppError(error)) return error;
+  const message = OPERATION_MESSAGES[error.code];
+  return message === undefined
+    ? error
+    : new AppError(error.code, message, {
+        retriable: error.retriable,
+        ...(error.details === undefined ? {} : { details: error.details }),
+        cause: error,
+      });
+}
 
 const pending = new Set<string>(PENDING_PUBLICATION_STATUSES);
 
@@ -190,7 +217,14 @@ const operationBody = (result: OperatedPublication): PublicationOperationRespons
  */
 export function publicationRoutes(deps: PublicationRoutesDeps) {
   const operations = operationDeps(deps);
-  const timeout = () => AbortSignal.timeout(OPERATION_TIMEOUT_MS);
+  const timeout = () => AbortSignal.timeout(deps.operationTimeoutMs ?? OPERATION_TIMEOUT_MS);
+  const operate = async (run: () => Promise<OperatedPublication>) => {
+    try {
+      return operationBody(await run());
+    } catch (error) {
+      throw operationError(error);
+    }
+  };
   return new Hono()
     .get("/:id", validated("param", idParamSchema), async (c) => {
       const { id } = c.req.valid("param");
@@ -238,20 +272,24 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       },
     )
     .post("/:id/pause", validated("param", idParamSchema), async (c) => {
-      const result = await pausePublication(operations, {
-        publicationId: c.req.valid("param").id,
-        actor: actorOf(c),
-        signal: timeout(),
-      });
-      return c.json(operationBody(result), 200);
+      const body = await operate(() =>
+        pausePublication(operations, {
+          publicationId: c.req.valid("param").id,
+          actor: actorOf(c),
+          signal: timeout(),
+        }),
+      );
+      return c.json(body, 200);
     })
     .post("/:id/resume", validated("param", idParamSchema), async (c) => {
-      const result = await resumePublication(operations, {
-        publicationId: c.req.valid("param").id,
-        actor: actorOf(c),
-        signal: timeout(),
-      });
-      return c.json(operationBody(result), 200);
+      const body = await operate(() =>
+        resumePublication(operations, {
+          publicationId: c.req.valid("param").id,
+          actor: actorOf(c),
+          signal: timeout(),
+        }),
+      );
+      return c.json(body, 200);
     })
     .post(
       "/:id/close",
@@ -259,31 +297,21 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       validated("json", publicationCloseBodySchema),
       async (c) => {
         const { confirmed } = c.req.valid("json");
-        const result = await closePublication(operations, {
-          publicationId: c.req.valid("param").id,
-          actor: actorOf(c),
-          ...(confirmed === undefined ? {} : { confirmed }),
-          signal: timeout(),
-        });
-        return c.json(operationBody(result), 200);
+        const body = await operate(() =>
+          closePublication(operations, {
+            publicationId: c.req.valid("param").id,
+            actor: actorOf(c),
+            ...(confirmed === undefined ? {} : { confirmed }),
+            signal: timeout(),
+          }),
+        );
+        return c.json(body, 200);
       },
     )
     .post("/:id/sync", validated("param", idParamSchema), async (c) => {
       const { id } = c.req.valid("param");
-      const publication = await deps.publications.get(id);
-      if (publication === null) throw publicationNotFound(id);
-      if (!OPERATION_PLATFORMS.has(publication.platform)) {
-        throw new AppError(
-          "OPERATION_NOT_SUPPORTED",
-          "Esta plataforma no se sincroniza desde AgentSales",
-          { details: { publicationId: id, platform: publication.platform } },
-        );
-      }
-      // `null`: ya había una lectura programada (después de publicar, o en reintento) que la lee.
-      const body: PublicationSyncResponse = {
-        publicationId: id,
-        queued: (await enqueueSync(deps.queue, id)) !== null,
-      };
+      const { queued } = await requestPublicationSync(deps, { publicationId: id });
+      const body: PublicationSyncResponse = { publicationId: id, queued };
       return c.json(body, 202);
     })
     .get("/:id/events", validated("param", idParamSchema), async (c) => {

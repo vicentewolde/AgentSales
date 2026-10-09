@@ -209,7 +209,8 @@ export async function requirePortalPublishable(
 }
 
 /**
- * En las plataformas que publican el aviso (Portal; spec F4 §4.6), una publicación que ya existía
+ * En las plataformas que publican el aviso (`PUBLISH_LISTING_PLATFORMS`: Portal y, en F5,
+ * Marketplace; spec F4 §4.6), una publicación que ya existía
  * (`failed` o `approved`) tiene que tener la versión del aviso de hoy: si una carga del Excel lo
  * cambió, `PUBLICATION_LISTING_CHANGED` (409) **antes** de pasarla a `publishing`, en vez de que
  * falle en el worker (desde F4-T19). La versión se lee dentro del candado.
@@ -221,7 +222,12 @@ export async function requireCurrentListingVersion(
 ): Promise<void> {
   if (publications.length === 0) return;
   const current = await locked.listings.getSourceHash(listingId);
-  const changed = publications.find((publication) => publication.listingSourceHash !== current);
+  // Sin versión también es "cambió", como en el intento (`buildPublishInput`): la API y el worker
+  // dicen lo mismo.
+  const changed = publications.find(
+    (publication) =>
+      publication.listingSourceHash === null || publication.listingSourceHash !== current,
+  );
   if (changed !== undefined) {
     throw new AppError(
       "PUBLICATION_LISTING_CHANGED",

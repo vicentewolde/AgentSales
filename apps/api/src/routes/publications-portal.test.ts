@@ -16,6 +16,7 @@ import {
   PORTAL_SCENARIO_TOKENS,
   type PublicationScenario,
 } from "@agentsales/core/testing";
+import { createPortalOperations } from "@agentsales/publishers";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import {
@@ -98,6 +99,8 @@ async function setup(
     queue?: (t: PublicationScenario) => JobQueue;
     /** Sin el par de la app de Mercado Libre: no se refresca el token. */
     mercadoLibreConfigured?: boolean;
+    /** El tope de las operaciones (por defecto, el real). */
+    operationTimeoutMs?: number;
   } = {},
 ) {
   const t = await createPublicationScenario({
@@ -128,6 +131,9 @@ async function setup(
         configured: options.mercadoLibreConfigured ?? true,
         redirectUri: TEST_ML_REDIRECT_URI,
       },
+      ...(options.operationTimeoutMs === undefined
+        ? {}
+        : { operationTimeoutMs: options.operationTimeoutMs }),
     }),
   );
   const post = (path: string, body: unknown = {}) =>
@@ -161,7 +167,7 @@ describe("POST /publications/:id/pause, /resume y /close", () => {
 
     expect(calls.map((call) => call.operation)).toEqual(["pause", "resume", "close"]);
     expect(calls.every((call) => call.signal !== undefined && !call.signal.aborted)).toBe(true);
-    expect(OPERATION_TIMEOUT_MS).toBe(20_000);
+    expect(OPERATION_TIMEOUT_MS).toBe(15_000);
   });
 
   it("cerrar en live sin confirmed es 409 CLOSE_NOT_CONFIRMED, sin llamar", async () => {
@@ -482,5 +488,142 @@ describe("seguridad de las rutas nuevas", () => {
     expect(
       publicationResponseSchema.parse(JSON.parse(bodies[2] ?? "{}")).publication,
     ).not.toHaveProperty("progress");
+  });
+});
+
+describe("revisión de F4-T19", () => {
+  it("el tope corta una llamada que no responde: 503 ML_ABORTED con su mensaje y se pide el sync", async () => {
+    const hanging: PublicationOperations = {
+      ...fakeOperations().operations,
+      pause: async (_ref, ctx) => {
+        await ctx.accessToken();
+        // Como el cliente real: espera la respuesta hasta que la señal corta.
+        await new Promise<void>((resolve) =>
+          ctx.signal?.addEventListener("abort", () => resolve()),
+        );
+        throw new AppError("ML_ABORTED", "Se cortó la llamada a Mercado Libre", {
+          retriable: true,
+        });
+      },
+    };
+    const { t, post, errorOf } = await setup({ operations: hanging, operationTimeoutMs: 5 });
+    const publication = await published(t, false);
+
+    const response = await post(`/publications/${publication.id}/pause`);
+
+    expect(response.status).toBe(503);
+    const body = await errorOf(response);
+    expect(body).toMatchObject({ code: "ML_ABORTED" });
+    expect(body.message).toContain("revisará el estado");
+    expect(t.queue.jobs.filter((job) => job.name === "publication.sync")).toHaveLength(1);
+    expect(t.publications.all()[0]?.status).toBe("published");
+  });
+
+  it("un conflicto de Mercado Libre al operar tiene su propio mensaje; sin cupo es 409", async () => {
+    for (const [code, retriable, message] of [
+      ["ML_CONFLICT", true, "procesando otro cambio"],
+      ["ML_NO_QUOTA", false, "paquete"],
+    ] as const) {
+      const fake = fakeOperations(async () => {
+        throw new AppError(code, "Mercado Libre no aceptó el cambio: revisa el paquete", {
+          retriable,
+        });
+      });
+      const { t, post, errorOf } = await setup({ operations: fake.operations });
+      const publication = await published(t, false);
+
+      const response = await post(`/publications/${publication.id}/resume`);
+      // Reactivar una publicada no corresponde: primero se pausa.
+      expect(response.status).toBe(409);
+      const paused = await post(`/publications/${publication.id}/pause`);
+      expect(paused.status, code).toBe(409);
+      const body = await errorOf(paused);
+      expect(body.code).toBe(code);
+      expect(body.message).toContain(message);
+    }
+  });
+
+  it("errores de estado y de datos por las rutas: 409, 404 y 400", async () => {
+    const { t, post, errorOf } = await setup();
+    const publication = await published(t, false);
+
+    const resume = await post(`/publications/${publication.id}/resume`);
+    expect([resume.status, (await errorOf(resume)).code]).toEqual([409, "INVALID_TRANSITION"]);
+    const missing = await post(`/publications/${randomUUID()}/pause`);
+    expect([missing.status, (await errorOf(missing)).code]).toEqual([404, "PUBLICATION_NOT_FOUND"]);
+    const badBody = await post(`/publications/${publication.id}/close`, { confirmed: "sí" });
+    expect([badBody.status, (await errorOf(badBody)).code]).toEqual([400, "REQUEST_INVALID"]);
+  });
+
+  it("lo guardado de la publicación que no sirve: 409 PORTAL_PROGRESS_UNUSABLE, sin llamar", async () => {
+    const refuse = async (): Promise<never> => {
+      throw new Error("no se llama a Mercado Libre");
+    };
+    // Las operaciones reales, con un cliente de ítems que falla si se le llama.
+    const real = createPortalOperations({
+      items: { get: refuse, setStatus: refuse, getLastModeration: refuse },
+    });
+    const { t, post, errorOf } = await setup({ operations: real });
+    const [started] = (
+      await publishListing(t.deps, {
+        listingId: t.listingId,
+        platform: PORTAL,
+        dryRun: false,
+        actor: "cli",
+      })
+    ).started;
+    if (started === undefined) throw new Error("falta la publicación");
+    // Sin el contacto enviado al crear (no debería pasar, pero no se adivina).
+    await t.publications.saveProgress(started.id, { pictureIds: ["1"], itemId: ITEM_ID });
+    await t.publications.transition(
+      started.id,
+      { from: "publishing", to: "published", changes: { externalId: ITEM_ID } },
+      { actor: "system" },
+    );
+
+    const response = await post(`/publications/${started.id}/pause`);
+    const body = await errorOf(response);
+    expect([response.status, body.code]).toEqual([409, "PORTAL_PROGRESS_UNUSABLE"]);
+  });
+
+  it("pausar una de Instagram es 409 OPERATION_NOT_SUPPORTED", async () => {
+    const instagram = await createPublicationScenario({ nextId: randomUUID });
+    const app = createApp(
+      testDeps({
+        listings: instagram.listings,
+        publications: instagram.publications,
+        lock: instagram.deps.lock,
+        queue: instagram.deps.queue,
+      }),
+    );
+    const id = instagram.byFormat("post")?.id ?? "";
+    const response = await app.request(`/publications/${id}/pause`, {
+      method: "POST",
+      headers: json,
+      body: "{}",
+    });
+    expect(response.status).toBe(409);
+    expect(errorBodySchema.parse(await response.json()).error.code).toBe("OPERATION_NOT_SUPPORTED");
+  });
+
+  it("Actualizar una simulación o una que no está publicada es 409; con la cola caída, 503", async () => {
+    const dryRun = await setup({ publishMode: "dry-run" });
+    const simulated = await published(dryRun.t, true);
+    const response = await dryRun.post(`/publications/${simulated.id}/sync`);
+    expect([response.status, (await dryRun.errorOf(response)).code]).toEqual([
+      409,
+      "PUBLICATION_NOT_PUBLISHED",
+    ]);
+
+    const down = await setup({
+      queue: () => ({
+        enqueue: async () => {
+          throw new AppError("QUEUE_UNAVAILABLE", "sin cola", { retriable: true });
+        },
+      }),
+    });
+    const live = await published(down.t, false);
+    const failed = await down.post(`/publications/${live.id}/sync`);
+    expect([failed.status, (await down.errorOf(failed)).code]).toEqual([503, "QUEUE_UNAVAILABLE"]);
   });
 });

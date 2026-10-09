@@ -57,13 +57,15 @@ const CONFLICTS = new Set([
   "PUBLICATION_SYNC_STALE",
   "ML_ITEM_REJECTED",
   "ML_CONFLICT",
+  // Sin un paquete con cupo (un 402 sin causas, spec F4 §4.8): se revisa el paquete en Mercado Libre.
+  "ML_NO_QUOTA",
 ]);
 
 /**
- * Errores de Instagram que llegan a la API al conectar (spec F3 §4.8; al publicar solo viajan en
- * `last_error`): un token o permiso que Instagram rechaza es del cliente (400), y una respuesta con
- * otra forma es un fallo de la plataforma (502). `IG_UNAVAILABLE` (503) e `IG_RATE_LIMITED` (429)
- * siguen las reglas generales.
+ * Errores de la plataforma que llegan a la API al conectar (spec F3 §4.8) y, desde F4-T19, en
+ * pausar, reactivar y cerrar (al publicar solo viajan en `last_error`): un token o permiso que la
+ * plataforma rechaza es del cliente (400: reconectar), y una respuesta con otra forma es un fallo de
+ * ella (502). `*_UNAVAILABLE` (503) y `*_RATE_LIMITED` (429) siguen las reglas generales.
  */
 const PLATFORM_REJECTIONS = new Set([
   "IG_AUTH_INVALID",
@@ -98,14 +100,10 @@ const NOT_CONFIGURED = new Set([
  */
 const BUSY = new Set([
   "ACCOUNT_LOCK_TIMEOUT",
-  // F4-T19: una operación cortada por el tope de la API; ya pidió el sync, que deja el estado como
-  // está en Mercado Libre (`ML_ABORTED_MESSAGE`).
+  // F4-T19: una operación cortada por el tope de la API (las rutas de operaciones le ponen su
+  // mensaje: ya pidió el sync).
   "ML_ABORTED",
 ]);
-
-/** El mensaje de una operación cortada por el tope: el de core habla de la llamada, no del estado. */
-const ML_ABORTED_MESSAGE =
-  "Mercado Libre tardó demasiado en responder: AgentSales revisará el estado en un momento (Actualizar)";
 
 /**
  * Datos inválidos que arma el servidor, no el cliente: los de un job, un run guardado y lo que el
@@ -201,12 +199,11 @@ export function createErrorHandler(logger: AppLogger): ErrorHandler {
         return errorJson(c, status, error.code, INTERNAL_MESSAGE);
       }
       logger.warn({ err: error, path: c.req.path }, "error de la aplicación");
-      const message = error.code === "ML_ABORTED" ? ML_ABORTED_MESSAGE : error.message;
       return errorJson(
         c,
         status,
         error.code,
-        message,
+        error.message,
         undefined,
         issuesOf(error.code, error.details),
       );
