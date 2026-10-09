@@ -3,19 +3,22 @@ import {
   contentUnapproveResponseSchema,
   listingContentResponseSchema,
 } from "@agentsales/api/contracts";
-import { PLATFORM_TEXT, type Platform, PUBLICATION_FORMAT_TEXT } from "@agentsales/core";
+import { PLATFORM_TEXT, type Platform, type PublicationFormat } from "@agentsales/core";
 import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
+import { formatText, portalIssueLine } from "./publication-view.js";
 import { fetchBrokers, PLATFORM_OPTION_NAMES, platformOption, resolveListingId } from "./shared.js";
 
 export type ApproveDeps = Io & { client: ApiClient };
 
 export type ApproveOptions = { broker?: string; platform?: string; undo?: boolean };
 
-const formats = (publications: readonly { format: keyof typeof PUBLICATION_FORMAT_TEXT }[]) =>
-  publications.map((publication) => PUBLICATION_FORMAT_TEXT[publication.format]).join(" y ");
+const formats = (publications: readonly { platform: Platform; format: PublicationFormat }[]) =>
+  publications
+    .map((publication) => formatText(publication.platform, publication.format))
+    .join(" y ");
 
 /** Un rechazo de la API para un canal, con qué hacer, sin cortar los demás. */
 function reasonOf(error: unknown, ref: string): string {
@@ -93,10 +96,18 @@ export function runApprove(deps: ApproveDeps, ref: string, options: ApproveOptio
                 ? c.dim(" · sin cuenta conectada: conéctala y publica con agentsales publish")
                 : "";
           deps.print(`${c.green("✓")} ${name}: aprobado${opened}`);
+          // Solo Portal: lo que le falta al aviso (se aprueba igual; publicar lo exige).
+          const missing = result.portalReadiness?.issues ?? [];
+          if (missing.length > 0) {
+            deps.printError(c.yellow("  Para publicar en Portal falta:"));
+            for (const issue of missing) {
+              deps.printError(c.yellow(`  ${portalIssueLine(issue)}`));
+            }
+          }
           for (const skipped of result.skipped) {
             deps.printError(
               c.yellow(
-                `  El ${PUBLICATION_FORMAT_TEXT[skipped.format]} ya tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar este`,
+                `  El ${formatText(content.platform, skipped.format)} ya tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar este`,
               ),
             );
           }

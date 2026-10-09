@@ -9,6 +9,7 @@ import type {
   ImportReport,
   NewContent,
   NewListing,
+  PublicationOperations,
   PublishMode,
 } from "@agentsales/core";
 import {
@@ -145,9 +146,10 @@ export function harness(options: HarnessOptions = {}) {
 }
 
 /**
- * Un aviso preparado con la cuenta de Instagram conectada (el escenario de publicación de core, con
- * ids uuid) y la CLI sobre la API real en proceso. `h.*` son los repositorios del arnés; los del
- * escenario están en `t`.
+ * Un aviso preparado con la cuenta conectada (el escenario de publicación de core, con ids uuid; de
+ * Instagram, o de Portal con `platform`) y la CLI sobre la API real en proceso. `h.*` son los
+ * repositorios del arnés; los del escenario están en `t`. `operations` son las de Portal que usa la
+ * API (dobles: nunca Mercado Libre).
  */
 export async function publicationHarness(
   options: {
@@ -155,15 +157,21 @@ export async function publicationHarness(
     account?: boolean;
     publishMode?: PublishMode;
     queueFails?: () => AppError | undefined;
+    platform?: "instagram" | "portal_inmobiliario";
+    operations?: PublicationOperations;
+    beforeRequest?: HarnessOptions["beforeRequest"];
   } = {},
 ) {
   const t = await createPublicationScenario({
     nextId: randomUUID,
     approve: options.approve ?? true,
     account: options.account ?? true,
+    ...(options.platform === undefined ? {} : { platform: options.platform }),
     ...(options.queueFails === undefined ? {} : { queueFails: options.queueFails }),
   });
+  const operations = options.operations;
   const h = harness({
+    ...(options.beforeRequest === undefined ? {} : { beforeRequest: options.beforeRequest }),
     deps: {
       listings: t.listings,
       brokers: t.brokers,
@@ -177,6 +185,7 @@ export async function publicationHarness(
       lock: t.deps.lock,
       queue: t.deps.queue,
       publishMode: options.publishMode ?? "dry-run",
+      operationsFor: (platform) => (platform === "portal_inmobiliario" ? operations : undefined),
     },
   });
   return { h, t };

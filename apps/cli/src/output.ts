@@ -101,6 +101,11 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(1).replace(".", ",")} ${unit}`;
 }
 
+/** `2026-10-02`, en la hora local del operador. */
+export function formatDate(date: Date): string {
+  return formatDateTime(date).slice(0, 10);
+}
+
 /** `2026-10-02 14:05`, en la hora local del operador. */
 export function formatDateTime(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");

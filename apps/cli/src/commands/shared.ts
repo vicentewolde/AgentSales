@@ -30,6 +30,15 @@ export function platformOption(option: string): Platform {
   return PLATFORM_SHORT_NAMES[name];
 }
 
+/** `portal_inmobiliario` → `portal`: el nombre corto que acepta `--platform`. */
+export function platformShortName(platform: Platform): PlatformShortName {
+  const found = PLATFORM_OPTION_NAMES.filter(isShortName).find(
+    (name) => PLATFORM_SHORT_NAMES[name] === platform,
+  );
+  if (found === undefined) throw new Error(`sin nombre corto para ${platform}`);
+  return found;
+}
+
 /** `--broker` como slug (`Mi-Corredor` → `mi-corredor`), igual que el que sale de la hoja. */
 export function brokerSlugOf(broker: string): string {
   const slug = slugify(broker);

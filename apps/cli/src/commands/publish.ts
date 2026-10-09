@@ -6,7 +6,7 @@ import {
 import {
   healthReportSchema,
   PLATFORM_TEXT,
-  PUBLICATION_FORMAT_TEXT,
+  type Platform,
   PUBLICATION_STATUS_TEXT,
   publicationModeText,
 } from "@agentsales/core";
@@ -14,8 +14,8 @@ import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded } from "../output.js";
-import { renderPublicationResult } from "./publication-view.js";
-import { fetchBrokers, platformOption, resolveListingId } from "./shared.js";
+import { formatText, portalIssueLine, renderPublicationResult } from "./publication-view.js";
+import { fetchBrokers, platformOption, platformShortName, resolveListingId } from "./shared.js";
 import { type WaitDeps, waitForRun } from "./wait-run.js";
 
 export type PublishOptions = {
@@ -28,16 +28,49 @@ export type PublishOptions = {
 
 export type PublishDeps = WaitDeps & Pick<Terminal, "confirm"> & { client: ApiClient };
 
+/** Cómo se conecta la cuenta de cada canal (`ACCOUNT_NOT_CONNECTED`). */
+const CONNECT_HINT: Partial<Record<Platform, string>> = {
+  instagram:
+    "Conecta la cuenta con agentsales accounts connect instagram --broker <slug> --token-stdin",
+  portal_inmobiliario:
+    "Conecta la cuenta con agentsales accounts connect mercadolibre --broker <slug>",
+};
+
+/**
+ * `PORTAL_NOT_READY` (spec F4 §4.11): la lista de lo que falta, un motivo por línea con su columna
+ * del Excel. El `message` de la API ya junta los mismos motivos: se muestra uno u otro, nunca los
+ * dos. Sin lista (una API de otra versión), el `message`.
+ */
+function portalNotReady(error: ApiCallError): CliError {
+  const issues = error.issues ?? [];
+  const message =
+    issues.length === 0
+      ? (error.apiMessage ?? error.message)
+      : [
+          "Falta información para publicar en Portal Inmobiliario:",
+          ...issues.map(portalIssueLine),
+        ].join("\n");
+  return new CliError(
+    "PORTAL_NOT_READY",
+    message,
+    "Completa la planilla, vuelve a importarla (agentsales import) y publica de nuevo; el WhatsApp es el de la hoja Corredor",
+  );
+}
+
 /** Los errores de `POST /listings/:id/publish`, con qué hacer en la CLI. */
-function explained(error: unknown, ref: string): unknown {
+function explained(error: unknown, ref: string, platform: Platform): unknown {
   if (!(error instanceof ApiCallError)) return error;
+  if (error.code === "PORTAL_NOT_READY") return portalNotReady(error);
   const message = error.apiMessage ?? error.message;
   const hints: Record<string, string> = {
     QUEUE_UNAVAILABLE:
       "Quedaron en curso: arranca el worker (pnpm dev), que las retoma al arrancar, o vuelve a correr agentsales publish",
-    CONTENT_NOT_APPROVED: `Aprueba el texto con agentsales approve ${ref}`,
-    ACCOUNT_NOT_CONNECTED:
-      "Conecta la cuenta con agentsales accounts connect instagram --broker <slug> --token-stdin",
+    CONTENT_NOT_APPROVED: `Aprueba el texto con agentsales approve ${ref} --platform ${platformShortName(platform)}`,
+    ...(CONNECT_HINT[platform] === undefined
+      ? {}
+      : { ACCOUNT_NOT_CONNECTED: CONNECT_HINT[platform] }),
+    CONTENT_HAS_ERRORS: `Revisa el texto con agentsales content ${ref}, corrígelo y vuelve a aprobarlo`,
+    PUBLICATION_LISTING_CHANGED: `La propiedad cambió desde que se aprobó: vuelve a preparar y aprobar el texto (agentsales prepare ${ref})`,
     NOTHING_TO_PUBLISH: `Mira el estado con agentsales publications ${ref}`,
     PUBLISH_MODE_LOCKED:
       "Ya empezó en vivo y no se reintenta en simulación: descártala con agentsales publications cancel <id>, o reinicia la API en vivo si lo decides tú",
@@ -79,7 +112,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
     const { publishMode } = await unwrap(deps.client.health.$get(), healthReportSchema);
     if (publishMode === "live" && !options.yes) {
       const confirmed = await deps.confirm(
-        `La API está en vivo (PUBLISH_MODE=live): ¿publicar ${trimmed} de verdad en ${PLATFORM_TEXT[platform]}?`,
+        `La API está en vivo (PUBLISH_MODE=live): ¿publicar ${trimmed} de verdad en ${PLATFORM_TEXT[platform]}?${platform === "portal_inmobiliario" ? " Usa un cupo de tu paquete de Mercado Libre." : ""}`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));
@@ -91,7 +124,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
       deps.client.listings[":id"].publish.$post({ param: { id: listingId }, json: { platform } }),
       listingPublishResponseSchema,
     ).catch((error: unknown) => {
-      throw explained(error, trimmed);
+      throw explained(error, trimmed, platform);
     });
 
     const targets = [...result.started, ...result.requeued];
@@ -103,7 +136,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
         : publicationModeText(targets[0]?.dryRun ?? publishMode !== "live");
     deps.print(
       `Publicando ${trimmed} en ${PLATFORM_TEXT[platform]} (${mode}): ` +
-        targets.map((publication) => PUBLICATION_FORMAT_TEXT[publication.format]).join(", "),
+        targets.map((publication) => formatText(platform, publication.format)).join(", "),
     );
     if (result.requeued.length > 0) {
       deps.print(c.dim(`  Ya estaban en curso y se retomaron: ${result.requeued.length}`));
@@ -111,7 +144,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
     for (const skipped of result.skipped) {
       deps.printError(
         c.yellow(
-          `  El ${PUBLICATION_FORMAT_TEXT[skipped.format]} tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar el nuevo`,
+          `  El ${formatText(platform, skipped.format)} tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar el nuevo`,
         ),
       );
     }
@@ -154,7 +187,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
       isTerminal: (wait) => wait.status === "done",
       progress: (wait) =>
         wait.publications
-          .map((p) => `${PUBLICATION_FORMAT_TEXT[p.format]}: ${PUBLICATION_STATUS_TEXT[p.status]}`)
+          .map((p) => `${formatText(p.platform, p.format)}: ${PUBLICATION_STATUS_TEXT[p.status]}`)
           .join(" · "),
       // Nadie tocó las que empezaron ahora (las publicaciones no tienen `queued`). Es una heurística:
       // con la plataforma lenta, el primer contenedor puede tardar más de 20 s.
@@ -206,9 +239,11 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
 export function register(program: Command, ctx: CliContext): void {
   program
     .command("publish")
-    .description("Publica una propiedad aprobada (carrusel y reel) y espera el resultado")
+    .description(
+      "Publica una propiedad aprobada (Instagram: carrusel y reel; Portal: el aviso) y espera el resultado",
+    )
     .argument("<propiedad>", "id_propiedad del Excel, o el id del aviso")
-    .option("--platform <canal>", "canal (por ahora instagram)", "instagram")
+    .option("--platform <canal>", "canal: instagram o portal", "instagram")
     .option("--broker <slug>", "corredor, si el id_propiedad está en más de uno")
     .option("--no-wait", "imprime los ids de las publicaciones y sale sin esperar")
     .option("--yes", "no pide confirmación con la API en vivo")
