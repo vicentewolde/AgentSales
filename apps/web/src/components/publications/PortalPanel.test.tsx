@@ -140,6 +140,30 @@ async function withoutWhatsapp(t: Setup["t"]) {
 }
 
 describe("panel: Portal en Contenido", () => {
+  it("la bitácora muestra las notas del intento (lo que dijo validate, D14)", async () => {
+    const s = await setup({ publishMode: "dry-run" });
+    const publication = await published(s.t, { live: false });
+    await s.t.publications.addEvent(publication.id, {
+      type: "publish_attempt",
+      actor: "system",
+      payload: {
+        mode: "dry-run",
+        attempt: 1,
+        retry: 0,
+        result: "published",
+        notes: ["Mercado Libre no revisó el aviso: sin cupo (ML_NO_QUOTA)"],
+      },
+    });
+    const item = await aviso(await portalTab(s));
+
+    fireEvent.click(within(item).getByRole("button", { name: "Bitácora del aviso" }));
+    expect(
+      await within(item).findByText(
+        "Nota: Mercado Libre no revisó el aviso: sin cupo (ML_NO_QUOTA)",
+      ),
+    ).toBeTruthy();
+  });
+
   it("en simulación: listo para Portal, publica el aviso y dice que no se creó nada", async () => {
     const s = await setup({ publishMode: "dry-run" });
     const panel = await portalTab(s);

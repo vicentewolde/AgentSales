@@ -64,7 +64,7 @@ pnpm -s cli accounts     # cuentas y vencimiento (pbpaste | pnpm -s cli accounts
 (Los comandos existen desde F0; si alguno falta, la tarea que lo introduce debe crearlo.)
 
 ## Glosario (español → código)
-corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) → `Media` · texto generado → `Content` · publicación (aviso × cuenta × formato: carrusel o reel) → `Publication` · cuenta conectada → `PlatformAccount` · campo configurable → `FieldDefinition` · carga → `ImportRun`.
+corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) → `Media` · texto generado → `Content` · publicación (aviso × cuenta × formato: carrusel, reel o aviso en Portal) → `Publication` · cuenta conectada → `PlatformAccount` · campo configurable → `FieldDefinition` · carga → `ImportRun`.
 
 ## Reglas de trabajo (obligatorias)
 1. **Spec primero.** No implementes nada que no esté en el spec aprobado de la fase. Si falta algo, propónlo y actualiza el spec antes.
@@ -79,6 +79,7 @@ corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) →
 
 ## Reglas de seguridad (no negociables)
 - `PUBLISH_MODE=dry-run` por defecto. **Nunca** cambies a `live` ni publiques de verdad sin instrucción explícita del operador en el chat. En `dry-run`, Portal puede leer de Mercado Libre y validar sin publicar (ADR-0016), nunca crear ni cambiar un aviso.
+- `pnpm ml:test-user` es la única escritura en Mercado Libre que no mira `PUBLISH_MODE` (crea un usuario de prueba con la cuenta real; la corre solo el operador, ADR-0015).
 - Ningún test llama APIs reales de Instagram, Mercado Libre, Facebook ni Anthropic. Usa msw o fakes.
 - No leas, muestres ni commitees `.env`. No loguees tokens ni secretos.
 - No subas datos reales de clientes (`data/muestras/`) a git.

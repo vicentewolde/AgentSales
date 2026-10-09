@@ -53,7 +53,7 @@ function EventLine({ event }: { event: PublicationEventView }) {
       </li>
     );
   }
-  const { mode, attempt: number, retry, result, error, sent } = attempt.data;
+  const { mode, attempt: number, retry, result, error, sent, notes } = attempt.data;
   return (
     <li>
       {timeText(event.createdAt)} · intento {number}
@@ -70,6 +70,12 @@ function EventLine({ event }: { event: PublicationEventView }) {
           {sent.account.displayName}
         </span>
       )}
+      {/* Las advertencias del intento (Portal: lo que dijo `validate`, como "sin cupo", D14). */}
+      {notes?.map((note) => (
+        <span key={note} className="block text-amber-800">
+          Nota: {note}
+        </span>
+      ))}
     </li>
   );
 }

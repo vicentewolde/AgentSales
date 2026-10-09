@@ -48,7 +48,7 @@ Hecho el 2026-10-02: 3 propiedades de muestra (P001, P002 y P003, corredor `agen
 
 ## En paralelo, antes de F4 (Portal Inmobiliario)
 
-Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4 (§4.2, D6). Nada de esto bloquea empezar F4: hasta T09 todo se prueba con simulaciones; T10 (`ml:smoke`) necesita la cuenta conectada.
+Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4 (§4.2, D15). Nada de esto bloquea empezar F4: hasta T09 todo se prueba con simulaciones; T10 (`ml:smoke`) necesita la cuenta conectada.
 
 - [x] Crear tu cuenta en Mercado Libre Chile (mercadolibre.cl) con tus datos reales: la app solo se puede crear con los datos del titular validados
 - [x] Crear una app en el DevCenter de Mercado Libre (developers.mercadolibre.cl > Mis aplicaciones > Crear nueva aplicación; antes pide **vincular** la cuenta). Hecho el 2026-10-08: "AgentSales VW Portal", con Refresh Token marcado y las unidades Mercado Libre y VIS (detalle en la nota, §3.2.1):

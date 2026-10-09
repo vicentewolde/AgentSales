@@ -75,6 +75,7 @@ describe("runPublications", () => {
           media: [],
           account: { id: "a", displayName: "@muestra" },
         },
+        notes: ["Mercado Libre no revisó el aviso: sin cupo (ML_NO_QUOTA)"],
       },
     });
 
@@ -85,6 +86,7 @@ describe("runPublications", () => {
     expect(text).toContain("sistema  aprobada → publicando");
     expect(text).toContain("intento 1 en simulación: publicada");
     expect(text).toContain("enviado: 0 medios · caption de 14 caracteres · @muestra");
+    expect(text).toContain("nota: Mercado Libre no revisó el aviso: sin cupo (ML_NO_QUOTA)");
   });
 
   it("sin propiedad lista las de todas las propiedades que tienen", async () => {

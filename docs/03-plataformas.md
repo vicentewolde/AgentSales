@@ -33,14 +33,14 @@ Detalle verificado en `docs/integraciones/mercadolibre.md` (2026-10-06, leyendo 
 
 - Portal Inmobiliario está integrado a Mercado Libre. Se publica en el sitio **MLC** con la API de ML (`POST /items`).
 - **Clave:** en Chile hay que incluir el atributo `CMG_SITE` con `value_name: "POI"` para que el aviso aparezca en Portal Inmobiliario además de Mercado Libre.
-- **Cuenta y costo:** publicar un inmueble exige un **paquete de publicación** (`silver`) con cupo; no hay publicación gratis ni sandbox. La app se crea con los datos del titular validados.
+- **Cuenta y costo:** publicar un inmueble exige un **paquete de publicación** (`silver`) con cupo; no hay publicación gratis ni sandbox. La app se crea con los datos del titular validados. Para probar, un usuario de prueba activado por soporte contrata paquetes sin cargo (`pnpm ml:test-user`, spec F4 D15).
 - **Setup:** app en el DevCenter de Mercado Libre, OAuth 2.0 (authorization code) con redirect URI **HTTPS** (no necesita cargar). En F4 el operador pega la dirección de vuelta en la CLI, sin túnel (spec F4, D1).
 - **Tokens:** `access_token` de unas 6 h (se lee `expires_in`); `refresh_token` de 6 meses, **de un solo uso** y que rota en cada refresco: se refresca con un candado por cuenta (ADR-0015).
 - **Contacto:** desde el 01/10/2026, `seller_contact` con WhatsApp (`country_code2` y `phone2`) es obligatorio al crear y actualizar. La descripción no puede llevar teléfono, dirección ni sitio web (moderación).
 - **Título y fotos:** el largo máximo lo da `settings.max_title_length` de cada categoría (en MLC, 60 en las hojas que usa AgentSales, verificado con `ml:smoke` el 2026-10-08; AgentSales usa 60). Fotos JPG o PNG de hasta 10 MB, recomendado 1200 px, al menos 1 obligatoria (12 como objetivo de calidad en casas y departamentos). F4 las sube directo (`/pictures/items/upload`).
 - **Categorías, atributos y ubicación:** se descubren por API con token (árbol desde `MLC1459`, atributos con `tags.required`, `classified_locations` de Chile) y se cachean en la base. No se escriben a mano.
 - **Moneda:** UF es `CLF` (2 decimales); CLP sin decimales.
-- **Estados:** `active`, `paused` (también por moderación o mientras procesa fotos), `under_review`, `closed` (definitivo; republicar crea otro id). En MLC, casas y departamentos vencen a los 180 días en venta y a los 45 en arriendo. Validar sin publicar: `POST /items/validate` (usado en `dry-run`, ADR-0016).
+- **Estados:** `active`, `paused` (también por moderación o mientras procesa fotos), `under_review`, `closed` (definitivo; republicar crea otro id). En MLC, casas y departamentos vencen a los 180 días en venta y a los 45 en arriendo. Validar sin publicar: `POST /items/validate` (en `dry-run`, ADR-0016) exige un paquete con cupo: sin él responde 402 y solo revisa el título. La simulación lo toma como advertencia (D14).
 - **Consultas de interesados:** llegan como preguntas o leads (fase de respuestas, fuera del MVP).
 
 ## Facebook Marketplace

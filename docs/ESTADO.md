@@ -3,50 +3,28 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-09
-**Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 25 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
-**Última tarea:** lote B: F4-T23 (`ml:smoke --listing`) y F4-T25 (usuario de prueba de Mercado Libre y `pnpm ml:test-user`), PR #101. Antes, el lote A (F4-T21 y F4-T22, #100)
-**Siguiente paso:** tú: crear el usuario de prueba (`pnpm ml:test-user --broker agentsales-pruebas`) y pedir su activación a soporte (checklist, `docs/07-checklist-cuentas.md`). Después, `/fase-cerrar 4` (F4-T24): si la activación no llega a tiempo, F4 se cierra con la simulación (D15)
+**Fase actual:** F5 · Facebook Marketplace: spec por redactar. F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0` con tu permiso)
+**Última tarea:** cierre de F4 (F4-T24, `/fase-cerrar 4`): demo en simulación, auditoría del `arquitecto`, CHANGELOG `[0.4.0]`. Antes, el lote B (F4-T23 y F4-T25, #101)
+**Siguiente paso:** al empezar F5, la prueba en vivo de Portal que quedó pendiente (abajo), en cuanto soporte active el usuario de prueba. Mientras tanto, `/fase-plan 5` (Facebook Marketplace)
+
+## Pendiente del cierre de F4 (para el inicio de F5)
+- [ ] **Usuario de prueba de Mercado Libre (T25, D15):** crearlo (`pnpm ml:test-user --broker agentsales-pruebas`), pedir su activación a soporte y anotar aquí la fecha; contratar el paquete sin cargo y conectarlo a `agentsales-pruebas` (checklist, `docs/07-checklist-cuentas.md`). Reemplaza tu cuenta real en ese corredor durante la prueba; al final se reconecta la real
+- [ ] **Prueba en vivo de Portal** (spec F4 §6, criterios 1 a 3, y §7 paso 6), solo con tu instrucción en el chat: `PUBLISH_MODE=live pnpm dev`, publicar P001, abrir el enlace, pausar y reactivar desde el panel, cerrar con confirmación y ver P001 de vuelta en "Lista"
+- [ ] **Antes, `pnpm ml:smoke --listing P001`** con el usuario de prueba y su paquete: confirma lo que `validate` no revisó sin cupo (`CMG_SITE` oculto, la forma de las superficies, `address_line` con `show_exact_address = false`) y que el 402 era por falta de cupo. La descripción dentro del cuerpo se confirma al publicar
+- [ ] Tag `v0.4.0` desde `main`, con tu permiso
 
 ## Pendiente del cierre de F3
-- [x] **Refresco del token (demo), 2026-10-07 20:05:** el primer `pnpm dev` lo refrescó al arrancar; vence el 2026-12-06 20:05 (real, ya no estimado). Anotado en la nota de Instagram (§8, punto 4) y en §6 del spec F3
-- [x] Tag `v0.3.0` desde `main` (2026-10-07, con tu permiso; CHANGELOG fechado)
-- [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota §8, punto 8)
+- [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota de Instagram §8, punto 8)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F4 (`/fase-plan 4`) | ✅ aprobado | |
-| F4-T01 · Esquema y entidades (migración `0007`) | ✅ | #76 |
-| F4-T02 · Variables de Mercado Libre y redactor | ✅ | #77 |
-| F4-T03 · Cliente: OAuth, usuario y errores | ✅ | #78 |
-| F4-T04 · Cliente: ítems y fotos | ✅ | #79 |
-| F4-T05 · Cliente: catálogo y `validate` | ✅ | #80 |
-| F4-T06 · Conectar Mercado Libre | ✅ | #81 |
-| F4-T07 · Candado de credenciales y `ensureAccessToken` | ✅ | #82 |
-| F4-T08 · Refresco por plataforma: lote y a pedido | ✅ | #83 |
-| F4-T09 · Catálogo con caché | ✅ | #84 |
-| F4-T10 · `pnpm ml:smoke`: catálogo y `validate` | ✅ | #90 |
-| F4-T11 · Mapeo y revisión previa | ✅ | #92 |
-| F4-T12 · Reglas del texto de Portal | ✅ | #86 |
-| F4-T13 · Contrato `Publisher` ampliado y el aviso en el input | ✅ | #87 |
-| F4-T14 · Publisher de Portal: publicar | ✅ | #93 |
-| F4-T15 · Publisher de Portal: operaciones y `preflight` | ✅ | #94 |
-| F4-T16 · Intento, publicar y aprobar con Portal | ✅ | #95 |
-| F4-T17 · Pausar, reactivar, cerrar y sincronizar en core | ✅ | #96 |
-| F4-T18 · Worker: publicar y sincronizar Portal | ✅ | #97 |
-| F4-T19 · API de Portal | ✅ | #98 |
-| F4-T20 · CLI de Portal | ✅ | #89, #99 |
-| F4-T21 · Panel: Cuentas con Mercado Libre | ✅ | #100 |
-| F4-T22 · Panel: Portal en Contenido | ✅ (los estados de un aviso publicado se ven en la demo de T24) | #100 |
-| F4-T23 · `pnpm ml:smoke --listing` | ✅ | #101 |
-| F4-T25 · Usuario de prueba de Mercado Libre (D15) | 🔨 falta que pidas la activación a soporte | #101 |
-| F4-T24 · Cierre de fase | ⏳ pendiente | |
+| Spec F5 (`/fase-plan 5`) | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- **Trámites de F4** (`docs/07-checklist-cuentas.md`): cuenta, app y `.env` listos, y la cuenta **conectada** el 2026-10-08 (`VICENTEWOLDE` en `agentsales-pruebas`). Falta cargar el **WhatsApp del corredor** en la base: está en la copia de Google Sheets, pero no llegó a la base (`ml:smoke` usó uno de muestra); se carga reimportando la planilla con la hoja Corredor completa.
-- **Sin paquete pagado (tu decisión, 2026-10-08):** la simulación toma "sin cupo" como advertencia (D14), y la prueba real usa un **usuario de prueba** de Mercado Libre activado por soporte (D15, F4-T25). Si la activación no llega antes del cierre, F4 se cierra con la simulación.
+- **Mercado Libre:** cuenta, app y `.env` listos; `VICENTEWOLDE` conectada a `agentsales-pruebas` (2026-10-08) y renovada con `--force` en la demo del cierre (2026-10-09). El WhatsApp del corredor ya está en la base (P001 y P002 tienen lo que pide Portal). Sin paquete pagado (tu decisión, 2026-10-08): la prueba real usa el usuario de prueba (D15, arriba).
 
 ## Decisiones de F4
 Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
@@ -94,6 +72,11 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-09: **Cierre de F4 (T24, `/fase-cerrar 4`), con la simulación (tu decisión, D15).**
+  - **Demo en simulación (la hice yo):** Cuentas y `accounts` con VICENTEWOLDE; P001 en el panel (lo que pide Portal, aprobar, publicar en simulación, bitácora, pausar, reactivar y cerrar); P002 en la CLI (`approve`, `publish`, `publications --events`, pausar, reactivar, cerrar y `sync`, que se niega porque no hay nada en vivo); `accounts refresh --force` renovó el acceso sin perder la cuenta. Sin tokens ni errores en el log. Mercado Libre respondió "sin cupo" a `validate` (D14), como se esperaba. Falta tu paso 3 (`pnpm ml:smoke --listing P001`), que se repite con el usuario de prueba en F5.
+  - **Lo que salió en la demo y se arregló en el cierre:** la bitácora no mostraba las notas del intento (lo que dijo `validate`); ahora sí, en el panel y la CLI. `approve --platform portal` sugería publicar sin `--platform portal`.
+  - **Auditoría del `arquitecto`:** el código respeta las capas y los ADR; se corrigieron docs desactualizados (tabla de errores HTTP en convenciones, arquitectura, roadmap, plataformas, nota de Mercado Libre, guía, checklist, seguimiento en ADR-0016).
+  - **Criterios de la fase:** 4 a 8 demostrados (tests, CI y la demo); 1 a 3 necesitan la prueba en vivo, que pasa al inicio de F5.
 - 2026-10-09: **F4-T23 y F4-T25 (lote B).**
   - **`pnpm ml:smoke --listing P001`** (lo corres tú; no necesita `pnpm dev`): arma el aviso real de la propiedad y solo le pregunta a Mercado Libre si lo aceptaría. Nunca sube fotos ni crea nada (las escrituras se cortan antes de llamar). Sin paquete dice "no verificado"; con el usuario de prueba y su paquete, lo revisa completo. El informe guarda lo que se mandó, sin contacto, dirección ni enlaces.
   - **Usuario de prueba:** la doc dice que se crea con el acceso de tu cuenta real (no con el de la app). Por eso existe **`pnpm ml:test-user --broker agentsales-pruebas`** (tu decisión): crea uno, muestra el id y el apodo y deja la clave en tu portapapeles, sin imprimirla. El paso a paso completo (activación con el formulario de soporte, paquete sin cargo, conectarlo a `agentsales-pruebas`) está en la checklist.
