@@ -126,13 +126,28 @@ export const PUBLICATION_ACTOR_TEXT: Readonly<Record<PublicationActor, string>> 
 };
 
 /**
+ * El slug de un corredor para la terminal: sale de `slugify` (minúsculas, números y guiones); si
+ * alguno trajera otra cosa, va entre comillas simples.
+ */
+const shellSlug = (slug: string) =>
+  /^[a-z0-9-]+$/.test(slug) ? slug : `'${slug.replaceAll("'", `'\\''`)}'`;
+
+/**
  * El comando para conectar Instagram con el token del panel de Meta (D4 del spec F3): lo muestran
- * la CLI y el panel. El slug sale de `slugify` (minúsculas, números y guiones); si alguno trajera
- * otra cosa, va entre comillas simples para la terminal.
+ * la CLI y el panel.
  */
 export function tokenStdinCommand(slug: string): string {
-  const quoted = /^[a-z0-9-]+$/.test(slug) ? slug : `'${slug.replaceAll("'", `'\\''`)}'`;
-  return `pbpaste | pnpm -s cli accounts connect instagram --broker ${quoted} --token-stdin`;
+  return `pbpaste | pnpm -s cli accounts connect instagram --broker ${shellSlug(slug)} --token-stdin`;
+}
+
+/**
+ * Los dos comandos para conectar Mercado Libre sin túnel (spec F4 §4.2 y §4.12): `authorize` imprime
+ * y abre el enlace de autorización; `paste` lee la dirección de vuelta copiada de la barra. Los
+ * muestran la CLI y el panel (desde F4-T21).
+ */
+export function mercadoLibreConnectCommands(slug: string): { authorize: string; paste: string } {
+  const authorize = `pnpm -s cli accounts connect mercadolibre --broker ${shellSlug(slug)}`;
+  return { authorize, paste: `pbpaste | ${authorize} --url-stdin` };
 }
 
 /** El estado de una cuenta conectada. */

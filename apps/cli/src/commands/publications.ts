@@ -9,7 +9,7 @@ import {
   publicationRetireResponseSchema,
   publicationSyncResponseSchema,
 } from "@agentsales/api/contracts";
-import { publicationModeText } from "@agentsales/core";
+import { availablePublicationOperations, publicationModeText } from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
@@ -322,13 +322,9 @@ export function runPublicationOperation(
     const target = await loadTarget(deps.client, publicationIdOf(id));
     const { publication: current } = target;
     const text = OPERATION_TEXT[operation];
-    const live = !current.dryRun;
-    // Solo un aviso de Portal en vivo, publicado o pausado: en otro caso la API explica por qué no.
+    // Solo un aviso de Portal en vivo, publicado o pausado (core): en otro caso la API explica.
     const confirmClose =
-      operation === "close" &&
-      live &&
-      current.platform === "portal_inmobiliario" &&
-      (current.status === "published" || current.status === "paused");
+      operation === "close" && availablePublicationOperations(current).closeNeedsConfirmation;
     if (confirmClose && !options.yes) {
       const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
       const confirmed = await deps.confirm(

@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-import { fakeInstagramAuth } from "@agentsales/api/testing";
+import {
+  fakeInstagramAuth,
+  fakeMercadoLibreAuth,
+  TEST_ML_REDIRECT_URI,
+} from "@agentsales/api/testing";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { brokerData, type HarnessOptions, harness } from "../../test/harness.js";
@@ -242,5 +246,118 @@ describe("panel: Cuentas", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("La API no responde");
     expect(within(alert).getByRole("button", { name: "Reintentar" })).toBeTruthy();
+  });
+
+  describe("Mercado Libre (F4-T21)", () => {
+    const ML_PASTE =
+      "pbpaste | pnpm -s cli accounts connect mercadolibre --broker marca --url-stdin";
+    const ML_TOKENS = { accessToken: "APP_USR-acceso-0123", refreshToken: "TG-renovar-0123" };
+
+    async function withMercadoLibre(
+      options: { status?: "connected" | "expired"; configured?: boolean; account?: boolean } = {},
+    ) {
+      const h = harness({
+        deps: {
+          ...deps(false),
+          mercadoLibre: {
+            auth: fakeMercadoLibreAuth(),
+            configured: options.configured ?? true,
+            redirectUri: TEST_ML_REDIRECT_URI,
+          },
+        },
+      });
+      const broker = await h.brokers.create(brokerData("marca"));
+      if (options.account === false) return { ...h, broker };
+      const account = await h.platformAccounts.upsertConnected({
+        brokerId: broker.id,
+        platform: "portal_inmobiliario",
+        externalAccountId: "8035443",
+        displayName: "VICENTEWOLDE",
+        tokenExpiresAt: new Date(Date.now() + 180 * DAY),
+        meta: {
+          userId: "8035443",
+          nickname: "VICENTEWOLDE",
+          siteId: "MLC",
+          userType: "normal",
+          scopes: ["offline_access", "read", "write"],
+          testUser: false,
+          connectedAt: new Date(Date.now() - DAY).toISOString(),
+          tokenRefreshedAt: null,
+          accessTokenExpiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+          tokenExpiryEstimated: true,
+        },
+        credentials: ML_TOKENS,
+      });
+      if (options.status === "expired") {
+        await h.platformAccounts.changeStatus(account.id, "connected", "expired");
+      }
+      return { ...h, broker, account };
+    }
+
+    const mlChannel = () =>
+      screen.findByRole("region", { name: "Mercado Libre (Portal Inmobiliario)" });
+
+    it("conectada: el nickname tal cual, vencimiento estimado, tipo y permisos; sin pasos ni tokens", async () => {
+      const { renderApp } = await withMercadoLibre();
+      renderApp("/cuentas");
+
+      const account = await screen.findByRole("article", { name: "Cuenta VICENTEWOLDE" });
+      expect(within(account).getByText("conectada")).toBeTruthy();
+      expect(account.textContent).toContain("(estimado)");
+      expect(account.textContent).toContain("normal");
+      expect(account.textContent).toContain("offline_access, read, write");
+      expect(account.textContent).toContain("se renueva sola cada 7 días mientras el worker corre");
+      expect(account.textContent).not.toContain("@VICENTEWOLDE");
+      expect((await mlChannel()).textContent).not.toContain("Conectar Mercado Libre");
+      // Instagram, sin cuenta, sigue ofreciendo conectarse aparte.
+      expect(screen.getByText("Sin cuenta de Instagram.")).toBeTruthy();
+      expect(document.body.textContent).not.toContain(ML_TOKENS.accessToken);
+      expect(document.body.textContent).not.toContain(ML_TOKENS.refreshToken);
+    });
+
+    it("sin cuenta: los dos pasos en orden, con la dirección de vuelta y los comandos para copiar", async () => {
+      const writeText = vi.fn(async () => {});
+      vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+      const { renderApp } = await withMercadoLibre({ account: false });
+      renderApp("/cuentas");
+
+      const channel = await mlChannel();
+      expect(within(channel).getByText("Sin cuenta de Mercado Libre.")).toBeTruthy();
+      expect(within(channel).getByText("Conectar Mercado Libre")).toBeTruthy();
+      const steps = within(channel)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent ?? "");
+      expect(steps).toHaveLength(2);
+      expect(steps[0]).toContain("pnpm -s cli accounts connect mercadolibre --broker marca");
+      expect(steps[1]).toContain(TEST_ML_REDIRECT_URI);
+      expect(steps[1]).toContain(ML_PASTE);
+
+      fireEvent.click(
+        within(channel).getByRole("button", {
+          name: "Copiar el comando que pega la dirección de marca",
+        }),
+      );
+      expect(await within(channel).findByText("Copiado")).toBeTruthy();
+      expect(writeText).toHaveBeenCalledWith(ML_PASTE);
+    });
+
+    it("vencida: lo dice y ofrece reconectar", async () => {
+      const { renderApp } = await withMercadoLibre({ status: "expired" });
+      renderApp("/cuentas");
+
+      const account = await screen.findByRole("article", { name: "Cuenta VICENTEWOLDE" });
+      expect(within(account).getByText("vencida")).toBeTruthy();
+      expect(within(await mlChannel()).getByText("Reconectar Mercado Libre")).toBeTruthy();
+    });
+
+    it("sin el par de la app en la API: lo dice en vez de mostrar los pasos", async () => {
+      const { renderApp } = await withMercadoLibre({ account: false, configured: false });
+      renderApp("/cuentas");
+
+      const channel = await mlChannel();
+      expect(channel.textContent).toContain("A la API le faltan ML_APP_ID y ML_CLIENT_SECRET");
+      expect(within(channel).queryByRole("listitem")).toBeNull();
+      expect(channel.textContent).not.toContain("--url-stdin");
+    });
   });
 });

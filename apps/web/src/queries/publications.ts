@@ -5,9 +5,11 @@ import {
   listingPublishResponseSchema,
   type PublicationView,
   publicationEventsResponseSchema,
+  publicationOperationResponseSchema,
   publicationPublishResponseSchema,
   publicationResponseSchema,
   publicationRetireResponseSchema,
+  publicationSyncResponseSchema,
   type SkippedPublicationView,
 } from "@agentsales/api/contracts";
 import type { Platform } from "@agentsales/core";
@@ -173,41 +175,89 @@ export function usePublishListing(listingId: string) {
 export type PublicationAction =
   | { kind: "publish"; id: string }
   | { kind: "cancel"; id: string }
-  | { kind: "retire"; id: string; removedByHand: boolean };
+  | { kind: "retire"; id: string; removedByHand: boolean }
+  // Portal (spec F4 §4.9, desde F4-T22): síncronas en la API; cerrar en vivo va confirmado.
+  | { kind: "pause"; id: string }
+  | { kind: "resume"; id: string }
+  | { kind: "close"; id: string; confirmed: boolean }
+  | { kind: "sync"; id: string };
 
-/** Publicar o reintentar una, descartarla o marcarla como retirada. */
+/**
+ * Lo que devolvió la acción: `listingBackToReady` al retirar o cerrar la última en vivo; `queued` al
+ * pedir la lectura (`false`: ya había una programada).
+ */
+export type PublicationActionResult = { listingBackToReady?: boolean; queued?: boolean };
+
+/** Publicar o reintentar una, descartarla, marcarla como retirada y, en Portal, operarla. */
 export function usePublicationAction(listingId: string) {
   const client = useApiClient();
   const refresh = useRefreshAfter(listingId);
   return useMutation({
-    mutationFn: async (action: PublicationAction) => {
+    mutationFn: async (action: PublicationAction): Promise<PublicationActionResult> => {
       const param = { id: action.id };
-      if (action.kind === "publish") {
-        return (
+      switch (action.kind) {
+        case "publish":
           await unwrap(
             client.publications[":id"].publish.$post({ param }),
             publicationPublishResponseSchema,
-          )
-        ).publication;
-      }
-      if (action.kind === "cancel") {
-        return (
+          );
+          return {};
+        case "cancel":
           await unwrap(
             client.publications[":id"].cancel.$post({ param }),
             publicationResponseSchema,
-          )
-        ).publication;
+          );
+          return {};
+        case "retire": {
+          const { listingBackToReady } = await unwrap(
+            client.publications[":id"].retire.$post({
+              param,
+              json: action.removedByHand ? { removedByHand: true } : {},
+            }),
+            publicationRetireResponseSchema,
+          );
+          return { listingBackToReady };
+        }
+        case "pause":
+          await unwrap(
+            client.publications[":id"].pause.$post({ param }),
+            publicationOperationResponseSchema,
+          );
+          return {};
+        case "resume":
+          await unwrap(
+            client.publications[":id"].resume.$post({ param }),
+            publicationOperationResponseSchema,
+          );
+          return {};
+        case "close": {
+          const { listingBackToReady } = await unwrap(
+            client.publications[":id"].close.$post({
+              param,
+              json: action.confirmed ? { confirmed: true } : {},
+            }),
+            publicationOperationResponseSchema,
+          );
+          return { listingBackToReady };
+        }
+        case "sync": {
+          const { queued } = await unwrap(
+            client.publications[":id"].sync.$post({ param }),
+            publicationSyncResponseSchema,
+          );
+          return { queued };
+        }
       }
-      return (
-        await unwrap(
-          client.publications[":id"].retire.$post({
-            param,
-            json: action.removedByHand ? { removedByHand: true } : {},
-          }),
-          publicationRetireResponseSchema,
-        )
-      ).publication;
     },
     onSettled: refresh,
   });
 }
+
+/**
+ * Después de pedir la lectura (Actualizar), el worker la hace en unos segundos: quien la pidió vuelve
+ * a pedir el listado una vez pasado ese rato (`usePublicationsRefresh`), mientras siga abierto.
+ */
+export const SYNC_REFRESH_MS = 8_000;
+
+/** Vuelve a pedir lo que cambia con una publicación (el listado, las bitácoras y el aviso). */
+export const usePublicationsRefresh = (listingId: string) => useRefreshAfter(listingId);

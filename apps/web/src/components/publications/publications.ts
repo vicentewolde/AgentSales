@@ -1,13 +1,17 @@
-import type { ContentView, PublicationView } from "@agentsales/api/contracts";
+import type { ContentView, PortalReadinessView, PublicationView } from "@agentsales/api/contracts";
 import {
   ACTIVE_PUBLICATION_STATUSES,
+  availablePublicationOperations,
   canPrepareContent,
   canPublishListing,
   hasContentErrors,
   LISTING_NOT_PREPARABLE_TEXT,
   LISTING_NOT_PUBLISHABLE_TEXT,
   type ListingStatus,
+  OPERATION_PLATFORMS,
   PENDING_PUBLICATION_STATUSES,
+  PLATFORM_TEXT,
+  type Platform,
   type PublishMode,
 } from "@agentsales/core";
 
@@ -24,6 +28,10 @@ export function prepareBlockedReason(publications: readonly PublicationView[]): 
     : null;
 }
 
+/** Cómo se saca de circulación una publicación activa: en Portal se cierra; en Instagram se retira. */
+export const retireVerb = (platform: Platform) =>
+  OPERATION_PLATFORMS.has(platform) ? "ciérrala" : "retírala";
+
 /** Por qué no se puede editar un texto: tiene una publicación activa (pendiente o publicada). */
 export function editBlockedReason(
   content: ContentView,
@@ -32,7 +40,7 @@ export function editBlockedReason(
   return publications.some(
     (publication) => publication.contentId === content.id && active.has(publication.status),
   )
-    ? "Este texto tiene publicaciones activas: es el registro de lo aprobado. Para cambiarlo, descarta o retira sus publicaciones."
+    ? `Este texto tiene publicaciones activas: es el registro de lo aprobado. Para cambiarlo, descarta o ${OPERATION_PLATFORMS.has(content.platform) ? "cierra" : "retira"} sus publicaciones.`
     : null;
 }
 
@@ -72,6 +80,24 @@ export function publishBlockedReason(
 }
 
 /**
+ * Por qué no se puede publicar en Portal además de lo común (spec F4-T22): un texto aprobado cuya
+ * revisión (calculada al leer) tiene errores (`CONTENT_HAS_ERRORS`), o un aviso al que le falta algo
+ * (`PORTAL_NOT_READY`). La API lo vuelve a revisar al publicar.
+ */
+export function portalPublishBlockedReason(
+  content: ContentView | undefined,
+  readiness: PortalReadinessView | null,
+): string | null {
+  if (content?.status === "approved" && hasContentErrors(content.checks)) {
+    return "La revisión del texto tiene errores: quita la aprobación, corrígelo y vuelve a aprobarlo.";
+  }
+  if (readiness !== null && !readiness.ready) {
+    return "Falta información para Portal (arriba): complétala en la planilla y vuelve a importarla.";
+  }
+  return null;
+}
+
+/**
  * Por qué no se puede reintentar una fallida: ya empezó en vivo en la plataforma y la API está en
  * simulación (`PUBLISH_MODE_LOCKED`): la simulación la daría por publicada sin saber si salió.
  */
@@ -80,16 +106,26 @@ export function retryBlockedReason(
   publishMode: PublishMode | undefined,
 ): string | null {
   return publication.startedLive && publishMode === "dry-run"
-    ? "Ya empezó en vivo en Instagram: reintenta con la API en vivo, o descártala."
+    ? `Ya empezó en vivo en ${PLATFORM_TEXT[publication.platform]}: reintenta con la API en vivo, o descártala.`
     : null;
 }
 
-/** Qué se puede hacer con una publicación según su estado. */
+/**
+ * Qué se puede hacer con una publicación según su estado y su canal. Un aviso de Portal no se
+ * marca como retirado: se pausa, reactiva y cierra por la API, y Actualizar lee su estado allá
+ * (solo en vivo: en simulación no hay nada que leer; spec F4 §4.9).
+ */
 export function publicationActions(publication: PublicationView) {
+  const { pause, resume, close, sync } = availablePublicationOperations(publication);
+  const { status } = publication;
   return {
-    retry: publication.status === "failed",
-    cancel: publication.status === "approved" || publication.status === "failed",
-    retire: publication.status === "published",
+    retry: status === "failed",
+    cancel: status === "approved" || status === "failed",
+    retire: !OPERATION_PLATFORMS.has(publication.platform) && status === "published",
+    pause,
+    resume,
+    close,
+    sync,
   };
 }
 
@@ -99,11 +135,15 @@ export function publicationActions(publication: PublicationView) {
  */
 export const needsLiveConfirm = (publishMode: PublishMode | undefined) => publishMode !== "dry-run";
 
-/** El texto del botón Publicar según el modo de la API (neutro si todavía no se sabe). */
-export function publishButtonText(publishMode: PublishMode | undefined): string {
-  if (publishMode === "live") return "Publicar en Instagram (en vivo)";
-  if (publishMode === "dry-run") return "Publicar en Instagram (simulación)";
-  return "Publicar en Instagram";
+/** El texto del botón Publicar según el canal y el modo de la API (neutro si todavía no se sabe). */
+export function publishButtonText(
+  platform: Platform,
+  publishMode: PublishMode | undefined,
+): string {
+  const base = `Publicar en ${PLATFORM_TEXT[platform]}`;
+  if (publishMode === "live") return `${base} (en vivo)`;
+  if (publishMode === "dry-run") return `${base} (simulación)`;
+  return base;
 }
 
 /**

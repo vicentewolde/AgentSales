@@ -420,6 +420,28 @@ const OPERATION_NOT_ALLOWED_TEXT: Readonly<Record<PublicationOperation, string>>
 };
 
 /**
+ * Qué operaciones admite una publicación ahora (spec F4 §4.9), con las mismas reglas que revisan
+ * `operatePublication` y `requestPublicationSync`: la CLI y el panel las usan para explicar antes de
+ * pedir (la API vuelve a revisar; desde la revisión de F4-T21 y T22). `closeNeedsConfirmation`:
+ * cerrar una en vivo es irreversible y pide `{ confirmed: true }`.
+ */
+export function availablePublicationOperations(
+  publication: Pick<Publication, "platform" | "status" | "dryRun">,
+): Record<PublicationOperation | "sync" | "closeNeedsConfirmation", boolean> {
+  const supported = OPERATION_PLATFORMS.has(publication.platform);
+  const can = (operation: PublicationOperation) =>
+    supported && OPERATION_MOVES[operation].from.includes(publication.status);
+  const onPlatform = publication.status === "published" || publication.status === "paused";
+  return {
+    pause: can("pause"),
+    resume: can("resume"),
+    close: can("close"),
+    sync: supported && onPlatform && !publication.dryRun,
+    closeNeedsConfirmation: can("close") && !publication.dryRun,
+  };
+}
+
+/**
  * Pide leer una publicación en la plataforma (Actualizar, `POST /publications/:id/sync`, spec F4
  * §4.9): revisa que haya algo que leer (`OPERATION_NOT_SUPPORTED` en Instagram;
  * `PUBLICATION_NOT_PUBLISHED`, 409, si es una simulación o no está `published` ni `paused`) y encola

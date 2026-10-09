@@ -1,4 +1,5 @@
 import { ApiError } from "../api/client.js";
+import { PortalIssueList, portalIssuesHint } from "./PortalIssueList.js";
 
 /** Qué hacer ante los errores de la API que tienen arreglo del lado del operador. */
 function hintFor(error: Error): string | null {
@@ -11,23 +12,51 @@ function hintFor(error: Error): string | null {
     return "Revisa las variables R2_* y corre pnpm storage:check.";
   if (code === "QUEUE_UNAVAILABLE")
     return "Arranca el worker (pnpm dev): retoma lo que quedó en curso al arrancar.";
+  if (code === "PUBLISH_MODE_MISMATCH")
+    return "La publicación y la API no están en el mismo modo (simulación o en vivo): arranca la API en vivo (PUBLISH_MODE=live pnpm dev) solo si lo decides tú.";
+  if (code === "PORTAL_NOT_READY")
+    return portalIssuesHint(error instanceof ApiError ? (error.issues ?? []) : []);
+  if (code === "PUBLISHER_NOT_CONFIGURED")
+    return "Revisa ML_APP_ID y ML_CLIENT_SECRET en el .env (pnpm -s cli doctor) y reinicia pnpm dev.";
+  if (code === "CLOSE_NOT_CONFIRMED")
+    return "La página estaba desactualizada: recárgala y vuelve a cerrar.";
   return null;
 }
 
-/** Un error de la API, con su sugerencia y, si se puede, un botón para reintentar. */
+/**
+ * `PORTAL_NOT_READY` trae la lista de lo que falta (`issues`): se muestra con un encabezado corto y
+ * no además el mensaje, que junta los mismos motivos (spec F4-T22).
+ */
+function IssueList({ error }: { error: Error }) {
+  const issues = error instanceof ApiError ? (error.issues ?? []) : [];
+  if (issues.length === 0) return <p className="font-semibold text-red-800">{error.message}</p>;
+  return (
+    <>
+      <p className="font-semibold text-red-800">Falta información para publicar en Portal:</p>
+      <PortalIssueList issues={issues} className="text-red-800" />
+    </>
+  );
+}
+
+/**
+ * Un error de la API, con su sugerencia y, si se puede, un botón para reintentar. `hint` reemplaza
+ * la sugerencia por código cuando quien llama sabe más (un corte al operar un aviso de Portal).
+ */
 export function ErrorAlert({
   error,
   onRetry,
   retrying = false,
+  hint: ownHint,
 }: {
   error: Error;
   onRetry?: () => void;
   retrying?: boolean;
+  hint?: string;
 }) {
-  const hint = hintFor(error);
+  const hint = ownHint ?? hintFor(error);
   return (
     <div role="alert" className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4">
-      <p className="font-semibold text-red-800">{error.message}</p>
+      <IssueList error={error} />
       {hint && <p className="mt-1 text-sm text-red-700">{hint}</p>}
       {onRetry && (
         <button

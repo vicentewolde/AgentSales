@@ -7,6 +7,7 @@ import {
 } from "@agentsales/api/contracts";
 import {
   MERCADOLIBRE_REFRESH_AGE_MS,
+  mercadoLibreConnectCommands,
   PLATFORM_ACCOUNT_STATUS_TEXT,
   PLATFORM_TEXT,
   tokenStdinCommand,
@@ -98,9 +99,8 @@ export type ConnectOptions = { broker?: string; tokenStdin?: boolean; urlStdin?:
 /** El largo máximo de la dirección de vuelta pegada (la API acepta hasta 4096 por valor). */
 const PASTED_URL_MAX_LENGTH = 8192;
 
-/** El comando que pega la dirección de vuelta de Mercado Libre (spec F4 §4.2, paso 3). */
-const urlStdinCommand = (broker: string) =>
-  `pbpaste | pnpm -s cli accounts connect mercadolibre --broker ${broker} --url-stdin`;
+/** El comando que pega la dirección de vuelta de Mercado Libre (spec F4 §4.2, paso 3; core). */
+const urlStdinCommand = (broker: string) => mercadoLibreConnectCommands(broker).paste;
 
 /** La dirección sin query ni fragmento, para comparar con la registrada. */
 const withoutQuery = (url: URL) => `${url.origin}${url.pathname}`;

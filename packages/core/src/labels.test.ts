@@ -13,6 +13,7 @@ import {
   IMPORT_ROW_OUTCOME_TEXT,
   IMPORT_RUN_STATUS_TEXT,
   LISTING_STATUS_TEXT,
+  mercadoLibreConnectCommands,
   OPERATION_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
   PUBLICATION_ACTOR_TEXT,
@@ -50,6 +51,15 @@ describe("textos para el operador", () => {
       "pbpaste | pnpm -s cli accounts connect instagram --broker vp-propiedades --token-stdin",
     );
     expect(tokenStdinCommand("a b'; rm")).toContain("--broker 'a b'\\''; rm' --token-stdin");
+  });
+
+  it("mercadoLibreConnectCommands: el enlace y pegar la dirección, con el mismo slug", () => {
+    expect(mercadoLibreConnectCommands("agentsales-pruebas")).toEqual({
+      authorize: "pnpm -s cli accounts connect mercadolibre --broker agentsales-pruebas",
+      paste:
+        "pbpaste | pnpm -s cli accounts connect mercadolibre --broker agentsales-pruebas --url-stdin",
+    });
+    expect(mercadoLibreConnectCommands("a b").paste).toContain("--broker 'a b' --url-stdin");
   });
 });
 

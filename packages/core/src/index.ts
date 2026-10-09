@@ -70,6 +70,7 @@ export {
   LISTING_NOT_PREPARABLE_TEXT,
   LISTING_NOT_PUBLISHABLE_TEXT,
   LISTING_STATUS_TEXT,
+  mercadoLibreConnectCommands,
   OPERATION_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
   PLATFORM_TEXT,
@@ -476,6 +477,7 @@ export {
   prepareContent,
 } from "./use-cases/prepare-content.js";
 export {
+  availablePublicationOperations,
   enqueueSync,
   OPERATION_PLATFORMS,
   OPERATION_SYNC_DELAY_MS,

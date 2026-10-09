@@ -1,9 +1,15 @@
-import type { ContentView, ListingPublicationView } from "@agentsales/api/contracts";
+import type {
+  ContentView,
+  ListingPublicationView,
+  PortalReadinessView,
+} from "@agentsales/api/contracts";
 import {
   ACTIVE_PUBLICATION_STATUSES,
   type ListingStatus,
-  PUBLICATION_FORMAT_TEXT,
+  PLATFORM_TEXT,
+  type Platform,
   type PublishMode,
+  publicationFormatText,
 } from "@agentsales/core";
 import { useRef, useState } from "react";
 import { Link } from "react-router";
@@ -14,8 +20,10 @@ import { ErrorAlert } from "../ErrorAlert.js";
 import { PublicationItem } from "./PublicationItem.js";
 import {
   needsLiveConfirm,
+  portalPublishBlockedReason,
   publishBlockedReason,
   publishButtonText,
+  retireVerb,
   retryBlockedReason,
 } from "./publications.js";
 
@@ -26,29 +34,42 @@ const DANGER =
 
 const shown = new Set<string>([...ACTIVE_PUBLICATION_STATUSES, "failed"]);
 
+/** Cómo se conecta la cuenta de cada canal, en Cuentas (`ACCOUNT_NOT_CONNECTED`). */
+const ACCOUNT_TEXT: Partial<Record<Platform, string>> = {
+  instagram: "la cuenta de Instagram",
+  portal_inmobiliario: "la cuenta de Mercado Libre",
+};
+
 /**
- * Las publicaciones de Instagram de un aviso (spec F3 §4.9): Publicar el canal (en vivo, con
- * confirmación) y cada publicación con su estado y acciones. Las descartadas y retiradas van aparte.
+ * Las publicaciones de un canal del aviso (spec F3 §4.9; Portal desde F4-T22): Publicar el canal
+ * (en vivo, con confirmación) y cada publicación con su estado y acciones. Las descartadas y
+ * retiradas van aparte. En Portal, Publicar se bloquea si al aviso le falta algo
+ * (`portalReadiness`) o si la revisión del texto aprobado tiene errores.
  */
 export function PublicationsPanel({
+  platform,
   listingId,
   listingStatus,
   content,
   publications,
   publishMode,
   runActive,
+  portalReadiness = null,
 }: {
+  platform: Platform;
   listingId: string;
   listingStatus: ListingStatus;
   content: ContentView | undefined;
   publications: readonly ListingPublicationView[];
   publishMode: PublishMode | undefined;
   runActive: boolean;
+  portalReadiness?: PortalReadinessView | null;
 }) {
   const publish = usePublishListing(listingId);
   const freshMode = useFreshPublishMode();
   const [confirming, setConfirming] = useState(false);
   const [requestedAt, setRequestedAt] = useState<Date | null>(null);
+  const [backToReady, setBackToReady] = useState(false);
   const publishButton = useRef<HTMLButtonElement>(null);
   const current = publications.filter((publication) => shown.has(publication.status));
   const past = publications.filter((publication) => !shown.has(publication.status));
@@ -66,13 +87,18 @@ export function PublicationsPanel({
     .find((reason) => reason !== null);
   const blocked =
     publishBlockedReason(listingStatus, runActive) ??
+    (platform === "portal_inmobiliario"
+      ? portalPublishBlockedReason(content, portalReadiness)
+      : null) ??
     (publishMode === undefined
       ? "Todavía no se sabe si la API está en simulación o en vivo."
       : (lockedLive ?? null));
+  const channel = PLATFORM_TEXT[platform];
 
   const start = () => {
     setConfirming(false);
-    publish.mutate("instagram", { onSuccess: () => setRequestedAt(new Date()) });
+    setBackToReady(false);
+    publish.mutate(platform, { onSuccess: () => setRequestedAt(new Date()) });
   };
   // El modo lo pone la API al publicar (D11): con la API en vivo se confirma, y en simulación se
   // vuelve a preguntar justo antes, por si cambió desde que se abrió la página.
@@ -99,7 +125,8 @@ export function PublicationsPanel({
           {confirming ? (
             <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm">
               <p className="font-semibold text-red-800">
-                La API está en vivo: se publicará de verdad en Instagram.
+                La API está en vivo: se publicará de verdad en {channel}
+                {platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.
               </p>
               <div className="mt-2 flex gap-2">
                 <button type="button" className={DANGER} onClick={start}>
@@ -119,7 +146,7 @@ export function PublicationsPanel({
               disabled={publish.isPending || blocked !== null}
               onClick={() => void request()}
             >
-              {publishButtonText(publishMode)}
+              {publishButtonText(platform, publishMode)}
             </button>
           )}
           {blocked !== null && <p className="mt-1 text-xs text-amber-800">{blocked}</p>}
@@ -127,8 +154,8 @@ export function PublicationsPanel({
       )}
       {publish.data?.skipped.map((skipped) => (
         <p key={skipped.publicationId} className="mt-2 text-sm text-amber-800">
-          El {PUBLICATION_FORMAT_TEXT[skipped.format]} tiene una publicación activa de un texto
-          anterior: retírala o descártala para publicar el nuevo.
+          El {publicationFormatText(platform, skipped.format)} tiene una publicación activa de un
+          texto anterior: {retireVerb(platform)} o descártala para publicar el nuevo.
         </p>
       ))}
       {publish.data !== undefined && publish.data.stranded.length > 0 && (
@@ -145,7 +172,7 @@ export function PublicationsPanel({
           <ErrorAlert error={publish.error} />
           {publish.error instanceof ApiError && publish.error.code === "ACCOUNT_NOT_CONNECTED" && (
             <p className="mt-2 text-sm">
-              Conecta la cuenta de Instagram del corredor en{" "}
+              Conecta {ACCOUNT_TEXT[platform] ?? "la cuenta"} del corredor en{" "}
               <Link to="/cuentas" className="underline">
                 Cuentas
               </Link>
@@ -153,6 +180,11 @@ export function PublicationsPanel({
             </p>
           )}
         </>
+      )}
+      {backToReady && (
+        <p role="status" className="mt-2 text-sm text-slate-700">
+          Era la última publicada en vivo: la propiedad volvió a lista.
+        </p>
       )}
       <div className="mt-3 flex flex-col gap-3">
         {current.map((publication) => (
@@ -162,6 +194,7 @@ export function PublicationsPanel({
             listingId={listingId}
             publishMode={publishMode}
             requestedAt={requestedAt}
+            onListingBackToReady={() => setBackToReady(true)}
           />
         ))}
       </div>
