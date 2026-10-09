@@ -8,13 +8,14 @@ import {
   PLATFORM_TEXT,
   type Platform,
   PUBLICATION_STATUS_TEXT,
+  publicationFormatText,
   publicationModeText,
 } from "@agentsales/core";
 import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded } from "../output.js";
-import { formatText, portalIssueLine, renderPublicationResult } from "./publication-view.js";
+import { portalIssueLine, renderPublicationResult } from "./publication-view.js";
 import { fetchBrokers, platformOption, platformShortName, resolveListingId } from "./shared.js";
 import { type WaitDeps, waitForRun } from "./wait-run.js";
 
@@ -27,6 +28,12 @@ export type PublishOptions = {
 };
 
 export type PublishDeps = WaitDeps & Pick<Terminal, "confirm"> & { client: ApiClient };
+
+/** `agentsales publish P001` en Instagram (el canal por defecto); con `--platform` en los demás. */
+const publishCommand = (ref: string, platform: Platform) =>
+  platform === "instagram"
+    ? `agentsales publish ${ref}`
+    : `agentsales publish ${ref} --platform ${platformShortName(platform)}`;
 
 /** Cómo se conecta la cuenta de cada canal (`ACCOUNT_NOT_CONNECTED`). */
 const CONNECT_HINT: Partial<Record<Platform, string>> = {
@@ -53,7 +60,7 @@ function portalNotReady(error: ApiCallError): CliError {
   return new CliError(
     "PORTAL_NOT_READY",
     message,
-    "Completa la planilla, vuelve a importarla (agentsales import) y publica de nuevo; el WhatsApp es el de la hoja Corredor",
+    "Vuelve a importar la planilla (agentsales import) y publica de nuevo; el WhatsApp es el de la hoja Corredor",
   );
 }
 
@@ -63,8 +70,7 @@ function explained(error: unknown, ref: string, platform: Platform): unknown {
   if (error.code === "PORTAL_NOT_READY") return portalNotReady(error);
   const message = error.apiMessage ?? error.message;
   const hints: Record<string, string> = {
-    QUEUE_UNAVAILABLE:
-      "Quedaron en curso: arranca el worker (pnpm dev), que las retoma al arrancar, o vuelve a correr agentsales publish",
+    QUEUE_UNAVAILABLE: `Quedaron en curso: arranca el worker (pnpm dev), que las retoma al arrancar, o vuelve a correr ${publishCommand(ref, platform)}`,
     CONTENT_NOT_APPROVED: `Aprueba el texto con agentsales approve ${ref} --platform ${platformShortName(platform)}`,
     ...(CONNECT_HINT[platform] === undefined
       ? {}
@@ -136,7 +142,9 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
         : publicationModeText(targets[0]?.dryRun ?? publishMode !== "live");
     deps.print(
       `Publicando ${trimmed} en ${PLATFORM_TEXT[platform]} (${mode}): ` +
-        targets.map((publication) => formatText(platform, publication.format)).join(", "),
+        targets
+          .map((publication) => publicationFormatText(platform, publication.format))
+          .join(", "),
     );
     if (result.requeued.length > 0) {
       deps.print(c.dim(`  Ya estaban en curso y se retomaron: ${result.requeued.length}`));
@@ -144,7 +152,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
     for (const skipped of result.skipped) {
       deps.printError(
         c.yellow(
-          `  El ${formatText(platform, skipped.format)} tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar el nuevo`,
+          `  El ${publicationFormatText(platform, skipped.format)} tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar el nuevo`,
         ),
       );
     }
@@ -187,7 +195,10 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
       isTerminal: (wait) => wait.status === "done",
       progress: (wait) =>
         wait.publications
-          .map((p) => `${formatText(p.platform, p.format)}: ${PUBLICATION_STATUS_TEXT[p.status]}`)
+          .map(
+            (p) =>
+              `${publicationFormatText(p.platform, p.format)}: ${PUBLICATION_STATUS_TEXT[p.status]}`,
+          )
           .join(" · "),
       // Nadie tocó las que empezaron ahora (las publicaciones no tienen `queued`). Es una heurística:
       // con la plataforma lenta, el primer contenedor puede tardar más de 20 s.
@@ -224,13 +235,20 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
       );
       deps.printError(
         c.dim(
-          `→ Reintenta con agentsales publish ${trimmed}, o mira la bitácora con agentsales publications ${trimmed} --events`,
+          `→ Reintenta con ${publishCommand(trimmed, platform)}, o mira la bitácora con agentsales publications ${trimmed} --events`,
         ),
       );
       return 1;
     }
     if (done.publications.every((publication) => publication.dryRun)) {
-      deps.print(c.dim("  Simulación: no se envió nada a la plataforma"));
+      // En Portal la simulación sí lee de Mercado Libre y valida el aviso (ADR-0016).
+      deps.print(
+        c.dim(
+          platform === "portal_inmobiliario"
+            ? "  Simulación: no se creó ni cambió nada en Mercado Libre"
+            : "  Simulación: no se envió nada a la plataforma",
+        ),
+      );
     }
     return 0;
   });

@@ -3,12 +3,17 @@ import {
   contentUnapproveResponseSchema,
   listingContentResponseSchema,
 } from "@agentsales/api/contracts";
-import { PLATFORM_TEXT, type Platform, type PublicationFormat } from "@agentsales/core";
+import {
+  PLATFORM_TEXT,
+  type Platform,
+  type PublicationFormat,
+  publicationFormatText,
+} from "@agentsales/core";
 import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
-import { formatText, portalIssueLine } from "./publication-view.js";
+import { portalIssueLine } from "./publication-view.js";
 import { fetchBrokers, PLATFORM_OPTION_NAMES, platformOption, resolveListingId } from "./shared.js";
 
 export type ApproveDeps = Io & { client: ApiClient };
@@ -17,7 +22,7 @@ export type ApproveOptions = { broker?: string; platform?: string; undo?: boolea
 
 const formats = (publications: readonly { platform: Platform; format: PublicationFormat }[]) =>
   publications
-    .map((publication) => formatText(publication.platform, publication.format))
+    .map((publication) => publicationFormatText(publication.platform, publication.format))
     .join(" y ");
 
 /** Un rechazo de la API para un canal, con qué hacer, sin cortar los demás. */
@@ -107,7 +112,7 @@ export function runApprove(deps: ApproveDeps, ref: string, options: ApproveOptio
           for (const skipped of result.skipped) {
             deps.printError(
               c.yellow(
-                `  El ${formatText(content.platform, skipped.format)} ya tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar este`,
+                `  El ${publicationFormatText(content.platform, skipped.format)} ya tiene una publicación activa de un texto anterior (${skipped.publicationId}): retírala o descártala para publicar este`,
               ),
             );
           }

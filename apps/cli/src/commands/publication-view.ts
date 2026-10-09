@@ -5,12 +5,10 @@ import type {
 } from "@agentsales/api/contracts";
 import {
   PLATFORM_TEXT,
-  type Platform,
   PUBLICATION_ACTOR_TEXT,
-  PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
-  type PublicationFormat,
+  publicationFormatText,
   publicationModeText,
   publishAttemptPayloadSchema,
   remoteStatusText,
@@ -31,13 +29,9 @@ export function paintPublicationStatus(
   return c.dim(text);
 }
 
-/** El formato como lo ve el operador: en Portal hay uno solo, el aviso (spec F4 §4.8). */
-export const formatText = (platform: Platform, format: PublicationFormat) =>
-  platform === "portal_inmobiliario" ? "aviso" : PUBLICATION_FORMAT_TEXT[format];
-
 /** `carrusel de Instagram`, `aviso de Portal Inmobiliario`. */
 export const publicationName = (publication: Pick<PublicationView, "format" | "platform">) =>
-  `${formatText(publication.platform, publication.format)} de ${PLATFORM_TEXT[publication.platform]}`;
+  `${publicationFormatText(publication.platform, publication.format)} de ${PLATFORM_TEXT[publication.platform]}`;
 
 /** Un motivo de lo que le falta al aviso para Portal, con su columna del Excel: `  • Falta … (dormitorios)`. */
 export const portalIssueLine = (issue: PortalReadinessIssueView) =>
@@ -104,7 +98,7 @@ export function renderPublications(publications: readonly PublicationView[], c: 
     publications.map((publication) => [
       publication.id,
       PLATFORM_TEXT[publication.platform],
-      formatText(publication.platform, publication.format),
+      publicationFormatText(publication.platform, publication.format),
       paintPublicationStatus(publication, c),
       publicationModeText(publication.dryRun),
       String(publication.attempts),

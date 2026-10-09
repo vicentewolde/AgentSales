@@ -19,6 +19,7 @@ import {
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  publicationFormatText,
   remoteStatusText,
   tokenStdinCommand,
 } from "./labels.js";
@@ -49,6 +50,14 @@ describe("textos para el operador", () => {
       "pbpaste | pnpm -s cli accounts connect instagram --broker vp-propiedades --token-stdin",
     );
     expect(tokenStdinCommand("a b'; rm")).toContain("--broker 'a b'\\''; rm' --token-stdin");
+  });
+});
+
+describe("publicationFormatText (F4-T20)", () => {
+  it("en Portal el formato es el aviso; en Instagram, carrusel o reel", () => {
+    expect(publicationFormatText("portal_inmobiliario", "post")).toBe("aviso");
+    expect(publicationFormatText("instagram", "post")).toBe("carrusel");
+    expect(publicationFormatText("instagram", "reel")).toBe("reel");
   });
 });
 

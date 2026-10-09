@@ -34,6 +34,8 @@ export type HarnessOptions = {
   deps?: Partial<AppDeps>;
   /** Se llama antes de cada petición: lanzar simula una falla de red. */
   beforeRequest?: (url: string, method: string) => void;
+  /** Se llama con la respuesta de la API: la API ya hizo el cambio (simula un corte después). */
+  afterResponse?: (url: string, method: string, response: Response) => Response;
 };
 
 /**
@@ -92,7 +94,8 @@ export function harness(options: HarnessOptions = {}) {
       const method = init?.method ?? "GET";
       requests.push(`${method} ${new URL(url).pathname}`);
       options.beforeRequest?.(url, method);
-      return app.request(url, init);
+      const response = await app.request(url, init);
+      return options.afterResponse?.(url, method, response) ?? response;
     },
   });
   const own = <T>(name: keyof AppDeps, repository: T): T => {
@@ -160,6 +163,7 @@ export async function publicationHarness(
     platform?: "instagram" | "portal_inmobiliario";
     operations?: PublicationOperations;
     beforeRequest?: HarnessOptions["beforeRequest"];
+    afterResponse?: HarnessOptions["afterResponse"];
   } = {},
 ) {
   const t = await createPublicationScenario({
@@ -172,6 +176,7 @@ export async function publicationHarness(
   const operations = options.operations;
   const h = harness({
     ...(options.beforeRequest === undefined ? {} : { beforeRequest: options.beforeRequest }),
+    ...(options.afterResponse === undefined ? {} : { afterResponse: options.afterResponse }),
     deps: {
       listings: t.listings,
       brokers: t.brokers,

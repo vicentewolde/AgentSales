@@ -8,7 +8,10 @@ export type Io = {
   colors: Colors;
 };
 
-/** Error detectado por la CLI antes de llamar a la API (una ruta que no existe, un `--broker` vacío…). */
+/**
+ * Error que explica la CLI: uno que detecta antes de llamar a la API (una ruta que no existe, un
+ * `--broker` vacío…) o uno de la API con qué hacer (`OPERATION_UNCONFIRMED`, los 409 explicados).
+ */
 export class CliError extends Error {
   readonly code: string;
   readonly hint: string | undefined;

@@ -367,7 +367,7 @@ describe("runPublish · Portal (F4-T20)", () => {
     expect(await run(setup, clock, { platform: "portal" })).toBe(0);
     expect(h.out[0]).toMatch(/^Publicando .* en Portal Inmobiliario \(simulación\): aviso$/);
     expect(h.text()).toContain("aviso de Portal Inmobiliario: publicada (simulación)");
-    expect(h.text()).toContain("Simulación: no se envió nada a la plataforma");
+    expect(h.text()).toContain("Simulación: no se creó ni cambió nada en Mercado Libre");
     expect(t.publications.all().map((p) => [p.platform, p.format, p.dryRun])).toEqual([
       ["portal_inmobiliario", "post", true],
     ]);
@@ -396,7 +396,7 @@ describe("runPublish · Portal (F4-T20)", () => {
             remoteState: {
               status: "active",
               subStatus: ["picture_download_pending"],
-              stopTime: "2027-04-07T12:00:00.000-03:00",
+              stopTime: "2027-04-07T09:00:00.000-03:00",
               expirationTime: null,
               checkedAt: new Date().toISOString(),
             },
@@ -435,6 +435,14 @@ describe("runPublish · Portal (F4-T20)", () => {
     expect(errors.split("\n").filter((line) => line.startsWith("  • "))).toHaveLength(1);
     expect(errors).toContain("hoja Corredor");
     expect(setup.t.publications.all().map((p) => p.status)).toEqual(["approved"]);
+  });
+
+  it("si falla, el reintento sugerido lleva --platform portal", async () => {
+    const setup = await publicationHarness({ platform: "portal_inmobiliario" });
+    const clock = fakeClock(() => finish(setup.t, () => "failed"));
+
+    expect(await run(setup, clock, { platform: "portal" })).toBe(1);
+    expect(setup.h.errors()).toMatch(/Reintenta con agentsales publish \S+ --platform portal,/);
   });
 
   it("sin cuenta de Mercado Libre dice cómo conectarla", async () => {

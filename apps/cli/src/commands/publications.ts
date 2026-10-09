@@ -12,7 +12,7 @@ import {
 import { publicationModeText } from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
-import { API_TIMEOUT_MS, ApiCallError, type ApiClient, unwrap } from "../api-client.js";
+import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
 import {
@@ -42,7 +42,7 @@ function publicationIdOf(id: string): string {
 }
 
 /** Los 409 de descartar y retirar, con qué hacer en la CLI. */
-function explained(error: unknown): unknown {
+function explained(error: unknown, publicationId: string): unknown {
   if (!(error instanceof ApiCallError)) return error;
   if (error.code === "PUBLICATION_IN_PROGRESS") {
     return new CliError(
@@ -62,7 +62,7 @@ function explained(error: unknown): unknown {
     return new CliError(
       "RETIRE_NOT_SUPPORTED",
       error.apiMessage ?? error.message,
-      "Un aviso de Portal se cierra: agentsales publications close <id>",
+      `Un aviso de Portal se cierra: agentsales publications close ${publicationId}`,
     );
   }
   return error;
@@ -141,11 +141,12 @@ export function runPublications(
 export function runCancelPublication(deps: PublicationsDeps, id: string) {
   const c = deps.colors;
   return guarded(deps, async () => {
+    const publicationId = publicationIdOf(id);
     const { publication } = await unwrap(
-      deps.client.publications[":id"].cancel.$post({ param: { id: publicationIdOf(id) } }),
+      deps.client.publications[":id"].cancel.$post({ param: { id: publicationId } }),
       publicationResponseSchema,
     ).catch((error: unknown) => {
-      throw explained(error);
+      throw explained(error, publicationId);
     });
     deps.print(
       `${c.green("✓")} ${publicationName(publication)} ${paintPublicationStatus(publication, c)}`,
@@ -198,7 +199,7 @@ export function runRetirePublication(
       }),
       publicationRetireResponseSchema,
     ).catch((error: unknown) => {
-      throw explained(error);
+      throw explained(error, publicationId);
     });
     deps.print(
       `${c.green("✓")} ${publicationName(publication)} ${paintPublicationStatus(publication, c)}`,
@@ -214,9 +215,9 @@ export function runRetirePublication(
 export type PublicationOperation = "pause" | "resume" | "close";
 
 const OPERATION_TEXT: Readonly<Record<PublicationOperation, { noun: string; done: string }>> = {
-  pause: { noun: "la pausa", done: "pausado" },
-  resume: { noun: "la reactivación", done: "reactivado" },
-  close: { noun: "el cierre", done: "cerrado" },
+  pause: { noun: "La pausa", done: "pausado" },
+  resume: { noun: "La reactivación", done: "reactivado" },
+  close: { noun: "El cierre", done: "cerrado" },
 };
 
 /**
@@ -239,24 +240,39 @@ async function loadTarget(client: ApiClient, publicationId: string) {
 }
 
 /**
- * Los errores de pausar, reactivar, cerrar y actualizar, con qué hacer en la CLI. Si la API no
- * contestó a tiempo, el cambio pudo aplicarse en Mercado Libre (la API sigue hasta su tope): no se
- * reintenta solo, se dice cómo revisarlo (spec F4-T20).
+ * ¿Se cortó el pedido después de salir? Un tope vencido (`TIMEOUT`, también a mitad de la respuesta)
+ * o una conexión cortada sin respuesta: la API pudo haberlo recibido y seguir hasta su tope. Solo
+ * `ECONNREFUSED` asegura que no llegó.
+ */
+const possiblyReceived = (error: ApiCallError) =>
+  error.code === "TIMEOUT" || (error.status === undefined && error.code !== "ECONNREFUSED");
+
+/**
+ * Los errores de pausar, reactivar, cerrar y actualizar, con qué hacer en la CLI. Si el pedido se
+ * cortó después de salir, el cambio pudo aplicarse en Mercado Libre (la API sigue hasta su tope): no
+ * se reintenta solo, se dice cómo revisarlo (spec F4-T20). Pedir la lectura (`sync`) no cambia nada
+ * allá: solo pudo quedar en cola, y repetirla no duplica nada (la cola es `exclusive`).
  */
 function explainedOperation(
   error: unknown,
   target: { publication: PublicationView; ref: string },
-  noun: string,
+  operation: PublicationOperation | "sync",
 ): unknown {
   if (!(error instanceof ApiCallError)) return error;
   const { publication, ref } = target;
   const look = `agentsales publications ${ref}`;
   const sync = `agentsales publications sync ${publication.id}`;
-  if (error.code === "TIMEOUT") {
-    const seconds = Math.round(API_TIMEOUT_MS / 1000);
+  if (possiblyReceived(error)) {
+    if (operation === "sync") {
+      return new CliError(
+        "OPERATION_UNCONFIRMED",
+        `No se supo si la lectura quedó pedida (${error.message})`,
+        `Mira el estado en un momento con ${look}, o repite ${sync}`,
+      );
+    }
     return new CliError(
       "OPERATION_UNCONFIRMED",
-      `La API no respondió en ${seconds} s: ${noun} pudo haberse aplicado${publication.dryRun ? "" : " en Mercado Libre"}`,
+      `${OPERATION_TEXT[operation].noun} pudo haberse aplicado${publication.dryRun ? "" : " en Mercado Libre"}, pero la API no confirmó (${error.message})`,
       publication.dryRun
         ? `No lo repitas todavía: mira el estado con ${look}`
         : `No lo repitas todavía: mira el estado con ${look}, o pide leerlo de Mercado Libre con ${sync}`,
@@ -284,8 +300,7 @@ function explainedOperation(
   };
   const hint = error.code === undefined ? undefined : hints[error.code];
   if (hint === undefined) return error;
-  // Los mensajes de la API de `ML_ABORTED` y `ML_CONFLICT` nombran el botón Actualizar del panel.
-  return new CliError(error.code ?? "API_ERROR", message.replace(/ \(Actualizar\)$/, ""), hint);
+  return new CliError(error.code ?? "API_ERROR", message, hint);
 }
 
 export type OperationOptions = { yes?: boolean };
@@ -308,9 +323,11 @@ export function runPublicationOperation(
     const { publication: current } = target;
     const text = OPERATION_TEXT[operation];
     const live = !current.dryRun;
+    // Solo un aviso de Portal en vivo, publicado o pausado: en otro caso la API explica por qué no.
     const confirmClose =
       operation === "close" &&
       live &&
+      current.platform === "portal_inmobiliario" &&
       (current.status === "published" || current.status === "paused");
     if (confirmClose && !options.yes) {
       const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
@@ -336,7 +353,7 @@ export function runPublicationOperation(
       request,
       publicationOperationResponseSchema,
     ).catch((error: unknown) => {
-      throw explainedOperation(error, target, text.noun);
+      throw explainedOperation(error, target, operation);
     });
     deps.print(
       `${c.green("✓")} ${publicationName(publication)} ${text.done}: ${paintPublicationStatus(publication, c)} (${publicationModeText(publication.dryRun)})`,
@@ -364,7 +381,7 @@ export function runSyncPublication(deps: PublicationsDeps, id: string) {
       deps.client.publications[":id"].sync.$post({ param: { id: target.publication.id } }),
       publicationSyncResponseSchema,
     ).catch((error: unknown) => {
-      throw explainedOperation(error, target, "la lectura");
+      throw explainedOperation(error, target, "sync");
     });
     deps.print(
       queued

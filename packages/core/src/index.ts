@@ -77,6 +77,7 @@ export {
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  publicationFormatText,
   publicationModeText,
   RUN_QUEUED_WARNING_TEXT,
   remoteStatusText,
