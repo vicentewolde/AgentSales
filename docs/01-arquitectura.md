@@ -229,7 +229,7 @@ type PublishContext = Omit<PlatformContext, "accessToken"> & {
   saveProgress(progress: unknown): Promise<void>;           // antes del paso que publica
 };
 type PublishValidation = { ok: true; notes?: string[] } | { ok: false; issues: PublishIssue[] };
-type PublishResult = { externalId: string; externalUrl: string | null; simulated: boolean; notes?: string[] };
+type PublishResult = { externalId: string; externalUrl: string | null; simulated: boolean; notes?: string[]; remote?: RemoteStatus };
 type PublishedRef = { externalId: string; progress: unknown | null };
 type RemoteStatus = Omit<RemoteState, "checkedAt">;         // core suma checkedAt al guardar
 ```
@@ -665,6 +665,10 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 - **Tabla de campos** (`packages/core/src/portal/fields.ts`): `portalCategoryPath(tipo, operación)` da los nombres del árbol bajo Inmuebles (`["Departamentos", "Venta", "Propiedades usadas"]`; sin subtipo en locales, terrenos, bodegas, estacionamientos y parcelas en arriendo; nunca `Proyectos` ni `Arriendo Temporal`). `PORTAL_ATTRIBUTE_FIELDS` dice, por campo del Excel, el atributo de Mercado Libre, la forma (número, m², CLP, Sí/No, mascotas, orientación, antigüedad) y dónde es obligatorio por tipo y operación (lo leído con `ml:smoke`). `portalSellerContact` convierte el WhatsApp chileno a `56` + 9 dígitos. `portalFieldHasValue` y `portalPrice` son la única regla de "el dato sirve" y del precio para las dos revisiones, y `PORTAL_ISSUE_MESSAGES` sus textos compartidos. Un test de `packages/db` ata la tabla a las definiciones de campos (ADR-0006).
 - **`portalReadiness(listing, broker)`** (core, pura, sin catálogo): `{ ready: true }` o los motivos, cada uno con el campo del Excel que hay que completar, sin datos del aviso en el texto. La usan aprobar (advertencia), la vista del contenido y publicar (`PORTAL_NOT_READY`, T16).
 - **`buildPortalItem(input, { leaf, attributes, location }, { pictures, now })`** (`publishers/mercadolibre/item.ts`, pura): el cuerpo de `POST /items` (o de `validate`), la descripción aparte, el `sellerContact` del progreso y advertencias. Revisa contra la hoja real (obligatorios que no completa la categoría, título, descripción, fotos, moneda y unidades) y solo envía lo de la tabla y los fijos (`CMG_SITE` siempre, aunque la hoja lo traiga `hidden`). `resolvePortalItemCatalog` baja la hoja, sus atributos y la ubicación con el catálogo (T14 y T15).
+
+## Publisher de Portal (`createPortalPublisher`, F4-T14)
+
+`packages/publishers/src/mercadolibre/publisher.ts`: `validatePortalInput` (pura) y `publish`, que sube las fotos (bytes por `readPicture`, que arma el worker), crea el ítem y carga la descripción aparte, guardando el progreso (`portalProgressSchema`) antes de cada paso que crea algo. Antes de subir nada arma el ítem con las fotos por URL (`buildPortalItem`): un aviso que la revisión local rechaza no gasta subidas. **Retoma sin duplicar:** con `itemId`, ni arma ni crea (termina la descripción, leyéndola antes, y lee el ítem); con `createRequestedAt` y sin `itemId`, nunca repite `POST /items`: lo busca por `seller_custom_field` (sin estado y, si no aparece, con `not_yet_active` y `paused`), confirma que sea de la publicación y, si no hay exactamente uno, `ML_PUBLISH_OUTCOME_UNKNOWN`. Una respuesta que dice que no se creó (`itemCreationOutcome`), o un fallo antes de que el pedido salga (el token, el candado, un corte antes de enviar), deja crear de nuevo; ante 508 o 509, vuelve a subir las fotos una vez. Cada llamada al cliente refresca una vez ante un 401 (`withMercadoLibreToken`); el `rejected_after_refresh` del catálogo sube tal cual. El resultado lleva `remote` (el estado del ítem) para el `remote_state` (T16).
 
 ## `pnpm ml:smoke` (F4-T10)
 

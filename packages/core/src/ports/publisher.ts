@@ -125,6 +125,12 @@ export type PublishResult = {
   externalUrl: string | null;
   simulated: boolean;
   notes?: string[];
+  /**
+   * Lo que informó la plataforma al publicar (Portal: el estado del ítem recién creado, que puede
+   * nacer `paused` o `not_yet_active` mientras procesa las fotos, spec F4 §4.8): el intento lo
+   * guarda como `remote_state` (T16). Instagram no lo informa.
+   */
+  remote?: RemoteStatus;
 };
 
 /**

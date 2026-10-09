@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-08
 **Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 25 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
-**Última tarea:** F4-T11 · Mapeo y revisión previa. Antes, F4-T10 (`ml:smoke`, corrido el 2026-10-08) y las decisiones D14 y D15
-**Siguiente paso:** `/tarea F4-T14` (publisher de Portal: publicar) o `/tarea F4-T16` (intento, publicar y aprobar con Portal), que ya tienen sus dependencias. En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
+**Última tarea:** F4-T14 · Publisher de Portal: publicar. Antes, F4-T11 (mapeo y revisión previa) y F4-T10 (`ml:smoke`)
+**Siguiente paso:** `/tarea F4-T15` (operaciones y `preflight`, con D14) o `/tarea F4-T16` (intento, publicar y aprobar con Portal), que ya tienen sus dependencias. En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
 
 ## Pendiente del cierre de F3
 - [x] **Refresco del token (demo), 2026-10-07 20:05:** el primer `pnpm dev` lo refrescó al arrancar; vence el 2026-12-06 20:05 (real, ya no estimado). Anotado en la nota de Instagram (§8, punto 4) y en §6 del spec F3
@@ -29,7 +29,7 @@
 | F4-T11 · Mapeo y revisión previa | ✅ | #92 |
 | F4-T12 · Reglas del texto de Portal | ✅ | #86 |
 | F4-T13 · Contrato `Publisher` ampliado y el aviso en el input | ✅ | #87 |
-| F4-T14 · Publisher de Portal: publicar | ⏳ pendiente | |
+| F4-T14 · Publisher de Portal: publicar | ✅ | #93 |
 | F4-T15 · Publisher de Portal: operaciones y `preflight` | ⏳ pendiente | |
 | F4-T16 · Intento, publicar y aprobar con Portal | ⏳ pendiente | |
 | F4-T17 · Pausar, reactivar, cerrar y sincronizar en core | ⏳ pendiente | |
@@ -57,7 +57,7 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 - **Simulación:** `dry-run` valida contra Mercado Libre sin publicar (tu respuesta).
 - **Contacto:** el WhatsApp del aviso es el del corredor (tu respuesta).
 - **Pausar, reactivar y cerrar:** son inmediatos desde el panel y la CLI. Cerrar pide confirmación.
-- **Demo:** en `live` usa tu cuenta real con un paquete pagado, y el aviso se cierra al final (tu respuesta, en vez de un usuario de prueba).
+- **Demo:** ~~en `live` usa tu cuenta real con un paquete pagado~~ (reemplazado el 2026-10-08): sin paquete pagado, la simulación toma "sin cupo" como advertencia (D14) y la prueba real usa un usuario de prueba (D15); el aviso se cierra al final.
 
 ## Decisiones de F3
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
@@ -94,13 +94,21 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-08: **F4-T14.** El publicador de Portal ya publica:
+  - **Pasos:** revisa el aviso antes de subir nada, sube las fotos de a una (guarda cada una), crea el aviso, carga la descripción y devuelve el enlace y el estado que informa Mercado Libre (por ejemplo, "procesando fotos").
+  - **Retomar sin duplicar:** si el aviso ya existe, no se vuelve a armar ni a crear; si la descripción ya está, no se repite; si no se sabe si se creó, lo busca por la marca de la publicación (también entre los pausados y los que procesan fotos) y confirma que sea suyo. Si no aparece o aparecen dos, se detiene y pide revisar a mano: nunca crea dos avisos.
+  - **Fotos rechazadas:** se vuelven a subir una vez. Un token rechazado se renueva una vez por llamada.
+  - **Decisión:** si la búsqueda falla por la red, se reintenta más tarde (solo lee).
+  - **Para T18:** el worker le pasa las fotos leídas de R2.
+  - 10 mutaciones a mano detectadas (una sobrevivió al principio y se le sumó su prueba).
+  - **La revisión dejó:** si algo falla *antes* de que salga el pedido de crear el aviso (renovar el token, un corte), ya no queda como "no se sabe": el siguiente intento lo crea normalmente; el id del aviso creado se guarda con un segundo intento; la revisión con las fotos por URL la comparte la simulación (T15); T15 separa pausar, reactivar y cerrar para la API; ocultar la dirección queda para T23.
 - 2026-10-08: **F4-T11.** El aviso ya se traduce a Mercado Libre:
   - **Tabla de equivalencias (core):** cada tipo del Excel → su categoría (Local comercial → `Locales`; departamento en venta → `Departamentos > Venta > Propiedades usadas`), cada dato → su atributo (también piso y orientación, que encontré en el catálogo guardado; la antigüedad está en la tabla, pero Mercado Libre la trae oculta, así que hoy no se envía) y qué exige cada tipo y operación según lo que mostró el smoke.
   - **"¿Está listo para Portal?":** dice qué falta, con el campo de la planilla: la superficie total, Sí o No en mascotas (solo en arriendo), el WhatsApp del corredor o la dirección si se muestra. Una venta no pide mascotas, amoblado, bodegas ni gastos comunes.
   - **El aviso para Mercado Libre:** precio en UF con 2 decimales o en pesos enteros, ubicación por código, la dirección solo si se muestra, el contacto y la marca de Portal. Revisa de nuevo contra la categoría real (lo que exige, el título, las fotos y la moneda) y nunca envía notas internas ni campos sin equivalencia. La descripción va aparte.
   - 11 mutaciones a mano detectadas. El smoke usa la misma conversión del WhatsApp.
   - **La revisión dejó:** una sola regla para "el dato sirve" en las dos revisiones (un "2" escrito como texto cuenta como faltante, no se adivina); el largo de la descripción y la unidad de las superficies se revisan antes de enviar; `ml:smoke` avisa si la tabla de obligatorios dejó de calzar con Mercado Libre; una prueba ata la tabla a los campos de la planilla; T14 arma el aviso antes de subir las fotos (para no subirlas en vano) y no lo rearma si el ítem ya existe.
-  - **Sigue abierto para T14 y T23:** si Mercado Libre exige la dirección aunque no se muestre (D7: entonces se envía y se oculta con `address_line_by_reference`), la forma de las superficies (`value_name` o `value_struct`) y si la descripción puede ir dentro del aviso. Sin paquete, `validate` no lo dice.
+  - **Sigue abierto para T23:** si Mercado Libre exige la dirección aunque no se muestre (D7: entonces se envía y se oculta con `address_line_by_reference`), la forma de las superficies (`value_name` o `value_struct`) y si la descripción puede ir dentro del aviso. Sin paquete, `validate` no lo dice.
 - 2026-10-08: **F4-T10.** `pnpm ml:smoke` (lo corriste tú): solo lee y pregunta a Mercado Libre, nunca crea, cambia ni sube nada (una prueba lo revisa con un Mercado Libre que sí aceptaría hacerlo). Lo aprendido, en la nota (§12):
   - **Categorías:** 40 categorías finales, con sus ids. Los nombres son `Departamentos`, `Casas`, `Oficinas`, `Locales`, etc.; `Venta` y `Arriendo`; `Propiedades usadas` o `Proyectos`. Título de 60 y 30 fotos; todas aceptan UF. Los datos obligatorios son menos de lo que decía la guía y cambian por operación (en venta de usados no piden gastos comunes, mascotas, bodegas ni amoblado). La marca de Portal (`CMG_SITE`) viene marcada como oculta, pero hay que enviarla.
   - **Regiones y comunas:** Mercado Libre usa nombres cortos (`RM (Metropolitana)`, `Aysén`, `Magallanes`) y una ciudad por comuna. La tabla de equivalencias quedó con las regiones y 19 comunas que se escriben distinto (Coyhaique → Coihaique, La Calera → Calera, …); no hacen falta barrios. Tus P001 a P003 no se ubicaban solo porque el Excel dice "Metropolitana".

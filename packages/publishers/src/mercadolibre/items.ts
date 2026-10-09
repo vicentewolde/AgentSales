@@ -153,14 +153,16 @@ export interface MercadoLibreItems {
   ): Promise<void>;
   /**
    * `GET /users/{id}/items/search?sku=…`: los ids de los ítems del vendedor con ese
-   * `seller_custom_field` (doc "Ítems y Búsquedas", leída el 2026-10-07). Sin filtro de estado; si
-   * la búsqueda incluye los cerrados: NO VERIFICADO.
+   * `seller_custom_field` (doc "Ítems y Búsquedas", leída el 2026-10-07). Sin `status`, sin filtro
+   * de estado (visto con `ml:smoke`, nota §12.4); con `status`, solo ese estado (la retoma de T14
+   * repite con `not_yet_active` y `paused`, porque si la búsqueda sin estado los trae sigue sin
+   * verificarse).
    */
   findBySellerCustomField(
     accessToken: string,
     userId: string,
     sellerCustomField: string,
-    options?: MercadoLibreCallOptions,
+    options?: MercadoLibreCallOptions & { status?: MercadoLibreSearchStatus },
   ): Promise<string[]>;
   /**
    * `GET /users/{id}/items/search` con un estado opcional y, si se pide, los filtros
@@ -408,16 +410,23 @@ export function createMercadoLibreItems(options: MercadoLibreHttpOptions = {}): 
       await call("hideAddress", "PUT", path, accessToken, undefined, callOptions);
     },
 
-    async findBySellerCustomField(accessToken, userId, sellerCustomField, callOptions) {
+    async findBySellerCustomField(accessToken, userId, sellerCustomField, callOptions = {}) {
       if (!USER_ID.test(userId)) throw MERCADOLIBRE_ERRORS.invalidId("user");
+      const { status, ...rest } = callOptions;
       const query = new URLSearchParams({ sku: sellerCustomField });
+      if (status !== undefined) {
+        if (!(MERCADOLIBRE_SEARCH_STATUSES as readonly string[]).includes(status)) {
+          throw MERCADOLIBRE_ERRORS.invalidId("status");
+        }
+        query.set("status", status);
+      }
       const response = await call(
         "findBySellerCustomField",
         "GET",
         `/users/${userId}/items/search?${query}`,
         accessToken,
         undefined,
-        callOptions,
+        rest,
       );
       return parseBody("findBySellerCustomField", searchSchema, response).results;
     },

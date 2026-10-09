@@ -372,6 +372,7 @@ export {
   maskWhatsapp,
   PUBLISH_MEDIA_URL_TTL_S,
   publishAttemptRecord,
+  publishInputInvalid,
 } from "./publish/input.js";
 export * from "./redact.js";
 export { RUN_WAIT } from "./run-wait.js";

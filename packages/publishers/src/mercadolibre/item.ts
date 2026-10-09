@@ -361,6 +361,22 @@ export function buildPortalItem(
 }
 
 /**
+ * El ítem con las fotos por su URL firmada (`source`), sin subir nada: la revisión local antes de
+ * subir las fotos en `publish` (T14) y el cuerpo de `POST /items/validate` en `preflight` (T15).
+ * Las dos usan esta función para no separarse.
+ */
+export function buildPortalItemWithSources(
+  input: PublishInput,
+  catalog: PortalItemCatalog,
+  options: Omit<PortalItemOptions, "pictures"> = {},
+): PortalItemResult {
+  return buildPortalItem(input, catalog, {
+    ...options,
+    pictures: input.media.map((media) => ({ source: media.url })),
+  });
+}
+
+/**
  * La hoja, sus atributos y la ubicación de un aviso (con la caché del catálogo, spec F4 §4.4), para
  * `buildPortalItem`. Errores: `PORTAL_TYPE_UNSUPPORTED` (el tipo o la operación no se publican en
  * Portal), `PORTAL_CATEGORY_NOT_FOUND` y `PORTAL_LOCATION_NOT_FOUND` (del catálogo), y los de

@@ -66,6 +66,7 @@ export {
 } from "./mercadolibre/errors.js";
 export {
   buildPortalItem,
+  buildPortalItemWithSources,
   type PortalItem,
   type PortalItemCatalog,
   type PortalItemOptions,
@@ -100,6 +101,13 @@ export {
   type MercadoLibrePictureFile,
   type MercadoLibrePictures,
 } from "./mercadolibre/pictures.js";
+export {
+  createPortalPublisher,
+  PORTAL_LIMITS,
+  type PortalPublisherOptions,
+  remoteStatusOf,
+  validatePortalInput,
+} from "./mercadolibre/publisher.js";
 export {
   type MercadoLibreTokenContext,
   withMercadoLibreToken,

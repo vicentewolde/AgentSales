@@ -322,7 +322,11 @@ export function mercadoLibreCausesOf(error: unknown): MercadoLibreCause[] {
 export function itemCreationOutcome(error: unknown): "not_created" | "unknown" {
   if (!isAppError(error)) return "unknown";
   const details = (error.details ?? {}) as { httpStatus?: unknown; reason?: unknown };
-  if (error.code === "ML_BODY_INVALID" || details.reason === "token_malformed") {
+  if (
+    error.code === "ML_BODY_INVALID" ||
+    details.reason === "token_malformed" ||
+    details.reason === "not_sent"
+  ) {
     return "not_created";
   }
   const status = details.httpStatus;
@@ -347,8 +351,12 @@ export const MERCADOLIBRE_ERRORS = {
       { retriable: true, details: { reason } },
     ),
   /** Se cortó con la señal (apagado del worker): el reintento retoma. */
-  aborted: () =>
-    new AppError("ML_ABORTED", "Se cortó la llamada a Mercado Libre", { retriable: true }),
+  aborted: (when: "before_send" | "in_flight" = "in_flight") =>
+    new AppError("ML_ABORTED", "Se cortó la llamada a Mercado Libre", {
+      retriable: true,
+      // Cortada antes de enviarse: Mercado Libre no la recibió (`itemCreationOutcome`).
+      ...(when === "before_send" ? { details: { reason: "not_sent" } } : {}),
+    }),
   /** Un token que no puede ir en una cabecera ni en un formulario (por ejemplo, con un salto de línea). */
   malformedToken: () =>
     new AppError(
@@ -384,6 +392,18 @@ export const MERCADOLIBRE_ERRORS = {
     new AppError(
       "ML_STATUS_NOT_ALLOWED",
       "Ese cambio de estado no está permitido en Mercado Libre",
+    ),
+  /**
+   * No se sabe si `POST /items` creó el ítem y la búsqueda por `seller_custom_field` no lo aclara
+   * (ninguno o más de uno, spec F4 §4.8): no se reintenta, porque crear de nuevo gastaría otro cupo.
+   */
+  publishOutcomeUnknown: (found: "none" | "many") =>
+    new AppError(
+      "ML_PUBLISH_OUTCOME_UNKNOWN",
+      found === "none"
+        ? "No se sabe si el aviso se creó en Mercado Libre: revisa la cuenta. Si no está, descarta la publicación y vuelve a publicar; si está, ciérralo a mano antes de volver a publicar"
+        : "Hay más de un aviso de esta publicación en Mercado Libre: revisa la cuenta y cierra a mano los que sobren antes de seguir",
+      { details: { found } },
     ),
   /** Una respuesta con otra forma: reintentar no la cambia. */
   unexpectedResponse: (call: string) =>

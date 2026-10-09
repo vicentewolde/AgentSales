@@ -159,7 +159,17 @@ describe("cuentas conectadas · cifrado en la base (PGlite)", () => {
 
     expect(result.outcome).toBe("refreshed");
     const row = await rawRow(account.id);
-    expect(JSON.stringify(row)).not.toMatch(/APP_USR|TG-/);
+    // Los tokens de la prueba, no un patrón: el cifrado es base64url aleatorio y puede traer las
+    // letras `TG-` por azar (pasó en la CI del PR #93).
+    const text = JSON.stringify(row);
+    for (const token of [
+      "APP_USR-viejo-pglite",
+      "TG-viejo-pglite",
+      "APP_USR-nuevo-pglite",
+      "TG-nuevo-pglite",
+    ]) {
+      expect(text).not.toContain(token);
+    }
     expect(row?.tokenExpiresAt).toEqual(new Date("2027-04-05T12:00:00Z"));
     expect(row?.meta).toEqual({
       ...meta,
