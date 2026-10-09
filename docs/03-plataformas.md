@@ -50,11 +50,12 @@ Detalle verificado en `docs/integraciones/mercadolibre.md` (2026-10-06, leyendo 
 - **Flujo:** el worker abre el formulario de "Propiedad en venta o alquiler", llena campos, sube fotos y deja todo listo. El estado pasa a `awaiting_manual_confirm` y el operador hace el **clic final**. Luego pega la URL o el sistema la detecta.
 - **Riesgos:** cambia el HTML sin aviso (los selectores se rompen), y Meta puede restringir cuentas por automatización. Mitigaciones:
   - Clic final humano.
-  - Ritmo lento, con pausas aleatorias.
+  - Ritmo lento, con pausas fijas entre acciones (desde ADR-0017: sin variaciones al azar que imiten a una persona).
   - Máximo N avisos por día (configurable).
   - Selectores centralizados en un solo archivo.
   - Capturas de pantalla ante errores.
 - **Nunca** resolver captchas ni evadir verificaciones: si aparece una, se detiene y avisa al operador.
+- **Desde el spec de F5** (ADR-0017, nota `docs/integraciones/fb-marketplace.md`): el operador hace también el clic de *Siguiente*; la sesión vive en un perfil fuera del repo (la base no guarda credenciales); el enlace lo detecta la ventana (solo la primera navegación desde el formulario) o lo pega el operador; no se leen estados de Facebook (las Condiciones de Meta prohíben recolectar datos con medios automatizados), así que retirar es a mano; `dry-run` no abre Facebook; ante cualquier pantalla fuera de la lista blanca, captura y se cierra la ventana; el precio va en pesos (la UF se convierte con el valor oficial del día, `docs/integraciones/uf.md`).
 
 ## Yapo (post-MVP)
 
