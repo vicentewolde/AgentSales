@@ -6,9 +6,11 @@ import type { ContentRepository } from "../ports/content-repository.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
 import type { MediaRepository } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
+import type { MercadoLibreAuth } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import {
+  type AccessTokenProvider,
   type Publisher,
   type PublishInput,
   type PublishResult,
@@ -25,10 +27,13 @@ import {
   type PublishAttemptRecord,
   type PublishAttemptResult,
   publishAttemptPayloadSchema,
+  type RemoteState,
+  remoteStateSchema,
 } from "../publication.js";
 import { withDryRun } from "../publish/dry-run.js";
 import { buildPublishInput, checkPublishInput, publishAttemptRecord } from "../publish/input.js";
 import { scrubMessage } from "../redact.js";
+import { accessTokenProvider } from "./ensure-access-token.js";
 import { modeOf, publicationNotFound } from "./publication-start.js";
 
 /**
@@ -37,13 +42,23 @@ import { modeOf, publicationNotFound } from "./publication-start.js";
  */
 export type PublishWarning = {
   publicationId: string;
-  step: "attempt_event" | "mark_failed" | "listing_active" | "account_status";
+  step: "attempt_event" | "mark_failed" | "listing_active" | "account_status" | "remote_state";
   code: string;
 };
 
 export type PublishPublicationDeps = {
   publications: Pick<PublicationRepository, "get" | "transition" | "saveProgress" | "addEvent">;
-  platformAccounts: Pick<PlatformAccountRepository, "get" | "getCredentials" | "changeStatus">;
+  /** `withCredentialsLock`: el refresco del token de Mercado Libre (`ensureAccessToken`, Portal). */
+  platformAccounts: Pick<
+    PlatformAccountRepository,
+    "get" | "getCredentials" | "changeStatus" | "withCredentialsLock"
+  >;
+  /**
+   * El refresco de Mercado Libre para el token de Portal (`ensureAccessToken`, fuera del candado
+   * del aviso), o `null` si falta el par de la app: entonces un token por vencer es
+   * `MERCADOLIBRE_NOT_CONFIGURED` (no reintentable).
+   */
+  mercadoLibre: Pick<MercadoLibreAuth, "refresh"> | null;
   contents: Pick<ContentRepository, "get">;
   media: Pick<MediaRepository, "listByListing">;
   /** `get` y `getSourceHash`: el aviso de Portal y Marketplace en el input (spec F4 §4.6). */
@@ -105,15 +120,23 @@ const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_E
  * 3. La cuenta tiene que estar `connected` (`ACCOUNT_NOT_CONNECTED`) y sus credenciales legibles
  *    (`CREDENTIALS_UNREADABLE`: la cuenta pasa a `error`). Se descifran también en `dry-run`.
  * 4. Arma el input (`buildPublishInput`), lo revisa en `live` (`checkPublishInput`; en `dry-run` lo
- *    hace `withDryRun`) y publica con el progreso guardado y `saveProgress`.
- * 5. Guarda `published` (`external_id`, `external_url`, `published_at`). Si **eso** falla, el medio
+ *    hace `withDryRun`) y publica con el progreso guardado y `saveProgress`. El token: en
+ *    Instagram, el guardado (`storedAccessToken`); en Portal, `accessTokenProvider`
+ *    (`ensureAccessToken`, que lo refresca si vence y después de un 401), nunca el guardado tal
+ *    cual, y las credenciales del contexto van sin el `refreshToken` (es de un solo uso y queda
+ *    viejo después de refrescar).
+ * 5. Guarda `published` (`external_id`, `external_url`, `published_at` y, si la plataforma lo
+ *    informó, `remote_state` con `checkedAt`; uno que no calza con `remoteStateSchema` se avisa y
+ *    no se guarda: no debe dejar la publicación repitiendo el paso 5). Si **eso** falla, el medio
  *    ya salió: la publicación sigue en `publishing` y se relanza `PUBLISH_RESULT_NOT_SAVED`
  *    (reintentable): el reintento lo reconoce por el progreso y lo guarda, sin publicar de nuevo.
  * 6. Después, sin cortar: el evento `publish_attempt` y, en `live`, el aviso de `ready` a `active`.
  * 7. Error antes de publicar: con la señal disparada (apagado del worker) no toca nada y relanza como
  *    reintentable. Si no, uno reintentable antes del último intento deja la publicación en
  *    `publishing` y relanza (la cola reintenta); uno no reintentable, o el último intento, la deja
- *    en `failed` con su motivo y relanza. `IG_AUTH_INVALID` pasa la cuenta a `expired`. Un error que
+ *    en `failed` con su motivo y relanza. `IG_AUTH_INVALID` y `ML_AUTH_INVALID` (también el 401
+ *    repetido, `rejected_after_refresh`, del catálogo o del publisher) pasan la cuenta a
+ *    `expired`. Un error que
  *    no es `AppError` es `INTERNAL_ERROR` (no reintentable).
  * Cada intento deja **un** evento `publish_attempt` (`publishAttemptPayloadSchema`), salvo un corte
  * por apagado. Los pasos secundarios que fallan van a `onWarning`.
@@ -170,9 +193,7 @@ export async function publishPublication(
     result = await attempt.target.publish(attempt.input, {
       account: attempt.account,
       credentials: attempt.credentials,
-      // Instagram usa el token guardado (falla cerrado ante `rejectedToken`); Portal arma aquí su
-      // proveedor (`accessTokenProvider`, T16).
-      accessToken: storedAccessToken(attempt.credentials),
+      accessToken: attempt.accessToken,
       progress: publication.progress,
       saveProgress: async (progress) => {
         await deps.publications.saveProgress(publicationId, progress);
@@ -190,7 +211,7 @@ export async function publishPublication(
             cause: error,
           });
     }
-    if (error.code === "IG_AUTH_INVALID") {
+    if (error.code === "IG_AUTH_INVALID" || error.code === "ML_AUTH_INVALID") {
       await deps.platformAccounts
         .changeStatus(publication.platformAccountId, "connected", "expired")
         .catch((failure: unknown) => warn("account_status", failure));
@@ -214,6 +235,7 @@ export async function publishPublication(
   }
 
   // El medio ya salió: de aquí en adelante, nada lo trata como un fallo de publicación.
+  const remoteState = remoteStateOf(result, now(), (error) => warn("remote_state", error));
   let published: Publication;
   try {
     published = await deps.publications.transition(
@@ -226,6 +248,7 @@ export async function publishPublication(
           externalUrl: result.externalUrl,
           publishedAt: now(),
           lastError: null,
+          ...(remoteState === undefined ? {} : { remoteState }),
         },
       },
       { actor: "system", payload: { mode } },
@@ -244,6 +267,30 @@ export async function publishPublication(
   // Después de guardar `published`: una retirada que se cruce deja el aviso bien (spec F3 §4.3).
   await listingToActive();
   return { outcome: "published", publication: published };
+}
+
+/**
+ * Lo que informó la plataforma al publicar (`PublishResult.remote`), con `checkedAt`, listo para
+ * guardar; `undefined` si no informó nada o si no calza con `remoteStateSchema` (se avisa).
+ */
+function remoteStateOf(
+  result: PublishResult,
+  checkedAt: Date,
+  onInvalid: (error: AppError) => void,
+): RemoteState | undefined {
+  if (result.remote === undefined) return undefined;
+  const parsed = remoteStateSchema.safeParse({
+    ...result.remote,
+    checkedAt: checkedAt.toISOString(),
+  });
+  if (parsed.success) return parsed.data;
+  onInvalid(
+    new AppError(
+      "PUBLICATION_REMOTE_STATE_INVALID",
+      "El estado informado por la plataforma no es válido",
+    ),
+  );
+  return undefined;
 }
 
 /** Todo lo que se revisa y arma antes de llamar a la plataforma. */
@@ -268,11 +315,9 @@ async function prepareAttempt(deps: PublishPublicationDeps, publication: Publica
       { details: { accountStatus: account?.status ?? null } },
     );
   }
-  let credentials: Awaited<
-    ReturnType<PublishPublicationDeps["platformAccounts"]["getCredentials"]>
-  >;
+  let stored: Awaited<ReturnType<PublishPublicationDeps["platformAccounts"]["getCredentials"]>>;
   try {
-    credentials = await deps.platformAccounts.getCredentials(account.id);
+    stored = await deps.platformAccounts.getCredentials(account.id);
   } catch (error) {
     if (isAppError(error) && error.code === "CREDENTIALS_UNREADABLE") {
       await deps.platformAccounts
@@ -299,10 +344,33 @@ async function prepareAttempt(deps: PublishPublicationDeps, publication: Publica
     media: await deps.media.listByListing(publication.listingId),
   });
   if (!publication.dryRun) checkPublishInput(publisher, input);
+  // Portal: el token lo asegura `ensureAccessToken` (fuera del candado del aviso), y el contexto no
+  // lleva el `refreshToken`. `credentials.accessToken` puede estar vencido o ya rotado: el
+  // publisher de Portal usa siempre `ctx.accessToken` (`platformContextOf` solo cae en él sin
+  // proveedor). Instagram: el guardado, que falla cerrado ante `rejectedToken`.
+  const portal = publication.platform === "portal_inmobiliario";
+  const credentials = portal ? { accessToken: stored.accessToken } : stored;
+  const accessToken: AccessTokenProvider = portal
+    ? accessTokenProvider(
+        {
+          platformAccounts: deps.platformAccounts,
+          mercadoLibre: deps.mercadoLibre,
+          ...(deps.now === undefined ? {} : { now: deps.now }),
+          onWarning: (warning) =>
+            deps.onWarning?.({
+              publicationId: publication.id,
+              step: "account_status",
+              code: warning.code,
+            }),
+        },
+        account.id,
+      )
+    : storedAccessToken(stored);
   return {
     input,
     account,
     credentials,
+    accessToken,
     sent: publishAttemptRecord(input, account),
     target: publication.dryRun ? withDryRun(publisher) : publisher,
   };

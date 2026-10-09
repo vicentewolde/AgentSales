@@ -5,15 +5,18 @@ import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import {
   enqueuePublications,
+  type PortalCheckDeps,
+  portalDefinitionsBeforeLock,
   publicationNotFound,
   requireCompatibleMode,
   requireNoActiveRun,
+  requirePortalPublishable,
   requirePublishableListing,
   STARTABLE_STATUSES,
   startOne,
 } from "./publication-start.js";
 
-export type StartPublicationDeps = {
+export type StartPublicationDeps = PortalCheckDeps & {
   lock: ListingLock;
   queue: JobQueue;
   /** Fuera del candado: solo para saber de qué aviso es la publicación. */
@@ -38,6 +41,8 @@ export type StartPublicationResult = {
  * - hay una corrida activa → `CONTENT_RUN_ACTIVE`; su texto ya no está aprobado → `CONTENT_NOT_APPROVED`;
  * - su cuenta ya no está conectada → `ACCOUNT_NOT_CONNECTED`;
  * - ya empezó en `live` y se pide en `dry-run` → `PUBLISH_MODE_LOCKED`;
+ * - en Portal, el texto aprobado tiene errores según la revisión de hoy → `CONTENT_HAS_ERRORS`, o
+ *   al aviso le falta lo que pide Portal → `PORTAL_NOT_READY` (spec F4 §4.5);
  * - ya está publicada → `NOTHING_TO_PUBLISH`; descartada o retirada → `INVALID_TRANSITION`;
  * - la cola no está → `QUEUE_UNAVAILABLE` (503): queda en `publishing` y se reencola pidiéndolo otra vez.
  */
@@ -51,6 +56,7 @@ export async function startPublication(
 ): Promise<StartPublicationResult> {
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
+  const definitions = await portalDefinitionsBeforeLock(deps, found.listingId, found.platform);
 
   const result = await deps.lock.run(found.listingId, async (locked) => {
     const publication = await locked.publications.get(publicationId);
@@ -68,7 +74,7 @@ export async function startPublication(
         { details: { publicationId, from: publication.status, to: "publishing" } },
       );
     }
-    requirePublishableListing(
+    const listing = requirePublishableListing(
       await locked.listings.get(publication.listingId),
       publication.listingId,
     );
@@ -90,6 +96,9 @@ export async function startPublication(
       );
     }
     requireCompatibleMode(publication, dryRun);
+    if (definitions !== null) {
+      await requirePortalPublishable(locked, { listing, content, definitions });
+    }
     return {
       publication: await startOne(locked.publications, publication, { dryRun, actor }),
       requeued: false,

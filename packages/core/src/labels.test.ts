@@ -19,6 +19,7 @@ import {
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  remoteStatusText,
   tokenStdinCommand,
 } from "./labels.js";
 import { PUBLICATION_ACTORS, PUBLISH_ATTEMPT_RESULTS } from "./publication.js";
@@ -48,5 +49,38 @@ describe("textos para el operador", () => {
       "pbpaste | pnpm -s cli accounts connect instagram --broker vp-propiedades --token-stdin",
     );
     expect(tokenStdinCommand("a b'; rm")).toContain("--broker 'a b'\\''; rm' --token-stdin");
+  });
+});
+
+describe("remoteStatusText (estado en Mercado Libre, F4-T16)", () => {
+  const text = (status: string, subStatus: string[] = []) =>
+    remoteStatusText({ status, subStatus });
+
+  it("nombra los estados de la nota §4.4 y lo que informa Mercado Libre por su cuenta", () => {
+    expect(text("active")).toBe("activo");
+    expect(text("paused")).toBe("pausado");
+    expect(text("closed")).toBe("cerrado");
+    expect(text("closed", ["expired"])).toBe("vencido");
+    expect(text("closed", ["deleted"])).toBe("eliminado");
+    expect(text("under_review")).toBe("en revisión");
+    expect(text("not_yet_active")).toBe("por activarse");
+    expect(text("paused", ["picture_download_pending"])).toBe("procesando fotos");
+    expect(text("not_yet_active", ["picture_download_pending"])).toBe("procesando fotos");
+    expect(text("under_review", ["picture_download_pending"])).toBe("fotos rechazadas: revísalas");
+  });
+
+  it("una pausa con motivo es de Mercado Libre; la otra grafía de procesar fotos también vale", () => {
+    expect(
+      remoteStatusText({
+        status: "paused",
+        subStatus: [],
+        reason: { code: "ABANDONED_ITEM_REX_DEN", message: "La reportaron como no disponible" },
+      }),
+    ).toBe("pausado por Mercado Libre");
+    expect(text("paused", ["picture_downloading_pending"])).toBe("procesando fotos");
+  });
+
+  it("un estado desconocido se muestra tal cual, sin adivinar", () => {
+    expect(text("payment_required")).toBe("otro estado (payment_required)");
   });
 });

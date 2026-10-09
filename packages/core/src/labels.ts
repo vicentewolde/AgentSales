@@ -12,7 +12,7 @@ import type {
   PublicationStatus,
 } from "./enums.js";
 import type { ImportBrokerOutcome, ImportRowOutcome } from "./import-run.js";
-import type { PublicationActor, PublishAttemptResult } from "./publication.js";
+import type { PublicationActor, PublishAttemptResult, RemoteState } from "./publication.js";
 
 // Textos para el operador, compartidos por la CLI y el panel (y las plantillas de F2): un solo
 // vocabulario. Las clases de color y los textos de botones son de cada interfaz.
@@ -161,3 +161,36 @@ export const LISTING_NOT_PUBLISHABLE_TEXT =
 /** Por qué un aviso no puede preparar contenido (`LISTING_NOT_READY` y el panel). */
 export const LISTING_NOT_PREPARABLE_TEXT =
   "La propiedad tiene que estar lista, pausada o publicada para preparar su contenido";
+
+/**
+ * El estado del aviso en la plataforma (`remote_state`, Mercado Libre: `status` y `sub_status`,
+ * y el motivo de una pausa, spec F4 §4.9 y §4.12), como lo ve el operador. Lo que la plataforma
+ * informa sin que AgentSales lo haya pedido (en revisión, procesando fotos, vencido, pausado por
+ * moderación) se nombra aparte; un estado desconocido se muestra tal cual, sin adivinar.
+ */
+export function remoteStatusText(
+  remote: Pick<RemoteState, "status" | "subStatus" | "reason">,
+): string {
+  const sub = new Set(remote.subStatus);
+  // La doc de Mercado Libre usa las dos grafías (nota §5).
+  if (sub.has("picture_download_pending") || sub.has("picture_downloading_pending")) {
+    return remote.status === "under_review" ? "fotos rechazadas: revísalas" : "procesando fotos";
+  }
+  switch (remote.status) {
+    case "active":
+      return "activo";
+    case "paused":
+      // Con motivo, la pausó Mercado Libre (moderación); el motivo lo muestra cada interfaz.
+      return remote.reason === undefined ? "pausado" : "pausado por Mercado Libre";
+    case "closed":
+      if (sub.has("expired")) return "vencido";
+      if (sub.has("deleted")) return "eliminado";
+      return "cerrado";
+    case "under_review":
+      return "en revisión";
+    case "not_yet_active":
+      return "por activarse";
+    default:
+      return `otro estado (${remote.status})`;
+  }
+}

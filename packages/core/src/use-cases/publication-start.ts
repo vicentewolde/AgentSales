@@ -1,8 +1,16 @@
+import { hasContentErrors } from "../content/check.js";
+import { checked, loadCheckContext } from "../content/check-context.js";
+import type { Content } from "../content.js";
+import type { Platform } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
+import type { FieldDefinition } from "../field-definition.js";
 import { LISTING_NOT_PUBLISHABLE_TEXT } from "../labels.js";
 import { canPublishListing, type Listing } from "../listing.js";
+import { portalReadiness } from "../portal/readiness.js";
+import type { FieldDefinitionRepository } from "../ports/field-definition-repository.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
+import type { ListingRepository } from "../ports/listing-repository.js";
 import { hasStartedLive, type Publication, type PublicationActor } from "../publication.js";
 
 // Piezas comunes de publicar el canal (`publishListing`), publicar una (`startPublication`),
@@ -120,4 +128,82 @@ export function startOne(
     },
     { actor, payload: { mode: modeOf(dryRun), attempt: publication.attempts + 1 } },
   );
+}
+
+/** Lo que se lee **antes** del candado para revisar un canal de Portal (spec F4 §4.5 y T16). */
+export type PortalCheckDeps = {
+  listings: Pick<ListingRepository, "get">;
+  /** `LockedRepositories` no los trae: se leen fuera, antes de `run` (como al aprobar). */
+  fieldDefinitions: Pick<FieldDefinitionRepository, "list">;
+};
+
+/**
+ * Las definiciones de campos para revisar el texto de Portal antes de publicar, leídas antes del
+ * candado; `null` si el canal no es Portal (Instagram no cambia). Un aviso que no existe da `[]`:
+ * el candado lo rechaza después (`LISTING_NOT_FOUND`).
+ */
+export async function portalDefinitionsBeforeLock(
+  deps: PortalCheckDeps,
+  listingId: string,
+  platform: Platform,
+): Promise<FieldDefinition[] | null> {
+  if (platform !== "portal_inmobiliario") return null;
+  const listing = await deps.listings.get(listingId);
+  if (listing === null) return [];
+  return deps.fieldDefinitions.list({ category: listing.category, brokerId: listing.brokerId });
+}
+
+/**
+ * Antes de pasar una publicación de Portal a `publishing` (spec F4 §4.5 y T16), dentro del candado:
+ * 1. vuelve a revisar el texto aprobado: una regla nueva (F4-T12) pudo marcar un error en un texto
+ *    aprobado antes, y no debe llegar a Mercado Libre a gastar un cupo → `CONTENT_HAS_ERRORS`;
+ * 2. revisa que el aviso tenga lo que pide Portal (`portalReadiness`) → `PORTAL_NOT_READY`, con lo
+ *    que falta en `details.issues` (`code`, `field` y `message`).
+ * Los dos son no reintentables (409 en la API).
+ */
+export async function requirePortalPublishable(
+  locked: Pick<LockedRepositories, "listings" | "brokers">,
+  {
+    listing,
+    content,
+    definitions,
+  }: { listing: Listing; content: Content; definitions: readonly FieldDefinition[] },
+): Promise<void> {
+  const { broker, ctx } = await loadCheckContext(
+    {
+      listings: locked.listings,
+      brokers: locked.brokers,
+      fieldDefinitions: { list: async () => [...definitions] },
+    },
+    listing.id,
+  );
+  const review = checked(content, ctx);
+  if (hasContentErrors(review.checks)) {
+    throw new AppError(
+      "CONTENT_HAS_ERRORS",
+      "La revisión encontró errores en el texto aprobado: quita la aprobación, corrígelo y apruébalo de nuevo",
+      {
+        details: {
+          contentId: content.id,
+          codes: review.checks
+            .filter((check) => check.severity === "error")
+            .map((check) => check.code),
+        },
+      },
+    );
+  }
+  const readiness = portalReadiness(listing, {
+    name: broker.name,
+    email: broker.email,
+    whatsapp: broker.whatsapp,
+  });
+  if (!readiness.ready) {
+    throw new AppError(
+      "PORTAL_NOT_READY",
+      `Falta información para publicar en Portal Inmobiliario: ${readiness.issues
+        .map((issue) => issue.message)
+        .join("; ")}`,
+      { details: { listingId: listing.id, issues: readiness.issues } },
+    );
+  }
 }

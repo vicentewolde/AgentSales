@@ -112,6 +112,7 @@ describe("publicaciones · lo que el puerto no muestra (PGlite)", () => {
         format: "post",
         contentId: ids.contentId,
         mediaIds: [],
+        listingSourceHash: "hash",
       },
       { actor: "operator" },
     );
@@ -157,6 +158,7 @@ describe("publicaciones · fila y evento juntos o ninguno (PGlite)", () => {
           format: "post",
           contentId: ids.contentId,
           mediaIds: [],
+          listingSourceHash: "hash",
         },
         { actor: "operator", payload: { falla: true } },
       ),
@@ -175,6 +177,7 @@ describe("publicaciones · fila y evento juntos o ninguno (PGlite)", () => {
         format: "post",
         contentId: ids.contentId,
         mediaIds: [],
+        listingSourceHash: "hash",
       },
       { actor: "operator" },
     );
@@ -207,6 +210,7 @@ describe("publicaciones · fila y evento juntos o ninguno (PGlite)", () => {
           format: "post",
           contentId: MISSING_UUID,
           mediaIds: [],
+          listingSourceHash: "hash",
         },
         { actor: "operator" },
       ),
@@ -233,6 +237,7 @@ function lockContract(
             format: "post",
             contentId: ids.contentId,
             mediaIds: [],
+            listingSourceHash: "hash",
           },
           { actor: "operator" },
         );
@@ -288,6 +293,7 @@ describe("ListingLock · Postgres (PGlite)", () => {
             format: "post",
             contentId: ids.contentId,
             mediaIds: [],
+            listingSourceHash: "hash",
           },
           { actor: "operator" },
         );
@@ -373,6 +379,7 @@ describe("ListingLock · Postgres (PGlite)", () => {
       format: "post" as const,
       contentId: ids.contentId,
       mediaIds: [],
+      listingSourceHash: "hash",
     };
 
     await expect(

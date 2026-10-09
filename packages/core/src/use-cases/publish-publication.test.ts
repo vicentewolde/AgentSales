@@ -43,6 +43,7 @@ async function setup(
     storage: options.storage ?? t.storage,
     publishers: { instagram: fake },
     workerMode: options.workerMode ?? "live",
+    mercadoLibre: null,
     now: () => NOW,
   };
   const [post, reel] = started;

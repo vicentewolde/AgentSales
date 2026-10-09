@@ -155,6 +155,8 @@ const jobs = buildJobs({
       storage,
       publishers: { instagram },
       workerMode: env.PUBLISH_MODE,
+      // El token de Portal se asegura (y se refresca) con el par de la app (spec F4 §4.3).
+      mercadoLibre: mercadoLibreAuth,
     },
     signal: jobsAbort.signal,
   },

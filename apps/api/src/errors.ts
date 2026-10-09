@@ -37,6 +37,9 @@ const CONFLICTS = new Set([
   "NOTHING_TO_PUBLISH",
   "REMOVAL_NOT_CONFIRMED",
   "PUBLISH_MODE_LOCKED",
+  // F4-T16: al aviso le falta lo que pide Portal; se completa la planilla y se publica de nuevo.
+  // La lista de lo que falta (`details.issues`) la expone T19 (ADR-0011).
+  "PORTAL_NOT_READY",
 ]);
 
 /**

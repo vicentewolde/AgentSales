@@ -27,6 +27,11 @@ import { createInMemoryHtmlRenderer, createInMemorySlideTemplates } from "./slid
 
 /** El token de la cuenta del escenario: los tests revisan que no aparezca en logs ni bitácora. */
 export const PUBLICATION_SCENARIO_TOKEN = "IGAA-prueba";
+/** Los tokens de la cuenta de Mercado Libre del escenario de Portal (inventados). */
+export const PORTAL_SCENARIO_TOKENS = {
+  accessToken: "APP_USR-prueba-portal",
+  refreshToken: "TG-prueba-portal",
+} as const;
 
 // Escenario de publicación para los tests de core (F3-T10 y T11): un aviso preparado con los
 // dobles, la cuenta de Instagram conectada y el texto aprobado, con un candado y una cola que
@@ -36,10 +41,13 @@ const text = (value: string) => Uint8Array.from(value, (char) => char.charCodeAt
 
 /**
  * Un aviso `ready` con 2 fotos y un video, preparado con el proveedor falso. Por defecto con la
- * cuenta de Instagram conectada y el texto aprobado (nacen carrusel y reel en `approved`).
+ * cuenta de Instagram conectada y el texto aprobado (nacen carrusel y reel en `approved`). Con
+ * `platform: "portal_inmobiliario"`, la cuenta y el texto son de Portal (nace un `post` con las
+ * fotos 4:3), con el `access_token` vigente por una hora.
  */
 export async function createPublicationScenario(
   options: {
+    platform?: "instagram" | "portal_inmobiliario";
     account?: boolean;
     approve?: boolean;
     queueFails?: () => AppError | undefined;
@@ -125,26 +133,38 @@ export async function createPublicationScenario(
     );
   };
   await prepare();
+  const platform = options.platform ?? "instagram";
   const connect = () =>
-    platformAccounts.upsertConnected({
-      brokerId: broker.id,
-      platform: "instagram",
-      externalAccountId: "17841400000000001",
-      displayName: "@muestra",
-      tokenExpiresAt: null,
-      meta: {},
-      credentials: { accessToken: PUBLICATION_SCENARIO_TOKEN },
-    });
+    platform === "instagram"
+      ? platformAccounts.upsertConnected({
+          brokerId: broker.id,
+          platform: "instagram",
+          externalAccountId: "17841400000000001",
+          displayName: "@muestra",
+          tokenExpiresAt: null,
+          meta: {},
+          credentials: { accessToken: PUBLICATION_SCENARIO_TOKEN },
+        })
+      : platformAccounts.upsertConnected({
+          brokerId: broker.id,
+          platform: "portal_inmobiliario",
+          externalAccountId: "8035443",
+          displayName: "VICENTEWOLDE",
+          tokenExpiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
+          meta: { accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() },
+          credentials: { ...PORTAL_SCENARIO_TOKENS },
+        });
   const account = options.account === false ? null : await connect();
-  const instagramId = async () =>
-    (await contents.listCurrent(listing.id)).find((item) => item.platform === "instagram")?.id ??
-    "";
+  const contentIdOf = async (wanted: "instagram" | "portal_inmobiliario") =>
+    (await contents.listCurrent(listing.id)).find((item) => item.platform === wanted)?.id ?? "";
+  const instagramId = () => contentIdOf("instagram");
+  const portalId = () => contentIdOf("portal_inmobiliario");
   const approved =
     options.approve === false
       ? null
       : await approveContent(
           { contents, listings, fieldDefinitions, lock },
-          { contentId: await instagramId(), actor: "operator" },
+          { contentId: await contentIdOf(platform), actor: "operator" },
         );
 
   // Lo que se usa fuera del candado: falla si se llama dentro (`fn` solo usa lo del candado).
@@ -165,6 +185,20 @@ export async function createPublicationScenario(
     async get(id: string) {
       if (insideLock) throw new Error("get se llamó dentro del candado");
       return publications.get(id);
+    },
+  };
+  // Lo que publicar lee antes del candado en Portal (las definiciones de campos): en PGlite, una
+  // lectura de la conexión general dentro del candado se quedaría esperando.
+  const outsideListings = {
+    async get(id: string) {
+      if (insideLock) throw new Error("listings.get se llamó dentro del candado");
+      return listings.get(id);
+    },
+  };
+  const outsideFieldDefinitions = {
+    async list(filter: Parameters<typeof fieldDefinitions.list>[0]) {
+      if (insideLock) throw new Error("fieldDefinitions.list se llamó dentro del candado");
+      return fieldDefinitions.list(filter);
     },
   };
   // La cola se usa después del candado: falla si se encola dentro.
@@ -189,10 +223,17 @@ export async function createPublicationScenario(
     account,
     connect,
     instagramId,
+    portalId,
     prepare,
     approved,
     byFormat,
-    deps: { lock: watchedLock, queue: watchedQueue, publications: outsidePublications },
+    deps: {
+      lock: watchedLock,
+      queue: watchedQueue,
+      publications: outsidePublications,
+      listings: outsideListings,
+      fieldDefinitions: outsideFieldDefinitions,
+    },
     approveDeps: { contents, listings, fieldDefinitions, lock },
     fieldDefinitions,
     media,

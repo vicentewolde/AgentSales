@@ -17,10 +17,11 @@ export type NewPublication = {
   contentId: string;
   mediaIds: readonly string[];
   /**
-   * `source_hash` del aviso al nacer (ADR-0015, spec F4 §4.6). Opcional hasta que quien abre las
-   * publicaciones lo pase (F4-T16); sin él queda `null`.
+   * `source_hash` del aviso al nacer (ADR-0015, spec F4 §4.6): obligatorio desde F4-T16, para que
+   * una publicación de Portal sin versión no nazca. La columna sigue admitiendo `null` (las
+   * publicaciones anteriores a la migración `0007`).
    */
-  listingSourceHash?: string | null;
+  listingSourceHash: string;
 };
 
 /** Quién causó un cambio y qué se anota en la bitácora (sin secretos: se guarda tal cual). */

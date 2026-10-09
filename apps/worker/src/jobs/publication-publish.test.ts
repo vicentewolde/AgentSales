@@ -60,6 +60,7 @@ async function setup(
       storage: t.storage,
       publishers: { instagram: options.publisher ?? fake },
       workerMode: "live",
+      mercadoLibre: null,
     },
     signal: controller.signal,
   });
@@ -242,6 +243,7 @@ describe("requeuePublishingPublications", () => {
           format,
           contentId: "c1",
           mediaIds: [],
+          listingSourceHash: "hash",
         },
         { actor: "operator" },
       );
@@ -260,6 +262,7 @@ describe("requeuePublishingPublications", () => {
         format: "post",
         contentId: "c2",
         mediaIds: [],
+        listingSourceHash: "hash",
       },
       { actor: "operator" },
     );

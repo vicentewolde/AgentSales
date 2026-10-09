@@ -11,14 +11,17 @@ import {
 } from "./open-publications.js";
 import {
   enqueuePublications,
+  type PortalCheckDeps,
+  portalDefinitionsBeforeLock,
   requireCompatibleMode,
   requireNoActiveRun,
+  requirePortalPublishable,
   requirePublishableListing,
   STARTABLE_STATUSES,
   startOne,
 } from "./publication-start.js";
 
-export type PublishListingDeps = { lock: ListingLock; queue: JobQueue };
+export type PublishListingDeps = PortalCheckDeps & { lock: ListingLock; queue: JobQueue };
 
 export type PublishListingResult = {
   /** Las que pasaron a `publishing` ahora. */
@@ -49,6 +52,9 @@ export type PublishListingResult = {
  * - el corredor no tiene una cuenta conectada en el canal, o lo único pendiente es de una cuenta
  *   desconectada → `ACCOUNT_NOT_CONNECTED`;
  * - una fallida que ya empezó en `live` y se pide en `dry-run` → `PUBLISH_MODE_LOCKED`;
+ * - en Portal, si hay algo que pasar a `publishing`: el texto aprobado tiene errores según la
+ *   revisión de hoy → `CONTENT_HAS_ERRORS`, o al aviso le falta lo que pide Portal →
+ *   `PORTAL_NOT_READY` (con `details.issues`; spec F4 §4.5);
  * - no hay nada que iniciar ni reencolar → `NOTHING_TO_PUBLISH` (si un formato está ocupado por
  *   una publicación de un texto anterior, el mensaje dice que se retire o descarte primero);
  * - la cola no está → `QUEUE_UNAVAILABLE` (503), con las que quedaron sin job en
@@ -64,6 +70,7 @@ export async function publishListing(
     actor,
   }: { listingId: string; platform: Platform; dryRun: boolean; actor: PublicationActor },
 ): Promise<PublishListingResult> {
+  const definitions = await portalDefinitionsBeforeLock(deps, listingId, platform);
   const result = await deps.lock.run(listingId, async (locked) => {
     const listing = requirePublishableListing(await locked.listings.get(listingId), listingId);
     await requireNoActiveRun(locked, listingId);
@@ -113,6 +120,10 @@ export async function publishListing(
           : "No hay nada que publicar en este canal: todo está publicado",
         { details: { listingId, platform, skipped: opening.skipped } },
       );
+    }
+
+    if (definitions !== null && startable.length + opening.toCreate.length > 0) {
+      await requirePortalPublishable(locked, { listing, content, definitions });
     }
 
     // Recién aquí se escribe.

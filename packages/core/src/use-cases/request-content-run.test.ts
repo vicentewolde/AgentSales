@@ -178,6 +178,7 @@ describe("requestContentRun", () => {
           format: "post",
           contentId: "content-1",
           mediaIds: [],
+          listingSourceHash: "hash",
         },
         { actor: "operator" },
       );
@@ -203,6 +204,7 @@ describe("requestContentRun", () => {
         format: "post",
         contentId: "content-1",
         mediaIds: [],
+        listingSourceHash: "hash",
       },
       { actor: "operator" },
     );
