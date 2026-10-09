@@ -92,9 +92,13 @@ export async function planPublications(
   return { toCreate, skipped };
 }
 
-/** Crea las publicaciones planificadas, en `approved`, con `content_id` y `media_ids` fijos. */
+/**
+ * Crea las publicaciones planificadas, en `approved`, con `content_id`, `media_ids` y la versión
+ * del aviso (`listing_source_hash`, spec F4 §4.6) fijos. La versión se lee dentro del candado: una
+ * carga del Excel no se cruza.
+ */
 export async function createPublications(
-  repos: Pick<LockedRepositories, "publications">,
+  repos: Pick<LockedRepositories, "publications" | "listings">,
   {
     listing,
     content,
@@ -108,6 +112,13 @@ export async function createPublications(
   },
 ): Promise<Publication[]> {
   const created: Publication[] = [];
+  if (planned.length === 0) return created;
+  const listingSourceHash = await repos.listings.getSourceHash(listing.id);
+  if (listingSourceHash === null) {
+    throw new AppError("LISTING_NOT_FOUND", `No existe el aviso ${listing.id}`, {
+      details: { listingId: listing.id },
+    });
+  }
   for (const item of planned) {
     created.push(
       await repos.publications.create(
@@ -118,6 +129,7 @@ export async function createPublications(
           format: item.format,
           contentId: content.id,
           mediaIds: item.mediaIds,
+          listingSourceHash,
         },
         { actor, payload: { contentId: content.id, mediaCount: item.mediaIds.length } },
       ),

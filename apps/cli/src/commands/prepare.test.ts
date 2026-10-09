@@ -188,6 +188,7 @@ describe("runPrepare", () => {
         format: "post",
         contentId: "texto-1",
         mediaIds: [],
+        listingSourceHash: "hash",
       },
       { actor: "operator" },
     );

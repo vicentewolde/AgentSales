@@ -59,6 +59,7 @@ export function publicationRepositoryContract(
         format: "post",
         contentId,
         mediaIds: [],
+        listingSourceHash: "hash",
         ...overrides,
       };
     };
@@ -415,9 +416,9 @@ export function publicationRepositoryContract(
         await expect(action()).rejects.toMatchObject({ code: "PUBLICATION_NOT_FOUND" });
       }
     });
-    it("nace sin estado remoto y con la versión del aviso que recibe (F4)", async () => {
+    it("nace sin estado remoto y con la versión del aviso que recibe (F4; obligatoria desde F4-T16)", async () => {
       const sin = await repos.publications.create(await newPublication(), operator);
-      expect(sin).toMatchObject({ remoteState: null, listingSourceHash: null });
+      expect(sin).toMatchObject({ remoteState: null, listingSourceHash: "hash" });
 
       const con = await repos.publications.create(
         await newPublication({ listingSourceHash: "hash-del-aviso" }),

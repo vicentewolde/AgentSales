@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-08
 **Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 25 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
-**Última tarea:** F4-T15 · Publisher de Portal: operaciones y `preflight` (con D14: sin cupo, la simulación pasa con una advertencia). Antes, F4-T14 (publicar) y F4-T11 (mapeo y revisión previa)
-**Siguiente paso:** `/tarea F4-T16` (intento, publicar y aprobar con Portal; después T17, T18 y T23 ya tienen a T15). En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
+**Última tarea:** F4-T16 · Intento, publicar y aprobar con Portal. Antes, F4-T15 (operaciones y `preflight`, con D14) y F4-T14 (publicar)
+**Siguiente paso:** `/tarea F4-T17` (pausar, reactivar, cerrar y sincronizar en core). T23 (`ml:smoke --listing`) también tiene sus dependencias. En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
 
 ## Pendiente del cierre de F3
 - [x] **Refresco del token (demo), 2026-10-07 20:05:** el primer `pnpm dev` lo refrescó al arrancar; vence el 2026-12-06 20:05 (real, ya no estimado). Anotado en la nota de Instagram (§8, punto 4) y en §6 del spec F3
@@ -31,7 +31,7 @@
 | F4-T13 · Contrato `Publisher` ampliado y el aviso en el input | ✅ | #87 |
 | F4-T14 · Publisher de Portal: publicar | ✅ | #93 |
 | F4-T15 · Publisher de Portal: operaciones y `preflight` | ✅ | #94 |
-| F4-T16 · Intento, publicar y aprobar con Portal | ⏳ pendiente | |
+| F4-T16 · Intento, publicar y aprobar con Portal | ✅ | #95 |
 | F4-T17 · Pausar, reactivar, cerrar y sincronizar en core | ⏳ pendiente | |
 | F4-T18 · Worker: publicar y sincronizar Portal | ⏳ pendiente | |
 | F4-T19 · API de Portal | ⏳ pendiente | |

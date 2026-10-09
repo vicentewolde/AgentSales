@@ -124,6 +124,7 @@ async function setup(options: { queueDown?: boolean } = {}) {
         format: "post",
         contentId,
         mediaIds: [],
+        listingSourceHash: "hash",
       },
       { actor: "operator" },
     );

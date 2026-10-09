@@ -281,6 +281,7 @@ describe("editContent", () => {
         format: "post",
         contentId: instagram?.id ?? "",
         mediaIds: [],
+        listingSourceHash: "hash",
       },
       { actor: "operator" },
     );

@@ -79,6 +79,7 @@ export {
   PUBLISH_ATTEMPT_RESULT_TEXT,
   publicationModeText,
   RUN_QUEUED_WARNING_TEXT,
+  remoteStatusText,
   tokenStdinCommand,
 } from "./labels.js";
 export {
@@ -464,7 +465,7 @@ export {
   type PrepareContentResult,
   prepareContent,
 } from "./use-cases/prepare-content.js";
-export { enqueuePublication } from "./use-cases/publication-start.js";
+export { enqueuePublication, type PortalCheckDeps } from "./use-cases/publication-start.js";
 export {
   type PublishListingDeps,
   type PublishListingResult,

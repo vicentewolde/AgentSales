@@ -71,6 +71,7 @@ export {
 } from "./platform-catalog.js";
 export {
   createPublicationScenario,
+  PORTAL_SCENARIO_TOKENS,
   PUBLICATION_SCENARIO_TOKEN,
   type PublicationScenario,
 } from "./publication-scenario.js";

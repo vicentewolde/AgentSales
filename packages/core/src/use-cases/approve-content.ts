@@ -9,6 +9,7 @@ import {
 import { AppError } from "../errors.js";
 import { LISTING_NOT_PREPARABLE_TEXT } from "../labels.js";
 import { canPrepareContent } from "../listing.js";
+import { type PortalReadiness, portalReadiness } from "../portal/readiness.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import {
@@ -27,6 +28,11 @@ export type ApprovedContent = CheckedContent & {
   skipped: SkippedPublication[];
   /** Todas las publicaciones del canal del aviso, después de aprobar (leídas en el candado). */
   publications: Publication[];
+  /**
+   * Solo en Portal: lo que le falta al aviso para Mercado Libre (`portalReadiness`, spec F4 §4.5).
+   * Es una advertencia: el texto se aprueba igual, y publicar lo bloquea con `PORTAL_NOT_READY`.
+   */
+  portalReadiness?: PortalReadiness;
 };
 
 /**
@@ -40,7 +46,8 @@ export type ApprovedContent = CheckedContent & {
  * - hay una corrida activa (de textos o de imágenes, que reemplaza los medios) → `CONTENT_RUN_ACTIVE`;
  * - la revisión editorial tiene errores → `CONTENT_HAS_ERRORS` (las advertencias no bloquean);
  * - con una cuenta conectada, faltan las fotos del canal → `CONTENT_NOT_READY`.
- * Aprobar un texto ya aprobado vuelve a revisar y abre lo que falte (idempotente).
+ * Aprobar un texto ya aprobado vuelve a revisar y abre lo que falte (idempotente). En Portal,
+ * devuelve además lo que le falta al aviso (`portalReadiness`), como advertencia.
  */
 export async function approveContent(
   deps: ApproveContentDeps,
@@ -72,6 +79,15 @@ export async function approveContent(
       );
     }
     const opening = await planPublications(locked, { listing, content });
+    let readiness: PortalReadiness | undefined;
+    if (content.platform === "portal_inmobiliario") {
+      const broker = await locked.brokers.findById(listing.brokerId);
+      readiness = portalReadiness(listing, {
+        name: broker?.name ?? "",
+        email: broker?.email ?? null,
+        whatsapp: broker?.whatsapp ?? null,
+      });
+    }
 
     // Recién aquí se escribe: nada de lo anterior puede dejar el texto aprobado a medias.
     const approved =
@@ -90,6 +106,7 @@ export async function approveContent(
       created,
       skipped: opening.skipped,
       publications: await channelPublications(locked, listing.id, approved.platform),
+      ...(readiness === undefined ? {} : { portalReadiness: readiness }),
     };
   });
 }
