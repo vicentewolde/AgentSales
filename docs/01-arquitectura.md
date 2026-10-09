@@ -63,7 +63,7 @@ flowchart LR
 ## Estilo: puertos y adaptadores
 
 - `packages/core` contiene el **dominio**: entidades, esquemas zod, máquina de estados y casos de uso. No importa librerías de infraestructura.
-- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider`, `MediaProcessor`, `SlideTemplates`, `HtmlRenderer` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `JobQueue`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository`, `ImportRunRepository`, `ContentRunRepository`, `ContentRepository`, `PlatformAccountRepository` y `SecretBox` (F3-T03), `PublicationRepository` y `ListingLock` (F3-T04; `PlatformAccountRepository.upsertConnected` suma `revokeOthers` en F3-T13), `Publisher` (F3-T07), `InstagramAuth` (F3-T08), `MercadoLibreAuth` (F4-T03), `LLMProvider`, `MediaProcessor`, `SlideTemplates` y `HtmlRenderer` (`packages/core/src/ports/`). `MediaProcessor` (F2-T07) lo implementa `createMediaProcessor` de `packages/media` con sharp y ffmpeg: las fotos (también HEIC, que ffmpeg 8.1 o más nuevo arma desde sus mosaicos) salen rotadas, en sRGB, sin metadatos y en las variantes `thumb`, `ig_4x5` y `pi_4x3`, con su sha256; los parámetros y su versión (`MEDIA_PIPELINE_VERSION`) viven en `packages/media/src/pipeline.ts`. Los videos (F2-T08) se miden con ffprobe, dan su `thumb` y, en la etapa `reel`, el reel de Instagram. Contrato en "Procesador de medios", más abajo. `SlideTemplates` (F2-T09) lo implementa `createSlideTemplates` de `packages/templates` y `HtmlRenderer`, `createHtmlRenderer` de `packages/media`: ver "Plantillas y render".
+- Core define **puertos** (interfaces): repositorios (`ListingRepository` y compañía), `MediaStorage`, `MediaFileSource`, `JobQueue`, `LLMProvider`, `MediaProcessor`, `SlideTemplates`, `HtmlRenderer` y `Publisher`. Hoy existen `MediaStorage`, `MediaFileSource`, `MediaRepository`, `JobQueue`, `FieldDefinitionRepository`, `BrokerRepository`, `ListingRepository`, `ImportRunRepository`, `ContentRunRepository`, `ContentRepository`, `PlatformAccountRepository` y `SecretBox` (F3-T03), `PublicationRepository` y `ListingLock` (F3-T04; `PlatformAccountRepository.upsertConnected` suma `revokeOthers` en F3-T13), `Publisher` (F3-T07), `InstagramAuth` (F3-T08), `MercadoLibreAuth` (F4-T03), `PlatformCatalogRepository` (F4-T09; el catálogo de Portal, `PortalCatalog`, vive en `packages/publishers`, ADR-0015), `LLMProvider`, `MediaProcessor`, `SlideTemplates` y `HtmlRenderer` (`packages/core/src/ports/`). `MediaProcessor` (F2-T07) lo implementa `createMediaProcessor` de `packages/media` con sharp y ffmpeg: las fotos (también HEIC, que ffmpeg 8.1 o más nuevo arma desde sus mosaicos) salen rotadas, en sRGB, sin metadatos y en las variantes `thumb`, `ig_4x5` y `pi_4x3`, con su sha256; los parámetros y su versión (`MEDIA_PIPELINE_VERSION`) viven en `packages/media/src/pipeline.ts`. Los videos (F2-T08) se miden con ffprobe, dan su `thumb` y, en la etapa `reel`, el reel de Instagram. Contrato en "Procesador de medios", más abajo. `SlideTemplates` (F2-T09) lo implementa `createSlideTemplates` de `packages/templates` y `HtmlRenderer`, `createHtmlRenderer` de `packages/media`: ver "Plantillas y render".
 - Cola (ADR-0005): el adaptador de pg-boss vive en `packages/queue` desde F1-T08 (en F0 estaba en el worker). Implementa `JobQueue` e incluye `QUEUE_SCHEMA` y `checkQueueSchema`. La API, como `producer`, arranca pg-boss de forma diferida en el primer `enqueue`, y su check de `/health` solo consulta que exista el esquema `pgboss`. Ver "Cola de trabajos" más abajo.
 - Los demás paquetes son **adaptadores** que implementan esos puertos.
 - Las apps (`api`, `worker`, `cli`, `web`) solo **componen** adaptadores y llaman casos de uso.
@@ -88,7 +88,7 @@ agentsales/
 │   ├── llm/          Proveedores (solo transporte): claude-cli, anthropic-api, fake. Los prompts viven en core (ADR-0013)
 │   ├── media/        Procesamiento de imagen y video (sharp, ffmpeg) y render de HTML (Playwright)
 │   ├── templates/    Plantillas HTML/CSS de posts (portada, ficha y texto del reel)
-│   ├── publishers/   instagram (F3: cliente de la Graph API, OAuth, errores, validación y publisher); mercadolibre (F4: OAuth, usuario, errores, ítems, fotos, catálogo con caché y `validate`; publisher después); fb-marketplace en F5
+│   ├── publishers/   instagram (F3: cliente de la Graph API, OAuth, errores, validación y publisher); mercadolibre (F4: OAuth, usuario, errores, ítems, fotos, catálogo con caché, `validate`, `buildPortalItem`, el publisher de Portal con `preflight`, `createPortalOperations`, y los clientes de paquetes y usuarios de prueba que usan `ml:smoke` y `ml:test-user`); fb-marketplace en F5
 │   └── config/       Variables de entorno validadas (zod), logger pino, redactor de secretos, resumen de errores repetidos y, desde F3, cifrado y firma (crypto.ts)
 ├── .github/          CI (GitHub Actions)
 ├── docs/             Documentación (esta carpeta)
@@ -181,10 +181,10 @@ stateDiagram-v2
   publishing --> published: ok
   publishing --> failed: error no reintentable o reintentos agotados
   failed --> publishing: reintento manual
-  published --> paused: pausar
+  published --> paused: pausar o sync (moderación)
   paused --> published: reactivar
-  published --> unpublished: despublicar o marcar como retirada
-  paused --> unpublished: despublicar
+  published --> unpublished: cerrar (Portal), retirar (Instagram) o sync (cerrado o vencido allá)
+  paused --> unpublished: cerrar (Portal) o sync (cerrado o vencido allá)
   publishing --> awaiting_manual_confirm: formulario listo (Marketplace)
   awaiting_manual_confirm --> published: operador hace el clic final
   awaiting_manual_confirm --> failed: captcha, verificación o abandono

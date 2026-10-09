@@ -14,7 +14,13 @@ import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
 import { portalIssueLine } from "./publication-view.js";
-import { fetchBrokers, PLATFORM_OPTION_NAMES, platformOption, resolveListingId } from "./shared.js";
+import {
+  fetchBrokers,
+  PLATFORM_OPTION_NAMES,
+  platformOption,
+  platformShortName,
+  resolveListingId,
+} from "./shared.js";
 
 export type ApproveDeps = Io & { client: ApiClient };
 
@@ -128,7 +134,12 @@ export function runApprove(deps: ApproveDeps, ref: string, options: ApproveOptio
       return 0;
     }
     if (done > 0 && !options.undo) {
-      deps.print(c.dim(`→ Publica con: agentsales publish ${trimmed}`));
+      // Instagram es el canal por defecto de publish; los demás llevan su --platform.
+      const extra =
+        platform === undefined || platform === "instagram"
+          ? ""
+          : ` --platform ${platformShortName(platform)}`;
+      deps.print(c.dim(`→ Publica con: agentsales publish ${trimmed}${extra}`));
     }
     return failed > 0 ? 1 : 0;
   });

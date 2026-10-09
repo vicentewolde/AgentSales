@@ -95,6 +95,7 @@ describe("runApprove", () => {
       "✓ Portal Inmobiliario: aprobado · listas para publicar: aviso",
     );
     expect(setup.h.errors()).toContain("Para publicar en Portal falta:");
+    expect(setup.h.text()).toMatch(/→ Publica con: agentsales publish \S+ --platform portal/);
     expect(setup.h.errors()).toMatch(/ {4}• .*WhatsApp/);
   });
 });

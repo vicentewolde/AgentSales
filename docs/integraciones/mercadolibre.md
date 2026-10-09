@@ -88,7 +88,7 @@ Authorization code "server side":
 | Guardar tokens | La guía de seguridad pide **cifrarlos en reposo** (AES-256, clave fuera de la base), no loguearlos, enviarlos solo por header | DOC |
 | Identificar la cuenta | `GET /users/me` (trae `id`, `nickname`, `site_id`, `user_type`); el `user_id` ya viene en el canje | DOC |
 
-**Consecuencia de diseño (INFERENCIA, por la rotación):** el refresco va **serializado por cuenta** (un candado) y el par nuevo se **guarda antes** de usar el access token nuevo; dos refrescos simultáneos dejarían la cuenta en `needs_reconnect`. Un job de refresco periódico evita también la regla de 4 meses sin uso.
+**Consecuencia de diseño (INFERENCIA, por la rotación):** el refresco va **serializado por cuenta** (un candado) y el par nuevo se **guarda antes** de usar el access token nuevo; dos refrescos simultáneos dejarían la cuenta en `expired`. Un job de refresco periódico evita también la regla de 4 meses sin uso.
 
 ### 3.2.1 Crear la app en el DevCenter (VERIFICADO el 2026-10-08)
 
@@ -202,7 +202,7 @@ Con eso el ítem lleva `listing_source: portalinmobiliario` y se ve en Mercado L
 | `MLC157520` | Usado en el ejemplo de publicación de prueba, "**asumiendo** que este ID corresponde a Propiedades Usadas dentro de Venta de Casas en Chile" | **VERIFICADO** el 2026-10-08: es Casas > Venta > Propiedades usadas (§12.1) |
 | `MLC5628` | Ejemplo hipotético de hoja ("si no hubiera children_categories al consultar MLC5628") | NO VERIFICADO; no usar |
 
-Los ids de departamentos, casas, oficinas, terrenos, parcelas, bodegas, estacionamientos y locales, por venta, arriendo y arriendo temporal, **no figuran** para MLC: se obtienen con el token (sección 8). Como referencia, MLA usa nombres de operación "Alquiler", "Alquiler Temporario" y "Venta", y subtipos "Propiedades Individuales" y "Emprendimientos" (DOC, MLA). Los nombres en MLC (por ejemplo "Arriendo", "Propiedades Usadas"): NO VERIFICADO.
+Los ids de departamentos, casas, oficinas, terrenos, parcelas, bodegas, estacionamientos y locales, por venta, arriendo y arriendo temporal, **no figuran** para MLC: se obtienen con el token (sección 8). Como referencia, MLA usa nombres de operación "Alquiler", "Alquiler Temporario" y "Venta", y subtipos "Propiedades Individuales" y "Emprendimientos" (DOC, MLA). Los nombres en MLC (por ejemplo "Arriendo", "Propiedades Usadas"): VERIFICADO con `ml:smoke` (§12.1).
 
 **Atributos:** `GET /categories/{hoja}/attributes`. Cada uno trae `id`, `name`, `tags`, `hierarchy`, `relevance`, `value_type`, `value_max_length`, `allowed_units`, `default_unit` y el grupo. **Obligatorio = `tags.required: true`**; también existen los obligatorios condicionales (`conditional_required: true`, error 7810 `item.attribute.missing_conditional_required`). Faltar uno requerido da el error 147 `item.attributes.missing_required`.
 
@@ -246,7 +246,7 @@ Además son obligatorios en el body: precio, moneda (`currency_id` entre las de 
 | Tamaño | Recomendado 1200x1200; máximo 1920x1920 (si es mayor se reduce); mínimo 500x500 (si es menor queda igual). La doc de moderaciones dice válida si mide al menos 250 px por lado y un lado de más de 500; el error 3703 pide 500 px en al menos un lado | DOC (criterios algo distintos; 1600x1200 cumple todos) |
 | Zoom | Ancho mayor de 800 px activa zoom; recomendado para inmuebles | DOC |
 | Al menos 1 foto | Obligatorio al crear con `silver` (rechazo 400, error 173). La fecha difiere entre páginas (20/01/2026 o 23/02/2026), ambas pasadas. Ya no se puede crear sin fotos y agregarlas después | DOC |
-| Máximo por ítem | `settings.max_pictures_per_item` de la categoría (30 en el ejemplo MLA de Inmuebles); superarlo da el error 201. Valor en MLC: NO VERIFICADO | DOC / NO VERIFICADO |
+| Máximo por ítem | `settings.max_pictures_per_item` de la categoría (30 en el ejemplo MLA de Inmuebles); superarlo da el error 201. 30 en MLC (§12.1) | DOC / VERIFICADO |
 | Mínimo de calidad | **12** fotos para casas, departamentos, oficinas y parcelas; **6** para locales, agrícolas, sitios, terrenos, bodegas y loteos; **4** para estacionamientos. Es un objetivo de calidad (`health`), no un rechazo | DOC |
 | Por URL | `pictures: [{ "source": "<url>" }]` en `POST` y `PUT` | DOC |
 | Subida directa | `POST /pictures/items/upload`, solo `multipart/form-data` (`file=@...`); devuelve `{ id, variations: [{ size, url, secure_url }] }` (id como `123-MLA456_112021`); el `id` se usa en `pictures: [{ "id": "..." }]` o se vincula con `POST /items/{id}/pictures` `{ "id": "..." }`. El endpoint limita peticiones por minuto por app: **400** "Bad_request" (la doc no da el cuerpo; F4-T04 trata como ese límite un 400 sin causas que bloqueen y con `error` vacío o `bad_request`). Un `id` de foto en estado `ERROR` o más chico que el mínimo da **400 `validation_error` con `cause_id` 508 o 509** al usarlo en un ítem (re-leída el 2026-10-07) | DOC |
@@ -301,7 +301,7 @@ Además son obligatorios en el body: precio, moneda (`currency_id` entre las de 
 | Sin paquete con cupo | **402** sin `error` ni causas (visto en `validate` con `ml:smoke`, §12.3; que sea el cupo es INFERENCIA fuerte): `ML_NO_QUOTA` | No |
 | `seller_contact` faltante o mal formado | 400, `seller_contact.*` (sección 4.2) | No |
 | Descripción con caracteres no aceptados | 400, 398 `item.description.type.invalid` | No |
-| Token vencido o inválido | 401 | Una vez, tras refrescar; si el refresco falla, `needs_reconnect` |
+| Token vencido o inválido | 401 | Una vez, tras refrescar; si el refresco falla, `expired` |
 | Token de otro usuario, IP bloqueada o faltan scopes | 403 `forbidden` | No |
 | App bloqueada | `unauthorized_application` | No |
 | Conflicto al borrar | 409 "item optimistic locking error" | Sí, tras unos segundos |
@@ -314,7 +314,7 @@ Los títulos demasiado largos, la moneda no permitida y los `cause_id` específi
 ## 8. Cómo probar sin riesgo
 
 - **No hay sandbox** (DOC): lo publicado se ve. La protección es combinar lo siguiente.
-- **1. Validar sin publicar:** `POST /items/validate` con el body armado (`204` = válido). No crea nada ni gasta cupo (INFERENCIA). Confirma categorías, atributos, `CMG_SITE`, moneda, ubicación, `seller_contact` y largo del título.
+- **1. Validar sin publicar:** `POST /items/validate` con el body armado (`204` = válido). No crea nada ni gasta cupo (INFERENCIA). Exige un paquete con cupo: sin él, 402 y solo revisa el título (§12.3). Confirma categorías, atributos, `CMG_SITE`, moneda, ubicación, `seller_contact` y largo del título.
 - **2. Usuario de prueba** (releído con el navegador el **2026-10-09**, F4-T25; fuentes en §10). El paso a paso para el operador está en `docs/07-checklist-cuentas.md`.
   - **Crear (DOC):** `POST https://api.mercadolibre.com/users/test_user` con `Authorization: Bearer <token>` y el cuerpo `{ "site_id": "MLC" }` (lo único que se envía). Devuelve `id`, `nickname`, `password` y `site_status` (`active`) **una sola vez**: no hay recurso que liste los usuarios de prueba ni sus claves.
   - **Qué token (corrige la versión anterior, que decía "el token de la app"):** la doc dice solo "debes tener un token" y remite a la guía de autenticación (authorization code, con un usuario). La guía de inmuebles saca primero el token **de la cuenta real** ("lo hiciste con tu cuenta real… a continuación te explicaremos cómo crearlo") y dice que así "obtendrás un usuario de test a partir de tu cuenta real"; el límite es "hasta 10 usuarios de test con tu cuenta" (DOC). La página de autenticación dice que `grant_type` solo acepta `authorization_code` o `refresh_token` (DOC), aunque el DevCenter muestra marcado "Client Credentials" (§3.2.1). Conclusión: un **token de usuario de la cuenta real** (INFERENCIA fuerte). Que sirva un token `client_credentials` de la app: NO VERIFICADO y poco probable.
@@ -331,16 +331,16 @@ Los títulos demasiado largos, la moneda no permitida y los `cause_id` específi
 - **`ml:smoke` (F4-T10) y `ml:smoke --listing <id_propiedad>` (F4-T23):** recorren el catálogo y llaman a `items/validate` con un aviso de muestra o con el aviso real de una propiedad, sin publicar (lo leído está en §12).
 - **Pruebas pendientes, de menor a mayor riesgo:**
   1. ~~Panel de la app: registrar `https://localhost:8787/oauth/mercadolibre/callback`~~ Hecho el 2026-10-08: el panel rechaza `localhost`; quedó `https://agentsales.test/…` (§3.3).
-  2. Autorizar con `auth.mercadolibre.cl`, copiar el `code`, canjear; anotar `expires_in` y `scope`.
-  3. `GET /users/me`; refrescar y confirmar que el `refresh_token` cambia y que el anterior da `invalid_grant`.
-  4. Con token: árbol de `MLC1459` hasta las hojas de departamentos y casas (venta y arriendo) y de las demás propiedades; `/attributes` de esas hojas; `GET /sites/MLC/listing_types`; `GET /categories/MLC1459/classifieds_promotion_packs`.
-  5. `items/validate` con: título largo, `CLF`, sin `CMG_SITE`, `CMG_SITE` mínimo, descripción dentro del body, `seller_contact` incompleto, y una URL prefirmada de R2 en `pictures`.
-  6. Usuario de prueba activado y con paquete: publicar con fotos por URL (R2) y medir cuánto tarda en pasar de `paused`/`not_yet_active` a `active`; ocultar la dirección; pausar, reactivar, editar precio (con `seller_contact`), cerrar y borrar.
-  7. Con la cuenta del corredor (solo lectura): `GET /users/{id}/classifieds_promotion_packs` para ver si su plan de Portal Inmobiliario da cupo `silver` por API.
+  2. ~~Autorizar con `auth.mercadolibre.cl`, copiar el `code`, canjear; anotar `expires_in` y `scope`.~~ Hecho en F4-T06.
+  3. `GET /users/me` y refrescar: hecho en F4-T06 y T08 (el `refresh_token` cambia, y la demo del cierre lo renovó con `--force` sin perder la cuenta). Que el `refresh_token` anterior dé `invalid_grant` sigue NO VERIFICADO (no se probó a propósito: arriesga la cuenta).
+  4. ~~Con token: árbol de `MLC1459` hasta las hojas de departamentos y casas (venta y arriendo) y de las demás propiedades; `/attributes` de esas hojas; `GET /sites/MLC/listing_types`; `GET /categories/MLC1459/classifieds_promotion_packs`.~~ Hecho en F4-T10 (§12.1 y §12.4).
+  5. ~~`items/validate` con: título largo, `CLF`, sin `CMG_SITE`, `CMG_SITE` mínimo, descripción dentro del body, `seller_contact` incompleto, y una URL prefirmada de R2 en `pictures`.~~ Hecho en F4-T10: sin cupo, solo revisó el título (§12.3).
+  6. (F5) Usuario de prueba activado y con paquete: publicar con fotos por URL (R2) y medir cuánto tarda en pasar de `paused`/`not_yet_active` a `active`; ocultar la dirección; pausar, reactivar, editar precio (con `seller_contact`), cerrar y borrar.
+  7. (F5) Con la cuenta del corredor (solo lectura): `GET /users/{id}/classifieds_promotion_packs` para ver si su plan de Portal Inmobiliario da cupo `silver` por API.
 
 ## 9. Riesgos y términos de uso relevantes
 
-- **Título:** el largo lo fija `settings.max_title_length` de la hoja; **no hay cifra para MLC en la doc** (en Inmuebles de MLA el ejemplo dice 200). La afirmación anterior "60 caracteres en inmuebles de MLC" **no la respalda la doc**: se quita. Validar contra el valor leído de la categoría antes de enviar. Formato recomendado por la guía de inmuebles: **Operación + Tipo de propiedad + Ambientes + Barrio**, sin adjetivos ni abreviaturas (ejemplo de la doc: "Venta Departamento 4 ambientes Recoleta"). El `3D 2B` de `docs/04` contradice la recomendación de no abreviar.
+- **Título:** el largo lo fija `settings.max_title_length` de la hoja; **no hay cifra para MLC en la doc** (en Inmuebles de MLA el ejemplo dice 200). En MLC son 60 (VERIFICADO, §12.1). La afirmación anterior "60 caracteres en inmuebles de MLC" **no la respalda la doc**: se quita. Validar contra el valor leído de la categoría antes de enviar. Formato recomendado por la guía de inmuebles: **Operación + Tipo de propiedad + Ambientes + Barrio**, sin adjetivos ni abreviaturas (ejemplo de la doc: "Venta Departamento 4 ambientes Recoleta"). El `3D 2B` de `docs/04` contradice la recomendación de no abreviar.
 - **Datos de contacto en el texto:** la guía de inmuebles dice que la descripción **no debe incluir información de contacto (teléfono, dirección, sitio web)**; hacerlo lleva a **moderación o penalización** (DOC, atributos-inmuebles). Esto **corrige** la nota anterior, que citaba una excepción para inmuebles de la política general (no leída en esta ronda). El contacto va solo en `seller_contact`. Que el título tampoco lleve contactos: INFERENCIA (la guía de títulos no lo menciona, pero la lógica es la misma).
 - **Dirección:** la descripción no debe traer la dirección (DOC, mismo punto); la ubicación va en `location`, y si el corredor no quiere mostrarla exacta, `address_line_by_reference` (sección 4.7).
 - **WhatsApp obligatorio:** sin `country_code2` y `phone2` no se puede crear ni actualizar (DOC). El corredor debe tener un número de WhatsApp cargado en AgentSales.
@@ -349,7 +349,7 @@ Los títulos demasiado largos, la moneda no permitida y los `cause_id` específi
 - **Cupos:** cerrar y reactivar rápido puede perder cupos (los cupos tardan minutos en liberarse) (DOC). Evitar ciclos rápidos de cierre y republicación.
 - **Vencimiento:** arriendos en MLC duran 45 días; el sistema debe mostrar `stop_time` y avisar antes de que el aviso se cierre solo.
 - **Rotación del refresh token** y **4 meses sin uso**: ver 3.2.
-- **Seguridad de tokens:** ML pide cifrarlos en reposo (DOC). Hoy AgentSales guarda tokens de Instagram en la base: revisar si se cifran (decisión de spec o ADR).
+- **Seguridad de tokens:** ML pide cifrarlos en reposo (DOC). AgentSales guarda los tokens cifrados en reposo (AES-256-GCM, con una clave derivada de `APP_ENCRYPTION_KEY`, F3-T02); el par de Mercado Libre también (ADR-0015).
 - **Cambios frecuentes:** en 2026 se agregaron obligaciones con fecha (fotos en enero/febrero, PUT con fotos en marzo, WhatsApp en octubre, apps separadas en agosto). Las constantes van en un solo archivo y los límites se leen de la API.
 - **Términos y condiciones** de desarrolladores: hay enlace en el pie de la doc; no se leyeron en esta nota. Leerlos antes de ofrecer el sistema a terceros (F7).
 
@@ -423,7 +423,7 @@ Pista no oficial (no se usa como fuente final): issue del SDK .NET de ML con `ht
 1. **Conectar la cuenta:** registrar `https://localhost:<puerto>/oauth/mercadolibre/callback` (primero probar en el panel). `accounts connect mercadolibre` imprime la URL de `auth.mercadolibre.cl` con `state` y PKCE `S256`, y acepta el `code` pegado (`--code`); el callback con mkcert es opcional. Sin túnel.
 2. **App:** permiso "Publicación y sincronización", scopes `read`, `write`, `offline_access`, PKCE activo. La app debe ser solo de ML (no MP).
 3. **Variables:** `MERCADOLIBRE_APP_ID`, `MERCADOLIBRE_APP_SECRET`, `MERCADOLIBRE_REDIRECT_URI`; dominio de autorización por país en configuración.
-4. **Tokens:** guardar `access_token`, `refresh_token`, `expires_at` (de `expires_in`); refresco con margen (por ejemplo a las 5 h), **con candado por cuenta**, guardando el par nuevo antes de seguir; `needs_reconnect` ante `invalid_grant`. Evaluar cifrarlos en reposo (ML lo pide). `external_id` = `user_id`.
+4. **Tokens:** guardar `access_token`, `refresh_token`, `expires_at` (de `expires_in`); refresco con margen (por ejemplo a las 5 h), **con candado por cuenta**, guardando el par nuevo antes de seguir; `expired` ante `invalid_grant`. Cifrados en reposo, como pide ML (F3-T02, ADR-0015). `external_id` = `user_id`.
 5. **Datos nuevos que AgentSales necesita:** número de WhatsApp del corredor (`country_code2` + `phone2`, solo dígitos), ids de ubicación de ML (región, ciudad y barrio), y los atributos obligatorios que hoy quizás no captura el Excel: **gastos comunes, mascotas, bodegas, amoblado**, además de estacionamientos, baños, dormitorios y superficies. Revisar `FieldDefinition` y la plantilla.
 6. **Categorías:** tarea previa `ml:smoke` que descubre las hojas de MLC y sus atributos y `settings` y los guarda en una tabla o archivo de configuración versionado; el publisher valida contra eso antes de enviar. No usar `MLC157520` sin confirmarlo.
 7. **Body:** `buying_mode: classified`, `listing_type_id: silver`, `condition: not_specified` (o `used`/`new` si se conoce), `available_quantity: 1`, `channels: ["marketplace"]`, `CMG_SITE: POI`, `seller_contact` completo, `location` por ids, fotos y video opcional (YouTube o Matterport). Descripción: `POST /items/{id}/description` tras crear, salvo que `validate` confirme que va dentro del body.
@@ -509,7 +509,7 @@ Aviso de prueba en Departamentos > Venta > Propiedades usadas (`MLC157522`), con
 | Base (CLP), sin dirección, descripción en el cuerpo, `CMG_SITE` corto, sin `CMG_SITE`, `CLF` | **402** sin `error` ni causas |
 | Título de 61 caracteres | **400** con una causa: `item.title.length.invalid` (`cause_id` 134) |
 
-- **Sin cupo = 402 (INFERENCIA fuerte):** la cuenta no tiene paquetes (`GET /users/{id}/classifieds_promotion_packs` responde 404 `not_found`), y `validate` revisa el título **antes** del cupo. Desde F4-T10 el cliente trata un 402 sin causas que bloqueen como `ML_NO_QUOTA` (no reintentable; con causas, es un rechazo del aviso); lo confirma la prueba con paquete (T23).
+- **Sin cupo = 402 (INFERENCIA fuerte):** la cuenta no tiene paquetes (`GET /users/{id}/classifieds_promotion_packs` responde 404 `not_found`), y `validate` revisa el título **antes** del cupo. Desde F4-T10 el cliente trata un 402 sin causas que bloqueen como `ML_NO_QUOTA` (no reintentable; con causas, es un rechazo del aviso); lo confirma la prueba con el usuario de prueba y su paquete (inicio de F5; sin cupo, T23 no pudo).
 - **Consecuencia:** sin paquete, `validate` no revisa el resto del aviso, así que `CLF`, `CMG_SITE` corto o ausente, la descripción en el cuerpo y la dirección siguen **NO VERIFICADOS** hasta contratar un paquete. Lo que sí se sabe: con el título largo (400), Mercado Libre no reportó atributos faltantes, moneda, ubicación sin barrio, foto ni contacto (INFERENCIA: un 400 trae todas las causas que bloquean).
 - **Largo del título:** 60 confirmado (61 se rechaza).
 - **La descripción en el cuerpo:** `ml:smoke --listing` (F4-T23) no la confirma: `preflight` manda el cuerpo sin la descripción (al publicar va aparte, `POST /items/{id}/description`). Se verá al publicar en `live` con el usuario de prueba (T24).

@@ -4,6 +4,31 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [0.4.0] - 2026-10-09 · F4 Portal Inmobiliario
+Ahora una propiedad aprobada se publica en Portal Inmobiliario (Mercado Libre): se conecta la cuenta de cada corredor, el sistema dice antes de enviar lo que le falta al aviso y, ya publicado, se pausa, reactiva, cierra y actualiza desde el panel o la CLI. F4 se cerró **con la simulación** (tu decisión, D15): la demo publicó P001 desde el panel y P002 desde la CLI en `dry-run`, que solo lee de Mercado Libre y le pregunta a `validate` sin crear nada (tu cuenta no tiene paquete, así que Mercado Libre respondió "sin cupo" y la simulación siguió con las revisiones de AgentSales, D14); pausar, reactivar y cerrar en simulación; y el acceso de VICENTEWOLDE se renovó con `--force` sin perder la cuenta. La prueba en vivo con un usuario de prueba de Mercado Libre queda para el inicio de F5, cuando soporte lo active.
+
+### Añadido
+- **Conectar Mercado Libre** sin túnel: `pnpm -s cli accounts connect mercadolibre --broker <slug>` abre el enlace; autorizas, copias la dirección que queda con error de conexión y la pegas con `pbpaste | … --url-stdin`. En **Cuentas** del panel, cada corredor muestra Instagram y Mercado Libre por separado, con los dos comandos para copiar.
+- **Tokens que rotan:** el acceso de Mercado Libre se renueva solo cada 7 días mientras el worker corre (y a pedido con `accounts refresh <id> [--force]`), de a uno por cuenta con un candado; se guarda cifrado y nunca aparece en logs, errores ni respuestas. Con 4 meses sin renovarse, Mercado Libre lo da de baja.
+- **Lo que falta para Portal**, antes de enviar: en la pestaña Portal del panel, al aprobar (`approve --platform portal`) y al publicar (`PORTAL_NOT_READY`), con un motivo por línea y su columna del Excel. Nunca se inventan datos: el WhatsApp es el de la hoja Corredor.
+- **Publicar en Portal:** "Publicar en Portal Inmobiliario" o `agentsales publish <propiedad> --platform portal`. En vivo pide confirmación y avisa que usa un cupo. El aviso guarda su enlace, su estado en Mercado Libre ("procesando fotos", "activo", "pausado por Mercado Libre" con el motivo, "vencido") y su vencimiento.
+- **Pausar, reactivar, cerrar y Actualizar:** botones en el panel y `agentsales publications pause|resume|close|sync <id>`. Cerrar en vivo pide confirmación (es irreversible: volver a publicar crea otro aviso y usa otro cupo). Si la API tarda más de la cuenta, no se repite solo: avisa que el cambio pudo aplicarse y cómo revisarlo.
+- **Sincronización:** el worker lee el estado del aviso 2 min después de publicar, al arrancar y cuando pides Actualizar, y refleja una pausa, un cierre o un vencimiento hechos en Mercado Libre.
+- **Reintentos que no crean dos avisos:** si algo se corta, el siguiente intento retoma lo que ya estaba en Mercado Libre (lo busca por su marca) en vez de crear otro.
+- **`pnpm ml:smoke`** recorre el catálogo de Inmuebles y las ubicaciones de Chile y prueba `validate` sin publicar; con **`--listing P001`** arma el aviso real de una propiedad y solo pregunta si Mercado Libre lo aceptaría.
+- **`pnpm ml:test-user --broker <slug>`** crea un usuario de prueba de Mercado Libre con tu cuenta real y deja su clave solo en tu portapapeles. El paso a paso (activación con soporte, paquete sin cargo, conectarlo) está en `docs/07-checklist-cuentas.md`.
+- **Bitácora:** marca las lecturas de Mercado Libre y muestra las notas de cada intento (por ejemplo, "sin cupo").
+- **Base de datos:** migración `0007` (catálogo de Mercado Libre con 7 días de vida, el estado en la plataforma y la versión del aviso fijada al aprobar), aplicada en Neon.
+- **Documentación:** ADR-0015 (tokens que rotan, catálogo y operaciones) y ADR-0016 (la simulación de Portal valida contra Mercado Libre sin publicar), y la nota de Mercado Libre con lo verificado.
+
+### Cambiado
+- Lo aprobado para Portal incluye los datos del aviso: si una carga del Excel cambia la propiedad después de aprobar, publicar lo dice al instante en vez de enviar datos distintos.
+- En Portal el formato se llama "aviso" (no "carrusel"), en el panel y la CLI.
+- La forma de trabajar: las tareas relacionadas van en un solo PR (lotes), con un `pnpm check` y la CI de GitHub como simulación.
+
+### Corregido
+- Al cerrar o retirar la última publicación, el aviso de que la propiedad volvió a "Lista" ya no se pierde en el panel.
+
 ## [0.3.0] - 2026-10-07 · F3 Aprobación + Instagram
 Ahora se aprueba el texto de cada canal y la propiedad se publica en Instagram: el carrusel y, si tiene video, el reel. Todo se prueba primero en simulación (`dry-run`), que registra lo que se habría enviado sin llamar a Instagram. Se probó en vivo, con tu instrucción, en tu cuenta @vicentewoldec: P002 salió como carrusel de 5 imágenes (en cerca de 1 minuto) y como reel (en cerca de 2), con sus enlaces guardados, y después se borraron a mano y se marcaron como retiradas. El 2026-10-07 el worker renovó el token al arrancar y el vencimiento pasó de estimado a real (6 de diciembre).
 

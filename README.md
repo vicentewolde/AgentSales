@@ -2,7 +2,7 @@
 
 Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento.
 
-> Estado: **F3 · Aprobación + Instagram cerrada**; faltan la demo del refresco del token y el tag `v0.3.0`. Siguiente: F4 · Portal Inmobiliario. Ver `docs/ESTADO.md`.
+> Estado: **F4 · Portal Inmobiliario cerrada** (con la simulación; la prueba en vivo con un usuario de prueba de Mercado Libre queda para el inicio de F5). Siguiente: F5 · Facebook Marketplace. Ver `docs/ESTADO.md`.
 
 ## Requisitos
 - Node.js 26 (`.nvmrc`) y pnpm 11 (`npm i -g pnpm@11`; Node 26 ya no trae corepack)
@@ -55,6 +55,17 @@ pnpm -s cli publications <id_propiedad> [--events]   # estado, enlace y bitácor
 pnpm ig:smoke                                        # comprueba que Instagram descarga desde R2, sin publicar (no necesita pnpm dev)
 ```
 En el panel: la página **Cuentas** (http://localhost:5173/cuentas) y, en la sección Contenido de cada propiedad, aprobar por canal y las publicaciones de Instagram (publicar, reintentar, descartar, marcar como retirada y la bitácora). Para publicar de verdad en una sesión, `PUBLISH_MODE=live pnpm dev` (la API y el worker lo reciben juntos, sin tocar `.env`); al terminar, arranca de nuevo sin la variable. Lo publicado en vivo se borra a mano en Instagram y se marca como retirado.
+Conectar Mercado Libre y publicar en Portal Inmobiliario (F4), con `pnpm dev` corriendo. Hace falta la app de Mercado Libre y `ML_APP_ID`, `ML_CLIENT_SECRET` y `ML_REDIRECT_URI` en `.env` (pasos en `docs/07-checklist-cuentas.md`):
+```bash
+pnpm -s cli accounts connect mercadolibre --broker <slug>   # abre el enlace; autoriza y copia la dirección de vuelta
+pbpaste | pnpm -s cli accounts connect mercadolibre --broker <slug> --url-stdin
+pnpm -s cli approve <id_propiedad> --platform portal        # avisa lo que le falta al aviso
+pnpm -s cli publish <id_propiedad> --platform portal        # en dry-run solo lee de Mercado Libre y valida
+pnpm -s cli publications pause|resume|close|sync <id>       # cerrar en live pide confirmación
+pnpm ml:smoke [--listing <id_propiedad>]                    # catálogo y validate, sin publicar (no necesita pnpm dev)
+pnpm ml:test-user --broker <slug>                           # un usuario de prueba de Mercado Libre (clave al portapapeles)
+```
+En el panel, la pestaña **Portal Inmobiliario** de cada propiedad muestra lo que falta, aprobar, publicar y el aviso con su estado en Mercado Libre, el vencimiento y Pausar, Reactivar, Cerrar y Actualizar.
 - **`PUBLISH_MODE=dry-run` por defecto:** no se publica nada de verdad. En `live` se ve en rojo en el panel y la CLI.
 - **La cola la inicializa el worker:** la primera vez aparece con error hasta que el worker arranca (lo hace `pnpm dev`); refresca el panel.
 - **Detén `pnpm dev` al terminar** (Ctrl+C): el worker y el panel mantienen Neon despierto y consumen las horas del plan gratis.

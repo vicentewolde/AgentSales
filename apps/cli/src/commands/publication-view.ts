@@ -150,7 +150,7 @@ export function renderPublicationEvents(
       if (event.type !== "publish_attempt") return `${when}  ${event.type}`;
       const attempt = publishAttemptPayloadSchema.safeParse(event.payload);
       if (!attempt.success) return `${when}  intento (detalle ilegible)`;
-      const { mode, attempt: number, retry, result, error, sent } = attempt.data;
+      const { mode, attempt: number, retry, result, error, sent, notes } = attempt.data;
       const lines = [
         `${when}  intento ${number}${retry > 0 ? ` (reintento ${retry})` : ""} en ${mode === "dry-run" ? "simulación" : "vivo"}: ${PUBLISH_ATTEMPT_RESULT_TEXT[result]}`,
       ];
@@ -162,6 +162,8 @@ export function renderPublicationEvents(
           ),
         );
       }
+      // Las advertencias del intento (Portal: lo que dijo `validate`, como "sin cupo", D14).
+      for (const note of notes ?? []) lines.push(c.yellow(`      nota: ${note}`));
       return lines.join("\n");
     })
     .join("\n");

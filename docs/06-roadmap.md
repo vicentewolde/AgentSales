@@ -64,12 +64,14 @@ Spec detallado: `docs/specs/fase-4-portal-inmobiliario.md`.
 - Mapeo de campos → atributos, con validación previa de obligatorios (sin inventar datos) y, en `dry-run`, la validación de Mercado Libre sin publicar (ADR-0016).
 - Publicar con `CMG_SITE` y el WhatsApp del corredor; pausar, reactivar y cerrar; sincronizar estado (a pedido y después de publicar).
 
-**Aceptación:** una propiedad visible en Portal Inmobiliario desde la cuenta del operador (con un paquete pagado; el aviso se cierra al final, spec F4 D6), y pausable desde el panel.
+**Aceptación:** en simulación, una propiedad aprobada pasa la revisión de AgentSales y la consulta a Mercado Libre sin publicar, y se pausa, reactiva y cierra desde el panel y la CLI (spec F4 §6). La prueba en vivo pasa al inicio de F5 (decisión del operador, 2026-10-09): un aviso visible con un usuario de prueba y su paquete sin cargo (D15), pausable desde el panel.
 
 ## F5 · Marketplace
 - Perfil de navegador persistente por corredor (login manual una vez).
 - Llenado del formulario, subida de fotos y estado `awaiting_manual_confirm`.
 - Límite diario, pausas, capturas ante error y detención ante captcha o verificación.
+
+**Al empezar, pendiente de F4:** la prueba en vivo de Portal (spec F4 §6, criterios 1 a 3, y §7, paso 6), y confirmar lo que `validate` no revisó sin cupo: `CMG_SITE` oculto, la forma de las superficies, `address_line` con `show_exact_address = false`, la descripción dentro del cuerpo y que el 402 sea por falta de cupo.
 
 **Aceptación:** el operador publica 3 propiedades en Marketplace haciendo solo el clic final.
 
