@@ -171,11 +171,35 @@ export {
   portalNamedRefSchema,
 } from "./portal/catalog.js";
 export {
+  PORTAL_ATTRIBUTE_FIELDS,
+  PORTAL_FACING_CODES,
+  PORTAL_ISSUE_MESSAGES,
+  PORTAL_PROPERTY_TYPE_KEYS,
+  PORTAL_USED_SUBTYPE,
+  type PortalAttributeField,
+  type PortalFieldKind,
+  type PortalPropertyType,
+  type PortalRequirement,
+  portalCategoryPath,
+  portalFieldHasValue,
+  portalPetsAnswer,
+  portalPrice,
+  portalPropertyType,
+  portalSellerContact,
+  portalWhatsappParts,
+} from "./portal/fields.js";
+export {
   type PortalProgress,
   type PortalSellerContact,
   portalProgressSchema,
   portalSellerContactSchema,
 } from "./portal/progress.js";
+export {
+  type PortalReadiness,
+  type PortalReadinessIssue,
+  type PortalReadinessListing,
+  portalReadiness,
+} from "./portal/readiness.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export {
   type ContentChanges,

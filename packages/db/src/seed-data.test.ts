@@ -1,4 +1,12 @@
-import { buildListingValidator, CORE_FIELD_TARGETS, type FieldDefinition } from "@agentsales/core";
+import {
+  buildListingValidator,
+  CORE_FIELD_TARGETS,
+  type FieldDefinition,
+  normalizePortalName,
+  PORTAL_ATTRIBUTE_FIELDS,
+  PORTAL_FACING_CODES,
+  type PortalFieldKind,
+} from "@agentsales/core";
 import { contentDefinitionsFixture } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { REAL_ESTATE_FIELD_DEFINITIONS, TEMPLATE_COLUMNS } from "./seed-data.js";
@@ -226,5 +234,35 @@ describe("contentDefinitionsFixture (core)", () => {
     const order: string[] = REAL_ESTATE_FIELD_DEFINITIONS.map((def) => def.key);
     const positions = fixture.map((def) => order.indexOf(def.key));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+});
+
+describe("la tabla de Portal (core) calza con los campos del Excel (ADR-0006)", () => {
+  /** El tipo de campo que cada forma de la tabla sabe leer. */
+  const TYPES: Record<PortalFieldKind, string> = {
+    number: "number",
+    area: "number",
+    fee: "number",
+    age: "number",
+    yes_no: "boolean",
+    pets: "enum",
+    facing: "enum",
+  };
+
+  it("cada campo de PORTAL_ATTRIBUTE_FIELDS existe con un tipo compatible", () => {
+    for (const entry of PORTAL_ATTRIBUTE_FIELDS) {
+      const definition = REAL_ESTATE_FIELD_DEFINITIONS.find((def) => def.key === entry.field);
+      expect(definition, entry.field).toBeDefined();
+      expect(definition?.type, entry.field).toBe(TYPES[entry.kind]);
+    }
+  });
+
+  it("las orientaciones del Excel son las de PORTAL_FACING_CODES, y mascotas trae Sí, No y A consultar", () => {
+    const options = (key: string) =>
+      (REAL_ESTATE_FIELD_DEFINITIONS.find((def) => def.key === key)?.options ?? []).map(
+        normalizePortalName,
+      );
+    expect(options("orientacion").sort()).toEqual(Object.keys(PORTAL_FACING_CODES).sort());
+    expect(options("acepta_mascotas")).toEqual(["si", "no", "a consultar"]);
   });
 });

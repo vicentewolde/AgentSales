@@ -483,6 +483,35 @@ describe("runMlSmoke", () => {
     expect(lines).toContain("  3 hojas en 9 categorías; largo del título: 60, 80");
   });
 
+  it("compara la tabla de obligatorios de Portal con las hojas reales y muestra las diferencias", async () => {
+    useMercadoLibre();
+    const { deps, reports, errors } = await setup();
+
+    await runMlSmoke(deps);
+
+    const check = (reports[0] as MlSmokeReport).categories.tableCheck;
+    // La hoja de muestra de departamentos en venta pide FURNISHED, MAINTENANCE_FEE y LOT_TYPE, y no
+    // pide TOTAL_AREA, FULL_BATHROOMS ni PARKING_LOTS (la tabla, sí).
+    expect(check.find((diff) => diff.leafId === "MLC1480")).toEqual({
+      path: ["Departamentos", "Venta", "Propiedades usadas"],
+      leafId: "MLC1480",
+      onlyTable: ["FULL_BATHROOMS", "PARKING_LOTS", "TOTAL_AREA"],
+      onlyLeaf: ["FURNISHED", "MAINTENANCE_FEE", "LOT_TYPE"],
+    });
+    // Los tipos que el árbol de muestra no tiene: la hoja no apareció.
+    expect(check).toContainEqual(
+      expect.objectContaining({ path: ["Locales", "Venta"], leafId: null }),
+    );
+    expect(errors).toContain(
+      "  Tabla de Portal: no calza con las hojas reales (ponla al día en core, portal/fields.ts):",
+    );
+    expect(errors).toContain(
+      "    Departamentos > Venta > Propiedades usadas: la tabla pide de más: FULL_BATHROOMS, PARKING_LOTS, TOTAL_AREA; Mercado Libre pide además: FURNISHED, MAINTENANCE_FEE, LOT_TYPE",
+    );
+    // Es información para poner la tabla al día: no es un error del smoke.
+    expect((reports[0] as MlSmokeReport).errors).toEqual([]);
+  });
+
   it("revisa la forma de los ids de ubicación y ubica los avisos del corredor (con alias)", async () => {
     useMercadoLibre();
     const { deps, reports, errors, lines } = await setup();

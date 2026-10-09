@@ -65,6 +65,15 @@ export {
   mercadoLibreCausesOf,
 } from "./mercadolibre/errors.js";
 export {
+  buildPortalItem,
+  type PortalItem,
+  type PortalItemCatalog,
+  type PortalItemOptions,
+  type PortalItemResult,
+  type PortalPicture,
+  resolvePortalItemCatalog,
+} from "./mercadolibre/item.js";
+export {
   createMercadoLibreItems,
   MERCADOLIBRE_SEARCH_STATUSES,
   MERCADOLIBRE_WRITABLE_STATUSES,
@@ -77,6 +86,7 @@ export {
   type MercadoLibreSearchFilterValue,
   type MercadoLibreSearchStatus,
   type MercadoLibreWritableStatus,
+  sellerContactBody,
 } from "./mercadolibre/items.js";
 export {
   createMercadoLibrePacks,
