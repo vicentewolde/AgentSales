@@ -47,6 +47,7 @@ const publication = (overrides: Partial<PublicationView> = {}): PublicationView 
   publishedAt: null,
   createdAt: NOW,
   updatedAt: NOW,
+  remoteState: null,
   ...overrides,
 });
 

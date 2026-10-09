@@ -7,6 +7,7 @@ import {
 import { composeCarousel, composePhotoSet, composeReel } from "../content/compose.js";
 import type { ContentRun } from "../content.js";
 import type { Media } from "../media.js";
+import { type PortalReadiness, portalReadiness } from "../portal/readiness.js";
 import type { ContentRepository, ContentRunRepository } from "../ports/content-repository.js";
 import type { MediaRepository } from "../ports/media-repository.js";
 
@@ -26,6 +27,11 @@ export type ListingContent = {
   reel: Media | null;
   /** La corrida más reciente, en cualquier estado. */
   latestRun: ContentRun | null;
+  /**
+   * Lo que le falta al aviso para Portal Inmobiliario (spec F4 §4.5, desde F4-T19): el panel lo
+   * muestra en la pestaña Portal, y publicar lo bloquea con `PORTAL_NOT_READY`.
+   */
+  portalReadiness: PortalReadiness;
 };
 
 /**
@@ -38,7 +44,7 @@ export async function getListingContent(
   deps: GetListingContentDeps,
   { listingId }: { listingId: string },
 ): Promise<ListingContent> {
-  const { listing, ctx } = await loadCheckContext(deps, listingId);
+  const { listing, broker, ctx } = await loadCheckContext(deps, listingId);
   const [contents, media, latestRun] = await Promise.all([
     deps.contents.listCurrent(listing.id),
     deps.media.listByListing(listing.id),
@@ -50,5 +56,10 @@ export async function getListingContent(
     photos: composePhotoSet(media),
     reel: composeReel(media),
     latestRun,
+    portalReadiness: portalReadiness(listing, {
+      name: broker.name,
+      email: broker.email,
+      whatsapp: broker.whatsapp,
+    }),
   };
 }

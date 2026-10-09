@@ -3,12 +3,14 @@ import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
 import {
   enqueuePublications,
   type PortalCheckDeps,
   portalDefinitionsBeforeLock,
   publicationNotFound,
   requireCompatibleMode,
+  requireCurrentListingVersion,
   requireNoActiveRun,
   requirePortalPublishable,
   requirePublishableListing,
@@ -42,7 +44,8 @@ export type StartPublicationResult = {
  * - su cuenta ya no está conectada → `ACCOUNT_NOT_CONNECTED`;
  * - ya empezó en `live` y se pide en `dry-run` → `PUBLISH_MODE_LOCKED`;
  * - en Portal, el texto aprobado tiene errores según la revisión de hoy → `CONTENT_HAS_ERRORS`, o
- *   al aviso le falta lo que pide Portal → `PORTAL_NOT_READY` (spec F4 §4.5);
+ *   al aviso le falta lo que pide Portal → `PORTAL_NOT_READY` (spec F4 §4.5), o el aviso cambió
+ *   desde que nació la publicación → `PUBLICATION_LISTING_CHANGED` (§4.6);
  * - ya está publicada → `NOTHING_TO_PUBLISH`; descartada o retirada → `INVALID_TRANSITION`;
  * - la cola no está → `QUEUE_UNAVAILABLE` (503): queda en `publishing` y se reencola pidiéndolo otra vez.
  */
@@ -96,6 +99,9 @@ export async function startPublication(
       );
     }
     requireCompatibleMode(publication, dryRun);
+    if (PUBLISH_LISTING_PLATFORMS.has(publication.platform)) {
+      await requireCurrentListingVersion(locked, listing.id, [publication]);
+    }
     if (definitions !== null) {
       await requirePortalPublishable(locked, { listing, content, definitions });
     }

@@ -25,14 +25,42 @@ import {
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
   publicationErrorSchema,
+  remoteStateSchema,
   TOKEN_EXPIRED_REASONS,
   TOKEN_REFRESH_SKIP_REASONS,
 } from "@agentsales/core";
 import { z } from "zod";
 
-/** Cuerpo de todo error de la API: solo `code` y `message`, nunca `details` ni `cause`. */
+/**
+ * Lo que le falta a un aviso para Portal Inmobiliario (`portalReadiness`, spec F4 §4.5): el código,
+ * el campo del Excel que hay que completar (`null` si no es del aviso, como el WhatsApp del
+ * corredor) y el motivo en español, sin datos del aviso.
+ */
+export const portalReadinessIssueSchema = z.object({
+  code: z.string(),
+  field: z.string().nullable(),
+  message: z.string(),
+});
+export type PortalReadinessIssueView = z.infer<typeof portalReadinessIssueSchema>;
+
+/** `ready` sin motivos, o los motivos de lo que falta. */
+export const portalReadinessSchema = z.object({
+  ready: z.boolean(),
+  issues: z.array(portalReadinessIssueSchema),
+});
+export type PortalReadinessView = z.infer<typeof portalReadinessSchema>;
+
+/**
+ * Cuerpo de todo error de la API: `code` y `message`, nunca `details` ni `cause`. La excepción
+ * (desde F4-T19, seguimiento de ADR-0011): `PORTAL_NOT_READY` suma `issues`, lo que le falta al
+ * aviso para Portal, que el panel y la CLI muestran para que el operador complete la planilla.
+ */
 export const errorBodySchema = z.object({
-  error: z.object({ code: z.string(), message: z.string() }),
+  error: z.object({
+    code: z.string(),
+    message: z.string(),
+    issues: z.array(portalReadinessIssueSchema).optional(),
+  }),
 });
 export type ErrorBody = z.infer<typeof errorBodySchema>;
 
@@ -283,6 +311,8 @@ export const listingContentResponseSchema = z.object({
   photos: z.array(contentMediaSchema),
   reel: contentMediaSchema.nullable(),
   latestRun: contentRunViewSchema.nullable(),
+  /** Lo que le falta al aviso para Portal (la pestaña Portal; desde F4-T19). */
+  portalReadiness: portalReadinessSchema,
 });
 export type ListingContentResponse = z.infer<typeof listingContentResponseSchema>;
 
@@ -330,6 +360,12 @@ export const publicationViewSchema = z.object({
   externalUrl: z.string().nullable(),
   scheduledAt: z.coerce.date().nullable(),
   publishedAt: z.coerce.date().nullable(),
+  /**
+   * Lo último que informó la plataforma (Portal: el estado del ítem, su vencimiento y, si la pausó
+   * Mercado Libre, el motivo con texto propio; desde F4-T19). `null` hasta el primer dato y en
+   * Instagram.
+   */
+  remoteState: remoteStateSchema.nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -352,6 +388,8 @@ export const contentApproveResponseSchema = z.object({
   created: z.array(publicationViewSchema),
   skipped: z.array(skippedPublicationSchema),
   publications: z.array(publicationViewSchema),
+  /** Solo Portal: lo que le falta al aviso (advertencia: el texto se aprobó igual). */
+  portalReadiness: portalReadinessSchema.nullable(),
 });
 export type ContentApproveResponse = z.infer<typeof contentApproveResponseSchema>;
 
@@ -428,6 +466,34 @@ export const publicationRetireResponseSchema = z.object({
   listingBackToReady: z.boolean(),
 });
 export type PublicationRetireResponse = z.infer<typeof publicationRetireResponseSchema>;
+
+/**
+ * `POST /publications/:id/close` (Portal, spec F4 §4.9): en `live`, `confirmed: true` confirma que
+ * se cierra (es irreversible: volver a publicar crea otro aviso y gasta otro cupo). El cuerpo va
+ * siempre (`{}`).
+ */
+export const publicationCloseBodySchema = z.object({ confirmed: z.boolean().optional() });
+export type PublicationCloseBody = z.infer<typeof publicationCloseBodySchema>;
+
+/**
+ * `POST /publications/:id/pause`, `/resume` y `/close` (Portal, síncronos): la publicación con su
+ * estado en la plataforma y, al cerrar, si era la última en `live` y el aviso volvió a `ready`.
+ */
+export const publicationOperationResponseSchema = z.object({
+  publication: publicationViewSchema,
+  listingBackToReady: z.boolean(),
+});
+export type PublicationOperationResponse = z.infer<typeof publicationOperationResponseSchema>;
+
+/**
+ * `POST /publications/:id/sync` (202): `queued` si se encoló una lectura ahora; `false` si ya había
+ * una programada (después de publicar, o en reintento), que la va a leer.
+ */
+export const publicationSyncResponseSchema = z.object({
+  publicationId: z.string(),
+  queued: z.boolean(),
+});
+export type PublicationSyncResponse = z.infer<typeof publicationSyncResponseSchema>;
 
 /**
  * Un evento de la bitácora (spec F3 §4.3): cambios de estado y un `publish_attempt` por intento,

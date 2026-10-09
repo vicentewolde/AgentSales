@@ -1,5 +1,6 @@
 import {
   hasStartedLive,
+  type PortalReadiness,
   type Publication,
   type PublicationActor,
   type PublicationEvent,
@@ -10,6 +11,7 @@ import type { Context } from "hono";
 import {
   CLI_CLIENT,
   CLIENT_HEADER,
+  type PortalReadinessView,
   type PublicationEventView,
   type PublicationView,
   type SkippedPublicationView,
@@ -35,9 +37,19 @@ export const publicationView = (publication: Publication): PublicationView => ({
   externalUrl: publication.externalUrl,
   scheduledAt: publication.scheduledAt,
   publishedAt: publication.publishedAt,
+  remoteState: publication.remoteState,
   createdAt: publication.createdAt,
   updatedAt: publication.updatedAt,
 });
+
+/** Lo que le falta al aviso para Portal, siempre con su lista (vacía si está listo). */
+export const portalReadinessView = (readiness: PortalReadiness): PortalReadinessView =>
+  readiness.ready
+    ? { ready: true, issues: [] }
+    : {
+        ready: false,
+        issues: readiness.issues.map(({ code, field, message }) => ({ code, field, message })),
+      };
 
 export const skippedView = ({
   platformAccountId,
@@ -54,6 +66,10 @@ const STATUS_PAYLOAD_KEYS = [
   "code",
   "attempt",
   "removedByHand",
+  // Pausar, reactivar, cerrar y el sync (F4-T17): la operación y el estado en la plataforma.
+  "operation",
+  "sync",
+  "remoteStatus",
 ] as const;
 
 /**

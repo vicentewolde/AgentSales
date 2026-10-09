@@ -2,16 +2,25 @@ import {
   AppError,
   type CancelPublicationDeps,
   cancelPublication,
+  closePublication,
+  isAppError,
   type ListingRepository,
   type MediaRepository,
   type MediaStorage,
+  type MercadoLibreAuth,
+  type OperatedPublication,
   PENDING_PUBLICATION_STATUSES,
   type Platform,
+  type PlatformAccountRepository,
+  type PublicationOperations,
   type PublicationRepository,
   type PublishListingDeps,
   type PublishMode,
+  pausePublication,
   publishListing,
   type RetirePublicationDeps,
+  requestPublicationSync,
+  resumePublication,
   retirePublication,
   type StartPublicationDeps,
   startPublication,
@@ -23,11 +32,15 @@ import {
   type ListingPublishResponse,
   listingPublishBodySchema,
   type PublicationEventsResponse,
+  type PublicationOperationResponse,
   type PublicationPublishResponse,
   type PublicationResponse,
   type PublicationRetireResponse,
+  type PublicationSyncResponse,
+  publicationCloseBodySchema,
   publicationRetireBodySchema,
 } from "../contracts/index.js";
+import type { AppLogger } from "../logger.js";
 import { validated } from "../validation.js";
 import { contentMedia } from "./content.js";
 import { actorOf, eventView, publicationView, skippedView } from "./publication-views.js";
@@ -47,7 +60,55 @@ export type PublicationRoutesDeps = PublishListingDeps &
     storage: Pick<MediaStorage, "signedReadUrl">;
     /** El modo de los intentos que se piden por la API (D11): nunca sale del cuerpo. */
     publishMode: PublishMode;
+    /**
+     * Pausar, reactivar y cerrar (spec F4 §4.9): las operaciones de cada plataforma (Portal:
+     * `createPortalOperations` con el tope de 10 s por llamada, que compone `server.ts`), el token
+     * de Portal (`ensureAccessToken`, con el candado de credenciales) y el refresco de Mercado Libre
+     * (`null` sin el par de la app).
+     */
+    operationsFor(platform: Platform): PublicationOperations | undefined;
+    platformAccounts: Pick<
+      PlatformAccountRepository,
+      "get" | "getCredentials" | "changeStatus" | "withCredentialsLock"
+    >;
+    mercadoLibreRefresh: Pick<MercadoLibreAuth, "refresh"> | null;
+    logger: AppLogger;
+    /** Por defecto `OPERATION_TIMEOUT_MS`; los tests lo bajan para ver el corte. */
+    operationTimeoutMs?: number;
   };
+
+/**
+ * Tope de una operación desde la API (spec F4 §4.9 y T19). La señal corta las llamadas a Mercado
+ * Libre, pero no la espera del candado de credenciales (hasta 10 s) ni un refresco ya enviado
+ * (hasta 10 s: cortarlo perdería el par rotado, ADR-0015). Peor caso: una llamada que se cuelga y
+ * da 401 cerca del tope, más el candado y el refresco, unos 25 s más la base: bajo los 30 s de la
+ * CLI y los 35 s del panel. Al vencer se corta (`ML_ABORTED`) y la operación pide un sync.
+ */
+export const OPERATION_TIMEOUT_MS = 15_000;
+
+/**
+ * Mensajes propios de pausar, reactivar y cerrar cuando la operación ya pidió el sync (spec F4
+ * §4.9): el de la plataforma habla de la llamada; el operador necesita saber qué pasa con el estado.
+ */
+const OPERATION_MESSAGES: Readonly<Record<string, string>> = {
+  ML_ABORTED:
+    "Mercado Libre tardó demasiado en responder: AgentSales revisará el estado en un momento (Actualizar)",
+  ML_CONFLICT:
+    "Mercado Libre está procesando otro cambio del aviso: AgentSales revisará el estado en un momento (Actualizar)",
+};
+
+/** Relanza el error de una operación con el mensaje propio, si lo tiene (mismo código). */
+function operationError(error: unknown): unknown {
+  if (!isAppError(error)) return error;
+  const message = OPERATION_MESSAGES[error.code];
+  return message === undefined
+    ? error
+    : new AppError(error.code, message, {
+        retriable: error.retriable,
+        ...(error.details === undefined ? {} : { details: error.details }),
+        cause: error,
+      });
+}
 
 const pending = new Set<string>(PENDING_PUBLICATION_STATUSES);
 
@@ -121,12 +182,49 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
     );
 }
 
+/** Las dependencias de pausar, reactivar y cerrar, con el modo de la API y los avisos al log. */
+const operationDeps = (deps: PublicationRoutesDeps) => ({
+  lock: deps.lock,
+  queue: deps.queue,
+  publications: deps.publications,
+  platformAccounts: deps.platformAccounts,
+  mercadoLibre: deps.mercadoLibreRefresh,
+  operationsFor: deps.operationsFor,
+  apiMode: deps.publishMode,
+  // Solo el paso y el código: nunca el token ni datos del aviso.
+  onWarning: ({
+    publicationId,
+    step,
+    code,
+  }: {
+    publicationId: string;
+    step: string;
+    code: string;
+  }) => deps.logger.warn({ publicationId, step, code }, "un paso secundario de la operación falló"),
+});
+
+const operationBody = (result: OperatedPublication): PublicationOperationResponse => ({
+  publication: publicationView(result.publication),
+  listingBackToReady: result.listingBackToReady,
+});
+
 /**
  * `/publications/:id`: publicar o reintentar una, descartarla, marcarla como retirada y su
- * bitácora (spec F3 §4.3 y §4.8). Cambian el estado dentro del candado del aviso (core); publicar
- * encola después.
+ * bitácora (spec F3 §4.3 y §4.8); pausar, reactivar, cerrar y pedir el sync de una de Portal (spec
+ * F4 §4.9). Cambian el estado dentro del candado del aviso (core); publicar y el sync encolan
+ * después. Pausar, reactivar y cerrar son síncronos: llaman a la plataforma (fuera del candado) con
+ * un tope de `OPERATION_TIMEOUT_MS`.
  */
 export function publicationRoutes(deps: PublicationRoutesDeps) {
+  const operations = operationDeps(deps);
+  const timeout = () => AbortSignal.timeout(deps.operationTimeoutMs ?? OPERATION_TIMEOUT_MS);
+  const operate = async (run: () => Promise<OperatedPublication>) => {
+    try {
+      return operationBody(await run());
+    } catch (error) {
+      throw operationError(error);
+    }
+  };
   return new Hono()
     .get("/:id", validated("param", idParamSchema), async (c) => {
       const { id } = c.req.valid("param");
@@ -173,6 +271,49 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
         return c.json(body, 200);
       },
     )
+    .post("/:id/pause", validated("param", idParamSchema), async (c) => {
+      const body = await operate(() =>
+        pausePublication(operations, {
+          publicationId: c.req.valid("param").id,
+          actor: actorOf(c),
+          signal: timeout(),
+        }),
+      );
+      return c.json(body, 200);
+    })
+    .post("/:id/resume", validated("param", idParamSchema), async (c) => {
+      const body = await operate(() =>
+        resumePublication(operations, {
+          publicationId: c.req.valid("param").id,
+          actor: actorOf(c),
+          signal: timeout(),
+        }),
+      );
+      return c.json(body, 200);
+    })
+    .post(
+      "/:id/close",
+      validated("param", idParamSchema),
+      validated("json", publicationCloseBodySchema),
+      async (c) => {
+        const { confirmed } = c.req.valid("json");
+        const body = await operate(() =>
+          closePublication(operations, {
+            publicationId: c.req.valid("param").id,
+            actor: actorOf(c),
+            ...(confirmed === undefined ? {} : { confirmed }),
+            signal: timeout(),
+          }),
+        );
+        return c.json(body, 200);
+      },
+    )
+    .post("/:id/sync", validated("param", idParamSchema), async (c) => {
+      const { id } = c.req.valid("param");
+      const { queued } = await requestPublicationSync(deps, { publicationId: id });
+      const body: PublicationSyncResponse = { publicationId: id, queued };
+      return c.json(body, 202);
+    })
     .get("/:id/events", validated("param", idParamSchema), async (c) => {
       const { id } = c.req.valid("param");
       if ((await deps.publications.get(id)) === null) throw publicationNotFound(id);

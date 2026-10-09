@@ -380,6 +380,8 @@ describe("GET /listings/:id/content", () => {
       photos: [],
       reel: null,
       latestRun: null,
+      // Lo que le falta al aviso para Portal (F4-T19): la lista completa, con su motivo.
+      portalReadiness: { ready: true, issues: [] },
     });
     expect((await t.app.request(`/listings/${randomUUID()}/content`)).status).toBe(404);
   });

@@ -4,7 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 // El cuerpo de error vive en los contratos compartidos (ADR-0011): un cambio rompe el typecheck
 // de la API, la CLI y el panel a la vez.
-import type { ErrorBody } from "./contracts/index.js";
+import { type ErrorBody, portalReadinessSchema } from "./contracts/index.js";
 import type { AppLogger } from "./logger.js";
 
 export type { ErrorBody };
@@ -38,18 +38,34 @@ const CONFLICTS = new Set([
   "REMOVAL_NOT_CONFIRMED",
   "PUBLISH_MODE_LOCKED",
   // F4-T16: al aviso le falta lo que pide Portal; se completa la planilla y se publica de nuevo.
-  // La lista de lo que falta (`details.issues`) la expone T19 (ADR-0011).
+  // La respuesta lleva la lista de lo que falta (`issues`, F4-T19, seguimiento de ADR-0011).
   "PORTAL_NOT_READY",
-  // F4-T17: una publicación de Portal se cierra, no se marca como retirada (la ruta de retirar ya
-  // existe). Los demás códigos de las operaciones los mapea T19 con sus rutas.
+  // Publicar Portal (spec F4 §4.5 y §4.6): la hoja o la comuna no se encuentran en el catálogo
+  // (se corrige el tipo o la ubicación en la planilla), o el aviso cambió desde que se aprobó.
+  "PORTAL_CATEGORY_NOT_FOUND",
+  "PORTAL_LOCATION_NOT_FOUND",
+  "PUBLICATION_LISTING_CHANGED",
+  // Pausar, reactivar, cerrar y el sync (F4-T17 y T19): el estado o el modo no lo permiten, falta
+  // confirmar el cierre, o lo guardado de la publicación no sirve (se cambia a mano en Mercado
+  // Libre); Mercado Libre rechazó el cambio o hubo un conflicto; el sync leyó algo que cambió.
   "RETIRE_NOT_SUPPORTED",
+  "OPERATION_NOT_SUPPORTED",
+  "PUBLISH_MODE_MISMATCH",
+  "CLOSE_NOT_CONFIRMED",
+  "PORTAL_PROGRESS_UNUSABLE",
+  "PUBLICATION_NOT_PUBLISHED",
+  "PUBLICATION_SYNC_STALE",
+  "ML_ITEM_REJECTED",
+  "ML_CONFLICT",
+  // Sin un paquete con cupo (un 402 sin causas, spec F4 §4.8): se revisa el paquete en Mercado Libre.
+  "ML_NO_QUOTA",
 ]);
 
 /**
- * Errores de Instagram que llegan a la API al conectar (spec F3 §4.8; al publicar solo viajan en
- * `last_error`): un token o permiso que Instagram rechaza es del cliente (400), y una respuesta con
- * otra forma es un fallo de la plataforma (502). `IG_UNAVAILABLE` (503) e `IG_RATE_LIMITED` (429)
- * siguen las reglas generales.
+ * Errores de la plataforma que llegan a la API al conectar (spec F3 §4.8) y, desde F4-T19, en
+ * pausar, reactivar y cerrar (al publicar solo viajan en `last_error`): un token o permiso que la
+ * plataforma rechaza es del cliente (400: reconectar), y una respuesta con otra forma es un fallo de
+ * ella (502). `*_UNAVAILABLE` (503) y `*_RATE_LIMITED` (429) siguen las reglas generales.
  */
 const PLATFORM_REJECTIONS = new Set([
   "IG_AUTH_INVALID",
@@ -70,13 +86,24 @@ const PLATFORM_UNEXPECTED = new Set(["IG_UNEXPECTED_RESPONSE", "ML_UNEXPECTED_RE
  * La API no puede hablar con la plataforma por su propia configuración (falta el par de la app, o
  * Mercado Libre no lo reconoce): 503 hasta que el operador corrija `.env` y reinicie.
  */
-const NOT_CONFIGURED = new Set(["MERCADOLIBRE_NOT_CONFIGURED", "ML_APP_CREDENTIALS_INVALID"]);
+const NOT_CONFIGURED = new Set([
+  "MERCADOLIBRE_NOT_CONFIGURED",
+  "ML_APP_CREDENTIALS_INVALID",
+  // F4-T19: la API no tiene las operaciones de esa plataforma (no debería pasar: `server.ts` las
+  // compone).
+  "PUBLISHER_NOT_CONFIGURED",
+]);
 
 /**
  * Otro proceso tiene el recurso un momento (F4-T08: el candado de credenciales, mientras el worker
  * o la API renuevan el acceso de la cuenta): 503, y el pedido se repite en un momento.
  */
-const BUSY = new Set(["ACCOUNT_LOCK_TIMEOUT"]);
+const BUSY = new Set([
+  "ACCOUNT_LOCK_TIMEOUT",
+  // F4-T19: una operación cortada por el tope de la API (las rutas de operaciones le ponen su
+  // mensaje: ya pidió el sync).
+  "ML_ABORTED",
+]);
 
 /**
  * Datos inválidos que arma el servidor, no el cliente: los de un job, un run guardado y lo que el
@@ -95,6 +122,8 @@ const SERVER_INVALID = new Set([
   "ML_ID_INVALID",
   "ML_BODY_INVALID",
   "ML_PICTURE_INVALID",
+  // Lo que informó la plataforma no calza con `remoteStateSchema` (el sync, F4-T17).
+  "PUBLICATION_REMOTE_STATE_INVALID",
 ]);
 
 /**
@@ -124,8 +153,12 @@ export function errorJson(
   code: string,
   message: string,
   headers?: Headers,
+  issues?: ErrorBody["error"]["issues"],
 ): Response {
-  const response = c.json<ErrorBody>({ error: { code, message } }, status);
+  const response = c.json<ErrorBody>(
+    { error: { code, message, ...(issues === undefined ? {} : { issues }) } },
+    status,
+  );
   headers?.forEach((value, name) => {
     if (name !== "content-type" && name !== "content-length") {
       response.headers.set(name, value);
@@ -135,8 +168,25 @@ export function errorJson(
 }
 
 /**
+ * Lo que le falta al aviso para Portal (`PORTAL_NOT_READY`, desde F4-T19): la única parte de
+ * `details` que sale, campo por campo y validada (código, campo del Excel y motivo en español, sin
+ * datos del aviso). Si no calza, la respuesta va sin ella.
+ */
+function issuesOf(code: string, details: Record<string, unknown> | undefined) {
+  if (code !== "PORTAL_NOT_READY") return undefined;
+  const parsed = portalReadinessSchema.shape.issues.safeParse(details?.issues);
+  return parsed.success
+    ? parsed.data.map(({ code: issueCode, field, message }) => ({
+        code: issueCode,
+        field,
+        message,
+      }))
+    : undefined;
+}
+
+/**
  * Traduce cualquier error a `{ error: { code, message } }`:
- * - nunca expone `details` ni `cause`;
+ * - nunca expone `details` ni `cause`, salvo los `issues` de `PORTAL_NOT_READY`;
  * - un 500 responde un mensaje genérico (el `code` sí se mantiene): el detalle queda en el log;
  * - un error que no es `AppError` responde `500 INTERNAL_ERROR`.
  */
@@ -149,7 +199,14 @@ export function createErrorHandler(logger: AppLogger): ErrorHandler {
         return errorJson(c, status, error.code, INTERNAL_MESSAGE);
       }
       logger.warn({ err: error, path: c.req.path }, "error de la aplicación");
-      return errorJson(c, status, error.code, error.message);
+      return errorJson(
+        c,
+        status,
+        error.code,
+        error.message,
+        undefined,
+        issuesOf(error.code, error.details),
+      );
     }
     // `hono/validator` rechaza un JSON mal formado con su propio 400 en inglés: mismo trato que
     // el `SyntaxError` de `c.req.json()`.

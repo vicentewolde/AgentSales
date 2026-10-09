@@ -539,3 +539,65 @@ describe("el intento de Portal", () => {
     expect(seen).toEqual([{ accessToken: "IGAA-prueba" }]);
   });
 });
+
+describe("la versión del aviso al publicar (F4-T19)", () => {
+  it("una fallida cuyo aviso cambió no vuelve a publishing: PUBLICATION_LISTING_CHANGED al instante", async () => {
+    const { t, start, run } = await setup({
+      publisher: portalPublisher(async () => {
+        throw new AppError("ML_ITEM_REJECTED", "Mercado Libre rechazó el aviso");
+      }).publisher,
+    });
+    const [post] = (await start()).started;
+    if (post === undefined) throw new Error("falta el post");
+    await run(post).catch(() => undefined);
+    await reimport(t, (listing) => ({ priceAmount: (listing.priceAmount ?? 0) + 100 }));
+
+    await expect(start()).rejects.toMatchObject({
+      code: "PUBLICATION_LISTING_CHANGED",
+      details: { publicationId: post.id, reason: "changed" },
+    });
+    await expect(
+      startPublication(t.deps, { publicationId: post.id, dryRun: false, actor: "operator" }),
+    ).rejects.toMatchObject({ code: "PUBLICATION_LISTING_CHANGED" });
+    expect(t.publications.all()[0]?.status).toBe("failed");
+  });
+
+  it("una publicación sin versión del aviso también es PUBLICATION_LISTING_CHANGED (como el worker)", async () => {
+    const t = await createPublicationScenario({ platform: PORTAL, approve: false });
+    await approveContent(t.approveDeps, { contentId: await t.portalId(), actor: "operator" });
+    const [approved] = t.publications.all();
+    if (approved === undefined) throw new Error("falta la publicación");
+    // Una anterior a la migración 0007: sin versión (el repositorio guarda "" como `null`).
+    const legacy = await t.publications.create(
+      { ...approved, format: "reel", listingSourceHash: "" },
+      { actor: "system" },
+    );
+    expect(legacy.listingSourceHash).toBeNull();
+
+    await expect(
+      startPublication(t.deps, { publicationId: legacy.id, dryRun: true, actor: "operator" }),
+    ).rejects.toMatchObject({
+      code: "PUBLICATION_LISTING_CHANGED",
+      details: { reason: "missing_version" },
+    });
+  });
+
+  it("si la versión actual no se puede leer, una publicación sin versión tampoco pasa", async () => {
+    const t = await createPublicationScenario({ platform: PORTAL, approve: false });
+    await approveContent(t.approveDeps, { contentId: await t.portalId(), actor: "operator" });
+    const [approved] = t.publications.all();
+    if (approved === undefined) throw new Error("falta la publicación");
+    const legacy = await t.publications.create(
+      { ...approved, format: "reel", listingSourceHash: "" },
+      { actor: "system" },
+    );
+    t.listings.getSourceHash = async () => null;
+
+    await expect(
+      startPublication(t.deps, { publicationId: legacy.id, dryRun: true, actor: "operator" }),
+    ).rejects.toMatchObject({
+      code: "PUBLICATION_LISTING_CHANGED",
+      details: { reason: "missing_version" },
+    });
+  });
+});

@@ -3,6 +3,7 @@ import { AppError } from "../errors.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
 import {
   channelPublications,
   createPublications,
@@ -14,6 +15,7 @@ import {
   type PortalCheckDeps,
   portalDefinitionsBeforeLock,
   requireCompatibleMode,
+  requireCurrentListingVersion,
   requireNoActiveRun,
   requirePortalPublishable,
   requirePublishableListing,
@@ -54,7 +56,8 @@ export type PublishListingResult = {
  * - una fallida que ya empezó en `live` y se pide en `dry-run` → `PUBLISH_MODE_LOCKED`;
  * - en Portal, si hay algo que pasar a `publishing`: el texto aprobado tiene errores según la
  *   revisión de hoy → `CONTENT_HAS_ERRORS`, o al aviso le falta lo que pide Portal →
- *   `PORTAL_NOT_READY` (con `details.issues`; spec F4 §4.5);
+ *   `PORTAL_NOT_READY` (con `details.issues`; spec F4 §4.5), o una que ya existía es de otra
+ *   versión del aviso → `PUBLICATION_LISTING_CHANGED` (§4.6);
  * - no hay nada que iniciar ni reencolar → `NOTHING_TO_PUBLISH` (si un formato está ocupado por
  *   una publicación de un texto anterior, el mensaje dice que se retire o descarte primero);
  * - la cola no está → `QUEUE_UNAVAILABLE` (503), con las que quedaron sin job en
@@ -122,6 +125,11 @@ export async function publishListing(
       );
     }
 
+    // Primero la versión: con un aviso recargado, descartar y aprobar de nuevo es inevitable, y así
+    // el operador no completa la planilla para recién después enterarse.
+    if (PUBLISH_LISTING_PLATFORMS.has(platform)) {
+      await requireCurrentListingVersion(locked, listing.id, startable);
+    }
     if (definitions !== null && startable.length + opening.toCreate.length > 0) {
       await requirePortalPublishable(locked, { listing, content, definitions });
     }

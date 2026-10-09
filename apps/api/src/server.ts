@@ -33,6 +33,7 @@ import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
+import { createApiOperations } from "./portal.js";
 import { instagramStartUrlOf } from "./routes/oauth.js";
 import { localAccess } from "./security.js";
 import { readApiVersion } from "./version.js";
@@ -121,6 +122,8 @@ const app = createApp({
     configured: Boolean(env.ML_APP_ID && env.ML_CLIENT_SECRET),
     redirectUri: env.ML_REDIRECT_URI,
   },
+  // Pausar, reactivar, cerrar y el sync de Portal (F4-T19): 10 s por llamada, sin envolver.
+  operationsFor: createApiOperations(),
   oauthState: createStateSigner(env.APP_ENCRYPTION_KEY),
   // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).
   panelUrl: `http://localhost:${env.WEB_PORT}`,

@@ -11,7 +11,9 @@ import type {
   MediaRepository,
   MediaStorage,
   MercadoLibreAuth,
+  Platform,
   PlatformAccountRepository,
+  PublicationOperations,
   PublicationRepository,
   PublishMode,
 } from "@agentsales/core";
@@ -77,6 +79,14 @@ export type AppDeps = {
    * la app (sin él, conectar no llama) y la dirección de retorno que se muestra (`ML_REDIRECT_URI`).
    */
   mercadoLibre: { auth: MercadoLibreAuth; configured: boolean; redirectUri: string };
+  /**
+   * Pausar, reactivar, cerrar y el sync de Portal (spec F4 §4.9, F4-T19): las operaciones de cada
+   * plataforma, **sin envolver** (el modo lo decide la publicación). `server.ts` compone las de
+   * Portal con un cliente de ítems de 10 s por llamada (`MERCADOLIBRE_API_TIMEOUT_MS`).
+   */
+  operationsFor(platform: Platform): PublicationOperations | undefined;
+  /** Solo para tests; por defecto `OPERATION_TIMEOUT_MS` (15 s). */
+  operationTimeoutMs?: number;
   /** Firma del `state` del OAuth (`createStateSigner`, que compone `server.ts`). */
   oauthState: OAuthDeps["oauthState"];
   /** La URL absoluta del panel, adonde vuelve el OAuth. */
@@ -96,6 +106,12 @@ export type AppDeps = {
 
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
 export function createApp(deps: AppDeps) {
+  // El refresco del token de Portal, solo con el par de la app (sin él, uno por vencer es
+  // `MERCADOLIBRE_NOT_CONFIGURED` sin llamar).
+  const publicationDeps = {
+    ...deps,
+    mercadoLibreRefresh: deps.mercadoLibre.configured ? deps.mercadoLibre.auth : null,
+  };
   const app = new Hono()
     .use(requestLogger(deps.logger))
     .use(hostGuard(deps.access.allowedHosts))
@@ -113,8 +129,8 @@ export function createApp(deps: AppDeps) {
     // Encadenadas con `.route()`, así `AppType` conserva el esquema de cada ruta (ADR-0011).
     .route("/listings", listingRoutes(deps))
     .route("/listings", listingContentRoutes(deps))
-    .route("/listings", listingPublicationRoutes(deps))
-    .route("/publications", publicationRoutes(deps))
+    .route("/listings", listingPublicationRoutes(publicationDeps))
+    .route("/publications", publicationRoutes(publicationDeps))
     .route("/content-runs", contentRunRoutes(deps))
     .route("/contents", contentRoutes(deps))
     .route("/brokers", brokerRoutes(deps))
