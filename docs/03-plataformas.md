@@ -55,6 +55,7 @@ Detalle verificado en `docs/integraciones/mercadolibre.md` (2026-10-06, leyendo 
   - Selectores centralizados en un solo archivo.
   - Capturas de pantalla ante errores.
 - **Nunca** resolver captchas ni evadir verificaciones: si aparece una, se detiene y avisa al operador.
+- **Desde el spec de F5** (ADR-0017, nota `docs/integraciones/fb-marketplace.md`): el operador hace también el clic de *Siguiente*; la sesión vive en un perfil fuera del repo (la base no guarda credenciales); el enlace lo detecta la ventana (solo la primera navegación desde el formulario) o lo pega el operador; no se leen estados de Facebook (las Condiciones de Meta prohíben recolectar datos con medios automatizados), así que retirar es a mano; `dry-run` no abre Facebook; ante cualquier pantalla fuera de la lista blanca, captura y se cierra la ventana; el precio va en pesos (la UF se convierte con el valor oficial del día, `docs/integraciones/uf.md`).
 
 ## Yapo (post-MVP)
 

@@ -73,7 +73,9 @@ Spec detallado: `docs/specs/fase-4-portal-inmobiliario.md`.
 
 **Al empezar, pendiente de F4:** la prueba en vivo de Portal (spec F4 §6, criterios 1 a 3, y §7, paso 6), y confirmar lo que `validate` no revisó sin cupo: `CMG_SITE` oculto, la forma de las superficies, `address_line` con `show_exact_address = false`, la descripción dentro del cuerpo y que el 402 sea por falta de cupo.
 
-**Aceptación:** el operador publica 3 propiedades en Marketplace haciendo solo el clic final.
+**Aceptación:** el operador publica 3 propiedades en Marketplace haciendo solo el clic final. Desde el spec (D10, respuesta del operador): en `live` el sistema llena 3 formularios y el operador los revisa sin publicarlos, salvo una propiedad real; la confirmación con enlace se prueba con tests.
+
+**Spec:** `docs/specs/fase-5-marketplace.md` (ADR-0017). Suma la conversión de UF a pesos con el valor oficial del día (D9) y el plan B de copiar y pegar en el panel (D13).
 
 ## F6 · Calendario + seguimiento
 - Programar por publicación y por lote ("publicar estas 5 el lunes a las 10:00").

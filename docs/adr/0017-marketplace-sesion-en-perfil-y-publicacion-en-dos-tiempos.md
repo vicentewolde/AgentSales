@@ -1,0 +1,39 @@
+# ADR-0017 · Marketplace: la sesión vive en un perfil local, sin credenciales en la base, y la publicación se confirma en dos tiempos
+
+- **Estado:** Aceptado
+- **Fecha:** 2026-10-09
+- **Modifica a:** ADR-0004 (detalla cómo se implementa), ADR-0005 (jobs `marketplace.login` y `marketplace.profile`), ADR-0014 (punto 8, contrato de `Publisher`; descartar y quitar la aprobación), ADR-0015 (punto 7), ADR-0016 (Marketplace no declara `preflight`), `docs/01-arquitectura.md` y `docs/02-modelo-datos.md`
+
+## Contexto
+- Facebook Marketplace no tiene API para un corredor en Chile (`docs/integraciones/fb-marketplace.md` §1). ADR-0004 decidió Playwright con un perfil persistente por corredor, login manual y el clic final del operador.
+- Hoy una cuenta `connected` siempre tiene credenciales cifradas (`upsertConnected` las exige) y el intento de publicación las descifra. En Marketplace no hay token: la "credencial" son las cookies del perfil del navegador.
+- Hoy `publish` termina en "publicado" (`external_id` y enlace). En Marketplace el sistema llena el formulario y se detiene: quien publica es el operador, y el resultado llega después (o nunca).
+- La máquina de estados ya tiene `awaiting_manual_confirm` (`publishing` → `awaiting_manual_confirm` → `published`, `failed` o `cancelled`), pero ningún publisher puede llegar ahí.
+- Las Condiciones de Meta prohíben recolectar datos por medios automatizados (nota §9): leer el estado de los avisos con el navegador no es aceptable.
+- En `dry-run`, ADR-0016 permite lecturas y validaciones sin efectos. En Marketplace no existe una validación sin efectos: abrir el formulario y subir fotos ya escribe en Facebook (un borrador, NO VERIFICADO).
+
+## Decisión
+1. **Cuenta sin credenciales:** una cuenta `connected` de `fb_marketplace` tiene `credentials_encrypted = null` y `token_expires_at = null`. `upsertConnected` acepta credenciales ausentes **solo** en esa plataforma. `external_account_id` es el id de la cookie `c_user` del perfil (el único dato que se lee de las cookies). `meta` = `marketplaceAccountMetaSchema` (`userId`, `connectedAt`, `sessionCheckedAt`). Sin migración: las columnas ya aceptan `null`.
+2. **El perfil es un secreto local:** `BROWSER_PROFILES_DIR/<broker_id>/fb_marketplace`, fuera del workspace (la configuración rechaza una ruta dentro), `0700`, un proceso a la vez (candado). Nunca va a git, R2, logs ni errores. Desconectar cambia la base y encola `marketplace.profile`: el worker, dueño del perfil, cierra sus ventanas y borra la carpeta.
+3. **Contrato `Publisher`:** suma `manualConfirm?: true` (`withDryRun` la copia). `PublishResult` suma la variante `{ handoff: "manual_confirm"; simulated; notes? }`. Un publisher con `manualConfirm` nunca devuelve "publicado", y uno sin él nunca devuelve `handoff`. `PublishContext.credentials` pasa a opcional. Con `handoff`, el intento pasa la publicación a `awaiting_manual_confirm` escribiendo el progreso completo de ese intento, y `publishPublication` devuelve la salida nueva `awaiting_manual_confirm`. La ventana abierta no viaja por core: el publisher la entrega al worker (`onHandoff`), que empieza a vigilarla solo con esa salida y la cierra en cualquier otra. Después, el progreso solo cambia con `updateProgress`, condicional en `awaiting_manual_confirm`.
+4. **Confirmación en dos tiempos:** `confirmManualPublication` (`awaiting_manual_confirm` → `published`) con la URL del aviso: la pega el operador o la detecta el worker, y en ese caso solo vale la primera navegación de la pestaña del formulario desde `/marketplace/create/…` a `/marketplace/item/<id>`. En `live` es obligatoria y se normaliza (`parseMarketplaceItemUrl`). `markNotPublished` (`awaiting_manual_confirm` → `failed`) solo con la palabra del operador, y no se deshace (`failed → published` no existe). **El sistema nunca da por publicado ni por no publicado lo que no vio**: si la ventana se cierra sin ver el aviso, la publicación sigue esperando; y mientras espere, descartar, quitar la aprobación y desconectar la cuenta responden `MANUAL_CONFIRM_PENDING` (la máquina admite `awaiting_manual_confirm → cancelled`, pero el caso de uso no lo deja en Marketplace).
+5. **El sistema nunca hace clic en Siguiente ni en Publicar**, nunca resuelve ni evade captchas o verificaciones y nunca oculta que es un navegador automatizado. Lista blanca: cualquier página que no sea el formulario esperado detiene el intento con captura y cierra la ventana. Las verificaciones las resuelve el operador en la ventana de conectar la cuenta, que no automatiza nada. El límite diario y "un formulario a la vez" por cuenta los revisa core en el intento, antes de llamar al publisher.
+6. **Sin lectura de estados:** Marketplace no implementa `getStatus`, `pause`, `resume` ni `close`. El único dato que se lee de Facebook después de abrir el formulario es la dirección de la ventana que el operador tiene abierta. Retirar es "Marcar como retirada" (F3) después de borrarlo a mano.
+7. **`dry-run` no abre Facebook:** `withDryRun` simula el `handoff` sin llamar al envuelto; Marketplace no declara `preflight`. La prueba del formulario real es `pnpm fb:smoke` (operador) y `live`.
+8. **La ventana la tiene el worker:** la API encola (login, publicar, olvidar el perfil) y el worker, que corre en el equipo del operador, abre Chromium con ventana visible y vigila la ventana abierta fuera del job (la cola no espera el clic). La vigilancia relee la publicación y cierra la ventana cuando ya no espera. Marketplace solo funciona donde el worker tiene pantalla.
+
+## Consecuencias
+- El intento de publicación deja de suponer credenciales en todas las cuentas; el de Marketplace no las pide.
+- La CLI y el panel tienen un paso nuevo (confirmar o "no lo publiqué"), y una publicación puede quedar días en `awaiting_manual_confirm` si el operador no responde: cuenta como pendiente (bloquea preparar el contenido del aviso), como dice ADR-0014.
+- Sin sincronización, AgentSales no sabe si Facebook rechazó, ocultó o borró un aviso: lo dice el operador. Es el precio de no recolectar datos con un robot.
+- Un despliegue en la nube (F7) no puede abrir la ventana del corredor: Marketplace queda en el equipo de cada corredor (o en el plan B, copiar y pegar).
+- Restaurar la base no recupera la sesión (vive en el perfil), y borrar el perfil obliga a iniciar sesión otra vez.
+
+## Alternativas descartadas
+- **Guardar las cookies cifradas en la base:** serían credenciales de sesión completas de Facebook en un servicio en la nube (Neon); un perfil local es lo que recomienda Playwright y no sale del equipo.
+- **El publisher espera el clic dentro del job:** bloquearía la cola de publicar (Instagram y Portal) hasta 30 min por aviso.
+- **Dar por no publicada la publicación al cerrarse la ventana:** si el operador publicó y la detección falló, un reintento duplicaría el aviso.
+- **Leer "Tus publicaciones" para saber el estado:** es recolección automatizada (Condiciones de Meta) y suma riesgo a la cuenta.
+- **Abrir el formulario en `dry-run`:** escribe en Facebook (fotos, posible borrador) y no hay forma de validar sin efectos.
+
+## Seguimiento (opcional)
