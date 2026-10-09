@@ -1,5 +1,10 @@
 import type { AppType } from "@agentsales/api";
-import { CLI_CLIENT, CLIENT_HEADER, errorBodySchema } from "@agentsales/api/contracts";
+import {
+  CLI_CLIENT,
+  CLIENT_HEADER,
+  errorBodySchema,
+  type PortalReadinessIssueView,
+} from "@agentsales/api/contracts";
 import { type HealthReport, healthReportSchema } from "@agentsales/core";
 import { hc } from "hono/client";
 import type { z } from "zod";
@@ -19,13 +24,22 @@ export class ApiCallError extends Error {
   readonly status: number | undefined;
   /** El mensaje de la API, sin el código delante (`message` es `CODE: mensaje`). */
   readonly apiMessage: string | undefined;
+  /** Solo en `PORTAL_NOT_READY`: lo que le falta al aviso, uno por motivo (spec F4 §4.11). */
+  readonly issues: readonly PortalReadinessIssueView[] | undefined;
 
-  constructor(message: string, code?: string, status?: number, apiMessage?: string) {
+  constructor(
+    message: string,
+    code?: string,
+    status?: number,
+    apiMessage?: string,
+    issues?: readonly PortalReadinessIssueView[],
+  ) {
     super(message);
     this.name = "ApiCallError";
     this.code = code;
     this.status = status;
     this.apiMessage = apiMessage;
+    this.issues = issues;
   }
 }
 
@@ -125,6 +139,7 @@ export async function unwrap<S extends z.ZodType>(
           parsed.data.error.code,
           res.status,
           parsed.data.error.message,
+          parsed.data.error.issues,
         )
       : new ApiCallError(`la API respondió ${res.status}`, undefined, res.status);
   }

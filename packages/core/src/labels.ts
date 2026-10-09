@@ -101,6 +101,13 @@ export const PUBLICATION_FORMAT_TEXT: Readonly<Record<PublicationFormat, string>
   reel: "reel",
 };
 
+/**
+ * El formato de una publicación según su canal (spec F4 §4.8): en Portal hay uno solo, el aviso
+ * (`post`); en Instagram, carrusel o reel. Lo usan la CLI y el panel.
+ */
+export const publicationFormatText = (platform: Platform, format: PublicationFormat): string =>
+  platform === "portal_inmobiliario" ? "aviso" : PUBLICATION_FORMAT_TEXT[format];
+
 /** El modo de un intento de publicación (`publications.dry_run`, D11 del spec F3). */
 export const publicationModeText = (dryRun: boolean): string => (dryRun ? "simulación" : "en vivo");
 

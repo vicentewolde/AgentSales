@@ -342,5 +342,114 @@ describe("runPublish", () => {
 
     expect(await run(setup, fakeClock(), { platform: "portal" })).toBe(1);
     expect(setup.h.errors()).toContain("CONTENT_NOT_APPROVED");
+    expect(setup.h.errors()).toContain("agentsales approve");
+    expect(setup.h.errors()).toContain("--platform portal");
+  });
+});
+
+describe("runPublish · Portal (F4-T20)", () => {
+  /** Le quita el WhatsApp al corredor (Portal lo exige). */
+  async function withoutWhatsapp(t: Setup["t"]) {
+    const listing = await t.listings.get(t.listingId);
+    const broker = listing === null ? null : await t.brokers.findById(listing.brokerId);
+    if (broker === null) throw new Error("falta el corredor");
+    const { id, logoMediaId: _logo, autoPublish: _auto, ...data } = broker;
+    await t.brokers.update(id, { ...data, whatsapp: null });
+  }
+
+  it("--platform portal en simulación publica el aviso, espera y lo informa", async () => {
+    const setup = await publicationHarness({ platform: "portal_inmobiliario" });
+    const { h, t } = setup;
+    const clock = fakeClock(async (elapsed) => {
+      if (elapsed === 4_000) await finish(t);
+    });
+
+    expect(await run(setup, clock, { platform: "portal" })).toBe(0);
+    expect(h.out[0]).toMatch(/^Publicando .* en Portal Inmobiliario \(simulación\): aviso$/);
+    expect(h.text()).toContain("aviso de Portal Inmobiliario: publicada (simulación)");
+    expect(h.text()).toContain("Simulación: no se creó ni cambió nada en Mercado Libre");
+    expect(t.publications.all().map((p) => [p.platform, p.format, p.dryRun])).toEqual([
+      ["portal_inmobiliario", "post", true],
+    ]);
+    expect(t.queue.jobs.map((job) => job.name)).toEqual(["publication.publish"]);
+  });
+
+  it("en vivo la confirmación dice que usa un cupo; publicado, muestra el estado en Mercado Libre", async () => {
+    const setup = await publicationHarness({
+      platform: "portal_inmobiliario",
+      publishMode: "live",
+    });
+    const { h, t } = setup;
+    const questions: string[] = [];
+    const clock = fakeClock(async (elapsed) => {
+      if (elapsed !== 4_000) return;
+      const publication = t.publications.all()[0];
+      if (publication === undefined) throw new Error("falta la publicación");
+      await t.publications.transition(
+        publication.id,
+        {
+          from: "publishing",
+          to: "published",
+          changes: {
+            externalId: "MLC1234567890",
+            externalUrl: "https://www.portalinmobiliario.com/MLC-1234567890",
+            remoteState: {
+              status: "active",
+              subStatus: ["picture_download_pending"],
+              stopTime: "2027-04-07T09:00:00.000-03:00",
+              expirationTime: null,
+              checkedAt: new Date().toISOString(),
+            },
+          },
+        },
+        { actor: "system" },
+      );
+    });
+
+    const code = await run(setup, clock, { platform: "portal" }, async (question) => {
+      questions.push(question);
+      return true;
+    });
+
+    expect(code).toBe(0);
+    expect(questions[0]).toContain("de verdad en Portal Inmobiliario?");
+    expect(questions[0]).toContain("Usa un cupo de tu paquete de Mercado Libre");
+    const text = h.text();
+    expect(text).toContain("aviso de Portal Inmobiliario: publicada (en vivo)");
+    expect(text).toContain("https://www.portalinmobiliario.com/MLC-1234567890");
+    expect(text).toContain("En Mercado Libre: procesando fotos · vence 2027-04-07");
+  });
+
+  it("PORTAL_NOT_READY muestra la lista de lo que falta, una sola vez, y no publica", async () => {
+    const setup = await publicationHarness({ platform: "portal_inmobiliario" });
+    await withoutWhatsapp(setup.t);
+
+    expect(await run(setup, fakeClock(), { platform: "portal" })).toBe(1);
+    const errors = setup.h.errors();
+    expect(errors).toContain(
+      "PORTAL_NOT_READY: Falta información para publicar en Portal Inmobiliario:\n  • ",
+    );
+    expect(errors.match(/WhatsApp/g)?.length).toBeGreaterThanOrEqual(1);
+    // El `message` de la API repite los motivos: no se muestra además de la lista.
+    expect(errors).not.toContain("Portal Inmobiliario: Falta");
+    expect(errors.split("\n").filter((line) => line.startsWith("  • "))).toHaveLength(1);
+    expect(errors).toContain("hoja Corredor");
+    expect(setup.t.publications.all().map((p) => p.status)).toEqual(["approved"]);
+  });
+
+  it("si falla, el reintento sugerido lleva --platform portal", async () => {
+    const setup = await publicationHarness({ platform: "portal_inmobiliario" });
+    const clock = fakeClock(() => finish(setup.t, () => "failed"));
+
+    expect(await run(setup, clock, { platform: "portal" })).toBe(1);
+    expect(setup.h.errors()).toMatch(/Reintenta con agentsales publish \S+ --platform portal,/);
+  });
+
+  it("sin cuenta de Mercado Libre dice cómo conectarla", async () => {
+    const setup = await publicationHarness({ platform: "portal_inmobiliario", account: false });
+
+    expect(await run(setup, fakeClock(), { platform: "portal" })).toBe(1);
+    expect(setup.h.errors()).toContain("ACCOUNT_NOT_CONNECTED");
+    expect(setup.h.errors()).toContain("agentsales accounts connect mercadolibre --broker <slug>");
   });
 });

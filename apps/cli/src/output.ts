@@ -8,7 +8,10 @@ export type Io = {
   colors: Colors;
 };
 
-/** Error detectado por la CLI antes de llamar a la API (una ruta que no existe, un `--broker` vacío…). */
+/**
+ * Error que explica la CLI: uno que detecta antes de llamar a la API (una ruta que no existe, un
+ * `--broker` vacío…) o uno de la API con qué hacer (`OPERATION_UNCONFIRMED`, los 409 explicados).
+ */
 export class CliError extends Error {
   readonly code: string;
   readonly hint: string | undefined;
@@ -99,6 +102,11 @@ export function formatBytes(bytes: number): string {
     unit = next;
   }
   return `${value.toFixed(1).replace(".", ",")} ${unit}`;
+}
+
+/** `2026-10-02`, en la hora local del operador. */
+export function formatDate(date: Date): string {
+  return formatDateTime(date).slice(0, 10);
 }
 
 /** `2026-10-02 14:05`, en la hora local del operador. */

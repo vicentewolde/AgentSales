@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-09
 **Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 25 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
-**Última tarea:** F4-T19 · API de Portal. Antes, F4-T18 (worker: publicar y sincronizar Portal) y F4-T17 (pausar, reactivar, cerrar y sincronizar en core)
-**Siguiente paso:** `/tarea F4-T20` (CLI de Portal: publicar, pausar, reactivar, cerrar y sincronizar). T21 y T22 (panel) y T23 (`ml:smoke --listing`) también tienen sus dependencias. En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
+**Última tarea:** F4-T20 · CLI de Portal. Antes, F4-T19 (API de Portal) y F4-T18 (worker: publicar y sincronizar Portal)
+**Siguiente paso:** `/tarea F4-T21` (panel: Cuentas con Mercado Libre). T22 (panel: Portal en Contenido) y T23 (`ml:smoke --listing`) también tienen sus dependencias. En paralelo, F4-T25 (usuario de prueba de Mercado Libre: la activación de soporte puede tardar)
 
 ## Pendiente del cierre de F3
 - [x] **Refresco del token (demo), 2026-10-07 20:05:** el primer `pnpm dev` lo refrescó al arrancar; vence el 2026-12-06 20:05 (real, ya no estimado). Anotado en la nota de Instagram (§8, punto 4) y en §6 del spec F3
@@ -35,7 +35,7 @@
 | F4-T17 · Pausar, reactivar, cerrar y sincronizar en core | ✅ | #96 |
 | F4-T18 · Worker: publicar y sincronizar Portal | ✅ | #97 |
 | F4-T19 · API de Portal | ✅ | #98 |
-| F4-T20 · CLI de Portal | 🔨 conectar Mercado Libre adelantado | #89 |
+| F4-T20 · CLI de Portal | ✅ | #89, #99 |
 | F4-T21 · Panel: Cuentas con Mercado Libre | ⏳ pendiente | |
 | F4-T22 · Panel: Portal en Contenido | ⏳ pendiente | |
 | F4-T23 · `pnpm ml:smoke --listing` | ⏳ pendiente | |
@@ -94,6 +94,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-09: **F4-T20.** La CLI ya maneja Portal de punta a punta:
+  - **Publicar:** `publish P001 --platform portal` (en vivo pregunta y avisa que usa un cupo). Si al aviso le falta algo, lista los motivos con su columna del Excel, una sola vez. `approve --platform portal` avisa lo que falta, sin dejar de aprobar.
+  - **Operar:** `publications pause|resume|close|sync <id>`. Cerrar en vivo pregunta (`--yes`). Si la API tarda más de 30 s, no reintenta: dice que el cambio pudo aplicarse y cómo revisarlo. `sync` dice si ya había una lectura programada.
+  - **Ver:** `publications` suma el estado en Mercado Libre, el vencimiento y el motivo si Mercado Libre la pausó; la bitácora marca los cambios leídos de allá. En Portal el formato se llama "aviso".
+  - **La revisión dejó:** cerrar solo pregunta por un aviso de Portal (también pausado); un corte de conexión a mitad de una operación también avisa "pudo aplicarse"; `sync` cortado tiene su propio mensaje; los reintentos sugeridos llevan `--platform portal`; el nombre "aviso" pasa a core (`publicationFormatText`) para que el panel (T22) lo use igual; la API ya no nombra el botón Actualizar en sus mensajes.
+  - 17 mutaciones a mano detectadas (una sobrevivió al principio y se le sumó su prueba).
 - 2026-10-08: **F4-T14.** El publicador de Portal ya publica:
   - **Pasos:** revisa el aviso antes de subir nada, sube las fotos de a una (guarda cada una), crea el aviso, carga la descripción y devuelve el enlace y el estado que informa Mercado Libre (por ejemplo, "procesando fotos").
   - **Retomar sin duplicar:** si el aviso ya existe, no se vuelve a armar ni a crear; si la descripción ya está, no se repite; si no se sabe si se creó, lo busca por la marca de la publicación (también entre los pausados y los que procesan fotos) y confirma que sea suyo. Si no aparece o aparecen dos, se detiene y pide revisar a mano: nunca crea dos avisos.

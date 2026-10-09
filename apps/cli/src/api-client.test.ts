@@ -120,6 +120,20 @@ describe("unwrap", () => {
     });
   });
 
+  it("PORTAL_NOT_READY trae la lista de lo que falta; los demás errores, sin lista", async () => {
+    const issue = { code: "PORTAL_WHATSAPP_MISSING", field: null, message: "Falta el WhatsApp" };
+    const notReady = response(409, {
+      error: { code: "PORTAL_NOT_READY", message: "Falta información", issues: [issue] },
+    });
+    await expect(unwrap(notReady, schema)).rejects.toMatchObject({
+      code: "PORTAL_NOT_READY",
+      apiMessage: "Falta información",
+      issues: [issue],
+    });
+    const other = response(409, { error: { code: "INVALID_TRANSITION", message: "no" } });
+    await expect(unwrap(other, schema)).rejects.toMatchObject({ issues: undefined });
+  });
+
   it("un corte por timeout mientras llega el cuerpo es TIMEOUT", async () => {
     const cut = {
       ok: true,

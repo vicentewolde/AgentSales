@@ -81,4 +81,20 @@ describe("runApprove", () => {
     expect(setup.h.errors()).toContain("PLATFORM_INVALID");
     expect(setup.h.requests).toEqual([]);
   });
+
+  it("Portal: nace el aviso y, si le falta algo al aviso, lo avisa (se aprueba igual)", async () => {
+    const setup = await publicationHarness({ platform: "portal_inmobiliario", approve: false });
+    const listing = await setup.t.listings.get(setup.t.listingId);
+    const broker = listing === null ? null : await setup.t.brokers.findById(listing.brokerId);
+    if (broker === null) throw new Error("falta el corredor");
+    const { id, logoMediaId: _logo, autoPublish: _auto, ...data } = broker;
+    await setup.t.brokers.update(id, { ...data, whatsapp: null });
+
+    expect(await run(setup, { platform: "portal" })).toBe(0);
+    expect(setup.h.text()).toContain(
+      "✓ Portal Inmobiliario: aprobado · listas para publicar: aviso",
+    );
+    expect(setup.h.errors()).toContain("Para publicar en Portal falta:");
+    expect(setup.h.errors()).toMatch(/ {4}• .*WhatsApp/);
+  });
 });
