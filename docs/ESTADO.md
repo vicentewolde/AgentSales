@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-09
 **Fase actual:** F4 · Portal Inmobiliario: spec aprobado (`docs/specs/fase-4-portal-inmobiliario.md`, 25 tareas). F3 cerrada (`docs/specs/fase-3-aprobacion-instagram.md`, tag `v0.3.0`)
-**Última tarea:** lote A: F4-T21 (panel: Cuentas con Mercado Libre) y F4-T22 (panel: Portal en Contenido), PR #100. Antes, F4-T20 (CLI de Portal)
-**Siguiente paso:** el lote B, `/tarea F4-T23 F4-T25` (`ml:smoke --listing` y el paso a paso del usuario de prueba de Mercado Libre: la activación de soporte puede tardar); después, F4-T24 (cierre)
+**Última tarea:** lote B: F4-T23 (`ml:smoke --listing`) y F4-T25 (usuario de prueba de Mercado Libre y `pnpm ml:test-user`), PR #101. Antes, el lote A (F4-T21 y F4-T22, #100)
+**Siguiente paso:** tú: crear el usuario de prueba (`pnpm ml:test-user --broker agentsales-pruebas`) y pedir su activación a soporte (checklist, `docs/07-checklist-cuentas.md`). Después, `/fase-cerrar 4` (F4-T24): si la activación no llega a tiempo, F4 se cierra con la simulación (D15)
 
 ## Pendiente del cierre de F3
 - [x] **Refresco del token (demo), 2026-10-07 20:05:** el primer `pnpm dev` lo refrescó al arrancar; vence el 2026-12-06 20:05 (real, ya no estimado). Anotado en la nota de Instagram (§8, punto 4) y en §6 del spec F3
@@ -38,8 +38,8 @@
 | F4-T20 · CLI de Portal | ✅ | #89, #99 |
 | F4-T21 · Panel: Cuentas con Mercado Libre | ✅ | #100 |
 | F4-T22 · Panel: Portal en Contenido | ✅ (los estados de un aviso publicado se ven en la demo de T24) | #100 |
-| F4-T23 · `pnpm ml:smoke --listing` | ⏳ pendiente | |
-| F4-T25 · Usuario de prueba de Mercado Libre (D15) | ⏳ pendiente | |
+| F4-T23 · `pnpm ml:smoke --listing` | ✅ | #101 |
+| F4-T25 · Usuario de prueba de Mercado Libre (D15) | 🔨 falta que pidas la activación a soporte | #101 |
 | F4-T24 · Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
@@ -94,6 +94,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-09: **F4-T23 y F4-T25 (lote B).**
+  - **`pnpm ml:smoke --listing P001`** (lo corres tú; no necesita `pnpm dev`): arma el aviso real de la propiedad y solo le pregunta a Mercado Libre si lo aceptaría. Nunca sube fotos ni crea nada (las escrituras se cortan antes de llamar). Sin paquete dice "no verificado"; con el usuario de prueba y su paquete, lo revisa completo. El informe guarda lo que se mandó, sin contacto, dirección ni enlaces.
+  - **Usuario de prueba:** la doc dice que se crea con el acceso de tu cuenta real (no con el de la app). Por eso existe **`pnpm ml:test-user --broker agentsales-pruebas`** (tu decisión): crea uno, muestra el id y el apodo y deja la clave en tu portapapeles, sin imprimirla. El paso a paso completo (activación con el formulario de soporte, paquete sin cargo, conectarlo a `agentsales-pruebas`) está en la checklist.
+  - **Ojo:** conectar el usuario de prueba a `agentsales-pruebas` reemplaza tu cuenta real ahí durante la prueba; al final se reconecta la real.
+  - **NO VERIFICADO en la doc:** cuánto tarda la activación, si el aviso de prueba se ve en el buscador de Portal y si pide otras verificaciones al entrar.
+  - 6 mutaciones a mano detectadas.
 - 2026-10-09: **Forma de trabajo nueva (tu decisión):** las tareas relacionadas van en lotes (una rama y un PR), con un solo `pnpm check` y sin simulación local de la CI (la de GitHub corre en un clon limpio y el merge la exige en verde). Lotes de F4: A = T21 + T22 (panel), B = T23 + T25 (Mercado Libre), después T24. `CLAUDE.md` (reglas 2 y 5) y la skill `/tarea` al día.
 - 2026-10-09: **F4-T21 y F4-T22 (lote A).** El panel ya maneja Portal:
   - **Cuentas:** por corredor, Instagram y Mercado Libre. Mercado Libre muestra su cuenta (el nombre tal cual, vencimiento estimado, permisos) y, si no está conectada o vence, los dos comandos para copiar (los mismos de la CLI). Sin el par de la app en la API, dice qué falta.

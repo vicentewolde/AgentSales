@@ -214,7 +214,7 @@ const STOP_CODES = new Set([
 ]);
 
 /** Qué hacer ante los errores que tienen arreglo del lado del operador. */
-const HINTS: Readonly<Record<string, string>> = {
+export const HINTS: Readonly<Record<string, string>> = {
   ACCOUNT_NOT_CONNECTED:
     "Conecta la cuenta (con pnpm dev): pnpm -s cli accounts connect mercadolibre --broker <slug>",
   MERCADOLIBRE_NOT_CONFIGURED: "Falta ML_APP_ID o ML_CLIENT_SECRET en .env (pnpm -s cli doctor)",
@@ -233,7 +233,7 @@ const HINTS: Readonly<Record<string, string>> = {
 };
 
 /** El 401 repetido: no se marca la cuenta (spec F4-T10); se dice qué revisar. */
-const REJECTED_AFTER_REFRESH_HINT =
+export const REJECTED_AFTER_REFRESH_HINT =
   "Mercado Libre rechazó el acceso aun después de renovarlo. ml:smoke no marca la cuenta como vencida: revisa pnpm -s cli accounts y, si sigue, reconéctala";
 
 /** Valores de muestra por atributo (nota §4.6): solo para `validate`, nunca se publican. */
@@ -284,7 +284,7 @@ export function smokeItems(items: MercadoLibreItems): MlSmokeDeps["items"] {
   return { searchItems: (...args) => items.searchItems(...args) };
 }
 
-const errorOf = (section: string, error: AppError): MlSmokeError => {
+export const errorOf = (section: string, error: AppError): MlSmokeError => {
   const details: Record<string, unknown> = {};
   for (const key of ["httpStatus", "error", "reason", "call", "kind", "level"] as const) {
     const value = error.details?.[key];
@@ -301,7 +301,7 @@ const errorOf = (section: string, error: AppError): MlSmokeError => {
 };
 
 /** Los códigos de Mercado Libre de un error (status, `error` y causas), para la salida. */
-function mercadoLibreCodes(error: MlSmokeError): string {
+export function mercadoLibreCodes(error: MlSmokeError): string {
   const details = error.details ?? {};
   const parts: string[] = [];
   if (typeof details.httpStatus === "number") parts.push(`HTTP ${details.httpStatus}`);

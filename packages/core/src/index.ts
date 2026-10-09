@@ -371,12 +371,15 @@ export {
 } from "./publication-state.js";
 export { dryRunExternalId, withDryRun } from "./publish/dry-run.js";
 export {
+  assemblePublishInput,
   buildPublishInput,
   checkPublishInput,
   maskWhatsapp,
   PUBLISH_MEDIA_URL_TTL_S,
   publishAttemptRecord,
   publishInputInvalid,
+  signPublishMedia,
+  toPublishListing,
 } from "./publish/input.js";
 export * from "./redact.js";
 export { RUN_WAIT } from "./run-wait.js";

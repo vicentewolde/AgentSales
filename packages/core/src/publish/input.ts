@@ -48,7 +48,7 @@ const listingChanged = (publicationId: string, reason: "changed" | "missing_vers
  * Los datos del aviso que van en el input: nunca `internal_notes` ni `attributes._extra` (columnas
  * desconocidas del Excel, que tampoco ve la IA: pueden traer datos privados como la comisión).
  */
-function publishListing(listing: Listing): PublishListing {
+export function toPublishListing(listing: Listing): PublishListing {
   const { _extra: _unknownColumns, ...attributes } = listing.attributes;
   return {
     id: listing.id,
@@ -93,8 +93,62 @@ async function listingPart(
     });
   }
   return {
-    listing: publishListing(listing),
+    listing: toPublishListing(listing),
     brokerContact: { name: broker.name, email: broker.email, whatsapp: broker.whatsapp },
+  };
+}
+
+/** Los medios de un intento con URLs firmadas nuevas (1 hora), en su orden. */
+export function signPublishMedia(
+  storage: Pick<MediaStorage, "signedReadUrl">,
+  items: readonly Media[],
+): Promise<PublishMediaItem[]> {
+  return Promise.all(
+    items.map(
+      async (item): Promise<PublishMediaItem> => ({
+        mediaId: item.id,
+        kind: item.kind,
+        mime: item.mime,
+        storagePath: item.storagePath,
+        url: await storage.signedReadUrl(item.storagePath, PUBLISH_MEDIA_URL_TTL_S),
+        bytes: item.bytes,
+        width: item.width,
+        height: item.height,
+        durationS: item.durationS,
+      }),
+    ),
+  );
+}
+
+/**
+ * La parte pura de `buildPublishInput` (desde F4-T23): el texto según el canal (en Instagram,
+ * `instagramCaption`, sin título), los medios ya firmados y, en Portal y Marketplace, el aviso y el
+ * contacto. La usa también `ml:smoke --listing`, que no tiene publicación y no revisa la versión.
+ */
+export function assemblePublishInput({
+  publicationId,
+  platform,
+  format,
+  content,
+  media,
+  listingData,
+}: {
+  publicationId: string;
+  platform: Platform;
+  format: Publication["format"];
+  content: Pick<Content, "title" | "body" | "hashtags">;
+  media: PublishMediaItem[];
+  listingData: { listing: PublishListing; brokerContact: PublishBrokerContact } | null;
+}): PublishInput {
+  return {
+    publicationId,
+    platform,
+    format,
+    ...(platform === "instagram"
+      ? { title: null, caption: instagramCaption(content) }
+      : { title: content.title, caption: content.body }),
+    media,
+    ...(listingData ?? {}),
   };
 }
 
@@ -149,31 +203,14 @@ export async function buildPublishInput(
   const listingData = PUBLISH_LISTING_PLATFORMS.has(publication.platform)
     ? await listingPart(deps, publication)
     : null;
-  const signed = await Promise.all(
-    items.map(
-      async (item): Promise<PublishMediaItem> => ({
-        mediaId: item.id,
-        kind: item.kind,
-        mime: item.mime,
-        storagePath: item.storagePath,
-        url: await deps.storage.signedReadUrl(item.storagePath, PUBLISH_MEDIA_URL_TTL_S),
-        bytes: item.bytes,
-        width: item.width,
-        height: item.height,
-        durationS: item.durationS,
-      }),
-    ),
-  );
-  return {
+  return assemblePublishInput({
     publicationId: publication.id,
     platform: publication.platform,
     format: publication.format,
-    ...(publication.platform === "instagram"
-      ? { title: null, caption: instagramCaption(content) }
-      : { title: content.title, caption: content.body }),
-    media: signed,
-    ...(listingData ?? {}),
-  };
+    content,
+    media: await signPublishMedia(deps.storage, items),
+    listingData,
+  });
 }
 
 /**
