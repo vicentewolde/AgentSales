@@ -4,6 +4,7 @@ import { type ReactNode, useId } from "react";
 import { AccountCard } from "../components/accounts/AccountCard.js";
 import { expiryState, visibleAccounts } from "../components/accounts/accounts.js";
 import { ConnectBox } from "../components/accounts/ConnectBox.js";
+import { MarketplaceConnectBox } from "../components/accounts/MarketplaceConnectBox.js";
 import { MercadoLibreConnectBox } from "../components/accounts/MercadoLibreConnectBox.js";
 import { OAuthReturn } from "../components/accounts/OAuthReturn.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
@@ -72,6 +73,7 @@ function BrokerAccounts({
     );
   const instagram = channelState(own("instagram"), now);
   const mercadoLibre = channelState(own("portal_inmobiliario"), now);
+  const marketplace = channelState(own("fb_marketplace"), now);
   const headingId = `corredor-${broker.id}`;
   return (
     <section aria-labelledby={headingId}>
@@ -108,13 +110,24 @@ function BrokerAccounts({
           />
         )}
       </Channel>
+      <Channel
+        title="Facebook Marketplace"
+        empty="Sin cuenta de Facebook."
+        accounts={marketplace.shown}
+        now={now}
+      >
+        {marketplace.offerConnect && (
+          <MarketplaceConnectBox broker={broker} reconnect={marketplace.reconnect} />
+        )}
+      </Channel>
     </section>
   );
 }
 
 /**
- * Página Cuentas (spec F3 §4.9 y, desde F4-T21, spec F4 §4.12): por corredor, su cuenta de
- * Instagram y la de Mercado Libre, conectar o reconectar y desconectar. No sondea: vuelve a pedir
+ * Página Cuentas (spec F3 §4.9 y, desde F4-T21, spec F4 §4.12; Marketplace desde F5-T12): por
+ * corredor, su cuenta de Instagram, la de Mercado Libre y la de Facebook, conectar o reconectar y
+ * desconectar. No sondea: vuelve a pedir
  * las cuentas al volver a la pestaña (TanStack Query), lo que cubre una conexión hecha desde la CLI.
  */
 export function AccountsPage() {
@@ -131,9 +144,9 @@ export function AccountsPage() {
     <div>
       <h1 className="text-2xl font-semibold tracking-tight">Cuentas</h1>
       <p className="mt-1 text-slate-600">
-        Las cuentas de Instagram y de Mercado Libre de cada corredor. Se renuevan solas mientras el
-        worker corre (pnpm dev): Instagram dura 60 días; Mercado Libre se da de baja tras 4 meses
-        sin renovarse.
+        Las cuentas de Instagram, Mercado Libre y Facebook de cada corredor. Se renuevan solas
+        mientras el worker corre (pnpm dev): Instagram dura 60 días; Mercado Libre se da de baja
+        tras 4 meses sin renovarse. Facebook no vence: si se cierra la sesión, vuelves a iniciarla.
       </p>
       <OAuthReturn />
       {error && (

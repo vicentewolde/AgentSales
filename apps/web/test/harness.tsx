@@ -236,8 +236,10 @@ export async function publicationSetup(
     approve?: boolean;
     publishMode?: "dry-run" | "live";
     intercept?: HarnessOptions["intercept"];
-    /** Portal (F4-T22): la cuenta y el texto aprobado son de Portal. */
-    platform?: "instagram" | "portal_inmobiliario";
+    /** Portal (F4-T22) o Marketplace (F5-T13): la cuenta y el texto aprobado son de ese canal. */
+    platform?: "instagram" | "portal_inmobiliario" | "fb_marketplace";
+    /** Marketplace: si la API tiene el token de la UF (por defecto, sí). */
+    ufConfigured?: boolean;
     /** Las operaciones de Portal que usa la API (dobles: nunca Mercado Libre). */
     operations?: PublicationOperations;
   } = {},
@@ -263,6 +265,7 @@ export async function publicationSetup(
       queue: t.deps.queue,
       publishMode: options.publishMode ?? "dry-run",
       operationsFor: (platform) => (platform === "portal_inmobiliario" ? operations : undefined),
+      marketplace: { dailyLimit: 3, ufConfigured: options.ufConfigured ?? true },
     },
     ...(options.intercept === undefined ? {} : { intercept: options.intercept }),
   });

@@ -2,23 +2,15 @@ import type {
   ContentMedia,
   ContentView,
   ListingContentResponse,
-  ListingPublicationView,
   PortalReadinessView,
 } from "@agentsales/api/contracts";
-import {
-  type ListingStatus,
-  PLATFORM_TEXT,
-  PLATFORMS,
-  type Platform,
-  type PublishMode,
-} from "@agentsales/core";
-import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
+import { PLATFORM_TEXT, PLATFORMS, type Platform } from "@agentsales/core";
+import { type KeyboardEvent, useRef, useState } from "react";
 import { PortalIssueList, portalIssuesHint } from "../PortalIssueList.js";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
-import { editBlockedReason } from "../publications/publications.js";
-import { ApprovalBar } from "./ApprovalBar.js";
+import { ApprovableText, type EditContext } from "./ApprovableText.js";
 import { captionPreview } from "./caption.js";
-import { EditableText } from "./TextEditor.js";
+import { MarketplacePanel } from "./MarketplacePanel.js";
 
 /** El caption de Instagram con "ver más", como en la app: primero solo el comienzo. */
 function Caption({ content }: { content: ContentView }) {
@@ -37,52 +29,6 @@ function Caption({ content }: { content: ContentView }) {
         </button>
       )}
     </section>
-  );
-}
-
-/**
- * Lo que necesita un texto para poder editarse, aprobarse y publicarse (F3-T18): las publicaciones
- * del aviso, el modo de la API, el estado del aviso y si hay una preparación en curso.
- */
-type EditContext = {
-  listingId: string;
-  lockReason: string | null;
-  onReload: () => void;
-  listingStatus: ListingStatus;
-  /** Cualquier preparación en curso (también la de solo imágenes): bloquea aprobar y publicar. */
-  runActive: boolean;
-  publications: readonly ListingPublicationView[];
-  publishMode: PublishMode | undefined;
-};
-
-/** El texto con su aprobación y su edición (bloqueada si tiene publicaciones activas). */
-function ApprovableText({
-  content,
-  edit,
-  children,
-}: {
-  content: ContentView;
-  edit: EditContext;
-  children: ReactNode;
-}) {
-  return (
-    <>
-      <ApprovalBar
-        content={content}
-        listingId={edit.listingId}
-        listingStatus={edit.listingStatus}
-        runActive={edit.runActive}
-        publications={edit.publications}
-      />
-      <EditableText
-        content={content}
-        listingId={edit.listingId}
-        lockReason={edit.lockReason ?? editBlockedReason(content, edit.publications)}
-        onReload={edit.onReload}
-      >
-        {children}
-      </EditableText>
-    </>
   );
 }
 
@@ -230,7 +176,7 @@ function ListingPanel({
           publications={edit.publications.filter((p) => p.platform === platform)}
           publishMode={edit.publishMode}
           runActive={edit.runActive}
-          portalReadiness={portalReadiness}
+          readiness={portalReadiness}
         />
       )}
     </div>
@@ -323,6 +269,13 @@ export function Preview({ content, ...edit }: { content: ListingContentResponse 
               carousel={content.carousel}
               reel={content.reel}
               edit={edit}
+            />
+          ) : target === "fb_marketplace" ? (
+            <MarketplacePanel
+              content={textOf(target)}
+              photos={content.photos}
+              edit={edit}
+              readiness={content.marketplaceReadiness}
             />
           ) : (
             <ListingPanel

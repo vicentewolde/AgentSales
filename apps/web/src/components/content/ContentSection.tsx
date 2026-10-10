@@ -32,9 +32,12 @@ const PRIMARY =
 export function ContentSection({
   listingId,
   listingStatus,
+  listingPrice = null,
 }: {
   listingId: string;
   listingStatus: ListingStatus;
+  /** El precio del aviso como en la planilla, para el plan B de Marketplace. */
+  listingPrice?: string | null;
 }) {
   const content = useListingContent(listingId);
   const request = useRequestContentRun(listingId);
@@ -215,6 +218,7 @@ export function ContentSection({
             runActive={busy}
             publications={publications.data ?? []}
             publishMode={health.data?.publishMode}
+            listingPrice={listingPrice}
           />
         ))}
     </section>

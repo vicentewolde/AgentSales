@@ -4,6 +4,7 @@ import {
   listingPublicationsResponseSchema,
   listingPublishResponseSchema,
   type PublicationView,
+  publicationConfirmResponseSchema,
   publicationEventsResponseSchema,
   publicationOperationResponseSchema,
   publicationPublishResponseSchema,
@@ -12,7 +13,7 @@ import {
   publicationSyncResponseSchema,
   type SkippedPublicationView,
 } from "@agentsales/api/contracts";
-import type { Platform } from "@agentsales/core";
+import { MARKETPLACE_CONFIRM_CLIENT_WAIT_MS, type Platform } from "@agentsales/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { unwrap } from "../api/client.js";
@@ -180,7 +181,10 @@ export type PublicationAction =
   | { kind: "pause"; id: string }
   | { kind: "resume"; id: string }
   | { kind: "close"; id: string; confirmed: boolean }
-  | { kind: "sync"; id: string };
+  | { kind: "sync"; id: string }
+  // Marketplace (spec F5 §4.3, desde F5-T13): "Lo publiqué" (con el enlace en vivo) y "No lo publiqué".
+  | { kind: "confirm"; id: string; url?: string }
+  | { kind: "not-published"; id: string };
 
 /**
  * Lo que devolvió la acción: `listingBackToReady` al retirar o cerrar la última en vivo; `queued` al
@@ -247,6 +251,21 @@ export function usePublicationAction(listingId: string) {
           );
           return { queued };
         }
+        case "confirm":
+          await unwrap(
+            client.publications[":id"].confirm.$post({
+              param,
+              json: action.url === undefined ? {} : { url: action.url },
+            }),
+            publicationConfirmResponseSchema,
+          );
+          return {};
+        case "not-published":
+          await unwrap(
+            client.publications[":id"]["not-published"].$post({ param }),
+            publicationResponseSchema,
+          );
+          return {};
       }
     },
     onSettled: refresh,
@@ -261,3 +280,25 @@ export const SYNC_REFRESH_MS = 8_000;
 
 /** Vuelve a pedir lo que cambia con una publicación (el listado, las bitácoras y el aviso). */
 export const usePublicationsRefresh = (listingId: string) => useRefreshAfter(listingId);
+
+/** Cada cuánto se mira una de Marketplace con la ventana abierta (como el registro del worker). */
+export const MANUAL_WAIT_REFRESH_MS = 5_000;
+
+/**
+ * Marketplace con la ventana de Chromium abierta (spec F5 §4.5 y §4.12): el worker confirma solo si
+ * ve el aviso, o anota que la ventana se cerró. Mientras tanto se vuelve a pedir el listado cada 5 s,
+ * hasta el tope de la ventana (`MARKETPLACE_CONFIRM_CLIENT_WAIT_MS` desde que quedó listo).
+ */
+export function useManualWaitRefresh(listingId: string, formReadyAt: Date | null) {
+  const refresh = useRefreshAfter(listingId);
+  const since = formReadyAt?.getTime() ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `refresh` es nuevo en cada render; basta con el formulario.
+  useEffect(() => {
+    if (since === null || Date.now() - since >= MARKETPLACE_CONFIRM_CLIENT_WAIT_MS) return;
+    const timer = setInterval(() => {
+      if (Date.now() - since >= MARKETPLACE_CONFIRM_CLIENT_WAIT_MS) clearInterval(timer);
+      else refresh();
+    }, MANUAL_WAIT_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [since]);
+}

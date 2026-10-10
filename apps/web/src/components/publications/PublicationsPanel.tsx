@@ -1,8 +1,4 @@
-import type {
-  ContentView,
-  ListingPublicationView,
-  PortalReadinessView,
-} from "@agentsales/api/contracts";
+import type { ContentView, ListingPublicationView, ReadinessView } from "@agentsales/api/contracts";
 import {
   ACTIVE_PUBLICATION_STATUSES,
   type ListingStatus,
@@ -38,13 +34,21 @@ const shown = new Set<string>([...ACTIVE_PUBLICATION_STATUSES, "failed"]);
 const ACCOUNT_TEXT: Partial<Record<Platform, string>> = {
   instagram: "la cuenta de Instagram",
   portal_inmobiliario: "la cuenta de Mercado Libre",
+  fb_marketplace: "la cuenta de Facebook",
+};
+
+/** Qué agrega la confirmación de publicar en vivo según el canal. */
+const LIVE_EXTRA: Partial<Record<Platform, string>> = {
+  portal_inmobiliario: " y usará un cupo de tu paquete",
+  fb_marketplace:
+    ": se abre una ventana de Chromium con el formulario lleno y tú haces Siguiente y Publicar",
 };
 
 /**
  * Las publicaciones de un canal del aviso (spec F3 §4.9; Portal desde F4-T22): Publicar el canal
  * (en vivo, con confirmación) y cada publicación con su estado y acciones. Las descartadas y
- * retiradas van aparte. En Portal, Publicar se bloquea si al aviso le falta algo
- * (`portalReadiness`) o si la revisión del texto aprobado tiene errores.
+ * retiradas van aparte. En Portal y Marketplace, Publicar se bloquea si al aviso le falta algo
+ * (`readiness`) o si la revisión del texto aprobado tiene errores.
  */
 export function PublicationsPanel({
   platform,
@@ -54,7 +58,7 @@ export function PublicationsPanel({
   publications,
   publishMode,
   runActive,
-  portalReadiness = null,
+  readiness = null,
 }: {
   platform: Platform;
   listingId: string;
@@ -63,7 +67,7 @@ export function PublicationsPanel({
   publications: readonly ListingPublicationView[];
   publishMode: PublishMode | undefined;
   runActive: boolean;
-  portalReadiness?: PortalReadinessView | null;
+  readiness?: ReadinessView | null;
 }) {
   const publish = usePublishListing(listingId);
   const freshMode = useFreshPublishMode();
@@ -88,8 +92,10 @@ export function PublicationsPanel({
   const blocked =
     publishBlockedReason(listingStatus, runActive) ??
     (platform === "portal_inmobiliario"
-      ? portalPublishBlockedReason(content, portalReadiness)
-      : null) ??
+      ? portalPublishBlockedReason(content, readiness)
+      : platform === "fb_marketplace"
+        ? portalPublishBlockedReason(content, readiness, "Marketplace")
+        : null) ??
     (publishMode === undefined
       ? "Todavía no se sabe si la API está en simulación o en vivo."
       : (lockedLive ?? null));
@@ -126,7 +132,7 @@ export function PublicationsPanel({
             <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm">
               <p className="font-semibold text-red-800">
                 La API está en vivo: se publicará de verdad en {channel}
-                {platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.
+                {LIVE_EXTRA[platform] ?? ""}.
               </p>
               <div className="mt-2 flex gap-2">
                 <button type="button" className={DANGER} onClick={start}>

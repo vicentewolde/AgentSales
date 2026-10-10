@@ -360,4 +360,154 @@ describe("panel: Cuentas", () => {
       expect(channel.textContent).not.toContain("--url-stdin");
     });
   });
+
+  describe("Facebook Marketplace (F5-T12)", () => {
+    /** Un corredor y, si se pide, su cuenta de Marketplace (sin credenciales: la sesión vive en el perfil). */
+    async function withMarketplace(
+      options: {
+        account?: boolean;
+        status?: "connected" | "expired";
+        lastLoginError?: { code: string; at: string };
+        intercept?: HarnessOptions["intercept"];
+      } = {},
+    ) {
+      const bodies: Array<{ path: string; body: unknown }> = [];
+      const h = harness({
+        intercept: (method, path, init) => {
+          if (method === "POST" && typeof init?.body === "string") {
+            bodies.push({ path, body: JSON.parse(init.body) });
+          }
+          return options.intercept?.(method, path, init);
+        },
+      });
+      const broker = await h.brokers.create(brokerData("marca"));
+      const connect = (meta: Record<string, unknown> = {}) =>
+        h.platformAccounts.upsertConnected({
+          brokerId: broker.id,
+          platform: "fb_marketplace",
+          externalAccountId: "100012345678901",
+          displayName: "Facebook de prueba",
+          tokenExpiresAt: null,
+          meta: {
+            userId: "100012345678901",
+            connectedAt: "2026-10-09T12:00:00.000Z",
+            sessionCheckedAt: "2026-10-09T12:00:00.000Z",
+            ...meta,
+          },
+          credentials: null,
+        });
+      const account =
+        options.account === false
+          ? null
+          : await connect(
+              options.lastLoginError === undefined
+                ? {}
+                : { lastLoginError: options.lastLoginError },
+            );
+      if (account !== null && options.status === "expired") {
+        await h.platformAccounts.changeStatus(account.id, "connected", "expired");
+      }
+      return { ...h, broker, account, connect, bodies };
+    }
+
+    const marketplaceCard = () =>
+      screen.findByRole("article", { name: "Cuenta Facebook de prueba" });
+
+    it("sin cuenta: Iniciar sesión encola y espera hasta ver la sesión", async () => {
+      const { renderApp, connect, requests } = await withMarketplace({ account: false });
+      renderApp("/cuentas");
+
+      expect(await screen.findByText("Sin cuenta de Facebook.")).toBeTruthy();
+      fireEvent.click(await screen.findByRole("button", { name: "Iniciar sesión en Facebook" }));
+      expect(await screen.findByText(/Se abrirá una ventana de Chromium/)).toBeTruthy();
+      expect(requests).toContain("POST /accounts/marketplace/login");
+
+      // El worker ve la sesión y conecta la cuenta.
+      await connect({ sessionCheckedAt: new Date(Date.now() + 1_000).toISOString() });
+      const card = await marketplaceCard();
+      expect(within(card).getByText("conectada")).toBeTruthy();
+      expect(card.textContent).toContain("Sesión vista");
+    });
+
+    it("si el inicio de sesión falla, muestra el motivo en la caja y en la tarjeta", async () => {
+      const { renderApp, platformAccounts, account } = await withMarketplace({ status: "expired" });
+      renderApp("/cuentas");
+
+      expect((await marketplaceCard()).textContent).toContain("La sesión de Facebook se cerró");
+      fireEvent.click(await screen.findByRole("button", { name: "Iniciar sesión en Facebook" }));
+      await screen.findByText(/Se abrirá una ventana de Chromium/);
+      await platformAccounts.mergeMeta(account?.id ?? "", {
+        lastLoginError: {
+          code: "MARKETPLACE_LOGIN_TIMEOUT",
+          at: new Date(Date.now() + 1_000).toISOString(),
+        },
+      });
+
+      expect(
+        (await screen.findAllByText(/Pasaron 10 minutos sin que se iniciara la sesión/)).length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("el último inicio de sesión fallido solo se muestra si es posterior a la sesión vista", async () => {
+      const { renderApp } = await withMarketplace({
+        lastLoginError: { code: "MARKETPLACE_PROFILE_BUSY", at: "2026-10-08T12:00:00.000Z" },
+      });
+      renderApp("/cuentas");
+      const card = await marketplaceCard();
+      expect(card.textContent).not.toContain("ocupado");
+      cleanup();
+
+      const later = await withMarketplace({
+        lastLoginError: { code: "MARKETPLACE_PROFILE_BUSY", at: "2026-10-10T12:00:00.000Z" },
+      });
+      later.renderApp("/cuentas");
+      expect((await marketplaceCard()).textContent).toContain(
+        "El perfil de Facebook estaba ocupado",
+      );
+    });
+
+    it("con otra acción del perfil en cola lo dice, sin esperar", async () => {
+      const { renderApp } = await withMarketplace({
+        account: false,
+        intercept: (method, path) =>
+          method === "POST" && path === "/accounts/marketplace/login"
+            ? Response.json(
+                {
+                  error: {
+                    code: "MARKETPLACE_PROFILE_ACTION_PENDING",
+                    message: "Ya hay una acción del perfil de Facebook esperando",
+                  },
+                },
+                { status: 409 },
+              )
+            : undefined,
+      });
+      renderApp("/cuentas");
+      fireEvent.click(await screen.findByRole("button", { name: "Iniciar sesión en Facebook" }));
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        "Ya hay una acción del perfil de Facebook esperando",
+      );
+      expect(screen.queryByText(/Se abrirá una ventana de Chromium/)).toBeNull();
+    });
+
+    it("Desconectar pide confirmación, dice que borra el perfil y la manda confirmada", async () => {
+      const { renderApp, platformAccounts, account, bodies } = await withMarketplace();
+      renderApp("/cuentas");
+
+      fireEvent.click(within(await marketplaceCard()).getByRole("button", { name: "Desconectar" }));
+      expect(
+        screen.getByText(/Se borra el perfil de Chromium con la sesión de Facebook/),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+      expect(bodies).toEqual([]);
+
+      fireEvent.click(within(await marketplaceCard()).getByRole("button", { name: "Desconectar" }));
+      fireEvent.click(screen.getByRole("button", { name: "Sí, desconectar" }));
+      expect(await within(await marketplaceCard()).findByText("desconectada")).toBeTruthy();
+      expect((await platformAccounts.get(account?.id ?? ""))?.status).toBe("revoked");
+      expect(bodies).toEqual([
+        { path: `/accounts/${account?.id}/disconnect`, body: { confirmed: true } },
+      ]);
+    });
+  });
 });
