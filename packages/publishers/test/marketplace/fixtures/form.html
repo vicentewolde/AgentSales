@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+  <head><meta charset="utf-8" /><title>Marketplace (página local de prueba)</title></head>
+  <body>
+    <!-- Página inventada para los tests: imita lo mínimo del formulario de Marketplace. -->
+    <header><span>Nombre Inventado del Operador</span> <span>3 mensajes nuevos</span></header>
+    <main>
+      <form aria-label="Propiedad en venta o alquiler">
+        <h1>Propiedad en venta o alquiler</h1>
+        <label>Fotos <input type="file" name="fotos" accept="image/*" multiple /></label>
+        <label>Precio <input type="text" name="precio" /></label>
+        <label>Descripción <textarea name="descripcion"></textarea></label>
+        <button type="button" id="siguiente">Siguiente</button>
+        <button type="button" id="publicar">Publicar</button>
+      </form>
+    </main>
+    <a id="otro-aviso" href="/marketplace/item/999/">Un aviso de otra persona</a>
+    <a id="mis-avisos" href="/marketplace/you/selling/">Tus publicaciones</a>
+    <a id="paso-2" href="/marketplace/create/rental/paso-2">Paso 2</a>
+    <script>
+      window.__clicks = [];
+      document.getElementById("siguiente").addEventListener("click", () => {
+        window.__clicks.push("siguiente");
+      });
+      document.getElementById("publicar").addEventListener("click", () => {
+        window.__clicks.push("publicar");
+        window.location.href = "/marketplace/item/123/?ref=publicado";
+      });
+    </script>
+  </body>
+</html>

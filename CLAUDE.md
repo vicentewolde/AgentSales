@@ -48,6 +48,7 @@ pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo)
 pnpm worker:ping         # encola un job de prueba (con el worker corriendo)
 pnpm llm:smoke           # una llamada real y corta a la CLI de Claude con datos inventados (gasta cuota; la corre el operador)
 pnpm ig:smoke            # crea UN contenedor de imagen en Instagram desde una URL firmada de R2 y espera FINISHED, sin publicar (--broker <slug>, --listing <id_propiedad>; habla con Meta: lo corre el operador)
+pnpm fb:smoke --broker <slug>  # abre con ventana el perfil de Facebook del corredor (inicias sesión a mano si hace falta) y guarda en tmp/fb-smoke/ la captura y el árbol del formulario de Marketplace, sin llenar nada ni hacer clic (habla con Facebook: lo corre el operador)
 pnpm ml:test-user --broker <slug>  # crea UN usuario de prueba de Mercado Libre con la cuenta real conectada y deja su clave en el portapapeles, sin imprimirla (habla con Mercado Libre: lo corre el operador)
 pnpm ml:smoke            # recorre el catálogo de Inmuebles y las ubicaciones de Chile, pregunta a validate por un aviso de prueba y sus variantes, y lee la búsqueda de ítems y los paquetes, sin crear ni cambiar nada en Mercado Libre (--broker <slug>, --category <MLC…>; informe en tmp/ml-smoke/; escribe el catálogo en la base; habla con Mercado Libre: lo corre el operador). Con --listing <id_propiedad>, arma el aviso real y solo pregunta a validate si lo aceptaría
 pnpm eval:content        # evalúa el prompt sobre las propiedades listas de agentsales-pruebas, sin escribir en la base (--broker <slug>; --provider fake no gasta cuota; con claude-cli lo corre el operador)
@@ -83,7 +84,7 @@ corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) →
 - Ningún test llama APIs reales de Instagram, Mercado Libre, Facebook ni Anthropic. Usa msw o fakes.
 - No leas, muestres ni commitees `.env`. No loguees tokens ni secretos.
 - No subas datos reales de clientes (`data/muestras/`) a git.
-- Marketplace: nunca automatices el clic final, ni resuelvas o evadas captchas o verificaciones.
+- Marketplace: nunca automatices el clic final (ni el de Siguiente), ni resuelvas o evadas captchas o verificaciones, ni disfraces la automatización. Conectar la cuenta de Marketplace y `pnpm fb:smoke` abren Facebook en cualquier modo, porque no publican (ADR-0017): los pide y corre solo el operador. No leas la carpeta de perfiles (`BROWSER_PROFILES_DIR`: guarda la sesión de Facebook); de `tmp/fb-smoke/` lee solo el árbol del formulario, con el permiso del operador.
 - Nunca `git push --force` a `main` ni reescribas su historia.
 
 ## Reglas editoriales de la IA (resumen)

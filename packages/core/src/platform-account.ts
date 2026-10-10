@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PLATFORM_ACCOUNT_STATUSES, PLATFORMS } from "./enums.js";
+import { PLATFORM_ACCOUNT_STATUSES, PLATFORMS, type Platform } from "./enums.js";
 import { AppError } from "./errors.js";
 
 /**
@@ -122,3 +122,59 @@ export const mercadoLibreAccountMetaSchema = z.object({
   tokenExpiryEstimated: z.literal(true),
 });
 export type MercadoLibreAccountMeta = z.infer<typeof mercadoLibreAccountMetaSchema>;
+
+/**
+ * Plataformas cuya cuenta conectada no guarda credenciales (ADR-0017): en Marketplace la sesión
+ * vive en el perfil del navegador del corredor, fuera de la base.
+ */
+export const SESSION_PROFILE_PLATFORMS = ["fb_marketplace"] as const satisfies readonly Platform[];
+
+/** Si la cuenta de una plataforma vive en un perfil del navegador, sin credenciales en la base. */
+export const usesSessionProfile = (platform: Platform): boolean =>
+  (SESSION_PROFILE_PLATFORMS as readonly Platform[]).includes(platform);
+
+/**
+ * Las credenciales de una cuenta que se conecta, según su plataforma (ADR-0017): Marketplace no
+ * tiene (`null`) y las demás las exigen. Errores (no reintentables, sin el valor recibido):
+ * `ACCOUNT_CREDENTIALS_REQUIRED` si faltan, `ACCOUNT_CREDENTIALS_NOT_ALLOWED` si llegan a una
+ * cuenta de Marketplace (su sesión nunca va a la base) y `CREDENTIALS_INVALID` si no calzan.
+ */
+export function checkConnectedCredentials(
+  platform: Platform,
+  credentials: unknown,
+): PlatformCredentials | null {
+  if (usesSessionProfile(platform)) {
+    if (credentials === null || credentials === undefined) return null;
+    throw new AppError(
+      "ACCOUNT_CREDENTIALS_NOT_ALLOWED",
+      "Una cuenta de Marketplace no guarda credenciales: su sesión vive en el perfil del navegador",
+      { details: { platform } },
+    );
+  }
+  if (credentials === null || credentials === undefined) {
+    throw new AppError(
+      "ACCOUNT_CREDENTIALS_REQUIRED",
+      "Falta el acceso de la cuenta al conectarla",
+      {
+        details: { platform },
+      },
+    );
+  }
+  return checkCredentials(credentials);
+}
+
+/**
+ * `meta` de una cuenta de Marketplace (spec F5 §4.2, ADR-0017). No lleva secretos: nada de cookies.
+ * - `userId`: el id de la cookie `c_user` del perfil (lo único que se lee de las cookies; que sea
+ *   el id de la cuenta es NO VERIFICADO hasta `fb:smoke`).
+ * - `sessionCheckedAt`: la última vez que el sistema vio la sesión abierta (al conectar).
+ * - `lastLoginError`: el código del último intento de inicio de sesión que falló, si la cuenta ya
+ *   existía (para que la CLI y el panel lo muestren).
+ */
+export const marketplaceAccountMetaSchema = z.object({
+  userId: z.string().regex(/^\d{1,30}$/),
+  connectedAt: z.iso.datetime(),
+  sessionCheckedAt: z.iso.datetime(),
+  lastLoginError: z.object({ code: z.string().min(1), at: z.iso.datetime() }).optional(),
+});
+export type MarketplaceAccountMeta = z.infer<typeof marketplaceAccountMetaSchema>;

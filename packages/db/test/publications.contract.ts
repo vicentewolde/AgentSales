@@ -276,6 +276,70 @@ export function publicationRepositoryContract(
       expect(await repos.publications.listEvents(created.id)).toHaveLength(2);
     });
 
+    it("updateProgress solo cambia el progreso del estado y el intento pedidos (F5)", async () => {
+      const created = await repos.publications.create(
+        await newPublication({ platform: "fb_marketplace" }),
+        operator,
+      );
+      const ready = {
+        attempt: 1,
+        simulated: true,
+        formReadyAt: "2026-10-09T15:00:00.000Z",
+        photos: 3,
+        priceClp: 650_000,
+      };
+      await repos.publications.transition(
+        created.id,
+        {
+          from: "approved",
+          to: "publishing",
+          changes: { dryRun: true, incrementAttempts: true },
+        },
+        operator,
+      );
+      await expect(
+        repos.publications.updateProgress(
+          created.id,
+          { from: "awaiting_manual_confirm", attempts: 1 },
+          ready,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_PROGRESS_STALE", retriable: false });
+      await repos.publications.transition(
+        created.id,
+        { from: "publishing", to: "awaiting_manual_confirm", changes: { progress: ready } },
+        { actor: "system" },
+      );
+      const closed = { ...ready, windowClosedAt: "2026-10-09T15:30:00.000Z" };
+
+      await expect(
+        repos.publications.updateProgress(
+          created.id,
+          { from: "awaiting_manual_confirm", attempts: 2 },
+          closed,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_PROGRESS_STALE" });
+      await expect(
+        repos.publications.updateProgress(
+          created.id,
+          { from: "awaiting_manual_confirm", attempts: 1 },
+          { pictureIds: [] },
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_PROGRESS_INVALID" });
+      const updated = await repos.publications.updateProgress(
+        created.id,
+        { from: "awaiting_manual_confirm", attempts: 1 },
+        closed,
+      );
+
+      expect(updated).toMatchObject({ status: "awaiting_manual_confirm", progress: closed });
+      expect((await repos.publications.get(created.id))?.progress).toEqual(closed);
+      // Sin eventos nuevos: nacimiento, publishing y awaiting_manual_confirm.
+      expect(await repos.publications.listEvents(created.id)).toHaveLength(3);
+      await expect(
+        repos.publications.updateProgress(repos.missingId, { from: "approved", attempts: 0 }, null),
+      ).rejects.toMatchObject({ code: "PUBLICATION_NOT_FOUND" });
+    });
+
     it("un reintento desde failed conserva el progreso", async () => {
       const created = await repos.publications.create(await newPublication(), operator);
       await repos.publications.transition(

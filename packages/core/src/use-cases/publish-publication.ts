@@ -11,6 +11,7 @@ import type { PlatformAccountRepository } from "../ports/platform-account-reposi
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import {
   type AccessTokenProvider,
+  isPublishHandoff,
   type Publisher,
   type PublishInput,
   type PublishResult,
@@ -191,7 +192,7 @@ export async function publishPublication(
   try {
     const attempt = await prepareAttempt(deps, publication);
     sent = attempt.sent;
-    result = await attempt.target.publish(attempt.input, {
+    const outcome = await attempt.target.publish(attempt.input, {
       account: attempt.account,
       credentials: attempt.credentials,
       accessToken: attempt.accessToken,
@@ -201,6 +202,17 @@ export async function publishPublication(
       },
       ...(signal === undefined ? {} : { signal }),
     });
+    // Un "formulario listo" (ADR-0017) solo puede venir de un publisher con paso manual, y el
+    // intento todavía no sabe esperarlo: lo suma F5-T05. Hasta entonces, nunca se da por publicado.
+    if (isPublishHandoff(outcome)) {
+      throw new AppError(
+        "INTERNAL_ERROR",
+        attempt.target.manualConfirm === true
+          ? "Esta plataforma deja el clic final al operador y el intento todavía no sabe esperarlo"
+          : "El publisher dejó el formulario para el clic final sin declarar un paso manual",
+      );
+    }
+    result = outcome;
   } catch (caught) {
     const error = normalized(caught);
     // Apagado del worker: la publicación queda en `publishing` y el reintento la retoma.

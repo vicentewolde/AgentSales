@@ -107,8 +107,11 @@ export type PlatformContext = {
  */
 export type PublishContext = Omit<PlatformContext, "accessToken"> & {
   accessToken?: AccessTokenProvider;
-  /** Ya descifradas (Instagram): solo en memoria, nunca en un log, un error ni la bitácora. */
-  credentials: PlatformCredentials;
+  /**
+   * Ya descifradas (Instagram): solo en memoria, nunca en un log, un error ni la bitácora. Ausentes
+   * en Marketplace, cuya sesión vive en el perfil del navegador (ADR-0017).
+   */
+  credentials?: PlatformCredentials;
   /** Lo que guardó un intento anterior (`publications.progress`), para retomar sin duplicar. */
   progress: unknown | null;
   /** Guarda el progreso **antes** del paso que publica (Instagram: antes de `media_publish`). */
@@ -134,13 +137,34 @@ export type PublishResult = {
 };
 
 /**
+ * El "formulario listo" de un publisher con paso manual (Marketplace, ADR-0017): llenó y dejó todo
+ * a la vista, y el operador hace el clic final. No trae datos: lo que se guarda (el progreso) lo
+ * arma core. `simulated` en `dry-run` (`withDryRun`, que no abre nada).
+ */
+export type PublishHandoff = {
+  handoff: "manual_confirm";
+  simulated: boolean;
+  notes?: string[];
+};
+
+/** Lo que devuelve `publish`: publicado, o listo para el clic del operador. */
+export type PublishOutcome = PublishResult | PublishHandoff;
+
+/** Si `publish` dejó el formulario listo para el clic del operador en vez de publicar. */
+export const isPublishHandoff = (outcome: PublishOutcome): outcome is PublishHandoff =>
+  "handoff" in outcome;
+
+/**
  * El `PlatformContext` de un intento (para `preflight` o el publisher de Portal): su `accessToken`
- * o, si no vino, uno que entrega el token de `credentials` (sin refrescar).
+ * o, si no vino, uno que entrega el token de `credentials` (sin refrescar), o uno que falla si
+ * tampoco hay credenciales (Marketplace no usa tokens).
  */
 export function platformContextOf(ctx: PublishContext): PlatformContext {
   return {
     account: ctx.account,
-    accessToken: ctx.accessToken ?? storedAccessToken(ctx.credentials),
+    accessToken:
+      ctx.accessToken ??
+      (ctx.credentials === undefined ? noAccessToken : storedAccessToken(ctx.credentials)),
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
   };
 }
@@ -163,6 +187,22 @@ export function storedAccessToken(credentials: PlatformCredentials): AccessToken
   };
 }
 
+/** Para una cuenta sin credenciales (Marketplace): pedir un token es un error de programación. */
+const noAccessToken: AccessTokenProvider = async () => {
+  throw new AppError(
+    "ACCESS_TOKEN_UNAVAILABLE",
+    "Esta cuenta no usa un token de acceso: su sesión vive en el perfil del navegador",
+  );
+};
+
+/**
+ * Un publisher sin paso manual (Instagram, Portal): `publish` siempre devuelve "publicado". Es un
+ * `Publisher` (se registra igual); el tipo angosto deja leer el resultado sin preguntar.
+ */
+export type DirectPublisher = Omit<Publisher, "manualConfirm" | "publish"> & {
+  publish(input: PublishInput, ctx: PublishContext): Promise<PublishResult>;
+};
+
 /** Lo publicado, para operar sobre ello: el id en la plataforma y el progreso guardado. */
 export type PublishedRef = { externalId: string; progress: unknown | null };
 
@@ -178,6 +218,9 @@ export type RemoteStatus = Omit<RemoteState, "checkedAt">;
  *   y `withDryRun` en `dry-run`); un adaptador puede volver a revisarlo, porque es barato.
  * - `publish` lanza `AppError` con `retriable` según la plataforma; puede llamar a `saveProgress`
  *   y retomar desde `ctx.progress`.
+ * - `manualConfirm` (Marketplace, ADR-0017): `publish` deja el formulario listo y devuelve
+ *   `PublishHandoff`, nunca "publicado"; el operador hace el clic final y el intento pasa a
+ *   `awaiting_manual_confirm`. Un publisher sin la bandera nunca devuelve `PublishHandoff`.
  * - Opcionales (Portal; Instagram no los implementa): `preflight` solo lee y valida contra la
  *   plataforma (ADR-0016: nunca sube fotos, crea ni cambia estados; lo llama `withDryRun`);
  *   `pause`, `resume` y `close` cambian el estado de lo publicado (`close` es irreversible y
@@ -187,8 +230,10 @@ export interface Publisher {
   readonly platform: Platform;
   /** Formatos que publica (Instagram: `post` y `reel`). */
   readonly formats: readonly PublicationFormat[];
+  /** Si el último paso lo hace el operador (Marketplace): `publish` devuelve `PublishHandoff`. */
+  readonly manualConfirm?: true;
   validate(input: PublishInput): PublishValidation;
-  publish(input: PublishInput, ctx: PublishContext): Promise<PublishResult>;
+  publish(input: PublishInput, ctx: PublishContext): Promise<PublishOutcome>;
   preflight?(input: PublishInput, ctx: PlatformContext): Promise<PublishValidation>;
   pause?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
   resume?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;

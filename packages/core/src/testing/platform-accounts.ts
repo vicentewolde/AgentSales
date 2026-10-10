@@ -1,5 +1,6 @@
 import { AppError } from "../errors.js";
 import {
+  checkConnectedCredentials,
   checkCredentials,
   normalizeAccountMeta,
   type PlatformAccount,
@@ -81,7 +82,7 @@ export function createInMemoryPlatformAccountRepository(
     return structuredCopy(account);
   };
   const upsert = async (input: ConnectedAccount): Promise<PlatformAccount> => {
-    const credentials = checkCredentials(input.credentials);
+    const credentials = checkConnectedCredentials(input.platform, input.credentials);
     const meta = normalizeAccountMeta(input.meta);
     if (options.brokers && (await options.brokers.findById(input.brokerId)) === null) {
       throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${input.brokerId}`, {
@@ -108,7 +109,7 @@ export function createInMemoryPlatformAccountRepository(
       platform: input.platform,
       externalAccountId: input.externalAccountId,
       ...changes,
-      hasCredentials: true,
+      hasCredentials: credentials !== null,
       createdAt: now,
       updatedAt: now,
     };

@@ -1,11 +1,12 @@
 import {
   type AbortSignalLike,
+  AppError,
   checkPublishInput,
+  type DirectPublisher,
   type InstagramProgress,
   instagramProgressSchema,
   isAppError,
   type PublishContext,
-  type Publisher,
   type PublishInput,
   type PublishResult,
 } from "@agentsales/core";
@@ -119,7 +120,7 @@ function sameFormat(media: InstagramMedia, format: PublishInput["format"]): bool
  * Un `media_publish` que no terminó se relanza tal cual: el reintento lo resuelve por el progreso.
  * Todo el intento tiene un tope (`attemptMaxMs`), bajo el vencimiento del job.
  */
-export function createInstagramPublisher(options: InstagramPublisherOptions = {}): Publisher {
+export function createInstagramPublisher(options: InstagramPublisherOptions = {}): DirectPublisher {
   let client: InstagramGraph | undefined;
   const graph = () => {
     client ??= (options.graph ?? (() => createInstagramGraph()))();
@@ -133,7 +134,7 @@ export function createInstagramPublisher(options: InstagramPublisherOptions = {}
     onNote: options.onNote,
   };
 
-  const publisher: Publisher = {
+  const publisher: DirectPublisher = {
     platform: "instagram",
     formats: ["post", "reel"],
     validate: validateInstagramInput,
@@ -183,6 +184,13 @@ class Attempt {
     private readonly ctx: PublishContext,
     private readonly tools: AttemptTools,
   ) {
+    // El intento de Instagram siempre las pasa; solo Marketplace va sin credenciales (ADR-0017).
+    if (ctx.credentials === undefined) {
+      throw new AppError(
+        "ACCOUNT_CREDENTIALS_REQUIRED",
+        "Falta el acceso de la cuenta de Instagram",
+      );
+    }
     this.token = ctx.credentials.accessToken;
     this.igUserId = ctx.account.externalAccountId;
     this.call = ctx.signal === undefined ? {} : { signal: ctx.signal };

@@ -1,7 +1,11 @@
 import type { Platform, PlatformAccountStatus } from "../enums.js";
 import type { PlatformAccount, PlatformCredentials } from "../platform-account.js";
 
-/** Una cuenta recién conectada (OAuth o token del panel), con sus credenciales en claro. */
+/**
+ * Una cuenta recién conectada (OAuth, token del panel o la sesión del perfil), con sus credenciales
+ * en claro. `credentials` es `null` solo en Marketplace, cuya sesión vive en el perfil del navegador
+ * (ADR-0017, `checkConnectedCredentials`).
+ */
 export type ConnectedAccount = {
   brokerId: string;
   platform: Platform;
@@ -9,7 +13,7 @@ export type ConnectedAccount = {
   displayName: string;
   tokenExpiresAt: Date | null;
   meta: Record<string, unknown>;
-  credentials: PlatformCredentials;
+  credentials: PlatformCredentials | null;
 };
 
 /**
@@ -52,7 +56,10 @@ export type PlatformAccountProblemStatus = Extract<PlatformAccountStatus, "expir
  * - una cuenta que no existe → `ACCOUNT_NOT_FOUND`;
  * - credenciales vacías o con otra forma al guardar → `CREDENTIALS_INVALID`; `meta` que no es un
  *   objeto → `ACCOUNT_META_INVALID`;
- * - `getCredentials` de una cuenta sin credenciales (desconectada) → `ACCOUNT_NOT_CONNECTED`;
+ * - al conectar, sin credenciales fuera de Marketplace → `ACCOUNT_CREDENTIALS_REQUIRED`, y con
+ *   credenciales en Marketplace → `ACCOUNT_CREDENTIALS_NOT_ALLOWED` (ADR-0017);
+ * - `getCredentials` de una cuenta sin credenciales (desconectada, o de Marketplace) →
+ *   `ACCOUNT_NOT_CONNECTED`;
  * - credenciales que no se pueden descifrar (otra clave, alteradas) → `CREDENTIALS_UNREADABLE`;
  * - el candado de credenciales ocupado más de 10 s → `ACCOUNT_LOCK_TIMEOUT`, reintentable;
  * - una fila que no calza con la entidad → `PLATFORM_ACCOUNT_ROW_INVALID`;

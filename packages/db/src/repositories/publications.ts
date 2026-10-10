@@ -78,6 +78,13 @@ const notFound = (id: string) =>
     details: { publicationId: id },
   });
 
+const progressStale = (id: string) =>
+  new AppError(
+    "PUBLICATION_PROGRESS_STALE",
+    "La publicación cambió: su progreso ya no es de ese intento",
+    { details: { publicationId: id } },
+  );
+
 /** Columnas de una transición (lo mismo que aplica el doble en memoria). */
 function columnsOf(publication: Pick<Row, "platform">, changes: PublicationChanges) {
   return {
@@ -258,6 +265,27 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           },
         );
       }
+      return toPublication(row);
+    },
+
+    async updateProgress(id, guard, progress) {
+      const current = await findRow(id);
+      if (current === undefined) throw notFound(id);
+      const checked = checkPublicationProgress(current.platform, progress);
+      const [row] = await withDbErrors(() =>
+        db
+          .update(publications)
+          .set({ progress: checked, updatedAt: sql`clock_timestamp()` })
+          .where(
+            and(
+              eq(publications.id, id),
+              eq(publications.status, guard.from),
+              eq(publications.attempts, guard.attempts),
+            ),
+          )
+          .returning(),
+      );
+      if (row === undefined) throw progressStale(id);
       return toPublication(row);
     },
 

@@ -152,6 +152,27 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
       publications.set(id, { ...found, publication });
       return structuredCopy(publication);
     },
+    async updateProgress(id, guard, progress) {
+      const found = find(id);
+      const checked = checkPublicationProgress(found.publication.platform, progress);
+      if (
+        found.publication.status !== guard.from ||
+        found.publication.attempts !== guard.attempts
+      ) {
+        throw new AppError(
+          "PUBLICATION_PROGRESS_STALE",
+          "La publicación cambió: su progreso ya no es de ese intento",
+          { details: { publicationId: id } },
+        );
+      }
+      const publication = {
+        ...found.publication,
+        progress: structuredCopy(checked),
+        updatedAt: later(found.publication.updatedAt),
+      };
+      publications.set(id, { ...found, publication });
+      return structuredCopy(publication);
+    },
     async setRemoteState(id, remoteState, event) {
       // Primero los datos, como el de Drizzle.
       const checked = checkRemoteState(remoteState);

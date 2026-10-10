@@ -66,6 +66,8 @@ export type NewPublicationEvent = PublicationEventInput & {
  *   `remoteState` que no calza → `PUBLICATION_REMOTE_STATE_INVALID`, y un `payload` de evento que
  *   no es objeto → `PUBLICATION_EVENT_INVALID`;
  * - `saveProgress` fuera de `publishing` → `PUBLICATION_NOT_PUBLISHING`;
+ * - `updateProgress` sobre una publicación que ya no está en ese estado o en ese intento →
+ *   `PUBLICATION_PROGRESS_STALE`;
  * - una fila que no calza con la entidad → `PUBLICATION_ROW_INVALID` (o `PUBLICATION_EVENT_ROW_INVALID`);
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
  * Ninguno es reintentable salvo `DB_UNAVAILABLE`. Se revisan primero los datos (el evento, el
@@ -96,6 +98,17 @@ export interface PublicationRepository {
    * Solo con la publicación en `publishing`; `null` lo borra.
    */
   saveProgress(id: string, progress: unknown): Promise<Publication>;
+  /**
+   * Reemplaza el progreso **solo** si la publicación sigue en `guard.from` y en el intento
+   * `guard.attempts` (spec F5 §4.5, ADR-0017): Marketplace anota `windowClosedAt` en
+   * `awaiting_manual_confirm` sin pisar el progreso de un intento posterior. Sin cambiar el estado
+   * ni anotar eventos. `null` lo borra.
+   */
+  updateProgress(
+    id: string,
+    guard: { from: PublicationStatus; attempts: number },
+    progress: unknown,
+  ): Promise<Publication>;
   /**
    * Guarda lo que informó la plataforma sin cambiar el estado (ADR-0015, spec F4 §4.9), en
    * cualquier estado, y opcionalmente su evento (`sync`) en la misma transacción. `null` lo borra.

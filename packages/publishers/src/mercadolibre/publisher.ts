@@ -1,11 +1,11 @@
 import {
   type AbortSignalLike,
   checkPublishInput,
+  type DirectPublisher,
   isAppError,
   type PlatformContext,
   type PortalProgress,
   type PublishContext,
-  type Publisher,
   type PublishInput,
   type PublishIssue,
   type PublishMediaItem,
@@ -156,10 +156,10 @@ export const PORTAL_PICTURES_NOT_CHECKED_NOTE =
  * `preflight` (solo lee y valida, ADR-0016; lo llama `withDryRun`) y las operaciones
  * (`createPortalOperations`) completan el contrato de spec F4 §4.8.
  */
-export function createPortalPublisher(options: PortalPublisherOptions): Publisher {
+export function createPortalPublisher(options: PortalPublisherOptions): DirectPublisher {
   const now = options.now ?? (() => new Date());
   const operations = createPortalOperations({ items: options.items });
-  const publisher: Publisher = {
+  const publisher: DirectPublisher = {
     platform: "portal_inmobiliario",
     formats: ["post"],
     validate: validatePortalInput,

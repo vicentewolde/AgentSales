@@ -1,5 +1,8 @@
-import { type Publisher, type PublishResult, platformContextOf } from "../ports/publisher.js";
+import { type Publisher, type PublishOutcome, platformContextOf } from "../ports/publisher.js";
 import { checkPublishInput, publishInputInvalid } from "./input.js";
+
+/** La nota del "formulario listo" simulado (spec F5 §4.3, D4). */
+export const DRY_RUN_HANDOFF_NOTE = "Simulación: no se abrió Facebook";
 
 /** Id simulado de una publicación en `dry-run`. */
 export const dryRunExternalId = (publicationId: string) => `dry-run:${publicationId}`;
@@ -13,7 +16,9 @@ export const dryRunExternalId = (publicationId: string) => `dry-run:${publicatio
  *    `PUBLISH_INPUT_INVALID` con sus motivos (core no nombra códigos de la plataforma). Sus
  *    advertencias (`notes`) vuelven en el resultado, para la bitácora. Un error de `preflight`
  *    (red, token) sube tal cual, con su `retriable`.
- * 3. Devuelve un resultado simulado (`dry-run:<publicationId>`, sin enlace).
+ * 3. Devuelve un resultado simulado (`dry-run:<publicationId>`, sin enlace) o, si el publisher
+ *    tiene paso manual (`manualConfirm`, Marketplace: ADR-0017), el "formulario listo" simulado
+ *    (`handoff` con `simulated: true`): nunca abre el navegador.
  * **Nunca** llama a `publish`, `pause`, `resume` ni `close` del envuelto (no los expone) ni guarda
  * progreso: no hay nada creado en la plataforma. Lo que se habría enviado lo registra quien llama,
  * igual que en `live` (`publishAttemptRecord`).
@@ -23,15 +28,23 @@ export function withDryRun(publisher: Publisher): Publisher {
   return {
     platform: publisher.platform,
     formats: publisher.formats,
+    ...(publisher.manualConfirm === true ? { manualConfirm: true as const } : {}),
     validate: (input) => publisher.validate(input),
     ...(preflight === undefined ? {} : { preflight }),
-    async publish(input, ctx): Promise<PublishResult> {
+    async publish(input, ctx): Promise<PublishOutcome> {
       checkPublishInput(publisher, input);
       let notes: string[] = [];
       if (preflight !== undefined) {
         const validation = await preflight(input, platformContextOf(ctx));
         if (!validation.ok) throw publishInputInvalid(input.publicationId, validation.issues);
         notes = validation.notes ?? [];
+      }
+      if (publisher.manualConfirm === true) {
+        return {
+          handoff: "manual_confirm",
+          simulated: true,
+          notes: [DRY_RUN_HANDOFF_NOTE, ...notes],
+        };
       }
       return {
         externalId: dryRunExternalId(input.publicationId),
