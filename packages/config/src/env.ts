@@ -52,6 +52,23 @@ const mercadoLibreRedirectUri = z.string().superRefine((value, ctx) => {
 // Variables obsoletas: una que cambiaría el comportamiento se avisa en vez de ignorarla en silencio.
 
 /** Variables que cambiaron de nombre (spec F3, D5). */
+/**
+ * Dónde viven los perfiles del navegador de Marketplace por defecto: fuera del proyecto, para que
+ * ni git ni una herramienta que lea el proyecto vea la sesión de Facebook (spec F5 §4.2).
+ */
+export const DEFAULT_BROWSER_PROFILES_DIR = "~/.agentsales/browser-profiles";
+
+/** El valor que traía `.env.example` hasta F5 (dentro del proyecto): se ignora (ver `loadEnv`). */
+const LEGACY_BROWSER_PROFILES_DIR = "./.browser-profiles";
+
+/** Una ruta absoluta o que empieza con `~/`: una relativa quedaría dentro del proyecto. */
+const browserProfilesDir = z
+  .string()
+  .refine(
+    (value) => value.startsWith("/") || value.startsWith("~/"),
+    "debe ser una ruta absoluta o empezar con ~/, fuera del proyecto (guarda la sesión de Facebook)",
+  );
+
 const RENAMED_VARIABLES: Readonly<Record<string, string>> = {
   META_APP_ID: "INSTAGRAM_APP_ID",
   META_APP_SECRET: "INSTAGRAM_APP_SECRET",
@@ -181,9 +198,16 @@ const envSchema = z
       "https://agentsales.test/oauth/mercadolibre/callback",
     ),
 
-    // Facebook Marketplace (F5)
+    // Facebook Marketplace (F5): avisos por día y cuenta (D8), la carpeta de los perfiles del
+    // navegador (fuera del proyecto: guardan la sesión de Facebook, ADR-0017; la resuelve
+    // `resolveBrowserProfilesDir`) y cuánto espera la ventana el clic del operador (spec F5 §4.5).
     MARKETPLACE_DAILY_LIMIT: positiveInt("un número entero mayor que 0").default(3),
-    BROWSER_PROFILES_DIR: z.string().default("./.browser-profiles"),
+    BROWSER_PROFILES_DIR: browserProfilesDir.default(DEFAULT_BROWSER_PROFILES_DIR),
+    MARKETPLACE_CONFIRM_TIMEOUT_MIN: intInRange(
+      1,
+      240,
+      "debe ser un número entero de minutos entre 1 y 240",
+    ).default(30),
   })
   .superRefine((env, ctx) => {
     // El proveedor de la API de Anthropic no funciona sin su clave (deuda de F1, spec F2 §4.5).
@@ -229,6 +253,10 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
       .map(([old, current]) => ({ variable: old, message: `se renombró a ${current}` })),
     ...removedSiteId(cleaned),
   ];
+  // El valor viejo de `.env.example` dejaba el perfil dentro del proyecto: se usa el nuevo default.
+  if (cleaned.BROWSER_PROFILES_DIR === LEGACY_BROWSER_PROFILES_DIR) {
+    delete cleaned.BROWSER_PROFILES_DIR;
+  }
   const result = envSchema.safeParse(cleaned);
   if (!result.success || outdated.length > 0) {
     throw new EnvError([

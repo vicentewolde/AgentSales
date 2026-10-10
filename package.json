@@ -22,6 +22,7 @@
     "llm:smoke": "pnpm --filter @agentsales/llm run smoke",
     "eval:content": "pnpm --silent --filter @agentsales/worker run eval:content",
     "ig:smoke": "pnpm --silent --filter @agentsales/worker run ig:smoke",
+    "fb:smoke": "pnpm --silent --filter @agentsales/worker run fb:smoke",
     "ml:smoke": "pnpm --silent --filter @agentsales/worker run ml:smoke",
     "ml:test-user": "pnpm --silent --filter @agentsales/worker run ml:test-user"
   },

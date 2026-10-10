@@ -10,6 +10,7 @@
     "job:ping": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ping.ts",
     "eval:content": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/eval-content.ts",
     "ig:smoke": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ig-smoke.ts",
+    "fb:smoke": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/fb-smoke.ts",
     "ml:smoke": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ml-smoke.ts",
     "ml:test-user": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ml-test-user.ts"
   },

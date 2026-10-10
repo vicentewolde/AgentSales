@@ -3,9 +3,9 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-09
-**Fase actual:** F5 · Facebook Marketplace (`docs/specs/fase-5-marketplace.md`, aprobado el 2026-10-09) — 0 de 14 tareas. F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0`)
-**Última tarea:** spec de F5 (`/fase-plan 5`), con ADR-0017 y las notas `fb-marketplace.md` y `uf.md`. Antes, el cierre de F4 (F4-T24)
-**Siguiente paso:** `/tarea F5-T01 F5-T02 F5-T03` (lote A: contrato, navegador y `fb:smoke`). En paralelo, tus pendientes del día uno (abajo) y, cuando soporte active el usuario de prueba, la prueba en vivo de Portal
+**Fase actual:** F5 · Facebook Marketplace (`docs/specs/fase-5-marketplace.md`, aprobado el 2026-10-09) — 3 de 14 tareas (lote A en PR). F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0`)
+**Última tarea:** lote A de F5 (F5-T01 Contrato y datos, F5-T02 Perfil, guardas y evidencia, F5-T03 `pnpm fb:smoke`). Antes, el spec de F5 (#103)
+**Siguiente paso:** tú, `pnpm fb:smoke --broker agentsales-pruebas` (abajo) en cuanto se mergee el lote A; yo, `/tarea F5-T04 F5-T05 F5-T06 F5-T07` (lote B: conectar, publicar en dos tiempos, la ventana abierta, lo que falta y la UF), que no depende de tu `fb:smoke`
 
 ## Pendiente del cierre de F4 (para el inicio de F5)
 - [ ] **Usuario de prueba de Mercado Libre (T25, D15):** crearlo (`pnpm ml:test-user --broker agentsales-pruebas`), pedir su activación a soporte y anotar aquí la fecha; contratar el paquete sin cargo y conectarlo a `agentsales-pruebas` (checklist, `docs/07-checklist-cuentas.md`). Reemplaza tu cuenta real en ese corredor durante la prueba; al final se reconecta la real
@@ -27,7 +27,7 @@
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F5 (`/fase-plan 5`) y ADR-0017 | ✅ terminada | |
-| **Lote A:** F5-T01 Contrato y datos · F5-T02 Perfil, guardas y evidencia · F5-T03 `pnpm fb:smoke` | ⏳ pendiente | |
+| **Lote A:** F5-T01 Contrato y datos · F5-T02 Perfil, guardas y evidencia · F5-T03 `pnpm fb:smoke` | 🔨 en PR | |
 | **Lote B:** F5-T04 Conectar y olvidar la cuenta · F5-T05 Publicar en dos tiempos · F5-T06 La ventana abierta · F5-T07 Lo que falta y la UF | ⏳ pendiente | |
 | **Lote C:** F5-T08 API · F5-T11 CLI | ⏳ pendiente | |
 | **Lote D:** F5-T12 Panel: Cuentas · F5-T13 Panel: Marketplace en Contenido | ⏳ pendiente | |
@@ -81,7 +81,6 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **F7, `state` de Mercado Libre:** vale sus 10 min y no es de un solo uso (el código sí se canjea una vez; F4-T06). Con la vuelta automática (`/oauth/mercadolibre/callback`), amarrarlo a una cookie o a un nonce de un solo uso, como el de Instagram. Además, `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática: F7 registra en la app una segunda dirección de su dominio real (o, en local, ese nombre apuntando al propio equipo con un certificado local, que merecería un ADR), y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
 - **F7, cuentas:** `panelUrl` y `allowedHosts` están fijos en `localhost`; con varios corredores y la API expuesta, hay que autorizar quién puede conectar cada corredor (`/oauth/instagram/start?broker=` y `connect-token` hoy los acepta cualquiera que llegue a la API) y evitar repetir un `state` válido durante sus 10 min (guardar el nonce usado; hoy basta con que la cookie se borre).
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
-- F5: resolver `BROWSER_PROFILES_DIR` contra la raíz del workspace (lo cierra F5-T01: por defecto fuera del workspace).
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **F7:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un xlsx de 10 MB (que es un zip) podría descomprimirse en mucho más dentro de exceljs. El cuerpo de la subida ya tiene tope (T11: `MAX_IMPORT_UPLOAD_MB` y 413), y el zip de medios también (T06: 4 GB y `validateEntrySizes`). Falta limitar el tamaño descomprimido del xlsx con subidas públicas.
 - **F7, subidas del panel:**
@@ -96,6 +95,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-09: **Lote A de F5 (F5-T01 a T03).** Cuenta de Marketplace sin credenciales en la base; progreso por intento con `updateProgress`; el contrato del publisher con el "formulario listo" (`PublishHandoff`, `manualConfirm`) y `withDryRun` que lo simula sin abrir nada; hasta T05 el intento nunca da por publicado un formulario listo. El perfil del navegador vive fuera del proyecto (`~/.agentsales/browser-profiles`, `0700`, candado por perfil); la lista blanca, la evidencia solo del formulario y la ventana vigilada se prueban con un Facebook falso de páginas locales, sin red. `pnpm fb:smoke` listo para que lo corras.
 - 2026-10-09: **Spec de F5 (`/fase-plan 5`).** Investigación de Marketplace sin sesión (nota `fb-marketplace.md`): sin API; Chile tiene arriendos en pesos; venta, el formulario y la moneda solo se ven con tu sesión (`fb:smoke`). Tus 4 respuestas (D2, D8, D9, D10). Revisión del `arquitecto` con 9 bloqueantes, todos aplicados (progreso por intento, entrega de la ventana al worker, descartar espera tu palabra, solo la primera navegación desde el formulario, el perfil lo borra el worker, límite en core, la ventana se cierra ante error, dependencias de tareas). ADR-0017 aceptado.
 - 2026-10-09: **Cierre de F4 (T24, `/fase-cerrar 4`), con la simulación (tu decisión, D15).**
   - **Demo en simulación (la hice yo):** Cuentas y `accounts` con VICENTEWOLDE; P001 en el panel (lo que pide Portal, aprobar, publicar en simulación, bitácora, pausar, reactivar y cerrar); P002 en la CLI (`approve`, `publish`, `publications --events`, pausar, reactivar, cerrar y `sync`, que se niega porque no hay nada en vivo); `accounts refresh --force` renovó el acceso sin perder la cuenta. Sin tokens ni errores en el log. Mercado Libre respondió "sin cupo" a `validate` (D14), como se esperaba. Falta tu paso 3 (`pnpm ml:smoke --listing P001`), que se repite con el usuario de prueba en F5.

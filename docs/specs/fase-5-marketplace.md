@@ -1,6 +1,6 @@
 # Spec F5 · Facebook Marketplace
 
-- **Estado:** **Aprobado** (2026-10-09, aprobación permanente del operador; D2, D8, D9 y D10 las respondió él)
+- **Estado:** **En curso** (lote A desde el 2026-10-09). Aprobado el 2026-10-09 (aprobación permanente del operador; D2, D8, D9 y D10 las respondió él)
 - **Rama base:** `main`
 - **Tag al cerrar:** `v0.5.0`
 - **Referencias:** `docs/06-roadmap.md#f5--marketplace`, ADR-0004, ADR-0005, ADR-0011, ADR-0014, ADR-0015, ADR-0016 y ADR-0017 (nuevo), `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/03-plataformas.md`, `docs/04-formato-publicaciones.md`, `docs/integraciones/fb-marketplace.md` (consultada el 2026-10-09 sin sesión, desde EE. UU.: el formulario de propiedades solo se ve con la sesión del operador) y `docs/integraciones/uf.md` (valor de la UF, 2026-10-09)
@@ -206,25 +206,25 @@ ADR-0017 se registra con la aprobación del spec (en su mismo PR). Un PR por lot
 - **Archivos:** `packages/core/src/{platform-account.ts,publication.ts,ports/publisher.ts,ports/platform-account-repository.ts,ports/publication-repository.ts,publish/dry-run.ts}`, `packages/core/src/marketplace/{progress.ts,url.ts}`, `packages/db/src/repositories/{platform-accounts.ts,publications.ts}` y sus dobles, `packages/config/src/env.ts`, `packages/publishers/package.json`, `.env.example`, `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`
 - **Descripción:** esquemas de `meta` y progreso (registrado en `PUBLICATION_PROGRESS_SCHEMAS`), `parseMarketplaceItemUrl`, `upsertConnected` sin credenciales solo en Marketplace (`ACCOUNT_CREDENTIALS_REQUIRED` en las demás), `updateProgress` condicional (estado e intento), `manualConfirm`, la variante `handoff`, `credentials` opcional en `PublishContext`, `withDryRun` que copia la bandera y simula, `BROWSER_PROFILES_DIR` (fuera del workspace) y `MARKETPLACE_CONFIRM_TIMEOUT_MIN`; `package.json` de publishers con las subrutas `./marketplace` y `./uf`. En `docs/01-arquitectura.md`, el contrato y las etiquetas del diagrama de estados (`awaiting_manual_confirm → failed` pasa a ser "No lo publiqué"; el captcha o la verificación detienen en `publishing`).
 - **Hecho cuando:**
-  - [ ] Tests de esquemas, URL (formas válidas, `m.`, consulta, otras rutas rechazadas), repositorios en PGlite y en memoria (`updateProgress` no pisa otro intento), `withDryRun` (no llama a `publish` del envuelto, copia la bandera) y config (rechaza una ruta dentro del workspace)
-  - [ ] Docs 01 y 02 y `.env.example` al día; se cierra la deuda de `BROWSER_PROFILES_DIR` en ESTADO
+  - [x] Tests de esquemas, URL (formas válidas, `m.`, consulta, otras rutas rechazadas), repositorios en PGlite y en memoria (`updateProgress` no pisa otro intento), `withDryRun` (no llama a `publish` del envuelto, copia la bandera) y config (rechaza una ruta dentro del workspace)
+  - [x] Docs 01 y 02 y `.env.example` al día; se cierra la deuda de `BROWSER_PROFILES_DIR` en ESTADO
 
 ### F5-T02 · Perfil, guardas y evidencia (navegador)
 - **Depende de:** T01
 - **Archivos:** `packages/publishers/src/marketplace/{profile.ts,guard.ts,evidence.ts,window.ts,selectors.ts,errors.ts}`, `packages/publishers/test/marketplace/fixtures/*.html`
 - **Descripción:** abrir el perfil con candado (`MARKETPLACE_PROFILE_BUSY`), `0700`, idioma y zona; `sessionUserId` (la cookie `c_user`, NO VERIFICADO hasta `fb:smoke`); la lista blanca y sus errores (§4.4, paso 3); captura y árbol de un localizador (solo el formulario; nada en login ni verificación); `MarketplaceWindow` (`watch`, `close`) con la regla de la primera navegación desde el formulario.
 - **Hecho cuando:**
-  - [ ] Tests con Playwright sin ventana sobre páginas locales (formulario, login, checkpoint, captcha, "no disponible", página desconocida), con **toda** la red fuera de las páginas locales bloqueada (`context.route`), y un test que falla si algo intenta salir a `facebook.com`
-  - [ ] Dos aperturas del mismo perfil: la segunda da `MARKETPLACE_PROFILE_BUSY`
-  - [ ] `watch`: reconoce `/marketplace/item/123` llegando desde el formulario; ignora otra pestaña, otra ruta y una segunda navegación; avisa el cierre
+  - [x] Tests con Playwright sin ventana sobre páginas locales (formulario, login, checkpoint, captcha, "no disponible", página desconocida), con **toda** la red fuera de las páginas locales bloqueada (`context.route`), y un test que falla si algo intenta salir a `facebook.com`
+  - [x] Dos aperturas del mismo perfil: la segunda da `MARKETPLACE_PROFILE_BUSY`
+  - [x] `watch`: reconoce `/marketplace/item/123` llegando desde el formulario; ignora otra pestaña, otra ruta y una segunda navegación; avisa el cierre
 
 ### F5-T03 · `pnpm fb:smoke` (sin llenar)
 - **Depende de:** T02
 - **Archivos:** `apps/worker/src/smoke/fb-smoke.ts`, `apps/worker/src/scripts/fb-smoke.ts`, `package.json`, `CLAUDE.md`, `docs/08-guia-operador.md`, `docs/07-checklist-cuentas.md`
 - **Descripción:** §4.8 sin `--listing`. Lo corre el operador apenas se mergee el lote A: su árbol del formulario (`tmp/fb-smoke/form.aria.yml`) es la entrada de T09. `CLAUDE.md` suma el comando y la excepción a `PUBLISH_MODE` (como `ml:test-user`): conectar Marketplace y `fb:smoke` abren Facebook en cualquier modo, sin publicar, y los corre solo el operador.
 - **Hecho cuando:**
-  - [ ] Tests sobre páginas locales: guarda la evidencia, no escribe en ningún control, se detiene ante cada pantalla de la lista, sin sesión espera y respeta el tope
-  - [ ] Guía, checklist y `CLAUDE.md` con el comando y el paso a paso del operador
+  - [x] Tests sobre páginas locales: guarda la evidencia, no escribe en ningún control, se detiene ante cada pantalla de la lista, sin sesión espera y respeta el tope
+  - [x] Guía, checklist y `CLAUDE.md` con el comando y el paso a paso del operador
 
 ### F5-T04 · Conectar y olvidar la cuenta (core y worker)
 - **Depende de:** T01, T02
@@ -367,3 +367,4 @@ Decididas por Claude con la aprobación permanente (preguntas técnicas de la no
 | 2026-10-09 | Fuente de la UF (nota `uf.md`): API BDE del Banco Central con `BCCH_API_TOKEN`, valores en memoria por fecha, el token oculto por el redactor, `UF_SOURCE_NOT_CONFIGURED` y `UF_SOURCE_AUTH_INVALID`, y `pnpm uf:smoke` (operador) |
 | 2026-10-09 | Spec **aprobado** (aprobación permanente del operador). ADR-0017 aceptado; `03-plataformas.md`, `06-roadmap.md`, `07-checklist-cuentas.md` y `docs/ESTADO.md` al día |
 | 2026-10-09 | Revisión del PR #103 (`revisor` y `arquitecto`): la UF la convierte core en el intento (también en `dry-run`) y el progreso lo arma core; se quita la retoma con la ventana viva; el límite cuenta los `publish_attempt` en `live` (los reintentos de la misma publicación también); conectar y `fb:smoke` abren Facebook en cualquier modo como excepción explícita (ADR-0017 y `CLAUDE.md`), y `--listing` pide confirmación y respeta el límite; el esqueleto del publisher en T05 deja la simulación antes del lote E; `MANUAL_CONFIRM_PENDING` al desconectar con test en core; `c_user` NO VERIFICADO y la sesión exige además una página que no sea de verificación; errores de la UF separados (`UF_VALUE_MISSING`, `UF_VALUE_SUSPICIOUS`) y control de rango; D5 y D6 precisos (pausa fija, idioma y zona como configuración); un solo job `marketplace.profile` para login y olvido; `updateProgress` por intento; `awaiting_manual_confirm` en `PUBLISH_ATTEMPT_RESULTS`; `ufConfigured` en `marketplaceReadiness`; subrutas de publishers (la API no carga Playwright); sin capturas en pantallas de login o verificación; plan B sin consultar la UF |
+| 2026-10-09 | Desde el lote A (F5-T01 a T03): `checkConnectedCredentials` suma `ACCOUNT_CREDENTIALS_NOT_ALLOWED` (una cuenta de Marketplace nunca guarda credenciales); `DirectPublisher` (Instagram y Portal devuelven solo "publicado") y `ACCESS_TOKEN_UNAVAILABLE` (pedir un token sin credenciales); `PUBLICATION_PROGRESS_STALE` para `updateProgress`; `BROWSER_PROFILES_DIR` ignora el valor viejo de `.env.example` (`./.browser-profiles`) y `loadEnv` rechaza una ruta relativa; el candado del perfil es un archivo `<perfil>.lock` con el pid (uno muerto se toma); el formulario se reconoce, hasta T09, por su control de fotos (`FORM_ROOT`, provisional); `fb:smoke` espera también si la página pide una verificación durante el inicio de sesión (es parte del inicio a mano), cierra la ventana al terminar y deja `summary.json` sin cookies ni consulta |

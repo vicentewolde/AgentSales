@@ -2,6 +2,7 @@ import type {
   BrokerRepository,
   ConnectedAccount,
   PlatformAccountRepository,
+  PlatformCredentials,
 } from "@agentsales/core";
 import { beforeAll, describe, expect, it } from "vitest";
 import { brokerData } from "./import-repositories.contract.js";
@@ -20,10 +21,13 @@ export type PlatformAccountRepositories = {
 let sequence = 0;
 const unique = (prefix: string) => `${prefix}-${++sequence}`;
 
+/** Una cuenta con credenciales (Instagram por defecto): las de token. */
+type TokenAccount = ConnectedAccount & { credentials: PlatformCredentials };
+
 export const connectedAccount = (
   brokerId: string,
-  overrides: Partial<ConnectedAccount> = {},
-): ConnectedAccount => ({
+  overrides: Partial<TokenAccount> = {},
+): TokenAccount => ({
   brokerId,
   platform: "instagram",
   externalAccountId: unique("17841400"),
@@ -63,6 +67,39 @@ export function platformAccountRepositoryContract(
       expect(JSON.stringify(account)).not.toContain(input.credentials.accessToken);
       expect(await repos.accounts.get(account.id)).toEqual(account);
       expect(await repos.accounts.get(repos.missingId)).toBeNull();
+    });
+
+    it("una cuenta de Marketplace se conecta sin credenciales (ADR-0017)", async () => {
+      const account = await repos.accounts.upsertConnected({
+        brokerId,
+        platform: "fb_marketplace",
+        externalAccountId: unique("1000"),
+        displayName: "Facebook de prueba",
+        tokenExpiresAt: null,
+        meta: { userId: "1000", connectedAt: "2026-10-09T12:00:00.000Z" },
+        credentials: null,
+      });
+
+      expect(account).toMatchObject({
+        platform: "fb_marketplace",
+        status: "connected",
+        tokenExpiresAt: null,
+        hasCredentials: false,
+      });
+      await expect(repos.accounts.getCredentials(account.id)).rejects.toMatchObject({
+        code: "ACCOUNT_NOT_CONNECTED",
+      });
+    });
+
+    it("sin credenciales solo se conecta Marketplace, y Marketplace nunca las guarda", async () => {
+      await expect(
+        repos.accounts.upsertConnected({ ...connectedAccount(brokerId), credentials: null }),
+      ).rejects.toMatchObject({ code: "ACCOUNT_CREDENTIALS_REQUIRED", retriable: false });
+      await expect(
+        repos.accounts.upsertConnected(
+          connectedAccount(brokerId, { platform: "fb_marketplace", tokenExpiresAt: null }),
+        ),
+      ).rejects.toMatchObject({ code: "ACCOUNT_CREDENTIALS_NOT_ALLOWED", retriable: false });
     });
 
     it("getCredentials devuelve las credenciales descifradas", async () => {

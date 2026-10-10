@@ -321,6 +321,22 @@ describe("publishPublication · errores", () => {
     }
   });
 
+  it("un formulario listo de un publisher sin paso manual nunca se da por publicado", async () => {
+    const { t, post, run } = await setup({ publisher: { steps: [{ handoff: {} }] } });
+    await expect(run(post)).rejects.toMatchObject({ code: "INTERNAL_ERROR", retriable: false });
+    expect(current(t, post.id)).toMatchObject({
+      status: "failed",
+      externalId: null,
+      lastError: { code: "INTERNAL_ERROR" },
+    });
+  });
+
+  it("con paso manual, hasta F5-T05 el formulario listo deja failed, nunca published", async () => {
+    const { t, post, run } = await setup({ publisher: { manualConfirm: true } });
+    await expect(run(post)).rejects.toMatchObject({ code: "INTERNAL_ERROR", retriable: false });
+    expect(current(t, post.id)).toMatchObject({ status: "failed", externalId: null });
+  });
+
   it("sin publisher para la plataforma es PUBLISHER_NOT_CONFIGURED", async () => {
     const { t, deps, post } = await setup();
     await expect(

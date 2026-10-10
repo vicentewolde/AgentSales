@@ -1,7 +1,11 @@
 import type { Platform, PlatformAccountStatus } from "../enums.js";
 import type { PlatformAccount, PlatformCredentials } from "../platform-account.js";
 
-/** Una cuenta recién conectada (OAuth o token del panel), con sus credenciales en claro. */
+/**
+ * Una cuenta recién conectada (OAuth, token del panel o la sesión del perfil), con sus credenciales
+ * en claro. `credentials` es `null` solo en Marketplace, cuya sesión vive en el perfil del navegador
+ * (ADR-0017, `checkConnectedCredentials`).
+ */
 export type ConnectedAccount = {
   brokerId: string;
   platform: Platform;
@@ -9,7 +13,7 @@ export type ConnectedAccount = {
   displayName: string;
   tokenExpiresAt: Date | null;
   meta: Record<string, unknown>;
-  credentials: PlatformCredentials;
+  credentials: PlatformCredentials | null;
 };
 
 /**

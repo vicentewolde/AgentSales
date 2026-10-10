@@ -6,7 +6,7 @@ import type {
   Publisher,
   PublishInput,
   PublishIssue,
-  PublishResult,
+  PublishOutcome,
   PublishValidation,
   RemoteStatus,
 } from "../ports/publisher.js";
@@ -14,11 +14,14 @@ import { structuredCopy } from "./copy.js";
 
 /**
  * Un paso guionado de `publish`: guarda `progress` (si viene) y después lanza `error` o devuelve
- * el resultado (por defecto, publicado con un id y un enlace falsos).
+ * el resultado (por defecto, publicado con un id y un enlace falsos; con `manualConfirm`, el
+ * formulario listo). `handoff` fuerza el formulario listo (también sin `manualConfirm`, para probar
+ * que el intento lo rechaza).
  */
 export type FakePublishStep = {
   progress?: unknown;
   error?: Error;
+  handoff?: { notes?: string[] };
   result?: {
     externalId: string;
     externalUrl: string | null;
@@ -30,6 +33,8 @@ export type FakePublishStep = {
 export type FakePublisherOptions = {
   platform?: Platform;
   formats?: readonly PublicationFormat[];
+  /** Como Marketplace (ADR-0017): `publish` deja el formulario listo para el clic del operador. */
+  manualConfirm?: true;
   /** Motivos que devuelve `validate`: fijos o según el input. Sin motivos, es válido. */
   issues?: readonly PublishIssue[] | ((input: PublishInput) => readonly PublishIssue[]);
   /** Un paso por llamada a `publish`, en orden; sin pasos pendientes, publica. */
@@ -108,6 +113,7 @@ export function createFakePublisher(options: FakePublisherOptions = {}): FakePub
   return {
     platform: options.platform ?? "instagram",
     formats: options.formats ?? ["post", "reel"],
+    ...(options.manualConfirm === true ? { manualConfirm: true as const } : {}),
     validated,
     published,
     preflighted,
@@ -135,13 +141,24 @@ export function createFakePublisher(options: FakePublisherOptions = {}): FakePub
         typeof options.issues === "function" ? options.issues(input) : (options.issues ?? []);
       return issues.length === 0 ? { ok: true } : { ok: false, issues: [...issues] };
     },
-    async publish(input: PublishInput, ctx: PublishContext): Promise<PublishResult> {
+    async publish(input: PublishInput, ctx: PublishContext): Promise<PublishOutcome> {
       published.push(
         structuredCopy({ input, accountId: ctx.account.id, progress: ctx.progress ?? null }),
       );
       const step = steps.shift() ?? {};
       if (step.progress !== undefined) await ctx.saveProgress(step.progress);
       if (step.error !== undefined) throw step.error;
+      if (
+        step.handoff !== undefined ||
+        (options.manualConfirm === true && step.result === undefined)
+      ) {
+        const notes = step.handoff?.notes;
+        return {
+          handoff: "manual_confirm",
+          simulated: false,
+          ...(notes === undefined ? {} : { notes: [...notes] }),
+        };
+      }
       const result = step.result ?? {
         externalId: `fake-${input.publicationId}-${published.length}`,
         externalUrl: `https://example.test/p/${input.publicationId}`,

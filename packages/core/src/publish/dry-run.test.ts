@@ -8,7 +8,7 @@ import {
   storedAccessToken,
 } from "../ports/publisher.js";
 import { createFakePublisher } from "../testing/index.js";
-import { withDryRun } from "./dry-run.js";
+import { DRY_RUN_HANDOFF_NOTE, withDryRun } from "./dry-run.js";
 import { publishAttemptRecord } from "./input.js";
 
 const at = new Date("2026-10-05T12:00:00Z");
@@ -86,6 +86,25 @@ describe("withDryRun", () => {
     await withDryRun(fake).publish(input, context());
     expect(fake.published).toEqual([]);
     expect(fake.validated).toHaveLength(1);
+  });
+
+  it("con paso manual (Marketplace) simula el formulario listo y nunca llama a publish", async () => {
+    const marketplaceInput: PublishInput = { ...input, platform: "fb_marketplace", format: "post" };
+    const fake = createFakePublisher({
+      platform: "fb_marketplace",
+      formats: ["post"],
+      manualConfirm: true,
+    });
+    const publisher = withDryRun(fake);
+
+    expect(publisher.manualConfirm).toBe(true);
+    await expect(publisher.publish(marketplaceInput, context())).resolves.toEqual({
+      handoff: "manual_confirm",
+      simulated: true,
+      notes: [DRY_RUN_HANDOFF_NOTE],
+    });
+    expect(fake.published).toEqual([]);
+    expect(withDryRun(createFakePublisher()).manualConfirm).toBeUndefined();
   });
 
   it("conserva la plataforma, los formatos y la validación del envuelto", () => {
@@ -261,6 +280,15 @@ describe("storedAccessToken (F4-T13)", () => {
     await expect(ctx.accessToken()).resolves.toBe(TOKEN);
     await expect(ctx.accessToken({ rejectedToken: TOKEN })).rejects.toMatchObject({
       code: "ACCESS_TOKEN_REFRESH_UNSUPPORTED",
+    });
+  });
+
+  it("platformContextOf sin token ni credenciales (Marketplace) falla al pedir un token", async () => {
+    const { credentials: _ignored, ...withoutCredentials } = context();
+    const ctx = platformContextOf(withoutCredentials);
+    await expect(ctx.accessToken()).rejects.toMatchObject({
+      code: "ACCESS_TOKEN_UNAVAILABLE",
+      retriable: false,
     });
   });
 });

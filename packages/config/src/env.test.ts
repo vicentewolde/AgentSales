@@ -331,4 +331,47 @@ describe("loadEnv", () => {
       ]);
     });
   });
+
+  describe("Facebook Marketplace (F5)", () => {
+    it("por defecto: 3 avisos al día, el perfil fuera del proyecto y 30 min de espera", () => {
+      const env = loadEnv(validSource);
+
+      expect(env.MARKETPLACE_DAILY_LIMIT).toBe(3);
+      expect(env.BROWSER_PROFILES_DIR).toBe("~/.agentsales/browser-profiles");
+      expect(env.MARKETPLACE_CONFIRM_TIMEOUT_MIN).toBe(30);
+    });
+
+    it("ignora el valor viejo de .env.example (dentro del proyecto) y usa el nuevo", () => {
+      const env = loadEnv({ ...validSource, BROWSER_PROFILES_DIR: "./.browser-profiles" });
+
+      expect(env.BROWSER_PROFILES_DIR).toBe("~/.agentsales/browser-profiles");
+    });
+
+    it("acepta una ruta absoluta o con ~/", () => {
+      expect(
+        loadEnv({ ...validSource, BROWSER_PROFILES_DIR: "/srv/perfiles" }).BROWSER_PROFILES_DIR,
+      ).toBe("/srv/perfiles");
+      expect(
+        loadEnv({ ...validSource, BROWSER_PROFILES_DIR: "~/perfiles" }).BROWSER_PROFILES_DIR,
+      ).toBe("~/perfiles");
+    });
+
+    it.each(["perfiles", "./tmp/perfiles", "../perfiles"])(
+      "rechaza una ruta relativa (%s): quedaría dentro del proyecto",
+      (value) => {
+        const error = envErrorOf({ ...validSource, BROWSER_PROFILES_DIR: value });
+
+        expect(error.issues.map((issue) => issue.variable)).toEqual(["BROWSER_PROFILES_DIR"]);
+        expect(error.message).not.toContain(value);
+      },
+    );
+
+    it.each(["0", "241", "abc"])("rechaza MARKETPLACE_CONFIRM_TIMEOUT_MIN=%s", (value) => {
+      const error = envErrorOf({ ...validSource, MARKETPLACE_CONFIRM_TIMEOUT_MIN: value });
+
+      expect(error.message).toContain(
+        "MARKETPLACE_CONFIRM_TIMEOUT_MIN: debe ser un número entero de minutos entre 1 y 240",
+      );
+    });
+  });
 });

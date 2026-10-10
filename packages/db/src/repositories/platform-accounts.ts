@@ -1,6 +1,7 @@
 import {
   AppError,
   CREDENTIALS_LOCK_TIMEOUT_MS,
+  checkConnectedCredentials,
   checkCredentials,
   normalizeAccountMeta,
   type PlatformAccount,
@@ -116,14 +117,14 @@ export function createPlatformAccountRepository(
 
   return {
     async upsertConnected(account, options = {}) {
-      const credentials = checkCredentials(account.credentials);
+      const credentials = checkConnectedCredentials(account.platform, account.credentials);
       const meta = normalizeAccountMeta(account.meta);
       const values = {
         brokerId: account.brokerId,
         platform: account.platform,
         externalAccountId: account.externalAccountId,
         displayName: account.displayName,
-        credentialsEncrypted: seal(account, credentials),
+        credentialsEncrypted: credentials === null ? null : seal(account, credentials),
         tokenExpiresAt: account.tokenExpiresAt,
         status: "connected" as const,
         meta,

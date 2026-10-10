@@ -111,7 +111,8 @@ function setup(options: { error?: AppError } = {}) {
         tokenExpiryEstimated: false,
         ...meta,
       },
-      credentials: { accessToken: token },
+      // Marketplace no guarda credenciales: su sesión vive en el perfil (ADR-0017).
+      credentials: platform === "fb_marketplace" ? null : { accessToken: token },
     });
   /** Una cuenta de Mercado Libre como la deja conectar (F4-T06), refrescada hace `refreshedAgo`. */
   const addMl = ({

@@ -9,6 +9,7 @@ import {
   type PublicationStatus,
 } from "./enums.js";
 import { AppError } from "./errors.js";
+import { marketplaceProgressSchema } from "./marketplace/progress.js";
 import { portalProgressSchema } from "./portal/progress.js";
 
 /**
@@ -35,6 +36,7 @@ export type InstagramProgress = z.infer<typeof instagramProgressSchema>;
 export const PUBLICATION_PROGRESS_SCHEMAS = {
   instagram: instagramProgressSchema,
   portal_inmobiliario: portalProgressSchema,
+  fb_marketplace: marketplaceProgressSchema,
 } as const satisfies Readonly<Partial<Record<Platform, z.ZodType>>>;
 
 /**

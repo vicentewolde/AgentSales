@@ -122,6 +122,16 @@ export {
   type ValidatedListingRow,
 } from "./listing-validator/index.js";
 export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
+export {
+  type MarketplaceProgress,
+  marketplaceProgressSchema,
+} from "./marketplace/progress.js";
+export {
+  isMarketplaceItemUrl,
+  type MarketplaceItemRef,
+  marketplaceItemUrl,
+  parseMarketplaceItemUrl,
+} from "./marketplace/url.js";
 export { type Media, mediaSchema } from "./media.js";
 export {
   PHOTO_MIN_WIDTH,
@@ -137,19 +147,24 @@ export {
   reelWarnings,
 } from "./media-checks.js";
 export {
+  checkConnectedCredentials,
   checkCredentials,
   INSTAGRAM_PUBLISH_SCOPE,
   type InstagramAccountMeta,
   instagramAccountMetaSchema,
+  type MarketplaceAccountMeta,
   MERCADOLIBRE_REFRESH_TOKEN_DAYS,
   MERCADOLIBRE_SITE_ID,
   type MercadoLibreAccountMeta,
+  marketplaceAccountMetaSchema,
   mercadoLibreAccountMetaSchema,
   normalizeAccountMeta,
   type PlatformAccount,
   type PlatformCredentials,
   platformAccountSchema,
   platformCredentialsSchema,
+  SESSION_PROFILE_PLATFORMS,
+  usesSessionProfile,
 } from "./platform-account.js";
 export {
   type PlatformCatalogEntry,
@@ -295,20 +310,23 @@ export type {
 } from "./ports/publication-repository.js";
 export type {
   AccessTokenProvider,
+  DirectPublisher,
   PlatformContext,
   PublishBrokerContact,
   PublishContext,
   PublishedRef,
   Publisher,
+  PublishHandoff,
   PublishInput,
   PublishIssue,
   PublishListing,
   PublishMediaItem,
+  PublishOutcome,
   PublishResult,
   PublishValidation,
   RemoteStatus,
 } from "./ports/publisher.js";
-export { platformContextOf, storedAccessToken } from "./ports/publisher.js";
+export { isPublishHandoff, platformContextOf, storedAccessToken } from "./ports/publisher.js";
 export type { SecretBox } from "./ports/secret-box.js";
 export {
   type CoverData,
@@ -369,7 +387,7 @@ export {
   TERMINAL_PUBLICATION_STATUSES,
   transition,
 } from "./publication-state.js";
-export { dryRunExternalId, withDryRun } from "./publish/dry-run.js";
+export { DRY_RUN_HANDOFF_NOTE, dryRunExternalId, withDryRun } from "./publish/dry-run.js";
 export {
   assemblePublishInput,
   buildPublishInput,
