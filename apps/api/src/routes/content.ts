@@ -32,7 +32,7 @@ import {
   type ListingContentResponse,
 } from "../contracts/index.js";
 import { validated } from "../validation.js";
-import { actorOf, portalReadinessView, publicationView, skippedView } from "./publication-views.js";
+import { actorOf, publicationView, readinessView, skippedView } from "./publication-views.js";
 
 export type ContentRoutesDeps = RequestContentRunDeps &
   GetListingContentDeps &
@@ -110,7 +110,8 @@ export function listingContentRoutes(deps: ContentRoutesDeps) {
         photos: await Promise.all(content.photos.map(signed)),
         reel: content.reel === null ? null : await signed(content.reel),
         latestRun: content.latestRun === null ? null : contentRunView(content.latestRun),
-        portalReadiness: portalReadinessView(content.portalReadiness),
+        portalReadiness: readinessView(content.portalReadiness),
+        marketplaceReadiness: readinessView(content.marketplaceReadiness),
       };
       return c.json(body, 200);
     });
@@ -161,7 +162,11 @@ export function contentRoutes(deps: EditContentDeps) {
         skipped: result.skipped.map(skippedView),
         publications: result.publications.map(publicationView),
         portalReadiness:
-          result.portalReadiness === undefined ? null : portalReadinessView(result.portalReadiness),
+          result.portalReadiness === undefined ? null : readinessView(result.portalReadiness),
+        marketplaceReadiness:
+          result.marketplaceReadiness === undefined
+            ? null
+            : readinessView(result.marketplaceReadiness),
       };
       return c.json(body, 200);
     })

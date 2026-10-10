@@ -32,34 +32,45 @@ import {
 import { z } from "zod";
 
 /**
- * Lo que le falta a un aviso para Portal Inmobiliario (`portalReadiness`, spec F4 §4.5): el código,
- * el campo del Excel que hay que completar (`null` si no es del aviso, como el WhatsApp del
- * corredor) y el motivo en español, sin datos del aviso.
+ * Lo que le falta a un aviso para un canal (`portalReadiness`, spec F4 §4.5; `marketplaceReadiness`,
+ * spec F5 §4.6): el código, el campo del Excel que hay que completar (`null` si no es del aviso,
+ * como el WhatsApp del corredor o las fotos) y el motivo en español, sin datos del aviso.
  */
-export const portalReadinessIssueSchema = z.object({
+export const readinessIssueSchema = z.object({
   code: z.string(),
   field: z.string().nullable(),
   message: z.string(),
 });
-export type PortalReadinessIssueView = z.infer<typeof portalReadinessIssueSchema>;
+export type ReadinessIssueView = z.infer<typeof readinessIssueSchema>;
 
 /** `ready` sin motivos, o los motivos de lo que falta. */
-export const portalReadinessSchema = z.object({
+export const readinessSchema = z.object({
   ready: z.boolean(),
-  issues: z.array(portalReadinessIssueSchema),
+  issues: z.array(readinessIssueSchema),
 });
-export type PortalReadinessView = z.infer<typeof portalReadinessSchema>;
+export type ReadinessView = z.infer<typeof readinessSchema>;
+
+/** Los nombres de Portal (F4), los mismos esquemas. */
+export const portalReadinessIssueSchema = readinessIssueSchema;
+export type PortalReadinessIssueView = ReadinessIssueView;
+export const portalReadinessSchema = readinessSchema;
+export type PortalReadinessView = ReadinessView;
 
 /**
- * Cuerpo de todo error de la API: `code` y `message`, nunca `details` ni `cause`. La excepción
- * (desde F4-T19, seguimiento de ADR-0011): `PORTAL_NOT_READY` suma `issues`, lo que le falta al
- * aviso para Portal, que el panel y la CLI muestran para que el operador complete la planilla.
+ * Cuerpo de todo error de la API: `code` y `message`, nunca `details` ni `cause`. Las excepciones
+ * (seguimiento de ADR-0011), validadas campo por campo:
+ * - `issues` en `PORTAL_NOT_READY` (desde F4-T19) y `MARKETPLACE_NOT_READY` (F5-T08): lo que le
+ *   falta al aviso, que el panel y la CLI muestran para que el operador complete la planilla;
+ * - `publicationId` en `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` (F5-T08): la publicación
+ *   de Marketplace con el formulario abierto (esperando el clic final o, solo en
+ *   `MARKETPLACE_FORM_OPEN`, todavía llenándose), para ofrecer "lo publiqué" o "no lo publiqué".
  */
 export const errorBodySchema = z.object({
   error: z.object({
     code: z.string(),
     message: z.string(),
-    issues: z.array(portalReadinessIssueSchema).optional(),
+    issues: z.array(readinessIssueSchema).optional(),
+    publicationId: z.uuid().optional(),
   }),
 });
 export type ErrorBody = z.infer<typeof errorBodySchema>;
@@ -313,6 +324,12 @@ export const listingContentResponseSchema = z.object({
   latestRun: contentRunViewSchema.nullable(),
   /** Lo que le falta al aviso para Portal (la pestaña Portal; desde F4-T19). */
   portalReadiness: portalReadinessSchema,
+  /**
+   * Lo que le falta al aviso para el formulario de Marketplace (la pestaña Marketplace; F5-T08),
+   * con `UF_SOURCE_NOT_CONFIGURED` si el precio está en UF y la API no tiene el token del Banco
+   * Central.
+   */
+  marketplaceReadiness: readinessSchema,
 });
 export type ListingContentResponse = z.infer<typeof listingContentResponseSchema>;
 
@@ -334,6 +351,24 @@ export type ContentEditBody = z.infer<typeof contentEditBodySchema>;
 
 export const contentEditResponseSchema = z.object({ content: contentViewSchema });
 export type ContentEditResponse = z.infer<typeof contentEditResponseSchema>;
+
+/**
+ * El formulario de Marketplace del intento actual (spec F5 §4.10, `marketplaceManualState` de core),
+ * sin el progreso crudo: cuándo quedó listo, si fue una simulación, si la ventana sigue abierta o
+ * cuándo se cerró, cuántas fotos se subieron y el precio en pesos con la UF usada (`null` si el
+ * aviso estaba en pesos).
+ */
+export const marketplaceManualSchema = z.object({
+  formReadyAt: z.coerce.date(),
+  simulated: z.boolean(),
+  windowOpen: z.boolean(),
+  windowClosedAt: z.coerce.date().nullable(),
+  photos: z.number().int().nonnegative(),
+  priceClp: z.number().int().nonnegative(),
+  ufValue: z.string().nullable(),
+  ufDate: z.string().nullable(),
+});
+export type MarketplaceManualView = z.infer<typeof marketplaceManualSchema>;
 
 /**
  * Una publicación tal como la ven el panel y la CLI (spec F3 §4.3 y §4.8): sin `progress` (lo que
@@ -366,6 +401,8 @@ export const publicationViewSchema = z.object({
    * Instagram.
    */
   remoteState: remoteStateSchema.nullable(),
+  /** Solo Marketplace: el formulario del intento actual (F5-T08); `null` en los demás canales. */
+  manual: marketplaceManualSchema.nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -390,6 +427,8 @@ export const contentApproveResponseSchema = z.object({
   publications: z.array(publicationViewSchema),
   /** Solo Portal: lo que le falta al aviso (advertencia: el texto se aprobó igual). */
   portalReadiness: portalReadinessSchema.nullable(),
+  /** Solo Marketplace: lo que le falta al aviso (advertencia, como en Portal; F5-T08). */
+  marketplaceReadiness: readinessSchema.nullable(),
 });
 export type ContentApproveResponse = z.infer<typeof contentApproveResponseSchema>;
 
@@ -452,6 +491,30 @@ export type PublicationPublishResponse = z.infer<typeof publicationPublishRespon
 
 export const publicationResponseSchema = z.object({ publication: publicationViewSchema });
 export type PublicationResponse = z.infer<typeof publicationResponseSchema>;
+
+/** El largo máximo del enlace pegado de un aviso de Marketplace (la API y la CLI). */
+export const MARKETPLACE_URL_MAX_LENGTH = 2048;
+
+/**
+ * `POST /publications/:id/confirm` (spec F5 §4.3): el enlace del aviso publicado en Marketplace,
+ * obligatorio en vivo (en simulación se ignora). Nunca vuelve en un error ni va al log.
+ */
+export const publicationConfirmBodySchema = z.object({
+  url: z
+    .string()
+    .trim()
+    .min(1, "falta el enlace")
+    .max(MARKETPLACE_URL_MAX_LENGTH, "el enlace es demasiado largo")
+    .optional(),
+});
+export type PublicationConfirmBody = z.infer<typeof publicationConfirmBodySchema>;
+
+/** `changed: false`: ya estaba publicada con ese enlace (confirmar dos veces no cambia nada). */
+export const publicationConfirmResponseSchema = z.object({
+  publication: publicationViewSchema,
+  changed: z.boolean(),
+});
+export type PublicationConfirmResponse = z.infer<typeof publicationConfirmResponseSchema>;
 
 /**
  * `POST /publications/:id/retire`: en `live`, `removedByHand: true` confirma que se borró a mano en
@@ -549,6 +612,15 @@ export const platformAccountViewSchema = z.object({
   accountType: z.string().nullable(),
   /** Instagram: los permisos (`null` con el token del panel); Mercado Libre: los `scopes`. */
   permissions: z.array(z.string()).nullable(),
+  /** Marketplace (spec F5 §4.2): la última vez que el worker vio la sesión abierta en el perfil. */
+  sessionCheckedAt: z.coerce.date().nullable(),
+  /**
+   * Marketplace: el último inicio de sesión que falló (tope, perfil ocupado, Chromium), con su texto
+   * (`marketplaceLoginErrorText`). Sigue aunque después se conecte: la fecha dice cuál es más nuevo.
+   */
+  lastLoginError: z
+    .object({ code: z.string(), message: z.string(), at: z.coerce.date() })
+    .nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -629,6 +701,35 @@ export const connectTokenBodySchema = z.object({
     .regex(/^\S+$/, "el token no puede tener espacios ni saltos de línea"),
 });
 export type ConnectTokenBody = z.infer<typeof connectTokenBodySchema>;
+
+/**
+ * `POST /accounts/:id/disconnect` (spec F5 §4.2): Marketplace exige `confirmed: true` (borra el
+ * perfil del navegador con la sesión de Facebook). El cuerpo va siempre (`{}` sin confirmar).
+ */
+export const accountDisconnectBodySchema = z.object({ confirmed: z.boolean().optional() });
+export type AccountDisconnectBody = z.infer<typeof accountDisconnectBodySchema>;
+
+/**
+ * `POST /accounts/marketplace/login` (spec F5 §4.2): el corredor y, si se quiere, el nombre de la
+ * cuenta (por defecto "Facebook de <corredor>").
+ */
+export const marketplaceLoginBodySchema = z.object({
+  broker: brokerSlugSchema,
+  label: z.string().trim().min(1).max(80).optional(),
+});
+export type MarketplaceLoginBody = z.infer<typeof marketplaceLoginBodySchema>;
+
+/**
+ * El inicio de sesión quedó en cola (202): la CLI y el panel miran `GET /accounts` hasta que una
+ * cuenta de Marketplace del corredor tenga `sessionCheckedAt` o `lastLoginError.at` desde
+ * `requestedAt` (`marketplaceLoginOutcome` de core).
+ */
+export const marketplaceLoginResponseSchema = z.object({
+  queued: z.literal(true),
+  brokerId: z.string(),
+  requestedAt: z.coerce.date(),
+});
+export type MarketplaceLoginResponse = z.infer<typeof marketplaceLoginResponseSchema>;
 
 /** `POST /accounts/mercadolibre/authorize-url` (spec F4 §4.2): el corredor que se conecta. */
 export const mercadoLibreAuthorizeUrlBodySchema = z.object({ broker: brokerSlugSchema });

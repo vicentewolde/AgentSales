@@ -2,11 +2,19 @@ import {
   accountListResponseSchema,
   accountRefreshResponseSchema,
   accountResponseSchema,
+  marketplaceLoginResponseSchema,
   mercadoLibreAuthorizeUrlResponseSchema,
   type PlatformAccountView,
 } from "@agentsales/api/contracts";
 import {
+  accountDisconnectText,
+  currentMarketplaceLoginError,
+  MARKETPLACE_LOGIN_CLIENT_WAIT_MS,
+  MARKETPLACE_WAIT_MAX_POLL_FAILURES,
   MERCADOLIBRE_REFRESH_AGE_MS,
+  marketplaceConnectCommand,
+  marketplaceLoginErrorText,
+  marketplaceLoginOutcome,
   mercadoLibreConnectCommands,
   PLATFORM_ACCOUNT_STATUS_TEXT,
   PLATFORM_TEXT,
@@ -18,13 +26,19 @@ import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import type { Colors } from "../colors.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, formatDateTime, guarded, type Io, renderTable } from "../output.js";
-import { brokerSlugOf, fetchBrokers } from "./shared.js";
+import { brokerSlugOf, fetchBrokers, manualConfirmHint } from "./shared.js";
+import { type WaitDeps, waitForRun } from "./wait-run.js";
 
 export type AccountsDeps = Io &
-  Pick<Terminal, "stdinIsTty" | "readStdin" | "openUrl"> & {
+  Pick<Terminal, "stdinIsTty" | "readStdin" | "openUrl" | "confirm"> & {
     client: ApiClient;
     /** Para avisar de un vencimiento cercano. */
     now: () => Date;
+    /** La espera del inicio de sesión de Marketplace (`waitForRun`). */
+    sleep: WaitDeps["sleep"];
+    /** Reloj monótono en milisegundos, para el tope de esa espera. */
+    clock: WaitDeps["now"];
+    wait?: WaitDeps["wait"];
   };
 
 /** El mismo tope que `connectTokenBodySchema` de la API. */
@@ -49,7 +63,21 @@ function paintStatus(account: PlatformAccountView, c: Colors): string {
   return c.red(text);
 }
 
-/** `agentsales accounts` (spec F3 §4.9): las cuentas conectadas, con su estado y vencimiento. */
+/**
+ * La última revisión: en Marketplace, cuándo el worker vio la sesión abierta (no hay token que
+ * refrescar); en las demás, el último refresco del token.
+ */
+function lastCheckText(account: PlatformAccountView): string {
+  const when =
+    account.platform === "fb_marketplace" ? account.sessionCheckedAt : account.tokenRefreshedAt;
+  return when === null ? "—" : formatDateTime(when);
+}
+
+/**
+ * `agentsales accounts` (spec F3 §4.9, F5 §4.12): las cuentas conectadas, con su estado y
+ * vencimiento; en Marketplace, la última sesión vista y, debajo, el último inicio de sesión que
+ * falló.
+ */
 export function runAccounts(deps: AccountsDeps) {
   const c = deps.colors;
   return guarded(deps, async () => {
@@ -69,6 +97,11 @@ export function runAccounts(deps: AccountsDeps) {
           "→ Conecta Mercado Libre con: pnpm -s cli accounts connect mercadolibre --broker <slug>",
         ),
       );
+      deps.print(
+        c.dim(
+          "→ Conecta Marketplace con: pnpm -s cli accounts connect marketplace --broker <slug>",
+        ),
+      );
       return 0;
     }
     const now = deps.now();
@@ -82,11 +115,20 @@ export function runAccounts(deps: AccountsDeps) {
           account.displayName,
           paintStatus(account, c),
           expiryText(account, now, c),
-          account.tokenRefreshedAt === null ? "—" : formatDateTime(account.tokenRefreshedAt),
+          lastCheckText(account),
         ]),
         c,
       ),
     );
+    for (const account of accounts) {
+      const error = currentMarketplaceLoginError(account);
+      if (error === null) continue;
+      deps.print(
+        c.yellow(
+          `  ${account.displayName}: el inicio de sesión del ${formatDateTime(error.at)} falló: ${error.message}`,
+        ),
+      );
+    }
     if (accounts.some((account) => account.status === "expired" || account.status === "error")) {
       deps.print(c.dim("→ Una cuenta vencida o con error se reconecta con accounts connect"));
     }
@@ -94,7 +136,13 @@ export function runAccounts(deps: AccountsDeps) {
   });
 }
 
-export type ConnectOptions = { broker?: string; tokenStdin?: boolean; urlStdin?: boolean };
+export type ConnectOptions = {
+  broker?: string;
+  tokenStdin?: boolean;
+  urlStdin?: boolean;
+  /** Marketplace: el nombre de la cuenta (por defecto "Facebook de <corredor>"). */
+  label?: string;
+};
 
 /** El largo máximo de la dirección de vuelta pegada (la API acepta hasta 4096 por valor). */
 const PASTED_URL_MAX_LENGTH = 8192;
@@ -210,6 +258,103 @@ async function connectMercadoLibre(
   return 0;
 }
 
+/** Lo que se espera del inicio de sesión de Marketplace: el resultado y la cuenta, si conectó. */
+type LoginWait = { status: "pending" | "connected" | "failed"; code?: string; name?: string };
+
+/**
+ * `agentsales accounts connect marketplace --broker <slug> [--label <nombre>]` (spec F5 §4.2 y
+ * §4.12): pide al worker abrir una ventana de Chromium con Facebook, donde el operador inicia
+ * sesión **a mano** (también la verificación, si la pide), y espera mirando `GET /accounts` hasta
+ * que la sesión quede vista o el inicio falle (`marketplaceLoginOutcome`, core), con un tope de
+ * unos 11 min. Abre Facebook en cualquier modo: no publica (ADR-0017 punto 7). Sale con 1 si falló
+ * o si deja de esperar.
+ */
+async function connectMarketplace(
+  deps: AccountsDeps,
+  broker: string,
+  label: string | undefined,
+): Promise<number> {
+  const c = deps.colors;
+  const name = label?.trim();
+  const { brokerId, requestedAt } = await unwrap(
+    deps.client.accounts.marketplace.login.$post({
+      json: { broker, ...(name === undefined || name === "" ? {} : { label: name }) },
+    }),
+    marketplaceLoginResponseSchema,
+  ).catch((error: unknown) => {
+    if (error instanceof ApiCallError && error.code === "MARKETPLACE_PROFILE_ACTION_PENDING") {
+      throw new CliError(
+        error.code,
+        error.apiMessage ?? error.message,
+        `Espera un momento y vuelve a correr ${marketplaceConnectCommand(broker)}`,
+      );
+    }
+    throw error;
+  });
+  deps.print(
+    "Se abrirá una ventana de Chromium con Facebook: inicia sesión ahí a mano (también la verificación, si la pide). Espero hasta 10 min.",
+  );
+  deps.print(c.dim("  El worker abre la ventana: tiene que estar corriendo (pnpm dev)"));
+  // La primera conexión que falla no tiene cuenta donde anotar el motivo: la CLI no lo ve.
+  deps.print(
+    c.dim("  Si cierras la ventana sin iniciar sesión, corta con Ctrl+C y vuelve a intentarlo"),
+  );
+  const check = async (): Promise<LoginWait> => {
+    const { accounts } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
+    const result = marketplaceLoginOutcome(accounts, { brokerId, requestedAt });
+    if (result.outcome === "failed") return { status: "failed", code: result.code };
+    if (result.outcome === "pending") return { status: "pending" };
+    const account = accounts.find(
+      (item) =>
+        item.brokerId === brokerId &&
+        item.platform === "fb_marketplace" &&
+        item.status === "connected",
+    );
+    return { status: "connected", ...(account === undefined ? {} : { name: account.displayName }) };
+  };
+  const done = await waitForRun<LoginWait>(
+    {
+      ...deps,
+      now: deps.clock,
+      wait: {
+        maxWaitMs: MARKETPLACE_LOGIN_CLIENT_WAIT_MS,
+        maxPollFailures: MARKETPLACE_WAIT_MAX_POLL_FAILURES,
+        ...deps.wait,
+      },
+    },
+    {
+      run: { status: "pending" },
+      fetch: check,
+      isTerminal: (wait) => wait.status !== "pending",
+      progress: () => "esperando el inicio de sesión",
+      // La cuenta no tiene `queued`: el aviso de "¿está corriendo el worker?" ya se dio arriba.
+      isQueued: () => false,
+      laterCommand: "agentsales accounts",
+      noun: "el inicio de sesión",
+    },
+  );
+  if (done === null) {
+    deps.printError(
+      c.dim(
+        `→ Si la ventana nunca se abrió, revisa que el worker esté corriendo (pnpm dev) y vuelve a correr ${marketplaceConnectCommand(broker)}`,
+      ),
+    );
+    return 1;
+  }
+  if (done.status === "failed") {
+    deps.printError(c.red(`✗ ${marketplaceLoginErrorText(done.code ?? "")}`));
+    deps.printError(c.dim(`→ Vuelve a intentarlo con ${marketplaceConnectCommand(broker)}`));
+    return 1;
+  }
+  deps.print(`${c.green("✓")} Conectada ${done.name ?? "la cuenta de Marketplace"} (${broker})`);
+  deps.print(
+    c.dim(
+      "  La sesión queda en un perfil de Chromium de este equipo; AgentSales no guarda tu clave",
+    ),
+  );
+  return 0;
+}
+
 /**
  * `agentsales accounts connect instagram --broker <slug> --token-stdin` (spec F3 §4.6 y D4): lee el
  * token largo de Generate token desde la entrada estándar (`pbpaste | …`), nunca de un argumento,
@@ -220,22 +365,25 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
   const c = deps.colors;
   const channel = platform.trim().toLowerCase();
   return guarded(deps, async () => {
-    if (channel !== "instagram" && channel !== "mercadolibre") {
-      throw new CliError("PLATFORM_INVALID", `Se conecta instagram o mercadolibre: "${platform}"`);
+    if (channel !== "instagram" && channel !== "mercadolibre" && channel !== "marketplace") {
+      throw new CliError(
+        "PLATFORM_INVALID",
+        `Se conecta instagram, mercadolibre o marketplace: "${platform}"`,
+      );
     }
-    // Una opción del otro canal no se ignora en silencio.
+    // Una opción de otro canal no se ignora en silencio.
     const foreign =
-      channel === "instagram"
-        ? options.urlStdin
+      options.tokenStdin && channel !== "instagram"
+        ? "--token-stdin"
+        : options.urlStdin && channel !== "mercadolibre"
           ? "--url-stdin"
-          : null
-        : options.tokenStdin
-          ? "--token-stdin"
-          : null;
+          : options.label !== undefined && channel !== "marketplace"
+            ? "--label"
+            : null;
     if (foreign !== null) {
       throw new CliError(
         "OPTION_NOT_FOR_PLATFORM",
-        `${foreign} no es para ${channel}: Instagram usa --token-stdin y Mercado Libre, --url-stdin`,
+        `${foreign} no es para ${channel}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label`,
       );
     }
     if (options.broker === undefined) {
@@ -244,6 +392,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
     const broker = brokerSlugOf(options.broker);
     if (channel === "mercadolibre")
       return connectMercadoLibre(deps, broker, options.urlStdin === true);
+    if (channel === "marketplace") return connectMarketplace(deps, broker, options.label);
     const pipeCommand = tokenStdinCommand(broker);
 
     if (!options.tokenStdin) {
@@ -317,14 +466,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export function runRefresh(deps: AccountsDeps, id: string, options: RefreshOptions = {}) {
   const c = deps.colors;
   return guarded(deps, async () => {
-    const accountId = id.trim();
-    if (!z.uuid().safeParse(accountId).success) {
-      throw new CliError(
-        "ACCOUNT_ID_INVALID",
-        `"${id}" no es el id de una cuenta`,
-        "Mira los ids con agentsales accounts",
-      );
-    }
+    const accountId = accountIdOf(id);
     const result = await unwrap(
       deps.client.accounts[":id"].refresh.$post({
         param: { id: accountId },
@@ -373,23 +515,108 @@ export function runRefresh(deps: AccountsDeps, id: string, options: RefreshOptio
   });
 }
 
+export type DisconnectOptions = { yes?: boolean };
+
+/** El id de una cuenta: un uuid, como lo muestra `agentsales accounts`. */
+function accountIdOf(id: string): string {
+  const accountId = id.trim();
+  if (!z.uuid().safeParse(accountId).success) {
+    throw new CliError(
+      "ACCOUNT_ID_INVALID",
+      `"${id}" no es el id de una cuenta`,
+      "Mira los ids con agentsales accounts",
+    );
+  }
+  return accountId;
+}
+
+/**
+ * `agentsales accounts disconnect <id> [--yes]` (spec F3 §4.6, F5 §4.2 y §4.12): pregunta antes
+ * (salvo `--yes`) y desconecta. En Marketplace además borra el perfil de Chromium con la sesión de
+ * Facebook (lo hace el worker); con una publicación esperando el clic final, la API lo impide
+ * (`MANUAL_CONFIRM_PENDING`) y aquí se dicen los dos comandos para cerrarla.
+ */
+export function runDisconnect(deps: AccountsDeps, id: string, options: DisconnectOptions = {}) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const accountId = accountIdOf(id);
+    const { accounts } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
+    const account = accounts.find((item) => item.id === accountId);
+    if (account === undefined) {
+      throw new CliError(
+        "ACCOUNT_NOT_FOUND",
+        `No existe la cuenta ${accountId}`,
+        "Mira los ids con agentsales accounts",
+      );
+    }
+    const marketplace = account.platform === "fb_marketplace";
+    if (!options.yes) {
+      const confirmed = await deps.confirm(
+        `¿Desconectar ${account.displayName} (${PLATFORM_TEXT[account.platform]})? ${accountDisconnectText(account.platform)}`,
+      );
+      if (!confirmed) {
+        deps.printError(c.yellow("No se desconectó: confirma en la terminal o usa --yes"));
+        return 1;
+      }
+    }
+    const { account: disconnected } = await unwrap(
+      deps.client.accounts[":id"].disconnect.$post({
+        param: { id: accountId },
+        json: { confirmed: true },
+      }),
+      accountResponseSchema,
+    ).catch((error: unknown) => {
+      if (!(error instanceof ApiCallError)) throw error;
+      const message = error.apiMessage ?? error.message;
+      if (error.code === "MANUAL_CONFIRM_PENDING") {
+        throw new CliError(error.code, message, manualConfirmHint(error.publicationId));
+      }
+      const hints: Record<string, string> = {
+        PUBLICATION_IN_PROGRESS:
+          "Espera a que termine de llenarse el formulario y vuelve a intentarlo",
+        MARKETPLACE_PROFILE_ACTION_PENDING: "Espera un momento y vuelve a intentarlo",
+      };
+      const hint = error.code === undefined ? undefined : hints[error.code];
+      if (hint === undefined) throw error;
+      throw new CliError(error.code ?? "API_ERROR", message, hint);
+    });
+    deps.print(`${c.green("✓")} Desconectada ${disconnected.displayName}`);
+    if (marketplace) {
+      deps.print(
+        c.dim(
+          "  El worker borra el perfil de Chromium. La sesión sigue abierta en Facebook: ciérrala allá si quieres",
+        ),
+      );
+    }
+    return 0;
+  });
+}
+
 export function register(program: Command, ctx: CliContext): void {
   const deps = (): AccountsDeps => ({
     ...ctx,
     client: ctx.api(),
     now: () => new Date(),
+    sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
+    clock: () => performance.now(),
   });
   const accounts = program
     .command("accounts")
-    .description("Cuentas conectadas (Instagram y Mercado Libre): estado y vencimiento")
+    .description(
+      "Cuentas conectadas (Instagram, Mercado Libre y Marketplace): estado y vencimiento",
+    )
     .action(() => exitWith(() => runAccounts(deps())));
   accounts
     .command("connect")
     .description(
-      "Conecta una cuenta: Instagram con el token de Generate token; Mercado Libre con el enlace y la dirección de vuelta pegada",
+      "Conecta una cuenta: Instagram con el token de Generate token; Mercado Libre con el enlace y la dirección de vuelta pegada; Marketplace iniciando sesión en una ventana de Chromium",
     )
-    .argument("<canal>", "instagram o mercadolibre")
+    .argument("<canal>", "instagram, mercadolibre o marketplace")
     .option("--broker <slug>", "corredor de la cuenta")
+    .option(
+      "--label <nombre>",
+      "Marketplace: el nombre de la cuenta (por defecto, Facebook de <corredor>)",
+    )
     .option(
       "--token-stdin",
       "Instagram: lee el token largo desde la entrada estándar (pbpaste | …)",
@@ -410,5 +637,15 @@ export function register(program: Command, ctx: CliContext): void {
     .option("--force", "renueva aunque no toque todavía (en Instagram, nunca antes de 24 h)")
     .action((id: string, options: RefreshOptions) =>
       exitWith(() => runRefresh(deps(), id, options)),
+    );
+  accounts
+    .command("disconnect")
+    .description(
+      "Desconecta una cuenta (pide confirmación; en Marketplace borra el perfil de Chromium con la sesión)",
+    )
+    .argument("<id>", "id de la cuenta (agentsales accounts)")
+    .option("--yes", "no pide confirmación")
+    .action((id: string, options: DisconnectOptions) =>
+      exitWith(() => runDisconnect(deps(), id, options)),
     );
 }

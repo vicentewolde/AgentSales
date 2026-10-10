@@ -303,7 +303,8 @@ export async function requireMarketplaceStartable(
   }
   const accounts = new Set(accountIds);
   const own = new Set(channelIds);
-  for (const status of ["publishing", "awaiting_manual_confirm"] as const) {
+  // Primero la que espera el clic: su id es el que el operador puede cerrar (lo publiqué o no).
+  for (const status of ["awaiting_manual_confirm", "publishing"] as const) {
     const open = (await locked.publications.listByStatus(status)).find(
       (other) => accounts.has(other.platformAccountId) && !own.has(other.id),
     );

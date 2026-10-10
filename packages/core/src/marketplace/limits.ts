@@ -107,3 +107,15 @@ export const manualConfirmPending = (publicationId: string) =>
     "Una publicación espera tu clic final en Marketplace: di si la publicaste (pega el enlace) o márcala como no publicada",
     { details: { publicationId } },
   );
+
+/**
+ * Ya hay una acción del perfil de Facebook esperando su turno (spec F5 §4.2): la cola
+ * `marketplace.profile` es `stately` por corredor (una activa y una en cola). Lo dicen iniciar
+ * sesión y desconectar, sin cambiar nada.
+ */
+export const marketplaceProfileActionPending = (brokerId: string) =>
+  new AppError(
+    "MARKETPLACE_PROFILE_ACTION_PENDING",
+    "Ya hay una acción del perfil de Facebook esperando (un inicio de sesión o un borrado): reintenta en un momento",
+    { details: { brokerId } },
+  );

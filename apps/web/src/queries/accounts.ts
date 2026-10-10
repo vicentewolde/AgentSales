@@ -15,14 +15,21 @@ export function useAccounts() {
   });
 }
 
-/** `POST /accounts/:id/disconnect`: la cuenta queda desconectada y sin credenciales. */
+/**
+ * `POST /accounts/:id/disconnect`: la cuenta queda desconectada y sin credenciales. `confirmed`
+ * dice que el operador ya contestó la pregunta de la tarjeta (`accountDisconnectText`: en
+ * Marketplace, que se borra el perfil); Marketplace lo exige.
+ */
 export function useDisconnectAccount() {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (accountId: string) =>
+    mutationFn: ({ accountId, confirmed }: { accountId: string; confirmed: boolean }) =>
       unwrap(
-        client.accounts[":id"].disconnect.$post({ param: { id: accountId } }),
+        client.accounts[":id"].disconnect.$post({
+          param: { id: accountId },
+          json: { confirmed },
+        }),
         accountResponseSchema,
       ),
     onSettled: () => queryClient.invalidateQueries({ queryKey: accountKeys.all }),

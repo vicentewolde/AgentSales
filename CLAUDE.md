@@ -58,10 +58,11 @@ pnpm -s cli listings     # propiedades cargadas (detalle: cli listing <id>; hist
 pnpm -s cli prepare <id_propiedad>  # prepara fotos, portada, reel y textos y espera (con pnpm dev; --no-texts, --replace-edits, --no-wait)
 pnpm -s cli content <id_propiedad>  # textos por canal con su revisión (--platform instagram|portal|marketplace, --json)
 pnpm -s cli approve <id_propiedad>  # aprueba los textos sin errores (--platform, --undo para quitar la aprobación)
-pnpm -s cli publish <id_propiedad>  # publica y espera: carrusel y reel, o el aviso con --platform portal (en live pide confirmación; --yes, --no-wait)
-pnpm -s cli publications [<id_propiedad>]  # estado, modo, enlace y, en Portal, el estado en Mercado Libre y el vencimiento (--events; publications cancel|retire <id>)
+pnpm -s cli publish <id_propiedad>  # publica y espera: carrusel y reel, el aviso con --platform portal, o el formulario de Marketplace con --platform marketplace (espera el formulario listo y el enlace; tú haces Siguiente y Publicar) (en live pide confirmación; --yes, --no-wait)
+pnpm -s cli publications [<id_propiedad>]  # estado, modo, enlace y, en Portal, el estado en Mercado Libre y el vencimiento; en Marketplace, el precio en pesos con la UF usada (--events; publications cancel|retire <id>)
 pnpm -s cli publications pause|resume|close|sync <id>  # Portal: pausa, reactiva, cierra (en live pide confirmación; --yes) o pide leer el estado en Mercado Libre
-pnpm -s cli accounts     # cuentas y vencimiento (pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin; Mercado Libre: accounts connect mercadolibre --broker <slug> y después pbpaste | … --url-stdin; accounts refresh <id> [--force])
+pbpaste | pnpm -s cli publications confirm <id> --url-stdin  # Marketplace: lo publicaste (el enlace no se imprime); publications not-published <id> si no
+pnpm -s cli accounts     # cuentas y vencimiento (pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin; Mercado Libre: accounts connect mercadolibre --broker <slug> y después pbpaste | … --url-stdin; Marketplace: accounts connect marketplace --broker <slug> abre Chromium para iniciar sesión a mano (lo pide el operador); accounts refresh <id> [--force]; accounts disconnect <id> pide confirmación, --yes)
 ```
 (Los comandos existen desde F0; si alguno falta, la tarea que lo introduce debe crearlo.)
 

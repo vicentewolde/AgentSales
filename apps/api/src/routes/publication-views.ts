@@ -1,5 +1,7 @@
 import {
   hasStartedLive,
+  type MarketplaceReadiness,
+  marketplaceManualState,
   type PortalReadiness,
   type Publication,
   type PublicationActor,
@@ -11,15 +13,17 @@ import type { Context } from "hono";
 import {
   CLI_CLIENT,
   CLIENT_HEADER,
-  type PortalReadinessView,
+  type MarketplaceManualView,
   type PublicationEventView,
   type PublicationView,
+  type ReadinessView,
   type SkippedPublicationView,
 } from "../contracts/index.js";
 
 /**
  * La vista HTTP de una publicación: sin `progress` (interno del publisher) ni `externalId`, y sin
- * URLs de lo que se envía a la plataforma (spec F3-T15).
+ * URLs de lo que se envía a la plataforma (spec F3-T15). En Marketplace suma `manual`, derivado del
+ * progreso del intento actual (spec F5 §4.10).
  */
 export const publicationView = (publication: Publication): PublicationView => ({
   id: publication.id,
@@ -38,12 +42,29 @@ export const publicationView = (publication: Publication): PublicationView => ({
   scheduledAt: publication.scheduledAt,
   publishedAt: publication.publishedAt,
   remoteState: publication.remoteState,
+  manual: manualView(publication),
   createdAt: publication.createdAt,
   updatedAt: publication.updatedAt,
 });
 
-/** Lo que le falta al aviso para Portal, siempre con su lista (vacía si está listo). */
-export const portalReadinessView = (readiness: PortalReadiness): PortalReadinessView =>
+/** `manual` campo por campo: un campo nuevo de core no sale por la API sin pasar por aquí. */
+function manualView(publication: Publication): MarketplaceManualView | null {
+  const manual = marketplaceManualState(publication);
+  if (manual === null) return null;
+  return {
+    formReadyAt: manual.formReadyAt,
+    simulated: manual.simulated,
+    windowOpen: manual.windowOpen,
+    windowClosedAt: manual.windowClosedAt,
+    photos: manual.photos,
+    priceClp: manual.priceClp,
+    ufValue: manual.ufValue,
+    ufDate: manual.ufDate,
+  };
+}
+
+/** Lo que le falta al aviso para un canal, siempre con su lista (vacía si está listo). */
+export const readinessView = (readiness: PortalReadiness | MarketplaceReadiness): ReadinessView =>
   readiness.ready
     ? { ready: true, issues: [] }
     : {
@@ -70,6 +91,8 @@ const STATUS_PAYLOAD_KEYS = [
   "operation",
   "sync",
   "remoteStatus",
+  // Confirmar una de Marketplace (F5-T05): si la vio la ventana o la pegó el operador.
+  "confirmedBy",
 ] as const;
 
 /**

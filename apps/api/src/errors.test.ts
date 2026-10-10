@@ -1,5 +1,8 @@
+import { AppError } from "@agentsales/core";
+import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { httpStatusFor } from "./errors.js";
+import { createErrorHandler, httpStatusFor } from "./errors.js";
+import { silentLogger } from "./testing/index.js";
 
 describe("httpStatusFor", () => {
   it.each([
@@ -80,7 +83,83 @@ describe("httpStatusFor", () => {
     ["STORAGE_ERROR", 500],
     ["SEED_FAILED", 500],
     ["ALGO_NUEVO", 500],
+    // Marketplace (F5-T08, spec F5 §4.10).
+    ["MARKETPLACE_NOT_READY", 409],
+    ["MARKETPLACE_DAILY_LIMIT", 409],
+    ["MARKETPLACE_FORM_OPEN", 409],
+    ["MANUAL_CONFIRM_PENDING", 409],
+    ["PUBLICATION_ALREADY_CONFIRMED", 409],
+    ["DISCONNECT_NOT_CONFIRMED", 409],
+    ["MARKETPLACE_PROFILE_ACTION_PENDING", 409],
+    ["MARKETPLACE_URL_INVALID", 400],
+    ["MARKETPLACE_URL_REQUIRED", 400],
+    ["MARKETPLACE_PROFILE_BUSY", 503],
+    // Errores de programación: por su sufijo caerían en 503 o 400.
+    ["ACCESS_TOKEN_UNAVAILABLE", 500],
+    ["ACCOUNT_CREDENTIALS_REQUIRED", 500],
+    ["ACCOUNT_CREDENTIALS_NOT_ALLOWED", 500],
+    ["MARKETPLACE_PROFILE_PATH_INVALID", 500],
+    ["MARKETPLACE_SESSION_ID_INVALID", 500],
+    // Los del navegador solo viajan en `last_error`; si llegaran, son del servidor.
+    ["MARKETPLACE_SESSION_EXPIRED", 500],
+    ["MARKETPLACE_FORM_CHANGED", 500],
+    ["MARKETPLACE_NOT_PUBLISHED", 500],
+    // La UF (solo en `last_error`): sin token o rechazado, sin el valor de hoy (503); un valor
+    // ilegible o fuera de rango es del Banco Central (502); sin red, 503.
+    ["UF_SOURCE_NOT_CONFIGURED", 503],
+    ["UF_SOURCE_AUTH_INVALID", 503],
+    ["UF_VALUE_MISSING", 503],
+    ["UF_VALUE_UNAVAILABLE", 503],
+    ["UF_UNEXPECTED_RESPONSE", 502],
+    ["UF_VALUE_INVALID", 502],
+    ["UF_VALUE_SUSPICIOUS", 502],
   ])("%s → %i", (code, status) => {
     expect(httpStatusFor(code)).toBe(status);
+  });
+});
+
+describe("createErrorHandler · lo que sale de details (seguimiento de ADR-0011)", () => {
+  const PUBLICATION_ID = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
+  const issue = { code: "MARKETPLACE_FIELD_MISSING", field: "banos", message: "Falta baños" };
+
+  /** Una app que lanza el error dado y responde el cuerpo de error. */
+  const bodyOf = async (error: AppError) => {
+    const app = new Hono().get("/", () => {
+      throw error;
+    });
+    app.onError(createErrorHandler(silentLogger));
+    return (await (await app.request("/")).json()) as { error: Record<string, unknown> };
+  };
+
+  it("issues en MARKETPLACE_NOT_READY y publicationId en MANUAL_CONFIRM_PENDING y MARKETPLACE_FORM_OPEN", async () => {
+    expect(
+      (
+        await bodyOf(
+          new AppError("MARKETPLACE_NOT_READY", "falta", { details: { issues: [issue] } }),
+        )
+      ).error,
+    ).toEqual({ code: "MARKETPLACE_NOT_READY", message: "falta", issues: [issue] });
+    for (const code of ["MANUAL_CONFIRM_PENDING", "MARKETPLACE_FORM_OPEN"]) {
+      expect(
+        (await bodyOf(new AppError(code, "espera", { details: { publicationId: PUBLICATION_ID } })))
+          .error,
+      ).toEqual({ code, message: "espera", publicationId: PUBLICATION_ID });
+    }
+  });
+
+  it("descarta lo que no calza y no deja salir nada más de details", async () => {
+    const cases: AppError[] = [
+      // Un id que no es uuid, o issues mal formados.
+      new AppError("MANUAL_CONFIRM_PENDING", "m", { details: { publicationId: "no-uuid" } }),
+      new AppError("MARKETPLACE_NOT_READY", "m", { details: { issues: [{ code: 1 }] } }),
+      // publicationId e issues en códigos que no los llevan.
+      new AppError("MARKETPLACE_DAILY_LIMIT", "m", {
+        details: { limit: 3, publicationId: PUBLICATION_ID, issues: [issue] },
+      }),
+      new AppError("INVALID_TRANSITION", "m", { details: { publicationId: PUBLICATION_ID } }),
+    ];
+    for (const error of cases) {
+      expect((await bodyOf(error)).error, error.code).toEqual({ code: error.code, message: "m" });
+    }
   });
 });

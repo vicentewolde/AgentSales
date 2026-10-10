@@ -1,6 +1,7 @@
 import { brokerListResponseSchema, listingListResponseSchema } from "@agentsales/api/contracts";
 import {
   type Broker,
+  manualConfirmCommands,
   PLATFORM_SHORT_NAMES,
   type Platform,
   type PlatformShortName,
@@ -98,4 +99,17 @@ export async function resolveListingId(
     );
   }
   return first.id;
+}
+
+/**
+ * Qué hacer con una publicación de Marketplace que espera el clic final (`MANUAL_CONFIRM_PENDING`,
+ * `MARKETPLACE_FORM_OPEN`): los dos comandos para cerrarla, si la API dijo cuál es; si no, cómo
+ * encontrarla.
+ */
+export function manualConfirmHint(publicationId: string | undefined): string {
+  if (publicationId === undefined) {
+    return "Mírala con agentsales publications <propiedad> y di si la publicaste (publications confirm) o no (publications not-published)";
+  }
+  const commands = manualConfirmCommands(publicationId);
+  return `Si la publicaste: ${commands.confirm}\n    Si no: ${commands.notPublished}`;
 }

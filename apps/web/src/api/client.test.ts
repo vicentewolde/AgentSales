@@ -69,6 +69,20 @@ describe("createApiClient + unwrap", () => {
     await expect(health()).rejects.toMatchObject({ issues: undefined });
   });
 
+  it("MANUAL_CONFIRM_PENDING trae la publicación que espera el clic final (F5-T08)", async () => {
+    const publicationId = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
+    stubFetch(() =>
+      Response.json(
+        { error: { code: "MANUAL_CONFIRM_PENDING", message: "Espera tu clic", publicationId } },
+        { status: 409 },
+      ),
+    );
+    await expect(health()).rejects.toMatchObject({
+      code: "MANUAL_CONFIRM_PENDING",
+      publicationId,
+    });
+  });
+
   it("un error de la API se muestra como CODE: mensaje, con su status", async () => {
     stubFetch(() =>
       Response.json(
@@ -159,7 +173,7 @@ describe("createApiClient · Content-Type", () => {
     });
     const id = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
 
-    await client.accounts[":id"].disconnect.$post({ param: { id } });
+    await client.accounts[":id"].disconnect.$post({ param: { id }, json: {} });
     await client.accounts.$get();
     await client.imports.$post({ form: { file: new File(["x"], "a.xlsx") } });
 
