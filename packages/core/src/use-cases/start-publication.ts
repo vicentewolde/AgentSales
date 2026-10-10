@@ -1,4 +1,5 @@
 import { AppError } from "../errors.js";
+import { manualConfirmPending, requiresManualConfirm } from "../marketplace/limits.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
@@ -6,11 +7,13 @@ import type { Publication, PublicationActor } from "../publication.js";
 import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
 import {
   enqueuePublications,
+  type MarketplaceStartOptions,
   type PortalCheckDeps,
   portalDefinitionsBeforeLock,
   publicationNotFound,
   requireCompatibleMode,
   requireCurrentListingVersion,
+  requireMarketplaceStartable,
   requireNoActiveRun,
   requirePortalPublishable,
   requirePublishableListing,
@@ -21,6 +24,9 @@ import {
 export type StartPublicationDeps = PortalCheckDeps & {
   lock: ListingLock;
   queue: JobQueue;
+  /** Marketplace: el límite diario y si se puede convertir la UF (spec F5 §4.6 y §4.7). */
+  marketplace?: MarketplaceStartOptions;
+  now?: () => Date;
   /** Fuera del candado: solo para saber de qué aviso es la publicación. */
   publications: Pick<PublicationRepository, "get">;
 };
@@ -46,6 +52,9 @@ export type StartPublicationResult = {
  * - en Portal, el texto aprobado tiene errores según la revisión de hoy → `CONTENT_HAS_ERRORS`, o
  *   al aviso le falta lo que pide Portal → `PORTAL_NOT_READY` (spec F4 §4.5), o el aviso cambió
  *   desde que nació la publicación → `PUBLICATION_LISTING_CHANGED` (§4.6);
+ * - en Marketplace, espera el clic final → `MANUAL_CONFIRM_PENDING`; le falta algo al aviso →
+ *   `MARKETPLACE_NOT_READY`; otra de la cuenta tiene el formulario abierto → `MARKETPLACE_FORM_OPEN`;
+ *   en `live`, la cuenta llegó a su límite del día → `MARKETPLACE_DAILY_LIMIT` (spec F5 §4.7);
  * - ya está publicada → `NOTHING_TO_PUBLISH`; descartada o retirada → `INVALID_TRANSITION`;
  * - la cola no está → `QUEUE_UNAVAILABLE` (503): queda en `publishing` y se reencola pidiéndolo otra vez.
  */
@@ -65,6 +74,8 @@ export async function startPublication(
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     if (publication.status === "publishing") return { publication, requeued: true };
+    // Marketplace: primero el operador dice si la publicó (spec F5 §4.3).
+    if (publication.status === "awaiting_manual_confirm") throw manualConfirmPending(publicationId);
     if (publication.status === "published") {
       throw new AppError("NOTHING_TO_PUBLISH", "Esta publicación ya está publicada", {
         details: { publicationId },
@@ -104,6 +115,16 @@ export async function startPublication(
     }
     if (definitions !== null) {
       await requirePortalPublishable(locked, { listing, content, definitions });
+    }
+    if (requiresManualConfirm(publication.platform)) {
+      await requireMarketplaceStartable(locked, {
+        listing,
+        accountIds: [publication.platformAccountId],
+        channelIds: [publication.id],
+        dryRun,
+        options: deps.marketplace ?? {},
+        now: (deps.now ?? (() => new Date()))(),
+      });
     }
     return {
       publication: await startOne(locked.publications, publication, { dryRun, actor }),

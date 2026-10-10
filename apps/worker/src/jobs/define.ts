@@ -17,10 +17,11 @@ export type JobContext = {
 export type QueuePolicy = {
   /**
    * Política de pg-boss (por defecto `standard`). Solo algunas deduplican por `singletonKey`
-   * (`exclusive`: un solo job en cola, en reintento o activo por clave). **No se puede cambiar
-   * después de crear la cola**: se pasa solo a `createQueue` (cambiarla exige borrar la cola).
+   * (`exclusive`: un solo job en cola, en reintento o activo por clave; `stately`: uno en cola y
+   * uno activo por clave, desde F5). **No se puede cambiar después de crear la cola**: se pasa solo
+   * a `createQueue` (cambiarla exige borrar la cola).
    */
-  policy?: "standard" | "exclusive";
+  policy?: "standard" | "exclusive" | "stately";
   /** Reintentos tras el primer intento. */
   retryLimit: number;
   /** Segundos antes del primer reintento. */

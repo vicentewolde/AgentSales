@@ -30,8 +30,12 @@ export const DISCRIMINATORY_PATTERNS: readonly { reason: string; pattern: RegExp
     ),
   },
   {
+    // También "solo adultos" y "abstenerse familias con niños": la presencia de niños es un motivo
+    // de discriminación en vivienda (Políticas de comercio de Meta, nota de Marketplace §9).
     reason: "hijos",
-    pattern: new RegExp(String.raw`\b${NOT}(?:ninos|ninas|hijos|hijas|guaguas|bebes|menores)\b`),
+    pattern: new RegExp(
+      String.raw`\b(?:${NOT}(?:ninos|ninas|hijos|hijas|guaguas|bebes|menores)|${ONLY}(?:adultos(?!\s+jovenes)|ninos|ninas|hijos|hijas))\b`,
+    ),
   },
   {
     reason: "estado civil",

@@ -8,6 +8,11 @@ export type ShutdownSteps = {
   stopBoss(): Promise<void>;
   /** Cierra el Chromium del renderizador: recién cuando ningún handler lo está usando. */
   closeRenderer(): Promise<void>;
+  /**
+   * Cierra las ventanas de Marketplace y anota `windowClosedAt` (spec F5 §4.5): necesita la base,
+   * así que va **antes** de cerrarla.
+   */
+  closeMarketplaceWindows?(): Promise<void>;
   closeDatabase(): Promise<void>;
 };
 
@@ -27,6 +32,12 @@ export async function stopWorker(steps: ShutdownSteps, logger: Logger): Promise<
     await steps
       .closeRenderer()
       .catch((error: unknown) => logger.warn({ err: error }, "no se pudo cerrar el navegador"));
+    // También si detener pg-boss falló: la base sigue abierta hasta aquí.
+    await steps
+      .closeMarketplaceWindows?.()
+      .catch((error: unknown) =>
+        logger.warn({ err: error }, "no se pudieron cerrar las ventanas de Marketplace"),
+      );
   }
   await steps.closeDatabase();
 }

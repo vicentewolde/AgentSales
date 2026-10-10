@@ -4,12 +4,14 @@ import { type BrokerRepository, isAppError } from "@agentsales/core";
 import {
   captureFormEvidence,
   classifyPage,
+  hasSession,
   MARKETPLACE_FORM_URL,
   type MarketplacePageKind,
   type MarketplaceProfile,
   pathOf,
   requireForm,
   stopErrorOf,
+  waitForSession,
 } from "@agentsales/publishers/marketplace";
 import { describeUnexpected } from "./ig-smoke.js";
 
@@ -82,7 +84,15 @@ export async function runFbSmoke(deps: FbSmokeDeps, options: FbSmokeOptions): Pr
       deps.print(
         "El sistema no escribe nada: solo espera a que la sesión quede abierta (hasta 10 min).",
       );
-      await waitForSession(profile, deps, options.signal);
+      await waitForSession(profile, {
+        timeoutMs: deps.loginWaitMs ?? FB_SMOKE_LOGIN_WAIT_MS,
+        pollMs: deps.pollMs ?? 2_000,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+        onVerification: () =>
+          deps.print(
+            "Facebook pide una verificación: resuélvela a mano en esa ventana (el sistema no la toca).",
+          ),
+      });
       deps.print("✓ Sesión abierta. Vuelvo al formulario de propiedades.");
       await page.goto(MARKETPLACE_FORM_URL);
     }
@@ -99,54 +109,15 @@ export async function runFbSmoke(deps: FbSmokeDeps, options: FbSmokeOptions): Pr
     return 0;
   } catch (error) {
     deps.printError(`✗ ${isAppError(error) ? error.message : describeUnexpected(error)}`);
+    if (isAppError(error) && error.code === "MARKETPLACE_LOGIN_TIMEOUT") {
+      deps.printError("  Vuelve a correr pnpm fb:smoke e inicia sesión en la ventana.");
+    }
     return 1;
   } finally {
     if (profile !== undefined) {
       await deps.beforeClose?.(profile).catch(() => undefined);
       await profile.close();
     }
-  }
-}
-
-/** Hay sesión: la cookie con el id y una página que no pide iniciar sesión ni verificar. */
-async function hasSession(profile: MarketplaceProfile): Promise<boolean> {
-  if ((await profile.sessionUserId()) === null) return false;
-  const kind = await classifyPage(profile.page);
-  return kind !== "login" && kind !== "verification";
-}
-
-/** Espera a que el operador inicie sesión a mano, mirando cada `pollMs`; tope de 10 min. */
-async function waitForSession(
-  profile: MarketplaceProfile,
-  deps: FbSmokeDeps,
-  signal: AbortSignal | undefined,
-): Promise<void> {
-  const waitMs = deps.loginWaitMs ?? FB_SMOKE_LOGIN_WAIT_MS;
-  const deadline = deps.now().getTime() + waitMs;
-  let warnedVerification = false;
-  for (;;) {
-    if (signal?.aborted) throw new Error("Se cortó la espera");
-    if (!profile.isOpen() || profile.page.isClosed()) {
-      throw new Error("Se cerró la ventana antes de iniciar sesión");
-    }
-    if (await hasSession(profile).catch(() => false)) return;
-    if (
-      !warnedVerification &&
-      (await classifyPage(profile.page).catch(() => null)) === "verification"
-    ) {
-      warnedVerification = true;
-      deps.print(
-        "Facebook pide una verificación: resuélvela a mano en esa ventana (el sistema no la toca).",
-      );
-    }
-    if (deps.now().getTime() >= deadline) {
-      const minutes = Math.max(1, Math.round(waitMs / 60_000));
-      throw new Error(
-        `Pasaron ${minutes} ${minutes === 1 ? "minuto" : "minutos"} sin sesión: vuelve a correr pnpm fb:smoke`,
-      );
-    }
-    // Una pausa del reloj de Node, no de la página: si la ventana se cierra, no gira en vacío.
-    await new Promise((resolve) => setTimeout(resolve, deps.pollMs ?? 2_000));
   }
 }
 

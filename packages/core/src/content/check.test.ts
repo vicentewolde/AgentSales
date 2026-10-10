@@ -431,6 +431,8 @@ describe("checkContent · DISCRIMINATORY", () => {
     ["No se aceptan inquilinos extranjeros", "nacionalidad"],
     ["Se requiere ser casados", "estado civil"],
     ["Abstenerse extranjeros", "nacionalidad"],
+    ["Solo adultos", "hijos"],
+    ["Abstenerse familias con niños", "hijos"],
   ])("marca «%s» (%s)", (body, reason) => {
     const checks = checkContent("portal_inmobiliario", text(body), contextOf());
     expect(checks).toContainEqual({

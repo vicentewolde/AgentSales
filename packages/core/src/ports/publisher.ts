@@ -70,6 +70,12 @@ export type PublishInput = {
   listing?: PublishListing;
   /** Portal y Marketplace. */
   brokerContact?: PublishBrokerContact;
+  /**
+   * Marketplace (spec F5 §4.6): el precio del formulario, en pesos, que calcula core antes de llamar
+   * al publisher (la UF convertida con el valor del día), y la UF usada (`null` si ya era CLP).
+   */
+  priceClp?: number;
+  uf?: { date: string; value: string } | null;
 };
 
 /** Un motivo por el que la plataforma no aceptaría el `PublishInput`, en español y sin datos del aviso. */

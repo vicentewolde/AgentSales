@@ -12,7 +12,7 @@ import {
   publicationSchema,
   requirePublicationMode,
 } from "@agentsales/core";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gte, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { publicationEvents, publications } from "../schema.js";
@@ -329,6 +329,24 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           payload,
         }),
       );
+    },
+
+    countLiveAttemptsSince(platformAccountId, since) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(publicationEvents)
+          .innerJoin(publications, eq(publications.id, publicationEvents.publicationId))
+          .where(
+            and(
+              eq(publications.platformAccountId, platformAccountId),
+              eq(publicationEvents.type, "publish_attempt"),
+              sql`${publicationEvents.payload}->>'mode' = 'live'`,
+              gte(publicationEvents.createdAt, since),
+            ),
+          );
+        return row?.count ?? 0;
+      });
     },
 
     listEvents(publicationId) {

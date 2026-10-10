@@ -116,6 +116,7 @@ export const PUBLISH_ATTEMPT_RESULT_TEXT: Readonly<Record<PublishAttemptResult, 
   published: "publicada",
   retry: "se reintenta",
   failed: "falló",
+  awaiting_manual_confirm: "formulario listo, espera tu clic final",
 };
 
 /** Quién hizo un cambio en la bitácora de una publicación. */

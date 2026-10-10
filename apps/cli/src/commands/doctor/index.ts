@@ -16,6 +16,7 @@ import {
   checkNode,
   checkPublishMode,
   checkServices,
+  checkUfSource,
   type Level,
   type RunCommand,
 } from "./checks.js";
@@ -45,12 +46,14 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const ffprobePath = deps.env.ok ? deps.env.env.FFPROBE_PATH : "ffprobe";
   const instagram = checkInstagram(deps.env);
   const mercadoLibre = checkMercadoLibre(deps.env);
+  const ufSource = checkUfSource(deps.env);
   const items: CheckItem[] = [
     checkNode(deps.nodeVersion),
     checkEnv(deps.env),
     ...(publishMode ? [publishMode] : []),
     ...(instagram ? [instagram] : []),
     ...(mercadoLibre ? [mercadoLibre] : []),
+    ...(ufSource ? [ufSource] : []),
     ...services.items,
     await checkFfmpegTool(deps.run, "ffmpeg", ffmpegPath),
     await checkFfmpegTool(deps.run, "ffprobe", ffprobePath),

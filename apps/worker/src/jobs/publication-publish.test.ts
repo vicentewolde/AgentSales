@@ -308,3 +308,88 @@ describe("instagramNoteLogger", () => {
     ]);
   });
 });
+
+describe("job publication.publish · Marketplace (spec F5 §4.5)", () => {
+  /** Un aviso de Marketplace en `publishing`, con las ventanas del worker dobles. */
+  async function marketplace(options: { fake?: FakePublisherOptions } = {}) {
+    const t = await createPublicationScenario({ platform: "fb_marketplace" });
+    const { started } = await publishListing(
+      { ...t.deps, marketplace: { ufConfigured: true } },
+      { listingId: t.listingId, platform: "fb_marketplace", dryRun: false, actor: "operator" },
+    );
+    const publication = started[0];
+    if (publication === undefined) throw new Error("no se inició la publicación");
+    const calls: string[] = [];
+    const job = publicationPublishJob({
+      shared: {
+        publications: t.publications,
+        platformAccounts: t.platformAccounts,
+        contents: t.contents,
+        media: t.media,
+        listings: t.listings,
+        brokers: t.brokers,
+        storage: t.storage,
+        publishers: {
+          fb_marketplace: createFakePublisher({
+            platform: "fb_marketplace",
+            formats: ["post"],
+            manualConfirm: true,
+            ...options.fake,
+          }),
+        },
+        workerMode: "live",
+        mercadoLibre: null,
+        uf: {
+          async valuesBetween(from, to) {
+            return [
+              { date: from, value: "41126.12" },
+              { date: to, value: "41130.94" },
+            ];
+          },
+        },
+      },
+      queue: t.queue,
+      signal: new AbortController().signal,
+      marketplaceWindows: {
+        activate: async (id) => {
+          calls.push(`activate:${id}`);
+          return true;
+        },
+        discard: async (id) => {
+          calls.push(`discard:${id}`);
+        },
+      },
+    });
+    const { logger, lines } = captureLogger();
+    const { boss, workers } = fakeBoss();
+    await registerJobs(boss, [job], logger);
+    const attempt = () =>
+      workers.get("publication.publish")?.([
+        { id: "job-0", data: { publicationId: publication.id }, retryCount: 0, retryLimit: 2 },
+      ]);
+    return { t, publication, calls, lines, attempt };
+  }
+
+  it("con el formulario listo activa la vigilancia de la ventana y lo registra así", async () => {
+    const m = await marketplace();
+
+    await m.attempt();
+
+    expect(m.calls).toEqual([`activate:${m.publication.id}`]);
+    expect((await m.t.publications.get(m.publication.id))?.status).toBe("awaiting_manual_confirm");
+    expect(m.lines.map((line) => line.msg)).toContain(
+      "formulario de Marketplace listo: espera el clic final del operador",
+    );
+  });
+
+  it("si el intento falla, cierra la ventana pendiente", async () => {
+    const m = await marketplace({
+      fake: { steps: [{ error: new AppError("MARKETPLACE_FORM_CHANGED", "cambió") }] },
+    });
+
+    await m.attempt();
+
+    expect(m.calls).toEqual([`discard:${m.publication.id}`]);
+    expect((await m.t.publications.get(m.publication.id))?.status).toBe("failed");
+  });
+});

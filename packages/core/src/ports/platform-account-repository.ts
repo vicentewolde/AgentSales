@@ -106,6 +106,11 @@ export interface PlatformAccountRepository {
   /** Pasa a `revoked` y borra las credenciales. La fila queda: la referencian sus publicaciones. */
   disconnect(id: string): Promise<PlatformAccount>;
   /**
+   * Mezcla `meta` a un nivel (cada clave que llega reemplaza a la anterior) sin tocar el estado ni
+   * las credenciales (spec F5 §4.2: el último error de inicio de sesión de Marketplace).
+   */
+  mergeMeta(id: string, meta: Record<string, unknown>): Promise<PlatformAccount>;
+  /**
    * Candado de credenciales (spec F4 §4.3, ADR-0015): una transacción que bloquea la fila de la
    * cuenta con `FOR NO KEY UPDATE` (no choca con la FK de `publications`: aprobar y publicar no
    * esperan) y espera como mucho 10 s a que otro la suelte (`ACCOUNT_LOCK_TIMEOUT`). Relee la cuenta,

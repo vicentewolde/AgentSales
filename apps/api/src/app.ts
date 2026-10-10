@@ -8,6 +8,7 @@ import type {
   JobQueue,
   ListingLock,
   ListingRepository,
+  MarketplaceStartOptions,
   MediaRepository,
   MediaStorage,
   MercadoLibreAuth,
@@ -69,7 +70,10 @@ export type AppDeps = {
    * Publicaciones (F3-T15): leer las de un aviso y su bitácora, y saber de qué aviso es una antes
    * del candado. Los cambios de estado van dentro del candado, con sus repositorios.
    */
-  publications: Pick<PublicationRepository, "get" | "listByListing" | "listEvents">;
+  publications: Pick<
+    PublicationRepository,
+    "get" | "listByListing" | "listEvents" | "listByStatus"
+  >;
   // Cuentas (F3-T13): conectar con el token del panel de Meta o por OAuth, y desconectar.
   platformAccounts: PlatformAccountRepository;
   /** Instagram Login, si el OAuth tiene su par de la app, y si la cookie va `Secure`. */
@@ -87,6 +91,11 @@ export type AppDeps = {
   operationsFor(platform: Platform): PublicationOperations | undefined;
   /** Solo para tests; por defecto `OPERATION_TIMEOUT_MS` (15 s). */
   operationTimeoutMs?: number;
+  /**
+   * Marketplace (spec F5 §4.6 y §4.7): el límite diario (`MARKETPLACE_DAILY_LIMIT`) y si hay token
+   * para convertir la UF (`BCCH_API_TOKEN`). Sin esto, el límite es 3 y la UF no se convierte.
+   */
+  marketplace?: MarketplaceStartOptions;
   /** Firma del `state` del OAuth (`createStateSigner`, que compone `server.ts`). */
   oauthState: OAuthDeps["oauthState"];
   /** La URL absoluta del panel, adonde vuelve el OAuth. */
@@ -112,6 +121,8 @@ export function createApp(deps: AppDeps) {
     ...deps,
     mercadoLibreRefresh: deps.mercadoLibre.configured ? deps.mercadoLibre.auth : null,
   };
+  // Lo que le falta al aviso para Marketplace depende de si se puede convertir la UF (spec F5 §4.6).
+  const contentDeps = { ...deps, ufConfigured: deps.marketplace?.ufConfigured ?? false };
   const app = new Hono()
     .use(requestLogger(deps.logger))
     .use(hostGuard(deps.access.allowedHosts))
@@ -128,11 +139,11 @@ export function createApp(deps: AppDeps) {
     })
     // Encadenadas con `.route()`, así `AppType` conserva el esquema de cada ruta (ADR-0011).
     .route("/listings", listingRoutes(deps))
-    .route("/listings", listingContentRoutes(deps))
+    .route("/listings", listingContentRoutes(contentDeps))
     .route("/listings", listingPublicationRoutes(publicationDeps))
     .route("/publications", publicationRoutes(publicationDeps))
     .route("/content-runs", contentRunRoutes(deps))
-    .route("/contents", contentRoutes(deps))
+    .route("/contents", contentRoutes(contentDeps))
     .route("/brokers", brokerRoutes(deps))
     .route("/imports", importRoutes(deps))
     .route(

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { homedir } from "node:os";
 import {
   createErrorThrottle,
   createLogger,
@@ -6,8 +7,9 @@ import {
   findWorkspaceRoot,
   loadEnv,
   loadEnvFile,
+  resolveBrowserProfilesDir,
 } from "@agentsales/config";
-import type { RunImportDeps } from "@agentsales/core";
+import { confirmManualPublication, type RunImportDeps } from "@agentsales/core";
 import {
   createBrokerRepository,
   createContentRepository,
@@ -33,10 +35,21 @@ import {
   createMercadoLibreAuth,
   MERCADOLIBRE_REFRESH_TIMEOUT_MS,
 } from "@agentsales/publishers";
+import {
+  createMarketplacePublisher,
+  marketplaceProfileDir,
+  openMarketplaceProfile,
+} from "@agentsales/publishers/marketplace";
+import { createBancoCentralUf } from "@agentsales/publishers/uf";
 import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { createSlideTemplates } from "@agentsales/templates";
-import { cleanContentTmp, contentTmpRootOf } from "./content-tmp.js";
+import {
+  cleanContentTmp,
+  contentTmpRootOf,
+  MARKETPLACE_EVIDENCE_MAX_AGE_MS,
+  marketplaceTmpRootOf,
+} from "./content-tmp.js";
 import { failAbandonedContentRuns, requeueQueuedContentRuns } from "./jobs/content-prepare.js";
 import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
 import { buildJobs } from "./jobs/index.js";
@@ -45,6 +58,7 @@ import { enqueueLiveSyncs } from "./jobs/publication-sync.js";
 import { registerJobs } from "./jobs/registry.js";
 import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
 import { llmProviderOptions } from "./llm-options.js";
+import { createMarketplaceWindows, sweepClosedWindows } from "./marketplace/windows.js";
 import { createWorkerPortal } from "./portal.js";
 import { stopWorker } from "./shutdown.js";
 
@@ -127,6 +141,27 @@ const mercadoLibreAuth =
     : null;
 // Portal (spec F4 §4.8 y T18): el publisher en los dos modos (como Instagram) y las operaciones sin
 // envolver para el sync, que solo lee. El catálogo se guarda en la base; las fotos salen de R2.
+// Marketplace (spec F5, ADR-0017): los perfiles del navegador viven fuera del proyecto; la carpeta
+// se resuelve aquí, en un solo lugar (`resolveBrowserProfilesDir` rechaza una dentro del proyecto).
+const profilesRoot = resolveBrowserProfilesDir(env.BROWSER_PROFILES_DIR, {
+  homeDir: homedir(),
+  workspaceRoot,
+});
+const listingLock = createListingLock(database.db, { secretBox });
+const marketplaceWindows = createMarketplaceWindows({
+  publications,
+  confirm: (publicationId, url) =>
+    confirmManualPublication(
+      { lock: listingLock, publications },
+      { publicationId, url, actor: "system" },
+    ),
+  timeoutMs: env.MARKETPLACE_CONFIRM_TIMEOUT_MIN * 60_000,
+  logger,
+});
+// El valor de la UF para el precio de Marketplace (spec F5 §4.6): sin el token, `null` (un aviso
+// en UF no llega aquí: `MARKETPLACE_NOT_READY` lo frena antes).
+const ufSource =
+  env.BCCH_API_TOKEN === undefined ? null : createBancoCentralUf({ token: env.BCCH_API_TOKEN });
 const portal = createWorkerPortal({
   catalogRepository: createPlatformCatalogRepository(database.db),
   storage,
@@ -163,18 +198,26 @@ const jobs = buildJobs({
       listings: repositories.listings,
       brokers: repositories.brokers,
       storage,
-      publishers: { instagram, portal_inmobiliario: portal.publisher },
+      publishers: {
+        instagram,
+        portal_inmobiliario: portal.publisher,
+        // Esqueleto hasta F5-T10: valida y simula; en `live` todavía no llena el formulario.
+        fb_marketplace: createMarketplacePublisher(),
+      },
       workerMode: env.PUBLISH_MODE,
+      marketplaceDailyLimit: env.MARKETPLACE_DAILY_LIMIT,
+      uf: ufSource,
       // El token de Portal se asegura (y se refresca) con el par de la app (spec F4 §4.3).
       mercadoLibre: mercadoLibreAuth,
     },
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
     signal: jobsAbort.signal,
+    marketplaceWindows,
   },
   publicationSync: {
     shared: {
-      lock: createListingLock(database.db, { secretBox }),
+      lock: listingLock,
       publications,
       platformAccounts,
       mercadoLibre: mercadoLibreAuth,
@@ -186,6 +229,16 @@ const jobs = buildJobs({
     platformAccounts,
     instagram: instagramAuth,
     mercadoLibre: mercadoLibreAuth,
+    signal: jobsAbort.signal,
+  },
+  marketplaceProfile: {
+    profilesRoot,
+    openProfile: (brokerId) =>
+      openMarketplaceProfile({ dir: marketplaceProfileDir(profilesRoot, brokerId) }),
+    windows: marketplaceWindows,
+    brokers: repositories.brokers,
+    platformAccounts,
+    publications,
     signal: jobsAbort.signal,
   },
 });
@@ -223,6 +276,7 @@ async function shutdown(signal: string): Promise<void> {
         // graceful: deja de tomar jobs nuevos y espera a los activos antes de cerrar el pool.
         stopBoss: () => boss.stop({ graceful: true, timeout: GRACEFUL_STOP_MS }),
         closeRenderer: () => renderer.close(),
+        closeMarketplaceWindows: () => marketplaceWindows.closeAll(),
         closeDatabase: () => database.close(),
       },
       logger,
@@ -347,6 +401,34 @@ async function requestLiveSyncs(): Promise<void> {
   }
 }
 
+async function cleanMarketplaceEvidence(): Promise<void> {
+  try {
+    const removed = await cleanContentTmp(
+      marketplaceTmpRootOf(workspaceRoot),
+      Date.now(),
+      MARKETPLACE_EVIDENCE_MAX_AGE_MS,
+    );
+    if (removed.length > 0)
+      logger.info({ removed: removed.length }, "evidencia de Marketplace borrada");
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudo borrar la evidencia vieja de Marketplace");
+  }
+}
+
+async function sweepMarketplaceWindows(): Promise<void> {
+  try {
+    const marked = await sweepClosedWindows(publications, new Date());
+    if (marked > 0) {
+      logger.info(
+        { marked },
+        "formularios de Marketplace sin ventana: esperan la palabra del operador",
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron revisar los formularios de Marketplace abiertos");
+  }
+}
+
 async function requestTokensRefresh(): Promise<void> {
   try {
     await enqueueTokensRefresh(queue);
@@ -361,7 +443,10 @@ async function requestTokensRefresh(): Promise<void> {
 try {
   await cleanStaging(false);
   await cleanContentTemps();
+  await cleanMarketplaceEvidence();
   await boss.start();
+  // Antes de registrar los jobs: así nunca marca una ventana que un intento acaba de abrir.
+  await sweepMarketplaceWindows();
   await failAbandonedRuns();
   await failAbandonedContent();
   await cleanStaging(true);

@@ -1,4 +1,5 @@
 import { hasContentErrors } from "../content/check.js";
+import { composePhotoSet } from "../content/compose.js";
 import {
   beforeContentLock,
   type CheckedContent,
@@ -9,6 +10,7 @@ import {
 import { AppError } from "../errors.js";
 import { LISTING_NOT_PREPARABLE_TEXT } from "../labels.js";
 import { canPrepareContent } from "../listing.js";
+import { type MarketplaceReadiness, marketplaceReadiness } from "../marketplace/readiness.js";
 import { type PortalReadiness, portalReadiness } from "../portal/readiness.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
@@ -19,7 +21,11 @@ import {
   type SkippedPublication,
 } from "./open-publications.js";
 
-export type ApproveContentDeps = ContentLockDeps & { lock: ListingLock };
+export type ApproveContentDeps = ContentLockDeps & {
+  lock: ListingLock;
+  /** Marketplace: si hay token para convertir la UF (`BCCH_API_TOKEN`; spec F5 §4.6). */
+  ufConfigured?: boolean;
+};
 
 export type ApprovedContent = CheckedContent & {
   /** Las publicaciones que nacieron ahora. */
@@ -33,6 +39,11 @@ export type ApprovedContent = CheckedContent & {
    * Es una advertencia: el texto se aprueba igual, y publicar lo bloquea con `PORTAL_NOT_READY`.
    */
   portalReadiness?: PortalReadiness;
+  /**
+   * Solo en Marketplace: lo que le falta al aviso para el formulario (`marketplaceReadiness`, spec
+   * F5 §4.6). Advertencia, como en Portal: publicar lo bloquea con `MARKETPLACE_NOT_READY`.
+   */
+  marketplaceReadiness?: MarketplaceReadiness;
 };
 
 /**
@@ -102,6 +113,14 @@ export async function approveContent(
       });
     }
 
+    const marketplace =
+      content.platform === "fb_marketplace"
+        ? marketplaceReadiness(listing, {
+            photos: composePhotoSet(await locked.media.listByListing(listing.id)).length,
+            ufConfigured: deps.ufConfigured ?? false,
+          })
+        : undefined;
+
     // Recién aquí se escribe: nada de lo anterior puede dejar el texto aprobado a medias.
     const approved =
       content.status === "approved"
@@ -120,6 +139,7 @@ export async function approveContent(
       skipped: opening.skipped,
       publications: await channelPublications(locked, listing.id, approved.platform),
       ...(readiness === undefined ? {} : { portalReadiness: readiness }),
+      ...(marketplace === undefined ? {} : { marketplaceReadiness: marketplace }),
     };
   });
 }

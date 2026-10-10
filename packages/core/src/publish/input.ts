@@ -272,6 +272,9 @@ export function publishAttemptRecord(
             whatsapp: maskWhatsapp(input.brokerContact.whatsapp),
           },
         }),
+    // Marketplace: el precio en pesos del formulario y la UF usada (no son secretos).
+    ...(input.priceClp === undefined ? {} : { priceClp: input.priceClp }),
+    ...(input.uf === undefined ? {} : { uf: input.uf }),
   };
 }
 

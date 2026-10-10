@@ -1,4 +1,5 @@
 import { AppError } from "../errors.js";
+import { manualConfirmPending } from "../marketplace/limits.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
@@ -13,10 +14,10 @@ export type CancelPublicationDeps = {
 
 /**
  * Descarta una publicación que no salió (spec F3 §4.3, `POST /publications/:id/cancel`):
- * `approved` o `failed` → `cancelled`, con su evento, dentro del candado del aviso (también
- * `scheduled` y `awaiting_manual_confirm`, que la máquina deja descartar, como al quitar la
- * aprobación; en F3 no se alcanzan, y la de Marketplace se revisa en F5). El texto sigue aprobado:
- * publicar de nuevo abre otra. Errores (`AppError`):
+ * `approved`, `scheduled` o `failed` → `cancelled`, con su evento, dentro del candado del aviso. El
+ * texto sigue aprobado: publicar de nuevo abre otra. Errores (`AppError`):
+ * - espera el clic final de Marketplace → `MANUAL_CONFIRM_PENDING` (409): la máquina deja
+ *   descartarla, pero primero el operador dice si la publicó (spec F5 §4.3, D11);
  * - no existe → `PUBLICATION_NOT_FOUND` (404);
  * - se está publicando → `PUBLICATION_IN_PROGRESS` (409: espera a que termine);
  * - ya publicada, descartada o retirada → `INVALID_TRANSITION` (409; una publicada se retira).
@@ -31,6 +32,8 @@ export async function cancelPublication(
   return deps.lock.run(found.listingId, async (locked) => {
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
+    // El sistema nunca da por no publicado lo que no vio (spec F5 §4.3, D11).
+    if (publication.status === "awaiting_manual_confirm") throw manualConfirmPending(publicationId);
     if (publication.status === "publishing") {
       throw new AppError(
         "PUBLICATION_IN_PROGRESS",

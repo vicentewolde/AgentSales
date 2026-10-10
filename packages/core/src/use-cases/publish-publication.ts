@@ -1,6 +1,17 @@
 import type { AbortSignalLike } from "../abort.js";
 import type { Platform, PublishMode } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
+import {
+  DEFAULT_MARKETPLACE_DAILY_LIMIT,
+  MARKETPLACE_TIME_ZONE,
+  marketplaceDailyLimitReached,
+  marketplaceFormOpen,
+  requiresManualConfirm,
+  startOfDayIn,
+} from "../marketplace/limits.js";
+import { marketplacePrice } from "../marketplace/price.js";
+import type { MarketplaceProgress } from "../marketplace/progress.js";
+import { usesSessionProfile } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
@@ -17,6 +28,7 @@ import {
   type PublishResult,
   storedAccessToken,
 } from "../ports/publisher.js";
+import type { UfValueSource } from "../ports/uf-value-source.js";
 
 /** Advertencias de un intento que van a la bitácora, como mucho (las causas de Mercado Libre, 20). */
 const MAX_ATTEMPT_NOTES = 20;
@@ -49,7 +61,11 @@ export type PublishWarning = {
 };
 
 export type PublishPublicationDeps = {
-  publications: Pick<PublicationRepository, "get" | "transition" | "saveProgress" | "addEvent">;
+  /** `listByStatus` y `countLiveAttemptsSince`: el límite de Marketplace (spec F5 §4.7). */
+  publications: Pick<
+    PublicationRepository,
+    "get" | "transition" | "saveProgress" | "addEvent" | "listByStatus" | "countLiveAttemptsSince"
+  >;
   /** `withCredentialsLock`: el refresco del token de Mercado Libre (`ensureAccessToken`, Portal). */
   platformAccounts: Pick<
     PlatformAccountRepository,
@@ -75,6 +91,10 @@ export type PublishPublicationDeps = {
   publishers: Readonly<Partial<Record<Platform, Publisher>>>;
   /** El `PUBLISH_MODE` del worker: solo decide si una pedida en `live` se puede publicar (D11). */
   workerMode: PublishMode;
+  /** Marketplace: avisos por día y cuenta (`MARKETPLACE_DAILY_LIMIT`; por defecto 3, D8). */
+  marketplaceDailyLimit?: number;
+  /** La fuente de la UF para el precio de Marketplace (spec F5 §4.6); `null` sin el token. */
+  uf?: UfValueSource | null;
   /** Reloj, para `published_at`. */
   now?: () => Date;
   onWarning?: (warning: PublishWarning) => void;
@@ -92,6 +112,8 @@ export type PublishPublicationParams = {
 
 export type PublishPublicationResult =
   | { outcome: "published"; publication: Publication }
+  /** Marketplace (ADR-0017): el formulario quedó listo y espera el clic del operador. */
+  | { outcome: "awaiting_manual_confirm"; publication: Publication }
   /** No estaba en `publishing` (ya terminó, se descartó o la tomó otro intento): no se publicó. */
   | { outcome: "skipped"; status: Publication["status"] };
 
@@ -188,9 +210,10 @@ export async function publishPublication(
   };
 
   let sent: PublishAttemptRecord | null = null;
-  let result: PublishResult;
+  let result: PublishResult | null = null;
+  let handoff: { notes: string[]; simulated: boolean; input: PublishInput } | null = null;
   try {
-    const attempt = await prepareAttempt(deps, publication);
+    const attempt = await prepareAttempt(deps, publication, now(), signal);
     sent = attempt.sent;
     const outcome = await attempt.target.publish(attempt.input, {
       account: attempt.account,
@@ -202,17 +225,22 @@ export async function publishPublication(
       },
       ...(signal === undefined ? {} : { signal }),
     });
-    // Un "formulario listo" (ADR-0017) solo puede venir de un publisher con paso manual, y el
-    // intento todavía no sabe esperarlo: lo suma F5-T05. Hasta entonces, nunca se da por publicado.
-    if (isPublishHandoff(outcome)) {
+    // Un "formulario listo" (ADR-0017) solo puede venir de un publisher con paso manual, y uno con
+    // paso manual nunca da por publicado: cualquier mezcla es un error de programación.
+    const manual = attempt.target.manualConfirm === true;
+    if (isPublishHandoff(outcome) !== manual) {
       throw new AppError(
         "INTERNAL_ERROR",
-        attempt.target.manualConfirm === true
-          ? "Esta plataforma deja el clic final al operador y el intento todavía no sabe esperarlo"
+        manual
+          ? "El publisher de una plataforma con clic final del operador dio el aviso por publicado"
           : "El publisher dejó el formulario para el clic final sin declarar un paso manual",
       );
     }
-    result = outcome;
+    if (isPublishHandoff(outcome)) {
+      handoff = { notes: outcome.notes ?? [], simulated: outcome.simulated, input: attempt.input };
+    } else {
+      result = outcome;
+    }
   } catch (caught) {
     const error = normalized(caught);
     // Apagado del worker: la publicación queda en `publishing` y el reintento la retoma.
@@ -247,6 +275,18 @@ export async function publishPublication(
     }
     throw error;
   }
+
+  if (handoff !== null) {
+    return awaitManualConfirm(deps, {
+      publication,
+      handoff,
+      sent,
+      now: now(),
+      mode,
+      addAttempt,
+    });
+  }
+  if (result === null) throw new AppError("INTERNAL_ERROR", "El intento terminó sin resultado");
 
   // El medio ya salió: de aquí en adelante, nada lo trata como un fallo de publicación.
   const remoteState = remoteStateOf(result, now(), (error) => warn("remote_state", error));
@@ -307,8 +347,100 @@ function remoteStateOf(
   return undefined;
 }
 
+/**
+ * Pasa la publicación a `awaiting_manual_confirm` (spec F5 §4.3, ADR-0017) con el progreso de este
+ * intento, armado aquí (`attempt`, `simulated`, `formReadyAt`, las fotos y el precio): así un
+ * `windowClosedAt` de un intento anterior nunca se arrastra. Si no se puede guardar,
+ * `PUBLISH_RESULT_NOT_SAVED` (reintentable): el worker cierra la ventana y el reintento abre un
+ * formulario nuevo (no se publicó nada).
+ */
+async function awaitManualConfirm(
+  deps: PublishPublicationDeps,
+  {
+    publication,
+    handoff,
+    sent,
+    now,
+    mode,
+    addAttempt,
+  }: {
+    publication: Publication;
+    handoff: { notes: string[]; simulated: boolean; input: PublishInput };
+    sent: PublishAttemptRecord | null;
+    now: Date;
+    mode: ReturnType<typeof modeOf>;
+    addAttempt: (
+      result: PublishAttemptResult,
+      extra: { sent?: PublishAttemptRecord | null; notes?: string[]; error?: PublicationError },
+    ) => Promise<void>;
+  },
+): Promise<PublishPublicationResult> {
+  const { input } = handoff;
+  const progress: MarketplaceProgress = {
+    attempt: publication.attempts,
+    simulated: handoff.simulated,
+    formReadyAt: now.toISOString(),
+    photos: input.media.length,
+    priceClp: input.priceClp ?? 0,
+    ...(input.uf == null ? {} : { ufValue: input.uf.value, ufDate: input.uf.date }),
+  };
+  let waiting: Publication;
+  try {
+    waiting = await deps.publications.transition(
+      publication.id,
+      {
+        from: "publishing",
+        to: "awaiting_manual_confirm",
+        changes: { progress, lastError: null },
+      },
+      { actor: "system", payload: { mode } },
+    );
+  } catch (failure) {
+    const error = new AppError(
+      "PUBLISH_RESULT_NOT_SAVED",
+      "El formulario quedó listo, pero no se pudo guardar: se vuelve a abrir uno nuevo",
+      { retriable: true, cause: failure, details: { publicationId: publication.id } },
+    );
+    // El intento abrió Facebook: deja su evento (cuenta para el límite diario, spec F5 §4.7).
+    await addAttempt("retry", { sent, notes: handoff.notes, error: lastErrorOf(error) });
+    throw error;
+  }
+  await addAttempt("awaiting_manual_confirm", { sent, notes: handoff.notes });
+  return { outcome: "awaiting_manual_confirm", publication: waiting };
+}
+
+/**
+ * Marketplace (spec F5 §4.7): un formulario a la vez por cuenta (otra publicación de la cuenta
+ * esperando el clic → `MARKETPLACE_FORM_OPEN`; las `publishing` ya las serializa el worker) y, en
+ * `live`, como mucho `marketplaceDailyLimit` intentos por día de Santiago (los `publish_attempt`
+ * de hoy; este todavía no dejó el suyo) → `MARKETPLACE_DAILY_LIMIT`. Los dos, no reintentables.
+ */
+async function requireManualCapacity(
+  deps: PublishPublicationDeps,
+  publication: Publication,
+  now: Date,
+): Promise<void> {
+  const waiting = (await deps.publications.listByStatus("awaiting_manual_confirm")).find(
+    (other) =>
+      other.platformAccountId === publication.platformAccountId && other.id !== publication.id,
+  );
+  if (waiting !== undefined) throw marketplaceFormOpen(waiting.id);
+  if (publication.dryRun) return;
+  const limit = deps.marketplaceDailyLimit ?? DEFAULT_MARKETPLACE_DAILY_LIMIT;
+  const today = await deps.publications.countLiveAttemptsSince(
+    publication.platformAccountId,
+    startOfDayIn(MARKETPLACE_TIME_ZONE, now),
+  );
+  if (today >= limit) throw marketplaceDailyLimitReached(limit);
+}
+
 /** Todo lo que se revisa y arma antes de llamar a la plataforma. */
-async function prepareAttempt(deps: PublishPublicationDeps, publication: Publication) {
+async function prepareAttempt(
+  deps: PublishPublicationDeps,
+  publication: Publication,
+  now: Date,
+  signal: AbortSignalLike | undefined,
+) {
   if (!publication.dryRun && deps.workerMode === "dry-run") {
     throw new AppError(
       "PUBLISH_MODE_MISMATCH",
@@ -329,35 +461,42 @@ async function prepareAttempt(deps: PublishPublicationDeps, publication: Publica
       { details: { accountStatus: account?.status ?? null } },
     );
   }
-  let stored: Awaited<ReturnType<PublishPublicationDeps["platformAccounts"]["getCredentials"]>>;
-  try {
-    stored = await deps.platformAccounts.getCredentials(account.id);
-  } catch (error) {
-    if (isAppError(error) && error.code === "CREDENTIALS_UNREADABLE") {
-      await deps.platformAccounts
-        .changeStatus(account.id, "connected", "error")
-        .catch((failure: unknown) =>
-          deps.onWarning?.({
-            publicationId: publication.id,
-            step: "account_status",
-            code: codeOf(failure),
-          }),
-        );
-    }
-    throw error;
-  }
+  const manual = requiresManualConfirm(publication.platform);
+  if (manual) await requireManualCapacity(deps, publication, now);
+  // Marketplace no guarda credenciales: su sesión vive en el perfil del navegador (ADR-0017).
+  const stored = usesSessionProfile(publication.platform)
+    ? null
+    : await readCredentials(deps, publication, account.id);
   const content = await deps.contents.get(publication.contentId);
   if (content === null) {
     throw new AppError("CONTENT_NOT_FOUND", "No existe el texto de esta publicación", {
       details: { contentId: publication.contentId },
     });
   }
-  const input: PublishInput = await buildPublishInput(deps, {
+  let input: PublishInput = await buildPublishInput(deps, {
     publication,
     content,
     media: await deps.media.listByListing(publication.listingId),
   });
+  if (manual && input.listing !== undefined) {
+    const price = await marketplacePrice(input.listing, {
+      uf: deps.uf ?? null,
+      now,
+      ...(signal === undefined ? {} : { signal }),
+    });
+    input = { ...input, priceClp: price.priceClp, uf: price.uf };
+  }
   if (!publication.dryRun) checkPublishInput(publisher, input);
+  if (stored === null) {
+    return {
+      input,
+      account,
+      credentials: undefined,
+      accessToken: undefined,
+      sent: publishAttemptRecord(input, account),
+      target: publication.dryRun ? withDryRun(publisher) : publisher,
+    };
+  }
   // Portal: el token lo asegura `ensureAccessToken` (fuera del candado del aviso), y el contexto no
   // lleva el `refreshToken`. `credentials.accessToken` puede estar vencido o ya rotado: el
   // publisher de Portal usa siempre `ctx.accessToken` (`platformContextOf` solo cae en él sin
@@ -388,4 +527,28 @@ async function prepareAttempt(deps: PublishPublicationDeps, publication: Publica
     sent: publishAttemptRecord(input, account),
     target: publication.dryRun ? withDryRun(publisher) : publisher,
   };
+}
+
+/** Las credenciales de la cuenta; si no se pueden leer, la cuenta pasa a `error` (`CREDENTIALS_UNREADABLE`). */
+async function readCredentials(
+  deps: PublishPublicationDeps,
+  publication: Publication,
+  accountId: string,
+) {
+  try {
+    return await deps.platformAccounts.getCredentials(accountId);
+  } catch (error) {
+    if (isAppError(error) && error.code === "CREDENTIALS_UNREADABLE") {
+      await deps.platformAccounts
+        .changeStatus(accountId, "connected", "error")
+        .catch((failure: unknown) =>
+          deps.onWarning?.({
+            publicationId: publication.id,
+            step: "account_status",
+            code: codeOf(failure),
+          }),
+        );
+    }
+    throw error;
+  }
 }

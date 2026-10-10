@@ -13,6 +13,11 @@
       "@agentsales/source": "./src/marketplace/index.ts",
       "types": "./dist/src/marketplace/index.d.ts",
       "default": "./dist/src/marketplace/index.js"
+    },
+    "./uf": {
+      "@agentsales/source": "./src/uf/index.ts",
+      "types": "./dist/src/uf/index.d.ts",
+      "default": "./dist/src/uf/index.js"
     }
   },
   "scripts": {

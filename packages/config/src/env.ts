@@ -203,6 +203,9 @@ const envSchema = z
     // `resolveBrowserProfilesDir`) y cuánto espera la ventana el clic del operador (spec F5 §4.5).
     MARKETPLACE_DAILY_LIMIT: positiveInt("un número entero mayor que 0").default(3),
     BROWSER_PROFILES_DIR: browserProfilesDir.default(DEFAULT_BROWSER_PROFILES_DIR),
+    // El token de la API BDE del Banco Central (spec F5 §4.6, nota uf.md): sin él, un aviso en UF
+    // no va a Marketplace (su precio se convierte a pesos con el valor del día).
+    BCCH_API_TOKEN: z.string().optional(),
     MARKETPLACE_CONFIRM_TIMEOUT_MIN: intInRange(
       1,
       240,

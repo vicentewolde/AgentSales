@@ -11,6 +11,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const errorCode = (error: unknown) =>
   error instanceof Error && "code" in error ? String(error.code) : undefined;
 
+/** La evidencia de Marketplace se borra a los 7 días (spec F5 §4.5): trae datos personales. */
+export const MARKETPLACE_EVIDENCE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** `<workspace>/tmp/marketplace`: la evidencia de cada formulario, por publicación (spec F5 §4.4). */
+export const marketplaceTmpRootOf = (workspaceRoot: string) =>
+  join(workspaceRoot, "tmp", "marketplace");
+
 /** `<workspace>/tmp/content`: los temporales de las corridas de contenido (spec F2 §4.4). */
 export const contentTmpRootOf = (workspaceRoot: string) => join(workspaceRoot, "tmp", "content");
 
@@ -44,12 +51,17 @@ export async function createAttemptDir(root: string, contentRunId: string): Prom
 }
 
 /**
- * Borra los directorios de corridas de más de `CONTENT_TMP_MAX_AGE_MS` (por la fecha de su último
+ * Borra los directorios de corridas de más de `maxAgeMs` (24 h por defecto; la evidencia de
+ * Marketplace usa 7 días) por la fecha de su último
  * cambio): restos de un worker que murió sin llegar al `finally`. Un intento dura a lo más 30 min,
  * así que ninguno vivo tiene 24 h. Un error en un directorio no corta el barrido. Devuelve los ids
  * borrados.
  */
-export async function cleanContentTmp(root: string, now = Date.now()): Promise<string[]> {
+export async function cleanContentTmp(
+  root: string,
+  now = Date.now(),
+  maxAgeMs = CONTENT_TMP_MAX_AGE_MS,
+): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true }).catch((error: unknown) => {
     if (errorCode(error) === "ENOENT") return [];
     throw error;
@@ -59,7 +71,7 @@ export async function cleanContentTmp(root: string, now = Date.now()): Promise<s
     if (!entry.isDirectory() || !UUID.test(entry.name)) continue;
     const dir = join(root, entry.name);
     try {
-      if (now - (await stat(dir)).mtimeMs > CONTENT_TMP_MAX_AGE_MS) {
+      if (now - (await stat(dir)).mtimeMs > maxAgeMs) {
         await rm(dir, { recursive: true, force: true });
         removed.push(entry.name);
       }
