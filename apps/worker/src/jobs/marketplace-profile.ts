@@ -6,6 +6,7 @@ import {
   connectMarketplaceAccount,
   isAppError,
   type PlatformAccountRepository,
+  type PublicationRepository,
   recordMarketplaceLoginError,
 } from "@agentsales/core";
 import {
@@ -26,12 +27,14 @@ export const MARKETPLACE_LOGIN_WAIT_MS = 10 * 60_000;
 export const MARKETPLACE_PROFILE_BUSY_WAIT_MS = 30_000;
 
 /**
- * Política de `marketplace.profile` (spec F5 §4.11): `exclusive` por corredor (`singletonKey =
- * brokerId`: iniciar sesión y olvidar el perfil nunca se cruzan), sin reintentos (el operador lo
- * pide de nuevo) y expira a los 15 min (la espera del login es de 10).
+ * Política de `marketplace.profile` (spec F5 §4.11): `stately` por corredor (`singletonKey =
+ * brokerId`): uno activo y uno en cola, así un `forget` espera detrás de un login en curso en vez de
+ * perderse (con `exclusive` se rechazaría); iniciar sesión y olvidar el perfil nunca corren a la
+ * vez. Un segundo pedido con uno ya en cola se rechaza (`enqueue` da `null`). Sin reintentos (el
+ * operador lo pide de nuevo) y expira a los 15 min (la espera del login es de 10).
  */
 export const MARKETPLACE_PROFILE_QUEUE: QueuePolicy = {
-  policy: "exclusive",
+  policy: "stately",
   retryLimit: 0,
   retryDelay: 0,
   retryBackoff: false,
@@ -49,6 +52,7 @@ export type MarketplaceProfileJobDeps = {
     PlatformAccountRepository,
     "upsertConnected" | "listByBroker" | "mergeMeta"
   >;
+  publications: Pick<PublicationRepository, "listByStatus">;
   signal: AbortSignal;
   now?: () => Date;
   loginWaitMs?: number;
@@ -77,7 +81,7 @@ async function openWhenFree(deps: MarketplaceProfileJobDeps, brokerId: string) {
 }
 
 /** La carpeta del perfil, solo si queda dentro de la raíz de los perfiles (nunca borra otra cosa). */
-function profileDirInside(root: string, brokerId: string): string {
+export function profileDirInside(root: string, brokerId: string): string {
   const dir = resolve(marketplaceProfileDir(root, brokerId));
   const rel = relative(resolve(root), dir);
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
@@ -122,10 +126,23 @@ export function marketplaceProfileJob(deps: MarketplaceProfileJobDeps): Job {
           signal: deps.signal,
           ...(deps.pollMs === undefined ? {} : { pollMs: deps.pollMs }),
         });
+        // Si alguien desconectó la cuenta después de pedir este login, no se vuelve a conectar: el
+        // `forget` que encoló la desconexión está esperando detrás (cola `stately`).
+        const requestedAt = new Date(data.requestedAt).getTime();
+        const disconnectedAfter = (
+          await deps.platformAccounts.listByBroker(data.brokerId, "fb_marketplace")
+        ).some(
+          (account) => account.status === "revoked" && account.updatedAt.getTime() > requestedAt,
+        );
+        if (disconnectedAfter) {
+          logger.info("la cuenta se desconectó mientras se iniciaba sesión: no se conecta");
+          return;
+        }
         const account = await connectMarketplaceAccount(
           {
             brokers: deps.brokers,
             platformAccounts: deps.platformAccounts,
+            publications: deps.publications,
             ...(deps.now ? { now: deps.now } : {}),
           },
           {

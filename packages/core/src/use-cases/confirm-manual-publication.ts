@@ -16,6 +16,13 @@ export type ManualPublicationDeps = {
 /** Lo que devuelve confirmar: la publicación y si se cambió ahora (`false` = ya estaba así). */
 export type ConfirmManualPublicationResult = { publication: Publication; changed: boolean };
 
+const urlRequired = (publicationId: string) =>
+  new AppError(
+    "MARKETPLACE_URL_REQUIRED",
+    "Pega el enlace del aviso publicado (https://www.facebook.com/marketplace/item/<número>)",
+    { details: { publicationId } },
+  );
+
 const notWaiting = (publication: Publication, to: "published" | "failed") =>
   new AppError(
     "INVALID_TRANSITION",
@@ -55,6 +62,7 @@ export async function confirmManualPublication(
       if (!live || (item !== null && item.itemId === publication.externalId)) {
         return { publication, changed: false };
       }
+      if (item === null) throw urlRequired(publicationId);
       throw new AppError(
         "PUBLICATION_ALREADY_CONFIRMED",
         "Esta publicación ya se confirmó con otro enlace",
@@ -63,13 +71,7 @@ export async function confirmManualPublication(
     }
     if (publication.status !== "awaiting_manual_confirm")
       throw notWaiting(publication, "published");
-    if (live && item === null) {
-      throw new AppError(
-        "MARKETPLACE_URL_REQUIRED",
-        "Pega el enlace del aviso publicado (https://www.facebook.com/marketplace/item/<número>)",
-        { details: { publicationId } },
-      );
-    }
+    if (live && item === null) throw urlRequired(publicationId);
     const published = await locked.publications.transition(
       publicationId,
       {

@@ -238,6 +238,7 @@ const jobs = buildJobs({
     windows: marketplaceWindows,
     brokers: repositories.brokers,
     platformAccounts,
+    publications,
     signal: jobsAbort.signal,
   },
 });
@@ -444,6 +445,8 @@ try {
   await cleanContentTemps();
   await cleanMarketplaceEvidence();
   await boss.start();
+  // Antes de registrar los jobs: así nunca marca una ventana que un intento acaba de abrir.
+  await sweepMarketplaceWindows();
   await failAbandonedRuns();
   await failAbandonedContent();
   await cleanStaging(true);
@@ -454,7 +457,6 @@ try {
     await requeueContent();
     await requeuePublications();
     await requestLiveSyncs();
-    await sweepMarketplaceWindows();
     await requestTokensRefresh();
     // El modo del worker solo decide si una publicación pedida en `live` se puede publicar (D11).
     logger.info(

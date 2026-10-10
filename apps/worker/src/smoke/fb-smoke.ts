@@ -109,6 +109,9 @@ export async function runFbSmoke(deps: FbSmokeDeps, options: FbSmokeOptions): Pr
     return 0;
   } catch (error) {
     deps.printError(`✗ ${isAppError(error) ? error.message : describeUnexpected(error)}`);
+    if (isAppError(error) && error.code === "MARKETPLACE_LOGIN_TIMEOUT") {
+      deps.printError("  Vuelve a correr pnpm fb:smoke e inicia sesión en la ventana.");
+    }
     return 1;
   } finally {
     if (profile !== undefined) {

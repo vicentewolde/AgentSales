@@ -56,7 +56,10 @@ export async function markWindowClosed(
   if (publication === null || publication.status !== "awaiting_manual_confirm") return false;
   if (attempt !== null && publication.attempts !== attempt) return false;
   const progress = progressOf(publication);
-  if (progress === null || progress.windowClosedAt !== undefined) return false;
+  // Una simulada nunca tuvo ventana: no hay nada que anotar.
+  if (progress === null || progress.simulated || progress.windowClosedAt !== undefined) {
+    return false;
+  }
   try {
     await publications.updateProgress(
       publicationId,
@@ -71,7 +74,9 @@ export async function markWindowClosed(
 }
 
 /**
- * Las ventanas de Marketplace que tiene el worker (spec F5 §4.5, ADR-0017): una por cuenta.
+ * Las ventanas de Marketplace que tiene el worker (spec F5 §4.5, ADR-0017), por publicación (el
+ * publisher, con F5-T10, cierra antes la de otra publicación de la misma cuenta: un perfil, una
+ * ventana).
  * - `hold`: el publisher entrega la ventana con el formulario listo (`onHandoff`); queda pendiente.
  * - `activate`: el intento dejó la publicación en `awaiting_manual_confirm`; empieza a vigilar. Al
  *   ver el aviso, lo confirma (actor `system`) y cierra; si la ventana se cierra o vence el tope,
@@ -102,6 +107,14 @@ export function createMarketplaceWindows(deps: MarketplaceWindowsDeps) {
           "no se pudo cerrar la ventana de Marketplace",
         ),
       );
+  };
+
+  /** Cierra la ventana y, si su publicación sigue esperando, anota que ya no hay ventana. */
+  const closeAndNote = async (entry: Entry) => {
+    await closeEntry(entry);
+    await markWindowClosed(deps.publications, entry.publicationId, entry.attempt, now()).catch(
+      () => false,
+    );
   };
 
   const noteClosed = async (entry: Entry, reason: string) => {
@@ -140,10 +153,16 @@ export function createMarketplaceWindows(deps: MarketplaceWindowsDeps) {
 
     async activate(publicationId: string): Promise<boolean> {
       const entry = entries.get(publicationId);
-      if (entry === undefined) return false;
+      if (entry === undefined) {
+        // Sin ventana (por ejemplo, un `forget` la cerró antes): que el panel no diga "revisa la
+        // ventana". Las simuladas no se marcan (nunca tuvieron ventana).
+        await markWindowClosed(deps.publications, publicationId, null, now()).catch(() => false);
+        return false;
+      }
       const publication = await deps.publications.get(publicationId).catch(() => null);
       if (publication === null || publication.status !== "awaiting_manual_confirm") {
-        await closeEntry(entry);
+        // Si la base no respondió (`null`), la anota igual si puede; si no, la repara el barrido.
+        await closeAndNote(entry);
         return false;
       }
       entry.attempt = publication.attempts;
@@ -196,13 +215,13 @@ export function createMarketplaceWindows(deps: MarketplaceWindowsDeps) {
 
     async closeForAccount(accountId: string): Promise<void> {
       for (const entry of [...entries.values()]) {
-        if (entry.accountId === accountId) await closeEntry(entry);
+        if (entry.accountId === accountId) await closeAndNote(entry);
       }
     },
 
     async closeForBroker(brokerId: string): Promise<void> {
       for (const entry of [...entries.values()]) {
-        if (entry.brokerId === brokerId) await closeEntry(entry);
+        if (entry.brokerId === brokerId) await closeAndNote(entry);
       }
     },
 

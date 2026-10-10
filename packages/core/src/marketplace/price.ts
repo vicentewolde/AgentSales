@@ -47,8 +47,8 @@ function previousDay(date: string): string {
  * publisher (en los dos modos: es una lectura del Banco Central, no de Facebook):
  * - en `CLP`, el monto tal cual (redondeado al peso);
  * - en `UF`, convertido con el valor oficial **del día de Santiago de `now`**. Pide ayer y hoy: sin
- *   el de hoy, `UF_VALUE_MISSING` (no reintentable: el operador reintenta más tarde); si se aleja
- *   más de 1 % del de ayer, `UF_VALUE_SUSPICIOUS` (no reintentable). Sin fuente (falta el token),
+ *   alguno de los dos, `UF_VALUE_MISSING` (no reintentable: el operador reintenta más tarde); si el
+ *   de hoy se aleja más de 1 % del de ayer, `UF_VALUE_SUSPICIOUS` (no reintentable). Sin fuente (falta el token),
  *   `UF_SOURCE_NOT_CONFIGURED`. Nunca usa un valor viejo ni uno escrito a mano;
  * - otra moneda, `MARKETPLACE_CURRENCY_UNSUPPORTED`.
  */
@@ -78,16 +78,23 @@ export async function marketplacePrice(
       { details: { date: today } },
     );
   }
+  // El de ayer es el control de rango: sin él no hay con qué comparar (la UF se publica por
+  // adelantado, así que siempre debería estar).
   const yesterdays = values.find((item) => item.date === yesterday);
-  if (yesterdays !== undefined) {
-    const change = Math.abs(Number(todays.value) / Number(yesterdays.value) - 1);
-    if (!Number.isFinite(change) || change > UF_MAX_DAILY_CHANGE) {
-      throw new AppError(
-        "UF_VALUE_SUSPICIOUS",
-        "El valor de la UF de hoy no calza con el de ayer: no se publica con un precio dudoso",
-        { details: { date: today } },
-      );
-    }
+  if (yesterdays === undefined) {
+    throw new AppError(
+      "UF_VALUE_MISSING",
+      "El Banco Central no trajo el valor de la UF de ayer para comparar: reintenta más tarde",
+      { details: { date: yesterday } },
+    );
+  }
+  const change = Math.abs(Number(todays.value) / Number(yesterdays.value) - 1);
+  if (!Number.isFinite(change) || change > UF_MAX_DAILY_CHANGE) {
+    throw new AppError(
+      "UF_VALUE_SUSPICIOUS",
+      "El valor de la UF de hoy no calza con el de ayer: no se publica con un precio dudoso",
+      { details: { date: today } },
+    );
   }
   return {
     priceClp: ufToClp(listing.priceAmount, todays.value),

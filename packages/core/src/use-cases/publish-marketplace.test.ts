@@ -168,6 +168,15 @@ describe("Marketplace · el intento deja el formulario listo", () => {
       retriable: true,
     });
     expect((await s.current(publication.id))?.status).toBe("publishing");
+    // El intento abrió el formulario: deja su evento y cuenta para el límite.
+    const attempt = (await s.events(publication.id)).find((e) => e.type === "publish_attempt");
+    expect(attempt?.payload).toMatchObject({
+      result: "retry",
+      error: { code: "PUBLISH_RESULT_NOT_SAVED" },
+    });
+    await expect(
+      s.t.publications.countLiveAttemptsSince(publication.platformAccountId, new Date(0)),
+    ).resolves.toBe(1);
   });
 
   it("sin el valor de la UF de hoy: UF_VALUE_MISSING, failed, sin abrir el formulario", async () => {
@@ -224,6 +233,9 @@ describe("Marketplace · confirmar o no", () => {
         actor: "operator",
       }),
     ).rejects.toMatchObject({ code: "PUBLICATION_ALREADY_CONFIRMED" });
+    await expect(
+      confirmManualPublication(s.manualDeps, { publicationId: publication.id, actor: "operator" }),
+    ).rejects.toMatchObject({ code: "MARKETPLACE_URL_REQUIRED" });
   });
 
   it("live: sin enlace o con uno que no es de Marketplace no cambia nada", async () => {

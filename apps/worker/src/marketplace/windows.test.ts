@@ -209,4 +209,34 @@ describe("ventanas de Marketplace del worker (spec F5 §4.5)", () => {
     await expect(sweepClosedWindows(other.publications, NOW)).resolves.toBe(1);
     await expect(sweepClosedWindows(other.publications, NOW)).resolves.toBe(0);
   });
+
+  it("cerrar por corredor (desconectar) y activar sin ventana anotan windowClosedAt", async () => {
+    const one = await waiting();
+    const windows = registry(one.publications);
+    const fake = fakeWindow();
+    await windows.hold(ref(one.publication), fake.window);
+    await windows.activate(one.publication.id);
+    await windows.closeForBroker("corredor-1");
+    expect((await one.publications.get(one.publication.id))?.progress).toMatchObject({
+      windowClosedAt: NOW.toISOString(),
+    });
+
+    const two = await waiting();
+    await expect(registry(two.publications).activate(two.publication.id)).resolves.toBe(false);
+    expect((await two.publications.get(two.publication.id))?.progress).toMatchObject({
+      windowClosedAt: NOW.toISOString(),
+    });
+  });
+
+  it("una simulada nunca tuvo ventana: no se marca", async () => {
+    const { publications, publication } = await waiting();
+    const progress = { ...(publication.progress as object), simulated: true };
+    await publications.updateProgress(
+      publication.id,
+      { from: "awaiting_manual_confirm", attempts: 1 },
+      progress,
+    );
+
+    await expect(sweepClosedWindows(publications, NOW)).resolves.toBe(0);
+  });
 });

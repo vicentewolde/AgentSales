@@ -20,7 +20,7 @@ function setup() {
   const platformAccounts = createInMemoryPlatformAccountRepository();
   const publications = createInMemoryPublicationRepository();
   const queue = createInMemoryJobQueue();
-  const deps = { brokers, platformAccounts, now: () => NOW };
+  const deps = { brokers, platformAccounts, publications, now: () => NOW };
   return { broker, platformAccounts, publications, queue, deps };
 }
 
@@ -160,5 +160,85 @@ describe("disconnectAccount · Marketplace (spec F5 §4.2)", () => {
     ).rejects.toMatchObject({ code: "MANUAL_CONFIRM_PENDING" });
     expect((await platformAccounts.get(account.id))?.status).toBe("connected");
     expect(queue.jobs).toEqual([]);
+  });
+
+  it("con un formulario llenándose: PUBLICATION_IN_PROGRESS; con la cola ocupada: no toca la base", async () => {
+    const { broker, publications, platformAccounts, deps } = setup();
+    const account = await connectMarketplaceAccount(deps, { brokerId: broker.id, userId: "1" });
+    const filling = await publications.create(
+      {
+        listingId: "aviso-1",
+        platformAccountId: account.id,
+        platform: "fb_marketplace",
+        format: "post",
+        contentId: "texto-1",
+        mediaIds: [],
+        listingSourceHash: "h",
+      },
+      { actor: "operator" },
+    );
+    await publications.transition(
+      filling.id,
+      { from: "approved", to: "publishing", changes: { dryRun: true } },
+      { actor: "operator" },
+    );
+    const busyQueue = { enqueue: async () => null };
+
+    await expect(
+      disconnectAccount(
+        { platformAccounts, publications, queue: createInMemoryJobQueue() },
+        { accountId: account.id, confirmed: true },
+      ),
+    ).rejects.toMatchObject({ code: "PUBLICATION_IN_PROGRESS" });
+    await publications.transition(
+      filling.id,
+      { from: "publishing", to: "failed" },
+      { actor: "system" },
+    );
+    await expect(
+      disconnectAccount(
+        { platformAccounts, publications, queue: busyQueue },
+        { accountId: account.id, confirmed: true },
+      ),
+    ).rejects.toMatchObject({ code: "MARKETPLACE_PROFILE_ACTION_PENDING" });
+    expect((await platformAccounts.get(account.id))?.status).toBe("connected");
+  });
+});
+
+describe("connectMarketplaceAccount · otra cuenta con un formulario esperando", () => {
+  it("no revoca la cuenta conectada si tiene una publicación esperando el clic final", async () => {
+    const { broker, publications, platformAccounts, deps } = setup();
+    const first = await connectMarketplaceAccount(deps, { brokerId: broker.id, userId: "1" });
+    const waiting = await publications.create(
+      {
+        listingId: "aviso-1",
+        platformAccountId: first.id,
+        platform: "fb_marketplace",
+        format: "post",
+        contentId: "texto-1",
+        mediaIds: [],
+        listingSourceHash: "h",
+      },
+      { actor: "operator" },
+    );
+    await publications.transition(
+      waiting.id,
+      { from: "approved", to: "publishing", changes: { dryRun: true } },
+      { actor: "operator" },
+    );
+    await publications.transition(
+      waiting.id,
+      { from: "publishing", to: "awaiting_manual_confirm" },
+      { actor: "system" },
+    );
+
+    await expect(
+      connectMarketplaceAccount(deps, { brokerId: broker.id, userId: "2" }),
+    ).rejects.toMatchObject({ code: "MANUAL_CONFIRM_PENDING" });
+    expect((await platformAccounts.get(first.id))?.status).toBe("connected");
+    // La misma cuenta sí se reconecta (no revoca nada).
+    await expect(
+      connectMarketplaceAccount(deps, { brokerId: broker.id, userId: "1" }),
+    ).resolves.toMatchObject({ id: first.id });
   });
 });

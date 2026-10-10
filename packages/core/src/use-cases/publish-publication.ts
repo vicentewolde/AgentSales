@@ -371,7 +371,7 @@ async function awaitManualConfirm(
     mode: ReturnType<typeof modeOf>;
     addAttempt: (
       result: PublishAttemptResult,
-      extra: { sent?: PublishAttemptRecord | null; notes?: string[] },
+      extra: { sent?: PublishAttemptRecord | null; notes?: string[]; error?: PublicationError },
     ) => Promise<void>;
   },
 ): Promise<PublishPublicationResult> {
@@ -396,11 +396,14 @@ async function awaitManualConfirm(
       { actor: "system", payload: { mode } },
     );
   } catch (failure) {
-    throw new AppError(
+    const error = new AppError(
       "PUBLISH_RESULT_NOT_SAVED",
       "El formulario quedó listo, pero no se pudo guardar: se vuelve a abrir uno nuevo",
       { retriable: true, cause: failure, details: { publicationId: publication.id } },
     );
+    // El intento abrió Facebook: deja su evento (cuenta para el límite diario, spec F5 §4.7).
+    await addAttempt("retry", { sent, notes: handoff.notes, error: lastErrorOf(error) });
+    throw error;
   }
   await addAttempt("awaiting_manual_confirm", { sent, notes: handoff.notes });
   return { outcome: "awaiting_manual_confirm", publication: waiting };

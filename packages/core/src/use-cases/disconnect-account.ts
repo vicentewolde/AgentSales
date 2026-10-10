@@ -22,10 +22,14 @@ export type DisconnectAccountDeps = {
  * Marketplace (spec F5 §4.2, ADR-0017), además:
  * - exige `confirmed` (borra el perfil, con la sesión de Facebook) → `DISCONNECT_NOT_CONFIRMED`;
  * - con una publicación de la cuenta esperando el clic final → `MANUAL_CONFIRM_PENDING` (primero
- *   el operador dice si la publicó);
- * - cambia solo la base y, **después**, encola `marketplace.profile` (`forget`): el worker, dueño
- *   del perfil, cierra sus ventanas y borra la carpeta. Se encola también si ya estaba
- *   desconectada (es idempotente y repara un borrado que falló).
+ *   el operador dice si la publicó), y con una que se está llenando → `PUBLICATION_IN_PROGRESS`;
+ * - encola **primero** `marketplace.profile` (`forget`): el worker, dueño del perfil, cierra sus
+ *   ventanas y borra la carpeta (borrar un perfil todavía conectado no hace daño: la base se cambia
+ *   enseguida). Si la cola ya tiene otra acción del perfil esperando (`null`, cola `stately`),
+ *   `MARKETPLACE_PROFILE_ACTION_PENDING` (409) sin tocar la base: se reintenta en un momento. Un
+ *   `forget` detrás de un login en curso espera su turno, y ese login no conecta (vio la
+ *   desconexión). Se encola también si ya estaba desconectada (idempotente: repara un borrado que
+ *   falló). Después, la cuenta pasa a `revoked`.
  */
 export async function disconnectAccount(
   deps: DisconnectAccountDeps,
@@ -50,17 +54,30 @@ export async function disconnectAccount(
       (publication) => publication.platformAccountId === accountId,
     );
     if (waiting !== undefined) throw manualConfirmPending(waiting.id);
-  }
-  const result =
-    account.status === "revoked" && !account.hasCredentials
-      ? account
-      : await deps.platformAccounts.disconnect(accountId);
-  if (profile) {
-    await deps.queue.enqueue(
+    const filling = (await deps.publications.listByStatus("publishing")).find(
+      (publication) => publication.platformAccountId === accountId,
+    );
+    if (filling !== undefined) {
+      throw new AppError(
+        "PUBLICATION_IN_PROGRESS",
+        "Se está llenando un formulario de Marketplace de esta cuenta: espera a que termine",
+        { details: { publicationId: filling.id } },
+      );
+    }
+    const queued = await deps.queue.enqueue(
       "marketplace.profile",
       { brokerId: account.brokerId, action: "forget" },
       { singletonKey: account.brokerId },
     );
+    if (queued === null) {
+      throw new AppError(
+        "MARKETPLACE_PROFILE_ACTION_PENDING",
+        "Ya hay una acción del perfil de Facebook esperando (un inicio de sesión o un borrado): reintenta en un momento",
+        { details: { accountId } },
+      );
+    }
   }
-  return result;
+  return account.status === "revoked" && !account.hasCredentials
+    ? account
+    : deps.platformAccounts.disconnect(accountId);
 }

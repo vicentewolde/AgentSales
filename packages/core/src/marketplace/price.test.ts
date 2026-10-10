@@ -67,9 +67,9 @@ describe("marketplacePrice", () => {
         now: NOW,
       }),
     ).rejects.toMatchObject({ code: "UF_VALUE_SUSPICIOUS", retriable: false });
-    // Solo el de hoy (sin el de ayer para comparar) sirve.
-    await expect(marketplacePrice(uf, { uf: source([TODAY]), now: NOW })).resolves.toMatchObject({
-      priceClp: 238_559_452,
+    // Sin el de ayer no hay con qué comparar: tampoco.
+    await expect(marketplacePrice(uf, { uf: source([TODAY]), now: NOW })).rejects.toMatchObject({
+      code: "UF_VALUE_MISSING",
     });
   });
 });

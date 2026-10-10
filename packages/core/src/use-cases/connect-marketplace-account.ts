@@ -1,4 +1,5 @@
 import { AppError } from "../errors.js";
+import { manualConfirmPending } from "../marketplace/limits.js";
 import {
   type MarketplaceAccountMeta,
   marketplaceAccountMetaSchema,
@@ -6,10 +7,13 @@ import {
 } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
+import type { PublicationRepository } from "../ports/publication-repository.js";
 
 export type ConnectMarketplaceAccountDeps = {
   brokers: Pick<BrokerRepository, "findById">;
-  platformAccounts: Pick<PlatformAccountRepository, "upsertConnected">;
+  platformAccounts: Pick<PlatformAccountRepository, "upsertConnected" | "listByBroker">;
+  /** Para no revocar otra cuenta del corredor con un formulario esperando el clic final. */
+  publications: Pick<PublicationRepository, "listByStatus">;
   now?: () => Date;
 };
 
@@ -23,8 +27,10 @@ const brokerNotFound = (brokerId: string) =>
  * la cookie `c_user`, `display_name` = `label` o "Facebook de <corredor>", sin vencimiento, y `meta`
  * con `userId`, `connectedAt` y `sessionCheckedAt`. Otra cuenta de Marketplace del corredor queda
  * desconectada en el mismo paso (una conectada por corredor y plataforma); reconectar la misma
- * actualiza su fila (y borra un `lastLoginError` anterior). Errores: `BROKER_NOT_FOUND` y
- * `MARKETPLACE_SESSION_ID_INVALID` (el id no es numérico).
+ * actualiza su fila (y borra un `lastLoginError` anterior). Errores: `BROKER_NOT_FOUND`,
+ * `MARKETPLACE_SESSION_ID_INVALID` (el id no es numérico) y `MANUAL_CONFIRM_PENDING` si la sesión es
+ * de **otra** cuenta de Facebook y la conectada tiene una publicación esperando el clic final
+ * (revocarla dejaría esa publicación en una cuenta desconectada: spec F5 §4.3, D11).
  */
 export async function connectMarketplaceAccount(
   deps: ConnectMarketplaceAccountDeps,
@@ -45,6 +51,16 @@ export async function connectMarketplaceAccount(
     );
   }
   const meta: MarketplaceAccountMeta = parsed.data;
+  const others = (await deps.platformAccounts.listByBroker(brokerId, "fb_marketplace")).filter(
+    (account) => account.status === "connected" && account.externalAccountId !== meta.userId,
+  );
+  if (others.length > 0) {
+    const ids = new Set(others.map((account) => account.id));
+    const waiting = (await deps.publications.listByStatus("awaiting_manual_confirm")).find(
+      (publication) => ids.has(publication.platformAccountId),
+    );
+    if (waiting !== undefined) throw manualConfirmPending(waiting.id);
+  }
   return deps.platformAccounts.upsertConnected(
     {
       brokerId,
@@ -62,7 +78,7 @@ export async function connectMarketplaceAccount(
 /**
  * Anota el último error de un inicio de sesión de Marketplace que falló (tope, perfil tomado,
  * Chromium) en la cuenta del corredor, si existe, para que la CLI y el panel lo muestren (spec F5
- * §4.2). Usa la más reciente de Marketplace del corredor. Sin cuenta, no hace nada (`null`).
+ * §4.2). Usa la conectada o, si no hay, la que cambió más recién. Sin cuenta, no hace nada (`null`).
  */
 export async function recordMarketplaceLoginError(
   deps: {
@@ -72,7 +88,9 @@ export async function recordMarketplaceLoginError(
   { brokerId, code }: { brokerId: string; code: string },
 ): Promise<PlatformAccount | null> {
   const accounts = await deps.platformAccounts.listByBroker(brokerId, "fb_marketplace");
-  const latest = accounts.at(-1);
+  const latest =
+    accounts.find((account) => account.status === "connected") ??
+    [...accounts].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
   if (latest === undefined) return null;
   const at = (deps.now ?? (() => new Date()))().toISOString();
   return deps.platformAccounts.mergeMeta(latest.id, { lastLoginError: { code, at } });

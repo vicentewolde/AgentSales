@@ -81,6 +81,7 @@ export function createBancoCentralUf(options: BancoCentralUfOptions): UfValueSou
       url.searchParams.set("firstdate", from);
       url.searchParams.set("lastdate", to);
       const timeout = AbortSignal.timeout(timeoutMs);
+      // `AbortSignalLike` es el subconjunto que core conoce; quien llama pasa un `AbortSignal` real.
       const combined =
         signal === undefined ? timeout : AbortSignal.any([timeout, signal as AbortSignal]);
       let response: Response;

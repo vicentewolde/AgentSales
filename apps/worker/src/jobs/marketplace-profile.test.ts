@@ -7,6 +7,7 @@ import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPublicationRepository,
 } from "@agentsales/core/testing";
 import {
   type MarketplaceProfile,
@@ -15,7 +16,11 @@ import {
   openMarketplaceProfile,
 } from "@agentsales/publishers/marketplace";
 import { afterEach, describe, expect, it } from "vitest";
-import { MARKETPLACE_PROFILE_QUEUE, marketplaceProfileJob } from "./marketplace-profile.js";
+import {
+  MARKETPLACE_PROFILE_QUEUE,
+  marketplaceProfileJob,
+  profileDirInside,
+} from "./marketplace-profile.js";
 
 // Un Facebook falso de páginas inventadas (como `fb-smoke.test.ts`): el perfil se abre sin ventana,
 // toda petición pasa por `context.route` y nada sale a la red.
@@ -82,6 +87,7 @@ async function setup(options: { home?: string; cookies?: Record<string, string> 
     },
     brokers: createInMemoryBrokerRepository([broker]),
     platformAccounts,
+    publications: createInMemoryPublicationRepository(),
     signal: new AbortController().signal,
     now: () => NOW,
     loginWaitMs: 300,
@@ -105,9 +111,9 @@ async function setup(options: { home?: string; cookies?: Record<string, string> 
 }
 
 describe("job marketplace.profile (spec F5 §4.2 y §4.11)", () => {
-  it("es exclusive por corredor, sin reintentos y con 15 min", () => {
+  it("es stately por corredor (un forget espera detrás de un login), sin reintentos y con 15 min", () => {
     expect(MARKETPLACE_PROFILE_QUEUE).toEqual({
-      policy: "exclusive",
+      policy: "stately",
       retryLimit: 0,
       retryDelay: 0,
       retryBackoff: false,
@@ -129,6 +135,32 @@ describe("job marketplace.profile (spec F5 §4.2 y §4.11)", () => {
     });
     expect(JSON.stringify(account)).not.toContain("secreta");
     expect(t.unexpected).toEqual([]);
+  });
+
+  it("login: si la cuenta se desconectó después de pedirlo, no la vuelve a conectar", async () => {
+    const t = await setup({ cookies: { c_user: "100012345" } });
+    const account = await t.platformAccounts.upsertConnected({
+      brokerId: broker.id,
+      platform: "fb_marketplace",
+      externalAccountId: "100012345",
+      displayName: "Facebook",
+      tokenExpiresAt: null,
+      meta: {
+        userId: "100012345",
+        connectedAt: NOW.toISOString(),
+        sessionCheckedAt: NOW.toISOString(),
+      },
+      credentials: null,
+    });
+    await t.platformAccounts.disconnect(account.id);
+
+    await t.run({
+      brokerId: broker.id,
+      action: "login",
+      requestedAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    expect((await t.platformAccounts.get(account.id))?.status).toBe("revoked");
   });
 
   it("login: sin sesión al tope no conecta y anota el error en la cuenta que ya existía", async () => {
@@ -190,5 +222,15 @@ describe("job marketplace.profile (spec F5 §4.2 y §4.11)", () => {
       code: "MARKETPLACE_PROFILE_BUSY",
     });
     expect((await stat(dir)).isDirectory()).toBe(true);
+  });
+
+  it("solo borra dentro de la raíz de los perfiles, y los datos del job exigen un uuid", async () => {
+    const t = await setup();
+    expect(() => profileDirInside(t.root, "../../etc")).toThrow(
+      expect.objectContaining({ code: "MARKETPLACE_PROFILE_PATH_INVALID" }),
+    );
+    await expect(t.run({ brokerId: "../../etc", action: "forget" })).rejects.toMatchObject({
+      code: "JOB_PAYLOAD_INVALID",
+    });
   });
 });

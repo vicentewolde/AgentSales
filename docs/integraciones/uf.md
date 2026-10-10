@@ -167,5 +167,5 @@ No oficial (solo referencia):
 ## Decisiones del spec de F5 (2026-10-10)
 
 - Se usa la API BDE con el token anual (`BCCH_API_TOKEN`). Los valores leídos se guardan **en memoria** por fecha en el worker (`createBancoCentralUf`), no en una tabla: cada valor se publica por adelantado y no se revisa, y un reinicio solo hace una consulta más.
-- Core pide ayer y hoy (día de Santiago) en cada intento de Marketplace: sin el de hoy, `UF_VALUE_MISSING`; si se aleja más de 1 % del de ayer, `UF_VALUE_SUSPICIOUS`. Nunca se usa un valor viejo.
+- Core pide ayer y hoy (día de Santiago) en cada intento de Marketplace: sin alguno de los dos, `UF_VALUE_MISSING`; si se aleja más de 1 % del de ayer, `UF_VALUE_SUSPICIOUS`. Nunca se usa un valor viejo.
 - La forma de los errores (token inválido) y si la API trae días futuros los confirma `pnpm uf:smoke` (lo corre el operador).

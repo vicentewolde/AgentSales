@@ -128,4 +128,29 @@ describe("apagado del worker", () => {
       "base cerrada",
     ]);
   });
+
+  it("si detener pg-boss falla, las ventanas de Marketplace se cierran igual", async () => {
+    const events: string[] = [];
+    await expect(
+      stopWorker(
+        {
+          abortJobs: () => events.push("corte"),
+          stopBoss: async () => {
+            throw new Error("pg-boss no se detuvo");
+          },
+          closeRenderer: async () => {
+            events.push("navegador cerrado");
+          },
+          closeMarketplaceWindows: async () => {
+            events.push("ventanas cerradas");
+          },
+          closeDatabase: async () => {
+            events.push("base cerrada");
+          },
+        },
+        silentLogger,
+      ),
+    ).rejects.toThrow("pg-boss no se detuvo");
+    expect(events).toEqual(["corte", "navegador cerrado", "ventanas cerradas"]);
+  });
 });
