@@ -219,9 +219,9 @@ const operationBody = (result: OperatedPublication): PublicationOperationRespons
  * bitácora (spec F3 §4.3 y §4.8); pausar, reactivar, cerrar y pedir el sync de una de Portal (spec
  * F4 §4.9); "lo publiqué" (con el enlace) y "no lo publiqué" de una de Marketplace que espera el
  * clic final (spec F5 §4.3). El enlace pegado nunca vuelve en un error ni va al log (el log de la
- * API no registra cuerpos, y `parseMarketplaceItemUrl` no lo repite). Cambian el estado dentro del candado del aviso (core); publicar y el sync encolan
- * después. Pausar, reactivar y cerrar son síncronos: llaman a la plataforma (fuera del candado) con
- * un tope de `OPERATION_TIMEOUT_MS`.
+ * API no registra cuerpos, y `parseMarketplaceItemUrl` no lo repite). Cambian el estado dentro del
+ * candado del aviso (core); publicar y el sync encolan después. Pausar, reactivar y cerrar son
+ * síncronos: llaman a la plataforma (fuera del candado) con un tope de `OPERATION_TIMEOUT_MS`.
  */
 export function publicationRoutes(deps: PublicationRoutesDeps) {
   const operations = operationDeps(deps);

@@ -7,7 +7,10 @@ import {
   type PlatformAccountView,
 } from "@agentsales/api/contracts";
 import {
+  accountDisconnectText,
+  currentMarketplaceLoginError,
   MARKETPLACE_LOGIN_CLIENT_WAIT_MS,
+  MARKETPLACE_WAIT_MAX_POLL_FAILURES,
   MERCADOLIBRE_REFRESH_AGE_MS,
   marketplaceConnectCommand,
   marketplaceLoginErrorText,
@@ -70,12 +73,6 @@ function lastCheckText(account: PlatformAccountView): string {
   return when === null ? "—" : formatDateTime(when);
 }
 
-/** Un inicio de sesión de Marketplace que falló después de la última sesión vista (spec F5 §4.2). */
-const failedLogin = (account: PlatformAccountView) =>
-  account.lastLoginError !== null &&
-  (account.sessionCheckedAt === null ||
-    account.lastLoginError.at.getTime() > account.sessionCheckedAt.getTime());
-
 /**
  * `agentsales accounts` (spec F3 §4.9, F5 §4.12): las cuentas conectadas, con su estado y
  * vencimiento; en Marketplace, la última sesión vista y, debajo, el último inicio de sesión que
@@ -123,8 +120,8 @@ export function runAccounts(deps: AccountsDeps) {
         c,
       ),
     );
-    for (const account of accounts.filter(failedLogin)) {
-      const error = account.lastLoginError;
+    for (const account of accounts) {
+      const error = currentMarketplaceLoginError(account);
       if (error === null) continue;
       deps.print(
         c.yellow(
@@ -298,6 +295,10 @@ async function connectMarketplace(
     "Se abrirá una ventana de Chromium con Facebook: inicia sesión ahí a mano (también la verificación, si la pide). Espero hasta 10 min.",
   );
   deps.print(c.dim("  El worker abre la ventana: tiene que estar corriendo (pnpm dev)"));
+  // La primera conexión que falla no tiene cuenta donde anotar el motivo: la CLI no lo ve.
+  deps.print(
+    c.dim("  Si cierras la ventana sin iniciar sesión, corta con Ctrl+C y vuelve a intentarlo"),
+  );
   const check = async (): Promise<LoginWait> => {
     const { accounts } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
     const result = marketplaceLoginOutcome(accounts, { brokerId, requestedAt });
@@ -315,7 +316,11 @@ async function connectMarketplace(
     {
       ...deps,
       now: deps.clock,
-      wait: { maxWaitMs: MARKETPLACE_LOGIN_CLIENT_WAIT_MS, ...deps.wait },
+      wait: {
+        maxWaitMs: MARKETPLACE_LOGIN_CLIENT_WAIT_MS,
+        maxPollFailures: MARKETPLACE_WAIT_MAX_POLL_FAILURES,
+        ...deps.wait,
+      },
     },
     {
       run: { status: "pending" },
@@ -547,9 +552,7 @@ export function runDisconnect(deps: AccountsDeps, id: string, options: Disconnec
     const marketplace = account.platform === "fb_marketplace";
     if (!options.yes) {
       const confirmed = await deps.confirm(
-        marketplace
-          ? `¿Desconectar ${account.displayName} (Marketplace)? Se borra el perfil de Chromium con la sesión de Facebook: para volver, inicias sesión de nuevo`
-          : `¿Desconectar ${account.displayName} (${PLATFORM_TEXT[account.platform]})? Para volver, hay que conectarla de nuevo`,
+        `¿Desconectar ${account.displayName} (${PLATFORM_TEXT[account.platform]})? ${accountDisconnectText(account.platform)}`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se desconectó: confirma en la terminal o usa --yes"));

@@ -15,6 +15,7 @@ import {
   runConfirmPublication,
   runNotPublished,
   runPublications,
+  runRetirePublication,
 } from "./publications.js";
 import { type PublishOptions, runPublish } from "./publish.js";
 
@@ -38,12 +39,18 @@ const ufSource: UfValueSource = {
 type Setup = Awaited<ReturnType<typeof publicationHarness>>;
 
 async function marketplaceSetup(
-  options: { publishMode?: PublishMode; ufConfigured?: boolean; approve?: boolean } = {},
+  options: {
+    publishMode?: PublishMode;
+    ufConfigured?: boolean;
+    approve?: boolean;
+    beforeRequest?: (url: string, method: string) => void;
+  } = {},
 ) {
   const mode = options.publishMode ?? "live";
   const setup = await publicationHarness({
     platform: MARKETPLACE,
     publishMode: mode,
+    ...(options.beforeRequest === undefined ? {} : { beforeRequest: options.beforeRequest }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
     marketplace: { dailyLimit: 3, ufConfigured: options.ufConfigured ?? true },
   });
@@ -197,6 +204,46 @@ describe("publish --platform marketplace", () => {
     expect(clock.sleeps).toHaveLength(1);
   });
 
+  it("la API se cae un momento mientras espera el enlace: sigue esperando", async () => {
+    let down = false;
+    const s = await marketplaceSetup({
+      beforeRequest: (url, method) => {
+        if (down && method === "GET" && url.includes("/publications/")) throw new Error("caída");
+      },
+    });
+    const clock = fakeClock(async (elapsed) => {
+      if (elapsed === 2_000) await s.attempt();
+      // Unas 10 consultas fallidas (20 s, un reinicio de pnpm dev): una corrida pararía a las 3.
+      down = elapsed >= 4_000 && elapsed < 24_000;
+      if (elapsed === 26_000) {
+        await confirmManualPublication(
+          { lock: s.t.deps.lock, publications: s.t.publications },
+          { publicationId: s.only().id, url: PASTED_URL, actor: "system" },
+        );
+      }
+    });
+    expect(await publish(s, clock)).toBe(0);
+    expect(s.h.text()).toContain(CLEAN_URL);
+  });
+
+  it("si la API no vuelve, deja de esperar con los dos comandos para cerrarla (sale con 1)", async () => {
+    let down = false;
+    const s = await marketplaceSetup({
+      beforeRequest: (url, method) => {
+        if (down && method === "GET" && url.includes("/publications/")) throw new Error("caída");
+      },
+    });
+    const clock = fakeClock(async (elapsed) => {
+      if (elapsed === 2_000) await s.attempt();
+      down = elapsed >= 4_000;
+    });
+    expect(await publish(s, clock)).toBe(1);
+    const errors = s.h.errors();
+    expect(errors).toContain(`publications confirm ${s.only().id} --url-stdin`);
+    expect(errors).toContain("La API no responde");
+    expect(s.only().status).toBe("awaiting_manual_confirm");
+  });
+
   it("--no-wait imprime el id y sale", async () => {
     const s = await marketplaceSetup();
     expect(await publish(s, fakeClock(), { wait: false })).toBe(0);
@@ -213,6 +260,47 @@ describe("publish --platform marketplace", () => {
     );
     expect(errors).toContain("falta BCCH_API_TOKEN");
     expect(s.only().status).toBe("approved");
+  });
+
+  it("la cuenta llegó a su límite de hoy: MARKETPLACE_DAILY_LIMIT, sigue mañana", async () => {
+    const s = await marketplaceSetup();
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await s.t.publications.addEvent(s.only().id, {
+        type: "publish_attempt",
+        actor: "system",
+        payload: { mode: "live", attempt, retry: 0, result: "failed" },
+      });
+    }
+    expect(await publish(s, fakeClock())).toBe(1);
+    expect(s.h.errors()).toContain("✗ MARKETPLACE_DAILY_LIMIT");
+    expect(s.h.errors()).toContain("Sigue mañana");
+  });
+
+  it("otra propiedad de la cuenta todavía llena su formulario: MARKETPLACE_FORM_OPEN pide esperar", async () => {
+    const s = await marketplaceSetup();
+    const own = s.only();
+    const other = await s.t.publications.create(
+      {
+        listingId: "00000000-0000-4000-8000-000000000001",
+        platformAccountId: own.platformAccountId,
+        platform: MARKETPLACE,
+        format: "post",
+        contentId: own.contentId,
+        mediaIds: [],
+        listingSourceHash: "h",
+      },
+      { actor: "operator" },
+    );
+    await s.t.publications.transition(
+      other.id,
+      { from: "approved", to: "publishing", changes: { dryRun: false } },
+      { actor: "operator" },
+    );
+    expect(await publish(s, fakeClock())).toBe(1);
+    const errors = s.h.errors();
+    expect(errors).toContain("✗ MARKETPLACE_FORM_OPEN");
+    expect(errors).toContain("Se está llenando el formulario de otra propiedad");
+    expect(errors).not.toContain("publications confirm");
   });
 
   it("volver a publicar mientras espera el clic: MANUAL_CONFIRM_PENDING con los dos comandos", async () => {
@@ -323,6 +411,41 @@ describe("publications confirm y not-published", () => {
       /Precio en el formulario: \$[\d.]+ \(UF del \d{4}-\d{2}-\d{2}: \$41\.130,94\)/,
     );
     expect(text).toContain(`publications confirm ${waiting.id} --url-stdin`);
+  });
+});
+
+describe("approve --undo y retire · Marketplace", () => {
+  it("quitar la aprobación mientras espera el clic: MANUAL_CONFIRM_PENDING con los dos comandos", async () => {
+    const s = await marketplaceSetup();
+    const waiting = await s.awaiting();
+    const code = await runApprove({ ...s.h.io, client: s.h.client }, s.t.listingId, {
+      platform: "marketplace",
+      undo: true,
+    });
+    expect(code).toBe(1);
+    expect(s.h.errors()).toContain("MANUAL_CONFIRM_PENDING");
+    expect(s.h.errors()).toContain(`publications confirm ${waiting.id} --url-stdin`);
+  });
+
+  it("marcar como retirada una publicada en vivo pregunta si la borraste a mano en Facebook", async () => {
+    const s = await marketplaceSetup();
+    const waiting = await s.awaiting();
+    await confirmManualPublication(
+      { lock: s.t.deps.lock, publications: s.t.publications },
+      { publicationId: waiting.id, url: PASTED_URL, actor: "operator" },
+    );
+    const questions: string[] = [];
+    const deps = {
+      ...s.h.io,
+      client: s.h.client,
+      confirm: async (question: string) => {
+        questions.push(question);
+        return true;
+      },
+    };
+    expect(await runRetirePublication(deps, waiting.id)).toBe(0);
+    expect(questions[0]).toContain("¿Ya borraste a mano en Facebook Marketplace");
+    expect(s.only().status).toBe("unpublished");
   });
 });
 
@@ -444,6 +567,26 @@ describe("accounts connect marketplace", () => {
     expect(await runConnect(deps, "marketplace", { broker: "marca" })).toBe(1);
     expect(s.h.text()).toContain("Sigue en curso");
     expect(s.h.errors()).toContain("el worker esté corriendo");
+  });
+
+  it("con otra acción del perfil en cola: lo dice y no espera", async () => {
+    const h = harness({ deps: { queue: { enqueue: async () => null } } });
+    await h.brokers.create(brokerData("marca"));
+    const clock = fakeClock();
+    const deps: AccountsDeps = {
+      ...h.io,
+      client: h.client,
+      stdinIsTty: () => true,
+      readStdin: async () => "",
+      openUrl: () => {},
+      now: () => new Date(),
+      confirm: async () => false,
+      sleep: clock.sleep,
+      clock: clock.now,
+    };
+    expect(await runConnect(deps, "marketplace", { broker: "marca" })).toBe(1);
+    expect(h.errors()).toContain("✗ MARKETPLACE_PROFILE_ACTION_PENDING");
+    expect(clock.sleeps).toEqual([]);
   });
 
   it("opciones de otro canal: --label fuera de Marketplace, --url-stdin en Marketplace", async () => {

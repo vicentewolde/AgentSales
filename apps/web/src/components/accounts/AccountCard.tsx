@@ -1,5 +1,5 @@
 import type { PlatformAccountView } from "@agentsales/api/contracts";
-import { PLATFORM_ACCOUNT_STATUS_TEXT } from "@agentsales/core";
+import { accountDisconnectText, PLATFORM_ACCOUNT_STATUS_TEXT } from "@agentsales/core";
 import { useRef, useState } from "react";
 import { ACCOUNT_STATUS_TONE } from "../../labels.js";
 import { useDisconnectAccount } from "../../queries/accounts.js";
@@ -77,14 +77,17 @@ export function AccountCard({ account, now }: { account: PlatformAccountView; no
         (confirming ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <span>
-              ¿Desconectar {account.displayName}? Sus publicaciones pendientes no saldrán hasta
-              reconectarla.
+              ¿Desconectar {account.displayName}? {accountDisconnectText(account.platform)}
             </span>
             <button
               type="button"
               disabled={disconnect.isPending}
               onClick={() =>
-                disconnect.mutate(account.id, { onSettled: () => setConfirming(false) })
+                disconnect.mutate(
+                  // El operador contestó "Sí, desconectar" a la pregunta de arriba.
+                  { accountId: account.id, confirmed: true },
+                  { onSettled: () => setConfirming(false) },
+                )
               }
               className="rounded-md bg-red-700 px-3 py-1.5 font-medium text-white disabled:opacity-50"
             >

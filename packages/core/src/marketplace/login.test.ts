@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  currentMarketplaceLoginError,
   type MarketplaceLoginAccount,
   marketplaceLoginErrorText,
   marketplaceLoginOutcome,
@@ -75,6 +76,41 @@ describe("marketplaceLoginOutcome (spec F5 §4.2)", () => {
         account({ platform: "instagram", sessionCheckedAt: at(2) }),
       ]),
     ).toEqual({ outcome: "pending" });
+  });
+});
+
+describe("marketplaceLoginOutcome · bordes", () => {
+  it("una sesión vista justo a la hora del pedido cuenta; un empate entre sesión y error es conectada", () => {
+    expect(outcome([account({ sessionCheckedAt: at(0) })])).toEqual({ outcome: "connected" });
+    expect(
+      outcome([
+        account({
+          sessionCheckedAt: at(2),
+          lastLoginError: { code: "MARKETPLACE_PROFILE_BUSY", at: at(2) },
+        }),
+      ]),
+    ).toEqual({ outcome: "connected" });
+  });
+});
+
+describe("currentMarketplaceLoginError", () => {
+  const error = { code: "MARKETPLACE_LOGIN_TIMEOUT", at: at(5) };
+  it("solo vale si es más nuevo que la última sesión vista", () => {
+    expect(currentMarketplaceLoginError({ sessionCheckedAt: at(1), lastLoginError: error })).toBe(
+      error,
+    );
+    expect(currentMarketplaceLoginError({ sessionCheckedAt: null, lastLoginError: error })).toBe(
+      error,
+    );
+    expect(
+      currentMarketplaceLoginError({ sessionCheckedAt: at(5), lastLoginError: error }),
+    ).toBeNull();
+    expect(
+      currentMarketplaceLoginError({ sessionCheckedAt: at(9), lastLoginError: error }),
+    ).toBeNull();
+    expect(
+      currentMarketplaceLoginError({ sessionCheckedAt: at(1), lastLoginError: null }),
+    ).toBeNull();
   });
 });
 

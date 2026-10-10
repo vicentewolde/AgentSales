@@ -62,7 +62,8 @@ export type PortalReadinessView = ReadinessView;
  * - `issues` en `PORTAL_NOT_READY` (desde F4-T19) y `MARKETPLACE_NOT_READY` (F5-T08): lo que le
  *   falta al aviso, que el panel y la CLI muestran para que el operador complete la planilla;
  * - `publicationId` en `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` (F5-T08): la publicación
- *   de Marketplace que espera el clic final, para ofrecer "lo publiqué" o "no lo publiqué".
+ *   de Marketplace con el formulario abierto (esperando el clic final o, solo en
+ *   `MARKETPLACE_FORM_OPEN`, todavía llenándose), para ofrecer "lo publiqué" o "no lo publiqué".
  */
 export const errorBodySchema = z.object({
   error: z.object({
@@ -491,6 +492,9 @@ export type PublicationPublishResponse = z.infer<typeof publicationPublishRespon
 export const publicationResponseSchema = z.object({ publication: publicationViewSchema });
 export type PublicationResponse = z.infer<typeof publicationResponseSchema>;
 
+/** El largo máximo del enlace pegado de un aviso de Marketplace (la API y la CLI). */
+export const MARKETPLACE_URL_MAX_LENGTH = 2048;
+
 /**
  * `POST /publications/:id/confirm` (spec F5 §4.3): el enlace del aviso publicado en Marketplace,
  * obligatorio en vivo (en simulación se ignora). Nunca vuelve en un error ni va al log.
@@ -500,7 +504,7 @@ export const publicationConfirmBodySchema = z.object({
     .string()
     .trim()
     .min(1, "falta el enlace")
-    .max(2048, "el enlace es demasiado largo")
+    .max(MARKETPLACE_URL_MAX_LENGTH, "el enlace es demasiado largo")
     .optional(),
 });
 export type PublicationConfirmBody = z.infer<typeof publicationConfirmBodySchema>;

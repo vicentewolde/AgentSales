@@ -411,6 +411,38 @@ describe("publicar Marketplace (spec F5 §4.6 y §4.7)", () => {
     });
   });
 
+  it("otra publicación de la cuenta con el formulario abierto: 409 MARKETPLACE_FORM_OPEN con su id", async () => {
+    const { t, publish } = await publicationSetup();
+    const [own] = t.publications.all();
+    if (own === undefined) throw new Error("falta la publicación");
+    // Otra propiedad de la misma cuenta, con su formulario llenándose.
+    const other = await t.publications.create(
+      {
+        listingId: randomUUID(),
+        platformAccountId: own.platformAccountId,
+        platform: MARKETPLACE,
+        format: "post",
+        contentId: own.contentId,
+        mediaIds: [],
+        listingSourceHash: "h",
+      },
+      { actor: "operator" },
+    );
+    await t.publications.transition(
+      other.id,
+      { from: "approved", to: "publishing", changes: { dryRun: false } },
+      { actor: "operator" },
+    );
+
+    const response = await publish();
+
+    expect(response.status).toBe(409);
+    expect(await errorOf(response)).toMatchObject({
+      code: "MARKETPLACE_FORM_OPEN",
+      publicationId: other.id,
+    });
+  });
+
   it("mientras espera: descartar, quitar la aprobación y desconectar responden 409 MANUAL_CONFIRM_PENDING con la publicación", async () => {
     const { app, t, awaiting } = await publicationSetup();
     const id = await awaiting();
@@ -453,6 +485,21 @@ describe("POST /publications/:id/confirm y /not-published (spec F5 §4.3)", () =
     expect((await t.publications.get(id))?.status).toBe("awaiting_manual_confirm");
   });
 
+  it("un enlace rechazado (inválido o enorme) tampoco va al log", async () => {
+    const { app, awaiting, log } = await publicationSetup();
+    const id = await awaiting();
+    await app.request(
+      `/publications/${id}/confirm`,
+      post({ url: "https://www.facebook.com/profile.php?id=999&secreto=1" }),
+    );
+    await app.request(
+      `/publications/${id}/confirm`,
+      post({ url: `https://www.facebook.com/secreto${"x".repeat(3000)}` }),
+    );
+    expect(log.text()).toContain(`/publications/${id}/confirm`);
+    expect(log.text()).not.toContain("secreto");
+  });
+
   it("con el enlace: publicada con el enlace limpio; repetirlo no cambia nada; otro enlace es 409", async () => {
     const { app, t, awaiting, log } = await publicationSetup();
     const id = await awaiting();
@@ -485,6 +532,22 @@ describe("POST /publications/:id/confirm y /not-published (spec F5 §4.3)", () =
     expect(log.text()).not.toContain("123456789");
     expect(log.text()).not.toContain("tracking");
     expect(log.text()).toContain(`/publications/${id}/confirm`);
+  });
+
+  it("marcar como retirada una publicada en vivo pide haberla borrado a mano en Facebook", async () => {
+    const { app, awaiting } = await publicationSetup();
+    const id = await awaiting();
+    await app.request(`/publications/${id}/confirm`, post({ url: PASTED_URL }));
+
+    const unconfirmed = await app.request(`/publications/${id}/retire`, post());
+    expect(unconfirmed.status).toBe(409);
+    expect((await errorOf(unconfirmed)).code).toBe("REMOVAL_NOT_CONFIRMED");
+
+    const retired = await app.request(`/publications/${id}/retire`, post({ removedByHand: true }));
+    expect(retired.status).toBe(200);
+    expect(publicationResponseSchema.parse(await retired.json()).publication.status).toBe(
+      "unpublished",
+    );
   });
 
   it("la bitácora dice que lo confirmó el operador", async () => {

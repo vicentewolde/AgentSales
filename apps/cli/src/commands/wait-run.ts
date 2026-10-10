@@ -28,6 +28,10 @@ export type WaitOptions<R extends WaitedRun> = {
    * `status === "queued"`; las publicaciones no tienen ese estado y pasan su propio criterio.
    */
   isQueued?: (run: R) => boolean;
+  /** Al vencer el tope, no imprime "Sigue en curso": quien llama dice qué hacer. */
+  quietTimeout?: boolean;
+  /** Recibe cada lectura: quien llama conserva la última si se vence el tope. */
+  onFetched?: (run: R) => void;
 };
 
 /** Puede volver a consultar: la API no respondió, o respondió un error de su lado (503, 500). */
@@ -54,12 +58,15 @@ export async function waitForRun<R extends WaitedRun>(
   const isQueued = options.isQueued ?? ((current: R) => current.status === "queued");
   while (!options.isTerminal(run)) {
     if (deps.now() - started >= timing.maxWaitMs) {
-      deps.print(c.yellow(`Sigue en curso: revisa más tarde con ${options.laterCommand}`));
+      if (!options.quietTimeout) {
+        deps.print(c.yellow(`Sigue en curso: revisa más tarde con ${options.laterCommand}`));
+      }
       return null;
     }
     await deps.sleep(timing.pollMs);
     try {
       run = await options.fetch();
+      options.onFetched?.(run);
       failures = 0;
     } catch (error) {
       failures += 1;

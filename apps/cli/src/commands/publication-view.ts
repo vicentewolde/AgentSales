@@ -5,6 +5,7 @@ import type {
 } from "@agentsales/api/contracts";
 import {
   manualConfirmCommands,
+  manualWaitingText,
   marketplacePriceText,
   PLATFORM_TEXT,
   PUBLICATION_ACTOR_TEXT,
@@ -71,25 +72,15 @@ export function renderRemoteState(
   ];
 }
 
-/**
- * Marketplace esperando el clic final (spec F5 §4.12): formulario listo (o simulado) con la
- * ventana abierta, o la ventana ya cerrada sin ver el aviso.
- */
-function waitingText(publication: PublicationView): string {
-  const manual = publication.manual;
-  if (manual === null) return "formulario listo: di si lo publicaste";
-  if (manual.simulated) return "simulación: formulario listo sin abrir Facebook";
-  if (manual.windowClosedAt !== null) return "la ventana se cerró: ¿lo publicaste?";
-  return "formulario listo: revisa la ventana de Chromium y publica";
-}
-
 /** El enlace si salió; si falló, el motivo; si espera el clic final, en qué está; si no, nada. */
 const outcomeOf = (publication: PublicationView, c: Colors) => {
   if (publication.externalUrl !== null) return publication.externalUrl;
   if (publication.lastError !== null) {
     return c.red(`${publication.lastError.code}: ${publication.lastError.message}`);
   }
-  if (publication.status === "awaiting_manual_confirm") return c.yellow(waitingText(publication));
+  if (publication.status === "awaiting_manual_confirm") {
+    return c.yellow(manualWaitingText(publication.manual));
+  }
   return "";
 };
 

@@ -13,6 +13,7 @@ import type { Context } from "hono";
 import {
   CLI_CLIENT,
   CLIENT_HEADER,
+  type MarketplaceManualView,
   type PublicationEventView,
   type PublicationView,
   type ReadinessView,
@@ -41,10 +42,26 @@ export const publicationView = (publication: Publication): PublicationView => ({
   scheduledAt: publication.scheduledAt,
   publishedAt: publication.publishedAt,
   remoteState: publication.remoteState,
-  manual: marketplaceManualState(publication),
+  manual: manualView(publication),
   createdAt: publication.createdAt,
   updatedAt: publication.updatedAt,
 });
+
+/** `manual` campo por campo: un campo nuevo de core no sale por la API sin pasar por aquí. */
+function manualView(publication: Publication): MarketplaceManualView | null {
+  const manual = marketplaceManualState(publication);
+  if (manual === null) return null;
+  return {
+    formReadyAt: manual.formReadyAt,
+    simulated: manual.simulated,
+    windowOpen: manual.windowOpen,
+    windowClosedAt: manual.windowClosedAt,
+    photos: manual.photos,
+    priceClp: manual.priceClp,
+    ufValue: manual.ufValue,
+    ufDate: manual.ufDate,
+  };
+}
 
 /** Lo que le falta al aviso para un canal, siempre con su lista (vacía si está listo). */
 export const readinessView = (readiness: PortalReadiness | MarketplaceReadiness): ReadinessView =>

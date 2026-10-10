@@ -2,6 +2,7 @@ import {
   listingDetailResponseSchema,
   listingListResponseSchema,
   listingPublicationsResponseSchema,
+  MARKETPLACE_URL_MAX_LENGTH,
   type PublicationView,
   publicationConfirmResponseSchema,
   publicationEventsResponseSchema,
@@ -13,6 +14,7 @@ import {
 import {
   availablePublicationOperations,
   manualConfirmCommands,
+  OPERATION_PLATFORMS,
   PLATFORM_TEXT,
   publicationModeText,
 } from "@agentsales/core";
@@ -173,9 +175,6 @@ export function runCancelPublication(deps: PublicationsDeps, id: string) {
 
 export type RetireOptions = { yes?: boolean };
 
-/** Los canales cuyo aviso publicado en vivo se borra a mano y aquí se confirma (F3 D8, F5 §4.3). */
-const RETIRED_BY_HAND = new Set(["instagram", "fb_marketplace"]);
-
 /**
  * `agentsales publications retire <id> [--yes]` (spec F3 §4.3 y D8, F5 §4.3): Instagram y
  * Marketplace no dejan borrar desde AgentSales, así que una publicada en vivo se borra a mano y
@@ -196,7 +195,10 @@ export function runRetirePublication(
     // Solo una de Instagram o Marketplace publicada en vivo hay que borrarla a mano; en otro estado
     // (o un aviso de Portal, que se cierra), la API explica por qué no.
     const live =
-      !current.dryRun && current.status === "published" && RETIRED_BY_HAND.has(current.platform);
+      !current.dryRun &&
+      current.status === "published" &&
+      // Los que no se cierran desde AgentSales (Instagram y Marketplace) se borran a mano.
+      !OPERATION_PLATFORMS.has(current.platform);
     if (live && !options.yes) {
       const platform = PLATFORM_TEXT[current.platform];
       const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
@@ -232,9 +234,6 @@ export function runRetirePublication(
 }
 
 export type ConfirmOptions = { urlStdin?: boolean };
-
-/** El largo máximo del enlace pegado (el mismo tope que la API). */
-const PASTED_URL_MAX_LENGTH = 2048;
 
 /** Los errores de confirmar y de "no lo publiqué", con qué hacer en la CLI. */
 function explainedManual(error: unknown, publicationId: string): unknown {
@@ -278,7 +277,7 @@ export function runConfirmPublication(deps: ConfirmDeps, id: string, options: Co
         throw new CliError("URL_MISSING", "No llegó ningún enlace por la entrada estándar", pipe);
       }
       // Sin mostrar lo recibido: un pegado de otra cosa no se manda a la API.
-      if (url.length > PASTED_URL_MAX_LENGTH || /\s/.test(url)) {
+      if (url.length > MARKETPLACE_URL_MAX_LENGTH || /\s/.test(url)) {
         throw new CliError(
           "URL_INVALID",
           "Lo que llegó por la entrada estándar no parece un enlace (tiene espacios o saltos de línea, o es demasiado largo)",

@@ -1,5 +1,8 @@
+import { AppError } from "@agentsales/core";
+import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { httpStatusFor } from "./errors.js";
+import { createErrorHandler, httpStatusFor } from "./errors.js";
+import { silentLogger } from "./testing/index.js";
 
 describe("httpStatusFor", () => {
   it.each([
@@ -112,5 +115,51 @@ describe("httpStatusFor", () => {
     ["UF_VALUE_SUSPICIOUS", 502],
   ])("%s → %i", (code, status) => {
     expect(httpStatusFor(code)).toBe(status);
+  });
+});
+
+describe("createErrorHandler · lo que sale de details (seguimiento de ADR-0011)", () => {
+  const PUBLICATION_ID = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
+  const issue = { code: "MARKETPLACE_FIELD_MISSING", field: "banos", message: "Falta baños" };
+
+  /** Una app que lanza el error dado y responde el cuerpo de error. */
+  const bodyOf = async (error: AppError) => {
+    const app = new Hono().get("/", () => {
+      throw error;
+    });
+    app.onError(createErrorHandler(silentLogger));
+    return (await (await app.request("/")).json()) as { error: Record<string, unknown> };
+  };
+
+  it("issues en MARKETPLACE_NOT_READY y publicationId en MANUAL_CONFIRM_PENDING y MARKETPLACE_FORM_OPEN", async () => {
+    expect(
+      (
+        await bodyOf(
+          new AppError("MARKETPLACE_NOT_READY", "falta", { details: { issues: [issue] } }),
+        )
+      ).error,
+    ).toEqual({ code: "MARKETPLACE_NOT_READY", message: "falta", issues: [issue] });
+    for (const code of ["MANUAL_CONFIRM_PENDING", "MARKETPLACE_FORM_OPEN"]) {
+      expect(
+        (await bodyOf(new AppError(code, "espera", { details: { publicationId: PUBLICATION_ID } })))
+          .error,
+      ).toEqual({ code, message: "espera", publicationId: PUBLICATION_ID });
+    }
+  });
+
+  it("descarta lo que no calza y no deja salir nada más de details", async () => {
+    const cases: AppError[] = [
+      // Un id que no es uuid, o issues mal formados.
+      new AppError("MANUAL_CONFIRM_PENDING", "m", { details: { publicationId: "no-uuid" } }),
+      new AppError("MARKETPLACE_NOT_READY", "m", { details: { issues: [{ code: 1 }] } }),
+      // publicationId e issues en códigos que no los llevan.
+      new AppError("MARKETPLACE_DAILY_LIMIT", "m", {
+        details: { limit: 3, publicationId: PUBLICATION_ID, issues: [issue] },
+      }),
+      new AppError("INVALID_TRANSITION", "m", { details: { publicationId: PUBLICATION_ID } }),
+    ];
+    for (const error of cases) {
+      expect((await bodyOf(error)).error, error.code).toEqual({ code: error.code, message: "m" });
+    }
   });
 });

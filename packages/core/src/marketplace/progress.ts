@@ -83,10 +83,18 @@ export function marketplaceManualState(publication: {
 
 /**
  * Cuánto espera la CLI el enlace del aviso después del formulario listo: los 30 min de
- * `MARKETPLACE_CONFIRM_TIMEOUT_MIN` (por defecto) y un margen. Deja de esperar antes si la ventana
- * se cerró (`windowClosedAt`).
+ * `MARKETPLACE_CONFIRM_TIMEOUT_MIN` **por defecto** y un margen. Deja de esperar antes si la ventana
+ * se cerró (`windowClosedAt`). Con un tope mayor en el worker, la CLI deja de esperar antes que la
+ * ventana: muestra los dos comandos, y la ventana sigue detectando el enlace sola.
  */
 export const MARKETPLACE_CONFIRM_CLIENT_WAIT_MS = 31 * 60_000;
+
+/**
+ * Las esperas largas de Marketplace (el inicio de sesión y el enlace) aguantan más consultas
+ * fallidas seguidas que una corrida (`RUN_WAIT.maxPollFailures`, 3): unos 60 s, lo que tarda un
+ * reinicio de `pnpm dev`.
+ */
+export const MARKETPLACE_WAIT_MAX_POLL_FAILURES = 30;
 
 /**
  * El precio que se escribió en el formulario (spec F5 §4.6, D9): `$238.559.452`, y si se convirtió

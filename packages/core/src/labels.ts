@@ -174,6 +174,30 @@ export function manualConfirmCommands(publicationId: string): {
   };
 }
 
+/**
+ * En qué está el formulario de una publicación de Marketplace que espera el clic final (spec F5
+ * §4.12): simulado, con la ventana abierta o con la ventana ya cerrada sin ver el aviso. Sin datos
+ * del formulario (`null`), solo pregunta. Lo muestran la CLI y el panel.
+ */
+export function manualWaitingText(
+  manual: { simulated: boolean; windowClosedAt: Date | null } | null,
+): string {
+  if (manual === null) return "formulario listo: di si lo publicaste";
+  if (manual.simulated) return "simulación: formulario listo sin abrir Facebook";
+  if (manual.windowClosedAt !== null) return "la ventana se cerró: ¿lo publicaste?";
+  return "formulario listo: revisa la ventana de Chromium y publica";
+}
+
+/**
+ * Qué pasa al desconectar una cuenta (la pregunta de la CLI y del panel; spec F3 §4.6 y F5 §4.2):
+ * en Marketplace se borra el perfil de Chromium con la sesión de Facebook.
+ */
+export function accountDisconnectText(platform: Platform): string {
+  return platform === "fb_marketplace"
+    ? "Se borra el perfil de Chromium con la sesión de Facebook: para volver, inicias sesión de nuevo."
+    : "Sus publicaciones pendientes no saldrán hasta reconectarla.";
+}
+
 /** El estado de una cuenta conectada. */
 export const PLATFORM_ACCOUNT_STATUS_TEXT: Readonly<Record<PlatformAccountStatus, string>> = {
   connected: "conectada",

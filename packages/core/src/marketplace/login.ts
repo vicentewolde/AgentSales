@@ -39,6 +39,22 @@ export type MarketplaceLoginAccount = {
   lastLoginError: { code: string; at: Date } | null;
 };
 
+/**
+ * El inicio de sesión que falló y sigue vigente (spec F5 §4.2): `lastLoginError` queda guardado
+ * aunque después se conecte, así que solo cuenta si es más nuevo que la última sesión vista. Lo
+ * muestran la lista de cuentas de la CLI y el panel.
+ */
+export function currentMarketplaceLoginError<E extends { at: Date }>(account: {
+  sessionCheckedAt: Date | null;
+  lastLoginError: E | null;
+}): E | null {
+  const error = account.lastLoginError;
+  if (error === null) return null;
+  if (account.sessionCheckedAt !== null && error.at.getTime() <= account.sessionCheckedAt.getTime())
+    return null;
+  return error;
+}
+
 /** En qué quedó un inicio de sesión pedido: conectado, falló (con su código) o sigue esperando. */
 export type MarketplaceLoginOutcome =
   | { outcome: "connected" }

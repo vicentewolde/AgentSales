@@ -6,6 +6,7 @@ import {
 import {
   healthReportSchema,
   MARKETPLACE_CONFIRM_CLIENT_WAIT_MS,
+  MARKETPLACE_WAIT_MAX_POLL_FAILURES,
   marketplacePriceText,
   PLATFORM_TEXT,
   type Platform,
@@ -118,6 +119,26 @@ function explained(error: unknown, ref: string, platform: Platform): unknown {
   return new CliError(error.code ?? "API_ERROR", message, hint);
 }
 
+/**
+ * `MARKETPLACE_FORM_OPEN` con una publicación que todavía se está llenando (no espera el clic): no
+ * sirven "lo publiqué" ni "no lo publiqué", sino esperar. Lee su estado; si no puede, `null` y vale
+ * la sugerencia de siempre.
+ */
+async function formStillFilling(client: ApiClient, error: unknown): Promise<CliError | null> {
+  if (!(error instanceof ApiCallError) || error.code !== "MARKETPLACE_FORM_OPEN") return null;
+  if (error.publicationId === undefined) return null;
+  const other = await unwrap(
+    client.publications[":id"].$get({ param: { id: error.publicationId } }),
+    publicationResponseSchema,
+  ).catch(() => null);
+  if (other?.publication.status !== "publishing") return null;
+  return new CliError(
+    error.code,
+    error.apiMessage ?? error.message,
+    "Se está llenando el formulario de otra propiedad de esta cuenta: espera a que quede listo, publícalo (o márcalo como no publicado) y vuelve a intentarlo",
+  );
+}
+
 /** Lo que se espera: las publicaciones que quedaron en curso, leídas juntas en cada consulta. */
 type PublishWait = { status: string; publications: PublicationView[] };
 
@@ -157,8 +178,8 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
     const result = await unwrap(
       deps.client.listings[":id"].publish.$post({ param: { id: listingId }, json: { platform } }),
       listingPublishResponseSchema,
-    ).catch((error: unknown) => {
-      throw explained(error, trimmed, platform);
+    ).catch(async (error: unknown) => {
+      throw (await formStillFilling(deps.client, error)) ?? explained(error, trimmed, platform);
     });
 
     const targets = [...result.started, ...result.requeued];
@@ -329,29 +350,45 @@ async function finishMarketplace(
   if (publication.manual !== null) {
     deps.print(c.dim(`  Precio en el formulario: ${marketplacePriceText(publication.manual)}`));
   }
-  deps.print(c.dim("  Espero el enlace del aviso hasta 30 min: la ventana lo detecta sola"));
-  const done = await waitForRun<ManualWait>(
-    {
-      ...deps,
-      wait: { ...deps.wait, maxWaitMs: deps.wait?.maxWaitMs ?? MARKETPLACE_CONFIRM_CLIENT_WAIT_MS },
-    },
-    {
-      run: { status: "waiting", publication },
-      fetch: async () => {
-        const { publication: current } = await unwrap(
-          deps.client.publications[":id"].$get({ param: { id: publication.id } }),
-          publicationResponseSchema,
-        );
-        return { status: windowOpen(current) ? "waiting" : "done", publication: current };
+  deps.print(c.dim("  Espero el enlace del aviso unos 30 min: la ventana lo detecta sola"));
+  let last = publication;
+  let done: ManualWait | null;
+  try {
+    done = await waitForRun<ManualWait>(
+      {
+        ...deps,
+        wait: {
+          maxWaitMs: MARKETPLACE_CONFIRM_CLIENT_WAIT_MS,
+          maxPollFailures: MARKETPLACE_WAIT_MAX_POLL_FAILURES,
+          ...deps.wait,
+        },
       },
-      isTerminal: (wait) => wait.status === "done",
-      progress: () => "esperando el enlace",
-      isQueued: () => false,
-      laterCommand: `agentsales publications ${ref}`,
-      noun: "el enlace del aviso",
-    },
-  );
-  const current = done?.publication ?? publication;
+      {
+        run: { status: "waiting", publication },
+        quietTimeout: true,
+        onFetched: (wait) => {
+          last = wait.publication;
+        },
+        fetch: async () => {
+          const { publication: current } = await unwrap(
+            deps.client.publications[":id"].$get({ param: { id: publication.id } }),
+            publicationResponseSchema,
+          );
+          return { status: windowOpen(current) ? "waiting" : "done", publication: current };
+        },
+        isTerminal: (wait) => wait.status === "done",
+        progress: () => "esperando el enlace",
+        isQueued: () => false,
+        laterCommand: `agentsales publications ${ref}`,
+        noun: "el enlace del aviso",
+      },
+    );
+  } catch (error) {
+    // La API dejó de responder: la publicación sigue esperando, y estos comandos la cierran.
+    for (const line of manualCommandLines(publication.id, c)) deps.printError(`  ${line}`);
+    throw error;
+  }
+  const current = done?.publication ?? last;
   if (current.status === "published") {
     deps.print(renderPublicationResult(current, c));
     return 0;
