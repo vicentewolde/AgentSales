@@ -2,10 +2,10 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-09
-**Fase actual:** F5 · Facebook Marketplace (`docs/specs/fase-5-marketplace.md`, aprobado el 2026-10-09) — 7 de 14 tareas (lote B en PR). F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0`)
-**Última tarea:** lote B de F5 (F5-T04 Conectar y olvidar la cuenta, F5-T05 Publicar en dos tiempos, F5-T06 La ventana abierta, F5-T07 Lo que falta y la UF). Antes, el lote A (#104)
-**Siguiente paso:** `/tarea F5-T08 F5-T11` (lote C: API y CLI de Marketplace). Tú, cuando puedas: `pnpm fb:smoke --broker agentsales-pruebas` (su árbol es la entrada del lote E) y, con tu token, `pnpm uf:smoke`
+**Actualizado:** 2026-10-10
+**Fase actual:** F5 · Facebook Marketplace (`docs/specs/fase-5-marketplace.md`, aprobado el 2026-10-09) — 9 de 14 tareas (lote C en PR). F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0`)
+**Última tarea:** lote C de F5 (F5-T08 API de Marketplace, F5-T11 CLI de Marketplace). Antes, el lote B (#105)
+**Siguiente paso:** `/tarea F5-T12 F5-T13` (lote D: el panel de Marketplace). Tú, cuando puedas: `pnpm fb:smoke --broker agentsales-pruebas` (su árbol es la entrada del lote E), con tu token `pnpm uf:smoke`, y con `pnpm dev` `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`
 
 ## Pendiente del cierre de F4 (para el inicio de F5)
 - [ ] **Usuario de prueba de Mercado Libre (T25, D15):** crearlo (`pnpm ml:test-user --broker agentsales-pruebas`), pedir su activación a soporte y anotar aquí la fecha; contratar el paquete sin cargo y conectarlo a `agentsales-pruebas` (checklist, `docs/07-checklist-cuentas.md`). Reemplaza tu cuenta real en ese corredor durante la prueba; al final se reconecta la real
@@ -18,7 +18,7 @@
 - [ ] Token de la API BDE del Banco Central (`BCCH_API_TOKEN` en `.env`; paso a paso en `docs/07-checklist-cuentas.md`, "Antes de F5")
 - [ ] Confirmar que `agentsales-pruebas` tiene al menos un arriendo (por si Chile no tiene venta en Marketplace)
 - [ ] Con el lote A: `pnpm fb:smoke --broker agentsales-pruebas` (inicias sesión a mano en la ventana) y avisarme: su árbol del formulario es la entrada de F5-T09
-- [ ] Con el lote C (la CLI): `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`
+- [ ] Con el lote C (la CLI, ya lista; con `pnpm dev` corriendo): `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`
 - [ ] Con tu token en `.env`: `pnpm uf:smoke` (confirma la forma real de la respuesta del Banco Central)
 
 ## Pendiente del cierre de F3
@@ -29,8 +29,8 @@
 |---|---|---|
 | Spec F5 (`/fase-plan 5`) y ADR-0017 | ✅ terminada | |
 | **Lote A:** F5-T01 Contrato y datos · F5-T02 Perfil, guardas y evidencia · F5-T03 `pnpm fb:smoke` | ✅ terminada | #104 |
-| **Lote B:** F5-T04 Conectar y olvidar la cuenta · F5-T05 Publicar en dos tiempos · F5-T06 La ventana abierta · F5-T07 Lo que falta y la UF | 🔨 en PR | |
-| **Lote C:** F5-T08 API · F5-T11 CLI | ⏳ pendiente | |
+| **Lote B:** F5-T04 Conectar y olvidar la cuenta · F5-T05 Publicar en dos tiempos · F5-T06 La ventana abierta · F5-T07 Lo que falta y la UF | ✅ terminada | #105 |
+| **Lote C:** F5-T08 API · F5-T11 CLI | 🔨 en PR | |
 | **Lote D:** F5-T12 Panel: Cuentas · F5-T13 Panel: Marketplace en Contenido | ⏳ pendiente | |
 | **Lote E:** F5-T09 Opciones del formulario y llenado · F5-T10 Publisher y `fb:smoke --listing` (necesita tu `fb:smoke`) | ⏳ pendiente | |
 | F5-T14 Cierre de fase | ⏳ pendiente | |
@@ -96,6 +96,13 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-10: **Lote C de F5 (F5-T08 y F5-T11).** La API y la CLI de Marketplace:
+  - **Conectar:** `accounts connect marketplace --broker <slug>` pide al worker abrir Chromium con Facebook; inicias sesión a mano y la CLI espera hasta ver la sesión (unos 11 min como tope) o te dice por qué falló (por ejemplo, "pasaron 10 minutos sin sesión"). `accounts` muestra la última sesión vista y el último inicio que falló.
+  - **Desconectar:** `accounts disconnect <id>` es nuevo y pregunta siempre (`--yes`); en Marketplace borra el perfil de Chromium. El panel ya preguntaba: ahora manda la confirmación.
+  - **Publicar:** `publish <propiedad> --platform marketplace` espera el formulario listo, te dice "revisa la ventana, Siguiente y Publicar" con el precio en pesos y la UF usada, y sigue esperando el enlace (lo detecta la ventana) hasta 31 min o hasta que cierres la ventana; si no llega, te da los dos comandos. En simulación no espera el enlace.
+  - **Cerrar la espera:** `pbpaste | pnpm -s cli publications confirm <id> --url-stdin` (el enlace no se imprime ni va al log; se guarda limpio, sin lo de rastreo) y `publications not-published <id>`. Cuando algo choca con una publicación que espera tu clic (descartar, quitar la aprobación, desconectar, volver a publicar), la respuesta dice cuál es y la CLI te da esos dos comandos.
+  - **Reglas compartidas en core** (las usará el panel en el lote D): el resultado del inicio de sesión, el texto de sus errores, el estado del formulario de cada publicación y el texto del precio en pesos.
+  - **Detalles:** Marketplace se nombra "aviso" (antes salía "carrusel"); "Marcar como retirada" pregunta si lo borraste a mano en Facebook; cada error nuevo tiene su respuesta HTTP (también los de la UF y del perfil, por si llegaran a la API).
 - 2026-10-10: **Lote B de F5 (F5-T04 a T07).** Publicar en Marketplace en dos tiempos en core: el intento deja el formulario listo (`awaiting_manual_confirm`) con el progreso de ese intento y el precio en pesos; "Lo publiqué" (con el enlace) y "No lo publiqué"; límite de 3 por día (cuenta cada intento en vivo) y un formulario a la vez; descartar, quitar la aprobación y desconectar esperan tu palabra. La UF se convierte con la API BDE del Banco Central (`BCCH_API_TOKEN`, `pnpm uf:smoke`). El worker conecta la cuenta (`marketplace.profile`: inicias sesión a mano en la ventana), borra el perfil al desconectar y vigila la ventana abierta. El publisher de Marketplace todavía es un esqueleto: simula todo; el llenado real llega con el lote E, después de tu `fb:smoke`.
 - 2026-10-09: **Lote A de F5 (F5-T01 a T03).** Cuenta de Marketplace sin credenciales en la base; progreso por intento con `updateProgress`; el contrato del publisher con el "formulario listo" (`PublishHandoff`, `manualConfirm`) y `withDryRun` que lo simula sin abrir nada; hasta T05 el intento nunca da por publicado un formulario listo. El perfil del navegador vive fuera del proyecto (`~/.agentsales/browser-profiles`, `0700`, candado por perfil); la lista blanca, la evidencia solo del formulario y la ventana vigilada se prueban con un Facebook falso de páginas locales, sin red. `pnpm fb:smoke` listo para que lo corras.
 - 2026-10-09: **Spec de F5 (`/fase-plan 5`).** Investigación de Marketplace sin sesión (nota `fb-marketplace.md`): sin API; Chile tiene arriendos en pesos; venta, el formulario y la moneda solo se ven con tu sesión (`fb:smoke`). Tus 4 respuestas (D2, D8, D9, D10). Revisión del `arquitecto` con 9 bloqueantes, todos aplicados (progreso por intento, entrega de la ventana al worker, descartar espera tu palabra, solo la primera navegación desde el formulario, el perfil lo borra el worker, límite en core, la ventana se cierra ante error, dependencias de tareas). ADR-0017 aceptado.

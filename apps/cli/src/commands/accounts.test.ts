@@ -41,6 +41,9 @@ async function setup(options: { oauth?: boolean } = {}) {
     readStdin: async () => stdin ?? "",
     openUrl: (url) => opened.push(url),
     now: () => clock,
+    confirm: async () => false,
+    sleep: async () => {},
+    clock: () => 0,
   });
   const connect = (options: ConnectOptions = { broker: "marca", tokenStdin: true }) =>
     runConnect(deps(), "instagram", options);
@@ -271,6 +274,9 @@ describe("accounts connect mercadolibre (F4-T20, adelantado)", () => {
       readStdin: async () => stdin ?? "",
       openUrl: (url) => opened.push(url),
       now: () => new Date("2026-10-08T12:00:00Z"),
+      confirm: async () => false,
+      sleep: async () => {},
+      clock: () => 0,
     });
     /** Pide el enlace como lo haría el operador y devuelve el `state` que trae. */
     const freshState = async () => {

@@ -3,11 +3,13 @@ import {
   type CancelPublicationDeps,
   cancelPublication,
   closePublication,
+  confirmManualPublication,
   isAppError,
   type ListingRepository,
   type MediaRepository,
   type MediaStorage,
   type MercadoLibreAuth,
+  markNotPublished,
   type OperatedPublication,
   PENDING_PUBLICATION_STATUSES,
   type Platform,
@@ -31,6 +33,7 @@ import {
   type ListingPublicationsResponse,
   type ListingPublishResponse,
   listingPublishBodySchema,
+  type PublicationConfirmResponse,
   type PublicationEventsResponse,
   type PublicationOperationResponse,
   type PublicationPublishResponse,
@@ -38,6 +41,7 @@ import {
   type PublicationRetireResponse,
   type PublicationSyncResponse,
   publicationCloseBodySchema,
+  publicationConfirmBodySchema,
   publicationRetireBodySchema,
 } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
@@ -213,7 +217,9 @@ const operationBody = (result: OperatedPublication): PublicationOperationRespons
 /**
  * `/publications/:id`: publicar o reintentar una, descartarla, marcarla como retirada y su
  * bitácora (spec F3 §4.3 y §4.8); pausar, reactivar, cerrar y pedir el sync de una de Portal (spec
- * F4 §4.9). Cambian el estado dentro del candado del aviso (core); publicar y el sync encolan
+ * F4 §4.9); "lo publiqué" (con el enlace) y "no lo publiqué" de una de Marketplace que espera el
+ * clic final (spec F5 §4.3). El enlace pegado nunca vuelve en un error ni va al log (el log de la
+ * API no registra cuerpos, y `parseMarketplaceItemUrl` no lo repite). Cambian el estado dentro del candado del aviso (core); publicar y el sync encolan
  * después. Pausar, reactivar y cerrar son síncronos: llaman a la plataforma (fuera del candado) con
  * un tope de `OPERATION_TIMEOUT_MS`.
  */
@@ -310,6 +316,32 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
         return c.json(body, 200);
       },
     )
+    .post(
+      "/:id/confirm",
+      validated("param", idParamSchema),
+      validated("json", publicationConfirmBodySchema),
+      async (c) => {
+        const { url } = c.req.valid("json");
+        const { publication, changed } = await confirmManualPublication(deps, {
+          publicationId: c.req.valid("param").id,
+          actor: actorOf(c),
+          ...(url === undefined ? {} : { url }),
+        });
+        const body: PublicationConfirmResponse = {
+          publication: publicationView(publication),
+          changed,
+        };
+        return c.json(body, 200);
+      },
+    )
+    .post("/:id/not-published", validated("param", idParamSchema), async (c) => {
+      const publication = await markNotPublished(deps, {
+        publicationId: c.req.valid("param").id,
+        actor: actorOf(c),
+      });
+      const body: PublicationResponse = { publication: publicationView(publication) };
+      return c.json(body, 200);
+    })
     .post("/:id/sync", validated("param", idParamSchema), async (c) => {
       const { id } = c.req.valid("param");
       const { queued } = await requestPublicationSync(deps, { publicationId: id });

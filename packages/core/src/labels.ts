@@ -102,11 +102,11 @@ export const PUBLICATION_FORMAT_TEXT: Readonly<Record<PublicationFormat, string>
 };
 
 /**
- * El formato de una publicación según su canal (spec F4 §4.8): en Portal hay uno solo, el aviso
- * (`post`); en Instagram, carrusel o reel. Lo usan la CLI y el panel.
+ * El formato de una publicación según su canal (spec F4 §4.8): en Portal y Marketplace hay uno
+ * solo, el aviso (`post`); en Instagram, carrusel o reel. Lo usan la CLI y el panel.
  */
 export const publicationFormatText = (platform: Platform, format: PublicationFormat): string =>
-  platform === "portal_inmobiliario" ? "aviso" : PUBLICATION_FORMAT_TEXT[format];
+  platform === "instagram" ? PUBLICATION_FORMAT_TEXT[format] : "aviso";
 
 /** El modo de un intento de publicación (`publications.dry_run`, D11 del spec F3). */
 export const publicationModeText = (dryRun: boolean): string => (dryRun ? "simulación" : "en vivo");
@@ -149,6 +149,29 @@ export function tokenStdinCommand(slug: string): string {
 export function mercadoLibreConnectCommands(slug: string): { authorize: string; paste: string } {
   const authorize = `pnpm -s cli accounts connect mercadolibre --broker ${shellSlug(slug)}`;
   return { authorize, paste: `pbpaste | ${authorize} --url-stdin` };
+}
+
+/**
+ * El comando para conectar (o reconectar) Marketplace (spec F5 §4.2 y §4.12): abre una ventana de
+ * Chromium donde el operador inicia sesión a mano. Lo muestran la CLI y el panel.
+ */
+export function marketplaceConnectCommand(slug: string): string {
+  return `pnpm -s cli accounts connect marketplace --broker ${shellSlug(slug)}`;
+}
+
+/**
+ * Los dos comandos que cierran una publicación de Marketplace que espera el clic final (spec F5
+ * §4.3 y §4.12): `confirm` pega el enlace del aviso publicado desde el portapapeles (nunca como
+ * argumento) y `notPublished` dice que no se publicó. Los muestran la CLI y el panel.
+ */
+export function manualConfirmCommands(publicationId: string): {
+  confirm: string;
+  notPublished: string;
+} {
+  return {
+    confirm: `pbpaste | pnpm -s cli publications confirm ${publicationId} --url-stdin`,
+    notPublished: `pnpm -s cli publications not-published ${publicationId}`,
+  };
 }
 
 /** El estado de una cuenta conectada. */

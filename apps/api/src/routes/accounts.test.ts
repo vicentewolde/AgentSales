@@ -20,6 +20,8 @@ import { fakeInstagramAuth, TEST_ML_REDIRECT_URI, testDeps } from "../testing/in
 const TOKEN = "IGAA-token-del-panel-0123456789";
 /** Un POST sin cuerpo: con `Content-Type` JSON, como la CLI (sin él, el CSRF lo trata como formulario). */
 const emptyPost = { method: "POST", headers: { "Content-Type": "application/json" } };
+/** Desconectar lleva siempre su cuerpo (`{}` sin confirmar; Marketplace pide `confirmed`, F5-T08). */
+const disconnectPost = { ...emptyPost, body: "{}" };
 
 function setup(auth: InstagramAuth = fakeInstagramAuth()) {
   const broker = contentBrokerFixture();
@@ -127,7 +129,7 @@ describe("GET /accounts y POST /accounts/:id/disconnect", () => {
       { id: connected.id, status: "connected" },
     ]);
 
-    const response = await app.request(`/accounts/${connected.id}/disconnect`, emptyPost);
+    const response = await app.request(`/accounts/${connected.id}/disconnect`, disconnectPost);
     expect(response.status).toBe(200);
     expect(accountResponseSchema.parse(await response.json()).account).toMatchObject({
       status: "revoked",
@@ -137,10 +139,10 @@ describe("GET /accounts y POST /accounts/:id/disconnect", () => {
 
   it("desconectar una cuenta que no existe es 404; un id que no es uuid, 400", async () => {
     const { app } = setup();
-    const missing = await app.request(`/accounts/${randomUUID()}/disconnect`, emptyPost);
+    const missing = await app.request(`/accounts/${randomUUID()}/disconnect`, disconnectPost);
     expect(missing.status).toBe(404);
     expect(errorBodySchema.parse(await missing.json()).error.code).toBe("ACCOUNT_NOT_FOUND");
-    const invalid = await app.request("/accounts/abc/disconnect", emptyPost);
+    const invalid = await app.request("/accounts/abc/disconnect", disconnectPost);
     expect(invalid.status).toBe(400);
   });
 
@@ -286,7 +288,7 @@ describe("cuentas · seguridad y mensajes", () => {
     expect((await platformAccounts.get(account.id))?.status).toBe("connected");
 
     for (let i = 0; i < 2; i += 1) {
-      const response = await app.request(`/accounts/${account.id}/disconnect`, emptyPost);
+      const response = await app.request(`/accounts/${account.id}/disconnect`, disconnectPost);
       expect(response.status).toBe(200);
       expect(accountResponseSchema.parse(await response.json()).account.status).toBe("revoked");
     }
@@ -433,7 +435,7 @@ describe("POST /accounts/:id/refresh", () => {
   it("desconectada 409, inexistente 404, id que no es uuid o force que no es booleano 400", async () => {
     const { app, connect, refresh, refreshCalls } = await refreshSetup();
     const account = await connect(TOKEN);
-    await app.request(`/accounts/${account.id}/disconnect`, emptyPost);
+    await app.request(`/accounts/${account.id}/disconnect`, disconnectPost);
 
     const cases: [Response, number, string][] = [
       [await refresh(account.id, { force: true }), 409, "ACCOUNT_NOT_CONNECTED"],

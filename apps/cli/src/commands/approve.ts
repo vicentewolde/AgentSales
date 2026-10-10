@@ -13,9 +13,10 @@ import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
-import { portalIssueLine } from "./publication-view.js";
+import { readinessIssueLine } from "./publication-view.js";
 import {
   fetchBrokers,
+  manualConfirmHint,
   PLATFORM_OPTION_NAMES,
   platformOption,
   platformShortName,
@@ -42,6 +43,7 @@ function reasonOf(error: unknown, ref: string): string {
     CONTENT_NOT_CURRENT: "el texto cambió: vuelve a intentarlo",
     PUBLICATION_IN_PROGRESS: "espera a que termine la publicación en curso",
     LISTING_NOT_READY: `revisa la propiedad con agentsales listing ${ref}`,
+    MANUAL_CONFIRM_PENDING: manualConfirmHint(error.publicationId),
   };
   const hint = error.code === undefined ? undefined : hints[error.code];
   return hint === undefined ? message : `${message} → ${hint}`;
@@ -107,12 +109,16 @@ export function runApprove(deps: ApproveDeps, ref: string, options: ApproveOptio
                 ? c.dim(" · sin cuenta conectada: conéctala y publica con agentsales publish")
                 : "";
           deps.print(`${c.green("✓")} ${name}: aprobado${opened}`);
-          // Solo Portal: lo que le falta al aviso (se aprueba igual; publicar lo exige).
-          const missing = result.portalReadiness?.issues ?? [];
-          if (missing.length > 0) {
-            deps.printError(c.yellow("  Para publicar en Portal falta:"));
+          // Portal y Marketplace: lo que le falta al aviso (se aprueba igual; publicar lo exige).
+          for (const [channel, readiness] of [
+            ["Portal", result.portalReadiness],
+            ["Marketplace", result.marketplaceReadiness],
+          ] as const) {
+            const missing = readiness?.issues ?? [];
+            if (missing.length === 0) continue;
+            deps.printError(c.yellow(`  Para publicar en ${channel} falta:`));
             for (const issue of missing) {
-              deps.printError(c.yellow(`  ${portalIssueLine(issue)}`));
+              deps.printError(c.yellow(`  ${readinessIssueLine(issue)}`));
             }
           }
           for (const skipped of result.skipped) {

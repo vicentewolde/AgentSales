@@ -1,9 +1,11 @@
 import type {
-  PortalReadinessIssueView,
   PublicationEventView,
   PublicationView,
+  ReadinessIssueView,
 } from "@agentsales/api/contracts";
 import {
+  manualConfirmCommands,
+  marketplacePriceText,
   PLATFORM_TEXT,
   PUBLICATION_ACTOR_TEXT,
   PUBLICATION_STATUS_TEXT,
@@ -24,7 +26,11 @@ export function paintPublicationStatus(
   const text = PUBLICATION_STATUS_TEXT[publication.status];
   if (publication.status === "published") return c.green(text);
   if (publication.status === "failed") return c.red(text);
-  if (publication.status === "publishing" || publication.status === "approved")
+  if (
+    publication.status === "publishing" ||
+    publication.status === "approved" ||
+    publication.status === "awaiting_manual_confirm"
+  )
     return c.yellow(text);
   return c.dim(text);
 }
@@ -33,8 +39,8 @@ export function paintPublicationStatus(
 export const publicationName = (publication: Pick<PublicationView, "format" | "platform">) =>
   `${publicationFormatText(publication.platform, publication.format)} de ${PLATFORM_TEXT[publication.platform]}`;
 
-/** Un motivo de lo que le falta al aviso para Portal, con su columna del Excel: `  • Falta … (dormitorios)`. */
-export const portalIssueLine = (issue: PortalReadinessIssueView) =>
+/** Un motivo de lo que le falta al aviso para un canal, con su columna del Excel: `  • Falta … (dormitorios)`. */
+export const readinessIssueLine = (issue: ReadinessIssueView) =>
   `  • ${issue.message}${issue.field === null ? "" : ` (${issue.field})`}`;
 
 /** El estado en la plataforma (`remoteStatusText`), o nada si todavía no informó. */
@@ -65,14 +71,49 @@ export function renderRemoteState(
   ];
 }
 
-/** El enlace si salió; si falló, el motivo; si no, nada. */
+/**
+ * Marketplace esperando el clic final (spec F5 §4.12): formulario listo (o simulado) con la
+ * ventana abierta, o la ventana ya cerrada sin ver el aviso.
+ */
+function waitingText(publication: PublicationView): string {
+  const manual = publication.manual;
+  if (manual === null) return "formulario listo: di si lo publicaste";
+  if (manual.simulated) return "simulación: formulario listo sin abrir Facebook";
+  if (manual.windowClosedAt !== null) return "la ventana se cerró: ¿lo publicaste?";
+  return "formulario listo: revisa la ventana de Chromium y publica";
+}
+
+/** El enlace si salió; si falló, el motivo; si espera el clic final, en qué está; si no, nada. */
 const outcomeOf = (publication: PublicationView, c: Colors) => {
   if (publication.externalUrl !== null) return publication.externalUrl;
   if (publication.lastError !== null) {
     return c.red(`${publication.lastError.code}: ${publication.lastError.message}`);
   }
+  if (publication.status === "awaiting_manual_confirm") return c.yellow(waitingText(publication));
   return "";
 };
+
+/**
+ * Lo propio de Marketplace debajo de una publicación (spec F5 §4.12): el precio que se escribió en
+ * el formulario (en pesos, con la UF usada) y, si espera el clic final, los dos comandos para
+ * cerrarla.
+ */
+export function renderManual(publication: PublicationView, c: Colors): string[] {
+  return [
+    ...(publication.manual === null
+      ? []
+      : [c.dim(`Precio en el formulario: ${marketplacePriceText(publication.manual)}`)]),
+    ...(publication.status === "awaiting_manual_confirm"
+      ? manualCommandLines(publication.id, c)
+      : []),
+  ];
+}
+
+/** Los dos comandos que cierran una publicación que espera el clic final (core). */
+export function manualCommandLines(publicationId: string, c: Colors): string[] {
+  const commands = manualConfirmCommands(publicationId);
+  return [c.dim(`Si lo publicaste: ${commands.confirm}`), c.dim(`Si no: ${commands.notPublished}`)];
+}
 
 /**
  * Tabla de publicaciones (spec F3 §4.9): id, canal, formato, estado, modo, intentos y enlace o
@@ -111,14 +152,24 @@ export function renderPublications(publications: readonly PublicationView[], c: 
     const reason = publication.remoteState?.reason;
     return reason === undefined ? [] : [c.yellow(`  ${publication.id}: ${reason.message}`)];
   });
-  return [table, ...reasons].join("\n");
+  const manual = publications.flatMap((publication) => {
+    const lines = renderManual(publication, c);
+    return lines.length === 0
+      ? []
+      : [`  ${publication.id}:`, ...lines.map((line) => `    ${line}`)];
+  });
+  return [table, ...reasons, ...manual].join("\n");
 }
 
 /** Una línea por publicación al terminar de publicar: estado, modo, enlace o error y, en Portal, su estado allá. */
 export function renderPublicationResult(publication: PublicationView, c: Colors): string {
   const head = `${publicationName(publication)}: ${paintPublicationStatus(publication, c)} (${publicationModeText(publication.dryRun)})`;
   const outcome = outcomeOf(publication, c);
-  const lines = [...(outcome === "" ? [] : [outcome]), ...renderRemoteState(publication, c)];
+  const lines = [
+    ...(outcome === "" ? [] : [outcome]),
+    ...renderRemoteState(publication, c),
+    ...renderManual(publication, c),
+  ];
   return [head, ...lines.map((line) => `  ${line}`)].join("\n");
 }
 
@@ -143,7 +194,15 @@ export function renderPublicationEvents(
           sync === true && typeof remoteStatus === "string"
             ? ` · leído de Mercado Libre: ${remoteStatusText({ status: remoteStatus, subStatus: [] })}`
             : "";
-        return `${when}  ${from} → ${to}${read}`;
+        // Marketplace: quién vio el aviso publicado (la ventana o el operador, spec F5 §4.3).
+        const { confirmedBy } = event.payload;
+        const confirmed =
+          confirmedBy === "window"
+            ? " · lo vio la ventana"
+            : confirmedBy === "operator"
+              ? " · confirmado por ti"
+              : "";
+        return `${when}  ${from} → ${to}${read}${confirmed}`;
       }
       // La API no expone el detalle de una lectura (su estado queda en la publicación).
       if (event.type === "sync") return `${when}  lectura de Mercado Libre`;

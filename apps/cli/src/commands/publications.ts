@@ -3,13 +3,19 @@ import {
   listingListResponseSchema,
   listingPublicationsResponseSchema,
   type PublicationView,
+  publicationConfirmResponseSchema,
   publicationEventsResponseSchema,
   publicationOperationResponseSchema,
   publicationResponseSchema,
   publicationRetireResponseSchema,
   publicationSyncResponseSchema,
 } from "@agentsales/api/contracts";
-import { availablePublicationOperations, publicationModeText } from "@agentsales/core";
+import {
+  availablePublicationOperations,
+  manualConfirmCommands,
+  PLATFORM_TEXT,
+  publicationModeText,
+} from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
@@ -22,9 +28,12 @@ import {
   renderPublications,
   renderRemoteState,
 } from "./publication-view.js";
-import { fetchBrokers, resolveListingId } from "./shared.js";
+import { fetchBrokers, manualConfirmHint, resolveListingId } from "./shared.js";
 
 export type PublicationsDeps = Io & Pick<Terminal, "confirm"> & { client: ApiClient };
+
+/** `publications confirm --url-stdin` lee además la entrada estándar. */
+export type ConfirmDeps = PublicationsDeps & Pick<Terminal, "stdinIsTty" | "readStdin">;
 
 export type PublicationsOptions = { broker?: string; events?: boolean };
 
@@ -56,6 +65,13 @@ function explained(error: unknown, publicationId: string): unknown {
       "INVALID_TRANSITION",
       error.apiMessage ?? error.message,
       "Una publicada se marca como retirada (publications retire); una pendiente se descarta (publications cancel)",
+    );
+  }
+  if (error.code === "MANUAL_CONFIRM_PENDING") {
+    return new CliError(
+      error.code,
+      error.apiMessage ?? error.message,
+      manualConfirmHint(error.publicationId ?? publicationId),
     );
   }
   if (error.code === "RETIRE_NOT_SUPPORTED") {
@@ -157,10 +173,13 @@ export function runCancelPublication(deps: PublicationsDeps, id: string) {
 
 export type RetireOptions = { yes?: boolean };
 
+/** Los canales cuyo aviso publicado en vivo se borra a mano y aquí se confirma (F3 D8, F5 §4.3). */
+const RETIRED_BY_HAND = new Set(["instagram", "fb_marketplace"]);
+
 /**
- * `agentsales publications retire <id> [--yes]` (spec F3 §4.3 y D8): Instagram Login no deja borrar
- * por la API, así que una publicada en vivo se borra a mano en Instagram y aquí se confirma; en
- * simulación no hay nada que borrar. Lee la publicación antes para saber su modo.
+ * `agentsales publications retire <id> [--yes]` (spec F3 §4.3 y D8, F5 §4.3): Instagram y
+ * Marketplace no dejan borrar desde AgentSales, así que una publicada en vivo se borra a mano y
+ * aquí se confirma; en simulación no hay nada que borrar. Lee la publicación antes para saber su modo.
  */
 export function runRetirePublication(
   deps: PublicationsDeps,
@@ -174,19 +193,20 @@ export function runRetirePublication(
       deps.client.publications[":id"].$get({ param: { id: publicationId } }),
       publicationResponseSchema,
     );
-    // Solo una de Instagram publicada en vivo hay que borrarla a mano; en otro estado (o un aviso
-    // de Portal, que se cierra), la API explica por qué no.
+    // Solo una de Instagram o Marketplace publicada en vivo hay que borrarla a mano; en otro estado
+    // (o un aviso de Portal, que se cierra), la API explica por qué no.
     const live =
-      !current.dryRun && current.status === "published" && current.platform === "instagram";
+      !current.dryRun && current.status === "published" && RETIRED_BY_HAND.has(current.platform);
     if (live && !options.yes) {
+      const platform = PLATFORM_TEXT[current.platform];
       const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
       const confirmed = await deps.confirm(
-        `¿Ya borraste a mano en Instagram el ${publicationName(current)}${where}?`,
+        `¿Ya borraste a mano en ${platform} el ${publicationName(current)}${where}?`,
       );
       if (!confirmed) {
         deps.printError(
           c.yellow(
-            "No se marcó como retirada: bórrala primero en Instagram y confirma (o usa --yes)",
+            `No se marcó como retirada: bórrala primero en ${platform} y confirma (o usa --yes)`,
           ),
         );
         return 1;
@@ -207,6 +227,109 @@ export function runRetirePublication(
     if (listingBackToReady) {
       deps.print(c.dim("  Era la última publicada en vivo: la propiedad volvió a lista"));
     }
+    return 0;
+  });
+}
+
+export type ConfirmOptions = { urlStdin?: boolean };
+
+/** El largo máximo del enlace pegado (el mismo tope que la API). */
+const PASTED_URL_MAX_LENGTH = 2048;
+
+/** Los errores de confirmar y de "no lo publiqué", con qué hacer en la CLI. */
+function explainedManual(error: unknown, publicationId: string): unknown {
+  if (!(error instanceof ApiCallError)) return error;
+  const message = error.apiMessage ?? error.message;
+  const commands = manualConfirmCommands(publicationId);
+  const hints: Record<string, string> = {
+    MARKETPLACE_URL_REQUIRED: `Copia el enlace del aviso desde la barra del navegador y corre: ${commands.confirm}`,
+    MARKETPLACE_URL_INVALID: `Copia el enlace desde la barra, con el aviso abierto en Facebook, y corre: ${commands.confirm}`,
+    PUBLICATION_ALREADY_CONFIRMED:
+      "Mira el enlace guardado con agentsales publications <propiedad>",
+    INVALID_TRANSITION: "Mira su estado con agentsales publications <propiedad>",
+  };
+  const hint = error.code === undefined ? undefined : hints[error.code];
+  if (hint === undefined) return error;
+  return new CliError(error.code ?? "API_ERROR", message, hint);
+}
+
+/**
+ * `pbpaste | agentsales publications confirm <id> --url-stdin` (spec F5 §4.3 y §4.12): "lo
+ * publiqué" de una publicación de Marketplace que espera el clic final. El enlace del aviso llega
+ * por la entrada estándar (nunca como argumento: quedaría en el historial) y no se imprime ni se
+ * pone en un error. Sin `--url-stdin` solo sirve en simulación (la API pide el enlace en vivo).
+ */
+export function runConfirmPublication(deps: ConfirmDeps, id: string, options: ConfirmOptions = {}) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const publicationId = publicationIdOf(id);
+    const pipe = manualConfirmCommands(publicationId).confirm;
+    let url: string | undefined;
+    if (options.urlStdin) {
+      if (deps.stdinIsTty()) {
+        throw new CliError(
+          "URL_STDIN_REQUIRED",
+          "El enlace va por la entrada estándar, no escrito en la terminal",
+          `Copia el enlace del aviso y corre: ${pipe}`,
+        );
+      }
+      url = (await deps.readStdin()).trim();
+      if (url === "") {
+        throw new CliError("URL_MISSING", "No llegó ningún enlace por la entrada estándar", pipe);
+      }
+      // Sin mostrar lo recibido: un pegado de otra cosa no se manda a la API.
+      if (url.length > PASTED_URL_MAX_LENGTH || /\s/.test(url)) {
+        throw new CliError(
+          "URL_INVALID",
+          "Lo que llegó por la entrada estándar no parece un enlace (tiene espacios o saltos de línea, o es demasiado largo)",
+          "Copia solo el enlace del aviso desde la barra del navegador y vuelve a intentarlo",
+        );
+      }
+    }
+    const { publication, changed } = await unwrap(
+      deps.client.publications[":id"].confirm.$post({
+        param: { id: publicationId },
+        json: url === undefined ? {} : { url },
+      }),
+      publicationConfirmResponseSchema,
+    ).catch((error: unknown) => {
+      throw explainedManual(error, publicationId);
+    });
+    deps.print(
+      changed
+        ? `${c.green("✓")} ${publicationName(publication)} ${paintPublicationStatus(publication, c)} (${publicationModeText(publication.dryRun)})`
+        : `${c.green("✓")} Ya estaba confirmada con ese enlace: sin cambios`,
+    );
+    if (publication.dryRun) {
+      deps.print(c.dim("  Simulación: no se publicó nada en Facebook"));
+    }
+    return 0;
+  });
+}
+
+/**
+ * `agentsales publications not-published <id>` (spec F5 §4.3 y D14): "no lo publiqué" de una de
+ * Marketplace que espera el clic final. Queda fallida (no se deshace): se reintenta (abre un
+ * formulario nuevo) o se descarta.
+ */
+export function runNotPublished(deps: PublicationsDeps, id: string) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const publicationId = publicationIdOf(id);
+    const { publication } = await unwrap(
+      deps.client.publications[":id"]["not-published"].$post({ param: { id: publicationId } }),
+      publicationResponseSchema,
+    ).catch((error: unknown) => {
+      throw explainedManual(error, publicationId);
+    });
+    deps.print(
+      `${c.green("✓")} ${publicationName(publication)} ${paintPublicationStatus(publication, c)}: anotado que no se publicó`,
+    );
+    deps.printError(
+      c.dim(
+        `→ Reintenta (abre un formulario nuevo) con agentsales publish <propiedad> --platform marketplace, o descártala con agentsales publications cancel ${publication.id}`,
+      ),
+    );
     return 0;
   });
 }
@@ -394,7 +517,7 @@ export function runSyncPublication(deps: PublicationsDeps, id: string) {
 }
 
 export function register(program: Command, ctx: CliContext): void {
-  const deps = (): PublicationsDeps => ({ ...ctx, client: ctx.api() });
+  const deps = (): ConfirmDeps => ({ ...ctx, client: ctx.api() });
   const publications = program
     .command("publications")
     .description("Publicaciones de una propiedad (o de todas): estado, formato, modo y enlace")
@@ -411,12 +534,29 @@ export function register(program: Command, ctx: CliContext): void {
     .action((id: string) => exitWith(() => runCancelPublication(deps(), id)));
   publications
     .command("retire")
-    .description("Marca como retirada una publicación (en vivo, después de borrarla en Instagram)")
+    .description(
+      "Marca como retirada una publicación (en vivo, después de borrarla en Instagram o Marketplace)",
+    )
     .argument("<id>", "id de la publicación (agentsales publications <propiedad>)")
-    .option("--yes", "no pregunta si ya la borraste a mano en Instagram")
+    .option("--yes", "no pregunta si ya la borraste a mano")
     .action((id: string, options: RetireOptions) =>
       exitWith(() => runRetirePublication(deps(), id, options)),
     );
+  publications
+    .command("confirm")
+    .description(
+      "Marketplace: lo publicaste (pega el enlace del aviso: pbpaste | … --url-stdin; no se imprime)",
+    )
+    .argument("<id>", "id de la publicación (agentsales publications <propiedad>)")
+    .option("--url-stdin", "lee el enlace del aviso desde la entrada estándar (pbpaste | …)")
+    .action((id: string, options: ConfirmOptions) =>
+      exitWith(() => runConfirmPublication(deps(), id, options)),
+    );
+  publications
+    .command("not-published")
+    .description("Marketplace: no lo publicaste (queda fallida, para reintentar o descartar)")
+    .argument("<id>", "id de la publicación (agentsales publications <propiedad>)")
+    .action((id: string) => exitWith(() => runNotPublished(deps(), id)));
   publications
     .command("pause")
     .description("Pausa un aviso de Portal en Mercado Libre")

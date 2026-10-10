@@ -70,6 +70,8 @@ export {
   LISTING_NOT_PREPARABLE_TEXT,
   LISTING_NOT_PUBLISHABLE_TEXT,
   LISTING_STATUS_TEXT,
+  manualConfirmCommands,
+  marketplaceConnectCommand,
   mercadoLibreConnectCommands,
   OPERATION_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
@@ -130,9 +132,17 @@ export {
   manualConfirmPending,
   marketplaceDailyLimitReached,
   marketplaceFormOpen,
+  marketplaceProfileActionPending,
   requiresManualConfirm,
   startOfDayIn,
 } from "./marketplace/limits.js";
+export {
+  MARKETPLACE_LOGIN_CLIENT_WAIT_MS,
+  type MarketplaceLoginAccount,
+  type MarketplaceLoginOutcome,
+  marketplaceLoginErrorText,
+  marketplaceLoginOutcome,
+} from "./marketplace/login.js";
 export {
   type MarketplacePrice,
   marketplacePrice,
@@ -141,7 +151,11 @@ export {
   ufToClp,
 } from "./marketplace/price.js";
 export {
+  MARKETPLACE_CONFIRM_CLIENT_WAIT_MS,
+  type MarketplaceManualState,
   type MarketplaceProgress,
+  marketplaceManualState,
+  marketplacePriceText,
   marketplaceProgressSchema,
 } from "./marketplace/progress.js";
 export {
@@ -590,6 +604,10 @@ export {
   type RequestImportDeps,
   requestImport,
 } from "./use-cases/request-import.js";
+export {
+  type RequestMarketplaceLoginDeps,
+  requestMarketplaceLogin,
+} from "./use-cases/request-marketplace-login.js";
 export {
   type ResumePublicationDeps,
   resumePublication,

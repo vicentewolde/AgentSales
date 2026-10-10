@@ -77,7 +77,7 @@ Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4
 - [ ] Token de la API BDE del Banco Central para el valor de la UF (gratis, inmediato; `docs/integraciones/uf.md` §3.1): crear la cuenta en la BDE, en la página de la API aceptar los términos y pulsar "Activar el uso de la API", copiar el token en "Mi Cuenta" → "Apikey Token" y dejarlo en `.env` como `BCCH_API_TOKEN` (con `pbpaste`; no me lo muestres). Dura 1 año: anota cuándo vence. Con el lote B, `pnpm uf:smoke`
 - [ ] Que el corredor `agentsales-pruebas` tenga al menos un arriendo en la planilla (si Chile no tiene venta en Marketplace, los avisos en venta no van)
 - [ ] Con el lote A: `pnpm fb:smoke --broker agentsales-pruebas`. Se abre una ventana de Chromium: inicias sesión a mano en Facebook (la primera vez) y el comando guarda en `tmp/fb-smoke/` la captura y el árbol del formulario de propiedades, sin llenar nada. Me avisas y reviso solo el árbol del formulario
-- [ ] Con el lote B: `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`
+- [ ] Con el lote C (la CLI, con `pnpm dev` corriendo): `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`. Se abre una ventana de Chromium: inicias sesión a mano (también la verificación, si la pide) y la CLI espera hasta ver la sesión (hasta unos 11 min). Abre Facebook aunque estés en simulación: no publica nada
 
 ## Antes de F7 (terceros)
 

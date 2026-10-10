@@ -18,6 +18,8 @@ const account = (overrides: Partial<PlatformAccountView> = {}): PlatformAccountV
   tokenRefreshedAt: null,
   accountType: "BUSINESS",
   permissions: null,
+  sessionCheckedAt: null,
+  lastLoginError: null,
   createdAt: NOW,
   updatedAt: NOW,
   ...overrides,

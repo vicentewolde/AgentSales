@@ -1,5 +1,5 @@
 import { AppError } from "../errors.js";
-import { manualConfirmPending } from "../marketplace/limits.js";
+import { manualConfirmPending, marketplaceProfileActionPending } from "../marketplace/limits.js";
 import { type PlatformAccount, usesSessionProfile } from "../platform-account.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
@@ -69,13 +69,7 @@ export async function disconnectAccount(
       { brokerId: account.brokerId, action: "forget" },
       { singletonKey: account.brokerId },
     );
-    if (queued === null) {
-      throw new AppError(
-        "MARKETPLACE_PROFILE_ACTION_PENDING",
-        "Ya hay una acción del perfil de Facebook esperando (un inicio de sesión o un borrado): reintenta en un momento",
-        { details: { accountId } },
-      );
-    }
+    if (queued === null) throw marketplaceProfileActionPending(account.brokerId);
   }
   return account.status === "revoked" && !account.hasCredentials
     ? account

@@ -8,12 +8,15 @@ import {
   isAppError,
   type JobQueue,
   type MercadoLibreAuth,
+  marketplaceAccountMetaSchema,
+  marketplaceLoginErrorText,
   mercadoLibreAccountMetaSchema,
   type PlatformAccount,
   type PlatformAccountRepository,
   type PublicationRepository,
   type RefreshAccountTokensDeps,
   refreshAccountToken,
+  requestMarketplaceLogin,
   requireBroker,
   type TokenRefreshResult,
 } from "@agentsales/core";
@@ -22,10 +25,13 @@ import {
   type AccountListResponse,
   type AccountRefreshResponse,
   type AccountResponse,
+  accountDisconnectBodySchema,
   accountRefreshBodySchema,
   connectTokenBodySchema,
   idParamSchema,
+  type MarketplaceLoginResponse,
   type MercadoLibreAuthorizeUrlResponse,
+  marketplaceLoginBodySchema,
   mercadoLibreAuthorizeUrlBodySchema,
   mercadoLibreConnectBodySchema,
   type PlatformAccountView,
@@ -120,20 +126,38 @@ function tokenError(error: unknown): unknown {
   return error;
 }
 
-/** Lo que el panel muestra de `meta`, igual para las dos plataformas. */
+/** Lo que el panel muestra de `meta`, igual para todas las plataformas. */
 type ShownMeta = {
   tokenExpiryEstimated: boolean;
   connectedAt: string;
   tokenRefreshedAt: string | null;
   accountType: string | null;
   permissions: string[] | null;
+  sessionCheckedAt: string | null;
+  lastLoginError: { code: string; at: string } | null;
 };
 
+const NO_SESSION = { sessionCheckedAt: null, lastLoginError: null } as const;
+
 /**
- * La `meta` de la cuenta según su plataforma: Instagram (`accountType` y `permissions`) o Mercado
- * Libre (`userType` y `scopes`, desde F4-T06). `null` si no calza (una fila vieja o rota).
+ * La `meta` de la cuenta según su plataforma: Instagram (`accountType` y `permissions`), Mercado
+ * Libre (`userType` y `scopes`, desde F4-T06) o Marketplace (la sesión revisada y el último error de
+ * inicio de sesión, F5-T08: sin token ni vencimiento). `null` si no calza (una fila vieja o rota).
  */
 function shownMeta(account: PlatformAccount): ShownMeta | null {
+  if (account.platform === "fb_marketplace") {
+    const meta = marketplaceAccountMetaSchema.safeParse(account.meta);
+    if (!meta.success) return null;
+    return {
+      tokenExpiryEstimated: false,
+      connectedAt: meta.data.connectedAt,
+      tokenRefreshedAt: null,
+      accountType: null,
+      permissions: null,
+      sessionCheckedAt: meta.data.sessionCheckedAt,
+      lastLoginError: meta.data.lastLoginError ?? null,
+    };
+  }
   if (account.platform === "portal_inmobiliario") {
     const meta = mercadoLibreAccountMetaSchema.safeParse(account.meta);
     if (!meta.success) return null;
@@ -143,10 +167,11 @@ function shownMeta(account: PlatformAccount): ShownMeta | null {
       tokenRefreshedAt: meta.data.tokenRefreshedAt,
       accountType: meta.data.userType,
       permissions: meta.data.scopes,
+      ...NO_SESSION,
     };
   }
   const meta = instagramAccountMetaSchema.safeParse(account.meta);
-  return meta.success ? meta.data : null;
+  return meta.success ? { ...meta.data, ...NO_SESSION } : null;
 }
 
 /**
@@ -167,6 +192,15 @@ export function accountView(account: PlatformAccount): PlatformAccountView {
     tokenRefreshedAt: known?.tokenRefreshedAt == null ? null : new Date(known.tokenRefreshedAt),
     accountType: known?.accountType ?? null,
     permissions: known?.permissions ?? null,
+    sessionCheckedAt: known?.sessionCheckedAt == null ? null : new Date(known.sessionCheckedAt),
+    lastLoginError:
+      known?.lastLoginError == null
+        ? null
+        : {
+            code: known.lastLoginError.code,
+            message: marketplaceLoginErrorText(known.lastLoginError.code),
+            at: new Date(known.lastLoginError.at),
+          },
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
   };
@@ -184,10 +218,12 @@ function refreshView(result: TokenRefreshResult): AccountRefreshResponse {
 }
 
 /**
- * `/accounts` (spec F3 §4.6 y §4.8, spec F4 §4.2 y §4.3): las cuentas conectadas, conectar con el
- * token del panel de Meta (D4: Meta no acepta `http://localhost` para el OAuth), conectar Mercado
- * Libre con la dirección de vuelta pegada (la URL de autorización y el canje del código), refrescar
- * el token a pedido (Instagram o Mercado Libre, cada una con su política) y desconectar. Conectar y
+ * `/accounts` (spec F3 §4.6 y §4.8, spec F4 §4.2 y §4.3, spec F5 §4.2): las cuentas conectadas,
+ * conectar con el token del panel de Meta (D4: Meta no acepta `http://localhost` para el OAuth),
+ * conectar Mercado Libre con la dirección de vuelta pegada (la URL de autorización y el canje del
+ * código), pedir el inicio de sesión de Marketplace (lo encola: la ventana la abre el worker),
+ * refrescar el token a pedido (Instagram o Mercado Libre, cada una con su política) y desconectar
+ * (Marketplace pide `confirmed`: borra el perfil del navegador). Conectar y
  * refrescar llaman a la plataforma de forma síncrona (seguimiento de ADR-0014, punto 9). El token
  * nunca vuelve en la respuesta ni va al log (el log de la API no registra cuerpos, y la URL del
  * refresco de Instagram no sale de su cliente).
@@ -261,6 +297,19 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         return c.json(body, 200);
       },
     )
+    .post("/marketplace/login", validated("json", marketplaceLoginBodySchema), async (c) => {
+      const { broker, label } = c.req.valid("json");
+      const { brokerId, requestedAt } = await requestMarketplaceLogin(
+        {
+          brokers: deps.brokers,
+          queue: deps.queue,
+          ...(deps.now === undefined ? {} : { now: deps.now }),
+        },
+        { broker, ...(label === undefined ? {} : { label }) },
+      );
+      const body: MarketplaceLoginResponse = { queued: true, brokerId, requestedAt };
+      return c.json(body, 202);
+    })
     .post(
       "/:id/refresh",
       validated("param", idParamSchema),
@@ -285,9 +334,18 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         return c.json(refreshView(result), 200);
       },
     )
-    .post("/:id/disconnect", validated("param", idParamSchema), async (c) => {
-      const account = await disconnectAccount(deps, { accountId: c.req.valid("param").id });
-      const body: AccountResponse = { account: accountView(account) };
-      return c.json(body, 200);
-    });
+    .post(
+      "/:id/disconnect",
+      validated("param", idParamSchema),
+      validated("json", accountDisconnectBodySchema),
+      async (c) => {
+        const { confirmed } = c.req.valid("json");
+        const account = await disconnectAccount(deps, {
+          accountId: c.req.valid("param").id,
+          ...(confirmed === undefined ? {} : { confirmed }),
+        });
+        const body: AccountResponse = { account: accountView(account) };
+        return c.json(body, 200);
+      },
+    );
 }

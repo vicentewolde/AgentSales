@@ -1,5 +1,5 @@
 import type { AppType } from "@agentsales/api";
-import { errorBodySchema, type PortalReadinessIssueView } from "@agentsales/api/contracts";
+import { errorBodySchema, type ReadinessIssueView } from "@agentsales/api/contracts";
 import { hc } from "hono/client";
 import type { z } from "zod";
 
@@ -15,24 +15,29 @@ export const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 /**
  * Error de la API o de llegar a ella. `code` es el de su `ErrorBody`, o `UNREACHABLE`, `TIMEOUT` y
  * `UNEXPECTED_RESPONSE`; `status` falta si no hubo respuesta. `issues` solo en `PORTAL_NOT_READY`
- * (lo que le falta al aviso, desde F4-T22; la CLI hace lo mismo).
+ * y `MARKETPLACE_NOT_READY` (lo que le falta al aviso, desde F4-T22), y `publicationId` en
+ * `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` (la de Marketplace que espera el clic final,
+ * F5-T08); la CLI hace lo mismo.
  */
 export class ApiError extends Error {
   readonly code: string | undefined;
   readonly status: number | undefined;
-  readonly issues: readonly PortalReadinessIssueView[] | undefined;
+  readonly issues: readonly ReadinessIssueView[] | undefined;
+  readonly publicationId: string | undefined;
 
   constructor(
     message: string,
     code?: string,
     status?: number,
-    issues?: readonly PortalReadinessIssueView[],
+    issues?: readonly ReadinessIssueView[],
+    publicationId?: string,
   ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
     this.issues = issues;
+    this.publicationId = publicationId;
   }
 }
 
@@ -120,8 +125,8 @@ export async function unwrap<S extends z.ZodType>(
   if (!res.ok) {
     const parsed = errorBodySchema.safeParse(body);
     if (parsed.success) {
-      const { code, message, issues } = parsed.data.error;
-      throw new ApiError(`${code}: ${message}`, code, res.status, issues);
+      const { code, message, issues, publicationId } = parsed.data.error;
+      throw new ApiError(`${code}: ${message}`, code, res.status, issues, publicationId);
     }
     // El proxy de Vite responde 5xx sin JSON cuando la API está apagada.
     throw res.status >= 500

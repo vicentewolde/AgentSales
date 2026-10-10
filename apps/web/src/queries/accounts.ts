@@ -15,14 +15,20 @@ export function useAccounts() {
   });
 }
 
-/** `POST /accounts/:id/disconnect`: la cuenta queda desconectada y sin credenciales. */
+/**
+ * `POST /accounts/:id/disconnect`: la cuenta queda desconectada y sin credenciales. El panel ya
+ * pregunta antes de llamar, así que va confirmado (Marketplace lo exige: borra el perfil).
+ */
 export function useDisconnectAccount() {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (accountId: string) =>
       unwrap(
-        client.accounts[":id"].disconnect.$post({ param: { id: accountId } }),
+        client.accounts[":id"].disconnect.$post({
+          param: { id: accountId },
+          json: { confirmed: true },
+        }),
         accountResponseSchema,
       ),
     onSettled: () => queryClient.invalidateQueries({ queryKey: accountKeys.all }),

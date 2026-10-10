@@ -134,6 +134,17 @@ describe("unwrap", () => {
     await expect(unwrap(other, schema)).rejects.toMatchObject({ issues: undefined });
   });
 
+  it("MANUAL_CONFIRM_PENDING trae la publicación que espera el clic final (F5-T08)", async () => {
+    const publicationId = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
+    const pending = response(409, {
+      error: { code: "MANUAL_CONFIRM_PENDING", message: "Espera tu clic", publicationId },
+    });
+    await expect(unwrap(pending, schema)).rejects.toMatchObject({
+      code: "MANUAL_CONFIRM_PENDING",
+      publicationId,
+    });
+  });
+
   it("un corte por timeout mientras llega el cuerpo es TIMEOUT", async () => {
     const cut = {
       ok: true,

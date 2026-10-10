@@ -3,7 +3,7 @@ import {
   CLI_CLIENT,
   CLIENT_HEADER,
   errorBodySchema,
-  type PortalReadinessIssueView,
+  type ReadinessIssueView,
 } from "@agentsales/api/contracts";
 import { type HealthReport, healthReportSchema } from "@agentsales/core";
 import { hc } from "hono/client";
@@ -24,15 +24,24 @@ export class ApiCallError extends Error {
   readonly status: number | undefined;
   /** El mensaje de la API, sin el código delante (`message` es `CODE: mensaje`). */
   readonly apiMessage: string | undefined;
-  /** Solo en `PORTAL_NOT_READY`: lo que le falta al aviso, uno por motivo (spec F4 §4.11). */
-  readonly issues: readonly PortalReadinessIssueView[] | undefined;
+  /**
+   * Solo en `PORTAL_NOT_READY` y `MARKETPLACE_NOT_READY`: lo que le falta al aviso, uno por motivo
+   * (spec F4 §4.11 y F5 §4.10).
+   */
+  readonly issues: readonly ReadinessIssueView[] | undefined;
+  /**
+   * Solo en `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN`: la publicación de Marketplace que
+   * espera el clic final (spec F5 §4.10), para sugerir "lo publiqué" o "no lo publiqué".
+   */
+  readonly publicationId: string | undefined;
 
   constructor(
     message: string,
     code?: string,
     status?: number,
     apiMessage?: string,
-    issues?: readonly PortalReadinessIssueView[],
+    issues?: readonly ReadinessIssueView[],
+    publicationId?: string,
   ) {
     super(message);
     this.name = "ApiCallError";
@@ -40,6 +49,7 @@ export class ApiCallError extends Error {
     this.status = status;
     this.apiMessage = apiMessage;
     this.issues = issues;
+    this.publicationId = publicationId;
   }
 }
 
@@ -140,6 +150,7 @@ export async function unwrap<S extends z.ZodType>(
           res.status,
           parsed.data.error.message,
           parsed.data.error.issues,
+          parsed.data.error.publicationId,
         )
       : new ApiCallError(`la API respondió ${res.status}`, undefined, res.status);
   }

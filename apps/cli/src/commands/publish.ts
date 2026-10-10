@@ -5,6 +5,8 @@ import {
 } from "@agentsales/api/contracts";
 import {
   healthReportSchema,
+  MARKETPLACE_CONFIRM_CLIENT_WAIT_MS,
+  marketplacePriceText,
   PLATFORM_TEXT,
   type Platform,
   PUBLICATION_STATUS_TEXT,
@@ -15,8 +17,18 @@ import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded } from "../output.js";
-import { portalIssueLine, renderPublicationResult } from "./publication-view.js";
-import { fetchBrokers, platformOption, platformShortName, resolveListingId } from "./shared.js";
+import {
+  manualCommandLines,
+  readinessIssueLine,
+  renderPublicationResult,
+} from "./publication-view.js";
+import {
+  fetchBrokers,
+  manualConfirmHint,
+  platformOption,
+  platformShortName,
+  resolveListingId,
+} from "./shared.js";
 import { type WaitDeps, waitForRun } from "./wait-run.js";
 
 export type PublishOptions = {
@@ -41,33 +53,38 @@ const CONNECT_HINT: Partial<Record<Platform, string>> = {
     "Conecta la cuenta con agentsales accounts connect instagram --broker <slug> --token-stdin",
   portal_inmobiliario:
     "Conecta la cuenta con agentsales accounts connect mercadolibre --broker <slug>",
+  fb_marketplace: "Conecta la cuenta con agentsales accounts connect marketplace --broker <slug>",
 };
 
 /**
- * `PORTAL_NOT_READY` (spec F4 §4.11): la lista de lo que falta, un motivo por línea con su columna
- * del Excel. El `message` de la API ya junta los mismos motivos: se muestra uno u otro, nunca los
- * dos. Sin lista (una API de otra versión), el `message`.
+ * `PORTAL_NOT_READY` (spec F4 §4.11) y `MARKETPLACE_NOT_READY` (spec F5 §4.10): la lista de lo que
+ * falta, un motivo por línea con su columna del Excel. El `message` de la API ya junta los mismos
+ * motivos: se muestra uno u otro, nunca los dos. Sin lista (una API de otra versión), el `message`.
  */
-function portalNotReady(error: ApiCallError): CliError {
+function notReady(error: ApiCallError, platform: Platform): CliError {
   const issues = error.issues ?? [];
   const message =
     issues.length === 0
       ? (error.apiMessage ?? error.message)
       : [
-          "Falta información para publicar en Portal Inmobiliario:",
-          ...issues.map(portalIssueLine),
+          `Falta información para publicar en ${PLATFORM_TEXT[platform]}:`,
+          ...issues.map(readinessIssueLine),
         ].join("\n");
   return new CliError(
-    "PORTAL_NOT_READY",
+    error.code ?? "NOT_READY",
     message,
-    "Vuelve a importar la planilla (agentsales import) y publica de nuevo; el WhatsApp es el de la hoja Corredor",
+    platform === "portal_inmobiliario"
+      ? "Vuelve a importar la planilla (agentsales import) y publica de nuevo; el WhatsApp es el de la hoja Corredor"
+      : "Completa lo que falta (la planilla con agentsales import, las fotos con agentsales prepare) y publica de nuevo",
   );
 }
 
 /** Los errores de `POST /listings/:id/publish`, con qué hacer en la CLI. */
 function explained(error: unknown, ref: string, platform: Platform): unknown {
   if (!(error instanceof ApiCallError)) return error;
-  if (error.code === "PORTAL_NOT_READY") return portalNotReady(error);
+  if (error.code === "PORTAL_NOT_READY" || error.code === "MARKETPLACE_NOT_READY") {
+    return notReady(error, platform);
+  }
   const message = error.apiMessage ?? error.message;
   const hints: Record<string, string> = {
     QUEUE_UNAVAILABLE: `Quedaron en curso: arranca el worker (pnpm dev), que las retoma al arrancar, o vuelve a correr ${publishCommand(ref, platform)}`,
@@ -83,6 +100,11 @@ function explained(error: unknown, ref: string, platform: Platform): unknown {
     LISTING_NOT_READY: `Revisa la propiedad con agentsales listing ${ref}`,
     CONTENT_RUN_ACTIVE:
       "Espera a que termine la preparación (agentsales content) y vuelve a publicar",
+    // Marketplace (spec F5 §4.7 y §4.10).
+    MARKETPLACE_DAILY_LIMIT:
+      "Sigue mañana: el límite cuenta los intentos en vivo de hoy (hora de Chile)",
+    MARKETPLACE_FORM_OPEN: manualConfirmHint(error.publicationId),
+    MANUAL_CONFIRM_PENDING: manualConfirmHint(error.publicationId),
   };
   const hint = error.code === undefined ? undefined : hints[error.code];
   if (hint === undefined) return error;
@@ -117,8 +139,14 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
     // El modo lo decide la API (D11): solo se pregunta para confirmar una publicación en vivo.
     const { publishMode } = await unwrap(deps.client.health.$get(), healthReportSchema);
     if (publishMode === "live" && !options.yes) {
+      const extra =
+        platform === "portal_inmobiliario"
+          ? " Usa un cupo de tu paquete de Mercado Libre."
+          : platform === "fb_marketplace"
+            ? " Se abre una ventana de Chromium con el formulario lleno; tú haces Siguiente y Publicar."
+            : "";
       const confirmed = await deps.confirm(
-        `La API está en vivo (PUBLISH_MODE=live): ¿publicar ${trimmed} de verdad en ${PLATFORM_TEXT[platform]}?${platform === "portal_inmobiliario" ? " Usa un cupo de tu paquete de Mercado Libre." : ""}`,
+        `La API está en vivo (PUBLISH_MODE=live): ¿publicar ${trimmed} de verdad en ${PLATFORM_TEXT[platform]}?${extra}`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));
@@ -213,6 +241,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
       noun: "la publicación",
     });
     if (done === null) return 1;
+    if (platform === "fb_marketplace") return finishMarketplace(deps, done.publications, trimmed);
 
     deps.print("");
     for (const publication of done.publications) {
@@ -254,14 +283,103 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
   });
 }
 
+/** La espera del enlace: la publicación de Marketplace que espera el clic final. */
+type ManualWait = { status: string; publication: PublicationView };
+
+/** Sigue esperando el enlace mientras la ventana de Chromium esté abierta. */
+const windowOpen = (publication: PublicationView) =>
+  publication.status === "awaiting_manual_confirm" && publication.manual?.windowOpen === true;
+
+/**
+ * Marketplace después del formulario listo (spec F5 §4.12): en simulación muestra el precio y los
+ * dos comandos para cerrarla; en vivo dice qué hacer en la ventana y sigue esperando el enlace (lo
+ * detecta el worker) hasta que se publique, se marque como no publicada, se cierre la ventana o pase
+ * el tope; si no llega, muestra los dos comandos. Sale con 1 solo si falló o cambió a otro estado.
+ */
+async function finishMarketplace(
+  deps: PublishDeps,
+  publications: readonly PublicationView[],
+  ref: string,
+): Promise<number> {
+  const c = deps.colors;
+  const [publication] = publications;
+  if (publication === undefined) return 0;
+  deps.print("");
+  if (publication.status !== "awaiting_manual_confirm") {
+    deps.print(renderPublicationResult(publication, c));
+    if (publication.status === "published") return 0;
+    deps.printError(
+      c.dim(
+        `→ Reintenta con ${publishCommand(ref, "fb_marketplace")}, o mira la bitácora con agentsales publications ${ref} --events`,
+      ),
+    );
+    return 1;
+  }
+  if (!windowOpen(publication)) {
+    // Simulación (no se abrió Facebook) o una ventana que ya se cerró.
+    deps.print(renderPublicationResult(publication, c));
+    if (publication.manual?.simulated ?? publication.dryRun) {
+      deps.print(c.dim("  Simulación: no se abrió Facebook"));
+    }
+    return 0;
+  }
+  deps.print(
+    `${c.green("✓")} Formulario listo: revisa la ventana de Chromium, haz clic en Siguiente y Publicar`,
+  );
+  if (publication.manual !== null) {
+    deps.print(c.dim(`  Precio en el formulario: ${marketplacePriceText(publication.manual)}`));
+  }
+  deps.print(c.dim("  Espero el enlace del aviso hasta 30 min: la ventana lo detecta sola"));
+  const done = await waitForRun<ManualWait>(
+    {
+      ...deps,
+      wait: { ...deps.wait, maxWaitMs: deps.wait?.maxWaitMs ?? MARKETPLACE_CONFIRM_CLIENT_WAIT_MS },
+    },
+    {
+      run: { status: "waiting", publication },
+      fetch: async () => {
+        const { publication: current } = await unwrap(
+          deps.client.publications[":id"].$get({ param: { id: publication.id } }),
+          publicationResponseSchema,
+        );
+        return { status: windowOpen(current) ? "waiting" : "done", publication: current };
+      },
+      isTerminal: (wait) => wait.status === "done",
+      progress: () => "esperando el enlace",
+      isQueued: () => false,
+      laterCommand: `agentsales publications ${ref}`,
+      noun: "el enlace del aviso",
+    },
+  );
+  const current = done?.publication ?? publication;
+  if (current.status === "published") {
+    deps.print(renderPublicationResult(current, c));
+    return 0;
+  }
+  if (current.status === "awaiting_manual_confirm") {
+    deps.print(
+      c.yellow(
+        current.manual?.windowClosedAt != null
+          ? "La ventana se cerró sin que viera el aviso publicado: ¿lo publicaste?"
+          : "No vi el enlace del aviso: ¿lo publicaste?",
+      ),
+    );
+    for (const line of manualCommandLines(current.id, c)) deps.print(`  ${line}`);
+    return 0;
+  }
+  // Se marcó como no publicada o se descartó mientras se esperaba.
+  deps.print(renderPublicationResult(current, c));
+  return 1;
+}
+
 export function register(program: Command, ctx: CliContext): void {
   program
     .command("publish")
     .description(
-      "Publica una propiedad aprobada (Instagram: carrusel y reel; Portal: el aviso) y espera el resultado",
+      "Publica una propiedad aprobada (Instagram: carrusel y reel; Portal: el aviso; Marketplace: llena el formulario y espera tu clic) y espera el resultado",
     )
     .argument("<propiedad>", "id_propiedad del Excel, o el id del aviso")
-    .option("--platform <canal>", "canal: instagram o portal", "instagram")
+    .option("--platform <canal>", "canal: instagram, portal o marketplace", "instagram")
     .option("--broker <slug>", "corredor, si el id_propiedad está en más de uno")
     .option("--no-wait", "imprime los ids de las publicaciones y sale sin esperar")
     .option("--yes", "no pide confirmación con la API en vivo")

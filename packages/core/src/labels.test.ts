@@ -13,6 +13,8 @@ import {
   IMPORT_ROW_OUTCOME_TEXT,
   IMPORT_RUN_STATUS_TEXT,
   LISTING_STATUS_TEXT,
+  manualConfirmCommands,
+  marketplaceConnectCommand,
   mercadoLibreConnectCommands,
   OPERATION_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
@@ -61,11 +63,22 @@ describe("textos para el operador", () => {
     });
     expect(mercadoLibreConnectCommands("a b").paste).toContain("--broker 'a b' --url-stdin");
   });
+
+  it("marketplaceConnectCommand y manualConfirmCommands (spec F5 §4.12)", () => {
+    expect(marketplaceConnectCommand("agentsales-pruebas")).toBe(
+      "pnpm -s cli accounts connect marketplace --broker agentsales-pruebas",
+    );
+    expect(manualConfirmCommands("pub-1")).toEqual({
+      confirm: "pbpaste | pnpm -s cli publications confirm pub-1 --url-stdin",
+      notPublished: "pnpm -s cli publications not-published pub-1",
+    });
+  });
 });
 
 describe("publicationFormatText (F4-T20)", () => {
   it("en Portal el formato es el aviso; en Instagram, carrusel o reel", () => {
     expect(publicationFormatText("portal_inmobiliario", "post")).toBe("aviso");
+    expect(publicationFormatText("fb_marketplace", "post")).toBe("aviso");
     expect(publicationFormatText("instagram", "post")).toBe("carrusel");
     expect(publicationFormatText("instagram", "reel")).toBe("reel");
   });

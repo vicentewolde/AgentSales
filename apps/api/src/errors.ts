@@ -4,7 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 // El cuerpo de error vive en los contratos compartidos (ADR-0011): un cambio rompe el typecheck
 // de la API, la CLI y el panel a la vez.
-import { type ErrorBody, portalReadinessSchema } from "./contracts/index.js";
+import { type ErrorBody, errorBodySchema, readinessSchema } from "./contracts/index.js";
 import type { AppLogger } from "./logger.js";
 
 export type { ErrorBody };
@@ -59,7 +59,24 @@ const CONFLICTS = new Set([
   "ML_CONFLICT",
   // Sin un paquete con cupo (un 402 sin causas, spec F4 §4.8): se revisa el paquete en Mercado Libre.
   "ML_NO_QUOTA",
+  // Marketplace (spec F5 §4.10): al aviso le falta lo que pide el formulario (con `issues`), la
+  // cuenta llegó a su límite de hoy u otra tiene el formulario abierto; una publicación espera el
+  // clic final (descartar, quitar la aprobación, desconectar); ya se confirmó con otro enlace; falta
+  // confirmar la desconexión; otra acción del perfil de Facebook espera su turno.
+  "MARKETPLACE_NOT_READY",
+  "MARKETPLACE_DAILY_LIMIT",
+  "MARKETPLACE_FORM_OPEN",
+  "MANUAL_CONFIRM_PENDING",
+  "PUBLICATION_ALREADY_CONFIRMED",
+  "DISCONNECT_NOT_CONFIRMED",
+  "MARKETPLACE_PROFILE_ACTION_PENDING",
 ]);
+
+/**
+ * Lo que el cliente tiene que mandar y no mandó (400), sin el sufijo `_INVALID`: confirmar en vivo
+ * una de Marketplace sin el enlace del aviso (spec F5 §4.3).
+ */
+const CLIENT_MISSING = new Set(["MARKETPLACE_URL_REQUIRED"]);
 
 /**
  * Errores de la plataforma que llegan a la API al conectar (spec F3 §4.8) y, desde F4-T19, en
@@ -79,8 +96,18 @@ const PLATFORM_REJECTIONS = new Set([
   "ML_REQUEST_REJECTED",
 ]);
 
-/** Una respuesta de la plataforma con otra forma: un fallo de ella (502). */
-const PLATFORM_UNEXPECTED = new Set(["IG_UNEXPECTED_RESPONSE", "ML_UNEXPECTED_RESPONSE"]);
+/**
+ * Una respuesta de la plataforma con otra forma: un fallo de ella (502). La UF (spec F5 §4.6): la
+ * API no la consulta (sus errores viajan en `last_error`), pero si uno llegara, un valor ilegible o
+ * fuera de rango es un fallo del Banco Central, no del cliente.
+ */
+const PLATFORM_UNEXPECTED = new Set([
+  "IG_UNEXPECTED_RESPONSE",
+  "ML_UNEXPECTED_RESPONSE",
+  "UF_UNEXPECTED_RESPONSE",
+  "UF_VALUE_INVALID",
+  "UF_VALUE_SUSPICIOUS",
+]);
 
 /**
  * La API no puede hablar con la plataforma por su propia configuración (falta el par de la app, o
@@ -92,6 +119,11 @@ const NOT_CONFIGURED = new Set([
   // F4-T19: la API no tiene las operaciones de esa plataforma (no debería pasar: `server.ts` las
   // compone).
   "PUBLISHER_NOT_CONFIGURED",
+  // La UF (spec F5 §4.6): sin token del Banco Central, o con uno que rechaza; el Banco Central
+  // todavía no publica el valor de hoy (se reintenta más tarde).
+  "UF_SOURCE_NOT_CONFIGURED",
+  "UF_SOURCE_AUTH_INVALID",
+  "UF_VALUE_MISSING",
 ]);
 
 /**
@@ -103,6 +135,8 @@ const BUSY = new Set([
   // F4-T19: una operación cortada por el tope de la API (las rutas de operaciones le ponen su
   // mensaje: ya pidió el sync).
   "ML_ABORTED",
+  // F5: el perfil de Facebook lo tiene otra ventana un momento.
+  "MARKETPLACE_PROFILE_BUSY",
 ]);
 
 /**
@@ -124,6 +158,14 @@ const SERVER_INVALID = new Set([
   "ML_PICTURE_INVALID",
   // Lo que informó la plataforma no calza con `remoteStateSchema` (el sync, F4-T17).
   "PUBLICATION_REMOTE_STATE_INVALID",
+  // F5 (spec F5 §4.10): pedir un token a una cuenta sin credenciales (por su sufijo caería en 503),
+  // credenciales que faltan o sobran según la plataforma (errores de programación), y lo que arma
+  // el worker con el perfil de Facebook (su carpeta, el id de la sesión).
+  "ACCESS_TOKEN_UNAVAILABLE",
+  "ACCOUNT_CREDENTIALS_REQUIRED",
+  "ACCOUNT_CREDENTIALS_NOT_ALLOWED",
+  "MARKETPLACE_PROFILE_PATH_INVALID",
+  "MARKETPLACE_SESSION_ID_INVALID",
 ]);
 
 /**
@@ -133,6 +175,7 @@ const SERVER_INVALID = new Set([
 export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "INVALID_TRANSITION" || CONFLICTS.has(code)) return 409;
   if (code === "REQUEST_TOO_LARGE") return 413;
+  if (CLIENT_MISSING.has(code)) return 400;
   if (PLATFORM_REJECTIONS.has(code)) return 400;
   if (PLATFORM_UNEXPECTED.has(code)) return 502;
   if (NOT_CONFIGURED.has(code) || BUSY.has(code)) return 503;
@@ -147,18 +190,18 @@ export function httpStatusFor(code: string): ContentfulStatusCode {
   return 500;
 }
 
+/** Lo que un error suma a `code` y `message` (`issues`, `publicationId`), ya validado. */
+type ErrorExtras = Pick<ErrorBody["error"], "issues" | "publicationId">;
+
 export function errorJson(
   c: Context,
   status: ContentfulStatusCode,
   code: string,
   message: string,
   headers?: Headers,
-  issues?: ErrorBody["error"]["issues"],
+  extras: ErrorExtras = {},
 ): Response {
-  const response = c.json<ErrorBody>(
-    { error: { code, message, ...(issues === undefined ? {} : { issues }) } },
-    status,
-  );
+  const response = c.json<ErrorBody>({ error: { code, message, ...extras } }, status);
   headers?.forEach((value, name) => {
     if (name !== "content-type" && name !== "content-length") {
       response.headers.set(name, value);
@@ -167,26 +210,45 @@ export function errorJson(
   return response;
 }
 
+/** Los errores que dicen qué le falta al aviso para un canal (`issues`). */
+const READINESS_CODES = new Set(["PORTAL_NOT_READY", "MARKETPLACE_NOT_READY"]);
+
+/** Los errores que nombran la publicación de Marketplace que espera el clic final. */
+const WAITING_PUBLICATION_CODES = new Set(["MANUAL_CONFIRM_PENDING", "MARKETPLACE_FORM_OPEN"]);
+
 /**
- * Lo que le falta al aviso para Portal (`PORTAL_NOT_READY`, desde F4-T19): la única parte de
- * `details` que sale, campo por campo y validada (código, campo del Excel y motivo en español, sin
- * datos del aviso). Si no calza, la respuesta va sin ella.
+ * Lo único de `details` que sale (seguimiento de ADR-0011), campo por campo y validado; si no
+ * calza, la respuesta va sin ello:
+ * - `issues` de `PORTAL_NOT_READY` (desde F4-T19) y `MARKETPLACE_NOT_READY` (F5-T08): código,
+ *   campo del Excel y motivo en español, sin datos del aviso;
+ * - `publicationId` de `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` (F5-T08): la publicación
+ *   que espera el clic final (un id, para ofrecer "lo publiqué" o "no lo publiqué").
  */
-function issuesOf(code: string, details: Record<string, unknown> | undefined) {
-  if (code !== "PORTAL_NOT_READY") return undefined;
-  const parsed = portalReadinessSchema.shape.issues.safeParse(details?.issues);
-  return parsed.success
-    ? parsed.data.map(({ code: issueCode, field, message }) => ({
-        code: issueCode,
-        field,
-        message,
-      }))
-    : undefined;
+function extrasOf(code: string, details: Record<string, unknown> | undefined): ErrorExtras {
+  if (READINESS_CODES.has(code)) {
+    const parsed = readinessSchema.shape.issues.safeParse(details?.issues);
+    return parsed.success
+      ? {
+          issues: parsed.data.map(({ code: issueCode, field, message }) => ({
+            code: issueCode,
+            field,
+            message,
+          })),
+        }
+      : {};
+  }
+  if (WAITING_PUBLICATION_CODES.has(code)) {
+    const parsed = errorBodySchema.shape.error.shape.publicationId.safeParse(
+      details?.publicationId,
+    );
+    return parsed.success && parsed.data !== undefined ? { publicationId: parsed.data } : {};
+  }
+  return {};
 }
 
 /**
  * Traduce cualquier error a `{ error: { code, message } }`:
- * - nunca expone `details` ni `cause`, salvo los `issues` de `PORTAL_NOT_READY`;
+ * - nunca expone `details` ni `cause`, salvo lo que deja pasar `extrasOf`;
  * - un 500 responde un mensaje genérico (el `code` sí se mantiene): el detalle queda en el log;
  * - un error que no es `AppError` responde `500 INTERNAL_ERROR`.
  */
@@ -205,7 +267,7 @@ export function createErrorHandler(logger: AppLogger): ErrorHandler {
         error.code,
         error.message,
         undefined,
-        issuesOf(error.code, error.details),
+        extrasOf(error.code, error.details),
       );
     }
     // `hono/validator` rechaza un JSON mal formado con su propio 400 en inglés: mismo trato que

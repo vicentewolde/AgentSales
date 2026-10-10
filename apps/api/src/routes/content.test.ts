@@ -382,6 +382,14 @@ describe("GET /listings/:id/content", () => {
       latestRun: null,
       // Lo que le falta al aviso para Portal (F4-T19): la lista completa, con su motivo.
       portalReadiness: { ready: true, issues: [] },
+      // Lo que le falta para Marketplace (F5-T08): sin fotos, y el precio en UF sin el token.
+      marketplaceReadiness: {
+        ready: false,
+        issues: [
+          expect.objectContaining({ code: "MARKETPLACE_PHOTOS_MISSING", field: null }),
+          expect.objectContaining({ code: "UF_SOURCE_NOT_CONFIGURED", field: null }),
+        ],
+      },
     });
     expect((await t.app.request(`/listings/${randomUUID()}/content`)).status).toBe(404);
   });

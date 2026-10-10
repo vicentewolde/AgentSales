@@ -7,6 +7,7 @@ import type {
   ContentRunReport,
   ContentRunStage,
   ImportReport,
+  MarketplaceStartOptions,
   NewContent,
   NewListing,
   PublicationOperations,
@@ -150,7 +151,7 @@ export function harness(options: HarnessOptions = {}) {
 
 /**
  * Un aviso preparado con la cuenta conectada (el escenario de publicación de core, con ids uuid; de
- * Instagram, o de Portal con `platform`) y la CLI sobre la API real en proceso. `h.*` son los
+ * Instagram, o de Portal o Marketplace con `platform`) y la CLI sobre la API real en proceso. `h.*` son los
  * repositorios del arnés; los del escenario están en `t`. `operations` son las de Portal que usa la
  * API (dobles: nunca Mercado Libre).
  */
@@ -160,8 +161,10 @@ export async function publicationHarness(
     account?: boolean;
     publishMode?: PublishMode;
     queueFails?: () => AppError | undefined;
-    platform?: "instagram" | "portal_inmobiliario";
+    platform?: "instagram" | "portal_inmobiliario" | "fb_marketplace";
     operations?: PublicationOperations;
+    /** Marketplace: el límite y si hay token de la UF (por defecto, 3 y con token). */
+    marketplace?: MarketplaceStartOptions;
     beforeRequest?: HarnessOptions["beforeRequest"];
     afterResponse?: HarnessOptions["afterResponse"];
   } = {},
@@ -191,6 +194,7 @@ export async function publicationHarness(
       queue: t.deps.queue,
       publishMode: options.publishMode ?? "dry-run",
       operationsFor: (platform) => (platform === "portal_inmobiliario" ? operations : undefined),
+      marketplace: options.marketplace ?? { dailyLimit: 3, ufConfigured: true },
     },
   });
   return { h, t };
