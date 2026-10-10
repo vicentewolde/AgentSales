@@ -83,40 +83,81 @@ export type MarketplaceLoginWait =
   | { outcome: "unreachable" };
 
 /**
- * La espera del inicio de sesión (spec F5 §4.2 y §4.12): mira `GET /accounts` cada 2 s hasta que
- * `marketplaceLoginOutcome` (core, la misma regla que la CLI) diga conectada o fallida, o hasta el
- * tope (`MARKETPLACE_LOGIN_CLIENT_WAIT_MS`); aguanta `MARKETPLACE_WAIT_MAX_POLL_FAILURES` consultas
- * fallidas seguidas. Al terminar, vuelve a pedir las cuentas de la página.
+ * Un paso de la espera del inicio de sesión (pura, para probarla sin relojes): con lo que dijo la
+ * consulta (`null` si falló), las fallas seguidas y el tiempo esperado, en qué quedó. Una consulta
+ * buena reinicia las fallas; `MARKETPLACE_WAIT_MAX_POLL_FAILURES` seguidas es `unreachable`; pasado
+ * `MARKETPLACE_LOGIN_CLIENT_WAIT_MS` sin resultado, `timeout`.
+ */
+export function loginWaitStep({
+  result,
+  failures,
+  elapsedMs,
+}: {
+  result: MarketplaceLoginOutcome | null;
+  failures: number;
+  elapsedMs: number;
+}): { wait: MarketplaceLoginWait; failures: number } {
+  if (result !== null && result.outcome !== "pending") return { wait: result, failures: 0 };
+  const next = result === null ? failures + 1 : 0;
+  if (next >= MARKETPLACE_WAIT_MAX_POLL_FAILURES) {
+    return { wait: { outcome: "unreachable" }, failures: next };
+  }
+  return {
+    wait:
+      elapsedMs >= MARKETPLACE_LOGIN_CLIENT_WAIT_MS
+        ? { outcome: "timeout" }
+        : { outcome: "pending" },
+    failures: next,
+  };
+}
+
+/** La clave de la espera: fuera de `accountKeys.all`, así otra invalidación no la reinicia. */
+const loginWaitKey = (request: MarketplaceLoginRequest | null) =>
+  ["marketplace-login", request?.brokerId, request?.requestedAt.getTime()] as const;
+
+/**
+ * La espera del inicio de sesión (spec F5 §4.2 y §4.12): mira `GET /accounts` cada 2 s
+ * (`refetchInterval`: se pausa con la pestaña oculta) hasta que `marketplaceLoginOutcome` (core, la
+ * misma regla que la CLI) diga conectada o fallida, o hasta `loginWaitStep` diga que se deja de
+ * esperar. Con un resultado final deja de consultar y vuelve a pedir las cuentas de la página.
  */
 export function useMarketplaceLoginWait(request: MarketplaceLoginRequest | null) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   const failures = useRef(0);
+  const key = loginWaitKey(request);
+  const lastKey = useRef(JSON.stringify(key));
+  if (lastKey.current !== JSON.stringify(key)) {
+    lastKey.current = JSON.stringify(key);
+    failures.current = 0;
+  }
+  const finished = (data: MarketplaceLoginWait | undefined) =>
+    data !== undefined && data.outcome !== "pending";
+  const cached = queryClient.getQueryData<MarketplaceLoginWait>(key);
   const query = useQuery({
-    queryKey: [...accountKeys.all, "login", request?.brokerId, request?.requestedAt.getTime()],
-    enabled: request !== null,
+    queryKey: key,
+    enabled: request !== null && !finished(cached),
     queryFn: async ({ signal }): Promise<MarketplaceLoginWait> => {
       if (request === null) return { outcome: "pending" };
+      let result: MarketplaceLoginOutcome | null = null;
       try {
         const { accounts } = await unwrap(
           client.accounts.$get(undefined, { init: { signal } }),
           accountListResponseSchema,
         );
-        failures.current = 0;
-        const result = marketplaceLoginOutcome(accounts, request);
-        if (result.outcome !== "pending") return result;
+        result = marketplaceLoginOutcome(accounts, request);
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") throw error;
-        failures.current += 1;
-        if (failures.current >= MARKETPLACE_WAIT_MAX_POLL_FAILURES)
-          return { outcome: "unreachable" };
       }
-      return Date.now() - request.startedAt >= MARKETPLACE_LOGIN_CLIENT_WAIT_MS
-        ? { outcome: "timeout" }
-        : { outcome: "pending" };
+      const step = loginWaitStep({
+        result,
+        failures: failures.current,
+        elapsedMs: Date.now() - request.startedAt,
+      });
+      failures.current = step.failures;
+      return step.wait;
     },
-    refetchInterval: (current) =>
-      current.state.data?.outcome === "pending" ? RUN_WAIT.pollMs : false,
+    refetchInterval: (current) => (finished(current.state.data) ? false : RUN_WAIT.pollMs),
     staleTime: Number.POSITIVE_INFINITY,
   });
   const outcome = query.data?.outcome;

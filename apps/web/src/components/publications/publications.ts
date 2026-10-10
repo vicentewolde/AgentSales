@@ -91,7 +91,7 @@ export function publishBlockedReason(
  * o un aviso al que le falta algo (`PORTAL_NOT_READY`, `MARKETPLACE_NOT_READY`). La API lo vuelve a
  * revisar al publicar.
  */
-export function portalPublishBlockedReason(
+export function readinessPublishBlockedReason(
   content: ContentView | undefined,
   readiness: ReadinessView | null,
   channel = "Portal",
@@ -100,7 +100,9 @@ export function portalPublishBlockedReason(
     return "La revisión del texto tiene errores: quita la aprobación, corrígelo y vuelve a aprobarlo.";
   }
   if (readiness !== null && !readiness.ready) {
-    return `Falta información para ${channel} (arriba): complétala y vuelve a intentarlo.`;
+    return channel === "Portal"
+      ? "Falta información para Portal (arriba): complétala en la planilla y vuelve a importarla."
+      : `Falta información para ${channel} (arriba): complétala y vuelve a intentarlo.`;
   }
   return null;
 }

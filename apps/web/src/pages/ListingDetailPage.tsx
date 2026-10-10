@@ -176,7 +176,7 @@ function DetailView({ detail }: { detail: Detail }) {
       <ContentSection
         listingId={listing.id}
         listingStatus={listing.status}
-        listingPrice={formatListingPrice(listing)}
+        listingPrice={listing}
       />
     </>
   );

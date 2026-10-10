@@ -3,6 +3,7 @@ import type { ListingStatus, PublishMode } from "@agentsales/core";
 import type { ReactNode } from "react";
 import { editBlockedReason } from "../publications/publications.js";
 import { ApprovalBar } from "./ApprovalBar.js";
+import type { ListingPrice } from "./marketplace.js";
 import { EditableText } from "./TextEditor.js";
 
 /**
@@ -19,10 +20,10 @@ export type EditContext = {
   publications: readonly ListingPublicationView[];
   publishMode: PublishMode | undefined;
   /**
-   * El precio del aviso como está en la planilla (`UF 5.800`), para el plan B de Marketplace cuando
+   * El precio del aviso como está en la planilla, para el plan B de Marketplace cuando
    * ningún intento lo convirtió a pesos (el panel no consulta la UF; spec F5 §4.12).
    */
-  listingPrice: string | null;
+  listingPrice: ListingPrice | null;
 };
 
 /** El texto con su aprobación y su edición (bloqueada si tiene publicaciones activas). */

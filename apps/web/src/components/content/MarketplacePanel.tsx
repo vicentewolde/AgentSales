@@ -4,11 +4,12 @@ import type {
   ListingPublicationView,
   ReadinessView,
 } from "@agentsales/api/contracts";
-import { marketplacePriceText } from "@agentsales/core";
 import { useState } from "react";
-import { marketplaceIssuesHint, PortalIssueList } from "../PortalIssueList.js";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
+import { safeExternalUrl } from "../publications/publications.js";
+import { marketplaceIssuesHint, ReadinessIssueList } from "../ReadinessIssueList.js";
 import { ApprovableText, type EditContext } from "./ApprovableText.js";
+import { type ListingPrice, planBPrice } from "./marketplace.js";
 
 const MARKETPLACE = "fb_marketplace";
 
@@ -31,7 +32,7 @@ function MarketplaceReadiness({ readiness }: { readiness: ReadinessView }) {
       className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"
     >
       <p className="font-semibold text-amber-900">Para publicar en Marketplace falta:</p>
-      <PortalIssueList issues={readiness.issues} className="text-amber-900" />
+      <ReadinessIssueList issues={readiness.issues} className="text-amber-900" />
       {hint !== "" && <p className="mt-1 text-xs text-amber-800">{hint}</p>}
     </section>
   );
@@ -69,22 +70,6 @@ function CopyButton({ text, label, children }: { text: string; label: string; ch
 }
 
 /**
- * El precio para pegar a mano: en pesos si un intento lo convirtió (el de la publicación más
- * reciente con formulario), y si no, el de la planilla sin convertir (el panel no consulta la UF).
- */
-function planBPrice(
-  publications: readonly ListingPublicationView[],
-  listingPrice: string | null,
-): string {
-  const converted = [...publications]
-    .filter((publication) => publication.manual !== null)
-    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]?.manual;
-  if (converted != null) return marketplacePriceText(converted);
-  if (listingPrice === null) return "—";
-  return `${listingPrice} (sin convertir: Marketplace lo pide en pesos)`;
-}
-
-/**
  * Plan B (spec F5 §4.12, D13): publicar a mano en Facebook si el formulario cambió o el robot no
  * sirve. Copiar el título y la descripción aprobados, el precio y abrir cada foto para bajarla.
  */
@@ -97,7 +82,7 @@ function PlanB({
   content: ContentView | undefined;
   photos: ContentMedia[];
   publications: readonly ListingPublicationView[];
-  listingPrice: string | null;
+  listingPrice: ListingPrice | null;
 }) {
   return (
     <details className="mt-4 rounded-lg border border-slate-200 p-3 text-sm">
@@ -138,17 +123,23 @@ function PlanB({
           <dd className="flex flex-wrap gap-2">
             {photos.length === 0
               ? "—"
-              : photos.map((photo, index) => (
-                  <a
-                    key={photo.id}
-                    href={photo.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sky-700 underline"
-                  >
-                    Abrir foto {index + 1}
-                  </a>
-                ))}
+              : photos.map((photo, index) => {
+                  // Solo `https` (la URL firmada de R2): otra cosa no va a un `href`.
+                  const href = safeExternalUrl(photo.url);
+                  return href === null ? (
+                    <span key={photo.id}>Foto {index + 1}</span>
+                  ) : (
+                    <a
+                      key={photo.id}
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sky-700 underline"
+                    >
+                      Abrir foto {index + 1}
+                    </a>
+                  );
+                })}
           </dd>
         </div>
       </dl>

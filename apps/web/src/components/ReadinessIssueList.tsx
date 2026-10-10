@@ -32,7 +32,7 @@ export function marketplaceIssuesHint(issues: readonly ReadinessIssueView[]): st
  * de `PORTAL_NOT_READY` y `MARKETPLACE_NOT_READY`, spec F4 §4.11 y F5 §4.10): un motivo por línea
  * con su columna del Excel. Lo usan las pestañas Portal y Marketplace y `ErrorAlert`.
  */
-export function PortalIssueList({
+export function ReadinessIssueList({
   issues,
   className,
 }: {

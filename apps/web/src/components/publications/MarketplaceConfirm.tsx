@@ -1,6 +1,6 @@
 import type { ListingPublicationView } from "@agentsales/api/contracts";
 import { isMarketplaceItemUrl, manualWaitingText, marketplacePriceText } from "@agentsales/core";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { type PublicationAction, useManualWaitRefresh } from "../../queries/publications.js";
 
 const BUTTON =
@@ -32,6 +32,12 @@ export function MarketplaceConfirm({
   useManualWaitRefresh(listingId, manual?.windowOpen ? manual.formReadyAt : null);
   const [url, setUrl] = useState("");
   const [denying, setDenying] = useState(false);
+  const denyButton = useRef<HTMLButtonElement>(null);
+  const cancelDeny = () => {
+    setDenying(false);
+    // El botón vuelve a aparecer: el foco vuelve a él.
+    requestAnimationFrame(() => denyButton.current?.focus());
+  };
   const inputId = useId();
   const errorId = useId();
   const live = !publication.dryRun;
@@ -93,7 +99,7 @@ export function MarketplaceConfirm({
               // biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación
               autoFocus
               className="text-xs underline"
-              onClick={() => setDenying(false)}
+              onClick={cancelDeny}
             >
               Cancelar
             </button>
@@ -112,6 +118,7 @@ export function MarketplaceConfirm({
             {live ? "Lo publiqué" : "Lo publiqué (simulación)"}
           </button>
           <button
+            ref={denyButton}
             type="button"
             className={BUTTON}
             disabled={pending}

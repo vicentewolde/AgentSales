@@ -421,12 +421,21 @@ describe("panel: Cuentas", () => {
       fireEvent.click(await screen.findByRole("button", { name: "Iniciar sesión en Facebook" }));
       expect(await screen.findByText(/Se abrirá una ventana de Chromium/)).toBeTruthy();
       expect(requests).toContain("POST /accounts/marketplace/login");
+      // Mientras espera, otro clic no encola otra ventana.
+      const button = screen.getByRole("button", { name: "Iniciar sesión en Facebook" });
+      expect((button as HTMLButtonElement).disabled).toBe(true);
 
       // El worker ve la sesión y conecta la cuenta.
       await connect({ sessionCheckedAt: new Date(Date.now() + 1_000).toISOString() });
       const card = await marketplaceCard();
       expect(within(card).getByText("conectada")).toBeTruthy();
       expect(card.textContent).toContain("Sesión vista");
+      // La caja sigue a la vista con el resultado, y ofrece iniciar sesión de nuevo.
+      expect(await screen.findByText("Listo: la cuenta quedó conectada.")).toBeTruthy();
+      expect(screen.getByText("Iniciar sesión de nuevo en Facebook")).toBeTruthy();
+      expect(
+        requests.filter((request) => request === "POST /accounts/marketplace/login"),
+      ).toHaveLength(1);
     });
 
     it("si el inicio de sesión falla, muestra el motivo en la caja y en la tarjeta", async () => {
@@ -443,9 +452,20 @@ describe("panel: Cuentas", () => {
         },
       });
 
+      // En la caja de iniciar sesión y en la tarjeta de la cuenta.
+      const box = (await screen.findByText("Reconectar Marketplace")).closest("div");
+      if (box === null) throw new Error("falta la caja");
       expect(
-        (await screen.findAllByText(/Pasaron 10 minutos sin que se iniciara la sesión/)).length,
-      ).toBeGreaterThan(0);
+        await within(box).findByText(/Pasaron 10 minutos sin que se iniciara la sesión/),
+      ).toBeTruthy();
+      expect(
+        await within(await marketplaceCard()).findByText(/Pasaron 10 minutos sin que se iniciara/),
+      ).toBeTruthy();
+      // Terminada la espera, se puede volver a intentar.
+      expect(
+        (screen.getByRole("button", { name: "Iniciar sesión en Facebook" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
     });
 
     it("el último inicio de sesión fallido solo se muestra si es posterior a la sesión vista", async () => {

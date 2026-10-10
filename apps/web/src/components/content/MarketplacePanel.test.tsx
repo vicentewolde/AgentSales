@@ -200,7 +200,35 @@ describe("panel: Marketplace en Contenido", () => {
     await s.awaiting();
     const panel = await s.tab();
     expect(panel.textContent).toContain("Una publicación espera tu clic final");
+    const unapprove = within(panel).getByRole("button", {
+      name: "Quitar aprobación de Facebook Marketplace",
+    });
+    expect((unapprove as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("con la ventana abierta vuelve a mirar: ve cuando se cierra sin tocar nada", async () => {
+    const s = await setup();
+    const publication = await s.awaiting();
+    const item = await aviso(await s.tab());
+    expect(item.textContent).toContain("Formulario listo");
+
+    // El worker anota que la ventana se cerró; el panel lo ve en la próxima relectura (5 s).
+    await s.t.publications.updateProgress(
+      publication.id,
+      { from: "awaiting_manual_confirm", attempts: publication.attempts },
+      {
+        ...(publication.progress as Record<string, unknown>),
+        windowClosedAt: new Date().toISOString(),
+      },
+    );
+    expect(
+      await within(await screen.findByRole("tabpanel")).findByText(
+        "La ventana se cerró: ¿lo publicaste?",
+        {},
+        { timeout: 8_000 },
+      ),
+    ).toBeTruthy();
+  }, 12_000);
 
   it("publicada: el enlace, el precio y Marcar como retirada después de borrarla a mano", async () => {
     const s = await setup();
@@ -231,12 +259,15 @@ describe("panel: Marketplace en Contenido", () => {
     expect(within(item).queryByLabelText(/Enlace del aviso/)).toBeNull();
     fireEvent.click(within(item).getByRole("button", { name: "Lo publiqué (simulación)" }));
     await vi.waitFor(() => expect(s.only().status).toBe("published"));
+    expect(s.bodies).toContainEqual({ path: `/publications/${s.only().id}/confirm`, body: {} });
   });
 
   it("plan B: copia el título y la descripción, y el precio sin convertir hasta un intento", async () => {
     const writeText = vi.fn(async () => {});
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
     const s = await setup();
+    // Como R2: URLs firmadas `https` (el almacenamiento en memoria usa `memory://`).
+    s.t.storage.signedReadUrl = async (path) => `https://r2.test/${path}?firma`;
     const panel = await s.tab();
     fireEvent.click(within(panel).getByText("Publicar a mano (plan B)"));
 

@@ -13,6 +13,7 @@ import { useHealth } from "../../queries/health.js";
 import { useListingPublications } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { prepareBlockedReason } from "../publications/publications.js";
+import type { ListingPrice } from "./marketplace.js";
 import { Preview } from "./Preview.js";
 import { RunProgress, RunResult } from "./RunStatus.js";
 
@@ -37,7 +38,7 @@ export function ContentSection({
   listingId: string;
   listingStatus: ListingStatus;
   /** El precio del aviso como en la planilla, para el plan B de Marketplace. */
-  listingPrice?: string | null;
+  listingPrice?: ListingPrice | null;
 }) {
   const content = useListingContent(listingId);
   const request = useRequestContentRun(listingId);

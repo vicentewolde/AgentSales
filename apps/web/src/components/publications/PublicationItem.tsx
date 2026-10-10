@@ -62,11 +62,11 @@ const SIMULATION_TEXT: Readonly<Record<ListingPublicationView["platform"], strin
   fb_marketplace: "Simulación: no se abrió ni publicó nada en Facebook.",
 };
 
-/** Qué agrega la confirmación de reintentar en vivo según el canal. */
-const LIVE_RETRY_EXTRA: Partial<Record<ListingPublicationView["platform"], string>> = {
-  portal_inmobiliario: " y usará un cupo de tu paquete",
-  fb_marketplace: ": se abre una ventana de Chromium con un formulario nuevo",
-};
+/** La confirmación de reintentar en vivo según el canal (Marketplace: quien publica es el operador). */
+const liveRetryText = (publication: ListingPublicationView, format: string, channel: string) =>
+  publication.platform === "fb_marketplace"
+    ? "La API está en vivo: se abrirá Chromium con un formulario nuevo de Facebook Marketplace; tú haces Siguiente y Publicar."
+    : `La API está en vivo: el ${format} se publicará de verdad en ${channel}${publication.platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.`;
 
 /** Una fecha en hora de Chile (el vencimiento en la plataforma). */
 const dateText = (iso: string) =>
@@ -411,8 +411,7 @@ export function PublicationItem({
       {confirming === "live-retry" && (
         <div role="alert" className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-sm">
           <p className="font-semibold text-red-800">
-            La API está en vivo: el {format} se publicará de verdad en {channel}
-            {LIVE_RETRY_EXTRA[publication.platform] ?? ""}.
+            {liveRetryText(publication, format, channel)}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button

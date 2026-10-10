@@ -1,5 +1,11 @@
+import { manualConfirmCommands } from "@agentsales/core";
 import { ApiError } from "../api/client.js";
-import { marketplaceIssuesHint, PortalIssueList, portalIssuesHint } from "./PortalIssueList.js";
+import { CopyCommand } from "./accounts/CopyCommand.js";
+import {
+  marketplaceIssuesHint,
+  portalIssuesHint,
+  ReadinessIssueList,
+} from "./ReadinessIssueList.js";
 
 /** Qué hacer ante los errores de la API que tienen arreglo del lado del operador. */
 function hintFor(error: Error): string | null {
@@ -20,7 +26,7 @@ function hintFor(error: Error): string | null {
     return marketplaceIssuesHint(error instanceof ApiError ? (error.issues ?? []) : []) || null;
   // Marketplace (spec F5 §4.3 y §4.7): primero se dice si la que espera salió o no.
   if (code === "MANUAL_CONFIRM_PENDING" || code === "MARKETPLACE_FORM_OPEN")
-    return "En su tarjeta de Marketplace, pega el enlace y marca Lo publiqué, o marca No lo publiqué.";
+    return "Primero di si se publicó: en la tarjeta de Marketplace de esa propiedad (pega el enlace y marca Lo publiqué, o No lo publiqué) o con estos comandos. Si su formulario todavía se está llenando, espera a que quede listo.";
   if (code === "MARKETPLACE_DAILY_LIMIT")
     return "El límite cuenta los intentos en vivo de hoy (hora de Chile): sigue mañana.";
   if (code === "PUBLISHER_NOT_CONFIGURED")
@@ -42,8 +48,32 @@ function IssueList({ error }: { error: Error }) {
   return (
     <>
       <p className="font-semibold text-red-800">Falta información para publicar en {channel}:</p>
-      <PortalIssueList issues={issues} className="text-red-800" />
+      <ReadinessIssueList issues={issues} className="text-red-800" />
     </>
+  );
+}
+
+/**
+ * `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` nombran la publicación de Marketplace con el
+ * formulario abierto (`publicationId`, spec F5 §4.10): los dos comandos para cerrarla, como en la
+ * CLI (`manualConfirmCommands`), porque puede ser de otra propiedad.
+ */
+function WaitingCommands({ error }: { error: Error }) {
+  if (
+    !(error instanceof ApiError) ||
+    (error.code !== "MANUAL_CONFIRM_PENDING" && error.code !== "MARKETPLACE_FORM_OPEN") ||
+    error.publicationId === undefined
+  ) {
+    return null;
+  }
+  const commands = manualConfirmCommands(error.publicationId);
+  return (
+    <div className="mt-2 text-sm text-red-800">
+      <p>Si la publicaste:</p>
+      <CopyCommand command={commands.confirm} label="Copiar el comando de Lo publiqué" />
+      <p className="mt-1">Si no:</p>
+      <CopyCommand command={commands.notPublished} label="Copiar el comando de No lo publiqué" />
+    </div>
   );
 }
 
@@ -67,6 +97,7 @@ export function ErrorAlert({
     <div role="alert" className="mt-6 rounded-lg border border-red-300 bg-red-50 p-4">
       <IssueList error={error} />
       {hint && <p className="mt-1 text-sm text-red-700">{hint}</p>}
+      <WaitingCommands error={error} />
       {onRetry && (
         <button
           type="button"

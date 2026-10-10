@@ -16,9 +16,9 @@ import { ErrorAlert } from "../ErrorAlert.js";
 import { PublicationItem } from "./PublicationItem.js";
 import {
   needsLiveConfirm,
-  portalPublishBlockedReason,
   publishBlockedReason,
   publishButtonText,
+  readinessPublishBlockedReason,
   retireVerb,
   retryBlockedReason,
 } from "./publications.js";
@@ -37,12 +37,11 @@ const ACCOUNT_TEXT: Partial<Record<Platform, string>> = {
   fb_marketplace: "la cuenta de Facebook",
 };
 
-/** Qué agrega la confirmación de publicar en vivo según el canal. */
-const LIVE_EXTRA: Partial<Record<Platform, string>> = {
-  portal_inmobiliario: " y usará un cupo de tu paquete",
-  fb_marketplace:
-    ": se abre una ventana de Chromium con el formulario lleno y tú haces Siguiente y Publicar",
-};
+/** La confirmación de publicar en vivo según el canal (Marketplace: quien publica es el operador, D3). */
+const liveConfirmText = (platform: Platform, channel: string) =>
+  platform === "fb_marketplace"
+    ? "La API está en vivo: se abrirá Chromium con el formulario de Facebook Marketplace lleno de verdad; tú haces Siguiente y Publicar."
+    : `La API está en vivo: se publicará de verdad en ${channel}${platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.`;
 
 /**
  * Las publicaciones de un canal del aviso (spec F3 §4.9; Portal desde F4-T22): Publicar el canal
@@ -92,9 +91,9 @@ export function PublicationsPanel({
   const blocked =
     publishBlockedReason(listingStatus, runActive) ??
     (platform === "portal_inmobiliario"
-      ? portalPublishBlockedReason(content, readiness)
+      ? readinessPublishBlockedReason(content, readiness)
       : platform === "fb_marketplace"
-        ? portalPublishBlockedReason(content, readiness, "Marketplace")
+        ? readinessPublishBlockedReason(content, readiness, "Marketplace")
         : null) ??
     (publishMode === undefined
       ? "Todavía no se sabe si la API está en simulación o en vivo."
@@ -130,10 +129,7 @@ export function PublicationsPanel({
         <div className="mt-2">
           {confirming ? (
             <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm">
-              <p className="font-semibold text-red-800">
-                La API está en vivo: se publicará de verdad en {channel}
-                {LIVE_EXTRA[platform] ?? ""}.
-              </p>
+              <p className="font-semibold text-red-800">{liveConfirmText(platform, channel)}</p>
               <div className="mt-2 flex gap-2">
                 <button type="button" className={DANGER} onClick={start}>
                   Sí, publicar en vivo

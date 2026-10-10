@@ -6,8 +6,8 @@ import type {
 } from "@agentsales/api/contracts";
 import { PLATFORM_TEXT, PLATFORMS, type Platform } from "@agentsales/core";
 import { type KeyboardEvent, useRef, useState } from "react";
-import { PortalIssueList, portalIssuesHint } from "../PortalIssueList.js";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
+import { portalIssuesHint, ReadinessIssueList } from "../ReadinessIssueList.js";
 import { ApprovableText, type EditContext } from "./ApprovableText.js";
 import { captionPreview } from "./caption.js";
 import { MarketplacePanel } from "./MarketplacePanel.js";
@@ -123,7 +123,7 @@ function PortalReadiness({ readiness }: { readiness: PortalReadinessView }) {
       className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"
     >
       <p className="font-semibold text-amber-900">Para publicar en Portal falta:</p>
-      <PortalIssueList issues={readiness.issues} className="text-amber-900" />
+      <ReadinessIssueList issues={readiness.issues} className="text-amber-900" />
       <p className="mt-1 text-xs text-amber-800">{portalIssuesHint(readiness.issues)}</p>
     </section>
   );

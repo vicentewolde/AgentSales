@@ -116,9 +116,13 @@ function BrokerAccounts({
         accounts={marketplace.shown}
         now={now}
       >
-        {marketplace.offerConnect && (
-          <MarketplaceConnectBox broker={broker} reconnect={marketplace.reconnect} />
-        )}
+        {/* Siempre: sin vencimiento que avise, una sesión cerrada en Facebook no se ve hasta
+            publicar, y la caja muestra el resultado de su espera. */}
+        <MarketplaceConnectBox
+          broker={broker}
+          connected={!marketplace.offerConnect}
+          reconnect={marketplace.reconnect}
+        />
       </Channel>
     </section>
   );
@@ -127,7 +131,7 @@ function BrokerAccounts({
 /**
  * Página Cuentas (spec F3 §4.9 y, desde F4-T21, spec F4 §4.12; Marketplace desde F5-T12): por
  * corredor, su cuenta de Instagram, la de Mercado Libre y la de Facebook, conectar o reconectar y
- * desconectar. No sondea: vuelve a pedir
+ * desconectar. No sondea (salvo mientras espera un inicio de sesión de Marketplace): vuelve a pedir
  * las cuentas al volver a la pestaña (TanStack Query), lo que cubre una conexión hecha desde la CLI.
  */
 export function AccountsPage() {

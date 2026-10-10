@@ -4,11 +4,11 @@ import {
   approveBlockedReason,
   editBlockedReason,
   needsLiveConfirm,
-  portalPublishBlockedReason,
   prepareBlockedReason,
   publicationActions,
   publishBlockedReason,
   publishButtonText,
+  readinessPublishBlockedReason,
   retryBlockedReason,
   safeExternalUrl,
   unapproveBlockedReason,
@@ -159,27 +159,27 @@ describe("publicationActions", () => {
   });
 });
 
-describe("portalPublishBlockedReason (F4-T22)", () => {
+describe("readinessPublishBlockedReason (F4-T22)", () => {
   const ready = { ready: true, issues: [] };
   it("un texto aprobado con errores en su revisión, o un aviso al que le falta algo, bloquean", () => {
     const withErrors = content({
       platform: "portal_inmobiliario",
       checks: [{ code: "NUMBER_NOT_IN_DATA", severity: "error", message: "Un número no calza" }],
     });
-    expect(portalPublishBlockedReason(withErrors, ready)).toContain("quita la aprobación");
+    expect(readinessPublishBlockedReason(withErrors, ready)).toContain("quita la aprobación");
     expect(
-      portalPublishBlockedReason(content({ platform: "portal_inmobiliario" }), {
+      readinessPublishBlockedReason(content({ platform: "portal_inmobiliario" }), {
         ready: false,
         issues: [{ code: "PORTAL_WHATSAPP_MISSING", field: null, message: "Falta el WhatsApp" }],
       }),
     ).toContain("Falta información para Portal");
     expect(
-      portalPublishBlockedReason(content({ platform: "portal_inmobiliario" }), ready),
+      readinessPublishBlockedReason(content({ platform: "portal_inmobiliario" }), ready),
     ).toBeNull();
-    expect(portalPublishBlockedReason(undefined, null)).toBeNull();
+    expect(readinessPublishBlockedReason(undefined, null)).toBeNull();
     // Marketplace (F5-T13): la misma regla, nombrando el canal.
     expect(
-      portalPublishBlockedReason(
+      readinessPublishBlockedReason(
         content({ platform: "fb_marketplace" }),
         { ready: false, issues: [{ code: "UF_SOURCE_NOT_CONFIGURED", field: null, message: "x" }] },
         "Marketplace",

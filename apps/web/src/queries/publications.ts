@@ -285,20 +285,35 @@ export const usePublicationsRefresh = (listingId: string) => useRefreshAfter(lis
 export const MANUAL_WAIT_REFRESH_MS = 5_000;
 
 /**
+ * ¿Toca volver a mirar una de Marketplace con la ventana abierta? (pura, para probarla sin relojes):
+ * solo con la pestaña a la vista y antes del tope de la ventana (`MARKETPLACE_CONFIRM_CLIENT_WAIT_MS`
+ * desde que quedó listo el formulario).
+ */
+export function manualWaitDue(formReadyAt: number, now: number, visible: boolean): boolean {
+  return visible && now - formReadyAt < MARKETPLACE_CONFIRM_CLIENT_WAIT_MS;
+}
+
+/**
  * Marketplace con la ventana de Chromium abierta (spec F5 §4.5 y §4.12): el worker confirma solo si
- * ve el aviso, o anota que la ventana se cerró. Mientras tanto se vuelve a pedir el listado cada 5 s,
- * hasta el tope de la ventana (`MARKETPLACE_CONFIRM_CLIENT_WAIT_MS` desde que quedó listo).
+ * ve el aviso, o anota que la ventana se cerró. Mientras tanto se vuelve a pedir **solo** el listado
+ * de publicaciones del aviso cada 5 s (`manualWaitDue`: con la pestaña a la vista y hasta el tope).
+ * Cuando cambia el estado, la tarjeta deja de esperar y lo demás se refresca con la acción.
  */
 export function useManualWaitRefresh(listingId: string, formReadyAt: Date | null) {
-  const refresh = useRefreshAfter(listingId);
+  const queryClient = useQueryClient();
   const since = formReadyAt?.getTime() ?? null;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `refresh` es nuevo en cada render; basta con el formulario.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: basta con el aviso y el formulario.
   useEffect(() => {
-    if (since === null || Date.now() - since >= MARKETPLACE_CONFIRM_CLIENT_WAIT_MS) return;
+    if (since === null || !manualWaitDue(since, Date.now(), true)) return;
     const timer = setInterval(() => {
-      if (Date.now() - since >= MARKETPLACE_CONFIRM_CLIENT_WAIT_MS) clearInterval(timer);
-      else refresh();
+      if (Date.now() - since >= MARKETPLACE_CONFIRM_CLIENT_WAIT_MS) {
+        clearInterval(timer);
+        return;
+      }
+      if (manualWaitDue(since, Date.now(), document.visibilityState === "visible")) {
+        void queryClient.invalidateQueries({ queryKey: publicationKeys.listing(listingId) });
+      }
     }, MANUAL_WAIT_REFRESH_MS);
     return () => clearInterval(timer);
-  }, [since]);
+  }, [since, listingId]);
 }
