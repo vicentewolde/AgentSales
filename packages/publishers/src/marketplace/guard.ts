@@ -42,12 +42,13 @@ export function pathOf(url: string): string {
 /**
  * Clasifica la página **solo para decidir si detenerse** (D5): mira la ruta, si hay un campo de
  * contraseña o un captcha, y el texto visible contra listas fijas. No guarda nada de lo leído.
- * El orden importa: una verificación gana a todo (aunque la página traiga el formulario detrás).
+ * El orden importa: una verificación (ruta, captcha o texto) gana a todo, también a un inicio de
+ * sesión; después el inicio de sesión (ruta o campo de contraseña) y Marketplace no disponible. Lo
+ * conocido gana al formulario aunque la página lo traiga detrás.
  */
 export async function classifyPage(page: Page): Promise<MarketplacePageKind> {
   const path = pathOf(page.url());
   if (VERIFICATION_PATHS.some((pattern) => pattern.test(path))) return "verification";
-  if (LOGIN_PATHS.some((pattern) => pattern.test(path))) return "login";
   if ((await page.locator(CAPTCHA_FRAME).count()) > 0) return "verification";
   const text = plain(
     await page
@@ -56,8 +57,9 @@ export async function classifyPage(page: Page): Promise<MarketplacePageKind> {
       .catch(() => ""),
   );
   if (VERIFICATION_TEXTS.some((phrase) => text.includes(phrase))) return "verification";
-  if (UNAVAILABLE_TEXTS.some((phrase) => text.includes(phrase))) return "unavailable";
+  if (LOGIN_PATHS.some((pattern) => pattern.test(path))) return "login";
   if ((await page.locator(PASSWORD_INPUT).count()) > 0) return "login";
+  if (UNAVAILABLE_TEXTS.some((phrase) => text.includes(phrase))) return "unavailable";
   if (MARKETPLACE_CREATE_PATH.test(path) && (await page.locator(FORM_ROOT).count()) > 0) {
     return "form";
   }

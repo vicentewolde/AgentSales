@@ -88,7 +88,7 @@ agentsales/
 │   ├── llm/          Proveedores (solo transporte): claude-cli, anthropic-api, fake. Los prompts viven en core (ADR-0013)
 │   ├── media/        Procesamiento de imagen y video (sharp, ffmpeg) y render de HTML (Playwright)
 │   ├── templates/    Plantillas HTML/CSS de posts (portada, ficha y texto del reel)
-│   ├── publishers/   instagram (F3: cliente de la Graph API, OAuth, errores, validación y publisher); mercadolibre (F4: OAuth, usuario, errores, ítems, fotos, catálogo con caché, `validate`, `buildPortalItem`, el publisher de Portal con `preflight`, `createPortalOperations`, y los clientes de paquetes y usuarios de prueba que usan `ml:smoke` y `ml:test-user`); fb-marketplace en F5; marketplace (F5, subruta `@agentsales/publishers/marketplace` que solo importa el worker: perfil del navegador con candado, lista blanca, evidencia del formulario y la ventana vigilada; ADR-0017)
+│   ├── publishers/   instagram (F3: cliente de la Graph API, OAuth, errores, validación y publisher); mercadolibre (F4: OAuth, usuario, errores, ítems, fotos, catálogo con caché, `validate`, `buildPortalItem`, el publisher de Portal con `preflight`, `createPortalOperations`, y los clientes de paquetes y usuarios de prueba que usan `ml:smoke` y `ml:test-user`); marketplace (F5, subruta `@agentsales/publishers/marketplace` que solo importa el worker: perfil del navegador con candado, lista blanca, evidencia del formulario y la ventana vigilada; ADR-0017)
 │   └── config/       Variables de entorno validadas (zod), logger pino, redactor de secretos, resumen de errores repetidos y, desde F3, cifrado y firma (crypto.ts)
 ├── .github/          CI (GitHub Actions)
 ├── docs/             Documentación (esta carpeta)

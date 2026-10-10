@@ -51,7 +51,6 @@ const mercadoLibreRedirectUri = z.string().superRefine((value, ctx) => {
 
 // Variables obsoletas: una que cambiaría el comportamiento se avisa en vez de ignorarla en silencio.
 
-/** Variables que cambiaron de nombre (spec F3, D5). */
 /**
  * Dónde viven los perfiles del navegador de Marketplace por defecto: fuera del proyecto, para que
  * ni git ni una herramienta que lea el proyecto vea la sesión de Facebook (spec F5 §4.2).
@@ -69,6 +68,7 @@ const browserProfilesDir = z
     "debe ser una ruta absoluta o empezar con ~/, fuera del proyecto (guarda la sesión de Facebook)",
   );
 
+/** Variables que cambiaron de nombre (spec F3, D5). */
 const RENAMED_VARIABLES: Readonly<Record<string, string>> = {
   META_APP_ID: "INSTAGRAM_APP_ID",
   META_APP_SECRET: "INSTAGRAM_APP_SECRET",

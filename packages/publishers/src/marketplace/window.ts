@@ -12,6 +12,11 @@ export type MarketplaceWindowWatch = {
   onItemUrl(url: string): void | Promise<void>;
   /** La ventana se cerró sin ver el aviso: se llama una sola vez. */
   onClosed(reason: MarketplaceWindowClosedReason): void | Promise<void>;
+  /**
+   * Un `onItemUrl` u `onClosed` que falló (por ejemplo, la base no respondió): nunca sale como un
+   * rechazo suelto, que tumbaría el proceso. Sin esto, se ignora.
+   */
+  onError?(error: unknown): void;
 };
 
 /**
@@ -35,8 +40,10 @@ export type MarketplaceWindow = {
  *   el enlace). Otras pestañas y navegaciones posteriores se ignoran: un aviso ajeno que el operador
  *   abra no se confunde con el suyo. Que Facebook lleve a esa ruta después de Publicar es NO
  *   VERIFICADO (nota §4.2).
- * - **Cierre:** si el operador cierra la ventana, `onClosed("closed")`; si vence el tope, la cierra
- *   y `onClosed("timeout")`.
+ * - **Cierre:** si el operador cierra la ventana (o solo la pestaña del formulario: el perfil se
+ *   cierra igual, para soltarlo), `onClosed("closed")`; si vence el tope, la cierra y
+ *   `onClosed("timeout")`. Si `onItemUrl` falla, la ventana se cierra y se avisa `onClosed("closed")`:
+ *   el aviso no quedó registrado, así que la publicación sigue esperando la palabra del operador.
  */
 export function createMarketplaceWindow(profile: MarketplaceProfile): MarketplaceWindow {
   let watching = false;
@@ -61,6 +68,20 @@ export function createMarketplaceWindow(profile: MarketplaceProfile): Marketplac
       watching = true;
       const { page, context } = profile;
       let armed = MARKETPLACE_CREATE_PATH.test(pathOf(page.url()));
+      /** Llama a un aviso sin dejar escapar sus errores (síncronos o no). */
+      const call = async (fn: () => void | Promise<void>): Promise<boolean> => {
+        try {
+          await fn();
+          return true;
+        } catch (error) {
+          try {
+            handlers.onError?.(error);
+          } catch {
+            // Un `onError` que falla tampoco debe tumbar el proceso.
+          }
+          return false;
+        }
+      };
 
       const onNavigated = (frame: Frame) => {
         if (done || !armed || frame !== page.mainFrame()) return;
@@ -70,14 +91,20 @@ export function createMarketplaceWindow(profile: MarketplaceProfile): Marketplac
         const itemId = MARKETPLACE_ITEM_PATH.exec(path)?.[1];
         if (itemId === undefined) return;
         finish();
-        void Promise.resolve(handlers.onItemUrl(marketplaceItemUrl(itemId))).finally(() => close());
+        const url = marketplaceItemUrl(itemId);
+        void call(() => handlers.onItemUrl(url)).then(async (saved) => {
+          await close();
+          if (!saved) await call(() => handlers.onClosed("closed"));
+        });
       };
       page.on("framenavigated", onNavigated);
 
       const onWindowClosed = () => {
         if (done || closingOnPurpose) return;
         finish();
-        void handlers.onClosed("closed");
+        // Cerrar solo la pestaña deja el navegador abierto con el perfil tomado: se cierra todo.
+        closingOnPurpose = true;
+        void profile.close().finally(() => call(() => handlers.onClosed("closed")));
       };
       page.on("close", onWindowClosed);
       context.on("close", onWindowClosed);
@@ -87,7 +114,7 @@ export function createMarketplaceWindow(profile: MarketplaceProfile): Marketplac
         if (done) return;
         finish();
         closingOnPurpose = true;
-        void profile.close().finally(() => handlers.onClosed("timeout"));
+        void profile.close().finally(() => call(() => handlers.onClosed("timeout")));
       }, timeoutMs);
       timer.unref?.();
     },

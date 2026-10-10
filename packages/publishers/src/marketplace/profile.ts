@@ -1,4 +1,4 @@
-import { chmod, mkdir, open, readFile, rm } from "node:fs/promises";
+import { chmod, link, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type BrowserContext, chromium, type Page } from "playwright";
 import { MARKETPLACE_ERRORS, withoutPaths } from "./errors.js";
@@ -31,11 +31,16 @@ export type MarketplaceProfile = {
   readonly page: Page;
   /** El id de la cookie de sesión (`c_user`) si existe y es numérico; nunca otra cookie. */
   sessionUserId(): Promise<string | null>;
+  /** Si existe la cookie de sesión y si es un número, sin devolver su valor (`fb:smoke`). */
+  sessionCookie(): Promise<{ present: boolean; numeric: boolean }>;
   /** Si el perfil sigue abierto (la ventana no se cerró). */
   isOpen(): boolean;
   /** Cierra la ventana y libera el perfil. Idempotente. */
   close(): Promise<void>;
 };
+
+/** El id de una cuenta de Facebook en la cookie de sesión: solo dígitos. */
+const SESSION_ID = /^\d{1,30}$/;
 
 /** Los perfiles que este proceso tiene abiertos: el candado de archivo no ve los propios. */
 const openInProcess = new Set<string>();
@@ -102,13 +107,23 @@ export async function openMarketplaceProfile(
       throw error;
     }
     const page = context.pages()[0] ?? (await context.newPage());
+    /** El valor de `c_user` y de ninguna otra: las demás no salen de aquí. */
+    const readSessionCookie = async () =>
+      (await context.cookies(FACEBOOK_ORIGIN)).find((cookie) => cookie.name === SESSION_COOKIE)
+        ?.value;
     return {
       context,
       page,
       async sessionUserId() {
-        const cookies = await context.cookies(FACEBOOK_ORIGIN);
-        const value = cookies.find((cookie) => cookie.name === SESSION_COOKIE)?.value;
-        return value !== undefined && /^\d{1,30}$/.test(value) ? value : null;
+        const value = await readSessionCookie();
+        return value !== undefined && SESSION_ID.test(value) ? value : null;
+      },
+      async sessionCookie() {
+        const value = await readSessionCookie();
+        return {
+          present: value !== undefined,
+          numeric: value !== undefined && SESSION_ID.test(value),
+        };
       },
       isOpen: () => open,
       async close() {
@@ -123,30 +138,47 @@ export async function openMarketplaceProfile(
 }
 
 /**
- * Toma el candado de archivo (`open` con `wx`): si existe y su pid sigue vivo, el perfil está
- * ocupado; si el pid murió (un proceso que cayó sin soltarlo), se borra y se toma. Devuelve el
- * que lo suelta.
+ * Toma el candado de archivo: escribe el pid en un temporal propio y lo enlaza como candado con
+ * `link`, que falla si ya existe (así el candado nunca se ve vacío). Si existe y su pid sigue vivo,
+ * el perfil está ocupado; si el pid murió (un proceso que cayó sin soltarlo), se borra y se
+ * reintenta una vez. Dos procesos que encuentran a la vez un candado muerto podrían tomarlo los
+ * dos; el `SingletonLock` de Chromium los separa igual (`MARKETPLACE_PROFILE_BUSY` al abrir).
+ * Devuelve el que lo suelta.
  */
 async function acquireLock(lockPath: string): Promise<() => Promise<void>> {
-  for (let tries = 0; tries < 2; tries += 1) {
-    try {
-      const handle = await open(lockPath, "wx", 0o600);
-      await handle.writeFile(String(process.pid));
-      await handle.close();
-      return async () => {
-        await rm(lockPath, { force: true });
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const owner = Number.parseInt(await readFile(lockPath, "utf8").catch(() => ""), 10);
-      if (Number.isInteger(owner) && owner > 0 && isAlive(owner)) {
-        throw MARKETPLACE_ERRORS.profileBusy();
+  const mine = `${lockPath}.${process.pid}.tmp`;
+  await writeFile(mine, String(process.pid), { mode: 0o600 });
+  try {
+    for (let tries = 0; tries < 2; tries += 1) {
+      try {
+        await link(mine, lockPath);
+        return async () => {
+          await rm(lockPath, { force: true });
+        };
+      } catch (error) {
+        if (errnoOf(error) !== "EEXIST") throw error;
+        const seen = await readFile(lockPath, "utf8").catch(() => "");
+        const owner = Number.parseInt(seen, 10);
+        if (Number.isInteger(owner) && owner > 0 && isAlive(owner)) {
+          throw MARKETPLACE_ERRORS.profileBusy();
+        }
+        // Solo si sigue siendo el mismo candado muerto (otro pudo tomarlo recién).
+        if ((await readFile(lockPath, "utf8").catch(() => null)) === seen) {
+          await rm(lockPath, { force: true });
+        }
       }
-      await rm(lockPath, { force: true });
     }
+    throw MARKETPLACE_ERRORS.profileBusy();
+  } finally {
+    await rm(mine, { force: true });
   }
-  throw MARKETPLACE_ERRORS.profileBusy();
 }
+
+/** El código de un error del sistema (`EEXIST`, `EPERM`…), o `undefined`. */
+const errnoOf = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
 
 /** Si un proceso existe (señal 0: no lo toca). */
 function isAlive(pid: number): boolean {
@@ -154,6 +186,6 @@ function isAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
+    return errnoOf(error) === "EPERM";
   }
 }

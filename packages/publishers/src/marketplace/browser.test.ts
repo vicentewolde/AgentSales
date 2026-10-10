@@ -20,11 +20,18 @@ const setup = async (routes = DEFAULT_ROUTES) => {
 };
 
 afterEach(async () => {
-  // Ningún test puede haber pedido algo fuera de las páginas locales (ni Facebook de verdad).
-  expect(facebook?.unexpected ?? []).toEqual([]);
-  await facebook?.cleanup();
+  const current = facebook;
   facebook = undefined;
+  try {
+    // Ningún test puede haber pedido algo fuera de las páginas locales (ni Facebook de verdad).
+    expect(current?.unexpected ?? []).toEqual([]);
+  } finally {
+    await current?.cleanup();
+  }
 });
+
+/** Deja pasar un rato, para afirmar que un aviso no llega dos veces. */
+const settleMore = () => new Promise((resolve) => setTimeout(resolve, 150));
 
 const withRoutes = (extra: Record<string, string>) => ({ ...DEFAULT_ROUTES, ...extra });
 
@@ -54,6 +61,8 @@ describe("lista blanca (requireForm)", () => {
     ["/marketplace/create/rental", "verification-text.html", "MARKETPLACE_VERIFICATION_REQUIRED"],
     ["/marketplace/create/rental", "captcha.html", "MARKETPLACE_VERIFICATION_REQUIRED"],
     ["/marketplace/create/rental", "login.html", "MARKETPLACE_SESSION_EXPIRED"],
+    ["/marketplace/create/rental", "login-form.html", "MARKETPLACE_SESSION_EXPIRED"],
+    ["/login.php", "captcha.html", "MARKETPLACE_VERIFICATION_REQUIRED"],
     ["/marketplace/create/rental", "unavailable.html", "MARKETPLACE_UNAVAILABLE"],
     ["/marketplace/create/rental", "unknown.html", "MARKETPLACE_FORM_CHANGED"],
   ])("en %s (%s) se detiene con %s, sin reintento", async (path, fixture, code) => {
@@ -65,6 +74,19 @@ describe("lista blanca (requireForm)", () => {
       code,
       retriable: false,
     });
+  });
+
+  it("el Facebook falso corta lo que no tiene página local (nada sale a la red)", async () => {
+    const fb = await setup();
+    const { page } = await fb.open();
+    await page.goto("https://www.facebook.com/no-existe/").catch(() => undefined);
+    await page.goto("https://example.test/").catch(() => undefined);
+
+    expect(fb.unexpected).toEqual([
+      "GET https://www.facebook.com/no-existe/",
+      "GET https://example.test/",
+    ]);
+    fb.unexpected.length = 0;
   });
 
   it("la evidencia de una detención es solo la ruta, sin consulta", async () => {
@@ -142,6 +164,19 @@ describe("evidencia del formulario", () => {
     expect((await readFile(evidence.screenshot)).subarray(1, 4).toString()).toBe("PNG");
     expect((await stat(dir)).mode & 0o777).toBe(0o700);
   });
+
+  it("dentro de un contenedor principal, guarda el formulario y no lo que lo rodea", async () => {
+    const fb = await setup(withRoutes({ "/marketplace/create/rental": "form-in-main.html" }));
+    const { page } = await fb.open();
+    await page.goto(MARKETPLACE_FORM_URL);
+    await requireForm(page, { timeoutMs: 2_000 });
+
+    const evidence = await captureFormEvidence(page, join(fb.root, "evidencia"), "formulario");
+
+    const aria = await readFile(evidence.aria, "utf8");
+    expect(aria).toContain("Precio");
+    expect(aria).not.toContain("Nombre Inventado del Operador");
+  });
 });
 
 describe("ventana vigilada", () => {
@@ -181,7 +216,36 @@ describe("ventana vigilada", () => {
 
     expect(items).toEqual(["https://www.facebook.com/marketplace/item/123/"]);
     await expect.poll(() => profile.isOpen()).toBe(false);
+    await settleMore();
+    expect(items).toHaveLength(1);
     expect(closed).toEqual([]);
+  });
+
+  it("si registrar el aviso falla, avisa el error, cierra y deja la publicación esperando", async () => {
+    const fb = await setup();
+    const profile = await fb.open();
+    await profile.page.goto(MARKETPLACE_FORM_URL);
+    const window = createMarketplaceWindow(profile);
+    const closed: MarketplaceWindowClosedReason[] = [];
+    const errors: unknown[] = [];
+    window.watch(
+      {
+        onItemUrl: () => {
+          throw new Error("la base no respondió");
+        },
+        onClosed: (reason) => {
+          closed.push(reason);
+        },
+        onError: (error) => errors.push(error),
+      },
+      { timeoutMs: 10_000 },
+    );
+
+    await profile.page.locator("#publicar").click();
+
+    await expect.poll(() => closed).toEqual(["closed"]);
+    expect(errors).toHaveLength(1);
+    expect(profile.isOpen()).toBe(false);
   });
 
   it("los pasos dentro del flujo de crear siguen esperando el aviso", async () => {
@@ -231,6 +295,21 @@ describe("ventana vigilada", () => {
 
     expect(closed).toEqual(["closed"]);
     expect(items).toEqual([]);
+    await settleMore();
+    expect(closed).toHaveLength(1);
+  });
+
+  it("cerrar solo la pestaña del formulario también suelta el perfil", async () => {
+    const fb = await setup();
+    const { profile, closed, settled } = await watched(fb);
+
+    await profile.page.close();
+    await settled;
+
+    expect(closed).toEqual(["closed"]);
+    await expect.poll(() => profile.isOpen()).toBe(false);
+    const again = await fb.open();
+    expect(again.isOpen()).toBe(true);
   });
 
   it("al vencer el tope cierra la ventana y avisa", async () => {

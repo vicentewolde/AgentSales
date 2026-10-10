@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { type BrokerRepository, isAppError } from "@agentsales/core";
 import {
   captureFormEvidence,
@@ -9,7 +9,6 @@ import {
   type MarketplaceProfile,
   pathOf,
   requireForm,
-  SESSION_COOKIE,
   stopErrorOf,
 } from "@agentsales/publishers/marketplace";
 import { describeUnexpected } from "./ig-smoke.js";
@@ -26,6 +25,11 @@ export type FbSmokeDeps = {
   now(): Date;
   print(line: string): void;
   printError(line: string): void;
+  /**
+   * Se llama con el perfil todavía abierto, justo antes de cerrarlo (los tests miran la página:
+   * que no se escribió nada ni se hizo clic).
+   */
+  beforeClose?(profile: MarketplaceProfile): Promise<void>;
   /** Esperas: inyectables para los tests. */
   loginWaitMs?: number;
   pollMs?: number;
@@ -90,14 +94,17 @@ export async function runFbSmoke(deps: FbSmokeDeps, options: FbSmokeOptions): Pr
       return 1;
     }
     deps.print(`✓ Formulario guardado en ${deps.outputDir}:`);
-    for (const file of summary.files) deps.print(`  ${file}`);
+    for (const file of [...summary.files, "summary.json"]) deps.print(`  ${file}`);
     deps.print("No se llenó nada. Avísale a Claude: revisará solo el árbol del formulario.");
     return 0;
   } catch (error) {
     deps.printError(`✗ ${isAppError(error) ? error.message : describeUnexpected(error)}`);
     return 1;
   } finally {
-    await profile?.close();
+    if (profile !== undefined) {
+      await deps.beforeClose?.(profile).catch(() => undefined);
+      await profile.close();
+    }
   }
 }
 
@@ -114,15 +121,32 @@ async function waitForSession(
   deps: FbSmokeDeps,
   signal: AbortSignal | undefined,
 ): Promise<void> {
-  const deadline = deps.now().getTime() + (deps.loginWaitMs ?? FB_SMOKE_LOGIN_WAIT_MS);
+  const waitMs = deps.loginWaitMs ?? FB_SMOKE_LOGIN_WAIT_MS;
+  const deadline = deps.now().getTime() + waitMs;
+  let warnedVerification = false;
   for (;;) {
     if (signal?.aborted) throw new Error("Se cortó la espera");
-    if (!profile.isOpen()) throw new Error("Se cerró la ventana antes de iniciar sesión");
-    if (await hasSession(profile).catch(() => false)) return;
-    if (deps.now().getTime() >= deadline) {
-      throw new Error("Pasaron 10 minutos sin sesión: vuelve a correr pnpm fb:smoke");
+    if (!profile.isOpen() || profile.page.isClosed()) {
+      throw new Error("Se cerró la ventana antes de iniciar sesión");
     }
-    await profile.page.waitForTimeout(deps.pollMs ?? 2_000).catch(() => undefined);
+    if (await hasSession(profile).catch(() => false)) return;
+    if (
+      !warnedVerification &&
+      (await classifyPage(profile.page).catch(() => null)) === "verification"
+    ) {
+      warnedVerification = true;
+      deps.print(
+        "Facebook pide una verificación: resuélvela a mano en esa ventana (el sistema no la toca).",
+      );
+    }
+    if (deps.now().getTime() >= deadline) {
+      const minutes = Math.max(1, Math.round(waitMs / 60_000));
+      throw new Error(
+        `Pasaron ${minutes} ${minutes === 1 ? "minuto" : "minutos"} sin sesión: vuelve a correr pnpm fb:smoke`,
+      );
+    }
+    // Una pausa del reloj de Node, no de la página: si la ventana se cierra, no gira en vacío.
+    await new Promise((resolve) => setTimeout(resolve, deps.pollMs ?? 2_000));
   }
 }
 
@@ -132,14 +156,9 @@ async function inspectForm(
   deps: FbSmokeDeps,
 ): Promise<FbSmokeSummary> {
   const { page } = profile;
-  const cookieId = await profile.sessionUserId();
-  const cookies = await profile.context.cookies("https://www.facebook.com");
   const base = {
     checkedAt: deps.now().toISOString(),
-    sessionCookie: {
-      present: cookies.some((cookie) => cookie.name === SESSION_COOKIE),
-      numeric: cookieId !== null,
-    },
+    sessionCookie: await profile.sessionCookie(),
   };
   try {
     await requireForm(page, { timeoutMs: deps.formWaitMs ?? 20_000 });
@@ -153,13 +172,14 @@ async function inspectForm(
     ...base,
     outcome: "form",
     finalPath: pathOf(page.url()),
-    files: [evidence.aria, evidence.screenshot],
+    // Solo los nombres: la ruta completa trae el usuario de la Mac.
+    files: [basename(evidence.aria), basename(evidence.screenshot)],
   };
 }
 
 async function writeSummary(deps: FbSmokeDeps, summary: FbSmokeSummary): Promise<void> {
   await mkdir(deps.outputDir, { recursive: true, mode: 0o700 });
-  const path = join(deps.outputDir, "summary.json");
-  await writeFile(path, `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
-  summary.files.push(path);
+  await writeFile(join(deps.outputDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`, {
+    mode: 0o600,
+  });
 }

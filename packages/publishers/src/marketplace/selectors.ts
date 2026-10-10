@@ -83,9 +83,13 @@ export const CAPTCHA_FRAME = 'iframe[src*="captcha" i], iframe[title*="captcha" 
 
 /**
  * El formulario de crear un aviso, reconocido por su control de fotos (provisional: T09 lo cambia
- * por el formulario real del árbol de `fb:smoke`). Es también lo que se captura como evidencia.
+ * por el formulario real del árbol de `fb:smoke`). Es también lo que se captura como evidencia:
+ * primero el `form` (lo más acotado) y, solo si no hay, el contenedor principal, que en Facebook
+ * puede traer más (el nombre o la foto del operador).
  */
-export const FORM_ROOT = 'form:has(input[type="file"]), [role="main"]:has(input[type="file"])';
+export const FORM_ELEMENT = 'form:has(input[type="file"])';
+export const FORM_CONTAINER = '[role="main"]:has(input[type="file"])';
+export const FORM_ROOT = `${FORM_ELEMENT}, ${FORM_CONTAINER}`;
 
 /** Cuánto espera la lista blanca a que aparezca el formulario. */
 export const FORM_WAIT_MS = 20_000;

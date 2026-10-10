@@ -2,7 +2,7 @@ import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "playwright";
 import { pathOf } from "./guard.js";
-import { FORM_ROOT } from "./selectors.js";
+import { FORM_CONTAINER, FORM_ELEMENT } from "./selectors.js";
 
 /** Lo que quedó guardado de una página: los archivos, por nombre. */
 export type MarketplaceEvidence = {
@@ -26,7 +26,8 @@ export async function captureFormEvidence(
 ): Promise<MarketplaceEvidence> {
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await chmod(dir, 0o700);
-  const form = page.locator(FORM_ROOT).first();
+  const element = page.locator(FORM_ELEMENT);
+  const form = ((await element.count()) > 0 ? element : page.locator(FORM_CONTAINER)).first();
   const screenshot = join(dir, `${name}.png`);
   const aria = join(dir, `${name}.aria.yml`);
   await form.screenshot({ path: screenshot, animations: "disabled", timeout: 10_000 });

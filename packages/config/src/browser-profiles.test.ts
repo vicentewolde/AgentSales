@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { resolveBrowserProfilesDir } from "./browser-profiles.js";
 import { EnvError } from "./env.js";
 
-const paths = { homeDir: "/Users/operador", workspaceRoot: "/Users/operador/dev/AgentSales" };
+const paths = {
+  homeDir: "/Users/operador",
+  workspaceRoot: "/Users/operador/dev/AgentSales",
+  caseInsensitive: false,
+};
 
 describe("resolveBrowserProfilesDir", () => {
   it("expande ~/ con la carpeta del usuario", () => {
@@ -36,6 +40,18 @@ describe("resolveBrowserProfilesDir", () => {
       "BROWSER_PROFILES_DIR",
     ]);
     expect((caught as EnvError).message).not.toContain("/Users/operador");
+  });
+
+  it("en macOS (sin distinguir mayúsculas) también reconoce el proyecto escrito de otra forma", () => {
+    expect(() =>
+      resolveBrowserProfilesDir("/users/operador/DEV/agentsales/perfiles", {
+        ...paths,
+        caseInsensitive: true,
+      }),
+    ).toThrow(EnvError);
+    expect(resolveBrowserProfilesDir("/users/operador/DEV/agentsales/perfiles", paths)).toBe(
+      "/users/operador/DEV/agentsales/perfiles",
+    );
   });
 
   it("sin proyecto (un despliegue) solo expande la ruta", () => {

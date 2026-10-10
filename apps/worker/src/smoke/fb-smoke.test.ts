@@ -8,7 +8,7 @@ import {
   openMarketplaceProfile,
 } from "@agentsales/publishers/marketplace";
 import { afterEach, describe, expect, it } from "vitest";
-import { runFbSmoke } from "./fb-smoke.js";
+import { type FbSmokeDeps, runFbSmoke } from "./fb-smoke.js";
 
 // Páginas inventadas: imitan lo mínimo de Facebook. Una app no importa los `test/` de un paquete,
 // así que el test arma su propio Facebook falso (como `ig-smoke.test.ts` con msw).
@@ -22,6 +22,7 @@ const FORM = `<!doctype html><html lang="es"><body>
 const LOGIN = `<!doctype html><html lang="es"><body>
   <form><label>Contraseña <input type="password" /></label></form></body></html>`;
 const HOME = `<!doctype html><html lang="es"><body><h1>Inicio</h1></body></html>`;
+const UNAVAILABLE = `<!doctype html><html lang="es"><body><h1>Marketplace no está disponible para ti</h1></body></html>`;
 const CHECKPOINT = `<!doctype html><html lang="es"><body><h1>Confirma tu identidad</h1></body></html>`;
 
 type Pages = Record<string, string>;
@@ -49,7 +50,7 @@ async function setup(pages: Pages, options: { cookies?: Record<string, string> }
     await profile?.close();
     await rm(root, { recursive: true, force: true });
   });
-  const deps = {
+  const deps: FbSmokeDeps = {
     brokers: { findBySlug: async (slug: string) => (slug === broker.slug ? broker : null) },
     openProfile: async (brokerId: string) => {
       profile = await openMarketplaceProfile({
@@ -107,6 +108,13 @@ async function setup(pages: Pages, options: { cookies?: Record<string, string> }
 describe("pnpm fb:smoke", () => {
   it("con sesión guarda el árbol y la captura del formulario, sin llenar nada, y cierra", async () => {
     const t = await setup({ "/marketplace/create/rental": FORM }, { cookies: { c_user: "1000" } });
+    let page: { clicks: unknown; price: string } | undefined;
+    t.deps.beforeClose = async (profile) => {
+      page = {
+        clicks: await profile.page.evaluate(() => (globalThis as { __clicks?: unknown }).__clicks),
+        price: await profile.page.locator('input[name="precio"]').inputValue(),
+      };
+    };
 
     await expect(runFbSmoke(t.deps, { brokerSlug: broker.slug })).resolves.toBe(0);
 
@@ -123,6 +131,9 @@ describe("pnpm fb:smoke", () => {
     expect(t.profile()?.isOpen()).toBe(false);
     expect(t.unexpected).toEqual([]);
     expect(t.out.join("\n")).toContain("No se llenó nada");
+    // Nada escrito ni clicado en la página, y el resumen sin rutas del disco.
+    expect(page).toEqual({ clicks: undefined, price: "" });
+    expect(summary.files).toEqual(["formulario.aria.yml", "formulario.png"]);
   });
 
   it("sin sesión espera a que el operador la inicie a mano y después guarda el formulario", async () => {
@@ -149,19 +160,50 @@ describe("pnpm fb:smoke", () => {
     t.deps.loginWaitMs = 200;
 
     await expect(runFbSmoke(t.deps, { brokerSlug: broker.slug })).resolves.toBe(1);
-    expect(t.errors.join("\n")).toContain("Pasaron 10 minutos sin sesión");
+    expect(t.errors.join("\n")).toContain("Pasaron 1 minuto sin sesión");
   });
 
-  it("ante una verificación se detiene sin captura, con solo la ruta en el resumen", async () => {
+  it("ante una verificación pide resolverla a mano en la ventana, espera y se rinde al tope", async () => {
     const t = await setup(
       { "/marketplace/create/rental": CHECKPOINT },
       { cookies: { c_user: "1" } },
     );
-    // Con la cookie pero en una verificación no hay sesión: espera; al tope se rinde.
     t.deps.loginWaitMs = 200;
 
     await expect(runFbSmoke(t.deps, { brokerSlug: broker.slug })).resolves.toBe(1);
+    expect(t.out.join("\n")).toContain("resuélvela a mano en esa ventana");
+    expect(t.errors.join("\n")).toContain("sin sesión");
     expect(t.unexpected).toEqual([]);
+  });
+
+  it("con sesión y Marketplace no disponible se detiene sin captura, con solo la ruta", async () => {
+    const t = await setup(
+      { "/marketplace/create/rental": UNAVAILABLE },
+      { cookies: { c_user: "1" } },
+    );
+
+    await expect(runFbSmoke(t.deps, { brokerSlug: broker.slug })).resolves.toBe(1);
+    const summary = JSON.parse(await readFile(join(t.deps.outputDir, "summary.json"), "utf8"));
+    expect(summary).toMatchObject({
+      outcome: "unavailable",
+      finalPath: "/marketplace/create/rental",
+      files: [],
+    });
+    await expect(readFile(join(t.deps.outputDir, "formulario.png"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(t.errors.join("\n")).toContain("Marketplace no está disponible");
+  });
+
+  it("si el operador cierra la ventana mientras espera, termina sin girar en vacío", async () => {
+    const t = await setup({ "/marketplace/create/rental": LOGIN });
+
+    const running = runFbSmoke(t.deps, { brokerSlug: broker.slug });
+    await expect.poll(() => t.out.join("\n")).toContain("Inicia sesión en Facebook");
+    await t.profile()?.context.close();
+
+    await expect(running).resolves.toBe(1);
+    expect(t.errors.join("\n")).toContain("Se cerró la ventana");
   });
 
   it("con sesión pero en otra página se detiene con MARKETPLACE_FORM_CHANGED, sin captura", async () => {
