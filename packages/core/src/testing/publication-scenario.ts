@@ -47,7 +47,9 @@ const text = (value: string) => Uint8Array.from(value, (char) => char.charCodeAt
  */
 export async function createPublicationScenario(
   options: {
-    platform?: "instagram" | "portal_inmobiliario";
+    platform?: "instagram" | "portal_inmobiliario" | "fb_marketplace";
+    /** El reloj de la bitácora de publicaciones (el límite diario de Marketplace cuenta por día). */
+    clock?: () => Date;
     account?: boolean;
     approve?: boolean;
     queueFails?: () => AppError | undefined;
@@ -98,7 +100,9 @@ export async function createPublicationScenario(
   const brokers = createInMemoryBrokerRepository([broker]);
   const fieldDefinitions = createInMemoryFieldDefinitionRepository(contentDefinitionsFixture());
   const platformAccounts = createInMemoryPlatformAccountRepository(ids);
-  const publications = createInMemoryPublicationRepository();
+  const publications = createInMemoryPublicationRepository(
+    options.clock === undefined ? {} : { now: options.clock },
+  );
   const locked: LockedRepositories = {
     brokers,
     listings,
@@ -135,27 +139,41 @@ export async function createPublicationScenario(
   await prepare();
   const platform = options.platform ?? "instagram";
   const connect = () =>
-    platform === "instagram"
+    platform === "fb_marketplace"
       ? platformAccounts.upsertConnected({
           brokerId: broker.id,
-          platform: "instagram",
-          externalAccountId: "17841400000000001",
-          displayName: "@muestra",
+          platform: "fb_marketplace",
+          externalAccountId: "100012345678901",
+          displayName: "Facebook de prueba",
           tokenExpiresAt: null,
-          meta: {},
-          credentials: { accessToken: PUBLICATION_SCENARIO_TOKEN },
+          meta: {
+            userId: "100012345678901",
+            connectedAt: "2026-10-09T12:00:00.000Z",
+            sessionCheckedAt: "2026-10-09T12:00:00.000Z",
+          },
+          credentials: null,
         })
-      : platformAccounts.upsertConnected({
-          brokerId: broker.id,
-          platform: "portal_inmobiliario",
-          externalAccountId: "8035443",
-          displayName: "VICENTEWOLDE",
-          tokenExpiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
-          meta: { accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() },
-          credentials: { ...PORTAL_SCENARIO_TOKENS },
-        });
+      : platform === "instagram"
+        ? platformAccounts.upsertConnected({
+            brokerId: broker.id,
+            platform: "instagram",
+            externalAccountId: "17841400000000001",
+            displayName: "@muestra",
+            tokenExpiresAt: null,
+            meta: {},
+            credentials: { accessToken: PUBLICATION_SCENARIO_TOKEN },
+          })
+        : platformAccounts.upsertConnected({
+            brokerId: broker.id,
+            platform: "portal_inmobiliario",
+            externalAccountId: "8035443",
+            displayName: "VICENTEWOLDE",
+            tokenExpiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
+            meta: { accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() },
+            credentials: { ...PORTAL_SCENARIO_TOKENS },
+          });
   const account = options.account === false ? null : await connect();
-  const contentIdOf = async (wanted: "instagram" | "portal_inmobiliario") =>
+  const contentIdOf = async (wanted: "instagram" | "portal_inmobiliario" | "fb_marketplace") =>
     (await contents.listCurrent(listing.id)).find((item) => item.platform === wanted)?.id ?? "";
   const instagramId = () => contentIdOf("instagram");
   const portalId = () => contentIdOf("portal_inmobiliario");

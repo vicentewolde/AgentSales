@@ -12,6 +12,7 @@ export const JOB_NAMES = [
   "publication.publish",
   "publication.sync",
   "tokens.refresh",
+  "marketplace.profile",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -41,6 +42,21 @@ export const JOB_PAYLOADS = {
    * arrancar y su cron diario. Sin datos: el lote lee las cuentas de la base.
    */
   "tokens.refresh": z.object({}),
+  /**
+   * El perfil del navegador de Marketplace de un corredor (spec F5 §4.2 y §4.11, ADR-0017): `login`
+   * abre la ventana para que el operador inicie sesión y conecta la cuenta (`label` es el nombre
+   * que verá; `requestedAt`, cuándo se pidió); `forget` cierra sus ventanas y borra la carpeta. Los
+   * dos por la misma cola, exclusiva por corredor: nunca se cruzan.
+   */
+  "marketplace.profile": z.discriminatedUnion("action", [
+    z.object({
+      brokerId: z.uuid(),
+      action: z.literal("login"),
+      label: z.string().trim().min(1).max(80).optional(),
+      requestedAt: z.iso.datetime(),
+    }),
+    z.object({ brokerId: z.uuid(), action: z.literal("forget") }),
+  ]),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;

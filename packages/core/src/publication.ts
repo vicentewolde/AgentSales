@@ -280,11 +280,23 @@ export const publishAttemptRecordSchema = z.object({
   brokerContact: z
     .object({ name: z.string(), email: z.string().nullable(), whatsapp: z.string().nullable() })
     .optional(),
+  /** Marketplace (spec F5 §4.6): el precio en pesos del formulario y la UF usada, si se convirtió. */
+  priceClp: z.number().int().nonnegative().optional(),
+  uf: z.object({ date: z.string(), value: z.string() }).nullable().optional(),
 });
 export type PublishAttemptRecord = z.infer<typeof publishAttemptRecordSchema>;
 
-/** Resultado de un intento: publicado, se reintenta (sigue en `publishing`) o quedó `failed`. */
-export const PUBLISH_ATTEMPT_RESULTS = ["published", "retry", "failed"] as const;
+/**
+ * Resultado de un intento: publicado, se reintenta (sigue en `publishing`), quedó `failed` o, en
+ * Marketplace, el formulario quedó listo (`awaiting_manual_confirm`).
+ */
+export const PUBLISH_ATTEMPT_RESULTS = [
+  "published",
+  "retry",
+  "failed",
+  // Marketplace (ADR-0017): el formulario quedó listo para el clic del operador.
+  "awaiting_manual_confirm",
+] as const;
 export type PublishAttemptResult = (typeof PUBLISH_ATTEMPT_RESULTS)[number];
 
 /**

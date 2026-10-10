@@ -190,6 +190,10 @@ export function createInMemoryPlatformAccountRepository(
     async disconnect(id) {
       return save(id, { status: "revoked" }, null);
     },
+    async mergeMeta(id, meta) {
+      const patch = normalizeAccountMeta(meta);
+      return save(id, { meta: { ...find(id).account.meta, ...patch } });
+    },
     storedCredentials(id) {
       const found = stored.get(id);
       return found?.credentials ? { ...found.credentials } : null;

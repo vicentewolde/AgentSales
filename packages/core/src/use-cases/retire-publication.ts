@@ -1,4 +1,5 @@
 import { AppError } from "../errors.js";
+import { PLATFORM_TEXT } from "../labels.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
@@ -60,7 +61,7 @@ export async function retirePublication(
     if (live && !removedByHand) {
       throw new AppError(
         "REMOVAL_NOT_CONFIRMED",
-        "Bórrala a mano en Instagram y confirma que lo hiciste antes de marcarla como retirada",
+        `Bórrala a mano en ${PLATFORM_TEXT[publication.platform]} y confirma que lo hiciste antes de marcarla como retirada`,
         { details: { publicationId } },
       );
     }

@@ -4,10 +4,12 @@ import type { InstagramAuth } from "../ports/instagram-auth.js";
 import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
+  createInMemoryJobQueue,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPublicationRepository,
 } from "../testing/index.js";
 import { connectAccount } from "./connect-account.js";
-import { disconnectAccount } from "./disconnect-account.js";
+import { type DisconnectAccountDeps, disconnectAccount } from "./disconnect-account.js";
 
 const NOW = new Date("2026-10-06T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
@@ -152,6 +154,13 @@ describe("connectAccount", () => {
   });
 });
 
+/** Lo que desconectar necesita además de las cuentas: las publicaciones y la cola (Marketplace). */
+const disconnectDeps = (deps: { platformAccounts: DisconnectAccountDeps["platformAccounts"] }) => ({
+  platformAccounts: deps.platformAccounts,
+  publications: createInMemoryPublicationRepository(),
+  queue: createInMemoryJobQueue(),
+});
+
 describe("disconnectAccount", () => {
   it("deja la cuenta en revoked sin credenciales; repetirlo no cambia nada", async () => {
     const { broker, platformAccounts, deps } = setup();
@@ -159,17 +168,21 @@ describe("disconnectAccount", () => {
       broker: broker.slug,
       grant: { kind: "token", accessToken: "IGAA-panel" },
     });
-    const disconnected = await disconnectAccount(deps, { accountId: account.id });
+    const disconnected = await disconnectAccount(disconnectDeps(deps), { accountId: account.id });
     expect(disconnected).toMatchObject({ status: "revoked", hasCredentials: false });
     expect(platformAccounts.storedCredentials(account.id)).toBeNull();
-    await expect(disconnectAccount(deps, { accountId: account.id })).resolves.toMatchObject({
+    await expect(
+      disconnectAccount(disconnectDeps(deps), { accountId: account.id }),
+    ).resolves.toMatchObject({
       status: "revoked",
     });
   });
 
   it("una cuenta que no existe es ACCOUNT_NOT_FOUND", async () => {
     const { deps } = setup();
-    await expect(disconnectAccount(deps, { accountId: "no-existe" })).rejects.toMatchObject({
+    await expect(
+      disconnectAccount(disconnectDeps(deps), { accountId: "no-existe" }),
+    ).rejects.toMatchObject({
       code: "ACCOUNT_NOT_FOUND",
     });
   });

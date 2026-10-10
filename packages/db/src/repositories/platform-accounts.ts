@@ -257,6 +257,19 @@ export function createPlatformAccountRepository(
       return toAccount(updated);
     },
 
+    async mergeMeta(id, meta) {
+      const patch = normalizeAccountMeta(meta);
+      const [row] = await withDbErrors(() =>
+        db
+          .update(platformAccounts)
+          .set({ meta: sql`${platformAccounts.meta} || ${JSON.stringify(patch)}::jsonb` })
+          .where(eq(platformAccounts.id, id))
+          .returning(),
+      );
+      if (row === undefined) throw notFound(id);
+      return toAccount(row);
+    },
+
     async changeStatus(id, from, to) {
       const changed = await withDbErrors(() =>
         db

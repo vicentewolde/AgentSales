@@ -27,7 +27,13 @@ const notFound = (id: string) =>
   });
 
 /** Doble en memoria de `PublicationRepository`, con la misma semántica que el de Drizzle. */
-export function createInMemoryPublicationRepository(): InMemoryPublicationRepository {
+export function createInMemoryPublicationRepository(
+  options: {
+    /** El reloj de la bitácora (`created_at` de los eventos); por defecto, la hora actual. */
+    now?: () => Date;
+  } = {},
+): InMemoryPublicationRepository {
+  const clock = options.now ?? (() => new Date());
   let nextPublication = 0;
   let nextEvent = 0;
   const publications = new Map<string, { sequence: number; publication: Publication }>();
@@ -53,7 +59,7 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
       toStatus,
       actor,
       payload: normalizeEventPayload(payload),
-      createdAt: new Date(),
+      createdAt: clock(),
     };
     events.push(event);
     return structuredCopy(event);
@@ -191,6 +197,20 @@ export function createInMemoryPublicationRepository(): InMemoryPublicationReposi
       normalizeEventPayload(event.payload);
       find(publicationId);
       return pushEvent(publicationId, event.type, null, null, event);
+    },
+    async countLiveAttemptsSince(platformAccountId, since) {
+      const own = new Set(
+        [...publications.values()]
+          .filter(({ publication }) => publication.platformAccountId === platformAccountId)
+          .map(({ publication }) => publication.id),
+      );
+      return events.filter(
+        (event) =>
+          own.has(event.publicationId) &&
+          event.type === "publish_attempt" &&
+          event.payload.mode === "live" &&
+          event.createdAt.getTime() >= since.getTime(),
+      ).length;
     },
     async listEvents(publicationId) {
       return events

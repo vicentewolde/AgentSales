@@ -10,6 +10,7 @@ import {
   publishPublication,
 } from "@agentsales/core";
 import type { InstagramPublishNote } from "@agentsales/publishers";
+import type { MarketplaceWindows } from "../marketplace/windows.js";
 import { defineJob, type Job, type QueuePolicy } from "./define.js";
 import { PUBLISHED_SYNC_DELAY_MS } from "./publication-sync.js";
 
@@ -51,6 +52,11 @@ export type PublicationPublishJobDeps = {
   signal: AbortSignal;
   /** Reloj para el `startAfter` del sync (los tests fijan uno). */
   now?: () => Date;
+  /**
+   * Las ventanas de Marketplace (spec F5 §4.5): la del formulario listo se vigila recién cuando el
+   * intento terminó en `awaiting_manual_confirm`; en cualquier otra salida se cierra.
+   */
+  marketplaceWindows?: Pick<MarketplaceWindows, "activate" | "discard">;
 };
 
 /** Solo el código: el mensaje o la causa de un error pueden traer el caption o datos del aviso. */
@@ -76,19 +82,36 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
       retriable: !isAppError(error) || error.retriable,
     }),
     handler: async ({ publicationId }, { logger, isLastAttempt, retryCount }) => {
-      const result = await publishPublication(
-        {
-          ...deps.shared,
-          onWarning: ({ step, code }) =>
-            logger.warn({ step, code }, "un paso secundario de la publicación falló"),
-        },
-        {
-          publicationId,
-          isLastAttempt,
-          retryCount,
-          signal: AbortSignal.any([deps.signal, AbortSignal.timeout(PUBLICATION_ATTEMPT_MAX_MS)]),
-        },
-      );
+      const windows = deps.marketplaceWindows;
+      let result: Awaited<ReturnType<typeof publishPublication>>;
+      try {
+        result = await publishPublication(
+          {
+            ...deps.shared,
+            onWarning: ({ step, code }) =>
+              logger.warn({ step, code }, "un paso secundario de la publicación falló"),
+          },
+          {
+            publicationId,
+            isLastAttempt,
+            retryCount,
+            signal: AbortSignal.any([deps.signal, AbortSignal.timeout(PUBLICATION_ATTEMPT_MAX_MS)]),
+          },
+        );
+      } catch (error) {
+        // El formulario no quedó guardado como listo: su ventana (si la había) no se vigila.
+        await windows?.discard(publicationId);
+        throw error;
+      }
+      if (result.outcome === "awaiting_manual_confirm") {
+        const watching = (await windows?.activate(publicationId)) ?? false;
+        logger.info(
+          { mode: result.publication.dryRun ? "dry-run" : "live", watching },
+          "formulario de Marketplace listo: espera el clic final del operador",
+        );
+        return;
+      }
+      await windows?.discard(publicationId);
       if (result.outcome === "skipped") {
         logger.info({ status: result.status }, "la publicación no estaba en curso: nada que hacer");
       } else if (result.publication.dryRun) {

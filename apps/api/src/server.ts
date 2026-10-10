@@ -138,6 +138,11 @@ const app = createApp({
   localImports: env.NODE_ENV === "development",
   maxUploadBytes: env.MAX_IMPORT_UPLOAD_MB * 1024 * 1024,
   publishMode: env.PUBLISH_MODE,
+  // Marketplace (spec F5 §4.6 y §4.7): el límite diario y si se puede convertir la UF.
+  marketplace: {
+    dailyLimit: env.MARKETPLACE_DAILY_LIMIT,
+    ufConfigured: env.BCCH_API_TOKEN !== undefined,
+  },
   version: readApiVersion(),
   logger,
   access: localAccess(env.API_PORT, env.WEB_PORT),

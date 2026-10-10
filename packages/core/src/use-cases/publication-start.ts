@@ -1,11 +1,20 @@
 import { hasContentErrors } from "../content/check.js";
 import { checked, loadCheckContext } from "../content/check-context.js";
+import { composePhotoSet } from "../content/compose.js";
 import type { Content } from "../content.js";
 import type { Platform } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import type { FieldDefinition } from "../field-definition.js";
 import { LISTING_NOT_PUBLISHABLE_TEXT } from "../labels.js";
 import { canPublishListing, type Listing } from "../listing.js";
+import {
+  DEFAULT_MARKETPLACE_DAILY_LIMIT,
+  MARKETPLACE_TIME_ZONE,
+  marketplaceDailyLimitReached,
+  marketplaceFormOpen,
+  startOfDayIn,
+} from "../marketplace/limits.js";
+import { marketplaceReadiness } from "../marketplace/readiness.js";
 import { portalReadiness } from "../portal/readiness.js";
 import type { FieldDefinitionRepository } from "../ports/field-definition-repository.js";
 import type { JobQueue } from "../ports/job-queue.js";
@@ -239,5 +248,74 @@ export async function requireCurrentListingVersion(
         },
       },
     );
+  }
+}
+
+/** Lo que publicar necesita saber de Marketplace (lo arma la API con su configuración). */
+export type MarketplaceStartOptions = {
+  /** `MARKETPLACE_DAILY_LIMIT` (por defecto 3, D8). */
+  dailyLimit?: number;
+  /** Si hay token del Banco Central para convertir un precio en UF (`BCCH_API_TOKEN`). */
+  ufConfigured?: boolean;
+};
+
+/**
+ * Antes de pasar una publicación de Marketplace a `publishing` (spec F5 §4.6 y §4.7), dentro del
+ * candado y como aviso temprano (lo que manda es la revisión del intento, en el worker):
+ * 1. el aviso tiene lo que pide el formulario (`marketplaceReadiness`) → `MARKETPLACE_NOT_READY`,
+ *    con lo que falta en `details.issues`;
+ * 2. ninguna otra publicación de la cuenta (fuera de las de este canal) se está llenando o espera
+ *    el clic final, en cualquier modo → `MARKETPLACE_FORM_OPEN`;
+ * 3. en `live`, la cuenta no llegó a su límite de intentos de hoy (Santiago) →
+ *    `MARKETPLACE_DAILY_LIMIT`.
+ * Todos son no reintentables (409 en la API).
+ */
+export async function requireMarketplaceStartable(
+  locked: Pick<LockedRepositories, "publications" | "media">,
+  {
+    listing,
+    accountIds,
+    channelIds,
+    dryRun,
+    options,
+    now,
+  }: {
+    listing: Listing;
+    accountIds: readonly string[];
+    channelIds: readonly string[];
+    dryRun: boolean;
+    options: MarketplaceStartOptions;
+    now: Date;
+  },
+): Promise<void> {
+  const readiness = marketplaceReadiness(listing, {
+    photos: composePhotoSet(await locked.media.listByListing(listing.id)).length,
+    ufConfigured: options.ufConfigured ?? false,
+  });
+  if (!readiness.ready) {
+    throw new AppError(
+      "MARKETPLACE_NOT_READY",
+      `Falta información para publicar en Marketplace: ${readiness.issues
+        .map((issue) => issue.message)
+        .join("; ")}`,
+      { details: { listingId: listing.id, issues: readiness.issues } },
+    );
+  }
+  const accounts = new Set(accountIds);
+  const own = new Set(channelIds);
+  for (const status of ["publishing", "awaiting_manual_confirm"] as const) {
+    const open = (await locked.publications.listByStatus(status)).find(
+      (other) => accounts.has(other.platformAccountId) && !own.has(other.id),
+    );
+    if (open !== undefined) throw marketplaceFormOpen(open.id);
+  }
+  if (dryRun) return;
+  const limit = options.dailyLimit ?? DEFAULT_MARKETPLACE_DAILY_LIMIT;
+  for (const accountId of accounts) {
+    const today = await locked.publications.countLiveAttemptsSince(
+      accountId,
+      startOfDayIn(MARKETPLACE_TIME_ZONE, now),
+    );
+    if (today >= limit) throw marketplaceDailyLimitReached(limit);
   }
 }

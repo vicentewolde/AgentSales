@@ -123,9 +123,33 @@ export {
 } from "./listing-validator/index.js";
 export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
 export {
+  DEFAULT_MARKETPLACE_DAILY_LIMIT,
+  dateIn,
+  MANUAL_CONFIRM_PLATFORMS,
+  MARKETPLACE_TIME_ZONE,
+  manualConfirmPending,
+  marketplaceDailyLimitReached,
+  marketplaceFormOpen,
+  requiresManualConfirm,
+  startOfDayIn,
+} from "./marketplace/limits.js";
+export {
+  type MarketplacePrice,
+  marketplacePrice,
+  UF_MAX_DAILY_CHANGE,
+  ufSourceNotConfigured,
+  ufToClp,
+} from "./marketplace/price.js";
+export {
   type MarketplaceProgress,
   marketplaceProgressSchema,
 } from "./marketplace/progress.js";
+export {
+  type MarketplaceReadiness,
+  type MarketplaceReadinessIssue,
+  type MarketplaceReadinessListing,
+  marketplaceReadiness,
+} from "./marketplace/readiness.js";
 export {
   isMarketplaceItemUrl,
   type MarketplaceItemRef,
@@ -346,6 +370,7 @@ export {
   type SpecSheetData,
   slideKeyInput,
 } from "./ports/slide-templates.js";
+export type { UfValue, UfValueSource } from "./ports/uf-value-source.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   checkPublicationProgress,
@@ -419,12 +444,23 @@ export {
   closePublication,
 } from "./use-cases/close-publication.js";
 export {
+  type ConfirmManualPublicationResult,
+  confirmManualPublication,
+  type ManualPublicationDeps,
+  markNotPublished,
+} from "./use-cases/confirm-manual-publication.js";
+export {
   type AccountGrant,
   type ConnectAccountDeps,
   connectAccount,
   INSTAGRAM_TOKEN_DAYS,
   requireBroker,
 } from "./use-cases/connect-account.js";
+export {
+  type ConnectMarketplaceAccountDeps,
+  connectMarketplaceAccount,
+  recordMarketplaceLoginError,
+} from "./use-cases/connect-marketplace-account.js";
 export {
   type ConnectMercadoLibreAccountDeps,
   connectMercadoLibreAccount,
@@ -510,7 +546,11 @@ export {
   type PublicationPlatformDeps,
   requestPublicationSync,
 } from "./use-cases/publication-operations.js";
-export { enqueuePublication, type PortalCheckDeps } from "./use-cases/publication-start.js";
+export {
+  enqueuePublication,
+  type MarketplaceStartOptions,
+  type PortalCheckDeps,
+} from "./use-cases/publication-start.js";
 export {
   type PublishListingDeps,
   type PublishListingResult,

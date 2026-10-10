@@ -1,5 +1,6 @@
 import type { Platform } from "../enums.js";
 import { AppError } from "../errors.js";
+import { manualConfirmPending, requiresManualConfirm } from "../marketplace/limits.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
@@ -12,10 +13,12 @@ import {
 } from "./open-publications.js";
 import {
   enqueuePublications,
+  type MarketplaceStartOptions,
   type PortalCheckDeps,
   portalDefinitionsBeforeLock,
   requireCompatibleMode,
   requireCurrentListingVersion,
+  requireMarketplaceStartable,
   requireNoActiveRun,
   requirePortalPublishable,
   requirePublishableListing,
@@ -23,7 +26,13 @@ import {
   startOne,
 } from "./publication-start.js";
 
-export type PublishListingDeps = PortalCheckDeps & { lock: ListingLock; queue: JobQueue };
+export type PublishListingDeps = PortalCheckDeps & {
+  lock: ListingLock;
+  queue: JobQueue;
+  /** Marketplace: el límite diario y si se puede convertir la UF (spec F5 §4.6 y §4.7). */
+  marketplace?: MarketplaceStartOptions;
+  now?: () => Date;
+};
 
 export type PublishListingResult = {
   /** Las que pasaron a `publishing` ahora. */
@@ -108,6 +117,10 @@ export async function publishListing(
     const stranded = pending.filter((p) => !connected.has(p.platformAccountId));
     const inFlight = channel.filter((publication) => publication.status === "publishing");
     for (const publication of startable) requireCompatibleMode(publication, dryRun);
+    const manual = requiresManualConfirm(platform);
+    // Marketplace: una que espera el clic final se resuelve antes (spec F5 §4.3).
+    const waiting = channel.find((p) => p.status === "awaiting_manual_confirm");
+    if (manual && waiting !== undefined) throw manualConfirmPending(waiting.id);
     if (startable.length === 0 && opening.toCreate.length === 0 && inFlight.length === 0) {
       if (stranded.length > 0) {
         throw new AppError(
@@ -132,6 +145,16 @@ export async function publishListing(
     }
     if (definitions !== null && startable.length + opening.toCreate.length > 0) {
       await requirePortalPublishable(locked, { listing, content, definitions });
+    }
+    if (manual && startable.length + opening.toCreate.length > 0) {
+      await requireMarketplaceStartable(locked, {
+        listing,
+        accountIds: [...connected],
+        channelIds: channel.map((publication) => publication.id),
+        dryRun,
+        options: deps.marketplace ?? {},
+        now: (deps.now ?? (() => new Date()))(),
+      });
     }
 
     // Recién aquí se escribe.

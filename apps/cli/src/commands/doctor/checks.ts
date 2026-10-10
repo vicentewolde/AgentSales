@@ -116,6 +116,24 @@ export function checkMercadoLibre(result: EnvResult): CheckItem | null {
 }
 
 /**
+ * El token del Banco Central para el valor de la UF (spec F5 §4.6): sin él, un aviso en UF no se
+ * puede publicar en Marketplace (su precio se convierte a pesos). Advertencia: lo demás funciona.
+ * Nunca muestra el token. `null` si el `.env` no es válido.
+ */
+export function checkUfSource(result: EnvResult): CheckItem | null {
+  if (!result.ok) return null;
+  if (result.env.BCCH_API_TOKEN !== undefined) {
+    return { name: "Valor de la UF", level: "ok", detail: "BCCH_API_TOKEN definida (dura 1 año)" };
+  }
+  return {
+    name: "Valor de la UF",
+    level: "warn",
+    detail: "falta BCCH_API_TOKEN: los avisos en UF no se podrán publicar en Marketplace",
+    hint: "Pide el token gratis en la API BDE del Banco Central (docs/07-checklist-cuentas.md, Antes de F5)",
+  };
+}
+
+/**
  * El modo que manda es el de la API en ejecución (`/health`); si no responde, el del `.env`.
  * Si no coinciden, es un error: la API se levantó con otra configuración.
  */

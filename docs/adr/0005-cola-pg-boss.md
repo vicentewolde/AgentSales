@@ -28,6 +28,7 @@ Procesar video, renderizar plantillas, llamar a la IA y publicar son tareas lent
 - **node-cron en memoria:** se pierde todo si el proceso se reinicia, y no tiene reintentos.
 
 ## Seguimiento
+- 2026-10-10 (F5-T04, spec F5 §4.11, ADR-0017): job `marketplace.profile` (`login` y `forget` del perfil del navegador de Marketplace), `exclusive` por corredor, sin reintentos, 15 min. No mira `PUBLISH_MODE` (no publica).
 - 2026-09-29 (F0-T06): pg-boss 12.35.0 en `apps/worker`. Cada job se declara con `defineJob` (datos validados con zod y solo ids), con una política por cola que aplica el worker (`createQueue` + `updateQueue`) y `batchSize: 1`. Un `AppError` no reintentable no se reintenta. Contrato objetivo (`JOB_NAMES`/`JOB_PAYLOADS` en `core`, puerto `JobQueue`) y tabla de políticas en `docs/01-arquitectura.md` → Cola de trabajos.
 - 2026-09-30 (`/fase-plan 1`): **enmienda.** Se agrega el job `import.run`, porque la importación de F1 sube videos de hasta 300 MB y debe reintentarse si R2 falla. Así se mantiene "la API solo encola":
   - La API crea el `import_run` en `queued`, encola `{ importRunId }` y responde `202`.

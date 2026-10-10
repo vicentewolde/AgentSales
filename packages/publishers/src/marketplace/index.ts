@@ -13,17 +13,30 @@ export {
   stopErrorOf,
 } from "./guard.js";
 export {
+  isMarketplaceProfileInUse,
   type MarketplaceProfile,
   marketplaceProfileDir,
+  marketplaceProfileLockPath,
   type OpenMarketplaceProfileOptions,
   openMarketplaceProfile,
 } from "./profile.js";
+export {
+  createMarketplacePublisher,
+  MARKETPLACE_MAX_PHOTOS,
+  MARKETPLACE_MAX_TITLE,
+  validateMarketplaceInput,
+} from "./publisher.js";
 export {
   FACEBOOK_HOME_URL,
   FACEBOOK_ORIGIN,
   MARKETPLACE_FORM_URL,
   SESSION_COOKIE,
 } from "./selectors.js";
+export {
+  hasSession,
+  type WaitForSessionOptions,
+  waitForSession,
+} from "./session.js";
 export {
   createMarketplaceWindow,
   type MarketplaceWindow,

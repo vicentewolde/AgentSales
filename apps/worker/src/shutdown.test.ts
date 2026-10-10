@@ -97,4 +97,35 @@ describe("apagado del worker", () => {
     );
     expect(events).toEqual(["base cerrada"]);
   });
+
+  it("cierra las ventanas de Marketplace después de los jobs y antes de la base (spec F5 §4.5)", async () => {
+    const events: string[] = [];
+    await stopWorker(
+      {
+        abortJobs: () => events.push("corte"),
+        stopBoss: async () => {
+          events.push("pg-boss detenido");
+        },
+        closeRenderer: async () => {
+          events.push("navegador cerrado");
+        },
+        closeMarketplaceWindows: async () => {
+          events.push("ventanas cerradas");
+          throw new Error("una ventana no cerró");
+        },
+        closeDatabase: async () => {
+          events.push("base cerrada");
+        },
+      },
+      silentLogger,
+    );
+
+    expect(events).toEqual([
+      "corte",
+      "pg-boss detenido",
+      "navegador cerrado",
+      "ventanas cerradas",
+      "base cerrada",
+    ]);
+  });
 });

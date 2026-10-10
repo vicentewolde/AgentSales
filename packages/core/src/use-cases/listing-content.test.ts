@@ -161,6 +161,14 @@ describe("getListingContent", () => {
       latestRun: null,
       // El aviso de prueba tiene todo lo que pide Portal (F4-T19).
       portalReadiness: { ready: true },
+      // Marketplace (F5-T07): sin fotos preparadas, y en UF sin el token del Banco Central.
+      marketplaceReadiness: {
+        ready: false,
+        issues: [
+          expect.objectContaining({ code: "MARKETPLACE_PHOTOS_MISSING" }),
+          expect.objectContaining({ code: "UF_SOURCE_NOT_CONFIGURED" }),
+        ],
+      },
     });
   });
 

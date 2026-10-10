@@ -122,4 +122,10 @@ export interface PublicationRepository {
   addEvent(publicationId: string, event: NewPublicationEvent): Promise<PublicationEvent>;
   /** La bitácora de una publicación, de la más antigua a la más reciente. */
   listEvents(publicationId: string): Promise<PublicationEvent[]>;
+  /**
+   * Cuántos intentos en `live` (eventos `publish_attempt` con `mode: "live"`) tuvieron las
+   * publicaciones de una cuenta desde `since`, incluido (spec F5 §4.7: el límite diario de
+   * Marketplace). Cuenta todos: también los reintentos de la misma publicación.
+   */
+  countLiveAttemptsSince(platformAccountId: string, since: Date): Promise<number>;
 }

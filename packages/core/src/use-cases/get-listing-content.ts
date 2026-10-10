@@ -6,6 +6,7 @@ import {
 } from "../content/check-context.js";
 import { composeCarousel, composePhotoSet, composeReel } from "../content/compose.js";
 import type { ContentRun } from "../content.js";
+import { type MarketplaceReadiness, marketplaceReadiness } from "../marketplace/readiness.js";
 import type { Media } from "../media.js";
 import { type PortalReadiness, portalReadiness } from "../portal/readiness.js";
 import type { ContentRepository, ContentRunRepository } from "../ports/content-repository.js";
@@ -15,6 +16,8 @@ export type GetListingContentDeps = ContentCheckDeps & {
   media: Pick<MediaRepository, "listByListing">;
   contents: Pick<ContentRepository, "listCurrent">;
   contentRuns: Pick<ContentRunRepository, "latest">;
+  /** Marketplace: si hay token para convertir la UF (`BCCH_API_TOKEN`; spec F5 §4.6). */
+  ufConfigured?: boolean;
 };
 
 export type ListingContent = {
@@ -32,6 +35,11 @@ export type ListingContent = {
    * muestra en la pestaña Portal, y publicar lo bloquea con `PORTAL_NOT_READY`.
    */
   portalReadiness: PortalReadiness;
+  /**
+   * Lo que le falta al aviso para el formulario de Marketplace (spec F5 §4.6, F5-T07): el panel lo
+   * muestra en la pestaña Marketplace, y publicar lo bloquea con `MARKETPLACE_NOT_READY`.
+   */
+  marketplaceReadiness: MarketplaceReadiness;
 };
 
 /**
@@ -50,16 +58,21 @@ export async function getListingContent(
     deps.media.listByListing(listing.id),
     deps.contentRuns.latest(listing.id),
   ]);
+  const photos = composePhotoSet(media);
   return {
     contents: contents.map((content) => checked(content, ctx)),
     carousel: composeCarousel(media),
-    photos: composePhotoSet(media),
+    photos,
     reel: composeReel(media),
     latestRun,
     portalReadiness: portalReadiness(listing, {
       name: broker.name,
       email: broker.email,
       whatsapp: broker.whatsapp,
+    }),
+    marketplaceReadiness: marketplaceReadiness(listing, {
+      photos: photos.length,
+      ufConfigured: deps.ufConfigured ?? false,
     }),
   };
 }

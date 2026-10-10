@@ -39,6 +39,19 @@ export type MarketplaceProfile = {
   close(): Promise<void>;
 };
 
+/**
+ * Si un perfil está abierto ahora: por este proceso o por otro vivo (su candado). Lo usa el borrado
+ * del perfil (`forget`) para no borrar una carpeta que Chromium tiene abierta.
+ */
+export async function isMarketplaceProfileInUse(dir: string): Promise<boolean> {
+  if (openInProcess.has(dir)) return true;
+  const owner = Number.parseInt(await readFile(lockPathOf(dir), "utf8").catch(() => ""), 10);
+  return Number.isInteger(owner) && owner > 0 && isAlive(owner);
+}
+
+/** El candado de un perfil (va al lado de la carpeta): el borrado del perfil lo borra también. */
+export const marketplaceProfileLockPath = (dir: string) => lockPathOf(dir);
+
 /** El id de una cuenta de Facebook en la cookie de sesión: solo dígitos. */
 const SESSION_ID = /^\d{1,30}$/;
 

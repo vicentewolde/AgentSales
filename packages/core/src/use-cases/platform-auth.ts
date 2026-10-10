@@ -6,7 +6,12 @@ import type { PlatformAccountRepository } from "../ports/platform-account-reposi
  * Instagram (`IG_AUTH_INVALID`, un 190) y Mercado Libre (`ML_AUTH_INVALID`, también el 401
  * repetido después de refrescar, `rejected_after_refresh`, o un refresco rechazado).
  */
-const ACCESS_REJECTED = new Set(["IG_AUTH_INVALID", "ML_AUTH_INVALID"]);
+// `MARKETPLACE_SESSION_EXPIRED`: Facebook pidió iniciar sesión (spec F5 §4.2); se reconecta igual.
+const ACCESS_REJECTED = new Set([
+  "IG_AUTH_INVALID",
+  "ML_AUTH_INVALID",
+  "MARKETPLACE_SESSION_EXPIRED",
+]);
 
 export const isAccessRejected = (error: unknown): boolean =>
   isAppError(error) && ACCESS_REJECTED.has(error.code);

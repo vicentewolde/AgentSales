@@ -16,6 +16,7 @@ const env = loadEnv({
   INSTAGRAM_APP_SECRET: "fake-ig-secret",
   ML_APP_ID: "fake-ml-app",
   ML_CLIENT_SECRET: "fake-ml-secret",
+  BCCH_API_TOKEN: "fake-bde-token",
 });
 
 const healthy: HealthReport = {
@@ -62,6 +63,20 @@ describe("runDoctor", () => {
     expect(item?.detail).toContain("INSTAGRAM_APP_SECRET");
     expect(item?.detail).not.toContain("INSTAGRAM_APP_ID");
     expect(JSON.stringify(report.items)).not.toContain("fake-ig");
+  });
+
+  it("avisa (sin cortar) si falta el token del Banco Central, y nunca lo muestra", async () => {
+    const { BCCH_API_TOKEN: _token, ...withoutToken } = env;
+    const without = await runDoctor(deps({ env: { ok: true, env: withoutToken } }));
+    expect(without.items.find((entry) => entry.name === "Valor de la UF")).toMatchObject({
+      level: "warn",
+    });
+    const withToken = await runDoctor(
+      deps({ env: { ok: true, env: { ...env, BCCH_API_TOKEN: "token-bde-secreto" } } }),
+    );
+    const item = withToken.items.find((entry) => entry.name === "Valor de la UF");
+    expect(item).toMatchObject({ level: "ok" });
+    expect(JSON.stringify(withToken)).not.toContain("token-bde-secreto");
   });
 
   it("avisa (sin cortar) si falta el par de Mercado Libre, con la dirección de retorno y sin valores", async () => {
@@ -124,6 +139,7 @@ describe("runDoctor", () => {
       PUBLISH_MODE: "ok",
       Instagram: "ok",
       "Mercado Libre": "ok",
+      "Valor de la UF": "ok",
       API: "ok",
       "Base de datos": "ok",
       Almacenamiento: "ok",

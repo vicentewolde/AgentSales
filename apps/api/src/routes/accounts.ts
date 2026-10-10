@@ -6,10 +6,12 @@ import {
   disconnectAccount,
   instagramAccountMetaSchema,
   isAppError,
+  type JobQueue,
   type MercadoLibreAuth,
   mercadoLibreAccountMetaSchema,
   type PlatformAccount,
   type PlatformAccountRepository,
+  type PublicationRepository,
   type RefreshAccountTokensDeps,
   refreshAccountToken,
   requireBroker,
@@ -50,6 +52,10 @@ export type AccountRoutesDeps = ConnectAccountDeps &
     mercadoLibre: { auth: MercadoLibreAuth; configured: boolean; redirectUri: string };
     /** Firma y verifica el `state` (con la plataforma y el corredor). */
     oauthState: OAuthStateSigner;
+    /** Desconectar Marketplace: una publicación esperando el clic final lo impide (spec F5 §4.2). */
+    publications: Pick<PublicationRepository, "listByStatus">;
+    /** Desconectar Marketplace encola el borrado del perfil (`marketplace.profile`). */
+    queue: JobQueue;
   };
 
 /** Sin el par de la app no se arma la URL ni se canjea: el canje mandaría un secret vacío. */

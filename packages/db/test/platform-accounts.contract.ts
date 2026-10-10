@@ -102,6 +102,19 @@ export function platformAccountRepositoryContract(
       ).rejects.toMatchObject({ code: "ACCOUNT_CREDENTIALS_NOT_ALLOWED", retriable: false });
     });
 
+    it("mergeMeta mezcla a un nivel sin tocar el estado ni las credenciales", async () => {
+      const input = connectedAccount(brokerId, { meta: { a: 1, b: { c: 2 } } });
+      const account = await repos.accounts.upsertConnected(input);
+
+      const merged = await repos.accounts.mergeMeta(account.id, { b: { d: 3 }, e: "x" });
+
+      expect(merged).toMatchObject({ status: "connected", meta: { a: 1, b: { d: 3 }, e: "x" } });
+      expect(await repos.accounts.getCredentials(account.id)).toEqual(input.credentials);
+      await expect(repos.accounts.mergeMeta(repos.missingId, {})).rejects.toMatchObject({
+        code: "ACCOUNT_NOT_FOUND",
+      });
+    });
+
     it("getCredentials devuelve las credenciales descifradas", async () => {
       const input = connectedAccount(brokerId);
       const account = await repos.accounts.upsertConnected(input);
