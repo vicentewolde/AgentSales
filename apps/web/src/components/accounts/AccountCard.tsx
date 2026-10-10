@@ -1,5 +1,9 @@
 import type { PlatformAccountView } from "@agentsales/api/contracts";
-import { accountDisconnectText, PLATFORM_ACCOUNT_STATUS_TEXT } from "@agentsales/core";
+import {
+  accountDisconnectText,
+  currentMarketplaceLoginError,
+  PLATFORM_ACCOUNT_STATUS_TEXT,
+} from "@agentsales/core";
 import { useRef, useState } from "react";
 import { ACCOUNT_STATUS_TONE } from "../../labels.js";
 import { useDisconnectAccount } from "../../queries/accounts.js";
@@ -8,8 +12,33 @@ import { AccountExpiry } from "./AccountExpiry.js";
 import { accountDateText } from "./accounts.js";
 
 /**
- * Una cuenta conectada (Instagram o Mercado Libre, desde F4-T21): estado, vencimiento, renovación,
- * permisos y Desconectar con confirmación. El nombre va tal cual (Mercado Libre: el `nickname`).
+ * Marketplace (spec F5 §4.12): no hay token que venza ni se renueve; se muestra cuándo se vio la
+ * sesión por última vez y, si falló un inicio de sesión después, el motivo.
+ */
+function MarketplaceDetails({ account }: { account: PlatformAccountView }) {
+  const error = currentMarketplaceLoginError(account);
+  return (
+    <>
+      <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
+        <dt className="text-slate-500">Sesión vista</dt>
+        <dd>
+          {account.sessionCheckedAt === null ? "—" : accountDateText(account.sessionCheckedAt)}
+        </dd>
+      </dl>
+      {error !== null && (
+        <p className="mt-3 text-sm text-red-700">
+          El inicio de sesión del {accountDateText(error.at)} falló: {error.message}
+        </p>
+      )}
+    </>
+  );
+}
+
+/**
+ * Una cuenta conectada (Instagram o Mercado Libre, desde F4-T21; Marketplace, desde F5-T12):
+ * estado, vencimiento, renovación, permisos (en Marketplace, la sesión vista y el último inicio de
+ * sesión fallido) y Desconectar con confirmación. El nombre va tal cual (Mercado Libre: el
+ * `nickname`).
  */
 export function AccountCard({ account, now }: { account: PlatformAccountView; now: Date }) {
   const disconnect = useDisconnectAccount();
@@ -38,33 +67,39 @@ export function AccountCard({ account, now }: { account: PlatformAccountView; no
           {PLATFORM_ACCOUNT_STATUS_TEXT[account.status]}
         </span>
       </div>
-      <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-slate-500">Vence</dt>
-        <dd>
-          <AccountExpiry account={account} now={now} />
-        </dd>
-        <dt className="text-slate-500">Última renovación</dt>
-        <dd>
-          {account.tokenRefreshedAt === null
-            ? account.platform === "portal_inmobiliario"
-              ? "Todavía no (se renueva sola cada 7 días mientras el worker corre)"
-              : "Todavía no (se renueva sola a las 24 h de conectarla)"
-            : accountDateText(account.tokenRefreshedAt)}
-        </dd>
-        <dt className="text-slate-500">Tipo</dt>
-        <dd>{account.accountType ?? "—"}</dd>
-        <dt className="text-slate-500">Permisos</dt>
-        <dd>
-          {account.permissions === null
-            ? account.platform === "instagram"
-              ? "Desconocidos (se conectó con el token del panel de Meta)"
-              : "Desconocidos"
-            : account.permissions.join(", ") || "Ninguno"}
-        </dd>
-      </dl>
+      {account.platform === "fb_marketplace" ? (
+        <MarketplaceDetails account={account} />
+      ) : (
+        <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
+          <dt className="text-slate-500">Vence</dt>
+          <dd>
+            <AccountExpiry account={account} now={now} />
+          </dd>
+          <dt className="text-slate-500">Última renovación</dt>
+          <dd>
+            {account.tokenRefreshedAt === null
+              ? account.platform === "portal_inmobiliario"
+                ? "Todavía no (se renueva sola cada 7 días mientras el worker corre)"
+                : "Todavía no (se renueva sola a las 24 h de conectarla)"
+              : accountDateText(account.tokenRefreshedAt)}
+          </dd>
+          <dt className="text-slate-500">Tipo</dt>
+          <dd>{account.accountType ?? "—"}</dd>
+          <dt className="text-slate-500">Permisos</dt>
+          <dd>
+            {account.permissions === null
+              ? account.platform === "instagram"
+                ? "Desconocidos (se conectó con el token del panel de Meta)"
+                : "Desconocidos"
+              : account.permissions.join(", ") || "Ninguno"}
+          </dd>
+        </dl>
+      )}
       {account.status === "expired" && (
         <p className="mt-3 text-sm text-red-700">
-          El acceso venció: reconecta la cuenta para volver a publicar.
+          {account.platform === "fb_marketplace"
+            ? "La sesión de Facebook se cerró: vuelve a iniciar sesión para publicar."
+            : "El acceso venció: reconecta la cuenta para volver a publicar."}
         </p>
       )}
       {account.status === "error" && (

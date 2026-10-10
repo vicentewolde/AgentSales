@@ -1,5 +1,6 @@
 import type { ListingPublicationView } from "@agentsales/api/contracts";
 import {
+  marketplacePriceText,
   PLATFORM_TEXT,
   PUBLICATION_STATUS_TEXT,
   type PublishMode,
@@ -22,6 +23,7 @@ import {
 } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { PollStoppedAlert } from "../PollStoppedAlert.js";
+import { MarketplaceConfirm } from "./MarketplaceConfirm.js";
 import { PublicationEvents } from "./PublicationEvents.js";
 import {
   needsLiveConfirm,
@@ -52,6 +54,19 @@ function cutHint(error: Error, kind: PublicationAction["kind"] | undefined): str
     return "No se supo si la lectura quedó pedida: puedes repetirla (no duplica nada).";
   return undefined;
 }
+
+/** Qué no se hizo en una simulación, según el canal. */
+const SIMULATION_TEXT: Readonly<Record<ListingPublicationView["platform"], string>> = {
+  instagram: "Simulación: no se envió nada a Instagram.",
+  portal_inmobiliario: "Simulación: no se creó ni cambió nada en Mercado Libre.",
+  fb_marketplace: "Simulación: no se abrió ni publicó nada en Facebook.",
+};
+
+/** La confirmación de reintentar en vivo según el canal (Marketplace: quien publica es el operador). */
+const liveRetryText = (publication: ListingPublicationView, format: string, channel: string) =>
+  publication.platform === "fb_marketplace"
+    ? "La API está en vivo: se abrirá Chromium con un formulario nuevo de Facebook Marketplace; tú haces Siguiente y Publicar."
+    : `La API está en vivo: el ${format} se publicará de verdad en ${channel}${publication.platform === "portal_inmobiliario" ? " y usará un cupo de tu paquete" : ""}.`;
 
 /** Una fecha en hora de Chile (el vencimiento en la plataforma). */
 const dateText = (iso: string) =>
@@ -116,7 +131,9 @@ function Thumbnails({ publication }: { publication: ListingPublicationView }) {
  * ya se borró a mano). Mientras está en `publishing` se sondea; el tope cuenta desde el clic o el
  * último cambio. Un aviso de Portal (spec F4 §4.12, desde F4-T22) muestra su estado en Mercado
  * Libre y, en vez de retirar, Pausar, Reactivar, Cerrar (con confirmación; en vivo, irreversible) y
- * Actualizar (solo en vivo).
+ * Actualizar (solo en vivo). Una de Marketplace (spec F5 §4.12, F5-T13) que espera el clic final
+ * muestra `MarketplaceConfirm`; publicada, su enlace, el precio que se escribió y Marcar como
+ * retirada (en vivo, después de borrarla a mano en Facebook).
  */
 export function PublicationItem({
   publication: listed,
@@ -240,11 +257,20 @@ export function PublicationItem({
       )}
       <RemoteState publication={publication} />
       {publication.status === "published" && publication.dryRun && (
-        <p className="mt-1 text-xs text-slate-500">
-          {portal
-            ? "Simulación: no se creó ni cambió nada en Mercado Libre."
-            : "Simulación: no se envió nada a Instagram."}
+        <p className="mt-1 text-xs text-slate-500">{SIMULATION_TEXT[publication.platform]}</p>
+      )}
+      {publication.status === "published" && publication.manual !== null && (
+        <p className="mt-1 text-xs text-slate-600">
+          Precio en el formulario: {marketplacePriceText(publication.manual)}
         </p>
+      )}
+      {actions.confirm && confirming === null && (
+        <MarketplaceConfirm
+          publication={publication}
+          listingId={listingId}
+          pending={action.isPending}
+          run={run}
+        />
       )}
       {publication.lastError !== null && publication.status === "failed" && (
         <p className="mt-1 text-sm text-red-700">{publication.lastError.message}</p>
@@ -385,8 +411,7 @@ export function PublicationItem({
       {confirming === "live-retry" && (
         <div role="alert" className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-sm">
           <p className="font-semibold text-red-800">
-            La API está en vivo: el {format} se publicará de verdad en {channel}
-            {portal ? " y usará un cupo de tu paquete" : ""}.
+            {liveRetryText(publication, format, channel)}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button
@@ -437,10 +462,10 @@ export function PublicationItem({
                 checked={removedByHand}
                 onChange={(event) => setRemovedByHand(event.target.checked)}
               />
-              Ya la borré a mano en Instagram (la API no deja borrarla)
+              Ya la borré a mano en {channel} (AgentSales no puede borrarla)
             </label>
           ) : (
-            <p>Es una simulación: no hay nada que borrar en Instagram.</p>
+            <p>Es una simulación: no hay nada que borrar en {channel}.</p>
           )}
           <div className="flex flex-wrap gap-2">
             <button
@@ -498,7 +523,13 @@ export function PublicationItem({
         (action.error.code === "ML_AUTH_INVALID" ||
           action.error.code === "ACCOUNT_NOT_CONNECTED") && (
           <p className="mt-2 text-sm">
-            Reconecta la cuenta de {portal ? "Mercado Libre" : "Instagram"} del corredor en{" "}
+            Reconecta la cuenta de{" "}
+            {portal
+              ? "Mercado Libre"
+              : publication.platform === "fb_marketplace"
+                ? "Facebook"
+                : "Instagram"}{" "}
+            del corredor en{" "}
             <Link to="/cuentas" className="underline">
               Cuentas
             </Link>

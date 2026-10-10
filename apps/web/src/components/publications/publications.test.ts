@@ -4,11 +4,11 @@ import {
   approveBlockedReason,
   editBlockedReason,
   needsLiveConfirm,
-  portalPublishBlockedReason,
   prepareBlockedReason,
   publicationActions,
   publishBlockedReason,
   publishButtonText,
+  readinessPublishBlockedReason,
   retryBlockedReason,
   safeExternalUrl,
   unapproveBlockedReason,
@@ -84,6 +84,10 @@ describe("bloqueos", () => {
       unapproveBlockedReason(content(), [publication({ status: "publishing" })]),
     ).not.toBeNull();
     expect(unapproveBlockedReason(content(), [publication({ status: "failed" })])).toBeNull();
+    // Marketplace (F5-T13): una que espera el clic final también bloquea (primero se dice si salió).
+    expect(
+      unapproveBlockedReason(content(), [publication({ status: "awaiting_manual_confirm" })]),
+    ).toContain("clic final");
   });
 
   it("preparar: también con las programadas o esperando el clic final", () => {
@@ -116,6 +120,7 @@ describe("publicationActions", () => {
     resume: false,
     close: false,
     sync: false,
+    confirm: false,
   };
 
   it("reintentar la fallida, descartar la aprobada o fallida, retirar la publicada", () => {
@@ -144,26 +149,42 @@ describe("publicationActions", () => {
     expect(portal("unpublished")).toEqual(none);
     expect(portal("failed")).toEqual({ ...none, retry: true, cancel: true });
   });
+
+  it("Marketplace (F5-T13): esperando el clic, solo lo publiqué o no (nunca descartar); publicada, retirar", () => {
+    const marketplace = (status: PublicationView["status"]) =>
+      publicationActions(publication({ platform: "fb_marketplace", status }));
+    expect(marketplace("awaiting_manual_confirm")).toEqual({ ...none, confirm: true });
+    expect(marketplace("published")).toEqual({ ...none, retire: true });
+    expect(marketplace("failed")).toEqual({ ...none, retry: true, cancel: true });
+  });
 });
 
-describe("portalPublishBlockedReason (F4-T22)", () => {
+describe("readinessPublishBlockedReason (F4-T22)", () => {
   const ready = { ready: true, issues: [] };
   it("un texto aprobado con errores en su revisión, o un aviso al que le falta algo, bloquean", () => {
     const withErrors = content({
       platform: "portal_inmobiliario",
       checks: [{ code: "NUMBER_NOT_IN_DATA", severity: "error", message: "Un número no calza" }],
     });
-    expect(portalPublishBlockedReason(withErrors, ready)).toContain("quita la aprobación");
+    expect(readinessPublishBlockedReason(withErrors, ready)).toContain("quita la aprobación");
     expect(
-      portalPublishBlockedReason(content({ platform: "portal_inmobiliario" }), {
+      readinessPublishBlockedReason(content({ platform: "portal_inmobiliario" }), {
         ready: false,
         issues: [{ code: "PORTAL_WHATSAPP_MISSING", field: null, message: "Falta el WhatsApp" }],
       }),
     ).toContain("Falta información para Portal");
     expect(
-      portalPublishBlockedReason(content({ platform: "portal_inmobiliario" }), ready),
+      readinessPublishBlockedReason(content({ platform: "portal_inmobiliario" }), ready),
     ).toBeNull();
-    expect(portalPublishBlockedReason(undefined, null)).toBeNull();
+    expect(readinessPublishBlockedReason(undefined, null)).toBeNull();
+    // Marketplace (F5-T13): la misma regla, nombrando el canal.
+    expect(
+      readinessPublishBlockedReason(
+        content({ platform: "fb_marketplace" }),
+        { ready: false, issues: [{ code: "UF_SOURCE_NOT_CONFIGURED", field: null, message: "x" }] },
+        "Marketplace",
+      ),
+    ).toContain("Falta información para Marketplace");
   });
 });
 

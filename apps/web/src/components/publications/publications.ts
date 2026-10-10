@@ -1,4 +1,4 @@
-import type { ContentView, PortalReadinessView, PublicationView } from "@agentsales/api/contracts";
+import type { ContentView, PublicationView, ReadinessView } from "@agentsales/api/contracts";
 import {
   ACTIVE_PUBLICATION_STATUSES,
   availablePublicationOperations,
@@ -57,16 +57,22 @@ export function approveBlockedReason(
   return null;
 }
 
-/** Por qué no se puede quitar la aprobación: una de sus publicaciones se está publicando. */
+/**
+ * Por qué no se puede quitar la aprobación: una de sus publicaciones se está publicando o, en
+ * Marketplace, espera el clic final (`MANUAL_CONFIRM_PENDING`: primero se dice si salió).
+ */
 export function unapproveBlockedReason(
   content: ContentView,
   publications: readonly PublicationView[],
 ): string | null {
-  return publications.some(
-    (publication) => publication.contentId === content.id && publication.status === "publishing",
-  )
-    ? "Hay una publicación en curso: espera a que termine."
-    : null;
+  const own = publications.filter((publication) => publication.contentId === content.id);
+  if (own.some((publication) => publication.status === "publishing")) {
+    return "Hay una publicación en curso: espera a que termine.";
+  }
+  if (own.some((publication) => publication.status === "awaiting_manual_confirm")) {
+    return "Una publicación espera tu clic final: di primero si la publicaste.";
+  }
+  return null;
 }
 
 /** Por qué no se puede publicar el canal (la API lo vuelve a revisar). */
@@ -80,19 +86,23 @@ export function publishBlockedReason(
 }
 
 /**
- * Por qué no se puede publicar en Portal además de lo común (spec F4-T22): un texto aprobado cuya
- * revisión (calculada al leer) tiene errores (`CONTENT_HAS_ERRORS`), o un aviso al que le falta algo
- * (`PORTAL_NOT_READY`). La API lo vuelve a revisar al publicar.
+ * Por qué no se puede publicar en Portal (o Marketplace, desde F5-T13) además de lo común (spec
+ * F4-T22): un texto aprobado cuya revisión (calculada al leer) tiene errores (`CONTENT_HAS_ERRORS`),
+ * o un aviso al que le falta algo (`PORTAL_NOT_READY`, `MARKETPLACE_NOT_READY`). La API lo vuelve a
+ * revisar al publicar.
  */
-export function portalPublishBlockedReason(
+export function readinessPublishBlockedReason(
   content: ContentView | undefined,
-  readiness: PortalReadinessView | null,
+  readiness: ReadinessView | null,
+  channel = "Portal",
 ): string | null {
   if (content?.status === "approved" && hasContentErrors(content.checks)) {
     return "La revisión del texto tiene errores: quita la aprobación, corrígelo y vuelve a aprobarlo.";
   }
   if (readiness !== null && !readiness.ready) {
-    return "Falta información para Portal (arriba): complétala en la planilla y vuelve a importarla.";
+    return channel === "Portal"
+      ? "Falta información para Portal (arriba): complétala en la planilla y vuelve a importarla."
+      : `Falta información para ${channel} (arriba): complétala y vuelve a intentarlo.`;
   }
   return null;
 }
@@ -121,6 +131,8 @@ export function publicationActions(publication: PublicationView) {
   return {
     retry: status === "failed",
     cancel: status === "approved" || status === "failed",
+    // Marketplace (spec F5 §4.3): "Lo publiqué" con el enlace y "No lo publiqué".
+    confirm: status === "awaiting_manual_confirm",
     retire: !OPERATION_PLATFORMS.has(publication.platform) && status === "published",
     pause,
     resume,
