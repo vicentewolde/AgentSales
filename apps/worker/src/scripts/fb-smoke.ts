@@ -16,9 +16,10 @@ import { describeUnexpected } from "../smoke/ig-smoke.js";
 // `pnpm fb:smoke --broker <slug>` (spec F5 §4.8, F5-T03): abre con ventana el perfil de Facebook del
 // corredor, espera a que inicies sesión a mano si hace falta y guarda en `tmp/fb-smoke/` la captura
 // y el árbol de accesibilidad del formulario de propiedades, sin llenar nada ni hacer clic. Con
-// `--menus`, después espera a que abras a mano cada menú y aprietes Enter, y guarda lo que se ve. Habla con
-// Facebook de verdad: lo corre el operador, en la terminal de su Mac. No necesita `pnpm dev` (lee el
-// corredor de la base, sin escribir) y no mira `PUBLISH_MODE`: no publica (ADR-0017 punto 7).
+// `--menus`, después espera a que abras a mano cada menú y aprietes Enter, y guarda lo que se ve.
+// Habla con Facebook de verdad: lo corre el operador, en la terminal de su Mac. No necesita
+// `pnpm dev` (lee el corredor de la base, sin escribir) y no mira `PUBLISH_MODE`: no publica
+// (ADR-0017 punto 7).
 
 const abort = new AbortController();
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -43,14 +44,21 @@ const ask = (question: string) =>
       created.on("SIGINT", () => {
         console.error("\nCortando…");
         abort.abort();
-        created.close();
       });
       terminal = created;
     }
     const current = terminal;
-    const onClose = () => resolve(null);
+    // Un corte de cualquier lado (Ctrl+C en la terminal, SIGTERM) cierra la terminal, y cerrarla
+    // responde `null` a la pregunta pendiente.
+    const onAbort = () => current.close();
+    const onClose = () => {
+      abort.signal.removeEventListener("abort", onAbort);
+      resolve(null);
+    };
+    abort.signal.addEventListener("abort", onAbort, { once: true });
     current.once("close", onClose);
     current.question(question, (answer) => {
+      abort.signal.removeEventListener("abort", onAbort);
       current.off("close", onClose);
       resolve(answer);
     });

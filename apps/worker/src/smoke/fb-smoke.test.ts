@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Broker } from "@agentsales/core";
@@ -8,7 +8,7 @@ import {
   openMarketplaceProfile,
 } from "@agentsales/publishers/marketplace";
 import { afterEach, describe, expect, it } from "vitest";
-import { type FbSmokeDeps, runFbSmoke } from "./fb-smoke.js";
+import { FB_SMOKE_MAX_MENU_CAPTURES, type FbSmokeDeps, runFbSmoke } from "./fb-smoke.js";
 
 // Páginas inventadas: imitan lo mínimo de Facebook. Una app no importa los `test/` de un paquete,
 // así que el test arma su propio Facebook falso (como `ig-smoke.test.ts` con msw).
@@ -24,7 +24,7 @@ const FORM_MENUS = `<!doctype html><html lang="es"><body>
   <div role="banner"><div role="menu" aria-label="Tu cuenta"><div role="menuitem">Nombre Inventado del Operador</div></div></div>
   <div role="main"><form aria-label="Propiedad en venta o alquiler">
     <label>Fotos <input type="file" /></label>
-    <div role="combobox" aria-label="Tipo de propiedad" aria-expanded="false" tabindex="0">Tipo de propiedad</div>
+    <div role="combobox" id="combo-tipo" aria-label="Tipo de propiedad" aria-expanded="false" tabindex="0">Tipo de propiedad</div>
     <label>Precio <input type="text" name="precio" /></label>
   </form></div>
   <div role="listbox" aria-label="Tipo de propiedad" id="lista-tipo" hidden>
@@ -248,7 +248,11 @@ describe("pnpm fb:smoke", () => {
       return questions;
     };
     const openList = (page: MarketplaceProfile["page"]) =>
-      page.evaluate('document.getElementById("lista-tipo").removeAttribute("hidden")');
+      page.evaluate(`document.getElementById("combo-tipo").setAttribute("aria-expanded", "true");
+        document.getElementById("lista-tipo").removeAttribute("hidden");`);
+    const closeList = (page: MarketplaceProfile["page"]) =>
+      page.evaluate(`document.getElementById("combo-tipo").setAttribute("aria-expanded", "false");
+        document.getElementById("lista-tipo").setAttribute("hidden", "");`);
 
     it("guarda una captura por cada Enter, con la lista que abrió el operador, hasta que dice listo", async () => {
       const t = await setup(
@@ -257,11 +261,7 @@ describe("pnpm fb:smoke", () => {
       );
       const questions = operator(t, [
         { before: openList, answer: "" },
-        {
-          before: (page) =>
-            page.evaluate('document.getElementById("lista-tipo").setAttribute("hidden", "")'),
-          answer: "",
-        },
+        { before: closeList, answer: "" },
         { answer: " Listo " },
       ]);
       let clicks: unknown;
@@ -292,6 +292,42 @@ describe("pnpm fb:smoke", () => {
       expect(clicks).toBeUndefined();
       expect(t.profile()?.isOpen()).toBe(false);
       expect(t.unexpected).toEqual([]);
+    });
+
+    it("borra las capturas de una corrida anterior y avisa al llegar al máximo", async () => {
+      const t = await setup(
+        { "/marketplace/create/rental": FORM_MENUS },
+        { cookies: { c_user: "1000" } },
+      );
+      await mkdir(t.deps.outputDir, { recursive: true });
+      await writeFile(join(t.deps.outputDir, "captura-12.aria.yml"), "vieja\n");
+      const questions = operator(
+        t,
+        Array.from({ length: FB_SMOKE_MAX_MENU_CAPTURES + 1 }, () => ({ answer: "" })),
+      );
+
+      await expect(runFbSmoke(t.deps, { brokerSlug: broker.slug, menus: true })).resolves.toBe(0);
+      expect(questions).toHaveLength(FB_SMOKE_MAX_MENU_CAPTURES);
+      expect(t.out.join("\n")).toContain(`máximo de ${FB_SMOKE_MAX_MENU_CAPTURES} capturas`);
+      await expect(readFile(join(t.deps.outputDir, "captura-12.aria.yml"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    });
+
+    it("si el operador cierra la ventana en vez de escribir listo, termina con lo guardado", async () => {
+      const t = await setup(
+        { "/marketplace/create/rental": FORM_MENUS },
+        { cookies: { c_user: "1000" } },
+      );
+      operator(t, [
+        { before: openList, answer: "" },
+        { before: (page) => page.context().close(), answer: "" },
+      ]);
+
+      await expect(runFbSmoke(t.deps, { brokerSlug: broker.slug, menus: true })).resolves.toBe(0);
+      expect(t.out.join("\n")).toContain("Se cerró la ventana: termino con lo guardado");
+      const summary = JSON.parse(await readFile(join(t.deps.outputDir, "summary.json"), "utf8"));
+      expect(summary.files).toContain("captura-1.aria.yml");
     });
 
     it("si se corta la terminal, termina con lo guardado", async () => {

@@ -3,14 +3,21 @@
   <head><meta charset="utf-8" /><title>Marketplace (página local de prueba)</title></head>
   <body>
     <!-- Página inventada para los tests de `fb:smoke --menus`: un menú del formulario cuya lista se
-         dibuja fuera del formulario (como suele hacer Facebook) y un menú de la cuenta en la barra. -->
+         dibuja fuera del formulario (como suele hacer Facebook), listas en la barra y los paneles,
+         y el menú de la cuenta dibujado aparte, fuera de la barra. -->
     <header>
       <div role="menu" aria-label="Tu cuenta"><div role="menuitem" tabindex="-1">Nombre Inventado del Operador</div></div>
     </header>
+    <nav>
+      <div role="listbox" aria-label="Accesos"><div role="option" tabindex="-1">Nombre en la navegación</div></div>
+    </nav>
+    <aside>
+      <div role="listbox" aria-label="Contactos"><div role="option" tabindex="-1">Nombre en el panel lateral</div></div>
+    </aside>
     <main>
       <form aria-label="Propiedad en venta o alquiler">
         <label>Fotos <input type="file" name="fotos" accept="image/*" multiple /></label>
-        <div role="combobox" aria-label="Tipo de propiedad" aria-expanded="false" tabindex="0">Tipo de propiedad</div>
+        <div role="combobox" id="combo-tipo" aria-label="Tipo de propiedad" aria-expanded="false" aria-controls="lista-tipo" tabindex="0">Tipo de propiedad</div>
         <label>Precio <input type="text" name="precio" /></label>
         <button type="button" id="publicar">Publicar</button>
       </form>
@@ -19,9 +26,22 @@
       <div role="option" tabindex="-1">Departamento</div>
       <div role="option" tabindex="-1">Casa</div>
     </div>
+    <div role="menu" aria-label="Tu perfil" id="menu-cuenta" hidden>
+      <div role="menuitem" tabindex="-1">Nombre Inventado del Operador en un menú aparte</div>
+    </div>
     <script>
       window.__clicks = [];
       document.addEventListener("click", (event) => window.__clicks.push(event.target.textContent));
+      // Lo que haría el operador a mano (los tests lo llaman con `page.evaluate`).
+      window.__abrirTipo = () => {
+        document.getElementById("combo-tipo").setAttribute("aria-expanded", "true");
+        document.getElementById("lista-tipo").removeAttribute("hidden");
+      };
+      window.__cerrarTipo = () => {
+        document.getElementById("combo-tipo").setAttribute("aria-expanded", "false");
+        document.getElementById("lista-tipo").setAttribute("hidden", "");
+      };
+      window.__abrirCuenta = () => document.getElementById("menu-cuenta").removeAttribute("hidden");
     </script>
   </body>
 </html>

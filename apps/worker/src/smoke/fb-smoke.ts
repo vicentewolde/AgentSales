@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { type BrokerRepository, isAppError } from "@agentsales/core";
 import {
@@ -92,6 +92,8 @@ export async function runFbSmoke(deps: FbSmokeDeps, options: FbSmokeOptions): Pr
     deps.printError(`✗ No existe el corredor ${options.brokerSlug}`);
     return 1;
   }
+  // Las capturas de una corrida anterior se borran: `summary.json` lista solo las de esta.
+  await removeOldCaptures(deps.outputDir);
   let profile: MarketplaceProfile | undefined;
   try {
     profile = await deps.openProfile(broker.id);
@@ -196,7 +198,11 @@ async function captureMenus(
     const answer = await ask(
       `Enter para guardar lo que se ve (captura ${n} de ${FB_SMOKE_MAX_MENU_CAPTURES}), o "listo" para terminar: `,
     );
-    if (answer === null || answer.trim().toLowerCase() === "listo") break;
+    if (answer === null || answer.trim().toLowerCase() === "listo") return;
+    if (!profile.isOpen()) {
+      deps.print("Se cerró la ventana: termino con lo guardado.");
+      return;
+    }
     const kind = await classifyPage(profile.page);
     if (kind !== "form") throw stopErrorOf(kind);
     const saved = await captureOpenLists(profile.page, deps.outputDir, `captura-${n}`);
@@ -206,8 +212,17 @@ async function captureMenus(
     deps.print(
       saved.lists > 0
         ? `✓ Guardé ${file}: el formulario y ${saved.lists === 1 ? "1 lista desplegada" : `${saved.lists} listas desplegadas`}.`
-        : `✓ Guardé ${file}: el formulario (no vi una lista desplegada; si abriste un menú, vuelve a intentarlo con la lista a la vista).`,
+        : `✓ Guardé ${file}: el formulario (no vi una lista desplegada del formulario; si abriste un menú, vuelve a intentarlo con la lista a la vista).`,
     );
+  }
+  deps.print(`Llegaste al máximo de ${FB_SMOKE_MAX_MENU_CAPTURES} capturas.`);
+}
+
+/** Borra los `captura-N.aria.yml` que dejó otra corrida (si la carpeta no existe, nada). */
+async function removeOldCaptures(dir: string): Promise<void> {
+  const names = await readdir(dir).catch(() => [] as string[]);
+  for (const name of names) {
+    if (/^captura-\d+\.aria\.yml$/.test(name)) await rm(join(dir, name), { force: true });
   }
 }
 
