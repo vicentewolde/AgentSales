@@ -3,6 +3,7 @@ import { basename, join } from "node:path";
 import { type BrokerRepository, isAppError } from "@agentsales/core";
 import {
   captureFormEvidence,
+  captureOpenLists,
   classifyPage,
   hasSession,
   MARKETPLACE_FORM_URL,
@@ -18,6 +19,9 @@ import { describeUnexpected } from "./ig-smoke.js";
 /** Cuánto espera a que el operador inicie sesión en la ventana. */
 export const FB_SMOKE_LOGIN_WAIT_MS = 10 * 60_000;
 
+/** Con `--menus`, cuántas capturas guarda como máximo (cada una, cuando el operador aprieta Enter). */
+export const FB_SMOKE_MAX_MENU_CAPTURES = 10;
+
 export type FbSmokeDeps = {
   brokers: Pick<BrokerRepository, "findBySlug">;
   /** Abre el perfil de Marketplace del corredor (con ventana; los tests, sin ella). */
@@ -32,13 +36,26 @@ export type FbSmokeDeps = {
    * que no se escribió nada ni se hizo clic).
    */
   beforeClose?(profile: MarketplaceProfile): Promise<void>;
+  /**
+   * Con `--menus`: muestra la pregunta en la terminal y devuelve lo que escribió el operador, o
+   * `null` si la entrada se cortó (Ctrl+C o Ctrl+D).
+   */
+  ask?(question: string): Promise<string | null>;
   /** Esperas: inyectables para los tests. */
   loginWaitMs?: number;
   pollMs?: number;
   formWaitMs?: number;
 };
 
-export type FbSmokeOptions = { brokerSlug: string; signal?: AbortSignal };
+export type FbSmokeOptions = {
+  brokerSlug: string;
+  signal?: AbortSignal;
+  /**
+   * `--menus`: con el formulario guardado, espera a que el operador abra a mano un menú (operación,
+   * tipo de propiedad) y apriete Enter, y guarda lo que se ve (spec F5 §4.8).
+   */
+  menus?: boolean;
+};
 
 /** Lo que queda en `summary.json`: sin cookies, sin la consulta de la dirección, sin datos de la cuenta. */
 type FbSmokeSummary = {
@@ -61,8 +78,12 @@ type FbSmokeSummary = {
  * 3. Con sesión, vuelve al formulario y aplica la lista blanca: ante una verificación, un captcha,
  *    Marketplace no disponible u otra página, se detiene (sin captura: solo la ruta).
  * 4. Con el formulario a la vista, guarda la captura y el árbol de accesibilidad **del formulario**
- *    y un resumen en `tmp/fb-smoke/`, y cierra la ventana. **No llena nada, no hace clic y no
- *    escribe en la base.** No mira `PUBLISH_MODE` (no publica; ADR-0017 punto 7).
+ *    y un resumen en `tmp/fb-smoke/`.
+ * 5. Con `--menus`, el operador abre a mano los menús del formulario (las opciones de un menú cerrado
+ *    no salen en el árbol) y, cada vez que aprieta Enter, se guarda el árbol del formulario y de la
+ *    lista desplegada (`captura-N.aria.yml`), hasta que escribe "listo".
+ * 6. Cierra la ventana. **No llena nada, no hace clic y no escribe en la base.** No mira
+ *    `PUBLISH_MODE` (no publica; ADR-0017 punto 7).
  * Devuelve el código de salida: 0 si guardó el formulario, 1 si no.
  */
 export async function runFbSmoke(deps: FbSmokeDeps, options: FbSmokeOptions): Promise<number> {
@@ -103,6 +124,7 @@ export async function runFbSmoke(deps: FbSmokeDeps, options: FbSmokeOptions): Pr
       deps.printError(`  Se detuvo en ${summary.finalPath} (sin captura).`);
       return 1;
     }
+    if (options.menus === true) await captureMenus(profile, deps, summary);
     deps.print(`✓ Formulario guardado en ${deps.outputDir}:`);
     for (const file of [...summary.files, "summary.json"]) deps.print(`  ${file}`);
     deps.print("No se llenó nada. Avísale a Claude: revisará solo el árbol del formulario.");
@@ -146,6 +168,47 @@ async function inspectForm(
     // Solo los nombres: la ruta completa trae el usuario de la Mac.
     files: [basename(evidence.aria), basename(evidence.screenshot)],
   };
+}
+
+/**
+ * `--menus`: el operador abre a mano un menú del formulario y aprieta Enter; se guarda el árbol del
+ * formulario y de la lista desplegada. Antes de cada captura, la lista blanca: si la página dejó de
+ * ser el formulario (una verificación, otra página), se detiene sin guardar. Cada captura queda
+ * anotada en el resumen apenas se guarda.
+ */
+async function captureMenus(
+  profile: MarketplaceProfile,
+  deps: FbSmokeDeps,
+  summary: FbSmokeSummary,
+): Promise<void> {
+  const { ask } = deps;
+  if (ask === undefined) throw new Error("--menus necesita la terminal para preguntar");
+  deps.print("");
+  deps.print("Ahora tú, a mano en la ventana de Chromium:");
+  deps.print(
+    "  abre el menú de operación (venta o alquiler) o el de tipo de propiedad, y deja la lista a la vista.",
+  );
+  deps.print(
+    "  También puedes elegir una opción para ver los campos que aparecen. El sistema no toca nada:",
+  );
+  deps.print("  solo guarda lo que se ve. Nunca hagas clic en Siguiente ni en Publicar.");
+  for (let n = 1; n <= FB_SMOKE_MAX_MENU_CAPTURES; n++) {
+    const answer = await ask(
+      `Enter para guardar lo que se ve (captura ${n} de ${FB_SMOKE_MAX_MENU_CAPTURES}), o "listo" para terminar: `,
+    );
+    if (answer === null || answer.trim().toLowerCase() === "listo") break;
+    const kind = await classifyPage(profile.page);
+    if (kind !== "form") throw stopErrorOf(kind);
+    const saved = await captureOpenLists(profile.page, deps.outputDir, `captura-${n}`);
+    const file = basename(saved.aria);
+    summary.files.push(file);
+    await writeSummary(deps, summary);
+    deps.print(
+      saved.lists > 0
+        ? `✓ Guardé ${file}: el formulario y ${saved.lists === 1 ? "1 lista desplegada" : `${saved.lists} listas desplegadas`}.`
+        : `✓ Guardé ${file}: el formulario (no vi una lista desplegada; si abriste un menú, vuelve a intentarlo con la lista a la vista).`,
+    );
+  }
 }
 
 async function writeSummary(deps: FbSmokeDeps, summary: FbSmokeSummary): Promise<void> {

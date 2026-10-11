@@ -6,7 +6,7 @@ import {
   DEFAULT_ROUTES,
   type FakeFacebook,
 } from "../../test/marketplace/fake-facebook.js";
-import { captureFormEvidence, stopRecord } from "./evidence.js";
+import { captureFormEvidence, captureOpenLists, stopRecord } from "./evidence.js";
 import { classifyPage, requireForm } from "./guard.js";
 import { openMarketplaceProfile } from "./profile.js";
 import { MARKETPLACE_FORM_URL } from "./selectors.js";
@@ -175,6 +175,51 @@ describe("evidencia del formulario", () => {
 
     const aria = await readFile(evidence.aria, "utf8");
     expect(aria).toContain("Precio");
+    expect(aria).not.toContain("Nombre Inventado del Operador");
+  });
+});
+
+describe("listas desplegadas (fb:smoke --menus)", () => {
+  const openForm = async () => {
+    const fb = await setup(withRoutes({ "/marketplace/create/rental": "form-menus.html" }));
+    const { page } = await fb.open();
+    await page.goto(MARKETPLACE_FORM_URL);
+    await requireForm(page, { timeoutMs: 2_000 });
+    return { fb, page };
+  };
+
+  it("guarda el formulario y la lista que abrió el operador, aunque esté fuera del formulario", async () => {
+    const { fb, page } = await openForm();
+    // Lo que haría el operador a mano: abrir el menú de tipo de propiedad.
+    await page.evaluate('document.getElementById("lista-tipo").removeAttribute("hidden")');
+    const dir = join(fb.root, "evidencia");
+
+    const saved = await captureOpenLists(page, dir, "captura-1");
+
+    expect(saved.lists).toBe(1);
+    const aria = await readFile(saved.aria, "utf8");
+    expect(aria).toContain("# formulario");
+    expect(aria).toContain('combobox "Tipo de propiedad"');
+    expect(aria).toContain('option "Departamento"');
+    expect(aria).toContain('option "Casa"');
+    // El menú de la cuenta, en la barra, nunca: trae el nombre del operador.
+    expect(aria).not.toContain("Nombre Inventado del Operador");
+    expect((await stat(dir)).mode & 0o777).toBe(0o700);
+    expect((await stat(saved.aria)).mode & 0o777).toBe(0o600);
+    expect(
+      await page.evaluate(() => (globalThis as unknown as { __clicks: string[] }).__clicks),
+    ).toEqual([]);
+  });
+
+  it("sin una lista abierta guarda solo el formulario (una lista oculta no cuenta)", async () => {
+    const { fb, page } = await openForm();
+
+    const saved = await captureOpenLists(page, join(fb.root, "evidencia"), "captura-1");
+
+    expect(saved.lists).toBe(0);
+    const aria = await readFile(saved.aria, "utf8");
+    expect(aria).toContain("Precio");
+    expect(aria).not.toContain("Departamento");
     expect(aria).not.toContain("Nombre Inventado del Operador");
   });
 });

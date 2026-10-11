@@ -3,7 +3,13 @@
  * (`@agentsales/publishers/marketplace`): solo la importa el worker, así la API no carga Playwright.
  */
 export { MARKETPLACE_ERRORS } from "./errors.js";
-export { captureFormEvidence, type MarketplaceEvidence, stopRecord } from "./evidence.js";
+export {
+  captureFormEvidence,
+  captureOpenLists,
+  type MarketplaceEvidence,
+  type MarketplaceListsEvidence,
+  stopRecord,
+} from "./evidence.js";
 export {
   classifyPage,
   type MarketplacePageKind,
