@@ -9,6 +9,7 @@ import {
   type MediaRepository,
   type MediaStorage,
   marketplacePrice,
+  marketplacePriceText,
   marketplaceReadiness,
   type PlatformAccountRepository,
   type PublicationRepository,
@@ -207,10 +208,13 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
     now,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
+  // El mismo texto que la CLI y el panel ("$238.559.452 (UF del 2026-10-12: $41.130,94)").
   deps.print(
-    price.uf === null
-      ? `Precio en el formulario: $${price.priceClp.toLocaleString("es-CL")}`
-      : `Precio en el formulario: $${price.priceClp.toLocaleString("es-CL")} (UF ${price.uf.value} del ${price.uf.date})`,
+    `Precio en el formulario: ${marketplacePriceText({
+      priceClp: price.priceClp,
+      ufValue: price.uf?.value ?? null,
+      ufDate: price.uf?.date ?? null,
+    })}`,
   );
   if (options.yes !== true) {
     deps.print(

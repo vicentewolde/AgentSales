@@ -2,7 +2,6 @@ import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   AppError,
-  isAppError,
   marketplaceFormPlan,
   type Publisher,
   type PublishInput,
@@ -14,15 +13,19 @@ import { MARKETPLACE_ERRORS } from "./errors.js";
 import { captureFormEvidence } from "./evidence.js";
 import { type FillMarketplaceOptions, fillMarketplaceForm } from "./fill.js";
 import { requireForm } from "./guard.js";
-import type { MarketplaceProfile } from "./profile.js";
+import {
+  MARKETPLACE_PROFILE_BUSY_WAIT_MS,
+  type MarketplaceProfile,
+  openProfileWhenFree,
+} from "./profile.js";
 import { FORM_WAIT_MS, MARKETPLACE_FORM_URL } from "./selectors.js";
 import { createMarketplaceWindow, type MarketplaceWindow } from "./window.js";
 
 /** Largo máximo del título de Marketplace (el de Portal, `04-formato`). */
 export const MARKETPLACE_MAX_TITLE = 60;
 /**
- * Cuántas fotos se suben como mucho (provisional: el máximo del formulario es NO VERIFICADO, nota
- * §5; los blogs dicen 50). T09 lo fija con el formulario real.
+ * Cuántas fotos se suben como mucho (**POR CONFIRMAR** con `fb:smoke --menus` o `--listing`: el
+ * máximo del formulario es NO VERIFICADO, nota §5; los blogs dicen 50).
  */
 export const MARKETPLACE_MAX_PHOTOS = 20;
 
@@ -92,9 +95,6 @@ export type MarketplacePublisherDeps = {
 /** Tope de un intento (spec F5 §4.4): la cola no espera el clic del operador. */
 export const MARKETPLACE_PUBLISH_MAX_MS = 5 * 60_000;
 
-/** Cuánto espera a que se libere el perfil antes de rendirse (spec F5 §4.4, paso 2). */
-export const MARKETPLACE_PROFILE_BUSY_WAIT_MS = 30_000;
-
 /** La carpeta de un intento: fotos (temporales) y evidencia. */
 export const marketplaceAttemptDir = (tmpRoot: string, publicationId: string) =>
   join(tmpRoot, publicationId);
@@ -151,10 +151,14 @@ export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publ
           await writeFile(path, await deps.readPhoto(media), { mode: 0o600 });
           photoPaths.push(path);
         }
+        const cut = () => timedOut || ctx.signal?.aborted === true;
+        if (cut()) throw MARKETPLACE_ERRORS.formChanged("se cortó el llenado");
         await deps.closeAccountWindows(ctx.account.id);
-        profile = await openWhenFree(deps, ctx.account.brokerId);
-        if (timedOut || ctx.signal?.aborted)
-          throw MARKETPLACE_ERRORS.formChanged("se cortó el llenado");
+        profile = await openProfileWhenFree(() => deps.openProfile(ctx.account.brokerId), {
+          waitMs: deps.profileBusyWaitMs ?? MARKETPLACE_PROFILE_BUSY_WAIT_MS,
+          cut,
+        });
+        if (cut()) throw MARKETPLACE_ERRORS.formChanged("se cortó el llenado");
         const { page } = profile;
         await page.goto(MARKETPLACE_FORM_URL);
         await requireForm(page, { timeoutMs: deps.formWaitMs ?? FORM_WAIT_MS });
@@ -169,12 +173,14 @@ export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publ
           },
           window,
         );
+        // Si el tope venció mientras se entregaba, la ventana ya se cerró: no se da por listo.
+        if (cut()) throw MARKETPLACE_ERRORS.formChanged("se cortó el llenado");
         return { handoff: "manual_confirm", simulated: false };
       } catch (error) {
         await profile?.close();
-        if (timedOut && !ctx.signal?.aborted) {
-          throw MARKETPLACE_ERRORS.formChanged("el llenado pasó su tope de tiempo");
-        }
+        // Un corte deja errores de Playwright sin sentido ("Target closed"): se dice qué pasó.
+        if (ctx.signal?.aborted) throw MARKETPLACE_ERRORS.formChanged("se cortó el llenado");
+        if (timedOut) throw MARKETPLACE_ERRORS.formChanged("el llenado pasó su tope de tiempo");
         throw error;
       } finally {
         clearTimeout(timer);
@@ -183,21 +189,4 @@ export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publ
       }
     },
   };
-}
-
-/** Abre el perfil; si está tomado, espera a que se libere hasta el tope. */
-async function openWhenFree(
-  deps: Pick<MarketplacePublisherDeps, "openProfile" | "profileBusyWaitMs">,
-  brokerId: string,
-): Promise<MarketplaceProfile> {
-  const deadline = Date.now() + (deps.profileBusyWaitMs ?? MARKETPLACE_PROFILE_BUSY_WAIT_MS);
-  for (;;) {
-    try {
-      return await deps.openProfile(brokerId);
-    } catch (error) {
-      const busy = isAppError(error) && error.code === "MARKETPLACE_PROFILE_BUSY";
-      if (!busy || Date.now() >= deadline) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 1_000));
-    }
-  }
 }

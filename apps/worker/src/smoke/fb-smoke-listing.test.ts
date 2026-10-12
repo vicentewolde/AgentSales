@@ -109,7 +109,7 @@ describe("pnpm fb:smoke --listing", () => {
     expect(s.questions).toEqual(["¿Llenar el formulario real de Facebook? s/N "]);
     const out = s.out.join("\n");
     expect(out).toContain("Intentos en vivo de la cuenta hoy: 0 de 3.");
-    expect(out).toContain("UF 41130.94 del 2026-10-12");
+    expect(out).toContain("$238.559.452 (UF del 2026-10-12: $41.130,94)");
     expect(out).toContain("borra a mano el borrador");
     expect(out).toContain("No se cambió nada en AgentSales");
     expect(s.counted).toEqual([s.t.account?.id]);

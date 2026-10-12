@@ -256,6 +256,46 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
     expect(t.profiles[0]?.isOpen()).toBe(false);
   });
 
+  it("nunca hace clic en un control que se llame como Siguiente o Publicar (NEVER_CLICK)", async () => {
+    const t = await setup({
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-trampa.html" },
+    });
+
+    await expect(t.publisher.publish(input, ctx)).rejects.toMatchObject({
+      code: "MARKETPLACE_FORM_CHANGED",
+      message: expect.stringContaining("botón de enviar"),
+    });
+    // Se cerró sin tocarla: la página registró los desplegables y nada más.
+    expect(t.profiles[0]?.isOpen()).toBe(false);
+  });
+
+  it("un corte (apagado del worker) a mitad del llenado cierra la ventana y lo dice", async () => {
+    const t = await setup({ deps: { fill: { pauseMs: 300 } } });
+    const abort = new AbortController();
+    setTimeout(() => abort.abort(), 150);
+
+    await expect(
+      t.publisher.publish(input, { ...ctx, signal: abort.signal }),
+    ).rejects.toMatchObject({
+      code: "MARKETPLACE_FORM_CHANGED",
+      message: expect.stringContaining("se cortó"),
+    });
+    expect(t.profiles[0]?.isOpen()).toBe(false);
+    expect(t.handoffs).toEqual([]);
+  });
+
+  it("con el corte antes de abrir, no abre la ventana", async () => {
+    const t = await setup();
+    const abort = new AbortController();
+    abort.abort();
+
+    await expect(
+      t.publisher.publish(input, { ...ctx, signal: abort.signal }),
+    ).rejects.toMatchObject({ code: "MARKETPLACE_FORM_CHANGED" });
+    expect(t.profiles).toEqual([]);
+    expect(t.closedAccounts).toEqual([]);
+  });
+
   it("ante el inicio de sesión se detiene sin captura y cierra la ventana", async () => {
     const t = await setup({
       routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "login-form.html" },

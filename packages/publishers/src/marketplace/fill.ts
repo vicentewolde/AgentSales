@@ -1,7 +1,7 @@
 import { isAppError, type MarketplaceFormPlan } from "@agentsales/core";
 import type { Locator, Page } from "playwright";
 import { MARKETPLACE_ERRORS } from "./errors.js";
-import { captureFormEvidence } from "./evidence.js";
+import { captureFormEvidence, formLocator } from "./evidence.js";
 import { requireForm } from "./guard.js";
 import {
   CONTROL_WAIT_MS,
@@ -9,6 +9,7 @@ import {
   FORM_CONTROLS,
   type FormControl,
   NEVER_CLICK,
+  OPEN_LIST_EXCLUDED,
   PHOTO_INPUT,
   PHOTO_THUMBNAIL,
   PHOTOS_WAIT_MS,
@@ -59,12 +60,16 @@ export async function fillMarketplaceForm(
   const guard = () => requireForm(page, { timeoutMs: options.guardWaitMs ?? 5_000 });
   const pause = () => (pauseMs > 0 ? page.waitForTimeout(pauseMs) : Promise.resolve());
 
-  /** El control a la vista, o `null` si es opcional y no está; si falta uno obligatorio, se detiene. */
+  /**
+   * El control a la vista **dentro del formulario** (nunca en la barra de Facebook: D5), o `null` si
+   * es opcional y no está; si falta uno obligatorio, se detiene.
+   */
   const find = async (control: FormControl): Promise<Locator | null> => {
+    const root = await formLocator(page);
     const locator = (
       control.kind === "select"
-        ? page.getByRole("combobox", { name: control.name })
-        : page.getByLabel(control.label)
+        ? root.getByRole("combobox", { name: control.name })
+        : root.getByLabel(control.label)
     ).first();
     try {
       await locator.waitFor({ state: "visible", timeout: control.optional ? 1_000 : waitMs });
@@ -93,13 +98,18 @@ export async function fillMarketplaceForm(
     const box = await find(control);
     if (box === null) return;
     await safeClick(box, nameOf(control));
-    const option = page.getByRole("option", { name: value, exact: true }).first();
-    try {
-      await option.waitFor({ state: "visible", timeout: waitMs });
-    } catch {
-      throw await formChanged(`«${nameOf(control)}» no tiene la opción «${value}»`);
+    const deadline = Date.now() + waitMs;
+    for (;;) {
+      const [option] = await visibleOptions(page.getByRole("option", { name: value, exact: true }));
+      if (option !== undefined) {
+        await safeClick(option, value);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        throw await formChanged(`«${nameOf(control)}» no tiene la opción «${value}»`);
+      }
+      await page.waitForTimeout(250);
     }
-    await safeClick(option, value);
   };
 
   const type = async (control: FormControl & { kind: "text" }, value: string | number | null) => {
@@ -117,12 +127,22 @@ export async function fillMarketplaceForm(
     const suggestions = page.getByRole("option");
     const deadline = Date.now() + waitMs;
     for (;;) {
-      for (const suggestion of await suggestions.all()) {
+      // Primero la sugerencia que **empieza** por la comuna ("Ñuñoa, Santiago…"); si no hay, una que
+      // la nombre en otra parte. Así "Villa Ñuñoa" o "Santiago Centro" no ganan a la comuna misma.
+      let exact: Locator | undefined;
+      let partial: Locator | undefined;
+      for (const suggestion of await visibleOptions(suggestions)) {
         const text = plain(await suggestion.innerText().catch(() => ""));
-        if (text.includes(wanted) && (await suggestion.isVisible())) {
-          await safeClick(suggestion, comuna);
-          return;
+        if ((text.split(",")[0] ?? "").trim() === wanted) {
+          exact = suggestion;
+          break;
         }
+        if (partial === undefined && text.includes(wanted)) partial = suggestion;
+      }
+      const chosen = exact ?? partial;
+      if (chosen !== undefined) {
+        await safeClick(chosen, comuna);
+        return;
       }
       if (Date.now() >= deadline) {
         throw await formChanged(`«${nameOf(control)}» no sugirió la comuna`);
@@ -147,7 +167,14 @@ export async function fillMarketplaceForm(
     () => type(FORM_CONTROLS.area, plan.areaM2 === null ? null : Math.round(plan.areaM2)),
     () => type(FORM_CONTROLS.title, plan.title),
     () => type(FORM_CONTROLS.description, plan.description),
-    () => uploadPhotos(page, photoPaths, options.photosWaitMs ?? PHOTOS_WAIT_MS, formChanged),
+    async () =>
+      uploadPhotos(
+        await formLocator(page),
+        page,
+        photoPaths,
+        options.photosWaitMs ?? PHOTOS_WAIT_MS,
+        formChanged,
+      ),
   ];
   for (const [index, step] of steps.entries()) {
     await guard();
@@ -162,18 +189,38 @@ export async function fillMarketplaceForm(
   }
 }
 
+/**
+ * Las opciones a la vista que puede tocar el llenado: las de los desplegables y sugerencias del
+ * formulario (Facebook las dibuja aparte), **nunca** las de la barra de arriba ni de los paneles
+ * laterales (`OPEN_LIST_EXCLUDED`: ahí están los menús de la cuenta). Ni su texto se lee.
+ */
+async function visibleOptions(options: Locator): Promise<Locator[]> {
+  const usable: Locator[] = [];
+  for (const option of await options.all()) {
+    const ok = await option
+      .evaluate((node, excluded) => node.closest(excluded) === null, OPEN_LIST_EXCLUDED)
+      .catch(() => false);
+    if (ok && (await option.isVisible().catch(() => false))) usable.push(option);
+  }
+  return usable;
+}
+
 /** Sube las fotos con `setInputFiles` y espera a ver una miniatura por foto (spec F5 §4.4, paso 5). */
 async function uploadPhotos(
+  root: Locator,
   page: Page,
   photoPaths: readonly string[],
   waitMs: number,
   formChanged: (detail: string) => Promise<Error>,
 ): Promise<void> {
-  const input = page.locator(PHOTO_INPUT).first();
+  const input = root.locator(PHOTO_INPUT).first();
   if ((await input.count()) === 0) throw await formChanged("no apareció el control de fotos");
+  // Lo que ya había (íconos, o fotos de un borrador) no cuenta: se esperan las nuevas.
+  const thumbnails = root.locator(PHOTO_THUMBNAIL);
+  const before = await thumbnails.count();
   await input.setInputFiles([...photoPaths]);
   const deadline = Date.now() + waitMs;
-  while ((await page.locator(PHOTO_THUMBNAIL).count()) < photoPaths.length) {
+  while ((await thumbnails.count()) < before + photoPaths.length) {
     if (Date.now() >= deadline) throw await formChanged("no se vieron todas las fotos cargadas");
     await page.waitForTimeout(250);
   }

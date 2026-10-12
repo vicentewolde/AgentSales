@@ -1,5 +1,6 @@
 import { chmod, link, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { isAppError } from "@agentsales/core";
 import { type BrowserContext, chromium, type Page } from "playwright";
 import { MARKETPLACE_ERRORS, withoutPaths } from "./errors.js";
 import { FACEBOOK_ORIGIN, SESSION_COOKIE } from "./selectors.js";
@@ -200,5 +201,29 @@ function isAlive(pid: number): boolean {
     return true;
   } catch (error) {
     return errnoOf(error) === "EPERM";
+  }
+}
+
+/** Cuánto espera a que se libere un perfil tomado (spec F5 §4.2 y §4.4: una ventana se cierra). */
+export const MARKETPLACE_PROFILE_BUSY_WAIT_MS = 30_000;
+
+/**
+ * Abre el perfil con `open`; si está tomado (`MARKETPLACE_PROFILE_BUSY`), reintenta cada `pollMs`
+ * hasta `waitMs`. `cut` corta la espera (el tope del intento o el apagado del worker). Lo usan el
+ * publisher y el job de iniciar sesión.
+ */
+export async function openProfileWhenFree(
+  open: () => Promise<MarketplaceProfile>,
+  options: { waitMs?: number; pollMs?: number; cut?: () => boolean } = {},
+): Promise<MarketplaceProfile> {
+  const deadline = Date.now() + (options.waitMs ?? MARKETPLACE_PROFILE_BUSY_WAIT_MS);
+  for (;;) {
+    try {
+      return await open();
+    } catch (error) {
+      const busy = isAppError(error) && error.code === "MARKETPLACE_PROFILE_BUSY";
+      if (!busy || options.cut?.() === true || Date.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? 1_000));
+    }
   }
 }

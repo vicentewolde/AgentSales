@@ -41,7 +41,7 @@ export async function captureFormEvidence(
 }
 
 /** El formulario: primero el `form` (lo más acotado) y, solo si no hay, el contenedor principal. */
-async function formLocator(page: Page) {
+export async function formLocator(page: Page) {
   const element = page.locator(FORM_ELEMENT);
   return ((await element.count()) > 0 ? element : page.locator(FORM_CONTAINER)).first();
 }

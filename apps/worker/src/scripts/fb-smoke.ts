@@ -148,7 +148,7 @@ try {
         signal: abort.signal,
       },
     );
-  } else {
+  } else if (values.broker !== undefined) {
     process.exitCode = await runFbSmoke(
       {
         brokers: createBrokerRepository(db.db),
@@ -159,7 +159,7 @@ try {
         printError: (line) => console.error(line),
         ask,
       },
-      { brokerSlug: values.broker ?? "", signal: abort.signal, menus: values.menus },
+      { brokerSlug: values.broker, signal: abort.signal, menus: values.menus },
     );
   }
 } catch (error) {

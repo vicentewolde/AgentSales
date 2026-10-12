@@ -21,17 +21,18 @@ export {
 } from "./guard.js";
 export {
   isMarketplaceProfileInUse,
+  MARKETPLACE_PROFILE_BUSY_WAIT_MS,
   type MarketplaceProfile,
   marketplaceProfileDir,
   marketplaceProfileLockPath,
   type OpenMarketplaceProfileOptions,
   openMarketplaceProfile,
+  openProfileWhenFree,
 } from "./profile.js";
 export {
   createMarketplacePublisher,
   MARKETPLACE_MAX_PHOTOS,
   MARKETPLACE_MAX_TITLE,
-  MARKETPLACE_PROFILE_BUSY_WAIT_MS,
   MARKETPLACE_PUBLISH_MAX_MS,
   type MarketplaceHandoffRef,
   type MarketplacePublisherDeps,

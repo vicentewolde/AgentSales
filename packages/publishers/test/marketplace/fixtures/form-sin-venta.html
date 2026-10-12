@@ -6,11 +6,19 @@
     <!-- Página inventada para los tests: imita el formulario de propiedades de Marketplace con los
          roles y nombres de `selectors.ts` (POR CONFIRMAR con los árboles de `fb:smoke --menus`: se
          rehace desde el árbol real). Registra cada clic en `window.__clicks`. -->
-    <header><span>Nombre Inventado del Operador</span> <span>3 mensajes nuevos</span></header>
+    <header>
+      <span>Nombre Inventado del Operador</span> <span>3 mensajes nuevos</span>
+      <!-- Opciones de la barra con los mismos textos que el formulario: el llenado nunca las toca. -->
+      <div role="listbox" aria-label="Búsquedas recientes">
+        <div role="option" id="barra-ubicacion" tabindex="-1">Ñuñoa, Santiago, Chile</div>
+        <div role="option" id="barra-operacion" tabindex="-1">Alquiler</div>
+      </div>
+    </header>
     <main>
       <form aria-label="Propiedad en venta o alquiler">
         <h1>Propiedad en venta o alquiler</h1>
         <label>Fotos <input type="file" name="fotos" accept="image/*" multiple /></label>
+        <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" />
         <div id="miniaturas"></div>
         <div role="combobox" id="combo-operacion" aria-label="Venta o alquiler" aria-expanded="false" aria-controls="lista-operacion" tabindex="0">Venta o alquiler</div>
         <div role="combobox" id="combo-tipo" aria-label="Tipo de propiedad" aria-expanded="false" aria-controls="lista-tipo" tabindex="0">Tipo de propiedad</div>
@@ -38,6 +46,12 @@
     <a id="paso-2" href="/marketplace/create/rental/paso-2">Paso 2</a>
     <script>
       window.__clicks = [];
+      // Una comuna parecida antes de la buscada: el llenado tiene que elegir la que empieza por ella.
+      window.__suggestions = [
+        "Villa Ñuñoa, Santiago, Chile",
+        "Providencia, Santiago, Chile",
+        "Ñuñoa, Santiago, Chile",
+      ];
       document.addEventListener("click", (event) => {
         const target = event.target.closest("[id], [role=option]");
         window.__clicks.push(target?.id || target?.textContent.trim() || event.target.tagName);
@@ -65,7 +79,7 @@
       place.addEventListener("input", () => {
         window.__typedPlace = place.value;
         suggestions.innerHTML = "";
-        for (const text of ["Providencia, Santiago, Chile", "Ñuñoa, Santiago, Chile"]) {
+        for (const text of window.__suggestions) {
           const option = document.createElement("div");
           option.setAttribute("role", "option");
           option.tabIndex = -1;

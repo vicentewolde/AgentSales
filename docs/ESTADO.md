@@ -94,6 +94,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **F7:** `agentsales listing --broker` resuelve el corredor en la CLI con `/brokers`. Con autenticación y varios clientes, el alcance por corredor lo tiene que hacer el servidor (junto con la proyección acotada de `GET /listings`).
 - `--broker` se normaliza con `slugify` solo en la CLI: `POST /imports/local` con `"Mi Corredor"` da `BROKER_NOT_FOUND`. Hoy no importa (el panel usa un selector); si aparece otro cliente, normalizar en core (`requestImport`).
 
+- Menor (F5, revisión del lote E): `marketplace/fields.ts` usa `normalizePortalName` de Portal y el publisher del worker usa `readPictureFrom` de `portal.ts`. Moverlos a un módulo neutro con un tercer uso. Si otro consumidor necesita el Facebook falso, exponerlo como subruta de pruebas (`@agentsales/publishers/marketplace/testing`) en vez de leer los fixtures por ruta.
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
@@ -101,6 +102,14 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
   - **Publicar en vivo ya llena el formulario:** baja las fotos, cierra la ventana vieja de la cuenta, abre tu perfil y revisa la página antes de cada paso. Elige operación y tipo, escribe dormitorios, baños, precio en pesos, ubicación (por comuna; la dirección solo si la planilla lo permite), m² y descripción, y sube las fotos. Después guarda la evidencia y te deja la ventana.
   - **Ante cualquier problema** (una pantalla rara, un campo que no aparece, una opción que falta, R2, más de 5 min) cierra la ventana y suelta el perfil. Nunca toca un botón que se llame Siguiente o Publicar.
   - **`pnpm fb:smoke --listing P001`:** revisa que el texto esté aprobado y que no falte nada, te dice los intentos de hoy (se niega con el límite) y pregunta s/N. Llena el formulario y espera a que cierres la ventana, sin cambiar nada en AgentSales.
+  - **La revisión dejó** (`revisor` y `arquitecto`, sin bloqueantes):
+    - el llenado busca campos y opciones solo en el formulario, nunca en la barra de Facebook;
+    - elige la sugerencia que empieza por la comuna (no "Villa Ñuñoa");
+    - cuenta solo las fotos nuevas;
+    - un corte del worker cierra la ventana con un mensaje claro, sin abrir una ventana de más;
+    - la espera de un perfil ocupado es una sola, compartida con iniciar sesión;
+    - más pruebas: un control llamado "Publicar" no se toca, y el corte a mitad y antes de abrir;
+    - la sección de `fb:smoke` en la arquitectura, y la UF en formato chileno en la terminal.
   - **Lo que falta:** los nombres exactos de los campos y las opciones de operación y tipo (`marketplace/fields.ts` y `FORM_CONTROLS` en `selectors.ts`, marcados POR CONFIRMAR), y rehacer el formulario de prueba con el árbol real. Para eso, tu `pnpm fb:smoke --broker agentsales-pruebas --menus`.
 - 2026-10-11: **`fb:smoke --menus`** (antes del lote E). La corrida del 2026-10-10 no dejó `tmp/fb-smoke/`: terminó antes de llegar al formulario. Como las opciones de un menú cerrado no salen en el árbol, `--menus` te pide abrir a mano cada menú del formulario y apretar Enter; guarda el árbol del formulario y de la lista a la vista (`captura-N.aria.yml`, sin imagen) hasta que escribes `listo`. Solo guarda una lista si un menú del formulario está desplegado, y nunca una de la barra o los paneles laterales (así el menú de tu cuenta no entra; igual, no lo abras). Antes de cada captura revisa que la página siga siendo el formulario; si no, se detiene; si cierras la ventana, termina con lo guardado. Las capturas de una corrida anterior se borran. Guía y checklist al día. **La revisión dejó:** esa regla de "menú del formulario desplegado", Ctrl+C o un corte del proceso nunca dejan la pregunta colgada, el aviso al llegar a 10 capturas y más pruebas.
 - 2026-10-10: **Lote D de F5 (F5-T12 y F5-T13).** El panel de Marketplace:
