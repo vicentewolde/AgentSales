@@ -10,6 +10,7 @@ export {
   type MarketplaceListsEvidence,
   stopRecord,
 } from "./evidence.js";
+export { type FillMarketplaceOptions, fillMarketplaceForm } from "./fill.js";
 export {
   classifyPage,
   type MarketplacePageKind,
@@ -30,6 +31,11 @@ export {
   createMarketplacePublisher,
   MARKETPLACE_MAX_PHOTOS,
   MARKETPLACE_MAX_TITLE,
+  MARKETPLACE_PROFILE_BUSY_WAIT_MS,
+  MARKETPLACE_PUBLISH_MAX_MS,
+  type MarketplaceHandoffRef,
+  type MarketplacePublisherDeps,
+  marketplaceAttemptDir,
   validateMarketplaceInput,
 } from "./publisher.js";
 export {

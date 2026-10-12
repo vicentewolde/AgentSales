@@ -102,5 +102,57 @@ export const OPEN_LIST = '[role="listbox"], [role="menu"]';
 export const OPEN_LIST_EXCLUDED =
   'header, nav, aside, [role="banner"], [role="navigation"], [role="complementary"]';
 
+/**
+ * Los controles del formulario de propiedades (spec F5 §4.4, paso 4; F5-T09), por rol y nombre
+ * visible, en español. **POR CONFIRMAR** con los árboles de `pnpm fb:smoke --menus`: hasta entonces
+ * son los nombres probables y el PR del lote E no se mezcla. Un control que no aparece en su tope da
+ * `MARKETPLACE_FORM_CHANGED` (con captura del formulario).
+ * - `select`: un desplegable (`combobox`) cuyas opciones son `option` (pueden dibujarse fuera del
+ *   formulario).
+ * - `text`: un campo con su etiqueta (`getByLabel`).
+ * - `place`: un campo con sugerencias (`combobox` o campo con etiqueta) donde se elige la opción que
+ *   nombra la comuna.
+ * `optional`: si el formulario no lo trae, se sigue sin él (por ejemplo, los m² en un tipo que no
+ * los pide).
+ */
+export type FormControl =
+  | { kind: "select"; name: string | RegExp; optional?: boolean }
+  | { kind: "text"; label: string | RegExp; optional?: boolean }
+  | { kind: "place"; label: string | RegExp; optional?: boolean };
+
+export const FORM_CONTROLS = {
+  operation: { kind: "select", name: /^venta o alquiler/i },
+  propertyType: { kind: "select", name: /^tipo de (propiedad|alquiler)/i },
+  bedrooms: { kind: "text", label: /^n[uú]mero de (habitaciones|dormitorios)/i },
+  bathrooms: { kind: "text", label: /^n[uú]mero de ba[nñ]os/i },
+  price: { kind: "text", label: /^precio/i },
+  location: { kind: "place", label: /^(direcci[oó]n|ubicaci[oó]n)/i },
+  area: { kind: "text", label: /metros cuadrados/i, optional: true },
+  title: { kind: "text", label: /^t[ií]tulo/i, optional: true },
+  description: { kind: "text", label: /^descripci[oó]n/i },
+} as const satisfies Record<string, FormControl>;
+
+/**
+ * Nombres de botones que el sistema **nunca** toca (D3): el operador hace Siguiente y Publicar. El
+ * llenado revisa el nombre de cada control antes de hacerle clic.
+ */
+export const NEVER_CLICK = /siguiente|publicar|next|publish|enviar|submit/i;
+
+/** El control de fotos: `setInputFiles` no exige que se vea (nota §1). */
+export const PHOTO_INPUT = 'input[type="file"]';
+
+/**
+ * Las miniaturas de las fotos ya cargadas (**POR CONFIRMAR** con `fb:smoke --listing`): el llenado
+ * espera a ver una por foto.
+ */
+export const PHOTO_THUMBNAIL = 'img[src^="blob:"], img[src^="data:"]';
+
+/** Cuánto espera cada control y las miniaturas de las fotos. */
+export const CONTROL_WAIT_MS = 10_000;
+export const PHOTOS_WAIT_MS = 120_000;
+
+/** La pausa fija entre controles (D6): ritmo, no imitación de una persona. */
+export const FILL_PAUSE_MS = 1_000;
+
 /** Cuánto espera la lista blanca a que aparezca el formulario. */
 export const FORM_WAIT_MS = 20_000;

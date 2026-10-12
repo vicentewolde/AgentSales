@@ -127,6 +127,15 @@ export {
 } from "./listing-validator/index.js";
 export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
 export {
+  MARKETPLACE_PROPERTY_TYPE_KEYS,
+  type MarketplaceFormPlan,
+  marketplaceFormPlan,
+  marketplaceOperationOption,
+  marketplaceOperationUnsupported,
+  marketplacePropertyTypeOption,
+  marketplaceTypeUnsupported,
+} from "./marketplace/fields.js";
+export {
   DEFAULT_MARKETPLACE_DAILY_LIMIT,
   dateIn,
   MANUAL_CONFIRM_PLATFORMS,

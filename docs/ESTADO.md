@@ -2,9 +2,9 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-11
+**Actualizado:** 2026-10-12
 **Fase actual:** F5 · Facebook Marketplace (`docs/specs/fase-5-marketplace.md`, aprobado el 2026-10-09) — 11 de 14 tareas. F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0`)
-**Última tarea:** `fb:smoke --menus` (antes del lote E: guarda también las opciones de los menús que abres a mano). Antes, el lote D (#107)
+**Última tarea:** lote E, primera parte (en PR borrador): el llenado del formulario, `fb:smoke --listing` y la prueba de punta a punta, con los nombres del formulario por confirmar. Antes, `fb:smoke --menus` (#108)
 **Siguiente paso:** el lote E (`/tarea F5-T09 F5-T10`: el llenado real del formulario) **necesita tu `pnpm fb:smoke --broker agentsales-pruebas --menus`** (sus árboles son la entrada; la corrida del 2026-10-10 no llegó al formulario). Tú, cuando puedas: ese smoke, con tu token `pnpm uf:smoke`, y conectar tu Facebook (panel Cuentas o `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`, con `pnpm dev`)
 
 ## Pendiente del cierre de F4 (para el inicio de F5)
@@ -32,8 +32,8 @@
 | **Lote B:** F5-T04 Conectar y olvidar la cuenta · F5-T05 Publicar en dos tiempos · F5-T06 La ventana abierta · F5-T07 Lo que falta y la UF | ✅ terminada | #105 |
 | **Lote C:** F5-T08 API · F5-T11 CLI | ✅ terminada | #106 |
 | **Lote D:** F5-T12 Panel: Cuentas · F5-T13 Panel: Marketplace en Contenido | ✅ terminada | #107 |
-| `fb:smoke --menus` (ajuste de T03 para el lote E) | ✅ terminada | |
-| **Lote E:** F5-T09 Opciones del formulario y llenado · F5-T10 Publisher y `fb:smoke --listing` (necesita tu `fb:smoke --menus`) | ⏳ pendiente | |
+| `fb:smoke --menus` (ajuste de T03 para el lote E) | ✅ terminada | #108 |
+| **Lote E:** F5-T09 Opciones del formulario y llenado · F5-T10 Publisher y `fb:smoke --listing` | 🔨 en curso: falta ajustar los nombres con tu `fb:smoke --menus` | |
 | F5-T14 Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
@@ -97,6 +97,11 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-12: **Lote E, primera parte** (PR en borrador, no se mezcla hasta ajustar los nombres con tus árboles):
+  - **Publicar en vivo ya llena el formulario:** baja las fotos, cierra la ventana vieja de la cuenta, abre tu perfil y revisa la página antes de cada paso. Elige operación y tipo, escribe dormitorios, baños, precio en pesos, ubicación (por comuna; la dirección solo si la planilla lo permite), m² y descripción, y sube las fotos. Después guarda la evidencia y te deja la ventana.
+  - **Ante cualquier problema** (una pantalla rara, un campo que no aparece, una opción que falta, R2, más de 5 min) cierra la ventana y suelta el perfil. Nunca toca un botón que se llame Siguiente o Publicar.
+  - **`pnpm fb:smoke --listing P001`:** revisa que el texto esté aprobado y que no falte nada, te dice los intentos de hoy (se niega con el límite) y pregunta s/N. Llena el formulario y espera a que cierres la ventana, sin cambiar nada en AgentSales.
+  - **Lo que falta:** los nombres exactos de los campos y las opciones de operación y tipo (`marketplace/fields.ts` y `FORM_CONTROLS` en `selectors.ts`, marcados POR CONFIRMAR), y rehacer el formulario de prueba con el árbol real. Para eso, tu `pnpm fb:smoke --broker agentsales-pruebas --menus`.
 - 2026-10-11: **`fb:smoke --menus`** (antes del lote E). La corrida del 2026-10-10 no dejó `tmp/fb-smoke/`: terminó antes de llegar al formulario. Como las opciones de un menú cerrado no salen en el árbol, `--menus` te pide abrir a mano cada menú del formulario y apretar Enter; guarda el árbol del formulario y de la lista a la vista (`captura-N.aria.yml`, sin imagen) hasta que escribes `listo`. Solo guarda una lista si un menú del formulario está desplegado, y nunca una de la barra o los paneles laterales (así el menú de tu cuenta no entra; igual, no lo abras). Antes de cada captura revisa que la página siga siendo el formulario; si no, se detiene; si cierras la ventana, termina con lo guardado. Las capturas de una corrida anterior se borran. Guía y checklist al día. **La revisión dejó:** esa regla de "menú del formulario desplegado", Ctrl+C o un corte del proceso nunca dejan la pregunta colgada, el aviso al llegar a 10 capturas y más pruebas.
 - 2026-10-10: **Lote D de F5 (F5-T12 y F5-T13).** El panel de Marketplace:
   - **Cuentas:** un bloque "Facebook Marketplace" por corredor. "Iniciar sesión en Facebook" pide la ventana de Chromium y el panel espera hasta ver la sesión, o dice por qué falló; también muestra el comando de la terminal. La tarjeta dice cuándo se vio la sesión y el último inicio que falló. Desconectar avisa que se borra la sesión guardada y pide confirmación.

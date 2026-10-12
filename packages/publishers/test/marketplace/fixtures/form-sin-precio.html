@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+  <head><meta charset="utf-8" /><title>Marketplace (página local de prueba)</title></head>
+  <body>
+    <!-- Variante de form.html sin el campo de precio (un control que falta). -->
+    <!-- Página inventada para los tests: imita el formulario de propiedades de Marketplace con los
+         roles y nombres de `selectors.ts` (POR CONFIRMAR con los árboles de `fb:smoke --menus`: se
+         rehace desde el árbol real). Registra cada clic en `window.__clicks`. -->
+    <header><span>Nombre Inventado del Operador</span> <span>3 mensajes nuevos</span></header>
+    <main>
+      <form aria-label="Propiedad en venta o alquiler">
+        <h1>Propiedad en venta o alquiler</h1>
+        <label>Fotos <input type="file" name="fotos" accept="image/*" multiple /></label>
+        <div id="miniaturas"></div>
+        <div role="combobox" id="combo-operacion" aria-label="Venta o alquiler" aria-expanded="false" aria-controls="lista-operacion" tabindex="0">Venta o alquiler</div>
+        <div role="combobox" id="combo-tipo" aria-label="Tipo de propiedad" aria-expanded="false" aria-controls="lista-tipo" tabindex="0">Tipo de propiedad</div>
+        <label>Número de habitaciones <input type="text" name="habitaciones" /></label>
+        <label>Número de baños <input type="text" name="banos" /></label>
+        <label>Dirección de la propiedad <input type="text" name="ubicacion" autocomplete="off" /></label>
+        <label>Metros cuadrados <input type="text" name="m2" /></label>
+        <label>Descripción <textarea name="descripcion"></textarea></label>
+        <button type="button" id="siguiente">Siguiente</button>
+        <button type="button" id="publicar">Publicar</button>
+      </form>
+    </main>
+    <div role="listbox" id="lista-operacion" aria-label="Venta o alquiler" hidden>
+      <div role="option" tabindex="-1">Alquiler</div>
+      <div role="option" tabindex="-1">Venta</div>
+    </div>
+    <div role="listbox" id="lista-tipo" aria-label="Tipo de propiedad" hidden>
+      <div role="option" tabindex="-1">Departamento</div>
+      <div role="option" tabindex="-1">Casa</div>
+      <div role="option" tabindex="-1">Habitación</div>
+    </div>
+    <div role="listbox" id="sugerencias" aria-label="Sugerencias de ubicación" hidden></div>
+    <a id="otro-aviso" href="/marketplace/item/999/">Un aviso de otra persona</a>
+    <a id="mis-avisos" href="/marketplace/you/selling/">Tus publicaciones</a>
+    <a id="paso-2" href="/marketplace/create/rental/paso-2">Paso 2</a>
+    <script>
+      window.__clicks = [];
+      document.addEventListener("click", (event) => {
+        const target = event.target.closest("[id], [role=option]");
+        window.__clicks.push(target?.id || target?.textContent.trim() || event.target.tagName);
+      });
+      const combo = (comboId, listId) => {
+        const box = document.getElementById(comboId);
+        const list = document.getElementById(listId);
+        box.addEventListener("click", () => {
+          box.setAttribute("aria-expanded", "true");
+          list.hidden = false;
+        });
+        for (const option of list.querySelectorAll("[role=option]")) {
+          option.addEventListener("click", () => {
+            box.textContent = option.textContent;
+            box.dataset.value = option.textContent;
+            box.setAttribute("aria-expanded", "false");
+            list.hidden = true;
+          });
+        }
+      };
+      combo("combo-operacion", "lista-operacion");
+      combo("combo-tipo", "lista-tipo");
+      const place = document.querySelector('input[name="ubicacion"]');
+      const suggestions = document.getElementById("sugerencias");
+      place.addEventListener("input", () => {
+        window.__typedPlace = place.value;
+        suggestions.innerHTML = "";
+        for (const text of ["Providencia, Santiago, Chile", "Ñuñoa, Santiago, Chile"]) {
+          const option = document.createElement("div");
+          option.setAttribute("role", "option");
+          option.tabIndex = -1;
+          option.textContent = text;
+          option.addEventListener("click", () => {
+            place.value = text;
+            place.dataset.value = text;
+            suggestions.hidden = true;
+          });
+          suggestions.append(option);
+        }
+        suggestions.hidden = place.value === "";
+      });
+      document.querySelector('input[type="file"]').addEventListener("change", (event) => {
+        const thumbnails = document.getElementById("miniaturas");
+        for (const file of event.target.files) {
+          const image = document.createElement("img");
+          image.alt = file.name;
+          image.src = URL.createObjectURL(file);
+          thumbnails.append(image);
+        }
+      });
+      document.getElementById("publicar").addEventListener("click", () => {
+        window.location.href = "/marketplace/item/123/?ref=publicado";
+      });
+    </script>
+  </body>
+</html>

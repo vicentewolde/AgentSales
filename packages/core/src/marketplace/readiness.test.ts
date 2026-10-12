@@ -41,6 +41,23 @@ describe("marketplaceReadiness", () => {
     ]);
   });
 
+  it("un tipo o una operación sin opción en el formulario no va a Marketplace", () => {
+    const result = marketplaceReadiness(
+      { ...listing, propertyType: "Bodega" },
+      { photos: 1, ufConfigured: false },
+    );
+    expect(result).toMatchObject({
+      ready: false,
+      issues: [{ code: "MARKETPLACE_TYPE_UNSUPPORTED", field: "tipo" }],
+    });
+    expect(
+      marketplaceReadiness(
+        { ...listing, propertyType: "casa" },
+        { photos: 1, ufConfigured: false },
+      ),
+    ).toEqual({ ready: true });
+  });
+
   it("en UF necesita el token del Banco Central", () => {
     const uf = { ...listing, priceAmount: 5800, priceCurrency: "UF" as const };
     expect(marketplaceReadiness(uf, { photos: 1, ufConfigured: true })).toEqual({ ready: true });

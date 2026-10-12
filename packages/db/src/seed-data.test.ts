@@ -2,6 +2,8 @@ import {
   buildListingValidator,
   CORE_FIELD_TARGETS,
   type FieldDefinition,
+  MARKETPLACE_PROPERTY_TYPE_KEYS,
+  marketplaceOperationOption,
   normalizePortalName,
   PORTAL_ATTRIBUTE_FIELDS,
   PORTAL_FACING_CODES,
@@ -264,5 +266,27 @@ describe("la tabla de Portal (core) calza con los campos del Excel (ADR-0006)", 
       );
     expect(options("orientacion").sort()).toEqual(Object.keys(PORTAL_FACING_CODES).sort());
     expect(options("acepta_mascotas")).toEqual(["si", "no", "a consultar"]);
+  });
+});
+
+describe("la tabla de Marketplace (core) calza con los campos del Excel (spec F5 §4.6)", () => {
+  const definition = (key: string) => REAL_ESTATE_FIELD_DEFINITIONS.find((def) => def.key === key);
+
+  it("cada tipo del Excel tiene una decisión en la tabla (con opción o sin ella), y nada más", () => {
+    const options = (definition("tipo")?.options ?? []).map(normalizePortalName);
+    expect([...options].sort()).toEqual([...MARKETPLACE_PROPERTY_TYPE_KEYS].sort());
+  });
+
+  it("las operaciones del Excel son las que la tabla conoce", () => {
+    expect(definition("operacion")?.options).toEqual(["Venta", "Arriendo"]);
+    // `operation` de core: Venta → sale y Arriendo → rent; las dos tienen una entrada en la tabla.
+    expect(marketplaceOperationOption("sale")).not.toBeUndefined();
+    expect(marketplaceOperationOption("rent")).not.toBeUndefined();
+  });
+
+  it("dormitorios, baños y superficie útil son números, como los lee el plan del formulario", () => {
+    for (const key of ["dormitorios", "banos", "sup_util_m2"]) {
+      expect(definition(key)?.type, key).toBe("number");
+    }
   });
 });
