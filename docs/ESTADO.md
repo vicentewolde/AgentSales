@@ -2,10 +2,10 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-10
-**Fase actual:** F5 · Facebook Marketplace (`docs/specs/fase-5-marketplace.md`, aprobado el 2026-10-09) — 11 de 14 tareas (lote D en PR). F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0`)
-**Última tarea:** lote D de F5 (F5-T12 Panel: Cuentas con Marketplace, F5-T13 Panel: Marketplace en Contenido). Antes, el lote C (#106)
-**Siguiente paso:** el lote E (`/tarea F5-T09 F5-T10`: el llenado real del formulario) **necesita tu `pnpm fb:smoke --broker agentsales-pruebas`** (su árbol es la entrada). Tú, cuando puedas: ese smoke, con tu token `pnpm uf:smoke`, y conectar tu Facebook (panel Cuentas o `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`, con `pnpm dev`)
+**Actualizado:** 2026-10-11
+**Fase actual:** F5 · Facebook Marketplace (`docs/specs/fase-5-marketplace.md`, aprobado el 2026-10-09) — 11 de 14 tareas. F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0`)
+**Última tarea:** `fb:smoke --menus` (antes del lote E: guarda también las opciones de los menús que abres a mano). Antes, el lote D (#107)
+**Siguiente paso:** el lote E (`/tarea F5-T09 F5-T10`: el llenado real del formulario) **necesita tu `pnpm fb:smoke --broker agentsales-pruebas --menus`** (sus árboles son la entrada; la corrida del 2026-10-10 no llegó al formulario). Tú, cuando puedas: ese smoke, con tu token `pnpm uf:smoke`, y conectar tu Facebook (panel Cuentas o `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`, con `pnpm dev`)
 
 ## Pendiente del cierre de F4 (para el inicio de F5)
 - [ ] **Usuario de prueba de Mercado Libre (T25, D15):** crearlo (`pnpm ml:test-user --broker agentsales-pruebas`), pedir su activación a soporte y anotar aquí la fecha; contratar el paquete sin cargo y conectarlo a `agentsales-pruebas` (checklist, `docs/07-checklist-cuentas.md`). Reemplaza tu cuenta real en ese corredor durante la prueba; al final se reconecta la real
@@ -17,7 +17,7 @@
 - [ ] Revisar en Facebook (Perfil → Estado del perfil → Marketplace) que tu cuenta tiene Marketplace sin restricciones
 - [ ] Token de la API BDE del Banco Central (`BCCH_API_TOKEN` en `.env`; paso a paso en `docs/07-checklist-cuentas.md`, "Antes de F5")
 - [ ] Confirmar que `agentsales-pruebas` tiene al menos un arriendo (por si Chile no tiene venta en Marketplace)
-- [ ] Con el lote A: `pnpm fb:smoke --broker agentsales-pruebas` (inicias sesión a mano en la ventana) y avisarme: su árbol del formulario es la entrada de F5-T09
+- [ ] `pnpm fb:smoke --broker agentsales-pruebas --menus` (inicias sesión a mano en la ventana; después abres a mano cada menú y aprietas Enter) y avisarme: sus árboles del formulario son la entrada de F5-T09. La corrida del 2026-10-10 no dejó `tmp/fb-smoke/` (no llegó al formulario: probablemente se pasaron los 10 min de espera con la verificación)
 - [ ] Con el lote C (la CLI, ya lista; con `pnpm dev` corriendo): `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`
 - [ ] Con tu token en `.env`: `pnpm uf:smoke` (confirma la forma real de la respuesta del Banco Central)
 
@@ -31,8 +31,9 @@
 | **Lote A:** F5-T01 Contrato y datos · F5-T02 Perfil, guardas y evidencia · F5-T03 `pnpm fb:smoke` | ✅ terminada | #104 |
 | **Lote B:** F5-T04 Conectar y olvidar la cuenta · F5-T05 Publicar en dos tiempos · F5-T06 La ventana abierta · F5-T07 Lo que falta y la UF | ✅ terminada | #105 |
 | **Lote C:** F5-T08 API · F5-T11 CLI | ✅ terminada | #106 |
-| **Lote D:** F5-T12 Panel: Cuentas · F5-T13 Panel: Marketplace en Contenido | 🔨 en PR | |
-| **Lote E:** F5-T09 Opciones del formulario y llenado · F5-T10 Publisher y `fb:smoke --listing` (necesita tu `fb:smoke`) | ⏳ pendiente | |
+| **Lote D:** F5-T12 Panel: Cuentas · F5-T13 Panel: Marketplace en Contenido | ✅ terminada | #107 |
+| `fb:smoke --menus` (ajuste de T03 para el lote E) | ✅ terminada | |
+| **Lote E:** F5-T09 Opciones del formulario y llenado · F5-T10 Publisher y `fb:smoke --listing` (necesita tu `fb:smoke --menus`) | ⏳ pendiente | |
 | F5-T14 Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
@@ -96,6 +97,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-11: **`fb:smoke --menus`** (antes del lote E). La corrida del 2026-10-10 no dejó `tmp/fb-smoke/`: terminó antes de llegar al formulario. Como las opciones de un menú cerrado no salen en el árbol, `--menus` te pide abrir a mano cada menú del formulario y apretar Enter; guarda el árbol del formulario y de la lista a la vista (`captura-N.aria.yml`, sin imagen) hasta que escribes `listo`. Solo guarda una lista si un menú del formulario está desplegado, y nunca una de la barra o los paneles laterales (así el menú de tu cuenta no entra; igual, no lo abras). Antes de cada captura revisa que la página siga siendo el formulario; si no, se detiene; si cierras la ventana, termina con lo guardado. Las capturas de una corrida anterior se borran. Guía y checklist al día. **La revisión dejó:** esa regla de "menú del formulario desplegado", Ctrl+C o un corte del proceso nunca dejan la pregunta colgada, el aviso al llegar a 10 capturas y más pruebas.
 - 2026-10-10: **Lote D de F5 (F5-T12 y F5-T13).** El panel de Marketplace:
   - **Cuentas:** un bloque "Facebook Marketplace" por corredor. "Iniciar sesión en Facebook" pide la ventana de Chromium y el panel espera hasta ver la sesión, o dice por qué falló; también muestra el comando de la terminal. La tarjeta dice cuándo se vio la sesión y el último inicio que falló. Desconectar avisa que se borra la sesión guardada y pide confirmación.
   - **Contenido > Marketplace:** lo que falta (bloquea Publicar), aprobar y publicar (en vivo avisa que se abre Chromium y que tú haces Siguiente y Publicar). Mientras espera tu clic: "Formulario listo" o "La ventana se cerró: ¿lo publicaste?", el precio en pesos con la UF, un campo para pegar el enlace (uno que no es de un aviso se explica y no deja confirmar) con "Lo publiqué", y "No lo publiqué" (pide confirmar: no se deshace). Descartar y quitar la aprobación esperan tu palabra. Publicada: el enlace y Marcar como retirada.

@@ -6,7 +6,7 @@ import {
   DEFAULT_ROUTES,
   type FakeFacebook,
 } from "../../test/marketplace/fake-facebook.js";
-import { captureFormEvidence, stopRecord } from "./evidence.js";
+import { captureFormEvidence, captureOpenLists, stopRecord } from "./evidence.js";
 import { classifyPage, requireForm } from "./guard.js";
 import { openMarketplaceProfile } from "./profile.js";
 import { MARKETPLACE_FORM_URL } from "./selectors.js";
@@ -175,6 +175,64 @@ describe("evidencia del formulario", () => {
 
     const aria = await readFile(evidence.aria, "utf8");
     expect(aria).toContain("Precio");
+    expect(aria).not.toContain("Nombre Inventado del Operador");
+  });
+});
+
+describe("listas desplegadas (fb:smoke --menus)", () => {
+  const openForm = async () => {
+    const fb = await setup(withRoutes({ "/marketplace/create/rental": "form-menus.html" }));
+    const { page } = await fb.open();
+    await page.goto(MARKETPLACE_FORM_URL);
+    await requireForm(page, { timeoutMs: 2_000 });
+    return { fb, page };
+  };
+  const clicks = (page: Awaited<ReturnType<typeof openForm>>["page"]) =>
+    page.evaluate(() => (globalThis as unknown as { __clicks: string[] }).__clicks);
+
+  it("guarda el formulario y la lista que abrió el operador, aunque esté fuera del formulario", async () => {
+    const { fb, page } = await openForm();
+    // Lo que haría el operador a mano: abrir el menú de tipo de propiedad.
+    await page.evaluate("window.__abrirTipo()");
+    const dir = join(fb.root, "evidencia");
+
+    const saved = await captureOpenLists(page, dir, "captura-1");
+
+    expect(saved.lists).toBe(1);
+    const aria = await readFile(saved.aria, "utf8");
+    expect(aria).toContain("# formulario");
+    expect(aria).toContain('combobox "Tipo de propiedad"');
+    expect(aria).toContain('option "Departamento"');
+    expect(aria).toContain('option "Casa"');
+    // Las listas de la barra, la navegación y el panel lateral, nunca: traen datos del operador.
+    expect(aria).not.toContain("Nombre Inventado del Operador");
+    expect(aria).not.toContain("Nombre en la navegación");
+    expect(aria).not.toContain("Nombre en el panel lateral");
+    expect((await stat(dir)).mode & 0o777).toBe(0o700);
+    expect((await stat(saved.aria)).mode & 0o777).toBe(0o600);
+    expect(await clicks(page)).toEqual([]);
+  });
+
+  it("un menú abierto fuera del formulario, sin un control del formulario desplegado, no se guarda", async () => {
+    const { fb, page } = await openForm();
+    // El operador abre por error el menú de su cuenta (dibujado aparte, fuera de la barra).
+    await page.evaluate("window.__abrirCuenta()");
+
+    const saved = await captureOpenLists(page, join(fb.root, "evidencia"), "captura-1");
+
+    expect(saved.lists).toBe(0);
+    expect(await readFile(saved.aria, "utf8")).not.toContain("Nombre Inventado del Operador");
+  });
+
+  it("sin una lista abierta guarda solo el formulario (una lista oculta no cuenta)", async () => {
+    const { fb, page } = await openForm();
+
+    const saved = await captureOpenLists(page, join(fb.root, "evidencia"), "captura-1");
+
+    expect(saved.lists).toBe(0);
+    const aria = await readFile(saved.aria, "utf8");
+    expect(aria).toContain("Precio");
+    expect(aria).not.toContain("Departamento");
     expect(aria).not.toContain("Nombre Inventado del Operador");
   });
 });

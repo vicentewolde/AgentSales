@@ -91,5 +91,16 @@ export const FORM_ELEMENT = 'form:has(input[type="file"])';
 export const FORM_CONTAINER = '[role="main"]:has(input[type="file"])';
 export const FORM_ROOT = `${FORM_ELEMENT}, ${FORM_CONTAINER}`;
 
+/**
+ * Una lista desplegada (las opciones de un menú del formulario, como operación o tipo de propiedad).
+ * Facebook suele dibujarlas fuera del formulario, en una capa aparte; por eso `fb:smoke --menus` las
+ * busca en toda la página, pero solo las guarda con un control del formulario desplegado y nunca
+ * dentro de `OPEN_LIST_EXCLUDED` (la barra de arriba y los paneles laterales: ahí están los menús de
+ * la cuenta, con el nombre del operador). Ver `captureOpenLists`.
+ */
+export const OPEN_LIST = '[role="listbox"], [role="menu"]';
+export const OPEN_LIST_EXCLUDED =
+  'header, nav, aside, [role="banner"], [role="navigation"], [role="complementary"]';
+
 /** Cuánto espera la lista blanca a que aparezca el formulario. */
 export const FORM_WAIT_MS = 20_000;
