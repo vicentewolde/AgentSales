@@ -119,6 +119,9 @@ async function setup(
   return { fb, publisher, handoffs, closedAccounts, profiles, reported, read, dir, tmpRoot };
 }
 
+/** Los archivos de una carpeta, o ninguno si no existe (las fotos ya no pasan por el disco). */
+const filesIn = (dir: string) => readdir(dir).catch(() => [] as string[]);
+
 /** El mismo aviso sin dirección en la planilla: solo se conoce la comuna. */
 const withoutAddress: PublishInput = {
   ...input,
@@ -193,6 +196,12 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     );
     expect(await value("ubicacion")).toBe("Villa Ñuñoa, Santiago, Chile");
     expect(await page.locator("#estado-fotos").innerText()).toBe("Se han adjuntado 2 fotos");
+    // Facebook sube las fotos DESPUÉS de adjuntarlas (2026-10-14: «¡Uy!» con
+    // ERR_FILE_NOT_FOUND, porque se borraban del disco al terminar): tienen que poder leerse
+    // después de que el llenado terminó.
+    await expect
+      .poll(() => page.evaluate("[window.__uploadOk, window.__uploadFailed]"), { timeout: 3_000 })
+      .toEqual([2, undefined]);
     // Las fotos van por el control que acepta solo imágenes, no por el de imágenes y videos.
     expect(await page.evaluate("window.__uploadedVia")).toBe("fotos-arrastrar");
     // Solo el desplegable y sus opciones: nunca Siguiente, Publicar, el borrador ni los interruptores.
@@ -385,7 +394,8 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
     expect(await readdir(t.dir)).toEqual(
       expect.arrayContaining(["control-faltante.aria.yml", "control-faltante.png"]),
     );
-    expect(await readdir(t.dir)).not.toContain("fotos");
+    // Las fotos nunca pasan por el disco.
+    expect(await filesIn(t.dir)).not.toContain("fotos");
     // El perfil quedó libre: se puede volver a abrir.
     const again = await t.fb.open();
     await again.close();
@@ -471,7 +481,7 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
     expect(await page.locator("#estado-fotos").innerText()).toBe("Se han adjuntado 0 fotos");
     expect(seen).toEqual([{ dir: t.dir }]);
     // Ni captura ni árbol del formulario (y las fotos temporales, borradas).
-    expect(await readdir(t.dir)).toEqual([]);
+    expect(await filesIn(t.dir)).toEqual([]);
     await t.handoffs[0]?.window.close();
   });
 
@@ -584,10 +594,10 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
       code: "MARKETPLACE_SESSION_EXPIRED",
     });
     expect(t.profiles[0]?.isOpen()).toBe(false);
-    expect(await readdir(t.dir)).toEqual([]);
+    expect(await filesIn(t.dir)).toEqual([]);
   });
 
-  it("si R2 falla, no abre el navegador y borra las fotos", async () => {
+  it("si R2 falla, no abre el navegador ni deja nada en el disco", async () => {
     const t = await setup({
       deps: {
         readPhoto: async () => {
@@ -602,7 +612,7 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
     });
     expect(t.profiles).toEqual([]);
     expect(t.closedAccounts).toEqual([]);
-    expect(await readdir(t.dir)).toEqual([]);
+    expect(await filesIn(t.dir)).toEqual([]);
   });
 
   it("un tipo sin opción en Marketplace no baja fotos ni abre nada", async () => {
@@ -665,7 +675,7 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
     await expect(t.publisher.publish(input, ctx)).rejects.toMatchObject({
       code: "MARKETPLACE_PROFILE_BUSY",
     });
-    expect(await readdir(t.dir)).toEqual([]);
+    expect(await filesIn(t.dir)).toEqual([]);
   });
 
   it("al pasar su tope cierra la ventana y lo dice", async () => {

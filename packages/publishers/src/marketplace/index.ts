@@ -18,7 +18,11 @@ export {
   type MarketplaceShapeStep,
   stopRecord,
 } from "./evidence.js";
-export { type FillMarketplaceOptions, fillMarketplaceForm } from "./fill.js";
+export {
+  type FillMarketplaceOptions,
+  fillMarketplaceForm,
+  type MarketplacePhoto,
+} from "./fill.js";
 export {
   classifyPage,
   type MarketplacePageKind,

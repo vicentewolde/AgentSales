@@ -81,7 +81,7 @@ El operador deja que AgentSales abra Facebook con su perfil, llene el formulario
 
 ### 4.4 El formulario (publisher de Marketplace)
 - **Pasos** (`publish`, solo en `live`; tope de 5 min, la cola no espera el clic):
-  1. Baja de R2 las fotos fijadas en la publicación (`pi_4x3`, las mismas de Portal) a `tmp/marketplace/<publicationId>/`. El precio en pesos ya viene en el input.
+  1. Lee de R2 las fotos fijadas en la publicación (`pi_4x3`, las mismas de Portal) y las deja **en memoria**: se adjuntan al formulario como datos, no como archivos (Facebook las sube unos segundos después de adjuntarlas; un archivo temporal ya borrado hacía fallar esa subida, 2026-10-14). El precio en pesos ya viene en el input.
   2. Abre el perfil y va a la dirección del formulario (`MARKETPLACE_FORM_URL`, en `selectors.ts`: `/marketplace/create/rental`, confirmada con `fb:smoke --menus` el 2026-10-13). Si el perfil está tomado por la ventana de un intento anterior de la misma cuenta (por ejemplo, justo después de "No lo publiqué"), el registro del worker la cierra primero; si sigue tomado a los 30 s, `MARKETPLACE_PROFILE_BUSY`.
   3. **Lista blanca, antes de cada paso:** la dirección es la del formulario y el formulario está a la vista. Si no:
      - inicio de sesión → `MARKETPLACE_SESSION_EXPIRED`;
@@ -393,3 +393,5 @@ Decididas por Claude con la aprobación permanente (preguntas técnicas de la no
 
 
 | 2026-10-14 | Segunda prueba de diagnóstico con P004 (ya con la dirección leída bien): llenó todo y la ubicación quedó con «Avenida Providencia» como referencia, pero el operador pidió **la dirección correcta: escribirla tal cual la tiene la planilla y hacer clic en la primera sugerencia que aparezca**, tenga o no la comuna (siempre aparece alguna). Pasa a ser la regla con dirección (D16); las reglas de la comuna quedan solo para un aviso sin dirección. Además, el diálogo «¡Uy!» volvió a aparecer inmediatamente al final y se cierra con un botón |
+| 2026-10-14 | **Causa del diálogo «¡Uy!»:** el diagnóstico anotó 4 `POST /ajax/react_composer/attachments/photo/upload (net::ERR_FILE_NOT_FOUND)`. Facebook sube las fotos **después** de adjuntarlas (el contador «Se han adjuntado N fotos» solo dice que quedaron adjuntas) y las lee del disco en ese momento; el publisher borraba la carpeta temporal al terminar, así que **ninguna foto llegaba a Facebook** en las pruebas. Ahora las fotos se adjuntan **en memoria** (§4.4 paso 1), viven mientras la ventana esté abierta y no hay carpeta temporal de fotos; la prueba local reproduce la lectura tardía. El criterio de T10 «el temporal se borra» queda como «las fotos no pasan por el disco» |
+

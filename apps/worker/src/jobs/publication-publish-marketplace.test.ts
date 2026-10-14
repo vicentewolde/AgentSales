@@ -136,6 +136,12 @@ describe("publicar en Marketplace de punta a punta (spec F5-T10)", () => {
     const dir = join(s.tmpRoot, s.publication.id);
     expect((await readdir(dir)).sort()).toEqual(["formulario.aria.yml", "formulario.png"]);
     expect(s.windows.size()).toBe(1);
+    // Facebook sube las fotos después de adjuntarlas: tienen que seguir legibles (2026-10-14).
+    await expect
+      .poll(() => page.evaluate("[window.__uploadFailed, (window.__uploadOk ?? 0) > 0]"), {
+        timeout: 3_000,
+      })
+      .toEqual([undefined, true]);
     expect(
       await page.evaluate(() => (globalThis as unknown as { __clicks: string[] }).__clicks),
     ).not.toContain("publicar");
@@ -169,8 +175,8 @@ describe("publicar en Marketplace de punta a punta (spec F5-T10)", () => {
     );
     expect(s.windows.size()).toBe(0);
     expect(s.profiles[0]?.isOpen()).toBe(false);
-    // Las fotos temporales se borraron, y el perfil quedó libre.
-    expect(await readdir(join(s.tmpRoot, s.publication.id))).toEqual([]);
+    // Nada en el disco (las fotos van en memoria) y el perfil quedó libre.
+    expect(await readdir(join(s.tmpRoot, s.publication.id)).catch(() => [])).toEqual([]);
     const again = await s.openProfile("otro-corredor");
     await again.close();
     const reopened = await s.openProfile(s.t.account?.brokerId ?? "");

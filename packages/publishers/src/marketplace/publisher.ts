@@ -1,4 +1,3 @@
-import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   AppError,
@@ -14,7 +13,7 @@ import {
 import type { Page } from "playwright";
 import { MARKETPLACE_ERRORS } from "./errors.js";
 import { captureFormEvidence } from "./evidence.js";
-import { type FillMarketplaceOptions, fillMarketplaceForm } from "./fill.js";
+import { type FillMarketplaceOptions, fillMarketplaceForm, type MarketplacePhoto } from "./fill.js";
 import { requireForm } from "./guard.js";
 import {
   MARKETPLACE_PROFILE_BUSY_WAIT_MS,
@@ -88,7 +87,7 @@ export type MarketplacePublisherDeps = {
   openProfile(brokerId: string): Promise<MarketplaceProfile>;
   /** Los bytes de una foto fijada (`pi_4x3`, JPEG), leídos de R2. */
   readPhoto(media: PublishMediaItem): Promise<Uint8Array>;
-  /** `<workspace>/tmp/marketplace`: las fotos (se borran al terminar) y la evidencia. */
+  /** `<workspace>/tmp/marketplace`: la evidencia de cada intento (las fotos no pasan por el disco). */
   tmpRoot: string;
   /**
    * Cierra la ventana de un intento anterior de la misma cuenta (el registro del worker), antes de
@@ -119,21 +118,24 @@ export type MarketplacePublisherDeps = {
 /** Tope de un intento (spec F5 §4.4): la cola no espera el clic del operador. */
 export const MARKETPLACE_PUBLISH_MAX_MS = 5 * 60_000;
 
-/** La carpeta de un intento: fotos (temporales) y evidencia. */
+/** La carpeta de un intento: la evidencia. */
 export const marketplaceAttemptDir = (tmpRoot: string, publicationId: string) =>
   join(tmpRoot, publicationId);
 
 /**
  * El publisher de Marketplace (spec F5 §4.3 y §4.4, ADR-0017; F5-T10). `publish` (solo en `live`:
  * en `dry-run` lo envuelve `withDryRun`, que nunca abre el navegador):
- * 1. Baja de R2 las fotos fijadas a `tmp/marketplace/<publicationId>/` (`0700`).
+ * 1. Lee de R2 las fotos fijadas y las deja **en memoria**: se le pasan al formulario como datos,
+ *    no como archivos. Facebook las sube unos segundos después de adjuntarlas, leyéndolas en ese
+ *    momento; si fueran archivos temporales borrados al terminar, la subida fallaría
+ *    (`ERR_FILE_NOT_FOUND` y el diálogo «¡Uy!» de Facebook, visto el 2026-10-14).
  * 2. Cierra la ventana vieja de la cuenta y abre el perfil del corredor (si sigue tomado, reintenta
  *    hasta `profileBusyWaitMs`; después, `MARKETPLACE_PROFILE_BUSY`). Va al formulario.
  * 3. Lista blanca (`requireForm`), y antes de cada paso del llenado.
  * 4. Llena el formulario y sube las fotos (`fillMarketplaceForm`).
  * 5. Guarda la evidencia **del formulario** y entrega la ventana con `onHandoff`. Devuelve `handoff`.
  * Ante **cualquier** error (los `MARKETPLACE_*`, R2, la entrega) cierra la ventana y suelta el
- * perfil antes de lanzar. Las fotos se borran siempre; la evidencia queda (la limpia el worker a
+ * perfil antes de lanzar. La evidencia queda en `tmp/marketplace/<publicationId>/` (la limpia el worker a
  * los 7 días). **Nunca** hace clic en Siguiente ni Publicar.
  */
 export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publisher {
@@ -156,9 +158,6 @@ export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publ
       // Antes de bajar nada: un tipo o una operación sin opción no abre el navegador.
       const plan = marketplaceFormPlan(input);
       const dir = marketplaceAttemptDir(deps.tmpRoot, input.publicationId);
-      const photosDir = join(dir, "fotos");
-      await mkdir(photosDir, { recursive: true, mode: 0o700 });
-      await chmod(dir, 0o700);
       let profile: MarketplaceProfile | undefined;
       // El tope o el apagado del worker cierran la ventana: lo que estaba en curso falla y se sale.
       let timedOut = false;
@@ -169,11 +168,13 @@ export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publ
       const onAbort = () => void profile?.close();
       ctx.signal?.addEventListener("abort", onAbort, { once: true });
       try {
-        const photoPaths: string[] = [];
+        const photos: MarketplacePhoto[] = [];
         for (const [index, media] of input.media.entries()) {
-          const path = join(photosDir, `foto-${String(index + 1).padStart(2, "0")}.jpg`);
-          await writeFile(path, await deps.readPhoto(media), { mode: 0o600 });
-          photoPaths.push(path);
+          photos.push({
+            name: `foto-${String(index + 1).padStart(2, "0")}.jpg`,
+            mimeType: "image/jpeg",
+            buffer: Buffer.from(await deps.readPhoto(media)),
+          });
         }
         const cut = () => timedOut || ctx.signal?.aborted === true;
         if (cut()) throw MARKETPLACE_ERRORS.formChanged("se cortó el llenado");
@@ -187,7 +188,7 @@ export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publ
         deps.diagnostics?.watchPage?.(page, dir);
         await page.goto(MARKETPLACE_FORM_URL);
         await requireForm(page, { timeoutMs: deps.formWaitMs ?? FORM_WAIT_MS });
-        const filled = await fillMarketplaceForm(page, plan, photoPaths, {
+        const filled = await fillMarketplaceForm(page, plan, photos, {
           ...deps.fill,
           evidenceDir: dir,
         });
@@ -219,7 +220,6 @@ export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publ
       } finally {
         clearTimeout(timer);
         ctx.signal?.removeEventListener("abort", onAbort);
-        await rm(photosDir, { recursive: true, force: true });
       }
     },
   };
