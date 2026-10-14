@@ -61,7 +61,10 @@
       window.__suggestions = ["Ñuñoa, Santiago, Publicar ahora"];
       document.addEventListener("click", (event) => {
         const target = event.target.closest("[id], [role=option]");
-        const what = target?.id || target?.textContent.trim() || event.target.tagName;
+        const what =
+          target?.getAttribute("role") === "option"
+            ? target.textContent.trim()
+            : target?.id || target?.textContent.trim() || event.target.tagName;
         window.__clicks.push(what);
         window.reportClick?.(what);
       });
@@ -84,24 +87,53 @@
       }
       const place = document.querySelector('input[name="ubicacion"]');
       const suggestions = document.getElementById("sugerencias");
+      const choose = (text) => {
+        place.value = text;
+        place.dataset.value = text;
+        place.setAttribute("aria-expanded", "false");
+        place.removeAttribute("aria-activedescendant");
+        suggestions.hidden = true;
+      };
+      let active = -1;
+      const highlight = (index) => {
+        active = index;
+        const options = [...suggestions.querySelectorAll("[role=option]")];
+        for (const [i, option] of options.entries()) {
+          option.setAttribute("aria-selected", String(i === index));
+        }
+        if (window.__highlightInfo !== false) {
+          place.setAttribute("aria-activedescendant", options[index]?.id ?? "");
+        }
+      };
       place.addEventListener("input", () => {
         window.__typedPlace = place.value;
         suggestions.innerHTML = "";
-        for (const text of window.__suggestions) {
+        active = -1;
+        window.__suggestions.forEach((text, i) => {
           const option = document.createElement("div");
           option.setAttribute("role", "option");
+          option.id = `sugerencia-${i}`;
           option.tabIndex = -1;
           option.textContent = text;
-          option.addEventListener("click", () => {
-            place.value = text;
-            place.dataset.value = text;
-            place.setAttribute("aria-expanded", "false");
-            suggestions.hidden = true;
-          });
+          option.addEventListener("click", () => choose(text));
           suggestions.append(option);
-        }
+        });
         place.setAttribute("aria-expanded", place.value === "" ? "false" : "true");
         suggestions.hidden = place.value === "";
+        window.__afterSuggestions?.();
+      });
+      // El teclado, como en cualquier lista desplegable: flecha abajo y Enter.
+      place.addEventListener("keydown", (event) => {
+        const total = window.__suggestions.length;
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          highlight(Math.min(active + 1, total - 1));
+        } else if (event.key === "Enter" && active >= 0) {
+          event.preventDefault();
+          window.__keyboardChose = window.__suggestions[active];
+          window.reportClick?.(`teclado: ${window.__suggestions[active]}`);
+          choose(window.__suggestions[active]);
+        }
       });
       // El contador de fotos del formulario real: «Se han adjuntado N fotos».
       let attached = 0;
