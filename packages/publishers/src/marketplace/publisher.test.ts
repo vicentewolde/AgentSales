@@ -245,6 +245,47 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     await t.handoffs[0]?.window.close();
   });
 
+  it("si el clic en la sugerencia no se puede hacer (algo la tapa), elige con el teclado la que corresponde", async () => {
+    const t = await setup({
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-sugerencias-tapadas.html" },
+    });
+
+    await expect(t.publisher.publish(input, ctx)).resolves.toMatchObject({
+      handoff: "manual_confirm",
+    });
+
+    const page = pageOf(t);
+    // Bajó con la flecha hasta la comuna misma (la tercera) y apretó Enter; nunca «Villa Ñuñoa».
+    expect(t.reported).toEqual([
+      "combo-tipo",
+      "Apartamento o piso",
+      "teclado: Ñuñoa, Santiago, Chile",
+    ]);
+    expect(await page.locator('[name="ubicacion"]').inputValue()).toBe("Ñuñoa, Santiago, Chile");
+    await t.handoffs[0]?.window.close();
+  });
+
+  it("si el clic no se puede hacer y la lista no dice cuál está resaltada, se detiene sin adivinar y dice por qué", async () => {
+    const t = await setup({
+      routes: {
+        ...DEFAULT_ROUTES,
+        "/marketplace/create/rental": "form-sugerencias-sin-resaltado.html",
+      },
+    });
+
+    await expect(t.publisher.publish(input, ctx)).rejects.toMatchObject({
+      code: "MARKETPLACE_FORM_CHANGED",
+      message: expect.stringContaining("no dice cuál sugerencia está resaltada"),
+    });
+    // Ni un clic ni un Enter: no adivinó.
+    expect(t.reported).toEqual(["combo-tipo", "Apartamento o piso"]);
+    expect(t.profiles[0]?.isOpen()).toBe(false);
+    // Además del formulario, quedan las listas abiertas (viven fuera del formulario).
+    expect(await readdir(t.dir)).toEqual(
+      expect.arrayContaining(["control-faltante.aria.yml", "listas-abiertas.aria.yml"]),
+    );
+  });
+
   it("con la dirección oculta no elige una calle con número, aunque sea de la comuna", async () => {
     const t = await setup({
       routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-solo-calles.html" },

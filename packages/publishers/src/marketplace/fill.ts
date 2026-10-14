@@ -1,7 +1,7 @@
 import { isAppError, type MarketplaceFormPlan } from "@agentsales/core";
 import type { Locator, Page } from "playwright";
 import { MARKETPLACE_ERRORS, withoutPaths } from "./errors.js";
-import { captureFormEvidence, formLocator } from "./evidence.js";
+import { captureFormEvidence, captureOpenLists, formLocator } from "./evidence.js";
 import { requireForm } from "./guard.js";
 import {
   CONTROL_WAIT_MS,
@@ -27,6 +27,48 @@ export type FillMarketplaceOptions = {
   /** Cuánto espera la lista blanca antes de cada paso (la página puede estar redibujándose). */
   guardWaitMs?: number;
 };
+
+/** Cuántas veces baja con la flecha antes de rendirse (una lista de sugerencias es corta). */
+const MAX_ARROW_PRESSES = 10;
+/** Cuánto intenta el clic en una sugerencia antes de pasar al teclado. */
+const CLICK_FALLBACK_MS = 3_000;
+
+/** Frases del error de Playwright que explican por qué un control no respondió, en palabras simples. */
+const REASONS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/intercepts pointer events/i, "otro elemento tapa el control"],
+  [/element is not visible/i, "el control no se ve"],
+  [/element is not stable/i, "el control se mueve"],
+  [/outside of the viewport/i, "el control quedó fuera de la pantalla"],
+  [/element is not enabled|element is disabled/i, "el control está deshabilitado"],
+  [/detached from the dom/i, "el control desapareció de la página"],
+];
+
+/** Por qué falló, si el error lo dice con una frase conocida; nada del texto de la página. */
+const reasonOf = (error: unknown): string | null => {
+  const text = error instanceof Error ? error.message : String(error);
+  return REASONS.find(([pattern]) => pattern.test(text))?.[1] ?? null;
+};
+
+/**
+ * La opción resaltada de una lista (por `aria-activedescendant` del campo o `aria-selected`), o
+ * `null` si la lista no lo dice.
+ */
+async function highlightedOption(
+  page: Page,
+  field: Locator,
+  timeout: number,
+): Promise<string | null> {
+  const id = await field.getAttribute("aria-activedescendant", { timeout }).catch(() => null);
+  if (id !== null && id !== "") {
+    const active = page.locator(`[id="${id.replace(/"/g, '\\"')}"]`).first();
+    const text = await active.innerText({ timeout }).catch(() => "");
+    return text === "" ? null : plain(text);
+  }
+  const [selected] = await visibleOptions(page.locator('[role="option"][aria-selected="true"]'));
+  if (selected === undefined) return null;
+  const text = await selected.innerText({ timeout }).catch(() => "");
+  return text === "" ? null : plain(text);
+}
 
 /** Minúsculas y sin tildes, para comparar el texto de una opción con la comuna. */
 const plain = (text: string) =>
@@ -83,14 +125,16 @@ export async function fillMarketplaceForm(
   const formChanged = async (detail: string) => {
     await guard();
     await captureFormEvidence(page, options.evidenceDir, "control-faltante").catch(() => undefined);
+    // Las listas desplegadas (sugerencias de la dirección, opciones) viven fuera del formulario.
+    await captureOpenLists(page, options.evidenceDir, "listas-abiertas").catch(() => undefined);
     return MARKETPLACE_ERRORS.formChanged(detail);
   };
 
   /** Hace clic en un control solo si no es Siguiente ni Publicar (D3). */
-  const safeClick = async (locator: Locator, what: string) => {
-    const label = `${(await locator.getAttribute("aria-label", { timeout: waitMs })) ?? ""} ${await locator.innerText({ timeout: waitMs })}`;
+  const safeClick = async (locator: Locator, what: string, timeout = waitMs) => {
+    const label = `${(await locator.getAttribute("aria-label", { timeout })) ?? ""} ${await locator.innerText({ timeout })}`;
     if (NEVER_CLICK.test(label)) throw await formChanged(`«${what}» parece un botón de enviar`);
-    await locator.click({ timeout: waitMs });
+    await locator.click({ timeout });
   };
 
   const select = async (control: FormControl & { kind: "select" }, value: string) => {
@@ -139,24 +183,32 @@ export async function fillMarketplaceForm(
     await field.fill(query, { timeout: waitMs });
     const wanted = plain(comuna);
     const streetName = street === null ? null : plain(street.split(/\d/)[0] ?? "").trim();
+    /** ¿Es esta sugerencia la que corresponde? (reglas del comentario de arriba) */
+    const fits = (suggestion: string) => {
+      const text = plain(suggestion);
+      const segments = text.split(",").map((segment) => segment.trim());
+      return street === null
+        ? segments[0] === wanted
+        : segments.includes(wanted) && (streetName === "" || text.includes(streetName ?? ""));
+    };
     const suggestions = page.getByRole("option");
     const deadline = Date.now() + waitMs;
     for (;;) {
-      let exact: Locator | undefined;
+      let chosen: Locator | undefined;
       for (const suggestion of await visibleOptions(suggestions)) {
-        const text = plain(await suggestion.innerText({ timeout: waitMs }).catch(() => ""));
-        const segments = text.split(",").map((segment) => segment.trim());
-        const fits =
-          street === null
-            ? segments[0] === wanted
-            : segments.includes(wanted) && (streetName === "" || text.includes(streetName ?? ""));
-        if (fits) {
-          exact = suggestion;
+        if (fits(await suggestion.innerText({ timeout: waitMs }).catch(() => ""))) {
+          chosen = suggestion;
           break;
         }
       }
-      if (exact !== undefined) {
-        await safeClick(exact, comuna);
+      if (chosen !== undefined) {
+        try {
+          // El clic recibe poco tiempo: si algo tapa la lista o se mueve, se pasa al teclado.
+          await safeClick(chosen, comuna, Math.min(waitMs, CLICK_FALLBACK_MS));
+        } catch (error) {
+          if (isAppError(error)) throw error;
+          await pickByKeyboard(field, fits, nameOf(control));
+        }
         return;
       }
       if (Date.now() >= deadline) {
@@ -164,6 +216,34 @@ export async function fillMarketplaceForm(
       }
       await page.waitForTimeout(250);
     }
+  };
+
+  /**
+   * Elige con el teclado (flecha abajo y Enter), como se usa cualquier lista desplegable, cuando el
+   * clic no se puede hacer. **Solo aprieta Enter si la opción resaltada es la que corresponde** y no
+   * se llama como Siguiente o Publicar; si la lista no dice cuál está resaltada, se detiene en vez
+   * de adivinar (`aria-activedescendant` o `aria-selected`).
+   */
+  const pickByKeyboard = async (
+    field: Locator,
+    fits: (suggestion: string) => boolean,
+    what: string,
+  ) => {
+    await field.focus({ timeout: waitMs });
+    for (let presses = 0; presses < MAX_ARROW_PRESSES; presses++) {
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(100);
+      const active = await highlightedOption(page, field, waitMs);
+      if (active === null) {
+        throw await formChanged(`«${what}» no dice cuál sugerencia está resaltada`);
+      }
+      if (NEVER_CLICK.test(active)) throw await formChanged(`«${what}» parece un botón de enviar`);
+      if (fits(active)) {
+        await page.keyboard.press("Enter");
+        return;
+      }
+    }
+    throw await formChanged(`«${what}» no sugirió la comuna`);
   };
 
   const { location } = plan;
@@ -205,8 +285,9 @@ export async function fillMarketplaceForm(
       if (isAppError(error)) throw error;
       // Un error de Playwright a mitad de un paso (la página cambió bajo el control): se detiene y
       // dice en qué paso y la primera línea del error (sin rutas; no trae datos del aviso).
+      const reason = reasonOf(error);
       throw await formChanged(
-        `un control dejó de responder en el paso «${step.name}» (${withoutPaths(error).slice(0, 200)})`,
+        `un control dejó de responder en el paso «${step.name}» (${withoutPaths(error).slice(0, 200)}${reason === null ? "" : `; ${reason}`})`,
       );
     }
     if (index < steps.length - 1) await pause();
