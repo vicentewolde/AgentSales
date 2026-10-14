@@ -1,3 +1,4 @@
+import { basename, join } from "node:path";
 import {
   type AbortSignalLike,
   assemblePublishInput,
@@ -24,6 +25,7 @@ import {
   type MarketplaceProfile,
   type MarketplacePublisherDeps,
   type MarketplaceWindow,
+  watchPageProblems,
 } from "@agentsales/publishers/marketplace";
 import { readPictureFrom } from "../portal.js";
 
@@ -55,6 +57,39 @@ export type FbSmokeListingDeps = {
   closedPollMs?: number;
 };
 
+/**
+ * Variantes de `--diagnostico` (spec F5 §4.8), solo para investigar un fallo (por ejemplo, el
+ * diálogo «¡Uy! Se ha producido un error» al terminar de llenar). Cualquiera anota además los
+ * errores de la página en `errores-de-la-pagina.txt`.
+ * - `errores`: solo anota los errores de la página.
+ * - `sin-evidencia`: no toma la captura ni el árbol al terminar de llenar.
+ * - `sin-fotos`: no sube las fotos.
+ * - `lento`: 3 s entre campos, en vez de 1 s.
+ */
+export const FB_SMOKE_DIAGNOSTICS = ["errores", "sin-evidencia", "sin-fotos", "lento"] as const;
+export type FbSmokeDiagnostic = (typeof FB_SMOKE_DIAGNOSTICS)[number];
+
+/** `--diagnostico errores,lento`: las variantes de `FB_SMOKE_DIAGNOSTICS`, separadas por coma. */
+export function parseFbSmokeDiagnostics(value: string | undefined): FbSmokeDiagnostic[] {
+  if (value === undefined) return [];
+  const names = value
+    .split(",")
+    .map((name) => name.trim())
+    .filter((name) => name !== "");
+  const invalid = names.filter(
+    (name) => !(FB_SMOKE_DIAGNOSTICS as readonly string[]).includes(name),
+  );
+  if (names.length === 0 || invalid.length > 0) {
+    throw new Error(
+      `--diagnostico admite: ${FB_SMOKE_DIAGNOSTICS.join(", ")} (separadas por coma)${invalid.length > 0 ? `; no conozco: ${invalid.join(", ")}` : ""}`,
+    );
+  }
+  return names as FbSmokeDiagnostic[];
+}
+
+/** La pausa del diagnóstico `lento`. */
+const SLOW_PAUSE_MS = 3_000;
+
 export type FbSmokeListingOptions = {
   /** El `id_propiedad` del Excel. */
   listingRef: string;
@@ -62,6 +97,8 @@ export type FbSmokeListingOptions = {
   brokerSlug?: string;
   /** `--yes`: no pregunta antes de llenar. */
   yes?: boolean;
+  /** `--diagnostico`: variantes para investigar un fallo (ver `FB_SMOKE_DIAGNOSTICS`). */
+  diagnostics?: readonly FbSmokeDiagnostic[];
   signal?: AbortSignalLike;
 };
 
@@ -248,6 +285,20 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
     uf: price.uf,
   };
   let handed: MarketplaceWindow | undefined;
+  const diagnostics = options.diagnostics ?? [];
+  const investigating = diagnostics.length > 0;
+  let watcher: ReturnType<typeof watchPageProblems> | undefined;
+  let problemsFile: string | undefined;
+  if (investigating) {
+    deps.print(`Modo diagnóstico: ${diagnostics.join(", ")}.`);
+  }
+  const diagnosticsDeps: MarketplacePublisherDeps["diagnostics"] = {
+    skipEvidence: diagnostics.includes("sin-evidencia"),
+    watchPage: (page, evidenceDir) => {
+      problemsFile = join(evidenceDir, "errores-de-la-pagina.txt");
+      watcher = watchPageProblems(page, problemsFile);
+    },
+  };
   const publisher = createMarketplacePublisher({
     openProfile: deps.openProfile,
     readPhoto: readPictureFrom(deps.storage),
@@ -258,6 +309,16 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
       handed = window;
     },
     ...deps.tuning,
+    ...(investigating
+      ? {
+          fill: {
+            ...deps.tuning?.fill,
+            ...(diagnostics.includes("lento") ? { pauseMs: SLOW_PAUSE_MS } : {}),
+            ...(diagnostics.includes("sin-fotos") ? { skipPhotos: true } : {}),
+          },
+          diagnostics: diagnosticsDeps,
+        }
+      : {}),
   });
   deps.print(
     "Se abre una ventana de Chromium y se llena el formulario (el sistema no hace clic en Siguiente ni Publicar)…",
@@ -276,6 +337,12 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
     "  Después, en Facebook → Marketplace → Tus publicaciones, borra a mano el borrador si quedó uno.",
   );
   await waitUntilClosed(window, deps.closedPollMs ?? 1_000, options.signal);
+  if (watcher !== undefined && problemsFile !== undefined) {
+    await watcher.flush();
+    deps.print(
+      `Diagnóstico: ${watcher.lines()} línea(s) anotadas en ${basename(problemsFile)} (carpeta fb-smoke-<id> de tmp/fb-smoke/).`,
+    );
+  }
   deps.print("Se cerró la ventana. No se cambió nada en AgentSales.");
   return 0;
 }

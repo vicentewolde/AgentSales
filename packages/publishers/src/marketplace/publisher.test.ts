@@ -375,6 +375,38 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
     expect(t.reported).toEqual(["combo-tipo", "Apartamento o piso"]);
   });
 
+  it("en modo diagnóstico puede omitir la evidencia y las fotos, y entrega la pestaña para vigilarla", async () => {
+    const seen: Array<{ dir: string }> = [];
+    const t = await setup({
+      deps: {
+        fill: {
+          pauseMs: 0,
+          controlWaitMs: 1_000,
+          photosWaitMs: 5_000,
+          guardWaitMs: 1_000,
+          skipPhotos: true,
+        },
+        diagnostics: {
+          skipEvidence: true,
+          watchPage: (_page, dir) => {
+            seen.push({ dir });
+          },
+        },
+      },
+    });
+
+    await expect(t.publisher.publish(input, ctx)).resolves.toMatchObject({
+      handoff: "manual_confirm",
+    });
+
+    const page = pageOf(t);
+    expect(await page.locator("#estado-fotos").innerText()).toBe("Se han adjuntado 0 fotos");
+    expect(seen).toEqual([{ dir: t.dir }]);
+    // Ni captura ni árbol del formulario (y las fotos temporales, borradas).
+    expect(await readdir(t.dir)).toEqual([]);
+    await t.handoffs[0]?.window.close();
+  });
+
   it("si un control no responde, el error dice en qué paso falló y por qué", async () => {
     const t = await setup({
       routes: {

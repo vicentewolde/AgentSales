@@ -2,6 +2,12 @@
  * Facebook Marketplace con Playwright (spec F5, ADR-0017). Subruta propia
  * (`@agentsales/publishers/marketplace`): solo la importa el worker, así la API no carga Playwright.
  */
+
+export {
+  describeRequest,
+  sanitizeDiagnosticText,
+  watchPageProblems,
+} from "./diagnostics.js";
 export { MARKETPLACE_ERRORS } from "./errors.js";
 export {
   captureFormEvidence,
