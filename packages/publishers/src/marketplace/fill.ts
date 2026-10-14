@@ -16,6 +16,13 @@ import {
   PHOTOS_WAIT_MS,
 } from "./selectors.js";
 
+/**
+ * Una foto para el formulario, **en memoria** (nombre, tipo y bytes): se adjunta como datos, no como
+ * ruta, porque Facebook la sube después de adjuntarla y un archivo temporal ya borrado haría
+ * fallar esa subida (2026-10-14).
+ */
+export type MarketplacePhoto = { name: string; mimeType: string; buffer: Buffer };
+
 export type FillMarketplaceOptions = {
   /** Dónde se guarda la captura si un control no aparece (`tmp/marketplace/<publicationId>/`). */
   evidenceDir: string;
@@ -101,7 +108,7 @@ const nameOf = (control: FormControl) => {
 export async function fillMarketplaceForm(
   page: Page,
   plan: MarketplaceFormPlan,
-  photoPaths: readonly string[],
+  photos: readonly MarketplacePhoto[],
   options: FillMarketplaceOptions,
 ): Promise<{ notes: string[] }> {
   /** Avisos para el operador (por ejemplo, que la ubicación se eligió con una calle de referencia). */
@@ -325,7 +332,7 @@ export async function fillMarketplaceForm(
         await uploadPhotos(
           await formLocator(page),
           page,
-          photoPaths,
+          photos,
           options.photosWaitMs ?? PHOTOS_WAIT_MS,
           formChanged,
         );
@@ -389,7 +396,7 @@ async function attachedPhotos(root: Locator): Promise<number | null> {
 async function uploadPhotos(
   root: Locator,
   page: Page,
-  photoPaths: readonly string[],
+  photos: readonly MarketplacePhoto[],
   waitMs: number,
   formChanged: (detail: string) => Promise<Error>,
 ): Promise<void> {
@@ -404,11 +411,11 @@ async function uploadPhotos(
   if (input === undefined) throw await formChanged("no apareció el control de fotos");
   // Lo que ya había (fotos de un borrador) no cuenta: se esperan las nuevas.
   const before = await attachedPhotos(root);
-  await input.setInputFiles([...photoPaths]);
+  await input.setInputFiles(photos.map((photo) => ({ ...photo })));
   const started = Date.now();
   for (;;) {
     const now = await attachedPhotos(root);
-    if (now !== null && now >= (before ?? 0) + photoPaths.length) return;
+    if (now !== null && now >= (before ?? 0) + photos.length) return;
     const elapsed = Date.now() - started;
     if (now === null && before === null && elapsed >= Math.min(waitMs, PHOTO_COUNTER_WAIT_MS)) {
       throw await formChanged("no apareció el contador de fotos adjuntas");

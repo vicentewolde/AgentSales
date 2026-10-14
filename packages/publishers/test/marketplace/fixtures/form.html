@@ -150,6 +150,20 @@
       for (const input of document.querySelectorAll('input[type="file"]')) {
         input.addEventListener("change", (event) => {
           attached += event.target.files.length;
+          // Como Facebook: sube cada foto un rato DESPUÉS de adjuntarla, leyéndola en ese momento.
+          // Si el archivo ya no existe (se borró del disco), la lectura falla.
+          for (const file of event.target.files) {
+            setTimeout(() => {
+              file
+                .arrayBuffer()
+                .then(() => {
+                  window.__uploadOk = (window.__uploadOk ?? 0) + 1;
+                })
+                .catch(() => {
+                  window.__uploadFailed = (window.__uploadFailed ?? 0) + 1;
+                });
+            }, 500);
+          }
           window.__uploadedVia = event.target.name;
           document.getElementById("estado-fotos").textContent =
             attached === 1 ? "Se ha adjuntado 1 foto" : `Se han adjuntado ${attached} fotos`;
