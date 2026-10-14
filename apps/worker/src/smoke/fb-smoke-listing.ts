@@ -323,7 +323,7 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
   deps.print(
     "Se abre una ventana de Chromium y se llena el formulario (el sistema no hace clic en Siguiente ni Publicar)…",
   );
-  await publisher.publish(input, {
+  const published = await publisher.publish(input, {
     account,
     progress: null,
     saveProgress: async () => undefined,
@@ -332,6 +332,7 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
   const window = handed;
   if (window === undefined) throw new Error("el formulario no entregó su ventana");
   deps.print("✓ Formulario lleno. Revísalo en la ventana; no hagas clic en Publicar.");
+  for (const note of published.notes ?? []) deps.print(`  ⚠ ${note}`);
   deps.print("  Ciérrala cuando termines (Ctrl+C también la cierra).");
   deps.print(
     "  Después, en Facebook → Marketplace → Tus publicaciones, borra a mano el borrador si quedó uno.",
