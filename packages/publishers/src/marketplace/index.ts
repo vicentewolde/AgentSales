@@ -6,8 +6,10 @@ export { MARKETPLACE_ERRORS } from "./errors.js";
 export {
   captureFormEvidence,
   captureOpenLists,
+  describeFormShape,
   type MarketplaceEvidence,
   type MarketplaceListsEvidence,
+  type MarketplaceShapeStep,
   stopRecord,
 } from "./evidence.js";
 export { type FillMarketplaceOptions, fillMarketplaceForm } from "./fill.js";

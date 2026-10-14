@@ -5,10 +5,12 @@ import {
   captureFormEvidence,
   captureOpenLists,
   classifyPage,
+  describeFormShape,
   hasSession,
   MARKETPLACE_FORM_URL,
   type MarketplacePageKind,
   type MarketplaceProfile,
+  type MarketplaceShapeStep,
   pathOf,
   requireForm,
   stopErrorOf,
@@ -66,7 +68,14 @@ type FbSmokeSummary = {
   /** Si existe la cookie de sesión y si su valor es un número (nunca el valor). */
   sessionCookie: { present: boolean; numeric: boolean };
   files: string[];
+  /** Cuántas líneas tiene el árbol del formulario (0 o muy pocas: se tomó el trozo equivocado). */
+  ariaLines?: number;
+  /** Solo con el formulario: los contenedores del control de fotos, sin textos (`describeFormShape`). */
+  shape?: MarketplaceShapeStep[];
 };
+
+/** Un árbol con menos líneas que esto casi seguro no es el formulario. */
+const MIN_FORM_TREE_LINES = 8;
 
 /**
  * `pnpm fb:smoke --broker <slug>` (spec F5 §4.8, F5-T03): lo corre el operador para conocer el
@@ -126,6 +135,12 @@ export async function runFbSmoke(deps: FbSmokeDeps, options: FbSmokeOptions): Pr
       deps.printError(`  Se detuvo en ${summary.finalPath} (sin captura).`);
       return 1;
     }
+    deps.print(`✓ Guardé el formulario: ${summary.files.join(" y ")}.`);
+    if (summary.ariaLines !== undefined && summary.ariaLines < MIN_FORM_TREE_LINES) {
+      deps.printError(
+        `⚠ El árbol del formulario salió casi vacío (${summary.ariaLines} líneas): probablemente se guardó un trozo equivocado. Avísale a Claude; no hace falta repetir los menús.`,
+      );
+    }
     if (options.menus === true) await captureMenus(profile, deps, summary);
     deps.print(`✓ Formulario guardado en ${deps.outputDir}:`);
     for (const file of [...summary.files, "summary.json"]) deps.print(`  ${file}`);
@@ -169,6 +184,8 @@ async function inspectForm(
     finalPath: pathOf(page.url()),
     // Solo los nombres: la ruta completa trae el usuario de la Mac.
     files: [basename(evidence.aria), basename(evidence.screenshot)],
+    ariaLines: evidence.ariaLines,
+    shape: await describeFormShape(page),
   };
 }
 
@@ -188,8 +205,10 @@ async function captureMenus(
   deps.print("");
   deps.print("Ahora tú, a mano en la ventana de Chromium:");
   deps.print(
-    "  abre el menú de operación (venta o alquiler) o el de tipo de propiedad, y deja la lista a la vista.",
+    "  1) Abre un menú del formulario (operación: venta o alquiler; o tipo de propiedad) y deja la lista a la vista.",
   );
+  deps.print("  2) Vuelve a esta terminal y aprieta Enter: se guarda lo que se ve.");
+  deps.print("  3) Repite con cada menú. Escribe «listo» solo cuando hayas terminado con todos.");
   deps.print(
     "  También puedes elegir una opción para ver los campos que aparecen. El sistema no toca nada:",
   );

@@ -105,6 +105,7 @@ export async function openMarketplaceProfile(
       });
     let open = true;
     let released: Promise<void> | null = null;
+    let closing: Promise<void> | null = null;
     const releaseOnce = () => {
       released ??= release();
       return released;
@@ -140,9 +141,13 @@ export async function openMarketplaceProfile(
         };
       },
       isOpen: () => open,
-      async close() {
-        if (open) await context.close().catch(() => undefined);
-        await releaseOnce();
+      // Una sola vez: dos cierres a la vez (un corte y el manejo de un error) esperan al mismo.
+      close() {
+        closing ??= (async () => {
+          if (open) await context.close().catch(() => undefined);
+          await releaseOnce();
+        })();
+        return closing;
       },
     };
   } catch (error) {

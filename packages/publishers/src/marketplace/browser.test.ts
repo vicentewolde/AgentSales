@@ -6,7 +6,12 @@ import {
   DEFAULT_ROUTES,
   type FakeFacebook,
 } from "../../test/marketplace/fake-facebook.js";
-import { captureFormEvidence, captureOpenLists, stopRecord } from "./evidence.js";
+import {
+  captureFormEvidence,
+  captureOpenLists,
+  describeFormShape,
+  stopRecord,
+} from "./evidence.js";
 import { classifyPage, requireForm } from "./guard.js";
 import { openMarketplaceProfile } from "./profile.js";
 import { MARKETPLACE_FORM_URL } from "./selectors.js";
@@ -176,6 +181,44 @@ describe("evidencia del formulario", () => {
     const aria = await readFile(evidence.aria, "utf8");
     expect(aria).toContain("Precio");
     expect(aria).not.toContain("Nombre Inventado del Operador");
+  });
+});
+
+describe("evidencia con las fotos en un form aparte (fb:smoke, 2026-10-13)", () => {
+  const open = async () => {
+    const fb = await setup(withRoutes({ "/marketplace/create/rental": "form-foto-aparte.html" }));
+    const { page } = await fb.open();
+    await page.goto(MARKETPLACE_FORM_URL);
+    await requireForm(page, { timeoutMs: 2_000 });
+    return { fb, page };
+  };
+
+  it("guarda el contenedor con los campos, no el form que solo trae las fotos", async () => {
+    const { fb, page } = await open();
+
+    const evidence = await captureFormEvidence(page, join(fb.root, "evidencia"), "formulario");
+
+    const aria = await readFile(evidence.aria, "utf8");
+    expect(aria).toContain("Precio");
+    expect(aria).toContain('combobox "Tipo de propiedad"');
+    expect(aria).not.toContain("Nombre Inventado del Operador");
+    expect(evidence.ariaLines).toBeGreaterThan(8);
+  });
+
+  it("describe la forma alrededor de las fotos, sin textos", async () => {
+    const { page } = await open();
+
+    const shape = await describeFormShape(page);
+
+    // De adentro hacia afuera: el label, el form de fotos (sin campos), el main (con campos)…
+    expect(shape.slice(0, 3).map((step) => [step.tag, step.role])).toEqual([
+      ["label", null],
+      ["form", null],
+      ["div", "main"],
+    ]);
+    expect(shape[1]?.fields).toBe(0);
+    expect(shape[2]?.fields).toBeGreaterThanOrEqual(6);
+    expect(JSON.stringify(shape)).not.toContain("Precio");
   });
 });
 

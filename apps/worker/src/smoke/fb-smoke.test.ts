@@ -32,6 +32,25 @@ const FORM_MENUS = `<!doctype html><html lang="es"><body>
   </div>
   <script>document.addEventListener("click", () => { window.__clicks = (window.__clicks || 0) + 1; });</script>
   </body></html>`;
+// Como probablemente Facebook: un form solo con las fotos y los campos aparte, dentro del main.
+const FORM_FOTOS_APARTE = `<!doctype html><html lang="es"><body>
+  <header>Nombre Inventado del Operador</header>
+  <div role="main">
+    <form aria-label="Subir fotos"><label>Fotos <input type="file" /></label></form>
+    <div aria-label="Propiedad en venta o alquiler">
+      <label>Precio <input type="text" name="precio" /></label>
+      <label>Dormitorios <input type="text" name="dormitorios" /></label>
+      <label>Baños <input type="text" name="banos" /></label>
+      <label>Descripción <textarea name="descripcion"></textarea></label>
+      <div role="combobox" aria-label="Tipo de propiedad" aria-expanded="false" tabindex="0">Tipo de propiedad</div>
+      <label>Dirección <input type="text" name="ubicacion" /></label>
+      <label>Metros cuadrados <input type="text" name="m2" /></label>
+      <label>Título <input type="text" name="titulo" /></label>
+    </div>
+  </div></body></html>`;
+// Un form que solo trae el control de fotos y nada más: el árbol saldría casi vacío.
+const FORM_SOLO_FOTOS = `<!doctype html><html lang="es"><body>
+  <form><label>Fotos <input type="file" /></label></form></body></html>`;
 const LOGIN = `<!doctype html><html lang="es"><body>
   <form><label>Contraseña <input type="password" /></label></form></body></html>`;
 const HOME = `<!doctype html><html lang="es"><body><h1>Inicio</h1></body></html>`;
@@ -147,6 +166,44 @@ describe("pnpm fb:smoke", () => {
     // Nada escrito ni clicado en la página, y el resumen sin rutas del disco.
     expect(page).toEqual({ clicks: undefined, price: "" });
     expect(summary.files).toEqual(["formulario.aria.yml", "formulario.png"]);
+  });
+
+  it("guarda el contenedor con los campos aunque las fotos vivan en un form aparte, y anota su forma sin textos", async () => {
+    const t = await setup(
+      { "/marketplace/create/rental": FORM_FOTOS_APARTE },
+      { cookies: { c_user: "1000" } },
+    );
+
+    await expect(runFbSmoke(t.deps, { brokerSlug: broker.slug })).resolves.toBe(0);
+
+    const aria = await readFile(join(t.deps.outputDir, "formulario.aria.yml"), "utf8");
+    expect(aria).toContain("Precio");
+    expect(aria).toContain('combobox "Tipo de propiedad"');
+    expect(aria).not.toContain("Nombre Inventado del Operador");
+    const summary = JSON.parse(await readFile(join(t.deps.outputDir, "summary.json"), "utf8"));
+    expect(summary.ariaLines).toBeGreaterThanOrEqual(8);
+    expect(summary.shape.slice(0, 3).map((step: { tag: string }) => step.tag)).toEqual([
+      "label",
+      "form",
+      "div",
+    ]);
+    expect(summary.shape[1]).toMatchObject({ fields: 0, photoInputs: 1 });
+    // Solo etiquetas, roles y cuentas: ningún texto de la página.
+    expect(JSON.stringify(summary.shape)).not.toMatch(/Precio|Nombre Inventado/);
+    expect(t.out.join("\n")).toContain(
+      "✓ Guardé el formulario: formulario.aria.yml y formulario.png",
+    );
+    expect(t.errors).toEqual([]);
+  });
+
+  it("avisa cuando el árbol del formulario sale casi vacío", async () => {
+    const t = await setup(
+      { "/marketplace/create/rental": FORM_SOLO_FOTOS },
+      { cookies: { c_user: "1000" } },
+    );
+
+    await expect(runFbSmoke(t.deps, { brokerSlug: broker.slug })).resolves.toBe(0);
+    expect(t.errors.join("\n")).toContain("salió casi vacío");
   });
 
   it("sin sesión espera a que el operador la inicie a mano y después guarda el formulario", async () => {

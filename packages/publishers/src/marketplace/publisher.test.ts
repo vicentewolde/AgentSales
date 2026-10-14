@@ -207,6 +207,23 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     await t.handoffs[0]?.window.close();
   });
 
+  it("llena el formulario aunque las fotos vivan en un form aparte", async () => {
+    const t = await setup({
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-foto-aparte.html" },
+    });
+
+    await expect(t.publisher.publish(input, ctx)).resolves.toMatchObject({
+      handoff: "manual_confirm",
+    });
+
+    const page = pageOf(t);
+    expect(await page.locator('[name="precio"]').inputValue()).toBe("650000");
+    expect(await page.locator("#miniaturas img").count()).toBe(2);
+    const aria = await readFile(join(t.dir, "formulario.aria.yml"), "utf8");
+    expect(aria).toContain("Precio");
+    await t.handoffs[0]?.window.close();
+  });
+
   it("con show_exact_address busca la dirección y la unidad", async () => {
     const t = await setup();
     const listing = { ...(input.listing as NonNullable<PublishInput["listing"]>) };

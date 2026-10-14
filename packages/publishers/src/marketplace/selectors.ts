@@ -88,6 +88,13 @@ export const CAPTCHA_FRAME = 'iframe[src*="captcha" i], iframe[title*="captcha" 
  * puede traer más (el nombre o la foto del operador).
  */
 export const FORM_ELEMENT = 'form:has(input[type="file"])';
+/**
+ * Un campo del formulario que no es el de fotos. El formulario real es el contenedor más chico que
+ * trae el control de fotos **y** estos campos: en Facebook el primer `form` con fotos puede ser solo
+ * el recuadro de subir fotos (el 2026-10-13 `fb:smoke` guardó un árbol vacío por eso).
+ */
+export const FORM_FIELD =
+  'input:not([type="file"]):not([type="hidden"]), textarea, [role="combobox"]';
 export const FORM_CONTAINER = '[role="main"]:has(input[type="file"])';
 export const FORM_ROOT = `${FORM_ELEMENT}, ${FORM_CONTAINER}`;
 
