@@ -66,9 +66,9 @@ describe("tabla de campos de Marketplace", () => {
     });
   });
 
-  it("con show_exact_address lleva la dirección y la unidad", () => {
+  it("con show_exact_address lleva la calle y el número, sin la unidad (el mapa no la entiende)", () => {
     const plan = marketplaceFormPlan(input({ listing: { ...listing, showExactAddress: true } }));
-    expect(plan.address).toBe("Av. Irarrázaval 1234, 502");
+    expect(plan.address).toBe("Av. Irarrázaval 1234");
   });
 
   it("sin superficie la deja vacía; nunca inventa un dato", () => {

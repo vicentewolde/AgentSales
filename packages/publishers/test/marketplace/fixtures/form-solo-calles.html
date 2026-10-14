@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es">
+  <head><meta charset="utf-8" /><title>Marketplace (página local de prueba)</title></head>
+  <body>
+    <!-- Variante cuyas únicas sugerencias son calles con número (ninguna es la comuna).
+         Página inventada para los tests, armada con los roles y nombres del árbol real que dejó
+         `pnpm fb:smoke --menus` el 2026-10-13 ("Nueva vivienda", /marketplace/create/rental): sin
+         menú de operación, sin título, superficie en pies cuadrados, dos controles de fotos y el
+         contador «Se han adjuntado N fotos». Los datos del operador son inventados. Registra cada
+         clic en `window.__clicks`. -->
+    <header>
+      <span>Nombre Inventado del Operador</span> <span>3 mensajes nuevos</span>
+      <!-- Opciones de la barra con los mismos textos que el formulario: el llenado nunca las toca. -->
+      <div role="listbox" aria-label="Búsquedas recientes">
+        <div role="option" id="barra-ubicacion" tabindex="-1">Ñuñoa, Santiago, Chile</div>
+        <div role="option" id="barra-tipo" tabindex="-1">Casa</div>
+      </div>
+    </header>
+    <!-- biome-ignore lint/a11y/useSemanticElements: imita el HTML de Facebook a propósito -->
+    <div role="main">
+      <nav aria-label="Ruta de navegación">Marketplace</nav>
+      <h1>Nueva vivienda</h1>
+      <button type="button" id="guardar-borrador">Guardar borrador</button>
+      <!-- biome-ignore lint/a11y/useSemanticElements: imita el HTML de Facebook a propósito -->
+      <div role="form" aria-label="Marketplace">
+        <span>Nombre Inventado del Operador Publicación en Marketplace Público Fotos 0/50</span>
+        <button type="button" id="anadir-fotos">Añadir fotos o arrastrar y soltar</button>
+        <input type="file" name="fotos" accept="image/*,video/*" multiple />
+        <input type="file" name="fotos-arrastrar" accept="image/*" multiple />
+        <div role="status" id="estado-fotos">Se han adjuntado 0 fotos</div>
+        <div role="combobox" id="combo-tipo" aria-label="Tipo de propiedad en alquiler" aria-expanded="false" aria-controls="lista-tipo" tabindex="0">Tipo de propiedad en alquiler</div>
+        <label>Número de habitaciones <input type="text" name="habitaciones" /></label>
+        <label>Número de baños <input type="text" name="banos" /></label>
+        <label>Precio al mes <input type="text" name="precio" /></label>
+        <input type="text" role="combobox" name="ubicacion" aria-label="Address" aria-expanded="false" autocomplete="off" />
+        <label>Descripción de la propiedad en alquiler <textarea name="descripcion"></textarea></label>
+        <span>Opciones avanzadas Opcional</span>
+        <label>Pies cuadrados de la propiedad <input type="text" name="pies" /></label>
+        <div role="switch" aria-checked="false" aria-label="Se aceptan gatos" id="gatos" tabindex="0"></div>
+        <div role="switch" aria-checked="false" aria-label="Promocionar la publicación después de realizarla" id="promocionar" tabindex="0"></div>
+      </div>
+      <button type="button" id="siguiente" disabled>Siguiente</button>
+      <!-- En Facebook, Publicar está en el paso 2. Aquí vive en la misma página para que los tests
+           simulen el clic del operador, que lleva al aviso publicado. El llenado nunca lo toca. -->
+      <button type="button" id="publicar">Publicar</button>
+    </div>
+    <!-- Lo que Facebook dibuja aparte: la lista de tipos y las sugerencias de la dirección. -->
+    <div role="listbox" id="lista-tipo" aria-label="Seleccionar una opción" hidden>
+      <div role="option" tabindex="-1">Casa</div>
+      <div role="option" tabindex="-1">Casa adosada</div>
+      <div role="option" tabindex="-1">Apartamento o piso</div>
+      <div role="option" tabindex="-1">Solo habitación</div>
+    </div>
+    <div role="listbox" id="sugerencias" aria-label="Sugerencias de ubicación" hidden></div>
+    <a id="otro-aviso" href="/marketplace/item/999/">Un aviso de otra persona</a>
+    <a id="mis-avisos" href="/marketplace/you/selling/">Tus publicaciones</a>
+    <a id="paso-2" href="/marketplace/create/rental/paso-2">Paso 2</a>
+    <script>
+      window.__clicks = [];
+      // Las comunas parecidas van antes de la buscada: el llenado tiene que elegir la que empieza por ella.
+      window.__suggestions = ["Calle Inventada 1234, Ñuñoa, Santiago, Chile"];
+      document.addEventListener("click", (event) => {
+        const target = event.target.closest("[id], [role=option]");
+        const what = target?.id || target?.textContent.trim() || event.target.tagName;
+        window.__clicks.push(what);
+        window.reportClick?.(what);
+      });
+      document.getElementById("publicar").addEventListener("click", () => {
+        window.location.href = "/marketplace/item/123/?ref=publicado";
+      });
+      const tipo = document.getElementById("combo-tipo");
+      const listaTipo = document.getElementById("lista-tipo");
+      tipo.addEventListener("click", () => {
+        tipo.setAttribute("aria-expanded", "true");
+        listaTipo.hidden = false;
+      });
+      for (const option of listaTipo.querySelectorAll("[role=option]")) {
+        option.addEventListener("click", () => {
+          tipo.textContent = option.textContent;
+          tipo.dataset.value = option.textContent;
+          tipo.setAttribute("aria-expanded", "false");
+          listaTipo.hidden = true;
+        });
+      }
+      const place = document.querySelector('input[name="ubicacion"]');
+      const suggestions = document.getElementById("sugerencias");
+      place.addEventListener("input", () => {
+        window.__typedPlace = place.value;
+        suggestions.innerHTML = "";
+        for (const text of window.__suggestions) {
+          const option = document.createElement("div");
+          option.setAttribute("role", "option");
+          option.tabIndex = -1;
+          option.textContent = text;
+          option.addEventListener("click", () => {
+            place.value = text;
+            place.dataset.value = text;
+            place.setAttribute("aria-expanded", "false");
+            suggestions.hidden = true;
+          });
+          suggestions.append(option);
+        }
+        place.setAttribute("aria-expanded", place.value === "" ? "false" : "true");
+        suggestions.hidden = place.value === "";
+      });
+      // El contador de fotos del formulario real: «Se han adjuntado N fotos».
+      let attached = 0;
+      for (const input of document.querySelectorAll('input[type="file"]')) {
+        input.addEventListener("change", (event) => {
+          attached += event.target.files.length;
+          window.__uploadedVia = event.target.name;
+          document.getElementById("estado-fotos").textContent =
+            attached === 1 ? "Se ha adjuntado 1 foto" : `Se han adjuntado ${attached} fotos`;
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -227,14 +227,35 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     await t.handoffs[0]?.window.close();
   });
 
-  it("con show_exact_address busca la dirección y la unidad", async () => {
-    const t = await setup();
+  it("con show_exact_address busca la calle y el número (sin la unidad) y elige la dirección de esa calle en la comuna", async () => {
+    const t = await setup({
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-direccion-exacta.html" },
+    });
     const listing = { ...(input.listing as NonNullable<PublishInput["listing"]>) };
 
     await t.publisher.publish({ ...input, listing: { ...listing, showExactAddress: true } }, ctx);
 
-    expect(await pageOf(t).evaluate("window.__typedPlace")).toBe("Calle Inventada 1234, 506");
+    expect(await pageOf(t).evaluate("window.__typedPlace")).toBe("Calle Inventada 1234");
+    // Ni otra calle de la comuna ni la misma calle en otra comuna.
+    expect(t.reported).toEqual([
+      "combo-tipo",
+      "Apartamento o piso",
+      "Calle Inventada 1234, Ñuñoa, Santiago, Chile",
+    ]);
     await t.handoffs[0]?.window.close();
+  });
+
+  it("con la dirección oculta no elige una calle con número, aunque sea de la comuna", async () => {
+    const t = await setup({
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-solo-calles.html" },
+    });
+
+    await expect(t.publisher.publish(input, ctx)).rejects.toMatchObject({
+      code: "MARKETPLACE_FORM_CHANGED",
+      message: expect.stringContaining("no sugirió la comuna"),
+    });
+    expect(t.reported).toEqual(["combo-tipo", "Apartamento o piso"]);
+    expect(t.profiles[0]?.isOpen()).toBe(false);
   });
 });
 
@@ -311,6 +332,28 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
     // Se hicieron los clics del desplegable de tipo y nada más: la sugerencia «Publicar ahora…» y
     // los botones Siguiente y Publicar no se tocaron.
     expect(t.reported).toEqual(["combo-tipo", "Apartamento o piso"]);
+  });
+
+  it("si un control no responde, el error dice en qué paso falló y por qué", async () => {
+    const t = await setup({
+      routes: {
+        ...DEFAULT_ROUTES,
+        "/marketplace/create/rental": "form-descripcion-bloqueada.html",
+      },
+    });
+
+    const error = await t.publisher.publish(input, ctx).catch((caught: Error) => caught);
+
+    expect(error).toMatchObject({
+      code: "MARKETPLACE_FORM_CHANGED",
+      message: expect.stringMatching(/paso «descripción» \(.*Timeout 1000ms/),
+    });
+    // Nada del aviso en el mensaje; la ventana se cerró y quedó la captura del formulario.
+    expect((error as Error).message).not.toContain("Texto inventado");
+    expect(t.profiles[0]?.isOpen()).toBe(false);
+    expect(await readdir(t.dir)).toEqual(
+      expect.arrayContaining(["control-faltante.aria.yml", "control-faltante.png"]),
+    );
   });
 
   it("si el contador de fotos no existe, se detiene pronto en vez de esperar sin ver", async () => {
