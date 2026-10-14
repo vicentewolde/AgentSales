@@ -5,9 +5,11 @@ import { pathOf } from "./guard.js";
 import {
   FORM_CONTAINER,
   FORM_ELEMENT,
+  FORM_FIELD,
   FORM_ROOT,
   OPEN_LIST,
   OPEN_LIST_EXCLUDED,
+  PHOTO_INPUT,
 } from "./selectors.js";
 
 /** Lo que quedó guardado de una página: los archivos, por nombre. */
@@ -16,6 +18,8 @@ export type MarketplaceEvidence = {
   screenshot: string;
   /** Árbol de accesibilidad del formulario (YAML de Playwright). */
   aria: string;
+  /** Cuántas líneas tiene el árbol: uno casi vacío es señal de que se tomó el trozo equivocado. */
+  ariaLines: number;
 };
 
 /**
@@ -36,14 +40,67 @@ export async function captureFormEvidence(
   const screenshot = join(dir, `${name}.png`);
   const aria = join(dir, `${name}.aria.yml`);
   await form.screenshot({ path: screenshot, animations: "disabled", timeout: 10_000 });
-  await writeFile(aria, `${await form.ariaSnapshot({ timeout: 10_000 })}\n`, { mode: 0o600 });
-  return { screenshot, aria };
+  const tree = (await form.ariaSnapshot({ timeout: 10_000 })).trim();
+  await writeFile(aria, `${tree}\n`, { mode: 0o600 });
+  return { screenshot, aria, ariaLines: tree === "" ? 0 : tree.split("\n").length };
 }
 
-/** El formulario: primero el `form` (lo más acotado) y, solo si no hay, el contenedor principal. */
-async function formLocator(page: Page) {
+/**
+ * El formulario: el contenedor **más chico** (un `form` o el contenedor principal) que trae el
+ * control de fotos y además otros campos. Así, si Facebook pone las fotos en un `form` aparte, no
+ * se toma ese trozo vacío. Si ninguno trae campos, el primero con el control de fotos.
+ */
+export async function formLocator(page: Page) {
+  const withFields = page
+    .locator(FORM_ROOT)
+    .filter({ has: page.locator(PHOTO_INPUT) })
+    .filter({ has: page.locator(FORM_FIELD) });
+  // En el orden del documento, un contenedor va antes que lo que contiene: el último es el más chico.
+  if ((await withFields.count()) > 0) return withFields.last();
   const element = page.locator(FORM_ELEMENT);
   return ((await element.count()) > 0 ? element : page.locator(FORM_CONTAINER)).first();
+}
+
+/** Un contenedor del control de fotos, sin textos: solo su forma. */
+export type MarketplaceShapeStep = {
+  tag: string;
+  role: string | null;
+  /** Cuántos campos (que no son fotos) y controles de fotos trae adentro. */
+  fields: number;
+  photoInputs: number;
+};
+
+/**
+ * La forma de la página alrededor del control de fotos, de adentro hacia afuera: etiqueta, rol y
+ * cuántos campos trae cada contenedor. **Sin textos, ids ni clases**: si el árbol sale vacío o
+ * incompleto, esto dice dónde está el formulario de verdad sin guardar nada del operador. Va en
+ * `summary.json` de `fb:smoke`.
+ */
+export async function describeFormShape(page: Page): Promise<MarketplaceShapeStep[]> {
+  const input = page.locator(PHOTO_INPUT).first();
+  if ((await input.count()) === 0) return [];
+  return input
+    .evaluate(
+      (node, selectors) => {
+        const steps: Array<{
+          tag: string;
+          role: string | null;
+          fields: number;
+          photoInputs: number;
+        }> = [];
+        for (let el = node.parentElement; el !== null && steps.length < 25; el = el.parentElement) {
+          steps.push({
+            tag: el.tagName.toLowerCase(),
+            role: el.getAttribute("role"),
+            fields: el.querySelectorAll(selectors.field).length,
+            photoInputs: el.querySelectorAll(selectors.photo).length,
+          });
+        }
+        return steps;
+      },
+      { field: FORM_FIELD, photo: PHOTO_INPUT },
+    )
+    .catch(() => []);
 }
 
 /** Lo que guardó `captureOpenLists`: el archivo y cuántas listas desplegadas vio. */

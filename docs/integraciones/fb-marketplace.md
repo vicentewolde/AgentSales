@@ -222,7 +222,7 @@ Pistas (no oficiales, solo orientan; nada de la nota descansa solo en ellas sin 
 
 1. Abrir el perfil del corredor con ventana visible, con un candado por corredor y un límite diario bajo.
 2. Comprobar la sesión: ir al formulario de propiedad y verificar URL y formulario (lista blanca). Cualquier otra cosa → detener, captura, `failed` con motivo y aviso al operador.
-3. Elegir tipo de propiedad y operación, y llenar precio, dormitorios, baños, m², ubicación (comuna, o dirección solo si `show_exact_address`), título y descripción, con pausas cortas entre campos.
+3. Elegir el tipo de propiedad y llenar dormitorios, baños, precio, ubicación (comuna, o dirección solo si `show_exact_address`), descripción y superficie (en pies cuadrados), con pausas cortas entre campos. *(Superado por §13: el formulario real no tiene operación ni título.)*
 4. Subir las fotos fijadas de la publicación (descargadas de R2 a un temporal).
 5. Pasar a `awaiting_manual_confirm`, guardar captura y snapshot, y **soltar el control**.
 
@@ -242,8 +242,23 @@ Pistas (no oficiales, solo orientan; nada de la nota descansa solo en ellas sin 
 
 1. **¿Quién inicia sesión?** Las Condiciones prohíben dar acceso a la cuenta a otros. ¿En F5 se prueba solo con tu cuenta y, al ofrecerlo a corredores (F7), cada corredor inicia sesión y hace el clic en su propio equipo?
 2. **UF:** si Marketplace solo acepta CLP, ¿se convierte la UF a pesos al publicar (con qué valor de la UF), o el precio va en pesos y la UF en el texto?
-3. **Venta:** si en Chile no hay "Home Sales", ¿las propiedades en venta se omiten en Marketplace o se publican de otra forma?
+3. **Venta:** si en Chile no hay "Home Sales", ¿las propiedades en venta se omiten en Marketplace o se publican de otra forma? **Respondida el 2026-10-13:** `fb:smoke --menus` mostró que `/create/rental` es solo de arriendo y no tiene menú de operación, y el operador comprobó que «Crear publicación → Viviendas en venta o alquiler» lleva a ese mismo formulario. En Chile las ventas no van a Marketplace (spec F5, D15).
 4. **Clic en *Next*:** ¿lo hace el sistema o el operador? (Recomendación: el operador.)
 5. **Límite diario por corredor** (recomendación: 3) y si se acepta no sincronizar estados de forma automática.
 6. **Navegador:** ¿Chromium de Playwright (recomendado, ya instalado) o el Chrome instalado (`channel: 'chrome'`)?
 7. **WhatsApp en la descripción:** ¿se mantiene al final del texto de Marketplace mientras no se confirme cómo lo trata Facebook?
+
+## 13. Observado con sesión: el formulario real (2026-10-13)
+
+Fuente: `pnpm fb:smoke --menus` en la cuenta del operador (Chile, interfaz en español). Es el árbol de accesibilidad del formulario, no una página pública, y la fecha importa: Facebook cambia su interfaz sin avisar.
+
+- **La dirección del formulario es `https://www.facebook.com/marketplace/create/rental`** y abre directo (OBSERVADO): la sesión se detecta con la cookie `c_user` numérica y una página que no es de inicio de sesión. La verificación apareció una vez y se resolvió a mano en la ventana.
+- **Es el formulario "Nueva vivienda", solo de arriendo** (OBSERVADO): encabezado «Nueva vivienda», paso 1 de 2, botones «Guardar borrador» y «Siguiente» (deshabilitado hasta completar lo obligatorio). No hay menú de operación ni se vio otro formulario para venta; si existe uno aparte en Chile es NO VERIFICADO.
+- **Campos** (nombre accesible, OBSERVADO): `combobox` «Tipo de propiedad en alquiler»; `textbox` «Número de habitaciones», «Número de baños» y «Precio al mes» (sin selector de moneda; se supone CLP); `combobox` «Address» (la etiqueta sale en inglés aunque el perfil está en español); `textbox` «Descripción de la propiedad en alquiler»; en «Opciones avanzadas (Opcional)»: `textbox` «Pies cuadrados de la propiedad» (**pies**, no m²), `combobox` «Fecha disponible», «Tipo de lavandería», «Tipo de aparcamiento», «Tipo de aire acondicionado», «Tipo de calefacción» e interruptores «Se aceptan gatos» y «Se aceptan perros». **No hay campo de título.**
+- **Crear publicación** (OBSERVADO por el operador, 2026-10-13): la opción «Viviendas en venta o alquiler» lleva a `/marketplace/create/rental`, el mismo formulario: no hay uno aparte para venta.
+- **Tipos** (OBSERVADO, lista «Seleccionar una opción»): Casa, Casa adosada, Apartamento o piso, Solo habitación.
+- **Fotos** (OBSERVADO): botón «Añadir fotos o arrastrar y soltar», contador «Fotos 0/50» («Puedes añadir un máximo de 50 fotos»), un texto de estado «Se han adjuntado 0 fotos» y **dos** controles de archivo. Qué control sube a dónde y cómo cambia el contador al subir: se confirma con `fb:smoke --listing`.
+- **Promoción:** hay un interruptor «Promocionar la publicación después de realizarla», apagado por defecto. AgentSales nunca lo toca.
+- **El panel del formulario muestra el nombre del operador** («Vicente Wolde Cepeda · Publicación en Marketplace · Público»): el árbol y la captura de evidencia lo llevan. Quedan en `tmp/` (fuera de git).
+- **Sigue NO VERIFICADO:** las sugerencias del campo «Address», el paso 2 (qué ofrece antes de «Publicar»), la dirección a la que Facebook lleva después de publicar, el tope de caracteres de la descripción, y si «Guardar borrador» guarda solo al apretarlo o también al cerrar la ventana.
+

@@ -47,7 +47,7 @@ Detalle verificado en `docs/integraciones/mercadolibre.md` (2026-10-06, leyendo 
 
 - **Sin API pública** para publicar avisos de particulares en Chile.
 - **Mecanismo:** Playwright con un **perfil de navegador persistente por corredor**. El corredor inicia sesión a mano una vez; el sistema nunca ve su contraseña.
-- **Flujo:** el worker abre el formulario de "Propiedad en venta o alquiler", llena campos, sube fotos y deja todo listo. El estado pasa a `awaiting_manual_confirm` y el operador hace el **clic final**. Luego pega la URL o el sistema la detecta.
+- **Flujo:** el worker abre el formulario "Nueva vivienda" (`/marketplace/create/rental`, **solo de arriendo**: una venta no va a Marketplace), llena campos, sube fotos y deja todo listo. El estado pasa a `awaiting_manual_confirm` y el operador hace el **clic final**. Luego pega la URL o el sistema la detecta.
 - **Riesgos:** cambia el HTML sin aviso (los selectores se rompen), y Meta puede restringir cuentas por automatización. Mitigaciones:
   - Clic final humano.
   - Ritmo lento, con pausas fijas entre acciones (desde ADR-0017: sin variaciones al azar que imiten a una persona).

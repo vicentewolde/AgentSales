@@ -13,9 +13,11 @@ import {
   FACEBOOK_HOME_URL,
   isMarketplaceProfileInUse,
   MARKETPLACE_ERRORS,
+  MARKETPLACE_PROFILE_BUSY_WAIT_MS,
   type MarketplaceProfile,
   marketplaceProfileDir,
   marketplaceProfileLockPath,
+  openProfileWhenFree,
   waitForSession,
 } from "@agentsales/publishers/marketplace";
 import type { MarketplaceWindows } from "../marketplace/windows.js";
@@ -23,8 +25,6 @@ import { defineJob, type Job, type QueuePolicy } from "./define.js";
 
 /** Cuánto espera el login a que el operador inicie sesión (spec F5 §4.2). */
 export const MARKETPLACE_LOGIN_WAIT_MS = 10 * 60_000;
-/** Cuánto espera el login a que se libere un perfil tomado (una ventana de publicar). */
-export const MARKETPLACE_PROFILE_BUSY_WAIT_MS = 30_000;
 
 /**
  * Política de `marketplace.profile` (spec F5 §4.11): `stately` por corredor (`singletonKey =
@@ -63,22 +63,11 @@ export type MarketplaceProfileJobDeps = {
 const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_ERROR");
 
 /** Abre el perfil; si está tomado, reintenta hasta `busyWaitMs` (una ventana de publicar se cierra). */
-async function openWhenFree(deps: MarketplaceProfileJobDeps, brokerId: string) {
-  const deadline = Date.now() + (deps.busyWaitMs ?? MARKETPLACE_PROFILE_BUSY_WAIT_MS);
-  for (;;) {
-    try {
-      return await deps.openProfile(brokerId);
-    } catch (error) {
-      if (
-        !(isAppError(error) && error.code === "MARKETPLACE_PROFILE_BUSY") ||
-        Date.now() >= deadline
-      ) {
-        throw error;
-      }
-      await new Promise((done) => setTimeout(done, deps.pollMs ?? 2_000));
-    }
-  }
-}
+const openWhenFree = (deps: MarketplaceProfileJobDeps, brokerId: string) =>
+  openProfileWhenFree(() => deps.openProfile(brokerId), {
+    waitMs: deps.busyWaitMs ?? MARKETPLACE_PROFILE_BUSY_WAIT_MS,
+    pollMs: deps.pollMs ?? 2_000,
+  });
 
 /** La carpeta del perfil, solo si queda dentro de la raíz de los perfiles (nunca borra otra cosa). */
 export function profileDirInside(root: string, brokerId: string): string {

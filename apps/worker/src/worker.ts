@@ -35,11 +35,7 @@ import {
   createMercadoLibreAuth,
   MERCADOLIBRE_REFRESH_TIMEOUT_MS,
 } from "@agentsales/publishers";
-import {
-  createMarketplacePublisher,
-  marketplaceProfileDir,
-  openMarketplaceProfile,
-} from "@agentsales/publishers/marketplace";
+import { marketplaceProfileDir, openMarketplaceProfile } from "@agentsales/publishers/marketplace";
 import { createBancoCentralUf } from "@agentsales/publishers/uf";
 import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
@@ -58,6 +54,7 @@ import { enqueueLiveSyncs } from "./jobs/publication-sync.js";
 import { registerJobs } from "./jobs/registry.js";
 import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
 import { llmProviderOptions } from "./llm-options.js";
+import { createWorkerMarketplacePublisher } from "./marketplace/publisher.js";
 import { createMarketplaceWindows, sweepClosedWindows } from "./marketplace/windows.js";
 import { createWorkerPortal } from "./portal.js";
 import { stopWorker } from "./shutdown.js";
@@ -201,8 +198,14 @@ const jobs = buildJobs({
       publishers: {
         instagram,
         portal_inmobiliario: portal.publisher,
-        // Esqueleto hasta F5-T10: valida y simula; en `live` todavía no llena el formulario.
-        fb_marketplace: createMarketplacePublisher(),
+        // En `live` llena el formulario y deja la ventana al registro; en `dry-run` no abre nada.
+        fb_marketplace: createWorkerMarketplacePublisher({
+          openProfile: (brokerId) =>
+            openMarketplaceProfile({ dir: marketplaceProfileDir(profilesRoot, brokerId) }),
+          storage,
+          tmpRoot: marketplaceTmpRootOf(workspaceRoot),
+          windows: marketplaceWindows,
+        }),
       },
       workerMode: env.PUBLISH_MODE,
       marketplaceDailyLimit: env.MARKETPLACE_DAILY_LIMIT,

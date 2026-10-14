@@ -6,7 +6,12 @@ import {
   DEFAULT_ROUTES,
   type FakeFacebook,
 } from "../../test/marketplace/fake-facebook.js";
-import { captureFormEvidence, captureOpenLists, stopRecord } from "./evidence.js";
+import {
+  captureFormEvidence,
+  captureOpenLists,
+  describeFormShape,
+  stopRecord,
+} from "./evidence.js";
 import { classifyPage, requireForm } from "./guard.js";
 import { openMarketplaceProfile } from "./profile.js";
 import { MARKETPLACE_FORM_URL } from "./selectors.js";
@@ -159,8 +164,12 @@ describe("evidencia del formulario", () => {
     const aria = await readFile(evidence.aria, "utf8");
     expect(aria).toContain("Precio");
     expect(aria).toContain("Publicar");
-    expect(aria).not.toContain("Nombre Inventado del Operador");
+    // Nada de la barra de Facebook (mensajes, búsquedas recientes). Ojo: el panel del formulario
+    // real trae el nombre del operador ("Publicación en Marketplace · Público"), así que la
+    // evidencia puede llevarlo: queda en `tmp/` (fuera de git) y no se comparte.
     expect(aria).not.toContain("mensajes");
+    expect(aria).not.toContain("Búsquedas recientes");
+    expect(aria).toContain("Nueva vivienda");
     expect((await readFile(evidence.screenshot)).subarray(1, 4).toString()).toBe("PNG");
     expect((await stat(dir)).mode & 0o777).toBe(0o700);
   });
@@ -176,6 +185,43 @@ describe("evidencia del formulario", () => {
     const aria = await readFile(evidence.aria, "utf8");
     expect(aria).toContain("Precio");
     expect(aria).not.toContain("Nombre Inventado del Operador");
+  });
+});
+
+describe("evidencia con las fotos en un form aparte (fb:smoke, 2026-10-13)", () => {
+  const open = async () => {
+    const fb = await setup(withRoutes({ "/marketplace/create/rental": "form-foto-aparte.html" }));
+    const { page } = await fb.open();
+    await page.goto(MARKETPLACE_FORM_URL);
+    await requireForm(page, { timeoutMs: 2_000 });
+    return { fb, page };
+  };
+
+  it("guarda el contenedor con los campos, no el form que solo trae las fotos", async () => {
+    const { fb, page } = await open();
+
+    const evidence = await captureFormEvidence(page, join(fb.root, "evidencia"), "formulario");
+
+    const aria = await readFile(evidence.aria, "utf8");
+    expect(aria).toContain("Precio al mes");
+    expect(aria).toContain('combobox "Tipo de propiedad en alquiler"');
+    expect(evidence.ariaLines).toBeGreaterThan(8);
+  });
+
+  it("describe la forma alrededor de las fotos, sin textos", async () => {
+    const { page } = await open();
+
+    const shape = await describeFormShape(page);
+
+    // De adentro hacia afuera: el form de fotos (sin campos), el div con role=form y el main.
+    expect(shape.slice(0, 3).map((step) => [step.tag, step.role])).toEqual([
+      ["form", null],
+      ["div", "form"],
+      ["div", "main"],
+    ]);
+    expect(shape[0]?.fields).toBe(0);
+    expect(shape[1]?.fields).toBeGreaterThanOrEqual(6);
+    expect(JSON.stringify(shape)).not.toMatch(/Precio|Nombre Inventado/);
   });
 });
 
@@ -378,5 +424,22 @@ describe("ventana vigilada", () => {
 
     expect(closed).toEqual(["timeout"]);
     expect(profile.isOpen()).toBe(false);
+  });
+});
+
+describe("cerrar el perfil", () => {
+  it("dos cierres a la vez esperan al mismo y dejan el perfil libre", async () => {
+    const fb = await setup();
+    const profile = await fb.open();
+
+    await expect(Promise.all([profile.close(), profile.close()])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+
+    // Al volver de cualquiera de los dos, la ventana ya está cerrada y el perfil libre.
+    expect(profile.isOpen()).toBe(false);
+    const again = await fb.open();
+    expect(again.isOpen()).toBe(true);
   });
 });

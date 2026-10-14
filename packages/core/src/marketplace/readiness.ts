@@ -1,4 +1,5 @@
 import type { PublishIssue, PublishListing } from "../ports/publisher.js";
+import { marketplaceOperationOption, marketplacePropertyTypeOption } from "./fields.js";
 
 /** Lo que falta para Marketplace, con el campo de la planilla que hay que completar (`null`: no es del aviso). */
 export type MarketplaceReadinessIssue = PublishIssue & { field: string | null };
@@ -29,8 +30,8 @@ const missing = (field: string, label: string): MarketplaceReadinessIssue => ({
 const hasNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value);
 
 /**
- * ¿Está el aviso listo para Marketplace? (spec F5 §4.6, F5-T07): lo que el formulario pide y no
- * depende de sus opciones exactas (eso lo suma T09 con el árbol de `fb:smoke`). Pura, sin red. La
+ * ¿Está el aviso listo para Marketplace? (spec F5 §4.6, F5-T07 y T09): lo que el formulario pide,
+ * y que la operación y el tipo tengan opción en el formulario (`marketplace/fields.ts`). Pura, sin red. La
  * usan aprobar (como advertencia), la vista del contenido y las dos rutas de publicar
  * (`MARKETPLACE_NOT_READY`). Nunca inventa un dato: si falta, lo pide.
  * - `photos`: cuántas fotos 4:3 tiene el aviso (las mismas de Portal).
@@ -51,8 +52,23 @@ export function marketplaceReadiness(
   }
   if (listing.operation === null) {
     issues.push(missing("operacion", "la operación (Venta o Arriendo)"));
+  } else if (marketplaceOperationOption(listing.operation) === null) {
+    issues.push({
+      code: "MARKETPLACE_OPERATION_UNSUPPORTED",
+      field: "operacion",
+      message:
+        "El formulario de Marketplace en Chile es solo de arriendo: publícalo en los otros canales",
+    });
   }
-  if (listing.propertyType === null) issues.push(missing("tipo", "el tipo de propiedad"));
+  if (listing.propertyType === null) {
+    issues.push(missing("tipo", "el tipo de propiedad"));
+  } else if (marketplacePropertyTypeOption(listing.propertyType) === null) {
+    issues.push({
+      code: "MARKETPLACE_TYPE_UNSUPPORTED",
+      field: "tipo",
+      message: "Marketplace no admite este tipo de propiedad: publícalo en los otros canales",
+    });
+  }
   if (!(listing.priceAmount > 0)) issues.push(missing("precio", "el precio"));
   if (listing.priceCurrency === "UF" && !ufConfigured) {
     issues.push({
