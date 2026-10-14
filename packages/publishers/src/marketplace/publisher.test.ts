@@ -286,6 +286,62 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     );
   });
 
+  it("con la dirección oculta y sin la comuna como entrada, usa una calle sin número de la comuna y lo avisa (caso real: Providencia)", async () => {
+    const t = await setup({
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-comuna-en-calles.html" },
+    });
+
+    const result = await t.publisher.publish(input, ctx);
+
+    // La primera calle sin número de Ñuñoa: no la de Maipú ni la que lleva número.
+    expect(t.reported).toEqual([
+      "combo-tipo",
+      "Apartamento o piso",
+      "Avenida Ñuñoa, 7750000 Ñuñoa, Región Metropolitana de Santiago, Chile",
+    ]);
+    expect(result).toMatchObject({
+      handoff: "manual_confirm",
+      notes: [expect.stringContaining("una calle de Ñuñoa («Avenida Ñuñoa»)")],
+    });
+    await t.handoffs[0]?.window.close();
+  });
+
+  it("si la comuna aparece como entrada, la prefiere aunque una calle venga antes, y no avisa", async () => {
+    const t = await setup({
+      routes: {
+        ...DEFAULT_ROUTES,
+        "/marketplace/create/rental": "form-comuna-despues-de-calles.html",
+      },
+    });
+
+    const result = await t.publisher.publish(input, ctx);
+
+    expect(t.reported).toEqual([
+      "combo-tipo",
+      "Apartamento o piso",
+      "Ñuñoa, Región Metropolitana de Santiago, Chile",
+    ]);
+    expect(result).toEqual({ handoff: "manual_confirm", simulated: false });
+    await t.handoffs[0]?.window.close();
+  });
+
+  it("con la dirección visible reconoce la comuna aunque lleve el código postal delante", async () => {
+    const t = await setup({
+      routes: {
+        ...DEFAULT_ROUTES,
+        "/marketplace/create/rental": "form-direccion-codigo-postal.html",
+      },
+    });
+    const listing = { ...(input.listing as NonNullable<PublishInput["listing"]>) };
+
+    await t.publisher.publish({ ...input, listing: { ...listing, showExactAddress: true } }, ctx);
+
+    // Ni la misma calle en Maipú ni otra calle de Ñuñoa: la tercera opción, de dos líneas.
+    expect(t.reported).toHaveLength(3);
+    expect(t.reported[2]).toMatch(/^Calle Inventada 1234, 7750000 Ñuñoa, Región Metropolitana/);
+    await t.handoffs[0]?.window.close();
+  });
+
   it("con la dirección oculta no elige una calle con número, aunque sea de la comuna", async () => {
     const t = await setup({
       routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-solo-calles.html" },

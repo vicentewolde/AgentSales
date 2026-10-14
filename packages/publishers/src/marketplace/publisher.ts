@@ -187,7 +187,10 @@ export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publ
         deps.diagnostics?.watchPage?.(page, dir);
         await page.goto(MARKETPLACE_FORM_URL);
         await requireForm(page, { timeoutMs: deps.formWaitMs ?? FORM_WAIT_MS });
-        await fillMarketplaceForm(page, plan, photoPaths, { ...deps.fill, evidenceDir: dir });
+        const filled = await fillMarketplaceForm(page, plan, photoPaths, {
+          ...deps.fill,
+          evidenceDir: dir,
+        });
         if (deps.diagnostics?.skipEvidence !== true) {
           await captureFormEvidence(page, dir, "formulario");
         }
@@ -202,7 +205,11 @@ export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publ
         );
         // Si el tope venció mientras se entregaba, la ventana ya se cerró: no se da por listo.
         if (cut()) throw MARKETPLACE_ERRORS.formChanged("se cortó el llenado");
-        return { handoff: "manual_confirm", simulated: false };
+        return {
+          handoff: "manual_confirm",
+          simulated: false,
+          ...(filled.notes.length > 0 ? { notes: filled.notes } : {}),
+        };
       } catch (error) {
         await profile?.close();
         // Un corte deja errores de Playwright sin sentido ("Target closed"): se dice qué pasó.
