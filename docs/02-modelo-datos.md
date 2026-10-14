@@ -45,7 +45,7 @@ erDiagram
 | broker_id | uuid FK | |
 | platform | enum `platform` | `instagram`, `portal_inmobiliario`, `fb_marketplace` (luego `yapo`, `tiktok`) |
 | external_account_id | text | ID en la plataforma (Instagram: el `user_id` de `/me`; Mercado Libre: el `user_id` de `/users/me`, el mismo del canje; Marketplace: el id de la cookie `c_user` del perfil, desde F5). No cambia en una fila: es parte del único y de la AAD del cifrado |
-| display_name | text | Lo que ve el operador (Instagram: `@usuario`; Mercado Libre: el `nickname`, tal cual) |
+| display_name | text | Lo que ve el operador (Instagram: `@usuario`; Mercado Libre: el `nickname`, tal cual; Marketplace: el `label` al conectar o "Facebook de <corredor>") |
 | credentials_encrypted | text null | `{ accessToken, refreshToken? }` cifrado con AES-256-GCM (`v1.<iv>.<cifrado>.<tag>`, AAD `platform:broker_id:external_account_id`); `null` en una cuenta desconectada y, desde F5, **siempre** en Marketplace: su sesión vive en el perfil del navegador, fuera de la base (ADR-0017; `checkConnectedCredentials`: `ACCOUNT_CREDENTIALS_REQUIRED` si falta en las demás, `ACCOUNT_CREDENTIALS_NOT_ALLOWED` si llega a Marketplace). `refreshToken` solo en Mercado Libre (ADR-0015) |
 | token_expires_at | timestamptz null | Cuándo la cuenta deja de funcionar sin que el operador haga algo. Instagram: el vencimiento del token largo. Mercado Libre: el horizonte estimado del `refresh_token` (último refresco + 6 meses); el del `access_token` (horas) va en `meta.accessTokenExpiresAt` (ADR-0015) |
 | status | enum `platform_account_status` | `connected`, `expired`, `revoked`, `error` |
@@ -86,7 +86,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | price_amount | numeric(14,2) | |
 | price_currency | enum `currency` | `UF`, `CLP` |
 | region, comuna, address, unit_number | text null | Un borrador o un producto (ADR-0006) puede no tenerlos |
-| show_exact_address | boolean default false | Privacidad: por defecto no se publica la dirección exacta |
+| show_exact_address | boolean default false | Privacidad: por defecto no se publica la dirección exacta **en los textos** (la IA, Instagram) y Portal la oculta él (`address_line_by_reference`). No oculta la ubicación del formulario de Marketplace: ahí se escribe la dirección de la planilla (spec F5, D16; que Facebook muestre solo una ubicación aproximada es NO VERIFICADO) |
 | attributes | jsonb | Resto de campos, validados con `field_definitions` |
 | highlights | text null | Lo que el corredor quiere destacar |
 | internal_notes | text null | Nunca se publica |

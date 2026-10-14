@@ -77,6 +77,8 @@ Spec detallado: `docs/specs/fase-4-portal-inmobiliario.md`.
 
 **Spec:** `docs/specs/fase-5-marketplace.md` (ADR-0017). Suma la conversión de UF a pesos con el valor oficial del día (D9) y el plan B de copiar y pegar en el panel (D13).
 
+**Cerrada el 2026-10-14 (`v0.5.0`):** en `live` se llenaron 3 formularios (P002, P004 y P005) y el operador los revisó sin publicarlos. El formulario de Chile es solo de arriendo (D15: las ventas no van a Marketplace) y la ubicación usa la dirección de la planilla (D16).
+
 ## F6 · Calendario + seguimiento
 - Programar por publicación y por lote ("publicar estas 5 el lunes a las 10:00").
 - Reintentos con backoff exponencial; `failed` con causa legible.

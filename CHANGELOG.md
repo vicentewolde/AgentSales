@@ -4,6 +4,28 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [0.5.0] - 2026-10-14 · F5 Facebook Marketplace
+Ahora una propiedad en arriendo se publica en Facebook Marketplace **en dos tiempos**: el sistema abre tu perfil de Facebook en una ventana de Chromium, llena el formulario de "Nueva vivienda" con los datos del aviso y sus fotos, y te deja la ventana abierta; **tú haces Siguiente y Publicar**. El sistema reconoce el aviso recién publicado o recibe el enlace que pegas, y si no lo publicaste lo marcas así. Se probó en vivo, con tu instrucción, en tu cuenta: P002 (casa, La Reina), P004 (departamento, Providencia) y P005 (casa, Ñuñoa) se llenaron en Facebook de verdad, los revisaste y no se publicaron (D10); un cuarto intento el mismo día se negó por el límite. Antes, en simulación, se recorrió todo el flujo desde el panel y la CLI sin abrir Facebook.
+
+### Añadido
+- **Conectar tu Facebook:** `pnpm -s cli accounts connect marketplace --broker <slug>` o "Iniciar sesión en Facebook" en **Cuentas**. Se abre Chromium e inicias sesión a mano (también la verificación); la contraseña nunca la ve el sistema. La sesión vive en un perfil de navegador fuera del proyecto (`~/.agentsales/browser-profiles`) y desconectar lo borra.
+- **Publicar en Marketplace:** "Publicar" en la pestaña Marketplace del panel o `agentsales publish <propiedad> --platform marketplace`. En vivo llena el tipo de propiedad, dormitorios, baños, precio al mes en pesos, la dirección (eligiendo la sugerencia del mapa), la descripción aprobada y la superficie (en pies cuadrados, como la pide el formulario), y sube las fotos. Nunca hace clic en Siguiente ni en Publicar.
+- **Después de tu clic:** la ventana reconoce el aviso publicado y lo guarda con su enlace; si no, pegas el enlace ("Lo publiqué", o `pbpaste | pnpm -s cli publications confirm <id> --url-stdin`) o marcas "No lo publiqué" para reintentar o descartar. Mientras espera tu palabra, no se puede descartar, quitar la aprobación ni desconectar.
+- **Lo que falta para Marketplace**, antes de enviar: fotos, tipo con opción en el formulario, precio, dormitorios, baños y comuna, en el panel, al aprobar y al publicar.
+- **La UF en pesos:** un precio en UF se convierte con el valor oficial del día del Banco Central (API BDE, `BCCH_API_TOKEN`); el texto aprobado sigue en UF. `pnpm uf:smoke` lo comprueba.
+- **Salvaguardas:** 3 intentos en vivo por cuenta y día, un formulario a la vez, una pausa fija entre campos, y ante un inicio de sesión, una verificación, un captcha, Marketplace no disponible o una pantalla rara, el sistema se detiene, cierra la ventana y lo dice.
+- **Plan B** en el panel: copiar el título, la descripción y el precio, y abrir cada foto, para publicar a mano si el formulario cambia.
+- **`pnpm fb:smoke`** (lo corres tú): `--broker <slug>` guarda el árbol del formulario sin llenar nada; `--menus` guarda además los menús que abres a mano; `--listing <propiedad>` llena el formulario real sin publicar (pregunta s/N, respeta el límite, no cambia nada en AgentSales); `--diagnostico` anota los errores técnicos de la página para investigar un fallo.
+- **Documentación:** ADR-0017 (sesión en un perfil y publicación en dos tiempos), la nota de Marketplace con lo observado en el formulario real y la nota de la UF.
+
+### Cambiado
+- **Una propiedad en venta no va a Marketplace:** en Chile el formulario de viviendas es solo de arriendo (D15). Tampoco van oficinas, locales, terrenos, parcelas, bodegas ni estacionamientos: el formulario no tiene esos tipos.
+- **La dirección en Marketplace** es la de la planilla, aunque `mostrar_direccion_exacta` sea No (tu decisión, D16). Esa columna sigue mandando en los textos, Instagram y Portal. Que Facebook muestre solo una ubicación aproximada está **sin verificar**: revísalo en el primer aviso real que publiques.
+
+### Corregido
+- **El diálogo «¡Uy! Se ha producido un error»** al terminar de llenar: Facebook sube las fotos unos segundos después de adjuntarlas y el sistema ya las había borrado del disco, así que no llegaban. Ahora van en memoria y se suben bien.
+- La dirección elige bien la sugerencia del mapa aunque la lista se cierre al hacer clic (usa el teclado) y aunque la comuna venga con el código postal.
+
 ## [0.4.0] - 2026-10-09 · F4 Portal Inmobiliario
 Ahora una propiedad aprobada se publica en Portal Inmobiliario (Mercado Libre): se conecta la cuenta de cada corredor, el sistema dice antes de enviar lo que le falta al aviso y, ya publicado, se pausa, reactiva, cierra y actualiza desde el panel o la CLI. F4 se cerró **con la simulación** (tu decisión, D15): la demo publicó P001 desde el panel y P002 desde la CLI en `dry-run`, que solo lee de Mercado Libre y le pregunta a `validate` sin crear nada (tu cuenta no tiene paquete, así que Mercado Libre respondió "sin cupo" y la simulación siguió con las revisiones de AgentSales, D14); pausar, reactivar y cerrar en simulación; y el acceso de VICENTEWOLDE se renovó con `--force` sin perder la cuenta. La prueba en vivo con un usuario de prueba de Mercado Libre queda para el inicio de F5, cuando soporte lo active.
 

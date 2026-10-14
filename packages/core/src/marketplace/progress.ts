@@ -17,7 +17,7 @@ export const marketplaceProgressSchema = z.object({
   simulated: z.boolean(),
   /** Cuándo quedó listo el formulario. */
   formReadyAt: z.iso.datetime(),
-  /** Cuántas fotos se subieron al formulario. */
+  /** Cuántas fotos se adjuntaron al formulario (Facebook las sube después, con la ventana abierta). */
   photos: z.number().int().nonnegative(),
   /** El precio que se escribió en el formulario, en pesos. */
   priceClp: clp,
