@@ -426,3 +426,20 @@ describe("ventana vigilada", () => {
     expect(profile.isOpen()).toBe(false);
   });
 });
+
+describe("cerrar el perfil", () => {
+  it("dos cierres a la vez esperan al mismo y dejan el perfil libre", async () => {
+    const fb = await setup();
+    const profile = await fb.open();
+
+    await expect(Promise.all([profile.close(), profile.close()])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+
+    // Al volver de cualquiera de los dos, la ventana ya está cerrada y el perfil libre.
+    expect(profile.isOpen()).toBe(false);
+    const again = await fb.open();
+    expect(again.isOpen()).toBe(true);
+  });
+});

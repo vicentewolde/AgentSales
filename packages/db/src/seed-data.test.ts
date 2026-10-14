@@ -279,9 +279,10 @@ describe("la tabla de Marketplace (core) calza con los campos del Excel (spec F5
 
   it("las operaciones del Excel son las que la tabla conoce", () => {
     expect(definition("operacion")?.options).toEqual(["Venta", "Arriendo"]);
-    // `operation` de core: Venta → sale y Arriendo → rent; las dos tienen una entrada en la tabla.
-    expect(marketplaceOperationOption("sale")).not.toBeUndefined();
-    expect(marketplaceOperationOption("rent")).not.toBeUndefined();
+    // `operation` de core: Arriendo → rent va a Marketplace; Venta → sale no (el formulario es solo
+    // de arriendo).
+    expect(marketplaceOperationOption("rent")).toBe("Alquiler");
+    expect(marketplaceOperationOption("sale")).toBeNull();
   });
 
   it("dormitorios, baños y superficie útil son números, como los lee el plan del formulario", () => {

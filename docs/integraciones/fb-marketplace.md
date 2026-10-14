@@ -222,7 +222,7 @@ Pistas (no oficiales, solo orientan; nada de la nota descansa solo en ellas sin 
 
 1. Abrir el perfil del corredor con ventana visible, con un candado por corredor y un límite diario bajo.
 2. Comprobar la sesión: ir al formulario de propiedad y verificar URL y formulario (lista blanca). Cualquier otra cosa → detener, captura, `failed` con motivo y aviso al operador.
-3. Elegir tipo de propiedad y operación, y llenar precio, dormitorios, baños, m², ubicación (comuna, o dirección solo si `show_exact_address`), título y descripción, con pausas cortas entre campos.
+3. Elegir el tipo de propiedad y llenar dormitorios, baños, precio, ubicación (comuna, o dirección solo si `show_exact_address`), descripción y superficie (en pies cuadrados), con pausas cortas entre campos. *(Superado por §13: el formulario real no tiene operación ni título.)*
 4. Subir las fotos fijadas de la publicación (descargadas de R2 a un temporal).
 5. Pasar a `awaiting_manual_confirm`, guardar captura y snapshot, y **soltar el control**.
 
@@ -242,7 +242,7 @@ Pistas (no oficiales, solo orientan; nada de la nota descansa solo en ellas sin 
 
 1. **¿Quién inicia sesión?** Las Condiciones prohíben dar acceso a la cuenta a otros. ¿En F5 se prueba solo con tu cuenta y, al ofrecerlo a corredores (F7), cada corredor inicia sesión y hace el clic en su propio equipo?
 2. **UF:** si Marketplace solo acepta CLP, ¿se convierte la UF a pesos al publicar (con qué valor de la UF), o el precio va en pesos y la UF en el texto?
-3. **Venta:** si en Chile no hay "Home Sales", ¿las propiedades en venta se omiten en Marketplace o se publican de otra forma?
+3. **Venta:** si en Chile no hay "Home Sales", ¿las propiedades en venta se omiten en Marketplace o se publican de otra forma? (`fb:smoke --menus`, 2026-10-13: el formulario que abre la dirección `/create/rental` es solo de arriendo y no tiene menú de operación; si Facebook ofrece otro formulario de venta es NO VERIFICADO. Decisión provisional del spec: una venta no va a Marketplace, hasta que el operador mire en Facebook qué tipos de publicación ofrece.)
 4. **Clic en *Next*:** ¿lo hace el sistema o el operador? (Recomendación: el operador.)
 5. **Límite diario por corredor** (recomendación: 3) y si se acepta no sincronizar estados de forma automática.
 6. **Navegador:** ¿Chromium de Playwright (recomendado, ya instalado) o el Chrome instalado (`channel: 'chrome'`)?

@@ -76,6 +76,13 @@ describe("tabla de campos de Marketplace", () => {
       input({ listing: { ...listing, attributes: { dormitorios: 0, banos: 1 } } }),
     );
     expect(plan).toMatchObject({ bedrooms: 0, areaSquareFeet: null });
+    expect(
+      marketplaceFormPlan(
+        input({
+          listing: { ...listing, attributes: { dormitorios: 1, banos: 1, sup_util_m2: 0 } },
+        }),
+      ).areaSquareFeet,
+    ).toBeNull();
     expect(() =>
       marketplaceFormPlan(input({ listing: { ...listing, attributes: { dormitorios: 2 } } })),
     ).toThrow(expect.objectContaining({ code: "MARKETPLACE_NOT_READY", retriable: false }));

@@ -86,7 +86,7 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
 
 ## Facebook Marketplace
 
-- **Título:** el mismo de Portal (`listingTitle`).
+- **Título:** el mismo de Portal (`listingTitle`). **El formulario real de Marketplace no tiene campo de título** (`fb:smoke --menus`, 2026-10-13): el título aprobado no se escribe en Facebook; el plan B del panel lo sigue copiando y `checkContent` lo sigue revisando (hasta 60 caracteres).
 - **Descripción:** intermedia; admite pocos emojis. Termina con WhatsApp. Como la arma `assembleContents` (F2-T05):
   ```
   {{Introducción de la IA}}
@@ -100,7 +100,8 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
   ```
   Solo con los datos que existen. Sin WhatsApp: `📲 Escríbeme por Marketplace para coordinar una visita.`
 - **Fotos:** las mismas de Portal (sin texto sobrepuesto).
-- **Campos del formulario:** tipo, operación, precio, dormitorios, baños, m² y dirección aproximada según `show_exact_address`.
+- **Campos del formulario** ("Nueva vivienda", solo de arriendo; no hay operación ni título): tipo de propiedad (Casa o Apartamento o piso), precio al mes en pesos, dormitorios, baños, descripción, la ubicación (comuna y región, o la dirección exacta solo con `show_exact_address`) y, si el aviso la tiene, la superficie. **Una venta no va a Marketplace.**
+- **Superficie en pies cuadrados:** el formulario la pide en pies, no en m². Se convierte desde `sup_util_m2` con una regla fija: × 10,7639, redondeado al entero (como la UF a pesos, D9: un cambio de unidad, no un dato nuevo). Sin `sup_util_m2` (o en 0), el campo se deja vacío. El texto del aviso sigue en m². El operador la ve en pies cuadrados en el formulario.
 
 ## Salida estructurada de la IA
 

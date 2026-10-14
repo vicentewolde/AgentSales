@@ -88,11 +88,14 @@ async function setup(
   const handoffs: Array<{ ref: MarketplaceHandoffRef; window: MarketplaceWindow }> = [];
   const closedAccounts: string[] = [];
   const profiles: MarketplaceProfile[] = [];
+  const reported: string[] = [];
   const read: string[] = [];
   const tmpRoot = join(fb.root, "tmp", "marketplace");
   const publisher = createMarketplacePublisher({
     openProfile: async (brokerId) => {
       const profile = await fb.open(brokerId);
+      // Cada clic de la página se anota también aquí: se lee aunque la ventana se cierre.
+      await profile.page.exposeFunction("reportClick", (what: string) => reported.push(what));
       profiles.push(profile);
       return profile;
     },
@@ -113,7 +116,7 @@ async function setup(
     ...options.deps,
   });
   const dir = marketplaceAttemptDir(tmpRoot, input.publicationId);
-  return { fb, publisher, handoffs, closedAccounts, profiles, read, dir, tmpRoot };
+  return { fb, publisher, handoffs, closedAccounts, profiles, reported, read, dir, tmpRoot };
 }
 
 const pageOf = (t: Awaited<ReturnType<typeof setup>>) => {
@@ -279,7 +282,18 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
 
     await expect(
       t.publisher.publish({ ...input, listing: { ...listing, operation: "sale" } }, ctx),
-    ).rejects.toMatchObject({ code: "MARKETPLACE_OPERATION_UNSUPPORTED", retriable: false });
+    ).rejects.toMatchObject({
+      code: "PUBLISH_INPUT_INVALID",
+      retriable: false,
+      details: { issues: [expect.objectContaining({ code: "MARKETPLACE_OPERATION_UNSUPPORTED" })] },
+    });
+    // La simulación lo rechaza igual que en vivo.
+    await expect(
+      withDryRun(t.publisher).publish(
+        { ...input, listing: { ...listing, operation: "sale" } },
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: "PUBLISH_INPUT_INVALID" });
     expect(t.read).toEqual([]);
     expect(t.profiles).toEqual([]);
   });
@@ -293,8 +307,61 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
       code: "MARKETPLACE_FORM_CHANGED",
       message: expect.stringContaining("botón de enviar"),
     });
-    // Se cerró sin tocarla: la página registró los desplegables y nada más.
     expect(t.profiles[0]?.isOpen()).toBe(false);
+    // Se hicieron los clics del desplegable de tipo y nada más: la sugerencia «Publicar ahora…» y
+    // los botones Siguiente y Publicar no se tocaron.
+    expect(t.reported).toEqual(["combo-tipo", "Apartamento o piso"]);
+  });
+
+  it("si el contador de fotos no existe, se detiene pronto en vez de esperar sin ver", async () => {
+    const t = await setup({
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-sin-contador.html" },
+      deps: { fill: { pauseMs: 0, controlWaitMs: 1_000, photosWaitMs: 800, guardWaitMs: 1_000 } },
+    });
+
+    await expect(t.publisher.publish(input, ctx)).rejects.toMatchObject({
+      code: "MARKETPLACE_FORM_CHANGED",
+      message: expect.stringContaining("contador de fotos"),
+    });
+    expect(t.profiles[0]?.isOpen()).toBe(false);
+    expect(t.handoffs).toEqual([]);
+  });
+
+  it("si el contador no sube, no da las fotos por cargadas", async () => {
+    const t = await setup({
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-contador-fijo.html" },
+      deps: { fill: { pauseMs: 0, controlWaitMs: 1_000, photosWaitMs: 800, guardWaitMs: 1_000 } },
+    });
+
+    await expect(t.publisher.publish(input, ctx)).rejects.toMatchObject({
+      code: "MARKETPLACE_FORM_CHANGED",
+      message: expect.stringContaining("todas las fotos"),
+    });
+    expect(t.profiles[0]?.isOpen()).toBe(false);
+  });
+
+  it("una sugerencia que solo contiene la comuna («Villa Ñuñoa») no se elige", async () => {
+    const t = await setup({
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-comuna-parecida.html" },
+    });
+
+    await expect(t.publisher.publish(input, ctx)).rejects.toMatchObject({
+      code: "MARKETPLACE_FORM_CHANGED",
+      message: expect.stringContaining("no sugirió la comuna"),
+    });
+    expect(t.reported).not.toContain("Villa Ñuñoa, Santiago, Chile");
+  });
+
+  it("si el campo de superficie pidiera metros, no escribe pies ahí", async () => {
+    const t = await setup({
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-metros.html" },
+    });
+
+    await expect(t.publisher.publish(input, ctx)).resolves.toMatchObject({
+      handoff: "manual_confirm",
+    });
+    expect(await pageOf(t).locator('[name="pies"]').inputValue()).toBe("");
+    await t.handoffs[0]?.window.close();
   });
 
   it("un corte (apagado del worker) a mitad del llenado cierra la ventana y lo dice", async () => {
@@ -360,7 +427,10 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
 
     await expect(
       t.publisher.publish({ ...input, listing: { ...listing, propertyType: "Bodega" } }, ctx),
-    ).rejects.toMatchObject({ code: "MARKETPLACE_TYPE_UNSUPPORTED" });
+    ).rejects.toMatchObject({
+      code: "PUBLISH_INPUT_INVALID",
+      details: { issues: [expect.objectContaining({ code: "MARKETPLACE_TYPE_UNSUPPORTED" })] },
+    });
     expect(t.read).toEqual([]);
     expect(t.profiles).toEqual([]);
   });

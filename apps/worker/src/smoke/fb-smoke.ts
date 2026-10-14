@@ -53,8 +53,9 @@ export type FbSmokeOptions = {
   brokerSlug: string;
   signal?: AbortSignal;
   /**
-   * `--menus`: con el formulario guardado, espera a que el operador abra a mano un menú (operación,
-   * tipo de propiedad) y apriete Enter, y guarda lo que se ve (spec F5 §4.8).
+   * `--menus`: con el formulario guardado, espera a que el operador abra a mano un menú (tipo de
+   * propiedad) o escriba en un campo con sugerencias (dirección) y apriete Enter, y guarda lo que
+   * se ve (spec F5 §4.8).
    */
   menus?: boolean;
 };
@@ -205,7 +206,7 @@ async function captureMenus(
   deps.print("");
   deps.print("Ahora tú, a mano en la ventana de Chromium:");
   deps.print(
-    "  1) Abre un menú del formulario (operación: venta o alquiler; o tipo de propiedad) y deja la lista a la vista.",
+    "  1) Abre un menú del formulario (por ejemplo, el tipo de propiedad) o escribe en la dirección, y deja la lista a la vista.",
   );
   deps.print("  2) Vuelve a esta terminal y aprieta Enter: se guarda lo que se ve.");
   deps.print("  3) Repite con cada menú. Escribe «listo» solo cuando hayas terminado con todos.");

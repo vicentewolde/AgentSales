@@ -78,13 +78,13 @@ export type MarketplaceFormPlan = {
 export const marketplaceTypeUnsupported = () =>
   new AppError(
     "MARKETPLACE_TYPE_UNSUPPORTED",
-    "Marketplace no tiene este tipo de propiedad: publícalo a mano o descarta la publicación",
+    "Marketplace no admite este tipo de propiedad: descarta la publicación de Marketplace",
   );
 
 export const marketplaceOperationUnsupported = () =>
   new AppError(
     "MARKETPLACE_OPERATION_UNSUPPORTED",
-    "El formulario de Marketplace en Chile es solo de arriendo: publícalo a mano o descarta la publicación",
+    "El formulario de Marketplace en Chile es solo de arriendo: descarta la publicación de Marketplace",
   );
 
 const numberOf = (value: unknown): number | null =>
@@ -130,12 +130,14 @@ export function marketplaceFormPlan(input: PublishInput): MarketplaceFormPlan {
   const comuna = listing.comuna?.trim() ?? "";
   if (comuna === "") throw missingData("la comuna");
   const areaM2 = numberOf(listing.attributes.sup_util_m2);
+  // Una superficie en 0 o negativa no es un dato: el campo se deja vacío.
   return {
     propertyType,
     priceClp: input.priceClp,
     bedrooms,
     bathrooms,
-    areaSquareFeet: areaM2 === null ? null : Math.round(areaM2 * SQUARE_FEET_PER_SQUARE_METER),
+    areaSquareFeet:
+      areaM2 === null || areaM2 <= 0 ? null : Math.round(areaM2 * SQUARE_FEET_PER_SQUARE_METER),
     location: { comuna, region: listing.region?.trim() || null },
     address: visibleAddress(listing),
     description: input.caption,

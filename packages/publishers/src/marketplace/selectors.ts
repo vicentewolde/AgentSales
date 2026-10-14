@@ -2,10 +2,10 @@
  * Todo lo que AgentSales sabe de las páginas de Facebook, en un solo lugar (ADR-0004, spec F5 §4.4):
  * direcciones, rutas y textos. Cuando Facebook cambie algo, se toca solo este archivo.
  *
- * **Provisional hasta `pnpm fb:smoke`** (nota `docs/integraciones/fb-marketplace.md` §7 y §12): sin
- * sesión no se ve el formulario, así que las rutas de detención son las que se observaron sin sesión
- * o las que la nota marca NO VERIFICADO, y el formulario se reconoce por su control de fotos. T09
- * completa los controles del formulario con el árbol de accesibilidad real.
+ * El formulario y sus controles salen del árbol real de `pnpm fb:smoke --menus` (2026-10-13; nota
+ * `docs/integraciones/fb-marketplace.md` §13). Las pantallas de detención (inicio de sesión,
+ * verificación, no disponible) siguen siendo las que se observaron sin sesión o las que la nota
+ * marca NO VERIFICADO: ninguna se ha visto con sesión.
  */
 
 /** El origen de Facebook: el único al que va el navegador de Marketplace. */
@@ -15,8 +15,7 @@ export const FACEBOOK_ORIGIN = "https://www.facebook.com";
 export const FACEBOOK_HOME_URL = `${FACEBOOK_ORIGIN}/`;
 
 /**
- * El formulario de "Propiedad en venta o alquiler" (nota §4.1: INFERENCIA; se confirma con
- * `fb:smoke`).
+ * El formulario "Nueva vivienda", solo de arriendo (OBSERVADO con sesión el 2026-10-13; nota §13).
  */
 export const MARKETPLACE_FORM_URL = `${FACEBOOK_ORIGIN}/marketplace/create/rental`;
 
@@ -82,16 +81,16 @@ export const PASSWORD_INPUT = 'input[type="password"]';
 export const CAPTCHA_FRAME = 'iframe[src*="captcha" i], iframe[title*="captcha" i]';
 
 /**
- * El formulario de crear un aviso, reconocido por su control de fotos (provisional: T09 lo cambia
- * por el formulario real del árbol de `fb:smoke`). Es también lo que se captura como evidencia:
- * primero el `form` (lo más acotado) y, solo si no hay, el contenedor principal, que en Facebook
- * puede traer más (el nombre o la foto del operador).
+ * El formulario de crear un aviso, reconocido por su control de fotos dentro de un `form` o del
+ * contenedor principal (en el real, `[role="main"]`: el formulario es un `div role="form"`). Es
+ * también donde se busca y lo que se captura como evidencia (`formLocator`); el panel del formulario
+ * trae el nombre del operador.
  */
 export const FORM_ELEMENT = 'form:has(input[type="file"])';
 /**
  * Un campo del formulario que no es el de fotos. El formulario real es el contenedor más chico que
- * trae el control de fotos **y** estos campos: en Facebook el primer `form` con fotos puede ser solo
- * el recuadro de subir fotos (el 2026-10-13 `fb:smoke` guardó un árbol vacío por eso).
+ * trae el control de fotos **y** estos campos: el primer `form` con fotos puede ser solo el recuadro
+ * de subir fotos (el 2026-10-13 el primer `fb:smoke` guardó un árbol vacío por eso).
  */
 export const FORM_FIELD =
   'input:not([type="file"]):not([type="hidden"]), textarea, [role="combobox"]';
@@ -99,7 +98,7 @@ export const FORM_CONTAINER = '[role="main"]:has(input[type="file"])';
 export const FORM_ROOT = `${FORM_ELEMENT}, ${FORM_CONTAINER}`;
 
 /**
- * Una lista desplegada (las opciones de un menú del formulario, como operación o tipo de propiedad).
+ * Una lista desplegada (las opciones de un menú del formulario, como el tipo de propiedad).
  * Facebook suele dibujarlas fuera del formulario, en una capa aparte; por eso `fb:smoke --menus` las
  * busca en toda la página, pero solo las guarda con un control del formulario desplegado y nunca
  * dentro de `OPEN_LIST_EXCLUDED` (la barra de arriba y los paneles laterales: ahí están los menús de
@@ -136,7 +135,9 @@ export const FORM_CONTROLS = {
   price: { kind: "text", name: /^precio/i },
   location: { kind: "place", name: /^(address|direcci[oó]n|ubicaci[oó]n)/i },
   description: { kind: "text", name: /^descripci[oó]n/i },
-  area: { kind: "text", name: /^(pies|metros) cuadrados/i, optional: true },
+  // Solo pies: si el formulario pidiera metros, el campo no se encuentra y se omite (es opcional),
+  // en vez de escribir pies donde van metros.
+  area: { kind: "text", name: /^pies cuadrados/i, optional: true },
 } as const satisfies Record<string, FormControl>;
 
 /**
@@ -148,8 +149,19 @@ export const NEVER_CLICK = /siguiente|publicar|next|publish|enviar|submit/i;
 /** El control de fotos: `setInputFiles` no exige que se vea (nota §1). */
 export const PHOTO_INPUT = 'input[type="file"]';
 
-/** Cuántos controles de fotos hay en el formulario real (2): se prefiere el que acepta imágenes. */
-export const PHOTO_INPUT_IMAGES = 'input[type="file"][accept*="image" i]';
+/**
+ * El formulario real trae dos controles de archivo (el árbol no muestra su `accept`). Se prefiere el
+ * que acepta imágenes y no videos, después el que acepta imágenes, y si ninguno lo declara, el
+ * primero. **POR CONFIRMAR** con `fb:smoke --listing`: a qué control suben las fotos.
+ */
+export const PHOTO_INPUTS_BY_PREFERENCE = [
+  'input[type="file"][accept*="image" i]:not([accept*="video" i])',
+  'input[type="file"][accept*="image" i]',
+  PHOTO_INPUT,
+] as const;
+
+/** Cuánto espera a ver el contador de fotos antes de rendirse (si no existe, no hay cómo confirmar). */
+export const PHOTO_COUNTER_WAIT_MS = 15_000;
 
 /**
  * El contador de fotos del formulario real: «Se han adjuntado 3 fotos» (rol `status`). El llenado

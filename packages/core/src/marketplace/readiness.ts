@@ -66,7 +66,7 @@ export function marketplaceReadiness(
     issues.push({
       code: "MARKETPLACE_TYPE_UNSUPPORTED",
       field: "tipo",
-      message: "Marketplace no tiene este tipo de propiedad: publícalo en los otros canales",
+      message: "Marketplace no admite este tipo de propiedad: publícalo en los otros canales",
     });
   }
   if (!(listing.priceAmount > 0)) issues.push(missing("precio", "el precio"));

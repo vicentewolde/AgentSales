@@ -24,8 +24,8 @@
       <div role="form" aria-label="Marketplace">
         <span>Nombre Inventado del Operador Publicación en Marketplace Público Fotos 0/50</span>
         <button type="button" id="anadir-fotos">Añadir fotos o arrastrar y soltar</button>
-        <input type="file" name="fotos-arrastrar" accept="image/*" multiple />
         <input type="file" name="fotos" accept="image/*,video/*" multiple />
+        <input type="file" name="fotos-arrastrar" accept="image/*" multiple />
         <div role="status" id="estado-fotos">Se han adjuntado 0 fotos</div>
         <div role="combobox" id="combo-tipo" aria-label="Tipo de propiedad en alquiler" aria-expanded="false" aria-controls="lista-tipo" tabindex="0">Tipo de propiedad en alquiler</div>
         <label>Número de habitaciones <input type="text" name="habitaciones" /></label>
@@ -64,7 +64,9 @@
       ];
       document.addEventListener("click", (event) => {
         const target = event.target.closest("[id], [role=option]");
-        window.__clicks.push(target?.id || target?.textContent.trim() || event.target.tagName);
+        const what = target?.id || target?.textContent.trim() || event.target.tagName;
+        window.__clicks.push(what);
+        window.reportClick?.(what);
       });
       document.getElementById("publicar").addEventListener("click", () => {
         window.location.href = "/marketplace/item/123/?ref=publicado";

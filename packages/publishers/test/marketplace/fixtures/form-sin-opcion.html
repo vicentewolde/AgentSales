@@ -2,7 +2,8 @@
 <html lang="es">
   <head><meta charset="utf-8" /><title>Marketplace (página local de prueba)</title></head>
   <body>
-    <!-- Variante sin la opción Casa (una opción que falta). Página inventada para los tests, armada con los roles y nombres del árbol real que dejó
+    <!-- Variante sin la opción Casa (una opción que falta).
+         Página inventada para los tests, armada con los roles y nombres del árbol real que dejó
          `pnpm fb:smoke --menus` el 2026-10-13 ("Nueva vivienda", /marketplace/create/rental): sin
          menú de operación, sin título, superficie en pies cuadrados, dos controles de fotos y el
          contador «Se han adjuntado N fotos». Los datos del operador son inventados. Registra cada
@@ -24,8 +25,8 @@
       <div role="form" aria-label="Marketplace">
         <span>Nombre Inventado del Operador Publicación en Marketplace Público Fotos 0/50</span>
         <button type="button" id="anadir-fotos">Añadir fotos o arrastrar y soltar</button>
-        <input type="file" name="fotos-arrastrar" accept="image/*" multiple />
         <input type="file" name="fotos" accept="image/*,video/*" multiple />
+        <input type="file" name="fotos-arrastrar" accept="image/*" multiple />
         <div role="status" id="estado-fotos">Se han adjuntado 0 fotos</div>
         <div role="combobox" id="combo-tipo" aria-label="Tipo de propiedad en alquiler" aria-expanded="false" aria-controls="lista-tipo" tabindex="0">Tipo de propiedad en alquiler</div>
         <label>Número de habitaciones <input type="text" name="habitaciones" /></label>
@@ -39,6 +40,8 @@
         <div role="switch" aria-checked="false" aria-label="Promocionar la publicación después de realizarla" id="promocionar" tabindex="0"></div>
       </div>
       <button type="button" id="siguiente" disabled>Siguiente</button>
+      <!-- En Facebook, Publicar está en el paso 2. Aquí vive en la misma página para que los tests
+           simulen el clic del operador, que lleva al aviso publicado. El llenado nunca lo toca. -->
       <button type="button" id="publicar">Publicar</button>
     </div>
     <!-- Lo que Facebook dibuja aparte: la lista de tipos y las sugerencias de la dirección. -->
@@ -61,7 +64,9 @@
       ];
       document.addEventListener("click", (event) => {
         const target = event.target.closest("[id], [role=option]");
-        window.__clicks.push(target?.id || target?.textContent.trim() || event.target.tagName);
+        const what = target?.id || target?.textContent.trim() || event.target.tagName;
+        window.__clicks.push(what);
+        window.reportClick?.(what);
       });
       document.getElementById("publicar").addEventListener("click", () => {
         window.location.href = "/marketplace/item/123/?ref=publicado";

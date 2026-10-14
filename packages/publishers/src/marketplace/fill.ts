@@ -11,8 +11,8 @@ import {
   NEVER_CLICK,
   OPEN_LIST_EXCLUDED,
   PHOTO_COUNT_TEXT,
-  PHOTO_INPUT,
-  PHOTO_INPUT_IMAGES,
+  PHOTO_COUNTER_WAIT_MS,
+  PHOTO_INPUTS_BY_PREFERENCE,
   PHOTOS_WAIT_MS,
 } from "./selectors.js";
 
@@ -126,17 +126,20 @@ export async function fillMarketplaceForm(
     const suggestions = page.getByRole("option");
     const deadline = Date.now() + waitMs;
     for (;;) {
-      // Primero la sugerencia que **empieza** por la comuna ("Ñuñoa, Santiago…"); si no hay, una que
-      // la nombre en otra parte. Así "Villa Ñuñoa" o "Santiago Centro" no ganan a la comuna misma.
+      // Primero la sugerencia que **empieza** por la comuna ("Ñuñoa, Santiago…"); si no, una donde la
+      // comuna sea un segmento entero ("Santiago Centro, Ñuñoa"). Nunca una que solo la contenga:
+      // "Villa Ñuñoa" no es "Ñuñoa". Si no hay ninguna, se espera y después se detiene.
       let exact: Locator | undefined;
       let partial: Locator | undefined;
       for (const suggestion of await visibleOptions(suggestions)) {
-        const text = plain(await suggestion.innerText().catch(() => ""));
-        if ((text.split(",")[0] ?? "").trim() === wanted) {
+        const segments = plain(await suggestion.innerText().catch(() => ""))
+          .split(",")
+          .map((segment) => segment.trim());
+        if (segments[0] === wanted) {
           exact = suggestion;
           break;
         }
-        if (partial === undefined && text.includes(wanted)) partial = suggestion;
+        if (partial === undefined && segments.includes(wanted)) partial = suggestion;
       }
       const chosen = exact ?? partial;
       if (chosen !== undefined) {
@@ -189,7 +192,8 @@ export async function fillMarketplaceForm(
 /**
  * Las opciones a la vista que puede tocar el llenado: las de los desplegables y sugerencias del
  * formulario (Facebook las dibuja aparte), **nunca** las de la barra de arriba ni de los paneles
- * laterales (`OPEN_LIST_EXCLUDED`: ahí están los menús de la cuenta). Ni su texto se lee.
+ * laterales (`OPEN_LIST_EXCLUDED`: ahí están los menús de la cuenta), que ni se miran. El texto de
+ * las que sí se miran no se registra en ningún log ni error.
  */
 async function visibleOptions(options: Locator): Promise<Locator[]> {
   const usable: Locator[] = [];
@@ -217,8 +221,9 @@ async function attachedPhotos(root: Locator): Promise<number | null> {
 
 /**
  * Sube las fotos con `setInputFiles` y espera a que el contador del formulario diga que se
- * adjuntaron (spec F5 §4.4, paso 5). Usa el control de fotos que acepta imágenes (el formulario real
- * trae dos) y, si ninguno lo declara, el primero.
+ * adjuntaron (spec F5 §4.4, paso 5). Usa el control de archivo que acepta imágenes y no videos (el
+ * formulario real trae dos); si el contador no aparece o no sube, se detiene con
+ * `MARKETPLACE_FORM_CHANGED` en vez de dar las fotos por subidas sin verlo.
  */
 async function uploadPhotos(
   root: Locator,
@@ -227,15 +232,27 @@ async function uploadPhotos(
   waitMs: number,
   formChanged: (detail: string) => Promise<Error>,
 ): Promise<void> {
-  const images = root.locator(PHOTO_INPUT_IMAGES);
-  const input = ((await images.count()) > 0 ? images : root.locator(PHOTO_INPUT)).first();
-  if ((await input.count()) === 0) throw await formChanged("no apareció el control de fotos");
+  let input: Locator | undefined;
+  for (const selector of PHOTO_INPUTS_BY_PREFERENCE) {
+    const candidates = root.locator(selector);
+    if ((await candidates.count()) > 0) {
+      input = candidates.first();
+      break;
+    }
+  }
+  if (input === undefined) throw await formChanged("no apareció el control de fotos");
   // Lo que ya había (fotos de un borrador) no cuenta: se esperan las nuevas.
-  const before = (await attachedPhotos(root)) ?? 0;
+  const before = await attachedPhotos(root);
   await input.setInputFiles([...photoPaths]);
-  const deadline = Date.now() + waitMs;
-  while (((await attachedPhotos(root)) ?? 0) < before + photoPaths.length) {
-    if (Date.now() >= deadline) throw await formChanged("no se vieron todas las fotos cargadas");
+  const started = Date.now();
+  for (;;) {
+    const now = await attachedPhotos(root);
+    if (now !== null && now >= (before ?? 0) + photoPaths.length) return;
+    const elapsed = Date.now() - started;
+    if (now === null && before === null && elapsed >= Math.min(waitMs, PHOTO_COUNTER_WAIT_MS)) {
+      throw await formChanged("no apareció el contador de fotos adjuntas");
+    }
+    if (elapsed >= waitMs) throw await formChanged("no se vieron todas las fotos cargadas");
     await page.waitForTimeout(250);
   }
 }

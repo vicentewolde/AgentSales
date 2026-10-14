@@ -3,6 +3,8 @@ import { join } from "node:path";
 import {
   AppError,
   marketplaceFormPlan,
+  marketplaceOperationOption,
+  marketplacePropertyTypeOption,
   type Publisher,
   type PublishInput,
   type PublishIssue,
@@ -55,6 +57,21 @@ export function validateMarketplaceInput(input: PublishInput): PublishIssue[] {
   }
   if (input.listing === undefined) {
     issues.push({ code: "LISTING_MISSING", message: "Falta el aviso en lo que se publica" });
+  } else {
+    // Lo que el formulario real no admite (solo arriendo; cuatro tipos): se rechaza igual en la
+    // simulación que en vivo, antes de abrir nada.
+    if (marketplaceOperationOption(input.listing.operation) === null) {
+      issues.push({
+        code: "MARKETPLACE_OPERATION_UNSUPPORTED",
+        message: "El formulario de Marketplace en Chile es solo de arriendo",
+      });
+    }
+    if (marketplacePropertyTypeOption(input.listing.propertyType) === null) {
+      issues.push({
+        code: "MARKETPLACE_TYPE_UNSUPPORTED",
+        message: "Marketplace no admite este tipo de propiedad",
+      });
+    }
   }
   if (input.priceClp === undefined || !Number.isInteger(input.priceClp) || input.priceClp <= 0) {
     issues.push({ code: "PRICE_MISSING", message: "Falta el precio en pesos del formulario" });
