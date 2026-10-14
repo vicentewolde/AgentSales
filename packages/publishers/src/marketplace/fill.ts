@@ -26,6 +26,8 @@ export type FillMarketplaceOptions = {
   photosWaitMs?: number;
   /** Cuánto espera la lista blanca antes de cada paso (la página puede estar redibujándose). */
   guardWaitMs?: number;
+  /** Solo para investigar un fallo (`fb:smoke --listing --diagnostico sin-fotos`): no sube las fotos. */
+  skipPhotos?: boolean;
 };
 
 /** Cuántas veces baja con la flecha antes de rendirse (una lista de sugerencias es corta). */
@@ -267,14 +269,16 @@ export async function fillMarketplaceForm(
     { name: "superficie", run: () => type(FORM_CONTROLS.area, plan.areaSquareFeet) },
     {
       name: "fotos",
-      run: async () =>
-        uploadPhotos(
+      run: async () => {
+        if (options.skipPhotos === true) return;
+        await uploadPhotos(
           await formLocator(page),
           page,
           photoPaths,
           options.photosWaitMs ?? PHOTOS_WAIT_MS,
           formChanged,
-        ),
+        );
+      },
     },
   ];
   for (const [index, step] of steps.entries()) {

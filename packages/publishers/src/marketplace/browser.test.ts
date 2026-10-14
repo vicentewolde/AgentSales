@@ -6,6 +6,7 @@ import {
   DEFAULT_ROUTES,
   type FakeFacebook,
 } from "../../test/marketplace/fake-facebook.js";
+import { describeRequest, sanitizeDiagnosticText, watchPageProblems } from "./diagnostics.js";
 import {
   captureFormEvidence,
   captureOpenLists,
@@ -441,5 +442,55 @@ describe("cerrar el perfil", () => {
     expect(profile.isOpen()).toBe(false);
     const again = await fb.open();
     expect(again.isOpen()).toBe(true);
+  });
+});
+
+describe("diagnóstico de la página (fb:smoke --diagnostico)", () => {
+  it("tapa direcciones y números largos, y deja la ruta sin consulta", () => {
+    expect(
+      sanitizeDiagnosticText("Boom https://x.com/a?token=SECRETO en 123456789012\n  línea"),
+    ).toBe("Boom <url> en <id> línea");
+    expect(describeRequest("POST", "https://www.facebook.com/api/graphql/?q=SECRETO")).toBe(
+      "POST /api/graphql/",
+    );
+    expect(describeRequest("GET", "https://scontent.fbcdn.net/v/t39/123456789012_n.jpg")).toBe(
+      "GET /v/t39/<id>_n.jpg",
+    );
+    // Otro dominio: no se anota.
+    expect(describeRequest("GET", "https://otro.example.com/x")).toBeNull();
+  });
+
+  it("anota los errores de la página y las respuestas de error, sin datos ni cuerpos", async () => {
+    const fb = await setup();
+    const { page } = await fb.open();
+    const file = join(fb.root, "evidencia", "errores.txt");
+    const watcher = watchPageProblems(page, file);
+    // Respuestas que Facebook daría: un 500 con cuerpo, un pedido que falla y uno que va bien.
+    await page.route("**/api/graphql/**", (route) =>
+      route.fulfill({ status: 500, body: "detalle-secreto" }),
+    );
+    await page.route("**/api/falla/**", (route) => route.abort());
+    await page.route("**/api/bien/**", (route) => route.fulfill({ status: 200, body: "{}" }));
+    await page.goto(MARKETPLACE_FORM_URL);
+
+    await page.evaluate(`
+      fetch("https://www.facebook.com/api/graphql/?q=SECRETO", { method: "POST", body: "payload-secreto" }).catch(() => {});
+      fetch("https://www.facebook.com/api/falla/", { method: "POST" }).catch(() => {});
+      fetch("https://www.facebook.com/api/bien/").catch(() => {});
+      setTimeout(() => { throw new Error("Boom https://www.facebook.com/x?token=SECRETO 123456789012"); }, 0);
+    `);
+    await expect.poll(() => watcher.lines(), { timeout: 5_000 }).toBeGreaterThanOrEqual(3);
+    await watcher.flush();
+
+    const text = await readFile(file, "utf8");
+    expect(text).toContain("ERROR DE LA PÁGINA  Boom <url> <id>");
+    expect(text).toContain("RESPUESTA 500  POST /api/graphql/");
+    expect(text).toContain("PEDIDO FALLIDO  POST /api/falla/");
+    expect(text).not.toContain("/api/bien/");
+    for (const secret of ["SECRETO", "payload-secreto", "detalle-secreto", "123456789012"]) {
+      expect(text).not.toContain(secret);
+    }
+    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    expect((await stat(join(fb.root, "evidencia"))).mode & 0o777).toBe(0o700);
   });
 });

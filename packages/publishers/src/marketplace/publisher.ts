@@ -11,6 +11,7 @@ import {
   type PublishMediaItem,
   type PublishValidation,
 } from "@agentsales/core";
+import type { Page } from "playwright";
 import { MARKETPLACE_ERRORS } from "./errors.js";
 import { captureFormEvidence } from "./evidence.js";
 import { type FillMarketplaceOptions, fillMarketplaceForm } from "./fill.js";
@@ -104,6 +105,15 @@ export type MarketplacePublisherDeps = {
   profileBusyWaitMs?: number;
   /** El tope del intento (por defecto, `MARKETPLACE_PUBLISH_MAX_MS`). */
   maxMs?: number;
+  /**
+   * Solo para investigar un fallo (`fb:smoke --listing --diagnostico`): nunca en el flujo normal.
+   * - `skipEvidence`: no toma la captura ni el árbol del formulario al terminar de llenar.
+   * - `watchPage`: recibe la pestaña apenas se abre el perfil (para anotar errores de la página).
+   */
+  diagnostics?: {
+    skipEvidence?: boolean;
+    watchPage?(page: Page, evidenceDir: string): void;
+  };
 };
 
 /** Tope de un intento (spec F5 §4.4): la cola no espera el clic del operador. */
@@ -174,10 +184,13 @@ export function createMarketplacePublisher(deps: MarketplacePublisherDeps): Publ
         });
         if (cut()) throw MARKETPLACE_ERRORS.formChanged("se cortó el llenado");
         const { page } = profile;
+        deps.diagnostics?.watchPage?.(page, dir);
         await page.goto(MARKETPLACE_FORM_URL);
         await requireForm(page, { timeoutMs: deps.formWaitMs ?? FORM_WAIT_MS });
         await fillMarketplaceForm(page, plan, photoPaths, { ...deps.fill, evidenceDir: dir });
-        await captureFormEvidence(page, dir, "formulario");
+        if (deps.diagnostics?.skipEvidence !== true) {
+          await captureFormEvidence(page, dir, "formulario");
+        }
         const window = createMarketplaceWindow(profile);
         await deps.onHandoff(
           {

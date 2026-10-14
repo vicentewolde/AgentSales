@@ -22,7 +22,7 @@ import { marketplaceProfileDir, openMarketplaceProfile } from "@agentsales/publi
 import { createBancoCentralUf } from "@agentsales/publishers/uf";
 import { createR2Storage } from "@agentsales/storage";
 import { runFbSmoke } from "../smoke/fb-smoke.js";
-import { runFbSmokeListing } from "../smoke/fb-smoke-listing.js";
+import { parseFbSmokeDiagnostics, runFbSmokeListing } from "../smoke/fb-smoke-listing.js";
 import { describeUnexpected } from "../smoke/ig-smoke.js";
 
 // `pnpm fb:smoke --broker <slug>` (spec F5 §4.8, F5-T03): abre con ventana el perfil de Facebook del
@@ -87,8 +87,13 @@ try {
       menus: { type: "boolean", default: false },
       listing: { type: "string" },
       yes: { type: "boolean", default: false },
+      diagnostico: { type: "string" },
     },
   });
+  const diagnostics = parseFbSmokeDiagnostics(values.diagnostico);
+  if (diagnostics.length > 0 && values.listing === undefined) {
+    throw new Error("--diagnostico solo va con --listing");
+  }
   if (values.listing !== undefined && values.menus) {
     throw new Error("--menus no va con --listing: --listing llena el formulario de una propiedad");
   }
@@ -145,6 +150,7 @@ try {
         listingRef: values.listing,
         ...(values.broker === undefined ? {} : { brokerSlug: values.broker }),
         yes: values.yes,
+        diagnostics,
         signal: abort.signal,
       },
     );

@@ -1,8 +1,13 @@
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createPublicationScenario } from "@agentsales/core/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWorkerFakeFacebook } from "../../test/fake-facebook.js";
-import { type FbSmokeListingDeps, runFbSmokeListing } from "./fb-smoke-listing.js";
+import {
+  type FbSmokeListingDeps,
+  parseFbSmokeDiagnostics,
+  runFbSmokeListing,
+} from "./fb-smoke-listing.js";
 
 // F5-T10: `fb:smoke --listing` con el publisher de verdad contra un Facebook falso de páginas
 // locales (sin red). Llena el formulario después de la confirmación del operador, respeta el
@@ -15,9 +20,11 @@ afterEach(async () => {
 });
 
 async function setup(
-  options: { approve?: boolean; account?: boolean; liveAttemptsToday?: number } = {},
+  options: { approve?: boolean; account?: boolean; liveAttemptsToday?: number; form?: string } = {},
 ) {
-  const fb = await createWorkerFakeFacebook({ "/marketplace/create/rental": "form.html" });
+  const fb = await createWorkerFakeFacebook({
+    "/marketplace/create/rental": options.form ?? "form.html",
+  });
   cleanups.push(async () => {
     await fb.cleanup();
     expect(fb.unexpected).toEqual([]);
@@ -83,6 +90,7 @@ async function setup(
     answers,
     counted,
     ref: listing?.externalRef ?? "",
+    listingId: t.listingId,
     unchanged: () => JSON.stringify(t.publications.all()) === before,
   };
 }
@@ -186,5 +194,55 @@ describe("pnpm fb:smoke --listing", () => {
       1,
     );
     expect(s.err.join("\n")).toContain("LISTING_NOT_FOUND");
+  });
+
+  describe("--diagnostico", () => {
+    it("entiende las variantes y rechaza las que no conoce", () => {
+      expect(parseFbSmokeDiagnostics(undefined)).toEqual([]);
+      expect(parseFbSmokeDiagnostics("errores, lento")).toEqual(["errores", "lento"]);
+      expect(() => parseFbSmokeDiagnostics("rapido")).toThrow(/no conozco: rapido/);
+      expect(() => parseFbSmokeDiagnostics(" , ")).toThrow(/admite: errores/);
+    });
+
+    it("sin fotos y sin evidencia llena el resto, y anota los errores de la página", async () => {
+      const s = await setup({ form: "form-con-error.html" });
+
+      const running = runFbSmokeListing(s.deps, {
+        listingRef: s.ref,
+        yes: true,
+        diagnostics: ["errores", "sin-fotos", "sin-evidencia"],
+      });
+      await expect.poll(() => s.out.join("\n"), { timeout: 10_000 }).toContain("Formulario lleno");
+      const page = s.fb.profiles[0]?.page;
+      if (page === undefined) throw new Error("no se abrió el perfil");
+      // Llenó el resto, pero no subió las fotos.
+      expect(await page.locator('[name="precio"]').inputValue()).toBe("238559452");
+      expect(await page.locator("#estado-fotos").innerText()).toBe("Se han adjuntado 0 fotos");
+      await s.fb.profiles[0]?.close();
+
+      await expect(running).resolves.toBe(0);
+      const out = s.out.join("\n");
+      expect(out).toContain("Modo diagnóstico: errores, sin-fotos, sin-evidencia.");
+      expect(out).toMatch(/Diagnóstico: [1-9]\d* línea\(s\) anotadas en errores-de-la-pagina\.txt/);
+      const dir = join(s.deps.outputDir, `fb-smoke-${s.listingId}`);
+      expect(await readdir(dir)).toEqual(["errores-de-la-pagina.txt"]);
+      const text = await readFile(join(dir, "errores-de-la-pagina.txt"), "utf8");
+      expect(text).toContain("ERROR DE LA PÁGINA  Boom <url> <id>");
+      expect(text).not.toContain("SECRETO");
+      expect(s.unchanged()).toBe(true);
+    });
+
+    it("sin --diagnostico no anota nada ni omite nada", async () => {
+      const s = await setup({ form: "form-con-error.html" });
+
+      const running = runFbSmokeListing(s.deps, { listingRef: s.ref, yes: true });
+      await expect.poll(() => s.out.join("\n"), { timeout: 10_000 }).toContain("Formulario lleno");
+      await s.fb.profiles[0]?.close();
+
+      await expect(running).resolves.toBe(0);
+      expect(s.out.join("\n")).not.toContain("Modo diagnóstico");
+      const dir = join(s.deps.outputDir, `fb-smoke-${s.listingId}`);
+      expect((await readdir(dir)).sort()).toEqual(["formulario.aria.yml", "formulario.png"]);
+    });
   });
 });
