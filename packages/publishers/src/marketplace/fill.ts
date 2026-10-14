@@ -302,7 +302,7 @@ export async function fillMarketplaceForm(
         return;
       }
     }
-    throw await formChanged(`«${what}» no sugirió la comuna`);
+    throw await formChanged(`«${what}»: con el teclado no se llegó a la sugerencia elegida`);
   };
 
   const { location } = plan;

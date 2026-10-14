@@ -216,7 +216,7 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
       { publicationId: "pub-1", brokerId: "broker-1", accountId: "acc-1" },
     ]);
     expect(t.handoffs[0]?.window.isOpen()).toBe(true);
-    // Evidencia solo del formulario; las fotos temporales, borradas.
+    // Evidencia solo del formulario; las fotos nunca pasan por el disco.
     expect((await readdir(t.dir)).sort()).toEqual(["formulario.aria.yml", "formulario.png"]);
     const aria = await readFile(join(t.dir, "formulario.aria.yml"), "utf8");
     // Sin la barra de Facebook (el panel del formulario real sí trae el nombre del operador).
@@ -480,7 +480,7 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
     const page = pageOf(t);
     expect(await page.locator("#estado-fotos").innerText()).toBe("Se han adjuntado 0 fotos");
     expect(seen).toEqual([{ dir: t.dir }]);
-    // Ni captura ni árbol del formulario (y las fotos temporales, borradas).
+    // Ni captura ni árbol del formulario (y las fotos nunca pasan por el disco).
     expect(await filesIn(t.dir)).toEqual([]);
     await t.handoffs[0]?.window.close();
   });

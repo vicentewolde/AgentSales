@@ -2,7 +2,7 @@
 
 Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento.
 
-> Estado: **F4 · Portal Inmobiliario cerrada** (con la simulación; la prueba en vivo con un usuario de prueba de Mercado Libre queda para el inicio de F5). Siguiente: F5 · Facebook Marketplace. Ver `docs/ESTADO.md`.
+> Estado: **F5 · Facebook Marketplace cerrada** (probada en vivo: el sistema llena el formulario y tú haces Siguiente y Publicar). Siguiente: F6 · Calendario + seguimiento. Ver `docs/ESTADO.md`.
 
 ## Requisitos
 - Node.js 26 (`.nvmrc`) y pnpm 11 (`npm i -g pnpm@11`; Node 26 ya no trae corepack)
@@ -66,6 +66,17 @@ pnpm ml:smoke [--listing <id_propiedad>]                    # catálogo y valida
 pnpm ml:test-user --broker <slug>                           # un usuario de prueba de Mercado Libre (clave al portapapeles)
 ```
 En el panel, la pestaña **Portal Inmobiliario** de cada propiedad muestra lo que falta, aprobar, publicar y el aviso con su estado en Mercado Libre, el vencimiento y Pausar, Reactivar, Cerrar y Actualizar.
+
+Conectar Facebook y publicar en Marketplace (F5), con `pnpm dev` corriendo. Solo arriendos de casa o departamento; un precio en UF necesita `BCCH_API_TOKEN` en `.env` (`docs/07-checklist-cuentas.md`). En vivo, el sistema llena el formulario en una ventana de Chromium y **tú haces Siguiente y Publicar**:
+```bash
+pnpm -s cli accounts connect marketplace --broker <slug>    # abre Chromium: inicias sesión a mano
+pnpm -s cli approve <id_propiedad> --platform marketplace   # avisa lo que le falta al aviso
+pnpm -s cli publish <id_propiedad> --platform marketplace   # en dry-run no abre Facebook
+pbpaste | pnpm -s cli publications confirm <id> --url-stdin  # lo publicaste (o publications not-published <id>)
+pnpm fb:smoke --listing <id_propiedad>                      # llena el formulario real sin publicar (no necesita pnpm dev)
+pnpm uf:smoke                                               # el valor de la UF de hoy con tu token
+```
+En el panel: **Cuentas** (iniciar sesión en Facebook, desconectar) y la pestaña **Marketplace** de cada propiedad (lo que falta, aprobar, publicar, "Formulario listo", pegar el enlace, "No lo publiqué", Marcar como retirada y el plan B para copiar los textos).
 - **`PUBLISH_MODE=dry-run` por defecto:** no se publica nada de verdad. En `live` se ve en rojo en el panel y la CLI.
 - **La cola la inicializa el worker:** la primera vez aparece con error hasta que el worker arranca (lo hace `pnpm dev`); refresca el panel.
 - **Detén `pnpm dev` al terminar** (Ctrl+C): el worker y el panel mantienen Neon despierto y consumen las horas del plan gratis.

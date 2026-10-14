@@ -72,7 +72,8 @@ export type MarketplaceFormPlan = {
   /**
    * La calle y el número tal como están en la planilla, o `null` si el aviso no tiene dirección.
    * Se escriben siempre (decisión del operador, 2026-10-14, spec F5 D16): Facebook ubica el aviso
-   * con ella y muestra una ubicación aproximada. `show_exact_address` sigue mandando en los textos.
+   * con ella (que muestre solo una ubicación aproximada es NO VERIFICADO: lo revisa el operador en el
+   * primer aviso real). `show_exact_address` sigue mandando en los textos.
    */
   address: string | null;
   /** La descripción aprobada de Marketplace, sin cambios. El formulario no tiene título. */

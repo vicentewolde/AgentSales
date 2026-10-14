@@ -3,38 +3,26 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-14
-**Fase actual:** F5 · Facebook Marketplace (`docs/specs/fase-5-marketplace.md`, aprobado el 2026-10-09) — 13 de 14 tareas (falta el cierre, T14). F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0`)
-**Última tarea:** lote E (F5-T09 y F5-T10, #109): el llenado del formulario real, `fb:smoke --listing` y la prueba de punta a punta. Antes, `fb:smoke --menus` (#108)
-**Siguiente paso:** cerrar F5 (`/tarea F5-T14`). La prueba con Facebook de verdad (`fb:smoke --listing P002`) **ya pasó** (2026-10-14); para la demo faltan **dos arriendos más** en la planilla (hoy solo P002 sirve). Tú, cuando puedas: sumar esos arriendos, tu token del Banco Central (`pnpm uf:smoke`; P002 está en pesos y no lo necesita, pero las propiedades en UF sí) y revisar que tu cuenta de Facebook no tenga restricciones
+**Fase actual:** F6 · Calendario + seguimiento (spec por redactar: `/fase-plan 6`). F5 cerrada (`docs/specs/fase-5-marketplace.md`, tag `v0.5.0`)
+**Última tarea:** cierre de F5 (T14, `/fase-cerrar 5`): demo en simulación y en `live`, auditoría del `arquitecto`, `CHANGELOG [0.5.0]` y tag `v0.5.0`
+**Siguiente paso:** `/fase-plan 6` — redactar el spec de F6 (programar publicaciones, reintentos, sincronización periódica, "vendida" despublica todo, vista de seguimiento, respaldo de la base; ver `docs/06-roadmap.md`)
 
-## Pendiente del cierre de F4 (para el inicio de F5)
-- [ ] **Usuario de prueba de Mercado Libre (T25, D15):** crearlo (`pnpm ml:test-user --broker agentsales-pruebas`), pedir su activación a soporte y anotar aquí la fecha; contratar el paquete sin cargo y conectarlo a `agentsales-pruebas` (checklist, `docs/07-checklist-cuentas.md`). Reemplaza tu cuenta real en ese corredor durante la prueba; al final se reconecta la real
-- [ ] **Prueba en vivo de Portal** (spec F4 §6, criterios 1 a 3, y §7 paso 6), solo con tu instrucción en el chat: `PUBLISH_MODE=live pnpm dev`, publicar P001, abrir el enlace, pausar y reactivar desde el panel, cerrar con confirmación y ver P001 de vuelta en "Lista"
-- [ ] **Antes, `pnpm ml:smoke --listing P001`** con el usuario de prueba y su paquete: confirma lo que `validate` no revisó sin cupo (`CMG_SITE` oculto, la forma de las superficies, `address_line` con `show_exact_address = false`) y que el 402 era por falta de cupo. La descripción dentro del cuerpo se confirma al publicar
-- [x] Tag `v0.4.0` desde `main`, con tu permiso (creado y subido el 2026-10-09, en `3b8fbff`)
-
-## Pendiente tuyo desde el día uno de F5 (spec F5 §7, pasos 1 a 3)
-- [ ] Revisar en Facebook (Perfil → Estado del perfil → Marketplace) que tu cuenta tiene Marketplace sin restricciones
-- [ ] Token de la API BDE del Banco Central (`BCCH_API_TOKEN` en `.env`; paso a paso en `docs/07-checklist-cuentas.md`, "Antes de F5")
-- [ ] Confirmar que `agentsales-pruebas` tiene **3 arriendos de casa o departamento** (el formulario de Marketplace es solo de arriendo; la demo de F5 llena 3 formularios). Las ventas no van a Marketplace (D15 de F5, confirmado el 2026-10-13: «Viviendas en venta o alquiler» lleva al mismo formulario de arriendo)
-- [ ] `pnpm fb:smoke --broker agentsales-pruebas --menus` (inicias sesión a mano en la ventana; después abres a mano cada menú y aprietas Enter) y avisarme: sus árboles del formulario son la entrada de F5-T09. La corrida del 2026-10-10 no dejó `tmp/fb-smoke/` (no llegó al formulario: probablemente se pasaron los 10 min de espera con la verificación)
-- [ ] Con el lote C (la CLI, ya lista; con `pnpm dev` corriendo): `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`
-- [ ] Con tu token en `.env`: `pnpm uf:smoke` (confirma la forma real de la respuesta del Banco Central)
-
-## Pendiente del cierre de F3
-- [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota de Instagram §8, punto 8)
+## Pendiente tuyo de fases anteriores (no bloquea F6)
+- **De F5:**
+  - [ ] Token de la API BDE del Banco Central (`BCCH_API_TOKEN` en `.env`; `docs/07-checklist-cuentas.md`, "Antes de F5") y después `pnpm uf:smoke`. Sin él, un aviso en UF no va a Marketplace (`doctor` lo avisa)
+  - [ ] Revisar en Facebook (Perfil → Estado del perfil → Marketplace) que tu cuenta no tiene restricciones
+  - [ ] **D16:** cuando publiques un aviso real en Marketplace, mirar que Facebook muestre la ubicación **aproximada** y no la dirección exacta (el formulario ahora recibe la dirección de la planilla siempre)
+- **De F4:**
+  - [ ] **Usuario de prueba de Mercado Libre (T25, D15 de F4):** crearlo (`pnpm ml:test-user --broker agentsales-pruebas`), pedir su activación a soporte y anotar aquí la fecha; contratar el paquete sin cargo y conectarlo a `agentsales-pruebas` (checklist, `docs/07-checklist-cuentas.md`). Reemplaza tu cuenta real en ese corredor durante la prueba; al final se reconecta la real
+  - [ ] **Antes, `pnpm ml:smoke --listing P001`** con el usuario de prueba y su paquete: confirma lo que `validate` no revisó sin cupo (`CMG_SITE` oculto, la forma de las superficies, `address_line` con `show_exact_address = false`)
+  - [ ] **Prueba en vivo de Portal** (spec F4 §6, criterios 1 a 3), solo con tu instrucción en el chat
+- **De F3:**
+  - [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota de Instagram §8, punto 8)
 
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F5 (`/fase-plan 5`) y ADR-0017 | ✅ terminada | |
-| **Lote A:** F5-T01 Contrato y datos · F5-T02 Perfil, guardas y evidencia · F5-T03 `pnpm fb:smoke` | ✅ terminada | #104 |
-| **Lote B:** F5-T04 Conectar y olvidar la cuenta · F5-T05 Publicar en dos tiempos · F5-T06 La ventana abierta · F5-T07 Lo que falta y la UF | ✅ terminada | #105 |
-| **Lote C:** F5-T08 API · F5-T11 CLI | ✅ terminada | #106 |
-| **Lote D:** F5-T12 Panel: Cuentas · F5-T13 Panel: Marketplace en Contenido | ✅ terminada | #107 |
-| `fb:smoke --menus` (ajuste de T03 para el lote E) | ✅ terminada | #108 |
-| **Lote E:** F5-T09 Opciones del formulario y llenado · F5-T10 Publisher y `fb:smoke --listing` | ✅ terminada (mezclada el 2026-10-14; falta tu prueba con Facebook de verdad: `fb:smoke --listing`) | #109 |
-| F5-T14 Cierre de fase | ⏳ pendiente | |
+| Spec F6 (`/fase-plan 6`) | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
@@ -42,7 +30,10 @@ Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 - **Mercado Libre:** cuenta, app y `.env` listos; `VICENTEWOLDE` conectada a `agentsales-pruebas` (2026-10-08) y renovada con `--force` en la demo del cierre (2026-10-09). El WhatsApp del corredor ya está en la base (P001 y P002 tienen lo que pide Portal). Sin paquete pagado (tu decisión, 2026-10-08): la prueba real usa el usuario de prueba (D15, arriba).
 
 ## Decisiones de F5
-Resueltas en el spec (§4.13, D1–D14) y ADR-0017:
+Resueltas en el spec (§4.13, D1–D16) y ADR-0017:
+- **Formulario real** (`fb:smoke --menus`, 2026-10-13): "Nueva vivienda", **solo de arriendo** (D15: una venta no va a Marketplace; lo confirmaste en Facebook), tipos Casa y Apartamento o piso, sin título, superficie en pies cuadrados, hasta 50 fotos.
+- **Dirección (D16, tu decisión, 2026-10-14):** se escribe la de la planilla y se elige la primera sugerencia del mapa; `mostrar_direccion_exacta` sigue mandando en los textos, no en el formulario.
+- **Fotos en memoria** (2026-10-14): Facebook las sube después de adjuntarlas; ya no pasan por el disco (era la causa del diálogo «¡Uy!»).
 - **Cuenta:** tu perfil personal de Facebook, en `agentsales-pruebas`, aceptando el riesgo (tu respuesta). Cada corredor el suyo en F7.
 - **Sesión:** vive en un perfil del navegador fuera del repo; la base no guarda credenciales. Desconectar borra el perfil.
 - **Publicar en dos tiempos:** el sistema llena y sube fotos; tú haces Siguiente y Publicar. El enlace lo detecta la ventana o lo pegas tú; nada se da por publicado ni por no publicado sin verlo o sin tu palabra.
@@ -98,6 +89,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-14: **Cierre de F5 (T14, `/fase-cerrar 5`).**
+  - **Demo en simulación** (la hice yo): por CLI con P002 (formulario listo simulado, "un formulario a la vez", descartar pide tu palabra, "No lo publiqué", reintentar, "Lo publiqué", retirar, volver a publicar) y por el panel con P004 (publicar, "Lo publiqué", Marcar como retirada).
+  - **Demo `live`** (con tu instrucción): P002, P004 y P005 se llenaron en Facebook de verdad y los revisaste; marqué "No lo publiqué" en los tres. El cuarto intento del día se negó por el límite sin abrir Facebook. En P002 las fotos no llegaron a Facebook (el error de las fotos, ya corregido); lo diste por cumplido.
+  - **Lo que encontraron las pruebas reales** (PRs #111 a #117): el error de cada paso con su nombre y motivo; la lista de sugerencias vive fuera del formulario (clic corto y, si no se puede, teclado); el formato real de las sugerencias (`Calle, código postal Comuna, Región…`); la dirección de la planilla con la primera sugerencia (D16); `fb:smoke --listing --diagnostico`; y la causa del diálogo «¡Uy!»: las fotos se borraban del disco antes de que Facebook las subiera (ahora van en memoria).
+  - **Datos de prueba:** P004 (depto, Providencia, Av. Pedro de Valdivia 201) y P005 (casa, Ñuñoa, Av. Irarrázaval 3400), copias de P002 en tu planilla "AgentSales · Demo F5".
+  - **Auditoría del `arquitecto`**, `CHANGELOG [0.5.0]`, spec cerrado y tag `v0.5.0` (con tu permiso).
 - 2026-10-12: **Lote E, primera parte** (con los nombres supuestos; el 2026-10-13 se ajustaron al formulario real, ver la nota siguiente):
   - **Publicar en vivo ya llena el formulario:** baja las fotos, cierra la ventana vieja de la cuenta, abre tu perfil y revisa la página antes de cada paso. Elige el tipo de propiedad, escribe dormitorios, baños, precio en pesos, ubicación (por comuna; la dirección solo si la planilla lo permite), descripción y superficie (en pies cuadrados: el formulario real es solo de arriendo y no tiene operación ni título; ver la nota de 2026-10-13), y sube las fotos. Después guarda la evidencia y te deja la ventana.
   - **Ante cualquier problema** (una pantalla rara, un campo que no aparece, una opción que falta, R2, más de 5 min) cierra la ventana y suelta el perfil. Nunca toca un botón que se llame Siguiente o Publicar.

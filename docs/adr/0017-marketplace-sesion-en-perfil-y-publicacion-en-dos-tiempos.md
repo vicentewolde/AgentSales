@@ -38,3 +38,9 @@
 
 ## Seguimiento
 - 2026-10-09 (revisión del PR #103): `docs/01-arquitectura.md` y `docs/02-modelo-datos.md` se actualizan en F5-T01 y F5-T07 (contrato, progreso, diagrama de estados y la excepción de la UF), no en el PR del spec.
+- 2026-10-14 (cierre de F5): lo que dejaron las pruebas con Facebook de verdad, sin cambiar esta decisión.
+  - **Cola de `marketplace.profile`:** es `stately` por corredor (uno activo y uno en cola), no `exclusive` como dice el punto 8: con `exclusive`, un olvido detrás de un inicio de sesión se perdía (revisión del lote B; ADR-0005 y `docs/01-arquitectura.md` ya lo dicen).
+  - **El formulario de Chile es solo de arriendo** (spec F5, D15: las ventas no van a Marketplace) y **la ubicación usa la dirección de la planilla** con la primera sugerencia del mapa (D16, decisión del operador). Si un aviso real mostrara la dirección exacta, D16 cambiaría el sentido de `mostrar_direccion_exacta` y haría falta un ADR nuevo.
+  - **Las fotos se adjuntan en memoria:** Facebook las sube después de adjuntarlas; con archivos temporales borrados al terminar, la subida fallaba (`ERR_FILE_NOT_FOUND`) y salía el diálogo «¡Uy!».
+  - **Observado:** la cookie `c_user` existe y es numérica con la sesión abierta, y cerrar la ventana no deja un borrador.
+  - **Diagnóstico:** `fb:smoke --listing --diagnostico` anota los errores de la página y los pedidos fallidos a Facebook (método, ruta sin consulta y código; nada del operador ni del aviso), solo a pedido del operador.

@@ -116,12 +116,14 @@ export const OPEN_LIST_EXCLUDED =
  * - `select`: un desplegable (`combobox`) cuyas opciones son `option`, en una lista que Facebook
  *   dibuja aparte ("Seleccionar una opción").
  * - `text`: un `textbox` por su nombre.
- * - `place`: un `combobox` donde se escribe y se elige una sugerencia que nombra la comuna. Su
- *   nombre sale en inglés ("Address") aunque el perfil esté en español.
+ * - `place`: un `combobox` donde se escribe la dirección y se elige una sugerencia del mapa (la
+ *   primera, o con las reglas de la comuna si el aviso no tiene dirección; spec F5 D16). Su nombre
+ *   cambia («Address» o «Dirección»).
  * `optional`: si el formulario no lo trae, se sigue sin él.
  *
  * Lo que **no** hay: menú de operación (el formulario es solo de arriendo) ni campo de título.
- * **POR CONFIRMAR** con `fb:smoke --listing`: las sugerencias de la dirección.
+ * Las sugerencias de la dirección viven en una lista aparte («N búsquedas sugeridas»; OBSERVADO en
+ * vivo el 2026-10-14).
  */
 export type FormControl =
   | { kind: "select"; name: string | RegExp; optional?: boolean }
@@ -152,7 +154,8 @@ export const PHOTO_INPUT = 'input[type="file"]';
 /**
  * El formulario real trae dos controles de archivo (el árbol no muestra su `accept`). Se prefiere el
  * que acepta imágenes y no videos, después el que acepta imágenes, y si ninguno lo declara, el
- * primero. **POR CONFIRMAR** con `fb:smoke --listing`: a qué control suben las fotos.
+ * primero. Confirmado en vivo el 2026-10-14: las fotos así adjuntadas llegan a Facebook (adjuntas
+ * en memoria, ver `MarketplacePhoto`).
  */
 export const PHOTO_INPUTS_BY_PREFERENCE = [
   'input[type="file"][accept*="image" i]:not([accept*="video" i])',
