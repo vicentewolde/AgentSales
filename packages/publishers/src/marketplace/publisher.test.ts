@@ -119,6 +119,12 @@ async function setup(
   return { fb, publisher, handoffs, closedAccounts, profiles, reported, read, dir, tmpRoot };
 }
 
+/** El mismo aviso sin dirección en la planilla: solo se conoce la comuna. */
+const withoutAddress: PublishInput = {
+  ...input,
+  listing: { ...(input.listing as NonNullable<PublishInput["listing"]>), address: null },
+};
+
 const pageOf = (t: Awaited<ReturnType<typeof setup>>) => {
   const page = t.profiles[0]?.page;
   if (page === undefined) throw new Error("no se abrió el perfil");
@@ -181,9 +187,11 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     // 54,4 m² → 586 pies cuadrados (el formulario los pide en pies).
     expect(await value("pies")).toBe("586");
     expect(await value("descripcion")).toBe("Texto inventado de Marketplace.");
-    // Sin `show_exact_address`, la ubicación se busca por comuna y región, nunca por la dirección.
-    expect(await page.evaluate("window.__typedPlace")).toBe("Ñuñoa, Región Metropolitana");
-    expect(await value("ubicacion")).toBe("Ñuñoa, Santiago, Chile");
+    // La ubicación se busca con la dirección tal cual está en la planilla (D16), aunque no se muestre.
+    expect(await page.evaluate("window.__typedPlace")).toBe(
+      "Calle Inventada 1234, Ñuñoa, Región Metropolitana",
+    );
+    expect(await value("ubicacion")).toBe("Villa Ñuñoa, Santiago, Chile");
     expect(await page.locator("#estado-fotos").innerText()).toBe("Se han adjuntado 2 fotos");
     // Las fotos van por el control que acepta solo imágenes, no por el de imágenes y videos.
     expect(await page.evaluate("window.__uploadedVia")).toBe("fotos-arrastrar");
@@ -192,7 +200,7 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     const clicks = await clicksOf(t);
     expect(clicks).not.toContain("siguiente");
     expect(clicks).not.toContain("publicar");
-    expect(clicks).toEqual(["combo-tipo", "Apartamento o piso", "Ñuñoa, Santiago, Chile"]);
+    expect(clicks).toEqual(["combo-tipo", "Apartamento o piso", "Villa Ñuñoa, Santiago, Chile"]);
     // La ventana queda abierta y entregada; la cuenta vieja se cerró antes.
     expect(t.closedAccounts).toEqual(["acc-1"]);
     expect(t.handoffs.map((handoff) => handoff.ref)).toEqual([
@@ -227,25 +235,42 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     await t.handoffs[0]?.window.close();
   });
 
-  it("con show_exact_address busca la calle y el número (sin la unidad) y elige la dirección de esa calle en la comuna", async () => {
+  it("con dirección, la escribe tal cual (sin la unidad) y hace clic en la primera sugerencia, tenga o no la comuna", async () => {
     const t = await setup({
-      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-direccion-exacta.html" },
+      routes: {
+        ...DEFAULT_ROUTES,
+        "/marketplace/create/rental": "form-sugerencia-sin-comuna.html",
+      },
     });
-    const listing = { ...(input.listing as NonNullable<PublishInput["listing"]>) };
 
-    await t.publisher.publish({ ...input, listing: { ...listing, showExactAddress: true } }, ctx);
+    // `show_exact_address` es falso en `input`: igual se usa la dirección (D16).
+    await t.publisher.publish(input, ctx);
 
-    expect(await pageOf(t).evaluate("window.__typedPlace")).toBe("Calle Inventada 1234");
-    // Ni otra calle de la comuna ni la misma calle en otra comuna.
-    expect(t.reported).toEqual([
-      "combo-tipo",
-      "Apartamento o piso",
-      "Calle Inventada 1234, Ñuñoa, Santiago, Chile",
-    ]);
+    expect(await pageOf(t).evaluate("window.__typedPlace")).toBe(
+      "Calle Inventada 1234, Ñuñoa, Región Metropolitana",
+    );
+    expect(t.reported).toHaveLength(3);
+    // La primera, aunque no diga la comuna; no la segunda.
+    expect(t.reported[2]).toMatch(/^Calle Inventada 1234/);
     await t.handoffs[0]?.window.close();
   });
 
-  it("si el clic en la sugerencia no se puede hacer (algo la tapa), elige con el teclado la que corresponde", async () => {
+  it("con dirección elige la primera sugerencia aunque otra sea de la comuna", async () => {
+    const t = await setup({
+      routes: {
+        ...DEFAULT_ROUTES,
+        "/marketplace/create/rental": "form-direccion-codigo-postal.html",
+      },
+    });
+
+    await t.publisher.publish(input, ctx);
+
+    // La primera de la lista (la misma calle en Maipú): la regla del operador es no comparar la comuna.
+    expect(t.reported).toHaveLength(3);
+    expect(t.reported[2]).toMatch(/^Calle Inventada 1234, 9250000 Maipú/);
+    await t.handoffs[0]?.window.close();
+  });
+  it("si el clic en la sugerencia no se puede hacer (algo la tapa), elige con el teclado la primera sugerencia", async () => {
     const t = await setup({
       routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-sugerencias-tapadas.html" },
     });
@@ -255,13 +280,15 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     });
 
     const page = pageOf(t);
-    // Bajó con la flecha hasta la comuna misma (la tercera) y apretó Enter; nunca «Villa Ñuñoa».
+    // Bajó con la flecha una vez, vio que lo resaltado era la primera sugerencia y apretó Enter.
     expect(t.reported).toEqual([
       "combo-tipo",
       "Apartamento o piso",
-      "teclado: Ñuñoa, Santiago, Chile",
+      "teclado: Villa Ñuñoa, Santiago, Chile",
     ]);
-    expect(await page.locator('[name="ubicacion"]').inputValue()).toBe("Ñuñoa, Santiago, Chile");
+    expect(await page.locator('[name="ubicacion"]').inputValue()).toBe(
+      "Villa Ñuñoa, Santiago, Chile",
+    );
     await t.handoffs[0]?.window.close();
   });
 
@@ -286,14 +313,16 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     );
   });
 
-  it("con la dirección oculta y sin la comuna como entrada, usa una calle sin número de la comuna y lo avisa (caso real: Providencia)", async () => {
+  it("sin dirección y sin la comuna como entrada, usa una calle sin número de la comuna y lo avisa (caso real: Providencia)", async () => {
     const t = await setup({
       routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-comuna-en-calles.html" },
     });
 
-    const result = await t.publisher.publish(input, ctx);
+    const result = await t.publisher.publish(withoutAddress, ctx);
 
-    // La primera calle sin número de Ñuñoa: no la de Maipú ni la que lleva número.
+    // Solo se escribió la comuna y la región, y se eligió la primera calle sin número de Ñuñoa.
+    expect(await pageOf(t).evaluate("window.__typedPlace")).toBe("Ñuñoa, Región Metropolitana");
+    // No la de Maipú ni la que lleva número.
     expect(t.reported).toEqual([
       "combo-tipo",
       "Apartamento o piso",
@@ -306,7 +335,7 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     await t.handoffs[0]?.window.close();
   });
 
-  it("si la comuna aparece como entrada, la prefiere aunque una calle venga antes, y no avisa", async () => {
+  it("sin dirección, si la comuna aparece como entrada, la prefiere aunque una calle venga antes, y no avisa", async () => {
     const t = await setup({
       routes: {
         ...DEFAULT_ROUTES,
@@ -314,7 +343,7 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
       },
     });
 
-    const result = await t.publisher.publish(input, ctx);
+    const result = await t.publisher.publish(withoutAddress, ctx);
 
     expect(t.reported).toEqual([
       "combo-tipo",
@@ -325,29 +354,12 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     await t.handoffs[0]?.window.close();
   });
 
-  it("con la dirección visible reconoce la comuna aunque lleve el código postal delante", async () => {
-    const t = await setup({
-      routes: {
-        ...DEFAULT_ROUTES,
-        "/marketplace/create/rental": "form-direccion-codigo-postal.html",
-      },
-    });
-    const listing = { ...(input.listing as NonNullable<PublishInput["listing"]>) };
-
-    await t.publisher.publish({ ...input, listing: { ...listing, showExactAddress: true } }, ctx);
-
-    // Ni la misma calle en Maipú ni otra calle de Ñuñoa: la tercera opción, de dos líneas.
-    expect(t.reported).toHaveLength(3);
-    expect(t.reported[2]).toMatch(/^Calle Inventada 1234, 7750000 Ñuñoa, Región Metropolitana/);
-    await t.handoffs[0]?.window.close();
-  });
-
-  it("con la dirección oculta no elige una calle con número, aunque sea de la comuna", async () => {
+  it("sin dirección no elige una calle con número, aunque sea de la comuna", async () => {
     const t = await setup({
       routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-solo-calles.html" },
     });
 
-    await expect(t.publisher.publish(input, ctx)).rejects.toMatchObject({
+    await expect(t.publisher.publish(withoutAddress, ctx)).rejects.toMatchObject({
       code: "MARKETPLACE_FORM_CHANGED",
       message: expect.stringContaining("no sugirió la comuna"),
     });
@@ -512,12 +524,12 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
     expect(t.profiles[0]?.isOpen()).toBe(false);
   });
 
-  it("una sugerencia que solo contiene la comuna («Villa Ñuñoa») no se elige", async () => {
+  it("sin dirección, una sugerencia que solo contiene la comuna («Villa Ñuñoa») no se elige", async () => {
     const t = await setup({
       routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-comuna-parecida.html" },
     });
 
-    await expect(t.publisher.publish(input, ctx)).rejects.toMatchObject({
+    await expect(t.publisher.publish(withoutAddress, ctx)).rejects.toMatchObject({
       code: "MARKETPLACE_FORM_CHANGED",
       message: expect.stringContaining("no sugirió la comuna"),
     });

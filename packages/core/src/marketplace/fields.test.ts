@@ -52,7 +52,7 @@ describe("tabla de campos de Marketplace", () => {
     expect(MARKETPLACE_PROPERTY_TYPE_KEYS).toContain("local comercial");
   });
 
-  it("arma el plan: precio en pesos, superficie en pies cuadrados, sin título y sin la dirección si no se muestra", () => {
+  it("arma el plan: precio en pesos, superficie en pies cuadrados, sin título y con la calle y el número", () => {
     expect(marketplaceFormPlan(input())).toEqual({
       propertyType: "Apartamento o piso",
       priceClp: 740_270,
@@ -61,14 +61,20 @@ describe("tabla de campos de Marketplace", () => {
       // 54,5 m² × 10,7639 = 586,6 → 587
       areaSquareFeet: 587,
       location: { comuna: "Ñuñoa", region: "Región Metropolitana" },
-      address: null,
+      address: "Av. Irarrázaval 1234",
       description: "Texto aprobado de Marketplace.",
     });
   });
 
-  it("con show_exact_address lleva la calle y el número, sin la unidad (el mapa no la entiende)", () => {
-    const plan = marketplaceFormPlan(input({ listing: { ...listing, showExactAddress: true } }));
-    expect(plan.address).toBe("Av. Irarrázaval 1234");
+  it("lleva la calle y el número de la planilla aunque no se muestre la dirección exacta, sin la unidad", () => {
+    // `show_exact_address` (false aquí) manda en los textos, no en la ubicación del formulario (D16).
+    expect(marketplaceFormPlan(input()).address).toBe("Av. Irarrázaval 1234");
+    expect(
+      marketplaceFormPlan(input({ listing: { ...listing, showExactAddress: true } })).address,
+    ).toBe("Av. Irarrázaval 1234");
+    expect(
+      marketplaceFormPlan(input({ listing: { ...listing, address: " " } })).address,
+    ).toBeNull();
   });
 
   it("sin superficie la deja vacía; nunca inventa un dato", () => {
