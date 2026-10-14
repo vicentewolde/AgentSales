@@ -12,8 +12,8 @@ import type { PublishInput, PublishListing } from "../ports/publisher.js";
  * Lo que mostró el formulario real:
  * - **Es solo de arriendo** (la dirección termina en `/rental` y los textos dicen "en alquiler"):
  *   no hay menú de operación. Un aviso en venta no va a Marketplace
- *   (`MARKETPLACE_OPERATION_UNSUPPORTED`). Si existe otro formulario de venta en Chile es NO
- *   VERIFICADO; mientras tanto, venta = sin opción.
+ *   (`MARKETPLACE_OPERATION_UNSUPPORTED`). Confirmado por el operador (2026-10-13): en Facebook,
+ *   «Crear publicación → Viviendas en venta o alquiler» lleva a este mismo formulario de arriendo.
  * - **Tipo de propiedad en alquiler**: Casa, Casa adosada, Apartamento o piso y Solo habitación.
  *   Los demás tipos del Excel no tienen opción (`MARKETPLACE_TYPE_UNSUPPORTED`).
  * - **Sin campo de título**: Facebook arma el título; solo se escribe la descripción.

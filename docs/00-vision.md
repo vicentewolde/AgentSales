@@ -36,6 +36,7 @@ Corredores de propiedades independientes y vendedores pequeños pierden horas pu
 ## Fuera de alcance del MVP
 
 - Responder mensajes, comentarios o leads (es la **siguiente fase** del producto).
+- Propiedades **en venta** en Marketplace: el único formulario de Facebook en Chile es de arriendo (confirmado el 2026-10-13); las ventas se publican en Instagram y Portal.
 - Yapo y TikTok (post-MVP).
 - Carga de avisos por chat (post-MVP).
 - Cobro, planes o facturación a clientes.
