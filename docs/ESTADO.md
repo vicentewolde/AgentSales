@@ -2,10 +2,10 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-12
-**Fase actual:** F5 · Facebook Marketplace (`docs/specs/fase-5-marketplace.md`, aprobado el 2026-10-09) — 11 de 14 tareas. F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0`)
-**Última tarea:** lote E (en PR borrador): el llenado del formulario real, `fb:smoke --listing` y la prueba de punta a punta. Antes, `fb:smoke --menus` (#108)
-**Siguiente paso:** el lote E (PR #109, borrador) ya tiene el formulario real adentro. Falta la **prueba con Facebook de verdad** (`pnpm fb:smoke --listing P001`, la corres tú, requiere tu Facebook conectado y el texto aprobado) y, con lo que muestre, cerrar el PR. Tú, cuando puedas: ese comando, tu token `pnpm uf:smoke`, y conectar tu Facebook (panel Cuentas o `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`, con `pnpm dev`)
+**Actualizado:** 2026-10-14
+**Fase actual:** F5 · Facebook Marketplace (`docs/specs/fase-5-marketplace.md`, aprobado el 2026-10-09) — 13 de 14 tareas (falta el cierre, T14). F4 cerrada (`docs/specs/fase-4-portal-inmobiliario.md`, con la simulación; tag `v0.4.0`)
+**Última tarea:** lote E (F5-T09 y F5-T10, #109): el llenado del formulario real, `fb:smoke --listing` y la prueba de punta a punta. Antes, `fb:smoke --menus` (#108)
+**Siguiente paso:** tu **prueba con Facebook de verdad** (`pnpm fb:smoke --listing <arriendo de casa o departamento>`: requiere tu Facebook conectado y el texto de Marketplace aprobado) y, con lo que muestre, el cierre de F5 (`/tarea F5-T14`, que incluye la demo de 3 formularios). Tú, cuando puedas: ese comando, tu token `pnpm uf:smoke`, y conectar tu Facebook (panel Cuentas o `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas`, con `pnpm dev`)
 
 ## Pendiente del cierre de F4 (para el inicio de F5)
 - [ ] **Usuario de prueba de Mercado Libre (T25, D15):** crearlo (`pnpm ml:test-user --broker agentsales-pruebas`), pedir su activación a soporte y anotar aquí la fecha; contratar el paquete sin cargo y conectarlo a `agentsales-pruebas` (checklist, `docs/07-checklist-cuentas.md`). Reemplaza tu cuenta real en ese corredor durante la prueba; al final se reconecta la real
@@ -33,7 +33,7 @@
 | **Lote C:** F5-T08 API · F5-T11 CLI | ✅ terminada | #106 |
 | **Lote D:** F5-T12 Panel: Cuentas · F5-T13 Panel: Marketplace en Contenido | ✅ terminada | #107 |
 | `fb:smoke --menus` (ajuste de T03 para el lote E) | ✅ terminada | #108 |
-| **Lote E:** F5-T09 Opciones del formulario y llenado · F5-T10 Publisher y `fb:smoke --listing` | 🔨 en PR (borrador): con el formulario real; falta tu `fb:smoke --listing` | #109 |
+| **Lote E:** F5-T09 Opciones del formulario y llenado · F5-T10 Publisher y `fb:smoke --listing` | ✅ terminada (mezclada el 2026-10-14; falta tu prueba con Facebook de verdad: `fb:smoke --listing`) | #109 |
 | F5-T14 Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
