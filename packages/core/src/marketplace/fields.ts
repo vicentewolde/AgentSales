@@ -97,15 +97,15 @@ const missingData = (field: string) =>
     { details: { field } },
   );
 
-/** La dirección del aviso con su unidad, solo si se muestra (`show_exact_address`). */
+/**
+ * La calle y el número del aviso, solo si se muestra (`show_exact_address`). Sin la unidad: el campo
+ * es una búsqueda en el mapa, que no entiende «Depto 506».
+ */
 function visibleAddress(listing: PublishListing): string | null {
   if (!listing.showExactAddress || listing.address === null || listing.address.trim() === "") {
     return null;
   }
-  const unit = listing.unitNumber?.trim();
-  return unit === undefined || unit === ""
-    ? listing.address.trim()
-    : `${listing.address.trim()}, ${unit}`;
+  return listing.address.trim();
 }
 
 /**
