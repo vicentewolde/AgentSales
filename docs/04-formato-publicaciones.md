@@ -100,7 +100,7 @@ Estándar visual y editorial de un corredor profesional. La marca de cada corred
   ```
   Solo con los datos que existen. Sin WhatsApp: `📲 Escríbeme por Marketplace para coordinar una visita.`
 - **Fotos:** las mismas de Portal (sin texto sobrepuesto).
-- **Campos del formulario** ("Nueva vivienda", solo de arriendo; no hay operación ni título): tipo de propiedad (Casa o Apartamento o piso), precio al mes en pesos, dormitorios, baños, descripción, la ubicación (comuna y región, o la dirección exacta solo con `show_exact_address`) y, si el aviso la tiene, la superficie. **Una venta no va a Marketplace.**
+- **Campos del formulario** ("Nueva vivienda", solo de arriendo; no hay operación ni título): tipo de propiedad (Casa o Apartamento o piso), precio al mes en pesos, dormitorios, baños, descripción, la ubicación (la dirección de la planilla con su comuna y región, y se elige la primera sugerencia del mapa; sin dirección, solo la comuna; spec F5, D16: `show_exact_address` no la oculta en el formulario, Facebook muestra una ubicación aproximada) y, si el aviso la tiene, la superficie. **Una venta no va a Marketplace.**
 - **Superficie en pies cuadrados:** el formulario la pide en pies, no en m². Se convierte desde `sup_util_m2` con una regla fija: × 10,7639, redondeado al entero (como la UF a pesos, D9: un cambio de unidad, no un dato nuevo). Sin `sup_util_m2` (o en 0), el campo se deja vacío. El texto del aviso sigue en m². El operador la ve en pies cuadrados en el formulario.
 
 ## Salida estructurada de la IA

@@ -34,6 +34,8 @@ export type FillMarketplaceOptions = {
 const MAX_ARROW_PRESSES = 10;
 /** Cuánto espera a que la lista deje de cambiar antes de usar una calle como referencia de la comuna. */
 const FALLBACK_SETTLE_MS = 1_500;
+/** Cuánto espera a que la primera sugerencia de una dirección deje de cambiar antes de elegirla. */
+const ADDRESS_SETTLE_MS = 800;
 /** Cuánto intenta el clic en una sugerencia antes de pasar al teclado. */
 const CLICK_FALLBACK_MS = 3_000;
 
@@ -171,57 +173,56 @@ export async function fillMarketplaceForm(
   /**
    * El campo de dirección es una búsqueda en el mapa: al escribir, Facebook abre una lista («N
    * búsquedas sugeridas») de lugares reales con la forma `Calle, <código postal> <Comuna>, Región…,
-   * Chile` (OBSERVADO con sesión, 2026-10-14), y hay que elegir una. Se lee **la primera línea** de
-   * cada opción, partida por comas y sin el código postal que va pegado a la comuna. Reglas
-   * (spec F5 §4.6):
-   * - **Dirección oculta** (`street` es `null`):
-   *   1. la comuna misma (su primer segmento es la comuna: «La Reina, Región Metropolitana…»);
-   *   2. si Facebook no la ofrece (para «Providencia» ofreció solo calles llamadas Providencia),
-   *      una **calle sin número** cuya localidad es la comuna, como referencia aproximada. Eso se
-   *      avisa en una nota para que el operador revise la ubicación. Se espera un instante a que la
-   *      lista deje de cambiar por si la comuna aparece después.
-   *   Nunca una calle con número, ni una calle de otra comuna: revelaría o inventaría una ubicación.
-   * - **Dirección visible**: una sugerencia que nombre la calle (lo que va antes del número) y tenga
-   *   la comuna como un segmento entero. Si no hay, se detiene: nunca elige otra calle.
-   * Si ninguna calza, espera hasta el tope y se detiene con `MARKETPLACE_FORM_CHANGED`.
+   * Chile` (OBSERVADO con sesión, 2026-10-14), y hay que elegir una. Reglas (spec F5 §4.6 y D16):
+   * - **Con dirección** (`hasAddress`): se escribe la dirección tal como está en la planilla (calle,
+   *   número, comuna y región) y se hace clic en **la primera sugerencia que aparece**, tenga o no
+   *   la comuna (decisión del operador, 2026-10-14: siempre aparece alguna). Se espera a que la
+   *   primera opción deje de cambiar. El clic respeta `NEVER_CLICK` como cualquier otro.
+   * - **Sin dirección**: solo se conoce la comuna, y la primera sugerencia podría ser cualquier
+   *   calle con ese nombre. Entonces se elige la comuna misma (su primer segmento, sin el código
+   *   postal pegado) y, si Facebook no la ofrece (para «Providencia» ofreció solo calles llamadas
+   *   Providencia), una **calle sin número cuya localidad es la comuna**, como referencia aproximada,
+   *   con una nota para que el operador revise la ubicación. Nunca una calle con número ni de otra
+   *   comuna.
+   * Si no aparece ninguna sugerencia que sirva, espera hasta el tope y se detiene con
+   * `MARKETPLACE_FORM_CHANGED`.
    */
   const place = async (
     control: FormControl & { kind: "place" },
     query: string,
     comuna: string,
-    street: string | null,
+    hasAddress: boolean,
   ) => {
     const field = await find(control);
     if (field === null) return;
     await field.fill(query, { timeout: waitMs });
     const wanted = plain(comuna);
-    const streetName = street === null ? null : plain(street.split(/\d/)[0] ?? "").trim();
     /** La primera línea de la opción, partida por comas y sin el código postal pegado a la comuna. */
     const parse = (suggestion: string) => {
       const title = suggestion.split(/\n+/)[0] ?? "";
       const original = title.split(",").map((segment) => segment.trim());
       return {
-        title: plain(title),
         segments: original.map((segment) => plain(segment).replace(/^\d{5,8}\s+/, "")),
         street: original[0] ?? "",
       };
     };
-    /** 2: es la ubicación buscada; 1: una calle de la comuna como referencia; 0: no sirve. */
+    /** 2: sirve; 1: una calle de la comuna como referencia (solo sin dirección); 0: no sirve. */
     const rank = (suggestion: string): 0 | 1 | 2 => {
-      const { title, segments } = parse(suggestion);
-      if (street !== null) {
-        return segments.includes(wanted) && (streetName === "" || title.includes(streetName ?? ""))
-          ? 2
-          : 0;
-      }
+      if (hasAddress) return 2;
+      const { segments } = parse(suggestion);
       if (segments[0] === wanted) return 2;
       const first = segments[0] ?? "";
       return segments.length > 1 && !/\d/.test(first) && segments.slice(1).includes(wanted) ? 1 : 0;
     };
     const suggestions = page.getByRole("option");
     const deadline = Date.now() + waitMs;
-    const settleMs = Math.min(FALLBACK_SETTLE_MS, Math.floor(waitMs / 2));
-    let fallbackSince: number | null = null;
+    const settleMs = Math.min(
+      hasAddress ? ADDRESS_SETTLE_MS : FALLBACK_SETTLE_MS,
+      Math.floor(waitMs / 2),
+    );
+    // Desde cuándo lo mejor visible es lo mismo: la lista puede seguir actualizándose.
+    let seenText: string | null = null;
+    let seenSince = 0;
     for (;;) {
       let best: { option: Locator; rank: 1 | 2; text: string } | undefined;
       for (const option of await visibleOptions(suggestions)) {
@@ -234,27 +235,37 @@ export async function fillMarketplaceForm(
         if (r === 1 && best === undefined) best = { option, rank: 1, text };
       }
       const timedOut = Date.now() >= deadline;
-      if (best?.rank !== 1) fallbackSince = null;
-      else fallbackSince ??= Date.now();
-      const settled =
-        best?.rank === 1 && fallbackSince !== null && Date.now() - fallbackSince >= settleMs;
-      if (best !== undefined && (best.rank === 2 || settled || timedOut)) {
-        const target = best.rank;
+      if (best === undefined) {
+        seenText = null;
+      } else if (seenText !== best.text) {
+        seenText = best.text;
+        seenSince = Date.now();
+      }
+      // Se espera a que lo elegido se estabilice; una comuna exacta sin dirección se toma de inmediato.
+      const settled = best !== undefined && Date.now() - seenSince >= settleMs;
+      const immediate = best?.rank === 2 && !hasAddress;
+      if (best !== undefined && (immediate || settled || timedOut)) {
+        // El teclado ve el texto resaltado ya normalizado: se compara igual.
+        const target = plain(best.text);
         try {
           // El clic recibe poco tiempo: si algo tapa la lista o se mueve, se pasa al teclado.
           await safeClick(best.option, comuna, Math.min(waitMs, CLICK_FALLBACK_MS));
         } catch (error) {
           if (isAppError(error)) throw error;
-          await pickByKeyboard(field, (text) => rank(text) === target, nameOf(control));
+          await pickByKeyboard(field, (text) => text === target, nameOf(control));
         }
         if (best.rank === 1) {
           notes.push(
-            `La dirección está oculta y Facebook no ofreció la comuna como ubicación: se usó una calle de ${comuna} («${parse(best.text).street}») como referencia aproximada. Revisa la ubicación antes de seguir.`,
+            `La dirección no está en la planilla y Facebook no ofreció la comuna como ubicación: se usó una calle de ${comuna} («${parse(best.text).street}») como referencia aproximada. Revisa la ubicación antes de seguir.`,
           );
         }
         return;
       }
-      if (timedOut) throw await formChanged(`«${nameOf(control)}» no sugirió la comuna`);
+      if (timedOut) {
+        throw await formChanged(
+          `«${nameOf(control)}» ${hasAddress ? "no mostró ninguna sugerencia" : "no sugirió la comuna"}`,
+        );
+      }
       await page.waitForTimeout(250);
     }
   };
@@ -299,9 +310,10 @@ export async function fillMarketplaceForm(
       run: () =>
         place(
           FORM_CONTROLS.location,
-          plan.address ?? [location.comuna, location.region].filter(Boolean).join(", "),
+          // La dirección tal cual está en la planilla; sin ella, la comuna y la región.
+          [plan.address, location.comuna, location.region].filter(Boolean).join(", "),
           location.comuna,
-          plan.address,
+          plan.address !== null,
         ),
     },
     { name: "descripción", run: () => type(FORM_CONTROLS.description, plan.description) },

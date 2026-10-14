@@ -69,7 +69,11 @@ export type MarketplaceFormPlan = {
   areaSquareFeet: number | null;
   /** Lo que se busca en la ubicación: la comuna y la región. */
   location: { comuna: string; region: string | null };
-  /** La dirección exacta, solo con `show_exact_address = true`; si no, `null`. */
+  /**
+   * La calle y el número tal como están en la planilla, o `null` si el aviso no tiene dirección.
+   * Se escriben siempre (decisión del operador, 2026-10-14, spec F5 D16): Facebook ubica el aviso
+   * con ella y muestra una ubicación aproximada. `show_exact_address` sigue mandando en los textos.
+   */
   address: string | null;
   /** La descripción aprobada de Marketplace, sin cambios. El formulario no tiene título. */
   description: string;
@@ -98,14 +102,12 @@ const missingData = (field: string) =>
   );
 
 /**
- * La calle y el número del aviso, solo si se muestra (`show_exact_address`). Sin la unidad: el campo
- * es una búsqueda en el mapa, que no entiende «Depto 506».
+ * La calle y el número del aviso, tal como están en la planilla. Sin la unidad: el campo es una
+ * búsqueda en el mapa, que no entiende «Depto 506».
  */
-function visibleAddress(listing: PublishListing): string | null {
-  if (!listing.showExactAddress || listing.address === null || listing.address.trim() === "") {
-    return null;
-  }
-  return listing.address.trim();
+function listingAddress(listing: PublishListing): string | null {
+  const address = listing.address?.trim() ?? "";
+  return address === "" ? null : address;
 }
 
 /**
@@ -139,7 +141,7 @@ export function marketplaceFormPlan(input: PublishInput): MarketplaceFormPlan {
     areaSquareFeet:
       areaM2 === null || areaM2 <= 0 ? null : Math.round(areaM2 * SQUARE_FEET_PER_SQUARE_METER),
     location: { comuna, region: listing.region?.trim() || null },
-    address: visibleAddress(listing),
+    address: listingAddress(listing),
     description: input.caption,
   };
 }
