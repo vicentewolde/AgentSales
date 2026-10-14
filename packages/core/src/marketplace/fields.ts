@@ -4,27 +4,32 @@ import { normalizePortalName } from "../portal/catalog.js";
 import type { PublishInput, PublishListing } from "../ports/publisher.js";
 
 /**
- * La tabla de campos de Marketplace (spec F5 §4.6, F5-T09): del aviso de AgentSales a las opciones
- * del formulario de "Propiedad en venta o alquiler". Los textos de las opciones son los que muestra
- * el formulario en español de Chile; los selectores de cada control viven en
- * `packages/publishers/src/marketplace/selectors.ts`.
+ * La tabla de campos de Marketplace (spec F5 §4.6, F5-T09): del aviso de AgentSales al formulario
+ * de "Nueva vivienda" (`/marketplace/create/rental`). Salió del árbol real que dejó
+ * `pnpm fb:smoke --menus` el 2026-10-13 (cuenta del operador, Chile, interfaz en español); los
+ * controles de cada campo viven en `packages/publishers/src/marketplace/selectors.ts`.
  *
- * **POR CONFIRMAR** con los árboles de `pnpm fb:smoke --menus` (spec F5 §4.8): hasta entonces las
- * opciones son las probables (nota `fb-marketplace.md` §4.1, pistas de blogs) y el PR del lote E
- * no se mezcla. Un tipo o una operación sin opción (`null`) no va a Marketplace: lo dice
- * `marketplaceReadiness` y, si llegara al intento, `MARKETPLACE_TYPE_UNSUPPORTED` u
- * `MARKETPLACE_OPERATION_UNSUPPORTED` (no reintentables).
+ * Lo que mostró el formulario real:
+ * - **Es solo de arriendo** (la dirección termina en `/rental` y los textos dicen "en alquiler"):
+ *   no hay menú de operación. Un aviso en venta no va a Marketplace
+ *   (`MARKETPLACE_OPERATION_UNSUPPORTED`). Si existe otro formulario de venta en Chile es NO
+ *   VERIFICADO; mientras tanto, venta = sin opción.
+ * - **Tipo de propiedad en alquiler**: Casa, Casa adosada, Apartamento o piso y Solo habitación.
+ *   Los demás tipos del Excel no tienen opción (`MARKETPLACE_TYPE_UNSUPPORTED`).
+ * - **Sin campo de título**: Facebook arma el título; solo se escribe la descripción.
+ * - **La superficie se pide en pies cuadrados** (campo opcional): se convierte desde los m² del
+ *   aviso, redondeada.
  */
 
-/** La operación → la opción del formulario (`null`: Chile no la tiene en Marketplace). */
-const OPERATION_OPTIONS: Readonly<Record<Operation, string | null>> = {
-  rent: "Alquiler",
-  sale: "Venta",
-};
+/** Pies cuadrados por metro cuadrado: el formulario pide "Pies cuadrados de la propiedad". */
+export const SQUARE_FEET_PER_SQUARE_METER = 10.7639;
 
-/** El `tipo` del Excel (normalizado) → la opción "Tipo de propiedad" (`null`: no hay opción). */
+/** La operación → si el formulario la admite. El formulario real es solo de arriendo. */
+const SUPPORTED_OPERATIONS: Readonly<Record<Operation, boolean>> = { rent: true, sale: false };
+
+/** El `tipo` del Excel (normalizado) → la opción "Tipo de propiedad en alquiler" (`null`: no hay). */
 const PROPERTY_TYPE_OPTIONS: Readonly<Record<string, string | null>> = {
-  departamento: "Departamento",
+  departamento: "Apartamento o piso",
   casa: "Casa",
   oficina: null,
   "local comercial": null,
@@ -37,9 +42,12 @@ const PROPERTY_TYPE_OPTIONS: Readonly<Record<string, string | null>> = {
 /** Los `tipo` del Excel que conoce la tabla (normalizados), para atarla a las definiciones de campos. */
 export const MARKETPLACE_PROPERTY_TYPE_KEYS: readonly string[] = Object.keys(PROPERTY_TYPE_OPTIONS);
 
-/** La opción de operación del formulario, o `null` si no hay (o falta la operación). */
+/**
+ * La operación que admite el formulario ("Alquiler"), o `null` si no (o falta la operación). No es
+ * una opción que se elija: la operación la fija la dirección del formulario.
+ */
 export function marketplaceOperationOption(operation: Operation | null): string | null {
-  return operation === null ? null : OPERATION_OPTIONS[operation];
+  return operation !== null && SUPPORTED_OPERATIONS[operation] ? "Alquiler" : null;
 }
 
 /** La opción de tipo de propiedad del formulario, o `null` si no hay (o falta el tipo). */
@@ -51,22 +59,19 @@ export function marketplacePropertyTypeOption(propertyType: string | null): stri
 
 /** Lo que se escribe en el formulario: cada control con su valor, ya en el texto que lleva. */
 export type MarketplaceFormPlan = {
-  /** La opción de operación ("Alquiler"). */
-  operation: string;
-  /** La opción de tipo de propiedad ("Departamento"). */
+  /** La opción de tipo de propiedad ("Apartamento o piso"). */
   propertyType: string;
-  /** El precio en pesos, como número entero (en arriendo, por mes). */
+  /** El precio al mes en pesos, como número entero. */
   priceClp: number;
   bedrooms: number;
   bathrooms: number;
-  /** Los m² útiles, si el aviso los tiene. */
-  areaM2: number | null;
+  /** Los pies cuadrados (convertidos desde los m² útiles del aviso), o `null` si no los tiene. */
+  areaSquareFeet: number | null;
   /** Lo que se busca en la ubicación: la comuna y la región. */
   location: { comuna: string; region: string | null };
   /** La dirección exacta, solo con `show_exact_address = true`; si no, `null`. */
   address: string | null;
-  /** El título y la descripción aprobados de Marketplace, sin cambios. */
-  title: string;
+  /** La descripción aprobada de Marketplace, sin cambios. El formulario no tiene título. */
   description: string;
 };
 
@@ -79,7 +84,7 @@ export const marketplaceTypeUnsupported = () =>
 export const marketplaceOperationUnsupported = () =>
   new AppError(
     "MARKETPLACE_OPERATION_UNSUPPORTED",
-    "Marketplace en Chile no tiene esta operación: publícalo a mano o descarta la publicación",
+    "El formulario de Marketplace en Chile es solo de arriendo: publícalo a mano o descarta la publicación",
   );
 
 const numberOf = (value: unknown): number | null =>
@@ -111,9 +116,9 @@ function visibleAddress(listing: PublishListing): string | null {
 export function marketplaceFormPlan(input: PublishInput): MarketplaceFormPlan {
   const { listing } = input;
   if (listing === undefined) throw missingData("el aviso");
-  const operation = marketplaceOperationOption(listing.operation);
   if (listing.operation === null) throw missingData("la operación");
-  if (operation === null) throw marketplaceOperationUnsupported();
+  if (marketplaceOperationOption(listing.operation) === null)
+    throw marketplaceOperationUnsupported();
   if (listing.propertyType === null) throw missingData("el tipo de propiedad");
   const propertyType = marketplacePropertyTypeOption(listing.propertyType);
   if (propertyType === null) throw marketplaceTypeUnsupported();
@@ -124,16 +129,15 @@ export function marketplaceFormPlan(input: PublishInput): MarketplaceFormPlan {
   if (bathrooms === null) throw missingData("la cantidad de baños");
   const comuna = listing.comuna?.trim() ?? "";
   if (comuna === "") throw missingData("la comuna");
+  const areaM2 = numberOf(listing.attributes.sup_util_m2);
   return {
-    operation,
     propertyType,
     priceClp: input.priceClp,
     bedrooms,
     bathrooms,
-    areaM2: numberOf(listing.attributes.sup_util_m2),
+    areaSquareFeet: areaM2 === null ? null : Math.round(areaM2 * SQUARE_FEET_PER_SQUARE_METER),
     location: { comuna, region: listing.region?.trim() || null },
     address: visibleAddress(listing),
-    title: input.title?.trim() ?? "",
     description: input.caption,
   };
 }

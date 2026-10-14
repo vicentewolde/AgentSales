@@ -58,6 +58,15 @@ describe("marketplaceReadiness", () => {
     ).toEqual({ ready: true });
   });
 
+  it("una venta no va a Marketplace: el formulario es solo de arriendo", () => {
+    expect(
+      marketplaceReadiness({ ...listing, operation: "sale" }, { photos: 1, ufConfigured: false }),
+    ).toMatchObject({
+      ready: false,
+      issues: [{ code: "MARKETPLACE_OPERATION_UNSUPPORTED", field: "operacion" }],
+    });
+  });
+
   it("en UF necesita el token del Banco Central", () => {
     const uf = { ...listing, priceAmount: 5800, priceCurrency: "UF" as const };
     expect(marketplaceReadiness(uf, { photos: 1, ufConfigured: true })).toEqual({ ready: true });

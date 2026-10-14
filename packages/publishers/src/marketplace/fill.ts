@@ -10,8 +10,9 @@ import {
   type FormControl,
   NEVER_CLICK,
   OPEN_LIST_EXCLUDED,
+  PHOTO_COUNT_TEXT,
   PHOTO_INPUT,
-  PHOTO_THUMBNAIL,
+  PHOTO_INPUT_IMAGES,
   PHOTOS_WAIT_MS,
 } from "./selectors.js";
 
@@ -37,7 +38,7 @@ const plain = (text: string) =>
 
 /** El nombre de un control en los mensajes (sin `/…/i`). */
 const nameOf = (control: FormControl) => {
-  const value = control.kind === "select" ? control.name : control.label;
+  const value = control.name;
   return typeof value === "string" ? value : value.source.replace(/[\\^$]/g, "");
 };
 
@@ -66,11 +67,9 @@ export async function fillMarketplaceForm(
    */
   const find = async (control: FormControl): Promise<Locator | null> => {
     const root = await formLocator(page);
-    const locator = (
-      control.kind === "select"
-        ? root.getByRole("combobox", { name: control.name })
-        : root.getByLabel(control.label)
-    ).first();
+    const locator = root
+      .getByRole(control.kind === "text" ? "textbox" : "combobox", { name: control.name })
+      .first();
     try {
       await locator.waitFor({ state: "visible", timeout: control.optional ? 1_000 : waitMs });
       return locator;
@@ -153,7 +152,6 @@ export async function fillMarketplaceForm(
 
   const { location } = plan;
   const steps: Array<() => Promise<void>> = [
-    () => select(FORM_CONTROLS.operation, plan.operation),
     () => select(FORM_CONTROLS.propertyType, plan.propertyType),
     () => type(FORM_CONTROLS.bedrooms, plan.bedrooms),
     () => type(FORM_CONTROLS.bathrooms, plan.bathrooms),
@@ -164,9 +162,8 @@ export async function fillMarketplaceForm(
         plan.address ?? [location.comuna, location.region].filter(Boolean).join(", "),
         location.comuna,
       ),
-    () => type(FORM_CONTROLS.area, plan.areaM2 === null ? null : Math.round(plan.areaM2)),
-    () => type(FORM_CONTROLS.title, plan.title),
     () => type(FORM_CONTROLS.description, plan.description),
+    () => type(FORM_CONTROLS.area, plan.areaSquareFeet),
     async () =>
       uploadPhotos(
         await formLocator(page),
@@ -205,7 +202,24 @@ async function visibleOptions(options: Locator): Promise<Locator[]> {
   return usable;
 }
 
-/** Sube las fotos con `setInputFiles` y espera a ver una miniatura por foto (spec F5 §4.4, paso 5). */
+/** Cuántas fotos dice el contador del formulario («Se han adjuntado N fotos»), o `null` si no lo ve. */
+async function attachedPhotos(root: Locator): Promise<number | null> {
+  const status = root.getByRole("status").filter({ hasText: PHOTO_COUNT_TEXT });
+  if ((await status.count()) === 0) return null;
+  const match = PHOTO_COUNT_TEXT.exec(
+    await status
+      .first()
+      .innerText()
+      .catch(() => ""),
+  );
+  return match?.[1] === undefined ? null : Number(match[1]);
+}
+
+/**
+ * Sube las fotos con `setInputFiles` y espera a que el contador del formulario diga que se
+ * adjuntaron (spec F5 §4.4, paso 5). Usa el control de fotos que acepta imágenes (el formulario real
+ * trae dos) y, si ninguno lo declara, el primero.
+ */
 async function uploadPhotos(
   root: Locator,
   page: Page,
@@ -213,14 +227,14 @@ async function uploadPhotos(
   waitMs: number,
   formChanged: (detail: string) => Promise<Error>,
 ): Promise<void> {
-  const input = root.locator(PHOTO_INPUT).first();
+  const images = root.locator(PHOTO_INPUT_IMAGES);
+  const input = ((await images.count()) > 0 ? images : root.locator(PHOTO_INPUT)).first();
   if ((await input.count()) === 0) throw await formChanged("no apareció el control de fotos");
-  // Lo que ya había (íconos, o fotos de un borrador) no cuenta: se esperan las nuevas.
-  const thumbnails = root.locator(PHOTO_THUMBNAIL);
-  const before = await thumbnails.count();
+  // Lo que ya había (fotos de un borrador) no cuenta: se esperan las nuevas.
+  const before = (await attachedPhotos(root)) ?? 0;
   await input.setInputFiles([...photoPaths]);
   const deadline = Date.now() + waitMs;
-  while ((await thumbnails.count()) < before + photoPaths.length) {
+  while (((await attachedPhotos(root)) ?? 0) < before + photoPaths.length) {
     if (Date.now() >= deadline) throw await formChanged("no se vieron todas las fotos cargadas");
     await page.waitForTimeout(250);
   }

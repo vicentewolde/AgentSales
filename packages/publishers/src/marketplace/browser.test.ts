@@ -164,8 +164,12 @@ describe("evidencia del formulario", () => {
     const aria = await readFile(evidence.aria, "utf8");
     expect(aria).toContain("Precio");
     expect(aria).toContain("Publicar");
-    expect(aria).not.toContain("Nombre Inventado del Operador");
+    // Nada de la barra de Facebook (mensajes, búsquedas recientes). Ojo: el panel del formulario
+    // real trae el nombre del operador ("Publicación en Marketplace · Público"), así que la
+    // evidencia puede llevarlo: queda en `tmp/` (fuera de git) y no se comparte.
     expect(aria).not.toContain("mensajes");
+    expect(aria).not.toContain("Búsquedas recientes");
+    expect(aria).toContain("Nueva vivienda");
     expect((await readFile(evidence.screenshot)).subarray(1, 4).toString()).toBe("PNG");
     expect((await stat(dir)).mode & 0o777).toBe(0o700);
   });
@@ -199,9 +203,8 @@ describe("evidencia con las fotos en un form aparte (fb:smoke, 2026-10-13)", () 
     const evidence = await captureFormEvidence(page, join(fb.root, "evidencia"), "formulario");
 
     const aria = await readFile(evidence.aria, "utf8");
-    expect(aria).toContain("Precio");
-    expect(aria).toContain('combobox "Tipo de propiedad"');
-    expect(aria).not.toContain("Nombre Inventado del Operador");
+    expect(aria).toContain("Precio al mes");
+    expect(aria).toContain('combobox "Tipo de propiedad en alquiler"');
     expect(evidence.ariaLines).toBeGreaterThan(8);
   });
 
@@ -210,15 +213,15 @@ describe("evidencia con las fotos en un form aparte (fb:smoke, 2026-10-13)", () 
 
     const shape = await describeFormShape(page);
 
-    // De adentro hacia afuera: el label, el form de fotos (sin campos), el main (con campos)…
+    // De adentro hacia afuera: el form de fotos (sin campos), el div con role=form y el main.
     expect(shape.slice(0, 3).map((step) => [step.tag, step.role])).toEqual([
-      ["label", null],
       ["form", null],
+      ["div", "form"],
       ["div", "main"],
     ]);
-    expect(shape[1]?.fields).toBe(0);
-    expect(shape[2]?.fields).toBeGreaterThanOrEqual(6);
-    expect(JSON.stringify(shape)).not.toContain("Precio");
+    expect(shape[0]?.fields).toBe(0);
+    expect(shape[1]?.fields).toBeGreaterThanOrEqual(6);
+    expect(JSON.stringify(shape)).not.toMatch(/Precio|Nombre Inventado/);
   });
 });
 

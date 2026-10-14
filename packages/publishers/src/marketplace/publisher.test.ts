@@ -170,28 +170,26 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     expect(result).toEqual({ handoff: "manual_confirm", simulated: false });
     const page = pageOf(t);
     const value = (name: string) => page.locator(`[name="${name}"]`).inputValue();
-    expect(await page.locator("#combo-operacion").getAttribute("data-value")).toBe("Alquiler");
-    expect(await page.locator("#combo-tipo").getAttribute("data-value")).toBe("Departamento");
+    // "Departamento" del Excel → la opción "Apartamento o piso" del formulario real.
+    expect(await page.locator("#combo-tipo").getAttribute("data-value")).toBe("Apartamento o piso");
     expect(await value("habitaciones")).toBe("2");
     expect(await value("banos")).toBe("1");
     expect(await value("precio")).toBe("650000");
-    expect(await value("m2")).toBe("54");
+    // 54,4 m² → 586 pies cuadrados (el formulario los pide en pies).
+    expect(await value("pies")).toBe("586");
     expect(await value("descripcion")).toBe("Texto inventado de Marketplace.");
     // Sin `show_exact_address`, la ubicación se busca por comuna y región, nunca por la dirección.
     expect(await page.evaluate("window.__typedPlace")).toBe("Ñuñoa, Región Metropolitana");
     expect(await value("ubicacion")).toBe("Ñuñoa, Santiago, Chile");
-    expect(await page.locator("#miniaturas img").count()).toBe(2);
-    // Solo los desplegables y sus opciones: nunca Siguiente ni Publicar.
+    expect(await page.locator("#estado-fotos").innerText()).toBe("Se han adjuntado 2 fotos");
+    // Las fotos van por el control que acepta solo imágenes, no por el de imágenes y videos.
+    expect(await page.evaluate("window.__uploadedVia")).toBe("fotos-arrastrar");
+    // Solo el desplegable y sus opciones: nunca Siguiente, Publicar, el borrador ni los interruptores.
+    expect(await page.locator("#siguiente").isDisabled()).toBe(true);
     const clicks = await clicksOf(t);
     expect(clicks).not.toContain("siguiente");
     expect(clicks).not.toContain("publicar");
-    expect(clicks).toEqual([
-      "combo-operacion",
-      "Alquiler",
-      "combo-tipo",
-      "Departamento",
-      "Ñuñoa, Santiago, Chile",
-    ]);
+    expect(clicks).toEqual(["combo-tipo", "Apartamento o piso", "Ñuñoa, Santiago, Chile"]);
     // La ventana queda abierta y entregada; la cuenta vieja se cerró antes.
     expect(t.closedAccounts).toEqual(["acc-1"]);
     expect(t.handoffs.map((handoff) => handoff.ref)).toEqual([
@@ -201,7 +199,9 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
     // Evidencia solo del formulario; las fotos temporales, borradas.
     expect((await readdir(t.dir)).sort()).toEqual(["formulario.aria.yml", "formulario.png"]);
     const aria = await readFile(join(t.dir, "formulario.aria.yml"), "utf8");
-    expect(aria).not.toContain("Nombre Inventado del Operador");
+    // Sin la barra de Facebook (el panel del formulario real sí trae el nombre del operador).
+    expect(aria).not.toContain("mensajes");
+    expect(aria).not.toContain("Búsquedas recientes");
     expect((await stat(t.dir)).mode & 0o777).toBe(0o700);
     expect(t.read).toEqual(input.media.map((media) => media.storagePath));
     await t.handoffs[0]?.window.close();
@@ -218,7 +218,7 @@ describe("publisher de Marketplace: llenar el formulario (spec F5 §4.4)", () =>
 
     const page = pageOf(t);
     expect(await page.locator('[name="precio"]').inputValue()).toBe("650000");
-    expect(await page.locator("#miniaturas img").count()).toBe(2);
+    expect(await page.locator("#estado-fotos").innerText()).toBe("Se han adjuntado 2 fotos");
     const aria = await readFile(join(t.dir, "formulario.aria.yml"), "utf8");
     expect(aria).toContain("Precio");
     await t.handoffs[0]?.window.close();
@@ -260,17 +260,28 @@ describe("publisher de Marketplace: ante un error (spec F5 §4.4)", () => {
 
   it("si una opción no está en el desplegable, MARKETPLACE_FORM_CHANGED y no elige otra", async () => {
     const t = await setup({
-      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-sin-venta.html" },
+      routes: { ...DEFAULT_ROUTES, "/marketplace/create/rental": "form-sin-opcion.html" },
     });
     const listing = input.listing as NonNullable<PublishInput["listing"]>;
 
     await expect(
-      t.publisher.publish({ ...input, listing: { ...listing, operation: "sale" } }, ctx),
+      t.publisher.publish({ ...input, listing: { ...listing, propertyType: "Casa" } }, ctx),
     ).rejects.toMatchObject({
       code: "MARKETPLACE_FORM_CHANGED",
-      message: expect.stringContaining("«Venta»"),
+      message: expect.stringContaining("«Casa»"),
     });
     expect(t.profiles[0]?.isOpen()).toBe(false);
+  });
+
+  it("un aviso en venta no abre nada: el formulario es solo de arriendo", async () => {
+    const t = await setup();
+    const listing = input.listing as NonNullable<PublishInput["listing"]>;
+
+    await expect(
+      t.publisher.publish({ ...input, listing: { ...listing, operation: "sale" } }, ctx),
+    ).rejects.toMatchObject({ code: "MARKETPLACE_OPERATION_UNSUPPORTED", retriable: false });
+    expect(t.read).toEqual([]);
+    expect(t.profiles).toEqual([]);
   });
 
   it("nunca hace clic en un control que se llame como Siguiente o Publicar (NEVER_CLICK)", async () => {

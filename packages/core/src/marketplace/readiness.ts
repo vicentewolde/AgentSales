@@ -56,7 +56,8 @@ export function marketplaceReadiness(
     issues.push({
       code: "MARKETPLACE_OPERATION_UNSUPPORTED",
       field: "operacion",
-      message: "Marketplace en Chile no tiene esta operación: publícalo en los otros canales",
+      message:
+        "El formulario de Marketplace en Chile es solo de arriendo: publícalo en los otros canales",
     });
   }
   if (listing.propertyType === null) {

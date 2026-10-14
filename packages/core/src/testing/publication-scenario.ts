@@ -72,6 +72,8 @@ export async function createPublicationScenario(
   } = contentListingFixture();
   const listing = await listings.create({
     ...(rest as Omit<NewListing, "sourceHash">),
+    // El formulario de Marketplace en Chile es solo de arriendo (spec F5 §4.6).
+    ...(options.platform === "fb_marketplace" ? { operation: "rent" as const } : {}),
     sourceHash: "h",
   });
   await listings.promoteToReady(listing.id);

@@ -35,28 +35,33 @@ const input = (overrides: Partial<PublishInput> = {}): PublishInput => ({
   ...overrides,
 });
 
+// La tabla sale del formulario real «Nueva vivienda» (`fb:smoke --menus`, 2026-10-13).
 describe("tabla de campos de Marketplace", () => {
-  it("traduce la operación y el tipo (sin importar mayúsculas ni tildes)", () => {
+  it("el formulario es solo de arriendo: la venta no tiene opción", () => {
     expect(marketplaceOperationOption("rent")).toBe("Alquiler");
+    expect(marketplaceOperationOption("sale")).toBeNull();
     expect(marketplaceOperationOption(null)).toBeNull();
-    expect(marketplacePropertyTypeOption("DEPARTAMENTO")).toBe("Departamento");
+  });
+
+  it("traduce el tipo a las opciones reales (sin importar mayúsculas ni tildes)", () => {
+    expect(marketplacePropertyTypeOption("DEPARTAMENTO")).toBe("Apartamento o piso");
     expect(marketplacePropertyTypeOption("Casa")).toBe("Casa");
     expect(marketplacePropertyTypeOption("Bodega")).toBeNull();
+    expect(marketplacePropertyTypeOption("Oficina")).toBeNull();
     expect(marketplacePropertyTypeOption("Castillo")).toBeNull();
     expect(MARKETPLACE_PROPERTY_TYPE_KEYS).toContain("local comercial");
   });
 
-  it("arma el plan del formulario con el precio en pesos y sin la dirección si no se muestra", () => {
+  it("arma el plan: precio en pesos, superficie en pies cuadrados, sin título y sin la dirección si no se muestra", () => {
     expect(marketplaceFormPlan(input())).toEqual({
-      operation: "Alquiler",
-      propertyType: "Departamento",
+      propertyType: "Apartamento o piso",
       priceClp: 740_270,
       bedrooms: 2,
       bathrooms: 1,
-      areaM2: 54.5,
+      // 54,5 m² × 10,7639 = 586,6 → 587
+      areaSquareFeet: 587,
       location: { comuna: "Ñuñoa", region: "Región Metropolitana" },
       address: null,
-      title: "Departamento en Ñuñoa",
       description: "Texto aprobado de Marketplace.",
     });
   });
@@ -70,7 +75,7 @@ describe("tabla de campos de Marketplace", () => {
     const plan = marketplaceFormPlan(
       input({ listing: { ...listing, attributes: { dormitorios: 0, banos: 1 } } }),
     );
-    expect(plan).toMatchObject({ bedrooms: 0, areaM2: null });
+    expect(plan).toMatchObject({ bedrooms: 0, areaSquareFeet: null });
     expect(() =>
       marketplaceFormPlan(input({ listing: { ...listing, attributes: { dormitorios: 2 } } })),
     ).toThrow(expect.objectContaining({ code: "MARKETPLACE_NOT_READY", retriable: false }));
@@ -79,9 +84,14 @@ describe("tabla de campos de Marketplace", () => {
     );
   });
 
-  it("un tipo sin opción da MARKETPLACE_TYPE_UNSUPPORTED, no reintentable", () => {
+  it("un tipo sin opción da MARKETPLACE_TYPE_UNSUPPORTED y una venta MARKETPLACE_OPERATION_UNSUPPORTED, no reintentables", () => {
     expect(() =>
       marketplaceFormPlan(input({ listing: { ...listing, propertyType: "Terreno" } })),
     ).toThrow(expect.objectContaining({ code: "MARKETPLACE_TYPE_UNSUPPORTED", retriable: false }));
+    expect(() =>
+      marketplaceFormPlan(input({ listing: { ...listing, operation: "sale" } })),
+    ).toThrow(
+      expect.objectContaining({ code: "MARKETPLACE_OPERATION_UNSUPPORTED", retriable: false }),
+    );
   });
 });

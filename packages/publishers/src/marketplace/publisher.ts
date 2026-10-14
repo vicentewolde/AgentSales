@@ -23,11 +23,8 @@ import { createMarketplaceWindow, type MarketplaceWindow } from "./window.js";
 
 /** Largo máximo del título de Marketplace (el de Portal, `04-formato`). */
 export const MARKETPLACE_MAX_TITLE = 60;
-/**
- * Cuántas fotos se suben como mucho (**POR CONFIRMAR** con `fb:smoke --menus` o `--listing`: el
- * máximo del formulario es NO VERIFICADO, nota §5; los blogs dicen 50).
- */
-export const MARKETPLACE_MAX_PHOTOS = 20;
+/** Cuántas fotos admite el formulario: «Fotos 0/50» (`fb:smoke --menus`, 2026-10-13). */
+export const MARKETPLACE_MAX_PHOTOS = 50;
 
 /**
  * Los requisitos de Marketplace que se saben sin abrir Facebook (spec F5 §4.6): pura y síncrona,

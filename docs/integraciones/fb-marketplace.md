@@ -247,3 +247,17 @@ Pistas (no oficiales, solo orientan; nada de la nota descansa solo en ellas sin 
 5. **Límite diario por corredor** (recomendación: 3) y si se acepta no sincronizar estados de forma automática.
 6. **Navegador:** ¿Chromium de Playwright (recomendado, ya instalado) o el Chrome instalado (`channel: 'chrome'`)?
 7. **WhatsApp en la descripción:** ¿se mantiene al final del texto de Marketplace mientras no se confirme cómo lo trata Facebook?
+
+## 13. Observado con sesión: el formulario real (2026-10-13)
+
+Fuente: `pnpm fb:smoke --menus` en la cuenta del operador (Chile, interfaz en español). Es el árbol de accesibilidad del formulario, no una página pública, y la fecha importa: Facebook cambia su interfaz sin avisar.
+
+- **La dirección del formulario es `https://www.facebook.com/marketplace/create/rental`** y abre directo (OBSERVADO): la sesión se detecta con la cookie `c_user` numérica y una página que no es de inicio de sesión. La verificación apareció una vez y se resolvió a mano en la ventana.
+- **Es el formulario "Nueva vivienda", solo de arriendo** (OBSERVADO): encabezado «Nueva vivienda», paso 1 de 2, botones «Guardar borrador» y «Siguiente» (deshabilitado hasta completar lo obligatorio). No hay menú de operación ni se vio otro formulario para venta; si existe uno aparte en Chile es NO VERIFICADO.
+- **Campos** (nombre accesible, OBSERVADO): `combobox` «Tipo de propiedad en alquiler»; `textbox` «Número de habitaciones», «Número de baños» y «Precio al mes» (sin selector de moneda; se supone CLP); `combobox` «Address» (la etiqueta sale en inglés aunque el perfil está en español); `textbox` «Descripción de la propiedad en alquiler»; en «Opciones avanzadas (Opcional)»: `textbox` «Pies cuadrados de la propiedad» (**pies**, no m²), `combobox` «Fecha disponible», «Tipo de lavandería», «Tipo de aparcamiento», «Tipo de aire acondicionado», «Tipo de calefacción» e interruptores «Se aceptan gatos» y «Se aceptan perros». **No hay campo de título.**
+- **Tipos** (OBSERVADO, lista «Seleccionar una opción»): Casa, Casa adosada, Apartamento o piso, Solo habitación.
+- **Fotos** (OBSERVADO): botón «Añadir fotos o arrastrar y soltar», contador «Fotos 0/50» («Puedes añadir un máximo de 50 fotos»), un texto de estado «Se han adjuntado 0 fotos» y **dos** controles de archivo. Qué control sube a dónde y cómo cambia el contador al subir: se confirma con `fb:smoke --listing`.
+- **Promoción:** hay un interruptor «Promocionar la publicación después de realizarla», apagado por defecto. AgentSales nunca lo toca.
+- **El panel del formulario muestra el nombre del operador** («Vicente Wolde Cepeda · Publicación en Marketplace · Público»): el árbol y la captura de evidencia lo llevan. Quedan en `tmp/` (fuera de git).
+- **Sigue NO VERIFICADO:** las sugerencias del campo «Address», el paso 2 (qué ofrece antes de «Publicar»), la dirección a la que Facebook lleva después de publicar, el tope de caracteres de la descripción, y si «Guardar borrador» guarda solo al apretarlo o también al cerrar la ventana.
+

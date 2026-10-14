@@ -110,33 +110,33 @@ export const OPEN_LIST_EXCLUDED =
   'header, nav, aside, [role="banner"], [role="navigation"], [role="complementary"]';
 
 /**
- * Los controles del formulario de propiedades (spec F5 §4.4, paso 4; F5-T09), por rol y nombre
- * visible, en español. **POR CONFIRMAR** con los árboles de `pnpm fb:smoke --menus`: hasta entonces
- * son los nombres probables y el PR del lote E no se mezcla. Un control que no aparece en su tope da
- * `MARKETPLACE_FORM_CHANGED` (con captura del formulario).
- * - `select`: un desplegable (`combobox`) cuyas opciones son `option` (pueden dibujarse fuera del
- *   formulario).
- * - `text`: un campo con su etiqueta (`getByLabel`).
- * - `place`: un campo con sugerencias (`combobox` o campo con etiqueta) donde se elige la opción que
- *   nombra la comuna.
- * `optional`: si el formulario no lo trae, se sigue sin él (por ejemplo, los m² en un tipo que no
- * los pide).
+ * Los controles del formulario "Nueva vivienda" (`/marketplace/create/rental`, spec F5 §4.4 paso 4;
+ * F5-T09), por rol y nombre accesible, tal como los dejó el árbol de `pnpm fb:smoke --menus` el
+ * 2026-10-13 (cuenta del operador, Chile, español). Un control obligatorio que no aparece en su
+ * tope da `MARKETPLACE_FORM_CHANGED` (con captura del formulario).
+ * - `select`: un desplegable (`combobox`) cuyas opciones son `option`, en una lista que Facebook
+ *   dibuja aparte ("Seleccionar una opción").
+ * - `text`: un `textbox` por su nombre.
+ * - `place`: un `combobox` donde se escribe y se elige una sugerencia que nombra la comuna. Su
+ *   nombre sale en inglés ("Address") aunque el perfil esté en español.
+ * `optional`: si el formulario no lo trae, se sigue sin él.
+ *
+ * Lo que **no** hay: menú de operación (el formulario es solo de arriendo) ni campo de título.
+ * **POR CONFIRMAR** con `fb:smoke --listing`: las sugerencias de la dirección.
  */
 export type FormControl =
   | { kind: "select"; name: string | RegExp; optional?: boolean }
-  | { kind: "text"; label: string | RegExp; optional?: boolean }
-  | { kind: "place"; label: string | RegExp; optional?: boolean };
+  | { kind: "text"; name: string | RegExp; optional?: boolean }
+  | { kind: "place"; name: string | RegExp; optional?: boolean };
 
 export const FORM_CONTROLS = {
-  operation: { kind: "select", name: /^venta o alquiler/i },
-  propertyType: { kind: "select", name: /^tipo de (propiedad|alquiler)/i },
-  bedrooms: { kind: "text", label: /^n[uú]mero de (habitaciones|dormitorios)/i },
-  bathrooms: { kind: "text", label: /^n[uú]mero de ba[nñ]os/i },
-  price: { kind: "text", label: /^precio/i },
-  location: { kind: "place", label: /^(direcci[oó]n|ubicaci[oó]n)/i },
-  area: { kind: "text", label: /metros cuadrados/i, optional: true },
-  title: { kind: "text", label: /^t[ií]tulo/i, optional: true },
-  description: { kind: "text", label: /^descripci[oó]n/i },
+  propertyType: { kind: "select", name: /^tipo de propiedad/i },
+  bedrooms: { kind: "text", name: /^n[uú]mero de habitaciones/i },
+  bathrooms: { kind: "text", name: /^n[uú]mero de ba[nñ]os/i },
+  price: { kind: "text", name: /^precio/i },
+  location: { kind: "place", name: /^(address|direcci[oó]n|ubicaci[oó]n)/i },
+  description: { kind: "text", name: /^descripci[oó]n/i },
+  area: { kind: "text", name: /^(pies|metros) cuadrados/i, optional: true },
 } as const satisfies Record<string, FormControl>;
 
 /**
@@ -148,13 +148,16 @@ export const NEVER_CLICK = /siguiente|publicar|next|publish|enviar|submit/i;
 /** El control de fotos: `setInputFiles` no exige que se vea (nota §1). */
 export const PHOTO_INPUT = 'input[type="file"]';
 
-/**
- * Las miniaturas de las fotos ya cargadas (**POR CONFIRMAR** con `fb:smoke --listing`): el llenado
- * espera a ver una por foto.
- */
-export const PHOTO_THUMBNAIL = 'img[src^="blob:"], img[src^="data:"]';
+/** Cuántos controles de fotos hay en el formulario real (2): se prefiere el que acepta imágenes. */
+export const PHOTO_INPUT_IMAGES = 'input[type="file"][accept*="image" i]';
 
-/** Cuánto espera cada control y las miniaturas de las fotos. */
+/**
+ * El contador de fotos del formulario real: «Se han adjuntado 3 fotos» (rol `status`). El llenado
+ * espera a que diga las fotos que subió.
+ */
+export const PHOTO_COUNT_TEXT = /adjuntad[oa]s?\s+(\d+)\s+fotos?/i;
+
+/** Cuánto espera cada control y las fotos. */
 export const CONTROL_WAIT_MS = 10_000;
 export const PHOTOS_WAIT_MS = 120_000;
 
