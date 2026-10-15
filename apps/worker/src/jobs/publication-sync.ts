@@ -1,13 +1,4 @@
-import {
-  enqueueSync,
-  isAppError,
-  type JobQueue,
-  OPERATION_PLATFORMS,
-  type PlatformAccountRepository,
-  type PublicationRepository,
-  type SyncPublicationDeps,
-  syncPublication,
-} from "@agentsales/core";
+import { isAppError, type SyncPublicationDeps, syncPublication } from "@agentsales/core";
 import { defineJob, type Job, type QueuePolicy } from "./define.js";
 
 /**
