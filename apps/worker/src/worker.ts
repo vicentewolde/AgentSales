@@ -252,10 +252,6 @@ const jobs = buildJobs({
     publications,
     listings: repositories.listings,
     fieldDefinitions: repositories.fieldDefinitions,
-    marketplace: {
-      dailyLimit: env.MARKETPLACE_DAILY_LIMIT,
-      ufConfigured: env.BCCH_API_TOKEN !== undefined,
-    },
   },
 });
 

@@ -135,6 +135,14 @@ export type ScheduleChangedPayload = z.infer<typeof scheduleChangedPayloadSchema
 export const SCHEDULE_REASONS = ["operator", "batch", "auto_publish", "rate_limit"] as const;
 export type ScheduleReason = (typeof SCHEDULE_REASONS)[number];
 
+/** `payload` del `status_changed` a `scheduled` (F6, ADR-0018): el modo, la hora y el motivo. */
+export const scheduledPayloadSchema = z.object({
+  mode: z.enum(PUBLISH_MODES),
+  scheduledAt: z.iso.datetime(),
+  reason: z.enum(SCHEDULE_REASONS),
+});
+export type ScheduledPayload = z.infer<typeof scheduledPayloadSchema>;
+
 /**
  * `payload` de un evento tal como queda guardado (jsonb): un objeto JSON. `PUBLICATION_EVENT_INVALID`
  * si no lo es. No revisa secretos: quien lo arma no los pone (spec F3 §4.3).

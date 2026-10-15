@@ -159,7 +159,9 @@ export interface PublicationRepository {
    * Re-fija lo aprobado de una publicación de Portal publicada después de actualizarla en la
    * plataforma (ADR-0020): `content_id`, `listing_source_hash` y el progreso, **solo** si sigue en
    * `guard.from`, sin cambiar el estado, con un evento `manual_edit` en la misma transacción.
-   * Quien llama compara antes `updatedAt` dentro del candado, como el sync.
+   * Solo Portal, desde `published` o `paused` (si no, `INVALID_TRANSITION`). Quien llama compara
+   * antes `updatedAt` dentro del candado, como el sync (en Postgres la hora tiene microsegundos y
+   * en JavaScript milisegundos: compararla en la consulta sería frágil).
    */
   replacePublishedSource(
     id: string,

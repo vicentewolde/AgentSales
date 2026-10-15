@@ -152,6 +152,70 @@ describe("schedulePublication", () => {
     expect(scheduled).toMatchObject({ status: "scheduled", scheduledAt: AT });
   });
 
+  it("revisa lo mismo que publicar: la cuenta desconectada y el modo bloqueado", async () => {
+    const t = await createPublicationScenario();
+    const post = t.byFormat("post") as Publication;
+    const reel = t.byFormat("reel") as Publication;
+    // El carrusel ya empezó en vivo (tiene progreso en Instagram) y falló.
+    await t.publications.transition(
+      post.id,
+      { from: "approved", to: "publishing", changes: { dryRun: false } },
+      { actor: "system" },
+    );
+    await t.publications.saveProgress(post.id, {
+      attemptStartedAt: "2026-10-19T11:00:00.000Z",
+      childIds: [],
+      containerId: "c-1",
+    });
+    await t.publications.transition(
+      post.id,
+      { from: "publishing", to: "failed" },
+      { actor: "system" },
+    );
+
+    expect(await codeOf(scheduleOne(t, post.id, AT, true))).toBe("PUBLISH_MODE_LOCKED");
+    await t.platformAccounts.disconnect(t.account?.id ?? "");
+    expect(await codeOf(scheduleOne(t, reel.id))).toBe("ACCOUNT_NOT_CONNECTED");
+  });
+
+  it("Marketplace se programa aunque otra propiedad tenga el formulario abierto", async () => {
+    const t = await createPublicationScenario({ platform: "fb_marketplace" });
+    const post = t.byFormat("post") as Publication;
+    const other = await t.publications.create(
+      {
+        listingId: "otra-propiedad",
+        platformAccountId: post.platformAccountId,
+        platform: "fb_marketplace",
+        format: "post",
+        contentId: post.contentId,
+        mediaIds: [],
+        listingSourceHash: "h",
+      },
+      { actor: "operator" },
+    );
+    await t.publications.transition(
+      other.id,
+      { from: "approved", to: "publishing", changes: { dryRun: true } },
+      { actor: "system" },
+    );
+    const marketplace = { ufConfigured: true };
+
+    expect(
+      await codeOf(
+        startPublication(
+          { ...deps(t), marketplace },
+          { publicationId: post.id, dryRun: true, actor: "operator" },
+        ),
+      ),
+    ).toBe("MARKETPLACE_FORM_OPEN");
+    expect(
+      await schedulePublication(
+        { ...deps(t), marketplace },
+        { publicationId: post.id, at: AT, dryRun: true, actor: "operator" },
+      ),
+    ).toMatchObject({ status: "scheduled" });
+  });
+
   it("publicar ahora adelanta una programada: pasa a publishing y borra la hora (D13)", async () => {
     const t = await createPublicationScenario();
     const post = t.byFormat("post") as Publication;
@@ -249,6 +313,39 @@ describe("scheduleListings", () => {
     expect(
       (await t.publications.listEvents(t.byFormat("post")?.id ?? "")).at(-1)?.payload,
     ).toMatchObject({ reason: "batch" });
+  });
+
+  it("sin canales pedidos, una propiedad que no está lista da una sola fila sin canal", async () => {
+    const t = await createPublicationScenario();
+    await t.listings.changeStatus(t.listingId, "ready", "paused");
+
+    const { results } = await scheduleListings(deps(t), {
+      listingIds: [t.listingId],
+      at: AT,
+      dryRun: true,
+      actor: "operator",
+    });
+
+    expect(results).toEqual([
+      expect.objectContaining({ platform: null, outcome: "skipped", code: "LISTING_NOT_READY" }),
+    ]);
+  });
+
+  it("todo el lote usa el mismo reloj: un lote lento no deja las últimas fuera por la hora", async () => {
+    const t = await createPublicationScenario();
+    let calls = 0;
+    // Cada lectura del reloj avanza 3 min: sin un reloj fijo, la hora (a 2 min) ya habría pasado.
+    const slow = { ...t.deps, now: () => new Date(NOW.getTime() + calls++ * 3 * 60_000) };
+
+    const { results } = await scheduleListings(slow, {
+      listingIds: [t.listingId],
+      platforms: ["instagram"],
+      at: new Date(NOW.getTime() + 2 * 60_000),
+      dryRun: true,
+      actor: "operator",
+    });
+
+    expect(results.map((r) => r.outcome)).toEqual(["scheduled"]);
   });
 
   it("una propiedad sin canales posibles queda informada", async () => {

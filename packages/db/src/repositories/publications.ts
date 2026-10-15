@@ -100,6 +100,17 @@ const rescheduleStale = (id: string) =>
     { details: { publicationId: id, from: "scheduled", to: "scheduled" } },
   );
 
+/** Solo una publicación de Portal en la plataforma re-fija lo aprobado (ADR-0020). */
+const canReplacePublishedSource = (platform: Row["platform"], from: Row["status"]) =>
+  platform === "portal_inmobiliario" && (from === "published" || from === "paused");
+
+const replaceNotAllowed = (id: string, from: Row["status"]) =>
+  new AppError(
+    "INVALID_TRANSITION",
+    "Solo un aviso de Portal publicado o pausado se actualiza en la plataforma",
+    { details: { publicationId: id, from } },
+  );
+
 const publicationStale = (id: string) =>
   new AppError("PUBLICATION_STALE", "La publicación cambió mientras tanto: recarga", {
     details: { publicationId: id },
@@ -337,6 +348,10 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
       // Primero los datos y después el estado, como el doble en memoria.
       const payload = normalizeEventPayload(event.payload);
       const progress = checkPublicationProgress(current.platform, source.progress);
+      // La única excepción a "lo aprobado no cambia" (ADR-0020): Portal, publicada o pausada.
+      if (!canReplacePublishedSource(current.platform, guard.from)) {
+        throw replaceNotAllowed(id, guard.from);
+      }
       const row = await withDbErrors(() =>
         db.transaction(async (tx) => {
           const [updated] = await tx

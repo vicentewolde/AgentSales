@@ -431,9 +431,11 @@ export {
   requirePublicationMode,
   SCHEDULE_REASONS,
   type ScheduleChangedPayload,
+  type ScheduledPayload,
   type ScheduleReason,
   type SyncPayload,
   scheduleChangedPayloadSchema,
+  scheduledPayloadSchema,
   syncPayloadSchema,
 } from "./publication.js";
 export {

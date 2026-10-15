@@ -128,6 +128,67 @@ describe("startDuePublications", () => {
     expect((await t.publications.get(post.id))?.status).toBe("publishing");
   });
 
+  it("con más de 20 atrasadas y recordatorios vencidos, una vencida normal igual sale en la primera vuelta", async () => {
+    const t = await createPublicationScenario();
+    const post = t.byFormat("post") as Publication;
+    await schedule(t, post.id, true);
+    const now = new Date(AT.getTime() + 60_000);
+    const oldAt = new Date(AT.getTime() - SCHEDULE_OVERDUE_MS - 60 * 60_000);
+    // 25 atrasadas (de hace más de 12 h) y 25 recordatorios de Marketplace en la ventana, de otras
+    // propiedades: van antes por hora, pero la consulta los deja fuera.
+    for (let index = 0; index < 50; index += 1) {
+      const marketplace = index % 2 === 1;
+      const created = await t.publications.create(
+        {
+          listingId: `otra-${index}`,
+          platformAccountId: post.platformAccountId,
+          platform: marketplace ? "fb_marketplace" : "instagram",
+          format: "post",
+          contentId: post.contentId,
+          mediaIds: [],
+          listingSourceHash: "h",
+        },
+        { actor: "operator" },
+      );
+      await t.publications.transition(
+        created.id,
+        {
+          from: "approved",
+          to: "scheduled",
+          changes: {
+            dryRun: true,
+            scheduledAt: marketplace ? new Date(AT.getTime() - 60 * 60_000) : oldAt,
+          },
+        },
+        { actor: "operator" },
+      );
+    }
+
+    const result = await due(t, now);
+
+    expect(result.started).toEqual([post.id]);
+    expect(t.publications.all().filter((p) => p.status === "scheduled")).toHaveLength(50);
+  });
+
+  it("aunque la consulta dejara pasar un recordatorio de Marketplace, no lo empieza", async () => {
+    const t = await createPublicationScenario({ platform: "fb_marketplace" });
+    const post = t.byFormat("post") as Publication;
+    await schedulePublication(
+      { ...t.deps, now: () => NOW, marketplace: { ufConfigured: true } },
+      { publicationId: post.id, at: AT, dryRun: true, actor: "operator" },
+    );
+    const leaky = {
+      async listDue() {
+        return [(await t.publications.get(post.id)) as Publication];
+      },
+    };
+
+    const result = await startDuePublications({ ...t.deps, publications: leaky, now: () => AT });
+
+    expect(result).toMatchObject({ started: [], skipped: [post.id] });
+    expect((await t.publications.get(post.id))?.status).toBe("scheduled");
+  });
+
   it("pide las vencidas de las últimas 12 h, sin Marketplace y con tope, en la consulta", async () => {
     const t = await createPublicationScenario();
     const queries: DueQuery[] = [];

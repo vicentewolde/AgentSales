@@ -217,6 +217,17 @@ export function createInMemoryPublicationRepository(
       // Primero los datos y después el estado, como el de Drizzle.
       normalizeEventPayload(event.payload);
       const progress = checkPublicationProgress(found.publication.platform, source.progress);
+      // La única excepción a "lo aprobado no cambia" (ADR-0020): Portal, publicada o pausada.
+      if (
+        found.publication.platform !== "portal_inmobiliario" ||
+        (guard.from !== "published" && guard.from !== "paused")
+      ) {
+        throw new AppError(
+          "INVALID_TRANSITION",
+          "Solo un aviso de Portal publicado o pausado se actualiza en la plataforma",
+          { details: { publicationId: id, from: guard.from } },
+        );
+      }
       if (found.publication.status !== guard.from) {
         throw new AppError("PUBLICATION_STALE", "La publicación cambió mientras tanto: recarga", {
           details: { publicationId: id },

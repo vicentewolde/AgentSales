@@ -25,10 +25,10 @@
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F6 (`/fase-plan 6`) | ✅ terminada | (este PR) |
-| **Lote A** · T01 Máquina, datos y repositorios del calendario | ✅ terminada | (lote A) |
-| **Lote A** · T02 Programar, reprogramar y desprogramar | ✅ terminada | (lote A) |
-| **Lote A** · T03 El disparo (`publication.due`) | ✅ terminada | (lote A) |
+| Spec F6 (`/fase-plan 6`) | ✅ terminada | #119 |
+| **Lote A** · T01 Máquina, datos y repositorios del calendario | ✅ terminada | #120 |
+| **Lote A** · T02 Programar, reprogramar y desprogramar | ✅ terminada | #120 |
+| **Lote A** · T03 El disparo (`publication.due`) | ✅ terminada | #120 |
 | **Lote B** · T04 Reintentos, espera ante límites y causa legible | ⏳ pendiente | |
 | **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ⏳ pendiente | |
 | **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ⏳ pendiente | |
@@ -124,6 +124,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
   - **Publicar ahora** adelanta una programada.
   - **Base de datos:** migración `0008` (el índice de las programadas y `relisted_from` para republicar en Portal, lote C). Se aplica con `pnpm db:migrate` antes de la demo.
   - Las revisiones de "publicar" quedaron en un solo lugar (`start-checks.ts`), compartidas por publicar, programar y el disparo.
+  - **La revisión dejó** (`revisor` y `arquitecto`; bloqueantes: el spec al día con el contrato real y un resguardo en `replacePublishedSource`): los eventos de programar validados con su esquema; el lote usa un solo reloj y junta en una fila lo que falla igual en todos los canales; una segunda barrera para que Marketplace nunca se dispare solo; más pruebas (más de 20 atrasadas, rechazos de programar, formulario abierto, esquemas).
 - 2026-10-15: **Spec de F6 (`/fase-plan 6`).**
   - **Lo que había en el código:** el estado "programada" existía en la base sin uso; `auto_publish` no se leía; pausar o archivar una propiedad no tocaba sus publicaciones y nada escribía el motivo de cierre; el único reloj del worker era el refresco de tokens.
   - **Documentación verificada:** Mercado Libre §13 (republicar crea un aviso nuevo, una vez por aviso; editar exige `seller_contact` completo y, desde marzo de 2026, las fotos en cada actualización; no hay forma de extender el vencimiento), Instagram §6.1 (la API no dice cuándo se libera el cupo) y la nota nueva del respaldo de Neon (`neon-backup.md`: Postgres 18 probable, `libpq` de Homebrew fuera del `PATH`). Las páginas de Mercado Libre se releyeron con el navegador integrado.

@@ -1,5 +1,5 @@
 import { type AppError, isAppError } from "../errors.js";
-import { MANUAL_CONFIRM_PLATFORMS } from "../marketplace/limits.js";
+import { MANUAL_CONFIRM_PLATFORMS, requiresManualConfirm } from "../marketplace/limits.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
@@ -108,7 +108,10 @@ async function startDueOne(
     if (
       publication === null ||
       publication.status !== "scheduled" ||
-      publication.scheduledAt?.getTime() !== candidate.scheduledAt?.getTime()
+      publication.scheduledAt?.getTime() !== candidate.scheduledAt?.getTime() ||
+      // Segunda barrera (ADR-0017, ADR-0018): un recordatorio nunca abre Facebook solo, aunque
+      // la consulta lo dejara pasar.
+      requiresManualConfirm(publication.platform)
     ) {
       return null;
     }

@@ -921,6 +921,34 @@ export function publicationRepositoryContract(
       expect((await repos.publications.get(created.id))?.listingSourceHash).toBe("hash-2");
     });
 
+    it("replacePublishedSource es solo de Portal publicada o pausada (ADR-0020)", async () => {
+      const input = await newPublication();
+      const instagram = await repos.publications.create(input, operator);
+      const source = { contentId: input.contentId, listingSourceHash: "hash-2", progress: null };
+      await expect(
+        repos.publications.replacePublishedSource(
+          instagram.id,
+          { from: "approved" },
+          source,
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_TRANSITION" });
+
+      const portal = await repos.publications.create(
+        await newPublication({ platform: "portal_inmobiliario" }),
+        operator,
+      );
+      await expect(
+        repos.publications.replacePublishedSource(
+          portal.id,
+          { from: "approved" },
+          source,
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_TRANSITION" });
+      expect(await repos.publications.listEvents(portal.id)).toHaveLength(1);
+    });
+
     it("una publicación se republica una sola vez, sin contar las descartadas (F6)", async () => {
       const input = await newPublication({ platform: "portal_inmobiliario" });
       const parent = await repos.publications.create(input, operator);

@@ -8,7 +8,13 @@ import {
 } from "../marketplace/limits.js";
 import type { ListingLock, LockedRepositories } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
-import type { Publication, PublicationActor, ScheduleReason } from "../publication.js";
+import {
+  type Publication,
+  type PublicationActor,
+  type ScheduleReason,
+  scheduleChangedPayloadSchema,
+  scheduledPayloadSchema,
+} from "../publication.js";
 import { scheduleAt as checkScheduleAt, MAX_SCHEDULE_SPACING_MINUTES } from "../schedule.js";
 import { channelPublications, createPublications } from "./open-publications.js";
 import {
@@ -63,18 +69,25 @@ async function scheduleOne(
       { expectedAt: publication.scheduledAt, at, dryRun },
       {
         actor,
-        payload: {
+        payload: scheduleChangedPayloadSchema.parse({
           from: publication.scheduledAt.toISOString(),
           to: at.toISOString(),
           mode: modeOf(dryRun),
-        },
+        }),
       },
     );
   }
   return publications.transition(
     publication.id,
     { from: publication.status, to: "scheduled", changes: { dryRun, scheduledAt: at } },
-    { actor, payload: { mode: modeOf(dryRun), scheduledAt: at.toISOString(), reason } },
+    {
+      actor,
+      payload: scheduledPayloadSchema.parse({
+        mode: modeOf(dryRun),
+        scheduledAt: at.toISOString(),
+        reason,
+      }),
+    },
   );
 }
 
@@ -150,7 +163,9 @@ export type ChannelScheduled = {
 /**
  * Programa un canal de un aviso: como `publishListing`, abre las que faltan y programa todas las
  * pendientes de cuentas conectadas a la misma hora (el worker las publica de a una). Las que ya se
- * están publicando no cuentan. Lo usan `scheduleListings` y `auto_publish` (F6-T09, con `minLead`
+ * están publicando no cuentan. Como en `publishListing`, si una escritura falla a mitad del canal
+ * (otro cambio llegó primero), lo ya escrito queda escrito: el candado en memoria no deshace, y en
+ * Postgres la transacción del candado sí lo revierte. Lo usan `scheduleListings` y `auto_publish` (F6-T09, con `minLead`
  * en falso: el recordatorio de Marketplace es para ahora).
  */
 export async function scheduleChannel(
@@ -288,14 +303,17 @@ export async function scheduleListings(
   );
   const asked = platforms !== undefined && platforms.length > 0;
   const channels = asked ? [...new Set(platforms)] : [...PLATFORMS];
+  // Un solo reloj para todo el lote: la hora se revisó contra este `now`, y un lote largo no debe
+  // dejar las últimas propiedades fuera por los segundos que tardó en recorrerse.
+  const fixed = { ...deps, now: () => now };
 
   const results: ScheduleListingOutcome[] = [];
   for (const [index, listingId] of listingIds.entries()) {
     const when = new Date(first.getTime() + index * spacingMinutes * 60_000);
-    let any = false;
+    const own: ScheduleListingOutcome[] = [];
     for (const platform of channels) {
       try {
-        const done = await scheduleChannel(deps, {
+        const done = await scheduleChannel(fixed, {
           listingId,
           platform,
           at: when,
@@ -303,38 +321,61 @@ export async function scheduleListings(
           actor,
           reason: listingIds.length > 1 ? "batch" : "operator",
         });
-        results.push({
+        own.push({
           listingId,
           platform,
           outcome: "scheduled",
           at: when,
           publications: done.scheduled,
         });
-        any = true;
       } catch (error) {
         if (!isAppError(error)) throw error;
         if (!asked && SILENT_WITHOUT_PLATFORMS.has(error.code)) continue;
-        results.push({
+        own.push({
           listingId,
           platform,
           outcome: "skipped",
           code: error.code,
           message: error.message,
         });
-        any = true;
       }
     }
-    if (!any) {
-      results.push({
+    results.push(...collapse(listingId, own, asked));
+  }
+  return { results, notes: marketplaceReminderNotes(results) };
+}
+
+/**
+ * Lo de una propiedad en el lote. Sin canales pedidos: si no hay nada, una fila "sin canales"; si
+ * todos los canales fallaron por lo mismo (la propiedad no está lista, no existe), una sola fila
+ * sin canal en vez de una por canal.
+ */
+function collapse(
+  listingId: string,
+  own: readonly ScheduleListingOutcome[],
+  asked: boolean,
+): ScheduleListingOutcome[] {
+  if (own.length === 0) {
+    return [
+      {
         listingId,
         platform: null,
         outcome: "skipped",
         code: "NOTHING_TO_PUBLISH",
         message: "La propiedad no tiene canales con el texto aprobado y la cuenta conectada",
-      });
-    }
+      },
+    ];
   }
-  return { results, notes: marketplaceReminderNotes(results) };
+  const [first] = own;
+  if (
+    !asked &&
+    own.length > 1 &&
+    first?.outcome === "skipped" &&
+    own.every((item) => item.outcome === "skipped" && item.code === first.code)
+  ) {
+    return [{ ...first, platform: null }];
+  }
+  return [...own];
 }
 
 /** Más de 3 recordatorios de Marketplace de una cuenta para un mismo día de Chile: se avisa. */
