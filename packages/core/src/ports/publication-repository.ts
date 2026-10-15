@@ -22,6 +22,8 @@ export type NewPublication = {
    * publicaciones anteriores a la migración `0007`).
    */
   listingSourceHash: string;
+  /** La publicación de Portal que esta republica (ADR-0020, spec F6 §4.7); por defecto `null`. */
+  relistedFrom?: string | null;
 };
 
 /** Quién causó un cambio y qué se anota en la bitácora (sin secretos: se guarda tal cual). */
@@ -32,8 +34,16 @@ export type PublicationEventInput = {
 
 /** Campos que acompañan una transición; `undefined` = no tocar. */
 export type PublicationChanges = {
-  /** Obligatorio al pasar a `publishing`: el modo de ese intento, que respeta el worker (D11). */
+  /**
+   * Obligatorio al pasar a `publishing` o a `scheduled`: el modo de ese intento (o el de la hora
+   * programada), que respeta el worker (D11, ADR-0018).
+   */
   dryRun?: boolean;
+  /**
+   * Obligatorio al pasar a `scheduled` (la hora, ADR-0018). `scheduled_at` solo tiene valor en
+   * `scheduled`: al pasar a cualquier otro estado se borra, se pase o no.
+   */
+  scheduledAt?: Date | null;
   /** Suma 1 a `attempts` (al pasar a `publishing`). */
   incrementAttempts?: boolean;
   externalId?: string | null;
@@ -44,6 +54,25 @@ export type PublicationChanges = {
   progress?: unknown;
   /** Lo que informó la plataforma con el cambio (`remoteStateSchema`); `null` lo borra. */
   remoteState?: RemoteState | null;
+};
+
+/** Lo que Actualizar re-fija en una publicación de Portal publicada (ADR-0020, spec F6 §4.7). */
+export type PublishedSource = {
+  contentId: string;
+  listingSourceHash: string;
+  /** El progreso con el `sellerContact` enviado; se valida con el esquema de su plataforma. */
+  progress: unknown;
+};
+
+/** Las programadas que el disparo tiene que empezar (spec F6 §4.4). */
+export type DueQuery = {
+  /** `scheduled_at <= now`. */
+  now: Date;
+  /** `scheduled_at >= since`: las atrasadas quedan fuera (esperan al operador, D2). */
+  since: Date;
+  /** Plataformas con paso manual (Marketplace): sus programadas son recordatorios. */
+  excludePlatforms: readonly Platform[];
+  limit: number;
 };
 
 /** Un evento suelto de la bitácora (por ejemplo, `publish_attempt`), sin cambio de estado. */
@@ -60,8 +89,12 @@ export type NewPublicationEvent = PublicationEventInput & {
  * - una publicación que no existe → `PUBLICATION_NOT_FOUND`;
  * - una transición que la máquina no permite, o desde un estado que ya cambió →
  *   `INVALID_TRANSITION` (sin escribir nada);
- * - pasar a `publishing` sin `changes.dryRun` → `PUBLICATION_MODE_REQUIRED` (el modo siempre se
- *   fija en ese paso, spec F3 §4.3 y D11);
+ * - pasar a `publishing` o a `scheduled` sin `changes.dryRun` → `PUBLICATION_MODE_REQUIRED` (el modo
+ *   siempre se fija en ese paso, spec F3 §4.3 y D11; spec F6 §4.2), y a `scheduled` sin
+ *   `changes.scheduledAt` → `PUBLICATION_SCHEDULE_REQUIRED`;
+ * - `reschedule` de una que ya no está en `scheduled` a la hora esperada → `INVALID_TRANSITION`, y
+ *   `replacePublishedSource` de una que ya no está en el estado esperado → `PUBLICATION_STALE`;
+ * - una segunda republicación activa de la misma publicación → `PUBLICATION_CONFLICT`;
  * - un `progress` que no calza con el esquema de su plataforma → `PUBLICATION_PROGRESS_INVALID`, un
  *   `remoteState` que no calza → `PUBLICATION_REMOTE_STATE_INVALID`, y un `payload` de evento que
  *   no es objeto → `PUBLICATION_EVENT_INVALID`;
@@ -85,12 +118,55 @@ export interface PublicationRepository {
   /** Las que están en un estado (por ejemplo, `publishing` para reencolarlas al arrancar). */
   listByStatus(status: PublicationStatus): Promise<Publication[]>;
   /**
+   * Las `scheduled` cuya hora venció dentro de la ventana (`since` ≤ `scheduled_at` ≤ `now`), sin
+   * las plataformas excluidas, por hora (y después id), como mucho `limit` (spec F6 §4.4): el
+   * filtro va en la consulta para que las atrasadas y los recordatorios no ocupen los lugares.
+   */
+  listDue(query: DueQuery): Promise<Publication[]>;
+  /**
+   * Las `publishing` sin cambios desde antes de `before`, sin las plataformas excluidas (la
+   * vigilancia, spec F6 §4.6), por `updated_at`.
+   */
+  listStalePublishing(query: {
+    before: Date;
+    excludePlatforms: readonly Platform[];
+  }): Promise<Publication[]>;
+  /**
+   * Las de esos avisos que están activas o cambiaron desde `since` (la vista de seguimiento, spec
+   * F6 §4.9), por aviso y fecha de creación.
+   */
+  listForTracking(query: { listingIds: readonly string[]; since: Date }): Promise<Publication[]>;
+  /**
    * Cambia el estado de `from` a `to` con los campos de `changes` y anota el evento, todo junto.
    * Devuelve la publicación ya cambiada.
    */
   transition(
     id: string,
     move: { from: PublicationStatus; to: PublicationStatus; changes?: PublicationChanges },
+    event: PublicationEventInput,
+  ): Promise<Publication>;
+  /**
+   * Reprograma una `scheduled` (ADR-0018): cambia la hora y el modo **solo** si sigue en `scheduled`
+   * a la hora `expectedAt`, sin cambiar el estado, y anota `schedule_changed` en la misma
+   * transacción (el `payload` lo arma quien llama).
+   */
+  reschedule(
+    id: string,
+    move: { expectedAt: Date; at: Date; dryRun: boolean },
+    event: PublicationEventInput,
+  ): Promise<Publication>;
+  /**
+   * Re-fija lo aprobado de una publicación de Portal publicada después de actualizarla en la
+   * plataforma (ADR-0020): `content_id`, `listing_source_hash` y el progreso, **solo** si sigue en
+   * `guard.from`, sin cambiar el estado, con un evento `manual_edit` en la misma transacción.
+   * Solo Portal, desde `published` o `paused` (si no, `INVALID_TRANSITION`). Quien llama compara
+   * antes `updatedAt` dentro del candado, como el sync (en Postgres la hora tiene microsegundos y
+   * en JavaScript milisegundos: compararla en la consulta sería frágil).
+   */
+  replacePublishedSource(
+    id: string,
+    guard: { from: PublicationStatus },
+    source: PublishedSource,
     event: PublicationEventInput,
   ): Promise<Publication>;
   /**

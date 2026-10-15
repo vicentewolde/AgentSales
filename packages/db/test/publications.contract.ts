@@ -630,5 +630,355 @@ export function publicationRepositoryContract(
       ).rejects.toMatchObject({ code: "PUBLICATION_PROGRESS_INVALID" });
       expect((await repos.publications.get(created.id))?.progress).toEqual(portalProgress);
     });
+
+    // F6-T01 (ADR-0018 y ADR-0020): programar, reprogramar, las consultas del calendario y la
+    // republicación. Cada caso usa horas de un año propio: listDue y listStalePublishing ven todas
+    // las publicaciones de la base compartida.
+    const schedule = (id: string, at: Date, from: "approved" | "failed" = "approved") =>
+      repos.publications.transition(
+        id,
+        { from, to: "scheduled", changes: { dryRun: true, scheduledAt: at } },
+        { actor: "operator", payload: { scheduledAt: at.toISOString(), reason: "operator" } },
+      );
+
+    it("programar exige el modo y la hora, y la hora se borra al salir de scheduled (F6)", async () => {
+      const created = await repos.publications.create(await newPublication(), operator);
+      const at = new Date("2031-01-10T13:00:00.000Z");
+
+      await expect(
+        repos.publications.transition(
+          created.id,
+          { from: "approved", to: "scheduled", changes: { scheduledAt: at } },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_MODE_REQUIRED" });
+      await expect(
+        repos.publications.transition(
+          created.id,
+          { from: "approved", to: "scheduled", changes: { dryRun: false } },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_SCHEDULE_REQUIRED" });
+      expect(await repos.publications.get(created.id)).toMatchObject({
+        status: "approved",
+        scheduledAt: null,
+      });
+
+      const scheduled = await schedule(created.id, at);
+      expect(scheduled).toMatchObject({ status: "scheduled", scheduledAt: at, dryRun: true });
+
+      // Desprogramar vuelve a approved y borra la hora.
+      const back = await repos.publications.transition(
+        created.id,
+        { from: "scheduled", to: "approved" },
+        operator,
+      );
+      expect(back).toMatchObject({ status: "approved", scheduledAt: null });
+
+      // Programar de nuevo y empezar: la hora también se borra.
+      await schedule(created.id, at);
+      const publishing = await repos.publications.transition(
+        created.id,
+        { from: "scheduled", to: "publishing", changes: { dryRun: true, incrementAttempts: true } },
+        { actor: "system" },
+      );
+      expect(publishing).toMatchObject({ status: "publishing", scheduledAt: null, attempts: 1 });
+    });
+
+    it("las transiciones nuevas del calendario: failed y publishing a scheduled, scheduled a failed (F6)", async () => {
+      const created = await repos.publications.create(await newPublication(), operator);
+      const at = new Date("2031-02-10T13:00:00.000Z");
+      await repos.publications.transition(
+        created.id,
+        { from: "approved", to: "publishing", changes: { dryRun: true } },
+        operator,
+      );
+      // La espera ante un límite: de publishing a scheduled, conservando el progreso.
+      await repos.publications.saveProgress(created.id, progress);
+      const waiting = await repos.publications.transition(
+        created.id,
+        { from: "publishing", to: "scheduled", changes: { dryRun: true, scheduledAt: at } },
+        { actor: "system", payload: { reason: "rate_limit" } },
+      );
+      expect(waiting).toMatchObject({ status: "scheduled", scheduledAt: at, progress });
+
+      const failed = await repos.publications.transition(
+        created.id,
+        {
+          from: "scheduled",
+          to: "failed",
+          changes: { lastError: { code: "LISTING_NOT_READY", message: "x", retriable: false } },
+        },
+        { actor: "system" },
+      );
+      expect(failed).toMatchObject({ status: "failed", scheduledAt: null });
+
+      const again = await schedule(created.id, at, "failed");
+      expect(again).toMatchObject({ status: "scheduled", scheduledAt: at });
+    });
+
+    it("reschedule cambia la hora y el modo con su evento, solo a la hora esperada (F6)", async () => {
+      const created = await repos.publications.create(await newPublication(), operator);
+      const first = new Date("2031-03-10T13:00:00.000Z");
+      const second = new Date("2031-03-11T15:30:00.000Z");
+      await schedule(created.id, first);
+
+      const moved = await repos.publications.reschedule(
+        created.id,
+        { expectedAt: first, at: second, dryRun: false },
+        { actor: "cli", payload: { from: first.toISOString(), to: second.toISOString() } },
+      );
+      expect(moved).toMatchObject({ status: "scheduled", scheduledAt: second, dryRun: false });
+      const events = await repos.publications.listEvents(created.id);
+      expect(events.at(-1)).toMatchObject({
+        type: "schedule_changed",
+        fromStatus: null,
+        toStatus: null,
+        actor: "cli",
+        payload: { from: first.toISOString(), to: second.toISOString() },
+      });
+
+      // Con la hora vieja (otro ya la cambió): INVALID_TRANSITION, sin escribir ni anotar.
+      await expect(
+        repos.publications.reschedule(
+          created.id,
+          { expectedAt: first, at: new Date("2031-03-12T10:00:00.000Z"), dryRun: true },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_TRANSITION" });
+      await repos.publications.transition(
+        created.id,
+        { from: "scheduled", to: "approved" },
+        operator,
+      );
+      await expect(
+        repos.publications.reschedule(
+          created.id,
+          { expectedAt: second, at: first, dryRun: true },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_TRANSITION" });
+      expect(await repos.publications.get(created.id)).toMatchObject({
+        status: "approved",
+        scheduledAt: null,
+      });
+      expect(await repos.publications.listEvents(created.id)).toHaveLength(events.length + 1);
+      await expect(
+        repos.publications.reschedule(
+          repos.missingId,
+          { expectedAt: first, at: second, dryRun: true },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_NOT_FOUND" });
+    });
+
+    it("listDue trae las vencidas de la ventana, por hora, sin las excluidas y con tope (F6)", async () => {
+      const now = new Date("2032-04-10T12:00:00.000Z");
+      const since = new Date("2032-04-10T00:00:00.000Z");
+      const make = async (at: Date, platform: NewPublication["platform"] = "instagram") => {
+        const created = await repos.publications.create(
+          await newPublication({ platform }),
+          operator,
+        );
+        await schedule(created.id, at);
+        return created.id;
+      };
+      const late = await make(new Date("2032-04-10T11:00:00.000Z"));
+      const early = await make(new Date("2032-04-10T09:00:00.000Z"));
+      const exact = await make(now);
+      const overdue = await make(new Date("2032-04-09T23:59:00.000Z"));
+      const future = await make(new Date("2032-04-10T12:01:00.000Z"));
+      const reminder = await make(new Date("2032-04-10T10:00:00.000Z"), "fb_marketplace");
+
+      const due = await repos.publications.listDue({
+        now,
+        since,
+        excludePlatforms: ["fb_marketplace"],
+        limit: 10,
+      });
+      expect(due.map((item) => item.id)).toEqual([early, late, exact]);
+      expect(due.map((item) => item.id)).not.toContain(overdue);
+      expect(due.map((item) => item.id)).not.toContain(future);
+      expect(due.map((item) => item.id)).not.toContain(reminder);
+
+      const capped = await repos.publications.listDue({
+        now,
+        since,
+        excludePlatforms: [],
+        limit: 2,
+      });
+      expect(capped.map((item) => item.id)).toEqual([early, reminder]);
+    });
+
+    it("listStalePublishing trae las publishing sin cambios desde antes, sin las excluidas (F6)", async () => {
+      const make = async (platform: NewPublication["platform"]) => {
+        const created = await repos.publications.create(
+          await newPublication({ platform }),
+          operator,
+        );
+        await repos.publications.transition(
+          created.id,
+          { from: "approved", to: "publishing", changes: { dryRun: true } },
+          operator,
+        );
+        return created.id;
+      };
+      const stuck = await make("instagram");
+      const form = await make("fb_marketplace");
+      await tick();
+      const before = new Date();
+      await tick();
+      const fresh = await make("instagram");
+
+      const stale = (
+        await repos.publications.listStalePublishing({
+          before,
+          excludePlatforms: ["fb_marketplace"],
+        })
+      ).map((item) => item.id);
+      expect(stale).toContain(stuck);
+      expect(stale).not.toContain(form);
+      expect(stale).not.toContain(fresh);
+      const all = await repos.publications.listStalePublishing({ before, excludePlatforms: [] });
+      expect(all.every((item) => item.status === "publishing")).toBe(true);
+      expect(all.map((item) => item.id)).toContain(form);
+    });
+
+    it("listForTracking trae las activas y las terminales recientes de esos avisos (F6)", async () => {
+      const input = await newPublication();
+      const other = await newPublication();
+      const old = await repos.publications.create(input, operator);
+      await repos.publications.transition(old.id, { from: "approved", to: "cancelled" }, operator);
+      await tick();
+      const since = new Date();
+      await tick();
+      const active = await repos.publications.create(input, operator);
+      const reel = await repos.publications.create({ ...input, format: "reel" }, operator);
+      await repos.publications.transition(reel.id, { from: "approved", to: "cancelled" }, operator);
+      const elsewhere = await repos.publications.create(other, operator);
+
+      const found = await repos.publications.listForTracking({
+        listingIds: [input.listingId],
+        since,
+      });
+      expect(found.map((item) => item.id)).toEqual([active.id, reel.id]);
+      expect(found.map((item) => item.id)).not.toContain(elsewhere.id);
+      expect(await repos.publications.listForTracking({ listingIds: [], since })).toEqual([]);
+    });
+
+    it("replacePublishedSource re-fija el texto, la versión y el progreso con manual_edit (F6)", async () => {
+      const input = await newPublication({ platform: "portal_inmobiliario" });
+      const created = await repos.publications.create(input, operator);
+      await repos.publications.transition(
+        created.id,
+        { from: "approved", to: "publishing", changes: { dryRun: false } },
+        operator,
+      );
+      await repos.publications.transition(
+        created.id,
+        { from: "publishing", to: "published", changes: { progress: portalProgress } },
+        { actor: "system" },
+      );
+      const updatedProgress = {
+        ...portalProgress,
+        sellerContact: { ...portalProgress.sellerContact, phone2: "987654321" },
+      };
+
+      await expect(
+        repos.publications.replacePublishedSource(
+          created.id,
+          { from: "published" },
+          { contentId: input.contentId, listingSourceHash: "hash-2", progress },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_PROGRESS_INVALID" });
+      const replaced = await repos.publications.replacePublishedSource(
+        created.id,
+        { from: "published" },
+        { contentId: input.contentId, listingSourceHash: "hash-2", progress: updatedProgress },
+        { actor: "operator", payload: { mode: "live", fields: ["price"] } },
+      );
+      expect(replaced).toMatchObject({
+        status: "published",
+        listingSourceHash: "hash-2",
+        progress: updatedProgress,
+      });
+      expect((await repos.publications.listEvents(created.id)).at(-1)).toMatchObject({
+        type: "manual_edit",
+        fromStatus: null,
+        toStatus: null,
+        payload: { mode: "live", fields: ["price"] },
+      });
+
+      await expect(
+        repos.publications.replacePublishedSource(
+          created.id,
+          { from: "paused" },
+          { contentId: input.contentId, listingSourceHash: "hash-3", progress: portalProgress },
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_STALE" });
+      expect((await repos.publications.get(created.id))?.listingSourceHash).toBe("hash-2");
+    });
+
+    it("replacePublishedSource es solo de Portal publicada o pausada (ADR-0020)", async () => {
+      const input = await newPublication();
+      const instagram = await repos.publications.create(input, operator);
+      const source = { contentId: input.contentId, listingSourceHash: "hash-2", progress: null };
+      await expect(
+        repos.publications.replacePublishedSource(
+          instagram.id,
+          { from: "approved" },
+          source,
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_TRANSITION" });
+
+      const portal = await repos.publications.create(
+        await newPublication({ platform: "portal_inmobiliario" }),
+        operator,
+      );
+      await expect(
+        repos.publications.replacePublishedSource(
+          portal.id,
+          { from: "approved" },
+          source,
+          operator,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_TRANSITION" });
+      expect(await repos.publications.listEvents(portal.id)).toHaveLength(1);
+    });
+
+    it("una publicación se republica una sola vez, sin contar las descartadas (F6)", async () => {
+      const input = await newPublication({ platform: "portal_inmobiliario" });
+      const parent = await repos.publications.create(input, operator);
+      await repos.publications.transition(
+        parent.id,
+        { from: "approved", to: "cancelled" },
+        operator,
+      );
+
+      const relist = await repos.publications.create(
+        { ...input, relistedFrom: parent.id },
+        operator,
+      );
+      expect(relist.relistedFrom).toBe(parent.id);
+      expect(parent.relistedFrom).toBeNull();
+      await expect(
+        repos.publications.create({ ...input, format: "reel", relistedFrom: parent.id }, operator),
+      ).rejects.toMatchObject({ code: "PUBLICATION_CONFLICT" });
+
+      // Descartada antes de salir: se puede intentar de nuevo.
+      await repos.publications.transition(
+        relist.id,
+        { from: "approved", to: "cancelled" },
+        operator,
+      );
+      const retry = await repos.publications.create(
+        { ...input, relistedFrom: parent.id },
+        operator,
+      );
+      expect(retry.relistedFrom).toBe(parent.id);
+    });
   });
 }

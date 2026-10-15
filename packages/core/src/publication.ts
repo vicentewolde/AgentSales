@@ -118,6 +118,32 @@ export const syncPayloadSchema = z.object({ remote: remoteStateSchema });
 export type SyncPayload = z.infer<typeof syncPayloadSchema>;
 
 /**
+ * `payload` de un evento `schedule_changed` (F6, ADR-0018): reprogramar cambia la hora (y el modo,
+ * que se fija de nuevo al programar) de una publicación que sigue en `scheduled`.
+ */
+export const scheduleChangedPayloadSchema = z.object({
+  from: z.iso.datetime(),
+  to: z.iso.datetime(),
+  mode: z.enum(PUBLISH_MODES),
+});
+export type ScheduleChangedPayload = z.infer<typeof scheduleChangedPayloadSchema>;
+
+/**
+ * Por qué una publicación quedó programada (el `status_changed` a `scheduled`, spec F6 §4.2): el
+ * operador, un lote, `auto_publish` o la espera ante un límite de la plataforma.
+ */
+export const SCHEDULE_REASONS = ["operator", "batch", "auto_publish", "rate_limit"] as const;
+export type ScheduleReason = (typeof SCHEDULE_REASONS)[number];
+
+/** `payload` del `status_changed` a `scheduled` (F6, ADR-0018): el modo, la hora y el motivo. */
+export const scheduledPayloadSchema = z.object({
+  mode: z.enum(PUBLISH_MODES),
+  scheduledAt: z.iso.datetime(),
+  reason: z.enum(SCHEDULE_REASONS),
+});
+export type ScheduledPayload = z.infer<typeof scheduledPayloadSchema>;
+
+/**
  * `payload` de un evento tal como queda guardado (jsonb): un objeto JSON. `PUBLICATION_EVENT_INVALID`
  * si no lo es. No revisa secretos: quien lo arma no los pone (spec F3 §4.3).
  */
@@ -131,14 +157,22 @@ export function normalizeEventPayload(payload: unknown): Record<string, unknown>
 
 /**
  * Al pasar a `publishing`, el modo de ese intento es obligatorio (spec F3 §4.3, D11): el worker lo
- * respeta, así que nunca puede quedar uno viejo. `PUBLICATION_MODE_REQUIRED` si falta.
+ * respeta, así que nunca puede quedar uno viejo. Desde F6 (ADR-0018, spec F6 §4.2) también al
+ * pasar a `scheduled`, que además exige la hora: el disparo usa el modo de la publicación.
+ * `PUBLICATION_MODE_REQUIRED` o `PUBLICATION_SCHEDULE_REQUIRED` si falta.
  */
-export function requirePublicationMode(to: PublicationStatus, dryRun: boolean | undefined): void {
-  if (to === "publishing" && dryRun === undefined) {
+export function requirePublicationMode(
+  to: PublicationStatus,
+  changes: { dryRun?: boolean; scheduledAt?: Date | null },
+): void {
+  if ((to === "publishing" || to === "scheduled") && changes.dryRun === undefined) {
     throw new AppError(
       "PUBLICATION_MODE_REQUIRED",
-      "Al pasar a publishing hay que fijar el modo (dry-run o live)",
+      `Al pasar a ${to} hay que fijar el modo (dry-run o live)`,
     );
+  }
+  if (to === "scheduled" && !(changes.scheduledAt instanceof Date)) {
+    throw new AppError("PUBLICATION_SCHEDULE_REQUIRED", "Al programar hay que fijar la hora");
   }
 }
 
@@ -188,6 +222,8 @@ export const publicationSchema = z
      * del aviso no publican si cambió. `null` en las anteriores a la migración `0007`.
      */
     listingSourceHash: z.string().min(1).nullable(),
+    /** La publicación de Portal que esta republica (ADR-0020); `null` en las demás. */
+    relistedFrom: z.string().nullable(),
     createdAt: z.date(),
     updatedAt: z.date(),
   })
@@ -211,6 +247,8 @@ export const PUBLICATION_EVENT_TYPES = [
   "publish_attempt",
   "sync",
   "manual_edit",
+  // F6 (ADR-0018): reprogramar una `scheduled` cambia la hora sin cambiar el estado.
+  "schedule_changed",
 ] as const;
 export type PublicationEventType = (typeof PUBLICATION_EVENT_TYPES)[number];
 
@@ -296,6 +334,8 @@ export const PUBLISH_ATTEMPT_RESULTS = [
   "failed",
   // Marketplace (ADR-0017): el formulario quedó listo para el clic del operador.
   "awaiting_manual_confirm",
+  // F6 (ADR-0018): un límite de la plataforma; la publicación volvió a quedar programada.
+  "rescheduled",
 ] as const;
 export type PublishAttemptResult = (typeof PUBLISH_ATTEMPT_RESULTS)[number];
 
@@ -317,5 +357,7 @@ export const publishAttemptPayloadSchema = z.object({
    * en `live`, limpias (`scrubMessage`) y como mucho 20.
    */
   notes: z.array(z.string()).optional(),
+  /** Con `rescheduled` (F6): la hora en que la publicación vuelve a intentarse. */
+  retryAt: z.iso.datetime().optional(),
 });
 export type PublishAttemptPayload = z.infer<typeof publishAttemptPayloadSchema>;

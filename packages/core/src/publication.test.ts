@@ -4,10 +4,14 @@ import {
   checkPublicationProgress,
   checkRemoteState,
   hasStartedLive,
+  PUBLICATION_EVENT_TYPES,
   publicationEventSchema,
   publicationSchema,
   publishAttemptPayloadSchema,
   remoteStateSchema,
+  requirePublicationMode,
+  scheduleChangedPayloadSchema,
+  scheduledPayloadSchema,
   syncPayloadSchema,
 } from "./publication.js";
 
@@ -30,6 +34,7 @@ const base = {
   progress: null,
   remoteState: null,
   listingSourceHash: null,
+  relistedFrom: null,
   createdAt: new Date("2026-10-05T12:00:00Z"),
   updatedAt: new Date("2026-10-05T12:00:00Z"),
 } as const;
@@ -236,5 +241,65 @@ describe("publishAttemptPayloadSchema (F4-T13)", () => {
       },
     };
     expect(publishAttemptPayloadSchema.parse(old)).toEqual(old);
+  });
+});
+
+describe("eventos del calendario (F6, ADR-0018)", () => {
+  it("schedule_changed y el paso a scheduled tienen su esquema", () => {
+    expect(
+      scheduleChangedPayloadSchema.parse({
+        from: "2026-10-19T13:00:00.000Z",
+        to: "2026-10-20T09:30:00.000Z",
+        mode: "live",
+      }),
+    ).toEqual({ from: "2026-10-19T13:00:00.000Z", to: "2026-10-20T09:30:00.000Z", mode: "live" });
+    expect(
+      scheduledPayloadSchema.safeParse({
+        mode: "dry-run",
+        scheduledAt: "2026-10-19T13:00:00.000Z",
+        reason: "batch",
+      }).success,
+    ).toBe(true);
+    expect(
+      scheduledPayloadSchema.safeParse({
+        mode: "dry-run",
+        scheduledAt: "2026-10-19T13:00:00.000Z",
+        reason: "otro",
+      }).success,
+    ).toBe(false);
+    expect(PUBLICATION_EVENT_TYPES).toContain("schedule_changed");
+  });
+
+  it("un intento rescheduled lleva retryAt, y un intento viejo sin él se sigue leyendo", () => {
+    expect(
+      publishAttemptPayloadSchema.parse({
+        mode: "live",
+        attempt: 2,
+        retry: 0,
+        result: "rescheduled",
+        retryAt: "2026-10-19T14:00:00.000Z",
+      }),
+    ).toMatchObject({ result: "rescheduled", retryAt: "2026-10-19T14:00:00.000Z" });
+    expect(
+      publishAttemptPayloadSchema.safeParse({
+        mode: "dry-run",
+        attempt: 1,
+        retry: 0,
+        result: "published",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("programar exige el modo y la hora", () => {
+    expect(() => requirePublicationMode("scheduled", { scheduledAt: new Date() })).toThrow(
+      expect.objectContaining({ code: "PUBLICATION_MODE_REQUIRED" }),
+    );
+    expect(() => requirePublicationMode("scheduled", { dryRun: true })).toThrow(
+      expect.objectContaining({ code: "PUBLICATION_SCHEDULE_REQUIRED" }),
+    );
+    expect(() =>
+      requirePublicationMode("scheduled", { dryRun: false, scheduledAt: new Date() }),
+    ).not.toThrow();
+    expect(() => requirePublicationMode("approved", {})).not.toThrow();
   });
 });

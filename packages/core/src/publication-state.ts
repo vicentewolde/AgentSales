@@ -8,17 +8,20 @@ import { AppError } from "./errors.js";
  *   pasa a `failed` si se detiene ante un captcha o una verificación (ADR-0004).
  * - `cancelled`: la publicación nunca llegó a la plataforma (se descartó o se cerró el aviso).
  * - `unpublished`: estuvo publicada y se bajó.
- * Los reintentos automáticos no cambian de estado: la publicación sigue en `publishing`.
+ * - `scheduled` (F6, ADR-0018): programada para una hora. Se programa desde `approved` o `failed`
+ *   (un reintento), se desprograma a `approved`, pasa a `failed` si a la hora no se pudo empezar, y
+ *   vuelve desde `publishing` cuando el intento espera que se libere un límite de la plataforma.
+ * Los reintentos automáticos de la cola no cambian de estado: la publicación sigue en `publishing`.
  */
 export const PUBLICATION_TRANSITIONS: Readonly<
   Record<PublicationStatus, readonly PublicationStatus[]>
 > = {
   approved: ["scheduled", "publishing", "cancelled"],
-  scheduled: ["publishing", "cancelled"],
-  publishing: ["published", "failed", "awaiting_manual_confirm"],
+  scheduled: ["publishing", "approved", "failed", "cancelled"],
+  publishing: ["published", "failed", "awaiting_manual_confirm", "scheduled"],
   awaiting_manual_confirm: ["published", "failed", "cancelled"],
   published: ["paused", "unpublished"],
-  failed: ["publishing", "cancelled"],
+  failed: ["publishing", "scheduled", "cancelled"],
   paused: ["published", "unpublished"],
   unpublished: [],
   cancelled: [],

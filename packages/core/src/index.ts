@@ -353,11 +353,13 @@ export {
 } from "./ports/platform-account-repository.js";
 export type { PlatformCatalogRepository } from "./ports/platform-catalog-repository.js";
 export type {
+  DueQuery,
   NewPublication,
   NewPublicationEvent,
   PublicationChanges,
   PublicationEventInput,
   PublicationRepository,
+  PublishedSource,
 } from "./ports/publication-repository.js";
 export type {
   AccessTokenProvider,
@@ -427,7 +429,13 @@ export {
   type RemoteState,
   remoteStateSchema,
   requirePublicationMode,
+  SCHEDULE_REASONS,
+  type ScheduleChangedPayload,
+  type ScheduledPayload,
+  type ScheduleReason,
   type SyncPayload,
+  scheduleChangedPayloadSchema,
+  scheduledPayloadSchema,
   syncPayloadSchema,
 } from "./publication.js";
 export {
@@ -453,6 +461,15 @@ export {
 } from "./publish/input.js";
 export * from "./redact.js";
 export { RUN_WAIT } from "./run-wait.js";
+export {
+  MAX_SCHEDULE_SPACING_MINUTES,
+  SCHEDULE_MAX_AHEAD_MS,
+  SCHEDULE_MIN_LEAD_MS,
+  SCHEDULE_OVERDUE_MS,
+  type ScheduleState,
+  scheduleAt,
+  scheduleState,
+} from "./schedule.js";
 export {
   type ApproveContentDeps,
   type ApprovedContent,
@@ -637,6 +654,23 @@ export {
   type RunImportResult,
   runImport,
 } from "./use-cases/run-import.js";
+export {
+  type ChannelScheduled,
+  MAX_SCHEDULE_BATCH,
+  type ScheduleDeps,
+  type ScheduleListingOutcome,
+  type ScheduleListingsResult,
+  scheduleChannel,
+  scheduleListings,
+  schedulePublication,
+  unschedulePublication,
+} from "./use-cases/schedule-publications.js";
+export {
+  DUE_BATCH_LIMIT,
+  type StartDueDeps,
+  type StartDueResult,
+  startDuePublications,
+} from "./use-cases/start-due-publications.js";
 export {
   type StartPublicationDeps,
   type StartPublicationResult,

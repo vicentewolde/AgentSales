@@ -25,8 +25,15 @@ import { hasStartedLive, type Publication, type PublicationActor } from "../publ
 // Piezas comunes de publicar el canal (`publishListing`), publicar una (`startPublication`),
 // descartar y retirar (spec F3 §4.3).
 
-/** Estados de una publicación que se pueden pasar a `publishing`. */
-export const STARTABLE_STATUSES: readonly Publication["status"][] = ["approved", "failed"];
+/**
+ * Estados de una publicación que se pueden pasar a `publishing` (o programar). Desde F6 también
+ * `scheduled`: publicar ahora adelanta lo programado (spec F6 §4.3, D13).
+ */
+export const STARTABLE_STATUSES: readonly Publication["status"][] = [
+  "approved",
+  "failed",
+  "scheduled",
+];
 
 export const publicationNotFound = (publicationId: string) =>
   new AppError("PUBLICATION_NOT_FOUND", `No existe la publicación ${publicationId}`, {
@@ -119,7 +126,8 @@ export function requireCompatibleMode(publication: Publication, dryRun: boolean)
 }
 
 /**
- * Pasa una publicación a `publishing` con el modo de la API y su evento (spec F3 §4.3, D11):
+ * Pasa una publicación a `publishing` con el modo pedido y su evento (spec F3 §4.3, D11; el de la
+ * API al publicar, el de la propia publicación al dispararse una programada, ADR-0018):
  * `attempts` cuenta las veces que se pidió publicarla (los reintentos de la cola no lo suben); el
  * motivo del intento anterior se borra y `progress` se conserva para retomar.
  */
@@ -268,7 +276,8 @@ export type MarketplaceStartOptions = {
  *    el clic final, en cualquier modo → `MARKETPLACE_FORM_OPEN`;
  * 3. en `live`, la cuenta no llegó a su límite de intentos de hoy (Santiago) →
  *    `MARKETPLACE_DAILY_LIMIT`.
- * Todos son no reintentables (409 en la API).
+ * Todos son no reintentables (409 en la API). Con `limits: false` (al programar un recordatorio,
+ * spec F6 §4.3) solo se revisa el punto 1: los otros dos son del día en que se aprieta Publicar.
  */
 export async function requireMarketplaceStartable(
   locked: Pick<LockedRepositories, "publications" | "media">,
@@ -279,6 +288,7 @@ export async function requireMarketplaceStartable(
     dryRun,
     options,
     now,
+    limits = true,
   }: {
     listing: Listing;
     accountIds: readonly string[];
@@ -286,6 +296,7 @@ export async function requireMarketplaceStartable(
     dryRun: boolean;
     options: MarketplaceStartOptions;
     now: Date;
+    limits?: boolean;
   },
 ): Promise<void> {
   const readiness = marketplaceReadiness(listing, {
@@ -301,6 +312,7 @@ export async function requireMarketplaceStartable(
       { details: { listingId: listing.id, issues: readiness.issues } },
     );
   }
+  if (!limits) return;
   const accounts = new Set(accountIds);
   const own = new Set(channelIds);
   // Primero la que espera el clic: su id es el que el operador puede cerrar (lo publiqué o no).

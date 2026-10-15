@@ -3,6 +3,7 @@ import { type ContentPrepareJobDeps, contentPrepareJob } from "./content-prepare
 import type { Job } from "./define.js";
 import { importRunJob } from "./import-run.js";
 import { type MarketplaceProfileJobDeps, marketplaceProfileJob } from "./marketplace-profile.js";
+import { type PublicationDueJobDeps, publicationDueJob } from "./publication-due.js";
 import { type PublicationPublishJobDeps, publicationPublishJob } from "./publication-publish.js";
 import { type PublicationSyncJobDeps, publicationSyncJob } from "./publication-sync.js";
 import { systemPing } from "./system-ping.js";
@@ -21,6 +22,8 @@ export type JobDeps = {
   tokensRefresh: TokensRefreshJobDeps;
   /** El perfil del navegador de Marketplace: iniciar sesión y olvidarlo (spec F5 §4.2). */
   marketplaceProfile: MarketplaceProfileJobDeps;
+  /** El disparo de las programadas (spec F6 §4.4): el candado, la cola y lo que revisa publicar. */
+  publicationDue: PublicationDueJobDeps;
 };
 
 /** Jobs que procesa el worker, con sus dependencias inyectadas. Los de ADR-0005 llegan en su fase. */
@@ -33,5 +36,6 @@ export function buildJobs(deps: JobDeps): readonly Job[] {
     publicationSyncJob(deps.publicationSync),
     tokensRefreshJob(deps.tokensRefresh),
     marketplaceProfileJob(deps.marketplaceProfile),
+    publicationDueJob(deps.publicationDue),
   ];
 }

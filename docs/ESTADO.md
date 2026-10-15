@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-15
 **Fase actual:** F6 · Calendario + seguimiento (`docs/specs/fase-6-calendario-seguimiento.md`, aprobado el 2026-10-15; ADR-0018 a ADR-0020). F5 cerrada (tag `v0.5.0`)
-**Última tarea:** spec de F6 (`/fase-plan 6`)
-**Siguiente paso:** `/tarea F6-T01 F6-T02 F6-T03` — lote A: el calendario en core (máquina, datos, programar) y el disparo cada minuto
+**Última tarea:** lote A de F6 (F6-T01 a T03): el calendario en core y el disparo cada minuto
+**Siguiente paso:** `/tarea F6-T04 F6-T05` — lote B: reintentos con espera ante los límites de Instagram, la causa legible y la vigilancia periódica
 
 ## Pendiente tuyo para F6 (no bloquea hasta el lote E)
 - [ ] Instalar el cliente de Postgres para el respaldo: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6")
@@ -25,10 +25,10 @@
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F6 (`/fase-plan 6`) | ✅ terminada | (este PR) |
-| **Lote A** · T01 Máquina, datos y repositorios del calendario | ⏳ pendiente | |
-| **Lote A** · T02 Programar, reprogramar y desprogramar | ⏳ pendiente | |
-| **Lote A** · T03 El disparo (`publication.due`) | ⏳ pendiente | |
+| Spec F6 (`/fase-plan 6`) | ✅ terminada | #119 |
+| **Lote A** · T01 Máquina, datos y repositorios del calendario | ✅ terminada | #120 |
+| **Lote A** · T02 Programar, reprogramar y desprogramar | ✅ terminada | #120 |
+| **Lote A** · T03 El disparo (`publication.due`) | ✅ terminada | #120 |
 | **Lote B** · T04 Reintentos, espera ante límites y causa legible | ⏳ pendiente | |
 | **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ⏳ pendiente | |
 | **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ⏳ pendiente | |
@@ -118,6 +118,13 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-15: **Lote A de F6 (F6-T01 a T03): el calendario por dentro.** Todavía no hay botones ni comandos (llegan con la API, la CLI y el panel, lotes F y G).
+  - **Programar:** una publicación, o una o varias propiedades con espaciado entre ellas. Revisa lo mismo que publicar, salvo el límite del día de Marketplace (un recordatorio no lo gasta). La hora queda al minuto, de 2 min a 60 días adelante, y el modo (simulación o vivo) se fija al programar. Reprogramar deja su evento en la bitácora; desprogramar devuelve la publicación a "aprobada".
+  - **El disparo:** un job revisa cada minuto (y al encender el worker) las programadas que vencieron hace 12 h o menos y las publica con su propio modo. Las más atrasadas esperan tu decisión, y Marketplace nunca sale solo. Si a la hora ya no se puede publicar (por ejemplo, pausaste la propiedad), queda "falló" con el motivo.
+  - **Publicar ahora** adelanta una programada.
+  - **Base de datos:** migración `0008` (el índice de las programadas y `relisted_from` para republicar en Portal, lote C). Se aplica con `pnpm db:migrate` antes de la demo.
+  - Las revisiones de "publicar" quedaron en un solo lugar (`start-checks.ts`), compartidas por publicar, programar y el disparo.
+  - **La revisión dejó** (`revisor` y `arquitecto`; bloqueantes: el spec al día con el contrato real y un resguardo en `replacePublishedSource`): los eventos de programar validados con su esquema; el lote usa un solo reloj y junta en una fila lo que falla igual en todos los canales; una segunda barrera para que Marketplace nunca se dispare solo; más pruebas (más de 20 atrasadas, rechazos de programar, formulario abierto, esquemas).
 - 2026-10-15: **Spec de F6 (`/fase-plan 6`).**
   - **Lo que había en el código:** el estado "programada" existía en la base sin uso; `auto_publish` no se leía; pausar o archivar una propiedad no tocaba sus publicaciones y nada escribía el motivo de cierre; el único reloj del worker era el refresco de tokens.
   - **Documentación verificada:** Mercado Libre §13 (republicar crea un aviso nuevo, una vez por aviso; editar exige `seller_contact` completo y, desde marzo de 2026, las fotos en cada actualización; no hay forma de extender el vencimiento), Instagram §6.1 (la API no dice cuándo se libera el cupo) y la nota nueva del respaldo de Neon (`neon-backup.md`: Postgres 18 probable, `libpq` de Homebrew fuera del `PATH`). Las páginas de Mercado Libre se releyeron con el navegador integrado.
