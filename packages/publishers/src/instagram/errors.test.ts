@@ -79,14 +79,24 @@ describe("instagramError", () => {
         const error = instagramError({ httpStatus: 400, ...info });
         expect(error, JSON.stringify(info)).toMatchObject({ code, retriable });
         expect(error.message).not.toBe(code);
-        expect(error.details).toEqual({
+        // Los límites llevan además la señal de espera (F6-T04): la revisa su propio test.
+        const { waitMinutes: _wait, ...details } = error.details ?? {};
+        expect(details).toEqual({
           httpStatus: info.httpStatus ?? 400,
           graphCode: info.code ?? null,
           graphSubcode: info.subcode ?? null,
         });
+        expect(_wait !== undefined).toBe(code === "IG_RATE_LIMITED" || code === "IG_PUBLISH_LIMIT");
       }
     });
   }
+
+  it("los límites llevan la señal de espera: la de la cabecera, 1 hora sin ella, 6 h el máximo diario (F6)", () => {
+    expect(instagramError({ code: 17, retryAfterMinutes: 12 }).details?.waitMinutes).toBe(12);
+    expect(instagramError({ code: 80002 }).details?.waitMinutes).toBe(60);
+    expect(instagramError({ code: 9 }).details?.waitMinutes).toBe(360);
+    expect(instagramError({ code: 190 }).details?.waitMinutes).toBeUndefined();
+  });
 
   it("el límite de llamadas dice cuándo reintentar (1 hora si no llegó el dato)", () => {
     expect(instagramError({ code: 17, retryAfterMinutes: 12 }).message).toContain("12 minutos");

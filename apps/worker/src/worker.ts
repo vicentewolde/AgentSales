@@ -9,7 +9,7 @@ import {
   loadEnvFile,
   resolveBrowserProfilesDir,
 } from "@agentsales/config";
-import { confirmManualPublication, type RunImportDeps } from "@agentsales/core";
+import { confirmManualPublication, enqueueLiveSyncs, type RunImportDeps } from "@agentsales/core";
 import {
   createBrokerRepository,
   createContentRepository,
@@ -51,7 +51,6 @@ import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-r
 import { buildJobs } from "./jobs/index.js";
 import { enqueuePublicationDue } from "./jobs/publication-due.js";
 import { instagramNoteLogger, requeuePublishingPublications } from "./jobs/publication-publish.js";
-import { enqueueLiveSyncs } from "./jobs/publication-sync.js";
 import { registerJobs } from "./jobs/registry.js";
 import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
 import { llmProviderOptions } from "./llm-options.js";
@@ -252,6 +251,12 @@ const jobs = buildJobs({
     publications,
     listings: repositories.listings,
     fieldDefinitions: repositories.fieldDefinitions,
+  },
+  publicationsWatch: {
+    publications,
+    platformAccounts,
+    // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
+    queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
   },
 });
 

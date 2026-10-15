@@ -1,13 +1,4 @@
-import {
-  enqueueSync,
-  isAppError,
-  type JobQueue,
-  OPERATION_PLATFORMS,
-  type PlatformAccountRepository,
-  type PublicationRepository,
-  type SyncPublicationDeps,
-  syncPublication,
-} from "@agentsales/core";
+import { isAppError, type SyncPublicationDeps, syncPublication } from "@agentsales/core";
 import { defineJob, type Job, type QueuePolicy } from "./define.js";
 
 /**
@@ -95,45 +86,4 @@ export function publicationSyncJob(deps: PublicationSyncJobDeps): Job {
       }
     },
   });
-}
-
-/**
- * Al arrancar, con las colas creadas (spec F4 §4.9): encola el sync de cada publicación de Portal
- * en `live` que está `published` o `paused` y cuya cuenta sigue `connected` (sin cuenta, el sync
- * solo daría `ACCOUNT_NOT_CONNECTED`). `singletonKey` no duplica uno pendiente (`alreadyQueued`).
- * Una que falla no corta las demás: devuelve cuántas se encolaron y las que no, con su código.
- */
-export async function enqueueLiveSyncs(
-  publications: Pick<PublicationRepository, "listByStatus">,
-  platformAccounts: Pick<PlatformAccountRepository, "get">,
-  queue: JobQueue,
-): Promise<{
-  enqueued: number;
-  alreadyQueued: number;
-  failed: Array<{ publicationId: string; code: string }>;
-}> {
-  const candidates = [
-    ...(await publications.listByStatus("published")),
-    ...(await publications.listByStatus("paused")),
-  ].filter((publication) => !publication.dryRun && OPERATION_PLATFORMS.has(publication.platform));
-  const connected = new Map<string, boolean>();
-  const failed: Array<{ publicationId: string; code: string }> = [];
-  let enqueued = 0;
-  let alreadyQueued = 0;
-  for (const publication of candidates) {
-    try {
-      let isConnected = connected.get(publication.platformAccountId);
-      if (isConnected === undefined) {
-        isConnected =
-          (await platformAccounts.get(publication.platformAccountId))?.status === "connected";
-        connected.set(publication.platformAccountId, isConnected);
-      }
-      if (!isConnected) continue;
-      if ((await enqueueSync(queue, publication.id)) === null) alreadyQueued += 1;
-      else enqueued += 1;
-    } catch (error) {
-      failed.push({ publicationId: publication.id, code: codeOf(error) });
-    }
-  }
-  return { enqueued, alreadyQueued, failed };
 }

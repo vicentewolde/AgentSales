@@ -581,3 +581,103 @@ describe("publishPublication · apagado, más casos", () => {
     }
   });
 });
+
+describe("publishPublication · espera ante un límite (F6, ADR-0018)", () => {
+  const limit = (waitMinutes: number) =>
+    new AppError(
+      "IG_RATE_LIMITED",
+      "Instagram limitó las llamadas de la app: reintenta en 30 minutos",
+      {
+        details: { waitMinutes },
+      },
+    );
+
+  /** Lleva una programada por la espera de vuelta a `publishing`, como el disparo. */
+  const resume = (t: PublicationScenario, id: string) =>
+    t.publications.transition(
+      id,
+      { from: "scheduled", to: "publishing", changes: { dryRun: false, incrementAttempts: true } },
+      { actor: "system" },
+    );
+
+  it("reprograma la publicación para cuando se libere, con su modo, el motivo y el progreso intactos", async () => {
+    const { t, post, run, attempts } = await setup({
+      publisher: {
+        steps: [
+          {
+            progress: { attemptStartedAt: NOW.toISOString(), childIds: [], containerId: "c-1" },
+            error: limit(30),
+          },
+        ],
+      },
+    });
+
+    const result = await run(post, { isLastAttempt: true });
+
+    const retryAt = new Date(NOW.getTime() + 30 * 60_000);
+    expect(result).toMatchObject({ outcome: "rescheduled", retryAt });
+    expect(current(t, post.id)).toMatchObject({
+      status: "scheduled",
+      scheduledAt: retryAt,
+      dryRun: false,
+      lastError: { code: "IG_RATE_LIMITED", retriable: false },
+      progress: { containerId: "c-1" },
+    });
+    expect((await attempts(post)).at(-1)?.payload).toMatchObject({
+      result: "rescheduled",
+      retryAt: retryAt.toISOString(),
+      error: { code: "IG_RATE_LIMITED" },
+    });
+    const events = await t.publications.listEvents(post.id);
+    expect(events.find((event) => event.toStatus === "scheduled")).toMatchObject({
+      fromStatus: "publishing",
+      actor: "system",
+      payload: { mode: "live", scheduledAt: retryAt.toISOString(), reason: "rate_limit" },
+    });
+  });
+
+  it("la cuarta espera seguida deja la publicación failed; un paso del operador reinicia la cuenta", async () => {
+    const { t, post, run } = await setup({
+      publisher: { steps: Array.from({ length: 5 }, () => ({ error: limit(10) })) },
+    });
+
+    for (let wait = 1; wait <= 3; wait += 1) {
+      expect(await run(post)).toMatchObject({ outcome: "rescheduled" });
+      await resume(t, post.id);
+    }
+    await expect(run(post)).rejects.toMatchObject({ code: "IG_RATE_LIMITED" });
+    expect(current(t, post.id)).toMatchObject({ status: "failed" });
+
+    // El operador reintenta: vuelve a tener 3 esperas.
+    await t.publications.transition(
+      post.id,
+      { from: "failed", to: "publishing", changes: { dryRun: false, incrementAttempts: true } },
+      { actor: "operator" },
+    );
+    expect(await run(post)).toMatchObject({ outcome: "rescheduled" });
+  });
+
+  it("una espera muy larga se acorta a 24 h y la hora sube al minuto", async () => {
+    const { t, post, run } = await setup({ publisher: { steps: [{ error: limit(5000.4) }] } });
+    await run(post);
+    expect(current(t, post.id)?.scheduledAt).toEqual(new Date(NOW.getTime() + 24 * 60 * 60_000));
+  });
+
+  it("un error reintentable sin la señal (como ML_RATE_LIMITED de Portal) sigue el camino de la cola", async () => {
+    const { t, post, run } = await setup({
+      publisher: {
+        steps: [{ error: new AppError("ML_RATE_LIMITED", "límite", { retriable: true }) }],
+      },
+    });
+    await expect(run(post)).rejects.toMatchObject({ code: "ML_RATE_LIMITED", retriable: true });
+    expect(current(t, post.id)).toMatchObject({ status: "publishing", scheduledAt: null });
+  });
+
+  it("sin la señal de espera, un error no reintentable sigue dejando failed", async () => {
+    const { t, post, run } = await setup({
+      publisher: { steps: [{ error: new AppError("IG_PUBLISH_LIMIT", "sin cupo") }] },
+    });
+    await expect(run(post)).rejects.toMatchObject({ code: "IG_PUBLISH_LIMIT" });
+    expect(current(t, post.id)).toMatchObject({ status: "failed" });
+  });
+});

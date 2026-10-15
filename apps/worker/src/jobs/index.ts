@@ -6,6 +6,7 @@ import { type MarketplaceProfileJobDeps, marketplaceProfileJob } from "./marketp
 import { type PublicationDueJobDeps, publicationDueJob } from "./publication-due.js";
 import { type PublicationPublishJobDeps, publicationPublishJob } from "./publication-publish.js";
 import { type PublicationSyncJobDeps, publicationSyncJob } from "./publication-sync.js";
+import { type PublicationsWatchJobDeps, publicationsWatchJob } from "./publications-watch.js";
 import { systemPing } from "./system-ping.js";
 import { type TokensRefreshJobDeps, tokensRefreshJob } from "./tokens-refresh.js";
 
@@ -24,6 +25,8 @@ export type JobDeps = {
   marketplaceProfile: MarketplaceProfileJobDeps;
   /** El disparo de las programadas (spec F6 §4.4): el candado, la cola y lo que revisa publicar. */
   publicationDue: PublicationDueJobDeps;
+  /** La vigilancia de cada hora (spec F6 §4.6): el sync de Portal y las atascadas. */
+  publicationsWatch: PublicationsWatchJobDeps;
 };
 
 /** Jobs que procesa el worker, con sus dependencias inyectadas. Los de ADR-0005 llegan en su fase. */
@@ -37,5 +40,6 @@ export function buildJobs(deps: JobDeps): readonly Job[] {
     tokensRefreshJob(deps.tokensRefresh),
     marketplaceProfileJob(deps.marketplaceProfile),
     publicationDueJob(deps.publicationDue),
+    publicationsWatchJob(deps.publicationsWatch),
   ];
 }
