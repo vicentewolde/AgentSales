@@ -240,6 +240,11 @@ export {
   portalNamedRefSchema,
 } from "./portal/catalog.js";
 export {
+  PORTAL_EXPIRY_NOTICE_DAYS,
+  type PortalExpiry,
+  portalExpiry,
+} from "./portal/expiry.js";
+export {
   PORTAL_ATTRIBUTE_FIELDS,
   PORTAL_FACING_CODES,
   PORTAL_ISSUE_MESSAGES,
@@ -368,6 +373,8 @@ export type {
   PublishBrokerContact,
   PublishContext,
   PublishedRef,
+  PublishedUpdate,
+  PublishedUpdateResult,
   Publisher,
   PublishHandoff,
   PublishInput,
@@ -407,6 +414,8 @@ export {
   hasStartedLive,
   type InstagramProgress,
   instagramProgressSchema,
+  type ManualEditPayload,
+  manualEditPayloadSchema,
   normalizeEventPayload,
   PUBLICATION_ACTORS,
   PUBLICATION_EVENT_TYPES,
@@ -632,6 +641,10 @@ export {
   type TokenRefreshSkipReason,
 } from "./use-cases/refresh-account-tokens.js";
 export {
+  type RelistPublicationDeps,
+  relistPublication,
+} from "./use-cases/relist-publication.js";
+export {
   enqueueContentRun,
   type RequestContentRunDeps,
   type RequestContentRunParams,
@@ -695,6 +708,10 @@ export {
   type UnapprovedContent,
   unapproveContent,
 } from "./use-cases/unapprove-content.js";
+export {
+  type UpdatePortalPublicationDeps,
+  updatePortalPublication,
+} from "./use-cases/update-portal-publication.js";
 export {
   enqueueLiveSyncs,
   type LiveSyncsResult,

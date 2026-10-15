@@ -2,14 +2,25 @@ import {
   AppError,
   isAppError,
   type PlatformContext,
+  type PortalProgress,
   type PortalSellerContact,
   type PublishedRef,
+  type PublishedUpdate,
+  type PublishedUpdateResult,
   type Publisher,
   portalProgressSchema,
+  publishInputInvalid,
   type RemoteStatus,
 } from "@agentsales/core";
+import type { PortalCatalog } from "./catalog.js";
 import type { MercadoLibreCallOptions } from "./http.js";
-import type { MercadoLibreItem, MercadoLibreItems, MercadoLibreWritableStatus } from "./items.js";
+import { buildPortalItem, resolvePortalItemCatalog } from "./item.js";
+import type {
+  MercadoLibreItem,
+  MercadoLibreItemChanges,
+  MercadoLibreItems,
+  MercadoLibreWritableStatus,
+} from "./items.js";
 import { type MercadoLibreTokenContext, withMercadoLibreToken } from "./token.js";
 
 /** El estado de un ítem como lo guarda core (`remote_state`, sin `checkedAt`, que pone core). */
@@ -66,11 +77,19 @@ function moderationReason(name: string | null): NonNullable<RemoteStatus["reason
  * el catálogo. La API pasa un cliente con el tope de 10 s (`MERCADOLIBRE_API_TIMEOUT_MS`).
  */
 export type PortalOperations = Required<
-  Pick<Publisher, "pause" | "resume" | "close" | "getStatus">
+  Pick<Publisher, "pause" | "resume" | "close" | "getStatus" | "update">
 >;
 
 export type PortalOperationsOptions = {
-  items: Pick<MercadoLibreItems, "get" | "setStatus" | "getLastModeration">;
+  /** Actualizar (`update` y `updateDescription`) es opcional: sin ellos, `update` no está configurado. */
+  items: Pick<MercadoLibreItems, "get" | "setStatus" | "getLastModeration"> &
+    Partial<Pick<MercadoLibreItems, "update" | "updateDescription">>;
+  /**
+   * El catálogo (la hoja, sus atributos y la ubicación), para actualizar un aviso (ADR-0020): sin
+   * él, `update` es `PUBLISHER_NOT_CONFIGURED`. Pausar, reactivar, cerrar y leer no lo usan.
+   */
+  catalog?: Pick<PortalCatalog, "leafCategory" | "attributes" | "location">;
+  now?: () => Date;
 };
 
 type ProgressProblem = "missing" | "unreadable" | "other_item";
@@ -93,13 +112,18 @@ const progressUnusable = (reason: ProgressProblem) =>
  * devolver, así que una publicación publicada siempre lo tiene.
  */
 function sellerContactOf(ref: PublishedRef): PortalSellerContact {
+  const { sellerContact } = itemProgressOf(ref);
+  if (sellerContact === undefined) throw progressUnusable("missing");
+  return sellerContact;
+}
+
+/** El progreso del mismo ítem, o `PORTAL_PROGRESS_UNUSABLE` sin llamar. */
+function itemProgressOf(ref: PublishedRef): PortalProgress {
   if (ref.progress === null || ref.progress === undefined) throw progressUnusable("missing");
   const parsed = portalProgressSchema.safeParse(ref.progress);
   if (!parsed.success) throw progressUnusable("unreadable");
-  const { itemId, sellerContact } = parsed.data;
-  if (itemId !== ref.externalId) throw progressUnusable("other_item");
-  if (sellerContact === undefined) throw progressUnusable("missing");
-  return sellerContact;
+  if (parsed.data.itemId !== ref.externalId) throw progressUnusable("other_item");
+  return parsed.data;
 }
 
 /**
@@ -129,6 +153,7 @@ const MODERATION_SKIPPABLE = new Set([
  */
 export function createPortalOperations(options: PortalOperationsOptions): PortalOperations {
   const { items } = options;
+  const now = options.now ?? (() => new Date());
 
   const call = <T>(
     ctx: PlatformContext,
@@ -159,6 +184,76 @@ export function createPortalOperations(options: PortalOperationsOptions): Portal
     pause: (ref, ctx) => setStatus(ref, ctx, "paused"),
     resume: (ref, ctx) => setStatus(ref, ctx, "active"),
     close: (ref, ctx) => setStatus(ref, ctx, "closed"),
+
+    /**
+     * Actualizar un aviso publicado o pausado (ADR-0020, spec F6 §4.7): arma el ítem con el texto
+     * aprobado vigente y la propiedad de hoy (`buildPortalItem`, la misma revisión que publicar) y
+     * manda solo lo que cambió (el título y la descripción si cambió el texto; el precio y los
+     * atributos si cambió la propiedad), siempre con las fotos guardadas en el progreso y el
+     * `seller_contact` del corredor de hoy. Nunca cambia las fotos ni la categoría. Devuelve el
+     * progreso con el contacto enviado, que pausar, reactivar y cerrar reutilizan.
+     */
+    async update(ref: PublishedRef, ctx: PlatformContext, request: PublishedUpdate) {
+      const { catalog } = options;
+      const { update, updateDescription } = items;
+      if (catalog === undefined || update === undefined || updateDescription === undefined) {
+        throw new AppError(
+          "PUBLISHER_NOT_CONFIGURED",
+          "Actualizar un aviso de Portal necesita el catálogo de Mercado Libre",
+        );
+      }
+      const progress = itemProgressOf(ref);
+      if (progress.pictureIds.length === 0) throw progressUnusable("missing");
+      const { input } = request;
+      const { listing } = input;
+      if (listing === undefined) throw publishInputInvalid(input.publicationId, []);
+      const tokenCtx: MercadoLibreTokenContext = {
+        accessToken: ctx.accessToken,
+        ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+      };
+      const itemCatalog = await resolvePortalItemCatalog(listing, catalog, tokenCtx);
+      const pictures = progress.pictureIds.map((id) => ({ id }));
+      const built = buildPortalItem(input, itemCatalog, { pictures, now });
+      if (!built.ok) throw publishInputInvalid(input.publicationId, built.issues);
+      const body = built.item.body as {
+        title?: string;
+        price?: number;
+        currency_id?: string;
+        attributes?: readonly unknown[];
+      };
+      const changes: MercadoLibreItemChanges = {
+        pictures,
+        ...(request.text && body.title !== undefined ? { title: body.title } : {}),
+        ...(request.listing
+          ? {
+              ...(body.price === undefined ? {} : { price: body.price }),
+              ...(body.currency_id === undefined ? {} : { currency_id: body.currency_id }),
+              ...(body.attributes === undefined ? {} : { attributes: body.attributes }),
+            }
+          : {}),
+      };
+      const item = await call(ctx, (token, callOptions) =>
+        update.call(items, token, ref.externalId, changes, built.item.sellerContact, callOptions),
+      );
+      if (request.text) {
+        await call(ctx, (token, callOptions) =>
+          updateDescription.call(items, token, ref.externalId, input.caption, callOptions),
+        );
+      }
+      // Solo lo que de verdad se envió: la bitácora no debe decir más.
+      const fields = [
+        ...("title" in changes ? ["title"] : []),
+        ...(request.text ? ["description"] : []),
+        ...("price" in changes ? ["price"] : []),
+        ...("attributes" in changes ? ["attributes"] : []),
+      ];
+      const result: PublishedUpdateResult = {
+        remote: remoteStatusOf(item),
+        progress: { ...progress, sellerContact: built.item.sellerContact },
+        fields,
+      };
+      return result;
+    },
 
     async getStatus(ref, ctx) {
       const item = await call(ctx, (token, callOptions) =>

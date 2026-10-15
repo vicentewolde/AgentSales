@@ -19,6 +19,7 @@ import {
   createListingRepository,
   createMediaRepository,
   createPlatformAccountRepository,
+  createPlatformCatalogRepository,
   createPublicationRepository,
   pingDatabase,
   toPgConnectionString,
@@ -27,6 +28,7 @@ import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import {
   createInstagramAuth,
   createMercadoLibreAuth,
+  createMercadoLibreItems,
   MERCADOLIBRE_API_TIMEOUT_MS,
 } from "@agentsales/publishers";
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
@@ -122,8 +124,12 @@ const app = createApp({
     configured: Boolean(env.ML_APP_ID && env.ML_CLIENT_SECRET),
     redirectUri: env.ML_REDIRECT_URI,
   },
-  // Pausar, reactivar, cerrar y el sync de Portal (F4-T19): 10 s por llamada, sin envolver.
-  operationsFor: createApiOperations(),
+  // Pausar, reactivar, cerrar y el sync de Portal (F4-T19) y actualizar (F6-T07, con el catálogo
+  // guardado en la base): 10 s por llamada, sin envolver.
+  operationsFor: createApiOperations(
+    createMercadoLibreItems,
+    createPlatformCatalogRepository(database.db),
+  ),
   oauthState: createStateSigner(env.APP_ENCRYPTION_KEY),
   // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).
   panelUrl: `http://localhost:${env.WEB_PORT}`,

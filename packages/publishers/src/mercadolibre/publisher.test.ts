@@ -48,6 +48,8 @@ type Item = {
   permalink: string;
   pictures: string[];
   description: string | null;
+  /** El ítem del que este es la republicación. */
+  parent?: string;
 };
 
 type Faults = {
@@ -71,12 +73,20 @@ type Faults = {
   createAlwaysUnauthorized?: boolean;
   /** Lo que responde `POST /items/validate` número N (por defecto, 204: válido). */
   validate?: Record<number, () => Response>;
+  /** Lo que responde `POST /items/{id}/relist` número N; `relistedThenLost` crea y responde 503. */
+  relist?: Record<number, "relistedThenLost" | (() => Response)>;
+  /** El ítem republicado no trae las fotos del anterior. */
+  relistWithoutPictures?: boolean;
+  /** Lo que responde el `PUT /items/{id}` número N. */
+  put?: Record<number, () => Response>;
 };
 
 function useMercadoLibre(faults: Faults = {}) {
   const items = new Map<string, Item>();
   const uploaded: string[] = [];
-  const counts = { upload: 0, create: 0, addDescription: 0, validate: 0 };
+  const counts = { upload: 0, create: 0, addDescription: 0, validate: 0, relist: 0, put: 0 };
+  /** Los cuerpos de cada `PUT /items/{id}` (actualizar o cambiar el estado), en orden. */
+  const puts: Array<{ id: string; body: Record<string, unknown> }> = [];
   let nextItem = 1;
   const unauthorized = new Set(faults.unauthorizedOnce ?? []);
   const rejectOnce = (kind: "upload" | "create" | "description") => {
@@ -85,6 +95,8 @@ function useMercadoLibre(faults: Faults = {}) {
     return HttpResponse.json({ message: "invalid token", error: "unauthorized" }, { status: 401 });
   };
   const itemBody = (item: Item) => ({
+    pictures: item.pictures.map((id) => ({ id })),
+    parent_item_id: item.parent ?? null,
     id: item.id,
     status: item.status,
     sub_status: item.sub_status,
@@ -130,9 +142,57 @@ function useMercadoLibre(faults: Faults = {}) {
     http.put(`${API}/items/:id`, async ({ params, request }) => {
       const item = items.get(String(params.id));
       if (item === undefined) return HttpResponse.json({ message: "not found" }, { status: 404 });
-      item.status = ((await request.json()) as { status: string }).status;
-      item.sub_status = [];
+      const body = (await request.json()) as Record<string, unknown>;
+      counts.put += 1;
+      const putFault = faults.put?.[counts.put];
+      if (putFault) return putFault();
+      puts.push({ id: item.id, body });
+      if (typeof body.status === "string") {
+        item.status = body.status;
+        item.sub_status = [];
+      }
+      if (Array.isArray(body.pictures)) {
+        item.pictures = (body.pictures as { id: string }[]).map((picture) => picture.id);
+      }
+      if (typeof body.seller_custom_field === "string") {
+        item.seller_custom_field = body.seller_custom_field;
+      }
       return HttpResponse.json(itemBody(item));
+    }),
+    http.post(`${API}/items/:id/relist`, async ({ params }) => {
+      counts.relist += 1;
+      const parent = items.get(String(params.id));
+      if (parent === undefined) return HttpResponse.json({ message: "not found" }, { status: 404 });
+      const fault = faults.relist?.[counts.relist];
+      const relist = () => {
+        const id = `MLC${1000000000 + nextItem}`;
+        nextItem += 1;
+        const item: Item = {
+          ...parent,
+          id,
+          status: "active",
+          sub_status: [],
+          permalink: `https://departamento.mercadolibre.cl/${id}-_JM`,
+          pictures: faults.relistWithoutPictures ? [] : [...parent.pictures],
+          parent: parent.id,
+          // El ejemplo de la doc trae `descriptions` vacío: no se copia (nota §13).
+          description: null,
+        };
+        items.set(id, item);
+        return item;
+      };
+      if (fault === "relistedThenLost") {
+        relist();
+        return HttpResponse.json({ message: "boom" }, { status: 503 });
+      }
+      if (fault) return fault();
+      return HttpResponse.json(itemBody(relist()), { status: 201 });
+    }),
+    http.put(`${API}/items/:id/description`, async ({ params, request }) => {
+      const item = items.get(String(params.id));
+      if (item === undefined) return HttpResponse.json({ message: "not found" }, { status: 404 });
+      item.description = ((await request.json()) as { plain_text: string }).plain_text;
+      return HttpResponse.json({ plain_text: item.description });
     }),
     http.post(`${API}/items`, async ({ request }) => {
       const denied = rejectOnce("create");
@@ -213,7 +273,7 @@ function useMercadoLibre(faults: Faults = {}) {
       return HttpResponse.json({ results, paging: { total: results.length } });
     }),
   );
-  return { items, uploaded, counts };
+  return { items, uploaded, counts, puts };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1247,5 +1307,282 @@ describe("createPortalPublisher · operaciones", () => {
       });
     }
     expect(ml.items.get(published.externalId)?.status).toBe("closed");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// F6-T07 (ADR-0020, spec F6 §4.7): republicar y actualizar.
+// ---------------------------------------------------------------------------------------------
+
+/** Un ítem anterior ya cerrado en el Mercado Libre simulado, con 2 fotos y su descripción. */
+function closedParent(ml: ReturnType<typeof useMercadoLibre>) {
+  const parent: Item = {
+    id: "MLC1999999999",
+    seller_custom_field: "publicacion-anterior",
+    status: "closed",
+    sub_status: ["expired"],
+    permalink: "https://departamento.mercadolibre.cl/MLC1999999999-_JM",
+    pictures: ["viejo-1", "viejo-2"],
+    description: "Texto anterior",
+  };
+  ml.items.set(parent.id, parent);
+  return parent;
+}
+
+describe("createPortalPublisher · republicar (relist)", () => {
+  it("republica el ítem anterior, repone el título, el contacto y la marca, y reemplaza la descripción", async () => {
+    const ml = useMercadoLibre();
+    const parent = closedParent(ml);
+    const s = setup();
+
+    const result = await s.publisher.publish(
+      input({ relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field } }),
+      s.ctx(),
+    );
+
+    const relisted = [...ml.items.values()].find((item) => item.id !== parent.id);
+    expect(result).toMatchObject({ externalId: relisted?.id, simulated: false });
+    expect(await writes()).toEqual([
+      `POST /items/${parent.id}/relist`,
+      `PUT /items/${relisted?.id}`,
+      `POST /items/${relisted?.id}/description`,
+    ]);
+    const [relistRequest] = (await recorded()).filter((r) => r.url.pathname.endsWith("/relist"));
+    expect(relistRequest?.json).toEqual({
+      price: 5800,
+      quantity: 1,
+      listing_type_id: "silver",
+    });
+    expect(ml.puts[0]?.body).toMatchObject({
+      pictures: [{ id: "viejo-1" }, { id: "viejo-2" }],
+      seller_custom_field: PUBLICATION_ID,
+      title: "Departamento en venta 2 dormitorios 1 baño en Ñuñoa",
+      seller_contact: { country_code2: "56", phone2: "912345678" },
+    });
+    expect(relisted).toMatchObject({
+      seller_custom_field: PUBLICATION_ID,
+      description: "Departamento luminoso, a pasos del metro.",
+    });
+    expect(s.progress()).toMatchObject({
+      itemId: relisted?.id,
+      pictureIds: ["viejo-1", "viejo-2"],
+      descriptionDone: true,
+      relistRequestedAt: NOW.toISOString(),
+    });
+    expect(ml.counts.create).toBe(0);
+    expect(ml.counts.upload).toBe(0);
+  });
+
+  it("si el ítem republicado no trae fotos, sube las de la publicación", async () => {
+    const ml = useMercadoLibre({ relistWithoutPictures: true });
+    const parent = closedParent(ml);
+    const s = setup();
+
+    await s.publisher.publish(
+      input({ relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field } }),
+      s.ctx(),
+    );
+
+    expect(ml.counts.upload).toBe(3);
+    expect(ml.puts[0]?.body).toMatchObject({
+      pictures: [{ id: "1-MLC_PIC" }, { id: "2-MLC_PIC" }, { id: "3-MLC_PIC" }],
+    });
+  });
+
+  it("un rechazo definitivo marca relistRejected y el reintento publica un ítem nuevo", async () => {
+    const ml = useMercadoLibre({
+      relist: {
+        1: () =>
+          HttpResponse.json(
+            {
+              message: "item cannot be relisted",
+              error: "validation_error",
+              status: 400,
+              cause: [{ code: "item.relist.not_allowed", type: "error", message: "no" }],
+            },
+            { status: 400 },
+          ),
+      },
+    });
+    const parent = closedParent(ml);
+    const s = setup();
+    const relistInput = input({
+      relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field },
+    });
+
+    await expect(s.publisher.publish(relistInput, s.ctx())).rejects.toMatchObject({
+      retriable: false,
+    });
+    expect(s.progress()).toMatchObject({ relistRejected: true });
+    expect(s.progress()?.relistRequestedAt).toBeUndefined();
+
+    const result = await s.publisher.publish(relistInput, s.ctx());
+    expect(ml.counts.create).toBe(1);
+    expect(result.externalId).not.toBe(parent.id);
+  });
+
+  it("si no se supo cómo terminó el relist, nunca lo repite: busca el ítem nuevo por la marca anterior y lo repone", async () => {
+    const ml = useMercadoLibre({ relist: { 1: "relistedThenLost" } });
+    const parent = closedParent(ml);
+    const s = setup();
+    const relistInput = input({
+      relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field },
+    });
+
+    await expect(s.publisher.publish(relistInput, s.ctx())).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+    });
+    expect(s.progress()?.relistRequestedAt).toBe(NOW.toISOString());
+
+    const result = await s.publisher.publish(relistInput, s.ctx());
+    const relisted = [...ml.items.values()].find((item) => item.parent === parent.id);
+    expect(result.externalId).toBe(relisted?.id);
+    expect(ml.counts.relist).toBe(1);
+    expect(ml.counts.create).toBe(0);
+    expect(relisted?.seller_custom_field).toBe(PUBLICATION_ID);
+    expect(s.progress()).toMatchObject({ itemId: relisted?.id, relistRestocked: true });
+  });
+
+  it("si no aparece el ítem republicado, ML_PUBLISH_OUTCOME_UNKNOWN sin repetir el relist", async () => {
+    const ml = useMercadoLibre({ relist: { 1: "relistedThenLost" }, searchEmpty: true });
+    const parent = closedParent(ml);
+    const s = setup();
+    const relistInput = input({
+      relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field },
+    });
+
+    await expect(s.publisher.publish(relistInput, s.ctx())).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+    });
+    await expect(s.publisher.publish(relistInput, s.ctx())).rejects.toMatchObject({
+      code: "ML_PUBLISH_OUTCOME_UNKNOWN",
+    });
+    expect(ml.counts.relist).toBe(1);
+  });
+
+  it("si el relist salió y la reposición falló, el reintento solo repone (nunca vuelve a republicar)", async () => {
+    const ml = useMercadoLibre({
+      put: { 1: () => HttpResponse.json({ message: "boom" }, { status: 503 }) },
+    });
+    const parent = closedParent(ml);
+    const s = setup();
+    const relistInput = input({
+      relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field },
+    });
+
+    await expect(s.publisher.publish(relistInput, s.ctx())).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+    });
+    const relisted = [...ml.items.values()].find((item) => item.parent === parent.id);
+    expect(s.progress()).toMatchObject({ itemId: relisted?.id });
+    expect(s.progress()?.relistRestocked).toBeUndefined();
+
+    await s.publisher.publish(relistInput, s.ctx());
+
+    expect(ml.counts.relist).toBe(1);
+    expect(ml.puts.at(-1)?.body).toMatchObject({
+      seller_custom_field: PUBLICATION_ID,
+      title: "Departamento en venta 2 dormitorios 1 baño en Ñuñoa",
+    });
+    expect(s.progress()).toMatchObject({
+      relistRestocked: true,
+      sellerContact: { phone2: "912345678" },
+    });
+  });
+
+  it("un problema de la cuenta o del paquete (sin cupo) no marca el relist como rechazado", async () => {
+    const ml = useMercadoLibre({
+      relist: {
+        1: () =>
+          HttpResponse.json(
+            { message: "no quota", error: "payment_required", status: 402, cause: [] },
+            { status: 402 },
+          ),
+      },
+    });
+    const parent = closedParent(ml);
+    const s = setup();
+
+    await expect(
+      s.publisher.publish(
+        input({ relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field } }),
+        s.ctx(),
+      ),
+    ).rejects.toMatchObject({ retriable: false });
+    expect(s.progress()?.relistRejected).toBeUndefined();
+    expect(s.progress()?.relistRequestedAt).toBeUndefined();
+  });
+});
+
+describe("createPortalPublisher · actualizar", () => {
+  /** Publica un ítem y devuelve su referencia, como la guarda la publicación. */
+  async function published() {
+    const ml = useMercadoLibre();
+    const s = setup();
+    const result = await s.publisher.publish(input(), s.ctx());
+    await recorded(); // se descarta lo de publicar
+    return { ml, s, ref: { externalId: result.externalId, progress: s.progress() } };
+  }
+
+  it("con el texto y la propiedad cambiados manda título, precio y atributos con las fotos y el contacto, y reemplaza la descripción", async () => {
+    const { ml, s, ref } = await published();
+    const before = (await recorded()).length;
+    const changed = input({
+      title: "Departamento nuevo título",
+      caption: "Descripción nueva.",
+      listing: { ...LISTING, priceAmount: 5600 },
+    });
+
+    const result = await s.publisher.update?.(ref, s.ctx() as PlatformContext, {
+      input: changed,
+      text: true,
+      listing: true,
+    });
+
+    const after = (await recorded()).slice(before).filter((r) => r.method !== "GET");
+    expect(after.map((r) => `${r.method} ${r.url.pathname}`)).toEqual([
+      `PUT /items/${ref.externalId}`,
+      `PUT /items/${ref.externalId}/description`,
+    ]);
+    const put = ml.puts.at(-1)?.body;
+    expect(put).toMatchObject({
+      title: "Departamento nuevo título",
+      price: 5600,
+      currency_id: "CLF",
+      pictures: ref.progress?.pictureIds.map((id) => ({ id })),
+      seller_contact: { country_code2: "56", phone2: "912345678" },
+    });
+    expect(put).toHaveProperty("attributes");
+    expect(put).not.toHaveProperty("category_id");
+    expect(result).toMatchObject({
+      fields: ["title", "description", "price", "attributes"],
+      progress: { itemId: ref.externalId, sellerContact: { phone2: "912345678" } },
+    });
+  });
+
+  it("solo con la propiedad cambiada no toca el título ni la descripción", async () => {
+    const { ml, s, ref } = await published();
+
+    const result = await s.publisher.update?.(ref, s.ctx() as PlatformContext, {
+      input: input({ listing: { ...LISTING, priceAmount: 5500 } }),
+      text: false,
+      listing: true,
+    });
+
+    const put = ml.puts.at(-1)?.body;
+    expect(put).not.toHaveProperty("title");
+    expect(put).toMatchObject({ price: 5500 });
+    expect(result?.fields).toEqual(["price", "attributes"]);
+  });
+
+  it("sin el progreso del ítem no llama: PORTAL_PROGRESS_UNUSABLE", async () => {
+    const { s, ref } = await published();
+    await expect(
+      s.publisher.update?.({ ...ref, progress: null }, s.ctx() as PlatformContext, {
+        input: input(),
+        text: true,
+        listing: false,
+      }),
+    ).rejects.toMatchObject({ code: "PORTAL_PROGRESS_UNUSABLE" });
   });
 });

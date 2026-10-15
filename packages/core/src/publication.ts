@@ -129,6 +129,18 @@ export const scheduleChangedPayloadSchema = z.object({
 export type ScheduleChangedPayload = z.infer<typeof scheduleChangedPayloadSchema>;
 
 /**
+ * `payload` de un evento `manual_edit` (F6, ADR-0020): actualizar un aviso de Portal publicado.
+ * `fields` son los campos enviados (`title`, `description`, `price`, `attributes`) y `remote`, lo
+ * que respondió la plataforma (falta en simulación).
+ */
+export const manualEditPayloadSchema = z.object({
+  mode: z.enum(PUBLISH_MODES),
+  fields: z.array(z.string().min(1).max(40)).max(10),
+  remote: remoteStateSchema.optional(),
+});
+export type ManualEditPayload = z.infer<typeof manualEditPayloadSchema>;
+
+/**
  * Por qué una publicación quedó programada (el `status_changed` a `scheduled`, spec F6 §4.2): el
  * operador, un lote, `auto_publish` o la espera ante un límite de la plataforma.
  */

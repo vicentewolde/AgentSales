@@ -1,4 +1,9 @@
-import { isAppError, type PortalSellerContact, REMOTE_REASON_CODE } from "@agentsales/core";
+import {
+  type AbortSignalLike,
+  isAppError,
+  type PortalSellerContact,
+  REMOTE_REASON_CODE,
+} from "@agentsales/core";
 import { z } from "zod";
 import { MERCADOLIBRE_API_ORIGIN, MERCADOLIBRE_REQUEST_TIMEOUT_MS } from "./constants.js";
 import { MAX_CAUSES, MERCADOLIBRE_ERRORS, type MercadoLibreCause, parseCauses } from "./errors.js";
@@ -25,6 +30,22 @@ export type MercadoLibreWritableStatus = (typeof MERCADOLIBRE_WRITABLE_STATUSES)
  */
 export type MercadoLibreItemBody = Readonly<Record<string, unknown>>;
 
+/**
+ * Lo que cambia `update` (spec F6 §4.7): los campos que se actualizan y, siempre, las fotos que
+ * quedan (por `id`). Nunca la categoría ni el estado (para eso, `setStatus`).
+ */
+export type MercadoLibreItemChanges = {
+  title?: string;
+  price?: number;
+  currency_id?: string;
+  attributes?: readonly unknown[];
+  seller_custom_field?: string;
+  pictures: readonly { id: string }[];
+};
+
+/** La pausa antes de repetir una actualización que chocó con otro cambio (409, nota §4.4). */
+export const MERCADOLIBRE_CONFLICT_RETRY_MS = 3_000;
+
 /** Lo que el sistema usa de un ítem (nota §4.5); las fechas, tal como vienen (ISO con zona). */
 export type MercadoLibreItem = {
   id: string;
@@ -42,6 +63,12 @@ export type MercadoLibreItem = {
   listingSource: string | null;
   /** El id de la publicación que se guardó al crear (spec F4 §4.8). */
   sellerCustomField: string | null;
+  /** La categoría (hoja) del ítem. */
+  categoryId: string | null;
+  /** Los ids de las fotos del ítem, en orden (para actualizarlo: nota §13, regla del 12/03/2026). */
+  pictureIds: string[];
+  /** El ítem del que este es la republicación (`relist`, nota §13), si viene. */
+  parentItemId: string | null;
   /**
    * Advertencias que no bloquean (`warnings` o `cause[]` con `type: warning` en una respuesta que
    * salió bien, INFERENCIA de la nota §7): van a la bitácora.
@@ -133,6 +160,41 @@ export interface MercadoLibreItems {
     options?: MercadoLibreCallOptions,
   ): Promise<MercadoLibreItem>;
   /**
+   * `PUT /items/{id}` con los campos que cambian (título, precio, atributos) y siempre las fotos que
+   * quedan (sus `id`, en orden) y el `seller_contact` completo (nota §13: desde el 12/03/2026 una
+   * actualización de un `silver` sin `pictures` se rechaza; desde el 01/10/2026, sin el contacto
+   * también). Sin fotos, `ML_BODY_INVALID` sin llamar. Un 409 (bloqueo optimista: Mercado Libre
+   * estaba cambiando el ítem) se repite una vez después de una pausa corta (nota §4.4).
+   */
+  update(
+    accessToken: string,
+    itemId: string,
+    changes: MercadoLibreItemChanges,
+    sellerContact: PortalSellerContact,
+    options?: MercadoLibreCallOptions,
+  ): Promise<MercadoLibreItem>;
+  /**
+   * `PUT /items/{id}/description?api_version=2` con texto plano: reemplaza una descripción que ya
+   * existe (nota §4.1 y §13; `addDescription` falla sobre una existente).
+   */
+  updateDescription(
+    accessToken: string,
+    itemId: string,
+    plainText: string,
+    options?: MercadoLibreCallOptions,
+  ): Promise<void>;
+  /**
+   * `POST /items/{id}/relist` con `{ price, quantity: 1, listing_type_id }` (nota §13, DOC): crea un
+   * ítem **nuevo** desde uno cerrado y lo devuelve (otro id). Una sola vez por ítem padre. Si no
+   * termina, el ítem **pudo** crearse: quien llama no lo repite a ciegas.
+   */
+  relist(
+    accessToken: string,
+    itemId: string,
+    relist: { price: number; listingTypeId: string },
+    options?: MercadoLibreCallOptions,
+  ): Promise<MercadoLibreItem>;
+  /**
    * `GET /items/{id}/description`: el texto plano, o `null` si el ítem no tiene descripción (404,
    * NO VERIFICADO). Es una lectura: la retoma la consulta antes de `addDescription`, que falla sobre
    * una descripción que ya existe (spec F4 §4.8, paso 3).
@@ -216,6 +278,8 @@ const dateText = z.iso
   .catch(null)
   .transform((value) => value ?? null);
 
+const pictureRefSchema = z.object({ id: z.string().min(1).max(100) });
+
 const itemSchema = z
   .object({
     id: z.string().regex(ITEM_ID),
@@ -229,6 +293,23 @@ const itemSchema = z
     tags: textList,
     listing_source: nullableText,
     seller_custom_field: nullableText,
+    category_id: nullableText,
+    pictures: z
+      .array(z.unknown())
+      .nullish()
+      .catch(null)
+      .transform((pictures) =>
+        (pictures ?? []).flatMap((picture) => {
+          const parsed = pictureRefSchema.safeParse(picture);
+          return parsed.success ? [parsed.data.id] : [];
+        }),
+      ),
+    parent_item_id: z
+      .string()
+      .regex(ITEM_ID)
+      .nullish()
+      .catch(null)
+      .transform((value) => value ?? null),
     warnings: z.unknown().optional(),
     cause: z.unknown().optional(),
   })
@@ -245,6 +326,9 @@ const itemSchema = z
       tags: item.tags,
       listingSource: item.listing_source,
       sellerCustomField: item.seller_custom_field,
+      categoryId: item.category_id,
+      pictureIds: item.pictures,
+      parentItemId: item.parent_item_id,
       // De `warnings`, todo lo que no diga ser un error (puede venir sin `type`); de `cause[]` en una
       // respuesta que salió bien, solo las marcadas como advertencia.
       warnings: [
@@ -344,9 +428,15 @@ export function sellerContactBody(contact: PortalSellerContact): Record<string, 
   };
 }
 
-export function createMercadoLibreItems(options: MercadoLibreHttpOptions = {}): MercadoLibreItems {
+export function createMercadoLibreItems(
+  options: MercadoLibreHttpOptions & {
+    /** La pausa antes de repetir un 409 de `update` (los tests pasan 0). */
+    conflictRetryMs?: number;
+  } = {},
+): MercadoLibreItems {
   const origin = options.origin ?? MERCADOLIBRE_API_ORIGIN;
   const timeoutMs = options.timeoutMs ?? MERCADOLIBRE_REQUEST_TIMEOUT_MS;
+  const conflictRetryMs = options.conflictRetryMs ?? MERCADOLIBRE_CONFLICT_RETRY_MS;
 
   const call = (
     name: string,
@@ -409,6 +499,69 @@ export function createMercadoLibreItems(options: MercadoLibreHttpOptions = {}): 
         callOptions,
       );
       return sameItem("setItemStatus", itemId, parseBody("setItemStatus", itemSchema, response));
+    },
+
+    async update(accessToken, itemId, changes, sellerContact, callOptions) {
+      const path = itemPath(itemId);
+      // Sin fotos, Mercado Libre lo rechaza (12/03/2026): no se envía.
+      if (changes.pictures.length === 0) throw MERCADOLIBRE_ERRORS.invalidBody("updateItem");
+      // Lista blanca: aunque llegue otra clave (por ejemplo `category_id` con un cast), no se envía.
+      const body = {
+        ...(changes.title === undefined ? {} : { title: changes.title }),
+        ...(changes.price === undefined ? {} : { price: changes.price }),
+        ...(changes.currency_id === undefined ? {} : { currency_id: changes.currency_id }),
+        ...(changes.attributes === undefined ? {} : { attributes: changes.attributes }),
+        ...(changes.seller_custom_field === undefined
+          ? {}
+          : { seller_custom_field: changes.seller_custom_field }),
+        pictures: changes.pictures.map((picture) => ({ id: picture.id })),
+        seller_contact: sellerContactBody(sellerContact),
+      };
+      const send = async () =>
+        sameItem(
+          "updateItem",
+          itemId,
+          parseBody(
+            "updateItem",
+            itemSchema,
+            await call("updateItem", "PUT", path, accessToken, { json: body }, callOptions),
+          ),
+        );
+      try {
+        return await send();
+      } catch (error) {
+        if (!isAppError(error) || error.code !== "ML_CONFLICT") throw error;
+        await pause(conflictRetryMs, callOptions?.signal);
+        return send();
+      }
+    },
+
+    async updateDescription(accessToken, itemId, plainText, callOptions) {
+      const path = itemPath(itemId, "/description?api_version=2");
+      await call(
+        "updateDescription",
+        "PUT",
+        path,
+        accessToken,
+        { json: { plain_text: plainText } },
+        callOptions,
+      );
+    },
+
+    async relist(accessToken, itemId, { price, listingTypeId }, callOptions) {
+      const path = itemPath(itemId, "/relist");
+      const response = await call(
+        "relistItem",
+        "POST",
+        path,
+        accessToken,
+        { json: { price, quantity: 1, listing_type_id: listingTypeId } },
+        callOptions,
+      );
+      const item = parseBody("relistItem", itemSchema, response);
+      // Un relist devuelve otro ítem: el mismo id sería no saber qué pasó.
+      if (item.id === itemId) throw MERCADOLIBRE_ERRORS.unexpectedResponse("relistItem");
+      return item;
     },
 
     async getDescription(accessToken, itemId, callOptions) {
@@ -506,4 +659,24 @@ export function createMercadoLibreItems(options: MercadoLibreHttpOptions = {}): 
       return parseBody("searchItems", itemSearchSchema, response);
     },
   };
+}
+
+/** Espera `ms` (o nada con 0), cortable con la señal: la pausa antes de repetir un 409. */
+function pause(ms: number, signal?: AbortSignalLike): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(MERCADOLIBRE_ERRORS.aborted("before_send"));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(MERCADOLIBRE_ERRORS.aborted("before_send"));
+      },
+      { once: true },
+    );
+  });
 }

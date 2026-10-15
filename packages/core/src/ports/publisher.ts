@@ -76,6 +76,42 @@ export type PublishInput = {
    */
   priceClp?: number;
   uf?: { date: string; value: string } | null;
+  /**
+   * Portal (ADR-0020, spec F6 §4.7): la publicación republica a otra; el publisher llama a `relist`
+   * sobre su ítem (`externalId`) en vez de crear uno nuevo. Ausente en las demás.
+   */
+  relistOf?: {
+    externalId: string;
+    /**
+     * La publicación anterior: su id es el `seller_custom_field` del ítem anterior, que el ítem
+     * republicado hereda hasta reponerlo. Sirve para encontrarlo si no se supo cómo terminó el
+     * `relist`.
+     */
+    publicationId: string;
+  };
+};
+
+/**
+ * Actualizar un aviso ya publicado (ADR-0020, spec F6 §4.7): el input armado con el texto aprobado
+ * vigente y la propiedad de hoy, y qué cambió (el texto, la propiedad o los dos).
+ */
+export type PublishedUpdate = {
+  input: PublishInput;
+  /** El texto aprobado es otro: van el título y la descripción. */
+  text: boolean;
+  /** La propiedad cambió: van el precio y los atributos. */
+  listing: boolean;
+};
+
+/**
+ * Lo que dejó una actualización: el estado del ítem que respondió la plataforma, el progreso nuevo
+ * (con el contacto enviado, que las operaciones reutilizan; core no conoce su forma) y los campos
+ * que se enviaron, para la bitácora.
+ */
+export type PublishedUpdateResult = {
+  remote: RemoteStatus;
+  progress: unknown;
+  fields: string[];
 };
 
 /** Un motivo por el que la plataforma no aceptaría el `PublishInput`, en español y sin datos del aviso. */
@@ -245,4 +281,10 @@ export interface Publisher {
   resume?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
   close?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
   getStatus?(ref: PublishedRef, ctx: PlatformContext): Promise<RemoteStatus>;
+  /** Portal (ADR-0020): actualiza un aviso publicado o pausado. Nunca cambia fotos ni categoría. */
+  update?(
+    ref: PublishedRef,
+    ctx: PlatformContext,
+    request: PublishedUpdate,
+  ): Promise<PublishedUpdateResult>;
 }

@@ -104,11 +104,14 @@ export async function createPublications(
     content,
     planned,
     actor,
+    relistedFrom,
   }: {
     listing: Listing;
     content: Content;
     planned: readonly PlannedPublication[];
     actor: PublicationActor;
+    /** Republicar (ADR-0020): la publicación que estas republican. */
+    relistedFrom?: string;
   },
 ): Promise<Publication[]> {
   const created: Publication[] = [];
@@ -131,6 +134,7 @@ export async function createPublications(
           contentId: content.id,
           mediaIds: item.mediaIds,
           listingSourceHash,
+          ...(relistedFrom === undefined ? {} : { relistedFrom }),
         },
         { actor, payload: { contentId: content.id, mediaCount: item.mediaIds.length } },
       ),
