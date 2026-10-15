@@ -79,6 +79,11 @@ Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4
 - [x] `pnpm fb:smoke --broker agentsales-pruebas --menus` (2026-10-13): guardó el formulario real ("Nueva vivienda", solo de arriendo, sin menú de operación) y el menú de tipos que abriste a mano
 - [x] Con el lote C (la CLI, con `pnpm dev` corriendo): `pnpm -s cli accounts connect marketplace --broker agentsales-pruebas` (conectada el 2026-10-14 como "Facebook de Vinny"). Se abre una ventana de Chromium: inicias sesión a mano (también la verificación, si la pide) y la CLI espera hasta ver la sesión (hasta unos 11 min). Abre Facebook aunque estés en simulación: no publica nada
 
+## Antes de F6 (calendario y seguimiento)
+
+- [ ] Cliente de Postgres para el respaldo local de la base (spec F6 §4.11, nota `docs/integraciones/neon-backup.md`): `brew install libpq`. Queda en `/opt/homebrew/opt/libpq/bin` (no entra solo al `PATH`); con el lote del respaldo, `doctor` dice si sirve y si su versión alcanza a la de Neon
+- [ ] Saber que el calendario funciona **con el worker encendido** (`pnpm dev`): lo programado con el worker apagado sale al encenderlo si el atraso es de 12 h o menos; si no, queda "atrasado" esperando tu decisión (spec F6, D2)
+
 ## Antes de F7 (terceros)
 
 - [ ] API key de Anthropic en console.anthropic.com, con límite de gasto mensual

@@ -93,6 +93,8 @@ Spec detallado: `docs/specs/fase-4-portal-inmobiliario.md`.
   - redefinir los cambios manuales del aviso (`LISTING_MANUAL_TRANSITIONS`) para que pausar, archivar o cerrar orquesten sus publicaciones (spec F3 §3);
   - la espera automática ante `IG_RATE_LIMITED` (spec F3, D10).
 
+**Spec:** `docs/specs/fase-6-calendario-seguimiento.md` (ADR-0018, ADR-0019 y ADR-0020), aprobado el 2026-10-15. Respuestas del operador: lo programado con el worker apagado sale si el atraso es de 12 h o menos (D2); vendida o arrendada **cierra** Portal (D3); Instagram y Marketplace quedan como tareas a mano (D4); `auto_publish` aprueba y publica de inmediato los textos sin errores (D5). Marketplace en el calendario es solo un recordatorio. Suma el respaldo con `pg_dump` (cliente de Postgres de Homebrew) y la vista de Seguimiento con la agenda.
+
 ## F7 · Listo para terceros
 - Proveedor `anthropic-api` como default para terceros.
 - Autenticación (proveedor a decidir en un ADR) y separación estricta por corredor (`broker_id` en cada consulta, con RLS opcional).

@@ -2,6 +2,8 @@
 
 Nota **verificada el 2026-10-06 leyendo la doc oficial con el navegador** (developers.mercadolibre.cl, versión `es_ar`), para planificar F4: publicar en Portal Inmobiliario con la API de Mercado Libre, sitio MLC. Reemplaza la versión anterior del mismo día, que se basaba en resúmenes del buscador.
 
+> **2026-10-15 (planificación de F6):** republicar (`relist`), editar un aviso activo y el vencimiento se amplían en la **sección 13**. Ojo con el método de esa ronda: todas las páginas de `developers.mercadolibre.*` respondieron 403 a la herramienta de lectura, así que se apoya en resúmenes del buscador sobre las páginas oficiales, marcados **DOC\***. Hay que releerlas con el navegador antes de codificar.
+
 ## Cómo leer esta nota (importante)
 
 Convención: **DOC** = leído en la página oficial (la URL y su fecha de "Última actualización" están en la sección 10); **INFERENCIA** = deducido de lo leído; **NO VERIFICADO** = la doc no lo dice o lo dice solo con ejemplos de otro país; se confirma con la cuenta de prueba.
@@ -153,6 +155,7 @@ Con eso el ítem lleva `listing_source: portalinmobiliario` y se ve en Mercado L
 - Desde el 12/03/2026, un `PUT` sobre ítems `silver`, `gold`, `gold_special` o `gold_premium` con `requires_picture: true` que deje el ítem **sin imágenes** se rechaza con 400.
 - Fotos: para agregar, enviar los `id` de las que se conservan más los `source` nuevos, en el orden deseado; para borrar, enviar solo los `id` que quedan. **Reutilizar la misma URL con otro contenido no actualiza la foto**: cada versión necesita una URL nueva.
 - No se encontró ninguna restricción para cambiar el título o el precio de un inmueble (la regla de "título editable solo con `sold_quantity` 0" es de productos). Un cambio de precio inusual puede **pausar** el ítem por moderación (sección 4.4).
+- **Ampliado el 2026-10-15 (§13.2):** el asterisco "la descripción no se puede modificar, solo agregar" de la guía general **no figura** en la de inmuebles (que la lista como editable); el reemplazo se hace con `PUT /items/{id}/description?api_version=2`; el umbral de la pausa por precio no está documentado.
 - **Destacar:** `POST /items/{id}/listing_type` con `{ "id": "gold" }` o `gold_premium`; sin cargo por la llamada, pero exige paquete de destaque contratado; revertir devuelve el cupo. No se usará en F4.
 
 ### 4.4 Estados, pausar, reactivar, cerrar, republicar y borrar (DOC)
@@ -162,7 +165,7 @@ Con eso el ítem lleva `listing_source: portalinmobiliario` y se ve en Mercado L
 | Pausar | `PUT /items/{id}` con `{ "status": "paused" }` | No visible, no genera contactos; se reactiva cuando se quiera |
 | Reactivar | `PUT /items/{id}` con `{ "status": "active" }` | También para salir de una pausa por moderación |
 | Cerrar | `PUT /items/{id}` con `{ "status": "closed" }` | **Definitivo**; valores en minúsculas exactas |
-| Republicar | `POST /items/{id}/relist` con `price`, `quantity` y `listing_type_id` | Crea un ítem **con id nuevo** (`parent_item_id` apunta al anterior). Conserva visitas si se hace hasta **60 días** después de cerrar. Si está activo, primero cerrarlo |
+| Republicar | `POST /items/{id}/relist` con `price`, `quantity` y `listing_type_id` | Crea un ítem **con id nuevo** (`parent_item_id` apunta al anterior). Conserva visitas si se hace hasta **60 días** después de cerrar. Si está activo, primero cerrarlo. Detalle, dudas y pruebas en **§13.1** (2026-10-15) |
 | Borrar | Tras cerrar, `PUT /items/{id}` con `{ "deleted": true }` | Irreversible; `sub_status` queda `["deleted", ...]`. Si responde **409** "item optimistic locking error", esperar unos segundos y reintentar |
 
 **Ciclo de vida (DOC):** el aviso sigue activo mientras (1) su paquete tenga cupo y esté vigente y (2) no pase su `stop_time`. Vigencias:
@@ -175,7 +178,7 @@ Con eso el ítem lleva `listing_source: portalinmobiliario` y se ve en Mercado L
 | MLC | Departamentos | Arriendo | 45 |
 | Todos | Resto de categorías | — | 354 |
 
-- `start_time` = creación; `stop_time` = fin de la vigencia según categoría y operación; `expiration_time` = vencimiento del **paquete** que cubre el ítem. Al llegar a `stop_time` el ítem pasa a `closed` con `sub_status` `expired` (DOC). Renovar = `relist` (INFERENCIA: no hay otra forma documentada de extender `stop_time`; gasta un cupo nuevo, INFERENCIA).
+- `start_time` = creación; `stop_time` = fin de la vigencia según categoría y operación; `expiration_time` = vencimiento del **paquete** que cubre el ítem. Al llegar a `stop_time` el ítem pasa a `closed` con `sub_status` `expired` (DOC). Renovar = `relist` (INFERENCIA: no hay otra forma documentada de extender `stop_time`; gasta un cupo nuevo, INFERENCIA). **Releído el 2026-10-15 (§13.3):** se mantiene; ninguna página trae un endpoint para extender `stop_time` (DOC\*, por omisión).
 - Arriendo temporal y las demás propiedades (oficinas, terrenos, parcelas, bodegas, estacionamientos, locales) caen en "resto": 354 días (DOC por la tabla; que aplique así en MLC: INFERENCIA).
 
 **Estados que aparecen en la doc:** `active`, `paused`, `closed`, `under_review`, `not_yet_active` y, en `sub_status`, `picture_download_pending`, `expired`, `deleted`, `pack_quota_assigned` (DOC).
@@ -520,3 +523,96 @@ Aviso de prueba en Departamentos > Venta > Propiedades usadas (`MLC157522`), con
 - **Paquetes contratados:** ninguno; Mercado Libre responde **404 `not_found`** (no una lista vacía).
 - **Paquetes para contratar en `MLC1459`:** 31 paquetes `silver` de 30 días ("N Publicaciones Plata", ids `IP<N>P30`), con `price` sin moneda. Por ejemplo: 5 publicaciones a 1,32; 10 a 1,59; 20 a 2,51; 30 a 2,64; 50 a 3,7; 100 a 3,96. Que el precio esté en UF es INFERENCIA (por los montos). Campos de cada paquete: `id`, `category_id`, `brand`, `description`, `price`, `package_type`, `package_content`, `duration`, `status`, `charge_type_id`, `max_upgrades`, `quota_type`, `listing_details`, `metadata`, `visibility`.
 - Responde la pregunta abierta de §2 para esta cuenta: sin plan de Portal Inmobiliario, no hay cupo `silver` por API.
+
+## 13. Republicar, editar y vencimiento (consulta del 2026-10-15, para el spec de F6)
+
+**Método y límite de esta ronda (importante).** Todas las URL de `developers.mercadolibre.cl`, `.com.ar` y `.com.br` (en `es_ar`, `es_cl` y `en_us`) respondieron **403** a la herramienta de lectura; no se pudo abrir ninguna. Lo de esta sección sale de **resúmenes del buscador sobre las páginas oficiales** (se citan sus URL en 13.4). Por eso se usa **DOC\***: dicho por el buscador sobre una página oficial, sin leer el texto literal. Las citas literales cortas pueden tener paráfrasis, y varias páginas generales (`re-publica`, `real-estate-sync-listings`) son de otros sitios y de hace años. **Antes de codificar, releer con el navegador** `re-publica`, `actualiza-tus-publicaciones`, `ciclo-de-vida-de-las-publicaciones-de-inmuebles` y `moderaciones-con-pausado`, como en la ronda del 2026-10-06. Nada de lo que sigue se probó con una llamada.
+
+**Relectura con el navegador integrado (2026-10-15, mismo día).** Se abrieron y leyeron completas tres de las cuatro páginas (la de moderaciones sigue pendiente). Lo que confirman pasa de DOC\* a **DOC**:
+- `re-publica` (última actualización 29/12/2025): republicar "crea un ítem nuevo" con otro `id` y traslada visitas, preguntas y ventas; un ítem `closed` se republica directo y uno activo se cierra antes; el cuerpo es `{ "price", "quantity", "listing_type_id" }`; "sólo puedes realizar una republicación por ítem padre"; los 60 días son el plazo **para mantener las visitas** en inmuebles (no dice que después se rechace). El ejemplo de respuesta del `relist` trae `parent_item_id` con el id del padre; el del `GET` de un ítem sin padre, `null`. La página no menciona `seller_contact` ni el cupo.
+- `actualiza-tus-publicaciones` (inmuebles, última actualización 28/08/2026): `PUT /items/{id}` con solo los campos a cambiar (título, precio, video, fotos, descripción, ubicación, atributos y categoría); desde el 01/10/2026, `seller_contact` **completo** con `country_code2` y `phone2` es obligatorio en **las actualizaciones** de todas las publicaciones de inmuebles (400 con `seller_contact.required`, `seller_contact.country_code2.required`, `seller_contact.phone2.required` o `.invalid`; solo dígitos). **Nuevo e importante:** "desde el 12 de marzo de 2026, las solicitudes de actualización de publicaciones de tipo silver, gold, gold_special y gold_premium que presenten `requires_picture: true` son rechazadas (HTTP 400) si no incluyen imágenes. Incluye al menos una imagen en el array `pictures`". La lectura literal es que **toda** actualización de esos ítems debe llevar `pictures` (no solo la que dejaría el ítem sin fotos, como decía §4.3): F6 manda siempre los `id` de las fotos actuales del ítem al actualizar. Si eso alcanza también a un `PUT` que solo cambia `status` (pausar, reactivar, cerrar, F4): **NO VERIFICADO** (pasa a la prueba 6 de 13.5). Cerrar es definitivo; borrar exige cerrar antes y puede responder 409 "item optimistic locking error" (esperar unos segundos y repetir).
+- `ciclo-de-vida-de-las-publicaciones-de-inmuebles` (última actualización 08/11/2025): MLC, casas y departamentos, 180 días en venta y 45 en arriendo; el resto, 354; al llegar a `stop_time` el ítem pasa a `closed` con `sub_status` `expired`; `expiration_time` es el vencimiento del paquete. No hay forma de extender `stop_time` ni aviso previo.
+
+### 13.1 `POST /items/{id}/relist` (republicar)
+
+| Pregunta | Respuesta | Marca |
+|---|---|---|
+| Endpoint y cuerpo | `POST https://api.mercadolibre.com/items/{ITEM_ID}/relist`. Ejemplo oficial: `{ "price": 550000, "quantity": 1, "listing_type_id": "gold_special" }` (ejemplo general de MLA). Para ítems con variaciones el cuerpo cambia (`listing_type_id` y `variations` con `id`, `price`, `quantity`), no aplica a inmuebles. **Para inmuebles:** `price`, `quantity: 1` (el aviso siempre es de 1, §4.1) y `listing_type_id: "silver"`. Ninguna página muestra un ejemplo de `relist` de inmueble | DOC\* (forma); `silver` y `quantity: 1`: INFERENCIA |
+| ¿Hace falta `seller_contact` (regla del 01/10/2026)? | La doc de `relist` no lo menciona y su cuerpo documentado no lo trae. La regla dice "al crear y al actualizar" y `relist` crea un ítem. Si el cuerpo acepta `seller_contact`, si lo hereda del padre, o si un padre creado **antes** del 01/10/2026 (sin `phone2`) hace fallar el `relist` con `seller_contact.*`: no se sabe | **NO VERIFICADO** |
+| ¿Sirve para un `closed` / `expired`? | La doc dice que si el ítem está `closed` se puede republicar directo y que si está activo hay que cerrarlo antes. Un ítem vencido es `closed` con `sub_status: expired`, así que debería servir | DOC\* (closed); expired: INFERENCIA |
+| ¿Y uno cerrado por el vendedor? | Sí, es el caso base: `PUT status: closed` y después `relist` | DOC\* |
+| ¿Y uno borrado (`deleted: true`)? | No se menciona. Borrar es irreversible (§4.4) | **NO VERIFICADO** |
+| Plazo de 60 días | "Para mantener las visitas en los ítems de vehículos, inmuebles y servicios, la republicación tiene que suceder como mucho 60 días después de cerrado el ítem padre". El plazo está atado a **conservar las visitas**; si pasados los 60 días el `relist` se **rechaza** o solo pierde las visitas, no lo dice | DOC\* (60 días); rechazo vs. pérdida de visitas: **NO VERIFICADO** |
+| ¿Conserva fotos, atributos, descripción y ubicación? | La página no lo dice; explica que se "traslada la información" (visitas, preguntas, ventas). La respuesta de ejemplo trae `pictures` y `attributes` y un `descriptions` **vacío**. Eso sugiere que la **descripción no se copia** (INFERENCIA débil). Ubicación y contacto: sin dato | **NO VERIFICADO** (se compara con `GET` del nuevo ítem y de `/items/{id}/description`) |
+| Cupo | La doc no dice si el `relist` gasta un cupo. Un ítem nuevo con `silver` descuenta un cupo del paquete (cada publicación consume uno, §2) | INFERENCIA fuerte: sí gasta uno |
+| Consultar el cupo antes | `GET /users/{USER_ID}/classifieds_promotion_packs/{LISTING_TYPE}/available?categoryId={CATEGORY_ID}` devuelve `has_available_listings` (boolean). Es una forma distinta de las de §2 | DOC\* |
+| Qué devuelve | Un ítem nuevo con `id` nuevo, `permalink` nuevo y `pictures`/`attributes`. `parent_item_id`: un resumen dice que el ejemplo lo trae con el id del ítem original y otro que el JSON de muestra lo trae en `null` | `id` y `permalink`: DOC\*; `parent_item_id`: **NO VERIFICADO** (AgentSales debe guardar el vínculo por sí mismo, no depender del campo) |
+| Solo una vez | La etiqueta (tag) `relist` en la tabla de tags marca un ítem **ya republicado**, que "no se puede republicar otra vez". El que nace del `relist` es un ítem nuevo y sí se podrá republicar cuando venza. Existen también `dragged_visits` y `dragged_bids_and_visits` (indican si se trajeron las visitas del padre) | DOC\* |
+| Errores documentados del `relist` | **Ninguno específico.** Aplican los de `POST /items`: 400 con `cause[]` (§7), 402 sin cupo (§12.3, INFERENCIA), 401/403, 429. Un segundo `relist` del mismo padre debería dar 400 por la etiqueta (INFERENCIA) | DOC\* (ausencia) |
+| `sub_status` por cupo | La guía de propiedades en portugués menciona `pack_quota_exceeded`: el ítem queda `closed` el mismo día de crearse si se supera el cupo. No se confirmó para MLC ni para `relist` | DOC\* (otro sitio); **NO VERIFICADO** en MLC |
+
+**Pista no oficial (no es fuente):** una ayuda de un integrador inmobiliario (mapaprop) afirma que el `relist` **no acepta cambiar el título**. No se leyó la página; si fuera cierto, un cambio de título al republicar sería un `PUT` posterior. NO VERIFICADO.
+
+**Implicaciones para el diseño de F6 (INFERENCIA):**
+
+- Republicar es **dos pasos con riesgo de cupo**: cerrar (si está activo) y `relist`. Un fallo entre ambos deja el aviso cerrado sin republicar, y la doc de paquetes advierte que cerrar y reactivar rápido puede perder cupos (§2). Registrar el estado en la base entre un paso y otro, y no reintentar el `POST` a ciegas: un `relist` repetido podría gastar dos cupos o dar error por la etiqueta `relist`.
+- El ítem nuevo trae otro `id` y otro `permalink`: la publicación en AgentSales debe guardar el id anterior y el nuevo, y el enlace público cambia.
+- Tras el `relist`: leer el ítem nuevo (`GET /items/{id}`), comprobar fotos, atributos, ubicación y descripción, y reponer lo que falte con `PUT`, siempre con `seller_contact` completo (§4.2).
+- Para un aviso que vence, ver el plazo de 60 días en 13.3: conviene republicar dentro de esa ventana.
+
+### 13.2 Editar un aviso activo (`PUT /items/{id}`) en inmuebles
+
+| Pregunta | Respuesta | Marca |
+|---|---|---|
+| Campos editables | Título, precio, video, fotos, descripción, ubicación, atributos y categoría (guía de inmuebles). `PUT` con solo los campos a cambiar; los omitidos no cambian; 200 con el ítem. La categoría "no se puede modificar por API" según la guía de sincronización de MLA, que choca con la lista de `actualiza-tus-publicaciones`: no cambiarla | DOC\* (contradicción de categoría: NO VERIFICADO) |
+| Precio | Editable. Un cambio inusual de precio puede **pausar** el ítem (moderación `PAUSED_PREVENTION_PRICE`: "cambio inusual de precio", pensado para precios mal tipeados). La doc trae el `REASON` ("verifica el precio antes de reactivar") y el `REMEDY`, y la evidencia incluye el precio detectado. **No publica el umbral** ni dice si aplica a inmuebles de MLC con la misma regla (el ejemplo de la respuesta es de 2022 y es general) | DOC\* (existe); umbral: **NO VERIFICADO** |
+| Qué hacer si se pausa | Buscar `GET /users/{id}/items/search?tags=moderation_penalty&status=paused`, leer `GET /moderations/last_moderation/{ITEM_ID}-ITM` y reactivar con `PUT status: active` tras corregir el precio. Esto ya está en §4.4 y lo implementa F4-T15 | DOC (§4.4) |
+| Título | La guía lo lista como editable. La restricción "no se cambia el título si el ítem tiene ventas (`sold_quantity` > 0)" es de la guía de **productos**; no se vio para inmuebles (un aviso de inmueble no tiene ventas) | DOC\* (editable); restricción en inmuebles: ausente en lo leído |
+| Descripción | Dos recursos distintos. La guía general de sincronización marca la descripción con un asterisco ("no es posible modificarla, solo agregar") y la guía de inmuebles la lista como editable **sin esa advertencia**. La página de descripción documenta el reemplazo: `PUT /items/{id}/description?api_version=2` con `{ "plain_text": "..." }` (§4.1); `POST` sobre un ítem con descripción da error | DOC\* (reemplazo con `PUT`, ya en §4.1); asterisco en inmuebles: **NO VERIFICADO** (probar con el usuario de prueba) |
+| Fotos | Para agregar: enviar los `id` de las que se quedan más los `source` nuevos, en el orden deseado; para quitar: solo los `id` que quedan; una URL repetida con otro contenido no actualiza la foto. Desde el 12/03/2026 un `PUT` que deje el ítem sin fotos da 400. Si cambiar fotos por URL vuelve a pausar el ítem con `picture_download_pending`: **no se dice** para `PUT` (sí para la creación, §5). Con subida `multipart` el riesgo baja (decisión de F4) | DOC (§4.3); pausa por `PUT`: **NO VERIFICADO** |
+| `seller_contact` | Obligatorio y **completo** en cada `PUT` desde el 01/10/2026 (400 si falta). Un ejemplo de cuerpo de edición lo incluye junto a `title`, `price`, `pictures` y `description`. Si un `PUT` que solo cambia `status` lo exige: sigue **NO VERIFICADO** (§4.2) | DOC / NO VERIFICADO |
+| Límite de ediciones por ítem o por día | **Ninguno documentado** en lo visto. El único tope encontrado es de cambio de tipo de publicación: "`listing_type` se puede modificar una sola vez" (guía de sincronización de inmuebles; AgentSales no lo usa). Aplica el límite de 429 por app y endpoint (§6) | DOC\* (ausencia); **NO VERIFICADO** que no exista |
+| ¿Editar cambia `stop_time`? | La doc no lo dice; nada sugiere que reinicie el plazo | **NO VERIFICADO** (se ve comparando `stop_time` antes y después en la prueba) |
+
+**Implicaciones para el diseño de F6 (INFERENCIA):** después de cada `PUT` de precio o título, sondear el estado un par de veces (`paused` con `moderation_penalty`) y mostrarle al operador el motivo, igual que hoy con F4-T15; poner al cambio de precio una confirmación si la diferencia es grande (el umbral de ML es desconocido); y tener una prueba con el usuario de prueba (sección 8, punto 6) que cubra precio, título, descripción y fotos con `seller_contact`.
+
+### 13.3 Vencimiento: extender `stop_time` y notificaciones
+
+| Pregunta | Respuesta | Marca |
+|---|---|---|
+| ¿Hay una forma documentada de extender el `stop_time` de un aviso activo sin `relist`? | **No.** La guía del ciclo de vida solo describe que `stop_time` lo fija la API al crear, según categoría y operación, y que al llegar el ítem pasa a `closed` / `expired`. Lo único que "renueva" es el `relist`. La renovación automática de paquetes (`engagement_type` "re-engagement", si el usuario no tiene deudas) renueva el **paquete**, no el `stop_time` del ítem | DOC\* (por omisión) |
+| Vigencias MLC | Casas y departamentos: venta 180 días, arriendo 45 días (se repite en la guía de sincronización); el arriendo temporal no entra en la regla de 45 (§4.4). En MLA las ventas pasaron de 180 a 270 días en una fecha que el resumen no ubica en el año; en MLC no se vio cambio. **Leer `stop_time` del propio ítem** en vez de calcularlo | DOC\* |
+| Ítem activo con paquete vigente pero `closed` / `expired` | La doc lo explica así: el ciclo de vida del ítem terminó (se confirma con `start_time`) | DOC\* |
+| Plazo para republicar tras vencer | 60 días desde el cierre para **conservar visitas** (13.1) | DOC\* |
+| ¿Hay una notificación de vencimiento (topic)? | **No se encontró.** Los topics vistos: `items` (cualquier cambio de un ítem: llega con `resource` `/items/{ID}` y se consulta con `GET`), `orders_v2` (ventas), `items_prices` (precios) y otros que no aplican. El cierre por vencimiento cambia el estado del ítem, así que probablemente dispara `items` **después** de ocurrido, no antes (INFERENCIA). No hay aviso previo de vencimiento | DOC\* (ausencia) |
+| Notificaciones perdidas | Existe `missed_feeds`, con historial de hasta 2 días según una guía (el topic `items` pide además `site_id`) | DOC\* |
+| Exigencia de las notificaciones | URL pública de callback (§4.5): no se usan en F6 | DOC |
+
+**Implicación para F6 (INFERENCIA):** el aviso previo de vencimiento se calcula **localmente** con el `stop_time` que ya devuelve `GET /items/{id}` (el sondeo de estado lo trae): un recordatorio al operador N días antes (por ejemplo 7 en arriendo de 45 días) y, si se quiere republicar automáticamente, una acción de F6 que haga cerrar + `relist` con confirmación y comprobación de cupo (`has_available_listings`).
+
+### 13.4 Fuentes de la sección 13 (consultadas el 2026-10-15; leídas como resumen del buscador, no abiertas)
+
+Intentadas con lectura directa y respondidas con 403: `https://developers.mercadolibre.cl/es_ar/re-publica`, `.../es_ar/actualiza-tus-publicaciones`, `.../es_ar/ciclo-de-vida-de-las-publicaciones-de-inmuebles`, `.../en_us/relist-items`, `.../es_cl/re-publica`, y las equivalentes de `developers.mercadolibre.com.ar` y `developers.mercadolivre.com.br`.
+
+Páginas oficiales que el buscador resumió (todas con "Última actualización" pendiente de leer en el navegador):
+
+- Republicar ítems: https://developers.mercadolibre.com.ar/es_ar/re-publica y https://developers.mercadolibre.com.ar/en_us/relist-items (cuerpo, 60 días, etiqueta `relist`, ejemplo de respuesta)
+- Ciclo de vida de las publicaciones de Inmuebles: https://developers.mercadolibre.com.ar/es_ar/gestiona-preguntas-respuestas/ciclo-de-vida-de-las-publicaciones-de-inmuebles (`stop_time`, `closed` / `expired`, vigencias por sitio, cupo)
+- Actualiza tus publicaciones (inmuebles): https://developers.mercadolibre.cl/es_ar/actualiza-tus-publicaciones y https://developers.mercadolibre.cl/en_us/manage-packages/real-estate-sync-listings (campos editables, `seller_contact` en el `PUT`)
+- Sincroniza y modifica publicaciones (productos): https://developers.mercadolivre.com.br/es_ar/producto-sincroniza-modifica-publicaciones (asterisco de la descripción; regla del título con ventas, que es de productos)
+- Moderaciones con pausado: https://developers.mercadolibre.com.ar/es_ar/moderaciones-con-pausado (`PAUSED_PREVENTION_PRICE`, inmueble no disponible)
+- Descripción de artículos: https://developers.mercadolibre.com.ar/descripcion-de-articulos (`PUT ...?api_version=2`)
+- Gestionar paquetes de inmuebles: https://developers.mercadolibre.com.ar/es_ar/gestionar-paquetes-de-inmuebles (cupos, `has_available_listings`, renovación de paquetes)
+- Recibir notificaciones: https://developers.mercadolibre.com.ar/es_ar/productos-recibe-notificaciones (topics `items`, `orders_v2`, `items_prices`, `missed_feeds`)
+
+Pista no oficial (no es fuente): https://help.mapaprop.com/en/help/faqs/mercadolibre-cambie-titulo-no-se-actualiza (título y `relist`).
+
+### 13.5 Pruebas pendientes de esta sección (con el usuario de prueba activado y su paquete; ninguna se hizo)
+
+1. `POST /items/{id}/relist` sobre un ítem de prueba cerrado: cuerpo mínimo, con y sin `seller_contact`; ver el error si falta y si el padre es anterior al 01/10/2026 (no se podrá crear un padre así: probar solo si existe uno).
+2. Lo mismo sobre un ítem `closed` con `sub_status: expired` (no se puede forzar el vencimiento de un ítem de prueba; si no hay uno, queda NO VERIFICADO hasta que venza uno real).
+3. Después del `relist`: `GET` del ítem nuevo y de su `/description`, para ver qué se copió; y `GET` de los paquetes antes y después para confirmar que gasta un cupo.
+4. Un segundo `relist` del mismo padre: el error exacto.
+5. `PUT` de precio (un cambio pequeño y uno grande), título, descripción (`PUT .../description?api_version=2`) y fotos, siempre con `seller_contact`; observar `status`, `sub_status` y `stop_time` antes y después.
+6. Un `PUT` que solo cambia `status` sin `seller_contact` (cierra la duda de §4.2).
+7. Un `PUT` que solo cambia `status` sin `pictures` (la regla del 12/03/2026 leída el 2026-10-15): si se rechaza, pausar, reactivar y cerrar de F4 también tienen que mandar los `id` de las fotos.
