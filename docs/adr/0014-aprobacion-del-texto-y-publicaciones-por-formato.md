@@ -1,6 +1,6 @@
 # ADR-0014 · Se aprueba el texto de cada canal; las publicaciones nacen aprobadas, por formato y con lo aprobado fijo
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado (modificado por ADR-0018, puntos 4 y 7; ADR-0019, puntos 1 y 7; y ADR-0020, punto 2)
 - **Fecha:** 2026-10-04
 - **Modifica a:** ADR-0012 (consecuencia "la aprobación sigue siendo de F3, sobre `publications`, con su máquina de estados intacta"), la máquina de estados y el contrato de `Publisher` de `docs/01-arquitectura.md`, y `publications` en `docs/02-modelo-datos.md`
 

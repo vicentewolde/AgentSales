@@ -2,10 +2,13 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-14
-**Fase actual:** F6 · Calendario + seguimiento (spec por redactar: `/fase-plan 6`). F5 cerrada (`docs/specs/fase-5-marketplace.md`, tag `v0.5.0`)
-**Última tarea:** cierre de F5 (T14, `/fase-cerrar 5`): demo en simulación y en `live`, auditoría del `arquitecto`, `CHANGELOG [0.5.0]` y tag `v0.5.0`
-**Siguiente paso:** `/fase-plan 6` — redactar el spec de F6 (programar publicaciones, reintentos, sincronización periódica, "vendida" despublica todo, vista de seguimiento, respaldo de la base; ver `docs/06-roadmap.md`)
+**Actualizado:** 2026-10-15
+**Fase actual:** F6 · Calendario + seguimiento (`docs/specs/fase-6-calendario-seguimiento.md`, aprobado el 2026-10-15; ADR-0018 a ADR-0020). F5 cerrada (tag `v0.5.0`)
+**Última tarea:** spec de F6 (`/fase-plan 6`)
+**Siguiente paso:** `/tarea F6-T01 F6-T02 F6-T03` — lote A: el calendario en core (máquina, datos, programar) y el disparo cada minuto
+
+## Pendiente tuyo para F6 (no bloquea hasta el lote E)
+- [ ] Instalar el cliente de Postgres para el respaldo: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6")
 
 ## Pendiente tuyo de fases anteriores (no bloquea F6)
 - **De F5:**
@@ -22,12 +25,38 @@
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F6 (`/fase-plan 6`) | ⏳ pendiente | |
+| Spec F6 (`/fase-plan 6`) | ✅ terminada | (este PR) |
+| **Lote A** · T01 Máquina, datos y repositorios del calendario | ⏳ pendiente | |
+| **Lote A** · T02 Programar, reprogramar y desprogramar | ⏳ pendiente | |
+| **Lote A** · T03 El disparo (`publication.due`) | ⏳ pendiente | |
+| **Lote B** · T04 Reintentos, espera ante límites y causa legible | ⏳ pendiente | |
+| **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ⏳ pendiente | |
+| **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ⏳ pendiente | |
+| **Lote C** · T07 Portal: actualizar, republicar y vencimiento | ⏳ pendiente | |
+| **Lote D** · T08 La propiedad manda | ⏳ pendiente | |
+| **Lote D** · T09 `auto_publish` | ⏳ pendiente | |
+| **Lote E** · T14 Respaldo local (`pg_dump`) | ⏳ pendiente | |
+| **Lote F** · T10 API | ⏳ pendiente | |
+| **Lote F** · T11 CLI | ⏳ pendiente | |
+| **Lote G** · T12 Panel: programar y Portal | ⏳ pendiente | |
+| **Lote G** · T13 Panel: Seguimiento, acciones de la propiedad y `auto_publish` | ⏳ pendiente | |
+| T15 Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
 - **Mercado Libre:** cuenta, app y `.env` listos; `VICENTEWOLDE` conectada a `agentsales-pruebas` (2026-10-08) y renovada con `--force` en la demo del cierre (2026-10-09). El WhatsApp del corredor ya está en la base (P001 y P002 tienen lo que pide Portal). Sin paquete pagado (tu decisión, 2026-10-08): la prueba real usa el usuario de prueba (D15, arriba).
+
+## Decisiones de F6
+Resueltas en el spec (§4.15, D1–D14) y ADR-0018 a ADR-0020:
+- **Programar:** lo programado vive en la base y un reloj de cada minuto lo publica mientras el worker corre. El modo (simulación o vivo) se fija al programar.
+- **Atrasadas (tu respuesta, D2):** con el worker apagado a la hora, sale al encenderlo si el atraso es de 12 h o menos; si no, espera tu decisión.
+- **Marketplace en el calendario:** solo un recordatorio ("te toca"); nunca abre Facebook solo.
+- **Límites de Instagram:** la publicación se reprograma sola para cuando se libere (hasta 3 veces). Los demás errores quedan con la causa y qué hacer.
+- **Vendida o arrendada (tus respuestas, D3 y D4):** cierra Portal, descarta lo pendiente y deja Instagram y Marketplace como tareas a mano. Pausar la propiedad pausa Portal.
+- **Portal:** actualizar un aviso publicado (precio, título, descripción, atributos), republicar uno vencido o cerrado y avisar 7 días antes del vencimiento.
+- **`auto_publish` (tu respuesta, D5):** aprueba y publica de inmediato los textos sin errores (Marketplace como recordatorio); se activa con confirmación.
+- **Respaldo:** diario con `pg_dump`, en `~/.agentsales/backups`, los últimos 14, nunca en git ni en R2.
 
 ## Decisiones de F5
 Resueltas en el spec (§4.13, D1–D16) y ADR-0017:
@@ -89,6 +118,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-15: **Spec de F6 (`/fase-plan 6`).**
+  - **Lo que había en el código:** el estado "programada" existía en la base sin uso; `auto_publish` no se leía; pausar o archivar una propiedad no tocaba sus publicaciones y nada escribía el motivo de cierre; el único reloj del worker era el refresco de tokens.
+  - **Documentación verificada:** Mercado Libre §13 (republicar crea un aviso nuevo, una vez por aviso; editar exige `seller_contact` completo y, desde marzo de 2026, las fotos en cada actualización; no hay forma de extender el vencimiento), Instagram §6.1 (la API no dice cuándo se libera el cupo) y la nota nueva del respaldo de Neon (`neon-backup.md`: Postgres 18 probable, `libpq` de Homebrew fuera del `PATH`). Las páginas de Mercado Libre se releyeron con el navegador integrado.
+  - **Tus 4 respuestas:** D2 a D5 (arriba).
+  - **Revisión del `arquitecto`:** 6 bloqueantes, todos aplicados (ADR-0020 para actualizar y republicar; cambiar la propiedad en tres fases; el modo fijado al programar; Marketplace programado sin revisar el límite del día; piezas de repositorio que faltaban; el orden de los lotes, para que `main` quede en verde en cada uno).
+  - **15 tareas en 7 lotes** (A a G) más el cierre.
 - 2026-10-14: **Cierre de F5 (T14, `/fase-cerrar 5`).**
   - **Demo en simulación** (la hice yo): por CLI con P002 (formulario listo simulado, "un formulario a la vez", descartar pide tu palabra, "No lo publiqué", reintentar, "Lo publiqué", retirar, volver a publicar) y por el panel con P004 (publicar, "Lo publiqué", Marcar como retirada).
   - **Demo `live`** (con tu instrucción): P002, P004 y P005 se llenaron en Facebook de verdad y los revisaste; marqué "No lo publiqué" en los tres. El cuarto intento del día se negó por el límite sin abrir Facebook. En P002 las fotos no llegaron a Facebook (el error de las fotos, ya corregido); lo diste por cumplido.

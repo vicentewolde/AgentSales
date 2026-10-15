@@ -1,6 +1,6 @@
 # ADR-0005 · Cola de trabajos con pg-boss y worker separado
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado (modificado por ADR-0018: jobs `publication.due` y `publications.watch`, y la política de `publication.publish`)
 - **Fecha:** 2026-09-28
 
 ## Contexto

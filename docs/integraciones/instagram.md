@@ -2,6 +2,8 @@
 
 Nota verificada el 2026-10-02 (límites de contenido) y completada el 2026-10-04 (autenticación, operaciones, límites, errores, revisión de la app) para planificar F3.
 
+**Ampliada el 2026-10-15 (planificación de F6):** la sección 6.1 verifica qué informa la API al llegar al límite de publicación, los códigos de límite de llamadas y las cabeceras de uso. Esa ronda se leyó con la misma herramienta que extrae y resume el texto (páginas oficiales de Meta y sus versiones `.md`); no se hizo ninguna llamada a la API.
+
 Convención: **DOC** = documentación oficial de Meta; **INFERENCIA** = deducido; **NO VERIFICADO** = falta prueba real. Todo lo marcado NO VERIFICADO se prueba con la cuenta del operador en la demo de F3 (primero en `dry-run`, luego en `live` con su autorización); la lista consolidada está en la sección 8.
 
 Aviso de método: las páginas de Meta se leyeron con una herramienta que extrae y resume el texto, no en el navegador. Las cifras y los nombres exactos coinciden entre varias páginas, pero las citas literales cortas pueden tener paráfrasis. Antes de codificar algo crítico (por ejemplo la tabla de errores), conviene abrir la página y confirmar.
@@ -286,11 +288,47 @@ La publicación necesita URLs públicas (DOC): "We cURL media used in publishing
 | Caption | 2.200 caracteres, 30 hashtags, 20 menciones | DOC |
 | Llamadas (Instagram Business Use Case) | `4800 × número de impresiones` de la cuenta en 24 h; "impresiones" = veces que el contenido de la cuenta entró en la pantalla de alguien en las últimas 24 h | DOC |
 
-- **Endpoint de consulta:** `GET /<IG_ID>/content_publishing_limit?fields=quota_usage,config&since=<unix>`. `since` es un timestamp "no older than 24 hours" (opcional). Respuesta (DOC): `quota_usage` (veces que se publicó un contenedor desde `since`) y `config` con `quota_total` y `quota_duration` (`86400` s). La referencia lista los permisos de Facebook Login (`instagram_basic`, `instagram_content_publish`, `pages_read_engagement`) y ejemplos con `graph.facebook.com`; la guía de publicación lista el endpoint también. **Si responde con token de Instagram Login en `graph.instagram.com`: NO VERIFICADO.**
+- **Endpoint de consulta:** `GET /<IG_ID>/content_publishing_limit?fields=quota_usage,config&since=<unix>`. `since` es un timestamp "no older than 24 hours" (opcional). Respuesta (DOC): `quota_usage` (veces que se publicó un contenedor desde `since`) y `config` con `quota_total` y `quota_duration` (`86400` s). La referencia lista los permisos de Facebook Login (`instagram_basic`, `instagram_content_publish`, `pages_read_engagement`) y ejemplos con `graph.facebook.com`; la guía de publicación lista el endpoint también. **Si responde con token de Instagram Login en `graph.instagram.com`: la referencia lo lista como requisito desde la relectura del 2026-10-15 (sección 6.1); el valor real de `quota_total` sigue sin medirse.**
 - **Qué cuenta:** la referencia dice "IG Container" publicados. Que un carrusel cuenta 1 es **DOC**; si un reel cuenta 1: la doc no distingue (INFERENCIA: 1). Si los reintentos fallidos cuentan: NO VERIFICADO (una publicación fallida no debería consumir cuota de publicación, pero sí contenedores).
 - **Cuota de llamadas:** para una cuenta con pocas impresiones el tope baja: con 0 impresiones la fórmula da 0 (INFERENCIA). Una cuenta de prueba nueva podría toparse con el límite 80002 u otro. Observarlo en la demo.
 - **Cabeceras:** `X-App-Usage` (`call_count`, `total_cputime`, `total_time`, en % de la hora) y `X-Business-Use-Case-Usage` (con `estimated_time_to_regain_access` en minutos) están documentadas para la Graph API en general. **Si `graph.instagram.com` las devuelve: NO VERIFICADO.** Registrarlas si llegan; no depender de ellas.
 - **Mensajería** (2 a 100 llamadas por segundo según endpoint): no aplica.
+
+### 6.1 Al llegar al límite: qué informa la API (verificado el 2026-10-15)
+
+**`content_publishing_limit` con Instagram Login (DOC, referencia leída el 2026-10-15):**
+
+- **Corrige el NO VERIFICADO de arriba:** la referencia lista ahora como requisitos, para Instagram Login, un token de usuario de Instagram, el host **`graph.instagram.com`** y los permisos `instagram_business_basic` e `instagram_business_content_publish` (y para Facebook Login, `graph.facebook.com` con `instagram_basic`, `instagram_content_publish` y `pages_read_engagement`). Es decir, el endpoint está documentado para nuestro tipo de login. Que además responda en la práctica con el token de Generate token: sigue sin medirse (la demo del 2026-10-06 no dejó el valor; ver 8.5).
+- **Solicitud:** `GET /<IG_USER_ID>/content_publishing_limit?fields=quota_usage,config&since=<unix>`. `fields` es opcional (por defecto se devuelve solo `quota_usage`). `since` es un timestamp Unix "no older than 24 hours"; si se omite, cuenta las últimas 24 h.
+- **Respuesta:** `{"data":[{"quota_usage":2,"config":{"quota_total":50,"quota_duration":86400}}]}`. Va **envuelta en `data: [ ]`** (como las de `/me` y el canje, §3.2): el parser debe leer `data[0]`.
+  - `quota_usage`: "number of IG Containers published since the `since` time". Solo cuentan los contenedores **publicados** (los hijos de un carrusel no se publican por separado: un carrusel suma 1, coherente con la guía de publicación).
+  - `config.quota_total`: máximo por período, "currently 50". La guía de publicación sigue diciendo 100 en un párrafo y 50 en otro (§6). **La referencia dice 50.** Leer el valor de `config`.
+  - `config.quota_duration`: 86400 s ("currently"). Ventana **móvil** de 24 h.
+- **El ejemplo pide `rate_limit_settings`**, pero el campo no figura en la tabla de campos ni en la respuesta de ejemplo: NO VERIFICADO; no usarlo.
+- **¿Se puede saber cuándo se libera un cupo?** **No.** La API no entrega marcas de tiempo de las publicaciones ni una hora de reinicio; solo `quota_usage` de una ventana móvil. INFERENCIA de diseño: AgentSales conoce la hora de cada `media_publish` hecho por él; con una ventana móvil, el próximo cupo se libera cuando el **más antiguo** de las últimas 24 h cumple 24 h. Para publicaciones hechas por otras apps con la misma cuenta, lo único que se puede hacer es volver a consultar `quota_usage < quota_total` cada cierto tiempo (por ejemplo cada hora). La publicación manual desde la app de Instagram no cuenta: el tope habla de posts "API-published" (DOC).
+- **Para planificar el calendario (F6):** antes de cada `media_publish`, consultar el límite y publicar solo si `quota_usage < quota_total`; con el uso de un corredor independiente (pocas publicaciones al día) el tope no debería alcanzarse.
+
+**Error de tope diario (DOC, tabla de errores, 2026-10-15):** código `9`, subcódigo `2207042`, HTTP 400; mensaje "You reached maximum number of posts that is allowed to be published by Content Publishing API."; recomendación oficial: "The app user has reached their daily publishing limit. Advise the app's user to try again the following day." Es decir, Meta no da un plazo exacto más allá de "al día siguiente"; con ventana móvil puede liberarse antes (INFERENCIA). **No es reintentable de inmediato.**
+
+**Códigos de límite de llamadas (DOC, guía de manejo de errores y guía de límites de la Graph API, 2026-10-15):**
+
+| Código | Qué dice la doc | Recomendación de espera | Marca |
+|---|---|---|---|
+| 4 | "Demasiadas llamadas a la API": la app del token alcanzó su límite. Problema temporal | "Espera y vuelve a intentar la operación". Dejar de llamar: seguir insistiendo alarga la espera; mirar `X-App-Usage`. **Ojo:** con el subcódigo `2207051` (spam) el 4 **no** es un límite de llamadas y no se reintenta | DOC |
+| 17 | "Demasiadas llamadas de usuario a la API": el usuario del token alcanzó su límite | Esperar y reintentar; revisar que la app no sea la causa; reducir o espaciar las llamadas del usuario | DOC |
+| 80002 | Es el código de error del límite de **uso de negocio de Instagram** (BUC `instagram`): llamadas en 24 h = 4800 × impresiones de la cuenta, por par app y usuario de la app, en ventana móvil de 24 h | **Sin espera fija.** "Si se alcanza el límite, deja de hacer llamadas"; esperar los minutos de `estimated_time_to_regain_access` si llega. **No figura en la tabla de errores de Instagram** | DOC (guía de límites) |
+| 613 | "Se alcanzó un límite de frecuencia personalizado"; mirar la doc de cada API | Sin espera fija. No figura en la tabla de errores de Instagram | DOC |
+| 32 | Límite de la API de Páginas | No aplica a Instagram Login | DOC |
+| 9 / 2207042 | Tope diario de publicaciones (arriba) | "Al día siguiente"; ver la ventana móvil | DOC |
+
+- **Los códigos 17, 80002 y 613 no aparecen en la tabla de errores de Instagram** (`error-codes`), que solo trae 4 (con 2207051) y 9 (con 2207042) entre los de límite. Salen de la guía general de la Graph API.
+- **Ninguna página da un tiempo de espera fijo** para 4, 17, 80002 o 613. Política propuesta (INFERENCIA, la fija el spec): usar `estimated_time_to_regain_access` si llega; si no, esperar 1 hora con backoff exponencial y sin consumir reintentos de la publicación (ya en §11, punto 19).
+
+**Cabeceras de uso (DOC, guía de límites de la Graph API):**
+
+- `X-App-Usage`: cadena JSON con `call_count`, `total_time` y `total_cputime`, enteros que son **porcentajes** del límite de la app.
+- `X-Business-Use-Case-Usage`: cadena JSON (hasta 32 objetos por llamada, por id de negocio) con `type` (entre ellos `instagram`), `call_count`, `total_cputime`, `total_time` (porcentajes) y **`estimated_time_to_regain_access`, en minutos**: "el tiempo que debe pasar hasta que las llamadas dejen de limitarse".
+- **¿Las devuelve `graph.instagram.com`?** NO VERIFICADO. La sección de límites de la visión general de la plataforma de Instagram dice que "todos los endpoints" están sujetos al límite de uso de negocio, pero **no nombra ni las cabeceras, ni el código 80002, ni `estimated_time_to_regain_access`, ni el host**; la guía de límites de la Graph API no nombra hosts; las páginas de Instagram Login y de publicación no mencionan cabeceras. Se mide en una llamada real (8.7): registrar las cabeceras (solo sus nombres y valores, sin tokens) en la próxima corrida de `ig:smoke`.
 
 ## 7. Errores comunes
 
@@ -315,6 +353,8 @@ El cuerpo de error de Graph trae `error.code`, `error.error_subcode` y `error.me
 | 80002 | Límite de la plataforma Instagram | Sí, con espera |
 | 613 | Límite personalizado (lo trae la lista del operador; no figura en las páginas consultadas) | NO VERIFICADO; tratar igual que 17 |
 | 9 / 2207042 | Se alcanzó el máximo diario de publicaciones | **No hasta que se libere la ventana**; reprogramar |
+
+Verificado el 2026-10-15 contra la guía de errores y la de límites: ver la sección 6.1 (la tabla de errores de Instagram solo trae 4 con 2207051 y 9 con 2207042; 17, 80002 y 613 vienen de la guía general; ninguna da un tiempo de espera fijo).
 
 Para todos: parar, esperar y espaciar (la doc recomienda detener las llamadas de inmediato: seguir insistiendo alarga la recuperación). Usar `estimated_time_to_regain_access` si llega; si no, 1 hora.
 
@@ -365,7 +405,7 @@ Orden sugerido, de menor a mayor riesgo; las primeras no publican nada:
 4. **Verificado el 2026-10-07 a las 20:05 (hora de Chile)**: el token de **Generate token** sí se refresca. Con la cuenta conectada el día anterior a las 16:31, el primer `pnpm dev` refrescó al arrancar (`refreshed: 1`, en 1,1 s, con el token en la URL tal como lo documenta Meta), y el vencimiento pasó de estimado a real: 2026-12-06 20:05 (60 días). Un `accounts refresh --force` inmediato no llamó (`too_recent`, desde el 2026-10-08 20:05), y el log no tuvo el token. La programación diaria quedó una sola vez en `pgboss.schedule` (`0 12 * * *`, `America/Santiago`, `missed: skip`). Queda por ver (no bloquea) si el canje largo y el refresco aceptan la cabecera `Bearer` en vez del token en la URL (el resto de las llamadas ya la usa).
 5. **2026-10-06:** `GET /me` responde en `graph.instagram.com` con Instagram Login. `content_publishing_limit` también, por inferencia: el publisher no dejó la nota que deja cuando no responde. El valor de `quota_total` no se registró: 50 o 100 sigue sin verificar.
 6. Versión de API: `v25.0` funciona (2026-10-06); `v26.0` y la omisión no se probaron.
-7. Cabeceras `X-App-Usage` y `X-Business-Use-Case-Usage` en las respuestas: no observadas (no se registran).
+7. Cabeceras `X-App-Usage` y `X-Business-Use-Case-Usage` en las respuestas: no observadas (no se registran). **2026-10-15:** la doc no dice si `graph.instagram.com` las devuelve (sección 6.1); la medición es una llamada de lectura a `content_publishing_limit` que imprima los nombres y valores de esas cabeceras, lo corre el operador (por ejemplo ampliando `pnpm ig:smoke`).
 8. **Imagen con URL prefirmada: verificado el 2026-10-06** (`pnpm ig:smoke`, cuenta @vicentewoldec conectada con el token de Generate token, `v25.0`): el contenedor de imagen con la URL firmada de R2 quedó `FINISHED` al instante, sin publicar. Con eso también quedó probado que el token de Generate token sirve para `/me` (al conectar) y para crear contenedores. **Publicación en vivo de muestra, verificada el 2026-10-06** (P002, con la instrucción del operador): carrusel de 5 imágenes y reel de `REEL_SPEC`, ambos con URLs prefirmadas de R2, publicados al primer intento. Meta acepta la query larga de R2 también para el video; si hace `HEAD`, no lo rechaza. Falta que el operador confirme que la portada del reel fue el cuadro del segundo 1. Lo que sigue es el plan original: carrusel de 3 a 4 imágenes con URL prefirmada de R2 (¿acepta la query larga? ¿hace `HEAD`?), luego el reel (¿acepta el MP4 de `REEL_SPEC`?, tiempo hasta `FINISHED`, `cover_url`/`thumb_offset`, `share_to_feed` por defecto).
 9. **2026-10-06:** se guardaron los `permalink` del carrusel (`/p/…`) y del reel (`/reel/…`, así que el formato del enlace del reel queda verificado). No hubo retoma: un segundo `media_publish` y `media_product_type` en `/media` no se ejercitaron. Plan original: `permalink` del carrusel y del reel; tiempo hasta que el enlace funciona. Ver qué devuelve un segundo `media_publish` sobre un contenedor ya publicado (el publisher lo evita, pero un corte justo durante el pedido deja una ventana: spec F3 §4.4) y si `/<IG_ID>/media` trae `media_type` y `media_product_type` con Instagram Login.
 10. `DELETE` no se intentó (spec F3, D8); el borrado manual desde la app funcionó (2026-10-06).
@@ -399,7 +439,12 @@ Oficiales de Meta:
 - Resumen de la plataforma y de Instagram Login (niveles de acceso, App Review, límites de llamadas): https://developers.facebook.com/docs/instagram-platform/overview y https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login (2026-10-04)
 - Changelog de Instagram (DELETE 2025-12-03, `enable_fb_login` 2026-02-06, `is_ai_generated` 2026-06-22): https://developers.facebook.com/docs/instagram-platform/changelog (2026-10-04)
 - Changelog de Graph API (v26.0, 2026-07-29): https://developers.facebook.com/docs/graph-api/changelog (2026-10-04)
-- Límites de llamadas de Graph API: https://developers.facebook.com/docs/graph-api/overview/rate-limiting/ (2026-10-04)
+- Límites de llamadas de Graph API: https://developers.facebook.com/docs/graph-api/overview/rate-limiting/ (2026-10-04 y 2026-10-15: códigos 4, 17, 80002, 613, cabeceras, `estimated_time_to_regain_access` en minutos)
+- `content_publishing_limit`, versión `.md` (host `graph.instagram.com` con Instagram Login, respuesta en `data`, `rate_limit_settings` sin documentar): https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/ig-user/content_publishing_limit.md (2026-10-15)
+- Códigos de error de Instagram, versión `.md` (4/2207051, 9/2207042): https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/error-codes.md (2026-10-15)
+- Visión general de la plataforma, sección de límites (BUC, 4800 × impresiones; sin cabeceras ni 80002): https://developers.facebook.com/docs/instagram-platform/overview (2026-10-15)
+- Manejo de errores de la Graph API (4 y 17: "espera y vuelve a intentar"): https://developers.facebook.com/docs/graph-api/guides/error-handling/ (2026-10-15)
+- Publicación con Instagram Login (100 y 50 posts, 400 contenedores, sin cabeceras): https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/content-publishing (2026-10-15)
 - Manejo de errores de Graph API: https://developers.facebook.com/docs/graph-api/guides/error-handling/ (2026-10-04)
 - Seguridad de Facebook Login ("Enforce HTTPS", modo estricto): https://developers.facebook.com/docs/facebook-login/security (2026-10-04)
 - Cloudflare R2, URLs prefirmadas (método atado a la URL, solo dominio S3, 7 días): https://developers.cloudflare.com/r2/api/s3/presigned-urls/ (2026-10-04)
