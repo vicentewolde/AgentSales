@@ -23,15 +23,24 @@ export function retryAtAfter(now: Date, minutes: number): Date {
 }
 
 /**
- * Cuántas esperas seguidas lleva la publicación: los intentos `rescheduled` desde el último paso
- * del operador (un evento con otro actor que `system`, como publicar ahora o reprogramar).
+ * Cuántas esperas seguidas lleva la publicación: los `status_changed` a `scheduled` con motivo
+ * `rate_limit` desde el último paso del operador (un evento con otro actor que `system`, como
+ * publicar ahora, reprogramar o reintentar). Cuenta el cambio de estado y no el `publish_attempt`
+ * `rescheduled`: el cambio se guarda en la misma transacción que la espera, y el evento del intento
+ * se escribe después y puede perderse.
  */
 export function consecutiveLimitWaits(events: readonly PublicationEvent[]): number {
   let waits = 0;
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (event === undefined || event.actor !== "system") break;
-    if (event.type === "publish_attempt" && event.payload.result === "rescheduled") waits += 1;
+    if (
+      event.type === "status_changed" &&
+      event.toStatus === "scheduled" &&
+      event.payload.reason === "rate_limit"
+    ) {
+      waits += 1;
+    }
   }
   return waits;
 }

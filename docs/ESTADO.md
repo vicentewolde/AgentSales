@@ -29,8 +29,8 @@
 | **Lote A** · T01 Máquina, datos y repositorios del calendario | ✅ terminada | #120 |
 | **Lote A** · T02 Programar, reprogramar y desprogramar | ✅ terminada | #120 |
 | **Lote A** · T03 El disparo (`publication.due`) | ✅ terminada | #120 |
-| **Lote B** · T04 Reintentos, espera ante límites y causa legible | ✅ terminada | (lote B) |
-| **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ✅ terminada | (lote B) |
+| **Lote B** · T04 Reintentos, espera ante límites y causa legible | ✅ terminada | #121 |
+| **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ✅ terminada | #121 |
 | **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ⏳ pendiente | |
 | **Lote C** · T07 Portal: actualizar, republicar y vencimiento | ⏳ pendiente | |
 | **Lote D** · T08 La propiedad manda | ⏳ pendiente | |
@@ -122,6 +122,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
   - **Reintentos de la cola:** 3 (a 1, 2 y 4 min) en vez de 2.
   - **La causa en palabras simples:** para cada código de error hay una frase de qué hacer ("reconecta la cuenta en Cuentas", "corrige la planilla"…). El panel y la CLI la muestran con los lotes F y G.
   - **Vigilancia de cada hora** (mientras el worker corre): lee el estado de los avisos de Portal en vivo y vuelve a encolar las publicaciones que quedaron "publicando" más de 70 min sin avanzar (salvo Marketplace, que espera tu palabra). Cierra la deuda de F3 de las publicaciones sin job.
+  - **La revisión dejó** (`revisor` y `arquitecto`, sin bloqueantes): las esperas se cuentan con el cambio de estado, que se guarda junto con la reprogramación (antes, con el evento del intento, que podía perderse); la vigilancia separa las publicaciones que todavía tienen su job de las reencoladas; más consejos de qué hacer (Portal y Marketplace); más pruebas (la hora al minuto, Portal sigue la cola, el sync sin repetir).
 - 2026-10-15: **Lote A de F6 (F6-T01 a T03): el calendario por dentro.** Todavía no hay botones ni comandos (llegan con la API, la CLI y el panel, lotes F y G).
   - **Programar:** una publicación, o una o varias propiedades con espaciado entre ellas. Revisa lo mismo que publicar, salvo el límite del día de Marketplace (un recordatorio no lo gasta). La hora queda al minuto, de 2 min a 60 días adelante, y el modo (simulación o vivo) se fija al programar. Reprogramar deja su evento en la bitácora; desprogramar devuelve la publicación a "aprobada".
   - **El disparo:** un job revisa cada minuto (y al encender el worker) las programadas que vencieron hace 12 h o menos y las publica con su propio modo. Las más atrasadas esperan tu decisión, y Marketplace nunca sale solo. Si a la hora ya no se puede publicar (por ejemplo, pausaste la propiedad), queda "falló" con el motivo.

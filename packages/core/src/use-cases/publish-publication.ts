@@ -63,7 +63,13 @@ import { modeOf, publicationNotFound } from "./publication-start.js";
  */
 export type PublishWarning = {
   publicationId: string;
-  step: "attempt_event" | "mark_failed" | "listing_active" | "account_status" | "remote_state";
+  step:
+    | "attempt_event"
+    | "mark_failed"
+    | "wait_limit"
+    | "listing_active"
+    | "account_status"
+    | "remote_state";
   code: string;
 };
 
@@ -184,7 +190,7 @@ async function waitForLimit(
     );
     return { publication: updated, retryAt };
   } catch (failure) {
-    warn("mark_failed", failure);
+    warn("wait_limit", failure);
     if (isAppError(failure) && failure.retriable) throw failure;
     return null;
   }
@@ -235,6 +241,10 @@ const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_E
  *    repetido, `rejected_after_refresh`, del catálogo o del publisher) pasan la cuenta a
  *    `expired`. Un error que
  *    no es `AppError` es `INTERNAL_ERROR` (no reintentable).
+ * 7 bis. Un límite de la plataforma (F6, ADR-0018): si el error trae la señal `waitMinutes`, la
+ *    plataforma no es de paso manual y van menos de 3 esperas seguidas, en vez del paso 7 la
+ *    publicación pasa a `scheduled` para cuando se libere (con su modo y el progreso intacto), el
+ *    intento queda `rescheduled` y se devuelve `outcome: "rescheduled"` sin relanzar.
  * Cada intento deja **un** evento `publish_attempt` (`publishAttemptPayloadSchema`), salvo un corte
  * por apagado. Los pasos secundarios que fallan van a `onWarning`.
  * Para el worker: un error no reintentable ya dejó la publicación en `failed` (registrar el código y

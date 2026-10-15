@@ -46,7 +46,7 @@ export function publicationsWatchJob(deps: PublicationsWatchJobDeps): Job {
     schedule: PUBLICATIONS_WATCH_SCHEDULE,
     errorLogFields: (error) => ({ code: codeOf(error) }),
     handler: async (_data, { logger }) => {
-      const { syncs, requeued, requeueFailed } = await watchPublications(deps);
+      const { syncs, requeued, alreadyQueued, requeueFailed } = await watchPublications(deps);
       if (syncs.enqueued + syncs.alreadyQueued > 0) {
         logger.info(
           { enqueued: syncs.enqueued, alreadyQueued: syncs.alreadyQueued },
@@ -60,6 +60,12 @@ export function publicationsWatchJob(deps: PublicationsWatchJobDeps): Job {
         logger.warn(
           { publicationIds: requeued },
           "vigilancia: publicaciones atascadas en publicando, reencoladas",
+        );
+      }
+      if (alreadyQueued.length > 0) {
+        logger.info(
+          { publicationIds: alreadyQueued },
+          "vigilancia: publicaciones largas en publicando que todavía tienen su job en la cola",
         );
       }
       if (requeueFailed.length > 0) {

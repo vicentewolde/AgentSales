@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   AppError,
+  enqueueLiveSyncs,
   type Publication,
   type PublicationOperations,
   type Publisher,
@@ -12,7 +13,6 @@ import { describe, expect, it } from "vitest";
 import { captureLogger } from "../../test/content-fixture.js";
 import { publicationPublishJob } from "./publication-publish.js";
 import {
-  enqueueLiveSyncs,
   PUBLICATION_SYNC_QUEUE,
   PUBLISHED_SYNC_DELAY_MS,
   publicationSyncJob,

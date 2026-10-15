@@ -64,8 +64,10 @@ export type WatchPublicationsDeps = {
 
 export type WatchPublicationsResult = {
   syncs: LiveSyncsResult;
-  /** Las `publishing` atascadas que se reencolaron (si ya tenían job, la cola no lo duplicó). */
+  /** Las `publishing` atascadas que se reencolaron. */
   requeued: string[];
+  /** Las que ya tenían job (esperan su turno en la cola): no se duplicó nada. */
+  alreadyQueued: string[];
   /** Las que no se pudieron reencolar, con su código. */
   requeueFailed: Array<{ publicationId: string; code: string }>;
 };
@@ -90,14 +92,18 @@ export async function watchPublications(
     excludePlatforms: [...MANUAL_CONFIRM_PLATFORMS],
   });
   const requeued: string[] = [];
+  const alreadyQueued: string[] = [];
   const requeueFailed: Array<{ publicationId: string; code: string }> = [];
   for (const publication of stale) {
     try {
-      await enqueuePublication(deps.queue, publication.id);
-      requeued.push(publication.id);
+      if ((await enqueuePublication(deps.queue, publication.id)) === null) {
+        alreadyQueued.push(publication.id);
+      } else {
+        requeued.push(publication.id);
+      }
     } catch (error) {
       requeueFailed.push({ publicationId: publication.id, code: codeOf(error) });
     }
   }
-  return { syncs, requeued, requeueFailed };
+  return { syncs, requeued, alreadyQueued, requeueFailed };
 }

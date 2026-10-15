@@ -87,9 +87,3 @@ export function publicationSyncJob(deps: PublicationSyncJobDeps): Job {
     },
   });
 }
-
-/**
- * Al arrancar, con las colas creadas (spec F4 §4.9): encola el sync de las de Portal en vivo. La
- * lógica vive en core desde F6-T05 (la comparte la vigilancia de cada hora).
- */
-export { enqueueLiveSyncs } from "@agentsales/core";

@@ -40,6 +40,21 @@ describe("watchPublications", () => {
     ]);
   });
 
+  it("una que todavía tiene su job en la cola no cuenta como reencolada", async () => {
+    const t = await createPublicationScenario();
+    const post = t.byFormat("post") as Publication;
+    await toPublishing(t, post.id);
+
+    const result = await watchPublications({
+      publications: t.publications,
+      platformAccounts: t.platformAccounts,
+      queue: { enqueue: async () => null },
+      now: later,
+    });
+
+    expect(result).toMatchObject({ requeued: [], alreadyQueued: [post.id] });
+  });
+
   it("nunca reencola una de Marketplace: un formulario no se reabre sin el operador (D7)", async () => {
     const t = await createPublicationScenario({ platform: "fb_marketplace" });
     const post = t.byFormat("post") as Publication;

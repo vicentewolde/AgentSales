@@ -663,6 +663,16 @@ describe("publishPublication · espera ante un límite (F6, ADR-0018)", () => {
     expect(current(t, post.id)?.scheduledAt).toEqual(new Date(NOW.getTime() + 24 * 60 * 60_000));
   });
 
+  it("un error reintentable sin la señal (como ML_RATE_LIMITED de Portal) sigue el camino de la cola", async () => {
+    const { t, post, run } = await setup({
+      publisher: {
+        steps: [{ error: new AppError("ML_RATE_LIMITED", "límite", { retriable: true }) }],
+      },
+    });
+    await expect(run(post)).rejects.toMatchObject({ code: "ML_RATE_LIMITED", retriable: true });
+    expect(current(t, post.id)).toMatchObject({ status: "publishing", scheduledAt: null });
+  });
+
   it("sin la señal de espera, un error no reintentable sigue dejando failed", async () => {
     const { t, post, run } = await setup({
       publisher: { steps: [{ error: new AppError("IG_PUBLISH_LIMIT", "sin cupo") }] },

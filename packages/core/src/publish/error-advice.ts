@@ -26,7 +26,8 @@ const ADVICE: Readonly<Record<string, string>> = {
   // Límites.
   IG_RATE_LIMITED:
     "Espera lo que dice el mensaje y reintenta (el sistema lo reprograma solo hasta 3 veces).",
-  IG_PUBLISH_LIMIT: "La cuenta llegó a su máximo diario: reintenta mañana o prográmala.",
+  IG_PUBLISH_LIMIT:
+    "La cuenta llegó a su máximo diario (el sistema ya esperó 3 veces): reintenta mañana o prográmala.",
   ML_RATE_LIMITED: RETRY_LATER,
   ML_NO_QUOTA: "El paquete de Mercado Libre no tiene cupo: contrata o renueva uno y reintenta.",
   MARKETPLACE_DAILY_LIMIT:
@@ -53,6 +54,24 @@ const ADVICE: Readonly<Record<string, string>> = {
   IG_MEDIA_REJECTED:
     "Instagram rechazó un medio: revisa lo que dice el mensaje, prepara de nuevo y reintenta.",
   MARKETPLACE_NOT_READY: FIX_SHEET,
+  MARKETPLACE_FIELD_MISSING: FIX_SHEET,
+  MARKETPLACE_PHOTOS_MISSING: "Prepara el contenido de nuevo (faltan las fotos) y reintenta.",
+  MARKETPLACE_CURRENCY_UNSUPPORTED: "Revisa la moneda del precio en la planilla (UF o CLP).",
+  PORTAL_PETS_UNDECIDED: "Indica en la planilla si se aceptan mascotas y vuelve a cargarla.",
+  PORTAL_TITLE_MISSING: "Prepara el texto de Portal de nuevo y apruébalo.",
+  PORTAL_TITLE_TOO_LONG: "Acorta el título de Portal (máx. 60 caracteres) y apruébalo de nuevo.",
+  PORTAL_DESCRIPTION_TOO_LONG: "Acorta la descripción de Portal y apruébala de nuevo.",
+  PORTAL_PRICE_INVALID: FIX_SHEET,
+  PORTAL_CURRENCY_NOT_ALLOWED: FIX_SHEET,
+  PORTAL_TYPE_UNSUPPORTED: "Portal no tiene ese tipo de propiedad: revisa el tipo en la planilla.",
+  PORTAL_UNIT_NOT_ALLOWED: FIX_SHEET,
+  PORTAL_ATTRIBUTE_UNSUPPORTED: FIX_SHEET,
+  PORTAL_PICTURES_MISSING: "Prepara el contenido de nuevo (faltan las fotos) y reintenta.",
+  PORTAL_PICTURE_NOT_JPEG: "Prepara el contenido de nuevo: una foto no quedó en JPEG.",
+  PORTAL_TOO_MANY_PICTURES: "Deja menos fotos en la carpeta de la propiedad y prepara de nuevo.",
+  ML_PICTURE_INVALID:
+    "Mercado Libre no aceptó una foto: prepara el contenido de nuevo y reintenta.",
+  IG_MEDIA_NOT_READY: RETRY_LATER,
   MARKETPLACE_OPERATION_UNSUPPORTED: "Marketplace solo publica arriendos: descarta la publicación.",
   MARKETPLACE_TYPE_UNSUPPORTED:
     "El formulario de Marketplace no tiene ese tipo de propiedad: descarta la publicación.",
