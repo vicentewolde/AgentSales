@@ -41,5 +41,15 @@ export const portalProgressSchema = z.object({
   descriptionDone: z.boolean().optional(),
   /** Si la dirección ya se ocultó (`address_line_by_reference`, D7). */
   addressHidden: z.boolean().optional(),
+  /**
+   * Republicar (ADR-0020, spec F6 §4.7): cuándo se pidió `POST /items/{id}/relist`. Con esto y sin
+   * `itemId`, nunca se repite el pedido solo (un `relist` repetido podría gastar otro cupo).
+   */
+  relistRequestedAt: z.iso.datetime().optional(),
+  /**
+   * Mercado Libre rechazó el `relist` de forma definitiva: el reintento publica un ítem nuevo
+   * (`POST /items`) en vez de insistir.
+   */
+  relistRejected: z.boolean().optional(),
 });
 export type PortalProgress = z.infer<typeof portalProgressSchema>;

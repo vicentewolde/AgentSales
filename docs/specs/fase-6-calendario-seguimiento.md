@@ -261,16 +261,16 @@ ADR-0018, ADR-0019 y ADR-0020 se registran con la aprobación del spec (en su mi
 - **Archivos:** `packages/publishers/src/mercadolibre/{items.ts,errors.ts}`, `packages/publishers/test/`
 - **Descripción:** `update` (`PUT /items/{id}` con título, precio, atributos, `seller_contact` completo y los `id` de las fotos actuales), `updateDescription` (`PUT /items/{id}/description?api_version=2`) y `relist` (`POST /items/{id}/relist` con `price`, `quantity: 1` y `listing_type_id`), con sus errores (los `seller_contact.*` de la nota, en español) y el 409 de bloqueo optimista, que se reintenta.
 - **Hecho cuando:**
-  - [ ] Tests de contrato con msw (cuerpos enviados, `seller_contact` y `pictures` siempre en `update`, ids validados sin llamar, errores y causas en español sin datos del aviso)
-  - [ ] Nota de Mercado Libre y docs 01 al día
+  - [x] Tests de contrato con msw (cuerpos enviados, `seller_contact` y `pictures` siempre en `update`, ids validados sin llamar, errores y causas en español sin datos del aviso)
+  - [x] Nota de Mercado Libre y docs 01 al día
 
 ### F6-T07 · Portal: actualizar, republicar y vencimiento (core)
 - **Depende de:** T01, T06
 - **Archivos:** `packages/core/src/use-cases/{update-portal-publication.ts,relist-publication.ts}`, `packages/core/src/publish/input.ts` (`relistOf`), `packages/core/src/ports/publisher.ts`, `packages/core/src/portal/expiry.ts`, `packages/publishers/src/mercadolibre/{publisher.ts,operations.ts}`, `apps/worker/src/portal.ts`, `apps/api/src/portal.ts`
 - **Descripción:** §4.7: actualizar (qué cambió, `PORTAL_UPDATE_NEEDS_RELIST`, un tope de 15 s para todas las llamadas, `replacePublishedSource` con `sellerContact`, `manual_edit`, sync en 30 s, simulación), republicar (publicación nueva con `relistedFrom`; `PublishInput` de Portal suma `relistOf`; `portalProgressSchema` suma `relistRequestedAt` y `relistRejected`, opcionales; el publisher retoma sin repetir el `relist` y repone lo que falte) y `portalExpiry`.
 - **Hecho cuando:**
-  - [ ] Tests: actualizar solo lo que cambió, nada que actualizar (`PORTAL_NOTHING_TO_UPDATE`), categoría distinta, simulación sin llamar, la respuesta perdida pide un sync; republicar (`relist` y reposición de la descripción), un `relist` rechazado que deja `failed` y cuyo reintento publica un ítem nuevo, republicar en simulación una `dry_run` sin `remote_state`, una `dry_run` con la API en vivo (`RELIST_NOT_ALLOWED`), actualizar una `live` con la API en simulación (`PUBLISH_MODE_MISMATCH`), el reintento que no repite el `relist`, y republicar dos veces la misma (`RELIST_NOT_ALLOWED`); los días al vencimiento en hora de Chile
-  - [ ] Docs 01 (contrato del Publisher y `PublishInput`) y 02 al día; seguimiento de ADR-0015
+  - [x] Tests: actualizar solo lo que cambió, nada que actualizar (`PORTAL_NOTHING_TO_UPDATE`), categoría distinta, simulación sin llamar, la respuesta perdida pide un sync; republicar (`relist` y reposición de la descripción), un `relist` rechazado que deja `failed` y cuyo reintento publica un ítem nuevo, republicar en simulación una `dry_run` sin `remote_state`, una `dry_run` con la API en vivo (`RELIST_NOT_ALLOWED`), actualizar una `live` con la API en simulación (`PUBLISH_MODE_MISMATCH`), el reintento que no repite el `relist`, y republicar dos veces la misma (`RELIST_NOT_ALLOWED`); los días al vencimiento en hora de Chile
+  - [x] Docs 01 (contrato del Publisher y `PublishInput`) y 02 al día; seguimiento de ADR-0015
 
 ### F6-T08 · La propiedad manda (core, ADR-0019)
 - **Depende de:** T01

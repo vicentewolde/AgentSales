@@ -8,6 +8,7 @@ import type { PlatformAccount } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
+import type { PublicationRepository } from "../ports/publication-repository.js";
 import type {
   PublishBrokerContact,
   Publisher,
@@ -34,6 +35,8 @@ export type PublishInputDeps = {
   storage: Pick<MediaStorage, "signedReadUrl">;
   listings: Pick<ListingRepository, "get" | "getSourceHash">;
   brokers: Pick<BrokerRepository, "findById">;
+  /** La publicación que se republica (`relisted_from`, ADR-0020), para `relistOf`. */
+  publications?: Pick<PublicationRepository, "get">;
 };
 
 /** El aviso cambió (o la publicación no tiene versión): no se publica lo que no se aprobó. */
@@ -161,6 +164,25 @@ export function assemblePublishInput({
 }
 
 /**
+ * Portal (ADR-0020): si la publicación republica a otra que salió **en vivo** (su `external_id` es
+ * un ítem de Mercado Libre), el ítem a republicar. Si la anterior no existe, era una simulación o no
+ * tiene id, no hay `relist`: se publica un ítem nuevo.
+ */
+async function relistOfPart(
+  deps: Pick<PublishInputDeps, "publications">,
+  publication: Publication,
+): Promise<{ relistOf: { externalId: string } } | null> {
+  if (publication.relistedFrom === null || publication.platform !== "portal_inmobiliario") {
+    return null;
+  }
+  const parent = await deps.publications?.get(publication.relistedFrom);
+  if (parent === null || parent === undefined || parent.dryRun || parent.externalId === null) {
+    return null;
+  }
+  return { relistOf: { externalId: parent.externalId } };
+}
+
+/**
  * Arma lo que se publica en un intento (spec F3 §4.4): el caption del texto aprobado (en
  * Instagram, `instagramCaption`, sin título) y los medios de `media_ids`, en su orden, con URLs
  * firmadas nuevas. `media` son los medios del aviso (`MediaRepository.listByListing`). Antes de
@@ -211,14 +233,18 @@ export async function buildPublishInput(
   const listingData = PUBLISH_LISTING_PLATFORMS.has(publication.platform)
     ? await listingPart(deps, publication)
     : null;
-  return assemblePublishInput({
-    publicationId: publication.id,
-    platform: publication.platform,
-    format: publication.format,
-    content,
-    media: await signPublishMedia(deps.storage, items),
-    listingData,
-  });
+  const relist = await relistOfPart(deps, publication);
+  return {
+    ...assemblePublishInput({
+      publicationId: publication.id,
+      platform: publication.platform,
+      format: publication.format,
+      content,
+      media: await signPublishMedia(deps.storage, items),
+      listingData,
+    }),
+    ...(relist ?? {}),
+  };
 }
 
 /**

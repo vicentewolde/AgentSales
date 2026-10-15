@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-15
 **Fase actual:** F6 · Calendario + seguimiento (`docs/specs/fase-6-calendario-seguimiento.md`, aprobado el 2026-10-15; ADR-0018 a ADR-0020). F5 cerrada (tag `v0.5.0`)
-**Última tarea:** lote B de F6 (F6-T04 y T05): reintentos con espera ante los límites, la causa legible y la vigilancia de cada hora
-**Siguiente paso:** `/tarea F6-T06 F6-T07` — lote C: Portal (actualizar un aviso publicado, republicar uno vencido o cerrado y avisar antes del vencimiento)
+**Última tarea:** lote C de F6 (F6-T06 y T07): Portal, actualizar un aviso publicado, republicar uno vencido o cerrado y el aviso de vencimiento
+**Siguiente paso:** `/tarea F6-T08 F6-T09` — lote D: la propiedad manda (pausar, cerrar por vendida o arrendada, reabrir y archivar orquestan sus publicaciones) y `auto_publish`
 
 ## Pendiente tuyo para F6 (no bloquea hasta el lote E)
 - [ ] Instalar el cliente de Postgres para el respaldo: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6")
@@ -31,8 +31,8 @@
 | **Lote A** · T03 El disparo (`publication.due`) | ✅ terminada | #120 |
 | **Lote B** · T04 Reintentos, espera ante límites y causa legible | ✅ terminada | #121 |
 | **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ✅ terminada | #121 |
-| **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ⏳ pendiente | |
-| **Lote C** · T07 Portal: actualizar, republicar y vencimiento | ⏳ pendiente | |
+| **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ✅ terminada | (lote C) |
+| **Lote C** · T07 Portal: actualizar, republicar y vencimiento | ✅ terminada | (lote C) |
 | **Lote D** · T08 La propiedad manda | ⏳ pendiente | |
 | **Lote D** · T09 `auto_publish` | ⏳ pendiente | |
 | **Lote E** · T14 Respaldo local (`pg_dump`) | ⏳ pendiente | |
@@ -117,6 +117,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-15: **Lote C de F6 (F6-T06 y T07): Portal.** Por ahora solo en core, el cliente y la API por dentro; las rutas, la CLI y los botones llegan en los lotes F y G.
+  - **Actualizar un aviso publicado:** si cambiaste el precio en la planilla (o preparaste y aprobaste un texto nuevo), Actualizar manda a Mercado Libre solo lo que cambió (precio y atributos, o título y descripción), siempre con las fotos que ya tiene y tu WhatsApp. Nunca cambia las fotos ni el tipo de propiedad: si cambió el tipo o la operación, dice que hay que cerrarlo y publicar uno nuevo. En vivo pide confirmar (un cambio de precio puede hacer que Mercado Libre lo pause para revisarlo) y revisa el estado 30 s después.
+  - **Republicar uno vencido o cerrado:** crea una publicación nueva que recuerda la anterior. En vivo usa la republicación de Mercado Libre (conserva las visitas si fue hace 60 días o menos) y repone lo que el aviso nuevo no traiga. Nunca la pide dos veces a ciegas; si Mercado Libre la rechaza, reintentar publica un aviso nuevo. En vivo pide confirmar: usa un cupo del paquete.
+  - **Vencimiento:** la regla que cuenta los días que le quedan a un aviso (en hora de Chile) y avisa con 7 o menos; la mostrarán la agenda y el panel.
+  - `ml:smoke` bloquea también las escrituras nuevas (actualizar, reemplazar la descripción y republicar).
+  - Lo que la doc de Mercado Libre no dice (si republicar pide el contacto, qué copia del aviso anterior, si la regla de fotos alcanza a pausar y cerrar) se prueba con el usuario de prueba, pendiente de F4.
 - 2026-10-15: **Lote B de F6 (F6-T04 y T05).**
   - **Límites de Instagram:** si Instagram dice "espera" (límite de llamadas, o el máximo de publicaciones del día), la publicación ya no queda fallida: se reprograma sola para cuando se libere (lo que diga Instagram, o 60 min; 6 h para el máximo del día), hasta 3 veces seguidas; la cuarta queda "falló". Si tú la reintentas, la cuenta vuelve a cero. Marketplace nunca espera solo.
   - **Reintentos de la cola:** 3 (a 1, 2 y 4 min) en vez de 2.

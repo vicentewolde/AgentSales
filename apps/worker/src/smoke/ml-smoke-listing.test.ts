@@ -186,6 +186,9 @@ describe("ml:smoke --listing", () => {
       setStatus: spy("setStatus"),
       addDescription: spy("addDescription"),
       hideAddress: spy("hideAddress"),
+      update: spy("update"),
+      updateDescription: spy("updateDescription"),
+      relist: spy("relist"),
       get: spy("get"),
       getDescription: spy("getDescription"),
       getLastModeration: spy("getLastModeration"),
@@ -214,6 +217,16 @@ describe("ml:smoke --listing", () => {
       "ML_SMOKE_WRITE_BLOCKED",
     );
     expect(await blocked(() => items.hideAddress("t", "MLC1"))).toBe("ML_SMOKE_WRITE_BLOCKED");
+    const contact = { contact: null, email: null, countryCode2: "56", phone2: "900000000" };
+    expect(
+      await blocked(() => items.update("t", "MLC1", { pictures: [{ id: "p1" }] }, contact)),
+    ).toBe("ML_SMOKE_WRITE_BLOCKED");
+    expect(await blocked(() => items.updateDescription("t", "MLC1", "x"))).toBe(
+      "ML_SMOKE_WRITE_BLOCKED",
+    );
+    expect(
+      await blocked(() => items.relist("t", "MLC1", { price: 1, listingTypeId: "silver" })),
+    ).toBe("ML_SMOKE_WRITE_BLOCKED");
     expect(
       await blocked(() =>
         NO_PICTURES.upload("t", { bytes: new Uint8Array(), mime: "image/jpeg", filename: "1.jpg" }),

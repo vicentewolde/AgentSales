@@ -49,9 +49,9 @@ const writeBlocked = (what: string) =>
   );
 
 /**
- * El cliente de ítems sin escrituras, también al ejecutar: crear, cambiar el estado, cargar la
- * descripción y ocultar la dirección lanzan `ML_SMOKE_WRITE_BLOCKED` sin llamar; las lecturas
- * pasan tal cual.
+ * El cliente de ítems sin escrituras, también al ejecutar: crear, cambiar el estado o los datos,
+ * cargar o reemplazar la descripción, republicar y ocultar la dirección lanzan
+ * `ML_SMOKE_WRITE_BLOCKED` sin llamar; las lecturas pasan tal cual.
  */
 export function readOnlyItems(items: MercadoLibreItems): MercadoLibreItems {
   return {
@@ -71,6 +71,15 @@ export function readOnlyItems(items: MercadoLibreItems): MercadoLibreItems {
     },
     hideAddress: async () => {
       throw writeBlocked("cambia la dirección de un aviso");
+    },
+    update: async () => {
+      throw writeBlocked("cambia los datos de un aviso");
+    },
+    updateDescription: async () => {
+      throw writeBlocked("reemplaza una descripción");
+    },
+    relist: async () => {
+      throw writeBlocked("republica un aviso");
     },
   };
 }

@@ -64,11 +64,17 @@ describe("Portal en el worker (F4-T18)", () => {
       tags: [],
       listingSource: null,
       sellerCustomField: null,
+      categoryId: null,
+      pictureIds: [],
+      parentItemId: null,
       warnings: [],
     };
     const items: MercadoLibreItems = {
       create: refuse,
       setStatus: refuse,
+      update: refuse,
+      updateDescription: refuse,
+      relist: refuse,
       addDescription: refuse,
       hideAddress: refuse,
       getDescription: refuse,

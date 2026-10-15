@@ -54,6 +54,9 @@ export type PortalPublisherOptions = {
     | "findBySellerCustomField"
     | "setStatus"
     | "getLastModeration"
+    | "update"
+    | "updateDescription"
+    | "relist"
   >;
   pictures: MercadoLibrePictures;
   /** `POST /items/validate`: lo usa solo `preflight` (ADR-0016). */
@@ -158,7 +161,11 @@ export const PORTAL_PICTURES_NOT_CHECKED_NOTE =
  */
 export function createPortalPublisher(options: PortalPublisherOptions): DirectPublisher {
   const now = options.now ?? (() => new Date());
-  const operations = createPortalOperations({ items: options.items });
+  const operations = createPortalOperations({
+    items: options.items,
+    catalog: options.catalog,
+    now,
+  });
   const publisher: DirectPublisher = {
     platform: "portal_inmobiliario",
     formats: ["post"],
@@ -341,8 +348,96 @@ export function createPortalPublisher(options: PortalPublisherOptions): DirectPu
         }
       }
 
+      /**
+       * Republicar (ADR-0020, spec F6 §4.7): `relist` sobre el ítem anterior en vez de crear uno.
+       * Revisa el ítem armado antes de pedir nada; guarda la hora del pedido antes de enviarlo y
+       * nunca lo repite a ciegas (con la hora y sin el id, `ML_PUBLISH_OUTCOME_UNKNOWN`: un `relist`
+       * repetido podría gastar otro cupo). Un rechazo definitivo marca `relistRejected` para que el
+       * reintento publique un ítem nuevo. Con el ítem nuevo, repone lo que falte: las fotos (si no
+       * se copiaron, se suben), y el título, el precio, los atributos, el contacto y la marca de la
+       * publicación con `update` (la descripción, en el paso 3).
+       */
+      async function relistItem(
+        relistOf: { externalId: string },
+        catalog: PortalItemCatalog,
+      ): Promise<MercadoLibreItem> {
+        const precheck = buildPortalItemWithSources(input, catalog, { now });
+        if (!precheck.ok) throw publishInputInvalid(input.publicationId, precheck.issues);
+        const price = (precheck.item.body as { price?: number }).price;
+        if (price === undefined) throw publishInputInvalid(input.publicationId, []);
+        await save({ ...progress, relistRequestedAt: now().toISOString() });
+        let possiblyCreated = false;
+        let item: MercadoLibreItem;
+        try {
+          item = await call(async (token, callOptions) => {
+            try {
+              return await options.items.relist(
+                token,
+                relistOf.externalId,
+                { price, listingTypeId: "silver" },
+                callOptions,
+              );
+            } catch (error) {
+              if (itemCreationOutcome(error) === "unknown") possiblyCreated = true;
+              throw error;
+            }
+          });
+        } catch (error) {
+          if (possiblyCreated) throw error;
+          const { relistRequestedAt: _notRelisted, ...rest } = progress;
+          const definitive = isAppError(error) && !error.retriable;
+          await save(definitive ? { ...rest, relistRejected: true } : rest).catch(() => undefined);
+          throw error;
+        }
+        const withItem = { ...progress, itemId: item.id, pictureIds: item.pictureIds };
+        await save(withItem).catch(() => save(withItem));
+        // Sin fotos copiadas, se suben las de la publicación (en orden, guardando cada id).
+        if (progress.pictureIds.length === 0) await uploadMissing();
+        const pictures = progress.pictureIds.map((id) => ({ id }));
+        const built = buildPortalItem(input, catalog, { pictures, now });
+        if (!built.ok) throw publishInputInvalid(input.publicationId, built.issues);
+        const body = built.item.body as {
+          title?: string;
+          currency_id?: string;
+          attributes?: readonly unknown[];
+        };
+        const updated = await call((token, callOptions) =>
+          options.items.update(
+            token,
+            item.id,
+            {
+              pictures,
+              price,
+              seller_custom_field: input.publicationId,
+              ...(body.title === undefined ? {} : { title: body.title }),
+              ...(body.currency_id === undefined ? {} : { currency_id: body.currency_id }),
+              ...(body.attributes === undefined ? {} : { attributes: body.attributes }),
+            },
+            built.item.sellerContact,
+            callOptions,
+          ),
+        );
+        await save({ ...progress, sellerContact: built.item.sellerContact });
+        notes.push(...built.item.notes, ...warningNotes(updated.warnings));
+        return updated;
+      }
+
       let created: MercadoLibreItem | null = null;
-      if (progress.itemId === undefined) {
+      const { relistOf } = input;
+      if (progress.itemId === undefined && progress.relistRequestedAt !== undefined) {
+        // Se pidió el `relist` y no se supo cómo terminó: nunca se repite solo.
+        throw MERCADOLIBRE_ERRORS.publishOutcomeUnknown("none");
+      }
+      if (
+        progress.itemId === undefined &&
+        relistOf !== undefined &&
+        progress.relistRejected !== true
+      ) {
+        const { listing } = input;
+        if (listing === undefined) throw publishInputInvalid(input.publicationId, []);
+        const catalog = await resolvePortalItemCatalog(listing, options.catalog, tokenCtx);
+        created = await relistItem(relistOf, catalog);
+      } else if (progress.itemId === undefined) {
         if (progress.createRequestedAt !== undefined) {
           // Las advertencias del armado del intento anterior no se repiten: ya quedaron en su bitácora.
           created = await findCreated();
@@ -367,6 +462,11 @@ export function createPortalPublisher(options: PortalPublisherOptions): DirectPu
         if (existing === null) {
           await call((token, callOptions) =>
             options.items.addDescription(token, itemId, input.caption, callOptions),
+          );
+        } else if (existing !== input.caption) {
+          // Un ítem republicado trae la descripción del anterior (o ninguna): se reemplaza.
+          await call((token, callOptions) =>
+            options.items.updateDescription(token, itemId, input.caption, callOptions),
           );
         }
         await save({ ...progress, descriptionDone: true });

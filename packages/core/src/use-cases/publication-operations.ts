@@ -24,7 +24,10 @@ import { modeOf, publicationNotFound } from "./publication-start.js";
  * Lo que una plataforma sabe hacer sobre lo publicado: lo implementa el publisher de Portal y lo
  * compone la API sin las fotos ni el catálogo (`createPortalOperations`, F4-T15).
  */
-export type PublicationOperations = Pick<Publisher, "pause" | "resume" | "close" | "getStatus">;
+export type PublicationOperations = Pick<
+  Publisher,
+  "pause" | "resume" | "close" | "getStatus" | "update"
+>;
 
 /**
  * Las plataformas cuyas publicaciones se pausan, reactivan, cierran y sincronizan desde AgentSales.
@@ -90,7 +93,7 @@ export function requireOperationPlatform(publication: Publication): void {
 export function operationsOf(
   deps: Pick<PublicationPlatformDeps, "operationsFor">,
   publication: Publication,
-): Required<PublicationOperations> {
+): Required<Omit<PublicationOperations, "update">> {
   const operations = deps.operationsFor(publication.platform);
   const { pause, resume, close, getStatus } = operations ?? {};
   if (
@@ -222,7 +225,7 @@ export const OPERATION_SYNC_DELAY_MS = 30_000;
  * 2. encola un sync en `OPERATION_SYNC_DELAY_MS`. Si ya había uno, el punto 1 hace que relea.
  * No corta: los fallos van a `onWarning` (el sync al arrancar el worker o Actualizar lo cubren).
  */
-async function requestSync(
+export async function requestSync(
   deps: Pick<PublicationPlatformDeps, "onWarning" | "now" | "lock"> & { queue: JobQueue },
   publication: Publication,
 ): Promise<void> {

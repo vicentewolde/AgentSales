@@ -607,6 +607,8 @@ Páginas oficiales que el buscador resumió (todas con "Última actualización" 
 
 Pista no oficial (no es fuente): https://help.mapaprop.com/en/help/faqs/mercadolibre-cambie-titulo-no-se-actualiza (título y `relist`).
 
+**Cómo lo aplica AgentSales (F6-T06 y T07):** `update` manda siempre los `id` de las fotos guardadas y el `seller_contact`; la descripción se reemplaza con `PUT …/description?api_version=2`; `relist` se pide una sola vez (con `relistRequestedAt` guardado antes) y después se repone con `update` lo que el ítem nuevo no traiga (fotos, título, atributos, contacto y `seller_custom_field`) y la descripción. Un rechazo definitivo del `relist` deja publicar un ítem nuevo al reintentar.
+
 ### 13.5 Pruebas pendientes de esta sección (con el usuario de prueba activado y su paquete; ninguna se hizo)
 
 1. `POST /items/{id}/relist` sobre un ítem de prueba cerrado: cuerpo mínimo, con y sin `seller_contact`; ver el error si falta y si el padre es anterior al 01/10/2026 (no se podrá crear un padre así: probar solo si existe uno).

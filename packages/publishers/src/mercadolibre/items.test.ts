@@ -77,6 +77,9 @@ describe("createMercadoLibreItems", () => {
       tags: ["good_quality_thumbnail"],
       listingSource: "portalinmobiliario",
       sellerCustomField: PUBLICATION_ID,
+      categoryId: null,
+      pictureIds: [],
+      parentItemId: null,
       warnings: [],
     });
     expect(await recorded()).toHaveLength(1);
@@ -657,6 +660,168 @@ describe("createMercadoLibreItems", () => {
       code: "ML_ID_INVALID",
     });
     expect(await recorded()).toHaveLength(0);
+  });
+
+  // F6-T06 (spec F6 §4.7, nota §13): actualizar, reemplazar la descripción y republicar.
+  it("update: PUT /items/{id} con lo que cambia, las fotos y el seller_contact; lee el ítem", async () => {
+    server.use(
+      http.put(`${API}/items/${ITEM_ID}`, () =>
+        HttpResponse.json(
+          itemBody({
+            status: "active",
+            category_id: "MLC1474",
+            pictures: [{ id: "123-MLC456_102026" }, { id: "raro" }, { sin: "id" }],
+          }),
+        ),
+      ),
+    );
+
+    const item = await items.update(
+      ACCESS,
+      ITEM_ID,
+      { price: 700000, currency_id: "CLP", pictures: [{ id: "123-MLC456_102026" }] },
+      CONTACT,
+    );
+
+    expect(item).toMatchObject({
+      id: ITEM_ID,
+      status: "active",
+      categoryId: "MLC1474",
+      pictureIds: ["123-MLC456_102026", "raro"],
+    });
+    const [request] = await recorded();
+    expect(request?.method).toBe("PUT");
+    expect(request?.json).toEqual({
+      price: 700000,
+      currency_id: "CLP",
+      pictures: [{ id: "123-MLC456_102026" }],
+      seller_contact: {
+        contact: "Corredora de Prueba",
+        email: "contacto@corredor.test",
+        country_code2: "56",
+        phone2: "912345678",
+      },
+    });
+    await expectBearer();
+  });
+
+  it("update sin fotos no llama (ML_BODY_INVALID): Mercado Libre lo rechazaría", async () => {
+    await expect(items.update(ACCESS, ITEM_ID, { pictures: [] }, CONTACT)).rejects.toMatchObject({
+      code: "ML_BODY_INVALID",
+    });
+    expect(await recorded()).toEqual([]);
+  });
+
+  it("update con 409 (otro cambio en curso) se repite una vez; un segundo 409 sube", async () => {
+    let calls = 0;
+    server.use(
+      http.put(`${API}/items/${ITEM_ID}`, () => {
+        calls += 1;
+        return calls === 1
+          ? HttpResponse.json(
+              { message: "item optimistic locking error: conflict", status: 409, cause: [] },
+              { status: 409 },
+            )
+          : HttpResponse.json(itemBody());
+      }),
+    );
+    const quick = createMercadoLibreItems({ conflictRetryMs: 0 });
+
+    await expect(
+      quick.update(ACCESS, ITEM_ID, { pictures: [{ id: "p1" }] }, CONTACT),
+    ).resolves.toMatchObject({ id: ITEM_ID });
+    expect(calls).toBe(2);
+
+    server.use(
+      http.put(`${API}/items/${ITEM_ID}`, () =>
+        HttpResponse.json({ message: "conflict", status: 409, cause: [] }, { status: 409 }),
+      ),
+    );
+    await expect(
+      quick.update(ACCESS, ITEM_ID, { pictures: [{ id: "p1" }] }, CONTACT),
+    ).rejects.toMatchObject({ code: "ML_CONFLICT", retriable: true });
+  });
+
+  it("update rechazado sin WhatsApp: ML_ITEM_REJECTED con el motivo, sin datos del aviso", async () => {
+    server.use(
+      http.put(`${API}/items/${ITEM_ID}`, () =>
+        HttpResponse.json(
+          {
+            message: "seller_contact.phone2 is required",
+            error: "validation_error",
+            status: 400,
+            cause: [
+              {
+                code: "seller_contact.phone2.required",
+                type: "error",
+                message: "phone2 es obligatorio para este tipo de publicación",
+              },
+            ],
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    const error = await items
+      .update(ACCESS, ITEM_ID, { title: "Casa en La Reina", pictures: [{ id: "p1" }] }, CONTACT)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ retriable: false });
+    expect(errorText(error)).not.toContain(ACCESS);
+    expect(errorText(error)).not.toContain("912345678");
+  });
+
+  it("updateDescription: PUT /items/{id}/description?api_version=2 con plain_text", async () => {
+    server.use(
+      http.put(`${API}/items/${ITEM_ID}/description`, () => HttpResponse.json({ ok: true })),
+    );
+
+    await items.updateDescription(ACCESS, ITEM_ID, "Linda casa.\nCon patio.");
+
+    const [request] = await recorded();
+    expect(request?.method).toBe("PUT");
+    expect(request?.url.searchParams.get("api_version")).toBe("2");
+    expect(request?.json).toEqual({ plain_text: "Linda casa.\nCon patio." });
+  });
+
+  it("relist: POST /items/{id}/relist con precio, cantidad 1 y tipo; devuelve el ítem nuevo", async () => {
+    server.use(
+      http.post(`${API}/items/${ITEM_ID}/relist`, () =>
+        HttpResponse.json(
+          itemBody({
+            id: "MLC2222222222",
+            status: "active",
+            parent_item_id: ITEM_ID,
+            pictures: [{ id: "f-1" }, { id: "f-2" }],
+          }),
+          { status: 201 },
+        ),
+      ),
+    );
+
+    const item = await items.relist(ACCESS, ITEM_ID, { price: 650000, listingTypeId: "silver" });
+
+    expect(item).toMatchObject({
+      id: "MLC2222222222",
+      parentItemId: ITEM_ID,
+      pictureIds: ["f-1", "f-2"],
+    });
+    const [request] = await recorded();
+    expect(request?.json).toEqual({ price: 650000, quantity: 1, listing_type_id: "silver" });
+  });
+
+  it("relist que devuelve el mismo id es ML_UNEXPECTED_RESPONSE; con un id inválido no llama", async () => {
+    server.use(http.post(`${API}/items/${ITEM_ID}/relist`, () => HttpResponse.json(itemBody())));
+    await expect(
+      items.relist(ACCESS, ITEM_ID, { price: 1, listingTypeId: "silver" }),
+    ).rejects.toMatchObject({ code: "ML_UNEXPECTED_RESPONSE" });
+    await expect(
+      items.relist(ACCESS, "../otro", { price: 1, listingTypeId: "silver" }),
+    ).rejects.toMatchObject({ code: "ML_ID_INVALID" });
+    await expect(items.updateDescription(ACCESS, "x", "y")).rejects.toMatchObject({
+      code: "ML_ID_INVALID",
+    });
   });
 
   describe("nunca borra ítems", () => {

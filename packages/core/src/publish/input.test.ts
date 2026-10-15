@@ -204,6 +204,33 @@ describe("buildPublishInput", () => {
     expect(input.caption).toBe("Departamento luminoso en Ñuñoa.");
   });
 
+  it("Portal republicado (F6): relistOf es el ítem de la anterior si salió en vivo; si no, nada", async () => {
+    const build = (parent: Publication | null) =>
+      buildPublishInput(
+        {
+          storage: createInMemoryMediaStorage(),
+          ...withListing(),
+          publications: { get: async () => parent },
+        },
+        {
+          publication: publication({
+            platform: "portal_inmobiliario",
+            mediaIds: ["m-1"],
+            listingSourceHash: HASH,
+            relistedFrom: "pub-anterior",
+          }),
+          content: content({ platform: "portal_inmobiliario", title: "Depto en Ñuñoa" }),
+          media: listingMedia,
+        },
+      );
+    const live = publication({ id: "pub-anterior", dryRun: false, externalId: "MLC1999999999" });
+
+    expect((await build(live)).relistOf).toEqual({ externalId: "MLC1999999999" });
+    expect((await build({ ...live, dryRun: true })).relistOf).toBeUndefined();
+    expect((await build({ ...live, externalId: null })).relistOf).toBeUndefined();
+    expect((await build(null)).relistOf).toBeUndefined();
+  });
+
   it("Portal y Marketplace suman el aviso (sin notas internas) y el contacto del corredor", async () => {
     for (const platform of ["portal_inmobiliario", "fb_marketplace"] as const) {
       const input = await buildPublishInput(

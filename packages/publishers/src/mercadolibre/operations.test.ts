@@ -379,6 +379,9 @@ describe("createPortalOperations · getStatus", () => {
         tags: [MERCADOLIBRE_MODERATION_TAG],
         listingSource: null,
         sellerCustomField: null,
+        categoryId: null,
+        pictureIds: [],
+        parentItemId: null,
         warnings: [],
       }),
       setStatus: async () => {
