@@ -3,7 +3,11 @@ import { AppError } from "../errors.js";
 import type { UfValue, UfValueSource } from "../ports/uf-value-source.js";
 import type { Publication } from "../publication.js";
 import { DRY_RUN_HANDOFF_NOTE } from "../publish/dry-run.js";
-import { createFakePublisher, createPublicationScenario } from "../testing/index.js";
+import {
+  createFakePublisher,
+  createPublicationScenario,
+  type FakePublishStep,
+} from "../testing/index.js";
 import { cancelPublication } from "./cancel-publication.js";
 import { confirmManualPublication, markNotPublished } from "./confirm-manual-publication.js";
 import { publishListing } from "./publish-listing.js";
@@ -33,7 +37,13 @@ function fakeUf(values: UfValue[] = [UF_YESTERDAY, UF_TODAY]) {
 }
 
 async function setup(
-  options: { dryRun?: boolean; clock?: () => Date; dailyLimit?: number; uf?: UfValueSource } = {},
+  options: {
+    dryRun?: boolean;
+    clock?: () => Date;
+    dailyLimit?: number;
+    uf?: UfValueSource;
+    steps?: FakePublishStep[];
+  } = {},
 ) {
   const clock = options.clock ?? (() => NOW);
   const t = await createPublicationScenario({ platform: "fb_marketplace", clock });
@@ -41,6 +51,7 @@ async function setup(
     platform: "fb_marketplace",
     formats: ["post"],
     manualConfirm: true,
+    ...(options.steps === undefined ? {} : { steps: options.steps }),
   });
   const uf = options.uf ?? fakeUf().source;
   const startDeps = {
@@ -455,5 +466,23 @@ describe("Marketplace · límite diario y un formulario a la vez", () => {
     await expect(
       startPublication(s.startDeps, { publicationId: first.id, dryRun: false, actor: "operator" }),
     ).rejects.toMatchObject({ code: "MARKETPLACE_FORM_OPEN" });
+  });
+});
+
+describe("Marketplace · nunca espera sola ante un límite (F6, ADR-0018)", () => {
+  it("un error con señal de espera deja la publicación failed, no programada", async () => {
+    const s = await setup({
+      steps: [
+        {
+          error: new AppError("MARKETPLACE_UNAVAILABLE", "límite", {
+            details: { waitMinutes: 30 },
+          }),
+        },
+      ],
+    });
+    const publication = await s.publish();
+
+    await expect(s.attempt(publication)).rejects.toMatchObject({ code: "MARKETPLACE_UNAVAILABLE" });
+    expect(await s.current(publication.id)).toMatchObject({ status: "failed", scheduledAt: null });
   });
 });

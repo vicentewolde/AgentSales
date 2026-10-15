@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-15
 **Fase actual:** F6 · Calendario + seguimiento (`docs/specs/fase-6-calendario-seguimiento.md`, aprobado el 2026-10-15; ADR-0018 a ADR-0020). F5 cerrada (tag `v0.5.0`)
-**Última tarea:** lote A de F6 (F6-T01 a T03): el calendario en core y el disparo cada minuto
-**Siguiente paso:** `/tarea F6-T04 F6-T05` — lote B: reintentos con espera ante los límites de Instagram, la causa legible y la vigilancia periódica
+**Última tarea:** lote B de F6 (F6-T04 y T05): reintentos con espera ante los límites, la causa legible y la vigilancia de cada hora
+**Siguiente paso:** `/tarea F6-T06 F6-T07` — lote C: Portal (actualizar un aviso publicado, republicar uno vencido o cerrado y avisar antes del vencimiento)
 
 ## Pendiente tuyo para F6 (no bloquea hasta el lote E)
 - [ ] Instalar el cliente de Postgres para el respaldo: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6")
@@ -29,8 +29,8 @@
 | **Lote A** · T01 Máquina, datos y repositorios del calendario | ✅ terminada | #120 |
 | **Lote A** · T02 Programar, reprogramar y desprogramar | ✅ terminada | #120 |
 | **Lote A** · T03 El disparo (`publication.due`) | ✅ terminada | #120 |
-| **Lote B** · T04 Reintentos, espera ante límites y causa legible | ⏳ pendiente | |
-| **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ⏳ pendiente | |
+| **Lote B** · T04 Reintentos, espera ante límites y causa legible | ✅ terminada | (lote B) |
+| **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ✅ terminada | (lote B) |
 | **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ⏳ pendiente | |
 | **Lote C** · T07 Portal: actualizar, republicar y vencimiento | ⏳ pendiente | |
 | **Lote D** · T08 La propiedad manda | ⏳ pendiente | |
@@ -99,7 +99,6 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **F7, OAuth:** `instagramStartUrlOf` asume la API en la raíz del host de `INSTAGRAM_REDIRECT_URI`. Si el despliegue la monta tras un prefijo, derivar el inicio desde la ruta de la URI de retorno.
 - **F7, actor de la bitácora:** la API distingue la CLI del panel por la cabecera `X-AgentSales-Client`, que cualquier proceso local puede mandar. Con autenticación, el actor sale de la sesión.
 - **F7, refresco de tokens:** el job `tokens.refresh` expira a los 5 min y la expiración no corta el handler. Con una cuenta por corredor sobra; con muchas cuentas (llamadas de hasta 30 s), subir el tope o dejar de empezar cuentas nuevas pasados unos 4 min, para que un reintento no se cruce con el intento anterior.
-- **F6:** una publicación cuyo último intento terminó cortado (`PUBLISH_ABORTED`) o publicado sin guardar (`PUBLISH_RESULT_NOT_SAVED`) queda en `publishing` sin job hasta el próximo arranque del worker (que la reencola) o hasta publicarla de nuevo. En el segundo caso ya salió en Instagram. Que `publication.sync` o un reencolado periódico lo cubran.
 - **F7, `state` de Mercado Libre:** vale sus 10 min y no es de un solo uso (el código sí se canjea una vez; F4-T06). Con la vuelta automática (`/oauth/mercadolibre/callback`), amarrarlo a una cookie o a un nonce de un solo uso, como el de Instagram. Además, `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática: F7 registra en la app una segunda dirección de su dominio real (o, en local, ese nombre apuntando al propio equipo con un certificado local, que merecería un ADR), y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
 - **F7, cuentas:** `panelUrl` y `allowedHosts` están fijos en `localhost`; con varios corredores y la API expuesta, hay que autorizar quién puede conectar cada corredor (`/oauth/instagram/start?broker=` y `connect-token` hoy los acepta cualquiera que llegue a la API) y evitar repetir un `state` válido durante sus 10 min (guardar el nonce usado; hoy basta con que la cookie se borre).
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
@@ -118,6 +117,11 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-15: **Lote B de F6 (F6-T04 y T05).**
+  - **Límites de Instagram:** si Instagram dice "espera" (límite de llamadas, o el máximo de publicaciones del día), la publicación ya no queda fallida: se reprograma sola para cuando se libere (lo que diga Instagram, o 60 min; 6 h para el máximo del día), hasta 3 veces seguidas; la cuarta queda "falló". Si tú la reintentas, la cuenta vuelve a cero. Marketplace nunca espera solo.
+  - **Reintentos de la cola:** 3 (a 1, 2 y 4 min) en vez de 2.
+  - **La causa en palabras simples:** para cada código de error hay una frase de qué hacer ("reconecta la cuenta en Cuentas", "corrige la planilla"…). El panel y la CLI la muestran con los lotes F y G.
+  - **Vigilancia de cada hora** (mientras el worker corre): lee el estado de los avisos de Portal en vivo y vuelve a encolar las publicaciones que quedaron "publicando" más de 70 min sin avanzar (salvo Marketplace, que espera tu palabra). Cierra la deuda de F3 de las publicaciones sin job.
 - 2026-10-15: **Lote A de F6 (F6-T01 a T03): el calendario por dentro.** Todavía no hay botones ni comandos (llegan con la API, la CLI y el panel, lotes F y G).
   - **Programar:** una publicación, o una o varias propiedades con espaciado entre ellas. Revisa lo mismo que publicar, salvo el límite del día de Marketplace (un recordatorio no lo gasta). La hora queda al minuto, de 2 min a 60 días adelante, y el modo (simulación o vivo) se fija al programar. Reprogramar deja su evento en la bitácora; desprogramar devuelve la publicación a "aprobada".
   - **El disparo:** un job revisa cada minuto (y al encender el worker) las programadas que vencieron hace 12 h o menos y las publica con su propio modo. Las más atrasadas esperan tu decisión, y Marketplace nunca sale solo. Si a la hora ya no se puede publicar (por ejemplo, pausaste la propiedad), queda "falló" con el motivo.

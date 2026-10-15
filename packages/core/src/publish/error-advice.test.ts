@@ -1,0 +1,96 @@
+import { describe, expect, it } from "vitest";
+import { GENERIC_ERROR_ADVICE, publicationErrorAdvice } from "./error-advice.js";
+
+// Los códigos que un intento, el disparo o una operación pueden dejar en `last_error` (core y
+// `packages/publishers`). Cada uno tiene su consejo, o cae a propósito en el genérico.
+const WITH_ADVICE = [
+  "ACCOUNT_NOT_CONNECTED",
+  "IG_AUTH_INVALID",
+  "ML_AUTH_INVALID",
+  "IG_PERMISSION_DENIED",
+  "ML_PERMISSION_DENIED",
+  "CREDENTIALS_UNREADABLE",
+  "CREDENTIALS_INVALID",
+  "MERCADOLIBRE_NOT_CONFIGURED",
+  "ML_APP_CREDENTIALS_INVALID",
+  "IG_ACCOUNT_RESTRICTED",
+  "IG_RATE_LIMITED",
+  "IG_PUBLISH_LIMIT",
+  "ML_RATE_LIMITED",
+  "ML_NO_QUOTA",
+  "MARKETPLACE_DAILY_LIMIT",
+  "CONTENT_NOT_APPROVED",
+  "CONTENT_HAS_ERRORS",
+  "PUBLICATION_LISTING_CHANGED",
+  "PUBLICATION_CONTENT_MISMATCH",
+  "PUBLICATION_MEDIA_MISSING",
+  "LISTING_NOT_READY",
+  "LISTING_NOT_FOUND",
+  "PORTAL_NOT_READY",
+  "PORTAL_CATEGORY_NOT_FOUND",
+  "PORTAL_LOCATION_NOT_FOUND",
+  "ML_ITEM_REJECTED",
+  "IG_MEDIA_REJECTED",
+  "MARKETPLACE_NOT_READY",
+  "MARKETPLACE_OPERATION_UNSUPPORTED",
+  "MARKETPLACE_TYPE_UNSUPPORTED",
+  "PUBLISH_INPUT_INVALID",
+  "PUBLISH_MODE_MISMATCH",
+  "PUBLISH_MODE_LOCKED",
+  "MARKETPLACE_SESSION_EXPIRED",
+  "MARKETPLACE_VERIFICATION_REQUIRED",
+  "MARKETPLACE_FORM_CHANGED",
+  "MARKETPLACE_UNAVAILABLE",
+  "MARKETPLACE_FORM_OPEN",
+  "MARKETPLACE_PROFILE_BUSY",
+  "MARKETPLACE_NOT_PUBLISHED",
+  "MARKETPLACE_BROWSER_NOT_INSTALLED",
+  "UF_SOURCE_NOT_CONFIGURED",
+  "UF_SOURCE_AUTH_INVALID",
+  "UF_VALUE_MISSING",
+  "UF_VALUE_SUSPICIOUS",
+  "IG_PUBLISH_OUTCOME_UNKNOWN",
+  "ML_PUBLISH_OUTCOME_UNKNOWN",
+  "PUBLISHER_NOT_CONFIGURED",
+  "INTERNAL_ERROR",
+  // Pasajeros, por su sufijo.
+  "IG_UNAVAILABLE",
+  "ML_UNAVAILABLE",
+  "UF_VALUE_UNAVAILABLE",
+  "STORAGE_UNAVAILABLE",
+  "DB_UNAVAILABLE",
+  "IG_CONTAINER_TIMEOUT",
+  "IG_ABORTED",
+  "ML_ABORTED",
+  "PUBLISH_ABORTED",
+  "IG_UNEXPECTED_RESPONSE",
+  "ML_UNEXPECTED_RESPONSE",
+];
+
+// Raros o de programación: el genérico basta (reintentar o descartar).
+const GENERIC_ON_PURPOSE = [
+  "IG_REQUEST_REJECTED",
+  "ML_REQUEST_REJECTED",
+  "IG_MEDIA_FETCH_FAILED",
+  "STORAGE_NOT_FOUND",
+  "PUBLICATION_PROGRESS_INVALID",
+  "PUBLISH_RESULT_NOT_SAVED",
+  "MARKETPLACE_BROWSER_FAILED",
+];
+
+describe("publicationErrorAdvice", () => {
+  it.each(WITH_ADVICE)("%s tiene un consejo propio, en una frase", (code) => {
+    const advice = publicationErrorAdvice(code);
+    expect(advice).not.toBe(GENERIC_ERROR_ADVICE);
+    expect(advice.length).toBeGreaterThan(10);
+    expect(advice.endsWith(".")).toBe(true);
+  });
+
+  it.each(GENERIC_ON_PURPOSE)("%s cae a propósito en el genérico", (code) => {
+    expect(publicationErrorAdvice(code)).toBe(GENERIC_ERROR_ADVICE);
+  });
+
+  it("un código desconocido da el genérico", () => {
+    expect(publicationErrorAdvice("ALGO_NUEVO")).toBe(GENERIC_ERROR_ADVICE);
+  });
+});

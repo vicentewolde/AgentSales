@@ -18,7 +18,7 @@ import { PUBLISHED_SYNC_DELAY_MS } from "./publication-sync.js";
  * Política de `publication.publish` (spec F3 §4.4, `docs/01-arquitectura.md` → Cola de trabajos):
  * - `exclusive`: un solo job en cola, en reintento o activo por `singletonKey = publicationId`, así
  *   un intento nunca se cruza con otro de la misma publicación;
- * - 2 reintentos con backoff desde 60 s;
+ * - 3 reintentos con backoff exponencial desde 60 s (1, 2 y 4 min; spec F6 §4.5);
  * - expira a los 15 min: cada intento se corta a los 12 min (`PUBLICATION_ATTEMPT_MAX_MS`: el
  *   sondeo de un reel de Instagram, o hasta 30 fotos de Portal a 30 s cada una), y los 3 min de
  *   margen cubren lo que corre fuera (firmar las URLs, leer y guardar en la base). Así un intento
@@ -26,7 +26,7 @@ import { PUBLISHED_SYNC_DELAY_MS } from "./publication-sync.js";
  */
 export const PUBLICATION_PUBLISH_QUEUE: QueuePolicy = {
   policy: "exclusive",
-  retryLimit: 2,
+  retryLimit: 3,
   retryDelay: 60,
   retryBackoff: true,
   expireInSeconds: 15 * 60,
@@ -112,6 +112,13 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
         return;
       }
       await windows?.discard(publicationId);
+      if (result.outcome === "rescheduled") {
+        logger.info(
+          { retryAt: result.retryAt.toISOString(), code: result.publication.lastError?.code },
+          "límite de la plataforma: la publicación quedó programada para reintentar",
+        );
+        return;
+      }
       if (result.outcome === "skipped") {
         logger.info({ status: result.status }, "la publicación no estaba en curso: nada que hacer");
       } else if (result.publication.dryRun) {

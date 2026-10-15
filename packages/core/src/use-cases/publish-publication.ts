@@ -42,9 +42,16 @@ import {
   publishAttemptPayloadSchema,
   type RemoteState,
   remoteStateSchema,
+  scheduledPayloadSchema,
 } from "../publication.js";
 import { withDryRun } from "../publish/dry-run.js";
 import { buildPublishInput, checkPublishInput, publishAttemptRecord } from "../publish/input.js";
+import {
+  consecutiveLimitWaits,
+  MAX_LIMIT_WAITS,
+  retryAtAfter,
+  waitMinutesOf,
+} from "../publish/wait.js";
 import { scrubMessage } from "../redact.js";
 import { accessTokenProvider } from "./ensure-access-token.js";
 import { expireAccountIfRejected } from "./platform-auth.js";
@@ -64,7 +71,13 @@ export type PublishPublicationDeps = {
   /** `listByStatus` y `countLiveAttemptsSince`: el límite de Marketplace (spec F5 §4.7). */
   publications: Pick<
     PublicationRepository,
-    "get" | "transition" | "saveProgress" | "addEvent" | "listByStatus" | "countLiveAttemptsSince"
+    | "get"
+    | "transition"
+    | "saveProgress"
+    | "addEvent"
+    | "listByStatus"
+    | "countLiveAttemptsSince"
+    | "listEvents"
   >;
   /** `withCredentialsLock`: el refresco del token de Mercado Libre (`ensureAccessToken`, Portal). */
   platformAccounts: Pick<
@@ -114,8 +127,68 @@ export type PublishPublicationResult =
   | { outcome: "published"; publication: Publication }
   /** Marketplace (ADR-0017): el formulario quedó listo y espera el clic del operador. */
   | { outcome: "awaiting_manual_confirm"; publication: Publication }
+  /** Un límite de la plataforma (F6, ADR-0018): quedó programada para `retryAt`. */
+  | { outcome: "rescheduled"; publication: Publication; retryAt: Date }
   /** No estaba en `publishing` (ya terminó, se descartó o la tomó otro intento): no se publicó. */
   | { outcome: "skipped"; status: Publication["status"] };
+
+/**
+ * La espera ante un límite (spec F6 §4.5, ADR-0018 punto 6): si el error trae la señal de espera,
+ * la plataforma no es de paso manual (Marketplace nunca se reprograma sola) y la publicación lleva
+ * menos de 3 esperas seguidas, pasa `publishing` → `scheduled` para cuando se libere, con su propio
+ * modo, el motivo en `last_error` y el progreso intacto (el publisher retoma desde él). `null` si no
+ * corresponde esperar, o si la bitácora o la transición fallaron por algo que no es pasajero
+ * (entonces sigue el camino de siempre, `failed`). Un fallo pasajero de la base se relanza.
+ */
+async function waitForLimit(
+  deps: PublishPublicationDeps,
+  {
+    publication,
+    error,
+    now,
+    mode,
+    warn,
+  }: {
+    publication: Publication;
+    error: AppError;
+    now: Date;
+    mode: ReturnType<typeof modeOf>;
+    warn: (step: PublishWarning["step"], error: unknown) => void;
+  },
+): Promise<{ publication: Publication; retryAt: Date } | null> {
+  const minutes = waitMinutesOf(error);
+  if (minutes === null || requiresManualConfirm(publication.platform)) return null;
+  try {
+    const waits = consecutiveLimitWaits(await deps.publications.listEvents(publication.id));
+    if (waits >= MAX_LIMIT_WAITS) return null;
+    const retryAt = retryAtAfter(now, minutes);
+    const updated = await deps.publications.transition(
+      publication.id,
+      {
+        from: "publishing",
+        to: "scheduled",
+        changes: {
+          dryRun: publication.dryRun,
+          scheduledAt: retryAt,
+          lastError: lastErrorOf(error),
+        },
+      },
+      {
+        actor: "system",
+        payload: scheduledPayloadSchema.parse({
+          mode,
+          scheduledAt: retryAt.toISOString(),
+          reason: "rate_limit",
+        }),
+      },
+    );
+    return { publication: updated, retryAt };
+  } catch (failure) {
+    warn("mark_failed", failure);
+    if (isAppError(failure) && failure.retriable) throw failure;
+    return null;
+  }
+}
 
 /** Errores que no vienen de un adaptador: genéricos (no reintentables), sin su mensaje. */
 function normalized(error: unknown): AppError {
@@ -190,7 +263,12 @@ export async function publishPublication(
   const mode = modeOf(publication.dryRun);
   const addAttempt = async (
     result: PublishAttemptResult,
-    extra: { error?: PublicationError; sent?: PublishAttemptRecord | null; notes?: string[] },
+    extra: {
+      error?: PublicationError;
+      sent?: PublishAttemptRecord | null;
+      notes?: string[];
+      retryAt?: Date;
+    },
   ) => {
     const payload: PublishAttemptPayload = publishAttemptPayloadSchema.parse({
       mode,
@@ -198,6 +276,7 @@ export async function publishPublication(
       retry: retryCount,
       result,
       ...(extra.error === undefined ? {} : { error: extra.error }),
+      ...(extra.retryAt === undefined ? {} : { retryAt: extra.retryAt.toISOString() }),
       ...(extra.sent == null ? {} : { sent: extra.sent }),
       // Las advertencias, limpias (sin secretos, claves de R2 ni rutas) y como mucho 20.
       ...(extra.notes === undefined || extra.notes.length === 0
@@ -258,6 +337,11 @@ export async function publishPublication(
       error,
       (failure) => warn("account_status", failure),
     );
+    const waited = await waitForLimit(deps, { publication, error, now: now(), mode, warn });
+    if (waited !== null) {
+      await addAttempt("rescheduled", { error: lastErrorOf(error), sent, retryAt: waited.retryAt });
+      return { outcome: "rescheduled", publication: waited.publication, retryAt: waited.retryAt };
+    }
     const final = !error.retriable || isLastAttempt;
     await addAttempt(final ? "failed" : "retry", { error: lastErrorOf(error), sent });
     if (final) {

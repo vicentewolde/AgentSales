@@ -358,6 +358,8 @@ Verificado el 2026-10-15 contra la guía de errores y la de límites: ver la sec
 
 Para todos: parar, esperar y espaciar (la doc recomienda detener las llamadas de inmediato: seguir insistiendo alarga la recuperación). Usar `estimated_time_to_regain_access` si llega; si no, 1 hora.
 
+**Cómo lo aplica AgentSales desde F6-T04 (spec F6 §4.5):** `IG_RATE_LIMITED` (4, 17, 80002, 613) e `IG_PUBLISH_LIMIT` (9 / 2207042) llevan `details.waitMinutes` (la espera de la cabecera de uso o 60 min; 6 h para el máximo diario, porque la API no dice cuándo se libera un cupo, §6.1). Con esa señal el intento reprograma la publicación para después de la espera, hasta 3 veces seguidas; la cuarta la deja `failed`.
+
 ### 7.3 Errores de medios y publicación (DOC, tabla de errores de Instagram)
 
 | Subcódigo | Código | Significado | Reintento (INFERENCIA) |

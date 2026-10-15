@@ -448,6 +448,7 @@ export {
   transition,
 } from "./publication-state.js";
 export { DRY_RUN_HANDOFF_NOTE, dryRunExternalId, withDryRun } from "./publish/dry-run.js";
+export { GENERIC_ERROR_ADVICE, publicationErrorAdvice } from "./publish/error-advice.js";
 export {
   assemblePublishInput,
   buildPublishInput,
@@ -459,6 +460,13 @@ export {
   signPublishMedia,
   toPublishListing,
 } from "./publish/input.js";
+export {
+  consecutiveLimitWaits,
+  MAX_LIMIT_WAIT_MINUTES,
+  MAX_LIMIT_WAITS,
+  retryAtAfter,
+  waitMinutesOf,
+} from "./publish/wait.js";
 export * from "./redact.js";
 export { RUN_WAIT } from "./run-wait.js";
 export {
@@ -687,3 +695,11 @@ export {
   type UnapprovedContent,
   unapproveContent,
 } from "./use-cases/unapprove-content.js";
+export {
+  enqueueLiveSyncs,
+  type LiveSyncsResult,
+  STALE_PUBLISHING_MS,
+  type WatchPublicationsDeps,
+  type WatchPublicationsResult,
+  watchPublications,
+} from "./use-cases/watch-publications.js";

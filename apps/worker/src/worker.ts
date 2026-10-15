@@ -253,6 +253,12 @@ const jobs = buildJobs({
     listings: repositories.listings,
     fieldDefinitions: repositories.fieldDefinitions,
   },
+  publicationsWatch: {
+    publications,
+    platformAccounts,
+    // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
+    queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
+  },
 });
 
 const boss = createBoss({

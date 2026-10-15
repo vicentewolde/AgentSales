@@ -80,10 +80,10 @@ async function setup(
 }
 
 describe("job publication.publish · cola", () => {
-  it("es exclusive por publicationId, con 2 reintentos desde 60 s y 15 min (sobre el tope de 12 min del intento)", () => {
+  it("es exclusive por publicationId, con 3 reintentos desde 60 s con backoff y 15 min (sobre el tope de 12 min del intento)", () => {
     expect(PUBLICATION_PUBLISH_QUEUE).toEqual({
       policy: "exclusive",
-      retryLimit: 2,
+      retryLimit: 3,
       retryDelay: 60,
       retryBackoff: true,
       expireInSeconds: 900,
@@ -105,6 +105,28 @@ describe("job publication.publish · handler", () => {
       "job terminado",
     ]);
     expect(lines[1]).toMatchObject({ mode: "live", data: { publicationId: post.id } });
+  });
+
+  it("un límite de Instagram reprograma la publicación y lo registra sin fallar el job (F6)", async () => {
+    const limit = new AppError("IG_RATE_LIMITED", "Instagram limitó las llamadas", {
+      details: { waitMinutes: 30 },
+    });
+    const { attempt, post, current, lines } = await setup({ fake: { steps: [{ error: limit }] } });
+
+    await attempt(post);
+
+    expect(current(post.id)).toMatchObject({
+      status: "scheduled",
+      dryRun: false,
+      lastError: { code: "IG_RATE_LIMITED" },
+    });
+    expect(
+      lines.find(
+        (line) =>
+          line.msg === "límite de la plataforma: la publicación quedó programada para reintentar",
+      ),
+    ).toMatchObject({ code: "IG_RATE_LIMITED", retryAt: expect.any(String) });
+    expect(lines.at(-1)).toMatchObject({ msg: "job terminado" });
   });
 
   it("en dry-run el log dice que fue una simulación", async () => {

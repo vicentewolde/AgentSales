@@ -17,6 +17,11 @@ export type InstagramErrorInfo = {
 
 /** Sin dato de espera, el límite de llamadas se informa con 1 hora (nota §7.2). */
 const DEFAULT_RETRY_AFTER_MINUTES = 60;
+/**
+ * El tope de publicaciones de 24 h no dice cuándo se libera un cupo (nota §6.1): la publicación se
+ * reprograma para dentro de 6 h (spec F6 §4.5, una simplificación consciente).
+ */
+const PUBLISH_LIMIT_WAIT_MINUTES = 6 * 60;
 
 const MEDIA_REJECTED: Readonly<Record<number, string>> = {
   2207004: "Una imagen pesa más de 8 MB",
@@ -45,13 +50,25 @@ export const INSTAGRAM_NOT_READY_SUBCODES: ReadonlySet<number> = new Set([220700
 const RATE_LIMIT_CODES = new Set([4, 17, 80002, 613]);
 const STATUS_AS_CODE: Readonly<Record<number, number>> = { 401: 190, 403: 10, 429: 4 };
 
-const error = (code: string, message: string, retriable: boolean, info: InstagramErrorInfo) =>
+/**
+ * `waitMinutes` (spec F6 §4.5, ADR-0018): la señal genérica de que el error es un límite y cuánto
+ * esperar. Con ella el intento reprograma la publicación en vez de dejarla fallida; core no nombra
+ * los códigos de Instagram.
+ */
+const error = (
+  code: string,
+  message: string,
+  retriable: boolean,
+  info: InstagramErrorInfo,
+  waitMinutes?: number,
+) =>
   new AppError(code, message, {
     retriable,
     details: {
       httpStatus: info.httpStatus ?? null,
       graphCode: info.code ?? null,
       graphSubcode: info.subcode ?? null,
+      ...(waitMinutes === undefined ? {} : { waitMinutes }),
     },
   });
 
@@ -111,6 +128,7 @@ export function instagramError(info: InstagramErrorInfo): AppError {
         `Instagram limitó las llamadas de la app: reintenta en ${minutes} minutos`,
         false,
         info,
+        minutes,
       );
     }
     if (code === 1 || code === 2) return unavailable(info);
@@ -138,6 +156,7 @@ function publishLimit(info: InstagramErrorInfo) {
     "La cuenta llegó al máximo de publicaciones de Instagram en 24 horas: reintenta mañana",
     false,
     info,
+    PUBLISH_LIMIT_WAIT_MINUTES,
   );
 }
 

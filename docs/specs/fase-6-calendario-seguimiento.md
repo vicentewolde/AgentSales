@@ -245,16 +245,16 @@ ADR-0018, ADR-0019 y ADR-0020 se registran con la aprobación del spec (en su mi
 - **Archivos:** `packages/core/src/use-cases/publish-publication.ts`, `packages/core/src/publish/error-advice.ts`, `packages/publishers/src/instagram/errors.ts`, `apps/worker/src/jobs/publication-publish.ts`
 - **Descripción:** la política nueva de `publication.publish` (3 reintentos); la espera por la señal genérica `details.waitMinutes` → `scheduled` con el tope de 3 (§4.5), que solo ponen `IG_RATE_LIMITED` (con la cabecera de uso o 60 min) e `IG_PUBLISH_LIMIT` (6 h) en el publisher de Instagram (la transición a `scheduled` pasa `publication.dryRun`, que la regla nueva exige); `publicationErrorAdvice`.
 - **Hecho cuando:**
-  - [ ] Tests: un límite deja `scheduled` con la hora correcta y el evento `rescheduled`; la cuarta espera seguida deja `failed`; un paso del operador reinicia la cuenta; Marketplace y Portal no esperan; el progreso se conserva; cada código conocido tiene su consejo
-  - [ ] Docs 01 y nota de Instagram (§7) al día
+  - [x] Tests: un límite deja `scheduled` con la hora correcta y el evento `rescheduled`; la cuarta espera seguida deja `failed`; un paso del operador reinicia la cuenta; Marketplace y Portal no esperan; el progreso se conserva; cada código conocido tiene su consejo
+  - [x] Docs 01 y nota de Instagram (§7) al día
 
 ### F6-T05 · Vigilancia periódica (`publications.watch`)
 - **Depende de:** T01
 - **Archivos:** `packages/core/src/use-cases/watch-publications.ts`, `apps/worker/src/jobs/publications-watch.ts`, `apps/worker/src/worker.ts`
 - **Descripción:** `watchPublications` (§4.6): el sync de Portal en vivo y el reencolado de las `publishing` de más de 70 min (salvo Marketplace); el job con su cron. Las dos vueltas del arranque siguen como están. Cierra la deuda de F3 en ESTADO.
 - **Hecho cuando:**
-  - [ ] Tests: encola los syncs sin repetir; reencola una `publishing` de más de 70 min y no una reciente; nunca una de Marketplace; un fallo en una no corta las demás
-  - [ ] Docs 01 al día; deuda de F3 cerrada en ESTADO
+  - [x] Tests: encola los syncs sin repetir; reencola una `publishing` de más de 70 min y no una reciente; nunca una de Marketplace; un fallo en una no corta las demás
+  - [x] Docs 01 al día; deuda de F3 cerrada en ESTADO
 
 ### F6-T06 · Mercado Libre: editar y republicar (cliente)
 - **Depende de:** — (nota de Mercado Libre ampliada)
