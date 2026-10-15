@@ -508,7 +508,11 @@ describe("unapproveContent", () => {
     );
     await t.locked.publications.transition(
       reel?.id ?? "",
-      { from: "approved", to: "scheduled" },
+      {
+        from: "approved",
+        to: "scheduled",
+        changes: { dryRun: true, scheduledAt: new Date("2026-11-01T13:00:00Z") },
+      },
       { actor: "operator" },
     );
 

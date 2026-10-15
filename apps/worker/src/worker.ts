@@ -49,6 +49,7 @@ import {
 import { failAbandonedContentRuns, requeueQueuedContentRuns } from "./jobs/content-prepare.js";
 import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
 import { buildJobs } from "./jobs/index.js";
+import { enqueuePublicationDue } from "./jobs/publication-due.js";
 import { instagramNoteLogger, requeuePublishingPublications } from "./jobs/publication-publish.js";
 import { enqueueLiveSyncs } from "./jobs/publication-sync.js";
 import { registerJobs } from "./jobs/registry.js";
@@ -244,6 +245,18 @@ const jobs = buildJobs({
     publications,
     signal: jobsAbort.signal,
   },
+  publicationDue: {
+    lock: listingLock,
+    // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
+    queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
+    publications,
+    listings: repositories.listings,
+    fieldDefinitions: repositories.fieldDefinitions,
+    marketplace: {
+      dailyLimit: env.MARKETPLACE_DAILY_LIMIT,
+      ufConfigured: env.BCCH_API_TOKEN !== undefined,
+    },
+  },
 });
 
 const boss = createBoss({
@@ -432,6 +445,17 @@ async function sweepMarketplaceWindows(): Promise<void> {
   }
 }
 
+async function requestPublicationDue(): Promise<void> {
+  try {
+    await enqueuePublicationDue(queue);
+  } catch (error) {
+    logger.warn(
+      { err: error },
+      "no se pudo encolar la revisión de las programadas: la hace el cron del próximo minuto",
+    );
+  }
+}
+
 async function requestTokensRefresh(): Promise<void> {
   try {
     await enqueueTokensRefresh(queue);
@@ -461,6 +485,7 @@ try {
     await requeuePublications();
     await requestLiveSyncs();
     await requestTokensRefresh();
+    await requestPublicationDue();
     // El modo del worker solo decide si una publicación pedida en `live` se puede publicar (D11).
     logger.info(
       {

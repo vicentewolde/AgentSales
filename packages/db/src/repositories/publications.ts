@@ -11,17 +11,24 @@ import {
   publicationEventSchema,
   publicationSchema,
   requirePublicationMode,
+  TERMINAL_PUBLICATION_STATUSES,
 } from "@agentsales/core";
-import { and, asc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { publicationEvents, publications } from "../schema.js";
 
 type Row = typeof publications.$inferSelect;
+
+/** Las activas (no terminales), como el único `publications_one_active_per_format`. */
+const activeStatus = sql.raw(
+  `"publications"."status" NOT IN (${TERMINAL_PUBLICATION_STATUSES.map((status) => `'${status}'`).join(", ")})`,
+);
 type EventRow = typeof publicationEvents.$inferSelect;
 type Writer = Pick<SchemaDatabase, "insert">;
 
 const ONE_ACTIVE_PER_FORMAT = "publications_one_active_per_format";
+const ONE_RELIST_PER_PUBLICATION = "publications_relisted_from_unique";
 
 /** Fila → entidad. Una fila que no calza (también un `progress` ajeno) es `PUBLICATION_ROW_INVALID`. */
 function toPublication(row: Row): Publication {
@@ -44,6 +51,7 @@ function toPublication(row: Row): Publication {
     progress: row.progress,
     remoteState: row.remoteState,
     listingSourceHash: row.listingSourceHash,
+    relistedFrom: row.relistedFrom,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -85,9 +93,27 @@ const progressStale = (id: string) =>
     { details: { publicationId: id } },
   );
 
+const rescheduleStale = (id: string) =>
+  new AppError(
+    "INVALID_TRANSITION",
+    "La publicación ya no está programada a esa hora: recarga y vuelve a intentarlo",
+    { details: { publicationId: id, from: "scheduled", to: "scheduled" } },
+  );
+
+const publicationStale = (id: string) =>
+  new AppError("PUBLICATION_STALE", "La publicación cambió mientras tanto: recarga", {
+    details: { publicationId: id },
+  });
+
 /** Columnas de una transición (lo mismo que aplica el doble en memoria). */
-function columnsOf(publication: Pick<Row, "platform">, changes: PublicationChanges) {
+function columnsOf(
+  publication: Pick<Row, "platform">,
+  to: Row["status"],
+  changes: PublicationChanges,
+) {
   return {
+    // La hora programada solo vive en `scheduled` (ADR-0018): al salir se borra.
+    scheduledAt: to === "scheduled" ? (changes.scheduledAt ?? null) : null,
     ...(changes.dryRun === undefined ? {} : { dryRun: changes.dryRun }),
     ...(changes.incrementAttempts ? { attempts: sql`${publications.attempts} + 1` } : {}),
     ...(changes.externalId === undefined ? {} : { externalId: changes.externalId }),
@@ -146,6 +172,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
                 mediaIds: [...input.mediaIds],
                 // Vacío cuenta como sin versión: nunca se compara contra "".
                 listingSourceHash: input.listingSourceHash || null,
+                relistedFrom: input.relistedFrom ?? null,
                 status: "approved",
                 // El valor seguro: el modo de verdad se fija al pasar a `publishing`.
                 dryRun: true,
@@ -171,6 +198,11 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
             "Ya hay una publicación activa de ese aviso, cuenta y formato",
             { details: { listingId: input.listingId, format: input.format } },
           );
+        }
+        if (isUniqueViolation(error, ONE_RELIST_PER_PUBLICATION)) {
+          throw new AppError("PUBLICATION_CONFLICT", "Esa publicación ya se republicó", {
+            details: { relistedFrom: input.relistedFrom },
+          });
         }
         // Una FK (aviso, cuenta o texto) que no existe: un bug de quien llama.
         if (sqlStateOf(error) === "23503") {
@@ -211,6 +243,127 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
       });
     },
 
+    listDue({ now, since, excludePlatforms, limit }) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(publications)
+          .where(
+            and(
+              eq(publications.status, "scheduled"),
+              lte(publications.scheduledAt, now),
+              gte(publications.scheduledAt, since),
+              excludePlatforms.length === 0
+                ? undefined
+                : notInArray(publications.platform, [...excludePlatforms]),
+            ),
+          )
+          .orderBy(asc(publications.scheduledAt), asc(publications.id))
+          .limit(limit);
+        return rows.map(toPublication);
+      });
+    },
+
+    listStalePublishing({ before, excludePlatforms }) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(publications)
+          .where(
+            and(
+              eq(publications.status, "publishing"),
+              lt(publications.updatedAt, before),
+              excludePlatforms.length === 0
+                ? undefined
+                : notInArray(publications.platform, [...excludePlatforms]),
+            ),
+          )
+          .orderBy(asc(publications.updatedAt), asc(publications.id));
+        return rows.map(toPublication);
+      });
+    },
+
+    listForTracking({ listingIds, since }) {
+      if (listingIds.length === 0) return Promise.resolve([]);
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(publications)
+          .where(
+            and(
+              inArray(publications.listingId, [...listingIds]),
+              or(sql`${activeStatus}`, gte(publications.updatedAt, since)),
+            ),
+          )
+          .orderBy(asc(publications.listingId), asc(publications.createdAt), asc(publications.id));
+        return rows.map(toPublication);
+      });
+    },
+
+    async reschedule(id, { expectedAt, at, dryRun }, event) {
+      const payload = normalizeEventPayload(event.payload);
+      if ((await findRow(id)) === undefined) throw notFound(id);
+      const row = await withDbErrors(() =>
+        db.transaction(async (tx) => {
+          const [updated] = await tx
+            .update(publications)
+            .set({ scheduledAt: at, dryRun, updatedAt: sql`clock_timestamp()` })
+            .where(
+              and(
+                eq(publications.id, id),
+                eq(publications.status, "scheduled"),
+                eq(publications.scheduledAt, expectedAt),
+              ),
+            )
+            .returning();
+          if (updated === undefined) return undefined;
+          await insertEvent(tx, id, {
+            type: "schedule_changed",
+            fromStatus: null,
+            toStatus: null,
+            actor: event.actor,
+            payload,
+          });
+          return updated;
+        }),
+      );
+      if (row === undefined) throw rescheduleStale(id);
+      return toPublication(row);
+    },
+
+    async replacePublishedSource(id, guard, source, event) {
+      const current = await findRow(id);
+      if (current === undefined) throw notFound(id);
+      // Primero los datos y después el estado, como el doble en memoria.
+      const payload = normalizeEventPayload(event.payload);
+      const progress = checkPublicationProgress(current.platform, source.progress);
+      const row = await withDbErrors(() =>
+        db.transaction(async (tx) => {
+          const [updated] = await tx
+            .update(publications)
+            .set({
+              contentId: source.contentId,
+              listingSourceHash: source.listingSourceHash || null,
+              progress,
+              updatedAt: sql`clock_timestamp()`,
+            })
+            .where(and(eq(publications.id, id), eq(publications.status, guard.from)))
+            .returning();
+          if (updated === undefined) return undefined;
+          await insertEvent(tx, id, {
+            type: "manual_edit",
+            fromStatus: null,
+            toStatus: null,
+            actor: event.actor,
+            payload,
+          });
+          return updated;
+        }),
+      );
+      if (row === undefined) throw publicationStale(id);
+      return toPublication(row);
+    },
+
     async transition(id, { from, to, changes = {} }, event) {
       const current = await findRow(id);
       if (current === undefined) throw notFound(id);
@@ -220,8 +373,8 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
         });
       // Primero los datos y después el estado, como el doble en memoria.
       const payload = normalizeEventPayload(event.payload);
-      const columns = columnsOf(current, changes);
-      requirePublicationMode(to, changes.dryRun);
+      const columns = columnsOf(current, to, changes);
+      requirePublicationMode(to, changes);
       if (!canTransition(from, to)) throw invalid();
       const row = await withDbErrors(() =>
         db.transaction(async (tx) => {

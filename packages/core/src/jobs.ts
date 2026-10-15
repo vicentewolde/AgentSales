@@ -13,6 +13,8 @@ export const JOB_NAMES = [
   "publication.sync",
   "tokens.refresh",
   "marketplace.profile",
+  "publication.due",
+  "publications.watch",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -57,6 +59,16 @@ export const JOB_PAYLOADS = {
     }),
     z.object({ brokerId: z.uuid(), action: z.literal("forget") }),
   ]),
+  /**
+   * El disparo de las programadas (spec F6 §4.4, ADR-0018): su cron de cada minuto y una vuelta al
+   * arrancar el worker. Sin datos: lee de la base las que vencieron.
+   */
+  "publication.due": z.object({}),
+  /**
+   * La vigilancia periódica (spec F6 §4.6): el sync de Portal en vivo y el reencolado de las
+   * `publishing` atascadas. Sin datos.
+   */
+  "publications.watch": z.object({}),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;

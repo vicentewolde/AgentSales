@@ -320,6 +320,8 @@ export const publications = pgTable(
     remoteState: jsonb("remote_state"),
     /** `source_hash` del aviso al nacer la publicación (ADR-0015, spec F4 §4.6). */
     listingSourceHash: text("listing_source_hash"),
+    /** La publicación de Portal que esta republica (ADR-0020, spec F6 §4.7). */
+    relistedFrom: uuid("relisted_from").references((): AnyPgColumn => publications.id),
     ...timestamps,
   },
   (t) => [
@@ -328,6 +330,12 @@ export const publications = pgTable(
       .on(t.listingId, t.platformAccountId, t.format)
       .where(activePublication),
     index("publications_listing_idx").on(t.listingId),
+    // Las programadas que vencen (el disparo de cada minuto, spec F6 §4.4).
+    index("publications_scheduled_due").on(t.scheduledAt).where(sql`"status" = 'scheduled'`),
+    // Una sola republicación por publicación, sin contar las descartadas (spec F6 §4.12).
+    uniqueIndex("publications_relisted_from_unique")
+      .on(t.relistedFrom)
+      .where(sql`"relisted_from" IS NOT NULL AND "status" <> 'cancelled'`),
   ],
 );
 

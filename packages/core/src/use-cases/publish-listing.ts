@@ -1,14 +1,10 @@
 import type { Platform } from "../enums.js";
-import { AppError } from "../errors.js";
-import { manualConfirmPending, requiresManualConfirm } from "../marketplace/limits.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
-import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
 import {
   channelPublications,
   createPublications,
-  planPublications,
   type SkippedPublication,
 } from "./open-publications.js";
 import {
@@ -16,15 +12,9 @@ import {
   type MarketplaceStartOptions,
   type PortalCheckDeps,
   portalDefinitionsBeforeLock,
-  requireCompatibleMode,
-  requireCurrentListingVersion,
-  requireMarketplaceStartable,
-  requireNoActiveRun,
-  requirePortalPublishable,
-  requirePublishableListing,
-  STARTABLE_STATUSES,
   startOne,
 } from "./publication-start.js";
+import { prepareChannelStart } from "./start-checks.js";
 
 export type PublishListingDeps = PortalCheckDeps & {
   lock: ListingLock;
@@ -84,78 +74,19 @@ export async function publishListing(
 ): Promise<PublishListingResult> {
   const definitions = await portalDefinitionsBeforeLock(deps, listingId, platform);
   const result = await deps.lock.run(listingId, async (locked) => {
-    const listing = requirePublishableListing(await locked.listings.get(listingId), listingId);
-    await requireNoActiveRun(locked, listingId);
-    const content = (await locked.contents.listCurrent(listingId)).find(
-      (current) => current.platform === platform,
-    );
-    if (content === undefined || content.status !== "approved") {
-      throw new AppError(
-        "CONTENT_NOT_APPROVED",
-        "El texto de este canal no está aprobado: apruébalo antes de publicar",
-        { details: { listingId, platform, status: content?.status ?? null } },
-      );
-    }
-    const connected = new Set(
-      (await locked.platformAccounts.listByBroker(listing.brokerId, platform))
-        .filter((account) => account.status === "connected")
-        .map((account) => account.id),
-    );
-    if (connected.size === 0) {
-      throw new AppError(
-        "ACCOUNT_NOT_CONNECTED",
-        "No hay una cuenta conectada en este canal: conéctala antes de publicar",
-        { details: { listingId, platform } },
-      );
-    }
-    const opening = await planPublications(locked, { listing, content });
-    const channel = await channelPublications(locked, listingId, platform);
-    const pending = channel.filter((publication) =>
-      STARTABLE_STATUSES.includes(publication.status),
-    );
-    const startable = pending.filter((p) => connected.has(p.platformAccountId));
-    const stranded = pending.filter((p) => !connected.has(p.platformAccountId));
-    const inFlight = channel.filter((publication) => publication.status === "publishing");
-    for (const publication of startable) requireCompatibleMode(publication, dryRun);
-    const manual = requiresManualConfirm(platform);
-    // Marketplace: una que espera el clic final se resuelve antes (spec F5 §4.3).
-    const waiting = channel.find((p) => p.status === "awaiting_manual_confirm");
-    if (manual && waiting !== undefined) throw manualConfirmPending(waiting.id);
-    if (startable.length === 0 && opening.toCreate.length === 0 && inFlight.length === 0) {
-      if (stranded.length > 0) {
-        throw new AppError(
-          "ACCOUNT_NOT_CONNECTED",
-          "Las publicaciones pendientes son de una cuenta desconectada: reconéctala o descártalas",
-          { details: { listingId, platform, publicationIds: stranded.map((p) => p.id) } },
-        );
-      }
-      throw new AppError(
-        "NOTHING_TO_PUBLISH",
-        opening.skipped.length > 0
-          ? "Ya hay una publicación de un texto anterior en este canal: retírala o descártala para publicar el texto nuevo"
-          : "No hay nada que publicar en este canal: todo está publicado",
-        { details: { listingId, platform, skipped: opening.skipped } },
-      );
-    }
-
-    // Primero la versión: con un aviso recargado, descartar y aprobar de nuevo es inevitable, y así
-    // el operador no completa la planilla para recién después enterarse.
-    if (PUBLISH_LISTING_PLATFORMS.has(platform)) {
-      await requireCurrentListingVersion(locked, listing.id, startable);
-    }
-    if (definitions !== null && startable.length + opening.toCreate.length > 0) {
-      await requirePortalPublishable(locked, { listing, content, definitions });
-    }
-    if (manual && startable.length + opening.toCreate.length > 0) {
-      await requireMarketplaceStartable(locked, {
-        listing,
-        accountIds: [...connected],
-        channelIds: channel.map((publication) => publication.id),
+    const { listing, content, opening, startable, stranded, inFlight } = await prepareChannelStart(
+      locked,
+      { listingId, platform },
+      {
         dryRun,
-        options: deps.marketplace ?? {},
+        definitions,
+        marketplace: deps.marketplace ?? {},
         now: (deps.now ?? (() => new Date()))(),
-      });
-    }
+        manualLimits: true,
+        countInFlight: true,
+        nothingMessage: "No hay nada que publicar en este canal: todo está publicado",
+      },
+    );
 
     // Recién aquí se escribe.
     const created = await createPublications(locked, {

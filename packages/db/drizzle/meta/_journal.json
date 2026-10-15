@@ -57,6 +57,13 @@
       "when": 1791326167059,
       "tag": "0007_f4_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792080487525,
+      "tag": "0008_f6_calendario",
+      "breakpoints": true
     }
   ]
 }

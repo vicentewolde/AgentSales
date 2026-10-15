@@ -1,25 +1,19 @@
 import { AppError } from "../errors.js";
-import { manualConfirmPending, requiresManualConfirm } from "../marketplace/limits.js";
+import { manualConfirmPending } from "../marketplace/limits.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
-import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
 import {
   enqueuePublications,
   type MarketplaceStartOptions,
   type PortalCheckDeps,
   portalDefinitionsBeforeLock,
   publicationNotFound,
-  requireCompatibleMode,
-  requireCurrentListingVersion,
-  requireMarketplaceStartable,
-  requireNoActiveRun,
-  requirePortalPublishable,
-  requirePublishableListing,
   STARTABLE_STATUSES,
   startOne,
 } from "./publication-start.js";
+import { requireStartableOne } from "./start-checks.js";
 
 export type StartPublicationDeps = PortalCheckDeps & {
   lock: ListingLock;
@@ -39,7 +33,8 @@ export type StartPublicationResult = {
 
 /**
  * Publica o reintenta **una** publicación (spec F3 §4.3, `POST /publications/:id/publish`):
- * - `approved` o `failed` → `publishing`, con el modo de la API (`dryRun`) y su evento; un
+ * - `approved`, `failed` o `scheduled` (adelantarla, F6) → `publishing`, con el modo de la API
+ *   (`dryRun`) y su evento; un
  *   reintento desde `failed` conserva `progress` (para no publicar dos veces);
  * - ya en `publishing` → la reencola sin cambiarla ni revisarla (`requeued`): un corte en el
  *   último intento la dejaba sin job, y el intento (T11) revisa todo al correr;
@@ -88,44 +83,13 @@ export async function startPublication(
         { details: { publicationId, from: publication.status, to: "publishing" } },
       );
     }
-    const listing = requirePublishableListing(
-      await locked.listings.get(publication.listingId),
-      publication.listingId,
-    );
-    await requireNoActiveRun(locked, publication.listingId);
-    const content = await locked.contents.get(publication.contentId);
-    if (content === null || content.status !== "approved") {
-      throw new AppError(
-        "CONTENT_NOT_APPROVED",
-        "El texto de esta publicación ya no está aprobado: apruébalo de nuevo o descártala",
-        { details: { publicationId, contentId: publication.contentId } },
-      );
-    }
-    const account = await locked.platformAccounts.get(publication.platformAccountId);
-    if (account === null || account.status !== "connected") {
-      throw new AppError(
-        "ACCOUNT_NOT_CONNECTED",
-        "La cuenta de esta publicación no está conectada: reconéctala o descártala",
-        { details: { publicationId, accountStatus: account?.status ?? null } },
-      );
-    }
-    requireCompatibleMode(publication, dryRun);
-    if (PUBLISH_LISTING_PLATFORMS.has(publication.platform)) {
-      await requireCurrentListingVersion(locked, listing.id, [publication]);
-    }
-    if (definitions !== null) {
-      await requirePortalPublishable(locked, { listing, content, definitions });
-    }
-    if (requiresManualConfirm(publication.platform)) {
-      await requireMarketplaceStartable(locked, {
-        listing,
-        accountIds: [publication.platformAccountId],
-        channelIds: [publication.id],
-        dryRun,
-        options: deps.marketplace ?? {},
-        now: (deps.now ?? (() => new Date()))(),
-      });
-    }
+    await requireStartableOne(locked, publication, {
+      dryRun,
+      definitions,
+      marketplace: deps.marketplace ?? {},
+      now: (deps.now ?? (() => new Date()))(),
+      manualLimits: true,
+    });
     return {
       publication: await startOne(locked.publications, publication, { dryRun, actor }),
       requeued: false,

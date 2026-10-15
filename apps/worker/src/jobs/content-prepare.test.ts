@@ -18,6 +18,7 @@ import {
 } from "./content-prepare.js";
 import { buildJobs } from "./index.js";
 import type { MarketplaceProfileJobDeps } from "./marketplace-profile.js";
+import type { PublicationDueJobDeps } from "./publication-due.js";
 import type { PublicationPublishJobDeps } from "./publication-publish.js";
 import type { PublicationSyncJobDeps } from "./publication-sync.js";
 import { registerJobs, type WorkerBoss } from "./registry.js";
@@ -68,6 +69,7 @@ describe("job content.prepare · cola", () => {
         publicationSync: {} as PublicationSyncJobDeps,
         tokensRefresh: {} as TokensRefreshJobDeps,
         marketplaceProfile: {} as MarketplaceProfileJobDeps,
+        publicationDue: {} as PublicationDueJobDeps,
       }).map((job) => job.name),
     ).toEqual([
       "system.ping",
@@ -77,6 +79,7 @@ describe("job content.prepare · cola", () => {
       "publication.sync",
       "tokens.refresh",
       "marketplace.profile",
+      "publication.due",
     ]);
   });
 });

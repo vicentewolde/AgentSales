@@ -11,7 +11,8 @@ import {
   transition,
 } from "./publication-state.js";
 
-// Copia literal del diagrama de docs/01-arquitectura.md (ADR-0014), independiente de la implementación.
+// Copia literal del diagrama de docs/01-arquitectura.md (ADR-0014 y ADR-0018), independiente de la
+// implementación.
 const STATUSES: readonly PublicationStatus[] = [
   "approved",
   "scheduled",
@@ -29,14 +30,18 @@ const VALID: readonly [PublicationStatus, PublicationStatus][] = [
   ["approved", "publishing"],
   ["approved", "cancelled"],
   ["scheduled", "publishing"],
+  ["scheduled", "approved"],
+  ["scheduled", "failed"],
   ["scheduled", "cancelled"],
   ["publishing", "published"],
   ["publishing", "failed"],
   ["publishing", "awaiting_manual_confirm"],
+  ["publishing", "scheduled"],
   ["awaiting_manual_confirm", "published"],
   ["awaiting_manual_confirm", "failed"],
   ["awaiting_manual_confirm", "cancelled"],
   ["failed", "publishing"],
+  ["failed", "scheduled"],
   ["failed", "cancelled"],
   ["published", "paused"],
   ["published", "unpublished"],
@@ -59,9 +64,9 @@ describe("máquina de estados de una publicación", () => {
     expect(Object.keys(PUBLICATION_TRANSITIONS).sort()).toEqual([...STATUSES].sort());
   });
 
-  it("cubre la matriz completa de 81 pares: 17 válidos y 64 inválidos", () => {
-    expect(VALID).toHaveLength(17);
-    expect(INVALID).toHaveLength(64);
+  it("cubre la matriz completa de 81 pares: 21 válidos y 60 inválidos", () => {
+    expect(VALID).toHaveLength(21);
+    expect(INVALID).toHaveLength(60);
   });
 
   it.each(VALID)("permite %s → %s", (from, to) => {

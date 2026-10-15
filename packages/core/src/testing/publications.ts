@@ -13,7 +13,11 @@ import {
   type PublicationEvent,
   requirePublicationMode,
 } from "../publication.js";
-import { ACTIVE_PUBLICATION_STATUSES, canTransition } from "../publication-state.js";
+import {
+  ACTIVE_PUBLICATION_STATUSES,
+  canTransition,
+  TERMINAL_PUBLICATION_STATUSES,
+} from "../publication-state.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryPublicationRepository = PublicationRepository & {
@@ -87,6 +91,18 @@ export function createInMemoryPublicationRepository(
           { details: { listingId: input.listingId, format: input.format } },
         );
       }
+      const relistedFrom = input.relistedFrom ?? null;
+      const relisted =
+        relistedFrom !== null &&
+        [...publications.values()].some(
+          ({ publication }) =>
+            publication.relistedFrom === relistedFrom && publication.status !== "cancelled",
+        );
+      if (relisted) {
+        throw new AppError("PUBLICATION_CONFLICT", "Esa publicación ya se republicó", {
+          details: { relistedFrom },
+        });
+      }
       const now = new Date();
       const publication: Publication = {
         // Con forma de uuid, como en Postgres: los datos del job `publication.publish` lo exigen.
@@ -108,6 +124,7 @@ export function createInMemoryPublicationRepository(
         progress: null,
         remoteState: null,
         listingSourceHash: input.listingSourceHash || null,
+        relistedFrom,
         createdAt: now,
         updatedAt: now,
       };
@@ -125,12 +142,103 @@ export function createInMemoryPublicationRepository(
     async listByStatus(status) {
       return ordered((publication) => publication.status === status);
     },
+    async listDue({ now, since, excludePlatforms, limit }) {
+      return [...publications.values()]
+        .map(({ publication }) => publication)
+        .filter(
+          (publication) =>
+            publication.status === "scheduled" &&
+            publication.scheduledAt !== null &&
+            publication.scheduledAt.getTime() <= now.getTime() &&
+            publication.scheduledAt.getTime() >= since.getTime() &&
+            !excludePlatforms.includes(publication.platform),
+        )
+        .sort(
+          (a, b) =>
+            (a.scheduledAt?.getTime() ?? 0) - (b.scheduledAt?.getTime() ?? 0) ||
+            a.id.localeCompare(b.id),
+        )
+        .slice(0, limit)
+        .map((publication) => structuredCopy(publication));
+    },
+    async listStalePublishing({ before, excludePlatforms }) {
+      return [...publications.values()]
+        .map(({ publication }) => publication)
+        .filter(
+          (publication) =>
+            publication.status === "publishing" &&
+            publication.updatedAt.getTime() < before.getTime() &&
+            !excludePlatforms.includes(publication.platform),
+        )
+        .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || a.id.localeCompare(b.id))
+        .map((publication) => structuredCopy(publication));
+    },
+    async listForTracking({ listingIds, since }) {
+      const terminal: readonly Publication["status"][] = TERMINAL_PUBLICATION_STATUSES;
+      return [...publications.values()]
+        .filter(
+          ({ publication }) =>
+            listingIds.includes(publication.listingId) &&
+            (!terminal.includes(publication.status) ||
+              publication.updatedAt.getTime() >= since.getTime()),
+        )
+        .sort(
+          (a, b) =>
+            a.publication.listingId.localeCompare(b.publication.listingId) ||
+            a.sequence - b.sequence,
+        )
+        .map(({ publication }) => structuredCopy(publication));
+    },
+    async reschedule(id, { expectedAt, at, dryRun }, event) {
+      normalizeEventPayload(event.payload);
+      const found = find(id);
+      if (
+        found.publication.status !== "scheduled" ||
+        found.publication.scheduledAt?.getTime() !== expectedAt.getTime()
+      ) {
+        throw new AppError(
+          "INVALID_TRANSITION",
+          "La publicación ya no está programada a esa hora: recarga y vuelve a intentarlo",
+          { details: { publicationId: id, from: "scheduled", to: "scheduled" } },
+        );
+      }
+      const publication = {
+        ...found.publication,
+        scheduledAt: new Date(at),
+        dryRun,
+        updatedAt: later(found.publication.updatedAt),
+      };
+      publications.set(id, { ...found, publication });
+      pushEvent(id, "schedule_changed", null, null, event);
+      return structuredCopy(publication);
+    },
+    async replacePublishedSource(id, guard, source, event) {
+      const found = find(id);
+      // Primero los datos y después el estado, como el de Drizzle.
+      normalizeEventPayload(event.payload);
+      const progress = checkPublicationProgress(found.publication.platform, source.progress);
+      if (found.publication.status !== guard.from) {
+        throw new AppError("PUBLICATION_STALE", "La publicación cambió mientras tanto: recarga", {
+          details: { publicationId: id },
+        });
+      }
+      const publication = {
+        ...found.publication,
+        contentId: source.contentId,
+        listingSourceHash: source.listingSourceHash || null,
+        progress: structuredCopy(progress),
+        updatedAt: later(found.publication.updatedAt),
+      };
+      publications.set(id, { ...found, publication });
+      pushEvent(id, "manual_edit", null, null, event);
+      return structuredCopy(publication);
+    },
     async transition(id, { from, to, changes = {} }, event) {
       const found = find(id);
       // Primero los datos y después el estado, como el de Drizzle.
       normalizeEventPayload(event.payload);
       const publication = applyChanges(found.publication, to, changes);
-      requirePublicationMode(to, changes.dryRun);
+      requirePublicationMode(to, changes);
       if (!canTransition(from, to) || found.publication.status !== from) {
         throw new AppError("INVALID_TRANSITION", `Transición inválida de ${from} a ${to}`, {
           details: { publicationId: id, from, to, current: found.publication.status },
@@ -232,6 +340,11 @@ function applyChanges(
   return {
     ...current,
     status,
+    // La hora programada solo vive en `scheduled` (ADR-0018): al salir se borra.
+    scheduledAt:
+      status === "scheduled" && changes.scheduledAt instanceof Date
+        ? new Date(changes.scheduledAt)
+        : null,
     ...(changes.dryRun === undefined ? {} : { dryRun: changes.dryRun }),
     ...(changes.incrementAttempts ? { attempts: current.attempts + 1 } : {}),
     ...(changes.externalId === undefined ? {} : { externalId: changes.externalId }),

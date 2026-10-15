@@ -117,6 +117,7 @@ export const PUBLISH_ATTEMPT_RESULT_TEXT: Readonly<Record<PublishAttemptResult, 
   retry: "se reintenta",
   failed: "falló",
   awaiting_manual_confirm: "formulario listo, espera tu clic final",
+  rescheduled: "reprogramada hasta que se libere el límite",
 };
 
 /** Quién hizo un cambio en la bitácora de una publicación. */

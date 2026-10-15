@@ -30,6 +30,7 @@ const base = {
   progress: null,
   remoteState: null,
   listingSourceHash: null,
+  relistedFrom: null,
   createdAt: new Date("2026-10-05T12:00:00Z"),
   updatedAt: new Date("2026-10-05T12:00:00Z"),
 } as const;

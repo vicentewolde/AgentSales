@@ -168,6 +168,22 @@ pausar, reactivar o cerrar → la plataforma fuera del candado y la transición 
   (ADR-0015 reemplaza unpublish() por close(); cerrar el aviso vendido es de F6)
 ```
 
+### 5. Calendario (job `publication.due`, F6, ADR-0018)
+
+```
+CLI (schedule) o panel (Programar)
+  → schedulePublication (una) o scheduleListings (una o varias propiedades, con espaciado):
+    dentro del candado, la misma revisión que publicar (`start-checks.ts`), salvo el límite del
+    día y "un formulario a la vez" de Marketplace; approved/failed → scheduled con la hora (al
+    minuto, de 2 min a 60 días) y el modo de la API; una scheduled se reprograma (schedule_changed)
+  → nada se encola: lo programado vive en la base
+cada minuto y al arrancar, job publication.due → startDuePublications:
+  las scheduled vencidas de las últimas 12 h (las más atrasadas esperan al operador, D2), sin
+  Marketplace (es un recordatorio), por hora y de a 20 → dentro del candado, la revisión de
+  publicar con el modo de la publicación → scheduled → publishing (y se encola después) o
+  scheduled → failed con el motivo
+```
+
 ## Máquina de estados de una publicación
 
 Desde F3 (ADR-0014), lo que se aprueba es el texto de un canal (`contents.status = approved`) y la publicación nace aprobada. Se quitaron `draft` y `pending_approval`.
@@ -175,12 +191,16 @@ Desde F3 (ADR-0014), lo que se aprueba es el texto de un canal (`contents.status
 ```mermaid
 stateDiagram-v2
   [*] --> approved: nace del texto aprobado
-  approved --> scheduled: tiene fecha futura (F6)
+  approved --> scheduled: programar (F6)
   approved --> publishing: publicar ahora
-  scheduled --> publishing: llega la hora
+  scheduled --> publishing: llega la hora o publicar ahora
+  scheduled --> approved: desprogramar
+  scheduled --> failed: a la hora no se pudo empezar
   publishing --> published: ok
   publishing --> failed: error no reintentable o reintentos agotados
+  publishing --> scheduled: espera ante un límite de la plataforma
   failed --> publishing: reintento manual
+  failed --> scheduled: programar un reintento
   published --> paused: pausar o sync (moderación)
   paused --> published: reactivar
   published --> unpublished: cerrar (Portal), retirar (Instagram) o sync (cerrado o vencido allá)
@@ -190,13 +210,15 @@ stateDiagram-v2
   awaiting_manual_confirm --> failed: "No lo publiqué"
   unpublished --> [*]
   approved --> cancelled: descartar
-  scheduled --> cancelled: desprogramar o cerrar el aviso
+  scheduled --> cancelled: descartar o cerrar el aviso
   failed --> cancelled: descartar
   awaiting_manual_confirm --> cancelled: descartar
   cancelled --> [*]
 ```
 
 Para Marketplace (semiautomático) existe además `awaiting_manual_confirm` entre `publishing` y `published`: el formulario queda listo y el operador hace el clic final (ADR-0004, ADR-0017). Si aparece un captcha, una verificación o cualquier pantalla fuera de la lista blanca, el intento se detiene **en `publishing`** y la publicación pasa a `failed`. Desde `awaiting_manual_confirm`, solo la palabra del operador la lleva a `failed` ("No lo publiqué") o el enlace del aviso a `published`; el sistema nunca da por publicado ni por no publicado lo que no vio, así que en Marketplace descartar y quitar la aprobación esperan esa palabra (`MANUAL_CONFIRM_PENDING`, desde F5-T05), aunque la máquina admita `awaiting_manual_confirm → cancelled`.
+
+**Calendario (F6, ADR-0018):** `scheduled` es una publicación programada para una hora (`scheduled_at`, que solo tiene valor en ese estado: al salir se borra). Pasar a `scheduled` exige el modo y la hora (`PUBLICATION_MODE_REQUIRED`, `PUBLICATION_SCHEDULE_REQUIRED`): el modo se fija al programar y el disparo lo respeta. Se programa desde `approved` o `failed` (un reintento), se desprograma a `approved`, pasa a `failed` si a la hora la revisión de publicar falla, y vuelve desde `publishing` cuando el intento espera que se libere un límite de la plataforma (F6-T04). Reprogramar no es una transición: `PublicationRepository.reschedule` cambia la hora y el modo de una `scheduled` (condicional en la hora esperada) con un evento `schedule_changed`. Publicar ahora también arranca una `scheduled` (`STARTABLE_STATUSES`).
 
 Estado inicial (`INITIAL_PUBLICATION_STATUSES`): `approved`, siempre desde un texto aprobado (también con `auto_publish` en F6, que aprueba el texto solo).
 
@@ -340,7 +362,7 @@ Los jobs del worker (`apps/worker/src/jobs/`):
   - **Los medios de la CLI** (`--media <dir>`) se leen en su lugar: el staging nunca borra archivos del operador.
 
 Para encolar (`packages/queue`, desde F1-T08):
-- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` (`system.ping`, `import.run`, desde F2-T02 `content.prepare`, desde F3-T10 `publication.publish`, desde F3-T14 `tokens.refresh` y desde F4-T17 `publication.sync`, cuya cola define F4-T18) y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API, los scripts y el worker comparten el contrato sin repetir literales.
+- **Contrato compartido en `core/src/jobs.ts`:** `JOB_NAMES` como tupla `as const` (`system.ping`, `import.run`, desde F2-T02 `content.prepare`, desde F3-T10 `publication.publish`, desde F3-T14 `tokens.refresh`, desde F4-T17 `publication.sync`, cuya cola define F4-T18, desde F5-T04 `marketplace.profile`, y desde F6-T01 `publication.due` y `publications.watch`) y `JOB_PAYLOADS`, esquemas zod por nombre. Así la API, los scripts y el worker comparten el contrato sin repetir literales.
 - **Puerto `JobQueue`** en `core/src/ports/job-queue.ts`: `enqueue<N extends JobName>(name: N, data: JobPayload<N>, opts?: { startAfter?: Date; singletonKey?: string }): Promise<string | null>`. Devuelve `null` si ya había un job activo con el mismo `singletonKey`.
 - **Adaptador `createJobQueue({ connectionString, onError })`**, sobre pg-boss en rol `producer`:
   - Arranca pg-boss recién en el primer `enqueue`, así la API levanta aunque el esquema `pgboss` no exista. Si el arranque falla, el siguiente `enqueue` lo reintenta.
@@ -367,6 +389,7 @@ Política objetivo por cola (cada fase la confirma en su spec):
 | `publication.publish` (F3-T12) | `exclusive`, `singletonKey = publicationId`; en el último intento deja la publicación en `failed`; al arrancar se reencolan las `publishing`; registra solo el código y si se reintenta | 2 | sí, desde 60 s | 15 min (cada intento se corta a los 12 min, `PUBLICATION_ATTEMPT_MAX_MS`, desde F4-T18: así un intento de Portal nunca se cruza con su reintento, que podría crear dos ítems; el corte queda en `publishing` y el reintento retoma) |
 | `publication.sync` (F4-T18) | `exclusive`, `singletonKey = publicationId` (`enqueueSync`); lo encolan el intento de Portal en `live` (2 min después de publicar), el arranque (Portal en `live`, `published` o `paused`, con la cuenta conectada), las operaciones con una respuesta perdida (30 s) y la API a pedido (T19); solo lee de la plataforma, así que corre aunque el worker esté en `dry-run`; `PUBLICATION_SYNC_STALE` en el último intento se registra como información (la publicación se vuelve a leer en el próximo sync: Actualizar, el arranque o, en F6, el cron); cada intento se corta a los 90 s (`PUBLICATION_SYNC_MAX_MS`). El cron periódico es de F6 | 2 | sí, desde 60 s | 2 min |
 | `marketplace.profile` (F5-T04) | `stately`, `singletonKey = brokerId` (uno activo y uno en cola: un `forget` espera detrás de un login en curso en vez de perderse; un tercer pedido se rechaza con `null`): `login` (abre la ventana del perfil y espera hasta 10 min a que el operador inicie sesión a mano; conecta la cuenta sin credenciales o anota `lastLoginError`) y `forget` (cierra las ventanas del corredor y borra la carpeta del perfil y su candado, solo dentro de `BROWSER_PROFILES_DIR`; con el perfil abierto por otro proceso, `MARKETPLACE_PROFILE_BUSY`) nunca se cruzan; no mira `PUBLISH_MODE` (no publica, ADR-0017 punto 7) | 0 | — | 15 min |
+| `publication.due` (F6-T03, ADR-0018) | `exclusive`, `singletonKey` fijo (`publication.due`): la vuelta del arranque (`enqueuePublicationDue`) y el cron de cada minuto (`* * * * *`, `America/Santiago`, `missed: "skip"`) no se pisan ni se acumulan; corre `startDuePublications` (las `scheduled` vencidas de las últimas 12 h, sin Marketplace, de a 20) y registra solo ids y códigos; una vuelta sin nada que hacer no escribe en el log | 0 (el minuto siguiente es el reintento) | — | 2 min |
 | `tokens.refresh` (F3-T14; Mercado Libre desde F4-T08) | `exclusive`, `singletonKey` fijo (`tokens.refresh`): el job del arranque y el del cron (12:00, `America/Santiago`) no se pisan ni se acumulan; falla con `TOKENS_REFRESH_INCOMPLETE` si una cuenta falló por algo pasajero, y el reintento salta las ya refrescadas | 3 | sí, desde 60 s | 5 min |
 
 Con el worker apagado (ADR-0007), los jobs con `startAfter` vencido corren al arrancar y los cron del período apagado se pierden. Eso afecta al calendario de F6.

@@ -221,24 +221,24 @@ ADR-0018, ADR-0019 y ADR-0020 se registran con la aprobación del spec (en su mi
 - **Archivos:** `packages/core/src/{publication-state.ts,publication.ts,jobs.ts,ports/publication-repository.ts,enums.ts}`, `packages/core/src/testing/`, `packages/db/src/{schema.ts,repositories/publications.ts}`, `packages/db/drizzle/0008_*.sql`, `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`
 - **Descripción:** las transiciones nuevas (§4.2), `scheduledAt` en `PublicationChanges` (solo con `scheduled`; se borra al salir) y `dryRun` obligatorio al pasar a `scheduled`, `schedule_changed` y su esquema, `rescheduled` en los resultados del intento, `byListing` y `reason` en `status_changed`, `relisted_from` (con `NewPublication.relistedFrom` y su único parcial), `reschedule`, `replacePublishedSource`, `listDue({ now, since, excludePlatforms, limit })`, `listStalePublishing(before)` y `listForTracking(brokerId, since)` en los dos repositorios, la migración `0008` y los nombres de jobs `publication.due` y `publications.watch` con sus esquemas (`db.backup` lo suma T14).
 - **Hecho cuando:**
-  - [ ] Tests de la máquina (cada transición nueva y que las viejas no cambien), de los esquemas de eventos (filas viejas siguen leyéndose) y de los repositorios en PGlite y en memoria con los mismos fixtures (`scheduled_at` se borra al salir; `dryRun` exigido al programar; `listDue` en orden, con tope, sin las de más de 12 h ni las de las plataformas excluidas; `reschedule` y `replacePublishedSource` no pisan un cambio que llegó antes; el único de `relisted_from`)
-  - [ ] `pnpm db:generate` sin diferencias después de la migración; docs 01 y 02 al día
+  - [x] Tests de la máquina (cada transición nueva y que las viejas no cambien), de los esquemas de eventos (filas viejas siguen leyéndose) y de los repositorios en PGlite y en memoria con los mismos fixtures (`scheduled_at` se borra al salir; `dryRun` exigido al programar; `listDue` en orden, con tope, sin las de más de 12 h ni las de las plataformas excluidas; `reschedule` y `replacePublishedSource` no pisan un cambio que llegó antes; el único de `relisted_from`)
+  - [x] `pnpm db:generate` sin diferencias después de la migración; docs 01 y 02 al día
 
 ### F6-T02 · Programar, reprogramar y desprogramar (core)
 - **Depende de:** T01
 - **Archivos:** `packages/core/src/use-cases/{schedule-publications.ts,publication-start.ts}`, `packages/core/src/schedule.ts`
 - **Descripción:** `schedulePublication`, `scheduleListings` (una o varias propiedades, espaciado, resultado por propiedad y canal, aviso de más de 3 recordatorios de Marketplace por día), `unschedulePublication`, `scheduleState`, los límites de la hora y el camino interno sin margen para `auto_publish` (§4.3); la revisión compartida con publicar, sin el límite del día ni el formulario abierto para Marketplace; `STARTABLE_STATUSES` suma `scheduled` (publicar ahora adelanta lo programado, D13).
 - **Hecho cuando:**
-  - [ ] Tests con el escenario de core: cada forma, cada rechazo (los mismos de publicar, más `SCHEDULE_TOO_SOON` y `SCHEDULE_TOO_FAR`), el modo fijado al programar, reprogramar deja `schedule_changed`, un lote con una propiedad que falla sigue con las demás, Marketplace se programa como recordatorio aunque hoy haya un formulario abierto o se haya alcanzado el límite, publicar ahora arranca una programada
-  - [ ] Docs 01 al día
+  - [x] Tests con el escenario de core: cada forma, cada rechazo (los mismos de publicar, más `SCHEDULE_TOO_SOON` y `SCHEDULE_TOO_FAR`), el modo fijado al programar, reprogramar deja `schedule_changed`, un lote con una propiedad que falla sigue con las demás, Marketplace se programa como recordatorio aunque hoy haya un formulario abierto o se haya alcanzado el límite, publicar ahora arranca una programada
+  - [x] Docs 01 al día
 
 ### F6-T03 · El disparo (`publication.due`)
 - **Depende de:** T02
 - **Archivos:** `packages/core/src/use-cases/start-due-publications.ts`, `apps/worker/src/jobs/publication-due.ts`, `apps/worker/src/worker.ts`
 - **Descripción:** `startDuePublications` (§4.4) con la regla de atrasadas (12 h), Marketplace fuera, el modo de cada publicación, el tope de 20 y el encolado después del candado; el job con su cron y la vuelta del arranque.
 - **Hecho cuando:**
-  - [ ] Tests: una vencida pasa a `publishing` con su propio modo (no el del worker) y se encola; una atrasada más de 12 h no se toca; con 20 o más atrasadas y recordatorios de Marketplace vencidos, una vencida normal igual sale en la primera vuelta; una de Marketplace no se toca; una que ya no se puede publicar queda `failed` con su motivo; dos vueltas seguidas no la empiezan dos veces; la cola caída deja `publishing`
-  - [ ] Test del job con reloj falso; docs 01 (cola de trabajos) al día
+  - [x] Tests: una vencida pasa a `publishing` con su propio modo (no el del worker) y se encola; una atrasada más de 12 h no se toca; con 20 o más atrasadas y recordatorios de Marketplace vencidos, una vencida normal igual sale en la primera vuelta; una de Marketplace no se toca; una que ya no se puede publicar queda `failed` con su motivo; dos vueltas seguidas no la empiezan dos veces; la cola caída deja `publishing`
+  - [x] Test del job con reloj falso; docs 01 (cola de trabajos) al día
 
 ### F6-T04 · Reintentos, espera ante límites y causa legible
 - **Depende de:** T01
