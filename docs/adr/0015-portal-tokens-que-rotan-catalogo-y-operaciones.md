@@ -1,6 +1,6 @@
 # ADR-0015 · Portal Inmobiliario: tokens que rotan con candado por cuenta, catálogo en la base, estado remoto y operaciones síncronas sobre publicaciones
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado (modificado por ADR-0020, puntos 6 a 8)
 - **Fecha:** 2026-10-06
 - **Modifica a:** ADR-0005 ("la API solo encola" y la cola `publication.sync`), ADR-0014 (punto 5, lo aprobado no cambia; punto 8, contrato de `Publisher`; punto 9, llamadas síncronas desde la API), `docs/01-arquitectura.md` y `docs/02-modelo-datos.md`
 
