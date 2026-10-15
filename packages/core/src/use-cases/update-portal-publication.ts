@@ -1,5 +1,5 @@
 import type { AbortSignalLike } from "../abort.js";
-import { AppError, isAppError } from "../errors.js";
+import { AppError } from "../errors.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
@@ -183,7 +183,9 @@ export async function updatePortalPublication(
       fields = result.fields;
       remote = remoteStateFrom(deps, publicationId, result.remote);
     } catch (error) {
-      if (isAppError(error) && error.retriable) await requestSync(deps, found);
+      // Aunque el error no sea pasajero, el `PUT` del ítem pudo aplicarse antes (por ejemplo, si
+      // falló la descripción): el sync deja el estado como está allá.
+      await requestSync(deps, found);
       return failedCall(deps, found, error);
     }
   }

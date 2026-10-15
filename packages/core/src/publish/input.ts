@@ -171,7 +171,7 @@ export function assemblePublishInput({
 async function relistOfPart(
   deps: Pick<PublishInputDeps, "publications">,
   publication: Publication,
-): Promise<{ relistOf: { externalId: string } } | null> {
+): Promise<{ relistOf: { externalId: string; publicationId: string } } | null> {
   if (publication.relistedFrom === null || publication.platform !== "portal_inmobiliario") {
     return null;
   }
@@ -179,7 +179,7 @@ async function relistOfPart(
   if (parent === null || parent === undefined || parent.dryRun || parent.externalId === null) {
     return null;
   }
-  return { relistOf: { externalId: parent.externalId } };
+  return { relistOf: { externalId: parent.externalId, publicationId: parent.id } };
 }
 
 /**

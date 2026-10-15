@@ -51,5 +51,10 @@ export const portalProgressSchema = z.object({
    * (`POST /items`) en vez de insistir.
    */
   relistRejected: z.boolean().optional(),
+  /**
+   * El ítem republicado ya se repuso (fotos, título, precio, atributos y contacto): sin esto, con
+   * `itemId` y `relistRequestedAt`, el reintento repone sin volver a pedir el `relist`.
+   */
+  relistRestocked: z.boolean().optional(),
 });
 export type PortalProgress = z.infer<typeof portalProgressSchema>;

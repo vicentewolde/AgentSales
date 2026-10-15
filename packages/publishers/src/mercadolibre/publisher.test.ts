@@ -48,6 +48,8 @@ type Item = {
   permalink: string;
   pictures: string[];
   description: string | null;
+  /** El ítem del que este es la republicación. */
+  parent?: string;
 };
 
 type Faults = {
@@ -75,12 +77,14 @@ type Faults = {
   relist?: Record<number, "relistedThenLost" | (() => Response)>;
   /** El ítem republicado no trae las fotos del anterior. */
   relistWithoutPictures?: boolean;
+  /** Lo que responde el `PUT /items/{id}` número N. */
+  put?: Record<number, () => Response>;
 };
 
 function useMercadoLibre(faults: Faults = {}) {
   const items = new Map<string, Item>();
   const uploaded: string[] = [];
-  const counts = { upload: 0, create: 0, addDescription: 0, validate: 0, relist: 0 };
+  const counts = { upload: 0, create: 0, addDescription: 0, validate: 0, relist: 0, put: 0 };
   /** Los cuerpos de cada `PUT /items/{id}` (actualizar o cambiar el estado), en orden. */
   const puts: Array<{ id: string; body: Record<string, unknown> }> = [];
   let nextItem = 1;
@@ -92,6 +96,7 @@ function useMercadoLibre(faults: Faults = {}) {
   };
   const itemBody = (item: Item) => ({
     pictures: item.pictures.map((id) => ({ id })),
+    parent_item_id: item.parent ?? null,
     id: item.id,
     status: item.status,
     sub_status: item.sub_status,
@@ -138,6 +143,9 @@ function useMercadoLibre(faults: Faults = {}) {
       const item = items.get(String(params.id));
       if (item === undefined) return HttpResponse.json({ message: "not found" }, { status: 404 });
       const body = (await request.json()) as Record<string, unknown>;
+      counts.put += 1;
+      const putFault = faults.put?.[counts.put];
+      if (putFault) return putFault();
       puts.push({ id: item.id, body });
       if (typeof body.status === "string") {
         item.status = body.status;
@@ -166,6 +174,7 @@ function useMercadoLibre(faults: Faults = {}) {
           sub_status: [],
           permalink: `https://departamento.mercadolibre.cl/${id}-_JM`,
           pictures: faults.relistWithoutPictures ? [] : [...parent.pictures],
+          parent: parent.id,
           // El ejemplo de la doc trae `descriptions` vacío: no se copia (nota §13).
           description: null,
         };
@@ -1327,7 +1336,7 @@ describe("createPortalPublisher · republicar (relist)", () => {
     const s = setup();
 
     const result = await s.publisher.publish(
-      input({ relistOf: { externalId: parent.id } }),
+      input({ relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field } }),
       s.ctx(),
     );
 
@@ -1369,7 +1378,10 @@ describe("createPortalPublisher · republicar (relist)", () => {
     const parent = closedParent(ml);
     const s = setup();
 
-    await s.publisher.publish(input({ relistOf: { externalId: parent.id } }), s.ctx());
+    await s.publisher.publish(
+      input({ relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field } }),
+      s.ctx(),
+    );
 
     expect(ml.counts.upload).toBe(3);
     expect(ml.puts[0]?.body).toMatchObject({
@@ -1394,7 +1406,9 @@ describe("createPortalPublisher · republicar (relist)", () => {
     });
     const parent = closedParent(ml);
     const s = setup();
-    const relistInput = input({ relistOf: { externalId: parent.id } });
+    const relistInput = input({
+      relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field },
+    });
 
     await expect(s.publisher.publish(relistInput, s.ctx())).rejects.toMatchObject({
       retriable: false,
@@ -1407,21 +1421,96 @@ describe("createPortalPublisher · republicar (relist)", () => {
     expect(result.externalId).not.toBe(parent.id);
   });
 
-  it("si no se supo cómo terminó el relist, nunca lo repite: ML_PUBLISH_OUTCOME_UNKNOWN", async () => {
+  it("si no se supo cómo terminó el relist, nunca lo repite: busca el ítem nuevo por la marca anterior y lo repone", async () => {
     const ml = useMercadoLibre({ relist: { 1: "relistedThenLost" } });
     const parent = closedParent(ml);
     const s = setup();
-    const relistInput = input({ relistOf: { externalId: parent.id } });
+    const relistInput = input({
+      relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field },
+    });
 
     await expect(s.publisher.publish(relistInput, s.ctx())).rejects.toMatchObject({
       code: "ML_UNAVAILABLE",
     });
     expect(s.progress()?.relistRequestedAt).toBe(NOW.toISOString());
 
+    const result = await s.publisher.publish(relistInput, s.ctx());
+    const relisted = [...ml.items.values()].find((item) => item.parent === parent.id);
+    expect(result.externalId).toBe(relisted?.id);
+    expect(ml.counts.relist).toBe(1);
+    expect(ml.counts.create).toBe(0);
+    expect(relisted?.seller_custom_field).toBe(PUBLICATION_ID);
+    expect(s.progress()).toMatchObject({ itemId: relisted?.id, relistRestocked: true });
+  });
+
+  it("si no aparece el ítem republicado, ML_PUBLISH_OUTCOME_UNKNOWN sin repetir el relist", async () => {
+    const ml = useMercadoLibre({ relist: { 1: "relistedThenLost" }, searchEmpty: true });
+    const parent = closedParent(ml);
+    const s = setup();
+    const relistInput = input({
+      relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field },
+    });
+
+    await expect(s.publisher.publish(relistInput, s.ctx())).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+    });
     await expect(s.publisher.publish(relistInput, s.ctx())).rejects.toMatchObject({
       code: "ML_PUBLISH_OUTCOME_UNKNOWN",
     });
     expect(ml.counts.relist).toBe(1);
+  });
+
+  it("si el relist salió y la reposición falló, el reintento solo repone (nunca vuelve a republicar)", async () => {
+    const ml = useMercadoLibre({
+      put: { 1: () => HttpResponse.json({ message: "boom" }, { status: 503 }) },
+    });
+    const parent = closedParent(ml);
+    const s = setup();
+    const relistInput = input({
+      relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field },
+    });
+
+    await expect(s.publisher.publish(relistInput, s.ctx())).rejects.toMatchObject({
+      code: "ML_UNAVAILABLE",
+    });
+    const relisted = [...ml.items.values()].find((item) => item.parent === parent.id);
+    expect(s.progress()).toMatchObject({ itemId: relisted?.id });
+    expect(s.progress()?.relistRestocked).toBeUndefined();
+
+    await s.publisher.publish(relistInput, s.ctx());
+
+    expect(ml.counts.relist).toBe(1);
+    expect(ml.puts.at(-1)?.body).toMatchObject({
+      seller_custom_field: PUBLICATION_ID,
+      title: "Departamento en venta 2 dormitorios 1 baño en Ñuñoa",
+    });
+    expect(s.progress()).toMatchObject({
+      relistRestocked: true,
+      sellerContact: { phone2: "912345678" },
+    });
+  });
+
+  it("un problema de la cuenta o del paquete (sin cupo) no marca el relist como rechazado", async () => {
+    const ml = useMercadoLibre({
+      relist: {
+        1: () =>
+          HttpResponse.json(
+            { message: "no quota", error: "payment_required", status: 402, cause: [] },
+            { status: 402 },
+          ),
+      },
+    });
+    const parent = closedParent(ml);
+    const s = setup();
+
+    await expect(
+      s.publisher.publish(
+        input({ relistOf: { externalId: parent.id, publicationId: parent.seller_custom_field } }),
+        s.ctx(),
+      ),
+    ).rejects.toMatchObject({ retriable: false });
+    expect(s.progress()?.relistRejected).toBeUndefined();
+    expect(s.progress()?.relistRequestedAt).toBeUndefined();
   });
 });
 

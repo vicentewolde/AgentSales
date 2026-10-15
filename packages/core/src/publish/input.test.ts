@@ -225,7 +225,10 @@ describe("buildPublishInput", () => {
       );
     const live = publication({ id: "pub-anterior", dryRun: false, externalId: "MLC1999999999" });
 
-    expect((await build(live)).relistOf).toEqual({ externalId: "MLC1999999999" });
+    expect((await build(live)).relistOf).toEqual({
+      externalId: "MLC1999999999",
+      publicationId: "pub-anterior",
+    });
     expect((await build({ ...live, dryRun: true })).relistOf).toBeUndefined();
     expect((await build({ ...live, externalId: null })).relistOf).toBeUndefined();
     expect((await build(null)).relistOf).toBeUndefined();

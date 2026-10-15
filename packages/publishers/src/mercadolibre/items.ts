@@ -505,7 +505,18 @@ export function createMercadoLibreItems(
       const path = itemPath(itemId);
       // Sin fotos, Mercado Libre lo rechaza (12/03/2026): no se envía.
       if (changes.pictures.length === 0) throw MERCADOLIBRE_ERRORS.invalidBody("updateItem");
-      const body = { ...changes, seller_contact: sellerContactBody(sellerContact) };
+      // Lista blanca: aunque llegue otra clave (por ejemplo `category_id` con un cast), no se envía.
+      const body = {
+        ...(changes.title === undefined ? {} : { title: changes.title }),
+        ...(changes.price === undefined ? {} : { price: changes.price }),
+        ...(changes.currency_id === undefined ? {} : { currency_id: changes.currency_id }),
+        ...(changes.attributes === undefined ? {} : { attributes: changes.attributes }),
+        ...(changes.seller_custom_field === undefined
+          ? {}
+          : { seller_custom_field: changes.seller_custom_field }),
+        pictures: changes.pictures.map((picture) => ({ id: picture.id })),
+        seller_contact: sellerContactBody(sellerContact),
+      };
       const send = async () =>
         sameItem(
           "updateItem",

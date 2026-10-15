@@ -121,10 +121,10 @@ function requireRelistMode(previous: Publication, dryRun: boolean, confirmed: bo
     );
   }
   if (mode === "live") {
-    if (previous.remoteState?.status !== "closed") {
+    if (previous.externalId === null || previous.remoteState?.status !== "closed") {
       throw notAllowed(
         previous.id,
-        "Mercado Libre no dice que el aviso esté cerrado o vencido: usa Actualizar para leer su estado",
+        "Mercado Libre no dice que el aviso esté cerrado o vencido: pide leer su estado en Mercado Libre y vuelve a intentarlo",
       );
     }
     if (!confirmed) {

@@ -31,8 +31,8 @@
 | **Lote A** · T03 El disparo (`publication.due`) | ✅ terminada | #120 |
 | **Lote B** · T04 Reintentos, espera ante límites y causa legible | ✅ terminada | #121 |
 | **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ✅ terminada | #121 |
-| **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ✅ terminada | (lote C) |
-| **Lote C** · T07 Portal: actualizar, republicar y vencimiento | ✅ terminada | (lote C) |
+| **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ✅ terminada | #122 |
+| **Lote C** · T07 Portal: actualizar, republicar y vencimiento | ✅ terminada | #122 |
 | **Lote D** · T08 La propiedad manda | ⏳ pendiente | |
 | **Lote D** · T09 `auto_publish` | ⏳ pendiente | |
 | **Lote E** · T14 Respaldo local (`pg_dump`) | ⏳ pendiente | |
@@ -122,6 +122,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
   - **Republicar uno vencido o cerrado:** crea una publicación nueva que recuerda la anterior. En vivo usa la republicación de Mercado Libre (conserva las visitas si fue hace 60 días o menos) y repone lo que el aviso nuevo no traiga. Nunca la pide dos veces a ciegas; si Mercado Libre la rechaza, reintentar publica un aviso nuevo. En vivo pide confirmar: usa un cupo del paquete.
   - **Vencimiento:** la regla que cuenta los días que le quedan a un aviso (en hora de Chile) y avisa con 7 o menos; la mostrarán la agenda y el panel.
   - `ml:smoke` bloquea también las escrituras nuevas (actualizar, reemplazar la descripción y republicar).
+  - **La revisión dejó** (`revisor` y `arquitecto`, con bloqueantes, todos corregidos): si Mercado Libre republicó pero no se alcanzó a reponer el aviso, el reintento solo lo repone (nunca vuelve a republicar); si no se supo cómo terminó la republicación, la busca en vez de quedarse trabado; y un problema de la cuenta o del paquete (sin cupo, acceso vencido) ya no se toma como rechazo, así no se crea un aviso nuevo gastando otro cupo.
   - Lo que la doc de Mercado Libre no dice (si republicar pide el contacto, qué copia del aviso anterior, si la regla de fotos alcanza a pausar y cerrar) se prueba con el usuario de prueba, pendiente de F4.
 - 2026-10-15: **Lote B de F6 (F6-T04 y T05).**
   - **Límites de Instagram:** si Instagram dice "espera" (límite de llamadas, o el máximo de publicaciones del día), la publicación ya no queda fallida: se reprograma sola para cuando se libere (lo que diga Instagram, o 60 min; 6 h para el máximo del día), hasta 3 veces seguidas; la cuarta queda "falló". Si tú la reintentas, la cuenta vuelve a cero. Marketplace nunca espera solo.

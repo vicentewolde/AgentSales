@@ -240,9 +240,12 @@ export function createPortalOperations(options: PortalOperationsOptions): Portal
           updateDescription.call(items, token, ref.externalId, input.caption, callOptions),
         );
       }
+      // Solo lo que de verdad se envió: la bitácora no debe decir más.
       const fields = [
-        ...(request.text ? ["title", "description"] : []),
-        ...(request.listing ? ["price", "attributes"] : []),
+        ...("title" in changes ? ["title"] : []),
+        ...(request.text ? ["description"] : []),
+        ...("price" in changes ? ["price"] : []),
+        ...("attributes" in changes ? ["attributes"] : []),
       ];
       const result: PublishedUpdateResult = {
         remote: remoteStatusOf(item),

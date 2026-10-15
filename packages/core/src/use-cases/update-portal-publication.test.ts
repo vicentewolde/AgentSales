@@ -272,4 +272,36 @@ describe("updatePortalPublication", () => {
       ),
     ).toBe("INVALID_TRANSITION");
   });
+
+  it("si la publicación cambió mientras se actualizaba: PUBLICATION_STALE, pide un sync y no re-fija", async () => {
+    const { t, deps, id, current } = await setup();
+    await changeListing(t);
+    const touching = {
+      ...deps,
+      operationsFor: (platform: string) => {
+        const ops = deps.operationsFor(platform);
+        if (ops === undefined) return undefined;
+        return {
+          update: async (...args: Parameters<typeof ops.update>) => {
+            const result = await ops.update(...args);
+            // Un sync guardó el estado remoto entre la llamada y el candado.
+            await t.publications.setRemoteState(id, null);
+            return result;
+          },
+        };
+      },
+    };
+
+    expect(
+      await codeOf(
+        updatePortalPublication(touching, {
+          publicationId: id,
+          actor: "operator",
+          confirmed: true,
+        }),
+      ),
+    ).toBe("PUBLICATION_STALE");
+    expect(current().listingSourceHash).toBe("h");
+    expect(t.queue.jobs.filter((job) => job.name === "publication.sync")).toHaveLength(1);
+  });
 });

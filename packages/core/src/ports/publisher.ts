@@ -80,7 +80,15 @@ export type PublishInput = {
    * Portal (ADR-0020, spec F6 §4.7): la publicación republica a otra; el publisher llama a `relist`
    * sobre su ítem (`externalId`) en vez de crear uno nuevo. Ausente en las demás.
    */
-  relistOf?: { externalId: string };
+  relistOf?: {
+    externalId: string;
+    /**
+     * La publicación anterior: su id es el `seller_custom_field` del ítem anterior, que el ítem
+     * republicado hereda hasta reponerlo. Sirve para encontrarlo si no se supo cómo terminó el
+     * `relist`.
+     */
+    publicationId: string;
+  };
 };
 
 /**
