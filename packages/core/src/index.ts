@@ -90,12 +90,17 @@ export {
 } from "./labels.js";
 export {
   canChangeListingStatus,
+  canDoListingAction,
   canPrepareContent,
   canPublishListing,
+  LISTING_ACTION_FROM,
+  LISTING_ACTIONS,
   LISTING_MANUAL_TARGETS,
   LISTING_MANUAL_TRANSITIONS,
   type Listing,
+  type ListingAction,
   type ListingFilters,
+  listingActionFor,
   listingSchema,
   PREPARABLE_LISTING_STATUSES,
 } from "./listing.js";
@@ -487,11 +492,18 @@ export {
   scheduleAt,
   scheduleState,
 } from "./schedule.js";
+export { isManualTask, manualTasksOf } from "./tracking/manual-tasks.js";
 export {
   type ApproveContentDeps,
   type ApprovedContent,
   approveContent,
 } from "./use-cases/approve-content.js";
+export {
+  type AutoPublishChannel,
+  type AutoPublishDeps,
+  type AutoPublishResult,
+  autoPublishListing,
+} from "./use-cases/auto-publish-listing.js";
 export {
   type CancelPublicationDeps,
   cancelPublication,

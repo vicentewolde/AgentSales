@@ -1,9 +1,10 @@
 import {
   AppError,
+  type ChangeListingStatusDeps,
   changeListingStatus,
   type FieldDefinitionRepository,
-  type Listing,
   type ListingRepository,
+  listingActionFor,
   listingFields,
   type MediaRepository,
   type MediaStorage,
@@ -26,6 +27,8 @@ export type ListingRoutesDeps = {
   fieldDefinitions: FieldDefinitionRepository;
   /** Solo para las URLs de lectura temporales de las fotos (R2 es privado, ADR-0007). */
   storage: Pick<MediaStorage, "signedReadUrl">;
+  /** Cambiar el estado orquesta las publicaciones (F6-T08): las mismas piezas que pausar o cerrar. */
+  statusChange: ChangeListingStatusDeps;
 };
 
 const notFound = (id: string) =>
@@ -104,10 +107,27 @@ export function listingRoutes(deps: ListingRoutesDeps) {
       validated("param", idParamSchema),
       validated("json", listingStatusBodySchema),
       async (c) => {
-        // Pasar al mismo estado (un doble clic) también es 409: la tabla no tiene `x → x`.
-        const listing: Listing = await changeListingStatus(deps, {
-          listingId: c.req.valid("param").id,
-          status: c.req.valid("json").status,
+        // Hasta T10 (spec F6 §4.8): cada estado se traduce a su acción según el estado actual, y
+        // siempre sin confirmar (lo que pide confirmación responde 409 hasta los botones de T13).
+        // Pasar al mismo estado (un doble clic) también es 409: no hay acción `x → x`.
+        const id = c.req.valid("param").id;
+        const to = c.req.valid("json").status;
+        const current = await deps.listings.get(id);
+        if (current === null) throw notFound(id);
+        const action = listingActionFor(current.status, to);
+        if (action === null) {
+          throw new AppError(
+            "INVALID_TRANSITION",
+            `No se puede pasar de ${current.status} a ${to}`,
+            {
+              details: { listingId: id, from: current.status, to },
+            },
+          );
+        }
+        const { listing } = await changeListingStatus(deps.statusChange, {
+          listingId: id,
+          action,
+          actor: "operator",
         });
         const body: ListingStatusResponse = { listing };
         return c.json(body, 200);

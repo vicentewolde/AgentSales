@@ -171,11 +171,18 @@ export function createListingRepository(db: SchemaDatabase): ListingRepository {
       });
     },
 
-    changeStatus(id, from, to) {
+    changeStatus(id, from, to, options = {}) {
       return withDbErrors(async () => {
+        // El motivo vive solo en `closed` (ADR-0019): se fija al cerrar y se borra al salir.
+        const closeReason =
+          to === "closed"
+            ? { closeReason: options.closeReason ?? null }
+            : from === "closed"
+              ? { closeReason: null }
+              : {};
         const updated = await db
           .update(listings)
-          .set({ status: to })
+          .set({ status: to, ...closeReason })
           .where(and(eq(listings.id, id), eq(listings.status, from)))
           .returning({ id: listings.id });
         return updated.length > 0;

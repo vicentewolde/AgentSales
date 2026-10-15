@@ -150,5 +150,18 @@ export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
         }),
       );
     },
+
+    setAutoPublish(id, autoPublish) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .update(brokers)
+          .set({ autoPublish })
+          .where(eq(brokers.id, id))
+          .returning();
+        if (row === undefined)
+          throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+        return toBroker(row);
+      });
+    },
   };
 }

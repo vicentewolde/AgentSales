@@ -57,5 +57,7 @@ const ACTION_TEXT: Readonly<Record<ManualTarget, string>> = {
 export function statusActionText(from: ListingStatus, to: ManualTarget): string {
   if (to === "ready" && from === "paused") return "Reanudar";
   if (to === "ready" && from === "archived") return "Desarchivar";
+  // Desde F6-T08 la tabla deja reabrir una cerrada (la ruta `PATCH` lo traduce a reabrir).
+  if (to === "ready" && from === "closed") return "Reabrir";
   return ACTION_TEXT[to];
 }

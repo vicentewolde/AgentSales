@@ -29,7 +29,11 @@ import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/
 import { type ImportUploads, importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
-import { listingPublicationRoutes, publicationRoutes } from "./routes/publications.js";
+import {
+  listingPublicationRoutes,
+  operationDeps,
+  publicationRoutes,
+} from "./routes/publications.js";
 import { csrfGuard, hostGuard, type LocalAccess } from "./security.js";
 
 export type AppDeps = {
@@ -138,7 +142,7 @@ export function createApp(deps: AppDeps) {
       return c.json(report, 200);
     })
     // Encadenadas con `.route()`, así `AppType` conserva el esquema de cada ruta (ADR-0011).
-    .route("/listings", listingRoutes(deps))
+    .route("/listings", listingRoutes({ ...deps, statusChange: operationDeps(publicationDeps) }))
     .route("/listings", listingContentRoutes(contentDeps))
     .route("/listings", listingPublicationRoutes(publicationDeps))
     .route("/publications", publicationRoutes(publicationDeps))

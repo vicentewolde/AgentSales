@@ -70,6 +70,10 @@ const CONFLICTS = new Set([
   "PUBLICATION_ALREADY_CONFIRMED",
   "DISCONNECT_NOT_CONFIRMED",
   "MARKETPLACE_PROFILE_ACTION_PENDING",
+  // La propiedad manda (F6-T08, ADR-0019): falta confirmar pausar, cerrar o archivar, o archivar
+  // dejaría algo publicado en vivo (primero se cierra). Los demás códigos de F6 llegan con T10.
+  "LISTING_ACTION_NOT_CONFIRMED",
+  "LISTING_HAS_LIVE_PUBLICATIONS",
 ]);
 
 /**

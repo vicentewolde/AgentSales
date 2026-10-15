@@ -185,6 +185,22 @@ const jobs = buildJobs({
       }),
     tmpRoot: contentTmpRoot,
     signal: jobsAbort.signal,
+    // `auto_publish` (spec F6 §4.10): con el modo del worker, el único camino en que lo fija.
+    autoPublish: {
+      lock: listingLock,
+      // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
+      queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
+      listings: repositories.listings,
+      fieldDefinitions: repositories.fieldDefinitions,
+      brokers: repositories.brokers,
+      contents: createContentRepository(database.db),
+      platformAccounts,
+      marketplace: {
+        dailyLimit: env.MARKETPLACE_DAILY_LIMIT,
+        ufConfigured: env.BCCH_API_TOKEN !== undefined,
+      },
+      dryRun: env.PUBLISH_MODE !== "live",
+    },
   },
   publicationPublish: {
     shared: {

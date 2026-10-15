@@ -163,6 +163,19 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(await repos.brokers.findBySlug(slug)).toEqual(updated);
     });
 
+    it("setAutoPublish lo activa y lo apaga sin tocar lo demás; un id desconocido → BROKER_NOT_FOUND (F6-T09)", async () => {
+      const created = await repos.brokers.create(brokerData(unique("corredor")));
+      const on = await repos.brokers.setAutoPublish(created.id, true);
+      expect(on).toEqual({ ...created, autoPublish: true });
+      expect(await repos.brokers.findById(created.id)).toEqual(on);
+      expect(await repos.brokers.setAutoPublish(created.id, false)).toEqual(created);
+      await expectAppError(
+        repos.brokers.setAutoPublish(repos.missingId, true),
+        "BROKER_NOT_FOUND",
+        false,
+      );
+    });
+
     it("list devuelve los corredores por nombre de marca, sin distinguir mayúsculas", async () => {
       const c = await repos.brokers.create(
         brokerData(unique("lista-c"), { brandName: "ZZ marca c" }),
@@ -357,6 +370,30 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(await repos.listings.changeStatus(created.id, "draft", "archived")).toBe(true);
       expect((await repos.listings.get(created.id))?.status).toBe("archived");
       expect(await repos.listings.changeStatus(repos.missingId, "draft", "ready")).toBe(false);
+    });
+
+    it("changeStatus fija el motivo al cerrar y lo borra al salir de closed (F6-T08)", async () => {
+      const created = await repos.listings.create(newListing(brokerId, unique("P")));
+      await repos.setListingStatus(created.id, "active");
+      expect(
+        await repos.listings.changeStatus(created.id, "active", "closed", { closeReason: "sold" }),
+      ).toBe(true);
+      expect(await repos.listings.get(created.id)).toMatchObject({
+        status: "closed",
+        closeReason: "sold",
+      });
+      expect(await repos.listings.changeStatus(created.id, "closed", "archived")).toBe(true);
+      expect(await repos.listings.get(created.id)).toMatchObject({
+        status: "archived",
+        closeReason: null,
+      });
+      // Fuera de closed, el motivo no se escribe aunque venga.
+      expect(
+        await repos.listings.changeStatus(created.id, "archived", "ready", {
+          closeReason: "rented",
+        }),
+      ).toBe(true);
+      expect((await repos.listings.get(created.id))?.closeReason).toBeNull();
     });
 
     it("promoteToReady pasa de draft a ready una sola vez", async () => {

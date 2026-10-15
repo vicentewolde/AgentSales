@@ -25,4 +25,9 @@ export interface BrokerRepository {
    * Escribe aunque el logo no cambie: es idempotente.
    */
   setLogo(id: string, mediaId: string): Promise<void>;
+  /**
+   * Activa o apaga la publicación automática del corredor (F6-T09, ADR-0019): solo la cambian el
+   * panel y la CLI, nunca la hoja Corredor. `BROKER_NOT_FOUND` si no existe. Devuelve el corredor.
+   */
+  setAutoPublish(id: string, autoPublish: boolean): Promise<Broker>;
 }

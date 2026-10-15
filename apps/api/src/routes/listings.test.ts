@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { AppError, type FieldDefinition, type NewListing } from "@agentsales/core";
+import {
+  AppError,
+  type FieldDefinition,
+  type NewListing,
+  type PublicationRepository,
+} from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryFieldDefinitionRepository,
@@ -43,7 +48,8 @@ async function setup() {
   const listings = createInMemoryListingRepository({ nextId: randomUUID });
   const media = createInMemoryMediaRepository();
   const brokers = createInMemoryBrokerRepository();
-  const app = createApp(testDeps({ listings, brokers, media }));
+  const deps = testDeps({ listings, brokers, media });
+  const app = createApp(deps);
   const broker = await brokers.create({
     slug: "marca",
     name: "Persona Inventada",
@@ -83,7 +89,14 @@ async function setup() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-  return { app, listings, broker, addListing, patch };
+  return {
+    app,
+    listings, // El doble completo (la app solo lee): el test crea y mueve publicaciones.
+    publications: deps.publications as PublicationRepository,
+    broker,
+    addListing,
+    patch,
+  };
 }
 
 const errorOf = async (response: Response) => errorBodySchema.parse(await response.json());
@@ -271,6 +284,51 @@ describe("PATCH /listings/:id/status", () => {
 
     expect(response.status).toBe(409);
     expect((await errorOf(response)).error.code).toBe("INVALID_TRANSITION");
+  });
+
+  it("pausar con algo programado pide confirmación: 409 LISTING_ACTION_NOT_CONFIRMED (hasta T10)", async () => {
+    const { addListing, listings, publications, patch } = await setup();
+    const listing = await addListing("P001", {}, 1);
+    await listings.promoteToReady(listing.id);
+    const publication = await publications.create(
+      {
+        listingId: listing.id,
+        platformAccountId: randomUUID(),
+        platform: "instagram",
+        format: "post",
+        contentId: randomUUID(),
+        mediaIds: [],
+        listingSourceHash: "hash",
+      },
+      { actor: "operator" },
+    );
+    await publications.transition(
+      publication.id,
+      {
+        from: "approved",
+        to: "scheduled",
+        changes: { dryRun: true, scheduledAt: new Date(Date.now() + 3_600_000) },
+      },
+      { actor: "operator" },
+    );
+
+    const response = await patch(listing.id, { status: "paused" });
+
+    expect(response.status).toBe(409);
+    expect((await errorOf(response)).error.code).toBe("LISTING_ACTION_NOT_CONFIRMED");
+    expect((await listings.get(listing.id))?.status).toBe("ready");
+  });
+
+  it("de paused a ready es reanudar", async () => {
+    const { addListing, listings, patch } = await setup();
+    const listing = await addListing("P001", {}, 1);
+    await listings.promoteToReady(listing.id);
+
+    expect((await patch(listing.id, { status: "paused" })).status).toBe(200);
+    const response = await patch(listing.id, { status: "ready" });
+
+    expect(response.status).toBe(200);
+    expect(listingStatusResponseSchema.parse(await response.json()).listing.status).toBe("ready");
   });
 
   it("un JSON mal formado es 400 INVALID_JSON, en español", async () => {

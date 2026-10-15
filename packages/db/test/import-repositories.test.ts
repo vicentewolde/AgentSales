@@ -68,7 +68,9 @@ importRepositoriesContract("en memoria", async () => {
     importRuns: createInMemoryImportRunRepository(),
     media: mediaRepo,
     setListingStatus: async (id, status) => listingRepo.setStatus(id, status),
-    setBrokerAutoPublish: async (id, autoPublish) => brokerRepo.setAutoPublish(id, autoPublish),
+    setBrokerAutoPublish: async (id, autoPublish) => {
+      await brokerRepo.setAutoPublish(id, autoPublish);
+    },
     missingId: MISSING_UUID,
     newId: randomUUID,
   };
