@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { AppError } from "@agentsales/core";
 import { createInMemoryJobQueue } from "@agentsales/core/testing";
 import { BACKUP_STATUS_FILE, type ProcessRunner } from "@agentsales/db/backup";
+import { QUEUE_SCHEMA } from "@agentsales/queue";
 import { afterEach, describe, expect, it } from "vitest";
 import { captureLogger } from "../../test/content-fixture.js";
 import {
@@ -101,8 +102,12 @@ describe("db.backup", () => {
     expect(DB_BACKUP_SCHEDULE.singletonKey).toBe(DB_BACKUP_KEY);
   });
 
-  it("respalda y registra el archivo, sin la conexión", async () => {
-    const { dir, lines, run } = await setup(okRunner);
+  it("respalda sin el esquema de la cola (QUEUE_SCHEMA) y registra el archivo, sin la conexión", async () => {
+    const args: string[][] = [];
+    const { dir, lines, run } = await setup(async (command, commandArgs, options) => {
+      args.push([...commandArgs]);
+      return okRunner(command, commandArgs, options);
+    });
 
     await run();
 
@@ -113,6 +118,7 @@ describe("db.backup", () => {
       file: "agentsales-20261015-1300.dump",
     });
     expect(JSON.stringify(lines)).not.toContain("clave-secreta");
+    expect(args[0]).toContain(`--exclude-schema=${QUEUE_SCHEMA}`);
   });
 
   it("una falla sube para el reintento y el log lleva solo el código", async () => {

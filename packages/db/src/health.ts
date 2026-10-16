@@ -45,7 +45,8 @@ export async function readServerVersion(
         rows?: Array<Record<string, unknown>>;
       };
       const value = result.rows?.[0]?.server_version;
-      return typeof value === "string" ? value.trim() : String(value);
+      if (typeof value !== "string") throw new Error("la base no informó su versión");
+      return value.trim();
     } catch (error) {
       if (attempt >= retries) {
         throw error;

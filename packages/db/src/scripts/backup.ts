@@ -33,6 +33,7 @@ try {
         kb: Math.round(result.bytes / 1024),
         dir,
         deleted: result.deleted.length,
+        ...(result.pruneFailed ? { pruneFailed: true } : {}),
       },
       "respaldo listo",
     );

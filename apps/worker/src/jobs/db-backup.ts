@@ -70,6 +70,11 @@ export function dbBackupJob(deps: DbBackupJobDeps): Job {
         { file: result.file, kb: Math.round(result.bytes / 1024), deleted: result.deleted.length },
         "respaldo de la base listo",
       );
+      if (result.pruneFailed) {
+        logger.warn(
+          "no se pudieron borrar los respaldos viejos: se intenta en el próximo respaldo",
+        );
+      }
     },
   });
 }

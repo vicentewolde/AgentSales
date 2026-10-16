@@ -5,6 +5,7 @@ export {
   BACKUP_CHECK_TIMEOUT_MS,
   BACKUP_DUMP_TIMEOUT_MS,
   BACKUP_KEEP,
+  BACKUP_LOCK_FILE,
   type BackupDeps,
   type BackupResult,
   backupFileName,

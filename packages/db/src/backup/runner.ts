@@ -19,6 +19,11 @@ const MAX_OUTPUT_CHARS = 64 * 1024;
 
 export const spawnProcess: ProcessRunner = (command, args, { env, timeoutMs, signal }) =>
   new Promise((resolve, reject) => {
+    // Ya cortado (el worker se apaga): no se inicia.
+    if (signal?.aborted) {
+      resolve({ exitCode: null, stdout: "", stderr: "" });
+      return;
+    }
     const child = spawn(command, [...args], { env, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";

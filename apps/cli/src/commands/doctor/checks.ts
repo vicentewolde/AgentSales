@@ -425,7 +425,8 @@ export function checkBackup(report: HealthReport | null, now: Date = new Date())
       hint: "pnpm db:backup (no necesita pnpm dev); el worker respalda solo cada día a las 13:00",
     };
   }
-  const hours = Math.floor((now.getTime() - Date.parse(backup.lastSuccessAt)) / 3_600_000);
+  const elapsed = now.getTime() - Date.parse(backup.lastSuccessAt);
+  const hours = Number.isNaN(elapsed) ? "?" : String(Math.floor(elapsed / 3_600_000));
   const failure =
     backup.lastFailureCode === null ? "" : `; el último intento falló (${backup.lastFailureCode})`;
   return backup.stale || failure !== ""

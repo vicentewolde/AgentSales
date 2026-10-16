@@ -34,7 +34,9 @@ export const BACKUP_STALE_MS = 48 * 60 * 60 * 1000;
 /** Si el último respaldo bueno es de hace más de 48 h, o no hay ninguno. */
 export function isBackupStale(status: BackupStatus | null, now: Date): boolean {
   if (status?.lastSuccessAt == null) return true;
-  return now.getTime() - Date.parse(status.lastSuccessAt) > BACKUP_STALE_MS;
+  const last = Date.parse(status.lastSuccessAt);
+  // Una fecha ilegible cuenta como sin respaldo.
+  return Number.isNaN(last) || now.getTime() - last > BACKUP_STALE_MS;
 }
 
 /**

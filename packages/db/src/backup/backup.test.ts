@@ -1,10 +1,20 @@
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppError, isAppError, isBackupStale } from "@agentsales/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { childEnv, pgEnvFromUrl } from "./connection.js";
-import { backupFileName, runBackup } from "./run-backup.js";
+import { BACKUP_LOCK_FILE, backupFileName, runBackup } from "./run-backup.js";
 import type { ProcessRunner } from "./runner.js";
 import { BACKUP_STATUS_FILE, readBackupStatus } from "./status.js";
 import {
@@ -173,7 +183,11 @@ describe("runBackup", () => {
 
     const result = await backupIn(dir, run);
 
-    expect(result).toMatchObject({ file: "agentsales-20261015-1405.dump", deleted: [] });
+    expect(result).toMatchObject({
+      file: "agentsales-20261015-1405.dump",
+      deleted: [],
+      pruneFailed: false,
+    });
     expect(calls.map((call) => [call.command, call.args])).toEqual([
       [
         "/fake/bin/pg_dump",
@@ -288,13 +302,126 @@ describe("runBackup", () => {
     expect((await readBackupStatus(dir))?.lastFailureCode).toBe("BACKUP_TOOL_NOT_INSTALLED");
   });
 
-  it("borra un .partial que dejó un corte", async () => {
+  it("borra un .partial viejo de un corte, pero no uno reciente (otro respaldo en curso)", async () => {
     const dir = await tempDir();
-    await writeFile(join(dir, "agentsales-20261001-1300.dump.partial"), "a medias");
+    const old = join(dir, "agentsales-20261001-1300.dump.partial");
+    const recent = join(dir, "agentsales-20261015-1404.dump.partial");
+    await writeFile(old, "a medias");
+    await writeFile(recent, "en curso");
+    const at = (minutesBefore: number) => new Date(NOW.getTime() - minutesBefore * 60_000);
+    await utimes(old, at(31), at(31));
+    await utimes(recent, at(1), at(1));
 
     await backupIn(dir, fakeRunner().run);
 
-    expect((await readdir(dir)).filter((name) => name.endsWith(".partial"))).toEqual([]);
+    expect((await readdir(dir)).filter((name) => name.endsWith(".partial"))).toEqual([
+      "agentsales-20261015-1404.dump.partial",
+    ]);
+  });
+
+  it("con otro respaldo en curso: BACKUP_IN_PROGRESS sin tocar nada; un candado de más de 15 min se toma", async () => {
+    const dir = await tempDir();
+    const lock = (minutesBefore: number) =>
+      writeFile(
+        join(dir, BACKUP_LOCK_FILE),
+        JSON.stringify({ pid: 1, startedAt: new Date(NOW.getTime() - minutesBefore * 60_000) }),
+      );
+    await lock(5);
+    const { run, calls } = fakeRunner();
+
+    const error = await caught(backupIn(dir, run));
+
+    expect(isAppError(error) && error.code).toBe("BACKUP_IN_PROGRESS");
+    expect(isAppError(error) && error.retriable).toBe(true);
+    expect(calls).toEqual([]);
+    expect(await readBackupStatus(dir)).toBeNull();
+    expect(await readdir(dir)).toEqual([BACKUP_LOCK_FILE]);
+
+    await lock(16);
+    const result = await backupIn(dir, run);
+    expect(result.file).toBe("agentsales-20261015-1405.dump");
+    // Al terminar suelta el candado.
+    expect(await readdir(dir)).not.toContain(BACKUP_LOCK_FILE);
+  });
+
+  it("la contraseña suelta en la salida de pg_dump también se redacta", async () => {
+    const dir = await tempDir();
+    const error = await caught(
+      backupIn(
+        dir,
+        fakeRunner({ dump: { exitCode: 1, stderr: "auth failed for clave@secreta" } }).run,
+      ),
+    );
+    expect((error as Error).message).toBe(
+      "pg_dump terminó con código 1: auth failed for [REDACTED]",
+    );
+  });
+
+  it("si la herramienta desaparece al lanzarla (ENOENT del spawn): BACKUP_TOOL_NOT_INSTALLED", async () => {
+    const dir = await tempDir();
+    const run: ProcessRunner = async (command) => {
+      throw Object.assign(new Error(`spawn ${command} ENOENT`), {
+        code: "ENOENT",
+        syscall: `spawn ${command}`,
+      });
+    };
+
+    const error = await caught(backupIn(dir, run));
+
+    expect(isAppError(error) && error.code).toBe("BACKUP_TOOL_NOT_INSTALLED");
+    expect((error as Error).message).toContain("pg_dump");
+  });
+
+  it("un corte por apagado es BACKUP_ABORTED y no se anota como falla", async () => {
+    const dir = await tempDir();
+    const controller = new AbortController();
+    const run: ProcessRunner = async () => {
+      controller.abort();
+      return { exitCode: null, stdout: "", stderr: "" };
+    };
+
+    const error = await caught(
+      runBackup({
+        dir,
+        databaseUrl: URL_WITH_SECRET,
+        run,
+        findTool: FAKE_TOOL,
+        now: () => NOW,
+        signal: controller.signal,
+      }),
+    );
+
+    expect(isAppError(error) && error.code).toBe("BACKUP_ABORTED");
+    expect(isAppError(error) && error.retriable).toBe(true);
+    expect(await readBackupStatus(dir)).toBeNull();
+    expect((await readdir(dir)).filter((name) => name.includes(".dump"))).toEqual([]);
+  });
+
+  it("si no se pueden borrar los viejos, el respaldo nuevo vale igual", async () => {
+    const dir = await tempDir();
+    await oldBackups(dir, 14);
+    // Una carpeta con nombre de respaldo: borrarla como archivo falla.
+    await mkdir(join(dir, "agentsales-20260801-1300.dump"));
+
+    const result = await backupIn(dir, fakeRunner().run);
+
+    expect(result).toMatchObject({ pruneFailed: true, deleted: [] });
+    expect((await readBackupStatus(dir))?.lastSuccessAt).toBe(NOW.toISOString());
+  });
+
+  it("una DATABASE_URL ilegible es BACKUP_FAILED sin mostrarla", async () => {
+    const dir = await tempDir();
+    const error = await caught(
+      runBackup({
+        dir,
+        databaseUrl: "no es una url clave-secreta",
+        run: fakeRunner().run,
+        findTool: FAKE_TOOL,
+        now: () => NOW,
+      }),
+    );
+    expect(isAppError(error) && error.code).toBe("BACKUP_FAILED");
+    expect((error as Error).message).not.toContain("clave-secreta");
   });
 
   it("con programas de verdad: un pg_dump falso en PG_BIN_DIR recibe la conexión por el entorno", async () => {
@@ -357,5 +484,6 @@ describe("estado y nombres", () => {
     };
     expect(isBackupStale(status, new Date(NOW.getTime() + 47 * 3600_000))).toBe(false);
     expect(isBackupStale(status, new Date(NOW.getTime() + 49 * 3600_000))).toBe(true);
+    expect(isBackupStale({ ...status, lastSuccessAt: "ayer" }, NOW)).toBe(true);
   });
 });

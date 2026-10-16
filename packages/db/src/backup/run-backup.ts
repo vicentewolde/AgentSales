@@ -1,4 +1,4 @@
-import { chmod, mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type AbortSignalLike,
@@ -27,6 +27,11 @@ const BACKUP_FILE = /^agentsales-\d{8}-\d{4}\.dump$/;
 const PARTIAL_FILE = /^agentsales-\d{8}-\d{4}\.dump\.partial$/;
 /** Cuánto de la salida de `pg_dump` va al mensaje del error (ya redactado). */
 const ERROR_OUTPUT_CHARS = 400;
+/**
+ * Un `.partial` más viejo que esto es de un corte y se borra; uno más nuevo puede ser de otro
+ * respaldo en curso (`pnpm db:backup` mientras corre el job), y no se toca.
+ */
+const STALE_PARTIAL_MS = 30 * 60 * 1000;
 
 export type BackupDeps = {
   /** La carpeta de los respaldos, ya resuelta (`resolveBackupDir`: absoluta y fuera del proyecto). */
@@ -50,9 +55,14 @@ export type BackupResult = {
   bytes: number;
   /** Los respaldos viejos que se borraron (más de 14). */
   deleted: string[];
+  /** Si no se pudieron borrar los viejos: el respaldo nuevo vale igual (se reintenta la próxima vez). */
+  pruneFailed: boolean;
 };
 
-/** `agentsales-AAAAMMDD-HHMM.dump` en hora de Chile. */
+/**
+ * `agentsales-AAAAMMDD-HHMM.dump` en hora de Chile. En la hora que se repite al volver al horario
+ * de invierno, dos respaldos pueden tener el mismo nombre: el segundo reemplaza al primero.
+ */
 export function backupFileName(now: Date): string {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-CA", {
@@ -78,12 +88,68 @@ export function backupFileName(now: Date): string {
  * 3. `pg_restore --list` del archivo: si no se lee, se borra y no cuenta;
  * 4. lo renombra a `.dump`, borra los más viejos (deja 14) y guarda el estado.
  * Una falla deja el estado con su código (sin borrar nada bueno) y lanza `BACKUP_FAILED`
- * (reintentable) o `BACKUP_TOOL_NOT_INSTALLED`. El mensaje lleva la salida de `pg_dump` redactada.
+ * (reintentable) o `BACKUP_TOOL_NOT_INSTALLED`. El mensaje lleva la salida de `pg_dump` redactada
+ * (también la contraseña suelta). Un corte por apagado (`signal`) lanza `BACKUP_ABORTED`
+ * (reintentable) sin anotarlo como falla.
  */
 export async function runBackup(deps: BackupDeps): Promise<BackupResult> {
   const now = (deps.now ?? (() => new Date()))();
+  if (deps.signal?.aborted) throw aborted();
+  let release: () => Promise<void>;
+  try {
+    release = await acquireLock(deps.dir, now);
+  } catch (caught) {
+    // Otro respaldo en curso no es una falla: el estado no cambia.
+    if (isAppError(caught) && caught.code === "BACKUP_IN_PROGRESS") throw caught;
+    const error = backupError(caught);
+    await recordFailure(deps.dir, await readBackupStatus(deps.dir), now, error.code);
+    throw error;
+  }
+  try {
+    return await backupLocked(deps, now);
+  } finally {
+    await release();
+  }
+}
+
+/** El candado de la carpeta: un respaldo a la vez (`pnpm db:backup` no pasa por la cola). */
+export const BACKUP_LOCK_FILE = "respaldo.lock";
+/** Un candado más viejo que la vida del job es de un proceso que murió: se toma. */
+const STALE_LOCK_MS = 15 * 60 * 1000;
+
+/**
+ * Toma el candado (`respaldo.lock`, creado con `wx`: solo uno lo crea). Si otro lo tiene desde hace
+ * menos de 15 min, `BACKUP_IN_PROGRESS` (reintentable); uno más viejo o ilegible se reemplaza.
+ * Devuelve cómo soltarlo.
+ */
+async function acquireLock(dir: string, now: Date): Promise<() => Promise<void>> {
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const path = join(dir, BACKUP_LOCK_FILE);
+  const content = `${JSON.stringify({ pid: process.pid, startedAt: now.toISOString() })}\n`;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await writeFile(path, content, { flag: "wx", mode: 0o600 });
+      return () => rm(path, { force: true });
+    } catch (error) {
+      if ((error as { code?: unknown }).code !== "EEXIST") throw error;
+    }
+    const startedAt = await readFile(path, "utf8")
+      .then((text) => Date.parse((JSON.parse(text) as { startedAt?: string }).startedAt ?? ""))
+      .catch(() => Number.NaN);
+    if (!Number.isNaN(startedAt) && now.getTime() - startedAt < STALE_LOCK_MS) break;
+    await rm(path, { force: true });
+  }
+  throw new AppError(
+    "BACKUP_IN_PROGRESS",
+    "Ya hay un respaldo en curso (el del worker o otro pnpm db:backup): espera a que termine",
+    { retriable: true },
+  );
+}
+
+async function backupLocked(deps: BackupDeps, now: Date): Promise<BackupResult> {
   const previous = await readBackupStatus(deps.dir);
   try {
+    if (deps.signal?.aborted) throw aborted();
     const result = await dumpAndCheck(deps, now);
     await writeBackupStatus(deps.dir, {
       lastSuccessAt: now.toISOString(),
@@ -93,9 +159,24 @@ export async function runBackup(deps: BackupDeps): Promise<BackupResult> {
     });
     return result;
   } catch (caught) {
+    if (deps.signal?.aborted) throw aborted();
     const error = backupError(caught);
     await recordFailure(deps.dir, previous, now, error.code);
     throw error;
+  }
+}
+
+const aborted = () =>
+  new AppError("BACKUP_ABORTED", "El respaldo se cortó porque el worker se está apagando", {
+    retriable: true,
+  });
+
+/** La conexión de `pg_dump`; una `DATABASE_URL` ilegible es un error propio, sin la URL. */
+function connectionOf(databaseUrl: string): Record<string, string> {
+  try {
+    return pgEnvFromUrl(databaseUrl);
+  } catch {
+    throw new AppError("BACKUP_FAILED", "DATABASE_URL no es una URL válida: revisa .env");
   }
 }
 
@@ -105,11 +186,15 @@ async function dumpAndCheck(deps: BackupDeps, now: Date): Promise<BackupResult> 
   const pgDump = findTool("pg_dump", toolOptions);
   const pgRestore = findTool("pg_restore", toolOptions);
   const run = deps.run ?? spawnProcess;
+  const connection = connectionOf(deps.databaseUrl);
 
   await mkdir(deps.dir, { recursive: true, mode: 0o700 });
   await chmod(deps.dir, 0o700);
   for (const name of await readdir(deps.dir)) {
-    if (PARTIAL_FILE.test(name)) await rm(join(deps.dir, name), { force: true });
+    if (!PARTIAL_FILE.test(name)) continue;
+    const partialPath = join(deps.dir, name);
+    const { mtimeMs } = await stat(partialPath);
+    if (now.getTime() - mtimeMs > STALE_PARTIAL_MS) await rm(partialPath, { force: true });
   }
 
   const file = backupFileName(now);
@@ -123,18 +208,18 @@ async function dumpAndCheck(deps: BackupDeps, now: Date): Promise<BackupResult> 
       pgDump,
       ["-Fc", "--no-owner", "--no-acl", "--exclude-schema=pgboss", "-f", partial],
       {
-        env: childEnv(pgEnvFromUrl(deps.databaseUrl), deps.processEnv),
+        env: childEnv(connection, deps.processEnv),
         timeoutMs: BACKUP_DUMP_TIMEOUT_MS,
         ...signal,
       },
     );
-    requireSuccess(dumped, "pg_dump");
+    requireSuccess(dumped, "pg_dump", connection.PGPASSWORD);
     const listed = await run(pgRestore, ["--list", partial], {
       env: childEnv({}, deps.processEnv),
       timeoutMs: BACKUP_CHECK_TIMEOUT_MS,
       ...signal,
     });
-    requireSuccess(listed, "pg_restore --list");
+    requireSuccess(listed, "pg_restore --list", connection.PGPASSWORD);
     if (listed.stdout.trim() === "") {
       throw new AppError("BACKUP_FAILED", "El respaldo quedó vacío: pg_restore no listó nada", {
         retriable: true,
@@ -147,7 +232,12 @@ async function dumpAndCheck(deps: BackupDeps, now: Date): Promise<BackupResult> 
     throw error;
   }
   const { size } = await stat(path);
-  return { file, bytes: size, deleted: await prune(deps.dir) };
+  // El respaldo nuevo ya está bien: no poder borrar los viejos no lo invalida.
+  try {
+    return { file, bytes: size, deleted: await prune(deps.dir), pruneFailed: false };
+  } catch {
+    return { file, bytes: size, deleted: [], pruneFailed: true };
+  }
 }
 
 /** Borra los respaldos más viejos (por nombre: la fecha va en él) y deja los últimos 14. */
@@ -158,9 +248,14 @@ async function prune(dir: string): Promise<string[]> {
   return old;
 }
 
-function requireSuccess(result: ProcessResult, step: string): void {
+function requireSuccess(result: ProcessResult, step: string, password: string | undefined): void {
   if (result.exitCode === 0) return;
-  const output = redactText(result.stderr.trim()).slice(-ERROR_OUTPUT_CHARS);
+  const redacted = redactText(result.stderr.trim());
+  const output = (
+    password === undefined || password === ""
+      ? redacted
+      : redacted.replaceAll(password, "[REDACTED]")
+  ).slice(-ERROR_OUTPUT_CHARS);
   throw new AppError(
     "BACKUP_FAILED",
     `${step} terminó con ${result.exitCode === null ? "corte" : `código ${result.exitCode}`}${output === "" ? "" : `: ${output}`}`,
@@ -172,10 +267,14 @@ function requireSuccess(result: ProcessResult, step: string): void {
 function backupError(error: unknown): AppError {
   if (isAppError(error)) return error;
   const code = (error as { code?: unknown } | null)?.code;
-  if (code === "ENOENT" && (error as { syscall?: unknown }).syscall === "spawn") {
-    return new AppError("BACKUP_TOOL_NOT_INSTALLED", "No se pudo iniciar pg_dump o pg_restore", {
-      cause: error,
-    });
+  const syscall = (error as { syscall?: unknown } | null)?.syscall;
+  // Node entrega `syscall: "spawn /ruta/pg_dump"`: la herramienta desapareció o su intérprete falta.
+  if (code === "ENOENT" && typeof syscall === "string" && syscall.startsWith("spawn")) {
+    return new AppError(
+      "BACKUP_TOOL_NOT_INSTALLED",
+      `No se pudo iniciar ${syscall.includes("pg_restore") ? "pg_restore" : "pg_dump"}: instala el cliente de Postgres (brew install libpq) o revisa PG_BIN_DIR`,
+      { cause: error },
+    );
   }
   return new AppError(
     "BACKUP_FAILED",

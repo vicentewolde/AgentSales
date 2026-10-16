@@ -93,8 +93,9 @@ const backupDir = resolveBackupDir(env.BACKUP_DIR, {
 
 const app = createApp({
   checks: {
+    // Se guarda la última leída (no se borra antes): dos `/health` a la vez nunca la ven en `null`
+    // por el otro; si la base no responde, el reporte la informa `null` igual (check en falla).
     db: async () => {
-      serverVersion = null;
       serverVersion = await readServerVersion(database.db);
     },
     // `head` devuelve null si el objeto no existe: basta con que no lance.

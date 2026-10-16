@@ -106,6 +106,7 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | `BACKUP_TOOL_NOT_INSTALLED`, o `doctor` avisa por `pg_dump` | Falta el cliente de Postgres: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`, que el respaldo busca solo; si lo instalaste en otro lado, fija `PG_BIN_DIR` en `.env`) |
 | `doctor` dice que `pg_dump` no puede respaldar una base más nueva | Tu `pg_dump` es de una versión mayor anterior a la de Neon: `brew upgrade libpq` |
 | `BACKUP_FAILED` | `pnpm db:backup` muestra la causa: sin conexión o Neon sin CU-horas (reintenta más tarde), la carpeta sin espacio o sin permisos. Los respaldos buenos nunca se borran por un intento fallido |
+| `BACKUP_IN_PROGRESS` | Ya hay un respaldo en curso (el del worker o otro `pnpm db:backup`): espera unos minutos y vuelve a intentarlo |
 
 ## Restaurar un respaldo de la base
 
@@ -113,11 +114,11 @@ Restaurar **nunca** se hace sobre la base que usa AgentSales: se restaura en una
 
 1. Elige el archivo en `~/.agentsales/backups` (el nombre trae la fecha y la hora de Chile). `pg_restore --list <archivo>` muestra lo que tiene sin tocar nada.
 2. Crea una base nueva vacía: en Neon, un proyecto nuevo (o una rama) con una base del mismo nombre; o en tu Mac, `createdb agentsales_restaurada` si tienes Postgres local.
-3. Restaura con la conexión **directa** de la base nueva (sin `-pooler`):
+3. Restaura con los datos de la conexión **directa** de la base nueva (el host sin `-pooler`, el usuario y el nombre de la base, que muestra Neon en Connect). Sin la contraseña en el comando: `pg_restore` te la pide (así no queda en el historial de la terminal ni a la vista de otros procesos):
    ```bash
-   /opt/homebrew/opt/libpq/bin/pg_restore --no-owner --no-acl -d "<cadena_directa_de_la_base_nueva>" agentsales-AAAAMMDD-HHMM.dump
+   PGSSLMODE=require /opt/homebrew/opt/libpq/bin/pg_restore --no-owner --no-acl -h <host> -U <usuario> -d <base> -W agentsales-AAAAMMDD-HHMM.dump
    ```
-   (Escribe la cadena tú en la terminal; nunca la pegues en el chat.)
+   (Nunca pegues la contraseña ni la cadena de conexión en el chat.)
 4. Apunta `DATABASE_URL` en `.env` a la base nueva y arranca `pnpm dev`. El worker crea de nuevo la cola de trabajos (el respaldo no la trae, a propósito: así no vuelven a correr trabajos viejos) y retoma lo pendiente desde la base.
 5. **Usa la misma `APP_ENCRYPTION_KEY`** que cuando se hizo el respaldo: los tokens de Instagram y Mercado Libre van cifrados con ella. Con otra clave, la base funciona pero hay que reconectar las cuentas.
 6. Las fotos, los videos y las portadas no están en el respaldo: viven en R2, que no se toca.
