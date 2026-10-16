@@ -211,9 +211,9 @@ export function createInMemoryListingRepository(
     async changeStatus(id, from, to, options = {}) {
       const current = stored.get(id);
       if (current?.status !== from) return false;
-      // El motivo vive solo en `closed` (ADR-0019), como en el de Drizzle.
+      // El motivo, como en el de Drizzle: se fija al cerrar y se borra al reabrir.
       if (to === "closed") closeReasons.set(id, options.closeReason ?? null);
-      else if (from === "closed") closeReasons.set(id, null);
+      else if (to === "ready" || to === "active") closeReasons.set(id, null);
       stored.set(id, { ...current, status: to });
       touch(id);
       return true;

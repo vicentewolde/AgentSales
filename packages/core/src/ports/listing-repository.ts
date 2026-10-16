@@ -61,7 +61,8 @@ export interface ListingRepository {
    * (`false` si otro cambio llegó antes, o si no existe). Lo usan el cambio manual
    * (`changeListingStatus`, que aplica sus reglas) y el sistema al publicar o retirar en `live`
    * (`ready` ↔ `active`, spec F3 §4.3). Desde F6 (ADR-0019) guarda el motivo al pasar a `closed`
-   * (`closeReason`) y lo borra al salir de `closed`; en los demás cambios no lo toca.
+   * (`closeReason`) y lo borra al volver a `ready` o `active` (reabrir); archivar una cerrada lo
+   * conserva, y los demás cambios no lo tocan.
    */
   changeStatus(
     id: string,

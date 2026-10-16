@@ -287,6 +287,46 @@ describe("job content.prepare · handler", () => {
     expect(JSON.stringify(lines)).not.toContain("auto_publish");
   });
 
+  it("auto_publish: registra cada canal con su resultado, como aviso si alguno falló", async () => {
+    const t = await contentJobSetup();
+    const autoPublishWith = (channels: boolean) =>
+      ({
+        listings: { get: async (id: string) => ({ id, brokerId: "b", status: "ready" }) },
+        brokers: { findById: async () => ({ id: "b", autoPublish: true }) },
+        platformAccounts: {
+          listByBroker: async () =>
+            channels ? [{ id: "a", platform: "instagram", status: "connected" }] : [],
+        },
+        contents: {
+          listCurrent: async () => [{ id: "c", platform: "instagram" }],
+          // Aprobar lee el texto primero: aquí falla, con datos del aviso en el mensaje.
+          get: async () => {
+            throw new AppError("DB_UNAVAILABLE", "Avenida Secreta 123", { retriable: true });
+          },
+        },
+      }) as unknown as AutoPublishDeps;
+    const { logger, lines } = captureLogger();
+
+    await contentPrepareJob({ ...t.deps, autoPublish: autoPublishWith(false) }).run(
+      { contentRunId: await t.newRun() },
+      { ...context(false), logger },
+    );
+    await contentPrepareJob({ ...t.deps, autoPublish: autoPublishWith(true) }).run(
+      { contentRunId: await t.newRun() },
+      { ...context(false), logger },
+    );
+
+    const logged = lines.filter((line) => String(line.msg).startsWith("auto_publish"));
+    expect(logged).toMatchObject([
+      { level: 30, channels: [] },
+      {
+        level: 40,
+        channels: [{ platform: "instagram", result: "failed", code: "DB_UNAVAILABLE" }],
+      },
+    ]);
+    expect(JSON.stringify(lines)).not.toContain("Secreta");
+  });
+
   it("el log del error lleva solo el código y el contentRunId, nunca datos del aviso", async () => {
     const t = await contentJobSetup({
       llm: createInMemoryLlmProvider([

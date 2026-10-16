@@ -47,7 +47,7 @@ async function setup(
     dryRun?: boolean;
     apiMode?: PublishMode;
     onCall?: (operation: PublicationOperation) => Promise<void>;
-    fail?: AppError;
+    fail?: AppError | (() => AppError | undefined);
   } = {},
 ) {
   const t = await createPublicationScenario({ platform: PORTAL });
@@ -86,7 +86,8 @@ async function setup(
     async (_ref: PublishedRef, _ctx: PlatformContext): Promise<RemoteStatus> => {
       calls.push(operation);
       if (operation !== "getStatus") await options.onCall?.(operation);
-      if (options.fail !== undefined) throw options.fail;
+      const failure = typeof options.fail === "function" ? options.fail() : options.fail;
+      if (failure !== undefined) throw failure;
       return { status: REMOTE[operation], subStatus: [], stopTime: null, expirationTime: null };
     };
   const operations: PublicationOperations = {
@@ -419,7 +420,7 @@ describe("changeListingStatus", () => {
     });
     expect(find(portalId).status).toBe("unpublished");
     expect(find(simulated).status).toBe("unpublished");
-    const pending = await addPublication(t, "fb_marketplace", "approved");
+    const pending = await addPublication(t, "fb_marketplace", "scheduled");
 
     expect(
       await codeOf(
@@ -434,7 +435,14 @@ describe("changeListingStatus", () => {
     });
 
     expect(calls).toEqual([]);
-    expect(result.listing).toMatchObject({ status: "archived", closeReason: null });
+    // Archivar una cerrada conserva el motivo; reabrir lo borra.
+    expect(result.listing).toMatchObject({ status: "archived", closeReason: "withdrawn" });
+    const reopened = await changeListingStatus(deps, {
+      listingId: t.listingId,
+      action: "reopen",
+      actor: "operator",
+    });
+    expect(reopened.listing).toMatchObject({ status: "ready", closeReason: null });
     expect(find(pending).status).toBe("cancelled");
   });
 
@@ -541,5 +549,162 @@ describe("changeListingStatus", () => {
         }),
       ),
     ).toBe("INVALID_TRANSITION");
+  });
+
+  it("archivar espera a lo que se está publicando o espera el clic final", async () => {
+    for (const [status, code] of [
+      ["publishing", "PUBLICATION_IN_PROGRESS"],
+      ["awaiting_manual_confirm", "MANUAL_CONFIRM_PENDING"],
+    ] as const) {
+      const { t, deps, portalId } = await setup({ dryRun: true, apiMode: "dry-run" });
+      await t.publications.transition(
+        portalId,
+        { from: "published", to: "unpublished" },
+        { actor: "operator" },
+      );
+      await addPublication(t, "fb_marketplace", status);
+      expect(
+        await codeOf(
+          changeListingStatus(deps, {
+            listingId: t.listingId,
+            action: "archive",
+            confirmed: true,
+            actor: "operator",
+          }),
+        ),
+      ).toBe(code);
+      expect(await statusOf(t)).toBe("ready");
+    }
+  });
+
+  it("una falla de Portal se puede repetir; lo ya aplicado se salta", async () => {
+    let failures = 1;
+    let inFlight = "";
+    const s = await setup({
+      fail: () =>
+        failures-- > 0 ? new AppError("ML_UNAVAILABLE", "sin red", { retriable: true }) : undefined,
+      onCall: async () => {
+        // En el segundo intento, mientras se llama a Portal, otra empieza a publicarse.
+        if (failures === 0 && inFlight === "") {
+          inFlight = await addPublication(s.t, "instagram", "publishing");
+        }
+      },
+    });
+    const pause = () =>
+      changeListingStatus(s.deps, {
+        listingId: s.t.listingId,
+        action: "pause",
+        confirmed: true,
+        actor: "operator",
+      });
+
+    expect(await codeOf(pause())).toBe("ML_UNAVAILABLE");
+    // Portal quedó pausada, pero la fase 3 ve la que se está publicando: 409 y la propiedad igual.
+    expect(await codeOf(pause())).toBe("PUBLICATION_IN_PROGRESS");
+    expect(s.find(s.portalId).status).toBe("paused");
+    expect(await statusOf(s.t)).toBe("active");
+
+    await s.t.publications.transition(
+      inFlight,
+      {
+        from: "publishing",
+        to: "failed",
+        changes: { lastError: { code: "X", message: "x", retriable: false } },
+      },
+      { actor: "system" },
+    );
+    const result = await pause();
+    // Portal ya estaba pausada: no se llama de nuevo.
+    expect(s.calls).toEqual(["pause", "pause"]);
+    expect(result.listing.status).toBe("paused");
+    expect(s.find(inFlight).status).toBe("failed");
+  });
+
+  it("una de Portal que sale mientras se cierra: INVALID_TRANSITION para repetir", async () => {
+    let extra = "";
+    const s = await setup({
+      dryRun: true,
+      apiMode: "dry-run",
+    });
+    // En simulación no hay llamadas: la publicación nueva aparece entre la fase 1 y la 3 con un
+    // candado que la crea al entrar por segunda vez.
+    let runs = 0;
+    const deps = {
+      ...s.deps,
+      lock: {
+        run: (async (listingId, fn) => {
+          runs += 1;
+          if (runs === 2) {
+            extra = await addPublication(s.t, "portal_inmobiliario", "published");
+          }
+          return s.deps.lock.run(listingId, fn);
+        }) as typeof s.deps.lock.run,
+      },
+    };
+    expect(
+      await codeOf(
+        changeListingStatus(deps, {
+          listingId: s.t.listingId,
+          action: "close",
+          reason: "sold",
+          confirmed: true,
+          actor: "operator",
+        }),
+      ),
+    ).toBe("INVALID_TRANSITION");
+    expect(s.find(extra).status).toBe("published");
+    expect(await statusOf(s.t)).toBe("ready");
+  });
+
+  it("lo que la tabla deja igual: pausar y reanudar no tocan approved, failed, Portal pausada a mano ni Instagram en vivo", async () => {
+    const { t, deps, portalId, find } = await setup({ dryRun: true, apiMode: "dry-run" });
+    await t.publications.transition(
+      portalId,
+      { from: "published", to: "paused" },
+      { actor: "operator" },
+    );
+    const approved = await addPublication(t, "instagram", "approved");
+    const failed = await addPublication(t, "fb_marketplace", "failed");
+    const live = await addPublication(t, "instagram", "published", { dryRun: false });
+    const before = () => [approved, failed, live, portalId].map((id) => find(id).status);
+    const statuses = before();
+
+    await changeListingStatus(deps, {
+      listingId: t.listingId,
+      action: "pause",
+      confirmed: true,
+      actor: "operator",
+    });
+    expect(before()).toEqual(statuses);
+    const scheduled = await addPublication(t, "fb_marketplace", "scheduled");
+
+    const resumed = await changeListingStatus(deps, {
+      listingId: t.listingId,
+      action: "resume",
+      actor: "operator",
+    });
+    expect(before()).toEqual(statuses);
+    expect(find(scheduled).status).toBe("scheduled");
+    // Instagram sigue en vivo: la propiedad queda activa.
+    expect(resumed.listing.status).toBe("active");
+  });
+
+  it("cerrar cierra también una de Portal pausada", async () => {
+    const { t, deps, portalId, calls, find } = await setup();
+    await t.publications.transition(
+      portalId,
+      { from: "published", to: "paused" },
+      { actor: "operator" },
+    );
+    await changeListingStatus(deps, {
+      listingId: t.listingId,
+      action: "close",
+      reason: "rented",
+      confirmed: true,
+      actor: "operator",
+    });
+    expect(calls).toEqual(["close"]);
+    expect(find(portalId).status).toBe("unpublished");
+    expect(await statusOf(t)).toBe("closed");
   });
 });

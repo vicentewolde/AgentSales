@@ -82,7 +82,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | operation | enum `operation` null | `sale`, `rent` |
 | property_type | text null | Departamento, Casa… |
 | status | enum `listing_status` | `draft`, `ready`, `active`, `paused`, `closed`, `archived` |
-| close_reason | enum `close_reason` null | `sold`, `rented`, `withdrawn`. Solo tiene valor en `closed`: se fija al cerrar y se borra al salir de `closed` (`ListingRepository.changeStatus`, F6-T08) |
+| close_reason | enum `close_reason` null | `sold`, `rented`, `withdrawn`. Se fija al cerrar, se conserva al archivar una cerrada y se borra al reabrir (volver a `ready` o `active`; `ListingRepository.changeStatus`, F6-T08) |
 | price_amount | numeric(14,2) | |
 | price_currency | enum `currency` | `UF`, `CLP` |
 | region, comuna, address, unit_number | text null | Un borrador o un producto (ADR-0006) puede no tenerlos |

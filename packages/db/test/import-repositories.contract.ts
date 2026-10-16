@@ -372,7 +372,7 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(await repos.listings.changeStatus(repos.missingId, "draft", "ready")).toBe(false);
     });
 
-    it("changeStatus fija el motivo al cerrar y lo borra al salir de closed (F6-T08)", async () => {
+    it("changeStatus fija el motivo al cerrar, lo conserva al archivar y lo borra al reabrir (F6-T08)", async () => {
       const created = await repos.listings.create(newListing(brokerId, unique("P")));
       await repos.setListingStatus(created.id, "active");
       expect(
@@ -385,9 +385,9 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(await repos.listings.changeStatus(created.id, "closed", "archived")).toBe(true);
       expect(await repos.listings.get(created.id)).toMatchObject({
         status: "archived",
-        closeReason: null,
+        closeReason: "sold",
       });
-      // Fuera de closed, el motivo no se escribe aunque venga.
+      // Reabrir lo borra; fuera de closed, el motivo no se escribe aunque venga.
       expect(
         await repos.listings.changeStatus(created.id, "archived", "ready", {
           closeReason: "rented",

@@ -73,7 +73,8 @@ type PortalStep = { publicationId: string; operation: PublicationOperation };
  *    solo las que pausó la propiedad, cerrar las publicadas o pausadas. Una que falla detiene todo:
  *    lo ya aplicado queda aplicado y repetir la acción lo salta; la propiedad no cambió.
  * 3. **Dentro del candado otra vez:** relee la propiedad (si cambió, `INVALID_TRANSITION`) y sus
- *    publicaciones (las mismas revisiones y lo pendiente nuevo, igual que la fase 1), baja las
+ *    publicaciones (las mismas revisiones y lo pendiente nuevo, igual que la fase 1; una de Portal
+ *    que salió mientras tanto, `INVALID_TRANSITION` para repetir), baja las
  *    simulaciones de Instagram y Marketplace al cerrar, y cambia la propiedad (con su
  *    motivo al cerrar; reanudar y reabrir la dejan `active` si le queda algo publicado en vivo).
  */
@@ -143,6 +144,16 @@ export async function changeListingStatus(
     if (listing.status !== first.listing.status) throw invalid(listing, action);
     const publications = await locked.publications.listByListing(listingId);
     requireNothingInFlight(action, publications);
+    // Una de Portal que salió (o se pausó) mientras se llamaba a Portal quedaría viva sin dueño:
+    // se repite la acción, que la incluye.
+    const pending = await portalSteps(locked, action, publications);
+    if (pending.length > 0) {
+      throw new AppError(
+        "INVALID_TRANSITION",
+        "Una publicación de Portal cambió mientras se cambiaba la propiedad: vuelve a intentarlo",
+        { details: { listingId, action, publicationId: pending[0]?.publicationId } },
+      );
+    }
     changed.push(...(await releasePending(locked, action, publications, actor)));
     return applyFinal(locked, listing, { action, reason, actor });
   });
