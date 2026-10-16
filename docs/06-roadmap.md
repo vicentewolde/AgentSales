@@ -11,7 +11,8 @@ Cada fase entrega algo **usable y demostrable**. Una fase empieza con su spec en
 | F4 | Portal Inmobiliario | Publicar, pausar y cerrar en Portal Inmobiliario | v0.4.0 |
 | F5 | Marketplace | Flujo semiautomático en Facebook Marketplace | v0.5.0 |
 | F6 | Calendario + seguimiento | Programación, reintentos, sincronización, "vendida" cierra Portal y deja tareas a mano en Instagram y Marketplace | v0.6.0 |
-| F7 | Listo para terceros | Onboarding de corredores, API key de Anthropic, auth, despliegue | v1.0.0 |
+| F7 | Varios corredores | Login, cada corredor ve solo lo suyo, alta de corredores, IA por API con gasto por corredor (en el Mac del operador) | v0.7.0 |
+| F8 | En internet | Despliegue con HTTPS, subidas a R2, respaldos fuera del Mac, OAuth de Instagram, App Review y términos | v1.0.0 |
 
 ## F0 · Fundaciones
 Spec detallado: `docs/specs/fase-0-fundaciones.md`.
@@ -95,24 +96,31 @@ Spec detallado: `docs/specs/fase-4-portal-inmobiliario.md`.
 
 **Spec:** `docs/specs/fase-6-calendario-seguimiento.md` (ADR-0018, ADR-0019 y ADR-0020), aprobado el 2026-10-15. Respuestas del operador: lo programado con el worker apagado sale si el atraso es de 12 h o menos (D2); vendida o arrendada **cierra** Portal (D3); Instagram y Marketplace quedan como tareas a mano (D4); `auto_publish` aprueba y publica de inmediato los textos sin errores (D5). Marketplace en el calendario es solo un recordatorio. Suma el respaldo con `pg_dump` (cliente de Postgres de Homebrew) y la vista de Seguimiento con la agenda.
 
-## F7 · Listo para terceros
-- Proveedor `anthropic-api` como default para terceros.
-- Autenticación (proveedor a decidir en un ADR) y separación estricta por corredor (`broker_id` en cada consulta, con RLS opcional).
-- Onboarding: conectar cuentas, subir marca y plantilla de campos.
-- App Review de Meta; despliegue (ej. Fly.io o Railway) con backups.
+## F7 · Varios corredores
+Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operador partió la antigua "Listo para terceros" en F7 y F8).
+
+- Usuarios (operador administrador y usuarios de corredor), autenticación propia con sesiones e invitaciones (ADR-0021).
+- Separación estricta por corredor en la API y los repositorios, con 404 para lo ajeno (ADR-0022; RLS se evalúa en F8).
+- Alta de corredores: marca, logo, su planilla de Excel y la lista de pasos; el corredor hace casi todo con lo suyo y el operador lo sensible.
+- Proveedor `anthropic-api` para los corredores (la clave del operador), con el gasto por corredor y un tope mensual opcional; el plan del operador para sus corredores propios.
+- Marketplace a mano para los corredores (ADR-0023); Instagram del corredor como evaluador de la app (App Review en F8).
+- **Deuda que cierra:** el actor de la bitácora desde la sesión y quién conecta cada corredor (F3); el `state` de Mercado Libre de un solo uso (F4); `/tracking` y `/agenda` filtrados en el servidor, `listCurrentMany` y el `now` de la ruta (F6); `GET /listings` con una proyección acotada (F1); `/health` con el detalle solo para el administrador (F6).
+
+## F8 · En internet
+- Despliegue (ej. Fly.io o Railway) con HTTPS y dominio propio; `NODE_ENV=production`, el panel servido sin Vite, host, panel y orígenes por configuración; respaldos fuera del Mac.
+- App Review de Meta y el OAuth de Instagram de verdad, con HTTPS; términos de uso y privacidad básicos; revisar los términos comerciales de Anthropic para atender a varios clientes con una clave.
+- Endurecer el login para internet (límites por IP, doble factor opcional) y evaluar RLS como segunda barrera (ADR-0021 y ADR-0022).
+- Marketplace en un servidor: el formulario automático necesita el Mac del operador (ADR-0017 y ADR-0023): decidir cómo convive con el despliegue.
 - **Deuda heredada de F1** (detalle en `docs/ESTADO.md` → Deuda técnica):
   - las subidas del panel pasan a ser directas a R2, con una URL prefirmada, y `import_runs.input` pasa de rutas locales a claves de R2 (seguimiento de ADR-0005);
   - se quita `POST /imports/local` y el staging compartido en disco entre la API y el worker;
-  - el despliegue fija `NODE_ENV=production`, porque `/imports/local` depende de ese valor;
-  - `GET /listings` pasa a una proyección acotada (hoy entrega notas internas y la dirección exacta).
+  - el despliegue fija `NODE_ENV=production`, porque `/imports/local` depende de ese valor.
 - **Deuda heredada de F3** (detalle en `docs/ESTADO.md` → Deuda técnica):
   - probar el OAuth de Instagram de verdad, con HTTPS;
-  - el actor de la bitácora sale de la sesión, no de la cabecera `X-AgentSales-Client`;
-  - autorizar quién conecta cada corredor y no repetir un `state` válido (guardar el nonce usado);
+  - no repetir un `state` válido de Instagram (guardar el nonce usado);
   - derivar el inicio del OAuth si la API queda tras un prefijo;
   - el tope de tiempo de `tokens.refresh` con muchas cuentas.
-- Términos de uso y privacidad básicos.
-- **Deuda heredada de F6** (detalle en `docs/ESTADO.md` → Deuda técnica): la agenda con una sola consulta de textos (`listCurrentMany`) y `publicationView` con el `now` de la ruta; `/tracking` y `/agenda` filtran por corredor en el servidor (con la autenticación); ocultar o proteger en `/health` la versión de Postgres y `autoPublishBrokers` al desplegar; un `auto_publish` cortado por el apagado no se reintenta; una pausa que un sync aplicó antes que la propiedad queda sin `byListing`; la prueba en vivo de Portal (D15 de F4) confirma el `relist` y la regla de `pictures` en pausar y cerrar.
+- **Deuda heredada de F6:** ocultar o proteger en `/health` la versión de Postgres al desplegar; un `auto_publish` cortado por el apagado no se reintenta; una pausa que un sync aplicó antes que la propiedad queda sin `byListing`; la prueba en vivo de Portal (D15 de F4) confirma el `relist` y la regla de `pictures` en pausar y cerrar.
 
 ## Post-MVP (backlog)
 - Respuestas a DMs, comentarios y preguntas de ML (siguiente gran fase).
