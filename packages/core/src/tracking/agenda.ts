@@ -1,3 +1,5 @@
+import type { Broker } from "../broker.js";
+import type { Content } from "../content.js";
 import type { Platform, PublicationFormat } from "../enums.js";
 import type { BackupStatus } from "../health.js";
 import { isBackupStale } from "../health.js";
@@ -6,6 +8,7 @@ import { portalExpiry } from "../portal/expiry.js";
 import type { Publication } from "../publication.js";
 import { publicationErrorAdvice } from "../publish/error-advice.js";
 import { scheduleState } from "../schedule.js";
+import { autoPublishApplies, autoPublishContents } from "../use-cases/auto-publish-listing.js";
 import { STALE_PUBLISHING_MS } from "../use-cases/watch-publications.js";
 import { isManualTask } from "./manual-tasks.js";
 
@@ -18,11 +21,12 @@ import { isManualTask } from "./manual-tasks.js";
  * - `stuck`: `publishing` sin cambios desde hace más de 70 min;
  * - `failed`: falló, con el consejo;
  * - `manual_task`: Instagram o Marketplace en vivo de una propiedad cerrada;
- * - `needs_review`: con `auto_publish`, un texto de un canal conectado que no se aprobó solo (la
- *   revisión tiene errores) y espera al operador;
+ * - `needs_review`: con `auto_publish`, el texto vigente de un canal conectado que no está
+ *   aprobado (su revisión tenía errores, o el operador lo editó después) y espera al operador;
  * - `approved_waiting`: con `auto_publish`, aprobada pero sin publicar (por ejemplo, a Portal le
  *   falta algo);
- * - `expiring`: Portal que vence en 7 días o menos, o que venció y no se republicó;
+ * - `expiring`: Portal que vence en 7 días o menos, o que venció y no se republicó (con la
+ *   propiedad lista o activa; si todavía figura publicada, primero un sync);
  * - `upcoming`: programada en los próximos 7 días;
  * - `backup`: el último respaldo de la base (siempre al final, uno solo).
  */
@@ -49,6 +53,7 @@ export const AGENDA_ACTIONS = [
   "retire",
   "review",
   "relist",
+  "sync",
   "backup",
   "none",
 ] as const;
@@ -68,9 +73,41 @@ export type AgendaItem = {
   dryRun: boolean | null;
   /** El código del error (o de la última falla del respaldo). */
   code: string | null;
-  /** El consejo del error, o un dato breve (los días que le quedan, si el respaldo está atrasado). */
-  detail: string | null;
+  /** Qué hacer con el error (`publicationErrorAdvice`); `null` si no es una falla. */
+  advice: string | null;
+  /** Portal: los días que le quedan al aviso (0 vence hoy); `null` si no aplica. */
+  daysLeft: number | null;
+  /** Portal: ya venció. */
+  expired: boolean;
+  /** El respaldo tiene más de 48 h, o no hay ninguno. */
+  stale: boolean;
 };
+
+/**
+ * La matriz y la agenda miran las publicaciones activas y las terminadas de los últimos 30 días
+ * (`listForTracking`, spec F6 §4.9).
+ */
+export const TRACKING_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Lo que espera la revisión del operador con `auto_publish` (spec F6 §4.10): en cada propiedad sobre
+ * la que actúa (`autoPublishApplies`), el texto vigente de cada canal conectado
+ * (`autoPublishContents`, la misma regla de `autoPublishListing`) que no está aprobado.
+ */
+export function pendingReviewsOf(input: {
+  listings: readonly Pick<Listing, "id" | "brokerId" | "status">[];
+  brokers: ReadonlyMap<string, Pick<Broker, "autoPublish">>;
+  connectedByBroker: ReadonlyMap<string, ReadonlySet<Platform>>;
+  contentsByListing: ReadonlyMap<string, readonly Pick<Content, "platform" | "status">[]>;
+}): PendingReview[] {
+  return input.listings.flatMap((listing) => {
+    if (!autoPublishApplies(listing, input.brokers.get(listing.brokerId) ?? null)) return [];
+    const connected = input.connectedByBroker.get(listing.brokerId) ?? new Set<Platform>();
+    return autoPublishContents(input.contentsByListing.get(listing.id) ?? [], connected)
+      .filter((content) => content.status !== "approved")
+      .map((content) => ({ listingId: listing.id, platform: content.platform }));
+  });
+}
 
 /** Un texto de un canal que espera la revisión del operador (lo arma la API). */
 export type PendingReview = { listingId: string; platform: Platform };
@@ -109,7 +146,7 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
       kind: AgendaKind,
       action: AgendaAction,
       at: Date | null,
-      extra: Partial<Pick<AgendaItem, "code" | "detail">> = {},
+      extra: Partial<Pick<AgendaItem, "code" | "advice" | "daysLeft" | "expired">> = {},
     ): AgendaItem => ({
       kind,
       action,
@@ -121,7 +158,10 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
       at,
       dryRun: publication.dryRun,
       code: extra.code ?? null,
-      detail: extra.detail ?? null,
+      advice: extra.advice ?? null,
+      daysLeft: extra.daysLeft ?? null,
+      expired: extra.expired ?? false,
+      stale: false,
     });
     const kindOf = kindForPublication(publication, listing, input, relisted);
     if (kindOf === null) continue;
@@ -141,7 +181,10 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
       at: null,
       dryRun: null,
       code: null,
-      detail: null,
+      advice: null,
+      daysLeft: null,
+      expired: false,
+      stale: false,
     });
   }
   if (input.backup !== undefined) {
@@ -157,7 +200,10 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
       at: input.backup?.lastSuccessAt == null ? null : new Date(input.backup.lastSuccessAt),
       dryRun: null,
       code: input.backup?.lastFailureCode ?? null,
-      detail: stale ? "stale" : null,
+      advice: null,
+      daysLeft: null,
+      expired: false,
+      stale,
     });
   }
   return items.sort(
@@ -177,7 +223,7 @@ function kindForPublication(
   kind: AgendaKind;
   action: AgendaAction;
   at: Date | null;
-  extra?: Partial<Pick<AgendaItem, "code" | "detail">>;
+  extra?: Partial<Pick<AgendaItem, "code" | "advice" | "daysLeft" | "expired">>;
 } | null {
   const { now } = input;
   switch (publication.status) {
@@ -207,7 +253,7 @@ function kindForPublication(
         kind: "failed",
         action: "retry",
         at: publication.updatedAt,
-        extra: { code, detail: code === null ? null : publicationErrorAdvice(code) },
+        extra: { code, advice: code === null ? null : publicationErrorAdvice(code) },
       };
     }
     case "approved":
@@ -225,21 +271,25 @@ function kindForPublication(
       const expiry = portalExpiry(publication.remoteState, now);
       if (expiry === null) return null;
       if (publication.status === "unpublished") {
-        return expiry.expired && !relisted.has(publication.id) && listing.status !== "closed"
+        // Republicar exige la propiedad lista o activa (`relistPublication`).
+        return expiry.expired &&
+          !relisted.has(publication.id) &&
+          (listing.status === "ready" || listing.status === "active")
           ? {
               kind: "expiring",
               action: "relist",
               at: expiry.stopTime,
-              extra: { detail: "expired" },
+              extra: { expired: true, daysLeft: expiry.daysLeft },
             }
           : null;
       }
       return expiry.soon || expiry.expired
         ? {
             kind: "expiring",
-            action: expiry.expired ? "relist" : "none",
+            // Venció pero todavía figura publicada: un sync la deja cerrada y entonces se republica.
+            action: expiry.expired ? "sync" : "none",
             at: expiry.stopTime,
-            extra: { detail: expiry.expired ? "expired" : String(expiry.daysLeft) },
+            extra: { expired: expiry.expired, daysLeft: expiry.daysLeft },
           }
         : null;
     }

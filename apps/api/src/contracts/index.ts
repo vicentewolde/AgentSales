@@ -94,7 +94,6 @@ export const listingQuerySchema = z.object({
 });
 export type ListingQuery = z.infer<typeof listingQuerySchema>;
 
-/** `PATCH /listings/:id/status`: solo hacia los estados manuales (`LISTING_MANUAL_TRANSITIONS`). */
 /**
  * `POST /listings/:id/status` (F6-T10, spec F6 §4.8): la acción, el motivo al cerrar y la
  * confirmación (cerrar siempre; pausar y archivar si cambian algo). Reemplaza al `PATCH` de F1.
@@ -879,7 +878,9 @@ export const trackingPublicationSchema = z.object({
   scheduledAt: z.coerce.date().nullable(),
   schedule: z.enum(SCHEDULE_STATES).nullable(),
   expiry: publicationViewSchema.shape.expiry,
-  error: publicationErrorSchema.extend({ advice: z.string() }).nullable(),
+  lastError: publicationErrorSchema.nullable(),
+  /** Como en la vista de una publicación: qué hacer con el último error. */
+  errorAdvice: z.string().nullable(),
   manualTask: z.boolean(),
   updatedAt: z.coerce.date(),
 });
@@ -916,7 +917,10 @@ export const agendaItemSchema = z.object({
   at: z.coerce.date().nullable(),
   dryRun: z.boolean().nullable(),
   code: z.string().nullable(),
-  detail: z.string().nullable(),
+  advice: z.string().nullable(),
+  daysLeft: z.number().int().nullable(),
+  expired: z.boolean(),
+  stale: z.boolean(),
 });
 export const agendaResponseSchema = z.object({ items: z.array(agendaItemSchema) });
 export type AgendaResponse = z.infer<typeof agendaResponseSchema>;

@@ -47,15 +47,26 @@ function offsetMinutes(date: Date): number {
  * tiene esa forma o si la hora no existe en Chile por el cambio de horario.
  */
 export function parseChileTime(text: string): Date {
-  const match = INPUT.exec(text.trim());
-  if (match === null) {
-    throw new CliError(
+  const formatError = () =>
+    new CliError(
       "SCHEDULE_AT_INVALID",
       `--at debe ser "AAAA-MM-DD HH:MM" en hora de Chile (por ejemplo "2026-10-19 10:00"): "${text}"`,
     );
+  const match = INPUT.exec(text.trim());
+  if (match === null) throw formatError();
+  const [, year = 0, month = 1, day = 1, hour = 0, minute = 0] = match.map(Number);
+  const wall = Date.UTC(year, month - 1, day, hour, minute);
+  // Una fecha u hora inventada (30 de febrero, 25:00) se desbordaría a otro día: es un error de forma.
+  const check = new Date(wall);
+  if (
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month - 1 ||
+    check.getUTCDate() !== day ||
+    check.getUTCHours() !== hour ||
+    check.getUTCMinutes() !== minute
+  ) {
+    throw formatError();
   }
-  const [, year, month, day, hour, minute] = match.map(Number) as number[];
-  const wall = Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1, hour ?? 0, minute ?? 0);
   // Los dos desplazamientos posibles (invierno y verano): la primera vez que esa hora existe.
   const candidates = [...new Set([-240, -180].map((offset) => wall - offset * 60_000))]
     .map((ms) => new Date(ms))

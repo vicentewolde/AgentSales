@@ -11,6 +11,7 @@ import {
   LISTING_STATUS_TEXT,
   type ListingAction,
   OPERATION_TEXT,
+  PUBLICATION_STATUS_TEXT,
 } from "@agentsales/core";
 import type { Command } from "commander";
 import { type ApiClient, unwrap } from "../api-client.js";
@@ -163,7 +164,9 @@ export function runListingAction(
       `${c.green("✓")} ${listing.externalRef} ${ACTION_DONE[action]}: ${LISTING_STATUS_TEXT[listing.status]}`,
     );
     for (const publication of changed) {
-      deps.print(`  ${publicationName(publication)}: ${publication.status}`);
+      deps.print(
+        `  ${publicationName(publication)}: ${PUBLICATION_STATUS_TEXT[publication.status]}`,
+      );
     }
     if (manualTasks.length > 0) {
       deps.print(c.yellow("Tareas a mano (bórralas en la plataforma y márcalas retiradas):"));
@@ -212,7 +215,8 @@ export function register(program: Command, ctx: CliContext): void {
       "Cierra la propiedad (vendida, arrendada o retirada): cierra Portal y deja Instagram y Marketplace en vivo como tareas a mano",
     )
     .argument("<propiedad>", "id_propiedad del Excel, o el id del aviso")
-    .requiredOption("--reason <motivo>", "vendida, arrendada o retirada")
+    // `.option` y no `.requiredOption`: el motivo que falta lo explica la CLI, en español.
+    .option("--reason <motivo>", "vendida, arrendada o retirada")
     .option("--broker <slug>", "corredor, si el id_propiedad está en más de uno")
     .option("--yes", "no pide confirmación")
     .action((ref: string, options: ListingActionOptions) =>

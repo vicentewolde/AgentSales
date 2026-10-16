@@ -88,8 +88,8 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 
 ## Deuda técnica
 - **Para F7:** `/health` muestra la versión de Postgres; al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
-- **Para T13:** quitar `LISTING_MANUAL_TARGETS` (hoy solo lo usan los botones de F1 del panel) cuando lleguen los botones nuevos de la propiedad.
-- **CLI, aviso falso de cola en `publish` (F3, demo):** `agentsales publish` avisa "Sigue en cola: ¿está corriendo el worker?" si ninguna publicación cambia en 20 s. El worker publica de a una y el carrusel guarda su primer progreso después de crear los hijos y esperar a que estén listos (más de 20 s), así que el aviso sale aunque el worker corra. Arreglo: guardar el progreso con `childIds` apenas se crean los hijos, o un texto propio para publicaciones ("en cola o esperando su turno").
+- **Para T12:** mover `parseChileTime` y `formatChileTime` de la CLI a core (segundo uso: el selector de hora del panel), con sus tests del cambio de horario; pasar el `now` de la ruta a `publicationView`; la confirmación en vivo de programar en el panel (la API no la pide).
+- **Para T13:** quitar `LISTING_MANUAL_TARGETS` y `listingActionFor` (hoy solo los usan los botones de F1 del panel); una consulta de textos vigentes para todas las propiedades de la agenda (hoy una por propiedad); `staleTime` en `/tracking` (firma una portada por fila); el aviso en rojo de `auto_publish` también si no se pudo saber.
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
 - **F7, campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
 - **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
@@ -125,6 +125,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
   - **La propiedad:** `listing pause|resume|reopen|archive` y `listing close --reason vendida|arrendada|retirada`; lo que pide confirmar se pregunta con el motivo (`--yes` no pregunta).
   - **Portal:** `publications update <id>` y `publications relist <id>`.
   - **Publicación automática:** `brokers auto-publish <slug> on|off` (pregunta siempre); con la API en vivo, `status` y `doctor` la muestran en rojo.
+  - **La revisión dejó** (1 bloqueante, corregido): la regla de "espera tu revisión" vive en un solo lugar (la misma que usa la publicación automática); la agenda ya no sugiere republicar un aviso que todavía figura publicado (primero pide leer su estado); `/health` nunca se cuelga por esa consulta; una fecha inventada (30 de febrero) da el mensaje de formato; más pruebas.
   - `publish` ahora dice "en cola o esperando su turno" (el worker publica de a una).
   - El botón de estado del panel usa la ruta nueva; los botones nuevos llegan en el lote G.
 - 2026-10-15: **Lote E de F6 (F6-T14): respaldo local de la base.**

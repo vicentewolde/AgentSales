@@ -13,7 +13,7 @@ export type HealthCheck = () => Promise<void>;
 /** Tope por check: la base ya reintenta con 10 s por intento; nada debe colgar `/health`. */
 export const DEFAULT_CHECK_TIMEOUT_MS = 25_000;
 
-function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`sin respuesta en ${ms} ms`)), ms);
@@ -77,7 +77,12 @@ export async function runHealth(options: {
       : { backup: await backupOf(details.backupStatus, details.now ?? (() => new Date())) }),
     ...(details.autoPublishBrokers === undefined
       ? {}
-      : { autoPublishBrokers: await details.autoPublishBrokers().catch(() => null) }),
+      : {
+          // Sin base no se consulta; con ella, el mismo tope de los checks: nunca cuelga `/health`.
+          autoPublishBrokers: checks.db.ok
+            ? await withTimeout(details.autoPublishBrokers(), timeoutMs).catch(() => null)
+            : null,
+        }),
   };
 }
 

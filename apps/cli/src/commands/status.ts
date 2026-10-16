@@ -18,6 +18,10 @@ export function renderPublishMode(mode: HealthReport["publishMode"], c: Colors):
  * revisión); en simulación, una nota. `null` si ningún corredor lo tiene (o la API no lo informa).
  */
 export function renderAutoPublish(report: HealthReport, c: Colors): string | null {
+  // En vivo, no saber (la base no respondió) también se dice: podría estar publicando solo.
+  if (report.autoPublishBrokers === null && report.publishMode === "live") {
+    return c.yellow("No se pudo saber si algún corredor tiene auto_publish (la base no respondió)");
+  }
   const brokers = report.autoPublishBrokers ?? [];
   if (brokers.length === 0) return null;
   return report.publishMode === "live"

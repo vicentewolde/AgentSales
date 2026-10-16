@@ -25,7 +25,14 @@ describe("parseChileTime y formatChileTime", () => {
   });
 
   it("otro formato es SCHEDULE_AT_INVALID con el ejemplo", () => {
-    for (const text of ["19-10-2026 10:00", "2026-10-19", "mañana 10:00", "2026-13-01 10:00"]) {
+    for (const text of [
+      "19-10-2026 10:00",
+      "2026-10-19",
+      "mañana 10:00",
+      "2026-13-01 10:00",
+      "2026-02-30 10:00",
+      "2026-10-19 25:00",
+    ]) {
       let caught: unknown;
       try {
         parseChileTime(text);
@@ -34,6 +41,7 @@ describe("parseChileTime y formatChileTime", () => {
       }
       expect(caught).toBeInstanceOf(CliError);
       expect((caught as CliError).code).toBe("SCHEDULE_AT_INVALID");
+      expect((caught as CliError).message).toContain("AAAA-MM-DD HH:MM");
     }
   });
 });

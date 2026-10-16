@@ -64,9 +64,9 @@ pnpm -s cli publications [<id_propiedad>]  # estado, modo, enlace y, en Portal, 
 pnpm -s cli publications pause|resume|close|sync <id>  # Portal: pausa, reactiva, cierra (en live pide confirmación; --yes) o pide leer el estado en Mercado Libre
 pnpm -s cli publications update|relist <id>  # Portal: manda al aviso el precio, los atributos o el texto nuevos, o republica uno vencido o cerrado (en live pide confirmación; --yes)
 pnpm -s cli schedule <id_propiedad…> --at "2026-10-19 10:00"  # programa en hora de Chile (--platform, --spacing <min>; --publication <id> para una sola; en live pide confirmación, --yes); unschedule <id> la desprograma
-pnpm -s cli agenda       # lo pendiente (atrasadas, te toca, fallas, tareas a mano, por vencer, próximas, respaldo) con el comando de cada una (--broker, --json)
+pnpm -s cli agenda       # lo pendiente (atrasadas, te toca, atascadas, fallas, tareas a mano, espera tu revisión, aprobadas sin publicar, por vencer, próximas, respaldo) con el comando de cada una (--broker, --json)
 pnpm -s cli tracking     # cada propiedad por plataforma (--broker, --archived, --json)
-pnpm -s cli listing pause|resume|reopen|archive <id_propiedad>  # la propiedad manda sobre sus publicaciones; listing close <id_propiedad> --reason vendida|arrendada|retirada (pide confirmación; --yes)
+pnpm -s cli listing ready|pause|resume|reopen|archive <id_propiedad>  # la propiedad manda sobre sus publicaciones; listing close <id_propiedad> --reason vendida|arrendada|retirada (pide confirmación; --yes)
 pnpm -s cli brokers auto-publish <slug> on|off  # publicación automática del corredor (pregunta siempre; --yes)
 pbpaste | pnpm -s cli publications confirm <id> --url-stdin  # Marketplace: lo publicaste (el enlace no se imprime); publications not-published <id> si no
 pnpm -s cli accounts     # cuentas y vencimiento (pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin; Mercado Libre: accounts connect mercadolibre --broker <slug> y después pbpaste | … --url-stdin; Marketplace: accounts connect marketplace --broker <slug> abre Chromium para iniciar sesión a mano (lo pide el operador); accounts refresh <id> [--force]; accounts disconnect <id> pide confirmación, --yes)

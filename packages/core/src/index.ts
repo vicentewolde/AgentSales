@@ -506,6 +506,8 @@ export {
   type AgendaKind,
   agendaItems,
   type PendingReview,
+  pendingReviewsOf,
+  TRACKING_WINDOW_MS,
 } from "./tracking/agenda.js";
 export { isManualTask, manualTasksOf } from "./tracking/manual-tasks.js";
 export {
@@ -523,7 +525,10 @@ export {
   type AutoPublishChannel,
   type AutoPublishDeps,
   type AutoPublishResult,
+  autoPublishApplies,
+  autoPublishContents,
   autoPublishListing,
+  connectedPlatforms,
 } from "./use-cases/auto-publish-listing.js";
 export {
   type CancelPublicationDeps,

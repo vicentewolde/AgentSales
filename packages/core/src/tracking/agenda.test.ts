@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Publication } from "../publication.js";
 import { GENERIC_ERROR_ADVICE } from "../publish/error-advice.js";
-import { AGENDA_KINDS, agendaItems } from "./agenda.js";
+import { AGENDA_KINDS, agendaItems, pendingReviewsOf } from "./agenda.js";
 import { trackingRow } from "./row.js";
 
 // Spec F6 §4.9: la agenda y la matriz, puras.
@@ -117,9 +117,12 @@ describe("agendaItems", () => {
     ]);
     expect(items.find((item) => item.kind === "failed")).toMatchObject({
       code: "RARO",
-      detail: GENERIC_ERROR_ADVICE,
+      advice: GENERIC_ERROR_ADVICE,
     });
-    expect(items.find((item) => item.kind === "expiring")?.detail).toBe("3");
+    expect(items.find((item) => item.kind === "expiring")).toMatchObject({
+      daysLeft: 3,
+      expired: false,
+    });
     expect(items.find((item) => item.kind === "manual_task")?.externalRef).toBe("L2");
     // Es el orden declarado.
     expect([...new Set(items.map((item) => item.kind))]).toEqual(
@@ -153,9 +156,7 @@ describe("agendaItems", () => {
       dryRun: false,
       remoteState: remote(days(-1), "closed", ["expired"]),
     });
-    expect(run([expired])).toMatchObject([
-      { kind: "expiring", action: "relist", detail: "expired" },
-    ]);
+    expect(run([expired])).toMatchObject([{ kind: "expiring", action: "relist", expired: true }]);
     expect(
       run([
         expired,
@@ -167,6 +168,10 @@ describe("agendaItems", () => {
       ]),
     ).toEqual([]);
     expect(run([{ ...expired, listingId: "l2" }])).toEqual([]);
+    // Vencida pero todavía publicada: primero un sync (republicar exige `unpublished`).
+    expect(run([{ ...expired, status: "published", remoteState: remote(days(-1)) }])).toMatchObject(
+      [{ kind: "expiring", action: "sync", expired: true }],
+    );
   });
 
   it("el respaldo: al día sin acción, atrasado o con una falla pide respaldar", () => {
@@ -178,7 +183,7 @@ describe("agendaItems", () => {
     };
     expect(run([], { backup: ok })).toMatchObject([{ kind: "backup", action: "none" }]);
     expect(run([], { backup: { ...ok, lastSuccessAt: days(-3).toISOString() } })).toMatchObject([
-      { kind: "backup", action: "backup", detail: "stale" },
+      { kind: "backup", action: "backup", stale: true },
     ]);
     expect(run([], { backup: { ...ok, lastFailureCode: "BACKUP_FAILED" } })).toMatchObject([
       { kind: "backup", action: "backup", code: "BACKUP_FAILED" },
@@ -232,8 +237,41 @@ describe("trackingRow", () => {
     ]);
     expect(row.cells.instagram[0]?.externalUrl).toBe("https://instagram.com/p/x");
     expect(row.cells.instagram[1]?.externalUrl).toBeNull();
-    expect(row.cells.instagram[1]?.error?.advice).not.toBe(GENERIC_ERROR_ADVICE);
+    expect(row.cells.instagram[1]?.errorAdvice).not.toBe(GENERIC_ERROR_ADVICE);
     expect(row.cells.portal_inmobiliario[0]?.expiry).toMatchObject({ daysLeft: 2, soon: true });
     expect(row.cells.fb_marketplace).toEqual([]);
+  });
+});
+
+describe("pendingReviewsOf", () => {
+  it("solo corredores con auto_publish, propiedades listas o activas y canales conectados sin aprobar", () => {
+    const reviews = pendingReviewsOf({
+      listings: [
+        { id: "a", brokerId: "auto", status: "ready" },
+        { id: "b", brokerId: "auto", status: "paused" },
+        { id: "c", brokerId: "manual", status: "active" },
+      ],
+      brokers: new Map([
+        ["auto", { autoPublish: true }],
+        ["manual", { autoPublish: false }],
+      ]),
+      connectedByBroker: new Map([
+        ["auto", new Set(["instagram", "portal_inmobiliario"] as const)],
+        ["manual", new Set(["instagram"] as const)],
+      ]),
+      contentsByListing: new Map([
+        [
+          "a",
+          [
+            { platform: "instagram" as const, status: "approved" as const },
+            { platform: "portal_inmobiliario" as const, status: "draft" as const },
+            { platform: "fb_marketplace" as const, status: "edited" as const },
+          ],
+        ],
+        ["b", [{ platform: "instagram" as const, status: "draft" as const }]],
+        ["c", [{ platform: "instagram" as const, status: "draft" as const }]],
+      ]),
+    });
+    expect(reviews).toEqual([{ listingId: "a", platform: "portal_inmobiliario" }]);
   });
 });

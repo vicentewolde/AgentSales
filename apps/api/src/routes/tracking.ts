@@ -1,16 +1,23 @@
 import {
   AppError,
   agendaItems,
+  autoPublishApplies,
   type BackupStatus,
+  type Broker,
   type BrokerRepository,
+  type Content,
   type ContentRepository,
+  connectedPlatforms,
   type Listing,
   type ListingRepository,
   type MediaRepository,
   type MediaStorage,
   type PendingReview,
+  type Platform,
   type PlatformAccountRepository,
   type PublicationRepository,
+  pendingReviewsOf,
+  TRACKING_WINDOW_MS,
   trackingRow,
 } from "@agentsales/core";
 import { Hono } from "hono";
@@ -22,9 +29,6 @@ import {
 } from "../contracts/index.js";
 import { validated } from "../validation.js";
 import { coverPaths } from "./listings.js";
-
-/** La matriz y la agenda miran las publicaciones activas y las terminadas de los últimos 30 días. */
-export const TRACKING_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type TrackingRoutesDeps = {
   listings: Pick<ListingRepository, "list">;
@@ -53,35 +57,30 @@ async function listingsOf(deps: TrackingRoutesDeps, slug: string | undefined): P
 }
 
 /**
- * Lo que espera la revisión del operador con `auto_publish` (spec F6 §4.10): en una propiedad
- * `ready` o `active` de un corredor con `auto_publish`, el texto vigente de un canal con la cuenta
- * conectada que no quedó aprobado (su revisión tenía errores, o lo editó el operador).
+ * Carga lo que `pendingReviewsOf` (core) necesita: las cuentas y los textos vigentes solo de las
+ * propiedades sobre las que actúa `auto_publish` (`autoPublishApplies`). Una consulta de textos
+ * por propiedad: con el volumen de hoy alcanza (deuda para T13: una consulta para todas).
  */
 async function pendingReviews(
   deps: TrackingRoutesDeps,
   listings: readonly Listing[],
-  autoPublishBrokerIds: ReadonlySet<string>,
+  brokers: ReadonlyMap<string, Broker>,
 ): Promise<PendingReview[]> {
-  const reviews: PendingReview[] = [];
-  const connectedByBroker = new Map<string, Set<string>>();
-  for (const listing of listings) {
-    if (!autoPublishBrokerIds.has(listing.brokerId)) continue;
-    if (listing.status !== "ready" && listing.status !== "active") continue;
-    let connected = connectedByBroker.get(listing.brokerId);
-    if (connected === undefined) {
-      const accounts = await deps.platformAccounts.listByBroker(listing.brokerId);
-      connected = new Set(
-        accounts.filter((account) => account.status === "connected").map((a) => a.platform),
+  const candidates = listings.filter((listing) =>
+    autoPublishApplies(listing, brokers.get(listing.brokerId) ?? null),
+  );
+  const connectedByBroker = new Map<string, ReadonlySet<Platform>>();
+  const contentsByListing = new Map<string, Content[]>();
+  for (const listing of candidates) {
+    if (!connectedByBroker.has(listing.brokerId)) {
+      connectedByBroker.set(
+        listing.brokerId,
+        connectedPlatforms(await deps.platformAccounts.listByBroker(listing.brokerId)),
       );
-      connectedByBroker.set(listing.brokerId, connected);
     }
-    for (const content of await deps.contents.listCurrent(listing.id)) {
-      if (content.status !== "approved" && connected.has(content.platform)) {
-        reviews.push({ listingId: listing.id, platform: content.platform });
-      }
-    }
+    contentsByListing.set(listing.id, await deps.contents.listCurrent(listing.id));
   }
-  return reviews;
+  return pendingReviewsOf({ listings: candidates, brokers, connectedByBroker, contentsByListing });
 }
 
 /**
@@ -129,8 +128,9 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
       const listings = (await listingsOf(deps, broker)).filter(
         (listing) => listing.status !== "archived",
       );
+      const brokers = new Map((await deps.brokers.list()).map((b) => [b.id, b]));
       const autoPublishBrokerIds = new Set(
-        (await deps.brokers.list()).filter((b) => b.autoPublish).map((b) => b.id),
+        [...brokers.values()].filter((b) => b.autoPublish).map((b) => b.id),
       );
       const backup =
         deps.backupStatus === undefined ? undefined : await deps.backupStatus().catch(() => null);
@@ -139,7 +139,7 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
           listings,
           publications: await publicationsOf(listings, at),
           autoPublishBrokerIds,
-          pendingReviews: await pendingReviews(deps, listings, autoPublishBrokerIds),
+          pendingReviews: await pendingReviews(deps, listings, brokers),
           ...(backup === undefined ? {} : { backup }),
           now: at,
         }),

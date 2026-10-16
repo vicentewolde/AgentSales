@@ -148,6 +148,36 @@ describe("GET /health", () => {
     expect(body.autoPublishBrokers).toBeNull();
   });
 
+  it("autoPublishBrokers: sin base no se consulta y una consulta colgada no cuelga /health", async () => {
+    let asked = 0;
+    const down = await health(
+      appWith(
+        { db: fail("sin base") },
+        {
+          healthDetails: {
+            autoPublishBrokers: async () => {
+              asked += 1;
+              return ["x"];
+            },
+          },
+        },
+      ),
+    );
+    expect(down.body.autoPublishBrokers).toBeNull();
+    expect(asked).toBe(0);
+
+    const hung = await health(
+      appWith(
+        {},
+        {
+          checkTimeoutMs: 20,
+          healthDetails: { autoPublishBrokers: () => new Promise<string[]>(() => {}) },
+        },
+      ),
+    );
+    expect(hung.body.autoPublishBrokers).toBeNull();
+  });
+
   it("informa PUBLISH_MODE=live tal cual", async () => {
     const { body } = await health(appWith({}, { publishMode: "live" }));
 

@@ -445,6 +445,13 @@ export function checkBackup(report: HealthReport | null, now: Date = new Date())
  * ningún corredor lo tiene o la API no responde.
  */
 export function checkAutoPublish(report: HealthReport | null): CheckItem | null {
+  if (report?.autoPublishBrokers === null && report.publishMode === "live") {
+    return {
+      name: "auto_publish",
+      level: "warn",
+      detail: "no se pudo saber si algún corredor lo tiene (la base no respondió)",
+    };
+  }
   const brokers = report?.autoPublishBrokers ?? [];
   if (report === null || brokers.length === 0) return null;
   return report.publishMode === "live"

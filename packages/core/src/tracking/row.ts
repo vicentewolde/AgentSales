@@ -21,8 +21,9 @@ export type TrackingPublication = {
   schedule: ScheduleState | null;
   /** Portal: el vencimiento de su aviso; `null` sin dato. */
   expiry: PortalExpiry | null;
-  /** El último error, con el consejo de qué hacer (`publicationErrorAdvice`). */
-  error: (PublicationError & { advice: string }) | null;
+  /** El último error y qué hacer con él (`publicationErrorAdvice`), como la vista de la API. */
+  lastError: PublicationError | null;
+  errorAdvice: string | null;
   /** Instagram o Marketplace en vivo de una propiedad cerrada: el operador lo borra a mano. */
   manualTask: boolean;
   updatedAt: Date;
@@ -64,10 +65,9 @@ export function trackingPublication(
       publication.platform === "portal_inmobiliario"
         ? portalExpiry(publication.remoteState, now)
         : null,
-    error:
-      publication.lastError === null
-        ? null
-        : { ...publication.lastError, advice: publicationErrorAdvice(publication.lastError.code) },
+    lastError: publication.lastError,
+    errorAdvice:
+      publication.lastError === null ? null : publicationErrorAdvice(publication.lastError.code),
     manualTask: isManualTask(listing.status, publication),
     updatedAt: publication.updatedAt,
   };

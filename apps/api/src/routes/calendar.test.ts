@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { type PublishMode, publishListing } from "@agentsales/core";
+import {
+  AppError,
+  type ListingImportData,
+  type PlatformContext,
+  type PublicationOperations,
+  type PublishMode,
+  publishListing,
+} from "@agentsales/core";
 import { createPublicationScenario } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
@@ -78,10 +85,11 @@ describe("POST /publications/:id/schedule y /unschedule", () => {
     });
   });
 
-  it("en vivo queda programada en vivo", async () => {
+  it("en vivo queda programada en vivo, aunque el cuerpo diga dryRun (el modo es de la API)", async () => {
     const { t, post } = await setup({ publishMode: "live" });
     const response = await post(`/publications/${t.byFormat("post")?.id}/schedule`, {
       at: inMinutes(30),
+      dryRun: true,
     });
     expect(publicationResponseSchema.parse(await response.json()).publication.dryRun).toBe(false);
   });
@@ -204,7 +212,7 @@ describe("GET /tracking y GET /agenda", () => {
       ["backup", "backup"],
     ]);
     expect(items[0]).toMatchObject({ code: "IG_AUTH_INVALID", publicationId: reel });
-    expect(items[0]?.detail).toBeTruthy();
+    expect(items[0]?.advice).toBeTruthy();
   });
 });
 
@@ -294,5 +302,121 @@ describe("POST /publications/:id/update y /relist (Portal en simulación)", () =
     const { post, codeOf, id } = await portal();
     const response = await post(`/publications/${id}/relist`);
     expect([response.status, await codeOf(response)]).toEqual([409, "RELIST_NOT_ALLOWED"]);
+  });
+});
+
+describe("Portal en vivo: confirmaciones y el tope de tiempo de la propiedad", () => {
+  const PORTAL = "portal_inmobiliario";
+  const ITEM_ID = "MLC1234567890";
+
+  /** Un aviso de Portal publicado en vivo, con operaciones dobles (nunca Mercado Libre). */
+  async function live(options: { operations?: PublicationOperations; timeoutMs?: number } = {}) {
+    const t = await createPublicationScenario({ nextId: randomUUID, platform: PORTAL });
+    const app = createApp(
+      testDeps({
+        listings: t.listings,
+        brokers: t.brokers,
+        media: t.media,
+        fieldDefinitions: t.fieldDefinitions,
+        storage: t.storage,
+        contents: t.contents,
+        contentRuns: t.contentRuns,
+        platformAccounts: t.platformAccounts,
+        publications: t.publications,
+        lock: t.deps.lock,
+        queue: t.deps.queue,
+        publishMode: "live",
+        operationsFor: (platform) => (platform === PORTAL ? options.operations : undefined),
+        ...(options.timeoutMs === undefined ? {} : { operationTimeoutMs: options.timeoutMs }),
+      }),
+    );
+    const [started] = (
+      await publishListing(t.deps, {
+        listingId: t.listingId,
+        platform: PORTAL,
+        dryRun: false,
+        actor: "cli",
+      })
+    ).started;
+    if (started === undefined) throw new Error("falta la publicación");
+    await t.publications.saveProgress(started.id, {
+      pictureIds: ["1-MLC_PIC"],
+      sellerContact: { contact: null, email: null, countryCode2: "56", phone2: "911112222" },
+      itemId: ITEM_ID,
+      descriptionDone: true,
+    });
+    await t.listings.changeStatus(t.listingId, "ready", "active");
+    await t.publications.transition(
+      started.id,
+      { from: "publishing", to: "published", changes: { externalId: ITEM_ID } },
+      { actor: "system" },
+    );
+    const post = (path: string, body: unknown = {}) =>
+      app.request(path, { method: "POST", headers: json, body: JSON.stringify(body) });
+    const codeOf = async (response: Response) =>
+      errorBodySchema.parse(await response.json()).error.code;
+    return { t, post, codeOf, id: started.id };
+  }
+
+  it("actualizar en vivo sin confirmar es 409 UPDATE_NOT_CONFIRMED", async () => {
+    const { t, post, codeOf, id } = await live();
+    const listing = await t.listings.get(t.listingId);
+    await t.listings.update(t.listingId, {
+      ...listing,
+      priceAmount: (listing?.priceAmount ?? 0) + 100,
+      sourceHash: "h-nueva",
+    } as unknown as ListingImportData);
+
+    const response = await post(`/publications/${id}/update`);
+    expect([response.status, await codeOf(response)]).toEqual([409, "UPDATE_NOT_CONFIRMED"]);
+  });
+
+  it("republicar en vivo sin confirmar es 409 RELIST_NOT_CONFIRMED", async () => {
+    const { t, post, codeOf, id } = await live();
+    await t.publications.transition(
+      id,
+      {
+        from: "published",
+        to: "unpublished",
+        changes: {
+          remoteState: {
+            status: "closed",
+            subStatus: ["expired"],
+            stopTime: new Date(Date.now() - 86_400_000).toISOString(),
+            expirationTime: null,
+            checkedAt: new Date().toISOString(),
+          },
+        },
+      },
+      { actor: "system" },
+    );
+
+    const response = await post(`/publications/${id}/relist`);
+    expect([response.status, await codeOf(response)]).toEqual([409, "RELIST_NOT_CONFIRMED"]);
+  });
+
+  it("pausar la propiedad con Portal colgado se corta al tope (503 ML_ABORTED) y la propiedad no cambia", async () => {
+    const hang = (_ref: unknown, ctx: PlatformContext) =>
+      new Promise<never>((_resolve, reject) => {
+        ctx.signal?.addEventListener("abort", () =>
+          reject(new AppError("ML_ABORTED", "Se cortó la llamada", { retriable: true })),
+        );
+      });
+    const operations: PublicationOperations = {
+      pause: hang,
+      resume: hang,
+      close: hang,
+      getStatus: hang,
+    };
+    const { t, post, codeOf, id } = await live({ operations, timeoutMs: 20 });
+
+    const response = await post(`/listings/${t.listingId}/status`, {
+      action: "pause",
+      confirmed: true,
+    });
+
+    expect([response.status, await codeOf(response)]).toEqual([503, "ML_ABORTED"]);
+    expect((await t.listings.get(t.listingId))?.status).toBe("active");
+    expect(t.publications.all().find((p) => p.id === id)?.status).toBe("published");
   });
 });

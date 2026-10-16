@@ -22,7 +22,8 @@ type Item = AgendaResponse["items"][number];
 
 /** Los comandos que resuelven un ítem (la acción sugerida de la agenda). */
 export function agendaCommands(item: Item): string[] {
-  const ref = item.externalRef ?? item.listingId ?? "";
+  // El id del aviso: el `id_propiedad` se puede repetir entre corredores (`resolveListingId`).
+  const ref = item.listingId ?? "";
   const channel = item.platform === null ? "" : ` --platform ${platformShortName(item.platform)}`;
   switch (item.action) {
     case "publish":
@@ -38,9 +39,15 @@ export function agendaCommands(item: Item): string[] {
     case "retire":
       return [`agentsales publications retire ${item.publicationId}`];
     case "review":
-      return [`agentsales content ${ref}${channel}`, `agentsales approve ${ref}${channel}`];
+      return [
+        `agentsales content ${ref}${channel}`,
+        `agentsales approve ${ref}${channel}`,
+        `agentsales publish ${ref}${channel}`,
+      ];
     case "relist":
       return [`agentsales publications relist ${item.publicationId}`];
+    case "sync":
+      return [`agentsales publications sync ${item.publicationId}`];
     case "backup":
       return ["pnpm db:backup"];
     default:
@@ -52,7 +59,7 @@ function itemLine(item: Item, c: Colors): string {
   if (item.kind === "backup") {
     const last = item.at === null ? "nunca" : formatChileTime(item.at);
     const notes = [
-      item.detail === "stale" ? c.yellow("tiene más de 48 h") : null,
+      item.stale ? c.yellow("tiene más de 48 h") : null,
       item.code === null ? null : c.yellow(`el último intento falló (${item.code})`),
     ].filter(Boolean);
     return `  Último respaldo: ${last}${notes.length === 0 ? "" : ` · ${notes.join(" · ")}`}`;
@@ -65,14 +72,14 @@ function itemLine(item: Item, c: Colors): string {
     item.at === null
       ? null
       : item.kind === "expiring"
-        ? item.detail === "expired"
-          ? "venció"
-          : `vence en ${item.detail} días (${formatChileTime(item.at)})`
+        ? item.expired
+          ? `venció (${formatChileTime(item.at)})`
+          : `vence en ${item.daysLeft} ${item.daysLeft === 1 ? "día" : "días"} (${formatChileTime(item.at)})`
         : formatChileTime(item.at);
   const mode = item.dryRun === null ? null : item.dryRun ? "simulación" : c.red("en vivo");
   const parts = [c.bold(item.externalRef ?? "—"), channel, when, mode].filter(Boolean);
   const error =
-    item.kind === "failed" && item.code !== null ? `\n    ${item.code}: ${item.detail ?? ""}` : "";
+    item.kind === "failed" && item.code !== null ? `\n    ${item.code}: ${item.advice ?? ""}` : "";
   return `  ${parts.join(" · ")}${error}`;
 }
 
@@ -107,7 +114,7 @@ export function register(program: Command, ctx: CliContext): void {
   program
     .command("agenda")
     .description(
-      "Lo pendiente: atrasadas, recordatorios de Marketplace, fallas, tareas a mano, Portal por vencer, próximas y el respaldo",
+      "Lo pendiente: atrasadas, recordatorios de Marketplace, atascadas, fallas, tareas a mano, lo que espera tu revisión o quedó aprobado sin publicar, Portal por vencer, próximas y el respaldo",
     )
     .option("--broker <slug>", "solo las propiedades de un corredor")
     .option("--json", "salida en JSON")

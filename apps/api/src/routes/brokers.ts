@@ -1,4 +1,4 @@
-import { AppError, type BrokerRepository } from "@agentsales/core";
+import type { BrokerRepository } from "@agentsales/core";
 import { Hono } from "hono";
 import {
   type BrokerListResponse,
@@ -24,13 +24,11 @@ export function brokerRoutes(deps: { brokers: BrokerRepository }) {
       validated("param", idParamSchema),
       validated("json", brokerPatchBodySchema),
       async (c) => {
-        const { id } = c.req.valid("param");
-        if ((await deps.brokers.findById(id)) === null) {
-          throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`, {
-            details: { brokerId: id },
-          });
-        }
-        const broker = await deps.brokers.setAutoPublish(id, c.req.valid("json").autoPublish);
+        // `setAutoPublish` responde `BROKER_NOT_FOUND` (404) si no existe.
+        const broker = await deps.brokers.setAutoPublish(
+          c.req.valid("param").id,
+          c.req.valid("json").autoPublish,
+        );
         const body: BrokerResponse = { broker };
         return c.json(body, 200);
       },

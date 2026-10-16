@@ -82,8 +82,8 @@ describe("schedule y unschedule", () => {
 });
 
 describe("agenda y tracking", () => {
-  it("la agenda muestra cada ítem con el comando para resolverlo", async () => {
-    const { h, t, ref, deps } = await setup();
+  it("la agenda muestra cada ítem con el comando para resolverlo (con el id del aviso)", async () => {
+    const { h, t, deps } = await setup();
     const reel = t.byFormat("reel")?.id ?? "";
     await t.publications.transition(
       reel,
@@ -106,7 +106,7 @@ describe("agenda y tracking", () => {
     const text = h.text();
     expect(text).toContain("Fallaron (1)");
     expect(text).toContain("IG_AUTH_INVALID");
-    expect(text).toContain(`→ agentsales publish ${ref} --platform instagram`);
+    expect(text).toContain(`→ agentsales publish ${t.listingId} --platform instagram`);
     expect(text).toContain("Próximas (7 días) (1)");
     expect(text).toContain(`→ agentsales unschedule ${t.byFormat("post")?.id}`);
   });
@@ -200,6 +200,12 @@ describe("publications relist y brokers auto-publish", () => {
     expect(renderAutoPublish(report, h.io.colors)).toContain("publica sin tu revisión");
     expect(checkAutoPublish(report)).toMatchObject({ level: "warn", emphasis: "danger" });
     expect(checkAutoPublish({ ...report, publishMode: "dry-run" })?.level).toBe("ok");
+    expect(checkAutoPublish({ ...report, autoPublishBrokers: null })?.detail).toContain(
+      "no se pudo saber",
+    );
+    expect(renderAutoPublish({ ...report, autoPublishBrokers: null }, h.io.colors)).toContain(
+      "No se pudo saber",
+    );
     expect(renderAutoPublish({ ...report, autoPublishBrokers: [] }, h.io.colors)).toBeNull();
 
     expect(await runAutoPublish(deps(false), slug, "off")).toBe(1);

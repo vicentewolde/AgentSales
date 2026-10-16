@@ -26,7 +26,7 @@ function cellText(platform: (typeof PLATFORMS)[number], publication: Cell, c: Co
     publication.schedule === "overdue" ? c.yellow("atrasada") : null,
     publication.manualTask ? c.yellow("a mano") : null,
     publication.expiry?.soon ? c.yellow(`vence en ${publication.expiry.daysLeft} d`) : null,
-    publication.error === null ? null : c.red(publication.error.code),
+    publication.lastError === null ? null : c.red(publication.lastError.code),
     publication.dryRun ? null : c.red("vivo"),
   ].filter(Boolean);
   return `${publicationFormatText(platform, publication.format)} ${PUBLICATION_STATUS_TEXT[publication.status]}${notes.length === 0 ? "" : ` (${notes.join(", ")})`}`;
