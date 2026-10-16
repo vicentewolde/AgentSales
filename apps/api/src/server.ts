@@ -86,6 +86,7 @@ const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
 // `/health` (F6-T14): la versión de Postgres que lee el check de la base (también es el ping) y el
 // estado del último respaldo, en su carpeta (fuera del proyecto; la API solo lee el archivo de estado).
 let serverVersion: string | null = null;
+const brokers = createBrokerRepository(database.db);
 const backupDir = resolveBackupDir(env.BACKUP_DIR, {
   homeDir: homedir(),
   workspaceRoot: findWorkspaceRoot(),
@@ -106,7 +107,7 @@ const app = createApp({
     queue: () => checkQueueSchema(database.db),
   },
   listings: createListingRepository(database.db),
-  brokers: createBrokerRepository(database.db),
+  brokers,
   media: createMediaRepository(database.db),
   fieldDefinitions: createFieldDefinitionRepository(database.db),
   storage,
@@ -168,6 +169,9 @@ const app = createApp({
   healthDetails: {
     serverVersion: () => serverVersion,
     backupStatus: () => readBackupStatus(backupDir),
+    // Con `pnpm dev` la API y el worker reciben el mismo `PUBLISH_MODE` (spec F6 §4.10).
+    autoPublishBrokers: async () =>
+      (await brokers.list()).filter((broker) => broker.autoPublish).map((broker) => broker.slug),
   },
   logger,
   access: localAccess(env.API_PORT, env.WEB_PORT),

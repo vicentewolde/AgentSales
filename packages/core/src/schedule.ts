@@ -49,7 +49,8 @@ export function scheduleAt(at: Date, now: Date, { minLead = true } = {}): Date {
  * que "te toca") u `overdue` (atrasada más de 12 h: espera al operador). `null` si no está
  * programada. Un recordatorio nunca está atrasado: el operador siempre lo aprieta él.
  */
-export type ScheduleState = "upcoming" | "due" | "overdue";
+export const SCHEDULE_STATES = ["upcoming", "due", "overdue"] as const;
+export type ScheduleState = (typeof SCHEDULE_STATES)[number];
 
 export function scheduleState(
   publication: { status: PublicationStatus; scheduledAt: Date | null; platform: Platform },

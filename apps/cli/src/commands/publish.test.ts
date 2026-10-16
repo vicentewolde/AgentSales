@@ -139,7 +139,9 @@ describe("runPublish", () => {
     });
 
     expect(await run(setup, clock)).toBe(0);
-    expect(setup.h.out).toContain("Sigue en cola: ¿está corriendo el worker? (pnpm dev)");
+    expect(setup.h.out).toContain(
+      "Sigue en cola o esperando su turno: ¿está corriendo el worker? (pnpm dev)",
+    );
   });
 
   it("no avisa de la cola si el worker ya las tocó", async () => {

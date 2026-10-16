@@ -1,5 +1,9 @@
+import type { Broker } from "../broker.js";
+import type { Content } from "../content.js";
 import { PLATFORMS, type Platform } from "../enums.js";
 import { isAppError } from "../errors.js";
+import type { Listing } from "../listing.js";
+import type { PlatformAccount } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
@@ -43,6 +47,39 @@ export type AutoPublishResult =
   /** El corredor no tiene `auto_publish`, o la propiedad no está en `ready` ni `active`. */
   { outcome: "off" } | { outcome: "done"; channels: AutoPublishChannel[] };
 
+/**
+ * Si `auto_publish` actúa sobre una propiedad (spec F6 §4.10): su corredor lo tiene y la propiedad
+ * está `ready` o `active`. La misma regla la usa la agenda (`pendingReviewsOf`).
+ */
+export function autoPublishApplies(
+  listing: Pick<Listing, "status">,
+  broker: Pick<Broker, "autoPublish"> | null,
+): boolean {
+  return (
+    broker?.autoPublish === true && (listing.status === "ready" || listing.status === "active")
+  );
+}
+
+/** Los canales con la cuenta conectada (los únicos que `auto_publish` intenta). */
+export function connectedPlatforms(
+  accounts: readonly Pick<PlatformAccount, "platform" | "status">[],
+): Set<Platform> {
+  return new Set(
+    accounts.filter((account) => account.status === "connected").map((a) => a.platform),
+  );
+}
+
+/** El texto vigente de cada canal conectado, en el orden de `PLATFORMS`. */
+export function autoPublishContents<C extends Pick<Content, "platform">>(
+  contents: readonly C[],
+  connected: ReadonlySet<Platform>,
+): C[] {
+  return PLATFORMS.flatMap((platform) => {
+    const content = contents.find((item) => item.platform === platform);
+    return content === undefined || !connected.has(platform) ? [] : [content];
+  });
+}
+
 /** Lo que significa "ya está todo publicado": no es un fallo. */
 const NOTHING_CODES = new Set(["NOTHING_TO_PUBLISH"]);
 /** Lo que le falta al aviso para un canal: el texto queda aprobado y la agenda lo dice. */
@@ -64,22 +101,23 @@ export async function autoPublishListing(
   { listingId }: { listingId: string },
 ): Promise<AutoPublishResult> {
   const listing = await deps.listings.get(listingId);
-  if (listing === null || (listing.status !== "ready" && listing.status !== "active")) {
-    return { outcome: "off" };
-  }
+  if (listing === null) return { outcome: "off" };
   const broker = await deps.brokers.findById(listing.brokerId);
-  if (broker === null || !broker.autoPublish) return { outcome: "off" };
+  if (!autoPublishApplies(listing, broker) || broker === null) return { outcome: "off" };
 
-  const accounts = await deps.platformAccounts.listByBroker(broker.id);
-  const connected = new Set(
-    accounts.filter((account) => account.status === "connected").map((a) => a.platform),
-  );
-  const contents = await deps.contents.listCurrent(listingId);
+  const connected = connectedPlatforms(await deps.platformAccounts.listByBroker(broker.id));
   const channels: AutoPublishChannel[] = [];
-  for (const platform of PLATFORMS) {
-    const content = contents.find((item) => item.platform === platform);
-    if (content === undefined || !connected.has(platform)) continue;
-    channels.push(await autoPublishChannel(deps, { listingId, platform, contentId: content.id }));
+  for (const content of autoPublishContents(
+    await deps.contents.listCurrent(listingId),
+    connected,
+  )) {
+    channels.push(
+      await autoPublishChannel(deps, {
+        listingId,
+        platform: content.platform,
+        contentId: content.id,
+      }),
+    );
   }
   return { outcome: "done", channels };
 }

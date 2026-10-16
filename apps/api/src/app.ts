@@ -34,6 +34,8 @@ import {
   operationDeps,
   publicationRoutes,
 } from "./routes/publications.js";
+import { scheduleRoutes } from "./routes/schedule.js";
+import { trackingRoutes } from "./routes/tracking.js";
 import { csrfGuard, hostGuard, type LocalAccess } from "./security.js";
 
 export type AppDeps = {
@@ -78,7 +80,7 @@ export type AppDeps = {
    */
   publications: Pick<
     PublicationRepository,
-    "get" | "listByListing" | "listEvents" | "listByStatus"
+    "get" | "listByListing" | "listEvents" | "listByStatus" | "listForTracking"
   >;
   // Cuentas (F3-T13): conectar con el token del panel de Meta o por OAuth, y desconectar.
   platformAccounts: PlatformAccountRepository;
@@ -152,6 +154,16 @@ export function createApp(deps: AppDeps) {
     .route("/content-runs", contentRunRoutes(deps))
     .route("/contents", contentRoutes(contentDeps))
     .route("/brokers", brokerRoutes(deps))
+    .route("/schedule", scheduleRoutes(publicationDeps))
+    .route(
+      "/",
+      trackingRoutes({
+        ...deps,
+        ...(deps.healthDetails?.backupStatus === undefined
+          ? {}
+          : { backupStatus: deps.healthDetails.backupStatus }),
+      }),
+    )
     .route("/imports", importRoutes(deps))
     .route(
       "/accounts",

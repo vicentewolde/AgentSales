@@ -83,9 +83,9 @@ async function setup() {
     }
     return listing;
   };
-  const patch = (id: string, body: unknown) =>
+  const post = (id: string, body: unknown) =>
     app.request(`/listings/${id}/status`, {
-      method: "PATCH",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
@@ -95,7 +95,7 @@ async function setup() {
     publications: deps.publications as PublicationRepository,
     broker,
     addListing,
-    patch,
+    post,
   };
 }
 
@@ -252,23 +252,23 @@ describe("GET /listings/:id", () => {
   });
 });
 
-describe("PATCH /listings/:id/status", () => {
-  it("un cambio permitido devuelve el aviso actualizado", async () => {
-    const { addListing, patch } = await setup();
+describe("POST /listings/:id/status (F6-T10)", () => {
+  it("una acción permitida devuelve la propiedad, lo que cambió y las tareas a mano", async () => {
+    const { addListing, post } = await setup();
     const listing = await addListing("P001", {}, 1);
 
-    const response = await patch(listing.id, { status: "ready" });
+    const response = await post(listing.id, { action: "ready" });
 
     expect(response.status).toBe(200);
     const body = listingStatusResponseSchema.parse(await response.json());
-    expect(body.listing.status).toBe("ready");
+    expect(body).toMatchObject({ listing: { status: "ready" }, changed: [], manualTasks: [] });
   });
 
   it("ready sin fotos es 409 INVALID_TRANSITION", async () => {
-    const { addListing, patch } = await setup();
+    const { addListing, post } = await setup();
     const listing = await addListing("P001");
 
-    const response = await patch(listing.id, { status: "ready" });
+    const response = await post(listing.id, { action: "ready" });
 
     expect(response.status).toBe(409);
     const { error } = await errorOf(response);
@@ -276,18 +276,18 @@ describe("PATCH /listings/:id/status", () => {
     expect(error.message).toContain("foto");
   });
 
-  it("una transición que no está en la tabla es 409 INVALID_TRANSITION", async () => {
-    const { addListing, patch } = await setup();
+  it("una acción que no sale de ese estado es 409 INVALID_TRANSITION", async () => {
+    const { addListing, post } = await setup();
     const listing = await addListing("P001");
 
-    const response = await patch(listing.id, { status: "paused" });
+    const response = await post(listing.id, { action: "resume" });
 
     expect(response.status).toBe(409);
     expect((await errorOf(response)).error.code).toBe("INVALID_TRANSITION");
   });
 
-  it("pausar con algo programado pide confirmación: 409 LISTING_ACTION_NOT_CONFIRMED (hasta T10)", async () => {
-    const { addListing, listings, publications, patch } = await setup();
+  it("pausar con algo programado pide confirmación (409) y con confirmed lo desprograma", async () => {
+    const { addListing, listings, publications, post } = await setup();
     const listing = await addListing("P001", {}, 1);
     await listings.promoteToReady(listing.id);
     const publication = await publications.create(
@@ -312,23 +312,33 @@ describe("PATCH /listings/:id/status", () => {
       { actor: "operator" },
     );
 
-    const response = await patch(listing.id, { status: "paused" });
-
-    expect(response.status).toBe(409);
-    expect((await errorOf(response)).error.code).toBe("LISTING_ACTION_NOT_CONFIRMED");
+    const refused = await post(listing.id, { action: "pause" });
+    expect(refused.status).toBe(409);
+    expect((await errorOf(refused)).error.code).toBe("LISTING_ACTION_NOT_CONFIRMED");
     expect((await listings.get(listing.id))?.status).toBe("ready");
+
+    const response = await post(listing.id, { action: "pause", confirmed: true });
+    expect(response.status).toBe(200);
+    const body = listingStatusResponseSchema.parse(await response.json());
+    expect(body.listing.status).toBe("paused");
+    expect(body.changed).toMatchObject([{ id: publication.id, status: "approved" }]);
   });
 
-  it("de paused a ready es reanudar", async () => {
-    const { addListing, listings, patch } = await setup();
+  it("cerrar sin motivo es 400 CLOSE_REASON_REQUIRED; con motivo y confirmación lo guarda", async () => {
+    const { addListing, listings, post } = await setup();
     const listing = await addListing("P001", {}, 1);
     await listings.promoteToReady(listing.id);
 
-    expect((await patch(listing.id, { status: "paused" })).status).toBe(200);
-    const response = await patch(listing.id, { status: "ready" });
+    const missing = await post(listing.id, { action: "close", confirmed: true });
+    expect(missing.status).toBe(400);
+    expect((await errorOf(missing)).error.code).toBe("CLOSE_REASON_REQUIRED");
 
+    const response = await post(listing.id, { action: "close", reason: "sold", confirmed: true });
     expect(response.status).toBe(200);
-    expect(listingStatusResponseSchema.parse(await response.json()).listing.status).toBe("ready");
+    expect(listingStatusResponseSchema.parse(await response.json()).listing).toMatchObject({
+      status: "closed",
+      closeReason: "sold",
+    });
   });
 
   it("un JSON mal formado es 400 INVALID_JSON, en español", async () => {
@@ -336,7 +346,7 @@ describe("PATCH /listings/:id/status", () => {
     const listing = await addListing("P001");
 
     const response = await app.request(`/listings/${listing.id}/status`, {
-      method: "PATCH",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{",
     });
@@ -348,20 +358,28 @@ describe("PATCH /listings/:id/status", () => {
     });
   });
 
-  it.each([{ status: "active" }, { status: "draft" }, {}, { status: 5 }])(
-    "un cuerpo inválido (%j) es 400 REQUEST_INVALID",
-    async (body) => {
-      const { addListing, patch } = await setup();
-      const listing = await addListing("P001");
-      const response = await patch(listing.id, body);
-      expect(response.status).toBe(400);
-      expect((await errorOf(response)).error.code).toBe("REQUEST_INVALID");
-    },
-  );
+  it.each([
+    { action: "vender" },
+    { status: "paused" },
+    {},
+    { action: "close", reason: "regalada" },
+  ])("un cuerpo inválido (%j) es 400 REQUEST_INVALID", async (body) => {
+    const { addListing, post } = await setup();
+    const listing = await addListing("P001");
+    const response = await post(listing.id, body);
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).error.code).toBe("REQUEST_INVALID");
+  });
 
-  it("un aviso que no existe es 404", async () => {
-    const { patch } = await setup();
-    expect((await patch(randomUUID(), { status: "archived" })).status).toBe(404);
+  it("una propiedad que no existe es 404, y el PATCH viejo ya no existe", async () => {
+    const { app, post } = await setup();
+    expect((await post(randomUUID(), { action: "archive" })).status).toBe(404);
+    const old = await app.request(`/listings/${randomUUID()}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "archived" }),
+    });
+    expect(old.status).toBe(404);
   });
 });
 

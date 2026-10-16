@@ -119,7 +119,7 @@ describe("panel: Detalle de una propiedad", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Marcar como lista" }));
 
     await screen.findByText("Lista");
-    expect(requests).toContain(`PATCH /listings/${listing.id}/status`);
+    expect(requests).toContain(`POST /listings/${listing.id}/status`);
     expect(screen.getByRole("button", { name: "Pausar" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Archivar" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Marcar como lista" })).toBeNull();

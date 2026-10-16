@@ -60,17 +60,18 @@ export function useListing(id: string) {
 }
 
 /**
- * `PATCH /listings/:id/status`. Al responder, el detalle toma el aviso nuevo (sin volver a pedir
- * las URLs) y las listas se invalidan, porque el estado es un filtro.
+ * `POST /listings/:id/status` (desde F6-T10; antes `PATCH`), sin confirmar: lo que pide
+ * confirmación responde 409 hasta los botones de T13. Al responder, el detalle toma el aviso nuevo
+ * (sin volver a pedir las URLs) y las listas se invalidan, porque el estado es un filtro.
  */
 export function useChangeListingStatus(id: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (status: ListingStatusBody["status"]) =>
+    mutationFn: async (action: ListingStatusBody["action"]) =>
       (
         await unwrap(
-          client.listings[":id"].status.$patch({ param: { id }, json: { status } }),
+          client.listings[":id"].status.$post({ param: { id }, json: { action } }),
           listingStatusResponseSchema,
         )
       ).listing,

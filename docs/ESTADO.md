@@ -2,10 +2,10 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-15
+**Actualizado:** 2026-10-16
 **Fase actual:** F6 · Calendario + seguimiento (`docs/specs/fase-6-calendario-seguimiento.md`, aprobado el 2026-10-15; ADR-0018 a ADR-0020). F5 cerrada (tag `v0.5.0`)
-**Última tarea:** lote E de F6 (F6-T14): el respaldo local de la base con `pg_dump`
-**Siguiente paso:** `/tarea F6-T10 F6-T11` — lote F: la API y la CLI del calendario, la propiedad, Portal y el seguimiento (antes, definir en el spec cómo la agenda muestra "espera tu revisión" de `auto_publish`; ver Deuda técnica)
+**Última tarea:** lote F de F6 (F6-T10 y T11): la API y la CLI del calendario, la propiedad, Portal y el seguimiento
+**Siguiente paso:** `/tarea F6-T12 F6-T13` — lote G: el panel (programar, Portal, Seguimiento, los botones de la propiedad y el interruptor de `auto_publish`)
 
 ## Pendiente tuyo para F6
 - [ ] Instalar el cliente de Postgres para el respaldo: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6"), y después el primer respaldo real: `pnpm db:backup` y `pnpm -s cli doctor` (con `pnpm dev`) para ver que la versión alcanza
@@ -36,8 +36,8 @@
 | **Lote D** · T08 La propiedad manda | ✅ terminada | #123 |
 | **Lote D** · T09 `auto_publish` | ✅ terminada | #123 |
 | **Lote E** · T14 Respaldo local (`pg_dump`) | ✅ terminada | #124 |
-| **Lote F** · T10 API | ⏳ pendiente | |
-| **Lote F** · T11 CLI | ⏳ pendiente | |
+| **Lote F** · T10 API | ✅ terminada | #125 |
+| **Lote F** · T11 CLI | ✅ terminada | #125 |
 | **Lote G** · T12 Panel: programar y Portal | ⏳ pendiente | |
 | **Lote G** · T13 Panel: Seguimiento, acciones de la propiedad y `auto_publish` | ⏳ pendiente | |
 | T15 Cierre de fase | ⏳ pendiente | |
@@ -87,9 +87,9 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
-- **Para T10 (revisión del lote E):** la agenda con el ítem del respaldo (`agendaItems` recibe el `BackupStatus` que la API lee con `readBackupStatus`, sin puerto nuevo); `BACKUP_TOOL_NOT_INSTALLED` (503), `BACKUP_FAILED` (500), `BACKUP_IN_PROGRESS` (409) y `BACKUP_ABORTED` en `apps/api/src/errors.ts` y en la tabla de `05-convenciones.md`. **Para F7:** `/health` muestra la versión de Postgres; al desplegar, ocultarla o protegerla.
-- **Para T10 (revisión del lote D):** la agenda tiene que derivar "espera tu revisión" (texto con errores) y "solo aprobado, falta algo para Portal" de `auto_publish` (§4.10 lo promete; §4.9 aún no define de dónde sale): definirlo en el spec antes de T10. `POST /listings/:id/status` con `AbortSignal.timeout(OPERATION_TIMEOUT_MS)`; `CLOSE_REASON_REQUIRED` a 400 con fila propia; decidir si `LISTING_HAS_LIVE_PUBLICATIONS` cambia de nombre (también salta con simuladas). Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador).
-- **CLI, aviso falso de cola en `publish` (F3, demo):** `agentsales publish` avisa "Sigue en cola: ¿está corriendo el worker?" si ninguna publicación cambia en 20 s. El worker publica de a una y el carrusel guarda su primer progreso después de crear los hijos y esperar a que estén listos (más de 20 s), así que el aviso sale aunque el worker corra. Arreglo: guardar el progreso con `childIds` apenas se crean los hijos, o un texto propio para publicaciones ("en cola o esperando su turno").
+- **Para F7:** `/health` muestra la versión de Postgres; al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
+- **Para T12:** mover `parseChileTime` y `formatChileTime` de la CLI a core (segundo uso: el selector de hora del panel), con sus tests del cambio de horario; pasar el `now` de la ruta a `publicationView`; la confirmación en vivo de programar en el panel (la API no la pide).
+- **Para T13:** quitar `LISTING_MANUAL_TARGETS` y `listingActionFor` (hoy solo los usan los botones de F1 del panel); una consulta de textos vigentes para todas las propiedades de la agenda (hoy una por propiedad); `staleTime` en `/tracking` (firma una portada por fila); el aviso en rojo de `auto_publish` también si no se pudo saber.
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
 - **F7, campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
 - **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
@@ -119,6 +119,15 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-16: **Lote F de F6 (F6-T10 y T11): la API y la CLI.** Ya se puede usar todo desde la terminal (el panel llega en el lote G):
+  - **Programar:** `schedule P001 P002 --at "2026-10-19 10:00"` en hora de Chile (también con el cambio de horario: una hora que no existe se rechaza), por canal (`--platform`) y con espacio entre propiedades (`--spacing`); en vivo pregunta. `unschedule <id>` desprograma.
+  - **La agenda** (`agenda`) junta lo atrasado, lo que te toca en Marketplace, lo atascado, lo que falló (con qué hacer), las tareas a mano, lo que espera tu revisión y lo aprobado sin publicar (con publicación automática), Portal por vencer, lo próximo y el respaldo, cada uno con el comando para resolverlo. `tracking` muestra cada propiedad por plataforma.
+  - **La propiedad:** `listing pause|resume|reopen|archive` y `listing close --reason vendida|arrendada|retirada`; lo que pide confirmar se pregunta con el motivo (`--yes` no pregunta).
+  - **Portal:** `publications update <id>` y `publications relist <id>`.
+  - **Publicación automática:** `brokers auto-publish <slug> on|off` (pregunta siempre); con la API en vivo, `status` y `doctor` la muestran en rojo.
+  - **La revisión dejó** (1 bloqueante, corregido): la regla de "espera tu revisión" vive en un solo lugar (la misma que usa la publicación automática); la agenda ya no sugiere republicar un aviso que todavía figura publicado (primero pide leer su estado); `/health` nunca se cuelga por esa consulta; una fecha inventada (30 de febrero) da el mensaje de formato; más pruebas.
+  - `publish` ahora dice "en cola o esperando su turno" (el worker publica de a una).
+  - El botón de estado del panel usa la ruta nueva; los botones nuevos llegan en el lote G.
 - 2026-10-15: **Lote E de F6 (F6-T14): respaldo local de la base.**
   - **`pnpm db:backup`** (no necesita `pnpm dev`) y el worker, cada día a las 13:00 y al arrancar si el último tiene más de 20 h, guardan una copia de la base en `~/.agentsales/backups` (fuera del proyecto, carpeta solo tuya). Se guardan los últimos 14; los viejos se borran solo después de un respaldo bueno que se comprobó que se puede leer. La cola de trabajos no va en el respaldo, a propósito.
   - **La contraseña nunca va en el comando ni en el registro:** viaja por el entorno del proceso, con TLS verificado.

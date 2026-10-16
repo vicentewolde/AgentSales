@@ -4,7 +4,6 @@ import {
   changeListingStatus,
   type FieldDefinitionRepository,
   type ListingRepository,
-  listingActionFor,
   listingFields,
   type MediaRepository,
   type MediaStorage,
@@ -19,6 +18,8 @@ import {
   listingStatusBodySchema,
 } from "../contracts/index.js";
 import { validated } from "../validation.js";
+import { actorOf, publicationView } from "./publication-views.js";
+import { OPERATION_TIMEOUT_MS, operationError } from "./publications.js";
 
 export type ListingRoutesDeps = {
   listings: ListingRepository;
@@ -29,7 +30,33 @@ export type ListingRoutesDeps = {
   storage: Pick<MediaStorage, "signedReadUrl">;
   /** Cambiar el estado orquesta las publicaciones (F6-T08): las mismas piezas que pausar o cerrar. */
   statusChange: ChangeListingStatusDeps;
+  /** Por defecto `OPERATION_TIMEOUT_MS`; los tests lo bajan para ver el corte. */
+  operationTimeoutMs?: number;
 };
+
+/**
+ * La ruta de la portada de cada aviso: la miniatura si existe (una portada HEIC no se ve en el
+ * navegador), y si no el original. Dos consultas para toda la lista, no una por aviso (spec F2
+ * §4.7). La usan `GET /listings` y, desde F6-T10, `GET /tracking`.
+ */
+export async function coverPaths(
+  media: Pick<MediaRepository, "listCovers" | "listVariants">,
+  listingIds: readonly string[],
+): Promise<Map<string, string>> {
+  const covers = await media.listCovers(listingIds);
+  const thumbs = await media.listVariants(
+    covers.map((cover) => cover.id),
+    "thumb",
+  );
+  const thumbOf = new Map(thumbs.map((thumb) => [thumb.parentMediaId, thumb.storagePath]));
+  const paths = new Map<string, string>();
+  for (const cover of covers) {
+    if (cover.listingId !== null) {
+      paths.set(cover.listingId, thumbOf.get(cover.id) ?? cover.storagePath);
+    }
+  }
+  return paths;
+}
 
 const notFound = (id: string) =>
   new AppError("LISTING_NOT_FOUND", `No existe el aviso ${id}`, { details: { listingId: id } });
@@ -41,16 +68,9 @@ export function listingRoutes(deps: ListingRoutesDeps) {
   return new Hono()
     .get("/", validated("query", listingQuerySchema), async (c) => {
       const listings = await deps.listings.list(c.req.valid("query"));
-      // La miniatura de la portada si existe (una portada HEIC no se ve en el navegador), y si no
-      // el original: dos consultas para toda la lista, no una por aviso (spec F2 §4.7).
-      const covers = await deps.media.listCovers(listings.map((listing) => listing.id));
-      const thumbs = await deps.media.listVariants(
-        covers.map((cover) => cover.id),
-        "thumb",
-      );
-      const thumbOf = new Map(thumbs.map((thumb) => [thumb.parentMediaId, thumb.storagePath]));
-      const coverOf = new Map(
-        covers.map((cover) => [cover.listingId, thumbOf.get(cover.id) ?? cover.storagePath]),
+      const coverOf = await coverPaths(
+        deps.media,
+        listings.map((listing) => listing.id),
       );
       const body: ListingListResponse = {
         listings: await Promise.all(
@@ -102,34 +122,33 @@ export function listingRoutes(deps: ListingRoutesDeps) {
       };
       return c.json(body, 200);
     })
-    .patch(
+    .post(
       "/:id/status",
       validated("param", idParamSchema),
       validated("json", listingStatusBodySchema),
       async (c) => {
-        // Hasta T10 (spec F6 §4.8): cada estado se traduce a su acción según el estado actual, y
-        // siempre sin confirmar (lo que pide confirmación responde 409 hasta los botones de T13).
-        // Pasar al mismo estado (un doble clic) también es 409: no hay acción `x → x`.
-        const id = c.req.valid("param").id;
-        const to = c.req.valid("json").status;
-        const current = await deps.listings.get(id);
-        if (current === null) throw notFound(id);
-        const action = listingActionFor(current.status, to);
-        if (action === null) {
-          throw new AppError(
-            "INVALID_TRANSITION",
-            `No se puede pasar de ${current.status} a ${to}`,
-            {
-              details: { listingId: id, from: current.status, to },
-            },
-          );
+        // La propiedad manda (spec F6 §4.8, ADR-0019): las llamadas a Portal comparten un solo tope
+        // de `OPERATION_TIMEOUT_MS` para toda la acción; al vencer, la acción se detiene con su
+        // error y repetirla salta lo ya hecho.
+        const { action, reason, confirmed } = c.req.valid("json");
+        let result: Awaited<ReturnType<typeof changeListingStatus>>;
+        try {
+          result = await changeListingStatus(deps.statusChange, {
+            listingId: c.req.valid("param").id,
+            action,
+            actor: actorOf(c),
+            ...(reason === undefined ? {} : { reason }),
+            ...(confirmed === undefined ? {} : { confirmed }),
+            signal: AbortSignal.timeout(deps.operationTimeoutMs ?? OPERATION_TIMEOUT_MS),
+          });
+        } catch (error) {
+          throw operationError(error);
         }
-        const { listing } = await changeListingStatus(deps.statusChange, {
-          listingId: id,
-          action,
-          actor: "operator",
-        });
-        const body: ListingStatusResponse = { listing };
+        const body: ListingStatusResponse = {
+          listing: result.listing,
+          changed: result.changed.map((publication) => publicationView(publication)),
+          manualTasks: result.manualTasks.map((publication) => publicationView(publication)),
+        };
         return c.json(body, 200);
       },
     );

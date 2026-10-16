@@ -8,8 +8,9 @@ import {
   slugify,
 } from "@agentsales/core";
 import { z } from "zod";
-import { type ApiClient, unwrap } from "../api-client.js";
-import { CliError } from "../output.js";
+import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
+import type { Terminal } from "../context.js";
+import { CliError, type Io } from "../output.js";
 
 /** Lo que usan varios comandos. */
 
@@ -112,4 +113,31 @@ export function manualConfirmHint(publicationId: string | undefined): string {
   }
   const commands = manualConfirmCommands(publicationId);
   return `Si la publicaste: ${commands.confirm}\n    Si no: ${commands.notPublished}`;
+}
+
+/**
+ * Pide sin confirmar y, si la API responde que falta confirmar (uno de `codes`, F6-T11), muestra su
+ * motivo, pregunta y repite con `confirmed`. Con `yes` confirma de una. `null` si el operador dijo
+ * que no (ya se le avisó cómo seguir): no se cambió nada.
+ */
+export async function withConfirmation<T>(
+  deps: Io & Pick<Terminal, "confirm">,
+  {
+    yes = false,
+    codes,
+    call,
+  }: { yes?: boolean; codes: readonly string[]; call: (confirmed: boolean) => Promise<T> },
+): Promise<T | null> {
+  if (yes) return call(true);
+  try {
+    return await call(false);
+  } catch (error) {
+    if (!(error instanceof ApiCallError) || !codes.includes(error.code ?? "")) throw error;
+    const confirmed = await deps.confirm(`${error.apiMessage ?? error.message}. ¿Seguir?`);
+    if (!confirmed) {
+      deps.printError(deps.colors.yellow("No se cambió nada: confirma en la terminal o usa --yes"));
+      return null;
+    }
+    return call(true);
+  }
 }
