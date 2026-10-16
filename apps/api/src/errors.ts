@@ -74,13 +74,28 @@ const CONFLICTS = new Set([
   // dejaría algo publicado en vivo (primero se cierra). Los demás códigos de F6 llegan con T10.
   "LISTING_ACTION_NOT_CONFIRMED",
   "LISTING_HAS_LIVE_PUBLICATIONS",
+  // F6-T10 (spec F6 §4.13): la publicación cambió mientras se actualizaba (repetir); Actualizar sin
+  // nada que mandar o con otra hoja (cerrar y republicar); republicar algo que no se puede; falta
+  // confirmar actualizar o republicar en vivo.
+  "PUBLICATION_STALE",
+  "PORTAL_UPDATE_NEEDS_RELIST",
+  "PORTAL_NOTHING_TO_UPDATE",
+  "RELIST_NOT_ALLOWED",
+  "UPDATE_NOT_CONFIRMED",
+  "RELIST_NOT_CONFIRMED",
 ]);
 
 /**
  * Lo que el cliente tiene que mandar y no mandó (400), sin el sufijo `_INVALID`: confirmar en vivo
  * una de Marketplace sin el enlace del aviso (spec F5 §4.3).
  */
-const CLIENT_MISSING = new Set(["MARKETPLACE_URL_REQUIRED"]);
+const CLIENT_MISSING = new Set([
+  "MARKETPLACE_URL_REQUIRED",
+  // F6-T10: una hora de programar fuera del rango (2 min a 60 días) y cerrar sin el motivo.
+  "SCHEDULE_TOO_SOON",
+  "SCHEDULE_TOO_FAR",
+  "CLOSE_REASON_REQUIRED",
+]);
 
 /**
  * Errores de la plataforma que llegan a la API al conectar (spec F3 §4.8) y, desde F4-T19, en
@@ -128,6 +143,8 @@ const NOT_CONFIGURED = new Set([
   "UF_SOURCE_NOT_CONFIGURED",
   "UF_SOURCE_AUTH_INVALID",
   "UF_VALUE_MISSING",
+  // F6-T14: el respaldo sin `pg_dump` (no llega a la API; por si llegara).
+  "BACKUP_TOOL_NOT_INSTALLED",
 ]);
 
 /**
@@ -141,6 +158,9 @@ const BUSY = new Set([
   "ML_ABORTED",
   // F5: el perfil de Facebook lo tiene otra ventana un momento.
   "MARKETPLACE_PROFILE_BUSY",
+  // F6-T14: otro respaldo en curso, o uno cortado por el apagado (no llegan a la API).
+  "BACKUP_IN_PROGRESS",
+  "BACKUP_ABORTED",
 ]);
 
 /**

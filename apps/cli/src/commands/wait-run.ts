@@ -28,6 +28,8 @@ export type WaitOptions<R extends WaitedRun> = {
    * `status === "queued"`; las publicaciones no tienen ese estado y pasan su propio criterio.
    */
   isQueued?: (run: R) => boolean;
+  /** El aviso de cola, si no es el de una corrida (`RUN_QUEUED_WARNING_TEXT`). */
+  queuedText?: string;
   /** Al vencer el tope, no imprime "Sigue en curso": quien llama dice qué hacer. */
   quietTimeout?: boolean;
   /** Recibe cada lectura: quien llama conserva la última si se vence el tope. */
@@ -84,7 +86,7 @@ export async function waitForRun<R extends WaitedRun>(
     shown = progress;
     if (isQueued(run) && !warned && deps.now() - started >= timing.queuedWarningMs) {
       warned = true;
-      deps.print(c.yellow(RUN_QUEUED_WARNING_TEXT));
+      deps.print(c.yellow(options.queuedText ?? RUN_QUEUED_WARNING_TEXT));
     }
   }
   return run;

@@ -63,5 +63,11 @@ export const healthReportSchema = z.object({
    * nunca se respaldó o no se pudo leer el estado. Opcional, como `database`.
    */
   backup: backupStatusSchema.extend({ stale: z.boolean() }).nullable().optional(),
+  /**
+   * Desde F6-T10 (spec §4.10): los corredores (slug) con `auto_publish`. Con la API en `live` y la
+   * lista no vacía, `status`, `doctor` y el panel lo dicen en rojo: publica sin revisión. `null` si
+   * la base no respondió. Opcional, como `database`.
+   */
+  autoPublishBrokers: z.array(z.string()).nullable().optional(),
 });
 export type HealthReport = z.infer<typeof healthReportSchema>;

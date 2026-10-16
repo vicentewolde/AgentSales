@@ -1,5 +1,6 @@
 import type { ContentReelOutcome, ContentRun } from "./content.js";
 import type {
+  CloseReason,
   ContentRunStage,
   ContentRunStatus,
   ContentStatus,
@@ -13,6 +14,7 @@ import type {
 } from "./enums.js";
 import type { ImportBrokerOutcome, ImportRowOutcome } from "./import-run.js";
 import type { PublicationActor, PublishAttemptResult, RemoteState } from "./publication.js";
+import type { AgendaKind } from "./tracking/agenda.js";
 
 // Textos para el operador, compartidos por la CLI y el panel (y las plantillas de F2): un solo
 // vocabulario. Las clases de color y los textos de botones son de cada interfaz.
@@ -224,6 +226,12 @@ export function contentRunProgressText(run: Pick<ContentRun, "status" | "stage">
 
 /** Lo que muestran la CLI y el panel cuando una corrida sigue en cola a los 20 s (`RUN_WAIT`). */
 export const RUN_QUEUED_WARNING_TEXT = "Sigue en cola: ¿está corriendo el worker? (pnpm dev)";
+/**
+ * El de una publicación (deuda de F3, F6-T11): el worker publica de a una, así que puede estar
+ * esperando su turno aunque el worker corra.
+ */
+export const PUBLICATION_QUEUED_WARNING_TEXT =
+  "Sigue en cola o esperando su turno: ¿está corriendo el worker? (pnpm dev)";
 
 /** Por qué un aviso no puede publicarse (`LISTING_NOT_READY` al publicar y el panel). */
 export const LISTING_NOT_PUBLISHABLE_TEXT =
@@ -265,3 +273,24 @@ export function remoteStatusText(
       return `otro estado (${remote.status})`;
   }
 }
+
+/** El motivo de cierre de una propiedad (F6, ADR-0019), para la CLI y el panel. */
+export const CLOSE_REASON_TEXT: Readonly<Record<CloseReason, string>> = {
+  sold: "vendida",
+  rented: "arrendada",
+  withdrawn: "retirada",
+};
+
+/** El título de cada clase de la agenda (spec F6 §4.9), para la CLI y el panel. */
+export const AGENDA_KIND_TEXT: Readonly<Record<AgendaKind, string>> = {
+  overdue: "Atrasadas",
+  your_turn: "Te toca (Marketplace)",
+  stuck: "Atascadas",
+  failed: "Fallaron",
+  manual_task: "Tareas a mano",
+  needs_review: "Esperan tu revisión",
+  approved_waiting: "Aprobadas sin publicar",
+  expiring: "Portal por vencer",
+  upcoming: "Próximas (7 días)",
+  backup: "Respaldo de la base",
+};

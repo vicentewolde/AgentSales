@@ -3,6 +3,7 @@ import {
   describeAttributes,
   formatListingPrice,
   LISTING_MANUAL_TRANSITIONS,
+  listingActionFor,
   OPERATION_TEXT,
 } from "@agentsales/core";
 import { Link, useParams } from "react-router";
@@ -61,6 +62,7 @@ function Gallery({ media, externalRef }: { media: Detail["media"]; externalRef: 
 
 function StatusActions({ id, status }: { id: string; status: Detail["listing"]["status"] }) {
   const change = useChangeListingStatus(id);
+  // Hasta los botones nuevos de T13: los destinos de F1, traducidos a su acción (F6-T10).
   const targets = LISTING_MANUAL_TRANSITIONS[status].filter(isManualTarget);
   if (targets.length === 0) return null;
   return (
@@ -71,7 +73,10 @@ function StatusActions({ id, status }: { id: string; status: Detail["listing"]["
             key={target}
             type="button"
             disabled={change.isPending}
-            onClick={() => change.mutate(target)}
+            onClick={() => {
+              const action = listingActionFor(status, target);
+              if (action !== null) change.mutate(action);
+            }}
             className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50"
           >
             {statusActionText(status, target)}

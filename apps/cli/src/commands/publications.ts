@@ -30,7 +30,7 @@ import {
   renderPublications,
   renderRemoteState,
 } from "./publication-view.js";
-import { fetchBrokers, manualConfirmHint, resolveListingId } from "./shared.js";
+import { fetchBrokers, manualConfirmHint, resolveListingId, withConfirmation } from "./shared.js";
 
 export type PublicationsDeps = Io & Pick<Terminal, "confirm"> & { client: ApiClient };
 
@@ -515,6 +515,77 @@ export function runSyncPublication(deps: PublicationsDeps, id: string) {
   });
 }
 
+/**
+ * `agentsales publications update <id>` (spec F6 §4.7, ADR-0020): manda a Portal el precio, los
+ * atributos o el texto nuevos de un aviso publicado. En vivo pregunta (un cambio de precio puede
+ * hacer que Mercado Libre lo revise); `--yes` no pregunta.
+ */
+export function runUpdatePublication(
+  deps: PublicationsDeps,
+  id: string,
+  options: OperationOptions = {},
+) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const publicationId = publicationIdOf(id);
+    const result = await withConfirmation(deps, {
+      yes: options.yes ?? false,
+      codes: ["UPDATE_NOT_CONFIRMED"],
+      call: (confirmed) =>
+        unwrap(
+          deps.client.publications[":id"].update.$post({
+            param: { id: publicationId },
+            json: confirmed ? { confirmed } : {},
+          }),
+          publicationResponseSchema,
+        ),
+    });
+    if (result === null) return 1;
+    const { publication } = result;
+    deps.print(
+      `${c.green("✓")} ${publicationName(publication)} actualizado (${publicationModeText(publication.dryRun)})`,
+    );
+    for (const line of renderRemoteState(publication, c)) deps.print(`  ${line}`);
+    if (publication.dryRun) deps.print(c.dim("  Simulación: no se cambió nada en Mercado Libre"));
+    return 0;
+  });
+}
+
+/**
+ * `agentsales publications relist <id>` (spec F6 §4.7): republica un aviso de Portal vencido o
+ * cerrado (una publicación nueva que recuerda la anterior; el worker la publica). En vivo pregunta
+ * (usa un cupo del paquete); `--yes` no pregunta.
+ */
+export function runRelistPublication(
+  deps: PublicationsDeps,
+  id: string,
+  options: OperationOptions = {},
+) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const publicationId = publicationIdOf(id);
+    const result = await withConfirmation(deps, {
+      yes: options.yes ?? false,
+      codes: ["RELIST_NOT_CONFIRMED"],
+      call: (confirmed) =>
+        unwrap(
+          deps.client.publications[":id"].relist.$post({
+            param: { id: publicationId },
+            json: confirmed ? { confirmed } : {},
+          }),
+          publicationResponseSchema,
+        ),
+    });
+    if (result === null) return 1;
+    const { publication } = result;
+    deps.print(
+      `${c.green("✓")} Republicación pedida: ${publicationName(publication)} ${publication.id} (${publicationModeText(publication.dryRun)})`,
+    );
+    deps.print(c.dim(`  Sigue el avance con agentsales publications ${publication.listingId}`));
+    return 0;
+  });
+}
+
 export function register(program: Command, ctx: CliContext): void {
   const deps = (): ConfirmDeps => ({ ...ctx, client: ctx.api() });
   const publications = program
@@ -573,6 +644,26 @@ export function register(program: Command, ctx: CliContext): void {
     .option("--yes", "no pide confirmación para cerrar en vivo")
     .action((id: string, options: OperationOptions) =>
       exitWith(() => runPublicationOperation(deps(), "close", id, options)),
+    );
+  publications
+    .command("update")
+    .description(
+      "Portal: manda al aviso publicado el precio o los atributos nuevos de la planilla, o el texto nuevo aprobado (en vivo pide confirmación)",
+    )
+    .argument("<id>", "id de la publicación (agentsales publications <propiedad>)")
+    .option("--yes", "no pide confirmación en vivo")
+    .action((id: string, options: OperationOptions) =>
+      exitWith(() => runUpdatePublication(deps(), id, options)),
+    );
+  publications
+    .command("relist")
+    .description(
+      "Portal: republica un aviso vencido o cerrado (en vivo pide confirmación: usa un cupo del paquete)",
+    )
+    .argument("<id>", "id de la publicación (agentsales publications <propiedad>)")
+    .option("--yes", "no pide confirmación en vivo")
+    .action((id: string, options: OperationOptions) =>
+      exitWith(() => runRelistPublication(deps(), id, options)),
     );
   publications
     .command("sync")

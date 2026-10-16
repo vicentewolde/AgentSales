@@ -8,6 +8,7 @@ import type { CliContext } from "../../context.js";
 import { type EnvResult, loadEnvironment } from "../../env.js";
 import {
   type CheckItem,
+  checkAutoPublish,
   checkBackup,
   checkChromium,
   checkClaude,
@@ -54,6 +55,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const mercadoLibre = checkMercadoLibre(deps.env);
   const ufSource = checkUfSource(deps.env);
   const backup = checkBackup(services.report, (deps.now ?? (() => new Date()))());
+  const autoPublish = checkAutoPublish(services.report);
   const pgBinDir = deps.env.ok ? deps.env.env.PG_BIN_DIR : undefined;
   const findPgDump =
     deps.findPgDump ??
@@ -62,6 +64,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     checkNode(deps.nodeVersion),
     checkEnv(deps.env),
     ...(publishMode ? [publishMode] : []),
+    ...(autoPublish ? [autoPublish] : []),
     ...(instagram ? [instagram] : []),
     ...(mercadoLibre ? [mercadoLibre] : []),
     ...(ufSource ? [ufSource] : []),

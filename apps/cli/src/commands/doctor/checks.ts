@@ -438,3 +438,26 @@ export function checkBackup(report: HealthReport | null, now: Date = new Date())
       }
     : { name, level: "ok", detail: `el último es de hace ${hours} h (${backup.lastFile ?? "?"})` };
 }
+
+/**
+ * `auto_publish` (F6-T11, spec F6 §4.10): con la API en vivo y corredores que lo tienen, una
+ * advertencia destacada en rojo (publica sin revisión); en simulación, solo informa. `null` si
+ * ningún corredor lo tiene o la API no responde.
+ */
+export function checkAutoPublish(report: HealthReport | null): CheckItem | null {
+  const brokers = report?.autoPublishBrokers ?? [];
+  if (report === null || brokers.length === 0) return null;
+  return report.publishMode === "live"
+    ? {
+        name: "auto_publish",
+        level: "warn",
+        detail: `EN VIVO: publica sin tu revisión (${brokers.join(", ")})`,
+        hint: "agentsales brokers auto-publish <slug> off, o arranca en simulación",
+        emphasis: "danger",
+      }
+    : {
+        name: "auto_publish",
+        level: "ok",
+        detail: `activado en simulación (${brokers.join(", ")})`,
+      };
+}

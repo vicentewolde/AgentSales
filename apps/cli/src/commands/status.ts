@@ -13,6 +13,20 @@ export function renderPublishMode(mode: HealthReport["publishMode"], c: Colors):
     : c.bold(c.green("PUBLISH_MODE: dry-run (no se publica nada)"));
 }
 
+/**
+ * `auto_publish` (spec F6 §4.10): en vivo y con corredores que lo tienen, en rojo (publica sin
+ * revisión); en simulación, una nota. `null` si ningún corredor lo tiene (o la API no lo informa).
+ */
+export function renderAutoPublish(report: HealthReport, c: Colors): string | null {
+  const brokers = report.autoPublishBrokers ?? [];
+  if (brokers.length === 0) return null;
+  return report.publishMode === "live"
+    ? c.bold(
+        c.bgRed(c.white(` auto_publish EN VIVO: publica sin tu revisión (${brokers.join(", ")}) `)),
+      )
+    : c.dim(`auto_publish activado (en simulación): ${brokers.join(", ")}`);
+}
+
 /** Estado desde `/health`. Sale con 0 solo si todo está `ok`. */
 export async function runStatus(fetchHealth: HealthFetcher, c: Colors): Promise<StatusResult> {
   let report: HealthReport;
@@ -34,6 +48,7 @@ export async function runStatus(fetchHealth: HealthFetcher, c: Colors): Promise<
   return {
     text: [
       renderPublishMode(report.publishMode, c),
+      ...[renderAutoPublish(report, c)].filter((line): line is string => line !== null),
       "",
       `Estado: ${ok ? c.green("ok") : c.yellow("degraded")}  ${c.dim(`(API ${report.version})`)}`,
       ...checks,

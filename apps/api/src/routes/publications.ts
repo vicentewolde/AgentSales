@@ -1,6 +1,8 @@
 import {
   AppError,
+  type BrokerRepository,
   type CancelPublicationDeps,
+  type ContentRepository,
   cancelPublication,
   closePublication,
   confirmManualPublication,
@@ -21,11 +23,15 @@ import {
   pausePublication,
   publishListing,
   type RetirePublicationDeps,
+  relistPublication,
   requestPublicationSync,
   resumePublication,
   retirePublication,
   type StartPublicationDeps,
+  schedulePublication,
   startPublication,
+  unschedulePublication,
+  updatePortalPublication,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import {
@@ -42,7 +48,9 @@ import {
   type PublicationSyncResponse,
   publicationCloseBodySchema,
   publicationConfirmBodySchema,
+  publicationConfirmedBodySchema,
   publicationRetireBodySchema,
+  publicationScheduleBodySchema,
 } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
 import { validated } from "../validation.js";
@@ -58,7 +66,11 @@ export type PublicationRoutesDeps = PublishListingDeps &
      * (ADR-0014). El tipo lo hace cumplir.
      */
     publications: Pick<PublicationRepository, "get" | "listByListing" | "listEvents">;
-    listings: Pick<ListingRepository, "get">;
+    /** `getSourceHash`: Actualizar compara la versión de la propiedad (F6-T07). */
+    listings: Pick<ListingRepository, "get" | "getSourceHash">;
+    /** Actualizar en Portal (F6-T07): el texto vigente y el contacto del corredor. */
+    contents: Pick<ContentRepository, "listCurrent">;
+    brokers: Pick<BrokerRepository, "findById">;
     media: Pick<MediaRepository, "listByListing">;
     /** Solo para las miniaturas de `GET /listings/:id/publications` (R2 es privado, ADR-0007). */
     storage: Pick<MediaStorage, "signedReadUrl">;
@@ -104,7 +116,7 @@ const OPERATION_MESSAGES: Readonly<Record<string, string>> = {
 };
 
 /** Relanza el error de una operación con el mensaje propio, si lo tiene (mismo código). */
-function operationError(error: unknown): unknown {
+export function operationError(error: unknown): unknown {
   if (!isAppError(error)) return error;
   const message = OPERATION_MESSAGES[error.code];
   return message === undefined
@@ -265,6 +277,77 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       };
       return c.json(body, 202);
     })
+    .post(
+      "/:id/schedule",
+      validated("param", idParamSchema),
+      validated("json", publicationScheduleBodySchema),
+      async (c) => {
+        // Programar o reprogramar (spec F6 §4.3): el modo es el de la API ahora (D11).
+        const publication = await schedulePublication(deps, {
+          publicationId: c.req.valid("param").id,
+          at: new Date(c.req.valid("json").at),
+          dryRun: dryRunOf(deps),
+          actor: actorOf(c),
+        });
+        const body: PublicationResponse = { publication: publicationView(publication) };
+        return c.json(body, 200);
+      },
+    )
+    .post("/:id/unschedule", validated("param", idParamSchema), async (c) => {
+      const publication = await unschedulePublication(deps, {
+        publicationId: c.req.valid("param").id,
+        actor: actorOf(c),
+      });
+      const body: PublicationResponse = { publication: publicationView(publication) };
+      return c.json(body, 200);
+    })
+    .post(
+      "/:id/update",
+      validated("param", idParamSchema),
+      validated("json", publicationConfirmedBodySchema),
+      async (c) => {
+        // Actualizar un aviso de Portal publicado (spec F6 §4.7, ADR-0020): síncrona, como cerrar.
+        const { confirmed } = c.req.valid("json");
+        let publication: Awaited<ReturnType<typeof updatePortalPublication>>;
+        try {
+          publication = await updatePortalPublication(
+            {
+              ...operations,
+              contents: deps.contents,
+              listings: deps.listings,
+              brokers: deps.brokers,
+            },
+            {
+              publicationId: c.req.valid("param").id,
+              actor: actorOf(c),
+              ...(confirmed === undefined ? {} : { confirmed }),
+              signal: timeout(),
+            },
+          );
+        } catch (error) {
+          throw operationError(error);
+        }
+        const body: PublicationResponse = { publication: publicationView(publication) };
+        return c.json(body, 200);
+      },
+    )
+    .post(
+      "/:id/relist",
+      validated("param", idParamSchema),
+      validated("json", publicationConfirmedBodySchema),
+      async (c) => {
+        // Republicar un aviso de Portal vencido o cerrado (spec F6 §4.7): crea la nueva y la encola.
+        const { confirmed } = c.req.valid("json");
+        const publication = await relistPublication(deps, {
+          publicationId: c.req.valid("param").id,
+          dryRun: dryRunOf(deps),
+          actor: actorOf(c),
+          ...(confirmed === undefined ? {} : { confirmed }),
+        });
+        const body: PublicationResponse = { publication: publicationView(publication) };
+        return c.json(body, 202);
+      },
+    )
     .post("/:id/cancel", validated("param", idParamSchema), async (c) => {
       const publication = await cancelPublication(deps, {
         publicationId: c.req.valid("param").id,

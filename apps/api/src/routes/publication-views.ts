@@ -6,8 +6,11 @@ import {
   type Publication,
   type PublicationActor,
   type PublicationEvent,
+  portalExpiry,
+  publicationErrorAdvice,
   publishAttemptPayloadSchema,
   type SkippedPublication,
+  scheduleState,
 } from "@agentsales/core";
 import type { Context } from "hono";
 import {
@@ -23,9 +26,14 @@ import {
 /**
  * La vista HTTP de una publicación: sin `progress` (interno del publisher) ni `externalId`, y sin
  * URLs de lo que se envía a la plataforma (spec F3-T15). En Marketplace suma `manual`, derivado del
- * progreso del intento actual (spec F5 §4.10).
+ * progreso del intento actual (spec F5 §4.10). Desde F6-T10 suma lo derivado a la hora de pedir:
+ * si una programada está atrasada, el consejo del error y el vencimiento de Portal.
  */
-export const publicationView = (publication: Publication): PublicationView => ({
+export const publicationView = (publication: Publication): PublicationView =>
+  publicationViewAt(publication, new Date());
+
+/** `publicationView` a una hora dada (no se pasa a `.map`: el índice se tomaría por la hora). */
+const publicationViewAt = (publication: Publication, now: Date): PublicationView => ({
   id: publication.id,
   listingId: publication.listingId,
   platformAccountId: publication.platformAccountId,
@@ -43,6 +51,14 @@ export const publicationView = (publication: Publication): PublicationView => ({
   publishedAt: publication.publishedAt,
   remoteState: publication.remoteState,
   manual: manualView(publication),
+  relistedFrom: publication.relistedFrom,
+  schedule: scheduleState(publication, now),
+  errorAdvice:
+    publication.lastError === null ? null : publicationErrorAdvice(publication.lastError.code),
+  expiry:
+    publication.platform === "portal_inmobiliario"
+      ? portalExpiry(publication.remoteState, now)
+      : null,
   createdAt: publication.createdAt,
   updatedAt: publication.updatedAt,
 });

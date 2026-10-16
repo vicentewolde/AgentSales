@@ -10,6 +10,7 @@ import {
   marketplacePriceText,
   PLATFORM_TEXT,
   type Platform,
+  PUBLICATION_QUEUED_WARNING_TEXT,
   PUBLICATION_STATUS_TEXT,
   publicationFormatText,
   publicationModeText,
@@ -260,6 +261,7 @@ export function runPublish(deps: PublishDeps, ref: string, options: PublishOptio
         ),
       laterCommand: `agentsales publications ${trimmed}`,
       noun: "la publicación",
+      queuedText: PUBLICATION_QUEUED_WARNING_TEXT,
     });
     if (done === null) return 1;
     if (platform === "fb_marketplace") return finishMarketplace(deps, done.publications, trimmed);

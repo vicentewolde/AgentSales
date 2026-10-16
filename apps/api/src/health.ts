@@ -42,6 +42,8 @@ export type HealthDetails = {
   serverVersion?: () => string | null;
   /** El estado del último respaldo (`readBackupStatus`); un error cuenta como sin respaldo. */
   backupStatus?: () => Promise<BackupStatus | null>;
+  /** Los corredores (slug) con `auto_publish` (F6-T10, spec §4.10); un error da `null`. */
+  autoPublishBrokers?: () => Promise<string[]>;
   now?: () => Date;
 };
 
@@ -73,6 +75,9 @@ export async function runHealth(options: {
     ...(details.backupStatus === undefined
       ? {}
       : { backup: await backupOf(details.backupStatus, details.now ?? (() => new Date())) }),
+    ...(details.autoPublishBrokers === undefined
+      ? {}
+      : { autoPublishBrokers: await details.autoPublishBrokers().catch(() => null) }),
   };
 }
 

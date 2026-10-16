@@ -3,7 +3,10 @@
 // el panel importa en tiempo de ejecución: Biome limita este directorio a `zod`, `@agentsales/core`
 // e imports relativos (nada de Node ni de `@agentsales/config`).
 import {
+  AGENDA_ACTIONS,
+  AGENDA_KINDS,
   brokerSchema,
+  CLOSE_REASONS,
   CONTENT_CHECK_CODES,
   CONTENT_CHECK_SEVERITY_LEVELS,
   CONTENT_STATUSES,
@@ -11,9 +14,11 @@ import {
   contentRunSchema,
   FIELD_TYPES,
   importRunSchema,
-  LISTING_MANUAL_TARGETS,
+  LISTING_ACTIONS,
   LISTING_STATUSES,
   listingSchema,
+  MAX_SCHEDULE_BATCH,
+  MAX_SCHEDULE_SPACING_MINUTES,
   MAX_XLSX_BYTES,
   MEDIA_KINDS,
   MEDIA_VARIANTS,
@@ -26,6 +31,7 @@ import {
   PUBLICATION_STATUSES,
   publicationErrorSchema,
   remoteStateSchema,
+  SCHEDULE_STATES,
   TOKEN_EXPIRED_REASONS,
   TOKEN_REFRESH_SKIP_REASONS,
 } from "@agentsales/core";
@@ -89,7 +95,15 @@ export const listingQuerySchema = z.object({
 export type ListingQuery = z.infer<typeof listingQuerySchema>;
 
 /** `PATCH /listings/:id/status`: solo hacia los estados manuales (`LISTING_MANUAL_TRANSITIONS`). */
-export const listingStatusBodySchema = z.object({ status: z.enum(LISTING_MANUAL_TARGETS) });
+/**
+ * `POST /listings/:id/status` (F6-T10, spec F6 §4.8): la acción, el motivo al cerrar y la
+ * confirmación (cerrar siempre; pausar y archivar si cambian algo). Reemplaza al `PATCH` de F1.
+ */
+export const listingStatusBodySchema = z.object({
+  action: z.enum(LISTING_ACTIONS),
+  reason: z.enum(CLOSE_REASONS).optional(),
+  confirmed: z.boolean().optional(),
+});
 export type ListingStatusBody = z.infer<typeof listingStatusBodySchema>;
 
 /** Un aviso tal como viaja en JSON: las fechas llegan como texto ISO y se vuelven `Date`. */
@@ -142,9 +156,6 @@ export const listingDetailResponseSchema = z.object({
   fields: z.array(listingFieldSchema),
 });
 export type ListingDetailResponse = z.infer<typeof listingDetailResponseSchema>;
-
-export const listingStatusResponseSchema = z.object({ listing: listingJsonSchema });
-export type ListingStatusResponse = z.infer<typeof listingStatusResponseSchema>;
 
 export const brokerListResponseSchema = z.object({ brokers: z.array(brokerSchema) });
 export type BrokerListResponse = z.infer<typeof brokerListResponseSchema>;
@@ -403,6 +414,21 @@ export const publicationViewSchema = z.object({
   remoteState: remoteStateSchema.nullable(),
   /** Solo Marketplace: el formulario del intento actual (F5-T08); `null` en los demás canales. */
   manual: marketplaceManualSchema.nullable(),
+  /** La publicación de Portal que esta republica (F6-T07); `null` si no es una republicación. */
+  relistedFrom: z.string().nullable(),
+  /** Una programada: `upcoming`, `due` u `overdue` (atrasada, F6 §4.4); `null` si no lo está. */
+  schedule: z.enum(SCHEDULE_STATES).nullable(),
+  /** Qué hacer con el último error (`publicationErrorAdvice`, F6 §4.5); `null` sin error. */
+  errorAdvice: z.string().nullable(),
+  /** Portal: el vencimiento de su aviso (F6 §4.7); `null` sin dato o en otro canal. */
+  expiry: z
+    .object({
+      stopTime: z.coerce.date(),
+      daysLeft: z.number().int(),
+      soon: z.boolean(),
+      expired: z.boolean(),
+    })
+    .nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -783,3 +809,119 @@ export const OAUTH_REDIRECT_ERRORS = [
   "INTERNAL_ERROR",
 ] as const;
 export type OAuthRedirectError = (typeof OAUTH_REDIRECT_ERRORS)[number];
+
+// --- F6-T10: calendario, la propiedad, Portal y el seguimiento (spec F6 §4.13) ---
+
+/**
+ * Una hora en ISO con zona (la CLI y el panel la piden en hora de Chile y la convierten). Queda como
+ * texto: el cliente `hc` tipa el cuerpo con lo que sale del validador. La ruta la vuelve `Date`.
+ */
+const scheduleAtSchema = z.iso.datetime({ offset: true });
+
+/** `POST /listings/:id/status`: la propiedad, lo que cambió y las tareas a mano (D4). */
+export const listingStatusResponseSchema = z.object({
+  listing: listingJsonSchema,
+  changed: z.array(publicationViewSchema),
+  manualTasks: z.array(publicationViewSchema),
+});
+export type ListingStatusResponse = z.infer<typeof listingStatusResponseSchema>;
+
+/** `POST /publications/:id/schedule`: la hora (al minuto; 2 min a 60 días). */
+export const publicationScheduleBodySchema = z.object({ at: scheduleAtSchema });
+export type PublicationScheduleBody = z.infer<typeof publicationScheduleBodySchema>;
+
+/**
+ * `POST /schedule`: una o varias propiedades (1 a 50; core rechaza las repetidas con
+ * `SCHEDULE_BATCH_INVALID`), los canales (todos si falta), la hora y el espaciado entre propiedades.
+ */
+export const scheduleBodySchema = z.object({
+  listingIds: z.array(z.uuid()).min(1).max(MAX_SCHEDULE_BATCH),
+  platforms: z.array(z.enum(PLATFORMS)).min(1).optional(),
+  at: scheduleAtSchema,
+  spacingMinutes: z.number().int().min(0).max(MAX_SCHEDULE_SPACING_MINUTES).optional(),
+});
+export type ScheduleBody = z.infer<typeof scheduleBodySchema>;
+
+export const scheduleResultSchema = z.object({
+  listingId: z.string(),
+  /** `null` si la fila es de toda la propiedad (por ejemplo, la propiedad no está lista). */
+  platform: z.enum(PLATFORMS).nullable(),
+  outcome: z.enum(["scheduled", "skipped"]),
+  at: z.coerce.date().optional(),
+  publications: z.array(publicationViewSchema).optional(),
+  code: z.string().optional(),
+  message: z.string().optional(),
+});
+export const scheduleResponseSchema = z.object({
+  results: z.array(scheduleResultSchema),
+  /** Avisos que no bloquearon (más de 3 recordatorios de Marketplace por cuenta y día). */
+  notes: z.array(z.string()),
+});
+export type ScheduleResponse = z.infer<typeof scheduleResponseSchema>;
+
+/** `POST /publications/:id/update` y `/relist`: la confirmación en vivo. */
+export const publicationConfirmedBodySchema = z.object({ confirmed: z.boolean().optional() });
+export type PublicationConfirmedBody = z.infer<typeof publicationConfirmedBodySchema>;
+
+/** `GET /tracking` y `GET /agenda`: el corredor (slug; todos si falta) y, en la matriz, las archivadas. */
+export const trackingQuerySchema = z.object({
+  broker: brokerSlugSchema.optional(),
+  archived: z.enum(["0", "1"]).optional(),
+});
+export const agendaQuerySchema = z.object({ broker: brokerSlugSchema.optional() });
+
+export const trackingPublicationSchema = z.object({
+  id: z.string(),
+  format: z.enum(PUBLICATION_FORMATS),
+  status: z.enum(PUBLICATION_STATUSES),
+  dryRun: z.boolean(),
+  externalUrl: z.string().nullable(),
+  scheduledAt: z.coerce.date().nullable(),
+  schedule: z.enum(SCHEDULE_STATES).nullable(),
+  expiry: publicationViewSchema.shape.expiry,
+  error: publicationErrorSchema.extend({ advice: z.string() }).nullable(),
+  manualTask: z.boolean(),
+  updatedAt: z.coerce.date(),
+});
+export const trackingRowSchema = z.object({
+  listing: z.object({
+    id: z.string(),
+    brokerId: z.string(),
+    externalRef: z.string(),
+    status: z.enum(LISTING_STATUSES),
+    closeReason: z.enum(CLOSE_REASONS).nullable(),
+    operation: z.enum(OPERATIONS).nullable(),
+    propertyType: z.string().nullable(),
+    comuna: z.string().nullable(),
+  }),
+  /** La portada (miniatura si existe), con URL de lectura temporal; `null` sin fotos. */
+  coverUrl: z.string().nullable(),
+  cells: z.object({
+    instagram: z.array(trackingPublicationSchema),
+    portal_inmobiliario: z.array(trackingPublicationSchema),
+    fb_marketplace: z.array(trackingPublicationSchema),
+  }),
+});
+export const trackingResponseSchema = z.object({ rows: z.array(trackingRowSchema) });
+export type TrackingResponse = z.infer<typeof trackingResponseSchema>;
+
+export const agendaItemSchema = z.object({
+  kind: z.enum(AGENDA_KINDS),
+  action: z.enum(AGENDA_ACTIONS),
+  listingId: z.string().nullable(),
+  externalRef: z.string().nullable(),
+  platform: z.enum(PLATFORMS).nullable(),
+  format: z.enum(PUBLICATION_FORMATS).nullable(),
+  publicationId: z.string().nullable(),
+  at: z.coerce.date().nullable(),
+  dryRun: z.boolean().nullable(),
+  code: z.string().nullable(),
+  detail: z.string().nullable(),
+});
+export const agendaResponseSchema = z.object({ items: z.array(agendaItemSchema) });
+export type AgendaResponse = z.infer<typeof agendaResponseSchema>;
+
+/** `PATCH /brokers/:id`: activar o apagar `auto_publish` (spec F6 §4.10). */
+export const brokerPatchBodySchema = z.object({ autoPublish: z.boolean() });
+export const brokerResponseSchema = z.object({ broker: brokerSchema });
+export type BrokerResponse = z.infer<typeof brokerResponseSchema>;
