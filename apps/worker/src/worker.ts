@@ -7,6 +7,7 @@ import {
   findWorkspaceRoot,
   loadEnv,
   loadEnvFile,
+  resolveBackupDir,
   resolveBrowserProfilesDir,
 } from "@agentsales/config";
 import { confirmManualPublication, enqueueLiveSyncs, type RunImportDeps } from "@agentsales/core";
@@ -47,6 +48,7 @@ import {
   marketplaceTmpRootOf,
 } from "./content-tmp.js";
 import { failAbandonedContentRuns, requeueQueuedContentRuns } from "./jobs/content-prepare.js";
+import { requestBackupIfDue } from "./jobs/db-backup.js";
 import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
 import { buildJobs } from "./jobs/index.js";
 import { enqueuePublicationDue } from "./jobs/publication-due.js";
@@ -144,6 +146,8 @@ const profilesRoot = resolveBrowserProfilesDir(env.BROWSER_PROFILES_DIR, {
   homeDir: homedir(),
   workspaceRoot,
 });
+// El respaldo local (spec F6 §4.11): la carpeta, también fuera del proyecto (trae datos de clientes).
+const backupDir = resolveBackupDir(env.BACKUP_DIR, { homeDir: homedir(), workspaceRoot });
 const listingLock = createListingLock(database.db, { secretBox });
 const marketplaceWindows = createMarketplaceWindows({
   publications,
@@ -273,6 +277,12 @@ const jobs = buildJobs({
     platformAccounts,
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
+  },
+  dbBackup: {
+    dir: backupDir,
+    databaseUrl: env.DATABASE_URL,
+    ...(env.PG_BIN_DIR === undefined ? {} : { binDir: env.PG_BIN_DIR }),
+    signal: jobsAbort.signal,
   },
 });
 
@@ -473,6 +483,25 @@ async function requestPublicationDue(): Promise<void> {
   }
 }
 
+async function requestBackup(): Promise<void> {
+  try {
+    const decision = await requestBackupIfDue(queue, {
+      dir: backupDir,
+      ...(env.PG_BIN_DIR === undefined ? {} : { binDir: env.PG_BIN_DIR }),
+    });
+    if (decision === "tool_missing") {
+      logger.warn(
+        "no se encontró pg_dump: el respaldo de la base no corre (brew install libpq, o PG_BIN_DIR en .env)",
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      { err: error },
+      "no se pudo pedir el respaldo del arranque: lo hace el cron diario o el próximo arranque",
+    );
+  }
+}
+
 async function requestTokensRefresh(): Promise<void> {
   try {
     await enqueueTokensRefresh(queue);
@@ -503,6 +532,7 @@ try {
     await requestLiveSyncs();
     await requestTokensRefresh();
     await requestPublicationDue();
+    await requestBackup();
     // El modo del worker solo decide si una publicación pedida en `live` se puede publicar (D11).
     logger.info(
       {

@@ -1,4 +1,5 @@
 import type { HealthReport, PublishMode } from "@agentsales/core";
+import { canDumpServer, parsePgToolVersion, parseServerVersion } from "@agentsales/db/backup";
 import {
   CHROMIUM_INSTALL_COMMAND,
   FFMPEG_MIN_VERSION,
@@ -356,4 +357,83 @@ export async function checkClaude(
     detail: `${version} · ${detail[session]}`,
     hint: CLAUDE_LOGIN_HINT,
   };
+}
+
+/**
+ * `pg_dump` del respaldo local (F6-T14, spec F6 §4.11): que esté y que su versión mayor alcance para
+ * la del servidor que informa `/health` (`database.serverVersion`): `pg_dump` se niega a volcar un
+ * servidor más nuevo. Sin la herramienta es una advertencia (la app funciona, pero no se respalda);
+ * una versión que no alcanza es un error (el respaldo fallaría siempre).
+ */
+export async function checkPgDump(
+  run: RunCommand,
+  findTool: () => string,
+  serverVersion: string | null | undefined,
+): Promise<CheckItem> {
+  const name = "pg_dump";
+  let path: string;
+  try {
+    path = findTool();
+  } catch {
+    return {
+      name,
+      level: "warn",
+      detail: "no está: el respaldo de la base no corre",
+      hint: "brew install libpq (queda en /opt/homebrew/opt/libpq/bin; o fija PG_BIN_DIR en .env)",
+    };
+  }
+  let output: string;
+  try {
+    output = await run(path, ["--version"]);
+  } catch (error) {
+    return { name, level: "warn", detail: `${path}: ${describeCommandError(error)}` };
+  }
+  const client = parsePgToolVersion(output);
+  const server = serverVersion == null ? null : parseServerVersion(serverVersion);
+  if (client === null) {
+    return { name, level: "warn", detail: `no se pudo leer la versión: ${firstLine(output)}` };
+  }
+  const clientText = `${client.major}${client.minor === null ? "" : `.${client.minor}`}`;
+  if (server === null) {
+    return {
+      name,
+      level: "ok",
+      detail: `${clientText} (sin la versión de la base: se compara con la API corriendo)`,
+    };
+  }
+  if (!canDumpServer(client, server)) {
+    return {
+      name,
+      level: "error",
+      detail: `${clientText}, pero la base es ${serverVersion}: pg_dump no puede respaldar una base más nueva`,
+      hint: "brew upgrade libpq (o instala el cliente de la misma versión de la base)",
+    };
+  }
+  return { name, level: "ok", detail: `${clientText} (la base es ${serverVersion})` };
+}
+
+/** El último respaldo según `/health` (F6-T14): avisa si no hay, si falló o si tiene más de 48 h. */
+export function checkBackup(report: HealthReport | null, now: Date = new Date()): CheckItem | null {
+  if (report === null || report.backup === undefined) return null;
+  const name = "Respaldo";
+  const backup = report.backup;
+  if (backup === null || backup.lastSuccessAt === null) {
+    return {
+      name,
+      level: "warn",
+      detail: "todavía no hay respaldos de la base",
+      hint: "pnpm db:backup (no necesita pnpm dev); el worker respalda solo cada día a las 13:00",
+    };
+  }
+  const hours = Math.floor((now.getTime() - Date.parse(backup.lastSuccessAt)) / 3_600_000);
+  const failure =
+    backup.lastFailureCode === null ? "" : `; el último intento falló (${backup.lastFailureCode})`;
+  return backup.stale || failure !== ""
+    ? {
+        name,
+        level: "warn",
+        detail: `el último bueno es de hace ${hours} h${failure}`,
+        hint: "pnpm db:backup para ver el error (necesita pg_dump: brew install libpq)",
+      }
+    : { name, level: "ok", detail: `el último es de hace ${hours} h (${backup.lastFile ?? "?"})` };
 }

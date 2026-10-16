@@ -1,7 +1,7 @@
 import { Writable } from "node:stream";
 import { createLogger } from "@agentsales/config";
 import type { HealthReport } from "@agentsales/core";
-import { AppError } from "@agentsales/core";
+import { AppError, healthReportSchema } from "@agentsales/core";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
 import { type AppDeps, createApp } from "./app.js";
@@ -87,6 +87,59 @@ describe("GET /health", () => {
     );
 
     expect(body.checks.db.error).toBe("no conecta a postgresql://[REDACTED]@ep-test.neon.tech/db");
+  });
+
+  it("sin detalles (un reporte de antes de F6) no trae database ni backup, y el contrato lo acepta", async () => {
+    const { body } = await health(appWith());
+
+    expect(body).not.toHaveProperty("database");
+    expect(body).not.toHaveProperty("backup");
+    expect(healthReportSchema.parse(body)).toEqual(body);
+  });
+
+  it("informa la versión de la base y el último respaldo, con stale a las 48 h (F6-T14)", async () => {
+    const now = new Date("2026-10-15T16:00:00.000Z");
+    const status = {
+      lastSuccessAt: "2026-10-13T15:00:00.000Z",
+      lastFile: "agentsales-20261013-1200.dump",
+      lastFailureAt: null,
+      lastFailureCode: null,
+    };
+    const { body } = await health(
+      appWith(
+        {},
+        {
+          healthDetails: {
+            serverVersion: () => "18.6",
+            backupStatus: async () => status,
+            now: () => now,
+          },
+        },
+      ),
+    );
+
+    expect(body.database).toEqual({ serverVersion: "18.6" });
+    expect(body.backup).toEqual({ ...status, stale: true });
+    expect(healthReportSchema.parse(body)).toEqual(body);
+  });
+
+  it("con la base caída la versión es null, y un estado ilegible o sin respaldo es null", async () => {
+    const { body } = await health(
+      appWith(
+        { db: fail("sin base") },
+        {
+          healthDetails: {
+            serverVersion: () => "18.6",
+            backupStatus: async () => {
+              throw new Error("EACCES");
+            },
+          },
+        },
+      ),
+    );
+
+    expect(body.database).toEqual({ serverVersion: null });
+    expect(body.backup).toBeNull();
   });
 
   it("informa PUBLISH_MODE=live tal cual", async () => {

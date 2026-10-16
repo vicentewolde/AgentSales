@@ -1,5 +1,9 @@
 export type { Logger } from "pino";
-export { resolveBrowserProfilesDir } from "./browser-profiles.js";
+export {
+  type OutsideProjectPaths,
+  resolveBackupDir,
+  resolveBrowserProfilesDir,
+} from "./browser-profiles.js";
 export {
   createSecretBox,
   createStateSigner,
@@ -9,6 +13,7 @@ export {
   type StateSigner,
 } from "./crypto.js";
 export {
+  DEFAULT_BACKUP_DIR,
   DEFAULT_BROWSER_PROFILES_DIR,
   type Env,
   EnvError,

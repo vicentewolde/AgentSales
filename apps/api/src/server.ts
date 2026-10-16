@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import {
   createErrorThrottle,
   createLogger,
@@ -7,6 +8,7 @@ import {
   findWorkspaceRoot,
   loadEnv,
   loadEnvFile,
+  resolveBackupDir,
 } from "@agentsales/config";
 import {
   createBrokerRepository,
@@ -21,9 +23,10 @@ import {
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
   createPublicationRepository,
-  pingDatabase,
+  readServerVersion,
   toPgConnectionString,
 } from "@agentsales/db";
+import { readBackupStatus } from "@agentsales/db/backup";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import {
   createInstagramAuth,
@@ -80,9 +83,20 @@ const staging = createStaging({ root: stagingRootOf(findWorkspaceRoot()) });
 // descifran con la clave derivada de APP_ENCRYPTION_KEY (F3-T02).
 const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
 
+// `/health` (F6-T14): la versión de Postgres que lee el check de la base (también es el ping) y el
+// estado del último respaldo, en su carpeta (fuera del proyecto; la API solo lee el archivo de estado).
+let serverVersion: string | null = null;
+const backupDir = resolveBackupDir(env.BACKUP_DIR, {
+  homeDir: homedir(),
+  workspaceRoot: findWorkspaceRoot(),
+});
+
 const app = createApp({
   checks: {
-    db: () => pingDatabase(database.db),
+    db: async () => {
+      serverVersion = null;
+      serverVersion = await readServerVersion(database.db);
+    },
     // `head` devuelve null si el objeto no existe: basta con que no lance.
     storage: async () => {
       await storage.head(HEALTHCHECK_PATH);
@@ -150,6 +164,10 @@ const app = createApp({
     ufConfigured: env.BCCH_API_TOKEN !== undefined,
   },
   version: readApiVersion(),
+  healthDetails: {
+    serverVersion: () => serverVersion,
+    backupStatus: () => readBackupStatus(backupDir),
+  },
   logger,
   access: localAccess(env.API_PORT, env.WEB_PORT),
 });

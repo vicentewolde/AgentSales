@@ -102,3 +102,25 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | `UF_SOURCE_AUTH_INVALID`, o `doctor` avisa por `BCCH_API_TOKEN` | El token del Banco Central falta, está mal copiado o venció (dura 1 año): entra a la BDE → Mi Cuenta → Apikey Token, renuévalo o extiéndelo y déjalo en `.env` con `pbpaste` |
 | `UF_VALUE_MISSING` o `UF_VALUE_SUSPICIOUS` | El Banco Central todavía no tiene la UF de hoy (pasa el día 10 temprano) o el valor no calza con el de ayer: reintenta más tarde. Nunca se publica con un valor viejo |
 | `MARKETPLACE_FORM_OPEN`, `MARKETPLACE_DAILY_LIMIT` o `MANUAL_CONFIRM_PENDING` | Otro formulario de Marketplace de la cuenta espera tu clic (publícalo o márcalo "No lo publiqué"), la cuenta ya hizo sus 3 intentos de hoy (sigue mañana) o esta publicación espera que digas si la publicaste |
+| Quieres respaldar la base ahora | `pnpm db:backup` en tu terminal (no necesita `pnpm dev`). Deja `agentsales-AAAAMMDD-HHMM.dump` en `~/.agentsales/backups` (o en `BACKUP_DIR`) y conserva los últimos 14. El worker lo hace solo cada día a las 13:00 y al arrancar si el último tiene más de 20 h. Más abajo, cómo restaurar |
+| `BACKUP_TOOL_NOT_INSTALLED`, o `doctor` avisa por `pg_dump` | Falta el cliente de Postgres: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`, que el respaldo busca solo; si lo instalaste en otro lado, fija `PG_BIN_DIR` en `.env`) |
+| `doctor` dice que `pg_dump` no puede respaldar una base más nueva | Tu `pg_dump` es de una versión mayor anterior a la de Neon: `brew upgrade libpq` |
+| `BACKUP_FAILED` | `pnpm db:backup` muestra la causa: sin conexión o Neon sin CU-horas (reintenta más tarde), la carpeta sin espacio o sin permisos. Los respaldos buenos nunca se borran por un intento fallido |
+
+## Restaurar un respaldo de la base
+
+Restaurar **nunca** se hace sobre la base que usa AgentSales: se restaura en una base nueva y, si todo está bien, se cambia `DATABASE_URL` hacia ella.
+
+1. Elige el archivo en `~/.agentsales/backups` (el nombre trae la fecha y la hora de Chile). `pg_restore --list <archivo>` muestra lo que tiene sin tocar nada.
+2. Crea una base nueva vacía: en Neon, un proyecto nuevo (o una rama) con una base del mismo nombre; o en tu Mac, `createdb agentsales_restaurada` si tienes Postgres local.
+3. Restaura con la conexión **directa** de la base nueva (sin `-pooler`):
+   ```bash
+   /opt/homebrew/opt/libpq/bin/pg_restore --no-owner --no-acl -d "<cadena_directa_de_la_base_nueva>" agentsales-AAAAMMDD-HHMM.dump
+   ```
+   (Escribe la cadena tú en la terminal; nunca la pegues en el chat.)
+4. Apunta `DATABASE_URL` en `.env` a la base nueva y arranca `pnpm dev`. El worker crea de nuevo la cola de trabajos (el respaldo no la trae, a propósito: así no vuelven a correr trabajos viejos) y retoma lo pendiente desde la base.
+5. **Usa la misma `APP_ENCRYPTION_KEY`** que cuando se hizo el respaldo: los tokens de Instagram y Mercado Libre van cifrados con ella. Con otra clave, la base funciona pero hay que reconectar las cuentas.
+6. Las fotos, los videos y las portadas no están en el respaldo: viven en R2, que no se toca.
+
+Para errores de las últimas 6 horas, Neon tiene además su propia restauración instantánea (en su consola), más rápida que un respaldo; ver `docs/integraciones/neon-backup.md`.
+

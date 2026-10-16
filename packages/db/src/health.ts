@@ -29,3 +29,28 @@ export async function pingDatabase(
     }
   }
 }
+
+/**
+ * La versión de Postgres del servidor (`show server_version`, por ejemplo `18.6`), con los mismos
+ * reintentos que el ping: sirve también de ping en `/health` (spec F6 §4.11). `doctor` la compara
+ * con la de `pg_dump`.
+ */
+export async function readServerVersion(
+  db: Pingable,
+  { retries = 1, retryDelayMs = 500 }: PingOptions = {},
+): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const result = (await db.execute(sql`show server_version`)) as {
+        rows?: Array<Record<string, unknown>>;
+      };
+      const value = result.rows?.[0]?.server_version;
+      return typeof value === "string" ? value.trim() : String(value);
+    } catch (error) {
+      if (attempt >= retries) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+}
