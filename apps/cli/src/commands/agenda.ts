@@ -2,12 +2,12 @@ import { type AgendaResponse, agendaResponseSchema } from "@agentsales/api/contr
 import {
   AGENDA_KIND_TEXT,
   AGENDA_KINDS,
+  formatChileTime,
   PLATFORM_TEXT,
   publicationFormatText,
 } from "@agentsales/core";
 import type { Command } from "commander";
 import { type ApiClient, unwrap } from "../api-client.js";
-import { formatChileTime } from "../chile-time.js";
 import type { Colors } from "../colors.js";
 import { type CliContext, exitWith } from "../context.js";
 import { guarded, type Io } from "../output.js";

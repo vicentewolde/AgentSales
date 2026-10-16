@@ -18,6 +18,9 @@ const ImportRunPage = lazy(() =>
 const AccountsPage = lazy(() =>
   import("./pages/AccountsPage.js").then((module) => ({ default: module.AccountsPage })),
 );
+const TrackingPage = lazy(() =>
+  import("./pages/TrackingPage.js").then((module) => ({ default: module.TrackingPage })),
+);
 const ListingDetailPage = lazy(() =>
   import("./pages/ListingDetailPage.js").then((module) => ({ default: module.ListingDetailPage })),
 );
@@ -63,6 +66,7 @@ export const routes: RouteObject[] = [
           { path: "importar/:id", element: <ImportRunPage /> },
           // Adonde vuelve el OAuth (`/cuentas?conectada=instagram` o `?error=`, spec F3 §4.6).
           { path: "cuentas", element: <AccountsPage /> },
+          { path: "seguimiento", element: <TrackingPage /> },
           { path: "*", element: <NotFound /> },
         ],
       },

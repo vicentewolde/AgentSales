@@ -11,7 +11,9 @@ import {
   publicationResponseSchema,
   publicationRetireResponseSchema,
   publicationSyncResponseSchema,
+  type ScheduleResponse,
   type SkippedPublicationView,
+  scheduleResponseSchema,
 } from "@agentsales/api/contracts";
 import { MARKETPLACE_CONFIRM_CLIENT_WAIT_MS, type Platform } from "@agentsales/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -184,7 +186,12 @@ export type PublicationAction =
   | { kind: "sync"; id: string }
   // Marketplace (spec F5 §4.3, desde F5-T13): "Lo publiqué" (con el enlace en vivo) y "No lo publiqué".
   | { kind: "confirm"; id: string; url?: string }
-  | { kind: "not-published"; id: string };
+  | { kind: "not-published"; id: string }
+  // Calendario y Portal (spec F6 §4.3 y §4.7, desde F6-T12): `at` en ISO con zona.
+  | { kind: "schedule"; id: string; at: string }
+  | { kind: "unschedule"; id: string }
+  | { kind: "update"; id: string; confirmed: boolean }
+  | { kind: "relist"; id: string; confirmed: boolean };
 
 /**
  * Lo que devolvió la acción: `listingBackToReady` al retirar o cerrar la última en vivo; `queued` al
@@ -266,6 +273,36 @@ export function usePublicationAction(listingId: string) {
             publicationResponseSchema,
           );
           return {};
+        case "schedule":
+          await unwrap(
+            client.publications[":id"].schedule.$post({ param, json: { at: action.at } }),
+            publicationResponseSchema,
+          );
+          return {};
+        case "unschedule":
+          await unwrap(
+            client.publications[":id"].unschedule.$post({ param }),
+            publicationResponseSchema,
+          );
+          return {};
+        case "update":
+          await unwrap(
+            client.publications[":id"].update.$post({
+              param,
+              json: action.confirmed ? { confirmed: true } : {},
+            }),
+            publicationResponseSchema,
+          );
+          return {};
+        case "relist":
+          await unwrap(
+            client.publications[":id"].relist.$post({
+              param,
+              json: action.confirmed ? { confirmed: true } : {},
+            }),
+            publicationResponseSchema,
+          );
+          return {};
       }
     },
     onSettled: refresh,
@@ -316,4 +353,28 @@ export function useManualWaitRefresh(listingId: string, formReadyAt: Date | null
     }, MANUAL_WAIT_REFRESH_MS);
     return () => clearInterval(timer);
   }, [since, listingId]);
+}
+
+/**
+ * `POST /schedule` (spec F6 §4.3): programa una o varias propiedades (el canal de una propiedad es
+ * el mismo pedido con una sola). El resultado viene por propiedad y canal; al terminar se vuelven a
+ * pedir las publicaciones y las listas.
+ */
+export function useScheduleListings() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      listingIds: string[];
+      platforms?: Platform[];
+      at: string;
+      spacingMinutes?: number;
+    }): Promise<ScheduleResponse> =>
+      unwrap(client.schedule.$post({ json: body }), scheduleResponseSchema),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: publicationKeys.all });
+      void queryClient.invalidateQueries({ queryKey: listingKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: ["tracking"] });
+    },
+  });
 }

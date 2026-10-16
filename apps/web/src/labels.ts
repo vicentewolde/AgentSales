@@ -1,9 +1,4 @@
-import {
-  LISTING_MANUAL_TARGETS,
-  type ListingStatus,
-  type PlatformAccountStatus,
-  type PublicationStatus,
-} from "@agentsales/core";
+import type { ListingStatus, PlatformAccountStatus, PublicationStatus } from "@agentsales/core";
 
 // Los textos de estados y operaciones viven en core (los comparte la CLI). Aquí, solo lo propio
 // de la interfaz: colores y botones.
@@ -38,26 +33,3 @@ export const PUBLICATION_STATUS_TONE: Readonly<Record<PublicationStatus, string>
   unpublished: "bg-slate-200 text-slate-600",
   cancelled: "bg-slate-200 text-slate-600",
 };
-
-export type ManualTarget = (typeof LISTING_MANUAL_TARGETS)[number];
-
-export const isManualTarget = (status: ListingStatus): status is ManualTarget =>
-  (LISTING_MANUAL_TARGETS as readonly ListingStatus[]).includes(status);
-
-/**
- * Botón de cada cambio manual (`LISTING_MANUAL_TARGETS`): un `Record` obliga a escribir el texto de
- * un destino nuevo. Volver a `ready` se nombra según desde dónde se vuelve.
- */
-const ACTION_TEXT: Readonly<Record<ManualTarget, string>> = {
-  ready: "Marcar como lista",
-  paused: "Pausar",
-  archived: "Archivar",
-};
-
-export function statusActionText(from: ListingStatus, to: ManualTarget): string {
-  if (to === "ready" && from === "paused") return "Reanudar";
-  if (to === "ready" && from === "archived") return "Desarchivar";
-  // Desde F6-T08 la tabla deja reabrir una cerrada (la ruta `PATCH` lo traduce a reabrir).
-  if (to === "ready" && from === "closed") return "Reabrir";
-  return ACTION_TEXT[to];
-}

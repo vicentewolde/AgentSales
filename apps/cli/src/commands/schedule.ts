@@ -1,8 +1,14 @@
 import { publicationResponseSchema, scheduleResponseSchema } from "@agentsales/api/contracts";
-import { PLATFORM_TEXT, type Platform, publicationModeText } from "@agentsales/core";
+import {
+  formatChileTime,
+  isAppError,
+  PLATFORM_TEXT,
+  type Platform,
+  parseChileTime,
+  publicationModeText,
+} from "@agentsales/core";
 import type { Command } from "commander";
 import { type ApiClient, createHealthFetcher, unwrap } from "../api-client.js";
-import { formatChileTime, parseChileTime } from "../chile-time.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
 import { publicationName } from "./publication-view.js";
@@ -42,6 +48,16 @@ function spacingOf(text: string | undefined): number | undefined {
   return minutes;
 }
 
+/** `--at` en hora de Chile (`parseChileTime`, core); su error se muestra como de la CLI. */
+function atOption(text: string): Date {
+  try {
+    return parseChileTime(text);
+  } catch (error) {
+    if (isAppError(error)) throw new CliError(error.code, `--at: ${error.message}`);
+    throw error;
+  }
+}
+
 /** En vivo, programar pide la misma confirmación que publicar (spec F6 §4.3). */
 async function confirmLive(deps: ScheduleDeps, yes: boolean): Promise<boolean | null> {
   const { publishMode } = await createHealthFetcher(deps.client)();
@@ -68,7 +84,7 @@ export function runSchedule(deps: ScheduleDeps, refs: readonly string[], options
     if (options.at === undefined) {
       throw new CliError("SCHEDULE_AT_REQUIRED", 'Falta --at "AAAA-MM-DD HH:MM" (hora de Chile)');
     }
-    const at = parseChileTime(options.at);
+    const at = atOption(options.at);
     if (options.publication !== undefined && refs.length > 0) {
       throw new CliError(
         "SCHEDULE_TARGET_INVALID",

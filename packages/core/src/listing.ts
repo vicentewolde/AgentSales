@@ -82,33 +82,6 @@ export const LISTING_MANUAL_TRANSITIONS: Readonly<Record<ListingStatus, readonly
     archived: ["ready", "active"],
   };
 
-/**
- * Los destinos que acepta la ruta vieja `PATCH /listings/:id/status` (spec F1 §4.4), que el panel
- * usa hasta F6-T10: cada uno se traduce a su acción (`listingActionFor`). Se quita con la ruta.
- */
-export const LISTING_MANUAL_TARGETS = [
-  "ready",
-  "paused",
-  "archived",
-] as const satisfies readonly ListingStatus[];
-
-/**
- * La acción que corresponde a un destino de la ruta vieja (spec F6 §4.8, hasta T10): `ready` desde
- * `draft` es dejarla lista, desde `paused` es reanudar y desde `closed` o `archived` es reabrir;
- * `paused` es pausar y `archived` es archivar. `null` si no hay una.
- */
-export function listingActionFor(
-  from: ListingStatus,
-  to: (typeof LISTING_MANUAL_TARGETS)[number],
-): ListingAction | null {
-  if (to === "paused") return "pause";
-  if (to === "archived") return "archive";
-  if (from === "draft") return "ready";
-  if (from === "paused") return "resume";
-  if (from === "closed" || from === "archived") return "reopen";
-  return null;
-}
-
 export const canChangeListingStatus = (from: ListingStatus, to: ListingStatus) =>
   LISTING_MANUAL_TRANSITIONS[from].includes(to);
 

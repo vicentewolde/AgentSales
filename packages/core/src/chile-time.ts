@@ -1,6 +1,7 @@
-import { CliError } from "./output.js";
+import { AppError } from "./errors.js";
 
-// La hora de Chile en la CLI (spec F6 §4.3): el operador escribe "2026-10-19 10:00" y la API
+// La hora de Chile (spec F6 §4.3), para la CLI y el panel: el operador escribe "2026-10-19 10:00"
+// (o el selector del panel da "2026-10-19T10:00") y la API
 // recibe la hora con zona. Con el cambio de horario, una hora puede no existir (cuando se adelanta
 // el reloj) o repetirse (cuando se atrasa): la primera se rechaza; la segunda toma la primera vez.
 
@@ -43,14 +44,15 @@ function offsetMinutes(date: Date): number {
 }
 
 /**
- * `"2026-10-19 10:00"` en hora de Chile → el instante. `SCHEDULE_AT_INVALID` (de la CLI) si no
- * tiene esa forma o si la hora no existe en Chile por el cambio de horario.
+ * `"2026-10-19 10:00"` (o `"2026-10-19T10:00"`, el del selector del panel) en hora de Chile → el
+ * instante. `SCHEDULE_AT_INVALID` (400) si no tiene esa forma o si la hora no existe en Chile por el
+ * cambio de horario.
  */
 export function parseChileTime(text: string): Date {
   const formatError = () =>
-    new CliError(
+    new AppError(
       "SCHEDULE_AT_INVALID",
-      `--at debe ser "AAAA-MM-DD HH:MM" en hora de Chile (por ejemplo "2026-10-19 10:00"): "${text}"`,
+      `La hora debe ser "AAAA-MM-DD HH:MM" en hora de Chile (por ejemplo "2026-10-19 10:00"): "${text}"`,
     );
   const match = INPUT.exec(text.trim());
   if (match === null) throw formatError();
@@ -74,9 +76,9 @@ export function parseChileTime(text: string): Date {
     .sort((a, b) => a.getTime() - b.getTime());
   const found = candidates[0];
   if (found === undefined || formatChileTime(found) !== formatParts(match)) {
-    throw new CliError(
+    throw new AppError(
       "SCHEDULE_AT_INVALID",
-      `Las ${text.trim()} no existen en Chile: ese día se adelanta el reloj (elige otra hora)`,
+      `Las ${text.trim().replace("T", " ")} no existen en Chile: ese día se adelanta el reloj (elige otra hora)`,
     );
   }
   return found;
@@ -84,3 +86,6 @@ export function parseChileTime(text: string): Date {
 
 const formatParts = (match: RegExpExecArray) =>
   `${match[1]}-${match[2]}-${match[3]} ${String(match[4]).padStart(2, "0")}:${match[5]}`;
+
+/** `2026-10-19T10:00` (hora de Chile), el valor de un `<input type="datetime-local">`. */
+export const chileInputValue = (date: Date): string => formatChileTime(date).replace(" ", "T");

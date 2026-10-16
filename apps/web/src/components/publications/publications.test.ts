@@ -125,16 +125,32 @@ describe("publicationActions", () => {
     close: false,
     sync: false,
     confirm: false,
+    schedule: false,
+    reschedule: false,
+    unschedule: false,
+    publishNow: false,
+    update: false,
+    relist: false,
   };
 
   it("reintentar la fallida, descartar la aprobada o fallida, retirar la publicada", () => {
     expect(publicationActions(publication({ status: "approved" }))).toEqual({
       ...none,
       cancel: true,
+      schedule: true,
     });
     expect(publicationActions(publication({ status: "failed" }))).toEqual({
       ...none,
       retry: true,
+      cancel: true,
+      schedule: true,
+    });
+    // F6-T12: una programada se reprograma, desprograma, publica ahora o descarta.
+    expect(publicationActions(publication({ status: "scheduled" }))).toEqual({
+      ...none,
+      reschedule: true,
+      unschedule: true,
+      publishNow: true,
       cancel: true,
     });
     expect(publicationActions(publication({ status: "published" }))).toEqual({
@@ -147,11 +163,24 @@ describe("publicationActions", () => {
   it("Portal (F4-T22): pausar la publicada, reactivar la pausada, cerrar las dos; Actualizar solo en vivo; nunca retirar", () => {
     const portal = (status: PublicationView["status"], dryRun = false) =>
       publicationActions(publication({ platform: "portal_inmobiliario", status, dryRun }));
-    expect(portal("published")).toEqual({ ...none, pause: true, close: true, sync: true });
-    expect(portal("paused")).toEqual({ ...none, resume: true, close: true, sync: true });
-    expect(portal("published", true)).toEqual({ ...none, pause: true, close: true });
-    expect(portal("unpublished")).toEqual(none);
-    expect(portal("failed")).toEqual({ ...none, retry: true, cancel: true });
+    // F6-T12: Actualizar aviso (publicada o pausada) y Republicar (cerrada o vencida).
+    expect(portal("published")).toEqual({
+      ...none,
+      pause: true,
+      close: true,
+      sync: true,
+      update: true,
+    });
+    expect(portal("paused")).toEqual({
+      ...none,
+      resume: true,
+      close: true,
+      sync: true,
+      update: true,
+    });
+    expect(portal("published", true)).toEqual({ ...none, pause: true, close: true, update: true });
+    expect(portal("unpublished")).toEqual({ ...none, relist: true });
+    expect(portal("failed")).toEqual({ ...none, retry: true, cancel: true, schedule: true });
   });
 
   it("Marketplace (F5-T13): esperando el clic, solo lo publiqué o no (nunca descartar); publicada, retirar", () => {
@@ -159,7 +188,7 @@ describe("publicationActions", () => {
       publicationActions(publication({ platform: "fb_marketplace", status }));
     expect(marketplace("awaiting_manual_confirm")).toEqual({ ...none, confirm: true });
     expect(marketplace("published")).toEqual({ ...none, retire: true });
-    expect(marketplace("failed")).toEqual({ ...none, retry: true, cancel: true });
+    expect(marketplace("failed")).toEqual({ ...none, retry: true, cancel: true, schedule: true });
   });
 });
 

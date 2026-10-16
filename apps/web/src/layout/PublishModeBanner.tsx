@@ -26,6 +26,17 @@ export function PublishModeBanner() {
     text = isError ? `${label} (último dato; la API no responde)` : label;
   }
 
+  // `auto_publish` en vivo (spec F6 §4.10): publica sin revisión. En vivo, no saberlo también se dice.
+  const brokers = data?.autoPublishBrokers;
+  const autoPublish =
+    mode !== "live"
+      ? null
+      : brokers === null
+        ? "No se pudo saber si algún corredor tiene publicación automática (la base no respondió)"
+        : brokers !== undefined && brokers.length > 0
+          ? `Publicación automática EN VIVO: publica sin tu revisión (${brokers.join(", ")})`
+          : null;
+
   return (
     <div
       role="status"
@@ -33,6 +44,7 @@ export function PublishModeBanner() {
       className={`px-4 py-2 text-center text-sm text-white ${TONE[mode ?? "unknown"]}`}
     >
       {text}
+      {autoPublish !== null && <span className="block font-bold underline">{autoPublish}</span>}
     </div>
   );
 }

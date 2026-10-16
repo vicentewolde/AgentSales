@@ -128,9 +128,20 @@ export function retryBlockedReason(
 export function publicationActions(publication: PublicationView) {
   const { pause, resume, close, sync } = availablePublicationOperations(publication);
   const { status } = publication;
+  const portal = publication.platform === "portal_inmobiliario";
   return {
     retry: status === "failed",
-    cancel: status === "approved" || status === "failed",
+    // Calendario (spec F6 §4.3, F6-T12): programar una aprobada o fallida; una programada se
+    // reprograma, se desprograma o se publica ahora (adelantarla).
+    schedule: status === "approved" || status === "failed",
+    reschedule: status === "scheduled",
+    unschedule: status === "scheduled",
+    publishNow: status === "scheduled",
+    // Portal (spec F6 §4.7): mandar los cambios a un aviso publicado o pausado, y republicar uno
+    // cerrado o vencido.
+    update: portal && (status === "published" || status === "paused"),
+    relist: portal && status === "unpublished",
+    cancel: status === "approved" || status === "failed" || status === "scheduled",
     // Marketplace (spec F5 §4.3): "Lo publiqué" con el enlace y "No lo publiqué".
     confirm: status === "awaiting_manual_confirm",
     retire: !OPERATION_PLATFORMS.has(publication.platform) && status === "published",
