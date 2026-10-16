@@ -3,14 +3,16 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-16
-**Fase actual:** F6 · Calendario + seguimiento (`docs/specs/fase-6-calendario-seguimiento.md`, aprobado el 2026-10-15; ADR-0018 a ADR-0020). F5 cerrada (tag `v0.5.0`)
-**Última tarea:** lote G de F6 (F6-T12 y T13): el panel (programar, Portal, Seguimiento, los botones de la propiedad y el interruptor de `auto_publish`)
-**Siguiente paso:** `/fase-cerrar 6` (F6-T15): la demo en simulación (§7, pasos 2 a 7) y, solo con tu instrucción, el paso en vivo
+**Fase actual:** F7 · Listo para terceros (spec por redactar: `/fase-plan 7`). F6 cerrada (`docs/specs/fase-6-calendario-seguimiento.md`, tag `v0.6.0` por crear, con tu permiso)
+**Última tarea:** cierre de F6 (T15, `/fase-cerrar 6`): demo en simulación (pasos 2 a 6), auditoría del `arquitecto`, `CHANGELOG [0.6.0]` y spec cerrado
+**Siguiente paso:** `/fase-plan 7` — redactar el spec de F7 (ver `docs/06-roadmap.md` y la deuda "Para F7" más abajo)
 
-## Pendiente tuyo para F6
-- [ ] Instalar el cliente de Postgres para el respaldo: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6"), y después el primer respaldo real: `pnpm db:backup` y `pnpm -s cli doctor` (con `pnpm dev`) para ver que la versión alcanza
+## Pendiente tuyo de F6
+- [ ] **Respaldo real (criterio 10 y paso 7 de la demo):** `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6"), después `pnpm db:backup`, mirar el archivo en `~/.agentsales/backups` con `pg_restore --list` y `pnpm -s cli doctor` (con `pnpm dev`) para ver que la versión alcanza
+- [ ] **WhatsApp del corredor de pruebas:** en la demo, Portal rechazó P002 por falta del WhatsApp (`PORTAL_NOT_READY`): completarlo en la hoja Corredor y volver a cargar la planilla. Con eso se puede mostrar Portal en simulación (actualizar, republicar, pausar con la propiedad)
+- [ ] **Prueba en vivo de F6** (§7, paso 8), solo con tu instrucción en el chat
 
-## Pendiente tuyo de fases anteriores (no bloquea F6)
+## Pendiente tuyo de fases anteriores (no bloquea F7)
 - **De F5:**
   - [ ] Token de la API BDE del Banco Central (`BCCH_API_TOKEN` en `.env`; `docs/07-checklist-cuentas.md`, "Antes de F5") y después `pnpm uf:smoke`. Sin él, un aviso en UF no va a Marketplace (`doctor` lo avisa)
   - [ ] Revisar en Facebook (Perfil → Estado del perfil → Marketplace) que tu cuenta no tiene restricciones
@@ -25,27 +27,12 @@
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F6 (`/fase-plan 6`) | ✅ terminada | #119 |
-| **Lote A** · T01 Máquina, datos y repositorios del calendario | ✅ terminada | #120 |
-| **Lote A** · T02 Programar, reprogramar y desprogramar | ✅ terminada | #120 |
-| **Lote A** · T03 El disparo (`publication.due`) | ✅ terminada | #120 |
-| **Lote B** · T04 Reintentos, espera ante límites y causa legible | ✅ terminada | #121 |
-| **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ✅ terminada | #121 |
-| **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ✅ terminada | #122 |
-| **Lote C** · T07 Portal: actualizar, republicar y vencimiento | ✅ terminada | #122 |
-| **Lote D** · T08 La propiedad manda | ✅ terminada | #123 |
-| **Lote D** · T09 `auto_publish` | ✅ terminada | #123 |
-| **Lote E** · T14 Respaldo local (`pg_dump`) | ✅ terminada | #124 |
-| **Lote F** · T10 API | ✅ terminada | #125 |
-| **Lote F** · T11 CLI | ✅ terminada | #125 |
-| **Lote G** · T12 Panel: programar y Portal | ✅ terminada | #126 |
-| **Lote G** · T13 Panel: Seguimiento, acciones de la propiedad y `auto_publish` | ✅ terminada | #126 |
-| T15 Cierre de fase | ⏳ pendiente | |
+| Spec F7 (`/fase-plan 7`) | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
-- **Mercado Libre:** cuenta, app y `.env` listos; `VICENTEWOLDE` conectada a `agentsales-pruebas` (2026-10-08) y renovada con `--force` en la demo del cierre (2026-10-09). El WhatsApp del corredor ya está en la base (P001 y P002 tienen lo que pide Portal). Sin paquete pagado (tu decisión, 2026-10-08): la prueba real usa el usuario de prueba (D15, arriba).
+- **Mercado Libre:** cuenta, app y `.env` listos; `VICENTEWOLDE` conectada a `agentsales-pruebas` (2026-10-08) y renovada con `--force` en la demo del cierre (2026-10-09). El WhatsApp del corredor no estaba en la base en la demo de F6 (2026-10-16: `PORTAL_NOT_READY` en P002); hay que volver a cargarlo (arriba). Sin paquete pagado (tu decisión, 2026-10-08): la prueba real usa el usuario de prueba (D15, arriba).
 
 ## Decisiones de F6
 Resueltas en el spec (§4.15, D1–D14) y ADR-0018 a ADR-0020:
@@ -88,6 +75,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 
 ## Deuda técnica
 - **Para F7:** `/health` muestra la versión de Postgres; al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
+- **Para F7 (auditoría del cierre de F6):** `/tracking` y `/agenda` cargan todas las propiedades y filtran por corredor en memoria: con la autenticación, el alcance por corredor va en el servidor. Límite conocido de T08: si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5).
 - **Para F7 (de la revisión del lote F):** la agenda pide los textos vigentes con una consulta por propiedad (corredores con `auto_publish`): con más volumen, una sola consulta para todas (`listCurrentMany`); `publicationView` usa su propio reloj (no el `now` de la ruta).
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
 - **F7, campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
@@ -118,6 +106,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-16: **Cierre de F6 (T15, `/fase-cerrar 6`).**
+  - **Antes de la demo:** apliqué en Neon la migración `0008` (`pnpm db:migrate`; el worker fallaba sin ella) y, con tu permiso, descarté los intentos en vivo de Marketplace de F5 (P002, P004 y P005), que bloqueaban el recordatorio en simulación.
+  - **Demo en simulación** (la hice yo, por la CLI y la página Seguimiento): dos lotes (P002, P004 y P005 a las 17:57; P001 y P003 con 2 min entre una y otra) que salieron de a una; el reel de P005 desprogramado y reprogramado, con la bitácora; `pnpm dev` apagado de 17:59 a 18:08 y al encender salieron las atrasadas; Marketplace "te toca" sin abrir Facebook; P002 pausada, reanudada, arrendada (Instagram simulado retirado) y reabierta; con la publicación automática, P003 se aprobó y publicó sola en Instagram (Portal quedó aprobada por el WhatsApp que falta y Marketplace, como recordatorio).
+  - **Quedó pendiente:** Portal en simulación (cubierto por las pruebas), el respaldo real (falta `libpq`) y la prueba en vivo.
+  - **Deuda menor:** el log del worker dice "auto_publish: propiedad aprobada y publicada" aunque un canal solo haya quedado aprobado.
+  - **Auditoría del `arquitecto`** (docs alineados; la bitácora muestra el detalle de F6), `CHANGELOG [0.6.0]` y spec cerrado.
 - 2026-10-16: **Lote G de F6 (F6-T12 y T13): el panel.**
   - **Programar:** en cada publicación (Programar, Reprogramar, Desprogramar, Publicar ahora), en el canal ("Programar Instagram" junto a Publicar) y varias propiedades a la vez desde Propiedades (casillas, canales, hora y minutos entre una y otra, con el resultado de cada una). La hora es de Chile; en vivo te pide confirmar. "Atrasada" y "Te toca" (Marketplace) se ven en la tarjeta.
   - **Portal:** "Actualizar aviso", "Republicar" y "vence en N días". Bajo cada error, qué hacer.

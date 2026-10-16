@@ -1,6 +1,7 @@
 import {
   hasStartedLive,
   type MarketplaceReadiness,
+  manualEditPayloadSchema,
   marketplaceManualState,
   type PortalReadiness,
   type Publication,
@@ -10,6 +11,7 @@ import {
   publicationErrorAdvice,
   publishAttemptPayloadSchema,
   type SkippedPublication,
+  scheduleChangedPayloadSchema,
   scheduleState,
 } from "@agentsales/core";
 import type { Context } from "hono";
@@ -109,18 +111,34 @@ const STATUS_PAYLOAD_KEYS = [
   "remoteStatus",
   // Confirmar una de Marketplace (F5-T05): si la vio la ventana o la pegó el operador.
   "confirmedBy",
+  // Calendario y la propiedad (F6): la hora programada, la que tenía al desprogramar, si el disparo
+  // no pudo empezarla, si lo hizo la propiedad y con qué acción.
+  "scheduledAt",
+  "unscheduled",
+  "due",
+  "byListing",
+  "action",
 ] as const;
 
 /**
  * El detalle de un evento, filtrado al leer: no basta con que quien lo escribe no ponga secretos.
  * Un `publish_attempt` pasa por `publishAttemptPayloadSchema` (zod descarta lo que no conoce, como
- * una URL); un cambio de estado, solo sus claves conocidas; `sync` y `manual_edit` (F6), nada hasta
- * que tengan su esquema.
+ * una URL); un cambio de estado, solo sus claves conocidas; `schedule_changed` y `manual_edit`
+ * (F6) por sus esquemas (de `manual_edit`, sin lo leído de la plataforma); `sync`, nada (su estado
+ * queda en la publicación).
  */
 function eventPayload(event: PublicationEvent): Record<string, unknown> {
   if (event.type === "publish_attempt") {
     const parsed = publishAttemptPayloadSchema.safeParse(event.payload);
     return parsed.success ? parsed.data : {};
+  }
+  if (event.type === "schedule_changed") {
+    const parsed = scheduleChangedPayloadSchema.safeParse(event.payload);
+    return parsed.success ? parsed.data : {};
+  }
+  if (event.type === "manual_edit") {
+    const parsed = manualEditPayloadSchema.safeParse(event.payload);
+    return parsed.success ? { mode: parsed.data.mode, fields: parsed.data.fields } : {};
   }
   if (event.type !== "status_changed") return {};
   return Object.fromEntries(

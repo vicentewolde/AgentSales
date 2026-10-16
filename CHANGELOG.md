@@ -4,6 +4,29 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [0.6.0] - 2026-10-16 · F6 Calendario + seguimiento
+Ahora dejas programadas las publicaciones de una o varias propiedades y salen solas a la hora mientras el worker está encendido; lo que falla por un límite pasajero de Instagram espera solo, y lo demás te dice en palabras simples qué hacer. Cuando una propiedad se vende o se arrienda, un solo botón cierra su aviso de Portal, descarta lo pendiente y te deja la lista de lo que tienes que borrar a mano. La página **Seguimiento** (y `agentsales agenda`) muestra lo que te toca hacer hoy, y la base se puede respaldar en tu equipo. La demo en simulación (16 de octubre) programó cinco propiedades en dos lotes (uno con 2 minutos entre propiedades), las vio salir solas de a una, desprogramó y reprogramó un reel, apagó todo mientras pasaba la hora y al encenderlo salieron las atrasadas; mostró "te toca" de Marketplace sin abrir Facebook, pausó, reanudó, marcó como arrendada y reabrió P002, y con la publicación automática P003 se aprobó y publicó sola en Instagram. Portal en simulación no se pudo mostrar (al corredor de pruebas le falta el WhatsApp) y quedó cubierto por las pruebas; el respaldo real espera que instales `libpq`.
+
+### Añadido
+- **Programar:** en cada publicación (Programar, Reprogramar, Desprogramar, Publicar ahora), en el canal ("Programar Instagram") y varias propiedades a la vez desde **Propiedades** (casillas, canales, hora y minutos entre una y otra, con el resultado de cada una), o `agentsales schedule <propiedades…> --at "2026-10-19 10:00" [--platform] [--spacing]` y `unschedule <id>`. La hora es de Chile (una hora que no existe por el cambio de horario se rechaza); en vivo pide confirmar.
+- **El disparo:** cada minuto el worker empieza las programadas que vencieron, de a una, con el modo con que se programaron. Si estaba apagado, al encender salen las de 12 h o menos de atraso; las más viejas quedan "atrasadas" esperando tu decisión. Marketplace programado es un recordatorio: a la hora aparece "te toca" y nunca abre Facebook solo.
+- **Espera ante los límites de Instagram:** la publicación queda programada para cuando se libere (hasta 3 veces); los demás fallos quedan "falló" con el motivo y **qué hacer**, en el panel, la CLI y la agenda.
+- **Vigilancia de cada hora:** lee el estado de los avisos de Portal en vivo y vuelve a encolar lo que quedó publicando sin avanzar más de 70 min (salvo Marketplace).
+- **La propiedad manda:** Pausar, Reanudar, Vendida, Arrendada, Retirada, Reabrir y Archivar en el detalle (o `agentsales listing pause|resume|reopen|archive` y `listing close --reason vendida|arrendada|retirada`). Cerrar cierra Portal, descarta lo pendiente y deja Instagram y Marketplace en vivo como **tareas a mano**; pausar y reanudar pausan y reactivan Portal.
+- **Portal:** "Actualizar aviso" manda al aviso publicado el precio o los atributos nuevos de la planilla, o el texto nuevo aprobado (`publications update <id>`); "Republicar" vuelve a publicar uno vencido o cerrado conservando sus visitas (`publications relist <id>`); el panel y la agenda avisan 7 días antes del vencimiento.
+- **Seguimiento:** página nueva en el menú con la agenda (atrasadas, te toca, atascadas, fallas con qué hacer, tareas a mano, lo que espera tu revisión, Portal por vencer, próximas y el respaldo) y cada propiedad por plataforma; se actualiza sola cada minuto mientras la miras. En la terminal, `agentsales agenda` (cada cosa con su comando) y `agentsales tracking`.
+- **Publicación automática por corredor:** la casilla en **Cuentas** (o `agentsales brokers auto-publish <slug> on|off`): al preparar los textos se aprueba lo que no tiene errores y se publica solo en Instagram y Portal, y Marketplace queda como recordatorio. Con la API en vivo, el banner, `status` y `doctor` lo dicen en rojo.
+- **Respaldo local:** `pnpm db:backup` y el worker (cada día a las 13:00 y al encender si el último tiene más de 20 h) guardan una copia de la base en `~/.agentsales/backups` (fuera del proyecto), comprobada con `pg_restore --list`; se guardan las últimas 14. `doctor` revisa `pg_dump`, y la guía explica cómo restaurar. Necesita el cliente de Postgres (`brew install libpq`).
+- **La bitácora** de cada publicación muestra la hora programada y su motivo, la anterior y la nueva al reprogramar, lo que hizo la propiedad y lo que se mandó a Portal.
+
+### Cambiado
+- `PATCH /listings/:id/status` (los botones de F1) pasó a `POST /listings/:id/status` con la acción; el detalle de la propiedad tiene los botones nuevos.
+- `publish` dice "en cola o esperando su turno": el worker publica de a una.
+- El menú cambia "Publicaciones (F3)" por **Seguimiento**.
+
+### Corregido
+- Una publicación que quedaba en "publicando" sin job (el worker se cortó) ya no espera a que lo reinicies: la recoge la vigilancia de cada hora (deuda de F3).
+
 ## [0.5.0] - 2026-10-14 · F5 Facebook Marketplace
 Ahora una propiedad en arriendo se publica en Facebook Marketplace **en dos tiempos**: el sistema abre tu perfil de Facebook en una ventana de Chromium, llena el formulario de "Nueva vivienda" con los datos del aviso y sus fotos, y te deja la ventana abierta; **tú haces Siguiente y Publicar**. El sistema reconoce el aviso recién publicado o recibe el enlace que pegas, y si no lo publicaste lo marcas así. Se probó en vivo, con tu instrucción, en tu cuenta: P002 (casa, La Reina), P004 (departamento, Providencia) y P005 (casa, Ñuñoa) se llenaron en Facebook de verdad, los revisaste y no se publicaron (D10); un cuarto intento el mismo día se negó por el límite. Antes, en simulación, se recorrió todo el flujo desde el panel y la CLI sin abrir Facebook.
 

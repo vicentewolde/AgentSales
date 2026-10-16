@@ -11,6 +11,7 @@ import {
   PUBLICATION_ACTOR_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  publicationEventDetail,
   publicationFormatText,
   publicationModeText,
   publishAttemptPayloadSchema,
@@ -193,10 +194,15 @@ export function renderPublicationEvents(
             : confirmedBy === "operator"
               ? " · confirmado por ti"
               : "";
-        return `${when}  ${from} → ${to}${read}${confirmed}`;
+        // F6: la hora programada, el motivo, si lo hizo la propiedad (`publicationEventDetail`).
+        const detail = publicationEventDetail(event);
+        return `${when}  ${from} → ${to}${read}${confirmed}${detail === null ? "" : ` · ${detail}`}`;
       }
       // La API no expone el detalle de una lectura (su estado queda en la publicación).
       if (event.type === "sync") return `${when}  lectura de Mercado Libre`;
+      if (event.type === "schedule_changed" || event.type === "manual_edit") {
+        return `${when}  ${publicationEventDetail(event) ?? event.type}`;
+      }
       if (event.type !== "publish_attempt") return `${when}  ${event.type}`;
       const attempt = publishAttemptPayloadSchema.safeParse(event.payload);
       if (!attempt.success) return `${when}  intento (detalle ilegible)`;

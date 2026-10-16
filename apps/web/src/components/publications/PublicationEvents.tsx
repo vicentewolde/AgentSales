@@ -3,6 +3,7 @@ import {
   PUBLICATION_ACTOR_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  publicationEventDetail,
   publishAttemptPayloadSchema,
   remoteStatusText,
 } from "@agentsales/core";
@@ -29,10 +30,19 @@ function EventLine({ event }: { event: PublicationEventView }) {
       sync === true && typeof remoteStatus === "string"
         ? ` · leído de Mercado Libre: ${remoteStatusText({ status: remoteStatus, subStatus: [] })}`
         : "";
+    const detail = publicationEventDetail(event);
     return (
       <li>
         {timeText(event.createdAt)} · {who}: {from} → {to}
         {read}
+        {detail === null ? "" : ` · ${detail}`}
+      </li>
+    );
+  }
+  if (event.type === "schedule_changed" || event.type === "manual_edit") {
+    return (
+      <li>
+        {timeText(event.createdAt)} · {who}: {publicationEventDetail(event)}
       </li>
     );
   }

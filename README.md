@@ -10,6 +10,7 @@ Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal
 - Chromium de Playwright, para dibujar la portada y la ficha (se instala en la puesta en marcha)
 - La CLI de Claude (Claude Code) con sesión iniciada en tu plan (`claude` y `/login`): redacta los textos. Para probar sin gastar cuota, `LLM_PROVIDER=fake` en `.env`
 - Proyecto de Neon (Postgres) y bucket privado de Cloudflare R2, ambos gratis: `docs/09-alta-neon-r2.md`
+- El cliente de Postgres (`brew install libpq`), para el respaldo local de la base (`pg_dump`; `doctor` revisa que su versión alcance a la de Neon)
 
 ## Puesta en marcha
 ```bash
@@ -77,6 +78,20 @@ pnpm fb:smoke --listing <id_propiedad>                      # llena el formulari
 pnpm uf:smoke                                               # el valor de la UF de hoy con tu token
 ```
 En el panel: **Cuentas** (iniciar sesión en Facebook, desconectar) y la pestaña **Marketplace** de cada propiedad (lo que falta, aprobar, publicar, "Formulario listo", pegar el enlace, "No lo publiqué", Marcar como retirada y el plan B para copiar los textos).
+
+Programar, seguir y respaldar (F6), con `pnpm dev` corriendo. Lo programado sale solo a la hora mientras el worker está encendido (si estaba apagado, al encender salen las de 12 h o menos de atraso); Marketplace programado es solo un recordatorio ("te toca"):
+```bash
+pnpm -s cli schedule <id_propiedad…> --at "2026-10-19 10:00" [--platform instagram] [--spacing 15]   # hora de Chile
+pnpm -s cli unschedule <id>                                  # o schedule --publication <id> --at … para reprogramar
+pnpm -s cli agenda                                           # lo que toca hacer hoy, con el comando de cada cosa
+pnpm -s cli tracking                                         # cada propiedad en cada plataforma
+pnpm -s cli listing pause|resume|reopen|archive <id_propiedad>
+pnpm -s cli listing close <id_propiedad> --reason vendida|arrendada|retirada   # cierra Portal y te deja las tareas a mano
+pnpm -s cli publications update|relist <id>                  # Portal: manda los cambios o republica uno vencido
+pnpm -s cli brokers auto-publish <slug> on|off               # aprobar y publicar solo al preparar
+pnpm db:backup                                               # respaldo en ~/.agentsales/backups (no necesita pnpm dev)
+```
+En el panel: la página **Seguimiento** (http://localhost:5173/seguimiento) con la agenda y la tabla por plataforma; programar en cada publicación, en el canal y varias propiedades a la vez desde **Propiedades**; los botones de la propiedad en su detalle (Pausar, Vendida, Arrendada…), y la publicación automática en **Cuentas**. El worker también respalda la base cada día a las 13:00; cómo restaurar, en `docs/08-guia-operador.md`.
 - **`PUBLISH_MODE=dry-run` por defecto:** no se publica nada de verdad. En `live` se ve en rojo en el panel y la CLI.
 - **La cola la inicializa el worker:** la primera vez aparece con error hasta que el worker arranca (lo hace `pnpm dev`); refresca el panel.
 - **Detén `pnpm dev` al terminar** (Ctrl+C): el worker y el panel mantienen Neon despierto y consumen las horas del plan gratis.
