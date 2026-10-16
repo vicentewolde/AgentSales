@@ -1,3 +1,4 @@
+import { formatChileTime } from "./chile-time.js";
 import type { ContentReelOutcome, ContentRun } from "./content.js";
 import type {
   CloseReason,
@@ -13,7 +14,13 @@ import type {
   PublicationStatus,
 } from "./enums.js";
 import type { ImportBrokerOutcome, ImportRowOutcome } from "./import-run.js";
-import type { PublicationActor, PublishAttemptResult, RemoteState } from "./publication.js";
+import type {
+  PublicationActor,
+  PublicationEventType,
+  PublishAttemptResult,
+  RemoteState,
+  ScheduleReason,
+} from "./publication.js";
 import type { AgendaKind } from "./tracking/agenda.js";
 
 // Textos para el operador, compartidos por la CLI y el panel (y las plantillas de F2): un solo
@@ -294,3 +301,55 @@ export const AGENDA_KIND_TEXT: Readonly<Record<AgendaKind, string>> = {
   upcoming: "Próximas (7 días)",
   backup: "Respaldo de la base",
 };
+
+/** Por qué quedó programada (el `reason` del `status_changed` a `scheduled`, spec F6 §4.2). */
+export const SCHEDULE_REASON_TEXT: Readonly<Record<ScheduleReason, string>> = {
+  operator: "programada por ti",
+  batch: "programada en lote",
+  auto_publish: "recordatorio de la publicación automática",
+  rate_limit: "espera a que se libere el límite de la plataforma",
+};
+
+const chileTimeOf = (iso: unknown): string | null =>
+  typeof iso === "string" && !Number.isNaN(Date.parse(iso)) ? formatChileTime(new Date(iso)) : null;
+
+/**
+ * Lo que un evento de F6 suma a la bitácora (spec F6 §4.12), igual en la CLI y el panel: en un
+ * `status_changed`, la hora programada y su motivo, la hora que tenía al desprogramar, si lo hizo la
+ * propiedad y si el disparo no pudo empezarla; un `schedule_changed` (la hora anterior y la nueva)
+ * y un `manual_edit` (qué se mandó a Portal). `null` si no hay nada que agregar.
+ */
+export function publicationEventDetail(event: {
+  type: PublicationEventType;
+  payload: Record<string, unknown>;
+}): string | null {
+  const { payload } = event;
+  if (event.type === "schedule_changed") {
+    const from = chileTimeOf(payload.from);
+    const to = chileTimeOf(payload.to);
+    return from === null || to === null ? "reprogramada" : `reprogramada: ${from} → ${to}`;
+  }
+  if (event.type === "manual_edit") {
+    const fields = Array.isArray(payload.fields) ? payload.fields.join(", ") : "";
+    return `actualizada en Portal${fields === "" ? "" : `: ${fields}`}`;
+  }
+  if (event.type !== "status_changed") return null;
+  const parts: string[] = [];
+  const at = chileTimeOf(payload.scheduledAt);
+  if (at !== null) {
+    const reason =
+      typeof payload.reason === "string" && payload.reason in SCHEDULE_REASON_TEXT
+        ? ` (${SCHEDULE_REASON_TEXT[payload.reason as ScheduleReason]})`
+        : "";
+    parts.push(`para el ${at}${reason}`);
+  }
+  const unscheduled = chileTimeOf(payload.unscheduled);
+  if (unscheduled !== null) parts.push(`desprogramada (era el ${unscheduled})`);
+  if (payload.due === true) {
+    parts.push(
+      `a la hora no se pudo empezar${typeof payload.code === "string" ? ` (${payload.code})` : ""}`,
+    );
+  }
+  if (payload.byListing === true) parts.push("lo hizo la propiedad");
+  return parts.length === 0 ? null : parts.join(" · ");
+}

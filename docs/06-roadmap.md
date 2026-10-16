@@ -10,7 +10,7 @@ Cada fase entrega algo **usable y demostrable**. Una fase empieza con su spec en
 | F3 | Aprobación + Instagram | Aprobar y publicar en Instagram al instante | v0.3.0 |
 | F4 | Portal Inmobiliario | Publicar, pausar y cerrar en Portal Inmobiliario | v0.4.0 |
 | F5 | Marketplace | Flujo semiautomático en Facebook Marketplace | v0.5.0 |
-| F6 | Calendario + seguimiento | Programación, reintentos, sincronización, "vendida" despublica todo | v0.6.0 |
+| F6 | Calendario + seguimiento | Programación, reintentos, sincronización, "vendida" cierra Portal y deja tareas a mano en Instagram y Marketplace | v0.6.0 |
 | F7 | Listo para terceros | Onboarding de corredores, API key de Anthropic, auth, despliegue | v1.0.0 |
 
 ## F0 · Fundaciones
@@ -84,7 +84,7 @@ Spec detallado: `docs/specs/fase-4-portal-inmobiliario.md`.
 - Reintentos con backoff exponencial; `failed` con causa legible.
 - Job de sincronización periódica (F4 deja `publication.sync` a pedido, después de publicar y al arrancar el worker).
 - Portal Inmobiliario: editar un aviso publicado, republicar (`relist`) uno vencido o cerrado y avisar antes del vencimiento (spec F4, §3).
-- Cerrar un listing (vendido/arrendado) despublica o pausa en todas las plataformas.
+- Cerrar un listing (vendido/arrendado) cierra Portal, descarta lo pendiente y deja Instagram y Marketplace en vivo como tareas a mano (D3 y D4).
 - Vista de seguimiento: matriz de propiedad × plataforma con estado y enlace.
 - `auto_publish` por corredor.
 - Respaldo local periódico de la base (`pg_dump`): el plan gratis de Neon solo conserva 6 horas de historial.
@@ -112,6 +112,7 @@ Spec detallado: `docs/specs/fase-4-portal-inmobiliario.md`.
   - derivar el inicio del OAuth si la API queda tras un prefijo;
   - el tope de tiempo de `tokens.refresh` con muchas cuentas.
 - Términos de uso y privacidad básicos.
+- **Deuda heredada de F6** (detalle en `docs/ESTADO.md` → Deuda técnica): la agenda con una sola consulta de textos (`listCurrentMany`) y `publicationView` con el `now` de la ruta; `/tracking` y `/agenda` filtran por corredor en el servidor (con la autenticación); ocultar o proteger en `/health` la versión de Postgres y `autoPublishBrokers` al desplegar; un `auto_publish` cortado por el apagado no se reintenta; una pausa que un sync aplicó antes que la propiedad queda sin `byListing`; la prueba en vivo de Portal (D15 de F4) confirma el `relist` y la regla de `pictures` en pausar y cerrar.
 
 ## Post-MVP (backlog)
 - Respuestas a DMs, comentarios y preguntas de ML (siguiente gran fase).

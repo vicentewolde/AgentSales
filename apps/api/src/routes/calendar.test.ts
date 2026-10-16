@@ -14,6 +14,7 @@ import {
   agendaResponseSchema,
   brokerResponseSchema,
   errorBodySchema,
+  publicationEventsResponseSchema,
   publicationResponseSchema,
   scheduleResponseSchema,
   trackingResponseSchema,
@@ -104,6 +105,26 @@ describe("POST /publications/:id/schedule y /unschedule", () => {
     expect([far.status, await codeOf(far)]).toEqual([400, "SCHEDULE_TOO_FAR"]);
     const local = await post(`/publications/${id}/schedule`, { at: "2026-10-19T10:00:00" });
     expect([local.status, await codeOf(local)]).toEqual([400, "REQUEST_INVALID"]);
+  });
+
+  it("la bitácora muestra la hora al programar y la anterior y la nueva al reprogramar", async () => {
+    const { t, app, post } = await setup();
+    const id = t.byFormat("post")?.id ?? "";
+    await post(`/publications/${id}/schedule`, { at: inMinutes(60) });
+    await post(`/publications/${id}/schedule`, { at: inMinutes(120) });
+
+    const { events } = publicationEventsResponseSchema.parse(
+      await (await app.request(`/publications/${id}/events`)).json(),
+    );
+    expect(events.find((e) => e.toStatus === "scheduled")?.payload).toMatchObject({
+      reason: "operator",
+      scheduledAt: expect.any(String),
+    });
+    expect(events.find((e) => e.type === "schedule_changed")?.payload).toEqual({
+      from: expect.any(String),
+      to: expect.any(String),
+      mode: "dry-run",
+    });
   });
 
   it("desprogramar una que no está programada es 409; el CSRF frena un POST sin JSON", async () => {

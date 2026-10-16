@@ -91,10 +91,12 @@ export {
   PUBLICATION_QUEUED_WARNING_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  publicationEventDetail,
   publicationFormatText,
   publicationModeText,
   RUN_QUEUED_WARNING_TEXT,
   remoteStatusText,
+  SCHEDULE_REASON_TEXT,
   tokenStdinCommand,
 } from "./labels.js";
 export {

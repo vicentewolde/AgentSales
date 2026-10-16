@@ -59,7 +59,7 @@ async function listingsOf(deps: TrackingRoutesDeps, slug: string | undefined): P
 /**
  * Carga lo que `pendingReviewsOf` (core) necesita: las cuentas y los textos vigentes solo de las
  * propiedades sobre las que actúa `auto_publish` (`autoPublishApplies`). Una consulta de textos
- * por propiedad: con el volumen de hoy alcanza (deuda para T13: una consulta para todas).
+ * por propiedad: con el volumen de hoy alcanza (deuda para F7: una consulta para todas, `listCurrentMany`).
  */
 async function pendingReviews(
   deps: TrackingRoutesDeps,

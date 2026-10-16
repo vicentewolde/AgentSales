@@ -30,3 +30,8 @@
 - **Republicar sobre la misma publicación** (cambiar su `external_id`): mezcla dos ítems de Mercado Libre en una historia y rompe `unpublished` como estado terminal.
 - **Republicar siempre con `POST /items`:** más simple, pero pierde las visitas y preguntas del aviso anterior, que es lo que el `relist` conserva (60 días).
 - **Leer el ítem antes de cada actualización para tomar sus fotos:** una llamada más dentro del tope; las fotos ya están en el progreso.
+
+## Seguimiento
+- 2026-10-15 (F6-T06 y T07): `relistOf` lleva también la publicación anterior (`{ externalId, publicationId }`): sin el id nuevo guardado, el publisher busca el ítem republicado por el `seller_custom_field` de la anterior y su `parent_item_id`. El progreso de Portal suma `relistRequestedAt`, `relistRejected` y `relistRestocked`, para no repetir el `relist` a ciegas y terminar de reponer el ítem nuevo tras un corte.
+- 2026-10-16 (cierre de F6): la regla de cuándo se puede republicar (`canRelist` y `relistedIds`, core: cerrada, sin una republicación viva y la propiedad lista o activa) la comparten la agenda y el panel. Lo NO VERIFICADO (si el `relist` exige `seller_contact`, qué copia del padre, si gasta cupo) se confirma en la prueba en vivo de Portal con el usuario de prueba (D15 de F4).
+

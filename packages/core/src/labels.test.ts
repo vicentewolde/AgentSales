@@ -24,6 +24,7 @@ import {
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  publicationEventDetail,
   publicationFormatText,
   remoteStatusText,
   tokenStdinCommand,
@@ -127,5 +128,45 @@ describe("remoteStatusText (estado en Mercado Libre, F4-T16)", () => {
 
   it("un estado desconocido se muestra tal cual, sin adivinar", () => {
     expect(text("payment_required")).toBe("otro estado (payment_required)");
+  });
+});
+
+describe("publicationEventDetail (F6)", () => {
+  it("la hora programada con su motivo, la que tenía al desprogramar y si lo hizo la propiedad", () => {
+    expect(
+      publicationEventDetail({
+        type: "status_changed",
+        payload: { mode: "dry-run", scheduledAt: "2026-10-19T13:00:00.000Z", reason: "batch" },
+      }),
+    ).toBe("para el 2026-10-19 10:00 (programada en lote)");
+    expect(
+      publicationEventDetail({
+        type: "status_changed",
+        payload: { unscheduled: "2026-10-19T13:00:00.000Z", byListing: true },
+      }),
+    ).toBe("desprogramada (era el 2026-10-19 10:00) · lo hizo la propiedad");
+    expect(
+      publicationEventDetail({ type: "status_changed", payload: { due: true, code: "X" } }),
+    ).toBe("a la hora no se pudo empezar (X)");
+    expect(
+      publicationEventDetail({ type: "status_changed", payload: { mode: "live" } }),
+    ).toBeNull();
+  });
+
+  it("reprogramar y actualizar en Portal", () => {
+    expect(
+      publicationEventDetail({
+        type: "schedule_changed",
+        payload: {
+          from: "2026-10-19T13:00:00.000Z",
+          to: "2026-10-20T14:30:00.000Z",
+          mode: "dry-run",
+        },
+      }),
+    ).toBe("reprogramada: 2026-10-19 10:00 → 2026-10-20 11:30");
+    expect(
+      publicationEventDetail({ type: "manual_edit", payload: { mode: "live", fields: ["price"] } }),
+    ).toBe("actualizada en Portal: price");
+    expect(publicationEventDetail({ type: "sync", payload: {} })).toBeNull();
   });
 });
