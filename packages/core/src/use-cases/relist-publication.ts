@@ -1,4 +1,4 @@
-import type { PublishMode } from "../enums.js";
+import type { ListingStatus, PublishMode } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
@@ -23,6 +23,38 @@ export type RelistPublicationDeps = PortalCheckDeps & {
   marketplace?: MarketplaceStartOptions;
   now?: () => Date;
 };
+
+/**
+ * Las publicaciones que ya tienen una republicación viva (no descartada): no se republican de
+ * nuevo (spec F6 §4.12, el único parcial de `relisted_from`).
+ */
+export function relistedIds(
+  publications: readonly Pick<Publication, "relistedFrom" | "status">[],
+): Set<string> {
+  return new Set(
+    publications.flatMap((p) =>
+      p.relistedFrom !== null && p.status !== "cancelled" ? [p.relistedFrom] : [],
+    ),
+  );
+}
+
+/**
+ * Si una publicación se puede republicar (spec F6 §4.7): Portal `unpublished`, sin una
+ * republicación viva, con la propiedad lista o activa. Es la regla que usan la agenda y el panel;
+ * `relistPublication` revisa además el modo y el texto aprobado.
+ */
+export function canRelist(
+  publication: Pick<Publication, "id" | "platform" | "status">,
+  listingStatus: ListingStatus,
+  relisted: ReadonlySet<string>,
+): boolean {
+  return (
+    publication.platform === "portal_inmobiliario" &&
+    publication.status === "unpublished" &&
+    !relisted.has(publication.id) &&
+    (listingStatus === "ready" || listingStatus === "active")
+  );
+}
 
 const notAllowed = (publicationId: string, message: string) =>
   new AppError("RELIST_NOT_ALLOWED", message, { details: { publicationId } });

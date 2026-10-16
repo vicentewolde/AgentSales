@@ -1,17 +1,19 @@
 import type { ContentView, ListingPublicationView, ReadinessView } from "@agentsales/api/contracts";
 import {
   ACTIVE_PUBLICATION_STATUSES,
+  formatChileTime,
   type ListingStatus,
   PLATFORM_TEXT,
   type Platform,
   type PublishMode,
   publicationFormatText,
+  relistedIds,
 } from "@agentsales/core";
 import { useRef, useState } from "react";
 import { Link } from "react-router";
 import { ApiError } from "../../api/client.js";
 import { useFreshPublishMode } from "../../queries/health.js";
-import { usePublishListing } from "../../queries/publications.js";
+import { usePublishListing, useScheduleListings } from "../../queries/publications.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { PublicationItem } from "./PublicationItem.js";
 import {
@@ -22,9 +24,12 @@ import {
   retireVerb,
   retryBlockedReason,
 } from "./publications.js";
+import { ScheduleForm } from "./ScheduleForm.js";
 
 const PRIMARY =
   "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
+const SECONDARY =
+  "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
 const DANGER =
   "rounded-md bg-red-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50";
 
@@ -69,12 +74,15 @@ export function PublicationsPanel({
   readiness?: ReadinessView | null;
 }) {
   const publish = usePublishListing(listingId);
+  const schedule = useScheduleListings();
+  const [scheduling, setScheduling] = useState(false);
   const freshMode = useFreshPublishMode();
   const [confirming, setConfirming] = useState(false);
   const [requestedAt, setRequestedAt] = useState<Date | null>(null);
   const [backToReady, setBackToReady] = useState(false);
   const publishButton = useRef<HTMLButtonElement>(null);
   const current = publications.filter((publication) => shown.has(publication.status));
+  const relisted = relistedIds(publications);
   const past = publications.filter((publication) => !shown.has(publication.status));
   const ofContent = publications.filter((publication) => publication.contentId === content?.id);
   // Hay algo que publicar si el texto está aprobado y no todas sus publicaciones salieron o están
@@ -141,16 +149,62 @@ export function PublicationsPanel({
               </div>
             </div>
           ) : (
-            <button
-              ref={publishButton}
-              type="button"
-              className={PRIMARY}
-              disabled={publish.isPending || blocked !== null}
-              onClick={() => void request()}
-            >
-              {publishButtonText(platform, publishMode)}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                ref={publishButton}
+                type="button"
+                className={PRIMARY}
+                disabled={publish.isPending || blocked !== null}
+                onClick={() => void request()}
+              >
+                {publishButtonText(platform, publishMode)}
+              </button>
+              {!scheduling && (
+                <button
+                  type="button"
+                  className={SECONDARY}
+                  disabled={schedule.isPending || blocked !== null}
+                  onClick={() => {
+                    schedule.reset();
+                    setScheduling(true);
+                  }}
+                >
+                  Programar {channel}
+                </button>
+              )}
+            </div>
           )}
+          {scheduling && (
+            <ScheduleForm
+              publishMode={publishMode}
+              pending={schedule.isPending}
+              submitLabel={`Programar ${channel}`}
+              onSubmit={(at) =>
+                schedule.mutate(
+                  { listingIds: [listingId], platforms: [platform], at },
+                  { onSuccess: () => setScheduling(false) },
+                )
+              }
+              onCancel={() => setScheduling(false)}
+            />
+          )}
+          {schedule.data?.results.map((row) => (
+            <p
+              key={`${row.listingId}-${row.platform ?? "todo"}`}
+              role="status"
+              className={`mt-2 text-sm ${row.outcome === "scheduled" ? "text-slate-700" : "text-amber-800"}`}
+            >
+              {row.outcome === "scheduled"
+                ? `Programado para el ${row.at === undefined ? "" : formatChileTime(row.at)} (hora de Chile).`
+                : `No se programó: ${row.message ?? row.code ?? ""}`}
+            </p>
+          ))}
+          {schedule.data?.notes.map((note) => (
+            <p key={note} className="mt-1 text-sm text-amber-800">
+              {note}
+            </p>
+          ))}
+          {schedule.error && <ErrorAlert error={schedule.error} />}
           {blocked !== null && <p className="mt-1 text-xs text-amber-800">{blocked}</p>}
         </div>
       )}
@@ -197,6 +251,9 @@ export function PublicationsPanel({
             publishMode={publishMode}
             requestedAt={requestedAt}
             onListingBackToReady={() => setBackToReady(true)}
+            listingStatus={listingStatus}
+            relisted={relisted}
+            scheduleBlocked={publishBlockedReason(listingStatus, runActive)}
           />
         ))}
       </div>
@@ -213,6 +270,8 @@ export function PublicationsPanel({
                 listingId={listingId}
                 publishMode={publishMode}
                 requestedAt={null}
+                listingStatus={listingStatus}
+                relisted={relisted}
               />
             ))}
           </div>

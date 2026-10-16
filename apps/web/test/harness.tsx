@@ -266,6 +266,11 @@ export async function publicationSetup(
       publishMode: options.publishMode ?? "dry-run",
       operationsFor: (platform) => (platform === "portal_inmobiliario" ? operations : undefined),
       marketplace: { dailyLimit: 3, ufConfigured: options.ufConfigured ?? true },
+      // Como `server.ts`: `/health` informa los corredores con `auto_publish` (F6-T13).
+      healthDetails: {
+        autoPublishBrokers: async () =>
+          (await t.brokers.list()).filter((broker) => broker.autoPublish).map((b) => b.slug),
+      },
     },
     ...(options.intercept === undefined ? {} : { intercept: options.intercept }),
   });

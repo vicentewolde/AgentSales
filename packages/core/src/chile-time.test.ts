@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { formatChileTime, parseChileTime } from "./chile-time.js";
-import { CliError } from "./output.js";
+import { chileInputValue, formatChileTime, parseChileTime } from "./chile-time.js";
+import { isAppError } from "./errors.js";
 
-// F6-T11: la hora de Chile ida y vuelta, también con el cambio de horario.
+// F6-T11 y T12: la hora de Chile ida y vuelta, también con el cambio de horario (CLI y panel).
 
 describe("parseChileTime y formatChileTime", () => {
   it("en verano (UTC−3) y en invierno (UTC−4), ida y vuelta", () => {
@@ -17,7 +17,7 @@ describe("parseChileTime y formatChileTime", () => {
 
   it("una hora que no existe por el adelanto del reloj se rechaza; una repetida toma la primera vez", () => {
     // Septiembre de 2026: a las 00:00 del primer domingo el reloj salta a la 01:00.
-    expect(() => parseChileTime("2026-09-06 00:30")).toThrow(CliError);
+    expect(() => parseChileTime("2026-09-06 00:30")).toThrow(/no existen en Chile/);
     // Abril de 2026: a las 00:00 del primer domingo vuelve a las 23:00 del sábado (se repite).
     const twice = parseChileTime("2026-04-04 23:30");
     expect(twice.toISOString()).toBe("2026-04-05T02:30:00.000Z");
@@ -39,9 +39,15 @@ describe("parseChileTime y formatChileTime", () => {
       } catch (error) {
         caught = error;
       }
-      expect(caught).toBeInstanceOf(CliError);
-      expect((caught as CliError).code).toBe("SCHEDULE_AT_INVALID");
-      expect((caught as CliError).message).toContain("AAAA-MM-DD HH:MM");
+      expect(isAppError(caught) && caught.code).toBe("SCHEDULE_AT_INVALID");
+      expect((caught as Error).message).toContain("AAAA-MM-DD HH:MM");
     }
+  });
+});
+
+describe("chileInputValue", () => {
+  it("el valor del selector del panel, que parseChileTime vuelve a leer", () => {
+    const at = parseChileTime("2026-10-19T10:00");
+    expect(chileInputValue(at)).toBe("2026-10-19T10:00");
   });
 });

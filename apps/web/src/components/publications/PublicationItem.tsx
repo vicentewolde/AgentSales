@@ -1,5 +1,8 @@
 import type { ListingPublicationView } from "@agentsales/api/contracts";
 import {
+  CHILE_TIME_ZONE,
+  formatChileTime,
+  type ListingStatus,
   marketplacePriceText,
   PLATFORM_TEXT,
   PUBLICATION_STATUS_TEXT,
@@ -31,12 +34,81 @@ import {
   retryBlockedReason,
   safeExternalUrl,
 } from "./publications.js";
+import { ScheduleForm } from "./ScheduleForm.js";
 
 const BUTTON =
   "rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
 const DANGER = "rounded-md bg-red-700 px-2 py-1 text-xs font-medium text-white disabled:opacity-50";
 
-type Confirming = "cancel" | "retire" | "live-retry" | "close" | null;
+type Confirming =
+  | "cancel"
+  | "retire"
+  | "live-retry"
+  | "close"
+  | "schedule"
+  | "update"
+  | "relist"
+  | null;
+
+/** Lo que la API pide confirmar al actualizar o republicar en vivo (con su motivo). */
+const CONFIRM_CODES: Readonly<Record<string, "update" | "relist">> = {
+  UPDATE_NOT_CONFIRMED: "update",
+  RELIST_NOT_CONFIRMED: "relist",
+};
+
+/**
+ * Lo programado (spec F6 §4.3 y §4.4): la hora en Chile, y si está atrasada (más de 12 h: no sale
+ * sola) o si es un recordatorio de Marketplace al que le llegó la hora ("te toca").
+ */
+function ScheduleState({ publication }: { publication: ListingPublicationView }) {
+  if (publication.status !== "scheduled" || publication.scheduledAt === null) return null;
+  const at = formatChileTime(publication.scheduledAt);
+  if (publication.schedule === "overdue") {
+    return (
+      <p className="mt-1 text-sm text-amber-800">
+        <span className="mr-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold">
+          Atrasada
+        </span>
+        Era para el {at} y no salió (el worker estuvo apagado más de 12 h): publícala ahora,
+        reprográmala o descártala.
+      </p>
+    );
+  }
+  if (publication.platform === "fb_marketplace" && publication.schedule === "due") {
+    return (
+      <p className="mt-1 text-sm font-semibold text-sky-800">
+        Te toca: era para el {at}. Aprieta Publicar ahora y sigue en la ventana de Facebook.
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1 text-sm text-slate-700">
+      Programada para el {at} (hora de Chile)
+      {publication.platform === "fb_marketplace" ? ": a esa hora te toca publicarla a ti" : ""}.
+    </p>
+  );
+}
+
+/** Portal: "vence en N días" (7 o menos) o "venció" (spec F6 §4.7). */
+function Expiry({ publication }: { publication: ListingPublicationView }) {
+  const expiry = publication.expiry;
+  if (expiry === null) return null;
+  if (expiry.expired) {
+    return (
+      <p className="mt-1 text-sm font-semibold text-amber-800">
+        {publication.status === "unpublished"
+          ? "El aviso venció: republícalo."
+          : "El aviso venció en Mercado Libre: usa Actualizar para leer su estado."}
+      </p>
+    );
+  }
+  if (!expiry.soon) return null;
+  return (
+    <p className="mt-1 text-sm text-amber-800">
+      Vence en {expiry.daysLeft} {expiry.daysLeft === 1 ? "día" : "días"}.
+    </p>
+  );
+}
 
 /**
  * Si un pedido sobre un aviso de Portal se cortó (la API no contestó a tiempo o se cayó a mitad),
@@ -74,7 +146,7 @@ const dateText = (iso: string) =>
     day: "numeric",
     month: "long",
     year: "numeric",
-    timeZone: "America/Santiago",
+    timeZone: CHILE_TIME_ZONE,
   });
 
 /**
@@ -141,11 +213,20 @@ export function PublicationItem({
   publishMode,
   requestedAt: panelRequestedAt,
   onListingBackToReady,
+  listingStatus,
+  relisted = new Set(),
+  scheduleBlocked = null,
 }: {
   publication: ListingPublicationView;
   listingId: string;
   publishMode: PublishMode | undefined;
   requestedAt: Date | null;
+  /** Para republicar (`canRelist`): el estado de la propiedad (sin él, no se ofrece). */
+  listingStatus?: ListingStatus;
+  /** Las publicaciones que ya tienen una republicación viva. */
+  relisted?: ReadonlySet<string>;
+  /** Por qué no se puede programar ahora (la propiedad no está lista, una corrida en curso). */
+  scheduleBlocked?: string | null;
   /** Retirar o cerrar la última en vivo devolvió el aviso a `ready`. */
   onListingBackToReady?: () => void;
 }) {
@@ -163,13 +244,21 @@ export function PublicationItem({
   const [syncRequestedAt, setSyncRequestedAt] = useState<number | null>(null);
   const [removedByHand, setRemovedByHand] = useState(false);
   const [showEvents, setShowEvents] = useState(false);
-  const opener = useRef<HTMLButtonElement | null>(null);
+  const [confirmMessage, setConfirmMessage] = useState<string | null>(null);
+  // El botón que abrió una confirmación se desmonta mientras se confirma: se recuerda su nombre
+  // para devolverle el foco al volver a aparecer.
+  const openerLabel = useRef<string | null>(null);
+  const card = useRef<HTMLElement | null>(null);
+  const [retryReason, setRetryReason] = useState<"retry" | "publish-now">("retry");
   // Lo sondeado (de esta misma versión del listado) es lo más nuevo mientras se publica.
   const publication = poll.data === undefined ? listed : { ...listed, ...poll.data };
   const format = publicationFormatText(publication.platform, publication.format);
   const channel = PLATFORM_TEXT[publication.platform];
   const portal = publication.platform === "portal_inmobiliario";
-  const actions = publicationActions(publication);
+  const actions = publicationActions(
+    publication,
+    listingStatus === undefined ? undefined : { listingStatus, relisted },
+  );
   const retryBlocked = retryBlockedReason(publication, publishMode);
   const modeUnknown = publishMode === undefined;
   const live = !publication.dryRun;
@@ -184,7 +273,7 @@ export function PublicationItem({
   }, [syncRequestedAt]);
 
   const open = (next: Exclude<Confirming, null>, button: HTMLButtonElement) => {
-    opener.current = button;
+    openerLabel.current = button.getAttribute("aria-label");
     action.reset();
     setNotice(null);
     setConfirming(next);
@@ -193,7 +282,7 @@ export function PublicationItem({
     setConfirming(null);
     setRemovedByHand(false);
     // El botón que abrió la confirmación vuelve a aparecer: el foco vuelve a él.
-    requestAnimationFrame(() => opener.current?.focus());
+    requestAnimationFrame(() => focusButton(card.current, openerLabel.current));
   };
   const run = (next: Parameters<typeof action.mutate>[0]) => {
     setNotice(null);
@@ -203,6 +292,16 @@ export function PublicationItem({
         // Lo muestra el panel: la publicación pasa a "Descartadas y retiradas" y esta tarjeta se
         // vuelve a montar ahí, así que un aviso propio se perdería.
         if (result.listingBackToReady) onListingBackToReady?.();
+        if (next.kind === "update") {
+          setNotice(
+            publication.dryRun
+              ? "Aviso actualizado en simulación: no se cambió nada en Mercado Libre."
+              : "Aviso actualizado en Mercado Libre: en unos segundos se lee su estado.",
+          );
+        }
+        if (next.kind === "relist") {
+          setNotice("Republicación pedida: aparece como una publicación nueva de este canal.");
+        }
         if (next.kind === "sync") {
           setNotice(
             result.queued
@@ -212,15 +311,32 @@ export function PublicationItem({
           setSyncRequestedAt(Date.now());
         }
       },
-      onSettled: () => {
-        setConfirming(null);
+      onError: (error) => {
+        // Actualizar o republicar en vivo: la API pide confirmar, con su motivo (spec F6 §4.7).
+        const ask =
+          error instanceof ApiError && error.code !== undefined
+            ? CONFIRM_CODES[error.code]
+            : undefined;
+        if (ask !== undefined && (next.kind === "update" || next.kind === "relist")) {
+          action.reset();
+          setConfirmMessage(error.message);
+          setConfirming(ask);
+        }
+      },
+      onSettled: (_result, error) => {
+        const asked =
+          error instanceof ApiError &&
+          error.code !== undefined &&
+          CONFIRM_CODES[error.code] !== undefined;
+        if (!asked) setConfirming(null);
         setRemovedByHand(false);
       },
     });
   };
   // Reintentar fija el modo con que va (el de la API ahora, D11): se confirma si va en vivo o si el
   // modo cambió desde que se abrió la página.
-  const retry = async (button: HTMLButtonElement) => {
+  const retry = async (button: HTMLButtonElement, reason: "retry" | "publish-now" = "retry") => {
+    setRetryReason(reason);
     if (needsLiveConfirm(publishMode)) return open("live-retry", button);
     const mode = await freshMode().catch(() => undefined);
     if (mode !== "dry-run") return open("live-retry", button);
@@ -229,6 +345,7 @@ export function PublicationItem({
 
   return (
     <article
+      ref={card}
       aria-label={`Publicación ${format}`}
       className="rounded-lg border border-slate-200 bg-white p-3"
     >
@@ -256,6 +373,8 @@ export function PublicationItem({
         </a>
       )}
       <RemoteState publication={publication} />
+      <ScheduleState publication={publication} />
+      <Expiry publication={publication} />
       {publication.status === "published" && publication.dryRun && (
         <p className="mt-1 text-xs text-slate-500">{SIMULATION_TEXT[publication.platform]}</p>
       )}
@@ -273,7 +392,12 @@ export function PublicationItem({
         />
       )}
       {publication.lastError !== null && publication.status === "failed" && (
-        <p className="mt-1 text-sm text-red-700">{publication.lastError.message}</p>
+        <>
+          <p className="mt-1 text-sm text-red-700">{publication.lastError.message}</p>
+          {publication.errorAdvice !== null && (
+            <p className="mt-1 text-sm text-slate-700">Qué hacer: {publication.errorAdvice}</p>
+          )}
+        </>
       )}
       <Thumbnails publication={listed} />
       {poll.error && poll.data === undefined && (
@@ -303,6 +427,70 @@ export function PublicationItem({
               onClick={(event) => void retry(event.currentTarget)}
             >
               Reintentar
+            </button>
+          )}
+          {actions.publishNow && (
+            <button
+              type="button"
+              className={BUTTON}
+              aria-label={`Publicar ahora el ${format}`}
+              disabled={action.isPending || modeUnknown}
+              onClick={(event) => void retry(event.currentTarget, "publish-now")}
+            >
+              Publicar ahora
+            </button>
+          )}
+          {(actions.schedule || actions.reschedule) && (
+            <button
+              type="button"
+              className={BUTTON}
+              aria-label={`${actions.reschedule ? "Reprogramar" : "Programar"} el ${format}`}
+              disabled={action.isPending || scheduleBlocked !== null}
+              title={scheduleBlocked ?? undefined}
+              onClick={(event) => open("schedule", event.currentTarget)}
+            >
+              {actions.reschedule ? "Reprogramar" : "Programar"}
+            </button>
+          )}
+          {actions.unschedule && (
+            <button
+              type="button"
+              className={BUTTON}
+              aria-label={`Desprogramar el ${format}`}
+              disabled={action.isPending}
+              onClick={() => run({ kind: "unschedule", id: publication.id })}
+            >
+              Desprogramar
+            </button>
+          )}
+          {actions.update && (
+            <button
+              type="button"
+              className={BUTTON}
+              aria-label={`Actualizar el aviso del ${format} en ${channel}`}
+              disabled={action.isPending}
+              onClick={(event) => {
+                openerLabel.current = event.currentTarget.getAttribute("aria-label");
+                run({ kind: "update", id: publication.id, confirmed: false });
+              }}
+            >
+              {action.isPending && action.variables?.kind === "update"
+                ? "Actualizando…"
+                : "Actualizar aviso"}
+            </button>
+          )}
+          {actions.relist && (
+            <button
+              type="button"
+              className={BUTTON}
+              aria-label={`Republicar el ${format}`}
+              disabled={action.isPending}
+              onClick={(event) => {
+                openerLabel.current = event.currentTarget.getAttribute("aria-label");
+                run({ kind: "relist", id: publication.id, confirmed: false });
+              }}
+            >
+              Republicar
             </button>
           )}
           {isPublishing(publication.status) && (
@@ -411,7 +599,9 @@ export function PublicationItem({
       {confirming === "live-retry" && (
         <div role="alert" className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-sm">
           <p className="font-semibold text-red-800">
-            {liveRetryText(publication, format, channel)}
+            {retryReason === "publish-now"
+              ? `Se publicará ahora, sin esperar la hora programada. ${liveRetryText(publication, format, channel)}`
+              : liveRetryText(publication, format, channel)}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button
@@ -420,7 +610,38 @@ export function PublicationItem({
               disabled={action.isPending}
               onClick={() => run({ kind: "publish", id: publication.id })}
             >
-              Sí, reintentar en vivo
+              {retryReason === "publish-now"
+                ? "Sí, publicar ahora en vivo"
+                : "Sí, reintentar en vivo"}
+            </button>
+            {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
+            <button type="button" autoFocus className="text-xs underline" onClick={close}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+      {confirming === "schedule" && (
+        <ScheduleForm
+          publishMode={publishMode}
+          initial={publication.scheduledAt}
+          pending={action.isPending}
+          submitLabel={actions.reschedule ? "Reprogramar" : "Programar"}
+          onSubmit={(at) => run({ kind: "schedule", id: publication.id, at })}
+          onCancel={close}
+        />
+      )}
+      {(confirming === "update" || confirming === "relist") && (
+        <div role="alert" className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-sm">
+          <p className="font-semibold text-red-800">{confirmMessage}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={DANGER}
+              disabled={action.isPending}
+              onClick={() => run({ kind: confirming, id: publication.id, confirmed: true })}
+            >
+              {confirming === "update" ? "Sí, actualizar en vivo" : "Sí, republicar en vivo"}
             </button>
             {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
             <button type="button" autoFocus className="text-xs underline" onClick={close}>
@@ -544,4 +765,15 @@ export function PublicationItem({
       {showEvents && <PublicationEvents publicationId={publication.id} />}
     </article>
   );
+}
+
+/** Devuelve el foco al botón con ese `aria-label` dentro de la tarjeta (ya vuelto a montar). */
+function focusButton(container: HTMLElement | null, label: string | null) {
+  if (container === null || label === null) return;
+  for (const button of container.querySelectorAll("button")) {
+    if (button.getAttribute("aria-label") === label) {
+      button.focus();
+      return;
+    }
+  }
 }

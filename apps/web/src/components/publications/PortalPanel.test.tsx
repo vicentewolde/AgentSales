@@ -187,7 +187,7 @@ describe("panel: Portal en Contenido", () => {
     expect(item.textContent).toContain("Simulación: no se creó ni cambió nada en Mercado Libre.");
     expect(within(item).getByRole("button", { name: "Pausar el aviso" })).toBeTruthy();
     expect(within(item).getByRole("button", { name: "Cerrar el aviso" })).toBeTruthy();
-    expect(within(item).queryByRole("button", { name: /Actualizar/ })).toBeNull();
+    expect(within(item).queryByRole("button", { name: /Actualizar el estado/ })).toBeNull();
     expect(within(item).queryByRole("button", { name: /retirad/ })).toBeNull();
   });
 

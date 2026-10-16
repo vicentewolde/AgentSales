@@ -6,10 +6,12 @@ import {
   OPERATION_TEXT,
   OPERATIONS,
 } from "@agentsales/core";
-import { useId } from "react";
+import { useId, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { BatchSchedule } from "../components/publications/BatchSchedule.js";
 import { StatusBadge } from "../components/StatusBadge.js";
+import { useHealth } from "../queries/health.js";
 import { useListings } from "../queries/listings.js";
 
 type ListingItem = ListingListResponse["listings"][number];
@@ -65,10 +67,27 @@ function FilterSelect({
   );
 }
 
-function ListingCard({ listing }: { listing: ListingItem }) {
+function ListingCard({
+  listing,
+  selected,
+  onSelect,
+}: {
+  listing: ListingItem;
+  selected: boolean;
+  onSelect: (selected: boolean) => void;
+}) {
   const title = [listing.propertyType ?? "Propiedad", listing.comuna].filter(Boolean).join(" · ");
   return (
-    <li>
+    <li className="relative">
+      {/* Fuera del enlace: un control dentro de un enlace no se puede usar con el teclado. */}
+      <label className="absolute top-2 left-2 z-10 rounded bg-white/90 px-1.5 py-1 shadow">
+        <input
+          type="checkbox"
+          checked={selected}
+          aria-label={`Seleccionar ${listing.externalRef} para programar`}
+          onChange={(event) => onSelect(event.target.checked)}
+        />
+      </label>
       <Link
         to={`/propiedades/${listing.id}`}
         className="block h-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
@@ -108,6 +127,15 @@ export function ListingsPage() {
   const [params, setParams] = useSearchParams();
   const filters = filtersFrom(params);
   const listings = useListings(filters);
+  const health = useHealth();
+  const [selected, setSelected] = useState<ReadonlyMap<string, string>>(new Map());
+  const select = (listing: ListingItem, on: boolean) =>
+    setSelected((current) => {
+      const next = new Map(current);
+      if (on) next.set(listing.id, listing.externalRef);
+      else next.delete(listing.id);
+      return next;
+    });
   // Las comunas del selector salen de todas las propiedades (es la misma consulta sin filtros); si
   // esa consulta falla, de las que se ven.
   const all = useListings({});
@@ -121,6 +149,8 @@ export function ListingsPage() {
   ].sort((a, b) => a.localeCompare(b, "es"));
 
   const setFilter = (name: string, value: string) => {
+    // Lo marcado que el filtro ocultaría no se programa sin verlo.
+    setSelected(new Map());
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -172,7 +202,10 @@ export function ListingsPage() {
         {filtered && (
           <button
             type="button"
-            onClick={() => setParams(new URLSearchParams(), { replace: true })}
+            onClick={() => {
+              setSelected(new Map());
+              setParams(new URLSearchParams(), { replace: true });
+            }}
             className="rounded-md px-2 py-1.5 text-sm text-slate-700 underline"
           >
             Quitar filtros
@@ -206,10 +239,23 @@ export function ListingsPage() {
         )}
       </div>
 
+      {selected.size > 0 && (
+        <BatchSchedule
+          selected={[...selected].map(([id, externalRef]) => ({ id, externalRef }))}
+          publishMode={health.data?.publishMode}
+          onClear={() => setSelected(new Map())}
+        />
+      )}
+
       {listings.data && listings.data.length > 0 && (
         <ul aria-label="Resultados" className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {listings.data.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} />
+            <ListingCard
+              key={listing.id}
+              listing={listing}
+              selected={selected.has(listing.id)}
+              onSelect={(on) => select(listing, on)}
+            />
           ))}
         </ul>
       )}

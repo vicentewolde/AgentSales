@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-16
 **Fase actual:** F6 · Calendario + seguimiento (`docs/specs/fase-6-calendario-seguimiento.md`, aprobado el 2026-10-15; ADR-0018 a ADR-0020). F5 cerrada (tag `v0.5.0`)
-**Última tarea:** lote F de F6 (F6-T10 y T11): la API y la CLI del calendario, la propiedad, Portal y el seguimiento
-**Siguiente paso:** `/tarea F6-T12 F6-T13` — lote G: el panel (programar, Portal, Seguimiento, los botones de la propiedad y el interruptor de `auto_publish`)
+**Última tarea:** lote G de F6 (F6-T12 y T13): el panel (programar, Portal, Seguimiento, los botones de la propiedad y el interruptor de `auto_publish`)
+**Siguiente paso:** `/fase-cerrar 6` (F6-T15): la demo en simulación (§7, pasos 2 a 7) y, solo con tu instrucción, el paso en vivo
 
 ## Pendiente tuyo para F6
 - [ ] Instalar el cliente de Postgres para el respaldo: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6"), y después el primer respaldo real: `pnpm db:backup` y `pnpm -s cli doctor` (con `pnpm dev`) para ver que la versión alcanza
@@ -38,8 +38,8 @@
 | **Lote E** · T14 Respaldo local (`pg_dump`) | ✅ terminada | #124 |
 | **Lote F** · T10 API | ✅ terminada | #125 |
 | **Lote F** · T11 CLI | ✅ terminada | #125 |
-| **Lote G** · T12 Panel: programar y Portal | ⏳ pendiente | |
-| **Lote G** · T13 Panel: Seguimiento, acciones de la propiedad y `auto_publish` | ⏳ pendiente | |
+| **Lote G** · T12 Panel: programar y Portal | ✅ terminada | #126 |
+| **Lote G** · T13 Panel: Seguimiento, acciones de la propiedad y `auto_publish` | ✅ terminada | #126 |
 | T15 Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
@@ -88,8 +88,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 
 ## Deuda técnica
 - **Para F7:** `/health` muestra la versión de Postgres; al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
-- **Para T12:** mover `parseChileTime` y `formatChileTime` de la CLI a core (segundo uso: el selector de hora del panel), con sus tests del cambio de horario; pasar el `now` de la ruta a `publicationView`; la confirmación en vivo de programar en el panel (la API no la pide).
-- **Para T13:** quitar `LISTING_MANUAL_TARGETS` y `listingActionFor` (hoy solo los usan los botones de F1 del panel); una consulta de textos vigentes para todas las propiedades de la agenda (hoy una por propiedad); `staleTime` en `/tracking` (firma una portada por fila); el aviso en rojo de `auto_publish` también si no se pudo saber.
+- **Para F7 (de la revisión del lote F):** la agenda pide los textos vigentes con una consulta por propiedad (corredores con `auto_publish`): con más volumen, una sola consulta para todas (`listCurrentMany`); `publicationView` usa su propio reloj (no el `now` de la ruta).
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
 - **F7, campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
 - **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
@@ -119,6 +118,13 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-16: **Lote G de F6 (F6-T12 y T13): el panel.**
+  - **Programar:** en cada publicación (Programar, Reprogramar, Desprogramar, Publicar ahora), en el canal ("Programar Instagram" junto a Publicar) y varias propiedades a la vez desde Propiedades (casillas, canales, hora y minutos entre una y otra, con el resultado de cada una). La hora es de Chile; en vivo te pide confirmar. "Atrasada" y "Te toca" (Marketplace) se ven en la tarjeta.
+  - **Portal:** "Actualizar aviso", "Republicar" y "vence en N días". Bajo cada error, qué hacer.
+  - **Seguimiento** (nuevo en el menú): la agenda y cada propiedad por plataforma; se actualiza sola cada minuto mientras la miras.
+  - **La propiedad:** Pausar, Reanudar, Vendida, Arrendada, Retirada, Reabrir y Archivar, con confirmación y el resultado (qué cambió y las tareas a mano).
+  - **Publicación automática:** la casilla en Cuentas (en vivo avisa en rojo) y el aviso en el banner.
+  - **La revisión dejó** (1 bloqueante, corregido): programar desde el panel vuelve a mirar si la API está en vivo justo antes de enviar, como Publicar; "Republicar" solo aparece cuando de verdad se puede (la misma regla de la agenda); la hora propuesta siempre es válida; el foco vuelve al botón al cancelar; más pruebas.
 - 2026-10-16: **Lote F de F6 (F6-T10 y T11): la API y la CLI.** Ya se puede usar todo desde la terminal (el panel llega en el lote G):
   - **Programar:** `schedule P001 P002 --at "2026-10-19 10:00"` en hora de Chile (también con el cambio de horario: una hora que no existe se rechaza), por canal (`--platform`) y con espacio entre propiedades (`--spacing`); en vivo pregunta. `unschedule <id>` desprograma.
   - **La agenda** (`agenda`) junta lo atrasado, lo que te toca en Marketplace, lo atascado, lo que falló (con qué hacer), las tareas a mano, lo que espera tu revisión y lo aprobado sin publicar (con publicación automática), Portal por vencer, lo próximo y el respaldo, cada uno con el comando para resolverlo. `tracking` muestra cada propiedad por plataforma.

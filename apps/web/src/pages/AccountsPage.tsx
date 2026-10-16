@@ -1,7 +1,8 @@
 import type { AccountListResponse, PlatformAccountView } from "@agentsales/api/contracts";
-import type { Broker } from "@agentsales/core";
+import type { Broker, PublishMode } from "@agentsales/core";
 import { type ReactNode, useId } from "react";
 import { AccountCard } from "../components/accounts/AccountCard.js";
+import { AutoPublishToggle } from "../components/accounts/AutoPublishToggle.js";
 import { expiryState, visibleAccounts } from "../components/accounts/accounts.js";
 import { ConnectBox } from "../components/accounts/ConnectBox.js";
 import { MarketplaceConnectBox } from "../components/accounts/MarketplaceConnectBox.js";
@@ -10,6 +11,7 @@ import { OAuthReturn } from "../components/accounts/OAuthReturn.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useAccounts } from "../queries/accounts.js";
 import { useBrokers } from "../queries/brokers.js";
+import { useHealth } from "../queries/health.js";
 
 /** Las cuentas de un canal del corredor y si hay que ofrecer conectar o reconectar. */
 function channelState(accounts: readonly PlatformAccountView[], now: Date) {
@@ -62,10 +64,12 @@ function BrokerAccounts({
   broker,
   data,
   now,
+  publishMode,
 }: {
   broker: Broker;
   data: AccountListResponse;
   now: Date;
+  publishMode: PublishMode | undefined;
 }) {
   const own = (platform: PlatformAccountView["platform"]) =>
     data.accounts.filter(
@@ -80,6 +84,7 @@ function BrokerAccounts({
       <h2 id={headingId} className="text-lg font-semibold">
         {broker.brandName} <span className="text-sm text-slate-500">({broker.slug})</span>
       </h2>
+      <AutoPublishToggle broker={broker} publishMode={publishMode} />
       <Channel
         title="Instagram"
         empty="Sin cuenta de Instagram."
@@ -137,6 +142,7 @@ function BrokerAccounts({
 export function AccountsPage() {
   const accounts = useAccounts();
   const brokers = useBrokers();
+  const health = useHealth();
   const error = accounts.error ?? brokers.error;
   const now = new Date();
   const retry = () => {
@@ -171,7 +177,13 @@ export function AccountsPage() {
       {accounts.data && brokers.data && (
         <div className="mt-6 flex flex-col gap-6">
           {brokers.data.map((broker) => (
-            <BrokerAccounts key={broker.id} broker={broker} data={accounts.data} now={now} />
+            <BrokerAccounts
+              key={broker.id}
+              broker={broker}
+              data={accounts.data}
+              now={now}
+              publishMode={health.data?.publishMode}
+            />
           ))}
         </div>
       )}

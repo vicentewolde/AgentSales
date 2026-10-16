@@ -9,6 +9,8 @@ import {
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
+import { publicationKeys } from "./publications.js";
+import { trackingKeys } from "./tracking.js";
 
 /**
  * Las portadas y la galería traen URLs firmadas que vencen en `SIGNED_URL_TTL_SECONDS` (1 h). Los
@@ -60,22 +62,21 @@ export function useListing(id: string) {
 }
 
 /**
- * `POST /listings/:id/status` (desde F6-T10; antes `PATCH`), sin confirmar: lo que pide
- * confirmación responde 409 hasta los botones de T13. Al responder, el detalle toma el aviso nuevo
- * (sin volver a pedir las URLs) y las listas se invalidan, porque el estado es un filtro.
+ * `POST /listings/:id/status` (spec F6 §4.8, desde F6-T13): la acción, el motivo al cerrar y la
+ * confirmación. Devuelve la propiedad, lo que cambió y las tareas a mano. Al responder, el detalle
+ * toma la propiedad nueva (sin volver a pedir las URLs), y se invalidan las listas (el estado es un
+ * filtro), las publicaciones del aviso y el seguimiento.
  */
 export function useChangeListingStatus(id: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (action: ListingStatusBody["action"]) =>
-      (
-        await unwrap(
-          client.listings[":id"].status.$post({ param: { id }, json: { action } }),
-          listingStatusResponseSchema,
-        )
-      ).listing,
-    onSuccess: async (listing) => {
+    mutationFn: async (body: ListingStatusBody) =>
+      unwrap(
+        client.listings[":id"].status.$post({ param: { id }, json: body }),
+        listingStatusResponseSchema,
+      ),
+    onSuccess: async ({ listing }) => {
       // Conserva la hora de la carga original: las URLs de la galería son de entonces, y no deben
       // parecer recién pedidas (vencen a la hora).
       const key = listingKeys.detail(id);
@@ -84,7 +85,11 @@ export function useChangeListingStatus(id: string) {
         (current) => (current ? { ...current, listing } : current),
         { updatedAt: queryClient.getQueryState(key)?.dataUpdatedAt },
       );
-      await queryClient.invalidateQueries({ queryKey: listingKeys.lists() });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: listingKeys.lists() }),
+        queryClient.invalidateQueries({ queryKey: publicationKeys.all }),
+        queryClient.invalidateQueries({ queryKey: trackingKeys.all }),
+      ]);
     },
   });
 }

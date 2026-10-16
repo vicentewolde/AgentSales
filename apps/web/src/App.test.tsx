@@ -108,7 +108,7 @@ describe("panel: Estado del sistema", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("Propiedades queda habilitada y Publicaciones no", () => {
+  it("Propiedades y Seguimiento quedan habilitadas", () => {
     renderWithHealth(() => healthy);
 
     const menu = screen.getByRole("navigation", { name: "Menú principal" });
@@ -116,7 +116,9 @@ describe("panel: Estado del sistema", () => {
     expect(within(menu).getByRole("link", { name: "Propiedades" }).getAttribute("href")).toBe(
       "/propiedades",
     );
-    expect(within(menu).getByText("Publicaciones").getAttribute("aria-disabled")).toBe("true");
+    expect(within(menu).getByRole("link", { name: "Seguimiento" }).getAttribute("href")).toBe(
+      "/seguimiento",
+    );
   });
 
   it("una ruta inexistente muestra un aviso dentro del layout", () => {

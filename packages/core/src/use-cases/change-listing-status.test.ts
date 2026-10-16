@@ -6,7 +6,6 @@ import {
   LISTING_ACTION_FROM,
   LISTING_ACTIONS,
   LISTING_MANUAL_TRANSITIONS,
-  listingActionFor,
 } from "../listing.js";
 import type { NewListing } from "../ports/listing-repository.js";
 import type { PlatformContext, PublishedRef, RemoteStatus } from "../ports/publisher.js";
@@ -164,16 +163,6 @@ describe("la tabla de acciones de la propiedad", () => {
     expect(canDoListingAction("archive", "active")).toBe(false);
     expect(canDoListingAction("close", "draft")).toBe(false);
     expect(LISTING_MANUAL_TRANSITIONS.active).toEqual(["paused", "closed"]);
-  });
-
-  it("la ruta vieja traduce cada estado a su acción", () => {
-    expect(listingActionFor("draft", "ready")).toBe("ready");
-    expect(listingActionFor("paused", "ready")).toBe("resume");
-    expect(listingActionFor("archived", "ready")).toBe("reopen");
-    expect(listingActionFor("closed", "ready")).toBe("reopen");
-    expect(listingActionFor("active", "paused")).toBe("pause");
-    expect(listingActionFor("ready", "archived")).toBe("archive");
-    expect(listingActionFor("ready", "ready")).toBeNull();
   });
 });
 
