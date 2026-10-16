@@ -124,6 +124,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
   - **Seguimiento** (nuevo en el menú): la agenda y cada propiedad por plataforma; se actualiza sola cada minuto mientras la miras.
   - **La propiedad:** Pausar, Reanudar, Vendida, Arrendada, Retirada, Reabrir y Archivar, con confirmación y el resultado (qué cambió y las tareas a mano).
   - **Publicación automática:** la casilla en Cuentas (en vivo avisa en rojo) y el aviso en el banner.
+  - **La revisión dejó** (1 bloqueante, corregido): programar desde el panel vuelve a mirar si la API está en vivo justo antes de enviar, como Publicar; "Republicar" solo aparece cuando de verdad se puede (la misma regla de la agenda); la hora propuesta siempre es válida; el foco vuelve al botón al cancelar; más pruebas.
 - 2026-10-16: **Lote F de F6 (F6-T10 y T11): la API y la CLI.** Ya se puede usar todo desde la terminal (el panel llega en el lote G):
   - **Programar:** `schedule P001 P002 --at "2026-10-19 10:00"` en hora de Chile (también con el cambio de horario: una hora que no existe se rechaza), por canal (`--platform`) y con espacio entre propiedades (`--spacing`); en vivo pregunta. `unschedule <id>` desprograma.
   - **La agenda** (`agenda`) junta lo atrasado, lo que te toca en Marketplace, lo atascado, lo que falló (con qué hacer), las tareas a mano, lo que espera tu revisión y lo aprobado sin publicar (con publicación automática), Portal por vencer, lo próximo y el respaldo, cada uno con el comando para resolverlo. `tracking` muestra cada propiedad por plataforma.

@@ -14,6 +14,7 @@ import {
 import { useState } from "react";
 import { Link } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { safeExternalUrl } from "../components/publications/publications.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { PUBLICATION_STATUS_TONE } from "../labels.js";
 import { useAgenda, useTracking } from "../queries/tracking.js";
@@ -146,9 +147,9 @@ function CellPublication({ platform, publication }: { platform: Platform; public
       {notes.length > 0 && (
         <span className="block text-xs text-slate-600">{notes.join(" · ")}</span>
       )}
-      {publication.externalUrl !== null && (
+      {safeExternalUrl(publication.externalUrl) !== null && (
         <a
-          href={publication.externalUrl}
+          href={safeExternalUrl(publication.externalUrl) ?? undefined}
           target="_blank"
           rel="noreferrer"
           className="block text-xs text-sky-700 underline"

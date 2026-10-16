@@ -149,6 +149,8 @@ export function ListingsPage() {
   ].sort((a, b) => a.localeCompare(b, "es"));
 
   const setFilter = (name: string, value: string) => {
+    // Lo marcado que el filtro ocultaría no se programa sin verlo.
+    setSelected(new Map());
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -200,7 +202,10 @@ export function ListingsPage() {
         {filtered && (
           <button
             type="button"
-            onClick={() => setParams(new URLSearchParams(), { replace: true })}
+            onClick={() => {
+              setSelected(new Map());
+              setParams(new URLSearchParams(), { replace: true });
+            }}
             className="rounded-md px-2 py-1.5 text-sm text-slate-700 underline"
           >
             Quitar filtros

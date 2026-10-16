@@ -9,6 +9,7 @@ import type { Publication } from "../publication.js";
 import { publicationErrorAdvice } from "../publish/error-advice.js";
 import { scheduleState } from "../schedule.js";
 import { autoPublishApplies, autoPublishContents } from "../use-cases/auto-publish-listing.js";
+import { canRelist, relistedIds } from "../use-cases/relist-publication.js";
 import { STALE_PUBLISHING_MS } from "../use-cases/watch-publications.js";
 import { isManualTask } from "./manual-tasks.js";
 
@@ -44,7 +45,7 @@ export const AGENDA_KINDS = [
 ] as const;
 export type AgendaKind = (typeof AGENDA_KINDS)[number];
 
-/** Qué conviene hacer: la CLI lo traduce a un comando y el panel a un botón. */
+/** Qué conviene hacer: la CLI lo traduce a un comando y el panel a un texto con qué hacer. */
 export const AGENDA_ACTIONS = [
   "publish",
   "reschedule",
@@ -133,11 +134,7 @@ const rank = (kind: AgendaKind) => AGENDA_KINDS.indexOf(kind);
 export function agendaItems(input: AgendaInput): AgendaItem[] {
   const { now } = input;
   const listings = new Map(input.listings.map((listing) => [listing.id, listing]));
-  const relisted = new Set(
-    input.publications
-      .filter((p) => p.relistedFrom !== null && p.status !== "cancelled")
-      .map((p) => p.relistedFrom),
-  );
+  const relisted = relistedIds(input.publications);
   const items: AgendaItem[] = [];
   for (const publication of input.publications) {
     const listing = listings.get(publication.listingId);
@@ -218,7 +215,7 @@ function kindForPublication(
   publication: Publication,
   listing: Pick<Listing, "brokerId" | "status">,
   input: AgendaInput,
-  relisted: ReadonlySet<string | null>,
+  relisted: ReadonlySet<string>,
 ): {
   kind: AgendaKind;
   action: AgendaAction;
@@ -271,10 +268,8 @@ function kindForPublication(
       const expiry = portalExpiry(publication.remoteState, now);
       if (expiry === null) return null;
       if (publication.status === "unpublished") {
-        // Republicar exige la propiedad lista o activa (`relistPublication`).
-        return expiry.expired &&
-          !relisted.has(publication.id) &&
-          (listing.status === "ready" || listing.status === "active")
+        // La misma regla del panel (`canRelist`): sin republicación viva y la propiedad lista o activa.
+        return expiry.expired && canRelist(publication, listing.status, relisted)
           ? {
               kind: "expiring",
               action: "relist",

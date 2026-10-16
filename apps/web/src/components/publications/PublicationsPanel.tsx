@@ -7,6 +7,7 @@ import {
   type Platform,
   type PublishMode,
   publicationFormatText,
+  relistedIds,
 } from "@agentsales/core";
 import { useRef, useState } from "react";
 import { Link } from "react-router";
@@ -81,6 +82,7 @@ export function PublicationsPanel({
   const [backToReady, setBackToReady] = useState(false);
   const publishButton = useRef<HTMLButtonElement>(null);
   const current = publications.filter((publication) => shown.has(publication.status));
+  const relisted = relistedIds(publications);
   const past = publications.filter((publication) => !shown.has(publication.status));
   const ofContent = publications.filter((publication) => publication.contentId === content?.id);
   // Hay algo que publicar si el texto está aprobado y no todas sus publicaciones salieron o están
@@ -249,6 +251,9 @@ export function PublicationsPanel({
             publishMode={publishMode}
             requestedAt={requestedAt}
             onListingBackToReady={() => setBackToReady(true)}
+            listingStatus={listingStatus}
+            relisted={relisted}
+            scheduleBlocked={publishBlockedReason(listingStatus, runActive)}
           />
         ))}
       </div>
@@ -265,6 +270,8 @@ export function PublicationsPanel({
                 listingId={listingId}
                 publishMode={publishMode}
                 requestedAt={null}
+                listingStatus={listingStatus}
+                relisted={relisted}
               />
             ))}
           </div>

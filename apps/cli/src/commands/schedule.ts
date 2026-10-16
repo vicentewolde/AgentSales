@@ -2,6 +2,7 @@ import { publicationResponseSchema, scheduleResponseSchema } from "@agentsales/a
 import {
   formatChileTime,
   isAppError,
+  MAX_SCHEDULE_SPACING_MINUTES,
   PLATFORM_TEXT,
   type Platform,
   parseChileTime,
@@ -39,10 +40,10 @@ const collect = (value: string, previous: string[] = []) => [
 function spacingOf(text: string | undefined): number | undefined {
   if (text === undefined) return undefined;
   const minutes = Number(text);
-  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 240) {
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_SCHEDULE_SPACING_MINUTES) {
     throw new CliError(
       "SPACING_INVALID",
-      `--spacing debe ser un número de minutos entre 0 y 240: "${text}"`,
+      `--spacing debe ser un número de minutos entre 0 y ${MAX_SCHEDULE_SPACING_MINUTES}: "${text}"`,
     );
   }
   return minutes;

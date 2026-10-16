@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import type { AgendaResponse } from "@agentsales/api/contracts";
 import { AGENDA_KIND_TEXT } from "@agentsales/core";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { publicationSetup } from "../../test/harness.js";
-import { Agenda } from "./TrackingPage.js";
+import { Agenda, TrackingMatrix } from "./TrackingPage.js";
 
 // F6-T13 (spec F6 §4.8 a §4.10): Seguimiento, las acciones de la propiedad y `auto_publish` en el
 // panel, sobre la API en proceso.
@@ -103,87 +103,106 @@ describe("la página Seguimiento", () => {
   });
 });
 
-describe("acciones de la propiedad", () => {
-  it("pausar con algo programado muestra el motivo de la API y, al confirmar, pausa y dice qué cambió", async () => {
-    const s = await publicationSetup();
-    await s.t.publications.transition(
-      s.t.byFormat("post")?.id ?? "",
-      {
-        from: "approved",
-        to: "scheduled",
-        changes: { dryRun: true, scheduledAt: new Date(Date.now() + 5 * HOUR) },
-      },
-      { actor: "operator" },
+describe("la matriz", () => {
+  it("cada celda con su estado: programada atrasada, tarea a mano, por vencer y error", () => {
+    const base = {
+      id: "p",
+      format: "post" as const,
+      status: "published" as const,
+      dryRun: true,
+      externalUrl: null,
+      scheduledAt: null,
+      schedule: null,
+      expiry: null,
+      lastError: null,
+      errorAdvice: null,
+      manualTask: false,
+      updatedAt: new Date(),
+    };
+    render(
+      <MemoryRouter>
+        <TrackingMatrix
+          rows={[
+            {
+              listing: {
+                id: "l1",
+                brokerId: "b",
+                externalRef: "P1",
+                status: "closed",
+                closeReason: "sold",
+                operation: "sale",
+                propertyType: null,
+                comuna: null,
+              },
+              coverUrl: null,
+              cells: {
+                instagram: [
+                  { ...base, id: "a", dryRun: false, manualTask: true },
+                  {
+                    ...base,
+                    id: "b",
+                    format: "reel",
+                    status: "scheduled",
+                    scheduledAt: new Date("2026-10-01T13:00:00.000Z"),
+                    schedule: "overdue",
+                  },
+                ],
+                portal_inmobiliario: [
+                  {
+                    ...base,
+                    id: "c",
+                    externalUrl: "javascript:alert(1)",
+                    expiry: { stopTime: new Date(), daysLeft: 3, soon: true, expired: false },
+                  },
+                ],
+                fb_marketplace: [
+                  {
+                    ...base,
+                    id: "d",
+                    status: "failed",
+                    lastError: { code: "MARKETPLACE_X", message: "m", retriable: false },
+                  },
+                ],
+              },
+            },
+          ]}
+        />
+      </MemoryRouter>,
     );
-    s.renderApp(`/propiedades/${s.t.listingId}`);
 
-    const group = await screen.findByRole("group", { name: "Acciones de la propiedad" });
-    fireEvent.click(within(group).getByRole("button", { name: "Pausar" }));
-    const confirm = await screen.findByText(/Pausar la propiedad pausa su aviso de Portal/);
-    expect(confirm).toBeTruthy();
-    expect((await s.t.listings.get(s.t.listingId))?.status).toBe("ready");
-
-    fireEvent.click(screen.getByRole("button", { name: "Sí, pausar" }));
-
-    const result = await screen.findByText(/La propiedad quedó pausada/);
-    expect(result.closest("[role=status]")?.textContent).toContain("Instagram carrusel: aprobada");
-    expect(s.t.byFormat("post")?.status).toBe("approved");
-  });
-
-  it("vendida confirma siempre y deja en vivo Instagram como tarea a mano", async () => {
-    const s = await publicationSetup({ publishMode: "live" });
-    const post = s.t.byFormat("post")?.id ?? "";
-    await s.t.publications.transition(
-      post,
-      { from: "approved", to: "publishing", changes: { dryRun: false } },
-      { actor: "system" },
-    );
-    await s.t.publications.transition(
-      post,
-      { from: "publishing", to: "published", changes: { externalId: "ig-1" } },
-      { actor: "system" },
-    );
-    await s.t.listings.changeStatus(s.t.listingId, "ready", "active");
-    s.renderApp(`/propiedades/${s.t.listingId}`);
-
-    const group = await screen.findByRole("group", { name: "Acciones de la propiedad" });
-    fireEvent.click(within(group).getByRole("button", { name: "Vendida" }));
-    expect(screen.getByText(/¿Marcar la propiedad como vendida\?/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Sí, vendida" }));
-
-    const tasks = await screen.findByText("Tareas a mano");
-    expect(tasks.parentElement?.textContent).toContain("Instagram carrusel");
-    expect(await s.t.listings.get(s.t.listingId)).toMatchObject({
-      status: "closed",
-      closeReason: "sold",
-    });
+    const row = screen.getByRole("row", { name: /P1/ });
+    expect(row.textContent).toContain("vendida");
+    expect(row.textContent).toContain("tarea a mano");
+    expect(row.textContent).toContain("atrasada");
+    expect(row.textContent).toContain("vence en 3 d");
+    expect(row.textContent).toContain("MARKETPLACE_X");
+    // Un enlace que no es `https` no se vuelve enlace.
+    expect(within(row).queryByRole("link", { name: "Ver" })).toBeNull();
   });
 });
 
-describe("auto_publish en Cuentas y el aviso en vivo", () => {
-  it("activarlo pide confirmar en rojo con la API en vivo; después el banner lo destaca", async () => {
-    const s = await publicationSetup({ publishMode: "live" });
-    s.renderApp("/cuentas");
-
-    const toggle = await screen.findByRole("checkbox", { name: /Publicación automática/ });
-    fireEvent.click(toggle);
-    expect((await screen.findByText(/publicará sin tu revisión/)).textContent).toContain(
-      "La API está en vivo",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Sí, activar" }));
-
-    await waitFor(async () => {
-      const listing = await s.t.listings.get(s.t.listingId);
-      expect((await s.t.brokers.findById(listing?.brokerId ?? ""))?.autoPublish).toBe(true);
+describe("el banner con auto_publish en vivo", () => {
+  it("si no se pudo saber, también lo dice", async () => {
+    const s = await publicationSetup({
+      publishMode: "live",
+      intercept: (method, path) =>
+        method === "GET" && path === "/health"
+          ? Response.json({
+              status: "degraded",
+              publishMode: "live",
+              version: "x",
+              checks: {
+                db: { ok: false, latencyMs: 1, error: "sin base" },
+                storage: { ok: true, latencyMs: 1 },
+                queue: { ok: true, latencyMs: 1 },
+              },
+              autoPublishBrokers: null,
+            })
+          : undefined,
     });
+    s.renderApp("/");
     expect(
-      await screen.findByText(/Publicación automática EN VIVO: publica sin tu revisión/),
+      await screen.findByText(/No se pudo saber si algún corredor tiene publicación automática/),
     ).toBeTruthy();
-
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Publicación automática/ }));
-    await waitFor(async () => {
-      const listing = await s.t.listings.get(s.t.listingId);
-      expect((await s.t.brokers.findById(listing?.brokerId ?? ""))?.autoPublish).toBe(false);
-    });
   });
 });

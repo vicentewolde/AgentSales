@@ -1,6 +1,8 @@
 import type { ListingPublicationView } from "@agentsales/api/contracts";
 import {
+  CHILE_TIME_ZONE,
   formatChileTime,
+  type ListingStatus,
   marketplacePriceText,
   PLATFORM_TEXT,
   PUBLICATION_STATUS_TEXT,
@@ -144,7 +146,7 @@ const dateText = (iso: string) =>
     day: "numeric",
     month: "long",
     year: "numeric",
-    timeZone: "America/Santiago",
+    timeZone: CHILE_TIME_ZONE,
   });
 
 /**
@@ -211,11 +213,20 @@ export function PublicationItem({
   publishMode,
   requestedAt: panelRequestedAt,
   onListingBackToReady,
+  listingStatus,
+  relisted = new Set(),
+  scheduleBlocked = null,
 }: {
   publication: ListingPublicationView;
   listingId: string;
   publishMode: PublishMode | undefined;
   requestedAt: Date | null;
+  /** Para republicar (`canRelist`): el estado de la propiedad (sin él, no se ofrece). */
+  listingStatus?: ListingStatus;
+  /** Las publicaciones que ya tienen una republicación viva. */
+  relisted?: ReadonlySet<string>;
+  /** Por qué no se puede programar ahora (la propiedad no está lista, una corrida en curso). */
+  scheduleBlocked?: string | null;
   /** Retirar o cerrar la última en vivo devolvió el aviso a `ready`. */
   onListingBackToReady?: () => void;
 }) {
@@ -234,13 +245,20 @@ export function PublicationItem({
   const [removedByHand, setRemovedByHand] = useState(false);
   const [showEvents, setShowEvents] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState<string | null>(null);
-  const opener = useRef<HTMLButtonElement | null>(null);
+  // El botón que abrió una confirmación se desmonta mientras se confirma: se recuerda su nombre
+  // para devolverle el foco al volver a aparecer.
+  const openerLabel = useRef<string | null>(null);
+  const card = useRef<HTMLElement | null>(null);
+  const [retryReason, setRetryReason] = useState<"retry" | "publish-now">("retry");
   // Lo sondeado (de esta misma versión del listado) es lo más nuevo mientras se publica.
   const publication = poll.data === undefined ? listed : { ...listed, ...poll.data };
   const format = publicationFormatText(publication.platform, publication.format);
   const channel = PLATFORM_TEXT[publication.platform];
   const portal = publication.platform === "portal_inmobiliario";
-  const actions = publicationActions(publication);
+  const actions = publicationActions(
+    publication,
+    listingStatus === undefined ? undefined : { listingStatus, relisted },
+  );
   const retryBlocked = retryBlockedReason(publication, publishMode);
   const modeUnknown = publishMode === undefined;
   const live = !publication.dryRun;
@@ -255,7 +273,7 @@ export function PublicationItem({
   }, [syncRequestedAt]);
 
   const open = (next: Exclude<Confirming, null>, button: HTMLButtonElement) => {
-    opener.current = button;
+    openerLabel.current = button.getAttribute("aria-label");
     action.reset();
     setNotice(null);
     setConfirming(next);
@@ -264,7 +282,7 @@ export function PublicationItem({
     setConfirming(null);
     setRemovedByHand(false);
     // El botón que abrió la confirmación vuelve a aparecer: el foco vuelve a él.
-    requestAnimationFrame(() => opener.current?.focus());
+    requestAnimationFrame(() => focusButton(card.current, openerLabel.current));
   };
   const run = (next: Parameters<typeof action.mutate>[0]) => {
     setNotice(null);
@@ -317,7 +335,8 @@ export function PublicationItem({
   };
   // Reintentar fija el modo con que va (el de la API ahora, D11): se confirma si va en vivo o si el
   // modo cambió desde que se abrió la página.
-  const retry = async (button: HTMLButtonElement) => {
+  const retry = async (button: HTMLButtonElement, reason: "retry" | "publish-now" = "retry") => {
+    setRetryReason(reason);
     if (needsLiveConfirm(publishMode)) return open("live-retry", button);
     const mode = await freshMode().catch(() => undefined);
     if (mode !== "dry-run") return open("live-retry", button);
@@ -326,6 +345,7 @@ export function PublicationItem({
 
   return (
     <article
+      ref={card}
       aria-label={`Publicación ${format}`}
       className="rounded-lg border border-slate-200 bg-white p-3"
     >
@@ -415,7 +435,7 @@ export function PublicationItem({
               className={BUTTON}
               aria-label={`Publicar ahora el ${format}`}
               disabled={action.isPending || modeUnknown}
-              onClick={(event) => void retry(event.currentTarget)}
+              onClick={(event) => void retry(event.currentTarget, "publish-now")}
             >
               Publicar ahora
             </button>
@@ -425,7 +445,8 @@ export function PublicationItem({
               type="button"
               className={BUTTON}
               aria-label={`${actions.reschedule ? "Reprogramar" : "Programar"} el ${format}`}
-              disabled={action.isPending}
+              disabled={action.isPending || scheduleBlocked !== null}
+              title={scheduleBlocked ?? undefined}
               onClick={(event) => open("schedule", event.currentTarget)}
             >
               {actions.reschedule ? "Reprogramar" : "Programar"}
@@ -449,7 +470,7 @@ export function PublicationItem({
               aria-label={`Actualizar el aviso del ${format} en ${channel}`}
               disabled={action.isPending}
               onClick={(event) => {
-                opener.current = event.currentTarget;
+                openerLabel.current = event.currentTarget.getAttribute("aria-label");
                 run({ kind: "update", id: publication.id, confirmed: false });
               }}
             >
@@ -465,7 +486,7 @@ export function PublicationItem({
               aria-label={`Republicar el ${format}`}
               disabled={action.isPending}
               onClick={(event) => {
-                opener.current = event.currentTarget;
+                openerLabel.current = event.currentTarget.getAttribute("aria-label");
                 run({ kind: "relist", id: publication.id, confirmed: false });
               }}
             >
@@ -578,7 +599,9 @@ export function PublicationItem({
       {confirming === "live-retry" && (
         <div role="alert" className="mt-2 rounded-md border border-red-300 bg-red-50 p-2 text-sm">
           <p className="font-semibold text-red-800">
-            {liveRetryText(publication, format, channel)}
+            {retryReason === "publish-now"
+              ? `Se publicará ahora, sin esperar la hora programada. ${liveRetryText(publication, format, channel)}`
+              : liveRetryText(publication, format, channel)}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button
@@ -587,7 +610,9 @@ export function PublicationItem({
               disabled={action.isPending}
               onClick={() => run({ kind: "publish", id: publication.id })}
             >
-              Sí, reintentar en vivo
+              {retryReason === "publish-now"
+                ? "Sí, publicar ahora en vivo"
+                : "Sí, reintentar en vivo"}
             </button>
             {/* biome-ignore lint/a11y/noAutofocus: el foco va a la opción segura al abrir la confirmación */}
             <button type="button" autoFocus className="text-xs underline" onClick={close}>
@@ -740,4 +765,15 @@ export function PublicationItem({
       {showEvents && <PublicationEvents publicationId={publication.id} />}
     </article>
   );
+}
+
+/** Devuelve el foco al botón con ese `aria-label` dentro de la tarjeta (ya vuelto a montar). */
+function focusButton(container: HTMLElement | null, label: string | null) {
+  if (container === null || label === null) return;
+  for (const button of container.querySelectorAll("button")) {
+    if (button.getAttribute("aria-label") === label) {
+      button.focus();
+      return;
+    }
+  }
 }

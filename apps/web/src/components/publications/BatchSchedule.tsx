@@ -69,6 +69,8 @@ export function BatchSchedule({
       </div>
       {open && (
         <ScheduleForm
+          // Cambiar los canales o el espaciado vuelve a pedir la confirmación en vivo.
+          key={`${[...platforms].sort().join(",")}-${spacing}`}
           publishMode={publishMode}
           pending={schedule.isPending}
           submitLabel={`Programar ${selected.length} propiedad(es)`}

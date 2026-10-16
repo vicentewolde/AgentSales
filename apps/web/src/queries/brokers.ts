@@ -2,6 +2,8 @@ import { brokerListResponseSchema, brokerResponseSchema } from "@agentsales/api/
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
+import { healthKeys } from "./health.js";
+import { trackingKeys } from "./tracking.js";
 
 export const brokerKeys = { all: ["brokers"] as const };
 
@@ -33,8 +35,8 @@ export function useSetAutoPublish() {
       ).broker,
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: brokerKeys.all });
-      void queryClient.invalidateQueries({ queryKey: ["health"] });
-      void queryClient.invalidateQueries({ queryKey: ["tracking"] });
+      void queryClient.invalidateQueries({ queryKey: healthKeys.all });
+      void queryClient.invalidateQueries({ queryKey: trackingKeys.all });
     },
   });
 }

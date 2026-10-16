@@ -24,6 +24,7 @@ import { waitStart } from "../components/publications/publications.js";
 import { contentKeys } from "./content.js";
 import { LISTINGS_GC_MS, LISTINGS_STALE_MS, listingKeys } from "./listings.js";
 import { usePolledRun } from "./run-poll.js";
+import { trackingKeys } from "./tracking.js";
 
 export const publicationKeys = {
   all: ["publications"] as const,
@@ -374,7 +375,7 @@ export function useScheduleListings() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: publicationKeys.all });
       void queryClient.invalidateQueries({ queryKey: listingKeys.lists() });
-      void queryClient.invalidateQueries({ queryKey: ["tracking"] });
+      void queryClient.invalidateQueries({ queryKey: trackingKeys.all });
     },
   });
 }

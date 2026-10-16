@@ -683,7 +683,9 @@ export {
   type TokenRefreshSkipReason,
 } from "./use-cases/refresh-account-tokens.js";
 export {
+  canRelist,
   type RelistPublicationDeps,
+  relistedIds,
   relistPublication,
 } from "./use-cases/relist-publication.js";
 export {

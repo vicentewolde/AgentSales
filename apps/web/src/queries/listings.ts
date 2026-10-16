@@ -9,6 +9,8 @@ import {
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
+import { publicationKeys } from "./publications.js";
+import { trackingKeys } from "./tracking.js";
 
 /**
  * Las portadas y la galería traen URLs firmadas que vencen en `SIGNED_URL_TTL_SECONDS` (1 h). Los
@@ -85,8 +87,8 @@ export function useChangeListingStatus(id: string) {
       );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: listingKeys.lists() }),
-        queryClient.invalidateQueries({ queryKey: ["publications"] }),
-        queryClient.invalidateQueries({ queryKey: ["tracking"] }),
+        queryClient.invalidateQueries({ queryKey: publicationKeys.all }),
+        queryClient.invalidateQueries({ queryKey: trackingKeys.all }),
       ]);
     },
   });

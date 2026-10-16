@@ -7,7 +7,7 @@ import {
 } from "@agentsales/core";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { publicationSetup } from "../../../test/harness.js";
+import { type HarnessOptions, publicationSetup } from "../../../test/harness.js";
 
 // F6-T12 (spec F6 §4.3 y §4.7): programar, Portal y el consejo del error en el panel, sobre la
 // API en proceso (nunca una plataforma real).
@@ -69,7 +69,7 @@ describe("programar una publicación", () => {
     const item = await card(s, "carrusel");
 
     fireEvent.click(within(item).getByRole("button", { name: "Programar el carrusel" }));
-    expect(within(item).getByText(/Se programa en en vivo/)).toBeTruthy();
+    expect(within(item).getByText(/Se programa en vivo/)).toBeTruthy();
     submitAt(item, inHours(2));
 
     expect(s.t.byFormat("post")?.status).toBe("approved");
@@ -77,6 +77,44 @@ describe("programar una publicación", () => {
     await waitFor(() =>
       expect(s.t.byFormat("post")).toMatchObject({ status: "scheduled", dryRun: false }),
     );
+  });
+
+  it("con la página en simulación vuelve a leer el modo justo antes: si la API pasó a vivo, pide confirmar", async () => {
+    // La API pasa a vivo con la página ya abierta (en simulación): solo cambia lo que responde /health.
+    let apiLive = false;
+    const intercept: HarnessOptions["intercept"] = (method, path) => {
+      if (method !== "GET" || path !== "/health" || !apiLive) return undefined;
+      return Response.json({
+        status: "ok",
+        publishMode: "live",
+        version: "x",
+        checks: {
+          db: { ok: true, latencyMs: 1 },
+          storage: { ok: true, latencyMs: 1 },
+          queue: { ok: true, latencyMs: 1 },
+        },
+      });
+    };
+    const s = await publicationSetup({ intercept });
+    const item = await card(s, "carrusel");
+
+    fireEvent.click(within(item).getByRole("button", { name: "Programar el carrusel" }));
+    expect(within(item).getByText(/Se programa en simulación/)).toBeTruthy();
+    apiLive = true;
+    submitAt(item, inHours(2));
+
+    expect(await within(item).findByRole("button", { name: "Sí, programar en vivo" })).toBeTruthy();
+    expect(s.t.byFormat("post")?.status).toBe("approved");
+  });
+
+  it("publicar ahora una programada la empieza (en simulación, sin preguntar)", async () => {
+    const s = await publicationSetup();
+    await scheduledAt(s.t, s.t.byFormat("post")?.id ?? "", inHours(5));
+    const item = await card(s, "carrusel");
+
+    fireEvent.click(within(item).getByRole("button", { name: "Publicar ahora el carrusel" }));
+
+    await waitFor(() => expect(s.t.byFormat("post")?.status).toBe("publishing"));
   });
 
   it("una hora que no existe en Chile se explica sin enviar nada", async () => {

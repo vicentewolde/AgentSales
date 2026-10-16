@@ -63,7 +63,9 @@ export function ListingActions({ id, status }: { id: string; status: ListingStat
   const [result, setResult] = useState<{ choice: Choice; body: ListingStatusResponse } | null>(
     null,
   );
-  const opener = useRef<HTMLButtonElement | null>(null);
+  // El botón se desmonta mientras se confirma: se recuerda su texto para devolverle el foco.
+  const openerLabel = useRef<string | null>(null);
+  const container = useRef<HTMLDivElement | null>(null);
   const choices = CHOICES.filter((choice) => canDoListingAction(choice.action, status));
 
   const send = (choice: Choice, confirmed: boolean) => {
@@ -92,7 +94,7 @@ export function ListingActions({ id, status }: { id: string; status: ListingStat
     );
   };
   const start = (choice: Choice, button: HTMLButtonElement) => {
-    opener.current = button;
+    openerLabel.current = button.textContent;
     change.reset();
     if (choice.reason !== undefined) {
       setResult(null);
@@ -103,12 +105,19 @@ export function ListingActions({ id, status }: { id: string; status: ListingStat
   };
   const cancel = () => {
     setConfirming(null);
-    requestAnimationFrame(() => opener.current?.focus());
+    requestAnimationFrame(() => {
+      for (const candidate of container.current?.querySelectorAll("button") ?? []) {
+        if (candidate.textContent === openerLabel.current) {
+          candidate.focus();
+          return;
+        }
+      }
+    });
   };
 
   if (choices.length === 0) return null;
   return (
-    <div className="mt-4">
+    <div className="mt-4" ref={container}>
       {confirming === null ? (
         <fieldset
           className="m-0 flex flex-wrap gap-2 border-0 p-0"

@@ -179,7 +179,19 @@ describe("publicationActions", () => {
       update: true,
     });
     expect(portal("published", true)).toEqual({ ...none, pause: true, close: true, update: true });
-    expect(portal("unpublished")).toEqual({ ...none, relist: true });
+    // Republicar (`canRelist`, core): cerrada, sin republicación viva y la propiedad lista o activa.
+    expect(portal("unpublished")).toEqual(none);
+    const closed = publication({ platform: "portal_inmobiliario", status: "unpublished" });
+    expect(publicationActions(closed, { listingStatus: "ready", relisted: new Set() }).relist).toBe(
+      true,
+    );
+    expect(
+      publicationActions(closed, { listingStatus: "closed", relisted: new Set() }).relist,
+    ).toBe(false);
+    expect(
+      publicationActions(closed, { listingStatus: "active", relisted: new Set([closed.id]) })
+        .relist,
+    ).toBe(false);
     expect(portal("failed")).toEqual({ ...none, retry: true, cancel: true, schedule: true });
   });
 
