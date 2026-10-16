@@ -154,8 +154,9 @@ describe("panel: Detalle de una propiedad", () => {
   it.each([
     ["paused", ["Reanudar", "Archivar"]],
     ["archived", ["Desarchivar"]],
-    ["active", []],
-    ["closed", []],
+    // Desde F6-T08 (la propiedad manda): pausar una activa, y reabrir o archivar una cerrada.
+    ["active", ["Pausar"]],
+    ["closed", ["Reabrir", "Archivar"]],
   ] as const)("desde %s ofrece %j", async (status, buttons) => {
     const { renderApp, listing, listings } = await setup();
     listings.setStatus(listing.id, status);

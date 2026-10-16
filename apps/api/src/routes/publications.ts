@@ -189,7 +189,19 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
 }
 
 /** Las dependencias de pausar, reactivar y cerrar, con el modo de la API y los avisos al log. */
-const operationDeps = (deps: PublicationRoutesDeps) => ({
+export const operationDeps = (
+  deps: Pick<
+    PublicationRoutesDeps,
+    | "lock"
+    | "queue"
+    | "publications"
+    | "platformAccounts"
+    | "mercadoLibreRefresh"
+    | "operationsFor"
+    | "publishMode"
+    | "logger"
+  >,
+) => ({
   lock: deps.lock,
   queue: deps.queue,
   publications: deps.publications,

@@ -1,6 +1,9 @@
+import type { Logger } from "@agentsales/config";
 import {
   type AbortSignalLike,
   AppError,
+  type AutoPublishDeps,
+  autoPublishListing,
   type ContentRunReport,
   type ContentRunRepository,
   enqueueContentRun,
@@ -50,6 +53,11 @@ export type ContentPrepareJobDeps = {
   tmpRoot: string;
   /** Se dispara al apagar el worker: corta los procesos hijos (ffmpeg, Chromium, la CLI de Claude). */
   signal: AbortSignalLike;
+  /**
+   * `auto_publish` (spec F6 §4.10): al terminar bien una corrida con textos, aprueba y publica si el
+   * corredor lo tiene activado. Sin esto, la corrida no publica nada (los tests que no lo ejercen).
+   */
+  autoPublish?: AutoPublishDeps;
 };
 
 /** Solo el código: el mensaje o la causa de un error pueden traer datos del aviso (spec F2 §4.9). */
@@ -125,6 +133,7 @@ export function contentPrepareJob(deps: ContentPrepareJobDeps): Job {
           logger.info({ status: result.status }, "la corrida ya había terminado: nada que hacer");
         } else {
           logger.info(summaryOf(result.report), "contenido preparado");
+          await autoPublishAfter(deps, contentRunId, logger);
         }
       } finally {
         await dir
@@ -138,6 +147,37 @@ export function contentPrepareJob(deps: ContentPrepareJobDeps): Job {
       }
     },
   });
+}
+
+/**
+ * `auto_publish` después de una corrida terminada con textos (spec F6 §4.10). Nunca hace fallar la
+ * corrida: un error se registra con su código (sin datos del aviso) y queda en la agenda.
+ */
+async function autoPublishAfter(
+  deps: ContentPrepareJobDeps,
+  contentRunId: string,
+  logger: Logger,
+): Promise<void> {
+  if (deps.autoPublish === undefined) return;
+  try {
+    const run = await deps.shared.contentRuns.get(contentRunId);
+    if (run === null || !run.texts) return;
+    const result = await autoPublishListing(deps.autoPublish, { listingId: run.listingId });
+    if (result.outcome === "off") return;
+    const failed = result.channels.filter((channel) => channel.result === "failed");
+    const fields = {
+      listingId: run.listingId,
+      channels: result.channels.map(({ platform, result: outcome, code }) => ({
+        platform,
+        result: outcome,
+        ...(code === undefined ? {} : { code }),
+      })),
+    };
+    if (failed.length > 0) logger.warn(fields, "auto_publish: un canal no se pudo publicar");
+    else logger.info(fields, "auto_publish: propiedad aprobada y publicada");
+  } catch (error) {
+    logger.warn({ code: codeOf(error) }, "auto_publish falló: la corrida queda como estaba");
+  }
 }
 
 /**

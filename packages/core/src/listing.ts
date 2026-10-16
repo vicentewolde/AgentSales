@@ -50,29 +50,71 @@ export type ListingFilters = {
 };
 
 /**
- * Cambios de estado que el operador hace a mano (panel o CLI; spec F1 §4.4). Solo hacia `ready`,
- * `paused` o `archived`; `ready` además exige al menos una foto (`changeListingStatus`).
- * `active` y `closed` dependen de las publicaciones (F3+): en F1 no se cambian a mano.
+ * Lo que el operador hace con una propiedad (panel o CLI; ADR-0019, spec F6 §4.8): dejarla lista,
+ * pausarla, reanudarla, cerrarla (vendida, arrendada o retirada), reabrirla y archivarla. Cada
+ * acción orquesta sus publicaciones (`changeListingStatus`).
+ */
+export const LISTING_ACTIONS = ["ready", "pause", "resume", "close", "reopen", "archive"] as const;
+export type ListingAction = (typeof LISTING_ACTIONS)[number];
+
+/** Desde qué estados se puede hacer cada acción (spec F6 §4.8). */
+export const LISTING_ACTION_FROM: Readonly<Record<ListingAction, readonly ListingStatus[]>> = {
+  ready: ["draft"],
+  pause: ["ready", "active"],
+  resume: ["paused"],
+  close: ["ready", "active", "paused"],
+  reopen: ["closed", "archived"],
+  archive: ["draft", "ready", "paused", "closed"],
+};
+
+/**
+ * Los cambios de estado a mano que admiten las acciones (desde F6, ADR-0019): reanudar y reabrir
+ * dejan la propiedad en `active` si le queda algo publicado en vivo, y si no en `ready`. El sistema
+ * sigue moviendo `ready ↔ active` al publicar y al retirar.
  */
 export const LISTING_MANUAL_TRANSITIONS: Readonly<Record<ListingStatus, readonly ListingStatus[]>> =
   {
     draft: ["ready", "archived"],
-    ready: ["paused", "archived"],
-    paused: ["ready", "archived"],
-    archived: ["ready"],
-    active: [],
-    closed: [],
+    ready: ["paused", "closed", "archived"],
+    active: ["paused", "closed"],
+    paused: ["ready", "active", "closed", "archived"],
+    closed: ["ready", "active", "archived"],
+    archived: ["ready", "active"],
   };
 
-/** Estados a los que se puede pasar a mano (los destinos de la tabla), para validar la entrada. */
+/**
+ * Los destinos que acepta la ruta vieja `PATCH /listings/:id/status` (spec F1 §4.4), que el panel
+ * usa hasta F6-T10: cada uno se traduce a su acción (`listingActionFor`). Se quita con la ruta.
+ */
 export const LISTING_MANUAL_TARGETS = [
   "ready",
   "paused",
   "archived",
 ] as const satisfies readonly ListingStatus[];
 
+/**
+ * La acción que corresponde a un destino de la ruta vieja (spec F6 §4.8, hasta T10): `ready` desde
+ * `draft` es dejarla lista, desde `paused` es reanudar y desde `closed` o `archived` es reabrir;
+ * `paused` es pausar y `archived` es archivar. `null` si no hay una.
+ */
+export function listingActionFor(
+  from: ListingStatus,
+  to: (typeof LISTING_MANUAL_TARGETS)[number],
+): ListingAction | null {
+  if (to === "paused") return "pause";
+  if (to === "archived") return "archive";
+  if (from === "draft") return "ready";
+  if (from === "paused") return "resume";
+  if (from === "closed" || from === "archived") return "reopen";
+  return null;
+}
+
 export const canChangeListingStatus = (from: ListingStatus, to: ListingStatus) =>
   LISTING_MANUAL_TRANSITIONS[from].includes(to);
+
+/** Si la acción se puede hacer desde el estado de la propiedad. */
+export const canDoListingAction = (action: ListingAction, from: ListingStatus) =>
+  LISTING_ACTION_FROM[action].includes(from);
 
 /**
  * Estados en que un aviso puede preparar contenido (spec F2 §4.4). Lo revisan `requestContentRun`

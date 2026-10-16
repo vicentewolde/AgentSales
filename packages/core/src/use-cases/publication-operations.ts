@@ -319,6 +319,8 @@ export async function operatePublication(
     actor,
     confirmed = false,
     signal,
+    keepListing = false,
+    byListing = false,
   }: {
     publicationId: string;
     operation: PublicationOperation;
@@ -326,6 +328,13 @@ export async function operatePublication(
     /** Solo cerrar en `live`: el operador confirmó (es irreversible). */
     confirmed?: boolean;
     signal?: AbortSignalLike;
+    /**
+     * Cambiar la propiedad (ADR-0019): cerrar no devuelve la propiedad a `ready`, porque lo decide
+     * el cambio de la propiedad al terminar.
+     */
+    keepListing?: boolean;
+    /** La pausa la pidió la propiedad (ADR-0019): reanudarla reactiva solo estas. */
+    byListing?: boolean;
   },
 ): Promise<OperatedPublication> {
   const found = await findPublication(deps, publicationId);
@@ -383,7 +392,9 @@ export async function operatePublication(
             ? current
             : await locked.publications.setRemoteState(publicationId, remote);
         const listingBackToReady =
-          operation === "close" ? await listingBackToReadyIfLast(locked, found.listingId) : false;
+          operation === "close" && !keepListing
+            ? await listingBackToReadyIfLast(locked, found.listingId)
+            : false;
         return { publication, listingBackToReady };
       }
       const publication = await locked.publications.transition(
@@ -399,12 +410,13 @@ export async function operatePublication(
             mode: modeOf(found.dryRun),
             operation,
             ...(remote === undefined ? {} : { remote }),
+            ...(byListing ? { byListing: true } : {}),
           },
         },
       );
       // Un error de la base dentro del candado no se recupera: deshace todo y el sync lo corrige.
       const listingBackToReady =
-        live && operation === "close"
+        live && operation === "close" && !keepListing
           ? await listingBackToReadyIfLast(locked, found.listingId)
           : false;
       return { publication, listingBackToReady };

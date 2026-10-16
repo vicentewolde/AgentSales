@@ -1,6 +1,11 @@
 import { readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AppError, type LLMProvider, type RunImportDeps } from "@agentsales/core";
+import {
+  AppError,
+  type AutoPublishDeps,
+  type LLMProvider,
+  type RunImportDeps,
+} from "@agentsales/core";
 import {
   createInMemoryContentRepositories,
   createInMemoryJobQueue,
@@ -224,6 +229,102 @@ describe("job content.prepare · handler", () => {
       cause: expect.objectContaining({ code: "LLM_AUTH_REQUIRED" }),
     });
     expect(await t.contentRuns.get(runId)).toMatchObject({ status: "running" });
+  });
+
+  it("auto_publish: tras una corrida con textos se pide con su aviso; un fallo no cambia la corrida y se registra solo con el código", async () => {
+    const t = await contentJobSetup();
+    const runId = await t.newRun();
+    const listingId = (await t.contentRuns.get(runId))?.listingId;
+    const asked: string[] = [];
+    const autoPublish = {
+      listings: {
+        get: async (id: string) => {
+          asked.push(id);
+          throw new AppError("DB_UNAVAILABLE", "Avenida Secreta 123", { retriable: true });
+        },
+      },
+    } as unknown as AutoPublishDeps;
+    const { logger, lines } = captureLogger();
+
+    await contentPrepareJob({ ...t.deps, autoPublish }).run(
+      { contentRunId: runId },
+      { ...context(false), logger },
+    );
+
+    expect(asked).toEqual([listingId]);
+    expect(await t.contentRuns.get(runId)).toMatchObject({ status: "succeeded" });
+    expect(lines.find((line) => line.code === "DB_UNAVAILABLE")).toMatchObject({ level: 40 });
+    expect(JSON.stringify(lines)).not.toContain("Secreta");
+  });
+
+  it("auto_publish: un corredor sin auto_publish no publica ni registra nada; sin textos ni se pregunta", async () => {
+    const t = await contentJobSetup();
+    const runId = await t.newRun();
+    const listingId = (await t.contentRuns.get(runId))?.listingId ?? "";
+    const asked: string[] = [];
+    const autoPublish = {
+      listings: {
+        get: async (id: string) => {
+          asked.push(id);
+          return { id, brokerId: "b", status: "ready" };
+        },
+      },
+      brokers: { findById: async () => ({ id: "b", autoPublish: false }) },
+    } as unknown as AutoPublishDeps;
+    const { logger, lines } = captureLogger();
+
+    await contentPrepareJob({ ...t.deps, autoPublish }).run(
+      { contentRunId: runId },
+      { ...context(false), logger },
+    );
+    const mediaOnly = (await t.contentRuns.create({ listingId, texts: false })).id;
+    await contentPrepareJob({ ...t.deps, autoPublish }).run(
+      { contentRunId: mediaOnly },
+      { ...context(false), logger },
+    );
+
+    expect(asked).toEqual([listingId]);
+    expect(JSON.stringify(lines)).not.toContain("auto_publish");
+  });
+
+  it("auto_publish: registra cada canal con su resultado, como aviso si alguno falló", async () => {
+    const t = await contentJobSetup();
+    const autoPublishWith = (channels: boolean) =>
+      ({
+        listings: { get: async (id: string) => ({ id, brokerId: "b", status: "ready" }) },
+        brokers: { findById: async () => ({ id: "b", autoPublish: true }) },
+        platformAccounts: {
+          listByBroker: async () =>
+            channels ? [{ id: "a", platform: "instagram", status: "connected" }] : [],
+        },
+        contents: {
+          listCurrent: async () => [{ id: "c", platform: "instagram" }],
+          // Aprobar lee el texto primero: aquí falla, con datos del aviso en el mensaje.
+          get: async () => {
+            throw new AppError("DB_UNAVAILABLE", "Avenida Secreta 123", { retriable: true });
+          },
+        },
+      }) as unknown as AutoPublishDeps;
+    const { logger, lines } = captureLogger();
+
+    await contentPrepareJob({ ...t.deps, autoPublish: autoPublishWith(false) }).run(
+      { contentRunId: await t.newRun() },
+      { ...context(false), logger },
+    );
+    await contentPrepareJob({ ...t.deps, autoPublish: autoPublishWith(true) }).run(
+      { contentRunId: await t.newRun() },
+      { ...context(false), logger },
+    );
+
+    const logged = lines.filter((line) => String(line.msg).startsWith("auto_publish"));
+    expect(logged).toMatchObject([
+      { level: 30, channels: [] },
+      {
+        level: 40,
+        channels: [{ platform: "instagram", result: "failed", code: "DB_UNAVAILABLE" }],
+      },
+    ]);
+    expect(JSON.stringify(lines)).not.toContain("Secreta");
   });
 
   it("el log del error lleva solo el código y el contentRunId, nunca datos del aviso", async () => {

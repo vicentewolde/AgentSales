@@ -1,4 +1,5 @@
 import type { Broker, BrokerData } from "../broker.js";
+import type { CloseReason } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { ImportRun } from "../import-run.js";
 import type { Listing } from "../listing.js";
@@ -21,8 +22,6 @@ function idGenerator(prefix: string) {
 
 export type InMemoryBrokerRepository = BrokerRepository & {
   all(): Broker[];
-  /** Simula un cambio fuera de la hoja Corredor (panel), para probar que `update` no lo pisa. */
-  setAutoPublish(id: string, autoPublish: boolean): void;
 };
 
 export type InMemoryBrokerRepositoryOptions = {
@@ -94,10 +93,14 @@ export function createInMemoryBrokerRepository(
       stored.set(id, { ...current, logoMediaId: mediaId });
     },
     all: () => [...stored.values()].map(structuredCopy),
-    setAutoPublish(id, autoPublish) {
+    async setAutoPublish(id, autoPublish) {
       const current = stored.get(id);
-      if (current === undefined) throw new Error(`no existe el broker ${id}`);
-      stored.set(id, { ...current, autoPublish });
+      if (current === undefined) {
+        throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+      }
+      const updated = { ...current, autoPublish };
+      stored.set(id, updated);
+      return structuredCopy(updated);
     },
   };
 }
@@ -120,6 +123,8 @@ export function createInMemoryListingRepository(
   // Fechas aparte, para no cambiar `StoredListing`. Un reloj que siempre avanza: dos escrituras
   // seguidas no empatan en `updatedAt`.
   const times = new Map<string, { createdAt: Date; updatedAt: Date }>();
+  // El motivo de cierre, aparte por lo mismo (ADR-0019).
+  const closeReasons = new Map<string, CloseReason | null>();
   let clock = Date.UTC(2026, 0, 1);
   const tick = () => {
     clock += 1000;
@@ -132,7 +137,12 @@ export function createInMemoryListingRepository(
   const entity = (listing: StoredListing): Listing => {
     const { sourceHash: _hash, ...rest } = structuredCopy(listing);
     const time = times.get(listing.id) ?? { createdAt: new Date(0), updatedAt: new Date(0) };
-    return { ...rest, closeReason: null, createdAt: time.createdAt, updatedAt: time.updatedAt };
+    return {
+      ...rest,
+      closeReason: closeReasons.get(listing.id) ?? null,
+      createdAt: time.createdAt,
+      updatedAt: time.updatedAt,
+    };
   };
   const record = (listing: StoredListing): ListingImportRecord => ({
     id: listing.id,
@@ -198,9 +208,12 @@ export function createInMemoryListingRepository(
     async getSourceHash(id) {
       return stored.get(id)?.sourceHash ?? null;
     },
-    async changeStatus(id, from, to) {
+    async changeStatus(id, from, to, options = {}) {
       const current = stored.get(id);
       if (current?.status !== from) return false;
+      // El motivo, como en el de Drizzle: se fija al cerrar y se borra al reabrir.
+      if (to === "closed") closeReasons.set(id, options.closeReason ?? null);
+      else if (to === "ready" || to === "active") closeReasons.set(id, null);
       stored.set(id, { ...current, status: to });
       touch(id);
       return true;

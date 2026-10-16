@@ -1,4 +1,4 @@
-import type { ListingCategory, ListingSource, ListingStatus } from "../enums.js";
+import type { CloseReason, ListingCategory, ListingSource, ListingStatus } from "../enums.js";
 import type { Listing, ListingFilters } from "../listing.js";
 import type { ListingAttributes, ListingCoreFields } from "../listing-validator/index.js";
 
@@ -60,7 +60,14 @@ export interface ListingRepository {
    * Cambio de estado **condicional**: solo si el aviso sigue en `from`. Devuelve si cambió
    * (`false` si otro cambio llegó antes, o si no existe). Lo usan el cambio manual
    * (`changeListingStatus`, que aplica sus reglas) y el sistema al publicar o retirar en `live`
-   * (`ready` ↔ `active`, spec F3 §4.3).
+   * (`ready` ↔ `active`, spec F3 §4.3). Desde F6 (ADR-0019) guarda el motivo al pasar a `closed`
+   * (`closeReason`) y lo borra al volver a `ready` o `active` (reabrir); archivar una cerrada lo
+   * conserva, y los demás cambios no lo tocan.
    */
-  changeStatus(id: string, from: ListingStatus, to: ListingStatus): Promise<boolean>;
+  changeStatus(
+    id: string,
+    from: ListingStatus,
+    to: ListingStatus,
+    options?: { closeReason?: CloseReason },
+  ): Promise<boolean>;
 }

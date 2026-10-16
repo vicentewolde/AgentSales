@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-15
 **Fase actual:** F6 · Calendario + seguimiento (`docs/specs/fase-6-calendario-seguimiento.md`, aprobado el 2026-10-15; ADR-0018 a ADR-0020). F5 cerrada (tag `v0.5.0`)
-**Última tarea:** lote C de F6 (F6-T06 y T07): Portal, actualizar un aviso publicado, republicar uno vencido o cerrado y el aviso de vencimiento
-**Siguiente paso:** `/tarea F6-T08 F6-T09` — lote D: la propiedad manda (pausar, cerrar por vendida o arrendada, reabrir y archivar orquestan sus publicaciones) y `auto_publish`
+**Última tarea:** lote D de F6 (F6-T08 y T09): la propiedad manda sobre sus publicaciones y la publicación automática por corredor
+**Siguiente paso:** `/tarea F6-T14` — lote E: el respaldo local con `pg_dump` (antes, `brew install libpq`)
 
 ## Pendiente tuyo para F6 (no bloquea hasta el lote E)
 - [ ] Instalar el cliente de Postgres para el respaldo: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6")
@@ -33,8 +33,8 @@
 | **Lote B** · T05 Vigilancia periódica (`publications.watch`) | ✅ terminada | #121 |
 | **Lote C** · T06 Mercado Libre: editar y republicar (cliente) | ✅ terminada | #122 |
 | **Lote C** · T07 Portal: actualizar, republicar y vencimiento | ✅ terminada | #122 |
-| **Lote D** · T08 La propiedad manda | ⏳ pendiente | |
-| **Lote D** · T09 `auto_publish` | ⏳ pendiente | |
+| **Lote D** · T08 La propiedad manda | ✅ terminada | #123 |
+| **Lote D** · T09 `auto_publish` | ✅ terminada | #123 |
 | **Lote E** · T14 Respaldo local (`pg_dump`) | ⏳ pendiente | |
 | **Lote F** · T10 API | ⏳ pendiente | |
 | **Lote F** · T11 CLI | ⏳ pendiente | |
@@ -87,6 +87,7 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **Para T10 (revisión del lote D):** la agenda tiene que derivar "espera tu revisión" (texto con errores) y "solo aprobado, falta algo para Portal" de `auto_publish` (§4.10 lo promete; §4.9 aún no define de dónde sale): definirlo en el spec antes de T10. `POST /listings/:id/status` con `AbortSignal.timeout(OPERATION_TIMEOUT_MS)`; `CLOSE_REASON_REQUIRED` a 400 con fila propia; decidir si `LISTING_HAS_LIVE_PUBLICATIONS` cambia de nombre (también salta con simuladas). Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador).
 - **CLI, aviso falso de cola en `publish` (F3, demo):** `agentsales publish` avisa "Sigue en cola: ¿está corriendo el worker?" si ninguna publicación cambia en 20 s. El worker publica de a una y el carrusel guarda su primer progreso después de crear los hijos y esperar a que estén listos (más de 20 s), así que el aviso sale aunque el worker corra. Arreglo: guardar el progreso con `childIds` apenas se crean los hijos, o un texto propio para publicaciones ("en cola o esperando su turno").
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
 - **F7, campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
@@ -117,6 +118,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-15: **Lote D de F6 (F6-T08 y T09).** Por ahora por dentro; los botones nuevos y los comandos llegan en los lotes F y G.
+  - **La propiedad manda:** pausar la propiedad pausa su aviso de Portal y desprograma lo programado; reanudar reactiva solo lo que pausó la propiedad (no una pausa que hiciste tú). Cerrarla (vendida, arrendada o retirada) cierra Portal, descarta lo pendiente y baja las simulaciones de Instagram y Marketplace; lo que está en vivo en Instagram o Marketplace queda como **tarea a mano** (bórralo tú y márcalo retirado). Reabrir borra el motivo y no publica nada. Archivar exige que no quede nada publicado (primero se cierra). Pausar, cerrar y archivar piden confirmar cuando cambian algo; nada se cambia si algo se está publicando o espera tu clic en Marketplace.
+  - **Primero se revisa, después Portal, después la propiedad:** si Portal falla a mitad, la propiedad no cambia y repetir la acción salta lo ya hecho.
+  - **El botón de hoy del panel** (cambiar estado) sigue funcionando sobre lo nuevo; pausar con algo programado le responde "falta confirmar" hasta los botones nuevos (lote G).
+  - **La revisión dejó** (1 bloqueante, corregido): archivar una propiedad vendida conserva el motivo (solo reabrir lo borra); si una publicación de Portal sale justo mientras cambias la propiedad, se te pide repetir en vez de dejarla viva sin dueño; más pruebas.
+  - **Publicación automática (`auto_publish`):** si el corredor la tiene activada, al terminar de preparar los textos se aprueba lo que no tiene errores y se publica Instagram y Portal con el modo del worker; Marketplace queda como recordatorio "te toca" (nunca abre Facebook). Con errores en el texto no aprueba; si al aviso le falta algo para Portal, solo aprueba. Un problema nunca hace fallar la preparación: queda en el registro con su código. Activarla llega con la API, la CLI y el panel (lotes F y G).
 - 2026-10-15: **Lote C de F6 (F6-T06 y T07): Portal.** Por ahora solo en core, el cliente y la API por dentro; las rutas, la CLI y los botones llegan en los lotes F y G.
   - **Actualizar un aviso publicado:** si cambiaste el precio en la planilla (o preparaste y aprobaste un texto nuevo), Actualizar manda a Mercado Libre solo lo que cambió (precio y atributos, o título y descripción), siempre con las fotos que ya tiene y tu WhatsApp. Nunca cambia las fotos ni el tipo de propiedad: si cambió el tipo o la operación, dice que hay que cerrarlo y publicar uno nuevo. En vivo pide confirmar (un cambio de precio puede hacer que Mercado Libre lo pause para revisarlo) y revisa el estado 30 s después.
   - **Republicar uno vencido o cerrado:** crea una publicación nueva que recuerda la anterior. En vivo usa la republicación de Mercado Libre (conserva las visitas si fue hace 60 días o menos) y repone lo que el aviso nuevo no traiga. Nunca la pide dos veces a ciegas; si Mercado Libre la rechaza, reintentar publica un aviso nuevo. En vivo pide confirmar: usa un cupo del paquete.
