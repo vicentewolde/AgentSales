@@ -21,6 +21,7 @@ import {
   failAbandonedContentRuns,
   requeueQueuedContentRuns,
 } from "./content-prepare.js";
+import type { DbBackupJobDeps } from "./db-backup.js";
 import { buildJobs } from "./index.js";
 import type { MarketplaceProfileJobDeps } from "./marketplace-profile.js";
 import type { PublicationDueJobDeps } from "./publication-due.js";
@@ -77,6 +78,7 @@ describe("job content.prepare · cola", () => {
         marketplaceProfile: {} as MarketplaceProfileJobDeps,
         publicationDue: {} as PublicationDueJobDeps,
         publicationsWatch: {} as PublicationsWatchJobDeps,
+        dbBackup: {} as DbBackupJobDeps,
       }).map((job) => job.name),
     ).toEqual([
       "system.ping",
@@ -88,6 +90,7 @@ describe("job content.prepare · cola", () => {
       "marketplace.profile",
       "publication.due",
       "publications.watch",
+      "db.backup",
     ]);
   });
 });

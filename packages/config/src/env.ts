@@ -68,6 +68,23 @@ const browserProfilesDir = z
     "debe ser una ruta absoluta o empezar con ~/, fuera del proyecto (guarda la sesión de Facebook)",
   );
 
+/**
+ * Dónde se guardan los respaldos de la base por defecto (spec F6 §4.11): fuera del proyecto, porque
+ * traen datos de clientes y tokens cifrados.
+ */
+export const DEFAULT_BACKUP_DIR = "~/.agentsales/backups";
+
+/** Una ruta absoluta o que empieza con `~/` (la resuelve `resolveBackupDir`, fuera del proyecto). */
+const backupDir = z
+  .string()
+  .refine(
+    (value) => value.startsWith("/") || value.startsWith("~/"),
+    "debe ser una ruta absoluta o empezar con ~/, fuera del proyecto (los respaldos traen datos de clientes)",
+  );
+
+/** La carpeta de `pg_dump` y `pg_restore` (por ejemplo `/opt/homebrew/opt/libpq/bin`): absoluta. */
+const pgBinDir = z.string().refine((value) => value.startsWith("/"), "debe ser una ruta absoluta");
+
 /** Variables que cambiaron de nombre (spec F3, D5). */
 const RENAMED_VARIABLES: Readonly<Record<string, string>> = {
   META_APP_ID: "INSTAGRAM_APP_ID",
@@ -211,6 +228,12 @@ const envSchema = z
       240,
       "debe ser un número entero de minutos entre 1 y 240",
     ).default(30),
+
+    // Respaldo local (F6, spec §4.11): la carpeta de los volcados (fuera del proyecto) y, opcional,
+    // la de `pg_dump` y `pg_restore` (Homebrew `libpq` no queda en el PATH: sin esto se busca en el
+    // PATH y en `/opt/homebrew/opt/libpq/bin`).
+    BACKUP_DIR: backupDir.default(DEFAULT_BACKUP_DIR),
+    PG_BIN_DIR: pgBinDir.optional(),
   })
   .superRefine((env, ctx) => {
     // El proveedor de la API de Anthropic no funciona sin su clave (deuda de F1, spec F2 §4.5).

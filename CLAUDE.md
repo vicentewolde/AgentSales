@@ -42,6 +42,7 @@ pnpm test                # solo tests
 pnpm db:generate         # generar migración tras cambiar el esquema
 pnpm db:migrate          # aplicar migraciones
 pnpm db:seed             # seeds idempotentes
+pnpm db:backup           # respaldo local de la base con pg_dump a BACKUP_DIR (fuera del proyecto; deja los últimos 14; no necesita pnpm dev; necesita brew install libpq)
 pnpm storage:check       # verifica acceso al bucket de R2
 pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo)
 pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo)

@@ -20,7 +20,7 @@ import type {
 } from "@agentsales/core";
 import { Hono } from "hono";
 import { createErrorHandler, notFoundHandler } from "./errors.js";
-import { type HealthCheck, runHealth } from "./health.js";
+import { type HealthCheck, type HealthDetails, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
 import { requestLogger } from "./request-logger.js";
 import { accountRoutes } from "./routes/accounts.js";
@@ -45,6 +45,8 @@ export type AppDeps = {
   access: LocalAccess;
   /** Solo para tests; por defecto `DEFAULT_CHECK_TIMEOUT_MS`. */
   checkTimeoutMs?: number;
+  /** La versión de la base y el estado del respaldo en `/health` (F6-T14). */
+  healthDetails?: HealthDetails;
   // Puertos de core (no los adaptadores): así `AppType` no arrastra drizzle ni el SDK de S3.
   listings: ListingRepository;
   brokers: BrokerRepository;
@@ -137,6 +139,7 @@ export function createApp(deps: AppDeps) {
         publishMode: deps.publishMode,
         version: deps.version,
         ...(deps.checkTimeoutMs === undefined ? {} : { timeoutMs: deps.checkTimeoutMs }),
+        ...(deps.healthDetails === undefined ? {} : { details: deps.healthDetails }),
       });
       // Siempre 200: el estado va en el cuerpo (`ok` o `degraded`).
       return c.json(report, 200);

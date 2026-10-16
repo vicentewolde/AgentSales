@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Pingable, pingDatabase } from "./health.js";
+import { type Pingable, pingDatabase, readServerVersion } from "./health.js";
 
 /** Base simulada: falla las primeras `failures` llamadas. */
 function fakeDb(failures: number) {
@@ -38,5 +38,21 @@ describe("pingDatabase", () => {
 
     await expect(pingDatabase(db, { retryDelayMs: 0 })).rejects.toThrow("intento 2 falló");
     expect(calls()).toBe(2);
+  });
+});
+
+describe("readServerVersion (F6-T14)", () => {
+  it("devuelve show server_version, reintentando como el ping", async () => {
+    let calls = 0;
+    const db: Pingable = {
+      execute: async () => {
+        calls++;
+        if (calls === 1) throw new Error("despertando");
+        return { rows: [{ server_version: " 18.6 " }] };
+      },
+    };
+
+    expect(await readServerVersion(db, { retryDelayMs: 0 })).toBe("18.6");
+    expect(calls).toBe(2);
   });
 });

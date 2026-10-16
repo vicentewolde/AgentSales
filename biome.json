@@ -76,6 +76,27 @@
       }
     },
     {
+      "includes": ["apps/cli/src/**", "apps/web/src/**", "!**/*.test.ts", "!**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@agentsales/core/testing": "Los dobles de prueba de @agentsales/core/testing solo se importan desde tests (*.test.ts o test/).",
+                  "@agentsales/api/testing": "Los dobles de prueba de @agentsales/api/testing solo se importan desde tests (*.test.ts o test/).",
+                  "@agentsales/publishers/marketplace": "Marketplace (Playwright) solo lo importa el worker: la API, la CLI y el panel no cargan el navegador (spec F5 §4.1).",
+                  "playwright": "Playwright solo vive en packages/media, packages/publishers/src/marketplace y el worker (spec F5 §4.1).",
+                  "@agentsales/db": "La CLI y el panel no cargan pg ni Drizzle: del paquete db solo @agentsales/db/backup (spec F6 §4.11)."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/api/src/contracts/**", "!**/*.test.ts"],
       "linter": {
         "rules": {
@@ -227,6 +248,26 @@
         "rules": {
           "style": {
             "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/db/src/backup/**", "!**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**", "!node:*", "!node:*/*", "!@agentsales/core", "!./**"],
+                    "message": "@agentsales/db/backup lo usan la CLI y la API sin abrir la base: solo node:, @agentsales/core e imports de ./ (nada de pg, Drizzle, @agentsales/config ni ../; spec F6 §4.11). Va al final: reemplaza la regla general de los adaptadores."
+                  }
+                ]
+              }
+            }
           }
         }
       }

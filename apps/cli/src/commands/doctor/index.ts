@@ -1,3 +1,4 @@
+import { findPgTool } from "@agentsales/db/backup";
 import { claudeCliEnv } from "@agentsales/llm";
 import { chromiumStatus } from "@agentsales/media/tools";
 import type { Command } from "commander";
@@ -7,6 +8,7 @@ import type { CliContext } from "../../context.js";
 import { type EnvResult, loadEnvironment } from "../../env.js";
 import {
   type CheckItem,
+  checkBackup,
   checkChromium,
   checkClaude,
   checkEnv,
@@ -14,6 +16,7 @@ import {
   checkInstagram,
   checkMercadoLibre,
   checkNode,
+  checkPgDump,
   checkPublishMode,
   checkServices,
   checkUfSource,
@@ -31,6 +34,9 @@ export type DoctorDeps = {
   chromium: { path: string; installed: boolean } | null;
   /** Entorno del proceso: la CLI de Claude recibe solo las variables permitidas (`claudeCliEnv`). */
   processEnv: Readonly<Record<string, string | undefined>>;
+  /** Dónde está `pg_dump` (`findPgTool`, con `PG_BIN_DIR`); lanza si no está. */
+  findPgDump?: (binDir: string | undefined) => string;
+  now?: () => Date;
 };
 
 export type DoctorReport = { items: CheckItem[]; exitCode: 0 | 1 };
@@ -47,6 +53,11 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const instagram = checkInstagram(deps.env);
   const mercadoLibre = checkMercadoLibre(deps.env);
   const ufSource = checkUfSource(deps.env);
+  const backup = checkBackup(services.report, (deps.now ?? (() => new Date()))());
+  const pgBinDir = deps.env.ok ? deps.env.env.PG_BIN_DIR : undefined;
+  const findPgDump =
+    deps.findPgDump ??
+    ((binDir: string | undefined) => findPgTool("pg_dump", binDir === undefined ? {} : { binDir }));
   const items: CheckItem[] = [
     checkNode(deps.nodeVersion),
     checkEnv(deps.env),
@@ -58,6 +69,12 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     await checkFfmpegTool(deps.run, "ffmpeg", ffmpegPath),
     await checkFfmpegTool(deps.run, "ffprobe", ffprobePath),
     checkChromium(deps.chromium),
+    await checkPgDump(
+      deps.run,
+      () => findPgDump(pgBinDir),
+      services.report?.database?.serverVersion,
+    ),
+    ...(backup ? [backup] : []),
     await checkClaude(
       deps.run,
       deps.env.ok ? deps.env.env.CLAUDE_CLI_PATH : "claude",

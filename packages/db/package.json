@@ -8,13 +8,19 @@
       "@agentsales/source": "./src/index.ts",
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
+    },
+    "./backup": {
+      "@agentsales/source": "./src/backup/index.ts",
+      "types": "./dist/src/backup/index.d.ts",
+      "default": "./dist/src/backup/index.js"
     }
   },
   "scripts": {
     "build": "tsc -b",
     "generate": "NODE_OPTIONS=--conditions=@agentsales/source drizzle-kit generate",
     "migrate": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/migrate.ts",
-    "seed": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/seed.ts"
+    "seed": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/seed.ts",
+    "backup": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/backup.ts"
   },
   "dependencies": {
     "@agentsales/config": "workspace:*",

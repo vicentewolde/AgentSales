@@ -15,6 +15,7 @@ export const JOB_NAMES = [
   "marketplace.profile",
   "publication.due",
   "publications.watch",
+  "db.backup",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -69,6 +70,11 @@ export const JOB_PAYLOADS = {
    * `publishing` atascadas. Sin datos.
    */
   "publications.watch": z.object({}),
+  /**
+   * El respaldo local de la base (spec F6 §4.11): su cron diario y una vuelta al arrancar si el
+   * último tiene más de 20 h. Sin datos.
+   */
+  "db.backup": z.object({}),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;

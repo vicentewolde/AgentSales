@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveBrowserProfilesDir } from "./browser-profiles.js";
+import { resolveBackupDir, resolveBrowserProfilesDir } from "./browser-profiles.js";
 import { EnvError } from "./env.js";
 
 const paths = {
@@ -58,5 +58,25 @@ describe("resolveBrowserProfilesDir", () => {
     expect(
       resolveBrowserProfilesDir("~/perfiles", { homeDir: "/home/app", workspaceRoot: null }),
     ).toBe("/home/app/perfiles");
+  });
+});
+
+describe("resolveBackupDir (F6-T14)", () => {
+  it("expande ~/ y deja una carpeta fuera del proyecto", () => {
+    expect(resolveBackupDir("~/.agentsales/backups", paths)).toBe(
+      "/Users/operador/.agentsales/backups",
+    );
+  });
+
+  it("rechaza una carpeta dentro del proyecto, nombrando BACKUP_DIR y sin mostrar la ruta", () => {
+    let caught: unknown;
+    try {
+      resolveBackupDir("/Users/operador/dev/AgentSales/respaldos", paths);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(EnvError);
+    expect((caught as EnvError).issues.map((issue) => issue.variable)).toEqual(["BACKUP_DIR"]);
+    expect((caught as EnvError).message).not.toContain("/Users/operador");
   });
 });

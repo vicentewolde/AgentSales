@@ -374,4 +374,36 @@ describe("loadEnv", () => {
       );
     });
   });
+
+  describe("Respaldo local (F6-T14)", () => {
+    it("por defecto: la carpeta fuera del proyecto y sin PG_BIN_DIR", () => {
+      const env = loadEnv(validSource);
+
+      expect(env.BACKUP_DIR).toBe("~/.agentsales/backups");
+      expect(env.PG_BIN_DIR).toBeUndefined();
+    });
+
+    it("acepta rutas absolutas", () => {
+      const env = loadEnv({
+        ...validSource,
+        BACKUP_DIR: "/Volumes/Respaldo/agentsales",
+        PG_BIN_DIR: "/opt/homebrew/opt/libpq/bin",
+      });
+
+      expect(env.BACKUP_DIR).toBe("/Volumes/Respaldo/agentsales");
+      expect(env.PG_BIN_DIR).toBe("/opt/homebrew/opt/libpq/bin");
+    });
+
+    it.each([
+      ["BACKUP_DIR", "carpeta-relativa"],
+      ["BACKUP_DIR", "./tmp/copias"],
+      ["PG_BIN_DIR", "libpq/bin"],
+      ["PG_BIN_DIR", "~/libpq/bin"],
+    ])("rechaza %s=%s (relativa)", (variable, value) => {
+      const error = envErrorOf({ ...validSource, [variable]: value });
+
+      expect(error.issues.map((issue) => issue.variable)).toEqual([variable]);
+      expect(error.message).not.toContain(value);
+    });
+  });
 });

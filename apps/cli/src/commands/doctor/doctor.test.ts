@@ -28,9 +28,19 @@ const healthy: HealthReport = {
     storage: { ok: true, latencyMs: 200 },
     queue: { ok: true, latencyMs: 65 },
   },
+  database: { serverVersion: "18.6" },
+  backup: {
+    lastSuccessAt: "2026-10-15T16:00:00.000Z",
+    lastFile: "agentsales-20261015-1300.dump",
+    lastFailureAt: null,
+    lastFailureCode: null,
+    stale: false,
+  },
 };
+const NOW = new Date("2026-10-15T19:00:00.000Z");
 
 const allTools: RunCommand = async (command, args) => {
+  if (command.endsWith("pg_dump")) return "pg_dump (PostgreSQL) 18.6 (Homebrew)\n";
   if (command !== "claude") return "ffmpeg version 9.0.1 Copyright\nmás\n";
   return args[0] === "auth"
     ? '{ "loggedIn": true, "authMethod": "claude.ai" }'
@@ -45,6 +55,8 @@ function deps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     run: allTools,
     chromium: { path: "/cache/ms-playwright/chromium-1243/chrome", installed: true },
     processEnv: { PATH: "/usr/bin", HOME: "/home/operador" },
+    findPgDump: () => "/opt/homebrew/opt/libpq/bin/pg_dump",
+    now: () => NOW,
     ...overrides,
   };
 }
@@ -147,8 +159,16 @@ describe("runDoctor", () => {
       ffmpeg: "ok",
       ffprobe: "ok",
       "Chromium (Playwright)": "ok",
+      pg_dump: "ok",
+      Respaldo: "ok",
       "Claude Code": "ok",
     });
+    expect(report.items.find((item) => item.name === "pg_dump")?.detail).toBe(
+      "18.6 (la base es 18.6)",
+    );
+    expect(report.items.find((item) => item.name === "Respaldo")?.detail).toBe(
+      "el último es de hace 3 h (agentsales-20261015-1300.dump)",
+    );
     expect(report.items.find((item) => item.name === "Mercado Libre")?.detail).toBe(
       "ML_APP_ID y ML_CLIENT_SECRET definidas; dirección de retorno https://agentsales.test/oauth/mercadolibre/callback",
     );
@@ -252,6 +272,84 @@ describe("runDoctor", () => {
       detail: "ffprobe: no encontrado",
       hint: "brew install ffmpeg (trae ffprobe), o ajusta FFPROBE_PATH en .env",
     });
+  });
+
+  it("respaldo (F6-T14): sin pg_dump solo advierte; con una versión menor que la base es error", async () => {
+    const missing = await runDoctor(
+      deps({
+        findPgDump: () => {
+          throw new Error("no está");
+        },
+      }),
+    );
+    expect(missing.exitCode).toBe(0);
+    expect(missing.items.find((item) => item.name === "pg_dump")).toMatchObject({
+      level: "warn",
+      hint: expect.stringContaining("brew install libpq"),
+    });
+
+    const older = await runDoctor(
+      deps({
+        run: async (command, args) =>
+          command.endsWith("pg_dump") ? "pg_dump (PostgreSQL) 17.4\n" : allTools(command, args),
+      }),
+    );
+    expect(older.exitCode).toBe(1);
+    expect(older.items.find((item) => item.name === "pg_dump")).toMatchObject({
+      level: "error",
+      detail: "17.4, pero la base es 18.6: pg_dump no puede respaldar una base más nueva",
+    });
+  });
+
+  it("respaldo (F6-T14): usa PG_BIN_DIR, y sin la API no compara la versión", async () => {
+    const asked: (string | undefined)[] = [];
+    const report = await runDoctor(
+      deps({
+        env: { ok: true, env: { ...env, PG_BIN_DIR: "/opt/pg/bin" } },
+        fetchHealth: async () => {
+          throw new Error("ECONNREFUSED");
+        },
+        findPgDump: (binDir) => {
+          asked.push(binDir);
+          return "/opt/pg/bin/pg_dump";
+        },
+      }),
+    );
+    expect(asked).toEqual(["/opt/pg/bin"]);
+    expect(report.items.find((item) => item.name === "pg_dump")).toMatchObject({
+      level: "ok",
+      detail: "18.6 (sin la versión de la base: se compara con la API corriendo)",
+    });
+    expect(report.items.find((item) => item.name === "Respaldo")).toBeUndefined();
+  });
+
+  it("respaldo (F6-T14): avisa sin respaldos, con uno atrasado o con una falla", async () => {
+    const detailOf = async (backup: HealthReport["backup"]) =>
+      (await runDoctor(deps({ fetchHealth: async () => ({ ...healthy, backup }) }))).items.find(
+        (item) => item.name === "Respaldo",
+      );
+
+    expect(await detailOf(null)).toMatchObject({
+      level: "warn",
+      detail: "todavía no hay respaldos de la base",
+    });
+    expect(
+      await detailOf({
+        lastSuccessAt: "2026-10-12T19:00:00.000Z",
+        lastFile: "agentsales-20261012-1600.dump",
+        lastFailureAt: "2026-10-15T16:00:00.000Z",
+        lastFailureCode: "BACKUP_TOOL_NOT_INSTALLED",
+        stale: true,
+      }),
+    ).toMatchObject({
+      level: "warn",
+      detail:
+        "el último bueno es de hace 72 h; el último intento falló (BACKUP_TOOL_NOT_INSTALLED)",
+    });
+    // Un reporte de antes de F6 (sin `backup`) no muestra el ítem.
+    const { backup: _backup, ...old } = healthy;
+    const report = await runDoctor(deps({ fetchHealth: async () => old }));
+    expect(report.items.find((item) => item.name === "Respaldo")).toBeUndefined();
   });
 
   it("sin Claude solo advierte y sale con 0", async () => {

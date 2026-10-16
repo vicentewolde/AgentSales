@@ -13,7 +13,7 @@ export {
   toDbError,
   withDbErrors,
 } from "./errors.js";
-export { type Pingable, type PingOptions, pingDatabase } from "./health.js";
+export { type Pingable, type PingOptions, pingDatabase, readServerVersion } from "./health.js";
 export { createListingLock } from "./listing-lock.js";
 export { MIGRATIONS_FOLDER } from "./migrations.js";
 export { createBrokerRepository } from "./repositories/brokers.js";
