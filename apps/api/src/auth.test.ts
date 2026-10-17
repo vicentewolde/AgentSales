@@ -1,3 +1,5 @@
+import { Writable } from "node:stream";
+import { createLogger } from "@agentsales/config";
 import { AppError } from "@agentsales/core";
 import { createInMemoryBrokerRepository } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
@@ -16,8 +18,20 @@ const SAMPLE_ID = "00000000-0000-4000-8000-000000000123";
 async function setup() {
   const brokers = createInMemoryBrokerRepository();
   const auth = { ...testAuth(), brokers };
+  // Todo lo que la API escribe en el log, para revisar que no salgan tokens ni enlaces.
+  const logged: string[] = [];
+  const logger = createLogger(
+    { level: "debug" },
+    new Writable({
+      write: (chunk, _encoding, callback) => {
+        logged.push(String(chunk));
+        callback();
+      },
+    }),
+  );
   const app = createApp(
     testDeps({
+      logger,
       auth,
       brokers,
       access: { allowedHosts: ["localhost"], allowedOrigins: [ORIGIN] },
@@ -45,7 +59,7 @@ async function setup() {
   });
   auth.repos.seed.session({ userId: brokerUser.id, tokenHash: auth.tokens.hash(BROKER_TOKEN) });
   const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
-  return { app, auth, broker, brokerUser, bearer };
+  return { app, auth, broker, brokerUser, bearer, logged };
 }
 
 const pathOf = (key: string) => {
@@ -253,6 +267,50 @@ describe("CSRF con la cookie", () => {
   });
 });
 
+describe("el matcher de la tabla", () => {
+  it("una barra final, HEAD o mayúsculas no abren una ruta", async () => {
+    const { app, bearer } = await setup();
+    expect((await app.request("/users/")).status).toBe(401);
+    expect((await app.request("/users/", { headers: bearer(BROKER_TOKEN) })).status).toBe(403);
+    expect((await app.request("/users", { method: "HEAD" })).status).toBe(401);
+    expect(
+      (await app.request("/users", { method: "HEAD", headers: bearer(BROKER_TOKEN) })).status,
+    ).toBe(403);
+    // Una ruta en mayúsculas no está en la tabla: pide sesión (y después no existe).
+    expect((await app.request("/USERS")).status).toBe(401);
+    expect((await app.request("/USERS", { headers: bearer(BROKER_TOKEN) })).status).toBe(404);
+  });
+});
+
+describe("el log", () => {
+  it("nunca lleva el token de la CLI, la cookie ni el enlace de invitación", async () => {
+    const { app, logged } = await setup();
+    const login = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: TEST_ADMIN.email,
+        password: TEST_ADMIN.password,
+        client: "cli",
+      }),
+    });
+    const { token } = (await login.json()) as { token: string };
+    const created = await app.request("/users", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ email: "log@ejemplo.cl", name: "Log", role: "admin" }),
+    });
+    const { invitationUrl } = (await created.json()) as { invitationUrl: string };
+    const invitation = invitationUrl.split("#")[1] ?? "";
+    await app.request("/auth/me", { headers: { cookie: `agentsales_session=${token}` } });
+    const text = logged.join("");
+    expect(text).not.toBe("");
+    for (const secret of [token, invitation, TEST_ADMIN.password, TEST_ADMIN_TOKEN]) {
+      expect(text).not.toContain(secret);
+    }
+  });
+});
+
 describe("sin base", () => {
   it("una ruta con sesión da 503 (nunca 401); /health responde lo básico", async () => {
     const { app, auth } = await setup();
@@ -262,6 +320,7 @@ describe("sin base", () => {
     const headers = { authorization: `Bearer ${TEST_ADMIN_TOKEN}` };
     const listings = await app.request("/listings", { headers });
     expect(listings.status).toBe(503);
+    // Con la sesión del administrador que no se puede leer: lo básico, nunca el detalle.
     const health = await app.request("/health", { headers });
     expect(health.status).toBe(200);
     expect(await health.json()).toEqual({ status: "ok", publishMode: "dry-run" });

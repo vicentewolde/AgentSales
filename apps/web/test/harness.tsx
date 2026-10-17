@@ -73,7 +73,7 @@ export function harness(options: HarnessOptions = {}) {
   const importRuns = createInMemoryImportRunRepository({ nextId: randomUUID });
   const content = createInMemoryContentRepositories({ nextId: randomUUID });
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
-  const auth = { ...testAuth(), brokers: options.deps?.brokers ?? brokers };
+  const auth = { ...testAuth({ client: "panel" }), brokers: options.deps?.brokers ?? brokers };
   const base = createApp(
     testDeps({
       auth,

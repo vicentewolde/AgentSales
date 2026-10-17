@@ -7,6 +7,9 @@ import { useLogin } from "../queries/auth.js";
 /** Adónde volver tras entrar: solo una ruta del panel (nunca otro sitio ni la misma página). */
 export function returnPathOf(value: string | null): string {
   if (value === null || !value.startsWith("/") || value.startsWith("//")) return "/";
+  // Una barra invertida o un carácter de control: algunos navegadores los leen como otro sitio.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: se buscan justamente los de control
+  if (/[\\\u0000-\u001f\u007f]/.test(value)) return "/";
   if (value.startsWith("/entrar") || value.startsWith("/invitacion")) return "/";
   return value;
 }

@@ -7,12 +7,15 @@ import { runLogin, runLogout, runWhoami } from "./login.js";
 
 // F7-T06 (spec F7 §4.10): entrar, salir y quién soy desde la CLI, contra la API en proceso.
 
+/** La contraseña que "escribe" el operador. */
+const typed = (value: string) => async () => ({ cancelled: false as const, value });
+
 describe("agentsales login, whoami y logout", () => {
   it("entra, guarda el token sin mostrarlo, y whoami lo usa", async () => {
     const h = harness({ anonymous: true });
     const session = createMemorySessionStore();
     const code = await runLogin(
-      { ...h.io, client: h.client, session, readPassword: async () => TEST_ADMIN.password },
+      { ...h.io, client: h.client, session, readPassword: typed(TEST_ADMIN.password) },
       { email: TEST_ADMIN.email },
     );
     expect(code).toBe(0);
@@ -38,7 +41,7 @@ describe("agentsales login, whoami y logout", () => {
     const session = createMemorySessionStore();
     expect(
       await runLogin(
-        { ...h.io, client: h.client, session, readPassword: async () => "equivocada-larga" },
+        { ...h.io, client: h.client, session, readPassword: typed("equivocada-larga") },
         { email: TEST_ADMIN.email },
       ),
     ).toBe(1);
@@ -53,6 +56,51 @@ describe("agentsales login, whoami y logout", () => {
       ),
     ).toBe(1);
     expect(noTty.errors()).toContain("LOGIN_NEEDS_TERMINAL");
+  });
+
+  it("Ctrl+C cancela sin entrar ni decir que falta una terminal", async () => {
+    const h = harness({ anonymous: true });
+    const session = createMemorySessionStore();
+    expect(
+      await runLogin(
+        { ...h.io, client: h.client, session, readPassword: async () => ({ cancelled: true }) },
+        { email: TEST_ADMIN.email },
+      ),
+    ).toBe(1);
+    expect(h.errors()).toContain("LOGIN_CANCELLED");
+    expect(h.errors()).not.toContain("terminal interactiva");
+    expect(session.read()).toBeNull();
+  });
+
+  it("entrar de nuevo cierra en la API la sesión anterior de esta CLI", async () => {
+    const h = harness({ anonymous: true });
+    const session = createMemorySessionStore();
+    const deps = (client = h.client) => ({
+      ...h.io,
+      client,
+      session,
+      readPassword: typed(TEST_ADMIN.password),
+    });
+    await runLogin(deps(), { email: TEST_ADMIN.email });
+    const first = session.read()?.token ?? "";
+    await runLogin(deps(h.clientWith(first)), { email: TEST_ADMIN.email });
+    const second = session.read()?.token ?? "";
+    expect(second).not.toBe(first);
+    expect(await runWhoami({ ...h.io, client: h.clientWith(first) })).toBe(1);
+    expect(await runWhoami({ ...h.io, client: h.clientWith(second) })).toBe(0);
+  });
+
+  it("salir con la API apagada borra la local y avisa que en el servidor sigue", async () => {
+    const h = harness({
+      anonymous: true,
+      beforeRequest: () => {
+        throw new TypeError("fetch failed");
+      },
+    });
+    const session = createMemorySessionStore({ token: "t", email: "a@ejemplo.cl", savedAt: "x" });
+    expect(await runLogout({ ...h.io, client: h.client, session })).toBe(0);
+    expect(session.read()).toBeNull();
+    expect(h.errors()).toContain("sigue válida");
   });
 
   it("salir sin sesión no falla, y con una vencida borra la local igual", async () => {

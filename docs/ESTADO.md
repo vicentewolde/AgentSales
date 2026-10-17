@@ -2,10 +2,10 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-16
+**Actualizado:** 2026-10-17
 **Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** lote A de F7 (F7-T01 a T03, #130): datos, el alcance en SQL y el login en core (sin pantallas todavía)
-**Siguiente paso:** `/tarea F7-T04 F7-T05 F7-T06 F7-T07` (lote B: entrar con la API, la CLI y el panel)
+**Última tarea:** lote B de F7 (F7-T04 a T07, #131): entrar con usuario en la API, la CLI y el panel
+**Siguiente paso:** `/tarea F7-T08 F7-T09 F7-T10` (lote C: cada corredor lo suyo en la API)
 
 ## Pendiente tuyo para F7
 - [ ] **Clave de la API de Anthropic** (antes del lote D): crearla en la consola sin vencimiento (o anotar la fecha), ponerle un límite de gasto total en la consola y dejarla en `.env` como `ANTHROPIC_API_KEY`; después `pnpm llm:smoke --provider anthropic-api` (gasta centavos)
@@ -36,10 +36,10 @@
 | **Lote A** · T01 Datos nuevos: usuarios, sesiones, invitaciones y `state` usados | ✅ terminada | #130 |
 | **Lote A** · T02 Las tablas de hoy y el alcance en SQL | ✅ terminada | #130 |
 | **Lote A** · T03 Usuarios, sesiones y permisos (core y config) | ✅ terminada | #130 |
-| **Lote B** · T04 La API con sesión | 🔨 en curso | |
-| **Lote B** · T05 Usuarios, `/health` y el primer administrador | 🔨 en curso | |
-| **Lote B** · T06 CLI: entrar | 🔨 en curso | |
-| **Lote B** · T07 Panel: entrar e invitación | 🔨 en curso | |
+| **Lote B** · T04 La API con sesión | ✅ terminada | #131 |
+| **Lote B** · T05 Usuarios, `/health` y el primer administrador | ✅ terminada | #131 |
+| **Lote B** · T06 CLI: entrar | ✅ terminada | #131 |
+| **Lote B** · T07 Panel: entrar e invitación | ✅ terminada | #131 |
 | **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | ⏳ pendiente | |
 | **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | ⏳ pendiente | |
 | **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ⏳ pendiente | |
@@ -141,6 +141,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-17: **Lote B de F7 (T04 a T07): entrar.**
+  - **Tu usuario:** `pnpm auth:admin --email <correo>` lo crea (o te da un enlace nuevo si olvidaste la contraseña o te bloqueaste) y deja el enlace en el portapapeles. Lo abres con `pnpm dev` corriendo y eliges la contraseña (al menos 12 caracteres).
+  - **Panel:** página para entrar, la de la invitación, tu nombre y "Cerrar sesión" en el menú; si la sesión vence, te lleva a entrar y vuelve a donde estabas.
+  - **CLI:** `pnpm -s cli login --email <correo>` (un punto por letra), `whoami` y `logout`. La sesión dura 30 días (7 sin uso); Claude usa la CLI con tu sesión, sin leer su archivo.
+  - **Por ahora todo lo de antes es solo del administrador:** el corredor puede entrar, pero ve sus propiedades recién con el lote C.
+  - **La revisión dejó** (sin bloqueantes): salir funciona aunque la sesión ya no valga, entrar de nuevo cierra la sesión anterior de la CLI, Ctrl+C se distingue de "sin terminal", más pruebas (rutas con barra final o mayúsculas, y que el log nunca lleve tokens ni enlaces).
 - 2026-10-17: **Lote A de F7 (T01 a T03).** Por dentro, sin cambios visibles todavía:
   - **Datos:** usuarios, sesiones, enlaces de invitación y `state` usados (migración `0009`, aplicada en Neon por el operador el 2026-10-17); en cada corredor, si es propio (los de hoy quedaron propios) y su tope de IA; el gasto de IA por preparación; quién hizo cada cosa en la bitácora.
   - **Cada corredor lo suyo:** las listas de la base ya filtran por corredor; las rutas lo usarán en el lote C.

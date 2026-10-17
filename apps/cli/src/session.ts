@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -32,6 +40,8 @@ export function createFileSessionStore(path: string = cliSessionPath()): Session
     path,
     read() {
       try {
+        // Si alguien le abrió los permisos, se vuelven a cerrar antes de leer.
+        if ((statSync(path).mode & 0o077) !== 0) chmodSync(path, 0o600);
         const parsed = sessionSchema.safeParse(JSON.parse(readFileSync(path, "utf8")));
         return parsed.success ? parsed.data : null;
       } catch {
@@ -44,9 +54,13 @@ export function createFileSessionStore(path: string = cliSessionPath()): Session
       chmodSync(dir, 0o700);
       // Se escribe aparte y se renombra: nunca queda un archivo a medias ni con otros permisos.
       const partial = `${path}.${process.pid}.partial`;
-      writeFileSync(partial, `${JSON.stringify(session)}\n`, { mode: 0o600 });
-      chmodSync(partial, 0o600);
-      renameSync(partial, path);
+      try {
+        writeFileSync(partial, `${JSON.stringify(session)}\n`, { mode: 0o600 });
+        chmodSync(partial, 0o600);
+        renameSync(partial, path);
+      } finally {
+        rmSync(partial, { force: true });
+      }
     },
     clear() {
       rmSync(path, { force: true });

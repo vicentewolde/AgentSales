@@ -69,7 +69,7 @@ function UserMenu() {
   const navigate = useNavigate();
   if (me.data === undefined) return null;
   return (
-    <div className="mt-4 hidden border-t border-slate-200 px-3 pt-4 text-sm md:block">
+    <div className="mt-3 border-t border-slate-200 px-3 pt-3 text-sm md:mt-4 md:pt-4">
       <p className="font-medium text-slate-800">{me.data.name}</p>
       <p className="truncate text-xs text-slate-500">{me.data.email}</p>
       <button

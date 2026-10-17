@@ -20,10 +20,10 @@ export type Terminal = {
   /** Abre un enlace en el navegador; si no puede, no falla (el enlace ya se imprimió). */
   openUrl: (url: string) => void;
   /**
-   * Pide una contraseña sin mostrarla (F7, `agentsales login`). `null` sin una terminal
-   * interactiva o si el operador cancela (Ctrl+C).
+   * Pide una contraseña mostrando un punto por carácter (F7, `agentsales login`). `null` sin una
+   * terminal interactiva; `{ cancelled: true }` si el operador cancela (Ctrl+C).
    */
-  readPassword: (prompt: string) => Promise<string | null>;
+  readPassword: (prompt: string) => Promise<PasswordInput | null>;
 };
 
 /** Lo que comparten los comandos al registrarse en `index.ts`. */
@@ -73,6 +73,9 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** Lo que escribió el operador, o que canceló. */
+export type PasswordInput = { cancelled: false; value: string } | { cancelled: true };
+
 /** El punto que se muestra por cada carácter de la contraseña (nunca el carácter). */
 export const PASSWORD_MASK = "•";
 
@@ -104,13 +107,13 @@ export function passwordKeystroke(
   return { value: next, echo, done: null };
 }
 
-async function readPassword(prompt: string): Promise<string | null> {
+async function readPassword(prompt: string): Promise<PasswordInput | null> {
   const stdin = process.stdin;
   if (!stdin.isTTY) return null;
   process.stderr.write(prompt);
   return new Promise((resolve) => {
     let value = "";
-    const finish = (result: string | null) => {
+    const finish = (result: PasswordInput) => {
       stdin.off("data", onData);
       stdin.setRawMode(false);
       stdin.pause();
@@ -122,8 +125,8 @@ async function readPassword(prompt: string): Promise<string | null> {
       const step = passwordKeystroke(value, chunk);
       value = step.value;
       if (step.echo !== "") process.stderr.write(step.echo);
-      if (step.done === "enter") finish(value);
-      else if (step.done === "cancel") finish(null);
+      if (step.done === "enter") finish({ cancelled: false, value });
+      else if (step.done === "cancel") finish({ cancelled: true });
     };
     stdin.setRawMode(true);
     stdin.setEncoding("utf8");

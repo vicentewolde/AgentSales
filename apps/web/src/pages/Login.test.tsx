@@ -51,6 +51,8 @@ describe("entrar", () => {
       null,
       "https://malo.example",
       "//malo.example",
+      "/\\malo.example",
+      "/\tmalo",
       "propiedades",
       "/entrar",
     ]) {
@@ -67,7 +69,8 @@ describe("salir", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Cerrar sesión" }));
 
     expect(await screen.findByRole("heading", { name: "Entrar" })).toBeTruthy();
-    expect(h.auth.repos.sessions.all().filter((s) => s.client === "panel")).toEqual([]);
+    // Queda solo la sesión que siembra el arnés: la de este login se borró.
+    await waitFor(() => expect(h.auth.repos.sessions.all()).toHaveLength(1));
   });
 });
 

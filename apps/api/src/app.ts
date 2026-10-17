@@ -141,7 +141,7 @@ export function createApp(deps: AppDeps) {
     .use(hostGuard(deps.access.allowedHosts))
     .use(originGuard(deps.access.allowedOrigins))
     .use(csrfGuard(deps.access.allowedOrigins))
-    .use(authenticate(deps.auth))
+    .use(authenticate(deps.auth, deps.logger))
     .get("/health", async (c) => {
       // El detalle solo para el administrador (spec F7 §4.3); los demás, el estado y el modo.
       const admin = c.get("auth")?.user.role === "admin";

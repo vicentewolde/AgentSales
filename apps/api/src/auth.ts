@@ -3,6 +3,7 @@ import {
   AppError,
   type BrokerRepository,
   type InvitationRepository,
+  isAppError,
   type PasswordHasher,
   resolveSession,
   SESSION_TTL_MS,
@@ -17,6 +18,7 @@ import {
 import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { accessFor } from "./access.js";
+import type { AppLogger } from "./logger.js";
 
 // La sesión de cada pedido (spec F7 §4.3, ADR-0021): cookie en el panel o `Bearer` en la CLI.
 
@@ -76,7 +78,10 @@ export function clearSessionCookie(c: Context, secure: boolean): void {
  * un corredor en una ruta del administrador, `FORBIDDEN` (403). Si la base no responde, el
  * `DB_UNAVAILABLE` sube (503), nunca un 401; en una ruta pública se sigue sin sesión.
  */
-export function authenticate(deps: AuthDeps): MiddlewareHandler<AppEnv> {
+export function authenticate(
+  deps: AuthDeps,
+  logger: Pick<AppLogger, "warn">,
+): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const policy = accessFor(c.req.method, c.req.path);
     const credential = credentialOf(c);
@@ -94,6 +99,11 @@ export function authenticate(deps: AuthDeps): MiddlewareHandler<AppEnv> {
         }
       } catch (error) {
         if (policy !== "public") throw error;
+        // En una ruta pública se sigue sin sesión (por ejemplo, `/health` con la base caída).
+        logger.warn(
+          { code: isAppError(error) ? error.code : undefined, path: c.req.path },
+          "no se pudo leer la sesión: la ruta pública sigue sin ella",
+        );
       }
     }
     c.set("auth", auth);

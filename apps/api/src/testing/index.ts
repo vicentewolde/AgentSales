@@ -4,7 +4,12 @@
 import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger, createStateSigner, type Logger } from "@agentsales/config";
-import { AppError, type InstagramAuth, type MercadoLibreAuth } from "@agentsales/core";
+import {
+  AppError,
+  type InstagramAuth,
+  type MercadoLibreAuth,
+  type SessionClient,
+} from "@agentsales/core";
 import {
   createFakePasswordHasher,
   createFakeSecretTokens,
@@ -198,7 +203,7 @@ export const TEST_ADMIN = {
 /** La autenticación de los tests: los dobles de core con el administrador y su sesión. */
 export type TestAuth = AuthDeps & { repos: InMemoryUserRepositories };
 
-export function testAuth(): TestAuth {
+export function testAuth(options: { client?: SessionClient } = {}): TestAuth {
   const repos = createInMemoryUserRepositories({ nextId: randomUUID });
   const hasher = createFakePasswordHasher();
   const tokens = createFakeSecretTokens();
@@ -210,7 +215,13 @@ export function testAuth(): TestAuth {
     brokerId: null,
     passwordHash: `fake:${TEST_ADMIN.password}`,
   });
-  repos.seed.session({ userId: admin.id, tokenHash: tokens.hash(TEST_ADMIN_TOKEN) });
+  // El canal de la sesión sembrada: `cli` por defecto; el arnés del panel la pide `panel` (T10 saca
+  // de ahí el canal de la bitácora).
+  repos.seed.session({
+    userId: admin.id,
+    tokenHash: tokens.hash(TEST_ADMIN_TOKEN),
+    client: options.client ?? "cli",
+  });
   return {
     repos,
     users: repos.users,
@@ -228,7 +239,8 @@ type RequestableApp = ReturnType<typeof createApp>;
 /**
  * La app con la sesión del administrador sembrado en cada pedido que no traiga la suya
  * (`Authorization` o cookie): así los tests de antes de F7 siguen igual (spec F7-T04). Para probar
- * sin sesión, usa `createApp` directo.
+ * sin sesión, usa `createApp` directo. Solo envuelve `app.request` (no `app.fetch`): los arneses
+ * pasan por `request`.
  */
 export function withAdminSession<A extends RequestableApp>(app: A): A {
   const withAuth = (init: RequestInit | undefined): RequestInit => {

@@ -12,7 +12,8 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   // Entrar, salir y la invitación (F7-T04).
   "POST /auth/login": "public",
   "POST /auth/invitations/accept": "public",
-  "POST /auth/logout": "session",
+  // Salir es idempotente: con una sesión vencida igual borra la cookie (no responde 401).
+  "POST /auth/logout": "public",
   "GET /auth/me": "session",
   // Usuarios (F7-T05).
   "GET /users": "admin",
