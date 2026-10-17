@@ -1,5 +1,7 @@
 import {
   type AbortSignalLike,
+  type AccessScope,
+  ALL_SCOPE,
   accessTokenProvider,
   type Broker,
   isAppError,
@@ -32,7 +34,7 @@ export type MlTestUserDeps = {
     PlatformAccountRepository,
     "list" | "get" | "getCredentials" | "withCredentialsLock" | "changeStatus"
   >;
-  brokers: { list(): Promise<Pick<Broker, "id" | "slug">[]> };
+  brokers: { list(scope: AccessScope): Promise<Pick<Broker, "id" | "slug">[]> };
   /** El refresco de Mercado Libre, o `null` sin `ML_APP_ID` y `ML_CLIENT_SECRET`. */
   mercadoLibre: MercadoLibreTokenDeps["mercadoLibre"];
   testUsers: MercadoLibreTestUsers;
@@ -59,11 +61,13 @@ export async function runMlTestUser(
     if (hint !== undefined) deps.printError(`  → ${hint}`);
     return 1;
   };
-  const broker = (await deps.brokers.list()).find((item) => item.slug === options.brokerSlug);
+  const broker = (await deps.brokers.list(ALL_SCOPE)).find(
+    (item) => item.slug === options.brokerSlug,
+  );
   if (broker === undefined) {
     return fail("BROKER_NOT_FOUND", `No existe el corredor ${options.brokerSlug}`);
   }
-  const account = (await deps.accounts.list()).find(
+  const account = (await deps.accounts.list(ALL_SCOPE)).find(
     (candidate) =>
       candidate.platform === "portal_inmobiliario" &&
       candidate.brokerId === broker.id &&

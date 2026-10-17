@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { AppError } from "@agentsales/core";
+import { ALL_SCOPE, AppError } from "@agentsales/core";
 import {
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
@@ -122,7 +122,7 @@ describe("POST /imports (multipart)", () => {
 
     expect(response.status).toBe(503);
     expect((await errorOf(response)).code).toBe("QUEUE_UNAVAILABLE");
-    const [run] = await importRuns.list();
+    const [run] = await importRuns.list(50, ALL_SCOPE);
     expect(run).toMatchObject({ status: "failed", error: { code: "QUEUE_UNAVAILABLE" } });
     expect(uploads.files.size).toBe(0);
   });
@@ -223,7 +223,7 @@ describe("POST /imports · bordes", () => {
 
     expect(response.status).toBe(500);
     expect(uploads.files.size).toBe(0);
-    expect(await importRuns.list()).toEqual([]);
+    expect(await importRuns.list(50, ALL_SCOPE)).toEqual([]);
   });
 
   it("si el run ya existe y falla otra cosa al encolar (un bug), sus archivos se conservan", async () => {

@@ -1,5 +1,7 @@
 import {
   type AbortSignalLike,
+  type AccessScope,
+  ALL_SCOPE,
   AppError,
   type Broker,
   canPrepareContent,
@@ -32,7 +34,9 @@ export const IG_SMOKE_CAPTION = "AgentSales ig:smoke: contenedor de prueba, no s
 /** Lo que el smoke lee de cada repositorio: lo justo, para probarlo con datos a mano. */
 export type IgSmokeDeps = {
   accounts: {
-    list(): Promise<
+    list(
+      scope: AccessScope,
+    ): Promise<
       Pick<
         PlatformAccount,
         | "id"
@@ -46,8 +50,13 @@ export type IgSmokeDeps = {
     >;
     getCredentials(id: string): Promise<PlatformCredentials>;
   };
-  brokers: { list(): Promise<Pick<Broker, "id" | "slug">[]> };
-  listings: { list(): Promise<Pick<Listing, "id" | "brokerId" | "externalRef" | "status">[]> };
+  brokers: { list(scope: AccessScope): Promise<Pick<Broker, "id" | "slug">[]> };
+  listings: {
+    list(
+      filters: Record<string, never>,
+      scope: AccessScope,
+    ): Promise<Pick<Listing, "id" | "brokerId" | "externalRef" | "status">[]>;
+  };
   media: {
     listByListing(
       listingId: string,
@@ -124,11 +133,11 @@ export function describeUnexpected(error: unknown): string {
 
 /** La cuenta de Instagram conectada (del corredor pedido, si hay más de una). */
 async function findAccount(deps: IgSmokeDeps, brokerSlug: string | undefined) {
-  const connected = (await deps.accounts.list()).filter(
+  const connected = (await deps.accounts.list(ALL_SCOPE)).filter(
     (account) =>
       account.platform === "instagram" && account.status === "connected" && account.hasCredentials,
   );
-  const brokers = await deps.brokers.list();
+  const brokers = await deps.brokers.list(ALL_SCOPE);
   let candidates = connected;
   if (brokerSlug !== undefined) {
     const broker = brokers.find((item) => item.slug === brokerSlug);
@@ -158,7 +167,7 @@ async function findAccount(deps: IgSmokeDeps, brokerSlug: string | undefined) {
 
 /** La portada renderizada (JPEG) del aviso pedido o del primero del corredor que tenga una. */
 async function findRender(deps: IgSmokeDeps, brokerId: string, listingRef: string | undefined) {
-  const listings = (await deps.listings.list())
+  const listings = (await deps.listings.list({}, ALL_SCOPE))
     .filter((listing) => listing.brokerId === brokerId)
     .filter((listing) =>
       listingRef === undefined

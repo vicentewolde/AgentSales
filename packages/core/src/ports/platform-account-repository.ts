@@ -80,7 +80,7 @@ export interface PlatformAccountRepository {
   ): Promise<PlatformAccount>;
   get(id: string): Promise<PlatformAccount | null>;
   /** Todas las del alcance, por fecha de creación (las primeras primero). */
-  list(scope?: AccessScope): Promise<PlatformAccount[]>;
+  list(scope: AccessScope): Promise<PlatformAccount[]>;
   /** Las de un corredor, opcionalmente de una plataforma, por fecha de creación. */
   listByBroker(brokerId: string, platform?: Platform): Promise<PlatformAccount[]>;
   /**

@@ -12,6 +12,12 @@ export type NewImportRun = {
   fileName: string;
   dryRun: boolean;
   input: ImportRunInput;
+  /**
+   * El corredor de una carga de un usuario corredor (spec F7 §4.4): nace con él (así la ve en cola)
+   * y el job nunca la lleva a otro ni crea uno. Por defecto `null` (la del administrador, que lo
+   * toma de la hoja Corredor).
+   */
+  brokerId?: string | null;
 };
 
 /** Motivo de una carga fallida (`import_runs.error`): sin rutas ni datos de clientes. */
@@ -30,7 +36,7 @@ export interface ImportRunRepository {
    * Las cargas más recientes primero (`created_at`), hasta `limit` (por defecto 50), dentro del
    * alcance: un corredor no ve las de `broker_id` nulo (spec F7 §4.4).
    */
-  list(limit?: number, scope?: AccessScope): Promise<ImportRun[]>;
+  list(limit: number, scope: AccessScope): Promise<ImportRun[]>;
   /**
    * Guarda el corredor, los contadores y el reporte de `importListings` (también en `dry_run`).
    * No cambia `status` ni `finished_at`. Un id inexistente es `IMPORT_RUN_NOT_FOUND`.

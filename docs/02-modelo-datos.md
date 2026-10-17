@@ -258,7 +258,7 @@ Llave primaria `(platform, key)` (migración `0007`); no tiene `id`.
 | Columna | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
-| broker_id | uuid FK null | `null` hasta que el job lee la hoja Corredor |
+| broker_id | uuid FK null | `null` hasta que el job lee la hoja Corredor; la de un usuario corredor nace con el suyo (F7-T08) y el job nunca la lleva a otro |
 | status | enum `import_run_status` | `queued`, `running`, `succeeded`, `failed` |
 | dry_run | boolean | Valida y reporta sin escribir listings ni medios |
 | input | jsonb | `{ xlsxPath, mediaDir, broker }` (`importRunInputSchema`): rutas absolutas de entrada y broker pedido; sin secretos. El job `import.run` solo recibe el id |

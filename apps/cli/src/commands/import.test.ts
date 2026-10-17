@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AppError, RUN_WAIT } from "@agentsales/core";
+import { ALL_SCOPE, AppError, RUN_WAIT } from "@agentsales/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fakeClock, harness, simulateWorker } from "../../test/harness.js";
 import { createApiClient } from "../api-client.js";
@@ -55,7 +55,7 @@ describe("runImport", () => {
     expect(clock.sleeps).toEqual([2_000, 2_000, 2_000, 2_000]);
     expect(h.queue.jobs).toHaveLength(1);
     expect(h.queue.jobs[0]?.name).toBe("import.run");
-    const [created] = await h.importRuns.list();
+    const [created] = await h.importRuns.list(50, ALL_SCOPE);
     expect(h.requests.filter((r) => r === `GET /imports/${created?.id}`)).toHaveLength(4);
     expect(h.out[0]).toBe(`Carga ${created?.id} (propiedades.xlsx): en cola…`);
     expect(h.out).toContain("procesando…");
@@ -135,7 +135,7 @@ describe("runImport", () => {
 
     const code = await run(h, clock, { wait_: { maxWaitMs: 10_000 } });
 
-    const [created] = await h.importRuns.list();
+    const [created] = await h.importRuns.list(50, ALL_SCOPE);
     expect(code).toBe(1);
     expect(clock.sleeps).toHaveLength(5);
     expect(h.out.at(-1)).toBe(
@@ -157,7 +157,7 @@ describe("runImport", () => {
 
     expect(await run(h, clock, { wait: false })).toBe(0);
 
-    const [created] = await h.importRuns.list();
+    const [created] = await h.importRuns.list(50, ALL_SCOPE);
     expect(h.out).toEqual([created?.id]);
     expect(h.errors()).toContain(`agentsales imports ${created?.id}`);
     expect(clock.sleeps).toEqual([]);
@@ -169,7 +169,7 @@ describe("runImport", () => {
 
     await run(h, fakeClock(), { xlsx: "./propiedades.xlsx", media: "medios/", wait: false });
 
-    const [created] = await h.importRuns.list();
+    const [created] = await h.importRuns.list(50, ALL_SCOPE);
     expect(created?.input).toEqual({
       xlsxPath: join(dir, "propiedades.xlsx"),
       mediaDir: join(dir, "medios"),
@@ -188,7 +188,7 @@ describe("runImport", () => {
       wait: false,
     });
 
-    const [created] = await h.importRuns.list();
+    const [created] = await h.importRuns.list(50, ALL_SCOPE);
     expect(created?.input).toMatchObject({
       mediaDir: join(dir, "medios.zip"),
       broker: "mi-corredor",

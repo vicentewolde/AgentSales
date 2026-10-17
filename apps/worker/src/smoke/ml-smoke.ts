@@ -1,5 +1,7 @@
 import {
   type AbortSignalLike,
+  type AccessScope,
+  ALL_SCOPE,
   AppError,
   accessTokenProvider,
   type Broker,
@@ -68,9 +70,16 @@ export type MlSmokeDeps = {
     PlatformAccountRepository,
     "list" | "get" | "getCredentials" | "withCredentialsLock" | "changeStatus"
   >;
-  brokers: { list(): Promise<Pick<Broker, "id" | "slug" | "name" | "email" | "whatsapp">[]> };
+  brokers: {
+    list(
+      scope: AccessScope,
+    ): Promise<Pick<Broker, "id" | "slug" | "name" | "email" | "whatsapp">[]>;
+  };
   listings: {
-    list(): Promise<Pick<Listing, "id" | "brokerId" | "externalRef" | "region" | "comuna">[]>;
+    list(
+      filters: Record<string, never>,
+      scope: AccessScope,
+    ): Promise<Pick<Listing, "id" | "brokerId" | "externalRef" | "region" | "comuna">[]>;
   };
   /** El refresco de Mercado Libre, o `null` sin `ML_APP_ID` y `ML_CLIENT_SECRET`. */
   mercadoLibre: MercadoLibreTokenDeps["mercadoLibre"];
@@ -342,13 +351,13 @@ const summary = (attribute: PortalAttribute): AttributeSummary => ({
 
 /** La cuenta de Mercado Libre conectada (del corredor pedido, si hay más de una). */
 async function findAccount(deps: MlSmokeDeps, brokerSlug: string | undefined) {
-  const connected = (await deps.accounts.list()).filter(
+  const connected = (await deps.accounts.list(ALL_SCOPE)).filter(
     (account) =>
       account.platform === "portal_inmobiliario" &&
       account.status === "connected" &&
       account.hasCredentials,
   );
-  const brokers = await deps.brokers.list();
+  const brokers = await deps.brokers.list(ALL_SCOPE);
   let candidates = connected;
   if (brokerSlug !== undefined) {
     const broker = brokers.find((item) => item.slug === brokerSlug);
@@ -744,7 +753,7 @@ async function readLocations(
     }
   }
 
-  const listings = (await deps.listings.list())
+  const listings = (await deps.listings.list({}, ALL_SCOPE))
     .filter((listing) => listing.brokerId === brokerId)
     .sort((a, b) => a.externalRef.localeCompare(b.externalRef));
   if (listings.length > 0) deps.print("  Avisos del corredor:");

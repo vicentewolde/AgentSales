@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger } from "@agentsales/config";
-import { AppError, type InstagramAuth } from "@agentsales/core";
+import { ALL_SCOPE, AppError, type InstagramAuth } from "@agentsales/core";
 import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
@@ -109,7 +109,7 @@ describe("POST /accounts/connect-token", () => {
       const text = await response.text();
       expect(errorBodySchema.parse(JSON.parse(text)).error.code).toBe(error.code);
       expect(text).not.toContain(TOKEN);
-      expect(await platformAccounts.list()).toEqual([]);
+      expect(await platformAccounts.list(ALL_SCOPE)).toEqual([]);
     }
   });
 });
@@ -501,7 +501,7 @@ describe("POST /accounts/:id/refresh", () => {
       }),
     );
     const { platformAccounts, refresh } = await refreshSetup({ logger });
-    const broker = (await platformAccounts.list())[0]?.brokerId ?? randomUUID();
+    const broker = (await platformAccounts.list(ALL_SCOPE))[0]?.brokerId ?? randomUUID();
     const account = await platformAccounts.upsertConnected({
       brokerId: broker,
       platform: "instagram",

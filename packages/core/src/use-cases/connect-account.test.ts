@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ALL_SCOPE } from "../access.js";
 import { AppError } from "../errors.js";
 import type { InstagramAuth } from "../ports/instagram-auth.js";
 import {
@@ -108,7 +109,7 @@ describe("connectAccount", () => {
     await expect(
       connectAccount(deps, { broker: broker.slug, grant: { kind: "oauth_code", code: "c" } }),
     ).rejects.toMatchObject({ code: "IG_PERMISSION_DENIED", retriable: false });
-    expect(await platformAccounts.list()).toEqual([]);
+    expect(await platformAccounts.list(ALL_SCOPE)).toEqual([]);
     expect(calls).toEqual(["exchange:c"]);
   });
 
@@ -128,7 +129,7 @@ describe("connectAccount", () => {
       broker: broker.slug,
       grant: { kind: "token", accessToken: "IGAA-otra" },
     });
-    const accounts = await deps.platformAccounts.list();
+    const accounts = await deps.platformAccounts.list(ALL_SCOPE);
     expect(accounts.map((account) => [account.id, account.status])).toEqual([
       [first.id, "revoked"],
       [other.id, "connected"],
@@ -150,7 +151,7 @@ describe("connectAccount", () => {
     await expect(
       connectAccount(deps, { broker: broker.slug, grant: { kind: "token", accessToken: "x" } }),
     ).rejects.toMatchObject({ code: "IG_UNAVAILABLE", retriable: true });
-    expect(await platformAccounts.list()).toEqual([]);
+    expect(await platformAccounts.list(ALL_SCOPE)).toEqual([]);
   });
 });
 

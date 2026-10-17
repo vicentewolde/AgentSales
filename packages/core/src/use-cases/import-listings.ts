@@ -68,12 +68,13 @@ type BrokerResolution = {
 /** Registra un reporte sin filas y lanza el error: el motivo queda en el run (spec F1 §4.2). */
 async function failWithReport(
   deps: ImportListingsDeps,
-  runId: string,
+  run: ImportRun,
   broker: NonNullable<ImportReport["broker"]>,
   error: AppError,
 ): Promise<never> {
-  await deps.importRuns.recordListingsResult(runId, {
-    brokerId: null,
+  // La de un usuario corredor conserva su corredor (así la sigue viendo, spec F7 §4.4).
+  await deps.importRuns.recordListingsResult(run.id, {
+    brokerId: run.brokerId,
     counts: countOutcomes([]),
     report: { headers: null, broker, rows: [] },
   });
@@ -92,7 +93,7 @@ async function resolveBroker(
         "Falta la hoja Corredor: complétala o indica un corredor existente (--broker)";
       return failWithReport(
         deps,
-        run.id,
+        run,
         {
           slug: null,
           outcome: "invalid",
@@ -103,6 +104,13 @@ async function resolveBroker(
       );
     }
     const broker = await deps.brokers.findBySlug(brokerSlug);
+    if (broker !== null && run.brokerId !== null && broker.id !== run.brokerId) {
+      throw new AppError(
+        "BROKER_MISMATCH",
+        "La carga es de otro corredor: usa la planilla de tu corredor",
+        { details: { slug: brokerSlug } },
+      );
+    }
     if (broker === null) {
       throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${brokerSlug}`, {
         details: { slug: brokerSlug },
@@ -119,7 +127,7 @@ async function resolveBroker(
   if (!parsed.ok) {
     return failWithReport(
       deps,
-      run.id,
+      run,
       { slug: parsed.slug, outcome: "invalid", issues: parsed.issues, warnings: parsed.warnings },
       new AppError("BROKER_INVALID", "La hoja Corredor tiene errores", {
         details: { issues: parsed.issues },
@@ -128,6 +136,20 @@ async function resolveBroker(
   }
 
   const existing = await deps.brokers.findBySlug(parsed.data.slug);
+  // La carga de un usuario corredor (spec F7 §4.4) nace con su corredor: la hoja solo puede
+  // actualizarlo a él, nunca crear otro ni llevar las propiedades a uno ajeno.
+  if (run.brokerId !== null && existing?.id !== run.brokerId) {
+    return failWithReport(
+      deps,
+      run,
+      { slug: parsed.data.slug, outcome: "invalid", issues: [], warnings: parsed.warnings },
+      new AppError(
+        "BROKER_MISMATCH",
+        "La hoja Corredor es de otro corredor: usa la planilla de tu corredor",
+        { details: { slug: parsed.data.slug } },
+      ),
+    );
+  }
   const outcome =
     existing === null ? "created" : brokerDiffers(existing, parsed.data) ? "updated" : "unchanged";
   let broker = existing;

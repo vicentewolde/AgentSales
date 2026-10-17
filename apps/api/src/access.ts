@@ -1,9 +1,10 @@
 // Quién puede usar cada ruta (spec F7 §4.3, ADR-0022). Cada método y ruta de la app está aquí: un
 // test recorre `app.routes` y falla si alguna falta, así una ruta nueva no queda sin clasificar.
 // - `public`: sin sesión (si viene una, se lee igual: `/health` muestra el detalle al administrador).
-// - `session`: cualquier usuario con sesión; la ruta aplica su alcance (desde el lote C).
-// - `admin`: solo el administrador.
-// Hasta el lote C, las rutas de hoy son `admin`: el corredor todavía no tiene acceso a nada.
+// - `session`: cualquier usuario con sesión; la ruta aplica su alcance (desde el lote C: las listas
+//   filtran en SQL y `ownedBy` responde 404 a lo de otro corredor, spec F7 §4.4).
+// - `admin`: solo el administrador (spec F7 §4.5: usuarios, cambiar un corredor, conectar cuentas,
+//   la carga local de desarrollo y el inicio del OAuth).
 
 export type RoutePolicy = "public" | "session" | "admin";
 
@@ -22,46 +23,46 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /users/:id/disable": "admin",
   "POST /users/:id/enable": "admin",
   // Propiedades y su contenido.
-  "GET /listings": "admin",
-  "GET /listings/:id": "admin",
-  "POST /listings/:id/status": "admin",
-  "POST /listings/:id/content-runs": "admin",
-  "GET /listings/:id/content": "admin",
-  "GET /listings/:id/publications": "admin",
-  "POST /listings/:id/publish": "admin",
-  "GET /content-runs/:id": "admin",
-  "PATCH /contents/:id": "admin",
-  "POST /contents/:id/approve": "admin",
-  "POST /contents/:id/unapprove": "admin",
+  "GET /listings": "session",
+  "GET /listings/:id": "session",
+  "POST /listings/:id/status": "session",
+  "POST /listings/:id/content-runs": "session",
+  "GET /listings/:id/content": "session",
+  "GET /listings/:id/publications": "session",
+  "POST /listings/:id/publish": "session",
+  "GET /content-runs/:id": "session",
+  "PATCH /contents/:id": "session",
+  "POST /contents/:id/approve": "session",
+  "POST /contents/:id/unapprove": "session",
   // Publicaciones.
-  "GET /publications/:id": "admin",
-  "GET /publications/:id/events": "admin",
-  "POST /publications/:id/publish": "admin",
-  "POST /publications/:id/schedule": "admin",
-  "POST /publications/:id/unschedule": "admin",
-  "POST /publications/:id/update": "admin",
-  "POST /publications/:id/relist": "admin",
-  "POST /publications/:id/cancel": "admin",
-  "POST /publications/:id/retire": "admin",
-  "POST /publications/:id/pause": "admin",
-  "POST /publications/:id/resume": "admin",
-  "POST /publications/:id/close": "admin",
-  "POST /publications/:id/confirm": "admin",
-  "POST /publications/:id/not-published": "admin",
-  "POST /publications/:id/sync": "admin",
-  "POST /schedule": "admin",
-  "GET /tracking": "admin",
-  "GET /agenda": "admin",
+  "GET /publications/:id": "session",
+  "GET /publications/:id/events": "session",
+  "POST /publications/:id/publish": "session",
+  "POST /publications/:id/schedule": "session",
+  "POST /publications/:id/unschedule": "session",
+  "POST /publications/:id/update": "session",
+  "POST /publications/:id/relist": "session",
+  "POST /publications/:id/cancel": "session",
+  "POST /publications/:id/retire": "session",
+  "POST /publications/:id/pause": "session",
+  "POST /publications/:id/resume": "session",
+  "POST /publications/:id/close": "session",
+  "POST /publications/:id/confirm": "session",
+  "POST /publications/:id/not-published": "session",
+  "POST /publications/:id/sync": "session",
+  "POST /schedule": "session",
+  "GET /tracking": "session",
+  "GET /agenda": "session",
   // Corredores y cargas.
-  "GET /brokers": "admin",
+  "GET /brokers": "session",
   "PATCH /brokers/:id": "admin",
-  "POST /imports": "admin",
+  "POST /imports": "session",
   "POST /imports/local": "admin",
-  "GET /imports": "admin",
-  "GET /imports/:id": "admin",
+  "GET /imports": "session",
+  "GET /imports/:id": "session",
   // Cuentas y OAuth. La vuelta de Instagram llega desde Instagram, sin la cookie `Strict`: la
   // protegen el `state` firmado y su propia cookie `Lax`.
-  "GET /accounts": "admin",
+  "GET /accounts": "session",
   "POST /accounts/connect-token": "admin",
   "POST /accounts/mercadolibre/authorize-url": "admin",
   "POST /accounts/mercadolibre/connect": "admin",

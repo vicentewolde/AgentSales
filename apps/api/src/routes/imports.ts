@@ -1,13 +1,15 @@
 import {
   AppError,
+  type BrokerRepository,
   type ImportRun,
   type ImportRunRepository,
   type JobQueue,
   type NewImportRun,
   requestImport,
 } from "@agentsales/core";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import type { AppEnv } from "../auth.js";
 import {
   hasExtension,
   type ImportRunListResponse,
@@ -20,6 +22,7 @@ import {
   MEDIA_ZIP_EXTENSION,
   XLSX_EXTENSION,
 } from "../contracts/index.js";
+import { requestScope } from "../scope.js";
 import { validated } from "../validation.js";
 
 /** Lo que la API escribe en disco: lo compone `server.ts` con el staging (spec F1 §4.1). */
@@ -35,6 +38,8 @@ export type ImportUploads = {
 
 export type ImportRoutesDeps = {
   importRuns: ImportRunRepository;
+  /** El corredor de un usuario corredor (spec F7 §4.4): su carga nace con él. */
+  brokers: Pick<BrokerRepository, "findById">;
   queue: JobQueue;
   uploads: ImportUploads;
   /** uuid para el run: se necesita antes de crearlo, para guardar los archivos. */
@@ -72,7 +77,27 @@ export function importRoutes(deps: ImportRoutesDeps) {
       params,
     );
 
-  return new Hono()
+  /**
+   * El corredor de la carga: el del usuario corredor (`broker` del formulario, si viene, tiene que
+   * ser el suyo: si no, 404 como un corredor que no existe); el administrador, el del formulario o
+   * la hoja Corredor.
+   */
+  const brokerOf = async (
+    c: Context<AppEnv>,
+    requested: string | undefined,
+  ): Promise<{ slug: string | null; brokerId: string | null }> => {
+    const scope = requestScope(c);
+    if (scope.kind === "all") return { slug: requested ?? null, brokerId: null };
+    const own = await deps.brokers.findById(scope.brokerId);
+    if (own === null || (requested !== undefined && requested !== own.slug)) {
+      throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${requested ?? ""}`.trim(), {
+        details: { broker: requested },
+      });
+    }
+    return { slug: own.slug, brokerId: own.id };
+  };
+
+  return new Hono<AppEnv>()
     .post(
       "/",
       // El multipart se lee completo en memoria: el tope va antes de leerlo (413).
@@ -88,6 +113,7 @@ export function importRoutes(deps: ImportRoutesDeps) {
       validated("form", importUploadFormSchema),
       async (c) => {
         const { file, media, broker, dryRun } = c.req.valid("form");
+        const owner = await brokerOf(c, broker);
         if (!hasExtension(file.name, XLSX_EXTENSION)) {
           throw invalidUpload("El archivo debe ser un Excel (.xlsx)");
         }
@@ -109,7 +135,8 @@ export function importRoutes(deps: ImportRoutesDeps) {
             source: "xlsx",
             fileName: fileNameOf(file.name),
             dryRun: dryRun === "true",
-            input: { xlsxPath, mediaDir, broker: broker ?? null },
+            input: { xlsxPath, mediaDir, broker: owner.slug },
+            brokerId: owner.brokerId,
           };
         } catch (error) {
           await deps.uploads.discard(id).catch(() => undefined);
@@ -152,7 +179,7 @@ export function importRoutes(deps: ImportRoutesDeps) {
     )
     .get("/", async (c) => {
       const body: ImportRunListResponse = {
-        importRuns: (await deps.importRuns.list()).map((run) => {
+        importRuns: (await deps.importRuns.list(50, requestScope(c))).map((run) => {
           const { report: _report, ...summary } = viewOf(run);
           return summary;
         }),

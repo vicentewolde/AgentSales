@@ -46,15 +46,15 @@ export type OAuthStatePlatform = (typeof OAUTH_STATE_PLATFORMS)[keyof typeof OAU
 
 /**
  * Verifica un `state`: firma, vencimiento, la plataforma esperada y, si se pide, el corredor.
- * Devuelve el corredor, o `null` si algo no calza (quien llama responde `OAUTH_STATE_INVALID` sin
- * llamar a la plataforma). No es de un solo uso: el de Instagram se amarra a una cookie que se borra;
- * el de Mercado Libre vale sus 10 min (el código, en cambio, se canjea una sola vez; deuda de F7).
+ * Devuelve el corredor con el nonce y el vencimiento, o `null` si algo no calza (quien llama
+ * responde `OAUTH_STATE_INVALID` sin llamar a la plataforma). El de Instagram se amarra a una cookie
+ * que se borra; el de Mercado Libre sirve una vez desde F7 (quien llama marca el nonce usado).
  */
-export function verifyOAuthState(
+export function verifyOAuthStateData(
   signer: OAuthStateSigner,
   state: string,
   expected: { platform: OAuthStatePlatform; broker?: string },
-): string | null {
+): { broker: string; nonce: string; expiresAt: Date } | null {
   let data: Readonly<Record<string, string | number | boolean>>;
   try {
     data = signer.verify(state);
@@ -63,7 +63,17 @@ export function verifyOAuthState(
   }
   if (data.platform !== expected.platform || typeof data.broker !== "string") return null;
   if (expected.broker !== undefined && data.broker !== expected.broker) return null;
-  return data.broker;
+  if (typeof data.nonce !== "string" || typeof data.exp !== "number") return null;
+  return { broker: data.broker, nonce: data.nonce, expiresAt: new Date(data.exp * 1000) };
+}
+
+/** Como `verifyOAuthStateData`, solo el corredor. */
+export function verifyOAuthState(
+  signer: OAuthStateSigner,
+  state: string,
+  expected: { platform: OAuthStatePlatform; broker?: string },
+): string | null {
+  return verifyOAuthStateData(signer, state, expected)?.broker ?? null;
 }
 
 /**

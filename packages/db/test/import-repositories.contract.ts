@@ -1,4 +1,5 @@
 import {
+  ALL_SCOPE,
   type BrokerData,
   type BrokerRepository,
   type ImportReport,
@@ -186,7 +187,7 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       const a = await repos.brokers.create(
         brokerData(unique("lista-a"), { brandName: "zz marca a" }),
       );
-      const listed = (await repos.brokers.list()).filter((broker) =>
+      const listed = (await repos.brokers.list(ALL_SCOPE)).filter((broker) =>
         broker.brandName.toLowerCase().startsWith("zz"),
       );
       expect(listed.map((broker) => broker.id)).toEqual([a.id, b.id, c.id]);
@@ -339,16 +340,15 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       await repos.listings.create(newListing(other, unique("P"), { comuna: unique("Otra") }));
       await repos.listings.promoteToReady(first.id);
 
-      expect((await repos.listings.list({ comuna })).map((listing) => listing.id)).toEqual([
-        first.id,
-        second.id,
-      ]);
-      expect((await repos.listings.list({ comuna, status: "ready" })).map((l) => l.id)).toEqual([
-        first.id,
-      ]);
-      expect((await repos.listings.list({ comuna, operation: "rent" })).map((l) => l.id)).toEqual([
-        second.id,
-      ]);
+      expect(
+        (await repos.listings.list({ comuna }, ALL_SCOPE)).map((listing) => listing.id),
+      ).toEqual([first.id, second.id]);
+      expect(
+        (await repos.listings.list({ comuna, status: "ready" }, ALL_SCOPE)).map((l) => l.id),
+      ).toEqual([first.id]);
+      expect(
+        (await repos.listings.list({ comuna, operation: "rent" }, ALL_SCOPE)).map((l) => l.id),
+      ).toEqual([second.id]);
     });
 
     it("list filtra por externalRef exacto, que puede repetirse entre corredores", async () => {
@@ -359,9 +359,9 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       const b = await repos.listings.create(newListing(second, ref));
       await repos.listings.create(newListing(first, `${ref}-2`));
 
-      const found = await repos.listings.list({ externalRef: ref });
+      const found = await repos.listings.list({ externalRef: ref }, ALL_SCOPE);
       expect(found.map((listing) => listing.id).sort()).toEqual([a.id, b.id].sort());
-      expect(await repos.listings.list({ externalRef: ref.toLowerCase() })).toEqual([]);
+      expect(await repos.listings.list({ externalRef: ref.toLowerCase() }, ALL_SCOPE)).toEqual([]);
     });
 
     it("changeStatus es condicional: solo desde el estado esperado", async () => {
@@ -483,9 +483,9 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
         false,
       ]);
 
-      const recent = await repos.importRuns.list(2);
+      const recent = await repos.importRuns.list(2, ALL_SCOPE);
       expect(recent.map((run) => run.id)).toEqual([newer.id, withId.id]);
-      expect(await repos.importRuns.list(1)).toHaveLength(1);
+      expect(await repos.importRuns.list(1, ALL_SCOPE)).toHaveLength(1);
     });
 
     it("get de un id inexistente es null", async () => {

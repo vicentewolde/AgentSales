@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger, createStateSigner } from "@agentsales/config";
-import { AppError } from "@agentsales/core";
+import { ALL_SCOPE, AppError } from "@agentsales/core";
 import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
@@ -231,9 +231,25 @@ describe("POST /accounts/mercadolibre/connect", () => {
       expect(errorBodySchema.parse(JSON.parse(text)).error.code).toBe(code);
       expect(text).not.toContain(pasted);
       expect(text).not.toMatch(/APP_USR|TG-fake/);
-      await expect(platformAccounts.list()).resolves.toEqual([]);
+      await expect(platformAccounts.list(ALL_SCOPE)).resolves.toEqual([]);
     },
   );
+
+  it("el mismo `state` sirve una vez: la segunda es OAUTH_STATE_USED, sin llamar a Mercado Libre (F7-T10)", async () => {
+    const { connect, freshState, broker, auth } = setup();
+    const state = await freshState();
+    expect((await connect({ broker: broker.slug, code: CODE, state })).status).toBe(200);
+    const calls = auth.calls.length;
+
+    const again = await connect({ broker: broker.slug, code: `${CODE}-otra`, state });
+    expect(again.status).toBe(400);
+    expect(errorBodySchema.parse(await again.json()).error.code).toBe("OAUTH_STATE_USED");
+    expect(auth.calls.length).toBe(calls);
+    // Uno nuevo sí sirve.
+    expect(
+      (await connect({ broker: broker.slug, code: CODE, state: await freshState() })).status,
+    ).toBe(200);
+  });
 
   it("al conectar, los mensajes dicen qué hacer con la dirección pegada", async () => {
     const { connect, freshState, broker } = setup();
@@ -268,7 +284,7 @@ describe("POST /accounts/mercadolibre/connect", () => {
     );
 
     expect(second.account).toMatchObject({ displayName: "OTRA_CUENTA", status: "connected" });
-    const accounts = await platformAccounts.list();
+    const accounts = await platformAccounts.list(ALL_SCOPE);
     expect(accounts.find((account) => account.id === first.account.id)?.status).toBe("revoked");
     expect(accounts.filter((account) => account.status === "connected")).toHaveLength(1);
   });
@@ -299,7 +315,7 @@ describe("POST /accounts/mercadolibre/connect", () => {
     );
 
     expect(again.account.id).toBe(first.account.id);
-    const accounts = await platformAccounts.list();
+    const accounts = await platformAccounts.list(ALL_SCOPE);
     expect(accounts.filter((account) => account.status === "connected")).toHaveLength(1);
     await expect(platformAccounts.getCredentials(first.account.id)).resolves.toMatchObject({
       accessToken: `APP_USR-fake-${CODE}-2`,

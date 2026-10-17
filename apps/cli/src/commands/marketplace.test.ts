@@ -1,4 +1,5 @@
 import {
+  ALL_SCOPE,
   confirmManualPublication,
   type PublishMode,
   publishPublication,
@@ -644,7 +645,7 @@ describe("accounts y accounts disconnect · Marketplace", () => {
   it("con una publicación esperando el clic final: MANUAL_CONFIRM_PENDING con los dos comandos", async () => {
     const s = await marketplaceSetup();
     const waiting = await s.awaiting();
-    const [account] = await s.t.platformAccounts.list();
+    const [account] = await s.t.platformAccounts.list(ALL_SCOPE);
     const deps: AccountsDeps = {
       ...s.h.io,
       client: s.h.client,

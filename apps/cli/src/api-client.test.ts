@@ -164,9 +164,10 @@ describe("unwrap", () => {
 });
 
 describe("createApiClient · cabeceras", () => {
-  it("se identifica como la CLI y manda JSON en un POST sin cuerpo, sin pisar el de un formulario", async () => {
+  it("manda la sesión de la CLI y JSON en un POST sin cuerpo, sin pisar el de un formulario", async () => {
     const seen: { method: string; path: string; headers: Headers }[] = [];
     const client = createApiClient(8787, {
+      token: "token-de-la-cli",
       fetch: async (input, init) => {
         const url = new URL(input instanceof Request ? input.url : String(input));
         seen.push({
@@ -184,9 +185,11 @@ describe("createApiClient · cabeceras", () => {
     await client.imports.$post({ form: { broker: "marca", file: new File(["x"], "a.xlsx") } });
 
     const [cancel, health, upload] = seen;
-    expect(cancel?.headers.get("x-agentsales-client")).toBe("cli");
+    // Desde F7-T10 la API sabe que es la CLI por su sesión: ya no hay `X-AgentSales-Client`.
+    expect(cancel?.headers.get("authorization")).toBe("Bearer token-de-la-cli");
+    expect(cancel?.headers.get("x-agentsales-client")).toBeNull();
     expect(cancel?.headers.get("content-type")).toBe("application/json");
-    expect(health?.headers.get("x-agentsales-client")).toBe("cli");
+    expect(health?.headers.get("authorization")).toBe("Bearer token-de-la-cli");
     expect(health?.headers.get("content-type")).toBeNull();
     expect(upload?.headers.get("content-type") ?? "").not.toContain("application/json");
   });

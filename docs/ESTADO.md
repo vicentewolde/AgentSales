@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-17
 **Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** lote B de F7 (F7-T04 a T07, #131): entrar con usuario en la API, la CLI y el panel
-**Siguiente paso:** `/tarea F7-T08 F7-T09 F7-T10` (lote C: cada corredor lo suyo en la API)
+**Última tarea:** lote C de F7 (F7-T08 a T10, #132): cada corredor ve solo lo suyo y la bitácora dice quién
+**Siguiente paso:** `/tarea F7-T11 F7-T12` (lote D: la IA por API y su gasto; antes, tu clave de Anthropic en `.env`)
 
 ## Pendiente tuyo para F7
 - [ ] **Clave de la API de Anthropic** (antes del lote D): crearla en la consola sin vencimiento (o anotar la fecha), ponerle un límite de gasto total en la consola y dejarla en `.env` como `ANTHROPIC_API_KEY`; después `pnpm llm:smoke --provider anthropic-api` (gasta centavos)
@@ -40,9 +40,9 @@
 | **Lote B** · T05 Usuarios, `/health` y el primer administrador | ✅ terminada | #131 |
 | **Lote B** · T06 CLI: entrar | ✅ terminada | #131 |
 | **Lote B** · T07 Panel: entrar e invitación | ✅ terminada | #131 |
-| **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | ⏳ pendiente | |
-| **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | ⏳ pendiente | |
-| **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ⏳ pendiente | |
+| **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | ✅ terminada | #132 |
+| **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | ✅ terminada | #132 |
+| **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ✅ terminada | #132 |
 | **Lote D** · T11 `anthropic-api` real | ⏳ pendiente | |
 | **Lote D** · T12 La IA por corredor y su gasto | ⏳ pendiente | |
 | **Lote E** · T13 Corredores: crear, editar y lista de alta | ⏳ pendiente | |
@@ -109,6 +109,7 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **F7, lote D (worker):** borrar las sesiones vencidas o sin uso y los `state` de OAuth vencidos en la vigilancia de cada hora (spec F7 §4.12: `SessionRepository.deleteExpired` y `OAuthStateRepository.deleteExpired` ya existen; ningún job los llama todavía). Mientras, una sesión vencida no sirve (`resolveSession` la borra al usarla), solo ocupa una fila.
 - **Para F8:** `/health` muestra la versión de Postgres (desde F7, solo al administrador); al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
 - **Para F7 (auditoría del cierre de F6):** `/tracking` y `/agenda` cargan todas las propiedades y filtran por corredor en memoria: con la autenticación, el alcance por corredor va en el servidor. Límite conocido de T08: si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5).
 - **Para F7 (de la revisión del lote F):** la agenda pide los textos vigentes con una consulta por propiedad (corredores con `auto_publish`): con más volumen, una sola consulta para todas (`listCurrentMany`); `publicationView` usa su propio reloj (no el `now` de la ruta).
@@ -121,7 +122,6 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - F8: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - **F7, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
 - **F8, OAuth:** `instagramStartUrlOf` asume la API en la raíz del host de `INSTAGRAM_REDIRECT_URI`. Si el despliegue la monta tras un prefijo, derivar el inicio desde la ruta de la URI de retorno.
-- **F7, actor de la bitácora:** la API distingue la CLI del panel por la cabecera `X-AgentSales-Client`, que cualquier proceso local puede mandar. Con autenticación, el actor sale de la sesión.
 - **F8, refresco de tokens:** el job `tokens.refresh` expira a los 5 min y la expiración no corta el handler. Con una cuenta por corredor sobra; con muchas cuentas (llamadas de hasta 30 s), subir el tope o dejar de empezar cuentas nuevas pasados unos 4 min, para que un reintento no se cruce con el intento anterior.
 - **F7, `state` de Mercado Libre:** vale sus 10 min y no es de un solo uso (el código sí se canjea una vez; F4-T06). Con la vuelta automática (`/oauth/mercadolibre/callback`), amarrarlo a una cookie o a un nonce de un solo uso, como el de Instagram. Además, `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática: F7 registra en la app una segunda dirección de su dominio real (o, en local, ese nombre apuntando al propio equipo con un certificado local, que merecería un ADR), y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
 - **F7, cuentas:** `panelUrl` y `allowedHosts` están fijos en `localhost`; con varios corredores y la API expuesta, hay que autorizar quién puede conectar cada corredor (`/oauth/instagram/start?broker=` y `connect-token` hoy los acepta cualquiera que llegue a la API) y evitar repetir un `state` válido durante sus 10 min (guardar el nonce usado; hoy basta con que la cookie se borre).
@@ -141,6 +141,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-17: **Lote C de F7 (T08 a T10): cada corredor lo suyo.**
+  - **El corredor ve y opera solo lo suyo** (propiedades, textos, publicaciones, cargas, cuentas, Seguimiento y agenda); lo de otro le responde "no existe". Programar un lote con una propiedad ajena se rechaza entero. Tú ves todo y puedes filtrar por corredor.
+  - **Cargas:** la de un corredor queda a su nombre desde que entra en cola; su planilla solo puede actualizar su propia marca, nunca crear otro corredor.
+  - **La bitácora dice quién y por dónde** ("Vinny (panel)", "Vinny (CLI)"); se retiró la cabecera que cualquiera podía mandar. La dirección de vuelta de Mercado Libre sirve una vez.
+  - **La lista de propiedades** ya no trae notas internas, dirección ni atributos (el detalle sí).
+  - **La revisión dejó** (sin fugas entre corredores): una regla de capas corregida (lo que depende de Node se compone en `server.ts`, con un test que lo vigila), la regla de la planilla escrita en ADR-0022, y más pruebas (pedidos a la vez, que nada ajeno cambie).
 - 2026-10-17: **Lote B de F7 (T04 a T07): entrar.**
   - **Tu usuario:** `pnpm auth:admin --email <correo>` lo crea (o te da un enlace nuevo si olvidaste la contraseña o te bloqueaste) y deja el enlace en el portapapeles. Lo abres con `pnpm dev` corriendo y eliges la contraseña (al menos 12 caracteres).
   - **Panel:** página para entrar, la de la invitación, tu nombre y "Cerrar sesión" en el menú; si la sesión vence, te lleva a entrar y vuelve a donde estabas.

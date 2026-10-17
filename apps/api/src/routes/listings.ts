@@ -1,5 +1,6 @@
 import {
   AppError,
+  type BrokerRepository,
   type ChangeListingStatusDeps,
   changeListingStatus,
   type FieldDefinitionRepository,
@@ -9,6 +10,7 @@ import {
   type MediaStorage,
 } from "@agentsales/core";
 import { Hono } from "hono";
+import type { AppEnv } from "../auth.js";
 import {
   idParamSchema,
   type ListingDetailResponse,
@@ -17,12 +19,15 @@ import {
   listingQuerySchema,
   listingStatusBodySchema,
 } from "../contracts/index.js";
+import { listScope } from "../scope.js";
 import { validated } from "../validation.js";
 import { actorOf, publicationView } from "./publication-views.js";
 import { OPERATION_TIMEOUT_MS, operationError } from "./publications.js";
 
 export type ListingRoutesDeps = {
   listings: ListingRepository;
+  /** El filtro `?broker=<slug>` (spec F7 §4.4). */
+  brokers: Pick<BrokerRepository, "findBySlug">;
   media: MediaRepository;
   /** Las etiquetas de los atributos del detalle (definiciones efectivas del corredor). */
   fieldDefinitions: FieldDefinitionRepository;
@@ -65,9 +70,10 @@ const notFound = (id: string) =>
 export function listingRoutes(deps: ListingRoutesDeps) {
   const signedOrNull = async (path: string | undefined) =>
     path === undefined ? null : deps.storage.signedReadUrl(path);
-  return new Hono()
+  return new Hono<AppEnv>()
     .get("/", validated("query", listingQuerySchema), async (c) => {
-      const listings = await deps.listings.list(c.req.valid("query"));
+      const { broker, ...filters } = c.req.valid("query");
+      const listings = await deps.listings.list(filters, await listScope(c, deps.brokers, broker));
       const coverOf = await coverPaths(
         deps.media,
         listings.map((listing) => listing.id),
@@ -76,8 +82,16 @@ export function listingRoutes(deps: ListingRoutesDeps) {
         listings: await Promise.all(
           listings.map(async (listing) => {
             const path = coverOf.get(listing.id);
+            // La proyección de la lista (spec F7 §4.4): sin notas internas, dirección ni atributos.
+            const {
+              internalNotes: _notes,
+              address: _address,
+              unitNumber: _unit,
+              attributes: _attributes,
+              ...summary
+            } = listing;
             return {
-              ...listing,
+              ...summary,
               coverUrl: path === undefined ? null : await deps.storage.signedReadUrl(path),
             };
           }),

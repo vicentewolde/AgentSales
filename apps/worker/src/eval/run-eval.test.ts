@@ -1,4 +1,4 @@
-import { type NewListing, SAMPLE_CONTENT_DRAFT } from "@agentsales/core";
+import { ALL_SCOPE, type NewListing, SAMPLE_CONTENT_DRAFT } from "@agentsales/core";
 import {
   contentBrokerFixture,
   contentDefinitionsFixture,
@@ -114,7 +114,7 @@ describe("pnpm eval:content (runEval)", () => {
     expect(t.err).toEqual(["✗ No existe el corredor otro: indica otro con --broker <slug>"]);
 
     const empty = await setup([]);
-    const [ready] = await empty.deps.listings.list({ status: "ready" });
+    const [ready] = await empty.deps.listings.list({ status: "ready" }, ALL_SCOPE);
     await empty.deps.listings.changeStatus(ready?.id ?? "", "ready", "paused");
     expect(await runEval(empty.deps, { brokerSlug: DEFAULT_EVAL_BROKER })).toBe(1);
     expect(empty.err).toEqual([

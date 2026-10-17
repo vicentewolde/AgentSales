@@ -69,8 +69,8 @@ describe("salir", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Cerrar sesión" }));
 
     expect(await screen.findByRole("heading", { name: "Entrar" })).toBeTruthy();
-    // Queda solo la sesión que siembra el arnés: la de este login se borró.
-    await waitFor(() => expect(h.auth.repos.sessions.all()).toHaveLength(1));
+    // Quedan solo las dos que siembra el arnés (panel y CLI): la de este login se borró.
+    await waitFor(() => expect(h.auth.repos.sessions.all()).toHaveLength(2));
   });
 });
 

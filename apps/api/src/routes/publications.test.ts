@@ -3,7 +3,6 @@ import { AppError, type PublishMode } from "@agentsales/core";
 import { createPublicationScenario, PUBLICATION_SCENARIO_TOKEN } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import {
-  CLIENT_HEADER,
   contentApproveResponseSchema,
   contentUnapproveResponseSchema,
   errorBodySchema,
@@ -14,7 +13,7 @@ import {
   publicationResponseSchema,
   publicationRetireResponseSchema,
 } from "../contracts/index.js";
-import { adminApp, testDeps } from "../testing/index.js";
+import { adminApp, TEST_ADMIN_CLI_TOKEN, testDeps } from "../testing/index.js";
 import { publicationView } from "./publication-views.js";
 
 const json = { "Content-Type": "application/json" };
@@ -94,7 +93,13 @@ describe("POST /contents/:id/approve y /unapprove", () => {
     const contentId = await t.instagramId();
 
     const body = contentApproveResponseSchema.parse(
-      await (await post(`/contents/${contentId}/approve`, {}, { [CLIENT_HEADER]: "cli" })).json(),
+      await (
+        await post(
+          `/contents/${contentId}/approve`,
+          {},
+          { authorization: `Bearer ${TEST_ADMIN_CLI_TOKEN}` },
+        )
+      ).json(),
     );
 
     const events = publicationEventsResponseSchema.parse(
@@ -484,7 +489,11 @@ describe("/publications/:id", () => {
       { actor: "system" },
     );
 
-    const response = await post(`/publications/${id}/retire`, {}, { [CLIENT_HEADER]: " CLI " });
+    const response = await post(
+      `/publications/${id}/retire`,
+      {},
+      { authorization: `Bearer ${TEST_ADMIN_CLI_TOKEN}` },
+    );
 
     expect(response.status).toBe(200);
     expect(publicationRetireResponseSchema.parse(await response.json())).toMatchObject({

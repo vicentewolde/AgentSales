@@ -8,9 +8,9 @@ import {
   manualWaitingText,
   marketplacePriceText,
   PLATFORM_TEXT,
-  PUBLICATION_ACTOR_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  publicationActorText,
   publicationEventDetail,
   publicationFormatText,
   publicationModeText,
@@ -176,7 +176,7 @@ export function renderPublicationEvents(
   if (events.length === 0) return c.dim("  (sin eventos)");
   return events
     .map((event) => {
-      const when = `  ${c.dim(formatDateTime(event.createdAt))}  ${PUBLICATION_ACTOR_TEXT[event.actor].padEnd(7)}`;
+      const when = `  ${c.dim(formatDateTime(event.createdAt))}  ${publicationActorText(event.actor, event.userName)}`;
       if (event.type === "status_changed") {
         const from = event.fromStatus === null ? "nace" : PUBLICATION_STATUS_TEXT[event.fromStatus];
         const to = event.toStatus === null ? "?" : PUBLICATION_STATUS_TEXT[event.toStatus];

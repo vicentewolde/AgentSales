@@ -1,8 +1,8 @@
 import type { PublicationEventView } from "@agentsales/api/contracts";
 import {
-  PUBLICATION_ACTOR_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  publicationActorText,
   publicationEventDetail,
   publishAttemptPayloadSchema,
   remoteStatusText,
@@ -19,7 +19,7 @@ const timeText = (date: Date) =>
 
 /** Una línea de la bitácora: un cambio de estado o un intento, con lo que se envió. */
 function EventLine({ event }: { event: PublicationEventView }) {
-  const who = PUBLICATION_ACTOR_TEXT[event.actor];
+  const who = publicationActorText(event.actor, event.userName);
   if (event.type === "status_changed") {
     const from = event.fromStatus === null ? "nace" : PUBLICATION_STATUS_TEXT[event.fromStatus];
     const to = event.toStatus === null ? "?" : PUBLICATION_STATUS_TEXT[event.toStatus];

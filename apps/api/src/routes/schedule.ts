@@ -1,12 +1,21 @@
-import { type ScheduleDeps, scheduleListings } from "@agentsales/core";
+import {
+  AppError,
+  type ListingRepository,
+  type ScheduleDeps,
+  scheduleListings,
+} from "@agentsales/core";
 import { Hono } from "hono";
+import type { AppEnv } from "../auth.js";
 import { type ScheduleResponse, scheduleBodySchema } from "../contracts/index.js";
+import { requestScope } from "../scope.js";
 import { validated } from "../validation.js";
 import { actorOf, publicationView } from "./publication-views.js";
 
 export type ScheduleRoutesDeps = Omit<ScheduleDeps, "publications"> & {
   /** El modo de lo que se programa (D11): el de la API ahora, nunca del cuerpo. */
   publishMode: "dry-run" | "live";
+  /** Para revisar que cada propiedad del lote sea del corredor (spec F7 §4.4). */
+  listings: Pick<ListingRepository, "list">;
 };
 
 /**
@@ -14,8 +23,19 @@ export type ScheduleRoutesDeps = Omit<ScheduleDeps, "publications"> & {
  * Una propiedad que no se puede programar no corta el lote: el resultado dice qué pasó con cada una.
  */
 export function scheduleRoutes(deps: ScheduleRoutesDeps) {
-  return new Hono().post("/", validated("json", scheduleBodySchema), async (c) => {
+  return new Hono<AppEnv>().post("/", validated("json", scheduleBodySchema), async (c) => {
     const { listingIds, platforms, at, spacingMinutes } = c.req.valid("json");
+    // Todo o nada (spec F7 §4.4): si alguna propiedad no es del corredor, no se programa ninguna y
+    // se responde como si no existiera.
+    const scope = requestScope(c);
+    if (scope.kind === "broker") {
+      // Una consulta: las propiedades del corredor (filtradas en SQL).
+      const own = new Set((await deps.listings.list({}, scope)).map((listing) => listing.id));
+      const foreign = listingIds.find((id) => !own.has(id));
+      if (foreign !== undefined) {
+        throw new AppError("LISTING_NOT_FOUND", `No existe el aviso ${foreign}`);
+      }
+    }
     const result = await scheduleListings(deps, {
       listingIds,
       at: new Date(at),

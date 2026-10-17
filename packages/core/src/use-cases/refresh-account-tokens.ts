@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AbortSignalLike } from "../abort.js";
+import { ALL_SCOPE } from "../access.js";
 import type { Platform } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import { instagramAccountMetaSchema, type PlatformAccount } from "../platform-account.js";
@@ -166,7 +167,7 @@ export async function refreshAccountTokens(
   { signal }: { signal?: AbortSignalLike } = {},
 ): Promise<TokenRefreshReport> {
   const report: TokenRefreshReport = { refreshed: [], expired: [], skipped: 0, failed: [] };
-  const accounts = (await deps.platformAccounts.list()).filter(
+  const accounts = (await deps.platformAccounts.list(ALL_SCOPE)).filter(
     (account) =>
       REFRESHABLE_PLATFORMS.has(account.platform) &&
       account.status === "connected" &&

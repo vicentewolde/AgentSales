@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { type AppDeps, createApp, localAccess } from "@agentsales/api";
 import { testAuth, testDeps, withAdminSession } from "@agentsales/api/testing";
 import {
+  ALL_SCOPE,
   type BrokerData,
   type FieldDefinition,
   type LLMProvider,
@@ -73,7 +74,7 @@ export function harness(options: HarnessOptions = {}) {
   const importRuns = createInMemoryImportRunRepository({ nextId: randomUUID });
   const content = createInMemoryContentRepositories({ nextId: randomUUID });
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
-  const auth = { ...testAuth({ client: "panel" }), brokers: options.deps?.brokers ?? brokers };
+  const auth = { ...testAuth(), brokers: options.deps?.brokers ?? brokers };
   const base = createApp(
     testDeps({
       auth,
@@ -289,7 +290,9 @@ export async function publicationSetup(
       // Como `server.ts`: `/health` informa los corredores con `auto_publish` (F6-T13).
       healthDetails: {
         autoPublishBrokers: async () =>
-          (await t.brokers.list()).filter((broker) => broker.autoPublish).map((b) => b.slug),
+          (await t.brokers.list(ALL_SCOPE))
+            .filter((broker) => broker.autoPublish)
+            .map((b) => b.slug),
       },
     },
     ...(options.intercept === undefined ? {} : { intercept: options.intercept }),

@@ -16,10 +16,9 @@ export interface BrokerRepository {
   /** El corredor de un aviso (`listing.brokerId`, F2-T10); `null` si no existe. */
   findById(id: string): Promise<Broker | null>;
   /**
-   * Los corredores del alcance, por nombre de marca (para el selector de Importar). Sin alcance,
-   * todos (spec F7 §4.4).
+   * Los corredores del alcance, por nombre de marca (para el selector de Importar), spec F7 §4.4.
    */
-  list(scope?: AccessScope): Promise<Broker[]>;
+  list(scope: AccessScope): Promise<Broker[]>;
   create(data: BrokerData): Promise<Broker>;
   /** Actualiza los datos de la hoja Corredor; no toca `logoMediaId` ni `autoPublish`. */
   update(id: string, data: BrokerData): Promise<Broker>;

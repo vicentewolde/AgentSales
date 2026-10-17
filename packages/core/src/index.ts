@@ -101,6 +101,7 @@ export {
   PUBLICATION_QUEUED_WARNING_TEXT,
   PUBLICATION_STATUS_TEXT,
   PUBLISH_ATTEMPT_RESULT_TEXT,
+  publicationActorText,
   publicationEventDetail,
   publicationFormatText,
   publicationModeText,

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import {
   type AbortSignalLike,
+  ALL_SCOPE,
   type BrokerRepository,
   type EvaluatedText,
   type EvaluateListingContentDeps,
@@ -90,7 +91,7 @@ export async function runEval(
     deps.printError(`✗ No existe el corredor ${brokerSlug}: indica otro con --broker <slug>`);
     return 1;
   }
-  const listings = (await deps.listings.list({ status: "ready" }))
+  const listings = (await deps.listings.list({ status: "ready" }, ALL_SCOPE))
     .filter((listing) => listing.brokerId === broker.id)
     .sort((a, b) => a.externalRef.localeCompare(b.externalRef, "es", { numeric: true }));
   if (listings.length === 0) {

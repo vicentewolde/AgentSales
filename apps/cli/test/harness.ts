@@ -1,17 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { type AppDeps, createApp, localAccess } from "@agentsales/api";
 import { testDeps, withAdminSession } from "@agentsales/api/testing";
-import type {
-  AppError,
-  BrokerData,
-  ContentRunReport,
-  ContentRunStage,
-  ImportReport,
-  MarketplaceStartOptions,
-  NewContent,
-  NewListing,
-  PublicationOperations,
-  PublishMode,
+import {
+  ALL_SCOPE,
+  type AppError,
+  type BrokerData,
+  type ContentRunReport,
+  type ContentRunStage,
+  type ImportReport,
+  type MarketplaceStartOptions,
+  type NewContent,
+  type NewListing,
+  type PublicationOperations,
+  type PublishMode,
 } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
@@ -91,7 +92,8 @@ export function harness(options: HarnessOptions = {}) {
       lock,
     }),
   );
-  const app = options.anonymous ? created : withAdminSession(created);
+  // La sesión de la CLI: la bitácora registra `actor: cli` (F7-T10).
+  const app = options.anonymous ? created : withAdminSession(created, { client: "cli" });
   const requests: string[] = [];
   const fetchApp = async (input: string | URL | Request, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
@@ -307,7 +309,7 @@ export function simulateWorker(
   report: ImportReport = sampleReport(),
 ) {
   const runId = async () => {
-    const [run] = await h.importRuns.list(1);
+    const [run] = await h.importRuns.list(1, ALL_SCOPE);
     if (run === undefined) throw new Error("no hay cargas");
     return run.id;
   };

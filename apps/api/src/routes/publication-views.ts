@@ -15,14 +15,13 @@ import {
   scheduleState,
 } from "@agentsales/core";
 import type { Context } from "hono";
-import {
-  CLI_CLIENT,
-  CLIENT_HEADER,
-  type MarketplaceManualView,
-  type PublicationEventView,
-  type PublicationView,
-  type ReadinessView,
-  type SkippedPublicationView,
+import type { AppEnv } from "../auth.js";
+import type {
+  MarketplaceManualView,
+  PublicationEventView,
+  PublicationView,
+  ReadinessView,
+  SkippedPublicationView,
 } from "../contracts/index.js";
 
 /**
@@ -34,8 +33,11 @@ import {
 export const publicationView = (publication: Publication): PublicationView =>
   publicationViewAt(publication, new Date());
 
-/** `publicationView` a una hora dada (no se pasa a `.map`: el índice se tomaría por la hora). */
-const publicationViewAt = (publication: Publication, now: Date): PublicationView => ({
+/**
+ * `publicationView` a una hora dada: la de la ruta (deuda de F6), así la vista y lo que la ruta
+ * calcula con su reloj coinciden. No se pasa a `.map` (el índice se tomaría por la hora).
+ */
+export const publicationViewAt = (publication: Publication, now: Date): PublicationView => ({
   id: publication.id,
   listingId: publication.listingId,
   platformAccountId: publication.platformAccountId,
@@ -149,19 +151,30 @@ function eventPayload(event: PublicationEvent): Record<string, unknown> {
   );
 }
 
-export const eventView = (event: PublicationEvent): PublicationEventView => ({
-  id: event.id,
-  type: event.type,
-  fromStatus: event.fromStatus,
-  toStatus: event.toStatus,
-  actor: event.actor,
-  payload: eventPayload(event),
-  createdAt: event.createdAt,
-});
+/**
+ * Un evento de la bitácora con el nombre de quien lo hizo (`names`: usuario → nombre; spec F7
+ * §4.3). Se usa como `events.map(eventViewWith(names))`.
+ */
+export const eventViewWith =
+  (names: ReadonlyMap<string, string>) =>
+  (event: PublicationEvent): PublicationEventView => ({
+    id: event.id,
+    type: event.type,
+    fromStatus: event.fromStatus,
+    toStatus: event.toStatus,
+    actor: event.actor,
+    userName: event.userId === null ? null : (names.get(event.userId) ?? null),
+    payload: eventPayload(event),
+    createdAt: event.createdAt,
+  });
+
+/** Un evento sin nombres (lo del sistema, o donde no hace falta quién). */
+export const eventView = (event: PublicationEvent): PublicationEventView =>
+  eventViewWith(new Map())(event);
 
 /**
- * Quién pide el cambio, para la bitácora: la CLI se identifica con `X-AgentSales-Client: cli`. Es
- * informativo (cualquier proceso local puede mandarla), no autenticación: nunca da permisos.
+ * Por dónde se pidió el cambio, para la bitácora (spec F7 §4.3): sale de la sesión (`cli` con el
+ * `Bearer` de la CLI; `operator`, el panel). Quién fue lo anota `withEventUser`.
  */
 export const actorOf = (c: Context): PublicationActor =>
-  c.req.header(CLIENT_HEADER)?.trim().toLowerCase() === CLI_CLIENT ? "cli" : "operator";
+  (c as Context<AppEnv>).get("auth")?.client === "cli" ? "cli" : "operator";
