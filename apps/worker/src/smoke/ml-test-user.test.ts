@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { MercadoLibreAuth } from "@agentsales/core";
+import { ALL_SCOPE } from "@agentsales/core";
 import { createPublicationScenario, PORTAL_SCENARIO_TOKENS } from "@agentsales/core/testing";
 import { createMercadoLibreTestUsers } from "@agentsales/publishers";
 import { HttpResponse, http } from "msw";
@@ -68,7 +69,7 @@ async function setup(
     approve: false,
   });
   if (options.testUser) {
-    const [account] = await t.platformAccounts.list();
+    const [account] = await t.platformAccounts.list(ALL_SCOPE);
     if (account === undefined) throw new Error("falta la cuenta");
     await t.platformAccounts.upsertConnected({
       brokerId: account.brokerId,
@@ -82,7 +83,7 @@ async function setup(
   }
   const copied: string[] = [];
   const out: string[] = [];
-  const brokers = await t.brokers.list();
+  const brokers = await t.brokers.list(ALL_SCOPE);
   const slug = brokers[0]?.slug ?? "";
   const run = () =>
     runMlTestUser(
@@ -178,7 +179,7 @@ describe("ml:test-user", () => {
     expect(calls).toEqual(["refresh"]);
     expect(await s.posts()).toHaveLength(2);
     expect(s.copied).toEqual([PASSWORD]);
-    const [account] = await s.t.platformAccounts.list();
+    const [account] = await s.t.platformAccounts.list(ALL_SCOPE);
     expect(account?.status).toBe("connected");
     // El par nuevo quedó guardado (con el candado): el refresco no deja tokens viejos.
     const credentials = await s.t.platformAccounts.getCredentials(account?.id ?? "");
@@ -216,7 +217,7 @@ describe("ml:test-user", () => {
 
   it("con el acceso vencido y sin el par de la app: lo dice sin crear nada", async () => {
     const s = await setup();
-    const [account] = await s.t.platformAccounts.list();
+    const [account] = await s.t.platformAccounts.list(ALL_SCOPE);
     if (account === undefined) throw new Error("falta la cuenta");
     await s.t.platformAccounts.upsertConnected({
       brokerId: account.brokerId,

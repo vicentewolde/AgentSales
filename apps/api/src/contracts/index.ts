@@ -93,6 +93,8 @@ export const listingQuerySchema = z.object({
   comuna: z.string().trim().min(1).optional(),
   /** `id_propiedad` exacto (la CLI: `agentsales listing <ref>`); se repite entre corredores. */
   externalRef: z.string().trim().min(1).optional(),
+  /** Un corredor (su `slug`): filtro del administrador; un corredor que pide otro recibe 404 (F7). */
+  broker: z.string().trim().min(1).max(80).optional(),
 });
 export type ListingQuery = z.infer<typeof listingQuerySchema>;
 
@@ -133,8 +135,20 @@ export const mediaItemSchema = z.object({
 });
 export type MediaItem = z.infer<typeof mediaItemSchema>;
 
+/**
+ * Un aviso en la lista (`GET /listings`, spec F7 §4.4): sin notas internas, dirección exacta,
+ * unidad ni atributos (el detalle, `GET /listings/:id`, sigue completo dentro del alcance).
+ */
+export const listingSummarySchema = listingJsonSchema.omit({
+  internalNotes: true,
+  address: true,
+  unitNumber: true,
+  attributes: true,
+});
+export type ListingSummary = z.infer<typeof listingSummarySchema>;
+
 export const listingListResponseSchema = z.object({
-  listings: z.array(listingJsonSchema.extend({ coverUrl: z.string().nullable() })),
+  listings: z.array(listingSummarySchema.extend({ coverUrl: z.string().nullable() })),
 });
 export type ListingListResponse = z.infer<typeof listingListResponseSchema>;
 
@@ -596,6 +610,8 @@ export const publicationEventViewSchema = z.object({
   fromStatus: z.enum(PUBLICATION_STATUSES).nullable(),
   toStatus: z.enum(PUBLICATION_STATUSES).nullable(),
   actor: z.enum(PUBLICATION_ACTORS),
+  /** Quién lo hizo (desde F7, spec §4.3); `null` en lo del sistema y lo anterior a F7. */
+  userName: z.string().nullable(),
   payload: z.record(z.string(), z.unknown()),
   createdAt: z.coerce.date(),
 });
@@ -606,14 +622,6 @@ export const publicationEventsResponseSchema = z.object({
   events: z.array(publicationEventViewSchema),
 });
 export type PublicationEventsResponse = z.infer<typeof publicationEventsResponseSchema>;
-
-/**
- * Cabecera con que la CLI se identifica (T16): con `cli`, la bitácora registra `actor: "cli"`;
- * sin ella (el panel), `operator`.
- */
-export const CLIENT_HEADER = "X-AgentSales-Client";
-/** El valor de `CLIENT_HEADER` con que se identifica la CLI. */
-export const CLI_CLIENT = "cli";
 
 /**
  * Una cuenta conectada tal como la ve el operador (spec F3 §4.6 y §4.8, spec F4 §4.2,

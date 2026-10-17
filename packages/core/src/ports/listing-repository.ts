@@ -49,9 +49,9 @@ export interface ListingRepository {
   promoteToReady(id: string): Promise<boolean>;
   /**
    * Avisos con los filtros dados (exactos), del más reciente al más antiguo (`updated_at`), dentro
-   * del alcance (por defecto, todos; spec F7 §4.4).
+   * del alcance (obligatorio desde el lote C de F7: el worker pasa `ALL_SCOPE`; spec F7 §4.4).
    */
-  list(filters?: ListingFilters, scope?: AccessScope): Promise<Listing[]>;
+  list(filters: ListingFilters, scope: AccessScope): Promise<Listing[]>;
   /** `null` si no existe. */
   get(id: string): Promise<Listing | null>;
   /**

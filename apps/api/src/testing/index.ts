@@ -191,8 +191,10 @@ export function fakeUploads(): FakeUploads {
   };
 }
 
-/** El token de la sesión de administrador que siembra `testDeps` (F7-T04). */
+/** El token de la sesión de administrador del panel que siembra `testDeps` (F7-T04). */
 export const TEST_ADMIN_TOKEN = "token-admin-de-prueba";
+/** El de su sesión de la CLI (la bitácora registra `actor: cli`, F7-T10). */
+export const TEST_ADMIN_CLI_TOKEN = "token-admin-cli-de-prueba";
 /** El administrador sembrado (su correo y su contraseña, con el hash falso de core). */
 export const TEST_ADMIN = {
   id: "00000000-0000-4000-8000-00000000a001",
@@ -203,7 +205,7 @@ export const TEST_ADMIN = {
 /** La autenticación de los tests: los dobles de core con el administrador y su sesión. */
 export type TestAuth = AuthDeps & { repos: InMemoryUserRepositories };
 
-export function testAuth(options: { client?: SessionClient } = {}): TestAuth {
+export function testAuth(): TestAuth {
   const repos = createInMemoryUserRepositories({ nextId: randomUUID });
   const hasher = createFakePasswordHasher();
   const tokens = createFakeSecretTokens();
@@ -215,12 +217,17 @@ export function testAuth(options: { client?: SessionClient } = {}): TestAuth {
     brokerId: null,
     passwordHash: `fake:${TEST_ADMIN.password}`,
   });
-  // El canal de la sesión sembrada: `cli` por defecto; el arnés del panel la pide `panel` (T10 saca
-  // de ahí el canal de la bitácora).
+  // Dos sesiones del administrador: la del panel (`TEST_ADMIN_TOKEN`) y la de la CLI; T10 saca de
+  // ahí el canal de la bitácora (`operator` o `cli`).
   repos.seed.session({
     userId: admin.id,
     tokenHash: tokens.hash(TEST_ADMIN_TOKEN),
-    client: options.client ?? "cli",
+    client: "panel",
+  });
+  repos.seed.session({
+    userId: admin.id,
+    tokenHash: tokens.hash(TEST_ADMIN_CLI_TOKEN),
+    client: "cli",
   });
   return {
     repos,
@@ -242,11 +249,15 @@ type RequestableApp = ReturnType<typeof createApp>;
  * sin sesión, usa `createApp` directo. Solo envuelve `app.request` (no `app.fetch`): los arneses
  * pasan por `request`.
  */
-export function withAdminSession<A extends RequestableApp>(app: A): A {
+export function withAdminSession<A extends RequestableApp>(
+  app: A,
+  options: { client?: SessionClient } = {},
+): A {
+  const token = options.client === "cli" ? TEST_ADMIN_CLI_TOKEN : TEST_ADMIN_TOKEN;
   const withAuth = (init: RequestInit | undefined): RequestInit => {
     const headers = new Headers(init?.headers);
     if (!headers.has("authorization") && !headers.has("cookie")) {
-      headers.set("authorization", `Bearer ${TEST_ADMIN_TOKEN}`);
+      headers.set("authorization", `Bearer ${token}`);
     }
     return { ...init, headers };
   };
@@ -276,6 +287,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   const deps: Omit<AppDeps, "lock"> & { lock?: AppDeps["lock"] } = {
     // La autenticación ve los mismos corredores que la app (`/auth/me`).
     auth: { ...testAuth(), brokers },
+    oauthStates: createInMemoryUserRepositories().oauthStates,
     checks: { db: ok, storage: ok, queue: ok },
     publishMode: "dry-run",
     version: "0.0.1",

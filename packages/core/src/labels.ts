@@ -137,6 +137,16 @@ export const PUBLICATION_ACTOR_TEXT: Readonly<Record<PublicationActor, string>> 
 };
 
 /**
+ * Quién hizo un cambio (spec F7 §4.3): la persona y el canal ("Vinny (panel)"); sin persona (lo del
+ * sistema y lo anterior a F7), solo el canal.
+ */
+export function publicationActorText(actor: PublicationActor, userName: string | null): string {
+  return userName === null
+    ? PUBLICATION_ACTOR_TEXT[actor]
+    : `${userName} (${PUBLICATION_ACTOR_TEXT[actor]})`;
+}
+
+/**
  * El slug de un corredor para la terminal: sale de `slugify` (minúsculas, números y guiones); si
  * alguno trajera otra cosa, va entre comillas simples.
  */

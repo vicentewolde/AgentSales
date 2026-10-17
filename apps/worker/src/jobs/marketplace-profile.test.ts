@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLogger } from "@agentsales/config";
-import { AppError } from "@agentsales/core";
+import { ALL_SCOPE, AppError } from "@agentsales/core";
 import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
@@ -126,7 +126,7 @@ describe("job marketplace.profile (spec F5 §4.2 y §4.11)", () => {
 
     await t.run({ brokerId: broker.id, action: "login", requestedAt: NOW.toISOString() });
 
-    const [account] = await t.platformAccounts.list();
+    const [account] = await t.platformAccounts.list(ALL_SCOPE);
     expect(account).toMatchObject({
       platform: "fb_marketplace",
       externalAccountId: "100012345",
@@ -177,7 +177,7 @@ describe("job marketplace.profile (spec F5 §4.2 y §4.11)", () => {
 
     await t.run({ brokerId: broker.id, action: "login", requestedAt: NOW.toISOString() });
 
-    const [account] = await t.platformAccounts.list();
+    const [account] = await t.platformAccounts.list(ALL_SCOPE);
     expect(account?.meta).toMatchObject({
       lastLoginError: { code: "MARKETPLACE_LOGIN_TIMEOUT", at: NOW.toISOString() },
     });
@@ -194,7 +194,7 @@ describe("job marketplace.profile (spec F5 §4.2 y §4.11)", () => {
     await t.run({ brokerId: broker.id, action: "login", requestedAt: NOW.toISOString() });
 
     expect(tries).toBeGreaterThan(1);
-    expect(await t.platformAccounts.list()).toEqual([]);
+    expect(await t.platformAccounts.list(ALL_SCOPE)).toEqual([]);
   });
 
   it("forget: cierra las ventanas del corredor y borra la carpeta y el candado (idempotente)", async () => {

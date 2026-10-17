@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseBrokerSheet } from "../broker.js";
 import type { ListingSource } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import type { FieldDefinition } from "../field-definition.js";
@@ -442,3 +443,71 @@ describe("importListings · errores de base de datos a mitad de la carga", () =>
     await expectAppError(run(sheet([row(2)])), "LISTING_CONFLICT");
   });
 });
+
+describe("importListings · la carga de un usuario corredor (F7-T08, spec F7 §4.4)", () => {
+  async function lockedRun(
+    deps: ReturnType<typeof setup>["deps"],
+    brokerId: string,
+    brokerSlug: string | null,
+  ) {
+    return deps.importRuns.create({
+      source: "xlsx",
+      fileName: "propiedades.xlsx",
+      dryRun: false,
+      input: { xlsxPath: "/tmp/propiedades.xlsx", mediaDir: null, broker: brokerSlug },
+      brokerId,
+    });
+  }
+
+  it("con su corredor, la hoja actualiza su marca y las propiedades quedan con él", async () => {
+    const { deps } = setup();
+    const mine = await deps.brokers.create({ ...parseOk(BROKER_SHEET), slug: "mio", tone: null });
+    const importRun = await lockedRun(deps, mine.id, "mio");
+    const result = await importListings(deps, { runId: importRun.id, input: sheet([row(2)]) });
+    expect(result.brokerId).toBe(mine.id);
+    expect((await deps.brokers.findById(mine.id))?.tone).toBe("Cercano");
+    expect(deps.brokers.all()).toHaveLength(1);
+    expect((await deps.importRuns.get(importRun.id))?.brokerId).toBe(mine.id);
+  });
+
+  it("si el corredor de la hoja no es el suyo, BROKER_MISMATCH sin tocar nada ni crear un corredor", async () => {
+    const { deps } = setup();
+    const mine = await deps.brokers.create({ ...parseOk(BROKER_SHEET), slug: "mio" });
+    const other = await deps.brokers.create({ ...parseOk(BROKER_SHEET), slug: "ajeno" });
+    // La hoja apunta a otro corredor que existe…
+    const toOther = await lockedRun(deps, mine.id, "ajeno");
+    await expectAppError(
+      importListings(deps, { runId: toOther.id, input: sheet([row(2)]) }),
+      "BROKER_MISMATCH",
+    );
+    // …o a uno que no existe (nunca se crea).
+    const toNew = await lockedRun(deps, mine.id, "nuevo");
+    await expectAppError(
+      importListings(deps, { runId: toNew.id, input: sheet([row(2)]) }),
+      "BROKER_MISMATCH",
+    );
+    // Sin hoja Corredor, con el slug de otro: tampoco.
+    const withoutSheet = await lockedRun(deps, mine.id, "ajeno");
+    await expectAppError(
+      importListings(deps, { runId: withoutSheet.id, input: sheet([row(2)], { broker: null }) }),
+      "BROKER_MISMATCH",
+    );
+    expect(
+      deps.brokers
+        .all()
+        .map((broker) => broker.slug)
+        .sort(),
+    ).toEqual(["ajeno", "mio"]);
+    expect(deps.listings.all()).toEqual([]);
+    expect((await deps.brokers.findById(other.id))?.tone).toBe(other.tone);
+    // La carga fallida sigue siendo del corredor (la ve en su lista).
+    expect((await deps.importRuns.get(toOther.id))?.brokerId).toBe(mine.id);
+  });
+});
+
+/** Los datos de la hoja Corredor de prueba, ya leídos. */
+function parseOk(raw: typeof BROKER_SHEET) {
+  const parsed = parseBrokerSheet(raw);
+  if (!parsed.ok) throw new Error("hoja de prueba inválida");
+  return parsed.data;
+}

@@ -1,6 +1,7 @@
 import { basename, join } from "node:path";
 import {
   type AbortSignalLike,
+  ALL_SCOPE,
   assemblePublishInput,
   type BrokerRepository,
   type ContentRepository,
@@ -148,8 +149,8 @@ export async function runFbSmokeListing(
 
 async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Promise<number> {
   const ref = options.listingRef.trim();
-  const brokers = await deps.brokers.list();
-  let matches = await deps.listings.list({ externalRef: ref });
+  const brokers = await deps.brokers.list(ALL_SCOPE);
+  let matches = await deps.listings.list({ externalRef: ref }, ALL_SCOPE);
   if (options.brokerSlug !== undefined) {
     const wanted = brokers.find((broker) => broker.slug === options.brokerSlug);
     if (wanted === undefined) {
@@ -175,7 +176,7 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
   const broker = brokers.find((item) => item.id === listing.brokerId);
   const slug = broker?.slug ?? listing.brokerId;
 
-  const account = (await deps.accounts.list()).find(
+  const account = (await deps.accounts.list(ALL_SCOPE)).find(
     (candidate) =>
       candidate.platform === "fb_marketplace" &&
       candidate.brokerId === listing.brokerId &&

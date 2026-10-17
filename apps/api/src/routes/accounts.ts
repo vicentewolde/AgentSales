@@ -11,6 +11,7 @@ import {
   marketplaceAccountMetaSchema,
   marketplaceLoginErrorText,
   mercadoLibreAccountMetaSchema,
+  type OAuthStateRepository,
   type PlatformAccount,
   type PlatformAccountRepository,
   type PublicationRepository,
@@ -21,6 +22,7 @@ import {
   type TokenRefreshResult,
 } from "@agentsales/core";
 import { Hono } from "hono";
+import type { AppEnv } from "../auth.js";
 import {
   type AccountListResponse,
   type AccountRefreshResponse,
@@ -37,12 +39,13 @@ import {
   type PlatformAccountView,
 } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
+import { requestScope } from "../scope.js";
 import { validated, validatedWithReason } from "../validation.js";
 import {
   OAUTH_STATE_PLATFORMS,
   OAUTH_STATE_TTL_SECONDS,
   type OAuthStateSigner,
-  verifyOAuthState,
+  verifyOAuthStateData,
 } from "./oauth.js";
 
 export type AccountRoutesDeps = ConnectAccountDeps &
@@ -58,6 +61,9 @@ export type AccountRoutesDeps = ConnectAccountDeps &
     mercadoLibre: { auth: MercadoLibreAuth; configured: boolean; redirectUri: string };
     /** Firma y verifica el `state` (con la plataforma y el corredor). */
     oauthState: OAuthStateSigner;
+    /** Los `state` usados (spec F7 §4.12) y el hash con que se guarda su nonce. */
+    oauthStates: Pick<OAuthStateRepository, "markUsed">;
+    stateHash: (nonce: string) => string;
     /** Desconectar Marketplace: una publicación esperando el clic final lo impide (spec F5 §4.2). */
     publications: Pick<PublicationRepository, "listByStatus">;
     /** Desconectar Marketplace encola el borrado del perfil (`marketplace.profile`). */
@@ -229,9 +235,10 @@ function refreshView(result: TokenRefreshResult): AccountRefreshResponse {
  * refresco de Instagram no sale de su cliente).
  */
 export function accountRoutes(deps: AccountRoutesDeps) {
-  return new Hono()
+  return new Hono<AppEnv>()
     .get("/", async (c) => {
-      const accounts = await deps.platformAccounts.list();
+      // Un corredor ve sus cuentas (spec F7 §4.5); conectarlas es del administrador.
+      const accounts = await deps.platformAccounts.list(requestScope(c));
       const body: AccountListResponse = {
         accounts: accounts.map(accountView),
         connect: {
@@ -279,9 +286,19 @@ export function accountRoutes(deps: AccountRoutesDeps) {
       async (c) => {
         if (!deps.mercadoLibre.configured) throw mercadoLibreNotConfigured();
         const { broker, code, state } = c.req.valid("json");
-        // Antes de llamar a Mercado Libre: un `state` ajeno o vencido no canjea nada.
+        // Antes de llamar a Mercado Libre: un `state` ajeno o vencido no canjea nada, y uno ya
+        // usado tampoco (spec F7 §4.12: sirve una vez).
         const expected = { platform: OAUTH_STATE_PLATFORMS.mercadolibre, broker };
-        if (verifyOAuthState(deps.oauthState, state, expected) === null) throw stateInvalid();
+        const verified = verifyOAuthStateData(deps.oauthState, state, expected);
+        if (verified === null) throw stateInvalid();
+        if (
+          !(await deps.oauthStates.markUsed(deps.stateHash(verified.nonce), verified.expiresAt))
+        ) {
+          throw new AppError(
+            "OAUTH_STATE_USED",
+            "Esa dirección de vuelta ya se usó: conecta Mercado Libre de nuevo",
+          );
+        }
         const account = await connectMercadoLibreAccount(
           {
             brokers: deps.brokers,

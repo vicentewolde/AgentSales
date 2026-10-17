@@ -1,10 +1,5 @@
 import type { AppType } from "@agentsales/api";
-import {
-  CLI_CLIENT,
-  CLIENT_HEADER,
-  errorBodySchema,
-  type ReadinessIssueView,
-} from "@agentsales/api/contracts";
+import { errorBodySchema, type ReadinessIssueView } from "@agentsales/api/contracts";
 import { type HealthReport, healthReportSchema } from "@agentsales/core";
 import { hc } from "hono/client";
 import type { z } from "zod";
@@ -98,17 +93,14 @@ function withJsonType(init: RequestInit | undefined): RequestInit | undefined {
 
 /**
  * Cliente RPC tipado (`hc<AppType>`) con toda la API. Cada petición tiene timeout, y un fallo de
- * red o de timeout llega como `ApiCallError`. La respuesta se lee con `unwrap`. Toda petición se
- * identifica como la CLI (`X-AgentSales-Client: cli`), para que la bitácora registre `actor: cli`.
+ * red o de timeout llega como `ApiCallError`. La respuesta se lee con `unwrap`. Con la sesión de
+ * `agentsales login`, la API sabe que es la CLI (la bitácora registra `actor: cli`, spec F7 §4.3).
  */
 export function createApiClient(port: number, options: ApiClientOptions = {}) {
   const timeoutMs = options.timeoutMs ?? API_TIMEOUT_MS;
   const send = options.fetch ?? fetch;
   return hc<AppType>(apiUrl(port), {
-    headers: {
-      [CLIENT_HEADER]: CLI_CLIENT,
-      ...(options.token === undefined ? {} : { authorization: `Bearer ${options.token}` }),
-    },
+    headers: options.token === undefined ? {} : { authorization: `Bearer ${options.token}` },
     fetch: async (input: string | URL | Request, init?: RequestInit) => {
       const timeout = AbortSignal.timeout(timeoutMs);
       const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;

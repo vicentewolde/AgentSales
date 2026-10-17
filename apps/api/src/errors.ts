@@ -89,6 +89,8 @@ const CONFLICTS = new Set([
   "USER_SELF_DISABLE",
   "INVITATION_CONFLICT",
   "USER_NOT_ADMIN",
+  // F7-T08: la hoja Corredor de la carga de un corredor es de otro (no llega a la API; por si llegara).
+  "BROKER_MISMATCH",
 ]);
 
 /**
@@ -101,7 +103,8 @@ const CLIENT_MISSING = new Set([
   "SCHEDULE_TOO_SOON",
   "SCHEDULE_TOO_FAR",
   "CLOSE_REASON_REQUIRED",
-  // F7: la contraseña no cumple el largo.
+  // F7: la contraseña no cumple el largo; un `state` de Mercado Libre ya usado (conectar de nuevo).
+  "OAUTH_STATE_USED",
   "PASSWORD_TOO_SHORT",
   "PASSWORD_TOO_LONG",
 ]);

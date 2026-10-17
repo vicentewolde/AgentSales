@@ -1,5 +1,7 @@
 import {
   type AbortSignalLike,
+  type AccessScope,
+  ALL_SCOPE,
   AppError,
   accessTokenProvider,
   assemblePublishInput,
@@ -144,7 +146,11 @@ export type MlSmokeListingDeps = {
     PlatformAccountRepository,
     "list" | "get" | "getCredentials" | "withCredentialsLock" | "changeStatus"
   >;
-  brokers: { list(): Promise<Pick<Broker, "id" | "slug" | "name" | "email" | "whatsapp">[]> };
+  brokers: {
+    list(
+      scope: AccessScope,
+    ): Promise<Pick<Broker, "id" | "slug" | "name" | "email" | "whatsapp">[]>;
+  };
   listings: Pick<ListingRepository, "list">;
   contents: Pick<ContentRepository, "listCurrent">;
   media: Pick<MediaRepository, "listByListing">;
@@ -226,8 +232,8 @@ export async function runMlSmokeListing(
 
 async function run(deps: MlSmokeListingDeps, options: MlSmokeListingOptions): Promise<number> {
   const ref = options.listingRef.trim();
-  const brokers = await deps.brokers.list();
-  let matches = await deps.listings.list({ externalRef: ref });
+  const brokers = await deps.brokers.list(ALL_SCOPE);
+  let matches = await deps.listings.list({ externalRef: ref }, ALL_SCOPE);
   if (options.brokerSlug !== undefined) {
     const wanted = brokers.find((broker) => broker.slug === options.brokerSlug);
     if (wanted === undefined) {
@@ -253,7 +259,7 @@ async function run(deps: MlSmokeListingDeps, options: MlSmokeListingOptions): Pr
   const broker = brokers.find((item) => item.id === listing.brokerId);
   const slug = broker?.slug ?? listing.brokerId;
 
-  const account = (await deps.accounts.list()).find(
+  const account = (await deps.accounts.list(ALL_SCOPE)).find(
     (candidate) =>
       candidate.platform === "portal_inmobiliario" &&
       candidate.brokerId === listing.brokerId &&

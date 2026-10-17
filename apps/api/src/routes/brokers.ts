@@ -1,11 +1,13 @@
 import type { BrokerRepository } from "@agentsales/core";
 import { Hono } from "hono";
+import type { AppEnv } from "../auth.js";
 import {
   type BrokerListResponse,
   type BrokerResponse,
   brokerPatchBodySchema,
   idParamSchema,
 } from "../contracts/index.js";
+import { requestScope } from "../scope.js";
 import { validated } from "../validation.js";
 
 /**
@@ -14,9 +16,10 @@ import { validated } from "../validation.js";
  * pregunta siempre; el panel avisa en rojo): `/health` informa los corredores con `auto_publish`.
  */
 export function brokerRoutes(deps: { brokers: BrokerRepository }) {
-  return new Hono()
+  return new Hono<AppEnv>()
     .get("/", async (c) => {
-      const body: BrokerListResponse = { brokers: await deps.brokers.list() };
+      // Un corredor ve solo el suyo (spec F7 §4.4); el administrador, todos.
+      const body: BrokerListResponse = { brokers: await deps.brokers.list(requestScope(c)) };
       return c.json(body, 200);
     })
     .patch(

@@ -61,6 +61,7 @@ export function createImportRunRepository(db: SchemaDatabase): ImportRunReposito
               fileName: run.fileName,
               dryRun: run.dryRun,
               input: run.input,
+              brokerId: run.brokerId ?? null,
             })
             .returning();
           if (row === undefined)

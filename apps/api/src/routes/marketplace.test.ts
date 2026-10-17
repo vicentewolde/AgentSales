@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger } from "@agentsales/config";
 import {
+  ALL_SCOPE,
   type JobQueue,
   type Publication,
   type PublishMode,
@@ -449,7 +450,7 @@ describe("publicar Marketplace (spec F5 §4.6 y §4.7)", () => {
     const content = (await t.contents.listCurrent(t.listingId)).find(
       (item) => item.platform === MARKETPLACE,
     );
-    const account = (await t.platformAccounts.list())[0];
+    const account = (await t.platformAccounts.list(ALL_SCOPE))[0];
 
     for (const path of [
       `/publications/${id}/cancel`,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ALL_SCOPE } from "../access.js";
 import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
@@ -79,7 +80,7 @@ describe("connectMarketplaceAccount (spec F5 §4.2)", () => {
     await expect(
       connectMarketplaceAccount(deps, { brokerId: "no-existe", userId: "1" }),
     ).rejects.toMatchObject({ code: "BROKER_NOT_FOUND" });
-    expect(await platformAccounts.list()).toEqual([]);
+    expect(await platformAccounts.list(ALL_SCOPE)).toEqual([]);
   });
 
   it("el último error de inicio de sesión queda en la cuenta, si existe", async () => {

@@ -99,7 +99,7 @@ export function scopeRepositoriesContract(name: string, make: () => Promise<Scop
       const scoped = ids(await repos.listings.list({}, brokerScope(mine)));
       expect(scoped).toContain(myListing.id);
       expect(scoped).not.toContain(theirListing.id);
-      expect(ids(await repos.listings.list())).toEqual(
+      expect(ids(await repos.listings.list({}, ALL_SCOPE))).toEqual(
         expect.arrayContaining([myListing.id, theirListing.id]),
       );
 
@@ -124,7 +124,7 @@ export function scopeRepositoriesContract(name: string, make: () => Promise<Scop
       expect(myRuns).not.toContain(theirRun.id);
       // Una carga sin corredor todavía solo la ve el administrador.
       expect(myRuns).not.toContain(pending.id);
-      expect(ids(await repos.importRuns.list(50))).toEqual(
+      expect(ids(await repos.importRuns.list(50, ALL_SCOPE))).toEqual(
         expect.arrayContaining([myRun.id, theirRun.id, pending.id]),
       );
 
@@ -133,7 +133,7 @@ export function scopeRepositoriesContract(name: string, make: () => Promise<Scop
       const accounts = ids(await repos.accounts.list(brokerScope(mine)));
       expect(accounts).toContain(myAccount.id);
       expect(accounts).not.toContain(theirAccount.id);
-      expect(ids(await repos.accounts.list())).toEqual(
+      expect(ids(await repos.accounts.list(ALL_SCOPE))).toEqual(
         expect.arrayContaining([myAccount.id, theirAccount.id]),
       );
     });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ALL_SCOPE } from "../access.js";
 import { AppError } from "../errors.js";
 import { mercadoLibreAccountMetaSchema } from "../platform-account.js";
 import type { MercadoLibreAuth, MercadoLibreUser } from "../ports/mercadolibre-auth.js";
@@ -136,7 +137,7 @@ describe("connectMercadoLibreAccount", () => {
 
       expect(error).toMatchObject({ code: "ML_PERMISSION_DENIED", details: { missing } });
       expect(calls).toEqual([`exchange:${CODE}`]);
-      await expect(platformAccounts.list()).resolves.toEqual([]);
+      await expect(platformAccounts.list(ALL_SCOPE)).resolves.toEqual([]);
     },
   );
 
@@ -152,7 +153,7 @@ describe("connectMercadoLibreAccount", () => {
       details: { reason: "refresh_token_missing" },
     });
     expect(textOf(error)).not.toMatch(/APP_USR|TG-/);
-    await expect(platformAccounts.list()).resolves.toEqual([]);
+    await expect(platformAccounts.list(ALL_SCOPE)).resolves.toEqual([]);
   });
 
   it("un user_id del canje distinto del de /users/me es ML_UNEXPECTED_RESPONSE", async () => {
@@ -164,7 +165,7 @@ describe("connectMercadoLibreAccount", () => {
       code: "ML_UNEXPECTED_RESPONSE",
       details: { reason: "user_mismatch" },
     });
-    await expect(platformAccounts.list()).resolves.toEqual([]);
+    await expect(platformAccounts.list(ALL_SCOPE)).resolves.toEqual([]);
   });
 
   it("una cuenta de otro sitio es ML_SITE_MISMATCH y no se guarda", async () => {
@@ -176,7 +177,7 @@ describe("connectMercadoLibreAccount", () => {
 
     expect(error).toMatchObject({ code: "ML_SITE_MISMATCH", details: { siteId: "MLA" } });
     expect((error as Error).message).toContain("Mercado Libre Chile");
-    await expect(platformAccounts.list()).resolves.toEqual([]);
+    await expect(platformAccounts.list(ALL_SCOPE)).resolves.toEqual([]);
   });
 
   it("los errores de Mercado Libre pasan tal cual (un código vencido es ML_AUTH_INVALID)", async () => {
@@ -204,7 +205,7 @@ describe("connectMercadoLibreAccount", () => {
       { broker: broker.slug, code: CODE },
     );
 
-    const accounts = await platformAccounts.list();
+    const accounts = await platformAccounts.list(ALL_SCOPE);
     expect(accounts.find((account) => account.id === first.id)?.status).toBe("revoked");
     expect(accounts.find((account) => account.id === second.id)?.status).toBe("connected");
     expect(accounts.filter((account) => account.status === "connected")).toHaveLength(1);

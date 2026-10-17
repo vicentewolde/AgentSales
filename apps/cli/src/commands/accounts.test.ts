@@ -4,6 +4,7 @@ import {
   fakeMercadoLibreAuth,
   TEST_ML_REDIRECT_URI,
 } from "@agentsales/api/testing";
+import { ALL_SCOPE } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import { brokerData, harness } from "../../test/harness.js";
 import {
@@ -60,7 +61,7 @@ describe("accounts connect", () => {
     expect(await connect()).toBe(0);
     expect(h.text()).toContain("✓ Conectada @corredora (marca)");
     expect(h.text()).toContain("(estimado: se conoce el real al renovarlo, desde mañana)");
-    const [account] = await h.platformAccounts.list();
+    const [account] = await h.platformAccounts.list(ALL_SCOPE);
     expect(h.platformAccounts.storedCredentials(account?.id ?? "")).toEqual({ accessToken: TOKEN });
     expect(`${h.text()}\n${h.errors()}\n${h.requests.join("\n")}`).not.toContain(TOKEN);
     expect(h.requests).toContain("POST /accounts/connect-token");
@@ -165,7 +166,7 @@ describe("accounts y accounts refresh", () => {
   it("refresh: antes de 24 h no cambia y dice desde cuándo; después renueva con el vencimiento real", async () => {
     const { h, deps, connect, advance } = await setup();
     await connect();
-    const [account] = await h.platformAccounts.list();
+    const [account] = await h.platformAccounts.list(ALL_SCOPE);
     const id = account?.id ?? "";
 
     expect(await runRefresh(deps(), id, { force: true })).toBe(0);
@@ -188,7 +189,7 @@ describe("accounts y accounts refresh", () => {
   it("refresh de una desconectada lo explica; un id que no es uuid se rechaza sin llamar", async () => {
     const { h, deps, connect } = await setup();
     await connect();
-    const [account] = await h.platformAccounts.list();
+    const [account] = await h.platformAccounts.list(ALL_SCOPE);
     await h.platformAccounts.disconnect(account?.id ?? "");
 
     expect(await runRefresh(deps(), account?.id ?? "")).toBe(1);
@@ -204,7 +205,7 @@ describe("accounts y accounts refresh", () => {
 
   it("refresh de Mercado Libre: sin --force espera los 7 días; con --force renueva; un rechazo la deja vencida", async () => {
     const { h, deps, advance } = await setup();
-    const broker = (await h.brokers.list())[0];
+    const broker = (await h.brokers.list(ALL_SCOPE))[0];
     const addMl = (externalAccountId: string, refreshToken: string) =>
       h.platformAccounts.upsertConnected({
         brokerId: broker?.id ?? "",
@@ -312,7 +313,7 @@ describe("accounts connect mercadolibre (F4-T20, adelantado)", () => {
     expect(code).toBe(0);
     expect(h.text()).toContain("✓ Conectada CORREDORA_PRUEBA (marca)");
     expect(h.text()).toContain("Permisos: offline_access, read, write");
-    const [account] = await h.platformAccounts.list();
+    const [account] = await h.platformAccounts.list(ALL_SCOPE);
     expect(account).toMatchObject({ platform: "portal_inmobiliario", status: "connected" });
     const everything = `${h.text()}\n${h.errors()}\n${h.requests.join("\n")}`;
     // El `state` sí está en el enlace del primer paso (no es secreto); el código, nunca.

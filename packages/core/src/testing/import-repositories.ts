@@ -262,7 +262,7 @@ export function createInMemoryImportRunRepository(
       }
       const created: ImportRun = {
         id: run.id ?? nextId(),
-        brokerId: null,
+        brokerId: run.brokerId ?? null,
         status: "queued",
         dryRun: run.dryRun,
         source: run.source,

@@ -40,9 +40,9 @@
 | **Lote B** · T05 Usuarios, `/health` y el primer administrador | ✅ terminada | #131 |
 | **Lote B** · T06 CLI: entrar | ✅ terminada | #131 |
 | **Lote B** · T07 Panel: entrar e invitación | ✅ terminada | #131 |
-| **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | ⏳ pendiente | |
-| **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | ⏳ pendiente | |
-| **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ⏳ pendiente | |
+| **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | 🔨 en curso | |
+| **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | 🔨 en curso | |
+| **Lote C** · T10 Cuentas, el `state` y quién hizo qué | 🔨 en curso | |
 | **Lote D** · T11 `anthropic-api` real | ⏳ pendiente | |
 | **Lote D** · T12 La IA por corredor y su gasto | ⏳ pendiente | |
 | **Lote E** · T13 Corredores: crear, editar y lista de alta | ⏳ pendiente | |
@@ -109,6 +109,7 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **F7, lote D (worker):** borrar las sesiones vencidas o sin uso y los `state` de OAuth vencidos en la vigilancia de cada hora (spec F7 §4.12: `SessionRepository.deleteExpired` y `OAuthStateRepository.deleteExpired` ya existen; ningún job los llama todavía). Mientras, una sesión vencida no sirve (`resolveSession` la borra al usarla), solo ocupa una fila.
 - **Para F8:** `/health` muestra la versión de Postgres (desde F7, solo al administrador); al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
 - **Para F7 (auditoría del cierre de F6):** `/tracking` y `/agenda` cargan todas las propiedades y filtran por corredor en memoria: con la autenticación, el alcance por corredor va en el servidor. Límite conocido de T08: si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5).
 - **Para F7 (de la revisión del lote F):** la agenda pide los textos vigentes con una consulta por propiedad (corredores con `auto_publish`): con más volumen, una sola consulta para todas (`listCurrentMany`); `publicationView` usa su propio reloj (no el `now` de la ruta).
@@ -121,7 +122,6 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - F8: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - **F7, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
 - **F8, OAuth:** `instagramStartUrlOf` asume la API en la raíz del host de `INSTAGRAM_REDIRECT_URI`. Si el despliegue la monta tras un prefijo, derivar el inicio desde la ruta de la URI de retorno.
-- **F7, actor de la bitácora:** la API distingue la CLI del panel por la cabecera `X-AgentSales-Client`, que cualquier proceso local puede mandar. Con autenticación, el actor sale de la sesión.
 - **F8, refresco de tokens:** el job `tokens.refresh` expira a los 5 min y la expiración no corta el handler. Con una cuenta por corredor sobra; con muchas cuentas (llamadas de hasta 30 s), subir el tope o dejar de empezar cuentas nuevas pasados unos 4 min, para que un reintento no se cruce con el intento anterior.
 - **F7, `state` de Mercado Libre:** vale sus 10 min y no es de un solo uso (el código sí se canjea una vez; F4-T06). Con la vuelta automática (`/oauth/mercadolibre/callback`), amarrarlo a una cookie o a un nonce de un solo uso, como el de Instagram. Además, `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática: F7 registra en la app una segunda dirección de su dominio real (o, en local, ese nombre apuntando al propio equipo con un certificado local, que merecería un ADR), y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
 - **F7, cuentas:** `panelUrl` y `allowedHosts` están fijos en `localhost`; con varios corredores y la API expuesta, hay que autorizar quién puede conectar cada corredor (`/oauth/instagram/start?broker=` y `connect-token` hoy los acepta cualquiera que llegue a la API) y evitar repetir un `state` válido durante sus 10 min (guardar el nonce usado; hoy basta con que la cookie se borre).

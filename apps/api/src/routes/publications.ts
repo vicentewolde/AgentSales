@@ -30,6 +30,7 @@ import {
   type StartPublicationDeps,
   schedulePublication,
   startPublication,
+  type UserRepository,
   unschedulePublication,
   updatePortalPublication,
 } from "@agentsales/core";
@@ -55,7 +56,13 @@ import {
 import type { AppLogger } from "../logger.js";
 import { validated } from "../validation.js";
 import { contentMedia } from "./content.js";
-import { actorOf, eventView, publicationView, skippedView } from "./publication-views.js";
+import {
+  actorOf,
+  eventViewWith,
+  publicationView,
+  publicationViewAt,
+  skippedView,
+} from "./publication-views.js";
 
 export type PublicationRoutesDeps = PublishListingDeps &
   StartPublicationDeps &
@@ -71,6 +78,8 @@ export type PublicationRoutesDeps = PublishListingDeps &
     /** Actualizar en Portal (F6-T07): el texto vigente y el contacto del corredor. */
     contents: Pick<ContentRepository, "listCurrent">;
     brokers: Pick<BrokerRepository, "findById">;
+    /** El nombre de cada persona de la bitácora (spec F7 §4.3). */
+    auth: { users: Pick<UserRepository, "get"> };
     media: Pick<MediaRepository, "listByListing">;
     /** Solo para las miniaturas de `GET /listings/:id/publications` (R2 es privado, ADR-0007). */
     storage: Pick<MediaStorage, "signedReadUrl">;
@@ -161,10 +170,11 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
       const thumbnails = new Map(
         media.filter((item) => item.variant !== null).map((item) => [item.id, signed(item)]),
       );
+      const at = deps.now?.() ?? new Date();
       const body: ListingPublicationsResponse = {
         publications: await Promise.all(
           publications.map(async (publication) => ({
-            ...publicationView(publication),
+            ...publicationViewAt(publication, at),
             media: pending.has(publication.status)
               ? await Promise.all(
                   publication.mediaIds.flatMap((mediaId) => thumbnails.get(mediaId) ?? []),
@@ -447,7 +457,13 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       const { id } = c.req.valid("param");
       if ((await deps.publications.get(id)) === null) throw publicationNotFound(id);
       const events = await deps.publications.listEvents(id);
-      const body: PublicationEventsResponse = { events: events.map(eventView) };
+      // El nombre de cada persona de la bitácora (spec F7 §4.3), una consulta por persona distinta.
+      const names = new Map<string, string>();
+      for (const userId of new Set(events.flatMap((event) => event.userId ?? []))) {
+        const user = await deps.auth.users.get(userId);
+        if (user !== null) names.set(userId, user.name);
+      }
+      const body: PublicationEventsResponse = { events: events.map(eventViewWith(names)) };
       return c.json(body, 200);
     });
 }

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger, createStateSigner } from "@agentsales/config";
+import { ALL_SCOPE } from "@agentsales/core";
 import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
@@ -97,7 +98,7 @@ describe("GET /oauth/instagram/callback", () => {
     expect(panelRedirect(response)).toEqual({ conectada: "instagram" });
     expect(response.headers.get("location")).not.toContain("corredora");
     expect(response.headers.get("set-cookie")).toMatch(/agentsales_oauth_state=;.*Max-Age=0/);
-    const [account] = await platformAccounts.list();
+    const [account] = await platformAccounts.list(ALL_SCOPE);
     expect(account).toMatchObject({
       status: "connected",
       displayName: "@corredora",
@@ -135,7 +136,7 @@ describe("GET /oauth/instagram/callback", () => {
       expect(panelRedirect(response)).toEqual({ error: "OAUTH_STATE_INVALID" });
     }
     expect(auth.calls).toEqual([]);
-    expect(await platformAccounts.list()).toEqual([]);
+    expect(await platformAccounts.list(ALL_SCOPE)).toEqual([]);
   });
 
   it("si el operador rechaza en Instagram vuelve con OAUTH_DENIED, sin llamar a Instagram", async () => {
@@ -154,7 +155,7 @@ describe("GET /oauth/instagram/callback", () => {
     const { state } = await start();
     const response = await callback({ code: "codigo-sin-publicar", state }, state);
     expect(panelRedirect(response)).toEqual({ error: "IG_PERMISSION_DENIED" });
-    expect(await platformAccounts.list()).toEqual([]);
+    expect(await platformAccounts.list(ALL_SCOPE)).toEqual([]);
   });
 
   it("un código vencido vuelve con su código de error, sin el código en la URL", async () => {
@@ -223,7 +224,7 @@ describe("OAuth · seguridad", () => {
       { headers: { Cookie: `${OAUTH_STATE_COOKIE}=${encodeURIComponent(state)}` } },
     );
     expect(panelRedirect(response)).toEqual({ conectada: "instagram" });
-    const [account] = await platformAccounts.list();
+    const [account] = await platformAccounts.list(ALL_SCOPE);
     expect(account?.brokerId).toBe(other.id);
   });
 

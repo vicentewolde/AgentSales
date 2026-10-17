@@ -1,22 +1,24 @@
-import type {
-  BrokerRepository,
-  ContentRepository,
-  ContentRunRepository,
-  FieldDefinitionRepository,
-  HealthCheckName,
-  ImportRunRepository,
-  JobQueue,
-  ListingLock,
-  ListingRepository,
-  MarketplaceStartOptions,
-  MediaRepository,
-  MediaStorage,
-  MercadoLibreAuth,
-  Platform,
-  PlatformAccountRepository,
-  PublicationOperations,
-  PublicationRepository,
-  PublishMode,
+import {
+  AppError,
+  type BrokerRepository,
+  type ContentRepository,
+  type ContentRunRepository,
+  type FieldDefinitionRepository,
+  type HealthCheckName,
+  type ImportRunRepository,
+  type JobQueue,
+  type ListingLock,
+  type ListingRepository,
+  type MarketplaceStartOptions,
+  type MediaRepository,
+  type MediaStorage,
+  type MercadoLibreAuth,
+  type OAuthStateRepository,
+  type Platform,
+  type PlatformAccountRepository,
+  type PublicationOperations,
+  type PublicationRepository,
+  type PublishMode,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import { type AppEnv, type AuthDeps, authenticate } from "./auth.js";
@@ -24,6 +26,7 @@ import { createErrorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, type HealthDetails, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
 import { requestLogger } from "./request-logger.js";
+import { withEventUser } from "./request-user.js";
 import { accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
 import { brokerRoutes } from "./routes/brokers.js";
@@ -39,11 +42,14 @@ import {
 import { scheduleRoutes } from "./routes/schedule.js";
 import { trackingRoutes } from "./routes/tracking.js";
 import { userRoutes } from "./routes/users.js";
+import { ownedBy } from "./scope.js";
 import { csrfGuard, hostGuard, type LocalAccess, originGuard } from "./security.js";
 
 export type AppDeps = {
   /** Usuarios y sesiones (F7, ADR-0021): sin sesión, solo las rutas públicas (`access.ts`). */
   auth: AuthDeps;
+  /** Los `state` del OAuth ya usados: el de Mercado Libre sirve una vez (spec F7 §4.12). */
+  oauthStates: OAuthStateRepository;
   checks: Record<HealthCheckName, HealthCheck>;
   publishMode: PublishMode;
   version: string;
@@ -127,7 +133,9 @@ export type AppDeps = {
 };
 
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
-export function createApp(deps: AppDeps) {
+export function createApp(input: AppDeps) {
+  // Los eventos de la bitácora escritos por la API llevan el usuario del pedido (spec F7 §4.3).
+  const deps: AppDeps = { ...input, lock: withEventUser(input.lock) };
   // El refresco del token de Portal, solo con el par de la app (sin él, uno por vencer es
   // `MERCADOLIBRE_NOT_CONFIGURED` sin llamar).
   const publicationDeps = {
@@ -136,12 +144,50 @@ export function createApp(deps: AppDeps) {
   };
   // Lo que le falta al aviso para Marketplace depende de si se puede convertir la UF (spec F5 §4.6).
   const contentDeps = { ...deps, ufConfigured: deps.marketplace?.ufConfigured ?? false };
+  // El corredor dueño de cada recurso por id (spec F7 §4.4): un corredor solo llega a lo suyo.
+  const listingOwner = async (id: string) => (await deps.listings.get(id))?.brokerId ?? null;
+  const viaListing = async (listingId: string | undefined) =>
+    listingId === undefined ? null : listingOwner(listingId);
+  const notFound = (code: string, message: string) => (id: string) =>
+    new AppError(code, `${message} ${id}`);
+  const ownership = {
+    listing: ownedBy(listingOwner, notFound("LISTING_NOT_FOUND", "No existe el aviso")),
+    contentRun: ownedBy(
+      async (id) => viaListing((await deps.contentRuns.get(id))?.listingId),
+      notFound("CONTENT_RUN_NOT_FOUND", "No existe la corrida"),
+    ),
+    content: ownedBy(
+      async (id) => viaListing((await deps.contents.get(id))?.listingId),
+      notFound("CONTENT_NOT_FOUND", "No existe el texto"),
+    ),
+    publication: ownedBy(
+      async (id) => viaListing((await deps.publications.get(id))?.listingId),
+      notFound("PUBLICATION_NOT_FOUND", "No existe la publicación"),
+    ),
+    importRun: ownedBy(
+      async (id) => (await deps.importRuns.get(id))?.brokerId ?? null,
+      notFound("IMPORT_RUN_NOT_FOUND", "No existe la carga"),
+    ),
+    account: ownedBy(
+      async (id) => (await deps.platformAccounts.get(id))?.brokerId ?? null,
+      notFound("ACCOUNT_NOT_FOUND", "No existe la cuenta"),
+    ),
+  };
   const app = new Hono<AppEnv>()
     .use(requestLogger(deps.logger))
     .use(hostGuard(deps.access.allowedHosts))
     .use(originGuard(deps.access.allowedOrigins))
     .use(csrfGuard(deps.access.allowedOrigins))
     .use(authenticate(deps.auth, deps.logger))
+    .use("/listings/:id", ownership.listing)
+    .use("/listings/:id/*", ownership.listing)
+    .use("/content-runs/:id", ownership.contentRun)
+    .use("/contents/:id", ownership.content)
+    .use("/contents/:id/*", ownership.content)
+    .use("/publications/:id", ownership.publication)
+    .use("/publications/:id/*", ownership.publication)
+    .use("/imports/:id", ownership.importRun)
+    .use("/accounts/:id/*", ownership.account)
     .get("/health", async (c) => {
       // El detalle solo para el administrador (spec F7 §4.3); los demás, el estado y el modo.
       const admin = c.get("auth")?.user.role === "admin";
@@ -183,6 +229,7 @@ export function createApp(deps: AppDeps) {
       "/accounts",
       accountRoutes({
         ...deps,
+        stateHash: (nonce) => deps.auth.tokens.hash(nonce),
         instagram: deps.instagram.auth,
         instagramOAuth: deps.instagram.oauthConfigured && deps.instagram.secureCookie,
       }),

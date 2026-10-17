@@ -4,6 +4,7 @@ import type {
   PlatformAccountRepository,
   PlatformCredentials,
 } from "@agentsales/core";
+import { ALL_SCOPE } from "@agentsales/core";
 import { beforeAll, describe, expect, it } from "vitest";
 import { brokerData } from "./import-repositories.contract.js";
 
@@ -294,7 +295,7 @@ export function platformAccountRepositoryContract(
       ]);
       expect(await repos.accounts.listByBroker(own, "portal_inmobiliario")).toEqual([]);
       expect((await repos.accounts.listByBroker(own, "instagram")).length).toBe(2);
-      const all = (await repos.accounts.list()).map((account) => account.id);
+      const all = (await repos.accounts.list(ALL_SCOPE)).map((account) => account.id);
       expect(all).toEqual(expect.arrayContaining([first.id, second.id]));
       expect(all.indexOf(first.id)).toBeLessThan(all.indexOf(second.id));
     });

@@ -12,6 +12,7 @@ import {
   loadEnvFile,
   resolveBackupDir,
 } from "@agentsales/config";
+import { ALL_SCOPE } from "@agentsales/core";
 import {
   createBrokerRepository,
   createContentRepository,
@@ -23,6 +24,7 @@ import {
   createListingLock,
   createListingRepository,
   createMediaRepository,
+  createOAuthStateRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
   createPublicationRepository,
@@ -109,6 +111,7 @@ const app = createApp({
     tokens: createSecretTokens(),
     secureCookie: false,
   },
+  oauthStates: createOAuthStateRepository(database.db),
   checks: {
     // Se guarda la última leída (no se borra antes): dos `/health` a la vez nunca la ven en `null`
     // por el otro; si la base no responde, el reporte la informa `null` igual (check en falla).
@@ -187,7 +190,9 @@ const app = createApp({
     backupStatus: () => readBackupStatus(backupDir),
     // Con `pnpm dev` la API y el worker reciben el mismo `PUBLISH_MODE` (spec F6 §4.10).
     autoPublishBrokers: async () =>
-      (await brokers.list()).filter((broker) => broker.autoPublish).map((broker) => broker.slug),
+      (await brokers.list(ALL_SCOPE))
+        .filter((broker) => broker.autoPublish)
+        .map((broker) => broker.slug),
   },
   logger,
   access: localAccess(env.API_PORT, env.WEB_PORT),

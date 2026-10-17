@@ -1,5 +1,4 @@
 import {
-  AppError,
   agendaItems,
   autoPublishApplies,
   type BackupStatus,
@@ -20,13 +19,15 @@ import {
   TRACKING_WINDOW_MS,
   trackingRow,
 } from "@agentsales/core";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
+import type { AppEnv } from "../auth.js";
 import {
   type AgendaResponse,
   agendaQuerySchema,
   type TrackingResponse,
   trackingQuerySchema,
 } from "../contracts/index.js";
+import { listScope, requestScope } from "../scope.js";
 import { validated } from "../validation.js";
 import { coverPaths } from "./listings.js";
 
@@ -36,30 +37,30 @@ export type TrackingRoutesDeps = {
   publications: Pick<PublicationRepository, "listForTracking">;
   media: Pick<MediaRepository, "listCovers" | "listVariants">;
   storage: Pick<MediaStorage, "signedReadUrl">;
-  contents: Pick<ContentRepository, "listCurrent">;
+  contents: Pick<ContentRepository, "listCurrentMany">;
   platformAccounts: Pick<PlatformAccountRepository, "listByBroker">;
   /** El estado del respaldo (`readBackupStatus`); sin él la agenda no lo informa. */
   backupStatus?: () => Promise<BackupStatus | null>;
   now?: () => Date;
 };
 
-/** Las propiedades de un corredor (por su slug) o de todos; `BROKER_NOT_FOUND` si no existe. */
-async function listingsOf(deps: TrackingRoutesDeps, slug: string | undefined): Promise<Listing[]> {
-  const all = await deps.listings.list();
-  if (slug === undefined) return all;
-  const broker = await deps.brokers.findBySlug(slug);
-  if (broker === null) {
-    throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${slug}`, {
-      details: { broker: slug },
-    });
-  }
-  return all.filter((listing) => listing.brokerId === broker.id);
+/**
+ * Las propiedades del alcance (spec F7 §4.4), filtradas en SQL: las de un corredor (`?broker`, el
+ * administrador) o todas las que la sesión ve; `BROKER_NOT_FOUND` si el corredor no existe o es
+ * ajeno.
+ */
+async function listingsOf(
+  c: Context<AppEnv>,
+  deps: TrackingRoutesDeps,
+  slug: string | undefined,
+): Promise<Listing[]> {
+  return deps.listings.list({}, await listScope(c, deps.brokers, slug));
 }
 
 /**
  * Carga lo que `pendingReviewsOf` (core) necesita: las cuentas y los textos vigentes solo de las
- * propiedades sobre las que actúa `auto_publish` (`autoPublishApplies`). Una consulta de textos
- * por propiedad: con el volumen de hoy alcanza (deuda para F7: una consulta para todas, `listCurrentMany`).
+ * propiedades sobre las que actúa `auto_publish` (`autoPublishApplies`), con una sola consulta de
+ * textos para todas (`listCurrentMany`, deuda de F6).
  */
 async function pendingReviews(
   deps: TrackingRoutesDeps,
@@ -70,7 +71,6 @@ async function pendingReviews(
     autoPublishApplies(listing, brokers.get(listing.brokerId) ?? null),
   );
   const connectedByBroker = new Map<string, ReadonlySet<Platform>>();
-  const contentsByListing = new Map<string, Content[]>();
   for (const listing of candidates) {
     if (!connectedByBroker.has(listing.brokerId)) {
       connectedByBroker.set(
@@ -78,7 +78,17 @@ async function pendingReviews(
         connectedPlatforms(await deps.platformAccounts.listByBroker(listing.brokerId)),
       );
     }
-    contentsByListing.set(listing.id, await deps.contents.listCurrent(listing.id));
+  }
+  const contentsByListing = new Map<string, Content[]>();
+  const current =
+    candidates.length === 0
+      ? []
+      : await deps.contents.listCurrentMany(candidates.map((listing) => listing.id));
+  for (const content of current) {
+    contentsByListing.set(content.listingId, [
+      ...(contentsByListing.get(content.listingId) ?? []),
+      content,
+    ]);
   }
   return pendingReviewsOf({ listings: candidates, brokers, connectedByBroker, contentsByListing });
 }
@@ -97,11 +107,11 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
           listingIds: listings.map((listing) => listing.id),
           since: new Date(at.getTime() - TRACKING_WINDOW_MS),
         });
-  return new Hono()
+  return new Hono<AppEnv>()
     .get("/tracking", validated("query", trackingQuerySchema), async (c) => {
       const { broker, archived } = c.req.valid("query");
       const at = now();
-      const listings = (await listingsOf(deps, broker)).filter(
+      const listings = (await listingsOf(c, deps, broker)).filter(
         (listing) => archived === "1" || listing.status !== "archived",
       );
       const publications = await publicationsOf(listings, at);
@@ -125,15 +135,19 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
     .get("/agenda", validated("query", agendaQuerySchema), async (c) => {
       const { broker } = c.req.valid("query");
       const at = now();
-      const listings = (await listingsOf(deps, broker)).filter(
+      const listings = (await listingsOf(c, deps, broker)).filter(
         (listing) => listing.status !== "archived",
       );
-      const brokers = new Map((await deps.brokers.list()).map((b) => [b.id, b]));
+      const scope = requestScope(c);
+      const brokers = new Map((await deps.brokers.list(scope)).map((b) => [b.id, b]));
       const autoPublishBrokerIds = new Set(
         [...brokers.values()].filter((b) => b.autoPublish).map((b) => b.id),
       );
+      // El respaldo es del administrador (spec F7 §4.4): el corredor no lo ve en su agenda.
       const backup =
-        deps.backupStatus === undefined ? undefined : await deps.backupStatus().catch(() => null);
+        deps.backupStatus === undefined || scope.kind !== "all"
+          ? undefined
+          : await deps.backupStatus().catch(() => null);
       const body: AgendaResponse = {
         items: agendaItems({
           listings,
