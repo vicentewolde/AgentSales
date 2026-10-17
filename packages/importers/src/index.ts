@@ -1,5 +1,6 @@
 export { flattenCell } from "./cells.js";
 export { createMediaFolderSource, type MediaFolderSourceOptions } from "./media-folder.js";
+export { BROKER_TEMPLATE_PATH, writeBrokerTemplate } from "./template-writer.js";
 export { MAX_DATA_ROWS, MAX_XLSX_BYTES, readListingsWorkbook } from "./xlsx-reader.js";
 export {
   type ExtractZipOptions,

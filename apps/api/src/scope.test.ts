@@ -154,6 +154,7 @@ function idFor(path: string, owned: Awaited<ReturnType<typeof ownedBy>>): string
   if (path.startsWith("/contents")) return owned.content?.id ?? "";
   if (path.startsWith("/publications")) return owned.publication.id;
   if (path.startsWith("/imports")) return owned.importRun.id;
+  if (path.startsWith("/brokers")) return owned.broker.id;
   return owned.account.id;
 }
 

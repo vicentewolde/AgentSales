@@ -57,7 +57,13 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "GET /usage": "session",
   // Corredores y cargas.
   "GET /brokers": "session",
-  "PATCH /brokers/:id": "admin",
+  // F7-T13 y T14: crear es del administrador; el corredor edita su marca (lo demás, 403 en core),
+  // sube su logo y baja su planilla.
+  "POST /brokers": "admin",
+  "GET /brokers/:id": "session",
+  "PATCH /brokers/:id": "session",
+  "POST /brokers/:id/logo": "session",
+  "GET /brokers/:id/template.xlsx": "session",
   "POST /imports": "session",
   "POST /imports/local": "admin",
   "GET /imports": "session",

@@ -30,6 +30,7 @@
     "@agentsales/core": "workspace:*",
     "@agentsales/db": "workspace:*",
     "@agentsales/importers": "workspace:*",
+    "@agentsales/media": "workspace:*",
     "@agentsales/publishers": "workspace:*",
     "@agentsales/queue": "workspace:*",
     "@agentsales/storage": "workspace:*",

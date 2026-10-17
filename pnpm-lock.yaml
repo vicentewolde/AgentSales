@@ -38,6 +38,9 @@ importers:
       '@agentsales/importers':
         specifier: workspace:*
         version: link:../../packages/importers
+      '@agentsales/media':
+        specifier: workspace:*
+        version: link:../../packages/media
       '@agentsales/publishers':
         specifier: workspace:*
         version: link:../../packages/publishers

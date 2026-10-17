@@ -1,5 +1,6 @@
 import {
   AppError,
+  type Broker,
   type BrokerRepository,
   type ContentRepository,
   type ContentRunRepository,
@@ -9,6 +10,7 @@ import {
   type JobQueue,
   type ListingLock,
   type ListingRepository,
+  type LogoNormalizer,
   type MarketplaceStartOptions,
   type MediaRepository,
   type MediaStorage,
@@ -71,8 +73,17 @@ export type AppDeps = {
   brokers: BrokerRepository;
   media: MediaRepository;
   fieldDefinitions: FieldDefinitionRepository;
-  /** Solo para las URLs de lectura temporales de los medios (fotos, renders y reel). */
-  storage: Pick<MediaStorage, "signedReadUrl">;
+  /**
+   * Las URLs de lectura temporales de los medios (fotos, renders y reel) y, desde F7-T14, subir
+   * el logo de un corredor.
+   */
+  storage: Pick<MediaStorage, "signedReadUrl" | "put">;
+  /** El logo de un corredor con sharp (`@agentsales/media/logo`; F7-T14). */
+  logos: LogoNormalizer;
+  /** sha256 hexadecimal de unos bytes (`node:crypto`, lo compone `server.ts`). */
+  sha256Bytes: (bytes: Uint8Array) => string;
+  /** La planilla de un corredor (`writeBrokerTemplate` con la plantilla oficial; F7-T14). */
+  brokerTemplate: (broker: Broker) => Promise<Uint8Array>;
   // Importación (F1-T11): la API solo crea el run y encola (ADR-0005).
   importRuns: ImportRunRepository;
   queue: JobQueue;
@@ -178,6 +189,8 @@ export function createApp(input: AppDeps) {
       async (id) => (await deps.platformAccounts.get(id))?.brokerId ?? null,
       notFound("ACCOUNT_NOT_FOUND", "No existe la cuenta"),
     ),
+    // El corredor es su propio dueño: un corredor solo llega al suyo (F7-T13).
+    broker: ownedBy(async (id) => id, notFound("BROKER_NOT_FOUND", "No existe el corredor")),
   };
   const app = new Hono<AppEnv>()
     .use(requestLogger(deps.logger))
@@ -192,6 +205,7 @@ export function createApp(input: AppDeps) {
     .use("/publications/:id/*", ownership.publication)
     .use("/imports/:id/*", ownership.importRun)
     .use("/accounts/:id/*", ownership.account)
+    .use("/brokers/:id/*", ownership.broker)
     .get("/health", async (c) => {
       // El detalle solo para el administrador (spec F7 §4.3); los demás, el estado y el modo.
       const admin = c.get("auth")?.user.role === "admin";

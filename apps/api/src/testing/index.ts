@@ -289,7 +289,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     throw new Error("testDeps: con publications, pasa también lock (el que las cambia)");
   }
   const publications = createInMemoryPublicationRepository();
-  const brokers = overrides.brokers ?? createInMemoryBrokerRepository();
+  const brokers = overrides.brokers ?? createInMemoryBrokerRepository([], { nextId: randomUUID });
   const deps: Omit<AppDeps, "lock"> & { lock?: AppDeps["lock"] } = {
     // La autenticación ve los mismos corredores que la app (`/auth/me`).
     auth: { ...testAuth(), brokers },
@@ -304,7 +304,19 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     brokers,
     media: createInMemoryMediaRepository(),
     fieldDefinitions: createInMemoryFieldDefinitionRepository(),
-    storage: { signedReadUrl: async (path) => `https://r2.test/${path}?firma` },
+    storage: {
+      signedReadUrl: async (path) => `https://r2.test/${path}?firma`,
+      put: async () => {},
+    },
+    // El logo y la planilla con dobles: sus pruebas de verdad van en `packages/media` e importers.
+    logos: {
+      normalize: async (input) => {
+        if (input[0] !== 0x89) throw new AppError("LOGO_INVALID", "El logo debe ser PNG");
+        return { bytes: input, width: 1, height: 1 };
+      },
+    },
+    sha256Bytes: (bytes) => `sha-${bytes.byteLength}`,
+    brokerTemplate: async (broker) => new TextEncoder().encode(`planilla de ${broker.slug}`),
     importRuns: createInMemoryImportRunRepository({ nextId: randomUUID }),
     queue: createInMemoryJobQueue(),
     uploads: fakeUploads(),
