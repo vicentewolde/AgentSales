@@ -2,6 +2,7 @@ import type { ContentRun } from "../content.js";
 import { AppError, isAppError } from "../errors.js";
 import { LISTING_NOT_PREPARABLE_TEXT } from "../labels.js";
 import { canPrepareContent } from "../listing.js";
+import { assertLlmBudget } from "../llm-budget.js";
 import type { ContentRunRepository } from "../ports/content-repository.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
@@ -12,6 +13,8 @@ export type RequestContentRunDeps = {
   /** Fuera del candado: marcar `failed` la corrida si la cola no está (después de confirmar). */
   contentRuns: Pick<ContentRunRepository, "markFailed">;
   queue: JobQueue;
+  /** El reloj del tope de IA del mes (F7-T12); por defecto, la hora actual. */
+  now?: () => Date;
 };
 
 export type RequestContentRunParams = {
@@ -47,6 +50,8 @@ export const enqueueContentRun = (queue: JobQueue, contentRunId: string) =>
  *   también para una corrida de solo imágenes, que reemplazaría los medios fijados (ADR-0014);
  * - con `texts`, un texto vigente editado a mano **o aprobado** da `CONTENT_EDITED` (409) salvo
  *   `replaceEdits`;
+ * - con `texts`, un corredor que llegó a su tope de IA del mes da `LLM_BUDGET_EXCEEDED` (409, F7-T12;
+ *   el worker lo revisa otra vez antes de llamar);
  * - si no, crea la corrida en `queued` y encola;
  * - si la cola no está (`QUEUE_UNAVAILABLE`, 503), la corrida nueva queda en `failed` con ese motivo.
  * Con el candado, la ventana de F2 se cerró: un pedido de textos y una edición no se cruzan.
@@ -100,6 +105,13 @@ export async function requestContentRun(
           "Hay textos editados a mano o aprobados: prepara sin textos o confirma que quieres reemplazarlos",
           { details: { listingId, platforms: reviewed.map((content) => content.platform) } },
         );
+      }
+    }
+
+    if (texts) {
+      const broker = await locked.brokers.findById(listing.brokerId);
+      if (broker !== null) {
+        await assertLlmBudget(locked, broker, (deps.now ?? (() => new Date()))());
       }
     }
 

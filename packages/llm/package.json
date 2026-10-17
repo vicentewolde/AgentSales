@@ -17,6 +17,7 @@
   "dependencies": {
     "@agentsales/config": "workspace:*",
     "@agentsales/core": "workspace:*",
+    "@anthropic-ai/sdk": "0.134.0",
     "zod": "4.6.5"
   }
 }

@@ -195,6 +195,14 @@ const app = createApp({
       (await brokers.list(ALL_SCOPE))
         .filter((broker) => broker.autoPublish)
         .map((broker) => broker.slug),
+    // Los corredores no propios usan la API de Anthropic (spec F7 §4.7): sin la clave, sus textos
+    // fallarán en el worker (que lee el mismo `.env` con `pnpm dev`).
+    llmKeyMissingBrokers: async () =>
+      env.LLM_PROVIDER === "fake" || (env.ANTHROPIC_API_KEY ?? "") !== ""
+        ? []
+        : (await brokers.list(ALL_SCOPE))
+            .filter((broker) => !broker.operatorOwned)
+            .map((broker) => broker.slug),
   },
   logger,
   access: localAccess(env.API_PORT, env.WEB_PORT),

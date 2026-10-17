@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LLM_PROVIDERS } from "./enums.js";
+import { LLM_PROVIDERS, type LlmProvider } from "./enums.js";
 
 // Lo gastado en IA (spec F7 §4.7): cada llamada se suma a la corrida en cuanto vuelve, también
 // las que fallan después. El costo es una estimación con la tabla de precios de core.
@@ -58,3 +58,79 @@ export function addLlmCall(usage: LlmUsage | null, call: LlmCallUsage): LlmUsage
 
 /** Gasto de un corredor en un rango de fechas de creación de las corridas. */
 export type BrokerLlmSpend = { brokerId: string; costUsd: number; runs: number };
+
+/** Los tokens de una llamada, como los informa el proveedor (`LLMResponse.usage`). */
+export type LlmTokenUsage = {
+  /** Entrada sin caché (la posterior al último punto de caché). */
+  inputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  outputTokens: number;
+  requestId: string | null;
+};
+
+/** Precio por millón de tokens, en dólares. */
+type ModelPrice = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  /** Haiku 5.5 cobra más si el prompt pasa de 100.000 tokens. */
+  above?: { promptTokens: number; input: number; output: number };
+};
+
+/**
+ * Tabla de precios de la API de Anthropic (spec F7 §4.14; docs/integraciones/anthropic-api.md
+ * §11.2). Una **estimación**: manda la consola de Anthropic. Escribir en caché cuesta 1,25 veces la
+ * entrada. Al cambiar un precio, se cambia `LLM_PRICE_TABLE`.
+ */
+export const LLM_PRICE_TABLE = "2026-10-16";
+const LLM_PRICES: Readonly<Record<string, ModelPrice>> = {
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.1 },
+  "claude-haiku-5-5": {
+    input: 0.1,
+    output: 0.5,
+    cacheRead: 0.01,
+    above: { promptTokens: 100_000, input: 0.5, output: 2.5 },
+  },
+  "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2 },
+  "claude-fable-5-1": { input: 10, output: 50, cacheRead: 0.25 },
+};
+
+/** El precio de un modelo; acepta un id con fecha o sufijo (`claude-sonnet-5-5-…`). */
+function priceOf(model: string): ModelPrice | undefined {
+  return (
+    LLM_PRICES[model] ?? Object.entries(LLM_PRICES).find(([id]) => model.startsWith(`${id}-`))?.[1]
+  );
+}
+
+/**
+ * Una llamada con su costo estimado. Solo `anthropic-api` se cobra: el plan del operador
+ * (`claude-cli`) y `fake` cuestan 0. Un modelo sin precio en la tabla cuesta 0 y lleva
+ * `priceTable: null` (se ve en el registro).
+ */
+export function llmCallCost(
+  provider: LlmProvider,
+  model: string,
+  usage: LlmTokenUsage,
+): LlmCallUsage {
+  const base = {
+    provider,
+    model,
+    inputTokens: usage.inputTokens,
+    cacheCreationInputTokens: usage.cacheCreationInputTokens,
+    cacheReadInputTokens: usage.cacheReadInputTokens,
+    outputTokens: usage.outputTokens,
+    requestId: usage.requestId,
+  };
+  const price = provider === "anthropic-api" ? priceOf(model) : undefined;
+  if (price === undefined) return { ...base, costUsd: 0, priceTable: null };
+  const prompt = usage.inputTokens + usage.cacheCreationInputTokens + usage.cacheReadInputTokens;
+  const tier = price.above !== undefined && prompt > price.above.promptTokens ? price.above : price;
+  const perToken = (perMillion: number) => perMillion / 1_000_000;
+  const costUsd =
+    usage.inputTokens * perToken(tier.input) +
+    usage.cacheCreationInputTokens * perToken(tier.input * 1.25) +
+    usage.cacheReadInputTokens * perToken(price.cacheRead) +
+    usage.outputTokens * perToken(tier.output);
+  return { ...base, costUsd, priceTable: LLM_PRICE_TABLE };
+}

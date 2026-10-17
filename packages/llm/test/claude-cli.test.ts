@@ -94,6 +94,20 @@ describe("createClaudeCliProvider: respuestas", () => {
     });
   });
 
+  it("con usage en el sobre, devuelve los tokens; con usage vacío, nada (F7-T11)", async () => {
+    await expect(provider().generateStructured(request("con-uso"))).resolves.toMatchObject({
+      usage: {
+        inputTokens: 861,
+        cacheCreationInputTokens: 10,
+        cacheReadInputTokens: 0,
+        outputTokens: 135,
+        requestId: null,
+      },
+    });
+    const sinUso = await provider().generateStructured(request("exito"));
+    expect(sinUso).not.toHaveProperty("usage");
+  });
+
   it("con dos modelos en modelUsage, el que respondió es el de más tokens de salida", async () => {
     const result = await provider().generateStructured(request("dos-modelos"));
     expect(result.model).toBe("claude-sonnet-5-5");
@@ -366,14 +380,17 @@ describe("createLlmProvider", () => {
     expect(fakeProvider.name).toBe("fake");
   });
 
-  it("anthropic-api es un stub en F2: LLM_NOT_CONFIGURED", async () => {
-    const stub = createLlmProvider({ provider: "anthropic-api" });
-    const error = await errorOf(stub.generateStructured(request("exito")));
-    expect([stub.name, error.code, error.retriable]).toEqual([
-      "anthropic-api",
-      "LLM_NOT_CONFIGURED",
-      false,
-    ]);
+  it("anthropic-api arma el adaptador de la API (F7-T11; sus pruebas, en anthropic-api.test.ts)", () => {
+    const api = createLlmProvider({
+      provider: "anthropic-api",
+      apiKey: "sk-ant-de-prueba",
+      model: "claude-sonnet-5-5",
+      timeoutMs: 1000,
+      fetch: async () => {
+        throw new Error("en esta prueba no se llama");
+      },
+    });
+    expect(api.name).toBe("anthropic-api");
   });
 
   it("claude-cli arma el adaptador de la CLI", async () => {

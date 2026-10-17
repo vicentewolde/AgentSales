@@ -44,6 +44,20 @@ switch (mode) {
   case "exito":
     print(ok({ result: "", structured_output: { saludo: "hola" }, modelUsage: { "claude-sonnet-5-5": {} } }));
     break;
+  case "con-uso":
+    // F7-T11: el uso del sobre (la forma de la prueba de humo; campos de más que no se leen).
+    print(ok({
+      structured_output: { saludo: "hola" },
+      modelUsage: { "claude-sonnet-5-5": {} },
+      usage: {
+        input_tokens: 861,
+        cache_creation_input_tokens: 10,
+        cache_read_input_tokens: 0,
+        output_tokens: 135,
+        service_tier: "standard",
+      },
+    }));
+    break;
   case "dos-modelos":
     // La CLI puede usar un modelo auxiliar: el que respondió es el de más tokens de salida.
     print(ok({

@@ -2,7 +2,13 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AppError, type LLMProvider, type LLMRequest, type LLMResponse } from "@agentsales/core";
+import {
+  AppError,
+  type LLMProvider,
+  type LLMRequest,
+  type LLMResponse,
+  type LlmTokenUsage,
+} from "@agentsales/core";
 import { z } from "zod";
 
 export type ClaudeCliOptions = {
@@ -47,6 +53,7 @@ const envelopeSchema = z.looseObject({
   stop_reason: z.string().nullable().optional(),
   api_error_status: z.number().nullable().optional(),
   modelUsage: z.record(z.string(), z.unknown()).optional(),
+  usage: z.unknown().optional(),
   errors: z.array(z.unknown()).optional(),
 });
 type Envelope = z.infer<typeof envelopeSchema>;
@@ -91,6 +98,27 @@ function outputTokens(usage: unknown): number {
   return typeof usage.outputTokens === "number" ? usage.outputTokens : 0;
 }
 
+const tokenCount = z.number().int().nonnegative();
+/** El uso del sobre (F7-T11), si viene con la forma de la API; si no, no se informa. */
+const cliUsageSchema = z.looseObject({
+  input_tokens: tokenCount,
+  cache_creation_input_tokens: tokenCount.optional(),
+  cache_read_input_tokens: tokenCount.optional(),
+  output_tokens: tokenCount,
+});
+
+function cliUsage(usage: unknown): LlmTokenUsage | undefined {
+  const parsed = cliUsageSchema.safeParse(usage);
+  if (!parsed.success) return undefined;
+  return {
+    inputTokens: parsed.data.input_tokens,
+    cacheCreationInputTokens: parsed.data.cache_creation_input_tokens ?? 0,
+    cacheReadInputTokens: parsed.data.cache_read_input_tokens ?? 0,
+    outputTokens: parsed.data.output_tokens,
+    requestId: null,
+  };
+}
+
 /**
  * El modelo que respondió: el de `modelUsage` con más tokens de salida (la CLI puede usar un
  * modelo auxiliar para tareas internas), o el configurado si no hay datos.
@@ -131,9 +159,11 @@ export function interpretEnvelope(envelope: Envelope, fallbackModel: string): LL
   if (envelope.structured_output === undefined) {
     throw llmError("LLM_OUTPUT_INVALID", MESSAGES.output, false, details);
   }
+  const usage = cliUsage(envelope.usage);
   return {
     data: envelope.structured_output,
     model: respondingModel(envelope.modelUsage, fallbackModel),
+    ...(usage === undefined ? {} : { usage }),
   };
 }
 

@@ -4,11 +4,13 @@
 
 **Actualizado:** 2026-10-17
 **Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** lote C de F7 (F7-T08 a T10, #132): cada corredor ve solo lo suyo y la bitácora dice quién
-**Siguiente paso:** `/tarea F7-T11 F7-T12` (lote D: la IA por API y su gasto; antes, tu clave de Anthropic en `.env`)
+**Última tarea:** lote D de F7 (F7-T11 y T12): la IA por la API de Anthropic y su gasto por corredor
+**Siguiente paso:** `/tarea F7-T13 F7-T14` (lote E: crear y editar corredores, su logo y su planilla)
 
 ## Pendiente tuyo para F7
-- [ ] **Clave de la API de Anthropic** (antes del lote D): crearla en la consola sin vencimiento (o anotar la fecha), ponerle un límite de gasto total en la consola y dejarla en `.env` como `ANTHROPIC_API_KEY`; después `pnpm llm:smoke --provider anthropic-api` (gasta centavos)
+- [x] **Clave de la API de Anthropic** en `.env` (2026-10-17); `pnpm llm:smoke --provider anthropic-api` respondió bien
+- [ ] **Límite de gasto en la consola de Anthropic:** la clave no tiene uno (recomendado: el tope por corredor solo cubre lo que AgentSales anota)
+- [ ] **Renovar la clave antes del 2026-12-31** (vence ese día; después la IA de los corredores da `LLM_AUTH_REQUIRED`)
 - [ ] **Términos comerciales de Anthropic** (antes de cobrar o de F8): revisar que una sola clave pueda atender a varios clientes
 - [ ] **Para la demo:** una segunda cuenta de Instagram tuya como evaluador de tu app de Meta (pasos en `docs/07-checklist-cuentas.md`, con el lote H)
 
@@ -43,8 +45,8 @@
 | **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | ✅ terminada | #132 |
 | **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | ✅ terminada | #132 |
 | **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ✅ terminada | #132 |
-| **Lote D** · T11 `anthropic-api` real | ⏳ pendiente | |
-| **Lote D** · T12 La IA por corredor y su gasto | ⏳ pendiente | |
+| **Lote D** · T11 `anthropic-api` real | ✅ terminada | |
+| **Lote D** · T12 La IA por corredor y su gasto | ✅ terminada | |
 | **Lote E** · T13 Corredores: crear, editar y lista de alta | ⏳ pendiente | |
 | **Lote E** · T14 Logo y planilla de Excel de un corredor | ⏳ pendiente | |
 | **Lote F** · T15 Marketplace a mano | ⏳ pendiente | |
@@ -109,7 +111,6 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
-- **F7, lote D (worker):** borrar las sesiones vencidas o sin uso y los `state` de OAuth vencidos en la vigilancia de cada hora (spec F7 §4.12: `SessionRepository.deleteExpired` y `OAuthStateRepository.deleteExpired` ya existen; ningún job los llama todavía). Mientras, una sesión vencida no sirve (`resolveSession` la borra al usarla), solo ocupa una fila.
 - **Para F8:** `/health` muestra la versión de Postgres (desde F7, solo al administrador); al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
 - **Para F7 (auditoría del cierre de F6):** `/tracking` y `/agenda` cargan todas las propiedades y filtran por corredor en memoria: con la autenticación, el alcance por corredor va en el servidor. Límite conocido de T08: si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5).
 - **Para F7 (de la revisión del lote F):** la agenda pide los textos vigentes con una consulta por propiedad (corredores con `auto_publish`): con más volumen, una sola consulta para todas (`listCurrentMany`); `publicationView` usa su propio reloj (no el `now` de la ruta).
@@ -141,6 +142,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-17: **Lote D de F7 (T11 y T12): la IA por API y su gasto.**
+  - **La API de Anthropic funciona** con tu clave: la prueba corta y el eval de las 5 propiedades de prueba salieron bien. Con Sonnet 5.5 cuesta unos US$ 0,01 por propiedad; con Haiku 5.5, unos US$ 0,0005 (pero agregó "buena ubicación" sin que estuviera en los datos: por ahora queda Sonnet).
+  - **Cada corredor usa lo suyo:** los tuyos ("propios"), tu plan de Claude como hoy; los demás, la API. Sin la clave, sus textos fallan con un mensaje claro, y `doctor` lo avisa.
+  - **El gasto se anota por llamada** (también las que fallan) con su costo estimado; `GET /usage` da el del mes por corredor (cada corredor ve el suyo). La CLI y el panel lo muestran en los lotes G y H.
+  - **Tope del mes:** con un corredor en su tope, pedir textos responde que llegó al tope; si lo alcanza mientras se prepara, las imágenes se hacen y los textos no.
+  - **El worker borra cada hora** las sesiones vencidas y los enlaces de Mercado Libre vencidos.
 - 2026-10-17: **Lote C de F7 (T08 a T10): cada corredor lo suyo.**
   - **El corredor ve y opera solo lo suyo** (propiedades, textos, publicaciones, cargas, cuentas, Seguimiento y agenda); lo de otro le responde "no existe". Programar un lote con una propiedad ajena se rechaza entero. Tú ves todo y puedes filtrar por corredor.
   - **Cargas:** la de un corredor queda a su nombre desde que entra en cola; su planilla solo puede actualizar su propia marca, nunca crear otro corredor.

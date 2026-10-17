@@ -116,6 +116,7 @@ describe("GET /health", () => {
             serverVersion: () => "18.6",
             backupStatus: async () => status,
             autoPublishBrokers: async () => ["marca"],
+            llmKeyMissingBrokers: async () => ["ajeno"],
             now: () => now,
           },
         },
@@ -125,6 +126,7 @@ describe("GET /health", () => {
     expect(body.database).toEqual({ serverVersion: "18.6" });
     expect(body.backup).toEqual({ ...status, stale: true });
     expect(body.autoPublishBrokers).toEqual(["marca"]);
+    expect(body.llmKeyMissingBrokers).toEqual(["ajeno"]);
     expect(healthReportSchema.parse(body)).toEqual(body);
   });
 
@@ -141,6 +143,7 @@ describe("GET /health", () => {
             autoPublishBrokers: async () => {
               throw new Error("sin base");
             },
+            llmKeyMissingBrokers: async () => ["ajeno"],
           },
         },
       ),
@@ -149,6 +152,7 @@ describe("GET /health", () => {
     expect(body.database).toEqual({ serverVersion: null });
     expect(body.backup).toBeNull();
     expect(body.autoPublishBrokers).toBeNull();
+    expect(body.llmKeyMissingBrokers).toBeNull();
   });
 
   it("autoPublishBrokers: sin base no se consulta y una consulta colgada no cuelga /health", async () => {

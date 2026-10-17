@@ -15,6 +15,7 @@ import {
   checkEnv,
   checkFfmpegTool,
   checkInstagram,
+  checkLlmKey,
   checkMercadoLibre,
   checkNode,
   checkPgDump,
@@ -56,6 +57,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const ufSource = checkUfSource(deps.env);
   const backup = checkBackup(services.report, (deps.now ?? (() => new Date()))());
   const autoPublish = checkAutoPublish(services.report);
+  const llmKey = checkLlmKey(services.report);
   const pgBinDir = deps.env.ok ? deps.env.env.PG_BIN_DIR : undefined;
   const findPgDump =
     deps.findPgDump ??
@@ -68,6 +70,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     ...(instagram ? [instagram] : []),
     ...(mercadoLibre ? [mercadoLibre] : []),
     ...(ufSource ? [ufSource] : []),
+    ...(llmKey ? [llmKey] : []),
     ...services.items,
     await checkFfmpegTool(deps.run, "ffmpeg", ffmpegPath),
     await checkFfmpegTool(deps.run, "ffprobe", ffprobePath),

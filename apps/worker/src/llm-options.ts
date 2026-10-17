@@ -7,8 +7,32 @@ import type { LlmProviderOptions } from "@agentsales/llm";
  * siempre `SAMPLE_CONTENT_DRAFT` (sin red ni cuota). La CLI de Claude recibe el entorno del proceso
  * y se queda solo con sus variables permitidas (`CLAUDE_CLI_ENV_ALLOWLIST`).
  */
+type LlmEnv = Pick<
+  Env,
+  | "LLM_PROVIDER"
+  | "LLM_MODEL"
+  | "CLAUDE_CLI_PATH"
+  | "LLM_TIMEOUT_SECONDS"
+  | "ANTHROPIC_API_KEY"
+  | "ANTHROPIC_MODEL"
+>;
+
+/**
+ * La API de Anthropic con la clave del operador (spec F7 §4.7): la de los corredores que no son
+ * suyos. `null` sin `ANTHROPIC_API_KEY` (un corredor que la necesita falla con `LLM_NOT_CONFIGURED`).
+ */
+export function apiLlmOptions(env: LlmEnv): LlmProviderOptions | null {
+  if (env.ANTHROPIC_API_KEY === undefined || env.ANTHROPIC_API_KEY === "") return null;
+  return {
+    provider: "anthropic-api",
+    apiKey: env.ANTHROPIC_API_KEY,
+    model: env.ANTHROPIC_MODEL,
+    timeoutMs: env.LLM_TIMEOUT_SECONDS * 1000,
+  };
+}
+
 export function llmProviderOptions(
-  env: Pick<Env, "LLM_PROVIDER" | "LLM_MODEL" | "CLAUDE_CLI_PATH" | "LLM_TIMEOUT_SECONDS">,
+  env: LlmEnv,
   baseEnv: Readonly<Record<string, string | undefined>>,
 ): LlmProviderOptions {
   switch (env.LLM_PROVIDER) {
@@ -20,8 +44,13 @@ export function llmProviderOptions(
         timeoutMs: env.LLM_TIMEOUT_SECONDS * 1000,
         baseEnv,
       };
-    case "anthropic-api":
-      return { provider: "anthropic-api" };
+    case "anthropic-api": {
+      // El entorno ya exige la clave con este proveedor.
+      const options = apiLlmOptions(env);
+      if (options === null)
+        throw new Error("LLM_PROVIDER=anthropic-api necesita ANTHROPIC_API_KEY");
+      return options;
+    }
     case "fake":
       return { provider: "fake", data: SAMPLE_CONTENT_DRAFT };
   }

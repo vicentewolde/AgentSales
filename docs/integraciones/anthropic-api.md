@@ -233,3 +233,12 @@ Los niveles se llaman ahora **Start, Build, Scale y Custom** (más un nivel **Ev
 - Registro de npm (manifiesto de 0.135.0, peer de zod): https://registry.npmjs.org/@anthropic-ai/sdk/latest
 - Versiones y fechas: https://github.com/anthropics/anthropic-sdk-typescript/releases y https://raw.githubusercontent.com/anthropics/anthropic-sdk-typescript/main/CHANGELOG.md
 - `minimumReleaseAge` de pnpm 11 (1440 minutos por defecto): https://pnpm.io/settings/dependency-resolution
+
+## 12. Implementación y pruebas reales (F7-T11, 2026-10-17)
+
+Adaptador en `packages/llm/src/anthropic-api.ts` (contrato en `docs/01-arquitectura.md`, "Contrato del proveedor de IA"). Lo visto con la clave del operador (autorizado a gastar para pruebas), sin datos de clientes en la prueba de humo:
+
+- **`pnpm llm:smoke --provider anthropic-api`** (VERIFICADO): `claude-sonnet-5-5` respondió con el mismo id, en unos 2,4 s; 314 tokens de entrada y 56 de salida, US$ 0,0012 estimado. Con `--model claude-haiku-5-5`: unos 1,6 s y US$ 0,00006. La salida estructurada (`output_config.format`) calza con el esquema pedido en los dos.
+- **`pnpm eval:content --provider anthropic-api`** sobre las 5 propiedades de `agentsales-pruebas` (VERIFICADO): el esquema completo de los textos (sin topes) se acepta sin cambios; las 5 sin problemas en la revisión editorial con Sonnet 5.5 (US$ 0,051 estimado, unos US$ 0,01 por propiedad) y con Haiku 5.5 (US$ 0,0026). Los textos quedan en `tmp/eval/` para compararlos a mano antes de cambiar `ANTHROPIC_MODEL` (D15: Sonnet por defecto).
+- **Observación (Haiku, prueba de humo):** agregó "buena ubicación", que no estaba en los datos. La revisión editorial de hoy no detecta adjetivos así; es una razón para no cambiar a Haiku sin comparar los textos del eval.
+- **Clave del operador:** vence el 2026-12-31 y no tiene límite de gasto en la consola. Se recomienda ponerle uno (el tope mensual por corredor solo cubre lo que AgentSales anota) y anotar la renovación antes del vencimiento (un 401 da `LLM_AUTH_REQUIRED`).

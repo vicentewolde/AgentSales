@@ -79,6 +79,26 @@ describe("runDoctor", () => {
     expect(JSON.stringify(report.items)).not.toContain("fake-ig");
   });
 
+  it("avisa (sin cortar) si faltan ANTHROPIC_API_KEY y corredores la necesitan (F7-T12)", async () => {
+    const missing = await runDoctor(
+      deps({ fetchHealth: async () => ({ ...healthy, llmKeyMissingBrokers: ["ajeno", "otro"] }) }),
+    );
+    const item = missing.items.find((entry) => entry.name === "anthropic_api");
+    expect(missing.exitCode).toBe(0);
+    expect(item).toMatchObject({
+      level: "warn",
+      hint: expect.stringContaining("ANTHROPIC_API_KEY"),
+    });
+    expect(item?.detail).toContain("ajeno, otro");
+
+    for (const list of [[], null, undefined]) {
+      const report = await runDoctor(
+        deps({ fetchHealth: async () => ({ ...healthy, llmKeyMissingBrokers: list }) }),
+      );
+      expect(report.items.some((entry) => entry.name === "anthropic_api")).toBe(false);
+    }
+  });
+
   it("avisa (sin cortar) si falta el token del Banco Central, y nunca lo muestra", async () => {
     const { BCCH_API_TOKEN: _token, ...withoutToken } = env;
     const without = await runDoctor(deps({ env: { ok: true, env: withoutToken } }));

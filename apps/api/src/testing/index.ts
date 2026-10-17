@@ -277,7 +277,12 @@ export const adminApp = (deps: AppDeps) => withAdminSession(createApp(deps));
  * usa http://localhost/x: el Host es "localhost", y el origen del panel, el 5173.
  */
 export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
-  const content = createInMemoryContentRepositories({ nextId: randomUUID });
+  // El gasto de IA por corredor (F7-T12) cruza la corrida con el aviso, como Postgres.
+  let listingsRef: AppDeps["listings"] | undefined;
+  const content = createInMemoryContentRepositories({
+    nextId: randomUUID,
+    brokerOfListing: async (id) => (await listingsRef?.get(id))?.brokerId ?? null,
+  });
   // La app solo lee las publicaciones; el candado las cambia. Un test que trae las suyas trae
   // también su candado (como el escenario de publicación), para que los dos vean las mismas.
   if (overrides.publications !== undefined && overrides.lock === undefined) {
@@ -323,6 +328,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     operationsFor: () => undefined,
     ...overrides,
   };
+  listingsRef = deps.listings;
   // El candado entrega los mismos repositorios que la app (también los que pisó `overrides`).
   const lock =
     deps.lock ??

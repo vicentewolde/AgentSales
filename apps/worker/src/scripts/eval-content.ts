@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { findWorkspaceRoot, loadEnv, loadEnvFile } from "@agentsales/config";
-import { isAppError, SAMPLE_CONTENT_DRAFT } from "@agentsales/core";
+import { isAppError, type LLMProvider, llmCallCost, SAMPLE_CONTENT_DRAFT } from "@agentsales/core";
 import {
   createBrokerRepository,
   createDb,
@@ -11,9 +11,10 @@ import {
 } from "@agentsales/db";
 import { createLlmProvider } from "@agentsales/llm";
 import { DEFAULT_EVAL_BROKER, evalFolderName, runEval } from "../eval/run-eval.js";
-import { llmProviderOptions } from "../llm-options.js";
+import { apiLlmOptions, llmProviderOptions } from "../llm-options.js";
 
-// `pnpm eval:content [--broker <slug>] [--provider fake]` (spec F2-T16): evalúa el prompt sobre los
+// `pnpm eval:content [--broker <slug>] [--provider fake|anthropic-api] [--model <id>]` (spec F2-T16;
+// la API desde F7): evalúa el prompt sobre los
 // avisos listos de un corredor, sin escribir en la base. Sin `--provider fake`, usa el proveedor del
 // `.env` (la CLI de Claude gasta cuota del plan: lo corre el operador).
 
@@ -40,20 +41,50 @@ try {
     options: {
       broker: { type: "string", default: DEFAULT_EVAL_BROKER },
       provider: { type: "string" },
+      model: { type: "string" },
     },
   });
-  if (values.provider !== undefined && values.provider !== "fake") {
-    throw new Error("--provider solo acepta fake (sin la opción se usa LLM_PROVIDER del .env)");
+  if (
+    values.provider !== undefined &&
+    values.provider !== "fake" &&
+    values.provider !== "anthropic-api"
+  ) {
+    throw new Error(
+      "--provider acepta fake o anthropic-api (sin la opción se usa LLM_PROVIDER del .env)",
+    );
   }
   loadEnvFile();
   const env = loadEnv();
   const db = createDb(env.DATABASE_URL);
   database = db;
-  const llm = createLlmProvider(
+  // `--provider anthropic-api [--model <id>]` (F7, D15): compara modelos con la clave del `.env`.
+  const api = apiLlmOptions({
+    ...env,
+    ...(values.model === undefined ? {} : { ANTHROPIC_MODEL: values.model }),
+  });
+  if (values.provider === "anthropic-api" && api === null) {
+    throw new Error("--provider anthropic-api necesita ANTHROPIC_API_KEY en el .env");
+  }
+  const provider = createLlmProvider(
     values.provider === "fake"
       ? { provider: "fake", data: SAMPLE_CONTENT_DRAFT }
-      : llmProviderOptions(env, process.env),
+      : values.provider === "anthropic-api" && api !== null
+        ? api
+        : llmProviderOptions(env, process.env),
   );
+  // El costo estimado de las respuestas (con la API; el plan y fake cuestan 0).
+  const spent = { calls: 0, costUsd: 0 };
+  const llm: LLMProvider = {
+    name: provider.name,
+    async generateStructured(request) {
+      const response = await provider.generateStructured(request);
+      if (response.usage !== undefined) {
+        spent.calls += 1;
+        spent.costUsd += llmCallCost(provider.name, response.model, response.usage).costUsd;
+      }
+      return response;
+    },
+  };
   console.log(`Evaluando con ${llm.name} las propiedades listas de ${values.broker}…`);
   process.exitCode = await runEval(
     {
@@ -71,6 +102,11 @@ try {
     },
     { brokerSlug: values.broker, signal: abort.signal },
   );
+  if (llm.name === "anthropic-api") {
+    console.log(
+      `Costo estimado: US$ ${spent.costUsd.toFixed(4)} en ${spent.calls} llamadas (la cifra oficial está en la consola de Anthropic)`,
+    );
+  }
 } catch (error) {
   if (isAppError(error)) {
     console.error(`✗ ${error.code}: ${error.message}`);

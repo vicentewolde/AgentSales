@@ -152,10 +152,19 @@ export {
 } from "./listing-validator/index.js";
 export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
 export {
+  assertLlmBudget,
+  type BrokerMonthlySpend,
+  llmProviderFor,
+  monthlySpend,
+} from "./llm-budget.js";
+export {
   addLlmCall,
   type BrokerLlmSpend,
+  LLM_PRICE_TABLE,
   type LlmCallUsage,
+  type LlmTokenUsage,
   type LlmUsage,
+  llmCallCost,
   llmCallUsageSchema,
   llmUsageSchema,
 } from "./llm-usage.js";
@@ -570,6 +579,7 @@ export {
   logout,
   type OpenedSession,
   openSession,
+  purgeExpiredAuth,
   resolveSession,
   SESSION_IDLE_MS,
   SESSION_TOUCH_MS,

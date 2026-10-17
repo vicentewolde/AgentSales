@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import type { Broker } from "../broker.js";
 import { SAMPLE_CONTENT_DRAFT } from "../content/draft.js";
 import { CONTENT_PROMPT_VERSION } from "../content/prompt.js";
 import { AppError } from "../errors.js";
 import type { Listing } from "../listing.js";
 import type { Media } from "../media.js";
 import type { NewListing } from "../ports/listing-repository.js";
+import type { LLMProvider } from "../ports/llm-provider.js";
 import {
   contentBrokerFixture,
   contentDefinitionsFixture,
@@ -45,11 +47,15 @@ async function setup(
     videoDurationS?: number;
     photoWidth?: number;
     logo?: { mime: string } | null;
+    /** F7-T12: el corredor (propio, tope) y los dos proveedores. */
+    broker?: Partial<Broker>;
+    ownName?: LLMProvider["name"];
+    apiLlm?: ScriptedLlmResponse[] | null;
   } = {},
 ) {
   const media = createInMemoryMediaRepository();
   const storage = createInMemoryMediaStorage();
-  const brokerBase = contentBrokerFixture();
+  const brokerBase = contentBrokerFixture(options.broker);
   let logoMediaId: string | null = null;
   if (options.logo) {
     const path = `brokers/${brokerBase.id}/brand/logo`;
@@ -107,10 +113,15 @@ async function setup(
     ids[original.name] = record.id;
   }
 
-  const contentRepos = createInMemoryContentRepositories();
+  const contentRepos = createInMemoryContentRepositories({ brokerOfListing: () => broker.id });
   const llm = createInMemoryLlmProvider(
     options.llm ?? Array.from({ length: 10 }, () => ({ data: SAMPLE_CONTENT_DRAFT })),
+    options.ownName,
   );
+  const apiLlm =
+    options.apiLlm === undefined || options.apiLlm === null
+      ? null
+      : createInMemoryLlmProvider(options.apiLlm, "anthropic-api");
   const processor = createInMemoryMediaProcessor({
     measure: (_, kind) =>
       kind === "image"
@@ -128,6 +139,7 @@ async function setup(
     templates: createInMemorySlideTemplates(),
     renderer: createInMemoryHtmlRenderer(),
     llm,
+    apiLlm,
     sha256: fakeHash,
     now: () => 1000,
   };
@@ -149,6 +161,7 @@ async function setup(
     ids,
     contentRepos,
     llm,
+    apiLlm,
     processor,
     newRun,
     prepare,
@@ -716,5 +729,129 @@ describe("prepareContent · revisión de F2-T10", () => {
     expect([...t.storage.objects.keys()].sort()).toEqual(
       all.map((item) => item.storagePath).sort(),
     );
+  });
+});
+
+/** Una llamada de Sonnet 5.5 de US$ 0,70 (300.000 de entrada y 10.000 de salida). */
+const SPEND = {
+  inputTokens: 300_000,
+  cacheCreationInputTokens: 0,
+  cacheReadInputTokens: 0,
+  outputTokens: 10_000,
+  requestId: "req_1",
+};
+
+describe("prepareContent · la IA por corredor y su gasto (F7-T12)", () => {
+  it("un corredor no propio usa la API y anota cada llamada con su costo", async () => {
+    const t = await setup({
+      ownName: "claude-cli",
+      llm: [],
+      apiLlm: [{ data: SAMPLE_CONTENT_DRAFT, model: "claude-sonnet-5-5", usage: SPEND }],
+    });
+    const runId = await t.newRun();
+
+    await t.prepare(runId);
+    expect(await t.contentRepos.contentRuns.get(runId)).toMatchObject({
+      status: "succeeded",
+      report: { llm: { provider: "anthropic-api", model: "claude-sonnet-5-5" } },
+      llmUsage: {
+        calls: 1,
+        provider: "anthropic-api",
+        inputTokens: 300_000,
+        outputTokens: 10_000,
+        costUsd: expect.closeTo(0.7, 10),
+        priceTable: expect.any(String),
+        requestIds: ["req_1"],
+      },
+    });
+    expect(t.llm.requests).toHaveLength(0);
+  });
+
+  it("un corredor propio usa el plan del operador: tokens anotados y costo 0", async () => {
+    const t = await setup({
+      broker: { operatorOwned: true },
+      ownName: "claude-cli",
+      llm: [{ data: SAMPLE_CONTENT_DRAFT, model: "claude-sonnet-5-5", usage: SPEND }],
+      apiLlm: [],
+    });
+    const runId = await t.newRun();
+
+    await t.prepare(runId);
+    expect((await t.contentRepos.contentRuns.get(runId))?.llmUsage).toMatchObject({
+      provider: "claude-cli",
+      inputTokens: 300_000,
+      costUsd: 0,
+      priceTable: null,
+    });
+    expect(t.apiLlm?.requests).toHaveLength(0);
+  });
+
+  it("una corrida que falla después de gastar queda anotada (las dos llamadas)", async () => {
+    const t = await setup({
+      ownName: "claude-cli",
+      apiLlm: [
+        { data: { no: "calza" }, model: "claude-sonnet-5-5", usage: SPEND },
+        {
+          data: { no: "calza" },
+          model: "claude-sonnet-5-5",
+          usage: { ...SPEND, requestId: "req_2" },
+        },
+      ],
+    });
+    const runId = await t.newRun();
+
+    await expect(t.prepare(runId)).rejects.toMatchObject({ code: "LLM_OUTPUT_INVALID" });
+    expect(await t.contentRepos.contentRuns.get(runId)).toMatchObject({
+      status: "failed",
+      llmUsage: { calls: 2, costUsd: expect.closeTo(1.4, 10), requestIds: ["req_1", "req_2"] },
+    });
+  });
+
+  it("lo cobrado que viaja en un error del proveedor también se anota", async () => {
+    const charged = new AppError("LLM_OUTPUT_INVALID", "La IA no entregó los textos", {
+      details: { reason: "max_tokens", usage: SPEND, model: "claude-sonnet-5-5" },
+    });
+    const t = await setup({ ownName: "claude-cli", apiLlm: [{ error: charged }] });
+    const runId = await t.newRun();
+
+    await expect(t.prepare(runId)).rejects.toMatchObject({ code: "LLM_OUTPUT_INVALID" });
+    expect((await t.contentRepos.contentRuns.get(runId))?.llmUsage).toMatchObject({
+      calls: 1,
+      costUsd: expect.closeTo(0.7, 10),
+    });
+  });
+
+  it("sin la clave de la API: LLM_NOT_CONFIGURED con lo que falta, y las imágenes quedan", async () => {
+    const t = await setup({ ownName: "claude-cli", llm: [], apiLlm: null });
+    const runId = await t.newRun();
+
+    await expect(t.prepare(runId)).rejects.toMatchObject({ code: "LLM_NOT_CONFIGURED" });
+    expect(await t.contentRepos.contentRuns.get(runId)).toMatchObject({
+      status: "failed",
+      stage: "texts",
+      error: { code: "LLM_NOT_CONFIGURED", message: expect.stringContaining("ANTHROPIC_API_KEY") },
+    });
+    expect(variantsOf(await t.derivatives(), "cover")).toHaveLength(1);
+  });
+
+  it("con el tope del mes alcanzado, el worker hace las imágenes y no llama a la IA", async () => {
+    const t = await setup({
+      broker: { llmMonthlyCapUsd: 0.5 },
+      ownName: "claude-cli",
+      apiLlm: [{ data: SAMPLE_CONTENT_DRAFT, model: "claude-sonnet-5-5", usage: SPEND }],
+    });
+    // El mes es el de la hora actual (las corridas en memoria se crean con la hora real).
+    t.deps.now = Date.now;
+    await t.prepare(await t.newRun());
+    const runId = await t.newRun();
+
+    await expect(t.prepare(runId)).rejects.toMatchObject({ code: "LLM_BUDGET_EXCEEDED" });
+    expect(await t.contentRepos.contentRuns.get(runId)).toMatchObject({
+      status: "failed",
+      stage: "texts",
+      error: { code: "LLM_BUDGET_EXCEEDED" },
+    });
+    expect(variantsOf(await t.derivatives(), "cover")).toHaveLength(1);
+    expect(t.apiLlm?.requests).toHaveLength(1);
   });
 });

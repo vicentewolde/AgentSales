@@ -1,4 +1,11 @@
-import { isAppError, type WatchPublicationsDeps, watchPublications } from "@agentsales/core";
+import {
+  isAppError,
+  type OAuthStateRepository,
+  purgeExpiredAuth,
+  type SessionRepository,
+  type WatchPublicationsDeps,
+  watchPublications,
+} from "@agentsales/core";
 import { defineJob, type Job, type JobSchedule, type QueuePolicy } from "./define.js";
 
 /**
@@ -31,13 +38,20 @@ export const PUBLICATIONS_WATCH_SCHEDULE: JobSchedule<"publications.watch"> = {
   singletonKey: PUBLICATIONS_WATCH_KEY,
 };
 
-export type PublicationsWatchJobDeps = WatchPublicationsDeps;
+export type PublicationsWatchJobDeps = WatchPublicationsDeps & {
+  /** F7: borrar las sesiones y los `state` de OAuth vencidos en cada vuelta. */
+  authCleanup?: {
+    sessions: Pick<SessionRepository, "deleteExpired">;
+    oauthStates: Pick<OAuthStateRepository, "deleteExpired">;
+  };
+};
 
 const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_ERROR");
 
 /**
  * Job `publications.watch`: corre `watchPublications` (core) y registra solo conteos, ids y
- * códigos. Una vuelta sin nada que hacer no escribe más que el inicio y el fin del job.
+ * códigos. Una vuelta sin nada que hacer no escribe más que el inicio y el fin del job. Después
+ * borra las sesiones y los `state` de OAuth vencidos (F7); si falla, solo lo advierte.
  */
 export function publicationsWatchJob(deps: PublicationsWatchJobDeps): Job {
   return defineJob({
@@ -73,6 +87,22 @@ export function publicationsWatchJob(deps: PublicationsWatchJobDeps): Job {
           { failed: requeueFailed },
           "vigilancia: no se pudieron reencolar algunas publicaciones atascadas",
         );
+      }
+      if (deps.authCleanup !== undefined) {
+        try {
+          const purged = await purgeExpiredAuth(
+            deps.authCleanup,
+            (deps.now ?? (() => new Date()))(),
+          );
+          if (purged.sessions + purged.oauthStates > 0) {
+            logger.info(purged, "vigilancia: sesiones y estados de OAuth vencidos borrados");
+          }
+        } catch (error) {
+          logger.warn(
+            { code: codeOf(error) },
+            "vigilancia: no se pudieron borrar las sesiones vencidas",
+          );
+        }
       }
     },
   });

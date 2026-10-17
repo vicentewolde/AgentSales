@@ -41,6 +41,7 @@ import {
 } from "./routes/publications.js";
 import { scheduleRoutes } from "./routes/schedule.js";
 import { trackingRoutes } from "./routes/tracking.js";
+import { usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
 import { ownedBy } from "./scope.js";
 import { csrfGuard, hostGuard, type LocalAccess, originGuard } from "./security.js";
@@ -227,6 +228,7 @@ export function createApp(input: AppDeps) {
           : { backupStatus: deps.healthDetails.backupStatus }),
       }),
     )
+    .route("/usage", usageRoutes(deps))
     .route("/imports", importRoutes(deps))
     .route(
       "/accounts",

@@ -25,6 +25,13 @@ export default defineConfig({
     // proveedor desde el entorno sin pasar el ejecutable falso, apunta a uno que no existe y falla
     // con LLM_NOT_CONFIGURED en vez de gastar la cuota del plan. Los tests del adaptador pasan su
     // propio ejecutable falso (`packages/llm/test/fake-claude.ts`).
-    env: { CLAUDE_CLI_PATH: "/agentsales-tests/claude-real-bloqueada" },
+    // Lo mismo con la API de Anthropic (F7-T11): el SDK lee `ANTHROPIC_BASE_URL` si el adaptador no
+    // recibe otra; apunta a un puerto local que no responde, y sin clave. Los tests del adaptador
+    // pasan su propio `fetch` falso (`packages/llm/test/anthropic-api.test.ts`).
+    env: {
+      CLAUDE_CLI_PATH: "/agentsales-tests/claude-real-bloqueada",
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:9/anthropic-real-bloqueada",
+      ANTHROPIC_API_KEY: "",
+    },
   },
 });

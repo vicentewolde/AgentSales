@@ -458,6 +458,21 @@ export function checkBackup(report: HealthReport | null, now: Date = new Date())
 }
 
 /**
+ * La clave de la API de Anthropic (F7-T12, spec F7 §4.7): con corredores que la necesitan y sin
+ * `ANTHROPIC_API_KEY`, una advertencia (sus textos fallarán). `null` si no falta o la API no responde.
+ */
+export function checkLlmKey(report: HealthReport | null): CheckItem | null {
+  const brokers = report?.llmKeyMissingBrokers ?? [];
+  if (brokers.length === 0) return null;
+  return {
+    name: "anthropic_api",
+    level: "warn",
+    detail: `falta ANTHROPIC_API_KEY: los textos de ${brokers.join(", ")} fallarán`,
+    hint: "agrega ANTHROPIC_API_KEY al .env y reinicia pnpm dev",
+  };
+}
+
+/**
  * `auto_publish` (F6-T11, spec F6 §4.10): con la API en vivo y corredores que lo tienen, una
  * advertencia destacada en rojo (publica sin revisión); en simulación, solo informa. `null` si
  * ningún corredor lo tiene o la API no responde.

@@ -1,6 +1,5 @@
 import type { AbortSignalLike } from "../abort.js";
 import { PLATFORMS, type Platform } from "../enums.js";
-import type { LLMProvider } from "../ports/llm-provider.js";
 import { type AssembledText, assembleContents } from "./assemble.js";
 import { type ContentCheck, type ContentCheckContext, checkContent } from "./check.js";
 import { type GenerateContentDraftResult, generateContentDraft } from "./generate.js";
@@ -17,7 +16,7 @@ export type DraftListingTextsResult = GenerateContentDraftResult & { texts: Draf
  * (`evaluateListingContent`), así lo que se evalúa es lo que se publicaría.
  */
 export async function draftListingTexts(
-  deps: { llm: LLMProvider },
+  deps: Parameters<typeof generateContentDraft>[0],
   ctx: ContentCheckContext,
   signal?: AbortSignalLike,
 ): Promise<DraftListingTextsResult> {
