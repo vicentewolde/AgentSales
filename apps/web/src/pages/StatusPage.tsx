@@ -48,6 +48,7 @@ function CheckCard({ name, result }: { name: HealthCheckName; result: HealthChec
 
 export function StatusPage() {
   const { data, error, isPending, isFetching, dataUpdatedAt, refetch } = useHealth({ poll: true });
+  const checks = data?.checks;
 
   return (
     <section className="mx-auto max-w-4xl">
@@ -74,14 +75,20 @@ export function StatusPage() {
             <strong className={data.status === "ok" ? "text-emerald-700" : "text-amber-700"}>
               {data.status === "ok" ? "ok" : "degradado"}
             </strong>
-            {" · "}API {data.version}
+            {data.version !== undefined && <> · API {data.version}</>}
             {" · "}actualizado {timeFormat.format(dataUpdatedAt)}
           </p>
-          <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {HEALTH_CHECK_NAMES.map((name) => (
-              <CheckCard key={name} name={name} result={data.checks[name]} />
-            ))}
-          </ul>
+          {checks === undefined ? (
+            <p className="mt-4 text-sm text-slate-600">
+              El detalle de cada servicio lo ve el administrador.
+            </p>
+          ) : (
+            <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {HEALTH_CHECK_NAMES.map((name) => (
+                <CheckCard key={name} name={name} result={checks[name]} />
+              ))}
+            </ul>
+          )}
         </>
       )}
     </section>

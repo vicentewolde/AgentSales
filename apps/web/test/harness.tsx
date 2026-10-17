@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { type AppDeps, createApp, localAccess } from "@agentsales/api";
-import { testDeps } from "@agentsales/api/testing";
+import { testAuth, testDeps, withAdminSession } from "@agentsales/api/testing";
 import {
   type BrokerData,
   type FieldDefinition,
@@ -55,6 +55,11 @@ export type HarnessOptions = {
     path: string,
     init?: RequestInit,
   ) => Promise<Response> | Response | undefined;
+  /**
+   * `none`: sin la sesión del administrador por defecto (F7-T07), con las cookies que la API pone
+   * guardadas y devueltas como lo haría el navegador (probar entrar, la invitación y salir).
+   */
+  session?: "admin" | "none";
 };
 
 /**
@@ -68,8 +73,10 @@ export function harness(options: HarnessOptions = {}) {
   const importRuns = createInMemoryImportRunRepository({ nextId: randomUUID });
   const content = createInMemoryContentRepositories({ nextId: randomUUID });
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
-  const app = createApp(
+  const auth = { ...testAuth({ client: "panel" }), brokers: options.deps?.brokers ?? brokers };
+  const base = createApp(
     testDeps({
+      auth,
       access: localAccess(8787, 5173),
       listings,
       brokers,
@@ -81,6 +88,16 @@ export function harness(options: HarnessOptions = {}) {
       ...options.deps,
     }),
   );
+  const anonymous = options.session === "none";
+  const app = anonymous ? base : withAdminSession(base);
+  // Sin sesión por defecto, la cookie de sesión se guarda y se devuelve como en el navegador.
+  let cookie: string | null = null;
+  const remember = (response: Response): Response => {
+    const set = response.headers.get("set-cookie");
+    if (anonymous && set !== null)
+      cookie = /Max-Age=0/i.test(set) ? null : (set.split(";")[0] ?? null);
+    return response;
+  };
   const requests: string[] = [];
   /** Lo que el panel mandó en cada `POST /imports` (multipart). */
   const uploads: UploadedForm[] = [];
@@ -98,10 +115,11 @@ export function harness(options: HarnessOptions = {}) {
       // El navegador manda `Origin` en un POST: sin él, `csrf()` rechaza el multipart.
       const headers = new Headers(init?.headers);
       if (method !== "GET") headers.set("origin", "http://localhost:5173");
+      if (cookie !== null) headers.set("cookie", cookie);
       if (method === "POST" && path === "/imports" && init?.body instanceof FormData) {
         return forwardUpload(init.body, headers);
       }
-      return app.request(`http://localhost:5173${path}`, { ...init, headers });
+      return remember(await app.request(`http://localhost:5173${path}`, { ...init, headers }));
     },
   });
 
@@ -152,6 +170,8 @@ export function harness(options: HarnessOptions = {}) {
 
   return {
     client,
+    /** La autenticación de la API (los dobles de core, con el administrador sembrado). */
+    auth,
     requests,
     uploads,
     listings,

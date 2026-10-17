@@ -46,12 +46,19 @@ export function isBackupStale(status: BackupStatus | null, now: Date): boolean {
 export const healthReportSchema = z.object({
   status: z.enum(["ok", "degraded"]),
   publishMode: z.enum(PUBLISH_MODES),
-  checks: z.object({
-    db: healthCheckResultSchema,
-    storage: healthCheckResultSchema,
-    queue: healthCheckResultSchema,
-  }),
-  version: z.string(),
+  /**
+   * El detalle (desde F7-T05, spec F7 §4.3): `checks`, `version` y lo de abajo solo los ve el
+   * administrador; sin sesión (o con la de un corredor) `/health` responde `status` y
+   * `publishMode`.
+   */
+  checks: z
+    .object({
+      db: healthCheckResultSchema,
+      storage: healthCheckResultSchema,
+      queue: healthCheckResultSchema,
+    })
+    .optional(),
+  version: z.string().optional(),
   /**
    * Desde F6-T14: la versión de Postgres del servidor (`show server_version`, por ejemplo `18.6`),
    * para que `doctor` la compare con la de `pg_dump`; `null` si la base no respondió. Opcional: un

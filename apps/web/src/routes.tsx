@@ -1,4 +1,4 @@
-import { lazy } from "react";
+import { lazy, Suspense } from "react";
 import { Link, type RouteObject, useRouteError } from "react-router";
 import { Layout } from "./layout/Layout.js";
 
@@ -20,6 +20,12 @@ const AccountsPage = lazy(() =>
 );
 const TrackingPage = lazy(() =>
   import("./pages/TrackingPage.js").then((module) => ({ default: module.TrackingPage })),
+);
+const LoginPage = lazy(() =>
+  import("./pages/LoginPage.js").then((module) => ({ default: module.LoginPage })),
+);
+const InvitationPage = lazy(() =>
+  import("./pages/InvitationPage.js").then((module) => ({ default: module.InvitationPage })),
 );
 const ListingDetailPage = lazy(() =>
   import("./pages/ListingDetailPage.js").then((module) => ({ default: module.ListingDetailPage })),
@@ -51,7 +57,28 @@ function NotFound() {
   return <p className="text-slate-600">Esta página no existe.</p>;
 }
 
+/** Las páginas sin sesión (spec F7 §4.11): fuera del layout, sin menú ni banner. */
+function Bare({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<p className="p-6 text-slate-600">Cargando…</p>}>{children}</Suspense>;
+}
+
 export const routes: RouteObject[] = [
+  {
+    path: "entrar",
+    element: (
+      <Bare>
+        <LoginPage />
+      </Bare>
+    ),
+  },
+  {
+    path: "invitacion",
+    element: (
+      <Bare>
+        <InvitationPage />
+      </Bare>
+    ),
+  },
   {
     element: <Layout />,
     children: [

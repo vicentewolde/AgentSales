@@ -62,6 +62,8 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | Situación | Acción |
 |---|---|
 | Claude propone algo fuera del spec | "Fuera de alcance; anótalo en el backlog del roadmap" |
+| Es la primera vez con F7, olvidaste tu contraseña o te bloqueaste | `pnpm auth:admin --email tu@correo.cl` en tu terminal (no necesita `pnpm dev`): crea tu administrador o te da un enlace nuevo, en el portapapeles. Ábrelo con `pnpm dev` corriendo y elige tu contraseña. Después, `pnpm -s cli login --email tu@correo.cl` para la CLI (Claude la usa con tu sesión) |
+| Un comando dice "Inicia sesión" (`AUTH_REQUIRED`) | La sesión de la CLI venció (30 días, o 7 sin uso) o se cerró: `pnpm -s cli login --email tu@correo.cl` en tu terminal |
 | `pnpm check` falla y no se arregla | Pídele diagnosticar la causa raíz antes de intentar más cambios; si persiste, `/clear` y retoma con `/tarea` |
 | Una API externa no se comporta como dice el doc | Pide al subagente `integraciones` verificar y actualizar las notas; luego ajusta el spec |
 | Quieres cambiar el stack o un patrón | `/adr "..."` primero, código después |

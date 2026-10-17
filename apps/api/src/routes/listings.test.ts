@@ -12,7 +12,6 @@ import {
   createInMemoryMediaRepository,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
 import {
   brokerListResponseSchema,
   errorBodySchema,
@@ -20,7 +19,7 @@ import {
   listingListResponseSchema,
   listingStatusResponseSchema,
 } from "../contracts/index.js";
-import { testDeps } from "../testing/index.js";
+import { adminApp, testDeps } from "../testing/index.js";
 
 /** Aviso sintético (datos inventados). */
 const newListing = (brokerId: string, externalRef: string, extra: Partial<NewListing> = {}) => ({
@@ -49,7 +48,7 @@ async function setup() {
   const media = createInMemoryMediaRepository();
   const brokers = createInMemoryBrokerRepository();
   const deps = testDeps({ listings, brokers, media });
-  const app = createApp(deps);
+  const app = adminApp(deps);
   const broker = await brokers.create({
     slug: "marca",
     name: "Persona Inventada",
@@ -201,7 +200,7 @@ describe("GET /listings/:id", () => {
       tone: null,
       fixedHashtags: [],
     });
-    const app = createApp(
+    const app = adminApp(
       testDeps({
         listings,
         brokers,

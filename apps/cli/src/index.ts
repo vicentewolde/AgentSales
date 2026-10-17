@@ -11,6 +11,7 @@ import * as importCommand from "./commands/import.js";
 import * as imports from "./commands/imports.js";
 import * as listing from "./commands/listing.js";
 import * as listings from "./commands/listings.js";
+import * as login from "./commands/login.js";
 import * as prepare from "./commands/prepare.js";
 import * as publications from "./commands/publications.js";
 import * as publish from "./commands/publish.js";
@@ -28,6 +29,7 @@ const program = new Command()
 // Un comando por archivo (spec F1-T12), cada uno con su `register`.
 const ctx = createContext();
 for (const command of [
+  login,
   doctor,
   status,
   importCommand,

@@ -8,14 +8,13 @@ import {
   createInMemoryPlatformAccountRepository,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
 import {
   accountListResponseSchema,
   accountRefreshResponseSchema,
   accountResponseSchema,
   errorBodySchema,
 } from "../contracts/index.js";
-import { fakeInstagramAuth, TEST_ML_REDIRECT_URI, testDeps } from "../testing/index.js";
+import { adminApp, fakeInstagramAuth, TEST_ML_REDIRECT_URI, testDeps } from "../testing/index.js";
 
 const TOKEN = "IGAA-token-del-panel-0123456789";
 /** Un POST sin cuerpo: con `Content-Type` JSON, como la CLI (sin él, el CSRF lo trata como formulario). */
@@ -27,7 +26,7 @@ function setup(auth: InstagramAuth = fakeInstagramAuth()) {
   const broker = contentBrokerFixture();
   const brokers = createInMemoryBrokerRepository([broker]);
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
-  const app = createApp(
+  const app = adminApp(
     testDeps({
       brokers,
       platformAccounts,
@@ -147,7 +146,7 @@ describe("GET /accounts y POST /accounts/:id/disconnect", () => {
   });
 
   it("las rutas de cuentas pasan el hostGuard con localhost:8787 y rechazan otro Host", async () => {
-    const app = createApp(
+    const app = adminApp(
       testDeps({ access: { allowedHosts: ["localhost:8787"], allowedOrigins: [] } }),
     );
     expect((await app.request("http://localhost:8787/accounts")).status).toBe(200);
@@ -198,7 +197,7 @@ describe("cuentas · seguridad y mensajes", () => {
         throw new AppError("IG_UNEXPECTED_RESPONSE", "rara", { details: { call: "me" } });
       },
     };
-    const app = createApp(
+    const app = adminApp(
       testDeps({
         logger,
         brokers: createInMemoryBrokerRepository([broker]),
@@ -266,7 +265,7 @@ describe("cuentas · seguridad y mensajes", () => {
       [true, false, false],
       [false, true, false],
     ] as const) {
-      const app = createApp(
+      const app = adminApp(
         testDeps({ instagram: { auth: fakeInstagramAuth(), oauthConfigured, secureCookie } }),
       );
       const body = accountListResponseSchema.parse(await (await app.request("/accounts")).json());
@@ -305,7 +304,7 @@ describe("POST /accounts/:id/refresh", () => {
     const auth = fakeInstagramAuth();
     const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
     let clock = CONNECTED_AT;
-    const app = createApp(
+    const app = adminApp(
       testDeps({
         brokers: createInMemoryBrokerRepository([broker]),
         platformAccounts,

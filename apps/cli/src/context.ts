@@ -4,6 +4,7 @@ import { type ApiClient, createApiClient } from "./api-client.js";
 import { colors } from "./colors.js";
 import { apiPort, loadEnvironment } from "./env.js";
 import type { Io } from "./output.js";
+import { createFileSessionStore, type SessionStore } from "./session.js";
 
 /** Lo que la CLI pide a la terminal: confirmar, leer la entrada estándar y abrir un enlace. */
 export type Terminal = {
@@ -18,13 +19,23 @@ export type Terminal = {
   readStdin: () => Promise<string>;
   /** Abre un enlace en el navegador; si no puede, no falla (el enlace ya se imprimió). */
   openUrl: (url: string) => void;
+  /**
+   * Pide una contraseña mostrando un punto por carácter (F7, `agentsales login`). `null` sin una
+   * terminal interactiva; `{ cancelled: true }` si el operador cancela (Ctrl+C).
+   */
+  readPassword: (prompt: string) => Promise<PasswordInput | null>;
 };
 
 /** Lo que comparten los comandos al registrarse en `index.ts`. */
 export type CliContext = Io &
   Terminal & {
-    /** Cliente de la API en el puerto del `.env`; se crea al usarlo (tras cargar el `.env`). */
+    /**
+     * Cliente de la API en el puerto del `.env`, con la sesión de `agentsales login`; se crea al
+     * usarlo (tras cargar el `.env`).
+     */
     api: () => ApiClient;
+    /** La sesión de la CLI (`~/.agentsales/cli-session.json`, F7). */
+    session: SessionStore;
     /**
      * Carpeta desde la que el operador corrió el comando: `pnpm cli` cambia a `apps/cli`, pero deja
      * la original en `INIT_CWD` (spec F1 §4.1).
@@ -62,6 +73,68 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** Lo que escribió el operador, o que canceló. */
+export type PasswordInput = { cancelled: false; value: string } | { cancelled: true };
+
+/** El punto que se muestra por cada carácter de la contraseña (nunca el carácter). */
+export const PASSWORD_MASK = "•";
+
+/**
+ * Una tecla (o un pegado) de la contraseña: el valor nuevo, lo que se escribe en la terminal (un
+ * punto por carácter, o borrar el último) y si terminó (Enter) o se canceló (Ctrl+C, Ctrl+D). Las
+ * flechas y otras secuencias de escape no cuentan.
+ */
+export function passwordKeystroke(
+  value: string,
+  chunk: string,
+): { value: string; echo: string; done: "enter" | "cancel" | null } {
+  if (chunk.startsWith("\u001b")) return { value, echo: "", done: null };
+  let next = value;
+  let echo = "";
+  for (const char of chunk) {
+    if (char === "\r" || char === "\n") return { value: next, echo, done: "enter" };
+    if (char === "\u0003" || char === "\u0004") return { value: next, echo, done: "cancel" };
+    if (char === "\u007f" || char === "\b") {
+      if (next.length > 0) {
+        next = [...next].slice(0, -1).join("");
+        echo += "\b \b";
+      }
+    } else if (char >= " ") {
+      next += char;
+      echo += PASSWORD_MASK;
+    }
+  }
+  return { value: next, echo, done: null };
+}
+
+async function readPassword(prompt: string): Promise<PasswordInput | null> {
+  const stdin = process.stdin;
+  if (!stdin.isTTY) return null;
+  process.stderr.write(prompt);
+  return new Promise((resolve) => {
+    let value = "";
+    const finish = (result: PasswordInput) => {
+      stdin.off("data", onData);
+      stdin.setRawMode(false);
+      stdin.pause();
+      process.stderr.write("\n");
+      resolve(result);
+    };
+    // Cada tecla se lee cruda: se muestra un punto por carácter, nunca la letra.
+    const onData = (chunk: string) => {
+      const step = passwordKeystroke(value, chunk);
+      value = step.value;
+      if (step.echo !== "") process.stderr.write(step.echo);
+      if (step.done === "enter") finish({ cancelled: false, value });
+      else if (step.done === "cancel") finish({ cancelled: true });
+    };
+    stdin.setRawMode(true);
+    stdin.setEncoding("utf8");
+    stdin.resume();
+    stdin.on("data", onData);
+  });
+}
+
 function openUrl(url: string): void {
   const opener =
     process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
@@ -69,7 +142,10 @@ function openUrl(url: string): void {
 }
 
 export function createContext(): CliContext {
+  const session = createFileSessionStore();
   return {
+    readPassword,
+    session,
     confirm,
     stdinIsTty: () => process.stdin.isTTY === true,
     readStdin,
@@ -77,7 +153,7 @@ export function createContext(): CliContext {
     print: (text) => console.log(text),
     printError: (text) => console.error(text),
     colors,
-    api: () => createApiClient(apiPort(loadEnvironment())),
+    api: () => createApiClient(apiPort(loadEnvironment()), { token: session.read()?.token }),
     cwd: process.env.INIT_CWD ?? process.cwd(),
   };
 }

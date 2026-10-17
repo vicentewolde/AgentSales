@@ -54,7 +54,7 @@ El operador da de alta a un corredor de verdad (su marca, su logo, su planilla d
 - **Entrar** (`POST /auth/login`): correo (sin distinguir mayúsculas) y contraseña. Un solo error para todo (`AUTH_INVALID`: no dice si el correo existe; con un correo que no existe igual se calcula un hash, para que el tiempo no lo delate). Tras 10 fallos seguidos, el usuario queda bloqueado 15 min (`AUTH_LOCKED`). Un usuario desactivado no entra.
 - **Sesión:** un token aleatorio de 32 bytes (`SecretTokens`); la base guarda solo su SHA-256. Vence a los 30 días o tras 7 días sin uso (`last_seen_at` se actualiza como mucho una vez por minuto). El panel la recibe en la cookie `agentsales_session` (`HttpOnly`, `SameSite=Strict`, `Path=/`, `Secure` con HTTPS); la CLI la recibe en el cuerpo (`client: "cli"`) y la manda como `Authorization: Bearer`. Cada login crea una sesión nueva; cerrar sesión la borra; desactivar un usuario borra todas las suyas.
 - **Invitación:** el administrador crea el usuario (correo, nombre, rol, corredor) y recibe **una vez** un enlace `<panel>/invitacion#<token>` (en el fragmento: no llega a los logs del servidor). Vence a las 72 h y sirve una vez. Al usarlo, el usuario elige su contraseña y queda con sesión. **Restablecer** genera un enlace nuevo, invalida el anterior, cierra todas las sesiones del usuario y quita su bloqueo. Hay a lo más una invitación vigente por usuario.
-- **El primer administrador:** `pnpm auth:admin --email <correo>` (habla directo con la base, como `db:seed`) crea el administrador si no existe y deja su enlace de invitación en el portapapeles, sin imprimirlo. Si ya existe, genera un enlace de restablecer (así el operador nunca queda fuera).
+- **El primer administrador:** `pnpm auth:admin --email <correo>` (habla directo con la base, como `db:seed`) crea el administrador si no existe y deja su enlace de invitación en el portapapeles, sin imprimirlo. Si ya existe, genera un enlace de restablecer, quita el bloqueo, cierra sus sesiones y lo reactiva si estaba desactivado (así el operador nunca queda fuera).
 - **Sin red:** si la base no responde, el login y cualquier ruta con sesión responden 503 `DB_UNAVAILABLE` (nunca 401: no se cierra la sesión por un corte).
 
 ### 4.3 La API con sesión
@@ -138,11 +138,11 @@ El operador agrega al corredor como evaluador (Instagram Tester) de su app de Me
 | Ruta | Quién | Cuerpo | Respuesta |
 |---|---|---|---|
 | `POST /auth/login` | público | `{ email, password, client? }` | 200 `{ user }` + cookie, o `{ user, token }` con `client: "cli"`; 401 `AUTH_INVALID`, 423 `AUTH_LOCKED` |
-| `POST /auth/logout` | sesión | — | 204 |
+| `POST /auth/logout` | público (idempotente: con una sesión vencida igual borra la cookie) | — | 204 |
 | `GET /auth/me` | sesión | — | `{ user: { id, email, name, role, broker } }` |
 | `POST /auth/invitations/accept` | público | `{ token, password }` | 200 `{ user }` + cookie; 410 `INVITATION_INVALID` (vencida, usada o inexistente) |
-| `GET /users` · `POST /users` | admin | `{ email, name, role, brokerId? }` | `{ users }` · 201 `{ user, invitationUrl }` |
-| `POST /users/:id/reset` · `/disable` · `/enable` | admin | — | `{ user, invitationUrl? }` |
+| `GET /users` · `POST /users` | admin | `{ email, name, role, brokerId? }` | `{ users }` · 201 `{ user, invitationUrl, expiresAt }` |
+| `POST /users/:id/reset` · `/disable` · `/enable` | admin | — | `reset`: `{ user, invitationUrl, expiresAt }`; los otros: `{ user }` |
 | `POST /brokers` · `PATCH /brokers/:id` | admin · sesión (§4.6) | campos del corredor | `{ broker, onboarding }` |
 | `GET /brokers` · `GET /brokers/:id` | sesión | — | con el alcance; `onboarding` en el detalle |
 | `POST /brokers/:id/logo` | sesión | multipart `logo` | `{ broker }`; 415 `LOGO_INVALID`, 413 |
@@ -150,7 +150,7 @@ El operador agrega al corredor como evaluador (Instagram Tester) de su app de Me
 | `GET /usage?month=` | sesión | — | `{ month, brokers: [{ brokerId, slug, spentUsd, capUsd, runs }] }` |
 | `POST /accounts/marketplace/manual` | admin | `{ broker }` | 201 `{ account }` |
 
-Errores nuevos: `LLM_ACCOUNT_LIMIT` (en la corrida), `USER_INVALID` (400), `PASSWORD_TOO_LONG` (400), `BROKER_SETTINGS_INVALID` (400), `USER_NOT_FOUND` (404), `USER_SELF_DISABLE` (409), `INVITATION_CONFLICT` (409, reintentable), `USER_ROW_INVALID` (500), `AUTH_REQUIRED` (401), `AUTH_INVALID` (401), `AUTH_LOCKED` (423), `FORBIDDEN` (403), `INVITATION_INVALID` (410), `PASSWORD_TOO_SHORT` (400), `USER_EMAIL_TAKEN` (409), `BROKER_SLUG_TAKEN` (409), `BROKER_MISMATCH` (409), `LOGO_INVALID` (415), `LLM_BUDGET_EXCEEDED` (409), `MARKETPLACE_AUTOMATION_NOT_ALLOWED` (403), `OAUTH_STATE_USED` (400). Las rutas de hoy no cambian de forma, salvo `GET /listings` (proyección) y `/health` (dos niveles).
+Errores nuevos: `ORIGIN_NOT_ALLOWED` (403), `USER_NOT_ADMIN` (409, `auth:admin` con el correo de un corredor), `LLM_ACCOUNT_LIMIT` (en la corrida), `USER_INVALID` (400), `PASSWORD_TOO_LONG` (400), `BROKER_SETTINGS_INVALID` (400), `USER_NOT_FOUND` (404), `USER_SELF_DISABLE` (409), `INVITATION_CONFLICT` (409, reintentable), `USER_ROW_INVALID` (500), `AUTH_REQUIRED` (401), `AUTH_INVALID` (401), `AUTH_LOCKED` (423), `FORBIDDEN` (403), `INVITATION_INVALID` (410), `PASSWORD_TOO_SHORT` (400), `USER_EMAIL_TAKEN` (409), `BROKER_SLUG_TAKEN` (409), `BROKER_MISMATCH` (409), `LOGO_INVALID` (415), `LLM_BUDGET_EXCEEDED` (409), `MARKETPLACE_AUTOMATION_NOT_ALLOWED` (403), `OAUTH_STATE_USED` (400). Las rutas de hoy no cambian de forma, salvo `GET /listings` (proyección) y `/health` (dos niveles).
 
 ### 4.14 Lo que se verificó afuera (2026-10-16)
 Notas del subagente `integraciones` (`docs/integraciones/anthropic-api.md` §11 e `instagram.md` §12), sin llamadas con credenciales:
@@ -229,32 +229,32 @@ Lotes (desde 2026-10-09, una rama y un PR por lote). Cada lote deja `main` usabl
 
 ### F7-T04 · La API con sesión
 - **Depende de:** T02, T03
-- **Archivos:** `apps/api/src/{access.ts,auth.ts,security.ts,app.ts,errors.ts}`, `apps/api/src/routes/auth.ts`, `apps/api/src/contracts/index.ts`, `apps/api/src/testing/` (`testDeps` con sesión de administrador por defecto), `docs/01-arquitectura.md` (Seguridad)
+- **Archivos:** `apps/api/src/{access.ts,auth.ts,security.ts,app.ts,errors.ts,user-view.ts}`, `apps/api/src/routes/auth.ts`, `apps/api/src/contracts/index.ts`, `apps/api/src/testing/` (`testDeps` con sesión de administrador por defecto), `docs/01-arquitectura.md` (Seguridad)
 - **Descripción:** el middleware (cookie o `Bearer`), `/auth/*`, la tabla de permisos con su test de inventario (las rutas de hoy como `admin`, el OAuth como en §4.3), `Origin` en toda escritura con cookie.
 - **Hecho cuando:**
-  - [ ] Tests: sin sesión 401 en cada ruta `session` y `admin`; un corredor en una `admin` 403; la cookie con sus atributos; el `Bearer`; `Origin` ajeno 403 con cookie y sin efecto con `Bearer`; el inventario falla con una ruta sin clasificar; la vuelta de Instagram sigue funcionando sin la cookie de sesión; la base caída da 503, no 401
-  - [ ] Los tests de rutas de hoy pasan con la sesión de administrador del arnés
+  - [x] Tests: sin sesión 401 en cada ruta `session` y `admin`; un corredor en una `admin` 403; la cookie con sus atributos; el `Bearer`; `Origin` ajeno 403 (con cookie o con `Bearer`: un `Origin` ajeno nunca es de la CLI) y la cookie sin `Origin` 403, mientras el `Bearer` sin `Origin` pasa; el inventario falla con una ruta sin clasificar; la vuelta de Instagram sigue funcionando sin la cookie de sesión; la base caída da 503, no 401
+  - [x] Los tests de rutas de hoy pasan con la sesión de administrador del arnés
 
 ### F7-T05 · Usuarios, `/health` y el primer administrador
 - **Depende de:** T04
-- **Archivos:** `apps/api/src/routes/users.ts`, `apps/api/src/health.ts`, `packages/db/src/scripts/auth-admin.ts`, `package.json` (`auth:admin`), `CLAUDE.md` (comando)
+- **Archivos:** `apps/api/src/routes/users.ts`, `apps/api/src/app.ts` (`/health`), `packages/core/src/use-cases/auth/users.ts` (`ensureAdmin`), `packages/db/src/{auth-admin.ts,scripts/auth-admin.ts}`, `packages/config/src/clipboard.ts`, `package.json` (`auth:admin`), `CLAUDE.md` (comando)
 - **Descripción:** `/users` (crear con su enlace, restablecer, desactivar y reactivar), `/health` en dos niveles y tolerante (§4.3) y `pnpm auth:admin` sobre `ensureAdmin` (core: crea el administrador si no existe o le genera un enlace de restablecer, sin actor).
 - **Hecho cuando:**
-  - [ ] Tests: el enlace se entrega una vez y en el fragmento; `USER_EMAIL_TAKEN`; `/health` sin sesión sin detalle, con la base caída lo básico; `auth:admin` crea o restablece y deja el enlace en el portapapeles (doble) sin imprimirlo
+  - [x] Tests: el enlace se entrega una vez y en el fragmento; `USER_EMAIL_TAKEN`; `/health` sin sesión sin detalle, con la base caída lo básico; `auth:admin` crea o restablece y deja el enlace en el portapapeles (doble) sin imprimirlo
 
 ### F7-T06 · CLI: entrar
 - **Depende de:** T04
-- **Archivos:** `apps/cli/src/{session.ts,api-client.ts}`, `apps/cli/src/commands/{login,logout,whoami}.ts`, `apps/cli/test/`, `CLAUDE.md` (comandos y la regla de no leer el archivo de sesión)
+- **Archivos:** `apps/cli/src/{session.ts,api-client.ts,context.ts,output.ts}`, `apps/cli/src/commands/login.ts` (`login`, `logout` y `whoami`), `apps/cli/test/`, `CLAUDE.md` (comandos y la regla de no leer el archivo de sesión)
 - **Descripción:** §4.10 en lo mínimo: `login`, `logout`, `whoami`, el archivo de sesión y el `Bearer` en todas las llamadas; el mensaje sin sesión.
 - **Hecho cuando:**
-  - [ ] Tests: `login` guarda el archivo con `0600` fuera del proyecto y sin imprimir el token, `logout` lo borra, sin sesión o vencida el mensaje y el código de salida 1; los comandos de hoy pasan contra la API en proceso con una sesión
+  - [x] Tests: `login` guarda el archivo con `0600` fuera del proyecto y sin imprimir el token, `logout` lo borra, sin sesión o vencida el mensaje y el código de salida 1; los comandos de hoy pasan contra la API en proceso con una sesión
 
 ### F7-T07 · Panel: entrar e invitación
 - **Depende de:** T05
-- **Archivos:** `apps/web/src/pages/{LoginPage,InvitationPage}.tsx`, `apps/web/src/{api/client.ts,routes.tsx,layout/Layout.tsx}`, `apps/web/src/queries/auth.ts`, `apps/web/test/harness.tsx`
+- **Archivos:** `apps/web/src/pages/{LoginPage,InvitationPage}.tsx`, `apps/web/src/{api/client.ts,api/session-events.ts,routes.tsx,layout/Layout.tsx}`, `apps/web/src/queries/auth.ts`, `apps/web/test/harness.tsx`
 - **Descripción:** `/entrar`, `/invitacion#…`, cualquier 401 lleva a `/entrar` y vuelve, el menú con el usuario y "Cerrar sesión".
 - **Hecho cuando:**
-  - [ ] Tests: entrar mal y bien, la invitación vencida, un 401 a mitad lleva a entrar y vuelve a la página; los tests de hoy pasan con la sesión de administrador del arnés
+  - [x] Tests: entrar mal y bien, la invitación vencida, un 401 a mitad lleva a entrar y vuelve a la página; los tests de hoy pasan con la sesión de administrador del arnés
 
 ### F7-T08 · Cada corredor lo suyo: propiedades, contenido y cargas
 - **Depende de:** T07
@@ -399,3 +399,4 @@ Respondidas por el operador el 2026-10-16:
 | 2026-10-16 | Revisión del `arquitecto` (5 bloqueantes, aplicados): el lote B trae el login de la CLI y del panel junto con la sesión de la API, y el arnés con sesión de administrador (D17); puerto `SecretTokens` para los tokens; la carga del corredor nace con su `broker_id` y el job nunca crea corredores; Marketplace a mano como traspaso en core sin publisher, sin "un formulario a la vez" y con el `meta` como unión (ADR-0023, D18); desactivar un corredor entero sale del alcance. Además: la vuelta del OAuth de Instagram es pública; `/health` tolerante sin base; lo del respaldo y la lista de corredores, solo para el administrador; `?broker` ajeno da 404; el canal sale de `sessions.client` y se retira `X-AgentSales-Client`; el gasto se suma por llamada y cuenta por la fecha de la corrida; restricciones e índices de la migración; `LLM_MODEL` solo para `claude-cli`; `eval:content` con la API; la regla del formulario automático en core; las tareas partidas (19, en 8 lotes) y las rutas de archivos reales |
 | 2026-10-16 | **Aprobado** por el operador. ADR-0021, ADR-0022 y ADR-0023 registrados; seguimientos en ADR-0003, ADR-0005, ADR-0011 y ADR-0017; roadmap con F7 y F8 |
 | 2026-10-17 | Lote A (F7-T01 a T03, PR #130) y su revisión (`revisor` y `arquitecto`, sin bloqueantes, todo aplicado): el tope de IA se valida y redondea (`normalizeLlmMonthlyCap`, `BROKER_SETTINGS_INVALID`); un corredor sin corredor no puede nada; la rama bloqueada del login hace el mismo trabajo de hash; `scrypt` con NFC y un tope de memoria al leer un hash; usuarios por bytes (`collate "C"`); dos enlaces a la vez se reintentan (`INVITATION_CONFLICT`); pruebas de la carrera al aceptar, del usuario desactivado y del borde del mes. Para los lotes siguientes: `ensureAdmin` en T05, el alcance obligatorio en T08, la agenda con alcance en SQL en T09, los códigos nuevos en §4.13 y que un corredor de la hoja nace no propio (§4.6); riesgos aceptados en el seguimiento de ADR-0021 |
+| 2026-10-17 | Lote B (F7-T04 a T07, PR #131) y su revisión (`revisor` y `arquitecto`, sin bloqueantes de diseño, todo aplicado): `POST /auth/logout` pasa a público e idempotente (con una sesión vencida igual borra la cookie); `returnPathOf` rechaza la barra invertida y los caracteres de control; el menú del usuario también en móvil; la CLI distingue Ctrl+C (`LOGIN_CANCELLED`) de "sin terminal", muestra un punto por letra (pedido del operador), un segundo `login` cierra la sesión anterior, `logout` borra la local aunque la API no responda (y lo avisa) y el archivo vuelve a `0600` si alguien lo abrió; la API anota en el log una sesión que no se pudo leer en una ruta pública; la sesión sembrada del arnés del panel es `panel`. Pruebas nuevas: barra final, `HEAD`, mayúsculas, y que el log nunca lleve tokens, cookies ni enlaces. Para los lotes siguientes: cada lote suma sus códigos a `errors.ts` (`BROKER_MISMATCH`, `LLM_BUDGET_EXCEEDED`, `MARKETPLACE_AUTOMATION_NOT_ALLOWED`, `OAUTH_STATE_USED` y `LOGO_INVALID` como 415); en C, un ayudante `withSession` para la sesión de un corredor y un test que cruce `access.ts` con `can`; en F8, `__Host-` en la cookie con HTTPS, un límite por IP para el bloqueo y el inicio del OAuth en el mismo host que el panel |

@@ -7,8 +7,7 @@ import {
   createInMemoryPlatformAccountRepository,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
-import { fakeInstagramAuth, TEST_ENCRYPTION_KEY, testDeps } from "../testing/index.js";
+import { adminApp, fakeInstagramAuth, TEST_ENCRYPTION_KEY, testDeps } from "../testing/index.js";
 import { instagramStartUrlOf, OAUTH_STATE_COOKIE } from "./oauth.js";
 
 const API = "http://localhost:8787";
@@ -19,7 +18,7 @@ function setup(options: { oauthConfigured?: boolean; secureCookie?: boolean } = 
   const brokers = createInMemoryBrokerRepository([broker]);
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
   const auth = fakeInstagramAuth();
-  const app = createApp(
+  const app = adminApp(
     testDeps({
       brokers,
       platformAccounts,
@@ -207,7 +206,7 @@ describe("OAuth · seguridad", () => {
     const other = { ...contentBrokerFixture(), id: randomUUID(), slug: "otro-corredor" };
     const brokers = createInMemoryBrokerRepository([own, other]);
     const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
-    const app = createApp(
+    const app = adminApp(
       testDeps({
         brokers,
         platformAccounts,
@@ -296,7 +295,7 @@ describe("OAuth · seguridad", () => {
   it("ni el código ni el token del canje llegan al log ni a la URL de vuelta", async () => {
     const { logger, lines } = capturing();
     const broker = contentBrokerFixture();
-    const app = createApp(
+    const app = adminApp(
       testDeps({
         brokers: createInMemoryBrokerRepository([broker]),
         logger,

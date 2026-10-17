@@ -20,10 +20,12 @@ pnpm --filter @agentsales/media exec playwright install chromium   # el Chromium
 pnpm db:migrate          # aplica las migraciones en Neon
 pnpm db:seed             # crea el corredor demo y las 36 definiciones de campos (se puede repetir)
 pnpm storage:check       # sube, lee y borra un objeto de prueba en R2
+pnpm auth:admin --email tu@correo.cl   # tu usuario de administrador: el enlace para elegir la contraseña queda en el portapapeles
 pnpm dev                 # API en 127.0.0.1:8787 · worker · panel en http://localhost:5173
 ```
-En otra terminal, con `pnpm dev` corriendo:
+Abre el enlace del portapapeles (con `pnpm dev` corriendo), elige tu contraseña y entras al panel. Si la olvidas o te bloqueas, `pnpm auth:admin` de nuevo te da otro enlace. En otra terminal, con `pnpm dev` corriendo:
 ```bash
+pnpm -s cli login --email tu@correo.cl   # la CLI pide la contraseña sin mostrarla; whoami y logout
 pnpm -s cli doctor       # Node, .env, API, base, almacenamiento, cola y herramientas
 pnpm -s cli status       # /health y PUBLISH_MODE
 pnpm worker:ping         # opcional: encola un job de prueba; el worker loguea "pong"

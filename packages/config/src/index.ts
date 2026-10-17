@@ -4,6 +4,7 @@ export {
   resolveBackupDir,
   resolveBrowserProfilesDir,
 } from "./browser-profiles.js";
+export { clipboardReady, copyToClipboard } from "./clipboard.js";
 export {
   createSecretBox,
   createStateSigner,

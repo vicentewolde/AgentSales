@@ -194,3 +194,34 @@ export async function setUserDisabled(
   if (input.disabled) await deps.sessions.deleteForUser(user.id);
   return user;
 }
+
+/**
+ * El primer administrador (`pnpm auth:admin`, sin actor ni API): lo crea con su enlace de
+ * invitación si el correo no existe; si existe y es administrador, le genera un enlace de
+ * restablecer (cierra sus sesiones y quita el bloqueo), y lo reactiva si estaba desactivado: así el
+ * operador nunca queda fuera. `USER_NOT_ADMIN` (409) si el correo es de un usuario de corredor.
+ */
+export async function ensureAdmin(
+  deps: Omit<UserAdminDeps, "brokers">,
+  input: { email: string; name?: string },
+): Promise<IssuedLink & { created: boolean }> {
+  const now = deps.now?.() ?? new Date();
+  const email = normalizeEmail(input.email);
+  if (!isValidEmail(email)) throw invalidUser(`El correo "${input.email}" no es válido`);
+  const existing = await deps.users.findByEmail(email);
+  if (existing === null) {
+    const name = (input.name ?? email.split("@")[0] ?? email).trim().slice(0, NAME_MAX_LENGTH);
+    const user = await deps.users.create({ email, name, role: "admin", brokerId: null });
+    return { ...(await issueLink(deps, user, "invite", null, now)), created: true };
+  }
+  if (existing.role !== "admin") {
+    throw new AppError(
+      "USER_NOT_ADMIN",
+      "Ese correo es de un usuario de corredor, no de un administrador",
+    );
+  }
+  await deps.sessions.deleteForUser(existing.id);
+  if (existing.disabledAt !== null) await deps.users.setDisabled(existing.id, null);
+  const cleared = await deps.users.clearLock(existing.id);
+  return { ...(await issueLink(deps, cleared, "reset", null, now)), created: false };
+}

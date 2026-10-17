@@ -75,6 +75,8 @@ type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Resp
 
 export type ApiClientOptions = {
   timeoutMs?: number;
+  /** El token de `agentsales login` (spec F7 §4.10): va como `Authorization: Bearer`. */
+  token?: string | undefined;
   /** Solo para tests: la app en proceso (`app.request`), sin red. */
   fetch?: Fetch;
 };
@@ -103,7 +105,10 @@ export function createApiClient(port: number, options: ApiClientOptions = {}) {
   const timeoutMs = options.timeoutMs ?? API_TIMEOUT_MS;
   const send = options.fetch ?? fetch;
   return hc<AppType>(apiUrl(port), {
-    headers: { [CLIENT_HEADER]: CLI_CLIENT },
+    headers: {
+      [CLIENT_HEADER]: CLI_CLIENT,
+      ...(options.token === undefined ? {} : { authorization: `Bearer ${options.token}` }),
+    },
     fetch: async (input: string | URL | Request, init?: RequestInit) => {
       const timeout = AbortSignal.timeout(timeoutMs);
       const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;

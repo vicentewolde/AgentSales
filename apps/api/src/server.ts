@@ -3,7 +3,9 @@ import { homedir } from "node:os";
 import {
   createErrorThrottle,
   createLogger,
+  createPasswordHasher,
   createSecretBox,
+  createSecretTokens,
   createStateSigner,
   findWorkspaceRoot,
   loadEnv,
@@ -17,12 +19,15 @@ import {
   createDb,
   createFieldDefinitionRepository,
   createImportRunRepository,
+  createInvitationRepository,
   createListingLock,
   createListingRepository,
   createMediaRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
   createPublicationRepository,
+  createSessionRepository,
+  createUserRepository,
   readServerVersion,
   toPgConnectionString,
 } from "@agentsales/db";
@@ -93,6 +98,17 @@ const backupDir = resolveBackupDir(env.BACKUP_DIR, {
 });
 
 const app = createApp({
+  // Usuarios y sesiones (F7, ADR-0021): `scrypt` y los tokens de config; la cookie `Secure` llega
+  // con HTTPS en F8.
+  auth: {
+    users: createUserRepository(database.db),
+    sessions: createSessionRepository(database.db),
+    invitations: createInvitationRepository(database.db),
+    brokers,
+    hasher: createPasswordHasher(),
+    tokens: createSecretTokens(),
+    secureCookie: false,
+  },
   checks: {
     // Se guarda la última leída (no se borra antes): dos `/health` a la vez nunca la ven en `null`
     // por el otro; si la base no responde, el reporte la informa `null` igual (check en falla).

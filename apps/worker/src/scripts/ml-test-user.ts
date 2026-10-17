@@ -1,6 +1,11 @@
-import { spawn } from "node:child_process";
 import { parseArgs } from "node:util";
-import { createSecretBox, loadEnv, loadEnvFile } from "@agentsales/config";
+import {
+  clipboardReady,
+  copyToClipboard,
+  createSecretBox,
+  loadEnv,
+  loadEnvFile,
+} from "@agentsales/config";
 import { createBrokerRepository, createDb, createPlatformAccountRepository } from "@agentsales/db";
 import { createMercadoLibreAuth, createMercadoLibreTestUsers } from "@agentsales/publishers";
 import { describeUnexpected } from "../smoke/ig-smoke.js";
@@ -11,20 +16,6 @@ import { runMlTestUser } from "../smoke/ml-test-user.js";
 // sin imprimirla. Habla con Mercado Libre de verdad: lo corre el operador, en la terminal de su
 // Mac. No necesita `pnpm dev` (lee la base directo); si renueva el acceso, lo guarda (con el
 // candado). Sigue con la checklist (docs/07-checklist-cuentas.md).
-
-/** Copia al portapapeles de macOS por la entrada estándar de `pbcopy` (nunca como argumento). */
-function pbcopy(text: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("pbcopy", [], { stdio: ["pipe", "ignore", "ignore"] });
-    child.on("error", reject);
-    // `pbcopy` puede terminar antes de leer: el `EPIPE` llega aquí, no como excepción suelta.
-    child.stdin.on("error", reject);
-    child.on("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(`pbcopy terminó con ${code}`)),
-    );
-    child.stdin.end(text);
-  });
-}
 
 const abort = new AbortController();
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -61,12 +52,8 @@ try {
           : null,
       testUsers: createMercadoLibreTestUsers(),
       // Copiar un texto vacío prueba `pbcopy` sin tocar nada (vacía el portapapeles).
-      clipboardReady: () =>
-        pbcopy("").then(
-          () => true,
-          () => false,
-        ),
-      copyToClipboard: pbcopy,
+      clipboardReady,
+      copyToClipboard,
       now: () => new Date(),
       print: (line) => console.log(line),
       printError: (line) => console.error(line),

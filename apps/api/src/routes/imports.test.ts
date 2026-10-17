@@ -5,13 +5,12 @@ import {
   createInMemoryJobQueue,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
 import {
   errorBodySchema,
   importRunListResponseSchema,
   importRunResponseSchema,
 } from "../contracts/index.js";
-import { fakeUploads, testDeps } from "../testing/index.js";
+import { adminApp, fakeUploads, testDeps } from "../testing/index.js";
 
 const ORIGIN = "http://localhost:5173";
 
@@ -19,7 +18,7 @@ function setup(overrides: Parameters<typeof testDeps>[0] = {}) {
   const importRuns = createInMemoryImportRunRepository({ nextId: randomUUID });
   const queue = createInMemoryJobQueue();
   const uploads = fakeUploads();
-  const app = createApp(testDeps({ importRuns, queue, uploads, ...overrides }));
+  const app = adminApp(testDeps({ importRuns, queue, uploads, ...overrides }));
   return { app, importRuns, queue, uploads };
 }
 
@@ -27,7 +26,7 @@ function setup(overrides: Parameters<typeof testDeps>[0] = {}) {
 const fileOf = (name: string, size = 16) => new File([new Uint8Array(size)], name);
 
 function upload(
-  app: ReturnType<typeof createApp>,
+  app: ReturnType<typeof adminApp>,
   // Cada campo puede ser un archivo o texto: así se prueba lo que no es un archivo.
   fields: Readonly<Record<string, File | string | undefined>>,
 ) {
@@ -39,7 +38,7 @@ function upload(
   return app.request("/imports", { method: "POST", body: form, headers: { Origin: ORIGIN } });
 }
 
-const local = (app: ReturnType<typeof createApp>, body: unknown) =>
+const local = (app: ReturnType<typeof adminApp>, body: unknown) =>
   app.request("/imports/local", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

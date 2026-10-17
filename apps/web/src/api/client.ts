@@ -2,6 +2,7 @@ import type { AppType } from "@agentsales/api";
 import { errorBodySchema, type ReadinessIssueView } from "@agentsales/api/contracts";
 import { hc } from "hono/client";
 import type { z } from "zod";
+import { notifySessionExpired } from "./session-events.js";
 
 /** Mayor que el peor caso de `/health` en la API (25 s con Neon despertando). */
 export const API_TIMEOUT_MS = 35_000;
@@ -58,6 +59,19 @@ function withJsonType(init: RequestInit | undefined): RequestInit | undefined {
   return { ...init, headers };
 }
 
+/**
+ * Un 401 `AUTH_REQUIRED` (sin sesión o vencida) avisa al layout, que lleva a "Entrar". Un 401 de
+ * entrar mal (`AUTH_INVALID`) no: lo muestra la página de entrar.
+ */
+async function warnIfSessionExpired(response: Response): Promise<void> {
+  const body: unknown = await response
+    .clone()
+    .json()
+    .catch(() => undefined);
+  const parsed = errorBodySchema.safeParse(body);
+  if (parsed.success && parsed.data.error.code === "AUTH_REQUIRED") notifySessionExpired();
+}
+
 export type ApiClientOptions = {
   timeoutMs?: number;
   uploadTimeoutMs?: number;
@@ -82,7 +96,9 @@ export function createApiClient(baseUrl = "/api", options: ApiClientOptions = {}
       const timeout = AbortSignal.timeout(limitMs);
       const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
       try {
-        return await send(input, { ...withJsonType(init), signal });
+        const response = await send(input, { ...withJsonType(init), signal });
+        if (response.status === 401) await warnIfSessionExpired(response);
+        return response;
       } catch (error) {
         if (error instanceof Error && error.name === "TimeoutError") {
           // La API pudo recibir la subida igual: antes de reintentar, mira "Cargas anteriores".

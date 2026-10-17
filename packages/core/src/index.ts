@@ -578,6 +578,7 @@ export {
 export {
   acceptInvitation,
   checkPassword,
+  ensureAdmin,
   INVITATION_TTL_MS,
   type IssuedLink,
   inviteUser,

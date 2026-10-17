@@ -44,6 +44,8 @@ pnpm db:migrate          # aplicar migraciones
 pnpm db:seed             # seeds idempotentes
 pnpm db:backup           # respaldo local de la base con pg_dump a BACKUP_DIR (fuera del proyecto; deja los últimos 14; no necesita pnpm dev; necesita brew install libpq)
 pnpm storage:check       # verifica acceso al bucket de R2
+pnpm auth:admin --email <correo>  # crea el administrador o le da un enlace de restablecer, en el portapapeles sin imprimirlo (habla directo con la base; lo corre el operador)
+pnpm -s cli login --email <correo>  # la sesión de la CLI (pide la contraseña sin mostrarla: lo corre el operador en su terminal); whoami, logout
 pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo)
 pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo)
 pnpm worker:ping         # encola un job de prueba (con el worker corriendo)
@@ -92,6 +94,7 @@ corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) →
 - `pnpm ml:test-user` es la única escritura en Mercado Libre que no mira `PUBLISH_MODE` (crea un usuario de prueba con la cuenta real; la corre solo el operador, ADR-0015).
 - Ningún test llama APIs reales de Instagram, Mercado Libre, Facebook ni Anthropic. Usa msw o fakes.
 - No leas, muestres ni commitees `.env`. No loguees tokens ni secretos.
+- La sesión de la CLI (`~/.agentsales/cli-session.json`) es del operador: úsala a través de la CLI, pero nunca leas ni muestres ese archivo. Los enlaces de invitación (`/invitacion#…`) son secretos: no los imprimas ni los pegues en el chat.
 - No subas datos reales de clientes (`data/muestras/`) a git.
 - Marketplace: nunca automatices el clic final (ni el de Siguiente), ni resuelvas o evadas captchas o verificaciones, ni disfraces la automatización. Conectar la cuenta de Marketplace y `pnpm fb:smoke` abren Facebook en cualquier modo, porque no publican (ADR-0017): los pide y corre solo el operador. No leas la carpeta de perfiles (`BROWSER_PROFILES_DIR`: guarda la sesión de Facebook); de `tmp/fb-smoke/` lee solo, y siempre con el permiso del operador en el chat: `summary.json` y los árboles que lista (`*.aria.yml`), y de una corrida de `--listing` los archivos de diagnóstico de su carpeta `fb-smoke-<id>/` (`formulario.aria.yml`, `control-faltante.aria.yml`, `listas-abiertas.aria.yml`, `errores-de-la-pagina.txt`); nunca las capturas `.png`.
 - Nunca `git push --force` a `main` ni reescribas su historia.

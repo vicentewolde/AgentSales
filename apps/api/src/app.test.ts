@@ -4,9 +4,9 @@ import type { HealthReport } from "@agentsales/core";
 import { AppError, healthReportSchema } from "@agentsales/core";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
-import { type AppDeps, createApp } from "./app.js";
+import type { AppDeps } from "./app.js";
 import type { ErrorBody } from "./errors.js";
-import { testDeps } from "./testing/index.js";
+import { adminApp, testDeps } from "./testing/index.js";
 
 const silentLogger = createLogger(
   { level: "silent" },
@@ -22,7 +22,7 @@ const fail = (message: string) => async () => {
 };
 
 function appWith(checks: Partial<AppDeps["checks"]> = {}, extra: Partial<AppDeps> = {}) {
-  return createApp(
+  return adminApp(
     testDeps({
       checks: { db: ok, storage: ok, queue: ok, ...checks },
       logger: silentLogger,
@@ -32,9 +32,12 @@ function appWith(checks: Partial<AppDeps["checks"]> = {}, extra: Partial<AppDeps
   );
 }
 
-async function health(app: ReturnType<typeof createApp>) {
+/** El reporte completo: el administrador ve el detalle (spec F7 §4.3). */
+type FullReport = HealthReport & { checks: NonNullable<HealthReport["checks"]> };
+
+async function health(app: ReturnType<typeof adminApp>) {
   const response = await app.request("/health");
-  return { status: response.status, body: (await response.json()) as HealthReport };
+  return { status: response.status, body: (await response.json()) as FullReport };
 }
 
 describe("GET /health", () => {

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 import { publicationHarness } from "../../test/harness.js";
+import { createMemorySessionStore } from "../session.js";
 import {
   register,
   runCancelPublication,
@@ -215,6 +216,8 @@ describe("publications · registro en commander", () => {
     register(program, {
       ...setup.h.io,
       api: () => setup.h.client,
+      session: createMemorySessionStore(),
+      readPassword: async () => null,
       cwd: ".",
       confirm: async () => false,
       stdinIsTty: () => false,

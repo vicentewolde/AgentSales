@@ -19,11 +19,13 @@ import type {
   PublishMode,
 } from "@agentsales/core";
 import { Hono } from "hono";
+import { type AppEnv, type AuthDeps, authenticate } from "./auth.js";
 import { createErrorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, type HealthDetails, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
 import { requestLogger } from "./request-logger.js";
 import { accountRoutes } from "./routes/accounts.js";
+import { authRoutes } from "./routes/auth.js";
 import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
 import { type ImportUploads, importRoutes } from "./routes/imports.js";
@@ -36,9 +38,12 @@ import {
 } from "./routes/publications.js";
 import { scheduleRoutes } from "./routes/schedule.js";
 import { trackingRoutes } from "./routes/tracking.js";
-import { csrfGuard, hostGuard, type LocalAccess } from "./security.js";
+import { userRoutes } from "./routes/users.js";
+import { csrfGuard, hostGuard, type LocalAccess, originGuard } from "./security.js";
 
 export type AppDeps = {
+  /** Usuarios y sesiones (F7, ADR-0021): sin sesión, solo las rutas públicas (`access.ts`). */
+  auth: AuthDeps;
   checks: Record<HealthCheckName, HealthCheck>;
   publishMode: PublishMode;
   version: string;
@@ -131,21 +136,30 @@ export function createApp(deps: AppDeps) {
   };
   // Lo que le falta al aviso para Marketplace depende de si se puede convertir la UF (spec F5 §4.6).
   const contentDeps = { ...deps, ufConfigured: deps.marketplace?.ufConfigured ?? false };
-  const app = new Hono()
+  const app = new Hono<AppEnv>()
     .use(requestLogger(deps.logger))
     .use(hostGuard(deps.access.allowedHosts))
+    .use(originGuard(deps.access.allowedOrigins))
     .use(csrfGuard(deps.access.allowedOrigins))
+    .use(authenticate(deps.auth, deps.logger))
     .get("/health", async (c) => {
+      // El detalle solo para el administrador (spec F7 §4.3); los demás, el estado y el modo.
+      const admin = c.get("auth")?.user.role === "admin";
       const report = await runHealth({
         checks: deps.checks,
         publishMode: deps.publishMode,
         version: deps.version,
         ...(deps.checkTimeoutMs === undefined ? {} : { timeoutMs: deps.checkTimeoutMs }),
-        ...(deps.healthDetails === undefined ? {} : { details: deps.healthDetails }),
+        ...(admin && deps.healthDetails !== undefined ? { details: deps.healthDetails } : {}),
       });
       // Siempre 200: el estado va en el cuerpo (`ok` o `degraded`).
-      return c.json(report, 200);
+      return c.json(
+        admin ? report : { status: report.status, publishMode: report.publishMode },
+        200,
+      );
     })
+    .route("/auth", authRoutes(deps))
+    .route("/users", userRoutes(deps))
     // Encadenadas con `.route()`, así `AppType` conserva el esquema de cada ruta (ADR-0011).
     .route("/listings", listingRoutes({ ...deps, statusChange: operationDeps(publicationDeps) }))
     .route("/listings", listingContentRoutes(contentDeps))

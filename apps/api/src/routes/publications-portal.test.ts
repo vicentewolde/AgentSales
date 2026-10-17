@@ -18,7 +18,6 @@ import {
 } from "@agentsales/core/testing";
 import { createPortalOperations } from "@agentsales/publishers";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
 import {
   contentApproveResponseSchema,
   errorBodySchema,
@@ -27,7 +26,12 @@ import {
   publicationResponseSchema,
   publicationSyncResponseSchema,
 } from "../contracts/index.js";
-import { fakeMercadoLibreAuth, TEST_ML_REDIRECT_URI, testDeps } from "../testing/index.js";
+import {
+  adminApp,
+  fakeMercadoLibreAuth,
+  TEST_ML_REDIRECT_URI,
+  testDeps,
+} from "../testing/index.js";
 import { OPERATION_TIMEOUT_MS } from "./publications.js";
 
 // F4-T19: la API de Portal (spec F4 §4.9 y §4.11).
@@ -110,7 +114,7 @@ async function setup(
   });
   const fake = fakeOperations();
   const mercadoLibreAuth = fakeMercadoLibreAuth();
-  const app = createApp(
+  const app = adminApp(
     testDeps({
       listings: t.listings,
       brokers: t.brokers,
@@ -277,7 +281,7 @@ describe("POST /publications/:id/pause, /resume y /close", () => {
   it("sin las operaciones de la plataforma: 503 PUBLISHER_NOT_CONFIGURED", async () => {
     const { t } = await setup();
     const publication = await published(t, false);
-    const bare = createApp(
+    const bare = adminApp(
       testDeps({
         listings: t.listings,
         brokers: t.brokers,
@@ -328,7 +332,7 @@ describe("POST /publications/:id/sync", () => {
     expect(missing.status).toBe(404);
 
     const instagram = await createPublicationScenario({ nextId: randomUUID });
-    const app = createApp(
+    const app = adminApp(
       testDeps({
         listings: instagram.listings,
         publications: instagram.publications,
@@ -588,7 +592,7 @@ describe("revisión de F4-T19", () => {
 
   it("pausar una de Instagram es 409 OPERATION_NOT_SUPPORTED", async () => {
     const instagram = await createPublicationScenario({ nextId: randomUUID });
-    const app = createApp(
+    const app = adminApp(
       testDeps({
         listings: instagram.listings,
         publications: instagram.publications,

@@ -26,6 +26,9 @@ export class CliError extends Error {
 
 /** Qué hacer ante los errores de la API que tienen arreglo del lado del operador. */
 const API_HINTS: Readonly<Record<string, string>> = {
+  // F7 (spec §4.10): sin sesión o vencida, y lo que solo hace el administrador.
+  AUTH_REQUIRED: "Inicia sesión: agentsales login",
+  FORBIDDEN: "Pídeselo al administrador",
   DB_UNAVAILABLE: "Neon puede estar despertando: reintenta en unos segundos",
   QUEUE_UNAVAILABLE: "Arranca el worker (pnpm dev) y reintenta",
   STORAGE_UNAVAILABLE: "Revisa las variables R2_* y corre pnpm storage:check",

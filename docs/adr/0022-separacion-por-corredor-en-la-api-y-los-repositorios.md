@@ -27,3 +27,7 @@
 - **Una base o un esquema por corredor:** multiplica migraciones y conexiones (Neon gratis) para pocos corredores.
 - **Filtrar en memoria después de leer todo** (como `/tracking` hoy): no escala y es fácil de olvidar.
 - **403 para lo ajeno:** confirma que el id existe.
+
+## Seguimiento
+- 2026-10-17 (lote B, PR #131): `POST /auth/logout` es público (idempotente). `/oauth/instagram/start` es `admin` y necesita la cookie `Strict`: si el panel y la API quedan en hosts distintos (`127.0.0.1` y `localhost`, o la API en `https`), la cookie no viaja y responde 401 en vez de volver al panel. Hoy el OAuth está apagado sin HTTPS; F8 lo resuelve al desplegar (mismo host o un enlace firmado de un solo uso).
+
