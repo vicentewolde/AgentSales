@@ -13,7 +13,7 @@ import {
   publicationResponseSchema,
   publicationRetireResponseSchema,
 } from "../contracts/index.js";
-import { adminApp, TEST_ADMIN_CLI_TOKEN, testDeps } from "../testing/index.js";
+import { adminApp, TEST_ADMIN_CLI_TOKEN, TEST_ADMIN_TOKEN, testDeps } from "../testing/index.js";
 import { publicationView } from "./publication-views.js";
 
 const json = { "Content-Type": "application/json" };
@@ -584,11 +584,12 @@ describe("/publications/:id", () => {
     expect(t.queue.jobs).toEqual([]);
   });
 
-  it("un POST sin Content-Type JSON lo frena el CSRF: la CLI y el panel mandan application/json", async () => {
+  it("un POST con la cookie del panel y sin Origin lo frena el CSRF", async () => {
     const { t, app } = await setup();
 
     const response = await app.request(`/publications/${t.byFormat("post")?.id}/cancel`, {
       method: "POST",
+      headers: { Cookie: `agentsales_session=${TEST_ADMIN_TOKEN}` },
     });
 
     expect(response.status).toBe(403);

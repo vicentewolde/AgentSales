@@ -36,9 +36,17 @@ export function hostGuard(allowedHosts: readonly string[]): MiddlewareHandler {
   };
 }
 
-/** CSRF: formularios y `multipart` solo desde el panel. Las peticiones JSON exigen preflight CORS. */
+/**
+ * CSRF: formularios y `multipart` solo desde el panel. Las peticiones JSON exigen preflight CORS.
+ * Con `Authorization: Bearer` (la CLI: subir el logo, F7-T16) no aplica, por la misma razón que en
+ * `originGuard`: un sitio ajeno no puede poner esa cabecera sin pasar por CORS.
+ */
 export function csrfGuard(allowedOrigins: readonly string[]): MiddlewareHandler {
-  return csrf({ origin: [...allowedOrigins] });
+  const guard = csrf({ origin: [...allowedOrigins] });
+  return async (c, next) => {
+    if (c.req.header("authorization")?.startsWith("Bearer ")) return next();
+    return guard(c, next);
+  };
 }
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);

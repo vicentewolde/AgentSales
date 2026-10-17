@@ -515,6 +515,9 @@ describe("publications pause|resume|close|sync · registro en commander", () => 
       api: () => h.client,
       session: createMemorySessionStore(),
       readPassword: async () => null,
+      copyToClipboard: async () => {
+        throw new Error("no debía copiar");
+      },
       cwd: ".",
       confirm: async () => {
         throw new Error("no debía preguntar");

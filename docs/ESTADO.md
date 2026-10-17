@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-17
 **Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** lote F de F7 (F7-T15): Marketplace a mano
-**Siguiente paso:** `/tarea F7-T16` (lote G: la CLI de usuarios, corredores, gasto y Marketplace a mano)
+**Última tarea:** lote G de F7 (F7-T16): la CLI de usuarios, corredores, gasto y Marketplace a mano
+**Siguiente paso:** `/tarea F7-T17 F7-T18` (lote H: el panel con el alcance, Corredores, Mi marca, gasto y Marketplace a mano)
 
 ## Pendiente tuyo para F7
 - [x] **Clave de la API de Anthropic** en `.env` (2026-10-17); `pnpm llm:smoke --provider anthropic-api` respondió bien
@@ -50,7 +50,7 @@
 | **Lote E** · T13 Corredores: crear, editar y lista de alta | ✅ terminada | #134 |
 | **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | #134 |
 | **Lote F** · T15 Marketplace a mano | ✅ terminada | #135 |
-| **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ⏳ pendiente | |
+| **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ✅ terminada | |
 | **Lote H** · T17 Panel: el alcance | ⏳ pendiente | |
 | **Lote H** · T18 Panel: Corredores, Mi marca, gasto y Marketplace a mano | ⏳ pendiente | |
 | T19 Cierre de fase | ⏳ pendiente | |
@@ -144,6 +144,11 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-17: **Lote G de F7 (T16): la CLI.**
+  - **Usuarios** (solo tú): `users list`, `users invite --email … --name … --broker <slug>` (o `--admin`), `users reset|disable|enable <correo>`. El enlace queda en el portapapeles y nunca se muestra; envíaselo al corredor por un canal privado.
+  - **Corredores:** `brokers create`, `brokers edit` (la marca; propio y tope, solo tú), `brokers show` (la lista de alta), `brokers logo <slug> <archivo>` y `brokers template <slug>` (su planilla).
+  - **Gasto:** `usage` (y `--month 2026-10`). **Marketplace a mano:** `accounts connect marketplace --broker <slug> --manual`.
+  - A un corredor, lo que es tuyo le responde "Esto lo hace el administrador".
 - 2026-10-17: **Lote F de F7 (T15): Marketplace a mano.** Por la API (la CLI y el panel, en los lotes G y H):
   - **Cuenta a mano:** la activas tú para un corredor; reemplaza a su Facebook conectado. Al publicar, el sistema no abre ningún navegador: deja todo listo (texto, fotos y precio en pesos) y el corredor lo publica él mismo y confirma con el enlace o "No lo publiqué". Sin límite diario y con varios avisos esperando a la vez.
   - **El formulario automático, solo para tus corredores:** conectar el Facebook, la ventana del perfil, `fb:smoke --listing` y publicar con el perfil se rechazan para un corredor que no es tuyo. Tus corredores de siempre siguen igual (quedaron como propios).

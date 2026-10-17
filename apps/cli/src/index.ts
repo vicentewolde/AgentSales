@@ -18,6 +18,8 @@ import * as publish from "./commands/publish.js";
 import * as schedule from "./commands/schedule.js";
 import * as status from "./commands/status.js";
 import * as tracking from "./commands/tracking.js";
+import * as usage from "./commands/usage.js";
+import * as users from "./commands/users.js";
 import { createContext } from "./context.js";
 import { readCliVersion } from "./version.js";
 
@@ -46,6 +48,8 @@ for (const command of [
   tracking,
   accounts,
   brokers,
+  users,
+  usage,
 ]) {
   command.register(program, ctx);
 }

@@ -142,6 +142,8 @@ export type ConnectOptions = {
   urlStdin?: boolean;
   /** Marketplace: el nombre de la cuenta (por defecto "Facebook de <corredor>"). */
   label?: string;
+  /** Marketplace a mano (F7, ADR-0023): el corredor publica él mismo, sin el perfil. */
+  manual?: boolean;
 };
 
 /** El largo máximo de la dirección de vuelta pegada (la API acepta hasta 4096 por valor). */
@@ -356,6 +358,25 @@ async function connectMarketplace(
 }
 
 /**
+ * `agentsales accounts connect marketplace --broker <slug> --manual` (spec F7 §4.8, ADR-0023;
+ * administrador): activa Marketplace a mano, sin abrir Facebook. Reemplaza al perfil del corredor.
+ */
+async function connectMarketplaceManual(deps: AccountsDeps, broker: string): Promise<number> {
+  const c = deps.colors;
+  const { account } = await unwrap(
+    deps.client.accounts.marketplace.manual.$post({ json: { broker } }),
+    accountResponseSchema,
+  );
+  deps.print(`${c.green("✓")} Marketplace a mano activado para ${broker} (${account.displayName})`);
+  deps.print(
+    c.dim(
+      "  Al publicar, el sistema deja listos el texto, las fotos y el precio; el corredor lo publica y confirma con el enlace",
+    ),
+  );
+  return 0;
+}
+
+/**
  * `agentsales accounts connect instagram --broker <slug> --token-stdin` (spec F3 §4.6 y D4): lee el
  * token largo de Generate token desde la entrada estándar (`pbpaste | …`), nunca de un argumento,
  * y no lo muestra ni lo pone en un error. Sin `--token-stdin`, solo si la API ofrece el OAuth
@@ -379,11 +400,15 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
           ? "--url-stdin"
           : options.label !== undefined && channel !== "marketplace"
             ? "--label"
-            : null;
+            : options.manual && channel !== "marketplace"
+              ? "--manual"
+              : options.manual && options.label !== undefined
+                ? "--label"
+                : null;
     if (foreign !== null) {
       throw new CliError(
         "OPTION_NOT_FOR_PLATFORM",
-        `${foreign} no es para ${channel}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label`,
+        `${foreign} no es para ${channel}${options.manual && channel === "marketplace" ? " a mano" : ""}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label (o --manual, sin --label)`,
       );
     }
     if (options.broker === undefined) {
@@ -392,6 +417,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
     const broker = brokerSlugOf(options.broker);
     if (channel === "mercadolibre")
       return connectMercadoLibre(deps, broker, options.urlStdin === true);
+    if (channel === "marketplace" && options.manual) return connectMarketplaceManual(deps, broker);
     if (channel === "marketplace") return connectMarketplace(deps, broker, options.label);
     const pipeCommand = tokenStdinCommand(broker);
 
@@ -616,6 +642,10 @@ export function register(program: Command, ctx: CliContext): void {
     .option(
       "--label <nombre>",
       "Marketplace: el nombre de la cuenta (por defecto, Facebook de <corredor>)",
+    )
+    .option(
+      "--manual",
+      "Marketplace a mano: el corredor publica él mismo, sin abrir Facebook en este Mac",
     )
     .option(
       "--token-stdin",

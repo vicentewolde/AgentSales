@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { type AppDeps, createApp, localAccess } from "@agentsales/api";
-import { testDeps, withAdminSession } from "@agentsales/api/testing";
+import { testAuth, testDeps, withAdminSession } from "@agentsales/api/testing";
 import {
   ALL_SCOPE,
   type AppError,
@@ -49,10 +49,15 @@ export type HarnessOptions = {
 export function harness(options: HarnessOptions = {}) {
   const importRuns = createInMemoryImportRunRepository({ nextId: randomUUID });
   const listings = createInMemoryListingRepository({ nextId: randomUUID });
-  const brokers = createInMemoryBrokerRepository();
+  // Ids uuid, como Postgres: las rutas `/brokers/:id` los exigen (F7-T16).
+  const brokers = createInMemoryBrokerRepository([], { nextId: randomUUID });
   const media = createInMemoryMediaRepository();
   const queue = createInMemoryJobQueue();
-  const content = createInMemoryContentRepositories({ nextId: randomUUID });
+  // El gasto de IA por corredor (F7-T12) cruza la corrida con su aviso, como Postgres.
+  const content = createInMemoryContentRepositories({
+    nextId: randomUUID,
+    brokerOfListing: async (id) => (await listings.get(id))?.brokerId ?? null,
+  });
   // La API y el candado comparten repositorios: el candado se arma con los que quedan después de
   // los reemplazos de `options.deps`, salvo que el test traiga el suyo. Las publicaciones completas
   // (la app solo lee) son del arnés; un test que trae las suyas trae también su candado.
@@ -82,8 +87,11 @@ export function harness(options: HarnessOptions = {}) {
       platformAccounts: repos.platformAccounts,
     });
   // Con la sesión del administrador en cada pedido (F7-T06): los comandos de antes siguen igual.
+  // Los usuarios y sesiones de la API, para sembrar el de un corredor (F7-T16).
+  const auth = testAuth();
   const created = createApp(
     testDeps({
+      auth: { ...auth, brokers: repos.brokers },
       access: localAccess(PORT, 5173),
       importRuns,
       queue,
@@ -129,6 +137,8 @@ export function harness(options: HarnessOptions = {}) {
     requests,
     importRuns,
     queue,
+    /** Usuarios y sesiones de la API (`seed.user`, `seed.session`, `tokens`). */
+    auth,
     // Los repositorios en memoria del arnés, para armar casos. Si el test reemplazó uno con
     // `options.deps` (`publicationHarness`), ese no es el de la API: leerlo aquí falla, y el test
     // usa el suyo.

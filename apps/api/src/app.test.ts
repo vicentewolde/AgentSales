@@ -4,7 +4,7 @@ import type { HealthReport } from "@agentsales/core";
 import { AppError, healthReportSchema } from "@agentsales/core";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
-import type { AppDeps } from "./app.js";
+import { type AppDeps, createApp } from "./app.js";
 import type { ErrorBody } from "./errors.js";
 import { adminApp, testDeps } from "./testing/index.js";
 
@@ -328,6 +328,19 @@ describe("acceso local", () => {
     });
 
     expect(response.status).toBe(403);
+  });
+
+  it("un multipart con Authorization: Bearer (la CLI, F7-T16) no exige Origin; sin él, sí", async () => {
+    const withBearer = appWith();
+    withBearer.post("/form", (c) => c.text("ok"));
+    const form = new FormData();
+    form.append("a", "1");
+    // `adminApp` pone la sesión como Bearer, sin Origin (lo que manda la CLI).
+    expect((await withBearer.request("/form", { method: "POST", body: form })).status).toBe(200);
+
+    const anonymous = createApp(testDeps({ logger: silentLogger, access }));
+    anonymous.post("/form", (c) => c.text("ok"));
+    expect((await anonymous.request("/form", { method: "POST", body: form })).status).toBe(403);
   });
 
   it("acepta un formulario desde el panel", async () => {

@@ -10,7 +10,7 @@ import {
   importRunListResponseSchema,
   importRunResponseSchema,
 } from "../contracts/index.js";
-import { adminApp, fakeUploads, testDeps } from "../testing/index.js";
+import { adminApp, fakeUploads, TEST_ADMIN_TOKEN, testDeps } from "../testing/index.js";
 
 const ORIGIN = "http://localhost:5173";
 
@@ -145,14 +145,18 @@ describe("POST /imports · bordes", () => {
   it.each([
     ["sin Origin", undefined],
     ["con un Origin ajeno", "https://evil.example"],
-  ])("un multipart %s → 403 (csrf), sin guardar nada", async (_, origin) => {
+  ])("un multipart %s con la cookie del panel → 403, sin guardar nada", async (_, origin) => {
     const { app, uploads } = setup();
     const form = new FormData();
     form.append("file", fileOf("propiedades.xlsx"));
+    // Con la cookie (el navegador), no con Bearer: el CSRF protege a la sesión del panel.
     const response = await app.request("/imports", {
       method: "POST",
       body: form,
-      headers: origin === undefined ? {} : { Origin: origin },
+      headers: {
+        Cookie: `agentsales_session=${TEST_ADMIN_TOKEN}`,
+        ...(origin === undefined ? {} : { Origin: origin }),
+      },
     });
     expect(response.status).toBe(403);
     expect(uploads.files.size).toBe(0);
