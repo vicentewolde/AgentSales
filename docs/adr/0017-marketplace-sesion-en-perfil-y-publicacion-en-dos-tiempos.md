@@ -44,3 +44,4 @@
   - **Las fotos se adjuntan en memoria:** Facebook las sube después de adjuntarlas; con archivos temporales borrados al terminar, la subida fallaba (`ERR_FILE_NOT_FOUND`) y salía el diálogo «¡Uy!».
   - **Observado:** la cookie `c_user` existe y es numérica con la sesión abierta, y cerrar la ventana no deja un borrador.
   - **Diagnóstico:** `fb:smoke --listing --diagnostico` anota los errores de la página y los pedidos fallidos a Facebook (método, ruta sin consulta y código; nada del operador ni del aviso), solo a pedido del operador.
+- 2026-10-16 (`/fase-plan 7`): ADR-0023 suma la cuenta de Marketplace **a mano** para los corredores y deja este flujo (perfil del navegador y formulario automático) solo para los corredores propios del operador.
