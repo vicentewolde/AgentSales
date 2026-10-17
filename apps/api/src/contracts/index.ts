@@ -696,6 +696,11 @@ export const accountListResponseSchema = z.object({
 });
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
 
+/** `GET /accounts?broker=<slug>`: el filtro del administrador (F7-T17); un corredor ajeno, 404. */
+export const accountListQuerySchema = z.object({
+  broker: z.string().trim().min(1).max(100).optional(),
+});
+
 export const accountResponseSchema = z.object({ account: platformAccountViewSchema });
 export type AccountResponse = z.infer<typeof accountResponseSchema>;
 

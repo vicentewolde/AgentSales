@@ -78,17 +78,27 @@ function PlanB({
   photos,
   publications,
   listingPrice,
+  byHand,
 }: {
   content: ContentView | undefined;
   photos: ContentMedia[];
   publications: readonly ListingPublicationView[];
   listingPrice: ListingPrice | null;
+  /** Marketplace a mano (F7-T18, ADR-0023): es el flujo principal, abierto y arriba. */
+  byHand: boolean;
 }) {
   return (
-    <details className="mt-4 rounded-lg border border-slate-200 p-3 text-sm">
-      <summary className="cursor-pointer font-medium">Publicar a mano (plan B)</summary>
+    <details
+      open={byHand}
+      className={`mt-4 rounded-lg border p-3 text-sm ${byHand ? "border-amber-300 bg-amber-50" : "border-slate-200"}`}
+    >
+      <summary className="cursor-pointer font-medium">
+        {byHand ? "Publícalo tú en Facebook (Marketplace a mano)" : "Publicar a mano (plan B)"}
+      </summary>
       <p className="mt-2 text-slate-600">
-        Si el formulario automático no sirve, copia esto y publícalo tú en Facebook.
+        {byHand
+          ? "Copia el título, la descripción y el precio, sube las fotos en Facebook Marketplace y después confirma abajo con el enlace del aviso (o «No lo publiqué»)."
+          : "Si el formulario automático no sirve, copia esto y publícalo tú en Facebook."}
       </p>
       <dl className="mt-2 space-y-2">
         <div>
@@ -164,9 +174,24 @@ export function MarketplacePanel({
   readiness: ReadinessView;
 }) {
   const publications = edit.publications.filter((p) => p.platform === MARKETPLACE);
+  // Con la cuenta a mano, el plan B va arriba y abierto: es como se publica (ADR-0023).
+  const byHand = publications.some(
+    (publication) =>
+      publication.status === "awaiting_manual_confirm" && publication.manual?.byHand === true,
+  );
+  const planB = (
+    <PlanB
+      content={content}
+      photos={photos}
+      publications={publications}
+      listingPrice={edit.listingPrice}
+      byHand={byHand}
+    />
+  );
   return (
     <div>
       <MarketplaceReadiness readiness={readiness} />
+      {byHand && planB}
       {content === undefined ? (
         <p className="text-sm text-slate-500">Sin texto todavía.</p>
       ) : (
@@ -198,12 +223,7 @@ export function MarketplacePanel({
         runActive={edit.runActive}
         readiness={readiness}
       />
-      <PlanB
-        content={content}
-        photos={photos}
-        publications={publications}
-        listingPrice={edit.listingPrice}
-      />
+      {!byHand && planB}
     </div>
   );
 }

@@ -83,7 +83,7 @@ export function runAccounts(deps: AccountsDeps) {
   return guarded(deps, async () => {
     const [brokers, { accounts }] = await Promise.all([
       fetchBrokers(deps.client),
-      unwrap(deps.client.accounts.$get(), accountListResponseSchema),
+      unwrap(deps.client.accounts.$get({ query: {} }), accountListResponseSchema),
     ]);
     if (accounts.length === 0) {
       deps.print(c.yellow("No hay cuentas conectadas"));
@@ -217,7 +217,10 @@ async function connectMercadoLibre(
       "Copia solo la dirección de la barra después de autorizar y vuelve a intentarlo",
     );
   }
-  const { connect } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
+  const { connect } = await unwrap(
+    deps.client.accounts.$get({ query: {} }),
+    accountListResponseSchema,
+  );
   const expected = new URL(connect.mercadolibre.redirectUri);
   if (withoutQuery(url) !== withoutQuery(expected)) {
     throw new CliError(
@@ -302,7 +305,10 @@ async function connectMarketplace(
     c.dim("  Si cierras la ventana sin iniciar sesión, corta con Ctrl+C y vuelve a intentarlo"),
   );
   const check = async (): Promise<LoginWait> => {
-    const { accounts } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
+    const { accounts } = await unwrap(
+      deps.client.accounts.$get({ query: {} }),
+      accountListResponseSchema,
+    );
     const result = marketplaceLoginOutcome(accounts, { brokerId, requestedAt });
     if (result.outcome === "failed") return { status: "failed", code: result.code };
     if (result.outcome === "pending") return { status: "pending" };
@@ -422,7 +428,10 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
     const pipeCommand = tokenStdinCommand(broker);
 
     if (!options.tokenStdin) {
-      const { connect } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
+      const { connect } = await unwrap(
+        deps.client.accounts.$get({ query: {} }),
+        accountListResponseSchema,
+      );
       if (!connect.instagram.oauth) {
         throw new CliError(
           "OAUTH_UNAVAILABLE",
@@ -566,7 +575,10 @@ export function runDisconnect(deps: AccountsDeps, id: string, options: Disconnec
   const c = deps.colors;
   return guarded(deps, async () => {
     const accountId = accountIdOf(id);
-    const { accounts } = await unwrap(deps.client.accounts.$get(), accountListResponseSchema);
+    const { accounts } = await unwrap(
+      deps.client.accounts.$get({ query: {} }),
+      accountListResponseSchema,
+    );
     const account = accounts.find((item) => item.id === accountId);
     if (account === undefined) {
       throw new CliError(

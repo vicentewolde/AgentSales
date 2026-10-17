@@ -16,18 +16,26 @@ export const TRACKING_REFETCH_MS = 60_000;
 
 export const trackingKeys = {
   all: ["tracking"] as const,
-  agenda: () => [...trackingKeys.all, "agenda"] as const,
-  matrix: (archived: boolean) => [...trackingKeys.all, "matrix", archived] as const,
+  agenda: (broker?: string) => [...trackingKeys.all, "agenda", broker ?? null] as const,
+  matrix: (archived: boolean, broker?: string) =>
+    [...trackingKeys.all, "matrix", archived, broker ?? null] as const,
 };
 
-/** `GET /agenda`. */
-export function useAgenda() {
+/** `GET /agenda`, con el corredor del selector (F7-T17). */
+export function useAgenda(broker?: string) {
   const client = useApiClient();
   return useQuery({
-    queryKey: trackingKeys.agenda(),
+    queryKey: trackingKeys.agenda(broker),
     queryFn: async ({ signal }): Promise<AgendaResponse["items"]> =>
-      (await unwrap(client.agenda.$get({ query: {} }, { init: { signal } }), agendaResponseSchema))
-        .items,
+      (
+        await unwrap(
+          client.agenda.$get(
+            { query: broker === undefined ? {} : { broker } },
+            { init: { signal } },
+          ),
+          agendaResponseSchema,
+        )
+      ).items,
     refetchInterval: TRACKING_REFETCH_MS,
     refetchIntervalInBackground: false,
   });
@@ -37,14 +45,22 @@ export function useAgenda() {
  * `GET /tracking`. `staleTime` de 30 s: cada lectura firma una portada por fila, y volver a la
  * pestaña no debe repetirlo si recién se leyó.
  */
-export function useTracking(archived: boolean) {
+export function useTracking(archived: boolean, broker?: string) {
   const client = useApiClient();
   return useQuery({
-    queryKey: trackingKeys.matrix(archived),
+    queryKey: trackingKeys.matrix(archived, broker),
     queryFn: async ({ signal }): Promise<TrackingResponse["rows"]> =>
       (
         await unwrap(
-          client.tracking.$get({ query: archived ? { archived: "1" } : {} }, { init: { signal } }),
+          client.tracking.$get(
+            {
+              query: {
+                ...(archived ? { archived: "1" as const } : {}),
+                ...(broker === undefined ? {} : { broker }),
+              },
+            },
+            { init: { signal } },
+          ),
           trackingResponseSchema,
         )
       ).rows,

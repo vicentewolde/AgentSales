@@ -174,7 +174,7 @@ describe("createApiClient · Content-Type", () => {
     const id = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
 
     await client.accounts[":id"].disconnect.$post({ param: { id }, json: {} });
-    await client.accounts.$get();
+    await client.accounts.$get({ query: {} });
     await client.imports.$post({ form: { file: new File(["x"], "a.xlsx") } });
 
     const [disconnect, list, upload] = seen;

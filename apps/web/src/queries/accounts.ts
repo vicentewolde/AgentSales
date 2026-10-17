@@ -15,15 +15,27 @@ import { useEffect, useRef } from "react";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
 
-export const accountKeys = { all: ["accounts"] as const };
+export const accountKeys = {
+  all: ["accounts"] as const,
+  list: (broker: string | undefined) => [...accountKeys.all, "list", broker ?? null] as const,
+};
 
-/** `GET /accounts`: las cuentas conectadas y cómo se conecta cada plataforma (spec F3 §4.9). */
-export function useAccounts() {
+/**
+ * `GET /accounts`: las cuentas conectadas y cómo se conecta cada plataforma (spec F3 §4.9); con el
+ * corredor del selector, solo las suyas (F7-T17).
+ */
+export function useAccounts(broker?: string) {
   const client = useApiClient();
   return useQuery({
-    queryKey: accountKeys.all,
+    queryKey: accountKeys.list(broker),
     queryFn: ({ signal }) =>
-      unwrap(client.accounts.$get(undefined, { init: { signal } }), accountListResponseSchema),
+      unwrap(
+        client.accounts.$get(
+          { query: broker === undefined ? {} : { broker } },
+          { init: { signal } },
+        ),
+        accountListResponseSchema,
+      ),
   });
 }
 
@@ -142,7 +154,7 @@ export function useMarketplaceLoginWait(request: MarketplaceLoginRequest | null)
       let result: MarketplaceLoginOutcome | null = null;
       try {
         const { accounts } = await unwrap(
-          client.accounts.$get(undefined, { init: { signal } }),
+          client.accounts.$get({ query: {} }, { init: { signal } }),
           accountListResponseSchema,
         );
         result = marketplaceLoginOutcome(accounts, request);
@@ -164,8 +176,28 @@ export function useMarketplaceLoginWait(request: MarketplaceLoginRequest | null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: basta con el cambio de resultado.
   useEffect(() => {
     if (outcome !== undefined && outcome !== "pending") {
-      void queryClient.invalidateQueries({ queryKey: accountKeys.all, exact: true });
+      // Las listas de cuentas (con o sin el corredor del selector); la espera tiene su clave aparte.
+      void queryClient.invalidateQueries({ queryKey: accountKeys.all });
     }
   }, [outcome]);
   return query.data ?? (request === null ? null : { outcome: "pending" as const });
+}
+
+/**
+ * `POST /accounts/marketplace/manual` (F7-T18, ADR-0023; administrador): activa Marketplace a mano
+ * para un corredor (reemplaza a su perfil). Al terminar se vuelven a pedir las cuentas.
+ */
+export function useActivateManualMarketplace() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (broker: string) =>
+      (
+        await unwrap(
+          client.accounts.marketplace.manual.$post({ json: { broker } }),
+          accountResponseSchema,
+        )
+      ).account,
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: accountKeys.all }),
+  });
 }

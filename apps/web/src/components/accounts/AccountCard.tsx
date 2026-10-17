@@ -40,7 +40,16 @@ function MarketplaceDetails({ account }: { account: PlatformAccountView }) {
  * sesión fallido) y Desconectar con confirmación. El nombre va tal cual (Mercado Libre: el
  * `nickname`).
  */
-export function AccountCard({ account, now }: { account: PlatformAccountView; now: Date }) {
+export function AccountCard({
+  account,
+  now,
+  manage = true,
+}: {
+  account: PlatformAccountView;
+  now: Date;
+  /** Desconectar es del administrador (F7, spec §4.5): el corredor ve la tarjeta sin el botón. */
+  manage?: boolean;
+}) {
   const disconnect = useDisconnectAccount();
   const [confirming, setConfirming] = useState(false);
   const disconnectButton = useRef<HTMLButtonElement>(null);
@@ -108,7 +117,8 @@ export function AccountCard({ account, now }: { account: PlatformAccountView; no
           reconéctala.
         </p>
       )}
-      {account.status !== "revoked" &&
+      {manage &&
+        account.status !== "revoked" &&
         (confirming ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <span>

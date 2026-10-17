@@ -29,6 +29,7 @@ import {
   type AccountRefreshResponse,
   type AccountResponse,
   accountDisconnectBodySchema,
+  accountListQuerySchema,
   accountRefreshBodySchema,
   connectTokenBodySchema,
   idParamSchema,
@@ -41,7 +42,7 @@ import {
   type PlatformAccountView,
 } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
-import { requestScope } from "../scope.js";
+import { listScope, requestScope } from "../scope.js";
 import { validated, validatedWithReason } from "../validation.js";
 import {
   OAUTH_STATE_PLATFORMS,
@@ -244,9 +245,12 @@ function refreshView(result: TokenRefreshResult): AccountRefreshResponse {
  */
 export function accountRoutes(deps: AccountRoutesDeps) {
   return new Hono<AppEnv>()
-    .get("/", async (c) => {
-      // Un corredor ve sus cuentas (spec F7 §4.5); conectarlas es del administrador.
-      const accounts = await deps.platformAccounts.list(requestScope(c));
+    .get("/", validated("query", accountListQuerySchema), async (c) => {
+      // Un corredor ve sus cuentas (spec F7 §4.5); conectarlas es del administrador. `?broker`
+      // filtra (el selector del panel, F7-T17).
+      const accounts = await deps.platformAccounts.list(
+        await listScope(c, deps.brokers, c.req.valid("query").broker),
+      );
       const body: AccountListResponse = {
         accounts: accounts.map(accountView),
         connect: {

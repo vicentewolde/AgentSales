@@ -2,10 +2,19 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Suspense, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { onSessionExpired } from "../api/session-events.js";
+import { BrokerSelector } from "../components/BrokerSelector.js";
 import { useLogout, useMe } from "../queries/auth.js";
+import { BrokerScopeProvider, useRole } from "../scope/broker-scope.js";
 import { PublishModeBanner } from "./PublishModeBanner.js";
 
-type MenuItem = { label: string; to?: string; phase?: string; end?: boolean };
+type MenuItem = {
+  label: string;
+  to?: string;
+  phase?: string;
+  end?: boolean;
+  /** Solo para ese rol (F7): Corredores, el administrador; Mi marca, el corredor. */
+  only?: "admin" | "broker";
+};
 
 /** Cada sección se habilita en su fase. `end`: solo se marca en esa ruta exacta. */
 export const MENU: readonly MenuItem[] = [
@@ -15,6 +24,8 @@ export const MENU: readonly MenuItem[] = [
   { label: "Importar", to: "/importar" },
   { label: "Seguimiento", to: "/seguimiento" },
   { label: "Cuentas", to: "/cuentas" },
+  { label: "Corredores", to: "/corredores", only: "admin" },
+  { label: "Mi marca", to: "/mi-marca", only: "broker" },
 ];
 
 function MenuEntry({ item }: { item: MenuItem }) {
@@ -87,7 +98,18 @@ function UserMenu() {
 }
 
 export function Layout() {
+  return (
+    <BrokerScopeProvider>
+      <LayoutBody />
+    </BrokerScopeProvider>
+  );
+}
+
+function LayoutBody() {
   useSessionGuard();
+  const role = useRole();
+  // Mientras no se sabe el rol, sin las entradas de un solo rol (nada de más).
+  const menu = MENU.filter((item) => item.only === undefined || item.only === role);
   return (
     <div className="flex min-h-screen flex-col">
       <PublishModeBanner />
@@ -100,12 +122,13 @@ export function Layout() {
             AgentSales
           </p>
           <ul className="flex gap-1 overflow-x-auto [scrollbar-width:none] md:flex-col">
-            {MENU.map((item) => (
+            {menu.map((item) => (
               <li key={item.label} className="shrink-0">
                 <MenuEntry item={item} />
               </li>
             ))}
           </ul>
+          <BrokerSelector />
           <UserMenu />
         </nav>
         <main className="flex-1 px-4 py-6 md:px-8">

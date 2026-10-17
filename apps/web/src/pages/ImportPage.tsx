@@ -10,6 +10,7 @@ import { ErrorAlert } from "../components/ErrorAlert.js";
 import { RunStatusBadge } from "../components/RunStatusBadge.js";
 import { useBrokers } from "../queries/brokers.js";
 import { useImportRuns, useStartImport } from "../queries/imports.js";
+import { useRole } from "../scope/broker-scope.js";
 
 const dateTime = new Intl.DateTimeFormat("es-CL", {
   timeZone: "America/Santiago",
@@ -36,6 +37,7 @@ function checkFiles(file: File | undefined, media: File | undefined): string | n
 function ImportForm() {
   const ids = { file: useId(), media: useId(), broker: useId(), dryRun: useId() };
   const brokers = useBrokers();
+  const role = useRole();
   const start = useStartImport();
   const navigate = useNavigate();
   const [problem, setProblem] = useState<string | null>(null);
@@ -95,24 +97,27 @@ function ImportForm() {
           Una carpeta por propiedad, con el nombre de su id_propiedad o de carpeta_medios.
         </p>
       </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor={ids.broker} className="text-sm font-medium">
-          Corredor
-        </label>
-        <select id={ids.broker} name="broker" defaultValue="" className={fieldClass}>
-          <option value="">Desde la hoja Corredor del Excel</option>
-          {(brokers.data ?? []).map((broker) => (
-            <option key={broker.id} value={broker.slug}>
-              {broker.brandName} ({broker.slug})
-            </option>
-          ))}
-        </select>
-        {brokers.error && (
-          <p className="text-xs text-amber-700">
-            No se pudo cargar la lista de corredores; puedes importar igual con la hoja Corredor.
-          </p>
-        )}
-      </div>
+      {/* Un corredor carga siempre lo suyo (F7, ADR-0022): sin selector. */}
+      {role !== "broker" && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor={ids.broker} className="text-sm font-medium">
+            Corredor
+          </label>
+          <select id={ids.broker} name="broker" defaultValue="" className={fieldClass}>
+            <option value="">Desde la hoja Corredor del Excel</option>
+            {(brokers.data ?? []).map((broker) => (
+              <option key={broker.id} value={broker.slug}>
+                {broker.brandName} ({broker.slug})
+              </option>
+            ))}
+          </select>
+          {brokers.error && (
+            <p className="text-xs text-amber-700">
+              No se pudo cargar la lista de corredores; puedes importar igual con la hoja Corredor.
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <input id={ids.dryRun} name="dryRun" type="checkbox" />
         <label htmlFor={ids.dryRun} className="text-sm">

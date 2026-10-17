@@ -13,6 +13,7 @@ import { BatchSchedule } from "../components/publications/BatchSchedule.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { useHealth } from "../queries/health.js";
 import { useListings } from "../queries/listings.js";
+import { useBrokerFilter } from "../scope/broker-scope.js";
 
 type ListingItem = ListingListResponse["listings"][number];
 
@@ -125,7 +126,9 @@ function ListingCard({
 /** Propiedades: grilla con portada y filtros en la URL (spec F1-T13). */
 export function ListingsPage() {
   const [params, setParams] = useSearchParams();
-  const filters = filtersFrom(params);
+  // El corredor del selector (el administrador, F7-T17) se suma a los filtros de la URL.
+  const broker = useBrokerFilter();
+  const filters = { ...filtersFrom(params), ...(broker === undefined ? {} : { broker }) };
   const listings = useListings(filters);
   const health = useHealth();
   const [selected, setSelected] = useState<ReadonlyMap<string, string>>(new Map());
@@ -138,7 +141,7 @@ export function ListingsPage() {
     });
   // Las comunas del selector salen de todas las propiedades (es la misma consulta sin filtros); si
   // esa consulta falla, de las que se ven.
-  const all = useListings({});
+  const all = useListings(broker === undefined ? {} : { broker });
   const comunas = [
     ...new Set([
       ...(all.data ?? listings.data ?? []).flatMap((listing) =>

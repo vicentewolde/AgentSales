@@ -1,0 +1,46 @@
+import type { Broker } from "@agentsales/core";
+import { type ChangeEvent, useId } from "react";
+import { brokerTemplateHref, useUploadLogo } from "../../queries/brokers.js";
+import { ErrorAlert } from "../ErrorAlert.js";
+
+/** El logo (PNG, JPEG o WebP de hasta 5 MB) y la planilla de Excel del corredor (spec F7 §4.6). */
+export function LogoAndTemplate({ broker }: { broker: Broker }) {
+  const upload = useUploadLogo(broker.id);
+  const id = useId();
+  const pick = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file !== undefined) upload.mutate(file);
+    event.target.value = "";
+  };
+  return (
+    <section aria-label="Logo y planilla" className="mt-4">
+      <h2 className="text-lg font-semibold">Logo y planilla</h2>
+      <p className="mt-1 text-sm text-slate-600">
+        {broker.logoMediaId === null ? "Todavía no tiene logo." : "Ya tiene logo."} PNG, JPEG o WebP
+        de hasta 5 MB. Lo ya preparado no cambia: prepara de nuevo solo las imágenes.
+      </p>
+      <label htmlFor={id} className="mt-2 inline-block text-sm font-medium">
+        Subir logo
+      </label>
+      <input
+        id={id}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        onChange={pick}
+        disabled={upload.isPending}
+        className="ml-2 text-sm"
+      />
+      {upload.isPending && <p className="text-sm text-slate-600">Subiendo…</p>}
+      {upload.isSuccess && <p className="text-sm text-green-800">Logo guardado.</p>}
+      {upload.error && <ErrorAlert error={upload.error} />}
+      <p className="mt-3 text-sm">
+        <a href={brokerTemplateHref(broker.id)} download className="underline">
+          Bajar la planilla de Excel
+        </a>{" "}
+        <span className="text-slate-600">
+          (con la hoja Corredor llena; una planilla vieja puede deshacer lo que edites aquí)
+        </span>
+      </p>
+    </section>
+  );
+}

@@ -49,7 +49,10 @@ export function MarketplaceConfirm({
     <div className="mt-2 space-y-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm">
       <p className="font-medium text-amber-900">{capitalize(manualWaitingText(manual))}</p>
       {manual !== null && (
-        <p className="text-slate-700">Precio en el formulario: {marketplacePriceText(manual)}</p>
+        <p className="text-slate-700">
+          {manual.byHand ? "Precio para publicar" : "Precio en el formulario"}:{" "}
+          {marketplacePriceText(manual)}
+        </p>
       )}
       {live ? (
         <div>
