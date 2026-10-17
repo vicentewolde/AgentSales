@@ -277,6 +277,8 @@ export const publicationEventSchema = z.object({
   fromStatus: z.enum(PUBLICATION_STATUSES).nullable(),
   toStatus: z.enum(PUBLICATION_STATUSES).nullable(),
   actor: z.enum(PUBLICATION_ACTORS),
+  /** La persona que lo hizo (spec F7 §4.3); `null` en lo del sistema y lo anterior a F7. */
+  userId: z.string().nullable(),
   payload: z.record(z.string(), z.unknown()),
   createdAt: z.date(),
 });

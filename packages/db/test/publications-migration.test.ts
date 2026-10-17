@@ -5,10 +5,9 @@ import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SchemaDatabase } from "../src/client.js";
 import { MIGRATIONS_FOLDER } from "../src/migrations.js";
-import { createBrokerRepository } from "../src/repositories/brokers.js";
 import { createListingRepository } from "../src/repositories/listings.js";
 import * as schema from "../src/schema.js";
-import { brokerData, newListing } from "./import-repositories.contract.js";
+import { newListing } from "./import-repositories.contract.js";
 import { createTestDatabase, type TestDatabase } from "./pglite.js";
 
 // Migración 0006 (F3-T01, ADR-0014): estados sin `draft` ni `pending_approval`, `format` y un
@@ -32,7 +31,13 @@ async function applyFile(client: PGlite, file: string): Promise<void> {
  * Cada llamada usa un corredor propio, así los tests no comparten filas.
  */
 async function seed(db: SchemaDatabase, client: PGlite, slug: string) {
-  const brokerId = (await createBrokerRepository(db).create(brokerData(slug))).id;
+  // A mano: el repositorio de hoy pide columnas de migraciones posteriores (0009).
+  const broker = await client.query<{ id: string }>(
+    `INSERT INTO brokers (slug, name, brand_name, primary_color, secondary_color)
+     VALUES ($1, 'Persona Inventada', 'Marca Inventada', '#112233', '#445566') RETURNING id`,
+    [slug],
+  );
+  const brokerId = broker.rows[0]?.id ?? "";
   const listingId = (await createListingRepository(db).create(newListing(brokerId, "P-0006"))).id;
   const account = await client.query<{ id: string }>(
     `INSERT INTO platform_accounts (broker_id, platform, external_account_id, display_name, status)

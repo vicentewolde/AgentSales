@@ -1,3 +1,4 @@
+import { type AccessScope, ALL_SCOPE, inScope } from "../access.js";
 import type { Broker, BrokerData } from "../broker.js";
 import type { CloseReason } from "../enums.js";
 import { AppError } from "../errors.js";
@@ -47,11 +48,12 @@ export function createInMemoryBrokerRepository(
       const found = [...stored.values()].find((broker) => broker.slug === slug);
       return found === undefined ? null : structuredCopy(found);
     },
-    async list() {
+    async list(scope?: AccessScope) {
       // Como Postgres (`lower(brand_name) collate "C"`): sin mayúsculas y por bytes.
       const key = (broker: Broker) => broker.brandName.toLowerCase();
       const bytes = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
       return [...stored.values()]
+        .filter((broker) => scope === undefined || inScope(scope, broker.id))
         .sort((a, b) => bytes(key(a), key(b)) || bytes(a.id, b.id))
         .map(structuredCopy);
     },
@@ -66,6 +68,8 @@ export function createInMemoryBrokerRepository(
         id: nextId(),
         logoMediaId: null,
         autoPublish: false,
+        operatorOwned: false,
+        llmMonthlyCapUsd: null,
       };
       stored.set(broker.id, broker);
       return structuredCopy(broker);
@@ -93,6 +97,21 @@ export function createInMemoryBrokerRepository(
       stored.set(id, { ...current, logoMediaId: mediaId });
     },
     all: () => [...stored.values()].map(structuredCopy),
+    async setSettings(id, settings) {
+      const current = stored.get(id);
+      if (current === undefined) {
+        throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+      }
+      const updated = {
+        ...current,
+        ...(settings.operatorOwned === undefined ? {} : { operatorOwned: settings.operatorOwned }),
+        ...(settings.llmMonthlyCapUsd === undefined
+          ? {}
+          : { llmMonthlyCapUsd: settings.llmMonthlyCapUsd }),
+      };
+      stored.set(id, updated);
+      return structuredCopy(updated);
+    },
     async setAutoPublish(id, autoPublish) {
       const current = stored.get(id);
       if (current === undefined) {
@@ -189,10 +208,11 @@ export function createInMemoryListingRepository(
       touch(id);
       return true;
     },
-    async list(filters = {}) {
+    async list(filters = {}, scope = ALL_SCOPE) {
       return [...stored.values()]
         .filter(
           (listing) =>
+            inScope(scope, listing.brokerId) &&
             (filters.status === undefined || listing.status === filters.status) &&
             (filters.operation === undefined || listing.operation === filters.operation) &&
             (filters.comuna === undefined || listing.comuna === filters.comuna) &&
@@ -266,9 +286,13 @@ export function createInMemoryImportRunRepository(
       const run = stored.get(id);
       return run === undefined ? null : structuredCopy(run);
     },
-    async list(limit = 50) {
+    async list(limit = 50, scope = ALL_SCOPE) {
       // Orden de creación inverso (el doble no tiene reloj propio: el último creado es el más nuevo).
-      return [...stored.values()].reverse().slice(0, limit).map(structuredCopy);
+      return [...stored.values()]
+        .reverse()
+        .filter((run) => scope.kind === "all" || run.brokerId === scope.brokerId)
+        .slice(0, limit)
+        .map(structuredCopy);
     },
     async recordListingsResult(id, { brokerId, counts, report }) {
       const current = stored.get(id);

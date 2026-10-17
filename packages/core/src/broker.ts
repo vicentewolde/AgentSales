@@ -19,6 +19,10 @@ export const brokerSchema = z.object({
   tone: z.string().nullable(),
   fixedHashtags: z.array(z.string()),
   autoPublish: z.boolean(),
+  /** Corredor propio del operador (spec F7 §4.7, ADR-0023): su plan de Claude y Marketplace automático. */
+  operatorOwned: z.boolean(),
+  /** Tope de gasto de IA del mes en dólares; `null` = sin tope (spec F7 §4.7). */
+  llmMonthlyCapUsd: z.number().nonnegative().nullable(),
 });
 export type Broker = z.infer<typeof brokerSchema>;
 

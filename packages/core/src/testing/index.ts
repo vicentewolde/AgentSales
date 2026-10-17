@@ -1,6 +1,7 @@
 // Dobles de prueba de los puertos de core (`@agentsales/core/testing`). Solo para tests: Biome
 // prohíbe importarlo desde código de aplicación.
 
+export { createFakePasswordHasher, createFakeSecretTokens } from "./auth.js";
 export {
   createInMemoryContentRepositories,
   type InMemoryContentRepositories,
@@ -88,3 +89,4 @@ export {
   type InMemorySlideTemplates,
   type SlideTemplateCall,
 } from "./slides.js";
+export { createInMemoryUserRepositories, type InMemoryUserRepositories } from "./users.js";

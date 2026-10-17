@@ -33,9 +33,9 @@
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F7 (`/fase-plan 7`) y ADR-0021 a ADR-0023 | ✅ terminada | |
-| **Lote A** · T01 Datos nuevos: usuarios, sesiones, invitaciones y `state` usados | ⏳ pendiente | |
-| **Lote A** · T02 Las tablas de hoy y el alcance en SQL | ⏳ pendiente | |
-| **Lote A** · T03 Usuarios, sesiones y permisos (core y config) | ⏳ pendiente | |
+| **Lote A** · T01 Datos nuevos: usuarios, sesiones, invitaciones y `state` usados | 🔨 en curso | |
+| **Lote A** · T02 Las tablas de hoy y el alcance en SQL | 🔨 en curso | |
+| **Lote A** · T03 Usuarios, sesiones y permisos (core y config) | 🔨 en curso | |
 | **Lote B** · T04 La API con sesión | ⏳ pendiente | |
 | **Lote B** · T05 Usuarios, `/health` y el primer administrador | ⏳ pendiente | |
 | **Lote B** · T06 CLI: entrar | ⏳ pendiente | |

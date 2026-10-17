@@ -1,15 +1,17 @@
 import {
   ACTIVE_CONTENT_RUN_STATUSES,
   AppError,
+  addLlmCall,
   type ContentRun,
   type ContentRunRepository,
   checkNewContents,
   contentRunSchema,
+  llmUsageSchema,
 } from "@agentsales/core";
-import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
-import { contentRuns, contents } from "../schema.js";
+import { contentRuns, contents, listings } from "../schema.js";
 
 const ONE_ACTIVE_PER_LISTING = "content_runs_one_active_per_listing";
 const RUN_PLATFORM_UNIQUE = "contents_run_platform_unique";
@@ -30,6 +32,7 @@ function toContentRun(row: typeof contentRuns.$inferSelect): ContentRun {
     startedAt: row.startedAt,
     finishedAt: row.finishedAt,
     createdAt: row.createdAt,
+    llmUsage: row.llmUsage,
   });
   if (!parsed.success) {
     throw new AppError(
@@ -194,6 +197,56 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
           .where(and(eq(contentRuns.status, "running"), lt(contentRuns.startedAt, startedBefore)))
           .returning({ id: contentRuns.id });
         return closed.map((row) => row.id);
+      });
+    },
+
+    addLlmUsage(id, call) {
+      return withDbErrors(() =>
+        db.transaction(async (tx) => {
+          // La fila bloqueada: dos llamadas que vuelven a la vez suman las dos.
+          const [row] = await tx
+            .select()
+            .from(contentRuns)
+            .where(eq(contentRuns.id, id))
+            .for("update");
+          if (row === undefined) {
+            throw new AppError("CONTENT_RUN_NOT_FOUND", `No existe la corrida de contenido ${id}`);
+          }
+          const previous = row.llmUsage === null ? null : llmUsageSchema.parse(row.llmUsage);
+          const [updated] = await tx
+            .update(contentRuns)
+            .set({ llmUsage: addLlmCall(previous, call) })
+            .where(eq(contentRuns.id, id))
+            .returning();
+          if (updated === undefined) {
+            throw new AppError("CONTENT_RUN_NOT_FOUND", `No existe la corrida de contenido ${id}`);
+          }
+          return toContentRun(updated);
+        }),
+      );
+    },
+
+    sumLlmCost({ from, to, brokerId }) {
+      return withDbErrors(async () => {
+        const cost = sql<string>`coalesce(sum((${contentRuns.llmUsage}->>'costUsd')::numeric), 0)`;
+        const rows = await db
+          .select({ brokerId: listings.brokerId, costUsd: cost, runs: sql<number>`count(*)::int` })
+          .from(contentRuns)
+          .innerJoin(listings, eq(listings.id, contentRuns.listingId))
+          .where(
+            and(
+              sql`${contentRuns.llmUsage} IS NOT NULL`,
+              gte(contentRuns.createdAt, from),
+              lt(contentRuns.createdAt, to),
+              brokerId === undefined ? undefined : eq(listings.brokerId, brokerId),
+            ),
+          )
+          .groupBy(listings.brokerId);
+        return rows.map((row) => ({
+          brokerId: row.brokerId,
+          costUsd: Number(row.costUsd),
+          runs: Number(row.runs),
+        }));
       });
     },
   };

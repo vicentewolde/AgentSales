@@ -1,3 +1,4 @@
+import type { AccessScope } from "../access.js";
 import type { CloseReason, ListingCategory, ListingSource, ListingStatus } from "../enums.js";
 import type { Listing, ListingFilters } from "../listing.js";
 import type { ListingAttributes, ListingCoreFields } from "../listing-validator/index.js";
@@ -46,8 +47,11 @@ export interface ListingRepository {
    * id que no existe también devuelve `false`.
    */
   promoteToReady(id: string): Promise<boolean>;
-  /** Avisos con los filtros dados (exactos), del más reciente al más antiguo (`updated_at`). */
-  list(filters?: ListingFilters): Promise<Listing[]>;
+  /**
+   * Avisos con los filtros dados (exactos), del más reciente al más antiguo (`updated_at`), dentro
+   * del alcance (por defecto, todos; spec F7 §4.4).
+   */
+  list(filters?: ListingFilters, scope?: AccessScope): Promise<Listing[]>;
   /** `null` si no existe. */
   get(id: string): Promise<Listing | null>;
   /**

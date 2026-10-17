@@ -122,6 +122,8 @@ export function contentBrokerFixture(overrides: Partial<Broker> = {}): Broker {
     tone: "Cercano y profesional",
     fixedHashtags: ["#InventadaPropiedades", "#propiedades"],
     autoPublish: false,
+    operatorOwned: false,
+    llmMonthlyCapUsd: null,
     ...overrides,
   };
 }

@@ -53,7 +53,7 @@ export function createInMemoryPublicationRepository(
     type: PublicationEvent["type"],
     fromStatus: PublicationEvent["fromStatus"],
     toStatus: PublicationEvent["toStatus"],
-    { actor, payload }: PublicationEventInput,
+    { actor, userId, payload }: PublicationEventInput,
   ): PublicationEvent => {
     const event: PublicationEvent = {
       id: `event-${++nextEvent}`,
@@ -62,6 +62,7 @@ export function createInMemoryPublicationRepository(
       fromStatus,
       toStatus,
       actor,
+      userId: userId ?? null,
       payload: normalizeEventPayload(payload),
       createdAt: clock(),
     };

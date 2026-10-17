@@ -8,6 +8,7 @@ import {
   CURRENCIES,
   FIELD_TYPES,
   IMPORT_RUN_STATUSES,
+  INVITATION_PURPOSES,
   LISTING_SOURCES,
   LISTING_STATUSES,
   MEDIA_KINDS,
@@ -17,7 +18,9 @@ import {
   PLATFORMS,
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
+  SESSION_CLIENTS,
   TERMINAL_PUBLICATION_STATUSES,
+  USER_ROLES,
 } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import { MIGRATIONS_FOLDER } from "./migrations.js";
@@ -39,6 +42,9 @@ const EXPECTED_ENUMS: Record<string, readonly string[]> = {
   publication_format: PUBLICATION_FORMATS,
   import_run_status: IMPORT_RUN_STATUSES,
   content_run_status: CONTENT_RUN_STATUSES,
+  user_role: USER_ROLES,
+  session_client: SESSION_CLIENTS,
+  invitation_purpose: INVITATION_PURPOSES,
 };
 
 const EXPECTED_TABLES = [
@@ -47,12 +53,16 @@ const EXPECTED_TABLES = [
   "contents",
   "field_definitions",
   "import_runs",
+  "invitations",
   "listings",
   "media",
+  "oauth_states_used",
   "platform_accounts",
   "platform_catalog",
   "publication_events",
   "publications",
+  "sessions",
+  "users",
 ];
 
 /**
@@ -87,7 +97,7 @@ describe("migraciones", () => {
     expect(sqlEnums(sql)).toEqual(EXPECTED_ENUMS);
   });
 
-  it("crean las 11 tablas del modelo de datos", () => {
+  it("crean las 15 tablas del modelo de datos", () => {
     const tables = [...sql.matchAll(/CREATE TABLE "(\w+)"/g)].map((match) => match[1]).sort();
 
     expect(tables).toEqual(EXPECTED_TABLES);

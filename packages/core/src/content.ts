@@ -7,6 +7,7 @@ import {
   LLM_PROVIDERS,
   PLATFORMS,
 } from "./enums.js";
+import { llmUsageSchema } from "./llm-usage.js";
 
 const count = z.number().int().nonnegative();
 
@@ -67,6 +68,8 @@ export const contentRunSchema = z.object({
   startedAt: z.date().nullable(),
   finishedAt: z.date().nullable(),
   createdAt: z.date(),
+  /** Lo gastado en IA, sumado por llamada (spec F7 §4.7); `null` si no llamó al modelo. */
+  llmUsage: llmUsageSchema.nullable(),
 });
 export type ContentRun = z.infer<typeof contentRunSchema>;
 

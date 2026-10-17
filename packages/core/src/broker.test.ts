@@ -105,7 +105,14 @@ describe("slugify y brokerDiffers", () => {
   it("brokerDiffers compara los datos de la hoja, incluidos los hashtags", () => {
     const parsed = parseBrokerSheet(SHEET);
     if (!parsed.ok) throw new Error("hoja inválida");
-    const broker: Broker = { ...parsed.data, id: "b1", logoMediaId: null, autoPublish: true };
+    const broker: Broker = {
+      ...parsed.data,
+      id: "b1",
+      logoMediaId: null,
+      autoPublish: true,
+      operatorOwned: false,
+      llmMonthlyCapUsd: null,
+    };
     expect(brokerDiffers(broker, parsed.data)).toBe(false);
     expect(brokerDiffers(broker, { ...parsed.data, fixedHashtags: ["#uno"] })).toBe(true);
     expect(brokerDiffers(broker, { ...parsed.data, tone: "Formal" })).toBe(true);

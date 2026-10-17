@@ -1,9 +1,11 @@
 import {
+  ALL_SCOPE,
   AppError,
   type Broker,
   type BrokerData,
   type BrokerRepository,
   brokerSchema,
+  scopedBrokerId,
 } from "@agentsales/core";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
@@ -32,6 +34,9 @@ function toBroker(row: typeof brokers.$inferSelect): Broker {
     tone: row.tone,
     fixedHashtags: row.fixedHashtags,
     autoPublish: row.autoPublish,
+    operatorOwned: row.operatorOwned,
+    // `numeric` llega como texto: a número (dos decimales).
+    llmMonthlyCapUsd: row.llmMonthlyCapUsd === null ? null : Number(row.llmMonthlyCapUsd),
   });
   if (!parsed.success) {
     throw new AppError("BROKER_ROW_INVALID", `El corredor ${row.slug} tiene datos inválidos`, {
@@ -61,13 +66,15 @@ function columnsOf(data: BrokerData) {
 /** `BrokerRepository` sobre Drizzle (node-postgres en las apps, PGlite en los tests). */
 export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
   return {
-    list() {
+    list(scope = ALL_SCOPE) {
       return withDbErrors(async () => {
         // Sin mayúsculas y por bytes ("C"): el mismo orden que el doble en memoria, sea cual sea la
         // collation de la base.
+        const brokerId = scopedBrokerId(scope);
         const rows = await db
           .select()
           .from(brokers)
+          .where(brokerId === undefined ? undefined : eq(brokers.id, brokerId))
           .orderBy(sql`lower(${brokers.brandName}) collate "C"`, asc(brokers.id));
         return rows.map(toBroker);
       });
@@ -149,6 +156,23 @@ export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
           await tx.update(brokers).set({ logoMediaId: mediaId }).where(eq(brokers.id, id));
         }),
       );
+    },
+
+    setSettings(id, { operatorOwned, llmMonthlyCapUsd }) {
+      return withDbErrors(async () => {
+        const set: Partial<typeof brokers.$inferInsert> = {};
+        if (operatorOwned !== undefined) set.operatorOwned = operatorOwned;
+        if (llmMonthlyCapUsd !== undefined) {
+          set.llmMonthlyCapUsd = llmMonthlyCapUsd === null ? null : llmMonthlyCapUsd.toFixed(2);
+        }
+        const [row] =
+          Object.keys(set).length === 0
+            ? await db.select().from(brokers).where(eq(brokers.id, id))
+            : await db.update(brokers).set(set).where(eq(brokers.id, id)).returning();
+        if (row === undefined)
+          throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`);
+        return toBroker(row);
+      });
     },
 
     setAutoPublish(id, autoPublish) {

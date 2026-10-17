@@ -206,26 +206,26 @@ Lotes (desde 2026-10-09, una rama y un PR por lote). Cada lote deja `main` usabl
 
 ### F7-T01 · Datos nuevos: usuarios, sesiones, invitaciones y `state` usados
 - **Depende de:** —
-- **Archivos:** `packages/db/src/schema.ts`, `packages/db/drizzle/0009_*.sql`, `packages/db/src/repositories/{users,sessions,invitations,oauth-states}.ts`, `packages/db/test/*.contract.ts`, `packages/core/src/{ports/,testing/}`, `docs/02-modelo-datos.md`
+- **Archivos:** `packages/db/src/schema.ts`, `packages/db/drizzle/0009_*.sql`, `packages/db/src/repositories/users.ts` (los cuatro repositorios), `packages/db/test/users.{contract,test}.ts`, `packages/core/src/{ports/,testing/}`, `docs/02-modelo-datos.md`
 - **Descripción:** la migración `0009` completa (§4.12, también las columnas de las tablas de hoy) y los repositorios nuevos con sus contratos y dobles.
 - **Hecho cuando:**
-  - [ ] Tests de contrato (PGlite y dobles): correo único y en minúsculas, el `CHECK` de rol y corredor, la sesión por hash y su borrado en cascada, una invitación vigente por usuario, el `state` usado dos veces, los corredores existentes quedan propios
-  - [ ] `docs/02-modelo-datos.md` al día
+  - [x] Tests de contrato (PGlite y dobles): correo único y en minúsculas, el `CHECK` de rol y corredor, la sesión por hash y su borrado en cascada, una invitación vigente por usuario, el `state` usado dos veces, los corredores existentes quedan propios
+  - [x] `docs/02-modelo-datos.md` al día
 
 ### F7-T02 · Las tablas de hoy: corredores, corridas, eventos y el alcance en SQL
 - **Depende de:** T01
 - **Archivos:** `packages/db/src/repositories/{brokers,content-runs,publications,listings,import-runs,platform-accounts,contents}.ts`, `packages/core/src/{access.ts,ports/}`, `packages/core/src/testing/`
 - **Descripción:** `AccessScope` en core; `BrokerRepository` con `operatorOwned` y `llmMonthlyCapUsd`; `ContentRunRepository.addLlmUsage` (atómico) y la suma del mes por corredor; `publication_events.user_id`; el filtro por alcance en SQL en las listas (propiedades, cargas, cuentas, corredores, seguimiento) y `listCurrentMany` (deuda de F6).
 - **Hecho cuando:**
-  - [ ] Tests de contrato: cada lista con dos corredores devuelve solo lo del alcance; `addLlmUsage` concurrente no pierde una suma; la suma del mes en el borde del mes de Chile; `listCurrentMany` igual a N consultas de una
+  - [x] Tests de contrato: cada lista con dos corredores devuelve solo lo del alcance; `addLlmUsage` concurrente no pierde una suma; la suma del mes en el borde del mes de Chile; `listCurrentMany` igual a N consultas de una
 
 ### F7-T03 · Usuarios, sesiones y permisos (core y config)
 - **Depende de:** T01
-- **Archivos:** `packages/core/src/{user.ts,permissions.ts,use-cases/auth/*.ts}`, `packages/config/src/{password.ts,secret-tokens.ts}`
+- **Archivos:** `packages/core/src/{user.ts,permissions.ts,ports/auth.ts,use-cases/auth/{sessions,users}.ts}`, `packages/core/src/testing/auth.ts`, `packages/config/src/{password.ts,secret-tokens.ts}`
 - **Descripción:** `User`, roles y `can` (§4.5); los casos de uso de §4.2; `PasswordHasher` (`scrypt`) y `SecretTokens` en config detrás de sus puertos.
 - **Hecho cuando:**
-  - [ ] Tests: entrar bien y mal (el mismo error y un hash calculado con un correo inexistente), el bloqueo a los 10 fallos y su fin, usuario desactivado (y sus sesiones borradas), sesión vencida e inactiva, `last_seen_at` a lo más por minuto, invitación vencida, usada o reemplazada, restablecer cierra las sesiones y quita el bloqueo, contraseña corta, cada fila de §4.5 en `can`
-  - [ ] `scrypt` con sal distinta por hash y comparación en tiempo constante; ningún secreto en errores ni logs
+  - [x] Tests: entrar bien y mal (el mismo error y un hash calculado con un correo inexistente), el bloqueo a los 10 fallos y su fin, usuario desactivado (y sus sesiones borradas), sesión vencida e inactiva, `last_seen_at` a lo más por minuto, invitación vencida, usada o reemplazada, restablecer cierra las sesiones y quita el bloqueo, contraseña corta, cada fila de §4.5 en `can`
+  - [x] `scrypt` con sal distinta por hash y comparación en tiempo constante; ningún secreto en errores ni logs
 
 ### F7-T04 · La API con sesión
 - **Depende de:** T02, T03

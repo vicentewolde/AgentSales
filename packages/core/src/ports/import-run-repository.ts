@@ -1,3 +1,4 @@
+import type { AccessScope } from "../access.js";
 import type { ListingSource } from "../enums.js";
 import type { ImportCounts, ImportReport, ImportRun, ImportRunInput } from "../import-run.js";
 
@@ -25,8 +26,11 @@ export type ImportRunError = { code: string; message: string };
 export interface ImportRunRepository {
   create(run: NewImportRun): Promise<ImportRun>;
   get(id: string): Promise<ImportRun | null>;
-  /** Las cargas más recientes primero (`created_at`), hasta `limit` (por defecto 50). */
-  list(limit?: number): Promise<ImportRun[]>;
+  /**
+   * Las cargas más recientes primero (`created_at`), hasta `limit` (por defecto 50), dentro del
+   * alcance: un corredor no ve las de `broker_id` nulo (spec F7 §4.4).
+   */
+  list(limit?: number, scope?: AccessScope): Promise<ImportRun[]>;
   /**
    * Guarda el corredor, los contadores y el reporte de `importListings` (también en `dry_run`).
    * No cambia `status` ni `finished_at`. Un id inexistente es `IMPORT_RUN_NOT_FOUND`.

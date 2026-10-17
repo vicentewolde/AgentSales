@@ -11,6 +11,8 @@ export type PublicationRepositories = {
   fixtures(): Promise<{ listingId: string; accountId: string; contentId: string }>;
   /** Un id con el formato del adaptador que no existe (un uuid en Postgres). */
   missingId: string;
+  /** Un usuario que existe, para los eventos con persona (F7-T02). */
+  userId: string;
 };
 
 const remote = {
@@ -96,6 +98,21 @@ export function publicationRepositoryContract(
           actor: "operator",
           payload: { motivo: "aprobado" },
         }),
+      ]);
+    });
+
+    it("el evento guarda al usuario de la sesión, o null si no hay (F7-T02)", async () => {
+      const input = await newPublication();
+      const created = await repos.publications.create(input, { actor: "operator", userId: null });
+      await repos.publications.transition(
+        created.id,
+        { from: "approved", to: "cancelled" },
+        { actor: "cli", userId: repos.userId },
+      );
+      const events = await repos.publications.listEvents(created.id);
+      expect(events.map((event) => [event.actor, event.userId])).toEqual([
+        ["operator", null],
+        ["cli", repos.userId],
       ]);
     });
 

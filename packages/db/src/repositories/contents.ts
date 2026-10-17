@@ -6,7 +6,7 @@ import {
   PLATFORMS,
   pickContentChanges,
 } from "@agentsales/core";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { withDbErrors } from "../errors.js";
 import { contents } from "../schema.js";
@@ -42,6 +42,24 @@ const platformOrder = (content: Content) => PLATFORMS.indexOf(content.platform);
 /** `ContentRepository` sobre Drizzle (node-postgres en las apps, PGlite en los tests). */
 export function createContentRepository(db: SchemaDatabase): ContentRepository {
   return {
+    listCurrentMany(listingIds) {
+      return withDbErrors(async () => {
+        if (listingIds.length === 0) return [];
+        // El más reciente de cada aviso y canal, en una sola consulta (deuda de F6).
+        const rows = await db
+          .selectDistinctOn([contents.listingId, contents.platform])
+          .from(contents)
+          .where(inArray(contents.listingId, [...new Set(listingIds)]))
+          .orderBy(
+            asc(contents.listingId),
+            asc(contents.platform),
+            desc(contents.createdAt),
+            desc(contents.id),
+          );
+        return rows.map(toContent);
+      });
+    },
+
     listCurrent(listingId) {
       return withDbErrors(async () => {
         // El más reciente de cada canal (`DISTINCT ON`). El índice (listing, platform, created_at)

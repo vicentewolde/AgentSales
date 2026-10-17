@@ -1,3 +1,4 @@
+import { ALL_SCOPE, inScope } from "../access.js";
 import { AppError } from "../errors.js";
 import {
   checkConnectedCredentials,
@@ -144,8 +145,8 @@ export function createInMemoryPlatformAccountRepository(
       const found = stored.get(id);
       return found === undefined ? null : structuredCopy(found.account);
     },
-    async list() {
-      return ordered(() => true);
+    async list(scope = ALL_SCOPE) {
+      return ordered((account) => inScope(scope, account.brokerId));
     },
     async listByBroker(brokerId, platform) {
       return ordered(

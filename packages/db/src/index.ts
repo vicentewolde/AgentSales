@@ -26,6 +26,12 @@ export { createMediaRepository } from "./repositories/media.js";
 export { createPlatformAccountRepository } from "./repositories/platform-accounts.js";
 export { createPlatformCatalogRepository } from "./repositories/platform-catalog.js";
 export { createPublicationRepository } from "./repositories/publications.js";
+export {
+  createInvitationRepository,
+  createOAuthStateRepository,
+  createSessionRepository,
+  createUserRepository,
+} from "./repositories/users.js";
 export * as schema from "./schema.js";
 export {
   REAL_ESTATE_CATEGORY,

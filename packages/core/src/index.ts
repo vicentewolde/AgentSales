@@ -1,5 +1,12 @@
 export type { AbortSignalLike } from "./abort.js";
 export {
+  type AccessScope,
+  ALL_SCOPE,
+  brokerScope,
+  inScope,
+  scopedBrokerId,
+} from "./access.js";
+export {
   type AttributeEntry,
   describeAttributes,
   type ListingField,
@@ -17,6 +24,8 @@ export {
 export {
   CHILE_TIME_ZONE,
   chileInputValue,
+  chileMonthOf,
+  chileMonthRange,
   formatChileTime,
   parseChileTime,
 } from "./chile-time.js";
@@ -141,6 +150,14 @@ export {
 } from "./listing-validator/index.js";
 export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
 export {
+  addLlmCall,
+  type BrokerLlmSpend,
+  type LlmCallUsage,
+  type LlmUsage,
+  llmCallUsageSchema,
+  llmUsageSchema,
+} from "./llm-usage.js";
+export {
   MARKETPLACE_PROPERTY_TYPE_KEYS,
   type MarketplaceFormPlan,
   marketplaceFormPlan,
@@ -211,6 +228,13 @@ export {
   type ReelWarningCode,
   reelWarnings,
 } from "./media-checks.js";
+export {
+  assertCan,
+  can,
+  PERMISSIONS,
+  type Permission,
+  scopeOf,
+} from "./permissions.js";
 export {
   checkConnectedCredentials,
   checkCredentials,
@@ -288,6 +312,7 @@ export {
   type PortalReadinessListing,
   portalReadiness,
 } from "./portal/readiness.js";
+export type { PasswordHasher, SecretTokens } from "./ports/auth.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export {
   type ContentChanges,
@@ -421,6 +446,15 @@ export {
   slideKeyInput,
 } from "./ports/slide-templates.js";
 export type { UfValue, UfValueSource } from "./ports/uf-value-source.js";
+export type {
+  InvitationRepository,
+  NewInvitation,
+  NewSession,
+  NewUser,
+  OAuthStateRepository,
+  SessionRepository,
+  UserRepository,
+} from "./ports/user-repository.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   checkPublicationProgress,
@@ -527,6 +561,29 @@ export {
   type ApprovedContent,
   approveContent,
 } from "./use-cases/approve-content.js";
+export {
+  LOGIN_LOCK_MS,
+  LOGIN_MAX_FAILURES,
+  login,
+  logout,
+  type OpenedSession,
+  openSession,
+  resolveSession,
+  SESSION_IDLE_MS,
+  SESSION_TOUCH_MS,
+  SESSION_TTL_MS,
+  type SessionDeps,
+} from "./use-cases/auth/sessions.js";
+export {
+  acceptInvitation,
+  checkPassword,
+  INVITATION_TTL_MS,
+  type IssuedLink,
+  inviteUser,
+  resetUserAccess,
+  setUserDisabled,
+  type UserAdminDeps,
+} from "./use-cases/auth/users.js";
 export {
   type AutoPublishChannel,
   type AutoPublishDeps,
@@ -766,3 +823,4 @@ export {
   type WatchPublicationsResult,
   watchPublications,
 } from "./use-cases/watch-publications.js";
+export * from "./user.js";

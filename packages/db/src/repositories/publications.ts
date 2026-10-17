@@ -197,6 +197,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
               fromStatus: null,
               toStatus: "approved",
               actor: event.actor,
+              userId: event.userId ?? null,
               payload,
             });
             return toPublication(row);
@@ -333,6 +334,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
             fromStatus: null,
             toStatus: null,
             actor: event.actor,
+            userId: event.userId ?? null,
             payload,
           });
           return updated;
@@ -370,6 +372,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
             fromStatus: null,
             toStatus: null,
             actor: event.actor,
+            userId: event.userId ?? null,
             payload,
           });
           return updated;
@@ -404,6 +407,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
             fromStatus: from,
             toStatus: to,
             actor: event.actor,
+            userId: event.userId ?? null,
             payload,
           });
           return updated;
@@ -475,6 +479,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
               fromStatus: null,
               toStatus: null,
               actor: event.actor,
+              userId: event.userId ?? null,
               payload,
             });
           }
@@ -494,6 +499,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           fromStatus: null,
           toStatus: null,
           actor: event.actor,
+          userId: event.userId ?? null,
           payload,
         }),
       );
