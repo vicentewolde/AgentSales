@@ -46,6 +46,7 @@ import { createR2Storage } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { createApiOperations } from "./portal.js";
+import { createRequestContext } from "./request-context-node.js";
 import { instagramStartUrlOf } from "./routes/oauth.js";
 import { localAccess } from "./security.js";
 import { readApiVersion } from "./version.js";
@@ -112,6 +113,7 @@ const app = createApp({
     secureCookie: false,
   },
   oauthStates: createOAuthStateRepository(database.db),
+  requestContext: createRequestContext(),
   checks: {
     // Se guarda la última leída (no se borra antes): dos `/health` a la vez nunca la ven en `null`
     // por el otro; si la base no responde, el reporte la informa `null` igual (check en falla).

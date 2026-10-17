@@ -341,3 +341,35 @@ describe("quién hizo qué (F7-T10)", () => {
     });
   });
 });
+
+describe("el guardia de dueño", () => {
+  it("un id que no es uuid da 404 a un corredor, y una sola lectura por pedido", async () => {
+    const s = await setup();
+    const response = await s.broker("/listings/no-es-un-id");
+    expect(response.status).toBe(404);
+    expect((await errorOf(response)).code).toBe("LISTING_NOT_FOUND");
+
+    let reads = 0;
+    const get = s.deps.listings.get.bind(s.deps.listings);
+    s.deps.listings.get = async (id) => {
+      reads++;
+      return get(id);
+    };
+    await s.broker(`/listings/${s.mine.listing.id}`);
+    // El guardia lee una vez y la ruta, otra.
+    expect(reads).toBe(2);
+  });
+
+  it("después de los pedidos ajenos, nada de lo ajeno cambió", async () => {
+    const s = await setup();
+    for (const [key, policy] of Object.entries(ROUTE_ACCESS)) {
+      const [method = "GET", pattern = ""] = key.split(" ");
+      if (policy !== "session" || method === "GET" || !pattern.includes(":id")) continue;
+      await s.broker(pattern.replace(":id", idFor(pattern, s.theirs)), { method, body: "{}" });
+    }
+    expect((await s.deps.publications.get(s.theirs.publication.id))?.status).toBe("approved");
+    expect((await s.deps.listings.get(s.theirs.listing.id))?.status).toBe(s.theirs.listing.status);
+    expect((await s.deps.contents.get(s.theirs.content?.id ?? ""))?.status).toBe("draft");
+    expect(await s.deps.contentRuns.findActive(s.theirs.listing.id)).toBeNull();
+  });
+});

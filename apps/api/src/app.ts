@@ -25,8 +25,8 @@ import { type AppEnv, type AuthDeps, authenticate } from "./auth.js";
 import { createErrorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, type HealthDetails, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
+import { type RequestContext, withEventUser } from "./request-context.js";
 import { requestLogger } from "./request-logger.js";
-import { withEventUser } from "./request-user.js";
 import { accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
 import { brokerRoutes } from "./routes/brokers.js";
@@ -48,6 +48,11 @@ import { csrfGuard, hostGuard, type LocalAccess, originGuard } from "./security.
 export type AppDeps = {
   /** Usuarios y sesiones (F7, ADR-0021): sin sesión, solo las rutas públicas (`access.ts`). */
   auth: AuthDeps;
+  /**
+   * El usuario del pedido, para la bitácora (spec F7 §4.3): `server.ts` lo compone con
+   * `AsyncLocalStorage` (`request-context-node.ts`), que no puede llegar a `AppType`.
+   */
+  requestContext: RequestContext;
   /** Los `state` del OAuth ya usados: el de Mercado Libre sirve una vez (spec F7 §4.12). */
   oauthStates: OAuthStateRepository;
   checks: Record<HealthCheckName, HealthCheck>;
@@ -135,7 +140,7 @@ export type AppDeps = {
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
 export function createApp(input: AppDeps) {
   // Los eventos de la bitácora escritos por la API llevan el usuario del pedido (spec F7 §4.3).
-  const deps: AppDeps = { ...input, lock: withEventUser(input.lock) };
+  const deps: AppDeps = { ...input, lock: withEventUser(input.lock, input.requestContext) };
   // El refresco del token de Portal, solo con el par de la app (sin él, uno por vencer es
   // `MERCADOLIBRE_NOT_CONFIGURED` sin llamar).
   const publicationDeps = {
@@ -178,15 +183,13 @@ export function createApp(input: AppDeps) {
     .use(hostGuard(deps.access.allowedHosts))
     .use(originGuard(deps.access.allowedOrigins))
     .use(csrfGuard(deps.access.allowedOrigins))
-    .use(authenticate(deps.auth, deps.logger))
-    .use("/listings/:id", ownership.listing)
+    .use(authenticate(deps.auth, deps.logger, deps.requestContext))
+    // `/x/:id/*` también calza con `/x/:id` en Hono: una sola vez por prefijo (una lectura).
     .use("/listings/:id/*", ownership.listing)
-    .use("/content-runs/:id", ownership.contentRun)
-    .use("/contents/:id", ownership.content)
+    .use("/content-runs/:id/*", ownership.contentRun)
     .use("/contents/:id/*", ownership.content)
-    .use("/publications/:id", ownership.publication)
     .use("/publications/:id/*", ownership.publication)
-    .use("/imports/:id", ownership.importRun)
+    .use("/imports/:id/*", ownership.importRun)
     .use("/accounts/:id/*", ownership.account)
     .get("/health", async (c) => {
       // El detalle solo para el administrador (spec F7 §4.3); los demás, el estado y el modo.

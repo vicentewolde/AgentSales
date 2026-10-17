@@ -38,4 +38,5 @@
   - **Restablecer no anula la contraseña anterior** hasta que se usa el enlace: así nadie queda fuera por un enlace que no llegó. Si la contraseña se filtró, el operador además desactiva al usuario hasta que elija otra.
   - **Invitar y aceptar no son una transacción:** si una escritura falla a mitad, la salida es restablecer (un enlace nuevo).
   - La contraseña se normaliza a NFC antes del hash, y un hash guardado con parámetros que piden más de 128 MB no se intenta. Dos enlaces generados a la vez para el mismo usuario se reintentan una vez (`INVITATION_CONFLICT` si vuelven a chocar).
+- 2026-10-17 (lote C, PR #132): **el usuario de la bitácora va por ambiente.** El canal (`actor`) sigue pasando por cada caso de uso como siempre; la persona no: `authenticate` corre cada pedido con su usuario en el puerto `RequestContext` (`AsyncLocalStorage`, compuesto en `server.ts`) y el candado de la API (`withEventUser`) lo pone en cada evento. La invariante que lo cierra: toda escritura de la API pasa por el candado (`AppDeps.publications` es de solo lectura). Así core no lleva el usuario por 25 casos de uso; el worker escribe sin usuario.
 

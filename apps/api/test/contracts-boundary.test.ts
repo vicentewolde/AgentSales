@@ -89,3 +89,41 @@ describe("@agentsales/api/contracts · sin z.instanceof", () => {
     expect(offending).toEqual([]);
   });
 });
+
+/**
+ * Los módulos de `apps/api/src` alcanzables desde `index.ts` (lo que ve el panel por `AppType`):
+ * se siguen los imports relativos desde `index.ts`.
+ */
+async function reachableFromIndex(): Promise<Map<string, string>> {
+  const src = join(root, "apps", "api", "src");
+  const seen = new Map<string, string>();
+  const pending = [join(src, "index.ts")];
+  while (pending.length > 0) {
+    const file = pending.pop() ?? "";
+    if (seen.has(file)) continue;
+    const text = await readFile(file, "utf8");
+    seen.set(file, text);
+    for (const match of text.matchAll(/(?:from|import)\s+"(\.{1,2}\/[^"]+)"/g)) {
+      const target = join(file, "..", (match[1] ?? "").replace(/\.js$/, ".ts"));
+      if (!seen.has(target)) pending.push(target);
+    }
+  }
+  return seen;
+}
+
+describe("lo que llega a AppType no importa Node (docs/01-arquitectura.md)", () => {
+  it("ningún módulo alcanzable desde index.ts importa node:* ni @agentsales/config", async () => {
+    const offenders: string[] = [];
+    for (const [file, text] of await reachableFromIndex()) {
+      if (/from\s+"(node:[^"]+|@agentsales\/config)"/.test(text)) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("server.ts y request-context-node.ts quedan fuera (los compone el punto de entrada)", async () => {
+    const files = [...(await reachableFromIndex()).keys()].map((file) => file.split("/").pop());
+    expect(files).not.toContain("server.ts");
+    expect(files).not.toContain("request-context-node.ts");
+    expect(files).toContain("app.ts");
+  });
+});

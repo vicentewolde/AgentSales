@@ -470,6 +470,27 @@ describe("importListings · la carga de un usuario corredor (F7-T08, spec F7 §4
     expect((await deps.importRuns.get(importRun.id))?.brokerId).toBe(mine.id);
   });
 
+  it("como llega de la API (`input.broker` = su slug), la hoja de otra marca actualiza la del suyo y nunca otro corredor", async () => {
+    const { deps } = setup();
+    const mine = await deps.brokers.create({ ...parseOk(BROKER_SHEET), slug: "mio" });
+    const other = await deps.brokers.create({ ...parseOk(BROKER_SHEET), slug: "otra-marca" });
+    const importRun = await lockedRun(deps, mine.id, "mio");
+    const otherBrand = { ...BROKER_SHEET, nombre_marca: "Otra Marca", tono: "Formal" };
+    const result = await importListings(deps, {
+      runId: importRun.id,
+      input: sheet([row(2)], { broker: otherBrand }),
+    });
+    // El slug explícito manda (F1): la hoja describe al corredor de la carga (spec F7 §4.4).
+    expect(result.brokerId).toBe(mine.id);
+    expect(result.report.broker).toMatchObject({ slug: "mio", outcome: "updated" });
+    expect(await deps.brokers.findById(mine.id)).toMatchObject({
+      brandName: "Otra Marca",
+      tone: "Formal",
+    });
+    expect(await deps.brokers.findById(other.id)).toEqual(other);
+    expect(deps.listings.all().every((listing) => listing.brokerId === mine.id)).toBe(true);
+  });
+
   it("si el corredor de la hoja no es el suyo, BROKER_MISMATCH sin tocar nada ni crear un corredor", async () => {
     const { deps } = setup();
     const mine = await deps.brokers.create({ ...parseOk(BROKER_SHEET), slug: "mio" });

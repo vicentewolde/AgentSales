@@ -30,4 +30,8 @@
 
 ## Seguimiento
 - 2026-10-17 (lote B, PR #131): `POST /auth/logout` es público (idempotente). `/oauth/instagram/start` es `admin` y necesita la cookie `Strict`: si el panel y la API quedan en hosts distintos (`127.0.0.1` y `localhost`, o la API en `https`), la cookie no viaja y responde 401 en vez de volver al panel. Hoy el OAuth está apagado sin HTTPS; F8 lo resuelve al desplegar (mismo host o un enlace firmado de un solo uso).
+- 2026-10-17 (lote C, PR #132):
+  - **Punto 4, cómo quedó:** la carga de un corredor nace con `input.broker` = su `slug`, y como el `slug` explícito manda sobre el de la hoja (F1), su hoja Corredor solo actualiza la marca **del suyo** (aunque traiga otra marca); `BROKER_MISMATCH` queda como defensa si el job resolviera otro corredor, y nunca se crea uno. Comparar por el nombre de la marca habría rechazado un cambio de nombre legítimo. Qué manda entre la hoja y lo que el corredor edite en Mi marca se decide en el lote E.
+  - **Punto 3, dónde vive:** `ownedBy` (`apps/api/src/scope.ts`) carga el recurso y sube hasta su corredor en un solo lugar, montado por prefijo en `createApp`; falla cerrado (un `:id` que no es uuid es 404 para un corredor). La matriz de `apps/api/src/scope.test.ts` recorre cada ruta `session` con id.
+  - `listByStatus` y `listDue` no reciben alcance: solo los usa el sistema (el worker, el refresco y desconectar cuentas, que es del administrador).
 

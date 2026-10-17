@@ -1,6 +1,5 @@
 import {
   AppError,
-  inScope,
   type ListingRepository,
   type ScheduleDeps,
   scheduleListings,
@@ -16,7 +15,7 @@ export type ScheduleRoutesDeps = Omit<ScheduleDeps, "publications"> & {
   /** El modo de lo que se programa (D11): el de la API ahora, nunca del cuerpo. */
   publishMode: "dry-run" | "live";
   /** Para revisar que cada propiedad del lote sea del corredor (spec F7 §4.4). */
-  listings: Pick<ListingRepository, "get">;
+  listings: Pick<ListingRepository, "list">;
 };
 
 /**
@@ -30,11 +29,11 @@ export function scheduleRoutes(deps: ScheduleRoutesDeps) {
     // se responde como si no existiera.
     const scope = requestScope(c);
     if (scope.kind === "broker") {
-      for (const id of new Set(listingIds)) {
-        const listing = await deps.listings.get(id);
-        if (listing === null || !inScope(scope, listing.brokerId)) {
-          throw new AppError("LISTING_NOT_FOUND", `No existe el aviso ${id}`);
-        }
+      // Una consulta: las propiedades del corredor (filtradas en SQL).
+      const own = new Set((await deps.listings.list({}, scope)).map((listing) => listing.id));
+      const foreign = listingIds.find((id) => !own.has(id));
+      if (foreign !== undefined) {
+        throw new AppError("LISTING_NOT_FOUND", `No existe el aviso ${foreign}`);
       }
     }
     const result = await scheduleListings(deps, {

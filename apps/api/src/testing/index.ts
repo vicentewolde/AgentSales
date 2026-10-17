@@ -28,6 +28,7 @@ import {
 } from "@agentsales/core/testing";
 import { type AppDeps, createApp } from "../app.js";
 import type { AuthDeps } from "../auth.js";
+import { createRequestContext } from "../request-context-node.js";
 
 /** Clave de prueba para el `state` del OAuth (nunca la de `.env`). */
 export const TEST_ENCRYPTION_KEY = "clave-de-prueba-de-32-caracteres-o-mas-0123456789";
@@ -288,6 +289,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     // La autenticación ve los mismos corredores que la app (`/auth/me`).
     auth: { ...testAuth(), brokers },
     oauthStates: createInMemoryUserRepositories().oauthStates,
+    requestContext: createRequestContext(),
     checks: { db: ok, storage: ok, queue: ok },
     publishMode: "dry-run",
     version: "0.0.1",

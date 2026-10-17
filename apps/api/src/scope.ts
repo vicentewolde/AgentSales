@@ -41,10 +41,10 @@ export type OwnerOf = (id: string) => Promise<string | null>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Para un usuario de corredor, el recurso `:id` del pedido tiene que ser suyo: si no existe o es de
- * otro corredor, `notFound(id)` (los dos casos con el mismo cuerpo). El administrador pasa sin
- * consultar. Un `:id` que no es uuid (por ejemplo `/imports/local` o `/accounts/connect-token`) no
- * es un recurso: sigue a su ruta, que lo valida.
+ * Para un usuario de corredor, el recurso `:id` del pedido tiene que ser suyo: si no existe, es de
+ * otro corredor o el `:id` no es un uuid, `notFound(id)` (los mismos cuerpos). Falla cerrado: las
+ * rutas cuyo segundo tramo no es un id (`/imports/local`, `/accounts/mercadolibre/…`) son del
+ * administrador, y `authenticate` ya las cortó antes. El administrador pasa sin consultar.
  */
 export function ownedBy(
   ownerOf: OwnerOf,
@@ -53,8 +53,8 @@ export function ownedBy(
   return async (c, next) => {
     const scope = c.get("auth")?.scope;
     const id = c.req.param("id");
-    if (scope?.kind === "broker" && id !== undefined && UUID.test(id)) {
-      const owner = await ownerOf(id);
+    if (scope?.kind === "broker" && id !== undefined) {
+      const owner = UUID.test(id) ? await ownerOf(id) : null;
       if (owner === null || !inScope(scope, owner)) throw notFound(id);
     }
     return next();

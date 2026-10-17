@@ -19,7 +19,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { accessFor } from "./access.js";
 import type { AppLogger } from "./logger.js";
-import { runWithUser } from "./request-user.js";
+import type { RequestContext } from "./request-context.js";
 
 // La sesión de cada pedido (spec F7 §4.3, ADR-0021): cookie en el panel o `Bearer` en la CLI.
 
@@ -82,6 +82,7 @@ export function clearSessionCookie(c: Context, secure: boolean): void {
 export function authenticate(
   deps: AuthDeps,
   logger: Pick<AppLogger, "warn">,
+  context: Pick<RequestContext, "run">,
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const policy = accessFor(c.req.method, c.req.path);
@@ -109,7 +110,7 @@ export function authenticate(
     }
     c.set("auth", auth);
     // El usuario del pedido firma los eventos de la bitácora (`withEventUser`, spec F7 §4.3).
-    const proceed = () => runWithUser(auth?.user.id ?? null, next);
+    const proceed = () => context.run(auth?.user.id ?? null, next);
     if (policy === "public") return proceed();
     if (auth === null) throw new AppError("AUTH_REQUIRED", "Inicia sesión para seguir");
     if (policy === "admin" && auth.user.role !== "admin") {

@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-17
 **Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** lote B de F7 (F7-T04 a T07, #131): entrar con usuario en la API, la CLI y el panel
-**Siguiente paso:** `/tarea F7-T08 F7-T09 F7-T10` (lote C: cada corredor lo suyo en la API)
+**Última tarea:** lote C de F7 (F7-T08 a T10, #132): cada corredor ve solo lo suyo y la bitácora dice quién
+**Siguiente paso:** `/tarea F7-T11 F7-T12` (lote D: la IA por API y su gasto; antes, tu clave de Anthropic en `.env`)
 
 ## Pendiente tuyo para F7
 - [ ] **Clave de la API de Anthropic** (antes del lote D): crearla en la consola sin vencimiento (o anotar la fecha), ponerle un límite de gasto total en la consola y dejarla en `.env` como `ANTHROPIC_API_KEY`; después `pnpm llm:smoke --provider anthropic-api` (gasta centavos)
@@ -40,9 +40,9 @@
 | **Lote B** · T05 Usuarios, `/health` y el primer administrador | ✅ terminada | #131 |
 | **Lote B** · T06 CLI: entrar | ✅ terminada | #131 |
 | **Lote B** · T07 Panel: entrar e invitación | ✅ terminada | #131 |
-| **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | 🔨 en curso | |
-| **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | 🔨 en curso | |
-| **Lote C** · T10 Cuentas, el `state` y quién hizo qué | 🔨 en curso | |
+| **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | ✅ terminada | #132 |
+| **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | ✅ terminada | #132 |
+| **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ✅ terminada | #132 |
 | **Lote D** · T11 `anthropic-api` real | ⏳ pendiente | |
 | **Lote D** · T12 La IA por corredor y su gasto | ⏳ pendiente | |
 | **Lote E** · T13 Corredores: crear, editar y lista de alta | ⏳ pendiente | |
@@ -141,6 +141,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-17: **Lote C de F7 (T08 a T10): cada corredor lo suyo.**
+  - **El corredor ve y opera solo lo suyo** (propiedades, textos, publicaciones, cargas, cuentas, Seguimiento y agenda); lo de otro le responde "no existe". Programar un lote con una propiedad ajena se rechaza entero. Tú ves todo y puedes filtrar por corredor.
+  - **Cargas:** la de un corredor queda a su nombre desde que entra en cola; su planilla solo puede actualizar su propia marca, nunca crear otro corredor.
+  - **La bitácora dice quién y por dónde** ("Vinny (panel)", "Vinny (CLI)"); se retiró la cabecera que cualquiera podía mandar. La dirección de vuelta de Mercado Libre sirve una vez.
+  - **La lista de propiedades** ya no trae notas internas, dirección ni atributos (el detalle sí).
+  - **La revisión dejó** (sin fugas entre corredores): una regla de capas corregida (lo que depende de Node se compone en `server.ts`, con un test que lo vigila), la regla de la planilla escrita en ADR-0022, y más pruebas (pedidos a la vez, que nada ajeno cambie).
 - 2026-10-17: **Lote B de F7 (T04 a T07): entrar.**
   - **Tu usuario:** `pnpm auth:admin --email <correo>` lo crea (o te da un enlace nuevo si olvidaste la contraseña o te bloqueaste) y deja el enlace en el portapapeles. Lo abres con `pnpm dev` corriendo y eliges la contraseña (al menos 12 caracteres).
   - **Panel:** página para entrar, la de la invitación, tu nombre y "Cerrar sesión" en el menú; si la sesión vence, te lleva a entrar y vuelve a donde estabas.
