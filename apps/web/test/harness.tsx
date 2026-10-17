@@ -183,15 +183,10 @@ export function harness(options: HarnessOptions = {}) {
     });
   }
 
+  /** La caché del panel (para revisar que un secreto no quede en ella, F7-T18). */
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const renderApp = (initialPath = "/"): void => {
-    render(
-      <App
-        client={client}
-        queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-        inMemory
-        initialPath={initialPath}
-      />,
-    );
+    render(<App client={client} queryClient={queryClient} inMemory initialPath={initialPath} />);
   };
 
   return {
@@ -209,6 +204,7 @@ export function harness(options: HarnessOptions = {}) {
     platformAccounts,
     renderApp,
     signInAsBroker,
+    queryClient,
   };
 }
 

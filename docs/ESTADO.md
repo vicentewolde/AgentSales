@@ -51,8 +51,8 @@
 | **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | #134 |
 | **Lote F** · T15 Marketplace a mano | ✅ terminada | #135 |
 | **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ✅ terminada | #136 |
-| **Lote H** · T17 Panel: el alcance | ✅ terminada | |
-| **Lote H** · T18 Panel: Corredores, Mi marca, gasto y Marketplace a mano | ✅ terminada | |
+| **Lote H** · T17 Panel: el alcance | ✅ terminada | #137 |
+| **Lote H** · T18 Panel: Corredores, Mi marca, gasto y Marketplace a mano | ✅ terminada | #137 |
 | T19 Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
@@ -113,6 +113,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 ## Deuda técnica
 - **Para F8 (despliegue), CORS:** el CSRF y `originGuard` no exigen `Origin` a un pedido con `Authorization` (ADR-0021, lote G). Si se habilita CORS, `Authorization` nunca va en `Access-Control-Allow-Headers` para un origen ajeno.
 - **Para F8 (despliegue):** la API depende de `@agentsales/media` (por el logo) y con eso instala también `playwright` (el paquete, no el navegador). Al desplegar, separar el logo en un paquete propio o aceptar la dependencia.
+- **Panel, el selector al recargar (F7-T17):** mientras cargan los corredores, el filtro todavía no se aplica y la primera consulta sale sin él (se repite al llegar la lista). No muestra nada ajeno (es del administrador), pero pide dos veces.
 - **Logos reemplazados (F7-T14):** al subir otro logo, el anterior queda como medio del corredor y en R2 (no se borra). Ocupa poco; limpiarlo junto con los medios huérfanos cuando haga falta.
 - **Para F8:** `/health` muestra la versión de Postgres (desde F7, solo al administrador); al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
 - **Para F7 (auditoría del cierre de F6):** `/tracking` y `/agenda` cargan todas las propiedades y filtran por corredor en memoria: con la autenticación, el alcance por corredor va en el servidor. Límite conocido de T08: si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5).

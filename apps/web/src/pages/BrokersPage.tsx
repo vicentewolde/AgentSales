@@ -1,11 +1,11 @@
-import { formatUsd } from "@agentsales/core";
+import { llmSpendText } from "@agentsales/core";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { BrandForm } from "../components/brokers/BrandForm.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useBrokers, useCreateBroker } from "../queries/brokers.js";
 import { useUsage } from "../queries/usage.js";
-import { useRole } from "../scope/broker-scope.js";
+import { useCan, useRole } from "../scope/broker-scope.js";
 
 /**
  * Corredores (spec F7 §4.11, administrador): la lista con su gasto del mes y su tope, y crear uno.
@@ -13,14 +13,15 @@ import { useRole } from "../scope/broker-scope.js";
  */
 export function BrokersPage() {
   const role = useRole();
+  const allowed = useCan("brokers.create");
   const brokers = useBrokers();
-  const usage = useUsage();
+  const usage = useUsage(allowed);
   const create = useCreateBroker();
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
-  if (role === "broker") {
-    return <p className="text-slate-600">Esto lo hace el administrador.</p>;
-  }
+  // Mientras no se sabe el rol, nada de la vista del administrador.
+  if (role === null) return <p className="text-slate-600">Cargando…</p>;
+  if (!allowed) return <p className="text-slate-600">Esto lo hace el administrador.</p>;
   const spendOf = (id: string) => usage.data?.brokers.find((row) => row.brokerId === id);
   return (
     <div>
@@ -52,9 +53,7 @@ export function BrokersPage() {
                   </td>
                   <td className="py-2">{broker.operatorOwned ? "Sí" : "No"}</td>
                   <td className="py-2">
-                    {spend === undefined
-                      ? "—"
-                      : `${formatUsd(spend.spentUsd)}${spend.capUsd === null ? " (sin tope)" : ` de ${formatUsd(spend.capUsd)}`}`}
+                    {spend === undefined ? "—" : llmSpendText(spend)}
                     {spend?.capReached && (
                       <span className="ml-1 font-medium text-red-700">tope alcanzado</span>
                     )}

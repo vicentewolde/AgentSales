@@ -1,16 +1,5 @@
 import type { OnboardingStepView } from "@agentsales/api/contracts";
-
-const STEP_TEXT: Record<OnboardingStepView["key"], string> = {
-  brand: "Marca y colores",
-  logo: "Logo",
-  whatsapp: "WhatsApp",
-  user: "Usuario con contraseña",
-  instagram: "Instagram",
-  mercadolibre: "Mercado Libre",
-  marketplace: "Marketplace",
-};
-
-const OWNER_TEXT = { broker: "lo hace el corredor", admin: "lo hace el administrador" } as const;
+import { ONBOARDING_OWNER_TEXT, ONBOARDING_STEP_TEXT } from "@agentsales/core";
 
 /** La lista de alta de un corredor (spec F7 §4.6): cada paso, si está y, si falta, quién lo hace. */
 export function OnboardingList({ steps }: { steps: readonly OnboardingStepView[] }) {
@@ -27,12 +16,12 @@ export function OnboardingList({ steps }: { steps: readonly OnboardingStepView[]
         {steps.map((step) => (
           <li key={step.key}>
             {step.done ? (
-              <span className="text-green-800">✓ {STEP_TEXT[step.key]}</span>
+              <span className="text-green-800">✓ {ONBOARDING_STEP_TEXT[step.key]}</span>
             ) : (
               <span className="text-amber-900">
-                · {STEP_TEXT[step.key]}
+                · {ONBOARDING_STEP_TEXT[step.key]}
                 {step.pending && `: falta ${step.pending}`}
-                {step.owner && ` (${OWNER_TEXT[step.owner]})`}
+                {step.owner && ` (${ONBOARDING_OWNER_TEXT[step.owner]})`}
               </span>
             )}
           </li>

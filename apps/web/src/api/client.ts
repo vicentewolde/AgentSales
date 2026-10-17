@@ -15,8 +15,9 @@ export const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
  * Error de la API o de llegar a ella. `code` es el de su `ErrorBody`, o `UNREACHABLE`, `TIMEOUT` y
- * `UNEXPECTED_RESPONSE`; `status` falta si no hubo respuesta. `issues` solo en `PORTAL_NOT_READY`
- * y `MARKETPLACE_NOT_READY` (lo que le falta al aviso, desde F4-T22), y `publicationId` en
+ * `UNEXPECTED_RESPONSE`; `status` falta si no hubo respuesta. `issues` en `PORTAL_NOT_READY` y
+ * `MARKETPLACE_NOT_READY` (lo que le falta al aviso, desde F4-T22) y en `BROKER_INVALID` (el campo
+ * de la marca que no sirve, F7-T13; el formulario lo marca), y `publicationId` en
  * `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` (la de Marketplace que espera el clic final,
  * F5-T08); la CLI hace lo mismo.
  */

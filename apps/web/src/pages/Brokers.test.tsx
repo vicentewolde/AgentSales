@@ -59,8 +59,8 @@ describe("el alcance (F7-T17)", () => {
     await waitFor(() => expect(within(selector).getAllByRole("option")).toHaveLength(3));
     fireEvent.change(selector, { target: { value: "mio" } });
 
-    await waitFor(() => expect(screen.queryByText(/P-AJENO/)).toBeNull());
-    expect(screen.getByText(/P-MIO/)).toBeTruthy();
+    expect(await screen.findByText(/P-MIO/)).toBeTruthy();
+    expect(screen.queryByText(/P-AJENO/)).toBeNull();
     expect(h.requests).toContain("GET /listings?broker=mio");
 
     fireEvent.click(within(menu()).getByRole("link", { name: "Seguimiento" }));
@@ -107,17 +107,34 @@ describe("Corredores (F7-T18)", () => {
     const shown = within(box).getByText(/\/invitacion#/).textContent ?? "";
     fireEvent.click(within(box).getByRole("button", { name: "Copiar el enlace" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(shown));
+    // El enlace no queda en la caché del panel (ni en las mutaciones, ni en las consultas).
+    const cached = () =>
+      JSON.stringify([
+        h.queryClient
+          .getMutationCache()
+          .getAll()
+          .map((mutation) => mutation.state.data),
+        h.queryClient
+          .getQueryCache()
+          .getAll()
+          .map((query) => query.state.data),
+      ]);
+    expect(cached()).not.toContain("/invitacion#");
     fireEvent.click(within(box).getByRole("button", { name: "Listo, ocultarlo" }));
     expect(within(users).queryByText(/\/invitacion#/)).toBeNull();
+    expect(document.activeElement).toBe(within(users).getByLabelText("Correo"));
     expect(await within(users).findByText(/todavía sin contraseña/)).toBeTruthy();
 
-    fireEvent.click(within(users).getByRole("button", { name: "Restablecer" }));
+    fireEvent.click(within(users).getByRole("button", { name: "Restablecer a nuevo@ejemplo.cl" }));
     const again = await within(users).findByText(/\/invitacion#/);
     expect(again.textContent).not.toBe(shown);
 
-    fireEvent.click(within(users).getByRole("button", { name: "Desactivar" }));
+    fireEvent.click(within(users).getByRole("button", { name: "Desactivar a nuevo@ejemplo.cl" }));
+    fireEvent.click(within(users).getByRole("button", { name: "Sí, desactivar" }));
     expect(await within(users).findByText(/desactivado/)).toBeTruthy();
-    expect(within(users).getByRole("button", { name: "Reactivar" })).toBeTruthy();
+    expect(
+      within(users).getByRole("button", { name: "Reactivar a nuevo@ejemplo.cl" }),
+    ).toBeTruthy();
   });
 
   it("el gasto del mes y el tope alcanzado", async () => {
@@ -195,5 +212,87 @@ describe("Mi marca (F7-T18)", () => {
     expect(
       screen.getByRole("link", { name: "Bajar la planilla de Excel" }).getAttribute("href"),
     ).toBe(`/api/brokers/${createdBroker.id}/template.xlsx`);
+  });
+});
+
+describe("revisión del lote H", () => {
+  it("al cambiar de corredor no se ven, ni un momento, las propiedades del anterior", async () => {
+    let release: () => void = () => {};
+    const slow = new Promise<void>((done) => {
+      release = done;
+    });
+    const h = harness({
+      intercept: (method, path) => {
+        if (method === "GET" && path.startsWith("/listings?broker=mio")) {
+          return slow.then(() => undefined as unknown as Response);
+        }
+        return undefined;
+      },
+    });
+    const mine = await h.brokers.create(brokerData("mio"));
+    const theirs = await h.brokers.create(brokerData("ajeno"));
+    await h.listings.create(newListing(mine.id, "P-MIO"));
+    await h.listings.create(newListing(theirs.id, "P-AJENO"));
+    h.renderApp("/propiedades");
+    expect(await screen.findByText(/P-AJENO/)).toBeTruthy();
+    const selector = (await screen.findByLabelText("Ver corredor")) as HTMLSelectElement;
+    await waitFor(() => expect(within(selector).getAllByRole("option")).toHaveLength(3));
+    fireEvent.change(selector, { target: { value: "mio" } });
+    // La respuesta del corredor nuevo no llega todavía: la lista anterior ya no está.
+    await waitFor(() => expect(screen.queryByText(/P-AJENO/)).toBeNull());
+    expect(screen.queryByText(/P-MIO/)).toBeNull();
+    release();
+  });
+
+  it("un tope mal escrito no se manda (ni queda sin tope)", async () => {
+    const h = harness();
+    const broker = await h.brokers.create(brokerData("tope"));
+    await h.brokers.setSettings(broker.id, { llmMonthlyCapUsd: 10 });
+    h.renderApp(`/corredores/${broker.id}`);
+    const brand = await screen.findByRole("region", { name: "Marca" });
+    const cap = within(brand).getByLabelText(/Tope de IA/);
+    fireEvent.change(cap, { target: { value: "diez" } });
+    fireEvent.click(within(brand).getByRole("button", { name: "Guardar" }));
+    expect(await within(brand).findByText(/Escribe un monto en dólares/)).toBeTruthy();
+    expect(cap.getAttribute("aria-invalid")).toBe("true");
+    expect(h.requests.filter((request) => request.startsWith("PATCH"))).toEqual([]);
+    expect((await h.brokers.findById(broker.id))?.llmMonthlyCapUsd).toBe(10);
+  });
+
+  it("Marketplace a mano: activarla para un corredor ajeno; para uno propio con Facebook, pregunta", async () => {
+    const h = harness();
+    const theirs = await h.brokers.create(brokerData("ajeno"));
+    const own = await h.brokers.setSettings((await h.brokers.create(brokerData("propio"))).id, {
+      operatorOwned: true,
+    });
+    await h.platformAccounts.upsertConnected({
+      brokerId: own.id,
+      platform: "fb_marketplace",
+      externalAccountId: "100012345678901",
+      displayName: "Facebook de prueba",
+      tokenExpiresAt: null,
+      meta: {
+        userId: "100012345678901",
+        connectedAt: "2026-10-09T12:00:00.000Z",
+        sessionCheckedAt: "2026-10-09T12:00:00.000Z",
+      },
+      credentials: null,
+    });
+    h.renderApp("/cuentas");
+
+    const foreign = await screen.findByRole("region", { name: /Marca ajeno/ });
+    expect(within(foreign).queryByText(/Iniciar sesión en Facebook/)).toBeNull();
+    fireEvent.click(within(foreign).getByRole("button", { name: "Activar Marketplace a mano" }));
+    expect(await within(foreign).findByText("Marketplace a mano activo.")).toBeTruthy();
+    const [manual] = await h.platformAccounts.listByBroker(theirs.id, "fb_marketplace");
+    expect(manual).toMatchObject({ externalAccountId: "manual", status: "connected" });
+
+    const mineRegion = screen.getByRole("region", { name: /Marca propio/ });
+    fireEvent.click(within(mineRegion).getByRole("button", { name: "Activar Marketplace a mano" }));
+    const alert = within(mineRegion).getByRole("alert");
+    expect(alert.textContent).toContain("se borra su perfil de este Mac");
+    fireEvent.click(within(alert).getByRole("button", { name: "Cancelar" }));
+    const accounts = await h.platformAccounts.listByBroker(own.id, "fb_marketplace");
+    expect(accounts.map((account) => account.externalAccountId)).toEqual(["100012345678901"]);
   });
 });

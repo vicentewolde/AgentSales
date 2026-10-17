@@ -1,5 +1,6 @@
-import type { Broker } from "@agentsales/core";
-import { type FormEvent, useId } from "react";
+import { type Broker, parseUsdAmount } from "@agentsales/core";
+import { type FormEvent, useId, useState } from "react";
+import { ApiError } from "../../api/client.js";
 import type { BrokerFields } from "../../queries/brokers.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 
@@ -38,10 +39,19 @@ export function BrandForm({
   onSubmit: (values: BrandFormValues) => void;
 }) {
   const id = useId();
+  const [capError, setCapError] = useState<string | null>(null);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const cap = optional(form.get("cap"));
+    // Un tope mal escrito no se manda como "sin tope": el tope controla el gasto (regla de core).
+    let capValue: number | null = null;
+    try {
+      capValue = admin ? parseUsdAmount(required(form.get("cap"))) : null;
+    } catch {
+      setCapError("Escribe un monto en dólares, por ejemplo 20 o 12,50 (vacío: sin tope)");
+      return;
+    }
+    setCapError(null);
     onSubmit({
       ...(withSlug ? { slug: required(form.get("slug")).trim() } : {}),
       name: required(form.get("name")),
@@ -59,17 +69,27 @@ export function BrandForm({
       ...(admin
         ? {
             operatorOwned: form.get("operatorOwned") === "on",
-            llmMonthlyCapUsd: cap === null ? null : Number(cap.replace(",", ".")),
+            llmMonthlyCapUsd: capValue,
           }
         : {}),
     });
   };
+  // Los campos que la API dijo que no sirven (`BROKER_INVALID`, sus `issues`), marcados.
+  const invalid = new Set(
+    error instanceof ApiError ? (error.issues ?? []).flatMap((issue) => issue.field ?? []) : [],
+  );
   const field = (name: string, label: string, value: string | null | undefined, hint?: string) => (
     <div>
       <label htmlFor={`${id}-${name}`} className="text-sm font-medium">
         {label}
       </label>
-      <input id={`${id}-${name}`} name={name} defaultValue={value ?? ""} className={fieldClass} />
+      <input
+        id={`${id}-${name}`}
+        name={name}
+        defaultValue={value ?? ""}
+        aria-invalid={invalid.has(name)}
+        className={`${fieldClass} ${invalid.has(name) ? "border-red-600" : ""}`}
+      />
       {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
     </div>
   );
@@ -102,9 +122,16 @@ export function BrandForm({
               name="cap"
               inputMode="decimal"
               defaultValue={broker?.llmMonthlyCapUsd ?? ""}
+              aria-invalid={capError !== null}
+              aria-describedby={`${id}-cap-hint`}
               className={fieldClass}
             />
-            <p className="mt-1 text-xs text-slate-500">vacío: sin tope</p>
+            <p
+              id={`${id}-cap-hint`}
+              className={`mt-1 text-xs ${capError ? "text-red-700" : "text-slate-500"}`}
+            >
+              {capError ?? "vacío: sin tope"}
+            </p>
           </div>
           <label className="flex items-center gap-2 self-center text-sm">
             <input

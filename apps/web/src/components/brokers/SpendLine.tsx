@@ -1,5 +1,5 @@
 import type { UsageResponse } from "@agentsales/api/contracts";
-import { formatUsd } from "@agentsales/core";
+import { llmSpendText } from "@agentsales/core";
 
 /** El gasto de IA del mes de un corredor (estimado) y su tope (spec F7 §4.7). */
 export function SpendLine({ usage, brokerId }: { usage?: UsageResponse; brokerId: string }) {
@@ -7,8 +7,7 @@ export function SpendLine({ usage, brokerId }: { usage?: UsageResponse; brokerId
   if (usage === undefined || row === undefined) return null;
   return (
     <p className="mt-2 text-sm text-slate-700">
-      Gasto de IA de {usage.month}: <strong>{formatUsd(row.spentUsd)}</strong>
-      {row.capUsd === null ? " (sin tope)" : ` de ${formatUsd(row.capUsd)}`}
+      Gasto de IA de {usage.month}: <strong>{llmSpendText(row)}</strong>
       {row.capReached && (
         <span className="ml-1 font-medium text-red-700">
           · tope alcanzado: preparar los textos está frenado

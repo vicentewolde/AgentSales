@@ -91,7 +91,9 @@ describe("users", () => {
     expect(s.h.text()).toContain("Enlace copiado al portapapeles");
 
     await expect(runUsersList(s.deps)).resolves.toBe(0);
-    expect(s.h.text()).toMatch(/nuevo@ejemplo\.cl\s+Nuevo\s+corredor\s+marca\s+sin contraseña/);
+    expect(s.h.text()).toMatch(
+      /nuevo@ejemplo\.cl\s+Nuevo\s+corredor\s+marca\s+todavía sin contraseña/,
+    );
   });
 
   it("reset copia un enlace nuevo; disable y enable cambian el estado", async () => {
@@ -151,8 +153,10 @@ describe("brokers", () => {
     expect(text).toContain("Corredor creado");
     expect(text).toContain("Nueva (nueva)");
     expect(text).toContain("Tope de IA: US$ 15,00 al mes");
-    expect(text).toContain("· Logo: falta subir el logo (el corredor)");
-    expect(text).toContain("· Usuario con contraseña: falta invitar a su usuario (tú)");
+    expect(text).toContain("· Logo: falta subir el logo (lo hace el corredor)");
+    expect(text).toContain(
+      "· Usuario con contraseña: falta invitar a su usuario (lo hace el administrador)",
+    );
 
     await expect(runBrokerEdit(s.deps, "nueva", { whatsapp: "+56 9 1111 2222" })).resolves.toBe(0);
     expect(s.h.text()).toContain("✓ WhatsApp");

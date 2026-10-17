@@ -50,11 +50,11 @@ export function useSetAutoPublish() {
 }
 
 /** `GET /brokers/:id`: el corredor y su lista de alta (F7-T18). */
-export function useBrokerDetail(id: string | undefined) {
+export function useBrokerDetail(id: string | undefined, enabled = true) {
   const client = useApiClient();
   return useQuery({
     queryKey: brokerKeys.detail(id ?? ""),
-    enabled: id !== undefined,
+    enabled: enabled && id !== undefined,
     queryFn: async ({ signal }): Promise<BrokerDetailResponse> =>
       unwrap(
         client.brokers[":id"].$get({ param: { id: id ?? "" } }, { init: { signal } }),
@@ -129,5 +129,11 @@ export function useUploadLogo(id: string) {
   });
 }
 
-/** La planilla del corredor: un enlace directo (la cookie de la sesión viaja con él). */
-export const brokerTemplateHref = (id: string) => `/api/brokers/${id}/template.xlsx`;
+/**
+ * La planilla del corredor: un enlace directo (la cookie de la sesión viaja con él). El cliente del
+ * panel usa una base relativa (`/api`, el proxy de Vite) que `$url` no sabe armar: la base vive aquí
+ * y en `main.tsx` (F8 la cambia en los dos).
+ */
+export function useBrokerTemplateHref(id: string): string {
+  return `/api/brokers/${encodeURIComponent(id)}/template.xlsx`;
+}

@@ -1,48 +1,39 @@
-import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
+import { can, type Permission } from "@agentsales/core";
+import { createContext, useContext } from "react";
 import { useMe } from "../queries/auth.js";
 import { useBrokers } from "../queries/brokers.js";
 
 // El alcance del panel (spec F7 §4.11): el administrador elige un corredor ("Todos" o uno) y las
 // listas, Seguimiento y Cuentas se filtran con él; un corredor ve siempre lo suyo (la API ya lo
-// limita) y no ve el selector. La elección dura la pestaña (`sessionStorage`).
+// limita) y no ve el selector. La elección dura la pestaña (`sessionStorage`). Lo que cada uno
+// puede hacer sale de `can` (core, spec F7 §4.5), no del rol a mano.
 
-const STORAGE_KEY = "agentsales.corredor";
+export const BROKER_SCOPE_STORAGE_KEY = "agentsales.corredor";
 
-type BrokerScope = {
+export type BrokerScope = {
   /** El `slug` elegido por el administrador; `undefined` = todos (o un corredor: lo suyo). */
   selected: string | undefined;
   select: (slug: string | undefined) => void;
 };
 
-const BrokerScopeContext = createContext<BrokerScope>({ selected: undefined, select: () => {} });
-
-function readStored(): string | undefined {
-  try {
-    return sessionStorage.getItem(STORAGE_KEY) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function BrokerScopeProvider({ children }: { children: ReactNode }) {
-  const [stored, setStored] = useState<string | undefined>(readStored);
-  const select = useCallback((slug: string | undefined) => {
-    setStored(slug);
-    try {
-      if (slug === undefined) sessionStorage.removeItem(STORAGE_KEY);
-      else sessionStorage.setItem(STORAGE_KEY, slug);
-    } catch {
-      // Sin almacenamiento (modo privado): la elección dura hasta recargar.
-    }
-  }, []);
-  const value = useMemo(() => ({ selected: stored, select }), [stored, select]);
-  return <BrokerScopeContext.Provider value={value}>{children}</BrokerScopeContext.Provider>;
-}
+export const BrokerScopeContext = createContext<BrokerScope>({
+  selected: undefined,
+  select: () => {},
+});
 
 /** El rol de la sesión: `admin`, `broker` o `null` mientras carga (no se muestra nada de más). */
 export function useRole(): "admin" | "broker" | null {
   const me = useMe();
   return me.data?.role ?? null;
+}
+
+/**
+ * Si la sesión puede hacer `permission` (sobre `brokerId`, si la acción es de un corredor). Mientras
+ * no se sabe quién es, no (nada de más a la vista).
+ */
+export function useCan(permission: Permission, brokerId?: string | null): boolean {
+  const me = useMe();
+  return me.data !== undefined && can(me.data, permission, brokerId);
 }
 
 /**

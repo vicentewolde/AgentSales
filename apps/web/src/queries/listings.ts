@@ -39,8 +39,12 @@ export function useListings(filters: ListingQuery) {
           listingListResponseSchema,
         )
       ).listings,
-    // Al cambiar un filtro se siguen viendo los resultados anteriores hasta que llegan los nuevos.
-    placeholderData: keepPreviousData,
+    // Al cambiar un filtro se siguen viendo los resultados anteriores hasta que llegan los nuevos,
+    // pero nunca los de otro corredor (el selector del administrador, F7-T17).
+    placeholderData: (previous, query) =>
+      (query?.queryKey[2] as ListingQuery | undefined)?.broker === filters.broker
+        ? keepPreviousData(previous)
+        : undefined,
     staleTime: LISTINGS_STALE_MS,
     gcTime: LISTINGS_GC_MS,
   });

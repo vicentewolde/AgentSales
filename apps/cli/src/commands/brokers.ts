@@ -5,7 +5,14 @@ import {
   brokerDetailResponseSchema,
   brokerResponseSchema,
 } from "@agentsales/api/contracts";
-import { type Broker, formatUsd, MAX_LOGO_BYTES } from "@agentsales/core";
+import {
+  type Broker,
+  formatUsd,
+  MAX_LOGO_BYTES,
+  ONBOARDING_OWNER_TEXT,
+  ONBOARDING_STEP_TEXT,
+  parseUsdAmount,
+} from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
 import { type ApiClient, createHealthFetcher, unwrap } from "../api-client.js";
@@ -76,8 +83,6 @@ async function brokerBySlug(client: ApiClient, slugOption: string): Promise<Brok
   return broker;
 }
 
-const OWNER_TEXT = { broker: "el corredor", admin: "tú" } as const;
-
 /** El corredor y su lista de alta (lo que falta y quién lo hace). */
 function printBrokerDetail(deps: Io, { broker, onboarding }: BrokerDetailResponse): void {
   const c = deps.colors;
@@ -93,21 +98,11 @@ function printBrokerDetail(deps: Io, { broker, onboarding }: BrokerDetailRespons
   for (const step of onboarding) {
     deps.print(
       step.done
-        ? `  ${c.green("✓")} ${ONBOARDING_TEXT[step.key]}`
-        : `  ${c.yellow("·")} ${ONBOARDING_TEXT[step.key]}${step.pending === null ? "" : `: falta ${step.pending}`}${step.owner === null ? "" : ` (${OWNER_TEXT[step.owner]})`}`,
+        ? `  ${c.green("✓")} ${ONBOARDING_STEP_TEXT[step.key]}`
+        : `  ${c.yellow("·")} ${ONBOARDING_STEP_TEXT[step.key]}${step.pending === null ? "" : `: falta ${step.pending}`}${step.owner === null ? "" : ` (${ONBOARDING_OWNER_TEXT[step.owner]})`}`,
     );
   }
 }
-
-const ONBOARDING_TEXT = {
-  brand: "Marca y colores",
-  logo: "Logo",
-  whatsapp: "WhatsApp",
-  user: "Usuario con contraseña",
-  instagram: "Instagram",
-  mercadolibre: "Mercado Libre",
-  marketplace: "Marketplace",
-} as const;
 
 /** Las opciones de la marca, comunes a crear y editar. */
 export type BrandOptions = {
@@ -139,11 +134,17 @@ function brandBody(options: BrandOptions) {
   let cap: number | null | undefined;
   if (options.cap === false) cap = null;
   else if (options.cap !== undefined) {
-    // `--cap ""` no es "tope 0" (frenaría toda la IA): para quitarlo está `--no-cap`.
-    cap = options.cap.trim() === "" ? Number.NaN : Number(options.cap.replace(",", "."));
-    if (!Number.isFinite(cap)) {
+    // `--cap ""` no es "tope 0" ni "sin tope": para quitarlo está `--no-cap`. La regla, de core.
+    let parsed: number | null = null;
+    try {
+      parsed = parseUsdAmount(options.cap);
+    } catch {
+      parsed = null;
+    }
+    if (parsed === null) {
       throw new CliError("CAP_INVALID", `--cap debe ser un monto en dólares: "${options.cap}"`);
     }
+    cap = parsed;
   }
   const optional = <K extends string>(key: K, value: string | undefined) =>
     value === undefined ? {} : ({ [key]: value } as Record<K, string>);

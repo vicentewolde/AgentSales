@@ -14,6 +14,8 @@ import type {
   PublicationStatus,
 } from "./enums.js";
 import type { ImportBrokerOutcome, ImportRowOutcome } from "./import-run.js";
+import { formatUsd } from "./llm-usage.js";
+import type { OnboardingOwner, OnboardingStepKey } from "./onboarding.js";
 import type {
   PublicationActor,
   PublicationEventType,
@@ -374,4 +376,40 @@ export function publicationEventDetail(event: {
   }
   if (payload.byListing === true) parts.push("lo hizo la propiedad");
   return parts.length === 0 ? null : parts.join(" · ");
+}
+
+// ── Corredores y usuarios (F7) ────────────────────────────────────────────
+
+/** El nombre de cada paso de la lista de alta (CLI y panel). */
+export const ONBOARDING_STEP_TEXT: Readonly<Record<OnboardingStepKey, string>> = {
+  brand: "Marca y colores",
+  logo: "Logo",
+  whatsapp: "WhatsApp",
+  user: "Usuario con contraseña",
+  instagram: "Instagram",
+  mercadolibre: "Mercado Libre",
+  marketplace: "Marketplace",
+};
+
+/** Quién hace un paso que falta. */
+export const ONBOARDING_OWNER_TEXT: Readonly<Record<OnboardingOwner, string>> = {
+  broker: "lo hace el corredor",
+  admin: "lo hace el administrador",
+};
+
+/** El estado de un usuario, en pocas palabras (CLI y panel). */
+export function userStateText(user: {
+  disabled: boolean;
+  locked: boolean;
+  hasPassword: boolean;
+}): string {
+  if (user.disabled) return "desactivado";
+  if (user.locked) return "bloqueado por intentos fallidos";
+  if (!user.hasPassword) return "todavía sin contraseña";
+  return "activo";
+}
+
+/** El gasto de IA del mes de un corredor con su tope: `US$ 0,70 de US$ 0,50` o `(sin tope)`. */
+export function llmSpendText(row: { spentUsd: number; capUsd: number | null }): string {
+  return `${formatUsd(row.spentUsd)}${row.capUsd === null ? " (sin tope)" : ` de ${formatUsd(row.capUsd)}`}`;
 }

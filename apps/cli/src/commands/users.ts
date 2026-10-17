@@ -5,6 +5,7 @@ import {
   userResponseSchema,
   usersResponseSchema,
 } from "@agentsales/api/contracts";
+import { userStateText } from "@agentsales/core";
 import type { Command } from "commander";
 import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
@@ -18,14 +19,6 @@ export type UsersDeps = Io & Pick<Terminal, "copyToClipboard"> & { client: ApiCl
 
 /** Un enlace de invitación (`<panel>/invitacion#<token>`), sin espacios. */
 const INVITATION_LINK = /^https?:\/\/\S+\/invitacion#\S+$/;
-
-/** El estado de un usuario, en una palabra. */
-function userState(user: UserView): string {
-  if (user.disabled) return "desactivado";
-  if (user.locked) return "bloqueado";
-  if (!user.hasPassword) return "sin contraseña";
-  return "activo";
-}
 
 /** El usuario por su correo (los comandos lo reciben así; la API usa el id). */
 async function userByEmail(client: ApiClient, email: string): Promise<UserView> {
@@ -81,7 +74,7 @@ export function runUsersList(deps: UsersDeps) {
           user.name,
           user.role === "admin" ? "administrador" : "corredor",
           user.brokerId === null ? "—" : (brokers.get(user.brokerId)?.slug ?? user.brokerId),
-          userState(user),
+          userStateText(user),
         ]),
         deps.colors,
       ),

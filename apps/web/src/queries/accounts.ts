@@ -198,6 +198,10 @@ export function useActivateManualMarketplace() {
           accountResponseSchema,
         )
       ).account,
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: accountKeys.all }),
+    // Las cuentas y la lista de alta del corredor (el paso de Marketplace).
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: accountKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ["brokers"] });
+    },
   });
 }

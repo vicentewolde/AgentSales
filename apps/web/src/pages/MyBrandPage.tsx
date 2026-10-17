@@ -40,7 +40,9 @@ export function MyBrandPage() {
           error={update.error}
           onSubmit={(values) => update.mutate(values)}
         />
-        {update.isSuccess && <p className="mt-2 text-sm text-green-800">Guardado.</p>}
+        <p role="status" className="mt-2 text-sm text-green-800">
+          {update.isSuccess && "Guardado."}
+        </p>
       </section>
       <LogoAndTemplate broker={broker} />
     </div>

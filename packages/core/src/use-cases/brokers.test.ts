@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { type BrokerData, normalizeBrokerBrand } from "../broker.js";
+import { type BrokerData, normalizeBrokerBrand, parseUsdAmount } from "../broker.js";
 import { AppError } from "../errors.js";
+import { llmSpendText, ONBOARDING_STEP_TEXT, userStateText } from "../labels.js";
 import { onboardingSteps } from "../onboarding.js";
 import type { LogoNormalizer } from "../ports/logo-normalizer.js";
 import {
@@ -412,5 +413,32 @@ describe("revisión del lote E", () => {
       (candidate) => candidate.key === "user",
     );
     expect(step).toMatchObject({ done: true, owner: null });
+  });
+});
+
+describe("revisión del lote H", () => {
+  it("parseUsdAmount: montos escritos a mano; vacío es sin tope; lo demás, BROKER_SETTINGS_INVALID", () => {
+    expect(parseUsdAmount("20")).toBe(20);
+    expect(parseUsdAmount("12,50")).toBe(12.5);
+    expect(parseUsdAmount("12.50")).toBe(12.5);
+    expect(parseUsdAmount("1.000,50")).toBe(1000.5);
+    expect(parseUsdAmount(" US$ 20 ")).toBe(20);
+    expect(parseUsdAmount("  ")).toBeNull();
+    for (const text of ["diez", "5 usd", "-3", "1,2,3", "NaN"]) {
+      expect(() => parseUsdAmount(text)).toThrow(
+        expect.objectContaining({ code: "BROKER_SETTINGS_INVALID" }),
+      );
+    }
+  });
+
+  it("los textos compartidos: el estado de un usuario y el gasto con su tope", () => {
+    const user = { disabled: false, locked: false, hasPassword: true };
+    expect(userStateText(user)).toBe("activo");
+    expect(userStateText({ ...user, hasPassword: false })).toBe("todavía sin contraseña");
+    expect(userStateText({ ...user, locked: true })).toBe("bloqueado por intentos fallidos");
+    expect(userStateText({ ...user, disabled: true, locked: true })).toBe("desactivado");
+    expect(llmSpendText({ spentUsd: 0.7, capUsd: 0.5 })).toBe("US$ 0,70 de US$ 0,50");
+    expect(llmSpendText({ spentUsd: 0, capUsd: null })).toBe("US$ 0,00 (sin tope)");
+    expect(Object.keys(ONBOARDING_STEP_TEXT)).toHaveLength(7);
   });
 });

@@ -6,7 +6,7 @@ import {
   OPERATION_TEXT,
   OPERATIONS,
 } from "@agentsales/core";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { BatchSchedule } from "../components/publications/BatchSchedule.js";
@@ -132,6 +132,9 @@ export function ListingsPage() {
   const listings = useListings(filters);
   const health = useHealth();
   const [selected, setSelected] = useState<ReadonlyMap<string, string>>(new Map());
+  // Otro corredor en el selector: lo marcado era del anterior.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: basta con el cambio de corredor.
+  useEffect(() => setSelected(new Map()), [broker]);
   const select = (listing: ListingItem, on: boolean) =>
     setSelected((current) => {
       const next = new Map(current);
@@ -164,7 +167,8 @@ export function ListingsPage() {
       { replace: true },
     );
   };
-  const filtered = Object.keys(filters).length > 0;
+  // Los filtros de la página (no el corredor del selector, que se quita en el menú).
+  const filtered = Object.keys(filtersFrom(params)).length > 0;
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -231,7 +235,9 @@ export function ListingsPage() {
           <p className="mt-6 text-slate-600">
             {filtered
               ? "No hay propiedades con esos filtros."
-              : "Todavía no hay propiedades. Cárgalas con: pnpm -s cli import propiedades.xlsx --media medios"}
+              : broker !== undefined
+                ? "Este corredor todavía no tiene propiedades."
+                : "Todavía no hay propiedades. Cárgalas con: pnpm -s cli import propiedades.xlsx --media medios"}
           </p>
         )}
         {listings.data && listings.data.length > 0 && (

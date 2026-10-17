@@ -45,6 +45,26 @@ export function normalizeLlmMonthlyCap(value: number | null): number | null {
   return Math.round(value * 100) / 100;
 }
 
+/**
+ * Un monto en dólares escrito por una persona (el tope de IA en el panel y en la CLI, F7):
+ * `12`, `12,50`, `12.50`, `1.000,50` o `US$ 20`. Vacío = `null` (sin tope). Lo que no es un monto
+ * mayor o igual a 0 es `BROKER_SETTINGS_INVALID`: nunca se manda como "sin tope" (frenaría menos).
+ */
+export function parseUsdAmount(text: string): number | null {
+  const cleaned = text.replace(/US\$|\$|\s/gi, "");
+  if (cleaned === "") return null;
+  // Con punto y coma, el punto separa miles; con solo coma, la coma es el decimal.
+  const normalized = cleaned.includes(",") ? cleaned.replace(/\./g, "").replace(",", ".") : cleaned;
+  const value = /^\d+(\.\d+)?$/.test(normalized) ? Number(normalized) : Number.NaN;
+  if (!Number.isFinite(value)) {
+    throw new AppError(
+      "BROKER_SETTINGS_INVALID",
+      `«${text.trim()}» no es un monto en dólares (por ejemplo 20 o 12,50)`,
+    );
+  }
+  return value;
+}
+
 /** Datos del corredor que llena la hoja Corredor (no incluye el logo, que es un medio: F1-T07). */
 export type BrokerData = Pick<
   Broker,

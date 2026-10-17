@@ -10,7 +10,9 @@ import { useApiClient } from "../api/context.js";
 import { brokerKeys } from "./brokers.js";
 
 // Usuarios (F7-T18, solo el administrador). El enlace de invitación o de restablecer vuelve una
-// sola vez: lo guarda la página en memoria para mostrarlo con su botón de copiar, nunca la caché.
+// sola vez: la página lo guarda en su estado para mostrarlo con su botón de copiar. Las mutaciones
+// que lo traen no lo dejan en la caché (`gcTime: 0`, y la página las limpia con `reset()` en cuanto
+// lo toma).
 
 export const userKeys = { all: ["users"] as const };
 
@@ -47,6 +49,7 @@ export function useInviteUser() {
     }): Promise<UserLinkResponse> =>
       unwrap(client.users.$post({ json: input }), userLinkResponseSchema),
     onSettled: refresh,
+    gcTime: 0,
   });
 }
 
@@ -58,6 +61,7 @@ export function useResetUser() {
     mutationFn: async (id: string): Promise<UserLinkResponse> =>
       unwrap(client.users[":id"].reset.$post({ param: { id } }), userLinkResponseSchema),
     onSettled: refresh,
+    gcTime: 0,
   });
 }
 

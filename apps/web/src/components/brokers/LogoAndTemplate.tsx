@@ -1,11 +1,12 @@
 import type { Broker } from "@agentsales/core";
 import { type ChangeEvent, useId } from "react";
-import { brokerTemplateHref, useUploadLogo } from "../../queries/brokers.js";
+import { useBrokerTemplateHref, useUploadLogo } from "../../queries/brokers.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 
 /** El logo (PNG, JPEG o WebP de hasta 5 MB) y la planilla de Excel del corredor (spec F7 §4.6). */
 export function LogoAndTemplate({ broker }: { broker: Broker }) {
   const upload = useUploadLogo(broker.id);
+  const templateHref = useBrokerTemplateHref(broker.id);
   const id = useId();
   const pick = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -30,11 +31,13 @@ export function LogoAndTemplate({ broker }: { broker: Broker }) {
         disabled={upload.isPending}
         className="ml-2 text-sm"
       />
-      {upload.isPending && <p className="text-sm text-slate-600">Subiendo…</p>}
-      {upload.isSuccess && <p className="text-sm text-green-800">Logo guardado.</p>}
+      <div role="status">
+        {upload.isPending && <p className="text-sm text-slate-600">Subiendo…</p>}
+        {upload.isSuccess && <p className="text-sm text-green-800">Logo guardado.</p>}
+      </div>
       {upload.error && <ErrorAlert error={upload.error} />}
       <p className="mt-3 text-sm">
-        <a href={brokerTemplateHref(broker.id)} download className="underline">
+        <a href={templateHref} download className="underline">
           Bajar la planilla de Excel
         </a>{" "}
         <span className="text-slate-600">

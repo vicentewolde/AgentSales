@@ -4,7 +4,8 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { onSessionExpired } from "../api/session-events.js";
 import { BrokerSelector } from "../components/BrokerSelector.js";
 import { useLogout, useMe } from "../queries/auth.js";
-import { BrokerScopeProvider, useRole } from "../scope/broker-scope.js";
+import { BrokerScopeProvider } from "../scope/BrokerScopeProvider.js";
+import { useBrokerScope, useCan, useRole } from "../scope/broker-scope.js";
 import { PublishModeBanner } from "./PublishModeBanner.js";
 
 type MenuItem = {
@@ -12,8 +13,10 @@ type MenuItem = {
   to?: string;
   phase?: string;
   end?: boolean;
-  /** Solo para ese rol (F7): Corredores, el administrador; Mi marca, el corredor. */
-  only?: "admin" | "broker";
+  /** Solo con ese permiso (F7, `can` de core): Corredores, quien crea corredores. */
+  needs?: "brokers.create";
+  /** Solo para el usuario de un corredor (F7): Mi marca. */
+  brokerOnly?: boolean;
 };
 
 /** Cada sección se habilita en su fase. `end`: solo se marca en esa ruta exacta. */
@@ -24,8 +27,8 @@ export const MENU: readonly MenuItem[] = [
   { label: "Importar", to: "/importar" },
   { label: "Seguimiento", to: "/seguimiento" },
   { label: "Cuentas", to: "/cuentas" },
-  { label: "Corredores", to: "/corredores", only: "admin" },
-  { label: "Mi marca", to: "/mi-marca", only: "broker" },
+  { label: "Corredores", to: "/corredores", needs: "brokers.create" },
+  { label: "Mi marca", to: "/mi-marca", brokerOnly: true },
 ];
 
 function MenuEntry({ item }: { item: MenuItem }) {
@@ -78,6 +81,7 @@ function UserMenu() {
   const me = useMe();
   const logout = useLogout();
   const navigate = useNavigate();
+  const { select } = useBrokerScope();
   if (me.data === undefined) return null;
   return (
     <div className="mt-3 border-t border-slate-200 px-3 pt-3 text-sm md:mt-4 md:pt-4">
@@ -88,7 +92,13 @@ function UserMenu() {
         className="mt-2 text-xs text-slate-600 underline hover:text-slate-900"
         disabled={logout.isPending}
         onClick={() =>
-          logout.mutate(undefined, { onSuccess: () => navigate("/entrar", { replace: true }) })
+          logout.mutate(undefined, {
+            onSuccess: () => {
+              // El corredor elegido no pasa a la próxima sesión de la pestaña.
+              select(undefined);
+              navigate("/entrar", { replace: true });
+            },
+          })
         }
       >
         Cerrar sesión
@@ -108,8 +118,13 @@ export function Layout() {
 function LayoutBody() {
   useSessionGuard();
   const role = useRole();
-  // Mientras no se sabe el rol, sin las entradas de un solo rol (nada de más).
-  const menu = MENU.filter((item) => item.only === undefined || item.only === role);
+  const createsBrokers = useCan("brokers.create");
+  // Mientras no se sabe quién es, sin las entradas condicionadas (nada de más).
+  const menu = MENU.filter(
+    (item) =>
+      (item.needs === undefined || createsBrokers) &&
+      (item.brokerOnly !== true || role === "broker"),
+  );
   return (
     <div className="flex min-h-screen flex-col">
       <PublishModeBanner />
