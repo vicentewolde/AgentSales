@@ -30,6 +30,11 @@ export const marketplaceProgressSchema = z.object({
   ufDate: z.iso.date().optional(),
   /** Cuándo se cerró la ventana sin que el sistema viera el aviso publicado. */
   windowClosedAt: z.iso.datetime().optional(),
+  /**
+   * Con una cuenta a mano (F7, ADR-0023): el corredor lo publica él mismo con el texto y las fotos
+   * listos; no se abrió ningún formulario ni ventana.
+   */
+  byHand: z.literal(true).optional(),
 });
 export type MarketplaceProgress = z.infer<typeof marketplaceProgressSchema>;
 
@@ -42,6 +47,8 @@ export type MarketplaceManualState = {
   formReadyAt: Date;
   simulated: boolean;
   windowOpen: boolean;
+  /** Lo publica el corredor a mano (cuenta a mano, F7): el plan B es el flujo principal. */
+  byHand: boolean;
   windowClosedAt: Date | null;
   photos: number;
   priceClp: number;
@@ -72,7 +79,9 @@ export function marketplaceManualState(publication: {
     windowOpen:
       publication.status === "awaiting_manual_confirm" &&
       !progress.simulated &&
+      progress.byHand !== true &&
       windowClosedAt === null,
+    byHand: progress.byHand === true,
     windowClosedAt,
     photos: progress.photos,
     priceClp: progress.priceClp,

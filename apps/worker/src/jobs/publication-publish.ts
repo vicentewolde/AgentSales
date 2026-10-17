@@ -4,6 +4,7 @@ import {
   enqueueSync,
   isAppError,
   type JobQueue,
+  marketplaceManualState,
   OPERATION_PLATFORMS,
   type PublicationRepository,
   type PublishPublicationDeps,
@@ -104,9 +105,19 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
         throw error;
       }
       if (result.outcome === "awaiting_manual_confirm") {
+        const mode = result.publication.dryRun ? "dry-run" : "live";
+        // A mano (F7, ADR-0023): no hay ventana; el corredor lo publica y confirma.
+        if (marketplaceManualState(result.publication)?.byHand === true) {
+          await windows?.discard(publicationId);
+          logger.info(
+            { mode },
+            "Marketplace a mano: espera que el corredor lo publique y confirme",
+          );
+          return;
+        }
         const watching = (await windows?.activate(publicationId)) ?? false;
         logger.info(
-          { mode: result.publication.dryRun ? "dry-run" : "live", watching },
+          { mode, watching },
           "formulario de Marketplace listo: espera el clic final del operador",
         );
         return;

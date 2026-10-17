@@ -29,7 +29,7 @@ const LOGIN = `<!doctype html><html lang="es"><body><form><input type="password"
 
 const logger = createLogger({ level: "silent" });
 const NOW = new Date("2026-10-10T15:00:00Z");
-const broker = contentBrokerFixture();
+const broker = contentBrokerFixture({ operatorOwned: true });
 let cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups) await cleanup();
@@ -101,6 +101,7 @@ async function setup(options: { home?: string; cookies?: Record<string, string> 
     root,
     deps,
     run,
+    opened,
     platformAccounts,
     closedBrokers,
     unexpected,
@@ -119,6 +120,16 @@ describe("job marketplace.profile (spec F5 §4.2 y §4.11)", () => {
       retryBackoff: false,
       expireInSeconds: 900,
     });
+  });
+
+  it("login de un corredor que no es propio (F7): no abre la ventana y lo anota", async () => {
+    const t = await setup({ cookies: { c_user: "100012345", xs: "secreta" } });
+    await t.deps.brokers.setSettings(broker.id, { operatorOwned: false });
+
+    await t.run({ brokerId: broker.id, action: "login", requestedAt: NOW.toISOString() });
+
+    expect(t.opened).toEqual([]);
+    expect(await t.platformAccounts.list(ALL_SCOPE)).toEqual([]);
   });
 
   it("login: con la sesión abierta conecta la cuenta sin credenciales y cierra la ventana", async () => {

@@ -175,6 +175,14 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
   }
   const broker = brokers.find((item) => item.id === listing.brokerId);
   const slug = broker?.slug ?? listing.brokerId;
+  // El formulario automático, solo para un corredor propio (F7, ADR-0023).
+  if (broker === undefined || !broker.operatorOwned) {
+    throw new SmokeStop(
+      "MARKETPLACE_AUTOMATION_NOT_ALLOWED",
+      `${slug} no es tu corredor: el formulario automático de Marketplace es solo para los tuyos`,
+      "Ese corredor publica a mano: activa su cuenta a mano",
+    );
+  }
 
   const account = (await deps.accounts.list(ALL_SCOPE)).find(
     (candidate) =>

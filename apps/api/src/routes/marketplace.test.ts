@@ -67,7 +67,8 @@ const errorOf = async (response: Response) => errorBodySchema.parse(await respon
 // ---------------------------------------------------------------------------------------------
 
 function accountsSetup(overrides: Partial<AppDeps> = {}) {
-  const broker = contentBrokerFixture();
+  // Un corredor propio: el formulario automático es solo para ellos (F7, ADR-0023).
+  const broker = contentBrokerFixture({ operatorOwned: true });
   const brokers = createInMemoryBrokerRepository([broker]);
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
   const queue = createInMemoryJobQueue();
@@ -144,6 +145,51 @@ describe("POST /accounts/marketplace/login", () => {
       expect((await errorOf(response)).code).toBe("REQUEST_INVALID");
     }
     expect(queue.jobs).toEqual([]);
+  });
+});
+
+describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
+  it("el administrador la activa (201): sin credenciales, modo manual, y reemplaza al perfil", async () => {
+    const { app, broker, connectMarketplace, platformAccounts } = accountsSetup();
+    const profile = await connectMarketplace();
+    const response = await app.request(
+      "/accounts/marketplace/manual",
+      post({ broker: broker.slug }),
+    );
+    expect(response.status).toBe(201);
+    const { account } = accountResponseSchema.parse(await response.json());
+    expect(account).toMatchObject({
+      platform: MARKETPLACE,
+      status: "connected",
+      marketplaceMode: "manual",
+      sessionCheckedAt: null,
+      lastLoginError: null,
+    });
+    expect((await platformAccounts.get(profile.id))?.status).toBe("revoked");
+    const list = accountListResponseSchema.parse(await (await app.request("/accounts")).json());
+    expect(list.accounts.find((item) => item.id === profile.id)?.marketplaceMode).toBe("profile");
+  });
+
+  it("un corredor que no existe es 404", async () => {
+    const { app } = accountsSetup();
+    const response = await app.request("/accounts/marketplace/manual", post({ broker: "nadie" }));
+    expect([response.status, (await errorOf(response)).code]).toEqual([404, "BROKER_NOT_FOUND"]);
+  });
+
+  it("el inicio de sesión del perfil para un corredor que no es propio: 403, sin encolar", async () => {
+    const { app, broker, queue } = accountsSetup();
+    const brokers = createInMemoryBrokerRepository([{ ...broker, operatorOwned: false }]);
+    const other = adminApp(testDeps({ brokers, queue }));
+    const response = await other.request(
+      "/accounts/marketplace/login",
+      post({ broker: broker.slug }),
+    );
+    expect([response.status, (await errorOf(response)).code]).toEqual([
+      403,
+      "MARKETPLACE_AUTOMATION_NOT_ALLOWED",
+    ]);
+    expect(queue.jobs).toEqual([]);
+    expect(app).toBeDefined();
   });
 });
 
@@ -409,6 +455,7 @@ describe("publicar Marketplace (spec F5 §4.6 y §4.7)", () => {
       priceClp: expect.any(Number),
       ufValue: "41130.94",
       ufDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      byHand: false,
     });
   });
 

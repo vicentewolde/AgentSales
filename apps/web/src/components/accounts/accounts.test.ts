@@ -20,6 +20,7 @@ const account = (overrides: Partial<PlatformAccountView> = {}): PlatformAccountV
   permissions: null,
   sessionCheckedAt: null,
   lastLoginError: null,
+  marketplaceMode: null,
   createdAt: NOW,
   updatedAt: NOW,
   ...overrides,

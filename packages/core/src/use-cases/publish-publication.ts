@@ -1,6 +1,7 @@
 import type { AbortSignalLike } from "../abort.js";
 import type { Platform, PublishMode } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
+import { assertMarketplaceAutomationAllowed } from "../marketplace/automation.js";
 import {
   DEFAULT_MARKETPLACE_DAILY_LIMIT,
   MARKETPLACE_TIME_ZONE,
@@ -11,7 +12,7 @@ import {
 } from "../marketplace/limits.js";
 import { marketplacePrice } from "../marketplace/price.js";
 import type { MarketplaceProgress } from "../marketplace/progress.js";
-import { usesSessionProfile } from "../platform-account.js";
+import { isManualMarketplaceAccount, usesSessionProfile } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
@@ -300,35 +301,55 @@ export async function publishPublication(
 
   let sent: PublishAttemptRecord | null = null;
   let result: PublishResult | null = null;
-  let handoff: { notes: string[]; simulated: boolean; input: PublishInput } | null = null;
+  let handoff: {
+    notes: string[];
+    simulated: boolean;
+    input: PublishInput;
+    byHand?: true;
+  } | null = null;
   try {
-    const attempt = await prepareAttempt(deps, publication, now(), signal);
-    sent = attempt.sent;
-    const outcome = await attempt.target.publish(attempt.input, {
-      account: attempt.account,
-      credentials: attempt.credentials,
-      accessToken: attempt.accessToken,
-      progress: publication.progress,
-      saveProgress: async (progress) => {
-        await deps.publications.saveProgress(publicationId, progress);
-      },
-      ...(signal === undefined ? {} : { signal }),
-    });
-    // Un "formulario listo" (ADR-0017) solo puede venir de un publisher con paso manual, y uno con
-    // paso manual nunca da por publicado: cualquier mezcla es un error de programación.
-    const manual = attempt.target.manualConfirm === true;
-    if (isPublishHandoff(outcome) !== manual) {
-      throw new AppError(
-        "INTERNAL_ERROR",
-        manual
-          ? "El publisher de una plataforma con clic final del operador dio el aviso por publicado"
-          : "El publisher dejó el formulario para el clic final sin declarar un paso manual",
-      );
-    }
-    if (isPublishHandoff(outcome)) {
-      handoff = { notes: outcome.notes ?? [], simulated: outcome.simulated, input: attempt.input };
+    const prepared = await prepareAttempt(deps, publication, now(), signal);
+    sent = prepared.sent;
+    if ("byHand" in prepared) {
+      // A mano: nada que llamar ni ventana que abrir; el traspaso es de core (ADR-0023).
+      handoff = {
+        notes: [BY_HAND_NOTE],
+        simulated: publication.dryRun,
+        input: prepared.input,
+        byHand: true,
+      };
     } else {
-      result = outcome;
+      const attempt = prepared;
+      const outcome = await attempt.target.publish(attempt.input, {
+        account: attempt.account,
+        credentials: attempt.credentials,
+        accessToken: attempt.accessToken,
+        progress: publication.progress,
+        saveProgress: async (progress) => {
+          await deps.publications.saveProgress(publicationId, progress);
+        },
+        ...(signal === undefined ? {} : { signal }),
+      });
+      // Un "formulario listo" (ADR-0017) solo puede venir de un publisher con paso manual, y uno con
+      // paso manual nunca da por publicado: cualquier mezcla es un error de programación.
+      const manual = attempt.target.manualConfirm === true;
+      if (isPublishHandoff(outcome) !== manual) {
+        throw new AppError(
+          "INTERNAL_ERROR",
+          manual
+            ? "El publisher de una plataforma con clic final del operador dio el aviso por publicado"
+            : "El publisher dejó el formulario para el clic final sin declarar un paso manual",
+        );
+      }
+      if (isPublishHandoff(outcome)) {
+        handoff = {
+          notes: outcome.notes ?? [],
+          simulated: outcome.simulated,
+          input: attempt.input,
+        };
+      } else {
+        result = outcome;
+      }
     }
   } catch (caught) {
     const error = normalized(caught);
@@ -459,7 +480,7 @@ async function awaitManualConfirm(
     addAttempt,
   }: {
     publication: Publication;
-    handoff: { notes: string[]; simulated: boolean; input: PublishInput };
+    handoff: { notes: string[]; simulated: boolean; input: PublishInput; byHand?: true };
     sent: PublishAttemptRecord | null;
     now: Date;
     mode: ReturnType<typeof modeOf>;
@@ -477,6 +498,7 @@ async function awaitManualConfirm(
     photos: input.media.length,
     priceClp: input.priceClp ?? 0,
     ...(input.uf == null ? {} : { ufValue: input.uf.value, ufDate: input.uf.date }),
+    ...(handoff.byHand === true ? { byHand: true as const } : {}),
   };
   let waiting: Publication;
   try {
@@ -528,6 +550,22 @@ async function requireManualCapacity(
   if (today >= limit) throw marketplaceDailyLimitReached(limit);
 }
 
+/** El corredor de la publicación tiene que ser propio para usar el perfil del navegador. */
+async function requireAutomationAllowed(
+  deps: PublishPublicationDeps,
+  publication: Publication,
+): Promise<void> {
+  const listing = await deps.listings.get(publication.listingId);
+  const broker = listing === null ? null : await deps.brokers.findById(listing.brokerId);
+  if (broker === null) {
+    throw new AppError("BROKER_NOT_FOUND", "No existe el corredor de esta publicación");
+  }
+  assertMarketplaceAutomationAllowed(broker);
+}
+
+/** Lo que el corredor publica a mano: la nota del intento (spec F7 §4.8). */
+export const BY_HAND_NOTE = "publícalo tú con el texto y las fotos listos";
+
 /** Todo lo que se revisa y arma antes de llamar a la plataforma. */
 async function prepareAttempt(
   deps: PublishPublicationDeps,
@@ -541,12 +579,6 @@ async function prepareAttempt(
       "Se pidió publicar en vivo, pero el worker está en simulación: no se publicó nada",
     );
   }
-  const publisher = deps.publishers[publication.platform];
-  if (publisher === undefined) {
-    throw new AppError("PUBLISHER_NOT_CONFIGURED", "Esta plataforma todavía no se puede publicar", {
-      details: { platform: publication.platform },
-    });
-  }
   const account = await deps.platformAccounts.get(publication.platformAccountId);
   if (account === null || account.status !== "connected") {
     throw new AppError(
@@ -556,7 +588,20 @@ async function prepareAttempt(
     );
   }
   const manual = requiresManualConfirm(publication.platform);
-  if (manual) await requireManualCapacity(deps, publication, now);
+  // Marketplace a mano (F7, ADR-0023): sin publisher, sin límite diario ni "un formulario a la vez".
+  const byHand = manual && isManualMarketplaceAccount(account);
+  const publisher = byHand ? undefined : deps.publishers[publication.platform];
+  if (!byHand && publisher === undefined) {
+    throw new AppError("PUBLISHER_NOT_CONFIGURED", "Esta plataforma todavía no se puede publicar", {
+      details: { platform: publication.platform },
+    });
+  }
+  if (manual && !byHand) {
+    // El formulario automático, solo para un corredor propio (también con una cuenta de perfil
+    // conectada antes de F7).
+    await requireAutomationAllowed(deps, publication);
+    await requireManualCapacity(deps, publication, now);
+  }
   // Marketplace no guarda credenciales: su sesión vive en el perfil del navegador (ADR-0017).
   const stored = usesSessionProfile(publication.platform)
     ? null
@@ -579,6 +624,9 @@ async function prepareAttempt(
       ...(signal === undefined ? {} : { signal }),
     });
     input = { ...input, priceClp: price.priceClp, uf: price.uf };
+  }
+  if (publisher === undefined) {
+    return { byHand: true as const, input, account, sent: publishAttemptRecord(input, account) };
   }
   if (!publication.dryRun) checkPublishInput(publisher, input);
   if (stored === null) {

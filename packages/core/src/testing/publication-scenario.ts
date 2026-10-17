@@ -60,7 +60,9 @@ export async function createPublicationScenario(
   const ids = options.nextId === undefined ? {} : { nextId: options.nextId };
   const media = createInMemoryMediaRepository();
   const storage = createInMemoryMediaStorage();
-  const broker = contentBrokerFixture();
+  // Un corredor propio del operador (F3 a F6): el formulario automático de Marketplace es suyo
+  // (ADR-0023). Los tests de F7 que necesitan uno ajeno lo cambian con `setSettings`.
+  const broker = contentBrokerFixture({ operatorOwned: true });
   const listings = createInMemoryListingRepository(ids);
   const {
     id: _id,

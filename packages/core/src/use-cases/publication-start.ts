@@ -15,6 +15,7 @@ import {
   startOfDayIn,
 } from "../marketplace/limits.js";
 import { marketplaceReadiness } from "../marketplace/readiness.js";
+import { isManualMarketplaceAccount } from "../platform-account.js";
 import { portalReadiness } from "../portal/readiness.js";
 import type { FieldDefinitionRepository } from "../ports/field-definition-repository.js";
 import type { JobQueue } from "../ports/job-queue.js";
@@ -277,10 +278,18 @@ export type MarketplaceStartOptions = {
  * 3. en `live`, la cuenta no llegó a su límite de intentos de hoy (Santiago) →
  *    `MARKETPLACE_DAILY_LIMIT`.
  * Todos son no reintentables (409 en la API). Con `limits: false` (al programar un recordatorio,
- * spec F6 §4.3) solo se revisa el punto 1: los otros dos son del día en que se aprieta Publicar.
+ * spec F6 §4.3) solo se revisa el punto 1: los otros dos son del día en que se aprieta Publicar. Una
+ * cuenta a mano (F7) tampoco tiene los puntos 2 y 3.
  */
 export async function requireMarketplaceStartable(
-  locked: Pick<LockedRepositories, "publications" | "media">,
+  locked: {
+    publications: Pick<
+      LockedRepositories["publications"],
+      "listByStatus" | "countLiveAttemptsSince"
+    >;
+    media: Pick<LockedRepositories["media"], "listByListing">;
+    platformAccounts: Pick<LockedRepositories["platformAccounts"], "get">;
+  },
   {
     listing,
     accountIds,
@@ -313,7 +322,13 @@ export async function requireMarketplaceStartable(
     );
   }
   if (!limits) return;
-  const accounts = new Set(accountIds);
+  // Una cuenta a mano (F7, ADR-0023) no tiene formulario ni límite: el corredor publica él mismo.
+  const automated = [];
+  for (const accountId of accountIds) {
+    const account = await locked.platformAccounts.get(accountId);
+    if (account === null || !isManualMarketplaceAccount(account)) automated.push(accountId);
+  }
+  const accounts = new Set(automated);
   const own = new Set(channelIds);
   // Primero la que espera el clic: su id es el que el operador puede cerrar (lo publiqué o no).
   for (const status of ["awaiting_manual_confirm", "publishing"] as const) {

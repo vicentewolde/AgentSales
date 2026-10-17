@@ -181,6 +181,7 @@ export {
   llmUsageSchema,
   roundUsd,
 } from "./llm-usage.js";
+export { assertMarketplaceAutomationAllowed } from "./marketplace/automation.js";
 export {
   MARKETPLACE_PROPERTY_TYPE_KEYS,
   type MarketplaceFormPlan,
@@ -272,11 +273,17 @@ export {
   INSTAGRAM_PUBLISH_SCOPE,
   type InstagramAccountMeta,
   instagramAccountMetaSchema,
+  isManualMarketplaceAccount,
+  MANUAL_MARKETPLACE_ACCOUNT_ID,
   type MarketplaceAccountMeta,
+  type MarketplaceManualMeta,
+  type MarketplaceProfileMeta,
   MERCADOLIBRE_REFRESH_TOKEN_DAYS,
   MERCADOLIBRE_SITE_ID,
   type MercadoLibreAccountMeta,
   marketplaceAccountMetaSchema,
+  marketplaceManualMetaSchema,
+  marketplaceProfileMetaSchema,
   mercadoLibreAccountMetaSchema,
   normalizeAccountMeta,
   type PlatformAccount,
@@ -654,6 +661,7 @@ export {
 } from "./use-cases/connect-account.js";
 export {
   type ConnectMarketplaceAccountDeps,
+  connectManualMarketplaceAccount,
   connectMarketplaceAccount,
   recordMarketplaceLoginError,
 } from "./use-cases/connect-marketplace-account.js";

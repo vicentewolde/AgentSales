@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-17
 **Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** lote E de F7 (F7-T13 y T14): crear y editar corredores, su logo y su planilla
-**Siguiente paso:** `/tarea F7-T15` (lote F: Marketplace a mano)
+**Última tarea:** lote F de F7 (F7-T15): Marketplace a mano
+**Siguiente paso:** `/tarea F7-T16` (lote G: la CLI de usuarios, corredores, gasto y Marketplace a mano)
 
 ## Pendiente tuyo para F7
 - [x] **Clave de la API de Anthropic** en `.env` (2026-10-17); `pnpm llm:smoke --provider anthropic-api` respondió bien
@@ -49,7 +49,7 @@
 | **Lote D** · T12 La IA por corredor y su gasto | ✅ terminada | #133 |
 | **Lote E** · T13 Corredores: crear, editar y lista de alta | ✅ terminada | #134 |
 | **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | #134 |
-| **Lote F** · T15 Marketplace a mano | ⏳ pendiente | |
+| **Lote F** · T15 Marketplace a mano | ✅ terminada | |
 | **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ⏳ pendiente | |
 | **Lote H** · T17 Panel: el alcance | ⏳ pendiente | |
 | **Lote H** · T18 Panel: Corredores, Mi marca, gasto y Marketplace a mano | ⏳ pendiente | |
@@ -144,6 +144,9 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-17: **Lote F de F7 (T15): Marketplace a mano.** Por la API (la CLI y el panel, en los lotes G y H):
+  - **Cuenta a mano:** la activas tú para un corredor; reemplaza a su Facebook conectado. Al publicar, el sistema no abre ningún navegador: deja todo listo (texto, fotos y precio en pesos) y el corredor lo publica él mismo y confirma con el enlace o "No lo publiqué". Sin límite diario y con varios avisos esperando a la vez.
+  - **El formulario automático, solo para tus corredores:** conectar el Facebook, la ventana del perfil, `fb:smoke --listing` y publicar con el perfil se rechazan para un corredor que no es tuyo. Tus corredores de siempre siguen igual (quedaron como propios).
 - 2026-10-17: **Lote E de F7 (T13 y T14): los corredores.** Por la API (la CLI y el panel llegan en los lotes G y H):
   - **Crear** un corredor (solo tú), con las mismas reglas de la hoja Corredor; un identificador repetido o un color mal escrito se rechazan con el motivo.
   - **Editar:** el corredor cambia su marca; si es propio, su tope de IA y la publicación automática son solo tuyos (al corredor le responde "esto lo hace el administrador").

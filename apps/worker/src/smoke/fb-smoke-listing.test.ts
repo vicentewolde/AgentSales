@@ -124,6 +124,18 @@ describe("pnpm fb:smoke --listing", () => {
     expect(s.unchanged()).toBe(true);
   });
 
+  it("un corredor que no es propio (F7): se detiene sin preguntar ni abrir nada", async () => {
+    const s = await setup();
+    const listing = await s.t.listings.get(s.listingId);
+    await s.t.brokers.setSettings(listing?.brokerId ?? "", { operatorOwned: false });
+
+    await expect(runFbSmokeListing(s.deps, { listingRef: s.ref, yes: true })).resolves.toBe(1);
+    expect(s.fb.profiles).toEqual([]);
+    expect(s.questions).toEqual([]);
+    expect(s.err.join("\n")).toContain("solo para los tuyos");
+    expect(s.unchanged()).toBe(true);
+  });
+
   it("sin un sí no abre nada", async () => {
     const s = await setup();
     s.answers.push("n");

@@ -7,6 +7,7 @@ const manual: MarketplaceManualView = {
   simulated: false,
   windowOpen: false,
   windowClosedAt: null,
+  byHand: false,
   photos: 3,
   priceClp: 238_559_452,
   ufValue: "41130.94",

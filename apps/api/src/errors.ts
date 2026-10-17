@@ -223,6 +223,8 @@ export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "AUTH_REQUIRED" || code === "AUTH_INVALID") return 401;
   if (code === "AUTH_LOCKED") return 423;
   if (code === "FORBIDDEN" || code === "ORIGIN_NOT_ALLOWED") return 403;
+  // F7-T15 (ADR-0023): el formulario automático de Marketplace es solo para los corredores propios.
+  if (code === "MARKETPLACE_AUTOMATION_NOT_ALLOWED") return 403;
   if (code === "INVITATION_INVALID") return 410;
   if (code === "INVALID_TRANSITION" || CONFLICTS.has(code)) return 409;
   if (code === "REQUEST_TOO_LARGE") return 413;
