@@ -3,9 +3,11 @@ import {
   type AbortSignalLike,
   ALL_SCOPE,
   assemblePublishInput,
+  assertMarketplaceAutomationAllowed,
   type BrokerRepository,
   type ContentRepository,
   isAppError,
+  isManualMarketplaceAccount,
   type ListingRepository,
   MARKETPLACE_TIME_ZONE,
   type MediaRepository,
@@ -175,6 +177,11 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
   }
   const broker = brokers.find((item) => item.id === listing.brokerId);
   const slug = broker?.slug ?? listing.brokerId;
+  // El formulario automático, solo para un corredor propio (F7, ADR-0023): la regla de core.
+  if (broker === undefined) {
+    throw new SmokeStop("BROKER_NOT_FOUND", `No existe el corredor de ${ref}`, "Revisa la carga");
+  }
+  assertMarketplaceAutomationAllowed(broker);
 
   const account = (await deps.accounts.list(ALL_SCOPE)).find(
     (candidate) =>
@@ -182,6 +189,13 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
       candidate.brokerId === listing.brokerId &&
       candidate.status === "connected",
   );
+  if (account !== undefined && isManualMarketplaceAccount(account)) {
+    throw new SmokeStop(
+      "MARKETPLACE_MANUAL_ACCOUNT",
+      `${slug} tiene Marketplace a mano: no hay perfil de Facebook que llenar`,
+      `Para probar el formulario, conecta su Facebook: pnpm -s cli accounts connect marketplace --broker ${slug}`,
+    );
+  }
   if (account === undefined) {
     throw new SmokeStop(
       "ACCOUNT_NOT_CONNECTED",

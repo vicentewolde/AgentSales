@@ -102,6 +102,13 @@ export async function runFbSmoke(deps: FbSmokeDeps, options: FbSmokeOptions): Pr
     deps.printError(`✗ No existe el corredor ${options.brokerSlug}`);
     return 1;
   }
+  // El perfil del navegador, solo para un corredor propio (F7, ADR-0023): ni se abre.
+  if (!broker.operatorOwned) {
+    deps.printError(
+      `✗ ${broker.slug} no es tu corredor: el perfil de Facebook es solo para los tuyos (ese corredor publica a mano)`,
+    );
+    return 1;
+  }
   // Las capturas de una corrida anterior se borran: `summary.json` lista solo las de esta.
   await removeOldCaptures(deps.outputDir);
   let profile: MarketplaceProfile | undefined;

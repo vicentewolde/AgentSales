@@ -164,17 +164,61 @@ export function checkConnectedCredentials(
 }
 
 /**
- * `meta` de una cuenta de Marketplace (spec F5 §4.2, ADR-0017). No lleva secretos: nada de cookies.
+ * `meta` de una cuenta de Marketplace con el perfil del navegador (spec F5 §4.2, ADR-0017). No
+ * lleva secretos: nada de cookies.
  * - `userId`: el id de la cookie `c_user` del perfil (lo único que se lee de las cookies; que sea
  *   el id de la cuenta es NO VERIFICADO hasta `fb:smoke`).
  * - `sessionCheckedAt`: la última vez que el sistema vio la sesión abierta (al conectar).
  * - `lastLoginError`: el código del último intento de inicio de sesión que falló, si la cuenta ya
  *   existía (para que la CLI y el panel lo muestren).
  */
-export const marketplaceAccountMetaSchema = z.object({
+export const marketplaceProfileMetaSchema = z.object({
+  mode: z.literal("profile"),
   userId: z.string().regex(/^\d{1,30}$/),
   connectedAt: z.iso.datetime(),
   sessionCheckedAt: z.iso.datetime(),
   lastLoginError: z.object({ code: z.string().min(1), at: z.iso.datetime() }).optional(),
 });
+export type MarketplaceProfileMeta = z.infer<typeof marketplaceProfileMetaSchema>;
+
+/**
+ * `meta` de una cuenta de Marketplace **a mano** (spec F7 §4.8, ADR-0023): el corredor publica él
+ * mismo; sin perfil del navegador, credenciales ni límite diario. `external_account_id` es
+ * `MANUAL_MARKETPLACE_ACCOUNT_ID`.
+ */
+export const marketplaceManualMetaSchema = z.object({
+  mode: z.literal("manual"),
+  connectedAt: z.iso.datetime(),
+});
+export type MarketplaceManualMeta = z.infer<typeof marketplaceManualMetaSchema>;
+
+/** El `external_account_id` de una cuenta de Marketplace a mano. */
+export const MANUAL_MARKETPLACE_ACCOUNT_ID = "manual";
+
+/**
+ * `meta` de una cuenta de Marketplace: con el perfil del navegador (F5) o a mano (F7), por `mode`.
+ * Las filas de F5 no tienen `mode`: se leen como `"profile"`.
+ */
+export const marketplaceAccountMetaSchema = z.preprocess(
+  (value) =>
+    typeof value === "object" && value !== null && !("mode" in value)
+      ? { ...value, mode: "profile" }
+      : value,
+  z.discriminatedUnion("mode", [marketplaceProfileMetaSchema, marketplaceManualMetaSchema]),
+);
 export type MarketplaceAccountMeta = z.infer<typeof marketplaceAccountMetaSchema>;
+
+/**
+ * Si una cuenta es de Marketplace a mano (ADR-0023): por su `meta` (`mode: "manual"`) o por su
+ * `external_account_id` (`"manual"`), así una a mano con el `meta` roto nunca abre el perfil. Una
+ * de otra plataforma no lo es.
+ */
+export function isManualMarketplaceAccount(
+  account: Pick<PlatformAccount, "platform" | "meta"> &
+    Partial<Pick<PlatformAccount, "externalAccountId">>,
+): boolean {
+  if (account.platform !== "fb_marketplace") return false;
+  if (account.externalAccountId === MANUAL_MARKETPLACE_ACCOUNT_ID) return true;
+  const meta = marketplaceAccountMetaSchema.safeParse(account.meta);
+  return meta.success && meta.data.mode === "manual";
+}

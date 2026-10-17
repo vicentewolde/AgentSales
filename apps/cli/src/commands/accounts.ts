@@ -552,7 +552,7 @@ export function runDisconnect(deps: AccountsDeps, id: string, options: Disconnec
     const marketplace = account.platform === "fb_marketplace";
     if (!options.yes) {
       const confirmed = await deps.confirm(
-        `¿Desconectar ${account.displayName} (${PLATFORM_TEXT[account.platform]})? ${accountDisconnectText(account.platform)}`,
+        `¿Desconectar ${account.displayName} (${PLATFORM_TEXT[account.platform]})? ${accountDisconnectText(account.platform, account.marketplaceMode)}`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se desconectó: confirma en la terminal o usa --yes"));

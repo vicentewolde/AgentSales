@@ -1,4 +1,10 @@
-import { AppError, type Publication, type Publisher, publishListing } from "@agentsales/core";
+import {
+  AppError,
+  connectManualMarketplaceAccount,
+  type Publication,
+  type Publisher,
+  publishListing,
+} from "@agentsales/core";
 import {
   createFakePublisher,
   createInMemoryJobQueue,
@@ -413,5 +419,72 @@ describe("job publication.publish · Marketplace (spec F5 §4.5)", () => {
 
     expect(m.calls).toEqual([`discard:${m.publication.id}`]);
     expect((await m.t.publications.get(m.publication.id))?.status).toBe("failed");
+  });
+});
+
+describe("job publication.publish · Marketplace a mano (F7-T15)", () => {
+  it("con la cuenta a mano no activa ninguna ventana (la descarta) y lo registra", async () => {
+    const t = await createPublicationScenario({ platform: "fb_marketplace" });
+    const listing = await t.listings.get(t.listingId);
+    const broker = await t.brokers.setSettings(listing?.brokerId ?? "", { operatorOwned: false });
+    await connectManualMarketplaceAccount(
+      {
+        brokers: t.brokers,
+        platformAccounts: t.platformAccounts,
+        publications: t.publications,
+        queue: t.queue,
+      },
+      { broker: broker.slug },
+    );
+    const { started } = await publishListing(
+      { ...t.deps, marketplace: { ufConfigured: true } },
+      { listingId: t.listingId, platform: "fb_marketplace", dryRun: false, actor: "operator" },
+    );
+    const [publication] = started;
+    if (publication === undefined) throw new Error("no se inició");
+    const windows = { activate: vi.fn(async () => true), discard: vi.fn(async () => {}) };
+    const job = publicationPublishJob({
+      shared: {
+        publications: t.publications,
+        platformAccounts: t.platformAccounts,
+        contents: t.contents,
+        media: t.media,
+        listings: t.listings,
+        brokers: t.brokers,
+        storage: t.storage,
+        publishers: {},
+        workerMode: "live",
+        mercadoLibre: null,
+        uf: {
+          async valuesBetween(from, to) {
+            return [
+              { date: from, value: "41126.12" },
+              { date: to, value: "41130.94" },
+            ];
+          },
+        },
+      },
+      queue: t.queue,
+      signal: new AbortController().signal,
+      marketplaceWindows: windows,
+    });
+    const { logger, lines } = captureLogger();
+    const { boss, workers } = fakeBoss();
+    await registerJobs(boss, [job], logger);
+
+    await workers.get("publication.publish")?.([
+      { id: "j1", data: { publicationId: publication.id }, retryCount: 0, retryLimit: 2 },
+    ]);
+
+    expect(t.publications.all().find((p) => p.id === publication.id)?.status).toBe(
+      "awaiting_manual_confirm",
+    );
+    expect(windows.activate).not.toHaveBeenCalled();
+    expect(windows.discard).toHaveBeenCalledWith(publication.id);
+    expect(
+      lines.find(
+        (line) => line.msg === "Marketplace a mano: espera que el corredor lo publique y confirme",
+      ),
+    ).toMatchObject({ mode: "live" });
   });
 });

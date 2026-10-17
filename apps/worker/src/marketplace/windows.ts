@@ -56,8 +56,13 @@ export async function markWindowClosed(
   if (publication === null || publication.status !== "awaiting_manual_confirm") return false;
   if (attempt !== null && publication.attempts !== attempt) return false;
   const progress = progressOf(publication);
-  // Una simulada nunca tuvo ventana: no hay nada que anotar.
-  if (progress === null || progress.simulated || progress.windowClosedAt !== undefined) {
+  // Una simulada o una a mano (F7) nunca tuvo ventana: no hay nada que anotar.
+  if (
+    progress === null ||
+    progress.simulated ||
+    progress.byHand === true ||
+    progress.windowClosedAt !== undefined
+  ) {
     return false;
   }
   try {

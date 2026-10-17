@@ -469,7 +469,9 @@ describe("approve --platform marketplace", () => {
 
 async function accountsSetup() {
   const h = harness();
-  const broker = await h.brokers.create(brokerData("marca"));
+  // Un corredor propio: el formulario automático es solo para ellos (F7, ADR-0023).
+  const created = await h.brokers.create(brokerData("marca"));
+  const broker = await h.brokers.setSettings(created.id, { operatorOwned: true });
   const questions: string[] = [];
   let answer = false;
   const deps = (clock = fakeClock()): AccountsDeps => ({
@@ -572,7 +574,8 @@ describe("accounts connect marketplace", () => {
 
   it("con otra acción del perfil en cola: lo dice y no espera", async () => {
     const h = harness({ deps: { queue: { enqueue: async () => null } } });
-    await h.brokers.create(brokerData("marca"));
+    const created = await h.brokers.create(brokerData("marca"));
+    await h.brokers.setSettings(created.id, { operatorOwned: true });
     const clock = fakeClock();
     const deps: AccountsDeps = {
       ...h.io,

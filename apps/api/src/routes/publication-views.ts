@@ -80,6 +80,7 @@ function manualView(publication: Publication): MarketplaceManualView | null {
     priceClp: manual.priceClp,
     ufValue: manual.ufValue,
     ufDate: manual.ufDate,
+    byHand: manual.byHand,
   };
 }
 

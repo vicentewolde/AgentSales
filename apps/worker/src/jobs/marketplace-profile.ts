@@ -2,6 +2,7 @@ import { rm } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import {
   AppError,
+  assertMarketplaceAutomationAllowed,
   type BrokerRepository,
   connectMarketplaceAccount,
   isAppError,
@@ -81,7 +82,8 @@ export function profileDirInside(root: string, brokerId: string): string {
 
 /**
  * Job `marketplace.profile` (spec F5 §4.2 y §4.11, ADR-0017):
- * - `login`: abre la ventana del perfil en Facebook y espera hasta 10 min a que el operador inicie
+ * - `login`: solo para un corredor propio (F7, si no `MARKETPLACE_AUTOMATION_NOT_ALLOWED` sin abrir
+ *   nada); abre la ventana del perfil en Facebook y espera hasta 10 min a que el operador inicie
  *   sesión **a mano** (el sistema no escribe ni hace clic). Con la sesión, conecta la cuenta
  *   (`connectMarketplaceAccount`) y cierra la ventana. Si falla (tope, perfil tomado, ventana
  *   cerrada, Chromium), anota el código en la cuenta (`lastLoginError`), si existe, y termina.
@@ -107,6 +109,14 @@ export function marketplaceProfileJob(deps: MarketplaceProfileJobDeps): Job {
       }
       let profile: MarketplaceProfile | undefined;
       try {
+        // El perfil del navegador, solo para un corredor propio (F7, ADR-0023): ni se abre.
+        const broker = await deps.brokers.findById(data.brokerId);
+        if (broker === null) {
+          throw new AppError("BROKER_NOT_FOUND", "No existe el corredor", {
+            details: { brokerId: data.brokerId },
+          });
+        }
+        assertMarketplaceAutomationAllowed(broker);
         profile = await openWhenFree(deps, data.brokerId);
         await profile.page.goto(FACEBOOK_HOME_URL).catch(() => undefined);
         logger.info("ventana de Facebook abierta: el operador inicia sesión a mano");
@@ -143,6 +153,8 @@ export function marketplaceProfileJob(deps: MarketplaceProfileJobDeps): Job {
         logger.info({ accountId: account.id }, "cuenta de Marketplace conectada");
       } catch (error) {
         logger.warn({ code: codeOf(error) }, "no se pudo conectar la cuenta de Marketplace");
+        // Un corredor que no es propio: no hay intento de inicio de sesión que anotar en su cuenta.
+        if (codeOf(error) === "MARKETPLACE_AUTOMATION_NOT_ALLOWED") return;
         await recordMarketplaceLoginError(
           { platformAccounts: deps.platformAccounts, ...(deps.now ? { now: deps.now } : {}) },
           { brokerId: data.brokerId, code: codeOf(error) },

@@ -69,6 +69,11 @@ describe("textos para el operador", () => {
 
   it("manualWaitingText y accountDisconnectText (spec F5 §4.12)", () => {
     expect(manualWaitingText(null)).toBe("formulario listo: di si lo publicaste");
+    // F7: a mano no hay ventana de Chromium.
+    const byHand = { simulated: false, windowClosedAt: null, byHand: true };
+    expect(manualWaitingText(byHand)).toMatch(/^publícalo tú/);
+    expect(manualWaitingText(byHand)).not.toMatch(/Chromium|ventana/);
+    expect(manualWaitingText({ ...byHand, simulated: true })).toMatch(/^simulación: publícalo tú/);
     expect(manualWaitingText({ simulated: true, windowClosedAt: null })).toMatch(/^simulación/);
     expect(manualWaitingText({ simulated: false, windowClosedAt: new Date() })).toBe(
       "la ventana se cerró: ¿lo publicaste?",
@@ -76,6 +81,9 @@ describe("textos para el operador", () => {
     expect(manualWaitingText({ simulated: false, windowClosedAt: null })).toMatch(/Chromium/);
     expect(accountDisconnectText("fb_marketplace")).toMatch(/perfil de Chromium/);
     expect(accountDisconnectText("instagram")).toMatch(/reconectarla/);
+    // F7: la cuenta a mano no tiene perfil que borrar.
+    expect(accountDisconnectText("fb_marketplace", "manual")).toMatch(/a mano/);
+    expect(accountDisconnectText("fb_marketplace", "manual")).not.toMatch(/Chromium/);
   });
 
   it("marketplaceConnectCommand y manualConfirmCommands (spec F5 §4.12)", () => {

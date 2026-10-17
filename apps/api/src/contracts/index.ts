@@ -396,6 +396,8 @@ export const marketplaceManualSchema = z.object({
   priceClp: z.number().int().nonnegative(),
   ufValue: z.string().nullable(),
   ufDate: z.string().nullable(),
+  /** Desde F7 (ADR-0023): lo publica el corredor a mano, sin formulario ni ventana. */
+  byHand: z.boolean(),
 });
 export type MarketplaceManualView = z.infer<typeof marketplaceManualSchema>;
 
@@ -659,6 +661,11 @@ export const platformAccountViewSchema = z.object({
   lastLoginError: z
     .object({ code: z.string(), message: z.string(), at: z.coerce.date() })
     .nullable(),
+  /**
+   * Marketplace (F7, ADR-0023): `profile` (el formulario automático con el perfil del navegador) o
+   * `manual` (el corredor publica él mismo); `null` en las demás plataformas.
+   */
+  marketplaceMode: z.enum(["profile", "manual"]).nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -997,6 +1004,11 @@ export const brokerCreateBodySchema = brokerBrandBodySchema
     brandName: brandText,
     primaryColor: z.string().max(20),
   })
+  .strict();
+
+/** `POST /accounts/marketplace/manual` (administrador, F7-T15): activar Marketplace a mano. */
+export const marketplaceManualBodySchema = z
+  .object({ broker: z.string().trim().min(1).max(100) })
   .strict();
 
 /**

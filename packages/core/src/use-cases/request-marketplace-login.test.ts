@@ -9,7 +9,7 @@ import { requestMarketplaceLogin } from "./request-marketplace-login.js";
 const NOW = new Date("2026-10-10T12:00:00Z");
 
 function setup() {
-  const broker = contentBrokerFixture();
+  const broker = contentBrokerFixture({ operatorOwned: true });
   const brokers = createInMemoryBrokerRepository([broker]);
   const queue = createInMemoryJobQueue();
   return { broker, brokers, queue };
@@ -61,5 +61,19 @@ describe("requestMarketplaceLogin (spec F5 §4.2)", () => {
       requestMarketplaceLogin({ brokers, queue }, { broker: "no-existe" }),
     ).rejects.toMatchObject({ code: "BROKER_NOT_FOUND" });
     expect(queue.jobs).toEqual([]);
+  });
+});
+
+describe("requestMarketplaceLogin · solo corredores propios (F7-T15, ADR-0023)", () => {
+  it("un corredor que no es propio: MARKETPLACE_AUTOMATION_NOT_ALLOWED, sin encolar nada", async () => {
+    const broker = contentBrokerFixture();
+    const queue = createInMemoryJobQueue();
+    await expect(
+      requestMarketplaceLogin(
+        { brokers: createInMemoryBrokerRepository([broker]), queue },
+        { broker: broker.slug },
+      ),
+    ).rejects.toMatchObject({ code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED" });
+    expect(queue.jobs).toHaveLength(0);
   });
 });

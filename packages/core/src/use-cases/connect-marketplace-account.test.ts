@@ -8,6 +8,7 @@ import {
   createInMemoryPublicationRepository,
 } from "../testing/index.js";
 import {
+  connectManualMarketplaceAccount,
   connectMarketplaceAccount,
   recordMarketplaceLoginError,
 } from "./connect-marketplace-account.js";
@@ -16,7 +17,8 @@ import { disconnectAccount } from "./disconnect-account.js";
 const NOW = new Date("2026-10-10T12:00:00Z");
 
 function setup() {
-  const broker = contentBrokerFixture();
+  // Un corredor propio: el perfil del navegador es solo para ellos (ADR-0023).
+  const broker = contentBrokerFixture({ operatorOwned: true });
   const brokers = createInMemoryBrokerRepository([broker]);
   const platformAccounts = createInMemoryPlatformAccountRepository();
   const publications = createInMemoryPublicationRepository();
@@ -241,5 +243,79 @@ describe("connectMarketplaceAccount · otra cuenta con un formulario esperando",
     await expect(
       connectMarketplaceAccount(deps, { brokerId: broker.id, userId: "1" }),
     ).resolves.toMatchObject({ id: first.id });
+  });
+});
+
+describe("Marketplace a mano y el perfil solo para propios (F7-T15, ADR-0023)", () => {
+  // `setup` ya trae la cola; aquí se toma de cada llamada.
+  it("el perfil de un corredor que no es propio: MARKETPLACE_AUTOMATION_NOT_ALLOWED, sin conectar", async () => {
+    const { broker, platformAccounts, deps } = setup();
+    await deps.brokers.setSettings(broker.id, { operatorOwned: false });
+    await expect(
+      connectMarketplaceAccount(deps, { brokerId: broker.id, userId: "100012345678901" }),
+    ).rejects.toMatchObject({ code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED" });
+    expect(await platformAccounts.listByBroker(broker.id)).toEqual([]);
+  });
+
+  it("activa la cuenta a mano sin credenciales; activarla otra vez actualiza la misma fila", async () => {
+    const { broker, platformAccounts, deps, queue } = setup();
+    await deps.brokers.setSettings(broker.id, { operatorOwned: false });
+    const account = await connectManualMarketplaceAccount(
+      { ...deps, queue },
+      { broker: broker.slug },
+    );
+    expect(account).toMatchObject({
+      platform: "fb_marketplace",
+      externalAccountId: "manual",
+      status: "connected",
+      hasCredentials: false,
+      tokenExpiresAt: null,
+      meta: { mode: "manual", connectedAt: NOW.toISOString() },
+    });
+    const again = await connectManualMarketplaceAccount(
+      { ...deps, queue },
+      { broker: broker.slug },
+    );
+    expect(again.id).toBe(account.id);
+    expect(await platformAccounts.listByBroker(broker.id, "fb_marketplace")).toHaveLength(1);
+  });
+
+  it("reemplaza al perfil (que queda desconectado y se borra); un corredor que no existe: BROKER_NOT_FOUND", async () => {
+    const { broker, platformAccounts, deps, queue } = setup();
+    const profile = await connectMarketplaceAccount(deps, {
+      brokerId: broker.id,
+      userId: "100012345678901",
+    });
+    const manual = await connectManualMarketplaceAccount(
+      { ...deps, queue },
+      { broker: broker.slug },
+    );
+    const accounts = await platformAccounts.listByBroker(broker.id, "fb_marketplace");
+    expect(accounts.find((account) => account.id === profile.id)?.status).toBe("revoked");
+    expect(accounts.find((account) => account.id === manual.id)?.status).toBe("connected");
+    expect(queue.jobs).toEqual([
+      {
+        name: "marketplace.profile",
+        data: { brokerId: broker.id, action: "forget" },
+        options: { singletonKey: broker.id },
+      },
+    ]);
+    await expect(
+      connectManualMarketplaceAccount({ ...deps, queue }, { broker: "no-existe" }),
+    ).rejects.toMatchObject({ code: "BROKER_NOT_FOUND" });
+  });
+
+  it("desconectar la cuenta a mano: sin confirmación ni borrado de perfil; una espera sí lo impide", async () => {
+    const { broker, platformAccounts, deps, queue, publications } = setup();
+    const manual = await connectManualMarketplaceAccount(
+      { ...deps, queue },
+      { broker: broker.slug },
+    );
+    const disconnected = await disconnectAccount(
+      { platformAccounts, publications, queue },
+      { accountId: manual.id },
+    );
+    expect(disconnected.status).toBe("revoked");
+    expect(queue.jobs).toEqual([]);
   });
 });

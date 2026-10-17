@@ -2,6 +2,7 @@ import {
   AppError,
   type ConnectAccountDeps,
   connectAccount,
+  connectManualMarketplaceAccount,
   connectMercadoLibreAccount,
   disconnectAccount,
   instagramAccountMetaSchema,
@@ -34,6 +35,7 @@ import {
   type MarketplaceLoginResponse,
   type MercadoLibreAuthorizeUrlResponse,
   marketplaceLoginBodySchema,
+  marketplaceManualBodySchema,
   mercadoLibreAuthorizeUrlBodySchema,
   mercadoLibreConnectBodySchema,
   type PlatformAccountView,
@@ -134,6 +136,7 @@ function tokenError(error: unknown): unknown {
 
 /** Lo que el panel muestra de `meta`, igual para todas las plataformas. */
 type ShownMeta = {
+  marketplaceMode: "profile" | "manual" | null;
   tokenExpiryEstimated: boolean;
   connectedAt: string;
   tokenRefreshedAt: string | null;
@@ -143,7 +146,7 @@ type ShownMeta = {
   lastLoginError: { code: string; at: string } | null;
 };
 
-const NO_SESSION = { sessionCheckedAt: null, lastLoginError: null } as const;
+const NO_SESSION = { sessionCheckedAt: null, lastLoginError: null, marketplaceMode: null } as const;
 
 /**
  * La `meta` de la cuenta según su plataforma: Instagram (`accountType` y `permissions`), Mercado
@@ -154,14 +157,17 @@ function shownMeta(account: PlatformAccount): ShownMeta | null {
   if (account.platform === "fb_marketplace") {
     const meta = marketplaceAccountMetaSchema.safeParse(account.meta);
     if (!meta.success) return null;
+    const profile = meta.data.mode === "profile" ? meta.data : null;
     return {
       tokenExpiryEstimated: false,
       connectedAt: meta.data.connectedAt,
       tokenRefreshedAt: null,
       accountType: null,
       permissions: null,
-      sessionCheckedAt: meta.data.sessionCheckedAt,
-      lastLoginError: meta.data.lastLoginError ?? null,
+      // A mano (F7): sin sesión del navegador que revisar.
+      sessionCheckedAt: profile?.sessionCheckedAt ?? null,
+      lastLoginError: profile?.lastLoginError ?? null,
+      marketplaceMode: meta.data.mode,
     };
   }
   if (account.platform === "portal_inmobiliario") {
@@ -207,6 +213,7 @@ export function accountView(account: PlatformAccount): PlatformAccountView {
             message: marketplaceLoginErrorText(known.lastLoginError.code),
             at: new Date(known.lastLoginError.at),
           },
+    marketplaceMode: known?.marketplaceMode ?? null,
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
   };
@@ -230,7 +237,8 @@ function refreshView(result: TokenRefreshResult): AccountRefreshResponse {
  * código), pedir el inicio de sesión de Marketplace (lo encola: la ventana la abre el worker),
  * refrescar el token a pedido (Instagram o Mercado Libre, cada una con su política) y desconectar
  * (Marketplace pide `confirmed`: borra el perfil del navegador). Conectar y
- * refrescar llaman a la plataforma de forma síncrona (seguimiento de ADR-0014, punto 9). El token
+ * refrescar llaman a la plataforma de forma síncrona (seguimiento de ADR-0014, punto 9). Desde
+ * F7-T15 (ADR-0023), el administrador activa Marketplace a mano (`/marketplace/manual`). El token
  * nunca vuelve en la respuesta ni va al log (el log de la API no registra cuerpos, y la URL del
  * refresco de Instagram no sale de su cliente).
  */
@@ -314,6 +322,20 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         return c.json(body, 200);
       },
     )
+    .post("/marketplace/manual", validated("json", marketplaceManualBodySchema), async (c) => {
+      const account = await connectManualMarketplaceAccount(
+        {
+          brokers: deps.brokers,
+          platformAccounts: deps.platformAccounts,
+          publications: deps.publications,
+          queue: deps.queue,
+          ...(deps.now === undefined ? {} : { now: deps.now }),
+        },
+        { broker: c.req.valid("json").broker },
+      );
+      const body: AccountResponse = { account: accountView(account) };
+      return c.json(body, 201);
+    })
     .post("/marketplace/login", validated("json", marketplaceLoginBodySchema), async (c) => {
       const { broker, label } = c.req.valid("json");
       const { brokerId, requestedAt } = await requestMarketplaceLogin(

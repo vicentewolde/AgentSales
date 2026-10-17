@@ -64,7 +64,13 @@ describe("marketplaceManualState (spec F5 §4.10)", () => {
       priceClp: 238_559_452,
       ufValue: "41130.94",
       ufDate: "2026-10-09",
+      byHand: false,
     });
+  });
+
+  it("a mano (F7): sin ventana que vigilar", () => {
+    const byHand = publication({ progress: { ...progress, byHand: true } });
+    expect(marketplaceManualState(byHand)).toMatchObject({ byHand: true, windowOpen: false });
   });
 
   it("la ventana no está abierta si se cerró, si es simulación o si ya no espera", () => {

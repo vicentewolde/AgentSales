@@ -75,6 +75,7 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /accounts/mercadolibre/authorize-url": "admin",
   "POST /accounts/mercadolibre/connect": "admin",
   "POST /accounts/marketplace/login": "admin",
+  "POST /accounts/marketplace/manual": "admin",
   "POST /accounts/:id/refresh": "admin",
   "POST /accounts/:id/disconnect": "admin",
   "GET /oauth/instagram/start": "admin",

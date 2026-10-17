@@ -10,8 +10,10 @@ import {
 } from "../testing/index.js";
 import { cancelPublication } from "./cancel-publication.js";
 import { confirmManualPublication, markNotPublished } from "./confirm-manual-publication.js";
+import { connectManualMarketplaceAccount } from "./connect-marketplace-account.js";
+import { requireMarketplaceStartable } from "./publication-start.js";
 import { publishListing } from "./publish-listing.js";
-import { publishPublication } from "./publish-publication.js";
+import { BY_HAND_NOTE, publishPublication } from "./publish-publication.js";
 import { startPublication } from "./start-publication.js";
 import { unapproveContent } from "./unapprove-content.js";
 
@@ -484,5 +486,181 @@ describe("Marketplace · nunca espera sola ante un límite (F6, ADR-0018)", () =
 
     await expect(s.attempt(publication)).rejects.toMatchObject({ code: "MARKETPLACE_UNAVAILABLE" });
     expect(await s.current(publication.id)).toMatchObject({ status: "failed", scheduledAt: null });
+  });
+});
+
+describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
+  /** Un corredor que no es propio, con la cuenta a mano en vez del perfil. */
+  async function byHand(options: Parameters<typeof setup>[0] = {}) {
+    const s = await setup(options);
+    const listing = await s.t.listings.get(s.t.listingId);
+    const brokerId = listing?.brokerId ?? "";
+    const broker = await s.t.brokers.setSettings(brokerId, { operatorOwned: false });
+    const account = await connectManualMarketplaceAccount(
+      {
+        brokers: s.t.brokers,
+        platformAccounts: s.t.platformAccounts,
+        publications: s.t.publications,
+        queue: s.t.queue,
+        now: () => NOW,
+      },
+      { broker: broker.slug },
+    );
+    return { ...s, account, brokerId };
+  }
+
+  it.each([false, true])(
+    "dryRun %s: llega a awaiting_manual_confirm sin llamar a ningún publisher, con el modo anotado",
+    async (dryRun) => {
+      const s = await byHand({ dryRun });
+      const publication = await s.publish();
+      expect(publication.platformAccountId).toBe(s.account.id);
+
+      const result = await s.attempt(publication);
+      expect(result.outcome).toBe("awaiting_manual_confirm");
+      expect(s.fake.published).toHaveLength(0);
+      expect(await s.current(publication.id)).toMatchObject({
+        status: "awaiting_manual_confirm",
+        dryRun,
+        progress: { byHand: true, simulated: dryRun, priceClp: 238_559_452, photos: 2 },
+      });
+      const attempts = (await s.events(publication.id)).filter(
+        (event) => event.type === "publish_attempt",
+      );
+      expect(attempts.at(-1)?.payload).toMatchObject({
+        mode: dryRun ? "dry-run" : "live",
+        result: "awaiting_manual_confirm",
+        notes: [BY_HAND_NOTE],
+      });
+    },
+  );
+
+  it("sin límite diario: con el tope en 1, publicar otra vez en vivo sigue andando", async () => {
+    const s = await byHand({ dailyLimit: 1 });
+    const publication = await s.publish();
+    await s.attempt(publication);
+    await markNotPublished(s.manualDeps, { publicationId: publication.id, actor: "operator" });
+    const { publication: again } = await startPublication(s.startDeps, {
+      publicationId: publication.id,
+      dryRun: false,
+      actor: "operator",
+    });
+    await expect(s.attempt(again)).resolves.toMatchObject({ outcome: "awaiting_manual_confirm" });
+    expect(s.fake.published).toHaveLength(0);
+  });
+
+  it("confirmar con el enlace y 'No lo publiqué' como en F5", async () => {
+    const s = await byHand();
+    const publication = await s.publish();
+    await s.attempt(publication);
+    const { publication: published } = await confirmManualPublication(s.manualDeps, {
+      publicationId: publication.id,
+      url: ITEM_URL,
+      actor: "operator",
+    });
+    expect(published).toMatchObject({ status: "published", externalId: "123456789" });
+
+    const other = await byHand();
+    const second = await other.publish();
+    await other.attempt(second);
+    await markNotPublished(other.manualDeps, { publicationId: second.id, actor: "operator" });
+    expect((await other.current(second.id))?.status).toBe("failed");
+  });
+
+  it("varios avisos de la cuenta a mano pueden esperar a la vez (sin 'un formulario a la vez')", async () => {
+    const s = await byHand();
+    const waitingElsewhere = { id: "otra", platformAccountId: s.account.id };
+    const locked = {
+      media: s.t.media,
+      brokers: s.t.brokers,
+      platformAccounts: s.t.platformAccounts,
+      publications: {
+        listByStatus: async () => [waitingElsewhere as Publication],
+        countLiveAttemptsSince: async () => 99,
+      },
+    };
+    const listing = await s.t.listings.get(s.t.listingId);
+    if (listing === null) throw new Error("sin aviso");
+    const input = {
+      listing,
+      accountIds: [s.account.id],
+      channelIds: [],
+      dryRun: false,
+      options: { ufConfigured: true, dailyLimit: 3 },
+      now: NOW,
+    };
+    await expect(requireMarketplaceStartable(locked, input)).resolves.toBeUndefined();
+    // La misma situación con una cuenta de perfil sí lo impide.
+    const profile = {
+      ...locked,
+      // Un corredor propio, para que el perfil esté permitido y se vea el formulario abierto.
+      brokers: {
+        findById: async (id: string) => {
+          const found = await s.t.brokers.findById(id);
+          return found === null ? null : { ...found, operatorOwned: true };
+        },
+      },
+      platformAccounts: {
+        get: async () => ({
+          ...s.account,
+          externalAccountId: "1",
+          meta: { userId: "1", connectedAt: "", sessionCheckedAt: "" },
+        }),
+      },
+    };
+    await expect(requireMarketplaceStartable(profile, input)).rejects.toMatchObject({
+      code: "MARKETPLACE_FORM_OPEN",
+    });
+  });
+
+  it("una cuenta de perfil de un corredor que no es propio no abre el formulario", async () => {
+    const s = await setup();
+    const publication = await s.publish();
+    const listing = await s.t.listings.get(s.t.listingId);
+    await s.t.brokers.setSettings(listing?.brokerId ?? "", { operatorOwned: false });
+    await expect(s.attempt(publication, { isLastAttempt: true })).rejects.toMatchObject({
+      code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED",
+    });
+    expect(s.fake.published).toHaveLength(0);
+    expect((await s.current(publication.id))?.status).toBe("failed");
+  });
+
+  it("en vivo con el worker en simulación: PUBLISH_MODE_MISMATCH, como en F5", async () => {
+    const s = await byHand();
+    const publication = await s.publish();
+    await expect(
+      publishPublication(
+        { ...s.attemptDeps, workerMode: "dry-run" },
+        { publicationId: publication.id, isLastAttempt: true },
+      ),
+    ).rejects.toMatchObject({ code: "PUBLISH_MODE_MISMATCH" });
+    expect(s.fake.published).toHaveLength(0);
+  });
+
+  it("con una cuenta de perfil de un corredor que no es propio, pedir publicar ya da 403 (aviso temprano)", async () => {
+    const s = await setup();
+    const listing = await s.t.listings.get(s.t.listingId);
+    await s.t.brokers.setSettings(listing?.brokerId ?? "", { operatorOwned: false });
+    await expect(s.publish()).rejects.toMatchObject({ code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED" });
+  });
+
+  it("a mano, un título de más de 60 caracteres: PUBLISH_INPUT_INVALID (failed), sin quedar esperando", async () => {
+    const s = await byHand();
+    const publication = await s.publish();
+    const content = await s.t.contents.get(publication.contentId);
+    if (content === null) throw new Error("sin texto");
+    await expect(
+      publishPublication(
+        {
+          ...s.attemptDeps,
+          contents: {
+            ...s.t.contents,
+            get: async () => ({ ...content, title: "x".repeat(61) }),
+          },
+        },
+        { publicationId: publication.id, isLastAttempt: true },
+      ),
+    ).rejects.toMatchObject({ code: "PUBLISH_INPUT_INVALID" });
+    expect((await s.current(publication.id))?.status).toBe("failed");
   });
 });

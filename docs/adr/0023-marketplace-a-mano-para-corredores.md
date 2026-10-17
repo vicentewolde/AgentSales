@@ -25,3 +25,8 @@
 - **La sesión del corredor en el Mac del operador:** el operador manejaría cuentas de Facebook ajenas, con más riesgo ante Facebook; el operador la descartó (D5).
 - **Un publisher "a mano" que no hace nada:** un publisher que no publica confunde el contrato `Publisher`; el traspaso de estado es de core.
 - **Una plataforma nueva (`fb_marketplace_manual`):** duplica textos, revisión y seguimiento de un mismo canal.
+
+## Seguimiento
+- 2026-10-17 (F7-T15): implementado como se decidió. Precisiones: la cuenta a mano se reconoce por `meta.mode = "manual"` (`isManualMarketplaceAccount`), y una fila de F5 sin `mode` se lee como perfil; el progreso del traspaso lleva `byHand: true` y la vista `manual` lo expone (el panel y la CLI muestran el plan B como flujo principal en los lotes G y H); la regla del punto 4 también cubre **publicar** con una cuenta de perfil que quedó de antes (el intento falla con `MARKETPLACE_AUTOMATION_NOT_ALLOWED` sin abrir nada). Los corredores que existían antes de F7 quedaron propios (migración `0009`), así que el formulario automático del operador sigue igual.
+- 2026-10-17 (revisión del lote F): al activar la cuenta a mano en un corredor con su perfil conectado, el perfil se borra del disco (`forget`, como desconectarlo); desconectar la cuenta a mano no pide confirmación ni borra perfiles; `fb:smoke` **sin** `--listing` también queda dentro de la regla (no abre el perfil de un corredor ajeno, así su sesión nunca pasa por el Mac del operador); la cuenta a mano se reconoce también por `external_account_id = "manual"`; el traspaso a mano revisa las reglas del formulario (`validateMarketplaceInput`, ahora en core) y pedir publicar con un perfil ajeno ya responde 403.
+

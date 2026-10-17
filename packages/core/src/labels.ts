@@ -200,9 +200,15 @@ export function manualConfirmCommands(publicationId: string): {
  * del formulario (`null`), solo pregunta. Lo muestran la CLI y el panel.
  */
 export function manualWaitingText(
-  manual: { simulated: boolean; windowClosedAt: Date | null } | null,
+  manual: { simulated: boolean; windowClosedAt: Date | null; byHand?: boolean } | null,
 ): string {
   if (manual === null) return "formulario listo: di si lo publicaste";
+  // A mano (F7, ADR-0023): no hay formulario ni ventana; el corredor lo publica él mismo.
+  if (manual.byHand === true) {
+    return manual.simulated
+      ? "simulación: publícalo tú con el texto y las fotos listos"
+      : "publícalo tú con el texto y las fotos listos, y di si lo publicaste";
+  }
   if (manual.simulated) return "simulación: formulario listo sin abrir Facebook";
   if (manual.windowClosedAt !== null) return "la ventana se cerró: ¿lo publicaste?";
   return "formulario listo: revisa la ventana de Chromium y publica";
@@ -212,7 +218,13 @@ export function manualWaitingText(
  * Qué pasa al desconectar una cuenta (la pregunta de la CLI y del panel; spec F3 §4.6 y F5 §4.2):
  * en Marketplace se borra el perfil de Chromium con la sesión de Facebook.
  */
-export function accountDisconnectText(platform: Platform): string {
+export function accountDisconnectText(
+  platform: Platform,
+  marketplaceMode: "profile" | "manual" | null = null,
+): string {
+  if (platform === "fb_marketplace" && marketplaceMode === "manual") {
+    return "Se desactiva Marketplace a mano: sus publicaciones pendientes no saldrán hasta activarlo de nuevo.";
+  }
   return platform === "fb_marketplace"
     ? "Se borra el perfil de Chromium con la sesión de Facebook: para volver, inicias sesión de nuevo."
     : "Sus publicaciones pendientes no saldrán hasta reconectarla.";

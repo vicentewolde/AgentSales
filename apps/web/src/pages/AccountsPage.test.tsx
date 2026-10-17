@@ -266,7 +266,9 @@ describe("panel: Cuentas", () => {
           },
         },
       });
-      const broker = await h.brokers.create(brokerData("marca"));
+      // Un corredor propio: el formulario automático es solo para ellos (F7, ADR-0023).
+      const created = await h.brokers.create(brokerData("marca"));
+      const broker = await h.brokers.setSettings(created.id, { operatorOwned: true });
       if (options.account === false) return { ...h, broker };
       const account = await h.platformAccounts.upsertConnected({
         brokerId: broker.id,
@@ -380,7 +382,9 @@ describe("panel: Cuentas", () => {
           return options.intercept?.(method, path, init);
         },
       });
-      const broker = await h.brokers.create(brokerData("marca"));
+      // Un corredor propio: el formulario automático es solo para ellos (F7, ADR-0023).
+      const created = await h.brokers.create(brokerData("marca"));
+      const broker = await h.brokers.setSettings(created.id, { operatorOwned: true });
       const connect = (meta: Record<string, unknown> = {}) =>
         h.platformAccounts.upsertConnected({
           brokerId: broker.id,

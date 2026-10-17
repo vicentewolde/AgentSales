@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkConnectedCredentials,
   checkCredentials,
+  isManualMarketplaceAccount,
   MERCADOLIBRE_SITE_ID,
   marketplaceAccountMetaSchema,
   mercadoLibreAccountMetaSchema,
@@ -102,13 +103,23 @@ describe("meta de Marketplace", () => {
     sessionCheckedAt: "2026-10-09T12:00:00.000Z",
   };
 
-  it("acepta la cuenta conectada, con o sin el último error de inicio de sesión", () => {
-    expect(marketplaceAccountMetaSchema.parse(meta)).toEqual(meta);
+  it("acepta la cuenta conectada, con o sin el último error; la de F5 (sin mode) es de perfil", () => {
+    expect(marketplaceAccountMetaSchema.parse(meta)).toEqual({ ...meta, mode: "profile" });
     const withError = {
       ...meta,
+      mode: "profile",
       lastLoginError: { code: "MARKETPLACE_PROFILE_BUSY", at: "2026-10-10T09:00:00.000Z" },
     };
     expect(marketplaceAccountMetaSchema.parse(withError)).toEqual(withError);
+  });
+
+  it("la cuenta a mano (F7) solo lleva el modo y cuándo se activó", () => {
+    const manual = { mode: "manual", connectedAt: "2026-10-17T12:00:00.000Z" };
+    expect(marketplaceAccountMetaSchema.parse(manual)).toEqual(manual);
+    expect(marketplaceAccountMetaSchema.safeParse({ mode: "otro" }).success).toBe(false);
+    expect(isManualMarketplaceAccount({ platform: "fb_marketplace", meta: manual })).toBe(true);
+    expect(isManualMarketplaceAccount({ platform: "fb_marketplace", meta })).toBe(false);
+    expect(isManualMarketplaceAccount({ platform: "instagram", meta: manual })).toBe(false);
   });
 
   it.each([{ userId: "abc" }, { userId: "" }, { connectedAt: "ayer" }])("rechaza %o", (change) => {
