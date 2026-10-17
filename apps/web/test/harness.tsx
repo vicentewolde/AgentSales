@@ -69,10 +69,15 @@ export type HarnessOptions = {
  */
 export function harness(options: HarnessOptions = {}) {
   const listings = createInMemoryListingRepository({ nextId: randomUUID });
-  const brokers = createInMemoryBrokerRepository();
+  // Ids uuid, como Postgres: `/brokers/:id` los exige (F7-T18).
+  const brokers = createInMemoryBrokerRepository([], { nextId: randomUUID });
   const media = createInMemoryMediaRepository();
   const importRuns = createInMemoryImportRunRepository({ nextId: randomUUID });
-  const content = createInMemoryContentRepositories({ nextId: randomUUID });
+  // El gasto de IA por corredor (F7-T12) cruza la corrida con su aviso, como Postgres.
+  const content = createInMemoryContentRepositories({
+    nextId: randomUUID,
+    brokerOfListing: async (id) => (await listings.get(id))?.brokerId ?? null,
+  });
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
   const auth = { ...testAuth(), brokers: options.deps?.brokers ?? brokers };
   const base = createApp(
@@ -99,6 +104,24 @@ export function harness(options: HarnessOptions = {}) {
       cookie = /Max-Age=0/i.test(set) ? null : (set.split(";")[0] ?? null);
     return response;
   };
+  let brokerToken: string | null = null;
+  /** Entra como el usuario de un corredor (F7-T17): el panel lo ve con su rol y su alcance. */
+  const signInAsBroker = (brokerId: string) => {
+    const token = `token-del-corredor-${brokerId}`;
+    const user = auth.repos.seed.user({
+      email: `corredor-${brokerId.slice(0, 8)}@ejemplo.cl`,
+      name: "Corredor de prueba",
+      role: "broker",
+      brokerId,
+    });
+    auth.repos.seed.session({
+      userId: user.id,
+      tokenHash: auth.tokens.hash(token),
+      client: "panel",
+    });
+    brokerToken = token;
+    return user;
+  };
   const requests: string[] = [];
   /** Lo que el panel mandó en cada `POST /imports` (multipart). */
   const uploads: UploadedForm[] = [];
@@ -117,6 +140,8 @@ export function harness(options: HarnessOptions = {}) {
       const headers = new Headers(init?.headers);
       if (method !== "GET") headers.set("origin", "http://localhost:5173");
       if (cookie !== null) headers.set("cookie", cookie);
+      // La sesión de un corredor (F7-T17): con ella, la API no pone la del administrador.
+      if (brokerToken !== null) headers.set("authorization", `Bearer ${brokerToken}`);
       if (method === "POST" && path === "/imports" && init?.body instanceof FormData) {
         return forwardUpload(init.body, headers);
       }
@@ -158,15 +183,10 @@ export function harness(options: HarnessOptions = {}) {
     });
   }
 
+  /** La caché del panel (para revisar que un secreto no quede en ella, F7-T18). */
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const renderApp = (initialPath = "/"): void => {
-    render(
-      <App
-        client={client}
-        queryClient={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-        inMemory
-        initialPath={initialPath}
-      />,
-    );
+    render(<App client={client} queryClient={queryClient} inMemory initialPath={initialPath} />);
   };
 
   return {
@@ -183,6 +203,8 @@ export function harness(options: HarnessOptions = {}) {
     contents: content.contents,
     platformAccounts,
     renderApp,
+    signInAsBroker,
+    queryClient,
   };
 }
 

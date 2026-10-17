@@ -7,10 +7,14 @@ import { AppError } from "../errors.js";
  * cuenta, `marketplace.profile`, `fb:smoke --listing` y publicar con una cuenta de perfil. Los
  * demás usan la cuenta a mano. `MARKETPLACE_AUTOMATION_NOT_ALLOWED` (403) si no es propio.
  */
+/** Si el corredor puede usar el formulario automático (el perfil del navegador): solo los propios. */
+export const marketplaceAutomationAllowed = (broker: Pick<Broker, "operatorOwned">): boolean =>
+  broker.operatorOwned;
+
 export function assertMarketplaceAutomationAllowed(
   broker: Pick<Broker, "operatorOwned" | "slug">,
 ): void {
-  if (broker.operatorOwned) return;
+  if (marketplaceAutomationAllowed(broker)) return;
   throw new AppError(
     "MARKETPLACE_AUTOMATION_NOT_ALLOWED",
     `El formulario automático de Marketplace es solo para tus corredores: ${broker.slug} publica a mano (activa su cuenta a mano)`,

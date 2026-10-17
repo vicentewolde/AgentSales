@@ -110,11 +110,30 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | Vendiste o arrendaste una propiedad | En el detalle de la propiedad, "Vendida", "Arrendada" o "Retirada" (te pide confirmar y te dice qué quedó como tarea a mano), o `pnpm -s cli listing close P001 --reason vendida` (o `arrendada`, `retirada`): cierra el aviso de Portal y descarta lo pendiente. Lo que esté en vivo en Instagram o Marketplace queda como tarea a mano: bórralo allá y `pnpm -s cli publications retire <id>`. `listing reopen P001` la reabre (no publica nada). `listing pause|resume` pausa y reanuda la propiedad con su aviso de Portal |
 | Cambiaste el precio de una propiedad publicada en Portal | Carga la planilla y `pnpm -s cli publications update <id>`: manda el precio (o el texto nuevo, si preparaste y aprobaste otro) al aviso. Si el aviso venció o lo cerraste, `publications relist <id>` lo republica (en vivo usa un cupo) |
 | Quieres que un corredor publique sin tu revisión | En **Cuentas**, la casilla "Publicación automática" del corredor (en vivo te avisa en rojo), o `pnpm -s cli brokers auto-publish <slug> on`: al preparar los textos se aprueba lo que no tiene errores y se publica solo (Marketplace queda como recordatorio). En vivo, `status` y `doctor` lo dicen en rojo. `off` lo apaga |
+| Un corredor no puede preparar los textos: "llegó a su tope de IA de este mes" (`LLM_BUDGET_EXCEEDED`) | Sube su tope en su detalle de **Corredores** (o `pnpm -s cli brokers edit <slug> --cap <usd>`, o `--no-cap`) o espera al mes siguiente. Las imágenes sí se preparan |
+| `LLM_NOT_CONFIGURED` en un corredor que no es tuyo | Falta `ANTHROPIC_API_KEY` en `.env` (sus textos usan la API): agrégala y reinicia `pnpm dev`. `doctor` lo avisa |
+| `LLM_ACCOUNT_LIMIT` | La cuenta de Anthropic llegó a su límite de gasto o no tiene saldo: revisa la consola de Anthropic |
 | Quieres respaldar la base ahora | `pnpm db:backup` en tu terminal (no necesita `pnpm dev`). Deja `agentsales-AAAAMMDD-HHMM.dump` en `~/.agentsales/backups` (o en `BACKUP_DIR`) y conserva los últimos 14. El worker lo hace solo cada día a las 13:00 y al arrancar si el último tiene más de 20 h. Más abajo, cómo restaurar |
 | `BACKUP_TOOL_NOT_INSTALLED`, o `doctor` avisa por `pg_dump` | Falta el cliente de Postgres: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`, que el respaldo busca solo; si lo instalaste en otro lado, fija `PG_BIN_DIR` en `.env`) |
 | `doctor` dice que `pg_dump` no puede respaldar una base más nueva | Tu `pg_dump` es de una versión mayor anterior a la de Neon: `brew upgrade libpq` |
 | `BACKUP_FAILED` | `pnpm db:backup` muestra la causa: sin conexión o Neon sin CU-horas (reintenta más tarde), la carpeta sin espacio o sin permisos. Los respaldos buenos nunca se borran por un intento fallido |
 | `BACKUP_IN_PROGRESS` | Ya hay un respaldo en curso (el del worker o otro `pnpm db:backup`): espera unos minutos y vuelve a intentarlo |
+
+## Dar de alta un corredor (F7)
+
+De punta a punta, con `pnpm dev` corriendo. Todo se puede hacer en el panel (**Corredores**) o en la CLI.
+
+1. **Crear el corredor:** en **Corredores → Crear un corredor** (o `pnpm -s cli brokers create --slug <slug> --name <nombre> --brand <marca> --color <#RRGGBB>`). Si no es tuyo, déjalo **no propio**: su IA usa la API de Anthropic (con tu clave) y su Marketplace va a mano. Si quieres, ponle un **tope de IA del mes** en dólares.
+2. **Invitar a su usuario:** en el detalle del corredor, **Usuarios → Invitar** (o `pnpm -s cli users invite --email <correo> --name <nombre> --broker <slug>`). El enlace se muestra **una sola vez** (en la CLI queda en el portapapeles): envíaselo por un canal privado. Vence en 72 h; si se pierde o vence, **Restablecer** da otro.
+3. **El corredor entra** con el enlace, elige su contraseña y completa **Mi marca**: colores, WhatsApp (Portal lo exige), logo, y baja su planilla de Excel (ya trae su hoja Corredor llena). Ojo: si después carga una planilla vieja, puede deshacer lo que editó en Mi marca (manda lo último que se guarde).
+4. **Sus cuentas** (las conectas tú, en **Cuentas**):
+   - **Instagram:** como evaluador de tu app de Meta, en persona (pasos en `docs/07-checklist-cuentas.md`, "Antes de F7").
+   - **Mercado Libre:** como hoy, con su cuenta y la dirección de vuelta.
+   - **Marketplace:** **Activar Marketplace a mano** (el formulario automático es solo para tus corredores). Al publicar, el sistema deja el texto, las fotos y el precio listos; el corredor lo publica en Facebook y confirma con el enlace o "No lo publiqué".
+5. **La lista de alta** del corredor (en su detalle, en Mi marca y en `pnpm -s cli brokers show <slug>`) dice qué falta y quién lo hace.
+6. **El gasto:** en **Corredores** y con `pnpm -s cli usage`, lo gastado en IA en el mes (estimado: la cifra oficial está en la consola de Anthropic). Con el tope alcanzado, preparar los textos se frena hasta que subas el tope o empiece el mes siguiente.
+
+Para desactivar a alguien: **Desactivar** en su usuario (o `pnpm -s cli users disable <correo>`) cierra sus sesiones al tiro.
 
 ## Restaurar un respaldo de la base
 

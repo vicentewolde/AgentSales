@@ -18,6 +18,7 @@ import { safeExternalUrl } from "../components/publications/publications.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { PUBLICATION_STATUS_TONE } from "../labels.js";
 import { useAgenda, useTracking } from "../queries/tracking.js";
+import { useBrokerFilter } from "../scope/broker-scope.js";
 
 // F6-T13 (spec F6 §4.9): la agenda arriba y la matriz abajo. Se relee cada 60 s solo con la
 // pestaña a la vista (ADR-0007).
@@ -223,8 +224,9 @@ export function TrackingMatrix({ rows }: { rows: readonly Row[] }) {
 /** Seguimiento (spec F6 §4.9): la agenda y la matriz. */
 export function TrackingPage() {
   const [archived, setArchived] = useState(false);
-  const agenda = useAgenda();
-  const tracking = useTracking(archived);
+  const broker = useBrokerFilter();
+  const agenda = useAgenda(broker);
+  const tracking = useTracking(archived, broker);
   return (
     <section className="mx-auto max-w-6xl">
       <h1 className="text-2xl font-semibold tracking-tight">Seguimiento</h1>

@@ -6,13 +6,14 @@ import {
   OPERATION_TEXT,
   OPERATIONS,
 } from "@agentsales/core";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { BatchSchedule } from "../components/publications/BatchSchedule.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { useHealth } from "../queries/health.js";
 import { useListings } from "../queries/listings.js";
+import { useBrokerFilter } from "../scope/broker-scope.js";
 
 type ListingItem = ListingListResponse["listings"][number];
 
@@ -125,10 +126,15 @@ function ListingCard({
 /** Propiedades: grilla con portada y filtros en la URL (spec F1-T13). */
 export function ListingsPage() {
   const [params, setParams] = useSearchParams();
-  const filters = filtersFrom(params);
+  // El corredor del selector (el administrador, F7-T17) se suma a los filtros de la URL.
+  const broker = useBrokerFilter();
+  const filters = { ...filtersFrom(params), ...(broker === undefined ? {} : { broker }) };
   const listings = useListings(filters);
   const health = useHealth();
   const [selected, setSelected] = useState<ReadonlyMap<string, string>>(new Map());
+  // Otro corredor en el selector: lo marcado era del anterior.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: basta con el cambio de corredor.
+  useEffect(() => setSelected(new Map()), [broker]);
   const select = (listing: ListingItem, on: boolean) =>
     setSelected((current) => {
       const next = new Map(current);
@@ -138,7 +144,7 @@ export function ListingsPage() {
     });
   // Las comunas del selector salen de todas las propiedades (es la misma consulta sin filtros); si
   // esa consulta falla, de las que se ven.
-  const all = useListings({});
+  const all = useListings(broker === undefined ? {} : { broker });
   const comunas = [
     ...new Set([
       ...(all.data ?? listings.data ?? []).flatMap((listing) =>
@@ -161,7 +167,8 @@ export function ListingsPage() {
       { replace: true },
     );
   };
-  const filtered = Object.keys(filters).length > 0;
+  // Los filtros de la página (no el corredor del selector, que se quita en el menú).
+  const filtered = Object.keys(filtersFrom(params)).length > 0;
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -228,7 +235,9 @@ export function ListingsPage() {
           <p className="mt-6 text-slate-600">
             {filtered
               ? "No hay propiedades con esos filtros."
-              : "Todavía no hay propiedades. Cárgalas con: pnpm -s cli import propiedades.xlsx --media medios"}
+              : broker !== undefined
+                ? "Este corredor todavía no tiene propiedades."
+                : "Todavía no hay propiedades. Cárgalas con: pnpm -s cli import propiedades.xlsx --media medios"}
           </p>
         )}
         {listings.data && listings.data.length > 0 && (

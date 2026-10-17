@@ -86,6 +86,8 @@ Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4
 
 ## Antes de F7 (terceros)
 
-- [ ] API key de Anthropic en console.anthropic.com, con límite de gasto mensual
+- [x] API key de Anthropic en console.anthropic.com, en `.env` como `ANTHROPIC_API_KEY` (2026-10-17; vence el 2026-12-31). Al crearla: sin vencimiento, o anota la fecha y renuévala antes (una clave vencida da `LLM_AUTH_REQUIRED` en la IA de los corredores). Después, `pnpm llm:smoke --provider anthropic-api` (gasta centavos)
+- [ ] **Límite de gasto mensual en la consola de Anthropic** (Settings → Limits): el tope por corredor de AgentSales solo cubre lo que AgentSales anota; el de la consola corta todo si algo se dispara
+- [ ] **Un corredor en Instagram (D16, evaluador de Meta):** en developers.facebook.com, tu app `AgentSales-IG` → Roles de la app → Roles → agregar a la persona como **Instagram Tester** con su usuario de Instagram (su cuenta debe ser profesional). Ella acepta en Instagram (web: *Configuración → Permisos de apps y sitios web → Invitaciones de evaluador*, atajo instagram.com/accounts/manage_access/). Después, **en persona y en tu Mac**, abre en el panel de Meta la pantalla de **Generate token**, que la persona inicie sesión con su Instagram, copia el token y córrelo como hoy: `pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin`. Antes de publicar en vivo, `pnpm ig:smoke --broker <slug>` (que Meta acepte la cuenta de un evaluador es NO VERIFICADO)
 - [ ] Textos simples de términos de uso y privacidad
 - [ ] Primer corredor piloto confirmado

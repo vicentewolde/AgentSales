@@ -27,6 +27,15 @@ const LoginPage = lazy(() =>
 const InvitationPage = lazy(() =>
   import("./pages/InvitationPage.js").then((module) => ({ default: module.InvitationPage })),
 );
+const BrokersPage = lazy(() =>
+  import("./pages/BrokersPage.js").then((module) => ({ default: module.BrokersPage })),
+);
+const BrokerPage = lazy(() =>
+  import("./pages/BrokerPage.js").then((module) => ({ default: module.BrokerPage })),
+);
+const MyBrandPage = lazy(() =>
+  import("./pages/MyBrandPage.js").then((module) => ({ default: module.MyBrandPage })),
+);
 const ListingDetailPage = lazy(() =>
   import("./pages/ListingDetailPage.js").then((module) => ({ default: module.ListingDetailPage })),
 );
@@ -94,6 +103,10 @@ export const routes: RouteObject[] = [
           // Adonde vuelve el OAuth (`/cuentas?conectada=instagram` o `?error=`, spec F3 §4.6).
           { path: "cuentas", element: <AccountsPage /> },
           { path: "seguimiento", element: <TrackingPage /> },
+          // F7-T18: Corredores (el administrador) y Mi marca (el corredor).
+          { path: "corredores", element: <BrokersPage /> },
+          { path: "corredores/:id", element: <BrokerPage /> },
+          { path: "mi-marca", element: <MyBrandPage /> },
           { path: "*", element: <NotFound /> },
         ],
       },

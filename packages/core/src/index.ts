@@ -27,6 +27,7 @@ export {
   normalizeLlmMonthlyCap,
   type ParsedBrokerSheet,
   parseBrokerSheet,
+  parseUsdAmount,
   slugify,
   TONE_MAX,
 } from "./broker.js";
@@ -97,10 +98,13 @@ export {
   LISTING_NOT_PREPARABLE_TEXT,
   LISTING_NOT_PUBLISHABLE_TEXT,
   LISTING_STATUS_TEXT,
+  llmSpendText,
   manualConfirmCommands,
   manualWaitingText,
   marketplaceConnectCommand,
   mercadoLibreConnectCommands,
+  ONBOARDING_OWNER_TEXT,
+  ONBOARDING_STEP_TEXT,
   OPERATION_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
   PLATFORM_TEXT,
@@ -117,6 +121,7 @@ export {
   remoteStatusText,
   SCHEDULE_REASON_TEXT,
   tokenStdinCommand,
+  userStateText,
 } from "./labels.js";
 export {
   canChangeListingStatus,
@@ -183,7 +188,10 @@ export {
   llmUsageSchema,
   roundUsd,
 } from "./llm-usage.js";
-export { assertMarketplaceAutomationAllowed } from "./marketplace/automation.js";
+export {
+  assertMarketplaceAutomationAllowed,
+  marketplaceAutomationAllowed,
+} from "./marketplace/automation.js";
 export {
   MARKETPLACE_PROPERTY_TYPE_KEYS,
   type MarketplaceFormPlan,

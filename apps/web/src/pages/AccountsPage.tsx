@@ -1,17 +1,19 @@
 import type { AccountListResponse, PlatformAccountView } from "@agentsales/api/contracts";
-import type { Broker, PublishMode } from "@agentsales/core";
+import { type Broker, marketplaceAutomationAllowed, type PublishMode } from "@agentsales/core";
 import { type ReactNode, useId } from "react";
 import { AccountCard } from "../components/accounts/AccountCard.js";
 import { AutoPublishToggle } from "../components/accounts/AutoPublishToggle.js";
 import { expiryState, visibleAccounts } from "../components/accounts/accounts.js";
 import { ConnectBox } from "../components/accounts/ConnectBox.js";
 import { MarketplaceConnectBox } from "../components/accounts/MarketplaceConnectBox.js";
+import { MarketplaceManualBox } from "../components/accounts/MarketplaceManualBox.js";
 import { MercadoLibreConnectBox } from "../components/accounts/MercadoLibreConnectBox.js";
 import { OAuthReturn } from "../components/accounts/OAuthReturn.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useAccounts } from "../queries/accounts.js";
 import { useBrokers } from "../queries/brokers.js";
 import { useHealth } from "../queries/health.js";
+import { useBrokerFilter, useCan } from "../scope/broker-scope.js";
 
 /** Las cuentas de un canal del corredor y si hay que ofrecer conectar o reconectar. */
 function channelState(accounts: readonly PlatformAccountView[], now: Date) {
@@ -35,13 +37,16 @@ function Channel({
   empty,
   accounts,
   now,
+  manage,
   children,
 }: {
   title: string;
   empty: string;
   accounts: readonly PlatformAccountView[];
   now: Date;
-  children: ReactNode;
+  /** Solo el administrador conecta, renueva y desconecta (F7, spec §4.5). */
+  manage: boolean;
+  children?: ReactNode;
 }) {
   const headingId = useId();
   return (
@@ -49,13 +54,18 @@ function Channel({
       <h3 id={headingId} className="text-sm font-semibold text-slate-700">
         {title}
       </h3>
-      {accounts.length === 0 && <p className="mt-1 text-sm text-slate-600">{empty}</p>}
+      {accounts.length === 0 && (
+        <p className="mt-1 text-sm text-slate-600">
+          {empty}
+          {!manage && " Pídele al administrador que la conecte."}
+        </p>
+      )}
       <div className="mt-2 flex flex-col gap-3">
         {accounts.map((account) => (
-          <AccountCard key={account.id} account={account} now={now} />
+          <AccountCard key={account.id} account={account} now={now} manage={manage} />
         ))}
       </div>
-      {children}
+      {manage && children}
     </section>
   );
 }
@@ -65,11 +75,13 @@ function BrokerAccounts({
   data,
   now,
   publishMode,
+  manage,
 }: {
   broker: Broker;
   data: AccountListResponse;
   now: Date;
   publishMode: PublishMode | undefined;
+  manage: boolean;
 }) {
   const own = (platform: PlatformAccountView["platform"]) =>
     data.accounts.filter(
@@ -78,18 +90,23 @@ function BrokerAccounts({
   const instagram = channelState(own("instagram"), now);
   const mercadoLibre = channelState(own("portal_inmobiliario"), now);
   const marketplace = channelState(own("fb_marketplace"), now);
+  const settings = useCan("broker.settings", broker.id);
+  const manualActive = own("fb_marketplace").some(
+    (account) => account.status === "connected" && account.marketplaceMode === "manual",
+  );
   const headingId = `corredor-${broker.id}`;
   return (
     <section aria-labelledby={headingId}>
       <h2 id={headingId} className="text-lg font-semibold">
         {broker.brandName} <span className="text-sm text-slate-500">({broker.slug})</span>
       </h2>
-      <AutoPublishToggle broker={broker} publishMode={publishMode} />
+      {settings && <AutoPublishToggle broker={broker} publishMode={publishMode} />}
       <Channel
         title="Instagram"
         empty="Sin cuenta de Instagram."
         accounts={instagram.shown}
         now={now}
+        manage={manage}
       >
         {instagram.offerConnect && (
           <ConnectBox
@@ -105,6 +122,7 @@ function BrokerAccounts({
         empty="Sin cuenta de Mercado Libre."
         accounts={mercadoLibre.shown}
         now={now}
+        manage={manage}
       >
         {mercadoLibre.offerConnect && (
           <MercadoLibreConnectBox
@@ -120,13 +138,23 @@ function BrokerAccounts({
         empty="Sin cuenta de Facebook."
         accounts={marketplace.shown}
         now={now}
+        manage={manage}
       >
-        {/* Siempre: sin vencimiento que avise, una sesión cerrada en Facebook no se ve hasta
-            publicar, y la caja muestra el resultado de su espera. */}
-        <MarketplaceConnectBox
+        {/* El perfil del navegador solo para un corredor propio (ADR-0023); siempre, porque sin
+            vencimiento que avise una sesión cerrada no se ve hasta publicar. */}
+        {marketplaceAutomationAllowed(broker) && !manualActive && (
+          <MarketplaceConnectBox
+            broker={broker}
+            connected={!marketplace.offerConnect}
+            reconnect={marketplace.reconnect}
+          />
+        )}
+        <MarketplaceManualBox
           broker={broker}
-          connected={!marketplace.offerConnect}
-          reconnect={marketplace.reconnect}
+          active={manualActive}
+          replacesProfile={own("fb_marketplace").some(
+            (account) => account.status === "connected" && account.marketplaceMode === "profile",
+          )}
         />
       </Channel>
     </section>
@@ -140,8 +168,15 @@ function BrokerAccounts({
  * las cuentas al volver a la pestaña (TanStack Query), lo que cubre una conexión hecha desde la CLI.
  */
 export function AccountsPage() {
-  const accounts = useAccounts();
+  // El corredor del selector (F7-T17) y lo que el corredor no ve (conectar, renovar, desconectar).
+  const broker = useBrokerFilter();
+  // Quién conecta y la publicación automática (`can` de core, spec F7 §4.5), por corredor abajo.
+  const manage = useCan("accounts.manage");
+  const accounts = useAccounts(broker);
   const brokers = useBrokers();
+  const shownBrokers = (brokers.data ?? []).filter(
+    (item) => broker === undefined || item.slug === broker,
+  );
   const health = useHealth();
   const error = accounts.error ?? brokers.error;
   const now = new Date();
@@ -171,18 +206,19 @@ export function AccountsPage() {
       )}
       {accounts.data && brokers.data && brokers.data.length === 0 && (
         <p className="mt-6 text-slate-600">
-          No hay corredores todavía: se crean al importar el Excel.
+          No hay corredores todavía: créalos en Corredores o al importar el Excel.
         </p>
       )}
       {accounts.data && brokers.data && (
         <div className="mt-6 flex flex-col gap-6">
-          {brokers.data.map((broker) => (
+          {shownBrokers.map((item) => (
             <BrokerAccounts
-              key={broker.id}
-              broker={broker}
+              key={item.id}
+              broker={item}
               data={accounts.data}
               now={now}
               publishMode={health.data?.publishMode}
+              manage={manage}
             />
           ))}
         </div>

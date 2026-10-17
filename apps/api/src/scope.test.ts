@@ -374,3 +374,29 @@ describe("el guardia de dueño", () => {
     expect(await s.deps.contentRuns.findActive(s.theirs.listing.id)).toBeNull();
   });
 });
+
+describe("GET /accounts?broker= (F7-T17, el selector del panel)", () => {
+  it("el administrador filtra por corredor; uno ajeno o que no existe es 404; vacío, 400", async () => {
+    const s = await setup();
+    const accountsOf = async (response: Response) =>
+      ((await response.json()) as { accounts: { brokerId: string }[] }).accounts.map(
+        (account) => account.brokerId,
+      );
+
+    const filtered = await s.admin("/accounts?broker=mio");
+    expect(filtered.status).toBe(200);
+    expect(await accountsOf(filtered)).toEqual([s.mine.broker.id]);
+    expect(new Set(await accountsOf(await s.admin("/accounts")))).toEqual(
+      new Set([s.mine.broker.id, s.theirs.broker.id]),
+    );
+
+    for (const [path, status] of [
+      ["/accounts?broker=ajeno", 404],
+      ["/accounts?broker=no-existe", 404],
+      ["/accounts?broker=", 400],
+    ] as const) {
+      expect((await s.broker(path)).status).toBe(path.endsWith("no-existe") ? 404 : status);
+    }
+    expect(await accountsOf(await s.broker("/accounts?broker=mio"))).toEqual([s.mine.broker.id]);
+  });
+});

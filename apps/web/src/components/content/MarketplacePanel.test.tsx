@@ -295,4 +295,26 @@ describe("panel: Marketplace en Contenido", () => {
     const planB = within(panel).getByText("Publicar a mano (plan B)").closest("details");
     expect(planB?.textContent).toMatch(/\$[\d.]+ \(UF del [\d-]+: \$41\.130,94\)/);
   });
+
+  it("a mano (F7-T18): el plan B va arriba y abierto, sin ventana de Chromium, y se confirma igual", async () => {
+    const s = await setup();
+    const publication = await s.awaiting();
+    // Lo que deja el traspaso a mano (core lo prueba de punta a punta): `byHand` en el progreso.
+    await s.t.publications.updateProgress(
+      publication.id,
+      { from: "awaiting_manual_confirm", attempts: publication.attempts },
+      { ...(publication.progress as object), byHand: true },
+    );
+    const panel = await s.tab();
+
+    const planB = within(panel).getByText("Publícalo tú en Facebook (Marketplace a mano)");
+    expect(planB.closest("details")?.open).toBe(true);
+    expect(within(panel).queryByText("Publicar a mano (plan B)")).toBeNull();
+    const item = await aviso(panel);
+    expect(item.textContent).toContain("Publícalo tú con el texto y las fotos listos");
+    expect(item.textContent).not.toContain("Chromium");
+    expect(item.textContent).toMatch(/Precio para publicar: \$[\d.]+/);
+    expect(within(item).getByRole("button", { name: "Lo publiqué" })).toBeTruthy();
+    expect(within(item).getByRole("button", { name: "No lo publiqué" })).toBeTruthy();
+  });
 });

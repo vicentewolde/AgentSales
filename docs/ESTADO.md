@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-17
 **Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** lote G de F7 (F7-T16): la CLI de usuarios, corredores, gasto y Marketplace a mano
-**Siguiente paso:** `/tarea F7-T17 F7-T18` (lote H: el panel con el alcance, Corredores, Mi marca, gasto y Marketplace a mano)
+**Última tarea:** lote H de F7 (F7-T17 y T18): el panel con el alcance, Corredores, Mi marca, gasto y Marketplace a mano
+**Siguiente paso:** `/fase-cerrar 7` (T19: la demo con un corredor de prueba, la auditoría y el tag `v0.7.0`)
 
 ## Pendiente tuyo para F7
 - [x] **Clave de la API de Anthropic** en `.env` (2026-10-17); `pnpm llm:smoke --provider anthropic-api` respondió bien
@@ -51,8 +51,8 @@
 | **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | #134 |
 | **Lote F** · T15 Marketplace a mano | ✅ terminada | #135 |
 | **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ✅ terminada | #136 |
-| **Lote H** · T17 Panel: el alcance | ⏳ pendiente | |
-| **Lote H** · T18 Panel: Corredores, Mi marca, gasto y Marketplace a mano | ⏳ pendiente | |
+| **Lote H** · T17 Panel: el alcance | ✅ terminada | #137 |
+| **Lote H** · T18 Panel: Corredores, Mi marca, gasto y Marketplace a mano | ✅ terminada | #137 |
 | T19 Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
@@ -113,6 +113,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 ## Deuda técnica
 - **Para F8 (despliegue), CORS:** el CSRF y `originGuard` no exigen `Origin` a un pedido con `Authorization` (ADR-0021, lote G). Si se habilita CORS, `Authorization` nunca va en `Access-Control-Allow-Headers` para un origen ajeno.
 - **Para F8 (despliegue):** la API depende de `@agentsales/media` (por el logo) y con eso instala también `playwright` (el paquete, no el navegador). Al desplegar, separar el logo en un paquete propio o aceptar la dependencia.
+- **Panel, el selector al recargar (F7-T17):** mientras cargan los corredores, el filtro todavía no se aplica y la primera consulta sale sin él (se repite al llegar la lista). No muestra nada ajeno (es del administrador), pero pide dos veces.
 - **Logos reemplazados (F7-T14):** al subir otro logo, el anterior queda como medio del corredor y en R2 (no se borra). Ocupa poco; limpiarlo junto con los medios huérfanos cuando haga falta.
 - **Para F8:** `/health` muestra la versión de Postgres (desde F7, solo al administrador); al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
 - **Para F7 (auditoría del cierre de F6):** `/tracking` y `/agenda` cargan todas las propiedades y filtran por corredor en memoria: con la autenticación, el alcance por corredor va en el servidor. Límite conocido de T08: si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5).
@@ -145,6 +146,11 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-17: **Lote H de F7 (T17 y T18): el panel.**
+  - **Tú** ves en el menú "Ver corredor" (Todos o uno): filtra Propiedades, Seguimiento y Cuentas. Y la página **Corredores**: la lista con el gasto del mes y el tope, crear uno, y su detalle con la marca, el tope y si es propio, el logo y la planilla, sus usuarios (invitar, restablecer, desactivar; el enlace se ve una sola vez con su botón de copiar) y su lista de alta.
+  - **El corredor** ve **Mi marca** (su marca, logo, planilla, gasto y lista de alta) y no ve lo tuyo: el selector, Corredores, ni conectar o desconectar cuentas.
+  - **Marketplace a mano:** en Cuentas, "Activar Marketplace a mano" para los corredores que no son tuyos; en la propiedad, el plan B queda arriba y abierto como la forma de publicar.
+  - **Guía del alta** de un corredor de punta a punta en `docs/08-guia-operador.md`, y los pasos del evaluador de Instagram y de la clave de Anthropic en el checklist.
 - 2026-10-17: **Lote G de F7 (T16): la CLI.**
   - **Usuarios** (solo tú): `users list`, `users invite --email … --name … --broker <slug>` (o `--admin`), `users reset|disable|enable <correo>`. El enlace queda en el portapapeles y nunca se muestra; envíaselo al corredor por un canal privado.
   - **Corredores:** `brokers create`, `brokers edit` (la marca; propio y tope, solo tú), `brokers show` (la lista de alta), `brokers logo <slug> <archivo>` y `brokers template <slug>` (su planilla).
