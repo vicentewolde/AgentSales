@@ -2,6 +2,7 @@ import {
   AppError,
   type InvitationRepository,
   invitationSchema,
+  type NewInvitation,
   type OAuthStateRepository,
   type SessionRepository,
   sessionSchema,
@@ -9,7 +10,7 @@ import {
   type UserRepository,
   userSchema,
 } from "@agentsales/core";
-import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
 import { invitations, oauthStatesUsed, sessions, users } from "../schema.js";
@@ -18,6 +19,7 @@ import { invitations, oauthStatesUsed, sessions, users } from "../schema.js";
 // contraseña y de los tokens nunca salen de aquí en las entidades.
 
 const EMAIL_UNIQUE = "users_email_unique";
+const OPEN_INVITATION_UNIQUE = "invitations_one_open_per_user";
 
 type UserRow = typeof users.$inferSelect;
 
@@ -101,7 +103,8 @@ export function createUserRepository(db: SchemaDatabase): UserRepository {
           .select()
           .from(users)
           .where(filter.brokerId === undefined ? undefined : eq(users.brokerId, filter.brokerId))
-          .orderBy(asc(users.email));
+          // Por bytes ("C"), como el doble, sea cual sea la collation de la base.
+          .orderBy(sql`${users.email} collate "C"`);
         return rows.map(toUser);
       });
     },
@@ -226,21 +229,39 @@ export function createInvitationRepository(db: SchemaDatabase): InvitationReposi
       createdAt: row.createdAt,
     });
 
+  /** Borra el enlace sin usar del usuario e inserta el nuevo, en una transacción. */
+  const issueOnce = (invitation: NewInvitation) =>
+    withDbErrors(() =>
+      db.transaction(async (tx) => {
+        await tx
+          .delete(invitations)
+          .where(and(eq(invitations.userId, invitation.userId), isNull(invitations.usedAt)));
+        const [row] = await tx.insert(invitations).values(invitation).returning();
+        if (row === undefined) {
+          throw new AppError("INVITATION_WRITE_FAILED", "No se creó el enlace");
+        }
+        return toInvitation(row);
+      }),
+    );
+
   return {
-    issue(invitation) {
-      return withDbErrors(() =>
-        db.transaction(async (tx) => {
-          // La nueva reemplaza a la anterior sin usar (el único parcial lo exige).
-          await tx
-            .delete(invitations)
-            .where(and(eq(invitations.userId, invitation.userId), isNull(invitations.usedAt)));
-          const [row] = await tx.insert(invitations).values(invitation).returning();
-          if (row === undefined) {
-            throw new AppError("INVITATION_WRITE_FAILED", "No se creó el enlace");
+    async issue(invitation) {
+      // Dos `issue` a la vez del mismo usuario: el segundo choca con el único parcial; se repite
+      // una vez (entonces borra el del primero) y, si vuelve a chocar, es `INVITATION_CONFLICT`.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          return await issueOnce(invitation);
+        } catch (error) {
+          if (!isUniqueViolation(error, OPEN_INVITATION_UNIQUE)) throw error;
+          if (attempt >= 2) {
+            throw new AppError(
+              "INVITATION_CONFLICT",
+              "Otro enlace se estaba generando: vuelve a intentarlo",
+              { retriable: true, cause: error },
+            );
           }
-          return toInvitation(row);
-        }),
-      );
+        }
+      }
     },
 
     findByTokenHash(tokenHash) {

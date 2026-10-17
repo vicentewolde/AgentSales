@@ -1,5 +1,5 @@
 import { type AccessScope, ALL_SCOPE, inScope } from "../access.js";
-import type { Broker, BrokerData } from "../broker.js";
+import { type Broker, type BrokerData, normalizeLlmMonthlyCap } from "../broker.js";
 import type { CloseReason } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { ImportRun } from "../import-run.js";
@@ -107,7 +107,7 @@ export function createInMemoryBrokerRepository(
         ...(settings.operatorOwned === undefined ? {} : { operatorOwned: settings.operatorOwned }),
         ...(settings.llmMonthlyCapUsd === undefined
           ? {}
-          : { llmMonthlyCapUsd: settings.llmMonthlyCapUsd }),
+          : { llmMonthlyCapUsd: normalizeLlmMonthlyCap(settings.llmMonthlyCapUsd) }),
       };
       stored.set(id, updated);
       return structuredCopy(updated);

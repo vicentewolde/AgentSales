@@ -131,9 +131,22 @@ describe("entrar", () => {
       role: "broker",
       brokerId: s.broker.id,
     });
+    const before = s.hasher.dummyVerifications();
     await expect(
       login(s, { email: invited.user.email, password: PASSWORD, client: "panel" }),
     ).rejects.toMatchObject({ code: "AUTH_INVALID" });
+    // Sin contraseña también hace el trabajo de hash (contra el de relleno).
+    expect(s.hasher.dummyVerifications()).toBe(before + 1);
+  });
+
+  it("bloqueado también hace el trabajo de hash", async () => {
+    const s = await setup();
+    await s.users.recordLoginFailure(s.admin.id, { now: START, lockAfter: 1, lockForMs: 60_000 });
+    const before = s.hasher.dummyVerifications();
+    await expect(
+      login(s, { email: s.admin.email, password: PASSWORD, client: "panel" }),
+    ).rejects.toMatchObject({ code: "AUTH_LOCKED" });
+    expect(s.hasher.dummyVerifications()).toBe(before + 1);
   });
 
   it("una contraseña desmedida no se hashea y responde igual", async () => {
@@ -270,6 +283,42 @@ describe("invitar y aceptar", () => {
     await expect(
       acceptInvitation(s, { token: fresh.token, password: PASSWORD, client: "panel" }),
     ).resolves.toBeDefined();
+  });
+
+  it("si otro gastó el enlace entre medio, falla sin dejar contraseña ni sesión", async () => {
+    const s = await setup();
+    const issued = await inviteUser(s, {
+      actor: s.admin,
+      email: "carrera@ejemplo.cl",
+      name: "Carrera",
+      role: "admin",
+      brokerId: null,
+    });
+    // Otro pedido usa el mismo enlace justo después de que este lo leyó.
+    const racing = {
+      ...s,
+      invitations: { ...s.invitations, consume: async () => false },
+    };
+    await expect(
+      acceptInvitation(racing, { token: issued.token, password: PASSWORD, client: "panel" }),
+    ).rejects.toMatchObject({ code: "INVITATION_INVALID" });
+    expect((await s.users.get(issued.user.id))?.hasPassword).toBe(false);
+    expect(s.sessions.all()).toHaveLength(0);
+  });
+
+  it("un usuario desactivado no puede usar su enlace", async () => {
+    const s = await setup();
+    const issued = await inviteUser(s, {
+      actor: s.admin,
+      email: "apagado@ejemplo.cl",
+      name: "Apagado",
+      role: "admin",
+      brokerId: null,
+    });
+    await setUserDisabled(s, { actor: s.admin, userId: issued.user.id, disabled: true });
+    await expect(
+      acceptInvitation(s, { token: issued.token, password: PASSWORD, client: "panel" }),
+    ).rejects.toMatchObject({ code: "INVITATION_INVALID" });
   });
 
   it("una contraseña corta o desmedida no gasta el enlace", async () => {

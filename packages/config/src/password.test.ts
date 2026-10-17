@@ -30,12 +30,20 @@ describe("contraseñas con scrypt", () => {
       "",
       "bcrypt$x",
       "scrypt$1024$8$1$c2Fs",
-      // N enorme: no se intenta (pediría memoria de más).
+      // N enorme, o N y r que juntos piden más de 128 MB: no se intenta.
       `scrypt$${2 ** 24}$8$1$${"a".repeat(22)}$${"b".repeat(86)}`,
+      `scrypt$${2 ** 20}$32$1$${"a".repeat(22)}$${"b".repeat(86)}`,
       "scrypt$1000$8$1$aaaaaaaaaaaaaaaaaaaaaa$bbbb",
     ]) {
       expect(await hasher.verify("lo-que-sea-largo", stored)).toBe(false);
     }
+  });
+
+  it("normaliza la contraseña (NFC): la misma con tildes en otra forma calza", async () => {
+    const composed = "contraseña-larga".normalize("NFC");
+    const decomposed = "contraseña-larga".normalize("NFD");
+    expect(composed).not.toBe(decomposed);
+    expect(await hasher.verify(decomposed, await hasher.hash(composed))).toBe(true);
   });
 
   it("solo acepta un costo potencia de 2 dentro de los límites", () => {

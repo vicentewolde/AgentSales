@@ -60,6 +60,9 @@ export async function openSession(
  * Entrar con correo y contraseña. Un solo error para un correo que no existe, una contraseña
  * equivocada o un usuario desactivado (`AUTH_INVALID`), con el mismo trabajo de hash en todos los
  * casos. Tras `LOGIN_MAX_FAILURES` fallos seguidos, `AUTH_LOCKED` durante `LOGIN_LOCK_MS`.
+ * Riesgo aceptado (ADR-0021): solo un correo que existe llega a bloquearse, así que el undécimo
+ * intento revela que existe; el bloqueo protege la contraseña, que importa más en un sistema
+ * local. Intentos en paralelo antes del bloqueo cuentan todos.
  */
 export async function login(
   deps: SessionDeps,
@@ -69,6 +72,8 @@ export async function login(
   const email = normalizeEmail(input.email);
   const found = isValidEmail(email) ? await deps.users.findCredentials(email) : null;
   if (found?.user.lockedUntil != null && found.user.lockedUntil > now) {
+    // El mismo trabajo de hash que un intento normal: el tiempo no distingue el bloqueo.
+    await deps.hasher.verify(input.password.slice(0, PASSWORD_MAX_LENGTH), null);
     throw new AppError(
       "AUTH_LOCKED",
       "Demasiados intentos fallidos: espera 15 minutos o pide al administrador que te restablezca",

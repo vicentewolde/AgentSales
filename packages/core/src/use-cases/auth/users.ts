@@ -63,7 +63,8 @@ async function issueLink(
  * Crea un usuario y su enlace de invitación. Solo el administrador (`FORBIDDEN`). Un corredor
  * necesita un corredor que exista (`BROKER_NOT_FOUND`); un administrador, ninguno.
  * `USER_INVALID` (400) con un correo o un nombre inválidos; `USER_EMAIL_TAKEN` (409) si el correo
- * ya existe.
+ * ya existe. Sin transacción: si el enlace no se alcanza a guardar, el usuario queda sin enlace y
+ * la salida es restablecerlo (`resetUserAccess`).
  */
 export async function inviteUser(
   deps: UserAdminDeps,
@@ -126,7 +127,8 @@ const invalidInvitation = () =>
 /**
  * Aceptar un enlace: fija la contraseña, cierra las otras sesiones del usuario y abre una nueva.
  * `INVITATION_INVALID` (410) si el enlace no existe, venció, ya se usó o el usuario está
- * desactivado.
+ * desactivado. Sin transacción: si fijar la contraseña falla después de gastar el enlace, el
+ * administrador genera otro.
  */
 export async function acceptInvitation(
   deps: UserAdminDeps & { hasher: PasswordHasher },
@@ -158,7 +160,9 @@ async function mustGetUser(users: UserRepository, id: string): Promise<User> {
 
 /**
  * Restablecer: un enlace nuevo (reemplaza el anterior), cierra todas las sesiones del usuario y
- * quita su bloqueo. Solo el administrador.
+ * quita su bloqueo. Solo el administrador. La contraseña anterior sigue sirviendo hasta que se
+ * usa el enlace (ADR-0021): así nadie queda fuera por un enlace que no llegó; si la contraseña se
+ * filtró, además se desactiva al usuario hasta que elija otra.
  */
 export async function resetUserAccess(
   deps: UserAdminDeps,

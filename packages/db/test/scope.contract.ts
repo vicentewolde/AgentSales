@@ -69,6 +69,16 @@ export function scopeRepositoriesContract(name: string, make: () => Promise<Scop
         llmMonthlyCapUsd: null,
       });
       expect(await repos.brokers.setSettings(mine, {})).toMatchObject({ operatorOwned: true });
+      // Se redondea a centavos; un monto imposible no llega a la base.
+      expect(
+        (await repos.brokers.setSettings(mine, { llmMonthlyCapUsd: 3.456 })).llmMonthlyCapUsd,
+      ).toBe(3.46);
+      for (const cap of [Number.NaN, -1, Number.POSITIVE_INFINITY, 1e8]) {
+        await expect(
+          repos.brokers.setSettings(mine, { llmMonthlyCapUsd: cap }),
+        ).rejects.toMatchObject({ code: "BROKER_SETTINGS_INVALID" });
+      }
+      expect((await repos.brokers.findById(mine))?.llmMonthlyCapUsd).toBe(3.46);
       await repos.brokers.setSettings(mine, { operatorOwned: false });
       const missing = "00000000-0000-0000-0000-000000000000";
       await expect(repos.brokers.setSettings(missing, {})).rejects.toMatchObject({

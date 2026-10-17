@@ -32,6 +32,14 @@ describe("permisos (§4.5)", () => {
     expect(can(broker, permission)).toBe(false);
   });
 
+  it("un corredor sin corredor (imposible por la base) no puede nada", () => {
+    const orphan = { role: "broker" as const, brokerId: null };
+    for (const permission of PERMISSIONS) {
+      expect(can(orphan, permission, null)).toBe(false);
+      expect(can(orphan, permission)).toBe(false);
+    }
+  });
+
   it("assertCan da FORBIDDEN", () => {
     expect(() => assertCan(broker, "accounts.manage", "b1")).toThrow(
       expect.objectContaining({ code: "FORBIDDEN" }),

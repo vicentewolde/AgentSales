@@ -5,6 +5,7 @@ import {
   type BrokerData,
   type BrokerRepository,
   brokerSchema,
+  normalizeLlmMonthlyCap,
   scopedBrokerId,
 } from "@agentsales/core";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
@@ -163,7 +164,8 @@ export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
         const set: Partial<typeof brokers.$inferInsert> = {};
         if (operatorOwned !== undefined) set.operatorOwned = operatorOwned;
         if (llmMonthlyCapUsd !== undefined) {
-          set.llmMonthlyCapUsd = llmMonthlyCapUsd === null ? null : llmMonthlyCapUsd.toFixed(2);
+          const cap = normalizeLlmMonthlyCap(llmMonthlyCapUsd);
+          set.llmMonthlyCapUsd = cap === null ? null : cap.toFixed(2);
         }
         const [row] =
           Object.keys(set).length === 0

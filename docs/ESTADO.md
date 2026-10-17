@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-16
 **Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** spec F7 (`/fase-plan 7`): F7 "Varios corredores" y F8 "En internet" en el roadmap
-**Siguiente paso:** `/tarea F7-T01 F7-T02 F7-T03` (lote A: datos y reglas de acceso)
+**Última tarea:** lote A de F7 (F7-T01 a T03, #130): datos, el alcance en SQL y el login en core (sin pantallas todavía)
+**Siguiente paso:** `/tarea F7-T04 F7-T05 F7-T06 F7-T07` (lote B: entrar con la API, la CLI y el panel)
 
 ## Pendiente tuyo para F7
 - [ ] **Clave de la API de Anthropic** (antes del lote D): crearla en la consola sin vencimiento (o anotar la fecha), ponerle un límite de gasto total en la consola y dejarla en `.env` como `ANTHROPIC_API_KEY`; después `pnpm llm:smoke --provider anthropic-api` (gasta centavos)
@@ -33,9 +33,9 @@
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F7 (`/fase-plan 7`) y ADR-0021 a ADR-0023 | ✅ terminada | |
-| **Lote A** · T01 Datos nuevos: usuarios, sesiones, invitaciones y `state` usados | 🔨 en curso | |
-| **Lote A** · T02 Las tablas de hoy y el alcance en SQL | 🔨 en curso | |
-| **Lote A** · T03 Usuarios, sesiones y permisos (core y config) | 🔨 en curso | |
+| **Lote A** · T01 Datos nuevos: usuarios, sesiones, invitaciones y `state` usados | ✅ terminada | #130 |
+| **Lote A** · T02 Las tablas de hoy y el alcance en SQL | ✅ terminada | #130 |
+| **Lote A** · T03 Usuarios, sesiones y permisos (core y config) | ✅ terminada | #130 |
 | **Lote B** · T04 La API con sesión | ⏳ pendiente | |
 | **Lote B** · T05 Usuarios, `/health` y el primer administrador | ⏳ pendiente | |
 | **Lote B** · T06 CLI: entrar | ⏳ pendiente | |
@@ -141,6 +141,11 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-17: **Lote A de F7 (T01 a T03).** Por dentro, sin cambios visibles todavía:
+  - **Datos:** usuarios, sesiones, enlaces de invitación y `state` usados (migración `0009`, aún no aplicada en Neon: se aplica con `pnpm db:migrate` antes de usar el lote B); en cada corredor, si es propio (los de hoy quedaron propios) y su tope de IA; el gasto de IA por preparación; quién hizo cada cosa en la bitácora.
+  - **Cada corredor lo suyo:** las listas de la base ya filtran por corredor; las rutas lo usarán en el lote C.
+  - **Login en core:** entrar (bloqueo tras 10 fallos), sesiones de 30 días (7 sin uso), invitar, aceptar, restablecer y desactivar; contraseñas con `scrypt`.
+  - **La revisión dejó** (sin bloqueantes): el tope de IA validado, el login con el mismo tiempo también bloqueado, más pruebas; y riesgos aceptados anotados en ADR-0021 (el bloqueo revela que un correo existe; restablecer no anula la contraseña vieja hasta usar el enlace).
 - 2026-10-16: **Spec F7 aprobado** (`/fase-plan 7`). Partiste la antigua F7 en "Varios corredores" (F7) y "En internet" (F8). El subagente `integraciones` revisó Meta (evaluadores de Instagram; Generate token exige iniciar sesión en esa cuenta) y Anthropic (SDK 0.134.0, modelos y precios, errores del tope de gasto). La revisión del `arquitecto` dejó 5 bloqueantes, aplicados: el login de la CLI y del panel llega en el mismo lote que la sesión de la API, así `main` sigue usable. 19 tareas en 8 lotes; ADR-0021 a ADR-0023.
 - 2026-10-16: **Cierre de F6 (T15, `/fase-cerrar 6`).**
   - **Antes de la demo:** apliqué en Neon la migración `0008` (`pnpm db:migrate`; el worker fallaba sin ella) y, con tu permiso, descarté los intentos en vivo de Marketplace de F5 (P002, P004 y P005), que bloqueaban el recordatorio en simulación.

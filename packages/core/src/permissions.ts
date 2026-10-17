@@ -38,11 +38,17 @@ type Actor = Pick<User, "role" | "brokerId">;
 
 /**
  * Si el usuario puede hacer `permission` sobre un recurso de `brokerId`. El administrador puede
- * todo; el corredor, solo lo de `BROKER_PERMISSIONS` y solo con su corredor.
+ * todo; el corredor, solo lo de `BROKER_PERMISSIONS` y solo con su corredor. Sin `brokerId`, un
+ * corredor no puede nada: las rutas de listas pasan el corredor del alcance, nunca lo omiten.
  */
 export function can(user: Actor, permission: Permission, brokerId?: string | null): boolean {
   if (user.role === "admin") return true;
-  return BROKER_PERMISSIONS.has(permission) && brokerId !== undefined && brokerId === user.brokerId;
+  return (
+    BROKER_PERMISSIONS.has(permission) &&
+    user.brokerId !== null &&
+    brokerId !== undefined &&
+    brokerId === user.brokerId
+  );
 }
 
 /** `FORBIDDEN` (403) si no puede: el recurso es suyo, la acción no. */

@@ -15,14 +15,21 @@ const PARALLELISM = 1;
 /** Límites de lo que se acepta al leer un hash (uno inventado no puede pedir memoria de más). */
 const MIN_COST = 2 ** 10;
 const MAX_COST = 2 ** 20;
+/** Memoria que pide `scrypt` (128 · N · r bytes): a lo más 128 MB. */
+const MAX_MEMORY_BYTES = 128 * 1024 * 1024;
 
 type Params = { N: number; r: number; p: number };
 
 function derive(password: string, salt: Buffer, { N, r, p }: Params): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    // NFC: la misma contraseña con tildes escrita en macOS u otro sistema da el mismo hash.
     // `maxmem` con holgura sobre lo que pide (128 · N · r).
-    scrypt(password, salt, KEY_BYTES, { N, r, p, maxmem: 256 * N * r }, (error, key) =>
-      error ? reject(error) : resolve(key),
+    scrypt(
+      password.normalize("NFC"),
+      salt,
+      KEY_BYTES,
+      { N, r, p, maxmem: 256 * N * r },
+      (error, key) => (error ? reject(error) : resolve(key)),
     );
   });
 }
@@ -44,7 +51,8 @@ function parse(stored: string): { params: Params; salt: Buffer; hash: Buffer } |
     params.r > 32 ||
     !Number.isInteger(params.p) ||
     params.p < 1 ||
-    params.p > 4
+    params.p > 4 ||
+    128 * params.N * params.r > MAX_MEMORY_BYTES
   ) {
     return null;
   }

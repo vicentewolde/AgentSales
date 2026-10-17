@@ -31,3 +31,11 @@
 - **Tokens firmados sin estado (JWT):** no se pueden revocar al desactivar o restablecer sin una lista en la base, que es justo una tabla de sesiones.
 - **Un usuario por corredor compartido:** no dice quién hizo qué en la bitácora.
 - **`argon2`:** mejor que `scrypt` en papel, pero necesita un módulo nativo; `scrypt` viene con Node y es aceptable con los parámetros adecuados.
+
+## Seguimiento
+- 2026-10-17 (revisión del lote A, PR #130), riesgos aceptados y precisiones:
+  - **`AUTH_LOCKED` revela que un correo existe** (solo uno real llega a bloquearse): se acepta porque el bloqueo protege la contraseña, que importa más en un sistema local; la rama bloqueada hace el mismo trabajo de hash. Intentos en paralelo antes del bloqueo cuentan todos. F8 suma límites por IP.
+  - **Restablecer no anula la contraseña anterior** hasta que se usa el enlace: así nadie queda fuera por un enlace que no llegó. Si la contraseña se filtró, el operador además desactiva al usuario hasta que elija otra.
+  - **Invitar y aceptar no son una transacción:** si una escritura falla a mitad, la salida es restablecer (un enlace nuevo).
+  - La contraseña se normaliza a NFC antes del hash, y un hash guardado con parámetros que piden más de 128 MB no se intenta. Dos enlaces generados a la vez para el mismo usuario se reintentan una vez (`INVITATION_CONFLICT` si vuelven a chocar).
+
