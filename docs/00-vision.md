@@ -18,7 +18,7 @@ Corredores de propiedades independientes y vendedores pequeños pierden horas pu
 | Usuario | Necesidad principal |
 |---|---|
 | **Operador** (Vinny) | Operar el sistema para uno o más corredores; aprobar publicaciones |
-| **Corredor independiente** | Publicar su cartera en IG, Portal Inmobiliario y Marketplace con su marca |
+| **Corredor independiente** | Publicar su cartera en IG, Portal Inmobiliario y Marketplace con su marca; desde F7 entra con su propio usuario y ve solo lo suyo |
 | **Vendedor independiente** (futuro) | Lo mismo, con productos en vez de propiedades |
 
 ## Alcance del MVP (piloto inmobiliario)
@@ -30,7 +30,7 @@ Corredores de propiedades independientes y vendedores pequeños pierden horas pu
 - Publicación en **Instagram**, **Portal Inmobiliario** (vía Mercado Libre) y **Facebook Marketplace** (semiautomático).
 - Publicar en el momento o programado.
 - Seguimiento por propiedad y por plataforma.
-- Multi-corredor desde el modelo de datos: cada corredor publica desde sus propias cuentas.
+- Multi-corredor desde el modelo de datos: cada corredor publica desde sus propias cuentas. Desde F7, usuarios con contraseña (el operador administra, cada corredor ve solo lo suyo), la IA de los corredores por la API de Anthropic con tope de gasto, y Marketplace a mano para los corredores que no son del operador (ADR-0021 a ADR-0023).
 - Corre en local; interfaz web simple y CLI.
 
 ## Fuera de alcance del MVP
@@ -40,7 +40,7 @@ Corredores de propiedades independientes y vendedores pequeños pierden horas pu
 - Yapo y TikTok (post-MVP).
 - Carga de avisos por chat (post-MVP).
 - Cobro, planes o facturación a clientes.
-- Despliegue en la nube con acceso de terceros (fase de endurecimiento).
+- Despliegue en la nube con acceso de terceros desde internet (F8 · En internet).
 - Publicidad pagada (ads).
 
 ## Principios del producto

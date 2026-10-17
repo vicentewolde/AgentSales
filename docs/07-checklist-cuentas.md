@@ -44,7 +44,7 @@ Hecho el 2026-10-02: 3 propiedades de muestra (P001, P002 y P003, corredor `agen
 - [x] (2026-10-06: `✓`, Meta descargó la portada de P001 al instante; cuenta @vicentewoldec conectada con el token de Generate token) Antes de la prueba en `live` (demo de F3): con la cuenta conectada, `pnpm ig:smoke` en tu terminal. Le pide a Instagram que prepare una portada desde un enlace temporal de R2 y espera, **sin publicar nada** (lo preparado vence solo en 24 h). Cuéntale a Claude lo que imprime: `✓` o el código del error
 - [x] Prueba en `live` de la demo de F3 (2026-10-06): P002 publicada en @vicentewoldec (carrusel y reel), borrada a mano y marcada como retirada
 - [ ] Desde el 2026-10-07 a las 16:31 (hora de Chile): el refresco del token (cuéntale a Claude y lo corre contigo); falta también confirmar si la portada del reel fue el cuadro del segundo 1
-- [ ] (Para terceros, en F7) Verificación del negocio y App Review de `instagram_business_content_publish`
+- [ ] (Para terceros, en F8) Verificación del negocio y App Review de `instagram_business_content_publish`: ver "Antes de F8"
 
 ## En paralelo, antes de F4 (Portal Inmobiliario)
 
@@ -89,5 +89,11 @@ Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4
 - [x] API key de Anthropic en console.anthropic.com, en `.env` como `ANTHROPIC_API_KEY` (2026-10-17; vence el 2026-12-31). Al crearla: sin vencimiento, o anota la fecha y renuévala antes (una clave vencida da `LLM_AUTH_REQUIRED` en la IA de los corredores). Después, `pnpm llm:smoke --provider anthropic-api` (gasta centavos)
 - [ ] **Límite de gasto mensual en la consola de Anthropic** (Settings → Limits): el tope por corredor de AgentSales solo cubre lo que AgentSales anota; el de la consola corta todo si algo se dispara
 - [ ] **Un corredor en Instagram (D16, evaluador de Meta):** en developers.facebook.com, tu app `AgentSales-IG` → Roles de la app → Roles → agregar a la persona como **Instagram Tester** con su usuario de Instagram (su cuenta debe ser profesional). Ella acepta en Instagram (web: *Configuración → Permisos de apps y sitios web → Invitaciones de evaluador*, atajo instagram.com/accounts/manage_access/). Después, **en persona y en tu Mac**, abre en el panel de Meta la pantalla de **Generate token**, que la persona inicie sesión con su Instagram, copia el token y córrelo como hoy: `pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin`. Antes de publicar en vivo, `pnpm ig:smoke --broker <slug>` (que Meta acepte la cuenta de un evaluador es NO VERIFICADO)
-- [ ] Textos simples de términos de uso y privacidad
 - [ ] Primer corredor piloto confirmado
+
+## Antes de F8 (en internet)
+
+- [ ] **App Review de Meta y verificación del negocio** (`instagram_business_content_publish`): acceso avanzado para publicar en el Instagram de corredores que no son evaluadores de la app (video por permiso, política de privacidad publicada, ícono de 1024x1024; plazo y documentos: NO VERIFICADO)
+- [ ] Términos de uso y política de privacidad publicados en el dominio (los pide Meta y los necesitan los corredores)
+- [ ] Revisar los términos comerciales de Anthropic para atender a varios clientes con tu clave
+- [ ] El dominio propio y el hosting (lo decide el spec de F8)

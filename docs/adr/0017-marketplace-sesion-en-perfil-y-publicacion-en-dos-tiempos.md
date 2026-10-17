@@ -45,3 +45,4 @@
   - **Observado:** la cookie `c_user` existe y es numérica con la sesión abierta, y cerrar la ventana no deja un borrador.
   - **Diagnóstico:** `fb:smoke --listing --diagnostico` anota los errores de la página y los pedidos fallidos a Facebook (método, ruta sin consulta y código; nada del operador ni del aviso), solo a pedido del operador.
 - 2026-10-16 (`/fase-plan 7`): ADR-0023 suma la cuenta de Marketplace **a mano** para los corredores y deja este flujo (perfil del navegador y formulario automático) solo para los corredores propios del operador.
+- 2026-10-17 (cierre de F7): "Un despliegue en la nube (F7)" del contexto pasó a **F8 · En internet** cuando el operador partió la antigua fase "Listo para terceros" (2026-10-16). En F7, el formulario automático quedó solo para los corredores propios (ADR-0023).

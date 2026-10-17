@@ -121,6 +121,12 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
   - derivar el inicio del OAuth si la API queda tras un prefijo;
   - el tope de tiempo de `tokens.refresh` con muchas cuentas.
 - **Deuda heredada de F6:** ocultar o proteger en `/health` la versión de Postgres al desplegar; un `auto_publish` cortado por el apagado no se reintenta; una pausa que un sync aplicó antes que la propiedad queda sin `byListing`; la prueba en vivo de Portal (D15 de F4) confirma el `relist` y la regla de `pictures` en pausar y cerrar.
+- **Deuda heredada de F7** (detalle en `docs/ESTADO.md` → Deuda técnica):
+  - restringir el CORS a los orígenes propios, porque la API acepta `Authorization` sin el control de origen del panel (seguimiento de ADR-0021);
+  - la cookie de sesión con prefijo `__Host-` y `Secure` al servir con HTTPS;
+  - `/oauth/instagram/start` en el mismo host que el panel;
+  - la API arrastra Playwright a través de `@agentsales/media` (el logo usa solo sharp): separarlo al desplegar;
+  - la dirección de vuelta de Mercado Libre con el dominio real.
 
 ## Post-MVP (backlog)
 - Respuestas a DMs, comentarios y preguntas de ML (siguiente gran fase).
