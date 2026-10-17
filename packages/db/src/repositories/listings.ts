@@ -1,10 +1,12 @@
 import {
+  ALL_SCOPE,
   AppError,
   type Listing,
   type ListingImportData,
   type ListingImportRecord,
   type ListingRepository,
   listingSchema,
+  scopedBrokerId,
 } from "@agentsales/core";
 import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
@@ -134,9 +136,11 @@ export function createListingRepository(db: SchemaDatabase): ListingRepository {
       });
     },
 
-    list(filters = {}) {
+    list(filters = {}, scope = ALL_SCOPE) {
       return withDbErrors(async () => {
         const conditions: SQL[] = [];
+        const brokerId = scopedBrokerId(scope);
+        if (brokerId !== undefined) conditions.push(eq(listings.brokerId, brokerId));
         if (filters.status !== undefined) conditions.push(eq(listings.status, filters.status));
         if (filters.operation !== undefined) {
           conditions.push(eq(listings.operation, filters.operation));

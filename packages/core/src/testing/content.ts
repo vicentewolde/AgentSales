@@ -1,6 +1,7 @@
 import type { Content, ContentRun } from "../content.js";
 import { isTerminalContentRun, PLATFORMS } from "../enums.js";
 import { AppError } from "../errors.js";
+import { addLlmCall } from "../llm-usage.js";
 import {
   type ContentRepository,
   type ContentRunRepository,
@@ -27,7 +28,14 @@ const isActive = (status: ContentRun["status"]) => !isTerminalContentRun(status)
  * `DB_QUERY_FAILED`): en la aplicación el aviso siempre se carga antes.
  */
 export function createInMemoryContentRepositories(
-  options: { nextId?: () => string } = {},
+  options: {
+    nextId?: () => string;
+    /**
+     * El corredor de un aviso, para `sumLlmCost` (Postgres lo cruza con `listings`). Sin esto,
+     * `sumLlmCost` falla: solo lo necesitan los tests del gasto.
+     */
+    brokerOfListing?: (listingId: string) => string | null;
+  } = {},
 ): InMemoryContentRepositories {
   let sequence = 0;
   const nextId = options.nextId ?? (() => `content-${++sequence}`);
@@ -59,6 +67,7 @@ export function createInMemoryContentRepositories(
         startedAt: null,
         finishedAt: null,
         createdAt: new Date(),
+        llmUsage: null,
       };
       runs.push(created);
       return structuredCopy(created);
@@ -138,6 +147,29 @@ export function createInMemoryContentRepositories(
       }
       return closed;
     },
+    async addLlmUsage(id, call) {
+      const run = findRun(id);
+      if (run === undefined) {
+        throw new AppError("CONTENT_RUN_NOT_FOUND", `No existe la corrida de contenido ${id}`);
+      }
+      const updated = { ...run, llmUsage: addLlmCall(run.llmUsage, call) };
+      replaceRun(updated);
+      return structuredCopy(updated);
+    },
+    async sumLlmCost({ from, to, brokerId }) {
+      const brokerOf = options.brokerOfListing;
+      if (brokerOf === undefined)
+        throw new Error("El doble necesita `brokerOfListing` para sumLlmCost");
+      const totals = new Map<string, { costUsd: number; runs: number }>();
+      for (const run of runs) {
+        if (run.llmUsage === null || run.createdAt < from || run.createdAt >= to) continue;
+        const owner = brokerOf(run.listingId);
+        if (owner === null || (brokerId !== undefined && owner !== brokerId)) continue;
+        const total = totals.get(owner) ?? { costUsd: 0, runs: 0 };
+        totals.set(owner, { costUsd: total.costUsd + run.llmUsage.costUsd, runs: total.runs + 1 });
+      }
+      return [...totals].map(([id, total]) => ({ brokerId: id, ...total }));
+    },
   };
 
   const contentRepository: ContentRepository = {
@@ -148,6 +180,10 @@ export function createInMemoryContentRepositories(
         );
         return current === undefined ? [] : [structuredCopy(current)];
       });
+    },
+    async listCurrentMany(listingIds) {
+      const wanted = [...new Set(listingIds)];
+      return (await Promise.all(wanted.map((id) => contentRepository.listCurrent(id)))).flat();
     },
     async get(id) {
       const content = contents.find((stored) => stored.id === id);

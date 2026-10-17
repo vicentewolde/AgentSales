@@ -1,8 +1,10 @@
 import {
+  ALL_SCOPE,
   AppError,
   type ImportRun,
   type ImportRunRepository,
   importRunSchema,
+  scopedBrokerId,
 } from "@agentsales/core";
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
@@ -76,11 +78,14 @@ export function createImportRunRepository(db: SchemaDatabase): ImportRunReposito
       }
     },
 
-    list(limit = 50) {
+    list(limit = 50, scope = ALL_SCOPE) {
       return withDbErrors(async () => {
+        // Un corredor no ve las de `broker_id` nulo (las del administrador antes de leer la hoja).
+        const brokerId = scopedBrokerId(scope);
         const rows = await db
           .select()
           .from(importRuns)
+          .where(brokerId === undefined ? undefined : eq(importRuns.brokerId, brokerId))
           .orderBy(desc(importRuns.createdAt), desc(importRuns.id))
           .limit(limit);
         return rows.map(toImportRun);

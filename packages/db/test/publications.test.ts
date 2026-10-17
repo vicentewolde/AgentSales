@@ -20,6 +20,7 @@ import { createListingRepository } from "../src/repositories/listings.js";
 import { createMediaRepository } from "../src/repositories/media.js";
 import { createPlatformAccountRepository } from "../src/repositories/platform-accounts.js";
 import { createPublicationRepository } from "../src/repositories/publications.js";
+import { createUserRepository } from "../src/repositories/users.js";
 import { publications } from "../src/schema.js";
 import { newContent } from "./content-repositories.contract.js";
 import { brokerData, newListing, newMedia } from "./import-repositories.contract.js";
@@ -92,12 +93,29 @@ function inMemory() {
 
 publicationRepositoryContract("en memoria", async () => {
   const { repos } = inMemory();
-  return { publications: repos.publications, fixtures: () => seed(repos), missingId: MISSING_UUID };
+  // El doble no revisa la FK del usuario.
+  return {
+    publications: repos.publications,
+    fixtures: () => seed(repos),
+    missingId: MISSING_UUID,
+    userId: "user-1",
+  };
 });
 
 publicationRepositoryContract("Drizzle sobre PGlite", async () => {
-  const { repos } = await pglite();
-  return { publications: repos.publications, fixtures: () => seed(repos), missingId: MISSING_UUID };
+  const { db, repos } = await pglite();
+  const user = await createUserRepository(db).create({
+    email: "bitacora@ejemplo.cl",
+    name: "Bitácora",
+    role: "admin",
+    brokerId: null,
+  });
+  return {
+    publications: repos.publications,
+    fixtures: () => seed(repos),
+    missingId: MISSING_UUID,
+    userId: user.id,
+  };
 });
 
 describe("publicaciones · lo que el puerto no muestra (PGlite)", () => {

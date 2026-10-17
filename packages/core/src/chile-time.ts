@@ -89,3 +89,37 @@ const formatParts = (match: RegExpExecArray) =>
 
 /** `2026-10-19T10:00` (hora de Chile), el valor de un `<input type="datetime-local">`. */
 export const chileInputValue = (date: Date): string => formatChileTime(date).replace(" ", "T");
+
+/** El primer instante de un día en Chile (si las 00:00 no existen por el cambio de horario, la 01:00). */
+function chileDayStart(year: number, month: number, day: number): Date {
+  const target = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const wall = Date.UTC(year, month - 1, day);
+  // Chile va 3 o 4 horas detrás de UTC: el día empieza entre las 03:00 y las 05:00 UTC.
+  for (let ms = wall + 2 * 3_600_000; ms <= wall + 6 * 3_600_000; ms += 30 * 60_000) {
+    if (formatChileTime(new Date(ms)).startsWith(target)) return new Date(ms);
+  }
+  throw new RangeError(`No se encontró el inicio del ${target} en Chile`);
+}
+
+const MONTH = /^(\d{4})-(\d{2})$/;
+
+/**
+ * El mes calendario de Chile (`"2026-10"`) como rango de instantes `[from, to)` (spec F7 §4.7: el
+ * gasto del mes). `MONTH_INVALID` (400) si no tiene esa forma.
+ */
+export function chileMonthRange(month: string): { from: Date; to: Date } {
+  const match = MONTH.exec(month);
+  const year = Number(match?.[1]);
+  const index = Number(match?.[2]);
+  if (match === null || index < 1 || index > 12) {
+    throw new AppError(
+      "MONTH_INVALID",
+      `El mes debe ser "AAAA-MM" (por ejemplo "2026-10"): "${month}"`,
+    );
+  }
+  const next = index === 12 ? { year: year + 1, index: 1 } : { year, index: index + 1 };
+  return { from: chileDayStart(year, index, 1), to: chileDayStart(next.year, next.index, 1) };
+}
+
+/** El mes de Chile (`"2026-10"`) de un instante. */
+export const chileMonthOf = (date: Date): string => formatChileTime(date).slice(0, 7);

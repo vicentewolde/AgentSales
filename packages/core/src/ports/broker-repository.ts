@@ -1,3 +1,4 @@
+import type { AccessScope } from "../access.js";
 import type { Broker, BrokerData } from "../broker.js";
 
 /**
@@ -14,8 +15,11 @@ export interface BrokerRepository {
   findBySlug(slug: string): Promise<Broker | null>;
   /** El corredor de un aviso (`listing.brokerId`, F2-T10); `null` si no existe. */
   findById(id: string): Promise<Broker | null>;
-  /** Todos los corredores, por nombre de marca (para el selector de Importar). */
-  list(): Promise<Broker[]>;
+  /**
+   * Los corredores del alcance, por nombre de marca (para el selector de Importar). Sin alcance,
+   * todos (spec F7 §4.4).
+   */
+  list(scope?: AccessScope): Promise<Broker[]>;
   create(data: BrokerData): Promise<Broker>;
   /** Actualiza los datos de la hoja Corredor; no toca `logoMediaId` ni `autoPublish`. */
   update(id: string, data: BrokerData): Promise<Broker>;
@@ -30,4 +34,12 @@ export interface BrokerRepository {
    * panel y la CLI, nunca la hoja Corredor. `BROKER_NOT_FOUND` si no existe. Devuelve el corredor.
    */
   setAutoPublish(id: string, autoPublish: boolean): Promise<Broker>;
+  /**
+   * Lo que solo cambia el administrador (spec F7 §4.5): si es propio y el tope de IA (`null` = sin
+   * tope). `undefined` = no tocar. `BROKER_NOT_FOUND` si no existe. Devuelve el corredor.
+   */
+  setSettings(
+    id: string,
+    settings: { operatorOwned?: boolean; llmMonthlyCapUsd?: number | null },
+  ): Promise<Broker>;
 }

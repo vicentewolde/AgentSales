@@ -8,6 +8,7 @@ import {
   CURRENCIES,
   FIELD_TYPES,
   IMPORT_RUN_STATUSES,
+  INVITATION_PURPOSES,
   LISTING_SOURCES,
   LISTING_STATUSES,
   MEDIA_KINDS,
@@ -17,13 +18,16 @@ import {
   PLATFORMS,
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
+  SESSION_CLIENTS,
   TERMINAL_PUBLICATION_STATUSES,
+  USER_ROLES,
 } from "@agentsales/core";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   bigint,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -58,6 +62,9 @@ export const publicationStatusEnum = pgEnum("publication_status", PUBLICATION_ST
 export const publicationFormatEnum = pgEnum("publication_format", PUBLICATION_FORMATS);
 export const importRunStatusEnum = pgEnum("import_run_status", IMPORT_RUN_STATUSES);
 export const contentRunStatusEnum = pgEnum("content_run_status", CONTENT_RUN_STATUSES);
+export const userRoleEnum = pgEnum("user_role", USER_ROLES);
+export const sessionClientEnum = pgEnum("session_client", SESSION_CLIENTS);
+export const invitationPurposeEnum = pgEnum("invitation_purpose", INVITATION_PURPOSES);
 
 // ── Columnas comunes ─────────────────────────────────────────────────────
 
@@ -90,7 +97,87 @@ export const brokers = pgTable("brokers", {
   tone: text("tone"),
   fixedHashtags: text("fixed_hashtags").array().notNull().default(sql`'{}'::text[]`),
   autoPublish: boolean("auto_publish").notNull().default(false),
+  /**
+   * Corredor propio del operador (spec F7 §4.7, ADR-0023): usa `LLM_PROVIDER` (su plan) y el
+   * formulario automático de Marketplace. La migración `0009` marca así a los que ya existían.
+   */
+  operatorOwned: boolean("operator_owned").notNull().default(false),
+  /** Tope de gasto de IA del mes en dólares (spec F7 §4.7); `null` = sin tope. */
+  llmMonthlyCapUsd: numeric("llm_monthly_cap_usd", { precision: 10, scale: 2 }),
   ...timestamps,
+});
+
+// ── Usuarios y sesiones (spec F7 §4.12, ADR-0021) ───────────────────────
+
+export const users = pgTable(
+  "users",
+  {
+    id: id(),
+    /** Siempre en minúsculas: el `CHECK` lo exige y el único compara así. */
+    email: text("email").notNull().unique(),
+    name: text("name").notNull(),
+    role: userRoleEnum("role").notNull(),
+    /** `null` si y solo si `role = 'admin'`. */
+    brokerId: uuid("broker_id").references(() => brokers.id),
+    /** `scrypt$N$r$p$sal$hash`; `null` hasta que acepta la invitación. Nunca sale del repositorio. */
+    passwordHash: text("password_hash"),
+    failedLogins: integer("failed_logins").notNull().default(0),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    check("users_email_lowercase", sql`${t.email} = lower(${t.email})`),
+    check("users_role_broker", sql`(${t.role} = 'admin') = (${t.brokerId} IS NULL)`),
+    index("users_broker_idx").on(t.brokerId),
+  ],
+);
+
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: id(),
+    /** SHA-256 del token; el token nunca se guarda. */
+    tokenHash: text("token_hash").notNull().unique(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    client: sessionClientEnum("client").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId)],
+);
+
+export const invitations = pgTable(
+  "invitations",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** SHA-256 del token del enlace. */
+    tokenHash: text("token_hash").notNull().unique(),
+    purpose: invitationPurposeEnum("purpose").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    /** `null` si lo generó `pnpm auth:admin`. */
+    createdBy: uuid("created_by").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("invitations_user_idx").on(t.userId),
+    // A lo más un enlace vigente por usuario: `issue` borra el anterior sin usar.
+    uniqueIndex("invitations_one_open_per_user").on(t.userId).where(sql`"used_at" IS NULL`),
+  ],
+);
+
+/** `state` del OAuth ya usados (spec F7 §4.12): el de Mercado Libre sirve una vez. */
+export const oauthStatesUsed = pgTable("oauth_states_used", {
+  nonceHash: text("nonce_hash").primaryKey(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
 export const platformAccounts = pgTable(
@@ -240,6 +327,8 @@ export const contentRuns = pgTable(
     report: jsonb("report"),
     /** `{ code, message }` cuando `status = failed`. */
     error: jsonb("error"),
+    /** `llmUsageSchema` (core): lo gastado en IA, sumado por llamada (spec F7 §4.7). */
+    llmUsage: jsonb("llm_usage"),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     ...timestamps,
@@ -351,6 +440,8 @@ export const publicationEvents = pgTable(
     fromStatus: text("from_status"),
     toStatus: text("to_status"),
     actor: text("actor").notNull(),
+    /** La persona que lo hizo (spec F7 §4.3); `null` en lo del sistema y lo anterior a F7. */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
     /** Sin secretos. */
     payload: jsonb("payload").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

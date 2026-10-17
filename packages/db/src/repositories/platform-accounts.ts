@@ -1,4 +1,5 @@
 import {
+  ALL_SCOPE,
   AppError,
   CREDENTIALS_LOCK_TIMEOUT_MS,
   checkConnectedCredentials,
@@ -10,6 +11,7 @@ import {
   platformAccountSchema,
   platformCredentialsSchema,
   type SecretBox,
+  scopedBrokerId,
 } from "@agentsales/core";
 import { and, asc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
@@ -196,11 +198,13 @@ export function createPlatformAccountRepository(
       return row === undefined ? null : toAccount(row);
     },
 
-    list() {
+    list(scope = ALL_SCOPE) {
       return withDbErrors(async () => {
+        const brokerId = scopedBrokerId(scope);
         const rows = await db
           .select()
           .from(platformAccounts)
+          .where(brokerId === undefined ? undefined : eq(platformAccounts.brokerId, brokerId))
           .orderBy(asc(platformAccounts.createdAt), asc(platformAccounts.id));
         return rows.map(toAccount);
       });

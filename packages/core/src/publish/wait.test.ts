@@ -15,6 +15,7 @@ const event = (overrides: Partial<PublicationEvent>): PublicationEvent => ({
   fromStatus: "publishing",
   toStatus: "scheduled",
   actor: "system",
+  userId: null,
   payload: { reason: "rate_limit" },
   createdAt: new Date("2026-10-19T12:00:00Z"),
   ...overrides,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AppError } from "./errors.js";
 import type { RawBrokerSheet } from "./listing-sheet.js";
 import type { FieldIssue } from "./listing-validator/index.js";
 import { foldText, isBlank, isRawCell, normalizeText } from "./listing-validator/normalizers.js";
@@ -19,8 +20,30 @@ export const brokerSchema = z.object({
   tone: z.string().nullable(),
   fixedHashtags: z.array(z.string()),
   autoPublish: z.boolean(),
+  /** Corredor propio del operador (spec F7 §4.7, ADR-0023): su plan de Claude y Marketplace automático. */
+  operatorOwned: z.boolean(),
+  /** Tope de gasto de IA del mes en dólares; `null` = sin tope (spec F7 §4.7). */
+  llmMonthlyCapUsd: z.number().nonnegative().nullable(),
 });
 export type Broker = z.infer<typeof brokerSchema>;
+
+/** El tope de IA más alto que admite la base (`numeric(10,2)`). */
+const MAX_LLM_MONTHLY_CAP_USD = 99_999_999.99;
+
+/**
+ * El tope de IA del mes, redondeado a centavos; `null` = sin tope. `BROKER_SETTINGS_INVALID`
+ * (400) si no es un número finito entre 0 y el máximo de la base (spec F7 §4.7).
+ */
+export function normalizeLlmMonthlyCap(value: number | null): number | null {
+  if (value === null) return null;
+  if (!Number.isFinite(value) || value < 0 || value > MAX_LLM_MONTHLY_CAP_USD) {
+    throw new AppError(
+      "BROKER_SETTINGS_INVALID",
+      "El tope de IA debe ser un monto en dólares entre 0 y 99.999.999,99",
+    );
+  }
+  return Math.round(value * 100) / 100;
+}
 
 /** Datos del corredor que llena la hoja Corredor (no incluye el logo, que es un medio: F1-T07). */
 export type BrokerData = Pick<

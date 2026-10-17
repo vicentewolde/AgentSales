@@ -21,6 +21,10 @@ erDiagram
   contents ||--o{ publications : usa
   publications ||--o{ publication_events : registra
   publications |o--o| publications : republica
+  brokers ||--o{ users : "tiene usuarios"
+  users ||--o{ sessions : abre
+  users ||--o{ invitations : recibe
+  users |o--o{ publication_events : hace
 ```
 
 ## Tablas
@@ -38,6 +42,8 @@ erDiagram
 | tone | text null | Guía de tono para la IA |
 | fixed_hashtags | text[] | |
 | auto_publish | boolean default false | Si es true, al terminar una corrida de textos se aprueba lo que no tiene errores y se publica solo (F6-T09, ADR-0019; Marketplace queda como recordatorio). Solo lo cambian el panel y la CLI (`BrokerRepository.setAutoPublish`), nunca la hoja Corredor |
+| operator_owned | boolean default false | Corredor propio del operador (F7, spec §4.7, ADR-0023): su IA usa `LLM_PROVIDER` (el plan del operador) y puede usar el formulario automático de Marketplace; los demás, la API de Anthropic y Marketplace a mano. La migración `0009` marcó `true` los que ya existían. Lo cambia solo el administrador (`BrokerRepository.setSettings`) |
+| llm_monthly_cap_usd | numeric(10,2) null | Tope de gasto de IA del mes de Chile, en dólares (F7, spec §4.7); `null` = sin tope. Solo el administrador (`setSettings`) |
 
 ### platform_accounts — cuentas conectadas de cada corredor
 | Columna | Tipo | Notas |
@@ -132,6 +138,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | error | jsonb null | `{ code, message }` cuando `status = failed` |
 | started_at | timestamptz null | Se fija al pasar a `running` (el primer intento) |
 | finished_at | timestamptz null | |
+| llm_usage | jsonb null | `llmUsageSchema` (core, F7-T02): lo gastado en IA, sumado **por llamada** en cuanto vuelve (`addLlmUsage`, atómico con la fila bloqueada), también las de una corrida que después falla: llamadas, proveedor y modelo de la última, tokens (entrada sin caché, escritura y lectura de caché, salida), `costUsd` estimado con la tabla de precios de core y su fecha, y los `requestIds`. `null` si no llamó al modelo. El gasto del mes de un corredor suma las corridas **creadas** en el mes de Chile (`sumLlmCost`, cruzando con `listings.broker_id`) |
 
 Único parcial `content_runs_one_active_per_listing`: `(listing_id) WHERE status IN ('queued', 'running')` (`ACTIVE_CONTENT_RUN_STATUSES`), una sola corrida activa por aviso; un segundo `create` es `CONTENT_RUN_CONFLICT`, reintentable. Índice `(listing_id, created_at)` para la última corrida. Los cambios de estado son condicionales, como los de `import_runs`, y `markSucceeded` guarda el estado y las filas de `contents` en una sola transacción (migración `0004`, F2-T02).
 
@@ -196,11 +203,56 @@ Llave primaria `(platform, key)` (migración `0007`); no tiene `id`.
 | publication_id | uuid FK | `ON DELETE CASCADE` |
 | type | text | `status_changed`, `publish_attempt`, `sync`, `manual_edit` y, desde F6, `schedule_changed` (`PUBLICATION_EVENT_TYPES`) |
 | from_status, to_status | text null | `from_status` es `null` al nacer la publicación |
-| actor | text | `system`, `operator`, `cli` (`PUBLICATION_ACTORS`) |
+| actor | text | `system`, `operator`, `cli` (`PUBLICATION_ACTORS`): el canal (desde F7, sale de la sesión: `operator` es el panel) |
+| user_id | uuid null | FK a `users` (`ON DELETE SET NULL`): la persona que lo hizo (F7, spec §4.3); `null` en lo del sistema y en lo anterior a F7 |
 | payload | jsonb | Sin secretos. En `sync` (F4), `syncPayloadSchema`: `{ remote }`, lo leído de la plataforma. En un `status_changed` de pausar, reactivar o cerrar (F4-T17): `{ mode, operation, remote? }` (lo que informó la plataforma); en uno del sync: `{ mode: "live", sync: true, remoteStatus }`, con actor `system` (así se distingue una pausa de Mercado Libre de una del operador). Desde F6-T08 (ADR-0019), los cambios que hace la propiedad (pausar Portal, desprogramar, descartar y bajar simulaciones al cerrar) suman `byListing: true` y, al descartar o bajar, la `action` de la propiedad (`close` o `archive`): reanudar la propiedad solo reactiva las pausas con esa marca. En `publish_attempt` (F3-T11), `publishAttemptPayloadSchema`: `mode`, `attempt` (= `publications.attempts`), `retry` (reintento de la cola), `result` (`published`, `retry`, `failed` o, desde F5-T05, `awaiting_manual_confirm`: el formulario de Marketplace quedó listo), `error?`, `sent?` (lo enviado: formato, caption, rutas de R2 y medidas de los medios, y la cuenta; desde F4-T13, en Portal y Marketplace, `listing` —el aviso enviado, sin `internal_notes` ni `_extra`, con la dirección y la unidad en `null` si no se muestran— y `brokerContact` con el WhatsApp enmascarado; desde F5-T07, en Marketplace, `priceClp` y `uf`; nunca URLs firmadas ni tokens) y, desde F4-T13, `notes?` (advertencias que no bloquearon, limpias y como mucho 20). Desde F6 (ADR-0018): un `status_changed` a `scheduled` lleva `{ mode, scheduledAt, reason }` (`reason`: `operator`, `batch`, `auto_publish` o `rate_limit`, `SCHEDULE_REASONS`); uno de `scheduled` a `failed` del disparo, `{ mode, due: true, code }`; uno de desprogramar (`scheduled` a `approved`), `{ unscheduled }` (la hora que tenía); `schedule_changed` (reprogramar), `scheduleChangedPayloadSchema`: `{ from, to, mode }`; y `publish_attempt` suma el resultado `rescheduled` con `retryAt`; `manual_edit` (Actualizar en Portal, F6-T07), `manualEditPayloadSchema`: `{ mode, fields, remote? }`. Todos los campos nuevos son opcionales: las filas anteriores se siguen leyendo |
 | created_at | timestamptz | |
 
 Índice `(publication_id, created_at)` para la bitácora de una publicación. `created_at` de los eventos y de las publicaciones se escribe con `clock_timestamp()` (no `now()`), para que el orden se mantenga dentro de una transacción. Entidad en core: `publicationEventSchema`.
+
+### users — usuarios (F7, ADR-0021)
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| email | text unique | `CHECK (email = lower(email))`: se guarda en minúsculas (`normalizeEmail`) |
+| name | text | |
+| role | enum `user_role` | `admin` (el operador) o `broker` (`USER_ROLES`) |
+| broker_id | uuid null | FK a `brokers`; `CHECK ((role = 'admin') = (broker_id IS NULL))`. Índice por corredor |
+| password_hash | text null | `scrypt$N$r$p$sal$hash` (config); `null` hasta aceptar la invitación. Nunca sale del repositorio: la entidad (`userSchema`) trae `hasPassword` |
+| failed_logins | integer default 0 | Fallos seguidos; al llegar a 10 se bloquea 15 min y vuelve a 0 (suma atómica) |
+| locked_until | timestamptz null | |
+| disabled_at | timestamptz null | Desactivado: no entra y sus sesiones se borran |
+| last_login_at | timestamptz null | |
+| created_at, updated_at | timestamptz | |
+
+### sessions — sesiones (F7, ADR-0021)
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| token_hash | text unique | SHA-256 del token; el token va solo en la cookie o en la CLI |
+| user_id | uuid FK | `ON DELETE CASCADE`, indexado |
+| client | enum `session_client` | `panel` o `cli` (`SESSION_CLIENTS`) |
+| expires_at | timestamptz | 30 días desde que se abrió |
+| last_seen_at | timestamptz | Se actualiza a lo más una vez por minuto; 7 días sin uso la cierran |
+| created_at | timestamptz | |
+
+### invitations — enlaces de invitación y de restablecer (F7, ADR-0021)
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK | `ON DELETE CASCADE`, indexado. Único parcial `invitations_one_open_per_user` `(user_id) WHERE used_at IS NULL`: uno vigente por usuario (`issue` borra el anterior sin usar en la misma transacción) |
+| token_hash | text unique | SHA-256 del token del enlace (el token va en el fragmento de la URL) |
+| purpose | enum `invitation_purpose` | `invite` o `reset` (`INVITATION_PURPOSES`) |
+| expires_at | timestamptz | 72 h |
+| used_at | timestamptz null | Se marca de forma condicional: sirve una vez |
+| created_by | uuid null | FK a `users` (`ON DELETE SET NULL`); `null` si lo generó `pnpm auth:admin` |
+| created_at | timestamptz | |
+
+### oauth_states_used — `state` del OAuth ya usados (F7)
+| Columna | Tipo | Notas |
+|---|---|---|
+| nonce_hash | text PK | El nonce del `state` de Mercado Libre: sirve una vez (`markUsed` devuelve `false` la segunda) |
+| expires_at | timestamptz | Los vencidos se borran |
 
 ### import_runs — historial de cargas
 | Columna | Tipo | Notas |

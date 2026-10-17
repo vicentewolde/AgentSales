@@ -1,6 +1,7 @@
 import type { Content, ContentRun, ContentRunError, ContentRunReport } from "../content.js";
 import type { ContentRunStage, ContentStatus, LlmProvider, Platform } from "../enums.js";
 import { AppError } from "../errors.js";
+import type { BrokerLlmSpend, LlmCallUsage } from "../llm-usage.js";
 
 export type NewContentRun = {
   listingId: string;
@@ -69,6 +70,17 @@ export interface ContentRunRepository {
    * (spec F2 §4.4). Devuelve los ids cerrados.
    */
   failAbandoned(startedBefore: Date, error: ContentRunError): Promise<string[]>;
+  /**
+   * Suma una llamada al modelo a `llm_usage` (spec F7 §4.7), de forma atómica y en cualquier
+   * estado de la corrida: una que falla después de gastar también queda anotada.
+   * `CONTENT_RUN_NOT_FOUND` si no existe.
+   */
+  addLlmUsage(id: string, call: LlmCallUsage): Promise<ContentRun>;
+  /**
+   * El gasto por corredor de las corridas **creadas** en `[from, to)` (el mes de Chile,
+   * `chileMonthRange`); con `brokerId`, solo ese. Los corredores sin gasto no aparecen.
+   */
+  sumLlmCost(query: { from: Date; to: Date; brokerId?: string }): Promise<BrokerLlmSpend[]>;
 }
 
 /** Lo que el operador puede cambiar de un texto (F2-T12), y su nuevo estado. */
@@ -113,6 +125,8 @@ export function pickContentChanges(changes: ContentChanges): ContentChanges {
 export interface ContentRepository {
   /** El texto vigente de cada canal del aviso, uno por plataforma, en el orden de `PLATFORMS`. */
   listCurrent(listingId: string): Promise<Content[]>;
+  /** Los vigentes de varios avisos en una consulta (Seguimiento y agenda, deuda de F6). */
+  listCurrentMany(listingIds: readonly string[]): Promise<Content[]>;
   get(id: string): Promise<Content | null>;
   /** Cambia los campos dados (y `updated_at`); devuelve la fila actualizada. */
   update(id: string, changes: ContentChanges): Promise<Content>;

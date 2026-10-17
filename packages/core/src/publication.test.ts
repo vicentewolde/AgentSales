@@ -105,6 +105,7 @@ describe("publicationEventSchema", () => {
     fromStatus: null,
     toStatus: "approved",
     actor: "operator",
+    userId: null,
     payload: {},
     createdAt: new Date("2026-10-05T12:00:00Z"),
   } as const;

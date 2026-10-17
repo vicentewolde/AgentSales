@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { chileInputValue, formatChileTime, parseChileTime } from "./chile-time.js";
+import {
+  chileInputValue,
+  chileMonthOf,
+  chileMonthRange,
+  formatChileTime,
+  parseChileTime,
+} from "./chile-time.js";
 import { isAppError } from "./errors.js";
 
 // F6-T11 y T12: la hora de Chile ida y vuelta, también con el cambio de horario (CLI y panel).
@@ -49,5 +55,36 @@ describe("chileInputValue", () => {
   it("el valor del selector del panel, que parseChileTime vuelve a leer", () => {
     const at = parseChileTime("2026-10-19T10:00");
     expect(chileInputValue(at)).toBe("2026-10-19T10:00");
+  });
+});
+
+describe("el mes de Chile (F7-T02: el gasto del mes)", () => {
+  it("es el rango [desde, hasta) en hora de Chile, con el horario de cada borde", () => {
+    // Octubre empieza en horario de verano (−3) y termina igual.
+    expect(chileMonthRange("2026-10")).toEqual({
+      from: new Date("2026-10-01T03:00:00.000Z"),
+      to: new Date("2026-11-01T03:00:00.000Z"),
+    });
+    // Julio empieza y termina en invierno (−4).
+    expect(chileMonthRange("2026-07")).toEqual({
+      from: new Date("2026-07-01T04:00:00.000Z"),
+      to: new Date("2026-08-01T04:00:00.000Z"),
+    });
+    // Diciembre pasa al año siguiente.
+    expect(chileMonthRange("2026-12").to).toEqual(new Date("2027-01-01T03:00:00.000Z"));
+  });
+
+  it("un instante cerca de la medianoche cae en el mes de Chile, no en el de UTC", () => {
+    // 1 de noviembre a las 02:30 UTC son las 23:30 del 31 de octubre en Chile.
+    expect(chileMonthOf(new Date("2026-11-01T02:30:00Z"))).toBe("2026-10");
+    expect(chileMonthOf(new Date("2026-11-01T03:00:00Z"))).toBe("2026-11");
+  });
+
+  it("un mes mal escrito es MONTH_INVALID", () => {
+    for (const month of ["2026-13", "2026-1", "octubre", "2026-00"]) {
+      expect(() => chileMonthRange(month)).toThrow(
+        expect.objectContaining({ code: "MONTH_INVALID" }),
+      );
+    }
   });
 });

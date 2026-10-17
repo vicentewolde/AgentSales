@@ -1,3 +1,4 @@
+import type { AccessScope } from "../access.js";
 import type { Platform, PlatformAccountStatus } from "../enums.js";
 import type { PlatformAccount, PlatformCredentials } from "../platform-account.js";
 
@@ -78,8 +79,8 @@ export interface PlatformAccountRepository {
     options?: { revokeOthers?: boolean },
   ): Promise<PlatformAccount>;
   get(id: string): Promise<PlatformAccount | null>;
-  /** Todas, por fecha de creación (las primeras primero). */
-  list(): Promise<PlatformAccount[]>;
+  /** Todas las del alcance, por fecha de creación (las primeras primero). */
+  list(scope?: AccessScope): Promise<PlatformAccount[]>;
   /** Las de un corredor, opcionalmente de una plataforma, por fecha de creación. */
   listByBroker(brokerId: string, platform?: Platform): Promise<PlatformAccount[]>;
   /**

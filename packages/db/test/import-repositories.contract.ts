@@ -76,7 +76,7 @@ export const newListing = (
   ...overrides,
 });
 
-const REPORT: ImportReport = {
+export const REPORT: ImportReport = {
   headers: { unknown: ["Vista al mar"], missing: [], duplicated: [] },
   broker: { slug: "marca", outcome: "created", issues: [], warnings: [] },
   rows: [

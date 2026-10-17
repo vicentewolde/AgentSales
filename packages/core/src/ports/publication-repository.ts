@@ -29,6 +29,8 @@ export type NewPublication = {
 /** Quién causó un cambio y qué se anota en la bitácora (sin secretos: se guarda tal cual). */
 export type PublicationEventInput = {
   actor: PublicationActor;
+  /** El usuario de la sesión (spec F7 §4.3); por defecto `null` (el sistema). */
+  userId?: string | null;
   payload?: Record<string, unknown>;
 };
 

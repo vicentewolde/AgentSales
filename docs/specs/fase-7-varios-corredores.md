@@ -38,7 +38,7 @@ El operador da de alta a un corredor de verdad (su marca, su logo, su planilla d
 ### 4.1 Componentes
 | Componente | Cambio |
 |---|---|
-| `packages/core` | `User`, roles (`admin`, `broker`), `AccessScope` y las reglas de permisos (`can(user, action, brokerId)`); casos de uso `login`, `logout`, `resolveSession`, `inviteUser`, `acceptInvitation`, `resetUserAccess`, `setUserDisabled`; `createBroker`, `updateBroker`, `setBrokerLogo`, `onboardingSteps`; el gasto de IA (`llmCostOf`, `monthlySpend`, `assertLlmBudget`) y la tabla de precios; la elección del proveedor por corredor (`llmProviderFor`); puertos `PasswordHasher`, `SecretTokens` (generar un token aleatorio y su SHA-256, inyectado como hoy `OAuthStateSigner`), `UserRepository`, `SessionRepository`, `InvitationRepository`, `OAuthStateRepository`; la regla de Marketplace a mano y del formulario automático solo para corredores propios (ADR-0023); códigos de error nuevos; dobles en `@agentsales/core/testing` |
+| `packages/core` | `User`, roles (`admin`, `broker`), `AccessScope` y las reglas de permisos (`can(user, action, brokerId)`); casos de uso `login`, `logout`, `resolveSession`, `inviteUser`, `acceptInvitation`, `resetUserAccess`, `setUserDisabled` y `ensureAdmin` (el primer administrador, sin actor, para `pnpm auth:admin`, T05); `createBroker`, `updateBroker`, `setBrokerLogo`, `onboardingSteps`; el gasto de IA (`llmCostOf`, `monthlySpend`, `assertLlmBudget`) y la tabla de precios; la elección del proveedor por corredor (`llmProviderFor`); puertos `PasswordHasher`, `SecretTokens` (generar un token aleatorio y su SHA-256, inyectado como hoy `OAuthStateSigner`), `UserRepository`, `SessionRepository`, `InvitationRepository`, `OAuthStateRepository`; la regla de Marketplace a mano y del formulario automático solo para corredores propios (ADR-0023); códigos de error nuevos; dobles en `@agentsales/core/testing` |
 | `packages/config` | `createPasswordHasher` (`scrypt`) y `createSecretTokens` (`randomBytes` y SHA-256), junto a `createSecretBox` y la firma del `state` que ya existen (la API no importa `node:crypto` en lo que entra en `AppType`) |
 | `packages/db` | Migración `0009` (§4.12); repositorios de usuarios, sesiones, invitaciones y `state` usados; los repositorios existentes suman el filtro por corredor (§4.4); `pnpm auth:admin` (script del paquete) |
 | `packages/llm` | `anthropic-api` real con `@anthropic-ai/sdk` (salida estructurada con `output_config.format`), sus errores y el uso de tokens |
@@ -89,7 +89,7 @@ El operador da de alta a un corredor de verdad (su marca, su logo, su planilla d
 Lo que un corredor no puede hacer responde 403 `FORBIDDEN` (el recurso es suyo, la acción no). El panel no muestra esos botones.
 
 ### 4.6 Alta de un corredor
-- **Crear** (`POST /brokers`, administrador): `slug`, nombre, marca, color primario (y secundario), WhatsApp, correo, Instagram, sitio, tono, hashtags fijos, si es **propio** del operador y el tope de IA. Las mismas reglas que la hoja Corredor (`parseBrokerSheet`).
+- **Crear** (`POST /brokers`, administrador): `slug`, nombre, marca, color primario (y secundario), WhatsApp, correo, Instagram, sitio, tono, hashtags fijos, si es **propio** del operador y el tope de IA. Las mismas reglas que la hoja Corredor (`parseBrokerSheet`). Un corredor que nace de la hoja Corredor de una carga queda **no propio** (usa la API de Anthropic): el panel de Corredores y la lista de alta lo muestran, y el operador lo marca propio si es suyo.
 - **Editar** (`PATCH /brokers/:id`): el corredor edita su marca (nombre de marca, colores, WhatsApp, correo, Instagram, sitio, tono y hashtags); el administrador, además, `operatorOwned`, `llmMonthlyCapUsd` y `autoPublish` (hoy).
 - **Logo** (`POST /brokers/:id/logo`, multipart): PNG, JPEG o WebP de hasta 5 MB (SVG no: puede llevar código). sharp lo normaliza a PNG, se sube a R2 como un medio del corredor y queda en `brokers.logo_media_id` (como la hoja Corredor hoy). Cambiar la marca no rehace lo preparado: el panel sugiere "Preparar de nuevo (solo imágenes)".
 - **Su planilla** (`GET /brokers/:id/template.xlsx`): la plantilla de propiedades con los campos de hoy (encabezados, listas de opciones y ejemplos de `data/plantillas/`) y la hoja Corredor llena con sus datos. Al leerla de vuelta sin propiedades no da errores (test de ida y vuelta).
@@ -150,7 +150,7 @@ El operador agrega al corredor como evaluador (Instagram Tester) de su app de Me
 | `GET /usage?month=` | sesión | — | `{ month, brokers: [{ brokerId, slug, spentUsd, capUsd, runs }] }` |
 | `POST /accounts/marketplace/manual` | admin | `{ broker }` | 201 `{ account }` |
 
-Errores nuevos: `LLM_ACCOUNT_LIMIT` (en la corrida), `AUTH_REQUIRED` (401), `AUTH_INVALID` (401), `AUTH_LOCKED` (423), `FORBIDDEN` (403), `INVITATION_INVALID` (410), `PASSWORD_TOO_SHORT` (400), `USER_EMAIL_TAKEN` (409), `BROKER_SLUG_TAKEN` (409), `BROKER_MISMATCH` (409), `LOGO_INVALID` (415), `LLM_BUDGET_EXCEEDED` (409), `MARKETPLACE_AUTOMATION_NOT_ALLOWED` (403), `OAUTH_STATE_USED` (400). Las rutas de hoy no cambian de forma, salvo `GET /listings` (proyección) y `/health` (dos niveles).
+Errores nuevos: `LLM_ACCOUNT_LIMIT` (en la corrida), `USER_INVALID` (400), `PASSWORD_TOO_LONG` (400), `BROKER_SETTINGS_INVALID` (400), `USER_NOT_FOUND` (404), `USER_SELF_DISABLE` (409), `INVITATION_CONFLICT` (409, reintentable), `USER_ROW_INVALID` (500), `AUTH_REQUIRED` (401), `AUTH_INVALID` (401), `AUTH_LOCKED` (423), `FORBIDDEN` (403), `INVITATION_INVALID` (410), `PASSWORD_TOO_SHORT` (400), `USER_EMAIL_TAKEN` (409), `BROKER_SLUG_TAKEN` (409), `BROKER_MISMATCH` (409), `LOGO_INVALID` (415), `LLM_BUDGET_EXCEEDED` (409), `MARKETPLACE_AUTOMATION_NOT_ALLOWED` (403), `OAUTH_STATE_USED` (400). Las rutas de hoy no cambian de forma, salvo `GET /listings` (proyección) y `/health` (dos niveles).
 
 ### 4.14 Lo que se verificó afuera (2026-10-16)
 Notas del subagente `integraciones` (`docs/integraciones/anthropic-api.md` §11 e `instagram.md` §12), sin llamadas con credenciales:
@@ -206,26 +206,26 @@ Lotes (desde 2026-10-09, una rama y un PR por lote). Cada lote deja `main` usabl
 
 ### F7-T01 · Datos nuevos: usuarios, sesiones, invitaciones y `state` usados
 - **Depende de:** —
-- **Archivos:** `packages/db/src/schema.ts`, `packages/db/drizzle/0009_*.sql`, `packages/db/src/repositories/{users,sessions,invitations,oauth-states}.ts`, `packages/db/test/*.contract.ts`, `packages/core/src/{ports/,testing/}`, `docs/02-modelo-datos.md`
+- **Archivos:** `packages/db/src/schema.ts`, `packages/db/drizzle/0009_*.sql`, `packages/db/src/repositories/users.ts` (los cuatro repositorios), `packages/db/test/users.{contract,test}.ts`, `packages/core/src/{ports/,testing/}`, `docs/02-modelo-datos.md`
 - **Descripción:** la migración `0009` completa (§4.12, también las columnas de las tablas de hoy) y los repositorios nuevos con sus contratos y dobles.
 - **Hecho cuando:**
-  - [ ] Tests de contrato (PGlite y dobles): correo único y en minúsculas, el `CHECK` de rol y corredor, la sesión por hash y su borrado en cascada, una invitación vigente por usuario, el `state` usado dos veces, los corredores existentes quedan propios
-  - [ ] `docs/02-modelo-datos.md` al día
+  - [x] Tests de contrato (PGlite y dobles): correo único y en minúsculas, el `CHECK` de rol y corredor, la sesión por hash y su borrado en cascada, una invitación vigente por usuario, el `state` usado dos veces, los corredores existentes quedan propios
+  - [x] `docs/02-modelo-datos.md` al día
 
 ### F7-T02 · Las tablas de hoy: corredores, corridas, eventos y el alcance en SQL
 - **Depende de:** T01
 - **Archivos:** `packages/db/src/repositories/{brokers,content-runs,publications,listings,import-runs,platform-accounts,contents}.ts`, `packages/core/src/{access.ts,ports/}`, `packages/core/src/testing/`
 - **Descripción:** `AccessScope` en core; `BrokerRepository` con `operatorOwned` y `llmMonthlyCapUsd`; `ContentRunRepository.addLlmUsage` (atómico) y la suma del mes por corredor; `publication_events.user_id`; el filtro por alcance en SQL en las listas (propiedades, cargas, cuentas, corredores, seguimiento) y `listCurrentMany` (deuda de F6).
 - **Hecho cuando:**
-  - [ ] Tests de contrato: cada lista con dos corredores devuelve solo lo del alcance; `addLlmUsage` concurrente no pierde una suma; la suma del mes en el borde del mes de Chile; `listCurrentMany` igual a N consultas de una
+  - [x] Tests de contrato: cada lista con dos corredores devuelve solo lo del alcance; `addLlmUsage` concurrente no pierde una suma; la suma del mes en el borde del mes de Chile; `listCurrentMany` igual a N consultas de una
 
 ### F7-T03 · Usuarios, sesiones y permisos (core y config)
 - **Depende de:** T01
-- **Archivos:** `packages/core/src/{user.ts,permissions.ts,use-cases/auth/*.ts}`, `packages/config/src/{password.ts,secret-tokens.ts}`
+- **Archivos:** `packages/core/src/{user.ts,permissions.ts,ports/auth.ts,use-cases/auth/{sessions,users}.ts}`, `packages/core/src/testing/auth.ts`, `packages/config/src/{password.ts,secret-tokens.ts}`
 - **Descripción:** `User`, roles y `can` (§4.5); los casos de uso de §4.2; `PasswordHasher` (`scrypt`) y `SecretTokens` en config detrás de sus puertos.
 - **Hecho cuando:**
-  - [ ] Tests: entrar bien y mal (el mismo error y un hash calculado con un correo inexistente), el bloqueo a los 10 fallos y su fin, usuario desactivado (y sus sesiones borradas), sesión vencida e inactiva, `last_seen_at` a lo más por minuto, invitación vencida, usada o reemplazada, restablecer cierra las sesiones y quita el bloqueo, contraseña corta, cada fila de §4.5 en `can`
-  - [ ] `scrypt` con sal distinta por hash y comparación en tiempo constante; ningún secreto en errores ni logs
+  - [x] Tests: entrar bien y mal (el mismo error y un hash calculado con un correo inexistente), el bloqueo a los 10 fallos y su fin, usuario desactivado (y sus sesiones borradas), sesión vencida e inactiva, `last_seen_at` a lo más por minuto, invitación vencida, usada o reemplazada, restablecer cierra las sesiones y quita el bloqueo, contraseña corta, cada fila de §4.5 en `can`
+  - [x] `scrypt` con sal distinta por hash y comparación en tiempo constante; ningún secreto en errores ni logs
 
 ### F7-T04 · La API con sesión
 - **Depende de:** T02, T03
@@ -238,7 +238,7 @@ Lotes (desde 2026-10-09, una rama y un PR por lote). Cada lote deja `main` usabl
 ### F7-T05 · Usuarios, `/health` y el primer administrador
 - **Depende de:** T04
 - **Archivos:** `apps/api/src/routes/users.ts`, `apps/api/src/health.ts`, `packages/db/src/scripts/auth-admin.ts`, `package.json` (`auth:admin`), `CLAUDE.md` (comando)
-- **Descripción:** `/users` (crear con su enlace, restablecer, desactivar y reactivar), `/health` en dos niveles y tolerante (§4.3) y `pnpm auth:admin`.
+- **Descripción:** `/users` (crear con su enlace, restablecer, desactivar y reactivar), `/health` en dos niveles y tolerante (§4.3) y `pnpm auth:admin` sobre `ensureAdmin` (core: crea el administrador si no existe o le genera un enlace de restablecer, sin actor).
 - **Hecho cuando:**
   - [ ] Tests: el enlace se entrega una vez y en el fragmento; `USER_EMAIL_TAKEN`; `/health` sin sesión sin detalle, con la base caída lo básico; `auth:admin` crea o restablece y deja el enlace en el portapapeles (doble) sin imprimirlo
 
@@ -259,7 +259,7 @@ Lotes (desde 2026-10-09, una rama y un PR por lote). Cada lote deja `main` usabl
 ### F7-T08 · Cada corredor lo suyo: propiedades, contenido y cargas
 - **Depende de:** T07
 - **Archivos:** `apps/api/src/routes/{listings,content,imports}.ts`, `apps/api/src/access.ts`, `packages/core/src/use-cases/import-listings.ts`, `apps/worker/src/worker.ts` (la carga), `apps/api/src/contracts/index.ts`, `apps/cli/src/commands/listings.ts`, `apps/web/src/pages/ListingsPage.tsx`
-- **Descripción:** §4.4 en propiedades, medios, contenido, corridas y cargas (la API fija el corredor de la carga; el job revisa `BROKER_MISMATCH` y no crea corredores); `GET /listings` con la proyección y sus consumidores; estas rutas pasan a `session`.
+- **Descripción:** §4.4 en propiedades, medios, contenido, corridas y cargas (la API fija el corredor de la carga; el job revisa `BROKER_MISMATCH` y no crea corredores); `GET /listings` con la proyección y sus consumidores; estas rutas pasan a `session`. Al empezar, el `scope` de las listas de los repositorios pasa a **obligatorio** (revisión del lote A): `tsc` señala cada llamada y el worker pasa `ALL_SCOPE`.
 - **Hecho cuando:**
   - [ ] La matriz de §4.4 para estas rutas (lo ajeno da 404 con el mismo cuerpo; las listas sin nada ajeno; `?broker` del administrador y el ajeno del corredor)
   - [ ] La carga del corredor se ve en cola; con la hoja de otro `slug` falla sin tocar nada ni crear un corredor; con la suya actualiza la marca
@@ -268,7 +268,7 @@ Lotes (desde 2026-10-09, una rama y un PR por lote). Cada lote deja `main` usabl
 ### F7-T09 · Cada corredor lo suyo: publicaciones, programar y seguimiento
 - **Depende de:** T08
 - **Archivos:** `apps/api/src/routes/{publications,schedule,tracking,publication-views}.ts`, `apps/api/src/access.ts`
-- **Descripción:** §4.4 en publicaciones, programar (todo o nada), Seguimiento y agenda (con `listCurrentMany`, el `now` de la ruta en `publicationView` y lo que es solo del administrador).
+- **Descripción:** §4.4 en publicaciones, programar (todo o nada), Seguimiento y agenda (con `listCurrentMany`, el `now` de la ruta en `publicationView` y lo que es solo del administrador). Las consultas de la agenda que hoy no reciben alcance (`listByStatus`, `listDue`) lo suman, filtrando en SQL.
 - **Hecho cuando:**
   - [ ] La matriz para estas rutas; programar con un id ajeno rechaza todo; Seguimiento y agenda sin nada ajeno, sin el respaldo para el corredor y con una consulta de textos
 
@@ -398,3 +398,4 @@ Respondidas por el operador el 2026-10-16:
 | 2026-10-16 | Borrador (`/fase-plan 7`): F7 se parte en "Varios corredores" (esta fase, `v0.7.0`) y "En internet" (F8, `v1.0.0`); respuestas del operador D1 a D7 y D14 a D16; notas de `integraciones` del 2026-10-16 (§4.14) |
 | 2026-10-16 | Revisión del `arquitecto` (5 bloqueantes, aplicados): el lote B trae el login de la CLI y del panel junto con la sesión de la API, y el arnés con sesión de administrador (D17); puerto `SecretTokens` para los tokens; la carga del corredor nace con su `broker_id` y el job nunca crea corredores; Marketplace a mano como traspaso en core sin publisher, sin "un formulario a la vez" y con el `meta` como unión (ADR-0023, D18); desactivar un corredor entero sale del alcance. Además: la vuelta del OAuth de Instagram es pública; `/health` tolerante sin base; lo del respaldo y la lista de corredores, solo para el administrador; `?broker` ajeno da 404; el canal sale de `sessions.client` y se retira `X-AgentSales-Client`; el gasto se suma por llamada y cuenta por la fecha de la corrida; restricciones e índices de la migración; `LLM_MODEL` solo para `claude-cli`; `eval:content` con la API; la regla del formulario automático en core; las tareas partidas (19, en 8 lotes) y las rutas de archivos reales |
 | 2026-10-16 | **Aprobado** por el operador. ADR-0021, ADR-0022 y ADR-0023 registrados; seguimientos en ADR-0003, ADR-0005, ADR-0011 y ADR-0017; roadmap con F7 y F8 |
+| 2026-10-17 | Lote A (F7-T01 a T03, PR #130) y su revisión (`revisor` y `arquitecto`, sin bloqueantes, todo aplicado): el tope de IA se valida y redondea (`normalizeLlmMonthlyCap`, `BROKER_SETTINGS_INVALID`); un corredor sin corredor no puede nada; la rama bloqueada del login hace el mismo trabajo de hash; `scrypt` con NFC y un tope de memoria al leer un hash; usuarios por bytes (`collate "C"`); dos enlaces a la vez se reintentan (`INVITATION_CONFLICT`); pruebas de la carrera al aceptar, del usuario desactivado y del borde del mes. Para los lotes siguientes: `ensureAdmin` en T05, el alcance obligatorio en T08, la agenda con alcance en SQL en T09, los códigos nuevos en §4.13 y que un corredor de la hoja nace no propio (§4.6); riesgos aceptados en el seguimiento de ADR-0021 |
