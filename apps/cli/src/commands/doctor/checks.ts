@@ -1,4 +1,4 @@
-import type { HealthReport, PublishMode } from "@agentsales/core";
+import { type HealthReport, hasLlmPrice, type PublishMode } from "@agentsales/core";
 import { canDumpServer, parsePgToolVersion, parseServerVersion } from "@agentsales/db/backup";
 import {
   CHROMIUM_INSTALL_COMMAND,
@@ -131,6 +131,22 @@ export function checkUfSource(result: EnvResult): CheckItem | null {
     level: "warn",
     detail: "falta BCCH_API_TOKEN: los avisos en UF no se podrán publicar en Marketplace",
     hint: "Pide el token gratis en la API BDE del Banco Central (docs/07-checklist-cuentas.md, Antes de F5)",
+  };
+}
+
+/**
+ * El modelo de la API (F7-T12): con la clave puesta, uno que no está en la tabla de precios se
+ * estima con el más caro (el tope sigue frenando, pero el gasto sale alto). `null` si está o si no
+ * hay clave.
+ */
+export function checkAnthropicModel(result: EnvResult): CheckItem | null {
+  if (!result.ok || (result.env.ANTHROPIC_API_KEY ?? "") === "") return null;
+  if (hasLlmPrice(result.env.ANTHROPIC_MODEL)) return null;
+  return {
+    name: "anthropic_model",
+    level: "warn",
+    detail: `ANTHROPIC_MODEL=${result.env.ANTHROPIC_MODEL} no está en la tabla de precios: el gasto se estima con el modelo más caro`,
+    hint: "revisa el nombre del modelo, o agrega su precio en packages/core/src/llm-usage.ts",
   };
 }
 
@@ -455,6 +471,21 @@ export function checkBackup(report: HealthReport | null, now: Date = new Date())
         hint: "pnpm db:backup para ver el error (necesita pg_dump: brew install libpq)",
       }
     : { name, level: "ok", detail: `el último es de hace ${hours} h (${backup.lastFile ?? "?"})` };
+}
+
+/**
+ * La clave de la API de Anthropic (F7-T12, spec F7 §4.7): con corredores que la necesitan y sin
+ * `ANTHROPIC_API_KEY`, una advertencia (sus textos fallarán). `null` si no falta o la API no responde.
+ */
+export function checkLlmKey(report: HealthReport | null): CheckItem | null {
+  const brokers = report?.llmKeyMissingBrokers ?? [];
+  if (brokers.length === 0) return null;
+  return {
+    name: "anthropic_api",
+    level: "warn",
+    detail: `falta ANTHROPIC_API_KEY: los textos de ${brokers.join(", ")} fallarán`,
+    hint: "agrega ANTHROPIC_API_KEY al .env y reinicia pnpm dev",
+  };
 }
 
 /**

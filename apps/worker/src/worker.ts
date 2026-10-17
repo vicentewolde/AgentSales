@@ -21,9 +21,11 @@ import {
   createListingLock,
   createListingRepository,
   createMediaRepository,
+  createOAuthStateRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
   createPublicationRepository,
+  createSessionRepository,
   toPgConnectionString,
 } from "@agentsales/db";
 import { readListingsWorkbook } from "@agentsales/importers";
@@ -55,7 +57,7 @@ import { enqueuePublicationDue } from "./jobs/publication-due.js";
 import { instagramNoteLogger, requeuePublishingPublications } from "./jobs/publication-publish.js";
 import { registerJobs } from "./jobs/registry.js";
 import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
-import { llmProviderOptions } from "./llm-options.js";
+import { apiLlmOptions, llmProviderOptions } from "./llm-options.js";
 import { createWorkerMarketplacePublisher } from "./marketplace/publisher.js";
 import { createMarketplaceWindows, sweepClosedWindows } from "./marketplace/windows.js";
 import { createWorkerPortal } from "./portal.js";
@@ -177,7 +179,11 @@ const jobs = buildJobs({
       storage,
       templates: createSlideTemplates(),
       renderer,
+      // El del operador para sus corredores propios, y la API para los demás (spec F7 §4.7).
       llm: createLlmProvider(llmProviderOptions(env, process.env)),
+      apiLlm: ((options) => (options === null ? null : createLlmProvider(options)))(
+        apiLlmOptions(env),
+      ),
       sha256,
     },
     // Sin `threads`: ffmpeg usa todos los núcleos (los tests limitan a 2).
@@ -275,6 +281,10 @@ const jobs = buildJobs({
   publicationsWatch: {
     publications,
     platformAccounts,
+    authCleanup: {
+      sessions: createSessionRepository(database.db),
+      oauthStates: createOAuthStateRepository(database.db),
+    },
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
   },

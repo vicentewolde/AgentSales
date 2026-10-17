@@ -76,5 +76,11 @@ export const healthReportSchema = z.object({
    * la base no respondió. Opcional, como `database`.
    */
   autoPublishBrokers: z.array(z.string()).nullable().optional(),
+  /**
+   * Desde F7-T12 (spec §4.7): los corredores (slug) que usan la API de Anthropic cuando falta
+   * `ANTHROPIC_API_KEY` (sus textos fallarán con `LLM_NOT_CONFIGURED`); vacía si no falta o con
+   * `LLM_PROVIDER=fake`. `null` si la base no respondió. Opcional, como `database`.
+   */
+  llmKeyMissingBrokers: z.array(z.string()).nullable().optional(),
 });
 export type HealthReport = z.infer<typeof healthReportSchema>;

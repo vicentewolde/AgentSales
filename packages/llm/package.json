@@ -8,6 +8,11 @@
       "@agentsales/source": "./src/index.ts",
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
+    },
+    "./claude-cli": {
+      "@agentsales/source": "./src/claude-cli.ts",
+      "types": "./dist/src/claude-cli.d.ts",
+      "default": "./dist/src/claude-cli.js"
     }
   },
   "scripts": {
@@ -17,6 +22,7 @@
   "dependencies": {
     "@agentsales/config": "workspace:*",
     "@agentsales/core": "workspace:*",
+    "@anthropic-ai/sdk": "0.134.0",
     "zod": "4.6.5"
   }
 }

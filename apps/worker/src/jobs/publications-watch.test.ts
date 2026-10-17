@@ -1,4 +1,4 @@
-import { type Publication, STALE_PUBLISHING_MS } from "@agentsales/core";
+import { AppError, type Publication, SESSION_IDLE_MS, STALE_PUBLISHING_MS } from "@agentsales/core";
 import { createPublicationScenario } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { captureLogger } from "../../test/content-fixture.js";
@@ -89,5 +89,45 @@ describe("publications.watch", () => {
         (line) => line.msg === "vigilancia: publicaciones atascadas en publicando, reencoladas",
       ),
     ).toMatchObject({ level: 40, publicationIds: [post.id] });
+  });
+
+  it("borra las sesiones y los state de OAuth vencidos, y si falla solo lo advierte (F7)", async () => {
+    const t = await createPublicationScenario();
+    const { logger, lines } = captureLogger();
+    const boss = fakeBoss();
+    const now = new Date("2026-10-17T15:00:00.000Z");
+    const calls: unknown[] = [];
+    let fail = false;
+    const job = publicationsWatchJob({
+      publications: t.publications,
+      platformAccounts: t.platformAccounts,
+      queue: t.queue,
+      now: () => now,
+      authCleanup: {
+        sessions: {
+          deleteExpired: async (query) => {
+            calls.push(query);
+            if (fail) throw new AppError("DB_UNAVAILABLE", "sin base", { retriable: true });
+            return 2;
+          },
+        },
+        oauthStates: { deleteExpired: async () => 1 },
+      },
+    });
+    await registerJobs(boss.boss, [job], logger);
+
+    await boss.run();
+    expect(calls).toEqual([{ now, idleBefore: new Date(now.getTime() - SESSION_IDLE_MS) }]);
+    expect(
+      lines.find(
+        (line) => line.msg === "vigilancia: sesiones y estados de OAuth vencidos borrados",
+      ),
+    ).toMatchObject({ level: 30, sessions: 2, oauthStates: 1 });
+
+    fail = true;
+    await boss.run();
+    expect(
+      lines.find((line) => line.msg === "vigilancia: no se pudieron borrar las sesiones vencidas"),
+    ).toMatchObject({ level: 40, code: "DB_UNAVAILABLE" });
   });
 });

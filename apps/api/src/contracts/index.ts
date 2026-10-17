@@ -935,6 +935,28 @@ export const agendaItemSchema = z.object({
 export const agendaResponseSchema = z.object({ items: z.array(agendaItemSchema) });
 export type AgendaResponse = z.infer<typeof agendaResponseSchema>;
 
+/** `GET /usage?month=AAAA-MM` (spec F7 §4.7): por defecto, el mes de hoy en Chile. */
+export const usageQuerySchema = z.object({
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "El mes debe ser AAAA-MM")
+    .optional(),
+});
+
+/** El gasto de IA estimado de un corredor en el mes (la cifra oficial es la de Anthropic). */
+export const brokerUsageSchema = z.object({
+  brokerId: z.string(),
+  slug: z.string(),
+  spentUsd: z.number(),
+  capUsd: z.number().nullable(),
+  runs: z.number().int(),
+});
+export const usageResponseSchema = z.object({
+  month: z.string(),
+  brokers: z.array(brokerUsageSchema),
+});
+export type UsageResponse = z.infer<typeof usageResponseSchema>;
+
 /** `PATCH /brokers/:id`: activar o apagar `auto_publish` (spec F6 §4.10). */
 export const brokerPatchBodySchema = z.object({ autoPublish: z.boolean() });
 export const brokerResponseSchema = z.object({ broker: brokerSchema });

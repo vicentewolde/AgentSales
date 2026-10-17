@@ -1,9 +1,12 @@
 import { AppError } from "../errors.js";
+import type { LlmTokenUsage } from "../llm-usage.js";
 import type { LLMProvider, LLMRequest } from "../ports/llm-provider.js";
 import { structuredCopy } from "./copy.js";
 
 /** Una respuesta guionada: el dato que devuelve, o el error que lanza. */
-export type ScriptedLlmResponse = { data: unknown; model?: string } | { error: AppError };
+export type ScriptedLlmResponse =
+  | { data: unknown; model?: string; usage?: LlmTokenUsage }
+  | { error: AppError };
 
 export type InMemoryLlmProvider = LLMProvider & {
   /** Las peticiones recibidas, en orden (sin el `signal`). */
@@ -17,11 +20,13 @@ export type InMemoryLlmProvider = LLMProvider & {
  */
 export function createInMemoryLlmProvider(
   responses: readonly ScriptedLlmResponse[] = [],
+  /** El nombre del proveedor (por defecto `fake`); F7: `anthropic-api` o `claude-cli`. */
+  name: LLMProvider["name"] = "fake",
 ): InMemoryLlmProvider {
   const pending = [...responses];
   const requests: Omit<LLMRequest, "signal">[] = [];
   return {
-    name: "fake",
+    name,
     requests,
     async generateStructured({ system, prompt, jsonSchema, signal }) {
       // Como el adaptador: con la señal ya disparada no responde (para probar el apagado).
@@ -33,7 +38,11 @@ export function createInMemoryLlmProvider(
       if (next === undefined)
         throw new Error("createInMemoryLlmProvider: sin respuestas guionadas");
       if ("error" in next) throw next.error;
-      return { data: structuredCopy(next.data), model: next.model ?? "modelo-falso" };
+      return {
+        data: structuredCopy(next.data),
+        model: next.model ?? "modelo-falso",
+        ...(next.usage === undefined ? {} : { usage: { ...next.usage } }),
+      };
     },
   };
 }

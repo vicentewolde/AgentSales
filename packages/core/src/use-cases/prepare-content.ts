@@ -17,6 +17,8 @@ import type { ContentRun, ContentRunReport } from "../content.js";
 import { type ContentRunStage, isTerminalContentRun, type RenderedMediaVariant } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import type { Listing } from "../listing.js";
+import { assertLlmBudget, llmProviderFor } from "../llm-budget.js";
+import { llmCallCost } from "../llm-usage.js";
 import type { Media } from "../media.js";
 import { photoSizeWarnings, REEL_MIN_DURATION_S, reelWarnings } from "../media-checks.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
@@ -48,11 +50,19 @@ export type PrepareContentDeps = {
   processor: MediaProcessor;
   templates: SlideTemplates;
   renderer: HtmlRenderer;
+  /** El proveedor del operador (`LLM_PROVIDER`): el de sus corredores propios (spec F7 §4.7). */
   llm: LLMProvider;
+  /**
+   * La API de Anthropic con la clave del operador, para los corredores que no son suyos; `null` o
+   * ausente sin `ANTHROPIC_API_KEY` (un corredor que la necesita falla con `LLM_NOT_CONFIGURED`).
+   */
+  apiLlm?: LLMProvider | null;
   /** sha256 hexadecimal de un texto (core no usa `node:crypto`; lo inyecta quien compone). */
   sha256: (text: string) => string;
   /** Reloj en milisegundos, para la duración de la llamada a la IA. */
   now?: () => number;
+  /** La fecha del tope de IA del mes (F7-T12): de él sale el mes de Chile. Por defecto, la actual. */
+  clock?: () => Date;
   /**
    * Un objeto viejo de R2 que no se pudo borrar (al reemplazar un derivado). No corta la corrida:
    * solo queda en el log (spec F2 §4.2).
@@ -581,9 +591,27 @@ async function textsStage(state: Run): Promise<NewContent[]> {
   const { deps, ctx, signal } = state;
   const now = deps.now ?? Date.now;
   const started = now();
-  const result = await draftListingTexts({ llm: deps.llm }, ctx, signal);
+  // El proveedor del corredor y su tope del mes antes de cada llamada (spec F7 §4.7), con el
+  // corredor releído: el tope pudo cambiar mientras se hacían las imágenes.
+  const llm = llmProviderFor(state.broker, { own: deps.llm, api: deps.apiLlm ?? null });
+  const clock = deps.clock ?? (() => new Date());
+  const result = await draftListingTexts(
+    {
+      llm,
+      beforeCall: async () => {
+        const broker = (await deps.brokers.findById(state.broker.id)) ?? state.broker;
+        await assertLlmBudget(deps, broker, clock());
+      },
+      // Cada llamada se anota en cuanto vuelve: también las que fallan después (se cobraron).
+      onUsage: async (model, usage) => {
+        await deps.contentRuns.addLlmUsage(state.run.id, llmCallCost(llm.name, model, usage));
+      },
+    },
+    ctx,
+    signal,
+  );
   state.report.llm = {
-    provider: deps.llm.name,
+    provider: llm.name,
     model: result.model,
     promptVersion: CONTENT_PROMPT_VERSION,
     attempts: result.attempts,
@@ -598,7 +626,7 @@ async function textsStage(state: Run): Promise<NewContent[]> {
     title: text.title,
     body: text.body,
     hashtags: text.hashtags,
-    llmProvider: deps.llm.name,
+    llmProvider: llm.name,
     llmModel: result.model,
     promptVersion: CONTENT_PROMPT_VERSION,
     rawOutput: result.draft,

@@ -2,16 +2,23 @@ import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseArgs } from "node:util";
 import { findWorkspaceRoot, loadEnv, loadEnvFile } from "@agentsales/config";
-import { isAppError } from "@agentsales/core";
+import { isAppError, llmCallCost } from "@agentsales/core";
+import { createAnthropicApiProvider } from "../anthropic-api.js";
 import { claudeCliArgs, claudeCliEnv, interpretEnvelope, parseEnvelope } from "../claude-cli.js";
 
 // Prueba de humo de la CLI de Claude (spec F2-T04). La corre el operador en su terminal, con la
 // sesión de su plan: hace UNA llamada corta con un aviso inventado (sin datos de clientes), guarda
 // el sobre en tmp/llm-smoke/ para fijar el ejecutable falso de los tests, y muestra cómo lo
 // interpreta el adaptador. No la corre ningún test.
+// Con `--provider anthropic-api` (F7-T11): UNA llamada a la API de Anthropic con la clave del
+// `.env` (gasta centavos), y muestra el modelo, los tokens y el costo estimado. Nunca la clave.
 loadEnvFile();
 const env = loadEnv();
+const { values: args } = parseArgs({
+  options: { provider: { type: "string" }, model: { type: "string" } },
+});
 const outDir = join(findWorkspaceRoot(), "tmp", "llm-smoke");
 
 const request = {
@@ -28,6 +35,43 @@ const request = {
     additionalProperties: false,
   },
 };
+
+if (args.provider === "anthropic-api") {
+  if (env.ANTHROPIC_API_KEY === undefined || env.ANTHROPIC_API_KEY === "") {
+    console.error("Falta ANTHROPIC_API_KEY en el .env");
+    process.exit(1);
+  }
+  const model = args.model ?? env.ANTHROPIC_MODEL;
+  const api = createAnthropicApiProvider({
+    apiKey: env.ANTHROPIC_API_KEY,
+    model,
+    timeoutMs: env.LLM_TIMEOUT_SECONDS * 1000,
+  });
+  const started = Date.now();
+  try {
+    const response = await api.generateStructured(request);
+    console.log(`API de Anthropic · modelo pedido: ${model} · respondió: ${response.model}`);
+    console.log(`${Date.now() - started} ms`);
+    if (response.usage !== undefined) {
+      const cost = llmCallCost("anthropic-api", response.model, response.usage);
+      console.log(
+        `Tokens: entrada ${cost.inputTokens} (caché: escritos ${cost.cacheCreationInputTokens}, leídos ${cost.cacheReadInputTokens}) · salida ${cost.outputTokens}`,
+      );
+      console.log(
+        `Costo estimado: US$ ${cost.costUsd.toFixed(5)} (tabla ${cost.priceTable ?? "sin precio para este modelo"})`,
+      );
+    }
+    console.log(`Salida estructurada: ${JSON.stringify(response.data)}`);
+  } catch (error) {
+    console.error(isAppError(error) ? `✗ ${error.code}: ${error.message}` : `✗ ${String(error)}`);
+    process.exitCode = 1;
+  }
+  process.exit();
+}
+if (args.provider !== undefined && args.provider !== "claude-cli") {
+  console.error("--provider acepta claude-cli (por defecto) o anthropic-api");
+  process.exit(1);
+}
 
 const help = spawnSync(env.CLAUDE_CLI_PATH, ["-p", "--help"], { encoding: "utf8" });
 const maxTurns = (help.stdout ?? "").includes("--max-turns");

@@ -34,7 +34,7 @@ export function createInMemoryContentRepositories(
      * El corredor de un aviso, para `sumLlmCost` (Postgres lo cruza con `listings`). Sin esto,
      * `sumLlmCost` falla: solo lo necesitan los tests del gasto.
      */
-    brokerOfListing?: (listingId: string) => string | null;
+    brokerOfListing?: (listingId: string) => string | null | Promise<string | null>;
   } = {},
 ): InMemoryContentRepositories {
   let sequence = 0;
@@ -163,7 +163,7 @@ export function createInMemoryContentRepositories(
       const totals = new Map<string, { costUsd: number; runs: number }>();
       for (const run of runs) {
         if (run.llmUsage === null || run.createdAt < from || run.createdAt >= to) continue;
-        const owner = brokerOf(run.listingId);
+        const owner = await brokerOf(run.listingId);
         if (owner === null || (brokerId !== undefined && owner !== brokerId)) continue;
         const total = totals.get(owner) ?? { costUsd: 0, runs: 0 };
         totals.set(owner, { costUsd: total.costUsd + run.llmUsage.costUsd, runs: total.runs + 1 });

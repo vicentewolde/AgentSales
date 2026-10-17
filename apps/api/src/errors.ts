@@ -91,6 +91,8 @@ const CONFLICTS = new Set([
   "USER_NOT_ADMIN",
   // F7-T08: la hoja Corredor de la carga de un corredor es de otro (no llega a la API; por si llegara).
   "BROKER_MISMATCH",
+  // F7-T12 (spec F7 §4.7): el corredor llegó a su tope de IA del mes (subir el tope o esperar).
+  "LLM_BUDGET_EXCEEDED",
 ]);
 
 /**
@@ -135,6 +137,8 @@ const PLATFORM_REJECTIONS = new Set([
 const PLATFORM_UNEXPECTED = new Set([
   "IG_UNEXPECTED_RESPONSE",
   "ML_UNEXPECTED_RESPONSE",
+  // F7-T11: la API de Anthropic rechazó una petición que arma el servidor (en la corrida, no aquí).
+  "LLM_REQUEST_REJECTED",
   "UF_UNEXPECTED_RESPONSE",
   "UF_VALUE_INVALID",
   "UF_VALUE_SUSPICIOUS",
@@ -155,6 +159,10 @@ const NOT_CONFIGURED = new Set([
   "UF_SOURCE_NOT_CONFIGURED",
   "UF_SOURCE_AUTH_INVALID",
   "UF_VALUE_MISSING",
+  // F7 (spec §4.7): sin ANTHROPIC_API_KEY para un corredor no propio, o la cuenta de Anthropic sin
+  // saldo o en su tope de gasto (en la corrida; por si llegaran).
+  "LLM_NOT_CONFIGURED",
+  "LLM_ACCOUNT_LIMIT",
   // F6-T14: el respaldo sin `pg_dump` (no llega a la API; por si llegara).
   "BACKUP_TOOL_NOT_INSTALLED",
 ]);

@@ -177,9 +177,12 @@ const envSchema = z
       .enum(LLM_PROVIDERS, { error: `debe ser ${listOf(LLM_PROVIDERS)}` })
       .default("claude-cli"),
     LLM_MODEL: z.string().default("sonnet"),
-    // Solo con LLM_PROVIDER=anthropic-api (se exige abajo). La CLI de Claude nunca la recibe: con
-    // ella en su entorno cobraría por API en vez de usar el plan del operador (spec F2 §4.5).
+    // La API de Anthropic: obligatoria con LLM_PROVIDER=anthropic-api (se exige abajo) y, desde
+    // F7, la de los corredores que no son del operador (spec F7 §4.7). La CLI de Claude nunca la
+    // recibe: con ella en su entorno cobraría por API en vez de usar el plan del operador.
     ANTHROPIC_API_KEY: z.string().optional(),
+    // El modelo de la API (spec F7, D15); `LLM_MODEL` sigue siendo solo de la CLI de Claude.
+    ANTHROPIC_MODEL: z.string().trim().min(1).default("claude-sonnet-5-5"),
     // Ejecutable de la CLI de Claude (proveedor claude-cli) y tope de cada llamada a la IA. Hasta
     // 600 s: la llamada y su reintento, más los medios, deben caber en los 30 min del job.
     CLAUDE_CLI_PATH: z.string().default("claude"),

@@ -1,6 +1,10 @@
 import { AppError } from "../../errors.js";
 import type { PasswordHasher, SecretTokens } from "../../ports/auth.js";
-import type { SessionRepository, UserRepository } from "../../ports/user-repository.js";
+import type {
+  OAuthStateRepository,
+  SessionRepository,
+  UserRepository,
+} from "../../ports/user-repository.js";
 import {
   isValidEmail,
   normalizeEmail,
@@ -121,6 +125,24 @@ export async function resolveSession(
     return { user, session: { ...session, lastSeenAt: now } };
   }
   return found;
+}
+
+/**
+ * Borra las sesiones vencidas o sin uso desde `SESSION_IDLE_MS` y los `state` de OAuth vencidos
+ * (la vigilancia de cada hora del worker, spec F7 §4.2). Devuelve cuántos borró de cada uno.
+ */
+export async function purgeExpiredAuth(
+  deps: {
+    sessions: Pick<SessionRepository, "deleteExpired">;
+    oauthStates: Pick<OAuthStateRepository, "deleteExpired">;
+  },
+  now: Date,
+): Promise<{ sessions: number; oauthStates: number }> {
+  const sessions = await deps.sessions.deleteExpired({
+    now,
+    idleBefore: new Date(now.getTime() - SESSION_IDLE_MS),
+  });
+  return { sessions, oauthStates: await deps.oauthStates.deleteExpired(now) };
 }
 
 /** Cierra la sesión de ese token (si existe). */

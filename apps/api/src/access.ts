@@ -53,6 +53,8 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /schedule": "session",
   "GET /tracking": "session",
   "GET /agenda": "session",
+  // El gasto de IA del mes (F7-T12): cada uno ve el de su alcance.
+  "GET /usage": "session",
   // Corredores y cargas.
   "GET /brokers": "session",
   "PATCH /brokers/:id": "admin",

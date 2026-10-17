@@ -1,5 +1,12 @@
-import { AppError, type LLMProvider } from "@agentsales/core";
+import type { LLMProvider } from "@agentsales/core";
+import { type AnthropicApiOptions, createAnthropicApiProvider } from "./anthropic-api.js";
 import { type ClaudeCliOptions, createClaudeCliProvider } from "./claude-cli.js";
+
+export {
+  type AnthropicApiOptions,
+  anthropicError,
+  createAnthropicApiProvider,
+} from "./anthropic-api.js";
 
 export {
   CLAUDE_CLI_ENV_ALLOWLIST,
@@ -11,29 +18,13 @@ export {
 
 export type LlmProviderOptions =
   | ({ provider: "claude-cli" } & ClaudeCliOptions)
-  | { provider: "anthropic-api" }
+  | ({ provider: "anthropic-api" } & AnthropicApiOptions)
   | {
       provider: "fake";
       /** Lo que devuelve siempre (por ejemplo, un borrador de ejemplo de core). */
       data: unknown;
       model?: string;
     };
-
-/**
- * Proveedor `anthropic-api` en F2: un stub (ADR-0003, spec F2 §4.5). El adaptador real, con el SDK
- * oficial, llega en F7.
- */
-function createAnthropicApiStub(): LLMProvider {
-  return {
-    name: "anthropic-api",
-    async generateStructured() {
-      throw new AppError(
-        "LLM_NOT_CONFIGURED",
-        "El proveedor anthropic-api llega en F7: usa LLM_PROVIDER=claude-cli",
-      );
-    },
-  };
-}
 
 /**
  * Proveedor `fake` de ejecución (`LLM_PROVIDER=fake`, `eval:content --provider fake`): devuelve
@@ -55,7 +46,7 @@ export function createLlmProvider(options: LlmProviderOptions): LLMProvider {
     case "claude-cli":
       return createClaudeCliProvider(options);
     case "anthropic-api":
-      return createAnthropicApiStub();
+      return createAnthropicApiProvider(options);
     case "fake":
       return createFakeProvider(options.data, options.model);
   }

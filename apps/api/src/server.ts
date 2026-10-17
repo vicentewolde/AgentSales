@@ -12,7 +12,7 @@ import {
   loadEnvFile,
   resolveBackupDir,
 } from "@agentsales/config";
-import { ALL_SCOPE } from "@agentsales/core";
+import { ALL_SCOPE, brokersNeedingApiKey } from "@agentsales/core";
 import {
   createBrokerRepository,
   createContentRepository,
@@ -195,6 +195,13 @@ const app = createApp({
       (await brokers.list(ALL_SCOPE))
         .filter((broker) => broker.autoPublish)
         .map((broker) => broker.slug),
+    // Los corredores no propios usan la API de Anthropic (spec F7 §4.7): sin la clave, sus textos
+    // fallarán en el worker (que lee el mismo `.env` con `pnpm dev`).
+    llmKeyMissingBrokers: async () =>
+      brokersNeedingApiKey(await brokers.list(ALL_SCOPE), {
+        provider: env.LLM_PROVIDER,
+        hasApiKey: (env.ANTHROPIC_API_KEY ?? "") !== "",
+      }),
   },
   logger,
   access: localAccess(env.API_PORT, env.WEB_PORT),

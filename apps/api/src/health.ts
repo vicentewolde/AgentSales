@@ -44,6 +44,8 @@ export type HealthDetails = {
   backupStatus?: () => Promise<BackupStatus | null>;
   /** Los corredores (slug) con `auto_publish` (F6-T10, spec §4.10); un error da `null`. */
   autoPublishBrokers?: () => Promise<string[]>;
+  /** Los corredores (slug) que necesitan `ANTHROPIC_API_KEY` y no la tienen (F7-T12). */
+  llmKeyMissingBrokers?: () => Promise<string[]>;
   now?: () => Date;
 };
 
@@ -64,6 +66,9 @@ export async function runHealth(options: {
   // `results` recorre HEALTH_CHECK_NAMES completo, así que el objeto tiene todas las claves.
   const checks = Object.fromEntries(results) as Record<HealthCheckName, HealthCheckResult>;
   const details = options.details ?? {};
+  // Sin base no se consulta; con ella, el mismo tope de los checks: nunca cuelga `/health`.
+  const brokerSlugs = async (read: () => Promise<string[]>) =>
+    checks.db.ok ? await withTimeout(read(), timeoutMs).catch(() => null) : null;
   return {
     status: results.every(([, result]) => result.ok) ? "ok" : "degraded",
     publishMode: options.publishMode,
@@ -77,12 +82,10 @@ export async function runHealth(options: {
       : { backup: await backupOf(details.backupStatus, details.now ?? (() => new Date())) }),
     ...(details.autoPublishBrokers === undefined
       ? {}
-      : {
-          // Sin base no se consulta; con ella, el mismo tope de los checks: nunca cuelga `/health`.
-          autoPublishBrokers: checks.db.ok
-            ? await withTimeout(details.autoPublishBrokers(), timeoutMs).catch(() => null)
-            : null,
-        }),
+      : { autoPublishBrokers: await brokerSlugs(details.autoPublishBrokers) }),
+    ...(details.llmKeyMissingBrokers === undefined
+      ? {}
+      : { llmKeyMissingBrokers: await brokerSlugs(details.llmKeyMissingBrokers) }),
   };
 }
 

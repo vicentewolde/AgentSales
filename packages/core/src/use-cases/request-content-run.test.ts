@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { SAMPLE_CONTENT_DRAFT } from "../content/draft.js";
 import type { ListingStatus } from "../enums.js";
 import { AppError } from "../errors.js";
+import { llmCallCost } from "../llm-usage.js";
 import {
+  contentBrokerFixture,
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
   createInMemoryJobQueue,
@@ -15,7 +17,7 @@ import {
 import { requestContentRun } from "./request-content-run.js";
 
 async function setup(
-  options: { status?: ListingStatus; photos?: number; queueDown?: boolean } = {},
+  options: { status?: ListingStatus; photos?: number; queueDown?: boolean; capUsd?: number } = {},
 ) {
   const listings = createInMemoryListingRepository();
   const listing = await listings.create({
@@ -52,10 +54,14 @@ async function setup(
       isCover: false,
     });
   }
-  const repos = createInMemoryContentRepositories();
+  const repos = createInMemoryContentRepositories({ brokerOfListing: () => "broker-1" });
   const publications = createInMemoryPublicationRepository();
   const lock = createInMemoryListingLock({
-    brokers: createInMemoryBrokerRepository(),
+    brokers: createInMemoryBrokerRepository(
+      options.capUsd === undefined
+        ? []
+        : [contentBrokerFixture({ id: "broker-1", llmMonthlyCapUsd: options.capUsd })],
+    ),
     listings,
     media,
     contentRuns: repos.contentRuns,
@@ -268,5 +274,29 @@ describe("requestContentRun", () => {
       status: "failed",
       error: { code: "QUEUE_UNAVAILABLE" },
     });
+  });
+
+  it("con el tope de IA alcanzado: LLM_BUDGET_EXCEEDED al pedir textos; sin textos, sí (F7-T12)", async () => {
+    const t = await setup({ capUsd: 0.5 });
+    const { run } = await requestContentRun(t.deps, { listingId: t.listingId });
+    await t.repos.contentRuns.addLlmUsage(
+      run.id,
+      llmCallCost("anthropic-api", "claude-sonnet-5-5", {
+        inputTokens: 300_000,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        outputTokens: 0,
+        requestId: null,
+      }),
+    );
+    await t.repos.contentRuns.markFailed(run.id, { code: "LLM_OUTPUT_INVALID", message: "x" });
+
+    await expect(requestContentRun(t.deps, { listingId: t.listingId })).rejects.toMatchObject({
+      code: "LLM_BUDGET_EXCEEDED",
+      details: { capUsd: 0.5 },
+    });
+    await expect(
+      requestContentRun(t.deps, { listingId: t.listingId, texts: false }),
+    ).resolves.toMatchObject({ reused: false, run: { texts: false } });
   });
 });

@@ -1,5 +1,6 @@
 import { findPgTool } from "@agentsales/db/backup";
-import { claudeCliEnv } from "@agentsales/llm";
+// La subruta: la CLI no carga el SDK de Anthropic solo para el entorno de la CLI de Claude.
+import { claudeCliEnv } from "@agentsales/llm/claude-cli";
 import { chromiumStatus } from "@agentsales/media/tools";
 import type { Command } from "commander";
 import { createHealthFetcher, type HealthFetcher } from "../../api-client.js";
@@ -8,6 +9,7 @@ import type { CliContext } from "../../context.js";
 import { type EnvResult, loadEnvironment } from "../../env.js";
 import {
   type CheckItem,
+  checkAnthropicModel,
   checkAutoPublish,
   checkBackup,
   checkChromium,
@@ -15,6 +17,7 @@ import {
   checkEnv,
   checkFfmpegTool,
   checkInstagram,
+  checkLlmKey,
   checkMercadoLibre,
   checkNode,
   checkPgDump,
@@ -56,6 +59,8 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const ufSource = checkUfSource(deps.env);
   const backup = checkBackup(services.report, (deps.now ?? (() => new Date()))());
   const autoPublish = checkAutoPublish(services.report);
+  const llmKey = checkLlmKey(services.report);
+  const anthropicModel = checkAnthropicModel(deps.env);
   const pgBinDir = deps.env.ok ? deps.env.env.PG_BIN_DIR : undefined;
   const findPgDump =
     deps.findPgDump ??
@@ -68,6 +73,8 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     ...(instagram ? [instagram] : []),
     ...(mercadoLibre ? [mercadoLibre] : []),
     ...(ufSource ? [ufSource] : []),
+    ...(llmKey ? [llmKey] : []),
+    ...(anthropicModel ? [anthropicModel] : []),
     ...services.items,
     await checkFfmpegTool(deps.run, "ffmpeg", ffmpegPath),
     await checkFfmpegTool(deps.run, "ffprobe", ffprobePath),

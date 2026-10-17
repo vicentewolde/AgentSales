@@ -152,12 +152,26 @@ export {
 } from "./listing-validator/index.js";
 export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definitions.js";
 export {
+  assertLlmBudget,
+  type BrokerMonthlySpend,
+  brokersNeedingApiKey,
+  llmProviderFor,
+  monthlySpend,
+} from "./llm-budget.js";
+export {
   addLlmCall,
   type BrokerLlmSpend,
+  hasLlmPrice,
+  LLM_PRICE_TABLE,
+  LLM_UNKNOWN_MODEL_PRICE_TABLE,
   type LlmCallUsage,
+  type LlmTokenUsage,
   type LlmUsage,
+  llmCallCost,
   llmCallUsageSchema,
+  llmTokenUsageSchema,
   llmUsageSchema,
+  roundUsd,
 } from "./llm-usage.js";
 export {
   MARKETPLACE_PROPERTY_TYPE_KEYS,
@@ -570,6 +584,7 @@ export {
   logout,
   type OpenedSession,
   openSession,
+  purgeExpiredAuth,
   resolveSession,
   SESSION_IDLE_MS,
   SESSION_TOUCH_MS,
