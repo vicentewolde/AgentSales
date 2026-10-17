@@ -1,4 +1,4 @@
-import type { HealthReport, PublishMode } from "@agentsales/core";
+import { type HealthReport, hasLlmPrice, type PublishMode } from "@agentsales/core";
 import { canDumpServer, parsePgToolVersion, parseServerVersion } from "@agentsales/db/backup";
 import {
   CHROMIUM_INSTALL_COMMAND,
@@ -131,6 +131,22 @@ export function checkUfSource(result: EnvResult): CheckItem | null {
     level: "warn",
     detail: "falta BCCH_API_TOKEN: los avisos en UF no se podrán publicar en Marketplace",
     hint: "Pide el token gratis en la API BDE del Banco Central (docs/07-checklist-cuentas.md, Antes de F5)",
+  };
+}
+
+/**
+ * El modelo de la API (F7-T12): con la clave puesta, uno que no está en la tabla de precios se
+ * estima con el más caro (el tope sigue frenando, pero el gasto sale alto). `null` si está o si no
+ * hay clave.
+ */
+export function checkAnthropicModel(result: EnvResult): CheckItem | null {
+  if (!result.ok || (result.env.ANTHROPIC_API_KEY ?? "") === "") return null;
+  if (hasLlmPrice(result.env.ANTHROPIC_MODEL)) return null;
+  return {
+    name: "anthropic_model",
+    level: "warn",
+    detail: `ANTHROPIC_MODEL=${result.env.ANTHROPIC_MODEL} no está en la tabla de precios: el gasto se estima con el modelo más caro`,
+    hint: "revisa el nombre del modelo, o agrega su precio en packages/core/src/llm-usage.ts",
   };
 }
 

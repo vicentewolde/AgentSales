@@ -2,6 +2,7 @@ import { type AccessScope, scopedBrokerId } from "./access.js";
 import type { Broker } from "./broker.js";
 import { chileMonthOf, chileMonthRange } from "./chile-time.js";
 import { AppError } from "./errors.js";
+import { roundUsd } from "./llm-usage.js";
 import type { BrokerRepository } from "./ports/broker-repository.js";
 import type { ContentRunRepository } from "./ports/content-repository.js";
 import type { LLMProvider } from "./ports/llm-provider.js";
@@ -28,6 +29,18 @@ export function llmProviderFor(
   return providers.api;
 }
 
+/**
+ * Los corredores (slug) que usan la API cuando falta la clave (`/health`, spec F7 §4.7): la misma
+ * regla de `llmProviderFor`, sin los proveedores armados.
+ */
+export function brokersNeedingApiKey(
+  brokers: readonly Pick<Broker, "operatorOwned" | "slug">[],
+  config: { provider: LLMProvider["name"]; hasApiKey: boolean },
+): string[] {
+  if (config.provider === "fake" || config.hasApiKey) return [];
+  return brokers.filter((broker) => !broker.operatorOwned).map((broker) => broker.slug);
+}
+
 /** Lo gastado este mes (de Chile) por un corredor. */
 async function spentThisMonth(
   contentRuns: Pick<ContentRunRepository, "sumLlmCost">,
@@ -36,7 +49,7 @@ async function spentThisMonth(
 ): Promise<number> {
   const { from, to } = chileMonthRange(chileMonthOf(now));
   const [row] = await contentRuns.sumLlmCost({ from, to, brokerId });
-  return row?.costUsd ?? 0;
+  return roundUsd(row?.costUsd ?? 0);
 }
 
 /**
@@ -91,7 +104,7 @@ export async function monthlySpend(
   return (await deps.brokers.list(input.scope)).map((broker) => ({
     brokerId: broker.id,
     slug: broker.slug,
-    spentUsd: byBroker.get(broker.id)?.costUsd ?? 0,
+    spentUsd: roundUsd(byBroker.get(broker.id)?.costUsd ?? 0),
     capUsd: broker.llmMonthlyCapUsd,
     runs: byBroker.get(broker.id)?.runs ?? 0,
   }));

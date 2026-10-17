@@ -840,8 +840,6 @@ describe("prepareContent · la IA por corredor y su gasto (F7-T12)", () => {
       ownName: "claude-cli",
       apiLlm: [{ data: SAMPLE_CONTENT_DRAFT, model: "claude-sonnet-5-5", usage: SPEND }],
     });
-    // El mes es el de la hora actual (las corridas en memoria se crean con la hora real).
-    t.deps.now = Date.now;
     await t.prepare(await t.newRun());
     const runId = await t.newRun();
 
@@ -853,5 +851,24 @@ describe("prepareContent · la IA por corredor y su gasto (F7-T12)", () => {
     });
     expect(variantsOf(await t.derivatives(), "cover")).toHaveLength(1);
     expect(t.apiLlm?.requests).toHaveLength(1);
+  });
+});
+
+describe("prepareContent · el tope antes de cada llamada (F7-T12)", () => {
+  it("el reintento revisa el tope otra vez: la primera llamada lo pasó", async () => {
+    const t = await setup({
+      broker: { llmMonthlyCapUsd: 0.5 },
+      ownName: "claude-cli",
+      // La primera respuesta no calza y cuesta US$ 0,70: el reintento ya está sobre el tope.
+      apiLlm: [
+        { data: { no: "calza" }, model: "claude-sonnet-5-5", usage: SPEND },
+        { data: SAMPLE_CONTENT_DRAFT, model: "claude-sonnet-5-5", usage: SPEND },
+      ],
+    });
+    const runId = await t.newRun();
+
+    await expect(t.prepare(runId)).rejects.toMatchObject({ code: "LLM_BUDGET_EXCEEDED" });
+    expect(t.apiLlm?.requests).toHaveLength(1);
+    expect((await t.contentRepos.contentRuns.get(runId))?.llmUsage).toMatchObject({ calls: 1 });
   });
 });

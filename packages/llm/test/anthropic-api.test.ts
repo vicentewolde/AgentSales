@@ -15,13 +15,18 @@ type Sent = {
   signal: AbortSignal | null | undefined;
 };
 
-function provider(respond: (sent: Sent) => Response | Promise<Response>, timeoutMs = 2_000) {
+function provider(
+  respond: (sent: Sent) => Response | Promise<Response>,
+  timeoutMs = 2_000,
+  /** `"sdk"`: los reintentos por defecto del adaptador (2). */
+  maxRetries: number | "sdk" = 0,
+) {
   const sent: Sent[] = [];
   const llm = createAnthropicApiProvider({
     apiKey: "sk-ant-de-prueba",
     model: "claude-sonnet-5-5",
     timeoutMs,
-    maxRetries: 0,
+    ...(maxRetries === "sdk" ? {} : { maxRetries }),
     fetch: (async (input: string | URL | Request, init?: RequestInit) => {
       const call: Sent = {
         url: String(input),
@@ -125,7 +130,11 @@ describe("anthropic-api", () => {
         }),
       ).llm.generateStructured(request),
     );
-    expect(rate).toMatchObject({ code: "LLM_RATE_LIMITED", details: { retryAfter: "12" } });
+    expect(rate).toMatchObject({
+      code: "LLM_RATE_LIMITED",
+      retriable: true,
+      details: { retryAfter: "12" },
+    });
     expect((await errorOf(limited.generateStructured(request))).code).toBe("LLM_RATE_LIMITED");
 
     const spend = await errorOf(
@@ -191,5 +200,83 @@ describe("anthropic-api", () => {
     const slow = provider(hang, 50);
     const timeout = await errorOf(slow.llm.generateStructured(request));
     expect([timeout.code, timeout.retriable]).toEqual(["LLM_TIMEOUT", true]);
+  });
+
+  describe("con los reintentos por defecto del SDK", () => {
+    const DEFAULT = "sdk";
+
+    it("reintenta un 529 y responde con el siguiente", async () => {
+      let calls = 0;
+      const { llm } = provider(
+        () => {
+          calls += 1;
+          return calls < 3
+            ? json({ type: "error", error: { type: "overloaded_error", message: "x" } }, 529, {
+                "retry-after-ms": "1",
+              })
+            : json(message());
+        },
+        2_000,
+        DEFAULT,
+      );
+      await expect(llm.generateStructured(request)).resolves.toMatchObject({ data: { ok: true } });
+      expect(calls).toBe(3);
+    });
+
+    it("el tope de gasto de la cuenta no se reintenta (una sola llamada)", async () => {
+      const { llm, sent } = provider(
+        () =>
+          apiError(429, "rate_limit_error", "monthly limit", {
+            error_code: "enforced_spend_limit_reached",
+          }),
+        2_000,
+        DEFAULT,
+      );
+      expect((await errorOf(llm.generateStructured(request))).code).toBe("LLM_ACCOUNT_LIMIT");
+      expect(sent).toHaveLength(1);
+    });
+
+    it("una espera de más de un minuto no se hace dentro de la llamada: la reintenta el job", async () => {
+      const { llm, sent } = provider(
+        () =>
+          json({ type: "error", error: { type: "rate_limit_error", message: "x" } }, 429, {
+            "retry-after": "120",
+          }),
+        2_000,
+        DEFAULT,
+      );
+      const error = await errorOf(llm.generateStructured(request));
+      expect([error.code, error.retriable]).toEqual(["LLM_RATE_LIMITED", true]);
+      expect(sent).toHaveLength(1);
+    });
+
+    it("el tope de tiempo es total: cubre los reintentos y sus esperas", async () => {
+      const { llm, sent } = provider(
+        () =>
+          json({ type: "error", error: { type: "overloaded_error", message: "x" } }, 529, {
+            "retry-after-ms": "5000",
+          }),
+        100,
+        DEFAULT,
+      );
+      const started = Date.now();
+      const error = await errorOf(llm.generateStructured(request));
+      expect([error.code, error.retriable]).toEqual(["LLM_TIMEOUT", true]);
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(sent).toHaveLength(1);
+    });
+  });
+
+  it("la guardia de vitest: sin fetch falso, el SDK va a un puerto cerrado y nunca a Anthropic", async () => {
+    expect(process.env.ANTHROPIC_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:9\//);
+    expect(process.env.ANTHROPIC_API_KEY ?? "").toBe("");
+    const llm = createAnthropicApiProvider({
+      apiKey: "sk-ant-de-prueba",
+      model: "claude-sonnet-5-5",
+      timeoutMs: 5_000,
+      maxRetries: 0,
+    });
+    const error = await errorOf(llm.generateStructured(request));
+    expect(error.code).toBe("LLM_UNAVAILABLE");
   });
 });

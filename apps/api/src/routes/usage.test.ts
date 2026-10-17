@@ -80,6 +80,7 @@ async function setup() {
     const run = await deps.contentRuns.create({ listingId, texts: true });
     await deps.contentRuns.addLlmUsage(run.id, SPEND);
     await deps.contentRuns.markFailed(run.id, { code: "LLM_OUTPUT_INVALID", message: "x" });
+    return chileMonthOf(run.createdAt);
   };
   const user = auth.repos.seed.user({
     email: "corredor-gasto@ejemplo.cl",
@@ -104,10 +105,10 @@ async function setup() {
 describe("GET /usage", () => {
   it("el administrador ve a todos (también sin gasto); el corredor, solo el suyo", async () => {
     const s = await setup();
-    await s.spend(s.listing.id);
-    const month = chileMonthOf(new Date());
+    // El mes de la corrida, así la prueba no depende del cambio de mes.
+    const month = await s.spend(s.listing.id);
 
-    const all = usageResponseSchema.parse(await (await s.admin("/usage")).json());
+    const all = usageResponseSchema.parse(await (await s.admin(`/usage?month=${month}`)).json());
     expect(all.month).toBe(month);
     expect(all.brokers).toEqual(
       expect.arrayContaining([
@@ -122,8 +123,15 @@ describe("GET /usage", () => {
       ]),
     );
 
-    const own = usageResponseSchema.parse(await (await s.broker("/usage")).json());
+    const own = usageResponseSchema.parse(await (await s.broker(`/usage?month=${month}`)).json());
     expect(own.brokers.map((row) => row.slug)).toEqual(["mio"]);
+  });
+
+  it("sin month, el mes de hoy en Chile", async () => {
+    const s = await setup();
+    const before = chileMonthOf(new Date());
+    const body = usageResponseSchema.parse(await (await s.admin("/usage")).json());
+    expect([before, chileMonthOf(new Date())]).toContain(body.month);
   });
 
   it("otro mes no trae el gasto de este; un mes mal escrito es 400", async () => {

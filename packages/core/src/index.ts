@@ -154,19 +154,24 @@ export { resolveEffectiveDefinitions } from "./listing-validator/resolve-definit
 export {
   assertLlmBudget,
   type BrokerMonthlySpend,
+  brokersNeedingApiKey,
   llmProviderFor,
   monthlySpend,
 } from "./llm-budget.js";
 export {
   addLlmCall,
   type BrokerLlmSpend,
+  hasLlmPrice,
   LLM_PRICE_TABLE,
+  LLM_UNKNOWN_MODEL_PRICE_TABLE,
   type LlmCallUsage,
   type LlmTokenUsage,
   type LlmUsage,
   llmCallCost,
   llmCallUsageSchema,
+  llmTokenUsageSchema,
   llmUsageSchema,
+  roundUsd,
 } from "./llm-usage.js";
 export {
   MARKETPLACE_PROPERTY_TYPE_KEYS,

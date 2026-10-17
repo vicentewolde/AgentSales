@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAppError } from "../errors.js";
+import { AppError, isAppError } from "../errors.js";
 import {
   contentBrokerFixture,
   contentDefinitionsFixture,
@@ -110,6 +110,67 @@ describe("generateContentDraft", () => {
     await expect(generateContentDraft({ llm }, { brief, signal })).rejects.toMatchObject({
       code: "LLM_ABORTED",
       retriable: true,
+    });
+  });
+
+  describe("el uso cobrado (F7-T12)", () => {
+    const USAGE = {
+      inputTokens: 10,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      outputTokens: 5,
+      requestId: "req_1",
+    };
+    const charged = (usage: unknown) =>
+      new AppError("LLM_OUTPUT_INVALID", "La IA no entregó los textos", {
+        details: { reason: "refusal", usage, model: "claude-sonnet-5-5" },
+      });
+
+    it("anota cada respuesta, también la que no calza", async () => {
+      const llm = createInMemoryLlmProvider([
+        { data: tooLongHook, model: "m", usage: USAGE },
+        { data: SAMPLE_CONTENT_DRAFT, model: "m", usage: { ...USAGE, requestId: "req_2" } },
+      ]);
+      const seen: string[] = [];
+      await generateContentDraft(
+        { llm, onUsage: async (_model, usage) => void seen.push(usage.requestId ?? "") },
+        { brief },
+      );
+      expect(seen).toEqual(["req_1", "req_2"]);
+    });
+
+    it("si anotar falla en un error de la IA, sube el error de la IA", async () => {
+      const llm = createInMemoryLlmProvider([{ error: charged(USAGE) }]);
+      await expect(
+        generateContentDraft(
+          {
+            llm,
+            onUsage: async () => {
+              throw new AppError("DB_UNAVAILABLE", "sin base", { retriable: true });
+            },
+          },
+          { brief },
+        ),
+      ).rejects.toMatchObject({ code: "LLM_OUTPUT_INVALID" });
+    });
+
+    it("un uso con otra forma en el error no se anota", async () => {
+      const llm = createInMemoryLlmProvider([
+        { error: charged({ inputTokens: "muchos", outputTokens: 5 }) },
+      ]);
+      let calls = 0;
+      await expect(
+        generateContentDraft(
+          {
+            llm,
+            onUsage: async () => {
+              calls += 1;
+            },
+          },
+          { brief },
+        ),
+      ).rejects.toMatchObject({ code: "LLM_OUTPUT_INVALID" });
+      expect(calls).toBe(0);
     });
   });
 });

@@ -99,6 +99,27 @@ describe("runDoctor", () => {
     }
   });
 
+  it("avisa si ANTHROPIC_MODEL no tiene precio en la tabla (con la clave), sin mostrar la clave", async () => {
+    const withKey = {
+      ...env,
+      ANTHROPIC_API_KEY: "sk-ant-secreta",
+      ANTHROPIC_MODEL: "claude-raro-1",
+    };
+    const report = await runDoctor(deps({ env: { ok: true, env: withKey } }));
+    const item = report.items.find((entry) => entry.name === "anthropic_model");
+    expect(item).toMatchObject({ level: "warn" });
+    expect(item?.detail).toContain("claude-raro-1");
+    expect(JSON.stringify(report)).not.toContain("sk-ant-secreta");
+
+    for (const variant of [
+      { ...withKey, ANTHROPIC_MODEL: "claude-sonnet-5-5" },
+      { ...env, ANTHROPIC_MODEL: "claude-raro-1" },
+    ]) {
+      const ok = await runDoctor(deps({ env: { ok: true, env: variant } }));
+      expect(ok.items.some((entry) => entry.name === "anthropic_model")).toBe(false);
+    }
+  });
+
   it("avisa (sin cortar) si falta el token del Banco Central, y nunca lo muestra", async () => {
     const { BCCH_API_TOKEN: _token, ...withoutToken } = env;
     const without = await runDoctor(deps({ env: { ok: true, env: withoutToken } }));

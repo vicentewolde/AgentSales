@@ -32,7 +32,8 @@ export type LLMResponse = { data: unknown; model: string; usage?: LlmTokenUsage 
  * - `LLM_TIMEOUT` (reintentable): pasó el tope de tiempo;
  * - `LLM_ABORTED` (reintentable): se cortó con `signal` (el job se reintenta después);
  * - `LLM_AUTH_REQUIRED`: sin sesión o credenciales;
- * - `LLM_RATE_LIMITED`: límite de uso o saldo del plan; no se reintenta dentro del job;
+ * - `LLM_RATE_LIMITED`: con la CLI, el límite de uso o el saldo del plan (no se reintenta dentro del
+ *   job: dura horas); con la API, un límite de tasa que el SDK ya esperó (reintentable);
  * - `LLM_OUTPUT_INVALID`: el modelo no entregó la salida estructurada (agotó sus reintentos, se
  *   cortó por largo o se negó);
  * - `LLM_NOT_CONFIGURED`: el proveedor no está disponible (la CLI no está instalada, o falta la

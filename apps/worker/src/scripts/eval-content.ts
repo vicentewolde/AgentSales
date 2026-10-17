@@ -2,7 +2,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { findWorkspaceRoot, loadEnv, loadEnvFile } from "@agentsales/config";
-import { isAppError, type LLMProvider, llmCallCost, SAMPLE_CONTENT_DRAFT } from "@agentsales/core";
+import {
+  isAppError,
+  type LLMProvider,
+  type LlmTokenUsage,
+  llmCallCost,
+  llmTokenUsageSchema,
+  SAMPLE_CONTENT_DRAFT,
+} from "@agentsales/core";
 import {
   createBrokerRepository,
   createDb,
@@ -14,15 +21,21 @@ import { DEFAULT_EVAL_BROKER, evalFolderName, runEval } from "../eval/run-eval.j
 import { apiLlmOptions, llmProviderOptions } from "../llm-options.js";
 
 // `pnpm eval:content [--broker <slug>] [--provider fake|anthropic-api] [--model <id>]` (spec F2-T16;
-// la API desde F7): evalúa el prompt sobre los
-// avisos listos de un corredor, sin escribir en la base. Sin `--provider fake`, usa el proveedor del
-// `.env` (la CLI de Claude gasta cuota del plan: lo corre el operador).
+// la API desde F7): evalúa el prompt sobre los avisos listos de un corredor, sin escribir en la
+// base. Sin `--provider`, usa el proveedor del `.env`. La CLI de Claude gasta cuota del plan y la
+// API, dinero (imprime el costo estimado): lo corre el operador.
 
-/** Qué hacer ante los errores que tienen arreglo del lado del operador. */
-const HINTS: Readonly<Record<string, string>> = {
-  DB_UNAVAILABLE: "Neon puede estar despertando: reintenta en unos segundos",
-  LLM_AUTH_REQUIRED: "Abre `claude` y usa /login",
+/** Qué hacer ante los errores que tienen arreglo del lado del operador (según el proveedor). */
+const hintFor = (code: string, provider: string | undefined): string | undefined => {
+  if (code === "DB_UNAVAILABLE") return "Neon puede estar despertando: reintenta en unos segundos";
+  if (code === "LLM_AUTH_REQUIRED") {
+    return provider === "anthropic-api"
+      ? "Revisa ANTHROPIC_API_KEY en el .env (¿venció o la revocaron?)"
+      : "Abre `claude` y usa /login";
+  }
+  return undefined;
 };
+let providerName: string | undefined;
 
 // Ctrl+C corta también la llamada a la CLI de Claude en curso: corre en su propio grupo de
 // procesos y no recibe la señal de la terminal, así que seguiría gastando cuota.
@@ -62,6 +75,9 @@ try {
     ...env,
     ...(values.model === undefined ? {} : { ANTHROPIC_MODEL: values.model }),
   });
+  if (values.model !== undefined && values.provider !== "anthropic-api") {
+    throw new Error("--model va con --provider anthropic-api");
+  }
   if (values.provider === "anthropic-api" && api === null) {
     throw new Error("--provider anthropic-api necesita ANTHROPIC_API_KEY en el .env");
   }
@@ -77,14 +93,25 @@ try {
   const llm: LLMProvider = {
     name: provider.name,
     async generateStructured(request) {
-      const response = await provider.generateStructured(request);
-      if (response.usage !== undefined) {
+      const add = (model: string, usage: LlmTokenUsage) => {
         spent.calls += 1;
-        spent.costUsd += llmCallCost(provider.name, response.model, response.usage).costUsd;
+        spent.costUsd += llmCallCost(provider.name, model, usage).costUsd;
+      };
+      let response: Awaited<ReturnType<LLMProvider["generateStructured"]>>;
+      try {
+        response = await provider.generateStructured(request);
+      } catch (error) {
+        // Una respuesta cobrada que no sirvió (`LLM_OUTPUT_INVALID` con su uso) también cuenta.
+        const usage = llmTokenUsageSchema.safeParse(isAppError(error) && error.details?.usage);
+        const model = isAppError(error) ? error.details?.model : undefined;
+        if (usage.success && typeof model === "string") add(model, usage.data);
+        throw error;
       }
+      if (response.usage !== undefined) add(response.model, response.usage);
       return response;
     },
   };
+  providerName = llm.name;
   console.log(`Evaluando con ${llm.name} las propiedades listas de ${values.broker}…`);
   process.exitCode = await runEval(
     {
@@ -110,7 +137,7 @@ try {
 } catch (error) {
   if (isAppError(error)) {
     console.error(`✗ ${error.code}: ${error.message}`);
-    const hint = HINTS[error.code];
+    const hint = hintFor(error.code, providerName);
     if (hint) console.error(`  → ${hint}`);
   } else {
     // Un `.env` inválido, una opción desconocida o un fallo inesperado: el mensaje, sin la pila.

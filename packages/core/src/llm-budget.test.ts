@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { ALL_SCOPE, brokerScope } from "./access.js";
 import { isAppError } from "./errors.js";
-import { assertLlmBudget, llmProviderFor, monthlySpend } from "./llm-budget.js";
-import { LLM_PRICE_TABLE, type LlmTokenUsage, llmCallCost } from "./llm-usage.js";
+import {
+  assertLlmBudget,
+  brokersNeedingApiKey,
+  llmProviderFor,
+  monthlySpend,
+} from "./llm-budget.js";
+import {
+  hasLlmPrice,
+  LLM_PRICE_TABLE,
+  LLM_UNKNOWN_MODEL_PRICE_TABLE,
+  type LlmTokenUsage,
+  llmCallCost,
+  roundUsd,
+} from "./llm-usage.js";
 import type { LLMProvider } from "./ports/llm-provider.js";
 import {
   contentBrokerFixture,
@@ -80,14 +92,20 @@ describe("llmCallCost", () => {
         usage({ inputTokens: prompt, outputTokens: 1_000_000 }),
       ).costUsd;
     expect(at(100_000)).toBeCloseTo(100_000 * 0.1e-6 + 0.5, 10);
-    expect(at(100_001)).toBeCloseTo(100_001 * 0.5e-6 + 2.5, 10);
+    expect(at(100_002)).toBeCloseTo(100_002 * 0.5e-6 + 2.5, 10);
     // La caché cuenta para el tramo.
     const cached = llmCallCost(
       "anthropic-api",
       "claude-haiku-5-5",
-      usage({ inputTokens: 1, cacheReadInputTokens: 100_000, outputTokens: 0 }),
+      usage({ inputTokens: 2, cacheReadInputTokens: 100_000, outputTokens: 0 }),
     );
-    expect(cached.costUsd).toBeCloseTo(0.5e-6 + 100_000 * 0.01e-6, 12);
+    expect(cached.costUsd).toBeCloseTo(2 * 0.5e-6 + 100_000 * 0.01e-6, 10);
+  });
+
+  it("redondea a micro-dólares: sin el ruido de los decimales binarios", () => {
+    expect(roundUsd(0.1 + 0.2)).toBe(0.3);
+    const cost = llmCallCost("anthropic-api", "claude-sonnet-5-5", usage({ inputTokens: 600 }));
+    expect(cost.costUsd).toBe(0.0012);
   });
 
   it("acepta el id con fecha, anota la tabla y conserva tokens y request-id", () => {
@@ -102,14 +120,22 @@ describe("llmCallCost", () => {
     });
   });
 
-  it("el plan del operador, fake y un modelo sin precio cuestan 0 sin tabla", () => {
-    for (const [name, model] of [
-      ["claude-cli", "claude-sonnet-5-5"],
-      ["fake", "claude-sonnet-5-5"],
-      ["anthropic-api", "claude-desconocido-9"],
-    ] as const) {
-      expect(llmCallCost(name, model, usage())).toMatchObject({ costUsd: 0, priceTable: null });
+  it("el plan del operador y fake cuestan 0 sin tabla", () => {
+    for (const name of ["claude-cli", "fake"] as const) {
+      expect(llmCallCost(name, "claude-sonnet-5-5", usage())).toMatchObject({
+        costUsd: 0,
+        priceTable: null,
+      });
     }
+  });
+
+  it("un modelo de la API sin precio se estima con el más caro, para que el tope siga frenando", () => {
+    expect(hasLlmPrice("claude-desconocido-9")).toBe(false);
+    expect(hasLlmPrice("claude-sonnet-5-5-20261001")).toBe(true);
+    expect(llmCallCost("anthropic-api", "claude-desconocido-9", usage())).toMatchObject({
+      costUsd: 10,
+      priceTable: LLM_UNKNOWN_MODEL_PRICE_TABLE,
+    });
   });
 });
 
@@ -201,5 +227,20 @@ describe("monthlySpend", () => {
     await expect(
       monthlySpend({ contentRuns, brokers }, { month: "2026-13", scope: ALL_SCOPE }),
     ).rejects.toMatchObject({ code: "MONTH_INVALID" });
+  });
+});
+
+describe("brokersNeedingApiKey", () => {
+  const brokers = [
+    contentBrokerFixture({ slug: "propio", operatorOwned: true }),
+    contentBrokerFixture({ slug: "ajeno" }),
+  ];
+
+  it("sin clave, los no propios; con clave o con fake, ninguno", () => {
+    expect(brokersNeedingApiKey(brokers, { provider: "claude-cli", hasApiKey: false })).toEqual([
+      "ajeno",
+    ]);
+    expect(brokersNeedingApiKey(brokers, { provider: "claude-cli", hasApiKey: true })).toEqual([]);
+    expect(brokersNeedingApiKey(brokers, { provider: "fake", hasApiKey: false })).toEqual([]);
   });
 });

@@ -939,7 +939,7 @@ export type AgendaResponse = z.infer<typeof agendaResponseSchema>;
 export const usageQuerySchema = z.object({
   month: z
     .string()
-    .regex(/^\d{4}-\d{2}$/, "El mes debe ser AAAA-MM")
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "El mes debe ser AAAA-MM")
     .optional(),
 });
 
