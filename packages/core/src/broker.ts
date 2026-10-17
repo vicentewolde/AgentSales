@@ -233,3 +233,106 @@ export function brokerDiffers(broker: Broker, data: BrokerData): boolean {
       : current !== next;
   });
 }
+
+/** La marca que edita un corredor (o el administrador) desde la API: todo menos el `slug`. */
+export type BrokerBrand = Omit<BrokerData, "slug">;
+
+/** Lo que llega de la API, sin normalizar; `null` o `""` borra un campo opcional. */
+export type BrokerBrandInput = {
+  [K in keyof BrokerBrand]?: K extends "fixedHashtags" ? string[] : string | null;
+};
+
+/** Un campo de la marca que no sirve (spec F7 §4.6), con su motivo. */
+export type BrokerFieldIssue = { field: keyof BrokerData; message: string };
+
+const BRAND_TEXT_MAX = 200;
+const TONE_MAX = 500;
+
+/**
+ * La marca de la API con las reglas de la hoja Corredor (`parseBrokerSheet`): nombre y marca
+ * obligatorios, colores HEX `#RRGGBB` en mayúsculas, correo válido, Instagram sin `@`, hashtags
+ * con `#` y sin repetidos. Solo trae los campos que vinieron. `BROKER_INVALID` (400)
+ * con la lista de lo que no sirve.
+ */
+export function normalizeBrokerBrand(input: BrokerBrandInput): Partial<BrokerBrand> {
+  const issues: BrokerFieldIssue[] = [];
+  const out: Partial<BrokerBrand> = {};
+  const text = (value: string | null | undefined) => {
+    const trimmed = value?.trim() ?? "";
+    return trimmed === "" ? null : trimmed;
+  };
+  const tooLong = (field: keyof BrokerData, value: string | null, max: number) => {
+    if (value !== null && value.length > max) {
+      issues.push({ field, message: `es demasiado largo (máximo ${max} caracteres)` });
+    }
+  };
+  for (const field of ["name", "brandName"] as const) {
+    if (input[field] === undefined) continue;
+    const value = text(input[field]);
+    if (value === null) issues.push({ field, message: "falta el valor (es obligatorio)" });
+    else {
+      tooLong(field, value, BRAND_TEXT_MAX);
+      out[field] = value;
+    }
+  }
+  for (const field of ["primaryColor", "secondaryColor"] as const) {
+    if (input[field] === undefined) continue;
+    const value = text(input[field]);
+    if (value === null || !HEX_COLOR.test(value)) {
+      issues.push({ field, message: `«${value ?? ""}» no es un color HEX (#RRGGBB)` });
+    } else out[field] = value.toUpperCase();
+  }
+  for (const field of ["whatsapp", "website", "tone"] as const) {
+    if (input[field] === undefined) continue;
+    const value = text(input[field]);
+    tooLong(field, value, field === "tone" ? TONE_MAX : BRAND_TEXT_MAX);
+    out[field] = value;
+  }
+  if (input.email !== undefined) {
+    const value = text(input.email);
+    if (value !== null && !EMAIL.test(value)) {
+      issues.push({ field: "email", message: `«${value}» no es un email` });
+    }
+    tooLong("email", value, BRAND_TEXT_MAX);
+    out.email = value;
+  }
+  if (input.instagramHandle !== undefined) {
+    const value = text(input.instagramHandle)?.replace(/^@+/, "") ?? null;
+    tooLong("instagramHandle", value, BRAND_TEXT_MAX);
+    out.instagramHandle = value === "" ? null : value;
+  }
+  if (input.fixedHashtags !== undefined) {
+    out.fixedHashtags = parseHashtags(input.fixedHashtags.join(" "));
+  }
+  if (issues.length > 0) {
+    throw new AppError(
+      "BROKER_INVALID",
+      `Revisa los datos del corredor: ${issues.map((issue) => `${issue.field} ${issue.message}`).join("; ")}`,
+      { details: { issues } },
+    );
+  }
+  return out;
+}
+
+/**
+ * Los valores de la hoja Corredor de la planilla de un corredor (spec F7 §4.6), por campo: lo que
+ * `parseBrokerSheet` lee de vuelta igual. Sin el logo (ya guardado; una carga sin logo no lo cambia)
+ * y sin los vacíos.
+ */
+export function brokerTemplateValues(broker: BrokerData): Record<string, string> {
+  const values: Record<string, string | null> = {
+    nombre_corredor: broker.name,
+    nombre_marca: broker.brandName,
+    color_primario: broker.primaryColor,
+    color_secundario: broker.secondaryColor,
+    whatsapp: broker.whatsapp,
+    email: broker.email,
+    instagram: broker.instagramHandle === null ? null : `@${broker.instagramHandle}`,
+    sitio_web: broker.website,
+    tono: broker.tone,
+    hashtags_fijos: broker.fixedHashtags.length === 0 ? null : broker.fixedHashtags.join(" "),
+  };
+  return Object.fromEntries(
+    Object.entries(values).filter((entry): entry is [string, string] => entry[1] !== null),
+  );
+}

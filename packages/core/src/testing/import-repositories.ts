@@ -31,13 +31,15 @@ export type InMemoryBrokerRepositoryOptions = {
    * un aviso). Sin ellos, `setLogo` no valida el medio: solo sirve para tests que no lo ejercen.
    */
   media?: { all(): Pick<MediaRecord, "id" | "brokerId" | "listingId">[] };
+  /** Ids de los corredores nuevos (por defecto `broker-N`; la API usa uuid, como Postgres). */
+  nextId?: () => string;
 };
 
 export function createInMemoryBrokerRepository(
   initial: readonly Broker[] = [],
   options: InMemoryBrokerRepositoryOptions = {},
 ): InMemoryBrokerRepository {
-  const nextId = idGenerator("broker");
+  const nextId = options.nextId ?? idGenerator("broker");
   const stored = new Map(initial.map((broker) => [broker.id, structuredCopy(broker)]));
   return {
     async findById(id) {

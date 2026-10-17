@@ -13,6 +13,11 @@
       "@agentsales/source": "./src/tools.ts",
       "types": "./dist/src/tools.d.ts",
       "default": "./dist/src/tools.js"
+    },
+    "./logo": {
+      "@agentsales/source": "./src/logo.ts",
+      "types": "./dist/src/logo.d.ts",
+      "default": "./dist/src/logo.js"
     }
   },
   "scripts": {

@@ -91,6 +91,8 @@ const CONFLICTS = new Set([
   "USER_NOT_ADMIN",
   // F7-T08: la hoja Corredor de la carga de un corredor es de otro (no llega a la API; por si llegara).
   "BROKER_MISMATCH",
+  // F7-T13: un `slug` que ya existe.
+  "BROKER_SLUG_TAKEN",
   // F7-T12 (spec F7 §4.7): el corredor llegó a su tope de IA del mes (subir el tope o esperar).
   "LLM_BUDGET_EXCEEDED",
 ]);
@@ -224,6 +226,8 @@ export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "INVITATION_INVALID") return 410;
   if (code === "INVALID_TRANSITION" || CONFLICTS.has(code)) return 409;
   if (code === "REQUEST_TOO_LARGE") return 413;
+  // F7-T14: el logo no es PNG, JPEG ni WebP.
+  if (code === "LOGO_INVALID") return 415;
   if (CLIENT_MISSING.has(code)) return 400;
   if (PLATFORM_REJECTIONS.has(code)) return 400;
   if (PLATFORM_UNEXPECTED.has(code)) return 502;

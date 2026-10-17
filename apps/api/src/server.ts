@@ -1,5 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   createErrorThrottle,
   createLogger,
@@ -34,7 +35,10 @@ import {
   toPgConnectionString,
 } from "@agentsales/db";
 import { readBackupStatus } from "@agentsales/db/backup";
+import { BROKER_TEMPLATE_PATH, writeBrokerTemplate } from "@agentsales/importers";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
+// La subruta: sharp solo para el logo, sin ffmpeg ni el navegador del resto del paquete.
+import { createLogoNormalizer } from "@agentsales/media/logo";
 import {
   createInstagramAuth,
   createMercadoLibreAuth,
@@ -132,6 +136,11 @@ const app = createApp({
   media: createMediaRepository(database.db),
   fieldDefinitions: createFieldDefinitionRepository(database.db),
   storage,
+  // El logo y la planilla de un corredor (F7-T14).
+  logos: createLogoNormalizer(),
+  sha256Bytes: (bytes) => createHash("sha256").update(bytes).digest("hex"),
+  brokerTemplate: (broker) =>
+    writeBrokerTemplate(join(findWorkspaceRoot(), BROKER_TEMPLATE_PATH), broker),
   importRuns: createImportRunRepository(database.db),
   contentRuns: createContentRunRepository(database.db),
   contents: createContentRepository(database.db),

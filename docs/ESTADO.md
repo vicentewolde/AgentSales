@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-17
 **Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** lote D de F7 (F7-T11 y T12): la IA por la API de Anthropic y su gasto por corredor
-**Siguiente paso:** `/tarea F7-T13 F7-T14` (lote E: crear y editar corredores, su logo y su planilla)
+**Última tarea:** lote E de F7 (F7-T13 y T14): crear y editar corredores, su logo y su planilla
+**Siguiente paso:** `/tarea F7-T15` (lote F: Marketplace a mano)
 
 ## Pendiente tuyo para F7
 - [x] **Clave de la API de Anthropic** en `.env` (2026-10-17); `pnpm llm:smoke --provider anthropic-api` respondió bien
@@ -45,10 +45,10 @@
 | **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | ✅ terminada | #132 |
 | **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | ✅ terminada | #132 |
 | **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ✅ terminada | #132 |
-| **Lote D** · T11 `anthropic-api` real | ✅ terminada | |
-| **Lote D** · T12 La IA por corredor y su gasto | ✅ terminada | |
-| **Lote E** · T13 Corredores: crear, editar y lista de alta | ⏳ pendiente | |
-| **Lote E** · T14 Logo y planilla de Excel de un corredor | ⏳ pendiente | |
+| **Lote D** · T11 `anthropic-api` real | ✅ terminada | #133 |
+| **Lote D** · T12 La IA por corredor y su gasto | ✅ terminada | #133 |
+| **Lote E** · T13 Corredores: crear, editar y lista de alta | ✅ terminada | |
+| **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | |
 | **Lote F** · T15 Marketplace a mano | ⏳ pendiente | |
 | **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ⏳ pendiente | |
 | **Lote H** · T17 Panel: el alcance | ⏳ pendiente | |
@@ -142,6 +142,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-17: **Lote E de F7 (T13 y T14): los corredores.** Por la API (la CLI y el panel llegan en los lotes G y H):
+  - **Crear** un corredor (solo tú), con las mismas reglas de la hoja Corredor; un identificador repetido o un color mal escrito se rechazan con el motivo.
+  - **Editar:** el corredor cambia su marca; si es propio, su tope de IA y la publicación automática son solo tuyos (al corredor le responde "esto lo hace el administrador").
+  - **Lista de alta:** marca, logo, WhatsApp, usuario con contraseña, Instagram, Mercado Libre y Marketplace, cada uno con quién lo hace.
+  - **Logo:** PNG, JPEG o WebP de hasta 5 MB (un SVG no, porque puede llevar código); queda como PNG en R2.
+  - **Su planilla:** la plantilla oficial con su hoja Corredor ya llena. Entre la hoja y lo editado en Mi marca manda lo último que se guarde.
 - 2026-10-17: **Lote D de F7 (T11 y T12): la IA por API y su gasto.**
   - **La API de Anthropic funciona** con tu clave: la prueba corta y el eval de las 5 propiedades de prueba salieron bien. Con Sonnet 5.5 cuesta unos US$ 0,01 por propiedad; con Haiku 5.5, unos US$ 0,0005 (pero agregó "buena ubicación" sin que estuviera en los datos: por ahora queda Sonnet).
   - **Cada corredor usa lo suyo:** los tuyos ("propios"), tu plan de Claude como hoy; los demás, la API. Sin la clave, sus textos fallan con un mensaje claro, y `doctor` lo avisa.

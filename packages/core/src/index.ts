@@ -14,9 +14,14 @@ export {
 } from "./attributes.js";
 export {
   type Broker,
+  type BrokerBrand,
+  type BrokerBrandInput,
   type BrokerData,
+  type BrokerFieldIssue,
   brokerSchema,
+  brokerTemplateValues,
   isValidSlug,
+  normalizeBrokerBrand,
   normalizeLlmMonthlyCap,
   type ParsedBrokerSheet,
   parseBrokerSheet,
@@ -245,6 +250,13 @@ export {
   reelWarnings,
 } from "./media-checks.js";
 export {
+  ONBOARDING_STEPS,
+  type OnboardingOwner,
+  type OnboardingStep,
+  type OnboardingStepKey,
+  onboardingSteps,
+} from "./onboarding.js";
+export {
   assertCan,
   can,
   PERMISSIONS,
@@ -363,6 +375,7 @@ export type {
   NewListing,
 } from "./ports/listing-repository.js";
 export type { LLMProvider, LLMRequest, LLMResponse } from "./ports/llm-provider.js";
+export type { LogoNormalizer, NormalizedLogo } from "./ports/logo-normalizer.js";
 export {
   MEDIA_SKIP_REASONS,
   type MediaFile,
@@ -647,6 +660,10 @@ export {
   MERCADOLIBRE_REQUIRED_SCOPES,
 } from "./use-cases/connect-mercadolibre-account.js";
 export {
+  type CreateBrokerInput,
+  createBroker,
+} from "./use-cases/create-broker.js";
+export {
   type DisconnectAccountDeps,
   disconnectAccount,
 } from "./use-cases/disconnect-account.js";
@@ -808,6 +825,11 @@ export {
   unschedulePublication,
 } from "./use-cases/schedule-publications.js";
 export {
+  MAX_LOGO_BYTES,
+  type SetBrokerLogoDeps,
+  setBrokerLogo,
+} from "./use-cases/set-broker-logo.js";
+export {
   DUE_BATCH_LIMIT,
   type StartDueDeps,
   type StartDueResult,
@@ -829,6 +851,7 @@ export {
   type UnapprovedContent,
   unapproveContent,
 } from "./use-cases/unapprove-content.js";
+export { type UpdateBrokerInput, updateBroker } from "./use-cases/update-broker.js";
 export {
   type UpdatePortalPublicationDeps,
   updatePortalPublication,

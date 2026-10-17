@@ -22,6 +22,7 @@ import {
   MAX_XLSX_BYTES,
   MEDIA_KINDS,
   MEDIA_VARIANTS,
+  ONBOARDING_STEPS,
   OPERATIONS,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
@@ -957,10 +958,69 @@ export const usageResponseSchema = z.object({
 });
 export type UsageResponse = z.infer<typeof usageResponseSchema>;
 
-/** `PATCH /brokers/:id`: activar o apagar `auto_publish` (spec F6 §4.10). */
-export const brokerPatchBodySchema = z.object({ autoPublish: z.boolean() });
+// ── Corredores (F7-T13 y T14, spec F7 §4.6) ───────────────────────────────
+
+const brandText = z.string().max(1000).nullable();
+/** La marca: lo que edita el corredor (y el administrador). Core la valida y normaliza. */
+const brokerBrandBodySchema = z.object({
+  name: z.string().max(1000).optional(),
+  brandName: z.string().max(1000).optional(),
+  primaryColor: z.string().max(20).optional(),
+  secondaryColor: z.string().max(20).optional(),
+  whatsapp: brandText.optional(),
+  email: brandText.optional(),
+  instagramHandle: brandText.optional(),
+  website: brandText.optional(),
+  tone: brandText.optional(),
+  fixedHashtags: z.array(z.string().max(200)).max(50).optional(),
+});
+/** Lo que solo cambia el administrador. */
+const brokerSettingsBodySchema = z.object({
+  operatorOwned: z.boolean().optional(),
+  llmMonthlyCapUsd: z.number().nullable().optional(),
+});
+
+/** `POST /brokers` (administrador): el `slug`, la marca y si es propio y su tope. */
+export const brokerCreateBodySchema = brokerBrandBodySchema
+  .extend(brokerSettingsBodySchema.shape)
+  .extend({
+    slug: z.string().max(100),
+    name: z.string().max(1000),
+    brandName: z.string().max(1000),
+    primaryColor: z.string().max(20),
+  });
+
+/**
+ * `PATCH /brokers/:id`: la marca (el corredor y el administrador) y, solo el administrador, si es
+ * propio, el tope de IA y `autoPublish` (spec F6 §4.10 y F7 §4.6; el corredor que los manda: 403).
+ */
+export const brokerPatchBodySchema = brokerBrandBodySchema
+  .extend(brokerSettingsBodySchema.shape)
+  .extend({ autoPublish: z.boolean().optional() })
+  .strict();
+
+export const onboardingStepSchema = z.object({
+  key: z.enum(ONBOARDING_STEPS),
+  done: z.boolean(),
+  owner: z.enum(["broker", "admin"]).nullable(),
+  pending: z.string().nullable(),
+});
+export type OnboardingStepView = z.infer<typeof onboardingStepSchema>;
+
 export const brokerResponseSchema = z.object({ broker: brokerSchema });
 export type BrokerResponse = z.infer<typeof brokerResponseSchema>;
+/** `GET /brokers/:id`, `POST /brokers` y `PATCH /brokers/:id`: el corredor y su lista de alta. */
+export const brokerDetailResponseSchema = brokerResponseSchema.extend({
+  onboarding: z.array(onboardingStepSchema),
+});
+export type BrokerDetailResponse = z.infer<typeof brokerDetailResponseSchema>;
+
+/** `POST /brokers/:id/logo`: el archivo en el campo `logo` (multipart). */
+export const brokerLogoFormSchema = z.object({ logo: fileSchema });
+
+/** El tipo del archivo de `GET /brokers/:id/template.xlsx`. */
+export const XLSX_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 // ── Usuarios y sesiones (F7-T04 y T05, spec F7 §4.13, ADR-0021) ────────────
 

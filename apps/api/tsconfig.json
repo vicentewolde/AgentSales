@@ -26,6 +26,9 @@
       "path": "../../packages/importers"
     },
     {
+      "path": "../../packages/media"
+    },
+    {
       "path": "../../packages/publishers"
     }
   ]
