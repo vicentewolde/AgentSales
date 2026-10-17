@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { createInterface } from "node:readline/promises";
+import { copyToClipboard } from "@agentsales/config";
 import { type ApiClient, createApiClient } from "./api-client.js";
 import { colors } from "./colors.js";
 import { apiPort, loadEnvironment } from "./env.js";
@@ -24,6 +25,11 @@ export type Terminal = {
    * terminal interactiva; `{ cancelled: true }` si el operador cancela (Ctrl+C).
    */
   readPassword: (prompt: string) => Promise<PasswordInput | null>;
+  /**
+   * Copia al portapapeles (`pbcopy`, F7): los enlaces de invitación nunca se imprimen (ADR-0021).
+   * Rechaza si no se puede (sin `pbcopy`).
+   */
+  copyToClipboard: (text: string) => Promise<void>;
 };
 
 /** Lo que comparten los comandos al registrarse en `index.ts`. */
@@ -145,6 +151,7 @@ export function createContext(): CliContext {
   const session = createFileSessionStore();
   return {
     readPassword,
+    copyToClipboard,
     session,
     confirm,
     stdinIsTty: () => process.stdin.isTTY === true,

@@ -2,7 +2,7 @@ import { type AccessScope, scopedBrokerId } from "./access.js";
 import type { Broker } from "./broker.js";
 import { chileMonthOf, chileMonthRange } from "./chile-time.js";
 import { AppError } from "./errors.js";
-import { roundUsd } from "./llm-usage.js";
+import { formatUsd, roundUsd } from "./llm-usage.js";
 import type { BrokerRepository } from "./ports/broker-repository.js";
 import type { ContentRunRepository } from "./ports/content-repository.js";
 import type { LLMProvider } from "./ports/llm-provider.js";
@@ -41,6 +41,13 @@ export function brokersNeedingApiKey(
   return brokers.filter((broker) => !broker.operatorOwned).map((broker) => broker.slug);
 }
 
+/**
+ * Si lo gastado llegó al tope (D4): la única regla, para frenar la IA (`assertLlmBudget`) y para
+ * mostrarlo (`monthlySpend.capReached`). Sin tope, nunca.
+ */
+export const isOverLlmCap = (spentUsd: number, capUsd: number | null): boolean =>
+  capUsd !== null && roundUsd(spentUsd) >= capUsd;
+
 /** Lo gastado este mes (de Chile) por un corredor. */
 async function spentThisMonth(
   contentRuns: Pick<ContentRunRepository, "sumLlmCost">,
@@ -64,10 +71,10 @@ export async function assertLlmBudget(
 ): Promise<void> {
   if (broker.llmMonthlyCapUsd === null) return;
   const spent = await spentThisMonth(deps.contentRuns, broker.id, now);
-  if (spent >= broker.llmMonthlyCapUsd) {
+  if (isOverLlmCap(spent, broker.llmMonthlyCapUsd)) {
     throw new AppError(
       "LLM_BUDGET_EXCEEDED",
-      `${broker.slug} llegó a su tope de IA de este mes (US$ ${broker.llmMonthlyCapUsd.toFixed(2)}): sube el tope o espera al mes siguiente`,
+      `${broker.slug} llegó a su tope de IA de este mes (${formatUsd(broker.llmMonthlyCapUsd)}): sube el tope o espera al mes siguiente`,
       { details: { spentUsd: spent, capUsd: broker.llmMonthlyCapUsd } },
     );
   }
@@ -79,6 +86,8 @@ export type BrokerMonthlySpend = {
   slug: string;
   spentUsd: number;
   capUsd: number | null;
+  /** Si llegó al tope (`isOverLlmCap`): preparar los textos se frena. */
+  capReached: boolean;
   runs: number;
 };
 
@@ -101,11 +110,15 @@ export async function monthlySpend(
     ...(brokerId === undefined ? {} : { brokerId }),
   });
   const byBroker = new Map(rows.map((row) => [row.brokerId, row]));
-  return (await deps.brokers.list(input.scope)).map((broker) => ({
-    brokerId: broker.id,
-    slug: broker.slug,
-    spentUsd: roundUsd(byBroker.get(broker.id)?.costUsd ?? 0),
-    capUsd: broker.llmMonthlyCapUsd,
-    runs: byBroker.get(broker.id)?.runs ?? 0,
-  }));
+  return (await deps.brokers.list(input.scope)).map((broker) => {
+    const spentUsd = roundUsd(byBroker.get(broker.id)?.costUsd ?? 0);
+    return {
+      brokerId: broker.id,
+      slug: broker.slug,
+      spentUsd,
+      capUsd: broker.llmMonthlyCapUsd,
+      capReached: isOverLlmCap(spentUsd, broker.llmMonthlyCapUsd),
+      runs: byBroker.get(broker.id)?.runs ?? 0,
+    };
+  });
 }

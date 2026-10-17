@@ -91,6 +91,11 @@ pnpm -s cli listing pause|resume|reopen|archive <id_propiedad>
 pnpm -s cli listing close <id_propiedad> --reason vendida|arrendada|retirada   # cierra Portal y te deja las tareas a mano
 pnpm -s cli publications update|relist <id>                  # Portal: manda los cambios o republica uno vencido
 pnpm -s cli brokers auto-publish <slug> on|off               # aprobar y publicar solo al preparar
+pnpm -s cli brokers create --slug <slug> --name <nombre> --brand <marca> --color <#RRGGBB>   # un corredor nuevo
+pnpm -s cli users invite --email <correo> --name <nombre> --broker <slug>   # su usuario: el enlace queda en el portapapeles
+pnpm -s cli brokers template <slug>                          # su planilla de Excel, con su marca
+pnpm -s cli accounts connect marketplace --broker <slug> --manual   # Marketplace a mano (corredores que no son tuyos)
+pnpm -s cli usage                                            # el gasto de IA del mes por corredor
 pnpm db:backup                                               # respaldo en ~/.agentsales/backups (no necesita pnpm dev)
 ```
 En el panel: la página **Seguimiento** (http://localhost:5173/seguimiento) con la agenda y la tabla por plataforma; programar en cada publicación, en el canal y varias propiedades a la vez desde **Propiedades**; los botones de la propiedad en su detalle (Pausar, Vendida, Arrendada…), y la publicación automática en **Cuentas**. El worker también respalda la base cada día a las 13:00; cómo restaurar, en `docs/08-guia-operador.md`.

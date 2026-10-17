@@ -210,16 +210,19 @@ describe("monthlySpend", () => {
           slug: capped.slug,
           spentUsd: expect.closeTo(1, 10),
           capUsd: 1,
+          capReached: true,
           runs: 2,
         },
-        { brokerId: other.id, slug: "otro", spentUsd: 0, capUsd: null, runs: 0 },
+        { brokerId: other.id, slug: "otro", spentUsd: 0, capUsd: null, capReached: false, runs: 0 },
       ]),
     );
     const own = await monthlySpend(
       { contentRuns, brokers },
       { month, scope: brokerScope(other.id) },
     );
-    expect(own).toEqual([{ brokerId: other.id, slug: "otro", spentUsd: 0, capUsd: null, runs: 0 }]);
+    expect(own).toEqual([
+      { brokerId: other.id, slug: "otro", spentUsd: 0, capUsd: null, capReached: false, runs: 0 },
+    ]);
   });
 
   it("un mes mal escrito es MONTH_INVALID", async () => {

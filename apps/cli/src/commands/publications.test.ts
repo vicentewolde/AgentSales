@@ -218,6 +218,9 @@ describe("publications · registro en commander", () => {
       api: () => setup.h.client,
       session: createMemorySessionStore(),
       readPassword: async () => null,
+      copyToClipboard: async () => {
+        throw new Error("no debía copiar");
+      },
       cwd: ".",
       confirm: async () => false,
       stdinIsTty: () => false,

@@ -959,6 +959,8 @@ export const brokerUsageSchema = z.object({
   slug: z.string(),
   spentUsd: z.number(),
   capUsd: z.number().nullable(),
+  /** Si llegó al tope (core, `isOverLlmCap`): preparar los textos se frena. */
+  capReached: z.boolean(),
   runs: z.number().int(),
 });
 export const usageResponseSchema = z.object({

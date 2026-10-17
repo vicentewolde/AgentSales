@@ -49,9 +49,18 @@ export type AuthDeps = {
   now?: () => Date;
 };
 
+/**
+ * Si el pedido trae `Authorization` (la CLI): entonces `credentialOf` **nunca** usa la cookie. Es la
+ * misma razón que usan `originGuard` y `csrfGuard` para no exigir `Origin` (ADR-0021): un sitio
+ * ajeno no puede poner esa cabecera sin CORS, y sin la cookie no hay sesión que robar.
+ */
+export const hasAuthorizationHeader = (c: Context): boolean =>
+  c.req.header("authorization") !== undefined;
+
 /** El token del pedido: `Authorization: Bearer` (la CLI) o la cookie del panel. */
 export function credentialOf(c: Context): { token: string; via: "bearer" | "cookie" } | null {
   const header = c.req.header("authorization");
+  // Con `Authorization`, la cookie no cuenta (aunque el encabezado no sirva): ver `hasAuthorizationHeader`.
   if (header !== undefined) {
     const match = /^Bearer\s+(\S+)$/i.exec(header.trim());
     return match?.[1] === undefined ? null : { token: match[1], via: "bearer" };

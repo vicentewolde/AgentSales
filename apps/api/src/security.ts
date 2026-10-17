@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { csrf } from "hono/csrf";
-import { SESSION_COOKIE } from "./auth.js";
+import { hasAuthorizationHeader, SESSION_COOKIE } from "./auth.js";
 import { errorJson } from "./errors.js";
 
 export type LocalAccess = {
@@ -36,9 +36,17 @@ export function hostGuard(allowedHosts: readonly string[]): MiddlewareHandler {
   };
 }
 
-/** CSRF: formularios y `multipart` solo desde el panel. Las peticiones JSON exigen preflight CORS. */
+/**
+ * CSRF: formularios y `multipart` solo desde el panel. Las peticiones JSON exigen preflight CORS.
+ * Con `Authorization: Bearer` (la CLI: subir el logo, F7-T16) no aplica, por la misma razón que en
+ * `originGuard`: un sitio ajeno no puede poner esa cabecera sin pasar por CORS.
+ */
 export function csrfGuard(allowedOrigins: readonly string[]): MiddlewareHandler {
-  return csrf({ origin: [...allowedOrigins] });
+  const guard = csrf({ origin: [...allowedOrigins] });
+  return async (c, next) => {
+    if (hasAuthorizationHeader(c)) return next();
+    return guard(c, next);
+  };
 }
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -54,7 +62,7 @@ export function originGuard(allowedOrigins: readonly string[]): MiddlewareHandle
   return async (c, next) => {
     if (SAFE_METHODS.has(c.req.method)) return next();
     const origin = c.req.header("origin");
-    const bearer = c.req.header("authorization") !== undefined;
+    const bearer = hasAuthorizationHeader(c);
     const cookie = getCookie(c, SESSION_COOKIE) !== undefined;
     const rejected = origin !== undefined ? !allowed.has(origin) : cookie && !bearer;
     if (rejected) {

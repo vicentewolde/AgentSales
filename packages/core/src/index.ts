@@ -163,12 +163,14 @@ export {
   assertLlmBudget,
   type BrokerMonthlySpend,
   brokersNeedingApiKey,
+  isOverLlmCap,
   llmProviderFor,
   monthlySpend,
 } from "./llm-budget.js";
 export {
   addLlmCall,
   type BrokerLlmSpend,
+  formatUsd,
   hasLlmPrice,
   LLM_PRICE_TABLE,
   LLM_UNKNOWN_MODEL_PRICE_TABLE,

@@ -18,7 +18,7 @@ import {
   scheduleResponseSchema,
   trackingResponseSchema,
 } from "../contracts/index.js";
-import { adminApp, testDeps } from "../testing/index.js";
+import { adminApp, TEST_ADMIN_TOKEN, testDeps } from "../testing/index.js";
 
 // F6-T10 (spec F6 §4.13): programar, desprogramar, el lote, la matriz, la agenda, `auto_publish` y
 // actualizar o republicar Portal, con la API en proceso.
@@ -126,13 +126,16 @@ describe("POST /publications/:id/schedule y /unschedule", () => {
     });
   });
 
-  it("desprogramar una que no está programada es 409; el CSRF frena un POST sin JSON", async () => {
+  it("desprogramar una que no está programada es 409; originGuard frena un POST del panel sin Origin", async () => {
     const { t, app, post, codeOf } = await setup();
     const id = t.byFormat("post")?.id ?? "";
 
     const response = await post(`/publications/${id}/unschedule`);
     expect([response.status, await codeOf(response)]).toEqual([409, "INVALID_TRANSITION"]);
-    const bare = await app.request(`/publications/${id}/unschedule`, { method: "POST" });
+    const bare = await app.request(`/publications/${id}/unschedule`, {
+      method: "POST",
+      headers: { Cookie: `agentsales_session=${TEST_ADMIN_TOKEN}` },
+    });
     expect(bare.status).toBe(403);
   });
 });

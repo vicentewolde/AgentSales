@@ -4,9 +4,9 @@ import type { HealthReport } from "@agentsales/core";
 import { AppError, healthReportSchema } from "@agentsales/core";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
-import type { AppDeps } from "./app.js";
+import { type AppDeps, createApp } from "./app.js";
 import type { ErrorBody } from "./errors.js";
-import { adminApp, testDeps } from "./testing/index.js";
+import { adminApp, TEST_ADMIN_TOKEN, testDeps } from "./testing/index.js";
 
 const silentLogger = createLogger(
   { level: "silent" },
@@ -328,6 +328,41 @@ describe("acceso local", () => {
     });
 
     expect(response.status).toBe(403);
+  });
+
+  it("un multipart con Authorization: Bearer (la CLI, F7-T16) no exige Origin; sin él, sí", async () => {
+    const withBearer = appWith();
+    withBearer.post("/form", (c) => c.text("ok"));
+    const form = new FormData();
+    form.append("a", "1");
+    // `adminApp` pone la sesión como Bearer, sin Origin (lo que manda la CLI).
+    expect((await withBearer.request("/form", { method: "POST", body: form })).status).toBe(200);
+
+    const anonymous = createApp(testDeps({ logger: silentLogger, access }));
+    anonymous.post("/form", (c) => c.text("ok"));
+    expect((await anonymous.request("/form", { method: "POST", body: form })).status).toBe(403);
+  });
+
+  it("un Bearer no abre nada: falso con la cookie válida es 401, y con un Origin ajeno, 403", async () => {
+    const app = createApp(testDeps({ logger: silentLogger, access }));
+    const form = new FormData();
+    form.append("broker", "x");
+    // Con un Bearer, la API solo mira el Bearer: la cookie del panel no cuenta.
+    const fake = await app.request("/imports", {
+      method: "POST",
+      body: form,
+      headers: {
+        Authorization: "Bearer no-es-una-sesion",
+        Cookie: `agentsales_session=${TEST_ADMIN_TOKEN}`,
+      },
+    });
+    expect(fake.status).toBe(401);
+    const foreign = await app.request("/imports", {
+      method: "POST",
+      body: form,
+      headers: { Authorization: `Bearer ${TEST_ADMIN_TOKEN}`, Origin: "https://evil.example" },
+    });
+    expect(foreign.status).toBe(403);
   });
 
   it("acepta un formulario desde el panel", async () => {
