@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { brokerData, harness } from "../../test/harness.js";
+import { brokerData, harness, newListing } from "../../test/harness.js";
 import { runConnect } from "./accounts.js";
 import {
   runBrokerCreate,
@@ -12,7 +12,13 @@ import {
   runBrokerTemplate,
 } from "./brokers.js";
 import { runUsage } from "./usage.js";
-import { runUsersInvite, runUsersList, runUsersReset, runUsersToggle } from "./users.js";
+import {
+  deliverLink,
+  runUsersInvite,
+  runUsersList,
+  runUsersReset,
+  runUsersToggle,
+} from "./users.js";
 
 // F7-T16 (spec F7 §4.10): usuarios, corredores, gasto y Marketplace a mano, contra la API en
 // proceso. El enlace de invitación va al portapapeles (un doble) y nunca a la salida.
@@ -144,7 +150,7 @@ describe("brokers", () => {
     const text = s.h.text();
     expect(text).toContain("Corredor creado");
     expect(text).toContain("Nueva (nueva)");
-    expect(text).toContain("Tope de IA: US$ 15.00 al mes");
+    expect(text).toContain("Tope de IA: US$ 15,00 al mes");
     expect(text).toContain("· Logo: falta subir el logo (el corredor)");
     expect(text).toContain("· Usuario con contraseña: falta invitar a su usuario (tú)");
 
@@ -219,5 +225,62 @@ describe("usage y Marketplace a mano", () => {
       runConnect(deps, "marketplace", { broker: "marca", manual: true, label: "X" }),
     ).resolves.toBe(1);
     await expect(runConnect(deps, "instagram", { broker: "marca", manual: true })).resolves.toBe(1);
+  });
+});
+
+describe("revisión del lote G", () => {
+  it("un enlace que no es de invitación no se copia ni se muestra", async () => {
+    const s = await setup();
+    const user = {
+      id: "u",
+      email: "raro@ejemplo.cl",
+      name: "Raro",
+      role: "broker" as const,
+      brokerId: null,
+      hasPassword: false,
+      disabled: false,
+      locked: false,
+      lastLoginAt: null,
+    };
+    for (const invitationUrl of ["", "http://localhost:5173/otra-cosa", "no es un enlace"]) {
+      await expect(
+        deliverLink(s.deps, { user, invitationUrl, expiresAt: new Date() }),
+      ).resolves.toBe(1);
+    }
+    expect(s.copied).toEqual([]);
+    expect(s.h.errors()).toContain("users reset raro@ejemplo.cl");
+  });
+
+  it("usage marca el tope alcanzado", async () => {
+    const s = await setup();
+    await s.h.brokers.setSettings(s.broker.id, { llmMonthlyCapUsd: 0.5 });
+    const listing = await s.h.listings.create(newListing(s.broker.id, "P001"));
+    const run = await s.h.contentRuns.create({ listingId: listing.id, texts: true });
+    await s.h.contentRuns.addLlmUsage(run.id, {
+      provider: "anthropic-api",
+      model: "claude-sonnet-5-5",
+      inputTokens: 1,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      outputTokens: 1,
+      costUsd: 0.7,
+      priceTable: "2026-10-16",
+      requestId: null,
+    });
+    await expect(runUsage(s.deps, {})).resolves.toBe(0);
+    expect(s.h.text()).toMatch(/marca\s+US\$ 0,70\s+US\$ 0,50 \(alcanzado\)\s+1/);
+  });
+
+  it("--own y --not-own juntos, un logo de más de 5 MB y una carpeta que no existe: el motivo", async () => {
+    const s = await setup();
+    await expect(runBrokerEdit(s.deps, "marca", { own: true, notOwn: true })).resolves.toBe(1);
+    expect(s.h.errors()).toContain("--own y --not-own no van juntos");
+    await writeFile(join(s.deps.cwd, "grande.png"), new Uint8Array(6 * 1024 * 1024));
+    await expect(runBrokerLogo(s.deps, "marca", "grande.png")).resolves.toBe(1);
+    expect(s.h.errors()).toContain("LOGO_TOO_LARGE");
+    await expect(
+      runBrokerTemplate(s.deps, "marca", { out: "no-existe/planilla.xlsx" }),
+    ).resolves.toBe(1);
+    expect(s.h.errors()).toContain("FILE_NOT_WRITABLE");
   });
 });

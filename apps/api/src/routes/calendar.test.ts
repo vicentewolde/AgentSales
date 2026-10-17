@@ -126,7 +126,7 @@ describe("POST /publications/:id/schedule y /unschedule", () => {
     });
   });
 
-  it("desprogramar una que no está programada es 409; el CSRF frena un POST del panel sin Origin", async () => {
+  it("desprogramar una que no está programada es 409; originGuard frena un POST del panel sin Origin", async () => {
     const { t, app, post, codeOf } = await setup();
     const id = t.byFormat("post")?.id ?? "";
 

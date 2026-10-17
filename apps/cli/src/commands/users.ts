@@ -6,7 +6,7 @@ import {
   usersResponseSchema,
 } from "@agentsales/api/contracts";
 import type { Command } from "commander";
-import { type ApiClient, unwrap } from "../api-client.js";
+import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, formatDateTime, guarded, type Io, renderTable } from "../output.js";
 import { brokerSlugOf, fetchBrokers } from "./shared.js";
@@ -15,6 +15,9 @@ import { brokerSlugOf, fetchBrokers } from "./shared.js";
 // o de restablecer es un secreto: va al portapapeles, **nunca** a la pantalla ni a un error.
 
 export type UsersDeps = Io & Pick<Terminal, "copyToClipboard"> & { client: ApiClient };
+
+/** Un enlace de invitación (`<panel>/invitacion#<token>`), sin espacios. */
+const INVITATION_LINK = /^https?:\/\/\S+\/invitacion#\S+$/;
 
 /** El estado de un usuario, en una palabra. */
 function userState(user: UserView): string {
@@ -37,16 +40,21 @@ async function userByEmail(client: ApiClient, email: string): Promise<UserView> 
  * Copia el enlace y dice que se copió, sin mostrarlo. Si el portapapeles falla, lo dice y cómo
  * generar otro (el enlace queda sin usar y vence solo).
  */
-async function deliverLink(deps: UsersDeps, link: UserLinkResponse): Promise<number> {
+export async function deliverLink(deps: UsersDeps, link: UserLinkResponse): Promise<number> {
   const c = deps.colors;
+  const failed = (reason: string) => {
+    deps.printError(c.red(`✗ ${reason}: el enlace no se muestra aquí`));
+    deps.printError(`  ${c.dim(`→ Genera otro con: pnpm -s cli users reset ${link.user.email}`)}`);
+    return 1;
+  };
+  // Un enlace que no es de invitación (una respuesta rara) no se copia: sería un falso "copiado".
+  if (!INVITATION_LINK.test(link.invitationUrl)) {
+    return failed("La API no entregó un enlace de invitación válido");
+  }
   try {
     await deps.copyToClipboard(link.invitationUrl);
   } catch {
-    deps.printError(c.red("✗ No se pudo copiar el enlace al portapapeles: no se muestra aquí"));
-    deps.printError(
-      c.dim(`→ Genera otro con: pnpm -s cli users reset ${link.user.email} (en un Mac)`),
-    );
-    return 1;
+    return failed("No se pudo copiar el enlace al portapapeles");
   }
   deps.print(
     `${c.green("✓")} Enlace copiado al portapapeles (vence ${formatDateTime(link.expiresAt)}): envíaselo a ${link.user.email} por un canal privado`,
@@ -107,17 +115,33 @@ export function runUsersInvite(deps: UsersDeps, options: InviteOptions) {
         throw new CliError("BROKER_NOT_FOUND", `No existe el corredor ${slug}`);
       brokerId = broker.id;
     }
-    const link = await unwrap(
-      deps.client.users.$post({
-        json: {
-          email: options.email,
-          name: options.name,
-          role: brokerId === null ? "admin" : "broker",
-          brokerId,
-        },
-      }),
-      userLinkResponseSchema,
-    );
+    let link: UserLinkResponse;
+    try {
+      link = await unwrap(
+        deps.client.users.$post({
+          json: {
+            email: options.email,
+            name: options.name,
+            role: brokerId === null ? "admin" : "broker",
+            brokerId,
+          },
+        }),
+        userLinkResponseSchema,
+      );
+    } catch (error) {
+      // Sin respuesta (o una rara) después de pedirlo: el usuario puede haber quedado creado.
+      if (
+        error instanceof ApiCallError &&
+        (error.code === "TIMEOUT" || error.code === "UNEXPECTED_RESPONSE")
+      ) {
+        throw new CliError(
+          "INVITE_UNCONFIRMED",
+          "No se pudo confirmar la invitación: puede que el usuario se haya creado",
+          `Revisa con: pnpm -s cli users list; si está, pnpm -s cli users reset ${options.email}`,
+        );
+      }
+      throw error;
+    }
     deps.print(`${deps.colors.green("✓")} Usuario creado: ${link.user.email}`);
     return deliverLink(deps, link);
   });

@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { csrf } from "hono/csrf";
-import { SESSION_COOKIE } from "./auth.js";
+import { hasAuthorizationHeader, SESSION_COOKIE } from "./auth.js";
 import { errorJson } from "./errors.js";
 
 export type LocalAccess = {
@@ -44,7 +44,7 @@ export function hostGuard(allowedHosts: readonly string[]): MiddlewareHandler {
 export function csrfGuard(allowedOrigins: readonly string[]): MiddlewareHandler {
   const guard = csrf({ origin: [...allowedOrigins] });
   return async (c, next) => {
-    if (c.req.header("authorization")?.startsWith("Bearer ")) return next();
+    if (hasAuthorizationHeader(c)) return next();
     return guard(c, next);
   };
 }
@@ -62,7 +62,7 @@ export function originGuard(allowedOrigins: readonly string[]): MiddlewareHandle
   return async (c, next) => {
     if (SAFE_METHODS.has(c.req.method)) return next();
     const origin = c.req.header("origin");
-    const bearer = c.req.header("authorization") !== undefined;
+    const bearer = hasAuthorizationHeader(c);
     const cookie = getCookie(c, SESSION_COOKIE) !== undefined;
     const rejected = origin !== undefined ? !allowed.has(origin) : cookie && !bearer;
     if (rejected) {

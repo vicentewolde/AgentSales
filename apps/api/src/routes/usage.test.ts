@@ -117,9 +117,17 @@ describe("GET /usage", () => {
           slug: "mio",
           spentUsd: expect.closeTo(0.7, 10),
           capUsd: 0.5,
+          capReached: true,
           runs: 1,
         },
-        { brokerId: s.theirs.id, slug: "ajeno", spentUsd: 0, capUsd: null, runs: 0 },
+        {
+          brokerId: s.theirs.id,
+          slug: "ajeno",
+          spentUsd: 0,
+          capUsd: null,
+          capReached: false,
+          runs: 0,
+        },
       ]),
     );
 

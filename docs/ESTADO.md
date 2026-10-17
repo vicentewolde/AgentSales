@@ -50,7 +50,7 @@
 | **Lote E** · T13 Corredores: crear, editar y lista de alta | ✅ terminada | #134 |
 | **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | #134 |
 | **Lote F** · T15 Marketplace a mano | ✅ terminada | #135 |
-| **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ✅ terminada | |
+| **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ✅ terminada | #136 |
 | **Lote H** · T17 Panel: el alcance | ⏳ pendiente | |
 | **Lote H** · T18 Panel: Corredores, Mi marca, gasto y Marketplace a mano | ⏳ pendiente | |
 | T19 Cierre de fase | ⏳ pendiente | |
@@ -111,6 +111,7 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **Para F8 (despliegue), CORS:** el CSRF y `originGuard` no exigen `Origin` a un pedido con `Authorization` (ADR-0021, lote G). Si se habilita CORS, `Authorization` nunca va en `Access-Control-Allow-Headers` para un origen ajeno.
 - **Para F8 (despliegue):** la API depende de `@agentsales/media` (por el logo) y con eso instala también `playwright` (el paquete, no el navegador). Al desplegar, separar el logo en un paquete propio o aceptar la dependencia.
 - **Logos reemplazados (F7-T14):** al subir otro logo, el anterior queda como medio del corredor y en R2 (no se borra). Ocupa poco; limpiarlo junto con los medios huérfanos cuando haga falta.
 - **Para F8:** `/health` muestra la versión de Postgres (desde F7, solo al administrador); al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").

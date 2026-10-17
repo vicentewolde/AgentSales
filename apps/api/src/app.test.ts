@@ -6,7 +6,7 @@ import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
 import { type AppDeps, createApp } from "./app.js";
 import type { ErrorBody } from "./errors.js";
-import { adminApp, testDeps } from "./testing/index.js";
+import { adminApp, TEST_ADMIN_TOKEN, testDeps } from "./testing/index.js";
 
 const silentLogger = createLogger(
   { level: "silent" },
@@ -341,6 +341,28 @@ describe("acceso local", () => {
     const anonymous = createApp(testDeps({ logger: silentLogger, access }));
     anonymous.post("/form", (c) => c.text("ok"));
     expect((await anonymous.request("/form", { method: "POST", body: form })).status).toBe(403);
+  });
+
+  it("un Bearer no abre nada: falso con la cookie válida es 401, y con un Origin ajeno, 403", async () => {
+    const app = createApp(testDeps({ logger: silentLogger, access }));
+    const form = new FormData();
+    form.append("broker", "x");
+    // Con un Bearer, la API solo mira el Bearer: la cookie del panel no cuenta.
+    const fake = await app.request("/imports", {
+      method: "POST",
+      body: form,
+      headers: {
+        Authorization: "Bearer no-es-una-sesion",
+        Cookie: `agentsales_session=${TEST_ADMIN_TOKEN}`,
+      },
+    });
+    expect(fake.status).toBe(401);
+    const foreign = await app.request("/imports", {
+      method: "POST",
+      body: form,
+      headers: { Authorization: `Bearer ${TEST_ADMIN_TOKEN}`, Origin: "https://evil.example" },
+    });
+    expect(foreign.status).toBe(403);
   });
 
   it("acepta un formulario desde el panel", async () => {

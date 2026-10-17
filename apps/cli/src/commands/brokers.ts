@@ -1,11 +1,11 @@
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import {
   type BrokerDetailResponse,
   brokerDetailResponseSchema,
   brokerResponseSchema,
 } from "@agentsales/api/contracts";
-import type { Broker } from "@agentsales/core";
+import { type Broker, formatUsd, MAX_LOGO_BYTES } from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
 import { type ApiClient, createHealthFetcher, unwrap } from "../api-client.js";
@@ -86,7 +86,7 @@ function printBrokerDetail(deps: Io, { broker, onboarding }: BrokerDetailRespons
   );
   deps.print(
     c.dim(
-      `  Tope de IA: ${broker.llmMonthlyCapUsd === null ? "sin tope" : `US$ ${broker.llmMonthlyCapUsd.toFixed(2)} al mes`} · publicación automática: ${broker.autoPublish ? "activada" : "apagada"}`,
+      `  Tope de IA: ${broker.llmMonthlyCapUsd === null ? "sin tope" : `${formatUsd(broker.llmMonthlyCapUsd)} al mes`} · publicación automática: ${broker.autoPublish ? "activada" : "apagada"}`,
     ),
   );
   deps.print("Lista de alta:");
@@ -94,7 +94,7 @@ function printBrokerDetail(deps: Io, { broker, onboarding }: BrokerDetailRespons
     deps.print(
       step.done
         ? `  ${c.green("✓")} ${ONBOARDING_TEXT[step.key]}`
-        : `  ${c.yellow("·")} ${ONBOARDING_TEXT[step.key]}: falta ${step.pending ?? ""} (${step.owner === null ? "" : OWNER_TEXT[step.owner]})`,
+        : `  ${c.yellow("·")} ${ONBOARDING_TEXT[step.key]}${step.pending === null ? "" : `: falta ${step.pending}`}${step.owner === null ? "" : ` (${OWNER_TEXT[step.owner]})`}`,
     );
   }
 }
@@ -121,18 +121,26 @@ export type BrandOptions = {
   website?: string;
   tone?: string;
   hashtags?: string;
-  /** `--own` (true) o `--not-own` (false). */
+  /** `--own`. */
   own?: boolean;
+  /** `--not-own`. */
+  notOwn?: boolean;
   /** `--cap <usd>` (texto) o `--no-cap` (false). */
   cap?: string | false;
 };
 
 /** Las opciones de la marca como cuerpo de la API (solo las que vinieron). */
 function brandBody(options: BrandOptions) {
+  // Los dos juntos no se resuelven en silencio.
+  if (options.own && options.notOwn) {
+    throw new CliError("OPTIONS_CONFLICT", "--own y --not-own no van juntos");
+  }
+  const own = options.notOwn ? false : options.own;
   let cap: number | null | undefined;
   if (options.cap === false) cap = null;
   else if (options.cap !== undefined) {
-    cap = Number(options.cap.replace(",", "."));
+    // `--cap ""` no es "tope 0" (frenaría toda la IA): para quitarlo está `--no-cap`.
+    cap = options.cap.trim() === "" ? Number.NaN : Number(options.cap.replace(",", "."));
     if (!Number.isFinite(cap)) {
       throw new CliError("CAP_INVALID", `--cap debe ser un monto en dólares: "${options.cap}"`);
     }
@@ -152,7 +160,7 @@ function brandBody(options: BrandOptions) {
     ...(options.hashtags === undefined
       ? {}
       : { fixedHashtags: options.hashtags.split(/[\s,]+/).filter(Boolean) }),
-    ...(options.own === undefined ? {} : { operatorOwned: options.own }),
+    ...(own === undefined ? {} : { operatorOwned: own }),
     ...(cap === undefined ? {} : { llmMonthlyCapUsd: cap }),
   };
 }
@@ -233,7 +241,16 @@ export function runBrokerLogo(
 ) {
   return guarded(deps, async () => {
     const path = resolve(deps.cwd, file);
-    let bytes: Uint8Array;
+    // El tamaño antes de leerlo: un archivo enorme no se carga en memoria (la API acepta 5 MB).
+    const size = await stat(path).then(
+      (info) => info.size,
+      () => null,
+    );
+    if (size === null) throw new CliError("FILE_NOT_READABLE", `No se pudo leer ${file}`);
+    if (size > MAX_LOGO_BYTES) {
+      throw new CliError("LOGO_TOO_LARGE", `${file} pasa de 5 MB`, "Usa una versión más liviana");
+    }
+    let bytes: Uint8Array<ArrayBuffer>;
     try {
       bytes = new Uint8Array(await readFile(path));
     } catch {
@@ -243,7 +260,7 @@ export function runBrokerLogo(
     const { broker: updated } = await unwrap(
       deps.client.brokers[":id"].logo.$post({
         param: { id: broker.id },
-        form: { logo: new File([bytes as Uint8Array<ArrayBuffer>], basename(path)) },
+        form: { logo: new File([bytes], basename(path)) },
       }),
       brokerResponseSchema,
     );
@@ -275,20 +292,31 @@ export function runBrokerTemplate(
       () => true,
       () => false,
     );
-    if (exists && !options.force) {
-      throw new CliError(
+    const fileExists = () =>
+      new CliError(
         "FILE_EXISTS",
         `Ya existe ${path}`,
         "Usa --force para reemplazarlo u otro --out",
       );
-    }
+    if (exists && !options.force) throw fileExists();
     const response = await deps.client.brokers[":id"]["template.xlsx"].$get({
       param: { id: broker.id },
     });
     // Un error llega como JSON: `unwrap` lo traduce (y no hay planilla que guardar).
     if (!response.ok) await unwrap(response, z.never());
     if (!response.ok) throw new CliError("TEMPLATE_FAILED", "No se pudo bajar la planilla");
-    await writeFile(path, new Uint8Array(await response.arrayBuffer()));
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    try {
+      // Sin `--force`, `wx` tampoco pisa uno que apareció entre medio.
+      await writeFile(path, bytes, options.force ? {} : { flag: "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") throw fileExists();
+      throw new CliError(
+        "FILE_NOT_WRITABLE",
+        `No se pudo guardar ${path}`,
+        "Revisa que la carpeta exista y se pueda escribir, o usa otro --out",
+      );
+    }
     deps.print(`${deps.colors.green("✓")} Planilla de ${broker.slug} guardada en ${path}`);
     return 0;
   });
@@ -313,21 +341,16 @@ export function register(program: Command, ctx: CliContext): void {
       .option("--not-own", "no propio: usa la API de Anthropic (solo el administrador)")
       .option("--cap <usd>", "tope de IA del mes en dólares (solo el administrador)")
       .option("--no-cap", "sin tope de IA (solo el administrador)");
-  /** `--own` y `--not-own` a un solo booleano. */
-  const ownOf = (options: BrandOptions & { notOwn?: boolean }) =>
-    options.notOwn ? { ...options, own: false } : options;
   brandOptions(
     brokers
       .command("create")
       .description("Crea un corredor (administrador)")
       .option("--slug <slug>", "identificador: minúsculas, números y guiones"),
-  ).action((options: CreateOptions & { notOwn?: boolean }) =>
-    exitWith(() => runBrokerCreate(deps(), ownOf(options))),
-  );
+  ).action((options: CreateOptions) => exitWith(() => runBrokerCreate(deps(), options)));
   brandOptions(
     brokers.command("edit").description("Edita un corredor").argument("<slug>", "corredor"),
-  ).action((slug: string, options: BrandOptions & { notOwn?: boolean }) =>
-    exitWith(() => runBrokerEdit(deps(), slug, ownOf(options))),
+  ).action((slug: string, options: BrandOptions) =>
+    exitWith(() => runBrokerEdit(deps(), slug, options)),
   );
   brokers
     .command("show")

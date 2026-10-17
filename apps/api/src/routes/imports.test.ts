@@ -145,22 +145,25 @@ describe("POST /imports · bordes", () => {
   it.each([
     ["sin Origin", undefined],
     ["con un Origin ajeno", "https://evil.example"],
-  ])("un multipart %s con la cookie del panel → 403, sin guardar nada", async (_, origin) => {
-    const { app, uploads } = setup();
-    const form = new FormData();
-    form.append("file", fileOf("propiedades.xlsx"));
-    // Con la cookie (el navegador), no con Bearer: el CSRF protege a la sesión del panel.
-    const response = await app.request("/imports", {
-      method: "POST",
-      body: form,
-      headers: {
-        Cookie: `agentsales_session=${TEST_ADMIN_TOKEN}`,
-        ...(origin === undefined ? {} : { Origin: origin }),
-      },
-    });
-    expect(response.status).toBe(403);
-    expect(uploads.files.size).toBe(0);
-  });
+  ])(
+    "un multipart %s con la cookie del panel → 403 (originGuard), sin guardar nada",
+    async (_, origin) => {
+      const { app, uploads } = setup();
+      const form = new FormData();
+      form.append("file", fileOf("propiedades.xlsx"));
+      // Con la cookie (el navegador), no con Bearer: el CSRF protege a la sesión del panel.
+      const response = await app.request("/imports", {
+        method: "POST",
+        body: form,
+        headers: {
+          Cookie: `agentsales_session=${TEST_ADMIN_TOKEN}`,
+          ...(origin === undefined ? {} : { Origin: origin }),
+        },
+      });
+      expect(response.status).toBe(403);
+      expect(uploads.files.size).toBe(0);
+    },
+  );
 
   it("con Content-Length (como el navegador), un cuerpo sobre el tope → 413", async () => {
     const { app } = setup({ maxUploadBytes: 1024 });

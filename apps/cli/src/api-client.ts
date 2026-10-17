@@ -80,8 +80,9 @@ const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * Un pedido que cambia algo y va sin cuerpo (aprobar, publicar una, descartar) lleva
- * `Content-Type: application/json`: sin él, el CSRF de la API lo trata como un formulario y responde
- * 403 (spec F3-T15). Uno con cuerpo ya lo trae (`json`) o lleva el suyo (un formulario).
+ * `Content-Type: application/json`: sin él, el CSRF de la API lo trataba como un formulario (spec
+ * F3-T15). Desde F7-T16 el CSRF no aplica con `Bearer`; se mantiene para un pedido sin sesión (es
+ * inofensivo). Uno con cuerpo ya lo trae (`json`) o lleva el suyo (un formulario).
  */
 function withJsonType(init: RequestInit | undefined): RequestInit | undefined {
   if (init === undefined || init.body != null) return init;

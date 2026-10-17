@@ -36,6 +36,9 @@ export const llmUsageSchema = z.object({
 });
 export type LlmUsage = z.infer<typeof llmUsageSchema>;
 
+/** `US$ 1,23`: dólares con dos decimales y coma, como los muestran la CLI y el panel (F7). */
+export const formatUsd = (value: number): string => `US$ ${value.toFixed(2).replace(".", ",")}`;
+
 /** Dólares con 6 decimales (micro-dólares): sin el ruido de los decimales binarios. */
 export const roundUsd = (value: number): number => Math.round(value * 1_000_000) / 1_000_000;
 

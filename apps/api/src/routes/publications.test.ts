@@ -584,7 +584,7 @@ describe("/publications/:id", () => {
     expect(t.queue.jobs).toEqual([]);
   });
 
-  it("un POST con la cookie del panel y sin Origin lo frena el CSRF", async () => {
+  it("un POST con la cookie del panel y sin Origin lo frena originGuard", async () => {
     const { t, app } = await setup();
 
     const response = await app.request(`/publications/${t.byFormat("post")?.id}/cancel`, {
