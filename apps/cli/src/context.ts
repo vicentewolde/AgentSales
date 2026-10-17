@@ -73,6 +73,37 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** El punto que se muestra por cada carácter de la contraseña (nunca el carácter). */
+export const PASSWORD_MASK = "•";
+
+/**
+ * Una tecla (o un pegado) de la contraseña: el valor nuevo, lo que se escribe en la terminal (un
+ * punto por carácter, o borrar el último) y si terminó (Enter) o se canceló (Ctrl+C, Ctrl+D). Las
+ * flechas y otras secuencias de escape no cuentan.
+ */
+export function passwordKeystroke(
+  value: string,
+  chunk: string,
+): { value: string; echo: string; done: "enter" | "cancel" | null } {
+  if (chunk.startsWith("\u001b")) return { value, echo: "", done: null };
+  let next = value;
+  let echo = "";
+  for (const char of chunk) {
+    if (char === "\r" || char === "\n") return { value: next, echo, done: "enter" };
+    if (char === "\u0003" || char === "\u0004") return { value: next, echo, done: "cancel" };
+    if (char === "\u007f" || char === "\b") {
+      if (next.length > 0) {
+        next = [...next].slice(0, -1).join("");
+        echo += "\b \b";
+      }
+    } else if (char >= " ") {
+      next += char;
+      echo += PASSWORD_MASK;
+    }
+  }
+  return { value: next, echo, done: null };
+}
+
 async function readPassword(prompt: string): Promise<string | null> {
   const stdin = process.stdin;
   if (!stdin.isTTY) return null;
@@ -86,14 +117,13 @@ async function readPassword(prompt: string): Promise<string | null> {
       process.stderr.write("\n");
       resolve(result);
     };
-    // Sin eco: cada tecla se lee cruda y no se muestra (ni asteriscos).
+    // Cada tecla se lee cruda: se muestra un punto por carácter, nunca la letra.
     const onData = (chunk: string) => {
-      for (const char of chunk) {
-        if (char === "\r" || char === "\n") return finish(value);
-        if (char === "\u0003" || char === "\u0004") return finish(null);
-        if (char === "\u007f" || char === "\b") value = value.slice(0, -1);
-        else value += char;
-      }
+      const step = passwordKeystroke(value, chunk);
+      value = step.value;
+      if (step.echo !== "") process.stderr.write(step.echo);
+      if (step.done === "enter") finish(value);
+      else if (step.done === "cancel") finish(null);
     };
     stdin.setRawMode(true);
     stdin.setEncoding("utf8");
