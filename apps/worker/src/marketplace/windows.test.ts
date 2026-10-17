@@ -239,4 +239,17 @@ describe("ventanas de Marketplace del worker (spec F5 §4.5)", () => {
 
     await expect(sweepClosedWindows(publications, NOW)).resolves.toBe(0);
   });
+
+  it("una a mano (F7) tampoco tuvo ventana: el barrido al arrancar no la marca", async () => {
+    const { publications, publication } = await waiting();
+    const progress = { ...(publication.progress as object), byHand: true };
+    await publications.updateProgress(
+      publication.id,
+      { from: "awaiting_manual_confirm", attempts: 1 },
+      progress,
+    );
+
+    await expect(sweepClosedWindows(publications, NOW)).resolves.toBe(0);
+    expect((await publications.get(publication.id))?.progress).not.toHaveProperty("windowClosedAt");
+  });
 });

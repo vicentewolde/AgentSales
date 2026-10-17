@@ -1,6 +1,10 @@
 import { AppError } from "../errors.js";
 import { manualConfirmPending, marketplaceProfileActionPending } from "../marketplace/limits.js";
-import { type PlatformAccount, usesSessionProfile } from "../platform-account.js";
+import {
+  isManualMarketplaceAccount,
+  type PlatformAccount,
+  usesSessionProfile,
+} from "../platform-account.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
@@ -41,9 +45,11 @@ export async function disconnectAccount(
       details: { accountId },
     });
   }
-  const profile = usesSessionProfile(account.platform);
-  if (profile) {
-    if (!confirmed) {
+  const marketplace = usesSessionProfile(account.platform);
+  // A mano (F7, ADR-0023): sin perfil que borrar ni confirmación; las esperas sí cuentan.
+  const profile = marketplace && !isManualMarketplaceAccount(account);
+  if (marketplace) {
+    if (profile && !confirmed) {
       throw new AppError(
         "DISCONNECT_NOT_CONFIRMED",
         "Desconectar Marketplace borra el perfil del navegador con la sesión de Facebook: confirma para seguir",
@@ -64,12 +70,14 @@ export async function disconnectAccount(
         { details: { publicationId: filling.id } },
       );
     }
-    const queued = await deps.queue.enqueue(
-      "marketplace.profile",
-      { brokerId: account.brokerId, action: "forget" },
-      { singletonKey: account.brokerId },
-    );
-    if (queued === null) throw marketplaceProfileActionPending(account.brokerId);
+    if (profile) {
+      const queued = await deps.queue.enqueue(
+        "marketplace.profile",
+        { brokerId: account.brokerId, action: "forget" },
+        { singletonKey: account.brokerId },
+      );
+      if (queued === null) throw marketplaceProfileActionPending(account.brokerId);
+    }
   }
   return account.status === "revoked" && !account.hasCredentials
     ? account

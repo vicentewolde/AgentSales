@@ -122,7 +122,7 @@ describe("job marketplace.profile (spec F5 §4.2 y §4.11)", () => {
     });
   });
 
-  it("login de un corredor que no es propio (F7): no abre la ventana y lo anota", async () => {
+  it("login de un corredor que no es propio (F7): no abre la ventana ni anota nada en su cuenta", async () => {
     const t = await setup({ cookies: { c_user: "100012345", xs: "secreta" } });
     await t.deps.brokers.setSettings(broker.id, { operatorOwned: false });
 

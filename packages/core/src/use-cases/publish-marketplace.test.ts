@@ -501,6 +501,7 @@ describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
         brokers: s.t.brokers,
         platformAccounts: s.t.platformAccounts,
         publications: s.t.publications,
+        queue: s.t.queue,
         now: () => NOW,
       },
       { broker: broker.slug },
@@ -571,6 +572,7 @@ describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
     const waitingElsewhere = { id: "otra", platformAccountId: s.account.id };
     const locked = {
       media: s.t.media,
+      brokers: s.t.brokers,
       platformAccounts: s.t.platformAccounts,
       publications: {
         listByStatus: async () => [waitingElsewhere as Publication],
@@ -591,9 +593,17 @@ describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
     // La misma situación con una cuenta de perfil sí lo impide.
     const profile = {
       ...locked,
+      // Un corredor propio, para que el perfil esté permitido y se vea el formulario abierto.
+      brokers: {
+        findById: async (id: string) => {
+          const found = await s.t.brokers.findById(id);
+          return found === null ? null : { ...found, operatorOwned: true };
+        },
+      },
       platformAccounts: {
         get: async () => ({
           ...s.account,
+          externalAccountId: "1",
           meta: { userId: "1", connectedAt: "", sessionCheckedAt: "" },
         }),
       },
@@ -612,6 +622,45 @@ describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
       code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED",
     });
     expect(s.fake.published).toHaveLength(0);
+    expect((await s.current(publication.id))?.status).toBe("failed");
+  });
+
+  it("en vivo con el worker en simulación: PUBLISH_MODE_MISMATCH, como en F5", async () => {
+    const s = await byHand();
+    const publication = await s.publish();
+    await expect(
+      publishPublication(
+        { ...s.attemptDeps, workerMode: "dry-run" },
+        { publicationId: publication.id, isLastAttempt: true },
+      ),
+    ).rejects.toMatchObject({ code: "PUBLISH_MODE_MISMATCH" });
+    expect(s.fake.published).toHaveLength(0);
+  });
+
+  it("con una cuenta de perfil de un corredor que no es propio, pedir publicar ya da 403 (aviso temprano)", async () => {
+    const s = await setup();
+    const listing = await s.t.listings.get(s.t.listingId);
+    await s.t.brokers.setSettings(listing?.brokerId ?? "", { operatorOwned: false });
+    await expect(s.publish()).rejects.toMatchObject({ code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED" });
+  });
+
+  it("a mano, un título de más de 60 caracteres: PUBLISH_INPUT_INVALID (failed), sin quedar esperando", async () => {
+    const s = await byHand();
+    const publication = await s.publish();
+    const content = await s.t.contents.get(publication.contentId);
+    if (content === null) throw new Error("sin texto");
+    await expect(
+      publishPublication(
+        {
+          ...s.attemptDeps,
+          contents: {
+            ...s.t.contents,
+            get: async () => ({ ...content, title: "x".repeat(61) }),
+          },
+        },
+        { publicationId: publication.id, isLastAttempt: true },
+      ),
+    ).rejects.toMatchObject({ code: "PUBLISH_INPUT_INVALID" });
     expect((await s.current(publication.id))?.status).toBe("failed");
   });
 });

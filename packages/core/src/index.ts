@@ -239,6 +239,11 @@ export {
   marketplaceItemUrl,
   parseMarketplaceItemUrl,
 } from "./marketplace/url.js";
+export {
+  MARKETPLACE_MAX_PHOTOS,
+  MARKETPLACE_MAX_TITLE,
+  validateMarketplaceInput,
+} from "./marketplace/validate.js";
 export { type Media, mediaSchema } from "./media.js";
 export {
   PHOTO_MIN_WIDTH,

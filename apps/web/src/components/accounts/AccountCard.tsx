@@ -112,7 +112,8 @@ export function AccountCard({ account, now }: { account: PlatformAccountView; no
         (confirming ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <span>
-              ¿Desconectar {account.displayName}? {accountDisconnectText(account.platform)}
+              ¿Desconectar {account.displayName}?{" "}
+              {accountDisconnectText(account.platform, account.marketplaceMode)}
             </span>
             <button
               type="button"

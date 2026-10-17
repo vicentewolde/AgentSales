@@ -1007,7 +1007,9 @@ export const brokerCreateBodySchema = brokerBrandBodySchema
   .strict();
 
 /** `POST /accounts/marketplace/manual` (administrador, F7-T15): activar Marketplace a mano. */
-export const marketplaceManualBodySchema = z.object({ broker: z.string().trim().min(1).max(100) });
+export const marketplaceManualBodySchema = z
+  .object({ broker: z.string().trim().min(1).max(100) })
+  .strict();
 
 /**
  * `PATCH /brokers/:id`: la marca (el corredor y el administrador) y, solo el administrador, si es

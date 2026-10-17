@@ -237,155 +237,154 @@ function refreshView(result: TokenRefreshResult): AccountRefreshResponse {
  * código), pedir el inicio de sesión de Marketplace (lo encola: la ventana la abre el worker),
  * refrescar el token a pedido (Instagram o Mercado Libre, cada una con su política) y desconectar
  * (Marketplace pide `confirmed`: borra el perfil del navegador). Conectar y
- * refrescar llaman a la plataforma de forma síncrona (seguimiento de ADR-0014, punto 9). El token
+ * refrescar llaman a la plataforma de forma síncrona (seguimiento de ADR-0014, punto 9). Desde
+ * F7-T15 (ADR-0023), el administrador activa Marketplace a mano (`/marketplace/manual`). El token
  * nunca vuelve en la respuesta ni va al log (el log de la API no registra cuerpos, y la URL del
  * refresco de Instagram no sale de su cliente).
  */
 export function accountRoutes(deps: AccountRoutesDeps) {
-  return (
-    new Hono<AppEnv>()
-      .get("/", async (c) => {
-        // Un corredor ve sus cuentas (spec F7 §4.5); conectarlas es del administrador.
-        const accounts = await deps.platformAccounts.list(requestScope(c));
-        const body: AccountListResponse = {
-          accounts: accounts.map(accountView),
-          connect: {
-            instagram: { oauth: deps.instagramOAuth, startUrl: deps.instagramStartUrl },
-            mercadolibre: {
-              configured: deps.mercadoLibre.configured,
-              redirectUri: deps.mercadoLibre.redirectUri,
-            },
+  return new Hono<AppEnv>()
+    .get("/", async (c) => {
+      // Un corredor ve sus cuentas (spec F7 §4.5); conectarlas es del administrador.
+      const accounts = await deps.platformAccounts.list(requestScope(c));
+      const body: AccountListResponse = {
+        accounts: accounts.map(accountView),
+        connect: {
+          instagram: { oauth: deps.instagramOAuth, startUrl: deps.instagramStartUrl },
+          mercadolibre: {
+            configured: deps.mercadoLibre.configured,
+            redirectUri: deps.mercadoLibre.redirectUri,
           },
+        },
+      };
+      return c.json(body, 200);
+    })
+    .post("/connect-token", validatedWithReason("json", connectTokenBodySchema), async (c) => {
+      const { broker, token } = c.req.valid("json");
+      const account = await connectAccount(deps, {
+        broker,
+        grant: { kind: "token", accessToken: token },
+        signal: c.req.raw.signal,
+      }).catch((error: unknown) => {
+        throw tokenError(error);
+      });
+      const body: AccountResponse = { account: accountView(account) };
+      return c.json(body, 200);
+    })
+    .post(
+      "/mercadolibre/authorize-url",
+      validated("json", mercadoLibreAuthorizeUrlBodySchema),
+      async (c) => {
+        if (!deps.mercadoLibre.configured) throw mercadoLibreNotConfigured();
+        const { broker } = c.req.valid("json");
+        await requireBroker(deps.brokers, broker);
+        const state = deps.oauthState.sign(
+          { platform: OAUTH_STATE_PLATFORMS.mercadolibre, broker },
+          { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
+        );
+        const body: MercadoLibreAuthorizeUrlResponse = {
+          url: deps.mercadoLibre.auth.authorizeUrl(state),
         };
         return c.json(body, 200);
-      })
-      .post("/connect-token", validatedWithReason("json", connectTokenBodySchema), async (c) => {
-        const { broker, token } = c.req.valid("json");
-        const account = await connectAccount(deps, {
-          broker,
-          grant: { kind: "token", accessToken: token },
-          signal: c.req.raw.signal,
-        }).catch((error: unknown) => {
-          throw tokenError(error);
-        });
-        const body: AccountResponse = { account: accountView(account) };
-        return c.json(body, 200);
-      })
-      .post(
-        "/mercadolibre/authorize-url",
-        validated("json", mercadoLibreAuthorizeUrlBodySchema),
-        async (c) => {
-          if (!deps.mercadoLibre.configured) throw mercadoLibreNotConfigured();
-          const { broker } = c.req.valid("json");
-          await requireBroker(deps.brokers, broker);
-          const state = deps.oauthState.sign(
-            { platform: OAUTH_STATE_PLATFORMS.mercadolibre, broker },
-            { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
+      },
+    )
+    .post(
+      "/mercadolibre/connect",
+      validatedWithReason("json", mercadoLibreConnectBodySchema),
+      async (c) => {
+        if (!deps.mercadoLibre.configured) throw mercadoLibreNotConfigured();
+        const { broker, code, state } = c.req.valid("json");
+        // Antes de llamar a Mercado Libre: un `state` ajeno o vencido no canjea nada, y uno ya
+        // usado tampoco (spec F7 §4.12: sirve una vez).
+        const expected = { platform: OAUTH_STATE_PLATFORMS.mercadolibre, broker };
+        const verified = verifyOAuthStateData(deps.oauthState, state, expected);
+        if (verified === null) throw stateInvalid();
+        if (
+          !(await deps.oauthStates.markUsed(deps.stateHash(verified.nonce), verified.expiresAt))
+        ) {
+          throw new AppError(
+            "OAUTH_STATE_USED",
+            "Esa dirección de vuelta ya se usó: conecta Mercado Libre de nuevo",
           );
-          const body: MercadoLibreAuthorizeUrlResponse = {
-            url: deps.mercadoLibre.auth.authorizeUrl(state),
-          };
-          return c.json(body, 200);
-        },
-      )
-      .post(
-        "/mercadolibre/connect",
-        validatedWithReason("json", mercadoLibreConnectBodySchema),
-        async (c) => {
-          if (!deps.mercadoLibre.configured) throw mercadoLibreNotConfigured();
-          const { broker, code, state } = c.req.valid("json");
-          // Antes de llamar a Mercado Libre: un `state` ajeno o vencido no canjea nada, y uno ya
-          // usado tampoco (spec F7 §4.12: sirve una vez).
-          const expected = { platform: OAUTH_STATE_PLATFORMS.mercadolibre, broker };
-          const verified = verifyOAuthStateData(deps.oauthState, state, expected);
-          if (verified === null) throw stateInvalid();
-          if (
-            !(await deps.oauthStates.markUsed(deps.stateHash(verified.nonce), verified.expiresAt))
-          ) {
-            throw new AppError(
-              "OAUTH_STATE_USED",
-              "Esa dirección de vuelta ya se usó: conecta Mercado Libre de nuevo",
-            );
-          }
-          const account = await connectMercadoLibreAccount(
-            {
-              brokers: deps.brokers,
-              platformAccounts: deps.platformAccounts,
-              mercadoLibre: deps.mercadoLibre.auth,
-              ...(deps.now === undefined ? {} : { now: deps.now }),
-            },
-            { broker, code, signal: c.req.raw.signal },
-          ).catch((error: unknown) => {
-            throw mercadoLibreConnectError(error);
-          });
-          const body: AccountResponse = { account: accountView(account) };
-          return c.json(body, 200);
-        },
-      )
-      // Marketplace a mano (F7-T15, ADR-0023): el administrador la activa para un corredor.
-      .post("/marketplace/manual", validated("json", marketplaceManualBodySchema), async (c) => {
-        const account = await connectManualMarketplaceAccount(
+        }
+        const account = await connectMercadoLibreAccount(
           {
             brokers: deps.brokers,
             platformAccounts: deps.platformAccounts,
-            publications: deps.publications,
+            mercadoLibre: deps.mercadoLibre.auth,
             ...(deps.now === undefined ? {} : { now: deps.now }),
           },
-          { broker: c.req.valid("json").broker },
-        );
+          { broker, code, signal: c.req.raw.signal },
+        ).catch((error: unknown) => {
+          throw mercadoLibreConnectError(error);
+        });
         const body: AccountResponse = { account: accountView(account) };
-        return c.json(body, 201);
-      })
-      .post("/marketplace/login", validated("json", marketplaceLoginBodySchema), async (c) => {
-        const { broker, label } = c.req.valid("json");
-        const { brokerId, requestedAt } = await requestMarketplaceLogin(
+        return c.json(body, 200);
+      },
+    )
+    .post("/marketplace/manual", validated("json", marketplaceManualBodySchema), async (c) => {
+      const account = await connectManualMarketplaceAccount(
+        {
+          brokers: deps.brokers,
+          platformAccounts: deps.platformAccounts,
+          publications: deps.publications,
+          queue: deps.queue,
+          ...(deps.now === undefined ? {} : { now: deps.now }),
+        },
+        { broker: c.req.valid("json").broker },
+      );
+      const body: AccountResponse = { account: accountView(account) };
+      return c.json(body, 201);
+    })
+    .post("/marketplace/login", validated("json", marketplaceLoginBodySchema), async (c) => {
+      const { broker, label } = c.req.valid("json");
+      const { brokerId, requestedAt } = await requestMarketplaceLogin(
+        {
+          brokers: deps.brokers,
+          queue: deps.queue,
+          ...(deps.now === undefined ? {} : { now: deps.now }),
+        },
+        { broker, ...(label === undefined ? {} : { label }) },
+      );
+      const body: MarketplaceLoginResponse = { queued: true, brokerId, requestedAt };
+      return c.json(body, 202);
+    })
+    .post(
+      "/:id/refresh",
+      validated("param", idParamSchema),
+      validated("json", accountRefreshBodySchema),
+      async (c) => {
+        const { force } = c.req.valid("json");
+        const result = await refreshAccountToken(
           {
-            brokers: deps.brokers,
-            queue: deps.queue,
-            ...(deps.now === undefined ? {} : { now: deps.now }),
+            ...deps,
+            // Sin el par, una cuenta de Mercado Libre a la que le toca es MERCADOLIBRE_NOT_CONFIGURED
+            // (503) sin llamar ni cambiarla.
+            mercadoLibre: deps.mercadoLibre.configured ? deps.mercadoLibre.auth : null,
+            onWarning: ({ accountId, code }) =>
+              deps.logger.warn({ accountId, code }, "aviso del refresco de tokens"),
           },
-          { broker, ...(label === undefined ? {} : { label }) },
-        );
-        const body: MarketplaceLoginResponse = { queued: true, brokerId, requestedAt };
-        return c.json(body, 202);
-      })
-      .post(
-        "/:id/refresh",
-        validated("param", idParamSchema),
-        validated("json", accountRefreshBodySchema),
-        async (c) => {
-          const { force } = c.req.valid("json");
-          const result = await refreshAccountToken(
-            {
-              ...deps,
-              // Sin el par, una cuenta de Mercado Libre a la que le toca es MERCADOLIBRE_NOT_CONFIGURED
-              // (503) sin llamar ni cambiarla.
-              mercadoLibre: deps.mercadoLibre.configured ? deps.mercadoLibre.auth : null,
-              onWarning: ({ accountId, code }) =>
-                deps.logger.warn({ accountId, code }, "aviso del refresco de tokens"),
-            },
-            {
-              accountId: c.req.valid("param").id,
-              force: force ?? false,
-              signal: c.req.raw.signal,
-            },
-          );
-          return c.json(refreshView(result), 200);
-        },
-      )
-      .post(
-        "/:id/disconnect",
-        validated("param", idParamSchema),
-        validated("json", accountDisconnectBodySchema),
-        async (c) => {
-          const { confirmed } = c.req.valid("json");
-          const account = await disconnectAccount(deps, {
+          {
             accountId: c.req.valid("param").id,
-            ...(confirmed === undefined ? {} : { confirmed }),
-          });
-          const body: AccountResponse = { account: accountView(account) };
-          return c.json(body, 200);
-        },
-      )
-  );
+            force: force ?? false,
+            signal: c.req.raw.signal,
+          },
+        );
+        return c.json(refreshView(result), 200);
+      },
+    )
+    .post(
+      "/:id/disconnect",
+      validated("param", idParamSchema),
+      validated("json", accountDisconnectBodySchema),
+      async (c) => {
+        const { confirmed } = c.req.valid("json");
+        const account = await disconnectAccount(deps, {
+          accountId: c.req.valid("param").id,
+          ...(confirmed === undefined ? {} : { confirmed }),
+        });
+        const body: AccountResponse = { account: accountView(account) };
+        return c.json(body, 200);
+      },
+    );
 }

@@ -7,6 +7,7 @@ import { AppError, isAppError } from "../errors.js";
 import type { FieldDefinition } from "../field-definition.js";
 import { LISTING_NOT_PUBLISHABLE_TEXT } from "../labels.js";
 import { canPublishListing, type Listing } from "../listing.js";
+import { assertMarketplaceAutomationAllowed } from "../marketplace/automation.js";
 import {
   DEFAULT_MARKETPLACE_DAILY_LIMIT,
   MARKETPLACE_TIME_ZONE,
@@ -289,6 +290,7 @@ export async function requireMarketplaceStartable(
     >;
     media: Pick<LockedRepositories["media"], "listByListing">;
     platformAccounts: Pick<LockedRepositories["platformAccounts"], "get">;
+    brokers: Pick<LockedRepositories["brokers"], "findById">;
   },
   {
     listing,
@@ -323,10 +325,16 @@ export async function requireMarketplaceStartable(
   }
   if (!limits) return;
   // Una cuenta a mano (F7, ADR-0023) no tiene formulario ni límite: el corredor publica él mismo.
+  // Con el perfil, el formulario automático es solo para un corredor propio (aviso temprano: el
+  // intento lo revisa otra vez).
   const automated = [];
   for (const accountId of accountIds) {
     const account = await locked.platformAccounts.get(accountId);
     if (account === null || !isManualMarketplaceAccount(account)) automated.push(accountId);
+  }
+  if (automated.length > 0) {
+    const broker = await locked.brokers.findById(listing.brokerId);
+    if (broker !== null) assertMarketplaceAutomationAllowed(broker);
   }
   const accounts = new Set(automated);
   const own = new Set(channelIds);

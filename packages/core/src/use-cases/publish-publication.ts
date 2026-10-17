@@ -12,6 +12,7 @@ import {
 } from "../marketplace/limits.js";
 import { marketplacePrice } from "../marketplace/price.js";
 import type { MarketplaceProgress } from "../marketplace/progress.js";
+import { validateMarketplaceInput } from "../marketplace/validate.js";
 import { isManualMarketplaceAccount, usesSessionProfile } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
@@ -46,7 +47,12 @@ import {
   scheduledPayloadSchema,
 } from "../publication.js";
 import { withDryRun } from "../publish/dry-run.js";
-import { buildPublishInput, checkPublishInput, publishAttemptRecord } from "../publish/input.js";
+import {
+  buildPublishInput,
+  checkPublishInput,
+  publishAttemptRecord,
+  publishInputInvalid,
+} from "../publish/input.js";
 import {
   consecutiveLimitWaits,
   MAX_LIMIT_WAITS,
@@ -73,6 +79,9 @@ export type PublishWarning = {
     | "remote_state";
   code: string;
 };
+
+/** Lo que el corredor publica a mano: la nota del intento (spec F7 §4.8, ADR-0023). */
+export const BY_HAND_NOTE = "publícalo tú con el texto y las fotos listos";
 
 export type PublishPublicationDeps = {
   /** `listByStatus` y `countLiveAttemptsSince`: el límite de Marketplace (spec F5 §4.7). */
@@ -310,7 +319,7 @@ export async function publishPublication(
   try {
     const prepared = await prepareAttempt(deps, publication, now(), signal);
     sent = prepared.sent;
-    if ("byHand" in prepared) {
+    if (prepared.kind === "byHand") {
       // A mano: nada que llamar ni ventana que abrir; el traspaso es de core (ADR-0023).
       handoff = {
         notes: [BY_HAND_NOTE],
@@ -514,10 +523,13 @@ async function awaitManualConfirm(
   } catch (failure) {
     const error = new AppError(
       "PUBLISH_RESULT_NOT_SAVED",
-      "El formulario quedó listo, pero no se pudo guardar: se vuelve a abrir uno nuevo",
+      handoff.byHand === true
+        ? "Quedó listo para publicar a mano, pero no se pudo guardar: se reintenta"
+        : "El formulario quedó listo, pero no se pudo guardar: se vuelve a abrir uno nuevo",
       { retriable: true, cause: failure, details: { publicationId: publication.id } },
     );
-    // El intento abrió Facebook: deja su evento (cuenta para el límite diario, spec F5 §4.7).
+    // El intento abrió Facebook (o, a mano, quedó listo): deja su evento (con el perfil, cuenta
+    // para el límite diario, spec F5 §4.7).
     await addAttempt("retry", { sent, notes: handoff.notes, error: lastErrorOf(error) });
     throw error;
   }
@@ -562,9 +574,6 @@ async function requireAutomationAllowed(
   }
   assertMarketplaceAutomationAllowed(broker);
 }
-
-/** Lo que el corredor publica a mano: la nota del intento (spec F7 §4.8). */
-export const BY_HAND_NOTE = "publícalo tú con el texto y las fotos listos";
 
 /** Todo lo que se revisa y arma antes de llamar a la plataforma. */
 async function prepareAttempt(
@@ -626,7 +635,15 @@ async function prepareAttempt(
     input = { ...input, priceClp: price.priceClp, uf: price.uf };
   }
   if (publisher === undefined) {
-    return { byHand: true as const, input, account, sent: publishAttemptRecord(input, account) };
+    // A mano, las reglas del formulario igual: el corredor no copia algo que Facebook rechazará.
+    const issues = validateMarketplaceInput(input);
+    if (issues.length > 0) throw publishInputInvalid(publication.id, issues);
+    return {
+      kind: "byHand" as const,
+      input,
+      account,
+      sent: publishAttemptRecord(input, account),
+    };
   }
   if (!publication.dryRun) checkPublishInput(publisher, input);
   if (stored === null) {
@@ -637,6 +654,7 @@ async function prepareAttempt(
       accessToken: undefined,
       sent: publishAttemptRecord(input, account),
       target: publication.dryRun ? withDryRun(publisher) : publisher,
+      kind: "publisher" as const,
     };
   }
   // Portal: el token lo asegura `ensureAccessToken` (fuera del candado del aviso), y el contexto no
@@ -668,6 +686,7 @@ async function prepareAttempt(
     accessToken,
     sent: publishAttemptRecord(input, account),
     target: publication.dryRun ? withDryRun(publisher) : publisher,
+    kind: "publisher" as const,
   };
 }
 

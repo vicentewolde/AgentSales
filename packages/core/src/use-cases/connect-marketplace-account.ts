@@ -1,7 +1,8 @@
 import { AppError } from "../errors.js";
 import { assertMarketplaceAutomationAllowed } from "../marketplace/automation.js";
-import { manualConfirmPending } from "../marketplace/limits.js";
+import { manualConfirmPending, marketplaceProfileActionPending } from "../marketplace/limits.js";
 import {
+  isManualMarketplaceAccount,
   MANUAL_MARKETPLACE_ACCOUNT_ID,
   type MarketplaceManualMeta,
   type MarketplaceProfileMeta,
@@ -9,6 +10,7 @@ import {
   type PlatformAccount,
 } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
+import type { JobQueue } from "../ports/job-queue.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import { requireBroker } from "./connect-account.js";
@@ -92,6 +94,18 @@ async function requireNoWaitingOnOthers(
     (publication) => ids.has(publication.platformAccountId),
   );
   if (waiting !== undefined) throw manualConfirmPending(waiting.id);
+  // Un formulario llenándose terminaría esperando el clic en una cuenta revocada (como al
+  // desconectar, spec F5 §4.2).
+  const filling = (await deps.publications.listByStatus("publishing")).find((publication) =>
+    ids.has(publication.platformAccountId),
+  );
+  if (filling !== undefined) {
+    throw new AppError(
+      "PUBLICATION_IN_PROGRESS",
+      "Se está llenando un formulario de Marketplace de este corredor: espera a que termine",
+      { details: { publicationId: filling.id } },
+    );
+  }
 }
 
 /**
@@ -99,19 +113,36 @@ async function requireNoWaitingOnOthers(
  * `POST /accounts/marketplace/manual`, administrador): una cuenta sin credenciales ni perfil del
  * navegador (`external_account_id = "manual"`, `meta.mode = "manual"`). El corredor publica él
  * mismo y confirma con el enlace. Sirve para cualquier corredor (también uno propio). Otra cuenta
- * de Marketplace del corredor queda desconectada (`MANUAL_CONFIRM_PENDING` si espera un clic);
+ * de Marketplace del corredor queda desconectada (`MANUAL_CONFIRM_PENDING` si espera un clic) y,
+ * si era un perfil, se encola el borrado de su sesión (`MARKETPLACE_PROFILE_ACTION_PENDING` si ya
+ * hay otra acción del perfil en cola);
  * activarla otra vez actualiza la misma fila. El corredor va por su `slug`; `BROKER_NOT_FOUND` si
  * no existe.
  */
 export async function connectManualMarketplaceAccount(
   deps: Omit<ConnectMarketplaceAccountDeps, "brokers"> & {
     brokers: Pick<BrokerRepository, "findBySlug">;
+    /** Para borrar el perfil del navegador que se reemplaza (`marketplace.profile`, `forget`). */
+    queue: JobQueue;
   },
   { broker: slug }: { broker: string },
 ): Promise<PlatformAccount> {
   const broker = await requireBroker(deps.brokers, slug);
   const brokerId = broker.id;
   await requireNoWaitingOnOthers(deps, brokerId, MANUAL_MARKETPLACE_ACCOUNT_ID);
+  // Reemplazar un perfil conectado borra también su sesión de Facebook del disco, como
+  // desconectarlo (antes de cambiar nada: con otra acción del perfil en cola, se repite después).
+  const replacesProfile = (
+    await deps.platformAccounts.listByBroker(brokerId, "fb_marketplace")
+  ).some((account) => account.status === "connected" && !isManualMarketplaceAccount(account));
+  if (replacesProfile) {
+    const queued = await deps.queue.enqueue(
+      "marketplace.profile",
+      { brokerId, action: "forget" },
+      { singletonKey: brokerId },
+    );
+    if (queued === null) throw marketplaceProfileActionPending(brokerId);
+  }
   const meta: MarketplaceManualMeta = {
     mode: "manual",
     connectedAt: (deps.now ?? (() => new Date()))().toISOString(),

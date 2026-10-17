@@ -132,7 +132,7 @@ describe("pnpm fb:smoke --listing", () => {
     await expect(runFbSmokeListing(s.deps, { listingRef: s.ref, yes: true })).resolves.toBe(1);
     expect(s.fb.profiles).toEqual([]);
     expect(s.questions).toEqual([]);
-    expect(s.err.join("\n")).toContain("solo para los tuyos");
+    expect(s.err.join("\n")).toContain("solo para tus corredores");
     expect(s.unchanged()).toBe(true);
   });
 

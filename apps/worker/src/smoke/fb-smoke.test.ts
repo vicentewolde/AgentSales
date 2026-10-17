@@ -69,6 +69,8 @@ const broker = {
   id: "broker-1",
   slug: "agentsales-pruebas",
   name: "Corredora de Prueba",
+  // Propio: el perfil de Facebook es solo para los corredores del operador (F7, ADR-0023).
+  operatorOwned: true,
 } as Broker;
 
 async function setup(pages: Pages, options: { cookies?: Record<string, string> } = {}) {
@@ -138,6 +140,15 @@ async function setup(pages: Pages, options: { cookies?: Record<string, string> }
 }
 
 describe("pnpm fb:smoke", () => {
+  it("un corredor que no es propio (F7): no abre el perfil", async () => {
+    const t = await setup({ "/marketplace/create/rental": FORM }, { cookies: { c_user: "1000" } });
+    const foreign = { ...broker, slug: "ajeno", operatorOwned: false } as Broker;
+    t.deps.brokers = { findBySlug: async () => foreign };
+    await expect(runFbSmoke(t.deps, { brokerSlug: "ajeno" })).resolves.toBe(1);
+    expect(t.profile()).toBeUndefined();
+    expect(t.errors.join("\n")).toContain("solo para los tuyos");
+  });
+
   it("con sesión guarda el árbol y la captura del formulario, sin llenar nada, y cierra", async () => {
     const t = await setup({ "/marketplace/create/rental": FORM }, { cookies: { c_user: "1000" } });
     let page: { clicks: unknown; price: string } | undefined;

@@ -153,6 +153,8 @@ export function marketplaceProfileJob(deps: MarketplaceProfileJobDeps): Job {
         logger.info({ accountId: account.id }, "cuenta de Marketplace conectada");
       } catch (error) {
         logger.warn({ code: codeOf(error) }, "no se pudo conectar la cuenta de Marketplace");
+        // Un corredor que no es propio: no hay intento de inicio de sesión que anotar en su cuenta.
+        if (codeOf(error) === "MARKETPLACE_AUTOMATION_NOT_ALLOWED") return;
         await recordMarketplaceLoginError(
           { platformAccounts: deps.platformAccounts, ...(deps.now ? { now: deps.now } : {}) },
           { brokerId: data.brokerId, code: codeOf(error) },

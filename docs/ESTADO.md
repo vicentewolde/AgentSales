@@ -49,7 +49,7 @@
 | **Lote D** · T12 La IA por corredor y su gasto | ✅ terminada | #133 |
 | **Lote E** · T13 Corredores: crear, editar y lista de alta | ✅ terminada | #134 |
 | **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | #134 |
-| **Lote F** · T15 Marketplace a mano | ✅ terminada | |
+| **Lote F** · T15 Marketplace a mano | ✅ terminada | #135 |
 | **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ⏳ pendiente | |
 | **Lote H** · T17 Panel: el alcance | ⏳ pendiente | |
 | **Lote H** · T18 Panel: Corredores, Mi marca, gasto y Marketplace a mano | ⏳ pendiente | |

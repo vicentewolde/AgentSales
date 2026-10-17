@@ -209,13 +209,16 @@ export const marketplaceAccountMetaSchema = z.preprocess(
 export type MarketplaceAccountMeta = z.infer<typeof marketplaceAccountMetaSchema>;
 
 /**
- * Si una cuenta es de Marketplace a mano (ADR-0023): por su `meta` (`mode: "manual"`). Una de otra
- * plataforma, o una con `meta` que no calza, no lo es.
+ * Si una cuenta es de Marketplace a mano (ADR-0023): por su `meta` (`mode: "manual"`) o por su
+ * `external_account_id` (`"manual"`), así una a mano con el `meta` roto nunca abre el perfil. Una
+ * de otra plataforma no lo es.
  */
 export function isManualMarketplaceAccount(
-  account: Pick<PlatformAccount, "platform" | "meta">,
+  account: Pick<PlatformAccount, "platform" | "meta"> &
+    Partial<Pick<PlatformAccount, "externalAccountId">>,
 ): boolean {
   if (account.platform !== "fb_marketplace") return false;
+  if (account.externalAccountId === MANUAL_MARKETPLACE_ACCOUNT_ID) return true;
   const meta = marketplaceAccountMetaSchema.safeParse(account.meta);
   return meta.success && meta.data.mode === "manual";
 }
