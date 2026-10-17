@@ -48,6 +48,9 @@ export async function updateBroker(
   for (const key of BRAND_KEYS) {
     if (input[key] !== undefined) Object.assign(brandInput, { [key]: input[key] });
   }
+  // Como en el alta y en la hoja: el secundario vacío toma el primario (el nuevo o el vigente).
+  const clearSecondary =
+    brandInput.secondaryColor === null || brandInput.secondaryColor?.trim() === "";
   const hasBrand = Object.keys(brandInput).length > 0;
   const hasSettings =
     input.operatorOwned !== undefined ||
@@ -58,7 +61,11 @@ export async function updateBroker(
   if (!hasBrand && !hasSettings) {
     throw new AppError("BROKER_INVALID", "No hay nada que cambiar en el corredor");
   }
-  const brand = hasBrand ? normalizeBrokerBrand(brandInput) : {};
+  const brand = hasBrand
+    ? normalizeBrokerBrand(
+        clearSecondary ? { ...brandInput, secondaryColor: undefined } : brandInput,
+      )
+    : {};
   const cap =
     input.llmMonthlyCapUsd === undefined
       ? undefined
@@ -68,6 +75,7 @@ export async function updateBroker(
   if (broker === null) {
     throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`, { details: { id } });
   }
+  if (clearSecondary) brand.secondaryColor = brand.primaryColor ?? broker.primaryColor;
   if (hasBrand) {
     const {
       id: _id,

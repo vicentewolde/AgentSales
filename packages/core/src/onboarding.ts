@@ -37,7 +37,7 @@ const step = (
 
 /**
  * Los pasos del alta de un corredor, en orden: marca y colores, logo, WhatsApp (Portal lo exige),
- * un usuario activo con su contraseña, Instagram, Mercado Libre y Marketplace (a mano o
+ * un usuario activo con su contraseña (no hace falta en uno propio del operador), Instagram, Mercado Libre y Marketplace (a mano o
  * automático) conectados. Pura: recibe los usuarios y las cuentas **de ese corredor**.
  */
 export function onboardingSteps(input: {
@@ -66,15 +66,18 @@ export function onboardingSteps(input: {
     ),
     step("logo", broker.logoMediaId !== null, "broker", "subir el logo"),
     step("whatsapp", broker.whatsapp !== null, "broker", "el WhatsApp (Portal lo exige)"),
-    // Invitar es del administrador; elegir la contraseña, del corredor (con el enlace).
-    invited
-      ? step(
-          "user",
-          users.some((user) => user.hasPassword),
-          "broker",
-          "aceptar la invitación y elegir la contraseña",
-        )
-      : step("user", false, "admin", "invitar a su usuario"),
+    // Invitar es del administrador; elegir la contraseña, del corredor (con el enlace). Un
+    // corredor propio lo maneja el operador con su usuario: no necesita uno.
+    broker.operatorOwned
+      ? step("user", true, "admin", "")
+      : invited
+        ? step(
+            "user",
+            users.some((user) => user.hasPassword),
+            "broker",
+            "aceptar la invitación y elegir la contraseña",
+          )
+        : step("user", false, "admin", "invitar a su usuario"),
     step("instagram", connected("instagram"), "admin", "conectar su Instagram"),
     step("mercadolibre", connected("portal_inmobiliario"), "admin", "conectar su Mercado Libre"),
     step(

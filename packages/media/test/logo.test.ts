@@ -49,4 +49,17 @@ describe("createLogoNormalizer", () => {
       code: "LOGO_INVALID",
     });
   });
+
+  it("una bomba de descompresión (9000 × 9000 px en pocos KB) es LOGO_INVALID", async () => {
+    const bomb = await sharp({
+      create: { width: 9000, height: 9000, channels: 3, background: "#ffffff" },
+      limitInputPixels: false,
+    })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+    expect(bomb.byteLength).toBeLessThan(1024 * 1024);
+    await expect(logos.normalize(new Uint8Array(bomb))).rejects.toMatchObject({
+      code: "LOGO_INVALID",
+    });
+  });
 });

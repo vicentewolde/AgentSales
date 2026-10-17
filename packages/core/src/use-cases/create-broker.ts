@@ -1,12 +1,15 @@
 import {
   type Broker,
   type BrokerBrandInput,
+  brokerFieldIssue,
   isValidSlug,
   normalizeBrokerBrand,
   normalizeLlmMonthlyCap,
 } from "../broker.js";
 import { AppError, isAppError } from "../errors.js";
+import { assertCan } from "../permissions.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
+import type { User } from "../user.js";
 
 export type CreateBrokerInput = BrokerBrandInput & {
   slug: string;
@@ -20,20 +23,24 @@ const slugTaken = (slug: string) =>
   new AppError("BROKER_SLUG_TAKEN", `Ya existe el corredor ${slug}`, { details: { slug } });
 
 /**
- * Crea un corredor (spec F7 §4.6, solo el administrador: la ruta lo exige). Las reglas de la hoja
+ * Crea un corredor (spec F7 §4.6, solo el administrador: `brokers.create`, si no `FORBIDDEN`). Las reglas de la hoja
  * Corredor: `slug` en minúsculas, números y guiones, nombre, marca y color primario obligatorios
  * (el secundario, si falta, es el primario). `BROKER_INVALID` (400) o `BROKER_SLUG_TAKEN` (409).
+ * Crear y fijar si es propio o su tope son dos escrituras: si la segunda falla, el corredor queda
+ * creado sin ellas (repetir el alta da `BROKER_SLUG_TAKEN`; se completan con `PATCH`).
  */
 export async function createBroker(
   deps: { brokers: Pick<BrokerRepository, "findBySlug" | "create" | "setSettings"> },
+  actor: Pick<User, "role" | "brokerId">,
   input: CreateBrokerInput,
 ): Promise<Broker> {
+  assertCan(actor, "brokers.create");
   const slug = input.slug.trim();
   if (!isValidSlug(slug)) {
     throw new AppError(
       "BROKER_INVALID",
       `«${slug}» no sirve como identificador del corredor (minúsculas, números y guiones)`,
-      { details: { issues: [{ field: "slug", message: "minúsculas, números y guiones" }] } },
+      { details: { issues: [brokerFieldIssue("slug", "solo minúsculas, números y guiones")] } },
     );
   }
   const brand = normalizeBrokerBrand({

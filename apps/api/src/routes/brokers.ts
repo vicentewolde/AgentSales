@@ -78,7 +78,7 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
       return c.json(body, 200);
     })
     .post("/", validated("json", brokerCreateBodySchema), async (c) => {
-      const broker = await createBroker(deps, c.req.valid("json"));
+      const broker = await createBroker(deps, requireAuth(c).user, c.req.valid("json"));
       return c.json(await detail(broker), 201);
     })
     .get("/:id", validated("param", idParamSchema), async (c) => {
@@ -101,6 +101,11 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
     .post(
       "/:id/logo",
       validated("param", idParamSchema),
+      // El permiso antes de leer el archivo.
+      async (c, next) => {
+        canEditBrand(c, c.req.valid("param").id);
+        await next();
+      },
       // El multipart se lee completo en memoria: el tope va antes de leerlo (413).
       bodyLimit({
         maxSize: MAX_LOGO_BYTES + MULTIPART_OVERHEAD_BYTES,
@@ -111,9 +116,8 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
       validated("form", brokerLogoFormSchema),
       async (c) => {
         const { id } = c.req.valid("param");
-        canEditBrand(c, id);
         const bytes = new Uint8Array(await c.req.valid("form").logo.arrayBuffer());
-        const broker = await setBrokerLogo(deps, { brokerId: id, bytes });
+        const broker = await setBrokerLogo(deps, requireAuth(c).user, { brokerId: id, bytes });
         const body: BrokerResponse = { broker };
         return c.json(body, 200);
       },
@@ -123,9 +127,12 @@ export function brokerRoutes(deps: BrokerRoutesDeps) {
       canEditBrand(c, id);
       const broker = await brokerOf(id);
       const bytes = await deps.brokerTemplate(broker);
+      // El `slug` ya cumple `isValidSlug` (alta y carga); igual, nada raro llega a la cabecera.
+      const name = broker.slug.replace(/[^a-z0-9-]/g, "") || "corredor";
+      // `c.body` pide un `Uint8Array<ArrayBuffer>`; el de exceljs lo es (no viene de un SharedArrayBuffer).
       return c.body(bytes as Uint8Array<ArrayBuffer>, 200, {
         "content-type": XLSX_CONTENT_TYPE,
-        "content-disposition": `attachment; filename="planilla-${broker.slug}.xlsx"`,
+        "content-disposition": `attachment; filename="planilla-${name}.xlsx"`,
         "cache-control": "no-store",
       });
     });

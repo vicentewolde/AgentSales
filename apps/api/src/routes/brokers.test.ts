@@ -106,7 +106,16 @@ describe("POST /brokers", () => {
       method: "POST",
       json: { ...valid, slug: "otro", primaryColor: "rojo" },
     });
-    expect([color.status, (await errorOf(color)).code]).toEqual([400, "BROKER_INVALID"]);
+    expect(color.status).toBe(400);
+    expect(await errorOf(color)).toMatchObject({
+      code: "BROKER_INVALID",
+      issues: [{ code: "BROKER_FIELD_INVALID", field: "primaryColor" }],
+    });
+    const unknown = await s.admin("/brokers", {
+      method: "POST",
+      json: { ...valid, slug: "otro", autoPublish: true },
+    });
+    expect(unknown.status).toBe(400);
     const forbidden = await s.broker("/brokers", {
       method: "POST",
       json: { ...valid, slug: "otro" },

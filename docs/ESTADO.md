@@ -47,8 +47,8 @@
 | **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ✅ terminada | #132 |
 | **Lote D** · T11 `anthropic-api` real | ✅ terminada | #133 |
 | **Lote D** · T12 La IA por corredor y su gasto | ✅ terminada | #133 |
-| **Lote E** · T13 Corredores: crear, editar y lista de alta | ✅ terminada | |
-| **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | |
+| **Lote E** · T13 Corredores: crear, editar y lista de alta | ✅ terminada | #134 |
+| **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | #134 |
 | **Lote F** · T15 Marketplace a mano | ⏳ pendiente | |
 | **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ⏳ pendiente | |
 | **Lote H** · T17 Panel: el alcance | ⏳ pendiente | |
@@ -111,6 +111,8 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **Para F8 (despliegue):** la API depende de `@agentsales/media` (por el logo) y con eso instala también `playwright` (el paquete, no el navegador). Al desplegar, separar el logo en un paquete propio o aceptar la dependencia.
+- **Logos reemplazados (F7-T14):** al subir otro logo, el anterior queda como medio del corredor y en R2 (no se borra). Ocupa poco; limpiarlo junto con los medios huérfanos cuando haga falta.
 - **Para F8:** `/health` muestra la versión de Postgres (desde F7, solo al administrador); al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
 - **Para F7 (auditoría del cierre de F6):** `/tracking` y `/agenda` cargan todas las propiedades y filtran por corredor en memoria: con la autenticación, el alcance por corredor va en el servidor. Límite conocido de T08: si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5).
 - **Para F7 (de la revisión del lote F):** la agenda pide los textos vigentes con una consulta por propiedad (corredores con `auto_publish`): con más volumen, una sola consulta para todas (`listCurrentMany`); `publicationView` usa su propio reloj (no el `now` de la ruta).

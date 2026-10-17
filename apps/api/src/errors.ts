@@ -264,7 +264,12 @@ export function errorJson(
 }
 
 /** Los errores que dicen qué le falta al aviso para un canal (`issues`). */
-const READINESS_CODES = new Set(["PORTAL_NOT_READY", "MARKETPLACE_NOT_READY"]);
+const READINESS_CODES = new Set([
+  "PORTAL_NOT_READY",
+  "MARKETPLACE_NOT_READY",
+  // F7-T13: el campo de la marca que no sirve (`BROKER_FIELD_INVALID`, su campo y el motivo).
+  "BROKER_INVALID",
+]);
 
 /** Los errores que nombran la publicación de Marketplace que espera el clic final. */
 const WAITING_PUBLICATION_CODES = new Set(["MANUAL_CONFIRM_PENDING", "MARKETPLACE_FORM_OPEN"]);
@@ -273,7 +278,8 @@ const WAITING_PUBLICATION_CODES = new Set(["MANUAL_CONFIRM_PENDING", "MARKETPLAC
  * Lo único de `details` que sale (seguimiento de ADR-0011), campo por campo y validado; si no
  * calza, la respuesta va sin ello:
  * - `issues` de `PORTAL_NOT_READY` (desde F4-T19) y `MARKETPLACE_NOT_READY` (F5-T08): código,
- *   campo del Excel y motivo en español, sin datos del aviso;
+ *   campo del Excel y motivo en español, sin datos del aviso; y de `BROKER_INVALID` (F7-T13): el
+ *   campo de la marca y el motivo;
  * - `publicationId` de `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` (F5-T08): la publicación
  *   que espera el clic final (un id, para ofrecer "lo publiqué" o "no lo publiqué").
  */

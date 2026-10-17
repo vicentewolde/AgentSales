@@ -8,8 +8,25 @@ import sharp from "sharp";
 const ACCEPTED_FORMATS = new Set(["png", "jpeg", "webp"]);
 /** El lado más largo del PNG guardado: de sobra para la portada y la ficha. */
 const MAX_SIDE = 1024;
-/** Tope de píxeles al decodificar (una bomba de descompresión no se procesa). */
-const MAX_INPUT_PIXELS = 50_000_000;
+/**
+ * Tope de píxeles al decodificar (4096 × 4096): una bomba de descompresión (un PNG de pocos KB y
+ * miles de píxeles por lado) no se decodifica entera en la Mac de 8 GB.
+ */
+const MAX_INPUT_PIXELS = 4096 * 4096;
+
+/**
+ * Los primeros bytes de PNG, JPEG y WebP: lo demás (un SVG, sobre todo) ni siquiera llega al
+ * decodificador de sharp.
+ */
+function hasAcceptedSignature(input: Uint8Array): boolean {
+  const starts = (bytes: readonly number[], offset = 0) =>
+    bytes.every((byte, index) => input[offset + index] === byte);
+  return (
+    starts([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) ||
+    starts([0xff, 0xd8, 0xff]) ||
+    (starts([0x52, 0x49, 0x46, 0x46]) && starts([0x57, 0x45, 0x42, 0x50], 8))
+  );
+}
 
 const invalid = (cause?: unknown) =>
   new AppError("LOGO_INVALID", "El logo debe ser una imagen PNG, JPEG o WebP", { cause });
@@ -22,6 +39,7 @@ const invalid = (cause?: unknown) =>
 export function createLogoNormalizer(): LogoNormalizer {
   return {
     async normalize(input) {
+      if (!hasAcceptedSignature(input)) throw invalid();
       let format: string | undefined;
       try {
         format = (await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS }).metadata()).format;

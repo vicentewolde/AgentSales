@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { type Broker, buildListingValidator, parseBrokerSheet } from "@agentsales/core";
 import { REAL_ESTATE_FIELD_DEFINITIONS, TEMPLATE_COLUMNS } from "@agentsales/db";
@@ -134,5 +135,11 @@ describe("writeBrokerTemplate", () => {
       ok: true,
       data: { whatsapp: null, email: null, instagramHandle: null, fixedHashtags: [] },
     });
+  });
+
+  it("también recibe la plantilla como bytes (lo mismo que con la ruta)", async () => {
+    const bytes = new Uint8Array(await readFile(TEMPLATE));
+    const read = await readListingsWorkbook(await writeBrokerTemplate(bytes, broker));
+    expect(parseBrokerSheet(read.broker ?? {})).toMatchObject({ ok: true });
   });
 });

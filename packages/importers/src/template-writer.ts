@@ -21,6 +21,7 @@ export async function writeBrokerTemplate(
 ): Promise<Uint8Array> {
   const bytes = typeof template === "string" ? await readFile(template) : template;
   const workbook = new ExcelJS.Workbook();
+  // Los tipos de exceljs piden un `Buffer` viejo; en ejecución acepta cualquier `Uint8Array`.
   await workbook.xlsx.load(bytes as unknown as ArrayBuffer);
   const sheet = workbook.getWorksheet(BROKER_SHEET);
   if (sheet === undefined) {

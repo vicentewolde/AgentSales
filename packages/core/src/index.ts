@@ -13,11 +13,13 @@ export {
   listingFields,
 } from "./attributes.js";
 export {
+  BRAND_TEXT_MAX,
   type Broker,
   type BrokerBrand,
   type BrokerBrandInput,
   type BrokerData,
   type BrokerFieldIssue,
+  brokerFieldIssue,
   brokerSchema,
   brokerTemplateValues,
   isValidSlug,
@@ -26,6 +28,7 @@ export {
   type ParsedBrokerSheet,
   parseBrokerSheet,
   slugify,
+  TONE_MAX,
 } from "./broker.js";
 export {
   CHILE_TIME_ZONE,

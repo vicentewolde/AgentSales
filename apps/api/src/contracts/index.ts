@@ -5,6 +5,7 @@
 import {
   AGENDA_ACTIONS,
   AGENDA_KINDS,
+  BRAND_TEXT_MAX,
   brokerSchema,
   CLOSE_REASONS,
   CONTENT_CHECK_CODES,
@@ -36,6 +37,7 @@ import {
   SESSION_CLIENTS,
   TOKEN_EXPIRED_REASONS,
   TOKEN_REFRESH_SKIP_REASONS,
+  TONE_MAX,
   USER_ROLES,
 } from "@agentsales/core";
 import { z } from "zod";
@@ -960,19 +962,25 @@ export type UsageResponse = z.infer<typeof usageResponseSchema>;
 
 // ── Corredores (F7-T13 y T14, spec F7 §4.6) ───────────────────────────────
 
-const brandText = z.string().max(1000).nullable();
+// Los largos de core (con margen para los espacios que se recortan): más largo, 400 aquí.
+const brandText = z.string().max(BRAND_TEXT_MAX + 50);
 /** La marca: lo que edita el corredor (y el administrador). Core la valida y normaliza. */
 const brokerBrandBodySchema = z.object({
-  name: z.string().max(1000).optional(),
-  brandName: z.string().max(1000).optional(),
+  name: brandText.optional(),
+  brandName: brandText.optional(),
   primaryColor: z.string().max(20).optional(),
-  secondaryColor: z.string().max(20).optional(),
-  whatsapp: brandText.optional(),
-  email: brandText.optional(),
-  instagramHandle: brandText.optional(),
-  website: brandText.optional(),
-  tone: brandText.optional(),
-  fixedHashtags: z.array(z.string().max(200)).max(50).optional(),
+  /** `""` o `null`: toma el primario. */
+  secondaryColor: z.string().max(20).nullable().optional(),
+  whatsapp: brandText.nullable().optional(),
+  email: brandText.nullable().optional(),
+  instagramHandle: brandText.nullable().optional(),
+  website: brandText.nullable().optional(),
+  tone: z
+    .string()
+    .max(TONE_MAX + 50)
+    .nullable()
+    .optional(),
+  fixedHashtags: z.array(brandText).max(50).optional(),
 });
 /** Lo que solo cambia el administrador. */
 const brokerSettingsBodySchema = z.object({
@@ -985,10 +993,11 @@ export const brokerCreateBodySchema = brokerBrandBodySchema
   .extend(brokerSettingsBodySchema.shape)
   .extend({
     slug: z.string().max(100),
-    name: z.string().max(1000),
-    brandName: z.string().max(1000),
+    name: brandText,
+    brandName: brandText,
     primaryColor: z.string().max(20),
-  });
+  })
+  .strict();
 
 /**
  * `PATCH /brokers/:id`: la marca (el corredor y el administrador) y, solo el administrador, si es

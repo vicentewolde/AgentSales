@@ -1,9 +1,11 @@
 import type { Broker } from "../broker.js";
-import { AppError } from "../errors.js";
+import { AppError, isAppError } from "../errors.js";
+import { assertCan } from "../permissions.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { LogoNormalizer } from "../ports/logo-normalizer.js";
 import type { MediaRepository } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
+import type { User } from "../user.js";
 
 /** El logo más grande que se acepta (spec F7 §4.6). */
 export const MAX_LOGO_BYTES = 5 * 1024 * 1024;
@@ -26,8 +28,11 @@ export type SetBrokerLogoDeps = {
  */
 export async function setBrokerLogo(
   deps: SetBrokerLogoDeps,
+  actor: Pick<User, "role" | "brokerId">,
   input: { brokerId: string; bytes: Uint8Array },
 ): Promise<Broker> {
+  // La marca es del corredor y del administrador (`brand.edit`); si no, `FORBIDDEN`.
+  assertCan(actor, "brand.edit", input.brokerId);
   if (input.bytes.byteLength > MAX_LOGO_BYTES) {
     throw new AppError("REQUEST_TOO_LARGE", "El logo pasa de 5 MB");
   }
@@ -41,17 +46,24 @@ export async function setBrokerLogo(
   let record = await deps.media.findByStoragePath(storagePath);
   if (record === null) {
     await deps.storage.put(storagePath, logo.bytes, "image/png");
-    record = await deps.media.create({
-      listingId: null,
-      brokerId: broker.id,
-      kind: "image",
-      storagePath,
-      mime: "image/png",
-      bytes: logo.bytes.byteLength,
-      checksum,
-      sortOrder: 0,
-      isCover: false,
-    });
+    try {
+      record = await deps.media.create({
+        listingId: null,
+        brokerId: broker.id,
+        kind: "image",
+        storagePath,
+        mime: "image/png",
+        bytes: logo.bytes.byteLength,
+        checksum,
+        sortOrder: 0,
+        isCover: false,
+      });
+    } catch (error) {
+      // Dos subidas del mismo logo a la vez: la otra ya lo registró (la clave es la misma).
+      if (!isAppError(error) || error.code !== "MEDIA_CONFLICT") throw error;
+      record = await deps.media.findByStoragePath(storagePath);
+      if (record === null) throw error;
+    }
   }
   await deps.brokers.setLogo(broker.id, record.id);
   return { ...broker, logoMediaId: record.id };

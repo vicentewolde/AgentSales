@@ -74,17 +74,14 @@ describe("normalizeBrokerBrand", () => {
 describe("createBroker", () => {
   it("crea con la marca normalizada; el secundario vacío toma el primario; propio y tope opcionales", async () => {
     const brokers = createInMemoryBrokerRepository();
-    const created = await createBroker(
-      { brokers },
-      {
-        slug: "otra",
-        name: "Otra",
-        brandName: "Otra",
-        primaryColor: "#abcdef",
-        operatorOwned: true,
-        llmMonthlyCapUsd: 12.345,
-      },
-    );
+    const created = await createBroker({ brokers }, ADMIN, {
+      slug: "otra",
+      name: "Otra",
+      brandName: "Otra",
+      primaryColor: "#abcdef",
+      operatorOwned: true,
+      llmMonthlyCapUsd: 12.345,
+    });
     expect(created).toMatchObject({
       slug: "otra",
       primaryColor: "#ABCDEF",
@@ -93,14 +90,14 @@ describe("createBroker", () => {
       llmMonthlyCapUsd: 12.35,
       autoPublish: false,
     });
-    const plain = await createBroker({ brokers }, { ...base });
+    const plain = await createBroker({ brokers }, ADMIN, { ...base });
     expect(plain).toMatchObject({ operatorOwned: false, llmMonthlyCapUsd: null });
   });
 
   it("un slug repetido es BROKER_SLUG_TAKEN, también si otra alta gana la carrera", async () => {
     const brokers = createInMemoryBrokerRepository();
-    await createBroker({ brokers }, base);
-    await expect(createBroker({ brokers }, base)).rejects.toMatchObject({
+    await createBroker({ brokers }, ADMIN, base);
+    await expect(createBroker({ brokers }, ADMIN, base)).rejects.toMatchObject({
       code: "BROKER_SLUG_TAKEN",
     });
     const racing = {
@@ -110,7 +107,7 @@ describe("createBroker", () => {
         throw new AppError("BROKER_CONFLICT", "ya existe", { retriable: true });
       },
     };
-    await expect(createBroker({ brokers: racing }, base)).rejects.toMatchObject({
+    await expect(createBroker({ brokers: racing }, ADMIN, base)).rejects.toMatchObject({
       code: "BROKER_SLUG_TAKEN",
     });
   });
@@ -122,7 +119,7 @@ describe("createBroker", () => {
       { ...base, primaryColor: "azul" },
       { ...base, llmMonthlyCapUsd: -1 },
     ]) {
-      await expect(createBroker({ brokers }, input)).rejects.toMatchObject({
+      await expect(createBroker({ brokers }, ADMIN, input)).rejects.toMatchObject({
         code: expect.stringMatching(/^BROKER_(INVALID|SETTINGS_INVALID)$/),
       });
     }
@@ -133,7 +130,7 @@ describe("createBroker", () => {
 describe("updateBroker", () => {
   async function setup() {
     const brokers = createInMemoryBrokerRepository();
-    const broker = await createBroker({ brokers }, base);
+    const broker = await createBroker({ brokers }, ADMIN, base);
     return { brokers, broker };
   }
 
@@ -267,7 +264,7 @@ describe("setBrokerLogo", () => {
   async function setup() {
     const media = createInMemoryMediaRepository();
     const brokers = createInMemoryBrokerRepository([], { media });
-    const broker = await createBroker({ brokers }, base);
+    const broker = await createBroker({ brokers }, ADMIN, base);
     const storage = createInMemoryMediaStorage();
     const deps = { brokers, media, storage, logos, sha256Bytes: () => "sha-logo" };
     return { deps, broker, storage, media, brokers };
@@ -275,7 +272,7 @@ describe("setBrokerLogo", () => {
 
   it("lo guarda en R2 como PNG y en el corredor; el mismo logo otra vez no se resube", async () => {
     const t = await setup();
-    const updated = await setBrokerLogo(t.deps, { brokerId: t.broker.id, bytes: png });
+    const updated = await setBrokerLogo(t.deps, ADMIN, { brokerId: t.broker.id, bytes: png });
     const path = `brokers/${t.broker.id}/brand/sha-logo.png`;
     expect(t.storage.objects.get(path)?.contentType).toBe("image/png");
     expect(updated.logoMediaId).not.toBeNull();
@@ -286,7 +283,7 @@ describe("setBrokerLogo", () => {
       mime: "image/png",
     });
 
-    await setBrokerLogo(t.deps, { brokerId: t.broker.id, bytes: png });
+    await setBrokerLogo(t.deps, ADMIN, { brokerId: t.broker.id, bytes: png });
     expect(t.storage.uploads).toEqual([path]);
   });
 
@@ -296,10 +293,10 @@ describe("setBrokerLogo", () => {
       char.charCodeAt(0),
     );
     await expect(
-      setBrokerLogo(t.deps, { brokerId: t.broker.id, bytes: svg }),
+      setBrokerLogo(t.deps, ADMIN, { brokerId: t.broker.id, bytes: svg }),
     ).rejects.toMatchObject({ code: "LOGO_INVALID" });
     await expect(
-      setBrokerLogo(t.deps, {
+      setBrokerLogo(t.deps, ADMIN, {
         brokerId: t.broker.id,
         bytes: new Uint8Array(6 * 1024 * 1024),
       }),
@@ -307,5 +304,113 @@ describe("setBrokerLogo", () => {
     expect(MAX_LOGO_BYTES).toBe(5 * 1024 * 1024);
     expect(t.storage.uploads).toEqual([]);
     expect((await t.brokers.findById(t.broker.id))?.logoMediaId).toBeNull();
+  });
+});
+
+describe("revisión del lote E", () => {
+  it("dos subidas del mismo logo a la vez: la segunda usa el medio de la primera", async () => {
+    const media = createInMemoryMediaRepository();
+    const brokers = createInMemoryBrokerRepository([], { media });
+    const broker = await createBroker({ brokers }, ADMIN, base);
+    const storage = createInMemoryMediaStorage();
+    const logos: LogoNormalizer = {
+      normalize: async () => ({ bytes: Uint8Array.from([137, 80]), width: 1, height: 1 }),
+    };
+    // La otra subida registra el medio justo después de que esta lo buscó.
+    let raced = false;
+    const racing = {
+      ...media,
+      findByStoragePath: async (path: string) => {
+        if (!raced) {
+          raced = true;
+          return null;
+        }
+        return media.findByStoragePath(path);
+      },
+      create: async (data: Parameters<typeof media.create>[0]) => {
+        await media.create(data);
+        throw new AppError("MEDIA_CONFLICT", "ya existe", { retriable: true });
+      },
+    };
+    const updated = await setBrokerLogo(
+      { brokers, media: racing, storage, logos, sha256Bytes: () => "sha" },
+      ADMIN,
+      { brokerId: broker.id, bytes: Uint8Array.from([137]) },
+    );
+    expect(updated.logoMediaId).toBe(
+      (await media.findByStoragePath(`brokers/${broker.id}/brand/sha.png`))?.id,
+    );
+  });
+
+  it("el secundario vacío o null en la edición toma el primario", async () => {
+    const brokers = createInMemoryBrokerRepository();
+    const broker = await createBroker({ brokers }, ADMIN, base);
+    for (const secondaryColor of ["", null]) {
+      const updated = await updateBroker({ brokers }, ADMIN, broker.id, { secondaryColor });
+      expect(updated.secondaryColor).toBe("#112233");
+    }
+    const both = await updateBroker({ brokers }, ADMIN, broker.id, {
+      primaryColor: "#abcdef",
+      secondaryColor: "",
+    });
+    expect(both).toMatchObject({ primaryColor: "#ABCDEF", secondaryColor: "#ABCDEF" });
+  });
+
+  it("caracteres de control en la marca: BROKER_INVALID (Postgres no los acepta)", () => {
+    expect(() => normalizeBrokerBrand({ brandName: "Marca\u0000" })).toThrow(
+      expect.objectContaining({ code: "BROKER_INVALID" }),
+    );
+    expect(() => normalizeBrokerBrand({ fixedHashtags: ["#ok", "mal\nhash"] })).toThrow(
+      expect.objectContaining({ code: "BROKER_INVALID" }),
+    );
+  });
+
+  it("crear es del administrador y el logo, de su corredor: si no, FORBIDDEN (core)", async () => {
+    const brokers = createInMemoryBrokerRepository();
+    await expect(createBroker({ brokers }, brokerUser("x"), base)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    const broker = await createBroker({ brokers }, ADMIN, base);
+    const media = createInMemoryMediaRepository();
+    const deps = {
+      brokers,
+      media,
+      storage: createInMemoryMediaStorage(),
+      logos: { normalize: async () => ({ bytes: Uint8Array.from([1]), width: 1, height: 1 }) },
+      sha256Bytes: () => "sha",
+    };
+    await expect(
+      setBrokerLogo(deps, brokerUser("otro"), { brokerId: broker.id, bytes: Uint8Array.from([1]) }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      setBrokerLogo(deps, brokerUser(broker.id), {
+        brokerId: broker.id,
+        bytes: Uint8Array.from([1]),
+      }),
+    ).resolves.toMatchObject({ id: broker.id });
+  });
+
+  it("los motivos van por campo, con su etiqueta en español", () => {
+    try {
+      normalizeBrokerBrand({ primaryColor: "rojo" });
+      expect.unreachable();
+    } catch (error) {
+      expect((error as AppError).details?.issues).toEqual([
+        {
+          code: "BROKER_FIELD_INVALID",
+          field: "primaryColor",
+          message: "Color primario: «rojo» no es un color HEX (#RRGGBB)",
+        },
+      ]);
+      expect((error as AppError).message).toContain("Color primario");
+    }
+  });
+
+  it("un corredor propio no necesita usuario en la lista de alta", () => {
+    const own = contentBrokerFixture({ operatorOwned: true });
+    const step = onboardingSteps({ broker: own, users: [], accounts: [] }).find(
+      (candidate) => candidate.key === "user",
+    );
+    expect(step).toMatchObject({ done: true, owner: null });
   });
 });

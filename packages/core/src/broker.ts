@@ -243,10 +243,42 @@ export type BrokerBrandInput = {
 };
 
 /** Un campo de la marca que no sirve (spec F7 §4.6), con su motivo. */
-export type BrokerFieldIssue = { field: keyof BrokerData; message: string };
+export type BrokerFieldIssue = {
+  /** `BROKER_FIELD_INVALID` (la forma de los `issues` de la API, seguimiento de ADR-0011). */
+  code: "BROKER_FIELD_INVALID";
+  /** El campo de la API (`primaryColor`), para marcarlo en el formulario. */
+  field: keyof BrokerData;
+  /** En español, con la etiqueta del campo: «Color primario: «rojo» no es un color HEX». */
+  message: string;
+};
 
-const BRAND_TEXT_MAX = 200;
-const TONE_MAX = 500;
+/** Las etiquetas de los campos de la marca, para los mensajes. */
+const BROKER_FIELD_LABELS: Record<keyof BrokerData, string> = {
+  slug: "Identificador",
+  name: "Nombre",
+  brandName: "Marca",
+  primaryColor: "Color primario",
+  secondaryColor: "Color secundario",
+  whatsapp: "WhatsApp",
+  email: "Correo",
+  instagramHandle: "Instagram",
+  website: "Sitio web",
+  tone: "Tono",
+  fixedHashtags: "Hashtags fijos",
+};
+
+/** Un problema de un campo, con su etiqueta en el mensaje. */
+export const brokerFieldIssue = (field: keyof BrokerData, problem: string): BrokerFieldIssue => ({
+  code: "BROKER_FIELD_INVALID",
+  field,
+  message: `${BROKER_FIELD_LABELS[field]}: ${problem}`,
+});
+
+/** Los largos máximos de la marca (también los usa el contrato de la API). */
+export const BRAND_TEXT_MAX = 200;
+export const TONE_MAX = 500;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: justamente los que se rechazan
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
 /**
  * La marca de la API con las reglas de la hoja Corredor (`parseBrokerSheet`): nombre y marca
@@ -261,15 +293,22 @@ export function normalizeBrokerBrand(input: BrokerBrandInput): Partial<BrokerBra
     const trimmed = value?.trim() ?? "";
     return trimmed === "" ? null : trimmed;
   };
+  // Caracteres de control (un `\u0000` que Postgres rechaza, saltos de línea en un nombre).
+  for (const [field, value] of Object.entries(input)) {
+    const values = Array.isArray(value) ? value : [value];
+    if (values.some((item) => typeof item === "string" && CONTROL_CHARS.test(item))) {
+      issues.push(brokerFieldIssue(field as keyof BrokerData, "tiene caracteres no permitidos"));
+    }
+  }
   const tooLong = (field: keyof BrokerData, value: string | null, max: number) => {
     if (value !== null && value.length > max) {
-      issues.push({ field, message: `es demasiado largo (máximo ${max} caracteres)` });
+      issues.push(brokerFieldIssue(field, `es demasiado largo (máximo ${max} caracteres)`));
     }
   };
   for (const field of ["name", "brandName"] as const) {
     if (input[field] === undefined) continue;
     const value = text(input[field]);
-    if (value === null) issues.push({ field, message: "falta el valor (es obligatorio)" });
+    if (value === null) issues.push(brokerFieldIssue(field, "falta el valor (es obligatorio)"));
     else {
       tooLong(field, value, BRAND_TEXT_MAX);
       out[field] = value;
@@ -279,7 +318,7 @@ export function normalizeBrokerBrand(input: BrokerBrandInput): Partial<BrokerBra
     if (input[field] === undefined) continue;
     const value = text(input[field]);
     if (value === null || !HEX_COLOR.test(value)) {
-      issues.push({ field, message: `«${value ?? ""}» no es un color HEX (#RRGGBB)` });
+      issues.push(brokerFieldIssue(field, `«${value ?? ""}» no es un color HEX (#RRGGBB)`));
     } else out[field] = value.toUpperCase();
   }
   for (const field of ["whatsapp", "website", "tone"] as const) {
@@ -291,7 +330,7 @@ export function normalizeBrokerBrand(input: BrokerBrandInput): Partial<BrokerBra
   if (input.email !== undefined) {
     const value = text(input.email);
     if (value !== null && !EMAIL.test(value)) {
-      issues.push({ field: "email", message: `«${value}» no es un email` });
+      issues.push(brokerFieldIssue("email", `«${value}» no es un email`));
     }
     tooLong("email", value, BRAND_TEXT_MAX);
     out.email = value;
@@ -307,7 +346,7 @@ export function normalizeBrokerBrand(input: BrokerBrandInput): Partial<BrokerBra
   if (issues.length > 0) {
     throw new AppError(
       "BROKER_INVALID",
-      `Revisa los datos del corredor: ${issues.map((issue) => `${issue.field} ${issue.message}`).join("; ")}`,
+      `Revisa los datos del corredor: ${issues.map((issue) => issue.message).join("; ")}`,
       { details: { issues } },
     );
   }

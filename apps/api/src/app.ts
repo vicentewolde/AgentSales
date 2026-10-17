@@ -190,10 +190,7 @@ export function createApp(input: AppDeps) {
       notFound("ACCOUNT_NOT_FOUND", "No existe la cuenta"),
     ),
     // El corredor es su propio dueño: un corredor solo llega al suyo (F7-T13).
-    broker: ownedBy(
-      async (id) => (await deps.brokers.findById(id))?.id ?? null,
-      notFound("BROKER_NOT_FOUND", "No existe el corredor"),
-    ),
+    broker: ownedBy(async (id) => id, notFound("BROKER_NOT_FOUND", "No existe el corredor")),
   };
   const app = new Hono<AppEnv>()
     .use(requestLogger(deps.logger))
