@@ -17,7 +17,7 @@ import {
   createPublicationScenario,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { type AppDeps, createApp } from "../app.js";
+import type { AppDeps } from "../app.js";
 import {
   accountListResponseSchema,
   accountResponseSchema,
@@ -29,7 +29,7 @@ import {
   publicationConfirmResponseSchema,
   publicationResponseSchema,
 } from "../contracts/index.js";
-import { testDeps } from "../testing/index.js";
+import { adminApp, testDeps } from "../testing/index.js";
 
 // F5-T08: la API de Marketplace (spec F5 §4.2, §4.3 y §4.10).
 
@@ -71,7 +71,7 @@ function accountsSetup(overrides: Partial<AppDeps> = {}) {
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
   const queue = createInMemoryJobQueue();
   const now = new Date("2026-10-10T12:00:00Z");
-  const app = createApp(
+  const app = adminApp(
     testDeps({ brokers, platformAccounts, queue, now: () => now, ...overrides }),
   );
   const connectMarketplace = (meta: Record<string, unknown> = {}) =>
@@ -278,7 +278,7 @@ async function publicationSetup(
   const t = await createPublicationScenario({ platform: MARKETPLACE, nextId: randomUUID });
   const log = capturingLogger();
   const mode = options.publishMode ?? "live";
-  const app = createApp(
+  const app = adminApp(
     testDeps({
       listings: t.listings,
       brokers: t.brokers,

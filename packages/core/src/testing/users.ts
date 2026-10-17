@@ -15,6 +15,19 @@ import { structuredCopy } from "./copy.js";
 type StoredUser = User & { passwordHash: string | null };
 
 export type InMemoryUserRepositories = {
+  /**
+   * Siembra sincrónica para los arneses (la API, la CLI y el panel arman sus dependencias sin
+   * `await`): un usuario con su contraseña ya hasheada y una sesión con el hash de su token.
+   */
+  seed: {
+    user(input: NewUser & { id?: string; passwordHash?: string | null }): User;
+    session(input: {
+      userId: string;
+      tokenHash: string;
+      client?: Session["client"];
+      expiresAt?: Date;
+    }): Session;
+  };
   users: UserRepository & { all(): User[] };
   sessions: SessionRepository & { all(): Session[] };
   invitations: InvitationRepository & { all(): Invitation[] };
@@ -202,7 +215,41 @@ export function createInMemoryUserRepositories(
     },
   };
 
+  const seed: InMemoryUserRepositories["seed"] = {
+    user({ id, passwordHash = null, ...input }) {
+      const at = now();
+      const stored: StoredUser = {
+        ...input,
+        id: id ?? nextId(),
+        hasPassword: passwordHash !== null,
+        passwordHash,
+        failedLogins: 0,
+        lockedUntil: null,
+        disabledAt: null,
+        lastLoginAt: null,
+        createdAt: at,
+        updatedAt: at,
+      };
+      users.set(stored.id, stored);
+      return publicUser(stored);
+    },
+    session({ userId, tokenHash, client = "cli", expiresAt }) {
+      const at = now();
+      const session = {
+        id: nextId(),
+        userId,
+        client,
+        expiresAt: expiresAt ?? new Date(at.getTime() + 365 * 24 * 60 * 60 * 1000),
+        lastSeenAt: at,
+        createdAt: at,
+      };
+      sessions.set(session.id, { ...session, tokenHash });
+      return structuredCopy(session);
+    },
+  };
+
   return {
+    seed,
     users: userRepository,
     sessions: sessionRepository,
     invitations: invitationRepository,

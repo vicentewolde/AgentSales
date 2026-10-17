@@ -27,7 +27,6 @@ import {
   fakeHash,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
 import {
   contentEditResponseSchema,
   contentRunRequestResponseSchema,
@@ -37,7 +36,7 @@ import {
   listingDetailResponseSchema,
   listingListResponseSchema,
 } from "../contracts/index.js";
-import { testDeps } from "../testing/index.js";
+import { adminApp, testDeps } from "../testing/index.js";
 
 const text = (value: string) => Uint8Array.from(value, (char) => char.charCodeAt(0));
 const ADDRESS = "Calle Secreta 4321";
@@ -102,7 +101,7 @@ async function setup(options: { queueDown?: boolean } = {}) {
     publications,
     platformAccounts: createInMemoryPlatformAccountRepository(),
   });
-  const app = createApp(
+  const app = adminApp(
     testDeps({
       listings,
       brokers,
@@ -199,7 +198,7 @@ describe("testDeps · el candado por defecto", () => {
       isCover: true,
     });
     // Sin `lock`: lo arma `testDeps` sobre estos repositorios. Si usara otros, el aviso no existiría.
-    const app = createApp(
+    const app = adminApp(
       testDeps({
         listings,
         media,

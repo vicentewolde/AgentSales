@@ -19,15 +19,17 @@ const env = loadEnv({
   BCCH_API_TOKEN: "fake-bde-token",
 });
 
+const healthyChecks = {
+  db: { ok: true, latencyMs: 60 },
+  storage: { ok: true, latencyMs: 200 },
+  queue: { ok: true, latencyMs: 65 },
+};
+
 const healthy: HealthReport = {
   status: "ok",
   publishMode: "dry-run",
   version: "0.0.1",
-  checks: {
-    db: { ok: true, latencyMs: 60 },
-    storage: { ok: true, latencyMs: 200 },
-    queue: { ok: true, latencyMs: 65 },
-  },
+  checks: healthyChecks,
   database: { serverVersion: "18.6" },
   backup: {
     lastSuccessAt: "2026-10-15T16:00:00.000Z",
@@ -206,7 +208,7 @@ describe("runDoctor", () => {
           ...healthy,
           status: "degraded",
           checks: {
-            ...healthy.checks,
+            ...healthyChecks,
             queue: { ok: false, latencyMs: 60, error: "No existe el esquema pgboss" },
           },
         }),
@@ -548,7 +550,7 @@ describe("runDoctor", () => {
         fetchHealth: async () => ({
           ...healthy,
           status: "degraded",
-          checks: { ...healthy.checks, [key]: { ok: false, latencyMs: 10, error: "falló" } },
+          checks: { ...healthyChecks, [key]: { ok: false, latencyMs: 10, error: "falló" } },
         }),
       }),
     );

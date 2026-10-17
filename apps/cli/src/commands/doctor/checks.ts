@@ -207,10 +207,28 @@ export async function checkServices(
   const api: CheckItem = {
     name: "API",
     level: "ok",
-    detail: `responde (versión ${report.version}, ${report.status})`,
+    detail: `responde (versión ${report.version ?? "?"}, ${report.status})`,
   };
+  const reportChecks = report.checks;
+  // Sin el detalle (sin sesión de administrador, spec F7 §4.3), los servicios no se pueden revisar.
+  if (reportChecks === undefined) {
+    return {
+      report,
+      items: [
+        api,
+        ...Object.values(SERVICES).map(
+          ({ name }): CheckItem => ({
+            name,
+            level: "warn",
+            detail: "sin datos: el detalle lo ve el administrador",
+            hint: "Inicia sesión con agentsales login",
+          }),
+        ),
+      ],
+    };
+  }
   const services = (Object.keys(SERVICES) as ServiceKey[]).map((key): CheckItem => {
-    const result = report.checks[key];
+    const result = reportChecks[key];
     const { name, hint } = SERVICES[key];
     if (!result.ok) {
       return { name, level: "error", detail: result.error ?? "falló", hint };

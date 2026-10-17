@@ -32,8 +32,10 @@ import {
   publicationErrorSchema,
   remoteStateSchema,
   SCHEDULE_STATES,
+  SESSION_CLIENTS,
   TOKEN_EXPIRED_REASONS,
   TOKEN_REFRESH_SKIP_REASONS,
+  USER_ROLES,
 } from "@agentsales/core";
 import { z } from "zod";
 
@@ -929,3 +931,66 @@ export type AgendaResponse = z.infer<typeof agendaResponseSchema>;
 export const brokerPatchBodySchema = z.object({ autoPublish: z.boolean() });
 export const brokerResponseSchema = z.object({ broker: brokerSchema });
 export type BrokerResponse = z.infer<typeof brokerResponseSchema>;
+
+// ── Usuarios y sesiones (F7-T04 y T05, spec F7 §4.13, ADR-0021) ────────────
+
+/** Un usuario como lo ve el panel o la CLI: nunca el hash de la contraseña ni los tokens. */
+export const userViewSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  role: z.enum(USER_ROLES),
+  brokerId: z.string().nullable(),
+  /** Si ya eligió su contraseña (aceptó la invitación). */
+  hasPassword: z.boolean(),
+  disabled: z.boolean(),
+  /** Bloqueado ahora por los intentos fallidos. */
+  locked: z.boolean(),
+  lastLoginAt: z.coerce.date().nullable(),
+});
+export type UserView = z.infer<typeof userViewSchema>;
+
+/** `POST /auth/login`: con `client: "cli"` el token vuelve en el cuerpo; si no, en la cookie. */
+export const loginBodySchema = z.object({
+  email: z.string().max(254),
+  password: z.string().max(1024),
+  client: z.enum(SESSION_CLIENTS).optional(),
+});
+export const loginResponseSchema = z.object({ user: userViewSchema, token: z.string().optional() });
+export type LoginResponse = z.infer<typeof loginResponseSchema>;
+
+/** `GET /auth/me`: el usuario de la sesión, con su corredor. */
+export const meResponseSchema = z.object({
+  user: userViewSchema.extend({
+    broker: z.object({ id: z.string(), slug: z.string(), brandName: z.string() }).nullable(),
+  }),
+});
+export type MeResponse = z.infer<typeof meResponseSchema>;
+
+/** `POST /auth/invitations/accept`: el token del enlace y la contraseña elegida. */
+export const acceptInvitationBodySchema = z.object({
+  token: z.string().min(1).max(256),
+  password: z.string().max(1024),
+});
+
+export const usersResponseSchema = z.object({ users: z.array(userViewSchema) });
+export type UsersResponse = z.infer<typeof usersResponseSchema>;
+
+/** `POST /users` (administrador). */
+export const createUserBodySchema = z.object({
+  email: z.string().max(254),
+  name: z.string().max(200),
+  role: z.enum(USER_ROLES),
+  brokerId: z.uuid().nullable().optional(),
+});
+
+/** Un usuario con su enlace (crear o restablecer): `invitationUrl` se muestra una sola vez. */
+export const userLinkResponseSchema = z.object({
+  user: userViewSchema,
+  invitationUrl: z.string(),
+  expiresAt: z.coerce.date(),
+});
+export type UserLinkResponse = z.infer<typeof userLinkResponseSchema>;
+
+export const userResponseSchema = z.object({ user: userViewSchema });
+export type UserResponse = z.infer<typeof userResponseSchema>;

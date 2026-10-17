@@ -5,15 +5,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { harness } from "../test/harness.js";
 import { HEALTH_REFETCH_MS } from "./queries/health.js";
 
+const healthyChecks = {
+  db: { ok: true, latencyMs: 60 },
+  storage: { ok: true, latencyMs: 210 },
+  queue: { ok: true, latencyMs: 65 },
+};
+
 const healthy: HealthReport = {
   status: "ok",
   publishMode: "dry-run",
   version: "0.0.1",
-  checks: {
-    db: { ok: true, latencyMs: 60 },
-    storage: { ok: true, latencyMs: 210 },
-    queue: { ok: true, latencyMs: 65 },
-  },
+  checks: healthyChecks,
 };
 
 /** El panel con `/health` respondido por `health` (los demás endpoints, por la API en proceso). */
@@ -68,7 +70,7 @@ describe("panel: Estado del sistema", () => {
       ...healthy,
       status: "degraded",
       checks: {
-        ...healthy.checks,
+        ...healthyChecks,
         storage: { ok: false, latencyMs: 12, error: "R2 no respondió" },
       },
     }));

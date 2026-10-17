@@ -8,7 +8,6 @@ import {
   createInMemoryPlatformAccountRepository,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
 import {
   accountListResponseSchema,
   accountRefreshResponseSchema,
@@ -17,6 +16,7 @@ import {
   mercadoLibreAuthorizeUrlResponseSchema,
 } from "../contracts/index.js";
 import {
+  adminApp,
   fakeMercadoLibreAuth,
   TEST_ENCRYPTION_KEY,
   TEST_ML_REDIRECT_URI,
@@ -49,7 +49,7 @@ function setup(options: { configured?: boolean; logLines?: string[]; now?: () =>
             },
           }),
         );
-  const app = createApp(
+  const app = adminApp(
     testDeps({
       brokers,
       platformAccounts,

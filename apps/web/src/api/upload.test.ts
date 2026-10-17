@@ -3,13 +3,13 @@
 // hacerlo (el arnés la reenvía a `/imports/local`).
 import { createApp, localAccess } from "@agentsales/api";
 import { importRunResponseSchema } from "@agentsales/api/contracts";
-import { fakeUploads, testDeps } from "@agentsales/api/testing";
+import { fakeUploads, testDeps, withAdminSession } from "@agentsales/api/testing";
 import { describe, expect, it } from "vitest";
 import { createApiClient, unwrap } from "./client.js";
 
 function setup() {
   const uploads = fakeUploads();
-  const app = createApp(testDeps({ access: localAccess(8787, 5173), uploads }));
+  const app = withAdminSession(createApp(testDeps({ access: localAccess(8787, 5173), uploads })));
   const client = createApiClient("/api", {
     fetch: async (input, init) => {
       const url = new URL(

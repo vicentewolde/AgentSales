@@ -1,5 +1,8 @@
-import { Suspense } from "react";
-import { NavLink, Outlet } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { Suspense, useEffect } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { onSessionExpired } from "../api/session-events.js";
+import { useLogout, useMe } from "../queries/auth.js";
 import { PublishModeBanner } from "./PublishModeBanner.js";
 
 type MenuItem = { label: string; to?: string; phase?: string; end?: boolean };
@@ -40,7 +43,51 @@ function MenuEntry({ item }: { item: MenuItem }) {
   );
 }
 
+/**
+ * Si la API dice que no hay sesión (o venció), lleva a "Entrar" y vuelve después a esta página
+ * (spec F7 §4.11).
+ */
+function useSessionGuard() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        queryClient.clear();
+        const back = `${location.pathname}${location.search}`;
+        navigate(`/entrar?volver=${encodeURIComponent(back)}`, { replace: true });
+      }),
+    [navigate, location.pathname, location.search, queryClient],
+  );
+}
+
+/** El usuario de la sesión y "Cerrar sesión". */
+function UserMenu() {
+  const me = useMe();
+  const logout = useLogout();
+  const navigate = useNavigate();
+  if (me.data === undefined) return null;
+  return (
+    <div className="mt-4 hidden border-t border-slate-200 px-3 pt-4 text-sm md:block">
+      <p className="font-medium text-slate-800">{me.data.name}</p>
+      <p className="truncate text-xs text-slate-500">{me.data.email}</p>
+      <button
+        type="button"
+        className="mt-2 text-xs text-slate-600 underline hover:text-slate-900"
+        disabled={logout.isPending}
+        onClick={() =>
+          logout.mutate(undefined, { onSuccess: () => navigate("/entrar", { replace: true }) })
+        }
+      >
+        Cerrar sesión
+      </button>
+    </div>
+  );
+}
+
 export function Layout() {
+  useSessionGuard();
   return (
     <div className="flex min-h-screen flex-col">
       <PublishModeBanner />
@@ -59,6 +106,7 @@ export function Layout() {
               </li>
             ))}
           </ul>
+          <UserMenu />
         </nav>
         <main className="flex-1 px-4 py-6 md:px-8">
           <Suspense fallback={<p className="text-slate-600">Cargando…</p>}>

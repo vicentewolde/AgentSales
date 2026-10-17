@@ -10,6 +10,7 @@ import {
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { publicationHarness } from "../../test/harness.js";
+import { createMemorySessionStore } from "../session.js";
 import {
   register,
   runPublicationOperation,
@@ -512,6 +513,8 @@ describe("publications pause|resume|close|sync · registro en commander", () => 
     register(program, {
       ...h.io,
       api: () => h.client,
+      session: createMemorySessionStore(),
+      readPassword: async () => null,
       cwd: ".",
       confirm: async () => {
         throw new Error("no debía preguntar");

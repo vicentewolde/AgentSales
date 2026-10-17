@@ -36,10 +36,10 @@
 | **Lote A** · T01 Datos nuevos: usuarios, sesiones, invitaciones y `state` usados | ✅ terminada | #130 |
 | **Lote A** · T02 Las tablas de hoy y el alcance en SQL | ✅ terminada | #130 |
 | **Lote A** · T03 Usuarios, sesiones y permisos (core y config) | ✅ terminada | #130 |
-| **Lote B** · T04 La API con sesión | ⏳ pendiente | |
-| **Lote B** · T05 Usuarios, `/health` y el primer administrador | ⏳ pendiente | |
-| **Lote B** · T06 CLI: entrar | ⏳ pendiente | |
-| **Lote B** · T07 Panel: entrar e invitación | ⏳ pendiente | |
+| **Lote B** · T04 La API con sesión | 🔨 en curso | |
+| **Lote B** · T05 Usuarios, `/health` y el primer administrador | 🔨 en curso | |
+| **Lote B** · T06 CLI: entrar | 🔨 en curso | |
+| **Lote B** · T07 Panel: entrar e invitación | 🔨 en curso | |
 | **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | ⏳ pendiente | |
 | **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | ⏳ pendiente | |
 | **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ⏳ pendiente | |
@@ -142,7 +142,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 
 ## Notas de la última sesión
 - 2026-10-17: **Lote A de F7 (T01 a T03).** Por dentro, sin cambios visibles todavía:
-  - **Datos:** usuarios, sesiones, enlaces de invitación y `state` usados (migración `0009`, aún no aplicada en Neon: se aplica con `pnpm db:migrate` antes de usar el lote B); en cada corredor, si es propio (los de hoy quedaron propios) y su tope de IA; el gasto de IA por preparación; quién hizo cada cosa en la bitácora.
+  - **Datos:** usuarios, sesiones, enlaces de invitación y `state` usados (migración `0009`, aplicada en Neon por el operador el 2026-10-17); en cada corredor, si es propio (los de hoy quedaron propios) y su tope de IA; el gasto de IA por preparación; quién hizo cada cosa en la bitácora.
   - **Cada corredor lo suyo:** las listas de la base ya filtran por corredor; las rutas lo usarán en el lote C.
   - **Login en core:** entrar (bloqueo tras 10 fallos), sesiones de 30 días (7 sin uso), invitar, aceptar, restablecer y desactivar; contraseñas con `scrypt`.
   - **La revisión dejó** (sin bloqueantes): el tope de IA validado, el login con el mismo tiempo también bloqueado, más pruebas; y riesgos aceptados anotados en ADR-0021 (el bloqueo revela que un correo existe; restablecer no anula la contraseña vieja hasta usar el enlace).

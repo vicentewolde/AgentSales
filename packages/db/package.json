@@ -20,7 +20,8 @@
     "generate": "NODE_OPTIONS=--conditions=@agentsales/source drizzle-kit generate",
     "migrate": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/migrate.ts",
     "seed": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/seed.ts",
-    "backup": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/backup.ts"
+    "backup": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/backup.ts",
+    "auth-admin": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/auth-admin.ts"
   },
   "dependencies": {
     "@agentsales/config": "workspace:*",

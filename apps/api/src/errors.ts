@@ -83,6 +83,12 @@ const CONFLICTS = new Set([
   "RELIST_NOT_ALLOWED",
   "UPDATE_NOT_CONFIRMED",
   "RELIST_NOT_CONFIRMED",
+  // Usuarios (F7-T05, spec F7 §4.13): un correo que ya existe, desactivarse a sí mismo, otro enlace
+  // generándose a la vez (repetir) y `auth:admin` con el correo de un corredor.
+  "USER_EMAIL_TAKEN",
+  "USER_SELF_DISABLE",
+  "INVITATION_CONFLICT",
+  "USER_NOT_ADMIN",
 ]);
 
 /**
@@ -95,6 +101,9 @@ const CLIENT_MISSING = new Set([
   "SCHEDULE_TOO_SOON",
   "SCHEDULE_TOO_FAR",
   "CLOSE_REASON_REQUIRED",
+  // F7: la contraseña no cumple el largo.
+  "PASSWORD_TOO_SHORT",
+  "PASSWORD_TOO_LONG",
 ]);
 
 /**
@@ -197,6 +206,11 @@ const SERVER_INVALID = new Set([
  * primero los códigos exactos, luego los patrones; lo que no calza es 500.
  */
 export function httpStatusFor(code: string): ContentfulStatusCode {
+  // La sesión (F7, spec §4.13): antes de los patrones (`AUTH_INVALID` no es un 400).
+  if (code === "AUTH_REQUIRED" || code === "AUTH_INVALID") return 401;
+  if (code === "AUTH_LOCKED") return 423;
+  if (code === "FORBIDDEN" || code === "ORIGIN_NOT_ALLOWED") return 403;
+  if (code === "INVITATION_INVALID") return 410;
   if (code === "INVALID_TRANSITION" || CONFLICTS.has(code)) return 409;
   if (code === "REQUEST_TOO_LARGE") return 413;
   if (CLIENT_MISSING.has(code)) return 400;

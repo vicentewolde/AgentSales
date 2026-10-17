@@ -6,6 +6,8 @@ import { Writable } from "node:stream";
 import { createLogger, createStateSigner, type Logger } from "@agentsales/config";
 import { AppError, type InstagramAuth, type MercadoLibreAuth } from "@agentsales/core";
 import {
+  createFakePasswordHasher,
+  createFakeSecretTokens,
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
   createInMemoryFieldDefinitionRepository,
@@ -16,8 +18,11 @@ import {
   createInMemoryMediaRepository,
   createInMemoryPlatformAccountRepository,
   createInMemoryPublicationRepository,
+  createInMemoryUserRepositories,
+  type InMemoryUserRepositories,
 } from "@agentsales/core/testing";
-import type { AppDeps } from "../app.js";
+import { type AppDeps, createApp } from "../app.js";
+import type { AuthDeps } from "../auth.js";
 
 /** Clave de prueba para el `state` del OAuth (nunca la de `.env`). */
 export const TEST_ENCRYPTION_KEY = "clave-de-prueba-de-32-caracteres-o-mas-0123456789";
@@ -181,6 +186,68 @@ export function fakeUploads(): FakeUploads {
   };
 }
 
+/** El token de la sesión de administrador que siembra `testDeps` (F7-T04). */
+export const TEST_ADMIN_TOKEN = "token-admin-de-prueba";
+/** El administrador sembrado (su correo y su contraseña, con el hash falso de core). */
+export const TEST_ADMIN = {
+  id: "00000000-0000-4000-8000-00000000a001",
+  email: "admin@ejemplo.cl",
+  password: "clave-del-admin-de-prueba",
+} as const;
+
+/** La autenticación de los tests: los dobles de core con el administrador y su sesión. */
+export type TestAuth = AuthDeps & { repos: InMemoryUserRepositories };
+
+export function testAuth(): TestAuth {
+  const repos = createInMemoryUserRepositories({ nextId: randomUUID });
+  const hasher = createFakePasswordHasher();
+  const tokens = createFakeSecretTokens();
+  const admin = repos.seed.user({
+    id: TEST_ADMIN.id,
+    email: TEST_ADMIN.email,
+    name: "Admin de prueba",
+    role: "admin",
+    brokerId: null,
+    passwordHash: `fake:${TEST_ADMIN.password}`,
+  });
+  repos.seed.session({ userId: admin.id, tokenHash: tokens.hash(TEST_ADMIN_TOKEN) });
+  return {
+    repos,
+    users: repos.users,
+    sessions: repos.sessions,
+    invitations: repos.invitations,
+    brokers: createInMemoryBrokerRepository(),
+    hasher,
+    tokens,
+    secureCookie: false,
+  };
+}
+
+type RequestableApp = ReturnType<typeof createApp>;
+
+/**
+ * La app con la sesión del administrador sembrado en cada pedido que no traiga la suya
+ * (`Authorization` o cookie): así los tests de antes de F7 siguen igual (spec F7-T04). Para probar
+ * sin sesión, usa `createApp` directo.
+ */
+export function withAdminSession<A extends RequestableApp>(app: A): A {
+  const withAuth = (init: RequestInit | undefined): RequestInit => {
+    const headers = new Headers(init?.headers);
+    if (!headers.has("authorization") && !headers.has("cookie")) {
+      headers.set("authorization", `Bearer ${TEST_ADMIN_TOKEN}`);
+    }
+    return { ...init, headers };
+  };
+  const request = app.request.bind(app);
+  app.request = ((input: string | URL | Request, init?: RequestInit, ...rest: unknown[]) =>
+    // biome-ignore lint/suspicious/noExplicitAny: la firma de `request` de Hono, sin cambios
+    (request as any)(input, withAuth(init), ...rest)) as A["request"];
+  return app;
+}
+
+/** `createApp` con la sesión del administrador (`withAdminSession`). */
+export const adminApp = (deps: AppDeps) => withAdminSession(createApp(deps));
+
 /**
  * Dependencias de la app con dobles en memoria (ids uuid, como en Postgres). `app.request("/x")`
  * usa http://localhost/x: el Host es "localhost", y el origen del panel, el 5173.
@@ -193,14 +260,17 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     throw new Error("testDeps: con publications, pasa también lock (el que las cambia)");
   }
   const publications = createInMemoryPublicationRepository();
+  const brokers = overrides.brokers ?? createInMemoryBrokerRepository();
   const deps: Omit<AppDeps, "lock"> & { lock?: AppDeps["lock"] } = {
+    // La autenticación ve los mismos corredores que la app (`/auth/me`).
+    auth: { ...testAuth(), brokers },
     checks: { db: ok, storage: ok, queue: ok },
     publishMode: "dry-run",
     version: "0.0.1",
     logger: silentLogger,
     access: { allowedHosts: ["localhost"], allowedOrigins: ["http://localhost:5173"] },
     listings: createInMemoryListingRepository({ nextId: randomUUID }),
-    brokers: createInMemoryBrokerRepository(),
+    brokers,
     media: createInMemoryMediaRepository(),
     fieldDefinitions: createInMemoryFieldDefinitionRepository(),
     storage: { signedReadUrl: async (path) => `https://r2.test/${path}?firma` },

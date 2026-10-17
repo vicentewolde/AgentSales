@@ -229,32 +229,32 @@ Lotes (desde 2026-10-09, una rama y un PR por lote). Cada lote deja `main` usabl
 
 ### F7-T04 · La API con sesión
 - **Depende de:** T02, T03
-- **Archivos:** `apps/api/src/{access.ts,auth.ts,security.ts,app.ts,errors.ts}`, `apps/api/src/routes/auth.ts`, `apps/api/src/contracts/index.ts`, `apps/api/src/testing/` (`testDeps` con sesión de administrador por defecto), `docs/01-arquitectura.md` (Seguridad)
+- **Archivos:** `apps/api/src/{access.ts,auth.ts,security.ts,app.ts,errors.ts,user-view.ts}`, `apps/api/src/routes/auth.ts`, `apps/api/src/contracts/index.ts`, `apps/api/src/testing/` (`testDeps` con sesión de administrador por defecto), `docs/01-arquitectura.md` (Seguridad)
 - **Descripción:** el middleware (cookie o `Bearer`), `/auth/*`, la tabla de permisos con su test de inventario (las rutas de hoy como `admin`, el OAuth como en §4.3), `Origin` en toda escritura con cookie.
 - **Hecho cuando:**
-  - [ ] Tests: sin sesión 401 en cada ruta `session` y `admin`; un corredor en una `admin` 403; la cookie con sus atributos; el `Bearer`; `Origin` ajeno 403 con cookie y sin efecto con `Bearer`; el inventario falla con una ruta sin clasificar; la vuelta de Instagram sigue funcionando sin la cookie de sesión; la base caída da 503, no 401
-  - [ ] Los tests de rutas de hoy pasan con la sesión de administrador del arnés
+  - [x] Tests: sin sesión 401 en cada ruta `session` y `admin`; un corredor en una `admin` 403; la cookie con sus atributos; el `Bearer`; `Origin` ajeno 403 con cookie y sin efecto con `Bearer`; el inventario falla con una ruta sin clasificar; la vuelta de Instagram sigue funcionando sin la cookie de sesión; la base caída da 503, no 401
+  - [x] Los tests de rutas de hoy pasan con la sesión de administrador del arnés
 
 ### F7-T05 · Usuarios, `/health` y el primer administrador
 - **Depende de:** T04
-- **Archivos:** `apps/api/src/routes/users.ts`, `apps/api/src/health.ts`, `packages/db/src/scripts/auth-admin.ts`, `package.json` (`auth:admin`), `CLAUDE.md` (comando)
+- **Archivos:** `apps/api/src/routes/users.ts`, `apps/api/src/app.ts` (`/health`), `packages/core/src/use-cases/auth/users.ts` (`ensureAdmin`), `packages/db/src/{auth-admin.ts,scripts/auth-admin.ts}`, `packages/config/src/clipboard.ts`, `package.json` (`auth:admin`), `CLAUDE.md` (comando)
 - **Descripción:** `/users` (crear con su enlace, restablecer, desactivar y reactivar), `/health` en dos niveles y tolerante (§4.3) y `pnpm auth:admin` sobre `ensureAdmin` (core: crea el administrador si no existe o le genera un enlace de restablecer, sin actor).
 - **Hecho cuando:**
-  - [ ] Tests: el enlace se entrega una vez y en el fragmento; `USER_EMAIL_TAKEN`; `/health` sin sesión sin detalle, con la base caída lo básico; `auth:admin` crea o restablece y deja el enlace en el portapapeles (doble) sin imprimirlo
+  - [x] Tests: el enlace se entrega una vez y en el fragmento; `USER_EMAIL_TAKEN`; `/health` sin sesión sin detalle, con la base caída lo básico; `auth:admin` crea o restablece y deja el enlace en el portapapeles (doble) sin imprimirlo
 
 ### F7-T06 · CLI: entrar
 - **Depende de:** T04
-- **Archivos:** `apps/cli/src/{session.ts,api-client.ts}`, `apps/cli/src/commands/{login,logout,whoami}.ts`, `apps/cli/test/`, `CLAUDE.md` (comandos y la regla de no leer el archivo de sesión)
+- **Archivos:** `apps/cli/src/{session.ts,api-client.ts,context.ts,output.ts}`, `apps/cli/src/commands/login.ts` (`login`, `logout` y `whoami`), `apps/cli/test/`, `CLAUDE.md` (comandos y la regla de no leer el archivo de sesión)
 - **Descripción:** §4.10 en lo mínimo: `login`, `logout`, `whoami`, el archivo de sesión y el `Bearer` en todas las llamadas; el mensaje sin sesión.
 - **Hecho cuando:**
-  - [ ] Tests: `login` guarda el archivo con `0600` fuera del proyecto y sin imprimir el token, `logout` lo borra, sin sesión o vencida el mensaje y el código de salida 1; los comandos de hoy pasan contra la API en proceso con una sesión
+  - [x] Tests: `login` guarda el archivo con `0600` fuera del proyecto y sin imprimir el token, `logout` lo borra, sin sesión o vencida el mensaje y el código de salida 1; los comandos de hoy pasan contra la API en proceso con una sesión
 
 ### F7-T07 · Panel: entrar e invitación
 - **Depende de:** T05
-- **Archivos:** `apps/web/src/pages/{LoginPage,InvitationPage}.tsx`, `apps/web/src/{api/client.ts,routes.tsx,layout/Layout.tsx}`, `apps/web/src/queries/auth.ts`, `apps/web/test/harness.tsx`
+- **Archivos:** `apps/web/src/pages/{LoginPage,InvitationPage}.tsx`, `apps/web/src/{api/client.ts,api/session-events.ts,routes.tsx,layout/Layout.tsx}`, `apps/web/src/queries/auth.ts`, `apps/web/test/harness.tsx`
 - **Descripción:** `/entrar`, `/invitacion#…`, cualquier 401 lleva a `/entrar` y vuelve, el menú con el usuario y "Cerrar sesión".
 - **Hecho cuando:**
-  - [ ] Tests: entrar mal y bien, la invitación vencida, un 401 a mitad lleva a entrar y vuelve a la página; los tests de hoy pasan con la sesión de administrador del arnés
+  - [x] Tests: entrar mal y bien, la invitación vencida, un 401 a mitad lleva a entrar y vuelve a la página; los tests de hoy pasan con la sesión de administrador del arnés
 
 ### F7-T08 · Cada corredor lo suyo: propiedades, contenido y cargas
 - **Depende de:** T07

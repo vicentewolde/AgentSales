@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { AppError, type PublishMode } from "@agentsales/core";
 import { createPublicationScenario, PUBLICATION_SCENARIO_TOKEN } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
 import {
   CLIENT_HEADER,
   contentApproveResponseSchema,
@@ -15,7 +14,7 @@ import {
   publicationResponseSchema,
   publicationRetireResponseSchema,
 } from "../contracts/index.js";
-import { testDeps } from "../testing/index.js";
+import { adminApp, testDeps } from "../testing/index.js";
 import { publicationView } from "./publication-views.js";
 
 const json = { "Content-Type": "application/json" };
@@ -35,7 +34,7 @@ async function setup(
     account: options.account ?? true,
     ...(options.queueFails === undefined ? {} : { queueFails: options.queueFails }),
   });
-  const app = createApp(
+  const app = adminApp(
     testDeps({
       listings: t.listings,
       brokers: t.brokers,
@@ -193,7 +192,7 @@ describe("GET /listings/:id/publications", () => {
     const [gone] = post?.mediaIds ?? [];
     const { publications } = listingPublicationsResponseSchema.parse(
       await (
-        await createApp(
+        await adminApp(
           testDeps({
             listings: t.listings,
             media: {

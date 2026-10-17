@@ -9,7 +9,6 @@ import {
 } from "@agentsales/core";
 import { createPublicationScenario } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
 import {
   agendaResponseSchema,
   brokerResponseSchema,
@@ -19,7 +18,7 @@ import {
   scheduleResponseSchema,
   trackingResponseSchema,
 } from "../contracts/index.js";
-import { testDeps } from "../testing/index.js";
+import { adminApp, testDeps } from "../testing/index.js";
 
 // F6-T10 (spec F6 §4.13): programar, desprogramar, el lote, la matriz, la agenda, `auto_publish` y
 // actualizar o republicar Portal, con la API en proceso.
@@ -34,7 +33,7 @@ async function setup(
     nextId: randomUUID,
     ...(options.platform === undefined ? {} : { platform: options.platform }),
   });
-  const app = createApp(
+  const app = adminApp(
     testDeps({
       listings: t.listings,
       brokers: t.brokers,
@@ -333,7 +332,7 @@ describe("Portal en vivo: confirmaciones y el tope de tiempo de la propiedad", (
   /** Un aviso de Portal publicado en vivo, con operaciones dobles (nunca Mercado Libre). */
   async function live(options: { operations?: PublicationOperations; timeoutMs?: number } = {}) {
     const t = await createPublicationScenario({ nextId: randomUUID, platform: PORTAL });
-    const app = createApp(
+    const app = adminApp(
       testDeps({
         listings: t.listings,
         brokers: t.brokers,

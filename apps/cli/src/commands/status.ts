@@ -44,7 +44,8 @@ export async function runStatus(fetchHealth: HealthFetcher, c: Colors): Promise<
     };
   }
   const ok = report.status === "ok";
-  const checks = Object.entries(report.checks).map(([name, result]) => {
+  // Sin el detalle (sin sesión de administrador, spec F7 §4.3): solo el estado y el modo.
+  const checks = Object.entries(report.checks ?? {}).map(([name, result]) => {
     const mark = result.ok ? c.green("✓") : c.red("✗");
     const detail = result.ok ? `${result.latencyMs} ms` : (result.error ?? "falló");
     return `  ${mark} ${name.padEnd(8)} ${detail}`;
@@ -54,8 +55,10 @@ export async function runStatus(fetchHealth: HealthFetcher, c: Colors): Promise<
       renderPublishMode(report.publishMode, c),
       ...[renderAutoPublish(report, c)].filter((line): line is string => line !== null),
       "",
-      `Estado: ${ok ? c.green("ok") : c.yellow("degraded")}  ${c.dim(`(API ${report.version})`)}`,
-      ...checks,
+      `Estado: ${ok ? c.green("ok") : c.yellow("degraded")}  ${c.dim(`(API ${report.version ?? "?"})`)}`,
+      ...(report.checks === undefined
+        ? [c.dim("  El detalle lo ve el administrador: agentsales login")]
+        : checks),
     ].join("\n"),
     exitCode: ok ? 0 : 1,
   };

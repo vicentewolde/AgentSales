@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { type AppDeps, createApp, localAccess } from "@agentsales/api";
-import { testDeps } from "@agentsales/api/testing";
+import { testDeps, withAdminSession } from "@agentsales/api/testing";
 import type {
   AppError,
   BrokerData,
@@ -37,6 +37,8 @@ export type HarnessOptions = {
   beforeRequest?: (url: string, method: string) => void;
   /** Se llama con la respuesta de la API: la API ya hizo el cambio (simula un corte después). */
   afterResponse?: (url: string, method: string, response: Response) => Response;
+  /** Sin la sesión del administrador por defecto (F7-T06: probar `login` y lo que pasa sin sesión). */
+  anonymous?: boolean;
 };
 
 /**
@@ -78,7 +80,8 @@ export function harness(options: HarnessOptions = {}) {
       publications,
       platformAccounts: repos.platformAccounts,
     });
-  const app = createApp(
+  // Con la sesión del administrador en cada pedido (F7-T06): los comandos de antes siguen igual.
+  const created = createApp(
     testDeps({
       access: localAccess(PORT, 5173),
       importRuns,
@@ -88,17 +91,17 @@ export function harness(options: HarnessOptions = {}) {
       lock,
     }),
   );
+  const app = options.anonymous ? created : withAdminSession(created);
   const requests: string[] = [];
-  const client = createApiClient(PORT, {
-    fetch: async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      const method = init?.method ?? "GET";
-      requests.push(`${method} ${new URL(url).pathname}`);
-      options.beforeRequest?.(url, method);
-      const response = await app.request(url, init);
-      return options.afterResponse?.(url, method, response) ?? response;
-    },
-  });
+  const fetchApp = async (input: string | URL | Request, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const method = init?.method ?? "GET";
+    requests.push(`${method} ${new URL(url).pathname}`);
+    options.beforeRequest?.(url, method);
+    const response = await app.request(url, init);
+    return options.afterResponse?.(url, method, response) ?? response;
+  };
+  const client = createApiClient(PORT, { fetch: fetchApp });
   const own = <T>(name: keyof AppDeps, repository: T): T => {
     if (options.deps?.[name] !== undefined) {
       throw new Error(`harness: ${name} vino en options.deps; usa el del test`);
@@ -114,6 +117,8 @@ export function harness(options: HarnessOptions = {}) {
   };
   return {
     client,
+    /** Un cliente con el token de una sesión (el de `agentsales login`). */
+    clientWith: (token: string) => createApiClient(PORT, { fetch: fetchApp, token }),
     io,
     out,
     err,
