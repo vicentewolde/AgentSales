@@ -297,6 +297,20 @@ describe("requestBackupIfDue (arranque)", () => {
     ]);
   });
 
+  it("si el estado no se puede leer (R2 caído al arrancar), encola igual", async () => {
+    const queue = createInMemoryJobQueue();
+    const decision = await requestBackupIfDue(queue, {
+      readStatus: async () => {
+        throw new AppError("STORAGE_UNAVAILABLE", "sin red", { retriable: true });
+      },
+      findTool: (tool) => `/fake/${tool}`,
+      now: () => NOW,
+    });
+
+    expect(decision).toBe("enqueued");
+    expect(queue.jobs).toHaveLength(1);
+  });
+
   it("sin pg_dump no encola (fallaría en cada arranque)", async () => {
     const queue = createInMemoryJobQueue();
     const decision = await requestBackupIfDue(queue, {

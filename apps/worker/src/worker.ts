@@ -168,6 +168,10 @@ const profilesRoot = resolveBrowserProfilesDir(env.BROWSER_PROFILES_DIR, {
 // datos de clientes); con `BACKUP_TARGET=r2` (producción), el bucket de respaldos con su propio
 // token, que solo tiene el worker, y el estado en `system/` del bucket principal.
 const backupStorage = backupStorageOf(env);
+if (env.BACKUP_TARGET === "r2" && backupStorage === null) {
+  // `loadEnv` ya lo exige; si eso cambiara, el worker no vuelve en silencio al disco local.
+  throw new Error("BACKUP_TARGET=r2 sin el bucket o el token de respaldos (BACKUP_R2_*)");
+}
 const backupTarget: BackupTarget =
   backupStorage === null
     ? {

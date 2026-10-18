@@ -12,8 +12,9 @@ import { runBackup } from "../backup/index.js";
 
 // `pnpm db:backup` (spec F6 §4.11): un respaldo a pedido, sin `pnpm dev`. Muestra el archivo y la
 // carpeta (es la del operador); nunca la conexión ni la contraseña. Siempre a la carpeta local
-// (spec F8 §4.9): no mira `BACKUP_TARGET`, así que con `ENV_FILE=.env.production` respalda la base de
-// producción en el Mac, sin el token del bucket de respaldos.
+// (spec F8 §4.9): `BACKUP_TARGET` no cambia adónde va (con `ENV_FILE=.env.production` respalda la base
+// de producción en el Mac). `loadEnv` igual valida el archivo entero: si dice `BACKUP_TARGET=r2`,
+// pide también el bucket y el token de respaldos, aunque aquí no se usen.
 
 loadEnvFile();
 try {

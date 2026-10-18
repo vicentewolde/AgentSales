@@ -119,15 +119,21 @@ export function uploadBackup(
   return async ({ path, file, bytes }) => {
     const key = `${BACKUP_OBJECT_PREFIX}${file}`;
     const sha256 = await sha256File(path);
-    await backups.putStream(key, createReadStream(path), {
-      contentType: "application/octet-stream",
-      contentLength: bytes,
-      sha256,
-    });
+    const body = createReadStream(path);
+    try {
+      await backups.putStream(key, body, {
+        contentType: "application/octet-stream",
+        contentLength: bytes,
+        sha256,
+      });
+    } finally {
+      // Si la subida falló a medias, el archivo no queda abierto.
+      body.destroy();
+    }
     const stored = await backups.head(key);
     if (stored?.size !== bytes) {
       throw new AppError(
-        "BACKUP_UPLOAD_FAILED",
+        "BACKUP_FAILED",
         "El respaldo no quedó completo en el bucket de respaldos",
         { retriable: true },
       );
@@ -180,7 +186,12 @@ export function dbBackupJob(deps: DbBackupJobDeps): Job {
       if (target.kind === "local") {
         result = await runBackup({ ...common, dir: target.dir });
       } else {
-        // `mkdtemp` la crea con `0700`; el volcado trae datos de clientes y se borra siempre.
+        // `mkdtemp` la crea con `0700`; el volcado trae datos de clientes y se borra siempre. Si no se
+        // puede crear (disco lleno), el job falla sin anotarlo en el estado: lo dice el log, y
+        // `doctor` avisa cuando el último bueno pasa de 48 h. El candado de `runBackup` queda en esta
+        // carpeta nueva y no protege nada: aquí la exclusión es la cola `exclusive` (y
+        // `pnpm db:backup` nunca va a R2). Los 15 min del job alcanzan con holgura para la base del
+        // piloto (pocos MB); con una base de cientos de MB habría que medir el volcado y la subida.
         const dir = await mkdtemp(join(target.tmpRoot ?? tmpdir(), "agentsales-backup-"));
         try {
           result = await runBackup({
@@ -220,12 +231,16 @@ export type BackupStartupDecision = "enqueued" | "recent" | "tool_missing";
 export async function requestBackupIfDue(
   queue: JobQueue,
   deps: Pick<DbBackupJobDeps, "binDir" | "findTool" | "now"> & {
-    /** El estado del último respaldo (`backupStatusOf`); si lanza (R2 caído), no se encola. */
+    /**
+     * El estado del último respaldo (`backupStatusOf`). Si lanza (R2 caído al arrancar), se encola
+     * igual: en modo demo es la oportunidad del día, la cola `exclusive` evita duplicados y
+     * `runBackup` no pisa un estado que no pudo leer.
+     */
     readStatus: () => Promise<BackupStatus | null>;
   },
 ): Promise<BackupStartupDecision> {
   const now = (deps.now ?? (() => new Date()))();
-  const status = await deps.readStatus();
+  const status = await deps.readStatus().catch(() => null);
   const last = status?.lastSuccessAt == null ? null : Date.parse(status.lastSuccessAt);
   if (last !== null && now.getTime() - last <= DB_BACKUP_STARTUP_AFTER_MS) return "recent";
   try {

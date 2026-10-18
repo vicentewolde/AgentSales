@@ -37,3 +37,6 @@
 - **El panel en otro origen (Cloudflare Pages) con CORS:** abriría CORS, que ADR-0021 dejó como restricción, y la cookie `Strict` no viajaría al inicio del OAuth.
 - **Un worker en el Mac para Marketplace automático:** más código y el Mac encendido al publicar; el operador eligió a mano para todos.
 - **Desplegar en cada merge a `main`:** con los merges autorizados, Claude terminaría desplegando; desplegar habla con una plataforma real.
+
+## Seguimiento
+- 2026-10-18 (F8-T13): el token del bucket de respaldos es "solo del worker" en el uso, no en la plataforma: Fly entrega los secretos de la app a los dos procesos. La API lo quita de su configuración y de `process.env` al arrancar (`withoutBackupCredentials`), así no lo usa ni lo heredan sus procesos hijos, pero el entorno con que arrancó el proceso sigue legible para quien pueda leer archivos en su máquina. Separarlo de verdad pediría dos apps de Fly (otra imagen desplegada y otro `fly.toml`); se revisa si llegan corredores con datos sensibles o un segundo desarrollador.

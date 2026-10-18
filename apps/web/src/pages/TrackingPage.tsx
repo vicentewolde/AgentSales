@@ -37,7 +37,8 @@ const ACTION_TEXT: Readonly<Record<AgendaAction, string>> = {
   review: "Revisa y aprueba el texto en Contenido",
   relist: "Republícala desde Contenido",
   sync: "Usa Actualizar en Contenido para leer su estado",
-  backup: "Corre pnpm db:backup en tu terminal",
+  backup:
+    "En el Mac, corre pnpm db:backup en tu terminal; en el servidor lo hace el worker al encenderse y a las 13:00 (el error está en sus logs)",
   none: "",
 };
 

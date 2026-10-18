@@ -82,7 +82,13 @@ export async function runHealth(options: {
       : { database: { serverVersion: checks.db.ok ? details.serverVersion() : null } }),
     ...(details.backupStatus === undefined
       ? {}
-      : { backup: await backupOf(details.backupStatus, details.now ?? (() => new Date())) }),
+      : {
+          backup: await backupOf(
+            details.backupStatus,
+            timeoutMs,
+            details.now ?? (() => new Date()),
+          ),
+        }),
     ...(details.autoPublishBrokers === undefined
       ? {}
       : { autoPublishBrokers: await brokerSlugs(details.autoPublishBrokers) }),
@@ -115,14 +121,18 @@ async function workerOf(
   }
 }
 
-/** El estado del respaldo con `stale`; `null` sin respaldo o si no se pudo leer (nunca lanza). */
+/**
+ * El estado del respaldo con `stale`; `null` sin respaldo o si no se pudo leer (nunca lanza). Con el
+ * mismo tope de los checks: desde F8-T13 puede leerse de R2, que puede tardar.
+ */
 async function backupOf(
   read: () => Promise<BackupStatus | null>,
+  timeoutMs: number,
   now: () => Date,
 ): Promise<HealthReport["backup"]> {
   let status: BackupStatus | null;
   try {
-    status = await read();
+    status = await withTimeout(read(), timeoutMs);
   } catch {
     return null;
   }
