@@ -93,7 +93,26 @@ Detalle en `docs/integraciones/mercadolibre.md` (§2, §3 y §8) y en el spec F4
 
 ## Antes de F8 (en internet)
 
-- [ ] **App Review de Meta y verificación del negocio** (`instagram_business_content_publish`): acceso avanzado para publicar en el Instagram de corredores que no son evaluadores de la app (video por permiso, política de privacidad publicada, ícono de 1024x1024; plazo y documentos: NO VERIFICADO)
-- [ ] Términos de uso y política de privacidad publicados en el dominio (los pide Meta y los necesitan los corredores)
-- [ ] Revisar los términos comerciales de Anthropic para atender a varios clientes con tu clave
-- [ ] El dominio propio y el hosting (lo decide el spec de F8)
+Spec: `docs/specs/fase-8-en-internet.md` (modo demo en Fly.io con Neon gratis, en `agentsales.agentpey.com`). Ningún secreto va al chat: los pegas tú con `pbpaste` o en el panel de cada servicio.
+
+**Antes del lote B (desarrollo separado de producción, §4.6):**
+- [ ] **Rama `dev` en Neon** (consola de Neon → Branches → New branch, desde la principal) y su `DATABASE_URL` directa en el `.env` del Mac. La de hoy pasa a `.env.production` (archivo nuevo en la raíz, fuera de git)
+- [ ] **Otra `APP_ENCRYPTION_KEY` para desarrollo** en `.env` (la de hoy se queda en `.env.production` y en tu gestor de claves: sin ella no se leen los tokens de producción) y después `pnpm db:dev-scrub`, que borra las credenciales copiadas en la rama (así el Mac nunca renueva el token de Mercado Libre de producción)
+- [ ] **Bucket `agentsales-media-dev`** en R2 con su token "Object Read & Write" limitado a él, en `.env`; y en los dos buckets una **regla de CORS** que acepte `PUT` desde el panel (`http://localhost:5173` en el de desarrollo y `https://agentsales.agentpey.com` en el de producción). `pnpm storage:check` la revisa
+
+**Antes del primer despliegue (T21):**
+- [ ] **Cuenta de Fly.io** con tarjeta (cobra por segundo encendido: unos US$ 0,56 por día de demo) y su token de despliegue en los secretos de GitHub (`FLY_API_TOKEN`)
+- [ ] **El subdominio:** en el DNS de `agentpey.com` (Vercel → Domains) el registro que pida Fly para `agentsales.agentpey.com` (`CNAME` o `A`/`AAAA`, y el de validación del certificado). No toca tu otro proyecto
+- [ ] **Bucket `agentsales-backups`** en R2 con su token propio limitado a él (solo lo tiene el worker)
+- [ ] **Los secretos del servidor** en Fly (`fly secrets set`, la lista está en `docs/10-despliegue.md`): los de `.env.production`, `PUBLIC_URL=https://agentsales.agentpey.com` y `LLM_PROVIDER=anthropic-api`. `PUBLISH_MODE` queda en `dry-run`
+- [ ] **Direcciones de vuelta:** en la app de Meta `AgentSales-IG`, `https://agentsales.agentpey.com/api/oauth/instagram/callback`, y las de quitar la app y borrar datos (`…/api/meta/deauthorize` y `…/api/meta/data-deletion`); en la app de Mercado Libre, `https://agentsales.agentpey.com/api/oauth/mercadolibre/callback` como segunda dirección
+- [ ] **Límite de gasto mensual en la consola de Anthropic** (Billing → Spend limits; hoy no hay)
+
+**Meta (para el App Review; F8 cierra con la solicitud enviada, D5):** detalle en `docs/integraciones/instagram.md` §13
+- [ ] **Verificación del negocio** en Business Manager (hasta 14 días hábiles). Si puedes hacerla como persona natural es NO VERIFICADO: crea el negocio con tus datos reales y pulsa "Iniciar verificación" para ver qué documentos pide para Chile (quizás inicio de actividades en el SII)
+- [ ] **Verificación de acceso como proveedor técnico** (Tech Provider, unos 5 días), después de la anterior
+- [ ] **App Review** de `instagram_business_basic` e `instagram_business_content_publish`: ícono de 1024x1024, categoría, correo de contacto, la URL de privacidad, un video por permiso con el flujo real en el dominio, una llamada exitosa por permiso en los 30 días previos, y el corredor y el usuario de demostración para el revisor
+- [ ] **Términos de uso y política de privacidad** revisados y aprobados por ti (los borradores los deja T18; conviene que un abogado los revise por la Ley 21.719)
+
+**Anthropic:**
+- [x] Términos comerciales revisados por el subagente (`docs/integraciones/anthropic-terminos.md`): tu clave puede atender a los clientes de tu producto, sin revender el servicio. Opcional: escribirle a Anthropic para confirmar el cobro por aviso y si una persona natural puede ofrecerlo a terceros
