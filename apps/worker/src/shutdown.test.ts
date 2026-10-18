@@ -153,4 +153,25 @@ describe("apagado del worker", () => {
     ).rejects.toThrow("pg-boss no se detuvo");
     expect(events).toEqual(["corte", "navegador cerrado", "ventanas cerradas"]);
   });
+
+  it("anota el apagado en el latido después de pg-boss y antes de cerrar la base (F8-T12)", async () => {
+    const events: string[] = [];
+    await stopWorker(
+      {
+        abortJobs: () => void events.push("corte"),
+        stopBoss: async () => void events.push("pg-boss detenido"),
+        closeRenderer: async () => void events.push("navegador cerrado"),
+        stopHeartbeat: async () => void events.push("latido apagado"),
+        closeDatabase: async () => void events.push("base cerrada"),
+      },
+      silentLogger,
+    );
+    expect(events).toEqual([
+      "corte",
+      "pg-boss detenido",
+      "navegador cerrado",
+      "latido apagado",
+      "base cerrada",
+    ]);
+  });
 });

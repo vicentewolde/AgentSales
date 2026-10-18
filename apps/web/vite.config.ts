@@ -23,6 +23,18 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
     // Paquetes internos desde su código fuente (ADR-0010), más las condiciones por defecto de Vite.
     resolve: { conditions: ["@agentsales/source", ...defaultClientConditions] },
+    build: {
+      rollupOptions: {
+        output: {
+          // zod y su configuración sin `eval` (`src/zod-config.ts`, F8-T10) en un mismo trozo: se
+          // ejecuta entero antes que el código que crea esquemas (core), así la CSP no anota nada.
+          manualChunks: (id: string) =>
+            /[\\/]node_modules[\\/](\.pnpm[\\/])?zod/.test(id) || id.endsWith("/src/zod-config.ts")
+              ? "zod"
+              : undefined,
+        },
+      },
+    },
     server: {
       port: webPort,
       strictPort: true,

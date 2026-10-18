@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import {
   createErrorThrottle,
@@ -11,6 +11,7 @@ import {
   resolveBrowserProfilesDir,
 } from "@agentsales/config";
 import {
+  type AutoPublishDeps,
   confirmManualPublication,
   enqueueLiveSyncs,
   isTerminalImportRun,
@@ -31,6 +32,7 @@ import {
   createPlatformCatalogRepository,
   createPublicationRepository,
   createSessionRepository,
+  createWorkerHeartbeatRepository,
   toPgConnectionString,
 } from "@agentsales/db";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
@@ -53,7 +55,12 @@ import {
   MARKETPLACE_EVIDENCE_MAX_AGE_MS,
   marketplaceTmpRootOf,
 } from "./content-tmp.js";
-import { failAbandonedContentRuns, requeueQueuedContentRuns } from "./jobs/content-prepare.js";
+import { type Heartbeat, startHeartbeat, workerProcessId } from "./heartbeat.js";
+import {
+  failAbandonedContentRuns,
+  requeueQueuedContentRuns,
+  resumeAutoPublishAtStart,
+} from "./jobs/content-prepare.js";
 import { requestBackupIfDue } from "./jobs/db-backup.js";
 import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
 import { buildJobs } from "./jobs/index.js";
@@ -178,6 +185,23 @@ const portal = createWorkerPortal({
   storage,
   logger,
 });
+// `auto_publish` (spec F6 §4.10): con el modo del worker, el único camino en que lo fija. Lo usan
+// el job `content.prepare` y el arranque (retomar uno cortado, F8-T12).
+const autoPublish: AutoPublishDeps = {
+  lock: listingLock,
+  // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
+  queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
+  listings: repositories.listings,
+  fieldDefinitions: repositories.fieldDefinitions,
+  brokers: repositories.brokers,
+  contents: createContentRepository(database.db),
+  platformAccounts,
+  marketplace: {
+    dailyLimit: env.MARKETPLACE_DAILY_LIMIT,
+    ufConfigured: env.BCCH_API_TOKEN !== undefined,
+  },
+  dryRun: env.PUBLISH_MODE !== "live",
+};
 const jobs = buildJobs({
   importRun,
   contentPrepare: {
@@ -203,22 +227,7 @@ const jobs = buildJobs({
       }),
     tmpRoot: contentTmpRoot,
     signal: jobsAbort.signal,
-    // `auto_publish` (spec F6 §4.10): con el modo del worker, el único camino en que lo fija.
-    autoPublish: {
-      lock: listingLock,
-      // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
-      queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
-      listings: repositories.listings,
-      fieldDefinitions: repositories.fieldDefinitions,
-      brokers: repositories.brokers,
-      contents: createContentRepository(database.db),
-      platformAccounts,
-      marketplace: {
-        dailyLimit: env.MARKETPLACE_DAILY_LIMIT,
-        ufConfigured: env.BCCH_API_TOKEN !== undefined,
-      },
-      dryRun: env.PUBLISH_MODE !== "live",
-    },
+    autoPublish,
   },
   publicationPublish: {
     shared: {
@@ -318,6 +327,9 @@ boss.on("warning", (warning) => logger.warn({ warning }, "aviso de pg-boss"));
 const queue = jobQueueFromBoss(boss);
 
 let shuttingDown = false;
+/** El latido (F8-T12): empieza cuando los jobs quedan registrados. */
+let heartbeat: Heartbeat | null = null;
+const heartbeatErrors = createErrorThrottle(logger, "no se pudo anotar el latido del worker");
 
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) {
@@ -326,6 +338,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   bossErrors.dispose();
   dbErrors.dispose();
+  heartbeatErrors.dispose();
   logger.info({ signal }, "apagando el worker: esperando los jobs en curso");
   const force = setTimeout(() => {
     logger.error("el apagado tardó demasiado; se fuerza la salida");
@@ -340,6 +353,9 @@ async function shutdown(signal: string): Promise<void> {
         stopBoss: () => boss.stop({ graceful: true, timeout: GRACEFUL_STOP_MS }),
         closeRenderer: () => renderer.close(),
         closeMarketplaceWindows: () => marketplaceWindows.closeAll(),
+        stopHeartbeat: async () => {
+          await heartbeat?.stop();
+        },
         closeDatabase: () => database.close(),
       },
       logger,
@@ -410,6 +426,15 @@ async function failAbandonedContent(): Promise<void> {
     if (closed.length > 0) logger.warn({ contentRunIds: closed }, "corridas abandonadas cerradas");
   } catch (error) {
     logger.warn({ err: error }, "no se pudieron revisar las corridas abandonadas");
+  }
+}
+
+async function resumeAutoPublish(): Promise<void> {
+  try {
+    const resumed = await resumeAutoPublishAtStart({ ...autoPublish, contentRuns }, logger);
+    if (resumed > 0) logger.info({ resumed }, "auto_publish cortados retomados");
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron revisar los auto_publish cortados");
   }
 }
 
@@ -547,8 +572,17 @@ try {
   const registered =
     !shuttingDown && (await registerJobs(boss, jobs, logger, { isStopping: () => shuttingDown }));
   if (registered) {
+    heartbeat = await startHeartbeat({
+      heartbeats: createWorkerHeartbeatRepository(database.db),
+      processId: workerProcessId(randomUUID().slice(0, 8)),
+      logger,
+      errors: heartbeatErrors,
+    });
+    // Una señal mientras empezaba a latir: el apagado ya pasó por `stopHeartbeat` sin latido.
+    if (shuttingDown) await heartbeat.stop();
     await requeueContent();
     await requeuePublications();
+    await resumeAutoPublish();
     await requestLiveSyncs();
     await requestTokensRefresh();
     await requestPublicationDue();

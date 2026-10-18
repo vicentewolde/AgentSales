@@ -40,6 +40,11 @@ const healthy: HealthReport = {
     lastFailureCode: null,
     stale: false,
   },
+  worker: {
+    running: true,
+    startedAt: "2026-10-15T18:00:00.000Z",
+    lastBeatAt: "2026-10-15T18:59:30.000Z",
+  },
 };
 const NOW = new Date("2026-10-15T19:00:00.000Z");
 
@@ -201,6 +206,7 @@ describe("runDoctor", () => {
       "Base de datos": "ok",
       Almacenamiento: "ok",
       Cola: "ok",
+      Worker: "ok",
       ffmpeg: "ok",
       ffprobe: "ok",
       "Chromium (Playwright)": "ok",
@@ -220,9 +226,38 @@ describe("runDoctor", () => {
     expect(report.items.find((item) => item.name === "ffmpeg")?.detail).toBe(
       "ffmpeg version 9.0.1 Copyright",
     );
-    expect(report.items.find((item) => item.name === "Cola")?.detail).toContain(
-      "no indica si el worker está corriendo",
+    expect(report.items.find((item) => item.name === "Cola")?.detail).toBe("inicializada, 65 ms");
+    // El worker sale de su latido (F8-T12), con la hora de Chile.
+    expect(report.items.find((item) => item.name === "Worker")?.detail).toBe(
+      "encendido desde 2026-10-15 15:00",
     );
+  });
+
+  it("el worker apagado es una advertencia con qué hacer; sin base, no se sabe (F8-T12)", async () => {
+    const off = await runDoctor(
+      deps({
+        fetchHealth: async () => ({
+          ...healthy,
+          worker: {
+            running: false,
+            startedAt: "2026-10-15T10:00:00.000Z",
+            lastBeatAt: "2026-10-15T12:00:00.000Z",
+          },
+        }),
+      }),
+    );
+    const item = off.items.find((entry) => entry.name === "Worker");
+    expect(item).toMatchObject({ level: "warn", detail: "apagado desde 2026-10-15 09:00" });
+    expect(item?.hint).toContain("pnpm dev");
+    expect(off.exitCode).toBe(0);
+
+    const unknown = await runDoctor(
+      deps({ fetchHealth: async () => ({ ...healthy, worker: null }) }),
+    );
+    expect(unknown.items.find((entry) => entry.name === "Worker")).toMatchObject({
+      level: "warn",
+      detail: "no se pudo saber (la base no respondió)",
+    });
   });
 
   it("con la API caída marca API, base, almacenamiento y cola como error y sugiere pnpm dev", async () => {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PUBLISH_MODES } from "./enums.js";
+import { workerStatusSchema } from "./worker-heartbeat.js";
 
 /** Checks de `/health` (spec F0 §4.3). */
 export const HEALTH_CHECK_NAMES = ["db", "storage", "queue"] as const;
@@ -87,5 +88,10 @@ export const healthReportSchema = z.object({
    * `LLM_PROVIDER=fake`. `null` si la base no respondió. Opcional, como `database`.
    */
   llmKeyMissingBrokers: z.array(z.string()).nullable().optional(),
+  /**
+   * Desde F8-T12 (spec §4.10): si el worker está encendido según su latido, desde cuándo y su
+   * último latido. `null` si la base no respondió. Opcional, como `database`.
+   */
+  worker: workerStatusSchema.nullable().optional(),
 });
 export type HealthReport = z.infer<typeof healthReportSchema>;

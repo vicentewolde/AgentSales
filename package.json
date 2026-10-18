@@ -13,6 +13,7 @@
     "format": "biome check --write .",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "build": "tsc -b tsconfig.build.json && pnpm --filter @agentsales/web exec vite build",
     "db:generate": "pnpm --filter @agentsales/db generate",
     "db:migrate": "pnpm --filter @agentsales/db migrate",
     "db:seed": "pnpm --filter @agentsales/db seed",

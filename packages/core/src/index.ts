@@ -525,6 +525,7 @@ export type {
   SessionRepository,
   UserRepository,
 } from "./ports/user-repository.js";
+export type { WorkerHeartbeatRepository } from "./ports/worker-heartbeat-repository.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   checkPublicationProgress,
@@ -859,6 +860,11 @@ export {
   requestMarketplaceLogin,
 } from "./use-cases/request-marketplace-login.js";
 export {
+  type ResumeAutoPublishDeps,
+  type ResumedAutoPublish,
+  resumeCutAutoPublish,
+} from "./use-cases/resume-auto-publish.js";
+export {
   type ResumePublicationDeps,
   resumePublication,
 } from "./use-cases/resume-publication.js";
@@ -926,3 +932,14 @@ export {
   watchPublications,
 } from "./use-cases/watch-publications.js";
 export * from "./user.js";
+export {
+  WORKER_HEARTBEAT_INTERVAL_MS,
+  WORKER_HEARTBEAT_LOOKBACK,
+  WORKER_HEARTBEAT_RETENTION_MS,
+  WORKER_HEARTBEAT_STALE_MS,
+  type WorkerHeartbeat,
+  type WorkerStatus,
+  workerStatusOf,
+  workerStatusSchema,
+  workerStatusText,
+} from "./worker-heartbeat.js";

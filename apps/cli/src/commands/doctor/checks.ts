@@ -1,4 +1,9 @@
-import { type HealthReport, hasLlmPrice, type PublishMode } from "@agentsales/core";
+import {
+  type HealthReport,
+  hasLlmPrice,
+  type PublishMode,
+  workerStatusText,
+} from "@agentsales/core";
 import { canDumpServer, parsePgToolVersion, parseServerVersion } from "@agentsales/db/backup";
 import {
   CHROMIUM_INSTALL_COMMAND,
@@ -269,9 +274,7 @@ export async function checkServices(
       return { name, level: "error", detail: result.error ?? "falló", hint };
     }
     const detail =
-      key === "queue"
-        ? `inicializada, ${result.latencyMs} ms (no indica si el worker está corriendo)`
-        : `${result.latencyMs} ms`;
+      key === "queue" ? `inicializada, ${result.latencyMs} ms` : `${result.latencyMs} ms`;
     return { name, level: "ok", detail };
   });
   return { report, items: [api, ...services] };
@@ -588,4 +591,26 @@ export function checkEnvironment(report: HealthReport | null, remote: boolean): 
         detail: "el servidor dice que es de desarrollo: ¿es el que esperabas?",
         hint: "Revisa la dirección con agentsales whoami",
       };
+}
+
+/**
+ * El worker según su latido (F8-T12, spec F8 §4.10): encendido es ok; apagado, una advertencia
+ * (sin él no se prepara, no se publica ni corre lo programado). `null` si la API no lo informa.
+ */
+export function checkWorker(report: HealthReport | null, remote: boolean): CheckItem | null {
+  if (report === null || report.worker === undefined) return null;
+  const detail = workerStatusText(report.worker);
+  if (report.worker?.running === true) return { name: "Worker", level: "ok", detail };
+  return {
+    name: "Worker",
+    level: "warn",
+    detail,
+    ...(report.worker === null
+      ? {}
+      : {
+          hint: remote
+            ? "Enciéndelo en el servidor si lo necesitas (docs/10-despliegue.md); apágalo al terminar la demo"
+            : "Arráncalo con pnpm dev si lo necesitas",
+        }),
+  };
 }

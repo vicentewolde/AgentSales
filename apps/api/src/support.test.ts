@@ -39,6 +39,7 @@ describe("requestLogger", () => {
     const app = new Hono()
       .use(requestLogger(logger))
       .get("/health", (c) => c.text("ok"))
+      .get("/api/health/live", (c) => c.text("ok"))
       .get("/listings", (c) => c.text("ok"))
       .get("/roto", (c) => c.text("error", 500));
     return { app, lines };
@@ -48,15 +49,18 @@ describe("requestLogger", () => {
     const { app, lines } = captured();
 
     await app.request("/health");
+    // Con el prefijo `/api` también (F8-T11: el chequeo de Fly).
+    await app.request("/api/health/live");
     await app.request("/listings?token=abc");
     await app.request("/roto");
 
     expect(lines.map(({ level, path, status }) => ({ level, path, status }))).toEqual([
       { level: 20, path: "/health", status: 200 },
+      { level: 20, path: "/api/health/live", status: 200 },
       { level: 30, path: "/listings", status: 200 },
       { level: 40, path: "/roto", status: 500 },
     ]);
-    expect(lines[1]).toMatchObject({ method: "GET", msg: "request" });
-    expect(typeof lines[1]?.ms).toBe("number");
+    expect(lines[2]).toMatchObject({ method: "GET", msg: "request" });
+    expect(typeof lines[2]?.ms).toBe("number");
   });
 });

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "dist/tsconfig.build.tsbuildinfo"
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/testing"],
+  "references": [
+    {
+      "path": "../../packages/core/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/config/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/db/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/storage/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/queue/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/importers/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/media/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/publishers/tsconfig.build.json"
+    }
+  ]
+}

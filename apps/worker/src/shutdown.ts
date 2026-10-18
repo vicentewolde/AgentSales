@@ -13,6 +13,8 @@ export type ShutdownSteps = {
    * así que va **antes** de cerrarla.
    */
   closeMarketplaceWindows?(): Promise<void>;
+  /** Deja de latir y anota el apagado (F8-T12): también necesita la base. */
+  stopHeartbeat?(): Promise<void>;
   closeDatabase(): Promise<void>;
 };
 
@@ -38,6 +40,10 @@ export async function stopWorker(steps: ShutdownSteps, logger: Logger): Promise<
       .catch((error: unknown) =>
         logger.warn({ err: error }, "no se pudieron cerrar las ventanas de Marketplace"),
       );
+    // El último antes de la base: el panel ve el worker apagado en cuanto termina de apagarse.
+    await steps
+      .stopHeartbeat?.()
+      .catch((error: unknown) => logger.warn({ err: error }, "no se pudo anotar el apagado"));
   }
   await steps.closeDatabase();
 }

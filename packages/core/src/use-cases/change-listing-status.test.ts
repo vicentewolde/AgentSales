@@ -236,6 +236,37 @@ describe("changeListingStatus", () => {
     expect(result.listing.status).toBe("active");
   });
 
+  it("un sync que pausa Portal mientras la propiedad la pausa: queda con byListing y reanudar la reactiva (F8-T12)", async () => {
+    let raced = false;
+    const s = await setup({
+      onCall: async (operation) => {
+        // Mercado Libre ya la pausó y un sync lo aplica antes de que vuelva la llamada.
+        if (operation !== "pause" || raced) return;
+        raced = true;
+        await s.t.publications.transition(
+          s.portalId,
+          { from: "published", to: "paused" },
+          { actor: "system", payload: { mode: "live", sync: true, remoteStatus: "paused" } },
+        );
+      },
+    });
+    await changeListingStatus(s.deps, {
+      listingId: s.t.listingId,
+      action: "pause",
+      confirmed: true,
+      actor: "operator",
+    });
+    expect(s.find(s.portalId).status).toBe("paused");
+
+    await changeListingStatus(s.deps, {
+      listingId: s.t.listingId,
+      action: "resume",
+      actor: "operator",
+    });
+    expect(s.calls).toEqual(["pause", "resume"]);
+    expect(s.find(s.portalId).status).toBe("published");
+  });
+
   it("reanudar no toca una pausa hecha a mano, y sin nada en vivo queda ready", async () => {
     const { t, deps, portalId, calls, find } = await setup({ dryRun: true, apiMode: "dry-run" });
     await t.publications.transition(

@@ -3,6 +3,7 @@ import {
   type AbortSignalLike,
   AppError,
   type AutoPublishDeps,
+  type AutoPublishResult,
   autoPublishListing,
   type ContentRunReport,
   type ContentRunRepository,
@@ -12,6 +13,8 @@ import {
   type MediaProcessor,
   type PrepareContentDeps,
   prepareContent,
+  type ResumeAutoPublishDeps,
+  resumeCutAutoPublish,
 } from "@agentsales/core";
 import { createAttemptDir } from "../content-tmp.js";
 import { defineJob, type Job, type QueuePolicy } from "./define.js";
@@ -151,33 +154,79 @@ export function contentPrepareJob(deps: ContentPrepareJobDeps): Job {
 
 /**
  * `auto_publish` después de una corrida terminada con textos (spec F6 §4.10). Nunca hace fallar la
- * corrida: un error se registra con su código (sin datos del aviso) y queda en la agenda.
+ * corrida: un error se registra con su código (sin datos del aviso) y queda en la agenda. Al final
+ * (también si no aplicaba o falló) anota que se resolvió: solo una corrida cortada antes de este
+ * punto queda pendiente para el arranque (F8-T12).
  */
 async function autoPublishAfter(
   deps: ContentPrepareJobDeps,
   contentRunId: string,
   logger: Logger,
 ): Promise<void> {
-  if (deps.autoPublish === undefined) return;
   try {
+    if (deps.autoPublish === undefined) return;
     const run = await deps.shared.contentRuns.get(contentRunId);
     if (run === null || !run.texts) return;
-    const result = await autoPublishListing(deps.autoPublish, { listingId: run.listingId });
-    if (result.outcome === "off") return;
-    const failed = result.channels.filter((channel) => channel.result === "failed");
-    const fields = {
-      listingId: run.listingId,
-      channels: result.channels.map(({ platform, result: outcome, code }) => ({
-        platform,
-        result: outcome,
-        ...(code === undefined ? {} : { code }),
-      })),
-    };
-    if (failed.length > 0) logger.warn(fields, "auto_publish: un canal no se pudo publicar");
-    else logger.info(fields, "auto_publish: propiedad aprobada y publicada");
+    logAutoPublish(
+      run.listingId,
+      await autoPublishListing(deps.autoPublish, { listingId: run.listingId }),
+      logger,
+    );
   } catch (error) {
     logger.warn({ code: codeOf(error) }, "auto_publish falló: la corrida queda como estaba");
+  } finally {
+    await deps.shared.contentRuns
+      .markAutoPublishDone(contentRunId)
+      .catch((error: unknown) =>
+        logger.warn(
+          { code: codeOf(error) },
+          "no se pudo anotar el auto_publish: al arrancar se revisa de nuevo",
+        ),
+      );
   }
+}
+
+/** Registra el resultado de cada canal de un `auto_publish` (sin datos del aviso). */
+function logAutoPublish(listingId: string, result: AutoPublishResult, logger: Logger): void {
+  if (result.outcome === "off") return;
+  const failed = result.channels.filter((channel) => channel.result === "failed");
+  const fields = {
+    listingId,
+    channels: result.channels.map(({ platform, result: outcome, code }) => ({
+      platform,
+      result: outcome,
+      ...(code === undefined ? {} : { code }),
+    })),
+  };
+  if (failed.length > 0) logger.warn(fields, "auto_publish: un canal no se pudo publicar");
+  else logger.info(fields, "auto_publish: propiedad aprobada y publicada");
+}
+
+/**
+ * Al arrancar (spec F8 §4.10, T12): retoma los `auto_publish` cortados (`resumeCutAutoPublish`,
+ * core) y registra cada uno con solo ids, códigos y resultados. Devuelve cuántos se retomaron.
+ */
+export async function resumeAutoPublishAtStart(
+  deps: ResumeAutoPublishDeps,
+  logger: Logger,
+  now?: Date,
+): Promise<number> {
+  const results = await resumeCutAutoPublish(deps, now === undefined ? {} : { now });
+  for (const item of results) {
+    if (item.outcome === "resumed") logAutoPublish(item.listingId, item.result, logger);
+    else if (item.outcome === "failed") {
+      logger.warn(
+        { listingId: item.listingId, code: item.code },
+        "no se pudo retomar un auto_publish cortado: queda para el operador",
+      );
+    } else if (item.reason === "touched") {
+      logger.info(
+        { listingId: item.listingId },
+        "auto_publish cortado: la propiedad ya tiene publicaciones nuevas, no se retoma",
+      );
+    }
+  }
+  return results.filter((item) => item.outcome === "resumed").length;
 }
 
 /**

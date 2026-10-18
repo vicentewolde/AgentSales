@@ -227,7 +227,11 @@ async function portalSteps(
   }
 }
 
-/** Si la última pausa de la publicación la pidió la propiedad (`byListing`). */
+/**
+ * Si la última pausa de la publicación la pidió la propiedad (`byListing`): su `status_changed` a
+ * `paused`, o, si un sync la pausó justo mientras la propiedad la pausaba, el evento que lo anotó
+ * después (`sync` con `byListing`, F8-T12).
+ */
 async function pausedByListing(
   locked: LockedRepositories,
   publicationId: string,
@@ -235,6 +239,7 @@ async function pausedByListing(
   const events = await locked.publications.listEvents(publicationId);
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
+    if (event?.type === "sync" && event.payload.byListing === true) return true;
     if (event?.type === "status_changed" && event.toStatus === "paused") {
       return event.payload.byListing === true;
     }

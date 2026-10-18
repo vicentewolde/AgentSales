@@ -153,6 +153,11 @@ export type TokenRefreshReport = {
    * Mercado Libre) o quedaron en `error` (credenciales ilegibles o incompletas).
    */
   failed: { accountId: string; code: string; retriable: boolean }[];
+  /**
+   * Las que no se empezaron porque se acabó el tiempo del lote (F8-T12, `budgetMs`): van en la
+   * siguiente corrida.
+   */
+  deferred: string[];
 };
 
 /**
@@ -160,21 +165,35 @@ export type TokenRefreshReport = {
  * las cuentas de Instagram y de Portal conectadas a las que les toca según su política. Una cuenta
  * que falla no corta las demás: sin el par de Mercado Libre, las de Portal a las que les toca
  * quedan en `failed` (`MERCADOLIBRE_NOT_CONFIGURED`, no reintentable) sin cambiar, y el lote sigue.
- * Con la señal disparada (apagado) no empieza otra cuenta.
+ * Con la señal disparada (apagado) no empieza otra cuenta. Con `budgetMs` (F8-T12, spec F8 §4.10),
+ * pasado ese tiempo desde que empezó no empieza otra: las que faltan quedan en `deferred` para la
+ * siguiente corrida (así un lote largo no se cruza con el reintento de un job que venció).
  */
 export async function refreshAccountTokens(
   deps: RefreshAccountTokensDeps,
-  { signal }: { signal?: AbortSignalLike } = {},
+  { signal, budgetMs }: { signal?: AbortSignalLike; budgetMs?: number } = {},
 ): Promise<TokenRefreshReport> {
-  const report: TokenRefreshReport = { refreshed: [], expired: [], skipped: 0, failed: [] };
+  const report: TokenRefreshReport = {
+    refreshed: [],
+    expired: [],
+    skipped: 0,
+    failed: [],
+    deferred: [],
+  };
+  const now = deps.now ?? (() => new Date());
+  const startedAt = now().getTime();
   const accounts = (await deps.platformAccounts.list(ALL_SCOPE)).filter(
     (account) =>
       REFRESHABLE_PLATFORMS.has(account.platform) &&
       account.status === "connected" &&
       account.hasCredentials,
   );
-  for (const account of accounts) {
+  for (const [index, account] of accounts.entries()) {
     if (signal?.aborted) break;
+    if (budgetMs !== undefined && now().getTime() - startedAt >= budgetMs) {
+      report.deferred = accounts.slice(index).map((pending) => pending.id);
+      break;
+    }
     try {
       const result = await refreshConnected(deps, account, { force: false, signal });
       if (result.outcome === "refreshed") report.refreshed.push(account.id);

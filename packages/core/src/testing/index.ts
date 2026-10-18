@@ -90,3 +90,7 @@ export {
   type SlideTemplateCall,
 } from "./slides.js";
 export { createInMemoryUserRepositories, type InMemoryUserRepositories } from "./users.js";
+export {
+  createInMemoryWorkerHeartbeatRepository,
+  type InMemoryWorkerHeartbeatRepository,
+} from "./worker-heartbeats.js";

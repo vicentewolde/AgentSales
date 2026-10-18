@@ -1,4 +1,4 @@
-import type { HealthReport } from "@agentsales/core";
+import { type HealthReport, workerStatusText } from "@agentsales/core";
 import type { Command } from "commander";
 import { apiHint, createHealthFetcher, type HealthFetcher } from "../api-client.js";
 import type { Colors } from "../colors.js";
@@ -74,6 +74,12 @@ export async function runStatus(
       ...(report.checks === undefined
         ? [c.dim("  El detalle lo ve el administrador: agentsales login")]
         : checks),
+      // El worker según su latido (F8-T12).
+      ...(report.worker === undefined
+        ? []
+        : [
+            `  ${report.worker?.running ? c.green("✓") : c.yellow("⚠")} ${"worker".padEnd(8)} ${workerStatusText(report.worker)}`,
+          ]),
     ].join("\n"),
     exitCode: ok ? 0 : 1,
   };

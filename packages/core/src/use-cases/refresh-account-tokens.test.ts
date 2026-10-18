@@ -424,6 +424,7 @@ describe("refreshAccountToken · vencimiento y errores", () => {
       expired: [],
       skipped: 0,
       failed: [],
+      deferred: [],
     });
     expect(calls).toEqual([]);
     expect(mlCalls).toEqual([]);
@@ -819,6 +820,7 @@ describe("refreshAccountTokens · lote", () => {
         { accountId: network.id, code: "IG_UNAVAILABLE", retriable: true },
         { accountId: corrupt.id, code: "CREDENTIALS_UNREADABLE", retriable: false },
       ],
+      deferred: [],
     });
     expect(calls).toEqual(["IGAA-token", "malo-5", "IGAA-red"]);
     expect((await platformAccounts.get(recent.id))?.status).toBe("connected");
@@ -838,8 +840,40 @@ describe("refreshAccountTokens · lote", () => {
       expired: [],
       skipped: 1,
       failed: [],
+      deferred: [],
     });
     expect(calls).toHaveLength(1);
+  });
+
+  it("pasado el tiempo del lote no empieza otra cuenta: las que faltan van en deferred (F8-T12)", async () => {
+    const { calls, deps, add } = setup();
+    const first = await add({ externalAccountId: "1" });
+    const second = await add({ externalAccountId: "2" });
+    const third = await add({ externalAccountId: "3" });
+    // El reloj avanza 3 min con cada refresco: tras el segundo ya pasaron los 4 min del lote.
+    const base = (deps.now ?? (() => new Date()))().getTime();
+    let elapsed = 0;
+    const slow: RefreshAccountTokensDeps = {
+      ...deps,
+      now: () => new Date(base + elapsed),
+      instagram: {
+        async refresh(accessToken, options) {
+          elapsed += 3 * 60_000;
+          return deps.instagram.refresh(accessToken, options);
+        },
+      },
+    };
+
+    const report = await refreshAccountTokens(slow, { budgetMs: 4 * 60_000 });
+
+    expect(report.refreshed).toEqual([first.id, second.id]);
+    expect(report.deferred).toEqual([third.id]);
+    expect(calls).toHaveLength(2);
+    // La siguiente corrida sigue con la que faltó (las otras ya no les toca).
+    elapsed = 0;
+    const next = await refreshAccountTokens(slow, { budgetMs: 4 * 60_000 });
+    expect(next.refreshed).toEqual([third.id]);
+    expect(next.deferred).toEqual([]);
   });
 
   it("con la señal disparada no empieza otra cuenta", async () => {
@@ -918,6 +952,7 @@ describe("refreshAccountTokens · lote", () => {
       expired: [mlRejected.id],
       skipped: 2,
       failed: [{ accountId: mlDown.id, code: "ML_UNAVAILABLE", retriable: true }],
+      deferred: [],
     });
     expect(calls).toEqual(["IGAA-token"]);
     expect(mlCalls).toEqual([ML_OLD.refreshToken, "TG-vencido-13", "TG-caido-14"]);
@@ -951,6 +986,7 @@ describe("refreshAccountTokens · lote", () => {
       expired: [],
       skipped: 1,
       failed: [{ accountId: mlDue.id, code: "MERCADOLIBRE_NOT_CONFIGURED", retriable: false }],
+      deferred: [],
     });
     expect(calls).toEqual(["IGAA-token"]);
     expect(await platformAccounts.get(mlDue.id)).toEqual(before);

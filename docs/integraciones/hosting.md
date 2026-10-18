@@ -16,6 +16,7 @@ Las secciones 3 (OAuth) y 5 (Medios) de la plantilla se reinterpretan: la 3 trat
 - **Respaldos:** `pg_dump` desde el worker a un prefijo `backups/` de R2 con regla de expiración. El plan gratis de R2 (10 GB, 1 M clase A, 10 M clase B, salida gratis) sobra (DOC). Debian trixie solo trae `postgresql-client-17`; para Neon 18 hay que instalar `postgresql-client-18` desde PGDG (existe para Debian 12 y 13, amd64 y arm64; DOC).
 - **Cron:** basta con `pg-boss schedule` en el worker (ya lo usa `db.backup`). Con el worker 24/7 desaparece el problema de ADR-0007 de los cron perdidos mientras estaba apagado.
 - **Demo gratis (sección 13, 2026-10-18):** lo único gratis que aguanta el worker es una VM Oracle Always Free Ampere A1 (hoy **2 OCPU/12 GB**, no 4/24) en Santiago, con Postgres en la misma VM; Render, Koyeb, Cloud Run, e2-micro de Google y Hugging Face (Docker exige plan de pago) no sirven, y Fly.io no tiene nada gratis. De `agentpey`, `.cl`, `.app`, `.dev` y `getagentpey.com` están libres; **`agentpey.com` ya está inscrito** (2026-09-13).
+- **Despliegue en Fly (sección 14, 2026-10-18):** `fly.toml` completo, comandos de `flyctl`, la acción de GitHub fijada por SHA, la etiqueta y el digest de `node`, PGDG y ffmpeg dentro de la imagen, con lo NO VERIFICADO al final (14.8).
 - **Riesgo principal:** el worker pica ≈ 1 GB al hacer un reel con ffmpeg y Chromium a la vez; en máquinas de 1 GB la falta de memoria (OOM) es probable. Medirlo antes de elegir tamaño (sección 8).
 
 ## 2. Requisitos de cuenta y app (por proveedor)
@@ -525,3 +526,387 @@ Dominio:
 2. ¿Prefieres administrar una VM propia (US$0, más trabajo, riesgo de reclamación) o pagar centavos por día de demo en Fly (sin administración)?
 3. ¿`agentpey.com`, inscrito el 2026-09-13 en Name.com con DNS de Vercel, es tuyo? Si no, ¿te sirve `agentpey.cl`?
 4. ¿Autorizas un ADR para dejar Postgres en la VM de la demo (distinto de ADR-0007)?
+
+## 14. Fly.io para el despliegue (F8-T10 y T11)
+
+Ronda del **2026-10-18** (tercera del día) para escribir el `Dockerfile` (T10) y el `fly.toml` con el flujo de despliegue (T11), spec `docs/specs/fase-8-en-internet.md` §4.7 y §4.15. Misma convención: **DOC** = leído en la página oficial (o en la API pública del registro: Docker Hub, GitHub, índice de PGDG); **INFERENCIA** = deducido; **NO VERIFICADO** = no lo dice la doc o no se pudo comprobar sin cuenta. Sin cuentas ni llamadas autenticadas: solo lecturas públicas. Fuentes y fecha en 14.9. Lo que ya estaba verificado en las secciones 1 a 13 no se repite.
+
+### 14.0 Correcciones a secciones anteriores
+
+- **`swap_size_mb` es una clave de la raíz de `fly.toml`, no de `[[vm]]`** (DOC). Aplica a las máquinas de toda la app, no por grupo de procesos (INFERENCIA: la doc no permite indicarlo por grupo). La sección 2.1 lo dejaba ambiguo.
+- **El `shared-cpu-1x` admite hasta 2 GB** (DOC: la memoria máxima es `2 GB × tamaño compartido` y la mínima `256 MB × tamaño`, en múltiplos de 256 MB). Un worker de 2 GB puede ser `cpus = 1` y no hace falta pasar a `2x` como suponía la tabla 2.9; el precio de 1x/2 GB no está verificado (calculadora).
+- **La versión de `postgresql-client-18` en `trixie-pgdg` es `18.6-1.pgdg13+2`**, no `18.6-3`: lo que lista el directorio `pool/` (sección 8) incluye también construcciones de otras suites (`-testing`, `-snapshot`). El índice `dists/trixie-pgdg/main/binary-{amd64,arm64}/Packages` (leído hoy; `Release` del 2026-10-15) solo trae `18.6-1.pgdg13+2`, `18.4-1.pgdg13+1` y `18.3-1.pgdg13+1` (DOC).
+- **`/api/health` hoy responde siempre 200** (`apps/api/src/app.ts`, "Siempre 200: el estado va en el cuerpo"; `ok` o `degraded`). Solo no responde 200 si el proceso no contesta. La pregunta del 503 se contesta igual en 14.1 por si eso cambia.
+
+### 14.1 `fly.toml` completo (dos procesos, una imagen)
+
+Los comandos de `[processes]` y de `release_command` son **ejemplos**: los reales los fija T10 según lo que compile `tsconfig.build.json`. Todo lo demás sigue la sintaxis de la doc (DOC).
+
+```toml
+app = "agentsales"          # nombre único en toda Fly; NO VERIFICADO que esté libre (se ve al crear la app)
+primary_region = "gru"      # São Paulo; define también dónde se crean las máquinas nuevas
+kill_signal = "SIGTERM"     # por defecto es SIGINT (DOC)
+kill_timeout = 45           # segundos; defecto 5, máximo 300 (DOC). El worker espera 30 s (spec §4.10)
+swap_size_mb = 512          # raíz del archivo; swap en las máquinas de la app
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]                       # solo lo no secreto; los secretos van por `fly secrets`
+  NODE_ENV = "production"
+  PUBLIC_URL = "https://agentsales.agentpey.com"
+  API_HOST = "0.0.0.0"      # Fly Proxy exige escuchar en 0.0.0.0 o [::], no en 127.0.0.1 (DOC)
+  API_PORT = "8080"
+  CLIENT_IP_HEADER = "Fly-Client-IP"
+  PUBLISH_MODE = "dry-run"
+
+[processes]
+  api = "node apps/api/dist/server.js"          # ejemplo
+  worker = "node apps/worker/dist/worker.js"    # ejemplo
+
+[deploy]
+  strategy = "rolling"                          # es el defecto
+  release_command = "node packages/db/dist/migrate.js"   # ejemplo (migraciones)
+  release_command_timeout = "5m"                # defecto 5 minutos
+  [deploy.release_command_vm]                   # sin esto hereda el tamaño de la máquina más grande
+    cpu_kind = "shared"
+    cpus = 1
+    memory = "512mb"
+
+[http_service]
+  processes = ["api"]       # solo la API recibe tráfico; el worker queda sin servicio
+  internal_port = 8080      # debe ser el puerto en que escucha el proceso (defecto 8080)
+  force_https = true
+  auto_stop_machines = "stop"   # "off" | "stop" | "suspend"; defecto "off"
+  auto_start_machines = true    # defecto true
+  min_machines_running = 0      # defecto 0; solo cuenta con auto_stop activo, y solo en la región primaria
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/health"
+    protocol = "http"
+    grace_period = "30s"    # espera tras arrancar antes del primer chequeo
+    interval = "30s"
+    timeout = "10s"
+    [http_service.checks.headers]
+      Host = "agentsales.agentpey.com"
+      X-Forwarded-Proto = "https"
+
+[[restart]]
+  policy = "on-failure"     # es el defecto: reinicia solo si el proceso sale con código distinto de 0
+  processes = ["worker"]
+
+[[vm]]
+  processes = ["api"]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"
+
+[[vm]]
+  processes = ["worker"]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "1gb"            # "2gb" si la medición de T10 pasa de ≈ 900 MB de pico
+```
+
+Detalle de cada pieza (DOC salvo que se indique):
+
+| Pieza | Sintaxis y reglas |
+|---|---|
+| `[processes]` | `nombre = "comando"`. Servicios, `[[vm]]`, chequeos y `[[restart]]` se dirigen a un grupo con `processes = ["nombre"]`. El comando reemplaza al `CMD` del Dockerfile (el `ENTRYPOINT`, si existe, se mantiene: no poner uno que arranque la app). |
+| `[http_service]` | `processes`, `internal_port` (defecto 8080), `force_https`, `auto_stop_machines` (`"off"`, `"stop"`, `"suspend"`), `auto_start_machines` (booleano, defecto `true`), `min_machines_running` (defecto 0). La doc aconseja activar o desactivar juntos auto-stop y auto-start. |
+| `[[http_service.checks]]` | Campos: `grace_period`, `interval`, `timeout`, `method` (defecto `get`), `path`, `protocol` (`http` defecto, o `https`), `tls_server_name`, `tls_skip_verify`, `headers` (subtabla). **Unidades: milisegundos si no se indica otra, o texto con unidad (`"10s"`).** **La doc no da mínimo ni máximo** para `timeout`, `interval` ni `grace_period` (NO VERIFICADO si hay un tope duro). Espera 2xx y **no sigue redirecciones 301/302** (una redirección cuenta como fallo). El chequeo corre contra el servicio **en la máquina, por la red privada, no contra `<app>.fly.dev`**. |
+| `[[vm]]` | `memory` (`"512mb"`, `"1gb"`; un entero son MB), `cpus` (1, 2, 4, 8 o 16 según el tipo), `cpu_kind` (`shared` o `performance`), `size` (preajuste; el de menor precedencia), `processes`. Un bloque sin `processes` vale para los grupos que ningún otro bloque nombra. Memoria en múltiplos de 256 MB (compartidas). |
+| `kill_signal` / `kill_timeout` | Raíz del archivo. Señales: `SIGTERM`, `SIGQUIT`, `SIGUSR1`, `SIGUSR2`, `SIGKILL`, `SIGSTOP` (el defecto es `SIGINT`). `kill_timeout` en segundos, **máximo 300**. Las apps ya manejan `SIGINT` y `SIGTERM` (`apps/api/src/server.ts`, `apps/worker/src/worker.ts`); se fija `SIGTERM` por claridad con el spec. |
+| `primary_region` | Código de tres letras; define `PRIMARY_REGION` dentro de la máquina y pisa un valor de `[env]`. |
+| `[deploy] release_command` | **Corre en una máquina temporal construida con la imagen nueva**, una vez por intento de despliegue, antes de reemplazar nada. **Hereda variables de entorno, secretos y red**; no tiene volúmenes y su disco no persiste. Pone `RELEASE_COMMAND=1`. Reemplaza al `CMD`; el `ENTRYPOINT` se mantiene. Tamaño por defecto: el de la máquina más grande del grupo por defecto; se fija con `[deploy.release_command_vm]`. Plazo por defecto 5 minutos (`release_command_timeout`). **Si sale con código distinto de 0, el despliegue falla y no avanza** (las máquinas actuales siguen con la versión anterior; DOC de la guía de despliegues sin corte). Si el comando se ejecuta con shell (pipes, `&&`) o se parte por palabras: NO VERIFICADO. |
+| `[deploy] strategy` | `rolling` (defecto: reemplaza de una en una), `immediate` (todas a la vez, sin esperar chequeos), `canary` (una nueva primero; **no admite volúmenes**), `bluegreen` (una nueva junto a cada vieja y luego cambia el tráfico; **exige al menos un chequeo**). Con una sola máquina por región el defecto pasa a `rolling`. `max_unavailable` (solo `rolling`; defecto 0,33). Para este caso, `rolling` (el worker no tiene chequeo, así que `bluegreen` no aplica). |
+| `[[restart]]` | `policy` = `always`, `never` o `on-failure` (defecto); `retries`; `processes`. |
+
+**¿Un chequeo HTTP que responde 503 saca la máquina del balanceo?** (DOC)
+
+- **Sí, si es un chequeo de servicio** (`[[http_service.checks]]` o `[[services.http_checks]]`): "if a Machine fails its service check, it will be marked as unhealthy by the proxy, and it won't be routed to until its checks start passing". El chequeo espera 2xx, así que un 503 es un fallo (la doc no nombra el 503, pero dice que cualquier cosa distinta de 2xx falla).
+- **No afectan al enrutamiento** los `[checks]` de la raíz ni los `machine_checks`; estos últimos solo corren en despliegues `rolling` y `canary` y, si fallan, detienen el despliegue.
+- Un chequeo que falla **no reinicia ni detiene** la máquina; solo la deja fuera del reparto (DOC).
+- En un despliegue, Fly espera a que cada máquina quede sana (`--wait-timeout`, DOC de `fly deploy`).
+- **Con una sola máquina de la API** y el chequeo en rojo, el proxy no tiene a quién enrutar: qué respuesta ve el cliente (¿503/502 de Fly?) es NO VERIFICADO; se prueba en el despliegue de prueba (14.6).
+- **Consecuencia para nosotros:** cada check de `/health` tiene un tope de 25 s (`DEFAULT_CHECK_TIMEOUT_MS`) y la ruta responde 200 aunque la base falle. Con `timeout = "10s"`, una base despertando o caída que haga tardar `/health` más de 10 s dejaría **la máquina fuera del balanceo** (el cliente vería el error de Fly y no el `DB_UNAVAILABLE` de la API). Dos salidas (decisión del operador, 14.10): (a) un `timeout` mayor que 25 s, sin saber si Fly admite ese valor, o (b) un chequeo de vida sin base (por ejemplo `GET /api/health?live=1` o una ruta aparte) que solo diga que el proceso responde. Se recomienda (b) para el chequeo de Fly y dejar `/health` completo para `doctor` y el monitor externo. Es un cambio de código, que no es de esta nota.
+
+**`auto_stop_machines` y el worker** (DOC): Fly Proxy detiene máquinas cuando "la app tiene capacidad de sobra", mide la carga por la `soft_limit` de concurrencia (defecto 20) y detiene **como máximo una máquina por región por pasada**, cada pocos minutos; nunca crea ni destruye máquinas. Las máquinas que no pasan por un servicio (el worker, sin `[http_service]`) no las gestiona el proxy: ni las detiene ni las arranca (la doc lo dice de las apps con servicios fuera de la red privada, y el worker no tiene servicio; INFERENCIA razonable). Con auto-stop activo y sin tráfico, la API se detiene sola (con una máquina en la región, si no tiene tráfico). **Cualquier sondeo externo a `/api/health` (monitor, pestaña del panel) cuenta como tráfico y la mantiene encendida** (INFERENCIA). Una máquina detenida no cobra CPU ni RAM, solo el disco raíz; con `"suspend"` la reanudación toma cientos de milisegundos contra ≈ 2 s o más desde `stop`, con salvedades (no evaluadas; se usa `"stop"`, que además es compatible con el swap).
+
+### 14.2 `flyctl`: comandos copiables
+
+Reemplaza `agentsales` por el nombre real de la app. Instalación y `fly auth login` los hace el operador. `fly` y `flyctl` son el mismo programa. Última versión estable: **v0.4.118** (publicada 2026-10-14, DOC de GitHub).
+
+**Crear la app sin desplegar**
+
+```bash
+fly apps create agentsales --org personal      # --name / --org / --network / --save (DOC); no genera fly.toml
+```
+- Alternativa: `fly launch --no-deploy --copy-config --name agentsales --region gru --dockerfile Dockerfile` (DOC de las banderas: `--no-deploy` omite el despliegue "after fly launch creates and configures it"; `--copy-config` usa el `fly.toml` existente sin preguntar). Con un `fly.toml` escrito a mano, `fly apps create` es más directo. `fly launch` puede proponer cambios, por eso se prefiere la primera.
+- `fly config save -a agentsales` baja el `fly.toml` de una app que ya existe (DOC).
+
+**Secretos sin que queden en el historial**
+
+```bash
+# El archivo vive fuera del repo (por ejemplo ~/.agentsales-secrets/produccion.env), permiso 600, formato NOMBRE=VALOR
+fly secrets import --stage -a agentsales < ~/.agentsales-secrets/produccion.env
+# o desde el portapapeles, sin archivo:
+pbpaste | fly secrets import --stage -a agentsales
+```
+- `fly secrets import` lee de **stdin** pares `NAME=VALUE` (DOC). Banderas: `--app`, `--stage` ("Set secrets but skip deployment for machine apps"), `--detach`. Nada de valores en la línea de comandos, así que no quedan en el historial ni en `ps`.
+- **Usar `--stage` en el primer despliegue y mientras el worker deba seguir apagado:** sin `--stage`, `fly secrets set/import` "actualiza cada máquina" y **la reinicia** (DOC); con `--stage` los secretos quedan guardados y los toman las máquinas que se inicien o actualicen después. Para aplicarlos a la versión actual sin reconstruir: `fly secrets deploy`.
+- Los secretos llegan como variables de entorno al arrancar la máquina y **también al `release_command`** (DOC: hereda secretos). No están disponibles durante el build de la imagen (para eso hay "build secrets", no usados).
+- Si se pega el contenido en el chat o se lee con Claude, deja de ser secreto: el operador los carga a mano.
+- Con valores de varias líneas o con comillas, cómo interpreta `import` el formato: NO VERIFICADO (la doc solo dice `NAME=VALUE`). Los nuestros son de una línea.
+
+**Dominio propio y certificado**
+
+```bash
+fly certs add agentsales.agentpey.com -a agentsales   # muestra "las opciones de configuración DNS aplicables" (DOC)
+fly certs setup agentsales.agentpey.com -a agentsales # vuelve a mostrar las instrucciones
+fly certs check agentsales.agentpey.com -a agentsales # valida DNS y estado (mismo formato que `certs show`)
+fly certs show agentsales.agentpey.com -a agentsales
+```
+- **Registros DNS (DOC):** para un subdominio sirven `CNAME` (apunta "a un nombre `.fly.dev` único de la app") o `A` + `AAAA` (hacia las IP de la app; `fly ips list`). La doc recomienda A/AAAA "para la mayoría de las conexiones directas" y dice que `CNAME` "funciona bien para subdominios (como `app.example.com`)". El apex con `CNAME` es problemático (no es nuestro caso).
+- **Ojo con el destino del `CNAME`:** la doc dice que "cada app tiene un destino CNAME único que se muestra en el panel" y en `fly certs setup`. **No asumir que es `agentsales.fly.dev`**: copiar el valor exacto que imprime Fly (NO VERIFICADO su forma).
+- **Emisión (Let's Encrypt):** para emitir o renovar Fly necesita verificar el dominio con al menos una de estas: un registro **AAAA** hacia la app, un **CNAME `_acme-challenge`** (DNS-01) o un **TXT `_fly-ownership`**. La doc no dice que un `CNAME` hacia `.fly.dev` solo baste (aunque un `CNAME` se resuelve hasta el AAAA de la app: INFERENCIA, y es el caso habitual). **Plan:** crear el `CNAME` que muestra `fly certs add`, correr `fly certs check` y, si queda pendiente, agregar también el `_acme-challenge` o el `_fly-ownership` que Fly indique. Para tener el certificado listo antes de mover tráfico, usar el `_acme-challenge`.
+- La app necesita IP públicas: en el **primer despliegue con un servicio público** Fly asigna sola una **IPv6 dedicada** y una **IPv4 compartida** (DOC; gratis). Si no, `fly ips allocate-v6` y `fly ips allocate-v4 --shared`. La IPv4 dedicada es opcional (`fly ips allocate-v4`, US$2 al mes). Fly no asigna IP automáticas a una app sin servicio público.
+- **DNS de Vercel:** el registro se agrega en el DNS de `agentpey.com` en Vercel (el DNS de Vercel no hace de proxy; no leí su doc: NO VERIFICADO). Si hubiera registros `CAA` en `agentpey.com`, deben permitir a Let's Encrypt (`letsencrypt.org`; confirmar con `fly certs show`).
+- Certificados: 10 de un solo nombre gratis (sección 2.1).
+
+**Desplegar**
+
+```bash
+fly deploy --remote-only --ha=false -a agentsales
+```
+- `--remote-only` construye en un constructor remoto de Fly, sin Docker local; la doc dice que **ya es el defecto**. `--local-only` usa el Docker local.
+- **`--ha=false` en el primer despliegue** (DOC: `--ha` crea máquinas de repuesto, defecto `true`). La doc de despliegue dice que el primero crea **una o dos máquinas por grupo de procesos** según haya servicios o volúmenes; dos workers con la misma cola no es lo que queremos en la demo, y dos APIs duplican el costo. Que la bandera `--ha` exista y su defecto vienen de la doc de `fly deploy`; que `--ha=false` deje exactamente una máquina por grupo lo dicen los foros de Fly (NO VERIFICADO en la doc oficial): se comprueba con `fly machine list`.
+- Otras banderas útiles (DOC): `--strategy`, `--config`, `--image`, `--image-label`, `--detach`, `--wait-timeout`, `--release-command-timeout`, `--no-cache`, `--build-arg`.
+
+**Logs, estado y versiones**
+
+```bash
+fly logs -a agentsales                 # en vivo; --no-tail (-n) imprime y sale; -m <id_máquina>; -r <región>; --json
+fly status -a agentsales               # máquinas y su estado
+fly machine list -a agentsales         # ids (-q solo ids; -j JSON)
+fly releases -a agentsales --image     # versiones con la imagen de cada una
+```
+
+**Volver a una versión anterior** (DOC, guía de rollback: no existe un comando `rollback`; se vuelve a desplegar una imagen anterior)
+
+```bash
+fly releases -a agentsales --image                          # elegir la última buena
+fly deploy -a agentsales --image registry.fly.io/agentsales:deployment-<ID>   # sin reconstruir
+# para dejar etiquetas fáciles: fly deploy --image-label v1.2.3, y luego --image registry.fly.io/agentsales:v1.2.3
+```
+- Advertencias de la guía: **no deshace migraciones** (por eso las migraciones son aditivas, spec §4.7); **no deshace cambios de `fly.toml` ni de secretos**; Fly **no garantiza** conservar las imágenes; hay que verificar con logs y estado, no solo con el mensaje de éxito. El `release_command` de la imagen anterior se ejecuta otra vez (INFERENCIA: corre "una vez por intento de despliegue"): con migraciones aditivas no hace nada.
+
+**Encender y apagar para una demo**
+
+```bash
+fly machine list -a agentsales                                 # anotar el id del worker (y el de la API)
+fly machine stop  <id_worker> -a agentsales --signal SIGTERM --timeout 45
+fly machine start <id_worker> -a agentsales
+# la API: se apaga sola sin tráfico y arranca con el primer pedido; para forzarlo igual:
+fly machine stop  <id_api> -a agentsales --signal SIGTERM --timeout 45
+```
+- **`fly machine stop/start` es lo que conviene** (DOC): una máquina detenida no cobra CPU ni RAM, solo su disco raíz (US$0,15 por GB al mes; el tamaño sale de la imagen más unos ajustes de containerd). Con una imagen de ≈ 2–3 GB (INFERENCIA) son ≈ US$0,3–0,45 al mes por máquina detenida. "Iniciar y detener es mucho más rápido que crear y destruir" y las máquinas detenidas son más baratas que las encendidas (DOC).
+- **`fly scale count worker=0` destruye las máquinas** del grupo (DOC: "Machines get destroyed when the target number of Machines is lower than the existing total"). Para volver a tener una, `scale count` ya no puede clonar (no queda ninguna): hay que correr `fly deploy`, que "siembra" máquinas nuevas (de a dos por proceso si no se usa `--ha=false`). Sale US$0 en disco pero se pierde el id y se repite un despliegue: **no se recomienda para una demo**; sí sirve para dejar la app sin costo si no se usará en meses.
+- `fly machine stop`: banderas `--signal` (defecto `SIGINT`), `--timeout` ("segundos antes de enviar SIGKILL"), `--wait-timeout`. Si `kill_signal`/`kill_timeout` del `fly.toml` se aplican a este comando: NO VERIFICADO; por eso se pasan explícitos.
+- **El worker no lo arranca nadie solo:** sin servicio, el proxy no lo enciende (INFERENCIA, ver 14.1). Hay que arrancarlo con `fly machine start`.
+- **Un despliegue puede volver a encender un worker detenido: NO VERIFICADO.** La doc dice que, desde flyctl 0.1.119, un despliegue **no reinicia las máquinas detenidas de servicios con auto-stop/auto-start** (reciben la configuración y siguen detenidas); no dice nada de un grupo sin servicio. Regla segura: tras cada `fly deploy` en modo demo, correr `fly machine list` y detener el worker si quedó encendido. Se comprueba en 14.6.
+- Cómo distinguir la máquina del worker en `fly machine list`: la doc no describe las columnas (NO VERIFICADO que haya una de "grupo de procesos"); se sabe por el comando o con `fly machine status <id>`.
+
+**Token solo de despliegue**
+
+```bash
+fly tokens create deploy -a agentsales -n github-deploy -x 4380h | pbcopy   # queda en el portapapeles, no en pantalla
+```
+- DOC: "crea un token limitado a administrar **una sola app** y sus recursos"; `--app`, `--name` (defecto `flyctl deploy token`), `--expiry` (defecto 175.200 h = **20 años**; la doc recomienda uno más corto). `4380h` ≈ 6 meses (renovar a mano).
+- Se pega en GitHub como secreto `FLY_API_TOKEN` (web: Settings → Secrets and variables → Actions, o `pbpaste | gh secret set FLY_API_TOKEN`; esto último no está verificado aquí). Nunca en el chat.
+- Qué más puede hacer ese token (certificados, secretos, `machine start/stop`): NO VERIFICADO; el flujo de despliegue solo necesita `fly deploy`.
+
+### 14.3 GitHub Actions: `superfly/flyctl-actions/setup-flyctl`
+
+- **Última versión estable: etiqueta `1.6`** (sin `v`; existen además `v1` y `1`, que apuntan a lo mismo). Está en la punta de `master` hoy; es el commit del 2026-04-08 "Merge pull request #108 … chore(setup): update nodejs runtime". La acción corre con **`node24`** (`action.yml`). Ojo: la página de *Releases* de GitHub llega solo hasta `1.5` (2024-02-02); `1.6` es una etiqueta sin Release (lightweight, `object.type = commit`).
+- **SHA del commit de `1.6` (40 caracteres):** `ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1` (se obtuvo con `git/matching-refs/tags`, `tags` y `commits/<sha>` de la API pública de GitHub: las tres coinciden). Para comparar, `1.5` = `fc53c09e1bc3be6f54706524e3b82c4f462f77be`.
+- Entrada `version` (DOC): `latest` por defecto; el README recomienda **fijarla** en producción. Última de flyctl: `0.4.118`.
+- Uso (DOC del README): el token va en la variable `FLY_API_TOKEN` del paso que corre `flyctl`.
+
+```yaml
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+        with:
+          version: 0.4.118
+      - run: flyctl deploy --remote-only --ha=false
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+```
+- `--ha=false` en un despliegue ya existente no cambia el número de máquinas (INFERENCIA, los foros lo describen para el primer despliegue); se puede quitar después del primero.
+- El README usa `@master`; el repo fija por SHA, por eso lo de arriba.
+
+### 14.4 Cabecera de la IP del cliente
+
+- **`Fly-Client-IP`** es el nombre (DOC, "request headers"): "la IP del cliente desde la perspectiva de Fly Proxy"; **la pone Fly Proxy**. Si hay otro proxy delante (Cloudflare con la nube naranja, por ejemplo), trae la IP de ese proxy, no la del cliente, y habría que leer `X-Forwarded-For`. Con Vercel solo como DNS no hay proxy delante.
+- `X-Forwarded-For` "debe tratarse con cuidado para evitar suplantación" (DOC); `X-Forwarded-Port` "puede venir del cliente"; `Fly-Forwarded-Port` y `Fly-Region` también son del proxy. `X-Forwarded-Proto` es `http` o `https`; la doc no dice quién lo pone.
+- **NO VERIFICADO:** que Fly Proxy **sobrescriba** un `Fly-Client-IP` enviado por el cliente (la doc no lo dice; un foro lo da por no falsificable sin prueba). Prueba sin riesgo: `curl -H "Fly-Client-IP: 203.0.113.9" https://agentsales.agentpey.com/api/health` con un log temporal que muestre la cabecera recibida, o contra el sitio de depuración público de Fly que cita un foro (`debug.fly.dev`, no verificado). Hasta entonces, con una sola instancia de la API (spec §3) y límites por IP solo defensivos, el riesgo es bajo.
+
+### 14.5 La imagen (T10)
+
+**(a) `node` para Node 26 (DOC, API pública de Docker Hub, 2026-10-18)**
+
+- Existen `26-bookworm-slim`, `26-trixie-slim`, `26-slim` (que es trixie) y las versiones `26.12.0-*`, `26.12-*`, `26.11.1-*`. Node **26.12.0** es la última 26.x; Node 26 sigue en estado **Current** (publicada el 2026-05-05; la página de versiones no dice cuándo pasa a LTS) (DOC, nodejs.org).
+- **Recomendada: `trixie-slim`** (Debian 13): Playwright 1.63 la soporta, PGDG tiene `postgresql-client-18` para `trixie-pgdg` (c) y el ffmpeg estático necesita glibc ≥ 2.28 (d). `bookworm` también sirve pero es más vieja.
+- **Etiqueta exacta y digest** (la etiqueta `26.12.0-trixie-slim`, subida el 2026-10-14T20:42:19Z; el digest es el del **índice multi-arquitectura**, válido para amd64 y arm64; leído dos veces, por la lista de etiquetas y por la etiqueta sola):
+
+```dockerfile
+FROM node:26.12.0-trixie-slim@sha256:0d1e33586362bb9e608c4e751e7a9e7edb55c9ac11461ed5666af696cc461dd4
+```
+  - Por arquitectura (por si hiciera falta fijar una): amd64 `sha256:d62f13676d530f7edf97782729df69713c8ccfe6631e7f62f9ccab65968719a8`; arm64/v8 `sha256:f6e55fb0e92f7f115549278ab36f68f0659790f5d4fd7cb4446486d8ed70d842`.
+  - Referencia: `26.12.0-bookworm-slim` = `sha256:298992629d69bbd5b2b03ad57094d8e4fcb3a8eeb7c4e25d29de656519568913`.
+  - Fijar el digest congela los parches de seguridad de Debian: hay que subirlo a mano (o con un bot) de vez en cuando (INFERENCIA). La etiqueta con versión (`26.12.0`) y el digest tienen que moverse juntos.
+- **pnpm:** desde Node 25 **Corepack ya no viene con Node** ("distribuido desde la 14.19.0 hasta antes de la 25.0.0", DOC del README de Corepack). Hay que instalar pnpm a propósito (`npm install -g pnpm@11.24.0`, la versión de `packageManager`, o `npm install -g corepack` y `corepack enable`). pnpm 11 admite Node 22, 24 y 26 (DOC). `npm install -g pnpm@…` funciona (INFERENCIA); se prueba en la CI.
+
+**(b) Playwright 1.63 y `--with-deps chromium` (DOC)**
+
+- Requisitos de sistema en la doc de Playwright: Node "latest 22.x, 24.x or 26.x" y Linux **"Debian 12 / 13, Ubuntu 22.04 / 24.04 / 26.04 (x86-64 or arm64)"**. La doc "actual" ya es la de 1.64; la del tag `v1.63.0` (`docs/src/intro-js.md`) dice lo mismo.
+- En el código de `v1.63.0`, `nativeDeps.ts` trae listas de paquetes para `debian12-x64`, `debian13-x64`, `debian12-arm64` y `debian13-arm64` (más Ubuntu 22.04, 24.04 y 26.04). Para `debian13-x64` Chromium pide `libasound2t64`, `libatk-bridge2.0-0t64`, `libatk1.0-0t64`, `libatspi2.0-0t64`, `libcairo2`, `libcups2t64`, `libdbus-1-3`, `libdrm2`, `libgbm1`, `libglib2.0-0t64`, `libnspr4`, `libnss3`, `libpango-1.0-0`, `libx11-6`, `libxcb1`, `libxcomposite1`, `libxdamage1`, `libxext6`, `libxfixes3`, `libxkbcommon0`, `libxrandr2`, y las "tools" (fuentes, `xvfb`, `libfontconfig1`, `libfreetype6`). Es decir, **`--with-deps` también mete `xvfb` y varias fuentes**: la imagen crece (INFERENCIA, tamaño no medido).
+- Alpine y otras con musl **no se soportan** (DOC).
+- Instalar como root en el Dockerfile (la doc: con proxy hay que correr como root). Fijar la carpeta de navegadores: `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` (DOC: se fija al instalar y al ejecutar; `0` los deja en `node_modules`). Hay que dar permiso de lectura si el proceso corre sin root.
+- **No usar `--only-shell`:** Playwright usa `chromium_headless_shell` para lo sin ventana y `--only-shell` salta el Chromium completo (DOC), pero `chromiumStatus()` (`packages/media/src/tools.ts`) pide **los dos** y `doctor` marcaría "no instalado". `playwright install --with-deps chromium` instala ambos.
+- Comando (el mismo de la CI, con la ruta fija): `pnpm --filter @agentsales/media exec playwright install --with-deps chromium`. Playwright es dependencia de `packages/media` y de `packages/publishers`, ambas `1.63.0`.
+- Con Chromium en contenedor Playwright recomienda `--ipc=host` y `--init` (DOC). En Fly no se pasan banderas de Docker; el tamaño de `/dev/shm` y el manejo de procesos zombi con el init de Fly: NO VERIFICADO (se mide en 14.6, junto con el pico de memoria).
+- Limpiar después: `rm -rf /var/lib/apt/lists/*`.
+
+**(c) `postgresql-client-18` desde PGDG (DOC)**
+
+- Debian: PGDG soporta `bookworm` y `trixie` (más `forky` y `sid`) en amd64, arm64, ppc64el y loong64 (trixie en adelante).
+- **Existe** `postgresql-client-18` para `trixie-pgdg` en amd64 y arm64: versión candidata **`18.6-1.pgdg13+2`**, `Depends: libpq5 (>= 18.6), postgresql-client-common (>= 182~), libc6 (>= 2.38), …` (índice `Packages`, leído hoy; `Release` del 2026-10-15). Neon va en 18.6 (sección 2.6), así que cuadra. Para `bookworm-pgdg` también hay versiones de `pgdg12` (pool).
+- **Forma vigente de agregar la clave y el repositorio** (wiki de PostgreSQL y página de descarga para Debian): la clave `https://www.postgresql.org/media/keys/ACCC4CF8.asc` se guarda en **`/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc`** y el repositorio va en `/etc/apt/sources.list.d/pgdg.sources` (formato deb822) con `Signed-By:` apuntando a ese archivo. **La wiki no menciona `/etc/apt/keyrings`.** La alternativa es `apt install -y postgresql-common ca-certificates` y correr `/usr/share/postgresql-common/pgdg/apt.postgresql.org.sh` (la doc no documenta sus banderas, y trae el paquete `postgresql-common` entero con sus dependencias: más pesado).
+
+```dockerfile
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && install -d /usr/share/postgresql-common/pgdg \
+ && curl -fsSL --retry 3 -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+      https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+ && . /etc/os-release \
+ && printf 'Types: deb\nURIs: https://apt.postgresql.org/pub/repos/apt\nSuites: %s-pgdg\nComponents: main\nSigned-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc\n' \
+      "$VERSION_CODENAME" > /etc/apt/sources.list.d/pgdg.sources \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client-18 \
+ && pg_dump --version | grep -q 'pg_dump (PostgreSQL) 18\.' \
+ && rm -rf /var/lib/apt/lists/*
+```
+  - Es el fragmento de la wiki, adaptado: sin `deb-src`, sin la línea `Architectures` (apt usa la de la máquina) y con el nombre de la suite sacado de `/etc/os-release`. Que `VERSION_CODENAME` exista en la imagen `slim` y que apt acepte la clave `.asc` armada en `Signed-By`: INFERENCIA (apt de trixie es 3.x); la CI lo prueba al construir. Conviene dejar anotada la huella de la clave tras la primera descarga (`gpg --show-keys`), para detectar un cambio; no la verifiqué.
+  - **No usar el `postgresql-client` de Debian** (trixie trae el 17): `pg_dump` se niega a volcar un servidor más nuevo (sección 8).
+
+**(d) ffmpeg estático de la CI dentro de la imagen (DOC)**
+
+- La URL y el sha256 de `.github/workflows/ci.yml` son los correctos: el release `autobuild-2026-08-31-13-27` de BtbN (publicado 2026-08-31T13:28:30Z) ofrece `ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz` de 126.600.656 bytes con **`sha256:182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a`**, igual al de la CI.
+- El README de BtbN: los builds de Linux apuntan a RHEL/CentOS 8 (**glibc 2.28, kernel 4.18**) "y todo lo más nuevo"; `linux64` = x86_64; los `gpl` incluyen libx264 y libx265 (el reel de F2 los necesita); la variante `gpl` sin `shared` es la de ejecutables estáticos. Retención: "el último build de cada mes se conserva dos años" y los últimos 14 diarios: el de fin de agosto **caduca a fines de agosto de 2028** (INFERENCIA, 2 años desde la publicación); conviene copiarlo a un bucket propio si el proyecto va a vivir más.
+- Debian trixie trae glibc 2.41 y bookworm 2.36 (INFERENCIA de memoria; ambas ≥ 2.28), y la CI corre el mismo archivo en Ubuntu 24.04 (glibc 2.39). **Sirve igual dentro de la imagen** salvo que algo falte en la imagen `slim`. Lo que hay que instalar para descomprimirlo es **`xz-utils`** (la imagen `slim` no suele traerlo: INFERENCIA) y `ca-certificates` y `curl` para bajarlo.
+- Para `linux/arm64` (no se usa, D1 dejó fuera Oracle): `ffmpeg-n9.0.1-11-ge47273f4d9-linuxarm64-gpl-9.0.tar.xz`, `sha256:e2dd447c8a47849c5812d87e54a47b20ae0f3603d38989440f4a5fe1af8755b1`.
+
+```dockerfile
+ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz
+ARG FFMPEG_SHA256=182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
+ && curl -fsSL --retry 3 -o /tmp/ffmpeg.tar.xz "$FFMPEG_URL" \
+ && echo "$FFMPEG_SHA256  /tmp/ffmpeg.tar.xz" | sha256sum -c - \
+ && mkdir -p /opt/ffmpeg && tar -xJf /tmp/ffmpeg.tar.xz -C /opt/ffmpeg --strip-components=1 \
+ && rm /tmp/ffmpeg.tar.xz && rm -rf /var/lib/apt/lists/*
+ENV PATH="/opt/ffmpeg/bin:${PATH}"
+RUN ffmpeg -hide_banner -version | head -1 && ffprobe -hide_banner -version | head -1
+```
+- La CI nueva debe repetir la última línea al construir la imagen (también en `docker run … ffmpeg -version`) para cerrar el NO VERIFICADO de abajo. `ci.yml` y el `Dockerfile` repiten URL y sha256: un cambio de versión se hace en los dos.
+
+### 14.6 Cómo probar sin riesgo (esta tanda)
+
+Todo con `PUBLISH_MODE=dry-run`, una app de Fly desechable y sin credenciales de corredores. Lo corre el operador.
+
+1. **App de prueba:** `fly apps create agentsales-prueba`, un `fly.toml` copia con ese nombre, secretos de una rama de Neon y un bucket aparte (sección 8, punto 3). Se destruye al terminar: `fly apps destroy agentsales-prueba`.
+2. **Chequeo 503/lento:** con el worker apagado, detener el cómputo de Neon o apuntar a una base inexistente y ver (a) qué responde la URL pública con la máquina fuera del balanceo y (b) si `fly deploy` se detiene. Cierra "qué ve el cliente".
+3. **Despliegue con el worker detenido:** `fly machine stop <worker>`, `fly deploy`, `fly machine list`: ¿volvió a `started`? Cierra la duda de 14.2.
+4. **`release_command` fallido:** una migración que sale con código 1 en la app de prueba; comprobar que las máquinas siguen con la versión anterior.
+5. **Certificado:** `fly certs add` con un subdominio de prueba y mirar qué registro pide Vercel y si un `CNAME` solo basta; `fly certs check`.
+6. **Cabecera de IP:** la prueba de 14.4.
+7. **Imagen:** `docker build` y `docker run --memory 1g`/`2g`, preparar un reel con Chromium a la vez, `docker stats` (cierra el pico de memoria de T10); `pg_dump --version`, `ffmpeg -version`, `pnpm -s cli doctor` dentro de la imagen.
+8. **Token de despliegue:** crear uno con `-x` corto (`24h`) para probar `deploy.yml` y borrarlo; `fly tokens list`/`revoke` no se revisaron (NO VERIFICADO el nombre exacto).
+
+### 14.7 Riesgos y términos relevantes
+
+- **Cobro por intentos de despliegue:** el `release_command` crea una máquina temporal facturada por segundo (INFERENCIA, no leído).
+- **El primer `fly deploy` crea máquinas por grupo:** sin `--ha=false` pueden ser dos API y dos workers (DOC: "una o dos por grupo"); dos workers sobre la misma cola duplican consumo de CPU y llamadas a Neon.
+- **Constructor remoto:** la imagen con Chromium y PGDG se construye en servidores de Fly (no revisé límites de tiempo ni de tamaño del constructor ni del registro de Fly: NO VERIFICADO).
+- **Digest fijado en `FROM`:** protege de cambios sorpresa, pero hay que mantenerlo (14.5).
+- **El token de despliegue vive 20 años por defecto:** fijar `-x`.
+
+### 14.8 NO VERIFICADO (esta tanda)
+
+- Si hay un tope duro para `timeout`, `interval` y `grace_period` de los chequeos (la doc no da ninguno), y si Fly admite un `timeout` de 30 s.
+- Qué respuesta ve el cliente cuando la única máquina de la API queda fuera del balanceo por un chequeo en rojo.
+- Qué `Host` envía el chequeo por defecto (la doc solo dice que va por la red privada). El `Host` que fijamos es opcional: `GET /health` no pasa por `hostGuard` (`apps/api/src/security.ts`).
+- Si un despliegue vuelve a encender un worker detenido (grupo sin servicio).
+- Que el proxy no arranque nunca un grupo sin servicio.
+- Si `fly machine stop` usa `kill_signal` y `kill_timeout` del `fly.toml`.
+- Si un `CNAME` a `.fly.dev` basta para emitir el certificado, la forma exacta del destino único del `CNAME`, y la doc de Vercel DNS (CAA, registros).
+- Que Fly Proxy sobrescriba un `Fly-Client-IP` enviado por el cliente.
+- Que `--ha=false` deje una máquina por grupo; precio de `shared-cpu-1x` con 2 GB; tamaño del disco efímero; `/dev/shm` y procesos zombi en Fly.
+- Qué columnas muestra `fly machine list` (grupo de procesos) y el nombre de la clave de metadatos del grupo.
+- Cómo interpreta `fly secrets import` valores con varias líneas o comillas, y si `release_command` pasa por un shell.
+- Qué más puede hacer un token de despliegue (certificados, secretos, `machine start/stop`).
+- Que `VERSION_CODENAME` exista en la imagen `slim` y que la clave `.asc` armada funcionen en `node:26.12.0-trixie-slim` (la CI de T10 lo prueba), la huella de la clave de PGDG y el tamaño final de la imagen.
+- Que el ffmpeg estático corra en `trixie-slim` sin librerías extra (la CI de T10 lo prueba con `ffmpeg -version`); la fecha en que BtbN borra el release (INFERENCIA: agosto de 2028).
+- Fecha de paso de Node 26 a LTS (la página de versiones no la da).
+
+### 14.9 Fuentes (consultadas el 2026-10-18)
+
+Fly.io:
+
+- `fly.toml` (`[processes]`, `[http_service]`, `[[http_service.checks]]`, `[[vm]]`, `swap_size_mb`, `kill_signal`, `kill_timeout`, `primary_region`, `[deploy]`, `[[restart]]`): https://docs.fly.io/reference/configuration
+- Chequeos de salud y enrutamiento: https://docs.fly.io/reference/health-checks
+- Despliegues sin corte (chequeos, `release_command`, estrategias): https://docs.fly.io/blueprints/seamless-deployments/
+- Autostop y autostart: https://docs.fly.io/launch/autostop-autostart
+- Desplegar (qué crea el primer despliegue, `release_command`, `--image`): https://docs.fly.io/launch/deploy/
+- Escalar (`fly scale count`, destruir vs detener): https://docs.fly.io/apps/scale-count/ y https://docs.fly.io/flyctl/scale-count/ y https://docs.fly.io/launch/scale-count/
+- Volver a una versión: https://docs.fly.io/blueprints/rollback-guide
+- Tamaños de máquina: https://docs.fly.io/machines/guides-examples/machine-sizing/
+- Precios (máquinas detenidas): https://docs.fly.io/about/pricing/
+- Secretos: https://docs.fly.io/apps/secrets/
+- Dominio propio y certificados: https://docs.fly.io/networking/custom-domain/
+- IP públicas del servicio: https://docs.fly.io/networking/services/
+- Dirección de escucha: https://docs.fly.io/networking/app-services/
+- Cabeceras de la petición (`Fly-Client-IP`): https://docs.fly.io/networking/request-headers
+- Cambio de flyctl 0.1.119 (máquinas detenidas en despliegues): https://community.fly.io/t/fly-deploy-changes-for-process-groups-and-auto-scaled-services/16368/1 (anuncio de Fly en el foro; oficial pero no es la doc)
+- Comandos: https://docs.fly.io/flyctl/apps-create/ , https://docs.fly.io/flyctl/launch/ , https://docs.fly.io/flyctl/deploy/ , https://docs.fly.io/flyctl/secrets-set/ , https://docs.fly.io/flyctl/secrets-import/ , https://docs.fly.io/flyctl/certs-add/ , https://docs.fly.io/flyctl/tokens-create-deploy/ , https://docs.fly.io/flyctl/machine-stop/ , https://docs.fly.io/flyctl/machine-start/ , https://docs.fly.io/flyctl/machine-list/ , https://docs.fly.io/flyctl/releases/ , https://docs.fly.io/flyctl/logs/
+- Última versión de flyctl: https://api.github.com/repos/superfly/flyctl/releases/latest
+- Foros usados solo como pista (no oficial): lectura de `--ha=false` en https://community.fly.io/t/how-deploy-to-just-one-machine/12510 ; `Fly-Client-IP` y suplantación en https://community.fly.io/t/understanding-fly-client-ips-for-ip-blocking-in-nginx-reverse-proxy/27233
+
+GitHub Actions:
+
+- Repositorio y README: https://github.com/superfly/flyctl-actions
+- Etiquetas y commits (API pública): https://api.github.com/repos/superfly/flyctl-actions/tags , https://api.github.com/repos/superfly/flyctl-actions/git/matching-refs/tags/ , https://api.github.com/repos/superfly/flyctl-actions/commits/ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 , https://api.github.com/repos/superfly/flyctl-actions/releases
+- `action.yml` de `setup-flyctl` en ese commit: https://raw.githubusercontent.com/superfly/flyctl-actions/ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1/setup-flyctl/action.yml
+
+Imagen:
+
+- Docker Hub, etiquetas de `node` (API pública): https://hub.docker.com/v2/repositories/library/node/tags/26.12.0-trixie-slim , https://hub.docker.com/v2/repositories/library/node/tags/26.12.0-bookworm-slim , https://hub.docker.com/v2/repositories/library/node/tags?page_size=100&name=26
+- Node.js, versiones: https://nodejs.org/en/about/previous-releases
+- Corepack (ya no se distribuye desde Node 25): https://github.com/nodejs/corepack#readme
+- pnpm, instalación y compatibilidad con Node: https://pnpm.io/installation
+- Playwright, requisitos: https://playwright.dev/docs/intro y https://raw.githubusercontent.com/microsoft/playwright/v1.63.0/docs/src/intro-js.md
+- Playwright, dependencias por distribución en 1.63.0: https://raw.githubusercontent.com/microsoft/playwright/v1.63.0/packages/playwright-core/src/server/registry/nativeDeps.ts
+- Playwright, navegadores y `PLAYWRIGHT_BROWSERS_PATH`: https://playwright.dev/docs/browsers ; Docker: https://playwright.dev/docs/docker
+- PGDG: https://www.postgresql.org/download/linux/debian/ , https://wiki.postgresql.org/wiki/Apt , https://apt.postgresql.org/pub/repos/apt/dists/ , https://apt.postgresql.org/pub/repos/apt/dists/trixie-pgdg/Release , https://apt.postgresql.org/pub/repos/apt/dists/trixie-pgdg/main/binary-amd64/Packages , https://apt.postgresql.org/pub/repos/apt/dists/trixie-pgdg/main/binary-arm64/Packages , https://apt.postgresql.org/pub/repos/apt/pool/main/p/postgresql-18/
+- ffmpeg (BtbN): https://github.com/BtbN/FFmpeg-Builds y https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/autobuild-2026-08-31-13-27
+
+Del repo (solo lectura, sin `.env`): `.github/workflows/ci.yml` (ffmpeg y Playwright), `apps/api/src/app.ts`, `apps/api/src/health.ts`, `apps/api/src/security.ts`, `packages/media/src/tools.ts`.
+
+### 14.10 Preguntas para el operador
+
+1. **Chequeo de Fly:** ¿se agrega al API una ruta de vida sin base para el chequeo de Fly (recomendado: evita sacar la máquina del balanceo cuando Neon despierta o se cae), o se deja `/api/health` con un `timeout` largo? Es un cambio de código fuera de esta nota.
+2. **Fly con `--ha=false`:** ¿una máquina por proceso en la demo (recomendado), o dos para la API?
+3. **Rollback:** ¿se etiqueta cada despliegue con `--image-label` (por ejemplo, el SHA corto del commit) para volver fácil?
+4. **Vencimiento del token:** ¿6 meses (`4380h`) o más corto, con aviso en el calendario?
+5. **Copia del ffmpeg:** BtbN conserva el build de fin de mes solo dos años; ¿se copia a un bucket propio ahora o se deja para cuando se acerque la fecha?

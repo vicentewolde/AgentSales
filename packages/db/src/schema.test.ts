@@ -63,6 +63,8 @@ const EXPECTED_TABLES = [
   "publications",
   "sessions",
   "users",
+  // F8-T12 (0011): el latido del worker.
+  "worker_heartbeats",
 ];
 
 /**
@@ -106,7 +108,7 @@ describe("migraciones", () => {
     expect(sqlEnums(sql)).toEqual(EXPECTED_ENUMS);
   });
 
-  it("crean las 15 tablas del modelo de datos", () => {
+  it("crean las 16 tablas del modelo de datos", () => {
     const tables = [...sql.matchAll(/CREATE TABLE "(\w+)"/g)].map((match) => match[1]).sort();
 
     expect(tables).toEqual(EXPECTED_TABLES);
@@ -127,6 +129,16 @@ describe("migraciones", () => {
     );
     expect(sql).toContain(`ALTER TABLE "publications" ADD COLUMN "remote_state" jsonb;`);
     expect(sql).toContain(`ALTER TABLE "publications" ADD COLUMN "listing_source_hash" text;`);
+  });
+
+  it("el latido del worker y el auto_publish cortado; las corridas terminadas no quedan como cortadas (0011)", () => {
+    expect(sql).toContain(`CREATE TABLE "worker_heartbeats"`);
+    expect(sql).toContain(
+      `ALTER TABLE "content_runs" ADD COLUMN "auto_publish_done_at" timestamp with time zone;`,
+    );
+    expect(sql).toContain(
+      `UPDATE "content_runs" SET "auto_publish_done_at" = COALESCE("finished_at", now()) WHERE "status" = 'succeeded';`,
+    );
   });
 
   it("mantienen las llaves de la importación idempotente y del seed", () => {

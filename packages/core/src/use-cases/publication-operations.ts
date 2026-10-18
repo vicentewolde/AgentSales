@@ -387,10 +387,27 @@ export async function operatePublication(
       const current = await locked.publications.get(publicationId);
       if (current !== null && current.status === move.to && live) {
         // Un sync leyó Mercado Libre justo después del cambio y ya lo aplicó: lo pedido está hecho.
+        // Si la pausa la pidió la propiedad, se anota igual (F8-T12, spec F6 §4.8): sin la marca,
+        // reanudar la propiedad no la reactivaría.
+        const marker =
+          byListing && operation === "pause"
+            ? {
+                type: "sync" as const,
+                actor,
+                payload: { mode: modeOf(found.dryRun), operation, byListing: true, raced: true },
+              }
+            : undefined;
+        // En vivo, la llamada siempre trae el estado remoto: la marca va con él, como un `sync`.
         const publication =
           remote === undefined
             ? current
-            : await locked.publications.setRemoteState(publicationId, remote);
+            : await locked.publications.setRemoteState(
+                publicationId,
+                remote,
+                marker === undefined
+                  ? undefined
+                  : { ...marker, payload: { ...marker.payload, remote } },
+              );
         const listingBackToReady =
           operation === "close" && !keepListing
             ? await listingBackToReadyIfLast(locked, found.listingId)

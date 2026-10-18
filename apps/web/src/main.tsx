@@ -1,3 +1,5 @@
+// Primero: zod sin `eval`, antes de que se cree cualquier esquema (F8-T10).
+import "./zod-config.js";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";

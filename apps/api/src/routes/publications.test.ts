@@ -650,6 +650,28 @@ describe("respuestas sin secretos", () => {
     }
   });
 
+  it("una lectura (sync) solo deja ver la marca de la pausa de la propiedad, nunca lo leído (F8-T12)", async () => {
+    const { t, app } = await setup({ publishMode: "live" });
+    const id = t.byFormat("post")?.id ?? "";
+    for (const byListing of [true, false]) {
+      await t.publications.addEvent(id, {
+        type: "sync",
+        actor: "operator",
+        payload: {
+          remote: { status: "paused", subStatus: ["secreto-remoto"] },
+          ...(byListing ? { byListing: true, raced: true } : {}),
+        },
+      });
+    }
+
+    const body = (await (await app.request(`/publications/${id}/events`)).json()) as {
+      events: { type: string; payload: Record<string, unknown> }[];
+    };
+    const syncs = body.events.filter((event) => event.type === "sync");
+    expect(syncs.map((event) => event.payload)).toEqual([{ byListing: true }, {}]);
+    expect(JSON.stringify(body)).not.toContain("secreto-remoto");
+  });
+
   it("la vista de una publicación nunca lleva progress ni externalId", async () => {
     const { t, post } = await setup({ publishMode: "live" });
     const id = t.byFormat("post")?.id ?? "";

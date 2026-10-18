@@ -35,10 +35,12 @@ export function internetAccess(publicUrl: string): ApiAccess {
 
 /**
  * El chequeo de salud del proveedor puede llegar con otro `Host` (la IP de la máquina, NO
- * VERIFICADO en Fly): `GET /health` no pasa por `hostGuard`. Sin sesión no revela nada (F7).
+ * VERIFICADO en Fly): `GET /health` y `GET /health/live` (el de Fly, F8-T11) no pasan por
+ * `hostGuard`. Sin sesión no revelan nada (F7).
  */
+const HEALTH_PATHS: ReadonlySet<string> = new Set(["/health", "/health/live"]);
 const isHealthCheck = (method: string, path: string): boolean =>
-  (method === "GET" || method === "HEAD") && routePathOf(path) === "/health";
+  (method === "GET" || method === "HEAD") && HEALTH_PATHS.has(routePathOf(path));
 
 /**
  * Las vueltas de servidor a servidor (spec F8 §4.3): Meta manda un formulario sin `Origin` (quitar

@@ -8,6 +8,7 @@ import { captureLogger } from "../../test/content-fixture.js";
 import { registerJobs, type WorkerBoss } from "./registry.js";
 import {
   enqueueTokensRefresh,
+  TOKENS_REFRESH_BUDGET_MS,
   TOKENS_REFRESH_KEY,
   TOKENS_REFRESH_QUEUE,
   TOKENS_REFRESH_SCHEDULE,
@@ -124,6 +125,13 @@ async function setup(options: { mercadoLibreConfigured?: boolean } = {}) {
 }
 
 describe("tokens.refresh", () => {
+  it("el lote deja de empezar cuentas un minuto antes de que venza el job (F8-T12)", () => {
+    expect(TOKENS_REFRESH_BUDGET_MS).toBe(4 * 60_000);
+    expect(TOKENS_REFRESH_BUDGET_MS).toBeLessThan(
+      (TOKENS_REFRESH_QUEUE.expireInSeconds ?? 0) * 1000 - 30_000,
+    );
+  });
+
   it("la cola es exclusive con clave fija y el cron diario lleva la misma clave", async () => {
     const { bossCalls } = await setup();
 

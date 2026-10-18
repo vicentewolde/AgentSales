@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** lote C de F8 (T08): la CLI habla con un servidor (`login --api https://…` guarda la dirección con la sesión, `AGENTSALES_API_URL` manda sobre ella, solo `https://` salvo local, el token solo viaja al servidor que lo emitió); `whoami`, `status` y `doctor` dicen a cuál, y `doctor` remoto no revisa las herramientas del worker en el Mac
-**Siguiente paso:** `/tarea F8-T10 F8-T11 F8-T12` (lote D: build, Fly.io y el worker ante reinicios)
+**Última tarea:** lote D de F8 (T10 a T12): el build sin tests y la imagen (ffmpeg, Chromium y `pg_dump` 18), la CI que la construye, la arranca y abre el panel sin errores de la CSP, `fly.toml` con la API y el worker, el flujo de despliegue que solo corre desde `main` en verde, la guía `docs/10-despliegue.md`; y el worker con latido, el `auto_publish` cortado que se retoma, el tope de 4 min de `tokens.refresh` y la pausa de Portal que no pierde `byListing`
+**Siguiente paso:** tus pasos del lote D (abajo: la medición de memoria, la prueba del flujo de despliegue y revisar la guía); después `/tarea F8-T13` (lote E: respaldo a R2)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -23,6 +23,12 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [x] La carga real desde el **panel** (2026-10-18, F8-T07): en Chrome, la misma carga sintética con "Una carpeta" y "Solo simular": `POST /api/imports/uploads` 201, los archivos directo a R2, `start` 202, el worker la terminó (1 creada y 2 medios, en simulación) y no quedó nada bajo `imports/`. Los dos intentos anteriores no llegaron a subir porque no se pasó de la página Entrar (no fue una falla del panel)
   - [ ] **La base de producción no tiene la migración `0010`:** se aplica al desplegar (T11, `release_command`) o con `ENV_FILE=.env.production pnpm db:migrate` antes de usar la API contra producción
 - [ ] **Opcional, al terminar el lote C** (con `pnpm dev`; te aviso antes): `pnpm -s cli whoami` debe decir `Servidor: http://127.0.0.1:8787 (la API local)`, y `AGENTSALES_API_URL=http://agentsales.agentpey.com pnpm -s cli status` debe rechazar el `http://` sin llamar a nadie. Contra el servidor de verdad se prueba en T21 (`login --api https://agentsales.agentpey.com`)
+- **Al terminar el lote D** (detalle en `docs/10-despliegue.md`):
+  - [ ] **La medición de memoria del worker (T10):** con `pnpm dev` (te aviso antes), preparar una propiedad con reel sin textos (`pnpm -s cli prepare <id> --no-texts`) y medir el pico del worker con Chromium y ffmpeg, para elegir 1 o 2 GB en `fly.toml` (hoy 2 GB)
+  - [ ] **El Environment `production` en GitHub** (T11, `docs/10-despliegue.md` paso 3, punto 1): solo la rama `main`. Sin él, el token de Fly quedaría al alcance de cualquier rama
+  - [ ] **La prueba del flujo de despliegue (T11):** después del merge y con el Environment creado, lanzar `gh workflow run deploy.yml --ref <una rama que no es main>` (sin `FLY_API_TOKEN` todavía): GitHub debe rechazarla por la regla del Environment (o el flujo, con "Solo se despliega desde main"). Es el único paso que lo prueba sin desplegar
+  - [ ] **Revisar la guía** `docs/10-despliegue.md` (T11) y decirme lo que no se entienda
+  - [ ] **Opcional:** agregar `CI / image` a los checks obligatorios de `main` (GitHub → Settings → Branches → la regla de `main`), como `CI / check`
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups`, los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
@@ -57,7 +63,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 | **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
 | **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (la CLI y el panel probados contra R2 real; los dos buckets verificados) | #142 |
 | **Lote C** · T08 CLI: la dirección del servidor | ✅ terminada (probada contra la API en proceso; contra el servidor real, en T21) | (este PR) |
-| **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ⏳ pendiente | |
+| **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ✅ código terminado (falta lo tuyo: la medición de memoria, la prueba del flujo y revisar la guía) | (este PR) |
 | **Lote E** · T13 Respaldo a R2 | ⏳ pendiente | |
 | **Lote F** · T14 Límites por IP · T15 Doble factor (core, base y API) · T16 Doble factor en el panel y la CLI | ⏳ pendiente | |
 | **Lote G** · T17 Instagram de verdad y las vueltas de Meta · T18 Páginas públicas | ⏳ pendiente | |
@@ -131,23 +137,21 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
-- **Para F8 (despliegue):** la API depende de `@agentsales/media` (por el logo) y con eso instala también `playwright` (el paquete, no el navegador). Al desplegar, separar el logo en un paquete propio o aceptar la dependencia.
+- **Imagen (lote D):** la API sigue dependiendo de `@agentsales/media` (por el logo) y trae `playwright`; con una sola imagen para la API y el worker (D7) da igual (deuda de F7 cerrada así). El ffmpeg de la imagen y de la CI sale de BtbN, que conserva sus builds unos dos años: copiarlo a un bucket propio antes de que lo borren. La imagen fija Node por digest y Debian no se actualiza solo: subir la etiqueta y el digest de vez en cuando.
 - **Panel, el selector al recargar (F7-T17):** mientras cargan los corredores, el filtro todavía no se aplica y la primera consulta sale sin él (se repite al llegar la lista). No muestra nada ajeno (es del administrador), pero pide dos veces.
 - **Logos reemplazados (F7-T14):** al subir otro logo, el anterior queda como medio del corredor y en R2 (no se borra). Ocupa poco; limpiarlo junto con los medios huérfanos cuando haga falta.
-- **Para F8 (T12):** un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
-- **Para F8 (de F6-T08):** si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec F6 §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5). (El alcance de `/tracking` y `/agenda` en el servidor se cerró en F7-T09.)
+- **De F6-T08:** (la pausa del sync sin `byListing` se cerró en F8-T12.) La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5). (El alcance de `/tracking` y `/agenda` en el servidor se cerró en F7-T09.)
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
 - **Después del MVP (spec F7, D7), campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
 - **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
 - **Cuando el panel edite definiciones, rangos:** la base no impide un `min_value` mayor que `max_value` ni un rango en un campo que no es `number`; hoy lo detecta el validador (`FIELD_CONFIG_INVALID`). Si el panel permite editar definiciones, sumar `CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)`.
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda para F8 (D5 del spec F1).
 - **F8, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
-- **F8, refresco de tokens:** el job `tokens.refresh` expira a los 5 min y la expiración no corta el handler. Con una cuenta por corredor sobra; con muchas cuentas (llamadas de hasta 30 s), subir el tope o dejar de empezar cuentas nuevas pasados unos 4 min, para que un reintento no se cruce con el intento anterior.
 - **F8, vuelta de Mercado Libre:** el `state` es de un solo uso desde F7-T10, pero `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática (`/oauth/mercadolibre/callback`): F8 registra en la app una segunda dirección de su dominio real, y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
 - **F8, cuentas (T17):** el `state` de Instagram no es de un solo uso (vale sus 10 min; hoy basta con que la cookie se borre): guardar el nonce usado, como el de Mercado Libre. (Quién conecta cada corredor se cerró en F7-T08: conectar es del administrador.)
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
-- **F8, `doctor` remoto (T08):** del servidor muestra lo que da `/health`; ffmpeg, Chromium y `pg_dump` del servidor no los revisa la CLI (spec §4.5): **T10 debe asegurarlos en la imagen y en su arranque en la CI**.
+- **F8, `doctor` remoto (T08):** del servidor muestra lo que da `/health`; ffmpeg, Chromium y `pg_dump` del servidor no los revisa la CLI (spec §4.5): los asegura la imagen y su prueba en la CI (`image`, T10).
 - **Subidas directas (lote B de F8):**
   - El `PUT` del navegador (`xhrTransport`, `apps/web/src/api/upload.ts`) no tiene prueba automática (jsdom no sube a R2); se prueba en la carga real de T07.
   - Si el proceso de la API se corta justo entre pasar la carga a `queued` y encolarla, la carga queda en cola sin job (el mismo riesgo que tenía `requestImport` desde F1): se ve en el historial y se vuelve a importar.
