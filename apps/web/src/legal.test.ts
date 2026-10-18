@@ -27,6 +27,19 @@ describe("páginas públicas", () => {
     },
   );
 
+  it("los datos del responsable están completos; solo falta la fecha de aprobación", () => {
+    for (const name of PAGES) {
+      const html = page(name);
+      expect(html).toContain('href="mailto:vicente@agentpey.com"');
+      // Lo único que queda entre corchetes es la fecha, que se pone al aprobar los textos.
+      const pending = html.match(/\[[A-ZÁÉÍÓÚÑ ]+\]/g) ?? [];
+      expect(pending).toEqual(["[FECHA DE APROBACIÓN]"]);
+    }
+    expect(page("privacidad")).toContain("Vicente Wolde Cepeda");
+    expect(page("privacidad")).toContain("15 días hábiles");
+    expect(page("terminos")).toContain("sin costo durante 7 días");
+  });
+
   it("la privacidad dice qué datos, para qué, los proveedores y cómo pedir el borrado", () => {
     const html = page("privacidad");
     for (const text of [
