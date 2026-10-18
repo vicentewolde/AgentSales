@@ -42,4 +42,20 @@ describe("el archivo de sesión", () => {
       expect(store.read()).toBeNull();
     }
   });
+
+  it("guarda el servidor de login --api; una sesión de F7 (sin él) se sigue leyendo", () => {
+    const home = mkdtempSync(join(tmpdir(), "agentsales-sesion-"));
+    dirs.push(home);
+    const store = createFileSessionStore(cliSessionPath(home));
+    const remote = {
+      token: "t",
+      email: "a@ejemplo.cl",
+      savedAt: "x",
+      apiUrl: "https://agentsales.agentpey.com",
+    };
+    store.write(remote);
+    expect(store.read()).toEqual(remote);
+    writeFileSync(store.path, JSON.stringify({ token: "t", email: "a@ejemplo.cl", savedAt: "x" }));
+    expect(store.read()).toEqual({ token: "t", email: "a@ejemplo.cl", savedAt: "x" });
+  });
 });

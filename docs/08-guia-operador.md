@@ -63,7 +63,8 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 |---|---|
 | Claude propone algo fuera del spec | "Fuera de alcance; anótalo en el backlog del roadmap" |
 | Es la primera vez con F7, olvidaste tu contraseña o te bloqueaste | `pnpm auth:admin --email tu@correo.cl` en tu terminal (no necesita `pnpm dev`): crea tu administrador o te da un enlace nuevo, en el portapapeles. Ábrelo con `pnpm dev` corriendo y elige tu contraseña. Después, `pnpm -s cli login --email tu@correo.cl` para la CLI (Claude la usa con tu sesión) |
-| Un comando dice "Inicia sesión" (`AUTH_REQUIRED`) | La sesión de la CLI venció (30 días, o 7 sin uso) o se cerró: `pnpm -s cli login --email tu@correo.cl` en tu terminal |
+| Un comando dice "Inicia sesión" (`AUTH_REQUIRED`) | La sesión de la CLI venció (30 días, o 7 sin uso) o se cerró: `pnpm -s cli login --email tu@correo.cl` en tu terminal (con un servidor, agrega `--api https://<dominio>`) |
+| Quieres usar la CLI contra el servidor | `pnpm -s cli login --email tu@correo.cl --api https://agentsales.agentpey.com` en tu terminal: la dirección queda guardada con la sesión y todos los comandos van allí (`whoami` dice cuál). Para volver a la API del Mac, `pnpm -s cli login --email tu@correo.cl` sin `--api`. Para una prueba puntual, `AGENTSALES_API_URL=https://… pnpm -s cli status` manda sobre la guardada (el token no viaja a un servidor que no lo emitió); ojo: un `login` con la variable puesta deja guardada esa dirección, como `--api`. Solo `https://`, salvo `localhost` y `127.0.0.1` |
 | `pnpm check` falla y no se arregla | Pídele diagnosticar la causa raíz antes de intentar más cambios; si persiste, `/clear` y retoma con `/tarea` |
 | Una API externa no se comporta como dice el doc | Pide al subagente `integraciones` verificar y actualizar las notas; luego ajusta el spec |
 | Quieres cambiar el stack o un patrón | `/adr "..."` primero, código después |

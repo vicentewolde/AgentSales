@@ -31,6 +31,7 @@ import {
 import { createApiClient } from "../src/api-client.js";
 import { createColors } from "../src/colors.js";
 import type { Io } from "../src/output.js";
+import { localServerUrl } from "../src/server.js";
 import type { PutFile } from "../src/upload.js";
 
 export const PORT = 8787;
@@ -112,8 +113,17 @@ export function harness(options: HarnessOptions = {}) {
   // La sesión de la CLI: la bitácora registra `actor: cli` (F7-T10).
   const app = options.anonymous ? created : withAdminSession(created, { client: "cli" });
   const requests: string[] = [];
+  const sent: { origin: string; path: string; token: string | null }[] = [];
   const fetchApp = async (input: string | URL | Request, init?: RequestInit) => {
-    const url = input instanceof Request ? input.url : String(input);
+    const original = new URL(input instanceof Request ? input.url : String(input));
+    // A qué servidor iba y con qué token (F8-T08): uno remoto se atiende con la misma app local.
+    const authorization = new Headers(init?.headers).get("authorization");
+    sent.push({
+      origin: original.origin,
+      path: routePathOf(original.pathname),
+      token: authorization?.replace(/^Bearer /, "") ?? null,
+    });
+    const url = `${localServerUrl(PORT)}${original.pathname}${original.search}`;
     const method = init?.method ?? "GET";
     // Sin el prefijo `/api`: los tests nombran las rutas como la tabla de permisos.
     requests.push(`${method} ${routePathOf(new URL(url).pathname)}`);
@@ -121,7 +131,7 @@ export function harness(options: HarnessOptions = {}) {
     const response = await app.request(url, init);
     return options.afterResponse?.(url, method, response) ?? response;
   };
-  const client = createApiClient(PORT, { fetch: fetchApp });
+  const client = createApiClient(localServerUrl(PORT), { fetch: fetchApp });
   const own = <T>(name: keyof AppDeps, repository: T): T => {
     if (options.deps?.[name] !== undefined) {
       throw new Error(`harness: ${name} vino en options.deps; usa el del test`);
@@ -140,7 +150,16 @@ export function harness(options: HarnessOptions = {}) {
     /** El `PUT` de la CLI a R2, contra el doble de la API (lee el archivo y lo "sube"). */
     putFile: memoryPutFile(storage),
     /** Un cliente con el token de una sesión (el de `agentsales login`). */
-    clientWith: (token: string) => createApiClient(PORT, { fetch: fetchApp, token }),
+    clientWith: (token: string) =>
+      createApiClient(localServerUrl(PORT), { fetch: fetchApp, token }),
+    /** Un cliente para otro servidor (F8-T08): la misma API en proceso; `sent` dice a cuál iba. */
+    clientAt: (server: string, token?: string) =>
+      createApiClient(
+        server,
+        token === undefined ? { fetch: fetchApp } : { fetch: fetchApp, token },
+      ),
+    /** Cada pedido: el servidor al que iba, la ruta y el token que llevaba. */
+    sent,
     io,
     out,
     err,

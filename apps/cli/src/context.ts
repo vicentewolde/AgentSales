@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { copyToClipboard } from "@agentsales/config";
-import { type ApiClient, createApiClient } from "./api-client.js";
+import { type ApiClient, createApiClient, invalidServerClient } from "./api-client.js";
 import { colors } from "./colors.js";
 import { apiPort, loadEnvironment } from "./env.js";
 import type { Io } from "./output.js";
+import { clientTarget, localServerUrl, resolveServer, type ServerResolution } from "./server.js";
 import { createFileSessionStore, type SessionStore } from "./session.js";
 
 /** Lo que la CLI pide a la terminal: confirmar, leer la entrada estándar y abrir un enlace. */
@@ -36,10 +37,24 @@ export type Terminal = {
 export type CliContext = Io &
   Terminal & {
     /**
-     * Cliente de la API en el puerto del `.env`, con la sesión de `agentsales login`; se crea al
-     * usarlo (tras cargar el `.env`).
+     * Cliente de la API del servidor de `server()`, con la sesión de `agentsales login` si es la de
+     * ese servidor; se crea al usarlo (tras cargar el `.env`).
      */
     api: () => ApiClient;
+    /**
+     * A qué servidor habla (spec F8 §4.5): `AGENTSALES_API_URL`, el guardado con la sesión o la API
+     * local del `.env`.
+     */
+    server: () => ServerResolution;
+    /** La API local del `.env` (`http://127.0.0.1:<API_PORT>`) y su puerto. */
+    localServer: () => string;
+    localPort: () => number;
+    /** `AGENTSALES_API_URL` de la terminal, leída antes de cargar el `.env`. */
+    envApiUrl: string | undefined;
+    /** Un cliente para un servidor dado (ya validado), con un token o sin él (`login`). */
+    apiFor: (server: string, token?: string) => ApiClient;
+    /** El cliente de un destino ya elegido (`clientTarget`, `logoutTarget`). */
+    clientFrom: (target: ReturnType<typeof clientTarget>) => ApiClient;
     /** La sesión de la CLI (`~/.agentsales/cli-session.json`, F7). */
     session: SessionStore;
     /**
@@ -149,7 +164,27 @@ function openUrl(url: string): void {
 
 export function createContext(): CliContext {
   const session = createFileSessionStore();
+  // `AGENTSALES_API_URL` se lee antes de cargar el `.env`: es de la terminal (una prueba puntual),
+  // no de un archivo de entorno.
+  const envApiUrl = process.env.AGENTSALES_API_URL;
+  const localPort = () => apiPort(loadEnvironment());
+  const localServer = () => localServerUrl(localPort());
+  const server = (): ServerResolution =>
+    resolveServer({
+      envUrl: envApiUrl,
+      session: session.read(),
+      localPort: localPort(),
+    });
+  const apiFor = (url: string, token?: string) =>
+    createApiClient(url, token === undefined ? {} : { token });
+  const clientFrom = (target: ReturnType<typeof clientTarget>) =>
+    target.ok ? apiFor(target.url, target.token) : invalidServerClient(target.error.message);
   return {
+    envApiUrl,
+    server,
+    localPort,
+    localServer,
+    apiFor,
     readPassword,
     copyToClipboard,
     session,
@@ -160,7 +195,8 @@ export function createContext(): CliContext {
     print: (text) => console.log(text),
     printError: (text) => console.error(text),
     colors,
-    api: () => createApiClient(apiPort(loadEnvironment()), { token: session.read()?.token }),
+    api: () => clientFrom(clientTarget(server(), session.read()?.token)),
+    clientFrom,
     cwd: process.env.INIT_CWD ?? process.cwd(),
   };
 }

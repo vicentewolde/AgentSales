@@ -7,6 +7,7 @@ import { createHealthFetcher, type HealthFetcher } from "../../api-client.js";
 import type { Colors } from "../../colors.js";
 import type { CliContext } from "../../context.js";
 import { type EnvResult, loadEnvironment } from "../../env.js";
+import type { ServerResolution } from "../../server.js";
 import {
   type CheckItem,
   checkAnthropicModel,
@@ -15,6 +16,7 @@ import {
   checkChromium,
   checkClaude,
   checkEnv,
+  checkEnvironment,
   checkFfmpegTool,
   checkInstagram,
   checkLlmKey,
@@ -22,6 +24,7 @@ import {
   checkNode,
   checkPgDump,
   checkPublishMode,
+  checkServer,
   checkServices,
   checkUfSource,
   type Level,
@@ -41,12 +44,52 @@ export type DoctorDeps = {
   /** Dónde está `pg_dump` (`findPgTool`, con `PG_BIN_DIR`); lanza si no está. */
   findPgDump?: (binDir: string | undefined) => string;
   now?: () => Date;
+  /**
+   * A qué servidor habla la CLI (spec F8 §4.5). Sin él, la API local de siempre. Con uno remoto,
+   * `doctor` no revisa el `.env` ni las herramientas del worker en este Mac (son del servidor).
+   */
+  server?: ServerResolution;
 };
 
 export type DoctorReport = { items: CheckItem[]; exitCode: 0 | 1 };
 
+/** Lo que la CLI revisa de un servidor remoto: el servidor por `/health`, del Mac solo Node. */
+async function runRemoteDoctor(deps: DoctorDeps, server: ServerResolution): Promise<CheckItem[]> {
+  const services = await checkServices(deps.fetchHealth, true);
+  const report = services.report;
+  const publishMode = checkPublishMode(report?.publishMode, undefined, true);
+  const environment = checkEnvironment(report, true);
+  const autoPublish = checkAutoPublish(report);
+  const llmKey = checkLlmKey(report);
+  const backup = checkBackup(report, (deps.now ?? (() => new Date()))());
+  const withoutHint = ({ hint: _hint, ...item }: CheckItem): CheckItem => item;
+  return [
+    checkNode(deps.nodeVersion),
+    checkServer(server),
+    ...(environment ? [environment] : []),
+    ...(publishMode ? [publishMode] : []),
+    ...(autoPublish ? [autoPublish] : []),
+    ...(llmKey
+      ? [{ ...llmKey, hint: "agrega ANTHROPIC_API_KEY a los secretos del servidor" }]
+      : []),
+    ...services.items,
+    // El respaldo del servidor no se arregla con `pnpm db:backup` del Mac.
+    ...(backup ? [withoutHint(backup)] : []),
+    {
+      name: "Herramientas",
+      level: "ok",
+      detail:
+        "ffmpeg, Chromium, pg_dump y la IA son del servidor: no se revisan desde aquí (los trae su imagen)",
+    },
+  ];
+}
+
 /** Revisa el entorno completo. Sale con 1 si algún ítem es error; las advertencias no cuentan. */
 export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
+  if (deps.server?.ok && deps.server.target.remote) {
+    const items = await runRemoteDoctor(deps, deps.server);
+    return { items, exitCode: items.some((item) => item.level === "error") ? 1 : 0 };
+  }
   const services = await checkServices(deps.fetchHealth);
   const publishMode = checkPublishMode(
     services.report?.publishMode,
@@ -65,9 +108,12 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const findPgDump =
     deps.findPgDump ??
     ((binDir: string | undefined) => findPgTool("pg_dump", binDir === undefined ? {} : { binDir }));
+  const environment = checkEnvironment(services.report, false);
   const items: CheckItem[] = [
     checkNode(deps.nodeVersion),
+    ...(deps.server === undefined ? [] : [checkServer(deps.server)]),
     checkEnv(deps.env),
+    ...(environment ? [environment] : []),
     ...(publishMode ? [publishMode] : []),
     ...(autoPublish ? [autoPublish] : []),
     ...(instagram ? [instagram] : []),
@@ -121,14 +167,20 @@ export function renderDoctor(report: DoctorReport, c: Colors): string {
 export function register(program: Command, ctx: CliContext): void {
   program
     .command("doctor")
-    .description("Revisa el entorno: .env, API, base, almacenamiento, cola y herramientas")
+    .description(
+      "Revisa el entorno: .env, API, base, almacenamiento, cola y herramientas (con un servidor remoto, el servidor)",
+    )
     .action(async () => {
+      const server = ctx.server();
+      const remote = server.ok && server.target.remote;
       const report = await runDoctor({
+        server,
         nodeVersion: process.version,
         env: loadEnvironment(),
         fetchHealth: createHealthFetcher(ctx.api()),
         run: runCommand,
-        chromium: await chromiumStatus().catch(() => null),
+        // Con un servidor remoto, Chromium es del servidor: no se busca en el Mac.
+        chromium: remote ? null : await chromiumStatus().catch(() => null),
         processEnv: process.env,
       });
       ctx.print(renderDoctor(report, ctx.colors));

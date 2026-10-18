@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fakeClock, harness, memoryPutFile, simulateWorker } from "../../test/harness.js";
 import { createApiClient } from "../api-client.js";
 import { createColors } from "../colors.js";
+import { localServerUrl } from "../server.js";
 import { UploadError } from "../upload.js";
 import { type ImportDeps, type ImportOptions, runImport } from "./import.js";
 
@@ -290,7 +291,7 @@ describe("runImport", () => {
         print: (text) => out.push(text),
         printError: (text) => err.push(text),
         colors: createColors(false),
-        client: createApiClient(port, { timeoutMs: 2_000 }),
+        client: createApiClient(localServerUrl(port), { timeoutMs: 2_000 }),
         cwd: dir,
         ...fakeClock(),
       },

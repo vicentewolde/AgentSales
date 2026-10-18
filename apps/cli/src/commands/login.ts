@@ -3,18 +3,73 @@ import type { Command } from "commander";
 import { type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
-import type { SessionStore } from "../session.js";
+import {
+  describeServer,
+  isLocalServer,
+  localServerUrl,
+  logoutTarget,
+  parseServerUrl,
+  resolveServer,
+  type ServerTarget,
+  ServerUrlError,
+} from "../server.js";
+import type { CliSession, SessionStore } from "../session.js";
 
 // F7-T06 (spec F7 §4.10, ADR-0021): entrar, salir y quién soy. El token va al archivo de sesión
-// (`0600`, fuera del proyecto) y nunca a la pantalla.
+// (`0600`, fuera del proyecto) y nunca a la pantalla. Desde F8-T08 (spec F8 §4.5), `--api` elige
+// el servidor y la sesión lo guarda.
 
 export type LoginDeps = Io &
-  Pick<Terminal, "readPassword"> & { client: ApiClient; session: SessionStore };
+  Pick<Terminal, "readPassword"> & {
+    /** Un cliente para ese servidor, con un token (cerrar la sesión anterior) o sin él (entrar). */
+    clientFor: (server: string, token?: string) => ApiClient;
+    session: SessionStore;
+    /** `AGENTSALES_API_URL`, si viene. */
+    envUrl: string | undefined;
+    /** El puerto de la API local del `.env`. */
+    localPort: number;
+  };
+
+/** `--api`, `AGENTSALES_API_URL` o la local; `save` si la sesión debe guardar la dirección. */
+function loginTarget(
+  deps: Pick<LoginDeps, "envUrl" | "localPort">,
+  api: string | undefined,
+): { url: string; save: boolean } {
+  const [raw, where] =
+    api !== undefined
+      ? [api, "--api"]
+      : (deps.envUrl?.trim() ?? "") !== ""
+        ? [deps.envUrl ?? "", "AGENTSALES_API_URL"]
+        : [null, ""];
+  // Sin dirección, la local de hoy: la sesión no la guarda (sigue el `API_PORT` del `.env`).
+  if (raw === null) return { url: localServerUrl(deps.localPort), save: false };
+  try {
+    const url = parseServerUrl(raw);
+    // Una dirección local tampoco se guarda: sigue el `API_PORT` del `.env` si cambia.
+    return { url, save: !isLocalServer(url) };
+  } catch (error) {
+    if (!(error instanceof ServerUrlError)) throw error;
+    throw new CliError(
+      "API_URL_INVALID",
+      `${where}: ${error.message}`,
+      "Ejemplo: agentsales login --email tu@correo.cl --api https://agentsales.agentpey.com",
+    );
+  }
+}
+
+/** El servidor de una sesión guardada, con la regla de siempre (`null` si ya no es válido). */
+function sessionServer(session: CliSession, localPort: number): string | null {
+  const resolved = resolveServer({ envUrl: undefined, session, localPort });
+  return resolved.ok ? resolved.target.sessionUrl : null;
+}
 
 const ROLE_TEXT = { admin: "administrador", broker: "corredor" } as const;
 
-/** `agentsales login --email <correo>`: pide la contraseña sin mostrarla. */
-export function runLogin(deps: LoginDeps, options: { email?: string }) {
+/**
+ * `agentsales login --email <correo> [--api https://<dominio>]`: pide la contraseña sin mostrarla.
+ * El pedido de entrar va sin el token anterior: ese token es de su servidor y no viaja a otro.
+ */
+export function runLogin(deps: LoginDeps, options: { email?: string; api?: string }) {
   const c = deps.colors;
   return guarded(deps, async () => {
     const email = options.email?.trim();
@@ -24,6 +79,7 @@ export function runLogin(deps: LoginDeps, options: { email?: string }) {
         "Falta el correo: agentsales login --email tu@correo.cl",
       );
     }
+    const target = loginTarget(deps, options.api);
     const input = await deps.readPassword(`Contraseña de ${email}: `);
     if (input === null) {
       throw new CliError(
@@ -36,20 +92,36 @@ export function runLogin(deps: LoginDeps, options: { email?: string }) {
     const password = input.value;
     const previous = deps.session.read();
     const { user, token } = await unwrap(
-      deps.client.auth.login.$post({ json: { email, password, client: "cli" } }),
+      deps.clientFor(target.url).auth.login.$post({ json: { email, password, client: "cli" } }),
       loginResponseSchema,
     );
     if (token === undefined) {
       throw new CliError("LOGIN_NO_TOKEN", "La API no entregó la sesión de la CLI");
     }
-    deps.session.write({ token, email: user.email, savedAt: new Date().toISOString() });
-    // La sesión anterior de esta CLI se cierra en la API (el cliente todavía la lleva): no queda
-    // una sesión huérfana válida por 30 días. Si la API no responde, vence sola.
-    if (previous !== null && previous.token !== token) {
-      await deps.client.auth.logout.$post().catch(() => undefined);
+    deps.session.write({
+      token,
+      email: user.email,
+      savedAt: new Date().toISOString(),
+      ...(target.save ? { apiUrl: target.url } : {}),
+    });
+    // La sesión anterior de esta CLI se cierra en su servidor (con su token, solo allí): no queda
+    // una sesión huérfana válida por 30 días. Si no responde, vence sola.
+    const previousServer = previous === null ? null : sessionServer(previous, deps.localPort);
+    if (previous !== null && previousServer !== null && previous.token !== token) {
+      await deps
+        .clientFor(previousServer, previous.token)
+        .auth.logout.$post()
+        .catch(() => undefined);
     }
-    deps.print(`${c.green("✓")} Entraste como ${user.email} (${ROLE_TEXT[user.role]})`);
-    deps.print(c.dim(`  La sesión quedó en ${deps.session.path}`));
+    const where = isLocalServer(target.url) ? "" : ` en ${target.url}`;
+    deps.print(`${c.green("✓")} Entraste como ${user.email} (${ROLE_TEXT[user.role]})${where}`);
+    deps.print(
+      c.dim(
+        target.save
+          ? `  La sesión y la dirección del servidor quedaron en ${deps.session.path}: los comandos van allí`
+          : `  La sesión quedó en ${deps.session.path}`,
+      ),
+    );
     return 0;
   });
 }
@@ -84,9 +156,20 @@ export function runLogout(deps: Io & { client: ApiClient; session: SessionStore 
   });
 }
 
-/** `agentsales whoami`: el usuario de la sesión. */
-export function runWhoami(deps: Io & { client: ApiClient }) {
+/** `agentsales whoami`: el usuario de la sesión y el servidor (spec F8 §4.5). */
+export function runWhoami(deps: Io & { client: ApiClient; target?: ServerTarget }) {
+  const c = deps.colors;
   return guarded(deps, async () => {
+    const server = deps.target;
+    if (server !== undefined) {
+      deps.print(`Servidor: ${describeServer(server)}`);
+      if (server.sessionUrl !== null && server.sessionUrl !== server.url) {
+        // El token no viaja a otro servidor (`tokenFor`): aquí la CLI va sin sesión.
+        deps.printError(
+          c.yellow(`  Tu sesión es de ${server.sessionUrl}: con este servidor vas sin sesión`),
+        );
+      }
+    }
     const { user } = await unwrap(deps.client.auth.me.$get(), meResponseSchema);
     const broker = user.broker === null ? "" : ` · corredor ${user.broker.slug}`;
     deps.print(`${user.name} <${user.email}> · ${ROLE_TEXT[user.role]}${broker}`);
@@ -99,15 +182,45 @@ export function register(program: Command, ctx: CliContext): void {
     .command("login")
     .description("Entra con tu correo y tu contraseña (la pide sin mostrarla)")
     .requiredOption("--email <correo>", "tu correo")
-    .action((options: { email: string }) =>
-      exitWith(() => runLogin({ ...ctx, client: ctx.api() }, options)),
+    .option(
+      "--api <dirección>",
+      "el servidor, con https:// (por ejemplo https://agentsales.agentpey.com); sin ella, la API local",
+    )
+    .action((options: { email: string; api?: string }) =>
+      exitWith(() =>
+        runLogin(
+          {
+            ...ctx,
+            clientFor: ctx.apiFor,
+            localPort: ctx.localPort(),
+            envUrl: ctx.envApiUrl,
+          },
+          options,
+        ),
+      ),
     );
   program
     .command("logout")
     .description("Cierra la sesión de la CLI")
-    .action(() => exitWith(() => runLogout({ ...ctx, client: ctx.api() })));
+    .action(() =>
+      exitWith(() =>
+        runLogout({
+          ...ctx,
+          client: ctx.clientFrom(logoutTarget(ctx.server(), ctx.session.read()?.token)),
+        }),
+      ),
+    );
   program
     .command("whoami")
-    .description("Muestra con qué usuario estás")
-    .action(() => exitWith(() => runWhoami({ ...ctx, client: ctx.api() })));
+    .description("Muestra con qué usuario estás y en qué servidor")
+    .action(() =>
+      exitWith(() => {
+        const resolved = ctx.server();
+        return runWhoami({
+          ...ctx,
+          client: ctx.api(),
+          ...(resolved.ok ? { target: resolved.target } : {}),
+        });
+      }),
+    );
 }

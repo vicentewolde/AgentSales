@@ -104,19 +104,24 @@ describe("pnpm db:dev-scrub", () => {
     expect((await no.rows()).every((row) => row.credentialsEncrypted !== null)).toBe(true);
   });
 
-  it("sin .env.production, o sin su base, se niega: no hay con qué comparar (también con --yes)", async () => {
-    // Una base de producción con la clave de desarrollo: la clave no la delata.
-    for (const production of [
-      null,
+  // Un caso por base (cada uno con su PGlite y su tiempo): juntos pasaban de 20 s con la máquina
+  // cargada.
+  it.each([
+    ["sin .env.production", null],
+    [
+      "sin su base (una base de producción con la clave de desarrollo: la clave no la delata)",
       { appEncryptionKey: PRODUCTION_KEY },
-      { databaseUrl: "no es url" },
-    ]) {
+    ],
+    ["con una base que no es una URL", { databaseUrl: "no es url" }],
+  ] as const)(
+    "%s, se niega: no hay con qué comparar (también con --yes)",
+    async (_case, production) => {
       const s = await setup({ production });
       expect(await runDevScrub(s.deps, { yes: true })).toBe(1);
       expect(s.out.join("\n")).toContain("No se borró nada");
       expect((await s.rows()).every((row) => row.credentialsEncrypted !== null)).toBe(true);
-    }
-  });
+    },
+  );
 
   it("deja las credenciales que abre la clave de desarrollo (conectadas en la rama) y una segunda vez no hace nada", async () => {
     const s = await setup();

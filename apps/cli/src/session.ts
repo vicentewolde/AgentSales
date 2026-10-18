@@ -13,12 +13,18 @@ import { z } from "zod";
 
 // La sesión de la CLI (spec F7 §4.10, ADR-0021): el token que dio `agentsales login`, en
 // `~/.agentsales/cli-session.json` (fuera del proyecto, carpeta `0700` y archivo `0600`). Nunca se
-// imprime ni se loguea; Claude no lee este archivo (CLAUDE.md).
+// imprime ni se loguea; Claude no lee este archivo (CLAUDE.md). Desde F8-T08 (spec F8 §4.5) guarda
+// también el servidor que emitió el token.
 
 const sessionSchema = z.object({
   token: z.string().min(1),
   email: z.string(),
   savedAt: z.string(),
+  /**
+   * El servidor de `agentsales login --api` (su origen, sin `/api`). Falta en una sesión de la API
+   * local, y en las de F7, que siguen siendo locales.
+   */
+  apiUrl: z.string().optional(),
 });
 export type CliSession = z.infer<typeof sessionSchema>;
 

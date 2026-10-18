@@ -46,7 +46,7 @@ pnpm db:backup           # respaldo local de la base con pg_dump a BACKUP_DIR (f
 pnpm db:dev-scrub        # borra las credenciales copiadas en la rama dev de Neon (solo .env; se niega si parece producción: la misma base o clave que .env.production, o credenciales que la clave de .env abre; pide confirmación, --yes; lo corre el operador)
 pnpm storage:check       # verifica acceso al bucket de R2, el PUT prefirmado (y que R2 rechace otro contenido) y la regla de CORS para el panel (--origin <url>; con ENV_FILE=.env.production y --origin https://agentsales.agentpey.com, el bucket de producción; habla con R2: lo corre el operador)
 pnpm auth:admin --email <correo>  # crea el administrador o le da un enlace de restablecer, en el portapapeles sin imprimirlo (habla directo con la base; lo corre el operador)
-pnpm -s cli login --email <correo>  # la sesión de la CLI (pide la contraseña sin mostrarla: lo corre el operador en su terminal); whoami, logout
+pnpm -s cli login --email <correo>  # la sesión de la CLI (pide la contraseña sin mostrarla: lo corre el operador en su terminal); con --api https://<dominio>, la de un servidor (queda guardada; AGENTSALES_API_URL manda sobre ella); whoami (dice el servidor), logout
 pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo)
 pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo)
 pnpm worker:ping         # encola un job de prueba (con el worker corriendo)

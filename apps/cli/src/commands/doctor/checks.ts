@@ -8,6 +8,7 @@ import {
 } from "@agentsales/media/tools";
 import { apiHint, type HealthFetcher } from "../../api-client.js";
 import type { EnvResult } from "../../env.js";
+import { describeServer, type ServerResolution } from "../../server.js";
 
 export type Level = "ok" | "warn" | "error";
 
@@ -157,6 +158,7 @@ export function checkAnthropicModel(result: EnvResult): CheckItem | null {
 export function checkPublishMode(
   apiMode: PublishMode | undefined,
   envMode: PublishMode | undefined,
+  remote = false,
 ): CheckItem | null {
   const mode = apiMode ?? envMode;
   if (!mode) {
@@ -171,13 +173,19 @@ export function checkPublishMode(
       ...(apiMode === "live" ? { emphasis: "danger" as const } : {}),
     };
   }
-  const source = apiMode ? "según la API" : "según .env; la API no responde";
+  const source = apiMode
+    ? remote
+      ? "según el servidor"
+      : "según la API"
+    : "según .env; la API no responde";
   return mode === "live"
     ? {
         name: "PUBLISH_MODE",
         level: "warn",
         detail: `LIVE: las publicaciones son reales (${source})`,
-        hint: "Vuelve a dry-run en .env si no estás publicando de verdad",
+        hint: remote
+          ? "Es una variable del servidor (PUBLISH_MODE): vuelve a dry-run allí si no estás publicando de verdad"
+          : "Vuelve a dry-run en .env si no estás publicando de verdad",
         emphasis: "danger",
       }
     : { name: "PUBLISH_MODE", level: "ok", detail: `dry-run: no se publica nada (${source})` };
@@ -197,9 +205,17 @@ const SERVICES = {
 
 type ServiceKey = keyof typeof SERVICES;
 
+/** Con un servidor remoto, lo que se arregla está en el servidor, no en el `.env` del Mac. */
+const REMOTE_SERVICE_HINTS: Record<ServiceKey, string> = {
+  db: "Neon puede estar despertando: reintenta; si sigue, revisa DATABASE_URL en los secretos del servidor",
+  storage: "Revisa las variables R2_* en los secretos del servidor",
+  queue: "La cola no respondió en el servidor: revisa que el worker esté encendido",
+};
+
 /** API más db, storage y cola, todo desde `/health` (la CLI no duplica los checks). */
 export async function checkServices(
   fetchHealth: HealthFetcher,
+  remote = false,
 ): Promise<{ items: CheckItem[]; report: HealthReport | null }> {
   let report: HealthReport;
   try {
@@ -237,7 +253,9 @@ export async function checkServices(
             name,
             level: "warn",
             detail: "sin datos: el detalle lo ve el administrador",
-            hint: "Inicia sesión con agentsales login",
+            hint: remote
+              ? "Inicia sesión en el servidor: agentsales login --email <correo> --api <dirección>"
+              : "Inicia sesión con agentsales login",
           }),
         ),
       ],
@@ -245,7 +263,8 @@ export async function checkServices(
   }
   const services = (Object.keys(SERVICES) as ServiceKey[]).map((key): CheckItem => {
     const result = reportChecks[key];
-    const { name, hint } = SERVICES[key];
+    const { name } = SERVICES[key];
+    const hint = remote ? REMOTE_SERVICE_HINTS[key] : SERVICES[key].hint;
     if (!result.ok) {
       return { name, level: "error", detail: result.error ?? "falló", hint };
     }
@@ -515,5 +534,58 @@ export function checkAutoPublish(report: HealthReport | null): CheckItem | null 
         name: "auto_publish",
         level: "ok",
         detail: `activado en simulación (${brokers.join(", ")})`,
+      };
+}
+
+/**
+ * A qué servidor habla la CLI (spec F8 §4.5): `AGENTSALES_API_URL`, el guardado con la sesión o la
+ * API local. Una dirección inválida es un error (la CLI no llama a ninguno).
+ */
+export function checkServer(resolution: ServerResolution): CheckItem {
+  if (!resolution.ok) {
+    return {
+      name: "Servidor",
+      level: "error",
+      detail: resolution.error.message,
+      hint: "Corrige AGENTSALES_API_URL, o entra de nuevo con agentsales login --api https://<dominio>",
+    };
+  }
+  const { target } = resolution;
+  if (target.sessionUrl !== null && target.sessionUrl !== target.url) {
+    return {
+      name: "Servidor",
+      level: "warn",
+      detail: `${describeServer(target)}; tu sesión es de ${target.sessionUrl}, así que aquí vas sin sesión`,
+      hint: "Entra en ese servidor con agentsales login --api, o quita AGENTSALES_API_URL",
+    };
+  }
+  return { name: "Servidor", level: "ok", detail: describeServer(target) };
+}
+
+/**
+ * El ambiente que informa `/health` (spec F8 §4.2): la API del Mac debe ser de desarrollo (si no,
+ * el `.env` apunta a producción), y un servidor remoto, de producción. `null` si la API no lo dice
+ * (una anterior a F8) o si es el esperado en el Mac.
+ */
+export function checkEnvironment(report: HealthReport | null, remote: boolean): CheckItem | null {
+  const environment = report?.environment;
+  if (environment === undefined) return null;
+  if (!remote) {
+    return environment === "production"
+      ? {
+          name: "Ambiente",
+          level: "error",
+          detail: "la API de este Mac corre como producción",
+          hint: "Quita NODE_ENV=production del .env: en el Mac se usa la rama dev de Neon y el bucket de desarrollo",
+        }
+      : null;
+  }
+  return environment === "production"
+    ? { name: "Ambiente", level: "ok", detail: "producción" }
+    : {
+        name: "Ambiente",
+        level: "warn",
+        detail: "el servidor dice que es de desarrollo: ¿es el que esperabas?",
+        hint: "Revisa la dirección con agentsales whoami",
       };
 }
