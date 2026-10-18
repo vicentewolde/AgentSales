@@ -10,7 +10,12 @@ import {
   resolveBackupDir,
   resolveBrowserProfilesDir,
 } from "@agentsales/config";
-import { confirmManualPublication, enqueueLiveSyncs, type RunImportDeps } from "@agentsales/core";
+import {
+  confirmManualPublication,
+  enqueueLiveSyncs,
+  isTerminalImportRun,
+  type RunImportDeps,
+} from "@agentsales/core";
 import {
   createBrokerRepository,
   createContentRepository,
@@ -28,7 +33,6 @@ import {
   createSessionRepository,
   toPgConnectionString,
 } from "@agentsales/db";
-import { readListingsWorkbook } from "@agentsales/importers";
 import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 import { createLlmProvider } from "@agentsales/llm";
 import { createHtmlRenderer, createMediaProcessor } from "@agentsales/media";
@@ -82,10 +86,6 @@ const importRuns = createImportRunRepository(database.db);
 const contentRuns = createContentRunRepository(database.db);
 // `pnpm --filter` corre cada app en su carpeta: los temporales se resuelven contra la raíz.
 const workspaceRoot = findWorkspaceRoot();
-const staging = createStaging({
-  root: stagingRootOf(workspaceRoot),
-  maxVideoBytes: env.MAX_VIDEO_MB * 1024 * 1024,
-});
 const contentTmpRoot = contentTmpRootOf(workspaceRoot);
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 const repositories = {
@@ -101,14 +101,21 @@ const storage = createR2Storage({
   bucket: env.R2_BUCKET,
   signedUrlTtlSeconds: env.SIGNED_URL_TTL_SECONDS,
 });
+// Las cargas (spec F8 §4.4, ADR-0025): el worker baja de R2 la planilla y los medios a su carpeta
+// temporal, y al terminar borra lo de la carga en R2 y en el disco.
+const staging = createStaging({
+  root: stagingRootOf(workspaceRoot),
+  storage,
+  maxVideoBytes: env.MAX_VIDEO_MB * 1024 * 1024,
+});
 const importRun: RunImportDeps = {
   ...repositories,
   importRuns,
   storage,
   sha256: async (text) => sha256(text),
-  readSheet: (input) => readListingsWorkbook(input.xlsxPath),
+  readSheet: (request) => staging.readSheet(request),
   openMedia: (request) => staging.openMedia(request),
-  discardStaging: (runId) => staging.discard(runId),
+  discardInput: (runId) => staging.discard(runId),
 };
 // Un Chromium por proceso (spec F2 §4.2): se abre al primer render y se cierra al apagar, después
 // de que pg-boss detuvo los handlers (`stopWorker`).
@@ -286,6 +293,8 @@ const jobs = buildJobs({
       sessions: createSessionRepository(database.db),
       oauthStates: createOAuthStateRepository(database.db),
     },
+    // Las subidas que nadie terminó y lo que quedó en R2 de cargas terminadas (spec F8 §4.4).
+    importCleanup: { importRuns, storage },
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
   },
@@ -363,7 +372,7 @@ async function cleanStaging(withDatabase: boolean): Promise<void> {
         ? async (runId) => {
             const run = await importRuns.get(runId);
             if (run === null) return "missing";
-            return run.status === "succeeded" || run.status === "failed" ? "closed" : "open";
+            return isTerminalImportRun(run.status) ? "closed" : "open";
           }
         : undefined,
     );

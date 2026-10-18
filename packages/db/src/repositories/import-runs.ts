@@ -57,6 +57,7 @@ export function createImportRunRepository(db: SchemaDatabase): ImportRunReposito
             .insert(importRuns)
             .values({
               ...(run.id === undefined ? {} : { id: run.id }),
+              ...(run.status === undefined ? {} : { status: run.status }),
               source: run.source,
               fileName: run.fileName,
               dryRun: run.dryRun,
@@ -135,14 +136,43 @@ export function createImportRunRepository(db: SchemaDatabase): ImportRunReposito
       });
     },
 
+    markQueued(id) {
+      return withDbErrors(async () => {
+        const updated = await db
+          .update(importRuns)
+          .set({ status: "queued" })
+          .where(and(eq(importRuns.id, id), eq(importRuns.status, "awaiting_upload")))
+          .returning({ id: importRuns.id });
+        return updated.length > 0;
+      });
+    },
+
     markFailed(id, error) {
       return withDbErrors(async () => {
         const updated = await db
           .update(importRuns)
           .set({ status: "failed", error, finishedAt: sql`now()` })
-          .where(and(eq(importRuns.id, id), inArray(importRuns.status, ["queued", "running"])))
+          .where(
+            and(
+              eq(importRuns.id, id),
+              inArray(importRuns.status, ["awaiting_upload", "queued", "running"]),
+            ),
+          )
           .returning({ id: importRuns.id });
         return updated.length > 0;
+      });
+    },
+
+    failAbandonedUploads(createdBefore, error) {
+      return withDbErrors(async () => {
+        const closed = await db
+          .update(importRuns)
+          .set({ status: "failed", error, finishedAt: sql`now()` })
+          .where(
+            and(eq(importRuns.status, "awaiting_upload"), lt(importRuns.createdAt, createdBefore)),
+          )
+          .returning({ id: importRuns.id });
+        return closed.map((row) => row.id);
       });
     },
 

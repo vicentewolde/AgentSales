@@ -175,7 +175,11 @@ describe("createApiClient · Content-Type", () => {
 
     await client.accounts[":id"].disconnect.$post({ param: { id }, json: {} });
     await client.accounts.$get({ query: {} });
-    await client.imports.$post({ form: { file: new File(["x"], "a.xlsx") } });
+    // Un formulario con archivo (el logo del corredor, F7-T14).
+    await client.brokers[":id"].logo.$post({
+      param: { id },
+      form: { logo: new File(["x"], "logo.png") },
+    });
 
     const [disconnect, list, upload] = seen;
     expect(disconnect?.get("content-type")).toBe("application/json");

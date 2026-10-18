@@ -5,19 +5,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ALL_SCOPE, AppError, RUN_WAIT } from "@agentsales/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { fakeClock, harness, simulateWorker } from "../../test/harness.js";
+import { fakeClock, harness, memoryPutFile, simulateWorker } from "../../test/harness.js";
 import { createApiClient } from "../api-client.js";
 import { createColors } from "../colors.js";
+import { UploadError } from "../upload.js";
 import { type ImportDeps, type ImportOptions, runImport } from "./import.js";
 
 let dir: string;
 
 beforeEach(() => {
-  // Archivos vacíos: la CLI solo verifica que existan; los lee el worker.
+  // Contenido sintético: la CLI los sube a R2 (el doble) con su tamaño y sha256; los lee el worker.
   dir = mkdtempSync(join(tmpdir(), "agentsales-cli-import-"));
-  writeFileSync(join(dir, "propiedades.xlsx"), "");
-  mkdirSync(join(dir, "medios"));
-  writeFileSync(join(dir, "medios.zip"), "");
+  writeFileSync(join(dir, "propiedades.xlsx"), "planilla de prueba");
+  mkdirSync(join(dir, "medios", "P001"), { recursive: true });
+  writeFileSync(join(dir, "medios", "P001", "foto.jpg"), "foto de prueba");
+  writeFileSync(join(dir, "medios", ".DS_Store"), "basura de macOS");
+  writeFileSync(join(dir, "medios.zip"), "zip de prueba");
   writeFileSync(join(dir, "notas.txt"), "");
 });
 
@@ -30,18 +33,32 @@ type Harness = ReturnType<typeof harness>;
 function run(
   h: Harness,
   clock: ReturnType<typeof fakeClock>,
-  options: ImportOptions & { xlsx?: string; wait_?: ImportDeps["wait"] } = {},
+  options: ImportOptions & {
+    xlsx?: string;
+    wait_?: ImportDeps["wait"];
+    putFile?: ImportDeps["putFile"];
+  } = {},
 ) {
-  const { xlsx = "propiedades.xlsx", wait_, ...rest } = options;
+  const { xlsx = "propiedades.xlsx", wait_, putFile = h.putFile, ...rest } = options;
   return runImport(
-    { ...h.io, client: h.client, cwd: dir, sleep: clock.sleep, now: clock.now, wait: wait_ },
+    {
+      ...h.io,
+      client: h.client,
+      cwd: dir,
+      sleep: clock.sleep,
+      now: clock.now,
+      wait: wait_,
+      putFile,
+    },
     xlsx,
     rest,
   );
 }
 
+const startPath = (id: string | undefined) => `POST /imports/${id}/start`;
+
 describe("runImport", () => {
-  it("encola por /imports/local y consulta cada 2 s hasta que termina", async () => {
+  it("pide la carga, sube a R2, la empieza y consulta cada 2 s hasta que termina", async () => {
     const h = harness();
     const worker = simulateWorker(h);
     const clock = fakeClock(async (elapsed) => {
@@ -56,6 +73,12 @@ describe("runImport", () => {
     expect(h.queue.jobs).toHaveLength(1);
     expect(h.queue.jobs[0]?.name).toBe("import.run");
     const [created] = await h.importRuns.list(50, ALL_SCOPE);
+    expect(h.requests.slice(0, 2)).toEqual(["POST /imports/uploads", startPath(created?.id)]);
+    // La planilla y la foto quedaron en R2, sin el oculto de macOS.
+    expect((await h.storage.list(`imports/${created?.id}/`)).map((o) => o.path)).toEqual([
+      `imports/${created?.id}/media/P001/foto.jpg`,
+      `imports/${created?.id}/xlsx/propiedades.xlsx`,
+    ]);
     expect(h.requests.filter((r) => r === `GET /imports/${created?.id}`)).toHaveLength(4);
     expect(h.out[0]).toBe(`Carga ${created?.id} (propiedades.xlsx): en cola…`);
     expect(h.out).toContain("procesando…");
@@ -161,7 +184,7 @@ describe("runImport", () => {
     expect(h.out).toEqual([created?.id]);
     expect(h.errors()).toContain(`agentsales imports ${created?.id}`);
     expect(clock.sleeps).toEqual([]);
-    expect(h.requests).toEqual(["POST /imports/local"]);
+    expect(h.requests).toEqual(["POST /imports/uploads", startPath(created?.id)]);
   });
 
   it("resuelve las rutas relativas contra la carpeta del operador (INIT_CWD)", async () => {
@@ -170,14 +193,15 @@ describe("runImport", () => {
     await run(h, fakeClock(), { xlsx: "./propiedades.xlsx", media: "medios/", wait: false });
 
     const [created] = await h.importRuns.list(50, ALL_SCOPE);
-    expect(created?.input).toEqual({
-      xlsxPath: join(dir, "propiedades.xlsx"),
-      mediaDir: join(dir, "medios"),
+    expect(created?.input).toMatchObject({
       broker: null,
+      dryRun: false,
+      xlsx: { name: "propiedades.xlsx", size: 18 },
+      media: { kind: "folder", name: "medios", files: [{ path: "P001/foto.jpg", size: 14 }] },
     });
   });
 
-  it("acepta un .zip de medios, --broker como slug y --dry-run", async () => {
+  it("acepta un .zip de medios, --broker como slug y --dry-run por el mismo camino", async () => {
     const h = harness();
 
     await run(h, fakeClock(), {
@@ -190,10 +214,48 @@ describe("runImport", () => {
 
     const [created] = await h.importRuns.list(50, ALL_SCOPE);
     expect(created?.input).toMatchObject({
-      mediaDir: join(dir, "medios.zip"),
       broker: "mi-corredor",
+      dryRun: true,
+      media: { kind: "zip", name: "medios.zip", size: 13 },
     });
-    expect(created?.dryRun).toBe(true);
+    expect(created).toMatchObject({ dryRun: true, status: "queued" });
+    expect(await h.storage.list(`imports/${created?.id}/media.zip`)).toHaveLength(1);
+  });
+
+  it("un archivo que falla al subir se reintenta y la carga sigue", async () => {
+    const h = harness();
+    const putFile = memoryPutFile(h.storage, (path, attempt) =>
+      path.endsWith("foto.jpg") && attempt < 3 ? new UploadError("socket hang up") : undefined,
+    );
+    const clock = fakeClock();
+
+    expect(await run(h, clock, { media: "medios", wait: false, putFile })).toBe(0);
+
+    expect(putFile.attempts.get(join(dir, "medios", "P001", "foto.jpg"))).toBe(3);
+    expect(clock.sleeps).toEqual([1_000, 2_000]);
+    expect((await h.importRuns.list(50, ALL_SCOPE))[0]?.status).toBe("queued");
+  });
+
+  it("si un archivo no se puede subir (un 403 no se reintenta), no empieza la carga", async () => {
+    const h = harness();
+    const putFile = memoryPutFile(h.storage, (path) =>
+      path.endsWith("foto.jpg")
+        ? new UploadError("R2 respondió 403", 403, "AccessDenied")
+        : undefined,
+    );
+
+    expect(await run(h, fakeClock(), { media: "medios", putFile })).toBe(1);
+
+    expect(putFile.attempts.get(join(dir, "medios", "P001", "foto.jpg"))).toBe(1);
+    expect(h.errors()).toContain("✗ IMPORT_UPLOAD_FAILED: No se pudo subir P001/foto.jpg");
+    expect(h.requests).toEqual(["POST /imports/uploads"]);
+    expect((await h.importRuns.list(50, ALL_SCOPE))[0]?.status).toBe("awaiting_upload");
+  });
+
+  it("nunca imprime las URLs firmadas", async () => {
+    const h = harness();
+    await run(h, fakeClock(), { media: "medios", wait: false });
+    expect(`${h.text()}\n${h.errors()}`).not.toContain("memory-upload://");
   });
 
   it.each([
@@ -202,9 +264,11 @@ describe("runImport", () => {
     [{ xlsx: "medios" }, "IMPORT_FILE_INVALID"],
     [{ media: "otra-carpeta" }, "MEDIA_FOLDER_NOT_FOUND"],
     [{ media: "notas.txt" }, "MEDIA_FOLDER_INVALID"],
+    [{ media: "vacia" }, "MEDIA_FOLDER_INVALID"],
     [{ broker: "---" }, "BROKER_INVALID"],
   ] as const)("%j es un error antes de llamar a la API", async (options, message) => {
     const h = harness();
+    mkdirSync(join(dir, "vacia"));
 
     expect(await run(h, fakeClock(), options)).toBe(1);
 
@@ -239,16 +303,6 @@ describe("runImport", () => {
     );
   });
 
-  it("sin cargas locales en la API (fuera de desarrollo) sugiere pnpm dev o el panel", async () => {
-    const h = harness({ deps: { localImports: false } });
-
-    expect(await run(h, fakeClock())).toBe(1);
-    expect(h.errors()).toContain("✗ LOCAL_IMPORTS_DISABLED");
-    expect(h.errors()).toContain(
-      "→ Levanta la API con pnpm dev, o sube los archivos desde el panel",
-    );
-  });
-
   it("con la cola caída muestra QUEUE_UNAVAILABLE y cómo arreglarlo", async () => {
     const h = harness({
       deps: {
@@ -261,7 +315,7 @@ describe("runImport", () => {
     });
 
     expect(await run(h, fakeClock())).toBe(1);
-    expect(h.errors()).toBe(
+    expect(h.errors()).toContain(
       "✗ QUEUE_UNAVAILABLE: La cola no responde\n  → Arranca el worker (pnpm dev) y reintenta",
     );
   });
@@ -322,14 +376,19 @@ describe("runImport", () => {
 
     expect(clock.sleeps).toHaveLength(6);
     expect(h.text()).toContain("terminada");
-    expect(h.errors()).toBe("");
+    expect(h.errors()).not.toContain("✗");
   });
 
   it("un error de la API al consultar (no transitorio) corta de inmediato", async () => {
     const h = harness();
-    // La carga ya no existe (por ejemplo, la API apunta a otra base): 404 al consultar.
-    h.importRuns.get = async () => null;
-    const clock = fakeClock();
+    // La carga deja de existir después de empezarla (por ejemplo, la API apunta a otra base): 404
+    // al consultar.
+    const get = h.importRuns.get.bind(h.importRuns);
+    let gone = false;
+    h.importRuns.get = async (id) => (gone ? null : get(id));
+    const clock = fakeClock(() => {
+      gone = true;
+    });
 
     expect(await run(h, clock)).toBe(1);
     expect(clock.sleeps).toHaveLength(1);

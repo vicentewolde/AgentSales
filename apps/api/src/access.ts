@@ -76,8 +76,9 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "PATCH /brokers/:id": "session",
   "POST /brokers/:id/logo": "session",
   "GET /brokers/:id/template.xlsx": "session",
-  "POST /imports": "session",
-  "POST /imports/local": "admin",
+  // F8 (spec §4.4, ADR-0025): pedir la carga con sus URLs de subida y empezarla.
+  "POST /imports/uploads": "session",
+  "POST /imports/:id/start": "session",
   "GET /imports": "session",
   "GET /imports/:id": "session",
   // Cuentas y OAuth. La vuelta de Instagram llega desde Instagram, sin la cookie `Strict`: la

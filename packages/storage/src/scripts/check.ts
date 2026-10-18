@@ -1,9 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createLogger, loadEnv, loadEnvFile } from "@agentsales/config";
-import { createR2Storage } from "../r2-storage.js";
+import { parseArgs } from "node:util";
+import { createLogger, loadEnv, loadEnvFile, panelUrlOf } from "@agentsales/config";
+import { CHECKSUM_SHA256_HEADER, createR2Storage } from "../r2-storage.js";
 
-// Sube, lee, prueba una URL prefirmada y borra un objeto de prueba en el bucket de R2.
-// Nunca imprime credenciales ni la URL prefirmada (la firma da acceso de lectura).
+// Sube, lee, prueba una URL prefirmada y borra un objeto de prueba en el bucket de R2. Desde F8
+// (spec F8 §4.4, ADR-0025) también sube con una URL prefirmada de PUT (y comprueba que R2 rechaza
+// otro contenido u otro largo), lista por prefijo y revisa la regla de CORS del bucket para el
+// panel (`http://localhost:<WEB_PORT>` en desarrollo, `PUBLIC_URL` si está, u otro con `--origin`,
+// por ejemplo `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com`).
+// Nunca imprime credenciales ni las URLs prefirmadas (la firma da acceso).
+const { values: args } = parseArgs({ options: { origin: { type: "string" } } });
 loadEnvFile();
 const env = loadEnv();
 const logger = createLogger({ level: env.LOG_LEVEL, pretty: env.NODE_ENV !== "production" });
@@ -41,6 +47,8 @@ const FETCH_TIMEOUT_MS = 15_000;
 
 let uploaded = false;
 let streamUploaded = false;
+const presignedPath = `_healthcheck/${randomUUID()}.bin`;
+let presignedUploaded = false;
 try {
   logger.info({ bucket: env.R2_BUCKET, path }, "probando el bucket de R2");
 
@@ -132,6 +140,83 @@ try {
   );
   check((await storage.head(streamPath)) === null, "el rechazado no quedó guardado");
 
+  // Subida directa con una URL prefirmada de PUT (F8-T03): la del panel y la CLI.
+  const small = streamData.subarray(0, 64 * 1024);
+  const signUpload = (sha256Hex?: string) =>
+    storage.signedUploadUrl(presignedPath, {
+      contentType: "application/octet-stream",
+      contentLength: small.byteLength,
+      ...(sha256Hex === undefined ? {} : { sha256: sha256Hex }),
+      ttlSeconds: 300,
+    });
+  const putSigned = async (
+    upload: { url: string; headers: Record<string, string> },
+    body: Uint8Array,
+  ) =>
+    (
+      await fetch(upload.url, {
+        method: "PUT",
+        headers: upload.headers,
+        body,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      })
+    ).status;
+
+  const good = await signUpload(sha256(small));
+  const goodStatus = await putSigned(good, small);
+  presignedUploaded = goodStatus === 200;
+  check(goodStatus === 200, `PUT prefirmado con sha256 (${goodStatus})`);
+  check(sha256(await storage.get(presignedPath)) === sha256(small), "lo subido es lo firmado");
+  const listed = await storage.list("_healthcheck/");
+  check(
+    listed.some((object) => object.path === presignedPath && object.size === small.byteLength),
+    `listar por prefijo (${listed.length} objeto(s))`,
+  );
+  await storage.delete(presignedPath);
+  presignedUploaded = false;
+
+  // Otro contenido del mismo largo: R2 debe rechazarlo por el sha256 (esto es lo NO VERIFICADO de
+  // la nota r2-checksums y del spec F8 §4.4). Si lo acepta, el worker sigue validando lo que lee.
+  const altered = small.slice();
+  altered[0] = (altered[0] ?? 0) ^ 0xff;
+  const tamperedStatus = await putSigned(await signUpload(sha256(small)), altered);
+  presignedUploaded = tamperedStatus === 200;
+  check(
+    tamperedStatus === 400 && (await storage.head(presignedPath)) === null,
+    `PUT prefirmado con otro contenido → rechazado (${tamperedStatus})`,
+  );
+  // Otro largo: no calza con la firma.
+  const longerStatus = await putSigned(
+    await signUpload(),
+    streamData.subarray(0, small.byteLength + 1),
+  );
+  presignedUploaded = longerStatus === 200;
+  check(
+    [400, 403].includes(longerStatus) && (await storage.head(presignedPath)) === null,
+    `PUT prefirmado con otro largo → rechazado (${longerStatus})`,
+  );
+
+  // La regla de CORS del bucket (la pone el operador; checklist "Antes de F8"): el navegador
+  // pregunta antes del PUT si el panel puede subir con esas cabeceras.
+  const panelOrigin = new URL(args.origin ?? panelUrlOf(env)).origin;
+  const preflight = await fetch((await signUpload(sha256(small))).url, {
+    method: "OPTIONS",
+    headers: {
+      Origin: panelOrigin,
+      "Access-Control-Request-Method": "PUT",
+      "Access-Control-Request-Headers": `content-type,${CHECKSUM_SHA256_HEADER}`,
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  const allowOrigin = preflight.headers.get("access-control-allow-origin");
+  const allowMethods = preflight.headers.get("access-control-allow-methods") ?? "";
+  check(
+    preflight.ok &&
+      (allowOrigin === panelOrigin || allowOrigin === "*") &&
+      /\bPUT\b/i.test(allowMethods),
+    `CORS: PUT desde ${panelOrigin} con content-type y ${CHECKSUM_SHA256_HEADER} (${preflight.status})`,
+  );
+
   logger.info("storage:check OK");
 } catch (error) {
   logger.error({ err: error }, "storage:check falló");
@@ -140,6 +225,7 @@ try {
   for (const [pending, objectPath] of [
     [uploaded, path],
     [streamUploaded, streamPath],
+    [presignedUploaded, presignedPath],
   ] as const) {
     if (!pending) continue;
     await storage.delete(objectPath).catch((error: unknown) => {

@@ -95,6 +95,8 @@ const CONFLICTS = new Set([
   "BROKER_SLUG_TAKEN",
   // F7-T12 (spec F7 §4.7): el corredor llegó a su tope de IA del mes (subir el tope o esperar).
   "LLM_BUDGET_EXCEEDED",
+  // F8 (spec §4.14): empezar una carga a la que le faltan archivos (subirlos y volver a empezar).
+  "IMPORT_UPLOAD_INCOMPLETE",
 ]);
 
 /**
@@ -227,7 +229,9 @@ export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "MARKETPLACE_AUTOMATION_NOT_ALLOWED") return 403;
   if (code === "INVITATION_INVALID") return 410;
   if (code === "INVALID_TRANSITION" || CONFLICTS.has(code)) return 409;
-  if (code === "REQUEST_TOO_LARGE") return 413;
+  // F8 (spec §4.14): un archivo de la carga, o el Excel descomprimido, sobre su tope.
+  if (code === "REQUEST_TOO_LARGE" || code === "IMPORT_UPLOAD_TOO_LARGE") return 413;
+  if (code === "IMPORT_XLSX_TOO_LARGE") return 413;
   // F7-T14: el logo no es PNG, JPEG ni WebP.
   if (code === "LOGO_INVALID") return 415;
   if (CLIENT_MISSING.has(code)) return 400;

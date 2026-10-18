@@ -72,9 +72,18 @@ export {
   type ImportRowOutcome,
   type ImportRun,
   type ImportRunInput,
+  importInputSummary,
   importReportSchema,
   importRunInputSchema,
   importRunSchema,
+  isUploadImportInput,
+  type LegacyImportRunInput,
+  legacyImportRunInputSchema,
+  type UploadedMedia,
+  type UploadedMediaFile,
+  type UploadImportRunInput,
+  uploadedMediaFileSchema,
+  uploadImportRunInputSchema,
 } from "./import-run.js";
 export {
   JOB_NAMES,
@@ -428,7 +437,14 @@ export {
   type NewDerivative,
   type NewMedia,
 } from "./ports/media-repository.js";
-export type { MediaStorage, PutStreamOptions, StoredObjectInfo } from "./ports/media-storage.js";
+export type {
+  ListedObject,
+  MediaStorage,
+  PutStreamOptions,
+  SignedUpload,
+  SignedUploadOptions,
+  StoredObjectInfo,
+} from "./ports/media-storage.js";
 export type {
   MercadoLibreAuth,
   MercadoLibreCodeExchange,
@@ -816,8 +832,27 @@ export {
   requestContentRun,
 } from "./use-cases/request-content-run.js";
 export {
-  type RequestImportDeps,
-  requestImport,
+  type CloseAbandonedImportsDeps,
+  type CloseAbandonedImportsResult,
+  closeAbandonedImports,
+  deleteImportObjects,
+  expectedImportObjects,
+  IMPORT_UPLOAD,
+  IMPORT_UPLOAD_ABANDONED,
+  type ImportObjectStorage,
+  type ImportUploadFile,
+  type ImportUploadMediaRequest,
+  type ImportUploadTarget,
+  importObjectsPrefix,
+  MEDIA_FILE_MIME,
+  type RequestImportUploadDeps,
+  type RequestImportUploadParams,
+  relativePathIssue,
+  requestImportUpload,
+  type StartImportDeps,
+  startImport,
+  XLSX_MIME,
+  ZIP_MIME,
 } from "./use-cases/request-import.js";
 export {
   type RequestMarketplaceLoginDeps,

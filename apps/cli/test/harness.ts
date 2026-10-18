@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { type AppDeps, createApp, localAccess, mountApi, routePathOf } from "@agentsales/api";
-import { testAuth, testDeps, withAdminSession } from "@agentsales/api/testing";
+import { testAuth, testDeps, testStorage, withAdminSession } from "@agentsales/api/testing";
 import {
   ALL_SCOPE,
   type AppError,
@@ -14,6 +15,7 @@ import {
   type PublicationOperations,
   type PublishMode,
 } from "@agentsales/core";
+import type { InMemoryMediaStorage } from "@agentsales/core/testing";
 import {
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
@@ -29,6 +31,7 @@ import {
 import { createApiClient } from "../src/api-client.js";
 import { createColors } from "../src/colors.js";
 import type { Io } from "../src/output.js";
+import type { PutFile } from "../src/upload.js";
 
 export const PORT = 8787;
 
@@ -66,7 +69,10 @@ export function harness(options: HarnessOptions = {}) {
   }
   const publications = createInMemoryPublicationRepository();
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+  // R2 en memoria (spec F8 §4.4): `import` sube con las URLs firmadas a este doble.
+  const storage = testStorage();
   const repos = {
+    storage,
     listings,
     brokers,
     media,
@@ -131,6 +137,8 @@ export function harness(options: HarnessOptions = {}) {
   };
   return {
     client,
+    /** El `PUT` de la CLI a R2, contra el doble de la API (lee el archivo y lo "sube"). */
+    putFile: memoryPutFile(storage),
     /** Un cliente con el token de una sesión (el de `agentsales login`). */
     clientWith: (token: string) => createApiClient(PORT, { fetch: fetchApp, token }),
     io,
@@ -167,7 +175,32 @@ export function harness(options: HarnessOptions = {}) {
     get platformAccounts() {
       return own("platformAccounts", platformAccounts);
     },
+    get storage() {
+      return own("storage", storage);
+    },
   };
+}
+
+/**
+ * Un `PutFile` que hace de R2 con el doble en memoria: lee el archivo del disco y lo entrega a
+ * `receiveUpload`, que exige las cabeceras firmadas, el largo y el sha256. `fail` simula fallos.
+ */
+export function memoryPutFile(
+  storage: InMemoryMediaStorage,
+  fail?: (name: string, attempt: number) => Error | undefined,
+): PutFile & { attempts: Map<string, number> } {
+  const attempts = new Map<string, number>();
+  const put: PutFile = async ({ url, headers, file, onProgress }) => {
+    const attempt = (attempts.get(file.path) ?? 0) + 1;
+    attempts.set(file.path, attempt);
+    const bytes = new Uint8Array(await readFile(file.path));
+    onProgress(Math.floor(bytes.byteLength / 2));
+    const failure = fail?.(file.path, attempt);
+    if (failure !== undefined) throw failure;
+    onProgress(bytes.byteLength - Math.floor(bytes.byteLength / 2));
+    await storage.receiveUpload(url, headers, bytes);
+  };
+  return Object.assign(put, { attempts });
 }
 
 /**

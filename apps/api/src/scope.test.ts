@@ -273,22 +273,25 @@ describe("programar y cargar", () => {
     expect(publication?.status).toBe("approved");
   });
 
-  it("la carga del corredor nace con su corredor; con otro corredor en el formulario, 404", async () => {
+  it("la carga del corredor nace con su corredor; con otro corredor en el pedido, 404", async () => {
     const s = await setup();
-    const upload = (broker?: string) => {
-      const form = new FormData();
-      form.append("file", new File([new Uint8Array(8)], "propiedades.xlsx"));
-      if (broker !== undefined) form.append("broker", broker);
-      return s.broker("/imports", { method: "POST", body: form });
-    };
+    const upload = (broker?: string) =>
+      s.broker("/imports/uploads", {
+        method: "POST",
+        body: JSON.stringify({
+          ...(broker === undefined ? {} : { broker }),
+          xlsx: { name: "propiedades.xlsx", size: 8, sha256: "a".repeat(64) },
+        }),
+      });
     const created = await upload();
-    expect(created.status).toBe(202);
+    expect(created.status).toBe(201);
     const { importRun } = (await created.json()) as { importRun: { id: string } };
     expect(await s.deps.importRuns.get(importRun.id)).toMatchObject({
       brokerId: s.mine.broker.id,
+      status: "awaiting_upload",
       input: { broker: "mio" },
     });
-    // La ve en cola, antes de que el job lea la hoja.
+    // La ve mientras sube, antes de que el job lea la hoja.
     expect((await s.broker(`/imports/${importRun.id}`)).status).toBe(200);
     const foreign = await upload("ajeno");
     expect(foreign.status).toBe(404);

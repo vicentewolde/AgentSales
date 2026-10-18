@@ -1,13 +1,20 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readdir, rm, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isAppError } from "@agentsales/core";
+import { AppError, isAppError, type UploadImportRunInput } from "@agentsales/core";
+import { createInMemoryMediaStorage } from "@agentsales/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createStaging, STAGING_MAX_AGE_MS, STAGING_ORPHAN_GRACE_MS } from "../src/staging.js";
+import { buildWorkbook, syntheticRow } from "./workbook.js";
 import { buildZip } from "./zip-builder.js";
+
+// El worker baja de R2 la planilla y los medios de cada intento (spec F8 §4.4, F8-T05): R2 es el
+// doble en memoria de core; el disco es una carpeta temporal del test.
 
 const RUN_ID = "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10";
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
 let work: string;
 let root: string;
@@ -21,16 +28,33 @@ afterEach(async () => {
   await rm(work, { recursive: true, force: true });
 });
 
-const staging = () => createStaging({ root, maxVideoBytes: 1024 * 1024 });
+function setup(options: { failFirstReads?: number } = {}) {
+  const storage = createInMemoryMediaStorage();
+  let failing = options.failFirstReads ?? 0;
+  const getStream = storage.getStream.bind(storage);
+  // Un corte de R2 al pedir los primeros archivos (reintentable).
+  storage.getStream = async (path, opts) => {
+    if (failing > 0) {
+      failing -= 1;
+      throw new AppError("STORAGE_UNAVAILABLE", "R2 no respondió", { retriable: true });
+    }
+    return getStream(path, opts);
+  };
+  const staging = createStaging({ root, storage, maxVideoBytes: 1024 * 1024 });
+  return { storage, staging };
+}
 
-const open = (mediaDir: string | null, folders: readonly string[] = ["P001"], runId = RUN_ID) =>
-  staging().openMedia({ runId, mediaDir, folders });
+const prefix = `imports/${RUN_ID}/`;
 
-/** Directorios `extracted-*` del run (uno por intento en curso). */
-const extractedDirs = async () =>
-  (await readdir(join(root, RUN_ID)).catch(() => [] as string[])).filter((name) =>
-    name.startsWith("extracted-"),
-  );
+async function xlsxInput(storage: ReturnType<typeof setup>["storage"]) {
+  const bytes = await buildWorkbook({ listings: { rows: [syntheticRow()] } });
+  const key = `${prefix}xlsx/propiedades.xlsx`;
+  await storage.put(key, bytes, "x");
+  return { key, name: "propiedades.xlsx", size: bytes.byteLength, sha256: sha256(bytes) };
+}
+
+/** Lo que queda del run en el disco del worker (los directorios de los intentos). */
+const attemptDirs = async () => readdir(join(root, RUN_ID)).catch(() => [] as string[]);
 
 const exists = (path: string) =>
   stat(path).then(
@@ -45,177 +69,206 @@ async function caught(promise: Promise<unknown>) {
   );
 }
 
-async function writeZip(name: string, files: Record<string, Buffer>) {
-  const path = join(work, name);
-  await writeFile(
-    path,
-    buildZip(Object.entries(files).map(([name, data]) => ({ name, data: new Uint8Array(data) }))),
-  );
-  return path;
-}
+describe("createStaging · readSheet", () => {
+  it("baja la planilla de R2 a un directorio del intento, la lee y lo borra", async () => {
+    const { storage, staging } = setup();
+    const xlsx = await xlsxInput(storage);
 
-describe("createStaging · openMedia", () => {
-  it("sin mediaDir, no hay fuente de medios", async () => {
-    const media = await open(null);
-    expect(media.source).toBeNull();
+    const sheet = await staging.readSheet({
+      runId: RUN_ID,
+      input: { broker: null, dryRun: false, xlsx, media: null },
+    });
+
+    expect(sheet.rows[0]?.raw).toMatchObject({ id_propiedad: "P001" });
+    expect(await attemptDirs()).toEqual([]);
   });
 
-  it("una carpeta se lee tal cual, sin tocar el staging", async () => {
-    await mkdir(join(work, "medios", "P001"), { recursive: true });
-    await writeFile(join(work, "medios", "P001", "foto.jpg"), JPEG);
+  it("un archivo distinto del anunciado (otro sha256) es IMPORT_FILE_INVALID, sin abrirlo", async () => {
+    const { storage, staging } = setup();
+    const xlsx = await xlsxInput(storage);
 
-    const media = await open(join(work, "medios"));
+    const error = await caught(
+      staging.readSheet({
+        runId: RUN_ID,
+        input: {
+          broker: null,
+          dryRun: false,
+          xlsx: { ...xlsx, sha256: "0".repeat(64) },
+          media: null,
+        },
+      }),
+    );
+
+    expect(error).toMatchObject({ code: "IMPORT_FILE_INVALID" });
+    expect(await attemptDirs()).toEqual([]);
+  });
+
+  it("si ya no está en R2: IMPORT_FILE_NOT_FOUND, no reintentable", async () => {
+    const { staging } = setup();
+    const error = await caught(
+      staging.readSheet({
+        runId: RUN_ID,
+        input: {
+          broker: null,
+          dryRun: false,
+          xlsx: { key: `${prefix}xlsx/p.xlsx`, name: "p.xlsx", size: 1, sha256: "0".repeat(64) },
+          media: null,
+        },
+      }),
+    );
+    expect(error).toMatchObject({ code: "IMPORT_FILE_NOT_FOUND", retriable: false });
+  });
+
+  it("un corte de R2 se propaga como reintentable, y el intento siguiente la baja de nuevo", async () => {
+    const { storage, staging } = setup({ failFirstReads: 1 });
+    const xlsx = await xlsxInput(storage);
+    const input: UploadImportRunInput = { broker: null, dryRun: false, xlsx, media: null };
+
+    expect(await caught(staging.readSheet({ runId: RUN_ID, input }))).toMatchObject({
+      code: "STORAGE_UNAVAILABLE",
+      retriable: true,
+    });
+    expect(await attemptDirs()).toEqual([]);
+    expect((await staging.readSheet({ runId: RUN_ID, input })).rows).toHaveLength(1);
+  });
+});
+
+describe("createStaging · openMedia", () => {
+  it("sin medios, no hay fuente", async () => {
+    const { staging } = setup();
+    expect(
+      (await staging.openMedia({ runId: RUN_ID, media: null, folders: [] })).source,
+    ).toBeNull();
+  });
+
+  it("un zip se baja, se extrae en un directorio del intento (sin guardar el zip) y se borra al cerrar", async () => {
+    const { storage, staging } = setup();
+    const zip = buildZip([{ name: "medios/P001/foto.jpg", data: new Uint8Array(JPEG) }]);
+    await storage.put(`${prefix}media.zip`, new Uint8Array(zip), "application/zip");
+
+    const media = await staging.openMedia({
+      runId: RUN_ID,
+      media: { kind: "zip", key: `${prefix}media.zip`, name: "medios.zip", size: zip.byteLength },
+      folders: ["P001"],
+    });
+
+    // macOS → Comprimir "medios": la carpeta envolvente se reconoce como raíz.
+    expect((await media.source?.list("P001"))?.files.map((file) => file.relPath)).toEqual([
+      "P001/foto.jpg",
+    ]);
+    const [dir] = await attemptDirs();
+    expect(await readdir(join(root, RUN_ID, dir ?? ""))).toEqual(["extraido"]);
+    await media.close();
+    expect(await attemptDirs()).toEqual([]);
+  });
+
+  it("una carpeta se baja archivo por archivo con sus rutas", async () => {
+    const { storage, staging } = setup();
+    await storage.put(`${prefix}media/P001/foto.jpg`, new Uint8Array(JPEG), "x");
+    await storage.put(`${prefix}media/_marca/logo.jpg`, new Uint8Array(JPEG), "x");
+
+    const media = await staging.openMedia({
+      runId: RUN_ID,
+      media: {
+        kind: "folder",
+        prefix: `${prefix}media/`,
+        name: "medios",
+        files: [
+          { path: "P001/foto.jpg", size: JPEG.byteLength, sha256: sha256(JPEG) },
+          { path: "_marca/logo.jpg", size: JPEG.byteLength },
+        ],
+      },
+      folders: ["P001", "_marca"],
+    });
 
     expect((await media.source?.list("P001"))?.files.map((file) => file.relPath)).toEqual([
       "P001/foto.jpg",
     ]);
-    expect(await exists(root)).toBe(false);
+    expect((await media.source?.list("_marca"))?.files).toHaveLength(1);
+    await media.close();
+    expect(await attemptDirs()).toEqual([]);
   });
 
-  it("un zip se extrae en un directorio del intento, que se borra al cerrar; input/ se conserva", async () => {
-    const input = join(root, RUN_ID, "input");
-    await mkdir(input, { recursive: true });
-    await writeFile(join(input, "propiedades.xlsx"), "subido por la API");
-    const zip = await writeZip("medios.zip", { "P001/foto.jpg": JPEG });
+  it("un archivo que falta o con otro tamaño no deja nada a medias", async () => {
+    const { storage, staging } = setup();
+    await storage.put(`${prefix}media/P001/a.jpg`, new Uint8Array(JPEG), "x");
 
-    const media = await open(zip);
+    const error = await caught(
+      staging.openMedia({
+        runId: RUN_ID,
+        media: {
+          kind: "folder",
+          prefix: `${prefix}media/`,
+          name: "medios",
+          files: [
+            { path: "P001/a.jpg", size: JPEG.byteLength + 1 },
+            { path: "P001/b.jpg", size: 3 },
+          ],
+        },
+        folders: ["P001"],
+      }),
+    );
 
-    expect((await media.source?.list("P001"))?.files).toHaveLength(1);
-    expect(await extractedDirs()).toHaveLength(1);
-    await media.close();
-    expect(await extractedDirs()).toEqual([]);
-    expect(await readdir(input)).toEqual(["propiedades.xlsx"]);
+    expect(isAppError(error) && error.code).toBe("IMPORT_FILE_INVALID");
+    expect(await attemptDirs()).toEqual([]);
+  });
+
+  it("una ruta que sale de la carpeta se rechaza aunque llegue a la base (segunda barrera)", async () => {
+    const { staging } = setup();
+    const error = await caught(
+      staging.openMedia({
+        runId: RUN_ID,
+        media: {
+          kind: "folder",
+          prefix: `${prefix}media/`,
+          name: "medios",
+          files: [{ path: "../../fuera.jpg", size: 1 }],
+        },
+        folders: [],
+      }),
+    );
+    expect(isAppError(error) && error.code).toBe("IMPORT_FILE_INVALID");
   });
 
   it("dos intentos solapados no se pisan: cada uno tiene su directorio", async () => {
-    const zip = await writeZip("medios.zip", { "P001/foto.jpg": JPEG });
-    const first = await open(zip);
-    const second = await open(zip);
-    expect(await extractedDirs()).toHaveLength(2);
+    const { storage, staging } = setup();
+    const zip = buildZip([{ name: "P001/foto.jpg", data: new Uint8Array(JPEG) }]);
+    await storage.put(`${prefix}media.zip`, new Uint8Array(zip), "x");
+    const media = {
+      kind: "zip" as const,
+      key: `${prefix}media.zip`,
+      name: "m.zip",
+      size: zip.byteLength,
+    };
 
+    const first = await staging.openMedia({ runId: RUN_ID, media, folders: ["P001"] });
+    const second = await staging.openMedia({ runId: RUN_ID, media, folders: ["P001"] });
+    expect(await attemptDirs()).toHaveLength(2);
     await first.close();
-
     expect((await second.source?.list("P001"))?.files).toHaveLength(1);
     await second.close();
   });
-
-  it("un zip que falla a mitad: IMPORT_FILE_INVALID, sin dejar su directorio y conservando input/", async () => {
-    const input = join(root, RUN_ID, "input");
-    await mkdir(input, { recursive: true });
-    // La primera entrada ya se escribió cuando aparece la ruta hostil.
-    const zip = await writeZip("roto.zip", { "P001/foto.jpg": JPEG, "../fuera.txt": JPEG });
-
-    const error = await caught(open(zip));
-
-    expect(isAppError(error) && error.code).toBe("IMPORT_FILE_INVALID");
-    expect(await extractedDirs()).toEqual([]);
-    expect(await exists(input)).toBe(true);
-  });
-
-  it("un zip con todo dentro de una carpeta (macOS → Comprimir) usa esa carpeta como raíz", async () => {
-    const zip = await writeZip("medios.zip", {
-      "medios/P001/foto.jpg": JPEG,
-      "medios/_marca/logo.jpg": JPEG,
-    });
-
-    const media = await open(zip, ["P001", "_marca"]);
-
-    expect((await media.source?.list("P001"))?.files.map((file) => file.relPath)).toEqual([
-      "P001/foto.jpg",
-    ]);
-  });
-
-  it("carpetas pedidas vacías o con .. no impiden desenvolver el zip", async () => {
-    const zip = await writeZip("medios.zip", { "medios/P001/foto.jpg": JPEG });
-
-    const media = await open(zip, ["", ".", "..", "P001"]);
-
-    expect((await media.source?.list("P001"))?.files).toHaveLength(1);
-  });
-
-  it("un zip con una sola propiedad en la raíz no se desenvuelve", async () => {
-    const zip = await writeZip("medios.zip", { "P001/foto.jpg": JPEG });
-
-    const media = await open(zip);
-
-    expect((await media.source?.list("P001"))?.files).toHaveLength(1);
-  });
-
-  it.each([
-    ["no existe", "nada.zip", "IMPORT_FILE_NOT_FOUND"],
-    ["no es carpeta ni zip", "medios.txt", "IMPORT_FILE_INVALID"],
-  ])("unos medios que %s → %s, con el nombre y sin la ruta", async (_, name, code) => {
-    if (name.endsWith(".txt")) await writeFile(join(work, name), "texto");
-
-    const error = await caught(open(join(work, name)));
-
-    expect(isAppError(error) && error.code).toBe(code);
-    expect(isAppError(error) && error.message).toContain(name);
-    expect(isAppError(error) && error.message).not.toContain(work);
-  });
-});
-
-describe("createStaging · saveInput", () => {
-  it("guarda en input/ con solo el nombre del archivo y devuelve la ruta absoluta", async () => {
-    const path = await staging().saveInput(
-      RUN_ID,
-      "../../propiedades.xlsx",
-      new Uint8Array([1, 2]),
-    );
-
-    expect(path).toBe(join(root, RUN_ID, "input", "propiedades.xlsx"));
-    expect(staging().inputDirOf(RUN_ID)).toBe(join(root, RUN_ID, "input"));
-    expect(await readdir(join(root, RUN_ID, "input"))).toEqual(["propiedades.xlsx"]);
-  });
-
-  it("un nombre con barras de Windows tampoco sale de input/", async () => {
-    const path = await staging().saveInput(RUN_ID, "C:\\temp\\medios.zip", new Uint8Array([1]));
-    expect(path).toBe(join(root, RUN_ID, "input", "medios.zip"));
-  });
-
-  it("acepta un stream (lo que entrega File.stream()) y lo escribe completo", async () => {
-    async function* chunks() {
-      yield new Uint8Array([1, 2]);
-      yield new Uint8Array([3]);
-    }
-    const path = await staging().saveInput(RUN_ID, "medios.zip", chunks());
-    expect([...(await readFile(path))]).toEqual([1, 2, 3]);
-  });
-
-  it.each(["", "..", "  ", "a\u0000b.xlsx", `${"x".repeat(256)}.xlsx`])(
-    "un nombre inválido (%j) es IMPORT_FILE_INVALID",
-    async (name) => {
-      const error = await caught(staging().saveInput(RUN_ID, name, new Uint8Array([1])));
-      expect(isAppError(error) && error.code).toBe("IMPORT_FILE_INVALID");
-    },
-  );
 });
 
 describe("createStaging · discard y cleanup", () => {
-  it("discard borra todo el directorio del run, y no falla si no existe", async () => {
-    await mkdir(join(root, RUN_ID, "input"), { recursive: true });
-    await staging().discard(RUN_ID);
+  it("discard borra lo de la carga en R2 y en el disco, sin tocar otras cargas", async () => {
+    const { storage, staging } = setup();
+    await storage.put(`${prefix}xlsx/p.xlsx`, new Uint8Array([1]), "x");
+    await storage.put(`${prefix}media/P001/a.jpg`, new Uint8Array([1]), "x");
+    await storage.put("imports/otra/xlsx/p.xlsx", new Uint8Array([1]), "x");
+    await mkdir(join(root, RUN_ID, "media-x"), { recursive: true });
+
+    await staging.discard(RUN_ID);
+
+    expect(await storage.list(prefix)).toEqual([]);
+    expect(await storage.list("imports/otra/")).toHaveLength(1);
     expect(await exists(join(root, RUN_ID))).toBe(false);
-    await staging().discard(RUN_ID);
-  });
-
-  it("discard y close nunca tocan los archivos del operador (--media y el xlsx de la CLI)", async () => {
-    await mkdir(join(work, "medios", "P001"), { recursive: true });
-    await writeFile(join(work, "medios", "P001", "foto.jpg"), JPEG);
-    await writeFile(join(work, "propiedades.xlsx"), "del operador");
-    const zip = await writeZip("medios.zip", { "P001/foto.jpg": JPEG });
-
-    await (await open(join(work, "medios"))).close();
-    await (await open(zip)).close();
-    await staging().discard(RUN_ID);
-
-    expect(await exists(join(work, "medios", "P001", "foto.jpg"))).toBe(true);
-    expect(await exists(join(work, "propiedades.xlsx"))).toBe(true);
-    expect(await exists(zip)).toBe(true);
+    await staging.discard(RUN_ID);
   });
 
   it("un id que no es uuid no arma rutas: IMPORT_RUN_INVALID", async () => {
-    const error = await caught(staging().discard("../../etc"));
+    const { staging } = setup();
+    const error = await caught(staging.discard("../../etc"));
     expect(isAppError(error) && error.code).toBe("IMPORT_RUN_INVALID");
   });
 
@@ -230,7 +283,7 @@ describe("createStaging · discard y cleanup", () => {
 
   async function seedStaging(now: number) {
     for (const id of [...Object.values(ids), "no-es-un-run"]) {
-      await mkdir(join(root, id, "input"), { recursive: true });
+      await mkdir(join(root, id, "media-x"), { recursive: true });
     }
     const ago = (ms: number) => new Date(now - ms);
     await utimes(
@@ -243,6 +296,7 @@ describe("createStaging · discard y cleanup", () => {
   }
 
   it("borra los terminados, los de más de 24 h y los huérfanos viejos; si la base falla en uno, sigue", async () => {
+    const { staging } = setup();
     const now = Date.now();
     await seedStaging(now);
     const states: Record<string, "open" | "closed" | "missing"> = {
@@ -252,7 +306,7 @@ describe("createStaging · discard y cleanup", () => {
       [ids.huerfanoViejo]: "missing",
     };
 
-    const removed = await staging().cleanup(async (id) => {
+    const removed = await staging.cleanup(async (id) => {
       if (id === ids.sinBase) throw new Error("DB_UNAVAILABLE");
       return states[id] ?? "open";
     }, now);
@@ -264,13 +318,15 @@ describe("createStaging · discard y cleanup", () => {
   });
 
   it("sin la base (antes de conectar), solo borra por antigüedad", async () => {
+    const { staging } = setup();
     const now = Date.now();
     await seedStaging(now);
 
-    expect(await staging().cleanup(undefined, now)).toEqual([ids.viejo]);
+    expect(await staging.cleanup(undefined, now)).toEqual([ids.viejo]);
   });
 
   it("sin directorio de staging, no hay nada que limpiar", async () => {
-    expect(await staging().cleanup(async () => "closed")).toEqual([]);
+    const { staging } = setup();
+    expect(await staging.cleanup(async () => "closed")).toEqual([]);
   });
 });

@@ -34,7 +34,7 @@ import { accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
 import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
-import { type ImportUploads, importRoutes } from "./routes/imports.js";
+import { importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
 import {
@@ -77,10 +77,11 @@ export type AppDeps = {
   media: MediaRepository;
   fieldDefinitions: FieldDefinitionRepository;
   /**
-   * Las URLs de lectura temporales de los medios (fotos, renders y reel) y, desde F7-T14, subir
-   * el logo de un corredor.
+   * Las URLs de lectura temporales de los medios (fotos, renders y reel); desde F7-T14, subir el
+   * logo de un corredor, y desde F8 (spec §4.4, ADR-0025) firmar las subidas directas de una carga,
+   * revisar que llegaron y borrarlas.
    */
-  storage: Pick<MediaStorage, "signedReadUrl" | "put">;
+  storage: Pick<MediaStorage, "signedReadUrl" | "put" | "signedUploadUrl" | "list" | "delete">;
   /** El logo de un corredor con sharp (`@agentsales/media/logo`; F7-T14). */
   logos: LogoNormalizer;
   /** sha256 hexadecimal de unos bytes (`node:crypto`, lo compone `server.ts`). */
@@ -90,12 +91,9 @@ export type AppDeps = {
   // Importación (F1-T11): la API solo crea el run y encola (ADR-0005).
   importRuns: ImportRunRepository;
   queue: JobQueue;
-  /** Escribe y borra en el staging; lo compone `server.ts` (lo que depende de Node). */
-  uploads: ImportUploads;
+  /** uuid de una carga nueva: se necesita antes de crearla, para sus claves de R2 (spec F8 §4.4). */
   newId: () => string;
-  /** `POST /imports/local`: `server.ts` lo activa con `NODE_ENV=development`. */
-  localImports: boolean;
-  /** `MAX_IMPORT_UPLOAD_MB` en bytes. */
+  /** `MAX_IMPORT_UPLOAD_MB` en bytes: el tope de cada archivo de una carga. */
   maxUploadBytes: number;
   // Contenido (F2-T12): la API pide corridas y edita textos; las corre el worker (ADR-0012).
   contentRuns: ContentRunRepository;
@@ -206,7 +204,10 @@ export function createApp(input: AppDeps) {
     .use("/content-runs/:id/*", ownership.contentRun)
     .use("/contents/:id/*", ownership.content)
     .use("/publications/:id/*", ownership.publication)
-    .use("/imports/:id/*", ownership.importRun)
+    // `/imports/uploads` (spec F8 §4.4) también calza con `/imports/:id`: no es una carga.
+    .use("/imports/:id/*", (c, next) =>
+      c.req.param("id") === "uploads" ? next() : ownership.importRun(c, next),
+    )
     .use("/accounts/:id/*", ownership.account)
     .use("/brokers/:id/*", ownership.broker)
     .get("/health", async (c) => {

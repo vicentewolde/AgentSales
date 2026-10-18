@@ -27,3 +27,6 @@
 - **Mantener el `multipart` por la API y escribirlo en R2 desde ella:** el archivo pasa dos veces por la red y por la memoria de la API.
 - **Subida multiparte de S3 desde el navegador:** necesita más rutas y estado (partes, completar, abortar); un PUT de hasta unos 5 GB alcanza para el tope de 4 GB del zip.
 - **Que la CLI comprima la carpeta en un zip:** necesitaría una dependencia nueva; subir archivo por archivo usa los lectores de carpeta que ya existen.
+
+## Seguimiento
+- **2026-10-18, lote B de F8:** `startImport` revisa los archivos con `list` (una llamada) en vez de un `head` por archivo; las URLs duran 6 h (no 1 h: un zip grande o 500 archivos en una conexión lenta empiezan los últimos `PUT` después de la hora); empezar una carga ya en cola la vuelve a encolar con la misma `singletonKey`; el zip tiene el tope por archivo (`MAX_IMPORT_UPLOAD_MB`, nunca más de 4 GB); la limpieza de cada hora (`publications.watch`) también borra lo que quedó en R2 de cargas cerradas o terminadas, como red de seguridad del punto 3. No cambia la decisión.

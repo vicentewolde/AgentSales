@@ -101,8 +101,18 @@ export type ListingSource = (typeof LISTING_SOURCES)[number];
 export const CLOSE_REASONS = ["sold", "rented", "withdrawn"] as const;
 export type CloseReason = (typeof CLOSE_REASONS)[number];
 
-/** Estado de una carga (`import_runs`, job `import.run`). `succeeded` y `failed` son terminales. */
-export const IMPORT_RUN_STATUSES = ["queued", "running", "succeeded", "failed"] as const;
+/**
+ * Estado de una carga (`import_runs`, job `import.run`). `succeeded` y `failed` son terminales.
+ * `awaiting_upload` (spec F8 §4.4): pedida, con sus URLs de subida, mientras el panel o la CLI
+ * suben los archivos a R2; `startImport` la pasa a `queued`.
+ */
+export const IMPORT_RUN_STATUSES = [
+  "awaiting_upload",
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+] as const;
 export type ImportRunStatus = (typeof IMPORT_RUN_STATUSES)[number];
 
 /** Estados finales de una carga: el job no la vuelve a procesar, y la CLI y el panel dejan de sondear. */

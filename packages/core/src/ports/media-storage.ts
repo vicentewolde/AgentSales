@@ -18,6 +18,37 @@ export type StoredObjectInfo = {
   contentType: string | undefined;
 };
 
+/** Un objeto de un listado por prefijo (`list`). */
+export type ListedObject = {
+  path: string;
+  size: number;
+  lastModified: Date;
+};
+
+export type SignedUploadOptions = {
+  contentType: string;
+  /** Tamaño exacto en bytes: la URL solo sirve para un cuerpo de ese largo. */
+  contentLength: number;
+  /**
+   * sha256 del contenido, en hexadecimal (64 caracteres). Si viene, la URL lo exige: el cliente lo
+   * manda en `x-amz-checksum-sha256` y R2 rechaza un contenido distinto (NO VERIFICADO hasta
+   * `storage:check`, spec F8 §4.4).
+   */
+  sha256?: string;
+  /** Vida de la URL (spec F8 §4.4: 1 h). */
+  ttlSeconds: number;
+};
+
+/**
+ * Una subida prefirmada (ADR-0025): un `PUT` a `url` con exactamente estas cabeceras (firmadas) y
+ * un cuerpo de `contentLength` bytes. `Content-Length` no va en `headers`: lo pone el cliente al
+ * mandar el cuerpo (el navegador no deja fijarlo a mano).
+ */
+export type SignedUpload = {
+  url: string;
+  headers: Record<string, string>;
+};
+
 /**
  * Puerto de almacenamiento de archivos (ADR-0007). `path` es la ruta dentro del bucket, sin barra
  * inicial (ej. `brokers/{brokerId}/listings/{listingId}/original/{sha256}.jpg`).
@@ -68,4 +99,14 @@ export interface MediaStorage {
   delete(path: string): Promise<void>;
   /** URL de lectura temporal; sin `ttlSeconds` usa el TTL configurado del adaptador. */
   signedReadUrl(path: string, ttlSeconds?: number): Promise<string>;
+  /**
+   * URL temporal para subir un objeto con un `PUT` directo desde el panel o la CLI (spec F8 §4.4,
+   * ADR-0025), firmada con su tipo, su tamaño y, si viene, su sha256. Firmar no habla con R2.
+   */
+  signedUploadUrl(path: string, options: SignedUploadOptions): Promise<SignedUpload>;
+  /**
+   * Todos los objetos cuya ruta empieza con `prefix` (el adaptador recorre las páginas), en orden
+   * de ruta. Un prefijo sin objetos es una lista vacía.
+   */
+  list(prefix: string): Promise<ListedObject[]>;
 }

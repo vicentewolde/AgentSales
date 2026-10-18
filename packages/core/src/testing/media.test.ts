@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AppError, isAppError } from "../errors.js";
 import type { NewMedia } from "../ports/media-repository.js";
+import { fakeHash } from "./fake-hash.js";
 import {
   createInMemoryMediaFileSource,
   createInMemoryMediaRepository,
@@ -113,6 +114,78 @@ describe("createInMemoryMediaStorage", () => {
     ]);
     const error = await caught(storage.getStream("no-existe.mp4"));
     expect(isAppError(error) && error.code).toBe("STORAGE_NOT_FOUND");
+  });
+});
+
+describe("createInMemoryMediaStorage · subidas firmadas y listado (F8-T03)", () => {
+  // Un hash de prueba sobre los bytes (core no usa `node:crypto`): el doble solo compara.
+  const hash = (bytes: Uint8Array) => fakeHash(String.fromCharCode(...bytes));
+  const text = (value: string) => Uint8Array.from(value, (char) => char.charCodeAt(0));
+
+  it("acepta el PUT con las cabeceras firmadas, el largo y el contenido anunciados", async () => {
+    const storage = createInMemoryMediaStorage({ sha256: hash });
+    const body = text("planilla");
+    const upload = await storage.signedUploadUrl("imports/r1/xlsx/p.xlsx", {
+      contentType: "application/x",
+      contentLength: body.byteLength,
+      sha256: hash(body),
+      ttlSeconds: 3600,
+    });
+
+    await storage.receiveUpload(upload.url, upload.headers, body);
+
+    expect(await storage.get("imports/r1/xlsx/p.xlsx")).toEqual(body);
+    expect(await storage.list("imports/r1/")).toEqual([
+      { path: "imports/r1/xlsx/p.xlsx", size: body.byteLength, lastModified: expect.any(Date) },
+    ]);
+  });
+
+  it("rechaza un contenido distinto del firmado, sin guardar nada", async () => {
+    const storage = createInMemoryMediaStorage({ sha256: hash });
+    const upload = await storage.signedUploadUrl("a", {
+      contentType: "x",
+      contentLength: 4,
+      sha256: hash(text("hola")),
+      ttlSeconds: 60,
+    });
+
+    expect(
+      await caught(storage.receiveUpload(upload.url, upload.headers, text("chao"))),
+    ).toMatchObject({
+      code: "STORAGE_CONTENT_MISMATCH",
+    });
+    expect(await storage.head("a")).toBeNull();
+  });
+
+  it("rechaza otro largo, una cabecera que falta o una URL desconocida (como la firma de R2)", async () => {
+    const storage = createInMemoryMediaStorage({ sha256: hash });
+    const upload = await storage.signedUploadUrl("a", {
+      contentType: "x",
+      contentLength: 4,
+      sha256: hash(text("hola")),
+      ttlSeconds: 60,
+    });
+
+    for (const attempt of [
+      storage.receiveUpload(upload.url, upload.headers, text("hola!")),
+      storage.receiveUpload(upload.url, { "content-type": "x" }, text("hola")),
+      storage.receiveUpload("memory-upload://otra", upload.headers, text("hola")),
+    ]) {
+      expect(await caught(attempt)).toMatchObject({ code: "STORAGE_ERROR" });
+    }
+    expect(await storage.list("")).toEqual([]);
+  });
+
+  it("list filtra por prefijo y ordena por ruta", async () => {
+    const storage = createInMemoryMediaStorage();
+    await storage.put("imports/r1/b", text("b"), "x");
+    await storage.put("imports/r1/a", text("aa"), "x");
+    await storage.put("imports/r2/a", text("a"), "x");
+
+    expect((await storage.list("imports/r1/")).map(({ path, size }) => ({ path, size }))).toEqual([
+      { path: "imports/r1/a", size: 2 },
+      { path: "imports/r1/b", size: 1 },
+    ]);
   });
 });
 

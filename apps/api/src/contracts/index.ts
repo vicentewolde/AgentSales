@@ -14,6 +14,7 @@ import {
   contentRunReportSchema,
   contentRunSchema,
   FIELD_TYPES,
+  IMPORT_UPLOAD,
   importRunSchema,
   LISTING_ACTIONS,
   LISTING_STATUSES,
@@ -193,48 +194,59 @@ export const hasExtension = (fileName: string, extension: string) =>
  */
 const fileSchema = z.custom<File>((value) => value instanceof File, "debe ser un archivo");
 
-/**
- * Un `<input type="file">` sin elegir llega vacío (como texto `""` o un `File` de 0 bytes, según
- * el cliente), y un `<select>` sin corredor como `""`: cuentan como "no enviado".
- */
-const optionalFile = z.preprocess(
-  (value) => (value === "" || (value instanceof File && value.size === 0) ? undefined : value),
-  fileSchema.optional(),
-);
-const optionalText = z.preprocess(
-  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-  z.string().trim().min(1).optional(),
-);
-
-/**
- * `POST /imports` (multipart, desde el panel): el Excel (hasta `MAX_XLSX_BYTES`), el zip de
- * medios (opcional), el corredor (opcional) y `dryRun` como texto. El tope del xlsx se revisa en
- * la ruta, ya leído el cuerpo.
- */
-export const importUploadFormSchema = z.object({
-  file: fileSchema,
-  media: optionalFile,
-  broker: optionalText,
-  dryRun: z.enum(["true", "false"]).optional(),
-});
-
 /** Tope del xlsx subido: el mismo del lector (core). */
 export const MAX_XLSX_UPLOAD_BYTES = MAX_XLSX_BYTES;
 
-/** Ruta absoluta (Unix o Windows): la CLI resuelve las relativas antes de llamar (spec F1 §4.1). */
-const absolutePath = z
-  .string()
-  .regex(/^(\/|[A-Za-z]:[\\/])/, "debe ser una ruta absoluta")
-  .regex(/[^\\/]$/, "debe terminar en el nombre de un archivo o carpeta");
+/**
+ * Los archivos de una carpeta del panel o la CLI: el navegador o la CLI calculan el sha256 de los
+ * de hasta este tamaño (spec F8 §4.4).
+ */
+export const UPLOAD_SHA256_UP_TO_BYTES = IMPORT_UPLOAD.sha256UpToBytes;
+export const MAX_FOLDER_FILES = IMPORT_UPLOAD.maxFolderFiles;
 
-/** `POST /imports/local` (la CLI, solo en desarrollo): rutas del disco del operador. */
-export const localImportBodySchema = z.object({
-  xlsxPath: absolutePath,
-  mediaDir: absolutePath.optional(),
+const uploadName = z.string().min(1).max(300);
+const uploadSize = z.number().int().nonnegative();
+
+/**
+ * `POST /imports/uploads` (spec F8 §4.4 y §4.14, ADR-0025): la planilla (nombre, tamaño y sha256)
+ * y, si hay, los medios: un zip (nombre y tamaño) o los archivos de una carpeta (ruta relativa con
+ * `/`, tamaño y sha256 de los de hasta 100 MB). Los topes, las rutas y los nombres los revisa core
+ * (`requestImportUpload`); aquí solo la forma, con un techo para el tamaño del pedido.
+ */
+export const importUploadRequestSchema = z.object({
   broker: z.string().trim().min(1).optional(),
   dryRun: z.boolean().optional(),
+  xlsx: z.object({ name: uploadName, size: uploadSize, sha256: z.string().max(64) }),
+  media: z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.literal("zip"), name: uploadName, size: uploadSize }),
+      z.object({
+        kind: z.literal("folder"),
+        name: uploadName,
+        files: z
+          .array(
+            z.object({
+              path: z.string().min(1).max(1100),
+              size: uploadSize,
+              sha256: z.string().max(64).optional(),
+            }),
+          )
+          .max(2 * IMPORT_UPLOAD.maxFolderFiles),
+      }),
+    ])
+    .nullable()
+    .optional(),
 });
-export type LocalImportBody = z.infer<typeof localImportBodySchema>;
+export type ImportUploadRequest = z.infer<typeof importUploadRequestSchema>;
+
+/** Una URL de subida: un `PUT` a `url` con exactamente `headers` y el archivo como cuerpo. */
+export const importUploadTargetSchema = z.object({
+  kind: z.enum(["xlsx", "zip", "file"]),
+  name: z.string(),
+  url: z.string(),
+  headers: z.record(z.string(), z.string()),
+});
+export type ImportUploadTargetView = z.infer<typeof importUploadTargetSchema>;
 
 /**
  * Una carga tal como la ve la CLI o el panel: `input` solo con nombres de archivo, nunca las rutas
@@ -254,6 +266,13 @@ export type ImportRunView = z.infer<typeof importRunViewSchema>;
 
 export const importRunResponseSchema = z.object({ importRun: importRunViewSchema });
 export type ImportRunResponse = z.infer<typeof importRunResponseSchema>;
+
+/** `POST /imports/uploads` (201): la carga en `awaiting_upload` y una URL por archivo. */
+export const importUploadResponseSchema = z.object({
+  importRun: importRunViewSchema,
+  uploads: z.array(importUploadTargetSchema),
+});
+export type ImportUploadResponse = z.infer<typeof importUploadResponseSchema>;
 
 /** En la lista va sin el reporte (puede ser grande): el detalle lo trae completo. */
 export const importRunSummarySchema = importRunViewSchema.omit({ report: true });

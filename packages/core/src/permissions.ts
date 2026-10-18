@@ -21,7 +21,7 @@ export const PERMISSIONS = [
   "brokers.create",
   /** Crear, restablecer, desactivar y reactivar usuarios. */
   "users.manage",
-  /** `/health` con detalle y lo que es solo de desarrollo (`/imports/local`). */
+  /** `/health` con detalle. */
   "system.view",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];

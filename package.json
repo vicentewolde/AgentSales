@@ -18,6 +18,7 @@
     "db:seed": "pnpm --filter @agentsales/db seed",
     "db:backup": "pnpm --filter @agentsales/db backup",
     "auth:admin": "pnpm --silent --filter @agentsales/db run auth-admin",
+    "db:dev-scrub": "pnpm --silent --filter @agentsales/db run dev-scrub",
     "storage:check": "pnpm --filter @agentsales/storage check",
     "worker:ping": "pnpm --filter @agentsales/worker run job:ping",
     "cli": "pnpm --silent --filter @agentsales/cli run cli",

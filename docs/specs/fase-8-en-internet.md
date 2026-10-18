@@ -76,10 +76,10 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 
 ### 4.4 Subidas directas a R2 (ADR-0025)
 - **Flujo:**
-  1. `POST /api/imports/uploads` (sesión) con el nombre y tamaño de la planilla y, si hay, de los medios: un zip, o la lista de archivos de una carpeta (ruta relativa y tamaño), más `dryRun` si es una simulación. La planilla y los archivos de una carpeta de hasta 100 MB llevan su sha256; el zip, solo su tamaño (el navegador no puede calcular el sha256 de 4 GB sin tenerlo entero en memoria; el worker valida el zip al abrirlo). La API crea la carga en `awaiting_upload` con su corredor y su `broker` (como F7) y responde una URL prefirmada de PUT por archivo (válida 1 h, firmada con su tamaño y, si lo trae, su sha256). Que R2 respete el sha256 en un PUT prefirmado es NO VERIFICADO: `storage:check` lo prueba (T03).
+  1. `POST /api/imports/uploads` (sesión) con el nombre y tamaño de la planilla y, si hay, de los medios: un zip, o la lista de archivos de una carpeta (ruta relativa y tamaño), más `dryRun` si es una simulación. La planilla y los archivos de una carpeta de hasta 100 MB llevan su sha256; el zip, solo su tamaño (el navegador no puede calcular el sha256 de 4 GB sin tenerlo entero en memoria; el worker valida el zip al abrirlo). La API crea la carga en `awaiting_upload` con su corredor y su `broker` (como F7) y responde una URL prefirmada de PUT por archivo (válida 6 h, firmada con su tamaño y, si lo trae, su sha256; 1 h no alcanzaba para un zip grande o 500 archivos en una conexión lenta). Que R2 respete el sha256 en un PUT prefirmado es NO VERIFICADO: `storage:check` lo prueba (T03).
   2. El panel o la CLI suben cada archivo directo a R2 (`imports/<importRunId>/xlsx/<nombre>`, `…/media.zip` o `…/media/<ruta>`).
-  3. `POST /api/imports/:id/start`: la API revisa con `head` que estén todos con su tamaño y encola `import.run` (`queued`). Si falta uno: `IMPORT_UPLOAD_INCOMPLETE` con los que faltan.
-- **Topes:** `MAX_IMPORT_UPLOAD_MB` por archivo (hoy 512) y el zip hasta 4 GB (como F1); una carpeta hasta 500 archivos. La planilla, hasta 10 MB comprimida y **50 MB descomprimida** (se revisan las entradas del zip con yauzl antes de abrirla con exceljs: `IMPORT_XLSX_TOO_LARGE`). Un archivo de la carpeta con una ruta con `..`, absoluta o con caracteres de control se rechaza al pedir la subida.
+  3. `POST /api/imports/:id/start`: la API lista `imports/<id>/` en R2 (una llamada, en vez de un `head` por archivo), revisa que estén todos con su tamaño y encola `import.run` (`queued`). Si falta uno: `IMPORT_UPLOAD_INCOMPLETE` con los que faltan. Empezar una carga ya en cola la vuelve a encolar con la misma `singletonKey` (repara una que quedó sin job por un corte).
+- **Topes:** `MAX_IMPORT_UPLOAD_MB` por archivo, también el zip (hoy 512; nunca más de 4 GB, que es además el tope descomprimido del zip, como F1, y el de la suma de una carpeta); una carpeta hasta 500 archivos. La planilla, hasta 10 MB comprimida y **50 MB descomprimida** (se revisan las entradas del zip con yauzl antes de abrirla con exceljs: `IMPORT_XLSX_TOO_LARGE`). Un archivo de la carpeta con una ruta con `..`, absoluta o con caracteres de control se rechaza al pedir la subida.
 - **El worker** lee la planilla y los medios desde R2 (en streaming, a su carpeta temporal), con los lectores de hoy (zip y carpeta); al terminar la carga (bien o mal) borra `imports/<id>/`. Una carga que queda en `awaiting_upload` más de 24 h se cierra como `failed` (`IMPORT_UPLOAD_ABANDONED`) y se borran sus objetos (`publications.watch`, cada hora).
 - **Simulación:** `--dry-run` de la CLI usa el mismo flujo con `dryRun` (el worker lee y valida sin escribir, como hoy); no hay un segundo camino en la CLI.
 - **Se quitan** `POST /imports` (`multipart`), `POST /imports/local`, `uploads` de la API y el staging compartido (`tmp/imports`). La CLI siempre sube (también contra la API local), así hay un solo camino.
@@ -145,7 +145,7 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 - **App Review** (nota §13.1 y §13.5): lo tramita el operador (checklist "Antes de F8"). Del lado del sistema: privacidad, borrado de datos y las dos vueltas en HTTPS; el botón de Instagram con sus pautas de marca; un canal de ayuda y de seguridad visible; un **corredor y un usuario de demostración para el revisor** (creados con la invitación de F7, sin registro público; si Meta rechaza una app cerrada, se decide entonces); una llamada exitosa por permiso en los 30 días previos; el video de cada permiso con el flujo real en el dominio.
 
 ### 4.12 Datos (migraciones `0010` a `0012`)
-- **`0010` (cargas):** `import_run_status` suma `awaiting_upload` (`ALTER TYPE … ADD VALUE` va en su propia migración, sin usar el valor en la misma transacción); `import_runs.input` (jsonb) suma la forma `{ broker?, dryRun, xlsx: { key, name, size, sha256 }, media: { kind: "zip", key, size } | { kind: "folder", prefix, files } | null }`, y `importRunInputSchema` (core) es una unión con la de hoy (`xlsxPath`, `mediaDir`, `broker`), que se sigue leyendo y nunca se reintenta. Índice por `status, created_at` para cerrar las abandonadas.
+- **`0010` (cargas):** `import_run_status` suma `awaiting_upload` (`ALTER TYPE … ADD VALUE` va en su propia migración, sin usar el valor en la misma transacción); `import_runs.input` (jsonb) suma la forma `{ broker?, dryRun, xlsx: { key, name, size, sha256 }, media: { kind: "zip", key, name, size } | { kind: "folder", prefix, name, files } | null }` (el `name` del zip y de la carpeta, para mostrarlos; `dryRun` repite la columna `dry_run`, que es la que manda), y `importRunInputSchema` (core) es una unión con la de hoy (`xlsxPath`, `mediaDir`, `broker`), que se sigue leyendo y nunca se reintenta. Índice por `status, created_at` para cerrar las abandonadas.
 - **`0012` (el worker, T12):** tabla `worker_heartbeats` (proceso y último latido).
 - **`0011` (doble factor y Meta):** `users.totp_secret_encrypted`, `users.totp_enabled_at`, `users.totp_last_step`; tabla `user_recovery_codes` (usuario, hash, `used_at`); tabla `login_challenges` (hash, usuario, vence, `used_at`), con borrado de las vencidas en `publications.watch` (como las sesiones); tabla `meta_deletion_requests` (código, `meta_user_id` con su hash, recibido, estado, cuentas afectadas).
 - `docs/02-modelo-datos.md` al día en cada tarea.
@@ -172,7 +172,7 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 | `--broker` con `slugify` solo en la CLI (F1) | Desaparece con `/imports/local` (§4.4) |
 
 ### 4.14 Contratos (API, ADR-0011)
-- `POST /api/imports/uploads` (`{ broker?, dryRun, xlsx, media }`) → `{ importRunId, uploads: [{ name, url, headers }] }`; `POST /api/imports/:id/start` → la carga en `queued`.
+- `POST /api/imports/uploads` (`{ broker?, dryRun, xlsx, media }`) → `201 { importRun, uploads: [{ kind, name, url, headers }] }` (`kind`: `xlsx`, `zip` o `file`); `POST /api/imports/:id/start` → `202` con la carga en `queued`.
 - `POST /api/auth/login` → como hoy, o `{ status: "totp_required", challenge }`; `POST /api/auth/login/totp` `{ challenge, code }`; `POST /api/auth/totp/setup` → `{ secret, otpauthUrl }`; `POST /api/auth/totp/confirm` `{ code }` → `{ recoveryCodes }`; `POST /api/auth/totp/disable` `{ code }`.
 - `POST /api/meta/deauthorize` y `POST /api/meta/data-deletion` (públicas, `application/x-www-form-urlencoded` con `signed_request`, fuera del CSRF); `GET /api/meta/data-deletion/:code` (pública, HTML corto).
 - `GET /api/oauth/mercadolibre/callback` (pública, la protege el `state` y su cookie, como Instagram).
@@ -265,37 +265,37 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 - **Archivos:** `packages/storage/src/{r2-storage.ts,index.ts}`, `packages/core/src/ports/` (contrato `MediaStorage`), `packages/core/src/testing/`, `packages/storage/src/scripts/check.ts`, `docs/01-arquitectura.md` (almacenamiento)
 - **Descripción:** `signedUploadUrl(path, { contentType, contentLength, sha256, ttlSeconds })` y `list(prefix)`; el doble en memoria; `storage:check` sube con una URL prefirmada (y comprueba que R2 rechaza un contenido con otro sha256: NO VERIFICADO hasta entonces) y revisa la regla de CORS del bucket.
 - **Hecho cuando:**
-  - [ ] Tests (sin R2, con el firmador): la URL firma el tamaño y el sha256; `list` pagina; el doble rechaza un contenido distinto
-  - [ ] `storage:check` lo verifica contra R2 (lo corre el operador)
+  - [x] Tests (sin R2, con el firmador): la URL firma el tamaño y el sha256; `list` pagina; el doble rechaza un contenido distinto
+  - [ ] `storage:check` lo verifica contra R2 (lo corre el operador; checklist "Al terminar el lote B")
 
 ### F8-T04 · La carga con entradas en R2 (core y base)
 - **Depende de:** T03
 - **Archivos:** `packages/core/src/{import-run.ts,use-cases/request-import.ts,use-cases/run-import.ts}`, `packages/db/src/schema.ts`, `packages/db/drizzle/0010_*.sql`, `packages/db/src/repositories/import-runs.ts`, `docs/02-modelo-datos.md`
-- **Descripción:** `requestImportUpload` (valida nombres, rutas, tamaños y topes; crea la carga en `awaiting_upload` con su `broker` y `dryRun`), `startImport` (revisa con `head` y encola), cerrar las abandonadas; `importRunInputSchema` como unión con la forma de hoy; la migración `0010` (sin la parte de Marketplace, que es de T20).
+- **Descripción:** `requestImportUpload` (valida nombres, rutas, tamaños y topes; crea la carga en `awaiting_upload` con su `broker` y `dryRun`), `startImport` (revisa con `list` y encola), cerrar las abandonadas; `importRunInputSchema` como unión con la forma de hoy; la migración `0010` (sin la parte de Marketplace, que es de T20).
 - **Hecho cuando:**
-  - [ ] Tests: rutas con `..`, absolutas o con control rechazadas; topes; falta un archivo (`IMPORT_UPLOAD_INCOMPLETE`); empezar dos veces; abandonada a las 24 h; el corredor de la carga como en F7; una fila de la forma vieja se sigue leyendo
+  - [x] Tests: rutas con `..`, absolutas o con control rechazadas; topes; falta un archivo (`IMPORT_UPLOAD_INCOMPLETE`); empezar dos veces; abandonada a las 24 h; el corredor de la carga como en F7; una fila de la forma vieja se sigue leyendo
 
 ### F8-T05 · El worker lee las cargas desde R2
 - **Depende de:** T04
 - **Archivos:** `packages/importers/src/{staging.ts,media-folder.ts,zip.ts,xlsx-reader.ts}`, `apps/worker/src/jobs/{import-run.ts,publications-watch.ts}`, `apps/worker/src/worker.ts`
 - **Descripción:** bajar la planilla y los medios desde R2 a la carpeta temporal del intento (zip o carpeta), el tope descomprimido del xlsx, borrar `imports/<id>/` al terminar y las abandonadas; se quita el staging compartido.
 - **Hecho cuando:**
-  - [ ] Tests: carga de punta a punta con el doble de R2 (zip y carpeta); un xlsx que se descomprime en más de 50 MB (`IMPORT_XLSX_TOO_LARGE`) sin abrirlo con exceljs; los objetos borrados al terminar y al abandonar; reintento después de un corte
+  - [x] Tests: carga de punta a punta con el doble de R2 (zip y carpeta); un xlsx que se descomprime en más de 50 MB (`IMPORT_XLSX_TOO_LARGE`) sin abrirlo con exceljs; los objetos borrados al terminar y al abandonar; reintento después de un corte
 
 ### F8-T06 · La API: pedir la subida y empezar
 - **Depende de:** T04
 - **Archivos:** `apps/api/src/routes/imports.ts`, `apps/api/src/{access.ts,contracts/,errors.ts}`, `apps/api/src/server.ts`
 - **Descripción:** `POST /api/imports/uploads` y `POST /api/imports/:id/start` (§4.14) con el alcance; se quitan el `multipart` y `/imports/local`.
 - **Hecho cuando:**
-  - [ ] Tests: el corredor solo para lo suyo (matriz de F7); la URL y sus cabeceras; empezar con un archivo faltante; las rutas viejas ya no existen; inventario de permisos
+  - [x] Tests: el corredor solo para lo suyo (matriz de F7); la URL y sus cabeceras; empezar con un archivo faltante; las rutas viejas ya no existen; inventario de permisos
 
 ### F8-T07 · Panel: subir a R2 con avance
 - **Depende de:** T06
 - **Archivos:** `apps/web/src/pages/ImportPage.tsx`, `apps/web/src/api/upload.ts` (nuevo)
 - **Descripción:** el panel calcula el sha256 (Web Crypto) de la planilla y de los archivos de carpeta de hasta 100 MB (el zip va solo con su tamaño), pide las URLs, sube con avance y reintento por archivo, y empieza la carga.
 - **Hecho cuando:**
-  - [ ] Tests: avance, un archivo que falla se reintenta, cancelar, el error de un archivo faltante
-  - [ ] Con `pnpm dev` y el bucket de desarrollo, una carga real de prueba (aviso antes)
+  - [x] Tests: avance, un archivo que falla se reintenta, cancelar, el error de un archivo faltante
+  - [ ] Con `pnpm dev` y el bucket de desarrollo, una carga real de prueba (aviso antes; espera `pnpm db:dev-scrub` del operador)
 
 ### F8-T08 · CLI: la dirección del servidor
 - **Depende de:** T02
@@ -309,7 +309,7 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 - **Archivos:** `apps/cli/src/commands/import.ts`, `apps/cli/src/upload.ts`
 - **Descripción:** sha256 (de la planilla y de los archivos de carpeta) y subida en streaming de la planilla y del zip, o de cada archivo de la carpeta, con avance; empezar la carga y esperar como hoy; `--dry-run` por el mismo flujo con `dryRun`.
 - **Hecho cuando:**
-  - [ ] Tests (msw para la API y R2): carpeta y zip; un archivo que falla se reintenta; `--dry-run` pide la carga con `dryRun`
+  - [x] Tests (la API en proceso y un R2 en memoria; el `PUT` real contra un servidor local en vez de msw): carpeta y zip; un archivo que falla se reintenta; `--dry-run` pide la carga con `dryRun`
 
 ### F8-T10 · Build de producción e imagen
 - **Depende de:** T02
@@ -459,4 +459,5 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 | 2026-10-18 | Respuestas del operador: D4 (Marketplace a mano para todos) y D5 (cerrar con App Review enviado). D1: por ahora algo **gratis** para mostrar la herramienta y después un plan pagado; D2: un dominio con "agentpey" |
 | 2026-10-18 | Segunda nota de hosting (`hosting.md` §13, opciones gratis) y respuestas: D1 = **Fly.io en modo demo** con Neon gratis (frente a Oracle gratis, que hay que administrar y puede reclamarse); D2 = **`agentsales.agentpey.com`** (`agentpey.com` es del operador y lo usa otro proyecto). Criterios y demo con el servidor encendido; riesgo del cupo de Neon |
 | 2026-10-18 | **Aprobado** por el operador. ADR-0024, ADR-0025 y ADR-0026 registrados; seguimientos en ADR-0005, ADR-0007, ADR-0017, ADR-0021, ADR-0022 y ADR-0023; roadmap y checklist "Antes de F8" al día |
+| 2026-10-18 | Lote B (F8-T03 a T07 y T09). Precisiones: `pnpm db:dev-scrub` (§4.6) solo usa `.env` y se niega si la base o la clave son las de `.env.production` o si la clave de `.env` abre alguna credencial; la entrada de R2 guarda también el `name` del zip y de la carpeta (para mostrarlos); `startImport` revisa los archivos con `list` (una llamada) en vez de un `head` por archivo; una carga de antes de F8 se cierra con `IMPORT_INPUT_LEGACY`; la limpieza de cada hora borra también lo que quedó en R2 de cargas terminadas; códigos nuevos `IMPORT_UPLOAD_INVALID` (400), `IMPORT_UPLOAD_TOO_LARGE` (413), `IMPORT_INPUT_LEGACY`; la respuesta de `POST /api/imports/uploads` (201) es `{ importRun, uploads }` (la carga completa, no solo su id) y lleva `kind` por URL; tras la revisión (`revisor` y `arquitecto`, sin bloqueantes): las URLs duran 6 h, empezar una carga en cola la vuelve a encolar, `db:dev-scrub` se niega sin `.env.production` y deja las credenciales que abre la clave de desarrollo, el zip tiene el tope por archivo (nunca más de 4 GB); `storage:check --origin`; `MAX_IMPORT_UPLOAD_MB` sigue en 512 por archivo (el zip, además, hasta 4 GB). Pendiente del operador: `pnpm db:dev-scrub`, `storage:check` (lo NO VERIFICADO del sha256 en un PUT prefirmado) y la carga real de prueba de T07 |
 | 2026-10-18 | Lote A (F8-T01 y T02, PR #140) y su revisión (`revisor` y `arquitecto`; un bloqueante, aplicado: `.gitignore` ignora `.env.*` salvo `.env.example`, para que `.env.production` nunca entre a git). Precisiones: en producción la IA debe ser `anthropic-api` (tampoco `fake`); la vuelta de Instagram del ejemplo de antes (sin `/api`) se ignora y se usa la nueva; `panelUrlOf` (config) da el panel también a `pnpm auth:admin`; la API y el worker rechazan `ENV_FILE` (`loadAppEnvFile`: es solo para los scripts, D12); `hostGuard` también cubre el panel compilado (salvo `GET /api/health`); `server-app.ts` reemplaza al `static.ts` de la lista; el mensaje de error habla del archivo de entorno. **Postergado:** la regla de producción de `BACKUP_TARGET` llega con T13, la de `BROWSER_PROFILES_DIR` con T20 y la cookie `__Host-agentsales_oauth_ml` con T19; la CSP en un navegador se revisa en T10 (en el Mac, Vite sirve el panel sin ella) |

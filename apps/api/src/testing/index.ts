@@ -1,7 +1,7 @@
 // Dobles de la API para tests (`@agentsales/api/testing`): `AppDeps` con repositorios en memoria,
 // para probar contra `createApp` sin red ni base (los tests de la API y de la CLI).
 // Solo para tests: Biome prohíbe importarlo desde código de aplicación.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Writable } from "node:stream";
 import { createLogger, createStateSigner, type Logger } from "@agentsales/config";
 import {
@@ -21,9 +21,11 @@ import {
   createInMemoryListingLock,
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
+  createInMemoryMediaStorage,
   createInMemoryPlatformAccountRepository,
   createInMemoryPublicationRepository,
   createInMemoryUserRepositories,
+  type InMemoryMediaStorage,
   type InMemoryUserRepositories,
 } from "@agentsales/core/testing";
 import { type AppDeps, createApp } from "../app.js";
@@ -173,23 +175,17 @@ export const silentLogger: Logger = createLogger(
 
 const ok = async () => {};
 
-/** Archivos "guardados" por la API en un test: `runId → nombre → bytes`. */
-export type FakeUploads = AppDeps["uploads"] & { files: Map<string, Map<string, Uint8Array>> };
-
-export function fakeUploads(): FakeUploads {
-  const files = new Map<string, Map<string, Uint8Array>>();
-  return {
-    files,
-    async save(runId, fileName, body) {
-      const run = files.get(runId) ?? new Map<string, Uint8Array>();
-      run.set(fileName, new Uint8Array(await new Response(body).arrayBuffer()));
-      files.set(runId, run);
-      return `/workspace/tmp/imports/${runId}/input/${fileName}`;
-    },
-    async discard(runId) {
-      files.delete(runId);
-    },
-  };
+/**
+ * R2 en memoria para la API (spec F8 §4.4): firma las subidas y, con `receiveUpload`, hace de R2
+ * ante el `PUT` del panel o la CLI (verifica el sha256 con `node:crypto`). Las URLs de lectura
+ * son las de siempre en los tests (`https://r2.test/<ruta>?firma`).
+ */
+export function testStorage(): InMemoryMediaStorage {
+  const storage = createInMemoryMediaStorage({
+    sha256: (bytes) => createHash("sha256").update(bytes).digest("hex"),
+  });
+  storage.signedReadUrl = async (path) => `https://r2.test/${path}?firma`;
+  return storage;
 }
 
 /** El token de la sesión de administrador del panel que siembra `testDeps` (F7-T04). */
@@ -305,10 +301,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     brokers,
     media: createInMemoryMediaRepository(),
     fieldDefinitions: createInMemoryFieldDefinitionRepository(),
-    storage: {
-      signedReadUrl: async (path) => `https://r2.test/${path}?firma`,
-      put: async () => {},
-    },
+    storage: testStorage(),
     // El logo y la planilla con dobles: sus pruebas de verdad van en `packages/media` e importers.
     logos: {
       normalize: async (input) => {
@@ -320,9 +313,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     brokerTemplate: async (broker) => new TextEncoder().encode(`planilla de ${broker.slug}`),
     importRuns: createInMemoryImportRunRepository({ nextId: randomUUID }),
     queue: createInMemoryJobQueue(),
-    uploads: fakeUploads(),
     newId: randomUUID,
-    localImports: true,
     maxUploadBytes: 50 * 1024 * 1024,
     contentRuns: content.contentRuns,
     contents: content.contents,

@@ -31,7 +31,13 @@ describe("enums de dominio", () => {
     expect(CONTENT_STATUSES).toEqual(["draft", "edited", "approved"]);
     expect(LISTING_SOURCES).toEqual(["xlsx", "google_sheets", "manual", "chat"]);
     expect(CLOSE_REASONS).toEqual(["sold", "rented", "withdrawn"]);
-    expect(IMPORT_RUN_STATUSES).toEqual(["queued", "running", "succeeded", "failed"]);
+    expect(IMPORT_RUN_STATUSES).toEqual([
+      "awaiting_upload",
+      "queued",
+      "running",
+      "succeeded",
+      "failed",
+    ]);
   });
 
   it("dry-run es el primer modo de publicación y los proveedores de IA son los del ADR-0003", () => {

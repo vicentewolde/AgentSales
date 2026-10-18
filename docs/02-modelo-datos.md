@@ -259,9 +259,9 @@ Llave primaria `(platform, key)` (migración `0007`); no tiene `id`.
 |---|---|---|
 | id | uuid PK | |
 | broker_id | uuid FK null | `null` hasta que el job lee la hoja Corredor; la de un usuario corredor nace con el suyo (F7-T08) y el job nunca la lleva a otro |
-| status | enum `import_run_status` | `queued`, `running`, `succeeded`, `failed` |
+| status | enum `import_run_status` | `awaiting_upload` (desde F8, migración `0010`: pedida, mientras el panel o la CLI suben los archivos a R2), `queued`, `running`, `succeeded`, `failed` |
 | dry_run | boolean | Valida y reporta sin escribir listings ni medios |
-| input | jsonb | `{ xlsxPath, mediaDir, broker }` (`importRunInputSchema`): rutas absolutas de entrada y broker pedido; sin secretos. El job `import.run` solo recibe el id |
+| input | jsonb | `importRunInputSchema` (core), una unión (spec F8 §4.12): desde F8, `{ broker, dryRun, xlsx: { key, name, size, sha256 }, media: { kind: "zip", key, name, size } \| { kind: "folder", prefix, name, files: [{ path, size, sha256? }] } \| null }`, con las claves de R2 bajo `imports/<id>/`; antes de F8, `{ xlsxPath, mediaDir, broker }` (rutas locales), que se sigue leyendo y nunca se reintenta (`IMPORT_INPUT_LEGACY`). Sin secretos. El job `import.run` solo recibe el id |
 | error | jsonb null | `{ code, message }` cuando `status = failed` |
 | source | enum `listing_source` | Mismos valores que `listings.source` |
 | file_name | text | |
@@ -269,6 +269,8 @@ Llave primaria `(platform, key)` (migración `0007`); no tiene `id`.
 | report | jsonb null | `importReportSchema` (core): encabezados, corredor y resultado de cada fila, con sus errores por columna y sus advertencias. `null` hasta que `importListings` registra su resultado (migración `0002`). La ingesta de medios suma `media` (subidos, existentes, omitidos y fallidos), que falta si la carga no llegó a esa etapa o es anterior a F1-T07 |
 | started_at | timestamptz null | Se fija al pasar a `running` |
 | finished_at | timestamptz null | `null` mientras la carga está en curso |
+
+Índice `import_runs_status_created_at_idx` `(status, created_at)` (migración `0010`): cerrar las que siguen en `awaiting_upload` pasadas 24 h (`failAbandonedUploads`). `markQueued` pasa de `awaiting_upload` a `queued`, y `markFailed` acepta también `awaiting_upload`. `ALTER TYPE … ADD VALUE` no se puede usar en la misma transacción que lo agrega, y el migrador de Drizzle aplica juntas las migraciones pendientes: ninguna migración posterior puede usar `awaiting_upload` (por ejemplo, en un índice parcial) mientras pueda aplicarse junto con la `0010`. `input.dryRun` repite la columna `dry_run`, que es la que manda.
 
 Los únicos `brokers.slug`, `listings (broker_id, external_ref)` y los dos de `media` se traducen en los repositorios a `BROKER_CONFLICT`, `LISTING_CONFLICT` y `MEDIA_CONFLICT`, reintentables: dos intentos del job `import.run` pueden solaparse, y el reintento reclasifica la fila o encuentra el medio ya registrado.
 

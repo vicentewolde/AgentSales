@@ -182,7 +182,11 @@ describe("createApiClient · cabeceras", () => {
 
     await client.publications[":id"].cancel.$post({ param: { id } });
     await client.health.$get();
-    await client.imports.$post({ form: { broker: "marca", file: new File(["x"], "a.xlsx") } });
+    // Un formulario (el logo del corredor, F7-T14): su `Content-Type` es el del multipart.
+    await client.brokers[":id"].logo.$post({
+      param: { id },
+      form: { logo: new File(["x"], "logo.png") },
+    });
 
     const [cancel, health, upload] = seen;
     // Desde F7-T10 la API sabe que es la CLI por su sesión: ya no hay `X-AgentSales-Client`.

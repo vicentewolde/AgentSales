@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { type AppDeps, createApp, localAccess } from "@agentsales/api";
-import { testAuth, testDeps, withAdminSession } from "@agentsales/api/testing";
+import { testAuth, testDeps, testStorage, withAdminSession } from "@agentsales/api/testing";
 import {
   ALL_SCOPE,
   type BrokerData,
@@ -32,18 +32,15 @@ import { QueryClient } from "@tanstack/react-query";
 import { configure, render, screen } from "@testing-library/react";
 import { App } from "../src/App.js";
 import { createApiClient } from "../src/api/client.js";
+import type { UploadDeps, UploadTransport } from "../src/api/upload.js";
 
 // `findBy…` y `waitFor` esperan hasta 4 s (1 s por defecto): con la máquina o la CI cargadas, una
 // página diferida o la API en proceso pueden tardar más de 1 s. Queda bajo el timeout de cada test
 // (5 s), para que una espera fallida muestre el mensaje de Testing Library.
 configure({ asyncUtilTimeout: 4_000 });
 
-export type UploadedForm = {
-  file: { name: string; size: number } | null;
-  media: { name: string; size: number } | null;
-  broker: string | null;
-  dryRun: string | null;
-};
+/** Un `PUT` del panel a R2 (el doble): qué archivo y con qué cabeceras firmadas. */
+export type Transfer = { name: string; size: number; headers: Record<string, string> };
 
 export type HarnessOptions = {
   deps?: Partial<AppDeps>;
@@ -61,6 +58,8 @@ export type HarnessOptions = {
    * guardadas y devueltas como lo haría el navegador (probar entrar, la invitación y salir).
    */
   session?: "admin" | "none";
+  /** El `PUT` a R2 (por defecto, el doble en memoria de la API): para simular fallos o esperas. */
+  transport?: (memory: UploadTransport) => UploadTransport;
 };
 
 /**
@@ -80,6 +79,8 @@ export function harness(options: HarnessOptions = {}) {
     brokerOfListing: async (id) => (await listings.get(id))?.brokerId ?? null,
   });
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+  // R2 en memoria (spec F8 §4.4): la API firma las subidas y el panel "sube" aquí.
+  const storage = testStorage();
   const auth = { ...testAuth(), brokers: options.deps?.brokers ?? brokers };
   const base = createApp(
     testDeps({
@@ -92,6 +93,7 @@ export function harness(options: HarnessOptions = {}) {
       contentRuns: content.contentRuns,
       contents: content.contents,
       platformAccounts,
+      storage,
       ...options.deps,
     }),
   );
@@ -124,8 +126,8 @@ export function harness(options: HarnessOptions = {}) {
     return user;
   };
   const requests: string[] = [];
-  /** Lo que el panel mandó en cada `POST /imports` (multipart). */
-  const uploads: UploadedForm[] = [];
+  /** Lo que el panel subió a R2 (el doble), en orden. */
+  const transfers: Transfer[] = [];
   const client = createApiClient("/api", {
     fetch: async (input, init) => {
       const url = new URL(
@@ -137,57 +139,49 @@ export function harness(options: HarnessOptions = {}) {
       requests.push(`${method} ${path}`);
       const intercepted = options.intercept?.(method, path, init);
       if (intercepted !== undefined) return intercepted;
-      // El navegador manda `Origin` en un POST: sin él, `csrf()` rechaza el multipart.
+      // El navegador manda `Origin` en un POST: sin él, `csrf()` rechaza el pedido.
       const headers = new Headers(init?.headers);
       if (method !== "GET") headers.set("origin", "http://localhost:5173");
       if (cookie !== null) headers.set("cookie", cookie);
       // La sesión de un corredor (F7-T17): con ella, la API no pone la del administrador.
       if (brokerToken !== null) headers.set("authorization", `Bearer ${brokerToken}`);
-      if (method === "POST" && path === "/imports" && init?.body instanceof FormData) {
-        return forwardUpload(init.body, headers);
-      }
       return remember(await app.request(`http://localhost:5173${path}`, { ...init, headers }));
     },
   });
 
   /**
-   * jsdom no puede pasarle a la API un `FormData` con archivos (su `File` no es el de Node), así
-   * que la subida se registra y se reenvía a `POST /imports/local` con rutas inventadas: la
-   * subida multipart en sí la prueban los tests de la API.
+   * El `PUT` a R2 con el doble en memoria: entrega los bytes a `receiveUpload`, que exige las
+   * cabeceras firmadas, el largo y el sha256 (spec F8 §4.4). El avance llega en dos pasos.
    */
-  async function forwardUpload(form: FormData, headers: Headers): Promise<Response> {
-    const fileOf = (name: string) => {
-      const value = form.get(name);
-      return value instanceof File ? { name: value.name, size: value.size } : null;
-    };
-    const text = (name: string) => {
-      const value = form.get(name);
-      return typeof value === "string" ? value : null;
-    };
-    const upload: UploadedForm = {
-      file: fileOf("file"),
-      media: fileOf("media"),
-      broker: text("broker"),
-      dryRun: text("dryRun"),
-    };
-    uploads.push(upload);
-    headers.set("content-type", "application/json");
-    return app.request("http://localhost:5173/imports/local", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        xlsxPath: `/staging/${upload.file?.name ?? "sin-archivo.xlsx"}`,
-        ...(upload.media ? { mediaDir: `/staging/${upload.media.name}` } : {}),
-        ...(upload.broker ? { broker: upload.broker } : {}),
-        dryRun: upload.dryRun === "true",
-      }),
-    });
-  }
+  const memoryTransport: UploadTransport = async ({ url, headers, body, signal, onProgress }) => {
+    if (signal.aborted) throw new DOMException("Subida cancelada", "AbortError");
+    const bytes = new Uint8Array(await body.arrayBuffer());
+    onProgress(Math.floor(bytes.byteLength / 2));
+    await storage.receiveUpload(url, headers, bytes);
+    onProgress(bytes.byteLength);
+    transfers.push({ name: url.split("?")[0] ?? url, size: bytes.byteLength, headers });
+  };
+  const upload: UploadDeps = {
+    transport: options.transport?.(memoryTransport) ?? memoryTransport,
+    // jsdom no tiene Web Crypto (`crypto.subtle`): el sha256 sale de Node.
+    hash: async (blob) =>
+      createHash("sha256")
+        .update(new Uint8Array(await blob.arrayBuffer()))
+        .digest("hex"),
+  };
 
   /** La caché del panel (para revisar que un secreto no quede en ella, F7-T18). */
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const renderApp = (initialPath = "/"): void => {
-    render(<App client={client} queryClient={queryClient} inMemory initialPath={initialPath} />);
+    render(
+      <App
+        client={client}
+        queryClient={queryClient}
+        inMemory
+        initialPath={initialPath}
+        upload={upload}
+      />,
+    );
   };
 
   return {
@@ -195,7 +189,8 @@ export function harness(options: HarnessOptions = {}) {
     /** La autenticación de la API (los dobles de core, con el administrador sembrado). */
     auth,
     requests,
-    uploads,
+    transfers,
+    storage,
     listings,
     brokers,
     media,

@@ -1,11 +1,17 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { type ImportRunView, importRunResponseSchema } from "@agentsales/api/contracts";
+import {
+  type ImportRunView,
+  importRunResponseSchema,
+  importUploadResponseSchema,
+} from "@agentsales/api/contracts";
 import { IMPORT_RUN_STATUS_TEXT, isTerminalImportRun } from "@agentsales/core";
 import type { Command } from "commander";
-import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
+import type { ApiClient } from "../api-client.js";
+import { unwrap } from "../api-client.js";
 import { type CliContext, exitWith } from "../context.js";
 import { CliError, guarded } from "../output.js";
+import { buildImportManifest, createNodePutFile, type PutFile, uploadAll } from "../upload.js";
 import { exitCodeOf, renderImportRun } from "./import-run-view.js";
 import { brokerSlugOf } from "./shared.js";
 import { type WaitDeps, waitForRun } from "./wait-run.js";
@@ -22,6 +28,8 @@ export type ImportDeps = WaitDeps & {
   client: ApiClient;
   /** Base de las rutas relativas (`INIT_CWD`). */
   cwd: string;
+  /** El `PUT` a R2 de cada archivo (por defecto `node:http(s)`; los tests pasan un doble). */
+  putFile?: PutFile;
 };
 
 async function kindOf(path: string): Promise<"file" | "dir" | "other" | null> {
@@ -42,7 +50,7 @@ export async function resolveImportPaths(
   cwd: string,
   xlsx: string,
   media: string | undefined,
-): Promise<{ xlsxPath: string; mediaDir?: string }> {
+): Promise<{ xlsxPath: string; media?: { kind: "zip" | "dir"; path: string } }> {
   const xlsxPath = resolve(cwd, xlsx);
   const xlsxKind = await kindOf(xlsxPath);
   if (xlsxKind === null) {
@@ -64,34 +72,57 @@ export async function resolveImportPaths(
       `--media debe ser una carpeta o un .zip: ${mediaDir}`,
     );
   }
-  return { xlsxPath, mediaDir };
+  return { xlsxPath, media: { kind: mediaKind === "dir" ? "dir" : "zip", path: mediaDir } };
 }
 
+const megabytes = (bytes: number) =>
+  `${(bytes / 1024 / 1024).toLocaleString("es-CL", { maximumFractionDigits: 1 })} MB`;
+
 /**
- * `agentsales import <xlsx>`: pide la carga por `POST /imports/local` y espera a que el worker la
- * termine, consultando `/imports/:id` cada 2 s. Al final muestra el resumen y los errores.
+ * `agentsales import <xlsx>` (spec F8 §4.5, ADR-0025): pide la carga (`POST /imports/uploads`),
+ * sube la planilla y los medios directo a R2 con avance, la empieza (`POST /imports/:id/start`) y
+ * espera a que el worker la termine, consultando `/imports/:id` cada 2 s. Al final muestra el
+ * resumen y los errores. `--dry-run` usa el mismo camino: el worker valida sin guardar.
  */
 export function runImport(deps: ImportDeps, xlsx: string, options: ImportOptions = {}) {
   const c = deps.colors;
   return guarded(deps, async () => {
     const paths = await resolveImportPaths(deps.cwd, xlsx, options.media);
     const broker = options.broker === undefined ? undefined : brokerSlugOf(options.broker);
+    const manifest = await buildImportManifest(paths.xlsxPath, paths.media);
 
-    const created = await unwrap(
-      deps.client.imports.local.$post({
-        json: { ...paths, ...(broker ? { broker } : {}), dryRun: options.dryRun ?? false },
+    const requested = await unwrap(
+      deps.client.imports.uploads.$post({
+        json: {
+          ...manifest.request,
+          ...(broker ? { broker } : {}),
+          dryRun: options.dryRun ?? false,
+        },
       }),
-      importRunResponseSchema,
-    ).catch((error: unknown) => {
-      if (error instanceof ApiCallError && error.code === "ROUTE_NOT_FOUND") {
-        throw new CliError(
-          "LOCAL_IMPORTS_DISABLED",
-          "La API no acepta cargas desde la CLI (solo con NODE_ENV=development)",
-          "Levanta la API con pnpm dev, o sube los archivos desde el panel",
-        );
-      }
-      throw error;
+      importUploadResponseSchema,
+    );
+    const totalBytes = [...manifest.files.values()].reduce((total, file) => total + file.size, 0);
+    // La subida y su avance van a la salida de errores (con `--no-wait`, la normal queda solo con
+    // el id), de a 25 %, para no llenar la pantalla.
+    deps.printError(
+      c.dim(`Subiendo ${requested.uploads.length} archivo(s) (${megabytes(totalBytes)}) a R2…`),
+    );
+    let lastQuarter = 0;
+    await uploadAll(requested.uploads, manifest.files, {
+      putFile: deps.putFile ?? createNodePutFile(),
+      sleep: deps.sleep,
+      onProgress: ({ sentBytes, totalBytes: total, doneFiles, totalFiles }) => {
+        const quarter = total === 0 ? 4 : Math.floor((sentBytes / total) * 4);
+        if (quarter > lastQuarter && quarter < 4) {
+          lastQuarter = quarter;
+          deps.printError(c.dim(`  ${quarter * 25} % (${doneFiles} de ${totalFiles} archivos)`));
+        }
+      },
     });
+    const created = await unwrap(
+      deps.client.imports[":id"].start.$post({ param: { id: requested.importRun.id } }),
+      importRunResponseSchema,
+    );
     let run: ImportRunView = created.importRun;
 
     if (options.wait === false) {

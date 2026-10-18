@@ -43,7 +43,8 @@ pnpm db:generate         # generar migración tras cambiar el esquema
 pnpm db:migrate          # aplicar migraciones
 pnpm db:seed             # seeds idempotentes
 pnpm db:backup           # respaldo local de la base con pg_dump a BACKUP_DIR (fuera del proyecto; deja los últimos 14; no necesita pnpm dev; necesita brew install libpq)
-pnpm storage:check       # verifica acceso al bucket de R2
+pnpm db:dev-scrub        # borra las credenciales copiadas en la rama dev de Neon (solo .env; se niega si parece producción: la misma base o clave que .env.production, o credenciales que la clave de .env abre; pide confirmación, --yes; lo corre el operador)
+pnpm storage:check       # verifica acceso al bucket de R2, el PUT prefirmado (y que R2 rechace otro contenido) y la regla de CORS para el panel (--origin <url>; con ENV_FILE=.env.production y --origin https://agentsales.agentpey.com, el bucket de producción; habla con R2: lo corre el operador)
 pnpm auth:admin --email <correo>  # crea el administrador o le da un enlace de restablecer, en el portapapeles sin imprimirlo (habla directo con la base; lo corre el operador)
 pnpm -s cli login --email <correo>  # la sesión de la CLI (pide la contraseña sin mostrarla: lo corre el operador en su terminal); whoami, logout
 pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo)
@@ -56,7 +57,7 @@ pnpm uf:smoke            # pide el valor de la UF de hoy y los próximos 31 día
 pnpm ml:test-user --broker <slug>  # crea UN usuario de prueba de Mercado Libre con la cuenta real conectada y deja su clave en el portapapeles, sin imprimirla (habla con Mercado Libre: lo corre el operador)
 pnpm ml:smoke            # recorre el catálogo de Inmuebles y las ubicaciones de Chile, pregunta a validate por un aviso de prueba y sus variantes, y lee la búsqueda de ítems y los paquetes, sin crear ni cambiar nada en Mercado Libre (--broker <slug>, --category <MLC…>; informe en tmp/ml-smoke/; escribe el catálogo en la base; habla con Mercado Libre: lo corre el operador). Con --listing <id_propiedad>, arma el aviso real y solo pregunta a validate si lo aceptaría
 pnpm eval:content        # evalúa el prompt sobre las propiedades listas de agentsales-pruebas, sin escribir en la base (--broker <slug>; --provider fake no gasta cuota; con claude-cli lo corre el operador; --provider anthropic-api [--model <id>] usa la API, gasta centavos e imprime el costo estimado)
-pnpm -s cli import <xlsx> --media <carpeta|zip>  # carga propiedades (con pnpm dev corriendo; --dry-run simula)
+pnpm -s cli import <xlsx> --media <carpeta|zip>  # carga propiedades: sube la planilla y los medios directo a R2 y espera (con pnpm dev corriendo; --dry-run simula por el mismo camino; --no-wait)
 pnpm -s cli listings     # propiedades cargadas (detalle: cli listing <id>; historial: cli imports)
 pnpm -s cli prepare <id_propiedad>  # prepara fotos, portada, reel y textos y espera (con pnpm dev; --no-texts, --replace-edits, --no-wait)
 pnpm -s cli content <id_propiedad>  # textos por canal con su revisión (--platform instagram|portal|marketplace, --json)
