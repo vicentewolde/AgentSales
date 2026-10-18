@@ -5,7 +5,7 @@
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
 **Última tarea:** lote B de F8 (T03 a T07 y T09): las cargas suben directo a R2 desde el panel y la CLI (URL prefirmada, la carga en `awaiting_upload`, el worker baja de R2 y borra al terminar, el Excel con tope descomprimido), sin `/imports/local` ni disco compartido; más `pnpm db:dev-scrub`
-**Siguiente paso:** tus pasos de "Al terminar el lote B" (abajo: `pnpm db:dev-scrub`, `pnpm storage:check` y la carga real de prueba con `pnpm dev`) y después `/tarea F8-T08` (lote C: la CLI contra el servidor)
+**Siguiente paso:** la carga real de prueba de T07 con `pnpm dev` (contigo, con aviso), el CORS del bucket de producción (`ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com`) y después `/tarea F8-T08` (lote C: la CLI contra el servidor)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -15,9 +15,9 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [x] Otra `APP_ENCRYPTION_KEY` en `.env`; la de antes en `.env.production` y en tu gestor de claves (2026-10-18)
   - [x] Bucket `agentsales-media-dev` con su token; `pnpm storage:check` pasó (2026-10-18)
   - [x] Regla de CORS en los dos buckets: solo `PUT`, desde `http://localhost:5173` y `https://agentsales.agentpey.com`, cabeceras `content-type` y `x-amz-checksum-sha256` (2026-10-18)
-  - [ ] **`pnpm db:dev-scrub`** (nuevo en el lote B): borra las credenciales copiadas en la rama, que están cifradas con la clave vieja. **Antes de cualquier `pnpm dev`**
+  - [x] **`pnpm db:dev-scrub`** (2026-10-18): borró las 2 credenciales copiadas (Instagram y Portal); en la rama esas cuentas quedan desconectadas
 - **Al terminar el lote B** (detalle en el checklist):
-  - [ ] `pnpm storage:check` en el bucket de desarrollo: el PUT prefirmado, que R2 rechace un archivo alterado (NO VERIFICADO hasta ahora) y la regla de CORS desde `http://localhost:5173`
+  - [x] `pnpm storage:check` en el bucket de desarrollo (2026-10-18): el PUT prefirmado, R2 rechaza un archivo alterado (400) y otro largo (403), y el CORS desde `http://localhost:5173` responde 204
   - [ ] `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com`: el CORS del bucket de producción
   - [ ] La carga real de prueba desde el panel (F8-T07), con `pnpm dev`: Claude la hace contigo después de `db:dev-scrub` y avisa antes de levantarlo
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups`, los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
@@ -52,7 +52,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 |---|---|---|
 | Spec F8 (`/fase-plan 8`) | ✅ aprobado | (este PR) |
 | **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
-| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (falta tu `storage:check` y la carga real de T07) | (este PR) |
+| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (falta la carga real de T07 y el CORS del bucket de producción) | #142 |
 | **Lote C** · T08 CLI: la dirección del servidor | ⏳ pendiente | |
 | **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ⏳ pendiente | |
 | **Lote E** · T13 Respaldo a R2 | ⏳ pendiente | |
