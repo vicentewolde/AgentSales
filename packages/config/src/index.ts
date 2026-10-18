@@ -34,6 +34,11 @@ export { createLogger, type LoggerOptions, REDACTED, redact, redactText } from "
 export { createPasswordHasher } from "./password.js";
 export { createSecretTokens } from "./secret-tokens.js";
 export {
+  createSignedRequestVerifier,
+  type SignedRequestPayload,
+  type SignedRequestVerifier,
+} from "./signed-request.js";
+export {
   base32Decode,
   base32Encode,
   createTotpProvider,

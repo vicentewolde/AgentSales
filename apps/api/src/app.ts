@@ -15,6 +15,7 @@ import {
   type MediaRepository,
   type MediaStorage,
   type MercadoLibreAuth,
+  type MetaDeletionRepository,
   type OAuthStateRepository,
   type Platform,
   type PlatformAccountRepository,
@@ -37,6 +38,7 @@ import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
 import { importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
+import { type MetaSignatureVerifier, metaRoutes } from "./routes/meta.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
 import {
   listingPublicationRoutes,
@@ -134,6 +136,12 @@ export type AppDeps = {
    * para convertir la UF (`BCCH_API_TOKEN`). Sin esto, el límite es 3 y la UF no se convierte.
    */
   marketplace?: MarketplaceStartOptions;
+  /**
+   * Las vueltas de Meta (spec F8 §4.11, D18): la firma del `signed_request` (con `node:crypto`, la
+   * compone `server.ts`) y los pedidos de borrado.
+   */
+  verifyMetaSignature: MetaSignatureVerifier;
+  metaDeletion: MetaDeletionRepository;
   /** Firma del `state` del OAuth (`createStateSigner`, que compone `server.ts`). */
   oauthState: OAuthDeps["oauthState"];
   /** La URL absoluta del panel, adonde vuelve el OAuth. */
@@ -274,7 +282,8 @@ export function createApp(input: AppDeps) {
         instagramOAuth: deps.instagram.oauthConfigured && deps.instagram.secureCookie,
       }),
     )
-    .route("/oauth", oauthRoutes(deps));
+    .route("/oauth", oauthRoutes({ ...deps, stateHash: (nonce) => deps.auth.tokens.hash(nonce) }))
+    .route("/meta", metaRoutes(deps));
   app.onError(createErrorHandler(deps.logger));
   app.notFound(notFoundHandler);
   return app;

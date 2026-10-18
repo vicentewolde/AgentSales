@@ -1,0 +1,105 @@
+/* Las páginas públicas (F8-T18) y la página del pedido de borrado de Meta: sin JavaScript ni
+   estilos en línea (la CSP del servidor solo permite hojas del mismo origen). */
+:root {
+  color-scheme: light dark;
+  --texto: #0f172a;
+  --suave: #475569;
+  --fondo: #f8fafc;
+  --tarjeta: #ffffff;
+  --borde: #e2e8f0;
+  --enlace: #1d4ed8;
+  --aviso-fondo: #fef3c7;
+  --aviso-borde: #f59e0b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --texto: #e2e8f0;
+    --suave: #94a3b8;
+    --fondo: #0f172a;
+    --tarjeta: #1e293b;
+    --borde: #334155;
+    --enlace: #93c5fd;
+    --aviso-fondo: #422006;
+    --aviso-borde: #d97706;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 24px 16px 48px;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px;
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+}
+
+h1 {
+  margin-top: 0;
+  font-size: 1.6rem;
+  line-height: 1.3;
+}
+
+h2 {
+  margin-top: 2rem;
+  font-size: 1.2rem;
+}
+
+a {
+  color: var(--enlace);
+}
+
+code {
+  overflow-wrap: anywhere;
+}
+
+dt {
+  font-weight: 600;
+}
+
+dd {
+  margin: 0 0 0.75rem;
+}
+
+.marca {
+  margin: 0 0 0.25rem;
+  color: var(--suave);
+  font-weight: 600;
+}
+
+.borrador {
+  padding: 12px 16px;
+  background: var(--aviso-fondo);
+  border-left: 4px solid var(--aviso-borde);
+  border-radius: 4px;
+}
+
+.actualizado,
+footer {
+  color: var(--suave);
+  font-size: 0.9rem;
+}
+
+footer {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--borde);
+}
+
+footer a {
+  margin-right: 1rem;
+}

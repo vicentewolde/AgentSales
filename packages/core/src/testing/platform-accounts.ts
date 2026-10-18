@@ -8,6 +8,10 @@ import {
   type PlatformCredentials,
 } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
+import {
+  ERASED_ACCOUNT_DISPLAY_NAME,
+  erasedExternalAccountId,
+} from "../ports/meta-deletion-repository.js";
 import type {
   ConnectedAccount,
   PlatformAccountRepository,
@@ -22,6 +26,11 @@ export type InMemoryPlatformAccountRepository = PlatformAccountRepository & {
    * alterado): `CREDENTIALS_UNREADABLE`. Para probar que quien publica o refresca lo maneja.
    */
   corruptCredentials(id: string): void;
+  /**
+   * Lo que hace `MetaDeletionRepository.eraseInstagramUser` con una cuenta (F8-T17): `revoked`, sin
+   * credenciales, sin su id externo, su nombre ni su `meta`. Lo usa el doble de esa vuelta.
+   */
+  eraseExternalData(id: string): void;
 };
 
 export type InMemoryPlatformAccountRepositoryOptions = {
@@ -202,6 +211,19 @@ export function createInMemoryPlatformAccountRepository(
     corruptCredentials(id) {
       const found = find(id);
       stored.set(id, { ...found, unreadable: true });
+    },
+    eraseExternalData(id) {
+      save(
+        id,
+        {
+          status: "revoked",
+          externalAccountId: erasedExternalAccountId(id),
+          displayName: ERASED_ACCOUNT_DISPLAY_NAME,
+          meta: {},
+          tokenExpiresAt: null,
+        },
+        null,
+      );
     },
     async withCredentialsLock(id, fn) {
       // Serializa por cuenta, como `FOR NO KEY UPDATE`: el siguiente empieza cuando termina el

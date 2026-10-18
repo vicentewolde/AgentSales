@@ -7,6 +7,7 @@ import {
   createPasswordHasher,
   createSecretBox,
   createSecretTokens,
+  createSignedRequestVerifier,
   createStateSigner,
   createTotpProvider,
   findWorkspaceRoot,
@@ -30,6 +31,7 @@ import {
   createListingRepository,
   createLoginChallengeRepository,
   createMediaRepository,
+  createMetaDeletionRepository,
   createOAuthStateRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
@@ -204,6 +206,13 @@ const app = createApp({
     createPlatformCatalogRepository(database.db),
   ),
   oauthState: createStateSigner(env.APP_ENCRYPTION_KEY),
+  // Las vueltas de Meta (spec F8 §4.11): la firma con la clave de la app de Instagram o la de la
+  // app de Meta (cuál firma no está verificado); sin ninguna, toda vuelta responde 400.
+  verifyMetaSignature: createSignedRequestVerifier([
+    env.INSTAGRAM_APP_SECRET,
+    env.FACEBOOK_APP_SECRET,
+  ]),
+  metaDeletion: createMetaDeletionRepository(database.db),
   // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).
   panelUrl: panelUrlOf(env),
   instagramStartUrl: instagramStartUrlOf(env.INSTAGRAM_REDIRECT_URI),

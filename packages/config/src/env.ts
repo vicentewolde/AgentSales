@@ -272,6 +272,10 @@ const envSchema = z
     // la API con el inicio de sesión de Instagram), no el de Configuración > Información básica.
     INSTAGRAM_APP_ID: z.string().optional(),
     INSTAGRAM_APP_SECRET: z.string().optional(),
+    // La clave de la app de Meta (Configuración > Información básica), solo para verificar las
+    // vueltas de Meta (F8-T17): cuál de las dos firma con Instagram Login no está verificado, así
+    // que se acepta la firma de cualquiera (nota de Instagram §13.4). Opcional.
+    FACEBOOK_APP_SECRET: z.string().optional(),
     // Sin valor: `<PUBLIC_URL>/api/oauth/instagram/callback`, o la API local (ver abajo).
     INSTAGRAM_REDIRECT_URI: httpUrl.optional(),
 

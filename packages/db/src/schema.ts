@@ -242,6 +242,20 @@ export const workerHeartbeats = pgTable(
   (t) => [index("worker_heartbeats_beat_idx").on(t.beatAt)],
 );
 
+/**
+ * Los pedidos de borrado de Meta (spec F8 §4.11, T17): el código que se le devolvió y la página de
+ * estado. Sin el `user_id` de Instagram (se borra lo que lo identifica), solo su hash.
+ */
+export const metaDeletionRequests = pgTable("meta_deletion_requests", {
+  code: text("code").primaryKey(),
+  metaUserIdHash: text("meta_user_id_hash").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+  /** Hoy siempre `completed`: el borrado se hace al recibir el pedido. */
+  status: text("status").notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  accountsAffected: integer("accounts_affected").notNull().default(0),
+});
+
 export const platformAccounts = pgTable(
   "platform_accounts",
   {

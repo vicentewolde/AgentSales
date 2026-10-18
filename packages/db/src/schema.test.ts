@@ -58,6 +58,8 @@ const EXPECTED_TABLES = [
   // F8-T15 (0012): el segundo paso de entrar.
   "login_challenges",
   "media",
+  // F8-T17 (0013): los pedidos de borrado de Meta.
+  "meta_deletion_requests",
   "oauth_states_used",
   "platform_accounts",
   "platform_catalog",

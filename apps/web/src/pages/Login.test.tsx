@@ -34,6 +34,23 @@ describe("entrar", () => {
     expect(await screen.findByText(TEST_ADMIN.email)).toBeTruthy();
   });
 
+  it("enlaza las páginas públicas con enlaces comunes, fuera de la app (F8-T18)", async () => {
+    const h = harness({ session: "none" });
+    h.renderApp("/entrar");
+    await screen.findByRole("heading", { name: "Entrar" });
+
+    const nav = screen.getByRole("navigation", { name: "Páginas legales" });
+    const links = [...nav.querySelectorAll("a")].map((a) => [
+      a.textContent,
+      a.getAttribute("href"),
+    ]);
+    expect(links).toEqual([
+      ["Términos de uso", "/legal/terminos.html"],
+      ["Privacidad", "/legal/privacidad.html"],
+      ["Borrar tus datos", "/legal/eliminacion-de-datos.html"],
+    ]);
+  });
+
   it("mal: el mensaje de la API, sin entrar", async () => {
     const h = harness({ session: "none" });
     h.renderApp("/entrar");

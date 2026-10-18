@@ -183,15 +183,32 @@ export function LoginPage() {
   );
 }
 
+/**
+ * Las páginas públicas (F8-T18): HTML estático en `public/legal`, fuera de la app de React (el
+ * revisor de Meta no corre JavaScript), así que se enlazan con `<a>` y no con el router.
+ */
+const LEGAL_LINKS = [
+  { href: "/legal/terminos.html", label: "Términos de uso" },
+  { href: "/legal/privacidad.html", label: "Privacidad" },
+  { href: "/legal/eliminacion-de-datos.html", label: "Borrar tus datos" },
+] as const;
+
 /** El marco de las páginas sin sesión (entrar e invitación): sin menú ni banner. */
 export function AuthShell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-50 px-4">
       <section className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-lg font-semibold tracking-tight">AgentSales</p>
         <h1 className="mt-1 mb-4 text-xl font-semibold">{title}</h1>
         {children}
       </section>
+      <nav aria-label="Páginas legales" className="flex flex-wrap justify-center gap-4 text-sm">
+        {LEGAL_LINKS.map(({ href, label }) => (
+          <a key={href} href={href} className="text-slate-600 underline">
+            {label}
+          </a>
+        ))}
+      </nav>
     </main>
   );
 }

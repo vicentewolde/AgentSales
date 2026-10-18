@@ -190,6 +190,32 @@ describe("GET /oauth/instagram/callback", () => {
     });
     expect(auth.calls).toEqual(["exchange", "me"]);
   });
+
+  it("el state usado dos veces, aun con su cookie, no canjea de nuevo (F8-T17)", async () => {
+    const { start, callback, auth, platformAccounts } = setup();
+    const { state } = await start();
+    expect(panelRedirect(await callback({ code: "AQB", state }, state))).toEqual({
+      conectada: "instagram",
+    });
+    // Alguien que guardó la cookie y la URL las repite: el nonce ya está anotado como usado.
+    expect(panelRedirect(await callback({ code: "AQB-otro", state }, state))).toEqual({
+      error: "OAUTH_STATE_INVALID",
+    });
+    expect(auth.calls).toEqual(["exchange", "me"]);
+    expect(await platformAccounts.list(ALL_SCOPE)).toHaveLength(1);
+  });
+
+  it("un state que no canjeó (sin código) también queda usado", async () => {
+    const { start, callback, auth } = setup();
+    const { state } = await start();
+    expect(panelRedirect(await callback({ state }, state))).toEqual({
+      error: "OAUTH_CODE_MISSING",
+    });
+    expect(panelRedirect(await callback({ code: "AQB", state }, state))).toEqual({
+      error: "OAUTH_STATE_INVALID",
+    });
+    expect(auth.calls).toEqual([]);
+  });
 });
 
 describe("OAuth · seguridad", () => {

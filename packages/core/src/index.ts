@@ -458,6 +458,13 @@ export {
   MERCADOLIBRE_REJECTED_AFTER_REFRESH,
 } from "./ports/mercadolibre-auth.js";
 export {
+  ERASED_ACCOUNT_DISPLAY_NAME,
+  erasedExternalAccountId,
+  type MetaDeletionInput,
+  type MetaDeletionRepository,
+  type MetaDeletionRequest,
+} from "./ports/meta-deletion-repository.js";
+export {
   type ConnectedAccount,
   CREDENTIALS_LOCK_TIMEOUT_MS,
   type LockedCredentials,
@@ -769,6 +776,13 @@ export {
   ingestMedia,
   listingMediaPath,
 } from "./use-cases/ingest-media.js";
+export {
+  getMetaDeletionRequest,
+  handleMetaDataDeletion,
+  handleMetaDeauthorize,
+  META_DELETION_CODE_PATTERN,
+  type MetaCallbackDeps,
+} from "./use-cases/meta-data-deletion.js";
 export {
   channelPublications,
   createPublications,

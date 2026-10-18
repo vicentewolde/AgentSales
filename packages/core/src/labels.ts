@@ -342,7 +342,8 @@ const chileTimeOf = (iso: unknown): string | null =>
  * Lo que un evento de F6 suma a la bitácora (spec F6 §4.12), igual en la CLI y el panel: en un
  * `status_changed`, la hora programada y su motivo, la hora que tenía al desprogramar, si lo hizo la
  * propiedad y si el disparo no pudo empezarla; un `schedule_changed` (la hora anterior y la nueva)
- * y un `manual_edit` (qué se mandó a Portal). `null` si no hay nada que agregar.
+ * y un `manual_edit` (qué se mandó a Portal); desde F8, un `data_deleted` (Meta pidió borrar los datos).
+ * `null` si no hay nada que agregar.
  */
 export function publicationEventDetail(event: {
   type: PublicationEventType;
@@ -353,6 +354,9 @@ export function publicationEventDetail(event: {
     const from = chileTimeOf(payload.from);
     const to = chileTimeOf(payload.to);
     return from === null || to === null ? "reprogramada" : `reprogramada: ${from} → ${to}`;
+  }
+  if (event.type === "data_deleted") {
+    return "Meta pidió borrar los datos de la cuenta de Instagram: se borraron el enlace y el id";
   }
   if (event.type === "manual_edit") {
     const fields = Array.isArray(payload.fields) ? payload.fields.join(", ") : "";
