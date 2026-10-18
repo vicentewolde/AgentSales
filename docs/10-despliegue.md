@@ -2,6 +2,8 @@
 
 Guía paso a paso para poner AgentSales en internet, en `https://agentsales.agentpey.com`. Decisiones: spec F8 (§4.7 y §4.15, D1, D2, D8 y D9) y ADR-0024. Lo verificado de Fly está en `docs/integraciones/hosting.md` §14, con lo que todavía no se pudo comprobar marcado como NO VERIFICADO.
 
+**Cuándo:** la primera puesta en marcha es la tarea T21 de F8, después del lote E (el respaldo a R2, que producción exige para arrancar) y del resto de los lotes de F8.
+
 **Quién hace qué:** todo lo de esta guía lo haces tú en tu terminal o en el navegador: crear la cuenta, poner los secretos, desplegar, encender y apagar. Claude prepara el código y los archivos (`Dockerfile`, `fly.toml`, `.github/workflows/deploy.yml`) y nunca despliega (D8). Los secretos nunca se pegan en el chat.
 
 ## Cómo queda armado
@@ -37,7 +39,7 @@ Si Fly dice que el nombre está ocupado, usa otro (por ejemplo `agentsales-agent
 
 ## Paso 2 · Los secretos
 
-Son los valores de producción de tu `.env.production`. Este comando copia **solo** los que necesita el servidor, sin mostrarlos en pantalla:
+Son los valores de producción de tu `.env.production`. Este comando, corrido en la carpeta del proyecto (donde está `.env.production`), copia **solo** los que necesita el servidor, sin mostrarlos en pantalla:
 
 ```bash
 grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_BUCKET|APP_ENCRYPTION_KEY|ANTHROPIC_API_KEY|INSTAGRAM_APP_ID|INSTAGRAM_APP_SECRET|ML_APP_ID|ML_CLIENT_SECRET|BCCH_API_TOKEN)=' .env.production | fly secrets import --stage -a agentsales
@@ -56,7 +58,7 @@ grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_B
 
 El despliegue corre en GitHub Actions y necesita un token de Fly que solo sirve para esta app. El token se guarda en un **Environment** de GitHub que solo acepta la rama `main`: así nadie puede usarlo desde otra rama, aunque cambie el flujo.
 
-1. **Crear el Environment** (una vez): en GitHub, el repositorio → **Settings** → **Environments** → **New environment** → nombre **`production`** → **Configure environment**. En **Deployment branches and tags**, elige **Selected branches and tags** → **Add deployment branch or tag rule** → escribe **`main`** → **Add rule**.
+1. **El Environment** (una vez; **ya está creado**, 2026-10-18): en GitHub, el repositorio → **Settings** → **Environments** → **`production`**. Tiene **Deployment branches and tags** en **Selected branches and tags** con la regla **`main`**, y **Allow administrators to bypass configured protection rules** desmarcado (la regla vale también para ti). Si algún día hay que crearlo de nuevo: **New environment** → `production` → **Configure environment** y lo mismo.
 2. **Crear el token de Fly** (vence en 6 meses); queda en el portapapeles, sin mostrarse:
    ```bash
    fly tokens create deploy -a agentsales -n github-deploy -x 4380h | pbcopy
@@ -200,7 +202,7 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
 
 | Qué ves | Qué hacer |
 |---|---|
-| El flujo de GitHub dice "Solo se despliega desde main" | Lánzalo desde `main` (en GitHub, elige la rama `main` en **Run workflow**) |
+| GitHub dice "Branch … is not allowed to deploy to production due to environment protection rules", o el flujo dice "Solo se despliega desde main" | Lo lanzaste desde otra rama: lánzalo desde `main` (en GitHub, elige la rama `main` en **Run workflow**). Es la protección del Environment (paso 3), probada el 2026-10-18 |
 | "La CI no está en verde sobre …" | Espera a que termine la CI de ese commit en `main`, o arréglala antes de desplegar |
 | "Falta el secreto FLY_API_TOKEN" | Paso 3: el secreto va en el Environment `production`, no en los del repositorio |
 | El despliegue falla en `release_command` | Falló una migración: `fly logs -a agentsales` muestra el error. La versión anterior sigue corriendo. Pásale el error a Claude (sin secretos) |

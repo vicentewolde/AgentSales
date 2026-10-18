@@ -322,14 +322,14 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
   - [x] `dist` sin archivos de test ni `testing` (el `Dockerfile` lo revisa); la imagen sin `.env` ni `data/muestras` (lo revisa la CI)
   - [x] El panel compilado, servido por `createServerApp` desde la imagen, carga en un navegador sin errores de la CSP (2026-10-18, el build en una copia limpia y `.github/scripts/panel-csp.mjs`: encontró la prueba de `eval` de zod, corregida con `jitless`; la CI lo repite con la imagen)
   - [x] La CI construye la imagen en cada PR (job `image`)
-  - [ ] El pico de memoria del worker (con ffmpeg y Chromium) medido en una preparación con reel en el Mac, para elegir 1 o 2 GB (aviso antes de `pnpm dev`)
+  - [x] El pico de memoria del worker (con ffmpeg y Chromium) medido en una preparación con reel en el Mac, para elegir 1 o 2 GB (2026-10-18: unos 994 MB con un video vertical 4K de 15 s y 6 fotos de 4032×3024 sintéticas; ffmpeg 714 MB, el worker 147 MB, Chromium unos 133 MB → 2 GB)
 
 ### F8-T11 · El proveedor y el flujo de despliegue
 - **Depende de:** T10, D1
 - **Archivos:** configuración del proveedor (D1), `.github/workflows/deploy.yml`, `docs/10-despliegue.md`, `CLAUDE.md` (comandos)
 - **Descripción:** `fly.toml` con dos procesos (la API con `auto_stop_machines` y el worker sin servicio HTTP), el chequeo de `/api/health/live` (§4.7), la migración antes de arrancar (`release_command`), `kill_timeout`, la región `gru`; el flujo a pedido (solo `main` en verde); la guía del operador: crear la app, los secretos, el `CNAME` de `agentsales.agentpey.com` en Vercel y el certificado, desplegar, **encender y apagar para una demo**, ver los logs, volver a la versión anterior, restaurar un respaldo y pasar a siempre encendido con Neon Launch.
 - **Hecho cuando:**
-  - [ ] El flujo se niega a correr fuera de `main` o con la CI en rojo (probado en una rama de prueba sin el secreto; lo lanza el operador después del merge)
+  - [x] El flujo se niega a correr fuera de `main` o con la CI en rojo (2026-10-18, a pedido del operador: desde la rama `test/deploy-se-niega`, sin el secreto, GitHub lo rechazó antes de correr un paso: "Branch … is not allowed to deploy to production due to environment protection rules"; la rama se borró)
   - [ ] La guía revisada por el operador
 
 ### F8-T12 · El worker ante reinicios y la deuda de F6
