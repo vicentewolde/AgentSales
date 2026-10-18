@@ -1,18 +1,24 @@
 import { AppError } from "../errors.js";
 import type {
   InvitationRepository,
+  LoginChallengeRepository,
   NewUser,
   OAuthStateRepository,
   SessionRepository,
+  StoredTotp,
   UserRepository,
 } from "../ports/user-repository.js";
-import type { Invitation, Session, User } from "../user.js";
+import type { Invitation, LoginChallenge, Session, User } from "../user.js";
 import { structuredCopy } from "./copy.js";
 
 // Dobles en memoria de usuarios, sesiones, invitaciones y `state` usados (spec F7 §4.12): se
 // comportan como Postgres en lo que prueba la suite de contrato.
 
-type StoredUser = User & { passwordHash: string | null };
+type StoredUser = User & {
+  passwordHash: string | null;
+  totpSecretEncrypted: string | null;
+  totpLastStep: number | null;
+};
 
 export type InMemoryUserRepositories = {
   /**
@@ -32,6 +38,9 @@ export type InMemoryUserRepositories = {
   sessions: SessionRepository & { all(): Session[] };
   invitations: InvitationRepository & { all(): Invitation[] };
   oauthStates: OAuthStateRepository;
+  loginChallenges: LoginChallengeRepository & { all(): LoginChallenge[] };
+  /** Los códigos de recuperación guardados (hash y uso), para revisar que nunca se guarda el código. */
+  recoveryCodes(userId: string): { codeHash: string; usedAt: Date | null }[];
 };
 
 export function createInMemoryUserRepositories(
@@ -44,9 +53,15 @@ export function createInMemoryUserRepositories(
   const sessions = new Map<string, Session & { tokenHash: string }>();
   const invitations = new Map<string, Invitation & { tokenHash: string }>();
   const states = new Map<string, Date>();
+  const challenges = new Map<string, LoginChallenge & { tokenHash: string }>();
+  const recovery = new Map<string, { codeHash: string; usedAt: Date | null }[]>();
 
-  const publicUser = ({ passwordHash, ...user }: StoredUser): User =>
-    structuredCopy({ ...user, hasPassword: passwordHash !== null });
+  const publicUser = ({
+    passwordHash,
+    totpSecretEncrypted: _secret,
+    totpLastStep: _step,
+    ...user
+  }: StoredUser): User => structuredCopy({ ...user, hasPassword: passwordHash !== null });
   const mustGet = (id: string) => {
     const user = users.get(id);
     if (user === undefined) throw new AppError("USER_NOT_FOUND", `No existe el usuario ${id}`);
@@ -79,6 +94,9 @@ export function createInMemoryUserRepositories(
         lockedUntil: null,
         disabledAt: null,
         lastLoginAt: null,
+        totpEnabledAt: null,
+        totpSecretEncrypted: null,
+        totpLastStep: null,
         createdAt: at,
         updatedAt: at,
       };
@@ -123,6 +141,51 @@ export function createInMemoryUserRepositories(
     async setDisabled(id, at) {
       return update(id, { disabledAt: at });
     },
+    async findTotp(id): Promise<StoredTotp | null> {
+      const user = users.get(id);
+      return user === undefined
+        ? null
+        : {
+            secretEncrypted: user.totpSecretEncrypted,
+            enabledAt: user.totpEnabledAt,
+            lastStep: user.totpLastStep,
+          };
+    },
+    async startTotp(id, secretEncrypted) {
+      if (mustGet(id).totpEnabledAt !== null) return null;
+      return update(id, { totpSecretEncrypted: secretEncrypted, totpLastStep: null });
+    },
+    async enableTotp(id, { secretEncrypted, at, step, recoveryCodeHashes }) {
+      const current = mustGet(id);
+      if (current.totpEnabledAt !== null || current.totpSecretEncrypted !== secretEncrypted) {
+        return null;
+      }
+      const user = update(id, { totpEnabledAt: at, totpLastStep: step });
+      recovery.set(
+        id,
+        recoveryCodeHashes.map((codeHash) => ({ codeHash, usedAt: null })),
+      );
+      return user;
+    },
+    async advanceTotpStep(id, step) {
+      const user = mustGet(id);
+      if (user.totpLastStep !== null && user.totpLastStep >= step) return false;
+      update(id, { totpLastStep: step });
+      return true;
+    },
+    async consumeRecoveryCode(id, codeHash, at) {
+      const code = recovery.get(id)?.find((c) => c.codeHash === codeHash && c.usedAt === null);
+      if (code === undefined) return false;
+      code.usedAt = at;
+      return true;
+    },
+    async countRecoveryCodes(id) {
+      return (recovery.get(id) ?? []).filter((code) => code.usedAt === null).length;
+    },
+    async clearTotp(id) {
+      recovery.delete(id);
+      return update(id, { totpEnabledAt: null, totpSecretEncrypted: null, totpLastStep: null });
+    },
     all: () => [...users.values()].map(publicUser),
   };
 
@@ -151,6 +214,13 @@ export function createInMemoryUserRepositories(
     },
     async deleteForUser(userId) {
       const ids = [...sessions.values()].filter((s) => s.userId === userId).map((s) => s.id);
+      for (const id of ids) sessions.delete(id);
+      return ids.length;
+    },
+    async deleteForUserExcept(userId, keepId) {
+      const ids = [...sessions.values()]
+        .filter((s) => s.userId === userId && s.id !== keepId)
+        .map((s) => s.id);
       for (const id of ids) sessions.delete(id);
       return ids.length;
     },
@@ -215,6 +285,38 @@ export function createInMemoryUserRepositories(
     },
   };
 
+  const loginChallenges: InMemoryUserRepositories["loginChallenges"] = {
+    async create({ userId, tokenHash, expiresAt }) {
+      mustGet(userId);
+      const challenge = { id: nextId(), userId, expiresAt, usedAt: null, createdAt: now() };
+      challenges.set(challenge.id, { ...challenge, tokenHash });
+      return structuredCopy(challenge);
+    },
+    async findByTokenHash(tokenHash) {
+      const found = [...challenges.values()].find((c) => c.tokenHash === tokenHash);
+      if (found === undefined) return null;
+      const { tokenHash: _hash, ...challenge } = found;
+      return structuredCopy(challenge);
+    },
+    async consume(id, at) {
+      const found = challenges.get(id);
+      if (found === undefined || found.usedAt !== null) return false;
+      challenges.set(id, { ...found, usedAt: at });
+      return true;
+    },
+    async deleteExpired(at) {
+      let deleted = 0;
+      for (const [id, challenge] of challenges) {
+        if (challenge.expiresAt < at) {
+          challenges.delete(id);
+          deleted++;
+        }
+      }
+      return deleted;
+    },
+    all: () => [...challenges.values()].map(({ tokenHash: _hash, ...challenge }) => challenge),
+  };
+
   const seed: InMemoryUserRepositories["seed"] = {
     user({ id, passwordHash = null, ...input }) {
       const at = now();
@@ -227,6 +329,9 @@ export function createInMemoryUserRepositories(
         lockedUntil: null,
         disabledAt: null,
         lastLoginAt: null,
+        totpEnabledAt: null,
+        totpSecretEncrypted: null,
+        totpLastStep: null,
         createdAt: at,
         updatedAt: at,
       };
@@ -254,5 +359,7 @@ export function createInMemoryUserRepositories(
     sessions: sessionRepository,
     invitations: invitationRepository,
     oauthStates,
+    loginChallenges,
+    recoveryCodes: (userId) => structuredCopy(recovery.get(userId) ?? []),
   };
 }

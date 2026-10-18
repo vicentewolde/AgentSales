@@ -116,6 +116,7 @@ describe("publications.watch", () => {
           },
         },
         oauthStates: { deleteExpired: async () => 1 },
+        loginChallenges: { deleteExpired: async () => 3 },
       },
     });
     await registerJobs(boss.boss, [job], logger);
@@ -124,9 +125,10 @@ describe("publications.watch", () => {
     expect(calls).toEqual([{ now, idleBefore: new Date(now.getTime() - SESSION_IDLE_MS) }]);
     expect(
       lines.find(
-        (line) => line.msg === "vigilancia: sesiones y estados de OAuth vencidos borrados",
+        (line) =>
+          line.msg === "vigilancia: sesiones, estados de OAuth y desafíos vencidos borrados",
       ),
-    ).toMatchObject({ level: 30, sessions: 2, oauthStates: 1 });
+    ).toMatchObject({ level: 30, sessions: 2, oauthStates: 1, loginChallenges: 3 });
 
     fail = true;
     await boss.run();

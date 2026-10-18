@@ -68,10 +68,17 @@ async function setup() {
   };
 }
 
+/** `login` cuando el usuario no tiene el doble factor: siempre abre la sesión. */
+async function enter(...args: Parameters<typeof login>) {
+  const result = await login(...args);
+  if (result.kind !== "session") throw new Error("se esperaba una sesión");
+  return result;
+}
+
 describe("entrar", () => {
   it("con correo y contraseña abre una sesión; el correo no distingue mayúsculas", async () => {
     const s = await setup();
-    const opened = await login(s, {
+    const opened = await enter(s, {
       email: " VINNY@ejemplo.cl ",
       password: PASSWORD,
       client: "cli",
@@ -113,7 +120,7 @@ describe("entrar", () => {
       code: "AUTH_LOCKED",
     });
     s.advance(LOGIN_LOCK_MS);
-    const opened = await login(s, { ...wrong, password: PASSWORD });
+    const opened = await enter(s, { ...wrong, password: PASSWORD });
     expect(opened.user).toMatchObject({ failedLogins: 0, lockedUntil: null });
   });
 
@@ -160,7 +167,7 @@ describe("entrar", () => {
 describe("la sesión de cada pedido", () => {
   it("vale con su token; anota el uso a lo más una vez por minuto", async () => {
     const s = await setup();
-    const { token, session } = await login(s, {
+    const { token, session } = await enter(s, {
       email: s.admin.email,
       password: PASSWORD,
       client: "panel",
@@ -185,14 +192,14 @@ describe("la sesión de cada pedido", () => {
   it("vence a los 30 días aunque se use, y tras 7 días sin uso; las dos se borran", async () => {
     const s = await setup();
     const credentials = { email: s.admin.email, password: PASSWORD, client: "panel" as const };
-    const first = await login(s, credentials);
+    const first = await enter(s, credentials);
     for (let day = 0; day < 30; day += 6) {
       s.advance(6 * 24 * 60 * 60 * 1000);
       await resolveSession(s, first.token);
     }
     expect(await resolveSession(s, first.token)).toBeNull();
 
-    const idle = await login(s, credentials);
+    const idle = await enter(s, credentials);
     s.advance(SESSION_IDLE_MS);
     expect(await resolveSession(s, idle.token)).toBeNull();
     expect(s.sessions.all()).toHaveLength(0);
@@ -200,7 +207,7 @@ describe("la sesión de cada pedido", () => {
 
   it("la de un usuario desactivado ya no vale", async () => {
     const s = await setup();
-    const { token } = await login(s, {
+    const { token } = await enter(s, {
       email: s.admin.email,
       password: PASSWORD,
       client: "panel",
@@ -211,7 +218,7 @@ describe("la sesión de cada pedido", () => {
 
   it("salir la borra; salir con un token desconocido no hace nada", async () => {
     const s = await setup();
-    const { token } = await login(s, {
+    const { token } = await enter(s, {
       email: s.admin.email,
       password: PASSWORD,
       client: "panel",
@@ -395,7 +402,7 @@ describe("invitar y aceptar", () => {
 describe("restablecer y desactivar", () => {
   it("restablecer cierra las sesiones y quita el bloqueo", async () => {
     const s = await setup();
-    const { token } = await login(s, {
+    const { token } = await enter(s, {
       email: s.admin.email,
       password: PASSWORD,
       client: "panel",

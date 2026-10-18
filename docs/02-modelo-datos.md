@@ -2,7 +2,7 @@
 
 Base de datos: Postgres en Neon (plan gratis, conexión directa). Esquema en `packages/db` con Drizzle; este documento es la referencia conceptual. Si difieren, **manda el código** y este documento se actualiza en la misma tarea.
 
-Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()` (salvo `platform_catalog`, que usa la llave `(platform, key)`); `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `publication_format`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`, `import_run_status`, `content_run_status`; desde F7, `user_role`, `session_client` e `invitation_purpose`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`) y, desde F7, `sessions` e `invitations` (solo `created_at`) y `oauth_states_used` (ninguna), y desde F8 `worker_heartbeats` (ninguna: lleva sus propias horas). `updated_at` lo fija la base (`now()`, la hora de inicio de la transacción) al crear y en cada `update` de Drizzle (`$onUpdate`); un SQL crudo o un `onConflictDoUpdate` lo fija explícitamente (como `seed.ts`). Excepción: `publications` y `publication_events` usan `clock_timestamp()` (la hora real, no la del inicio de la transacción), para ordenarse dentro del candado y para que el sync de F4 compare `updated_at` por igualdad. Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications` y, desde F7, `sessions` e `invitations → users`; `publication_events.user_id` e `invitations.created_by` quedan en `null` al borrar el usuario. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.status = queued`, `import_runs.dry_run = false`, `content_runs.status = queued`, `content_runs.texts = true`, `import_runs.rows_* = 0`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload` e `input` empiezan vacíos, e `import_runs.report`, `content_runs.report`, `publications.progress`, `publications.remote_state` y `publications.listing_source_hash` empiezan en `null`. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES` (solo `approved`, ADR-0014).
+Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()` (salvo `platform_catalog`, que usa la llave `(platform, key)`); `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `publication_format`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`, `import_run_status`, `content_run_status`; desde F7, `user_role`, `session_client` e `invitation_purpose`). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable: solo `created_at`) y, desde F7, `sessions` e `invitations` (solo `created_at`) y `oauth_states_used` (ninguna), y desde F8 `worker_heartbeats` (ninguna: lleva sus propias horas), `user_recovery_codes` y `login_challenges` (solo `created_at`). `updated_at` lo fija la base (`now()`, la hora de inicio de la transacción) al crear y en cada `update` de Drizzle (`$onUpdate`); un SQL crudo o un `onConflictDoUpdate` lo fija explícitamente (como `seed.ts`). Excepción: `publications` y `publication_events` usan `clock_timestamp()` (la hora real, no la del inicio de la transacción), para ordenarse dentro del candado y para que el sync de F4 compare `updated_at` por igualdad. Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications` y, desde F7, `sessions` e `invitations → users` (desde F8, también `user_recovery_codes` y `login_challenges → users`); `publication_events.user_id` e `invitations.created_by` quedan en `null` al borrar el usuario. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.status = queued`, `import_runs.dry_run = false`, `content_runs.status = queued`, `content_runs.texts = true`, `import_runs.rows_* = 0`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload` e `input` empiezan vacíos, e `import_runs.report`, `content_runs.report`, `publications.progress`, `publications.remote_state` y `publications.listing_source_hash` empiezan en `null`. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES` (solo `approved`, ADR-0014).
 
 ## Diagrama
 
@@ -224,7 +224,35 @@ Llave primaria `(platform, key)` (migración `0007`); no tiene `id`.
 | locked_until | timestamptz null | |
 | disabled_at | timestamptz null | Desactivado: no entra y sus sesiones se borran |
 | last_login_at | timestamptz null | |
+| totp_secret_encrypted | text null | Desde F8-T15 (migración `0012`): la clave del doble factor, cifrada con `SecretBox` (propósito `totp`, AAD `totp:<id>`). Se guarda al empezar a activarlo; nunca sale del repositorio |
+| totp_enabled_at | timestamptz null | Desde cuándo está activo; `null` mientras se activa o sin doble factor. `CHECK` (`users_totp_enabled_secret`): activo implica una clave. La entidad lo trae como `totpEnabledAt` |
+| totp_last_step | bigint null | El último paso de 30 s usado: un código no sirve dos veces (`advanceTotpStep`, condicional) |
 | created_at, updated_at | timestamptz | |
+
+Restablecer un usuario y `pnpm auth:admin` le quitan el doble factor al usar el enlace (`clearTotp`: la clave, el paso y sus códigos de recuperación). Una rama de Neon copiada de producción trae estas columnas cifradas con la clave de producción: con la de desarrollo, entrar da `TOTP_UNREADABLE` (la salida es `pnpm auth:admin` y usar su enlace).
+
+### user_recovery_codes — códigos de recuperación del doble factor (F8-T15)
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid | FK a `users`, en cascada |
+| code_hash | text | SHA-256 del código normalizado (sin guiones, en mayúsculas). Único por `(user_id, code_hash)` |
+| used_at | timestamptz null | Sirve una vez (`consumeRecoveryCode`, condicional) |
+| created_at | timestamptz | |
+
+Activar el doble factor reemplaza los 10 códigos en la misma transacción (`enableTotp`).
+
+### login_challenges — el segundo paso de entrar (F8-T15)
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| token_hash | text unique | SHA-256 del desafío; el desafío se entrega una vez |
+| user_id | uuid | FK a `users`, en cascada |
+| expires_at | timestamptz | 5 min (`LOGIN_CHALLENGE_TTL_MS`). Índice para borrar los vencidos |
+| used_at | timestamptz null | Sirve una vez: se gasta al abrir la sesión (`consume`, condicional) |
+| created_at | timestamptz | |
+
+La vigilancia de cada hora (`publications.watch`, `purgeExpiredAuth`) borra los vencidos, como las sesiones.
 
 ### sessions — sesiones (F7, ADR-0021)
 | Columna | Tipo | Notas |

@@ -55,6 +55,8 @@ const EXPECTED_TABLES = [
   "import_runs",
   "invitations",
   "listings",
+  // F8-T15 (0012): el segundo paso de entrar.
+  "login_challenges",
   "media",
   "oauth_states_used",
   "platform_accounts",
@@ -62,6 +64,8 @@ const EXPECTED_TABLES = [
   "publication_events",
   "publications",
   "sessions",
+  // F8-T15 (0012): los códigos de recuperación del doble factor.
+  "user_recovery_codes",
   "users",
   // F8-T12 (0011): el latido del worker.
   "worker_heartbeats",
@@ -108,7 +112,7 @@ describe("migraciones", () => {
     expect(sqlEnums(sql)).toEqual(EXPECTED_ENUMS);
   });
 
-  it("crean las 16 tablas del modelo de datos", () => {
+  it("crean las 18 tablas del modelo de datos", () => {
     const tables = [...sql.matchAll(/CREATE TABLE "(\w+)"/g)].map((match) => match[1]).sort();
 
     expect(tables).toEqual(EXPECTED_TABLES);

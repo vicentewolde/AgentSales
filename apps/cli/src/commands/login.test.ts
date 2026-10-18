@@ -1,4 +1,5 @@
-import { TEST_ADMIN } from "@agentsales/api/testing";
+import { TEST_ADMIN, TEST_ADMIN_CLI_TOKEN } from "@agentsales/api/testing";
+import { fakeTotpCode, fakeTotpStep } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { harness, PORT } from "../../test/harness.js";
 import { localServerUrl } from "../server.js";
@@ -10,6 +11,13 @@ import { runLogin, runLogout, runWhoami } from "./login.js";
 
 /** La contraseña que "escribe" el operador. */
 const typed = (value: string) => async () => ({ cancelled: false as const, value });
+/** Lo que escribe en orden: la contraseña y después cada código; anota cada pregunta. */
+const typedInOrder =
+  (values: string[], prompts: string[] = []) =>
+  async (prompt: string) => {
+    prompts.push(prompt);
+    return { cancelled: false as const, value: values.shift() ?? "" };
+  };
 
 type Harness = ReturnType<typeof harness>;
 
@@ -94,6 +102,59 @@ describe("agentsales login, whoami y logout", () => {
     expect(second).not.toBe(first);
     expect(await runWhoami({ ...h.io, client: h.clientWith(first) })).toBe(1);
     expect(await runWhoami({ ...h.io, client: h.clientWith(second) })).toBe(0);
+  });
+
+  it("con el doble factor (F8-T16) pide el código sin mostrarlo; uno malo se corrige", async () => {
+    const h = harness({ anonymous: true });
+    // El administrador activa el doble factor con su sesión de la CLI.
+    const admin = h.clientWith(TEST_ADMIN_CLI_TOKEN);
+    await admin.auth.totp.setup.$post();
+    const confirmed = await admin.auth.totp.confirm.$post({
+      json: { code: fakeTotpCode(fakeTotpStep(new Date())) },
+    });
+    const { recoveryCodes } = (await confirmed.json()) as { recoveryCodes: string[] };
+
+    const session = createMemorySessionStore();
+    const prompts: string[] = [];
+    const code = await runLogin(
+      {
+        ...via(h),
+        session,
+        readPassword: typedInOrder(
+          [TEST_ADMIN.password, "000000", recoveryCodes[0] ?? ""],
+          prompts,
+        ),
+      },
+      { email: TEST_ADMIN.email },
+    );
+
+    expect(code).toBe(0);
+    expect(prompts).toEqual([
+      `Contraseña de ${TEST_ADMIN.email}: `,
+      "Código de tu app de claves (o uno de recuperación): ",
+      "Código de tu app de claves (o uno de recuperación): ",
+    ]);
+    expect(h.errors()).toContain("El código no sirve o ya se usó");
+    expect(session.read()?.token).toBeDefined();
+    expect(h.text()).not.toContain(recoveryCodes[0] ?? "?");
+    expect(h.text()).toContain(`Entraste como ${TEST_ADMIN.email}`);
+
+    // Tres códigos malos: no entra y no guarda nada.
+    const again = harness({ anonymous: true });
+    const empty = createMemorySessionStore();
+    expect(
+      await runLogin(
+        {
+          ...via(h),
+          ...again.io,
+          session: empty,
+          readPassword: typedInOrder([TEST_ADMIN.password, "000000", "000001", "000002"]),
+        },
+        { email: TEST_ADMIN.email },
+      ),
+    ).toBe(1);
+    expect(again.errors()).toContain("TOTP_CODE_INVALID");
+    expect(empty.read()).toBeNull();
   });
 
   it("salir con la API apagada borra la local y avisa que en el servidor sigue", async () => {

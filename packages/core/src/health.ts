@@ -93,5 +93,10 @@ export const healthReportSchema = z.object({
    * último latido. `null` si la base no respondió. Opcional, como `database`.
    */
   worker: workerStatusSchema.nullable().optional(),
+  /**
+   * Desde F8-T15 (spec §4.8): los administradores activos (correo) sin el doble factor; `doctor`
+   * recomienda activarlo. `null` si la base no respondió. Opcional, como `database`.
+   */
+  adminsWithoutTotp: z.array(z.string()).nullable().optional(),
 });
 export type HealthReport = z.infer<typeof healthReportSchema>;

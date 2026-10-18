@@ -38,7 +38,7 @@ export async function runAuthAdmin(
     deps.print(
       link.created
         ? `✓ Administrador ${link.user.email} creado.`
-        : `✓ ${link.user.email} ya existía: se generó un enlace para elegir otra contraseña (sus sesiones se cerraron).`,
+        : `✓ ${link.user.email} ya existía: se generó un enlace para elegir otra contraseña (sus sesiones se cerraron y, si lo tenía, se quitó el doble factor).`,
     );
     deps.print(
       `  El enlace quedó en el portapapeles: ábrelo en el navegador (con pnpm dev corriendo) antes de ${link.expiresAt.toLocaleString("es-CL", { timeZone: "America/Santiago" })}.`,

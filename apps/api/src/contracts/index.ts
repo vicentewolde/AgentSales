@@ -1084,6 +1084,11 @@ export const userViewSchema = z.object({
   /** Bloqueado ahora por los intentos fallidos. */
   locked: z.boolean(),
   lastLoginAt: z.coerce.date().nullable(),
+  /**
+   * Desde F8-T15: si tiene el doble factor activo. Opcional (`false` sin él): una API anterior no
+   * lo trae.
+   */
+  totpEnabled: z.boolean().optional().default(false),
 });
 export type UserView = z.infer<typeof userViewSchema>;
 
@@ -1095,6 +1100,44 @@ export const loginBodySchema = z.object({
 });
 export const loginResponseSchema = z.object({ user: userViewSchema, token: z.string().optional() });
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
+
+/**
+ * `POST /auth/login` desde F8-T15 (spec F8 §4.8): la sesión, o con el doble factor activo el
+ * segundo paso (`totpRequired`), con un desafío de un solo uso que vence a los 5 min.
+ */
+export const totpRequiredResponseSchema = z.object({
+  totpRequired: z.literal(true),
+  challenge: z.string(),
+  expiresAt: z.coerce.date(),
+});
+export type TotpRequiredResponse = z.infer<typeof totpRequiredResponseSchema>;
+export const loginStepResponseSchema = z.union([totpRequiredResponseSchema, loginResponseSchema]);
+export type LoginStepResponse = z.infer<typeof loginStepResponseSchema>;
+
+/** `POST /auth/login/totp`: el desafío y el código de la app (o uno de recuperación). */
+export const loginTotpBodySchema = z.object({
+  challenge: z.string().min(1).max(256),
+  code: z.string().max(64),
+  client: z.enum(SESSION_CLIENTS).optional(),
+});
+
+/** `GET /auth/totp`: si está activo y cuántos códigos de recuperación quedan. */
+export const totpStatusResponseSchema = z.object({
+  enabled: z.boolean(),
+  recoveryCodesLeft: z.number().int(),
+});
+export type TotpStatusResponse = z.infer<typeof totpStatusResponseSchema>;
+
+/** `POST /auth/totp/setup`: la clave (base32) y el enlace `otpauth://`, para la app del teléfono. */
+export const totpSetupResponseSchema = z.object({ secret: z.string(), otpauthUrl: z.string() });
+export type TotpSetupResponse = z.infer<typeof totpSetupResponseSchema>;
+
+/** `POST /auth/totp/confirm` y `/disable`: un código de la app (o de recuperación al desactivar). */
+export const totpCodeBodySchema = z.object({ code: z.string().max(64) });
+
+/** `POST /auth/totp/confirm`: los códigos de recuperación, que se muestran una sola vez. */
+export const totpConfirmResponseSchema = z.object({ recoveryCodes: z.array(z.string()) });
+export type TotpConfirmResponse = z.infer<typeof totpConfirmResponseSchema>;
 
 /** `GET /auth/me`: el usuario de la sesión, con su corredor. */
 export const meResponseSchema = z.object({

@@ -20,7 +20,12 @@ const KEY_BYTES = 32;
 export const KEY_PURPOSES = {
   credentials: "agentsales/credentials/v1",
   oauthState: "agentsales/oauth-state/v1",
+  // La clave del doble factor de cada usuario (spec F8 §4.8, F8-T15).
+  totp: "agentsales/totp/v1",
 } as const;
+
+/** El propósito de una clave de `SecretBox`. */
+export type SecretBoxPurpose = (typeof KEY_PURPOSES)["credentials" | "totp"];
 
 /** Clave de 32 bytes derivada de `APP_ENCRYPTION_KEY` para un propósito (HKDF-SHA256). */
 export function deriveKey(secret: string, info: string): Buffer {
@@ -51,9 +56,14 @@ const unreadable = (reason: string) =>
 /**
  * `SecretBox` (puerto de core) con AES-256-GCM: `encrypt` devuelve `v1.<iv>.<cifrado>.<tag>` en
  * base64url, con IV aleatorio. El repositorio de cuentas usa la AAD `platform:external_account_id`.
+ * Con `purpose` (F8-T15), otra clave derivada: la del doble factor (`KEY_PURPOSES.totp`) no abre
+ * credenciales, ni al revés.
  */
-export function createSecretBox(appEncryptionKey: string): SecretBox {
-  const key = deriveKey(appEncryptionKey, KEY_PURPOSES.credentials);
+export function createSecretBox(
+  appEncryptionKey: string,
+  purpose: SecretBoxPurpose = KEY_PURPOSES.credentials,
+): SecretBox {
+  const key = deriveKey(appEncryptionKey, purpose);
   return {
     encrypt(plaintext, aad) {
       const iv = randomBytes(IV_BYTES);

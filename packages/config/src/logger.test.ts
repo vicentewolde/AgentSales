@@ -37,6 +37,26 @@ describe("redact", () => {
     });
   });
 
+  it("oculta el desafío, los códigos de recuperación y el enlace otpauth, pero no sus conteos (F8-T15)", () => {
+    expect(
+      redact({
+        challenge: "c-1",
+        recoveryCodes: ["AAAA-BBBB"],
+        otpauthUrl: "otpauth://totp/x",
+        loginChallenges: 3,
+        recoveryCodesLeft: 9,
+        code: "TOTP_CODE_INVALID",
+      }),
+    ).toEqual({
+      challenge: REDACTED,
+      recoveryCodes: REDACTED,
+      otpauthUrl: REDACTED,
+      loginChallenges: 3,
+      recoveryCodesLeft: 9,
+      code: "TOTP_CODE_INVALID",
+    });
+  });
+
   it("deja visible la clave code (los códigos de error) y oculta los tokens de Instagram (F3)", () => {
     expect(
       redact({

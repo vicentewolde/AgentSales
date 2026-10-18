@@ -49,6 +49,8 @@ export type HealthDetails = {
   llmKeyMissingBrokers?: () => Promise<string[]>;
   /** Los latidos más recientes del worker (F8-T12, spec F8 §4.10); un error da `null`. */
   workerHeartbeats?: () => Promise<WorkerHeartbeat[]>;
+  /** Los administradores activos sin el doble factor (F8-T15); un error da `null`. */
+  adminsWithoutTotp?: () => Promise<string[]>;
   now?: () => Date;
 };
 
@@ -69,8 +71,9 @@ export async function runHealth(options: {
   // `results` recorre HEALTH_CHECK_NAMES completo, así que el objeto tiene todas las claves.
   const checks = Object.fromEntries(results) as Record<HealthCheckName, HealthCheckResult>;
   const details = options.details ?? {};
-  // Sin base no se consulta; con ella, el mismo tope de los checks: nunca cuelga `/health`.
-  const brokerSlugs = async (read: () => Promise<string[]>) =>
+  // Las listas que salen de la base (corredores, administradores): sin base no se consultan; con
+  // ella, el mismo tope de los checks: nunca cuelgan `/health`.
+  const fromDb = async (read: () => Promise<string[]>) =>
     checks.db.ok ? await withTimeout(read(), timeoutMs).catch(() => null) : null;
   return {
     status: results.every(([, result]) => result.ok) ? "ok" : "degraded",
@@ -91,10 +94,13 @@ export async function runHealth(options: {
         }),
     ...(details.autoPublishBrokers === undefined
       ? {}
-      : { autoPublishBrokers: await brokerSlugs(details.autoPublishBrokers) }),
+      : { autoPublishBrokers: await fromDb(details.autoPublishBrokers) }),
     ...(details.llmKeyMissingBrokers === undefined
       ? {}
-      : { llmKeyMissingBrokers: await brokerSlugs(details.llmKeyMissingBrokers) }),
+      : { llmKeyMissingBrokers: await fromDb(details.llmKeyMissingBrokers) }),
+    ...(details.adminsWithoutTotp === undefined
+      ? {}
+      : { adminsWithoutTotp: await fromDb(details.adminsWithoutTotp) }),
     ...(details.workerHeartbeats === undefined
       ? {}
       : {

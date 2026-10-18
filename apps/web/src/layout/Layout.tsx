@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Suspense, useEffect } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { onSessionExpired } from "../api/session-events.js";
 import { BrokerSelector } from "../components/BrokerSelector.js";
 import { useLogout, useMe } from "../queries/auth.js";
@@ -87,6 +87,12 @@ function UserMenu() {
     <div className="mt-3 border-t border-slate-200 px-3 pt-3 text-sm md:mt-4 md:pt-4">
       <p className="font-medium text-slate-800">{me.data.name}</p>
       <p className="truncate text-xs text-slate-500">{me.data.email}</p>
+      <Link
+        to="/cuenta"
+        className="mt-2 mr-3 inline-block text-xs text-slate-600 underline hover:text-slate-900"
+      >
+        Mi cuenta
+      </Link>
       <button
         type="button"
         className="mt-2 text-xs text-slate-600 underline hover:text-slate-900"

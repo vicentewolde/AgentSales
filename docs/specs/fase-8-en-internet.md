@@ -42,7 +42,7 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 |---|---|
 | `packages/config` | `PUBLIC_URL`, `API_HOST`, `CLIENT_IP_HEADER`, `ENV_FILE`, `BACKUP_TARGET` y las reglas de producción (§4.2); el TOTP (RFC 6238 con `node:crypto`) y base32; el propósito `totp` en la derivación de claves |
 | `packages/core` | La carga con entradas en R2 (`requestImportUpload`, `startImport`) y el estado `awaiting_upload`; el doble factor (`enableTotp`, `confirmTotp`, `disableTotp`, el login en dos pasos, códigos de recuperación); el borrado de datos que pide Meta (`handleDataDeletion`, `handleDeauthorize`); el `auto_publish` pendiente al arrancar; la pausa con `byListing` (F6) |
-| `packages/db` | Migraciones `0010` (cargas), `0011` (el latido del worker y el `auto_publish` cortado) y `0012` (doble factor y pedidos de borrado de Meta) (§4.12); `db:dev-scrub` (borra las credenciales de una base que no es la de producción, §4.6); repositorios; `runBackup` sigue volcando a una carpeta (la subida a R2 es del job, §4.9) |
+| `packages/db` | Migraciones `0010` (cargas), `0011` (el latido del worker y el `auto_publish` cortado) `0012` (doble factor) y `0013` (pedidos de borrado de Meta) (§4.12); `db:dev-scrub` (borra las credenciales de una base que no es la de producción, §4.6); repositorios; `runBackup` sigue volcando a una carpeta (la subida a R2 es del job, §4.9) |
 | `packages/storage` | `signedUploadUrl` (PUT prefirmado con tamaño, tipo y sha256), `list` por prefijo; `pnpm storage:check` revisa también el CORS del bucket; el estado del respaldo en `system/estado-respaldo.json` (`readStoredBackupStatus`, `writeStoredBackupStatus`, T13) |
 | `packages/importers` | Leer la planilla y los medios desde R2 (zip o carpeta subida archivo por archivo); el tope del xlsx descomprimido antes de exceljs |
 | `apps/api` | Sirve el panel (`apps/web/dist`) y monta la API bajo `/api`; `hostGuard`, orígenes y cookies desde `PUBLIC_URL`; cabeceras de seguridad; límites por IP (`rate-limit.ts`, en memoria: no es de core); rutas de subida a R2; el login en dos pasos y el doble factor; las vueltas de Meta; la vuelta de Mercado Libre; escucha en `API_HOST`; lee el estado del respaldo de R2 con caché y quita el token de respaldos al arrancar (T13) |
@@ -111,11 +111,11 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 - **El chequeo del proveedor** (T11) es `GET /api/health/live`: solo dice que el proceso responde, sin base ni R2, porque un chequeo de Fly que falla saca la máquina del balanceo y `/api/health` puede tardar hasta 25 s con Neon despertando (`hosting.md` §14.1). Fuera de `hostGuard`, como `/api/health`.
 
 ### 4.8 Login para internet (ADR-0026)
-- **Límites por IP** (puerto `RateLimiter`, en memoria): `POST /auth/login` y el segundo paso, 10 por minuto y 50 por hora por IP; `POST /auth/invitations/accept`, 10 por hora por IP; toda la API, 300 por minuto por IP (con sesión, además por usuario). Al pasarse: 429 `RATE_LIMITED` con `Retry-After`. El bloqueo por usuario de F7 (10 fallos, 15 min) sigue.
+- **Límites por IP** (`apps/api/src/rate-limit.ts`, en memoria, D14; una IPv6 cuenta por su /64): `POST /auth/login` y el segundo paso, 10 por minuto y 50 por hora por IP; `POST /auth/invitations/accept`, 10 por hora por IP; toda la API, 300 por minuto por IP (con sesión, además por usuario). Al pasarse: 429 `RATE_LIMITED` con `Retry-After`. El bloqueo por usuario de F7 (10 fallos, 15 min) sigue.
 - **Doble factor (TOTP)** opcional por usuario, recomendado para el administrador (`doctor` avisa si el administrador no lo tiene):
   - Activar: el panel muestra la clave (base32) y el enlace `otpauth://` (se abre en la app de claves del teléfono o se copia a mano; sin código QR, que pediría una dependencia), y el usuario confirma con un código. Recibe 10 códigos de recuperación una vez (se guardan solo sus hashes).
-  - Entrar: con la contraseña correcta y el doble factor activo, la API responde `totp_required` con un desafío de un solo uso (5 min, solo su hash en la base); `POST /auth/login/totp` con el código (o uno de recuperación) crea la sesión. Un código ya usado no sirve otra vez (se guarda el último paso). Los fallos del segundo paso cuentan para el bloqueo.
-  - La clave se guarda cifrada con `SecretBox` (propósito `totp`). Desactivarlo pide un código. Restablecer el acceso de un usuario (F7) también le quita el doble factor; `pnpm auth:admin` se lo quita al administrador (tiene la base: es la salida si pierde el teléfono).
+  - Entrar: con la contraseña correcta y el doble factor activo, la API responde `{ totpRequired: true, challenge, expiresAt }` con un desafío de un solo uso (5 min, solo su hash en la base); `POST /auth/login/totp` con el código (o uno de recuperación) crea la sesión. Un código ya usado no sirve otra vez (se guarda el último paso). Los fallos del segundo paso cuentan para el bloqueo.
+  - La clave se guarda cifrada con `SecretBox` (propósito `totp`). Desactivarlo pide un código, y un código equivocado cuenta para el bloqueo (como al entrar). Restablecer el acceso de un usuario (F7) también le quita el doble factor, y `pnpm auth:admin` se lo quita al administrador (tiene la base: es la salida si pierde el teléfono); en los dos casos **al usar el enlace**, no al emitirlo: mientras tanto la contraseña anterior sigue sirviendo y sola no basta para entrar.
 - **Sesiones:** sin cambios (30 días, 7 sin uso). Cambiar la contraseña o el doble factor cierra las demás sesiones.
 
 ### 4.9 Respaldos fuera del Mac (D13)
@@ -146,10 +146,11 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 - **La firma de las vueltas:** se acepta con la clave de la app de Instagram o con la de la app de Meta (cuál firma con Instagram Login es NO VERIFICADO, nota §13.4); se prueba quitando la app desde tu cuenta.
 - **App Review** (nota §13.1 y §13.5): lo tramita el operador (checklist "Antes de F8"). Del lado del sistema: privacidad, borrado de datos y las dos vueltas en HTTPS; el botón de Instagram con sus pautas de marca; un canal de ayuda y de seguridad visible; un **corredor y un usuario de demostración para el revisor** (creados con la invitación de F7, sin registro público; si Meta rechaza una app cerrada, se decide entonces); una llamada exitosa por permiso en los 30 días previos; el video de cada permiso con el flujo real en el dominio.
 
-### 4.12 Datos (migraciones `0010` a `0012`)
+### 4.12 Datos (migraciones `0010` a `0013`)
 - **`0010` (cargas):** `import_run_status` suma `awaiting_upload` (`ALTER TYPE … ADD VALUE` va en su propia migración, sin usar el valor en la misma transacción); `import_runs.input` (jsonb) suma la forma `{ broker?, dryRun, xlsx: { key, name, size, sha256 }, media: { kind: "zip", key, name, size } | { kind: "folder", prefix, name, files } | null }` (el `name` del zip y de la carpeta, para mostrarlos; `dryRun` repite la columna `dry_run`, que es la que manda), y `importRunInputSchema` (core) es una unión con la de hoy (`xlsxPath`, `mediaDir`, `broker`), que se sigue leyendo y nunca se reintenta. Índice por `status, created_at` para cerrar las abandonadas.
 - **`0011` (el worker, T12; el lote D llegó antes que el F):** tabla `worker_heartbeats` (proceso, arranque, último latido y apagado) y `content_runs.auto_publish_done_at` (un `auto_publish` sin resolver es uno cortado, §4.10).
-- **`0012` (doble factor y Meta):** `users.totp_secret_encrypted`, `users.totp_enabled_at`, `users.totp_last_step`; tabla `user_recovery_codes` (usuario, hash, `used_at`); tabla `login_challenges` (hash, usuario, vence, `used_at`), con borrado de las vencidas en `publications.watch` (como las sesiones); tabla `meta_deletion_requests` (código, `meta_user_id` con su hash, recibido, estado, cuentas afectadas).
+- **`0012` (doble factor, T15):** `users.totp_secret_encrypted`, `users.totp_enabled_at`, `users.totp_last_step`; tabla `user_recovery_codes` (usuario, hash, `used_at`); tabla `login_challenges` (hash, usuario, vence, `used_at`), con borrado de las vencidas en `publications.watch` (como las sesiones).
+- **`0013` (Meta, T17):** Tabla `meta_deletion_requests` (código, `meta_user_id` con su hash, recibido, estado, cuentas afectadas).
 - `docs/02-modelo-datos.md` al día en cada tarea.
 
 ### 4.13 Deuda que se cierra
@@ -175,12 +176,12 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 
 ### 4.14 Contratos (API, ADR-0011)
 - `POST /api/imports/uploads` (`{ broker?, dryRun, xlsx, media }`) → `201 { importRun, uploads: [{ kind, name, url, headers }] }` (`kind`: `xlsx`, `zip` o `file`); `POST /api/imports/:id/start` → `202` con la carga en `queued`.
-- `POST /api/auth/login` → como hoy, o `{ status: "totp_required", challenge }`; `POST /api/auth/login/totp` `{ challenge, code }`; `POST /api/auth/totp/setup` → `{ secret, otpauthUrl }`; `POST /api/auth/totp/confirm` `{ code }` → `{ recoveryCodes }`; `POST /api/auth/totp/disable` `{ code }`.
+- `POST /api/auth/login` → como hoy, o `{ totpRequired: true, challenge, expiresAt }`; `GET /api/auth/totp` → `{ enabled, recoveryCodesLeft }`; `POST /api/auth/login/totp` `{ challenge, code }`; `POST /api/auth/totp/setup` → `{ secret, otpauthUrl }`; `POST /api/auth/totp/confirm` `{ code }` → `{ recoveryCodes }`; `POST /api/auth/totp/disable` `{ code }`.
 - `POST /api/meta/deauthorize` y `POST /api/meta/data-deletion` (públicas, `application/x-www-form-urlencoded` con `signed_request`, fuera del CSRF); `GET /api/meta/data-deletion/:code` (pública, HTML corto).
 - `GET /api/oauth/mercadolibre/callback` (pública, la protege el `state` y su cookie, como Instagram).
 - `GET /api/health/live` (pública, fuera de `hostGuard`, T11) → `200 { status: "ok" }`, sin base ni R2: el chequeo del proveedor. `GET /api/health` suma `worker` (solo el administrador, T12): `{ running, startedAt, lastBeatAt }` o `null` sin base.
 - Se quitan `POST /imports` (`multipart`) y `POST /imports/local`.
-- Códigos nuevos: `IMPORT_UPLOAD_INCOMPLETE` (409), `IMPORT_UPLOAD_ABANDONED`, `IMPORT_XLSX_TOO_LARGE` (413), `RATE_LIMITED` (429), `AUTH_TOTP_INVALID` (401), `AUTH_CHALLENGE_INVALID` (401), `TOTP_ALREADY_ENABLED` (409), `META_SIGNATURE_INVALID` (400).
+- Códigos nuevos: `IMPORT_UPLOAD_INCOMPLETE` (409), `IMPORT_UPLOAD_ABANDONED`, `IMPORT_XLSX_TOO_LARGE` (413), `RATE_LIMITED` (429), `TOTP_CODE_INVALID` (401), `LOGIN_CHALLENGE_INVALID` (401), `TOTP_ALREADY_ENABLED`, `TOTP_NOT_STARTED` y `TOTP_NOT_ENABLED` (409), `META_SIGNATURE_INVALID` (400).
 - Toda ruta nueva entra en la tabla de permisos (`access.ts`, ADR-0022).
 
 ### 4.15 Hosting y costos (D1, D2; `docs/integraciones/hosting.md`, 2026-10-18)
@@ -353,21 +354,21 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 - **Archivos:** `apps/api/src/{rate-limit.ts,app.ts,server.ts}`
 - **Descripción:** §4.8: los límites y el 429 con `Retry-After`, la IP desde `CLIENT_IP_HEADER`.
 - **Hecho cuando:**
-  - [ ] Tests: cada límite, la ventana que se renueva, la IP de la cabecera configurada y que sin configurarla se ignora `X-Forwarded-For`
+  - [x] Tests: cada límite, la ventana que se renueva, la IP de la cabecera configurada y que sin configurarla se ignora `X-Forwarded-For` (2026-10-18: `rate-limit.test.ts`)
 
 ### F8-T15 · Doble factor (core, base y API)
 - **Depende de:** T14
-- **Archivos:** `packages/config/src/totp.ts`, `packages/core/src/use-cases/auth/totp.ts`, `packages/db/drizzle/0012_*.sql`, `packages/db/src/repositories/{users,login-challenges,recovery-codes}.ts`, `apps/api/src/routes/auth.ts`, `packages/db/src/auth-admin.ts`
+- **Archivos:** `packages/config/src/totp.ts`, `packages/core/src/use-cases/auth/totp.ts`, `packages/db/drizzle/0012_*.sql`, `packages/db/src/repositories/users.ts` (usuarios, códigos de recuperación y desafíos), `apps/api/src/routes/auth.ts`, `packages/db/src/auth-admin.ts`
 - **Descripción:** §4.8: activar, confirmar, entrar en dos pasos, recuperación, desactivar; restablecer y `auth:admin` lo quitan.
 - **Hecho cuando:**
-  - [ ] Tests: los vectores del RFC 6238; la ventana de ±30 s; un código repetido rechazado; el desafío vencido o usado; un código de recuperación sirve una vez; los fallos cuentan para el bloqueo; la clave nunca sale en logs ni errores
+  - [x] Tests: los vectores del RFC 6238; la ventana de ±30 s; un código repetido rechazado; el desafío vencido o usado; un código de recuperación sirve una vez; los fallos cuentan para el bloqueo; la clave nunca sale en logs ni errores (2026-10-18: `totp.test.ts` de config y de core, el contrato de usuarios contra PGlite y la memoria, `auth-totp.test.ts`)
 
 ### F8-T16 · Doble factor en el panel y la CLI
 - **Depende de:** T15
 - **Archivos:** `apps/web/src/pages/{LoginPage.tsx,AccountPage.tsx}`, `apps/cli/src/commands/login.ts`
 - **Descripción:** activar en "Mi cuenta" (la clave, el enlace y los códigos una vez), el segundo paso al entrar; la CLI pide el código.
 - **Hecho cuando:**
-  - [ ] Tests del panel y de la CLI para cada paso; los códigos de recuperación no quedan en la caché del panel
+  - [x] Tests del panel y de la CLI para cada paso; los códigos de recuperación no quedan en la caché del panel (2026-10-18: `AccountPage.test.tsx`, `login.test.ts` de la CLI)
 
 ### F8-T17 · Instagram de verdad y las vueltas de Meta
 - **Depende de:** T02
@@ -468,3 +469,4 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 | 2026-10-18 | F8-T08 (revisión del `arquitecto`): §4.5 precisa el orden de `login` y cuándo guarda la dirección, que el token solo viaja a su servidor, que `AGENTSALES_API_URL` se lee de la terminal, el aviso del ambiente en `doctor`, y que las herramientas del worker las asegura la imagen (T10), no `/health` |
 | 2026-10-18 | Lote D (T10 a T12): la migración del worker es la `0011` (el lote D llegó antes que el F; el doble factor pasa a la `0012`); el chequeo de Fly es `/api/health/live` (sin base); el panel configura zod sin `eval` para la CSP; el worker parte con 2 GB hasta medir el pico; `auto_publish` cortado se marca con `content_runs.auto_publish_done_at` |
 | 2026-10-18 | Lote E (T13). Precisiones: el estado en R2 se lee y escribe en `packages/storage` (`readStoredBackupStatus`), no en core (sin tipos de texto) ni en `db` (no depende del almacenamiento); `runBackup` recibe `status` y `deliver`; el volcado va a `db/` del bucket de respaldos; el bucket y el token de respaldos deben ser otros que los de los medios; en Fly los secretos llegan a los dos procesos, así que la API borra el token de respaldos de su entorno y su configuración al arrancar (`withoutBackupCredentials`); `BACKUP_TARGET` y `BACKUP_R2_BUCKET` van en `fly.toml` y la CI arranca la imagen con valores de prueba |
+| 2026-10-18 | Lote F (T14 a T16). Precisiones: los límites viven en `apps/api/src/rate-limit.ts` (ventanas fijas en un `Map` con tope de claves) y no son un puerto (D14 manda sobre la frase "puerto `RateLimiter`" de §4.8); la `0012` lleva solo el doble factor (`users.totp_*`, `user_recovery_codes`, `login_challenges`): los pedidos de borrado de Meta van en la migración de T17; los códigos de recuperación y los desafíos se manejan en `repositories/users.ts` (activar y quitar el doble factor tocan las dos tablas en una transacción, y empezar y activar son condicionales en la base), no en archivos aparte; el contrato real del primer paso es `{ totpRequired: true, challenge, expiresAt }`, con `GET /auth/totp` y los códigos `TOTP_CODE_INVALID`, `LOGIN_CHALLENGE_INVALID`, `TOTP_NOT_STARTED`, `TOTP_NOT_ENABLED` y `TOTP_UNREADABLE` (§4.14 al día); de la revisión: restablecer y `auth:admin` quitan el doble factor al usar el enlace, desactivarlo cuenta los fallos, una IPv6 cuenta por su /64, la memoria llena descarta primero las ventanas del tope general, `rateLimit` es obligatorio en `createApp` y `CLIENT_IP_HEADER` es obligatoria en producción; una rama de Neon copiada de producción con usuarios con doble factor da `TOTP_UNREADABLE` con la clave de desarrollo (la salida es `pnpm auth:admin` y usar su enlace; `db:dev-scrub` no lo toca); el desafío se gasta solo al entrar, así un código mal escrito se corrige mientras no venza (cada fallo cuenta para el bloqueo); "Mi cuenta" es una página nueva (`/cuenta`), con el enlace en el menú del usuario; `/health` suma `adminsWithoutTotp` para el aviso de `doctor`; cambiar la contraseña no existe todavía, así que solo cambiar el doble factor cierra las demás sesiones |

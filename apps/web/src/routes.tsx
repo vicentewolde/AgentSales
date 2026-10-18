@@ -36,6 +36,9 @@ const BrokerPage = lazy(() =>
 const MyBrandPage = lazy(() =>
   import("./pages/MyBrandPage.js").then((module) => ({ default: module.MyBrandPage })),
 );
+const AccountPage = lazy(() =>
+  import("./pages/AccountPage.js").then((module) => ({ default: module.AccountPage })),
+);
 const ListingDetailPage = lazy(() =>
   import("./pages/ListingDetailPage.js").then((module) => ({ default: module.ListingDetailPage })),
 );
@@ -107,6 +110,8 @@ export const routes: RouteObject[] = [
           { path: "corredores", element: <BrokersPage /> },
           { path: "corredores/:id", element: <BrokerPage /> },
           { path: "mi-marca", element: <MyBrandPage /> },
+          // F8-T16: el doble factor de cada usuario.
+          { path: "cuenta", element: <AccountPage /> },
           { path: "*", element: <NotFound /> },
         ],
       },

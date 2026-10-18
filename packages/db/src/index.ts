@@ -28,6 +28,7 @@ export { createPlatformCatalogRepository } from "./repositories/platform-catalog
 export { createPublicationRepository } from "./repositories/publications.js";
 export {
   createInvitationRepository,
+  createLoginChallengeRepository,
   createOAuthStateRepository,
   createSessionRepository,
   createUserRepository,

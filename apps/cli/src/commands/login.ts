@@ -1,6 +1,11 @@
-import { loginResponseSchema, meResponseSchema } from "@agentsales/api/contracts";
+import {
+  type LoginResponse,
+  loginResponseSchema,
+  loginStepResponseSchema,
+  meResponseSchema,
+} from "@agentsales/api/contracts";
 import type { Command } from "commander";
-import { type ApiClient, unwrap } from "../api-client.js";
+import { ApiCallError, type ApiClient, unwrap } from "../api-client.js";
 import { type CliContext, exitWith, type Terminal } from "../context.js";
 import { CliError, guarded, type Io } from "../output.js";
 import {
@@ -65,6 +70,49 @@ function sessionServer(session: CliSession, localPort: number): string | null {
 
 const ROLE_TEXT = { admin: "administrador", broker: "corredor" } as const;
 
+/** Cuántas veces se puede escribir el código antes de tener que entrar de nuevo. */
+const TOTP_ATTEMPTS = 3;
+
+/**
+ * El segundo paso (spec F8 §4.8, F8-T16): pide el código de la app (sin mostrarlo, como la
+ * contraseña) y lo manda con el desafío. Un código equivocado se puede corregir hasta 3 veces con
+ * el mismo desafío (cada fallo cuenta para el bloqueo del usuario).
+ */
+async function secondStep(
+  deps: Pick<LoginDeps, "readPassword" | "printError" | "colors">,
+  client: ApiClient,
+  challenge: string,
+): Promise<LoginResponse> {
+  for (let attempt = 1; ; attempt += 1) {
+    const input = await deps.readPassword("Código de tu app de claves (o uno de recuperación): ");
+    if (input === null) {
+      throw new CliError(
+        "LOGIN_NEEDS_TERMINAL",
+        "El código se escribe en una terminal interactiva",
+        "Corre agentsales login en tu terminal",
+      );
+    }
+    if (input.cancelled) throw new CliError("LOGIN_CANCELLED", "Cancelaste: no se entró");
+    try {
+      return await unwrap(
+        client.auth.login.totp.$post({
+          json: { challenge, code: input.value, client: "cli" },
+        }),
+        loginResponseSchema,
+      );
+    } catch (error) {
+      if (
+        !(error instanceof ApiCallError) ||
+        error.code !== "TOTP_CODE_INVALID" ||
+        attempt >= TOTP_ATTEMPTS
+      ) {
+        throw error;
+      }
+      deps.printError(deps.colors.yellow("  El código no sirve o ya se usó: escribe el siguiente"));
+    }
+  }
+}
+
 /**
  * `agentsales login --email <correo> [--api https://<dominio>]`: pide la contraseña sin mostrarla.
  * El pedido de entrar va sin el token anterior: ese token es de su servidor y no viaja a otro.
@@ -91,10 +139,14 @@ export function runLogin(deps: LoginDeps, options: { email?: string; api?: strin
     if (input.cancelled) throw new CliError("LOGIN_CANCELLED", "Cancelaste: no se entró");
     const password = input.value;
     const previous = deps.session.read();
-    const { user, token } = await unwrap(
-      deps.clientFor(target.url).auth.login.$post({ json: { email, password, client: "cli" } }),
-      loginResponseSchema,
+    const client = deps.clientFor(target.url);
+    const step = await unwrap(
+      client.auth.login.$post({ json: { email, password, client: "cli" } }),
+      loginStepResponseSchema,
     );
+    // Con el doble factor activo, la contraseña da un desafío: falta el código (F8-T16).
+    const { user, token } =
+      "totpRequired" in step ? await secondStep(deps, client, step.challenge) : step;
     if (token === undefined) {
       throw new CliError("LOGIN_NO_TOKEN", "La API no entregó la sesión de la CLI");
     }
@@ -180,7 +232,9 @@ export function runWhoami(deps: Io & { client: ApiClient; target?: ServerTarget 
 export function register(program: Command, ctx: CliContext): void {
   program
     .command("login")
-    .description("Entra con tu correo y tu contraseña (la pide sin mostrarla)")
+    .description(
+      "Entra con tu correo y tu contraseña (la pide sin mostrarla) y, si tienes el doble factor, el código de tu app",
+    )
     .requiredOption("--email <correo>", "tu correo")
     .option(
       "--api <dirección>",

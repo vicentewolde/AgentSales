@@ -29,3 +29,6 @@
 - **Una librería de TOTP y de QR:** dependencias nuevas para lo que `node:crypto` y un enlace resuelven.
 - **Doble factor obligatorio para todos:** frena a los corredores del piloto; queda opcional y recomendado para el administrador.
 - **Un proveedor externo (Clerk, Auth0):** descartado en ADR-0021 por las mismas razones.
+
+## Seguimiento
+- 2026-10-18 (lote F, F8-T14 a T16): implementado. Precisiones de la revisión: restablecer un usuario y `pnpm auth:admin` quitan el doble factor **al usar el enlace**, no al emitirlo (mientras tanto la contraseña anterior sigue sirviendo y sola no basta); desactivarlo cuenta los fallos para el bloqueo; una IPv6 cuenta por su prefijo /64; con la memoria llena se descartan primero las ventanas del tope general de la API (las de entrar, al final); `CLIENT_IP_HEADER` es obligatoria en producción (sin ella todos compartirían la IP del proxy). Riesgo aceptado: con muchas IP distintas (más de 50.000 claves vivas) los topes de entrar pueden reiniciarse; el bloqueo por usuario sigue igual.

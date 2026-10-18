@@ -374,7 +374,7 @@ export {
   type PortalReadinessListing,
   portalReadiness,
 } from "./portal/readiness.js";
-export type { PasswordHasher, SecretTokens } from "./ports/auth.js";
+export type { PasswordHasher, SecretTokens, TotpProvider } from "./ports/auth.js";
 export type { BrokerRepository } from "./ports/broker-repository.js";
 export {
   type ContentChanges,
@@ -518,11 +518,13 @@ export {
 export type { UfValue, UfValueSource } from "./ports/uf-value-source.js";
 export type {
   InvitationRepository,
+  LoginChallengeRepository,
   NewInvitation,
   NewSession,
   NewUser,
   OAuthStateRepository,
   SessionRepository,
+  StoredTotp,
   UserRepository,
 } from "./ports/user-repository.js";
 export type { WorkerHeartbeatRepository } from "./ports/worker-heartbeat-repository.js";
@@ -633,9 +635,12 @@ export {
   approveContent,
 } from "./use-cases/approve-content.js";
 export {
+  LOGIN_CHALLENGE_TTL_MS,
   LOGIN_LOCK_MS,
   LOGIN_MAX_FAILURES,
+  type LoginResult,
   login,
+  loginWithTotp,
   logout,
   type OpenedSession,
   openSession,
@@ -646,6 +651,18 @@ export {
   SESSION_TTL_MS,
   type SessionDeps,
 } from "./use-cases/auth/sessions.js";
+export {
+  confirmTotpSetup,
+  disableTotp,
+  normalizeRecoveryCode,
+  otpauthUrl,
+  RECOVERY_CODE_COUNT,
+  startTotpSetup,
+  TOTP_ISSUER,
+  type TotpDeps,
+  totpStatus,
+  verifySecondFactor,
+} from "./use-cases/auth/totp.js";
 export {
   acceptInvitation,
   checkPassword,

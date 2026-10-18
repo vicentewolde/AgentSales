@@ -13,5 +13,6 @@ export function toUserView(user: User, now: Date = new Date()): UserView {
     disabled: user.disabledAt !== null,
     locked: user.lockedUntil !== null && user.lockedUntil > now,
     lastLoginAt: user.lastLoginAt,
+    totpEnabled: user.totpEnabledAt !== null,
   };
 }

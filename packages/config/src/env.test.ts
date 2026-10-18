@@ -413,6 +413,7 @@ describe("loadEnv", () => {
       NODE_ENV: "production",
       PUBLIC_URL: "https://agentsales.agentpey.com",
       API_HOST: "0.0.0.0",
+      CLIENT_IP_HEADER: "Fly-Client-IP",
       LLM_PROVIDER: "anthropic-api",
       ANTHROPIC_API_KEY: "fake-anthropic-key",
       BACKUP_TARGET: "r2",
@@ -457,6 +458,10 @@ describe("loadEnv", () => {
       expect(
         envErrorOf({ ...production, API_HOST: undefined }).issues.map((i) => i.variable),
       ).toEqual(["API_HOST"]);
+      // Sin la cabecera de la IP, los límites por IP (F8-T14) frenarían a todos juntos.
+      expect(
+        envErrorOf({ ...production, CLIENT_IP_HEADER: undefined }).issues.map((i) => i.variable),
+      ).toEqual(["CLIENT_IP_HEADER"]);
     });
 
     it.each([

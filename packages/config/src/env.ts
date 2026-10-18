@@ -497,6 +497,14 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
       message: "falta (obligatoria con NODE_ENV=production; por ejemplo 0.0.0.0)",
     });
   }
+  // Detrás del proxy, sin la cabecera de la IP todos los clientes comparten la del proxy y los
+  // límites por IP (F8-T14) frenarían a todos juntos.
+  if (cleaned.NODE_ENV === "production" && cleaned.CLIENT_IP_HEADER === undefined) {
+    outdated.push({
+      variable: "CLIENT_IP_HEADER",
+      message: "falta (obligatoria con NODE_ENV=production; en Fly, Fly-Client-IP)",
+    });
+  }
   const result = envSchema.safeParse(cleaned);
   if (!result.success || outdated.length > 0) {
     throw new EnvError([

@@ -1,5 +1,15 @@
-import { acceptInvitation, login, logout } from "@agentsales/core";
-import { Hono } from "hono";
+import {
+  acceptInvitation,
+  confirmTotpSetup,
+  disableTotp,
+  login,
+  loginWithTotp,
+  logout,
+  type OpenedSession,
+  startTotpSetup,
+  totpStatus,
+} from "@agentsales/core";
+import { type Context, Hono } from "hono";
 import {
   type AppEnv,
   type AuthDeps,
@@ -12,7 +22,13 @@ import {
   acceptInvitationBodySchema,
   type LoginResponse,
   loginBodySchema,
+  loginTotpBodySchema,
   type MeResponse,
+  type TotpConfirmResponse,
+  type TotpRequiredResponse,
+  type TotpSetupResponse,
+  type TotpStatusResponse,
+  totpCodeBodySchema,
 } from "../contracts/index.js";
 import { toUserView } from "../user-view.js";
 import { validated } from "../validation.js";
@@ -24,18 +40,69 @@ import { validated } from "../validation.js";
  */
 export function authRoutes(deps: { auth: AuthDeps }) {
   const now = () => deps.auth.now?.() ?? new Date();
+  /** La sesión abierta: a la CLI en el cuerpo; al panel, en la cookie. */
+  const sessionResponse = (c: Context, opened: OpenedSession, client: "panel" | "cli") => {
+    const user = toUserView(opened.user, now());
+    if (client === "cli") {
+      const body: LoginResponse = { user, token: opened.token };
+      return c.json(body, 200);
+    }
+    setSessionCookie(c, opened.token, deps.auth.secureCookie);
+    const body: LoginResponse = { user };
+    return c.json(body, 200);
+  };
+  // Lo del doble factor no se guarda en ningún caché (la clave y los códigos de recuperación).
+  const noStore = (c: Context) => c.header("Cache-Control", "no-store");
   return new Hono<AppEnv>()
     .post("/login", validated("json", loginBodySchema), async (c) => {
       const { email, password, client = "panel" } = c.req.valid("json");
-      const opened = await login(deps.auth, { email, password, client });
-      const user = toUserView(opened.user, now());
-      if (client === "cli") {
-        const body: LoginResponse = { user, token: opened.token };
+      const result = await login(deps.auth, { email, password, client });
+      if (result.kind === "totp_required") {
+        // El segundo paso (spec F8 §4.8): el desafío va en el cuerpo, al panel y a la CLI.
+        noStore(c);
+        const body: TotpRequiredResponse = {
+          totpRequired: true,
+          challenge: result.challenge,
+          expiresAt: result.expiresAt,
+        };
         return c.json(body, 200);
       }
-      setSessionCookie(c, opened.token, deps.auth.secureCookie);
-      const body: LoginResponse = { user };
+      return sessionResponse(c, result, client);
+    })
+    .post("/login/totp", validated("json", loginTotpBodySchema), async (c) => {
+      const { challenge, code, client = "panel" } = c.req.valid("json");
+      const opened = await loginWithTotp(deps.auth, { challenge, code, client });
+      return sessionResponse(c, opened, client);
+    })
+    .get("/totp", async (c) => {
+      const { user } = requireAuth(c);
+      const body: TotpStatusResponse = await totpStatus(deps.auth, { user });
       return c.json(body, 200);
+    })
+    .post("/totp/setup", async (c) => {
+      const { user } = requireAuth(c);
+      const setup = await startTotpSetup(deps.auth, { user });
+      noStore(c);
+      const body: TotpSetupResponse = setup;
+      return c.json(body, 200);
+    })
+    .post("/totp/confirm", validated("json", totpCodeBodySchema), async (c) => {
+      const { user, session } = requireAuth(c);
+      const { code } = c.req.valid("json");
+      const { recoveryCodes } = await confirmTotpSetup(deps.auth, {
+        user,
+        code,
+        keepSessionId: session.id,
+      });
+      noStore(c);
+      const body: TotpConfirmResponse = { recoveryCodes };
+      return c.json(body, 200);
+    })
+    .post("/totp/disable", validated("json", totpCodeBodySchema), async (c) => {
+      const { user, session } = requireAuth(c);
+      const { code } = c.req.valid("json");
+      await disableTotp(deps.auth, { user, code, keepSessionId: session.id });
+      return c.body(null, 204);
     })
     .post("/logout", async (c) => {
       const credential = credentialOf(c);

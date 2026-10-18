@@ -125,10 +125,21 @@ export const users = pgTable(
     lockedUntil: timestamp("locked_until", { withTimezone: true }),
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    // El doble factor (spec F8 §4.8, F8-T15): la clave cifrada con `SecretBox` (propósito `totp`),
+    // desde cuándo está activa (`null` mientras se activa o si no lo usa) y el último paso de 30 s
+    // usado (un código no sirve dos veces). Nunca salen del repositorio.
+    totpSecretEncrypted: text("totp_secret_encrypted"),
+    totpEnabledAt: timestamp("totp_enabled_at", { withTimezone: true }),
+    totpLastStep: bigint("totp_last_step", { mode: "number" }),
     ...timestamps,
   },
   (t) => [
     check("users_email_lowercase", sql`${t.email} = lower(${t.email})`),
+    // Activo implica una clave guardada.
+    check(
+      "users_totp_enabled_secret",
+      sql`${t.totpEnabledAt} IS NULL OR ${t.totpSecretEncrypted} IS NOT NULL`,
+    ),
     check("users_role_broker", sql`(${t.role} = 'admin') = (${t.brokerId} IS NULL)`),
     index("users_broker_idx").on(t.brokerId),
   ],
@@ -172,6 +183,41 @@ export const invitations = pgTable(
     // A lo más un enlace vigente por usuario: `issue` borra el anterior sin usar.
     uniqueIndex("invitations_one_open_per_user").on(t.userId).where(sql`"used_at" IS NULL`),
   ],
+);
+
+/** Los códigos de recuperación del doble factor (spec F8 §4.12): solo su hash, y si ya se usó. */
+export const userRecoveryCodes = pgTable(
+  "user_recovery_codes",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** SHA-256 del código normalizado (sin guiones, en mayúsculas). */
+    codeHash: text("code_hash").notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("user_recovery_codes_user_hash").on(t.userId, t.codeHash)],
+);
+
+/**
+ * El segundo paso de entrar (spec F8 §4.12): solo el hash del token; sirve una vez y vence a los
+ * 5 min. La vigilancia de cada hora borra los vencidos.
+ */
+export const loginChallenges = pgTable(
+  "login_challenges",
+  {
+    id: id(),
+    tokenHash: text("token_hash").notNull().unique(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("login_challenges_expires_idx").on(t.expiresAt)],
 );
 
 /** `state` del OAuth ya usados (spec F7 §4.12): el de Mercado Libre sirve una vez. */
