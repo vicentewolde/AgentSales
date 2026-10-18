@@ -65,7 +65,9 @@ export const xhrTransport: UploadTransport = ({ url, headers, body, signal, onPr
     // Sin respuesta (red caída o la regla de CORS del bucket no lo deja): sin `status`.
     request.onerror = () => reject(new UploadFailure("No se pudo llegar a R2"));
     request.onabort = () => reject(abortError());
-    signal.addEventListener("abort", () => request.abort(), { once: true });
+    const onAbort = () => request.abort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    request.onloadend = () => signal.removeEventListener("abort", onAbort);
     request.send(body);
   });
 
@@ -171,8 +173,13 @@ export async function uploadImport(
   const report = () => options.onProgress?.({ ...progress });
   report();
 
-  // El archivo de cada URL, por su nombre (la planilla, el zip o la ruta en la carpeta).
-  const local = new Map<string, Blob>([[selection.file.name, selection.file]]);
+  // El archivo de cada URL, por su tipo y su nombre: una carpeta puede traer un archivo que se
+  // llama como la planilla.
+  const keyOf = (target: Pick<ImportUploadTargetView, "kind" | "name">) =>
+    `${target.kind}:${target.name}`;
+  const local = new Map<string, Blob>([
+    [keyOf({ kind: "xlsx", name: selection.file.name }), selection.file],
+  ]);
   const request: ImportUploadRequest = {
     ...(selection.broker ? { broker: selection.broker } : {}),
     dryRun: selection.dryRun,
@@ -185,13 +192,13 @@ export async function uploadImport(
   };
   const { media } = selection;
   if (media?.kind === "zip") {
-    local.set(media.file.name, media.file);
+    local.set(keyOf({ kind: "zip", name: media.file.name }), media.file);
     request.media = { kind: "zip", name: media.file.name, size: media.file.size };
   } else if (media?.kind === "folder") {
     const files: { path: string; size: number; sha256?: string }[] = [];
     for (const { path, file } of media.files) {
       if (signal.aborted) throw abortError();
-      local.set(path, file);
+      local.set(keyOf({ kind: "file", name: path }), file);
       files.push({
         path,
         size: file.size,
@@ -209,14 +216,14 @@ export async function uploadImport(
   progress.phase = "uploading";
   progress.totalFiles = uploads.length;
   progress.totalBytes = uploads.reduce(
-    (total, target) => total + (local.get(target.name)?.size ?? 0),
+    (total, target) => total + (local.get(keyOf(target))?.size ?? 0),
     0,
   );
   report();
 
   const attempts = options.attempts ?? 3;
   async function uploadOne(target: ImportUploadTargetView): Promise<void> {
-    const body = local.get(target.name);
+    const body = local.get(keyOf(target));
     if (body === undefined)
       throw new ApiError(`La API pidió un archivo que no está: ${target.name}`);
     for (let attempt = 1; ; attempt += 1) {
@@ -242,10 +249,13 @@ export async function uploadImport(
         if (isAbort(error)) throw error;
         if (attempt >= attempts || !isRetriable(error)) {
           const changed = error instanceof UploadFailure && error.s3Code === "BadDigest";
+          const forbidden = error instanceof UploadFailure && error.status === 403;
           throw new ApiError(
             changed
               ? `${target.name} cambió mientras se subía: elígelo de nuevo`
-              : `No se pudo subir ${target.name}: ${error instanceof Error ? error.message : String(error)}`,
+              : forbidden
+                ? `No se pudo subir ${target.name}: la URL de subida venció o no calza (dura 6 h); vuelve a importar`
+                : `No se pudo subir ${target.name}: ${error instanceof Error ? error.message : String(error)}`,
             "UPLOAD_FAILED",
           );
         }

@@ -119,6 +119,7 @@ describe("requestImportUpload", () => {
     expect(uploads[2]?.headers).toEqual({ "content-type": "application/octet-stream" });
     expect(uploads[0]?.url).toContain(`imports/${run.id}/xlsx/propiedades.xlsx`);
     expect(uploads[0]?.url).toContain(`ttl=${IMPORT_UPLOAD.urlTtlSeconds}`);
+    expect(IMPORT_UPLOAD.urlTtlSeconds).toBe(6 * 60 * 60);
   });
 
   it("un zip va con su tamaño, sin sha256", async () => {
@@ -267,7 +268,7 @@ describe("startImport", () => {
     expect((await s.start(run.id)).status).toBe("queued");
   });
 
-  it("empezar dos veces no encola dos veces", async () => {
+  it("empezar dos veces encola con la misma clave, y una en curso no se toca", async () => {
     const s = setup();
     const { run } = await s.request();
     await s.uploadAll(asUpload(run.input));
@@ -275,8 +276,18 @@ describe("startImport", () => {
     await s.start(run.id);
     const again = await s.start(run.id);
 
+    // La segunda vez vuelve a encolar con la misma clave (pg-boss no duplica un job vivo): así
+    // repara una carga que quedó en cola sin job por un corte.
     expect(again.status).toBe("queued");
-    expect(s.queue.jobs).toHaveLength(1);
+    expect(s.queue.jobs.map((job) => job.options)).toEqual([
+      { singletonKey: run.id },
+      { singletonKey: run.id },
+    ]);
+
+    // Una carga ya en curso no se vuelve a encolar.
+    await s.importRuns.markRunning(run.id);
+    expect((await s.start(run.id)).status).toBe("running");
+    expect(s.queue.jobs).toHaveLength(2);
   });
 
   it("una carga que no existe es IMPORT_RUN_NOT_FOUND", async () => {

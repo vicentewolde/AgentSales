@@ -1,5 +1,5 @@
 import type { SecretBox } from "@agentsales/core";
-import { isNotNull, sql } from "drizzle-orm";
+import { and, inArray, isNotNull, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "./client.js";
 import { withDbErrors } from "./errors.js";
 import { credentialsAad } from "./repositories/platform-accounts.js";
@@ -8,8 +8,9 @@ import { platformAccounts } from "./schema.js";
 // `pnpm db:dev-scrub` (spec F8 §4.6): la rama de desarrollo de Neon copia las cuentas de producción
 // con sus tokens cifrados. Si el worker del Mac los leyera, `tokens.refresh` rotaría el token de
 // Mercado Libre e invalidaría el de producción (ADR-0015). Este script borra esas credenciales y deja
-// las cuentas desconectadas, y se niega a correr contra lo que parece producción: la misma base que
-// `.env.production`, la misma clave, o credenciales que la clave de `.env` sí abre.
+// las cuentas desconectadas, y se niega a correr sin `.env.production` para comparar, contra su
+// misma base o con su misma clave. Las credenciales que la clave de `.env` abre son de desarrollo
+// (conectadas en la rama) y se dejan.
 
 export type DevScrubDeps = {
   db: SchemaDatabase;
@@ -68,25 +69,29 @@ export async function runDevScrub(deps: DevScrubDeps, args: { yes: boolean }): P
     return refuse("NODE_ENV=production: este script es solo para la base de desarrollo");
   }
   const target = databaseTarget(deps.databaseUrl);
+  // Sin `.env.production` (o sin su base) no hay con qué comparar: no se adivina. Una base de
+  // producción con la clave de desarrollo pasaría la revisión de la clave (abajo).
   if (deps.production === null) {
-    deps.print(
-      "  No hay .env.production para comparar: se revisa solo con la clave de .env (abajo).",
+    return refuse(
+      "no hay .env.production para comparar la base; créalo con la DATABASE_URL de producción",
     );
-  } else {
-    const productionTarget =
-      deps.production.databaseUrl === undefined
-        ? null
-        : databaseTarget(deps.production.databaseUrl);
-    if (target !== null && productionTarget !== null && sameTarget(target, productionTarget)) {
-      return refuse(
-        "la DATABASE_URL de .env es la misma base que la de .env.production; apunta .env a la rama dev de Neon",
-      );
-    }
-    if (deps.production.appEncryptionKey === deps.appEncryptionKey) {
-      return refuse(
-        "la APP_ENCRYPTION_KEY de .env es la misma que la de .env.production; pon en .env una clave nueva para desarrollo",
-      );
-    }
+  }
+  const productionTarget =
+    deps.production.databaseUrl === undefined ? null : databaseTarget(deps.production.databaseUrl);
+  if (target === null || productionTarget === null) {
+    return refuse(
+      `no se pudo leer la DATABASE_URL de ${target === null ? ".env" : ".env.production"} para comparar`,
+    );
+  }
+  if (sameTarget(target, productionTarget)) {
+    return refuse(
+      "la DATABASE_URL de .env es la misma base que la de .env.production; apunta .env a la rama dev de Neon",
+    );
+  }
+  if (deps.production.appEncryptionKey === deps.appEncryptionKey) {
+    return refuse(
+      "la APP_ENCRYPTION_KEY de .env es la misma que la de .env.production; pon en .env una clave nueva para desarrollo",
+    );
   }
 
   const rows = await withDbErrors(() =>
@@ -105,29 +110,36 @@ export async function runDevScrub(deps: DevScrubDeps, args: { yes: boolean }): P
     deps.print(`✓ ${describeTarget(target)} no tiene credenciales guardadas: nada que borrar.`);
     return 0;
   }
-  // Si la clave de `.env` abre alguna, esta base no es una copia hecha con otra clave: o es
-  // producción, o `.env` sigue con la clave de producción. En los dos casos, no se toca.
-  const readable = rows.filter((row) => {
+  // Las que la clave de `.env` abre son de desarrollo (conectadas en la rama con su clave): se
+  // dejan. Que no sea producción ya lo aseguran la base y la clave comparadas arriba.
+  const opens = (row: (typeof rows)[number]) => {
     try {
       deps.secretBox.decrypt(row.credentialsEncrypted ?? "", credentialsAad(row));
       return true;
     } catch {
       return false;
     }
-  });
-  if (readable.length > 0) {
-    return refuse(
-      `la APP_ENCRYPTION_KEY de .env abre ${readable.length} de las credenciales de ${describeTarget(target)}: parece producción, o .env sigue con la clave de producción`,
+  };
+  const copied = rows.filter((row) => !opens(row));
+  if (copied.length === 0) {
+    deps.print(
+      `✓ ${describeTarget(target)} no tiene credenciales copiadas de producción: nada que borrar (las ${rows.length} que hay son de desarrollo).`,
     );
+    return 0;
   }
 
   const byPlatform = new Map<string, number>();
-  for (const row of rows) byPlatform.set(row.platform, (byPlatform.get(row.platform) ?? 0) + 1);
+  for (const row of copied) byPlatform.set(row.platform, (byPlatform.get(row.platform) ?? 0) + 1);
   const summary = [...byPlatform].map(([platform, count]) => `${platform} ${count}`).join(", ");
   deps.print(`  Base: ${describeTarget(target)}`);
   deps.print(
-    `  Se borrarán las credenciales de ${rows.length} cuenta(s) (${summary}) y quedarán desconectadas.`,
+    `  Se borrarán las credenciales de ${copied.length} cuenta(s) (${summary}) y quedarán desconectadas.`,
   );
+  if (rows.length > copied.length) {
+    deps.print(
+      `  Las ${rows.length - copied.length} que abre la clave de desarrollo (conectadas en la rama) se dejan.`,
+    );
+  }
   if (!args.yes && !(await deps.confirm("¿Borrarlas? [s/N] "))) {
     deps.print("No se borró nada.");
     return 1;
@@ -136,7 +148,15 @@ export async function runDevScrub(deps: DevScrubDeps, args: { yes: boolean }): P
     deps.db
       .update(platformAccounts)
       .set({ credentialsEncrypted: null, status: "revoked", updatedAt: sql`now()` })
-      .where(isNotNull(platformAccounts.credentialsEncrypted))
+      .where(
+        and(
+          isNotNull(platformAccounts.credentialsEncrypted),
+          inArray(
+            platformAccounts.id,
+            copied.map((row) => row.id),
+          ),
+        ),
+      )
       .returning({ id: platformAccounts.id }),
   );
   deps.print(

@@ -147,6 +147,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **Subidas directas (lote B de F8):**
   - El `PUT` del navegador (`xhrTransport`, `apps/web/src/api/upload.ts`) no tiene prueba automática (jsdom no sube a R2); se prueba en la carga real de T07.
   - Si el proceso de la API se corta justo entre pasar la carga a `queued` y encolarla, la carga queda en cola sin job (el mismo riesgo que tenía `requestImport` desde F1): se ve en el historial y se vuelve a importar.
+  - La limpieza de cada hora lista todo `imports/` en R2 y consulta cada carga: alcanza para el piloto; con mucho volumen, paginar o limitar. Los `delete` van de a uno (un `DeleteObjects` por lote sería más rápido), y no hay tope de cargas en espera por corredor (se cierran a las 24 h).
   - `.env.example` no se actualizó: la regla `Read(./.env.*)` (#141) también impide leerlo. Su comentario de `MAX_IMPORT_UPLOAD_MB` habla del cuerpo `multipart` de antes (ahora es el tope de cada archivo subido a R2).
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
 - **F8:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`), y también `apps/api/src/testing` (importa `@agentsales/core/testing`) y `apps/cli/test`. Excluirlos del build de producción al armar el despliegue.

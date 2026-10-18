@@ -121,9 +121,22 @@ async function download(
   }
   const hash = expected.sha256 === undefined ? null : createHash("sha256");
   let bytes = 0;
+  const tooBig = () =>
+    new AppError(
+      "IMPORT_FILE_INVALID",
+      `El archivo subido ${expected.name} no es el que se anunció`,
+      {
+        details: { file: expected.name, expected: expected.size, received: bytes },
+      },
+    );
   const meter = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       bytes += chunk.byteLength;
+      // Más bytes que los anunciados: se corta ya, sin bajar el resto.
+      if (bytes > expected.size) {
+        callback(tooBig());
+        return;
+      }
       hash?.update(chunk);
       callback(null, chunk);
     },
@@ -172,7 +185,8 @@ export function createStaging(options: StagingOptions): Staging {
       try {
         let root: string;
         if (media.kind === "zip") {
-          const zip = join(dir, media.name);
+          // Nombre fijo (como la planilla): el de la carga viene del jsonb.
+          const zip = join(dir, "medios.zip");
           await download(options.storage, media.key, zip, media);
           const extracted = join(dir, "extraido");
           await extractZip(zip, extracted);

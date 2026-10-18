@@ -22,8 +22,11 @@ export const IMPORT_UPLOAD = {
   maxFolderFiles: 500,
   /** Los archivos de una carpeta de hasta esto llevan su sha256 (el navegador lo calcula en memoria). */
   sha256UpToBytes: 100 * 1024 * 1024,
-  /** Vida de las URLs de subida. */
-  urlTtlSeconds: 60 * 60,
+  /**
+   * Vida de las URLs de subida: 6 h (el spec decía 1 h). La firma se revisa al empezar cada `PUT`,
+   * y un zip grande o 500 archivos en una conexión lenta pueden empezar los últimos después de 1 h.
+   */
+  urlTtlSeconds: 6 * 60 * 60,
   /** Una carga que sigue esperando sus archivos después de esto se cierra (`IMPORT_UPLOAD_ABANDONED`). */
   abandonedAfterMs: 24 * 60 * 60 * 1000,
   maxNameBytes: 255,
@@ -102,20 +105,24 @@ const tooLarge = (message: string, details: Record<string, unknown>) =>
 
 const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`;
 
-/** Un nombre de archivo sin carpetas: nada de `/`, `\`, control, `.` ni `..`, y hasta 255 bytes. */
+/**
+ * Un nombre de archivo sin carpetas: nada de `/`, `\`, control, `.` ni `..`, ni solo espacios, y
+ * hasta 255 bytes. Se devuelve tal cual (sin recortar): el panel y la CLI buscan cada URL por el
+ * nombre que mandaron.
+ */
 function checkFileName(name: string, what: string): string {
   const trimmed = name.trim();
   if (
     trimmed === "" ||
     trimmed === "." ||
     trimmed === ".." ||
-    /[\\/]/.test(trimmed) ||
-    CONTROL.test(trimmed) ||
-    byteLength(trimmed) > IMPORT_UPLOAD.maxNameBytes
+    /[\\/]/.test(name) ||
+    CONTROL.test(name) ||
+    byteLength(name) > IMPORT_UPLOAD.maxNameBytes
   ) {
     throw invalid(`${what} no tiene un nombre válido`, { name: name.slice(0, 100) });
   }
-  return trimmed;
+  return name;
 }
 
 /**
@@ -356,8 +363,9 @@ export type StartImportDeps = {
  *
  * - Si falta alguno (o tiene otro tamaño): `IMPORT_UPLOAD_INCOMPLETE` con sus nombres, y la carga
  *   sigue esperando (el cliente sube lo que falta y vuelve a empezar).
- * - Empezar dos veces no encola dos veces: una carga que ya no espera sus archivos se devuelve tal
- *   cual (así un reintento de la CLI tras un corte no falla).
+ * - Empezar dos veces no la procesa dos veces: una carga ya en cola se vuelve a encolar con la misma
+ *   `singletonKey` (pg-boss no duplica un job vivo; así un "empezar" repetido repara una carga que
+ *   quedó en cola sin job por un corte), y una en curso o terminada se devuelve tal cual.
  * - Con la cola caída (`QUEUE_UNAVAILABLE`), la carga queda en `failed` con ese motivo y se borran
  *   sus archivos, como en F1; el error se propaga (503).
  */
@@ -370,6 +378,10 @@ export async function startImport(
     throw new AppError("IMPORT_RUN_NOT_FOUND", `No existe la carga ${importRunId}`, {
       details: { importRunId },
     });
+  }
+  if (run.status === "queued") {
+    await deps.queue.enqueue("import.run", { importRunId: run.id }, { singletonKey: run.id });
+    return run;
   }
   if (run.status !== "awaiting_upload") return run;
   if (!isUploadImportInput(run.input)) {

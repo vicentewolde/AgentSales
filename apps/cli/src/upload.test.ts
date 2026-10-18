@@ -111,7 +111,7 @@ describe("uploadAll", () => {
     const sleeps: number[] = [];
     const seen: number[] = [];
 
-    await uploadAll([target(r2.url)], new Map([["p.xlsx", { path, size: 10 }]]), {
+    await uploadAll([target(r2.url)], new Map([["xlsx:p.xlsx", { path, size: 10 }]]), {
       putFile: createNodePutFile(),
       sleep: async (ms) => {
         sleeps.push(ms);
@@ -129,7 +129,7 @@ describe("uploadAll", () => {
     const path = join(dir, "p.xlsx");
     writeFileSync(path, "x");
 
-    const error = await uploadAll([target(r2.url)], new Map([["p.xlsx", { path, size: 1 }]]), {
+    const error = await uploadAll([target(r2.url)], new Map([["xlsx:p.xlsx", { path, size: 1 }]]), {
       putFile: createNodePutFile(),
       sleep: async () => {},
     }).catch((caught: unknown) => caught);
@@ -168,7 +168,25 @@ describe("buildImportManifest", () => {
         ],
       },
     });
-    expect([...manifest.files.keys()]).toEqual(["p.xlsx", "P001/a.jpg", "P001/b.jpg"]);
+    expect([...manifest.files.keys()]).toEqual([
+      "xlsx:p.xlsx",
+      "file:P001/a.jpg",
+      "file:P001/b.jpg",
+    ]);
+  });
+
+  it("una carpeta con un archivo que se llama como la planilla no la pisa", async () => {
+    writeFileSync(join(dir, "p.xlsx"), "planilla");
+    mkdirSync(join(dir, "medios"));
+    writeFileSync(join(dir, "medios", "p.xlsx"), "otra cosa");
+
+    const manifest = await buildImportManifest(join(dir, "p.xlsx"), {
+      kind: "dir",
+      path: join(dir, "medios"),
+    });
+
+    expect(manifest.files.get("xlsx:p.xlsx")?.path).toBe(join(dir, "p.xlsx"));
+    expect(manifest.files.get("file:p.xlsx")?.path).toBe(join(dir, "medios", "p.xlsx"));
   });
 
   it("un zip va con su tamaño, sin sha256", async () => {

@@ -106,7 +106,7 @@ Los paquetes se crean **cuando la fase que los necesita comienza**, no antes (ve
 ```
 CLI (import) o panel (Importar), con la planilla y los medios (un zip o una carpeta)
   → POST /imports/uploads → requestImportUpload (core): crea el import_run en awaiting_upload
-    y responde una URL prefirmada de PUT por archivo (1 h, con tamaño y sha256; F8, ADR-0025)
+    y responde una URL prefirmada de PUT por archivo (6 h, con tamaño y sha256; F8, ADR-0025)
   → el cliente sube cada archivo directo a R2 (imports/<id>/…), con avance y reintento
   → POST /imports/:id/start → startImport (core): revisa en R2 que estén todos y encola import.run
   → el worker corre runImport: markRunning
@@ -367,8 +367,8 @@ Los jobs del worker (`apps/worker/src/jobs/`):
 ### Job `import.run` (F1-T09)
 - **Cola:** `exclusive` (un solo job por `singletonKey = importRunId`), 2 reintentos con backoff desde 30 s, y expira a las 2 h.
 - **Pedir y empezar (F8-T04, spec F8 §4.4, ADR-0025):**
-  - `requestImportUpload` (core) valida nombres, rutas (sin `..`, absolutas, `\` ni caracteres de control), tamaños y topes (`MAX_IMPORT_UPLOAD_MB` por archivo, el zip hasta 4 GB, una carpeta hasta 500 archivos y 4 GB, la planilla hasta 10 MB), firma una URL de `PUT` por archivo (1 h; la planilla y los archivos de carpeta de hasta 100 MB con su sha256) y crea el run en `awaiting_upload` con su `broker`, `dryRun` y, si es de un corredor, su `broker_id`. Errores: `IMPORT_UPLOAD_INVALID` (400) e `IMPORT_UPLOAD_TOO_LARGE` (413).
-  - `startImport` (core) lista `imports/<id>/` en R2 y compara cada archivo con su tamaño: si falta uno, `IMPORT_UPLOAD_INCOMPLETE` (409) con sus nombres y la carga sigue esperando. Si están todos, `markQueued` y encola. Empezar dos veces encola una vez (la segunda devuelve la carga como está). Con la cola caída (`QUEUE_UNAVAILABLE`), deja el run en `failed` y borra sus archivos de R2.
+  - `requestImportUpload` (core) valida nombres, rutas (sin `..`, absolutas, `\` ni caracteres de control), tamaños y topes (`MAX_IMPORT_UPLOAD_MB` por archivo, también el zip, que nunca pasa de 4 GB; una carpeta hasta 500 archivos y 4 GB en total; la planilla hasta 10 MB), firma una URL de `PUT` por archivo (6 h; la planilla y los archivos de carpeta de hasta 100 MB con su sha256) y crea el run en `awaiting_upload` con su `broker`, `dryRun` y, si es de un corredor, su `broker_id`. Errores: `IMPORT_UPLOAD_INVALID` (400) e `IMPORT_UPLOAD_TOO_LARGE` (413).
+  - `startImport` (core) lista `imports/<id>/` en R2 y compara cada archivo con su tamaño: si falta uno, `IMPORT_UPLOAD_INCOMPLETE` (409) con sus nombres y la carga sigue esperando. Si están todos, `markQueued` y encola. Empezar una carga ya en cola la vuelve a encolar con la misma `singletonKey` (pg-boss no duplica un job vivo; así se repara una que quedó sin job por un corte); una en curso o terminada se devuelve como está. Con la cola caída (`QUEUE_UNAVAILABLE`), deja el run en `failed` y borra sus archivos de R2.
   - **Las abandonadas:** `closeAbandonedImports` (core), en cada vuelta de `publications.watch`, cierra como `failed` (`IMPORT_UPLOAD_ABANDONED`) las que llevan más de 24 h en `awaiting_upload` y borra de R2 los objetos de las cargas cerradas o terminadas (y los de cargas que no existen, pasadas 24 h). Nunca toca los de una carga que espera, está en cola o procesando.
 - **`runImport` (core), el handler:**
   1. Un run terminal no hace nada.

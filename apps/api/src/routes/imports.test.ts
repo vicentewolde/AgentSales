@@ -146,9 +146,9 @@ describe("POST /imports/:id/start", () => {
         options: { singletonKey: importRun.id },
       },
     ]);
-    // Empezar otra vez no encola de nuevo.
+    // Empezar otra vez vuelve a encolar con la misma clave (pg-boss no duplica un job vivo).
     expect((await post(s.app, `/imports/${importRun.id}/start`)).status).toBe(202);
-    expect(s.queue.jobs).toHaveLength(1);
+    expect(s.queue.jobs.every((job) => job.options?.singletonKey === importRun.id)).toBe(true);
   });
 
   it("con un archivo faltante → 409 IMPORT_UPLOAD_INCOMPLETE con su nombre, y sigue esperando", async () => {

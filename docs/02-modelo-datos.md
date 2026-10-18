@@ -270,7 +270,7 @@ Llave primaria `(platform, key)` (migración `0007`); no tiene `id`.
 | started_at | timestamptz null | Se fija al pasar a `running` |
 | finished_at | timestamptz null | `null` mientras la carga está en curso |
 
-Índice `import_runs_status_created_at_idx` `(status, created_at)` (migración `0010`): cerrar las que siguen en `awaiting_upload` pasadas 24 h (`failAbandonedUploads`). `markQueued` pasa de `awaiting_upload` a `queued`, y `markFailed` acepta también `awaiting_upload`. `ALTER TYPE … ADD VALUE` va en su propia migración y el valor no se usa en ella.
+Índice `import_runs_status_created_at_idx` `(status, created_at)` (migración `0010`): cerrar las que siguen en `awaiting_upload` pasadas 24 h (`failAbandonedUploads`). `markQueued` pasa de `awaiting_upload` a `queued`, y `markFailed` acepta también `awaiting_upload`. `ALTER TYPE … ADD VALUE` no se puede usar en la misma transacción que lo agrega, y el migrador de Drizzle aplica juntas las migraciones pendientes: ninguna migración posterior puede usar `awaiting_upload` (por ejemplo, en un índice parcial) mientras pueda aplicarse junto con la `0010`. `input.dryRun` repite la columna `dry_run`, que es la que manda.
 
 Los únicos `brokers.slug`, `listings (broker_id, external_ref)` y los dos de `media` se traducen en los repositorios a `BROKER_CONFLICT`, `LISTING_CONFLICT` y `MEDIA_CONFLICT`, reintentables: dos intentos del job `import.run` pueden solaparse, y el reintento reclasifica la fila o encuentra el medio ya registrado.
 

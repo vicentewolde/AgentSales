@@ -446,7 +446,9 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
             objects.push({
               path: item.Key,
               size: item.Size ?? 0,
-              lastModified: item.LastModified ?? new Date(0),
+              // Sin fecha, cuenta como reciente: la limpieza de las cargas no borra lo que no sabe
+              // cuándo se subió.
+              lastModified: item.LastModified ?? new Date(),
             });
           }
           // Un token sin `IsTruncated` no se sigue: así una respuesta rara no deja un bucle.

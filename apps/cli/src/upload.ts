@@ -18,9 +18,16 @@ export type LocalUpload = { path: string; size: number; sha256?: string };
 
 export type ImportManifest = {
   request: Pick<ImportUploadRequest, "xlsx" | "media">;
-  /** El archivo local de cada URL, por su nombre (la planilla, el zip o la ruta en la carpeta). */
+  /**
+   * El archivo local de cada URL, por `uploadKey` (su tipo y su nombre: una carpeta puede traer un
+   * archivo que se llama como la planilla).
+   */
   files: Map<string, LocalUpload>;
 };
+
+/** La clave de un archivo de la carga: su tipo (`xlsx`, `zip`, `file`) y su nombre o ruta. */
+export const uploadKey = (target: Pick<ImportUploadTargetView, "kind" | "name">) =>
+  `${target.kind}:${target.name}`;
 
 async function sha256Of(path: string): Promise<string> {
   const hash = createHash("sha256");
@@ -83,7 +90,7 @@ export async function buildImportManifest(
     size: (await stat(xlsxPath)).size,
     sha256: await sha256Of(xlsxPath),
   };
-  files.set(xlsxName, xlsx);
+  files.set(uploadKey({ kind: "xlsx", name: xlsxName }), xlsx);
   const request: ImportManifest["request"] = {
     xlsx: { name: xlsxName, size: xlsx.size, sha256: xlsx.sha256 },
     media: null,
@@ -91,7 +98,7 @@ export async function buildImportManifest(
   if (media?.kind === "zip") {
     const name = posix.basename(media.path.split(sep).join(posix.sep));
     const size = (await stat(media.path)).size;
-    files.set(name, { path: media.path, size });
+    files.set(uploadKey({ kind: "zip", name }), { path: media.path, size });
     request.media = { kind: "zip", name, size };
   } else if (media?.kind === "dir") {
     const scanned = await scanMediaFolder(media.path);
@@ -101,7 +108,11 @@ export async function buildImportManifest(
     const entries = [];
     for (const file of scanned) {
       const sha256 = await sha256Of(file.path);
-      files.set(file.rel, { path: file.path, size: file.size, sha256 });
+      files.set(uploadKey({ kind: "file", name: file.rel }), {
+        path: file.path,
+        size: file.size,
+        sha256,
+      });
       entries.push({ path: file.rel, size: file.size, sha256 });
     }
     request.media = {
@@ -175,8 +186,11 @@ export function createNodePutFile(options: { idleTimeoutMs?: number } = {}): Put
       request.setTimeout(idleTimeoutMs, () => {
         request.destroy(new Error(`sin respuesta en ${Math.round(idleTimeoutMs / 1000)} s`));
       });
-      request.on("error", (error) => reject(new UploadError(error.message)));
       const stream = createReadStream(file.path);
+      request.on("error", (error) => {
+        stream.destroy();
+        reject(new UploadError(error.message));
+      });
       stream.on("data", (chunk) => onProgress(chunk.length));
       stream.on("error", (error) => request.destroy(error));
       stream.pipe(request);
@@ -219,7 +233,7 @@ export async function uploadAll(
 ): Promise<void> {
   const attempts = options.attempts ?? 3;
   const queue = targets.map((target) => {
-    const file = files.get(target.name);
+    const file = files.get(uploadKey(target));
     if (file === undefined) {
       throw new CliError(
         "IMPORT_UPLOAD_INVALID",
@@ -258,10 +272,13 @@ export async function uploadAll(
         if (attempt >= attempts || !isRetriable(error)) {
           const reason = error instanceof Error ? error.message : String(error);
           const changed = error instanceof UploadError && error.s3Code === "BadDigest";
+          const forbidden = error instanceof UploadError && error.status === 403;
           throw new CliError(
             "IMPORT_UPLOAD_FAILED",
             `No se pudo subir ${target.name}: ${changed ? "el archivo cambió mientras se subía" : reason}`,
-            "Revisa tu conexión y vuelve a correr el comando",
+            forbidden
+              ? "La URL de subida venció o no calza (dura 6 h): vuelve a correr el comando"
+              : "Revisa tu conexión y vuelve a correr el comando",
           );
         }
         await options.sleep(1000 * 2 ** (attempt - 1));

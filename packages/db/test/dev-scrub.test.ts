@@ -4,7 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { type DevScrubDeps, databaseTarget, runDevScrub } from "../src/dev-scrub.js";
 import { createBrokerRepository } from "../src/repositories/brokers.js";
 import { createPlatformAccountRepository } from "../src/repositories/platform-accounts.js";
-import { platformAccounts } from "../src/schema.js";
+import { brokers, platformAccounts } from "../src/schema.js";
 import { brokerData } from "./import-repositories.contract.js";
 import { createTestDatabase, type TestDatabase } from "./pglite.js";
 import { connectedAccount } from "./platform-accounts.contract.js";
@@ -104,14 +104,37 @@ describe("pnpm db:dev-scrub", () => {
     expect((await no.rows()).every((row) => row.credentialsEncrypted !== null)).toBe(true);
   });
 
-  it("se niega si la clave de .env abre alguna credencial (producción o la clave de siempre)", async () => {
-    const s = await setup({
-      secretBox: createSecretBox(PRODUCTION_KEY),
-      production: null,
-    });
-    expect(await runDevScrub(s.deps, { yes: true })).toBe(1);
-    expect(s.out.join("\n")).toContain("parece producción");
-    expect((await s.rows()).every((row) => row.credentialsEncrypted !== null)).toBe(true);
+  it("sin .env.production, o sin su base, se niega: no hay con qué comparar (también con --yes)", async () => {
+    // Una base de producción con la clave de desarrollo: la clave no la delata.
+    for (const production of [
+      null,
+      { appEncryptionKey: PRODUCTION_KEY },
+      { databaseUrl: "no es url" },
+    ]) {
+      const s = await setup({ production });
+      expect(await runDevScrub(s.deps, { yes: true })).toBe(1);
+      expect(s.out.join("\n")).toContain("No se borró nada");
+      expect((await s.rows()).every((row) => row.credentialsEncrypted !== null)).toBe(true);
+    }
+  });
+
+  it("deja las credenciales que abre la clave de desarrollo (conectadas en la rama) y una segunda vez no hace nada", async () => {
+    const s = await setup();
+    const [broker] = await s.db.select().from(brokers);
+    await createPlatformAccountRepository(s.db, {
+      secretBox: createSecretBox(DEV_KEY),
+    }).upsertConnected(connectedAccount(broker?.id ?? "", { externalAccountId: "dev-1" }));
+
+    expect(await runDevScrub(s.deps, { yes: true })).toBe(0);
+    const rows = await s.rows();
+    expect(
+      rows.filter((row) => row.credentialsEncrypted !== null).map((row) => row.externalAccountId),
+    ).toEqual(["dev-1"]);
+    expect(s.out.join("\n")).toContain("Las 1 que abre la clave de desarrollo");
+
+    expect(await runDevScrub(s.deps, { yes: false })).toBe(0);
+    expect(s.questions).toEqual([]);
+    expect(s.out.at(-1)).toContain("nada que borrar");
   });
 
   it("se niega con la misma base o la misma clave que .env.production (también con o sin pooler)", async () => {
