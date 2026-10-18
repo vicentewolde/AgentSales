@@ -125,6 +125,16 @@ Preguntas para el operador o el plan de T07:
 
 Con esto, lo NO VERIFICADO de 4.2 queda verificado para `PutObject` de un solo envío, y se adopta `ChecksumSHA256` (ADR-0007, Seguimiento).
 
+## 10c. PUT prefirmado (2026-10-18, F8-T03)
+
+`pnpm storage:check` contra el bucket de desarrollo, con una URL prefirmada de `PutObject` que firma `content-type`, `content-length` y `x-amz-checksum-sha256` como cabeceras (`signedUploadUrl`):
+- el contenido firmado: **200**, y lo guardado tiene el mismo sha256;
+- otro contenido del mismo largo, con la cabecera del sha256 original: **400** (`BadDigest`), sin guardar nada;
+- otro largo: **403** (la firma no calza);
+- el `OPTIONS` del navegador desde `http://localhost:5173` con `content-type` y `x-amz-checksum-sha256`: **204** con los permisos de CORS.
+
+Con esto, lo NO VERIFICADO del spec F8 §4.4 (que R2 respete el sha256 en un PUT prefirmado) queda verificado.
+
 ## 11. Fuentes (consultadas el 2026-10-01)
 
 - Cloudflare R2, S3 API compatibility: https://developers.cloudflare.com/r2/api/s3/api/ (fila de `PutObject`, `UploadPart`, tabla "Checksum Types"; texto crudo leído en https://raw.githubusercontent.com/cloudflare/cloudflare-docs/production/src/content/docs/r2/api/s3/api.mdx)
