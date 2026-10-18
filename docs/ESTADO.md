@@ -100,6 +100,7 @@ Resueltas en el spec (§4.16, D1–D20) y ADR-0024 a ADR-0026:
 - **La IA:** en producción todos van por la API (el plan Max es solo para uso propio).
 - **Mismo origen** con la API bajo `/api`, una imagen para la API y el worker, desplegar solo a tu pedido desde `main` en verde, `dry-run` en el servidor hasta que digas otra cosa (ADR-0024).
 - **Subidas directas a R2** (ADR-0025); **login para internet** con límites por IP y doble factor opcional, y **sin RLS** (ADR-0026).
+- **Borrado a pedido de Meta** (ADR-0027, lote G): borra los datos de Instagram de la cuenta y sus publicaciones en una transacción, sin cambiar su estado; guarda solo un HMAC del `user_id`.
 
 ## Decisiones de F7
 Resueltas en el spec (§4.15, D1–D18) y ADR-0021 a ADR-0023:

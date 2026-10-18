@@ -22,6 +22,8 @@ export const KEY_PURPOSES = {
   oauthState: "agentsales/oauth-state/v1",
   // La clave del doble factor de cada usuario (spec F8 §4.8, F8-T15).
   totp: "agentsales/totp/v1",
+  // El hash del `user_id` de un pedido de borrado de Meta (F8-T17): sin la clave no se revierte.
+  metaUserId: "agentsales/meta-user-id/v1",
 } as const;
 
 /** El propósito de una clave de `SecretBox`. */

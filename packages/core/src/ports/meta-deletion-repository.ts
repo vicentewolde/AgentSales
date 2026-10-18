@@ -2,15 +2,6 @@
 // Instagram. El usuario llega con su `user_id` con alcance de la app, que se compara con el
 // `external_account_id` de las cuentas de Instagram (que coincida con el de `/me` es NO VERIFICADO).
 
-/** El nombre que queda en una cuenta cuyos datos se borraron a pedido de Meta. */
-export const ERASED_ACCOUNT_DISPLAY_NAME = "(datos borrados a pedido de Meta)";
-
-/**
- * El id externo que reemplaza al de Instagram en una cuenta borrada: único (lleva el id de la
- * cuenta, por la restricción de corredor, plataforma y cuenta externa) y nunca un id de Instagram.
- */
-export const erasedExternalAccountId = (accountId: string): string => `borrada:${accountId}`;
-
 /** Un pedido de borrado de Meta (`meta_deletion_requests`): sin el `user_id`, solo su hash. */
 export type MetaDeletionRequest = {
   /** El código que se devuelve a Meta y que muestra la página de estado. */
@@ -27,7 +18,7 @@ export type MetaDeletionRequest = {
 export type MetaDeletionInput = {
   /** El `user_id` del `signed_request`: se busca, pero no se guarda. */
   instagramUserId: string;
-  /** El hash del `user_id` (lo que sí se guarda, para reconocer un pedido repetido). */
+  /** El hash con clave del `user_id`: lo único que se guarda de él (para auditar los pedidos). */
   instagramUserIdHash: string;
   code: string;
   receivedAt: Date;

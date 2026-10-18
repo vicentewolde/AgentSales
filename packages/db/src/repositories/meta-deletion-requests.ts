@@ -67,7 +67,13 @@ export function createMetaDeletionRepository(db: SchemaDatabase): MetaDeletionRe
           if (accountIds.length > 0) {
             const erased = await tx
               .update(publications)
-              .set({ externalId: null, externalUrl: null, progress: null })
+              .set({
+                externalId: null,
+                externalUrl: null,
+                progress: null,
+                // Como los demás cambios de `publications`: la hora real, no la de la transacción.
+                updatedAt: sql`clock_timestamp()`,
+              })
               .where(inArray(publications.platformAccountId, accountIds))
               .returning({ id: publications.id });
             const publicationIds = erased.map(({ id }) => id);
@@ -76,7 +82,7 @@ export function createMetaDeletionRepository(db: SchemaDatabase): MetaDeletionRe
               await tx
                 .update(publicationEvents)
                 .set({
-                  payload: sql`jsonb_set(${publicationEvents.payload}, '{sent,account,displayName}', '""'::jsonb)`,
+                  payload: sql`jsonb_set(${publicationEvents.payload}, '{sent,account,displayName}', '""'::jsonb, false)`,
                 })
                 .where(
                   and(
@@ -90,6 +96,7 @@ export function createMetaDeletionRepository(db: SchemaDatabase): MetaDeletionRe
                   publicationId,
                   type: "data_deleted",
                   actor: "system",
+                  createdAt: sql`clock_timestamp()`,
                   payload: { confirmationCode: input.code },
                 })),
               );

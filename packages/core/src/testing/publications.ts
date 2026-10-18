@@ -376,9 +376,11 @@ export function createInMemoryPublicationRepository(
 /** Lo enviado de un intento sin el nombre de la cuenta (como `jsonb_set` en Postgres). */
 function withoutSentAccountName(payload: Record<string, unknown>): Record<string, unknown> {
   const sent = payload.sent;
-  if (typeof sent !== "object" || sent === null) return payload;
+  if (typeof sent !== "object" || sent === null || Array.isArray(sent)) return payload;
   const account = (sent as Record<string, unknown>).account;
-  if (typeof account !== "object" || account === null) return payload;
+  if (typeof account !== "object" || account === null || Array.isArray(account)) return payload;
+  // Como `jsonb_set(..., false)`: solo reemplaza un nombre que existe.
+  if (!("displayName" in account)) return payload;
   return { ...payload, sent: { ...sent, account: { ...account, displayName: "" } } };
 }
 

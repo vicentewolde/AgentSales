@@ -1,5 +1,5 @@
 {
-  "id": "914c4394-db2e-4e98-a8aa-8ea76c550487",
+  "id": "43416772-7991-4436-9537-d210aaa39227",
   "prevId": "df57dd38-a4b9-4129-a8a7-043f39cd62da",
   "version": "7",
   "dialect": "postgresql",
@@ -1476,7 +1476,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "meta_deletion_requests_status": {
+          "name": "meta_deletion_requests_status",
+          "value": "\"meta_deletion_requests\".\"status\" = 'completed'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.oauth_states_used": {

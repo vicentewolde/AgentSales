@@ -1,6 +1,6 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createSignedRequestVerifier } from "./signed-request.js";
+import { createMetaUserIdHasher, createSignedRequestVerifier } from "./signed-request.js";
 
 // F8-T17 (spec F8 §4.11, D18): la firma de las vueltas de Meta.
 
@@ -65,5 +65,20 @@ describe("createSignedRequestVerifier", () => {
   it("sin claves configuradas, todo se rechaza", () => {
     const none = createSignedRequestVerifier([undefined, ""]);
     expect(none(signedRequest(PAYLOAD, ""))).toBeNull();
+  });
+});
+
+describe("createMetaUserIdHasher", () => {
+  it("es un HMAC con clave: estable con la misma clave, distinto con otra, nunca el id ni su SHA-256", () => {
+    const hash = createMetaUserIdHasher("k".repeat(32));
+    const value = hash(PAYLOAD.user_id);
+    expect(value).toMatch(/^[0-9a-f]{64}$/);
+    expect(hash(PAYLOAD.user_id)).toBe(value);
+    expect(createMetaUserIdHasher("otra-clave-de-32-caracteres-o-mas!!")(PAYLOAD.user_id)).not.toBe(
+      value,
+    );
+    const plainSha = createHash("sha256").update(PAYLOAD.user_id).digest("hex");
+    expect(value).not.toBe(plainSha);
+    expect(value).not.toContain(PAYLOAD.user_id);
   });
 });

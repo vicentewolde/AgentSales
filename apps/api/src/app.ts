@@ -141,6 +141,8 @@ export type AppDeps = {
    * compone `server.ts`) y los pedidos de borrado.
    */
   verifyMetaSignature: MetaSignatureVerifier;
+  /** El hash con clave del `user_id` de un pedido de borrado (`createMetaUserIdHasher`). */
+  hashMetaUserId: (userId: string) => string;
   metaDeletion: MetaDeletionRepository;
   /** Firma del `state` del OAuth (`createStateSigner`, que compone `server.ts`). */
   oauthState: OAuthDeps["oauthState"];

@@ -4,5 +4,6 @@ CREATE TABLE "meta_deletion_requests" (
 	"received_at" timestamp with time zone NOT NULL,
 	"status" text NOT NULL,
 	"completed_at" timestamp with time zone,
-	"accounts_affected" integer DEFAULT 0 NOT NULL
+	"accounts_affected" integer DEFAULT 0 NOT NULL,
+	CONSTRAINT "meta_deletion_requests_status" CHECK ("meta_deletion_requests"."status" = 'completed')
 );

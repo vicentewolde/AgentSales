@@ -34,6 +34,7 @@ export { createLogger, type LoggerOptions, REDACTED, redact, redactText } from "
 export { createPasswordHasher } from "./password.js";
 export { createSecretTokens } from "./secret-tokens.js";
 export {
+  createMetaUserIdHasher,
   createSignedRequestVerifier,
   type SignedRequestPayload,
   type SignedRequestVerifier,

@@ -334,6 +334,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     oauthState: createStateSigner(TEST_ENCRYPTION_KEY),
     // Sin firma válida ni cuentas: los tests de Meta pasan las suyas (`meta.test.ts`).
     verifyMetaSignature: () => null,
+    hashMetaUserId: (userId) => `hmac:${userId}`,
     metaDeletion: createInMemoryMetaDeletionRepository({
       platformAccounts: createInMemoryPlatformAccountRepository(),
       publications: createInMemoryPublicationRepository(),

@@ -192,6 +192,67 @@ function metaDeletionContract(name: string, make: () => Promise<Repos>) {
       });
     });
 
+    it("la publicación borrada queda tocada después (updated_at avanza)", async () => {
+      const user = unique("1784");
+      const { publication } = await seed(repos, user);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await repos.metaDeletion.eraseInstagramUser({
+        instagramUserId: user,
+        instagramUserIdHash: "hmac",
+        code: unique("codigo"),
+        receivedAt: RECEIVED,
+      });
+      const after = await repos.publications.get(publication.id);
+      expect(after?.updatedAt.getTime()).toBeGreaterThan(publication.updatedAt.getTime());
+    });
+
+    it("el mismo usuario en dos corredores: borra las dos cuentas; repetirlo no borra nada más", async () => {
+      const user = unique("1784");
+      const first = await seed(repos, user);
+      const second = await seed(repos, user);
+      const input = { instagramUserId: user, instagramUserIdHash: "hmac", receivedAt: RECEIVED };
+
+      const request = await repos.metaDeletion.eraseInstagramUser({ ...input, code: unique("c") });
+      expect(request.accountsAffected).toBe(2);
+      for (const { account } of [first, second]) {
+        expect((await repos.platformAccounts.get(account.id))?.displayName).toBe(
+          ERASED_ACCOUNT_DISPLAY_NAME,
+        );
+      }
+      const eventsBefore = (await repos.publications.listEvents(first.publication.id)).length;
+
+      const again = await repos.metaDeletion.eraseInstagramUser({ ...input, code: unique("c") });
+      expect(again.accountsAffected).toBe(0);
+      expect(await repos.publications.listEvents(first.publication.id)).toHaveLength(eventsBefore);
+    });
+
+    it("una cuenta de otra plataforma con el mismo id externo no se toca", async () => {
+      const user = unique("1784");
+      const brokerId = (await repos.brokers.create(brokerData(unique("meta")))).id;
+      const portal = await repos.platformAccounts.upsertConnected(
+        connectedAccount(brokerId, {
+          platform: "portal_inmobiliario",
+          externalAccountId: user,
+          displayName: "VENDEDOR",
+          credentials: { accessToken: unique("APP_USR"), refreshToken: unique("TG") },
+        }),
+      );
+
+      expect(await repos.metaDeletion.deauthorizeInstagramUser(user)).toBe(0);
+      const request = await repos.metaDeletion.eraseInstagramUser({
+        instagramUserId: user,
+        instagramUserIdHash: "hmac",
+        code: unique("codigo"),
+        receivedAt: RECEIVED,
+      });
+      expect(request.accountsAffected).toBe(0);
+      expect(await repos.platformAccounts.get(portal.id)).toMatchObject({
+        status: "connected",
+        externalAccountId: user,
+        displayName: "VENDEDOR",
+      });
+    });
+
     it("un usuario que no calza responde con su pedido sin borrar nada", async () => {
       const request = await repos.metaDeletion.eraseInstagramUser({
         instagramUserId: unique("desconocido"),
@@ -242,6 +303,44 @@ metaDeletionContract("Drizzle sobre PGlite", async () => {
 });
 
 describe("pedidos de borrado de Meta · lo que el puerto no muestra (PGlite)", () => {
+  it("si anotar el pedido falla, no queda nada borrado (una sola transacción)", async () => {
+    const database = await createTestDatabase();
+    databases.push(database);
+    const { db } = database;
+    const repos: Repos = {
+      brokers: createBrokerRepository(db),
+      listings: createListingRepository(db),
+      media: createMediaRepository(db),
+      contentRuns: createContentRunRepository(db),
+      contents: createContentRepository(db),
+      publications: createPublicationRepository(db),
+      platformAccounts: createPlatformAccountRepository(db, {
+        secretBox: createSecretBox("k".repeat(32)),
+      }),
+      metaDeletion: createMetaDeletionRepository(db),
+    };
+    const input = { instagramUserIdHash: "hmac", code: "codigo-repetido", receivedAt: RECEIVED };
+    await repos.metaDeletion.eraseInstagramUser({ ...input, instagramUserId: "nadie" });
+    const user = unique("1784");
+    const { account, publication } = await seed(repos, user);
+
+    // El mismo código choca con la llave primaria al final: lo anterior se deshace.
+    await expect(
+      repos.metaDeletion.eraseInstagramUser({ ...input, instagramUserId: user }),
+    ).rejects.toThrow();
+    expect(await repos.platformAccounts.get(account.id)).toMatchObject({
+      status: "connected",
+      externalAccountId: user,
+      displayName: "@corredora",
+    });
+    expect(await repos.publications.get(publication.id)).toMatchObject({
+      externalId: "17900000000000001",
+    });
+    expect(
+      (await repos.publications.listEvents(publication.id)).some((e) => e.type === "data_deleted"),
+    ).toBe(false);
+  });
+
   it("la base guarda el hash del usuario, nunca el user_id", async () => {
     const database = await createTestDatabase();
     databases.push(database);

@@ -21,7 +21,9 @@ export type MetaSignatureVerifier = (signedRequest: string) => { userId: string 
 
 export type MetaRoutesDeps = Pick<MetaCallbackDeps, "metaDeletion" | "now"> & {
   verifyMetaSignature: MetaSignatureVerifier;
-  /** El código del pedido y el hash del `user_id` (los mismos tokens de las sesiones). */
+  /** El hash con clave del `user_id` (`createMetaUserIdHasher`, compuesto en `server.ts`). */
+  hashMetaUserId: MetaCallbackDeps["hashUserId"];
+  /** El código del pedido (los mismos tokens de las sesiones). */
   auth: { tokens: MetaCallbackDeps["tokens"] };
   /** La dirección pública (`PUBLIC_URL`, o el panel en el Mac): la de la página de estado. */
   panelUrl: string;
@@ -48,6 +50,19 @@ async function signedUser(c: Context, verify: MetaSignatureVerifier): Promise<st
     return null;
   }
   return typeof value === "string" ? (verify(value)?.userId ?? null) : null;
+}
+
+/**
+ * Cuántas cuentas cambió una vuelta, nunca el `user_id`. Ninguna es un aviso: si el `user_id` de Meta
+ * no es el de `/me` (NO VERIFICADO, nota de Instagram §13.3), la vuelta responde bien sin borrar nada,
+ * y esto es lo que lo deja ver en los logs.
+ */
+function logOutcome(logger: AppLogger, accounts: number, message: string): void {
+  if (accounts === 0) {
+    logger.warn({ accounts }, `${message}: ninguna cuenta de Instagram calzó con el usuario`);
+  } else {
+    logger.info({ accounts }, message);
+  }
 }
 
 const invalidSignature = (c: Context) =>
@@ -121,18 +136,19 @@ export function metaRoutes(deps: MetaRoutesDeps) {
       const userId = await signedUser(c, deps.verifyMetaSignature);
       if (userId === null) return invalidSignature(c);
       const { accounts } = await handleMetaDeauthorize(deps, { instagramUserId: userId });
-      deps.logger.info({ accounts }, "Meta: se quitó la app de una cuenta de Instagram");
+      logOutcome(deps.logger, accounts, "Meta: se quitó la app de una cuenta de Instagram");
       return c.json({ received: true as const }, 200);
     })
     .post("/data-deletion", tooLarge, async (c) => {
       const userId = await signedUser(c, deps.verifyMetaSignature);
       if (userId === null) return invalidSignature(c);
       const request = await handleMetaDataDeletion(
-        { ...deps, tokens: deps.auth.tokens },
+        { ...deps, tokens: deps.auth.tokens, hashUserId: deps.hashMetaUserId },
         { instagramUserId: userId },
       );
-      deps.logger.info(
-        { accounts: request.accountsAffected },
+      logOutcome(
+        deps.logger,
+        request.accountsAffected,
         "Meta: se borraron los datos de una cuenta de Instagram",
       );
       const url = new URL(

@@ -3,15 +3,13 @@ import { AppError } from "../errors.js";
 import {
   checkConnectedCredentials,
   checkCredentials,
+  ERASED_ACCOUNT_DISPLAY_NAME,
+  erasedExternalAccountId,
   normalizeAccountMeta,
   type PlatformAccount,
   type PlatformCredentials,
 } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
-import {
-  ERASED_ACCOUNT_DISPLAY_NAME,
-  erasedExternalAccountId,
-} from "../ports/meta-deletion-repository.js";
 import type {
   ConnectedAccount,
   PlatformAccountRepository,

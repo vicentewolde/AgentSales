@@ -9,8 +9,10 @@ import type {
 
 export type MetaCallbackDeps = {
   metaDeletion: MetaDeletionRepository;
-  /** El código del pedido (`generate`) y el hash del `user_id` (`hash`, SHA-256). */
-  tokens: Pick<SecretTokens, "generate" | "hash">;
+  /** El código del pedido (`generate`, base64url). */
+  tokens: Pick<SecretTokens, "generate">;
+  /** El hash del `user_id` que se guarda (`createMetaUserIdHasher` de config: HMAC con clave). */
+  hashUserId: (userId: string) => string;
   now?: () => Date;
 };
 
@@ -35,7 +37,7 @@ export async function handleMetaDataDeletion(
 ): Promise<MetaDeletionRequest> {
   return deps.metaDeletion.eraseInstagramUser({
     instagramUserId: input.instagramUserId,
-    instagramUserIdHash: deps.tokens.hash(input.instagramUserId),
+    instagramUserIdHash: deps.hashUserId(input.instagramUserId),
     code: deps.tokens.generate(),
     receivedAt: (deps.now ?? (() => new Date()))(),
   });

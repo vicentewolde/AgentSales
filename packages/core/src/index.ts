@@ -294,6 +294,8 @@ export {
 export {
   checkConnectedCredentials,
   checkCredentials,
+  ERASED_ACCOUNT_DISPLAY_NAME,
+  erasedExternalAccountId,
   INSTAGRAM_PUBLISH_SCOPE,
   type InstagramAccountMeta,
   instagramAccountMetaSchema,
@@ -457,12 +459,10 @@ export {
   isMercadoLibreTokenRejected,
   MERCADOLIBRE_REJECTED_AFTER_REFRESH,
 } from "./ports/mercadolibre-auth.js";
-export {
-  ERASED_ACCOUNT_DISPLAY_NAME,
-  erasedExternalAccountId,
-  type MetaDeletionInput,
-  type MetaDeletionRepository,
-  type MetaDeletionRequest,
+export type {
+  MetaDeletionInput,
+  MetaDeletionRepository,
+  MetaDeletionRequest,
 } from "./ports/meta-deletion-repository.js";
 export {
   type ConnectedAccount,

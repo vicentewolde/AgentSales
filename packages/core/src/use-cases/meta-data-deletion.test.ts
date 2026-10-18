@@ -30,7 +30,12 @@ async function setup() {
     meta: {},
     credentials: { accessToken: "IGAA-secreto" },
   });
-  const deps = { metaDeletion, tokens: createFakeSecretTokens(), now: () => RECEIVED };
+  const deps = {
+    metaDeletion,
+    tokens: createFakeSecretTokens(),
+    hashUserId: (id: string) => `hmac:${id}`,
+    now: () => RECEIVED,
+  };
   return { deps, metaDeletion, platformAccounts, account };
 }
 
@@ -63,7 +68,7 @@ describe("las vueltas de Meta", () => {
       completedAt: RECEIVED,
       accountsAffected: 1,
     });
-    expect(t.metaDeletion.storedUserIdHashes()).toEqual([`sha:${IG_USER}`]);
+    expect(t.metaDeletion.storedUserIdHashes()).toEqual([`hmac:${IG_USER}`]);
     expect(await getMetaDeletionRequest(t.deps, "token-1")).toEqual(request);
   });
 

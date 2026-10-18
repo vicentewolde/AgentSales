@@ -147,6 +147,25 @@ describe("POST /api/meta/deauthorize", () => {
     });
   });
 
+  it("un cuerpo enorme sin largo declarado (por partes) también se corta (413)", async () => {
+    const t = await setup();
+    const chunk = new TextEncoder().encode(`signed_request=${"x".repeat(10_000)}`);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(chunk);
+        controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+    const response = await t.api.request(`${PUBLIC}/api/meta/deauthorize`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body,
+      duplex: "half",
+    } as RequestInit);
+    expect(response.status).toBe(413);
+  });
+
   it("un cuerpo enorme se rechaza antes de leerlo (413)", async () => {
     const t = await setup();
     const response = await t.post("deauthorize", `signed_request=${"x".repeat(20_000)}`);
@@ -192,6 +211,10 @@ describe("POST /api/meta/data-deletion", () => {
     const body = (await response.json()) as { confirmation_code: string };
     expect(body.confirmation_code).not.toBe("");
     expect(await t.platformAccounts.get(t.account.id)).toMatchObject({ status: "connected" });
+    // Ninguna cuenta calzó: queda como aviso en el log (sin el user_id), para notarlo en T21.
+    const warning = t.lines.map((line) => JSON.parse(line)).find((entry) => entry.level === 40);
+    expect(warning).toMatchObject({ accounts: 0 });
+    expect(t.lines.join("\n")).not.toContain("17841499999999999");
 
     const page = await t.api.request(`${PUBLIC}/api/meta/data-deletion/${body.confirmation_code}`);
     expect(await page.text()).toContain("No teníamos datos guardados de esa cuenta");

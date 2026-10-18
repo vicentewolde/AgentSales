@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { deriveKey, KEY_PURPOSES } from "./crypto.js";
 
 // Las vueltas de Meta (spec F8 §4.11, D18): quitar la app y borrar los datos llegan como un `POST`
 // con `signed_request` = `<firma>.<carga>`, las dos partes en base64url. La firma es el HMAC-SHA256
@@ -68,4 +69,14 @@ export function createSignedRequestVerifier(
     }
     return valid ? readPayload(payload) : null;
   };
+}
+
+/**
+ * El hash del `user_id` que se guarda en un pedido de borrado (F8-T17): HMAC-SHA256 con una clave
+ * derivada de `APP_ENCRYPTION_KEY` (propósito `metaUserId`). Un SHA-256 simple de un id numérico
+ * corto se podría revertir probando ids; sin la clave, no.
+ */
+export function createMetaUserIdHasher(appKey: string): (userId: string) => string {
+  const key = deriveKey(appKey, KEY_PURPOSES.metaUserId);
+  return (userId) => createHmac("sha256", key).update(userId, "utf8").digest("hex");
 }

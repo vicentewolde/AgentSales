@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   createErrorThrottle,
   createLogger,
+  createMetaUserIdHasher,
   createPasswordHasher,
   createSecretBox,
   createSecretTokens,
@@ -212,6 +213,7 @@ const app = createApp({
     env.INSTAGRAM_APP_SECRET,
     env.FACEBOOK_APP_SECRET,
   ]),
+  hashMetaUserId: createMetaUserIdHasher(env.APP_ENCRYPTION_KEY),
   metaDeletion: createMetaDeletionRepository(database.db),
   // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).
   panelUrl: panelUrlOf(env),
