@@ -21,7 +21,8 @@
     "migrate": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/migrate.ts",
     "seed": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/seed.ts",
     "backup": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/backup.ts",
-    "auth-admin": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/auth-admin.ts"
+    "auth-admin": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/auth-admin.ts",
+    "dev-scrub": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/dev-scrub.ts"
   },
   "dependencies": {
     "@agentsales/config": "workspace:*",

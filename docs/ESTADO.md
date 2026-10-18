@@ -5,12 +5,17 @@
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
 **Última tarea:** lote A de F8 (T01 y T02): la configuración de producción (`PUBLIC_URL`, `API_HOST`, `ENV_FILE`) y la API bajo `/api` con el panel compilado, cookies `__Host-` y cabeceras de seguridad
-**Siguiente paso:** tus pasos de "Antes del lote B" (abajo) y después `/tarea F8-T03 F8-T04 F8-T05 F8-T06 F8-T07 F8-T09` (lote B: subidas a R2)
+**Siguiente paso:** `pnpm db:dev-scrub` (tú, antes de cualquier `pnpm dev`) y el lote B en curso (`feat/f8-t03-t09-subidas-r2`)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 - [ ] **Tu `.env` (lote A):** si tiene `INSTAGRAM_REDIRECT_URI=http://localhost:8787/oauth/instagram/callback` (el valor del ejemplo de antes), déjala vacía o bórrala: ahora la API va bajo `/api` y el valor por defecto ya lo trae. En el Mac no cambia nada visible (el OAuth de Instagram sigue apagado sin HTTPS)
-- [ ] **Antes del lote B:** rama `dev` de Neon, otra `APP_ENCRYPTION_KEY` en `.env` (la de hoy a `.env.production`) y `pnpm db:dev-scrub`, el bucket `agentsales-media-dev` con su token, y la regla de CORS en los dos buckets
+- **Antes del lote B:**
+  - [x] Rama `dev` de Neon en `.env` y producción en `.env.production` (2026-10-18)
+  - [x] Otra `APP_ENCRYPTION_KEY` en `.env`; la de antes en `.env.production` y en tu gestor de claves (2026-10-18)
+  - [x] Bucket `agentsales-media-dev` con su token; `pnpm storage:check` pasó (2026-10-18)
+  - [x] Regla de CORS en los dos buckets: solo `PUT`, desde `http://localhost:5173` y `https://agentsales.agentpey.com`, cabeceras `content-type` y `x-amz-checksum-sha256` (2026-10-18)
+  - [ ] **`pnpm db:dev-scrub`** (nuevo en el lote B): borra las credenciales copiadas en la rama, que están cifradas con la clave vieja. **Antes de cualquier `pnpm dev`**
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups`, los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
@@ -43,7 +48,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 |---|---|---|
 | Spec F8 (`/fase-plan 8`) | ✅ aprobado | (este PR) |
 | **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
-| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 | ⏳ pendiente | |
+| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | 🔨 en curso | |
 | **Lote C** · T08 CLI: la dirección del servidor | ⏳ pendiente | |
 | **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ⏳ pendiente | |
 | **Lote E** · T13 Respaldo a R2 | ⏳ pendiente | |

@@ -27,7 +27,7 @@ const BROKER_FK = "platform_accounts_broker_id_brokers_id_fk";
  * cuenta (también la misma cuenta externa en otro corredor) no se descifra. Se arma solo aquí.
  * Corredor, plataforma y cuenta externa son el único de la tabla y no cambian en una fila.
  */
-const credentialsAad = (row: Pick<Row, "brokerId" | "platform" | "externalAccountId">) =>
+export const credentialsAad = (row: Pick<Row, "brokerId" | "platform" | "externalAccountId">) =>
   `${row.platform}:${row.brokerId}:${row.externalAccountId}`;
 
 /** Fila → entidad, sin credenciales. Una fila que no calza es `PLATFORM_ACCOUNT_ROW_INVALID`. */
