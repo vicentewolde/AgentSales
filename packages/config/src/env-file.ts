@@ -29,6 +29,23 @@ export class EnvFileError extends Error {
  * ejemplo, en CI o en el servidor, donde el entorno lo pone el proveedor). Un `ENV_FILE` que no
  * existe lanza `EnvFileError`: correr un script contra otra base por un error de tipeo sería peor.
  */
+/**
+ * El archivo de entorno de la API y del worker: siempre `.env` (o el entorno del proveedor). Un
+ * `ENV_FILE` es solo para los scripts (spec F8, D12): si un `pnpm dev` lo heredara de la terminal, el
+ * worker del Mac correría contra producción y se robaría sus trabajos (§4.6), así que se rechaza.
+ */
+export function loadAppEnvFile(
+  root?: string,
+  envFile: string | undefined = process.env.ENV_FILE,
+): boolean {
+  if (envFile !== undefined && envFile.trim() !== "") {
+    throw new EnvFileError(
+      `ENV_FILE=${envFile.trim()}: es solo para los scripts; la API y el worker usan .env (quita ENV_FILE de la terminal)`,
+    );
+  }
+  return loadEnvFile(root, undefined);
+}
+
 export function loadEnvFile(
   root?: string,
   envFile: string | undefined = process.env.ENV_FILE,

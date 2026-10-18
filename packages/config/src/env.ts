@@ -123,6 +123,12 @@ const backupDir = z
 /** La carpeta de `pg_dump` y `pg_restore` (por ejemplo `/opt/homebrew/opt/libpq/bin`): absoluta. */
 const pgBinDir = z.string().refine((value) => value.startsWith("/"), "debe ser una ruta absoluta");
 
+/**
+ * El valor que traía `.env.example` hasta F7 para la vuelta de Instagram, sin el prefijo `/api`
+ * (spec F8 §4.3): se ignora y se usa el nuevo valor por defecto (ver `loadEnv`).
+ */
+const LEGACY_INSTAGRAM_REDIRECT_URI = "http://localhost:8787/oauth/instagram/callback";
+
 /** Variables que cambiaron de nombre (spec F3, D5). */
 const RENAMED_VARIABLES: Readonly<Record<string, string>> = {
   META_APP_ID: "INSTAGRAM_APP_ID",
@@ -318,9 +324,10 @@ type ParsedEnv = {
 
 /**
  * Lo que exige `NODE_ENV=production` (spec F8 §4.2): `PUBLIC_URL` con `https://`, las direcciones de
- * retorno dentro de ella y otra IA que la CLI de Claude (el plan Max es solo para uso propio, no
- * para un servidor que atiende a terceros: `docs/integraciones/anthropic-terminos.md` §6).
- * `API_HOST` explícito lo revisa `loadEnv`, que ve el entorno sin los valores por defecto.
+ * retorno dentro de ella y la API de Anthropic como IA (el plan Max es solo para uso propio, no para
+ * un servidor que atiende a terceros: `docs/integraciones/anthropic-terminos.md` §6). `API_HOST`
+ * explícito lo revisa `loadEnv`, que ve el entorno sin los valores por defecto. El respaldo a R2
+ * (`BACKUP_TARGET`) llega con F8-T13 y el formulario automático de Marketplace apagado, con F8-T20.
  */
 function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
   if (env.PUBLIC_URL === undefined) {
@@ -347,12 +354,13 @@ function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
       }
     }
   }
-  if (env.LLM_PROVIDER === "claude-cli") {
+  // Ni la CLI de Claude ni la IA de mentira (`fake` redactaría textos inventados sin avisar).
+  if (env.LLM_PROVIDER !== "anthropic-api") {
     ctx.addIssue({
       code: "custom",
       path: ["LLM_PROVIDER"],
       message:
-        'no puede ser "claude-cli" con NODE_ENV=production (el plan de Claude es solo para uso propio): usa "anthropic-api"',
+        'debe ser "anthropic-api" con NODE_ENV=production (el plan de Claude es solo para uso propio)',
     });
   }
 }
@@ -367,7 +375,9 @@ export class EnvError extends Error {
 
   constructor(issues: readonly EnvIssue[]) {
     const lines = issues.map((issue) => `  - ${issue.variable}: ${issue.message}`);
-    super(`Configuración inválida en .env (ver .env.example):\n${lines.join("\n")}`);
+    super(
+      `Configuración inválida en el archivo de entorno (ver .env.example):\n${lines.join("\n")}`,
+    );
     this.name = "EnvError";
     this.issues = issues;
   }
@@ -394,6 +404,10 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
   if (cleaned.BROWSER_PROFILES_DIR === LEGACY_BROWSER_PROFILES_DIR) {
     delete cleaned.BROWSER_PROFILES_DIR;
   }
+  // La vuelta de Instagram del ejemplo de antes no lleva `/api`: su inicio daría 404 (spec F8 §4.3).
+  if (cleaned.INSTAGRAM_REDIRECT_URI === LEGACY_INSTAGRAM_REDIRECT_URI) {
+    delete cleaned.INSTAGRAM_REDIRECT_URI;
+  }
   // En producción, dónde escucha la API no se deja al valor por defecto (spec F8 §4.2).
   if (cleaned.NODE_ENV === "production" && cleaned.API_HOST === undefined) {
     outdated.push({
@@ -414,4 +428,12 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     ]);
   }
   return Object.freeze(result.data);
+}
+
+/**
+ * La dirección del panel (los enlaces de invitación y la vuelta de los OAuth, spec F8 §4.2):
+ * `PUBLIC_URL` en el servidor, o el panel de Vite en el Mac.
+ */
+export function panelUrlOf(env: Pick<Env, "PUBLIC_URL" | "WEB_PORT">): string {
+  return env.PUBLIC_URL ?? `http://localhost:${env.WEB_PORT}`;
 }

@@ -5,6 +5,7 @@ import {
   createSecretTokens,
   loadEnv,
   loadEnvFile,
+  panelUrlOf,
 } from "@agentsales/config";
 import { runAuthAdmin } from "../auth-admin.js";
 import { createDb } from "../client.js";
@@ -27,7 +28,8 @@ try {
       sessions: createSessionRepository(db),
       invitations: createInvitationRepository(db),
       tokens: createSecretTokens(),
-      panelUrl: `http://localhost:${env.WEB_PORT}`,
+      // Con `ENV_FILE=.env.production`, el enlace va al panel del servidor (spec F8 §4.2).
+      panelUrl: panelUrlOf(env),
       clipboardReady,
       copyToClipboard,
       print: (line) => console.log(line),

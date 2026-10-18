@@ -9,8 +9,9 @@ import {
   createSecretTokens,
   createStateSigner,
   findWorkspaceRoot,
+  loadAppEnvFile,
   loadEnv,
-  loadEnvFile,
+  panelUrlOf,
   resolveBackupDir,
 } from "@agentsales/config";
 import { ALL_SCOPE, brokersNeedingApiKey } from "@agentsales/core";
@@ -61,7 +62,8 @@ const HEALTHCHECK_PATH = "_healthcheck/ping";
 /** Mayor que el tope de un check de `/health` (25 s), para dejar terminar lo que está en curso. */
 const SHUTDOWN_TIMEOUT_MS = 30_000;
 
-loadEnvFile();
+// `ENV_FILE` es solo para los scripts (spec F8, D12): aquí se rechaza.
+loadAppEnvFile();
 const env = loadEnv();
 // En internet (spec F8 §4.2): el host, el panel y los orígenes salen de `PUBLIC_URL`; sin ella, el Mac.
 const publicUrl = env.PUBLIC_URL;
@@ -107,6 +109,8 @@ const backupDir = resolveBackupDir(env.BACKUP_DIR, {
   workspaceRoot: findWorkspaceRoot(),
 });
 
+const access =
+  publicUrl === undefined ? localAccess(env.API_PORT, env.WEB_PORT) : internetAccess(publicUrl);
 const app = createApp({
   // Usuarios y sesiones (F7, ADR-0021): `scrypt` y los tokens de config; la cookie `Secure` llega
   // con HTTPS en F8.
@@ -182,7 +186,7 @@ const app = createApp({
   ),
   oauthState: createStateSigner(env.APP_ENCRYPTION_KEY),
   // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).
-  panelUrl: publicUrl ?? `http://localhost:${env.WEB_PORT}`,
+  panelUrl: panelUrlOf(env),
   instagramStartUrl: instagramStartUrlOf(env.INSTAGRAM_REDIRECT_URI),
   queue,
   uploads: {
@@ -218,8 +222,7 @@ const app = createApp({
       }),
   },
   logger,
-  access:
-    publicUrl === undefined ? localAccess(env.API_PORT, env.WEB_PORT) : internetAccess(publicUrl),
+  access,
 });
 
 // La API bajo `/api` en los dos modos y, en producción, el panel compilado del mismo origen.
@@ -229,6 +232,7 @@ const serverApp = createServerApp(app, {
     : {}),
   storageOrigin: r2BucketOrigin({ accountId: env.R2_ACCOUNT_ID, bucket: env.R2_BUCKET }),
   https,
+  allowedHosts: access.allowedHosts,
 });
 
 const server = serve(

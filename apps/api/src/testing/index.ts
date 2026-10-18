@@ -336,7 +336,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     },
     oauthState: createStateSigner(TEST_ENCRYPTION_KEY),
     panelUrl: "http://localhost:5173",
-    instagramStartUrl: "http://localhost:8787/oauth/instagram/start",
+    instagramStartUrl: "http://localhost:8787/api/oauth/instagram/start",
     // Sin operaciones: los tests de Portal pasan las suyas (nunca llaman a Mercado Libre).
     operationsFor: () => undefined,
     ...overrides,

@@ -5,6 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { API_PREFIX } from "./access.js";
 import { type AppType, mountApi } from "./app.js";
 import { notFoundHandler } from "./errors.js";
+import { hostGuard } from "./security.js";
 
 // Lo que sirve `server.ts` (spec F8 §4.3, ADR-0024): la API bajo `/api` en los dos modos y, en el
 // servidor, el panel compilado del mismo origen, con las cabeceras de seguridad. Usa `node:*`, así
@@ -27,6 +28,11 @@ export type ServerAppOptions = {
   storageOrigin: string;
   /** HSTS solo con `https://` (en el Mac no se manda). */
   https: boolean;
+  /**
+   * Los hosts permitidos (los mismos de la API): el panel tampoco se sirve con otro `Host`, ni por
+   * la IP de la máquina (spec F8 §4.2); `GET /api/health` sigue fuera, para el chequeo del proveedor.
+   */
+  allowedHosts: readonly string[];
 };
 
 /** La CSP del panel (spec F8 §4.3): todo del mismo origen, salvo los medios y las subidas a R2. */
@@ -60,6 +66,7 @@ export function createServerApp(api: AppType, options: ServerAppOptions) {
       crossOriginOpenerPolicy: "same-origin",
     }),
   );
+  root.use(hostGuard(options.allowedHosts));
   root.route("/", mountApi(api));
   const panelDir = options.panelDir;
   if (panelDir !== undefined) {

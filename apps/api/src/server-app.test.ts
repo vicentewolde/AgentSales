@@ -35,6 +35,7 @@ function serverApp(options: { https?: boolean; panel?: boolean } = {}) {
     ...(options.panel === false ? {} : { panelDir }),
     storageOrigin: STORAGE_ORIGIN,
     https,
+    allowedHosts: internetAccess(PUBLIC_URL).allowedHosts,
   });
 }
 
@@ -47,6 +48,27 @@ describe("el prefijo /api", () => {
     expect(routePathOf("/api")).toBe("/");
     expect(routePathOf("/listings")).toBe("/listings");
     expect(routePathOf("/apis/x")).toBe("/apis/x");
+  });
+
+  it("con un prefijo doble, una barra de más o mayúsculas, nada queda público ni fuera de los guardias", async () => {
+    for (const path of ["/api/api/auth/login", "//api/auth/login", "/API/auth/login"]) {
+      expect(accessFor("POST", routePathOf(path))).toBe("session");
+    }
+    for (const path of ["/api/api/health", "//api/health", "/API/health"]) {
+      expect(accessFor("HEAD", routePathOf(path))).toBe("session");
+    }
+    const app = serverApp();
+    // Con otro Host, solo `/api/health` exacto pasa el `hostGuard`.
+    for (const path of ["/api/api/health", "//api/health", "/API/health"]) {
+      expect((await app.request(`http://10.0.0.7:8080${path}`)).status).toBe(403);
+    }
+    // `/api/api/meta/*` no queda fuera del CSRF: con la cookie y sin `Origin`, se rechaza.
+    const meta = await app.request(at("/api/api/meta/data-deletion"), {
+      method: "POST",
+      headers: { cookie: "__Host-agentsales_session=algo" },
+    });
+    expect(meta.status).toBe(403);
+    expect((await errorOf(meta)).code).toBe("ORIGIN_NOT_ALLOWED");
   });
 
   it("las rutas públicas siguen públicas bajo /api y las demás piden sesión", async () => {
@@ -101,8 +123,25 @@ describe("el panel compilado", () => {
 
   it("un archivo que no existe es 404 (no el panel), y no se sale de la carpeta", async () => {
     expect((await serverApp().request(at("/assets/no-existe.js"))).status).toBe(404);
-    const traversal = await serverApp().request(at("/..%2F..%2Fetc%2Fpasswd"));
-    expect(await traversal.text()).not.toMatch(/root:/);
+    for (const path of [
+      "/..%2F..%2Fetc%2Fpasswd",
+      "/%2e%2e/%2e%2e/etc/passwd",
+      "/assets/..%2f..%2fpackage.json",
+    ]) {
+      const response = await serverApp().request(at(path));
+      const body = await response.text();
+      // O 404, o la app de React: nunca un archivo de fuera de la carpeta.
+      expect(response.status === 404 || body.includes("<title>AgentSales</title>")).toBe(true);
+      expect(body).not.toMatch(/root:|"name":/);
+    }
+  });
+
+  it("el panel tampoco se sirve con otro Host, ni por la IP de la máquina", async () => {
+    for (const host of ["http://10.0.0.7:8080", "https://agentpey.com"]) {
+      const response = await serverApp().request(`${host}/corredores`);
+      expect(response.status).toBe(403);
+      expect((await errorOf(response)).code).toBe("HOST_NOT_ALLOWED");
+    }
   });
 
   it("sin la carpeta del panel (en el Mac) solo responde la API", async () => {
@@ -162,8 +201,10 @@ describe("hosts, orígenes y CORS en internet", () => {
       },
       body: "signed_request=x.y",
     });
-    // La ruta llega en F8-T17: hoy no existe, pero el CSRF no la rechaza.
-    expect(response.status).not.toBe(403);
+    // La ruta llega en F8-T17: hoy no está en la tabla y pide sesión (401), pero el CSRF no la
+    // rechaza antes (sería 403 ORIGIN_NOT_ALLOWED).
+    expect(response.status).toBe(401);
+    expect((await errorOf(response)).code).toBe("AUTH_REQUIRED");
   });
 });
 
@@ -180,10 +221,21 @@ describe("cookies con HTTPS", () => {
       expect(cookie).toContain(part);
     }
     expect(cookie).not.toMatch(/Domain=/i);
+  });
 
-    const session = /^(__Host-agentsales_session=[^;]+)/.exec(cookie)?.[1] ?? "";
-    const me = await serverApp().request(at("/api/auth/me"), { headers: { cookie: session } });
-    expect(me.status).toBe(401);
+  it("la cookie que puso entrar abre la sesión en la misma app", async () => {
+    const app = serverApp();
+    const login = await app.request(at("/api/auth/login"), {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: PUBLIC_URL },
+      body: JSON.stringify({ email: TEST_ADMIN.email, password: TEST_ADMIN.password }),
+    });
+    const session = /^(__Host-agentsales_session=[^;]+)/.exec(
+      login.headers.get("set-cookie") ?? "",
+    )?.[1];
+    expect(session).toBeDefined();
+    const me = await app.request(at("/api/auth/me"), { headers: { cookie: session ?? "" } });
+    expect(me.status).toBe(200);
   });
 
   it("con HTTPS, una cookie sin el prefijo (la pudo poner otro subdominio) no da sesión", async () => {
@@ -198,6 +250,25 @@ describe("cookies con HTTPS", () => {
     expect(prefixed.status).toBe(200);
   });
 
+  it("con HTTPS, una escritura con la cookie sin prefijo no abre sesión aunque venga del panel", async () => {
+    const response = await serverApp().request(at("/api/brokers"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: PUBLIC_URL,
+        cookie: `agentsales_session=${TEST_ADMIN_TOKEN}`,
+      },
+      body: "{}",
+    });
+    expect(response.status).toBe(401);
+    expect((await errorOf(response)).code).toBe("AUTH_REQUIRED");
+  });
+
+  it("GET a la vuelta de un OAuth no pasa por el CSRF (llega desde Instagram, sin Origin)", async () => {
+    const response = await serverApp().request(at("/api/oauth/instagram/callback?error=x"));
+    expect(response.status).toBe(302);
+  });
+
   it("sin HTTPS (en el Mac) la cookie es la de F7", async () => {
     const auth = { ...testAuth(), secureCookie: false };
     const api = createApp(
@@ -206,7 +277,11 @@ describe("cookies con HTTPS", () => {
         access: { allowedHosts: ["localhost:8787"], allowedOrigins: ["http://localhost:5173"] },
       }),
     );
-    const app = createServerApp(api, { storageOrigin: STORAGE_ORIGIN, https: false });
+    const app = createServerApp(api, {
+      storageOrigin: STORAGE_ORIGIN,
+      https: false,
+      allowedHosts: ["localhost:8787"],
+    });
     const response = await app.request("http://localhost:8787/api/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json", origin: "http://localhost:5173" },

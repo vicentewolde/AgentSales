@@ -270,7 +270,9 @@ describe("cuentas · seguridad y mensajes", () => {
       );
       const body = accountListResponseSchema.parse(await (await app.request("/accounts")).json());
       expect(body.connect.instagram.oauth).toBe(oauth);
-      expect(body.connect.instagram.startUrl).toBe("http://localhost:8787/oauth/instagram/start");
+      expect(body.connect.instagram.startUrl).toBe(
+        "http://localhost:8787/api/oauth/instagram/start",
+      );
     }
   });
 

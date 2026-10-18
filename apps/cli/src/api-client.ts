@@ -7,8 +7,10 @@ import type { z } from "zod";
 /** Mayor que el peor caso de `/health` (25 s con Neon despertando). */
 export const API_TIMEOUT_MS = 30_000;
 
-/** La API solo escucha en IPv4 local (spec F0 §4.5). */
-/** La API local bajo su prefijo `/api` (spec F8 §4.3); la dirección de un servidor llega en F8-T08. */
+/**
+ * La API local: solo escucha en IPv4 (spec F0 §4.5) y bajo su prefijo `/api` (spec F8 §4.3); la
+ * dirección de un servidor llega en F8-T08.
+ */
 export const apiUrl = (port: number) => `http://127.0.0.1:${port}/api`;
 
 /**

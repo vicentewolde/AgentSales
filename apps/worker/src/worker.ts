@@ -5,8 +5,8 @@ import {
   createLogger,
   createSecretBox,
   findWorkspaceRoot,
+  loadAppEnvFile,
   loadEnv,
-  loadEnvFile,
   resolveBackupDir,
   resolveBrowserProfilesDir,
 } from "@agentsales/config";
@@ -66,7 +66,8 @@ import { stopWorker } from "./shutdown.js";
 /** Tiempo que se espera a que terminen los jobs en curso al apagar. */
 const GRACEFUL_STOP_MS = 30_000;
 
-loadEnvFile();
+// `ENV_FILE` es solo para los scripts (spec F8, D12): aquí se rechaza.
+loadAppEnvFile();
 const env = loadEnv();
 const logger = createLogger({
   level: env.LOG_LEVEL,

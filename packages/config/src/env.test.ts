@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EnvError, loadEnv } from "./env.js";
+import { EnvError, loadEnv, panelUrlOf } from "./env.js";
 
 const DIRECT_URL =
   "postgresql://owner:fake-pass@ep-test-123.sa-east-1.aws.neon.tech/neondb?sslmode=require";
@@ -494,7 +494,29 @@ describe("loadEnv", () => {
       for (const source of [withoutProvider, { ...production, LLM_PROVIDER: "claude-cli" }]) {
         expect(envErrorOf(source).issues.map((issue) => issue.variable)).toEqual(["LLM_PROVIDER"]);
       }
-      expect(loadEnv({ ...production, LLM_PROVIDER: "fake" }).LLM_PROVIDER).toBe("fake");
+      // Tampoco la IA de mentira: redactaría textos inventados sin avisar.
+      expect(
+        envErrorOf({ ...production, LLM_PROVIDER: "fake" }).issues.map((i) => i.variable),
+      ).toEqual(["LLM_PROVIDER"]);
+    });
+
+    it("ignora la vuelta de Instagram del ejemplo de antes (sin /api) y usa la nueva", () => {
+      const env = loadEnv({
+        ...validSource,
+        INSTAGRAM_REDIRECT_URI: "http://localhost:8787/oauth/instagram/callback",
+      });
+      expect(env.INSTAGRAM_REDIRECT_URI).toBe("http://localhost:8787/api/oauth/instagram/callback");
+    });
+
+    it("panelUrlOf: PUBLIC_URL en el servidor y el panel de Vite en el Mac", () => {
+      expect(panelUrlOf(loadEnv(validSource))).toBe("http://localhost:5173");
+      expect(panelUrlOf(loadEnv(production))).toBe("https://agentsales.agentpey.com");
+    });
+
+    it("el mensaje de error habla del archivo de entorno (también con ENV_FILE)", () => {
+      expect(envErrorOf({ ...validSource, API_PORT: "x" }).message).toMatch(
+        /^Configuración inválida en el archivo de entorno/,
+      );
     });
 
     it("rechaza un API_HOST o un CLIENT_IP_HEADER con caracteres raros", () => {
