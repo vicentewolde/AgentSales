@@ -73,5 +73,7 @@ swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg
   processes = ["worker"]
   cpu_kind = "shared"
   cpus = 1
-  # 2 GB hasta medir el pico de una preparación con reel (T10); si cabe en 1 GB, bajarlo.
+  # 2 GB (T10, 2026-10-18): el pico medido en el Mac, al armar el reel de un video vertical 4K de
+  # 15 s, fue de unos 994 MB (ffmpeg 714 MB, el worker 147 MB, Chromium unos 133 MB). En una máquina
+  # de 1 CPU ffmpeg usa menos hilos y debería pedir menos, pero 1 GB quedaría justo (sin medir allí).
   memory = "2gb"

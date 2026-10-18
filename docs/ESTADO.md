@@ -5,7 +5,7 @@
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
 **Última tarea:** lote D de F8 (T10 a T12): el build sin tests y la imagen (ffmpeg, Chromium y `pg_dump` 18), la CI que la construye, la arranca y abre el panel sin errores de la CSP, `fly.toml` con la API y el worker, el flujo de despliegue que solo corre desde `main` en verde, la guía `docs/10-despliegue.md`; y el worker con latido, el `auto_publish` cortado que se retoma, el tope de 4 min de `tokens.refresh` y la pausa de Portal que no pierde `byListing`
-**Siguiente paso:** tus pasos del lote D (abajo: la medición de memoria, la prueba del flujo de despliegue y revisar la guía); después `/tarea F8-T13` (lote E: respaldo a R2)
+**Siguiente paso:** `/tarea F8-T13` (lote E: respaldo a R2)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -23,12 +23,13 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [x] La carga real desde el **panel** (2026-10-18, F8-T07): en Chrome, la misma carga sintética con "Una carpeta" y "Solo simular": `POST /api/imports/uploads` 201, los archivos directo a R2, `start` 202, el worker la terminó (1 creada y 2 medios, en simulación) y no quedó nada bajo `imports/`. Los dos intentos anteriores no llegaron a subir porque no se pasó de la página Entrar (no fue una falla del panel)
   - [ ] **La base de producción no tiene la migración `0010`:** se aplica al desplegar (T11, `release_command`) o con `ENV_FILE=.env.production pnpm db:migrate` antes de usar la API contra producción
 - [ ] **Opcional, al terminar el lote C** (con `pnpm dev`; te aviso antes): `pnpm -s cli whoami` debe decir `Servidor: http://127.0.0.1:8787 (la API local)`, y `AGENTSALES_API_URL=http://agentsales.agentpey.com pnpm -s cli status` debe rechazar el `http://` sin llamar a nadie. Contra el servidor de verdad se prueba en T21 (`login --api https://agentsales.agentpey.com`)
-- **Al terminar el lote D** (detalle en `docs/10-despliegue.md`):
-  - [ ] **La medición de memoria del worker (T10):** con `pnpm dev` (te aviso antes), preparar una propiedad con reel sin textos (`pnpm -s cli prepare <id> --no-texts`) y medir el pico del worker con Chromium y ffmpeg, para elegir 1 o 2 GB en `fly.toml` (hoy 2 GB)
-  - [ ] **El Environment `production` en GitHub** (T11, `docs/10-despliegue.md` paso 3, punto 1): solo la rama `main`. Sin él, el token de Fly quedaría al alcance de cualquier rama
-  - [ ] **La prueba del flujo de despliegue (T11):** después del merge y con el Environment creado, lanzar `gh workflow run deploy.yml --ref <una rama que no es main>` (sin `FLY_API_TOKEN` todavía): GitHub debe rechazarla por la regla del Environment (o el flujo, con "Solo se despliega desde main"). Es el único paso que lo prueba sin desplegar
-  - [ ] **Revisar la guía** `docs/10-despliegue.md` (T11) y decirme lo que no se entienda
-  - [ ] **Opcional:** agregar `CI / image` a los checks obligatorios de `main` (GitHub → Settings → Branches → la regla de `main`), como `CI / check`
+- **Al terminar el lote D** (2026-10-18, los hizo Claude a tu pedido, en Chrome y en el Mac):
+  - [x] **La medición de memoria del worker (T10):** con `pnpm dev`, una carga sintética (PRUEBA-MEM: 6 fotos de 4032×3024 y un video vertical 4K de 15 s, patrones de ffmpeg) preparada sin textos: el pico fue de unos **994 MB** (ffmpeg 714 MB al armar el reel, el worker 147 MB, Chromium unos 133 MB). El worker queda en **2 GB** en `fly.toml` (1 GB quedaría justo). PRUEBA-MEM quedó archivada en la rama `dev`
+  - [x] **El Environment `production` en GitHub (T11):** solo la rama `main`, sin que los administradores se salten la regla
+  - [x] **La prueba del flujo de despliegue (T11):** desde la rama `test/deploy-se-niega` (borrada después), GitHub lo rechazó antes de correr un paso: "Branch … is not allowed to deploy to production due to environment protection rules"
+  - [x] **Releer la guía** `docs/10-despliegue.md`: aclarado que el Environment ya existe, que el comando de los secretos se corre en la carpeta del proyecto, cuándo es la primera puesta en marcha (T21, después del lote E) y el mensaje real del rechazo. Si algo no se entiende al usarla, dímelo
+  - [x] **`CI / image` como check obligatorio de `main`** (2026-10-18): la regla de `main` exige `check` e `image` (lo agregó Claude en Chrome; tú confirmaste con tu contraseña)
+- **Desarrollo:** la rama `dev` de Neon ya tiene la migración `0011` (2026-10-18). Ojo: las propiedades y los logos copiados de producción a la rama `dev` apuntan a archivos que están en el bucket de producción, no en `agentsales-media-dev`; prepararlas en desarrollo falla con `STORAGE_NOT_FOUND` hasta volver a importar sus medios (y subir el logo del corredor: el de `agentsales-pruebas` ya es uno sintético en `dev`)
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups`, los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
@@ -63,7 +64,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 | **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
 | **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (la CLI y el panel probados contra R2 real; los dos buckets verificados) | #142 |
 | **Lote C** · T08 CLI: la dirección del servidor | ✅ terminada (probada contra la API en proceso; contra el servidor real, en T21) | (este PR) |
-| **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ✅ código terminado (falta lo tuyo: la medición de memoria, la prueba del flujo y revisar la guía) | (este PR) |
+| **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ✅ terminada (la memoria medida, el Environment `production` y su rechazo probados, `CI / image` obligatorio) | #148 |
 | **Lote E** · T13 Respaldo a R2 | ⏳ pendiente | |
 | **Lote F** · T14 Límites por IP · T15 Doble factor (core, base y API) · T16 Doble factor en el panel y la CLI | ⏳ pendiente | |
 | **Lote G** · T17 Instagram de verdad y las vueltas de Meta · T18 Páginas públicas | ⏳ pendiente | |
