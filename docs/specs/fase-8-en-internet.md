@@ -71,7 +71,7 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 - **Cabeceras de seguridad** (`secureHeaders` de Hono, sin dependencias): `Strict-Transport-Security` (1 año), `Content-Security-Policy` propia del panel (`default-src 'self'`; imágenes y videos también desde el dominio de R2 de las URLs prefirmadas; `connect-src 'self'` más R2 para la subida; `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` (ninguna dirección del panel sale en el `Referer` hacia otros sitios). El origen de R2 de la CSP (`https://<bucket>.<cuenta>.r2.cloudflarestorage.com`, la forma de las URLs prefirmadas) sale de la configuración, porque cambia entre desarrollo y producción, y cubre `img-src`, `media-src` y `connect-src`.
 - **`hostGuard` y el chequeo del proveedor:** el chequeo de salud puede llegar con otro `Host` (NO VERIFICADO): `GET /api/health` queda fuera de `hostGuard` (sin sesión no revela nada), y se prueba al desplegar.
 - **Vueltas de servidor a servidor:** `/api/meta/*` y `GET /api/oauth/*/callback` quedan fuera de `csrfGuard` y `originGuard` (Meta manda un formulario sin `Origin`; las protege su firma o su `state`), con un test.
-- **`/health`** para el proveedor: sin sesión, solo `status` y `publishMode` (como desde F7; la versión de Postgres ya es solo del administrador: la deuda de F6 queda cerrada).
+- **`/health`** para el proveedor: sin sesión, solo `status`, `publishMode` y `environment` (§4.2) (como desde F7; la versión de Postgres ya es solo del administrador: la deuda de F6 queda cerrada).
 - **Un solo proceso de la API** (§3): los límites por IP en memoria lo suponen (ADR-0026).
 
 ### 4.4 Subidas directas a R2 (ADR-0025)
@@ -254,7 +254,7 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 
 ### F8-T02 · La API sirve el panel, con cookies y cabeceras para HTTPS
 - **Depende de:** T01
-- **Archivos:** `apps/api/src/{app.ts,server.ts,auth.ts,access.ts,security.ts,static.ts}`, `apps/api/src/routes/oauth.ts`, `apps/web/vite.config.ts` (sin `rewrite`), `apps/web/src/components/accounts/ConnectBox.tsx`, `apps/web/test/harness.tsx`, `apps/cli/src/api-client.ts` (`/api`), `docs/01-arquitectura.md` (Seguridad)
+- **Archivos:** `apps/api/src/{app.ts,server.ts,server-app.ts,auth.ts,access.ts,security.ts}`, `apps/api/src/routes/oauth.ts`, `apps/web/vite.config.ts` (sin `rewrite`), `apps/web/src/components/accounts/ConnectBox.tsx`, `apps/web/test/harness.tsx`, `apps/cli/src/api-client.ts` (`/api`), `docs/01-arquitectura.md` (Seguridad)
 - **Descripción:** §4.3: el prefijo `/api` en los dos modos (API, Vite, CLI y la tabla de permisos) y el panel estático con su caché en producción, sin CORS, `__Host-` con `Secure` y `Path=/` (una cookie de `state` por proveedor), el inicio del OAuth desde la ruta de la URI de retorno, `secureHeaders` con la CSP del panel, `/api/health` fuera de `hostGuard` y las vueltas fuera del CSRF.
 - **Hecho cuando:**
   - [ ] Tests: una ruta del panel devuelve `index.html`, un `/api/x` inexistente 404 JSON, un archivo con hash con `immutable`; `OPTIONS` ajeno sin permisos de CORS; las cookies con `__Host-` y sus atributos con `https://` y las de hoy sin él; las cabeceras presentes; el `Host` ajeno (y la IP) rechazado salvo en `/api/health`; el inicio del OAuth con un prefijo; las rutas públicas bajo `/api` siguen públicas en la tabla de permisos; un `POST /api/meta/*` sin `Origin` no lo frena el CSRF
@@ -317,6 +317,7 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 - **Descripción:** §4.7: compilar sin tests, la imagen con ffmpeg (sha256), Chromium y `pg_dump`; la CI construye la imagen y la arranca para pedir `/health` (sin secretos: falla la base y eso se espera, pero el proceso arranca y responde).
 - **Hecho cuando:**
   - [ ] `dist` sin archivos de test ni `testing`; la imagen sin `.env` ni `data/muestras`
+  - [ ] El panel compilado, servido por `createServerApp` desde la imagen, carga en un navegador sin errores de la CSP en la consola (en el Mac la CSP no se ve: Vite sirve el panel)
   - [ ] La CI construye la imagen en cada PR
   - [ ] El pico de memoria del worker (con ffmpeg y Chromium) medido en una preparación con reel en el Mac, para elegir 1 o 2 GB (aviso antes de `pnpm dev`)
 
@@ -458,3 +459,4 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 | 2026-10-18 | Respuestas del operador: D4 (Marketplace a mano para todos) y D5 (cerrar con App Review enviado). D1: por ahora algo **gratis** para mostrar la herramienta y después un plan pagado; D2: un dominio con "agentpey" |
 | 2026-10-18 | Segunda nota de hosting (`hosting.md` §13, opciones gratis) y respuestas: D1 = **Fly.io en modo demo** con Neon gratis (frente a Oracle gratis, que hay que administrar y puede reclamarse); D2 = **`agentsales.agentpey.com`** (`agentpey.com` es del operador y lo usa otro proyecto). Criterios y demo con el servidor encendido; riesgo del cupo de Neon |
 | 2026-10-18 | **Aprobado** por el operador. ADR-0024, ADR-0025 y ADR-0026 registrados; seguimientos en ADR-0005, ADR-0007, ADR-0017, ADR-0021, ADR-0022 y ADR-0023; roadmap y checklist "Antes de F8" al día |
+| 2026-10-18 | Lote A (F8-T01 y T02, PR #140) y su revisión (`revisor` y `arquitecto`; un bloqueante, aplicado: `.gitignore` ignora `.env.*` salvo `.env.example`, para que `.env.production` nunca entre a git). Precisiones: en producción la IA debe ser `anthropic-api` (tampoco `fake`); la vuelta de Instagram del ejemplo de antes (sin `/api`) se ignora y se usa la nueva; `panelUrlOf` (config) da el panel también a `pnpm auth:admin`; la API y el worker rechazan `ENV_FILE` (`loadAppEnvFile`: es solo para los scripts, D12); `hostGuard` también cubre el panel compilado (salvo `GET /api/health`); `server-app.ts` reemplaza al `static.ts` de la lista; el mensaje de error habla del archivo de entorno. **Postergado:** la regla de producción de `BACKUP_TARGET` llega con T13, la de `BROWSER_PROFILES_DIR` con T20 y la cookie `__Host-agentsales_oauth_ml` con T19; la CSP en un navegador se revisa en T10 (en el Mac, Vite sirve el panel sin ella) |

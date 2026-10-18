@@ -65,7 +65,8 @@ export type HarnessOptions = {
 
 /**
  * La API real en proceso (`createApp` con repositorios en memoria) detrás del cliente del panel,
- * sin red: el proxy de Vite (`/api` → API) se imita quitando el prefijo (spec F1-T13).
+ * sin red: el pedido llega a `createApp` sin el prefijo `/api` (el servidor la monta con `mountApi`,
+ * spec F8 §4.3; aquí, como la tabla de permisos, la app se usa sin montar).
  */
 export function harness(options: HarnessOptions = {}) {
   const listings = createInMemoryListingRepository({ nextId: randomUUID });

@@ -9,8 +9,9 @@ import {
   createSecretTokens,
   createStateSigner,
   findWorkspaceRoot,
+  loadAppEnvFile,
   loadEnv,
-  loadEnvFile,
+  panelUrlOf,
   resolveBackupDir,
 } from "@agentsales/config";
 import { ALL_SCOPE, brokersNeedingApiKey } from "@agentsales/core";
@@ -46,23 +47,27 @@ import {
   MERCADOLIBRE_API_TIMEOUT_MS,
 } from "@agentsales/publishers";
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
-import { createR2Storage } from "@agentsales/storage";
+import { createR2Storage, r2BucketOrigin } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
+import { API_PREFIX } from "./access.js";
 import { createApp } from "./app.js";
 import { createApiOperations } from "./portal.js";
 import { createRequestContext } from "./request-context-node.js";
 import { instagramStartUrlOf } from "./routes/oauth.js";
-import { localAccess } from "./security.js";
+import { internetAccess, localAccess } from "./security.js";
+import { createServerApp } from "./server-app.js";
 import { readApiVersion } from "./version.js";
 
-/** Solo en local: la API no tiene autenticación hasta F7. */
-const HOSTNAME = "127.0.0.1";
 const HEALTHCHECK_PATH = "_healthcheck/ping";
 /** Mayor que el tope de un check de `/health` (25 s), para dejar terminar lo que está en curso. */
 const SHUTDOWN_TIMEOUT_MS = 30_000;
 
-loadEnvFile();
+// `ENV_FILE` es solo para los scripts (spec F8, D12): aquí se rechaza.
+loadAppEnvFile();
 const env = loadEnv();
+// En internet (spec F8 §4.2): el host, el panel y los orígenes salen de `PUBLIC_URL`; sin ella, el Mac.
+const publicUrl = env.PUBLIC_URL;
+const https = publicUrl?.startsWith("https://") ?? false;
 const logger = createLogger({
   level: env.LOG_LEVEL,
   pretty: env.NODE_ENV !== "production",
@@ -104,6 +109,8 @@ const backupDir = resolveBackupDir(env.BACKUP_DIR, {
   workspaceRoot: findWorkspaceRoot(),
 });
 
+const access =
+  publicUrl === undefined ? localAccess(env.API_PORT, env.WEB_PORT) : internetAccess(publicUrl);
 const app = createApp({
   // Usuarios y sesiones (F7, ADR-0021): `scrypt` y los tokens de config; la cookie `Secure` llega
   // con HTTPS en F8.
@@ -114,7 +121,8 @@ const app = createApp({
     brokers,
     hasher: createPasswordHasher(),
     tokens: createSecretTokens(),
-    secureCookie: false,
+    // Con HTTPS, la cookie `__Host-` y `Secure` (spec F8 §4.3).
+    secureCookie: https,
   },
   oauthStates: createOAuthStateRepository(database.db),
   requestContext: createRequestContext(),
@@ -178,7 +186,7 @@ const app = createApp({
   ),
   oauthState: createStateSigner(env.APP_ENCRYPTION_KEY),
   // El host del panel debe ser el mismo de la URI de retorno (la cookie distingue `localhost`).
-  panelUrl: `http://localhost:${env.WEB_PORT}`,
+  panelUrl: panelUrlOf(env),
   instagramStartUrl: instagramStartUrlOf(env.INSTAGRAM_REDIRECT_URI),
   queue,
   uploads: {
@@ -190,6 +198,7 @@ const app = createApp({
   localImports: env.NODE_ENV === "development",
   maxUploadBytes: env.MAX_IMPORT_UPLOAD_MB * 1024 * 1024,
   publishMode: env.PUBLISH_MODE,
+  environment: env.NODE_ENV === "production" ? "production" : "development",
   // Marketplace (spec F5 §4.6 y §4.7): el límite diario y si se puede convertir la UF.
   marketplace: {
     dailyLimit: env.MARKETPLACE_DAILY_LIMIT,
@@ -213,17 +222,30 @@ const app = createApp({
       }),
   },
   logger,
-  access: localAccess(env.API_PORT, env.WEB_PORT),
+  access,
 });
 
-const server = serve({ fetch: app.fetch, port: env.API_PORT, hostname: HOSTNAME }, (info) => {
-  logger.info({ url: `http://${HOSTNAME}:${info.port}` }, "API escuchando");
-  if (env.PUBLISH_MODE === "live") {
-    logger.warn("PUBLISH_MODE=live: las publicaciones son reales");
-  } else {
-    logger.info("PUBLISH_MODE=dry-run: no se publica nada de verdad");
-  }
+// La API bajo `/api` en los dos modos y, en producción, el panel compilado del mismo origen.
+const serverApp = createServerApp(app, {
+  ...(env.NODE_ENV === "production"
+    ? { panelDir: join(findWorkspaceRoot(), "apps/web/dist") }
+    : {}),
+  storageOrigin: r2BucketOrigin({ accountId: env.R2_ACCOUNT_ID, bucket: env.R2_BUCKET }),
+  https,
+  allowedHosts: access.allowedHosts,
 });
+
+const server = serve(
+  { fetch: serverApp.fetch, port: env.API_PORT, hostname: env.API_HOST },
+  (info) => {
+    logger.info({ url: `http://${env.API_HOST}:${info.port}${API_PREFIX}` }, "API escuchando");
+    if (env.PUBLISH_MODE === "live") {
+      logger.warn("PUBLISH_MODE=live: las publicaciones son reales");
+    } else {
+      logger.info("PUBLISH_MODE=dry-run: no se publica nada de verdad");
+    }
+  },
+);
 
 server.on("error", (error: NodeJS.ErrnoException) => {
   if (error.code === "EADDRINUSE") {

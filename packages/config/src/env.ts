@@ -49,6 +49,44 @@ const mercadoLibreRedirectUri = z.string().superRefine((value, ctx) => {
   }
 });
 
+/**
+ * La dirección pública del sistema (spec F8 §4.2): solo el origen (`https://host[:puerto]`), sin
+ * ruta, barra final, consulta, fragmento, usuario ni clave. De ella salen los hosts y orígenes
+ * permitidos, el panel y las direcciones de retorno de los OAuth.
+ */
+const publicUrl = z.string().superRefine((value, ctx) => {
+  const url = URL.parse(value);
+  if (url === null || (url.protocol !== "https:" && url.protocol !== "http:")) {
+    ctx.addIssue({ code: "custom", message: "debe ser una URL https://" });
+    return;
+  }
+  if (value !== url.origin) {
+    ctx.addIssue({
+      code: "custom",
+      message: "debe ser solo el origen (https://host), sin ruta, barra final, consulta ni usuario",
+    });
+  }
+});
+
+/** Un nombre de host o una IP para escuchar (`127.0.0.1`, `0.0.0.0`, `::`). */
+const listenHost = z
+  .string()
+  .regex(/^[A-Za-z0-9.:-]+$/, "debe ser un host o una IP (por ejemplo 127.0.0.1 o 0.0.0.0)");
+
+/** El nombre de una cabecera HTTP (la de la IP del cliente que pone el proxy, spec F8 §4.2). */
+const headerName = z
+  .string()
+  .regex(/^[A-Za-z0-9-]+$/, "debe ser el nombre de una cabecera (por ejemplo Fly-Client-IP)");
+
+/** El prefijo de la API en el servidor (spec F8 §4.3, ADR-0024): las vueltas de los OAuth lo llevan. */
+const API_PREFIX = "/api";
+
+/**
+ * La dirección de retorno de Mercado Libre en desarrollo: la registrada en la app (comparación
+ * exacta). `.test` nunca resuelve: el operador copia la dirección de la barra (spec F4 §4.2).
+ */
+const DEV_ML_REDIRECT_URI = "https://agentsales.test/oauth/mercadolibre/callback";
+
 // Variables obsoletas: una que cambiaría el comportamiento se avisa en vez de ignorarla en silencio.
 
 /**
@@ -84,6 +122,12 @@ const backupDir = z
 
 /** La carpeta de `pg_dump` y `pg_restore` (por ejemplo `/opt/homebrew/opt/libpq/bin`): absoluta. */
 const pgBinDir = z.string().refine((value) => value.startsWith("/"), "debe ser una ruta absoluta");
+
+/**
+ * El valor que traía `.env.example` hasta F7 para la vuelta de Instagram, sin el prefijo `/api`
+ * (spec F8 §4.3): se ignora y se usa el nuevo valor por defecto (ver `loadEnv`).
+ */
+const LEGACY_INSTAGRAM_REDIRECT_URI = "http://localhost:8787/oauth/instagram/callback";
 
 /** Variables que cambiaron de nombre (spec F3, D5). */
 const RENAMED_VARIABLES: Readonly<Record<string, string>> = {
@@ -142,6 +186,13 @@ const envSchema = z
       .default("development"),
     TZ_DISPLAY: z.string().default("America/Santiago"),
     API_PORT: port.default(8787),
+    // Dónde escucha la API: `127.0.0.1` en el Mac; en producción, explícito (`0.0.0.0` detrás del
+    // proxy del proveedor, spec F8 §4.2).
+    API_HOST: listenHost.default("127.0.0.1"),
+    // La dirección pública (obligatoria y `https://` en producción) y la cabecera con la IP del
+    // cliente que pone el proxy (solo para los límites por IP; sin ella, la del socket).
+    PUBLIC_URL: publicUrl.optional(),
+    CLIENT_IP_HEADER: headerName.optional(),
     WEB_PORT: port.default(5173),
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"], {
@@ -205,7 +256,8 @@ const envSchema = z
     // la API con el inicio de sesión de Instagram), no el de Configuración > Información básica.
     INSTAGRAM_APP_ID: z.string().optional(),
     INSTAGRAM_APP_SECRET: z.string().optional(),
-    INSTAGRAM_REDIRECT_URI: httpUrl.default("http://localhost:8787/oauth/instagram/callback"),
+    // Sin valor: `<PUBLIC_URL>/api/oauth/instagram/callback`, o la API local (ver abajo).
+    INSTAGRAM_REDIRECT_URI: httpUrl.optional(),
 
     // Mercado Libre / Portal Inmobiliario (F4): la app de developers.mercadolibre.cl. La dirección
     // de retorno es la misma registrada en la app (comparación exacta) y no necesita cargar: el
@@ -214,9 +266,8 @@ const envSchema = z
     // así que el código no llega a ningún servidor ajeno (nota de Mercado Libre §3.3).
     ML_APP_ID: z.string().optional(),
     ML_CLIENT_SECRET: z.string().optional(),
-    ML_REDIRECT_URI: mercadoLibreRedirectUri.default(
-      "https://agentsales.test/oauth/mercadolibre/callback",
-    ),
+    // Sin valor: `<PUBLIC_URL>/api/oauth/mercadolibre/callback`, o `.test` en desarrollo (ver abajo).
+    ML_REDIRECT_URI: mercadoLibreRedirectUri.optional(),
 
     // Facebook Marketplace (F5): avisos por día y cuenta (D8), la carpeta de los perfiles del
     // navegador (fuera del proyecto: guardan la sesión de Facebook, ADR-0017; la resuelve
@@ -247,9 +298,74 @@ const envSchema = z
         message: 'falta (obligatoria con LLM_PROVIDER="anthropic-api")',
       });
     }
-  });
+    if (env.NODE_ENV === "production") productionIssues(env, ctx);
+  })
+  .transform((env) => ({
+    ...env,
+    INSTAGRAM_REDIRECT_URI:
+      env.INSTAGRAM_REDIRECT_URI ??
+      (env.PUBLIC_URL === undefined
+        ? `http://localhost:${env.API_PORT}${API_PREFIX}/oauth/instagram/callback`
+        : `${env.PUBLIC_URL}${API_PREFIX}/oauth/instagram/callback`),
+    ML_REDIRECT_URI:
+      env.ML_REDIRECT_URI ??
+      (env.PUBLIC_URL === undefined
+        ? DEV_ML_REDIRECT_URI
+        : `${env.PUBLIC_URL}${API_PREFIX}/oauth/mercadolibre/callback`),
+  }));
 
-export type Env = Readonly<z.infer<typeof envSchema>>;
+/** Lo que mira `productionIssues` del entorno ya validado (antes de los valores derivados). */
+type ParsedEnv = {
+  LLM_PROVIDER: string;
+  PUBLIC_URL?: string | undefined;
+  INSTAGRAM_REDIRECT_URI?: string | undefined;
+  ML_REDIRECT_URI?: string | undefined;
+};
+
+/**
+ * Lo que exige `NODE_ENV=production` (spec F8 §4.2): `PUBLIC_URL` con `https://`, las direcciones de
+ * retorno dentro de ella y la API de Anthropic como IA (el plan Max es solo para uso propio, no para
+ * un servidor que atiende a terceros: `docs/integraciones/anthropic-terminos.md` §6). `API_HOST`
+ * explícito lo revisa `loadEnv`, que ve el entorno sin los valores por defecto. El respaldo a R2
+ * (`BACKUP_TARGET`) llega con F8-T13 y el formulario automático de Marketplace apagado, con F8-T20.
+ */
+function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
+  if (env.PUBLIC_URL === undefined) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["PUBLIC_URL"],
+      message: "falta (obligatoria con NODE_ENV=production)",
+    });
+  } else if (!env.PUBLIC_URL.startsWith("https://")) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["PUBLIC_URL"],
+      message: "debe ser https:// con NODE_ENV=production",
+    });
+  } else {
+    for (const variable of ["INSTAGRAM_REDIRECT_URI", "ML_REDIRECT_URI"] as const) {
+      const value = env[variable];
+      if (value !== undefined && !value.startsWith(`${env.PUBLIC_URL}/`)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [variable],
+          message: "debe empezar con PUBLIC_URL con NODE_ENV=production",
+        });
+      }
+    }
+  }
+  // Ni la CLI de Claude ni la IA de mentira (`fake` redactaría textos inventados sin avisar).
+  if (env.LLM_PROVIDER !== "anthropic-api") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["LLM_PROVIDER"],
+      message:
+        'debe ser "anthropic-api" con NODE_ENV=production (el plan de Claude es solo para uso propio)',
+    });
+  }
+}
+
+export type Env = Readonly<z.output<typeof envSchema>>;
 
 export type EnvIssue = { variable: string; message: string };
 
@@ -259,7 +375,9 @@ export class EnvError extends Error {
 
   constructor(issues: readonly EnvIssue[]) {
     const lines = issues.map((issue) => `  - ${issue.variable}: ${issue.message}`);
-    super(`Configuración inválida en .env (ver .env.example):\n${lines.join("\n")}`);
+    super(
+      `Configuración inválida en el archivo de entorno (ver .env.example):\n${lines.join("\n")}`,
+    );
     this.name = "EnvError";
     this.issues = issues;
   }
@@ -286,6 +404,17 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
   if (cleaned.BROWSER_PROFILES_DIR === LEGACY_BROWSER_PROFILES_DIR) {
     delete cleaned.BROWSER_PROFILES_DIR;
   }
+  // La vuelta de Instagram del ejemplo de antes no lleva `/api`: su inicio daría 404 (spec F8 §4.3).
+  if (cleaned.INSTAGRAM_REDIRECT_URI === LEGACY_INSTAGRAM_REDIRECT_URI) {
+    delete cleaned.INSTAGRAM_REDIRECT_URI;
+  }
+  // En producción, dónde escucha la API no se deja al valor por defecto (spec F8 §4.2).
+  if (cleaned.NODE_ENV === "production" && cleaned.API_HOST === undefined) {
+    outdated.push({
+      variable: "API_HOST",
+      message: "falta (obligatoria con NODE_ENV=production; por ejemplo 0.0.0.0)",
+    });
+  }
   const result = envSchema.safeParse(cleaned);
   if (!result.success || outdated.length > 0) {
     throw new EnvError([
@@ -299,4 +428,12 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     ]);
   }
   return Object.freeze(result.data);
+}
+
+/**
+ * La dirección del panel (los enlaces de invitación y la vuelta de los OAuth, spec F8 §4.2):
+ * `PUBLIC_URL` en el servidor, o el panel de Vite en el Mac.
+ */
+export function panelUrlOf(env: Pick<Env, "PUBLIC_URL" | "WEB_PORT">): string {
+  return env.PUBLIC_URL ?? `http://localhost:${env.WEB_PORT}`;
 }

@@ -1,4 +1,11 @@
-import { type Env, EnvError, type EnvIssue, loadEnv, loadEnvFile } from "@agentsales/config";
+import {
+  type Env,
+  EnvError,
+  EnvFileError,
+  type EnvIssue,
+  loadEnv,
+  loadEnvFile,
+} from "@agentsales/config";
 
 export type EnvResult =
   | { ok: true; env: Env }
@@ -21,7 +28,15 @@ export function loadEnvironment(options: LoadEnvironmentOptions = {}): EnvResult
   let fileFound: boolean;
   try {
     fileFound = loadEnvFile(options.root);
-  } catch {
+  } catch (error) {
+    // `ENV_FILE` que no existe (spec F8 §4.2): el mensaje nombra el archivo, nunca su contenido.
+    if (error instanceof EnvFileError) {
+      return {
+        ok: false,
+        fileFound: false,
+        issues: [{ variable: "ENV_FILE", message: error.message }],
+      };
+    }
     return {
       ok: false,
       fileFound: true,

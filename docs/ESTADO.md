@@ -4,11 +4,12 @@
 
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** spec de F8 aprobado (`/fase-plan 8`, 2026-10-18), con ADR-0024 a ADR-0026 y las notas de `integraciones` de hosting, Instagram §13 y términos de Anthropic
-**Siguiente paso:** `/tarea F8-T01 F8-T02` (lote A: configuración y la API en internet). Antes del lote B, tus pasos de desarrollo separado (abajo)
+**Última tarea:** lote A de F8 (T01 y T02): la configuración de producción (`PUBLIC_URL`, `API_HOST`, `ENV_FILE`) y la API bajo `/api` con el panel compilado, cookies `__Host-` y cabeceras de seguridad
+**Siguiente paso:** tus pasos de "Antes del lote B" (abajo) y después `/tarea F8-T03 F8-T04 F8-T05 F8-T06 F8-T07 F8-T09` (lote B: subidas a R2)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
+- [ ] **Tu `.env` (lote A):** si tiene `INSTAGRAM_REDIRECT_URI=http://localhost:8787/oauth/instagram/callback` (el valor del ejemplo de antes), déjala vacía o bórrala: ahora la API va bajo `/api` y el valor por defecto ya lo trae. En el Mac no cambia nada visible (el OAuth de Instagram sigue apagado sin HTTPS)
 - [ ] **Antes del lote B:** rama `dev` de Neon, otra `APP_ENCRYPTION_KEY` en `.env` (la de hoy a `.env.production`) y `pnpm db:dev-scrub`, el bucket `agentsales-media-dev` con su token, y la regla de CORS en los dos buckets
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups`, los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
@@ -41,7 +42,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F8 (`/fase-plan 8`) | ✅ aprobado | (este PR) |
-| **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ⏳ pendiente | |
+| **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
 | **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 | ⏳ pendiente | |
 | **Lote C** · T08 CLI: la dirección del servidor | ⏳ pendiente | |
 | **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ⏳ pendiente | |
@@ -118,11 +119,10 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
-- **Para F8 (despliegue), CORS:** el CSRF y `originGuard` no exigen `Origin` a un pedido con `Authorization` (ADR-0021, lote G). Si se habilita CORS, `Authorization` nunca va en `Access-Control-Allow-Headers` para un origen ajeno.
 - **Para F8 (despliegue):** la API depende de `@agentsales/media` (por el logo) y con eso instala también `playwright` (el paquete, no el navegador). Al desplegar, separar el logo en un paquete propio o aceptar la dependencia.
 - **Panel, el selector al recargar (F7-T17):** mientras cargan los corredores, el filtro todavía no se aplica y la primera consulta sale sin él (se repite al llegar la lista). No muestra nada ajeno (es del administrador), pero pide dos veces.
 - **Logos reemplazados (F7-T14):** al subir otro logo, el anterior queda como medio del corredor y en R2 (no se borra). Ocupa poco; limpiarlo junto con los medios huérfanos cuando haga falta.
-- **Para F8:** `/health` muestra la versión de Postgres (desde F7, solo al administrador); al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
+- **Para F8 (T12):** un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
 - **Para F8 (de F6-T08):** si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec F6 §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5). (El alcance de `/tracking` y `/agenda` en el servidor se cerró en F7-T09.)
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
 - **Después del MVP (spec F7, D7), campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
@@ -131,10 +131,9 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda para F8 (D5 del spec F1).
 - F8: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - **F8, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
-- **F8, OAuth:** `instagramStartUrlOf` asume la API en la raíz del host de `INSTAGRAM_REDIRECT_URI`. Si el despliegue la monta tras un prefijo, derivar el inicio desde la ruta de la URI de retorno.
 - **F8, refresco de tokens:** el job `tokens.refresh` expira a los 5 min y la expiración no corta el handler. Con una cuenta por corredor sobra; con muchas cuentas (llamadas de hasta 30 s), subir el tope o dejar de empezar cuentas nuevas pasados unos 4 min, para que un reintento no se cruce con el intento anterior.
 - **F8, vuelta de Mercado Libre:** el `state` es de un solo uso desde F7-T10, pero `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática (`/oauth/mercadolibre/callback`): F8 registra en la app una segunda dirección de su dominio real, y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
-- **F8, cuentas:** `panelUrl` y `allowedHosts` están fijos en `localhost`. El `state` de Instagram no es de un solo uso (vale sus 10 min; hoy basta con que la cookie se borre): guardar el nonce usado, como el de Mercado Libre. (Quién conecta cada corredor se cerró en F7-T08: conectar es del administrador.)
+- **F8, cuentas (T17):** el `state` de Instagram no es de un solo uso (vale sus 10 min; hoy basta con que la cookie se borre): guardar el nonce usado, como el de Mercado Libre. (Quién conecta cada corredor se cerró en F7-T08: conectar es del administrador.)
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **F8:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un xlsx de 10 MB (que es un zip) podría descomprimirse en mucho más dentro de exceljs. El cuerpo de la subida ya tiene tope (T11: `MAX_IMPORT_UPLOAD_MB` y 413), y el zip de medios también (T06: 4 GB y `validateEntrySizes`). Falta limitar el tamaño descomprimido del xlsx con subidas públicas.
@@ -150,6 +149,11 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-18: **Lote A de F8 (T01 y T02).**
+  - **Configuración:** `PUBLIC_URL` (solo el origen), `API_HOST` y `CLIENT_IP_HEADER`; con `NODE_ENV=production`, `loadEnv` exige `PUBLIC_URL` con `https://`, `API_HOST` explícito, las vueltas de los OAuth dentro de `PUBLIC_URL` y otra IA que `claude-cli`. `ENV_FILE=.env.production` elige el archivo de los scripts (uno que no existe es un error).
+  - **La API bajo `/api` también en tu Mac:** Vite ya no quita el prefijo y la CLI llama a `/api`; en el servidor, la API sirve el panel compilado del mismo origen (sin CORS). Cookies `__Host-` con HTTPS, el inicio del OAuth desde la ruta de la vuelta, `/health` con el ambiente y fuera de `hostGuard`, y las cabeceras de seguridad (CSP con el origen de R2).
+  - **Deuda cerrada:** CORS (no hay: mismo origen), la versión de Postgres en `/health` (ya solo del administrador), el inicio del OAuth tras un prefijo, y `panelUrl` y `allowedHosts` desde `PUBLIC_URL`. También `pnpm auth:admin` usa `PUBLIC_URL` para el enlace, y la API y el worker rechazan `ENV_FILE` (es solo para los scripts). `.gitignore` ignora `.env.*` salvo `.env.example`.
+  - **Probado con `pnpm dev`** (aviso previo): `/api/health` directo y por Vite, `cli status` y `cli listings`, y el panel; apagado al terminar.
 - 2026-10-18: **Spec de F8 aprobado** (`/fase-plan 8`).
   - **Investigado** (`integraciones`): hosting y costos (Neon gratis no aguanta el worker siempre encendido), opciones gratis (solo Oracle es US$ 0, pero hay que administrarlo), el App Review de Meta (tres trámites, unas 5 semanas, quizás pidan empresa o inicio de actividades) y los términos de Anthropic (tu clave sirve para tus clientes; el plan Max, solo para uso propio).
   - **Revisión del `arquitecto`:** 12 bloqueantes aplicados (el prefijo `/api` en los dos modos desde el lote A, otra clave de cifrado en desarrollo para no rotar el token de Mercado Libre de producción, las vueltas de Meta sin cambiar el estado de las publicaciones, entre otros).

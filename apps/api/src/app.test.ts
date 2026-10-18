@@ -4,7 +4,7 @@ import type { HealthReport } from "@agentsales/core";
 import { AppError, healthReportSchema } from "@agentsales/core";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it } from "vitest";
-import { type AppDeps, createApp } from "./app.js";
+import { type AppDeps, createApp, mountApi } from "./app.js";
 import type { ErrorBody } from "./errors.js";
 import { adminApp, TEST_ADMIN_TOKEN, testDeps } from "./testing/index.js";
 
@@ -306,12 +306,25 @@ describe("manejo de errores", () => {
 
 describe("acceso local", () => {
   it("rechaza un Host que no es local (DNS rebinding)", async () => {
-    const response = await appWith().request("http://evil.example:8787/health");
+    const response = await appWith().request("http://evil.example:8787/listings");
 
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({
       error: { code: "HOST_NOT_ALLOWED", message: "Host no permitido: evil.example:8787" },
     });
+  });
+
+  it("GET /health no pasa por hostGuard: el chequeo del proveedor puede llegar por la IP (F8-T02)", async () => {
+    const app = mountApi(appWith());
+    for (const url of ["http://10.0.0.7:8080/api/health", "http://evil.example/health"]) {
+      const response = await (url.includes("/api/") ? app : appWith()).request(url);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ status: "ok", publishMode: "dry-run" });
+    }
+    expect((await app.request("http://10.0.0.7:8080/api/listings")).status).toBe(403);
+    expect((await app.request("http://10.0.0.7:8080/api/health", { method: "POST" })).status).toBe(
+      403,
+    );
   });
 
   it("rechaza un formulario enviado desde otro origen (CSRF)", async () => {

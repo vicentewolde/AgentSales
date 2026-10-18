@@ -3,7 +3,8 @@ import { CopyCommand } from "./CopyCommand.js";
 
 /**
  * Cómo conectar (o reconectar) la cuenta de un corredor: el enlace del OAuth solo con `https` (F7),
- * directo a la API (no por el proxy `/api`: la cookie del `state` va en su host); en F3 (D4), el
+ * al inicio que da la API en el host de su vuelta (la cookie del `state` va en ese host; en internet
+ * es el mismo del panel, spec F8 §4.3); en F3 (D4), el
  * comando de la CLI con el token del panel de Meta, para copiar.
  */
 export function ConnectBox({

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { type AppDeps, createApp, localAccess } from "@agentsales/api";
+import { type AppDeps, createApp, localAccess, mountApi, routePathOf } from "@agentsales/api";
 import { testAuth, testDeps, withAdminSession } from "@agentsales/api/testing";
 import {
   ALL_SCOPE,
@@ -89,16 +89,19 @@ export function harness(options: HarnessOptions = {}) {
   // Con la sesión del administrador en cada pedido (F7-T06): los comandos de antes siguen igual.
   // Los usuarios y sesiones de la API, para sembrar el de un corredor (F7-T16).
   const auth = testAuth();
-  const created = createApp(
-    testDeps({
-      auth: { ...auth, brokers: repos.brokers },
-      access: localAccess(PORT, 5173),
-      importRuns,
-      queue,
-      publications,
-      ...repos,
-      lock,
-    }),
+  // Montada bajo `/api`, como la sirve `server.ts` (spec F8 §4.3).
+  const created = mountApi(
+    createApp(
+      testDeps({
+        auth: { ...auth, brokers: repos.brokers },
+        access: localAccess(PORT, 5173),
+        importRuns,
+        queue,
+        publications,
+        ...repos,
+        lock,
+      }),
+    ),
   );
   // La sesión de la CLI: la bitácora registra `actor: cli` (F7-T10).
   const app = options.anonymous ? created : withAdminSession(created, { client: "cli" });
@@ -106,7 +109,8 @@ export function harness(options: HarnessOptions = {}) {
   const fetchApp = async (input: string | URL | Request, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
     const method = init?.method ?? "GET";
-    requests.push(`${method} ${new URL(url).pathname}`);
+    // Sin el prefijo `/api`: los tests nombran las rutas como la tabla de permisos.
+    requests.push(`${method} ${routePathOf(new URL(url).pathname)}`);
     options.beforeRequest?.(url, method);
     const response = await app.request(url, init);
     return options.afterResponse?.(url, method, response) ?? response;

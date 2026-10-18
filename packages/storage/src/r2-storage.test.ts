@@ -3,7 +3,7 @@ import { AppError } from "@agentsales/core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { createR2Storage, readBody, streamFromBody } from "./r2-storage.js";
+import { createR2Storage, r2BucketOrigin, readBody, streamFromBody } from "./r2-storage.js";
 
 const ORIGIN = "https://test-bucket.fake-account.r2.cloudflarestorage.com";
 
@@ -592,5 +592,23 @@ describe("signedReadUrl", () => {
     const url = await storage.signedReadUrl("a.jpg");
 
     expect(url).not.toContain(options.secretAccessKey);
+  });
+});
+
+describe("r2BucketOrigin (F8-T02)", () => {
+  it("es el origen de las URLs prefirmadas (lo usa la CSP del panel)", async () => {
+    const options = {
+      accountId: "cuenta-de-prueba",
+      accessKeyId: "fake-access-key",
+      secretAccessKey: "fake-secret-access-key",
+      bucket: "agentsales-media",
+      signedUrlTtlSeconds: 60,
+    };
+    const url = await createR2Storage(options).signedReadUrl("listings/x/foto.jpg");
+
+    expect(new URL(url).origin).toBe(r2BucketOrigin(options));
+    expect(r2BucketOrigin(options)).toBe(
+      "https://agentsales-media.cuenta-de-prueba.r2.cloudflarestorage.com",
+    );
   });
 });

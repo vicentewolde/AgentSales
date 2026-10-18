@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { findWorkspaceRoot, loadEnvFile } from "./env-file.js";
+import { EnvFileError, findWorkspaceRoot, loadAppEnvFile, loadEnvFile } from "./env-file.js";
 
 const VARIABLE = "AGENTSALES_TEST_ENV_FILE";
 
@@ -65,5 +65,50 @@ describe("env-file", () => {
       process.chdir(cwd);
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  describe("ENV_FILE (F8-T01)", () => {
+    it("carga el archivo elegido, relativo a la raíz, en vez de .env", () => {
+      writeFileSync(join(root, ".env"), `${VARIABLE}=desarrollo\n`);
+      writeFileSync(join(root, ".env.production"), `${VARIABLE}=produccion\n`);
+
+      expect(loadEnvFile(root, ".env.production")).toBe(true);
+      expect(process.env[VARIABLE]).toBe("produccion");
+    });
+
+    it("acepta una ruta absoluta", () => {
+      const file = join(root, "otro.env");
+      writeFileSync(file, `${VARIABLE}=absoluta\n`);
+
+      expect(loadEnvFile(root, file)).toBe(true);
+      expect(process.env[VARIABLE]).toBe("absoluta");
+    });
+
+    it("un ENV_FILE que no existe falla con un error claro (nunca cae en .env)", () => {
+      writeFileSync(join(root, ".env"), `${VARIABLE}=desarrollo\n`);
+
+      expect(() => loadEnvFile(root, ".env.produccion")).toThrow(EnvFileError);
+      expect(() => loadEnvFile(root, ".env.produccion")).toThrow(
+        /ENV_FILE=\.env\.produccion: el archivo no existe/,
+      );
+      expect(process.env[VARIABLE]).toBeUndefined();
+    });
+
+    it("la API y el worker rechazan ENV_FILE (es solo para los scripts) y sin él leen .env", () => {
+      writeFileSync(join(root, ".env"), `${VARIABLE}=desarrollo\n`);
+      writeFileSync(join(root, ".env.production"), `${VARIABLE}=produccion\n`);
+
+      expect(() => loadAppEnvFile(root, ".env.production")).toThrow(/es solo para los scripts/);
+      expect(process.env[VARIABLE]).toBeUndefined();
+      expect(loadAppEnvFile(root, undefined)).toBe(true);
+      expect(process.env[VARIABLE]).toBe("desarrollo");
+    });
+
+    it("un ENV_FILE vacío cuenta como no definido", () => {
+      writeFileSync(join(root, ".env"), `${VARIABLE}=desarrollo\n`);
+
+      expect(loadEnvFile(root, " ")).toBe(true);
+      expect(process.env[VARIABLE]).toBe("desarrollo");
+    });
   });
 });

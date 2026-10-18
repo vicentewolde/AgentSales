@@ -26,12 +26,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: webPort,
       strictPort: true,
-      // La API expone sus rutas sin prefijo y solo escucha en IPv4 (spec F0 §4.5).
+      // La API va bajo `/api` también en el Mac (spec F8 §4.3, ADR-0024): el proxy la pasa tal
+      // cual. Solo escucha en IPv4 (spec F0 §4.5).
       proxy: {
-        "/api": {
-          target: `http://127.0.0.1:${apiPort}`,
-          rewrite: (path) => path.replace(/^\/api/, ""),
-        },
+        "/api": { target: `http://127.0.0.1:${apiPort}` },
       },
     },
   };

@@ -8,6 +8,18 @@
 
 export type RoutePolicy = "public" | "session" | "admin";
 
+/**
+ * El prefijo de la API (spec F8 §4.3, ADR-0024): `server.ts` monta la app bajo `/api` en los dos
+ * modos (`mountApi`), así el panel y la API comparten origen. La tabla de abajo va sin él.
+ */
+export const API_PREFIX = "/api";
+
+/** La ruta de la app sin el prefijo `/api` (los tests llaman a `createApp` sin montar). */
+export function routePathOf(path: string): string {
+  if (path === API_PREFIX) return "/";
+  return path.startsWith(`${API_PREFIX}/`) ? path.slice(API_PREFIX.length) : path;
+}
+
 export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "GET /health": "public",
   // Entrar, salir y la invitación (F7-T04).

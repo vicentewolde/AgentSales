@@ -8,8 +8,8 @@ coverage/
 
 # Entorno y secretos
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Datos reales (nunca a git)
 data/muestras/
