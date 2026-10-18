@@ -152,9 +152,14 @@ export function createInMemoryUserRepositories(
           };
     },
     async startTotp(id, secretEncrypted) {
+      if (mustGet(id).totpEnabledAt !== null) return null;
       return update(id, { totpSecretEncrypted: secretEncrypted, totpLastStep: null });
     },
-    async enableTotp(id, { at, step, recoveryCodeHashes }) {
+    async enableTotp(id, { secretEncrypted, at, step, recoveryCodeHashes }) {
+      const current = mustGet(id);
+      if (current.totpEnabledAt !== null || current.totpSecretEncrypted !== secretEncrypted) {
+        return null;
+      }
       const user = update(id, { totpEnabledAt: at, totpLastStep: step });
       recovery.set(
         id,

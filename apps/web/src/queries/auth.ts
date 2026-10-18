@@ -89,7 +89,13 @@ export function useConfirmTotp() {
   return useMutation({
     mutationFn: async (code: string): Promise<TotpConfirmResponse> =>
       unwrap(client.auth.totp.confirm.$post({ json: { code } }), totpConfirmResponseSchema),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      // El estado nuevo de una vez (sin mostrar "Activar" mientras llega); solo la cuenta, nunca
+      // los códigos.
+      queryClient.setQueryData(authKeys.totp, {
+        enabled: true,
+        recoveryCodesLeft: result.recoveryCodes.length,
+      });
       void queryClient.invalidateQueries({ queryKey: authKeys.totp });
       void queryClient.invalidateQueries({ queryKey: authKeys.me });
     },
@@ -107,6 +113,7 @@ export function useDisableTotp() {
       if (!response.ok) await unwrap(response, totpStatusResponseSchema);
     },
     onSuccess: () => {
+      queryClient.setQueryData(authKeys.totp, { enabled: false, recoveryCodesLeft: 0 });
       void queryClient.invalidateQueries({ queryKey: authKeys.totp });
       void queryClient.invalidateQueries({ queryKey: authKeys.me });
     },

@@ -55,17 +55,23 @@ export interface UserRepository {
   findTotp(id: string): Promise<StoredTotp | null>;
   /**
    * Guarda una clave nueva todavía sin activar (empezar a activar): reemplaza otra a medio
-   * activar. No cambia `totpEnabledAt`.
+   * activar. Condicional: `null` si el doble factor ya está activo (no pisa su clave).
    */
-  startTotp(id: string, secretEncrypted: string): Promise<User>;
+  startTotp(id: string, secretEncrypted: string): Promise<User | null>;
   /**
-   * Activa el doble factor con la clave guardada: `totpEnabledAt = at`, el paso usado y los hashes
-   * de los códigos de recuperación (reemplazan los anteriores), en una transacción.
+   * Activa el doble factor: `totpEnabledAt = at`, el paso usado y los hashes de los códigos de
+   * recuperación (reemplazan los anteriores), en una transacción. Condicional: solo si sigue sin
+   * activar y con la clave `secretEncrypted` (la que se revisó); si no, `null` y no cambia nada.
    */
   enableTotp(
     id: string,
-    input: { at: Date; step: number; recoveryCodeHashes: readonly string[] },
-  ): Promise<User>;
+    input: {
+      secretEncrypted: string;
+      at: Date;
+      step: number;
+      recoveryCodeHashes: readonly string[];
+    },
+  ): Promise<User | null>;
   /**
    * Anota el paso usado solo si es más nuevo que el último (condicional, atómico): `false` si ese
    * código ya se usó (o uno posterior). Así un código no sirve dos veces.

@@ -335,6 +335,8 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     instagramStartUrl: "http://localhost:8787/api/oauth/instagram/start",
     // Sin operaciones: los tests de Portal pasan las suyas (nunca llaman a Mercado Libre).
     operationsFor: () => undefined,
+    // Sin límites por IP: los prueba `rate-limit.test.ts` con los suyos.
+    rateLimit: null,
     ...overrides,
   };
   listingsRef = deps.listings;

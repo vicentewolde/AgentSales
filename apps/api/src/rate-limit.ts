@@ -40,12 +40,14 @@ export type RateLimiter = {
 };
 
 /** Sobre esta cantidad de claves se borran las ventanas vencidas (la memoria no crece sin fin). */
-const DEFAULT_MAX_KEYS = 10_000;
+const DEFAULT_MAX_KEYS = 50_000;
 
 /**
  * Ventanas fijas en un `Map`: la primera vez que una clave pide en una ventana, la ventana empieza;
- * al vencer, se renueva con el pedido siguiente. Con más de `maxKeys` claves se borran las vencidas
- * y, si todavía sobran (un ataque desde muchas IP), todas: los topes vuelven a cero, nunca se cae.
+ * al vencer, se renueva con el pedido siguiente. Con `maxKeys` claves se borran las vencidas y, si
+ * todavía no hay lugar (un ataque desde muchas IP), las más viejas del tope general de la API; los
+ * topes de entrar y de las invitaciones se borran al final, los más viejos primero. Nunca se cae ni
+ * crece sin fin.
  */
 export function createRateLimiter(
   options: { now?: () => number; maxKeys?: number } = {},
@@ -55,7 +57,15 @@ export function createRateLimiter(
   const windows = new Map<string, { count: number; resetAt: number }>();
   const sweep = (at: number) => {
     for (const [key, window] of windows) if (window.resetAt <= at) windows.delete(key);
-    if (windows.size >= maxKeys) windows.clear();
+    // El `Map` guarda el orden de llegada: se recorren de la más vieja a la más nueva.
+    for (const key of windows.keys()) {
+      if (windows.size < maxKeys) return;
+      if (key.startsWith(`${RATE_LIMITS.api[0].name}:`)) windows.delete(key);
+    }
+    for (const key of windows.keys()) {
+      if (windows.size < maxKeys) return;
+      windows.delete(key);
+    }
   };
   return {
     hit(key, rule) {
@@ -75,6 +85,27 @@ export function createRateLimiter(
 
 /** La IP del cliente de un pedido. */
 export type ClientIpOf = (c: Context) => string;
+
+/**
+ * La clave de los topes para una IP: una IPv4 tal cual; una IPv6, su prefijo /64 (una conexión
+ * suele tener un /64 entero, así que cambiar de dirección dentro de él no salta los topes). Una
+ * IPv4 escrita como IPv6 (`::ffff:1.2.3.4`) cuenta como la IPv4.
+ */
+export function rateLimitKeyOf(ip: string): string {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped?.[1] !== undefined) return mapped[1];
+  if (!ip.includes(":")) return ip;
+  const [head = "", tail = ""] = ip.toLowerCase().split("%")[0]?.split("::") ?? [];
+  const left = head === "" ? [] : head.split(":");
+  const right = tail === "" ? [] : tail.split(":");
+  const groups = ip.includes("::")
+    ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right]
+    : left;
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.replace(/^0+(?=.)/, ""))
+    .join(":")}::/64`;
+}
 
 /**
  * La IP del cliente (spec F8 §4.2): con `CLIENT_IP_HEADER` (en Fly, `Fly-Client-IP`), esa cabecera
@@ -129,7 +160,7 @@ function firstExceeded(
  */
 export function rateLimitByIp(deps: RateLimitDeps): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    const ip = deps.clientIp(c);
+    const ip = rateLimitKeyOf(deps.clientIp(c));
     const path = routePathOf(c.req.path);
     const route =
       c.req.method === "POST" && LOGIN_PATHS.has(path)

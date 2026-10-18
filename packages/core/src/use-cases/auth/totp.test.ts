@@ -24,7 +24,7 @@ import {
   startTotpSetup,
   totpStatus,
 } from "./totp.js";
-import { ensureAdmin, resetUserAccess } from "./users.js";
+import { acceptInvitation, ensureAdmin, resetUserAccess } from "./users.js";
 
 // F8-T15 (spec F8 §4.8, ADR-0026): el doble factor, el segundo paso de entrar y los códigos de
 // recuperación, con dobles en memoria.
@@ -336,28 +336,82 @@ describe("desactivar y restablecer", () => {
     expect((await login(s.deps, credentials)).kind).toBe("session");
   });
 
-  it("pnpm auth:admin (ensureAdmin) le quita el doble factor al administrador", async () => {
+  it("pnpm auth:admin (ensureAdmin) le quita el doble factor al usar el enlace, no antes", async () => {
     const s = await setup();
     await s.enable();
 
-    await ensureAdmin(s.deps, { email: EMAIL });
+    const link = await ensureAdmin(s.deps, { email: EMAIL });
+    // Mientras el enlace no se usa, la contraseña sola no entra.
+    expect((await s.user()).totpEnabledAt).not.toBeNull();
+    expect((await login(s.deps, credentials)).kind).toBe("totp_required");
 
+    await acceptInvitation(
+      { ...s.deps, brokers: { findById: async () => null } },
+      {
+        token: link.token,
+        password: "otra-clave-larga-2",
+        client: "panel",
+      },
+    );
     expect((await s.user()).totpEnabledAt).toBeNull();
     expect(s.repos.recoveryCodes(s.session.userId)).toEqual([]);
   });
 
-  it("restablecer a un usuario (el administrador) también le quita el doble factor", async () => {
+  it("restablecer a un usuario también le quita el doble factor, al usar el enlace", async () => {
     const s = await setup();
     await s.enable();
     const actor = await s.user();
+    const deps = { ...s.deps, brokers: { findById: async () => null } };
 
-    await resetUserAccess(
-      { ...s.deps, brokers: { findById: async () => null } },
-      { actor, userId: actor.id },
-    );
+    const link = await resetUserAccess(deps, { actor, userId: actor.id });
+    expect((await s.user()).totpEnabledAt).not.toBeNull();
 
+    await acceptInvitation(deps, {
+      token: link.token,
+      password: "otra-clave-larga-2",
+      client: "cli",
+    });
     expect((await s.user()).totpEnabledAt).toBeNull();
     expect(s.repos.recoveryCodes(actor.id)).toEqual([]);
+  });
+
+  it("desactivar con un código malo cuenta para el bloqueo; bloqueado, ni el bueno sirve", async () => {
+    const s = await setup();
+    await s.enable();
+    s.advance(60_000);
+    const attempt = async (code: string) =>
+      caught(disableTotp(s.deps, { user: await s.user(), code, keepSessionId: s.session.id }));
+
+    for (let n = 0; n < LOGIN_MAX_FAILURES; n += 1) {
+      expect(await attempt("000000")).toMatchObject({ code: "TOTP_CODE_INVALID" });
+    }
+    expect((await s.user()).lockedUntil).not.toBeNull();
+    expect(await attempt(s.code())).toMatchObject({ code: "AUTH_LOCKED" });
+    expect((await s.user()).totpEnabledAt).not.toBeNull();
+  });
+
+  it("si otro setup cambió la clave mientras se confirmaba, la confirmación no la activa", async () => {
+    const s = await setup();
+    await startTotpSetup(s.deps, { user: await s.user() });
+    const stale = { ...s.deps.users };
+    // Entre leer la clave y activarla, otro pedido pidió una clave nueva.
+    const users = {
+      ...stale,
+      findTotp: async (id: string) => {
+        const found = await s.repos.users.findTotp(id);
+        await startTotpSetup(s.deps, { user: await s.user() });
+        return found;
+      },
+    };
+    expect(
+      await caught(
+        confirmTotpSetup(
+          { ...s.deps, users },
+          { user: await s.user(), code: s.code(), keepSessionId: s.session.id },
+        ),
+      ),
+    ).toMatchObject({ code: "TOTP_NOT_STARTED" });
+    expect((await s.user()).totpEnabledAt).toBeNull();
   });
 
   it("otpauthUrl escapa el correo y el emisor", () => {

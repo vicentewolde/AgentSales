@@ -238,16 +238,22 @@ export function userRepositoryContract(name: string, make: () => Promise<UserRep
       });
 
       const started = await repos.users.startTotp(user.id, "sellado-1");
-      expect(started.totpEnabledAt).toBeNull();
+      expect(started?.totpEnabledAt).toBeNull();
       expect(started).not.toHaveProperty("totpSecretEncrypted");
       await repos.users.startTotp(user.id, "sellado-2");
 
+      // Con una clave que ya no es la guardada (otro `setup` a la vez), no activa nada.
+      const codes = { at: NOW, step: 100, recoveryCodeHashes: ["h1", "h2", "h3"] };
+      expect(
+        await repos.users.enableTotp(user.id, { ...codes, secretEncrypted: "sellado-1" }),
+      ).toBeNull();
+      expect(await repos.users.countRecoveryCodes(user.id)).toBe(0);
+
       const enabled = await repos.users.enableTotp(user.id, {
-        at: NOW,
-        step: 100,
-        recoveryCodeHashes: ["h1", "h2", "h3"],
+        ...codes,
+        secretEncrypted: "sellado-2",
       });
-      expect(enabled.totpEnabledAt).toEqual(NOW);
+      expect(enabled?.totpEnabledAt).toEqual(NOW);
       expect(await repos.users.get(user.id)).toEqual(enabled);
       expect(await repos.users.findTotp(user.id)).toEqual({
         secretEncrypted: "sellado-2",
@@ -255,6 +261,21 @@ export function userRepositoryContract(name: string, make: () => Promise<UserRep
         lastStep: 100,
       });
       expect(await repos.users.countRecoveryCodes(user.id)).toBe(3);
+      // Ya activo: ni empezar de nuevo pisa la clave, ni activar otra vez reemplaza los códigos.
+      expect(await repos.users.startTotp(user.id, "sellado-3")).toBeNull();
+      expect(
+        await repos.users.enableTotp(user.id, {
+          secretEncrypted: "sellado-2",
+          at: NOW,
+          step: 101,
+          recoveryCodeHashes: ["x"],
+        }),
+      ).toBeNull();
+      expect((await repos.users.findTotp(user.id))?.secretEncrypted).toBe("sellado-2");
+      expect(await repos.users.countRecoveryCodes(user.id)).toBe(3);
+      await expect(
+        repos.users.startTotp("00000000-0000-4000-8000-000000000999", "x"),
+      ).rejects.toMatchObject({ code: "USER_NOT_FOUND" });
 
       const cleared = await repos.users.clearTotp(user.id);
       expect(cleared.totpEnabledAt).toBeNull();
@@ -272,7 +293,12 @@ export function userRepositoryContract(name: string, make: () => Promise<UserRep
     it("un paso solo avanza: el mismo código o uno anterior no sirven otra vez", async () => {
       const user = await admin();
       await repos.users.startTotp(user.id, "sellado");
-      await repos.users.enableTotp(user.id, { at: NOW, step: 10, recoveryCodeHashes: [] });
+      await repos.users.enableTotp(user.id, {
+        secretEncrypted: "sellado",
+        at: NOW,
+        step: 10,
+        recoveryCodeHashes: [],
+      });
 
       expect(await repos.users.advanceTotpStep(user.id, 10)).toBe(false);
       expect(await repos.users.advanceTotpStep(user.id, 9)).toBe(false);
@@ -284,7 +310,12 @@ export function userRepositoryContract(name: string, make: () => Promise<UserRep
     it("un código de recuperación sirve una vez, y activar de nuevo reemplaza los anteriores", async () => {
       const user = await admin();
       await repos.users.startTotp(user.id, "sellado");
-      await repos.users.enableTotp(user.id, { at: NOW, step: 1, recoveryCodeHashes: ["a", "b"] });
+      await repos.users.enableTotp(user.id, {
+        secretEncrypted: "sellado",
+        at: NOW,
+        step: 1,
+        recoveryCodeHashes: ["a", "b"],
+      });
 
       expect(await repos.users.consumeRecoveryCode(user.id, "a", NOW)).toBe(true);
       expect(await repos.users.consumeRecoveryCode(user.id, "a", NOW)).toBe(false);
@@ -294,7 +325,14 @@ export function userRepositoryContract(name: string, make: () => Promise<UserRep
       const other = await admin();
       expect(await repos.users.consumeRecoveryCode(other.id, "b", NOW)).toBe(false);
 
-      await repos.users.enableTotp(user.id, { at: NOW, step: 2, recoveryCodeHashes: ["c"] });
+      await repos.users.clearTotp(user.id);
+      await repos.users.startTotp(user.id, "sellado-nuevo");
+      await repos.users.enableTotp(user.id, {
+        secretEncrypted: "sellado-nuevo",
+        at: NOW,
+        step: 2,
+        recoveryCodeHashes: ["c"],
+      });
       expect(await repos.users.consumeRecoveryCode(user.id, "b", NOW)).toBe(false);
       expect(await repos.users.countRecoveryCodes(user.id)).toBe(1);
     });

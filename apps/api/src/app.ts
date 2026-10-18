@@ -150,10 +150,10 @@ export type AppDeps = {
    */
   now?: () => Date;
   /**
-   * Los límites por IP y por usuario (spec F8 §4.8, ADR-0026): `server.ts` los pasa siempre, con la
-   * IP de `CLIENT_IP_HEADER` o del socket. Los tests que no los prueban van sin ellos.
+   * Los límites por IP y por usuario (spec F8 §4.8, ADR-0026), con la IP de `CLIENT_IP_HEADER` o
+   * del socket. Obligatorio, para no olvidarlo: `null` solo en los tests que no los prueban.
    */
-  rateLimit?: RateLimitDeps;
+  rateLimit: RateLimitDeps | null;
 };
 
 /** Un middleware que no hace nada (un límite que no se configuró). */
@@ -205,11 +205,11 @@ export function createApp(input: AppDeps) {
   const app = new Hono<AppEnv>()
     .use(requestLogger(deps.logger))
     .use(hostGuard(deps.access.allowedHosts))
-    .use(deps.rateLimit === undefined ? passThrough : rateLimitByIp(deps.rateLimit))
+    .use(deps.rateLimit === null ? passThrough : rateLimitByIp(deps.rateLimit))
     .use(originGuard(deps.access.allowedOrigins, sessionCookieName(deps.auth.secureCookie)))
     .use(csrfGuard(deps.access.allowedOrigins))
     .use(authenticate(deps.auth, deps.logger, deps.requestContext))
-    .use(deps.rateLimit === undefined ? passThrough : rateLimitByUser(deps.rateLimit))
+    .use(deps.rateLimit === null ? passThrough : rateLimitByUser(deps.rateLimit))
     // `/x/:id/*` también calza con `/x/:id` en Hono: una sola vez por prefijo (una lectura).
     .use("/listings/:id/*", ownership.listing)
     .use("/content-runs/:id/*", ownership.contentRun)

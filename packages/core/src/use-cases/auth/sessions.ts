@@ -14,6 +14,7 @@ import {
   type SessionClient,
   type User,
 } from "../../user.js";
+import { LOGIN_LOCK_MS, LOGIN_MAX_FAILURES } from "./login-policy.js";
 import { type TotpDeps, verifySecondFactor } from "./totp.js";
 
 // Entrar, la sesión de cada pedido y salir (spec F7 §4.2, ADR-0021).
@@ -25,9 +26,8 @@ const DAY = 24 * 60 * MINUTE;
 export const SESSION_TTL_MS = 30 * DAY;
 export const SESSION_IDLE_MS = 7 * DAY;
 export const SESSION_TOUCH_MS = MINUTE;
-/** Tras 10 fallos seguidos, 15 min de bloqueo. */
-export const LOGIN_MAX_FAILURES = 10;
-export const LOGIN_LOCK_MS = 15 * MINUTE;
+export { LOGIN_LOCK_MS, LOGIN_MAX_FAILURES } from "./login-policy.js";
+
 /** Un token más largo que esto no es nuestro (nunca se busca). */
 const MAX_TOKEN_LENGTH = 256;
 /** El segundo paso de entrar con el doble factor vence a los 5 min (spec F8 §4.8). */

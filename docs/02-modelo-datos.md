@@ -229,7 +229,7 @@ Llave primaria `(platform, key)` (migración `0007`); no tiene `id`.
 | totp_last_step | bigint null | El último paso de 30 s usado: un código no sirve dos veces (`advanceTotpStep`, condicional) |
 | created_at, updated_at | timestamptz | |
 
-Restablecer un usuario y `pnpm auth:admin` le quitan el doble factor (`clearTotp`: la clave, el paso y sus códigos de recuperación).
+Restablecer un usuario y `pnpm auth:admin` le quitan el doble factor al usar el enlace (`clearTotp`: la clave, el paso y sus códigos de recuperación). Una rama de Neon copiada de producción trae estas columnas cifradas con la clave de producción: con la de desarrollo, entrar da `TOTP_UNREADABLE` (la salida es `pnpm auth:admin` y usar su enlace).
 
 ### user_recovery_codes — códigos de recuperación del doble factor (F8-T15)
 | Columna | Tipo | Notas |

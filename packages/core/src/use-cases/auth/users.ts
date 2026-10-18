@@ -147,6 +147,9 @@ export async function acceptInvitation(
   const passwordHash = await deps.hasher.hash(input.password);
   if (!(await deps.invitations.consume(invitation.id, now))) throw invalidInvitation();
   await deps.users.setPassword(user.id, passwordHash);
+  // Un enlace de restablecer (el administrador o `pnpm auth:admin`) también quita el doble factor
+  // (spec F8 §4.8): es la salida de quien perdió el teléfono.
+  if (invitation.purpose === "reset") await deps.users.clearTotp(user.id);
   await deps.sessions.deleteForUser(user.id);
   const updated = await deps.users.recordLoginSuccess(user.id, now);
   return openSession(deps, updated, input.client, now);
@@ -160,7 +163,7 @@ async function mustGetUser(users: UserRepository, id: string): Promise<User> {
 
 /**
  * Restablecer: un enlace nuevo (reemplaza el anterior), cierra todas las sesiones del usuario y
- * quita su bloqueo y su doble factor (F8). Solo el administrador. La contraseña anterior sigue sirviendo hasta que se
+ * quita su bloqueo; al usar el enlace, también su doble factor (F8). Solo el administrador. La contraseña anterior sigue sirviendo hasta que se
  * usa el enlace (ADR-0021): así nadie queda fuera por un enlace que no llegó; si la contraseña se
  * filtró, además se desactiva al usuario hasta que elija otra.
  */
@@ -172,8 +175,8 @@ export async function resetUserAccess(
   const now = deps.now?.() ?? new Date();
   const user = await mustGetUser(deps.users, input.userId);
   await deps.sessions.deleteForUser(user.id);
-  // Restablecer también quita el doble factor (spec F8 §4.8): es la salida si perdió el teléfono.
-  await deps.users.clearTotp(user.id);
+  // El doble factor se quita al usar el enlace (`acceptInvitation`), no aquí: hasta entonces la
+  // contraseña anterior sigue sirviendo, y sola no debe bastar para entrar.
   const cleared = await deps.users.clearLock(user.id);
   return issueLink(deps, cleared, "reset", input.actor.id, now);
 }
@@ -224,9 +227,8 @@ export async function ensureAdmin(
   }
   await deps.sessions.deleteForUser(existing.id);
   if (existing.disabledAt !== null) await deps.users.setDisabled(existing.id, null);
-  // También le quita el doble factor (spec F8 §4.8): `pnpm auth:admin` tiene la base y es la
-  // salida del operador si pierde el teléfono.
-  await deps.users.clearTotp(existing.id);
+  // El doble factor se quita al usar el enlace (`acceptInvitation`): es la salida del operador si
+  // pierde el teléfono, sin dejar la contraseña sola mientras el enlace no se usa.
   const cleared = await deps.users.clearLock(existing.id);
   return { ...(await issueLink(deps, cleared, "reset", null, now)), created: false };
 }

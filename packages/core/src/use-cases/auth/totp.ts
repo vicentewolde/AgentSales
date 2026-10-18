@@ -3,6 +3,7 @@ import type { SecretTokens, TotpProvider } from "../../ports/auth.js";
 import type { SecretBox } from "../../ports/secret-box.js";
 import type { SessionRepository, UserRepository } from "../../ports/user-repository.js";
 import type { User } from "../../user.js";
+import { LOGIN_LOCK_MS, LOGIN_MAX_FAILURES } from "./login-policy.js";
 
 // El doble factor con una app de códigos (spec F8 §4.8, ADR-0026): activar, confirmar,
 // desactivar y revisar el código del segundo paso. Opcional por usuario, recomendado para el
@@ -42,6 +43,12 @@ export function otpauthUrl(email: string, secret: string): string {
 export const normalizeRecoveryCode = (code: string): string =>
   code.toUpperCase().replace(/[^A-Z2-7]/g, "");
 
+const alreadyEnabled = () =>
+  new AppError(
+    "TOTP_ALREADY_ENABLED",
+    "Ya tienes el doble factor activo: desactívalo antes de cambiar la app",
+  );
+
 const codeInvalid = () =>
   new AppError(
     "TOTP_CODE_INVALID",
@@ -66,14 +73,14 @@ export async function startTotpSetup(
   deps: Pick<TotpDeps, "users" | "totp" | "totpBox">,
   input: { user: User },
 ): Promise<{ secret: string; otpauthUrl: string }> {
-  if (input.user.totpEnabledAt !== null) {
-    throw new AppError(
-      "TOTP_ALREADY_ENABLED",
-      "Ya tienes el doble factor activo: desactívalo antes de cambiar la app",
-    );
-  }
+  if (input.user.totpEnabledAt !== null) throw alreadyEnabled();
   const secret = deps.totp.generateSecret();
-  await deps.users.startTotp(input.user.id, deps.totpBox.encrypt(secret, aadOf(input.user.id)));
+  const started = await deps.users.startTotp(
+    input.user.id,
+    deps.totpBox.encrypt(secret, aadOf(input.user.id)),
+  );
+  // Otro pedido lo activó mientras tanto (condicional en la base).
+  if (started === null) throw alreadyEnabled();
   return { secret, otpauthUrl: otpauthUrl(input.user.email, secret) };
 }
 
@@ -87,9 +94,7 @@ export async function confirmTotpSetup(
 ): Promise<{ recoveryCodes: string[] }> {
   const now = deps.now?.() ?? new Date();
   const stored = await deps.users.findTotp(input.user.id);
-  if (stored?.enabledAt != null) {
-    throw new AppError("TOTP_ALREADY_ENABLED", "Ya tienes el doble factor activo");
-  }
+  if (stored?.enabledAt != null) throw alreadyEnabled();
   if (stored?.secretEncrypted == null) {
     throw new AppError("TOTP_NOT_STARTED", "Primero pide la clave para la app (Activar)");
   }
@@ -99,11 +104,20 @@ export async function confirmTotpSetup(
   const recoveryCodes = Array.from({ length: RECOVERY_CODE_COUNT }, () =>
     deps.totp.generateRecoveryCode(),
   );
-  await deps.users.enableTotp(input.user.id, {
+  const enabled = await deps.users.enableTotp(input.user.id, {
+    secretEncrypted: stored.secretEncrypted,
     at: now,
     step,
     recoveryCodeHashes: recoveryCodes.map((code) => deps.tokens.hash(normalizeRecoveryCode(code))),
   });
+  // Condicional: si otro pedido la activó o cambió la clave mientras tanto, esta no vale (la app
+  // del teléfono tendría otra clave, o los códigos quedarían reemplazados).
+  if (enabled === null) {
+    throw new AppError(
+      "TOTP_NOT_STARTED",
+      "La clave cambió mientras confirmabas: pide la clave para la app de nuevo",
+    );
+  }
   await deps.sessions.deleteForUserExcept(input.user.id, input.keepSessionId);
   return { recoveryCodes };
 }
@@ -133,7 +147,9 @@ export async function verifySecondFactor(
 
 /**
  * Desactiva el doble factor, con un código (de la app o de recuperación), y cierra las demás
- * sesiones. `TOTP_NOT_ENABLED` si no estaba activo.
+ * sesiones. `TOTP_NOT_ENABLED` si no estaba activo. Un código equivocado cuenta para el bloqueo,
+ * como al entrar (con una sesión robada no se puede probar códigos sin límite), y bloqueado es
+ * `AUTH_LOCKED`.
  */
 export async function disableTotp(
   deps: TotpDeps,
@@ -143,7 +159,19 @@ export async function disableTotp(
     throw new AppError("TOTP_NOT_ENABLED", "No tienes el doble factor activo");
   }
   const now = deps.now?.() ?? new Date();
+  const current = await deps.users.get(input.user.id);
+  if (current?.lockedUntil != null && current.lockedUntil > now) {
+    throw new AppError(
+      "AUTH_LOCKED",
+      "Demasiados intentos fallidos: espera 15 minutos o pide al administrador que te restablezca",
+    );
+  }
   if (!(await verifySecondFactor(deps, { userId: input.user.id, code: input.code, now }))) {
+    await deps.users.recordLoginFailure(input.user.id, {
+      now,
+      lockAfter: LOGIN_MAX_FAILURES,
+      lockForMs: LOGIN_LOCK_MS,
+    });
     throw codeInvalid();
   }
   const user = await deps.users.clearTotp(input.user.id);

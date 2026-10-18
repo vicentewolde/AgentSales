@@ -133,7 +133,7 @@ jobs:
       - name: Arrancar la API sin secretos
         run: |
           docker run --detach --name api --publish 127.0.0.1:8080:8080 \
-            --env PUBLIC_URL=https://agentsales.test \
+            --env PUBLIC_URL=https://agentsales.test --env CLIENT_IP_HEADER=Fly-Client-IP \
             --env DATABASE_URL='postgresql://ci:ci@127.0.0.1:1/ci?sslmode=require' \
             --env R2_ACCOUNT_ID=ci-cuenta --env R2_ACCESS_KEY_ID=ci-clave \
             --env R2_SECRET_ACCESS_KEY=ci-secreto --env R2_BUCKET=ci-bucket \

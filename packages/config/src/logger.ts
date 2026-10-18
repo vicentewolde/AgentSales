@@ -13,7 +13,10 @@ import {
 export { REDACTED, redactText };
 
 /** Claves cuyo valor se oculta completo. */
-const SENSITIVE_KEY = /token|secret|password|authorization|key/i;
+// Desde F8-T15 también el doble factor: el desafío, los códigos de recuperación y el enlace otpauth
+// (por su nombre exacto: un conteo como `loginChallenges` o `recoveryCodesLeft` sí se ve).
+const SENSITIVE_KEY =
+  /token|secret|password|authorization|key|^challenge$|^recoveryCodes?$|otpauth/i;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null) {

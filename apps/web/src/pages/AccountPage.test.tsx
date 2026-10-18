@@ -95,6 +95,7 @@ describe("entrar con el doble factor", () => {
   async function withTotp(h: ReturnType<typeof harness>) {
     await h.auth.repos.users.startTotp(TEST_ADMIN.id, `sellado:totp:${TEST_ADMIN.id}:CLAVEA`);
     await h.auth.repos.users.enableTotp(TEST_ADMIN.id, {
+      secretEncrypted: `sellado:totp:${TEST_ADMIN.id}:CLAVEA`,
       at: new Date(),
       step: 0,
       recoveryCodeHashes: [],

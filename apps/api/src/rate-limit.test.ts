@@ -7,6 +7,7 @@ import {
   createRateLimiter,
   RATE_LIMITS,
   type RateLimitDeps,
+  rateLimitKeyOf,
 } from "./rate-limit.js";
 import { TEST_ADMIN, TEST_ADMIN_TOKEN, testDeps } from "./testing/index.js";
 
@@ -55,6 +56,19 @@ describe("createRateLimiter", () => {
     expect(limiter.hit("a", rule)).toBeNull();
   });
 
+  it("lleno, borra primero las del tope general y deja los de entrar", () => {
+    const limiter = createRateLimiter({ now: () => 0, maxKeys: 3 });
+    const login = { name: "login-minute", limit: 1, windowMs: MINUTE };
+    const api = { name: RATE_LIMITS.api[0].name, limit: 1, windowMs: MINUTE };
+    limiter.hit("a", login);
+    limiter.hit("b", api);
+    limiter.hit("c", api);
+    // Llega una clave nueva: se va la más vieja del tope general, no el intento de entrar.
+    limiter.hit("d", login);
+    expect(limiter.hit("a", login)).not.toBeNull();
+    expect(limiter.hit("b", api)).toBeNull();
+  });
+
   it("con demasiadas claves borra las vencidas y nunca crece sin fin", () => {
     let clock = 0;
     const limiter = createRateLimiter({ now: () => clock, maxKeys: 3 });
@@ -76,6 +90,15 @@ describe("la IP del cliente", () => {
     const resolve = clientIpResolver("Fly-Client-IP", () => "10.0.0.1");
     expect(resolve(contextWith({ "fly-client-ip": "200.1.2.3" }))).toBe("200.1.2.3");
     expect(resolve(contextWith({}))).toBe("10.0.0.1");
+  });
+
+  it("una IPv6 cuenta por su /64; una IPv4 escrita como IPv6, como la IPv4", () => {
+    expect(rateLimitKeyOf("2001:db8:aa:bb:1:2:3:4")).toBe("2001:db8:aa:bb::/64");
+    expect(rateLimitKeyOf("2001:0db8:00aa:00bb:ffff::1")).toBe("2001:db8:aa:bb::/64");
+    expect(rateLimitKeyOf("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(rateLimitKeyOf("::1")).toBe("0:0:0:0::/64");
+    expect(rateLimitKeyOf("::ffff:200.1.2.3")).toBe("200.1.2.3");
+    expect(rateLimitKeyOf("200.1.2.3")).toBe("200.1.2.3");
   });
 
   it("sin configurarla, X-Forwarded-For se ignora", () => {
@@ -114,6 +137,15 @@ describe("los límites en la API", () => {
     const limited = await login("3.3.3.3");
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get("retry-after"))).toBe(55 * 60);
+  });
+
+  it("cambiar de dirección dentro del mismo /64 no salta el tope de entrar", async () => {
+    const { login } = setup();
+    for (let n = 0; n < 10; n += 1) {
+      expect((await login(`2001:db8:1:2::${n + 1}`)).status).not.toBe(429);
+    }
+    expect((await login("2001:db8:1:2::ffff")).status).toBe(429);
+    expect((await login("2001:db8:1:3::1")).status).not.toBe(429);
   });
 
   it("aceptar una invitación: 10 por hora por IP", async () => {

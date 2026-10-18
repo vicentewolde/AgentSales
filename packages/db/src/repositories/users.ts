@@ -68,6 +68,12 @@ export function createUserRepository(db: SchemaDatabase): UserRepository {
       return toUser(row);
     });
 
+  /** `USER_NOT_FOUND` si el usuario no existe. */
+  const mustExist = async (id: string) => {
+    const [row] = await db.select({ id: users.id }).from(users).where(eq(users.id, id));
+    if (row === undefined) throw notFound(id);
+  };
+
   return {
     async create(user) {
       try {
@@ -168,18 +174,40 @@ export function createUserRepository(db: SchemaDatabase): UserRepository {
     },
 
     startTotp(id, secretEncrypted) {
-      return updateOne(id, { totpSecretEncrypted: secretEncrypted, totpLastStep: null });
+      return withDbErrors(async () => {
+        // Condicional: nunca pisa la clave de un doble factor activo.
+        const [row] = await db
+          .update(users)
+          .set({ totpSecretEncrypted: secretEncrypted, totpLastStep: null })
+          .where(and(eq(users.id, id), isNull(users.totpEnabledAt)))
+          .returning();
+        if (row !== undefined) return toUser(row);
+        await mustExist(id);
+        return null;
+      });
     },
 
-    enableTotp(id, { at, step, recoveryCodeHashes }) {
+    enableTotp(id, { secretEncrypted, at, step, recoveryCodeHashes }) {
       return withDbErrors(() =>
         db.transaction(async (tx) => {
+          // Condicional: sigue sin activar y con la clave que se revisó (otro `setup` o `confirm`
+          // a la vez no deja activa una clave que la app no tiene ni reemplaza los códigos).
           const [row] = await tx
             .update(users)
             .set({ totpEnabledAt: at, totpLastStep: step })
-            .where(eq(users.id, id))
+            .where(
+              and(
+                eq(users.id, id),
+                isNull(users.totpEnabledAt),
+                eq(users.totpSecretEncrypted, secretEncrypted),
+              ),
+            )
             .returning();
-          if (row === undefined) throw notFound(id);
+          if (row === undefined) {
+            const [exists] = await tx.select({ id: users.id }).from(users).where(eq(users.id, id));
+            if (exists === undefined) throw notFound(id);
+            return null;
+          }
           await tx.delete(userRecoveryCodes).where(eq(userRecoveryCodes.userId, id));
           if (recoveryCodeHashes.length > 0) {
             await tx

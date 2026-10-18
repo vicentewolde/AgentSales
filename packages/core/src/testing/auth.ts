@@ -51,9 +51,14 @@ export function createFakeTotpProvider(): TotpProvider {
       return null;
     },
     generateRecoveryCode() {
-      // 16 caracteres de base32: `AAAA-AAAA-AAAA-AAAB`, `…-AAAC`…
-      const letter = String.fromCharCode(65 + (++recoveries % 26));
-      return `AAAA-AAAA-AAAA-AAA${letter}`;
+      // 16 caracteres de base32, distintos cada vez: `AAAA-AAAA-AAAA-AAAB`, `…-AAAC`…
+      let n = ++recoveries;
+      let tail = "";
+      for (let i = 0; i < 4; i += 1) {
+        tail = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"[n % 32] + tail;
+        n = Math.floor(n / 32);
+      }
+      return `AAAA-AAAA-AAAA-${tail}`;
     },
   };
 }
