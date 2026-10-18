@@ -466,27 +466,35 @@ export const platformCatalog = pgTable(
   (t) => [primaryKey({ columns: [t.platform, t.key] })],
 );
 
-export const importRuns = pgTable("import_runs", {
-  id: id(),
-  /** `null` hasta que el job lee la hoja Corredor. */
-  brokerId: uuid("broker_id").references(() => brokers.id),
-  status: importRunStatusEnum("status").notNull().default("queued"),
-  dryRun: boolean("dry_run").notNull().default(false),
-  /** Rutas absolutas de entrada y broker pedido; sin secretos. El job solo recibe el id. */
-  input: jsonb("input").notNull().default({}),
-  /** `{ code, message }` cuando `status = failed`. */
-  error: jsonb("error"),
-  source: listingSourceEnum("source").notNull(),
-  fileName: text("file_name").notNull(),
-  rowsTotal: integer("rows_total").notNull().default(0),
-  rowsCreated: integer("rows_created").notNull().default(0),
-  rowsUpdated: integer("rows_updated").notNull().default(0),
-  rowsSkipped: integer("rows_skipped").notNull().default(0),
-  rowsFailed: integer("rows_failed").notNull().default(0),
-  /** `importReportSchema` (core); `null` hasta que `importListings` registra su resultado. */
-  report: jsonb("report"),
-  /** Se fija al pasar a `running`. */
-  startedAt: timestamp("started_at", { withTimezone: true }),
-  finishedAt: timestamp("finished_at", { withTimezone: true }),
-  ...timestamps,
-});
+export const importRuns = pgTable(
+  "import_runs",
+  {
+    id: id(),
+    /** `null` hasta que el job lee la hoja Corredor. */
+    brokerId: uuid("broker_id").references(() => brokers.id),
+    status: importRunStatusEnum("status").notNull().default("queued"),
+    dryRun: boolean("dry_run").notNull().default(false),
+    /**
+     * `importRunInputSchema` (core): las claves de R2 de la planilla y los medios (spec F8 §4.12), o
+     * las rutas locales de antes de F8; sin secretos. El job solo recibe el id.
+     */
+    input: jsonb("input").notNull().default({}),
+    /** `{ code, message }` cuando `status = failed`. */
+    error: jsonb("error"),
+    source: listingSourceEnum("source").notNull(),
+    fileName: text("file_name").notNull(),
+    rowsTotal: integer("rows_total").notNull().default(0),
+    rowsCreated: integer("rows_created").notNull().default(0),
+    rowsUpdated: integer("rows_updated").notNull().default(0),
+    rowsSkipped: integer("rows_skipped").notNull().default(0),
+    rowsFailed: integer("rows_failed").notNull().default(0),
+    /** `importReportSchema` (core); `null` hasta que `importListings` registra su resultado. */
+    report: jsonb("report"),
+    /** Se fija al pasar a `running`. */
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  // Cerrar las que nadie terminó de subir (`awaiting_upload` de más de 24 h, spec F8 §4.4).
+  (t) => [index("import_runs_status_created_at_idx").on(t.status, t.createdAt)],
+);

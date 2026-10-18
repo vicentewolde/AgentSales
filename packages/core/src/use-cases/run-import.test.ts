@@ -8,7 +8,6 @@ import {
   createInMemoryImportRunRepository,
   createInMemoryListingRepository,
 } from "../testing/import-repositories.js";
-import { createInMemoryJobQueue } from "../testing/job-queue.js";
 import {
   createInMemoryMediaFileSource,
   createInMemoryMediaRepository,
@@ -16,7 +15,6 @@ import {
   type InMemoryMediaStorageOptions,
   memoryFile,
 } from "../testing/media.js";
-import { requestImport } from "./request-import.js";
 import { type RunImportDeps, runImport } from "./run-import.js";
 
 let nextDef = 0;
@@ -63,7 +61,18 @@ const SHEET: ListingSheetInput = {
 
 const FOLDERS = { P001: { files: [memoryFile("P001/foto1.jpg", "foto-uno")] } };
 
-const INPUT = { xlsxPath: "/tmp/propiedades.xlsx", mediaDir: "/tmp/medios", broker: null };
+/** Entrada de una carga subida a R2 (spec F8 §4.12): el lector y los medios son dobles. */
+const INPUT = {
+  broker: null,
+  dryRun: false,
+  xlsx: {
+    key: "imports/run-1/xlsx/propiedades.xlsx",
+    name: "propiedades.xlsx",
+    size: 10,
+    sha256: "a".repeat(64),
+  },
+  media: { kind: "zip" as const, key: "imports/run-1/media.zip", name: "medios.zip", size: 20 },
+};
 
 const unavailable = () =>
   new AppError("STORAGE_UNAVAILABLE", "R2 no respondió", { retriable: true });
@@ -100,7 +109,7 @@ function setup(storageOptions: InMemoryMediaStorageOptions = {}) {
         },
       };
     },
-    discardStaging: async (runId: string) => {
+    discardInput: async (runId: string) => {
       calls.discarded.push(runId);
     },
   } satisfies RunImportDeps & { listings: typeof listings; media: typeof media };
@@ -253,7 +262,7 @@ describe("runImport", () => {
 
   it("si borrar el staging falla, la carga igual queda terminada", async () => {
     const { deps, createRun } = setup();
-    deps.discardStaging = async () => {
+    deps.discardInput = async () => {
       throw new Error("EBUSY");
     };
     const run = await createRun();
@@ -322,76 +331,28 @@ describe("runImport", () => {
     },
   );
 
+  it("una carga de antes de F8 (rutas locales) se cierra con IMPORT_INPUT_LEGACY sin leer nada", async () => {
+    const { deps, calls } = setup();
+    const run = await deps.importRuns.create({
+      source: "xlsx",
+      fileName: "propiedades.xlsx",
+      dryRun: false,
+      input: { xlsxPath: "/tmp/propiedades.xlsx", mediaDir: null, broker: null },
+    });
+
+    const error = await caught(runImport(deps, { importRunId: run.id, isLastAttempt: false }));
+
+    expect(error).toMatchObject({ code: "IMPORT_INPUT_LEGACY", retriable: false });
+    expect(await deps.importRuns.get(run.id)).toMatchObject({
+      status: "failed",
+      error: { code: "IMPORT_INPUT_LEGACY" },
+    });
+    expect(calls).toMatchObject({ readSheet: 0, openMedia: 0, discarded: [run.id] });
+  });
+
   it("un run inexistente → IMPORT_RUN_NOT_FOUND", async () => {
     const { deps } = setup();
     const error = await caught(runImport(deps, { importRunId: "run-nadie", isLastAttempt: false }));
     expect(isAppError(error) && error.code).toBe("IMPORT_RUN_NOT_FOUND");
-  });
-});
-
-describe("requestImport", () => {
-  const params = {
-    source: "xlsx",
-    fileName: "propiedades.xlsx",
-    dryRun: false,
-    input: INPUT,
-  } as const;
-
-  it("crea el run en queued y encola import.run con su id como singletonKey", async () => {
-    const importRuns = createInMemoryImportRunRepository();
-    const queue = createInMemoryJobQueue();
-    const discarded: string[] = [];
-
-    const run = await requestImport(
-      { importRuns, queue, discardStaging: async (id) => void discarded.push(id) },
-      params,
-    );
-
-    expect(run).toMatchObject({ status: "queued", fileName: "propiedades.xlsx", input: INPUT });
-    expect(queue.jobs).toEqual([
-      { name: "import.run", data: { importRunId: run.id }, options: { singletonKey: run.id } },
-    ]);
-    expect(discarded).toEqual([]);
-  });
-
-  it("si la cola no está disponible: run failed con QUEUE_UNAVAILABLE, staging borrado y error", async () => {
-    const importRuns = createInMemoryImportRunRepository();
-    const queue = createInMemoryJobQueue({
-      fail: () => new AppError("QUEUE_UNAVAILABLE", "La cola no está lista", { retriable: true }),
-    });
-    const discarded: string[] = [];
-
-    const error = await caught(
-      requestImport(
-        { importRuns, queue, discardStaging: async (id) => void discarded.push(id) },
-        params,
-      ),
-    );
-
-    expect(isAppError(error) && error.code).toBe("QUEUE_UNAVAILABLE");
-    const [runId] = discarded;
-    expect(await importRuns.get(runId ?? "")).toMatchObject({
-      status: "failed",
-      error: { code: "QUEUE_UNAVAILABLE", message: "La cola no está lista" },
-    });
-  });
-
-  it("otro error al encolar (un bug) se propaga sin tocar el run ni el staging", async () => {
-    const importRuns = createInMemoryImportRunRepository();
-    const queue = createInMemoryJobQueue({
-      fail: () => new AppError("JOB_PAYLOAD_INVALID", "Datos inválidos para el job import.run"),
-    });
-    const discarded: string[] = [];
-
-    const error = await caught(
-      requestImport(
-        { importRuns, queue, discardStaging: async (id) => void discarded.push(id) },
-        params,
-      ),
-    );
-
-    expect(isAppError(error) && error.code).toBe("JOB_PAYLOAD_INVALID");
-    expect(discarded).toEqual([]);
-    expect((await importRuns.get("run-1"))?.status).toBe("queued");
   });
 });

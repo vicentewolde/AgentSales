@@ -5,8 +5,15 @@ import { buildListingValidator, isAppError } from "@agentsales/core";
 import { REAL_ESTATE_FIELD_DEFINITIONS, TEMPLATE_COLUMNS } from "@agentsales/db";
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
-import { MAX_DATA_ROWS, MAX_XLSX_BYTES, readListingsWorkbook } from "../src/xlsx-reader.js";
+import {
+  checkXlsxUncompressedSize,
+  MAX_DATA_ROWS,
+  MAX_XLSX_BYTES,
+  MAX_XLSX_UNCOMPRESSED_BYTES,
+  readListingsWorkbook,
+} from "../src/xlsx-reader.js";
 import { buildWorkbook, syntheticRow } from "./workbook.js";
+import { buildZip } from "./zip-builder.js";
 
 const validator = buildListingValidator(
   REAL_ESTATE_FIELD_DEFINITIONS.map((def, index) => ({ ...def, id: `seed-${index}` })),
@@ -269,6 +276,43 @@ describe("readListingsWorkbook · archivos inválidos", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it("descomprimido en más de 50 MB → IMPORT_XLSX_TOO_LARGE sin abrirlo con exceljs (F8-T05)", async () => {
+    // 51 MB de ceros comprimidos con deflate: el archivo pesa unos 50 kB.
+    const bomb = buildZip([
+      { name: "xl/worksheets/sheet1.xml", data: Buffer.alloc(51 * 1024 * 1024), method: "deflate" },
+    ]);
+    expect(bomb.byteLength).toBeLessThan(MAX_XLSX_BYTES);
+
+    // exceljs lo rechazaría como "no es un Excel" (le faltan las partes): este código dice que la
+    // revisión corrió antes y no llegó a abrirlo.
+    const error = await expectError(
+      readListingsWorkbook(new Uint8Array(bomb)),
+      "IMPORT_XLSX_TOO_LARGE",
+    );
+
+    expect(isAppError(error) && error.details).toMatchObject({
+      maxBytes: MAX_XLSX_UNCOMPRESSED_BYTES,
+    });
+  });
+
+  it("una entrada que miente su tamaño (declara poco y trae más) no pasa: IMPORT_FILE_INVALID", async () => {
+    const liar = buildZip([
+      {
+        name: "xl/a.xml",
+        data: Buffer.alloc(2 * 1024 * 1024),
+        method: "deflate",
+        declaredSize: 10,
+      },
+    ]);
+
+    await expectError(checkXlsxUncompressedSize(new Uint8Array(liar)), "IMPORT_FILE_INVALID");
+  });
+
+  it("un xlsx real de la plantilla pasa la revisión del tamaño descomprimido", async () => {
+    const bytes = await buildWorkbook({ listings: { rows: [syntheticRow()] } });
+    await expect(checkXlsxUncompressedSize(bytes)).resolves.toBeUndefined();
   });
 
   it("sin hoja Propiedades → IMPORT_FILE_INVALID con las hojas encontradas", async () => {

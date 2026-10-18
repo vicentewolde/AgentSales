@@ -10,12 +10,18 @@ import {
   type RawBrokerSheet,
 } from "@agentsales/core";
 import ExcelJS from "exceljs";
+import yauzl from "yauzl";
 import { cellText, flattenCell } from "./cells.js";
 
-/** El tope del xlsx vive en core: la API aplica el mismo al recibir una subida (spec F1 §4.4). */
+/** El tope del xlsx vive en core: la API aplica el mismo al pedir una subida (spec F1 §4.4). */
 export { MAX_XLSX_BYTES };
 /** Filas de datos por archivo; el piloto son unas pocas propiedades. */
 export const MAX_DATA_ROWS = 1000;
+/**
+ * Tope del xlsx **descomprimido** (spec F8 §4.4): un xlsx es un zip, y 10 MB comprimidos podrían
+ * ser mucho más dentro de exceljs (que lo carga entero en memoria).
+ */
+export const MAX_XLSX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024;
 
 const LISTINGS_SHEET = "Propiedades";
 const BROKER_SHEET = "Corredor";
@@ -80,6 +86,82 @@ async function loadBytes(source: string | Uint8Array): Promise<Uint8Array> {
       throw fileError("IMPORT_FILE_NOT_FOUND", `No existe el archivo ${file}`, { file }, error);
     }
     throw invalidFile(`No se pudo leer el archivo ${file}`, { file }, error);
+  }
+}
+
+const tooBigUncompressed = (bytes: number) =>
+  new AppError(
+    "IMPORT_XLSX_TOO_LARGE",
+    `El Excel descomprimido pasa de ${MAX_XLSX_UNCOMPRESSED_BYTES / 1024 / 1024} MB`,
+    { details: { bytes, maxBytes: MAX_XLSX_UNCOMPRESSED_BYTES } },
+  );
+
+/**
+ * Revisa el tamaño descomprimido del xlsx **antes** de abrirlo con exceljs (spec F8 §4.4): suma lo
+ * que declara cada entrada (sin descomprimir nada si ya pasa el tope) y después descomprime cada
+ * una sin guardarla, con `validateEntrySizes` de yauzl, que corta si una entrada trae más bytes de
+ * los que declara (un zip bomb que miente en el tamaño). Lo que no se puede abrir como zip no es un
+ * xlsx: `IMPORT_FILE_INVALID`, como el lector.
+ */
+export async function checkXlsxUncompressedSize(
+  bytes: Uint8Array,
+  maxBytes: number = MAX_XLSX_UNCOMPRESSED_BYTES,
+): Promise<void> {
+  let zipfile: yauzl.ZipFile;
+  try {
+    zipfile = await yauzl.fromBufferPromise(
+      Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+      {
+        lazyEntries: true,
+        validateEntrySizes: true,
+      },
+    );
+  } catch (error) {
+    throw invalidFile("El archivo no es un Excel (.xlsx) válido", {}, error);
+  }
+  try {
+    await new Promise<void>((done, fail) => {
+      let declared = 0;
+      let finished = false;
+      const stop = (error: unknown) => {
+        if (finished) return;
+        finished = true;
+        fail(error);
+      };
+      zipfile.on("error", stop);
+      zipfile.on("end", () => {
+        if (!finished) {
+          finished = true;
+          done();
+        }
+      });
+      zipfile.on("entry", (entry: yauzl.Entry) => {
+        declared += entry.uncompressedSize;
+        if (declared > maxBytes) {
+          stop(tooBigUncompressed(declared));
+          return;
+        }
+        if (entry.fileName.endsWith("/")) {
+          zipfile.readEntry();
+          return;
+        }
+        zipfile.openReadStream(entry, (error, stream) => {
+          if (error || stream === undefined) {
+            stop(error ?? new Error("sin stream"));
+            return;
+          }
+          stream.on("error", stop);
+          stream.on("end", () => zipfile.readEntry());
+          stream.resume();
+        });
+      });
+      zipfile.readEntry();
+    });
+  } catch (error) {
+    if (isAppError(error)) throw error;
+    throw invalidFile("El archivo no es un Excel (.xlsx) válido", {}, error);
+  } finally {
+    zipfile.close();
   }
 }
 
@@ -174,12 +256,15 @@ function readBrokerSheet(sheet: ExcelJS.Worksheet): RawBrokerSheet | null {
  * - hoja **Corredor** (opcional): vertical, con las columnas `Campo` y `Tu valor`.
  *
  * No valida ni filtra: eso es del validador (F1-T02) y de `importListings` (F1-T04). Lanza
- * `IMPORT_FILE_NOT_FOUND` o `IMPORT_FILE_INVALID` (no es xlsx, excede los topes o falta la hoja).
+ * `IMPORT_FILE_NOT_FOUND`, `IMPORT_FILE_INVALID` (no es xlsx, excede los topes o falta la hoja) o
+ * `IMPORT_XLSX_TOO_LARGE` (descomprimido pasa de 50 MB; se revisa antes de exceljs, spec F8 §4.4).
  */
 export async function readListingsWorkbook(
   source: string | Uint8Array,
 ): Promise<ListingSheetInput> {
-  const workbook = await loadWorkbook(await loadBytes(source));
+  const bytes = await loadBytes(source);
+  await checkXlsxUncompressedSize(bytes);
+  const workbook = await loadWorkbook(bytes);
   const listings = findSheet(workbook, LISTINGS_SHEET);
   if (listings === undefined) {
     throw invalidFile(`Falta la hoja ${LISTINGS_SHEET}`, {

@@ -241,12 +241,59 @@ export type InMemoryMediaStorage = MediaStorage & {
   objects: Map<string, { body: Uint8Array; contentType: string; sha256?: string }>;
   /** Rutas de cada `put`/`putStream` exitoso, en orden: para probar que no se resube. */
   uploads: string[];
+  /**
+   * Hace de R2 ante el `PUT` de una URL de `signedUploadUrl` (spec F8 §4.4): exige las cabeceras
+   * firmadas, el largo y, si se firmó con sha256 y el doble tiene `sha256`, el mismo contenido. Si
+   * no calza, `STORAGE_CONTENT_MISMATCH` (como el `BadDigest` de R2) o `STORAGE_ERROR` (como el 403
+   * de una firma que no calza), sin guardar nada.
+   */
+  receiveUpload(url: string, headers: Record<string, string>, body: Uint8Array): Promise<void>;
 };
 
 export type InMemoryMediaStorageOptions = {
   /** Error para una subida (por ejemplo, `STORAGE_UNAVAILABLE`); `undefined` para que siga. */
   failUpload?: (path: string) => AppError | undefined;
+  /**
+   * sha256 hexadecimal de unos bytes, para que `receiveUpload` verifique el contenido (core no
+   * calcula hashes: lo pasa el test, con `node:crypto`). Sin él, solo se verifica el largo.
+   */
+  sha256?: (bytes: Uint8Array) => string | Promise<string>;
+  /** La hora de `list` (por defecto, la del reloj). */
+  now?: () => Date;
 };
+
+/** El sha256 de las cabeceras de una subida va en base64; se compara en hexadecimal. */
+function base64ToHex(base64: string): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let bits = "";
+  for (const char of base64.replace(/=+$/, "")) {
+    const value = alphabet.indexOf(char);
+    if (value < 0) return "";
+    bits += value.toString(2).padStart(6, "0");
+  }
+  let hex = "";
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    hex += Number.parseInt(bits.slice(i, i + 8), 2)
+      .toString(16)
+      .padStart(2, "0");
+  }
+  return hex;
+}
+
+function hexToBase64(hex: string): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let bits = "";
+  for (let i = 0; i < hex.length; i += 2) {
+    bits += Number.parseInt(hex.slice(i, i + 2), 16)
+      .toString(2)
+      .padStart(8, "0");
+  }
+  let out = "";
+  for (let i = 0; i < bits.length; i += 6) {
+    out += alphabet[Number.parseInt(bits.slice(i, i + 6).padEnd(6, "0"), 2)];
+  }
+  return out + "=".repeat((4 - (out.length % 4)) % 4);
+}
 
 /**
  * `MediaStorage` en memoria. `putStream` lee el iterable completo y, como R2, da
@@ -259,7 +306,15 @@ export function createInMemoryMediaStorage(
   options: InMemoryMediaStorageOptions = {},
 ): InMemoryMediaStorage {
   const objects = new Map<string, { body: Uint8Array; contentType: string; sha256?: string }>();
+  const modified = new Map<string, Date>();
   const uploads: string[] = [];
+  /** Las subidas firmadas, por URL: la ruta, el largo y las cabeceras que exige la firma. */
+  const signed = new Map<
+    string,
+    { path: string; contentLength: number; headers: Record<string, string> }
+  >();
+  let nextUpload = 0;
+  const now = options.now ?? (() => new Date());
   const store = (path: string, body: Uint8Array, contentType: string, sha256?: string) => {
     const failure = options.failUpload?.(path);
     if (failure !== undefined) throw failure;
@@ -268,6 +323,7 @@ export function createInMemoryMediaStorage(
       contentType,
       ...(sha256 === undefined ? {} : { sha256 }),
     });
+    modified.set(path, now());
     uploads.push(path);
   };
   return {
@@ -330,6 +386,53 @@ export function createInMemoryMediaStorage(
     },
     async signedReadUrl(path, ttlSeconds = 3600) {
       return `memory://${path}?ttl=${ttlSeconds}`;
+    },
+    async signedUploadUrl(path, { contentType, contentLength, sha256, ttlSeconds }) {
+      nextUpload += 1;
+      const url = `memory-upload://${path}?ttl=${ttlSeconds}&n=${nextUpload}`;
+      const headers: Record<string, string> = {
+        "content-type": contentType,
+        ...(sha256 === undefined
+          ? {}
+          : { "x-amz-checksum-sha256": hexToBase64(sha256.toLowerCase()) }),
+      };
+      signed.set(url, { path, contentLength, headers });
+      return { url, headers: { ...headers } };
+    },
+    async list(prefix) {
+      return [...objects.entries()]
+        .filter(([path]) => path.startsWith(prefix))
+        .map(([path, object]) => ({
+          path,
+          size: object.body.byteLength,
+          lastModified: modified.get(path) ?? now(),
+        }))
+        .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    },
+    async receiveUpload(url, headers, body) {
+      const upload = signed.get(url);
+      const sent = Object.fromEntries(
+        Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]),
+      );
+      const forbidden = (reason: string) =>
+        new AppError("STORAGE_ERROR", `R2 rechazó la subida (${reason})`, {
+          details: { status: 403, reason },
+        });
+      if (upload === undefined) throw forbidden("URL desconocida");
+      for (const [name, value] of Object.entries(upload.headers)) {
+        if (sent[name] !== value) throw forbidden(`cabecera ${name}`);
+      }
+      if (body.byteLength !== upload.contentLength) throw forbidden("largo");
+      const checksum = upload.headers["x-amz-checksum-sha256"];
+      if (checksum !== undefined && options.sha256 !== undefined) {
+        if ((await options.sha256(body)) !== base64ToHex(checksum)) {
+          throw new AppError(
+            "STORAGE_CONTENT_MISMATCH",
+            `El contenido subido a ${upload.path} no calza con su sha256`,
+          );
+        }
+      }
+      store(upload.path, body, upload.headers["content-type"] ?? "application/octet-stream");
     },
   };
 }

@@ -1,6 +1,11 @@
 import { isTerminalImportRun } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
-import type { ImportRun, ImportRunInput } from "../import-run.js";
+import {
+  type ImportRun,
+  isUploadImportInput,
+  type UploadedMedia,
+  type UploadImportRunInput,
+} from "../import-run.js";
 import type { ListingSheetInput } from "../listing-sheet.js";
 import type { ImportRunError } from "../ports/import-run-repository.js";
 import type { MediaFileSource } from "../ports/media-file-source.js";
@@ -20,22 +25,32 @@ export type OpenedMedia = {
 
 export type RunImportDeps = ImportListingsDeps &
   IngestMediaDeps & {
-    /** Lee el xlsx del run (`xlsx-reader`); sus errores son `IMPORT_FILE_*`. */
-    readSheet: (input: ImportRunInput) => Promise<ListingSheetInput>;
     /**
-     * Prepara los medios del intento: la carpeta, o el zip extraído en un directorio propio del
-     * intento dentro de `tmp/imports/{runId}/`. Sin `mediaDir`, `source` es `null`. Si falla, no
-     * deja nada a medias (lo limpia antes de lanzar). `folders` son las carpetas que la carga va a
-     * pedir (las de las filas guardadas y `_marca`): sirven para reconocer un zip que trae todo
+     * Baja la planilla de R2 a la carpeta temporal del intento y la lee (`xlsx-reader`, con el tope
+     * descomprimido de spec F8 §4.4); sus errores son `IMPORT_FILE_*`, `IMPORT_XLSX_TOO_LARGE` o
+     * `STORAGE_*` (un corte de R2 es reintentable).
+     */
+    readSheet: (request: {
+      runId: string;
+      input: UploadImportRunInput;
+    }) => Promise<ListingSheetInput>;
+    /**
+     * Prepara los medios del intento: baja de R2 el zip (y lo extrae) o los archivos de la carpeta,
+     * en un directorio propio del intento. Sin medios, `source` es `null`. Si falla, no deja nada a
+     * medias (lo limpia antes de lanzar). `folders` son las carpetas que la carga va a pedir (las
+     * de las filas guardadas y `_marca`): sirven para reconocer un zip o una carpeta que trae todo
      * dentro de una sola carpeta (macOS → Comprimir "medios").
      */
     openMedia: (request: {
       runId: string;
-      mediaDir: string | null;
+      media: UploadedMedia | null;
       folders: readonly string[];
     }) => Promise<OpenedMedia>;
-    /** Borra el staging del run (`tmp/imports/{id}/`), solo al llegar a un estado terminal. */
-    discardStaging: (runId: string) => Promise<void>;
+    /**
+     * Borra lo de la carga en R2 (`imports/{id}/`) y en el disco del worker, solo al llegar a un
+     * estado terminal. No falla si no hay nada.
+     */
+    discardInput: (runId: string) => Promise<void>;
   };
 
 export type RunImportParams = {
@@ -48,6 +63,13 @@ export type RunImportResult =
   | { outcome: "succeeded" }
   /** El run ya estaba terminado (otro intento llegó antes): no se hizo nada. */
   | { outcome: "skipped"; status: ImportRun["status"] };
+
+/** Una carga de antes de F8 (rutas locales): sus archivos ya no existen y nunca se reintenta. */
+const legacyInput = () =>
+  new AppError(
+    "IMPORT_INPUT_LEGACY",
+    "Esta carga es de una versión anterior (sus archivos ya no están): vuelve a importarla",
+  );
 
 /**
  * Un error que no es `AppError` (un bug, o algo sin envolver) se normaliza a `INTERNAL_ERROR`, no
@@ -81,7 +103,8 @@ function mediaFoldersOf(imported: ImportListingsResult): string[] {
  * Corre una carga (el handler del job `import.run`, spec F1 §4.6):
  * 1. si el run ya terminó, no hace nada (esa guarda evita que dos intentos se pisen);
  * 2. lo pasa a `running`, lee el xlsx, corre `importListings` y luego `ingestMedia`, y lo deja en
- *    `succeeded`; los medios se liberan siempre, y el staging se borra al terminar;
+ *    `succeeded`; los medios se liberan siempre, y sus archivos (en R2 y en el disco del worker)
+ *    se borran al terminar. Una carga de antes de F8 se cierra con `IMPORT_INPUT_LEGACY`;
  * 3. con un error no reintentable, o en el último intento, deja el run en `failed` con `error`
  *    **antes** de relanzar. Un error reintentable en un intento que no es el último se relanza
  *    sin tocar el run: el job reintenta.
@@ -109,11 +132,12 @@ export async function runImport(
   }
 
   try {
-    const input = await deps.readSheet(run.input);
+    if (!isUploadImportInput(run.input)) throw legacyInput();
+    const input = await deps.readSheet({ runId: run.id, input: run.input });
     const imported = await importListings(deps, { runId: run.id, input });
     const media = await deps.openMedia({
       runId: run.id,
-      mediaDir: run.input.mediaDir,
+      media: run.input.media,
       folders: mediaFoldersOf(imported),
     });
     try {
@@ -132,12 +156,12 @@ export async function runImport(
     const current = await deps.importRuns.get(run.id);
     return { outcome: "skipped", status: current?.status ?? run.status };
   }
-  await deps.discardStaging(run.id).catch(() => undefined);
+  await deps.discardInput(run.id).catch(() => undefined);
   return { outcome: "succeeded" };
 }
 
 /**
- * Deja el run en `failed` y borra su staging. Si la base no responde, se lanza ese error (que es
+ * Deja el run en `failed` y borra sus archivos. Si la base no responde, se lanza ese error (que es
  * reintentable: si quedan intentos, el próximo deja el run en `failed`) con el error original
  * como `cause`, para que el motivo real no se pierda.
  */
@@ -152,5 +176,5 @@ async function fail(deps: RunImportDeps, runId: string, error: AppError): Promis
       cause: error,
     });
   }
-  await deps.discardStaging(runId).catch(() => undefined);
+  await deps.discardInput(runId).catch(() => undefined);
 }

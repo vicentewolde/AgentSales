@@ -601,6 +601,74 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect((await repos.importRuns.get(reciente.id))?.status).toBe("running");
     });
 
+    // F8-T04 (spec F8 §4.4 y §4.12): la carga que espera sus archivos en R2.
+    const uploadInput = (id: string) => ({
+      broker: "marca",
+      dryRun: false,
+      xlsx: {
+        key: `imports/${id}/xlsx/propiedades.xlsx`,
+        name: "propiedades.xlsx",
+        size: 10,
+        sha256: "a".repeat(64),
+      },
+      media: {
+        kind: "folder" as const,
+        prefix: `imports/${id}/media/`,
+        name: "medios",
+        files: [{ path: "P001/foto.jpg", size: 3, sha256: "b".repeat(64) }],
+      },
+    });
+    const awaitingRun = async () => {
+      const id = repos.newId();
+      return repos.importRuns.create({
+        id,
+        status: "awaiting_upload",
+        source: "xlsx",
+        fileName: "propiedades.xlsx",
+        dryRun: false,
+        input: uploadInput(id),
+      });
+    };
+
+    it("una carga con subida nace en awaiting_upload con su entrada de R2 y se lee igual", async () => {
+      const run = await awaitingRun();
+      expect(run).toMatchObject({ status: "awaiting_upload", input: uploadInput(run.id) });
+      expect(await repos.importRuns.get(run.id)).toEqual(run);
+      // El job no la toma mientras espera sus archivos.
+      expect(await repos.importRuns.markRunning(run.id)).toBe(false);
+    });
+
+    it("markQueued solo desde awaiting_upload, una vez", async () => {
+      const run = await awaitingRun();
+      expect(await repos.importRuns.markQueued(run.id)).toBe(true);
+      expect((await repos.importRuns.get(run.id))?.status).toBe("queued");
+      expect(await repos.importRuns.markQueued(run.id)).toBe(false);
+      expect(await repos.importRuns.markQueued(repos.missingId)).toBe(false);
+    });
+
+    it("failAbandonedUploads cierra las que esperan desde antes del corte; markFailed también sirve en awaiting_upload", async () => {
+      const vieja = await awaitingRun();
+      const enCola = await awaitingRun();
+      await repos.importRuns.markQueued(enCola.id);
+      const error = { code: "IMPORT_UPLOAD_ABANDONED", message: "Nadie terminó de subir" };
+
+      expect(
+        await repos.importRuns.failAbandonedUploads(new Date(Date.now() - 60_000), error),
+      ).not.toContain(vieja.id);
+      const closed = await repos.importRuns.failAbandonedUploads(
+        new Date(Date.now() + 60_000),
+        error,
+      );
+      expect(closed).toContain(vieja.id);
+      expect(closed).not.toContain(enCola.id);
+      expect(await repos.importRuns.get(vieja.id)).toMatchObject({ status: "failed", error });
+      expect((await repos.importRuns.get(enCola.id))?.status).toBe("queued");
+
+      const otra = await awaitingRun();
+      expect(await repos.importRuns.markFailed(otra.id, error)).toBe(true);
+      expect((await repos.importRuns.get(otra.id))?.status).toBe("failed");
+    });
+
     it("los cambios de estado de un id inexistente devuelven false", async () => {
       expect(await repos.importRuns.markRunning(repos.missingId)).toBe(false);
       expect(await repos.importRuns.markSucceeded(repos.missingId)).toBe(false);

@@ -612,3 +612,145 @@ describe("r2BucketOrigin (F8-T02)", () => {
     );
   });
 });
+
+describe("signedUploadUrl (F8-T03)", () => {
+  const storage = createR2Storage(options);
+  const content = new TextEncoder().encode("planilla de prueba");
+  const sha256 = createHash("sha256").update(content).digest("hex");
+  const base64 = createHash("sha256").update(content).digest("base64");
+
+  it("firma un PUT con el tipo, el tamaño y el sha256 como cabeceras, por 1 h (sin red)", async () => {
+    const upload = await storage.signedUploadUrl("imports/r1/xlsx/propiedades.xlsx", {
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      contentLength: content.byteLength,
+      sha256: sha256.toUpperCase(),
+      ttlSeconds: 3600,
+    });
+    const url = new URL(upload.url);
+
+    expect(url.origin).toBe(ORIGIN);
+    expect(url.pathname).toBe("/imports/r1/xlsx/propiedades.xlsx");
+    expect(url.searchParams.get("X-Amz-Expires")).toBe("3600");
+    expect(url.searchParams.get("X-Amz-SignedHeaders")?.split(";")).toEqual(
+      expect.arrayContaining(["content-length", "content-type", "host", "x-amz-checksum-sha256"]),
+    );
+    // El sha256 no va en la URL (R2 lo lee de la cabecera) ni se agrega un CRC32 del cuerpo vacío.
+    expect([...url.searchParams.keys()].some((key) => /checksum/i.test(key))).toBe(false);
+    expect(upload.url).not.toContain(options.secretAccessKey);
+    expect(upload.headers).toEqual({
+      "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "x-amz-checksum-sha256": base64,
+    });
+  });
+
+  it("sin sha256 (el zip) firma solo el tipo y el tamaño", async () => {
+    const upload = await storage.signedUploadUrl("imports/r1/media.zip", {
+      contentType: "application/zip",
+      contentLength: 4 * 1024 ** 3,
+      ttlSeconds: 3600,
+    });
+    const signed = new URL(upload.url).searchParams.get("X-Amz-SignedHeaders")?.split(";");
+
+    expect(signed).toEqual(expect.arrayContaining(["content-length", "content-type", "host"]));
+    expect(signed).not.toContain("x-amz-checksum-sha256");
+    expect(upload.headers).toEqual({ "content-type": "application/zip" });
+  });
+
+  it("el tamaño queda en la firma: otro largo da otra firma", async () => {
+    const sign = (contentLength: number) =>
+      storage
+        .signedUploadUrl("imports/r1/media.zip", {
+          contentType: "application/zip",
+          contentLength,
+          ttlSeconds: 60,
+        })
+        .then((upload) => new URL(upload.url).searchParams.get("X-Amz-Signature"));
+
+    const [a, b] = await Promise.all([sign(10), sign(11)]);
+    expect(a).not.toBe(b);
+  });
+
+  it("un largo, un sha256 o una vida inválidos son STORAGE_ERROR (un bug de quien llama)", async () => {
+    const base = { contentType: "application/zip", contentLength: 1, ttlSeconds: 60 };
+    for (const bad of [
+      { ...base, contentLength: -1 },
+      { ...base, contentLength: 1.5 },
+      { ...base, sha256: "no-es-hex" },
+      { ...base, ttlSeconds: 0 },
+      { ...base, ttlSeconds: 8 * 24 * 60 * 60 },
+    ]) {
+      await expect(storage.signedUploadUrl("a", bad)).rejects.toMatchObject({
+        code: "STORAGE_ERROR",
+        retriable: false,
+      });
+    }
+  });
+});
+
+describe("list (F8-T03)", () => {
+  const storage = createR2Storage(options);
+
+  /** Responde un ListObjectsV2 de a `pageSize` objetos, con su token. */
+  function listing(keys: string[], pageSize: number) {
+    const requests: URL[] = [];
+    server.use(
+      http.get(`${ORIGIN}/`, ({ request }) => {
+        const url = new URL(request.url);
+        requests.push(url);
+        const prefix = url.searchParams.get("prefix") ?? "";
+        const matching = keys.filter((key) => key.startsWith(prefix));
+        const start = Number(url.searchParams.get("continuation-token") ?? "0");
+        const page = matching.slice(start, start + pageSize);
+        const truncated = start + pageSize < matching.length;
+        const contents = page
+          .map(
+            (key, index) =>
+              `<Contents><Key>${key}</Key><Size>${index + 1}</Size><LastModified>2026-10-18T12:00:00.000Z</LastModified></Contents>`,
+          )
+          .join("");
+        return new HttpResponse(
+          `<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><Name>test-bucket</Name><Prefix>${prefix}</Prefix><KeyCount>${page.length}</KeyCount><IsTruncated>${truncated}</IsTruncated>${truncated ? `<NextContinuationToken>${start + pageSize}</NextContinuationToken>` : ""}${contents}</ListBucketResult>`,
+          { status: 200, headers: { "Content-Type": "application/xml" } },
+        );
+      }),
+    );
+    return requests;
+  }
+
+  it("recorre todas las páginas y devuelve las rutas, tamaños y fechas en orden", async () => {
+    const requests = listing(
+      ["imports/r1/media/b.jpg", "imports/r1/media/a.jpg", "imports/r1/xlsx/p.xlsx", "otra/x"],
+      2,
+    );
+
+    const objects = await storage.list("imports/r1/");
+
+    expect(objects.map((object) => object.path)).toEqual([
+      "imports/r1/media/a.jpg",
+      "imports/r1/media/b.jpg",
+      "imports/r1/xlsx/p.xlsx",
+    ]);
+    expect(objects[0]).toMatchObject({ lastModified: new Date("2026-10-18T12:00:00.000Z") });
+    expect(requests).toHaveLength(2);
+    expect(requests.map((url) => url.searchParams.get("prefix"))).toEqual([
+      "imports/r1/",
+      "imports/r1/",
+    ]);
+    expect(requests[1]?.searchParams.get("continuation-token")).toBe("2");
+  });
+
+  it("un prefijo sin objetos es una lista vacía", async () => {
+    listing([], 10);
+
+    expect(await storage.list("imports/nada/")).toEqual([]);
+  });
+
+  it("un 5xx es STORAGE_UNAVAILABLE y reintentable", async () => {
+    server.use(http.get(`${ORIGIN}/`, () => new HttpResponse(null, { status: 503 })));
+
+    await expect(storage.list("imports/")).rejects.toMatchObject({
+      code: "STORAGE_UNAVAILABLE",
+      retriable: true,
+    });
+  });
+});

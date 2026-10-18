@@ -43,6 +43,7 @@ export const OPERATION_TEXT: Readonly<Record<Operation, string>> = {
 };
 
 export const IMPORT_RUN_STATUS_TEXT: Readonly<Record<ImportRunStatus, string>> = {
+  awaiting_upload: "esperando la subida",
   queued: "en cola",
   running: "procesando",
   succeeded: "terminada",

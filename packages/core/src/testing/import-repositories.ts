@@ -252,10 +252,11 @@ export function createInMemoryListingRepository(
 export type InMemoryImportRunRepository = ImportRunRepository;
 
 export function createInMemoryImportRunRepository(
-  options: { nextId?: () => string } = {},
+  options: { nextId?: () => string; now?: () => Date } = {},
 ): InMemoryImportRunRepository {
   // Por defecto, ids legibles (`run-1`); un test que pasa por el job (que exige uuid) da los suyos.
   const nextId = options.nextId ?? idGenerator("run");
+  const now = options.now ?? (() => new Date());
   const stored = new Map<string, ImportRun>();
   return {
     async create(run: NewImportRun) {
@@ -265,7 +266,7 @@ export function createInMemoryImportRunRepository(
       const created: ImportRun = {
         id: run.id ?? nextId(),
         brokerId: run.brokerId ?? null,
-        status: "queued",
+        status: run.status ?? "queued",
         dryRun: run.dryRun,
         source: run.source,
         fileName: run.fileName,
@@ -279,7 +280,7 @@ export function createInMemoryImportRunRepository(
         error: null,
         startedAt: null,
         finishedAt: null,
-        createdAt: new Date(),
+        createdAt: now(),
       };
       stored.set(created.id, created);
       return structuredCopy(created);
@@ -317,13 +318,29 @@ export function createInMemoryImportRunRepository(
       stored.set(id, { ...current, status: "succeeded", finishedAt: new Date() });
       return true;
     },
+    async markQueued(id) {
+      const current = stored.get(id);
+      if (current?.status !== "awaiting_upload") return false;
+      stored.set(id, { ...current, status: "queued" });
+      return true;
+    },
     async markFailed(id, error) {
       const current = stored.get(id);
-      if (current === undefined || (current.status !== "queued" && current.status !== "running")) {
+      if (current === undefined || current.status === "succeeded" || current.status === "failed") {
         return false;
       }
       stored.set(id, { ...current, status: "failed", error: { ...error }, finishedAt: new Date() });
       return true;
+    },
+    async failAbandonedUploads(createdBefore, error) {
+      const closed: string[] = [];
+      for (const [id, run] of stored) {
+        if (run.status === "awaiting_upload" && run.createdAt < createdBefore) {
+          stored.set(id, { ...run, status: "failed", error: { ...error }, finishedAt: new Date() });
+          closed.push(id);
+        }
+      }
+      return closed;
     },
     async failAbandoned(startedBefore, error) {
       const closed: string[] = [];

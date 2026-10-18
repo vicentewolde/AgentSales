@@ -4,10 +4,15 @@ import type { ImportCounts, ImportReport, ImportRun, ImportRunInput } from "../i
 
 export type NewImportRun = {
   /**
-   * uuid generado por quien llama (opcional): la API lo necesita antes de crear el run, para
-   * guardar los archivos en `tmp/imports/{id}/input/`. Sin él, lo genera la base.
+   * uuid generado por quien llama (opcional): la API lo necesita antes de crear el run, para armar
+   * las claves de R2 (`imports/{id}/…`). Sin él, lo genera la base.
    */
   id?: string;
+  /**
+   * `awaiting_upload` para una carga que espera sus archivos en R2 (spec F8 §4.4); por defecto
+   * `queued`.
+   */
+  status?: "awaiting_upload" | "queued";
   source: ListingSource;
   fileName: string;
   dryRun: boolean;
@@ -59,10 +64,20 @@ export interface ImportRunRepository {
   /** `running` → `succeeded`, con `finished_at`. `false` desde otro estado o si no existe. */
   markSucceeded(id: string): Promise<boolean>;
   /**
-   * `queued` o `running` → `failed`, con `error` y `finished_at`. `false` si ya terminó o no
-   * existe: el primer estado terminal gana.
+   * `awaiting_upload` → `queued` (spec F8 §4.4: los archivos ya están en R2). `false` desde otro
+   * estado o si no existe: dos "empezar" a la vez encolan una sola vez.
+   */
+  markQueued(id: string): Promise<boolean>;
+  /**
+   * `awaiting_upload`, `queued` o `running` → `failed`, con `error` y `finished_at`. `false` si ya
+   * terminó o no existe: el primer estado terminal gana.
    */
   markFailed(id: string, error: ImportRunError): Promise<boolean>;
+  /**
+   * Cierra las cargas que siguen en `awaiting_upload` creadas antes de `createdBefore` (nadie
+   * terminó de subir: spec F8 §4.4, 24 h), con `error`. Devuelve los ids cerrados.
+   */
+  failAbandonedUploads(createdBefore: Date, error: ImportRunError): Promise<string[]>;
   /**
    * Cierra los runs abandonados: los que siguen en `running` con `started_at` anterior a
    * `startedBefore` pasan a `failed` con `error` (el proceso murió, o la base no respondió en el

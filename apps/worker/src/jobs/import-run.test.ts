@@ -35,7 +35,7 @@ function deps(): RunImportDeps & {
       throw new AppError("IMPORT_FILE_INVALID", "El archivo no es un Excel (.xlsx) válido");
     },
     openMedia: async () => ({ source: null, close: async () => {} }),
-    discardStaging: async () => {},
+    discardInput: async () => {},
   };
 }
 
@@ -56,7 +56,12 @@ describe("job import.run", () => {
       source: "xlsx",
       fileName: "p.xlsx",
       dryRun: false,
-      input: { xlsxPath: "/tmp/p.xlsx", mediaDir: null, broker: null },
+      input: {
+        broker: null,
+        dryRun: false,
+        xlsx: { key: "imports/x/xlsx/p.xlsx", name: "p.xlsx", size: 1, sha256: "a".repeat(64) },
+        media: null,
+      },
     });
 
     await expect(

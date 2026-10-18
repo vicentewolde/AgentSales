@@ -1,9 +1,16 @@
 import { Readable } from "node:stream";
-import { AppError, isAppError, type MediaStorage, type StoredObjectInfo } from "@agentsales/core";
+import {
+  AppError,
+  isAppError,
+  type ListedObject,
+  type MediaStorage,
+  type StoredObjectInfo,
+} from "@agentsales/core";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -34,6 +41,12 @@ const SHA256_HEX = /^[0-9a-f]{64}$/i;
 
 /** `ChecksumSHA256` va en base64 del digest crudo, no en hexadecimal. */
 const sha256Base64 = (hex: string) => Buffer.from(hex, "hex").toString("base64");
+
+/** La cabecera del sha256 en un `PUT` (la regla de CORS del bucket la permite, spec F8 §4.4). */
+export const CHECKSUM_SHA256_HEADER = "x-amz-checksum-sha256";
+
+/** Tope de vida de una URL prefirmada con SigV4 (7 días). */
+const MAX_SIGNED_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /** Status HTTP de un error del SDK, si lo trae. */
 function httpStatusOf(error: unknown): number | undefined {
@@ -365,6 +378,81 @@ export function createR2Storage(options: R2StorageOptions): MediaStorage {
     signedReadUrl(path, ttlSeconds = signedUrlTtlSeconds) {
       return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: path }), {
         expiresIn: ttlSeconds,
+      });
+    },
+
+    async signedUploadUrl(path, { contentType, contentLength, sha256, ttlSeconds }) {
+      // Como en `putStream`: un largo, un sha256 o una vida inválidos son un bug de quien llama.
+      if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
+        throw new AppError("STORAGE_ERROR", `contentLength inválido para ${path}`, {
+          details: { path, contentLength },
+        });
+      }
+      if (sha256 !== undefined && !SHA256_HEX.test(sha256)) {
+        throw new AppError("STORAGE_ERROR", `sha256 inválido para ${path}`, { details: { path } });
+      }
+      if (
+        !Number.isSafeInteger(ttlSeconds) ||
+        ttlSeconds < 1 ||
+        ttlSeconds > MAX_SIGNED_TTL_SECONDS
+      ) {
+        throw new AppError("STORAGE_ERROR", `Vida inválida para la URL de ${path}`, {
+          details: { path, ttlSeconds },
+        });
+      }
+      const checksum = sha256 === undefined ? undefined : sha256Base64(sha256.toLowerCase());
+      // Con el cliente de streams (`WHEN_REQUIRED`): con el de siempre, el SDK firmaría además un
+      // CRC32 del cuerpo vacío y la subida del archivo real fallaría. El tipo, el largo y el
+      // sha256 quedan firmados como cabeceras (no en la URL): un PUT con otro largo, otro tipo o
+      // sin el sha256 no calza con la firma, y R2 lo rechaza (403).
+      const url = await getSignedUrl(
+        streamClient,
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: path,
+          ContentType: contentType,
+          ContentLength: contentLength,
+          ...(checksum === undefined ? {} : { ChecksumSHA256: checksum }),
+        }),
+        {
+          expiresIn: ttlSeconds,
+          signableHeaders: new Set(["content-type", "content-length"]),
+          unhoistableHeaders: new Set([CHECKSUM_SHA256_HEADER]),
+        },
+      );
+      return {
+        url,
+        headers: {
+          "content-type": contentType,
+          ...(checksum === undefined ? {} : { [CHECKSUM_SHA256_HEADER]: checksum }),
+        },
+      };
+    },
+
+    list(prefix) {
+      return send(prefix, async () => {
+        const objects: ListedObject[] = [];
+        let token: string | undefined;
+        do {
+          const page = await client.send(
+            new ListObjectsV2Command({
+              Bucket: bucket,
+              Prefix: prefix,
+              ...(token === undefined ? {} : { ContinuationToken: token }),
+            }),
+          );
+          for (const item of page.Contents ?? []) {
+            if (item.Key === undefined) continue;
+            objects.push({
+              path: item.Key,
+              size: item.Size ?? 0,
+              lastModified: item.LastModified ?? new Date(0),
+            });
+          }
+          // Un token sin `IsTruncated` no se sigue: así una respuesta rara no deja un bucle.
+          token = page.IsTruncated === true ? page.NextContinuationToken : undefined;
+        } while (token !== undefined);
+        return objects.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
       });
     },
   };

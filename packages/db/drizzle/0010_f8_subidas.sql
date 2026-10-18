@@ -1,0 +1,2 @@
+ALTER TYPE "public"."import_run_status" ADD VALUE 'awaiting_upload' BEFORE 'queued';--> statement-breakpoint
+CREATE INDEX "import_runs_status_created_at_idx" ON "import_runs" USING btree ("status","created_at");

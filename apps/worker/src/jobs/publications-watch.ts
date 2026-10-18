@@ -1,4 +1,6 @@
 import {
+  type CloseAbandonedImportsDeps,
+  closeAbandonedImports,
   isAppError,
   type OAuthStateRepository,
   purgeExpiredAuth,
@@ -44,6 +46,11 @@ export type PublicationsWatchJobDeps = WatchPublicationsDeps & {
     sessions: Pick<SessionRepository, "deleteExpired">;
     oauthStates: Pick<OAuthStateRepository, "deleteExpired">;
   };
+  /**
+   * F8 (spec F8 §4.4): cerrar las cargas que nadie terminó de subir en 24 h y borrar de R2 lo que
+   * quedó de las cargas cerradas o terminadas.
+   */
+  importCleanup?: Omit<CloseAbandonedImportsDeps, "now">;
 };
 
 const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_ERROR");
@@ -51,7 +58,8 @@ const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_E
 /**
  * Job `publications.watch`: corre `watchPublications` (core) y registra solo conteos, ids y
  * códigos. Una vuelta sin nada que hacer no escribe más que el inicio y el fin del job. Después
- * borra las sesiones y los `state` de OAuth vencidos (F7); si falla, solo lo advierte.
+ * borra las sesiones y los `state` de OAuth vencidos (F7) y limpia las subidas (F8); si algo de
+ * eso falla, solo lo advierte.
  */
 export function publicationsWatchJob(deps: PublicationsWatchJobDeps): Job {
   return defineJob({
@@ -102,6 +110,34 @@ export function publicationsWatchJob(deps: PublicationsWatchJobDeps): Job {
             { code: codeOf(error) },
             "vigilancia: no se pudieron borrar las sesiones vencidas",
           );
+        }
+      }
+      if (deps.importCleanup !== undefined) {
+        try {
+          const cleaned = await closeAbandonedImports({
+            ...deps.importCleanup,
+            ...(deps.now === undefined ? {} : { now: deps.now }),
+          });
+          if (cleaned.abandoned.length > 0) {
+            logger.warn(
+              { importRunIds: cleaned.abandoned },
+              "vigilancia: cargas sin terminar de subir cerradas",
+            );
+          }
+          if (cleaned.deletedObjects > 0) {
+            logger.info(
+              { objects: cleaned.deletedObjects },
+              "vigilancia: archivos de cargas terminadas borrados de R2",
+            );
+          }
+          if (cleaned.failed.length > 0) {
+            logger.warn(
+              { importRunIds: cleaned.failed },
+              "vigilancia: no se pudieron borrar los archivos de algunas cargas",
+            );
+          }
+        } catch (error) {
+          logger.warn({ code: codeOf(error) }, "vigilancia: no se pudieron limpiar las subidas");
         }
       }
     },

@@ -29,7 +29,7 @@ export type ImportListingsDeps = {
 
 export type ImportListingsParams = {
   /**
-   * El `import_run` ya creado (lo crea `requestImport`, F1-T09). De él salen `dry_run`, el origen
+   * El `import_run` ya creado (lo crea `requestImportUpload`, F8-T04). De él salen `dry_run`, el origen
    * y el `--broker` (`input.broker`): una sola fuente de verdad, así un run de simulación nunca
    * escribe.
    */

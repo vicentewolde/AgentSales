@@ -1,5 +1,9 @@
 import { AppError, type Publication, SESSION_IDLE_MS, STALE_PUBLISHING_MS } from "@agentsales/core";
-import { createPublicationScenario } from "@agentsales/core/testing";
+import {
+  createInMemoryImportRunRepository,
+  createInMemoryMediaStorage,
+  createPublicationScenario,
+} from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { captureLogger } from "../../test/content-fixture.js";
 import {
@@ -129,5 +133,62 @@ describe("publications.watch", () => {
     expect(
       lines.find((line) => line.msg === "vigilancia: no se pudieron borrar las sesiones vencidas"),
     ).toMatchObject({ level: 40, code: "DB_UNAVAILABLE" });
+  });
+
+  it("cierra las cargas sin terminar de subir y borra sus archivos de R2; si falla solo lo advierte (F8)", async () => {
+    const t = await createPublicationScenario();
+    const { logger, lines } = captureLogger();
+    const boss = fakeBoss();
+    const created = new Date("2026-10-17T12:00:00.000Z");
+    const importRuns = createInMemoryImportRunRepository({
+      nextId: () => "7f1c2a4e-9b3d-4f6a-8c2e-1d5b9a7e3f10",
+      now: () => created,
+    });
+    const storage = createInMemoryMediaStorage();
+    const run = await importRuns.create({
+      status: "awaiting_upload",
+      source: "xlsx",
+      fileName: "p.xlsx",
+      dryRun: false,
+      input: {
+        broker: null,
+        dryRun: false,
+        xlsx: { key: "imports/x/xlsx/p.xlsx", name: "p.xlsx", size: 1, sha256: "a".repeat(64) },
+        media: null,
+      },
+    });
+    await storage.put(`imports/${run.id}/xlsx/p.xlsx`, new Uint8Array([1]), "x");
+    let failList = false;
+    const list = storage.list.bind(storage);
+    storage.list = async (prefix) => {
+      if (failList)
+        throw new AppError("STORAGE_UNAVAILABLE", "R2 no respondió", { retriable: true });
+      return list(prefix);
+    };
+    const job = publicationsWatchJob({
+      publications: t.publications,
+      platformAccounts: t.platformAccounts,
+      queue: t.queue,
+      now: () => new Date(created.getTime() + 25 * 60 * 60 * 1000),
+      importCleanup: { importRuns, storage },
+    });
+    await registerJobs(boss.boss, [job], logger);
+
+    await boss.run();
+
+    expect(await importRuns.get(run.id)).toMatchObject({
+      status: "failed",
+      error: { code: "IMPORT_UPLOAD_ABANDONED" },
+    });
+    expect(await list("imports/")).toEqual([]);
+    expect(
+      lines.find((line) => line.msg === "vigilancia: cargas sin terminar de subir cerradas"),
+    ).toMatchObject({ level: 40, importRunIds: [run.id] });
+
+    failList = true;
+    await boss.run();
+    expect(
+      lines.find((line) => line.msg === "vigilancia: no se pudieron limpiar las subidas"),
+    ).toMatchObject({ level: 40, code: "STORAGE_UNAVAILABLE" });
   });
 });
