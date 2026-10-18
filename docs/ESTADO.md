@@ -2,24 +2,24 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-17
-**Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** lote H de F7 (F7-T17 y T18): el panel con el alcance, Corredores, Mi marca, gasto y Marketplace a mano
-**Siguiente paso:** `/fase-cerrar 7` (T19: la demo con un corredor de prueba, la auditoría y el tag `v0.7.0`)
+**Actualizado:** 2026-10-18
+**Fase actual:** F8 · En internet (spec por redactar: `/fase-plan 8`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` por crear, con tu permiso)
+**Última tarea:** cierre de F7 (T19, `/fase-cerrar 7`): demo completa con `corredor-demo` (2026-10-18, sin Instagram), auditoría del `arquitecto`, `CHANGELOG [0.7.0]` y spec cerrado
+**Siguiente paso:** `/fase-plan 8` — redactar el spec de F8 (ver `docs/06-roadmap.md`, la deuda "Para F8" más abajo y `docs/07-checklist-cuentas.md`, "Antes de F8")
 
-## Pendiente tuyo para F7
+## Pendiente tuyo de F7
 - [x] **Clave de la API de Anthropic** en `.env` (2026-10-17); `pnpm llm:smoke --provider anthropic-api` respondió bien
 - [ ] **Límite de gasto en la consola de Anthropic:** la clave no tiene uno (recomendado: el tope por corredor solo cubre lo que AgentSales anota)
 - [ ] **Renovar la clave antes del 2026-12-31** (vence ese día; después la IA de los corredores da `LLM_AUTH_REQUIRED`)
 - [ ] **Términos comerciales de Anthropic** (antes de cobrar o de F8): revisar que una sola clave pueda atender a varios clientes
-- [ ] **Para la demo:** una segunda cuenta de Instagram tuya como evaluador de tu app de Meta (pasos en `docs/07-checklist-cuentas.md`, con el lote H)
+- [ ] **Instagram de un corredor como evaluador** (no se probó en la demo: queda NO VERIFICADO que Meta deje publicar en la cuenta de un evaluador): pasos en `docs/07-checklist-cuentas.md`, "Antes de F7", cuando tengas el primer corredor piloto
 
 ## Pendiente tuyo de F6
 - [ ] **Respaldo real (criterio 10 y paso 7 de la demo):** `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6"), después `pnpm db:backup`, mirar el archivo en `~/.agentsales/backups` con `pg_restore --list` y `pnpm -s cli doctor` (con `pnpm dev`) para ver que la versión alcanza
 - [ ] **WhatsApp del corredor de pruebas:** en la demo, Portal rechazó P002 por falta del WhatsApp (`PORTAL_NOT_READY`): completarlo en la hoja Corredor y volver a cargar la planilla. Con eso se puede mostrar Portal en simulación (actualizar, republicar, pausar con la propiedad)
 - [ ] **Prueba en vivo de F6** (§7, paso 8), solo con tu instrucción en el chat
 
-## Pendiente tuyo de fases anteriores (no bloquea F7)
+## Pendiente tuyo de fases anteriores (no bloquea F8)
 - **De F5:**
   - [ ] Token de la API BDE del Banco Central (`BCCH_API_TOKEN` en `.env`; `docs/07-checklist-cuentas.md`, "Antes de F5") y después `pnpm uf:smoke`. Sin él, un aviso en UF no va a Marketplace (`doctor` lo avisa)
   - [ ] Revisar en Facebook (Perfil → Estado del perfil → Marketplace) que tu cuenta no tiene restricciones
@@ -34,26 +34,7 @@
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F7 (`/fase-plan 7`) y ADR-0021 a ADR-0023 | ✅ terminada | |
-| **Lote A** · T01 Datos nuevos: usuarios, sesiones, invitaciones y `state` usados | ✅ terminada | #130 |
-| **Lote A** · T02 Las tablas de hoy y el alcance en SQL | ✅ terminada | #130 |
-| **Lote A** · T03 Usuarios, sesiones y permisos (core y config) | ✅ terminada | #130 |
-| **Lote B** · T04 La API con sesión | ✅ terminada | #131 |
-| **Lote B** · T05 Usuarios, `/health` y el primer administrador | ✅ terminada | #131 |
-| **Lote B** · T06 CLI: entrar | ✅ terminada | #131 |
-| **Lote B** · T07 Panel: entrar e invitación | ✅ terminada | #131 |
-| **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | ✅ terminada | #132 |
-| **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | ✅ terminada | #132 |
-| **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ✅ terminada | #132 |
-| **Lote D** · T11 `anthropic-api` real | ✅ terminada | #133 |
-| **Lote D** · T12 La IA por corredor y su gasto | ✅ terminada | #133 |
-| **Lote E** · T13 Corredores: crear, editar y lista de alta | ✅ terminada | #134 |
-| **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | #134 |
-| **Lote F** · T15 Marketplace a mano | ✅ terminada | #135 |
-| **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ✅ terminada | #136 |
-| **Lote H** · T17 Panel: el alcance | ✅ terminada | #137 |
-| **Lote H** · T18 Panel: Corredores, Mi marca, gasto y Marketplace a mano | ✅ terminada | #137 |
-| T19 Cierre de fase | ⏳ pendiente | |
+| Spec F8 (`/fase-plan 8`) | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
@@ -143,6 +124,10 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-18: **Cierre de F7 (T19).**
+  - **Demo (tú, en simulación, todo bien):** creaste `corredor-demo` (no propio) con logo, lo invitaste y entró con su contraseña en una ventana privada; activaste Marketplace a mano; como el corredor bajó su planilla, cargó P001 y P002, las preparó con la IA por la API, vio su gasto, aprobó y publicó Marketplace a mano ("No lo publiqué"); no vio lo de `agentsales-pruebas` ("no existe" y Seguimiento solo con lo suyo); el tope de US$ 0,01 frenó los textos; la bitácora dijo quién hizo cada cosa y Restablecer cerró su sesión. Instagram se omitió (sin cuenta de evaluador).
+  - **Auditoría del `arquitecto`:** sin hallazgos de código; la documentación quedó al día (README, guía, checklist "Antes de F8", roadmap con la deuda de F7, deuda técnica limpia).
+  - **Registro:** `CHANGELOG [0.7.0]`, spec cerrado. El tag `v0.7.0` se crea solo con tu permiso.
 - 2026-10-17: **Lote H de F7 (T17 y T18): el panel.**
   - **Tú** ves en el menú "Ver corredor" (Todos o uno): filtra Propiedades, Seguimiento y Cuentas. Y la página **Corredores**: la lista con el gasto del mes y el tope, crear uno, y su detalle con la marca, el tope y si es propio, el logo y la planilla, sus usuarios (invitar, restablecer, desactivar; el enlace se ve una sola vez con su botón de copiar) y su lista de alta.
   - **El corredor** ve **Mi marca** (su marca, logo, planilla, gasto y lista de alta) y no ve lo tuyo: el selector, Corredores, ni conectar o desconectar cuentas.

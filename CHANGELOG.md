@@ -7,6 +7,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 ## [0.7.0] - 2026-10-17 · F7 Varios corredores
 Ahora das de alta a un corredor de verdad (su marca, su logo, su planilla y su usuario), y él entra con su correo y su contraseña, ve solo lo suyo y hace casi todo por su cuenta: cargar, preparar, aprobar, publicar, programar y cerrar. Sus textos se redactan por la API de Anthropic con tu clave, con el gasto anotado por corredor y un tope mensual opcional; tus corredores siguen con tu plan de Claude. Todo sigue corriendo en tu Mac: llevarlo a internet es F8.
 
+Demo (2026-10-18, en simulación): diste de alta a `corredor-demo` con su logo y su usuario; él entró en otra ventana, cargó dos propiedades con su planilla, las preparó por la API, vio su gasto, publicó Marketplace a mano, no vio nada de otro corredor y el tope frenó sus textos. Instagram quedó fuera de la demo (lo cubren las pruebas).
+
 ### Añadido
 - **Entrar con usuario:** `pnpm auth:admin --email` crea tu administrador o te da un enlace nuevo si olvidaste la contraseña o te bloqueaste (al portapapeles, sin imprimirlo). En el panel, las páginas Entrar e Invitación, tu nombre y "Cerrar sesión"; en la CLI, `login`, `whoami` y `logout`. La sesión dura 30 días (7 sin uso), y 10 contraseñas equivocadas seguidas bloquean 15 minutos.
 - **Usuarios** (solo tú): invitar con un enlace que se ve una vez y vence en 72 h, restablecer, desactivar y reactivar, en el detalle del corredor o con `users list|invite|reset|disable|enable` (el enlace va al portapapeles).
