@@ -5,7 +5,7 @@
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
 **Última tarea:** lote B de F8 (T03 a T07 y T09): las cargas suben directo a R2 desde el panel y la CLI (URL prefirmada, la carga en `awaiting_upload`, el worker baja de R2 y borra al terminar, el Excel con tope descomprimido), sin `/imports/local` ni disco compartido; más `pnpm db:dev-scrub`
-**Siguiente paso:** la carga real de prueba de T07 con `pnpm dev` (contigo, con aviso), el CORS del bucket de producción (`ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com`) y después `/tarea F8-T08` (lote C: la CLI contra el servidor)
+**Siguiente paso:** repetir la carga real desde el panel (T07) con `pnpm dev` (contigo, con aviso; la de la CLI ya pasó), el CORS del bucket de producción (`ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com`) y después `/tarea F8-T08` (lote C: la CLI contra el servidor)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -19,7 +19,9 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 - **Al terminar el lote B** (detalle en el checklist):
   - [x] `pnpm storage:check` en el bucket de desarrollo (2026-10-18): el PUT prefirmado, R2 rechaza un archivo alterado (400) y otro largo (403), y el CORS desde `http://localhost:5173` responde 204
   - [ ] `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com`: el CORS del bucket de producción
-  - [ ] La carga real de prueba desde el panel (F8-T07), con `pnpm dev`: Claude la hace contigo después de `db:dev-scrub` y avisa antes de levantarlo
+  - [x] La carga real desde la **CLI** (2026-10-18, T09): `import` de una carga sintética (PRUEBA-1, carpeta con 2 fotos, `--dry-run`) contra el bucket de desarrollo: subió 3 archivos a R2, el worker la terminó (1 creada y 2 medios, en simulación) y no quedó nada bajo `imports/`. Antes hubo que aplicar la migración `0010` a la rama dev (`pnpm db:migrate`)
+  - [ ] La carga real desde el **panel** (F8-T07): en el primer intento la subida no llegó a la API (ningún `POST /api/imports/uploads` en el log); se repite con `pnpm dev` (la carga sintética quedó en `tmp/carga-prueba/`)
+  - [ ] **La base de producción no tiene la migración `0010`:** se aplica al desplegar (T11, `release_command`) o con `ENV_FILE=.env.production pnpm db:migrate` antes de usar la API contra producción
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups`, los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
@@ -52,7 +54,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 |---|---|---|
 | Spec F8 (`/fase-plan 8`) | ✅ aprobado | (este PR) |
 | **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
-| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (falta la carga real de T07 y el CORS del bucket de producción) | #142 |
+| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (la CLI probada contra R2 real; falta la carga real desde el panel y el CORS del bucket de producción) | #142 |
 | **Lote C** · T08 CLI: la dirección del servidor | ⏳ pendiente | |
 | **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ⏳ pendiente | |
 | **Lote E** · T13 Respaldo a R2 | ⏳ pendiente | |

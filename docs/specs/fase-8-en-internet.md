@@ -295,7 +295,7 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 - **Descripción:** el panel calcula el sha256 (Web Crypto) de la planilla y de los archivos de carpeta de hasta 100 MB (el zip va solo con su tamaño), pide las URLs, sube con avance y reintento por archivo, y empieza la carga.
 - **Hecho cuando:**
   - [x] Tests: avance, un archivo que falla se reintenta, cancelar, el error de un archivo faltante
-  - [ ] Con `pnpm dev` y el bucket de desarrollo, una carga real de prueba (aviso antes; espera `pnpm db:dev-scrub` del operador)
+  - [ ] Con `pnpm dev` y el bucket de desarrollo, una carga real de prueba (aviso antes): pendiente (2026-10-18, el primer intento no llegó a subir; la de la CLI, T09, sí pasó contra R2 real)
 
 ### F8-T08 · CLI: la dirección del servidor
 - **Depende de:** T02
