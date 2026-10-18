@@ -103,8 +103,8 @@ Spec: `docs/specs/fase-8-en-internet.md` (modo demo en Fly.io con Neon gratis, e
 
 **Al terminar el lote B (subidas directas a R2):**
 - [x] `pnpm db:dev-scrub` (arriba), y después **`pnpm storage:check`** de nuevo (2026-10-18: pasó entero; R2 rechazó el contenido alterado con 400, otro largo con 403, y el CORS respondió 204): ahora también sube con una URL prefirmada, comprueba que R2 rechaza un archivo alterado (lo NO VERIFICADO de la nota de R2) y revisa la regla de CORS desde `http://localhost:5173`
-- [ ] **El bucket de producción:** `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com` (revisa su CORS con el dominio; no toca la base)
-- [ ] **Una carga real de prueba desde el panel** (F8-T07, con `pnpm dev` y el bucket de desarrollo): Claude avisa antes de levantar `pnpm dev`
+- [x] **El bucket de producción** (2026-10-18: pasó; CORS 204 desde el dominio): `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com` (revisa su CORS con el dominio; no toca la base)
+- [x] **Una carga real de prueba desde el panel** (2026-10-18, en Chrome con una carpeta; F8-T07, con `pnpm dev` y el bucket de desarrollo): Claude avisa antes de levantar `pnpm dev`
 
 **Antes del primer despliegue (T21):**
 - [ ] **Cuenta de Fly.io** con tarjeta (cobra por segundo encendido: unos US$ 0,56 por día de demo) y su token de despliegue en los secretos de GitHub (`FLY_API_TOKEN`)
