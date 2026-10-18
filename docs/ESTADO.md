@@ -5,7 +5,7 @@
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
 **Última tarea:** lote B de F8 (T03 a T07 y T09): las cargas suben directo a R2 desde el panel y la CLI (URL prefirmada, la carga en `awaiting_upload`, el worker baja de R2 y borra al terminar, el Excel con tope descomprimido), sin `/imports/local` ni disco compartido; más `pnpm db:dev-scrub`
-**Siguiente paso:** el CORS del bucket de producción (`ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com`) y después `/tarea F8-T08` (lote C: la CLI contra el servidor)
+**Siguiente paso:** `/tarea F8-T08` (lote C: la CLI contra el servidor)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -18,7 +18,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [x] **`pnpm db:dev-scrub`** (2026-10-18): borró las 2 credenciales copiadas (Instagram y Portal); en la rama esas cuentas quedan desconectadas
 - **Al terminar el lote B** (detalle en el checklist):
   - [x] `pnpm storage:check` en el bucket de desarrollo (2026-10-18): el PUT prefirmado, R2 rechaza un archivo alterado (400) y otro largo (403), y el CORS desde `http://localhost:5173` responde 204
-  - [ ] `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com`: el CORS del bucket de producción
+  - [x] `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com` (2026-10-18): pasó entero en `agentsales-media`; el CORS desde el dominio responde 204 y R2 rechaza un archivo alterado (400)
   - [x] La carga real desde la **CLI** (2026-10-18, T09): `import` de una carga sintética (PRUEBA-1, carpeta con 2 fotos, `--dry-run`) contra el bucket de desarrollo: subió 3 archivos a R2, el worker la terminó (1 creada y 2 medios, en simulación) y no quedó nada bajo `imports/`. Antes hubo que aplicar la migración `0010` a la rama dev (`pnpm db:migrate`)
   - [x] La carga real desde el **panel** (2026-10-18, F8-T07): en Chrome, la misma carga sintética con "Una carpeta" y "Solo simular": `POST /api/imports/uploads` 201, los archivos directo a R2, `start` 202, el worker la terminó (1 creada y 2 medios, en simulación) y no quedó nada bajo `imports/`. Los dos intentos anteriores no llegaron a subir porque no se pasó de la página Entrar (no fue una falla del panel)
   - [ ] **La base de producción no tiene la migración `0010`:** se aplica al desplegar (T11, `release_command`) o con `ENV_FILE=.env.production pnpm db:migrate` antes de usar la API contra producción
@@ -54,7 +54,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 |---|---|---|
 | Spec F8 (`/fase-plan 8`) | ✅ aprobado | (este PR) |
 | **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
-| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (la CLI y el panel probados contra R2 real; falta el CORS del bucket de producción) | #142 |
+| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (la CLI y el panel probados contra R2 real; los dos buckets verificados) | #142 |
 | **Lote C** · T08 CLI: la dirección del servidor | ⏳ pendiente | |
 | **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ⏳ pendiente | |
 | **Lote E** · T13 Respaldo a R2 | ⏳ pendiente | |
