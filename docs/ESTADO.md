@@ -3,7 +3,7 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-18
-**Fase actual:** F8 · En internet (spec por redactar: `/fase-plan 8`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` por crear, con tu permiso)
+**Fase actual:** F8 · En internet (spec por redactar: `/fase-plan 8`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
 **Última tarea:** cierre de F7 (T19, `/fase-cerrar 7`): demo completa con `corredor-demo` (2026-10-18, sin Instagram), auditoría del `arquitecto`, `CHANGELOG [0.7.0]` y spec cerrado
 **Siguiente paso:** `/fase-plan 8` — redactar el spec de F8 (ver `docs/06-roadmap.md`, la deuda "Para F8" más abajo y `docs/07-checklist-cuentas.md`, "Antes de F8")
 
@@ -127,7 +127,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - 2026-10-18: **Cierre de F7 (T19).**
   - **Demo (tú, en simulación, todo bien):** creaste `corredor-demo` (no propio) con logo, lo invitaste y entró con su contraseña en una ventana privada; activaste Marketplace a mano; como el corredor bajó su planilla, cargó P001 y P002, las preparó con la IA por la API, vio su gasto, aprobó y publicó Marketplace a mano ("No lo publiqué"); no vio lo de `agentsales-pruebas` ("no existe" y Seguimiento solo con lo suyo); el tope de US$ 0,01 frenó los textos; la bitácora dijo quién hizo cada cosa y Restablecer cerró su sesión. Instagram se omitió (sin cuenta de evaluador).
   - **Auditoría del `arquitecto`:** sin hallazgos de código; la documentación quedó al día (README, guía, checklist "Antes de F8", roadmap con la deuda de F7, deuda técnica limpia).
-  - **Registro:** `CHANGELOG [0.7.0]`, spec cerrado. El tag `v0.7.0` se crea solo con tu permiso.
+  - **Registro:** `CHANGELOG [0.7.0]`, spec cerrado y tag `v0.7.0` en GitHub.
 - 2026-10-17: **Lote H de F7 (T17 y T18): el panel.**
   - **Tú** ves en el menú "Ver corredor" (Todos o uno): filtra Propiedades, Seguimiento y Cuentas. Y la página **Corredores**: la lista con el gasto del mes y el tope, crear uno, y su detalle con la marca, el tope y si es propio, el logo y la planilla, sus usuarios (invitar, restablecer, desactivar; el enlace se ve una sola vez con su botón de copiar) y su lista de alta.
   - **El corredor** ve **Mi marca** (su marca, logo, planilla, gasto y lista de alta) y no ve lo tuyo: el selector, Corredores, ni conectar o desconectar cuentas.
