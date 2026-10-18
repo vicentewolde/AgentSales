@@ -242,7 +242,8 @@ export function testAuth(): TestAuth {
   };
 }
 
-type RequestableApp = ReturnType<typeof createApp>;
+/** Cualquier app de Hono con `request`: la de `createApp` o la montada bajo `/api` (`mountApi`). */
+type RequestableApp = { request: ReturnType<typeof createApp>["request"] };
 
 /**
  * La app con la sesión del administrador sembrado en cada pedido que no traiga la suya

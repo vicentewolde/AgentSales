@@ -19,8 +19,16 @@ function sameText(a: string, b: string): boolean {
   return diff === 0;
 }
 
-/** Cookie del `state` del OAuth: solo la ve la ruta de vuelta (`/oauth`). */
+/** Cookie del `state` del OAuth de Instagram (sin HTTPS, la de F3). */
 export const OAUTH_STATE_COOKIE = "agentsales_oauth_state";
+
+/**
+ * El nombre de la cookie del `state` de Instagram (spec F8 §4.3): con HTTPS, `__Host-` (el navegador
+ * la exige `Secure`, `Path=/` y sin `Domain`) y una por proveedor (`_ig`; la de Mercado Libre llega
+ * con F8-T19), para que dos conexiones no se pisen.
+ */
+export const instagramStateCookieName = (secure: boolean): string =>
+  secure ? "__Host-agentsales_oauth_ig" : OAUTH_STATE_COOKIE;
 /** El `state` vale 10 minutos (spec F3 §4.6). */
 export const OAUTH_STATE_TTL_SECONDS = 10 * 60;
 
@@ -77,12 +85,16 @@ export function verifyOAuthState(
 }
 
 /**
- * Dónde empieza el OAuth (`connect.instagram.startUrl`, F3-T17): `/oauth/instagram/start` en el host
- * de la URI de retorno, porque la cookie del `state` distingue el host. Asume la API en la raíz del
- * host (deuda de F7 si se monta tras un prefijo).
+ * Dónde empieza el OAuth (`connect.instagram.startUrl`, F3-T17): en el host de la URI de retorno,
+ * porque la cookie del `state` distingue el host, y en su misma ruta con `start` en vez de
+ * `callback` (spec F8 §4.3: la API va bajo `/api`, cierra la deuda "tras un prefijo" de F3).
  */
 export function instagramStartUrlOf(redirectUri: string): string {
-  return new URL("/oauth/instagram/start", redirectUri).toString();
+  const url = new URL(redirectUri);
+  const path = /\/callback\/?$/.test(url.pathname)
+    ? url.pathname.replace(/\/callback\/?$/, "/start")
+    : `${url.pathname.replace(/\/$/, "")}/start`;
+  return new URL(path, url.origin).toString();
 }
 
 export type OAuthDeps = Omit<ConnectAccountDeps, "instagram"> & {
@@ -112,8 +124,10 @@ export function oauthRoutes(deps: OAuthDeps) {
     for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
     return url.toString();
   };
+  // `Path=/` (no la ruta de la vuelta): `__Host-` lo exige, y con el prefijo `/api` la ruta cambia.
+  const cookieName = instagramStateCookieName(deps.instagram.secureCookie);
   const cookieOptions = {
-    path: "/oauth",
+    path: "/",
     httpOnly: true,
     sameSite: "Lax" as const,
     secure: deps.instagram.secureCookie,
@@ -133,16 +147,16 @@ export function oauthRoutes(deps: OAuthDeps) {
         { platform: OAUTH_STATE_PLATFORMS.instagram, broker },
         { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
       );
-      setCookie(c, OAUTH_STATE_COOKIE, state, {
+      setCookie(c, cookieName, state, {
         ...cookieOptions,
         maxAge: OAUTH_STATE_TTL_SECONDS,
       });
       return c.redirect(deps.instagram.auth.authorizeUrl(state), 302);
     })
     .get("/instagram/callback", async (c) => {
-      const cookie = getCookie(c, OAUTH_STATE_COOKIE);
+      const cookie = getCookie(c, cookieName);
       // Un `state` sirve una sola vez: la cookie se borra pase lo que pase.
-      deleteCookie(c, OAUTH_STATE_COOKIE, cookieOptions);
+      deleteCookie(c, cookieName, cookieOptions);
       const { code, state, error } = c.req.query();
       // El operador rechazó en Instagram: no es un error de la app, solo un aviso para el panel.
       if (error !== undefined) return c.redirect(toPanel({ error: "OAUTH_DENIED" }), 302);

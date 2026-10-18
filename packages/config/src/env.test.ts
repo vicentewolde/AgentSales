@@ -230,7 +230,7 @@ describe("loadEnv", () => {
       expect(env).toMatchObject({
         INSTAGRAM_APP_ID: "123",
         INSTAGRAM_APP_SECRET: "fake-secret",
-        INSTAGRAM_REDIRECT_URI: "http://localhost:8787/oauth/instagram/callback",
+        INSTAGRAM_REDIRECT_URI: "http://localhost:8787/api/oauth/instagram/callback",
       });
       expect(loadEnv(validSource).INSTAGRAM_APP_ID).toBeUndefined();
     });
@@ -404,6 +404,107 @@ describe("loadEnv", () => {
 
       expect(error.issues.map((issue) => issue.variable)).toEqual([variable]);
       expect(error.message).not.toContain(value);
+    });
+  });
+
+  describe("En internet (F8-T01)", () => {
+    const production = {
+      ...validSource,
+      NODE_ENV: "production",
+      PUBLIC_URL: "https://agentsales.agentpey.com",
+      API_HOST: "0.0.0.0",
+      LLM_PROVIDER: "anthropic-api",
+      ANTHROPIC_API_KEY: "fake-anthropic-key",
+    };
+
+    it("en desarrollo no exige nada nuevo: escucha en 127.0.0.1 y las vueltas son locales", () => {
+      const env = loadEnv(validSource);
+
+      expect(env.API_HOST).toBe("127.0.0.1");
+      expect(env.PUBLIC_URL).toBeUndefined();
+      expect(env.CLIENT_IP_HEADER).toBeUndefined();
+      expect(env.INSTAGRAM_REDIRECT_URI).toBe("http://localhost:8787/api/oauth/instagram/callback");
+      expect(env.ML_REDIRECT_URI).toBe("https://agentsales.test/oauth/mercadolibre/callback");
+      expect(loadEnv({ ...validSource, API_PORT: "9000" }).INSTAGRAM_REDIRECT_URI).toBe(
+        "http://localhost:9000/api/oauth/instagram/callback",
+      );
+    });
+
+    it("una producción completa: las vueltas salen de PUBLIC_URL, bajo /api", () => {
+      const env = loadEnv({ ...production, CLIENT_IP_HEADER: "Fly-Client-IP" });
+
+      expect(env).toMatchObject({
+        NODE_ENV: "production",
+        PUBLIC_URL: "https://agentsales.agentpey.com",
+        API_HOST: "0.0.0.0",
+        CLIENT_IP_HEADER: "Fly-Client-IP",
+        INSTAGRAM_REDIRECT_URI: "https://agentsales.agentpey.com/api/oauth/instagram/callback",
+        ML_REDIRECT_URI: "https://agentsales.agentpey.com/api/oauth/mercadolibre/callback",
+      });
+    });
+
+    it("producción sin PUBLIC_URL, con http:// o sin API_HOST se rechaza", () => {
+      expect(envErrorOf({ ...production, PUBLIC_URL: undefined }).issues).toEqual([
+        { variable: "PUBLIC_URL", message: "falta (obligatoria con NODE_ENV=production)" },
+      ]);
+      expect(
+        envErrorOf({ ...production, PUBLIC_URL: "http://agentsales.agentpey.com" }).issues,
+      ).toEqual([{ variable: "PUBLIC_URL", message: "debe ser https:// con NODE_ENV=production" }]);
+      expect(
+        envErrorOf({ ...production, API_HOST: undefined }).issues.map((i) => i.variable),
+      ).toEqual(["API_HOST"]);
+    });
+
+    it.each([
+      ["con ruta", "https://agentpey.com/agentsales"],
+      ["con barra final", "https://agentsales.agentpey.com/"],
+      ["con consulta", "https://agentsales.agentpey.com?x=1"],
+      ["con usuario", "https://yo@agentsales.agentpey.com"],
+      ["sin protocolo web", "ftp://agentsales.agentpey.com"],
+      ["que no es URL", "agentsales"],
+    ])("PUBLIC_URL %s se rechaza, sin mostrar el valor", (_case, value) => {
+      const error = envErrorOf({ ...validSource, PUBLIC_URL: value });
+
+      expect(error.issues.map((issue) => issue.variable)).toEqual(["PUBLIC_URL"]);
+      expect(error.message).not.toContain(value);
+    });
+
+    it("en producción una dirección de retorno de otro host se rechaza", () => {
+      const error = envErrorOf({
+        ...production,
+        INSTAGRAM_REDIRECT_URI: "https://otro.example/api/oauth/instagram/callback",
+        ML_REDIRECT_URI: "https://agentsales.test/oauth/mercadolibre/callback",
+      });
+
+      expect(error.issues).toEqual([
+        {
+          variable: "INSTAGRAM_REDIRECT_URI",
+          message: "debe empezar con PUBLIC_URL con NODE_ENV=production",
+        },
+        {
+          variable: "ML_REDIRECT_URI",
+          message: "debe empezar con PUBLIC_URL con NODE_ENV=production",
+        },
+      ]);
+    });
+
+    it("la CLI de Claude no corre en producción (también por defecto)", () => {
+      const { LLM_PROVIDER: _provider, ...withoutProvider } = production;
+
+      for (const source of [withoutProvider, { ...production, LLM_PROVIDER: "claude-cli" }]) {
+        expect(envErrorOf(source).issues.map((issue) => issue.variable)).toEqual(["LLM_PROVIDER"]);
+      }
+      expect(loadEnv({ ...production, LLM_PROVIDER: "fake" }).LLM_PROVIDER).toBe("fake");
+    });
+
+    it("rechaza un API_HOST o un CLIENT_IP_HEADER con caracteres raros", () => {
+      expect(
+        envErrorOf({
+          ...validSource,
+          API_HOST: "0.0.0.0; rm",
+          CLIENT_IP_HEADER: "Fly Client",
+        }).issues.map((issue) => issue.variable),
+      ).toEqual(["API_HOST", "CLIENT_IP_HEADER"]);
     });
   });
 });

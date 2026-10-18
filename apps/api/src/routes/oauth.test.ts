@@ -9,7 +9,7 @@ import {
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { adminApp, fakeInstagramAuth, TEST_ENCRYPTION_KEY, testDeps } from "../testing/index.js";
-import { instagramStartUrlOf, OAUTH_STATE_COOKIE } from "./oauth.js";
+import { instagramStartUrlOf, instagramStateCookieName, OAUTH_STATE_COOKIE } from "./oauth.js";
 
 const API = "http://localhost:8787";
 const PANEL = "http://localhost:5173";
@@ -32,11 +32,12 @@ function setup(options: { oauthConfigured?: boolean; secureCookie?: boolean } = 
       },
     }),
   );
+  const cookieName = instagramStateCookieName(options.secureCookie ?? false);
   /** Empieza el OAuth y devuelve el `state` de la cookie y adónde manda a Instagram. */
   const start = async () => {
     const response = await app.request(`${API}/oauth/instagram/start?broker=${broker.slug}`);
     const cookie = response.headers.get("set-cookie") ?? "";
-    const state = /agentsales_oauth_state=([^;]+)/.exec(cookie)?.[1] ?? "";
+    const state = new RegExp(`${cookieName}=([^;]+)`).exec(cookie)?.[1] ?? "";
     return { response, cookie, state: decodeURIComponent(state) };
   };
   const callback = (query: Record<string, string>, cookieState?: string) =>
@@ -44,7 +45,7 @@ function setup(options: { oauthConfigured?: boolean; secureCookie?: boolean } = 
       headers:
         cookieState === undefined
           ? {}
-          : { Cookie: `${OAUTH_STATE_COOKIE}=${encodeURIComponent(cookieState)}` },
+          : { Cookie: `${cookieName}=${encodeURIComponent(cookieState)}` },
     });
   return { app, broker, platformAccounts, auth, start, callback };
 }
@@ -57,14 +58,15 @@ const panelRedirect = (response: Response) => {
 };
 
 describe("GET /oauth/instagram/start", () => {
-  it("firma el state, lo deja en una cookie HttpOnly, SameSite=Lax y Path=/oauth, y manda a Instagram", async () => {
+  it("firma el state, lo deja en una cookie HttpOnly, SameSite=Lax y Path=/, y manda a Instagram", async () => {
     const { start, auth } = setup();
     const { response, cookie, state } = await start();
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(auth.authorizeUrl(state));
     expect(cookie).toMatch(/HttpOnly/);
     expect(cookie).toMatch(/SameSite=Lax/);
-    expect(cookie).toMatch(/Path=\/oauth/);
+    expect(cookie).toMatch(/^agentsales_oauth_state=/);
+    expect(cookie).toMatch(/Path=\/;/);
     expect(cookie).toMatch(/Max-Age=600/);
     expect(cookie).not.toMatch(/Secure/);
     expect(createStateSigner(TEST_ENCRYPTION_KEY).verify(state)).toMatchObject({
@@ -73,9 +75,13 @@ describe("GET /oauth/instagram/start", () => {
     });
   });
 
-  it("con la URI https la cookie va Secure", async () => {
-    const { cookie } = await setup({ secureCookie: true }).start();
+  it("con la URI https la cookie es __Host-, Secure, Path=/ y sin Domain (F8-T02)", async () => {
+    const { cookie, state } = await setup({ secureCookie: true }).start();
+    expect(cookie).toMatch(/^__Host-agentsales_oauth_ig=/);
     expect(cookie).toMatch(/Secure/);
+    expect(cookie).toMatch(/Path=\/;/);
+    expect(cookie).not.toMatch(/Domain=/i);
+    expect(state).not.toBe("");
   });
 
   it("sin el par de la app, o con un corredor que no existe, vuelve al panel con su código", async () => {
@@ -278,8 +284,10 @@ describe("OAuth · seguridad", () => {
       const { start, callback } = setup({ secureCookie });
       const { state } = await start();
       const deleted = (await callback({ code: "AQB", state }, state)).headers.get("set-cookie");
-      expect(deleted).toMatch(/agentsales_oauth_state=;/);
-      expect(deleted).toMatch(/Path=\/oauth/);
+      expect(deleted).toMatch(
+        secureCookie ? /^__Host-agentsales_oauth_ig=;/ : /^agentsales_oauth_state=;/,
+      );
+      expect(deleted).toMatch(/Path=\/;/);
       expect(deleted).toMatch(/Max-Age=0/);
       if (secureCookie) expect(deleted).toMatch(/Secure/);
     }
@@ -323,12 +331,22 @@ describe("OAuth · seguridad", () => {
 });
 
 describe("instagramStartUrlOf", () => {
-  it("el inicio del OAuth va en el host de la URI de retorno, sin su ruta", () => {
-    expect(instagramStartUrlOf("http://localhost:8787/oauth/instagram/callback")).toBe(
-      "http://localhost:8787/oauth/instagram/start",
+  it("el inicio del OAuth va en el host y la ruta de la URI de retorno, con start (F8-T02)", () => {
+    expect(instagramStartUrlOf("http://localhost:8787/api/oauth/instagram/callback")).toBe(
+      "http://localhost:8787/api/oauth/instagram/start",
     );
-    expect(instagramStartUrlOf("https://agentsales.test/oauth/instagram/callback")).toBe(
+    expect(
+      instagramStartUrlOf("https://agentsales.agentpey.com/api/oauth/instagram/callback"),
+    ).toBe("https://agentsales.agentpey.com/api/oauth/instagram/start");
+    // Sin prefijo (una URI de antes) o con una barra final, igual.
+    expect(instagramStartUrlOf("https://agentsales.test/oauth/instagram/callback/")).toBe(
       "https://agentsales.test/oauth/instagram/start",
+    );
+  });
+
+  it("una URI que no termina en callback suma start a su ruta, sin consulta", () => {
+    expect(instagramStartUrlOf("https://agentsales.test/api/oauth/instagram?x=1")).toBe(
+      "https://agentsales.test/api/oauth/instagram/start",
     );
   });
 });

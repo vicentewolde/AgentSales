@@ -49,6 +49,44 @@ const mercadoLibreRedirectUri = z.string().superRefine((value, ctx) => {
   }
 });
 
+/**
+ * La dirección pública del sistema (spec F8 §4.2): solo el origen (`https://host[:puerto]`), sin
+ * ruta, barra final, consulta, fragmento, usuario ni clave. De ella salen los hosts y orígenes
+ * permitidos, el panel y las direcciones de retorno de los OAuth.
+ */
+const publicUrl = z.string().superRefine((value, ctx) => {
+  const url = URL.parse(value);
+  if (url === null || (url.protocol !== "https:" && url.protocol !== "http:")) {
+    ctx.addIssue({ code: "custom", message: "debe ser una URL https://" });
+    return;
+  }
+  if (value !== url.origin) {
+    ctx.addIssue({
+      code: "custom",
+      message: "debe ser solo el origen (https://host), sin ruta, barra final, consulta ni usuario",
+    });
+  }
+});
+
+/** Un nombre de host o una IP para escuchar (`127.0.0.1`, `0.0.0.0`, `::`). */
+const listenHost = z
+  .string()
+  .regex(/^[A-Za-z0-9.:-]+$/, "debe ser un host o una IP (por ejemplo 127.0.0.1 o 0.0.0.0)");
+
+/** El nombre de una cabecera HTTP (la de la IP del cliente que pone el proxy, spec F8 §4.2). */
+const headerName = z
+  .string()
+  .regex(/^[A-Za-z0-9-]+$/, "debe ser el nombre de una cabecera (por ejemplo Fly-Client-IP)");
+
+/** El prefijo de la API en el servidor (spec F8 §4.3, ADR-0024): las vueltas de los OAuth lo llevan. */
+const API_PREFIX = "/api";
+
+/**
+ * La dirección de retorno de Mercado Libre en desarrollo: la registrada en la app (comparación
+ * exacta). `.test` nunca resuelve: el operador copia la dirección de la barra (spec F4 §4.2).
+ */
+const DEV_ML_REDIRECT_URI = "https://agentsales.test/oauth/mercadolibre/callback";
+
 // Variables obsoletas: una que cambiaría el comportamiento se avisa en vez de ignorarla en silencio.
 
 /**
@@ -142,6 +180,13 @@ const envSchema = z
       .default("development"),
     TZ_DISPLAY: z.string().default("America/Santiago"),
     API_PORT: port.default(8787),
+    // Dónde escucha la API: `127.0.0.1` en el Mac; en producción, explícito (`0.0.0.0` detrás del
+    // proxy del proveedor, spec F8 §4.2).
+    API_HOST: listenHost.default("127.0.0.1"),
+    // La dirección pública (obligatoria y `https://` en producción) y la cabecera con la IP del
+    // cliente que pone el proxy (solo para los límites por IP; sin ella, la del socket).
+    PUBLIC_URL: publicUrl.optional(),
+    CLIENT_IP_HEADER: headerName.optional(),
     WEB_PORT: port.default(5173),
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"], {
@@ -205,7 +250,8 @@ const envSchema = z
     // la API con el inicio de sesión de Instagram), no el de Configuración > Información básica.
     INSTAGRAM_APP_ID: z.string().optional(),
     INSTAGRAM_APP_SECRET: z.string().optional(),
-    INSTAGRAM_REDIRECT_URI: httpUrl.default("http://localhost:8787/oauth/instagram/callback"),
+    // Sin valor: `<PUBLIC_URL>/api/oauth/instagram/callback`, o la API local (ver abajo).
+    INSTAGRAM_REDIRECT_URI: httpUrl.optional(),
 
     // Mercado Libre / Portal Inmobiliario (F4): la app de developers.mercadolibre.cl. La dirección
     // de retorno es la misma registrada en la app (comparación exacta) y no necesita cargar: el
@@ -214,9 +260,8 @@ const envSchema = z
     // así que el código no llega a ningún servidor ajeno (nota de Mercado Libre §3.3).
     ML_APP_ID: z.string().optional(),
     ML_CLIENT_SECRET: z.string().optional(),
-    ML_REDIRECT_URI: mercadoLibreRedirectUri.default(
-      "https://agentsales.test/oauth/mercadolibre/callback",
-    ),
+    // Sin valor: `<PUBLIC_URL>/api/oauth/mercadolibre/callback`, o `.test` en desarrollo (ver abajo).
+    ML_REDIRECT_URI: mercadoLibreRedirectUri.optional(),
 
     // Facebook Marketplace (F5): avisos por día y cuenta (D8), la carpeta de los perfiles del
     // navegador (fuera del proyecto: guardan la sesión de Facebook, ADR-0017; la resuelve
@@ -247,9 +292,72 @@ const envSchema = z
         message: 'falta (obligatoria con LLM_PROVIDER="anthropic-api")',
       });
     }
-  });
+    if (env.NODE_ENV === "production") productionIssues(env, ctx);
+  })
+  .transform((env) => ({
+    ...env,
+    INSTAGRAM_REDIRECT_URI:
+      env.INSTAGRAM_REDIRECT_URI ??
+      (env.PUBLIC_URL === undefined
+        ? `http://localhost:${env.API_PORT}${API_PREFIX}/oauth/instagram/callback`
+        : `${env.PUBLIC_URL}${API_PREFIX}/oauth/instagram/callback`),
+    ML_REDIRECT_URI:
+      env.ML_REDIRECT_URI ??
+      (env.PUBLIC_URL === undefined
+        ? DEV_ML_REDIRECT_URI
+        : `${env.PUBLIC_URL}${API_PREFIX}/oauth/mercadolibre/callback`),
+  }));
 
-export type Env = Readonly<z.infer<typeof envSchema>>;
+/** Lo que mira `productionIssues` del entorno ya validado (antes de los valores derivados). */
+type ParsedEnv = {
+  LLM_PROVIDER: string;
+  PUBLIC_URL?: string | undefined;
+  INSTAGRAM_REDIRECT_URI?: string | undefined;
+  ML_REDIRECT_URI?: string | undefined;
+};
+
+/**
+ * Lo que exige `NODE_ENV=production` (spec F8 §4.2): `PUBLIC_URL` con `https://`, las direcciones de
+ * retorno dentro de ella y otra IA que la CLI de Claude (el plan Max es solo para uso propio, no
+ * para un servidor que atiende a terceros: `docs/integraciones/anthropic-terminos.md` §6).
+ * `API_HOST` explícito lo revisa `loadEnv`, que ve el entorno sin los valores por defecto.
+ */
+function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
+  if (env.PUBLIC_URL === undefined) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["PUBLIC_URL"],
+      message: "falta (obligatoria con NODE_ENV=production)",
+    });
+  } else if (!env.PUBLIC_URL.startsWith("https://")) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["PUBLIC_URL"],
+      message: "debe ser https:// con NODE_ENV=production",
+    });
+  } else {
+    for (const variable of ["INSTAGRAM_REDIRECT_URI", "ML_REDIRECT_URI"] as const) {
+      const value = env[variable];
+      if (value !== undefined && !value.startsWith(`${env.PUBLIC_URL}/`)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [variable],
+          message: "debe empezar con PUBLIC_URL con NODE_ENV=production",
+        });
+      }
+    }
+  }
+  if (env.LLM_PROVIDER === "claude-cli") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["LLM_PROVIDER"],
+      message:
+        'no puede ser "claude-cli" con NODE_ENV=production (el plan de Claude es solo para uso propio): usa "anthropic-api"',
+    });
+  }
+}
+
+export type Env = Readonly<z.output<typeof envSchema>>;
 
 export type EnvIssue = { variable: string; message: string };
 
@@ -285,6 +393,13 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
   // El valor viejo de `.env.example` dejaba el perfil dentro del proyecto: se usa el nuevo default.
   if (cleaned.BROWSER_PROFILES_DIR === LEGACY_BROWSER_PROFILES_DIR) {
     delete cleaned.BROWSER_PROFILES_DIR;
+  }
+  // En producción, dónde escucha la API no se deja al valor por defecto (spec F8 §4.2).
+  if (cleaned.NODE_ENV === "production" && cleaned.API_HOST === undefined) {
+    outdated.push({
+      variable: "API_HOST",
+      message: "falta (obligatoria con NODE_ENV=production; por ejemplo 0.0.0.0)",
+    });
   }
   const result = envSchema.safeParse(cleaned);
   if (!result.success || outdated.length > 0) {

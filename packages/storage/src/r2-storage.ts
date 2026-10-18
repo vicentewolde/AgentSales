@@ -203,6 +203,14 @@ export function streamFromBody(
   };
 }
 
+/**
+ * El origen de las URLs prefirmadas de un bucket (`https://<bucket>.<cuenta>.r2.cloudflarestorage.com`,
+ * el estilo de host virtual del SDK): la CSP del panel lo permite para mostrar y subir (spec F8 §4.3).
+ */
+export function r2BucketOrigin(options: Pick<R2StorageOptions, "accountId" | "bucket">): string {
+  return `https://${options.bucket}.${options.accountId}.r2.cloudflarestorage.com`;
+}
+
 /** Adaptador de `MediaStorage` para Cloudflare R2 vía la API S3 (ADR-0007). */
 export function createR2Storage(options: R2StorageOptions): MediaStorage {
   const { bucket, signedUrlTtlSeconds } = options;

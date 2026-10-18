@@ -172,6 +172,7 @@ Una subruta (por ejemplo `./contracts` y `./testing` en `apps/api`, `./testing` 
 
 ## Seguridad operacional
 
+- **Ambientes (F8, spec §4.2 y §4.6):** el `.env` del Mac es el de desarrollo; `.env.production` (también fuera de git, y Claude no lo lee) es el de producción para los scripts que hablan directo con la base: `ENV_FILE=.env.production pnpm auth:admin --email …`. Un `ENV_FILE` que no existe es un error (nunca cae en `.env`). Con `NODE_ENV=production`, `loadEnv` exige `PUBLIC_URL` con `https://` (solo el origen), `API_HOST` explícito, las vueltas de los OAuth dentro de `PUBLIC_URL` y otra IA que `claude-cli`.
 - `PUBLISH_MODE=dry-run` es el default. Solo se cambia a `live` a mano: en `.env` o, para una sesión, `PUBLISH_MODE=live pnpm dev` (la variable del entorno gana sobre `.env`, y la API y el worker la reciben juntos), y el sistema lo muestra en rojo en el panel y la CLI.
 - Primeras publicaciones `live`: solo en cuentas de prueba del operador.
 - Los logs pasan por el redactor de `@agentsales/config`:

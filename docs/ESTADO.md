@@ -4,11 +4,12 @@
 
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** spec de F8 aprobado (`/fase-plan 8`, 2026-10-18), con ADR-0024 a ADR-0026 y las notas de `integraciones` de hosting, Instagram §13 y términos de Anthropic
-**Siguiente paso:** `/tarea F8-T01 F8-T02` (lote A: configuración y la API en internet). Antes del lote B, tus pasos de desarrollo separado (abajo)
+**Última tarea:** lote A de F8 (T01 y T02): la configuración de producción (`PUBLIC_URL`, `API_HOST`, `ENV_FILE`) y la API bajo `/api` con el panel compilado, cookies `__Host-` y cabeceras de seguridad
+**Siguiente paso:** tus pasos de "Antes del lote B" (abajo) y después `/tarea F8-T03 F8-T04 F8-T05 F8-T06 F8-T07 F8-T09` (lote B: subidas a R2)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
+- [ ] **Tu `.env` (lote A):** si tiene `INSTAGRAM_REDIRECT_URI=http://localhost:8787/oauth/instagram/callback` (el valor del ejemplo de antes), déjala vacía o bórrala: ahora la API va bajo `/api` y el valor por defecto ya lo trae. En el Mac no cambia nada visible (el OAuth de Instagram sigue apagado sin HTTPS)
 - [ ] **Antes del lote B:** rama `dev` de Neon, otra `APP_ENCRYPTION_KEY` en `.env` (la de hoy a `.env.production`) y `pnpm db:dev-scrub`, el bucket `agentsales-media-dev` con su token, y la regla de CORS en los dos buckets
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups`, los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
@@ -41,7 +42,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 | Tarea | Estado | PR |
 |---|---|---|
 | Spec F8 (`/fase-plan 8`) | ✅ aprobado | (este PR) |
-| **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ⏳ pendiente | |
+| **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
 | **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 | ⏳ pendiente | |
 | **Lote C** · T08 CLI: la dirección del servidor | ⏳ pendiente | |
 | **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ⏳ pendiente | |
@@ -150,6 +151,10 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-18: **Lote A de F8 (T01 y T02).**
+  - **Configuración:** `PUBLIC_URL` (solo el origen), `API_HOST` y `CLIENT_IP_HEADER`; con `NODE_ENV=production`, `loadEnv` exige `PUBLIC_URL` con `https://`, `API_HOST` explícito, las vueltas de los OAuth dentro de `PUBLIC_URL` y otra IA que `claude-cli`. `ENV_FILE=.env.production` elige el archivo de los scripts (uno que no existe es un error).
+  - **La API bajo `/api` también en tu Mac:** Vite ya no quita el prefijo y la CLI llama a `/api`; en el servidor, la API sirve el panel compilado del mismo origen (sin CORS). Cookies `__Host-` con HTTPS, el inicio del OAuth desde la ruta de la vuelta, `/health` con el ambiente y fuera de `hostGuard`, y las cabeceras de seguridad (CSP con el origen de R2).
+  - **Probado con `pnpm dev`** (aviso previo): `/api/health` directo y por Vite, `cli status` y `cli listings`, y el panel; apagado al terminar.
 - 2026-10-18: **Spec de F8 aprobado** (`/fase-plan 8`).
   - **Investigado** (`integraciones`): hosting y costos (Neon gratis no aguanta el worker siempre encendido), opciones gratis (solo Oracle es US$ 0, pero hay que administrarlo), el App Review de Meta (tres trámites, unas 5 semanas, quizás pidan empresa o inicio de actividades) y los términos de Anthropic (tu clave sirve para tus clientes; el plan Max, solo para uso propio).
   - **Revisión del `arquitecto`:** 12 bloqueantes aplicados (el prefijo `/api` en los dos modos desde el lote A, otra clave de cifrado en desarrollo para no rotar el token de Mercado Libre de producción, las vueltas de Meta sin cambiar el estado de las publicaciones, entre otros).

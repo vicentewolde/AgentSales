@@ -17,13 +17,21 @@ import {
 } from "@agentsales/core";
 import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { accessFor } from "./access.js";
+import { accessFor, routePathOf } from "./access.js";
 import type { AppLogger } from "./logger.js";
 import type { RequestContext } from "./request-context.js";
 
 // La sesión de cada pedido (spec F7 §4.3, ADR-0021): cookie en el panel o `Bearer` en la CLI.
 
 export const SESSION_COOKIE = "agentsales_session";
+
+/**
+ * El nombre de la cookie de sesión (spec F8 §4.3, ADR-0026): con HTTPS lleva el prefijo `__Host-`
+ * (el navegador la exige `Secure`, `Path=/` y sin `Domain`, así ningún otro subdominio de
+ * `agentpey.com` puede ponerla ni leerla). Sin HTTPS, la de F7.
+ */
+export const sessionCookieName = (secure: boolean): string =>
+  secure ? `__Host-${SESSION_COOKIE}` : SESSION_COOKIE;
 
 /** Lo que la API sabe de quién hace el pedido. */
 export type RequestAuth = {
@@ -57,20 +65,26 @@ export type AuthDeps = {
 export const hasAuthorizationHeader = (c: Context): boolean =>
   c.req.header("authorization") !== undefined;
 
-/** El token del pedido: `Authorization: Bearer` (la CLI) o la cookie del panel. */
-export function credentialOf(c: Context): { token: string; via: "bearer" | "cookie" } | null {
+/**
+ * El token del pedido: `Authorization: Bearer` (la CLI) o la cookie del panel (`cookieName`: con
+ * HTTPS, solo la `__Host-`; una cookie sin prefijo pudo ponerla otro subdominio).
+ */
+export function credentialOf(
+  c: Context,
+  cookieName: string = SESSION_COOKIE,
+): { token: string; via: "bearer" | "cookie" } | null {
   const header = c.req.header("authorization");
   // Con `Authorization`, la cookie no cuenta (aunque el encabezado no sirva): ver `hasAuthorizationHeader`.
   if (header !== undefined) {
     const match = /^Bearer\s+(\S+)$/i.exec(header.trim());
     return match?.[1] === undefined ? null : { token: match[1], via: "bearer" };
   }
-  const cookie = getCookie(c, SESSION_COOKIE);
+  const cookie = getCookie(c, cookieName);
   return cookie === undefined || cookie === "" ? null : { token: cookie, via: "cookie" };
 }
 
 export function setSessionCookie(c: Context, token: string, secure: boolean): void {
-  setCookie(c, SESSION_COOKIE, token, {
+  setCookie(c, sessionCookieName(secure), token, {
     httpOnly: true,
     sameSite: "Strict",
     path: "/",
@@ -80,7 +94,12 @@ export function setSessionCookie(c: Context, token: string, secure: boolean): vo
 }
 
 export function clearSessionCookie(c: Context, secure: boolean): void {
-  deleteCookie(c, SESSION_COOKIE, { path: "/", secure, httpOnly: true, sameSite: "Strict" });
+  deleteCookie(c, sessionCookieName(secure), {
+    path: "/",
+    secure,
+    httpOnly: true,
+    sameSite: "Strict",
+  });
 }
 
 /**
@@ -94,8 +113,8 @@ export function authenticate(
   context: Pick<RequestContext, "run">,
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    const policy = accessFor(c.req.method, c.req.path);
-    const credential = credentialOf(c);
+    const policy = accessFor(c.req.method, routePathOf(c.req.path));
+    const credential = credentialOf(c, sessionCookieName(deps.secureCookie));
     let auth: RequestAuth | null = null;
     if (credential !== null) {
       try {

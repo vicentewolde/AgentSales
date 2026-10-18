@@ -39,7 +39,7 @@ afterEach(async () => {
 
 describe("createHealthFetcher", () => {
   it("apunta a la API en IPv4 local", () => {
-    expect(apiUrl(8787)).toBe("http://127.0.0.1:8787");
+    expect(apiUrl(8787)).toBe("http://127.0.0.1:8787/api");
   });
 
   it("devuelve el informe de /health validado", async () => {

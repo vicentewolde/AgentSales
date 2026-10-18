@@ -23,7 +23,8 @@ import {
   type PublishMode,
 } from "@agentsales/core";
 import { Hono } from "hono";
-import { type AppEnv, type AuthDeps, authenticate } from "./auth.js";
+import { API_PREFIX } from "./access.js";
+import { type AppEnv, type AuthDeps, authenticate, sessionCookieName } from "./auth.js";
 import { createErrorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, type HealthDetails, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
@@ -46,7 +47,7 @@ import { trackingRoutes } from "./routes/tracking.js";
 import { usageRoutes } from "./routes/usage.js";
 import { userRoutes } from "./routes/users.js";
 import { ownedBy } from "./scope.js";
-import { csrfGuard, hostGuard, type LocalAccess, originGuard } from "./security.js";
+import { type ApiAccess, csrfGuard, hostGuard, originGuard } from "./security.js";
 
 export type AppDeps = {
   /** Usuarios y sesiones (F7, ADR-0021): sin sesión, solo las rutas públicas (`access.ts`). */
@@ -60,10 +61,12 @@ export type AppDeps = {
   oauthStates: OAuthStateRepository;
   checks: Record<HealthCheckName, HealthCheck>;
   publishMode: PublishMode;
+  /** El ambiente que informa `/health` (spec F8 §4.2); sin él, no se informa. */
+  environment?: "development" | "production";
   version: string;
   logger: AppLogger;
-  /** Hosts y orígenes locales permitidos (`localAccess(API_PORT, WEB_PORT)`). */
-  access: LocalAccess;
+  /** Hosts y orígenes permitidos: `localAccess(API_PORT, WEB_PORT)` o `internetAccess(PUBLIC_URL)`. */
+  access: ApiAccess;
   /** Solo para tests; por defecto `DEFAULT_CHECK_TIMEOUT_MS`. */
   checkTimeoutMs?: number;
   /** La versión de la base y el estado del respaldo en `/health` (F6-T14). */
@@ -137,9 +140,9 @@ export type AppDeps = {
   /** La URL absoluta del panel, adonde vuelve el OAuth. */
   panelUrl: string;
   /**
-   * El inicio del OAuth (`/oauth/instagram/start`) en el host de `INSTAGRAM_REDIRECT_URI`: la cookie
-   * del `state` distingue `localhost` de `127.0.0.1`, así que el enlace del panel y la CLI usa ese
-   * host (F3-T17).
+   * El inicio del OAuth (`/api/oauth/instagram/start`) en el host y la ruta de
+   * `INSTAGRAM_REDIRECT_URI`: la cookie del `state` distingue `localhost` de `127.0.0.1`, así que el
+   * enlace del panel y la CLI usa ese host (F3-T17); en internet es el mismo del panel (F8).
    */
   instagramStartUrl: string;
   /**
@@ -195,7 +198,7 @@ export function createApp(input: AppDeps) {
   const app = new Hono<AppEnv>()
     .use(requestLogger(deps.logger))
     .use(hostGuard(deps.access.allowedHosts))
-    .use(originGuard(deps.access.allowedOrigins))
+    .use(originGuard(deps.access.allowedOrigins, sessionCookieName(deps.auth.secureCookie)))
     .use(csrfGuard(deps.access.allowedOrigins))
     .use(authenticate(deps.auth, deps.logger, deps.requestContext))
     // `/x/:id/*` también calza con `/x/:id` en Hono: una sola vez por prefijo (una lectura).
@@ -217,8 +220,11 @@ export function createApp(input: AppDeps) {
         ...(admin && deps.healthDetails !== undefined ? { details: deps.healthDetails } : {}),
       });
       // Siempre 200: el estado va en el cuerpo (`ok` o `degraded`).
+      const environment = deps.environment === undefined ? {} : { environment: deps.environment };
       return c.json(
-        admin ? report : { status: report.status, publishMode: report.publishMode },
+        admin
+          ? { ...report, ...environment }
+          : { status: report.status, publishMode: report.publishMode, ...environment },
         200,
       );
     })
@@ -261,3 +267,15 @@ export function createApp(input: AppDeps) {
 
 /** Tipo de la API para el cliente RPC (`hc<AppType>`) de la CLI y el panel. */
 export type AppType = ReturnType<typeof createApp>;
+
+/**
+ * La app montada bajo `/api` (spec F8 §4.3, ADR-0024), como la sirve `server.ts` en los dos modos:
+ * el panel llama a `/api/...` (por Vite en el Mac, del mismo origen en el servidor) y la CLI a
+ * `<dirección>/api/...`. `AppType` no cambia: el cliente `hc` recibe la dirección con el prefijo.
+ * Un `/api/x` que no existe responde el 404 JSON de la app.
+ */
+export function mountApi(app: AppType) {
+  const root = new Hono().route(API_PREFIX, app);
+  root.notFound(notFoundHandler);
+  return root;
+}

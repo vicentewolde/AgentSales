@@ -47,6 +47,11 @@ export const healthReportSchema = z.object({
   status: z.enum(["ok", "degraded"]),
   publishMode: z.enum(PUBLISH_MODES),
   /**
+   * Desde F8-T02 (spec §4.2): el ambiente del servidor, también sin sesión, para que `doctor` avise
+   * si la CLI apunta a otro que el esperado. Opcional: una API anterior no lo trae.
+   */
+  environment: z.enum(["development", "production"]).optional(),
+  /**
    * El detalle (desde F7-T05, spec F7 §4.3): `checks`, `version` y lo de abajo solo los ve el
    * administrador; sin sesión (o con la de un corredor) `/health` responde `status` y
    * `publishMode`.
