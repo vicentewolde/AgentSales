@@ -1,6 +1,6 @@
 # ADR-0005 · Cola de trabajos con pg-boss y worker separado
 
-- **Estado:** Aceptado (modificado por ADR-0018: jobs `publication.due` y `publications.watch`, y la política de `publication.publish`)
+- **Estado:** Aceptado (modificado por ADR-0018: jobs `publication.due` y `publications.watch`, y la política de `publication.publish`; por ADR-0024: el worker corre en el servidor; y por ADR-0025: sin staging compartido)
 - **Fecha:** 2026-09-28
 
 ## Contexto
@@ -60,3 +60,4 @@ Procesar video, renderizar plantillas, llamar a la IA y publicar son tareas lent
 - 2026-10-15 (F6-T04 y T05, ADR-0018): `publication.publish` pasa a 3 reintentos con backoff desde 60 s (1, 2 y 4 min); un límite de la plataforma con señal de espera no se reintenta en la cola: el intento reprograma la publicación (`scheduled`) y el disparo de cada minuto la retoma. Job nuevo `publications.watch`: cola `exclusive` con clave fija, 1 reintento, 5 min y cron cada hora; encola el sync de Portal en vivo y reencola las `publishing` atascadas (más de 70 min), salvo Marketplace. Cierra la deuda de F3 de las publicaciones en `publishing` sin job.
 - 2026-10-15 (F6-T14): job `db.backup`, el respaldo local de la base (seguimiento de ADR-0007): cola `exclusive` con clave fija, 1 reintento a los 5 min, 15 min de vida y cron diario (`0 13 * * *`, `America/Santiago`); al arrancar se encola solo si el último respaldo bueno tiene más de 20 h y está `pg_dump`. El volcado excluye el esquema `pgboss`: con una base restaurada, el worker recrea las colas y no vuelven a correr jobs viejos.
 - 2026-10-16 (`/fase-plan 7`): las subidas directas a R2 con URL prefirmada y quitar `POST /imports/local` y el staging compartido pasan a **F8** (el roadmap partió "Listo para terceros" en F7 y F8). F7 solo fija el corredor de la carga de un usuario corredor al crearla (ADR-0022).
+- 2026-10-18 (`/fase-plan 8`): ADR-0024 lleva el worker al servidor (Fly.io, en modo demo: encendido los días de demo) y ADR-0025 reemplaza el staging compartido en disco por subidas directas a R2 con URL prefirmada (`import_runs.input` con claves de R2).

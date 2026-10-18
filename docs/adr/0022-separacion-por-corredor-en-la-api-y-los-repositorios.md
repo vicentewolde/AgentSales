@@ -1,6 +1,6 @@
 # ADR-0022 · Separación por corredor: el alcance del usuario en la API y los repositorios, con 404 para lo ajeno
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado (modificado por ADR-0026: RLS evaluado y no adoptado)
 - **Fecha:** 2026-10-16
 
 ## Contexto
@@ -36,3 +36,4 @@
   - `listByStatus` y `listDue` no reciben alcance: solo los usa el sistema (el worker, el refresco y desconectar cuentas, que es del administrador).
 - 2026-10-17 (lote E, F7-T13 y T14): **la hoja Corredor y Mi marca** escriben los mismos campos y manda la última que se guarda. La planilla que el corredor baja (`GET /brokers/:id/template.xlsx`) viene con su marca vigente, así que cargarla otra vez no deshace lo que editó; una planilla vieja sí (la guía del operador lo advierte desde T18). `/brokers/:id/*` también pasa por `ownedBy` (el corredor es su propio dueño). Riesgo aceptado: editar la marca reescribe la marca entera leída al empezar, así que una carga de la hoja (o otro `PATCH`) que se cruce en el mismo instante puede revertir un campo que el pedido no tocaba; con un operador y pocos corredores es improbable, y repetir la edición lo arregla.
 - 2026-10-17 (lote H): el panel decide qué mostrar con `can` de core (`useCan`), no con el rol a mano: si cambia un permiso, el panel lo sigue solo.
+- 2026-10-18 (`/fase-plan 8`, ADR-0026): RLS se evaluó y no se adopta (punto 7); la separación sigue en la API y los repositorios. `/oauth/instagram/start` queda en el mismo host que el panel (ADR-0024), así que la cookie `Strict` viaja.

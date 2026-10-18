@@ -1,6 +1,6 @@
 # ADR-0021 · Autenticación propia: contraseñas con `scrypt`, sesiones en la base e invitaciones por enlace
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado (modificado por ADR-0026: límites por IP, doble factor y cookie `__Host-`)
 - **Fecha:** 2026-10-16
 
 ## Contexto
@@ -40,4 +40,4 @@
   - La contraseña se normaliza a NFC antes del hash, y un hash guardado con parámetros que piden más de 128 MB no se intenta. Dos enlaces generados a la vez para el mismo usuario se reintentan una vez (`INVITATION_CONFLICT` si vuelven a chocar).
 - 2026-10-17 (lote C, PR #132): **el usuario de la bitácora va por ambiente.** El canal (`actor`) sigue pasando por cada caso de uso como siempre; la persona no: `authenticate` corre cada pedido con su usuario en el puerto `RequestContext` (`AsyncLocalStorage`, compuesto en `server.ts`) y el candado de la API (`withEventUser`) lo pone en cada evento. La invariante que lo cierra: toda escritura de la API pasa por el candado (`AppDeps.publications` es de solo lectura). Así core no lleva el usuario por 25 casos de uso; el worker escribe sin usuario.
 - 2026-10-17 (lote G, PR #136): **`csrfGuard` tampoco aplica con `Authorization`** (la CLI sube el logo como `multipart` sin `Origin`), como `originGuard`. Es seguro por dos razones: un sitio ajeno no puede poner `Authorization` sin pasar por CORS, y con `Authorization` la API **nunca** usa la cookie (`credentialOf`; `hasAuthorizationHeader` es el único criterio de los tres). Un test fija que un Bearer inválido con una cookie válida da 401. **Restricción para F8:** si se habilita CORS al exponer la API, `Authorization` nunca va en `Access-Control-Allow-Headers` para un origen ajeno.
-
+- 2026-10-18 (`/fase-plan 8`, ADR-0026): para internet, límites por IP en memoria, doble factor TOTP opcional (el login pasa a dos pasos con él activo), la cookie `__Host-agentsales_session` con `Secure` y cabeceras de seguridad. La restricción de CORS se cumple sin CORS: el panel y la API comparten origen (ADR-0024).

@@ -3,15 +3,21 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-18
-**Fase actual:** F8 · En internet (spec por redactar: `/fase-plan 8`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** cierre de F7 (T19, `/fase-cerrar 7`): demo completa con `corredor-demo` (2026-10-18, sin Instagram), auditoría del `arquitecto`, `CHANGELOG [0.7.0]` y spec cerrado
-**Siguiente paso:** `/fase-plan 8` — redactar el spec de F8 (ver `docs/06-roadmap.md`, la deuda "Para F8" más abajo y `docs/07-checklist-cuentas.md`, "Antes de F8")
+**Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
+**Última tarea:** spec de F8 aprobado (`/fase-plan 8`, 2026-10-18), con ADR-0024 a ADR-0026 y las notas de `integraciones` de hosting, Instagram §13 y términos de Anthropic
+**Siguiente paso:** `/tarea F8-T01 F8-T02` (lote A: configuración y la API en internet). Antes del lote B, tus pasos de desarrollo separado (abajo)
+
+## Pendiente tuyo de F8
+Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
+- [ ] **Antes del lote B:** rama `dev` de Neon, otra `APP_ENCRYPTION_KEY` en `.env` (la de hoy a `.env.production`) y `pnpm db:dev-scrub`, el bucket `agentsales-media-dev` con su token, y la regla de CORS en los dos buckets
+- [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups`, los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
+- [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
 ## Pendiente tuyo de F7
 - [x] **Clave de la API de Anthropic** en `.env` (2026-10-17); `pnpm llm:smoke --provider anthropic-api` respondió bien
 - [ ] **Límite de gasto en la consola de Anthropic:** la clave no tiene uno (recomendado: el tope por corredor solo cubre lo que AgentSales anota)
 - [ ] **Renovar la clave antes del 2026-12-31** (vence ese día; después la IA de los corredores da `LLM_AUTH_REQUIRED`)
-- [ ] **Términos comerciales de Anthropic** (antes de cobrar o de F8): revisar que una sola clave pueda atender a varios clientes
+- [x] **Términos comerciales de Anthropic** (2026-10-18, `docs/integraciones/anthropic-terminos.md`): tu clave puede atender a los clientes de tu producto, sin revender el servicio
 - [ ] **Instagram de un corredor como evaluador** (no se probó en la demo: queda NO VERIFICADO que Meta deje publicar en la cuenta de un evaluador): pasos en `docs/07-checklist-cuentas.md`, "Antes de F7", cuando tengas el primer corredor piloto
 
 ## Pendiente tuyo de F6
@@ -34,12 +40,32 @@
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F8 (`/fase-plan 8`) | ⏳ pendiente | |
+| Spec F8 (`/fase-plan 8`) | ✅ aprobado | (este PR) |
+| **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ⏳ pendiente | |
+| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 | ⏳ pendiente | |
+| **Lote C** · T08 CLI: la dirección del servidor | ⏳ pendiente | |
+| **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ⏳ pendiente | |
+| **Lote E** · T13 Respaldo a R2 | ⏳ pendiente | |
+| **Lote F** · T14 Límites por IP · T15 Doble factor (core, base y API) · T16 Doble factor en el panel y la CLI | ⏳ pendiente | |
+| **Lote G** · T17 Instagram de verdad y las vueltas de Meta · T18 Páginas públicas | ⏳ pendiente | |
+| **Lote H** · T19 Mercado Libre: la vuelta automática · T20 Marketplace en producción | ⏳ pendiente | |
+| T21 Primera puesta en marcha (contigo) | ⏳ pendiente | |
+| T22 Cierre de fase (`v1.0.0`) | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
 - **Mercado Libre:** cuenta, app y `.env` listos; `VICENTEWOLDE` conectada a `agentsales-pruebas` (2026-10-08) y renovada con `--force` en la demo del cierre (2026-10-09). El WhatsApp del corredor no estaba en la base en la demo de F6 (2026-10-16: `PORTAL_NOT_READY` en P002); hay que volver a cargarlo (arriba). Sin paquete pagado (tu decisión, 2026-10-08): la prueba real usa el usuario de prueba (D15, arriba).
+
+## Decisiones de F8
+Resueltas en el spec (§4.16, D1–D20) y ADR-0024 a ADR-0026:
+- **Dónde (D1, tu respuesta):** por ahora Fly.io en São Paulo **en modo demo** (encendido los días de demo, unos US$ 2 al mes) con Neon gratis; siempre encendido con Neon Launch (unos US$ 37 a 48 al mes) cuando decidas pagar.
+- **Dominio (D2, tu respuesta):** `agentsales.agentpey.com`, un subdominio de tu dominio (no toca el otro proyecto).
+- **Marketplace (D4, tu respuesta):** a mano para todos en producción; el formulario automático solo en tu Mac, para desarrollo.
+- **App Review (D5, tu respuesta):** F8 se cierra con la solicitud enviada.
+- **La IA:** en producción todos van por la API (el plan Max es solo para uso propio).
+- **Mismo origen** con la API bajo `/api`, una imagen para la API y el worker, desplegar solo a tu pedido desde `main` en verde, `dry-run` en el servidor hasta que digas otra cosa (ADR-0024).
+- **Subidas directas a R2** (ADR-0025); **login para internet** con límites por IP y doble factor opcional, y **sin RLS** (ADR-0026).
 
 ## Decisiones de F7
 Resueltas en el spec (§4.15, D1–D18) y ADR-0021 a ADR-0023:
@@ -124,6 +150,10 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-18: **Spec de F8 aprobado** (`/fase-plan 8`).
+  - **Investigado** (`integraciones`): hosting y costos (Neon gratis no aguanta el worker siempre encendido), opciones gratis (solo Oracle es US$ 0, pero hay que administrarlo), el App Review de Meta (tres trámites, unas 5 semanas, quizás pidan empresa o inicio de actividades) y los términos de Anthropic (tu clave sirve para tus clientes; el plan Max, solo para uso propio).
+  - **Revisión del `arquitecto`:** 12 bloqueantes aplicados (el prefijo `/api` en los dos modos desde el lote A, otra clave de cifrado en desarrollo para no rotar el token de Mercado Libre de producción, las vueltas de Meta sin cambiar el estado de las publicaciones, entre otros).
+  - **22 tareas en 8 lotes;** ADR-0024 a ADR-0026.
 - 2026-10-18: **Cierre de F7 (T19).**
   - **Demo (tú, en simulación, todo bien):** creaste `corredor-demo` (no propio) con logo, lo invitaste y entró con su contraseña en una ventana privada; activaste Marketplace a mano; como el corredor bajó su planilla, cargó P001 y P002, las preparó con la IA por la API, vio su gasto, aprobó y publicó Marketplace a mano ("No lo publiqué"); no vio lo de `agentsales-pruebas` ("no existe" y Seguimiento solo con lo suyo); el tope de US$ 0,01 frenó los textos; la bitácora dijo quién hizo cada cosa y Restablecer cerró su sesión. Instagram se omitió (sin cuenta de evaluador).
   - **Auditoría del `arquitecto`:** sin hallazgos de código; la documentación quedó al día (README, guía, checklist "Antes de F8", roadmap con la deuda de F7, deuda técnica limpia).

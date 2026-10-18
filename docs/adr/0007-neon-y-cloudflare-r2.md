@@ -1,6 +1,6 @@
 # ADR-0007 · Neon (Postgres) y Cloudflare R2 (archivos) en vez de Supabase
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado (seguimiento de ADR-0024: Neon gratis en modo demo)
 - **Fecha:** 2026-09-29
 - **Reemplaza a:** ADR-0002 (se mantiene solo la decisión de usar Drizzle)
 
@@ -52,3 +52,4 @@ Instagram exige que los medios estén en una **URL accesible desde internet**, a
 - 2026-10-06 (resultado de `pnpm ig:smoke`, corrido con la instrucción del operador): Instagram **acepta la URL prefirmada de R2 para imágenes**. El contenedor de la portada JPEG de P001 (1080×1350, 84 KB, URL de 1 h) quedó `FINISHED` en la primera consulta, sin publicar. No hace falta el plan B para imágenes; el reel se verifica en la prueba en `live` de la demo de F3.
 - 2026-10-06 (demo de F3, prueba en `live` autorizada por el operador): Instagram también acepta la URL prefirmada de R2 para el **reel** (`video_url`). El carrusel de 5 imágenes y el reel de P002 se publicaron al primer intento. El plan B (prefijo público o subida reanudable) no hace falta en F3.
 - 2026-10-15 (F6-T14): el respaldo local periódico existe: `pnpm db:backup` y el job `db.backup` del worker (diario a las 13:00 de Chile y al arrancar si el último tiene más de 20 h) corren `pg_dump -Fc` sin el esquema `pgboss` a `BACKUP_DIR` (por defecto `~/.agentsales/backups`, fuera del proyecto), comprueban el archivo con `pg_restore --list` y guardan los últimos 14. Necesita el cliente de Postgres de versión mayor igual o superior a la de Neon (`brew install libpq`; `doctor` lo compara). Restaurar: `docs/08-guia-operador.md`. Un respaldo despierta el cómputo unos minutos (≈ 0,025 CU-h; nota `neon-backup.md` §6). La cifra vigente del plan gratis es **1 GB de base por proyecto** (20 GB en la cuenta), no 0,5 GB; las 100 CU-horas por mes y las 6 h de historial siguen igual (nota `neon-backup.md`, consultada el 2026-10-15).
+- 2026-10-18 (`/fase-plan 8`, ADR-0024): con el worker siempre encendido, pg-boss mantiene despierto el cómputo (unas 182 CU-h al mes contra 100 del plan gratis; `docs/integraciones/hosting.md`). F8 sigue en el plan gratis con el servidor **en modo demo** (encendido los días de demo); pasar a siempre encendido exige Neon Launch (unos US$ 20 al mes). Producción usa la base de hoy y el desarrollo una rama de Neon (comparten el cupo del proyecto). El respaldo sube a un bucket de R2 aparte (`agentsales-backups`).
