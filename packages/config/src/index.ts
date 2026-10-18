@@ -14,6 +14,10 @@ export {
   type StateSigner,
 } from "./crypto.js";
 export {
+  BACKUP_CREDENTIAL_VARIABLES,
+  BACKUP_TARGETS,
+  type BackupStorageConfig,
+  backupStorageOf,
   DEFAULT_BACKUP_DIR,
   DEFAULT_BROWSER_PROFILES_DIR,
   type Env,
@@ -21,6 +25,7 @@ export {
   type EnvIssue,
   loadEnv,
   panelUrlOf,
+  withoutBackupCredentials,
 } from "./env.js";
 export { EnvFileError, findWorkspaceRoot, loadAppEnvFile, loadEnvFile } from "./env-file.js";
 export { createErrorThrottle, type ErrorThrottleOptions } from "./error-throttle.js";

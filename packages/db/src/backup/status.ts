@@ -32,3 +32,19 @@ export async function writeBackupStatus(dir: string, status: BackupStatus): Prom
   await chmod(temporary, 0o600);
   await rename(temporary, path);
 }
+
+/**
+ * Dónde se guarda el estado del respaldo: el archivo de la carpeta (F6, `fileBackupStatusStore`) o,
+ * con el respaldo en R2, `system/` del bucket principal (el worker arma ese, F8-T13). Un `read` que
+ * lanza (R2 caído) hace que una falla no se anote, para no pisar el último bueno.
+ */
+export type BackupStatusStore = {
+  read(): Promise<BackupStatus | null>;
+  write(status: BackupStatus): Promise<void>;
+};
+
+/** El estado en `estado-respaldo.json` de la carpeta (F6). */
+export const fileBackupStatusStore = (dir: string): BackupStatusStore => ({
+  read: () => readBackupStatus(dir),
+  write: (status) => writeBackupStatus(dir, status),
+});

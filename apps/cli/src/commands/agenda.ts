@@ -49,7 +49,12 @@ export function agendaCommands(item: Item): string[] {
     case "sync":
       return [`agentsales publications sync ${item.publicationId}`];
     case "backup":
-      return ["pnpm db:backup"];
+      // En el servidor (F8-T13) el respaldo va a R2 y lo hace el worker: `pnpm db:backup` del Mac
+      // no actualiza su estado.
+      return [
+        "en el Mac: pnpm db:backup",
+        "en el servidor: el worker respalda al encenderse y a las 13:00; el error está en sus logs (docs/10-despliegue.md, paso 7)",
+      ];
     default:
       return item.kind === "upcoming" ? [`agentsales unschedule ${item.publicationId}`] : [];
   }

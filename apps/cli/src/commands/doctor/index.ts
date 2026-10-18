@@ -76,8 +76,18 @@ async function runRemoteDoctor(deps: DoctorDeps, server: ServerResolution): Prom
       : []),
     ...services.items,
     ...(worker ? [worker] : []),
-    // El respaldo del servidor no se arregla con `pnpm db:backup` del Mac.
-    ...(backup ? [withoutHint(backup)] : []),
+    // El respaldo del servidor (F8-T13: va al bucket de respaldos en R2) no se arregla con
+    // `pnpm db:backup` del Mac: el consejo es el del servidor.
+    ...(backup
+      ? [
+          backup.level === "ok"
+            ? withoutHint(backup)
+            : {
+                ...backup,
+                hint: "el worker del servidor respalda al arrancar y cada día a las 13:00 si está encendido; el error está en sus logs (docs/10-despliegue.md, paso 7)",
+              },
+        ]
+      : []),
     {
       name: "Herramientas",
       level: "ok",

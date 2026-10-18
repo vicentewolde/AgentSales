@@ -11,12 +11,12 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AppError, isAppError, isBackupStale } from "@agentsales/core";
+import { AppError, type BackupStatus, isAppError, isBackupStale } from "@agentsales/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { childEnv, pgEnvFromUrl } from "./connection.js";
-import { BACKUP_LOCK_FILE, backupFileName, runBackup } from "./run-backup.js";
+import { BACKUP_LOCK_FILE, type BackupDelivery, backupFileName, runBackup } from "./run-backup.js";
 import type { ProcessRunner } from "./runner.js";
-import { BACKUP_STATUS_FILE, readBackupStatus } from "./status.js";
+import { BACKUP_STATUS_FILE, type BackupStatusStore, readBackupStatus } from "./status.js";
 import {
   canDumpServer,
   DEFAULT_LIBPQ_BIN_DIR,
@@ -460,6 +460,140 @@ describe("runBackup", () => {
     expect(env).toContain("PGPASSWORD=clave@secreta");
     expect(env).toContain("PGSSLROOTCERT=system");
     expect(env).not.toContain("DATABASE_URL");
+  });
+});
+
+describe("runBackup con entrega (F8-T13: el worker lo sube a R2)", () => {
+  /** Un estado en memoria, como el de `system/` en R2. */
+  function memoryStore(initial: BackupStatus | null = null, readFails = false) {
+    let current = initial;
+    const writes: BackupStatus[] = [];
+    const store: BackupStatusStore = {
+      read: async () => {
+        if (readFails) throw new AppError("STORAGE_UNAVAILABLE", "sin red", { retriable: true });
+        return current;
+      },
+      write: async (status) => {
+        current = status;
+        writes.push(status);
+      },
+    };
+    return { store, writes, current: () => current };
+  }
+
+  const backupWith = (
+    dir: string,
+    run: ProcessRunner,
+    store: BackupStatusStore,
+    deliver: BackupDelivery,
+    now = NOW,
+  ) =>
+    runBackup({
+      dir,
+      databaseUrl: URL_WITH_SECRET,
+      run,
+      findTool: FAKE_TOOL,
+      now: () => now,
+      status: store,
+      deliver,
+      processEnv: { PATH: "/usr/bin" },
+    });
+
+  it("entrega el volcado comprobado, no borra en la carpeta y guarda el estado en su lugar", async () => {
+    const dir = await tempDir();
+    const old = await oldBackups(dir, 14);
+    const { store, current } = memoryStore();
+    const delivered: { path: string; file: string; bytes: number; content: string }[] = [];
+
+    const result = await backupWith(dir, fakeRunner().run, store, async (backup) => {
+      delivered.push({ ...backup, content: await readFile(backup.path, "utf8") });
+      return { deleted: ["agentsales-20261001-1300.dump"], pruneFailed: false };
+    });
+
+    expect(delivered).toEqual([
+      {
+        path: join(dir, "agentsales-20261015-1405.dump"),
+        file: "agentsales-20261015-1405.dump",
+        bytes: 11,
+        content: "PGDMP-falso",
+      },
+    ]);
+    expect(result).toEqual({
+      file: "agentsales-20261015-1405.dump",
+      bytes: 11,
+      deleted: ["agentsales-20261001-1300.dump"],
+      pruneFailed: false,
+    });
+    expect(current()).toEqual({
+      lastSuccessAt: NOW.toISOString(),
+      lastFile: "agentsales-20261015-1405.dump",
+      lastFailureAt: null,
+      lastFailureCode: null,
+    });
+    // Los de la carpeta no se tocan, y el estado no se escribe en ella.
+    const names = await readdir(dir);
+    for (const name of old) expect(names).toContain(name);
+    expect(names).not.toContain(BACKUP_STATUS_FILE);
+  });
+
+  it("un volcado que no se lee nunca se entrega", async () => {
+    for (const list of [{ exitCode: 1 }, { exitCode: 0, stdout: "  " }]) {
+      const dir = await tempDir();
+      const { store, current } = memoryStore();
+      let calls = 0;
+
+      const error = await caught(
+        backupWith(dir, fakeRunner({ list }).run, store, async () => {
+          calls += 1;
+          return { deleted: [], pruneFailed: false };
+        }),
+      );
+
+      expect(isAppError(error) && error.code).toBe("BACKUP_FAILED");
+      expect(calls).toBe(0);
+      expect(current()?.lastFailureCode).toBe("BACKUP_FAILED");
+    }
+  });
+
+  it("si la entrega falla, el respaldo falla con su código y el estado conserva el último bueno", async () => {
+    const dir = await tempDir();
+    const good = {
+      lastSuccessAt: "2026-10-14T16:00:00.000Z",
+      lastFile: "agentsales-20261014-1300.dump",
+      lastFailureAt: null,
+      lastFailureCode: null,
+    };
+    const { store, current } = memoryStore(good);
+
+    const error = await caught(
+      backupWith(dir, fakeRunner().run, store, async () => {
+        throw new AppError("STORAGE_UNAVAILABLE", "R2 no responde", { retriable: true });
+      }),
+    );
+
+    expect(isAppError(error) && [error.code, error.retriable]).toEqual([
+      "STORAGE_UNAVAILABLE",
+      true,
+    ]);
+    expect(current()).toEqual({
+      ...good,
+      lastFailureAt: NOW.toISOString(),
+      lastFailureCode: "STORAGE_UNAVAILABLE",
+    });
+  });
+
+  it("si el estado anterior no se puede leer, una falla no lo pisa", async () => {
+    const dir = await tempDir();
+    const { store, writes } = memoryStore(null, true);
+
+    await caught(
+      backupWith(dir, fakeRunner({ dump: { exitCode: 1 } }).run, store, async () => ({
+        deleted: [],
+        pruneFailed: false,
+      })),
+    );
+
+    expect(writes).toEqual([]);
   });
 });
 

@@ -23,6 +23,9 @@ swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg
   PUBLISH_MODE = "dry-run"
   LLM_PROVIDER = "anthropic-api"
   LOG_LEVEL = "info"
+  # El respaldo diario va al bucket de respaldos (spec F8 §4.9, D13); su token es un secreto.
+  BACKUP_TARGET = "r2"
+  BACKUP_R2_BUCKET = "agentsales-backups"
 
 [processes]
   api = "node apps/api/dist/src/server.js"

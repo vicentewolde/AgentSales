@@ -9,7 +9,7 @@ import {
 } from "@agentsales/core";
 import { childEnv, pgEnvFromUrl } from "./connection.js";
 import { type ProcessResult, type ProcessRunner, spawnProcess } from "./runner.js";
-import { readBackupStatus, writeBackupStatus } from "./status.js";
+import { type BackupStatusStore, fileBackupStatusStore } from "./status.js";
 import { findPgTool } from "./tools.js";
 
 // El respaldo local de la base (spec F6 §4.11, seguimiento de ADR-0007).
@@ -47,7 +47,23 @@ export type BackupDeps = {
   signal?: AbortSignalLike;
   /** El entorno del que salen `PATH` y `HOME` para los procesos hijos. */
   processEnv?: Readonly<Record<string, string | undefined>>;
+  /** Dónde se guarda el estado; por defecto, `estado-respaldo.json` en `dir` (F6). */
+  status?: BackupStatusStore;
+  /**
+   * Qué se hace con el volcado ya comprobado (F8-T13): el worker lo sube a R2 y deja los últimos 14
+   * allá. Con él, `dir` es una carpeta temporal y no se borran respaldos en ella. Si lanza, el
+   * respaldo cuenta como fallido (el estado anota su código).
+   */
+  deliver?: BackupDelivery;
 };
+
+/** Lo que entrega `deliver`: los respaldos viejos que borró y si no pudo borrarlos. */
+export type BackupDelivery = (backup: {
+  /** La ruta del volcado comprobado (`<dir>/<file>`). */
+  path: string;
+  file: string;
+  bytes: number;
+}) => Promise<{ deleted: string[]; pruneFailed: boolean }>;
 
 export type BackupResult = {
   /** El archivo nuevo (`agentsales-AAAAMMDD-HHMM.dump`), sin la carpeta. */
@@ -86,7 +102,9 @@ export function backupFileName(now: Date): string {
  * 2. `pg_dump -Fc --no-owner --no-acl --exclude-schema=pgboss` a `<nombre>.dump.partial` (`0600`),
  *    con la conexión por variables de entorno;
  * 3. `pg_restore --list` del archivo: si no se lee, se borra y no cuenta;
- * 4. lo renombra a `.dump`, borra los más viejos (deja 14) y guarda el estado.
+ * 4. lo renombra a `.dump`, borra los más viejos (deja 14) y guarda el estado. Con `deliver`
+ *    (F8-T13), en vez de borrar los viejos de la carpeta se lo entrega (lo sube a R2) y recién
+ *    después guarda el estado bueno: un volcado que no se lee nunca llega a `deliver`.
  * Una falla deja el estado con su código (sin borrar nada bueno) y lanza `BACKUP_FAILED`
  * (reintentable) o `BACKUP_TOOL_NOT_INSTALLED`. El mensaje lleva la salida de `pg_dump` redactada
  * (también la contraseña suelta). Un corte por apagado (`signal`) lanza `BACKUP_ABORTED`
@@ -94,6 +112,7 @@ export function backupFileName(now: Date): string {
  */
 export async function runBackup(deps: BackupDeps): Promise<BackupResult> {
   const now = (deps.now ?? (() => new Date()))();
+  const store = deps.status ?? fileBackupStatusStore(deps.dir);
   if (deps.signal?.aborted) throw aborted();
   let release: () => Promise<void>;
   try {
@@ -102,15 +121,19 @@ export async function runBackup(deps: BackupDeps): Promise<BackupResult> {
     // Otro respaldo en curso no es una falla: el estado no cambia.
     if (isAppError(caught) && caught.code === "BACKUP_IN_PROGRESS") throw caught;
     const error = backupError(caught);
-    await recordFailure(deps.dir, await readBackupStatus(deps.dir), now, error.code);
+    await recordFailure(deps.dir, store, await readPrevious(store), now, error.code);
     throw error;
   }
   try {
-    return await backupLocked(deps, now);
+    return await backupLocked(deps, store, now);
   } finally {
     await release();
   }
 }
+
+/** El estado anterior; `undefined` si no se pudo leer (entonces una falla no se anota). */
+const readPrevious = (store: BackupStatusStore): Promise<BackupStatus | null | undefined> =>
+  store.read().catch(() => undefined);
 
 /** El candado de la carpeta: un respaldo a la vez (`pnpm db:backup` no pasa por la cola). */
 export const BACKUP_LOCK_FILE = "respaldo.lock";
@@ -146,12 +169,16 @@ async function acquireLock(dir: string, now: Date): Promise<() => Promise<void>>
   );
 }
 
-async function backupLocked(deps: BackupDeps, now: Date): Promise<BackupResult> {
-  const previous = await readBackupStatus(deps.dir);
+async function backupLocked(
+  deps: BackupDeps,
+  store: BackupStatusStore,
+  now: Date,
+): Promise<BackupResult> {
+  const previous = await readPrevious(store);
   try {
     if (deps.signal?.aborted) throw aborted();
     const result = await dumpAndCheck(deps, now);
-    await writeBackupStatus(deps.dir, {
+    await store.write({
       lastSuccessAt: now.toISOString(),
       lastFile: result.file,
       lastFailureAt: null,
@@ -161,7 +188,7 @@ async function backupLocked(deps: BackupDeps, now: Date): Promise<BackupResult> 
   } catch (caught) {
     if (deps.signal?.aborted) throw aborted();
     const error = backupError(caught);
-    await recordFailure(deps.dir, previous, now, error.code);
+    await recordFailure(deps.dir, store, previous, now, error.code);
     throw error;
   }
 }
@@ -232,6 +259,10 @@ async function dumpAndCheck(deps: BackupDeps, now: Date): Promise<BackupResult> 
     throw error;
   }
   const { size } = await stat(path);
+  // Lo sube quien lo pidió (F8-T13); si la subida falla, el respaldo no vale.
+  if (deps.deliver !== undefined) {
+    return { file, bytes: size, ...(await deps.deliver({ path, file, bytes: size })) };
+  }
   // El respaldo nuevo ya está bien: no poder borrar los viejos no lo invalida.
   try {
     return { file, bytes: size, deleted: await prune(deps.dir), pruneFailed: false };
@@ -283,22 +314,27 @@ function backupError(error: unknown): AppError {
   );
 }
 
-/** Anota la falla sin perder el último bueno; si tampoco se puede escribir, no tapa el error. */
+/**
+ * Anota la falla sin perder el último bueno; si tampoco se puede escribir, no tapa el error. Si el
+ * estado anterior no se pudo leer (`undefined`), no se anota: se perdería el último bueno.
+ */
 async function recordFailure(
   dir: string,
-  previous: BackupStatus | null,
+  store: BackupStatusStore,
+  previous: BackupStatus | null | undefined,
   now: Date,
   code: string,
 ): Promise<void> {
+  if (previous === undefined) return;
   try {
     await mkdir(dir, { recursive: true, mode: 0o700 });
-    await writeBackupStatus(dir, {
+    await store.write({
       lastSuccessAt: previous?.lastSuccessAt ?? null,
       lastFile: previous?.lastFile ?? null,
       lastFailureAt: now.toISOString(),
       lastFailureCode: code,
     });
   } catch {
-    // La carpeta no se puede escribir: el error original ya lo dice.
+    // La carpeta (o R2) no se puede escribir: el error original ya lo dice.
   }
 }

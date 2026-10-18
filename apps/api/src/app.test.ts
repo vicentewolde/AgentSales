@@ -201,6 +201,19 @@ describe("GET /health", () => {
     expect(hung.body.autoPublishBrokers).toBeNull();
   });
 
+  it("un estado del respaldo que no llega (R2 colgado, F8-T13) no cuelga /health", async () => {
+    const { body } = await health(
+      appWith(
+        {},
+        {
+          checkTimeoutMs: 20,
+          healthDetails: { backupStatus: () => new Promise<null>(() => {}) },
+        },
+      ),
+    );
+    expect(body.backup).toBeNull();
+  });
+
   it("informa PUBLISH_MODE=live tal cual", async () => {
     const { body } = await health(appWith({}, { publishMode: "live" }));
 

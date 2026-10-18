@@ -13,6 +13,7 @@ import {
   loadEnv,
   panelUrlOf,
   resolveBackupDir,
+  withoutBackupCredentials,
 } from "@agentsales/config";
 import { ALL_SCOPE, brokersNeedingApiKey, WORKER_HEARTBEAT_LOOKBACK } from "@agentsales/core";
 import {
@@ -36,7 +37,6 @@ import {
   readServerVersion,
   toPgConnectionString,
 } from "@agentsales/db";
-import { readBackupStatus } from "@agentsales/db/backup";
 import { BROKER_TEMPLATE_PATH, writeBrokerTemplate } from "@agentsales/importers";
 // La subruta: sharp solo para el logo, sin ffmpeg ni el navegador del resto del paquete.
 import { createLogoNormalizer } from "@agentsales/media/logo";
@@ -51,6 +51,7 @@ import { createR2Storage, r2BucketOrigin } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
 import { API_PREFIX } from "./access.js";
 import { createApp } from "./app.js";
+import { backupStatusReader } from "./backup-status.js";
 import { createApiOperations } from "./portal.js";
 import { createRequestContext } from "./request-context-node.js";
 import { instagramStartUrlOf } from "./routes/oauth.js";
@@ -64,7 +65,9 @@ const SHUTDOWN_TIMEOUT_MS = 30_000;
 
 // `ENV_FILE` es solo para los scripts (spec F8, D12): aquí se rechaza.
 loadAppEnvFile();
-const env = loadEnv();
+// El token del bucket de respaldos es solo del worker (spec F8 §4.9, D13): la API lo quita de su
+// configuración y de su entorno al arrancar (en Fly los secretos llegan a los dos procesos).
+const env = withoutBackupCredentials(loadEnv());
 // En internet (spec F8 §4.2): el host, el panel y los orígenes salen de `PUBLIC_URL`; sin ella, el Mac.
 const publicUrl = env.PUBLIC_URL;
 const https = publicUrl?.startsWith("https://") ?? false;
@@ -97,14 +100,22 @@ const queue = createJobQueue({
 const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
 
 // `/health` (F6-T14): la versión de Postgres que lee el check de la base (también es el ping) y el
-// estado del último respaldo, en su carpeta (fuera del proyecto; la API solo lee el archivo de estado).
+// estado del último respaldo: en su carpeta (fuera del proyecto; la API solo lee el archivo de estado)
+// o, con el respaldo en R2 (F8-T13), en `system/` del bucket principal.
 let serverVersion: string | null = null;
 const brokers = createBrokerRepository(database.db);
 const workerHeartbeats = createWorkerHeartbeatRepository(database.db);
-const backupDir = resolveBackupDir(env.BACKUP_DIR, {
-  homeDir: homedir(),
-  workspaceRoot: findWorkspaceRoot(),
-});
+const backupStatus = backupStatusReader(
+  env.BACKUP_TARGET === "r2"
+    ? { target: "r2", storage }
+    : {
+        target: "local",
+        dir: resolveBackupDir(env.BACKUP_DIR, {
+          homeDir: homedir(),
+          workspaceRoot: findWorkspaceRoot(),
+        }),
+      },
+);
 
 const access =
   publicUrl === undefined ? localAccess(env.API_PORT, env.WEB_PORT) : internetAccess(publicUrl);
@@ -199,7 +210,7 @@ const app = createApp({
   version: readApiVersion(),
   healthDetails: {
     serverVersion: () => serverVersion,
-    backupStatus: () => readBackupStatus(backupDir),
+    backupStatus,
     // Con `pnpm dev` la API y el worker reciben el mismo `PUBLISH_MODE` (spec F6 §4.10).
     autoPublishBrokers: async () =>
       (await brokers.list(ALL_SCOPE))

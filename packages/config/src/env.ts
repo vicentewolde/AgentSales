@@ -120,6 +120,21 @@ const backupDir = z
     "debe ser una ruta absoluta o empezar con ~/, fuera del proyecto (los respaldos traen datos de clientes)",
   );
 
+/**
+ * Dónde queda el respaldo diario del worker (spec F8 §4.9, D13): `local` en `BACKUP_DIR` (F6) o `r2`
+ * en un bucket aparte, con su propio token. En producción, `r2`.
+ */
+export const BACKUP_TARGETS = ["local", "r2"] as const;
+
+/**
+ * Las variables del token del bucket de respaldos: solo las usa el worker. La API las quita al
+ * arrancar (`withoutBackupCredentials`), porque en Fly los secretos llegan a los dos procesos.
+ */
+export const BACKUP_CREDENTIAL_VARIABLES = [
+  "BACKUP_R2_ACCESS_KEY_ID",
+  "BACKUP_R2_SECRET_ACCESS_KEY",
+] as const;
+
 /** La carpeta de `pg_dump` y `pg_restore` (por ejemplo `/opt/homebrew/opt/libpq/bin`): absoluta. */
 const pgBinDir = z.string().refine((value) => value.startsWith("/"), "debe ser una ruta absoluta");
 
@@ -289,6 +304,13 @@ const envSchema = z
     // PATH y en `/opt/homebrew/opt/libpq/bin`).
     BACKUP_DIR: backupDir.default(DEFAULT_BACKUP_DIR),
     PG_BIN_DIR: pgBinDir.optional(),
+    // Respaldo en la nube (F8-T13, spec §4.9, D13): con `r2`, el worker sube el volcado a otro bucket
+    // de la misma cuenta (R2_ACCOUNT_ID) con un token limitado a él; el estado va al bucket principal.
+    // `pnpm db:backup` respalda siempre a BACKUP_DIR, diga lo que diga esta variable.
+    BACKUP_TARGET: z.enum(BACKUP_TARGETS, { error: 'debe ser "local" o "r2"' }).default("local"),
+    BACKUP_R2_BUCKET: z.string().optional(),
+    BACKUP_R2_ACCESS_KEY_ID: z.string().optional(),
+    BACKUP_R2_SECRET_ACCESS_KEY: z.string().optional(),
   })
   .superRefine((env, ctx) => {
     // El proveedor de la API de Anthropic no funciona sin su clave (deuda de F1, spec F2 §4.5).
@@ -299,6 +321,7 @@ const envSchema = z
         message: 'falta (obligatoria con LLM_PROVIDER="anthropic-api")',
       });
     }
+    if (env.BACKUP_TARGET === "r2") backupIssues(env, ctx);
     if (env.NODE_ENV === "production") productionIssues(env, ctx);
   })
   .transform((env) => ({
@@ -315,9 +338,58 @@ const envSchema = z
         : `${env.PUBLIC_URL}${API_PREFIX}/oauth/mercadolibre/callback`),
   }));
 
+/** Lo que mira `backupIssues`: el respaldo a R2 necesita su bucket y su token, distintos de los de los medios. */
+type BackupEnv = {
+  R2_BUCKET: string;
+  R2_ACCESS_KEY_ID: string;
+  BACKUP_R2_BUCKET?: string | undefined;
+  BACKUP_R2_ACCESS_KEY_ID?: string | undefined;
+  BACKUP_R2_SECRET_ACCESS_KEY?: string | undefined;
+};
+
+/**
+ * Con `BACKUP_TARGET=r2` (spec F8 §4.9): el bucket y el token de respaldos son obligatorios y otros
+ * que los de los medios (así la API, que tiene el token de los medios, no puede leer ni borrar los
+ * respaldos, y un token filtrado de los respaldos no toca los medios).
+ */
+function backupIssues(env: BackupEnv, ctx: z.RefinementCtx): void {
+  for (const variable of [
+    "BACKUP_R2_BUCKET",
+    "BACKUP_R2_ACCESS_KEY_ID",
+    "BACKUP_R2_SECRET_ACCESS_KEY",
+  ] as const) {
+    if (env[variable] === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: [variable],
+        message: 'falta (obligatoria con BACKUP_TARGET="r2")',
+      });
+    }
+  }
+  if (env.BACKUP_R2_BUCKET !== undefined && env.BACKUP_R2_BUCKET === env.R2_BUCKET) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["BACKUP_R2_BUCKET"],
+      message: "debe ser otro bucket que R2_BUCKET (por ejemplo agentsales-backups)",
+    });
+  }
+  if (
+    env.BACKUP_R2_ACCESS_KEY_ID !== undefined &&
+    env.BACKUP_R2_ACCESS_KEY_ID === env.R2_ACCESS_KEY_ID
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["BACKUP_R2_ACCESS_KEY_ID"],
+      message:
+        "debe ser otro token que el de R2_ACCESS_KEY_ID (uno limitado al bucket de respaldos)",
+    });
+  }
+}
+
 /** Lo que mira `productionIssues` del entorno ya validado (antes de los valores derivados). */
 type ParsedEnv = {
   LLM_PROVIDER: string;
+  BACKUP_TARGET: string;
   PUBLIC_URL?: string | undefined;
   INSTAGRAM_REDIRECT_URI?: string | undefined;
   ML_REDIRECT_URI?: string | undefined;
@@ -326,9 +398,10 @@ type ParsedEnv = {
 /**
  * Lo que exige `NODE_ENV=production` (spec F8 §4.2): `PUBLIC_URL` con `https://`, las direcciones de
  * retorno dentro de ella y la API de Anthropic como IA (el plan Max es solo para uso propio, no para
- * un servidor que atiende a terceros: `docs/integraciones/anthropic-terminos.md` §6). `API_HOST`
- * explícito lo revisa `loadEnv`, que ve el entorno sin los valores por defecto. El respaldo a R2
- * (`BACKUP_TARGET`) llega con F8-T13 y el formulario automático de Marketplace apagado, con F8-T20.
+ * un servidor que atiende a terceros: `docs/integraciones/anthropic-terminos.md` §6), y el respaldo a
+ * R2 (`BACKUP_TARGET=r2`, D13: el disco de la máquina no dura). `API_HOST` explícito lo revisa
+ * `loadEnv`, que ve el entorno sin los valores por defecto. El formulario automático de Marketplace
+ * apagado llega con F8-T20.
  */
 function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
   if (env.PUBLIC_URL === undefined) {
@@ -362,6 +435,14 @@ function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
       path: ["LLM_PROVIDER"],
       message:
         'debe ser "anthropic-api" con NODE_ENV=production (el plan de Claude es solo para uso propio)',
+    });
+  }
+  if (env.BACKUP_TARGET !== "r2") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["BACKUP_TARGET"],
+      message:
+        'debe ser "r2" con NODE_ENV=production (el disco del servidor no guarda los respaldos)',
     });
   }
 }
@@ -437,4 +518,50 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
  */
 export function panelUrlOf(env: Pick<Env, "PUBLIC_URL" | "WEB_PORT">): string {
   return env.PUBLIC_URL ?? `http://localhost:${env.WEB_PORT}`;
+}
+
+/** El bucket de respaldos y su token (spec F8 §4.9); la cuenta es la de `R2_ACCOUNT_ID`. */
+export type BackupStorageConfig = { bucket: string; accessKeyId: string; secretAccessKey: string };
+
+/**
+ * El bucket de respaldos con `BACKUP_TARGET=r2`, o `null` con `local` (o si a la configuración le
+ * quitaron el token: la de la API, `withoutBackupCredentials`). `loadEnv` ya exige los tres con `r2`.
+ */
+export function backupStorageOf(
+  env: Pick<
+    Env,
+    "BACKUP_TARGET" | "BACKUP_R2_BUCKET" | "BACKUP_R2_ACCESS_KEY_ID" | "BACKUP_R2_SECRET_ACCESS_KEY"
+  >,
+): BackupStorageConfig | null {
+  if (
+    env.BACKUP_TARGET !== "r2" ||
+    env.BACKUP_R2_BUCKET === undefined ||
+    env.BACKUP_R2_ACCESS_KEY_ID === undefined ||
+    env.BACKUP_R2_SECRET_ACCESS_KEY === undefined
+  ) {
+    return null;
+  }
+  return {
+    bucket: env.BACKUP_R2_BUCKET,
+    accessKeyId: env.BACKUP_R2_ACCESS_KEY_ID,
+    secretAccessKey: env.BACKUP_R2_SECRET_ACCESS_KEY,
+  };
+}
+
+/**
+ * La configuración de la API, sin el token de respaldos (spec F8 §4.9, D13: solo lo tiene el
+ * worker). En Fly los secretos de la app llegan a los dos procesos; la API los quita de su entorno al
+ * arrancar (así tampoco los hereda un proceso hijo) y de su configuración. Devuelve otra
+ * configuración, inmutable; `BACKUP_TARGET` y el bucket quedan (la API lee el estado, no los volcados).
+ */
+export function withoutBackupCredentials(
+  env: Env,
+  processEnv: Record<string, string | undefined> = process.env,
+): Env {
+  for (const variable of BACKUP_CREDENTIAL_VARIABLES) delete processEnv[variable];
+  return Object.freeze({
+    ...env,
+    BACKUP_R2_ACCESS_KEY_ID: undefined,
+    BACKUP_R2_SECRET_ACCESS_KEY: undefined,
+  });
 }

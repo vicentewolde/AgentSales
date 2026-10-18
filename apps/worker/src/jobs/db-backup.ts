@@ -1,5 +1,25 @@
-import { type AbortSignalLike, isAppError, type JobQueue } from "@agentsales/core";
-import { findPgTool, readBackupStatus, runBackup } from "@agentsales/db/backup";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  type AbortSignalLike,
+  AppError,
+  type BackupStatus,
+  isAppError,
+  type JobQueue,
+  type MediaStorage,
+} from "@agentsales/core";
+import {
+  BACKUP_KEEP,
+  type BackupDelivery,
+  type BackupStatusStore,
+  findPgTool,
+  readBackupStatus,
+  runBackup,
+} from "@agentsales/db/backup";
+import { readStoredBackupStatus, writeStoredBackupStatus } from "@agentsales/storage";
 import { defineJob, type Job, type JobSchedule, type QueuePolicy } from "./define.js";
 
 /**
@@ -31,9 +51,32 @@ export const DB_BACKUP_SCHEDULE: JobSchedule<"db.backup"> = {
 /** Al arrancar se respalda si el último bueno tiene más de esto (o no hay ninguno). */
 export const DB_BACKUP_STARTUP_AFTER_MS = 20 * 60 * 60 * 1000;
 
+/**
+ * Dónde queda el respaldo (spec F8 §4.9, `BACKUP_TARGET`): en la carpeta (F6, el Mac) o en R2, con
+ * el volcado en el bucket de respaldos (`backups`, su propio token) y el estado en el principal
+ * (`status`, que la API lee).
+ */
+export type BackupTarget =
+  | {
+      kind: "local";
+      /** La carpeta ya resuelta (`resolveBackupDir`). */
+      dir: string;
+    }
+  | {
+      kind: "r2";
+      backups: MediaStorage;
+      status: Pick<MediaStorage, "get" | "put">;
+      /** Dónde se crea la carpeta temporal del volcado (por defecto, la del sistema). */
+      tmpRoot?: string;
+    };
+
+/** Los volcados en el bucket de respaldos: `db/agentsales-AAAAMMDD-HHMM.dump`. */
+export const BACKUP_OBJECT_PREFIX = "db/";
+/** Solo estos objetos se cuentan y se borran: nunca otro del bucket. */
+const BACKUP_OBJECT = /^db\/agentsales-\d{8}-\d{4}\.dump$/;
+
 export type DbBackupJobDeps = {
-  /** La carpeta ya resuelta (`resolveBackupDir`). */
-  dir: string;
+  target: BackupTarget;
   databaseUrl: string;
   binDir?: string;
   /** Se dispara al apagar el worker: corta `pg_dump`. */
@@ -41,14 +84,87 @@ export type DbBackupJobDeps = {
   run?: Parameters<typeof runBackup>[0]["run"];
   findTool?: typeof findPgTool;
   now?: () => Date;
+  /** El sha256 de un archivo, en hexadecimal (los tests dan el suyo). */
+  sha256File?: (path: string) => Promise<string>;
 };
+
+/** El sha256 de un archivo leyéndolo en streaming (un volcado puede pesar cientos de MB). */
+async function sha256OfFile(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+  return hash.digest("hex");
+}
+
+/** El estado del respaldo según dónde queda: el archivo de la carpeta o `system/` en R2. */
+export function backupStatusOf(target: BackupTarget): () => Promise<BackupStatus | null> {
+  return target.kind === "local"
+    ? () => readBackupStatus(target.dir)
+    : () => readStoredBackupStatus(target.status);
+}
+
+const storedStatusStore = (storage: Pick<MediaStorage, "get" | "put">): BackupStatusStore => ({
+  read: () => readStoredBackupStatus(storage),
+  write: (status) => writeStoredBackupStatus(storage, status),
+});
+
+/**
+ * Sube el volcado comprobado al bucket de respaldos (spec F8 §4.9) con su sha256 (R2 rechaza un
+ * contenido distinto), revisa que quedó con su tamaño y recién entonces borra los más viejos (deja
+ * 14, solo objetos `db/agentsales-…dump`). No poder borrarlos no invalida el respaldo nuevo.
+ */
+export function uploadBackup(
+  backups: MediaStorage,
+  sha256File: (path: string) => Promise<string> = sha256OfFile,
+): BackupDelivery {
+  return async ({ path, file, bytes }) => {
+    const key = `${BACKUP_OBJECT_PREFIX}${file}`;
+    const sha256 = await sha256File(path);
+    const body = createReadStream(path);
+    try {
+      await backups.putStream(key, body, {
+        contentType: "application/octet-stream",
+        contentLength: bytes,
+        sha256,
+      });
+    } finally {
+      // Si la subida falló a medias, el archivo no queda abierto.
+      body.destroy();
+    }
+    const stored = await backups.head(key);
+    if (stored?.size !== bytes) {
+      throw new AppError(
+        "BACKUP_FAILED",
+        "El respaldo no quedó completo en el bucket de respaldos",
+        { retriable: true },
+      );
+    }
+    try {
+      return { deleted: await pruneUploaded(backups), pruneFailed: false };
+    } catch {
+      return { deleted: [], pruneFailed: true };
+    }
+  };
+}
+
+/** Borra los volcados más viejos del bucket (por nombre: la fecha va en él) y deja los últimos 14. */
+async function pruneUploaded(backups: MediaStorage): Promise<string[]> {
+  const keys = (await backups.list(BACKUP_OBJECT_PREFIX))
+    .map((object) => object.path)
+    .filter((path) => BACKUP_OBJECT.test(path))
+    .sort();
+  const old = keys.slice(0, Math.max(0, keys.length - BACKUP_KEEP));
+  for (const key of old) await backups.delete(key);
+  return old.map((key) => key.slice(BACKUP_OBJECT_PREFIX.length));
+}
 
 const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_ERROR");
 
 /**
- * Job `db.backup`: corre `runBackup` y registra el archivo, su tamaño y cuántos viejos se borraron.
- * Un error lleva solo su código (el mensaje trae la salida de `pg_dump`, ya redactada, que puede
- * nombrar el host). `BACKUP_FAILED` se reintenta una vez; `BACKUP_TOOL_NOT_INSTALLED`, no.
+ * Job `db.backup`: corre `runBackup` y registra el archivo, su tamaño, dónde quedó y cuántos viejos
+ * se borraron. Con R2 (F8-T13) vuelca a una carpeta temporal que se borra al terminar, lo sube con
+ * `uploadBackup` y guarda el estado en `system/` del bucket principal. Un error lleva solo su código
+ * (el mensaje trae la salida de `pg_dump`, ya redactada, que puede nombrar el host).
+ * `BACKUP_FAILED` y un R2 caído se reintentan una vez; `BACKUP_TOOL_NOT_INSTALLED`, no.
  */
 export function dbBackupJob(deps: DbBackupJobDeps): Job {
   return defineJob({
@@ -57,17 +173,44 @@ export function dbBackupJob(deps: DbBackupJobDeps): Job {
     schedule: DB_BACKUP_SCHEDULE,
     errorLogFields: (error) => ({ code: codeOf(error) }),
     handler: async (_data, { logger }) => {
-      const result = await runBackup({
-        dir: deps.dir,
+      const common = {
         databaseUrl: deps.databaseUrl,
         signal: deps.signal,
         ...(deps.binDir === undefined ? {} : { binDir: deps.binDir }),
         ...(deps.run === undefined ? {} : { run: deps.run }),
         ...(deps.findTool === undefined ? {} : { findTool: deps.findTool }),
         ...(deps.now === undefined ? {} : { now: deps.now }),
-      });
+      };
+      const { target } = deps;
+      let result: Awaited<ReturnType<typeof runBackup>>;
+      if (target.kind === "local") {
+        result = await runBackup({ ...common, dir: target.dir });
+      } else {
+        // `mkdtemp` la crea con `0700`; el volcado trae datos de clientes y se borra siempre. Si no se
+        // puede crear (disco lleno), el job falla sin anotarlo en el estado: lo dice el log, y
+        // `doctor` avisa cuando el último bueno pasa de 48 h. El candado de `runBackup` queda en esta
+        // carpeta nueva y no protege nada: aquí la exclusión es la cola `exclusive` (y
+        // `pnpm db:backup` nunca va a R2). Los 15 min del job alcanzan con holgura para la base del
+        // piloto (pocos MB); con una base de cientos de MB habría que medir el volcado y la subida.
+        const dir = await mkdtemp(join(target.tmpRoot ?? tmpdir(), "agentsales-backup-"));
+        try {
+          result = await runBackup({
+            ...common,
+            dir,
+            status: storedStatusStore(target.status),
+            deliver: uploadBackup(target.backups, deps.sha256File),
+          });
+        } finally {
+          await rm(dir, { recursive: true, force: true });
+        }
+      }
       logger.info(
-        { file: result.file, kb: Math.round(result.bytes / 1024), deleted: result.deleted.length },
+        {
+          file: result.file,
+          kb: Math.round(result.bytes / 1024),
+          target: target.kind,
+          deleted: result.deleted.length,
+        },
         "respaldo de la base listo",
       );
       if (result.pruneFailed) {
@@ -87,10 +230,17 @@ export type BackupStartupDecision = "enqueued" | "recent" | "tool_missing";
  */
 export async function requestBackupIfDue(
   queue: JobQueue,
-  deps: Pick<DbBackupJobDeps, "dir" | "binDir" | "findTool" | "now">,
+  deps: Pick<DbBackupJobDeps, "binDir" | "findTool" | "now"> & {
+    /**
+     * El estado del último respaldo (`backupStatusOf`). Si lanza (R2 caído al arrancar), se encola
+     * igual: en modo demo es la oportunidad del día, la cola `exclusive` evita duplicados y
+     * `runBackup` no pisa un estado que no pudo leer.
+     */
+    readStatus: () => Promise<BackupStatus | null>;
+  },
 ): Promise<BackupStartupDecision> {
   const now = (deps.now ?? (() => new Date()))();
-  const status = await readBackupStatus(deps.dir);
+  const status = await deps.readStatus().catch(() => null);
   const last = status?.lastSuccessAt == null ? null : Date.parse(status.lastSuccessAt);
   if (last !== null && now.getTime() - last <= DB_BACKUP_STARTUP_AFTER_MS) return "recent";
   try {
