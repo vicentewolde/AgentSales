@@ -18,6 +18,7 @@ Sistema que toma avisos (propiedades hoy, productos después) con fotos y videos
 | `docs/05-convenciones.md` | Estilo, tests y git (reglas obligatorias) |
 | `docs/06-roadmap.md` | Fases y criterios de aceptación |
 | `docs/07-checklist-cuentas.md` | Trámites que hace el operador, no tú |
+| `docs/10-despliegue.md` | Desplegar en Fly.io, encender y apagar, logs y volver atrás (lo hace el operador) |
 | `docs/adr/` | Decisiones tomadas; no las contradigas sin un ADR nuevo |
 
 ## Stack (resumen; detalle en 05-convenciones)
@@ -39,6 +40,7 @@ pnpm check               # lint + typecheck + tests (obligatorio antes de commit
 pnpm lint | pnpm format  # Biome (revisar | corregir)
 pnpm typecheck           # tsc -b
 pnpm test                # solo tests
+pnpm build               # build de producción sin tests (API, worker y paquetes con tsconfig.build.json; el panel con Vite)
 pnpm db:generate         # generar migración tras cambiar el esquema
 pnpm db:migrate          # aplicar migraciones
 pnpm db:seed             # seeds idempotentes
@@ -46,6 +48,7 @@ pnpm db:backup           # respaldo local de la base con pg_dump a BACKUP_DIR (f
 pnpm db:dev-scrub        # borra las credenciales copiadas en la rama dev de Neon (solo .env; se niega si parece producción: la misma base o clave que .env.production, o credenciales que la clave de .env abre; pide confirmación, --yes; lo corre el operador)
 pnpm storage:check       # verifica acceso al bucket de R2, el PUT prefirmado (y que R2 rechace otro contenido) y la regla de CORS para el panel (--origin <url>; con ENV_FILE=.env.production y --origin https://agentsales.agentpey.com, el bucket de producción; habla con R2: lo corre el operador)
 pnpm auth:admin --email <correo>  # crea el administrador o le da un enlace de restablecer, en el portapapeles sin imprimirlo (habla directo con la base; lo corre el operador)
+gh workflow run deploy.yml --ref main  # despliega en Fly.io (solo main con la CI en verde; lo corre el operador, nunca Claude: D8). Guía docs/10-despliegue.md: secretos, dominio, encender y apagar el worker para una demo, logs y volver atrás
 pnpm -s cli login --email <correo>  # la sesión de la CLI (pide la contraseña sin mostrarla: lo corre el operador en su terminal); con --api https://<dominio>, la de un servidor (queda guardada; AGENTSALES_API_URL manda sobre ella); whoami (dice el servidor), logout
 pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo)
 pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo)
@@ -102,6 +105,7 @@ corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) →
 - No subas datos reales de clientes (`data/muestras/`) a git.
 - Marketplace: nunca automatices el clic final (ni el de Siguiente), ni resuelvas o evadas captchas o verificaciones, ni disfraces la automatización. Conectar la cuenta de Marketplace y `pnpm fb:smoke` abren Facebook en cualquier modo, porque no publican (ADR-0017): los pide y corre solo el operador. No leas la carpeta de perfiles (`BROWSER_PROFILES_DIR`: guarda la sesión de Facebook); de `tmp/fb-smoke/` lee solo, y siempre con el permiso del operador en el chat: `summary.json` y los árboles que lista (`*.aria.yml`), y de una corrida de `--listing` los archivos de diagnóstico de su carpeta `fb-smoke-<id>/` (`formulario.aria.yml`, `control-faltante.aria.yml`, `listas-abiertas.aria.yml`, `errores-de-la-pagina.txt`); nunca las capturas `.png`.
 - Nunca `git push --force` a `main` ni reescribas su historia.
+- Desplegar es del operador (spec F8, D8): nunca corras `gh workflow run deploy.yml`, `fly deploy`, `fly secrets`, `fly machine start/stop` ni otro comando que hable con Fly.io; preparas los archivos y la guía (`docs/10-despliegue.md`).
 
 ## Reglas editoriales de la IA (resumen)
 Solo datos entregados; nunca inventar. Respetar `show_exact_address`. Precio con formato chileno (`UF 5.800`, `$650.000`). Sin requisitos discriminatorios. Detalle completo en `docs/04-formato-publicaciones.md`.

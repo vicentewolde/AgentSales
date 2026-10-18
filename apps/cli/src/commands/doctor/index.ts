@@ -27,6 +27,7 @@ import {
   checkServer,
   checkServices,
   checkUfSource,
+  checkWorker,
   type Level,
   type RunCommand,
 } from "./checks.js";
@@ -62,6 +63,7 @@ async function runRemoteDoctor(deps: DoctorDeps, server: ServerResolution): Prom
   const autoPublish = checkAutoPublish(report);
   const llmKey = checkLlmKey(report);
   const backup = checkBackup(report, (deps.now ?? (() => new Date()))());
+  const worker = checkWorker(report, true);
   const withoutHint = ({ hint: _hint, ...item }: CheckItem): CheckItem => item;
   return [
     checkNode(deps.nodeVersion),
@@ -73,6 +75,7 @@ async function runRemoteDoctor(deps: DoctorDeps, server: ServerResolution): Prom
       ? [{ ...llmKey, hint: "agrega ANTHROPIC_API_KEY a los secretos del servidor" }]
       : []),
     ...services.items,
+    ...(worker ? [worker] : []),
     // El respaldo del servidor no se arregla con `pnpm db:backup` del Mac.
     ...(backup ? [withoutHint(backup)] : []),
     {
@@ -109,6 +112,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     deps.findPgDump ??
     ((binDir: string | undefined) => findPgTool("pg_dump", binDir === undefined ? {} : { binDir }));
   const environment = checkEnvironment(services.report, false);
+  const localWorker = checkWorker(services.report, false);
   const items: CheckItem[] = [
     checkNode(deps.nodeVersion),
     ...(deps.server === undefined ? [] : [checkServer(deps.server)]),
@@ -122,6 +126,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     ...(llmKey ? [llmKey] : []),
     ...(anthropicModel ? [anthropicModel] : []),
     ...services.items,
+    ...(localWorker ? [localWorker] : []),
     await checkFfmpegTool(deps.run, "ffmpeg", ffmpegPath),
     await checkFfmpegTool(deps.run, "ffprobe", ffprobePath),
     checkChromium(deps.chromium),

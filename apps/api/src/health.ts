@@ -4,8 +4,9 @@ import type {
   HealthCheckResult,
   HealthReport,
   PublishMode,
+  WorkerHeartbeat,
 } from "@agentsales/core";
-import { HEALTH_CHECK_NAMES, isBackupStale, redactText } from "@agentsales/core";
+import { HEALTH_CHECK_NAMES, isBackupStale, redactText, workerStatusOf } from "@agentsales/core";
 
 /** Resuelve si el servicio está sano; lanza si no. */
 export type HealthCheck = () => Promise<void>;
@@ -46,6 +47,8 @@ export type HealthDetails = {
   autoPublishBrokers?: () => Promise<string[]>;
   /** Los corredores (slug) que necesitan `ANTHROPIC_API_KEY` y no la tienen (F7-T12). */
   llmKeyMissingBrokers?: () => Promise<string[]>;
+  /** Los latidos más recientes del worker (F8-T12, spec F8 §4.10); un error da `null`. */
+  workerHeartbeats?: () => Promise<WorkerHeartbeat[]>;
   now?: () => Date;
 };
 
@@ -86,7 +89,30 @@ export async function runHealth(options: {
     ...(details.llmKeyMissingBrokers === undefined
       ? {}
       : { llmKeyMissingBrokers: await brokerSlugs(details.llmKeyMissingBrokers) }),
+    ...(details.workerHeartbeats === undefined
+      ? {}
+      : {
+          worker: await workerOf(
+            checks.db.ok ? details.workerHeartbeats : null,
+            timeoutMs,
+            details.now ?? (() => new Date()),
+          ),
+        }),
   };
+}
+
+/** El worker según su último latido; `null` sin base o si no se pudo leer (nunca lanza). */
+async function workerOf(
+  read: (() => Promise<WorkerHeartbeat[]>) | null,
+  timeoutMs: number,
+  now: () => Date,
+): Promise<HealthReport["worker"]> {
+  if (read === null) return null;
+  try {
+    return workerStatusOf(await withTimeout(read(), timeoutMs), now());
+  } catch {
+    return null;
+  }
 }
 
 /** El estado del respaldo con `stale`; `null` sin respaldo o si no se pudo leer (nunca lanza). */

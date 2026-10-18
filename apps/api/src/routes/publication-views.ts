@@ -128,7 +128,8 @@ const STATUS_PAYLOAD_KEYS = [
  * Un `publish_attempt` pasa por `publishAttemptPayloadSchema` (zod descarta lo que no conoce, como
  * una URL); un cambio de estado, solo sus claves conocidas; `schedule_changed` y `manual_edit`
  * (F6) por sus esquemas (de `manual_edit`, sin lo leído de la plataforma); `sync`, nada (su estado
- * queda en la publicación).
+ * queda en la publicación) salvo la marca de una pausa de la propiedad que un sync se adelantó a
+ * aplicar (`byListing`, F8-T12).
  */
 function eventPayload(event: PublicationEvent): Record<string, unknown> {
   if (event.type === "publish_attempt") {
@@ -143,6 +144,7 @@ function eventPayload(event: PublicationEvent): Record<string, unknown> {
     const parsed = manualEditPayloadSchema.safeParse(event.payload);
     return parsed.success ? { mode: parsed.data.mode, fields: parsed.data.fields } : {};
   }
+  if (event.type === "sync") return event.payload.byListing === true ? { byListing: true } : {};
   if (event.type !== "status_changed") return {};
   return Object.fromEntries(
     STATUS_PAYLOAD_KEYS.filter((key) => key in event.payload).map((key) => [

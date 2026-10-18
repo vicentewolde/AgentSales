@@ -32,6 +32,7 @@ export {
   createSessionRepository,
   createUserRepository,
 } from "./repositories/users.js";
+export { createWorkerHeartbeatRepository } from "./repositories/worker-heartbeats.js";
 export * as schema from "./schema.js";
 export {
   REAL_ESTATE_CATEGORY,

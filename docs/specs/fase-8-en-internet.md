@@ -42,7 +42,7 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 |---|---|
 | `packages/config` | `PUBLIC_URL`, `API_HOST`, `CLIENT_IP_HEADER`, `ENV_FILE`, `BACKUP_TARGET` y las reglas de producción (§4.2); el TOTP (RFC 6238 con `node:crypto`) y base32; el propósito `totp` en la derivación de claves |
 | `packages/core` | La carga con entradas en R2 (`requestImportUpload`, `startImport`) y el estado `awaiting_upload`; el doble factor (`enableTotp`, `confirmTotp`, `disableTotp`, el login en dos pasos, códigos de recuperación); el borrado de datos que pide Meta (`handleDataDeletion`, `handleDeauthorize`); el `auto_publish` pendiente al arrancar; la pausa con `byListing` (F6) |
-| `packages/db` | Migraciones `0010` (cargas), `0011` (doble factor y pedidos de borrado de Meta) y `0012` (el latido del worker) (§4.12); `db:dev-scrub` (borra las credenciales de una base que no es la de producción, §4.6); repositorios; `runBackup` sigue volcando a una carpeta (la subida a R2 es del job, §4.9) |
+| `packages/db` | Migraciones `0010` (cargas), `0011` (el latido del worker y el `auto_publish` cortado) y `0012` (doble factor y pedidos de borrado de Meta) (§4.12); `db:dev-scrub` (borra las credenciales de una base que no es la de producción, §4.6); repositorios; `runBackup` sigue volcando a una carpeta (la subida a R2 es del job, §4.9) |
 | `packages/storage` | `signedUploadUrl` (PUT prefirmado con tamaño, tipo y sha256), `list` por prefijo; `pnpm storage:check` revisa también el CORS del bucket |
 | `packages/importers` | Leer la planilla y los medios desde R2 (zip o carpeta subida archivo por archivo); el tope del xlsx descomprimido antes de exceljs |
 | `apps/api` | Sirve el panel (`apps/web/dist`) y monta la API bajo `/api`; `hostGuard`, orígenes y cookies desde `PUBLIC_URL`; cabeceras de seguridad; límites por IP (`rate-limit.ts`, en memoria: no es de core); rutas de subida a R2; el login en dos pasos y el doble factor; las vueltas de Meta; la vuelta de Mercado Libre; escucha en `API_HOST` |
@@ -108,6 +108,7 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 - **Desplegar** (`.github/workflows/deploy.yml`, `workflow_dispatch`): lo dispara el operador desde GitHub o con `gh workflow run deploy`; solo corre desde `main` con el último `CI / check` en verde; construye, aplica `db:migrate` (las migraciones son aditivas: la versión anterior sigue funcionando mientras arranca la nueva) y reemplaza la API y el worker. El token del proveedor vive en los secretos de GitHub (lo pone el operador).
 - **Secretos del servidor:** los pone el operador en el proveedor (nunca en git ni en la imagen); `docs/10-despliegue.md` lista cuáles.
 - **Apagado:** el proveedor manda SIGTERM y espera al menos 45 s (el worker espera 30 s a sus trabajos, §4.10).
+- **El chequeo del proveedor** (T11) es `GET /api/health/live`: solo dice que el proceso responde, sin base ni R2, porque un chequeo de Fly que falla saca la máquina del balanceo y `/api/health` puede tardar hasta 25 s con Neon despertando (`hosting.md` §14.1). Fuera de `hostGuard`, como `/api/health`.
 
 ### 4.8 Login para internet (ADR-0026)
 - **Límites por IP** (puerto `RateLimiter`, en memoria): `POST /auth/login` y el segundo paso, 10 por minuto y 50 por hora por IP; `POST /auth/invitations/accept`, 10 por hora por IP; toda la API, 300 por minuto por IP (con sesión, además por usuario). Al pasarse: 429 `RATE_LIMITED` con `Retry-After`. El bloqueo por usuario de F7 (10 fallos, 15 min) sigue.
@@ -147,8 +148,8 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 
 ### 4.12 Datos (migraciones `0010` a `0012`)
 - **`0010` (cargas):** `import_run_status` suma `awaiting_upload` (`ALTER TYPE … ADD VALUE` va en su propia migración, sin usar el valor en la misma transacción); `import_runs.input` (jsonb) suma la forma `{ broker?, dryRun, xlsx: { key, name, size, sha256 }, media: { kind: "zip", key, name, size } | { kind: "folder", prefix, name, files } | null }` (el `name` del zip y de la carpeta, para mostrarlos; `dryRun` repite la columna `dry_run`, que es la que manda), y `importRunInputSchema` (core) es una unión con la de hoy (`xlsxPath`, `mediaDir`, `broker`), que se sigue leyendo y nunca se reintenta. Índice por `status, created_at` para cerrar las abandonadas.
-- **`0012` (el worker, T12):** tabla `worker_heartbeats` (proceso y último latido).
-- **`0011` (doble factor y Meta):** `users.totp_secret_encrypted`, `users.totp_enabled_at`, `users.totp_last_step`; tabla `user_recovery_codes` (usuario, hash, `used_at`); tabla `login_challenges` (hash, usuario, vence, `used_at`), con borrado de las vencidas en `publications.watch` (como las sesiones); tabla `meta_deletion_requests` (código, `meta_user_id` con su hash, recibido, estado, cuentas afectadas).
+- **`0011` (el worker, T12; el lote D llegó antes que el F):** tabla `worker_heartbeats` (proceso, arranque, último latido y apagado) y `content_runs.auto_publish_done_at` (un `auto_publish` sin resolver es uno cortado, §4.10).
+- **`0012` (doble factor y Meta):** `users.totp_secret_encrypted`, `users.totp_enabled_at`, `users.totp_last_step`; tabla `user_recovery_codes` (usuario, hash, `used_at`); tabla `login_challenges` (hash, usuario, vence, `used_at`), con borrado de las vencidas en `publications.watch` (como las sesiones); tabla `meta_deletion_requests` (código, `meta_user_id` con su hash, recibido, estado, cuentas afectadas).
 - `docs/02-modelo-datos.md` al día en cada tarea.
 
 ### 4.13 Deuda que se cierra
@@ -177,6 +178,7 @@ AgentSales queda en internet, en `https://agentsales.agentpey.com` (D2), primero
 - `POST /api/auth/login` → como hoy, o `{ status: "totp_required", challenge }`; `POST /api/auth/login/totp` `{ challenge, code }`; `POST /api/auth/totp/setup` → `{ secret, otpauthUrl }`; `POST /api/auth/totp/confirm` `{ code }` → `{ recoveryCodes }`; `POST /api/auth/totp/disable` `{ code }`.
 - `POST /api/meta/deauthorize` y `POST /api/meta/data-deletion` (públicas, `application/x-www-form-urlencoded` con `signed_request`, fuera del CSRF); `GET /api/meta/data-deletion/:code` (pública, HTML corto).
 - `GET /api/oauth/mercadolibre/callback` (pública, la protege el `state` y su cookie, como Instagram).
+- `GET /api/health/live` (pública, fuera de `hostGuard`, T11) → `200 { status: "ok" }`, sin base ni R2: el chequeo del proveedor. `GET /api/health` suma `worker` (solo el administrador, T12): `{ running, startedAt, lastBeatAt }` o `null` sin base.
 - Se quitan `POST /imports` (`multipart`) y `POST /imports/local`.
 - Códigos nuevos: `IMPORT_UPLOAD_INCOMPLETE` (409), `IMPORT_UPLOAD_ABANDONED`, `IMPORT_XLSX_TOO_LARGE` (413), `RATE_LIMITED` (429), `AUTH_TOTP_INVALID` (401), `AUTH_CHALLENGE_INVALID` (401), `TOTP_ALREADY_ENABLED` (409), `META_SIGNATURE_INVALID` (400).
 - Toda ruta nueva entra en la tabla de permisos (`access.ts`, ADR-0022).
@@ -317,25 +319,25 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 - **Archivos:** `Dockerfile` (con `pnpm-workspace.yaml` y `data/plantillas/`), `.dockerignore`, `apps/*/tsconfig.build.json`, `package.json` (`build`), `.github/workflows/ci.yml`
 - **Descripción:** §4.7: compilar sin tests, la imagen con ffmpeg (sha256), Chromium y `pg_dump`; la CI construye la imagen y la arranca para pedir `/health` (sin secretos: falla la base y eso se espera, pero el proceso arranca y responde).
 - **Hecho cuando:**
-  - [ ] `dist` sin archivos de test ni `testing`; la imagen sin `.env` ni `data/muestras`
-  - [ ] El panel compilado, servido por `createServerApp` desde la imagen, carga en un navegador sin errores de la CSP en la consola (en el Mac la CSP no se ve: Vite sirve el panel)
-  - [ ] La CI construye la imagen en cada PR
+  - [x] `dist` sin archivos de test ni `testing` (el `Dockerfile` lo revisa); la imagen sin `.env` ni `data/muestras` (lo revisa la CI)
+  - [x] El panel compilado, servido por `createServerApp` desde la imagen, carga en un navegador sin errores de la CSP (2026-10-18, el build en una copia limpia y `.github/scripts/panel-csp.mjs`: encontró la prueba de `eval` de zod, corregida con `jitless`; la CI lo repite con la imagen)
+  - [x] La CI construye la imagen en cada PR (job `image`)
   - [ ] El pico de memoria del worker (con ffmpeg y Chromium) medido en una preparación con reel en el Mac, para elegir 1 o 2 GB (aviso antes de `pnpm dev`)
 
 ### F8-T11 · El proveedor y el flujo de despliegue
 - **Depende de:** T10, D1
 - **Archivos:** configuración del proveedor (D1), `.github/workflows/deploy.yml`, `docs/10-despliegue.md`, `CLAUDE.md` (comandos)
-- **Descripción:** `fly.toml` con dos procesos (la API con `auto_stop_machines` y el worker sin servicio HTTP), el chequeo de `/api/health`, la migración antes de arrancar (`release_command`), `kill_timeout`, la región `gru`; el flujo a pedido (solo `main` en verde); la guía del operador: crear la app, los secretos, el `CNAME` de `agentsales.agentpey.com` en Vercel y el certificado, desplegar, **encender y apagar para una demo**, ver los logs, volver a la versión anterior, restaurar un respaldo y pasar a siempre encendido con Neon Launch.
+- **Descripción:** `fly.toml` con dos procesos (la API con `auto_stop_machines` y el worker sin servicio HTTP), el chequeo de `/api/health/live` (§4.7), la migración antes de arrancar (`release_command`), `kill_timeout`, la región `gru`; el flujo a pedido (solo `main` en verde); la guía del operador: crear la app, los secretos, el `CNAME` de `agentsales.agentpey.com` en Vercel y el certificado, desplegar, **encender y apagar para una demo**, ver los logs, volver a la versión anterior, restaurar un respaldo y pasar a siempre encendido con Neon Launch.
 - **Hecho cuando:**
-  - [ ] El flujo se niega a correr fuera de `main` o con la CI en rojo (probado en una rama de prueba sin el secreto)
+  - [ ] El flujo se niega a correr fuera de `main` o con la CI en rojo (probado en una rama de prueba sin el secreto; lo lanza el operador después del merge)
   - [ ] La guía revisada por el operador
 
 ### F8-T12 · El worker ante reinicios y la deuda de F6
 - **Depende de:** —
-- **Archivos:** `packages/db/drizzle/0012_*.sql` (la tabla del latido), `apps/worker/src/{worker.ts,jobs/content-prepare.ts,jobs/tokens-refresh.ts}`, `packages/core/src/use-cases/{auto-publish-listing.ts,refresh-account-tokens.ts,change-listing-status.ts,publication-operations.ts}`
+- **Archivos:** `packages/db/drizzle/0011_*.sql` (la tabla del latido y `content_runs.auto_publish_done_at`), `apps/worker/src/{worker.ts,jobs/content-prepare.ts,jobs/tokens-refresh.ts}`, `packages/core/src/use-cases/{auto-publish-listing.ts,refresh-account-tokens.ts,change-listing-status.ts,publication-operations.ts}`
 - **Descripción:** §4.10: retomar el `auto_publish` cortado, el presupuesto de `tokens.refresh`, la pausa de un sync con `byListing` (spec F6 §4.8), y el latido del worker (`worker_heartbeats`, cada minuto mientras corre) que `/health` (administrador), `doctor` y el panel muestran como "worker encendido desde…" o "apagado".
 - **Hecho cuando:**
-  - [ ] Tests: un `auto_publish` cortado se retoma una vez y no duplica; `tokens.refresh` corta a los 4 min y sigue en la siguiente; una pausa del sync seguida de la pausa de la propiedad queda con `byListing` y reanudar la reactiva; el latido y su lectura (encendido y apagado)
+  - [x] Tests: un `auto_publish` cortado se retoma una vez y no duplica; `tokens.refresh` corta a los 4 min y sigue en la siguiente; una pausa del sync seguida de la pausa de la propiedad queda con `byListing` y reanudar la reactiva; el latido y su lectura (encendido y apagado)
 
 ### F8-T13 · Respaldo a R2
 - **Depende de:** T03
@@ -355,7 +357,7 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 
 ### F8-T15 · Doble factor (core, base y API)
 - **Depende de:** T14
-- **Archivos:** `packages/config/src/totp.ts`, `packages/core/src/use-cases/auth/totp.ts`, `packages/db/drizzle/0011_*.sql`, `packages/db/src/repositories/{users,login-challenges,recovery-codes}.ts`, `apps/api/src/routes/auth.ts`, `packages/db/src/auth-admin.ts`
+- **Archivos:** `packages/config/src/totp.ts`, `packages/core/src/use-cases/auth/totp.ts`, `packages/db/drizzle/0012_*.sql`, `packages/db/src/repositories/{users,login-challenges,recovery-codes}.ts`, `apps/api/src/routes/auth.ts`, `packages/db/src/auth-admin.ts`
 - **Descripción:** §4.8: activar, confirmar, entrar en dos pasos, recuperación, desactivar; restablecer y `auth:admin` lo quitan.
 - **Hecho cuando:**
   - [ ] Tests: los vectores del RFC 6238; la ventana de ±30 s; un código repetido rechazado; el desafío vencido o usado; un código de recuperación sirve una vez; los fallos cuentan para el bloqueo; la clave nunca sale en logs ni errores
@@ -464,3 +466,4 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 | 2026-10-18 | Verificado por el operador: `pnpm db:dev-scrub` borró las 2 credenciales copiadas en la rama dev, y `pnpm storage:check` pasó en el bucket de desarrollo (PUT prefirmado 200; otro contenido 400 `BadDigest`; otro largo 403; CORS desde `http://localhost:5173` 204). El 2026-10-18 también pasaron la carga real desde el panel (Chrome, una carpeta, en simulación) y `storage:check` en el bucket de producción (CORS 204 desde `https://agentsales.agentpey.com`) |
 | 2026-10-18 | Lote A (F8-T01 y T02, PR #140) y su revisión (`revisor` y `arquitecto`; un bloqueante, aplicado: `.gitignore` ignora `.env.*` salvo `.env.example`, para que `.env.production` nunca entre a git). Precisiones: en producción la IA debe ser `anthropic-api` (tampoco `fake`); la vuelta de Instagram del ejemplo de antes (sin `/api`) se ignora y se usa la nueva; `panelUrlOf` (config) da el panel también a `pnpm auth:admin`; la API y el worker rechazan `ENV_FILE` (`loadAppEnvFile`: es solo para los scripts, D12); `hostGuard` también cubre el panel compilado (salvo `GET /api/health`); `server-app.ts` reemplaza al `static.ts` de la lista; el mensaje de error habla del archivo de entorno. **Postergado:** la regla de producción de `BACKUP_TARGET` llega con T13, la de `BROWSER_PROFILES_DIR` con T20 y la cookie `__Host-agentsales_oauth_ml` con T19; la CSP en un navegador se revisa en T10 (en el Mac, Vite sirve el panel sin ella) |
 | 2026-10-18 | F8-T08 (revisión del `arquitecto`): §4.5 precisa el orden de `login` y cuándo guarda la dirección, que el token solo viaja a su servidor, que `AGENTSALES_API_URL` se lee de la terminal, el aviso del ambiente en `doctor`, y que las herramientas del worker las asegura la imagen (T10), no `/health` |
+| 2026-10-18 | Lote D (T10 a T12): la migración del worker es la `0011` (el lote D llegó antes que el F; el doble factor pasa a la `0012`); el chequeo de Fly es `/api/health/live` (sin base); el panel configura zod sin `eval` para la CSP; el worker parte con 2 GB hasta medir el pico; `auto_publish` cortado se marca con `content_runs.auto_publish_done_at` |

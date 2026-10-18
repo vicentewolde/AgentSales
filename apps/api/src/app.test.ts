@@ -117,12 +117,25 @@ describe("GET /health", () => {
             backupStatus: async () => status,
             autoPublishBrokers: async () => ["marca"],
             llmKeyMissingBrokers: async () => ["ajeno"],
+            workerHeartbeats: async () => [
+              {
+                processId: "fly:1:a",
+                startedAt: new Date("2026-10-15T15:00:00.000Z"),
+                beatAt: new Date("2026-10-15T15:59:30.000Z"),
+                stoppedAt: null,
+              },
+            ],
             now: () => now,
           },
         },
       ),
     );
 
+    expect(body.worker).toEqual({
+      running: true,
+      startedAt: "2026-10-15T15:00:00.000Z",
+      lastBeatAt: "2026-10-15T15:59:30.000Z",
+    });
     expect(body.database).toEqual({ serverVersion: "18.6" });
     expect(body.backup).toEqual({ ...status, stale: true });
     expect(body.autoPublishBrokers).toEqual(["marca"]);
@@ -144,11 +157,14 @@ describe("GET /health", () => {
               throw new Error("sin base");
             },
             llmKeyMissingBrokers: async () => ["ajeno"],
+            workerHeartbeats: async () => [],
           },
         },
       ),
     );
 
+    // Sin base no se sabe si el worker corre.
+    expect(body.worker).toBeNull();
     expect(body.database).toEqual({ serverVersion: null });
     expect(body.backup).toBeNull();
     expect(body.autoPublishBrokers).toBeNull();
@@ -325,6 +341,19 @@ describe("acceso local", () => {
     expect((await app.request("http://10.0.0.7:8080/api/health", { method: "POST" })).status).toBe(
       403,
     );
+  });
+
+  it("GET /health/live responde sin tocar la base ni R2, también por la IP (el chequeo de Fly, F8-T11)", async () => {
+    let checked = 0;
+    const slow = async () => {
+      checked += 1;
+      await new Promise(() => {});
+    };
+    const app = mountApi(appWith({ db: slow, storage: slow, queue: slow }));
+    const response = await app.request("http://10.0.0.7:8080/api/health/live");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "ok" });
+    expect(checked).toBe(0);
   });
 
   it("rechaza un formulario enviado desde otro origen (CSRF)", async () => {

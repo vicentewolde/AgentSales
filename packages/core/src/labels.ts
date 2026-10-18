@@ -358,6 +358,10 @@ export function publicationEventDetail(event: {
     const fields = Array.isArray(payload.fields) ? payload.fields.join(", ") : "";
     return `actualizada en Portal${fields === "" ? "" : `: ${fields}`}`;
   }
+  // Un sync aplicó la pausa justo antes que la propiedad (F8-T12): la marca queda en la lectura.
+  if (event.type === "sync") {
+    return payload.byListing === true ? "la pausa la pidió la propiedad" : null;
+  }
   if (event.type !== "status_changed") return null;
   const parts: string[] = [];
   const at = chileTimeOf(payload.scheduledAt);

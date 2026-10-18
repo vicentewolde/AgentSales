@@ -1,0 +1,32 @@
+# La imagen (spec F8 §4.7): solo el código y lo que el build necesita. Nunca secretos, datos reales,
+# dependencias ni builds del Mac (se instalan y compilan dentro, para Linux).
+
+# Secretos y entornos (en cualquier carpeta)
+**/.env
+**/.env.*
+
+# Datos reales de clientes y temporales
+**/data/muestras/
+**/tmp/
+
+# Sesiones del navegador (Facebook)
+**/.browser-profiles/
+
+# Dependencias y builds del Mac
+**/node_modules/
+**/dist/
+**/*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+
+# Git, editores y agentes
+.git/
+.github/
+.claude/
+.agents/
+.codex/
+AGENTS.md
+.idea/
+.vscode/
+.DS_Store

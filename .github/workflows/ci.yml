@@ -98,3 +98,62 @@ jobs:
       # tsc -b no cubre el bundle de Vite.
       - name: Build del panel
         run: pnpm --filter @agentsales/web build
+
+  # La imagen de producción (spec F8 §4.7, T10): se construye en cada PR (sin publicarla), se
+  # arranca sin secretos (la base no existe: falla y eso se espera) y debe responder `/api/health`;
+  # después se abre el panel compilado en el Chromium de la misma imagen, sin errores de la CSP.
+  image:
+    name: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Construir la imagen
+        run: docker build --tag agentsales:ci .
+
+      - name: Sin secretos ni datos reales en la imagen
+        run: |
+          leaked="$(docker run --rm --entrypoint sh agentsales:ci -c 'find /app \( -name ".env" -o -name ".env.*" -o -path "*/data/muestras*" \) -print')"
+          if [ -n "$leaked" ]; then echo "::error::La imagen trae archivos que no debe:"; echo "$leaked"; exit 1; fi
+
+      - name: Herramientas de la imagen
+        run: |
+          # `--ipc=host`: Chromium necesita más memoria compartida que los 64 MB de Docker.
+          docker run --rm --ipc=host --entrypoint sh agentsales:ci -c '
+            set -e
+            ffmpeg -hide_banner -version | head -1
+            ffprobe -hide_banner -version | head -1
+            "$PG_BIN_DIR/pg_dump" --version
+            node -e "import(\"/app/packages/media/node_modules/playwright/index.mjs\").then(async ({ chromium }) => { const b = await chromium.launch(); console.log(\"chromium\", b.version()); await b.close(); })"
+          '
+
+      - name: Arrancar la API sin secretos
+        run: |
+          docker run --detach --name api --publish 127.0.0.1:8080:8080 \
+            --env PUBLIC_URL=https://agentsales.test \
+            --env DATABASE_URL='postgresql://ci:ci@127.0.0.1:1/ci?sslmode=require' \
+            --env R2_ACCOUNT_ID=ci-cuenta --env R2_ACCESS_KEY_ID=ci-clave \
+            --env R2_SECRET_ACCESS_KEY=ci-secreto --env R2_BUCKET=ci-bucket \
+            --env APP_ENCRYPTION_KEY=ci-clave-de-cifrado-de-32-caracteres \
+            --env LLM_PROVIDER=anthropic-api --env ANTHROPIC_API_KEY=ci-no-es-una-clave \
+            agentsales:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/api/health/live; then echo; break; fi
+            if [ "$attempt" = 30 ]; then docker logs api; exit 1; fi
+            sleep 1
+          done
+          # `/api/health` responde aunque la base no exista (el estado va en el cuerpo).
+          curl -fsS http://127.0.0.1:8080/api/health; echo
+
+      - name: El panel carga sin errores de la CSP
+        run: |
+          docker run --rm --network host --ipc=host \
+            --volume "$GITHUB_WORKSPACE/.github/scripts:/scripts:ro" \
+            agentsales:ci node /scripts/panel-csp.mjs
+
+      - name: Logs de la API
+        if: always()
+        run: docker logs api 2>&1 | tail -50 || true

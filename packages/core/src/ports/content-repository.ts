@@ -41,6 +41,16 @@ export interface ContentRunRepository {
   /** Las corridas en `queued`, las más antiguas primero: el worker las reencola al arrancar. */
   listQueued(): Promise<ContentRun[]>;
   /**
+   * Las corridas `succeeded` con textos, terminadas desde `finishedSince`, cuyo `auto_publish`
+   * quedó sin resolver (un apagado justo al terminar, F8-T12), las más antiguas primero.
+   */
+  listAutoPublishPending(finishedSince: Date): Promise<ContentRun[]>;
+  /**
+   * Anota que el `auto_publish` de la corrida se resolvió (se intentó, no aplicaba o se retomó).
+   * `true` solo si esta llamada lo anotó: un segundo intento (o un segundo worker) recibe `false`.
+   */
+  markAutoPublishDone(id: string): Promise<boolean>;
+  /**
    * `queued` o `running` → `running` (un reintento del job la vuelve a tomar). Fija `started_at`
    * solo la primera vez. `false` si la corrida ya terminó o no existe.
    */

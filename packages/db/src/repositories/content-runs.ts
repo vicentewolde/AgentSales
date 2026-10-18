@@ -8,7 +8,7 @@ import {
   contentRunSchema,
   llmUsageSchema,
 } from "@agentsales/core";
-import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
 import { contentRuns, contents, listings } from "../schema.js";
@@ -113,6 +113,42 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
           .where(eq(contentRuns.status, "queued"))
           .orderBy(asc(contentRuns.createdAt), asc(contentRuns.id));
         return rows.map(toContentRun);
+      });
+    },
+
+    listAutoPublishPending(finishedSince) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(contentRuns)
+          .where(
+            and(
+              eq(contentRuns.status, "succeeded"),
+              eq(contentRuns.texts, true),
+              isNull(contentRuns.autoPublishDoneAt),
+              gte(contentRuns.finishedAt, finishedSince),
+            ),
+          )
+          .orderBy(asc(contentRuns.finishedAt), asc(contentRuns.id));
+        return rows.map(toContentRun);
+      });
+    },
+
+    markAutoPublishDone(id) {
+      return withDbErrors(async () => {
+        // Condicional: solo la primera llamada lo anota (un segundo worker recibe `false`).
+        const updated = await db
+          .update(contentRuns)
+          .set({ autoPublishDoneAt: sql`now()` })
+          .where(
+            and(
+              eq(contentRuns.id, id),
+              eq(contentRuns.status, "succeeded"),
+              isNull(contentRuns.autoPublishDoneAt),
+            ),
+          )
+          .returning({ id: contentRuns.id });
+        return updated.length > 0;
       });
     },
 

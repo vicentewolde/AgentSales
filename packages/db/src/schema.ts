@@ -180,6 +180,22 @@ export const oauthStatesUsed = pgTable("oauth_states_used", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
+/**
+ * Los latidos del worker (spec F8 §4.10, T12): una fila por proceso, anotada cada minuto mientras
+ * corre; `/health`, `doctor` y el panel dicen si está encendido.
+ */
+export const workerHeartbeats = pgTable(
+  "worker_heartbeats",
+  {
+    processId: text("process_id").primaryKey(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    beatAt: timestamp("beat_at", { withTimezone: true }).notNull(),
+    /** Cuándo se apagó en orden (SIGTERM); `null` mientras corre o si se cortó. */
+    stoppedAt: timestamp("stopped_at", { withTimezone: true }),
+  },
+  (t) => [index("worker_heartbeats_beat_idx").on(t.beatAt)],
+);
+
 export const platformAccounts = pgTable(
   "platform_accounts",
   {
@@ -331,6 +347,11 @@ export const contentRuns = pgTable(
     llmUsage: jsonb("llm_usage"),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
+    /**
+     * Desde F8-T12 (spec F8 §4.10): cuándo se resolvió el `auto_publish` de una corrida `succeeded`
+     * (se intentó, no aplicaba o se retomó al arrancar). `null` en una terminada: quedó cortado.
+     */
+    autoPublishDoneAt: timestamp("auto_publish_done_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [

@@ -210,6 +210,9 @@ export function createApp(input: AppDeps) {
     )
     .use("/accounts/:id/*", ownership.account)
     .use("/brokers/:id/*", ownership.broker)
+    // El chequeo del proveedor (F8-T11): solo que el proceso responde, sin base ni R2. Así una base
+    // despertando no saca la API del balanceo de Fly (`/health` puede tardar hasta 25 s).
+    .get("/health/live", (c) => c.json({ status: "ok" as const }, 200))
     .get("/health", async (c) => {
       // El detalle solo para el administrador (spec F7 §4.3); los demás, el estado y el modo.
       const admin = c.get("auth")?.user.role === "admin";

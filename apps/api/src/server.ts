@@ -14,7 +14,7 @@ import {
   panelUrlOf,
   resolveBackupDir,
 } from "@agentsales/config";
-import { ALL_SCOPE, brokersNeedingApiKey } from "@agentsales/core";
+import { ALL_SCOPE, brokersNeedingApiKey, WORKER_HEARTBEAT_LOOKBACK } from "@agentsales/core";
 import {
   createBrokerRepository,
   createContentRepository,
@@ -32,6 +32,7 @@ import {
   createPublicationRepository,
   createSessionRepository,
   createUserRepository,
+  createWorkerHeartbeatRepository,
   readServerVersion,
   toPgConnectionString,
 } from "@agentsales/db";
@@ -99,6 +100,7 @@ const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
 // estado del último respaldo, en su carpeta (fuera del proyecto; la API solo lee el archivo de estado).
 let serverVersion: string | null = null;
 const brokers = createBrokerRepository(database.db);
+const workerHeartbeats = createWorkerHeartbeatRepository(database.db);
 const backupDir = resolveBackupDir(env.BACKUP_DIR, {
   homeDir: homedir(),
   workspaceRoot: findWorkspaceRoot(),
@@ -210,6 +212,8 @@ const app = createApp({
         provider: env.LLM_PROVIDER,
         hasApiKey: (env.ANTHROPIC_API_KEY ?? "") !== "",
       }),
+    // El latido del worker (F8-T12): si está encendido y desde cuándo.
+    workerHeartbeats: () => workerHeartbeats.listLatest(WORKER_HEARTBEAT_LOOKBACK),
   },
   logger,
   access,

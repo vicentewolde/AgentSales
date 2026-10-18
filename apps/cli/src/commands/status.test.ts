@@ -125,3 +125,29 @@ describe("runStatus · un servidor remoto", () => {
     expect(result.text).not.toContain("Servidor:");
   });
 });
+
+describe("runStatus · el worker (F8-T12)", () => {
+  it("dice si está encendido según su latido", async () => {
+    const on = await runStatus(
+      async () =>
+        report({
+          worker: {
+            running: true,
+            startedAt: "2026-10-18T13:00:00.000Z",
+            lastBeatAt: "2026-10-18T14:00:00.000Z",
+          },
+        }),
+      plain,
+    );
+    expect(on.text).toContain("✓ worker   encendido desde 2026-10-18 10:00");
+
+    const off = await runStatus(
+      async () =>
+        report({
+          worker: { running: false, startedAt: null, lastBeatAt: null },
+        }),
+      plain,
+    );
+    expect(off.text).toContain("⚠ worker   nunca ha corrido");
+  });
+});

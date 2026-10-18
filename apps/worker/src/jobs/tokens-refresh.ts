@@ -30,8 +30,16 @@ export const TOKENS_REFRESH_QUEUE: QueuePolicy = {
 };
 
 /**
- * Una vez al día, a mediodía de Chile: el worker corre solo con `pnpm dev` (ADR-0007), así que se
- * elige una hora de trabajo. Si el worker estaba apagado, el cron perdido no se repite
+ * Pasado este tiempo, el lote no empieza otra cuenta (F8-T12, spec F8 §4.10): el job vence a los
+ * 5 min y su vencimiento no corta el handler, así que un reintento podría cruzarse con un lote que
+ * sigue corriendo. Una cuenta tarda a lo más ~30 s (el tope de las llamadas). Las que faltan van
+ * en la siguiente corrida (el cron del día siguiente o el próximo arranque).
+ */
+export const TOKENS_REFRESH_BUDGET_MS = 4 * 60 * 1000;
+
+/**
+ * Una vez al día, a mediodía de Chile: una hora en que el worker suele estar encendido (en el Mac
+ * con `pnpm dev`, o en el servidor en modo demo, ADR-0024). Si el worker estaba apagado, el cron perdido no se repite
  * (`missed: "skip"`): lo cubre el refresco del arranque.
  */
 export const TOKENS_REFRESH_SCHEDULE: JobSchedule<"tokens.refresh"> = {
@@ -93,7 +101,7 @@ export function tokensRefreshJob(deps: TokensRefreshJobDeps): Job {
           onWarning: ({ accountId, code }) =>
             logger.warn({ accountId, code }, "aviso del refresco de tokens"),
         },
-        { signal: deps.signal },
+        { signal: deps.signal, budgetMs: TOKENS_REFRESH_BUDGET_MS },
       );
       logger.info(
         {
@@ -101,9 +109,16 @@ export function tokensRefreshJob(deps: TokensRefreshJobDeps): Job {
           expired: report.expired,
           skipped: report.skipped,
           failed: report.failed,
+          deferred: report.deferred.length,
         },
         "tokens revisados",
       );
+      if (report.deferred.length > 0) {
+        logger.info(
+          { accountIds: report.deferred },
+          "se acabó el tiempo del lote: estas cuentas van en la siguiente corrida",
+        );
+      }
       if (report.expired.length > 0) {
         logger.warn(
           { accountIds: report.expired },

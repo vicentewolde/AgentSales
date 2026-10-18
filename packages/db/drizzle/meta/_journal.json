@@ -78,6 +78,13 @@
       "when": 1792336199833,
       "tag": "0010_f8_subidas",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792344829997,
+      "tag": "0011_f8_worker",
+      "breakpoints": true
     }
   ]
 }

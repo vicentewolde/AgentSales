@@ -198,8 +198,12 @@ export function renderPublicationEvents(
         const detail = publicationEventDetail(event);
         return `${when}  ${from} → ${to}${read}${confirmed}${detail === null ? "" : ` · ${detail}`}`;
       }
-      // La API no expone el detalle de una lectura (su estado queda en la publicación).
-      if (event.type === "sync") return `${when}  lectura de Mercado Libre`;
+      // La API no expone el detalle de una lectura (su estado queda en la publicación), salvo la
+      // marca de una pausa de la propiedad (F8-T12).
+      if (event.type === "sync") {
+        const detail = publicationEventDetail(event);
+        return `${when}  lectura de Mercado Libre${detail === null ? "" : ` · ${detail}`}`;
+      }
       if (event.type === "schedule_changed" || event.type === "manual_edit") {
         return `${when}  ${publicationEventDetail(event) ?? event.type}`;
       }

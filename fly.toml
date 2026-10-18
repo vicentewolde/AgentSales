@@ -1,0 +1,77 @@
+# AgentSales en Fly.io (spec F8 §4.7 y §4.15, D1, T11): una app, una imagen (`Dockerfile`) y dos
+# procesos: `api` (con HTTPS, se apaga sola sin tráfico) y `worker` (sin servicio HTTP: no se apaga
+# solo; se enciende y se apaga a mano en modo demo, docs/10-despliegue.md). Desplegar es del
+# operador (D8): `.github/workflows/deploy.yml`. Sintaxis verificada: docs/integraciones/hosting.md §14.
+# Aquí solo va lo que no es secreto; los secretos los pone el operador con `fly secrets import`.
+
+app = "agentsales"
+primary_region = "gru"        # São Paulo, la misma región que Neon (aws-sa-east-1)
+kill_signal = "SIGTERM"       # por defecto Fly manda SIGINT
+kill_timeout = 45             # segundos: el worker espera 30 s a sus trabajos (spec §4.10)
+swap_size_mb = 512            # para un pico breve del worker (Chromium y ffmpeg)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PUBLIC_URL = "https://agentsales.agentpey.com"
+  API_HOST = "0.0.0.0"        # Fly Proxy llega por la red de la máquina, no por 127.0.0.1
+  API_PORT = "8080"
+  CLIENT_IP_HEADER = "Fly-Client-IP"
+  # Simulación hasta que el operador diga lo contrario en el chat (D9): el cambio es suyo.
+  PUBLISH_MODE = "dry-run"
+  LLM_PROVIDER = "anthropic-api"
+  LOG_LEVEL = "info"
+
+[processes]
+  api = "node apps/api/dist/src/server.js"
+  worker = "node apps/worker/dist/src/worker.js"
+
+[deploy]
+  strategy = "rolling"
+  # Las migraciones antes de reemplazar nada, con la imagen nueva y los secretos (son aditivas: la
+  # versión anterior sigue funcionando mientras arranca la nueva). Si fallan, el despliegue se corta.
+  release_command = "node packages/db/dist/src/scripts/migrate.js"
+  release_command_timeout = "5m"
+  [deploy.release_command_vm]
+    cpu_kind = "shared"
+    cpus = 1
+    memory = "512mb"
+
+[http_service]
+  processes = ["api"]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  # Solo que el proceso responde (`/api/health/live`, sin base): una base despertando no saca la
+  # API del balanceo. `/api/health` completo queda para `doctor` y el panel.
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/health/live"
+    protocol = "http"
+    grace_period = "20s"
+    interval = "30s"
+    timeout = "5s"
+    [http_service.checks.headers]
+      Host = "agentsales.agentpey.com"
+
+[[restart]]
+  policy = "on-failure"
+  processes = ["worker"]
+
+[[vm]]
+  processes = ["api"]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"
+
+[[vm]]
+  processes = ["worker"]
+  cpu_kind = "shared"
+  cpus = 1
+  # 2 GB hasta medir el pico de una preparación con reel (T10); si cabe en 1 GB, bajarlo.
+  memory = "2gb"

@@ -22,6 +22,7 @@ export function routePathOf(path: string): string {
 
 export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "GET /health": "public",
+  "GET /health/live": "public",
   // Entrar, salir y la invitación (F7-T04).
   "POST /auth/login": "public",
   "POST /auth/invitations/accept": "public",

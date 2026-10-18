@@ -163,6 +163,34 @@ export function contentRepositoriesContract(
       expect(queued.indexOf(older.id)).toBeLessThan(queued.indexOf(newer.id));
     });
 
+    it("auto_publish (F8-T12): las terminadas con textos quedan pendientes hasta anotarlas, una sola vez", async () => {
+      const since = new Date(Date.now() - 60_000);
+      const withTexts = await runningRun();
+      const noTexts = await runningRun(undefined, false);
+      const failed = await runningRun();
+      await repos.contentRuns.markSucceeded(withTexts.id, { report: REPORT, contents: [] });
+      await repos.contentRuns.markSucceeded(noTexts.id, { report: REPORT, contents: [] });
+      await repos.contentRuns.markFailed(failed.id, { code: "X", message: "falló" });
+
+      const pending = () =>
+        repos.contentRuns.listAutoPublishPending(since).then((runs) => runs.map((run) => run.id));
+      expect(await pending()).toContain(withTexts.id);
+      expect(await pending()).not.toContain(noTexts.id);
+      expect(await pending()).not.toContain(failed.id);
+      // Terminada antes de la ventana: no se retoma.
+      expect(
+        (await repos.contentRuns.listAutoPublishPending(new Date(Date.now() + 60_000))).map(
+          (run) => run.id,
+        ),
+      ).not.toContain(withTexts.id);
+
+      expect(await repos.contentRuns.markAutoPublishDone(withTexts.id)).toBe(true);
+      expect(await repos.contentRuns.markAutoPublishDone(withTexts.id)).toBe(false);
+      expect(await pending()).not.toContain(withTexts.id);
+      // Una que no terminó bien no se anota.
+      expect(await repos.contentRuns.markAutoPublishDone(failed.id)).toBe(false);
+    });
+
     it("markRunning toma una corrida en cola o en curso, y fija started_at solo la primera vez", async () => {
       const run = await repos.contentRuns.create({ listingId: await newListingId(), texts: true });
       expect(await repos.contentRuns.markRunning(run.id)).toBe(true);

@@ -41,6 +41,8 @@ export function createInMemoryContentRepositories(
   const nextId = options.nextId ?? (() => `content-${++sequence}`);
   const runs: ContentRun[] = [];
   const contents: Content[] = [];
+  /** `auto_publish_done_at` (F8-T12): fuera de la entidad, como en la base. */
+  const autoPublishDone = new Set<string>();
 
   const findRun = (id: string) => runs.find((run) => run.id === id);
   const replaceRun = (updated: ContentRun) => {
@@ -123,6 +125,25 @@ export function createInMemoryContentRepositories(
         });
       }
       replaceRun({ ...run, status: "succeeded", report: structuredCopy(report), finishedAt: now });
+      return true;
+    },
+    async listAutoPublishPending(finishedSince) {
+      return runs
+        .filter(
+          (run) =>
+            run.status === "succeeded" &&
+            run.texts &&
+            !autoPublishDone.has(run.id) &&
+            run.finishedAt !== null &&
+            run.finishedAt >= finishedSince,
+        )
+        .sort((a, b) => (a.finishedAt?.getTime() ?? 0) - (b.finishedAt?.getTime() ?? 0))
+        .map(structuredCopy);
+    },
+    async markAutoPublishDone(id) {
+      const run = findRun(id);
+      if (run?.status !== "succeeded" || autoPublishDone.has(id)) return false;
+      autoPublishDone.add(id);
       return true;
     },
     async markFailed(id, error, report) {

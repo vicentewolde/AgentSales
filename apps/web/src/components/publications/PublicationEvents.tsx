@@ -47,9 +47,11 @@ function EventLine({ event }: { event: PublicationEventView }) {
     );
   }
   if (event.type === "sync") {
+    const detail = publicationEventDetail(event);
     return (
       <li>
         {timeText(event.createdAt)} · {who}: lectura de Mercado Libre
+        {detail === null ? "" : ` · ${detail}`}
       </li>
     );
   }

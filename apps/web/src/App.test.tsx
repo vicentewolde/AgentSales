@@ -39,6 +39,33 @@ afterEach(() => {
 });
 
 describe("panel: Estado del sistema", () => {
+  it("dice si el worker está encendido o apagado según su latido (F8-T12)", async () => {
+    renderWithHealth(() => ({
+      ...healthy,
+      worker: {
+        running: true,
+        startedAt: "2026-10-18T13:00:00.000Z",
+        lastBeatAt: "2026-10-18T14:00:00.000Z",
+      },
+    }));
+    expect((await screen.findByText(/^Worker:/)).textContent).toBe(
+      "Worker: encendido desde 2026-10-18 10:00",
+    );
+    cleanup();
+
+    renderWithHealth(() => ({
+      ...healthy,
+      worker: {
+        running: false,
+        startedAt: "2026-10-18T13:00:00.000Z",
+        lastBeatAt: "2026-10-18T14:00:00.000Z",
+      },
+    }));
+    expect((await screen.findByText(/^Worker:/)).textContent).toContain(
+      "apagado desde 2026-10-18 11:00",
+    );
+  });
+
   it("mientras consulta lo indica en la página y en el banner", async () => {
     renderWithHealth(() => new Promise(() => {}));
 
@@ -53,7 +80,7 @@ describe("panel: Estado del sistema", () => {
     expect(within(card("Base de datos")).getByText("OK")).toBeTruthy();
     expect(within(card("Base de datos")).getByText("60 ms")).toBeTruthy();
     expect(card("Almacenamiento")).toBeTruthy();
-    expect(within(card("Cola de trabajos")).getByText(/no indica si el worker/)).toBeTruthy();
+    expect(within(card("Cola de trabajos")).getByText(/el worker se ve abajo/)).toBeTruthy();
     expect(banner().textContent).toBe("PUBLISH_MODE: dry-run — no se publica nada");
     expect(screen.getByText(/Estado general:/).textContent).toContain("ok");
   });

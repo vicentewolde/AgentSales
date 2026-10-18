@@ -167,6 +167,7 @@ describe("hosts, orígenes y CORS en internet", () => {
       expect((await errorOf(response)).code).toBe("HOST_NOT_ALLOWED");
     }
     expect((await app.request("http://10.0.0.7:8080/api/health")).status).toBe(200);
+    expect((await app.request("http://10.0.0.7:8080/api/health/live")).status).toBe(200);
   });
 
   it("no hay CORS: un OPTIONS de otro origen no recibe permisos, ni para Authorization", async () => {

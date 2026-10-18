@@ -161,6 +161,13 @@ describe("publicationEventDetail (F6)", () => {
     ).toBeNull();
   });
 
+  it("una lectura con la pausa que pidió la propiedad (F8-T12); una lectura común, nada", () => {
+    expect(publicationEventDetail({ type: "sync", payload: { byListing: true } })).toBe(
+      "la pausa la pidió la propiedad",
+    );
+    expect(publicationEventDetail({ type: "sync", payload: {} })).toBeNull();
+  });
+
   it("reprogramar y actualizar en Portal", () => {
     expect(
       publicationEventDetail({

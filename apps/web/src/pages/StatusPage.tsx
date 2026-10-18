@@ -1,5 +1,5 @@
-import type { HealthCheckName, HealthCheckResult } from "@agentsales/core";
-import { HEALTH_CHECK_NAMES } from "@agentsales/core";
+import type { HealthCheckName, HealthCheckResult, HealthReport } from "@agentsales/core";
+import { HEALTH_CHECK_NAMES, workerStatusText } from "@agentsales/core";
 import { useId } from "react";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useHealth } from "../queries/health.js";
@@ -7,7 +7,7 @@ import { useHealth } from "../queries/health.js";
 const CHECKS: Record<HealthCheckName, { label: string; note?: string }> = {
   db: { label: "Base de datos", note: "Neon (Postgres)" },
   storage: { label: "Almacenamiento", note: "Cloudflare R2" },
-  queue: { label: "Cola de trabajos", note: "Inicializada; no indica si el worker está corriendo" },
+  queue: { label: "Cola de trabajos", note: "Inicializada; el worker se ve abajo" },
 };
 
 const timeFormat = new Intl.DateTimeFormat("es-CL", {
@@ -43,6 +43,26 @@ function CheckCard({ name, result }: { name: HealthCheckName; result: HealthChec
         )}
       </section>
     </li>
+  );
+}
+
+/** El worker según su latido (F8-T12): encendido desde…, apagado desde… o que no se sabe. */
+function WorkerLine({ worker }: { worker: HealthReport["worker"] }) {
+  if (worker === undefined) return null;
+  const running = worker?.running === true;
+  return (
+    <p className="mt-4 text-sm text-slate-700">
+      Worker:{" "}
+      <strong className={running ? "text-emerald-700" : "text-amber-700"}>
+        {workerStatusText(worker)}
+      </strong>
+      {!running && worker !== null && (
+        <span className="text-slate-600">
+          {" "}
+          · sin él no se preparan ni se publican avisos, ni corre lo programado
+        </span>
+      )}
+    </p>
   );
 }
 
@@ -83,11 +103,14 @@ export function StatusPage() {
               El detalle de cada servicio lo ve el administrador.
             </p>
           ) : (
-            <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {HEALTH_CHECK_NAMES.map((name) => (
-                <CheckCard key={name} name={name} result={checks[name]} />
-              ))}
-            </ul>
+            <>
+              <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {HEALTH_CHECK_NAMES.map((name) => (
+                  <CheckCard key={name} name={name} result={checks[name]} />
+                ))}
+              </ul>
+              <WorkerLine worker={data.worker} />
+            </>
           )}
         </>
       )}

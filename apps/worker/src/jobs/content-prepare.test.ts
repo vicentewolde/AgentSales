@@ -20,6 +20,7 @@ import {
   contentPrepareJob,
   failAbandonedContentRuns,
   requeueQueuedContentRuns,
+  resumeAutoPublishAtStart,
 } from "./content-prepare.js";
 import type { DbBackupJobDeps } from "./db-backup.js";
 import { buildJobs } from "./index.js";
@@ -435,5 +436,49 @@ describe("job content.prepare · arranque", () => {
       failed: [first.id],
     });
     expect(queue.jobs.map((job) => job.data)).toEqual([{ contentRunId: second.id }]);
+  });
+});
+
+// F8-T12 (spec F8 §4.10): el arranque retoma un `auto_publish` cortado (las reglas, en core:
+// `resume-auto-publish.test.ts`) y lo registra sin datos del aviso.
+describe("auto_publish cortado · al arrancar", () => {
+  it("una corrida que se cortó antes de resolver su auto_publish se retoma al arrancar", async () => {
+    const t = await contentJobSetup();
+    const runId = await t.newRun();
+    // El worker se apagó justo antes de anotar el auto_publish.
+    const contentRuns = {
+      ...t.contentRuns,
+      markAutoPublishDone: async () => {
+        throw new Error("el worker se apagó aquí");
+      },
+    };
+    await contentPrepareJob({ ...t.deps, shared: { ...t.deps.shared, contentRuns } }).run(
+      { contentRunId: runId },
+      context(false),
+    );
+    const listingId = (await t.contentRuns.get(runId))?.listingId;
+    const asked: string[] = [];
+    // Un doble parcial: el arranque solo lee la propiedad, el corredor y las publicaciones.
+    const autoPublish = {
+      listings: {
+        get: async (id: string) => {
+          asked.push(id);
+          return { id, brokerId: "b", status: "ready" };
+        },
+      },
+      brokers: { findById: async () => ({ id: "b", autoPublish: false }) },
+      lock: {
+        run: async (_id: string, fn: (locked: unknown) => Promise<unknown>) =>
+          fn({ publications: { listByListing: async () => [] } }),
+      },
+    } as unknown as AutoPublishDeps;
+
+    expect(
+      await resumeAutoPublishAtStart({ ...autoPublish, contentRuns: t.contentRuns }, silentLogger),
+    ).toBe(1);
+    expect(asked).toEqual([listingId]);
+    expect(
+      await resumeAutoPublishAtStart({ ...autoPublish, contentRuns: t.contentRuns }, silentLogger),
+    ).toBe(0);
   });
 });
