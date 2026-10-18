@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
-import { publicationHarness } from "../../test/harness.js";
+import { PORT, publicationHarness } from "../../test/harness.js";
+import { localServerUrl } from "../server.js";
 import { createMemorySessionStore } from "../session.js";
 import {
   register,
@@ -216,6 +217,15 @@ describe("publications · registro en commander", () => {
     register(program, {
       ...setup.h.io,
       api: () => setup.h.client,
+      server: () => ({
+        ok: true,
+        target: { url: localServerUrl(PORT), source: "local", remote: false, sessionUrl: null },
+      }),
+      localServer: () => localServerUrl(PORT),
+      localPort: () => PORT,
+      envApiUrl: undefined,
+      apiFor: () => setup.h.client,
+      clientFrom: () => setup.h.client,
       session: createMemorySessionStore(),
       readPassword: async () => null,
       copyToClipboard: async () => {

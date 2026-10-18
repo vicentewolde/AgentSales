@@ -4,11 +4,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   ApiCallError,
+  apiHint,
   apiUrl,
   createApiClient,
   createHealthFetcher,
+  invalidServerClient,
   unwrap,
 } from "./api-client.js";
+import { localServerUrl } from "./server.js";
 
 const healthy = {
   status: "ok",
@@ -39,7 +42,7 @@ afterEach(async () => {
 
 describe("createHealthFetcher", () => {
   it("apunta a la API en IPv4 local", () => {
-    expect(apiUrl(8787)).toBe("http://127.0.0.1:8787/api");
+    expect(apiUrl(localServerUrl(8787))).toBe("http://127.0.0.1:8787/api");
   });
 
   it("devuelve el informe de /health validado", async () => {
@@ -47,7 +50,7 @@ describe("createHealthFetcher", () => {
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(healthy));
     });
 
-    expect(await createHealthFetcher(createApiClient(port))()).toEqual(healthy);
+    expect(await createHealthFetcher(createApiClient(localServerUrl(port)))()).toEqual(healthy);
   });
 
   it("un error de la API se muestra como CODE: mensaje, con el status", async () => {
@@ -57,7 +60,9 @@ describe("createHealthFetcher", () => {
         .end(JSON.stringify({ error: { code: "HOST_NOT_ALLOWED", message: "Host no permitido" } }));
     });
 
-    const error = await createHealthFetcher(createApiClient(port))().catch((e: unknown) => e);
+    const error = await createHealthFetcher(createApiClient(localServerUrl(port)))().catch(
+      (e: unknown) => e,
+    );
     expect(error).toBeInstanceOf(ApiCallError);
     expect(error).toMatchObject({
       code: "HOST_NOT_ALLOWED",
@@ -74,7 +79,9 @@ describe("createHealthFetcher", () => {
       res.writeHead(200, { "Content-Type": type }).end(body);
     });
 
-    await expect(createHealthFetcher(createApiClient(port))()).rejects.toMatchObject({
+    await expect(
+      createHealthFetcher(createApiClient(localServerUrl(port)))(),
+    ).rejects.toMatchObject({
       code: "UNEXPECTED_RESPONSE",
     });
   });
@@ -85,7 +92,7 @@ describe("createHealthFetcher", () => {
     });
 
     await expect(
-      createHealthFetcher(createApiClient(port, { timeoutMs: 100 }))(),
+      createHealthFetcher(createApiClient(localServerUrl(port), { timeoutMs: 100 }))(),
     ).rejects.toMatchObject({
       code: "TIMEOUT",
       message: "sin respuesta en 100 ms",
@@ -98,7 +105,7 @@ describe("createHealthFetcher", () => {
     server = undefined;
 
     await expect(
-      createHealthFetcher(createApiClient(port, { timeoutMs: 2_000 }))(),
+      createHealthFetcher(createApiClient(localServerUrl(port), { timeoutMs: 2_000 }))(),
     ).rejects.toMatchObject({ code: "ECONNREFUSED", status: undefined });
   });
 });
@@ -166,7 +173,7 @@ describe("unwrap", () => {
 describe("createApiClient · cabeceras", () => {
   it("manda la sesión de la CLI y JSON en un POST sin cuerpo, sin pisar el de un formulario", async () => {
     const seen: { method: string; path: string; headers: Headers }[] = [];
-    const client = createApiClient(8787, {
+    const client = createApiClient(localServerUrl(8787), {
       token: "token-de-la-cli",
       fetch: async (input, init) => {
         const url = new URL(input instanceof Request ? input.url : String(input));
@@ -196,5 +203,31 @@ describe("createApiClient · cabeceras", () => {
     expect(health?.headers.get("authorization")).toBe("Bearer token-de-la-cli");
     expect(health?.headers.get("content-type")).toBeNull();
     expect(upload?.headers.get("content-type") ?? "").not.toContain("application/json");
+  });
+});
+
+// F8-T08 (spec F8 §4.5): un servidor remoto.
+describe("createApiClient · un servidor remoto", () => {
+  it("llama a <dirección>/api y un fallo de red queda marcado como remoto", async () => {
+    const urls: string[] = [];
+    const client = createApiClient("https://agentsales.agentpey.com", {
+      fetch: async (input) => {
+        urls.push(String(input instanceof Request ? input.url : input));
+        throw new TypeError("fetch failed", { cause: { code: "ENOTFOUND" } });
+      },
+    });
+    const error = await createHealthFetcher(client)().catch((e: unknown) => e);
+    expect(urls).toEqual(["https://agentsales.agentpey.com/api/health"]);
+    expect(error).toMatchObject({ code: "ENOTFOUND", remote: true });
+    expect(apiHint(error)).not.toContain("pnpm dev");
+    expect(apiHint(new ApiCallError("x", "ECONNREFUSED"))).toContain("pnpm dev");
+  });
+
+  it("una dirección inválida no llama a nadie y dice qué corregir", async () => {
+    const error = await createHealthFetcher(
+      invalidServerClient("AGENTSALES_API_URL: mala"),
+    )().catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: "API_URL_INVALID", message: "AGENTSALES_API_URL: mala" });
+    expect(apiHint(error)).toContain("AGENTSALES_API_URL");
   });
 });

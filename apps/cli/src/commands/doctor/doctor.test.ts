@@ -1,7 +1,9 @@
 import { loadEnv } from "@agentsales/config";
 import type { HealthReport } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
+import { ApiCallError } from "../../api-client.js";
 import { createColors } from "../../colors.js";
+import { ServerUrlError } from "../../server.js";
 import type { RunCommand } from "./checks.js";
 import { type DoctorDeps, renderDoctor, runDoctor } from "./index.js";
 
@@ -658,5 +660,111 @@ describe("renderDoctor", () => {
     expect(renderDoctor(report, c)).toContain(
       c.bold(c.bgRed(c.white(" LIVE: las publicaciones son reales (según la API) "))),
     );
+  });
+});
+
+// F8-T08 (spec F8 §4.5): con un servidor remoto, doctor revisa el servidor y del Mac solo Node.
+describe("runDoctor · un servidor remoto", () => {
+  const remote = "https://agentsales.agentpey.com";
+  const server = {
+    ok: true as const,
+    target: { url: remote, source: "session" as const, remote: true, sessionUrl: remote },
+  };
+
+  it("no revisa ffmpeg, Chromium, pg_dump, Claude ni el .env del Mac", async () => {
+    const ran: string[] = [];
+    const report = await runDoctor(
+      deps({
+        server,
+        env: { ok: false, fileFound: false, issues: [] },
+        chromium: null,
+        run: async (command) => {
+          ran.push(command);
+          throw new Error("no debía correr nada en el Mac");
+        },
+        findPgDump: () => {
+          throw new Error("no debía buscar pg_dump");
+        },
+        fetchHealth: async () => ({ ...healthy, environment: "production" }),
+      }),
+    );
+    expect(ran).toEqual([]);
+    expect(report.exitCode).toBe(0);
+    const names = report.items.map((item) => item.name);
+    expect(names).not.toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^(ffmpeg|ffprobe|pg_dump|\.env|Claude Code)$/),
+      ]),
+    );
+    expect(names).not.toContain("Chromium (Playwright)");
+    expect(levels(report.items)).toMatchObject({
+      Servidor: "ok",
+      Ambiente: "ok",
+      API: "ok",
+      "Base de datos": "ok",
+      Herramientas: "ok",
+    });
+    expect(report.items.find((item) => item.name === "Servidor")?.detail).toContain(remote);
+  });
+
+  it("avisa si el servidor dice desarrollo, y los consejos son del servidor, no de pnpm dev", async () => {
+    const report = await runDoctor(
+      deps({
+        server,
+        fetchHealth: async () => ({
+          ...healthy,
+          environment: "development",
+          checks: { ...healthyChecks, storage: { ok: false, latencyMs: 0, error: "sin acceso" } },
+        }),
+      }),
+    );
+    expect(levels(report.items)).toMatchObject({ Ambiente: "warn", Almacenamiento: "error" });
+    const text = renderDoctor(report, createColors(false));
+    expect(text).toContain("secretos del servidor");
+    expect(text).not.toContain("pnpm dev");
+    expect(text).not.toContain(".env");
+  });
+
+  it("sin respuesta del servidor, no sugiere levantar pnpm dev", async () => {
+    const report = await runDoctor(
+      deps({
+        server,
+        fetchHealth: async () => {
+          const error = new ApiCallError("fetch failed (ENOTFOUND)", "ENOTFOUND");
+          error.remote = true;
+          throw error;
+        },
+      }),
+    );
+    expect(report.exitCode).toBe(1);
+    const api = report.items.find((item) => item.name === "API");
+    expect(api?.hint).toContain("servidor esté encendido");
+    expect(api?.hint).not.toContain("pnpm dev");
+  });
+
+  it("en el Mac, una API que corre como producción es un error", async () => {
+    const report = await runDoctor(
+      deps({ fetchHealth: async () => ({ ...healthy, environment: "production" }) }),
+    );
+    expect(levels(report.items)).toMatchObject({ Ambiente: "error" });
+    expect(report.exitCode).toBe(1);
+    // De desarrollo, como se espera: sin ítem.
+    const ok = await runDoctor(
+      deps({ fetchHealth: async () => ({ ...healthy, environment: "development" }) }),
+    );
+    expect(ok.items.map((item) => item.name)).not.toContain("Ambiente");
+  });
+
+  it("una AGENTSALES_API_URL inválida es un error del servidor", async () => {
+    const report = await runDoctor(
+      deps({
+        server: {
+          ok: false,
+          error: new ServerUrlError("AGENTSALES_API_URL: http:// solo se acepta con localhost"),
+        },
+      }),
+    );
+    expect(levels(report.items)).toMatchObject({ Servidor: "error" });
+    expect(report.exitCode).toBe(1);
   });
 });

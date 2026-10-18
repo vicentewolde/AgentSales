@@ -26,7 +26,7 @@ pnpm dev                 # API en 127.0.0.1:8787 · worker · panel en http://lo
 ```
 Abre el enlace del portapapeles (con `pnpm dev` corriendo), elige tu contraseña y entras al panel. Si la olvidas o te bloqueas, `pnpm auth:admin` de nuevo te da otro enlace. En otra terminal, con `pnpm dev` corriendo:
 ```bash
-pnpm -s cli login --email tu@correo.cl   # la CLI pide la contraseña sin mostrarla; whoami y logout
+pnpm -s cli login --email tu@correo.cl   # la CLI pide la contraseña sin mostrarla (--api https://<dominio> para un servidor); whoami y logout
 pnpm -s cli doctor       # Node, .env, API, base, almacenamiento, cola y herramientas
 pnpm -s cli status       # /health y PUBLISH_MODE
 pnpm worker:ping         # opcional: encola un job de prueba; el worker loguea "pong"

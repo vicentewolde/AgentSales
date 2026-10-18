@@ -1,5 +1,6 @@
 import type { HealthReport } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
+import { ApiCallError } from "../api-client.js";
 import { createColors } from "../colors.js";
 import { renderPublishMode, runStatus } from "./status.js";
 
@@ -75,5 +76,52 @@ describe("runStatus", () => {
     expect(result.exitCode).toBe(1);
     expect(result.text).toContain("La API no responde: fetch failed");
     expect(result.text).toContain("pnpm dev");
+  });
+});
+
+// F8-T08 (spec F8 §4.5): con un servidor remoto, status dice cuál es y su ambiente.
+describe("runStatus · un servidor remoto", () => {
+  const target = {
+    url: "https://agentsales.agentpey.com",
+    source: "session" as const,
+    remote: true,
+    sessionUrl: "https://agentsales.agentpey.com",
+  };
+
+  it("muestra el servidor y el ambiente", async () => {
+    const result = await runStatus(
+      async () => report({ environment: "production" }),
+      plain,
+      target,
+    );
+    expect(result.text).toContain(
+      "Servidor: https://agentsales.agentpey.com (guardada con la sesión)",
+    );
+    expect(result.text).toContain("(API 0.0.1 · production)");
+  });
+
+  it("sin respuesta, no sugiere pnpm dev", async () => {
+    const result = await runStatus(
+      async () => {
+        const error = new ApiCallError("sin respuesta en 30 s", "TIMEOUT");
+        error.remote = true;
+        throw error;
+      },
+      plain,
+      target,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.text).toContain("Servidor: https://agentsales.agentpey.com");
+    expect(result.text).not.toContain("pnpm dev");
+  });
+
+  it("con la API local no agrega la línea del servidor", async () => {
+    const result = await runStatus(async () => report(), plain, {
+      ...target,
+      url: "http://127.0.0.1:8787",
+      source: "local",
+      remote: false,
+    });
+    expect(result.text).not.toContain("Servidor:");
   });
 });

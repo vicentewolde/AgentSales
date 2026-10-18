@@ -3,15 +3,16 @@ import { errorBodySchema, type ReadinessIssueView } from "@agentsales/api/contra
 import { type HealthReport, healthReportSchema } from "@agentsales/core";
 import { hc } from "hono/client";
 import type { z } from "zod";
+import { isLocalServer } from "./server.js";
 
 /** Mayor que el peor caso de `/health` (25 s con Neon despertando). */
 export const API_TIMEOUT_MS = 30_000;
 
 /**
- * La API local: solo escucha en IPv4 (spec F0 §4.5) y bajo su prefijo `/api` (spec F8 §4.3); la
- * dirección de un servidor llega en F8-T08.
+ * La API de un servidor (su origen, validado con `parseServerUrl`) va bajo el prefijo `/api` (spec
+ * F8 §4.3 y §4.5).
  */
-export const apiUrl = (port: number) => `http://127.0.0.1:${port}/api`;
+export const apiUrl = (server: string) => `${server}/api`;
 
 /**
  * Fallo al hablar con la API. `code` es el de su `ErrorBody` o el de la red (`ECONNREFUSED`,
@@ -32,6 +33,11 @@ export class ApiCallError extends Error {
    * espera el clic final (spec F5 §4.10), para sugerir "lo publiqué" o "no lo publiqué".
    */
   readonly publicationId: string | undefined;
+  /**
+   * Que vino de un servidor que no es el del Mac (spec F8 §4.5): la sugerencia no habla de
+   * `pnpm dev` ni de `API_PORT`.
+   */
+  remote = false;
 
   constructor(
     message: string,
@@ -100,18 +106,24 @@ function withJsonType(init: RequestInit | undefined): RequestInit | undefined {
  * red o de timeout llega como `ApiCallError`. La respuesta se lee con `unwrap`. Con la sesión de
  * `agentsales login`, la API sabe que es la CLI (la bitácora registra `actor: cli`, spec F7 §4.3).
  */
-export function createApiClient(port: number, options: ApiClientOptions = {}) {
+export function createApiClient(server: string, options: ApiClientOptions = {}) {
   const timeoutMs = options.timeoutMs ?? API_TIMEOUT_MS;
   const send = options.fetch ?? fetch;
-  return hc<AppType>(apiUrl(port), {
+  const remote = !isLocalServer(server);
+  return hc<AppType>(apiUrl(server), {
     headers: options.token === undefined ? {} : { authorization: `Bearer ${options.token}` },
     fetch: async (input: string | URL | Request, init?: RequestInit) => {
       const timeout = AbortSignal.timeout(timeoutMs);
       const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
       try {
-        return await send(input, { ...withJsonType(init), signal });
+        // Sin seguir redirecciones: el token nunca sigue a otro servidor.
+        return await send(input, { ...withJsonType(init), signal, redirect: "error" });
       } catch (error) {
-        throw describeFetchError(error, timeoutMs);
+        // Uno que ya explica la CLI (una dirección inválida, `invalidServerClient`) pasa tal cual.
+        if (error instanceof ApiCallError) throw error;
+        const failure = describeFetchError(error, timeoutMs);
+        failure.remote = remote;
+        throw failure;
       }
     },
   });
@@ -119,7 +131,28 @@ export function createApiClient(port: number, options: ApiClientOptions = {}) {
 
 export type ApiClient = ReturnType<typeof createApiClient>;
 
-type ApiResponse = { ok: boolean; status: number; json(): Promise<unknown> };
+/**
+ * Un cliente que no llama a nadie: la dirección del servidor no es válida (spec F8 §4.5). Cada
+ * comando muestra el motivo con `API_URL_INVALID`, como cualquier fallo de la API.
+ */
+export function invalidServerClient(message: string): ApiClient {
+  return createApiClient("http://127.0.0.1", {
+    fetch: async () => {
+      throw new ApiCallError(message, "API_URL_INVALID");
+    },
+  });
+}
+
+type ApiResponse = { ok: boolean; status: number; url?: string; json(): Promise<unknown> };
+
+/** Si la respuesta vino de un servidor remoto (por su `url`; sin ella, local). */
+function fromRemote(res: ApiResponse): boolean {
+  try {
+    return res.url !== undefined && res.url !== "" && !isLocalServer(res.url);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Lee la respuesta: un error de la API (`ErrorBody`) se lanza como `CODE: mensaje`, y una
@@ -144,7 +177,7 @@ export async function unwrap<S extends z.ZodType>(
   });
   if (!res.ok) {
     const parsed = errorBodySchema.safeParse(body);
-    throw parsed.success
+    const failure = parsed.success
       ? new ApiCallError(
           `${parsed.data.error.code}: ${parsed.data.error.message}`,
           parsed.data.error.code,
@@ -154,14 +187,20 @@ export async function unwrap<S extends z.ZodType>(
           parsed.data.error.publicationId,
         )
       : new ApiCallError(`la API respondió ${res.status}`, undefined, res.status);
+    failure.remote = fromRemote(res);
+    throw failure;
   }
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
-    throw new ApiCallError(
-      "respuesta inesperada de la API: ¿hay otro servicio en ese puerto, o es de otra versión?",
+    const failure = new ApiCallError(
+      fromRemote(res)
+        ? "respuesta inesperada: ¿esa dirección es la de AgentSales, o es de otra versión?"
+        : "respuesta inesperada de la API: ¿hay otro servicio en ese puerto, o es de otra versión?",
       "UNEXPECTED_RESPONSE",
       res.status,
     );
+    failure.remote = fromRemote(res);
+    throw failure;
   }
   return parsed.data;
 }
@@ -173,8 +212,22 @@ export function createHealthFetcher(client: ApiClient): HealthFetcher {
   return () => unwrap(client.health.$get(), healthReportSchema);
 }
 
-/** Sugerencia según el motivo por el que la API no respondió. */
-export function apiHint(error: unknown): string {
+/**
+ * Sugerencia según el motivo por el que la API no respondió. Con un servidor remoto (spec F8 §4.5),
+ * no se sugiere `pnpm dev` ni `API_PORT`, que son del Mac.
+ */
+export function apiHint(
+  error: unknown,
+  remote = error instanceof ApiCallError && error.remote,
+): string {
+  if (error instanceof ApiCallError && error.code === "API_URL_INVALID") {
+    return "Corrige AGENTSALES_API_URL, o entra de nuevo con agentsales login --api https://<dominio>";
+  }
+  if (remote) {
+    return error instanceof ApiCallError && error.code === "UNEXPECTED_RESPONSE"
+      ? "Esa dirección no es la de AgentSales: revísala con agentsales whoami"
+      : "Revisa que el servidor esté encendido y la dirección (agentsales whoami)";
+  }
   if (error instanceof ApiCallError && error.code === "HOST_NOT_ALLOWED") {
     return "La API rechazó el Host: revisa que API_PORT coincida con el de la API";
   }

@@ -3,6 +3,7 @@ import type { Command } from "commander";
 import { apiHint, createHealthFetcher, type HealthFetcher } from "../api-client.js";
 import type { Colors } from "../colors.js";
 import type { CliContext } from "../context.js";
+import { describeServer, type ServerTarget } from "../server.js";
 
 export type StatusResult = { text: string; exitCode: 0 | 1 };
 
@@ -31,15 +32,27 @@ export function renderAutoPublish(report: HealthReport, c: Colors): string | nul
     : c.dim(`auto_publish activado (en simulación): ${brokers.join(", ")}`);
 }
 
-/** Estado desde `/health`. Sale con 0 solo si todo está `ok`. */
-export async function runStatus(fetchHealth: HealthFetcher, c: Colors): Promise<StatusResult> {
+/**
+ * Estado desde `/health`. Sale con 0 solo si todo está `ok`. Con un servidor remoto (spec F8 §4.5),
+ * dice cuál es.
+ */
+export async function runStatus(
+  fetchHealth: HealthFetcher,
+  c: Colors,
+  server?: ServerTarget,
+): Promise<StatusResult> {
+  const serverLine = server?.remote ? [c.dim(`Servidor: ${describeServer(server)}`)] : [];
   let report: HealthReport;
   try {
     report = await fetchHealth();
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return {
-      text: `${c.red("✗ La API no responde")}: ${reason}\n  ${c.dim(`→ ${apiHint(error)}`)}`,
+      text: [
+        ...serverLine,
+        `${c.red("✗ La API no responde")}: ${reason}`,
+        `  ${c.dim(`→ ${apiHint(error)}`)}`,
+      ].join("\n"),
       exitCode: 1,
     };
   }
@@ -50,12 +63,14 @@ export async function runStatus(fetchHealth: HealthFetcher, c: Colors): Promise<
     const detail = result.ok ? `${result.latencyMs} ms` : (result.error ?? "falló");
     return `  ${mark} ${name.padEnd(8)} ${detail}`;
   });
+  const environment = report.environment === undefined ? "" : ` · ${report.environment}`;
   return {
     text: [
+      ...serverLine,
       renderPublishMode(report.publishMode, c),
       ...[renderAutoPublish(report, c)].filter((line): line is string => line !== null),
       "",
-      `Estado: ${ok ? c.green("ok") : c.yellow("degraded")}  ${c.dim(`(API ${report.version ?? "?"})`)}`,
+      `Estado: ${ok ? c.green("ok") : c.yellow("degraded")}  ${c.dim(`(API ${report.version ?? "?"}${environment})`)}`,
       ...(report.checks === undefined
         ? [c.dim("  El detalle lo ve el administrador: agentsales login")]
         : checks),
@@ -69,7 +84,12 @@ export function register(program: Command, ctx: CliContext): void {
     .command("status")
     .description("Estado de la API (/health) y PUBLISH_MODE")
     .action(async () => {
-      const result = await runStatus(createHealthFetcher(ctx.api()), ctx.colors);
+      const resolved = ctx.server();
+      const result = await runStatus(
+        createHealthFetcher(ctx.api()),
+        ctx.colors,
+        resolved.ok ? resolved.target : undefined,
+      );
       ctx.print(result.text);
       process.exitCode = result.exitCode;
     });

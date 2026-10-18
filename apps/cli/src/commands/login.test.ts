@@ -1,6 +1,7 @@
 import { TEST_ADMIN } from "@agentsales/api/testing";
 import { describe, expect, it } from "vitest";
-import { harness } from "../../test/harness.js";
+import { harness, PORT } from "../../test/harness.js";
+import { localServerUrl } from "../server.js";
 import { createMemorySessionStore } from "../session.js";
 import { runListings } from "./listings.js";
 import { runLogin, runLogout, runWhoami } from "./login.js";
@@ -10,12 +11,22 @@ import { runLogin, runLogout, runWhoami } from "./login.js";
 /** La contraseña que "escribe" el operador. */
 const typed = (value: string) => async () => ({ cancelled: false as const, value });
 
+type Harness = ReturnType<typeof harness>;
+
+/** Lo que `login` recibe de la CLI: la API en proceso para cualquier servidor. */
+const via = (h: Harness, envUrl?: string) => ({
+  ...h.io,
+  clientFor: h.clientAt,
+  localPort: PORT,
+  envUrl,
+});
+
 describe("agentsales login, whoami y logout", () => {
   it("entra, guarda el token sin mostrarlo, y whoami lo usa", async () => {
     const h = harness({ anonymous: true });
     const session = createMemorySessionStore();
     const code = await runLogin(
-      { ...h.io, client: h.client, session, readPassword: typed(TEST_ADMIN.password) },
+      { ...via(h), session, readPassword: typed(TEST_ADMIN.password) },
       { email: TEST_ADMIN.email },
     );
     expect(code).toBe(0);
@@ -41,7 +52,7 @@ describe("agentsales login, whoami y logout", () => {
     const session = createMemorySessionStore();
     expect(
       await runLogin(
-        { ...h.io, client: h.client, session, readPassword: typed("equivocada-larga") },
+        { ...via(h), session, readPassword: typed("equivocada-larga") },
         { email: TEST_ADMIN.email },
       ),
     ).toBe(1);
@@ -51,7 +62,7 @@ describe("agentsales login, whoami y logout", () => {
     const noTty = harness({ anonymous: true });
     expect(
       await runLogin(
-        { ...noTty.io, client: noTty.client, session, readPassword: async () => null },
+        { ...via(noTty), session, readPassword: async () => null },
         { email: TEST_ADMIN.email },
       ),
     ).toBe(1);
@@ -63,7 +74,7 @@ describe("agentsales login, whoami y logout", () => {
     const session = createMemorySessionStore();
     expect(
       await runLogin(
-        { ...h.io, client: h.client, session, readPassword: async () => ({ cancelled: true }) },
+        { ...via(h), session, readPassword: async () => ({ cancelled: true }) },
         { email: TEST_ADMIN.email },
       ),
     ).toBe(1);
@@ -75,15 +86,10 @@ describe("agentsales login, whoami y logout", () => {
   it("entrar de nuevo cierra en la API la sesión anterior de esta CLI", async () => {
     const h = harness({ anonymous: true });
     const session = createMemorySessionStore();
-    const deps = (client = h.client) => ({
-      ...h.io,
-      client,
-      session,
-      readPassword: typed(TEST_ADMIN.password),
-    });
-    await runLogin(deps(), { email: TEST_ADMIN.email });
+    const deps = { ...via(h), session, readPassword: typed(TEST_ADMIN.password) };
+    await runLogin(deps, { email: TEST_ADMIN.email });
     const first = session.read()?.token ?? "";
-    await runLogin(deps(h.clientWith(first)), { email: TEST_ADMIN.email });
+    await runLogin(deps, { email: TEST_ADMIN.email });
     const second = session.read()?.token ?? "";
     expect(second).not.toBe(first);
     expect(await runWhoami({ ...h.io, client: h.clientWith(first) })).toBe(1);
@@ -122,5 +128,97 @@ describe("agentsales login, whoami y logout", () => {
     expect(await runListings({ ...h.io, client: h.client }, {})).toBe(1);
     expect(h.errors()).toContain("AUTH_REQUIRED");
     expect(h.errors()).toContain("Inicia sesión: agentsales login");
+  });
+
+  it("--api guarda el servidor con la sesión y el pedido de entrar va allí, sin token", async () => {
+    const h = harness({ anonymous: true });
+    const session = createMemorySessionStore();
+    const code = await runLogin(
+      { ...via(h), session, readPassword: typed(TEST_ADMIN.password) },
+      { email: TEST_ADMIN.email, api: "https://agentsales.agentpey.com/" },
+    );
+    expect(code).toBe(0);
+    expect(session.read()?.apiUrl).toBe("https://agentsales.agentpey.com");
+    expect(h.sent).toEqual([
+      { origin: "https://agentsales.agentpey.com", path: "/auth/login", token: null },
+    ]);
+    expect(h.text()).toContain("en https://agentsales.agentpey.com");
+  });
+
+  it("sin --api, AGENTSALES_API_URL elige el servidor; sin ninguna, la local no se guarda", async () => {
+    const h = harness({ anonymous: true });
+    const session = createMemorySessionStore();
+    await runLogin(
+      { ...via(h, "https://otro.agentpey.com"), session, readPassword: typed(TEST_ADMIN.password) },
+      { email: TEST_ADMIN.email },
+    );
+    expect(session.read()?.apiUrl).toBe("https://otro.agentpey.com");
+
+    const local = harness({ anonymous: true });
+    const localSession = createMemorySessionStore();
+    await runLogin(
+      { ...via(local), session: localSession, readPassword: typed(TEST_ADMIN.password) },
+      { email: TEST_ADMIN.email },
+    );
+    expect(localSession.read()).not.toHaveProperty("apiUrl");
+    expect(local.sent[0]?.origin).toBe(localServerUrl(PORT));
+    // Una dirección local, aunque venga de --api, tampoco se guarda (sigue el API_PORT del .env).
+    await runLogin(
+      { ...via(local), session: localSession, readPassword: typed(TEST_ADMIN.password) },
+      { email: TEST_ADMIN.email, api: "http://localhost:9999" },
+    );
+    expect(localSession.read()).not.toHaveProperty("apiUrl");
+    expect(local.sent.at(-2)?.origin).toBe("http://127.0.0.1:9999");
+  });
+
+  it("--api con http:// remoto se rechaza antes de pedir la contraseña", async () => {
+    const h = harness({ anonymous: true });
+    const session = createMemorySessionStore();
+    let asked = false;
+    const code = await runLogin(
+      {
+        ...via(h),
+        session,
+        readPassword: async () => {
+          asked = true;
+          return { cancelled: false, value: TEST_ADMIN.password };
+        },
+      },
+      { email: TEST_ADMIN.email, api: "http://agentsales.agentpey.com" },
+    );
+    expect(code).toBe(1);
+    expect(asked).toBe(false);
+    expect(h.errors()).toContain("API_URL_INVALID");
+    expect(h.errors()).toContain("https://agentsales.agentpey.com");
+    expect(h.sent).toEqual([]);
+    expect(session.read()).toBeNull();
+  });
+
+  it("entrar en otro servidor cierra la sesión anterior en el suyo, y su token no viaja al nuevo", async () => {
+    const h = harness({ anonymous: true });
+    const session = createMemorySessionStore();
+    const deps = { ...via(h), session, readPassword: typed(TEST_ADMIN.password) };
+    await runLogin(deps, { email: TEST_ADMIN.email });
+    const first = session.read()?.token ?? "";
+    h.sent.length = 0;
+    await runLogin(deps, { email: TEST_ADMIN.email, api: "https://agentsales.agentpey.com" });
+    expect(h.sent).toEqual([
+      { origin: "https://agentsales.agentpey.com", path: "/auth/login", token: null },
+      { origin: localServerUrl(PORT), path: "/auth/logout", token: first },
+    ]);
+  });
+
+  it("whoami dice el servidor, y avisa si AGENTSALES_API_URL apunta a otro que el de la sesión", async () => {
+    const h = harness({ anonymous: true });
+    const remote = "https://agentsales.agentpey.com";
+    expect(
+      await runWhoami({
+        ...h.io,
+        client: h.client,
+        target: { url: remote, source: "env", remote: true, sessionUrl: localServerUrl(PORT) },
+      }),
+    ).toBe(1);
+    expect(h.text()).toContain(`Servidor: ${remote} (AGENTSALES_API_URL)`);
+    expect(h.errors()).toContain(`Tu sesión es de ${localServerUrl(PORT)}`);
   });
 });

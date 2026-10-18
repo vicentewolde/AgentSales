@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** lote B de F8 (T03 a T07 y T09): las cargas suben directo a R2 desde el panel y la CLI (URL prefirmada, la carga en `awaiting_upload`, el worker baja de R2 y borra al terminar, el Excel con tope descomprimido), sin `/imports/local` ni disco compartido; más `pnpm db:dev-scrub`
-**Siguiente paso:** `/tarea F8-T08` (lote C: la CLI contra el servidor)
+**Última tarea:** lote C de F8 (T08): la CLI habla con un servidor (`login --api https://…` guarda la dirección con la sesión, `AGENTSALES_API_URL` manda sobre ella, solo `https://` salvo local, el token solo viaja al servidor que lo emitió); `whoami`, `status` y `doctor` dicen a cuál, y `doctor` remoto no revisa las herramientas del worker en el Mac
+**Siguiente paso:** `/tarea F8-T10 F8-T11 F8-T12` (lote D: build, Fly.io y el worker ante reinicios)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -22,6 +22,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [x] La carga real desde la **CLI** (2026-10-18, T09): `import` de una carga sintética (PRUEBA-1, carpeta con 2 fotos, `--dry-run`) contra el bucket de desarrollo: subió 3 archivos a R2, el worker la terminó (1 creada y 2 medios, en simulación) y no quedó nada bajo `imports/`. Antes hubo que aplicar la migración `0010` a la rama dev (`pnpm db:migrate`)
   - [x] La carga real desde el **panel** (2026-10-18, F8-T07): en Chrome, la misma carga sintética con "Una carpeta" y "Solo simular": `POST /api/imports/uploads` 201, los archivos directo a R2, `start` 202, el worker la terminó (1 creada y 2 medios, en simulación) y no quedó nada bajo `imports/`. Los dos intentos anteriores no llegaron a subir porque no se pasó de la página Entrar (no fue una falla del panel)
   - [ ] **La base de producción no tiene la migración `0010`:** se aplica al desplegar (T11, `release_command`) o con `ENV_FILE=.env.production pnpm db:migrate` antes de usar la API contra producción
+- [ ] **Opcional, al terminar el lote C** (con `pnpm dev`; te aviso antes): `pnpm -s cli whoami` debe decir `Servidor: http://127.0.0.1:8787 (la API local)`, y `AGENTSALES_API_URL=http://agentsales.agentpey.com pnpm -s cli status` debe rechazar el `http://` sin llamar a nadie. Contra el servidor de verdad se prueba en T21 (`login --api https://agentsales.agentpey.com`)
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups`, los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
@@ -55,7 +56,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 | Spec F8 (`/fase-plan 8`) | ✅ aprobado | (este PR) |
 | **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
 | **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (la CLI y el panel probados contra R2 real; los dos buckets verificados) | #142 |
-| **Lote C** · T08 CLI: la dirección del servidor | ⏳ pendiente | |
+| **Lote C** · T08 CLI: la dirección del servidor | ✅ terminada (probada contra la API en proceso; contra el servidor real, en T21) | (este PR) |
 | **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ⏳ pendiente | |
 | **Lote E** · T13 Respaldo a R2 | ⏳ pendiente | |
 | **Lote F** · T14 Límites por IP · T15 Doble factor (core, base y API) · T16 Doble factor en el panel y la CLI | ⏳ pendiente | |
@@ -146,6 +147,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **F8, cuentas (T17):** el `state` de Instagram no es de un solo uso (vale sus 10 min; hoy basta con que la cookie se borre): guardar el nonce usado, como el de Mercado Libre. (Quién conecta cada corredor se cerró en F7-T08: conectar es del administrador.)
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
+- **F8, `doctor` remoto (T08):** del servidor muestra lo que da `/health`; ffmpeg, Chromium y `pg_dump` del servidor no los revisa la CLI (spec §4.5): **T10 debe asegurarlos en la imagen y en su arranque en la CI**.
 - **Subidas directas (lote B de F8):**
   - El `PUT` del navegador (`xhrTransport`, `apps/web/src/api/upload.ts`) no tiene prueba automática (jsdom no sube a R2); se prueba en la carga real de T07.
   - Si el proceso de la API se corta justo entre pasar la carga a `queued` y encolarla, la carga queda en cola sin job (el mismo riesgo que tenía `requestImport` desde F1): se ve en el historial y se vuelve a importar.

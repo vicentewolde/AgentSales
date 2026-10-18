@@ -9,7 +9,8 @@ import {
 } from "@agentsales/core";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { publicationHarness } from "../../test/harness.js";
+import { PORT, publicationHarness } from "../../test/harness.js";
+import { localServerUrl } from "../server.js";
 import { createMemorySessionStore } from "../session.js";
 import {
   register,
@@ -513,6 +514,15 @@ describe("publications pause|resume|close|sync · registro en commander", () => 
     register(program, {
       ...h.io,
       api: () => h.client,
+      server: () => ({
+        ok: true,
+        target: { url: localServerUrl(PORT), source: "local", remote: false, sessionUrl: null },
+      }),
+      localServer: () => localServerUrl(PORT),
+      localPort: () => PORT,
+      envApiUrl: undefined,
+      apiFor: () => h.client,
+      clientFrom: () => h.client,
       session: createMemorySessionStore(),
       readPassword: async () => null,
       copyToClipboard: async () => {

@@ -32,8 +32,6 @@ const API_HINTS: Readonly<Record<string, string>> = {
   DB_UNAVAILABLE: "Neon puede estar despertando: reintenta en unos segundos",
   QUEUE_UNAVAILABLE: "Arranca el worker (pnpm dev) y reintenta",
   STORAGE_UNAVAILABLE: "Revisa las variables R2_* y corre pnpm storage:check",
-  HOST_NOT_ALLOWED: apiHint(new ApiCallError("", "HOST_NOT_ALLOWED")),
-  UNEXPECTED_RESPONSE: apiHint(new ApiCallError("", "UNEXPECTED_RESPONSE")),
 };
 
 /**
@@ -46,12 +44,22 @@ export function renderFailure(error: unknown, c: Colors): string | null {
     return [c.red(`✗ ${error.code}: ${error.message}`), ...hintLine(error.hint)].join("\n");
   }
   if (error instanceof ApiCallError) {
+    // Una dirección de servidor inválida (spec F8 §4.5): la CLI ni siquiera llamó.
+    if (error.code === "API_URL_INVALID") {
+      return [c.red(`✗ ${error.code}: ${error.message}`), ...hintLine(apiHint(error))].join("\n");
+    }
     if (error.status === undefined) {
       return [c.red(`✗ La API no responde: ${error.message}`), ...hintLine(apiHint(error))].join(
         "\n",
       );
     }
-    const hint = error.code === undefined ? undefined : API_HINTS[error.code];
+    // Estos dos dependen de si el servidor es el del Mac (`API_PORT`, `pnpm dev`) o uno remoto.
+    const hint =
+      error.code === "HOST_NOT_ALLOWED" || error.code === "UNEXPECTED_RESPONSE"
+        ? apiHint(error)
+        : error.code === undefined
+          ? undefined
+          : API_HINTS[error.code];
     return [c.red(`✗ ${error.message}`), ...hintLine(hint)].join("\n");
   }
   return null;
