@@ -23,6 +23,12 @@ import { structuredCopy } from "./copy.js";
 export type InMemoryPublicationRepository = PublicationRepository & {
   /** Todas las publicaciones guardadas, para afirmar en los tests. */
   all(): Publication[];
+  /**
+   * Lo que hace `MetaDeletionRepository.eraseInstagramUser` con las publicaciones de una cuenta
+   * (F8-T17): sin enlace, id externo ni progreso, en su estado, con un `data_deleted` cada una, y sin
+   * el nombre de la cuenta en lo enviado de sus intentos. Devuelve cuántas tocó.
+   */
+  eraseExternalData(platformAccountId: string, event: PublicationEventInput): number;
 };
 
 const notFound = (id: string) =>
@@ -340,7 +346,42 @@ export function createInMemoryPublicationRepository(
     all() {
       return [...publications.values()].map(({ publication }) => structuredCopy(publication));
     },
+    eraseExternalData(platformAccountId, event) {
+      const own = [...publications.values()].filter(
+        ({ publication }) => publication.platformAccountId === platformAccountId,
+      );
+      for (const found of own) {
+        const { id } = found.publication;
+        publications.set(id, {
+          ...found,
+          publication: {
+            ...found.publication,
+            externalId: null,
+            externalUrl: null,
+            progress: null,
+            updatedAt: later(found.publication.updatedAt),
+          },
+        });
+        for (const stored of events) {
+          if (stored.publicationId !== id || stored.type !== "publish_attempt") continue;
+          stored.payload = withoutSentAccountName(stored.payload);
+        }
+        pushEvent(id, "data_deleted", null, null, event);
+      }
+      return own.length;
+    },
   };
+}
+
+/** Lo enviado de un intento sin el nombre de la cuenta (como `jsonb_set` en Postgres). */
+function withoutSentAccountName(payload: Record<string, unknown>): Record<string, unknown> {
+  const sent = payload.sent;
+  if (typeof sent !== "object" || sent === null || Array.isArray(sent)) return payload;
+  const account = (sent as Record<string, unknown>).account;
+  if (typeof account !== "object" || account === null || Array.isArray(account)) return payload;
+  // Como `jsonb_set(..., false)`: solo reemplaza un nombre que existe.
+  if (!("displayName" in account)) return payload;
+  return { ...payload, sent: { ...sent, account: { ...account, displayName: "" } } };
 }
 
 /** Los cambios de una transición sobre la publicación (lo mismo que escribe el de Drizzle). */

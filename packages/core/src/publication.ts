@@ -261,6 +261,8 @@ export const PUBLICATION_EVENT_TYPES = [
   "manual_edit",
   // F6 (ADR-0018): reprogramar una `scheduled` cambia la hora sin cambiar el estado.
   "schedule_changed",
+  // F8 (spec §4.11): Meta pidió borrar los datos de la cuenta; el estado no cambia.
+  "data_deleted",
 ] as const;
 export type PublicationEventType = (typeof PUBLICATION_EVENT_TYPES)[number];
 

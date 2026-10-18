@@ -69,6 +69,10 @@ export {
   type MediaProcessorCall,
 } from "./media-processor.js";
 export {
+  createInMemoryMetaDeletionRepository,
+  type InMemoryMetaDeletionRepository,
+} from "./meta-deletion.js";
+export {
   createInMemoryPlatformAccountRepository,
   type InMemoryPlatformAccountRepository,
   type InMemoryPlatformAccountRepositoryOptions,

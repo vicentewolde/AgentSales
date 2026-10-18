@@ -184,4 +184,10 @@ describe("publicationEventDetail (F6)", () => {
     ).toBe("actualizada en Portal: price");
     expect(publicationEventDetail({ type: "sync", payload: {} })).toBeNull();
   });
+
+  it("los datos borrados a pedido de Meta (F8-T17)", () => {
+    expect(publicationEventDetail({ type: "data_deleted", payload: {} })).toBe(
+      "Meta pidió borrar los datos de la cuenta de Instagram: se borraron el enlace y el id",
+    );
+  });
 });

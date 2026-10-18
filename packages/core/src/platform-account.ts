@@ -195,6 +195,16 @@ export type MarketplaceManualMeta = z.infer<typeof marketplaceManualMetaSchema>;
 /** El `external_account_id` de una cuenta de Marketplace a mano. */
 export const MANUAL_MARKETPLACE_ACCOUNT_ID = "manual";
 
+/** El nombre que queda en una cuenta cuyos datos se borraron a pedido de Meta (F8-T17, ADR-0027). */
+export const ERASED_ACCOUNT_DISPLAY_NAME = "(datos borrados a pedido de Meta)";
+
+/**
+ * El `external_account_id` que reemplaza al de Instagram en una cuenta borrada a pedido de Meta
+ * (ADR-0027): único (lleva el id de la cuenta, por la restricción de corredor, plataforma y cuenta
+ * externa) y nunca un id de Instagram.
+ */
+export const erasedExternalAccountId = (accountId: string): string => `borrada:${accountId}`;
+
 /**
  * `meta` de una cuenta de Marketplace: con el perfil del navegador (F5) o a mano (F7), por `mode`.
  * Las filas de F5 no tienen `mode`: se leen como `"profile"`.

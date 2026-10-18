@@ -4,6 +4,7 @@ import {
   connectAccount,
   type InstagramAuth,
   isAppError,
+  type OAuthStateRepository,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -55,8 +56,9 @@ export type OAuthStatePlatform = (typeof OAUTH_STATE_PLATFORMS)[keyof typeof OAU
 /**
  * Verifica un `state`: firma, vencimiento, la plataforma esperada y, si se pide, el corredor.
  * Devuelve el corredor con el nonce y el vencimiento, o `null` si algo no calza (quien llama
- * responde `OAUTH_STATE_INVALID` sin llamar a la plataforma). El de Instagram se amarra a una cookie
- * que se borra; el de Mercado Libre sirve una vez desde F7 (quien llama marca el nonce usado).
+ * responde `OAUTH_STATE_INVALID` sin llamar a la plataforma). El de Instagram se amarra además a una
+ * cookie que se borra; los dos sirven una vez (Mercado Libre desde F7, Instagram desde F8-T17: quien
+ * llama marca el nonce usado).
  */
 export function verifyOAuthStateData(
   signer: OAuthStateSigner,
@@ -73,15 +75,6 @@ export function verifyOAuthStateData(
   if (expected.broker !== undefined && data.broker !== expected.broker) return null;
   if (typeof data.nonce !== "string" || typeof data.exp !== "number") return null;
   return { broker: data.broker, nonce: data.nonce, expiresAt: new Date(data.exp * 1000) };
-}
-
-/** Como `verifyOAuthStateData`, solo el corredor. */
-export function verifyOAuthState(
-  signer: OAuthStateSigner,
-  state: string,
-  expected: { platform: OAuthStatePlatform; broker?: string },
-): string | null {
-  return verifyOAuthStateData(signer, state, expected)?.broker ?? null;
 }
 
 /**
@@ -107,6 +100,10 @@ export type OAuthDeps = Omit<ConnectAccountDeps, "instagram"> & {
     secureCookie: boolean;
   };
   oauthState: OAuthStateSigner;
+  /** Los `state` ya usados (spec F8 §4.11): el de Instagram sirve una vez, como el de Mercado Libre. */
+  oauthStates: Pick<OAuthStateRepository, "markUsed">;
+  /** El hash del nonce que se guarda (SHA-256, el de los tokens de sesión). */
+  stateHash: (nonce: string) => string;
   /** La URL absoluta del panel (`http://localhost:<WEB_PORT>`): ahí vuelve el operador. */
   panelUrl: string;
   logger: AppLogger;
@@ -162,11 +159,20 @@ export function oauthRoutes(deps: OAuthDeps) {
       if (error !== undefined) return c.redirect(toPanel({ error: "OAUTH_DENIED" }), 302);
 
       // Sin llamar a Instagram: un `state` ajeno, vencido, de otra plataforma o sin cookie no canjea.
-      const broker =
+      const verified =
         state === undefined || cookie === undefined || !sameText(state, cookie)
           ? null
-          : verifyOAuthState(deps.oauthState, state, { platform: OAUTH_STATE_PLATFORMS.instagram });
-      if (broker === null) return c.redirect(toPanel({ error: "OAUTH_STATE_INVALID" }), 302);
+          : verifyOAuthStateData(deps.oauthState, state, {
+              platform: OAUTH_STATE_PLATFORMS.instagram,
+            });
+      // Un `state` sirve una vez (deuda de F3): una vuelta repetida, aun con su cookie, no canjea.
+      if (
+        verified === null ||
+        !(await deps.oauthStates.markUsed(deps.stateHash(verified.nonce), verified.expiresAt))
+      ) {
+        return c.redirect(toPanel({ error: "OAUTH_STATE_INVALID" }), 302);
+      }
+      const { broker } = verified;
       if (code === undefined || code === "") {
         return c.redirect(toPanel({ error: "OAUTH_CODE_MISSING" }), 302);
       }

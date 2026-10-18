@@ -39,7 +39,11 @@ function EventLine({ event }: { event: PublicationEventView }) {
       </li>
     );
   }
-  if (event.type === "schedule_changed" || event.type === "manual_edit") {
+  if (
+    event.type === "schedule_changed" ||
+    event.type === "manual_edit" ||
+    event.type === "data_deleted"
+  ) {
     return (
       <li>
         {timeText(event.createdAt)} · {who}: {publicationEventDetail(event)}

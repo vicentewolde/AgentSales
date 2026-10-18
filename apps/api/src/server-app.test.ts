@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { accessFor, routePathOf } from "./access.js";
 import { createApp } from "./app.js";
@@ -202,10 +203,10 @@ describe("hosts, orígenes y CORS en internet", () => {
       },
       body: "signed_request=x.y",
     });
-    // La ruta llega en F8-T17: hoy no está en la tabla y pide sesión (401), pero el CSRF no la
-    // rechaza antes (sería 403 ORIGIN_NOT_ALLOWED).
-    expect(response.status).toBe(401);
-    expect((await errorOf(response)).code).toBe("AUTH_REQUIRED");
+    // Pública desde F8-T17: el CSRF no la rechaza (sería 403 ORIGIN_NOT_ALLOWED) y la que la frena
+    // es su firma (aquí, una que no es de Meta).
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).code).toBe("META_SIGNATURE_INVALID");
   });
 });
 
@@ -319,5 +320,48 @@ describe("cabeceras de seguridad", () => {
     const policy = contentSecurityPolicy(STORAGE_ORIGIN);
     expect(policy.scriptSrc).toEqual(["'self'"]);
     expect(policy.objectSrc).toEqual(["'none'"]);
+  });
+});
+
+describe("páginas públicas (F8-T18)", () => {
+  /** Las páginas legales tal como están en el panel (`apps/web/public`, que Vite copia a `dist`). */
+  const publicDir = fileURLToPath(new URL("../../web/public", import.meta.url));
+  const legalApp = () => {
+    const api = createApp(testDeps({ access: internetAccess(PUBLIC_URL) }));
+    return createServerApp(api, {
+      panelDir: publicDir,
+      storageOrigin: STORAGE_ORIGIN,
+      https: true,
+      allowedHosts: internetAccess(PUBLIC_URL).allowedHosts,
+    });
+  };
+
+  it.each(["/legal/terminos.html", "/legal/privacidad.html", "/legal/eliminacion-de-datos.html"])(
+    "%s se sirve sin sesión, en HTML, sin JavaScript y con la CSP",
+    async (path) => {
+      const response = await legalApp().request(at(path));
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("text/html");
+      const csp = response.headers.get("content-security-policy") ?? "";
+      expect(csp).toContain("script-src 'self'");
+      expect(csp).toContain("style-src 'self'");
+      const html = await response.text();
+      // Lo lee el revisor de Meta sin JavaScript, y la CSP no deja estilos en línea.
+      expect(html).not.toMatch(/<script|<style|style=|\son[a-z]+=/i);
+      expect(html).toContain('<link rel="stylesheet" href="/legal/legal.css">');
+    },
+  );
+
+  it("la hoja de estilos de las páginas también se sirve sin sesión", async () => {
+    const response = await legalApp().request(at("/legal/legal.css"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/css");
+  });
+
+  it("la página del pedido de borrado de Meta lleva la misma CSP", async () => {
+    const response = await legalApp().request(at("/api/meta/data-deletion/no-existe"));
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-security-policy")).toContain("default-src 'self'");
   });
 });

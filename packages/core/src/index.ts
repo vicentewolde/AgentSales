@@ -294,6 +294,8 @@ export {
 export {
   checkConnectedCredentials,
   checkCredentials,
+  ERASED_ACCOUNT_DISPLAY_NAME,
+  erasedExternalAccountId,
   INSTAGRAM_PUBLISH_SCOPE,
   type InstagramAccountMeta,
   instagramAccountMetaSchema,
@@ -457,6 +459,11 @@ export {
   isMercadoLibreTokenRejected,
   MERCADOLIBRE_REJECTED_AFTER_REFRESH,
 } from "./ports/mercadolibre-auth.js";
+export type {
+  MetaDeletionInput,
+  MetaDeletionRepository,
+  MetaDeletionRequest,
+} from "./ports/meta-deletion-repository.js";
 export {
   type ConnectedAccount,
   CREDENTIALS_LOCK_TIMEOUT_MS,
@@ -769,6 +776,13 @@ export {
   ingestMedia,
   listingMediaPath,
 } from "./use-cases/ingest-media.js";
+export {
+  getMetaDeletionRequest,
+  handleMetaDataDeletion,
+  handleMetaDeauthorize,
+  META_DELETION_CODE_PATTERN,
+  type MetaCallbackDeps,
+} from "./use-cases/meta-data-deletion.js";
 export {
   channelPublications,
   createPublications,

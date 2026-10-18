@@ -100,6 +100,11 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /accounts/:id/disconnect": "admin",
   "GET /oauth/instagram/start": "admin",
   "GET /oauth/instagram/callback": "public",
+  // Las vueltas de Meta (F8-T17): de servidor a servidor, las protege la firma de la app; la página
+  // del pedido la abre la persona que pidió el borrado (con su código).
+  "POST /meta/deauthorize": "public",
+  "POST /meta/data-deletion": "public",
+  "GET /meta/data-deletion/:code": "public",
 };
 
 const STRICTNESS: Readonly<Record<RoutePolicy, number>> = { public: 0, session: 1, admin: 2 };

@@ -24,6 +24,7 @@ import {
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
   createInMemoryMediaStorage,
+  createInMemoryMetaDeletionRepository,
   createInMemoryPlatformAccountRepository,
   createInMemoryPublicationRepository,
   createInMemoryUserRepositories,
@@ -331,6 +332,13 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
       redirectUri: TEST_ML_REDIRECT_URI,
     },
     oauthState: createStateSigner(TEST_ENCRYPTION_KEY),
+    // Sin firma válida ni cuentas: los tests de Meta pasan las suyas (`meta.test.ts`).
+    verifyMetaSignature: () => null,
+    hashMetaUserId: (userId) => `hmac:${userId}`,
+    metaDeletion: createInMemoryMetaDeletionRepository({
+      platformAccounts: createInMemoryPlatformAccountRepository(),
+      publications: createInMemoryPublicationRepository(),
+    }),
     panelUrl: "http://localhost:5173",
     instagramStartUrl: "http://localhost:8787/api/oauth/instagram/start",
     // Sin operaciones: los tests de Portal pasan las suyas (nunca llaman a Mercado Libre).

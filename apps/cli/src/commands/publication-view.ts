@@ -204,7 +204,11 @@ export function renderPublicationEvents(
         const detail = publicationEventDetail(event);
         return `${when}  lectura de Mercado Libre${detail === null ? "" : ` · ${detail}`}`;
       }
-      if (event.type === "schedule_changed" || event.type === "manual_edit") {
+      if (
+        event.type === "schedule_changed" ||
+        event.type === "manual_edit" ||
+        event.type === "data_deleted"
+      ) {
         return `${when}  ${publicationEventDetail(event) ?? event.type}`;
       }
       if (event.type !== "publish_attempt") return `${when}  ${event.type}`;
