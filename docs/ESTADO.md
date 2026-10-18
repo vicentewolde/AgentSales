@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** lote E de F8 (T13): con `BACKUP_TARGET=r2` (obligatorio en producción) el worker sube el respaldo diario, ya comprobado y con su sha256, al bucket `agentsales-backups` con su propio token y deja los últimos 14; el estado va a `system/` del bucket principal, que `/health`, la agenda y `doctor` leen (caché de 1 min); la API borra el token de respaldos al arrancar; `pnpm db:backup` sigue siempre local
-**Siguiente paso:** `/tarea F8-T14 F8-T15 F8-T16` (lote F: login para internet)
+**Última tarea:** lote F de F8 (T14 a T16): límites por IP y por usuario en la API (429 con `Retry-After`, la IP de `CLIENT_IP_HEADER`); el doble factor opcional con una app de claves (TOTP con `node:crypto`, la clave cifrada, 10 códigos de recuperación, entrar en dos pasos, migración `0012`), "Mi cuenta" en el panel, la CLI que pide el código, y `doctor` que recomienda activarlo al administrador
+**Siguiente paso:** `/tarea F8-T17 F8-T18` (lote G: Instagram de verdad, las vueltas de Meta y las páginas públicas)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -35,6 +35,9 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [ ] **`.env.example`:** Claude no lo lee (tu regla); agrega tú, comentadas, `BACKUP_TARGET=local`, `BACKUP_R2_BUCKET=`, `BACKUP_R2_ACCESS_KEY_ID=` y `BACKUP_R2_SECRET_ACCESS_KEY=` (o dile a Claude que puede editarlo)
   - [ ] **`pnpm db:backup` con `libpq`** (el mismo pendiente de F6): con `brew install libpq`, comprobar que sigue dejando el volcado en `~/.agentsales/backups`
   - [ ] **En T21 y la demo:** que el worker suba el primer respaldo al encenderse (`doctor` contra el servidor) y una restauración: bajar el último del bucket, `pg_restore --list` y restaurarlo en una rama de prueba de Neon (`docs/10-despliegue.md`, paso 10)
+- **Del lote F (T14 a T16):**
+  - [ ] **La rama `dev` de Neon necesita la migración `0012`** antes del próximo `pnpm dev`: `pnpm db:migrate` (producción la recibe al desplegar)
+  - [ ] **Opcional, el doble factor de verdad** (con `pnpm dev`; te aviso antes): en el panel, tu nombre → **Mi cuenta** → **Activar el doble factor** con tu app de claves; guarda los 10 códigos de recuperación en tu gestor de claves. Si algo falla, `pnpm auth:admin --email tu@correo.cl` lo quita
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups` (arriba), los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
@@ -71,7 +74,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 | **Lote C** · T08 CLI: la dirección del servidor | ✅ terminada (probada contra la API en proceso; contra el servidor real, en T21) | (este PR) |
 | **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ✅ terminada (la memoria medida, el Environment `production` y su rechazo probados, `CI / image` obligatorio) | #148 |
 | **Lote E** · T13 Respaldo a R2 | ✅ terminada (con dobles de R2; la subida real, en T21, y la restauración, en la demo) | (este PR) |
-| **Lote F** · T14 Límites por IP · T15 Doble factor (core, base y API) · T16 Doble factor en el panel y la CLI | ⏳ pendiente | |
+| **Lote F** · T14 Límites por IP · T15 Doble factor (core, base y API) · T16 Doble factor en el panel y la CLI | ✅ terminada (con dobles; el doble factor real en tu teléfono, cuando quieras) | (este PR) |
 | **Lote G** · T17 Instagram de verdad y las vueltas de Meta · T18 Páginas públicas | ⏳ pendiente | |
 | **Lote H** · T19 Mercado Libre: la vuelta automática · T20 Marketplace en producción | ⏳ pendiente | |
 | T21 Primera puesta en marcha (contigo) | ⏳ pendiente | |

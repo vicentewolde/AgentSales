@@ -10,6 +10,7 @@ import { type EnvResult, loadEnvironment } from "../../env.js";
 import type { ServerResolution } from "../../server.js";
 import {
   type CheckItem,
+  checkAdminTotp,
   checkAnthropicModel,
   checkAutoPublish,
   checkBackup,
@@ -64,6 +65,7 @@ async function runRemoteDoctor(deps: DoctorDeps, server: ServerResolution): Prom
   const llmKey = checkLlmKey(report);
   const backup = checkBackup(report, (deps.now ?? (() => new Date()))());
   const worker = checkWorker(report, true);
+  const adminTotp = checkAdminTotp(report);
   const withoutHint = ({ hint: _hint, ...item }: CheckItem): CheckItem => item;
   return [
     checkNode(deps.nodeVersion),
@@ -76,6 +78,7 @@ async function runRemoteDoctor(deps: DoctorDeps, server: ServerResolution): Prom
       : []),
     ...services.items,
     ...(worker ? [worker] : []),
+    ...(adminTotp ? [adminTotp] : []),
     // El respaldo del servidor (F8-T13: va al bucket de respaldos en R2) no se arregla con
     // `pnpm db:backup` del Mac: el consejo es el del servidor.
     ...(backup
@@ -123,6 +126,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     ((binDir: string | undefined) => findPgTool("pg_dump", binDir === undefined ? {} : { binDir }));
   const environment = checkEnvironment(services.report, false);
   const localWorker = checkWorker(services.report, false);
+  const adminTotp = checkAdminTotp(services.report);
   const items: CheckItem[] = [
     checkNode(deps.nodeVersion),
     ...(deps.server === undefined ? [] : [checkServer(deps.server)]),
@@ -137,6 +141,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     ...(anthropicModel ? [anthropicModel] : []),
     ...services.items,
     ...(localWorker ? [localWorker] : []),
+    ...(adminTotp ? [adminTotp] : []),
     await checkFfmpegTool(deps.run, "ffmpeg", ffmpegPath),
     await checkFfmpegTool(deps.run, "ffprobe", ffprobePath),
     checkChromium(deps.chromium),

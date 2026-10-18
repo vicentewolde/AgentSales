@@ -223,6 +223,10 @@ const SERVER_INVALID = new Set([
 export function httpStatusFor(code: string): ContentfulStatusCode {
   // La sesión (F7, spec §4.13): antes de los patrones (`AUTH_INVALID` no es un 400).
   if (code === "AUTH_REQUIRED" || code === "AUTH_INVALID") return 401;
+  // El doble factor (F8-T15): un código o un desafío que no sirven son como una contraseña mala.
+  if (code === "TOTP_CODE_INVALID" || code === "LOGIN_CHALLENGE_INVALID") return 401;
+  if (code === "TOTP_ALREADY_ENABLED" || code === "TOTP_NOT_STARTED") return 409;
+  if (code === "TOTP_NOT_ENABLED") return 409;
   if (code === "AUTH_LOCKED") return 423;
   if (code === "FORBIDDEN" || code === "ORIGIN_NOT_ALLOWED") return 403;
   // F7-T15 (ADR-0023): el formulario automático de Marketplace es solo para los corredores propios.

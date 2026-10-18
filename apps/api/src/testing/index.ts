@@ -12,7 +12,9 @@ import {
 } from "@agentsales/core";
 import {
   createFakePasswordHasher,
+  createFakeSecretBox,
   createFakeSecretTokens,
+  createFakeTotpProvider,
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
   createInMemoryFieldDefinitionRepository,
@@ -234,6 +236,9 @@ export function testAuth(): TestAuth {
     brokers: createInMemoryBrokerRepository(),
     hasher,
     tokens,
+    loginChallenges: repos.loginChallenges,
+    totp: createFakeTotpProvider(),
+    totpBox: createFakeSecretBox(),
     secureCookie: false,
   };
 }

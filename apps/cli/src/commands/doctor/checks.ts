@@ -511,6 +511,21 @@ export function checkLlmKey(report: HealthReport | null): CheckItem | null {
 }
 
 /**
+ * El doble factor (F8-T15, spec F8 §4.8): recomendado para el administrador. Una advertencia por
+ * los administradores activos que no lo tienen; `null` si todos lo tienen o la API no lo informa.
+ */
+export function checkAdminTotp(report: HealthReport | null): CheckItem | null {
+  const admins = report?.adminsWithoutTotp ?? [];
+  if (admins.length === 0) return null;
+  return {
+    name: "Doble factor",
+    level: "warn",
+    detail: `${admins.join(", ")} sin doble factor (recomendado para el administrador)`,
+    hint: "actívalo en el panel: Mi cuenta → Activar el doble factor",
+  };
+}
+
+/**
  * `auto_publish` (F6-T11, spec F6 §4.10): con la API en vivo y corredores que lo tienen, una
  * advertencia destacada en rojo (publica sin revisión); en simulación, solo informa. `null` si
  * ningún corredor lo tiene o la API no responde.

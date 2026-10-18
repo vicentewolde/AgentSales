@@ -4,14 +4,17 @@ import {
   type BrokerRepository,
   type InvitationRepository,
   isAppError,
+  type LoginChallengeRepository,
   type PasswordHasher,
   resolveSession,
   SESSION_TTL_MS,
+  type SecretBox,
   type SecretTokens,
   type Session,
   type SessionClient,
   type SessionRepository,
   scopeOf,
+  type TotpProvider,
   type User,
   type UserRepository,
 } from "@agentsales/core";
@@ -52,6 +55,11 @@ export type AuthDeps = {
   brokers: Pick<BrokerRepository, "findById">;
   hasher: PasswordHasher;
   tokens: SecretTokens;
+  /** El doble factor (spec F8 §4.8): el segundo paso de entrar, los códigos y su clave cifrada. */
+  loginChallenges: LoginChallengeRepository;
+  totp: TotpProvider;
+  /** `SecretBox` con la clave del propósito `totp` (`createSecretBox(key, KEY_PURPOSES.totp)`). */
+  totpBox: SecretBox;
   /** La cookie va `Secure` (con HTTPS, F8). */
   secureCookie: boolean;
   now?: () => Date;

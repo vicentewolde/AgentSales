@@ -8,7 +8,9 @@ import {
   createSecretBox,
   createSecretTokens,
   createStateSigner,
+  createTotpProvider,
   findWorkspaceRoot,
+  KEY_PURPOSES,
   loadAppEnvFile,
   loadEnv,
   panelUrlOf,
@@ -26,6 +28,7 @@ import {
   createInvitationRepository,
   createListingLock,
   createListingRepository,
+  createLoginChallengeRepository,
   createMediaRepository,
   createOAuthStateRepository,
   createPlatformAccountRepository,
@@ -49,10 +52,12 @@ import {
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage, r2BucketOrigin } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { API_PREFIX } from "./access.js";
 import { createApp } from "./app.js";
 import { backupStatusReader } from "./backup-status.js";
 import { createApiOperations } from "./portal.js";
+import { clientIpResolver, createRateLimiter } from "./rate-limit.js";
 import { createRequestContext } from "./request-context-node.js";
 import { instagramStartUrlOf } from "./routes/oauth.js";
 import { internetAccess, localAccess } from "./security.js";
@@ -104,6 +109,7 @@ const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
 // o, con el respaldo en R2 (F8-T13), en `system/` del bucket principal.
 let serverVersion: string | null = null;
 const brokers = createBrokerRepository(database.db);
+const users = createUserRepository(database.db);
 const workerHeartbeats = createWorkerHeartbeatRepository(database.db);
 const backupStatus = backupStatusReader(
   env.BACKUP_TARGET === "r2"
@@ -123,12 +129,17 @@ const app = createApp({
   // Usuarios y sesiones (F7, ADR-0021): `scrypt` y los tokens de config; la cookie `Secure` llega
   // con HTTPS en F8.
   auth: {
-    users: createUserRepository(database.db),
+    users,
     sessions: createSessionRepository(database.db),
     invitations: createInvitationRepository(database.db),
     brokers,
     hasher: createPasswordHasher(),
     tokens: createSecretTokens(),
+    // El doble factor (spec F8 §4.8): TOTP con `node:crypto` y la clave cifrada con su propio
+    // propósito (no abre las credenciales de las cuentas).
+    loginChallenges: createLoginChallengeRepository(database.db),
+    totp: createTotpProvider(),
+    totpBox: createSecretBox(env.APP_ENCRYPTION_KEY, KEY_PURPOSES.totp),
     // Con HTTPS, la cookie `__Host-` y `Secure` (spec F8 §4.3).
     secureCookie: https,
   },
@@ -223,11 +234,22 @@ const app = createApp({
         provider: env.LLM_PROVIDER,
         hasApiKey: (env.ANTHROPIC_API_KEY ?? "") !== "",
       }),
+    // Los administradores sin el doble factor (F8-T15): `doctor` recomienda activarlo.
+    adminsWithoutTotp: async () =>
+      (await users.list())
+        .filter((u) => u.role === "admin" && u.disabledAt === null && u.totpEnabledAt === null)
+        .map((u) => u.email),
     // El latido del worker (F8-T12): si está encendido y desde cuándo.
     workerHeartbeats: () => workerHeartbeats.listLatest(WORKER_HEARTBEAT_LOOKBACK),
   },
   logger,
   access,
+  // Límites por IP y por usuario (spec F8 §4.8): la IP de `CLIENT_IP_HEADER` (en Fly,
+  // `Fly-Client-IP`) o la del socket; nunca `X-Forwarded-For` sin configurarla.
+  rateLimit: {
+    limiter: createRateLimiter(),
+    clientIp: clientIpResolver(env.CLIENT_IP_HEADER, (c) => getConnInfo(c).remote.address),
+  },
 });
 
 // La API bajo `/api` en los dos modos y, en producción, el panel compilado del mismo origen.

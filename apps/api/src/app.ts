@@ -22,12 +22,13 @@ import {
   type PublicationRepository,
   type PublishMode,
 } from "@agentsales/core";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { API_PREFIX } from "./access.js";
 import { type AppEnv, type AuthDeps, authenticate, sessionCookieName } from "./auth.js";
 import { createErrorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, type HealthDetails, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
+import { type RateLimitDeps, rateLimitByIp, rateLimitByUser } from "./rate-limit.js";
 import { type RequestContext, withEventUser } from "./request-context.js";
 import { requestLogger } from "./request-logger.js";
 import { accountRoutes } from "./routes/accounts.js";
@@ -148,7 +149,15 @@ export type AppDeps = {
    * actual. Lo fijan los tests.
    */
   now?: () => Date;
+  /**
+   * Los límites por IP y por usuario (spec F8 §4.8, ADR-0026): `server.ts` los pasa siempre, con la
+   * IP de `CLIENT_IP_HEADER` o del socket. Los tests que no los prueban van sin ellos.
+   */
+  rateLimit?: RateLimitDeps;
 };
+
+/** Un middleware que no hace nada (un límite que no se configuró). */
+const passThrough: MiddlewareHandler<AppEnv> = (_c, next) => next();
 
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
 export function createApp(input: AppDeps) {
@@ -196,9 +205,11 @@ export function createApp(input: AppDeps) {
   const app = new Hono<AppEnv>()
     .use(requestLogger(deps.logger))
     .use(hostGuard(deps.access.allowedHosts))
+    .use(deps.rateLimit === undefined ? passThrough : rateLimitByIp(deps.rateLimit))
     .use(originGuard(deps.access.allowedOrigins, sessionCookieName(deps.auth.secureCookie)))
     .use(csrfGuard(deps.access.allowedOrigins))
     .use(authenticate(deps.auth, deps.logger, deps.requestContext))
+    .use(deps.rateLimit === undefined ? passThrough : rateLimitByUser(deps.rateLimit))
     // `/x/:id/*` también calza con `/x/:id` en Hono: una sola vez por prefijo (una lectura).
     .use("/listings/:id/*", ownership.listing)
     .use("/content-runs/:id/*", ownership.contentRun)

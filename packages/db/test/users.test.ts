@@ -11,6 +11,7 @@ import { MIGRATIONS_FOLDER } from "../src/migrations.js";
 import { createBrokerRepository } from "../src/repositories/brokers.js";
 import {
   createInvitationRepository,
+  createLoginChallengeRepository,
   createOAuthStateRepository,
   createSessionRepository,
   createUserRepository,
@@ -35,6 +36,7 @@ async function pgliteRepositories() {
     sessions: createSessionRepository(db),
     invitations: createInvitationRepository(db),
     oauthStates: createOAuthStateRepository(db),
+    loginChallenges: createLoginChallengeRepository(db),
   };
 }
 

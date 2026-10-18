@@ -160,7 +160,7 @@ async function mustGetUser(users: UserRepository, id: string): Promise<User> {
 
 /**
  * Restablecer: un enlace nuevo (reemplaza el anterior), cierra todas las sesiones del usuario y
- * quita su bloqueo. Solo el administrador. La contraseña anterior sigue sirviendo hasta que se
+ * quita su bloqueo y su doble factor (F8). Solo el administrador. La contraseña anterior sigue sirviendo hasta que se
  * usa el enlace (ADR-0021): así nadie queda fuera por un enlace que no llegó; si la contraseña se
  * filtró, además se desactiva al usuario hasta que elija otra.
  */
@@ -172,6 +172,8 @@ export async function resetUserAccess(
   const now = deps.now?.() ?? new Date();
   const user = await mustGetUser(deps.users, input.userId);
   await deps.sessions.deleteForUser(user.id);
+  // Restablecer también quita el doble factor (spec F8 §4.8): es la salida si perdió el teléfono.
+  await deps.users.clearTotp(user.id);
   const cleared = await deps.users.clearLock(user.id);
   return issueLink(deps, cleared, "reset", input.actor.id, now);
 }
@@ -222,6 +224,9 @@ export async function ensureAdmin(
   }
   await deps.sessions.deleteForUser(existing.id);
   if (existing.disabledAt !== null) await deps.users.setDisabled(existing.id, null);
+  // También le quita el doble factor (spec F8 §4.8): `pnpm auth:admin` tiene la base y es la
+  // salida del operador si pierde el teléfono.
+  await deps.users.clearTotp(existing.id);
   const cleared = await deps.users.clearLock(existing.id);
   return { ...(await issueLink(deps, cleared, "reset", null, now)), created: false };
 }

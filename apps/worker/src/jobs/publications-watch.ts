@@ -2,6 +2,7 @@ import {
   type CloseAbandonedImportsDeps,
   closeAbandonedImports,
   isAppError,
+  type LoginChallengeRepository,
   type OAuthStateRepository,
   purgeExpiredAuth,
   type SessionRepository,
@@ -41,10 +42,14 @@ export const PUBLICATIONS_WATCH_SCHEDULE: JobSchedule<"publications.watch"> = {
 };
 
 export type PublicationsWatchJobDeps = WatchPublicationsDeps & {
-  /** F7: borrar las sesiones y los `state` de OAuth vencidos en cada vuelta. */
+  /**
+   * F7: borrar las sesiones y los `state` de OAuth vencidos en cada vuelta; desde F8-T15, también
+   * los desafíos vencidos del segundo paso de entrar.
+   */
   authCleanup?: {
     sessions: Pick<SessionRepository, "deleteExpired">;
     oauthStates: Pick<OAuthStateRepository, "deleteExpired">;
+    loginChallenges: Pick<LoginChallengeRepository, "deleteExpired">;
   };
   /**
    * F8 (spec F8 §4.4): cerrar las cargas que nadie terminó de subir en 24 h y borrar de R2 lo que
@@ -102,8 +107,11 @@ export function publicationsWatchJob(deps: PublicationsWatchJobDeps): Job {
             deps.authCleanup,
             (deps.now ?? (() => new Date()))(),
           );
-          if (purged.sessions + purged.oauthStates > 0) {
-            logger.info(purged, "vigilancia: sesiones y estados de OAuth vencidos borrados");
+          if (purged.sessions + purged.oauthStates + purged.loginChallenges > 0) {
+            logger.info(
+              purged,
+              "vigilancia: sesiones, estados de OAuth y desafíos vencidos borrados",
+            );
           }
         } catch (error) {
           logger.warn(

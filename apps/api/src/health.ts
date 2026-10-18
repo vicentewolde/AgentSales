@@ -49,6 +49,8 @@ export type HealthDetails = {
   llmKeyMissingBrokers?: () => Promise<string[]>;
   /** Los latidos más recientes del worker (F8-T12, spec F8 §4.10); un error da `null`. */
   workerHeartbeats?: () => Promise<WorkerHeartbeat[]>;
+  /** Los administradores activos sin el doble factor (F8-T15); un error da `null`. */
+  adminsWithoutTotp?: () => Promise<string[]>;
   now?: () => Date;
 };
 
@@ -95,6 +97,9 @@ export async function runHealth(options: {
     ...(details.llmKeyMissingBrokers === undefined
       ? {}
       : { llmKeyMissingBrokers: await brokerSlugs(details.llmKeyMissingBrokers) }),
+    ...(details.adminsWithoutTotp === undefined
+      ? {}
+      : { adminsWithoutTotp: await brokerSlugs(details.adminsWithoutTotp) }),
     ...(details.workerHeartbeats === undefined
       ? {}
       : {

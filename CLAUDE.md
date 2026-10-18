@@ -49,7 +49,7 @@ pnpm db:dev-scrub        # borra las credenciales copiadas en la rama dev de Neo
 pnpm storage:check       # verifica acceso al bucket de R2, el PUT prefirmado (y que R2 rechace otro contenido) y la regla de CORS para el panel (--origin <url>; con ENV_FILE=.env.production y --origin https://agentsales.agentpey.com, el bucket de producción; habla con R2: lo corre el operador)
 pnpm auth:admin --email <correo>  # crea el administrador o le da un enlace de restablecer, en el portapapeles sin imprimirlo (habla directo con la base; lo corre el operador)
 gh workflow run deploy.yml --ref main  # despliega en Fly.io (solo main con la CI en verde; lo corre el operador, nunca Claude: D8). Guía docs/10-despliegue.md: secretos, dominio, encender y apagar el worker para una demo, logs y volver atrás
-pnpm -s cli login --email <correo>  # la sesión de la CLI (pide la contraseña sin mostrarla: lo corre el operador en su terminal); con --api https://<dominio>, la de un servidor (queda guardada; AGENTSALES_API_URL manda sobre ella); whoami (dice el servidor), logout
+pnpm -s cli login --email <correo>  # la sesión de la CLI (pide la contraseña sin mostrarla y, con el doble factor, el código de la app: lo corre el operador en su terminal); con --api https://<dominio>, la de un servidor (queda guardada; AGENTSALES_API_URL manda sobre ella); whoami (dice el servidor), logout
 pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo)
 pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo)
 pnpm worker:ping         # encola un job de prueba (con el worker corriendo)

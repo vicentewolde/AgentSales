@@ -245,6 +245,7 @@ describe("revisión del lote G", () => {
       disabled: false,
       locked: false,
       lastLoginAt: null,
+      totpEnabled: false,
     };
     for (const invitationUrl of ["", "http://localhost:5173/otra-cosa", "no es un enlace"]) {
       await expect(

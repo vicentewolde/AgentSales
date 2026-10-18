@@ -30,6 +30,8 @@ export const userSchema = z.object({
   lockedUntil: z.date().nullable(),
   disabledAt: z.date().nullable(),
   lastLoginAt: z.date().nullable(),
+  /** Desde cuándo tiene el doble factor activo (spec F8 §4.8); `null` si no lo tiene. */
+  totpEnabledAt: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
@@ -58,6 +60,19 @@ export const invitationSchema = z.object({
   createdAt: z.date(),
 });
 export type Invitation = z.infer<typeof invitationSchema>;
+
+/**
+ * El segundo paso de entrar con el doble factor (`login_challenges`, spec F8 §4.8), sin su token:
+ * sirve una vez y vence a los 5 min.
+ */
+export const loginChallengeSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  expiresAt: z.date(),
+  usedAt: z.date().nullable(),
+  createdAt: z.date(),
+});
+export type LoginChallenge = z.infer<typeof loginChallengeSchema>;
 
 /** Largo de una contraseña (spec F7 §4.2). */
 export const PASSWORD_MIN_LENGTH = 12;

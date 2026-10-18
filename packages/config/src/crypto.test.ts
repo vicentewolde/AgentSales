@@ -52,6 +52,15 @@ describe("createSecretBox (AES-256-GCM)", () => {
     expect(box.decrypt(box.encrypt("Ñuñoa 🏢", AAD), AAD)).toBe("Ñuñoa 🏢");
   });
 
+  it("la caja del doble factor (F8-T15) usa otra clave: no abre credenciales ni al revés", () => {
+    const totpBox = createSecretBox(APP_KEY, KEY_PURPOSES.totp);
+    const sealed = totpBox.encrypt("CLAVEBASE32", AAD);
+
+    expect(totpBox.decrypt(sealed, AAD)).toBe("CLAVEBASE32");
+    expect(() => box.decrypt(sealed, AAD)).toThrow(/credenciales/);
+    expect(() => totpBox.decrypt(box.encrypt(token, AAD), AAD)).toThrow(/credenciales/);
+  });
+
   it("el cifrado no contiene el texto, y dos cifrados del mismo texto difieren (IV aleatorio)", () => {
     const first = box.encrypt(token, AAD);
     const second = box.encrypt(token, AAD);

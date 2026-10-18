@@ -353,21 +353,21 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 - **Archivos:** `apps/api/src/{rate-limit.ts,app.ts,server.ts}`
 - **Descripción:** §4.8: los límites y el 429 con `Retry-After`, la IP desde `CLIENT_IP_HEADER`.
 - **Hecho cuando:**
-  - [ ] Tests: cada límite, la ventana que se renueva, la IP de la cabecera configurada y que sin configurarla se ignora `X-Forwarded-For`
+  - [x] Tests: cada límite, la ventana que se renueva, la IP de la cabecera configurada y que sin configurarla se ignora `X-Forwarded-For` (2026-10-18: `rate-limit.test.ts`)
 
 ### F8-T15 · Doble factor (core, base y API)
 - **Depende de:** T14
 - **Archivos:** `packages/config/src/totp.ts`, `packages/core/src/use-cases/auth/totp.ts`, `packages/db/drizzle/0012_*.sql`, `packages/db/src/repositories/{users,login-challenges,recovery-codes}.ts`, `apps/api/src/routes/auth.ts`, `packages/db/src/auth-admin.ts`
 - **Descripción:** §4.8: activar, confirmar, entrar en dos pasos, recuperación, desactivar; restablecer y `auth:admin` lo quitan.
 - **Hecho cuando:**
-  - [ ] Tests: los vectores del RFC 6238; la ventana de ±30 s; un código repetido rechazado; el desafío vencido o usado; un código de recuperación sirve una vez; los fallos cuentan para el bloqueo; la clave nunca sale en logs ni errores
+  - [x] Tests: los vectores del RFC 6238; la ventana de ±30 s; un código repetido rechazado; el desafío vencido o usado; un código de recuperación sirve una vez; los fallos cuentan para el bloqueo; la clave nunca sale en logs ni errores (2026-10-18: `totp.test.ts` de config y de core, el contrato de usuarios contra PGlite y la memoria, `auth-totp.test.ts`)
 
 ### F8-T16 · Doble factor en el panel y la CLI
 - **Depende de:** T15
 - **Archivos:** `apps/web/src/pages/{LoginPage.tsx,AccountPage.tsx}`, `apps/cli/src/commands/login.ts`
 - **Descripción:** activar en "Mi cuenta" (la clave, el enlace y los códigos una vez), el segundo paso al entrar; la CLI pide el código.
 - **Hecho cuando:**
-  - [ ] Tests del panel y de la CLI para cada paso; los códigos de recuperación no quedan en la caché del panel
+  - [x] Tests del panel y de la CLI para cada paso; los códigos de recuperación no quedan en la caché del panel (2026-10-18: `AccountPage.test.tsx`, `login.test.ts` de la CLI)
 
 ### F8-T17 · Instagram de verdad y las vueltas de Meta
 - **Depende de:** T02
@@ -468,3 +468,4 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 | 2026-10-18 | F8-T08 (revisión del `arquitecto`): §4.5 precisa el orden de `login` y cuándo guarda la dirección, que el token solo viaja a su servidor, que `AGENTSALES_API_URL` se lee de la terminal, el aviso del ambiente en `doctor`, y que las herramientas del worker las asegura la imagen (T10), no `/health` |
 | 2026-10-18 | Lote D (T10 a T12): la migración del worker es la `0011` (el lote D llegó antes que el F; el doble factor pasa a la `0012`); el chequeo de Fly es `/api/health/live` (sin base); el panel configura zod sin `eval` para la CSP; el worker parte con 2 GB hasta medir el pico; `auto_publish` cortado se marca con `content_runs.auto_publish_done_at` |
 | 2026-10-18 | Lote E (T13). Precisiones: el estado en R2 se lee y escribe en `packages/storage` (`readStoredBackupStatus`), no en core (sin tipos de texto) ni en `db` (no depende del almacenamiento); `runBackup` recibe `status` y `deliver`; el volcado va a `db/` del bucket de respaldos; el bucket y el token de respaldos deben ser otros que los de los medios; en Fly los secretos llegan a los dos procesos, así que la API borra el token de respaldos de su entorno y su configuración al arrancar (`withoutBackupCredentials`); `BACKUP_TARGET` y `BACKUP_R2_BUCKET` van en `fly.toml` y la CI arranca la imagen con valores de prueba |
+| 2026-10-18 | Lote F (T14 a T16). Precisiones: los límites viven en `apps/api/src/rate-limit.ts` (ventanas fijas en un `Map` con tope de claves) y no son un puerto (D14 manda sobre la frase "puerto `RateLimiter`" de §4.8); la `0012` lleva solo el doble factor (`users.totp_*`, `user_recovery_codes`, `login_challenges`): los pedidos de borrado de Meta van en la migración de T17; los códigos de recuperación y los desafíos se manejan en `repositories/users.ts` (activar y quitar el doble factor tocan las dos tablas en una transacción), no en archivos aparte; el desafío se gasta solo al entrar, así un código mal escrito se corrige mientras no venza (cada fallo cuenta para el bloqueo); "Mi cuenta" es una página nueva (`/cuenta`), con el enlace en el menú del usuario; `/health` suma `adminsWithoutTotp` para el aviso de `doctor`; cambiar la contraseña no existe todavía, así que solo cambiar el doble factor cierra las demás sesiones |

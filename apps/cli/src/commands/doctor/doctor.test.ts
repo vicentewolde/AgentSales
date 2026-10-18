@@ -432,6 +432,27 @@ describe("runDoctor", () => {
     expect(report.items.find((item) => item.name === "Respaldo")).toBeUndefined();
   });
 
+  it("avisa si un administrador no tiene el doble factor (F8-T15)", async () => {
+    const itemOf = async (adminsWithoutTotp: string[] | undefined) =>
+      (
+        await runDoctor(
+          deps({
+            fetchHealth: async () => ({
+              ...healthy,
+              ...(adminsWithoutTotp === undefined ? {} : { adminsWithoutTotp }),
+            }),
+          }),
+        )
+      ).items.find((item) => item.name === "Doble factor");
+
+    expect(await itemOf(["admin@ejemplo.cl"])).toMatchObject({
+      level: "warn",
+      detail: "admin@ejemplo.cl sin doble factor (recomendado para el administrador)",
+    });
+    expect(await itemOf([])).toBeUndefined();
+    expect(await itemOf(undefined)).toBeUndefined();
+  });
+
   it("sin Claude solo advierte y sale con 0", async () => {
     const report = await runDoctor(
       deps({

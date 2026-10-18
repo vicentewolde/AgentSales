@@ -25,6 +25,12 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "GET /health/live": "public",
   // Entrar, salir y la invitación (F7-T04).
   "POST /auth/login": "public",
+  // El segundo paso de entrar y el doble factor de cada usuario (F8-T15).
+  "POST /auth/login/totp": "public",
+  "GET /auth/totp": "session",
+  "POST /auth/totp/setup": "session",
+  "POST /auth/totp/confirm": "session",
+  "POST /auth/totp/disable": "session",
   "POST /auth/invitations/accept": "public",
   // Salir es idempotente: con una sesión vencida igual borra la cookie (no responde 401).
   "POST /auth/logout": "public",

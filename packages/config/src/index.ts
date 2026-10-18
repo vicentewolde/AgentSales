@@ -10,6 +10,7 @@ export {
   createStateSigner,
   deriveKey,
   KEY_PURPOSES,
+  type SecretBoxPurpose,
   type SignedState,
   type StateSigner,
 } from "./crypto.js";
@@ -32,3 +33,12 @@ export { createErrorThrottle, type ErrorThrottleOptions } from "./error-throttle
 export { createLogger, type LoggerOptions, REDACTED, redact, redactText } from "./logger.js";
 export { createPasswordHasher } from "./password.js";
 export { createSecretTokens } from "./secret-tokens.js";
+export {
+  base32Decode,
+  base32Encode,
+  createTotpProvider,
+  hotp,
+  TOTP_DIGITS,
+  TOTP_PERIOD_SECONDS,
+  totpStepOf,
+} from "./totp.js";

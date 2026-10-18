@@ -2,6 +2,8 @@ import {
   AppError,
   type InvitationRepository,
   invitationSchema,
+  type LoginChallengeRepository,
+  loginChallengeSchema,
   type NewInvitation,
   type OAuthStateRepository,
   type SessionRepository,
@@ -10,10 +12,17 @@ import {
   type UserRepository,
   userSchema,
 } from "@agentsales/core";
-import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, count, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
-import { invitations, oauthStatesUsed, sessions, users } from "../schema.js";
+import {
+  invitations,
+  loginChallenges,
+  oauthStatesUsed,
+  sessions,
+  userRecoveryCodes,
+  users,
+} from "../schema.js";
 
 // Usuarios, sesiones, invitaciones y `state` usados (spec F7 §4.12, ADR-0021). Los hashes de la
 // contraseña y de los tokens nunca salen de aquí en las entidades.
@@ -35,6 +44,7 @@ function toUser(row: UserRow): User {
     lockedUntil: row.lockedUntil,
     disabledAt: row.disabledAt,
     lastLoginAt: row.lastLoginAt,
+    totpEnabledAt: row.totpEnabledAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -142,6 +152,100 @@ export function createUserRepository(db: SchemaDatabase): UserRepository {
     setDisabled(id, at) {
       return updateOne(id, { disabledAt: at });
     },
+
+    findTotp(id) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .select({
+            secretEncrypted: users.totpSecretEncrypted,
+            enabledAt: users.totpEnabledAt,
+            lastStep: users.totpLastStep,
+          })
+          .from(users)
+          .where(eq(users.id, id));
+        return row ?? null;
+      });
+    },
+
+    startTotp(id, secretEncrypted) {
+      return updateOne(id, { totpSecretEncrypted: secretEncrypted, totpLastStep: null });
+    },
+
+    enableTotp(id, { at, step, recoveryCodeHashes }) {
+      return withDbErrors(() =>
+        db.transaction(async (tx) => {
+          const [row] = await tx
+            .update(users)
+            .set({ totpEnabledAt: at, totpLastStep: step })
+            .where(eq(users.id, id))
+            .returning();
+          if (row === undefined) throw notFound(id);
+          await tx.delete(userRecoveryCodes).where(eq(userRecoveryCodes.userId, id));
+          if (recoveryCodeHashes.length > 0) {
+            await tx
+              .insert(userRecoveryCodes)
+              .values(recoveryCodeHashes.map((codeHash) => ({ userId: id, codeHash })));
+          }
+          return toUser(row);
+        }),
+      );
+    },
+
+    advanceTotpStep(id, step) {
+      return withDbErrors(async () => {
+        // Condicional en una sentencia: dos pedidos con el mismo código, solo uno gana.
+        const rows = await db
+          .update(users)
+          .set({ totpLastStep: step })
+          .where(
+            and(eq(users.id, id), or(isNull(users.totpLastStep), lt(users.totpLastStep, step))),
+          )
+          .returning({ id: users.id });
+        return rows.length === 1;
+      });
+    },
+
+    consumeRecoveryCode(id, codeHash, at) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .update(userRecoveryCodes)
+          .set({ usedAt: at })
+          .where(
+            and(
+              eq(userRecoveryCodes.userId, id),
+              eq(userRecoveryCodes.codeHash, codeHash),
+              isNull(userRecoveryCodes.usedAt),
+            ),
+          )
+          .returning({ id: userRecoveryCodes.id });
+        return rows.length === 1;
+      });
+    },
+
+    countRecoveryCodes(id) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .select({ left: count() })
+          .from(userRecoveryCodes)
+          .where(and(eq(userRecoveryCodes.userId, id), isNull(userRecoveryCodes.usedAt)));
+        return row?.left ?? 0;
+      });
+    },
+
+    clearTotp(id) {
+      return withDbErrors(() =>
+        db.transaction(async (tx) => {
+          await tx.delete(userRecoveryCodes).where(eq(userRecoveryCodes.userId, id));
+          const [row] = await tx
+            .update(users)
+            .set({ totpSecretEncrypted: null, totpEnabledAt: null, totpLastStep: null })
+            .where(eq(users.id, id))
+            .returning();
+          if (row === undefined) throw notFound(id);
+          return toUser(row);
+        }),
+      );
+    },
   };
 }
 
@@ -199,6 +303,16 @@ export function createSessionRepository(db: SchemaDatabase): SessionRepository {
         const rows = await db
           .delete(sessions)
           .where(eq(sessions.userId, userId))
+          .returning({ id: sessions.id });
+        return rows.length;
+      });
+    },
+
+    deleteForUserExcept(userId, keepId) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .delete(sessions)
+          .where(and(eq(sessions.userId, userId), ne(sessions.id, keepId)))
           .returning({ id: sessions.id });
         return rows.length;
       });
@@ -307,6 +421,64 @@ export function createOAuthStateRepository(db: SchemaDatabase): OAuthStateReposi
           .delete(oauthStatesUsed)
           .where(lt(oauthStatesUsed.expiresAt, now))
           .returning({ nonceHash: oauthStatesUsed.nonceHash });
+        return rows.length;
+      });
+    },
+  };
+}
+
+/** `LoginChallengeRepository` sobre Drizzle (spec F8 §4.12). */
+export function createLoginChallengeRepository(db: SchemaDatabase): LoginChallengeRepository {
+  const toChallenge = (row: typeof loginChallenges.$inferSelect) =>
+    loginChallengeSchema.parse({
+      id: row.id,
+      userId: row.userId,
+      expiresAt: row.expiresAt,
+      usedAt: row.usedAt,
+      createdAt: row.createdAt,
+    });
+
+  return {
+    create({ userId, tokenHash, expiresAt }) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .insert(loginChallenges)
+          .values({ userId, tokenHash, expiresAt })
+          .returning();
+        if (row === undefined) {
+          throw new AppError("LOGIN_CHALLENGE_WRITE_FAILED", "No se creó el paso de entrar");
+        }
+        return toChallenge(row);
+      });
+    },
+
+    findByTokenHash(tokenHash) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .select()
+          .from(loginChallenges)
+          .where(eq(loginChallenges.tokenHash, tokenHash));
+        return row === undefined ? null : toChallenge(row);
+      });
+    },
+
+    consume(id, at) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .update(loginChallenges)
+          .set({ usedAt: at })
+          .where(and(eq(loginChallenges.id, id), isNull(loginChallenges.usedAt)))
+          .returning({ id: loginChallenges.id });
+        return rows.length === 1;
+      });
+    },
+
+    deleteExpired(now) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .delete(loginChallenges)
+          .where(lt(loginChallenges.expiresAt, now))
+          .returning({ id: loginChallenges.id });
         return rows.length;
       });
     },

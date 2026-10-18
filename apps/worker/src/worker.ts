@@ -27,6 +27,7 @@ import {
   createImportRunRepository,
   createListingLock,
   createListingRepository,
+  createLoginChallengeRepository,
   createMediaRepository,
   createOAuthStateRepository,
   createPlatformAccountRepository,
@@ -325,6 +326,7 @@ const jobs = buildJobs({
     authCleanup: {
       sessions: createSessionRepository(database.db),
       oauthStates: createOAuthStateRepository(database.db),
+      loginChallenges: createLoginChallengeRepository(database.db),
     },
     // Las subidas que nadie terminó y lo que quedó en R2 de cargas terminadas (spec F8 §4.4).
     importCleanup: { importRuns, storage },

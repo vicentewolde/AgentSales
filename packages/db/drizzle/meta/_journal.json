@@ -85,6 +85,13 @@
       "when": 1792344829997,
       "tag": "0011_f8_worker",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792352671878,
+      "tag": "0012_f8_doble_factor",
+      "breakpoints": true
     }
   ]
 }
