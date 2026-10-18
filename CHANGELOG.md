@@ -4,6 +4,36 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [0.7.0] - 2026-10-17 · F7 Varios corredores
+Ahora das de alta a un corredor de verdad (su marca, su logo, su planilla y su usuario), y él entra con su correo y su contraseña, ve solo lo suyo y hace casi todo por su cuenta: cargar, preparar, aprobar, publicar, programar y cerrar. Sus textos se redactan por la API de Anthropic con tu clave, con el gasto anotado por corredor y un tope mensual opcional; tus corredores siguen con tu plan de Claude. Todo sigue corriendo en tu Mac: llevarlo a internet es F8.
+
+Demo (2026-10-18, en simulación): diste de alta a `corredor-demo` con su logo y su usuario; él entró en otra ventana, cargó dos propiedades con su planilla, las preparó por la API, vio su gasto, publicó Marketplace a mano, no vio nada de otro corredor y el tope frenó sus textos. Instagram quedó fuera de la demo (lo cubren las pruebas).
+
+### Añadido
+- **Entrar con usuario:** `pnpm auth:admin --email` crea tu administrador o te da un enlace nuevo si olvidaste la contraseña o te bloqueaste (al portapapeles, sin imprimirlo). En el panel, las páginas Entrar e Invitación, tu nombre y "Cerrar sesión"; en la CLI, `login`, `whoami` y `logout`. La sesión dura 30 días (7 sin uso), y 10 contraseñas equivocadas seguidas bloquean 15 minutos.
+- **Usuarios** (solo tú): invitar con un enlace que se ve una vez y vence en 72 h, restablecer, desactivar y reactivar, en el detalle del corredor o con `users list|invite|reset|disable|enable` (el enlace va al portapapeles).
+- **Cada corredor ve solo lo suyo:** propiedades, textos, publicaciones, cargas, cuentas, Seguimiento y agenda; lo ajeno responde "no existe". Tú ves todo y miras uno a la vez con "Ver corredor". El corredor carga, prepara, aprueba, publica, programa, cierra y edita su marca; conectar cuentas, la publicación automática, los topes y los usuarios son tuyos.
+- **Alta de corredores:** la página **Corredores** (crear, marca, si es tuyo, tope de IA, logo, planilla, usuarios, gasto y la lista de pasos del alta) y **Mi marca** para el corredor; en la CLI, `brokers create|edit|show|logo|template`. El logo, en PNG, JPEG o WebP de hasta 5 MB; la planilla de Excel viene con la hoja Corredor llena.
+- **La IA por la API para los corredores que no son tuyos,** con tu clave de Anthropic (Sonnet 5.5 por defecto). El gasto estimado del mes, en **Corredores**, **Mi marca** y `agentsales usage [--month]`. Con el tope mensual opcional, al llegar se frenan los textos y las imágenes se hacen igual. Para probar, `pnpm llm:smoke --provider anthropic-api` y `pnpm eval:content --provider anthropic-api --model <id>`.
+- **Marketplace a mano:** "Activar Marketplace a mano" en **Cuentas** (o `accounts connect marketplace --broker <slug> --manual`). El sistema deja listos el texto, las fotos y el precio en pesos; el corredor publica él mismo y confirma con el enlace o "No lo publiqué". Sin límite diario y con varios avisos esperando a la vez.
+- **La bitácora dice quién:** "Vinny (panel)" o "Vinny (CLI)".
+- **`doctor` y `/health`** avisan si falta `ANTHROPIC_API_KEY` habiendo corredores que no son tuyos.
+
+### Cambiado
+- Todo pide sesión: la CLI pide `agentsales login` una vez.
+- `/health` sin sesión muestra solo el estado y el modo; el detalle es para el administrador.
+- La lista de propiedades ya no trae notas internas, dirección, unidad ni atributos (el detalle sí).
+- El formulario automático de Marketplace queda solo para tus corredores propios; los corredores que ya existían quedaron como propios.
+- El corredor edita su propia marca (`PATCH /brokers/:id`). Entre la hoja Corredor de la planilla y Mi marca, manda la última que se guarde.
+- La carga de un corredor queda a su nombre desde la cola, y su planilla nunca crea otro corredor.
+- Comparación de modelos (D15): en 5 propiedades de prueba, Sonnet 5.5 costó US$0,051 y Haiku 5.5 US$0,0026, pero en la prueba corta Haiku agregó un dato que no venía ("buena ubicación"). Sigue Sonnet.
+
+### Corregido
+- La dirección de vuelta de Mercado Libre sirve una sola vez (antes valía 10 minutos).
+- Se retiró la cabecera `X-AgentSales-Client`, que cualquier proceso local podía mandar para hacerse pasar por la CLI.
+- Seguimiento y agenda filtran por corredor en la base y piden los textos en una sola consulta (deuda de F6).
+- El worker borra cada hora las sesiones vencidas y los enlaces de Mercado Libre vencidos.
+
 ## [0.6.0] - 2026-10-16 · F6 Calendario + seguimiento
 Ahora dejas programadas las publicaciones de una o varias propiedades y salen solas a la hora mientras el worker está encendido; lo que falla por un límite pasajero de Instagram espera solo, y lo demás te dice en palabras simples qué hacer. Cuando una propiedad se vende o se arrienda, un solo botón cierra su aviso de Portal, descarta lo pendiente y te deja la lista de lo que tienes que borrar a mano. La página **Seguimiento** (y `agentsales agenda`) muestra lo que te toca hacer hoy, y la base se puede respaldar en tu equipo. La demo en simulación (16 de octubre) programó cinco propiedades en dos lotes (uno con 2 minutos entre propiedades), las vio salir solas de a una, desprogramó y reprogramó un reel, apagó todo mientras pasaba la hora y al encenderlo salieron las atrasadas; mostró "te toca" de Marketplace sin abrir Facebook, pausó, reanudó, marcó como arrendada y reabrió P002, y con la publicación automática P003 se aprobó y publicó sola en Instagram. Portal en simulación no se pudo mostrar (al corredor de pruebas le falta el WhatsApp) y quedó cubierto por las pruebas; el respaldo real espera que instales `libpq`.
 

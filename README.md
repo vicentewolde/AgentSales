@@ -2,13 +2,14 @@
 
 Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento.
 
-> Estado: **F5 · Facebook Marketplace cerrada** (probada en vivo: el sistema llena el formulario y tú haces Siguiente y Publicar). Siguiente: F6 · Calendario + seguimiento. Ver `docs/ESTADO.md`.
+> Estado: **F7 · Varios corredores cerrada** (usuarios con contraseña, cada corredor ve solo lo suyo, la IA por la API de Anthropic con tope de gasto y Marketplace a mano). Siguiente: F8. Ver `docs/ESTADO.md`.
 
 ## Requisitos
 - Node.js 26 (`.nvmrc`) y pnpm 11 (`npm i -g pnpm@11`; Node 26 ya no trae corepack)
 - ffmpeg 8.1 o más nuevo, con ffprobe (`brew install ffmpeg`): arma las fotos HEIC del iPhone y el reel
 - Chromium de Playwright, para dibujar la portada y la ficha (se instala en la puesta en marcha)
 - La CLI de Claude (Claude Code) con sesión iniciada en tu plan (`claude` y `/login`): redacta los textos. Para probar sin gastar cuota, `LLM_PROVIDER=fake` en `.env`
+- Una clave de la API de Anthropic (`ANTHROPIC_API_KEY`, F7), solo si atiendes corredores que no son tuyos: sus textos se redactan por la API y se cobran por uso (`docs/07-checklist-cuentas.md`)
 - Proyecto de Neon (Postgres) y bucket privado de Cloudflare R2, ambos gratis: `docs/09-alta-neon-r2.md`
 - El cliente de Postgres (`brew install libpq`), para el respaldo local de la base (`pg_dump`; `doctor` revisa que su versión alcance a la de Neon)
 
@@ -48,7 +49,7 @@ pnpm llm:smoke                                       # una llamada corta a la CL
 ```
 En el panel, el detalle de cada propiedad tiene la sección **Contenido**: preparar, el avance, la vista previa por canal (carrusel, caption, reel, Portal y Marketplace) con su revisión editorial y la edición de los textos.
 
-Conectar Instagram y publicar (F3), con `pnpm dev` corriendo. La cuenta se conecta con el token del botón **Generate token** del panel de Meta (copiado al portapapeles); las variables `INSTAGRAM_*` solo las necesita el OAuth, que llega en F7:
+Conectar Instagram y publicar (F3), con `pnpm dev` corriendo. La cuenta se conecta con el token del botón **Generate token** del panel de Meta (copiado al portapapeles); las variables `INSTAGRAM_*` solo las necesita el OAuth, que llega en F8:
 ```bash
 pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin
 pnpm -s cli accounts [refresh <id> [--force]]        # cuentas, vencimiento y refresco
@@ -91,14 +92,22 @@ pnpm -s cli listing pause|resume|reopen|archive <id_propiedad>
 pnpm -s cli listing close <id_propiedad> --reason vendida|arrendada|retirada   # cierra Portal y te deja las tareas a mano
 pnpm -s cli publications update|relist <id>                  # Portal: manda los cambios o republica uno vencido
 pnpm -s cli brokers auto-publish <slug> on|off               # aprobar y publicar solo al preparar
+pnpm db:backup                                               # respaldo en ~/.agentsales/backups (no necesita pnpm dev)
+```
+En el panel: la página **Seguimiento** (http://localhost:5173/seguimiento) con la agenda y la tabla por plataforma; programar en cada publicación, en el canal y varias propiedades a la vez desde **Propiedades**; los botones de la propiedad en su detalle (Pausar, Vendida, Arrendada…), y la publicación automática en **Cuentas**. El worker también respalda la base cada día a las 13:00; cómo restaurar, en `docs/08-guia-operador.md`.
+
+Varios corredores (F7), con `pnpm dev` corriendo y tu sesión de administrador. Cada corredor entra con su usuario y ve solo lo suyo; el paso a paso está en `docs/08-guia-operador.md` ("Dar de alta un corredor"):
+```bash
 pnpm -s cli brokers create --slug <slug> --name <nombre> --brand <marca> --color <#RRGGBB>   # un corredor nuevo
 pnpm -s cli users invite --email <correo> --name <nombre> --broker <slug>   # su usuario: el enlace queda en el portapapeles
 pnpm -s cli brokers template <slug>                          # su planilla de Excel, con su marca
 pnpm -s cli accounts connect marketplace --broker <slug> --manual   # Marketplace a mano (corredores que no son tuyos)
-pnpm -s cli usage                                            # el gasto de IA del mes por corredor
-pnpm db:backup                                               # respaldo en ~/.agentsales/backups (no necesita pnpm dev)
+pnpm -s cli usage [--month 2026-10]                          # el gasto de IA del mes por corredor (estimado)
+pnpm -s cli users list|reset|disable|enable                  # los usuarios; reset deja otro enlace en el portapapeles
+pnpm -s cli brokers show|edit|logo <slug>                    # su marca, sus ajustes (--cap <usd> para el tope de IA) y su logo
+pnpm llm:smoke --provider anthropic-api                      # una llamada corta por la API (gasta centavos)
 ```
-En el panel: la página **Seguimiento** (http://localhost:5173/seguimiento) con la agenda y la tabla por plataforma; programar en cada publicación, en el canal y varias propiedades a la vez desde **Propiedades**; los botones de la propiedad en su detalle (Pausar, Vendida, Arrendada…), y la publicación automática en **Cuentas**. El worker también respalda la base cada día a las 13:00; cómo restaurar, en `docs/08-guia-operador.md`.
+En el panel: **Corredores** (alta, marca, logo, planilla, usuarios y gasto), **Ver corredor** para mirar uno a la vez y, para el corredor, **Mi marca**. Los enlaces de invitación son secretos: envíalos por un canal privado.
 - **`PUBLISH_MODE=dry-run` por defecto:** no se publica nada de verdad. En `live` se ve en rojo en el panel y la CLI.
 - **La cola la inicializa el worker:** la primera vez aparece con error hasta que el worker arranca (lo hace `pnpm dev`); refresca el panel.
 - **Detén `pnpm dev` al terminar** (Ctrl+C): el worker y el panel mantienen Neon despierto y consumen las horas del plan gratis.

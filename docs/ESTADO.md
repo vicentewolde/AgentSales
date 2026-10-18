@@ -2,24 +2,24 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-17
-**Fase actual:** F7 · Varios corredores (`docs/specs/fase-7-varios-corredores.md`, aprobado el 2026-10-16; ADR-0021 a ADR-0023). F6 cerrada (tag `v0.6.0`)
-**Última tarea:** lote H de F7 (F7-T17 y T18): el panel con el alcance, Corredores, Mi marca, gasto y Marketplace a mano
-**Siguiente paso:** `/fase-cerrar 7` (T19: la demo con un corredor de prueba, la auditoría y el tag `v0.7.0`)
+**Actualizado:** 2026-10-18
+**Fase actual:** F8 · En internet (spec por redactar: `/fase-plan 8`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` por crear, con tu permiso)
+**Última tarea:** cierre de F7 (T19, `/fase-cerrar 7`): demo completa con `corredor-demo` (2026-10-18, sin Instagram), auditoría del `arquitecto`, `CHANGELOG [0.7.0]` y spec cerrado
+**Siguiente paso:** `/fase-plan 8` — redactar el spec de F8 (ver `docs/06-roadmap.md`, la deuda "Para F8" más abajo y `docs/07-checklist-cuentas.md`, "Antes de F8")
 
-## Pendiente tuyo para F7
+## Pendiente tuyo de F7
 - [x] **Clave de la API de Anthropic** en `.env` (2026-10-17); `pnpm llm:smoke --provider anthropic-api` respondió bien
 - [ ] **Límite de gasto en la consola de Anthropic:** la clave no tiene uno (recomendado: el tope por corredor solo cubre lo que AgentSales anota)
 - [ ] **Renovar la clave antes del 2026-12-31** (vence ese día; después la IA de los corredores da `LLM_AUTH_REQUIRED`)
 - [ ] **Términos comerciales de Anthropic** (antes de cobrar o de F8): revisar que una sola clave pueda atender a varios clientes
-- [ ] **Para la demo:** una segunda cuenta de Instagram tuya como evaluador de tu app de Meta (pasos en `docs/07-checklist-cuentas.md`, con el lote H)
+- [ ] **Instagram de un corredor como evaluador** (no se probó en la demo: queda NO VERIFICADO que Meta deje publicar en la cuenta de un evaluador): pasos en `docs/07-checklist-cuentas.md`, "Antes de F7", cuando tengas el primer corredor piloto
 
 ## Pendiente tuyo de F6
 - [ ] **Respaldo real (criterio 10 y paso 7 de la demo):** `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6"), después `pnpm db:backup`, mirar el archivo en `~/.agentsales/backups` con `pg_restore --list` y `pnpm -s cli doctor` (con `pnpm dev`) para ver que la versión alcanza
 - [ ] **WhatsApp del corredor de pruebas:** en la demo, Portal rechazó P002 por falta del WhatsApp (`PORTAL_NOT_READY`): completarlo en la hoja Corredor y volver a cargar la planilla. Con eso se puede mostrar Portal en simulación (actualizar, republicar, pausar con la propiedad)
 - [ ] **Prueba en vivo de F6** (§7, paso 8), solo con tu instrucción en el chat
 
-## Pendiente tuyo de fases anteriores (no bloquea F7)
+## Pendiente tuyo de fases anteriores (no bloquea F8)
 - **De F5:**
   - [ ] Token de la API BDE del Banco Central (`BCCH_API_TOKEN` en `.env`; `docs/07-checklist-cuentas.md`, "Antes de F5") y después `pnpm uf:smoke`. Sin él, un aviso en UF no va a Marketplace (`doctor` lo avisa)
   - [ ] Revisar en Facebook (Perfil → Estado del perfil → Marketplace) que tu cuenta no tiene restricciones
@@ -34,26 +34,7 @@
 ## Progreso de la fase
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F7 (`/fase-plan 7`) y ADR-0021 a ADR-0023 | ✅ terminada | |
-| **Lote A** · T01 Datos nuevos: usuarios, sesiones, invitaciones y `state` usados | ✅ terminada | #130 |
-| **Lote A** · T02 Las tablas de hoy y el alcance en SQL | ✅ terminada | #130 |
-| **Lote A** · T03 Usuarios, sesiones y permisos (core y config) | ✅ terminada | #130 |
-| **Lote B** · T04 La API con sesión | ✅ terminada | #131 |
-| **Lote B** · T05 Usuarios, `/health` y el primer administrador | ✅ terminada | #131 |
-| **Lote B** · T06 CLI: entrar | ✅ terminada | #131 |
-| **Lote B** · T07 Panel: entrar e invitación | ✅ terminada | #131 |
-| **Lote C** · T08 Cada corredor lo suyo: propiedades, contenido y cargas | ✅ terminada | #132 |
-| **Lote C** · T09 Cada corredor lo suyo: publicaciones, programar y seguimiento | ✅ terminada | #132 |
-| **Lote C** · T10 Cuentas, el `state` y quién hizo qué | ✅ terminada | #132 |
-| **Lote D** · T11 `anthropic-api` real | ✅ terminada | #133 |
-| **Lote D** · T12 La IA por corredor y su gasto | ✅ terminada | #133 |
-| **Lote E** · T13 Corredores: crear, editar y lista de alta | ✅ terminada | #134 |
-| **Lote E** · T14 Logo y planilla de Excel de un corredor | ✅ terminada | #134 |
-| **Lote F** · T15 Marketplace a mano | ✅ terminada | #135 |
-| **Lote G** · T16 CLI: usuarios, corredores, gasto y Marketplace a mano | ✅ terminada | #136 |
-| **Lote H** · T17 Panel: el alcance | ✅ terminada | #137 |
-| **Lote H** · T18 Panel: Corredores, Mi marca, gasto y Marketplace a mano | ✅ terminada | #137 |
-| T19 Cierre de fase | ⏳ pendiente | |
+| Spec F8 (`/fase-plan 8`) | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
@@ -116,36 +97,37 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **Panel, el selector al recargar (F7-T17):** mientras cargan los corredores, el filtro todavía no se aplica y la primera consulta sale sin él (se repite al llegar la lista). No muestra nada ajeno (es del administrador), pero pide dos veces.
 - **Logos reemplazados (F7-T14):** al subir otro logo, el anterior queda como medio del corredor y en R2 (no se borra). Ocupa poco; limpiarlo junto con los medios huérfanos cuando haga falta.
 - **Para F8:** `/health` muestra la versión de Postgres (desde F7, solo al administrador); al desplegar, ocultarla o protegerla. Un `auto_publish` cortado por el apagado justo al terminar la corrida no se reintenta (queda para el operador; la agenda lo muestra como "espera tu revisión" o "aprobada sin publicar").
-- **Para F7 (auditoría del cierre de F6):** `/tracking` y `/agenda` cargan todas las propiedades y filtran por corredor en memoria: con la autenticación, el alcance por corredor va en el servidor. Límite conocido de T08: si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5).
-- **Para F7 (de la revisión del lote F):** la agenda pide los textos vigentes con una consulta por propiedad (corredores con `auto_publish`): con más volumen, una sola consulta para todas (`listCurrentMany`); `publicationView` usa su propio reloj (no el `now` de la ruta).
+- **Para F8 (de F6-T08):** si un sync deja una de Portal en `paused` justo cuando la propiedad la pausa, esa pausa queda sin `byListing` y reanudar la propiedad no la reactiva (spec F6 §4.8). La prueba en vivo de Portal (D15 de F4) confirma el `relist` (`seller_contact`, qué copia, si gasta cupo) y la regla de `pictures` en pausar y cerrar (nota de Mercado Libre §13.5). (El alcance de `/tracking` y `/agenda` en el servidor se cerró en F7-T09.)
 - **Videos HDR o de 10 bits (iPhone):** el reel los pasa a yuv420p sin mapear tonos ni etiquetar BT.709 (F2-T08), así que pueden verse lavados. Revisarlo con un video real en la demo de F2; si pasa, sumar `zscale`/`tonemap` y subir `MEDIA_PIPELINE_VERSION`.
 - **Después del MVP (spec F7, D7), campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
 - **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
-- **F7, rangos:** la base no impide un `min_value` mayor que `max_value` ni un rango en un campo que no es `number`; hoy lo detecta el validador (`FIELD_CONFIG_INVALID`). Si el panel permite editar definiciones, sumar `CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)`.
-- **F7:** `GET /listings` devuelve la entidad completa: notas internas, dirección exacta y todos los atributos. Es aceptable mientras la API sea local (`hostGuard`). Con autenticación y despliegue, usar una proyección acotada para la lista.
-- Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda hasta F7 (D5 del spec F1).
+- **Cuando el panel edite definiciones, rangos:** la base no impide un `min_value` mayor que `max_value` ni un rango en un campo que no es `number`; hoy lo detecta el validador (`FIELD_CONFIG_INVALID`). Si el panel permite editar definiciones, sumar `CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)`.
+- Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda para F8 (D5 del spec F1).
 - F8: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
-- **F7, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
+- **F8, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
 - **F8, OAuth:** `instagramStartUrlOf` asume la API en la raíz del host de `INSTAGRAM_REDIRECT_URI`. Si el despliegue la monta tras un prefijo, derivar el inicio desde la ruta de la URI de retorno.
 - **F8, refresco de tokens:** el job `tokens.refresh` expira a los 5 min y la expiración no corta el handler. Con una cuenta por corredor sobra; con muchas cuentas (llamadas de hasta 30 s), subir el tope o dejar de empezar cuentas nuevas pasados unos 4 min, para que un reintento no se cruce con el intento anterior.
-- **F7, `state` de Mercado Libre:** vale sus 10 min y no es de un solo uso (el código sí se canjea una vez; F4-T06). Con la vuelta automática (`/oauth/mercadolibre/callback`), amarrarlo a una cookie o a un nonce de un solo uso, como el de Instagram. Además, `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática: F7 registra en la app una segunda dirección de su dominio real (o, en local, ese nombre apuntando al propio equipo con un certificado local, que merecería un ADR), y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
-- **F7, cuentas:** `panelUrl` y `allowedHosts` están fijos en `localhost`; con varios corredores y la API expuesta, hay que autorizar quién puede conectar cada corredor (`/oauth/instagram/start?broker=` y `connect-token` hoy los acepta cualquiera que llegue a la API) y evitar repetir un `state` válido durante sus 10 min (guardar el nonce usado; hoy basta con que la cookie se borre).
+- **F8, vuelta de Mercado Libre:** el `state` es de un solo uso desde F7-T10, pero `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática (`/oauth/mercadolibre/callback`): F8 registra en la app una segunda dirección de su dominio real, y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
+- **F8, cuentas:** `panelUrl` y `allowedHosts` están fijos en `localhost`. El `state` de Instagram no es de un solo uso (vale sus 10 min; hoy basta con que la cookie se borre): guardar el nonce usado, como el de Mercado Libre. (Quién conecta cada corredor se cerró en F7-T08: conectar es del administrador.)
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **F8:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un xlsx de 10 MB (que es un zip) podría descomprimirse en mucho más dentro de exceljs. El cuerpo de la subida ya tiene tope (T11: `MAX_IMPORT_UPLOAD_MB` y 413), y el zip de medios también (T06: 4 GB y `validateEntrySizes`). Falta limitar el tamaño descomprimido del xlsx con subidas públicas.
 - **F8, subidas del panel:**
   - Hono lee el multipart completo en memoria; con los archivos escritos en streaming, el pico es de unas 2 veces el cuerpo (de ahí el default de 512 MB).
-  - F7 cambia esto por la subida directa a R2 con URL prefirmada: `import_runs.input` pasa a claves de R2, y se quitan `POST /imports/local` y el staging compartido.
+  - F8 cambia esto por la subida directa a R2 con URL prefirmada: `import_runs.input` pasa a claves de R2, y se quitan `POST /imports/local` y el staging compartido.
   - El despliegue fija `NODE_ENV=production` (`/imports/local` depende de eso). Ver `docs/06-roadmap.md` → F8.
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
 - **F8:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`), y también `apps/api/src/testing` (importa `@agentsales/core/testing`) y `apps/cli/test`. Excluirlos del build de producción al armar el despliegue.
-- **F7:** `agentsales listing --broker` resuelve el corredor en la CLI con `/brokers`. Con autenticación y varios clientes, el alcance por corredor lo tiene que hacer el servidor (junto con la proyección acotada de `GET /listings`).
 - `--broker` se normaliza con `slugify` solo en la CLI: `POST /imports/local` con `"Mi Corredor"` da `BROKER_NOT_FOUND`. Hoy no importa (el panel usa un selector); si aparece otro cliente, normalizar en core (`requestImport`).
 
 - Menor (F5, revisión del lote E): `marketplace/fields.ts` usa `normalizePortalName` de Portal y el publisher del worker usa `readPictureFrom` de `portal.ts`. Moverlos a un módulo neutro con un tercer uso. Si otro consumidor necesita el Facebook falso, exponerlo como subruta de pruebas (`@agentsales/publishers/marketplace/testing`) en vez de leer los fixtures por ruta.
 - Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
 
 ## Notas de la última sesión
+- 2026-10-18: **Cierre de F7 (T19).**
+  - **Demo (tú, en simulación, todo bien):** creaste `corredor-demo` (no propio) con logo, lo invitaste y entró con su contraseña en una ventana privada; activaste Marketplace a mano; como el corredor bajó su planilla, cargó P001 y P002, las preparó con la IA por la API, vio su gasto, aprobó y publicó Marketplace a mano ("No lo publiqué"); no vio lo de `agentsales-pruebas` ("no existe" y Seguimiento solo con lo suyo); el tope de US$ 0,01 frenó los textos; la bitácora dijo quién hizo cada cosa y Restablecer cerró su sesión. Instagram se omitió (sin cuenta de evaluador).
+  - **Auditoría del `arquitecto`:** sin hallazgos de código; la documentación quedó al día (README, guía, checklist "Antes de F8", roadmap con la deuda de F7, deuda técnica limpia).
+  - **Registro:** `CHANGELOG [0.7.0]`, spec cerrado. El tag `v0.7.0` se crea solo con tu permiso.
 - 2026-10-17: **Lote H de F7 (T17 y T18): el panel.**
   - **Tú** ves en el menú "Ver corredor" (Todos o uno): filtra Propiedades, Seguimiento y Cuentas. Y la página **Corredores**: la lista con el gasto del mes y el tope, crear uno, y su detalle con la marca, el tope y si es propio, el logo y la planilla, sus usuarios (invitar, restablecer, desactivar; el enlace se ve una sola vez con su botón de copiar) y su lista de alta.
   - **El corredor** ve **Mi marca** (su marca, logo, planilla, gasto y lista de alta) y no ve lo tuyo: el selector, Corredores, ni conectar o desconectar cuentas.
