@@ -1,12 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
+import { parseArgs } from "node:util";
 import { createLogger, loadEnv, loadEnvFile, panelUrlOf } from "@agentsales/config";
 import { CHECKSUM_SHA256_HEADER, createR2Storage } from "../r2-storage.js";
 
 // Sube, lee, prueba una URL prefirmada y borra un objeto de prueba en el bucket de R2. Desde F8
 // (spec F8 §4.4, ADR-0025) también sube con una URL prefirmada de PUT (y comprueba que R2 rechaza
 // otro contenido u otro largo), lista por prefijo y revisa la regla de CORS del bucket para el
-// panel (`http://localhost:<WEB_PORT>` en desarrollo, `PUBLIC_URL` con `ENV_FILE=.env.production`).
+// panel (`http://localhost:<WEB_PORT>` en desarrollo, `PUBLIC_URL` si está, u otro con `--origin`,
+// por ejemplo `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com`).
 // Nunca imprime credenciales ni las URLs prefirmadas (la firma da acceso).
+const { values: args } = parseArgs({ options: { origin: { type: "string" } } });
 loadEnvFile();
 const env = loadEnv();
 const logger = createLogger({ level: env.LOG_LEVEL, pretty: env.NODE_ENV !== "production" });
@@ -195,7 +198,7 @@ try {
 
   // La regla de CORS del bucket (la pone el operador; checklist "Antes de F8"): el navegador
   // pregunta antes del PUT si el panel puede subir con esas cabeceras.
-  const panelOrigin = new URL(panelUrlOf(env)).origin;
+  const panelOrigin = new URL(args.origin ?? panelUrlOf(env)).origin;
   const preflight = await fetch((await signUpload(sha256(small))).url, {
     method: "OPTIONS",
     headers: {

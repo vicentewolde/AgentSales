@@ -265,37 +265,37 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 - **Archivos:** `packages/storage/src/{r2-storage.ts,index.ts}`, `packages/core/src/ports/` (contrato `MediaStorage`), `packages/core/src/testing/`, `packages/storage/src/scripts/check.ts`, `docs/01-arquitectura.md` (almacenamiento)
 - **Descripción:** `signedUploadUrl(path, { contentType, contentLength, sha256, ttlSeconds })` y `list(prefix)`; el doble en memoria; `storage:check` sube con una URL prefirmada (y comprueba que R2 rechaza un contenido con otro sha256: NO VERIFICADO hasta entonces) y revisa la regla de CORS del bucket.
 - **Hecho cuando:**
-  - [ ] Tests (sin R2, con el firmador): la URL firma el tamaño y el sha256; `list` pagina; el doble rechaza un contenido distinto
-  - [ ] `storage:check` lo verifica contra R2 (lo corre el operador)
+  - [x] Tests (sin R2, con el firmador): la URL firma el tamaño y el sha256; `list` pagina; el doble rechaza un contenido distinto
+  - [ ] `storage:check` lo verifica contra R2 (lo corre el operador; checklist "Al terminar el lote B")
 
 ### F8-T04 · La carga con entradas en R2 (core y base)
 - **Depende de:** T03
 - **Archivos:** `packages/core/src/{import-run.ts,use-cases/request-import.ts,use-cases/run-import.ts}`, `packages/db/src/schema.ts`, `packages/db/drizzle/0010_*.sql`, `packages/db/src/repositories/import-runs.ts`, `docs/02-modelo-datos.md`
 - **Descripción:** `requestImportUpload` (valida nombres, rutas, tamaños y topes; crea la carga en `awaiting_upload` con su `broker` y `dryRun`), `startImport` (revisa con `head` y encola), cerrar las abandonadas; `importRunInputSchema` como unión con la forma de hoy; la migración `0010` (sin la parte de Marketplace, que es de T20).
 - **Hecho cuando:**
-  - [ ] Tests: rutas con `..`, absolutas o con control rechazadas; topes; falta un archivo (`IMPORT_UPLOAD_INCOMPLETE`); empezar dos veces; abandonada a las 24 h; el corredor de la carga como en F7; una fila de la forma vieja se sigue leyendo
+  - [x] Tests: rutas con `..`, absolutas o con control rechazadas; topes; falta un archivo (`IMPORT_UPLOAD_INCOMPLETE`); empezar dos veces; abandonada a las 24 h; el corredor de la carga como en F7; una fila de la forma vieja se sigue leyendo
 
 ### F8-T05 · El worker lee las cargas desde R2
 - **Depende de:** T04
 - **Archivos:** `packages/importers/src/{staging.ts,media-folder.ts,zip.ts,xlsx-reader.ts}`, `apps/worker/src/jobs/{import-run.ts,publications-watch.ts}`, `apps/worker/src/worker.ts`
 - **Descripción:** bajar la planilla y los medios desde R2 a la carpeta temporal del intento (zip o carpeta), el tope descomprimido del xlsx, borrar `imports/<id>/` al terminar y las abandonadas; se quita el staging compartido.
 - **Hecho cuando:**
-  - [ ] Tests: carga de punta a punta con el doble de R2 (zip y carpeta); un xlsx que se descomprime en más de 50 MB (`IMPORT_XLSX_TOO_LARGE`) sin abrirlo con exceljs; los objetos borrados al terminar y al abandonar; reintento después de un corte
+  - [x] Tests: carga de punta a punta con el doble de R2 (zip y carpeta); un xlsx que se descomprime en más de 50 MB (`IMPORT_XLSX_TOO_LARGE`) sin abrirlo con exceljs; los objetos borrados al terminar y al abandonar; reintento después de un corte
 
 ### F8-T06 · La API: pedir la subida y empezar
 - **Depende de:** T04
 - **Archivos:** `apps/api/src/routes/imports.ts`, `apps/api/src/{access.ts,contracts/,errors.ts}`, `apps/api/src/server.ts`
 - **Descripción:** `POST /api/imports/uploads` y `POST /api/imports/:id/start` (§4.14) con el alcance; se quitan el `multipart` y `/imports/local`.
 - **Hecho cuando:**
-  - [ ] Tests: el corredor solo para lo suyo (matriz de F7); la URL y sus cabeceras; empezar con un archivo faltante; las rutas viejas ya no existen; inventario de permisos
+  - [x] Tests: el corredor solo para lo suyo (matriz de F7); la URL y sus cabeceras; empezar con un archivo faltante; las rutas viejas ya no existen; inventario de permisos
 
 ### F8-T07 · Panel: subir a R2 con avance
 - **Depende de:** T06
 - **Archivos:** `apps/web/src/pages/ImportPage.tsx`, `apps/web/src/api/upload.ts` (nuevo)
 - **Descripción:** el panel calcula el sha256 (Web Crypto) de la planilla y de los archivos de carpeta de hasta 100 MB (el zip va solo con su tamaño), pide las URLs, sube con avance y reintento por archivo, y empieza la carga.
 - **Hecho cuando:**
-  - [ ] Tests: avance, un archivo que falla se reintenta, cancelar, el error de un archivo faltante
-  - [ ] Con `pnpm dev` y el bucket de desarrollo, una carga real de prueba (aviso antes)
+  - [x] Tests: avance, un archivo que falla se reintenta, cancelar, el error de un archivo faltante
+  - [ ] Con `pnpm dev` y el bucket de desarrollo, una carga real de prueba (aviso antes; espera `pnpm db:dev-scrub` del operador)
 
 ### F8-T08 · CLI: la dirección del servidor
 - **Depende de:** T02
@@ -309,7 +309,7 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 - **Archivos:** `apps/cli/src/commands/import.ts`, `apps/cli/src/upload.ts`
 - **Descripción:** sha256 (de la planilla y de los archivos de carpeta) y subida en streaming de la planilla y del zip, o de cada archivo de la carpeta, con avance; empezar la carga y esperar como hoy; `--dry-run` por el mismo flujo con `dryRun`.
 - **Hecho cuando:**
-  - [ ] Tests (msw para la API y R2): carpeta y zip; un archivo que falla se reintenta; `--dry-run` pide la carga con `dryRun`
+  - [x] Tests (la API en proceso y un R2 en memoria; el `PUT` real contra un servidor local en vez de msw): carpeta y zip; un archivo que falla se reintenta; `--dry-run` pide la carga con `dryRun`
 
 ### F8-T10 · Build de producción e imagen
 - **Depende de:** T02
@@ -459,4 +459,5 @@ Lotes (una rama y un PR por lote). Cada lote deja `main` usable en el Mac:
 | 2026-10-18 | Respuestas del operador: D4 (Marketplace a mano para todos) y D5 (cerrar con App Review enviado). D1: por ahora algo **gratis** para mostrar la herramienta y después un plan pagado; D2: un dominio con "agentpey" |
 | 2026-10-18 | Segunda nota de hosting (`hosting.md` §13, opciones gratis) y respuestas: D1 = **Fly.io en modo demo** con Neon gratis (frente a Oracle gratis, que hay que administrar y puede reclamarse); D2 = **`agentsales.agentpey.com`** (`agentpey.com` es del operador y lo usa otro proyecto). Criterios y demo con el servidor encendido; riesgo del cupo de Neon |
 | 2026-10-18 | **Aprobado** por el operador. ADR-0024, ADR-0025 y ADR-0026 registrados; seguimientos en ADR-0005, ADR-0007, ADR-0017, ADR-0021, ADR-0022 y ADR-0023; roadmap y checklist "Antes de F8" al día |
+| 2026-10-18 | Lote B (F8-T03 a T07 y T09). Precisiones: `pnpm db:dev-scrub` (§4.6) solo usa `.env` y se niega si la base o la clave son las de `.env.production` o si la clave de `.env` abre alguna credencial; la entrada de R2 guarda también el `name` del zip y de la carpeta (para mostrarlos); `startImport` revisa los archivos con `list` (una llamada) en vez de un `head` por archivo; una carga de antes de F8 se cierra con `IMPORT_INPUT_LEGACY`; la limpieza de cada hora borra también lo que quedó en R2 de cargas terminadas; códigos nuevos `IMPORT_UPLOAD_INVALID` (400), `IMPORT_UPLOAD_TOO_LARGE` (413), `IMPORT_INPUT_LEGACY`; la respuesta de `POST /api/imports/uploads` (201) lleva `kind` por URL; `storage:check --origin`; `MAX_IMPORT_UPLOAD_MB` sigue en 512 por archivo (el zip, además, hasta 4 GB). Pendiente del operador: `pnpm db:dev-scrub`, `storage:check` (lo NO VERIFICADO del sha256 en un PUT prefirmado) y la carga real de prueba de T07 |
 | 2026-10-18 | Lote A (F8-T01 y T02, PR #140) y su revisión (`revisor` y `arquitecto`; un bloqueante, aplicado: `.gitignore` ignora `.env.*` salvo `.env.example`, para que `.env.production` nunca entre a git). Precisiones: en producción la IA debe ser `anthropic-api` (tampoco `fake`); la vuelta de Instagram del ejemplo de antes (sin `/api`) se ignora y se usa la nueva; `panelUrlOf` (config) da el panel también a `pnpm auth:admin`; la API y el worker rechazan `ENV_FILE` (`loadAppEnvFile`: es solo para los scripts, D12); `hostGuard` también cubre el panel compilado (salvo `GET /api/health`); `server-app.ts` reemplaza al `static.ts` de la lista; el mensaje de error habla del archivo de entorno. **Postergado:** la regla de producción de `BACKUP_TARGET` llega con T13, la de `BROWSER_PROFILES_DIR` con T20 y la cookie `__Host-agentsales_oauth_ml` con T19; la CSP en un navegador se revisa en T10 (en el Mac, Vite sirve el panel sin ella) |

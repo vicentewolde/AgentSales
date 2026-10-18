@@ -3,84 +3,52 @@ import {
   type BrokerRepository,
   type ImportRun,
   type ImportRunRepository,
+  importInputSummary,
   type JobQueue,
-  type NewImportRun,
-  requestImport,
+  type MediaStorage,
+  requestImportUpload,
+  startImport,
 } from "@agentsales/core";
 import { type Context, Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import type { AppEnv } from "../auth.js";
 import {
-  hasExtension,
   type ImportRunListResponse,
   type ImportRunResponse,
   type ImportRunView,
+  type ImportUploadResponse,
   idParamSchema,
-  importUploadFormSchema,
-  localImportBodySchema,
-  MAX_XLSX_UPLOAD_BYTES,
-  MEDIA_ZIP_EXTENSION,
-  XLSX_EXTENSION,
+  importUploadRequestSchema,
 } from "../contracts/index.js";
 import { requestScope } from "../scope.js";
 import { validated } from "../validation.js";
-
-/** Lo que la API escribe en disco: lo compone `server.ts` con el staging (spec F1 §4.1). */
-export type ImportUploads = {
-  /**
-   * Guarda un archivo subido en `tmp/imports/{runId}/input/`, en streaming (sin otra copia en
-   * memoria), y devuelve su ruta absoluta.
-   */
-  save(runId: string, fileName: string, body: ReadableStream<Uint8Array>): Promise<string>;
-  /** Borra `tmp/imports/{runId}/`; no falla si no existe. */
-  discard(runId: string): Promise<void>;
-};
 
 export type ImportRoutesDeps = {
   importRuns: ImportRunRepository;
   /** El corredor de un usuario corredor (spec F7 §4.4): su carga nace con él. */
   brokers: Pick<BrokerRepository, "findById">;
   queue: JobQueue;
-  uploads: ImportUploads;
-  /** uuid para el run: se necesita antes de crearlo, para guardar los archivos. */
+  /** Firmar las subidas, revisar que llegaron y borrarlas si la cola falla (spec F8 §4.4). */
+  storage: Pick<MediaStorage, "signedUploadUrl" | "list" | "delete">;
+  /** uuid de la carga: se necesita antes de crearla, para las claves de R2. */
   newId: () => string;
-  /** `POST /imports/local` solo en desarrollo (`NODE_ENV=development`, la CLI). */
-  localImports: boolean;
-  /** Tope de todo el cuerpo de `POST /imports` (`MAX_IMPORT_UPLOAD_MB`). */
+  /** `MAX_IMPORT_UPLOAD_MB` en bytes: el tope de cada archivo. */
   maxUploadBytes: number;
 };
 
-/** El último tramo de una ruta, con `/` o `\`: lo único que la API muestra de `input`. */
-const fileNameOf = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? "";
-
+/** La carga como la ven la CLI y el panel: la entrada solo con nombres (nunca rutas ni claves). */
 function viewOf(run: ImportRun): ImportRunView {
-  return {
-    ...run,
-    input: {
-      xlsxFile: fileNameOf(run.input.xlsxPath),
-      mediaFile: run.input.mediaDir === null ? null : fileNameOf(run.input.mediaDir),
-      broker: run.input.broker,
-    },
-  };
+  return { ...run, input: importInputSummary(run.input) };
 }
 
-const invalidUpload = (message: string) => new AppError("REQUEST_INVALID", message);
-
 /**
- * `/imports` (spec F1 §4.4, D2): la API solo crea el run y encola (`requestImport`); el worker
- * corre la carga. Responde `202` con el run en `queued`.
+ * `/imports` (spec F1 §4.4 y F8 §4.4, ADR-0025): la API pide la carga con sus URLs de subida y la
+ * empieza cuando los archivos están en R2; ningún archivo pasa por aquí. El worker corre la carga.
  */
 export function importRoutes(deps: ImportRoutesDeps) {
-  const request = (params: NewImportRun) =>
-    requestImport(
-      { importRuns: deps.importRuns, queue: deps.queue, discardStaging: deps.uploads.discard },
-      params,
-    );
-
   /**
-   * El corredor de la carga: el del usuario corredor (`broker` del formulario, si viene, tiene que
-   * ser el suyo: si no, 404 como un corredor que no existe); el administrador, el del formulario o
-   * la hoja Corredor.
+   * El corredor de la carga: el del usuario corredor (`broker` del pedido, si viene, tiene que ser
+   * el suyo: si no, 404 como un corredor que no existe); el administrador, el del pedido o la hoja
+   * Corredor.
    */
   const brokerOf = async (
     c: Context<AppEnv>,
@@ -97,104 +65,58 @@ export function importRoutes(deps: ImportRoutesDeps) {
     return { slug: own.slug, brokerId: own.id };
   };
 
-  return new Hono<AppEnv>()
-    .post(
-      "/",
-      // El multipart se lee completo en memoria: el tope va antes de leerlo (413).
-      bodyLimit({
-        maxSize: deps.maxUploadBytes,
-        onError: () => {
-          throw new AppError(
-            "REQUEST_TOO_LARGE",
-            `La subida pasa de ${Math.round(deps.maxUploadBytes / 1024 / 1024)} MB`,
-          );
-        },
-      }),
-      validated("form", importUploadFormSchema),
-      async (c) => {
-        const { file, media, broker, dryRun } = c.req.valid("form");
+  return (
+    new Hono<AppEnv>()
+      .post("/uploads", validated("json", importUploadRequestSchema), async (c) => {
+        const { broker, dryRun, xlsx, media } = c.req.valid("json");
         const owner = await brokerOf(c, broker);
-        if (!hasExtension(file.name, XLSX_EXTENSION)) {
-          throw invalidUpload("El archivo debe ser un Excel (.xlsx)");
-        }
-        if (file.size > MAX_XLSX_UPLOAD_BYTES) {
-          throw invalidUpload(`El Excel pasa de ${MAX_XLSX_UPLOAD_BYTES / 1024 / 1024} MB`);
-        }
-        if (media !== undefined && !hasExtension(media.name, MEDIA_ZIP_EXTENSION)) {
-          throw invalidUpload("Los medios deben venir en un .zip");
-        }
-
-        const id = deps.newId();
-        let params: NewImportRun;
-        try {
-          const xlsxPath = await deps.uploads.save(id, file.name, file.stream());
-          const mediaDir =
-            media === undefined ? null : await deps.uploads.save(id, media.name, media.stream());
-          params = {
-            id,
-            source: "xlsx",
-            fileName: fileNameOf(file.name),
-            dryRun: dryRun === "true",
-            input: { xlsxPath, mediaDir, broker: owner.slug },
+        const { run, uploads } = await requestImportUpload(
+          {
+            importRuns: deps.importRuns,
+            storage: deps.storage,
+            newId: deps.newId,
+            maxFileBytes: deps.maxUploadBytes,
+          },
+          {
+            broker: owner.slug,
             brokerId: owner.brokerId,
-          };
-        } catch (error) {
-          await deps.uploads.discard(id).catch(() => undefined);
-          throw error;
-        }
-        const run = await request(params).catch(async (error: unknown) => {
-          // Si el run no se llegó a crear (la base no respondió), lo guardado queda huérfano y se
-          // borra. Si existe (la cola caída ya lo dejó en `failed` y borró su staging, o un bug
-          // lo dejó en `queued`), sus archivos se conservan para revisarlo.
-          const created = await deps.importRuns.get(id).catch(() => null);
-          if (created === null) await deps.uploads.discard(id).catch(() => undefined);
-          throw error;
-        });
+            dryRun: dryRun ?? false,
+            xlsx,
+            media: media ?? null,
+          },
+        );
+        const body: ImportUploadResponse = { importRun: viewOf(run), uploads };
+        return c.json(body, 201);
+      })
+      // El dueño lo revisa `ownership.importRun` (`/imports/:id/*`): lo ajeno es 404.
+      .post("/:id/start", validated("param", idParamSchema), async (c) => {
+        const { id } = c.req.valid("param");
+        const run = await startImport(
+          { importRuns: deps.importRuns, storage: deps.storage, queue: deps.queue },
+          { importRunId: id },
+        );
         const body: ImportRunResponse = { importRun: viewOf(run) };
         return c.json(body, 202);
-      },
-    )
-    .post(
-      "/local",
-      // Fuera de desarrollo la ruta no existe: 404 antes de mirar el cuerpo.
-      async (_c, next) => {
-        if (!deps.localImports) {
-          throw new AppError("ROUTE_NOT_FOUND", "No existe POST /imports/local");
+      })
+      .get("/", async (c) => {
+        const body: ImportRunListResponse = {
+          importRuns: (await deps.importRuns.list(50, requestScope(c))).map((run) => {
+            const { report: _report, ...summary } = viewOf(run);
+            return summary;
+          }),
+        };
+        return c.json(body, 200);
+      })
+      .get("/:id", validated("param", idParamSchema), async (c) => {
+        const { id } = c.req.valid("param");
+        const run = await deps.importRuns.get(id);
+        if (run === null) {
+          throw new AppError("IMPORT_RUN_NOT_FOUND", `No existe la carga ${id}`, {
+            details: { importRunId: id },
+          });
         }
-        await next();
-      },
-      validated("json", localImportBodySchema),
-      async (c) => {
-        const { xlsxPath, mediaDir, broker, dryRun } = c.req.valid("json");
-        const run = await request({
-          id: deps.newId(),
-          source: "xlsx",
-          fileName: fileNameOf(xlsxPath),
-          dryRun: dryRun ?? false,
-          input: { xlsxPath, mediaDir: mediaDir ?? null, broker: broker ?? null },
-        });
         const body: ImportRunResponse = { importRun: viewOf(run) };
-        return c.json(body, 202);
-      },
-    )
-    .get("/", async (c) => {
-      const body: ImportRunListResponse = {
-        importRuns: (await deps.importRuns.list(50, requestScope(c))).map((run) => {
-          const { report: _report, ...summary } = viewOf(run);
-          return summary;
-        }),
-      };
-      return c.json(body, 200);
-    })
-    .get("/:id", validated("param", idParamSchema), async (c) => {
-      const { id } = c.req.valid("param");
-      const run = await deps.importRuns.get(id);
-      if (run === null) {
-        throw new AppError("IMPORT_RUN_NOT_FOUND", `No existe la carga ${id}`, {
-          details: { importRunId: id },
-        });
-      }
-      const body: ImportRunResponse = { importRun: viewOf(run) };
-      return c.json(body, 200);
-    });
+        return c.json(body, 200);
+      })
+  );
 }

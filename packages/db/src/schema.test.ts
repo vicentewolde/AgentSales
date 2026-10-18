@@ -77,14 +77,23 @@ function migrationsSql(): string {
     .join("\n");
 }
 
-// Solo lee `CREATE TYPE`; un tipo recreado (0006: `publication_status`) queda con su última versión.
-// Cuando una migración use `ALTER TYPE … ADD VALUE`, hay que sumarlo aquí.
+// Lee `CREATE TYPE` y `ALTER TYPE … ADD VALUE` en el orden de las migraciones; un tipo recreado
+// (0006: `publication_status`) queda con su última versión, y un valor agregado (0010:
+// `awaiting_upload`) en su lugar (`BEFORE`/`AFTER`, o al final).
 function sqlEnums(sql: string): Record<string, string[]> {
   const enums: Record<string, string[]> = {};
-  for (const match of sql.matchAll(/CREATE TYPE "public"\."(\w+)" AS ENUM\(([^)]*)\)/g)) {
-    const [, name, values] = match;
-    if (name && values !== undefined) {
-      enums[name] = [...values.matchAll(/'([^']*)'/g)].map((value) => value[1] ?? "");
+  const statements =
+    /CREATE TYPE "public"\."(\w+)" AS ENUM\(([^)]*)\)|ALTER TYPE "public"\."(\w+)" ADD VALUE '([^']*)'(?: (BEFORE|AFTER) '([^']*)')?/g;
+  for (const match of sql.matchAll(statements)) {
+    const [, created, values, altered, added, position, anchor] = match;
+    if (created && values !== undefined) {
+      enums[created] = [...values.matchAll(/'([^']*)'/g)].map((value) => value[1] ?? "");
+    } else if (altered && added !== undefined) {
+      const list = enums[altered] ?? [];
+      const at = anchor === undefined ? -1 : list.indexOf(anchor);
+      if (at < 0) list.push(added);
+      else list.splice(position === "AFTER" ? at + 1 : at, 0, added);
+      enums[altered] = list;
     }
   }
   return enums;

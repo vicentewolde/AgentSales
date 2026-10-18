@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** lote A de F8 (T01 y T02): la configuración de producción (`PUBLIC_URL`, `API_HOST`, `ENV_FILE`) y la API bajo `/api` con el panel compilado, cookies `__Host-` y cabeceras de seguridad
-**Siguiente paso:** `pnpm db:dev-scrub` (tú, antes de cualquier `pnpm dev`) y el lote B en curso (`feat/f8-t03-t09-subidas-r2`)
+**Última tarea:** lote B de F8 (T03 a T07 y T09): las cargas suben directo a R2 desde el panel y la CLI (URL prefirmada, la carga en `awaiting_upload`, el worker baja de R2 y borra al terminar, el Excel con tope descomprimido), sin `/imports/local` ni disco compartido; más `pnpm db:dev-scrub`
+**Siguiente paso:** tus pasos de "Al terminar el lote B" (abajo: `pnpm db:dev-scrub`, `pnpm storage:check` y la carga real de prueba con `pnpm dev`) y después `/tarea F8-T08` (lote C: la CLI contra el servidor)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -16,6 +16,10 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [x] Bucket `agentsales-media-dev` con su token; `pnpm storage:check` pasó (2026-10-18)
   - [x] Regla de CORS en los dos buckets: solo `PUT`, desde `http://localhost:5173` y `https://agentsales.agentpey.com`, cabeceras `content-type` y `x-amz-checksum-sha256` (2026-10-18)
   - [ ] **`pnpm db:dev-scrub`** (nuevo en el lote B): borra las credenciales copiadas en la rama, que están cifradas con la clave vieja. **Antes de cualquier `pnpm dev`**
+- **Al terminar el lote B** (detalle en el checklist):
+  - [ ] `pnpm storage:check` en el bucket de desarrollo: el PUT prefirmado, que R2 rechace un archivo alterado (NO VERIFICADO hasta ahora) y la regla de CORS desde `http://localhost:5173`
+  - [ ] `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com`: el CORS del bucket de producción
+  - [ ] La carga real de prueba desde el panel (F8-T07), con `pnpm dev`: Claude la hace contigo después de `db:dev-scrub` y avisa antes de levantarlo
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups`, los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
@@ -48,7 +52,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 |---|---|---|
 | Spec F8 (`/fase-plan 8`) | ✅ aprobado | (este PR) |
 | **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
-| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | 🔨 en curso | |
+| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (falta tu `storage:check` y la carga real de T07) | (este PR) |
 | **Lote C** · T08 CLI: la dirección del servidor | ⏳ pendiente | |
 | **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ⏳ pendiente | |
 | **Lote E** · T13 Respaldo a R2 | ⏳ pendiente | |
@@ -134,24 +138,21 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
 - **Cuando el panel edite definiciones, rangos:** la base no impide un `min_value` mayor que `max_value` ni un rango en un campo que no es `number`; hoy lo detecta el validador (`FIELD_CONFIG_INVALID`). Si el panel permite editar definiciones, sumar `CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)`.
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda para F8 (D5 del spec F1).
-- F8: los archivos subidos por el panel pasan de `tmp/imports` en disco local a R2, con subida directa por URL prefirmada (ADR-0005, enmienda de F1).
 - **F8, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
 - **F8, refresco de tokens:** el job `tokens.refresh` expira a los 5 min y la expiración no corta el handler. Con una cuenta por corredor sobra; con muchas cuentas (llamadas de hasta 30 s), subir el tope o dejar de empezar cuentas nuevas pasados unos 4 min, para que un reintento no se cruce con el intento anterior.
 - **F8, vuelta de Mercado Libre:** el `state` es de un solo uso desde F7-T10, pero `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática (`/oauth/mercadolibre/callback`): F8 registra en la app una segunda dirección de su dominio real, y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
 - **F8, cuentas (T17):** el `state` de Instagram no es de un solo uso (vale sus 10 min; hoy basta con que la cookie se borre): guardar el nonce usado, como el de Mercado Libre. (Quién conecta cada corredor se cerró en F7-T08: conectar es del administrador.)
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
-- **F8:** exceljs carga el xlsx completo en memoria, y el tope de filas se revisa después. Un xlsx de 10 MB (que es un zip) podría descomprimirse en mucho más dentro de exceljs. El cuerpo de la subida ya tiene tope (T11: `MAX_IMPORT_UPLOAD_MB` y 413), y el zip de medios también (T06: 4 GB y `validateEntrySizes`). Falta limitar el tamaño descomprimido del xlsx con subidas públicas.
-- **F8, subidas del panel:**
-  - Hono lee el multipart completo en memoria; con los archivos escritos en streaming, el pico es de unas 2 veces el cuerpo (de ahí el default de 512 MB).
-  - F8 cambia esto por la subida directa a R2 con URL prefirmada: `import_runs.input` pasa a claves de R2, y se quitan `POST /imports/local` y el staging compartido.
-  - El despliegue fija `NODE_ENV=production` (`/imports/local` depende de eso). Ver `docs/06-roadmap.md` → F8.
+- **Subidas directas (lote B de F8):**
+  - El `PUT` del navegador (`xhrTransport`, `apps/web/src/api/upload.ts`) no tiene prueba automática (jsdom no sube a R2); se prueba en la carga real de T07.
+  - Si el proceso de la API se corta justo entre pasar la carga a `queued` y encolarla, la carga queda en cola sin job (el mismo riesgo que tenía `requestImport` desde F1): se ve en el historial y se vuelve a importar.
+  - `.env.example` no se actualizó: la regla `Read(./.env.*)` (#141) también impide leerlo. Su comentario de `MAX_IMPORT_UPLOAD_MB` habla del cuerpo `multipart` de antes (ahora es el tope de cada archivo subido a R2).
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
 - **F8:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`), y también `apps/api/src/testing` (importa `@agentsales/core/testing`) y `apps/cli/test`. Excluirlos del build de producción al armar el despliegue.
-- `--broker` se normaliza con `slugify` solo en la CLI: `POST /imports/local` con `"Mi Corredor"` da `BROKER_NOT_FOUND`. Hoy no importa (el panel usa un selector); si aparece otro cliente, normalizar en core (`requestImport`).
 
 - Menor (F5, revisión del lote E): `marketplace/fields.ts` usa `normalizePortalName` de Portal y el publisher del worker usa `readPictureFrom` de `portal.ts`. Moverlos a un módulo neutro con un tercer uso. Si otro consumidor necesita el Facebook falso, exponerlo como subruta de pruebas (`@agentsales/publishers/marketplace/testing`) en vez de leer los fixtures por ruta.
-- Menor: `apps/worker/src/worker.ts` repite la regla de estado terminal en vez de usar `isTerminalImportRun` (core). El comentario de `IMPORT_RUN_ABANDONED_AFTER_MS` (`apps/worker/src/jobs/import-run.ts`) dice "más el backoff", pero el cálculo no lo suma: la hora de margen lo cubre.
+
 
 ## Notas de la última sesión
 - 2026-10-18: **Lote A de F8 (T01 y T02).**

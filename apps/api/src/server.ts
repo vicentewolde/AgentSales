@@ -37,7 +37,6 @@ import {
 } from "@agentsales/db";
 import { readBackupStatus } from "@agentsales/db/backup";
 import { BROKER_TEMPLATE_PATH, writeBrokerTemplate } from "@agentsales/importers";
-import { createStaging, stagingRootOf } from "@agentsales/importers/staging";
 // La subruta: sharp solo para el logo, sin ffmpeg ni el navegador del resto del paquete.
 import { createLogoNormalizer } from "@agentsales/media/logo";
 import {
@@ -92,10 +91,6 @@ const queue = createJobQueue({
   connectionString: toPgConnectionString(env.DATABASE_URL),
   onError: (error) => queueErrors.report(error),
 });
-// El mismo staging que el worker (`<workspace>/tmp/imports`): en el MVP comparten disco (§4.6).
-// La API solo escribe en el staging: leer medios (con su tope de video) es del worker.
-const staging = createStaging({ root: stagingRootOf(findWorkspaceRoot()) });
-
 // Un solo `SecretBox` para toda la API: el candado y (desde T13) el repositorio de cuentas cifran y
 // descifran con la clave derivada de APP_ENCRYPTION_KEY (F3-T02).
 const secretBox = createSecretBox(env.APP_ENCRYPTION_KEY);
@@ -189,13 +184,8 @@ const app = createApp({
   panelUrl: panelUrlOf(env),
   instagramStartUrl: instagramStartUrlOf(env.INSTAGRAM_REDIRECT_URI),
   queue,
-  uploads: {
-    save: (runId, fileName, bytes) => staging.saveInput(runId, fileName, bytes),
-    discard: (runId) => staging.discard(runId),
-  },
+  // Las cargas suben directo a R2 (spec F8 §4.4, ADR-0025): la API solo firma y revisa.
   newId: randomUUID,
-  // `POST /imports/local` lee rutas del disco del operador: solo en desarrollo (la CLI).
-  localImports: env.NODE_ENV === "development",
   maxUploadBytes: env.MAX_IMPORT_UPLOAD_MB * 1024 * 1024,
   publishMode: env.PUBLISH_MODE,
   environment: env.NODE_ENV === "production" ? "production" : "development",

@@ -4,6 +4,7 @@ import { type ImportReport, type NewImportRun, RUN_WAIT } from "@agentsales/core
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { brokerData, harness, newListing } from "../../test/harness.js";
+import { UploadFailure } from "../api/upload.js";
 
 const { pollMs: IMPORT_POLL_MS, queuedWarningMs: QUEUED_WARNING_MS } = RUN_WAIT;
 
@@ -71,7 +72,9 @@ async function advance(ms: number) {
 const fileInput = (label: RegExp) => screen.getByLabelText(label) as HTMLInputElement;
 
 describe("panel: Importar", () => {
-  it("envía el Excel, el zip, el corredor y la simulación, y abre la carga", async () => {
+  const latestRun = async (h: Harness) => (await h.importRuns.list(1, { kind: "all" }))[0];
+
+  it("sube el Excel y el zip a R2 con el corredor y la simulación, empieza la carga y la abre", async () => {
     const h = harness();
     await h.brokers.create(brokerData("mi-corredor"));
     h.renderApp("/importar");
@@ -81,7 +84,7 @@ describe("panel: Importar", () => {
     fireEvent.change(fileInput(/Excel de propiedades/), {
       target: { files: [new File(["x"], "propiedades.xlsx")] },
     });
-    fireEvent.change(fileInput(/Fotos y videos/), {
+    fireEvent.change(fileInput(/Fotos y videos \(\.zip\)/), {
       target: { files: [new File(["zip"], "medios.zip")] },
     });
     fireEvent.change(select, { target: { value: "mi-corredor" } });
@@ -89,19 +92,26 @@ describe("panel: Importar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Importar" }));
 
     expect(await screen.findByRole("heading", { name: "propiedades.xlsx" })).toBeTruthy();
-    expect(h.uploads).toEqual([
-      {
-        file: { name: "propiedades.xlsx", size: 1 },
-        media: { name: "medios.zip", size: 3 },
+    const run = await latestRun(h);
+    expect(run).toMatchObject({
+      status: "queued",
+      dryRun: true,
+      input: {
         broker: "mi-corredor",
-        dryRun: "true",
+        dryRun: true,
+        xlsx: { name: "propiedades.xlsx", size: 1 },
+        media: { kind: "zip", name: "medios.zip", size: 3 },
       },
-    ]);
+    });
+    // Los dos archivos llegaron a R2 (el doble) y la API solo recibió JSON.
+    expect(h.transfers.map((t) => t.size).sort()).toEqual([1, 3]);
+    expect(await h.storage.list(`imports/${run?.id}/`)).toHaveLength(2);
+    expect(h.requests).toContain(`POST /imports/${run?.id}/start`);
     expect(screen.getByText("en cola (simulación)")).toBeTruthy();
     expect(screen.getByText("En cola…")).toBeTruthy();
   });
 
-  it("sin zip ni corredor, manda solo el Excel", async () => {
+  it("sin medios ni corredor, sube solo el Excel", async () => {
     const h = harness();
     h.renderApp("/importar");
 
@@ -111,12 +121,113 @@ describe("panel: Importar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Importar" }));
 
     await screen.findByRole("heading", { name: "propiedades.xlsx" });
-    expect(h.uploads[0]).toEqual({
-      file: { name: "propiedades.xlsx", size: 1 },
-      media: null,
-      broker: null,
-      dryRun: "false",
+    expect((await latestRun(h))?.input).toMatchObject({ broker: null, dryRun: false, media: null });
+    expect(h.transfers).toHaveLength(1);
+  });
+
+  it("una carpeta sube cada archivo con su ruta, sin los ocultos de macOS", async () => {
+    const h = harness();
+    h.renderApp("/importar");
+    const inFolder = (path: string, content: string) => {
+      const file = new File([content], path.split("/").pop() ?? path);
+      Object.defineProperty(file, "webkitRelativePath", { value: path });
+      return file;
+    };
+
+    fireEvent.change(await screen.findByLabelText(/Excel de propiedades/), {
+      target: { files: [new File(["x"], "propiedades.xlsx")] },
     });
+    fireEvent.click(screen.getByLabelText("Una carpeta"));
+    fireEvent.change(fileInput(/Carpeta de fotos y videos/), {
+      target: {
+        files: [inFolder("medios/P001/foto.jpg", "foto"), inFolder("medios/.DS_Store", "basura")],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Importar" }));
+
+    await screen.findByRole("heading", { name: "propiedades.xlsx" });
+    const run = await latestRun(h);
+    expect(run?.input).toMatchObject({
+      media: { kind: "folder", name: "medios", files: [{ path: "P001/foto.jpg", size: 4 }] },
+    });
+    expect((await h.storage.list(`imports/${run?.id}/media/`)).map((o) => o.path)).toEqual([
+      `imports/${run?.id}/media/P001/foto.jpg`,
+    ]);
+  });
+
+  it("muestra el avance y deja cancelar: la carga no empieza", async () => {
+    const h = harness({
+      // Una subida que no termina hasta que se cancela.
+      transport:
+        () =>
+        async ({ signal, onProgress }) => {
+          onProgress(1);
+          await new Promise((_, reject) =>
+            signal.addEventListener("abort", () =>
+              reject(new DOMException("Subida cancelada", "AbortError")),
+            ),
+          );
+        },
+    });
+    h.renderApp("/importar");
+
+    fireEvent.change(await screen.findByLabelText(/Excel de propiedades/), {
+      target: { files: [new File(["xy"], "propiedades.xlsx")] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Importar" }));
+
+    expect(await screen.findByText("Subiendo 0 de 1 archivos (50 %)…")).toBeTruthy();
+    expect(screen.getByLabelText("Avance de la subida")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar la subida" }));
+
+    expect(await screen.findByText("Subida cancelada: no se cargó nada.")).toBeTruthy();
+    expect((await latestRun(h))?.status).toBe("awaiting_upload");
+    expect(h.requests.some((r) => r.endsWith("/start"))).toBe(false);
+  });
+
+  it("un archivo que falla al subir se reintenta y la carga sigue", async () => {
+    let attempts = 0;
+    const h = harness({
+      transport: (memory) => async (request) => {
+        attempts += 1;
+        if (attempts === 1) throw new UploadFailure("R2 respondió 503", 503);
+        return memory(request);
+      },
+    });
+    h.renderApp("/importar");
+
+    fireEvent.change(await screen.findByLabelText(/Excel de propiedades/), {
+      target: { files: [new File(["x"], "propiedades.xlsx")] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Importar" }));
+
+    // El reintento espera 1 s.
+    expect(
+      await screen.findByRole("heading", { name: "propiedades.xlsx" }, { timeout: 4_000 }),
+    ).toBeTruthy();
+    expect(attempts).toBe(2);
+  });
+
+  it("si un archivo no llegó a R2, el error de la API lo nombra y la carga no empieza", async () => {
+    const h = harness({
+      // El zip "se sube" sin llegar (por ejemplo, otra pestaña lo cortó).
+      transport: (memory) => async (request) =>
+        request.url.includes("media.zip") ? undefined : memory(request),
+    });
+    h.renderApp("/importar");
+
+    fireEvent.change(await screen.findByLabelText(/Excel de propiedades/), {
+      target: { files: [new File(["x"], "propiedades.xlsx")] },
+    });
+    fireEvent.change(fileInput(/Fotos y videos \(\.zip\)/), {
+      target: { files: [new File(["zip"], "medios.zip")] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Importar" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "IMPORT_UPLOAD_INCOMPLETE: Faltan 1 archivo(s) por subir: medios.zip",
+    );
+    expect((await latestRun(h))?.status).toBe("awaiting_upload");
   });
 
   it.each([
@@ -131,19 +242,20 @@ describe("panel: Importar", () => {
     fireEvent.change(await screen.findByLabelText(/Excel de propiedades/), {
       target: { files },
     });
-    fireEvent.change(fileInput(/Fotos y videos/), { target: { files: media } });
+    fireEvent.change(fileInput(/Fotos y videos \(\.zip\)/), { target: { files: media } });
     fireEvent.click(screen.getByRole("button", { name: "Importar" }));
 
     expect((await screen.findByRole("alert")).textContent).toContain(message);
-    expect(h.uploads).toEqual([]);
+    expect(h.transfers).toEqual([]);
+    expect(h.requests.some((r) => r.startsWith("POST"))).toBe(false);
   });
 
-  it("un error de la API al subir se muestra con su código", async () => {
+  it("un error de la API al pedir la subida se muestra con su código", async () => {
     const h = harness({
       intercept: (method, path) =>
-        method === "POST" && path === "/imports"
+        method === "POST" && path === "/imports/uploads"
           ? Response.json(
-              { error: { code: "REQUEST_TOO_LARGE", message: "La subida pasa de 512 MB" } },
+              { error: { code: "IMPORT_UPLOAD_TOO_LARGE", message: "El zip pasa de 512 MB" } },
               { status: 413 },
             )
           : undefined,
@@ -156,7 +268,7 @@ describe("panel: Importar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Importar" }));
 
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "REQUEST_TOO_LARGE: La subida pasa de 512 MB",
+      "IMPORT_UPLOAD_TOO_LARGE: El zip pasa de 512 MB",
     );
   });
 

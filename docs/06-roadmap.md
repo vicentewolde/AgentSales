@@ -112,9 +112,9 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 - Endurecer el login para internet (límites por IP, doble factor opcional) y evaluar RLS como segunda barrera (ADR-0021 y ADR-0022).
 - Marketplace en un servidor: el formulario automático necesita el Mac del operador (ADR-0017 y ADR-0023): decidir cómo convive con el despliegue.
 - **Deuda heredada de F1** (detalle en `docs/ESTADO.md` → Deuda técnica):
-  - las subidas del panel pasan a ser directas a R2, con una URL prefirmada, y `import_runs.input` pasa de rutas locales a claves de R2 (seguimiento de ADR-0005);
-  - se quita `POST /imports/local` y el staging compartido en disco entre la API y el worker;
-  - el despliegue fija `NODE_ENV=production`, porque `/imports/local` depende de ese valor.
+  - las subidas del panel pasan a ser directas a R2, con una URL prefirmada, y `import_runs.input` pasa de rutas locales a claves de R2 (seguimiento de ADR-0005); **hecho en el lote B** (ADR-0025);
+  - se quita `POST /imports/local` y el staging compartido en disco entre la API y el worker (**hecho en el lote B**: la CLI también sube a R2);
+  - el despliegue fija `NODE_ENV=production`.
 - **Deuda heredada de F3** (detalle en `docs/ESTADO.md` → Deuda técnica):
   - probar el OAuth de Instagram de verdad, con HTTPS;
   - no repetir un `state` válido de Instagram (guardar el nonce usado);

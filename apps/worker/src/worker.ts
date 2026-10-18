@@ -10,7 +10,12 @@ import {
   resolveBackupDir,
   resolveBrowserProfilesDir,
 } from "@agentsales/config";
-import { confirmManualPublication, enqueueLiveSyncs, type RunImportDeps } from "@agentsales/core";
+import {
+  confirmManualPublication,
+  enqueueLiveSyncs,
+  isTerminalImportRun,
+  type RunImportDeps,
+} from "@agentsales/core";
 import {
   createBrokerRepository,
   createContentRepository,
@@ -367,7 +372,7 @@ async function cleanStaging(withDatabase: boolean): Promise<void> {
         ? async (runId) => {
             const run = await importRuns.get(runId);
             if (run === null) return "missing";
-            return run.status === "succeeded" || run.status === "failed" ? "closed" : "open";
+            return isTerminalImportRun(run.status) ? "closed" : "open";
           }
         : undefined,
     );

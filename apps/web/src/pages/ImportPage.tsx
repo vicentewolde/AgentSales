@@ -6,6 +6,7 @@ import {
 } from "@agentsales/api/contracts";
 import { type FormEvent, useId, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { checkFolder, folderSelection, type UploadProgress } from "../api/upload.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { RunStatusBadge } from "../components/RunStatusBadge.js";
 import { useBrokers } from "../queries/brokers.js";
@@ -29,32 +30,79 @@ function checkFiles(file: File | undefined, media: File | undefined): string | n
     return `El Excel pasa de ${MAX_XLSX_UPLOAD_BYTES / 1024 / 1024} MB.`;
   }
   if (media && !hasExtension(media.name, MEDIA_ZIP_EXTENSION)) {
-    return "Las fotos y videos deben venir en un .zip.";
+    return "Las fotos y videos deben venir en un .zip o en una carpeta.";
   }
   return null;
 }
 
+const percent = (progress: UploadProgress) =>
+  progress.totalBytes === 0 ? 0 : Math.round((progress.sentBytes / progress.totalBytes) * 100);
+
+/** El avance de la subida a R2 (spec F8 §4.4), con un botón para cancelarla. */
+function UploadStatus({ progress, onCancel }: { progress: UploadProgress; onCancel: () => void }) {
+  const text =
+    progress.phase === "hashing"
+      ? "Preparando los archivos…"
+      : progress.phase === "starting"
+        ? "Archivos subidos: empezando la carga…"
+        : `Subiendo ${progress.doneFiles} de ${progress.totalFiles} archivos (${percent(progress)} %)…`;
+  return (
+    <div aria-live="polite" className="space-y-2">
+      <p className="text-sm text-slate-700">{text}</p>
+      {progress.phase === "uploading" && (
+        <progress
+          aria-label="Avance de la subida"
+          value={progress.sentBytes}
+          max={Math.max(progress.totalBytes, 1)}
+          className="w-full"
+        />
+      )}
+      {progress.phase !== "starting" && (
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-md border border-slate-300 px-3 py-1 text-sm"
+        >
+          Cancelar la subida
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** `webkitdirectory` no está en los tipos de React: se pasa como atributo del DOM. */
+const folderPicker = { webkitdirectory: "", directory: "" } as Record<string, string>;
+
 function ImportForm() {
-  const ids = { file: useId(), media: useId(), broker: useId(), dryRun: useId() };
+  const ids = {
+    file: useId(),
+    media: useId(),
+    folder: useId(),
+    broker: useId(),
+    dryRun: useId(),
+    mode: useId(),
+  };
   const brokers = useBrokers();
   const role = useRole();
   const start = useStartImport();
   const navigate = useNavigate();
   const [problem, setProblem] = useState<string | null>(null);
+  const [mode, setMode] = useState<"zip" | "folder">("zip");
+  const canceled = start.error instanceof DOMException && start.error.name === "AbortError";
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const { elements } = event.currentTarget;
-    // El archivo elegido en cada campo. Un zip vacío (0 bytes) cuenta como no enviado; un Excel
-    // vacío se avisa.
-    const fileOf = (name: string) => {
+    const filesOf = (name: string) => {
       const input = elements.namedItem(name);
-      return input instanceof HTMLInputElement ? input.files?.[0] : undefined;
+      return input instanceof HTMLInputElement ? [...(input.files ?? [])] : [];
     };
-    const file = fileOf("file");
-    const chosenMedia = fileOf("media");
-    const media = chosenMedia && chosenMedia.size > 0 ? chosenMedia : undefined;
-    const issue = checkFiles(file, media);
+    const file = filesOf("file")[0];
+    // Un zip vacío (0 bytes) cuenta como no enviado; un Excel vacío se avisa.
+    const chosenZip = mode === "zip" ? filesOf("media")[0] : undefined;
+    const zip = chosenZip && chosenZip.size > 0 ? chosenZip : undefined;
+    const folder = mode === "folder" ? folderSelection(filesOf("folder")) : null;
+    const issue = checkFiles(file, zip) ?? (folder ? checkFolder(folder) : null);
     setProblem(issue);
     if (issue || !file) return;
     const broker = elements.namedItem("broker");
@@ -62,8 +110,8 @@ function ImportForm() {
     start.mutate(
       {
         file,
-        media,
-        broker: broker instanceof HTMLSelectElement && broker.value ? broker.value : undefined,
+        media: zip ? { kind: "zip", file: zip } : folder,
+        ...(broker instanceof HTMLSelectElement && broker.value ? { broker: broker.value } : {}),
         dryRun: dryRun instanceof HTMLInputElement && dryRun.checked,
       },
       { onSuccess: (run) => navigate(`/importar/${run.id}`) },
@@ -82,21 +130,61 @@ function ImportForm() {
         </label>
         <input id={ids.file} name="file" type="file" accept={XLSX_EXTENSION} className="text-sm" />
       </div>
-      <div className="flex flex-col gap-1">
-        <label htmlFor={ids.media} className="text-sm font-medium">
-          Fotos y videos (.zip, opcional)
-        </label>
-        <input
-          id={ids.media}
-          name="media"
-          type="file"
-          accept={MEDIA_ZIP_EXTENSION}
-          className="text-sm"
-        />
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-sm font-medium">Fotos y videos (opcional)</legend>
+        <div className="flex gap-4 text-sm">
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              name={ids.mode}
+              checked={mode === "zip"}
+              onChange={() => setMode("zip")}
+            />
+            Un .zip
+          </label>
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              name={ids.mode}
+              checked={mode === "folder"}
+              onChange={() => setMode("folder")}
+            />
+            Una carpeta
+          </label>
+        </div>
+        {mode === "zip" ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor={ids.media} className="text-sm">
+              Fotos y videos (.zip)
+            </label>
+            <input
+              id={ids.media}
+              name="media"
+              type="file"
+              accept={MEDIA_ZIP_EXTENSION}
+              className="text-sm"
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <label htmlFor={ids.folder} className="text-sm">
+              Carpeta de fotos y videos
+            </label>
+            <input
+              id={ids.folder}
+              name="folder"
+              type="file"
+              multiple
+              {...folderPicker}
+              className="text-sm"
+            />
+          </div>
+        )}
         <p className="text-xs text-slate-500">
-          Una carpeta por propiedad, con el nombre de su id_propiedad o de carpeta_medios.
+          Una carpeta por propiedad, con el nombre de su id_propiedad o de carpeta_medios. Los
+          archivos suben directo al almacenamiento, sin pasar por el servidor.
         </p>
-      </div>
+      </fieldset>
       {/* Un corredor carga siempre lo suyo (F7, ADR-0022): sin selector. */}
       {role !== "broker" && (
         <div className="flex flex-col gap-1">
@@ -131,12 +219,16 @@ function ImportForm() {
       >
         {start.isPending ? "Subiendo…" : "Importar"}
       </button>
+      {start.isPending && start.progress && (
+        <UploadStatus progress={start.progress} onCancel={start.cancel} />
+      )}
       {problem && (
         <p role="alert" className="text-sm text-red-700">
           {problem}
         </p>
       )}
-      {start.error && <ErrorAlert error={start.error} />}
+      {canceled && <p className="text-sm text-slate-700">Subida cancelada: no se cargó nada.</p>}
+      {start.error && !canceled && <ErrorAlert error={start.error} />}
     </form>
   );
 }
@@ -196,7 +288,10 @@ function History() {
   );
 }
 
-/** Importar: subir el Excel y el zip de medios, y el historial de cargas (spec F1-T14). */
+/**
+ * Importar: subir el Excel y los medios (un zip o una carpeta) directo a R2, y el historial de
+ * cargas (spec F1-T14 y F8-T07).
+ */
 export function ImportPage() {
   return (
     <section className="mx-auto max-w-4xl">

@@ -5,9 +5,10 @@ import {
 } from "@agentsales/api/contracts";
 import { isTerminalImportRun } from "@agentsales/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { unwrap } from "../api/client.js";
-import { useApiClient } from "../api/context.js";
+import { useApiClient, useUploadDeps } from "../api/context.js";
+import { type ImportSelection, type UploadProgress, uploadImport } from "../api/upload.js";
 import { brokerKeys } from "./brokers.js";
 import { listingKeys } from "./listings.js";
 import { usePolledRun } from "./run-poll.js";
@@ -67,35 +68,38 @@ export function useImportRun(id: string) {
   return { run: query, stopped };
 }
 
-export type ImportForm = {
-  file: File;
-  media?: File;
-  broker?: string;
-  dryRun: boolean;
-};
-
-/** `POST /imports` (multipart): la API guarda los archivos, crea la carga y la encola (`202`). */
+/**
+ * Subir una carga a R2 y empezarla (spec F8 §4.4): `progress` es el avance de la subida en curso y
+ * `cancel` la corta (la carga queda esperando sus archivos y se cierra sola a las 24 h).
+ */
 export function useStartImport() {
   const client = useApiClient();
+  const uploadDeps = useUploadDeps();
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ file, media, broker, dryRun }: ImportForm) =>
-      (
-        await unwrap(
-          client.imports.$post({
-            form: {
-              file,
-              ...(media ? { media } : {}),
-              ...(broker ? { broker } : {}),
-              dryRun: dryRun ? "true" : "false",
-            },
-          }),
-          importRunResponseSchema,
-        )
-      ).importRun,
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  const mutation = useMutation({
+    mutationFn: async (selection: ImportSelection) => {
+      const controller = new AbortController();
+      abort.current = controller;
+      try {
+        return await uploadImport(client, selection, {
+          ...uploadDeps,
+          signal: controller.signal,
+          onProgress: setProgress,
+        });
+      } finally {
+        abort.current = null;
+        setProgress(null);
+      }
+    },
     onSuccess: async (run) => {
       queryClient.setQueryData(importKeys.detail(run.id), run);
       await queryClient.invalidateQueries({ queryKey: importKeys.lists() });
     },
   });
+  // Al salir de la página, una subida en curso se corta.
+  useEffect(() => () => abort.current?.abort(), []);
+  const cancel = useCallback(() => abort.current?.abort(), []);
+  return { ...mutation, progress, cancel };
 }

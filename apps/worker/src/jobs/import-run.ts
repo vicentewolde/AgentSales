@@ -18,8 +18,9 @@ export const IMPORT_RUN_QUEUE: QueuePolicy = {
 };
 
 /**
- * Un run en `running` más viejo que esto ya no tiene un intento vivo: los 3 intentos de 2 h, más
- * el backoff y una hora de margen. El worker los cierra al arrancar (`failAbandoned`).
+ * Un run en `running` más viejo que esto ya no tiene un intento vivo: los 3 intentos de 2 h y una
+ * hora de margen (que cubre el backoff entre intentos). El worker los cierra al arrancar
+ * (`failAbandoned`).
  */
 export const IMPORT_RUN_ABANDONED_AFTER_MS =
   ((IMPORT_RUN_QUEUE.retryLimit + 1) * IMPORT_RUN_QUEUE.expireInSeconds + 60 * 60) * 1000;

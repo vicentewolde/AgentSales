@@ -60,7 +60,11 @@ export function ImportRunPage() {
           <div aria-live="polite">
             {!isTerminalImportRun(data.status) && (
               <p className="mt-4 text-slate-700">
-                {data.status === "queued" ? "En cola…" : "Procesando el Excel y los medios…"}
+                {data.status === "awaiting_upload"
+                  ? "Esperando que terminen de subir los archivos (si se cortó, vuelve a importar)…"
+                  : data.status === "queued"
+                    ? "En cola…"
+                    : "Procesando el Excel y los medios…"}
               </p>
             )}
           </div>

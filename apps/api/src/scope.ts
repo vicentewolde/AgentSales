@@ -43,8 +43,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * Para un usuario de corredor, el recurso `:id` del pedido tiene que ser suyo: si no existe, es de
  * otro corredor o el `:id` no es un uuid, `notFound(id)` (los mismos cuerpos). Falla cerrado: las
- * rutas cuyo segundo tramo no es un id (`/imports/local`, `/accounts/mercadolibre/…`) son del
- * administrador, y `authenticate` ya las cortó antes. El administrador pasa sin consultar.
+ * rutas cuyo segundo tramo no es un id (`/accounts/mercadolibre/…`) son del administrador, y
+ * `authenticate` ya las cortó antes; la única de sesión, `/imports/uploads` (spec F8 §4.4), la
+ * exime `app.ts`. El administrador pasa sin consultar.
  */
 export function ownedBy(
   ownerOf: OwnerOf,

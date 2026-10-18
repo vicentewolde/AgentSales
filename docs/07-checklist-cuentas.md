@@ -101,6 +101,11 @@ Spec: `docs/specs/fase-8-en-internet.md` (modo demo en Fly.io con Neon gratis, e
 - [ ] **`pnpm db:dev-scrub`** (con la rama y la clave nueva en `.env`, **antes de cualquier `pnpm dev`**): borra las credenciales copiadas en la rama y deja esas cuentas desconectadas, así el Mac nunca renueva el token de Mercado Libre de producción. Usa solo `.env` (con `ENV_FILE` se niega), compara con `.env.production` sin mostrarlo y se niega si la base o la clave son las mismas, o si la clave de `.env` abre alguna credencial (sería producción). Muestra la base (sin contraseña) y cuántas cuentas borra, y pregunta (`--yes` para no preguntar). Correrlo dos veces no hace nada la segunda. Para usar una cuenta en desarrollo, se conecta de nuevo (con la clave de desarrollo)
 - [x] **Bucket `agentsales-media-dev`** (2026-10-18; `pnpm storage:check` pasó; la regla de CORS: solo `PUT`, con las cabeceras `content-type` y `x-amz-checksum-sha256`) en R2 con su token "Object Read & Write" limitado a él, en `.env`; y en los dos buckets una **regla de CORS** que acepte `PUT` desde el panel (`http://localhost:5173` en el de desarrollo y `https://agentsales.agentpey.com` en el de producción). `pnpm storage:check` la revisa
 
+**Al terminar el lote B (subidas directas a R2):**
+- [ ] `pnpm db:dev-scrub` (arriba), y después **`pnpm storage:check`** de nuevo: ahora también sube con una URL prefirmada, comprueba que R2 rechaza un archivo alterado (lo NO VERIFICADO de la nota de R2) y revisa la regla de CORS desde `http://localhost:5173`
+- [ ] **El bucket de producción:** `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com` (revisa su CORS con el dominio; no toca la base)
+- [ ] **Una carga real de prueba desde el panel** (F8-T07, con `pnpm dev` y el bucket de desarrollo): Claude avisa antes de levantar `pnpm dev`
+
 **Antes del primer despliegue (T21):**
 - [ ] **Cuenta de Fly.io** con tarjeta (cobra por segundo encendido: unos US$ 0,56 por día de demo) y su token de despliegue en los secretos de GitHub (`FLY_API_TOKEN`)
 - [ ] **El subdominio:** en el DNS de `agentpey.com` (Vercel → Domains) el registro que pida Fly para `agentsales.agentpey.com` (`CNAME` o `A`/`AAAA`, y el de validación del certificado). No toca tu otro proyecto

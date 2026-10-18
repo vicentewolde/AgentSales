@@ -1,6 +1,7 @@
 import { IMPORT_RUN_STATUS_TEXT, type ImportRunStatus } from "@agentsales/core";
 
 const TONE: Readonly<Record<ImportRunStatus, string>> = {
+  awaiting_upload: "bg-slate-100 text-slate-700",
   queued: "bg-amber-100 text-amber-800",
   running: "bg-sky-100 text-sky-800",
   succeeded: "bg-emerald-100 text-emerald-800",

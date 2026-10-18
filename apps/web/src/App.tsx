@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createBrowserRouter, createMemoryRouter, RouterProvider } from "react-router";
 import { type ApiClient, ApiError } from "./api/client.js";
-import { ApiClientContext } from "./api/context.js";
+import { ApiClientContext, UploadDepsContext } from "./api/context.js";
+import type { UploadDeps } from "./api/upload.js";
 import { routes } from "./routes.js";
 
 /**
@@ -22,9 +23,17 @@ export type AppProps = {
   inMemory?: boolean;
   /** Solo con `inMemory`: ruta inicial. */
   initialPath?: string;
+  /** Solo para tests: cómo se sube a R2 (un R2 en memoria, sin red). */
+  upload?: UploadDeps;
 };
 
-export function App({ client, queryClient, inMemory = false, initialPath = "/" }: AppProps) {
+export function App({
+  client,
+  queryClient,
+  inMemory = false,
+  initialPath = "/",
+  upload,
+}: AppProps) {
   // Se crean una sola vez: un router o un cliente nuevos en cada render perderían el estado.
   const [router] = useState(() =>
     inMemory
@@ -34,10 +43,11 @@ export function App({ client, queryClient, inMemory = false, initialPath = "/" }
   const [queries] = useState(
     () => queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: shouldRetry } } }),
   );
-  const content = (
+  const routed = (
     <QueryClientProvider client={queries}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   );
+  const content = upload ? <UploadDepsContext value={upload}>{routed}</UploadDepsContext> : routed;
   return client ? <ApiClientContext value={client}>{content}</ApiClientContext> : content;
 }

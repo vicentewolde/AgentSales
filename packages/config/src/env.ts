@@ -245,8 +245,9 @@ const envSchema = z
 
     // Medios (F1-F2)
     MAX_VIDEO_MB: positiveInt("un número entero de MB mayor que 0").default(300),
-    // Tope del cuerpo de `POST /imports` (xlsx + zip). Hono lo lee completo en memoria y la subida
-    // puede ocupar hasta ~2 veces eso mientras se procesa (spec F1 §4.4).
+    // Tope de cada archivo de una carga subida directo a R2 (spec F8 §4.4): el zip de medios (que
+    // además no pasa de 4 GB) y cada archivo de una carpeta. El worker los baja a su disco: en el
+    // servidor se fija con el disco que ofrezca el proveedor.
     MAX_IMPORT_UPLOAD_MB: positiveInt("un número entero de MB mayor que 0").default(512),
     // ffmpeg 8.1 o más nuevo (fotos HEIC) y ffprobe (videos), spec F2 §4.8.
     FFMPEG_PATH: z.string().default("ffmpeg"),

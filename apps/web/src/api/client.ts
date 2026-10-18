@@ -8,8 +8,8 @@ import { notifySessionExpired } from "./session-events.js";
 export const API_TIMEOUT_MS = 35_000;
 
 /**
- * Una subida (multipart: el Excel y el zip de medios, hasta `MAX_IMPORT_UPLOAD_MB`) puede tardar
- * más que una consulta: tiene su propio tope.
+ * Un formulario con archivo (el logo del corredor) puede tardar más que una consulta: tiene su
+ * propio tope. Las cargas no pasan por aquí: suben directo a R2 (spec F8 §4.4, `upload.ts`).
  */
 export const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -102,10 +102,10 @@ export function createApiClient(baseUrl = "/api", options: ApiClientOptions = {}
         return response;
       } catch (error) {
         if (error instanceof Error && error.name === "TimeoutError") {
-          // La API pudo recibir la subida igual: antes de reintentar, mira "Cargas anteriores".
+          // La API pudo recibir la subida igual: antes de reintentar, mira si quedó hecha.
           throw new ApiError(
             upload
-              ? `La subida no terminó en ${Math.round(limitMs / 60_000)} min: revisa "Cargas anteriores" antes de reintentar`
+              ? `La subida no terminó en ${Math.round(limitMs / 60_000)} min: revisa si quedó hecha antes de reintentar`
               : `La API no respondió en ${Math.round(limitMs / 1000)} s`,
             "TIMEOUT",
           );
