@@ -6,13 +6,20 @@ export {
   BACKUP_DUMP_TIMEOUT_MS,
   BACKUP_KEEP,
   BACKUP_LOCK_FILE,
+  type BackupDelivery,
   type BackupDeps,
   type BackupResult,
   backupFileName,
   runBackup,
 } from "./run-backup.js";
 export { type ProcessResult, type ProcessRunner, spawnProcess } from "./runner.js";
-export { BACKUP_STATUS_FILE, readBackupStatus, writeBackupStatus } from "./status.js";
+export {
+  BACKUP_STATUS_FILE,
+  type BackupStatusStore,
+  fileBackupStatusStore,
+  readBackupStatus,
+  writeBackupStatus,
+} from "./status.js";
 export {
   canDumpServer,
   DEFAULT_LIBPQ_BIN_DIR,

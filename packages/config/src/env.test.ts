@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EnvError, loadEnv, panelUrlOf } from "./env.js";
+import { backupStorageOf, EnvError, loadEnv, panelUrlOf, withoutBackupCredentials } from "./env.js";
 
 const DIRECT_URL =
   "postgresql://owner:fake-pass@ep-test-123.sa-east-1.aws.neon.tech/neondb?sslmode=require";
@@ -415,6 +415,10 @@ describe("loadEnv", () => {
       API_HOST: "0.0.0.0",
       LLM_PROVIDER: "anthropic-api",
       ANTHROPIC_API_KEY: "fake-anthropic-key",
+      BACKUP_TARGET: "r2",
+      BACKUP_R2_BUCKET: "agentsales-backups",
+      BACKUP_R2_ACCESS_KEY_ID: "fake-backup-access-key",
+      BACKUP_R2_SECRET_ACCESS_KEY: "fake-backup-secret",
     };
 
     it("en desarrollo no exige nada nuevo: escucha en 127.0.0.1 y las vueltas son locales", () => {
@@ -498,6 +502,64 @@ describe("loadEnv", () => {
       expect(
         envErrorOf({ ...production, LLM_PROVIDER: "fake" }).issues.map((i) => i.variable),
       ).toEqual(["LLM_PROVIDER"]);
+    });
+
+    it("el respaldo es local por defecto; en producción debe ir a R2", () => {
+      const env = loadEnv(validSource);
+      expect(env.BACKUP_TARGET).toBe("local");
+      expect(backupStorageOf(env)).toBeNull();
+
+      for (const target of [undefined, "local"]) {
+        expect(
+          envErrorOf({ ...production, BACKUP_TARGET: target }).issues.map((i) => i.variable),
+        ).toEqual(["BACKUP_TARGET"]);
+      }
+      expect(envErrorOf({ ...validSource, BACKUP_TARGET: "s3" }).issues).toEqual([
+        { variable: "BACKUP_TARGET", message: 'debe ser "local" o "r2"' },
+      ]);
+    });
+
+    it("con BACKUP_TARGET=r2: el bucket y el token de respaldos, otros que los de los medios", () => {
+      expect(backupStorageOf(loadEnv(production))).toEqual({
+        bucket: "agentsales-backups",
+        accessKeyId: "fake-backup-access-key",
+        secretAccessKey: "fake-backup-secret",
+      });
+      // También en desarrollo, si el operador lo pide en su archivo de entorno.
+      expect(envErrorOf({ ...validSource, BACKUP_TARGET: "r2" }).issues).toEqual(
+        ["BACKUP_R2_BUCKET", "BACKUP_R2_ACCESS_KEY_ID", "BACKUP_R2_SECRET_ACCESS_KEY"].map(
+          (variable) => ({ variable, message: 'falta (obligatoria con BACKUP_TARGET="r2")' }),
+        ),
+      );
+      const sameAsMedia = envErrorOf({
+        ...production,
+        BACKUP_R2_BUCKET: validSource.R2_BUCKET,
+        BACKUP_R2_ACCESS_KEY_ID: validSource.R2_ACCESS_KEY_ID,
+      });
+      expect(sameAsMedia.issues.map((issue) => issue.variable)).toEqual([
+        "BACKUP_R2_BUCKET",
+        "BACKUP_R2_ACCESS_KEY_ID",
+      ]);
+      expect(sameAsMedia.message).not.toContain(validSource.R2_ACCESS_KEY_ID);
+    });
+
+    it("la API se queda sin el token de respaldos: ni en su configuración ni en su entorno", () => {
+      const processEnv: Record<string, string | undefined> = {
+        ...production,
+        PATH: "/usr/bin",
+      };
+      const env = withoutBackupCredentials(loadEnv(processEnv), processEnv);
+
+      expect(env.BACKUP_R2_ACCESS_KEY_ID).toBeUndefined();
+      expect(env.BACKUP_R2_SECRET_ACCESS_KEY).toBeUndefined();
+      expect(JSON.stringify(env)).not.toContain("fake-backup");
+      expect(backupStorageOf(env)).toBeNull();
+      expect(env.BACKUP_TARGET).toBe("r2");
+      expect(Object.isFrozen(env)).toBe(true);
+      expect(processEnv).not.toHaveProperty("BACKUP_R2_ACCESS_KEY_ID");
+      expect(processEnv).not.toHaveProperty("BACKUP_R2_SECRET_ACCESS_KEY");
+      expect(processEnv.PATH).toBe("/usr/bin");
+      expect(processEnv.R2_SECRET_ACCESS_KEY).toBe(validSource.R2_SECRET_ACCESS_KEY);
     });
 
     it("ignora la vuelta de Instagram del ejemplo de antes (sin /api) y usa la nueva", () => {

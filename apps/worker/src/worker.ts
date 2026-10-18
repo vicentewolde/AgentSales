@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import {
+  backupStorageOf,
   createErrorThrottle,
   createLogger,
   createSecretBox,
@@ -61,7 +62,7 @@ import {
   requeueQueuedContentRuns,
   resumeAutoPublishAtStart,
 } from "./jobs/content-prepare.js";
-import { requestBackupIfDue } from "./jobs/db-backup.js";
+import { type BackupTarget, backupStatusOf, requestBackupIfDue } from "./jobs/db-backup.js";
 import { IMPORT_ABANDONED, IMPORT_RUN_ABANDONED_AFTER_MS } from "./jobs/import-run.js";
 import { buildJobs } from "./jobs/index.js";
 import { enqueuePublicationDue } from "./jobs/publication-due.js";
@@ -163,8 +164,27 @@ const profilesRoot = resolveBrowserProfilesDir(env.BROWSER_PROFILES_DIR, {
   homeDir: homedir(),
   workspaceRoot,
 });
-// El respaldo local (spec F6 §4.11): la carpeta, también fuera del proyecto (trae datos de clientes).
-const backupDir = resolveBackupDir(env.BACKUP_DIR, { homeDir: homedir(), workspaceRoot });
+// El respaldo (spec F6 §4.11 y F8 §4.9): en el Mac, la carpeta, también fuera del proyecto (trae
+// datos de clientes); con `BACKUP_TARGET=r2` (producción), el bucket de respaldos con su propio
+// token, que solo tiene el worker, y el estado en `system/` del bucket principal.
+const backupStorage = backupStorageOf(env);
+const backupTarget: BackupTarget =
+  backupStorage === null
+    ? {
+        kind: "local",
+        dir: resolveBackupDir(env.BACKUP_DIR, { homeDir: homedir(), workspaceRoot }),
+      }
+    : {
+        kind: "r2",
+        backups: createR2Storage({
+          accountId: env.R2_ACCOUNT_ID,
+          accessKeyId: backupStorage.accessKeyId,
+          secretAccessKey: backupStorage.secretAccessKey,
+          bucket: backupStorage.bucket,
+          signedUrlTtlSeconds: env.SIGNED_URL_TTL_SECONDS,
+        }),
+        status: storage,
+      };
 const listingLock = createListingLock(database.db, { secretBox });
 const marketplaceWindows = createMarketplaceWindows({
   publications,
@@ -308,7 +328,7 @@ const jobs = buildJobs({
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
   },
   dbBackup: {
-    dir: backupDir,
+    target: backupTarget,
     databaseUrl: env.DATABASE_URL,
     ...(env.PG_BIN_DIR === undefined ? {} : { binDir: env.PG_BIN_DIR }),
     signal: jobsAbort.signal,
@@ -531,7 +551,7 @@ async function requestPublicationDue(): Promise<void> {
 async function requestBackup(): Promise<void> {
   try {
     const decision = await requestBackupIfDue(queue, {
-      dir: backupDir,
+      readStatus: backupStatusOf(backupTarget),
       ...(env.PG_BIN_DIR === undefined ? {} : { binDir: env.PG_BIN_DIR }),
     });
     if (decision === "tool_missing") {

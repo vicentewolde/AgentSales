@@ -139,6 +139,9 @@ jobs:
             --env R2_SECRET_ACCESS_KEY=ci-secreto --env R2_BUCKET=ci-bucket \
             --env APP_ENCRYPTION_KEY=ci-clave-de-cifrado-de-32-caracteres \
             --env LLM_PROVIDER=anthropic-api --env ANTHROPIC_API_KEY=ci-no-es-una-clave \
+            --env BACKUP_TARGET=r2 --env BACKUP_R2_BUCKET=ci-respaldos \
+            --env BACKUP_R2_ACCESS_KEY_ID=ci-clave-respaldos \
+            --env BACKUP_R2_SECRET_ACCESS_KEY=ci-secreto-respaldos \
             agentsales:ci
           for attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/api/health/live; then echo; break; fi

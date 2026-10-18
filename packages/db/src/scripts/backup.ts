@@ -11,7 +11,9 @@ import { isAppError } from "@agentsales/core";
 import { runBackup } from "../backup/index.js";
 
 // `pnpm db:backup` (spec F6 §4.11): un respaldo a pedido, sin `pnpm dev`. Muestra el archivo y la
-// carpeta (es la del operador); nunca la conexión ni la contraseña.
+// carpeta (es la del operador); nunca la conexión ni la contraseña. Siempre a la carpeta local
+// (spec F8 §4.9): no mira `BACKUP_TARGET`, así que con `ENV_FILE=.env.production` respalda la base de
+// producción en el Mac, sin el token del bucket de respaldos.
 
 loadEnvFile();
 try {

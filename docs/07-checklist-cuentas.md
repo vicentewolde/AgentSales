@@ -109,7 +109,11 @@ Spec: `docs/specs/fase-8-en-internet.md` (modo demo en Fly.io con Neon gratis, e
 **Antes del primer despliegue (T21):**
 - [ ] **Cuenta de Fly.io** con tarjeta (cobra por segundo encendido: unos US$ 0,56 por día de demo) y su token de despliegue en los secretos de GitHub (`FLY_API_TOKEN`)
 - [ ] **El subdominio:** en el DNS de `agentpey.com` (Vercel → Domains) el registro que pida Fly para `agentsales.agentpey.com` (`CNAME` o `A`/`AAAA`, y el de validación del certificado). No toca tu otro proyecto
-- [ ] **Bucket `agentsales-backups`** en R2 con su token propio limitado a él (solo lo tiene el worker)
+- [ ] **Bucket `agentsales-backups`** en R2 con su token propio limitado a él (solo lo tiene el worker; F8-T13). Sin CORS (nadie sube desde el navegador):
+  1. **dash.cloudflare.com** → **R2 Object Storage** → **Create bucket**, nombre `agentsales-backups` (la ubicación, la misma de `agentsales-media`) → **Create bucket**
+  2. **R2 Object Storage** → **Manage API tokens** (o **API Tokens**) → **Create API token**: permiso **Object Read & Write**, **Apply to specific buckets only** → `agentsales-backups` → **Create API Token**
+  3. Copia el **Access Key ID** y el **Secret Access Key** a `.env.production` como `BACKUP_R2_ACCESS_KEY_ID=` y `BACKUP_R2_SECRET_ACCESS_KEY=` (en el editor, sin pegarlos en el chat). El bucket (`agentsales-backups`) y `BACKUP_TARGET=r2` ya van en `fly.toml`
+  4. Al desplegar van a Fly con los demás secretos (`docs/10-despliegue.md`, paso 2). El primer respaldo lo hace el worker al encenderse; `doctor` contra el servidor lo muestra
 - [ ] **Los secretos del servidor** en Fly (`fly secrets set`, la lista está en `docs/10-despliegue.md`): los de `.env.production`, `PUBLIC_URL=https://agentsales.agentpey.com` y `LLM_PROVIDER=anthropic-api`. `PUBLISH_MODE` queda en `dry-run`
 - [ ] **Direcciones de vuelta:** en la app de Meta `AgentSales-IG`, `https://agentsales.agentpey.com/api/oauth/instagram/callback`, y las de quitar la app y borrar datos (`…/api/meta/deauthorize` y `…/api/meta/data-deletion`); en la app de Mercado Libre, `https://agentsales.agentpey.com/api/oauth/mercadolibre/callback` como segunda dirección
 - [ ] **Límite de gasto mensual en la consola de Anthropic** (Billing → Spend limits; hoy no hay)

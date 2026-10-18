@@ -760,6 +760,29 @@ describe("runDoctor · un servidor remoto", () => {
     expect(text).not.toContain(".env");
   });
 
+  it("un respaldo atrasado del servidor aconseja mirar el worker, no pnpm db:backup (F8-T13)", async () => {
+    const report = await runDoctor(
+      deps({
+        server,
+        fetchHealth: async () => ({
+          ...healthy,
+          environment: "production",
+          backup: {
+            lastSuccessAt: null,
+            lastFile: null,
+            lastFailureAt: "2026-10-15T16:00:00.000Z",
+            lastFailureCode: "STORAGE_ERROR",
+            stale: true,
+          },
+        }),
+      }),
+    );
+    const backup = report.items.find((item) => item.name === "Respaldo");
+    expect(backup?.level).toBe("warn");
+    expect(backup?.hint).toContain("worker del servidor");
+    expect(backup?.hint).not.toContain("pnpm db:backup");
+  });
+
   it("sin respuesta del servidor, no sugiere levantar pnpm dev", async () => {
     const report = await runDoctor(
       deps({

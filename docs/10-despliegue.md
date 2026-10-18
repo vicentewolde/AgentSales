@@ -42,12 +42,13 @@ Si Fly dice que el nombre está ocupado, usa otro (por ejemplo `agentsales-agent
 Son los valores de producción de tu `.env.production`. Este comando, corrido en la carpeta del proyecto (donde está `.env.production`), copia **solo** los que necesita el servidor, sin mostrarlos en pantalla:
 
 ```bash
-grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_BUCKET|APP_ENCRYPTION_KEY|ANTHROPIC_API_KEY|INSTAGRAM_APP_ID|INSTAGRAM_APP_SECRET|ML_APP_ID|ML_CLIENT_SECRET|BCCH_API_TOKEN)=' .env.production | fly secrets import --stage -a agentsales
+grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_BUCKET|APP_ENCRYPTION_KEY|ANTHROPIC_API_KEY|INSTAGRAM_APP_ID|INSTAGRAM_APP_SECRET|ML_APP_ID|ML_CLIENT_SECRET|BCCH_API_TOKEN|BACKUP_R2_ACCESS_KEY_ID|BACKUP_R2_SECRET_ACCESS_KEY)=' .env.production | fly secrets import --stage -a agentsales
 ```
 
 - `--stage` guarda los secretos sin encender nada; los toman las máquinas al arrancar.
 - Fly toma cada línea tal cual (`NOMBRE=valor`). Si en `.env.production` algún valor está entre comillas, quítaselas en el archivo antes de correr el comando.
 - `DATABASE_URL` es la de la base de producción de Neon (no la rama `dev`), `R2_BUCKET` es `agentsales-media`, y `APP_ENCRYPTION_KEY` es la de producción (sin ella no se pueden leer los tokens de las cuentas conectadas).
+- `BACKUP_R2_ACCESS_KEY_ID` y `BACKUP_R2_SECRET_ACCESS_KEY` son el token del bucket `agentsales-backups` (checklist, "Antes del primer despliegue"), **no** el de `agentsales-media`: el servidor no arranca si son el mismo. Fly le da los secretos a los dos procesos, pero la API borra los del respaldo al arrancar y nunca los usa: solo el worker sube los respaldos. Sin ellos, el servidor no arranca (producción exige el respaldo a R2).
 - Revisa que quedaron los nombres (sin valores):
   ```bash
   fly secrets list -a agentsales
@@ -177,6 +178,13 @@ Volver atrás **no deshace migraciones** (por eso son siempre aditivas: la versi
 Hazlo siempre primero en una **rama nueva de Neon**, nunca encima de la base de producción, y cámbiate a ella solo cuando hayas revisado que está bien.
 
 - **Con la restauración de Neon** (lo más simple): en **console.neon.tech** → el proyecto → **Restore**: elige la base de producción y la hora, y Neon la restaura a una rama nueva. El plan gratis guarda poco historial (horas); con Neon Launch, 7 días.
+- **Con un volcado del bucket de respaldos** (el worker deja uno por día encendido, los últimos 14):
+  1. En **dash.cloudflare.com** → **R2** → `agentsales-backups` → carpeta `db/`, descarga el más reciente (`agentsales-AAAAMMDD-HHMM.dump`, la hora es de Chile) y muévelo a `~/.agentsales/backups` (nunca a la carpeta del proyecto: trae datos de clientes).
+  2. Comprueba que se lee (lista su contenido sin tocar ninguna base):
+     ```bash
+     /opt/homebrew/opt/libpq/bin/pg_restore --list ~/.agentsales/backups/<archivo>.dump | head
+     ```
+  3. Sigue con los pasos de abajo desde el 1, con ese archivo.
 - **Con un volcado de `pnpm db:backup`** (en `~/.agentsales/backups`):
   1. En Neon, crea una rama vacía (**Branches** → **Create branch**, sin datos) y copia su cadena de conexión.
   2. Restaura el volcado en ella (necesita `brew install libpq`):
@@ -209,4 +217,5 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
 | La API no arranca y los logs dicen `PUBLIC_URL`, `API_HOST`, `LLM_PROVIDER` o un secreto que falta | Falta un secreto (paso 2) o cambió `fly.toml`. `fly secrets list -a agentsales` muestra los nombres |
 | `https://agentsales.agentpey.com` no abre | `fly certs check agentsales.agentpey.com -a agentsales` (paso 5) y que la máquina `api` exista (`fly status`) |
 | `doctor` dice que el worker está apagado | Si es día de demo, enciéndelo (paso 8) |
+| `doctor` dice que el respaldo está atrasado o que falló | Con el worker encendido, respalda al arrancar (si el último tiene más de 20 h) y cada día a las 13:00. El código del error está en los logs del worker (paso 7). `STORAGE_ERROR`: el token o el bucket de respaldos no calzan (paso 2); `STORAGE_UNAVAILABLE`: R2 no respondió y se reintenta a los 5 min |
 | Se agotó el cupo de Neon | Quedó el worker encendido. Neon no borra datos: vuelve el mes siguiente o pasa a Launch (paso 11) |
