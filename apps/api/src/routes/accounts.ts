@@ -23,6 +23,7 @@ import {
   type TokenRefreshResult,
 } from "@agentsales/core";
 import { Hono } from "hono";
+import { setCookie } from "hono/cookie";
 import type { AppEnv } from "../auth.js";
 import {
   type AccountListResponse,
@@ -45,9 +46,11 @@ import type { AppLogger } from "../logger.js";
 import { listScope, requestScope } from "../scope.js";
 import { validated, validatedWithReason } from "../validation.js";
 import {
+  mercadoLibreStateCookieName,
   OAUTH_STATE_PLATFORMS,
   OAUTH_STATE_TTL_SECONDS,
   type OAuthStateSigner,
+  oauthStateCookieOptions,
   verifyOAuthStateData,
 } from "./oauth.js";
 
@@ -60,8 +63,16 @@ export type AccountRoutesDeps = ConnectAccountDeps &
     instagramOAuth: boolean;
     /** El inicio del OAuth, en el host de la URI de retorno (`AppDeps.instagramStartUrl`). */
     instagramStartUrl: string;
-    /** Mercado Libre (`AppDeps.mercadoLibre`): OAuth con la dirección pegada (spec F4 §4.2). */
-    mercadoLibre: { auth: MercadoLibreAuth; configured: boolean; redirectUri: string };
+    /**
+     * Mercado Libre (`AppDeps.mercadoLibre`): OAuth con la dirección pegada (spec F4 §4.2) o, con
+     * `secureCookie` (internet), con la vuelta automática (spec F8 §4.3, T19).
+     */
+    mercadoLibre: {
+      auth: MercadoLibreAuth;
+      configured: boolean;
+      redirectUri: string;
+      secureCookie: boolean;
+    };
     /** Firma y verifica el `state` (con la plataforma y el corredor). */
     oauthState: OAuthStateSigner;
     /** Los `state` usados (spec F7 §4.12) y el hash con que se guarda su nonce. */
@@ -71,6 +82,8 @@ export type AccountRoutesDeps = ConnectAccountDeps &
     publications: Pick<PublicationRepository, "listByStatus">;
     /** Desconectar Marketplace encola el borrado del perfil (`marketplace.profile`). */
     queue: JobQueue;
+    /** Si el ambiente permite el formulario automático (no en producción, spec F8 §4.10, D4). */
+    marketplaceAutomation: boolean;
   };
 
 /** Sin el par de la app no se arma la URL ni se canjea: el canje mandaría un secret vacío. */
@@ -258,7 +271,10 @@ export function accountRoutes(deps: AccountRoutesDeps) {
           mercadolibre: {
             configured: deps.mercadoLibre.configured,
             redirectUri: deps.mercadoLibre.redirectUri,
+            // La vuelta automática solo con el dominio (HTTPS): en el Mac, la dirección no llega.
+            automatic: deps.mercadoLibre.configured && deps.mercadoLibre.secureCookie,
           },
+          marketplace: { automation: deps.marketplaceAutomation },
         },
       };
       return c.json(body, 200);
@@ -286,6 +302,12 @@ export function accountRoutes(deps: AccountRoutesDeps) {
           { platform: OAUTH_STATE_PLATFORMS.mercadolibre, broker },
           { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
         );
+        // La cookie que exige la vuelta automática (T19): igual al `state` de la URL, `Lax` (la vuelta
+        // llega desde Mercado Libre) y de la misma vida que el `state`. La CLI la ignora.
+        setCookie(c, mercadoLibreStateCookieName(deps.mercadoLibre.secureCookie), state, {
+          ...oauthStateCookieOptions(deps.mercadoLibre.secureCookie),
+          maxAge: OAUTH_STATE_TTL_SECONDS,
+        });
         const body: MercadoLibreAuthorizeUrlResponse = {
           url: deps.mercadoLibre.auth.authorizeUrl(state),
         };
@@ -333,6 +355,7 @@ export function accountRoutes(deps: AccountRoutesDeps) {
           platformAccounts: deps.platformAccounts,
           publications: deps.publications,
           queue: deps.queue,
+          marketplaceAutomation: deps.marketplaceAutomation,
           ...(deps.now === undefined ? {} : { now: deps.now }),
         },
         { broker: c.req.valid("json").broker },
@@ -346,6 +369,7 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         {
           brokers: deps.brokers,
           queue: deps.queue,
+          marketplaceAutomation: deps.marketplaceAutomation,
           ...(deps.now === undefined ? {} : { now: deps.now }),
         },
         { broker, ...(label === undefined ? {} : { label }) },

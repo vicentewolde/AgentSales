@@ -122,7 +122,16 @@ export type AppDeps = {
    * Mercado Libre (spec F4 §4.2): el OAuth con la dirección pegada, `configured` si está el par de
    * la app (sin él, conectar no llama) y la dirección de retorno que se muestra (`ML_REDIRECT_URI`).
    */
-  mercadoLibre: { auth: MercadoLibreAuth; configured: boolean; redirectUri: string };
+  mercadoLibre: {
+    auth: MercadoLibreAuth;
+    configured: boolean;
+    redirectUri: string;
+    /**
+     * Con HTTPS (internet), la cookie `__Host-` del `state` y la vuelta automática (spec F8 §4.3,
+     * T19); sin él (el Mac), la dirección se sigue pegando.
+     */
+    secureCookie: boolean;
+  };
   /**
    * Pausar, reactivar, cerrar y el sync de Portal (spec F4 §4.9, F4-T19): las operaciones de cada
    * plataforma, **sin envolver** (el modo lo decide la publicación). `server.ts` compone las de
@@ -136,6 +145,13 @@ export type AppDeps = {
    * para convertir la UF (`BCCH_API_TOKEN`). Sin esto, el límite es 3 y la UF no se convierte.
    */
   marketplace?: MarketplaceStartOptions;
+  /**
+   * Si el ambiente permite el formulario automático de Marketplace (`marketplaceAutomationEnabled`
+   * de config: todo menos producción, spec F8 §4.10, D4). En producción, conectar un perfil, pedir
+   * su inicio de sesión y publicar con una cuenta de perfil dan `MARKETPLACE_AUTOMATION_NOT_ALLOWED`,
+   * y pasar un perfil a mano o desconectarlo no toca el disco.
+   */
+  marketplaceAutomation: boolean;
   /**
    * Las vueltas de Meta (spec F8 §4.11, D18): la firma del `signed_request` (con `node:crypto`, la
    * compone `server.ts`) y los pedidos de borrado.
@@ -172,7 +188,12 @@ const passThrough: MiddlewareHandler<AppEnv> = (_c, next) => next();
 /** Arma la API con sus dependencias inyectadas. Las rutas van encadenadas para el cliente `hc`. */
 export function createApp(input: AppDeps) {
   // Los eventos de la bitácora escritos por la API llevan el usuario del pedido (spec F7 §4.3).
-  const deps: AppDeps = { ...input, lock: withEventUser(input.lock, input.requestContext) };
+  const deps: AppDeps = {
+    ...input,
+    lock: withEventUser(input.lock, input.requestContext),
+    // Lo que publicar necesita saber de Marketplace: la configuración y lo que permite el ambiente.
+    marketplace: { ...input.marketplace, automation: input.marketplaceAutomation },
+  };
   // El refresco del token de Portal, solo con el par de la app (sin él, uno por vencer es
   // `MERCADOLIBRE_NOT_CONFIGURED` sin llamar).
   const publicationDeps = {

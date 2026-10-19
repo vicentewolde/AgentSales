@@ -23,7 +23,13 @@ function setup() {
   const platformAccounts = createInMemoryPlatformAccountRepository();
   const publications = createInMemoryPublicationRepository();
   const queue = createInMemoryJobQueue();
-  const deps = { brokers, platformAccounts, publications, now: () => NOW };
+  const deps = {
+    brokers,
+    platformAccounts,
+    publications,
+    marketplaceAutomation: true,
+    now: () => NOW,
+  };
   return { broker, platformAccounts, publications, queue, deps };
 }
 
@@ -108,7 +114,7 @@ describe("disconnectAccount · Marketplace (spec F5 §4.2)", () => {
   it("pide confirmación, cambia solo la base y encola el borrado del perfil", async () => {
     const { broker, publications, queue, platformAccounts, deps } = setup();
     const account = await connectMarketplaceAccount(deps, { brokerId: broker.id, userId: "1" });
-    const disconnect = { platformAccounts, publications, queue };
+    const disconnect = { platformAccounts, publications, queue, marketplaceAutomation: true };
 
     await expect(disconnectAccount(disconnect, { accountId: account.id })).rejects.toMatchObject({
       code: "DISCONNECT_NOT_CONFIRMED",
@@ -157,7 +163,7 @@ describe("disconnectAccount · Marketplace (spec F5 §4.2)", () => {
 
     await expect(
       disconnectAccount(
-        { platformAccounts, publications, queue },
+        { platformAccounts, publications, queue, marketplaceAutomation: true },
         { accountId: account.id, confirmed: true },
       ),
     ).rejects.toMatchObject({ code: "MANUAL_CONFIRM_PENDING" });
@@ -189,7 +195,12 @@ describe("disconnectAccount · Marketplace (spec F5 §4.2)", () => {
 
     await expect(
       disconnectAccount(
-        { platformAccounts, publications, queue: createInMemoryJobQueue() },
+        {
+          platformAccounts,
+          publications,
+          queue: createInMemoryJobQueue(),
+          marketplaceAutomation: true,
+        },
         { accountId: account.id, confirmed: true },
       ),
     ).rejects.toMatchObject({ code: "PUBLICATION_IN_PROGRESS" });
@@ -200,7 +211,7 @@ describe("disconnectAccount · Marketplace (spec F5 §4.2)", () => {
     );
     await expect(
       disconnectAccount(
-        { platformAccounts, publications, queue: busyQueue },
+        { platformAccounts, publications, queue: busyQueue, marketplaceAutomation: true },
         { accountId: account.id, confirmed: true },
       ),
     ).rejects.toMatchObject({ code: "MARKETPLACE_PROFILE_ACTION_PENDING" });
@@ -312,10 +323,80 @@ describe("Marketplace a mano y el perfil solo para propios (F7-T15, ADR-0023)", 
       { broker: broker.slug },
     );
     const disconnected = await disconnectAccount(
-      { platformAccounts, publications, queue },
+      { platformAccounts, publications, queue, marketplaceAutomation: true },
       { accountId: manual.id },
     );
     expect(disconnected.status).toBe("revoked");
     expect(queue.jobs).toEqual([]);
+  });
+});
+
+// F8-T20 (spec F8 §4.10, D4): en producción el formulario automático no corre, y una cuenta de perfil
+// que quedó en la base se pasa a mano sin tocar el disco.
+describe("Marketplace en producción (F8-T20)", () => {
+  const production = () => {
+    const s = setup();
+    return { ...s, deps: { ...s.deps, marketplaceAutomation: false } };
+  };
+
+  async function withProfileAccount() {
+    const s = setup();
+    // La cuenta de perfil como quedó de antes (se conectó en desarrollo).
+    const account = await connectMarketplaceAccount(s.deps, { brokerId: s.broker.id, userId: "1" });
+    return { ...s, account, deps: { ...s.deps, marketplaceAutomation: false } };
+  }
+
+  it("conectar un perfil da MARKETPLACE_AUTOMATION_NOT_ALLOWED, aun de un corredor propio, y no guarda nada", async () => {
+    const { broker, platformAccounts, deps } = production();
+    await expect(
+      connectMarketplaceAccount(deps, { brokerId: broker.id, userId: "100012345678901" }),
+    ).rejects.toMatchObject({ code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED" });
+    expect(await platformAccounts.list(ALL_SCOPE)).toEqual([]);
+  });
+
+  it("pasar una cuenta de perfil a mano la reemplaza sin encolar el borrado del perfil (no hay disco)", async () => {
+    const { broker, platformAccounts, queue, deps, account } = await withProfileAccount();
+
+    const manual = await connectManualMarketplaceAccount(
+      { ...deps, queue },
+      { broker: broker.slug },
+    );
+
+    expect(manual).toMatchObject({ externalAccountId: "manual", status: "connected" });
+    expect((await platformAccounts.get(account.id))?.status).toBe("revoked");
+    // Nada para el worker: en producción no registra `marketplace.profile`.
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it("desconectar una cuenta de perfil no pide confirmar ni encola nada", async () => {
+    const { publications, platformAccounts, queue, account } = await withProfileAccount();
+
+    const disconnected = await disconnectAccount(
+      { platformAccounts, publications, queue, marketplaceAutomation: false },
+      { accountId: account.id },
+    );
+
+    expect(disconnected).toMatchObject({ status: "revoked", hasCredentials: false });
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it("en desarrollo todo sigue como en F7: desconectar pide confirmar y pasar a mano encola el borrado", async () => {
+    const { broker, publications, platformAccounts, queue, deps } = setup();
+    const profile = await connectMarketplaceAccount(deps, { brokerId: broker.id, userId: "1" });
+
+    await expect(
+      disconnectAccount(
+        { platformAccounts, publications, queue, marketplaceAutomation: true },
+        { accountId: profile.id },
+      ),
+    ).rejects.toMatchObject({ code: "DISCONNECT_NOT_CONFIRMED" });
+    await connectManualMarketplaceAccount({ ...deps, queue }, { broker: broker.slug });
+
+    expect(queue.jobs).toEqual([
+      expect.objectContaining({
+        name: "marketplace.profile",
+        data: expect.objectContaining({ action: "forget" }),
+      }),
+    ]);
   });
 });

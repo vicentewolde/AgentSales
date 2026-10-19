@@ -96,6 +96,30 @@ describe("job content.prepare · cola", () => {
   });
 });
 
+describe("jobs · Marketplace en producción (F8-T20, D4)", () => {
+  it("sin el perfil del navegador (null) no se registra marketplace.profile: nada atiende un pedido del perfil", async () => {
+    const { deps } = await contentJobSetup();
+    const names = (marketplaceProfile: MarketplaceProfileJobDeps | null) =>
+      buildJobs({
+        importRun: {} as RunImportDeps,
+        contentPrepare: deps,
+        publicationPublish: {} as PublicationPublishJobDeps,
+        publicationSync: {} as PublicationSyncJobDeps,
+        tokensRefresh: {} as TokensRefreshJobDeps,
+        marketplaceProfile,
+        publicationDue: {} as PublicationDueJobDeps,
+        publicationsWatch: {} as PublicationsWatchJobDeps,
+        dbBackup: {} as DbBackupJobDeps,
+      }).map((job) => job.name);
+
+    expect(names(null)).not.toContain("marketplace.profile");
+    // Lo demás (publicar a mano incluido: es de core, sin job) sigue registrado.
+    expect(names(null)).toEqual(
+      names({} as MarketplaceProfileJobDeps).filter((name) => name !== "marketplace.profile"),
+    );
+  });
+});
+
 describe("job content.prepare · handler", () => {
   it("prepara el contenido con un temporal propio del intento y lo borra al terminar", async () => {
     const t = await contentJobSetup();

@@ -60,7 +60,7 @@ async function setup(options: { publishMode?: "dry-run" | "live"; ufConfigured?:
   /** Hace de API y worker: el formulario queda listo (`awaiting_manual_confirm`). */
   const awaiting = async () => {
     await startPublication(
-      { ...t.deps, marketplace: { dailyLimit: 3, ufConfigured: true } },
+      { ...t.deps, marketplace: { dailyLimit: 3, ufConfigured: true, automation: true } },
       { publicationId: only().id, dryRun: mode !== "live", actor: "operator" },
     );
     await publishPublication(
@@ -76,6 +76,7 @@ async function setup(options: { publishMode?: "dry-run" | "live"; ufConfigured?:
         workerMode: mode,
         mercadoLibre: null,
         marketplaceDailyLimit: 3,
+        marketplaceAutomation: true,
         uf: ufSource,
       },
       { publicationId: only().id, isLastAttempt: false },

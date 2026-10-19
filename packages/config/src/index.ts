@@ -25,6 +25,7 @@ export {
   EnvError,
   type EnvIssue,
   loadEnv,
+  marketplaceAutomationEnabled,
   panelUrlOf,
   withoutBackupCredentials,
 } from "./env.js";

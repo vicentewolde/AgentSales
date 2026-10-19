@@ -2,6 +2,7 @@ import {
   accountListResponseSchema,
   accountResponseSchema,
   marketplaceLoginResponseSchema,
+  mercadoLibreAuthorizeUrlResponseSchema,
 } from "@agentsales/api/contracts";
 import {
   MARKETPLACE_LOGIN_CLIENT_WAIT_MS,
@@ -181,6 +182,24 @@ export function useMarketplaceLoginWait(request: MarketplaceLoginRequest | null)
     }
   }, [outcome]);
   return query.data ?? (request === null ? null : { outcome: "pending" as const });
+}
+
+/**
+ * `POST /accounts/mercadolibre/authorize-url` (F8-T19; administrador): la URL de autorización con su
+ * `state` firmado. La respuesta también pone la cookie del `state` (la exige la vuelta automática):
+ * el panel abre la URL en seguida, en la misma pestaña.
+ */
+export function useMercadoLibreAuthorizeUrl() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async (broker: string) =>
+      (
+        await unwrap(
+          client.accounts.mercadolibre["authorize-url"].$post({ json: { broker } }),
+          mercadoLibreAuthorizeUrlResponseSchema,
+        )
+      ).url,
+  });
 }
 
 /**

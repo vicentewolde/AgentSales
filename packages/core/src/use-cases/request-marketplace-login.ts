@@ -7,6 +7,8 @@ import { requireBroker } from "./connect-account.js";
 export type RequestMarketplaceLoginDeps = {
   brokers: Pick<BrokerRepository, "findBySlug">;
   queue: JobQueue;
+  /** Si el ambiente permite el formulario automático (`marketplaceAutomationEnabled`, config). */
+  marketplaceAutomation: boolean;
   now?: () => Date;
 };
 
@@ -25,7 +27,7 @@ export async function requestMarketplaceLogin(
 ): Promise<{ brokerId: string; requestedAt: Date }> {
   const broker = await requireBroker(deps.brokers, slug);
   // El perfil del navegador es solo para los corredores propios (ADR-0023).
-  assertMarketplaceAutomationAllowed(broker);
+  assertMarketplaceAutomationAllowed(broker, deps.marketplaceAutomation);
   const requestedAt = (deps.now ?? (() => new Date()))();
   const trimmed = label?.trim();
   const queued = await deps.queue.enqueue(

@@ -20,6 +20,11 @@ export type ConnectMarketplaceAccountDeps = {
   platformAccounts: Pick<PlatformAccountRepository, "upsertConnected" | "listByBroker">;
   /** Para no revocar otra cuenta del corredor con un formulario esperando el clic final. */
   publications: Pick<PublicationRepository, "listByStatus">;
+  /**
+   * Si el ambiente permite el formulario automático (`marketplaceAutomationEnabled`, config): en
+   * producción no (spec F8 §4.10, D4).
+   */
+  marketplaceAutomation: boolean;
   now?: () => Date;
 };
 
@@ -37,7 +42,8 @@ const brokerNotFound = (brokerId: string) =>
  * `MARKETPLACE_SESSION_ID_INVALID` (el id no es numérico) y `MANUAL_CONFIRM_PENDING` si la sesión es
  * de **otra** cuenta de Facebook y la conectada tiene una publicación esperando el clic final
  * (revocarla dejaría esa publicación en una cuenta desconectada: spec F5 §4.3, D11). Desde F7
- * (ADR-0023), solo para un corredor propio: si no, `MARKETPLACE_AUTOMATION_NOT_ALLOWED`.
+ * (ADR-0023), solo para un corredor propio, y desde F8 solo donde el ambiente lo permite (no en
+ * producción): si no, `MARKETPLACE_AUTOMATION_NOT_ALLOWED`.
  */
 export async function connectMarketplaceAccount(
   deps: ConnectMarketplaceAccountDeps,
@@ -45,7 +51,7 @@ export async function connectMarketplaceAccount(
 ): Promise<PlatformAccount> {
   const broker = await deps.brokers.findById(brokerId);
   if (broker === null) throw brokerNotFound(brokerId);
-  assertMarketplaceAutomationAllowed(broker);
+  assertMarketplaceAutomationAllowed(broker, deps.marketplaceAutomation);
   const at = (deps.now ?? (() => new Date()))().toISOString();
   const parsed = marketplaceProfileMetaSchema.safeParse({
     mode: "profile",
@@ -115,7 +121,7 @@ async function requireNoWaitingOnOthers(
  * mismo y confirma con el enlace. Sirve para cualquier corredor (también uno propio). Otra cuenta
  * de Marketplace del corredor queda desconectada (`MANUAL_CONFIRM_PENDING` si espera un clic) y,
  * si era un perfil, se encola el borrado de su sesión (`MARKETPLACE_PROFILE_ACTION_PENDING` si ya
- * hay otra acción del perfil en cola);
+ * hay otra acción del perfil en cola; en producción no se encola nada: no hay perfil en el disco);
  * activarla otra vez actualiza la misma fila. El corredor va por su `slug`; `BROKER_NOT_FOUND` si
  * no existe.
  */
@@ -135,7 +141,10 @@ export async function connectManualMarketplaceAccount(
   const replacesProfile = (
     await deps.platformAccounts.listByBroker(brokerId, "fb_marketplace")
   ).some((account) => account.status === "connected" && !isManualMarketplaceAccount(account));
-  if (replacesProfile) {
+  // En producción no hay perfiles en el disco (el formulario automático no corre allí, spec F8
+  // §4.10): la cuenta de perfil que quedó en la base se pasa a mano sin tocar el disco, y no se
+  // encola un borrado que nadie atendería (el worker de producción no registra `marketplace.profile`).
+  if (replacesProfile && deps.marketplaceAutomation) {
     const queued = await deps.queue.enqueue(
       "marketplace.profile",
       { brokerId, action: "forget" },

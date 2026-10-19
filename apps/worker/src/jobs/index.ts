@@ -22,8 +22,12 @@ export type JobDeps = {
   publicationSync: PublicationSyncJobDeps;
   /** Cuentas conectadas e Instagram Login, para `tokens.refresh`. */
   tokensRefresh: TokensRefreshJobDeps;
-  /** El perfil del navegador de Marketplace: iniciar sesión y olvidarlo (spec F5 §4.2). */
-  marketplaceProfile: MarketplaceProfileJobDeps;
+  /**
+   * El perfil del navegador de Marketplace: iniciar sesión y olvidarlo (spec F5 §4.2). `null` en
+   * producción: el formulario automático no corre allí (spec F8 §4.10, D4), así que el job no se
+   * registra y nada atiende un `marketplace.profile`.
+   */
+  marketplaceProfile: MarketplaceProfileJobDeps | null;
   /** El disparo de las programadas (spec F6 §4.4): el candado, la cola y lo que revisa publicar. */
   publicationDue: PublicationDueJobDeps;
   /** La vigilancia de cada hora (spec F6 §4.6): el sync de Portal y las atascadas. */
@@ -41,7 +45,7 @@ export function buildJobs(deps: JobDeps): readonly Job[] {
     publicationPublishJob(deps.publicationPublish),
     publicationSyncJob(deps.publicationSync),
     tokensRefreshJob(deps.tokensRefresh),
-    marketplaceProfileJob(deps.marketplaceProfile),
+    ...(deps.marketplaceProfile === null ? [] : [marketplaceProfileJob(deps.marketplaceProfile)]),
     publicationDueJob(deps.publicationDue),
     publicationsWatchJob(deps.publicationsWatch),
     dbBackupJob(deps.dbBackup),

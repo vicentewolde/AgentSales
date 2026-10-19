@@ -219,14 +219,20 @@ export function manualWaitingText(
 
 /**
  * Qué pasa al desconectar una cuenta (la pregunta de la CLI y del panel; spec F3 §4.6 y F5 §4.2):
- * en Marketplace se borra el perfil de Chromium con la sesión de Facebook.
+ * en Marketplace se borra el perfil de Chromium con la sesión de Facebook (salvo en producción,
+ * donde no hay perfil en el disco).
  */
 export function accountDisconnectText(
   platform: Platform,
   marketplaceMode: "profile" | "manual" | null = null,
+  /** Si el ambiente permite el formulario automático (en producción no hay perfil que borrar, F8-T20). */
+  automation = true,
 ): string {
   if (platform === "fb_marketplace" && marketplaceMode === "manual") {
     return "Se desactiva Marketplace a mano: sus publicaciones pendientes no saldrán hasta activarlo de nuevo.";
+  }
+  if (platform === "fb_marketplace" && !automation) {
+    return "Se desconecta la cuenta de Facebook (en el servidor no hay un perfil del navegador que borrar): sus publicaciones pendientes no saldrán hasta activar Marketplace a mano.";
   }
   return platform === "fb_marketplace"
     ? "Se borra el perfil de Chromium con la sesión de Facebook: para volver, inicias sesión de nuevo."

@@ -122,6 +122,12 @@ export type PublishPublicationDeps = {
   workerMode: PublishMode;
   /** Marketplace: avisos por día y cuenta (`MARKETPLACE_DAILY_LIMIT`; por defecto 3, D8). */
   marketplaceDailyLimit?: number;
+  /**
+   * Si el ambiente permite el formulario automático de Marketplace (`marketplaceAutomationEnabled`,
+   * config; spec F8 §4.10). Sin decirlo, no: publicar con una cuenta de perfil falla con
+   * `MARKETPLACE_AUTOMATION_NOT_ALLOWED` sin abrir nada.
+   */
+  marketplaceAutomation?: boolean;
   /** La fuente de la UF para el precio de Marketplace (spec F5 §4.6); `null` sin el token. */
   uf?: UfValueSource | null;
   /** Reloj, para `published_at`. */
@@ -572,7 +578,7 @@ async function requireAutomationAllowed(
   if (broker === null) {
     throw new AppError("BROKER_NOT_FOUND", "No existe el corredor de esta publicación");
   }
-  assertMarketplaceAutomationAllowed(broker);
+  assertMarketplaceAutomationAllowed(broker, deps.marketplaceAutomation ?? false);
 }
 
 /** Todo lo que se revisa y arma antes de llamar a la plataforma. */

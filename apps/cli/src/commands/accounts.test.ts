@@ -264,6 +264,7 @@ describe("accounts connect mercadolibre (F4-T20, adelantado)", () => {
           auth,
           configured: options.configured ?? true,
           redirectUri: TEST_ML_REDIRECT_URI,
+          secureCookie: false,
         },
       },
     });

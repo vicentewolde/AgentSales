@@ -7,9 +7,14 @@ import {
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { brokerData, type HarnessOptions, harness } from "../../test/harness.js";
+import { goTo } from "../navigation.js";
+
+// La autorización de Mercado Libre abre otra dirección: jsdom no navega.
+vi.mock("../navigation.js", () => ({ goTo: vi.fn() }));
 
 afterEach(() => {
   cleanup();
+  vi.mocked(goTo).mockClear();
   vi.unstubAllGlobals();
 });
 
@@ -254,15 +259,24 @@ describe("panel: Cuentas", () => {
     const ML_TOKENS = { accessToken: "APP_USR-acceso-0123", refreshToken: "TG-renovar-0123" };
 
     async function withMercadoLibre(
-      options: { status?: "connected" | "expired"; configured?: boolean; account?: boolean } = {},
+      options: {
+        status?: "connected" | "expired";
+        configured?: boolean;
+        account?: boolean;
+        /** El servidor con su dominio y HTTPS: la vuelta es automática (F8-T19). */
+        secureCookie?: boolean;
+        intercept?: HarnessOptions["intercept"];
+      } = {},
     ) {
       const h = harness({
+        ...(options.intercept === undefined ? {} : { intercept: options.intercept }),
         deps: {
           ...deps(false),
           mercadoLibre: {
             auth: fakeMercadoLibreAuth(),
             configured: options.configured ?? true,
             redirectUri: TEST_ML_REDIRECT_URI,
+            secureCookie: options.secureCookie ?? false,
           },
         },
       });
@@ -343,6 +357,71 @@ describe("panel: Cuentas", () => {
       expect(writeText).toHaveBeenCalledWith(ML_PASTE);
     });
 
+    it("con la vuelta automática (el servidor con su dominio): un botón en vez de los pasos de la CLI, que abre la autorización (F8-T19)", async () => {
+      const bodies: unknown[] = [];
+      const { renderApp } = await withMercadoLibre({
+        account: false,
+        secureCookie: true,
+        intercept: (method, path, init) => {
+          if (method === "POST" && path.endsWith("/accounts/mercadolibre/authorize-url")) {
+            bodies.push(JSON.parse(String(init?.body)));
+          }
+        },
+      });
+      renderApp("/cuentas");
+
+      const channel = await mlChannel();
+      expect(within(channel).queryByRole("listitem")).toBeNull();
+      expect(channel.textContent).not.toContain("--url-stdin");
+      fireEvent.click(within(channel).getByRole("button", { name: /Conectar Mercado Libre de/ }));
+
+      await vi.waitFor(() => expect(goTo).toHaveBeenCalledTimes(1));
+      expect(bodies).toEqual([{ broker: "marca" }]);
+      const url = new URL(vi.mocked(goTo).mock.calls[0]?.[0] ?? "");
+      expect(url.origin).toBe("https://auth.mercadolibre.cl");
+      expect(url.searchParams.get("state")).toBeTruthy();
+    });
+
+    it("con la vuelta automática pero sin el par de la app: lo dice, sin botón", async () => {
+      const { renderApp } = await withMercadoLibre({
+        account: false,
+        configured: false,
+        secureCookie: true,
+      });
+      renderApp("/cuentas");
+
+      const channel = await mlChannel();
+      expect(channel.textContent).toContain("A la API le faltan ML_APP_ID y ML_CLIENT_SECRET");
+      expect(within(channel).queryByRole("button")).toBeNull();
+    });
+
+    it("la vuelta del OAuth de Mercado Libre: lo confirma con su nombre, y los errores hablan de Mercado Libre", async () => {
+      const ok = await withMercadoLibre({ account: false });
+      ok.renderApp("/cuentas?conectada=mercadolibre&proveedor=mercadolibre");
+      expect(await screen.findByText("Cuenta de Mercado Libre conectada.")).toBeTruthy();
+      cleanup();
+
+      for (const [error, text] of [
+        ["OAUTH_DENIED", "Rechazaste los permisos en Mercado Libre"],
+        ["OAUTH_STATE_INVALID", "El enlace de conexión venció"],
+        ["ML_AUTH_INVALID", "Mercado Libre no aceptó la conexión"],
+        ["ML_PERMISSION_DENIED", "No diste todos los permisos"],
+        ["ML_NOT_UN_CODIGO!", "No se pudo conectar Mercado Libre."],
+      ] as const) {
+        const t = await withMercadoLibre({ account: false });
+        t.renderApp(`/cuentas?proveedor=mercadolibre&error=${encodeURIComponent(error)}`);
+        expect((await screen.findByRole("alert")).textContent).toContain(text);
+        cleanup();
+      }
+
+      // Sin proveedor, o con uno desconocido, es la vuelta de Instagram de siempre.
+      const odd = await withMercadoLibre({ account: false });
+      odd.renderApp("/cuentas?proveedor=otro&error=OAUTH_DENIED");
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        "Rechazaste los permisos en Instagram",
+      );
+    });
+
     it("vencida: lo dice y ofrece reconectar", async () => {
       const { renderApp } = await withMercadoLibre({ status: "expired" });
       renderApp("/cuentas");
@@ -371,10 +450,13 @@ describe("panel: Cuentas", () => {
         status?: "connected" | "expired";
         lastLoginError?: { code: string; at: string };
         intercept?: HarnessOptions["intercept"];
+        /** El ambiente permite el formulario automático (por defecto sí; el servidor, no: F8-T20). */
+        automation?: boolean;
       } = {},
     ) {
       const bodies: Array<{ path: string; body: unknown }> = [];
       const h = harness({
+        deps: { marketplaceAutomation: options.automation ?? true },
         intercept: (method, path, init) => {
           if (method === "POST" && typeof init?.body === "string") {
             bodies.push({ path, body: JSON.parse(init.body) });
@@ -416,6 +498,50 @@ describe("panel: Cuentas", () => {
 
     const marketplaceCard = () =>
       screen.findByRole("article", { name: "Cuenta Facebook de prueba" });
+
+    it("en el servidor (F8-T20): ni a un corredor propio se le ofrece abrir Facebook; solo Marketplace a mano", async () => {
+      const { renderApp } = await withMarketplace({ account: false, automation: false });
+      renderApp("/cuentas");
+
+      expect(await screen.findByText("Sin cuenta de Facebook.")).toBeTruthy();
+      const manual = await screen.findByRole("button", { name: "Activar Marketplace a mano" });
+      expect(manual).toBeTruthy();
+      expect(document.body.textContent).toContain("En el servidor Marketplace se publica a mano");
+      expect(screen.queryByRole("button", { name: /Iniciar sesión/ })).toBeNull();
+      expect(screen.queryByText(/Chromium/)).toBeNull();
+    });
+
+    it("en el servidor, una cuenta de perfil que quedó se pasa a mano sin preguntar por borrar el perfil", async () => {
+      const { renderApp, bodies } = await withMarketplace({ automation: false });
+      renderApp("/cuentas");
+
+      const card = await marketplaceCard();
+      expect(within(card).getByRole("note").textContent).toContain(
+        "En el servidor Marketplace se publica a mano",
+      );
+      expect(screen.queryByRole("button", { name: /Iniciar sesión/ })).toBeNull();
+      expect(document.body.textContent).toContain("no se borra ningún archivo");
+
+      fireEvent.click(await screen.findByRole("button", { name: "Activar Marketplace a mano" }));
+
+      // Sin la confirmación de "se borra el perfil de este Mac": no hay perfil en el disco.
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(await screen.findByText("Marketplace a mano activo.")).toBeTruthy();
+      expect(bodies).toContainEqual({
+        path: expect.stringContaining("/accounts/marketplace/manual"),
+        body: { broker: "marca" },
+      });
+    });
+
+    it("en el servidor, desconectar una cuenta de perfil dice que no hay perfil que borrar", async () => {
+      const { renderApp } = await withMarketplace({ automation: false });
+      renderApp("/cuentas");
+
+      const card = await marketplaceCard();
+      fireEvent.click(within(card).getByRole("button", { name: "Desconectar" }));
+      expect(card.textContent).toContain("en el servidor no hay un perfil del navegador");
+      expect(card.textContent).not.toContain("Se borra el perfil de Chromium");
+    });
 
     it("sin cuenta: Iniciar sesión encola y espera hasta ver la sesión", async () => {
       const { renderApp, connect, requests } = await withMarketplace({ account: false });

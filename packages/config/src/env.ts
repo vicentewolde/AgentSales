@@ -404,8 +404,9 @@ type ParsedEnv = {
  * retorno dentro de ella y la API de Anthropic como IA (el plan Max es solo para uso propio, no para
  * un servidor que atiende a terceros: `docs/integraciones/anthropic-terminos.md` §6), y el respaldo a
  * R2 (`BACKUP_TARGET=r2`, D13: el disco de la máquina no dura). `API_HOST` explícito lo revisa
- * `loadEnv`, que ve el entorno sin los valores por defecto. El formulario automático de Marketplace
- * apagado llega con F8-T20.
+ * `loadEnv`, que ve el entorno sin los valores por defecto, igual que `BROWSER_PROFILES_DIR`: el
+ * formulario automático de Marketplace no corre en producción (F8-T20, D4), así que no hay carpeta de
+ * perfiles que configurar.
  */
 function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
   if (env.PUBLIC_URL === undefined) {
@@ -509,6 +510,15 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
       message: "falta (obligatoria con NODE_ENV=production; en Fly, Fly-Client-IP)",
     });
   }
+  // El formulario automático de Marketplace no corre en producción (spec F8 §4.10, D4): sin
+  // perfiles del navegador en el servidor, la carpeta no se configura.
+  if (cleaned.NODE_ENV === "production" && cleaned.BROWSER_PROFILES_DIR !== undefined) {
+    outdated.push({
+      variable: "BROWSER_PROFILES_DIR",
+      message:
+        "no va con NODE_ENV=production (el formulario automático de Marketplace no corre en el servidor): quítala",
+    });
+  }
   const result = envSchema.safeParse(cleaned);
   if (!result.success || outdated.length > 0) {
     throw new EnvError([
@@ -530,6 +540,15 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
  */
 export function panelUrlOf(env: Pick<Env, "PUBLIC_URL" | "WEB_PORT">): string {
   return env.PUBLIC_URL ?? `http://localhost:${env.WEB_PORT}`;
+}
+
+/**
+ * Si el ambiente permite el formulario automático de Marketplace (el perfil del navegador, spec F8
+ * §4.10, D4): en todos menos en producción, donde Marketplace se publica a mano. La API y el worker
+ * se lo pasan a core (`marketplaceAutomation`), que no lee el entorno.
+ */
+export function marketplaceAutomationEnabled(env: Pick<Env, "NODE_ENV">): boolean {
+  return env.NODE_ENV !== "production";
 }
 
 /** El bucket de respaldos y su token (spec F8 §4.9); la cuenta es la de `R2_ACCOUNT_ID`. */

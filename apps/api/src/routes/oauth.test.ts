@@ -8,8 +8,20 @@ import {
   createInMemoryPlatformAccountRepository,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { adminApp, fakeInstagramAuth, TEST_ENCRYPTION_KEY, testDeps } from "../testing/index.js";
-import { instagramStartUrlOf, instagramStateCookieName, OAUTH_STATE_COOKIE } from "./oauth.js";
+import {
+  adminApp,
+  fakeInstagramAuth,
+  fakeMercadoLibreAuth,
+  TEST_ENCRYPTION_KEY,
+  TEST_ML_REDIRECT_URI,
+  testDeps,
+} from "../testing/index.js";
+import {
+  instagramStartUrlOf,
+  instagramStateCookieName,
+  mercadoLibreStateCookieName,
+  OAUTH_STATE_COOKIE,
+} from "./oauth.js";
 
 const API = "http://localhost:8787";
 const PANEL = "http://localhost:5173";
@@ -374,5 +386,234 @@ describe("instagramStartUrlOf", () => {
     expect(instagramStartUrlOf("https://agentsales.test/api/oauth/instagram?x=1")).toBe(
       "https://agentsales.test/api/oauth/instagram/start",
     );
+  });
+});
+
+// F8-T19 (spec F8 §4.3, D20): la vuelta automática de Mercado Libre, con su `state` de un solo uso y
+// su cookie, sobre la API con dobles (nunca llama a Mercado Libre).
+describe("GET /oauth/mercadolibre/callback", () => {
+  const CODE = "TG-codigo-de-la-vuelta-8035443";
+
+  function setupMl(options: { configured?: boolean; secureCookie?: boolean } = {}) {
+    const broker = contentBrokerFixture();
+    const other = { ...contentBrokerFixture(), id: randomUUID(), slug: "otro-corredor" };
+    const brokers = createInMemoryBrokerRepository([broker, other]);
+    const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+    const mercadoLibre = fakeMercadoLibreAuth();
+    const instagram = fakeInstagramAuth();
+    const secureCookie = options.secureCookie ?? false;
+    const app = adminApp(
+      testDeps({
+        brokers,
+        platformAccounts,
+        access: { allowedHosts: ["localhost:8787"], allowedOrigins: [PANEL] },
+        panelUrl: PANEL,
+        instagram: { auth: instagram, oauthConfigured: true, secureCookie: false },
+        mercadoLibre: {
+          auth: mercadoLibre,
+          configured: options.configured ?? true,
+          redirectUri: TEST_ML_REDIRECT_URI,
+          secureCookie,
+        },
+      }),
+    );
+    const cookieName = mercadoLibreStateCookieName(secureCookie);
+    /** Pide la URL como el panel: el `state` de la URL y la cookie que puso `authorize-url`. */
+    const authorize = async (slug = broker.slug) => {
+      const response = await app.request(`${API}/accounts/mercadolibre/authorize-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ broker: slug }),
+      });
+      const { url } = (await response.json()) as { url: string };
+      const state = new URL(url).searchParams.get("state") ?? "";
+      const cookie = new RegExp(`${cookieName}=([^;]+)`).exec(
+        response.headers.get("set-cookie") ?? "",
+      )?.[1];
+      return { state, cookie: cookie === undefined ? undefined : decodeURIComponent(cookie) };
+    };
+    const callback = (query: Record<string, string>, cookieState?: string) =>
+      app.request(`${API}/oauth/mercadolibre/callback?${new URLSearchParams(query)}`, {
+        headers:
+          cookieState === undefined
+            ? {}
+            : { Cookie: `${cookieName}=${encodeURIComponent(cookieState)}` },
+      });
+    return {
+      app,
+      broker,
+      other,
+      platformAccounts,
+      mercadoLibre,
+      instagram,
+      authorize,
+      callback,
+      cookieName,
+    };
+  }
+
+  it("la vuelta buena canjea el código, guarda la cuenta de Portal cifrada y vuelve al panel", async () => {
+    const t = setupMl();
+    const { state, cookie } = await t.authorize();
+    expect(cookie).toBe(state);
+
+    const response = await t.callback({ code: CODE, state }, cookie);
+
+    expect(panelRedirect(response)).toEqual({
+      conectada: "mercadolibre",
+      proveedor: "mercadolibre",
+    });
+    expect(t.mercadoLibre.calls).toEqual(["exchange", "me"]);
+    const [account] = await t.platformAccounts.list(ALL_SCOPE);
+    expect(account).toMatchObject({
+      brokerId: t.broker.id,
+      platform: "portal_inmobiliario",
+      externalAccountId: "8035443",
+      status: "connected",
+    });
+    expect(t.platformAccounts.storedCredentials(account?.id ?? "")).toMatchObject({
+      accessToken: `APP_USR-fake-${CODE}`,
+      refreshToken: `TG-fake-${CODE}`,
+    });
+    // La cookie se borra, y ni el código ni los tokens van en la URL de vuelta.
+    expect(response.headers.get("set-cookie")).toMatch(new RegExp(`${t.cookieName}=;|Max-Age=0`));
+    const location = response.headers.get("location") ?? "";
+    expect(location).not.toContain(CODE);
+    expect(location).not.toContain("APP_USR");
+  });
+
+  it("con HTTPS la cookie es la __Host- y la vuelta también conecta", async () => {
+    const t = setupMl({ secureCookie: true });
+    const { state, cookie } = await t.authorize();
+    expect(t.cookieName).toBe("__Host-agentsales_oauth_ml");
+    const response = await t.callback({ code: CODE, state }, cookie);
+    expect(panelRedirect(response)).toMatchObject({ conectada: "mercadolibre" });
+    expect(response.headers.get("set-cookie")).toContain("Secure");
+  });
+
+  it("el state sirve una sola vez, aun con su cookie guardada", async () => {
+    const t = setupMl();
+    const { state, cookie } = await t.authorize();
+    await t.callback({ code: CODE, state }, cookie);
+
+    expect(panelRedirect(await t.callback({ code: `${CODE}-otro`, state }, cookie))).toEqual({
+      error: "OAUTH_STATE_INVALID",
+      proveedor: "mercadolibre",
+    });
+    expect(t.mercadoLibre.calls).toEqual(["exchange", "me"]);
+    expect(await t.platformAccounts.list(ALL_SCOPE)).toHaveLength(1);
+  });
+
+  it("sin la cookie, con otra distinta, o un state ajeno, vencido o de Instagram: OAUTH_STATE_INVALID sin llamar a Mercado Libre", async () => {
+    const t = setupMl();
+    const { state, cookie } = await t.authorize();
+    const signer = createStateSigner(TEST_ENCRYPTION_KEY);
+    const expired = signer.sign(
+      { platform: "mercadolibre", broker: t.broker.slug },
+      { ttlSeconds: 600, now: new Date(Date.now() - 20 * 60 * 1000) },
+    );
+    const instagram = signer.sign(
+      { platform: "instagram", broker: t.broker.slug },
+      { ttlSeconds: 600 },
+    );
+    const foreign = createStateSigner("otra-clave-de-32-caracteres-o-mas-0000").sign(
+      { platform: "mercadolibre", broker: t.broker.slug },
+      { ttlSeconds: 600 },
+    );
+    const tries: [string, string | undefined][] = [
+      [state, undefined],
+      [state, `${cookie}x`],
+      [expired, expired],
+      [instagram, instagram],
+      [foreign, foreign],
+      ["no-es-un-state", "no-es-un-state"],
+    ];
+    for (const [query, sent] of tries) {
+      expect(panelRedirect(await t.callback({ code: CODE, state: query }, sent))).toEqual({
+        error: "OAUTH_STATE_INVALID",
+        proveedor: "mercadolibre",
+      });
+    }
+    expect(panelRedirect(await t.callback({ code: CODE }))).toMatchObject({
+      error: "OAUTH_STATE_INVALID",
+    });
+    expect(t.mercadoLibre.calls).toEqual([]);
+    expect(await t.platformAccounts.list(ALL_SCOPE)).toEqual([]);
+  });
+
+  it("el state de Mercado Libre no sirve en la vuelta de Instagram, ni al revés", async () => {
+    const t = setupMl();
+    const { state } = await t.authorize();
+    // La cookie de Instagram con el `state` de Mercado Libre.
+    const response = await t.app.request(
+      `${API}/oauth/instagram/callback?${new URLSearchParams({ code: "AQB", state })}`,
+      {
+        headers: {
+          Cookie: `${instagramStateCookieName(false)}=${encodeURIComponent(state)}`,
+        },
+      },
+    );
+    expect(panelRedirect(response)).toEqual({ error: "OAUTH_STATE_INVALID" });
+    expect(t.instagram.calls).toEqual([]);
+  });
+
+  it("si el administrador rechaza en Mercado Libre, vuelve con OAUTH_DENIED sin canjear", async () => {
+    const t = setupMl();
+    const { state, cookie } = await t.authorize();
+    expect(panelRedirect(await t.callback({ error: "access_denied", state }, cookie))).toEqual({
+      error: "OAUTH_DENIED",
+      proveedor: "mercadolibre",
+    });
+    expect(t.mercadoLibre.calls).toEqual([]);
+  });
+
+  it("sin código vuelve con OAUTH_CODE_MISSING; sin el par de la app, con MERCADOLIBRE_NOT_CONFIGURED", async () => {
+    const t = setupMl();
+    const first = await t.authorize();
+    expect(panelRedirect(await t.callback({ state: first.state }, first.cookie))).toEqual({
+      error: "OAUTH_CODE_MISSING",
+      proveedor: "mercadolibre",
+    });
+    // Sin el par, `authorize-url` ya responde 503: el `state` se firma a mano.
+    const none = setupMl({ configured: false });
+    const state = createStateSigner(TEST_ENCRYPTION_KEY).sign(
+      { platform: "mercadolibre", broker: none.broker.slug },
+      { ttlSeconds: 600 },
+    );
+    expect(panelRedirect(await none.callback({ code: CODE, state }, state))).toEqual({
+      error: "MERCADOLIBRE_NOT_CONFIGURED",
+      proveedor: "mercadolibre",
+    });
+    expect(none.mercadoLibre.calls).toEqual([]);
+  });
+
+  it.each([
+    ["malo-codigo", "ML_AUTH_INVALID"],
+    ["sin-write-codigo", "ML_PERMISSION_DENIED"],
+    ["argentina-codigo", "ML_SITE_MISMATCH"],
+  ])(
+    "un fallo al conectar (%s) vuelve con su código, sin guardar la cuenta ni el código en la URL",
+    async (code, expected) => {
+      const t = setupMl();
+      const { state, cookie } = await t.authorize();
+      const response = await t.callback({ code, state }, cookie);
+      expect(panelRedirect(response)).toEqual({ error: expected, proveedor: "mercadolibre" });
+      expect(response.headers.get("location") ?? "").not.toContain(code);
+      expect(await t.platformAccounts.list(ALL_SCOPE)).toEqual([]);
+    },
+  );
+
+  it("el corredor sale del state firmado: una query que nombra a otro no lo cambia", async () => {
+    const t = setupMl();
+    const { state, cookie } = await t.authorize(t.other.slug);
+    await t.callback({ code: CODE, state, broker: t.broker.slug }, cookie);
+    const [account] = await t.platformAccounts.list(ALL_SCOPE);
+    expect(account?.brokerId).toBe(t.other.id);
+  });
+
+  it("rechaza otro Host (403) como el resto", async () => {
+    const t = setupMl();
+    const response = await t.app.request("http://otro.test/oauth/mercadolibre/callback?code=x");
+    expect(response.status).toBe(403);
   });
 });

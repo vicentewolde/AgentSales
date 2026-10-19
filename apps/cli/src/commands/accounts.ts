@@ -575,7 +575,7 @@ export function runDisconnect(deps: AccountsDeps, id: string, options: Disconnec
   const c = deps.colors;
   return guarded(deps, async () => {
     const accountId = accountIdOf(id);
-    const { accounts } = await unwrap(
+    const { accounts, connect } = await unwrap(
       deps.client.accounts.$get({ query: {} }),
       accountListResponseSchema,
     );
@@ -590,7 +590,7 @@ export function runDisconnect(deps: AccountsDeps, id: string, options: Disconnec
     const marketplace = account.platform === "fb_marketplace";
     if (!options.yes) {
       const confirmed = await deps.confirm(
-        `¿Desconectar ${account.displayName} (${PLATFORM_TEXT[account.platform]})? ${accountDisconnectText(account.platform, account.marketplaceMode)}`,
+        `¿Desconectar ${account.displayName} (${PLATFORM_TEXT[account.platform]})? ${accountDisconnectText(account.platform, account.marketplaceMode, connect.marketplace.automation)}`,
       );
       if (!confirmed) {
         deps.printError(c.yellow("No se desconectó: confirma en la terminal o usa --yes"));

@@ -242,7 +242,8 @@ describe("cuentas · seguridad y mensajes", () => {
       accounts: [],
       connect: {
         instagram: { oauth: true, startUrl },
-        mercadolibre: { configured: true, redirectUri },
+        mercadolibre: { configured: true, redirectUri, automatic: false },
+        marketplace: { automation: true },
       },
     });
     expect(accountListResponseSchema.safeParse(body("https://agentsales.test/x")).success).toBe(

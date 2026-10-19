@@ -41,6 +41,7 @@ async function setup(
   const answers: Array<string | null> = [];
   const counted: string[] = [];
   const deps: FbSmokeListingDeps = {
+    automation: true,
     brokers: t.brokers,
     listings: t.listings,
     accounts: t.platformAccounts,

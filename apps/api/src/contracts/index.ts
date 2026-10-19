@@ -710,7 +710,18 @@ export const accountListResponseSchema = z.object({
     mercadolibre: z.object({
       configured: z.boolean(),
       redirectUri: z.url({ protocol: /^https$/ }),
+      /**
+       * Si la vuelta es automática (F8-T19: el servidor con su dominio y HTTPS): el panel ofrece un
+       * botón; si no (el Mac), la dirección se pega desde la CLI.
+       */
+      automatic: z.boolean(),
     }),
+    /**
+     * Marketplace (F8-T20): `automation` dice si el ambiente permite el formulario automático (el
+     * perfil del navegador). En producción no: todos publican a mano y una cuenta de perfil que
+     * quedó de antes se pasa a mano.
+     */
+    marketplace: z.object({ automation: z.boolean() }),
   }),
 });
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
@@ -848,10 +859,18 @@ export const OAUTH_REDIRECT_ERRORS = [
   "OAUTH_STATE_INVALID",
   "OAUTH_CODE_MISSING",
   "INSTAGRAM_NOT_CONFIGURED",
+  "MERCADOLIBRE_NOT_CONFIGURED",
   "BROKER_NOT_FOUND",
   "INTERNAL_ERROR",
 ] as const;
 export type OAuthRedirectError = (typeof OAUTH_REDIRECT_ERRORS)[number];
+
+/**
+ * El proveedor con que vuelve el OAuth (`/cuentas?proveedor=…`, F8-T19): sin él, Instagram (la vuelta
+ * de F3). Cambia el texto del aviso del panel.
+ */
+export const OAUTH_PROVIDERS = ["instagram", "mercadolibre"] as const;
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
 // --- F6-T10: calendario, la propiedad, Portal y el seguimiento (spec F6 §4.13) ---
 
