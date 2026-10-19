@@ -206,8 +206,8 @@ export function AccountsPage() {
       <h1 className="text-2xl font-semibold tracking-tight">Cuentas</h1>
       <p className="mt-1 text-slate-600">
         Las cuentas de Instagram, Mercado Libre y Facebook de cada corredor. Se renuevan solas
-        mientras el worker corre (pnpm dev): Instagram dura 60 días; Mercado Libre se da de baja
-        tras 4 meses sin renovarse. Facebook no vence: si se cierra la sesión, vuelves a iniciarla.
+        mientras el worker está encendido: Instagram dura 60 días; Mercado Libre se da de baja tras
+        4 meses sin renovarse. Facebook no vence: si se cierra la sesión, vuelves a iniciarla.
       </p>
       <OAuthReturn />
       {error && (
