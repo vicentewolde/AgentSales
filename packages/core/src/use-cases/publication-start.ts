@@ -339,7 +339,13 @@ export async function requireMarketplaceStartable(
   }
   if (automated.length > 0) {
     const broker = await locked.brokers.findById(listing.brokerId);
-    if (broker !== null) assertMarketplaceAutomationAllowed(broker, options.automation ?? false);
+    // Como el intento: sin corredor no hay con qué decidir (no se deja pasar).
+    if (broker === null) {
+      throw new AppError("BROKER_NOT_FOUND", "No existe el corredor de esta propiedad", {
+        details: { brokerId: listing.brokerId },
+      });
+    }
+    assertMarketplaceAutomationAllowed(broker, options.automation ?? false);
   }
   const accounts = new Set(automated);
   const own = new Set(channelIds);

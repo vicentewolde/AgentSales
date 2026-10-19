@@ -5,7 +5,7 @@ import { oauthErrorText, PROVIDER_NAME } from "./accounts.js";
 /**
  * El mensaje con que vuelve el OAuth (spec F3 §4.6 y F8-T19): `?conectada=<proveedor>` o
  * `?error=<código>` (con `&proveedor=mercadolibre` desde Mercado Libre; sin él, Instagram), con
- * Cerrar (que limpia la URL). Otro valor de `conectada` o de `proveedor` no dice nada.
+ * Cerrar (que limpia la URL). Un `proveedor` desconocido es Instagram; otro valor de `conectada` no dice nada.
  */
 export function OAuthReturn() {
   const [params, setParams] = useSearchParams();

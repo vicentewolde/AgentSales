@@ -272,7 +272,12 @@ export function accountRoutes(deps: AccountRoutesDeps) {
             configured: deps.mercadoLibre.configured,
             redirectUri: deps.mercadoLibre.redirectUri,
             // La vuelta automática solo con el dominio (HTTPS): en el Mac, la dirección no llega.
-            automatic: deps.mercadoLibre.configured && deps.mercadoLibre.secureCookie,
+            automatic:
+              deps.mercadoLibre.configured &&
+              deps.mercadoLibre.secureCookie &&
+              new URL(deps.mercadoLibre.redirectUri).pathname.endsWith(
+                "/oauth/mercadolibre/callback",
+              ),
           },
           marketplace: { automation: deps.marketplaceAutomation },
         },

@@ -167,7 +167,7 @@ const profilesRoot = resolveBrowserProfilesDir(env.BROWSER_PROFILES_DIR, {
   workspaceRoot,
 });
 // En producción el formulario automático no corre (spec F8 §4.10, D4): sin publisher de
-// Marketplace, sin el job `marketplace.profile` y sin ventanas ni evidencia que barrer. Una cuenta
+// Marketplace, sin el job `marketplace.profile` y sin evidencia que limpiar. Una cuenta
 // a mano no necesita nada de esto (el traspaso es de core). Core recibe lo que el ambiente permite.
 const marketplaceAutomation = marketplaceAutomationEnabled(env);
 // El respaldo (spec F6 §4.11 y F8 §4.9): en el Mac, la carpeta, también fuera del proyecto (trae
@@ -545,8 +545,9 @@ async function cleanMarketplaceEvidence(): Promise<void> {
   }
 }
 
+// También en producción: solo escribe en la base, y la de producción puede traer formularios de
+// cuando el perfil corría en el Mac (sin ventana desde que no hay worker allí).
 async function sweepMarketplaceWindows(): Promise<void> {
-  if (!marketplaceAutomation) return;
   try {
     const marked = await sweepClosedWindows(publications, new Date());
     if (marked > 0) {

@@ -263,7 +263,12 @@ export function oauthRoutes(deps: OAuthDeps) {
 
       try {
         await connectMercadoLibreAccount(
-          { ...deps, mercadoLibre: deps.mercadoLibre.auth },
+          {
+            brokers: deps.brokers,
+            platformAccounts: deps.platformAccounts,
+            mercadoLibre: deps.mercadoLibre.auth,
+            ...(deps.now === undefined ? {} : { now: deps.now }),
+          },
           { broker: verified.broker, code, signal: c.req.raw.signal },
         );
         return c.redirect(toPanelFromMercadoLibre({ conectada: "mercadolibre" }), 302);

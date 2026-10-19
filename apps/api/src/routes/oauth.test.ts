@@ -476,7 +476,7 @@ describe("GET /oauth/mercadolibre/callback", () => {
       refreshToken: `TG-fake-${CODE}`,
     });
     // La cookie se borra, y ni el código ni los tokens van en la URL de vuelta.
-    expect(response.headers.get("set-cookie")).toMatch(new RegExp(`${t.cookieName}=;|Max-Age=0`));
+    expect(response.headers.get("set-cookie")).toContain(`${t.cookieName}=;`);
     const location = response.headers.get("location") ?? "";
     expect(location).not.toContain(CODE);
     expect(location).not.toContain("APP_USR");
@@ -609,6 +609,62 @@ describe("GET /oauth/mercadolibre/callback", () => {
     await t.callback({ code: CODE, state, broker: t.broker.slug }, cookie);
     const [account] = await t.platformAccounts.list(ALL_SCOPE);
     expect(account?.brokerId).toBe(t.other.id);
+  });
+
+  it("ni el código ni los tokens del canje, ni el state, llegan al log ni a la URL de vuelta", async () => {
+    const lines: string[] = [];
+    const logger = createLogger(
+      { level: "debug" },
+      new Writable({
+        write(chunk, _encoding, callback) {
+          lines.push(chunk.toString());
+          callback();
+        },
+      }),
+    );
+    const broker = contentBrokerFixture();
+    const app = adminApp(
+      testDeps({
+        brokers: createInMemoryBrokerRepository([broker]),
+        logger,
+        access: { allowedHosts: ["localhost:8787"], allowedOrigins: [PANEL] },
+        panelUrl: PANEL,
+      }),
+    );
+    const cookieName = mercadoLibreStateCookieName(false);
+    let lastState = "";
+    for (const code of ["TG-codigo-secreto", "malo-codigo-secreto"]) {
+      const authorize = await app.request(`${API}/accounts/mercadolibre/authorize-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ broker: broker.slug }),
+      });
+      const { url } = (await authorize.json()) as { url: string };
+      lastState = new URL(url).searchParams.get("state") ?? "";
+      const response = await app.request(
+        `${API}/oauth/mercadolibre/callback?${new URLSearchParams({ code, state: lastState })}`,
+        { headers: { Cookie: `${cookieName}=${encodeURIComponent(lastState)}` } },
+      );
+      expect(response.headers.get("location")).not.toContain("codigo-secreto");
+    }
+    const written = lines.join("\n");
+    expect(written).not.toContain("codigo-secreto");
+    expect(written).not.toContain("APP_USR-fake");
+    expect(written).not.toContain("TG-fake");
+    expect(written).not.toContain(lastState);
+  });
+
+  it("borra la cookie con su Path (y Secure con HTTPS: el navegador ignora un borrado de __Host- sin él)", async () => {
+    for (const secureCookie of [false, true]) {
+      const t = setupMl({ secureCookie });
+      const { state, cookie } = await t.authorize();
+      const response = await t.callback({ code: CODE, state }, cookie);
+      const deletion = response.headers.get("set-cookie") ?? "";
+      expect(deletion).toContain(`${t.cookieName}=;`);
+      expect(deletion).toContain("Path=/");
+      expect(deletion).toContain("Max-Age=0");
+      expect(deletion.includes("Secure")).toBe(secureCookie);
+    }
   });
 
   it("rechaza otro Host (403) como el resto", async () => {

@@ -255,7 +255,7 @@ describe("accounts y accounts refresh", () => {
 describe("accounts connect mercadolibre (F4-T20, adelantado)", () => {
   const CODE = "TG-codigo-pegado-8035443";
 
-  async function mlSetup(options: { configured?: boolean } = {}) {
+  async function mlSetup(options: { configured?: boolean; secureCookie?: boolean } = {}) {
     const opened: string[] = [];
     const auth = fakeMercadoLibreAuth();
     const h = harness({
@@ -264,7 +264,7 @@ describe("accounts connect mercadolibre (F4-T20, adelantado)", () => {
           auth,
           configured: options.configured ?? true,
           redirectUri: TEST_ML_REDIRECT_URI,
-          secureCookie: false,
+          secureCookie: options.secureCookie ?? false,
         },
       },
     });
@@ -289,6 +289,15 @@ describe("accounts connect mercadolibre (F4-T20, adelantado)", () => {
       runConnect(deps(pasted), "mercadolibre", { broker: "marca", urlStdin: true });
     return { h, auth, opened, deps, freshState, paste };
   }
+
+  it("en un servidor con vuelta automática (F8-T19) manda al botón del panel, sin abrir ningún enlace", async () => {
+    const { h, opened, deps } = await mlSetup({ secureCookie: true });
+
+    expect(await runConnect(deps(), "mercadolibre", { broker: "marca" })).toBe(1);
+
+    expect(opened).toEqual([]);
+    expect(h.errors()).toContain("se conecta con el botón del panel");
+  });
 
   it("sin --url-stdin imprime y abre el enlace de autorización, y dice el paso siguiente", async () => {
     const { h, opened, freshState } = await mlSetup();

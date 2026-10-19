@@ -160,6 +160,7 @@ try {
     process.exitCode = await runFbSmoke(
       {
         brokers: createBrokerRepository(db.db),
+        automation: marketplaceAutomationEnabled(env),
         openProfile,
         outputDir,
         now: () => new Date(),

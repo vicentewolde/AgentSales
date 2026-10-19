@@ -158,7 +158,8 @@ const withoutQuery = (url: URL) => `${url.origin}${url.pathname}`;
 /**
  * `agentsales accounts connect mercadolibre --broker <slug> [--url-stdin]` (spec F4 §4.2 y §4.12):
  * - sin `--url-stdin`: pide a la API el enlace de autorización (con el `state` firmado, 10 min),
- *   lo imprime, lo abre y explica el paso siguiente;
+ *   lo imprime, lo abre y explica el paso siguiente; en un servidor con vuelta automática (F8-T19)
+ *   dice que se conecta con el botón del panel;
  * - con `--url-stdin`: lee la dirección de vuelta pegada (`pbpaste | …`, nunca de un argumento),
  *   revisa que sea la registrada, saca el `code` y el `state` y conecta. Nunca muestra la dirección
  *   ni el código, ni los pone en un error.
@@ -171,6 +172,19 @@ async function connectMercadoLibre(
   const c = deps.colors;
   const pipeCommand = urlStdinCommand(broker);
   if (!urlStdin) {
+    // Con el dominio (F8-T19) la vuelta es automática: Mercado Libre vuelve a la API, que termina
+    // en el panel, y no queda ninguna dirección con error que pegar. Se conecta con el botón.
+    const { connect } = await unwrap(
+      deps.client.accounts.$get({ query: {} }),
+      accountListResponseSchema,
+    );
+    if (connect.mercadolibre.automatic) {
+      throw new CliError(
+        "MERCADOLIBRE_USE_PANEL",
+        "En este servidor Mercado Libre se conecta con el botón del panel: la vuelta es automática",
+        "Abre el panel, entra a Cuentas y pulsa Conectar Mercado Libre del corredor",
+      );
+    }
     const { url } = await unwrap(
       deps.client.accounts.mercadolibre["authorize-url"].$post({ json: { broker } }),
       mercadoLibreAuthorizeUrlResponseSchema,

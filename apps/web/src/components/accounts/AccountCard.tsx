@@ -44,14 +44,14 @@ export function AccountCard({
   account,
   now,
   manage = true,
-  marketplaceAutomation = true,
+  marketplaceAutomation,
 }: {
   account: PlatformAccountView;
   now: Date;
   /** Desconectar es del administrador (F7, spec §4.5): el corredor ve la tarjeta sin el botón. */
   manage?: boolean;
   /** Si el ambiente permite el formulario automático (en producción no, F8-T20). */
-  marketplaceAutomation?: boolean;
+  marketplaceAutomation: boolean;
 }) {
   const disconnect = useDisconnectAccount();
   const [confirming, setConfirming] = useState(false);

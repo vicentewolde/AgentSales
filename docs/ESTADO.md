@@ -2,7 +2,7 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-18
+**Actualizado:** 2026-10-19
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
 **Última tarea:** lote H de F8 (T19 y T20): la vuelta automática de Mercado Libre (el botón "Conectar Mercado Libre" del panel con el dominio, `GET /api/oauth/mercadolibre/callback` con el `state` de un solo uso y su cookie `__Host-`) y Marketplace en producción (el formulario automático no corre en el servidor: ni el publisher ni el job `marketplace.profile` se registran, las cuentas de perfil que quedaron se pasan a mano sin tocar el disco, y `loadEnv` rechaza `BROWSER_PROFILES_DIR` en producción)
 **Siguiente paso:** T21, la primera puesta en marcha contigo (`docs/10-despliegue.md`); antes, lo que queda de "Del lote G" y "Del lote H" (abajo)
@@ -168,8 +168,6 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **Cuando el panel edite definiciones, rangos:** la base no impide un `min_value` mayor que `max_value` ni un rango en un campo que no es `number`; hoy lo detecta el validador (`FIELD_CONFIG_INVALID`). Si el panel permite editar definiciones, sumar `CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)`.
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda para F8 (D5 del spec F1).
 - **F8, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
-- **F8, vuelta de Mercado Libre:** el `state` es de un solo uso desde F7-T10, pero `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática (`/oauth/mercadolibre/callback`): F8 registra en la app una segunda dirección de su dominio real, y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
-- **F8, cuentas (T17):** el `state` de Instagram no es de un solo uso (vale sus 10 min; hoy basta con que la cookie se borre): guardar el nonce usado, como el de Mercado Libre. (Quién conecta cada corredor se cerró en F7-T08: conectar es del administrador.)
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **F8, `doctor` remoto (T08):** del servidor muestra lo que da `/health`; ffmpeg, Chromium y `pg_dump` del servidor no los revisa la CLI (spec §4.5): los asegura la imagen y su prueba en la CI (`image`, T10).

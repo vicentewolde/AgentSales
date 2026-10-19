@@ -655,10 +655,31 @@ describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
     expect((await s.current(publication.id))?.status).toBe("failed");
   });
 
+  it("en producción, sin el publisher de Marketplace (el worker no lo registra), el intento da MARKETPLACE_AUTOMATION_NOT_ALLOWED y no PUBLISHER_NOT_CONFIGURED", async () => {
+    const s = await setup();
+    const publication = await s.publish();
+    await expect(
+      publishPublication(
+        { ...s.attemptDeps, publishers: {}, marketplaceAutomation: false },
+        { publicationId: publication.id, isLastAttempt: true },
+      ),
+    ).rejects.toMatchObject({
+      code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED",
+      message: expect.stringContaining("En el servidor Marketplace se publica a mano"),
+    });
+    expect((await s.current(publication.id))?.status).toBe("failed");
+  });
+
   it("en producción, la cuenta a mano publica como siempre: llega a awaiting_manual_confirm sin publisher", async () => {
     const s = await byHand({ automation: false });
     const publication = await s.publish();
-    await expect(s.attempt(publication)).resolves.toMatchObject({
+    // Como el worker de producción: sin el publisher de Marketplace.
+    await expect(
+      publishPublication(
+        { ...s.attemptDeps, publishers: {} },
+        { publicationId: publication.id, isLastAttempt: false },
+      ),
+    ).resolves.toMatchObject({
       outcome: "awaiting_manual_confirm",
     });
     expect(s.fake.published).toHaveLength(0);

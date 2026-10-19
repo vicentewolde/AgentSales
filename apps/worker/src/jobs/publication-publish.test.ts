@@ -66,6 +66,7 @@ async function setup(
       storage: t.storage,
       publishers: { instagram: options.publisher ?? fake },
       workerMode: "live",
+      marketplaceAutomation: true,
       mercadoLibre: null,
     },
     queue: t.queue,
@@ -456,6 +457,7 @@ describe("job publication.publish · Marketplace a mano (F7-T15)", () => {
         storage: t.storage,
         publishers: {},
         workerMode: "live",
+        marketplaceAutomation: true,
         mercadoLibre: null,
         uf: {
           async valuesBetween(from, to) {
