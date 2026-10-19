@@ -49,7 +49,13 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [ ] **Quitar `BROWSER_PROFILES_DIR` de `.env.production`** si está (producción la rechaza: `loadEnv` falla con "no va con NODE_ENV=production"; el servidor no la recibe, pero `ENV_FILE=.env.production pnpm auth:admin` sí la leería)
   - [ ] **La dirección de vuelta de Mercado Libre** (checklist, "Antes del primer despliegue"): `https://agentsales.agentpey.com/api/oauth/mercadolibre/callback` en la app de Mercado Libre. Cuéntame si tu panel deja dos direcciones o solo una (si solo una, el pegado en el Mac deja de calzar)
   - [ ] **En T21:** conectar tu Mercado Libre con el botón del panel en el dominio (confirma la vuelta de verdad), y pasar a mano las cuentas de Marketplace de perfil que quedaron en la base (`agentsales-pruebas`) con el botón de Cuentas
-- [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups` (arriba), los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
+- **Antes del primer despliegue (T21), hecho el 2026-10-19** (con Chrome en Cloudflare y Vercel, y tú en la terminal):
+  - [x] **Bucket `agentsales-backups`** (lo creó Claude en Chrome: no existía) y su **token** `agentsales-backups (produccion)` (Object Read & Write, solo ese bucket; lo creaste y copiaste tú a `.env.production`)
+  - [x] **Fly.io:** cuenta con forma de pago, `flyctl` instalado, `fly auth login`, `fly apps create agentsales` (el nombre estaba libre: `fly.toml` no cambia), los **14 secretos** en "Staged" (`fly secrets import --stage`) y `FLY_API_TOKEN` en el Environment `production` de GitHub (vence en 6 meses: renovar antes de ~2027-04)
+  - [x] **Dominio:** IPv4 compartida `66.241.124.18` e IPv6 `2a09:8280:1::1be:1d46:0` (la guía no tenía este paso), registros `A` y `AAAA` de `agentsales` creados por Claude en Vercel, y el certificado **emitido y activo** (Let's Encrypt)
+  - [x] **`PUBLIC_URL`** agregada a `.env.production` (para el enlace de `pnpm auth:admin`)
+  - [ ] **Las direcciones de vuelta de Meta** (hechas salvo la URL de instrucciones de eliminación, que se reintenta con el servidor encendido) y la de **Mercado Libre**; y el **límite de gasto** en la consola de Anthropic
+  - [ ] **Opcional, un respaldo antes de la primera migración:** el primer despliegue aplica las migraciones `0010` a `0013` (aditivas) a la base de producción; tu Neon guarda un historial de restauración, y `libpq` (`pg_dump`) todavía no está instalado en tu Mac (`brew install libpq`, y después `ENV_FILE=.env.production pnpm db:backup`)
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
 ## Pendiente tuyo de F7
