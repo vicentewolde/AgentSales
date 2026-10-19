@@ -652,6 +652,15 @@ describe("GET /oauth/mercadolibre/callback", () => {
     expect(written).not.toContain("APP_USR-fake");
     expect(written).not.toContain("TG-fake");
     expect(written).not.toContain(lastState);
+    // El fallo del canje deja en el log lo que dijo Mercado Libre (para diagnosticar en producción:
+    // un código usado, una dirección que no coincide o una clave equivocada), sin el código.
+    const failure = lines
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((entry) => entry.code === "ML_AUTH_INVALID");
+    expect(failure).toMatchObject({
+      code: "ML_AUTH_INVALID",
+      details: { httpStatus: 400, error: "invalid_grant" },
+    });
   });
 
   it("borra la cookie con su Path (y Secure con HTTPS: el navegador ignora un borrado de __Host- sin él)", async () => {

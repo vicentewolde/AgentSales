@@ -132,14 +132,23 @@ export type OAuthDeps = Omit<ConnectAccountDeps, "instagram"> & {
   logger: AppLogger;
 };
 
-/** Solo el código del error (y el tipo, si no es de la app): el error puede traer detalles del canje. */
+/**
+ * Lo que se anota de un canje que falló: el código del error y, si es de la app, sus `details` (lo
+ * que dijo la plataforma: el status HTTP, el tipo y el subcódigo; ya van sin tokens ni datos de la
+ * petición, y el logger oculta cualquier clave sensible), para poder distinguir en producción una
+ * clave secreta equivocada de una dirección de retorno que no coincide o de un código usado. Nunca
+ * el código de autorización ni los tokens: no están en el error.
+ */
 function failureFields(caught: unknown) {
-  return isAppError(caught)
-    ? { code: caught.code }
-    : {
-        code: "INTERNAL_ERROR",
-        errorName: caught instanceof Error ? caught.name : typeof caught,
-      };
+  if (isAppError(caught)) {
+    return caught.details === undefined
+      ? { code: caught.code }
+      : { code: caught.code, details: caught.details };
+  }
+  return {
+    code: "INTERNAL_ERROR",
+    errorName: caught instanceof Error ? caught.name : typeof caught,
+  };
 }
 
 /**
