@@ -16,6 +16,11 @@ export const PERMISSIONS = [
   "broker.view",
   /** Conectar, renovar y desconectar cuentas; activar Marketplace a mano. */
   "accounts.manage",
+  /**
+   * Conectar **su propia** cuenta de Instagram con el inicio de sesión de Instagram (el botón de
+   * Cuentas, ADR-0028). No renueva ni desconecta: eso sigue siendo de `accounts.manage`.
+   */
+  "instagram.connect",
   /** Publicación automática, tope de IA y "corredor propio". */
   "broker.settings",
   "brokers.create",
@@ -32,6 +37,7 @@ const BROKER_PERMISSIONS: ReadonlySet<Permission> = new Set([
   "marketplace.confirm",
   "brand.edit",
   "broker.view",
+  "instagram.connect",
 ]);
 
 type Actor = Pick<User, "role" | "brokerId">;

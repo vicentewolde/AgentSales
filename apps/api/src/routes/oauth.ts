@@ -1,6 +1,7 @@
 import {
   type BrokerRepository,
   type ConnectAccountDeps,
+  can,
   connectAccount,
   connectMercadoLibreAccount,
   type InstagramAuth,
@@ -10,6 +11,7 @@ import {
 } from "@agentsales/core";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { type AppEnv, requireAuth } from "../auth.js";
 import { oauthStartQuerySchema } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
 import { validated } from "../validation.js";
@@ -194,13 +196,15 @@ export function oauthRoutes(deps: OAuthDeps) {
       : null;
   };
 
-  return new Hono()
+  return new Hono<AppEnv>()
     .get("/instagram/start", validated("query", oauthStartQuerySchema), async (c) => {
       const { broker } = c.req.valid("query");
       if (!deps.instagram.oauthConfigured) {
         return c.redirect(toPanel({ error: "INSTAGRAM_NOT_CONFIGURED" }), 302);
       }
-      if ((await deps.brokers.findBySlug(broker)) === null) {
+      const target = await deps.brokers.findBySlug(broker);
+      // Un corredor solo conecta el suyo; el de otro responde como uno que no existe (ADR-0022).
+      if (target === null || !can(requireAuth(c).user, "instagram.connect", target.id)) {
         return c.redirect(toPanel({ error: "BROKER_NOT_FOUND" }), 302);
       }
       // Con la plataforma: un `state` de Mercado Libre no sirve en esta vuelta (spec F4 §4.2).

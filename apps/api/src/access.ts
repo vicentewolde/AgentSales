@@ -98,7 +98,9 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /accounts/marketplace/manual": "admin",
   "POST /accounts/:id/refresh": "admin",
   "POST /accounts/:id/disconnect": "admin",
-  "GET /oauth/instagram/start": "admin",
+  // De sesión: el administrador conecta a cualquier corredor y un corredor, solo el suyo (la ruta
+  // lo revisa con `instagram.connect`, ADR-0028).
+  "GET /oauth/instagram/start": "session",
   "GET /oauth/instagram/callback": "public",
   // La vuelta automática de Mercado Libre (F8-T19): llega desde Mercado Libre, sin la cookie
   // `Strict`; la protegen el `state` firmado de un solo uso y su propia cookie `Lax`.

@@ -8,12 +8,14 @@ import {
   createInMemoryPlatformAccountRepository,
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
+import { createApp } from "../app.js";
 import {
   adminApp,
   fakeInstagramAuth,
   fakeMercadoLibreAuth,
   TEST_ENCRYPTION_KEY,
   TEST_ML_REDIRECT_URI,
+  testAuth,
   testDeps,
 } from "../testing/index.js";
 import {
@@ -104,6 +106,71 @@ describe("GET /oauth/instagram/start", () => {
     const response = await app.request(`${API}/oauth/instagram/start?broker=no-existe`);
     expect(panelRedirect(response)).toEqual({ error: "BROKER_NOT_FOUND" });
     expect(response.headers.get("set-cookie")).toBeNull();
+  });
+});
+
+describe("GET /oauth/instagram/start · el corredor (ADR-0028)", () => {
+  const TOKEN = "token-del-corredor";
+
+  /** Dos corredores y un usuario del primero: `start(slug)` pide el inicio con su sesión. */
+  async function brokerSetup() {
+    const mine = contentBrokerFixture({ id: randomUUID(), slug: "mio" });
+    const theirs = contentBrokerFixture({ id: randomUUID(), slug: "ajeno" });
+    const brokers = createInMemoryBrokerRepository([mine, theirs]);
+    const deps = testDeps({
+      brokers,
+      access: { allowedHosts: ["localhost:8787"], allowedOrigins: [PANEL] },
+      panelUrl: PANEL,
+      instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
+    });
+    const auth = testAuth();
+    deps.auth = { ...auth, brokers: deps.brokers };
+    // El repositorio puede dar otro id que el del molde: el usuario es del que quedó guardado.
+    const stored = await brokers.findBySlug("mio");
+    if (stored === null) throw new Error("falta el corredor de prueba");
+    const user = auth.repos.seed.user({
+      email: "corredor@ejemplo.cl",
+      name: "Corredor",
+      role: "broker",
+      brokerId: stored.id,
+    });
+    auth.repos.seed.session({
+      userId: user.id,
+      tokenHash: auth.tokens.hash(TOKEN),
+      client: "panel",
+    });
+    const app = createApp(deps);
+    const start = (slug: string, token: string | null = TOKEN) =>
+      app.request(`${API}/oauth/instagram/start?broker=${slug}`, {
+        headers: token === null ? {} : { authorization: `Bearer ${token}` },
+      });
+    return { start };
+  }
+
+  it("conecta el suyo: firma el state y manda a Instagram", async () => {
+    const { start } = await brokerSetup();
+    const response = await start("mio");
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toContain("instagram");
+    expect(response.headers.get("set-cookie") ?? "").toContain(`${OAUTH_STATE_COOKIE}=`);
+  });
+
+  it("el de otro corredor responde como uno que no existe, sin state ni cookie", async () => {
+    const { start } = await brokerSetup();
+    const theirs = await start("ajeno");
+    expect(panelRedirect(theirs)).toEqual({ error: "BROKER_NOT_FOUND" });
+    expect(theirs.headers.get("set-cookie")).toBeNull();
+    // Igual que un corredor que no existe: no revela cuáles hay.
+    const missing = await start("no-existe");
+    expect(panelRedirect(missing)).toEqual({ error: "BROKER_NOT_FOUND" });
+  });
+
+  it("sin sesión (o con una que no es) no empieza: 401, sin state", async () => {
+    const { start } = await brokerSetup();
+    const anonymous = await start("mio", null);
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers.get("set-cookie")).toBeNull();
+    expect((await start("mio", "token-inventado")).status).toBe(401);
   });
 });
 
