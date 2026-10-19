@@ -8,15 +8,15 @@
 **Siguiente paso:** cerrar F8 es decisión tuya, con el `CHANGELOG [1.0.0]` y el tag `v1.0.0` solo con tu permiso. Lo que falta y qué recomiendo está en «Para cerrar F8», abajo. Después de F8: el MVP está completo; lo siguiente sale del backlog de `docs/06-roadmap.md` (Post-MVP)
 
 ## Para cerrar F8 (T22)
-El spec (D5) cierra F8 con **la app enviada a App Review**. Eso depende de Meta, no del código. Criterios del spec §6 verificados el 2026-10-19: 6 de 11 demostrados; faltan, cada uno corto salvo Meta:
+El spec (D5) cierra F8 con **la app enviada a App Review**. Eso depende de Meta, no del código. Criterios del spec §6 verificados el 2026-10-19: 9 de 11 demostrados; faltan, cada uno corto salvo Meta:
 - [ ] **Meta:** verificación del negocio → verificación como proveedor técnico → enviar el App Review (videos, una llamada exitosa por permiso en los 30 días previos, el usuario de demostración). Es lo único largo (unas 5 semanas sin rechazos) y puede pedir una empresa o inicio de actividades
-- [ ] **El usuario de demostración:** abrir la invitación de `revisor-meta@agentpey.com` (vence 2026-10-22 13:13; si vence, `pnpm -s cli users reset revisor-meta@agentpey.com`), elegir la contraseña y entrar desde otra red (cierra también «un corredor entra desde otra red»)
-- [ ] **Una preparación completa en el servidor** (fotos, portada, reel y textos por la API de Anthropic) con el Mac dormido: hay que encender el worker (paso 8 de `docs/10-despliegue.md`), `prepare` de una propiedad sin preparar y apagarlo. Gasta centavos de la API
-- [ ] **Un `import` por la CLI contra el servidor** (`login --api` ya está): escribe en producción; puede ser el mismo del punto anterior
-- [ ] **Neon:** mirar en su panel que, con el worker apagado, el cómputo se duerme (criterio 9)
+- [ ] **El usuario de demostración:** ya elegiste la contraseña de `revisor-meta@agentpey.com` (2026-10-19; guárdala en tu gestor de claves, no está en el repo). Falta entrar con ese usuario desde otra red (por ejemplo, el teléfono con datos móviles): cierra «un corredor entra desde otra red». Nota: la pegaste en el chat; si el usuario llega a usarse con el revisor de Meta, cámbiala antes
+- [x] **Una preparación en el servidor** (2026-10-19, con el worker encendido y apagado a tu pedido): P001 de `agentsales-pruebas`, portada, ficha y textos por la API de Anthropic, sin problemas editoriales. Sin video no corrió el reel (opcional: repetirlo con una propiedad con video)
+- [x] **Un `import` por la CLI contra el servidor** (2026-10-19): `import --dry-run` de `Demo F8/planilla-demo-P007.xlsx` con `P007.zip`: subió a R2, el worker lo validó y no guardó nada
+- [x] **Neon** (2026-10-19, lo miró Claude en Chrome): con el worker apagado y la API encendida, el cómputo pasó a `SUSPENDED` en unos 5 minutos sin uso (criterio 9)
 - [ ] Opcional: que un abogado revise los textos legales (Ley 21.719)
 
-**Recomendación:** no esperar a Meta para cerrar el trabajo técnico. Los puntos cortos (demostración, preparación e import, Neon) se hacen en una sesión de unos 30 minutos. Para Meta hay dos caminos: (a) **cerrar F8 ahora como «v1.0.0 con App Review pendiente»**, cambiando D5 en el spec (el MVP de verdad ya está: lo que queda es esperar a Meta, y no hay nada que Claude pueda construir mientras tanto), o (b) mantener D5 y dejar F8 abierta hasta enviar el App Review. Yo elegiría (a) una vez hechos los puntos cortos, con el App Review como pendiente tuyo escrito aquí; tú decides.
+**Recomendación:** no esperar a Meta para cerrar el trabajo técnico. El punto corto que queda (entrar como el usuario de demostración desde otra red) toma 2 minutos. Para Meta hay dos caminos: (a) **cerrar F8 ahora como «v1.0.0 con App Review pendiente»**, cambiando D5 en el spec (el MVP de verdad ya está: lo que queda es esperar a Meta, y no hay nada que Claude pueda construir mientras tanto), o (b) mantener D5 y dejar F8 abierta hasta enviar el App Review. Yo elegiría (a) una vez hechos los puntos cortos, con el App Review como pendiente tuyo escrito aquí; tú decides.
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
