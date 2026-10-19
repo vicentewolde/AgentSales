@@ -2,7 +2,7 @@
 
 - **Estado:** Aceptado
 - **Fecha:** 2026-10-18
-- **Modifica a:** ADR-0005 (el worker deja de encenderse solo al desarrollar), ADR-0017 (punto 8: el formulario automático de Marketplace no corre en producción); suma un seguimiento a ADR-0007. Cambia además la D11 del spec F6 (el respaldo sí va a R2) y la §4.7 del spec F7 (el plan del operador no atiende a sus corredores en producción)
+- **Modifica a:** ADR-0005 (el worker deja de encenderse solo al desarrollar), ADR-0023 (punto 4: en producción el formulario automático no corre para nadie), ADR-0017 (punto 8: el formulario automático de Marketplace no corre en producción); suma un seguimiento a ADR-0007. Cambia además la D11 del spec F6 (el respaldo sí va a R2) y la §4.7 del spec F7 (el plan del operador no atiende a sus corredores en producción)
 
 ## Contexto
 - Hasta F7 todo corre en el Mac del operador: la API escucha en `127.0.0.1`, `hostGuard` solo acepta `localhost`, el panel lo sirve Vite (que quita el prefijo `/api` antes de llamar a la API) y la CLI llama sin prefijo.
@@ -18,7 +18,7 @@
 3. **Una imagen** (Node 26 sobre Debian, ffmpeg estático fijado por sha256, Chromium de Playwright y `pg_dump` 18 de PGDG) con dos procesos, `api` y `worker`, en Fly.io (São Paulo, la región de Neon).
 4. **Modo demo:** las máquinas se encienden los días en que se muestra la herramienta y se apagan después (la API además se apaga sola sin tráfico); Neon sigue en el plan gratis porque su cómputo se duerme con el worker apagado. Un latido del worker (`worker_heartbeats`) dice si está encendido. Pasar a siempre encendido con Neon Launch es dejar las máquinas encendidas y cambiar el plan: sin cambiar código.
 5. **Producción y desarrollo separados:** producción usa la base de Neon y el bucket de hoy, con la misma `APP_ENCRYPTION_KEY`; el Mac usa una rama de Neon, un bucket de desarrollo y otra `APP_ENCRYPTION_KEY`, con las credenciales borradas en la rama (`db:dev-scrub`). Los scripts que hablan con la base eligen su archivo de entorno con `ENV_FILE`.
-6. **Desplegar es del operador:** un flujo de GitHub Actions a pedido (`workflow_dispatch`), solo desde `main` con `CI / check` en verde, que aplica las migraciones antes de arrancar la versión nueva. Claude nunca despliega. `PUBLISH_MODE=dry-run` en el servidor hasta que el operador diga otra cosa en el chat.
+6. **Desplegar es del operador:** un flujo de GitHub Actions a pedido (`workflow_dispatch`), solo desde `main` con `CI / check` y `CI / image` en verde, que aplica las migraciones antes de arrancar la versión nueva. Claude nunca despliega. `PUBLISH_MODE=dry-run` en el servidor hasta que el operador diga otra cosa en el chat.
 7. **El respaldo en la nube:** el job `db.backup` vuelca a una carpeta temporal y sube el volcado a un bucket de R2 aparte (`agentsales-backups`, con un token que solo tiene el worker); el estado va al bucket principal. `pnpm db:backup` sigue siendo local.
 8. **La IA y Marketplace en producción:** todos los corredores usan la API de Anthropic; `claude-cli` queda para el desarrollo. Marketplace es a mano para todos (ADR-0023): en producción el worker no registra el formulario automático y `marketplaceAutomationAllowed` lo niega.
 
@@ -40,3 +40,4 @@
 
 ## Seguimiento
 - 2026-10-18 (F8-T13): el token del bucket de respaldos es "solo del worker" en el uso, no en la plataforma: Fly entrega los secretos de la app a los dos procesos. La API lo quita de su configuración y de `process.env` al arrancar (`withoutBackupCredentials`), así no lo usa ni lo heredan sus procesos hijos, pero el entorno con que arrancó el proceso sigue legible para quien pueda leer archivos en su máquina. Separarlo de verdad pediría dos apps de Fly (otra imagen desplegada y otro `fly.toml`); se revisa si llegan corredores con datos sensibles o un segundo desarrollador.
+- 2026-10-19 (cierre de F8): las reglas de `loadEnv` en producción son más que las del punto 8: `LLM_PROVIDER=anthropic-api` exactamente (ni `claude-cli` ni `fake`), `CLIENT_IP_HEADER`, `BACKUP_TARGET=r2` con las credenciales del bucket de respaldos y sin `BROWSER_PROFILES_DIR` (`docs/05-convenciones.md`). La etiqueta de la imagen lleva los primeros 12 caracteres del commit.

@@ -1,6 +1,6 @@
 # ADR-0023 · Marketplace a mano para los corredores, y el formulario automático solo para los corredores propios del operador
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado (el punto 4 lo modifica ADR-0024 en producción)
 - **Fecha:** 2026-10-16
 - **Modifica a:** ADR-0017 (punto 1: la cuenta de Marketplace ya no es siempre un perfil del navegador)
 

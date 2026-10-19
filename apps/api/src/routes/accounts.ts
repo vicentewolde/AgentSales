@@ -43,7 +43,7 @@ import {
   type PlatformAccountView,
 } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
-import { listScope, requestScope } from "../scope.js";
+import { listScope } from "../scope.js";
 import { validated, validatedWithReason } from "../validation.js";
 import {
   mercadoLibreStateCookieName,

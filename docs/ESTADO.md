@@ -3,13 +3,24 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-19
-**Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** T21 (primera puesta en marcha, en curso): AgentSales está en internet, en `https://agentsales.agentpey.com` (Fly.io, en `dry-run`), con tu usuario y el doble factor, el respaldo en R2, Mercado Libre e Instagram conectados con el botón, y las vueltas de Meta probadas de verdad. Antes, el lote H (T19 y T20)
-**Siguiente paso:** T21 está lista salvo que abras la invitación del usuario de demostración y elijas su contraseña (abajo); después T22, el cierre de la fase (`/fase-cerrar 8`). Lo de Meta (verificación del negocio y App Review) sigue en paralelo
+**Fase actual:** F8 · En internet, en cierre (spec: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
+**Última tarea:** T22 (cierre de F8, en curso): criterios verificados, auditoría del `arquitecto`, borrador del CHANGELOG en «Sin publicar» y spec al día. T21 (primera puesta en marcha) terminada salvo la contraseña del usuario de demostración. AgentSales está en internet, en `https://agentsales.agentpey.com` (Fly.io, en `dry-run`, worker apagado a propósito)
+**Siguiente paso:** cerrar F8 es decisión tuya, con el `CHANGELOG [1.0.0]` y el tag `v1.0.0` solo con tu permiso. Lo que falta y qué recomiendo está en «Para cerrar F8», abajo. Después de F8: el MVP está completo; lo siguiente sale del backlog de `docs/06-roadmap.md` (Post-MVP)
+
+## Para cerrar F8 (T22)
+El spec (D5) cierra F8 con **la app enviada a App Review**. Eso depende de Meta, no del código. Criterios del spec §6 verificados el 2026-10-19: 6 de 11 demostrados; faltan, cada uno corto salvo Meta:
+- [ ] **Meta:** verificación del negocio → verificación como proveedor técnico → enviar el App Review (videos, una llamada exitosa por permiso en los 30 días previos, el usuario de demostración). Es lo único largo (unas 5 semanas sin rechazos) y puede pedir una empresa o inicio de actividades
+- [ ] **El usuario de demostración:** abrir la invitación de `revisor-meta@agentpey.com` (vence 2026-10-22 13:13; si vence, `pnpm -s cli users reset revisor-meta@agentpey.com`), elegir la contraseña y entrar desde otra red (cierra también «un corredor entra desde otra red»)
+- [ ] **Una preparación completa en el servidor** (fotos, portada, reel y textos por la API de Anthropic) con el Mac dormido: hay que encender el worker (paso 8 de `docs/10-despliegue.md`), `prepare` de una propiedad sin preparar y apagarlo. Gasta centavos de la API
+- [ ] **Un `import` por la CLI contra el servidor** (`login --api` ya está): escribe en producción; puede ser el mismo del punto anterior
+- [ ] **Neon:** mirar en su panel que, con el worker apagado, el cómputo se duerme (criterio 9)
+- [ ] Opcional: que un abogado revise los textos legales (Ley 21.719)
+
+**Recomendación:** no esperar a Meta para cerrar el trabajo técnico. Los puntos cortos (demostración, preparación e import, Neon) se hacen en una sesión de unos 30 minutos. Para Meta hay dos caminos: (a) **cerrar F8 ahora como «v1.0.0 con App Review pendiente»**, cambiando D5 en el spec (el MVP de verdad ya está: lo que queda es esperar a Meta, y no hay nada que Claude pueda construir mientras tanto), o (b) mantener D5 y dejar F8 abierta hasta enviar el App Review. Yo elegiría (a) una vez hechos los puntos cortos, con el App Review como pendiente tuyo escrito aquí; tú decides.
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
-- [ ] **Tu `.env` (lote A):** si tiene `INSTAGRAM_REDIRECT_URI=http://localhost:8787/oauth/instagram/callback` (el valor del ejemplo de antes), déjala vacía o bórrala: ahora la API va bajo `/api` y el valor por defecto ya lo trae. En el Mac no cambia nada visible (el OAuth de Instagram sigue apagado sin HTTPS)
+- [x] **Tu `.env` (lote A):** si tiene `INSTAGRAM_REDIRECT_URI=http://localhost:8787/oauth/instagram/callback` (el valor del ejemplo de antes), déjala vacía o bórrala: ahora la API va bajo `/api` y el valor por defecto ya lo trae. En el Mac no cambia nada visible (el OAuth de Instagram sigue apagado sin HTTPS) (2026-10-19: el código ya ignora ese valor viejo; no hace falta tocarlo)
 - **Antes del lote B:**
   - [x] Rama `dev` de Neon en `.env` y producción en `.env.production` (2026-10-18)
   - [x] Otra `APP_ENCRYPTION_KEY` en `.env`; la de antes en `.env.production` y en tu gestor de claves (2026-10-18)
@@ -21,7 +32,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [x] `ENV_FILE=.env.production pnpm storage:check --origin https://agentsales.agentpey.com` (2026-10-18): pasó entero en `agentsales-media`; el CORS desde el dominio responde 204 y R2 rechaza un archivo alterado (400)
   - [x] La carga real desde la **CLI** (2026-10-18, T09): `import` de una carga sintética (PRUEBA-1, carpeta con 2 fotos, `--dry-run`) contra el bucket de desarrollo: subió 3 archivos a R2, el worker la terminó (1 creada y 2 medios, en simulación) y no quedó nada bajo `imports/`. Antes hubo que aplicar la migración `0010` a la rama dev (`pnpm db:migrate`)
   - [x] La carga real desde el **panel** (2026-10-18, F8-T07): en Chrome, la misma carga sintética con "Una carpeta" y "Solo simular": `POST /api/imports/uploads` 201, los archivos directo a R2, `start` 202, el worker la terminó (1 creada y 2 medios, en simulación) y no quedó nada bajo `imports/`. Los dos intentos anteriores no llegaron a subir porque no se pasó de la página Entrar (no fue una falla del panel)
-  - [ ] **La base de producción no tiene la migración `0010`:** se aplica al desplegar (T11, `release_command`) o con `ENV_FILE=.env.production pnpm db:migrate` antes de usar la API contra producción
+  - [x] **La base de producción no tiene la migración `0010`:** se aplica al desplegar (T11, `release_command`) o con `ENV_FILE=.env.production pnpm db:migrate` antes de usar la API contra producción (2026-10-19: el primer despliegue aplicó de la `0010` a la `0013`)
 - [ ] **Opcional, al terminar el lote C** (con `pnpm dev`; te aviso antes): `pnpm -s cli whoami` debe decir `Servidor: http://127.0.0.1:8787 (la API local)`, y `AGENTSALES_API_URL=http://agentsales.agentpey.com pnpm -s cli status` debe rechazar el `http://` sin llamar a nadie. Contra el servidor de verdad se prueba en T21 (`login --api https://agentsales.agentpey.com`)
 - **Al terminar el lote D** (2026-10-18, los hizo Claude a tu pedido, en Chrome y en el Mac):
   - [x] **La medición de memoria del worker (T10):** con `pnpm dev`, una carga sintética (PRUEBA-MEM: 6 fotos de 4032×3024 y un video vertical 4K de 15 s, patrones de ffmpeg) preparada sin textos: el pico fue de unos **994 MB** (ffmpeg 714 MB al armar el reel, el worker 147 MB, Chromium unos 133 MB). El worker queda en **2 GB** en `fly.toml` (1 GB quedaría justo). PRUEBA-MEM quedó archivada en la rama `dev`
@@ -51,13 +62,13 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 
 ## Pendiente tuyo de F7
 - [x] **Clave de la API de Anthropic** en `.env` (2026-10-17); `pnpm llm:smoke --provider anthropic-api` respondió bien
-- [ ] **Límite de gasto en la consola de Anthropic:** la clave no tiene uno (recomendado: el tope por corredor solo cubre lo que AgentSales anota)
+- [x] **Límite de gasto en la consola de Anthropic:** la clave no tiene uno (recomendado: el tope por corredor solo cubre lo que AgentSales anota) (2026-10-19: US$ 20 al mes, puesto por ti)
 - [ ] **Renovar la clave antes del 2026-12-31** (vence ese día; después la IA de los corredores da `LLM_AUTH_REQUIRED`)
 - [x] **Términos comerciales de Anthropic** (2026-10-18, `docs/integraciones/anthropic-terminos.md`): tu clave puede atender a los clientes de tu producto, sin revender el servicio
 - [ ] **Instagram de un corredor como evaluador** (no se probó en la demo: queda NO VERIFICADO que Meta deje publicar en la cuenta de un evaluador): pasos en `docs/07-checklist-cuentas.md`, "Antes de F7", cuando tengas el primer corredor piloto
 
 ## Pendiente tuyo de F6
-- [ ] **Respaldo real (criterio 10 y paso 7 de la demo):** `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6"), después `pnpm db:backup`, mirar el archivo en `~/.agentsales/backups` con `pg_restore --list` y `pnpm -s cli doctor` (con `pnpm dev`) para ver que la versión alcanza
+- [x] **Respaldo real (criterio 10 y paso 7 de la demo):** `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`; `docs/07-checklist-cuentas.md`, "Antes de F6"), después `pnpm db:backup`, mirar el archivo en `~/.agentsales/backups` con `pg_restore --list` y `pnpm -s cli doctor` (con `pnpm dev`) para ver que la versión alcanza (2026-10-19: `libpq` instalado, `db:backup` real y restauración probada en F8-T13/T21)
 - [ ] **WhatsApp del corredor de pruebas:** en la demo, Portal rechazó P002 por falta del WhatsApp (`PORTAL_NOT_READY`): completarlo en la hoja Corredor y volver a cargar la planilla. Con eso se puede mostrar Portal en simulación (actualizar, republicar, pausar con la propiedad)
 - [ ] **Prueba en vivo de F6** (§7, paso 8), solo con tu instrucción en el chat
 
@@ -85,8 +96,8 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 | **Lote F** · T14 Límites por IP · T15 Doble factor (core, base y API) · T16 Doble factor en el panel y la CLI | ✅ terminada (con dobles; el doble factor real en tu teléfono, cuando quieras) | (este PR) |
 | **Lote G** · T17 Instagram de verdad y las vueltas de Meta · T18 Páginas públicas | ✅ terminada (con firmas de prueba; las vueltas reales, en T21; los textos esperan tu aprobación) | (este PR) |
 | **Lote H** · T19 Mercado Libre: la vuelta automática · T20 Marketplace en producción | ✅ terminada (con dobles; la vuelta real de Mercado Libre, en T21) | (este PR) |
-| T21 Primera puesta en marcha (contigo) | 🔨 en curso (el servidor está arriba y las cuentas conectadas; falta la demo con el Mac apagado y lo de Meta) | #157, #158 |
-| T22 Cierre de fase (`v1.0.0`) | ⏳ pendiente | |
+| T21 Primera puesta en marcha (contigo) | ✅ terminada (servidor arriba, cuentas conectadas, demo con el Mac dormido, respaldo restaurado, Meta con ícono y corredor de demostración); falta la contraseña del usuario de demostración | #157 a #162 |
+| T22 Cierre de fase (`v1.0.0`) | 🔨 en curso (criterios verificados y auditoría hechas; falta lo de «Para cerrar F8» y tu permiso para `CHANGELOG [1.0.0]` y el tag) | (este PR) |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
@@ -163,7 +174,7 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **Después del MVP (spec F7, D7), campos propios y la IA:** el brief (F2-T05) manda a la IA todo campo configurable con valor, salvo los `url`. Si un corredor define un campo propio con datos privados (por ejemplo, "Teléfono del propietario"), la IA lo vería. Hoy las definiciones las crea solo el operador. Antes de que los corredores las editen, agregar un indicador en `field_definitions` (por ejemplo, `ai_visible`), con su ADR.
 - **Errores HTTP de filas corruptas:** `FIELD_DEFINITION_INVALID` (repositorio de definiciones, F1) cae en la regla `*_INVALID*` y respondería 400 si una ruta lo expusiera; debería ser `FIELD_DEFINITION_ROW_INVALID` (500), como `CONTENT_RUN_ROW_INVALID` desde F2-T02. Hoy ninguna ruta lo expone.
 - **Cuando el panel edite definiciones, rangos:** la base no impide un `min_value` mayor que `max_value` ni un rango en un campo que no es `number`; hoy lo detecta el validador (`FIELD_CONFIG_INVALID`). Si el panel permite editar definiciones, sumar `CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)`.
-- Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda para F8 (D5 del spec F1).
+- Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). Partirlo quedó fuera de F8 (spec F8 §3): sigue como deuda.
 - **F8, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
@@ -172,9 +183,9 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
   - El `PUT` del navegador (`xhrTransport`, `apps/web/src/api/upload.ts`) no tiene prueba automática (jsdom no sube a R2); se prueba en la carga real de T07.
   - Si el proceso de la API se corta justo entre pasar la carga a `queued` y encolarla, la carga queda en cola sin job (el mismo riesgo que tenía `requestImport` desde F1): se ve en el historial y se vuelve a importar.
   - La limpieza de cada hora lista todo `imports/` en R2 y consulta cada carga: alcanza para el piloto; con mucho volumen, paginar o limitar. Los `delete` van de a uno (un `DeleteObjects` por lote sería más rápido), y no hay tope de cargas en espera por corredor (se cierran a las 24 h).
-  - `.env.example` no se actualizó: la regla `Read(./.env.*)` (#141) también impide leerlo. Su comentario de `MAX_IMPORT_UPLOAD_MB` habla del cuerpo `multipart` de antes (ahora es el tope de cada archivo subido a R2).
+  - `.env.example` no se actualizó: la regla `Read(./.env.*)` (#141) también impide leerlo. Su comentario de `MAX_IMPORT_UPLOAD_MB` habla del cuerpo `multipart` de antes (ahora es el tope de cada archivo subido a R2). Revisarlo tú: cambia ese comentario.
 - **exceljs 4.4.0** (T03) no tiene versiones estables desde 2023. `pnpm audit --prod` da una vulnerabilidad moderada en `uuid` 8, que no nos afecta: exceljs solo usa `v4`, y el aviso es de v3/v5/v6. Revisar en cada fase si hay una versión nueva o una alternativa mantenida.
-- **F8:** `tsc -b` compila `packages/*/test` a `dist` (por ejemplo `test/pglite.ts`, que importa una `devDependency`), y también `apps/api/src/testing` (importa `@agentsales/core/testing`) y `apps/cli/test`. Excluirlos del build de producción al armar el despliegue.
+- (La deuda de `tsc -b` compilando tests a `dist` se cerró en F8-T10: `pnpm build` usa `tsconfig.build.json` y el `Dockerfile` lo revisa.)
 
 - Menor (F5, revisión del lote E): `marketplace/fields.ts` usa `normalizePortalName` de Portal y el publisher del worker usa `readPictureFrom` de `portal.ts`. Moverlos a un módulo neutro con un tercer uso. Si otro consumidor necesita el Facebook falso, exponerlo como subruta de pruebas (`@agentsales/publishers/marketplace/testing`) en vez de leer los fixtures por ruta.
 

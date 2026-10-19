@@ -24,6 +24,8 @@ erDiagram
   brokers ||--o{ users : "tiene usuarios"
   users ||--o{ sessions : abre
   users ||--o{ invitations : recibe
+  users ||--o{ user_recovery_codes : "tiene códigos de recuperación"
+  users ||--o{ login_challenges : "abre desafíos de doble factor"
   users |o--o{ publication_events : hace
 ```
 

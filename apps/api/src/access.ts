@@ -4,7 +4,7 @@
 // - `session`: cualquier usuario con sesión; la ruta aplica su alcance (desde el lote C: las listas
 //   filtran en SQL y `ownedBy` responde 404 a lo de otro corredor, spec F7 §4.4).
 // - `admin`: solo el administrador (spec F7 §4.5: usuarios, cambiar un corredor, conectar cuentas,
-//   la carga local de desarrollo y el inicio del OAuth).
+//   y el inicio del OAuth).
 
 export type RoutePolicy = "public" | "session" | "admin";
 

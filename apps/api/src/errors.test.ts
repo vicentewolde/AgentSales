@@ -13,6 +13,7 @@ describe("httpStatusFor", () => {
     ["LLM_ACCOUNT_LIMIT", 503],
     ["LLM_REQUEST_REJECTED", 502],
     ["LLM_RATE_LIMITED", 429],
+    ["RATE_LIMITED", 429],
     // Al conectar una cuenta (F3-T13).
     ["IG_AUTH_INVALID", 400],
     ["IG_PERMISSION_DENIED", 400],
