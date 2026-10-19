@@ -2,7 +2,7 @@
 
 Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento.
 
-> Estado: **F8 · En internet, en cierre**: AgentSales corre en `https://agentsales.agentpey.com` (simulación), con doble factor, respaldo en R2 y Instagram y Mercado Libre conectados con el botón; falta enviar la app a App Review de Meta. Ver `docs/ESTADO.md`.
+> Estado: **F8 · En internet cerrada (`v1.0.0`, el MVP)**: AgentSales corre en `https://agentsales.agentpey.com` (simulación), con doble factor, respaldo en R2 y Instagram y Mercado Libre conectados con el botón. Pendiente del operador: el App Review de Meta. Ver `docs/ESTADO.md`.
 
 ## Requisitos
 - Node.js 26 (`.nvmrc`) y pnpm 11 (`npm i -g pnpm@11`; Node 26 ya no trae corepack)

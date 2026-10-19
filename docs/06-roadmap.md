@@ -12,7 +12,7 @@ Cada fase entrega algo **usable y demostrable**. Una fase empieza con su spec en
 | F5 | Marketplace | Flujo semiautomático en Facebook Marketplace | v0.5.0 |
 | F6 | Calendario + seguimiento | Programación, reintentos, sincronización, "vendida" cierra Portal y deja tareas a mano en Instagram y Marketplace | v0.6.0 |
 | F7 | Varios corredores | Login, cada corredor ve solo lo suyo, alta de corredores, IA por API con gasto por corredor (en el Mac del operador) | v0.7.0 |
-| F8 | En internet | Despliegue con HTTPS (en modo demo), subidas a R2, respaldos fuera del Mac, OAuth de Instagram, App Review enviado y términos | v1.0.0 |
+| F8 | En internet | Despliegue con HTTPS (en modo demo), subidas a R2, respaldos fuera del Mac, OAuth de Instagram y términos (el App Review de Meta queda como trámite pendiente del operador) | v1.0.0 |
 
 ## F0 · Fundaciones
 Spec detallado: `docs/specs/fase-0-fundaciones.md`.
@@ -128,7 +128,7 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
   - la API arrastra Playwright a través de `@agentsales/media` (el logo usa solo sharp): separarlo al desplegar;
   - la dirección de vuelta de Mercado Libre con el dominio real.
 
-**Spec:** `docs/specs/fase-8-en-internet.md` (ADR-0024, ADR-0025 y ADR-0026), aprobado el 2026-10-18. Respuestas del operador: por ahora un servidor **en modo demo** en Fly.io (encendido los días de demo, con Neon gratis) y después un plan pagado (D1); `agentsales.agentpey.com` (D2); Marketplace a mano para todos en producción (D4); F8 se cierra con la app enviada a App Review (D5). La IA de todos los corredores va por la API en producción (los términos del plan Max). RLS se evaluó y no se adopta (ADR-0026).
+**Spec:** `docs/specs/fase-8-en-internet.md` (ADR-0024, ADR-0025 y ADR-0026), aprobado el 2026-10-18. Respuestas del operador: por ahora un servidor **en modo demo** en Fly.io (encendido los días de demo, con Neon gratis) y después un plan pagado (D1); `agentsales.agentpey.com` (D2); Marketplace a mano para todos en producción (D4); F8 se cierra con la app enviada a App Review (D5). La IA de todos los corredores va por la API en producción (los términos del plan Max). RLS se evaluó y no se adopta (ADR-0026). **Cerrada el 2026-10-19 (`v1.0.0`)**; el operador cambió D5: se cierra con el App Review pendiente (verificación del negocio, de proveedor técnico y envío).
 
 ## Post-MVP (backlog)
 - Respuestas a DMs, comentarios y preguntas de ML (siguiente gran fase).
