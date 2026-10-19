@@ -3,20 +3,16 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-19
-**Fase actual:** F8 · En internet, en cierre (spec: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** T22 (cierre de F8, en curso): criterios verificados, auditoría del `arquitecto`, borrador del CHANGELOG en «Sin publicar» y spec al día. T21 (primera puesta en marcha) terminada salvo la contraseña del usuario de demostración. AgentSales está en internet, en `https://agentsales.agentpey.com` (Fly.io, en `dry-run`, worker apagado a propósito)
-**Siguiente paso:** cerrar F8 es decisión tuya, con el `CHANGELOG [1.0.0]` y el tag `v1.0.0` solo con tu permiso. Lo que falta y qué recomiendo está en «Para cerrar F8», abajo. Después de F8: el MVP está completo; lo siguiente sale del backlog de `docs/06-roadmap.md` (Post-MVP)
+**Fase actual:** ninguna en curso. F8 · En internet cerrada el 2026-10-19 (`v1.0.0`, el MVP; spec `docs/specs/fase-8-en-internet.md`)
+**Última tarea:** T22 (cierre de F8): criterios verificados, auditoría del `arquitecto`, `CHANGELOG [1.0.0]` y tag `v1.0.0` (con tu permiso). D5 cambiada por ti: F8 cerró con el App Review pendiente, no enviado
+**Siguiente paso:** lo que sigue sale del backlog Post-MVP de `docs/06-roadmap.md` (respuestas a DMs y comentarios, Google Sheets como origen de la carga, Yapo, TikTok…); cuando elijas, `/fase-plan 9`. Entre tanto, tus pendientes de abajo
 
-## Para cerrar F8 (T22)
-El spec (D5) cierra F8 con **la app enviada a App Review**. Eso depende de Meta, no del código. Criterios del spec §6 verificados el 2026-10-19: 9 de 11 demostrados; faltan, cada uno corto salvo Meta:
-- [ ] **Meta:** verificación del negocio → verificación como proveedor técnico → enviar el App Review (videos, una llamada exitosa por permiso en los 30 días previos, el usuario de demostración). Es lo único largo (unas 5 semanas sin rechazos) y puede pedir una empresa o inicio de actividades
-- [ ] **El usuario de demostración:** ya elegiste la contraseña de `revisor-meta@agentpey.com` (2026-10-19; guárdala en tu gestor de claves, no está en el repo). Falta entrar con ese usuario desde otra red (por ejemplo, el teléfono con datos móviles): cierra «un corredor entra desde otra red». Nota: la pegaste en el chat; si el usuario llega a usarse con el revisor de Meta, cámbiala antes
-- [x] **Una preparación en el servidor** (2026-10-19, con el worker encendido y apagado a tu pedido): P001 de `agentsales-pruebas`, portada, ficha y textos por la API de Anthropic, sin problemas editoriales. Sin video no corrió el reel (opcional: repetirlo con una propiedad con video)
-- [x] **Un `import` por la CLI contra el servidor** (2026-10-19): `import --dry-run` de `Demo F8/planilla-demo-P007.xlsx` con `P007.zip`: subió a R2, el worker lo validó y no guardó nada
-- [x] **Neon** (2026-10-19, lo miró Claude en Chrome): con el worker apagado y la API encendida, el cómputo pasó a `SUSPENDED` en unos 5 minutos sin uso (criterio 9)
-- [ ] Opcional: que un abogado revise los textos legales (Ley 21.719)
-
-**Recomendación:** no esperar a Meta para cerrar el trabajo técnico. El punto corto que queda (entrar como el usuario de demostración desde otra red) toma 2 minutos. Para Meta hay dos caminos: (a) **cerrar F8 ahora como «v1.0.0 con App Review pendiente»**, cambiando D5 en el spec (el MVP de verdad ya está: lo que queda es esperar a Meta, y no hay nada que Claude pueda construir mientras tanto), o (b) mantener D5 y dejar F8 abierta hasta enviar el App Review. Yo elegiría (a) una vez hechos los puntos cortos, con el App Review como pendiente tuyo escrito aquí; tú decides.
+## Pendiente tuyo tras cerrar F8
+- [ ] **Meta:** verificación del negocio → verificación como proveedor técnico → enviar el App Review de `instagram_business_basic` e `instagram_business_content_publish` (videos, una llamada exitosa por permiso en los 30 días previos, el usuario de demostración). Unas 5 semanas sin rechazos; puede pedir una empresa o inicio de actividades. Mientras, los corredores que publican en Instagram son evaluadores
+- [ ] **`revisor-meta@agentpey.com`:** entrar una vez desde otra red (por ejemplo, el teléfono con datos móviles). La contraseña la pegaste en el chat: cámbiala antes de dársela al revisor de Meta (`pnpm -s cli users reset revisor-meta@agentpey.com`)
+- [ ] Opcional: que un abogado revise los textos legales (Ley 21.719); repetir la preparación con una propiedad con video para ver el reel en el servidor
+- [ ] **Renovar `FLY_API_TOKEN` antes de ~2027-04** y la clave de Anthropic antes del 2026-12-31
+- Servidor en demo: el worker está apagado (paso 8 de `docs/10-despliegue.md` para encenderlo); pasar a siempre encendido con Neon Launch es decisión tuya (paso 11)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -85,19 +81,10 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota de Instagram §8, punto 8)
 
 ## Progreso de la fase
+Sin fase en curso (F8 cerrada: 22 tareas, `v1.0.0`; su detalle está en el spec y en `CHANGELOG.md`). Al planificar la siguiente, `/fase-plan N` reinicia esta tabla.
+
 | Tarea | Estado | PR |
 |---|---|---|
-| Spec F8 (`/fase-plan 8`) | ✅ aprobado | (este PR) |
-| **Lote A** · T01 Configuración de producción · T02 La API sirve el panel, `/api`, cookies y cabeceras | ✅ terminada | (este PR) |
-| **Lote B** · T03 R2 prefirmado y CORS · T04 La carga con entradas en R2 · T05 El worker lee desde R2 · T06 La API: subida y empezar · T07 Panel: subir a R2 · T09 CLI: `import` sube a R2 (más `pnpm db:dev-scrub`) | ✅ terminada (la CLI y el panel probados contra R2 real; los dos buckets verificados) | #142 |
-| **Lote C** · T08 CLI: la dirección del servidor | ✅ terminada (probada contra la API en proceso; contra el servidor real, en T21) | (este PR) |
-| **Lote D** · T10 Build e imagen · T11 Fly.io y el despliegue · T12 El worker ante reinicios, latido y deuda de F6 | ✅ terminada (la memoria medida, el Environment `production` y su rechazo probados, `CI / image` obligatorio) | #148 |
-| **Lote E** · T13 Respaldo a R2 | ✅ terminada (con dobles de R2; la subida real, en T21, y la restauración, en la demo) | (este PR) |
-| **Lote F** · T14 Límites por IP · T15 Doble factor (core, base y API) · T16 Doble factor en el panel y la CLI | ✅ terminada (con dobles; el doble factor real en tu teléfono, cuando quieras) | (este PR) |
-| **Lote G** · T17 Instagram de verdad y las vueltas de Meta · T18 Páginas públicas | ✅ terminada (con firmas de prueba; las vueltas reales, en T21; los textos esperan tu aprobación) | (este PR) |
-| **Lote H** · T19 Mercado Libre: la vuelta automática · T20 Marketplace en producción | ✅ terminada (con dobles; la vuelta real de Mercado Libre, en T21) | (este PR) |
-| T21 Primera puesta en marcha (contigo) | ✅ terminada (servidor arriba, cuentas conectadas, demo con el Mac dormido, respaldo restaurado, Meta con ícono y corredor de demostración); falta la contraseña del usuario de demostración | #157 a #162 |
-| T22 Cierre de fase (`v1.0.0`) | 🔨 en curso (criterios verificados y auditoría hechas; falta lo de «Para cerrar F8» y tu permiso para `CHANGELOG [1.0.0]` y el tag) | (este PR) |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
@@ -191,6 +178,11 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 
 
 ## Notas de la última sesión
+- 2026-10-19: **Cierre de F8 (T22, `/fase-cerrar 8`).**
+  - **Verificación:** los 11 criterios del spec, con su evidencia (en el servidor: el calendario con el Mac dormido, el respaldo en R2 y su restauración, la preparación con la API de Anthropic, `import --dry-run` por la CLI y Neon suspendido con el worker apagado; lo demás, con tests y con tu uso real del 2026-10-19). `pnpm check` en verde (4.552 pruebas).
+  - **Auditoría del `arquitecto`:** sin desviaciones de código; los docs quedaron al día (convenciones, arquitectura, modelo de datos, plataformas, guía del operador, roadmap, checklist, ADR-0023 y ADR-0024). Cambios de código: `RATE_LIMITED` explícito en `httpStatusFor` y un import sin uso.
+  - **Decisión tuya:** D5 cambiada, F8 cierra con el App Review pendiente. Registro: `CHANGELOG [1.0.0]` y tag `v1.0.0` (PR #163, #164 y este).
+  - **Retro:** funcionó el flujo por lotes con el `arquitecto` y la demo real en el servidor; no funcionó bien esperar a Meta dentro de una fase (decidía el cierre y no dependía del código) ni dejar las casillas del spec sin marcar a medida que se hacían; para la próxima fase, los pendientes que dependen de terceros van fuera de los criterios de cierre desde el spec.
 - 2026-10-18: **Lote A de F8 (T01 y T02).**
   - **Configuración:** `PUBLIC_URL` (solo el origen), `API_HOST` y `CLIENT_IP_HEADER`; con `NODE_ENV=production`, `loadEnv` exige `PUBLIC_URL` con `https://`, `API_HOST` explícito, las vueltas de los OAuth dentro de `PUBLIC_URL` y otra IA que `claude-cli`. `ENV_FILE=.env.production` elige el archivo de los scripts (uno que no existe es un error).
   - **La API bajo `/api` también en tu Mac:** Vite ya no quita el prefijo y la CLI llama a `/api`; en el servidor, la API sirve el panel compilado del mismo origen (sin CORS). Cookies `__Host-` con HTTPS, el inicio del OAuth desde la ruta de la vuelta, `/health` con el ambiente y fuera de `hostGuard`, y las cabeceras de seguridad (CSP con el origen de R2).

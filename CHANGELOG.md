@@ -3,11 +3,11 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versiones por fase (ver `docs/06-roadmap.md`).
 
 ## [Sin publicar]
-> Borrador de **F8 · En internet**, listo para pasar a `[1.0.0] - fecha` cuando el operador dé su permiso (`/fase-cerrar 8`, paso 6). Mientras no, se queda aquí.
 
-AgentSales ya está en internet, en `https://agentsales.agentpey.com`, en simulación (`dry-run`). El operador y los corredores entran al panel desde cualquier lugar, la CLI del Mac habla con el servidor, las cargas suben directo a R2, y el calendario y los respaldos corren en el servidor con el Mac dormido. Por ahora es un **servidor de demostración** en Fly.io (el worker se enciende solo los días en que se muestra la herramienta); dejarlo siempre encendido es cambiar el plan, no el código. La conexión de Instagram con el botón funciona con el inicio de sesión de Instagram de verdad; falta la aprobación de Meta (App Review), que es un trámite aparte.
+## [1.0.0] - 2026-10-19 · F8 En internet
+Es el MVP completo. AgentSales ya está en internet, en `https://agentsales.agentpey.com`, en simulación (`dry-run`). El operador y los corredores entran al panel desde cualquier lugar, la CLI del Mac habla con el servidor, las cargas suben directo a R2, y el calendario y los respaldos corren en el servidor con el Mac dormido. Por ahora es un **servidor de demostración** en Fly.io (el worker se enciende solo los días en que se muestra la herramienta); dejarlo siempre encendido es cambiar el plan, no el código. La conexión de Instagram con el botón funciona con el inicio de sesión de Instagram de verdad; el App Review de Meta **no está enviado** y queda como trámite tuyo (cerraste la fase así el 2026-10-19).
 
-Demo (2026-10-19, en el servidor, en simulación): la carga de una planilla y un zip desde el panel (directo a R2), Marketplace a mano, Portal en simulación e Instagram programado para las 11:55, que el worker del servidor publicó en simulación a las 11:55 exactas con el Mac dormido. También se probaron entrar con doble factor, conectar Instagram y Mercado Libre con el botón, las vueltas de Meta (quitar la app y borrar los datos) con Meta de verdad, y la restauración de un respaldo en una base nueva.
+Demo (2026-10-19, en el servidor, en simulación; todo con el Mac dormido o sin usarlo): la carga de una planilla y un zip desde el panel (directo a R2), Marketplace a mano, Portal en simulación e Instagram programado para las 11:55, que el worker del servidor publicó en simulación a las 11:55 exactas con el Mac dormido. También se probaron entrar con doble factor, conectar Instagram y Mercado Libre con el botón, las vueltas de Meta (quitar la app y borrar los datos) con Meta de verdad, la restauración de un respaldo en una base nueva, una preparación con textos por la API de Anthropic, un `import --dry-run` por la CLI contra el servidor y el cómputo de Neon suspendido con el worker apagado.
 
 ### Añadido
 - **El servidor en internet:** una sola imagen (API, panel y worker) en Fly.io, región São Paulo, con HTTPS y certificado automáticos. La API sirve el panel desde el mismo dominio, con la API bajo `/api` también en tu Mac. Desplegar es cosa tuya, a pedido, desde `main` con la CI en verde (`gh workflow run deploy.yml --ref main`), y aplica las migraciones antes de arrancar. La guía está en `docs/10-despliegue.md` (secretos, dominio, encender y apagar el worker para una demo, logs, volver atrás y restaurar un respaldo).
@@ -38,7 +38,7 @@ Demo (2026-10-19, en el servidor, en simulación): la carga de una planilla y un
 - Si Meta rechaza el canje de Instagram, el log dice el motivo (en la primera puesta en marcha era la clave secreta equivocada).
 
 ### Pendiente fuera del código
-- **Meta:** verificación del negocio, verificación como proveedor técnico y App Review de `instagram_business_basic` e `instagram_business_content_publish` (los textos, el ícono, la categoría y el correo ya están puestos). Mientras tanto, los corredores del piloto que publican en Instagram son evaluadores de la app.
+- **Meta:** verificación del negocio, verificación como proveedor técnico y el envío del App Review de `instagram_business_basic` e `instagram_business_content_publish` (los textos, el ícono, la categoría y el correo ya están puestos). Mientras tanto, los corredores del piloto que publican en Instagram son evaluadores de la app.
 - **Pruebas en vivo** de Portal (F4 y F6) y todo lo que publique de verdad: solo con tu instrucción en el chat. El servidor sigue en `dry-run`.
 
 ## [0.7.0] - 2026-10-17 · F7 Varios corredores
