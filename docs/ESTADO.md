@@ -9,6 +9,8 @@
 
 ## Pendiente tuyo tras cerrar F8
 - [ ] **Meta:** verificación del negocio → verificación como proveedor técnico → enviar el App Review de `instagram_business_basic` e `instagram_business_content_publish` (videos, una llamada exitosa por permiso en los 30 días previos, el usuario de demostración). Unas 5 semanas sin rechazos; puede pedir una empresa o inicio de actividades. Mientras, los corredores que publican en Instagram son evaluadores
+  - **Con Certilink SpA** (tu decisión del 2026-10-19): pasos y decisiones previas en `docs/integraciones/meta-verificacion-empresa.md` (nombre del operador en las páginas legales, sitio web del portafolio, segundo administrador, documentos de la SpA); el kit del envío (textos, instrucciones al revisor, guion de videos) en `docs/11-app-review-meta.md`
+  - **Bloqueos de código antes de enviar:** que un corredor pueda conectar su propio Instagram (hoy solo el administrador: el revisor no podría) y el servidor en `live` solo durante la revisión (`docs/11-app-review-meta.md` §1)
 - [ ] **`revisor-meta@agentpey.com`:** entrar una vez desde otra red (por ejemplo, el teléfono con datos móviles). La contraseña la pegaste en el chat: cámbiala antes de dársela al revisor de Meta (`pnpm -s cli users reset revisor-meta@agentpey.com`)
 - [ ] Opcional: que un abogado revise los textos legales (Ley 21.719); repetir la preparación con una propiedad con video para ver el reel en el servidor
 - [ ] **Renovar `FLY_API_TOKEN` antes de ~2027-04** y la clave de Anthropic antes del 2026-12-31
