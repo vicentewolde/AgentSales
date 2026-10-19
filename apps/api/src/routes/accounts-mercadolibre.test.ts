@@ -30,7 +30,14 @@ const json = (body: unknown) => ({
   body: JSON.stringify(body),
 });
 
-function setup(options: { configured?: boolean; logLines?: string[]; now?: () => Date } = {}) {
+function setup(
+  options: {
+    configured?: boolean;
+    secureCookie?: boolean;
+    logLines?: string[];
+    now?: () => Date;
+  } = {},
+) {
   const broker = contentBrokerFixture();
   const otherBroker = { ...contentBrokerFixture(), id: randomUUID(), slug: "otro-corredor" };
   const brokers = createInMemoryBrokerRepository([broker, otherBroker]);
@@ -59,6 +66,7 @@ function setup(options: { configured?: boolean; logLines?: string[]; now?: () =>
         auth,
         configured: options.configured ?? true,
         redirectUri: TEST_ML_REDIRECT_URI,
+        secureCookie: options.secureCookie ?? false,
       },
     }),
   );
@@ -81,7 +89,23 @@ describe("GET /accounts con Mercado Libre", () => {
     for (const configured of [true, false]) {
       const { app } = setup({ configured });
       const body = accountListResponseSchema.parse(await (await app.request("/accounts")).json());
-      expect(body.connect.mercadolibre).toEqual({ configured, redirectUri: TEST_ML_REDIRECT_URI });
+      // En el Mac la dirección no llega: la vuelta automática no se ofrece.
+      expect(body.connect.mercadolibre).toEqual({
+        configured,
+        redirectUri: TEST_ML_REDIRECT_URI,
+        automatic: false,
+      });
+    }
+  });
+
+  it("con el dominio (HTTPS) y la app configurada, la vuelta es automática (F8-T19)", async () => {
+    for (const [configured, automatic] of [
+      [true, true],
+      [false, false],
+    ] as const) {
+      const { app } = setup({ configured, secureCookie: true });
+      const body = accountListResponseSchema.parse(await (await app.request("/accounts")).json());
+      expect(body.connect.mercadolibre.automatic).toBe(automatic);
     }
   });
 });
@@ -100,6 +124,24 @@ describe("POST /accounts/mercadolibre/authorize-url", () => {
     expect(data).toMatchObject({ platform: "mercadolibre", broker: broker.slug });
     expect(Number(data.exp) - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(600);
     expect(auth.calls).toEqual([]);
+  });
+
+  it("pone la cookie del state (la que exige la vuelta automática): __Host- con HTTPS, Lax, Path=/ y sin Domain (F8-T19)", async () => {
+    for (const secureCookie of [true, false]) {
+      const { authorize } = setup({ secureCookie });
+      const response = await authorize();
+      const { url } = mercadoLibreAuthorizeUrlResponseSchema.parse(await response.json());
+      const state = new URL(url).searchParams.get("state") ?? "";
+      const cookie = response.headers.get("set-cookie") ?? "";
+      const name = secureCookie ? "__Host-agentsales_oauth_ml" : "agentsales_oauth_state_ml";
+      expect(cookie).toContain(`${name}=${encodeURIComponent(state)}`);
+      expect(cookie).toContain("HttpOnly");
+      expect(cookie).toContain("SameSite=Lax");
+      expect(cookie).toContain("Path=/");
+      expect(cookie).not.toContain("Domain");
+      expect(cookie.includes("Secure")).toBe(secureCookie);
+      expect(cookie).toMatch(/Max-Age=600/);
+    }
   });
 
   it("sin el par de la app: 503 MERCADOLIBRE_NOT_CONFIGURED con el paso a seguir", async () => {

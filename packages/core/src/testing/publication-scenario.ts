@@ -255,6 +255,9 @@ export async function createPublicationScenario(
       publications: outsidePublications,
       listings: outsideListings,
       fieldDefinitions: outsideFieldDefinitions,
+      // Como en desarrollo: el formulario automático de Marketplace corre (F8-T20; los tests de
+      // producción pasan `automation: false`).
+      marketplace: { automation: true },
     },
     approveDeps: { contents, listings, fieldDefinitions, lock },
     fieldDefinitions,

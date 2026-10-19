@@ -78,6 +78,7 @@ async function marketplaceSetup(
           workerMode: mode,
           mercadoLibre: null,
           marketplaceDailyLimit: 3,
+          marketplaceAutomation: true,
           uf: ufSource,
         },
         { publicationId: publication.id, isLastAttempt: false },
@@ -92,7 +93,7 @@ async function marketplaceSetup(
   /** Deja la publicación esperando el clic final, como después de publicar. */
   const awaiting = async () => {
     await startPublication(
-      { ...t.deps, marketplace: { dailyLimit: 3, ufConfigured: true } },
+      { ...t.deps, marketplace: { dailyLimit: 3, ufConfigured: true, automation: true } },
       { publicationId: only().id, dryRun: mode !== "live", actor: "operator" },
     );
     await attempt();

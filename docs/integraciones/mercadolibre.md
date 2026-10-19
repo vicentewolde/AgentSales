@@ -618,3 +618,10 @@ Pista no oficial (no es fuente): https://help.mapaprop.com/en/help/faqs/mercadol
 5. `PUT` de precio (un cambio pequeño y uno grande), título, descripción (`PUT .../description?api_version=2`) y fotos, siempre con `seller_contact`; observar `status`, `sub_status` y `stop_time` antes y después.
 6. Un `PUT` que solo cambia `status` sin `seller_contact` (cierra la duda de §4.2).
 7. Un `PUT` que solo cambia `status` sin `pictures` (la regla del 12/03/2026 leída el 2026-10-15): si se rechaza, pausar, reactivar y cerrar de F4 también tienen que mandar los `id` de las fotos.
+
+## Anexo F8-T19 (2026-10-19): la vuelta automática en el dominio
+
+- Con el servidor en internet (`https://agentsales.agentpey.com`), la dirección de vuelta es `https://agentsales.agentpey.com/api/oauth/mercadolibre/callback` (`ML_REDIRECT_URI` por defecto desde `PUBLIC_URL`). **Debe estar registrada, exacta, en la app de Mercado Libre** (developers.mercadolibre.cl → tu app → Editar → *Redirect URI*). Que el panel acepte más de una dirección a la vez (para dejar también la `https://agentsales.test/…` de desarrollo) es NO VERIFICADO: si solo acepta una, el pegado de la dirección en el Mac deja de calzar (`ML_REQUEST_REJECTED`) hasta volver a poner la de `.test`; en ese caso se registra la del dominio y desarrollo se prueba con dobles.
+- El flujo con el botón del panel: `authorize-url` (con la cookie del `state`), Mercado Libre vuelve a `GET /api/oauth/mercadolibre/callback`, la API canjea el código y vuelve a `/cuentas`. No se probó contra Mercado Libre de verdad (sin dominio hasta T21): que Mercado Libre devuelva el `state` tal cual y el `code` en la consulta es lo que ya hacía el pegado (F4), y el canje no cambia.
+- Pendiente (T21): conectar la cuenta real en el dominio con el botón y confirmar que `connect.mercadolibre.automatic` es `true` allí.
+

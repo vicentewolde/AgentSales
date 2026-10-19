@@ -122,6 +122,12 @@ export type PublishPublicationDeps = {
   workerMode: PublishMode;
   /** Marketplace: avisos por día y cuenta (`MARKETPLACE_DAILY_LIMIT`; por defecto 3, D8). */
   marketplaceDailyLimit?: number;
+  /**
+   * Si el ambiente permite el formulario automático de Marketplace (`marketplaceAutomationEnabled`,
+   * config; spec F8 §4.10). Obligatorio, para no olvidarlo: publicar con una cuenta de perfil falla
+   * con `MARKETPLACE_AUTOMATION_NOT_ALLOWED` sin abrir nada cuando es `false`.
+   */
+  marketplaceAutomation: boolean;
   /** La fuente de la UF para el precio de Marketplace (spec F5 §4.6); `null` sin el token. */
   uf?: UfValueSource | null;
   /** Reloj, para `published_at`. */
@@ -572,7 +578,7 @@ async function requireAutomationAllowed(
   if (broker === null) {
     throw new AppError("BROKER_NOT_FOUND", "No existe el corredor de esta publicación");
   }
-  assertMarketplaceAutomationAllowed(broker);
+  assertMarketplaceAutomationAllowed(broker, deps.marketplaceAutomation);
 }
 
 /** Todo lo que se revisa y arma antes de llamar a la plataforma. */
@@ -599,18 +605,18 @@ async function prepareAttempt(
   const manual = requiresManualConfirm(publication.platform);
   // Marketplace a mano (F7, ADR-0023): sin publisher, sin límite diario ni "un formulario a la vez".
   const byHand = manual && isManualMarketplaceAccount(account);
+  // El formulario automático, solo para un corredor propio y donde el ambiente lo permite (también
+  // con una cuenta de perfil conectada antes de F7). Va **antes** de buscar el publisher: en
+  // producción el worker no registra el de Marketplace (F8-T20), y el motivo es este, no
+  // `PUBLISHER_NOT_CONFIGURED`.
+  if (manual && !byHand) await requireAutomationAllowed(deps, publication);
   const publisher = byHand ? undefined : deps.publishers[publication.platform];
   if (!byHand && publisher === undefined) {
     throw new AppError("PUBLISHER_NOT_CONFIGURED", "Esta plataforma todavía no se puede publicar", {
       details: { platform: publication.platform },
     });
   }
-  if (manual && !byHand) {
-    // El formulario automático, solo para un corredor propio (también con una cuenta de perfil
-    // conectada antes de F7).
-    await requireAutomationAllowed(deps, publication);
-    await requireManualCapacity(deps, publication, now);
-  }
+  if (manual && !byHand) await requireManualCapacity(deps, publication, now);
   // Marketplace no guarda credenciales: su sesión vive en el perfil del navegador (ADR-0017).
   const stored = usesSessionProfile(publication.platform)
     ? null

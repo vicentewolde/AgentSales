@@ -320,7 +320,7 @@ const ufSource: UfValueSource = {
 };
 
 async function publicationSetup(
-  options: { publishMode?: PublishMode; ufConfigured?: boolean } = {},
+  options: { publishMode?: PublishMode; ufConfigured?: boolean; automation?: boolean } = {},
 ) {
   const t = await createPublicationScenario({ platform: MARKETPLACE, nextId: randomUUID });
   const log = capturingLogger();
@@ -341,6 +341,7 @@ async function publicationSetup(
       publishMode: mode,
       logger: log.logger,
       marketplace: { dailyLimit: 3, ufConfigured: options.ufConfigured ?? true },
+      marketplaceAutomation: options.automation ?? true,
     }),
   );
   const fake = createFakePublisher({
@@ -363,6 +364,7 @@ async function publicationSetup(
         workerMode: mode,
         mercadoLibre: null,
         marketplaceDailyLimit: 3,
+        marketplaceAutomation: true,
         uf: ufSource,
       },
       { publicationId: publication.id, isLastAttempt: false },
@@ -650,5 +652,81 @@ describe("POST /publications/:id/confirm y /not-published (spec F5 §4.3)", () =
     );
     expect(huge.status).toBe(400);
     expect((await errorOf(huge)).code).toBe("REQUEST_INVALID");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// En producción (F8-T20, spec F8 §4.10, D4): Marketplace se publica a mano
+// ---------------------------------------------------------------------------------------------
+
+describe("Marketplace en producción (F8-T20)", () => {
+  /** Como en producción: el ambiente no permite el formulario automático, ni a un corredor propio. */
+  const production = () => accountsSetup({ marketplaceAutomation: false });
+
+  it("GET /accounts dice que el formulario automático no corre, y en desarrollo que sí", async () => {
+    for (const [overrides, automation] of [
+      [{ marketplaceAutomation: false }, false],
+      [{}, true],
+    ] as const) {
+      const { app } = accountsSetup(overrides);
+      const list = accountListResponseSchema.parse(await (await app.request("/accounts")).json());
+      expect(list.connect.marketplace).toEqual({ automation });
+    }
+  });
+
+  it("el inicio de sesión del perfil, aun de un corredor propio: 403 MARKETPLACE_AUTOMATION_NOT_ALLOWED, sin encolar nada", async () => {
+    const { app, broker, queue } = production();
+
+    const response = await app.request(
+      "/accounts/marketplace/login",
+      post({ broker: broker.slug }),
+    );
+
+    expect([response.status, (await errorOf(response)).code]).toEqual([
+      403,
+      "MARKETPLACE_AUTOMATION_NOT_ALLOWED",
+    ]);
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it("una cuenta de perfil que quedó en la base se pasa a mano (201) sin encolar el borrado del perfil", async () => {
+    const { app, broker, connectMarketplace, platformAccounts, queue } = production();
+    const profile = await connectMarketplace();
+
+    const response = await app.request(
+      "/accounts/marketplace/manual",
+      post({ broker: broker.slug }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(accountResponseSchema.parse(await response.json()).account).toMatchObject({
+      marketplaceMode: "manual",
+      status: "connected",
+    });
+    expect((await platformAccounts.get(profile.id))?.status).toBe("revoked");
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it("desconectar una cuenta de perfil no pide confirmar ni encola el borrado del perfil", async () => {
+    const { app, connectMarketplace, queue } = production();
+    const account = await connectMarketplace();
+
+    const response = await app.request(`/accounts/${account.id}/disconnect`, post({}));
+
+    expect(response.status).toBe(200);
+    expect(accountResponseSchema.parse(await response.json()).account.status).toBe("revoked");
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it("pedir publicar con una cuenta de perfil: 403 MARKETPLACE_AUTOMATION_NOT_ALLOWED; en desarrollo, 202", async () => {
+    const prod = await publicationSetup({ automation: false });
+    const response = await prod.publish();
+    expect([response.status, (await errorOf(response)).code]).toEqual([
+      403,
+      "MARKETPLACE_AUTOMATION_NOT_ALLOWED",
+    ]);
+
+    const dev = await publicationSetup();
+    expect((await dev.publish()).status).toBe(202);
   });
 });

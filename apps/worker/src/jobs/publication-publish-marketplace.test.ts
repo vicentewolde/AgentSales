@@ -47,7 +47,7 @@ async function setup(options: { form?: string } = {}) {
   });
   const t = await createPublicationScenario({ platform: "fb_marketplace" });
   const { started } = await publishListing(
-    { ...t.deps, marketplace: { ufConfigured: true } },
+    { ...t.deps, marketplace: { ufConfigured: true, automation: true } },
     { listingId: t.listingId, platform: "fb_marketplace", dryRun: false, actor: "operator" },
   );
   const publication = started[0];
@@ -95,6 +95,7 @@ async function setup(options: { form?: string } = {}) {
         }),
       },
       workerMode: "live",
+      marketplaceAutomation: true,
       mercadoLibre: null,
       uf: {
         async valuesBetween(from, to) {

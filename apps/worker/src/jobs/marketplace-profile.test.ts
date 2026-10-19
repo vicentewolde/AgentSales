@@ -88,6 +88,7 @@ async function setup(options: { home?: string; cookies?: Record<string, string> 
     brokers: createInMemoryBrokerRepository([broker]),
     platformAccounts,
     publications: createInMemoryPublicationRepository(),
+    marketplaceAutomation: true,
     signal: new AbortController().signal,
     now: () => NOW,
     loginWaitMs: 300,

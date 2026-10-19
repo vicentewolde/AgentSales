@@ -1,6 +1,10 @@
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { type BrokerRepository, isAppError } from "@agentsales/core";
+import {
+  assertMarketplaceAutomationAllowed,
+  type BrokerRepository,
+  isAppError,
+} from "@agentsales/core";
 import {
   captureFormEvidence,
   captureOpenLists,
@@ -26,6 +30,8 @@ export const FB_SMOKE_MAX_MENU_CAPTURES = 10;
 
 export type FbSmokeDeps = {
   brokers: Pick<BrokerRepository, "findBySlug">;
+  /** Si el ambiente permite el formulario automático (`marketplaceAutomationEnabled`, F8-T20). */
+  automation: boolean;
   /** Abre el perfil de Marketplace del corredor (con ventana; los tests, sin ella). */
   openProfile(brokerId: string): Promise<MarketplaceProfile>;
   /** `<workspace>/tmp/fb-smoke`: donde queda la evidencia. */
@@ -102,11 +108,13 @@ export async function runFbSmoke(deps: FbSmokeDeps, options: FbSmokeOptions): Pr
     deps.printError(`✗ No existe el corredor ${options.brokerSlug}`);
     return 1;
   }
-  // El perfil del navegador, solo para un corredor propio (F7, ADR-0023): ni se abre.
-  if (!broker.operatorOwned) {
-    deps.printError(
-      `✗ ${broker.slug} no es tu corredor: el perfil de Facebook es solo para los tuyos (ese corredor publica a mano)`,
-    );
+  // El perfil del navegador, solo para un corredor propio (F7, ADR-0023) y donde el ambiente lo
+  // permite (F8-T20: no en producción): ni se abre. La misma regla de core que `--listing`.
+  try {
+    assertMarketplaceAutomationAllowed(broker, deps.automation);
+  } catch (error) {
+    if (!isAppError(error)) throw error;
+    deps.printError(`✗ ${error.message}`);
     return 1;
   }
   // Las capturas de una corrida anterior se borran: `summary.json` lista solo las de esta.

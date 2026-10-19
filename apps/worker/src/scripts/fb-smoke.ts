@@ -7,6 +7,7 @@ import {
   findWorkspaceRoot,
   loadEnv,
   loadEnvFile,
+  marketplaceAutomationEnabled,
   resolveBrowserProfilesDir,
 } from "@agentsales/config";
 import {
@@ -139,6 +140,7 @@ try {
             ? null
             : createBancoCentralUf({ token: env.BCCH_API_TOKEN }),
         dailyLimit: env.MARKETPLACE_DAILY_LIMIT,
+        automation: marketplaceAutomationEnabled(env),
         openProfile,
         outputDir,
         ask,
@@ -158,6 +160,7 @@ try {
     process.exitCode = await runFbSmoke(
       {
         brokers: createBrokerRepository(db.db),
+        automation: marketplaceAutomationEnabled(env),
         openProfile,
         outputDir,
         now: () => new Date(),

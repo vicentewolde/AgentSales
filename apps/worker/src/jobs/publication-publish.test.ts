@@ -66,6 +66,7 @@ async function setup(
       storage: t.storage,
       publishers: { instagram: options.publisher ?? fake },
       workerMode: "live",
+      marketplaceAutomation: true,
       mercadoLibre: null,
     },
     queue: t.queue,
@@ -342,7 +343,7 @@ describe("job publication.publish · Marketplace (spec F5 §4.5)", () => {
   async function marketplace(options: { fake?: FakePublisherOptions } = {}) {
     const t = await createPublicationScenario({ platform: "fb_marketplace" });
     const { started } = await publishListing(
-      { ...t.deps, marketplace: { ufConfigured: true } },
+      { ...t.deps, marketplace: { ufConfigured: true, automation: true } },
       { listingId: t.listingId, platform: "fb_marketplace", dryRun: false, actor: "operator" },
     );
     const publication = started[0];
@@ -366,6 +367,7 @@ describe("job publication.publish · Marketplace (spec F5 §4.5)", () => {
           }),
         },
         workerMode: "live",
+        marketplaceAutomation: true,
         mercadoLibre: null,
         uf: {
           async valuesBetween(from, to) {
@@ -433,11 +435,12 @@ describe("job publication.publish · Marketplace a mano (F7-T15)", () => {
         platformAccounts: t.platformAccounts,
         publications: t.publications,
         queue: t.queue,
+        marketplaceAutomation: true,
       },
       { broker: broker.slug },
     );
     const { started } = await publishListing(
-      { ...t.deps, marketplace: { ufConfigured: true } },
+      { ...t.deps, marketplace: { ufConfigured: true, automation: true } },
       { listingId: t.listingId, platform: "fb_marketplace", dryRun: false, actor: "operator" },
     );
     const [publication] = started;
@@ -454,6 +457,7 @@ describe("job publication.publish · Marketplace a mano (F7-T15)", () => {
         storage: t.storage,
         publishers: {},
         workerMode: "live",
+        marketplaceAutomation: true,
         mercadoLibre: null,
         uf: {
           async valuesBetween(from, to) {

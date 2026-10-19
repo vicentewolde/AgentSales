@@ -78,7 +78,7 @@ pnpm -s cli brokers create|edit|show|logo|template  # corredores: crear (--slug 
 pnpm -s cli users list|invite|reset|disable|enable  # usuarios (administrador): invite --email --name --broker <slug>|--admin; el enlace va al portapapeles, nunca a la pantalla (no lo pegues en el chat)
 pnpm -s cli usage [--month AAAA-MM]  # el gasto de IA del mes por corredor (estimado), con su tope
 pbpaste | pnpm -s cli publications confirm <id> --url-stdin  # Marketplace: lo publicaste (el enlace no se imprime); publications not-published <id> si no
-pnpm -s cli accounts     # cuentas y vencimiento (pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin; Mercado Libre: accounts connect mercadolibre --broker <slug> y después pbpaste | … --url-stdin; Marketplace: accounts connect marketplace --broker <slug> abre Chromium para iniciar sesión a mano (lo pide el operador; solo corredores propios), o --manual activa Marketplace a mano; accounts refresh <id> [--force]; accounts disconnect <id> pide confirmación, --yes)
+pnpm -s cli accounts     # cuentas y vencimiento (pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin; Mercado Libre: accounts connect mercadolibre --broker <slug> y después pbpaste | … --url-stdin (en el servidor con su dominio, el botón del panel); Marketplace: accounts connect marketplace --broker <slug> abre Chromium para iniciar sesión a mano (lo pide el operador; solo corredores propios y no en producción, donde es a mano para todos), o --manual activa Marketplace a mano; accounts refresh <id> [--force]; accounts disconnect <id> pide confirmación, --yes)
 ```
 (Los comandos existen desde F0; si alguno falta, la tarea que lo introduce debe crearlo.)
 

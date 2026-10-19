@@ -135,7 +135,7 @@ describe("schedulePublication", () => {
         payload: { mode: "live", attempt, retry: 0, result: "failed" },
       });
     }
-    const marketplace = { ufConfigured: true };
+    const marketplace = { ufConfigured: true, automation: true };
 
     expect(
       await codeOf(
@@ -198,7 +198,7 @@ describe("schedulePublication", () => {
       { from: "approved", to: "publishing", changes: { dryRun: true } },
       { actor: "system" },
     );
-    const marketplace = { ufConfigured: true };
+    const marketplace = { ufConfigured: true, automation: true };
 
     expect(
       await codeOf(

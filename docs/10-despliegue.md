@@ -14,7 +14,7 @@ Guía paso a paso para poner AgentSales en internet, en `https://agentsales.agen
 - **Modo demo (D1):** las máquinas se encienden los días de demo y se apagan después. Cuesta unos US$ 0,56 por día encendido, más centavos por el disco de las máquinas apagadas. Con el worker apagado, Neon se duerme y no gasta su cupo gratis.
 - **Simulación (D9):** el servidor corre con `PUBLISH_MODE=dry-run` (en `fly.toml`). Pasarlo a `live` es una decisión tuya, que pides en el chat.
 - **Las migraciones** se aplican solas en cada despliegue, antes de reemplazar nada. Si fallan, el despliegue se detiene y queda la versión anterior.
-- **Lo que no corre en el servidor:** el formulario automático de Marketplace (D4: en producción, Marketplace es a mano para todos) y la CLI de Claude (la IA va por la API de Anthropic).
+- **Lo que no corre en el servidor:** el formulario automático de Marketplace (D4: en producción, Marketplace es a mano para todos; el worker no registra su publisher ni el job `marketplace.profile`, y `BROWSER_PROFILES_DIR` no va en el entorno: si está en tu `.env.production`, quítala, porque `loadEnv` la rechaza con `NODE_ENV=production`) y la CLI de Claude (la IA va por la API de Anthropic).
 
 ## Antes de empezar (una vez)
 
@@ -127,6 +127,8 @@ Esto no toca el otro proyecto de `agentpey.com`: es otro nombre, y las cookies d
    pnpm -s cli doctor
    ```
    `doctor` debe decir el servidor, "Ambiente: producción" y si el worker está encendido. Para volver a la API del Mac, entra de nuevo sin `--api`.
+4. **Conectar Mercado Libre con el botón** (con el servidor en su dominio y la dirección registrada en la app de Mercado Libre, `docs/07-checklist-cuentas.md`): en el panel, **Cuentas**, el corredor y **Conectar Mercado Libre**. Entra con la cuenta administradora y autoriza; vuelve solo a Cuentas con "Cuenta de Mercado Libre conectada". Desde la CLI no se conecta en el servidor: `accounts connect mercadolibre` te manda al botón.
+5. **Pasar a mano las cuentas de Marketplace de perfil** que quedaron en la base (por ejemplo `agentsales-pruebas`): en **Cuentas**, el corredor, **Activar Marketplace a mano** (no pregunta nada ni toca archivos: en el servidor no hay perfil). Sin esto esas cuentas siguen "conectadas" pero publicar con ellas da `MARKETPLACE_AUTOMATION_NOT_ALLOWED`.
 
 ## Paso 7 · Ver los logs
 

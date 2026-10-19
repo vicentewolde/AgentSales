@@ -8,6 +8,7 @@ import {
   findWorkspaceRoot,
   loadAppEnvFile,
   loadEnv,
+  marketplaceAutomationEnabled,
   resolveBackupDir,
   resolveBrowserProfilesDir,
 } from "@agentsales/config";
@@ -165,6 +166,10 @@ const profilesRoot = resolveBrowserProfilesDir(env.BROWSER_PROFILES_DIR, {
   homeDir: homedir(),
   workspaceRoot,
 });
+// En producción el formulario automático no corre (spec F8 §4.10, D4): sin publisher de
+// Marketplace, sin el job `marketplace.profile` y sin evidencia que limpiar. Una cuenta
+// a mano no necesita nada de esto (el traspaso es de core). Core recibe lo que el ambiente permite.
+const marketplaceAutomation = marketplaceAutomationEnabled(env);
 // El respaldo (spec F6 §4.11 y F8 §4.9): en el Mac, la carpeta, también fuera del proyecto (trae
 // datos de clientes); con `BACKUP_TARGET=r2` (producción), el bucket de respaldos con su propio
 // token, que solo tiene el worker, y el estado en `system/` del bucket principal.
@@ -224,6 +229,7 @@ const autoPublish: AutoPublishDeps = {
   marketplace: {
     dailyLimit: env.MARKETPLACE_DAILY_LIMIT,
     ufConfigured: env.BCCH_API_TOKEN !== undefined,
+    automation: marketplaceAutomation,
   },
   dryRun: env.PUBLISH_MODE !== "live",
 };
@@ -267,16 +273,22 @@ const jobs = buildJobs({
         instagram,
         portal_inmobiliario: portal.publisher,
         // En `live` llena el formulario y deja la ventana al registro; en `dry-run` no abre nada.
-        fb_marketplace: createWorkerMarketplacePublisher({
-          openProfile: (brokerId) =>
-            openMarketplaceProfile({ dir: marketplaceProfileDir(profilesRoot, brokerId) }),
-          storage,
-          tmpRoot: marketplaceTmpRootOf(workspaceRoot),
-          windows: marketplaceWindows,
-        }),
+        // En producción no se registra (D4): publicar con una cuenta de perfil ya falló en core.
+        ...(marketplaceAutomation
+          ? {
+              fb_marketplace: createWorkerMarketplacePublisher({
+                openProfile: (brokerId) =>
+                  openMarketplaceProfile({ dir: marketplaceProfileDir(profilesRoot, brokerId) }),
+                storage,
+                tmpRoot: marketplaceTmpRootOf(workspaceRoot),
+                windows: marketplaceWindows,
+              }),
+            }
+          : {}),
       },
       workerMode: env.PUBLISH_MODE,
       marketplaceDailyLimit: env.MARKETPLACE_DAILY_LIMIT,
+      marketplaceAutomation,
       uf: ufSource,
       // El token de Portal se asegura (y se refresca) con el par de la app (spec F4 §4.3).
       mercadoLibre: mercadoLibreAuth,
@@ -302,16 +314,19 @@ const jobs = buildJobs({
     mercadoLibre: mercadoLibreAuth,
     signal: jobsAbort.signal,
   },
-  marketplaceProfile: {
-    profilesRoot,
-    openProfile: (brokerId) =>
-      openMarketplaceProfile({ dir: marketplaceProfileDir(profilesRoot, brokerId) }),
-    windows: marketplaceWindows,
-    brokers: repositories.brokers,
-    platformAccounts,
-    publications,
-    signal: jobsAbort.signal,
-  },
+  marketplaceProfile: marketplaceAutomation
+    ? {
+        profilesRoot,
+        openProfile: (brokerId) =>
+          openMarketplaceProfile({ dir: marketplaceProfileDir(profilesRoot, brokerId) }),
+        windows: marketplaceWindows,
+        brokers: repositories.brokers,
+        platformAccounts,
+        publications,
+        marketplaceAutomation,
+        signal: jobsAbort.signal,
+      }
+    : null,
   publicationDue: {
     lock: listingLock,
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
@@ -516,6 +531,7 @@ async function requestLiveSyncs(): Promise<void> {
 }
 
 async function cleanMarketplaceEvidence(): Promise<void> {
+  if (!marketplaceAutomation) return;
   try {
     const removed = await cleanContentTmp(
       marketplaceTmpRootOf(workspaceRoot),
@@ -529,6 +545,8 @@ async function cleanMarketplaceEvidence(): Promise<void> {
   }
 }
 
+// También en producción: solo escribe en la base, y la de producción puede traer formularios de
+// cuando el perfil corría en el Mac (sin ventana desde que no hay worker allí).
 async function sweepMarketplaceWindows(): Promise<void> {
   try {
     const marked = await sweepClosedWindows(publications, new Date());

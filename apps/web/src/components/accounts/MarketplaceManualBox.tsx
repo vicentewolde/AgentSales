@@ -12,11 +12,14 @@ export function MarketplaceManualBox({
   broker,
   active,
   replacesProfile,
+  automation,
 }: {
   broker: Broker;
   active: boolean;
   /** Hay un Facebook conectado con el perfil del navegador que la cuenta a mano reemplazaría. */
   replacesProfile: boolean;
+  /** Si el ambiente permite el formulario automático (en el servidor no: F8-T20, D4). */
+  automation: boolean;
 }) {
   const activate = useActivateManualMarketplace();
   const [confirming, setConfirming] = useState(false);
@@ -25,9 +28,14 @@ export function MarketplaceManualBox({
   return (
     <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
       <p className="text-slate-700">
-        {broker.operatorOwned
-          ? "También puedes dejarlo a mano: el corredor publica él mismo, sin abrir Facebook en este Mac."
-          : "Este corredor publica Marketplace a mano: el sistema deja listos el texto, las fotos y el precio, y él lo publica y confirma con el enlace."}
+        {!automation
+          ? "En el servidor Marketplace se publica a mano: el sistema deja listos el texto, las fotos y el precio, y el corredor lo publica y confirma con el enlace."
+          : broker.operatorOwned
+            ? "También puedes dejarlo a mano: el corredor publica él mismo, sin abrir Facebook en este Mac."
+            : "Este corredor publica Marketplace a mano: el sistema deja listos el texto, las fotos y el precio, y él lo publica y confirma con el enlace."}
+        {!automation &&
+          replacesProfile &&
+          " La cuenta de Facebook que quedó conectada deja de usarse; no se borra ningún archivo."}
       </p>
       {active ? (
         <p className="mt-2 font-medium text-green-800">Marketplace a mano activo.</p>
@@ -54,7 +62,7 @@ export function MarketplaceManualBox({
         <button
           type="button"
           disabled={activate.isPending}
-          onClick={() => (replacesProfile ? setConfirming(true) : run())}
+          onClick={() => (replacesProfile && automation ? setConfirming(true) : run())}
           className="mt-2 rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white disabled:opacity-50"
         >
           {activate.isPending ? "Activando…" : "Activar Marketplace a mano"}

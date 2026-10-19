@@ -100,6 +100,9 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /accounts/:id/disconnect": "admin",
   "GET /oauth/instagram/start": "admin",
   "GET /oauth/instagram/callback": "public",
+  // La vuelta automática de Mercado Libre (F8-T19): llega desde Mercado Libre, sin la cookie
+  // `Strict`; la protegen el `state` firmado de un solo uso y su propia cookie `Lax`.
+  "GET /oauth/mercadolibre/callback": "public",
   // Las vueltas de Meta (F8-T17): de servidor a servidor, las protege la firma de la app; la página
   // del pedido la abre la persona que pidió el borrado (con su código).
   "POST /meta/deauthorize": "public",

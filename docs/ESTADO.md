@@ -2,10 +2,10 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-18
+**Actualizado:** 2026-10-19
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** lote G de F8 (T17 y T18): las vueltas de Meta (quitar la app y borrar los datos, con la firma verificada, la tabla `meta_deletion_requests` de la migración `0013` y la página del pedido), el `state` de Instagram de un solo uso en la base, y los textos de términos, privacidad y cómo borrar los datos (HTML estático en `/legal/`, enlazados desde Entrar; aprobados por ti el 2026-10-19)
-**Siguiente paso:** `/tarea F8-T19 F8-T20` (lote H: la vuelta automática de Mercado Libre y Marketplace en producción). Tú: lo que queda de "Del lote G" (abajo)
+**Última tarea:** lote H de F8 (T19 y T20): la vuelta automática de Mercado Libre (el botón "Conectar Mercado Libre" del panel con el dominio, `GET /api/oauth/mercadolibre/callback` con el `state` de un solo uso y su cookie `__Host-`) y Marketplace en producción (el formulario automático no corre en el servidor: ni el publisher ni el job `marketplace.profile` se registran, las cuentas de perfil que quedaron se pasan a mano sin tocar el disco, y `loadEnv` rechaza `BROWSER_PROFILES_DIR` en producción)
+**Siguiente paso:** T21, la primera puesta en marcha contigo (`docs/10-despliegue.md`); antes, lo que queda de "Del lote G" y "Del lote H" (abajo)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -45,6 +45,10 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [ ] **`FACEBOOK_APP_SECRET` (opcional):** la clave secreta de **Configuración → Información básica** de la app de Meta, en `.env.production`; y en `.env.example`, comentada y vacía (`# FACEBOOK_APP_SECRET=`). Sirve por si Meta firma las vueltas con esa clave y no con la de Instagram (no está verificado)
   - [ ] **En la app de Meta (antes de T21):** las dos direcciones de las vueltas y la de privacidad (pasos en `docs/07-checklist-cuentas.md`, "Antes del primer despliegue" y "Meta")
   - [ ] **En T21:** quitar la app desde tu Instagram y ver que la cuenta queda desconectada en el panel (eso confirma qué clave firma y que el `user_id` de Meta es el de la cuenta)
+- **Del lote H (T19 y T20):**
+  - [ ] **Quitar `BROWSER_PROFILES_DIR` de `.env.production`** si está (producción la rechaza: `loadEnv` falla con "no va con NODE_ENV=production"; el servidor no la recibe, pero `ENV_FILE=.env.production pnpm auth:admin` sí la leería)
+  - [ ] **La dirección de vuelta de Mercado Libre** (checklist, "Antes del primer despliegue"): `https://agentsales.agentpey.com/api/oauth/mercadolibre/callback` en la app de Mercado Libre. Cuéntame si tu panel deja dos direcciones o solo una (si solo una, el pegado en el Mac deja de calzar)
+  - [ ] **En T21:** conectar tu Mercado Libre con el botón del panel en el dominio (confirma la vuelta de verdad), y pasar a mano las cuentas de Marketplace de perfil que quedaron en la base (`agentsales-pruebas`) con el botón de Cuentas
 - [ ] **Antes del primer despliegue (T21):** cuenta de Fly.io con tarjeta y `FLY_API_TOKEN` en GitHub, el registro DNS de `agentsales.agentpey.com` en Vercel, el bucket `agentsales-backups` (arriba), los secretos en Fly, las direcciones de vuelta en Meta y Mercado Libre, y el límite de gasto en la consola de Anthropic
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
@@ -83,7 +87,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 | **Lote E** · T13 Respaldo a R2 | ✅ terminada (con dobles de R2; la subida real, en T21, y la restauración, en la demo) | (este PR) |
 | **Lote F** · T14 Límites por IP · T15 Doble factor (core, base y API) · T16 Doble factor en el panel y la CLI | ✅ terminada (con dobles; el doble factor real en tu teléfono, cuando quieras) | (este PR) |
 | **Lote G** · T17 Instagram de verdad y las vueltas de Meta · T18 Páginas públicas | ✅ terminada (con firmas de prueba; las vueltas reales, en T21; los textos esperan tu aprobación) | (este PR) |
-| **Lote H** · T19 Mercado Libre: la vuelta automática · T20 Marketplace en producción | ⏳ pendiente | |
+| **Lote H** · T19 Mercado Libre: la vuelta automática · T20 Marketplace en producción | ✅ terminada (con dobles; la vuelta real de Mercado Libre, en T21) | (este PR) |
 | T21 Primera puesta en marcha (contigo) | ⏳ pendiente | |
 | T22 Cierre de fase (`v1.0.0`) | ⏳ pendiente | |
 
@@ -164,8 +168,6 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
 - **Cuando el panel edite definiciones, rangos:** la base no impide un `min_value` mayor que `max_value` ni un rango en un campo que no es `number`; hoy lo detecta el validador (`FIELD_CONFIG_INVALID`). Si el panel permite editar definiciones, sumar `CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)`.
 - Panel: el bundle principal pesa 512 kB (157 kB gzip), con las páginas aparte desde F1-T13 (`React.lazy`). El resto queda para F8 (D5 del spec F1).
 - **F8, CLI:** `publications` sin propiedad consulta aviso por aviso; con cientos de avisos, sumar un listado global.
-- **F8, vuelta de Mercado Libre:** el `state` es de un solo uso desde F7-T10, pero `https://agentsales.test/…` no llega a la API, así que no sirve para la vuelta automática (`/oauth/mercadolibre/callback`): F8 registra en la app una segunda dirección de su dominio real, y la cookie del `state` se amarra a ese mismo host, como el `startUrl` de Instagram.
-- **F8, cuentas (T17):** el `state` de Instagram no es de un solo uso (vale sus 10 min; hoy basta con que la cookie se borre): guardar el nonce usado, como el de Mercado Libre. (Quién conecta cada corredor se cerró en F7-T08: conectar es del administrador.)
 - El timeout de `/health` no cancela el check. Si molesta, pasar un `AbortSignal` a `HealthCheck`.
 - El redactor oculta cualquier clave con `key` (por ejemplo `objectKey`): en logs usar nombres como `objectPath`.
 - **F8, `doctor` remoto (T08):** del servidor muestra lo que da `/health`; ffmpeg, Chromium y `pg_dump` del servidor no los revisa la CLI (spec §4.5): los asegura la imagen y su prueba en la CI (`image`, T10).

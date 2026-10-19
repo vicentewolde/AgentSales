@@ -38,6 +38,7 @@ function Channel({
   accounts,
   now,
   manage,
+  marketplaceAutomation,
   children,
 }: {
   title: string;
@@ -46,6 +47,8 @@ function Channel({
   now: Date;
   /** Solo el administrador conecta, renueva y desconecta (F7, spec §4.5). */
   manage: boolean;
+  /** Si el ambiente permite el formulario automático de Marketplace (F8-T20). */
+  marketplaceAutomation: boolean;
   children?: ReactNode;
 }) {
   const headingId = useId();
@@ -62,7 +65,13 @@ function Channel({
       )}
       <div className="mt-2 flex flex-col gap-3">
         {accounts.map((account) => (
-          <AccountCard key={account.id} account={account} now={now} manage={manage} />
+          <AccountCard
+            key={account.id}
+            account={account}
+            now={now}
+            manage={manage}
+            marketplaceAutomation={marketplaceAutomation}
+          />
         ))}
       </div>
       {manage && children}
@@ -94,6 +103,8 @@ function BrokerAccounts({
   const manualActive = own("fb_marketplace").some(
     (account) => account.status === "connected" && account.marketplaceMode === "manual",
   );
+  // En el servidor el formulario automático no corre: todos publican a mano (F8-T20, D4).
+  const automation = data.connect.marketplace.automation;
   const headingId = `corredor-${broker.id}`;
   return (
     <section aria-labelledby={headingId}>
@@ -107,6 +118,7 @@ function BrokerAccounts({
         accounts={instagram.shown}
         now={now}
         manage={manage}
+        marketplaceAutomation={automation}
       >
         {instagram.offerConnect && (
           <ConnectBox
@@ -123,12 +135,14 @@ function BrokerAccounts({
         accounts={mercadoLibre.shown}
         now={now}
         manage={manage}
+        marketplaceAutomation={automation}
       >
         {mercadoLibre.offerConnect && (
           <MercadoLibreConnectBox
             broker={broker}
             configured={data.connect.mercadolibre.configured}
             redirectUri={data.connect.mercadolibre.redirectUri}
+            automatic={data.connect.mercadolibre.automatic}
             reconnect={mercadoLibre.reconnect}
           />
         )}
@@ -139,10 +153,11 @@ function BrokerAccounts({
         accounts={marketplace.shown}
         now={now}
         manage={manage}
+        marketplaceAutomation={automation}
       >
         {/* El perfil del navegador solo para un corredor propio (ADR-0023); siempre, porque sin
             vencimiento que avise una sesión cerrada no se ve hasta publicar. */}
-        {marketplaceAutomationAllowed(broker) && !manualActive && (
+        {marketplaceAutomationAllowed(broker, automation) && !manualActive && (
           <MarketplaceConnectBox
             broker={broker}
             connected={!marketplace.offerConnect}
@@ -152,6 +167,7 @@ function BrokerAccounts({
         <MarketplaceManualBox
           broker={broker}
           active={manualActive}
+          automation={automation}
           replacesProfile={own("fb_marketplace").some(
             (account) => account.status === "connected" && account.marketplaceMode === "profile",
           )}

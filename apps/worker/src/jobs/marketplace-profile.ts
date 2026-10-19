@@ -54,6 +54,11 @@ export type MarketplaceProfileJobDeps = {
     "upsertConnected" | "listByBroker" | "mergeMeta"
   >;
   publications: Pick<PublicationRepository, "listByStatus">;
+  /**
+   * Lo que el ambiente permite (`marketplaceAutomationEnabled`): el job solo se registra cuando es
+   * `true` (en producción no corre, F8-T20), pero la regla de core lo pide igual.
+   */
+  marketplaceAutomation: boolean;
   signal: AbortSignal;
   now?: () => Date;
   loginWaitMs?: number;
@@ -116,7 +121,7 @@ export function marketplaceProfileJob(deps: MarketplaceProfileJobDeps): Job {
             details: { brokerId: data.brokerId },
           });
         }
-        assertMarketplaceAutomationAllowed(broker);
+        assertMarketplaceAutomationAllowed(broker, deps.marketplaceAutomation);
         profile = await openWhenFree(deps, data.brokerId);
         await profile.page.goto(FACEBOOK_HOME_URL).catch(() => undefined);
         logger.info("ventana de Facebook abierta: el operador inicia sesión a mano");
@@ -142,6 +147,7 @@ export function marketplaceProfileJob(deps: MarketplaceProfileJobDeps): Job {
             brokers: deps.brokers,
             platformAccounts: deps.platformAccounts,
             publications: deps.publications,
+            marketplaceAutomation: deps.marketplaceAutomation,
             ...(deps.now ? { now: deps.now } : {}),
           },
           {

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { backupStorageOf, EnvError, loadEnv, panelUrlOf, withoutBackupCredentials } from "./env.js";
+import {
+  backupStorageOf,
+  EnvError,
+  loadEnv,
+  marketplaceAutomationEnabled,
+  panelUrlOf,
+  withoutBackupCredentials,
+} from "./env.js";
 
 const DIRECT_URL =
   "postgresql://owner:fake-pass@ep-test-123.sa-east-1.aws.neon.tech/neondb?sslmode=require";
@@ -495,6 +502,32 @@ describe("loadEnv", () => {
           message: "debe empezar con PUBLIC_URL con NODE_ENV=production",
         },
       ]);
+    });
+
+    it("en producción BROWSER_PROFILES_DIR se rechaza (el formulario automático no corre allí, F8-T20)", () => {
+      const error = envErrorOf({ ...production, BROWSER_PROFILES_DIR: "/data/perfiles" });
+
+      expect(error.issues).toEqual([
+        {
+          variable: "BROWSER_PROFILES_DIR",
+          message: expect.stringContaining("no va con NODE_ENV=production"),
+        },
+      ]);
+      expect(error.message).not.toContain("/data/perfiles");
+      // Sin ella, producción carga (el valor por defecto no se usa: no hay perfiles).
+      expect(() => loadEnv(production)).not.toThrow();
+      // En desarrollo sigue configurable.
+      expect(
+        loadEnv({ ...validSource, BROWSER_PROFILES_DIR: "/data/perfiles" }).BROWSER_PROFILES_DIR,
+      ).toBe("/data/perfiles");
+    });
+
+    it("marketplaceAutomationEnabled: el formulario automático corre en todo menos en producción", () => {
+      expect(marketplaceAutomationEnabled(loadEnv(validSource))).toBe(true);
+      expect(marketplaceAutomationEnabled(loadEnv({ ...validSource, NODE_ENV: "test" }))).toBe(
+        true,
+      );
+      expect(marketplaceAutomationEnabled(loadEnv(production))).toBe(false);
     });
 
     it("la CLI de Claude no corre en producción (también por defecto)", () => {

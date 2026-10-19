@@ -1,23 +1,31 @@
 import { type Broker, mercadoLibreConnectCommands } from "@agentsales/core";
+import { goTo } from "../../navigation.js";
+import { useMercadoLibreAuthorizeUrl } from "../../queries/accounts.js";
+import { ErrorAlert } from "../ErrorAlert.js";
 import { CopyCommand } from "./CopyCommand.js";
 
 /**
  * Cómo conectar (o reconectar) la cuenta de Mercado Libre de un corredor (spec F4 §4.2 y §4.12):
  * sin túnel, en dos pasos de la CLI, el que abre el enlace de autorización y el que pega la
- * dirección de vuelta. Sin el par de la app en la API, lo dice en vez de mostrar los pasos.
+ * dirección de vuelta. En el servidor con su dominio (`automatic`, F8-T19) es un botón: la vuelta
+ * llega sola. Sin el par de la app en la API, lo dice en vez de mostrar los pasos.
  */
 export function MercadoLibreConnectBox({
   broker,
   configured,
   redirectUri,
+  automatic,
   reconnect,
 }: {
   broker: Broker;
   configured: boolean;
   redirectUri: string;
+  /** La vuelta es automática (el servidor con su dominio): un botón en vez de los pasos de la CLI. */
+  automatic: boolean;
   reconnect: boolean;
 }) {
   const label = reconnect ? "Reconectar Mercado Libre" : "Conectar Mercado Libre";
+  const authorize = useMercadoLibreAuthorizeUrl();
   if (!configured) {
     return (
       <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
@@ -29,7 +37,29 @@ export function MercadoLibreConnectBox({
       </div>
     );
   }
-  const { authorize, paste } = mercadoLibreConnectCommands(broker.slug);
+  if (automatic) {
+    // La URL trae su `state` y la respuesta puso la cookie: se abre en esta pestaña, y Mercado Libre
+    // vuelve solo a la API, que termina en esta página.
+    const go = () => authorize.mutate(broker.slug, { onSuccess: goTo });
+    return (
+      <div className="mt-3 text-sm">
+        <button
+          type="button"
+          disabled={authorize.isPending}
+          onClick={go}
+          aria-label={`${label} de ${broker.brandName}`}
+          className="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white disabled:opacity-50"
+        >
+          {authorize.isPending ? "Abriendo Mercado Libre…" : label}
+        </button>
+        <p className="mt-1 text-slate-600">
+          Se abre Mercado Libre: entra con la cuenta administradora y autoriza (vale 10 min).
+        </p>
+        {authorize.error && <ErrorAlert error={authorize.error} />}
+      </div>
+    );
+  }
+  const { authorize: authorizeCommand, paste } = mercadoLibreConnectCommands(broker.slug);
   return (
     <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
       <p className="font-medium">{label}</p>
@@ -41,7 +71,7 @@ export function MercadoLibreConnectBox({
           Corre este comando: abre el enlace de Mercado Libre. Autoriza con la cuenta
           administradora.
           <CopyCommand
-            command={authorize}
+            command={authorizeCommand}
             label={`Copiar el comando que abre el enlace de ${broker.slug}`}
           />
         </li>

@@ -134,6 +134,7 @@ async function setup(
         auth: mercadoLibreAuth,
         configured: options.mercadoLibreConfigured ?? true,
         redirectUri: TEST_ML_REDIRECT_URI,
+        secureCookie: false,
       },
       ...(options.operationTimeoutMs === undefined
         ? {}

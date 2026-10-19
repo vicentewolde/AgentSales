@@ -160,6 +160,7 @@ const disconnectDeps = (deps: { platformAccounts: DisconnectAccountDeps["platfor
   platformAccounts: deps.platformAccounts,
   publications: createInMemoryPublicationRepository(),
   queue: createInMemoryJobQueue(),
+  marketplaceAutomation: true,
 });
 
 describe("disconnectAccount", () => {

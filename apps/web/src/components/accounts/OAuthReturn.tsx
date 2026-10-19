@@ -1,13 +1,17 @@
+import { OAUTH_PROVIDERS, type OAuthProvider } from "@agentsales/api/contracts";
 import { useSearchParams } from "react-router";
-import { oauthErrorText } from "./accounts.js";
+import { oauthErrorText, PROVIDER_NAME } from "./accounts.js";
 
 /**
- * El mensaje con que vuelve el OAuth (spec F3 §4.6): `?conectada=instagram` o `?error=<código>`, con
- * Cerrar (que limpia la URL). Otro valor de `conectada` no dice nada.
+ * El mensaje con que vuelve el OAuth (spec F3 §4.6 y F8-T19): `?conectada=<proveedor>` o
+ * `?error=<código>` (con `&proveedor=mercadolibre` desde Mercado Libre; sin él, Instagram), con
+ * Cerrar (que limpia la URL). Un `proveedor` desconocido es Instagram; otro valor de `conectada` no dice nada.
  */
 export function OAuthReturn() {
   const [params, setParams] = useSearchParams();
-  const connected = params.get("conectada") === "instagram";
+  const asked = params.get("proveedor");
+  const provider: OAuthProvider = OAUTH_PROVIDERS.find((known) => known === asked) ?? "instagram";
+  const connected = params.get("conectada") === provider;
   const error = params.get("error");
   if (!connected && error === null) return null;
   const close = () => setParams({}, { replace: true });
@@ -20,7 +24,7 @@ export function OAuthReturn() {
       }`}
     >
       <p className={ok ? "text-emerald-800" : "text-red-800"}>
-        {ok ? "Cuenta de Instagram conectada." : oauthErrorText(error)}
+        {ok ? `Cuenta de ${PROVIDER_NAME[provider]} conectada.` : oauthErrorText(error, provider)}
       </p>
       <button type="button" onClick={close} className="text-sm underline">
         Cerrar

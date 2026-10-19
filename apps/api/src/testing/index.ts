@@ -330,6 +330,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
       auth: fakeMercadoLibreAuth(),
       configured: true,
       redirectUri: TEST_ML_REDIRECT_URI,
+      secureCookie: false,
     },
     oauthState: createStateSigner(TEST_ENCRYPTION_KEY),
     // Sin firma válida ni cuentas: los tests de Meta pasan las suyas (`meta.test.ts`).
@@ -343,6 +344,8 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     instagramStartUrl: "http://localhost:8787/api/oauth/instagram/start",
     // Sin operaciones: los tests de Portal pasan las suyas (nunca llaman a Mercado Libre).
     operationsFor: () => undefined,
+    // Como en desarrollo: el formulario automático corre (los tests de producción pasan `false`).
+    marketplaceAutomation: true,
     // Sin límites por IP: los prueba `rate-limit.test.ts` con los suyos.
     rateLimit: null,
     ...overrides,

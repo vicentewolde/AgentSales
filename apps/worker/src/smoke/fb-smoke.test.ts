@@ -85,6 +85,7 @@ async function setup(pages: Pages, options: { cookies?: Record<string, string> }
     await rm(root, { recursive: true, force: true });
   });
   const deps: FbSmokeDeps = {
+    automation: true,
     brokers: { findBySlug: async (slug: string) => (slug === broker.slug ? broker : null) },
     openProfile: async (brokerId: string) => {
       profile = await openMarketplaceProfile({
@@ -146,7 +147,15 @@ describe("pnpm fb:smoke", () => {
     t.deps.brokers = { findBySlug: async () => foreign };
     await expect(runFbSmoke(t.deps, { brokerSlug: "ajeno" })).resolves.toBe(1);
     expect(t.profile()).toBeUndefined();
-    expect(t.errors.join("\n")).toContain("solo para los tuyos");
+    expect(t.errors.join("\n")).toContain("solo para tus corredores");
+  });
+
+  it("en producción (F8-T20) ni un corredor propio abre el perfil: la misma regla de core que --listing", async () => {
+    const t = await setup({ "/marketplace/create/rental": FORM }, { cookies: { c_user: "1000" } });
+    t.deps.automation = false;
+    await expect(runFbSmoke(t.deps, { brokerSlug: broker.slug })).resolves.toBe(1);
+    expect(t.profile()).toBeUndefined();
+    expect(t.errors.join("\n")).toContain("En el servidor Marketplace se publica a mano");
   });
 
   it("con sesión guarda el árbol y la captura del formulario, sin llenar nada, y cierra", async () => {

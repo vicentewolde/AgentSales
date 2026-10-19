@@ -44,11 +44,14 @@ export function AccountCard({
   account,
   now,
   manage = true,
+  marketplaceAutomation,
 }: {
   account: PlatformAccountView;
   now: Date;
   /** Desconectar es del administrador (F7, spec §4.5): el corredor ve la tarjeta sin el botón. */
   manage?: boolean;
+  /** Si el ambiente permite el formulario automático (en producción no, F8-T20). */
+  marketplaceAutomation: boolean;
 }) {
   const disconnect = useDisconnectAccount();
   const [confirming, setConfirming] = useState(false);
@@ -104,6 +107,16 @@ export function AccountCard({
           </dd>
         </dl>
       )}
+      {/* Una cuenta de perfil que quedó de cuando se conectó en el Mac: en el servidor no se usa. */}
+      {account.platform === "fb_marketplace" &&
+        account.marketplaceMode === "profile" &&
+        account.status === "connected" &&
+        !marketplaceAutomation && (
+          <p role="note" className="mt-3 text-sm text-amber-800">
+            En el servidor Marketplace se publica a mano: esta cuenta de Facebook no se usa. Activa
+            Marketplace a mano para este corredor.
+          </p>
+        )}
       {account.status === "expired" && (
         <p className="mt-3 text-sm text-red-700">
           {account.platform === "fb_marketplace"
@@ -123,7 +136,11 @@ export function AccountCard({
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <span>
               ¿Desconectar {account.displayName}?{" "}
-              {accountDisconnectText(account.platform, account.marketplaceMode)}
+              {accountDisconnectText(
+                account.platform,
+                account.marketplaceMode,
+                marketplaceAutomation,
+              )}
             </span>
             <button
               type="button"

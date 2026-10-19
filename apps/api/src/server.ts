@@ -15,6 +15,7 @@ import {
   KEY_PURPOSES,
   loadAppEnvFile,
   loadEnv,
+  marketplaceAutomationEnabled,
   panelUrlOf,
   resolveBackupDir,
   withoutBackupCredentials,
@@ -199,6 +200,8 @@ const app = createApp({
     }),
     configured: Boolean(env.ML_APP_ID && env.ML_CLIENT_SECRET),
     redirectUri: env.ML_REDIRECT_URI,
+    // Con el dominio (HTTPS) la vuelta es automática, con la cookie `__Host-` (spec F8 §4.3, T19).
+    secureCookie: https,
   },
   // Pausar, reactivar, cerrar y el sync de Portal (F4-T19) y actualizar (F6-T07, con el catálogo
   // guardado en la base): 10 s por llamada, sin envolver.
@@ -229,6 +232,8 @@ const app = createApp({
     dailyLimit: env.MARKETPLACE_DAILY_LIMIT,
     ufConfigured: env.BCCH_API_TOKEN !== undefined,
   },
+  // En producción, Marketplace se publica a mano: el formulario automático no corre (F8-T20, D4).
+  marketplaceAutomation: marketplaceAutomationEnabled(env),
   version: readApiVersion(),
   healthDetails: {
     serverVersion: () => serverVersion,

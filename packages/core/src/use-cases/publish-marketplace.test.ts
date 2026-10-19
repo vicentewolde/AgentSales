@@ -45,6 +45,8 @@ async function setup(
     dailyLimit?: number;
     uf?: UfValueSource;
     steps?: FakePublishStep[];
+    /** El ambiente permite el formulario automático (por defecto sí; producción, no: F8-T20). */
+    automation?: boolean;
   } = {},
 ) {
   const clock = options.clock ?? (() => NOW);
@@ -58,7 +60,11 @@ async function setup(
   const uf = options.uf ?? fakeUf().source;
   const startDeps = {
     ...t.deps,
-    marketplace: { dailyLimit: options.dailyLimit ?? 3, ufConfigured: true },
+    marketplace: {
+      dailyLimit: options.dailyLimit ?? 3,
+      ufConfigured: true,
+      automation: options.automation ?? true,
+    },
     now: clock,
   };
   const attemptDeps = {
@@ -73,6 +79,7 @@ async function setup(
     workerMode: "live" as const,
     mercadoLibre: null,
     marketplaceDailyLimit: options.dailyLimit ?? 3,
+    marketplaceAutomation: options.automation ?? true,
     uf,
     now: clock,
   };
@@ -502,6 +509,7 @@ describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
         platformAccounts: s.t.platformAccounts,
         publications: s.t.publications,
         queue: s.t.queue,
+        marketplaceAutomation: options.automation ?? true,
         now: () => NOW,
       },
       { broker: broker.slug },
@@ -586,7 +594,7 @@ describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
       accountIds: [s.account.id],
       channelIds: [],
       dryRun: false,
-      options: { ufConfigured: true, dailyLimit: 3 },
+      options: { ufConfigured: true, dailyLimit: 3, automation: true },
       now: NOW,
     };
     await expect(requireMarketplaceStartable(locked, input)).resolves.toBeUndefined();
@@ -623,6 +631,59 @@ describe("Marketplace a mano (F7-T15, ADR-0023)", () => {
     });
     expect(s.fake.published).toHaveLength(0);
     expect((await s.current(publication.id))?.status).toBe("failed");
+  });
+
+  it("en producción (F8-T20, D4) ni un corredor propio abre el formulario: pedir publicar con una cuenta de perfil da 403, sin llamar a ningún publisher", async () => {
+    const s = await setup({ automation: false });
+    await expect(s.publish()).rejects.toMatchObject({
+      code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED",
+      message: expect.stringContaining("En el servidor Marketplace se publica a mano"),
+    });
+    expect(s.fake.published).toHaveLength(0);
+  });
+
+  it("en producción, un intento de una cuenta de perfil que quedó de antes falla sin abrir nada", async () => {
+    const s = await setup();
+    const publication = await s.publish();
+    await expect(
+      publishPublication(
+        { ...s.attemptDeps, marketplaceAutomation: false },
+        { publicationId: publication.id, isLastAttempt: true },
+      ),
+    ).rejects.toMatchObject({ code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED" });
+    expect(s.fake.published).toHaveLength(0);
+    expect((await s.current(publication.id))?.status).toBe("failed");
+  });
+
+  it("en producción, sin el publisher de Marketplace (el worker no lo registra), el intento da MARKETPLACE_AUTOMATION_NOT_ALLOWED y no PUBLISHER_NOT_CONFIGURED", async () => {
+    const s = await setup();
+    const publication = await s.publish();
+    await expect(
+      publishPublication(
+        { ...s.attemptDeps, publishers: {}, marketplaceAutomation: false },
+        { publicationId: publication.id, isLastAttempt: true },
+      ),
+    ).rejects.toMatchObject({
+      code: "MARKETPLACE_AUTOMATION_NOT_ALLOWED",
+      message: expect.stringContaining("En el servidor Marketplace se publica a mano"),
+    });
+    expect((await s.current(publication.id))?.status).toBe("failed");
+  });
+
+  it("en producción, la cuenta a mano publica como siempre: llega a awaiting_manual_confirm sin publisher", async () => {
+    const s = await byHand({ automation: false });
+    const publication = await s.publish();
+    // Como el worker de producción: sin el publisher de Marketplace.
+    await expect(
+      publishPublication(
+        { ...s.attemptDeps, publishers: {} },
+        { publicationId: publication.id, isLastAttempt: false },
+      ),
+    ).resolves.toMatchObject({
+      outcome: "awaiting_manual_confirm",
+    });
+    expect(s.fake.published).toHaveLength(0);
+    expect(await s.current(publication.id)).toMatchObject({ progress: { byHand: true } });
   });
 
   it("en vivo con el worker en simulación: PUBLISH_MODE_MISMATCH, como en F5", async () => {

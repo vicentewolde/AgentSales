@@ -340,6 +340,7 @@ describe("job publication.publish: el sync 2 min después de publicar Portal en 
         storage: t.storage,
         publishers: { [PORTAL]: portalPublisher },
         workerMode: "live",
+        marketplaceAutomation: true,
         mercadoLibre: null,
       },
       queue: queue?.(t) ?? t.queue,

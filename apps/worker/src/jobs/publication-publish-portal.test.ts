@@ -65,6 +65,7 @@ async function setup() {
       storage: t.storage,
       publishers: { portal_inmobiliario: portal.publisher },
       workerMode: "dry-run",
+      marketplaceAutomation: true,
       mercadoLibre: null,
     },
     queue: t.queue,

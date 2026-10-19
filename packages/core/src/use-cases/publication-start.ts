@@ -267,6 +267,11 @@ export type MarketplaceStartOptions = {
   dailyLimit?: number;
   /** Si hay token del Banco Central para convertir un precio en UF (`BCCH_API_TOKEN`). */
   ufConfigured?: boolean;
+  /**
+   * Si el ambiente permite el formulario automático (`marketplaceAutomationEnabled`, config; spec F8
+   * §4.10). Sin decirlo, no: una cuenta de perfil falla con `MARKETPLACE_AUTOMATION_NOT_ALLOWED`.
+   */
+  automation?: boolean;
 };
 
 /**
@@ -334,7 +339,13 @@ export async function requireMarketplaceStartable(
   }
   if (automated.length > 0) {
     const broker = await locked.brokers.findById(listing.brokerId);
-    if (broker !== null) assertMarketplaceAutomationAllowed(broker);
+    // Como el intento: sin corredor no hay con qué decidir (no se deja pasar).
+    if (broker === null) {
+      throw new AppError("BROKER_NOT_FOUND", "No existe el corredor de esta propiedad", {
+        details: { brokerId: listing.brokerId },
+      });
+    }
+    assertMarketplaceAutomationAllowed(broker, options.automation ?? false);
   }
   const accounts = new Set(automated);
   const own = new Set(channelIds);

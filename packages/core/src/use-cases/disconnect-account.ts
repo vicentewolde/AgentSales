@@ -15,6 +15,12 @@ export type DisconnectAccountDeps = {
   publications: Pick<PublicationRepository, "listByStatus">;
   /** Marketplace: el borrado del perfil lo hace el worker (`marketplace.profile`, ADR-0017). */
   queue: Pick<JobQueue, "enqueue">;
+  /**
+   * Si el ambiente permite el formulario automático (`marketplaceAutomation`, config): en producción
+   * no hay perfiles en el disco, así que desconectar una cuenta de perfil no pide confirmación ni
+   * encola un borrado (spec F8 §4.10).
+   */
+  marketplaceAutomation: boolean;
 };
 
 /**
@@ -24,7 +30,8 @@ export type DisconnectAccountDeps = {
  * cambia nada. Una que no existe es `ACCOUNT_NOT_FOUND` (404).
  *
  * Marketplace (spec F5 §4.2, ADR-0017), además:
- * - exige `confirmed` (borra el perfil, con la sesión de Facebook) → `DISCONNECT_NOT_CONFIRMED`;
+ * - exige `confirmed` (borra el perfil, con la sesión de Facebook) → `DISCONNECT_NOT_CONFIRMED`
+ *   (en producción no hay perfil en el disco: ni se pide ni se encola nada, F8-T20);
  * - con una publicación de la cuenta esperando el clic final → `MANUAL_CONFIRM_PENDING` (primero
  *   el operador dice si la publicó), y con una que se está llenando → `PUBLICATION_IN_PROGRESS`;
  * - encola **primero** `marketplace.profile` (`forget`): el worker, dueño del perfil, cierra sus
@@ -47,7 +54,7 @@ export async function disconnectAccount(
   }
   const marketplace = usesSessionProfile(account.platform);
   // A mano (F7, ADR-0023): sin perfil que borrar ni confirmación; las esperas sí cuentan.
-  const profile = marketplace && !isManualMarketplaceAccount(account);
+  const profile = marketplace && !isManualMarketplaceAccount(account) && deps.marketplaceAutomation;
   if (marketplace) {
     if (profile && !confirmed) {
       throw new AppError(

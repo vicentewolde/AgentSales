@@ -45,6 +45,8 @@ export type FbSmokeListingDeps = {
   uf: UfValueSource | null;
   /** `MARKETPLACE_DAILY_LIMIT`. */
   dailyLimit: number;
+  /** Si el ambiente permite el formulario automático (`marketplaceAutomationEnabled`, F8-T20). */
+  automation: boolean;
   /** Abre el perfil del corredor (con ventana; los tests, sin ella y sin red). */
   openProfile(brokerId: string): Promise<MarketplaceProfile>;
   /** `<workspace>/tmp/fb-smoke`: la evidencia del formulario lleno queda en una subcarpeta. */
@@ -181,7 +183,7 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
   if (broker === undefined) {
     throw new SmokeStop("BROKER_NOT_FOUND", `No existe el corredor de ${ref}`, "Revisa la carga");
   }
-  assertMarketplaceAutomationAllowed(broker);
+  assertMarketplaceAutomationAllowed(broker, deps.automation);
 
   const account = (await deps.accounts.list(ALL_SCOPE)).find(
     (candidate) =>
