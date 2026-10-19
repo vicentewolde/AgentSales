@@ -35,13 +35,19 @@ Corredores de propiedades independientes y vendedores pequeños pierden horas pu
 
 ## Fuera de alcance del MVP
 
-- Responder mensajes, comentarios o leads (es la **siguiente fase** del producto).
+- Responder mensajes o comentarios dentro de AgentSales (la captura de leads de anuncios entra en F10: ver «Después del MVP»).
 - Propiedades **en venta** en Marketplace: el único formulario de Facebook en Chile es de arriendo (confirmado el 2026-10-13); las ventas se publican en Instagram y Portal.
-- Yapo y TikTok (post-MVP).
+- Yapo (post-MVP). TikTok, anuncios pagados y leads: ver «Después del MVP».
 - Carga de avisos por chat (post-MVP).
 - Cobro, planes o facturación a clientes.
 - Despliegue en la nube con acceso de terceros desde internet (F8 · En internet).
-- Publicidad pagada (ads).
+
+## Después del MVP (`v1.0.0`)
+Acordado con el operador el 2026-10-19; los specs están en `docs/specs/` y las fases en `docs/06-roadmap.md`:
+- **F9 · Contenido de marca:** el mismo calendario, aprobación y seguimiento para el contenido de marca del operador (su marca personal y AgentPey) en Instagram, X, LinkedIn, Discord y TikTok (video como borrador), con una IA que propone ideas y fechas y el humano aprobando todo. Primer paso para ofrecerlo a una corredora grande.
+- **F10 · Piloto con una oficina** de una corredora grande (tipo RE/MAX): anuncios de Meta sobre publicaciones de Instagram (la corredora paga a Meta directo; AgentSales no cobra ni recibe dinero de anuncios), leads con atribución, ManyChat conviviendo y TikTok público.
+- **F11 · Organizaciones:** franquicia con organización → oficina → agente, roles, aprobación por niveles y contenido corporativo con la marca de cada agente.
+- Siguen fuera: responder mensajes y comentarios dentro de AgentSales, Yapo, la carga por chat y el cobro a clientes.
 
 ## Principios del producto
 

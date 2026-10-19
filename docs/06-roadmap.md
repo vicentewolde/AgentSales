@@ -130,11 +130,29 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 
 **Spec:** `docs/specs/fase-8-en-internet.md` (ADR-0024, ADR-0025 y ADR-0026), aprobado el 2026-10-18. Respuestas del operador: por ahora un servidor **en modo demo** en Fly.io (encendido los días de demo, con Neon gratis) y después un plan pagado (D1); `agentsales.agentpey.com` (D2); Marketplace a mano para todos en producción (D4); F8 se cierra con la app enviada a App Review (D5). La IA de todos los corredores va por la API en producción (los términos del plan Max). RLS se evaluó y no se adopta (ADR-0026). **Cerrada el 2026-10-19 (`v1.0.0`)**; el operador cambió D5: se cierra con el App Review pendiente (verificación del negocio, de proveedor técnico y envío).
 
+## F9 · Contenido de marca
+- Gestor de contenido de redes sociales para el operador (su marca personal y AgentPey), con el mismo calendario, aprobación y seguimiento que los avisos: Instagram, X, LinkedIn, Discord y TikTok (video como borrador en la bandeja del creador).
+- El post como otro sujeto de publicación junto al aviso (ADR-0029); el perfil editorial de cada marca; la IA propone ideas y fechas y el operador acepta, aprueba y programa (ADR-0030); dos idiomas por marca; el resultado dudoso `outcome_unknown`.
+- Pruebas de entrada con las cuentas reales (visibilidad de Instagram en modo desarrollo, LinkedIn, X, Discord y TikTok) antes de construir cada red.
+- Sin código de anuncios, pero sin cerrar puertas para ellos ni para las organizaciones.
+
+**Spec:** `docs/specs/fase-9-contenido-de-marca.md` (borrador, 2026-10-19; ADR-0029 y ADR-0030 propuestos). F8 cerró con `v1.0.0`.
+
+## F10 · Piloto con una oficina (hoja de ruta)
+- Una oficina (3 a 10 agentes) de una corredora grande, con servicio operado por el operador.
+- Anuncios de Meta sobre publicaciones de Instagram: impulsar un post y campañas por aviso, siempre pausados al crear, dos aprobaciones (texto y gasto) y tres topes; la corredora paga a Meta directo. Una segunda app de Meta (Facebook Login for Business). ADR-0031 y ADR-0032 (propuestos).
+- Leads con atribución a anuncio, aviso y oficina; ManyChat conviviendo con una interfaz propia; reporte de gasto. ADR-0033 (propuesto).
+- TikTok público y con fotos (auditoría de la app).
+- Los formularios instantáneos de Meta quedan para después.
+
+## F11 · Organizaciones (hoja de ruta)
+- Organización → oficina → agente, membresías y roles por nodo, alcance por conjunto (modifica ADR-0022), aprobación por niveles, contenido corporativo como plantilla con una copia por agente, reportes por oficina y agente. Su propio spec y ADR.
+
 ## Post-MVP (backlog)
 - Respuestas a DMs, comentarios y preguntas de ML (siguiente gran fase).
 - Google Sheets y Drive como origen directo de la carga (spec F2, D8: durante el piloto basta con Excel y zip).
 - Sugerencia de portada y orden de fotos con visión de la IA (spec F2, D3).
 - Carga por chat (WhatsApp o Telegram).
-- Yapo, TikTok, Facebook Page.
+- Yapo, Facebook Page.
 - Categoría `product` para vendedores generales.
 - Métricas de desempeño por publicación.
