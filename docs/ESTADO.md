@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-18
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** lote G de F8 (T17 y T18): las vueltas de Meta (quitar la app y borrar los datos, con la firma verificada, la tabla `meta_deletion_requests` de la migración `0013` y la página del pedido), el `state` de Instagram de un solo uso en la base, y los borradores de términos, privacidad y cómo borrar los datos (HTML estático en `/legal/`, enlazados desde Entrar)
-**Siguiente paso:** `/tarea F8-T19 F8-T20` (lote H: la vuelta automática de Mercado Libre y Marketplace en producción). En paralelo, tú: revisar los borradores legales (abajo, "Del lote G")
+**Última tarea:** lote G de F8 (T17 y T18): las vueltas de Meta (quitar la app y borrar los datos, con la firma verificada, la tabla `meta_deletion_requests` de la migración `0013` y la página del pedido), el `state` de Instagram de un solo uso en la base, y los textos de términos, privacidad y cómo borrar los datos (HTML estático en `/legal/`, enlazados desde Entrar; aprobados por ti el 2026-10-19)
+**Siguiente paso:** `/tarea F8-T19 F8-T20` (lote H: la vuelta automática de Mercado Libre y Marketplace en producción). Tú: lo que queda de "Del lote G" (abajo)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -40,7 +40,8 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [ ] **Opcional, el doble factor de verdad** (con `pnpm dev`; te aviso antes): en el panel, tu nombre → **Mi cuenta** → **Activar el doble factor** con tu app de claves; guarda los 10 códigos de recuperación en tu gestor de claves. Si algo falla, `pnpm auth:admin --email tu@correo.cl` lo quita
 - **Del lote G (T17 y T18):**
   - [x] **La rama `dev` de Neon tiene la migración `0013`** (2026-10-18, `pnpm db:migrate`; producción la recibe al desplegar)
-  - [ ] **Aprobar los textos legales** de `apps/web/public/legal/` (se ven abriendo cada archivo en el navegador). Los datos ya están (2026-10-18: responsable Vicente Wolde Cepeda, correo `vicente@agentpey.com`, 15 días hábiles de plazo, piloto sin costo por 7 días); falta tu visto bueno, la **fecha de aprobación** (`[FECHA DE APROBACIÓN]` en las tres) y quitar el aviso de borrador. Antes: el borrado por correo es a mano (desconectar la cuenta en el panel y pedirle a Claude el resto), y la frase de condiciones dice que el servicio después del piloto se acuerda por escrito. No es asesoría legal: conviene que un abogado los revise por la Ley 21.719
+  - [x] **Textos legales aprobados** (2026-10-19, fecha en las tres páginas de `apps/web/public/legal/`; responsable Vicente Wolde Cepeda, `vicente@agentpey.com`, 15 días hábiles, piloto sin costo por 7 días). Pendiente aparte: un abogado podría revisarlos por la Ley 21.719; el borrado por correo es a mano (desconectar la cuenta en el panel y pedirle a Claude el resto)
+  - [ ] **Meta no aceptó la URL de instrucciones de eliminación** (2026-10-19: "Data deletion instructions URL should represent a valid URL", probablemente porque el dominio todavía no responde): no hace falta, basta la URL de la vuelta (`…/api/meta/data-deletion`); reintentarla en T21 con el servidor encendido
   - [ ] **`FACEBOOK_APP_SECRET` (opcional):** la clave secreta de **Configuración → Información básica** de la app de Meta, en `.env.production`; y en `.env.example`, comentada y vacía (`# FACEBOOK_APP_SECRET=`). Sirve por si Meta firma las vueltas con esa clave y no con la de Instagram (no está verificado)
   - [ ] **En la app de Meta (antes de T21):** las dos direcciones de las vueltas y la de privacidad (pasos en `docs/07-checklist-cuentas.md`, "Antes del primer despliegue" y "Meta")
   - [ ] **En T21:** quitar la app desde tu Instagram y ver que la cuenta queda desconectada en el panel (eso confirma qué clave firma y que el `user_id` de Meta es el de la cuenta)
