@@ -201,9 +201,9 @@ Hazlo siempre primero en una **rama nueva de Neon**, nunca encima de la base de 
      ```bash
      /opt/homebrew/opt/libpq/bin/pg_restore --list ~/.agentsales/backups/<archivo>.dump | head
      ```
-  3. Sigue con los pasos de abajo desde el 1, con ese archivo.
+  3. Sigue con los pasos de abajo desde el 1, con ese archivo (probado el 2026-10-19: se restauró sin errores en una base nueva).
 - **Con un volcado de `pnpm db:backup`** (en `~/.agentsales/backups`):
-  1. En Neon, crea una rama vacía (**Branches** → **Create branch**, sin datos) y copia su cadena de conexión.
+  1. En Neon, crea una rama sin datos (**Create child branch** → **Branch schema only**; ponle borrado automático) y, dentro de ella, una base nueva (**Databases** → **Add database**, por ejemplo `restauracion`). En **Connect** elige esa base y copia su cadena de conexión: el host debe ser el de la rama nueva, no el de producción.
   2. Restaura el volcado en ella (necesita `brew install libpq`):
      ```bash
      /opt/homebrew/opt/libpq/bin/pg_restore --no-owner --no-acl -d "<cadena de la rama nueva>" ~/.agentsales/backups/<archivo>.dump
