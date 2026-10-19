@@ -18,6 +18,7 @@ Sistema que toma avisos (propiedades hoy, productos después) con fotos y videos
 | `docs/05-convenciones.md` | Estilo, tests y git (reglas obligatorias) |
 | `docs/06-roadmap.md` | Fases y criterios de aceptación |
 | `docs/07-checklist-cuentas.md` | Trámites que hace el operador, no tú |
+| `docs/11-app-review-meta.md` | Enviar la app de Meta a App Review: bloqueos, textos, instrucciones al revisor y guion de videos |
 | `docs/10-despliegue.md` | Desplegar en Fly.io, encender y apagar, logs y volver atrás (lo hace el operador) |
 | `docs/adr/` | Decisiones tomadas; no las contradigas sin un ADR nuevo |
 
