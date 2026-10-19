@@ -71,7 +71,7 @@ El despliegue corre en GitHub Actions y necesita un token de Fly que solo sirve 
    ```
    (O en la web, en el Environment `production` → **Environment secrets** → **Add environment secret**, nombre `FLY_API_TOKEN`, y pegar.) No lo pongas como secreto del repositorio: ahí lo vería cualquier rama.
 
-Anota en tu calendario renovarlo antes de que venza.
+Anota en tu calendario renovarlo antes de que venza (el creado el 2026-10-19 dura 6 meses).
 
 ## Paso 4 · Desplegar
 
@@ -97,23 +97,32 @@ Debe mostrar una máquina `api` y una `worker`. **Después de cada despliegue en
 
 ## Paso 5 · El dominio y su certificado
 
-1. Pide el certificado:
+1. **Asigna las direcciones IP públicas de la app** (una app nueva no tiene ninguna, y sin ellas el dominio no apunta a nada). La IPv4 compartida y la IPv6 no cuestan; **no pidas una IPv4 dedicada** (unos US$ 2 al mes):
+   ```bash
+   fly ips allocate-v4 --shared -a agentsales
+   ```
+   ```bash
+   fly ips allocate-v6 -a agentsales
+   ```
+2. Pide el certificado:
    ```bash
    fly certs add agentsales.agentpey.com -a agentsales
    ```
-   Fly muestra qué registro DNS crear. **Copia el destino exacto que muestra** (no asumas que es `agentsales.fly.dev`).
-2. En **vercel.com** → tu equipo → **Domains** → `agentpey.com` → **DNS Records** → **Add**:
-   - Type: **CNAME**
-   - Name: **agentsales**
-   - Value: el destino que copiaste
-   - Clic en **Add**.
-3. Espera unos minutos y revisa:
+3. Pide los registros DNS que debes crear:
+   ```bash
+   fly certs setup agentsales.agentpey.com -a agentsales
+   ```
+   Usa la opción **A y AAAA** (la recomendada): un registro `A` con la IPv4 y uno `AAAA` con la IPv6 que mostró el paso 1. **Copia los valores exactos que muestra Fly.** (Un `CNAME` hacia `<código>.agentsales.fly.dev` también sirve; el `_acme-challenge` solo hace falta para emitir el certificado antes de dirigir el tráfico, y el `_fly-ownership` si la app no tiene IPv6 o hay un CDN o proxy delante.)
+4. En **vercel.com** → tu equipo → **Domains** → `agentpey.com` → **DNS Records**, agrega dos registros:
+   - Name **agentsales**, Type **A**, Value la IPv4, y **Add**.
+   - Name **agentsales**, Type **AAAA**, Value la IPv6, y **Add**.
+5. Espera unos minutos y revisa:
    ```bash
    fly certs check agentsales.agentpey.com -a agentsales
    ```
-   Si sigue pendiente, Fly indica un registro más (`_acme-challenge` o `_fly-ownership`): agrégalo igual en Vercel y vuelve a revisar.
+   Debe decir `Status = Issued` y "Certificate is verified and active". Si sigue pendiente, espera y repite.
 
-Esto no toca el otro proyecto de `agentpey.com`: es otro nombre, y las cookies de AgentSales no salen de `agentsales.agentpey.com`.
+Esto no toca el otro proyecto de `agentpey.com`: es otro nombre, y las cookies de AgentSales no salen de `agentsales.agentpey.com`. (Hecho el 2026-10-19: la IPv4 compartida `66.241.124.18` y la IPv6 `2a09:8280:1::1be:1d46:0`; el certificado quedó emitido en un minuto.)
 
 ## Paso 6 · Comprobar que funciona
 
