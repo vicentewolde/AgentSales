@@ -11,14 +11,15 @@ const PAGES = ["terminos", "privacidad", "eliminacion-de-datos"] as const;
 
 describe("páginas públicas", () => {
   it.each(PAGES)(
-    "%s: en español, sin JavaScript ni estilos en línea, marcada como borrador",
+    "%s: en español, sin JavaScript ni estilos en línea, aprobada el 19 de octubre de 2026",
     (name) => {
       const html = page(name);
       expect(html).toMatch(/^<!doctype html>\n<html lang="es">/);
       expect(html).not.toMatch(/<script|<style|style=|\son[a-z]+=/i);
       expect(html).toContain('<link rel="stylesheet" href="/legal/legal.css">');
-      // Hasta que el operador la apruebe (F8-T18): el aviso y los datos por completar.
-      expect(html).toContain("Borrador en revisión");
+      // Aprobada por el operador (F8-T18, 2026-10-19): con su fecha y sin el aviso de borrador.
+      expect(html).toContain("Última actualización: 19 de octubre de 2026");
+      expect(html).not.toContain("Borrador en revisión");
       // Enlaza a las otras dos y a Entrar.
       for (const other of PAGES.filter((p) => p !== name)) {
         expect(html).toContain(`href="/legal/${other}.html"`);
@@ -27,13 +28,11 @@ describe("páginas públicas", () => {
     },
   );
 
-  it("los datos del responsable están completos; solo falta la fecha de aprobación", () => {
+  it("los datos del responsable están completos y no queda nada por completar", () => {
     for (const name of PAGES) {
       const html = page(name);
       expect(html).toContain('href="mailto:vicente@agentpey.com"');
-      // Lo único que queda entre corchetes es la fecha, que se pone al aprobar los textos.
-      const pending = html.match(/\[[A-ZÁÉÍÓÚÑ ]+\]/g) ?? [];
-      expect(pending).toEqual(["[FECHA DE APROBACIÓN]"]);
+      expect(html.match(/\[[A-ZÁÉÍÓÚÑ ]+\]/g) ?? []).toEqual([]);
     }
     expect(page("privacidad")).toContain("Vicente Wolde Cepeda");
     expect(page("privacidad")).toContain("15 días hábiles");
