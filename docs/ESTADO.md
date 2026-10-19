@@ -5,7 +5,7 @@
 **Actualizado:** 2026-10-19
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
 **Última tarea:** T21 (primera puesta en marcha, en curso): AgentSales está en internet, en `https://agentsales.agentpey.com` (Fly.io, en `dry-run`), con tu usuario y el doble factor, el respaldo en R2, Mercado Libre e Instagram conectados con el botón, y las vueltas de Meta probadas de verdad. Antes, el lote H (T19 y T20)
-**Siguiente paso:** terminar T21 (la demo con el Mac apagado, la restauración y lo de Meta, abajo) y después T22, el cierre de la fase (`/fase-cerrar 8`)
+**Siguiente paso:** T21 está lista salvo que abras la invitación del usuario de demostración y elijas su contraseña (abajo); después T22, el cierre de la fase (`/fase-cerrar 8`). Lo de Meta (verificación del negocio y App Review) sigue en paralelo
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -44,9 +44,9 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 - **Pendiente tuyo de T21:**
   - [x] **Reconectar Instagram** en `agentsales-pruebas` (la prueba de quitar la app la dejó desconectada) con el botón de Cuentas
   - [x] **La restauración del respaldo (2026-10-19):** se bajó de `agentsales-backups` (`db/`) el volcado que dejó el worker (`agentsales-20261019-0034.dump`, 160 KB) y se guardó en `~/.agentsales/backups`; `pg_restore --list` lo leyó (139 entradas); se restauró en una base nueva (`restauracion`) de una rama desechable de Neon (`restauracion-prueba`, solo el esquema) sin errores: 14 migraciones, 3 corredores, 7 propiedades, 4 cuentas conectadas, 27 publicaciones, 140 eventos, 3 usuarios, 19 cargas y 133 medios. La rama se borró y producción no se tocó
-  - [ ] **El corredor y el usuario de demostración para el revisor de Meta** (con la invitación de F7; credenciales solo para eso), y en Meta, Información básica: **ícono de 1024x1024 y categoría** (faltan), y el **correo de contacto** (hoy `vicentewolde@gmail.com`; los textos legales usan `vicente@agentpey.com`)
-  - [ ] **El límite de gasto en la consola de Anthropic** y, si quieres, que un abogado revise los textos legales por la Ley 21.719
-  - [ ] **Apagar el worker al terminar** (paso 8 de la guía; id `80e9539a6360e8`: `fly machine stop 80e9539a6360e8 -a agentsales --signal SIGTERM --timeout 45`), y su corrección en la guía si el id cambia
+  - [x] **Meta y la demostración (2026-10-19):** en Información básica quedaron el ícono de 1024x1024 (una casa con flecha de publicar, aprobado por ti), la categoría «Empresa y páginas» y el correo de contacto `vicente@agentpey.com` (guardado y verificado al recargar). Corredor de demostración `demo-meta` («AgentSales Demo», tope de IA US$ 2/mes, no propio, con el ícono de logo) y su usuario `revisor-meta@agentpey.com`: la invitación **vence el 2026-10-22 13:13** y sirve una vez; si vence antes de mandar el App Review, `pnpm -s cli users reset revisor-meta@agentpey.com` da otra. **Falta:** que abras el enlace (está en tu portapapeles, o el que te dé `users reset`), elijas la contraseña y la anotes para las instrucciones del revisor; el revisor conecta su propia cuenta de Instagram
+  - [x] **Límite de gasto en la consola de Anthropic:** US$ 20 al mes en total (puesto por ti). Los topes por corredor (`brokers edit --cap`) suman menos que eso. Queda opcional que un abogado revise los textos legales por la Ley 21.719
+  - [x] **Worker apagado (2026-10-19 13:13):** `fly machine stop 80e9539a6360e8 -a agentsales --signal SIGTERM --timeout 45` (a pedido tuyo, por esta vez lo corrió Claude); la API sigue encendida. Para volver a encenderlo, paso 8 de la guía
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
 ## Pendiente tuyo de F7
