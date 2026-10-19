@@ -146,6 +146,38 @@ describe("panel: Cuentas", () => {
     }
   });
 
+  it("el corredor conecta su propio Instagram con el botón (ADR-0028), pero no ve el comando de la CLI", async () => {
+    const h = harness({ deps: deps(true) });
+    const mine = await h.brokers.create(brokerData("mio"));
+    h.signInAsBroker(mine.id);
+    h.renderApp("/cuentas");
+
+    const section = await screen.findByRole("region", { name: /mio/ });
+    const link = within(section).getByRole("link", { name: "Conectar Instagram de Marca mio" });
+    expect(link.getAttribute("href")).toBe(`${START_URL}?broker=mio`);
+    // En Instagram ya no lo pide; Mercado Libre y Facebook siguen siendo del administrador.
+    const instagram = within(section).getByRole("region", { name: "Instagram" });
+    expect(instagram.textContent).not.toContain("Pídele al administrador");
+    expect(section.textContent).toContain("Sin cuenta de Mercado Libre. Pídele al administrador");
+    // Lo demás de Cuentas sigue siendo del administrador.
+    expect(within(section).queryByRole("button", { name: "Desconectar" })).toBeNull();
+    expect(
+      within(section).queryByRole("button", { name: "Activar Marketplace a mano" }),
+    ).toBeNull();
+  });
+
+  it("el corredor sin el inicio de sesión de Instagram (sin HTTPS) no ve el comando: lo pide al administrador", async () => {
+    const h = harness({ deps: deps(false) });
+    const mine = await h.brokers.create(brokerData("mio"));
+    h.signInAsBroker(mine.id);
+    h.renderApp("/cuentas");
+
+    const section = await screen.findByRole("region", { name: /mio/ });
+    expect(within(section).queryByRole("link", { name: /Conectar Instagram/ })).toBeNull();
+    expect(section.textContent).not.toContain("--token-stdin");
+    expect(section.textContent).toContain("Pídele al administrador que la conecte.");
+  });
+
   it("Copiar avisa si copió o si no pudo", async () => {
     for (const [writeText, text] of [
       [vi.fn(async () => {}), "Copiado"],

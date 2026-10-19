@@ -38,6 +38,7 @@ function Channel({
   accounts,
   now,
   manage,
+  connect = manage,
   marketplaceAutomation,
   children,
 }: {
@@ -47,6 +48,8 @@ function Channel({
   now: Date;
   /** Solo el administrador conecta, renueva y desconecta (F7, spec §4.5). */
   manage: boolean;
+  /** Si ve cómo conectar el canal: el administrador, y el corredor su Instagram (ADR-0028). */
+  connect?: boolean;
   /** Si el ambiente permite el formulario automático de Marketplace (F8-T20). */
   marketplaceAutomation: boolean;
   children?: ReactNode;
@@ -60,7 +63,7 @@ function Channel({
       {accounts.length === 0 && (
         <p className="mt-1 text-sm text-slate-600">
           {empty}
-          {!manage && " Pídele al administrador que la conecte."}
+          {!connect && " Pídele al administrador que la conecte."}
         </p>
       )}
       <div className="mt-2 flex flex-col gap-3">
@@ -74,7 +77,7 @@ function Channel({
           />
         ))}
       </div>
-      {manage && children}
+      {connect && children}
     </section>
   );
 }
@@ -100,6 +103,8 @@ function BrokerAccounts({
   const mercadoLibre = channelState(own("portal_inmobiliario"), now);
   const marketplace = channelState(own("fb_marketplace"), now);
   const settings = useCan("broker.settings", broker.id);
+  // El corredor conecta su propio Instagram, solo con el inicio de sesión de Instagram (ADR-0028).
+  const connectInstagram = useCan("instagram.connect", broker.id);
   const manualActive = own("fb_marketplace").some(
     (account) => account.status === "connected" && account.marketplaceMode === "manual",
   );
@@ -118,6 +123,7 @@ function BrokerAccounts({
         accounts={instagram.shown}
         now={now}
         manage={manage}
+        connect={manage || (connectInstagram && data.connect.instagram.oauth)}
         marketplaceAutomation={automation}
       >
         {instagram.offerConnect && (

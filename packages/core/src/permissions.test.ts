@@ -14,6 +14,7 @@ const BROKER_CAN: Readonly<Record<Permission, boolean>> = {
   "brand.edit": true,
   "broker.view": true,
   "accounts.manage": false,
+  "instagram.connect": true,
   "broker.settings": false,
   "brokers.create": false,
   "users.manage": false,

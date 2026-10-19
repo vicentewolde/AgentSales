@@ -6,11 +6,12 @@ Para ti (Vinny). Reúne lo que Claude puede dejar escrito para el trámite de Me
 
 ## 1. Antes de enviar: dos cosas que hoy no calzan
 
-### 1.1 El revisor no puede conectar Instagram (bloqueante, hay que cambiar código)
+### 1.1 El revisor no podía conectar Instagram (resuelto en el código el 2026-10-19, ADR-0028; falta que lo despliegues)
 - El usuario de demostración (`revisor-meta@agentpey.com`) es un corredor, y hoy **solo el administrador** puede conectar cuentas: `GET /oauth/instagram/start` es de administrador (`apps/api/src/access.ts`) y el panel le dice al corredor «Pídele al administrador que la conecte».
 - Meta pide que el revisor, con las credenciales de prueba, **otorgue el permiso** y use la función. Sin el botón «Conectar Instagram», no puede: "your entire submission will be rejected" si no puede probar la app.
 - **Darle un usuario administrador no sirve:** vería los corredores y propiedades de verdad.
-- **Recomendación:** dejar que cada corredor conecte **su propia** cuenta de Instagram (solo la suya). Es un cambio chico y además es lo natural para el producto: el inicio del OAuth deja de ser solo del administrador y, para un corredor, solo acepta su propio `broker`; la vuelta (`callback`) ya amarra la cuenta al corredor del `state`. Cambia D2 de F7 y el punto 4 de ADR-0022, así que va con su spec corto y un seguimiento en el ADR (una tarea de la fase que estás planificando). Mientras no esté, **no envíes la solicitud**.
+- **Resuelto en `main` (ADR-0028):** cada corredor conecta **su propia** cuenta de Instagram con el botón (solo con el inicio de sesión de Instagram, o sea en el servidor); renovar y desconectar siguen siendo del administrador. Lo que sigue es el análisis original.
+- **Análisis original:** dejar que cada corredor conecte **su propia** cuenta de Instagram (solo la suya). Es un cambio chico y además es lo natural para el producto: el inicio del OAuth deja de ser solo del administrador y, para un corredor, solo acepta su propio `broker`; la vuelta (`callback`) ya amarra la cuenta al corredor del `state`. Cambia D2 de F7 y el punto 4 de ADR-0022, así que va con su spec corto y un seguimiento en el ADR (una tarea de la fase que estás planificando). Mientras no esté, **no envíes la solicitud**.
 
 ### 1.2 El servidor está en simulación, y Meta necesita ver una publicación de verdad
 - En `dry-run` AgentSales no publica en Instagram. El video y la prueba del revisor deben terminar con una publicación **real** en una cuenta de prueba, y la «llamada exitosa por permiso» de los 30 días previos también sale de ahí.
@@ -23,7 +24,7 @@ Para ti (Vinny). Reúne lo que Claude puede dejar escrito para el trámite de Me
 ## 2. Orden del trámite (casillas para ir marcando)
 1. [ ] **Verificación del negocio** (Business Manager; hasta 14 días hábiles). Con la empresa o con tu persona: ver `meta-verificacion-empresa.md`.
 2. [ ] **Verificación de acceso / Tech Provider** (unos 5 días). Descripción lista en §4.3.
-3. [ ] Cambio de código del punto 1.1 (corredor conecta lo suyo) y su despliegue.
+3. [ ] Desplegar el cambio del punto 1.1 (ADR-0028) y comprobar con `revisor-meta` que ve el botón «Conectar Instagram».
 4. [ ] **Corredor de demostración listo:** `demo-meta` con una propiedad cargada (una planilla y un zip chicos, con 3 o 4 fotos y un video corto, sin datos de clientes reales), preparada y con los textos aprobados al gusto, **sin publicar**.
 5. [ ] **Cuenta de Instagram de prueba**: profesional (Empresa o Creador), tuya, no de un cliente.
 6. [ ] `revisor-meta@agentpey.com` con contraseña nueva (la de antes la pegaste en un chat), y entrar una vez desde otra red para confirmar que funciona.
@@ -70,7 +71,7 @@ Para ti (Vinny). Reúne lo que Claude puede dejar escrito para el trámite de Me
 >
 > The interface is in Spanish; button names are in bold above. Contact: vicente@agentpey.com.
 
-*(Paso 2 asume el cambio del punto 1.1; sin él, el revisor no ve el botón. El paso 6 exige el servidor en `live`; ver §1.2.)*
+*(El paso 2 exige haber desplegado el punto 1.1; sin él, el revisor no ve el botón. El paso 6 exige el servidor en `live`; ver §1.2.)*
 
 ## 6. Guion de los videos (uno por permiso)
 Formato: 1080p o más, **sin audio**, subtítulos con texto en inglés, mouse y cursor grande, un solo take por video si se puede. Navegador en una ventana limpia, sesión del usuario de demostración, el dominio `agentsales.agentpey.com` visible en la barra.

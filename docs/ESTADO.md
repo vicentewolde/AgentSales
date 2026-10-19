@@ -10,7 +10,7 @@
 ## Pendiente tuyo tras cerrar F8
 - [ ] **Meta:** verificación del negocio → verificación como proveedor técnico → enviar el App Review de `instagram_business_basic` e `instagram_business_content_publish` (videos, una llamada exitosa por permiso en los 30 días previos, el usuario de demostración). Unas 5 semanas sin rechazos; puede pedir una empresa o inicio de actividades. Mientras, los corredores que publican en Instagram son evaluadores
   - **Con Certilink SpA** (tu decisión del 2026-10-19): pasos y decisiones previas en `docs/integraciones/meta-verificacion-empresa.md` (nombre del operador en las páginas legales, sitio web del portafolio, segundo administrador, documentos de la SpA); el kit del envío (textos, instrucciones al revisor, guion de videos) en `docs/11-app-review-meta.md`
-  - **Bloqueos de código antes de enviar:** que un corredor pueda conectar su propio Instagram (hoy solo el administrador: el revisor no podría) y el servidor en `live` solo durante la revisión (`docs/11-app-review-meta.md` §1)
+  - **Antes de enviar:** desplegar el cambio «el corredor conecta su propio Instagram» (ADR-0028, hecho en el código el 2026-10-19; el revisor lo necesita) y poner el servidor en `live` solo durante la revisión (`docs/11-app-review-meta.md` §1)
 - [ ] **`revisor-meta@agentpey.com`:** entrar una vez desde otra red (por ejemplo, el teléfono con datos móviles). La contraseña la pegaste en el chat: cámbiala antes de dársela al revisor de Meta (`pnpm -s cli users reset revisor-meta@agentpey.com`)
 - [ ] Opcional: que un abogado revise los textos legales (Ley 21.719); repetir la preparación con una propiedad con video para ver el reel en el servidor
 - [ ] **Renovar `FLY_API_TOKEN` antes de ~2027-04** y la clave de Anthropic antes del 2026-12-31
@@ -107,7 +107,7 @@ Resueltas en el spec (§4.16, D1–D20) y ADR-0024 a ADR-0026:
 ## Decisiones de F7
 Resueltas en el spec (§4.15, D1–D18) y ADR-0021 a ADR-0023:
 - **F7 y F8 (tu respuesta, D1):** F7 deja varios corredores con login en tu Mac (`v0.7.0`); F8 lo lleva a internet (`v1.0.0`).
-- **Quién hace qué (D2):** el corredor carga, prepara, aprueba, publica, programa y cierra lo suyo, y edita su marca; tú conectas cuentas, activas la publicación automática, creas corredores y usuarios, y fijas topes.
+- **Quién hace qué (D2):** el corredor carga, prepara, aprueba, publica, programa y cierra lo suyo, y edita su marca; tú conectas cuentas (desde 2026-10-19, el corredor conecta su propio Instagram con el botón: ADR-0028), activas la publicación automática, creas corredores y usuarios, y fijas topes.
 - **IA (D3, D4, D14, D15):** tu clave de Anthropic para los corredores, con el gasto anotado en la base y un tope mensual opcional; tu plan para tus corredores propios; Sonnet 5.5 por defecto y Haiku 5.5 se mide en el cierre.
 - **Marketplace (D5):** el corredor publica a mano con todo listo; el formulario automático, solo para tus corredores.
 - **Instagram (D6, D16):** el corredor como evaluador de tu app; inicia sesión en Generate token en tu Mac; App Review en F8.
