@@ -47,11 +47,11 @@ pnpm db:seed             # seeds idempotentes
 pnpm db:backup           # respaldo local de la base con pg_dump a BACKUP_DIR (fuera del proyecto; deja los últimos 14; no necesita pnpm dev; necesita brew install libpq)
 pnpm db:dev-scrub        # borra las credenciales copiadas en la rama dev de Neon (solo .env; se niega si parece producción: la misma base o clave que .env.production, o credenciales que la clave de .env abre; pide confirmación, --yes; lo corre el operador)
 pnpm storage:check       # verifica acceso al bucket de R2, el PUT prefirmado (y que R2 rechace otro contenido) y la regla de CORS para el panel (--origin <url>; con ENV_FILE=.env.production y --origin https://agentsales.agentpey.com, el bucket de producción; habla con R2: lo corre el operador)
-pnpm auth:admin --email <correo>  # crea el administrador o le da un enlace de restablecer, en el portapapeles sin imprimirlo (habla directo con la base; lo corre el operador)
+pnpm auth:admin --email <correo>  # (en el servidor: ENV_FILE=.env.production pnpm auth:admin …) crea el administrador o le da un enlace de restablecer, en el portapapeles sin imprimirlo (habla directo con la base; lo corre el operador)
 gh workflow run deploy.yml --ref main  # despliega en Fly.io (solo main con la CI en verde; lo corre el operador, nunca Claude: D8). Guía docs/10-despliegue.md: secretos, dominio, encender y apagar el worker para una demo, logs y volver atrás
 pnpm -s cli login --email <correo>  # la sesión de la CLI (pide la contraseña sin mostrarla y, con el doble factor, el código de la app: lo corre el operador en su terminal); con --api https://<dominio>, la de un servidor (queda guardada; AGENTSALES_API_URL manda sobre ella); whoami (dice el servidor), logout
-pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo)
-pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo)
+pnpm -s cli doctor       # salud del entorno (con pnpm dev corriendo, o contra el servidor si el login es con --api)
+pnpm -s cli status       # /health y PUBLISH_MODE (con pnpm dev corriendo, o contra el servidor si el login es con --api)
 pnpm worker:ping         # encola un job de prueba (con el worker corriendo)
 pnpm llm:smoke           # una llamada real y corta a la CLI de Claude con datos inventados (gasta cuota; la corre el operador); con --provider anthropic-api [--model <id>], a la API con ANTHROPIC_API_KEY, e imprime los tokens y el costo estimado (gasta centavos)
 pnpm ig:smoke            # crea UN contenedor de imagen en Instagram desde una URL firmada de R2 y espera FINISHED, sin publicar (--broker <slug>, --listing <id_propiedad>; habla con Meta: lo corre el operador)

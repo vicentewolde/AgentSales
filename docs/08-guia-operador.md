@@ -2,6 +2,8 @@
 
 Esta guía es para ti (Vinny), no para Claude. Explica el ciclo de trabajo, los comandos de git que vas a usar y los hábitos que mantienen el proyecto ordenado.
 
+> **El servidor en internet** (`https://agentsales.agentpey.com`, desde F8) tiene su propia guía: `docs/10-despliegue.md` (desplegar, encender y apagar el worker para una demo, logs, volver atrás, restaurar un respaldo del servidor). Esta guía habla de tu Mac, salvo donde diga lo contrario.
+
 ## El rol de cada uno
 - **Tú:** product owner y líder técnico. Apruebas specs y planes, respondes preguntas de producto, haces los trámites de cuentas, pruebas las demos y haces el merge de los PRs.
 - **Claude Code:** desarrollador. Planifica tareas, implementa, testea, documenta y hace commits en ramas.
@@ -62,7 +64,7 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | Situación | Acción |
 |---|---|
 | Claude propone algo fuera del spec | "Fuera de alcance; anótalo en el backlog del roadmap" |
-| Es la primera vez con F7, olvidaste tu contraseña o te bloqueaste | `pnpm auth:admin --email tu@correo.cl` en tu terminal (no necesita `pnpm dev`): crea tu administrador o te da un enlace nuevo, en el portapapeles. Ábrelo con `pnpm dev` corriendo y elige tu contraseña. Después, `pnpm -s cli login --email tu@correo.cl` para la CLI (Claude la usa con tu sesión) |
+| Es la primera vez con F7, olvidaste tu contraseña o te bloqueaste | `pnpm auth:admin --email tu@correo.cl` en tu terminal (no necesita `pnpm dev`; para el servidor, `ENV_FILE=.env.production pnpm auth:admin --email tu@correo.cl`, que también te quita el doble factor al usar el enlace): crea tu administrador o te da un enlace nuevo, en el portapapeles. Ábrelo con `pnpm dev` corriendo y elige tu contraseña. Después, `pnpm -s cli login --email tu@correo.cl` para la CLI (Claude la usa con tu sesión) |
 | Un comando dice "Inicia sesión" (`AUTH_REQUIRED`) | La sesión de la CLI venció (30 días, o 7 sin uso) o se cerró: `pnpm -s cli login --email tu@correo.cl` en tu terminal (con un servidor, agrega `--api https://<dominio>`) |
 | Quieres usar la CLI contra el servidor | `pnpm -s cli login --email tu@correo.cl --api https://agentsales.agentpey.com` en tu terminal: la dirección queda guardada con la sesión y todos los comandos van allí (`whoami` dice cuál). Para volver a la API del Mac, `pnpm -s cli login --email tu@correo.cl` sin `--api`. Para una prueba puntual, `AGENTSALES_API_URL=https://… pnpm -s cli status` manda sobre la guardada (el token no viaja a un servidor que no lo emitió); ojo: un `login` con la variable puesta deja guardada esa dirección, como `--api`. Solo `https://`, salvo `localhost` y `127.0.0.1` |
 | `pnpm check` falla y no se arregla | Pídele diagnosticar la causa raíz antes de intentar más cambios; si persiste, `/clear` y retoma con `/tarea` |
@@ -120,7 +122,7 @@ Reglas: `main` solo recibe cambios por PR; una rama por tarea o por lote de tare
 | "Demasiados pedidos seguidos" (`RATE_LIMITED`) | Los límites por IP (F8): 10 intentos de entrar por minuto, 50 por hora; espera los segundos que dice el mensaje |
 | Un usuario no puede entrar: "bloqueado" (`AUTH_LOCKED`) | Diez contraseñas equivocadas seguidas lo bloquean 15 minutos: que espere, o dale otro enlace con **Restablecer** en su detalle de **Corredores** (o `pnpm -s cli users reset <correo>`); elegir la contraseña nueva quita el bloqueo (y, al usar el enlace, también el doble factor). Si eres tú, `pnpm auth:admin --email tu@correo.cl` |
 | Conectar Mercado Libre dice `OAUTH_STATE_USED` | Pegaste una dirección de vuelta que ya se usó (cada enlace de autorizar sirve una vez): corre de nuevo el primer comando del bloque Mercado Libre en **Cuentas** y autoriza otra vez |
-| Quieres respaldar la base ahora | `pnpm db:backup` en tu terminal (no necesita `pnpm dev`). Deja `agentsales-AAAAMMDD-HHMM.dump` en `~/.agentsales/backups` (o en `BACKUP_DIR`) y conserva los últimos 14. El worker lo hace solo cada día a las 13:00 y al arrancar si el último tiene más de 20 h. Más abajo, cómo restaurar |
+| Quieres respaldar la base ahora | `pnpm db:backup` en tu terminal (no necesita `pnpm dev`). Deja `agentsales-AAAAMMDD-HHMM.dump` en `~/.agentsales/backups` (o en `BACKUP_DIR`) y conserva los últimos 14. El worker de tu Mac lo hace solo cada día a las 13:00 y al arrancar si el último tiene más de 20 h; el del servidor sube su respaldo a R2 (`agentsales-backups`), no a tu Mac. Más abajo, cómo restaurar |
 | `BACKUP_TOOL_NOT_INSTALLED`, o `doctor` avisa por `pg_dump` | Falta el cliente de Postgres: `brew install libpq` (queda en `/opt/homebrew/opt/libpq/bin`, que el respaldo busca solo; si lo instalaste en otro lado, fija `PG_BIN_DIR` en `.env`) |
 | `doctor` dice que `pg_dump` no puede respaldar una base más nueva | Tu `pg_dump` es de una versión mayor anterior a la de Neon: `brew upgrade libpq` |
 | `BACKUP_FAILED` | `pnpm db:backup` muestra la causa: sin conexión o Neon sin CU-horas (reintenta más tarde), la carpeta sin espacio o sin permisos. Los respaldos buenos nunca se borran por un intento fallido |
@@ -134,8 +136,8 @@ De punta a punta, con `pnpm dev` corriendo. Todo se puede hacer en el panel (**C
 2. **Invitar a su usuario:** en el detalle del corredor, **Usuarios → Invitar** (o `pnpm -s cli users invite --email <correo> --name <nombre> --broker <slug>`). El enlace se muestra **una sola vez** (en la CLI queda en el portapapeles): envíaselo por un canal privado. Vence en 72 h; si se pierde o vence, **Restablecer** da otro.
 3. **El corredor entra** con el enlace, elige su contraseña y completa **Mi marca**: colores, WhatsApp (Portal lo exige), logo, y baja su planilla de Excel (ya trae su hoja Corredor llena). Ojo: si después carga una planilla vieja, puede deshacer lo que editó en Mi marca (manda lo último que se guarde).
 4. **Sus cuentas** (las conectas tú, en **Cuentas**):
-   - **Instagram:** como evaluador de tu app de Meta, en persona (pasos en `docs/07-checklist-cuentas.md`, "Antes de F7").
-   - **Mercado Libre:** como hoy, con su cuenta y la dirección de vuelta.
+   - **Instagram:** como evaluador de tu app de Meta. En el servidor, con el botón **Conectar Instagram** de **Cuentas** (el corredor inicia sesión él mismo, desde donde esté); en tu Mac, con el token de *Generate token* (pasos en `docs/07-checklist-cuentas.md`, "Antes de F7").
+   - **Mercado Libre:** en el servidor, con el botón **Conectar Mercado Libre** de **Cuentas** (la vuelta es automática); en tu Mac, con su cuenta y pegando la dirección de vuelta.
    - **Marketplace:** **Activar Marketplace a mano** (el formulario automático es solo para tus corredores). Al publicar, el sistema deja el texto, las fotos y el precio listos; el corredor lo publica en Facebook y confirma con el enlace o "No lo publiqué".
 5. **La lista de alta** del corredor (en su detalle, en Mi marca y en `pnpm -s cli brokers show <slug>`) dice qué falta y quién lo hace.
 6. **El gasto:** en **Corredores** y con `pnpm -s cli usage`, lo gastado en IA en el mes (estimado: la cifra oficial está en la consola de Anthropic). Con el tope alcanzado, preparar los textos se frena hasta que subas el tope o empiece el mes siguiente.
@@ -143,6 +145,8 @@ De punta a punta, con `pnpm dev` corriendo. Todo se puede hacer en el panel (**C
 Para desactivar a alguien: **Desactivar** en su usuario (o `pnpm -s cli users disable <correo>`) cierra sus sesiones al tiro.
 
 ## Restaurar un respaldo de la base
+
+> Esto es para un respaldo de tu Mac. Para uno del servidor (el de R2), sigue `docs/10-despliegue.md`, "Paso 10 · Restaurar un respaldo".
 
 Restaurar **nunca** se hace sobre la base que usa AgentSales: se restaura en una base nueva y, si todo está bien, se cambia `DATABASE_URL` hacia ella.
 

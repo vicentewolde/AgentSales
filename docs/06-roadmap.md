@@ -107,10 +107,10 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 - **Deuda que cierra:** el actor de la bitácora desde la sesión y quién conecta cada corredor (F3); el `state` de Mercado Libre de un solo uso (F4); `/tracking` y `/agenda` filtrados en el servidor, `listCurrentMany` y el `now` de la ruta (F6); `GET /listings` con una proyección acotada (F1); `/health` con el detalle solo para el administrador (F6).
 
 ## F8 · En internet
-- Despliegue (ej. Fly.io o Railway) con HTTPS y dominio propio; `NODE_ENV=production`, el panel servido sin Vite, host, panel y orígenes por configuración; respaldos fuera del Mac.
+- Despliegue en Fly.io (modo demo, con Neon gratis) con HTTPS y dominio propio; `NODE_ENV=production`, el panel servido sin Vite, host, panel y orígenes por configuración; respaldos fuera del Mac.
 - App Review de Meta y el OAuth de Instagram de verdad, con HTTPS; términos de uso y privacidad básicos; revisar los términos comerciales de Anthropic para atender a varios clientes con una clave.
 - Endurecer el login para internet (límites por IP, doble factor opcional) y evaluar RLS como segunda barrera (ADR-0021 y ADR-0022).
-- Marketplace en un servidor: el formulario automático necesita el Mac del operador (ADR-0017 y ADR-0023): decidir cómo convive con el despliegue.
+- Marketplace en un servidor: **decidido** (D4): a mano para todos en producción; el formulario automático queda solo para desarrollo en el Mac (ADR-0023 y ADR-0024).
 - **Deuda heredada de F1** (detalle en `docs/ESTADO.md` → Deuda técnica):
   - las subidas del panel pasan a ser directas a R2, con una URL prefirmada, y `import_runs.input` pasa de rutas locales a claves de R2 (seguimiento de ADR-0005); **hecho en el lote B** (ADR-0025);
   - se quita `POST /imports/local` y el staging compartido en disco entre la API y el worker (**hecho en el lote B**: la CLI también sube a R2);

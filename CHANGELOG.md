@@ -3,6 +3,43 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versiones por fase (ver `docs/06-roadmap.md`).
 
 ## [Sin publicar]
+> Borrador de **F8 · En internet**, listo para pasar a `[1.0.0] - fecha` cuando el operador dé su permiso (`/fase-cerrar 8`, paso 6). Mientras no, se queda aquí.
+
+AgentSales ya está en internet, en `https://agentsales.agentpey.com`, en simulación (`dry-run`). El operador y los corredores entran al panel desde cualquier lugar, la CLI del Mac habla con el servidor, las cargas suben directo a R2, y el calendario y los respaldos corren en el servidor con el Mac dormido. Por ahora es un **servidor de demostración** en Fly.io (el worker se enciende solo los días en que se muestra la herramienta); dejarlo siempre encendido es cambiar el plan, no el código. La conexión de Instagram con el botón funciona con el inicio de sesión de Instagram de verdad; falta la aprobación de Meta (App Review), que es un trámite aparte.
+
+Demo (2026-10-19, en el servidor, en simulación): la carga de una planilla y un zip desde el panel (directo a R2), Marketplace a mano, Portal en simulación e Instagram programado para las 11:55, que el worker del servidor publicó en simulación a las 11:55 exactas con el Mac dormido. También se probaron entrar con doble factor, conectar Instagram y Mercado Libre con el botón, las vueltas de Meta (quitar la app y borrar los datos) con Meta de verdad, y la restauración de un respaldo en una base nueva.
+
+### Añadido
+- **El servidor en internet:** una sola imagen (API, panel y worker) en Fly.io, región São Paulo, con HTTPS y certificado automáticos. La API sirve el panel desde el mismo dominio, con la API bajo `/api` también en tu Mac. Desplegar es cosa tuya, a pedido, desde `main` con la CI en verde (`gh workflow run deploy.yml --ref main`), y aplica las migraciones antes de arrancar. La guía está en `docs/10-despliegue.md` (secretos, dominio, encender y apagar el worker para una demo, logs, volver atrás y restaurar un respaldo).
+- **Producción y desarrollo separados:** tu Mac usa una rama de Neon y un bucket de R2 propios, con otra clave de cifrado, así `pnpm dev` nunca toca lo real ni le quita trabajos al servidor. `pnpm db:dev-scrub` borra las credenciales copiadas a la rama. Los scripts que hablan con la base eligen su archivo con `ENV_FILE` (por ejemplo `ENV_FILE=.env.production pnpm auth:admin`).
+- **Subidas directas a R2:** el panel y la CLI suben la planilla y los medios (zip o carpeta) directo al bucket con direcciones firmadas, con avance y reintento por archivo; ningún archivo pasa por la API. Tope de 50 MB para la planilla descomprimida. Se quitaron `POST /imports/local` y el disco compartido entre la API y el worker.
+- **La CLI contra el servidor:** `login --api https://agentsales.agentpey.com` guarda la dirección con la sesión; `whoami` dice a qué servidor estás conectado, y `status` y `doctor` revisan el servidor (incluido el ambiente, el worker encendido o apagado, el respaldo y si el administrador tiene doble factor).
+- **Respaldos fuera del Mac:** el worker del servidor vuelca la base cada día a un bucket de R2 aparte (`agentsales-backups`, con su propio token que solo tiene el worker), comprueba que el volcado se lee y deja los últimos 14. `/health`, `doctor` y la agenda muestran el último. `pnpm db:backup` sigue guardando en tu Mac, también contra producción (`ENV_FILE=.env.production`).
+- **Entrar con más seguridad:** límites por IP al entrar, aceptar invitaciones y en toda la API (respuesta 429 con cuánto esperar); **doble factor opcional** con una app de códigos (clave y enlace `otpauth://` en **Mi cuenta**, 10 códigos de recuperación que se ven una vez; la CLI pide el código al entrar); cookie `__Host-` con `Secure` y cabeceras de seguridad. Restablecer el acceso de un usuario, o `pnpm auth:admin`, le quita el doble factor.
+- **Instagram de verdad:** en **Cuentas**, el administrador conecta el Instagram de un corredor con el botón (inicio de sesión de Instagram en el dominio), y cada vuelta sirve una sola vez. Meta puede quitar la app (`/api/meta/deauthorize`) o pedir que se borren los datos (`/api/meta/data-deletion`, con una página de seguimiento por código): se verifica la firma, la cuenta queda desconectada y sin credenciales, y se borran sus datos de Instagram (sin cambiar el estado de las publicaciones; ADR-0027).
+- **Mercado Libre con el botón:** "Conectar Mercado Libre" en **Cuentas**, con la vuelta automática en el dominio. El pegado de la dirección queda para desarrollo.
+- **Páginas públicas, sin entrar:** términos de uso, política de privacidad e instrucciones para borrar los datos (`/legal/…`), enlazadas desde Entrar e Invitación; las aprobaste tú el 2026-10-19. Conviene que un abogado las revise por la Ley 21.719.
+- **Para el revisor de Meta:** el corredor `demo-meta` y el usuario `revisor-meta@agentpey.com`.
+- **El panel y `doctor`** muestran si el worker está encendido o apagado ("encendido desde…").
+
+### Cambiado
+- **Marketplace es a mano para todos en producción,** también para tus corredores (ADR-0023): el formulario automático solo corre en tu Mac, en desarrollo. Las cuentas de perfil que ya existían se muestran en el servidor como "activa Marketplace a mano".
+- **La IA en producción es siempre la API de Anthropic** (los términos del plan Max no permiten usarlo en un servidor que atiende a terceros); la CLI de Claude queda para desarrollo. El servidor se niega a arrancar con otra cosa.
+- **La API ya no tiene CORS:** el panel es del mismo origen y la CLI no es un navegador.
+- **El servidor se niega a arrancar mal configurado** en producción: sin `PUBLIC_URL` con `https://`, con otra IA que la API, con respaldo que no sea a R2 o con perfiles de navegador.
+- **`/health` sin sesión** sigue mostrando solo el estado, el modo y el ambiente; el chequeo de Fly usa `/api/health/live`, que no toca la base.
+- **El build de producción no incluye tests** (`pnpm build`); el panel se compila con zod sin `eval` para cumplir la política de seguridad del navegador.
+
+### Corregido
+- **Una publicación automática cortada por un reinicio** del worker se retoma al arrancar, sin duplicar.
+- **Pausar la propiedad** después de una pausa que aplicó Mercado Libre queda registrada como pausa de la propiedad, y reanudar la reactiva.
+- **`tokens.refresh`** deja de empezar cuentas nuevas pasados 4 minutos y sigue en la siguiente corrida.
+- **El `state` de Instagram** sirve una sola vez, y el inicio de los OAuth funciona aunque la API quede tras un prefijo.
+- Si Meta rechaza el canje de Instagram, el log dice el motivo (en la primera puesta en marcha era la clave secreta equivocada).
+
+### Pendiente fuera del código
+- **Meta:** verificación del negocio, verificación como proveedor técnico y App Review de `instagram_business_basic` e `instagram_business_content_publish` (los textos, el ícono, la categoría y el correo ya están puestos). Mientras tanto, los corredores del piloto que publican en Instagram son evaluadores de la app.
+- **Pruebas en vivo** de Portal (F4 y F6) y todo lo que publique de verdad: solo con tu instrucción en el chat. El servidor sigue en `dry-run`.
 
 ## [0.7.0] - 2026-10-17 · F7 Varios corredores
 Ahora das de alta a un corredor de verdad (su marca, su logo, su planilla y su usuario), y él entra con su correo y su contraseña, ve solo lo suyo y hace casi todo por su cuenta: cargar, preparar, aprobar, publicar, programar y cerrar. Sus textos se redactan por la API de Anthropic con tu clave, con el gasto anotado por corredor y un tope mensual opcional; tus corredores siguen con tu plan de Claude. Todo sigue corriendo en tu Mac: llevarlo a internet es F8.

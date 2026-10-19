@@ -13,7 +13,7 @@ Al terminar tendrás 5 valores para el `.env`: `DATABASE_URL`, `R2_ACCOUNT_ID`, 
    - Region: **AWS South America (São Paulo)** (`aws-sa-east-1`)
    - Clic en **Create**.
 3. En el panel del proyecto, clic en **Connect**. En el cuadro que se abre:
-   - Branch: el principal (`main` o `production`).
+   - Branch: el principal (`main` o `production`). Desde F8 esa es la de producción (va en `.env.production`); la de tu Mac, en `.env`, es la rama `dev` (`docs/07-checklist-cuentas.md`, "Antes de F8").
    - Database: `neondb` · Role: `neondb_owner`.
    - **Apaga el interruptor "Connection pooling"**. Si el host de la cadena contiene `-pooler`, es la conexión equivocada.
    - Clic en **Show password** y copia la cadena completa.

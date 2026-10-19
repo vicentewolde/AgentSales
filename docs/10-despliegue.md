@@ -185,7 +185,7 @@ Cada despliegue queda con la etiqueta de su commit (`sha-…`).
    ```
 2. Desplegar una anterior sin reconstruir (cambia la etiqueta por la que elegiste):
    ```bash
-   fly deploy -a agentsales --image registry.fly.io/agentsales:sha-<commit>
+   fly deploy -a agentsales --image registry.fly.io/agentsales:sha-<los 12 primeros caracteres del commit>
    ```
 
 Volver atrás **no deshace migraciones** (por eso son siempre aditivas: la versión anterior sigue funcionando con la base nueva) ni cambios de secretos.
@@ -231,7 +231,7 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
 | "La CI no está en verde sobre …" | Espera a que termine la CI de ese commit en `main`, o arréglala antes de desplegar |
 | "Falta el secreto FLY_API_TOKEN" | Paso 3: el secreto va en el Environment `production`, no en los del repositorio |
 | El despliegue falla en `release_command` | Falló una migración: `fly logs -a agentsales` muestra el error. La versión anterior sigue corriendo. Pásale el error a Claude (sin secretos) |
-| La API no arranca y los logs dicen `PUBLIC_URL`, `API_HOST`, `LLM_PROVIDER` o un secreto que falta | Falta un secreto (paso 2) o cambió `fly.toml`. `fly secrets list -a agentsales` muestra los nombres |
+| La API no arranca y los logs dicen `PUBLIC_URL`, `API_HOST`, `CLIENT_IP_HEADER`, `LLM_PROVIDER` (debe ser `anthropic-api`), `BACKUP_TARGET` (debe ser `r2`, con las credenciales del bucket de respaldos), `BROWSER_PROFILES_DIR` (no debe estar) o un secreto que falta | Falta un secreto (paso 2) o cambió `fly.toml`. `fly secrets list -a agentsales` muestra los nombres |
 | `https://agentsales.agentpey.com` no abre | `fly certs check agentsales.agentpey.com -a agentsales` (paso 5) y que la máquina `api` exista (`fly status`) |
 | `doctor` dice que el worker está apagado | Si es día de demo, enciéndelo (paso 8) |
 | `doctor` dice que el respaldo está atrasado o que falló | Con el worker encendido, respalda al arrancar (si el último tiene más de 20 h) y cada día a las 13:00. El código del error está en los logs del worker (paso 7). `STORAGE_ERROR`: el token o el bucket de respaldos no calzan (paso 2); `STORAGE_UNAVAILABLE`: R2 no respondió y se reintenta a los 5 min |

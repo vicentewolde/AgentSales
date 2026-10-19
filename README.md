@@ -2,7 +2,7 @@
 
 Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento.
 
-> Estado: **F7 · Varios corredores cerrada** (usuarios con contraseña, cada corredor ve solo lo suyo, la IA por la API de Anthropic con tope de gasto y Marketplace a mano). Siguiente: F8. Ver `docs/ESTADO.md`.
+> Estado: **F8 · En internet, en cierre**: AgentSales corre en `https://agentsales.agentpey.com` (simulación), con doble factor, respaldo en R2 y Instagram y Mercado Libre conectados con el botón; falta enviar la app a App Review de Meta. Ver `docs/ESTADO.md`.
 
 ## Requisitos
 - Node.js 26 (`.nvmrc`) y pnpm 11 (`npm i -g pnpm@11`; Node 26 ya no trae corepack)
@@ -12,6 +12,9 @@ Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal
 - Una clave de la API de Anthropic (`ANTHROPIC_API_KEY`, F7), solo si atiendes corredores que no son tuyos: sus textos se redactan por la API y se cobran por uso (`docs/07-checklist-cuentas.md`)
 - Proyecto de Neon (Postgres) y bucket privado de Cloudflare R2, ambos gratis: `docs/09-alta-neon-r2.md`
 - El cliente de Postgres (`brew install libpq`), para el respaldo local de la base (`pg_dump`; `doctor` revisa que su versión alcance a la de Neon)
+
+## En internet
+El servidor (Fly.io) y el dominio `agentsales.agentpey.com` ya existen. Desplegar, encender y apagar el worker para una demo, ver los logs, volver atrás y restaurar un respaldo está en `docs/10-despliegue.md`; desplegar lo hace solo el operador. La puesta en marcha de abajo es la de tu Mac, para desarrollar (usa una rama de Neon y un bucket de R2 propios, no los de producción).
 
 ## Puesta en marcha
 ```bash
@@ -49,7 +52,7 @@ pnpm llm:smoke                                       # una llamada corta a la CL
 ```
 En el panel, el detalle de cada propiedad tiene la sección **Contenido**: preparar, el avance, la vista previa por canal (carrusel, caption, reel, Portal y Marketplace) con su revisión editorial y la edición de los textos.
 
-Conectar Instagram y publicar (F3), con `pnpm dev` corriendo. La cuenta se conecta con el token del botón **Generate token** del panel de Meta (copiado al portapapeles); las variables `INSTAGRAM_*` solo las necesita el OAuth, que llega en F8:
+Conectar Instagram y publicar (F3), con `pnpm dev` corriendo. La cuenta se conecta con el token del botón **Generate token** del panel de Meta (copiado al portapapeles); las variables `INSTAGRAM_*` solo las necesita el botón de Cuentas (OAuth), que exige HTTPS y por eso funciona en el servidor y no en tu Mac:
 ```bash
 pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin
 pnpm -s cli accounts [refresh <id> [--force]]        # cuentas, vencimiento y refresco

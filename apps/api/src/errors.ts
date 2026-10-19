@@ -248,7 +248,8 @@ export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code.endsWith("_ROW_INVALID")) return 500;
   if (code.endsWith("_NOT_FOUND")) return 404;
   if (code.includes("_INVALID") || code.startsWith("INVALID_")) return 400;
-  if (code.endsWith("_RATE_LIMITED")) return 429;
+  // F8-T14: los límites por IP y por usuario de la API (con `Retry-After`).
+  if (code === "RATE_LIMITED" || code.endsWith("_RATE_LIMITED")) return 429;
   if (code.endsWith("_UNAVAILABLE")) return 503;
   return 500;
 }
