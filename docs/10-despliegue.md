@@ -50,6 +50,8 @@ grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_B
 - `FACEBOOK_APP_SECRET` es opcional (las vueltas de Meta, F8-T17): si no está en `.env.production`, el comando simplemente no la copia.
 - `DATABASE_URL` es la de la base de producción de Neon (no la rama `dev`), `R2_BUCKET` es `agentsales-media`, y `APP_ENCRYPTION_KEY` es la de producción (sin ella no se pueden leer los tokens de las cuentas conectadas).
 - `BACKUP_R2_ACCESS_KEY_ID` y `BACKUP_R2_SECRET_ACCESS_KEY` son el token del bucket `agentsales-backups` (checklist, "Antes del primer despliegue"), **no** el de `agentsales-media`: el servidor no arranca si son el mismo. Fly le da los secretos a los dos procesos: la API no los usa, los quita de su configuración y de su entorno al arrancar (así ningún proceso que abra los hereda) y nunca abre el bucket de respaldos; solo el worker sube los respaldos. No es un aislamiento total (el sistema guarda el entorno con que arrancó cada proceso), pero la API ya no puede usarlo por error. Sin ellos, el servidor no arranca (producción exige el respaldo a R2).
+- **`INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET` son el par de la app de Instagram, no el de la app general de Meta.** Están en Meta, `AgentSales-IG` → **Casos de uso → Administrar mensajes y contenido en Instagram → Personalizar → Configuración de la API con el inicio de sesión de Instagram** (el *Instagram app ID* y el *Instagram app secret*, con el botón Mostrar), no en Configuración → Información básica. Si la clave no es la de Instagram, el botón Conectar Instagram vuelve con "Instagram no aceptó la conexión (el código venció o ya se usó)": compara los 4 primeros y los 4 últimos caracteres con tu `.env.production`, sin copiarla. `FACEBOOK_APP_SECRET` (opcional) sí es la de Información básica.
+- **Cambiar un solo secreto después**, sin desplegar: `grep -E '^NOMBRE=' .env.production | fly secrets import -a agentsales` (sin `--stage`, Fly lo aplica y reinicia las máquinas). Con `--stage` queda pendiente hasta el próximo despliegue.
 - Revisa que quedaron los nombres (sin valores):
   ```bash
   fly secrets list -a agentsales
@@ -75,7 +77,7 @@ Anota en tu calendario renovarlo antes de que venza (el creado el 2026-10-19 dur
 
 ## Paso 4 · Desplegar
 
-Solo se puede desplegar `main` con la CI en verde (el flujo se niega si no). Elige una de estas dos formas:
+Solo se puede desplegar `main` con la CI en verde (el flujo se niega si no). **Es la CI del commit exacto de `main`**: al mezclar un PR, `main` recibe un commit nuevo y su CI (`check` e `image`) tarda unos minutos; si despliegas antes, el primer paso falla con "La CI (check) no está en verde sobre … sin resultado" sin tocar Fly. Espera a que termine (`gh run list --branch main --limit 3`) y repite. Elige una de estas dos formas:
 
 - **En GitHub:** el repositorio → **Actions** → **Desplegar** → **Run workflow** → rama `main` → **Run workflow**.
 - **En la terminal:**
@@ -136,8 +138,9 @@ Esto no toca el otro proyecto de `agentpey.com`: es otro nombre, y las cookies d
    pnpm -s cli doctor
    ```
    `doctor` debe decir el servidor, "Ambiente: producción" y si el worker está encendido. Para volver a la API del Mac, entra de nuevo sin `--api`.
-4. **Conectar Mercado Libre con el botón** (con el servidor en su dominio y la dirección registrada en la app de Mercado Libre, `docs/07-checklist-cuentas.md`): en el panel, **Cuentas**, el corredor y **Conectar Mercado Libre**. Entra con la cuenta administradora y autoriza; vuelve solo a Cuentas con "Cuenta de Mercado Libre conectada". Desde la CLI no se conecta en el servidor: `accounts connect mercadolibre` te manda al botón.
-5. **Pasar a mano las cuentas de Marketplace de perfil** que quedaron en la base (por ejemplo `agentsales-pruebas`): en **Cuentas**, el corredor, **Activar Marketplace a mano** (no pregunta nada ni toca archivos: en el servidor no hay perfil). Sin esto esas cuentas siguen "conectadas" pero publicar con ellas da `MARKETPLACE_AUTOMATION_NOT_ALLOWED`.
+4. **Registrar la dirección de vuelta en Mercado Libre, antes de conectar:** en developers.mercadolibre.cl → tu app → **Editar** (pide verificarte con el QR de tu app de Mercado Libre), en **Redirect URIs** agrega con **Agregar Redirect URI** `https://agentsales.agentpey.com/api/oauth/mercadolibre/callback` (deja la de `agentsales.test` para desarrollo); al final, acepta los términos, marca "No soy un robot" y pulsa **Editar**. Sin ella, Mercado Libre responde "Lo sentimos, la aplicación no puede conectarse a tu cuenta".
+5. **Conectar Mercado Libre con el botón** (con el servidor en su dominio y la dirección registrada en la app de Mercado Libre, `docs/07-checklist-cuentas.md`): en el panel, **Cuentas**, el corredor y **Conectar Mercado Libre**. Entra con la cuenta administradora y autoriza; vuelve solo a Cuentas con "Cuenta de Mercado Libre conectada". Desde la CLI no se conecta en el servidor: `accounts connect mercadolibre` te manda al botón.
+6. **Pasar a mano las cuentas de Marketplace de perfil** que quedaron en la base (por ejemplo `agentsales-pruebas`): en **Cuentas**, el corredor, **Activar Marketplace a mano** (no pregunta nada ni toca archivos: en el servidor no hay perfil). Sin esto esas cuentas siguen "conectadas" pero publicar con ellas da `MARKETPLACE_AUTOMATION_NOT_ALLOWED`.
 
 ## Paso 7 · Ver los logs
 

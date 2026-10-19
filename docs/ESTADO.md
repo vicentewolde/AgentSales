@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-19
 **Fase actual:** F8 · En internet (spec aprobado: `docs/specs/fase-8-en-internet.md`). F7 cerrada (`docs/specs/fase-7-varios-corredores.md`, tag `v0.7.0` creado y en GitHub)
-**Última tarea:** lote H de F8 (T19 y T20): la vuelta automática de Mercado Libre (el botón "Conectar Mercado Libre" del panel con el dominio, `GET /api/oauth/mercadolibre/callback` con el `state` de un solo uso y su cookie `__Host-`) y Marketplace en producción (el formulario automático no corre en el servidor: ni el publisher ni el job `marketplace.profile` se registran, las cuentas de perfil que quedaron se pasan a mano sin tocar el disco, y `loadEnv` rechaza `BROWSER_PROFILES_DIR` en producción)
-**Siguiente paso:** T21, la primera puesta en marcha contigo (`docs/10-despliegue.md`); antes, lo que queda de "Del lote G" y "Del lote H" (abajo)
+**Última tarea:** T21 (primera puesta en marcha, en curso): AgentSales está en internet, en `https://agentsales.agentpey.com` (Fly.io, en `dry-run`), con tu usuario y el doble factor, el respaldo en R2, Mercado Libre e Instagram conectados con el botón, y las vueltas de Meta probadas de verdad. Antes, el lote H (T19 y T20)
+**Siguiente paso:** terminar T21 (la demo con el Mac apagado, la restauración y lo de Meta, abajo) y después T22, el cierre de la fase (`/fase-cerrar 8`)
 
 ## Pendiente tuyo de F8
 Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
@@ -30,32 +30,22 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [x] **Releer la guía** `docs/10-despliegue.md`: aclarado que el Environment ya existe, que el comando de los secretos se corre en la carpeta del proyecto, cuándo es la primera puesta en marcha (T21, después del lote E) y el mensaje real del rechazo. Si algo no se entiende al usarla, dímelo
   - [x] **`CI / image` como check obligatorio de `main`** (2026-10-18): la regla de `main` exige `check` e `image` (lo agregó Claude en Chrome; tú confirmaste con tu contraseña)
 - **Desarrollo:** la rama `dev` de Neon ya tiene la migración `0011` (2026-10-18). Ojo: las propiedades y los logos copiados de producción a la rama `dev` apuntan a archivos que están en el bucket de producción, no en `agentsales-media-dev`; prepararlas en desarrollo falla con `STORAGE_NOT_FOUND` hasta volver a importar sus medios (y subir el logo del corredor: el de `agentsales-pruebas` ya es uno sintético en `dev`)
-- **Del lote E (T13):**
-  - [ ] **El bucket `agentsales-backups` y su token** (antes de T21; pasos uno por uno en `docs/07-checklist-cuentas.md`, "Antes del primer despliegue"): el token va a `.env.production` como `BACKUP_R2_ACCESS_KEY_ID` y `BACKUP_R2_SECRET_ACCESS_KEY`; el bucket y `BACKUP_TARGET=r2` ya están en `fly.toml`. Sin ellos el servidor no arranca
-  - [ ] **`.env.example`:** Claude no lo lee (tu regla); agrega tú, comentadas, `BACKUP_TARGET=local`, `BACKUP_R2_BUCKET=`, `BACKUP_R2_ACCESS_KEY_ID=` y `BACKUP_R2_SECRET_ACCESS_KEY=` (o dile a Claude que puede editarlo)
-  - [ ] **`pnpm db:backup` con `libpq`** (el mismo pendiente de F6): con `brew install libpq`, comprobar que sigue dejando el volcado en `~/.agentsales/backups`
-  - [ ] **En T21 y la demo:** que el worker suba el primer respaldo al encenderse (`doctor` contra el servidor) y una restauración: bajar el último del bucket, `pg_restore --list` y restaurarlo en una rama de prueba de Neon (`docs/10-despliegue.md`, paso 10)
-- **Del lote F (T14 a T16):**
-  - [x] **La rama `dev` de Neon tiene la migración `0012`** (2026-10-18, `pnpm db:migrate`; producción la recibe al desplegar)
-  - [ ] **Opcional, el doble factor de verdad** (con `pnpm dev`; te aviso antes): en el panel, tu nombre → **Mi cuenta** → **Activar el doble factor** con tu app de claves; guarda los 10 códigos de recuperación en tu gestor de claves. Si algo falla, `pnpm auth:admin --email tu@correo.cl` lo quita
-- **Del lote G (T17 y T18):**
-  - [x] **La rama `dev` de Neon tiene la migración `0013`** (2026-10-18, `pnpm db:migrate`; producción la recibe al desplegar)
-  - [x] **Textos legales aprobados** (2026-10-19, fecha en las tres páginas de `apps/web/public/legal/`; responsable Vicente Wolde Cepeda, `vicente@agentpey.com`, 15 días hábiles, piloto sin costo por 7 días). Pendiente aparte: un abogado podría revisarlos por la Ley 21.719; el borrado por correo es a mano (desconectar la cuenta en el panel y pedirle a Claude el resto)
-  - [ ] **Meta no aceptó la URL de instrucciones de eliminación** (2026-10-19: "Data deletion instructions URL should represent a valid URL", probablemente porque el dominio todavía no responde): no hace falta, basta la URL de la vuelta (`…/api/meta/data-deletion`); reintentarla en T21 con el servidor encendido
-  - [ ] **`FACEBOOK_APP_SECRET` (opcional):** la clave secreta de **Configuración → Información básica** de la app de Meta, en `.env.production`; y en `.env.example`, comentada y vacía (`# FACEBOOK_APP_SECRET=`). Sirve por si Meta firma las vueltas con esa clave y no con la de Instagram (no está verificado)
-  - [ ] **En la app de Meta (antes de T21):** las dos direcciones de las vueltas y la de privacidad (pasos en `docs/07-checklist-cuentas.md`, "Antes del primer despliegue" y "Meta")
-  - [ ] **En T21:** quitar la app desde tu Instagram y ver que la cuenta queda desconectada en el panel (eso confirma qué clave firma y que el `user_id` de Meta es el de la cuenta)
-- **Del lote H (T19 y T20):**
-  - [ ] **Quitar `BROWSER_PROFILES_DIR` de `.env.production`** si está (producción la rechaza: `loadEnv` falla con "no va con NODE_ENV=production"; el servidor no la recibe, pero `ENV_FILE=.env.production pnpm auth:admin` sí la leería)
-  - [ ] **La dirección de vuelta de Mercado Libre** (checklist, "Antes del primer despliegue"): `https://agentsales.agentpey.com/api/oauth/mercadolibre/callback` en la app de Mercado Libre. Cuéntame si tu panel deja dos direcciones o solo una (si solo una, el pegado en el Mac deja de calzar)
-  - [ ] **En T21:** conectar tu Mercado Libre con el botón del panel en el dominio (confirma la vuelta de verdad), y pasar a mano las cuentas de Marketplace de perfil que quedaron en la base (`agentsales-pruebas`) con el botón de Cuentas
-- **Antes del primer despliegue (T21), hecho el 2026-10-19** (con Chrome en Cloudflare y Vercel, y tú en la terminal):
-  - [x] **Bucket `agentsales-backups`** (lo creó Claude en Chrome: no existía) y su **token** `agentsales-backups (produccion)` (Object Read & Write, solo ese bucket; lo creaste y copiaste tú a `.env.production`)
-  - [x] **Fly.io:** cuenta con forma de pago, `flyctl` instalado, `fly auth login`, `fly apps create agentsales` (el nombre estaba libre: `fly.toml` no cambia), los **14 secretos** en "Staged" (`fly secrets import --stage`) y `FLY_API_TOKEN` en el Environment `production` de GitHub (vence en 6 meses: renovar antes de ~2027-04)
-  - [x] **Dominio:** IPv4 compartida `66.241.124.18` e IPv6 `2a09:8280:1::1be:1d46:0` (la guía no tenía este paso), registros `A` y `AAAA` de `agentsales` creados por Claude en Vercel, y el certificado **emitido y activo** (Let's Encrypt)
-  - [x] **`PUBLIC_URL`** agregada a `.env.production` (para el enlace de `pnpm auth:admin`)
-  - [ ] **Las direcciones de vuelta de Meta** (hechas salvo la URL de instrucciones de eliminación, que se reintenta con el servidor encendido) y la de **Mercado Libre**; y el **límite de gasto** en la consola de Anthropic
-  - [ ] **Opcional, un respaldo antes de la primera migración:** el primer despliegue aplica las migraciones `0010` a `0013` (aditivas) a la base de producción; tu Neon guarda un historial de restauración, y `libpq` (`pg_dump`) todavía no está instalado en tu Mac (`brew install libpq`, y después `ENV_FILE=.env.production pnpm db:backup`)
+- **Del lote E al H y T21, hecho el 2026-10-19** (en el servidor `https://agentsales.agentpey.com`; Claude en Chrome para Cloudflare, Vercel, Mercado Libre y Meta, tú en la terminal y con tus permisos):
+  - [x] **Respaldos:** el bucket `agentsales-backups` (no existía: lo creó Claude en Chrome) y su token propio `agentsales-backups (produccion)` (Object Read & Write, solo ese bucket; lo copiaste tú a `.env.production`). `libpq` instalado (`pg_dump` 18.6) y un respaldo local de producción antes de migrar (`ENV_FILE=.env.production pnpm db:backup`, 149 KB, legible con `pg_restore --list`). El worker subió su primer respaldo a R2 al encenderse (`doctor`: "el último es de hace 0 h")
+  - [x] **Fly.io:** cuenta con forma de pago, `flyctl`, la app `agentsales` (el nombre estaba libre: `fly.toml` no cambia), los 14 secretos y `FLY_API_TOKEN` en el Environment `production` (vence en 6 meses: renovar antes de ~2027-04). Sin IP públicas la app no responde: `fly ips allocate-v4 --shared` y `allocate-v6` (IPv4 `66.241.124.18`, IPv6 `2a09:8280:1::1be:1d46:0`)
+  - [x] **Dominio:** registros `A` y `AAAA` de `agentsales` en Vercel (los creó Claude) y el certificado emitido (Let's Encrypt)
+  - [x] **El primer despliegue** (el primero se detuvo en el guardia de la CI: el push de `main` todavía tenía su CI en curso; se repitió con la CI en verde): migraciones `0010` a `0013` aplicadas a producción, `api` y `worker` encendidos, `/api/health` en `production` y `dry-run`
+  - [x] **Tu usuario:** `ENV_FILE=.env.production pnpm auth:admin` (con `PUBLIC_URL` en `.env.production`), el doble factor activado y la CLI contra el servidor (`doctor` en verde). El administrador `tu@correo.cl` (un resto de F7, sin contraseña) se desactivó
+  - [x] **Meta:** privacidad, términos y la URL de instrucciones de eliminación guardadas en Configuración → Información básica (la de instrucciones ya fue aceptada con el dominio encendido), y las tres direcciones del inicio de sesión de Instagram. **Las vueltas de Meta, probadas con Meta de verdad:** al quitar la app desde tu Instagram, la cuenta quedó desconectada y con "(datos borrados a pedido de Meta)" en segundos (Meta llama a las dos vueltas, la firma verifica y el `user_id` es el de `/me`)
+  - [x] **Instagram con el botón:** funcionó cuando `INSTAGRAM_APP_SECRET` coincidió con el **Instagram app secret** (no la clave general de la app): estaba mal en `.env.production`; el log ahora dice el motivo del rechazo de Meta (#158). Un secreto solo se actualiza con `grep -E '^NOMBRE=' .env.production | fly secrets import -a agentsales` (sin `--stage`: reinicia y aplica)
+  - [x] **Mercado Libre con el botón:** la dirección del dominio no estaba registrada (solo la de `agentsales.test`); se agregó como segunda **Redirect URI** (la edición de la app pide verificar con el QR, aceptar los términos y el captcha) y la vuelta automática funcionó de verdad. **Marketplace:** a mano activado en `agentsales-pruebas`
+  - [x] **`.env.example`:** `FACEBOOK_APP_SECRET` (#156)
+- **Pendiente tuyo de T21:**
+  - [ ] **Reconectar Instagram** en `agentsales-pruebas` (la prueba de quitar la app la dejó desconectada) con el botón de Cuentas
+  - [ ] **La demo en el servidor, con el Mac apagado** (spec §7, pasos 4 a 7): cargar una propiedad de prueba desde el panel, prepararla, aprobar, publicar en simulación Instagram y Portal, programar una para 10 minutos y ver que sale; y una **restauración** del respaldo (`docs/10-despliegue.md`, paso 10: bajar el último del bucket, `pg_restore --list` y restaurarlo en una rama de prueba de Neon)
+  - [ ] **El corredor y el usuario de demostración para el revisor de Meta** (con la invitación de F7; credenciales solo para eso), y en Meta, Información básica: **ícono de 1024x1024 y categoría** (faltan), y el **correo de contacto** (hoy `vicentewolde@gmail.com`; los textos legales usan `vicente@agentpey.com`)
+  - [ ] **El límite de gasto en la consola de Anthropic** y, si quieres, que un abogado revise los textos legales por la Ley 21.719
+  - [ ] **Apagar el worker al terminar** (paso 8 de la guía; id `80e9539a6360e8`: `fly machine stop 80e9539a6360e8 -a agentsales --signal SIGTERM --timeout 45`), y su corrección en la guía si el id cambia
 - [ ] **Meta (en paralelo, es lo más lento):** verificación del negocio (prueba "Iniciar verificación" para ver qué pide en Chile), luego la de proveedor técnico y el App Review
 
 ## Pendiente tuyo de F7
@@ -94,7 +84,7 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
 | **Lote F** · T14 Límites por IP · T15 Doble factor (core, base y API) · T16 Doble factor en el panel y la CLI | ✅ terminada (con dobles; el doble factor real en tu teléfono, cuando quieras) | (este PR) |
 | **Lote G** · T17 Instagram de verdad y las vueltas de Meta · T18 Páginas públicas | ✅ terminada (con firmas de prueba; las vueltas reales, en T21; los textos esperan tu aprobación) | (este PR) |
 | **Lote H** · T19 Mercado Libre: la vuelta automática · T20 Marketplace en producción | ✅ terminada (con dobles; la vuelta real de Mercado Libre, en T21) | (este PR) |
-| T21 Primera puesta en marcha (contigo) | ⏳ pendiente | |
+| T21 Primera puesta en marcha (contigo) | 🔨 en curso (el servidor está arriba y las cuentas conectadas; falta la demo con el Mac apagado y lo de Meta) | #157, #158 |
 | T22 Cierre de fase (`v1.0.0`) | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
