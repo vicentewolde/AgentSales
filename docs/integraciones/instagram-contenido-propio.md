@@ -261,7 +261,7 @@ Lo que el código publica de un post (`postPublicationPlan` en `packages/core/sr
 
 | Tipo del post (`post.kind`) | Formato | Medios | Llamadas |
 |---|---|---|---|
-| `image` | `post` (imagen suelta) | El `ig_4x5` (1080×1350, JPEG) de la **primera** foto, aunque el post tenga más | Un contenedor con `image_url` y `caption`, sin `media_type` |
+| `image` | `post` (imagen suelta) | El `ig_4x5` (1080×1350, JPEG) de la **primera** foto, aunque el post tenga más (la revisión lo advierte con `MEDIA_UNUSED`, sin impedir aprobar) | Un contenedor con `image_url` y `caption`, sin `media_type` |
 | `carousel` | `post` (carrusel) | Los `ig_4x5` de **2 a 10** fotos, en su orden. Con menos de 2 procesadas no se abre (`CONTENT_NOT_READY`); fuera de 2 a 10 originales, la revisión del texto no lo aprueba (`MEDIA_REQUIREMENT`) | Un hijo por foto (`is_carousel_item`), sin caption; el carrusel con `children` y `caption` |
 | `video` | `reel` | El `ig_reel` (9:16, de 3 a 90 s, **sin texto encima** en un post) del primer video | `media_type=REELS`, `video_url`, `thumb_offset=1000` (la portada es el cuadro del segundo 1, el mismo del `thumb` del panel) y `share_to_feed=true` |
 | `text` | — | — | **No se publica en Instagram**: Instagram no publica solo texto (sección 8). La revisión del texto lo frena (`MEDIA_REQUIREMENT`), el plan no abre la publicación y el publisher rechaza un input sin medios (`NO_MEDIA`) |

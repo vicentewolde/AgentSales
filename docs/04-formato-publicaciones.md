@@ -205,6 +205,7 @@ Como `checkContent`, es una función pura que corre sobre el texto final, tambi�
 | `LINK_NOT_ALLOWED` | error | En X, un enlace de las fuentes que el operador no puso en el brief del post |
 | `MEDIA_REQUIREMENT` | error | Un post de video sin video (un reel exige video); Instagram sin imagen ni video; un carrusel de Instagram fuera de 2 a 10 imágenes (F9-T13; una imagen suelta usa solo la primera foto); TikTok sin video; X con más de 4 imágenes; Discord con más de 10; un post de imágenes sin imágenes. Se cuentan los originales que subió el operador |
 | `LINK_COST` | advertencia | X con un enlace: cuesta US$0,20 en vez de US$0,015 |
+| `MEDIA_UNUSED` | advertencia | Un post de imagen con varias fotos en Instagram: sale solo la primera; para publicarlas todas, carrusel (F9-T13) |
 | `AVOID_TERM` | advertencia | Algo de `avoid` del perfil (como palabra o frase completa, sin mirar tildes ni mayúsculas) |
 | `MARKDOWN` | advertencia | `**`, `__`, una línea que empieza con `# ` o un link `[texto](url)`, salvo en Discord |
 

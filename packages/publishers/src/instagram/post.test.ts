@@ -380,6 +380,46 @@ describe("Instagram para posts · cuota compartida con los avisos (F9-T13)", () 
     ).toMatchObject({ result: "rescheduled", error: { code: "IG_PUBLISH_LIMIT" } });
   });
 
+  it("tras 3 esperas seguidas por cuota (MAX_LIMIT_WAITS), la cuarta deja el post en failed, como un aviso", async () => {
+    const { clock, ig, t, attempt, start } = await setup({ kind: "image" });
+    ig.quotaTotal = 1;
+    ig.usage.set(SHARED_IG, 1);
+    const publication = await start();
+    /** El disparo de cada minuto (T07) retoma la programada: `scheduled` → `publishing`. */
+    const resume = () =>
+      t.publications.transition(
+        publication.id,
+        {
+          from: "scheduled",
+          to: "publishing",
+          changes: { dryRun: false, incrementAttempts: true },
+        },
+        { actor: "system" },
+      );
+
+    for (let wait = 1; wait <= 3; wait += 1) {
+      await expect(attempt(publication)).resolves.toMatchObject({ outcome: "rescheduled" });
+      expect(t.current(publication.id)?.status).toBe("scheduled");
+      clock.now += SIX_HOURS;
+      await resume();
+    }
+    const fourth = await caught(attempt(publication));
+
+    expect(isAppError(fourth) && [fourth.code, fourth.retriable]).toEqual([
+      "IG_PUBLISH_LIMIT",
+      false,
+    ]);
+    expect(t.current(publication.id)).toMatchObject({
+      status: "failed",
+      lastError: { code: "IG_PUBLISH_LIMIT" },
+    });
+    const results = (await t.publications.listEvents(publication.id))
+      .filter((event) => event.type === "publish_attempt")
+      .map((event) => (event.payload as { result: string }).result);
+    expect(results).toEqual(["rescheduled", "rescheduled", "rescheduled", "failed"]);
+    expect(ig.containers.size).toBe(0);
+  });
+
   it("otra cuenta de Instagram (otra marca) tiene su propia cuota", async () => {
     const { ig, t, attempt, start } = await setup({ kind: "image", ig: OTHER_IG });
     ig.quotaTotal = 1;

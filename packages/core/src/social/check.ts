@@ -341,7 +341,8 @@ function mediaProblem(platform: PostPlatform, ctx: PostCheckContext): string | n
  *   Instagram fuera de 2 a 10 imágenes, TikTok sin video, X con más de 4 imágenes, Discord con
  *   más de 10.
  * Advertencias: `LINK_COST` (X con un enlace: US$0,20 en vez de US$0,015), `AVOID_TERM` (algo de
- * lo que el perfil pide evitar) y `MARKDOWN` (salvo en Discord, que lo muestra).
+ * lo que el perfil pide evitar), `MARKDOWN` (salvo en Discord, que lo muestra) y `MEDIA_UNUSED`
+ * (un post `image` con varias fotos en Instagram: sale solo la primera).
  */
 export function checkPostContent(
   platform: PostPlatform,
@@ -433,6 +434,13 @@ export function checkPostContent(
 
   const problem = mediaProblem(platform, ctx);
   if (problem !== null) add("MEDIA_REQUIREMENT", problem);
+  // Instagram publica una imagen suelta con la primera foto (F9-T13): las demás no salen.
+  if (platform === "instagram" && ctx.kind === "image" && ctx.media.images > 1) {
+    add(
+      "MEDIA_UNUSED",
+      `Instagram publicará solo la primera de ${ctx.media.images} fotos; usa carrusel para publicarlas todas`,
+    );
+  }
 
   const folded = foldText([text.body, ...text.hashtags].join("\n"));
   for (const term of ctx.avoid) {

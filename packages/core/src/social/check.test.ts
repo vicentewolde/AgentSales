@@ -295,6 +295,22 @@ describe("checkPostContent: medios", () => {
     expect(codes("linkedin", "Fotos.", withMedia("carousel", 1))).toEqual([]);
   });
 
+  it("un post de imagen con varias fotos en Instagram avisa que sale solo la primera, sin impedir aprobar", () => {
+    const checks = checkPostContent(
+      "instagram",
+      { body: "Foto.", hashtags: [] },
+      withMedia("image", 3),
+    );
+    expect(checks.map((item) => [item.code, item.severity])).toEqual([["MEDIA_UNUSED", "warning"]]);
+    expect(checks[0]?.message).toBe(
+      "Instagram publicará solo la primera de 3 fotos; usa carrusel para publicarlas todas",
+    );
+    expect(hasContentErrors(checks)).toBe(false);
+    expect(codes("instagram", "Foto.", withMedia("image", 1))).toEqual([]);
+    expect(codes("linkedin", "Fotos.", withMedia("image", 3))).toEqual([]);
+    expect(codes("instagram", "Fotos.", withMedia("carousel", 3))).toEqual([]);
+  });
+
   it("un post de imágenes sin imágenes no se aprueba", () => {
     expect(codes("linkedin", "Fotos.", withMedia("image", 0))).toEqual(["MEDIA_REQUIREMENT"]);
   });
