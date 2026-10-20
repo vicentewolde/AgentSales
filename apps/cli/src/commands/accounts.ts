@@ -9,6 +9,7 @@ import {
 import {
   accountDisconnectText,
   currentMarketplaceLoginError,
+  discordWebhookUrlSchema,
   MARKETPLACE_LOGIN_CLIENT_WAIT_MS,
   MARKETPLACE_WAIT_MAX_POLL_FAILURES,
   MERCADOLIBRE_REFRESH_AGE_MS,
@@ -102,6 +103,11 @@ export function runAccounts(deps: AccountsDeps) {
           "→ Conecta Marketplace con: pnpm -s cli accounts connect marketplace --broker <slug>",
         ),
       );
+      deps.print(
+        c.dim(
+          "→ Conecta Discord con: pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin",
+        ),
+      );
       return 0;
     }
     const now = deps.now();
@@ -144,7 +150,69 @@ export type ConnectOptions = {
   label?: string;
   /** Marketplace a mano (F7, ADR-0023): el corredor publica él mismo, sin el perfil. */
   manual?: boolean;
+  /** Discord (F9-T14): la URL del webhook por la entrada estándar. */
+  webhookStdin?: boolean;
 };
+
+/** El largo máximo de la URL del webhook pegada (el mismo tope que `discordConnectBodySchema`). */
+const WEBHOOK_URL_MAX_LENGTH = 512;
+
+/** El comando que pega la URL del webhook de Discord (`broker` ya validado por `brokerSlugOf`). */
+const webhookStdinCommand = (broker: string) =>
+  `pbpaste | pnpm -s cli accounts connect discord --broker ${broker} --webhook-stdin`;
+
+/**
+ * `agentsales accounts connect discord --broker <slug> --webhook-stdin` (spec F9 §4.6, F9-T14): lee
+ * la URL del webhook del canal desde la entrada estándar (`pbpaste | …`), nunca de un argumento ni
+ * de la terminal; revisa que sea la de un webhook (`discordWebhookUrlSchema`, de T02) antes de
+ * mandarla, y la API la lee en Discord sin publicar y la guarda cifrada. Nunca la imprime ni la pone
+ * en un error.
+ */
+async function connectDiscord(
+  deps: AccountsDeps,
+  broker: string,
+  webhookStdin: boolean,
+): Promise<number> {
+  const c = deps.colors;
+  const pipeCommand = webhookStdinCommand(broker);
+  if (!webhookStdin || deps.stdinIsTty()) {
+    throw new CliError(
+      "WEBHOOK_STDIN_REQUIRED",
+      "La URL del webhook va por la entrada estándar, no escrita en la terminal: es el secreto del canal",
+      `Copia la URL (Ajustes del servidor > Integraciones > Webhooks > Copiar URL del webhook) y corre: ${pipeCommand}`,
+    );
+  }
+  const webhookUrl = (await deps.readStdin()).trim();
+  if (webhookUrl === "") {
+    throw new CliError(
+      "WEBHOOK_URL_MISSING",
+      "No llegó ninguna URL por la entrada estándar",
+      pipeCommand,
+    );
+  }
+  // Sin mostrar lo recibido: un pegado de otra cosa no se manda a la API.
+  if (
+    webhookUrl.length > WEBHOOK_URL_MAX_LENGTH ||
+    !discordWebhookUrlSchema.safeParse(webhookUrl).success
+  ) {
+    throw new CliError(
+      "DISCORD_WEBHOOK_URL_INVALID",
+      "Lo que llegó por la entrada estándar no es la URL de un webhook de Discord (https://discord.com/api/webhooks/…)",
+      "Copia solo la URL con «Copiar URL del webhook» y vuelve a intentarlo",
+    );
+  }
+  const { account } = await unwrap(
+    deps.client.accounts.discord.connect.$post({ json: { broker, webhookUrl } }),
+    accountResponseSchema,
+  );
+  deps.print(`${c.green("✓")} Conectado el webhook ${account.displayName} de Discord (${broker})`);
+  deps.print(
+    c.dim(
+      "  Un canal por marca: si había otro webhook, quedó desconectado. Para cambiarlo, conecta el nuevo igual",
+    ),
+  );
+  return 0;
+}
 
 /** El largo máximo de la dirección de vuelta pegada (la API acepta hasta 4096 por valor). */
 const PASTED_URL_MAX_LENGTH = 8192;
@@ -406,10 +474,15 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
   const c = deps.colors;
   const channel = platform.trim().toLowerCase();
   return guarded(deps, async () => {
-    if (channel !== "instagram" && channel !== "mercadolibre" && channel !== "marketplace") {
+    if (
+      channel !== "instagram" &&
+      channel !== "mercadolibre" &&
+      channel !== "marketplace" &&
+      channel !== "discord"
+    ) {
       throw new CliError(
         "PLATFORM_INVALID",
-        `Se conecta instagram, mercadolibre o marketplace: "${platform}"`,
+        `Se conecta instagram, mercadolibre, marketplace o discord: "${platform}"`,
       );
     }
     // Una opción de otro canal no se ignora en silencio.
@@ -418,23 +491,26 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
         ? "--token-stdin"
         : options.urlStdin && channel !== "mercadolibre"
           ? "--url-stdin"
-          : options.label !== undefined && channel !== "marketplace"
-            ? "--label"
-            : options.manual && channel !== "marketplace"
-              ? "--manual"
-              : options.manual && options.label !== undefined
-                ? "--label"
-                : null;
+          : options.webhookStdin && channel !== "discord"
+            ? "--webhook-stdin"
+            : options.label !== undefined && channel !== "marketplace"
+              ? "--label"
+              : options.manual && channel !== "marketplace"
+                ? "--manual"
+                : options.manual && options.label !== undefined
+                  ? "--label"
+                  : null;
     if (foreign !== null) {
       throw new CliError(
         "OPTION_NOT_FOR_PLATFORM",
-        `${foreign} no es para ${channel}${options.manual && channel === "marketplace" ? " a mano" : ""}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label (o --manual, sin --label)`,
+        `${foreign} no es para ${channel}${options.manual && channel === "marketplace" ? " a mano" : ""}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label (o --manual, sin --label); Discord, --webhook-stdin`,
       );
     }
     if (options.broker === undefined) {
       throw new CliError("BROKER_REQUIRED", "Falta --broker <slug>: el corredor de la cuenta");
     }
     const broker = brokerSlugOf(options.broker);
+    if (channel === "discord") return connectDiscord(deps, broker, options.webhookStdin === true);
     if (channel === "mercadolibre")
       return connectMercadoLibre(deps, broker, options.urlStdin === true);
     if (channel === "marketplace" && options.manual) return connectMarketplaceManual(deps, broker);
@@ -661,15 +737,15 @@ export function register(program: Command, ctx: CliContext): void {
   const accounts = program
     .command("accounts")
     .description(
-      "Cuentas conectadas (Instagram, Mercado Libre y Marketplace): estado y vencimiento",
+      "Cuentas conectadas (Instagram, Mercado Libre, Marketplace y Discord): estado y vencimiento",
     )
     .action(() => exitWith(() => runAccounts(deps())));
   accounts
     .command("connect")
     .description(
-      "Conecta una cuenta: Instagram con el token de Generate token; Mercado Libre con el enlace y la dirección de vuelta pegada; Marketplace iniciando sesión en una ventana de Chromium",
+      "Conecta una cuenta: Instagram con el token de Generate token; Mercado Libre con el enlace y la dirección de vuelta pegada; Marketplace iniciando sesión en una ventana de Chromium; Discord con la URL del webhook pegada",
     )
-    .argument("<canal>", "instagram, mercadolibre o marketplace")
+    .argument("<canal>", "instagram, mercadolibre, marketplace o discord")
     .option("--broker <slug>", "corredor de la cuenta")
     .option(
       "--label <nombre>",
@@ -686,6 +762,10 @@ export function register(program: Command, ctx: CliContext): void {
     .option(
       "--url-stdin",
       "Mercado Libre: lee la dirección de vuelta desde la entrada estándar (pbpaste | …)",
+    )
+    .option(
+      "--webhook-stdin",
+      "Discord: lee la URL del webhook del canal desde la entrada estándar (pbpaste | …)",
     )
     .action((platform: string, options: ConnectOptions) =>
       exitWith(() => runConnect(deps(), platform, options)),

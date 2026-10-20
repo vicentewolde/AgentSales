@@ -56,6 +56,8 @@ import {
   createMercadoLibreItems,
   MERCADOLIBRE_API_TIMEOUT_MS,
 } from "@agentsales/publishers";
+// La subruta de Discord (F9-T14): solo el cliente del webhook, para conectarlo sin publicar.
+import { createDiscordWebhooks } from "@agentsales/publishers/discord";
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage, r2BucketOrigin } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
@@ -195,6 +197,8 @@ const app = createApp({
     oauthConfigured: Boolean(env.INSTAGRAM_APP_ID && env.INSTAGRAM_APP_SECRET),
     secureCookie: env.INSTAGRAM_REDIRECT_URI.startsWith("https://"),
   },
+  // Conectar un webhook lo lee en Discord sin publicar (tope de 10 s: el operador espera).
+  discord: createDiscordWebhooks({ timeoutMs: 10_000 }),
   mercadoLibre: {
     // Sin el par de la app, conectar responde MERCADOLIBRE_NOT_CONFIGURED sin llamar (el canje
     // mandaría un secret vacío). Tope de 10 s: el operador espera la respuesta (spec F4 §4.3).

@@ -484,3 +484,90 @@ describe("accounts connect mercadolibre (F4-T20, adelantado)", () => {
     expect(h.requests).toEqual([]);
   });
 });
+
+describe("accounts connect discord (F9-T14)", () => {
+  const WEBHOOK_TOKEN = "tokenSecretoDelWebhook-123_abc";
+  const WEBHOOK_URL = `https://discord.com/api/webhooks/987654321/${WEBHOOK_TOKEN}`;
+
+  it("conecta con la URL de la entrada estándar, sin mostrarla ni mandarla en la URL", async () => {
+    const { h, deps } = await setup();
+
+    const code = await runConnect(deps(`${WEBHOOK_URL}\n`), "discord", {
+      broker: "marca",
+      webhookStdin: true,
+    });
+
+    expect(code).toBe(0);
+    expect(h.text()).toContain("✓ Conectado el webhook AgentSales de Discord (marca)");
+    const [account] = await h.platformAccounts.list(ALL_SCOPE);
+    expect(h.platformAccounts.storedCredentials(account?.id ?? "")).toEqual({
+      webhookUrl: WEBHOOK_URL,
+    });
+    expect(h.requests).toContain("POST /accounts/discord/connect");
+    expect(`${h.text()}\n${h.errors()}\n${h.requests.join("\n")}`).not.toContain(WEBHOOK_TOKEN);
+  });
+
+  it("sin --webhook-stdin o en una terminal no lee: pide pasarla por la entrada estándar", async () => {
+    const { h, deps } = await setup();
+    expect(await runConnect(deps(WEBHOOK_URL), "discord", { broker: "marca" })).toBe(1);
+    expect(await runConnect(deps(null), "discord", { broker: "marca", webhookStdin: true })).toBe(
+      1,
+    );
+    expect(h.errors()).toContain("WEBHOOK_STDIN_REQUIRED");
+    expect(h.errors()).toContain(
+      "pbpaste | pnpm -s cli accounts connect discord --broker marca --webhook-stdin",
+    );
+    expect(h.requests).toEqual([]);
+  });
+
+  it("vacío, otra cosa pegada u opciones de otro canal se rechazan sin llamar ni mostrar lo pegado", async () => {
+    const { h, deps } = await setup();
+    const cases: [Promise<number>, string][] = [
+      [
+        runConnect(deps("  \n"), "discord", { broker: "marca", webhookStdin: true }),
+        "WEBHOOK_URL_MISSING",
+      ],
+      [
+        runConnect(deps("https://example.com/api/webhooks/1/otroSecreto"), "discord", {
+          broker: "marca",
+          webhookStdin: true,
+        }),
+        "DISCORD_WEBHOOK_URL_INVALID",
+      ],
+      [
+        runConnect(deps(`${WEBHOOK_URL}\notra-linea`), "discord", {
+          broker: "marca",
+          webhookStdin: true,
+        }),
+        "DISCORD_WEBHOOK_URL_INVALID",
+      ],
+      [
+        runConnect(deps(WEBHOOK_URL), "discord", { broker: "marca", tokenStdin: true }),
+        "OPTION_NOT_FOR_PLATFORM",
+      ],
+      [
+        runConnect(deps(WEBHOOK_URL), "instagram", { broker: "marca", webhookStdin: true }),
+        "OPTION_NOT_FOR_PLATFORM",
+      ],
+    ];
+    for (const [result, code] of cases) {
+      expect(await result).toBe(1);
+      expect(h.errors()).toContain(code);
+    }
+    expect(h.errors()).not.toContain("otroSecreto");
+    expect(h.errors()).not.toContain(WEBHOOK_TOKEN);
+    expect(h.requests).toEqual([]);
+  });
+
+  it("un webhook borrado muestra el mensaje de la API, sin la URL", async () => {
+    const { h, deps } = await setup();
+    const code = await runConnect(
+      deps("https://discord.com/api/webhooks/987654321/borradoToken"),
+      "discord",
+      { broker: "marca", webhookStdin: true },
+    );
+    expect(code).toBe(1);
+    expect(h.errors()).toContain("DISCORD_WEBHOOK_NOT_FOUND");
+    expect(h.errors()).not.toContain("borradoToken");
+  });
+});

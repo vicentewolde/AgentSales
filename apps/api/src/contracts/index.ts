@@ -804,6 +804,24 @@ export const connectTokenBodySchema = z.object({
 export type ConnectTokenBody = z.infer<typeof connectTokenBodySchema>;
 
 /**
+ * `POST /accounts/discord/connect` (spec F9 §4.6, F9-T14): la URL del webhook del canal, que es el
+ * secreto. Aquí solo el largo y sin espacios; que sea la de un webhook lo revisa core
+ * (`DISCORD_WEBHOOK_URL_INVALID`), sin repetirla. Nunca vuelve en la respuesta ni va al log.
+ */
+export const discordConnectBodySchema = z
+  .object({
+    broker: brokerSlugSchema,
+    webhookUrl: z
+      .string({ error: "falta la URL del webhook" })
+      .trim()
+      .min(1, "falta la URL del webhook")
+      .max(512, "la URL del webhook es demasiado larga: copia solo la URL")
+      .regex(/^\S+$/, "la URL del webhook no puede tener espacios ni saltos de línea"),
+  })
+  .strict();
+export type DiscordConnectBody = z.infer<typeof discordConnectBodySchema>;
+
+/**
  * `POST /accounts/:id/disconnect` (spec F5 §4.2): Marketplace exige `confirmed: true` (borra el
  * perfil del navegador con la sesión de Facebook). El cuerpo va siempre (`{}` sin confirmar).
  */

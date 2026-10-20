@@ -14,7 +14,13 @@ import {
   accountResponseSchema,
   errorBodySchema,
 } from "../contracts/index.js";
-import { adminApp, fakeInstagramAuth, TEST_ML_REDIRECT_URI, testDeps } from "../testing/index.js";
+import {
+  adminApp,
+  fakeDiscordWebhooks,
+  fakeInstagramAuth,
+  TEST_ML_REDIRECT_URI,
+  testDeps,
+} from "../testing/index.js";
 
 const TOKEN = "IGAA-token-del-panel-0123456789";
 /** Un POST sin cuerpo: con `Content-Type` JSON, como la CLI (sin él, el CSRF lo trata como formulario). */
@@ -557,5 +563,99 @@ describe("POST /accounts/:id/refresh", () => {
       }),
     );
     expect(JSON.stringify(lines)).not.toContain(TOKEN);
+  });
+});
+
+describe("POST /accounts/discord/connect (F9-T14)", () => {
+  const WEBHOOK_TOKEN = "tokenSecretoDelWebhook-123_abc";
+  const WEBHOOK_URL = `https://discord.com/api/webhooks/987654321/${WEBHOOK_TOKEN}`;
+
+  function discordSetup() {
+    const lines: string[] = [];
+    const logger = createLogger(
+      { level: "debug" },
+      new Writable({
+        write(chunk, _encoding, callback) {
+          lines.push(chunk.toString());
+          callback();
+        },
+      }),
+    );
+    const broker = contentBrokerFixture({ kind: "brand" });
+    const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+    const discord = fakeDiscordWebhooks();
+    const app = adminApp(
+      testDeps({
+        logger,
+        brokers: createInMemoryBrokerRepository([broker]),
+        platformAccounts,
+        discord,
+      }),
+    );
+    const connect = (body: Record<string, unknown>) =>
+      app.request("/accounts/discord/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    return { app, broker, platformAccounts, discord, connect, log: () => lines.join("\n") };
+  }
+
+  it("conecta el webhook: cifrado, a la vista su nombre, y la URL ni en la respuesta ni en el log", async () => {
+    const { app, broker, platformAccounts, discord, connect, log } = discordSetup();
+    const response = await connect({ broker: broker.slug, webhookUrl: WEBHOOK_URL });
+
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain(WEBHOOK_TOKEN);
+    const { account } = accountResponseSchema.parse(JSON.parse(text));
+    expect(account).toMatchObject({
+      platform: "discord",
+      displayName: "AgentSales",
+      status: "connected",
+      tokenExpiresAt: null,
+      connectedAt: expect.any(Date),
+    });
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({ webhookUrl: WEBHOOK_URL });
+    expect(discord.calls).toEqual(["get"]);
+    const list = await (await app.request("/accounts")).text();
+    expect(list).not.toContain(WEBHOOK_TOKEN);
+    expect(log()).not.toContain(WEBHOOK_TOKEN);
+  });
+
+  it("una URL que no es de un webhook es 400 sin llamar a Discord ni repetirla", async () => {
+    const { broker, discord, connect, log } = discordSetup();
+    for (const webhookUrl of [
+      "https://example.com/api/webhooks/1/otroSecreto",
+      `${WEBHOOK_URL} ${WEBHOOK_URL}`,
+    ]) {
+      const response = await connect({ broker: broker.slug, webhookUrl });
+      expect(response.status).toBe(400);
+      const text = await response.text();
+      expect(text).not.toContain("otroSecreto");
+      expect(text).not.toContain(WEBHOOK_TOKEN);
+    }
+    expect(discord.calls).toEqual([]);
+    expect(log()).not.toContain("otroSecreto");
+    expect(log()).not.toContain(WEBHOOK_TOKEN);
+  });
+
+  it("un webhook borrado o con el token roto es 400 con su código, sin guardar nada", async () => {
+    const { broker, platformAccounts, connect, log } = discordSetup();
+    for (const [token, code] of [
+      ["borradoToken", "DISCORD_WEBHOOK_NOT_FOUND"],
+      ["maloToken", "DISCORD_WEBHOOK_INVALID"],
+    ] as const) {
+      const response = await connect({
+        broker: broker.slug,
+        webhookUrl: `https://discord.com/api/webhooks/987654321/${token}`,
+      });
+      expect(response.status).toBe(400);
+      const text = await response.text();
+      expect(errorBodySchema.parse(JSON.parse(text)).error.code).toBe(code);
+      expect(text).not.toContain(token);
+      expect(log()).not.toContain(token);
+    }
+    expect(await platformAccounts.list(ALL_SCOPE)).toEqual([]);
   });
 });

@@ -105,6 +105,7 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   // protegen el `state` firmado y su propia cookie `Lax`.
   "GET /accounts": "session",
   "POST /accounts/connect-token": "admin",
+  "POST /accounts/discord/connect": "admin",
   "POST /accounts/mercadolibre/authorize-url": "admin",
   "POST /accounts/mercadolibre/connect": "admin",
   "POST /accounts/marketplace/login": "admin",

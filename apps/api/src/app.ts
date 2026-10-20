@@ -36,7 +36,7 @@ import type { AppLogger } from "./logger.js";
 import { type RateLimitDeps, rateLimitByIp, rateLimitByUser } from "./rate-limit.js";
 import { type RequestContext, withEventUser, withPostEventUser } from "./request-context.js";
 import { requestLogger } from "./request-logger.js";
-import { accountRoutes } from "./routes/accounts.js";
+import { type AccountRoutesDeps, accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
 import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
@@ -138,6 +138,8 @@ export type AppDeps = {
   platformAccounts: PlatformAccountRepository;
   /** Instagram Login, si el OAuth tiene su par de la app, y si la cookie va `Secure`. */
   instagram: OAuthDeps["instagram"];
+  /** Discord (F9-T14): leer el webhook al conectarlo (`createDiscordWebhooks`), sin publicar. */
+  discord: AccountRoutesDeps["discord"];
   /**
    * Mercado Libre (spec F4 §4.2): el OAuth con la dirección pegada, `configured` si está el par de
    * la app (sin él, conectar no llama) y la dirección de retorno que se muestra (`ML_REDIRECT_URI`).
