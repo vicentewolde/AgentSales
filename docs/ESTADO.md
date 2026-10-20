@@ -9,7 +9,7 @@
 
 ## Pendiente tuyo de F9
 Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada prueba de entrada bloquea solo su red (spec §4.8; los pasos están en la sección 8 de cada nota de `docs/integraciones/`):
-- [ ] **S1 · Instagram:** una publicación real y neutra en tu cuenta profesional, vista desde una cuenta **sin rol** en la app (modo desarrollo), solo con tu instrucción en el chat. Bloquea T13
+- [ ] **S1 · Instagram:** una publicación real y neutra en tu cuenta profesional, vista desde una cuenta **sin rol** en la app (modo desarrollo), solo con tu instrucción en el chat. **Obligatoria antes de cualquier publicación real de posts en Instagram** (T13 ya está construido contra simulaciones; decisión del 2026-10-20)
 - [ ] **S2 y S3 · LinkedIn:** el token de «Share on LinkedIn» publica en `/rest/posts`; escribir a LinkedIn Developer Support por el §3.1(26) de sus términos. Bloquea T15
 - [ ] **S4 · X:** cuenta de desarrollador con créditos (tope sugerido US$10 al mes), un post, un reply a ti mismo y un texto repetido. Bloquea T16
 - [ ] **S5 · Discord:** un servidor privado de pruebas con un webhook; texto, imagen y un video. Bloquea T14
@@ -110,7 +110,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 1 | T10 Posts manuales y sus medios | ✅ terminada | #177 |
 | 1 | T11 El texto por red con IA | ✅ terminada | #180 |
 | 1 | T12 Aprobar, publicar y programar un post (CLI) | ⏳ pendiente | |
-| 1 | T13 Instagram para posts (tras S1) | ⏳ pendiente | |
+| 1 | T13 Instagram para posts (S1 antes de publicar de verdad) | ✅ terminada | #184 |
 | 1 | T14 Discord (tras S5) | ⏳ pendiente | |
 | 2 · `v1.2.0` | T15 LinkedIn (tras S2 y S3) | ⏳ pendiente | |
 | 2 | T16 X (tras S4) | ⏳ pendiente | |

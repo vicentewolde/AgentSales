@@ -67,7 +67,7 @@ describe("publishPublication con un post", () => {
       title: null,
       // X no separa los hashtags: van dentro del texto (`socialCaption`).
       caption: "Texto en en para x\n\n#agentpey #ia",
-      media: [{ mediaId: t.image.id, storagePath: `posts/${t.post.id}/ig_4x5/foto.jpg` }],
+      media: [{ mediaId: t.image?.id, storagePath: `posts/${t.post.id}/ig_4x5/foto.jpg` }],
     });
     expect(sent?.listing).toBeUndefined();
     // Un post nunca pasa a `active`: no hay aviso que tocar, y el post sigue como estaba.

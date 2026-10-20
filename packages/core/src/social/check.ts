@@ -4,6 +4,7 @@ import {
   type ContentCheck,
   type ContentCheckCode,
 } from "../content/check.js";
+import { CAROUSEL_MAX_ITEMS, CAROUSEL_MIN_ITEMS } from "../content/compose.js";
 import type { EditorialProfileView } from "../editorial-profile.js";
 import type { PostKind, PostPlatform } from "../enums.js";
 import { foldText } from "../listing-validator/normalizers.js";
@@ -311,6 +312,13 @@ function mediaProblem(platform: PostPlatform, ctx: PostCheckContext): string | n
       : null;
   }
   if (media.images === 0) return "El post es de imágenes y no tiene ninguna: súbelas";
+  if (
+    platform === "instagram" &&
+    kind === "carousel" &&
+    (media.images < CAROUSEL_MIN_ITEMS || media.images > CAROUSEL_MAX_ITEMS)
+  ) {
+    return `Un carrusel de Instagram lleva de ${CAROUSEL_MIN_ITEMS} a ${CAROUSEL_MAX_ITEMS} imágenes, y este tiene ${media.images}`;
+  }
   if (platform === "x" && media.images > X_MAX_IMAGES) {
     return `X admite hasta ${X_MAX_IMAGES} imágenes o 1 video por post, y este tiene ${media.images} imágenes`;
   }
@@ -329,10 +337,12 @@ function mediaProblem(platform: PostPlatform, ctx: PostCheckContext): string | n
  * - `FACT_NOT_IN_PROFILE`: una cifra, un posible nombre propio, un enlace o una mención que no
  *   están en las fuentes de hechos (`buildPostCheckContext`; un brief de la IA no cuenta);
  * - `LINK_NOT_ALLOWED`: en X, un enlace que el operador no puso en el brief del post;
- * - `MEDIA_REQUIREMENT`: un video sin video, Instagram sin imagen ni video, TikTok sin video, X
- *   con más de 4 imágenes, Discord con más de 10.
+ * - `MEDIA_REQUIREMENT`: un video sin video, Instagram sin imagen ni video, un carrusel de
+ *   Instagram fuera de 2 a 10 imágenes, TikTok sin video, X con más de 4 imágenes, Discord con
+ *   más de 10.
  * Advertencias: `LINK_COST` (X con un enlace: US$0,20 en vez de US$0,015), `AVOID_TERM` (algo de
- * lo que el perfil pide evitar) y `MARKDOWN` (salvo en Discord, que lo muestra).
+ * lo que el perfil pide evitar), `MARKDOWN` (salvo en Discord, que lo muestra) y `MEDIA_UNUSED`
+ * (un post `image` con varias fotos en Instagram: sale solo la primera).
  */
 export function checkPostContent(
   platform: PostPlatform,
@@ -424,6 +434,13 @@ export function checkPostContent(
 
   const problem = mediaProblem(platform, ctx);
   if (problem !== null) add("MEDIA_REQUIREMENT", problem);
+  // Instagram publica una imagen suelta con la primera foto (F9-T13): las demás no salen.
+  if (platform === "instagram" && ctx.kind === "image" && ctx.media.images > 1) {
+    add(
+      "MEDIA_UNUSED",
+      `Instagram publicará solo la primera de ${ctx.media.images} fotos; usa carrusel para publicarlas todas`,
+    );
+  }
 
   const folded = foldText([text.body, ...text.hashtags].join("\n"));
   for (const term of ctx.avoid) {

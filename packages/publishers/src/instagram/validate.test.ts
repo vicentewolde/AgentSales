@@ -54,6 +54,17 @@ describe("validateInstagramInput", () => {
 
   it("un post sin imágenes o con más de 10 no pasa", () => {
     expect(codes(post([]))).toEqual(["NO_MEDIA"]);
+    // Un post de marca de solo texto (F9-T13): Instagram no publica texto sin medios.
+    const textOnly = validateInstagramInput(post([], "Lo que aprendí construyendo #agentpey"));
+    expect(textOnly).toEqual({
+      ok: false,
+      issues: [
+        {
+          code: "NO_MEDIA",
+          message: "Instagram necesita una imagen o un video: la publicación no tiene medios",
+        },
+      ],
+    });
     expect(codes(post(Array.from({ length: 11 }, (_, i) => photo(i))))).toEqual(["TOO_MANY_ITEMS"]);
   });
 

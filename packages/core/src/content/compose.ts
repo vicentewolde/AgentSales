@@ -2,6 +2,8 @@ import type { Media } from "../media.js";
 
 /** El máximo de elementos de un carrusel de Instagram (límite de la API). */
 export const CAROUSEL_MAX_ITEMS = 10;
+/** El mínimo de elementos de un carrusel de Instagram: con uno solo es una imagen suelta. */
+export const CAROUSEL_MIN_ITEMS = 2;
 
 const byOrder = (a: Media, b: Media) => a.sortOrder - b.sortOrder || (a.id < b.id ? -1 : 1);
 

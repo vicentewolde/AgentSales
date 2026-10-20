@@ -22,8 +22,9 @@ const issue = (code: string, message: string): PublishIssue => ({ code, message 
  * Requisitos de Instagram antes de llamar (spec F3 §4.5, nota §5 y §11.10). Función pura, sin red
  * ni cliente: la usan el publisher y `withDryRun`. Un `post` es una imagen suelta (1) o un carrusel
  * (2 a 10) de JPEG de menos de 8 MB con proporción de 4:5 a 1,91:1; un `reel`, un MP4 de 3 a 90 s
- * (D7). El caption tiene tope de largo, de hashtags y de menciones. Los mensajes van en español y
- * sin datos del aviso.
+ * (D7). El caption tiene tope de largo, de hashtags y de menciones. Vale igual para un aviso y un
+ * post (F9-T13): el input no dice de cuál viene, y un post de solo texto (sin medios) no pasa. Los
+ * mensajes van en español y sin datos del aviso ni del post.
  */
 export function validateInstagramInput(input: PublishInput): PublishValidation {
   const issues = [
@@ -34,7 +35,13 @@ export function validateInstagramInput(input: PublishInput): PublishValidation {
 }
 
 function postIssues({ media }: PublishInput): PublishIssue[] {
-  if (media.length === 0) return [issue("NO_MEDIA", "La publicación no tiene imágenes")];
+  // Instagram no publica solo texto (nota de contenido propio §8): un post de texto sin medios no
+  // llega a la red aunque se salte la revisión del texto (F9-T13).
+  if (media.length === 0) {
+    return [
+      issue("NO_MEDIA", "Instagram necesita una imagen o un video: la publicación no tiene medios"),
+    ];
+  }
   const issues: PublishIssue[] = [];
   if (media.length > INSTAGRAM_LIMITS.carouselMaxItems) {
     issues.push(
