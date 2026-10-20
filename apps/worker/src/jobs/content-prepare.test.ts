@@ -577,7 +577,7 @@ describe("auto_publish cortado · al arrancar", () => {
       brokers: { findById: async () => ({ id: "b", autoPublish: false }) },
       lock: {
         run: async (_id: string, fn: (locked: unknown) => Promise<unknown>) =>
-          fn({ publications: { listByListing: async () => [] } }),
+          fn({ publications: { listBySubject: async () => [] } }),
       },
     } as unknown as AutoPublishDeps;
 

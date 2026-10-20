@@ -71,8 +71,8 @@ pnpm -s cli publications [<id_propiedad>]  # estado, modo, enlace y, en Portal, 
 pnpm -s cli publications pause|resume|close|sync <id>  # Portal: pausa, reactiva, cierra (en live pide confirmación; --yes) o pide leer el estado en Mercado Libre
 pnpm -s cli publications update|relist <id>  # Portal: manda al aviso el precio, los atributos o el texto nuevos, o republica uno vencido o cerrado (en live pide confirmación; --yes)
 pnpm -s cli schedule <id_propiedad…> --at "2026-10-19 10:00"  # programa en hora de Chile (--platform, --spacing <min>; --publication <id> para una sola; en live pide confirmación, --yes); unschedule <id> la desprograma
-pnpm -s cli agenda       # lo pendiente (atrasadas, te toca, atascadas, fallas, tareas a mano, espera tu revisión, aprobadas sin publicar, por vencer, próximas, respaldo) con el comando de cada una (--broker, --json)
-pnpm -s cli tracking     # cada propiedad por plataforma (--broker, --archived, --json)
+pnpm -s cli agenda       # lo pendiente de avisos y posts (atrasadas, te toca, atascadas, fallas, resultado dudoso, tareas a mano, espera tu revisión, aprobadas sin publicar, por vencer, cuentas por reconectar, próximas, respaldo) con el comando de cada una (--broker, --json)
+pnpm -s cli tracking     # cada propiedad y cada post por plataforma (--broker, --archived, --json)
 pnpm -s cli listing ready|pause|resume|reopen|archive <id_propiedad>  # la propiedad manda sobre sus publicaciones; listing close <id_propiedad> --reason vendida|arrendada|retirada (pide confirmación; --yes)
 pnpm -s cli brokers auto-publish <slug> on|off  # publicación automática del corredor (pregunta siempre; --yes)
 pnpm -s cli brokers create|edit|show|logo|template  # corredores: crear (--slug --name --brand --color …; --kind brand crea una marca, F9), editar la marca (--own/--not-own y --cap/--no-cap, solo el administrador), su lista de alta, el logo (PNG, JPEG o WebP) y su planilla (--out, --force)

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {
   confirmManualPublication,
+  listingSubject,
   publishPublication,
   startPublication,
   type UfValueSource,
@@ -279,7 +280,7 @@ describe("panel: Marketplace en Contenido", () => {
     fireEvent.click(
       within(panel).getByRole("button", { name: "Copiar la descripción para Marketplace" }),
     );
-    const content = (await s.t.contents.listCurrent(s.t.listingId)).find(
+    const content = (await s.t.contents.listCurrent(listingSubject(s.t.listingId))).find(
       (item) => item.platform === MARKETPLACE,
     );
     expect(writeText).toHaveBeenCalledWith(content?.title);

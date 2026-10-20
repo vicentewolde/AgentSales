@@ -6,6 +6,7 @@ import {
   type BrokerData,
   type FieldDefinition,
   type LLMProvider,
+  listingSubject,
   type NewListing,
   type PublicationOperations,
   prepareContent,
@@ -243,7 +244,7 @@ export async function contentSetup(
   const prepare = async (
     llm: LLMProvider = createInMemoryLlmProvider([{ data: SAMPLE_CONTENT_DRAFT }]),
   ) => {
-    const run = await h.contentRuns.latest(listing.id);
+    const run = await h.contentRuns.latest(listingSubject(listing.id));
     if (run === null) throw new Error("no hay corridas");
     return prepareContent(
       {

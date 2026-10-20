@@ -1,4 +1,5 @@
 import {
+  type AccessScope,
   agendaItems,
   autoPublishApplies,
   type BackupStatus,
@@ -15,9 +16,13 @@ import {
   type PendingReview,
   type Platform,
   type PlatformAccountRepository,
+  type Post,
+  type PostRepository,
+  type PostStatus,
   type PublicationRepository,
   pendingReviewsOf,
   TRACKING_WINDOW_MS,
+  trackingPostRow,
   trackingRow,
 } from "@agentsales/core";
 import { type Context, Hono } from "hono";
@@ -34,29 +39,34 @@ import { coverPaths } from "./listings.js";
 
 export type TrackingRoutesDeps = {
   listings: Pick<ListingRepository, "list">;
+  /** Los posts del alcance (F9-T08): van a la agenda y al seguimiento junto a los avisos. */
+  posts: Pick<PostRepository, "list">;
   brokers: Pick<BrokerRepository, "findBySlug" | "list">;
   publications: Pick<PublicationRepository, "listForTracking">;
   media: Pick<MediaRepository, "listCovers" | "listVariants">;
   storage: Pick<MediaStorage, "signedReadUrl">;
   contents: Pick<ContentRepository, "listCurrentMany">;
-  platformAccounts: Pick<PlatformAccountRepository, "listByBroker">;
+  /** `list`: las cuentas del alcance, para el token por vencer (F9-T08). */
+  platformAccounts: Pick<PlatformAccountRepository, "listByBroker" | "list">;
   /** El estado del respaldo (`readBackupStatus`); sin él la agenda no lo informa. */
   backupStatus?: () => Promise<BackupStatus | null>;
   now?: () => Date;
 };
 
 /**
- * Las propiedades del alcance (spec F7 §4.4), filtradas en SQL: las de un corredor (`?broker`, el
- * administrador) o todas las que la sesión ve; `BROKER_NOT_FOUND` si el corredor no existe o es
- * ajeno.
+ * El alcance del pedido (spec F7 §4.4): el de un corredor (`?broker`, el administrador) o todo lo
+ * que la sesión ve; `BROKER_NOT_FOUND` si el corredor no existe o es ajeno. Las propiedades, los
+ * posts y las cuentas se filtran con él en SQL.
  */
-async function listingsOf(
-  c: Context<AppEnv>,
-  deps: TrackingRoutesDeps,
-  slug: string | undefined,
-): Promise<Listing[]> {
-  return deps.listings.list({}, await listScope(c, deps.brokers, slug));
-}
+const scopeOf = (c: Context<AppEnv>, deps: TrackingRoutesDeps, slug: string | undefined) =>
+  listScope(c, deps.brokers, slug);
+
+/** Los posts con publicaciones posibles: sin las ideas (no tienen textos) ni, salvo pedido, los archivados. */
+const trackedPostStatuses = (archived: boolean): PostStatus[] =>
+  archived ? ["draft", "ready", "archived"] : ["draft", "ready"];
+
+const postsOf = (deps: TrackingRoutesDeps, scope: AccessScope, archived: boolean) =>
+  deps.posts.list({ status: trackedPostStatuses(archived) }, scope);
 
 /**
  * Carga lo que `pendingReviewsOf` (core) necesita: las cuentas y los textos vigentes solo de las
@@ -95,26 +105,30 @@ async function pendingReviews(
 
 /**
  * `GET /tracking` y `GET /agenda` (spec F6 §4.9): la matriz por propiedad y plataforma y la
- * agenda, armadas por `trackingRow` y `agendaItems` (core, puras) con las propiedades del corredor
- * y sus publicaciones de `listForTracking`. Solo leen.
+ * agenda, armadas por `trackingRow`, `trackingPostRow` y `agendaItems` (core, puras) con las
+ * propiedades y, desde F9-T08, los posts del alcance y sus publicaciones de `listForTracking`. La
+ * agenda suma las cuentas del alcance (el token por vencer). Solo leen.
  */
 export function trackingRoutes(deps: TrackingRoutesDeps) {
   const now = () => (deps.now ?? (() => new Date()))();
-  const publicationsOf = (listings: readonly Listing[], at: Date) =>
-    listings.length === 0
+  const publicationsOf = (listings: readonly Listing[], posts: readonly Post[], at: Date) =>
+    listings.length === 0 && posts.length === 0
       ? Promise.resolve([])
       : deps.publications.listForTracking({
           listingIds: listings.map((listing) => listing.id),
+          postIds: posts.map((post) => post.id),
           since: new Date(at.getTime() - TRACKING_WINDOW_MS),
         });
   return new Hono<AppEnv>()
     .get("/tracking", validated("query", trackingQuerySchema), async (c) => {
       const { broker, archived } = c.req.valid("query");
       const at = now();
-      const listings = (await listingsOf(c, deps, broker)).filter(
+      const scope = await scopeOf(c, deps, broker);
+      const listings = (await deps.listings.list({}, scope)).filter(
         (listing) => archived === "1" || listing.status !== "archived",
       );
-      const publications = await publicationsOf(listings, at);
+      const posts = await postsOf(deps, scope, archived === "1");
+      const publications = await publicationsOf(listings, posts, at);
       const covers = await coverPaths(
         deps.media,
         listings.map((listing) => listing.id),
@@ -129,17 +143,24 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
             };
           }),
         ),
+        posts: posts.map((post) => trackingPostRow(post, publications, at)),
       };
       return c.json(body, 200);
     })
     .get("/agenda", validated("query", agendaQuerySchema), async (c) => {
       const { broker } = c.req.valid("query");
       const at = now();
-      const listings = (await listingsOf(c, deps, broker)).filter(
+      const listScopeOf = await scopeOf(c, deps, broker);
+      const listings = (await deps.listings.list({}, listScopeOf)).filter(
         (listing) => listing.status !== "archived",
       );
+      const posts = await postsOf(deps, listScopeOf, false);
       const scope = requestScope(c);
       const brokers = new Map((await deps.brokers.list(scope)).map((b) => [b.id, b]));
+      const accounts = (await deps.platformAccounts.list(listScopeOf)).map((account) => ({
+        ...account,
+        brokerSlug: brokers.get(account.brokerId)?.slug ?? null,
+      }));
       const autoPublishBrokerIds = new Set(
         [...brokers.values()].filter((b) => b.autoPublish).map((b) => b.id),
       );
@@ -151,7 +172,9 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
       const body: AgendaResponse = {
         items: agendaItems({
           listings,
-          publications: await publicationsOf(listings, at),
+          posts,
+          publications: await publicationsOf(listings, posts, at),
+          accounts,
           autoPublishBrokerIds,
           pendingReviews: await pendingReviews(deps, listings, brokers),
           ...(backup === undefined ? {} : { backup }),

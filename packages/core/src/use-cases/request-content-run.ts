@@ -7,7 +7,7 @@ import type { ContentRunRepository } from "../ports/content-repository.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import { canDraftPost, postNotReady } from "../post.js";
 import { PENDING_PUBLICATION_STATUSES } from "../publication-state.js";
-import { type Subject, type SubjectInput, subjectOfInput } from "../subject.js";
+import { listingSubject, type Subject, type SubjectInput, subjectOfInput } from "../subject.js";
 import {
   type LockedSubject,
   runOnSubject,
@@ -175,7 +175,7 @@ async function preparableBrokerOf(locked: LockedSubject): Promise<string> {
       details: { listingId, status: listing.status },
     });
   }
-  const photos = (await locked.repos.media.listOriginals(listingId)).filter(
+  const photos = (await locked.repos.media.listOriginals(listingSubject(listingId))).filter(
     (m) => m.kind === "image",
   );
   if (photos.length === 0) {

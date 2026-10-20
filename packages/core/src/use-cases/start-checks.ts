@@ -10,7 +10,7 @@ import { canDraftPost, type Post, postNotReady } from "../post.js";
 import type { Publication } from "../publication.js";
 import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
 import { outcomeUnknownPending } from "../publish/outcome.js";
-import type { PostSubject } from "../subject.js";
+import { listingSubject, type PostSubject } from "../subject.js";
 import type { LockedSubject, SubjectLockedRepositories } from "../subject-lock.js";
 import {
   channelPublications,
@@ -82,7 +82,7 @@ export async function requireStartableOne(
     await repos.listings.get(locked.subject.id),
     locked.subject.id,
   );
-  await requireNoActiveRun(repos, locked.subject.id);
+  await requireNoActiveRun(repos, locked.subject);
   const content = await requireApprovedAndConnected(repos, publication);
   requireCompatibleMode(publication, options.dryRun);
   if (PUBLISH_LISTING_PLATFORMS.has(publication.platform)) {
@@ -159,8 +159,8 @@ export async function prepareChannelStart(
   options: StartCheckOptions & { countInFlight: boolean; nothingMessage: string },
 ): Promise<ChannelStart> {
   const listing = requirePublishableListing(await locked.listings.get(listingId), listingId);
-  await requireNoActiveRun(locked, listingId);
-  const content = (await locked.contents.listCurrent(listingId)).find(
+  await requireNoActiveRun(locked, listingSubject(listingId));
+  const content = (await locked.contents.listCurrent(listingSubject(listingId))).find(
     (current) => current.platform === platform,
   );
   if (content === undefined || content.status !== "approved") {
@@ -183,7 +183,7 @@ export async function prepareChannelStart(
     );
   }
   const opening = await planPublications(locked, { listing, content });
-  const channel = await channelPublications(locked, listingId, platform);
+  const channel = await channelPublications(locked, listingSubject(listingId), platform);
   const pending = channel.filter((publication) => STARTABLE_STATUSES.includes(publication.status));
   const startable = pending.filter((p) => connected.has(p.platformAccountId));
   const stranded = pending.filter((p) => !connected.has(p.platformAccountId));

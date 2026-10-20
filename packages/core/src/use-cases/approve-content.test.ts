@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SAMPLE_CONTENT_DRAFT } from "../content/draft.js";
 import type { ListingLock, LockedRepositories } from "../ports/listing-lock.js";
 import type { NewListing } from "../ports/listing-repository.js";
+import { listingSubject } from "../subject.js";
 import {
   contentBrokerFixture,
   contentDefinitionsFixture,
@@ -174,7 +175,9 @@ async function setup(options: { account?: boolean; processed?: boolean } = {}) {
       { listingId: listing.id },
     );
   const currentId = async (platform: string) =>
-    (await contents.listCurrent(listing.id)).find((item) => item.platform === platform)?.id ?? "";
+    (await contents.listCurrent(listingSubject(listing.id))).find(
+      (item) => item.platform === platform,
+    )?.id ?? "";
   return {
     deps,
     locked,
@@ -220,7 +223,7 @@ describe("approveContent", () => {
 
     expect(result.content.status).toBe("approved");
     expect(result.created).toEqual([]);
-    expect(await t.locked.publications.listByListing(t.listingId)).toEqual([]);
+    expect(await t.locked.publications.listBySubject(listingSubject(t.listingId))).toEqual([]);
   });
 
   it.each(["expired", "error"] as const)(
@@ -298,7 +301,7 @@ describe("approveContent", () => {
       code: "CONTENT_NOT_READY",
     });
     expect((await t.locked.contents.get(contentId))?.status).toBe("draft");
-    expect(await t.locked.publications.listByListing(t.listingId)).toEqual([]);
+    expect(await t.locked.publications.listBySubject(listingSubject(t.listingId))).toEqual([]);
   });
 
   it("sin cuenta conectada aprueba aunque falten las fotos (no hay nada que abrir)", async () => {
@@ -380,7 +383,7 @@ describe("approveContent", () => {
       details: expect.objectContaining({ codes: expect.arrayContaining(["NUMBER_NOT_IN_DATA"]) }),
     });
     expect((await t.locked.contents.get(contentId))?.status).toBe("edited");
-    expect(await t.locked.publications.listByListing(t.listingId)).toEqual([]);
+    expect(await t.locked.publications.listBySubject(listingSubject(t.listingId))).toEqual([]);
   });
 
   it("un aviso archivado es LISTING_NOT_READY; uno pausado se puede aprobar", async () => {
@@ -415,7 +418,7 @@ describe("publicationPlan", () => {
 
   it("Portal y Marketplace dan solo post, con las fotos 4:3", async () => {
     const t = await setup();
-    const media = await t.locked.media.listByListing(t.listingId);
+    const media = await t.locked.media.listBySubject(listingSubject(t.listingId));
     const { photos } = await t.view();
 
     for (const platform of ["portal_inmobiliario", "fb_marketplace"] as const) {
@@ -439,7 +442,9 @@ describe("unapproveContent", () => {
       approved.created.map((publication) => publication.id),
     );
     expect(
-      (await t.locked.publications.listByListing(t.listingId)).map((item) => item.status),
+      (await t.locked.publications.listBySubject(listingSubject(t.listingId))).map(
+        (item) => item.status,
+      ),
     ).toEqual(["cancelled", "cancelled"]);
     const events = await t.locked.publications.listEvents(approved.created[0]?.id ?? "");
     expect(events.at(-1)).toMatchObject({
@@ -465,7 +470,9 @@ describe("unapproveContent", () => {
     });
     expect((await t.locked.contents.get(contentId))?.status).toBe("approved");
     expect(
-      (await t.locked.publications.listByListing(t.listingId)).map((item) => item.status),
+      (await t.locked.publications.listBySubject(listingSubject(t.listingId))).map(
+        (item) => item.status,
+      ),
     ).toEqual(["publishing", "approved"]);
   });
 

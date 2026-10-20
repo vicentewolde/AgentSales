@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   AppError,
   CONTENT_PROMPT_VERSION,
+  listingSubject,
   type NewListing,
   postSubject,
   prepareContent,
@@ -217,7 +218,9 @@ describe("testDeps · el candado por defecto", () => {
     });
 
     expect(response.status).toBe(202);
-    expect(await repos.contentRuns.latest(listing.id)).toMatchObject({ status: "queued" });
+    expect(await repos.contentRuns.latest(listingSubject(listing.id))).toMatchObject({
+      status: "queued",
+    });
   });
 });
 
@@ -288,7 +291,9 @@ describe("POST /listings/:id/content-runs", () => {
     const response = await t.request();
     expect(response.status).toBe(503);
     expect((await errorOf(response)).error.code).toBe("QUEUE_UNAVAILABLE");
-    expect(await t.repos.contentRuns.latest(t.listing.id)).toMatchObject({ status: "failed" });
+    expect(await t.repos.contentRuns.latest(listingSubject(t.listing.id))).toMatchObject({
+      status: "failed",
+    });
   });
 
   it("un cuerpo inválido es 400 REQUEST_INVALID; un aviso que no existe, 404", async () => {
@@ -449,7 +454,7 @@ describe("PATCH /contents/:id", () => {
     expect(active.status).toBe(409);
     expect((await errorOf(active)).error.code).toBe("CONTENT_RUN_ACTIVE");
 
-    const queued = await t.repos.contentRuns.latest(t.listing.id);
+    const queued = await t.repos.contentRuns.latest(listingSubject(t.listing.id));
     await t.repos.contentRuns.markFailed(queued?.id ?? "", { code: "X", message: "x" });
     await t.prepare();
     const stale = await t.json("PATCH", `/contents/${old?.id}`, { body: "x" });

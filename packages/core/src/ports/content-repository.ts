@@ -9,7 +9,7 @@ import {
 } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { BrokerLlmSpend, LlmCallUsage } from "../llm-usage.js";
-import type { SubjectInput, SubjectKind, SubjectRef } from "../subject.js";
+import type { Subject, SubjectInput, SubjectKind } from "../subject.js";
 
 /** Una corrida nueva de un aviso (`listingId`, como antes de F9) o de un post (`postId`). */
 export type NewContentRun = SubjectInput & {
@@ -40,16 +40,16 @@ export type NewContent = {
  *   activa con `findActive`;
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
  * Los ids son uuid: la API los valida antes de llegar aquí. Donde antes iba el id del aviso, desde
- * F9 va un `SubjectRef`: un `Subject` (aviso o post) o, como antes, el id de un aviso.
+ * F9 va un `Subject` (aviso o post; desde F9-T08, nunca el id suelto de un aviso).
  */
 export interface ContentRunRepository {
   /** Nace en `queued`, sin etapa, reporte ni fechas. */
   create(run: NewContentRun): Promise<ContentRun>;
   get(id: string): Promise<ContentRun | null>;
   /** La corrida `queued` o `running` del aviso o post, si hay (a lo más una). */
-  findActive(subject: SubjectRef): Promise<ContentRun | null>;
+  findActive(subject: Subject): Promise<ContentRun | null>;
   /** La corrida más reciente del aviso o post (`created_at` y después `id`), en cualquier estado. */
-  latest(subject: SubjectRef): Promise<ContentRun | null>;
+  latest(subject: Subject): Promise<ContentRun | null>;
   /**
    * Las corridas en `queued` de avisos (por defecto) o de posts (`kind = "post"`), las más antiguas
    * primero: el worker las reencola al arrancar, las de avisos como `content.prepare` y las de posts
@@ -162,7 +162,7 @@ export interface ContentRepository {
    * El texto vigente de cada canal e idioma del aviso o post, en el orden de `PLATFORMS` y después
    * de `LANGUAGES`. Un aviso tiene uno por canal (todos `es`), en el orden de `LISTING_PLATFORMS`.
    */
-  listCurrent(subject: SubjectRef): Promise<Content[]>;
+  listCurrent(subject: Subject): Promise<Content[]>;
   /** Los vigentes de varios avisos en una consulta (Seguimiento y agenda, deuda de F6). */
   listCurrentMany(listingIds: readonly string[]): Promise<Content[]>;
   get(id: string): Promise<Content | null>;

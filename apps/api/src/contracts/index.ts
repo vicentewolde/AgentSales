@@ -19,6 +19,7 @@ import {
   FIELD_TYPES,
   IMPORT_UPLOAD,
   importRunSchema,
+  LANGUAGES,
   LISTING_ACTIONS,
   LISTING_PLATFORMS,
   LISTING_STATUSES,
@@ -955,6 +956,8 @@ export const agendaQuerySchema = z.object({ broker: brokerSlugSchema.optional() 
 export const trackingPublicationSchema = z.object({
   id: z.string(),
   format: z.enum(PUBLICATION_FORMATS),
+  /** El idioma del texto (un post puede tener dos; un aviso, siempre `es`). */
+  language: z.enum(LANGUAGES),
   status: z.enum(PUBLICATION_STATUSES),
   dryRun: z.boolean(),
   externalUrl: z.string().nullable(),
@@ -986,14 +989,43 @@ export const trackingRowSchema = z.object({
     fb_marketplace: z.array(trackingPublicationSchema),
   }),
 });
-export const trackingResponseSchema = z.object({ rows: z.array(trackingRowSchema) });
+/** La fila de un post (F9-T08): el tema es su título, y una celda por red (`POST_PLATFORMS`). */
+export const trackingPostRowSchema = z.object({
+  post: z.object({
+    id: z.string(),
+    brokerId: z.string(),
+    topic: z.string(),
+    status: z.enum(POST_STATUSES),
+    kind: z.enum(POST_KINDS),
+    plannedAt: z.coerce.date().nullable(),
+  }),
+  cells: z.object({
+    instagram: z.array(trackingPublicationSchema),
+    x: z.array(trackingPublicationSchema),
+    linkedin: z.array(trackingPublicationSchema),
+    discord: z.array(trackingPublicationSchema),
+    tiktok: z.array(trackingPublicationSchema),
+  }),
+});
+/** Las propiedades (`rows`) y, desde F9-T08, los posts del alcance (`posts`), en el mismo pedido. */
+export const trackingResponseSchema = z.object({
+  rows: z.array(trackingRowSchema),
+  posts: z.array(trackingPostRowSchema),
+});
 export type TrackingResponse = z.infer<typeof trackingResponseSchema>;
 
 export const agendaItemSchema = z.object({
   kind: z.enum(AGENDA_KINDS),
   action: z.enum(AGENDA_ACTIONS),
   listingId: z.string().nullable(),
+  /** El post de la publicación (F9-T08); `null` en un aviso. */
+  postId: z.string().nullable(),
   externalRef: z.string().nullable(),
+  /** El `id_propiedad`, el tema del post o el nombre de la cuenta; `null` en el respaldo. */
+  title: z.string().nullable(),
+  /** La cuenta de un token por vencer, con el `slug` de su corredor. */
+  accountId: z.string().nullable(),
+  brokerSlug: z.string().nullable(),
   platform: z.enum(PLATFORMS).nullable(),
   format: z.enum(PUBLICATION_FORMATS).nullable(),
   publicationId: z.string().nullable(),

@@ -147,10 +147,15 @@ export const PUBLICATION_FORMAT_TEXT: Readonly<Record<PublicationFormat, string>
 
 /**
  * El formato de una publicación según su canal (spec F4 §4.8): en Portal y Marketplace hay uno
- * solo, el aviso (`post`); en Instagram, carrusel o reel. Lo usan la CLI y el panel.
+ * solo, el aviso (`post`); en Instagram, carrusel o reel; en las redes de F9 (X, LinkedIn, Discord
+ * y TikTok), el post (desde F9-T08, que las muestra en la agenda). Lo usan la CLI y el panel.
  */
 export const publicationFormatText = (platform: Platform, format: PublicationFormat): string =>
-  platform === "instagram" ? PUBLICATION_FORMAT_TEXT[format] : "aviso";
+  platform === "instagram"
+    ? PUBLICATION_FORMAT_TEXT[format]
+    : platform === "portal_inmobiliario" || platform === "fb_marketplace"
+      ? "aviso"
+      : "post";
 
 /** El modo de un intento de publicación (`publications.dry_run`, D11 del spec F3). */
 export const publicationModeText = (dryRun: boolean): string => (dryRun ? "simulación" : "en vivo");
@@ -356,11 +361,13 @@ export const CLOSE_REASON_TEXT: Readonly<Record<CloseReason, string>> = {
 export const AGENDA_KIND_TEXT: Readonly<Record<AgendaKind, string>> = {
   overdue: "Atrasadas",
   your_turn: "Te toca (Marketplace)",
+  outcome_unknown: "No se sabe si salieron",
   stuck: "Atascadas",
   failed: "Fallaron",
   manual_task: "Tareas a mano",
   needs_review: "Esperan tu revisión",
   approved_waiting: "Aprobadas sin publicar",
+  token_expiring: "Cuentas por reconectar",
   expiring: "Portal por vencer",
   upcoming: "Próximas (7 días)",
   backup: "Respaldo de la base",

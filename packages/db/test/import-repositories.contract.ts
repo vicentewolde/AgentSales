@@ -7,6 +7,7 @@ import {
   isAppError,
   type ListingRepository,
   type ListingStatus,
+  listingSubject,
   type MediaRepository,
   type NewDerivative,
   type NewListing,
@@ -769,8 +770,8 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       const first = await repos.media.create(newMedia(brokerId, id, unique("a"), { sortOrder: 0 }));
       expect(second).toMatchObject({ listingId: id, brokerId, kind: "video", sortOrder: 1 });
 
-      expect(await repos.media.listOriginals(id)).toEqual([first, second]);
-      expect(await repos.media.listOriginals(listingId)).toEqual([]);
+      expect(await repos.media.listOriginals(listingSubject(id))).toEqual([first, second]);
+      expect(await repos.media.listOriginals(listingSubject(listingId))).toEqual([]);
     });
 
     it("findByStoragePath encuentra un logo (sin aviso); una ruta desconocida es null", async () => {
@@ -811,8 +812,10 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
     it("listCovers trae solo las portadas de esos avisos", async () => {
       const { id, media } = await listingWith("a", "b");
       const other = await listingWith("c");
-      await repos.media.arrange(id, [{ id: media[1]?.id ?? "", sortOrder: 0, isCover: true }]);
-      await repos.media.arrange(other.id, [
+      await repos.media.arrange(listingSubject(id), [
+        { id: media[1]?.id ?? "", sortOrder: 0, isCover: true },
+      ]);
+      await repos.media.arrange(listingSubject(other.id), [
         { id: other.media[0]?.id ?? "", sortOrder: 0, isCover: true },
       ]);
 
@@ -826,18 +829,16 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       const { id, media } = await listingWith("a", "b", "c");
       const [a, b, c] = media.map((item) => item.id) as [string, string, string];
 
-      await repos.media.arrange(id, [
+      await repos.media.arrange(listingSubject(id), [
         { id: c, sortOrder: 0, isCover: true },
         { id: a, sortOrder: 1, isCover: false },
         { id: b, sortOrder: 2, isCover: false },
       ]);
 
       expect(
-        (await repos.media.listOriginals(id)).map(({ id: mediaId, sortOrder, isCover }) => [
-          mediaId,
-          sortOrder,
-          isCover,
-        ]),
+        (await repos.media.listOriginals(listingSubject(id))).map(
+          ({ id: mediaId, sortOrder, isCover }) => [mediaId, sortOrder, isCover],
+        ),
       ).toEqual([
         [c, 0, true],
         [a, 1, false],
@@ -848,28 +849,28 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
     it("una sola portada: la nueva desmarca la anterior aunque no venga en items", async () => {
       const { id, media } = await listingWith("a", "b");
       const [a, b] = media.map((item) => item.id) as [string, string];
-      await repos.media.arrange(id, [{ id: a, sortOrder: 0, isCover: true }]);
+      await repos.media.arrange(listingSubject(id), [{ id: a, sortOrder: 0, isCover: true }]);
 
-      await repos.media.arrange(id, [{ id: b, sortOrder: 1, isCover: true }]);
+      await repos.media.arrange(listingSubject(id), [{ id: b, sortOrder: 1, isCover: true }]);
 
-      expect((await repos.media.listOriginals(id)).filter((item) => item.isCover)).toEqual([
-        expect.objectContaining({ id: b }),
-      ]);
+      expect(
+        (await repos.media.listOriginals(listingSubject(id))).filter((item) => item.isCover),
+      ).toEqual([expect.objectContaining({ id: b })]);
     });
 
     it("arrange con un medio de otro aviso → MEDIA_NOT_FOUND, sin cambiar nada", async () => {
       const { id, media } = await listingWith("a");
       const other = await listingWith("b");
-      const before = await repos.media.listOriginals(id);
+      const before = await repos.media.listOriginals(listingSubject(id));
 
       await expectAppError(
-        repos.media.arrange(id, [
+        repos.media.arrange(listingSubject(id), [
           { id: media[0]?.id ?? "", sortOrder: 5, isCover: true },
           { id: other.media[0]?.id ?? "", sortOrder: 6, isCover: false },
         ]),
         "MEDIA_NOT_FOUND",
       );
-      expect(await repos.media.listOriginals(id)).toEqual(before);
+      expect(await repos.media.listOriginals(listingSubject(id))).toEqual(before);
     });
 
     it.each([
@@ -893,13 +894,13 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       ["un orden NaN", (a: string) => [{ id: a, sortOrder: Number.NaN, isCover: false }]],
     ])("arrange con %s → MEDIA_ARRANGE_INVALID, sin cambiar nada", async (_, itemsOf) => {
       const { id, media } = await listingWith("a", "b");
-      const before = await repos.media.listOriginals(id);
+      const before = await repos.media.listOriginals(listingSubject(id));
 
       await expectAppError(
-        repos.media.arrange(id, itemsOf(media[0]?.id ?? "", media[1]?.id ?? "")),
+        repos.media.arrange(listingSubject(id), itemsOf(media[0]?.id ?? "", media[1]?.id ?? "")),
         "MEDIA_ARRANGE_INVALID",
       );
-      expect(await repos.media.listOriginals(id)).toEqual(before);
+      expect(await repos.media.listOriginals(listingSubject(id))).toEqual(before);
     });
   });
 
@@ -1007,13 +1008,13 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
         checksum: "sha-v2",
         mime: "image/webp",
       });
-      const thumbs = (await repos.media.listByListing(listingId)).filter(
+      const thumbs = (await repos.media.listBySubject(listingSubject(listingId))).filter(
         (media) => media.variant === "thumb",
       );
       expect(thumbs).toEqual([v2.media]);
 
       await repos.media.upsertDerivative(processed(listingId, first.id, "pi_4x3"));
-      const derivatives = (await repos.media.listByListing(listingId)).filter(
+      const derivatives = (await repos.media.listBySubject(listingSubject(listingId))).filter(
         (media) => media.role === "processed",
       );
       expect(derivatives.map((media) => media.variant).sort()).toEqual(["pi_4x3", "thumb"]);
@@ -1037,21 +1038,21 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       const other = await listingWithPhotos();
       await repos.media.upsertDerivative(rendered(other.listingId, "cover"));
       expect(
-        (await repos.media.listByListing(listingId))
+        (await repos.media.listBySubject(listingSubject(listingId)))
           .filter((media) => media.role === "rendered")
           .map((media) => media.variant)
           .sort(),
       ).toEqual(["cover", "spec_sheet"]);
     });
 
-    it("listByListing trae originales, variantes y renders, en ese orden, sin el logo ni otros avisos", async () => {
+    it("listBySubject de un aviso trae originales, variantes y renders, en ese orden, sin el logo ni otros avisos", async () => {
       const { listingId, first, second } = await listingWithPhotos();
       await repos.media.create(newMedia(brokerId, null, unique("logo")));
       const render = await repos.media.upsertDerivative(rendered(listingId, "spec_sheet"));
       const variant = await repos.media.upsertDerivative(processed(listingId, second.id, "thumb"));
       const other = await listingWithPhotos();
 
-      const all = await repos.media.listByListing(listingId);
+      const all = await repos.media.listBySubject(listingSubject(listingId));
       expect(all.map((media) => media.id)).toEqual([
         first.id,
         second.id,
@@ -1069,7 +1070,7 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
         height: 3024,
         durationS: 6.25,
       });
-      expect((await repos.media.listByListing(listingId))[0]).toMatchObject({
+      expect((await repos.media.listBySubject(listingSubject(listingId)))[0]).toMatchObject({
         id: first.id,
         width: 4032,
         height: 3024,
@@ -1101,7 +1102,7 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
 
     it("un derivado inconsistente es MEDIA_DERIVATIVE_INVALID, sin escribir nada", async () => {
       const { listingId, first } = await listingWithPhotos();
-      const before = await repos.media.listByListing(listingId);
+      const before = await repos.media.listBySubject(listingSubject(listingId));
       const wrong = [
         { ...rendered(listingId, "cover"), role: "processed", parentMediaId: first.id },
         { ...processed(listingId, first.id, "thumb"), role: "rendered", parentMediaId: null },
@@ -1111,7 +1112,7 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       for (const derivative of wrong) {
         await expectAppError(repos.media.upsertDerivative(derivative), "MEDIA_DERIVATIVE_INVALID");
       }
-      expect(await repos.media.listByListing(listingId)).toEqual(before);
+      expect(await repos.media.listBySubject(listingSubject(listingId))).toEqual(before);
     });
 
     it("una clave que ya usa otro medio es MEDIA_CONFLICT, reintentable, al crear o al reemplazar", async () => {
@@ -1213,9 +1214,9 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(await repos.media.deleteDerivative(reel.media.id)).toBe(reel.media.storagePath);
       expect(await repos.media.deleteDerivative(reel.media.id)).toBeNull();
       expect(await repos.media.deleteDerivative(first.id)).toBeNull();
-      expect((await repos.media.listOriginals(listingId)).map((media) => media.id)).toContain(
-        first.id,
-      );
+      expect(
+        (await repos.media.listOriginals(listingSubject(listingId))).map((media) => media.id),
+      ).toContain(first.id);
     });
 
     it("los métodos de la carga no ven derivados", async () => {
@@ -1223,17 +1224,18 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       const variant = await repos.media.upsertDerivative(processed(listingId, first.id, "ig_4x5"));
       const render = await repos.media.upsertDerivative(rendered(listingId, "cover"));
 
-      expect((await repos.media.listOriginals(listingId)).map((media) => media.id)).toEqual([
-        first.id,
-        second.id,
-      ]);
+      expect(
+        (await repos.media.listOriginals(listingSubject(listingId))).map((media) => media.id),
+      ).toEqual([first.id, second.id]);
       expect((await repos.media.listCovers([listingId])).map((media) => media.id)).toEqual([
         first.id,
       ]);
       expect(await repos.media.findByStoragePath(variant.media.storagePath)).toBeNull();
       expect(await repos.media.findByStoragePath(render.media.storagePath)).toBeNull();
       await expectAppError(
-        repos.media.arrange(listingId, [{ id: variant.media.id, sortOrder: 0, isCover: true }]),
+        repos.media.arrange(listingSubject(listingId), [
+          { id: variant.media.id, sortOrder: 0, isCover: true },
+        ]),
         "MEDIA_NOT_FOUND",
       );
       // El checksum de una variante no choca con un original nuevo (el único es de originales).

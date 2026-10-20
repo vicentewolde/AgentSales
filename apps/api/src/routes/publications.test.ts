@@ -202,8 +202,8 @@ describe("GET /listings/:id/publications", () => {
             listings: t.listings,
             media: {
               ...t.media,
-              listByListing: async (id) =>
-                (await t.media.listByListing(id)).filter((media) => media.id !== gone),
+              listBySubject: async (subject) =>
+                (await t.media.listBySubject(subject)).filter((media) => media.id !== gone),
             },
             publications: t.publications,
             lock: t.deps.lock,

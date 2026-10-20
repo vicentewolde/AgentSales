@@ -1,5 +1,5 @@
 import { createSecretBox } from "@agentsales/config";
-import type { ListingLock, LockedRepositories } from "@agentsales/core";
+import { type ListingLock, type LockedRepositories, listingSubject } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
@@ -55,7 +55,7 @@ async function seed(
     report: { warnings: [] },
     contents: [newContent("instagram")],
   });
-  const [content] = await repos.contents.listCurrent(listingId);
+  const [content] = await repos.contents.listCurrent(listingSubject(listingId));
   return { listingId, accountId, contentId: content?.id ?? "" };
 }
 
@@ -181,7 +181,7 @@ describe("publicaciones · fila y evento juntos o ninguno (PGlite)", () => {
         { actor: "operator", payload: { falla: true } },
       ),
     ).rejects.toMatchObject({ code: "DB_QUERY_FAILED" });
-    expect(await repos.publications.listByListing(ids.listingId)).toEqual([]);
+    expect(await repos.publications.listBySubject(listingSubject(ids.listingId))).toEqual([]);
   });
 
   it("si falla el evento de una transición, el estado no cambia", async () => {
@@ -316,7 +316,7 @@ describe("ListingLock · Postgres (PGlite)", () => {
           { actor: "operator" },
         );
         await locked.contents.update(
-          (await locked.contents.listCurrent(ids.listingId))[0]?.id ?? "",
+          (await locked.contents.listCurrent(listingSubject(ids.listingId)))[0]?.id ?? "",
           {
             status: "approved",
           },
@@ -325,8 +325,10 @@ describe("ListingLock · Postgres (PGlite)", () => {
       }),
     ).rejects.toThrow("falla después de escribir");
 
-    expect(await repos.publications.listByListing(ids.listingId)).toEqual([]);
-    expect((await repos.contents.listCurrent(ids.listingId))[0]?.status).toBe("draft");
+    expect(await repos.publications.listBySubject(listingSubject(ids.listingId))).toEqual([]);
+    expect((await repos.contents.listCurrent(listingSubject(ids.listingId)))[0]?.status).toBe(
+      "draft",
+    );
   });
 
   it("las transacciones propias de los repositorios funcionan dentro (savepoints)", async () => {
@@ -356,7 +358,7 @@ describe("ListingLock · Postgres (PGlite)", () => {
     const second = await media.create(newMedia(brokerId, ids.listingId, unique("sha-b")));
 
     await lock.run(ids.listingId, async (locked) => {
-      await locked.media.arrange(ids.listingId, [
+      await locked.media.arrange(listingSubject(ids.listingId), [
         { id: second.id, sortOrder: 0, isCover: true },
         { id: first.id, sortOrder: 1, isCover: false },
       ]);
@@ -377,7 +379,7 @@ describe("ListingLock · Postgres (PGlite)", () => {
       });
     });
 
-    const all = await media.listByListing(ids.listingId);
+    const all = await media.listBySubject(listingSubject(ids.listingId));
     expect(all.find((item) => item.id === second.id)).toMatchObject({
       isCover: true,
       sortOrder: 0,
@@ -407,7 +409,7 @@ describe("ListingLock · Postgres (PGlite)", () => {
         await locked.publications.create(input, { actor: "operator" });
       }),
     ).rejects.toMatchObject({ code: "PUBLICATION_CONFLICT" });
-    expect(await repos.publications.listByListing(ids.listingId)).toEqual([]);
+    expect(await repos.publications.listBySubject(listingSubject(ids.listingId))).toEqual([]);
   });
 });
 

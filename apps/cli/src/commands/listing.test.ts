@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { FieldDefinition } from "@agentsales/core";
+import { type FieldDefinition, listingSubject } from "@agentsales/core";
 import { createInMemoryFieldDefinitionRepository } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { brokerData, harness, newListing } from "../../test/harness.js";
@@ -58,7 +58,9 @@ async function setup() {
     sortOrder: 0,
     isCover: false,
   });
-  await h.media.arrange(listing.id, [{ id: photo.id, sortOrder: 0, isCover: true }]);
+  await h.media.arrange(listingSubject(listing.id), [
+    { id: photo.id, sortOrder: 0, isCover: true },
+  ]);
   await h.listings.create(newListing(otra.id, "P-002"));
   return { h, listing, marca, otra };
 }

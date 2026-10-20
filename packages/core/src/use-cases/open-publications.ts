@@ -17,11 +17,11 @@ import type { Post } from "../post.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { ACTIVE_PUBLICATION_STATUSES } from "../publication-state.js";
 import {
+  listingSubject,
   type PostSubject,
   postSubject,
-  type SubjectRef,
+  type Subject,
   sameSubject,
-  toSubject,
 } from "../subject.js";
 
 /** Lo que se publica de un canal: un formato con sus medios, en orden. */
@@ -82,9 +82,12 @@ export async function planPublications(
   ).filter((account) => account.status === "connected");
   if (accounts.length === 0) return { toCreate: [], skipped: [] };
 
-  const plan = publicationPlan(content.platform, await repos.media.listByListing(listing.id));
-  const active = (await repos.publications.listByListing(listing.id)).filter((publication) =>
-    ACTIVE_PUBLICATION_STATUSES.includes(publication.status),
+  const plan = publicationPlan(
+    content.platform,
+    await repos.media.listBySubject(listingSubject(listing.id)),
+  );
+  const active = (await repos.publications.listBySubject(listingSubject(listing.id))).filter(
+    (publication) => ACTIVE_PUBLICATION_STATUSES.includes(publication.status),
   );
   const toCreate: PlannedPublication[] = [];
   const skipped: SkippedPublication[] = [];
@@ -161,14 +164,14 @@ export async function createPublications(
 
 /**
  * Las publicaciones de un canal del aviso o del post (todos sus idiomas), para devolverlas leídas
- * dentro del candado. Un texto es el id de un aviso, como antes de F9.
+ * dentro del candado.
  */
 export async function channelPublications(
   repos: Pick<LockedRepositories, "publications">,
-  subject: SubjectRef,
+  subject: Subject,
   platform: Platform,
 ): Promise<Publication[]> {
-  return (await repos.publications.listBySubject(toSubject(subject))).filter(
+  return (await repos.publications.listBySubject(subject)).filter(
     (publication) => publication.platform === platform,
   );
 }

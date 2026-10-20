@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   AppError,
   type FieldDefinition,
+  listingSubject,
   type NewListing,
   type PublicationRepository,
 } from "@agentsales/core";
@@ -78,7 +79,9 @@ async function setup() {
         isCover: false,
       });
       if (index === 0)
-        await media.arrange(listing.id, [{ id: photo.id, sortOrder: 0, isCover: true }]);
+        await media.arrange(listingSubject(listing.id), [
+          { id: photo.id, sortOrder: 0, isCover: true },
+        ]);
     }
     return listing;
   };

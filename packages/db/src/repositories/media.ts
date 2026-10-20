@@ -9,7 +9,6 @@ import {
   mediaSchema,
   type NewMedia,
   type Subject,
-  toSubject,
 } from "@agentsales/core";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
@@ -41,7 +40,7 @@ const subjectDetails = (subject: Subject) =>
 const isMediaConflict = (error: unknown) =>
   MEDIA_UNIQUES.some((constraint) => isUniqueViolation(error, constraint));
 
-/** Orden de `listByListing`: originales, variantes y renders (el enum sigue `MEDIA_ROLES`). */
+/** Orden de `listBySubject`: originales, variantes y renders (el enum sigue `MEDIA_ROLES`). */
 const roleOrder = sql`case ${media.role} when 'original' then 0 when 'processed' then 1 else 2 end`;
 
 /**
@@ -96,12 +95,12 @@ const isOriginal = eq(media.role, "original");
 /** `MediaRepository` sobre Drizzle (node-postgres en las apps, PGlite en los tests). */
 export function createMediaRepository(db: SchemaDatabase): MediaRepository {
   return {
-    listOriginals(ref) {
+    listOriginals(subject) {
       return withDbErrors(() =>
         db
           .select(recordColumns)
           .from(media)
-          .where(and(ofSubject(toSubject(ref)), isOriginal))
+          .where(and(ofSubject(subject), isOriginal))
           .orderBy(asc(media.sortOrder), asc(media.id)),
       );
     },
@@ -152,10 +151,9 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
       }
     },
 
-    async arrange(ref, items) {
+    async arrange(subject, items) {
       checkArrangement(items);
       if (items.length === 0) return;
-      const subject = toSubject(ref);
       const own = ofSubject(subject);
       await withDbErrors(() =>
         db.transaction(async (tx) => {
@@ -205,17 +203,6 @@ export function createMediaRepository(db: SchemaDatabase): MediaRepository {
           }
         }),
       );
-    },
-
-    listByListing(listingId) {
-      return withDbErrors(async () => {
-        const rows = await db
-          .select()
-          .from(media)
-          .where(eq(media.listingId, listingId))
-          .orderBy(roleOrder, asc(media.sortOrder), asc(media.id));
-        return rows.map(toMedia);
-      });
     },
 
     listBySubject(subject) {

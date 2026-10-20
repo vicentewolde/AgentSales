@@ -3,6 +3,7 @@ import { SAMPLE_CONTENT_DRAFT } from "../content/draft.js";
 import type { ListingStatus } from "../enums.js";
 import { AppError } from "../errors.js";
 import { llmCallCost } from "../llm-usage.js";
+import { listingSubject } from "../subject.js";
 import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
@@ -100,7 +101,7 @@ async function withEditedContent(t: Awaited<ReturnType<typeof setup>>) {
       rawOutput: SAMPLE_CONTENT_DRAFT,
     })),
   });
-  const [instagram] = await t.repos.contents.listCurrent(t.listingId);
+  const [instagram] = await t.repos.contents.listCurrent(listingSubject(t.listingId));
   await t.repos.contents.update(instagram?.id ?? "", { body: "a mano", status: "edited" });
 }
 
@@ -131,7 +132,7 @@ describe("requestContentRun", () => {
     await expect(requestContentRun(t.deps, { listingId: t.listingId })).rejects.toMatchObject({
       code: "LISTING_NOT_READY",
     });
-    expect(await t.repos.contentRuns.latest(t.listingId)).toBeNull();
+    expect(await t.repos.contentRuns.latest(listingSubject(t.listingId))).toBeNull();
     expect(t.queue.jobs).toEqual([]);
   });
 
@@ -195,7 +196,7 @@ describe("requestContentRun", () => {
         code: "PUBLICATION_PENDING",
         details: { publicationIds: [pending.id] },
       });
-      expect(await t.repos.contentRuns.latest(t.listingId)).toBeNull();
+      expect(await t.repos.contentRuns.latest(listingSubject(t.listingId))).toBeNull();
       expect(t.queue.jobs).toEqual([]);
     },
   );
@@ -233,7 +234,7 @@ describe("requestContentRun", () => {
   it("un texto aprobado cuenta como editado: CONTENT_EDITED salvo replaceEdits", async () => {
     const t = await setup();
     await withEditedContent(t);
-    const [instagram] = await t.repos.contents.listCurrent(t.listingId);
+    const [instagram] = await t.repos.contents.listCurrent(listingSubject(t.listingId));
     await t.repos.contents.update(instagram?.id ?? "", { status: "approved" });
 
     await expect(requestContentRun(t.deps, { listingId: t.listingId })).rejects.toMatchObject({
@@ -270,7 +271,7 @@ describe("requestContentRun", () => {
     await expect(requestContentRun(t.deps, { listingId: t.listingId })).rejects.toMatchObject({
       code: "QUEUE_UNAVAILABLE",
     });
-    expect(await t.repos.contentRuns.latest(t.listingId)).toMatchObject({
+    expect(await t.repos.contentRuns.latest(listingSubject(t.listingId))).toMatchObject({
       status: "failed",
       error: { code: "QUEUE_UNAVAILABLE" },
     });

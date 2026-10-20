@@ -8,6 +8,7 @@ import {
   confirmManualPublication,
   isAppError,
   type ListingRepository,
+  listingSubject,
   type MediaRepository,
   type MediaStorage,
   type MercadoLibreAuth,
@@ -72,7 +73,7 @@ export type PublicationRoutesDeps = PublishListingDeps &
      * Fuera del candado solo se lee: los cambios de estado van dentro, con sus repositorios
      * (ADR-0014). El tipo lo hace cumplir.
      */
-    publications: Pick<PublicationRepository, "get" | "listByListing" | "listEvents">;
+    publications: Pick<PublicationRepository, "get" | "listBySubject" | "listEvents">;
     /** `getSourceHash`: Actualizar compara la versión de la propiedad (F6-T07). */
     listings: Pick<ListingRepository, "get" | "getSourceHash">;
     /** Actualizar en Portal (F6-T07): el texto vigente y el contacto del corredor. */
@@ -80,7 +81,7 @@ export type PublicationRoutesDeps = PublishListingDeps &
     brokers: Pick<BrokerRepository, "findById">;
     /** El nombre de cada persona de la bitácora (spec F7 §4.3). */
     auth: { users: Pick<UserRepository, "get"> };
-    media: Pick<MediaRepository, "listByListing">;
+    media: Pick<MediaRepository, "listBySubject">;
     /** Solo para las miniaturas de `GET /listings/:id/publications` (R2 es privado, ADR-0007). */
     storage: Pick<MediaStorage, "signedReadUrl">;
     /** El modo de los intentos que se piden por la API (D11): nunca sale del cuerpo. */
@@ -161,8 +162,8 @@ export function listingPublicationRoutes(deps: PublicationRoutesDeps) {
         });
       }
       const [publications, media] = await Promise.all([
-        deps.publications.listByListing(id),
-        deps.media.listByListing(id),
+        deps.publications.listBySubject(listingSubject(id)),
+        deps.media.listBySubject(listingSubject(id)),
       ]);
       // Cada medio se firma una vez, aunque lo compartan varias publicaciones. Solo los que siguen
       // en R2 y no son originales (una publicación fija derivados y renders), y solo para las

@@ -217,7 +217,7 @@ export function subjectRepositoriesContract(
         const listing = await repos.listings.create(newListing(brand, unique("P-SUJ")));
         const listingRun = await repos.contentRuns.create({ listingId: listing.id, texts: true });
         expect(listingRun.subject).toEqual(listingSubject(listing.id));
-        expect(await repos.contentRuns.findActive(listing.id)).toEqual(listingRun);
+        expect(await repos.contentRuns.findActive(listingSubject(listing.id))).toEqual(listingRun);
         expect(await repos.contentRuns.findActive(listingSubject(listing.id))).toEqual(listingRun);
         // Las corridas de posts no son de `content.prepare`: el barrido no las ve.
         expect((await repos.contentRuns.listQueued()).map((item) => item.id)).not.toContain(run.id);
@@ -253,7 +253,7 @@ export function subjectRepositoriesContract(
         expect(current[0]).toMatchObject({ subject: postSubject(post.id), listingId: null });
         expect(await repos.contents.get(current[0]?.id ?? "")).toEqual(current[0]);
         // Lo del post no aparece en un aviso.
-        expect(await repos.contents.listCurrent(post.id)).toEqual([]);
+        expect(await repos.contents.listCurrent(listingSubject(post.id))).toEqual([]);
       });
 
       it("un canal repetido en el mismo idioma es CONTENT_PLATFORM_DUPLICATED, sin escribir nada", async () => {
@@ -351,6 +351,47 @@ export function subjectRepositoriesContract(
           limit: 100,
         });
         expect(due.map((item) => item.id)).toContain(publication.id);
+      });
+
+      it("listForTracking trae las de esos posts junto a las de esos avisos (F9-T08)", async () => {
+        const { post, texts, accountId } = await postWithTexts();
+        const otherPost = await postWithTexts();
+        const input = {
+          platformAccountId: accountId,
+          platform: "instagram" as const,
+          format: "post" as const,
+          contentId: texts[0]?.id ?? "",
+          mediaIds: [],
+        };
+        const mine = await repos.publications.create(
+          { ...input, postId: post.id },
+          { actor: "system" },
+        );
+        const theirs = await repos.publications.create(
+          { ...input, postId: otherPost.post.id, platformAccountId: otherPost.accountId },
+          { actor: "system" },
+        );
+        const since = new Date(Date.now() - 60_000);
+        const found = await repos.publications.listForTracking({
+          listingIds: [],
+          postIds: [post.id],
+          since,
+        });
+        expect(found.map((item) => item.id)).toEqual([mine.id]);
+        expect(found[0]?.subject).toEqual(postSubject(post.id));
+        expect(
+          (
+            await repos.publications.listForTracking({
+              listingIds: [],
+              postIds: [post.id, otherPost.post.id],
+              since,
+            })
+          ).map((item) => item.id),
+        ).toEqual(expect.arrayContaining([mine.id, theirs.id]));
+        // Sin posts, las de posts no aparecen (los avisos de siempre).
+        expect(
+          await repos.publications.listForTracking({ listingIds: [repos.missingId], since }),
+        ).toEqual([]);
       });
     });
 

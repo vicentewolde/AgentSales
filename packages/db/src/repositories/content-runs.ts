@@ -11,7 +11,6 @@ import {
   type Subject,
   subjectFieldsOf,
   subjectOfInput,
-  toSubject,
 } from "@agentsales/core";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
@@ -106,22 +105,22 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
       });
     },
 
-    findActive(ref) {
+    findActive(subject) {
       return withDbErrors(async () => {
         const [row] = await db
           .select()
           .from(contentRuns)
-          .where(and(ofSubject(toSubject(ref)), isActive));
+          .where(and(ofSubject(subject), isActive));
         return row === undefined ? null : toContentRun(row);
       });
     },
 
-    latest(ref) {
+    latest(subject) {
       return withDbErrors(async () => {
         const [row] = await db
           .select()
           .from(contentRuns)
-          .where(ofSubject(toSubject(ref)))
+          .where(ofSubject(subject))
           .orderBy(desc(contentRuns.createdAt), desc(contentRuns.id))
           .limit(1);
         return row === undefined ? null : toContentRun(row);

@@ -1,4 +1,8 @@
-import type { NewListingPublication, PublicationRepository } from "@agentsales/core";
+import {
+  listingSubject,
+  type NewListingPublication,
+  type PublicationRepository,
+} from "@agentsales/core";
 import { beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -128,7 +132,9 @@ export function publicationRepositoryContract(
       // La que no se creó no deja un evento suelto.
       expect(await repos.publications.listEvents(post.id)).toHaveLength(1);
       expect(
-        (await repos.publications.listByListing(input.listingId)).map((item) => item.format),
+        (await repos.publications.listBySubject(listingSubject(input.listingId))).map(
+          (item) => item.format,
+        ),
       ).toEqual(["post", "reel"]);
     });
 
@@ -442,7 +448,9 @@ export function publicationRepositoryContract(
       const second = await repos.publications.create(input, operator);
       expect(second.id).not.toBe(first.id);
       expect(
-        (await repos.publications.listByListing(input.listingId)).map((item) => item.status),
+        (await repos.publications.listBySubject(listingSubject(input.listingId))).map(
+          (item) => item.status,
+        ),
       ).toEqual(["cancelled", "approved"]);
     });
 

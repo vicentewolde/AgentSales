@@ -8,12 +8,14 @@ import {
   canPrepareContent,
   isAppError,
   type Listing,
+  listingSubject,
   type Media,
   type MediaStorage,
   type PlatformAccount,
   type PlatformCredentials,
   PUBLISH_MEDIA_URL_TTL_S,
   redactText,
+  type Subject,
 } from "@agentsales/core";
 import {
   INSTAGRAM_POLL,
@@ -59,8 +61,8 @@ export type IgSmokeDeps = {
     ): Promise<Pick<Listing, "id" | "brokerId" | "externalRef" | "status">[]>;
   };
   media: {
-    listByListing(
-      listingId: string,
+    listBySubject(
+      subject: Subject,
     ): Promise<
       Pick<
         Media,
@@ -180,7 +182,7 @@ async function findRender(deps: IgSmokeDeps, brokerId: string, listingRef: strin
     throw smokeError("LISTING_NOT_FOUND", `El corredor no tiene el aviso ${listingRef}`);
   }
   for (const listing of listings) {
-    const cover = (await deps.media.listByListing(listing.id)).find(
+    const cover = (await deps.media.listBySubject(listingSubject(listing.id))).find(
       (media) =>
         media.role === "rendered" && media.variant === "cover" && media.mime === "image/jpeg",
     );

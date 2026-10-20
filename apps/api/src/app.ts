@@ -132,7 +132,7 @@ export type AppDeps = {
    */
   publications: Pick<
     PublicationRepository,
-    "get" | "listByListing" | "listEvents" | "listByStatus" | "listForTracking"
+    "get" | "listBySubject" | "listEvents" | "listByStatus" | "listForTracking"
   >;
   // Cuentas (F3-T13): conectar con el token del panel de Meta o por OAuth, y desconectar.
   platformAccounts: PlatformAccountRepository;

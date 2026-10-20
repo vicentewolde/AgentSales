@@ -6,6 +6,7 @@ import {
   type FieldDefinitionRepository,
   type ListingRepository,
   listingFields,
+  listingSubject,
   type MediaRepository,
   type MediaStorage,
 } from "@agentsales/core";
@@ -104,7 +105,7 @@ export function listingRoutes(deps: ListingRoutesDeps) {
       const listing = await deps.listings.get(id);
       if (listing === null) throw notFound(id);
       // Una consulta: los originales (en orden y con sus medidas) y sus miniaturas.
-      const all = await deps.media.listByListing(id);
+      const all = await deps.media.listBySubject(listingSubject(id));
       const media = all.filter((item) => item.role === "original");
       const thumbOf = new Map(
         all

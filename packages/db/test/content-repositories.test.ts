@@ -1,3 +1,4 @@
+import { listingSubject } from "@agentsales/core";
 import {
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
@@ -99,6 +100,6 @@ describe("repositorios de contenido · lo que el puerto no muestra (PGlite)", ()
       }),
     ).rejects.toMatchObject({ code: "DB_QUERY_FAILED" });
     expect(await repos.contentRuns.get(run.id)).toEqual(before);
-    expect(await repos.contents.listCurrent(ownListing)).toEqual([]);
+    expect(await repos.contents.listCurrent(listingSubject(ownListing))).toEqual([]);
   });
 });

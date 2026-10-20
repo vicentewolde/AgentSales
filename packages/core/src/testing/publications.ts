@@ -159,9 +159,6 @@ export function createInMemoryPublicationRepository(
       const found = publications.get(id);
       return found === undefined ? null : structuredCopy(found.publication);
     },
-    async listByListing(listingId) {
-      return ordered((publication) => publication.listingId === listingId);
-    },
     async listBySubject(subject) {
       return ordered((publication) => sameSubject(publication.subject, subject));
     },
@@ -200,20 +197,23 @@ export function createInMemoryPublicationRepository(
         .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || a.id.localeCompare(b.id))
         .map((publication) => structuredCopy(publication));
     },
-    async listForTracking({ listingIds, since }) {
+    async listForTracking({ listingIds, postIds = [], since }) {
       const terminal: readonly Publication["status"][] = TERMINAL_PUBLICATION_STATUSES;
+      const ofSubject = ({ subject }: Publication) =>
+        subject.kind === "listing" ? listingIds.includes(subject.id) : postIds.includes(subject.id);
+      // Como en Postgres: los avisos primero (por id), después los posts (por id).
+      const order = ({ subject }: Publication) =>
+        `${subject.kind === "listing" ? 0 : 1}:${subject.id}`;
       return [...publications.values()]
         .filter(
           ({ publication }) =>
-            publication.listingId !== null &&
-            listingIds.includes(publication.listingId) &&
+            ofSubject(publication) &&
             (!terminal.includes(publication.status) ||
               publication.updatedAt.getTime() >= since.getTime()),
         )
         .sort(
           (a, b) =>
-            (a.publication.listingId ?? "").localeCompare(b.publication.listingId ?? "") ||
-            a.sequence - b.sequence,
+            order(a.publication).localeCompare(order(b.publication)) || a.sequence - b.sequence,
         )
         .map(({ publication }) => structuredCopy(publication));
     },

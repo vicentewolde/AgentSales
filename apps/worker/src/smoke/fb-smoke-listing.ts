@@ -9,6 +9,7 @@ import {
   isAppError,
   isManualMarketplaceAccount,
   type ListingRepository,
+  listingSubject,
   MARKETPLACE_TIME_ZONE,
   type MediaRepository,
   type MediaStorage,
@@ -37,7 +38,7 @@ export type FbSmokeListingDeps = {
   listings: Pick<ListingRepository, "list">;
   accounts: Pick<PlatformAccountRepository, "list">;
   contents: Pick<ContentRepository, "listCurrent">;
-  media: Pick<MediaRepository, "listByListing">;
+  media: Pick<MediaRepository, "listBySubject">;
   storage: Pick<MediaStorage, "signedReadUrl" | "get">;
   /** Solo para contar los intentos de hoy: el smoke no cambia estados ni deja eventos. */
   publications: Pick<PublicationRepository, "countLiveAttemptsSince">;
@@ -205,7 +206,7 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
       `Conéctalo (con pnpm dev): pnpm -s cli accounts connect marketplace --broker ${slug}`,
     );
   }
-  const content = (await deps.contents.listCurrent(listing.id)).find(
+  const content = (await deps.contents.listCurrent(listingSubject(listing.id))).find(
     (item) => item.platform === "fb_marketplace",
   );
   if (content === undefined || content.status !== "approved") {
@@ -215,7 +216,7 @@ async function run(deps: FbSmokeListingDeps, options: FbSmokeListingOptions): Pr
       `Apruébalo (con pnpm dev): pnpm -s cli approve ${ref} --platform marketplace`,
     );
   }
-  const all = await deps.media.listByListing(listing.id);
+  const all = await deps.media.listBySubject(listingSubject(listing.id));
   let mediaIds: string[];
   try {
     mediaIds = publicationPlan("fb_marketplace", all)[0]?.mediaIds ?? [];

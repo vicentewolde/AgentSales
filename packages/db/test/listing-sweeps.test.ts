@@ -1,4 +1,5 @@
 import { createSecretBox } from "@agentsales/config";
+import { listingSubject } from "@agentsales/core";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createBrokerRepository } from "../src/repositories/brokers.js";
@@ -69,7 +70,7 @@ describe("barridos de avisos con filas de posts en la tabla (PGlite)", () => {
       contents: [newContent("instagram")],
     });
     listingIds.pendingRun = pending.id;
-    const [listingText] = await contentRepo.listCurrent(pendingListing);
+    const [listingText] = await contentRepo.listCurrent(listingSubject(pendingListing));
 
     // Dos publicaciones del aviso: una programada que vence y otra en `publishing` sin cambios.
     const listingPublication = (format: "post" | "reel") =>

@@ -22,21 +22,6 @@ export type Subject = z.infer<typeof subjectSchema>;
 export const listingSubject = (id: string): ListingSubject => ({ kind: "listing", id });
 export const postSubject = (id: string): PostSubject => ({ kind: "post", id });
 
-/**
- * Lo que aceptan los repositorios donde antes iba el id de un aviso: un `Subject` o, como antes
- * de F9, el id de un aviso. Así los casos de uso de avisos no cambian hasta que T05 a T08 los
- * pasen a sujetos.
- */
-export type SubjectRef = Subject | string;
-
-/**
- * Un `SubjectRef` como `Subject`: un texto se trata como el id de un **aviso** (lo de antes de F9,
- * para que los casos de uso de avisos no cambien mientras T05 a T08 los pasan a sujetos). La rama
- * `string` de `SubjectRef` se quita al terminar F9-T08 (criterio de esa tarea en el spec).
- */
-export const toSubject = (ref: SubjectRef): Subject =>
-  typeof ref === "string" ? listingSubject(ref) : ref;
-
 /** Si dos sujetos son el mismo (mismo tipo y mismo id). */
 export const sameSubject = (a: Subject, b: Subject): boolean => a.kind === b.kind && a.id === b.id;
 

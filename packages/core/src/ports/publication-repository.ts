@@ -141,9 +141,10 @@ export interface PublicationRepository {
    */
   create(publication: NewPublication, event: PublicationEventInput): Promise<Publication>;
   get(id: string): Promise<Publication | null>;
-  /** Las de un aviso, por fecha de creación. */
-  listByListing(listingId: string): Promise<Publication[]>;
-  /** Las de un aviso o post (F9), por fecha de creación. */
+  /**
+   * Las de un aviso o post (F9), por fecha de creación. Desde F9-T08 absorbe el `listByListing` de
+   * antes (un aviso es `listingSubject(id)`).
+   */
   listBySubject(subject: Subject): Promise<Publication[]>;
   /**
    * Las que están en un estado, de avisos y de posts (por ejemplo, `publishing` para reencolarlas al
@@ -166,10 +167,15 @@ export interface PublicationRepository {
     excludePlatforms: readonly Platform[];
   }): Promise<Publication[]>;
   /**
-   * Las de esos avisos que están activas o cambiaron desde `since` (la vista de seguimiento, spec
-   * F6 §4.9), por aviso y fecha de creación.
+   * Las de esos avisos y posts que están activas o cambiaron desde `since` (la vista de
+   * seguimiento, spec F6 §4.9; los posts desde F9-T08), por aviso, después por post y fecha de
+   * creación. Sin ids no consulta.
    */
-  listForTracking(query: { listingIds: readonly string[]; since: Date }): Promise<Publication[]>;
+  listForTracking(query: {
+    listingIds: readonly string[];
+    postIds?: readonly string[];
+    since: Date;
+  }): Promise<Publication[]>;
   /**
    * Cambia el estado de `from` a `to` con los campos de `changes` y anota el evento, todo junto.
    * Devuelve la publicación ya cambiada.

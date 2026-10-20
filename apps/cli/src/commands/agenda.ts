@@ -13,15 +13,60 @@ import { type CliContext, exitWith } from "../context.js";
 import { guarded, type Io } from "../output.js";
 import { brokerSlugOf, platformShortName } from "./shared.js";
 
-// F6-T11 (spec F6 §4.9): la agenda en la terminal, con el comando para cada acción.
+// F6-T11 (spec F6 §4.9): la agenda en la terminal, con el comando para cada acción. Desde F9-T08,
+// con los posts junto a los avisos (el tema como título), lo que no se sabe si salió, lo que está
+// listo para publicar a mano y las cuentas por reconectar.
 
 export type AgendaDeps = Io & { client: ApiClient };
 export type AgendaOptions = { broker?: string; json?: boolean };
 
 type Item = AgendaResponse["items"][number];
 
+/**
+ * Los comandos de una publicación por su id, que valen igual para un aviso o un post: resolver una
+ * `outcome_unknown` y confirmar una a mano (`publications resolve` llega con F9-T12).
+ */
+function publicationCommands(item: Item): string[] | null {
+  const id = item.publicationId;
+  switch (item.action) {
+    case "resolve":
+      return [
+        `agentsales publications resolve ${id} --published`,
+        `agentsales publications resolve ${id} --not-published`,
+      ];
+    case "confirm":
+      return [
+        `pbpaste | agentsales publications confirm ${id} --url-stdin`,
+        `agentsales publications not-published ${id}`,
+      ];
+    default:
+      return null;
+  }
+}
+
+/**
+ * Los comandos de un post (F9-T08): verlo (`agentsales post show`, que crea F9-T12, con sus textos
+ * y publicaciones) y lo que se hace por el id de la publicación.
+ */
+function postCommands(item: Item, postId: string): string[] {
+  const show = `agentsales post show ${postId}`;
+  const byId = publicationCommands(item);
+  if (byId !== null) return [show, ...byId];
+  if (item.kind === "overdue") {
+    return [
+      show,
+      `agentsales schedule --publication ${item.publicationId} --at "AAAA-MM-DD HH:MM"`,
+    ];
+  }
+  if (item.kind === "upcoming") return [show, `agentsales unschedule ${item.publicationId}`];
+  return [show];
+}
+
 /** Los comandos que resuelven un ítem (la acción sugerida de la agenda). */
 export function agendaCommands(item: Item): string[] {
+  if (item.postId !== null) return postCommands(item, item.postId);
+  const byId = publicationCommands(item);
+  if (byId !== null) return byId;
   // El id del aviso: el `id_propiedad` se puede repetir entre corredores (`resolveListingId`).
   const ref = item.listingId ?? "";
   const channel = item.platform === null ? "" : ` --platform ${platformShortName(item.platform)}`;
@@ -48,6 +93,11 @@ export function agendaCommands(item: Item): string[] {
       return [`agentsales publications relist ${item.publicationId}`];
     case "sync":
       return [`agentsales publications sync ${item.publicationId}`];
+    case "reconnect":
+      // LinkedIn no renueva su token: se vuelve a conectar (`accounts connect linkedin`, F9-T19).
+      return [
+        `agentsales accounts connect ${item.platform === null ? "<plataforma>" : platformShortName(item.platform)} --broker ${item.brokerSlug ?? "<slug>"}`,
+      ];
     case "backup":
       // En el servidor (F8-T13) el respaldo va a R2 y lo hace el worker: `pnpm db:backup` del Mac
       // no actualiza su estado.
@@ -76,15 +126,19 @@ function itemLine(item: Item, c: Colors): string {
   const when =
     item.at === null
       ? null
-      : item.kind === "expiring"
+      : item.kind === "expiring" || item.kind === "token_expiring"
         ? item.expired
           ? `venció (${formatChileTime(item.at)})`
           : `vence en ${item.daysLeft} ${item.daysLeft === 1 ? "día" : "días"} (${formatChileTime(item.at)})`
         : formatChileTime(item.at);
   const mode = item.dryRun === null ? null : item.dryRun ? "simulación" : c.red("en vivo");
-  const parts = [c.bold(item.externalRef ?? "—"), channel, when, mode].filter(Boolean);
+  // El título: el `id_propiedad`, el tema del post (marcado como post) o el nombre de la cuenta.
+  const title = `${c.bold(item.title ?? item.externalRef ?? "—")}${item.postId === null ? "" : c.dim(" (post)")}`;
+  const parts = [title, channel, when, mode].filter(Boolean);
   const error =
-    item.kind === "failed" && item.code !== null ? `\n    ${item.code}: ${item.advice ?? ""}` : "";
+    (item.kind === "failed" || item.kind === "outcome_unknown") && item.code !== null
+      ? `\n    ${item.code}: ${item.advice ?? ""}`
+      : "";
   return `  ${parts.join(" · ")}${error}`;
 }
 
@@ -119,9 +173,9 @@ export function register(program: Command, ctx: CliContext): void {
   program
     .command("agenda")
     .description(
-      "Lo pendiente: atrasadas, recordatorios de Marketplace, atascadas, fallas, tareas a mano, lo que espera tu revisión o quedó aprobado sin publicar, Portal por vencer, próximas y el respaldo",
+      "Lo pendiente de propiedades y posts: atrasadas, recordatorios de Marketplace, lo que no se sabe si salió, atascadas, fallas, tareas a mano, lo que espera tu revisión o quedó aprobado sin publicar, cuentas por reconectar, Portal por vencer, próximas y el respaldo",
     )
-    .option("--broker <slug>", "solo las propiedades de un corredor")
+    .option("--broker <slug>", "solo lo de un corredor o marca")
     .option("--json", "salida en JSON")
     .action((options: AgendaOptions) =>
       exitWith(() => runAgenda({ ...ctx, client: ctx.api() }, options)),

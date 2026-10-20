@@ -333,7 +333,7 @@ function postLockContract(
         await expect(locked.media.arrange(listingSubject(ids.postId), [])).rejects.toMatchObject({
           code: "LOCK_SUBJECT_MISMATCH",
         });
-        await expect(locked.media.arrange(ids.postId, [])).rejects.toMatchObject({
+        await expect(locked.media.arrange(listingSubject(ids.postId), [])).rejects.toMatchObject({
           code: "LOCK_SUBJECT_MISMATCH",
         });
       });
@@ -405,9 +405,9 @@ describe("ListingLock · arrange solo con su propio aviso", () => {
     const listing = await listings.create(newListing(brokerId, unique("P-CAND")));
     const other = await listings.create(newListing(brokerId, unique("P-CAND")));
     await lock.run(listing.id, async (locked) => {
-      await locked.media.arrange(listing.id, []);
       await locked.media.arrange(listingSubject(listing.id), []);
-      await expect(locked.media.arrange(other.id, [])).rejects.toMatchObject({
+      await locked.media.arrange(listingSubject(listing.id), []);
+      await expect(locked.media.arrange(listingSubject(other.id), [])).rejects.toMatchObject({
         code: "LOCK_SUBJECT_MISMATCH",
       });
       await expect(locked.media.arrange(postSubject(listing.id), [])).rejects.toMatchObject({

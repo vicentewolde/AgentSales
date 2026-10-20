@@ -375,6 +375,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Descripción:** `agentsales post …` completo contra la API; `publications resolve` y `confirm`.
 - **Archivos principales:** `apps/cli/src/commands/post.ts`, `apps/api/src/routes/posts.ts`
 - **Hecho cuando:**
+  - [ ] los comandos que la agenda ya sugiere para posts existen: `post show <id>`, `publications resolve <id> --published|--not-published`, `publications confirm <id> --url-stdin` y `publications not-published <id>` para un post, y uno para reintentar o publicar por id de publicación (revisión de F9-T08)
   - [ ] con un publisher falso, `post create → draft → approve → schedule` deja la publicación programada y `agenda` la muestra
   - [ ] `pnpm check` pasa
 
@@ -552,3 +553,4 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 | 2026-10-20 | Revisión de F9-T10: §4.2 suma las reglas de los posts (archivado no se edita, no se archiva con publicaciones pendientes, hasta 20 medios); F9-T17 suma el criterio del sha256 opcional sobre 100 MB (ADR-0025 punto 2); el video para X sale con la duración completa (su límite lo revisa T16) |
 | 2026-10-20 | F9-T07: aclarado que una publicación de una cuenta en modo `manual` (LinkedIn) programada no es solo un recordatorio como Marketplace: a la hora el reloj la deja en `awaiting_manual_confirm`, lista para publicar a mano, sin llamar a la red |
 | 2026-10-20 | Revisión de F9-T11: F9-T16 suma el criterio de la marca explícita del operador por post para un enlace en X (hasta T16, "marcar" es escribirlo en el brief del operador) |
+| 2026-10-20 | Revisión de F9-T08: T12 suma el criterio de los comandos que la agenda ya sugiere para posts (incluido reintentar por id de publicación) |

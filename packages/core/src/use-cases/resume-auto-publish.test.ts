@@ -26,7 +26,7 @@ function recordingAutoPublish(publications: { createdAt: Date }[] = []) {
     brokers: { findById: async () => ({ id: "b", autoPublish: false }) },
     lock: {
       run: async (_id: string, fn: (locked: unknown) => Promise<unknown>) =>
-        fn({ publications: { listByListing: async () => publications } }),
+        fn({ publications: { listBySubject: async () => publications } }),
     },
   } as unknown as AutoPublishDeps;
   return { asked, autoPublish };
@@ -111,7 +111,7 @@ describe("resumeCutAutoPublish", () => {
       lock: {
         run: async (id: string, fn: (locked: unknown) => Promise<unknown>) => {
           if (id === first.listingId) throw Object.assign(new Error("x"), { code: "IGNORED" });
-          return fn({ publications: { listByListing: async () => [] } });
+          return fn({ publications: { listBySubject: async () => [] } });
         },
       },
     } as unknown as Parameters<typeof resumeCutAutoPublish>[0];

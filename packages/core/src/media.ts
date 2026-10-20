@@ -3,7 +3,7 @@ import { MEDIA_KINDS, MEDIA_ROLES, MEDIA_VARIANTS } from "./enums.js";
 
 /**
  * Medio (`media`): un original subido en la carga, una variante (`processed`) o un render
- * (`rendered`). Es la entidad que devuelve `MediaRepository.listByListing` (ADR-0011, el esquema
+ * (`rendered`). Es la entidad que devuelve `MediaRepository.listBySubject` (ADR-0011, el esquema
  * que F1 dejó pendiente). La vista HTTP (`mediaItemSchema` de `contracts`) no expone `storagePath`
  * ni `checksum`. `MediaRecord` sigue siendo la proyección de la carga (solo originales).
  */

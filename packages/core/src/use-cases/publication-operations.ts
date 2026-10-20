@@ -14,7 +14,7 @@ import {
   type RemoteState,
   remoteStateSchema,
 } from "../publication.js";
-import { listingIdOf } from "../subject.js";
+import { listingIdOf, listingSubject } from "../subject.js";
 import { accessTokenProvider } from "./ensure-access-token.js";
 import { expireAccountIfRejected } from "./platform-auth.js";
 import { modeOf, publicationNotFound } from "./publication-start.js";
@@ -264,7 +264,7 @@ export async function listingBackToReadyIfLast(
   listingId: string,
 ): Promise<boolean> {
   // Una que se está publicando en `live` no cuenta: si sale, el intento sube el aviso a `active`.
-  const stillLive = (await locked.publications.listByListing(listingId)).some(
+  const stillLive = (await locked.publications.listBySubject(listingSubject(listingId))).some(
     (other) => !other.dryRun && (other.status === "published" || other.status === "paused"),
   );
   if (stillLive) return false;

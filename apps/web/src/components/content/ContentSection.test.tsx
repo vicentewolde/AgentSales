@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { AppError, SAMPLE_CONTENT_DRAFT, RUN_WAIT as WAIT } from "@agentsales/core";
+import { AppError, listingSubject, SAMPLE_CONTENT_DRAFT, RUN_WAIT as WAIT } from "@agentsales/core";
 import {
   contentDefinitionsFixture,
   createInMemoryJobQueue,
@@ -75,7 +75,7 @@ describe("panel: sección Contenido", () => {
 
     fireEvent.click(within(section).getByRole("button", { name: "Preparar contenido" }));
     expect(await within(section).findByText("Preparando: en cola…")).toBeTruthy();
-    const run = await t.contentRuns.latest(t.listing.id);
+    const run = await t.contentRuns.latest(listingSubject(t.listing.id));
     expect(run).toMatchObject({ status: "queued", texts: true });
     // Mientras corre, no se puede pedir otra.
     expect(
@@ -111,7 +111,9 @@ describe("panel: sección Contenido", () => {
 
     fireEvent.click(within(section).getByRole("button", { name: "Rehacer imágenes" }));
     await within(section).findByText("Preparando: en cola…");
-    expect(await t.contentRuns.latest(t.listing.id)).toMatchObject({ texts: false });
+    expect(await t.contentRuns.latest(listingSubject(t.listing.id))).toMatchObject({
+      texts: false,
+    });
     await advance(WAIT.queuedWarningMs + WAIT.pollMs);
     expect(
       await within(section).findByText("Sigue en cola: ¿está corriendo el worker? (pnpm dev)"),
@@ -183,7 +185,7 @@ describe("panel: sección Contenido", () => {
   it("la revisión muestra errores en rojo y advertencias en ámbar, y marca la pestaña", async () => {
     const t = await setup();
     await t.prepared();
-    const [, portal] = await t.contents.listCurrent(t.listing.id);
+    const [, portal] = await t.contents.listCurrent(listingSubject(t.listing.id));
     await t.contents.update(portal?.id ?? "", {
       body: "Un departamento increíble en Calle Inventada 123.",
     });
@@ -210,7 +212,7 @@ describe("panel: sección Contenido", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const t = await setup();
     await t.prepared();
-    const [instagram] = await t.contents.listCurrent(t.listing.id);
+    const [instagram] = await t.contents.listCurrent(listingSubject(t.listing.id));
     await t.contents.update(instagram?.id ?? "", { body: "Lo escribí yo.", status: "edited" });
     const section = await t.open();
     await within(section).findByRole("tablist", { name: "Canales" });
@@ -220,7 +222,7 @@ describe("panel: sección Contenido", () => {
     fireEvent.click(within(section).getByRole("button", { name: "Rehacer solo imágenes" }));
 
     await within(section).findByText("Preparando: en cola…");
-    expect(await t.contentRuns.latest(t.listing.id)).toMatchObject({
+    expect(await t.contentRuns.latest(listingSubject(t.listing.id))).toMatchObject({
       status: "queued",
       texts: false,
     });
@@ -230,7 +232,7 @@ describe("panel: sección Contenido", () => {
   it("con un texto aprobado también pregunta antes de reemplazarlo (F3)", async () => {
     const t = await setup();
     await t.prepared();
-    const [instagram] = await t.contents.listCurrent(t.listing.id);
+    const [instagram] = await t.contents.listCurrent(listingSubject(t.listing.id));
     await t.contents.update(instagram?.id ?? "", { status: "approved" });
     const section = await t.open();
     await within(section).findByRole("tablist", { name: "Canales" });
@@ -257,7 +259,7 @@ describe("panel: sección Contenido", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const t = await setup();
     await t.prepared();
-    const [instagram] = await t.contents.listCurrent(t.listing.id);
+    const [instagram] = await t.contents.listCurrent(listingSubject(t.listing.id));
     await t.contents.update(instagram?.id ?? "", { body: "Lo escribí yo.", status: "edited" });
     const section = await t.open();
     await within(section).findByRole("tablist", { name: "Canales" });
@@ -265,12 +267,12 @@ describe("panel: sección Contenido", () => {
     fireEvent.click(within(section).getByRole("button", { name: "Preparar contenido" }));
     fireEvent.click(await within(section).findByRole("button", { name: "Reemplazar mis textos" }));
     await within(section).findByText("Preparando: en cola…");
-    expect(await t.contentRuns.latest(t.listing.id)).toMatchObject({ texts: true });
+    expect(await t.contentRuns.latest(listingSubject(t.listing.id))).toMatchObject({ texts: true });
 
     await t.prepare();
     await advance(WAIT.pollMs);
     await waitFor(async () => {
-      const [current] = await t.contents.listCurrent(t.listing.id);
+      const [current] = await t.contents.listCurrent(listingSubject(t.listing.id));
       expect(current?.status).toBe("draft");
     });
   });
@@ -395,7 +397,7 @@ describe("panel: edición de textos", () => {
       name: "Revisión editorial de Portal Inmobiliario",
     });
     expect(within(checks).getByText(/Advertencia/)).toBeTruthy();
-    const [, portal] = await t.contents.listCurrent(t.listing.id);
+    const [, portal] = await t.contents.listCurrent(listingSubject(t.listing.id));
     expect(portal).toMatchObject({
       status: "edited",
       title: "Departamento luminoso en Ñuñoa",
@@ -516,7 +518,7 @@ describe("panel: edición de textos", () => {
   it("antes de regenerar sobre una edición avisa que se reemplazará, sin pedir nada todavía", async () => {
     const t = await setup();
     await t.prepared();
-    const [instagram] = await t.contents.listCurrent(t.listing.id);
+    const [instagram] = await t.contents.listCurrent(listingSubject(t.listing.id));
     await t.contents.update(instagram?.id ?? "", { body: "Lo escribí yo.", status: "edited" });
     const section = await t.open();
     await within(section).findByRole("tablist", { name: "Canales" });
@@ -529,7 +531,7 @@ describe("panel: edición de textos", () => {
 
     fireEvent.click(within(section).getByRole("button", { name: "Reemplazar mis textos" }));
     await within(section).findByText(/Preparando/);
-    expect(await t.contentRuns.latest(t.listing.id)).toMatchObject({ texts: true });
+    expect(await t.contentRuns.latest(listingSubject(t.listing.id))).toMatchObject({ texts: true });
   });
 
   it("cada pestaña conserva su borrador: cambiar de canal no lo cruza con otro", async () => {
@@ -592,7 +594,7 @@ describe("panel: edición de textos", () => {
     ).toBeTruthy();
 
     fireEvent.click(within(t.form).getByRole("button", { name: "Descartar mi borrador" }));
-    const [current] = await t.contents.listCurrent(t.listing.id);
+    const [current] = await t.contents.listCurrent(listingSubject(t.listing.id));
     expect((within(t.form).getByLabelText("Texto") as HTMLTextAreaElement).value).toBe(
       current?.body,
     );

@@ -7,7 +7,6 @@ import {
   PLATFORMS,
   pickContentChanges,
   subjectFieldsOf,
-  toSubject,
 } from "@agentsales/core";
 import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
@@ -69,8 +68,7 @@ export function createContentRepository(db: SchemaDatabase): ContentRepository {
       });
     },
 
-    listCurrent(ref) {
-      const subject = toSubject(ref);
+    listCurrent(subject) {
       return withDbErrors(async () => {
         // El más reciente de cada canal e idioma (`DISTINCT ON`). El índice (aviso o post,
         // platform, created_at) acota las filas; con pocas filas por canal, el orden descendente
