@@ -151,3 +151,67 @@ Revisa el título y el cuerpo, sin mayúsculas ni tildes, y no se guarda: se cal
 - Las notas internas no se buscan en los hashtags.
 
 Las listas de términos viven en `packages/core/src/content/check-terms.ts`. Ampliarlas no cambia `CONTENT_PROMPT_VERSION`, porque no cambian los textos generados.
+
+## Posts de marca: el texto por red (F9-T11, spec F9 §4.4, ADR-0030)
+
+Un post de marca no tiene datos estructurados que ensamblar: **la IA escribe el texto completo de cada red** (ADR-0030 modifica ADR-0013 solo para posts), un texto por red **e idioma**, y el código lo valida y lo revisa. Todo vive en `packages/core/src/social/`.
+
+**Las fuentes de hechos** (ADR-0030, punto 1). La IA solo afirma lo que está en:
+- el **perfil editorial** de la marca: `facts` (lo principal: una frase por hecho), el público, la línea de contenido del post y los hashtags del perfil y de la marca, además del nombre de la marca;
+- el **brief del post, solo si lo escribió o editó el operador** (`brief_origin = operator`). El brief de una idea de la IA (`brief_origin = ai`) **no viaja** a la IA ni cuenta como fuente;
+- el **tema**, solo en un post manual (`source = manual`): el tema de una idea lo escribió la IA, así que viaja como tema pero no como fuente.
+
+`avoid` no es fuente (es lo que no se usa), y nunca viajan notas internas ni nada de otra marca: el perfil y el corredor son siempre los del propio post. Sin `facts`, la IA escribe sobre ideas y criterios, sin cifras, clientes ni resultados.
+
+**Las redes y los idiomas.** Las redes de un post son las de `POST_PLATFORMS` donde la marca tiene una cuenta no desconectada (una vencida o con error cuenta: se reconecta) **o** una cadencia en su perfil (`postPlatforms`); sin ninguna, la corrida falla con `POST_NO_PLATFORMS`. Con dos idiomas en el perfil (P4), se redacta un texto por red **en cada idioma**, el principal primero; cada uno se aprueba y se publica por separado, como publicaciones distintas de la misma cuenta, espaciadas por la cadencia. El texto en inglés no es una traducción literal.
+
+**El prompt** (`social-post-v1`, `SOCIAL_PROMPT_VERSION`, guardado en `contents.prompt_version` y en el reporte): las reglas en el prompt de sistema y los datos como JSON en un bloque `<datos_del_post>`, escapado como el de los avisos (un brief no puede cerrarlo) y con la instrucción de tratarlo solo como datos. Reglas: solo afirmar lo de las fuentes; toda cifra, nombre propio, enlace y mención (@) debe estar tal cual en ellas; nunca `@everyone` ni `@here`; en X, un enlace solo si está en `enlaces_permitidos_en_x`; respetar `evitar`; el tono de `brokers.tone`; mayúscula solo al inicio de frase y en nombres propios (sin "Title Case"); texto plano, sin markdown; los hashtags en su lista, nunca dentro del texto (Instagram y TikTok de 3 a 8, LinkedIn hasta 3, X hasta 2, Discord ninguno). Los largos que pide van al 90 % del máximo de cada red.
+
+**Lo que devuelve la IA** (`socialDraftSchema`, estricto; el JSON Schema del proveedor no lleva topes):
+
+```json
+{
+  "texts": [{ "platform": "x", "language": "es", "body": "...", "hashtags": ["#..."] }],
+  "warnings": ["..."]
+}
+```
+
+Tiene que traer **un texto por cada red e idioma pedidos** (`validateSocialDraft`): uno que falta es un motivo de reintento (`texts: falta el texto de x en en`, sin citar a la IA); los que no se pidieron o se repiten se descartan. Los hashtags se normalizan (`#` y solo letras, con tildes y mayúsculas, números y `_`; sin repetir). Como en los avisos, se reintenta una vez y después la corrida queda `failed` con `LLM_OUTPUT_INVALID`.
+
+### Reglas por red
+
+El texto de cada red se mide **con los hashtags**, en un párrafo aparte separados por espacios (`joinedPostText`, como el caption de Instagram); `postTextLength` lo cuenta como lo cuenta cada red, y la usan la revisión y el contador del editor. El texto que se envía a cada red (`socialCaption`, F9-T06) debe armarse igual.
+
+| Red | Largo | Cómo se cuenta y qué más |
+|---|---|---|
+| Instagram | 2.200 | En UTF-16, como hoy. Hasta 30 hashtags (contando los que vayan dentro del texto). Necesita imagen o video |
+| X | 280 **ponderados** | `xWeightedLength`, sin la librería `twitter-text`: cada URL pesa 23 (también un dominio suelto como `agentpey.com`), cada emoji 2 (con sus modificadores y uniones), las letras latinas con tilde 1 y los CJK 2; el texto se normaliza a NFC. Hasta 4 imágenes o 1 video. Un enlace solo si el operador lo puso en el brief (ver abajo) |
+| LinkedIn | 3.000 | Contando los **escapes**: el campo `commentary` exige escapar con `\` los 15 caracteres reservados <code>&#124; { } @ [ ] ( ) &lt; &gt; # \ * _ ~</code> (`escapeLinkedInText`, probada con todos; los hashtags quedan como texto). Si el límite de LinkedIn cuenta la cadena escapada o la visible no está verificado (`linkedin.md` §5.3): se mide la escapada, la más larga. El publisher (T15) envía el texto escapado |
+| Discord | 2.000 | `@everyone` y `@here` impiden aprobar; además, el publisher (T14) envía siempre `allowed_mentions: { parse: [] }` y neutraliza las menciones masivas en el texto (`discord.md` §4). Hasta 10 archivos. Muestra markdown |
+| TikTok | 2.200 | El texto que acompaña al video (solo video en F9) |
+
+**Enlaces en X (D6).** Un post de X con enlace cuesta US$0,20 en vez de US$0,015 (`x.md` §2). Desde F9-T11, "el operador lo marca" es escribirlo en el **brief del post**: un enlace del brief del operador se permite en X con la advertencia `LINK_COST`; uno que está en los `facts` pero no en el brief es `LINK_NOT_ALLOWED` (sirve en las demás redes, no en X). T16 puede sumar una marca explícita en el post y anota el costo en `publications.cost_usd`.
+
+### Cómo revisa (`checkPostContent`)
+
+Como `checkContent`, es una función pura que corre sobre el texto final, también después de una edición a mano, y no se guarda (se calcula al leer y al aprobar; el reporte de la corrida guarda solo los códigos por red e idioma, `postChecks`). Al aprobar, editar o quitar la aprobación, el post y el perfil de su marca se leen **antes** del candado del post (`beforeContentLock` con `postReview`), porque el candado no trae ese repositorio.
+
+| Código | Severidad | Cómo lo detecta |
+|---|---|---|
+| `TOO_LONG` | error | El largo de la red con los hashtags (tabla de arriba) |
+| `HASHTAG_LIMIT` | error | Más de 30 hashtags en Instagram |
+| `MASS_MENTION` | error | `@everyone` o `@here` (sin mirar mayúsculas), en cualquier red |
+| `FACT_NOT_IN_PROFILE` | error | Un hecho que no está en las fuentes (heurística, abajo): una **cifra**, un posible **nombre propio**, un **enlace** o una **mención** |
+| `LINK_NOT_ALLOWED` | error | En X, un enlace de las fuentes que el operador no puso en el brief del post |
+| `MEDIA_REQUIREMENT` | error | Un post de video sin video (un reel exige video); Instagram sin imagen ni video; TikTok sin video; X con más de 4 imágenes; Discord con más de 10; un post de imágenes sin imágenes. Se cuentan los originales que subió el operador |
+| `LINK_COST` | advertencia | X con un enlace: cuesta US$0,20 en vez de US$0,015 |
+| `AVOID_TERM` | advertencia | Algo de `avoid` del perfil (como palabra o frase completa, sin mirar tildes ni mayúsculas) |
+| `MARKDOWN` | advertencia | `**`, `__`, una línea que empieza con `# ` o un link `[texto](url)`, salvo en Discord |
+
+**La heurística de hechos** (`FACT_NOT_IN_PROFILE`), contra todo el texto de las fuentes junto:
+- **Cifras:** cada número del texto y de los hashtags (`5.800`, `1,000`, `2026`) debe aparecer en las fuentes; se comparan sin separadores (`1.000` y `1,000` son el mismo en los dos idiomas). Un número pegado a una letra (`B2B`, `web3`) es parte de un nombre, no una cifra.
+- **Nombres propios:** una palabra con alguna mayúscula (`Banco`, `AgentPey`, `CEO`) que **no abre** una frase, una línea ni va tras `¿`, `¡` o una comilla, y que no está entre las palabras de las fuentes ni en una lista corta de palabras comunes con mayúscula (las redes donde se publica, días, meses e idiomas en inglés, `I`, y siglas como `IA`, `API`, `CEO`, `CRM`, `UF`). Las seguidas se informan juntas (`Banco Central`).
+- **Enlaces:** con `http`, `www.` o un dominio suelto de los frecuentes (`.com`, `.cl`, `.io`, `.ai`, `.dev`…), comparados sin protocolo, `www.`, mayúsculas ni la barra final; la ruta cuenta (`agentpey.com/precios` no es `agentpey.com`).
+- **Menciones:** `@algo` debe estar en las fuentes (un correo no es una mención, pero su dominio es un enlace).
+
+**Límites conocidos:** no ve un nombre propio escrito en minúsculas ni uno que abre una frase, ni una cifra escrita con palabras ("tres clientes"); un número se acepta si aparece en cualquier fuente, aunque hable de otra cosa; y un hashtag inventado sin cifras (`#RemaxChile`) no se revisa como nombre. La regla del prompt es la primera barrera y el operador aprueba cada texto. Ampliar la lista de palabras comunes no cambia `SOCIAL_PROMPT_VERSION`.
