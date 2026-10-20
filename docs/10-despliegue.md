@@ -202,6 +202,12 @@ Volver atrás **no deshace migraciones** ni cambios de secretos. Por eso las mig
 **Revertir los posts a mano** deshace la `0015` a la `0018` **juntas** (en producción las cuatro están aplicadas), en este orden: una guarda que se detiene si la última migración registrada no es la `0018`; borrar lo de los posts (publicaciones con su bitácora, textos, corridas y medios de post; los archivos de R2 bajo `posts/` quedan y se borran aparte); deshacer la `0018`, la `0017` y la `0016`; después la `0015` (los `CHECK`, el único de antes de `contents`, las columnas, tablas y tipos nuevos, y `SET NOT NULL` en `listing_id`); y borrar los **cuatro** registros del migrador. Los cuatro, porque el migrador de Drizzle mira solo el último registro y aplica las migraciones con un `when` mayor: si quedara el de la `0018`, al redesplegar F9 la `0015` no se volvería a aplicar y las tablas de los posts no existirían, sin ningún error. Lo normal es arreglar hacia adelante.
 
 > **Solo a mano, con un respaldo previo (paso 10) y probado antes en una rama de Neon; lo decide el operador.** Borra para siempre los posts, sus textos y sus publicaciones. Es la referencia de cómo deshacer la `0015` a la `0018`, no un paso del despliegue: un test lo corre sobre una copia en memoria, vuelve a aplicar las migraciones con la regla del migrador y comprueba que el esquema queda igual al de una base nueva. Si la guarda se detiene porque hay una migración posterior a la `0018`, este bloque ya no sirve tal cual: pídele a Claude el que corresponde.
+>
+> **En orden:**
+> 1. **Anota lo que ya salió a las redes.** Lo publicado en Instagram, X, LinkedIn, Discord o TikTok se queda allá, pero el bloque borra su enlace y su registro. Antes, guarda los enlaces (`pnpm -s cli publications`) y, si hace falta, bórralos a mano en cada red, como los archivos de R2 bajo `posts/`.
+> 2. **Apaga el worker y la API** (paso 8). Con el worker de F9 encendido, un post podría estar saliendo mientras el bloque borra su publicación: llegaría a la red sin dejar registro.
+> 3. **Corre el bloque** con `psql "<cadena de la rama>" -v ON_ERROR_STOP=1 -f revertir.sql` o en el SQL Editor de Neon sobre la rama. Es una sola transacción: si la guarda se detiene, no cambia nada.
+> 4. **Despliega la versión anterior.** Los trabajos de posts que quedaron en cola (`post.draft`, `post.media`, `content.plan` y los `publication.publish` de posts) fallan al no encontrar su fila, y eso no hace daño.
 
 <!-- revertir-0015-0018: el test packages/db/test/f9-posts-migration.test.ts lee este bloque -->
 ```sql
