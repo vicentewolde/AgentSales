@@ -6,11 +6,16 @@ import { isAppError, LLM_PROVIDERS, type LlmProvider } from "@agentsales/core";
 import { createLlmProvider } from "@agentsales/llm";
 import { evalFolderName } from "../eval/run-eval.js";
 import { runSocialEval } from "../eval/run-social-eval.js";
-import { fakeSocialEvalOptions, parseIdeas, selectProfiles } from "../eval/social-options.js";
-import { apiLlmOptions, llmProviderOptions } from "../llm-options.js";
+import {
+  FAKE_LLM_ENV,
+  parseIdeas,
+  type SocialEvalLlmEnv,
+  selectProfiles,
+  socialEvalProviderOptions,
+} from "../eval/social-options.js";
 
 // `pnpm eval:social [--provider fake|claude-cli|anthropic-api] [--model <id>] [--profile <nombre>]
-// [--ideas N] [--out]` (spec F9-T22): el plan de ideas y los textos de algunas ideas sobre los
+// [--ideas N] [--strict] [--out]` (spec F9-T22): el plan de ideas y los textos de algunas ideas sobre los
 // perfiles de prueba de `src/eval/social-profiles.ts`, **sin la base** (no se conecta a ella).
 // `--provider fake` no gasta cuota ni lee el `.env`; sin `--provider`, el de `LLM_PROVIDER`. La CLI
 // de Claude gasta cuota del plan y la API, dinero (imprime el costo estimado): lo corre el operador.
@@ -44,6 +49,10 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 
+/** `true` si el texto es un proveedor de IA (`LLM_PROVIDERS`). */
+const isLlmProvider = (value: string): value is LlmProvider =>
+  (LLM_PROVIDERS as readonly string[]).includes(value);
+
 let providerName: LlmProvider | undefined;
 try {
   const { values } = parseArgs({
@@ -52,11 +61,12 @@ try {
       model: { type: "string" },
       profile: { type: "string" },
       ideas: { type: "string" },
+      strict: { type: "boolean", default: false },
       out: { type: "boolean", default: false },
     },
   });
   const requested = values.provider;
-  if (requested !== undefined && !(LLM_PROVIDERS as readonly string[]).includes(requested)) {
+  if (requested !== undefined && !isLlmProvider(requested)) {
     throw new Error(
       `--provider acepta ${LLM_PROVIDERS.join(", ")} (sin la opción se usa LLM_PROVIDER del .env)`,
     );
@@ -65,47 +75,31 @@ try {
   const ideas = parseIdeas(values.ideas);
 
   // Con `--provider fake` no hace falta el `.env`: ni la base ni la IA.
-  let provider = requested as LlmProvider | undefined;
-  let env: ReturnType<typeof loadEnv> | undefined;
-  if (provider !== "fake") {
+  let llmEnv: SocialEvalLlmEnv = FAKE_LLM_ENV;
+  if (requested !== "fake") {
     loadEnvFile();
-    env = loadEnv();
-    provider ??= env.LLM_PROVIDER;
+    const env = loadEnv();
+    const provider = requested ?? env.LLM_PROVIDER;
+    // `--model <id>`: el de la API (`ANTHROPIC_MODEL`) o el de la CLI de Claude (`LLM_MODEL`).
+    const model =
+      values.model === undefined
+        ? {}
+        : provider === "anthropic-api"
+          ? { ANTHROPIC_MODEL: values.model }
+          : { LLM_MODEL: values.model };
+    llmEnv = provider === "fake" ? FAKE_LLM_ENV : { ...env, LLM_PROVIDER: provider, ...model };
   }
+  const provider = llmEnv.LLM_PROVIDER;
+  providerName = provider;
   if (values.model !== undefined && provider === "fake") {
     throw new Error("--model va con --provider claude-cli o anthropic-api");
   }
-  providerName = provider;
-
-  let planLlm: ReturnType<typeof createLlmProvider>;
-  let textLlm: ReturnType<typeof createLlmProvider>;
-  if (provider === "fake" || env === undefined) {
-    const fake = fakeSocialEvalOptions();
-    planLlm = createLlmProvider(fake.plan);
-    textLlm = createLlmProvider(fake.texts);
-  } else if (provider === "anthropic-api") {
-    // `--model <id>` compara modelos de la API con la clave del `.env` (como `eval:content`).
-    const api = apiLlmOptions({
-      ...env,
-      ...(values.model === undefined ? {} : { ANTHROPIC_MODEL: values.model }),
-    });
-    if (api === null)
-      throw new Error("--provider anthropic-api necesita ANTHROPIC_API_KEY en el .env");
-    planLlm = createLlmProvider(api);
-    textLlm = planLlm;
-  } else {
-    planLlm = createLlmProvider(
-      llmProviderOptions(
-        {
-          ...env,
-          LLM_PROVIDER: "claude-cli",
-          ...(values.model === undefined ? {} : { LLM_MODEL: values.model }),
-        },
-        process.env,
-      ),
-    );
-    textLlm = planLlm;
+  if (provider === "anthropic-api" && !llmEnv.ANTHROPIC_API_KEY) {
+    throw new Error("--provider anthropic-api necesita ANTHROPIC_API_KEY en el .env");
   }
+  const options = socialEvalProviderOptions(llmEnv, process.env);
+  const planLlm = createLlmProvider(options.plan);
+  const textLlm = createLlmProvider(options.texts);
 
   console.log(
     `Evaluando con ${provider} ${profiles.length === 1 ? "el perfil" : "los perfiles"} ` +
@@ -113,7 +107,7 @@ try {
   );
   const { exitCode, report } = await runSocialEval(
     { planLlm, textLlm, print: (line) => console.log(line) },
-    { profiles, ideas, signal: abort.signal },
+    { profiles, ideas, strict: values.strict, signal: abort.signal },
   );
   for (const code of new Set(report.profiles.flatMap((item) => item.failures.map((f) => f.code)))) {
     const hint = hintFor(code, providerName);

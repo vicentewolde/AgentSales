@@ -1,21 +1,40 @@
-import { PLAN_MAX_IDEAS, SAMPLE_SOCIAL_DRAFT, samplePlanResponse } from "@agentsales/core";
+import { PLAN_MAX_IDEAS } from "@agentsales/core";
 import type { LlmProviderOptions } from "@agentsales/llm";
+import { planLlmProviderOptions, socialLlmProviderOptions } from "../llm-options.js";
 import { SOCIAL_EVAL_PROFILES, type SocialEvalProfile } from "./social-profiles.js";
 
-// Las opciones de `pnpm eval:social` que no dependen del `.env` (spec F9-T22).
+// Las opciones de `pnpm eval:social` (spec F9-T22).
 
 /** Cuántas ideas por perfil se redactan si no se dice (`--ideas`). */
 export const DEFAULT_EVAL_IDEAS = 3;
 
+/** Lo que leen las opciones del proveedor de IA del worker (`llm-options.ts`). */
+export type SocialEvalLlmEnv = Parameters<typeof planLlmProviderOptions>[0];
+
 /**
- * Los proveedores `fake` de la evaluación, sin red ni cuota: el plan de ejemplo de core, que lee lo
- * pedido del prompt (`samplePlanResponse`, como `planLlmProviderOptions`), y el borrador de ejemplo
- * de los textos (`SAMPLE_SOCIAL_DRAFT`, como `socialLlmProviderOptions`).
+ * El entorno de la IA para `--provider fake` sin leer el `.env`: `fake` no usa lo demás (los valores
+ * son los por defecto de `@agentsales/config`).
  */
-export function fakeSocialEvalOptions(): { plan: LlmProviderOptions; texts: LlmProviderOptions } {
+export const FAKE_LLM_ENV: SocialEvalLlmEnv = {
+  LLM_PROVIDER: "fake",
+  LLM_MODEL: "sonnet",
+  CLAUDE_CLI_PATH: "claude",
+  LLM_TIMEOUT_SECONDS: 180,
+  ANTHROPIC_MODEL: "claude-sonnet-5-5",
+};
+
+/**
+ * Los proveedores de la evaluación, los mismos del worker: el del plan (`planLlmProviderOptions`;
+ * con `fake`, el plan de ejemplo que lee lo pedido del prompt) y el de los textos
+ * (`socialLlmProviderOptions`; con `fake`, el borrador de ejemplo). Con un proveedor real son iguales.
+ */
+export function socialEvalProviderOptions(
+  env: SocialEvalLlmEnv,
+  baseEnv: Readonly<Record<string, string | undefined>>,
+): { plan: LlmProviderOptions; texts: LlmProviderOptions } {
   return {
-    plan: { provider: "fake", data: null, respond: ({ prompt }) => samplePlanResponse(prompt) },
-    texts: { provider: "fake", data: SAMPLE_SOCIAL_DRAFT },
+    plan: planLlmProviderOptions(env, baseEnv),
+    texts: socialLlmProviderOptions(env, baseEnv),
   };
 }
 

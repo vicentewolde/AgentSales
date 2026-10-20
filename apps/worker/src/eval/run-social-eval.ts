@@ -52,6 +52,8 @@ export type SocialEvalOptions = {
   profiles: readonly SocialEvalProfile[];
   /** Cuántas ideas aceptadas se redactan por perfil (las primeras del plan); 0, solo el plan. */
   ideas: number;
+  /** `--strict`: también sale con 1 si el plan descartó alguna idea. */
+  strict?: boolean;
   signal?: AbortSignalLike;
 };
 
@@ -72,9 +74,9 @@ export type SocialEvalUsage = {
   models: string[];
 };
 
-/** Un problema de escape o de formato de un texto (lo que la red mostraría mal). */
+/** Un problema de escape de un texto (lo que la red mostraría mal). */
 export type SocialEscapeProblem = {
-  code: "LINKEDIN_ESCAPE_OVERFLOW" | "HASHTAG_IN_BODY" | "INVISIBLE_CHARACTERS" | "MARKDOWN";
+  code: "LINKEDIN_ESCAPE_OVERFLOW" | "HASHTAG_IN_BODY" | "INVISIBLE_CHARACTERS";
   message: string;
 };
 
@@ -115,7 +117,7 @@ export type SocialEvalCounts = {
   outsideProfile: number;
   /** Textos más largos que su red (o con más hashtags de los que admite). */
   tooLong: number;
-  /** Problemas de escape o de formato de los textos. */
+  /** Problemas de escape de los textos (no el markdown: es una advertencia de la revisión). */
   escapes: number;
   /** `@everyone` o `@here`: en las ideas y en los textos. */
   massMentions: number;
@@ -254,17 +256,16 @@ export function similarTopics(
 /** Un hashtag dentro del cuerpo (va en `hashtags`; en LinkedIn saldría escapado, `\#tag`). */
 const HASHTAG_IN_BODY = /(?<![\p{L}\p{N}_&])#[\p{L}\p{N}_]+/u;
 /** Caracteres de ancho cero y la arroba ancha: esconden menciones o texto. */
-const INVISIBLE = /[​-‍⁠﻿＠]/u;
+const INVISIBLE = /[\u200B-\u200D\u2060\uFEFF\uFF20]/u;
 
 /**
- * Los problemas de escape y de formato de un texto: LinkedIn que cabe sin los escapes pero no con
- * ellos (`escapeLinkedInText`); un hashtag en el cuerpo; caracteres invisibles o la arroba ancha; y
- * markdown que la red no muestra (la advertencia `MARKDOWN` de `checkPostContent`).
+ * Los problemas de escape de un texto: LinkedIn que cabe sin los escapes pero no con ellos
+ * (`escapeLinkedInText`); un hashtag en el cuerpo; caracteres invisibles o la arroba ancha. El
+ * markdown no cuenta aquí: es la advertencia `MARKDOWN` de `checkPostContent` y sale con su revisión.
  */
 export function escapeProblems(
   platform: PostPlatform,
   text: { body: string; hashtags: readonly string[] },
-  checks: readonly ContentCheck[],
 ): SocialEscapeProblem[] {
   const problems: SocialEscapeProblem[] = [];
   const joined = joinedPostText(text);
@@ -287,11 +288,8 @@ export function escapeProblems(
   if (INVISIBLE.test(joined)) {
     problems.push({
       code: "INVISIBLE_CHARACTERS",
-      message: "Tiene caracteres de ancho cero o la arroba ancha (＠)",
+      message: "Tiene caracteres de ancho cero o la arroba ancha (U+FF20)",
     });
-  }
-  for (const check of checks) {
-    if (check.code === "MARKDOWN") problems.push({ code: "MARKDOWN", message: check.message });
   }
   return problems;
 }
@@ -419,21 +417,40 @@ function countProfile(evaluation: Omit<SocialProfileEvaluation, "counts">, reque
   return counts;
 }
 
-/** Los problemas que cuentan para el código de salida (las advertencias, no). */
-export const problemCount = (counts: SocialEvalCounts): number =>
-  counts.repeated +
-  counts.outsideProfile +
-  counts.tooLong +
-  counts.escapes +
-  counts.massMentions +
-  counts.failures;
+/**
+ * El código de salida: 1 si hubo fallas, un corte, o problemas que sí llegan al operador (textos con
+ * errores o con escapes). Las ideas que el plan descarta son la defensa funcionando: son estadística,
+ * salvo con `strict` (`--strict`), que también sale con 1 si el plan descartó alguna.
+ */
+export function socialEvalExitCode(
+  totals: SocialEvalCounts,
+  { stopped, strict = false }: { stopped: boolean; strict?: boolean },
+): number {
+  if (stopped || totals.failures > 0 || totals.textsWithErrors > 0 || totals.escapes > 0) return 1;
+  return strict && totals.ideasDiscarded > 0 ? 1 : 0;
+}
 
+/**
+ * La falla de una llamada: el código y el mensaje de un `AppError`, o `INTERNAL_ERROR` con el
+ * mensaje de cualquier otra excepción (así el informe parcial y lo gastado no se pierden). Sin pila.
+ */
 const failureOf = (
   stage: SocialEvalFailure["stage"],
   topic: string | null,
   error: unknown,
-): SocialEvalFailure | null =>
-  isAppError(error) ? { stage, topic, code: error.code, message: error.message } : null;
+): SocialEvalFailure =>
+  isAppError(error)
+    ? { stage, topic, code: error.code, message: error.message }
+    : {
+        stage,
+        topic,
+        code: "INTERNAL_ERROR",
+        message: error instanceof Error ? error.message : String(error),
+      };
+
+/** Una falla que detiene la evaluación: la de `STOPPING_CODES`, una inesperada o un corte. */
+const stopsOn = (failure: SocialEvalFailure, signal: AbortSignalLike | undefined) =>
+  STOPPING_CODES.has(failure.code) || failure.code === "INTERNAL_ERROR" || signal?.aborted === true;
 
 /** Evalúa un perfil: el plan y los textos de sus primeras ideas aceptadas. */
 async function evaluateProfile(
@@ -490,9 +507,8 @@ async function evaluateProfile(
     };
   } catch (error) {
     const failure = failureOf("plan", null, error);
-    if (failure === null) throw error;
     failures.push(failure);
-    stop = STOPPING_CODES.has(failure.code) || options.signal?.aborted === true;
+    stop = stopsOn(failure, options.signal);
   }
 
   // Los textos de las primeras ideas aceptadas, como si el operador las aceptara (`post.draft`).
@@ -540,14 +556,13 @@ async function evaluateProfile(
           body: text.body,
           hashtags: text.hashtags,
           checks: text.checks,
-          escapes: escapeProblems(text.platform, text, text.checks),
+          escapes: escapeProblems(text.platform, text),
         });
       }
     } catch (error) {
       const failure = failureOf("textos", idea.topic, error);
-      if (failure === null) throw error;
       failures.push(failure);
-      stop = STOPPING_CODES.has(failure.code) || options.signal?.aborted === true;
+      stop = stopsOn(failure, options.signal);
     }
   }
 
@@ -566,6 +581,17 @@ async function evaluateProfile(
 }
 
 // --- Lo que se imprime ------------------------------------------------------------------------
+
+/** Por qué la evaluación sale con 1, en palabras. */
+function resultReason(totals: SocialEvalCounts, stopped: boolean): string {
+  const reasons = [
+    stopped ? "se cortó" : "",
+    totals.failures > 0 ? `${totals.failures} fallas de la IA` : "",
+    totals.textsWithErrors > 0 ? `${totals.textsWithErrors} textos con errores` : "",
+    totals.escapes > 0 ? `${totals.escapes} problemas de escape` : "",
+  ].filter((reason) => reason !== "");
+  return reasons.length > 0 ? reasons.join(" · ") : "el plan descartó ideas (--strict)";
+}
 
 const NAME: Readonly<Record<PostPlatform, string>> = {
   instagram: "Instagram",
@@ -590,16 +616,23 @@ function countsLine(counts: SocialEvalCounts): string {
   );
 }
 
-function usageLine(label: string, usage: SocialEvalUsage, provider: string): string {
+/**
+ * Lo gastado en una etapa. Si solo algunas llamadas informaron tokens, lo dice ("n de m llamadas
+ * informadas") y marca el costo como parcial: no parece completo.
+ */
+export function usageLine(label: string, usage: SocialEvalUsage, provider: string): string {
   const calls = `${usage.calls} ${usage.calls === 1 ? "llamada" : "llamadas"}`;
   const chars = `${int(usage.promptChars)} caracteres de prompt`;
   if (usage.reportedCalls === 0) {
     return `${label}: ${calls} · ${chars} · ${provider} no informa tokens (US$ 0)`;
   }
   const input = usage.inputTokens + usage.cacheCreationInputTokens + usage.cacheReadInputTokens;
+  const partial = usage.reportedCalls < usage.calls;
   return (
-    `${label}: ${calls} · ${chars} · ${int(input)} tokens de entrada · ` +
-    `${int(usage.outputTokens)} de salida · ${usd(usage.costUsd)}`
+    `${label}: ${calls} · ${chars} · ` +
+    (partial ? `${usage.reportedCalls} de ${usage.calls} llamadas informadas · ` : "") +
+    `${int(input)} tokens de entrada · ${int(usage.outputTokens)} de salida · ` +
+    `${usd(usage.costUsd)}${partial ? " (parcial: falta lo no informado)" : ""}`
   );
 }
 
@@ -642,9 +675,7 @@ function printProfile(print: (line: string) => void, evaluation: SocialProfileEv
           (problems.length === 0 ? "sin problemas" : problems.join(", ")),
       );
       for (const check of text.checks) print(`        ${check.code}: ${short(check.message, 110)}`);
-      for (const problem of text.escapes) {
-        if (problem.code !== "MARKDOWN") print(`        ${problem.code}: ${problem.message}`);
-      }
+      for (const problem of text.escapes) print(`        ${problem.code}: ${problem.message}`);
     }
     for (const warning of evaluation.textWarnings) print(`    ⚠ IA: ${short(warning, 120)}`);
   }
@@ -660,9 +691,7 @@ function printProfile(print: (line: string) => void, evaluation: SocialProfileEv
  * `pnpm eval:social` (spec F9-T22): por cada perfil, el plan (`proposePlanIdeas`) y los textos de
  * sus primeras `ideas` ideas aceptadas (`draftPostTexts`, por red e idioma), con las verificaciones
  * de core, sin la base. Imprime lo que pasó y lo que costó (el plan y los textos por separado y en
- * total) y devuelve el informe y el código de salida: 1 si hubo fallas o problemas (repetidas, fuera
- * del perfil, largos, escapes o menciones masivas); las parecidas y los términos a evitar son
- * advertencias.
+ * total) y devuelve el informe y el código de salida (`socialEvalExitCode`).
  */
 export async function runSocialEval(
   deps: SocialEvalDeps,
@@ -703,10 +732,12 @@ export async function runSocialEval(
     .join(", ");
   print(
     `  Ideas: ${totals.ideasRequested} pedidas · ${totals.ideasAccepted} aceptadas · ` +
-      `${totals.ideasDiscarded} descartadas${byCode === "" ? "" : ` (${byCode})`}`,
+      `${totals.ideasDiscarded} descartadas por el plan${byCode === "" ? "" : ` (${byCode})`}`,
   );
-  print(`  Textos: ${totals.texts} · con errores ${totals.textsWithErrors}`);
-  print(`  Problemas: ${countsLine(totals)}`);
+  print(
+    `  Textos: ${totals.texts} · con errores ${totals.textsWithErrors} · escapes ${totals.escapes}`,
+  );
+  print(`  Conteo (ideas y textos): ${countsLine(totals)}`);
   print(`  Costo estimado (${[...new Set([deps.planLlm.name, deps.textLlm.name])].join(", ")}):`);
   print(`    ${usageLine("plan", usage.plan, deps.planLlm.name)}`);
   print(`    ${usageLine("textos", usage.texts, deps.textLlm.name)}`);
@@ -724,5 +755,14 @@ export async function runSocialEval(
     usage,
     stopped,
   };
-  return { exitCode: problemCount(totals) > 0 || stopped ? 1 : 0, report };
+  const exitCode = socialEvalExitCode(totals, {
+    stopped,
+    ...(options.strict === undefined ? {} : { strict: options.strict }),
+  });
+  print(
+    exitCode === 0
+      ? "Resultado: ✓ sin fallas ni problemas en los textos (las ideas descartadas son estadística)"
+      : `Resultado: ✗ ${resultReason(totals, stopped)}`,
+  );
+  return { exitCode, report };
 }
