@@ -38,11 +38,15 @@ export interface ContentRunRepository {
   findActive(listingId: string): Promise<ContentRun | null>;
   /** La corrida más reciente del aviso (`created_at` y después `id`), en cualquier estado. */
   latest(listingId: string): Promise<ContentRun | null>;
-  /** Las corridas en `queued`, las más antiguas primero: el worker las reencola al arrancar. */
+  /**
+   * Las corridas de avisos en `queued`, las más antiguas primero: el worker las reencola al
+   * arrancar. Las de posts (F9) no son de `content.prepare` y quedan fuera.
+   */
   listQueued(): Promise<ContentRun[]>;
   /**
-   * Las corridas `succeeded` con textos, terminadas desde `finishedSince`, cuyo `auto_publish`
-   * quedó sin resolver (un apagado justo al terminar, F8-T12), las más antiguas primero.
+   * Las corridas de avisos `succeeded` con textos, terminadas desde `finishedSince`, cuyo
+   * `auto_publish` quedó sin resolver (un apagado justo al terminar, F8-T12), las más antiguas
+   * primero. Los posts no tienen `auto_publish` (ADR-0030): sus corridas quedan fuera.
    */
   listAutoPublishPending(finishedSince: Date): Promise<ContentRun[]>;
   /**

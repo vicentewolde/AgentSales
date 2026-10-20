@@ -13,7 +13,7 @@ import {
   requirePublicationMode,
   TERMINAL_PUBLICATION_STATUSES,
 } from "@agentsales/core";
-import { and, asc, eq, gte, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { publicationEvents, publications } from "../schema.js";
@@ -26,6 +26,12 @@ const activeStatus = sql.raw(
 );
 type EventRow = typeof publicationEvents.$inferSelect;
 type Writer = Pick<SchemaDatabase, "insert">;
+
+/**
+ * Los barridos por estado (reencolar, disparar las programadas, vigilar) son de avisos hasta que
+ * sus casos de uso trabajen sobre un sujeto (F9-T06 y T07): no ven las publicaciones de posts.
+ */
+const ofListing = isNotNull(publications.listingId);
 
 const ONE_ACTIVE_PER_FORMAT = "publications_one_active_per_format";
 const ONE_RELIST_PER_PUBLICATION = "publications_relisted_from_unique";
@@ -249,7 +255,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
         const rows = await db
           .select()
           .from(publications)
-          .where(eq(publications.status, status))
+          .where(and(eq(publications.status, status), ofListing))
           .orderBy(asc(publications.createdAt), asc(publications.id));
         return rows.map(toPublication);
       });
@@ -263,6 +269,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           .where(
             and(
               eq(publications.status, "scheduled"),
+              ofListing,
               lte(publications.scheduledAt, now),
               gte(publications.scheduledAt, since),
               excludePlatforms.length === 0
@@ -284,6 +291,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           .where(
             and(
               eq(publications.status, "publishing"),
+              ofListing,
               lt(publications.updatedAt, before),
               excludePlatforms.length === 0
                 ? undefined

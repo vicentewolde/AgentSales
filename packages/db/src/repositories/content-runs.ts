@@ -8,7 +8,7 @@ import {
   contentRunSchema,
   llmUsageSchema,
 } from "@agentsales/core";
-import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, withDbErrors } from "../errors.js";
 import { contentRuns, contents, listings } from "../schema.js";
@@ -47,6 +47,12 @@ function toContentRun(row: typeof contentRuns.$inferSelect): ContentRun {
 }
 
 const isActive = inArray(contentRuns.status, [...ACTIVE_CONTENT_RUN_STATUSES]);
+
+/**
+ * Los barridos de avisos (reencolar `content.prepare`, retomar `auto_publish`) no ven las corridas
+ * de posts (F9, ADR-0029): esas no son de `content.prepare` ni tienen `auto_publish`.
+ */
+const ofListing = isNotNull(contentRuns.listingId);
 
 /** `ContentRunRepository` sobre Drizzle (node-postgres en las apps, PGlite en los tests). */
 export function createContentRunRepository(db: SchemaDatabase): ContentRunRepository {
@@ -110,7 +116,7 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
         const rows = await db
           .select()
           .from(contentRuns)
-          .where(eq(contentRuns.status, "queued"))
+          .where(and(eq(contentRuns.status, "queued"), ofListing))
           .orderBy(asc(contentRuns.createdAt), asc(contentRuns.id));
         return rows.map(toContentRun);
       });
@@ -124,6 +130,7 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
           .where(
             and(
               eq(contentRuns.status, "succeeded"),
+              ofListing,
               eq(contentRuns.texts, true),
               isNull(contentRuns.autoPublishDoneAt),
               gte(contentRuns.finishedAt, finishedSince),
