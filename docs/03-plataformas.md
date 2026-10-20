@@ -4,7 +4,7 @@ Resumen de cómo se integra cada canal. Antes de implementar un publisher, el su
 
 | Plataforma | Mecanismo | Fase | Riesgo |
 |---|---|---|---|
-| Instagram | API oficial (Instagram API with Instagram Login) | F3 | Bajo |
+| Instagram | API oficial (Instagram API with Instagram Login) | F3 (avisos); F9-T13 (posts) | Bajo |
 | Portal Inmobiliario | API de Mercado Libre (sitio MLC) | F4 | Medio |
 | Facebook Marketplace | Navegador automatizado + clic final humano | F5 | Alto |
 | Yapo | Por definir (sin API pública conocida) | Post-MVP | Alto |
@@ -29,6 +29,30 @@ Resumen de cómo se integra cada canal. Antes de implementar un publisher, el su
 - **Errores:** 190 (token) y permisos (10, 200 a 299) no se reintentan; límites (4, 17, 80002, 2207042): desde F6 reprograman la publicación (la espera de la cabecera de uso o 60 min; 6 h el máximo diario), hasta 3 esperas seguidas, y la cuarta deja `failed` (ADR-0018); errores de descarga de medios (2207003, 2207052) y transitorios (2207001, 2207032, 2207053) se reintentan con contenedor nuevo. Tabla completa en `integraciones/instagram.md`, sección 7.
 - **Caption:** el texto se guarda sin los hashtags (`contents.body`) y los hashtags aparte (`contents.hashtags`). El publisher envía `instagramCaption(content)` (core), que los suma después de una línea en blanco; enviar solo `body` publicaría sin hashtags. Límites de Meta (verificado 2026-10-04): 2.200 caracteres, 30 hashtags y 20 menciones.
 - **Despublicar (corregido 2026-10-04):** existe `DELETE /{media-id}` en la API de Instagram (novedad del 2025-12-03), pero la referencia de Meta lo limita a **Facebook Login** (host `graph.facebook.com`, permiso `instagram_manage_contents`); con Instagram Login no está documentado. Se asume que no se puede por API y se borra a mano desde la app. No se intentó en F3 (spec F3, D8): las publicaciones de la prueba se borraron a mano. "Cerrar" en Instagram = marcar como no disponible en el sistema y avisar al operador para archivarlo o borrarlo a mano.
+
+### Instagram para posts (F9-T13)
+
+Detalle en `docs/integraciones/instagram-contenido-propio.md` §13 y spec F9 §4.6.
+
+- **Mismo publisher y misma app** que los avisos (`AgentSales-IG`, Instagram Login); el input no dice de qué sujeto viene. La cuenta de cada marca se conecta igual que la de un corredor (el botón de Cuentas en el servidor, el token de *Generate token* en el Mac).
+- **Qué publica** según el tipo del post (`postPublicationPlan`): `image`, una imagen suelta (el `ig_4x5` de la primera foto); `carousel`, de 2 a 10 fotos; `video`, un reel 9:16 de 3 a 90 s **sin texto encima**; `text` no va a Instagram (la revisión lo frena con `MEDIA_REQUIREMENT`). Sin Stories, música, colaboraciones ni ubicación (D11).
+- **Caption:** el cuerpo y los hashtags (`instagramCaption`), en el idioma de la publicación: con dos idiomas salen dos publicaciones de la misma cuenta.
+- **Cuota compartida:** el cupo de `content_publishing_limit` es de la cuenta; posts y avisos de la misma cuenta suman en el mismo contador, y sin cupo un post se reprograma igual que un aviso.
+- **Riesgo:** con la app en modo desarrollo, lo publicado podría no verse para quien no tiene rol en la app. **La prueba S1 del operador (spec F9 §4.8) es obligatoria antes de publicar un post de verdad**; si falla, Instagram espera el App Review (`docs/11-app-review-meta.md`). Gratis. En `dry-run` no se llama a Meta.
+
+## Las redes de los posts (F9): resumen
+
+Las cinco se construyeron contra simulaciones (msw); ningún test llama a la red real. Cada una exige su **prueba de entrada** (spec F9 §4.8, la hace el operador a mano) antes de la primera publicación real; hasta entonces se usa solo en `dry-run`. En `dry-run` ninguna escribe en la red (ADR-0016): conectar y renovar el token sí hablan con la red (leen la cuenta o rotan el token; no publican), X deja en la bitácora el costo que tendría y Discord la nota del video que no cabe, y TikTok queda en un traspaso simulado (`awaiting_manual_confirm` sin subir nada). Las variables de cada app están en `docs/07-checklist-cuentas.md` y `docs/08-guia-operador.md`.
+
+| | Instagram | Discord | LinkedIn | X | TikTok |
+|---|---|---|---|---|---|
+| Conectar | Botón de Cuentas (servidor) o `--token-stdin` (Mac) | `accounts connect discord --webhook-stdin` (solo la CLI) | OAuth: botón o `accounts connect linkedin` | OAuth con PKCE: botón o `accounts connect x` | OAuth (Login Kit): botón o `accounts connect tiktok` |
+| Modo | Siempre por API | `api` (puede pasar a `manual`) | **`manual` por defecto** (D5) | `api` (puede pasar a `manual`) | `api`, pero siempre termina a mano: el video llega como borrador |
+| Token | 60 días, se renueva solo | No vence (la URL del webhook) | 60 días **sin renovación**: la agenda avisa 7 días antes | 2 h, se renueva al publicar y en `tokens.refresh` | 24 h, se renueva igual (refresh de 365 días) |
+| Límites | 2.200 caracteres, 30 hashtags; imagen, carrusel (2 a 10) o reel | 2.000 caracteres; hasta 10 archivos de 20 MiB (24 MiB por mensaje) | 3.000 caracteres con escapes; hasta 20 imágenes o un video MP4 | 280 ponderados; hasta 4 imágenes o 1 video | Solo video; 5 borradores pendientes por 24 h |
+| Costo | Gratis | Gratis | Gratis | US$0,015 por post, US$0,20 con enlace; tope del mes por cuenta (US$10) | Gratis |
+| Retirar | A mano | A mano | `retire --delete` por la API (cuenta en `api`) o a mano | A mano | A mano |
+| Prueba | S1 | S5 | S2 y S3 | S4 | S6 |
 
 ## Portal Inmobiliario (vía Mercado Libre)
 
@@ -79,7 +103,7 @@ Detalle en `docs/integraciones/x.md` (§0, lo que hace hoy AgentSales) y spec F9
 - **Conectar:** OAuth 2.0 con PKCE (cliente confidencial, `X_CLIENT_ID` y `X_CLIENT_SECRET`). `pnpm -s cli accounts connect x --broker <slug>` abre el inicio (`/api/oauth/x/start`) con la sesión del panel en el host de `X_REDIRECT_URI` (en el Mac, `127.0.0.1`). El `state` firmado es de un solo uso y el verificador de PKCE va solo en la cookie firmada. Credenciales `{ accessToken, refreshToken }` cifradas.
 - **Token:** dura unas 2 h; se renueva al publicar y en el job `tokens.refresh` con la misma función (`ensureRotatingAccessToken`), con tope de 10 s; solo `invalid_grant` deja la cuenta vencida.
 - **Publicar:** texto de 280 caracteres ponderados con hasta 4 imágenes o 1 video (`x_video`, subido por partes), una sola vez (`sendOnce`). El 402 por saldo y el 429 son "no enviado" (el 429 se reprograma); el 403 por texto repetido, un 5xx o un corte dejan `outcome_unknown`. Sin hilos.
-- **Costo:** pago por uso. Cada publicación anota `cost_usd` (US$0,015; US$0,20 con enlace). Un enlace exige la marca explícita del operador en el post (`xLinkAllowed`). Pasado el tope del mes de la cuenta (`spendLimitUsd`, US$10 por defecto; `accounts spend-limit <id> <dólares>`), la publicación queda `failed` sin llamar a X.
+- **Costo:** pago por uso. Cada publicación anota `cost_usd` (US$0,015; US$0,20 con enlace). Un enlace exige la marca explícita del operador en el post (`xLinkAllowed`; hoy solo se pone por la API, `PATCH /api/posts/:id`: la CLI y el panel todavía no la ofrecen). Pasado el tope del mes de la cuenta (`spendLimitUsd`, US$10 por defecto; `accounts spend-limit <id> <dólares>`), la publicación queda `failed` sin llamar a X.
 - **Estado:** construido y probado solo con simulaciones (msw). **La prueba S4 del operador (spec F9 §4.8) es obligatoria antes de publicar de verdad.**
 
 ## LinkedIn (F9, contenido de marca)
@@ -91,10 +115,6 @@ Detalle en `docs/integraciones/linkedin.md` (§0, lo que hace hoy AgentSales) y 
 - **Publicar en `api`:** `POST /rest/posts` con `Linkedin-Version: 202610`: texto (3.000 caracteres con el `commentary` escapado y los hashtags como texto), imagen, varias imágenes (2 a 20) o un video MP4 (subida por partes de 4 MiB). Una sola vez (`sendOnce`); un 5xx o un corte dejan `outcome_unknown`. Un 401 deja la cuenta vencida; un 429 reprograma. **Retirar:** desde F9-T19, `pnpm -s cli publications retire <id> --delete` lo borra por la API (`DELETE /rest/posts/{urn}`; un 404 cuenta como borrado), solo con la publicación y la API en `live` y la cuenta en modo `api`. Con la cuenta a mano o un enlace pegado a mano (URN `activity`), se borra a mano en LinkedIn y se retira sin `--delete`. El panel todavía no retira posts.
 - **Estado:** construido y probado solo con simulaciones (msw). **Las pruebas S2 y S3 del operador (spec F9 §4.8) son obligatorias antes de publicar de verdad.**
 
-## Yapo (post-MVP)
-
-Sin API pública conocida. Evaluar el mismo enfoque que Marketplace y revisar sus términos de uso antes.
-
 ## TikTok (F9, contenido de marca)
 
 Detalle en `docs/integraciones/tiktok.md` (§0, lo que hace hoy AgentSales) y spec F9 §4.6 y §4.7 (D16).
@@ -104,6 +124,10 @@ Detalle en `docs/integraciones/tiktok.md` (§0, lo que hace hoy AgentSales) y sp
 - **Publicar:** init con `FILE_UPLOAD`, el video (la variante `ig_reel`, 9:16) leído de R2 por trozos de 10 MiB con `Range` y subido en orden, y la consulta del estado (sin webhooks). Al llegar a `SEND_TO_USER_INBOX` la publicación queda en `awaiting_manual_confirm` hasta que el operador pega el enlace del video (`publications confirm`). `FAILED` la deja fallida (el reintento sube desde cero); el tope de 5 envíos pendientes por 24 h reprograma. En `dry-run` no se llama a TikTok.
 - **Estado:** construido y probado solo con simulaciones (msw). **La prueba S6 del operador (spec F9 §4.8) es obligatoria antes de publicar de verdad.**
 
+## Yapo (post-MVP)
+
+Sin API pública conocida. Evaluar el mismo enfoque que Marketplace y revisar sus términos de uso antes.
+
 ## Checklist para agregar una plataforma nueva
 
 1. Nota de integración en `docs/integraciones/<plataforma>.md`: auth, límites, formatos y riesgos.
@@ -111,4 +135,5 @@ Detalle en `docs/integraciones/tiktok.md` (§0, lo que hace hoy AgentSales) y sp
 3. Agregar el valor al enum `platform` con una migración.
 4. Implementar `Publisher` en `packages/publishers/<plataforma>/` con tests de contrato (HTTP simulado con msw).
 5. Plantilla de contenido y variantes de medios para la plataforma.
-6. Probar en `dry-run`, luego en `live` con cuenta de prueba.
+6. Probar en `dry-run`; antes de la primera publicación en `live`, la prueba de entrada a mano con una cuenta propia o de prueba (como S1 a S6 de F9), con su resultado anotado en la nota de integración.
+7. Si la red tiene un modo a mano, sumarla a `MANUAL_MODE_PLATFORMS`; si su token rota, a `ROTATING_TOKEN_PLATFORMS`; y un consejo para cada código de error nuevo (`publicationErrorAdvice`, su test lo exige).
