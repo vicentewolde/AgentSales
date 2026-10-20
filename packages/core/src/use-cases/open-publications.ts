@@ -1,5 +1,6 @@
 import {
   CAROUSEL_MAX_ITEMS,
+  CAROUSEL_MIN_ITEMS,
   composeCarousel,
   composePhotoSet,
   composeReel,
@@ -198,13 +199,62 @@ const postMediaMissing = (platform: Platform, message: string) =>
   new AppError("CONTENT_NOT_READY", message, { details: { platform } });
 
 /**
+ * Instagram (spec F9 §4.4 y §4.6, F9-T13): lo que publica según lo que lleva el post. Una imagen
+ * va como imagen suelta (el `ig_4x5` de su primera foto, aunque el post tenga más); un carrusel,
+ * con el `ig_4x5` de 2 a 10 fotos en su orden (con menos de 2 procesadas no es carrusel y falta
+ * esperar o subir otra; sobre 10, la revisión del texto ya lo frena y aquí se cortan); un video,
+ * como `reel` con su `ig_reel` (9:16, de 3 a 90 s, sin texto encima; la portada es el cuadro del
+ * segundo 1, el mismo de su `thumb`). Un post de solo texto no se publica en Instagram. Lo que
+ * falta procesar es `CONTENT_NOT_READY`. El carrusel de un aviso (`composeCarousel`) no cambia.
+ */
+function instagramPostPlan(kind: Post["kind"], media: readonly Media[]): PublicationPlanItem {
+  if (kind === "text") {
+    throw postMediaMissing(
+      "instagram",
+      "Instagram necesita una imagen o un video: súbelos al post y cambia su tipo",
+    );
+  }
+  if (kind === "video") {
+    const video = postVideo(media);
+    if (video === null) {
+      throw postMediaMissing(
+        "instagram",
+        "Falta el video procesado del post: espera a que termine",
+      );
+    }
+    return { format: "reel", mediaIds: [video.id] };
+  }
+  const images = postImages(media);
+  if (kind === "image") {
+    const [first] = images;
+    if (first === undefined) {
+      throw postMediaMissing(
+        "instagram",
+        "Falta la imagen procesada del post: espera a que termine",
+      );
+    }
+    return { format: "post", mediaIds: [first.id] };
+  }
+  if (images.length < CAROUSEL_MIN_ITEMS) {
+    throw postMediaMissing(
+      "instagram",
+      `Un carrusel de Instagram lleva de ${CAROUSEL_MIN_ITEMS} a ${CAROUSEL_MAX_ITEMS} imágenes procesadas y este post tiene ${images.length}: espera a que terminen o súbelas`,
+    );
+  }
+  return {
+    format: "post",
+    mediaIds: images.slice(0, CAROUSEL_MAX_ITEMS).map((item) => item.id),
+  };
+}
+
+/**
  * El formato y los medios de un post en una red (spec F9 §4.4 y §4.6), según lo que lleva
- * (`post.kind`): un texto solo va sin medios (Instagram y TikTok lo rechazan); una imagen o un
- * carrusel, con sus `ig_4x5` (en Instagram, hasta 10); un video, con su `ig_reel` (en Instagram,
- * como `reel`). Las verificaciones de cada red (X: hasta 4 imágenes, spec F9 §4.4) son de la
- * revisión del texto, no de aquí, y las variantes propias de cada red (el video reducido de X) las
- * afinan sus tareas (F9-T13 a T16). Lo que falta procesar es `CONTENT_NOT_READY`. Portal y
- * Marketplace no publican posts: `CONTENT_PLATFORM_INVALID`.
+ * (`post.kind`). Instagram tiene su propia selección (`instagramPostPlan`, F9-T13). En las demás
+ * redes: un texto solo va sin medios (TikTok lo rechaza); una imagen o un carrusel, con sus
+ * `ig_4x5`; un video, con su `ig_reel`. Las verificaciones de cada red (X: hasta 4 imágenes, spec
+ * F9 §4.4) son de la revisión del texto, no de aquí, y las variantes propias de cada red (el video
+ * reducido de X) las afinan sus tareas (F9-T14 a T16). Lo que falta procesar es
+ * `CONTENT_NOT_READY`. Portal y Marketplace no publican posts: `CONTENT_PLATFORM_INVALID`.
  */
 export function postPublicationPlan(
   platform: Platform,
@@ -216,9 +266,9 @@ export function postPublicationPlan(
       details: { platform },
     });
   }
-  const needsMedia = platform === "instagram" || platform === "tiktok";
+  if (platform === "instagram") return instagramPostPlan(kind, media);
   if (kind === "text") {
-    if (needsMedia) {
+    if (platform === "tiktok") {
       throw postMediaMissing(platform, "Esta red necesita una imagen o un video: súbelos al post");
     }
     return { format: "post", mediaIds: [] };
@@ -228,7 +278,7 @@ export function postPublicationPlan(
     if (video === null) {
       throw postMediaMissing(platform, "Falta el video procesado del post: espera a que termine");
     }
-    return { format: platform === "instagram" ? "reel" : "post", mediaIds: [video.id] };
+    return { format: "post", mediaIds: [video.id] };
   }
   if (platform === "tiktok") {
     throw postMediaMissing(platform, "TikTok publica solo video: súbelo al post");
@@ -240,8 +290,7 @@ export function postPublicationPlan(
       "Faltan las imágenes procesadas del post: espera a que terminen",
     );
   }
-  const items = platform === "instagram" ? images.slice(0, CAROUSEL_MAX_ITEMS) : images;
-  return { format: "post", mediaIds: items.map((item) => item.id) };
+  return { format: "post", mediaIds: images.map((item) => item.id) };
 }
 
 /** Una publicación de un post por abrir: la de un aviso más su idioma (el del texto). */

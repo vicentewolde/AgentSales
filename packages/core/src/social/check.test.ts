@@ -285,6 +285,16 @@ describe("checkPostContent: medios", () => {
     expect(codes("tiktok", "Video.", withMedia("video", 0, 1))).toEqual([]);
   });
 
+  it("un carrusel de Instagram lleva de 2 a 10 imágenes; una imagen suelta, al menos una (F9-T13)", () => {
+    expect(codes("instagram", "Fotos.", withMedia("carousel", 1))).toEqual(["MEDIA_REQUIREMENT"]);
+    expect(codes("instagram", "Fotos.", withMedia("carousel", 2))).toEqual([]);
+    expect(codes("instagram", "Fotos.", withMedia("carousel", 10))).toEqual([]);
+    expect(codes("instagram", "Fotos.", withMedia("carousel", 11))).toEqual(["MEDIA_REQUIREMENT"]);
+    expect(codes("instagram", "Foto.", withMedia("image", 1))).toEqual([]);
+    // Fuera de Instagram, el carrusel no tiene ese mínimo.
+    expect(codes("linkedin", "Fotos.", withMedia("carousel", 1))).toEqual([]);
+  });
+
   it("un post de imágenes sin imágenes no se aprueba", () => {
     expect(codes("linkedin", "Fotos.", withMedia("image", 0))).toEqual(["MEDIA_REQUIREMENT"]);
   });

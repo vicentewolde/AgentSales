@@ -203,7 +203,7 @@ Como `checkContent`, es una función pura que corre sobre el texto final, tambi�
 | `MASS_MENTION` | error | `@everyone` o `@here` (sin mirar mayúsculas), en cualquier red y en cualquier parte del texto o de los hashtags, también pegada a otra palabra (`a@everyone`, `.@here`), con caracteres de ancho cero en medio (U+200B a U+200D, U+2060, U+FEFF) o con la arroba ancha `＠` |
 | `FACT_NOT_IN_PROFILE` | error | Un hecho que no está en las fuentes (heurística, abajo): una **cifra**, un posible **nombre propio**, un **enlace** o una **mención** |
 | `LINK_NOT_ALLOWED` | error | En X, un enlace de las fuentes que el operador no puso en el brief del post |
-| `MEDIA_REQUIREMENT` | error | Un post de video sin video (un reel exige video); Instagram sin imagen ni video; TikTok sin video; X con más de 4 imágenes; Discord con más de 10; un post de imágenes sin imágenes. Se cuentan los originales que subió el operador |
+| `MEDIA_REQUIREMENT` | error | Un post de video sin video (un reel exige video); Instagram sin imagen ni video; un carrusel de Instagram fuera de 2 a 10 imágenes (F9-T13; una imagen suelta usa solo la primera foto); TikTok sin video; X con más de 4 imágenes; Discord con más de 10; un post de imágenes sin imágenes. Se cuentan los originales que subió el operador |
 | `LINK_COST` | advertencia | X con un enlace: cuesta US$0,20 en vez de US$0,015 |
 | `AVOID_TERM` | advertencia | Algo de `avoid` del perfil (como palabra o frase completa, sin mirar tildes ni mayúsculas) |
 | `MARKDOWN` | advertencia | `**`, `__`, una línea que empieza con `# ` o un link `[texto](url)`, salvo en Discord |

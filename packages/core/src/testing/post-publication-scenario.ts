@@ -1,4 +1,5 @@
-import type { Language, Platform } from "../enums.js";
+import type { Language, Platform, PostKind } from "../enums.js";
+import type { Media } from "../media.js";
 import type { PlatformCredentials } from "../platform-account.js";
 import type { PostLockedRepositories } from "../ports/post-lock.js";
 import type { Publisher } from "../ports/publisher.js";
@@ -28,6 +29,11 @@ import { createInMemoryListingLock, createInMemoryPublicationRepository } from "
 /** Una cuenta conectada de la marca en una red, con su `meta` y sus credenciales. */
 export type PostScenarioAccount = {
   platform: Platform;
+  /**
+   * El id de la cuenta en la red (por defecto `cuenta-<red>`). En Instagram, el IG user id: dos
+   * escenarios con el mismo id son la misma cuenta para la cuota de Instagram (F9-T13).
+   */
+  externalAccountId?: string;
   meta?: Record<string, unknown>;
   credentials?: PlatformCredentials;
   tokenExpiresAt?: Date | null;
@@ -51,15 +57,26 @@ function defaultCredentials(platform: Platform): PlatformCredentials {
 }
 
 /**
- * Escenario de publicación de un post (F9-T06, ADR-0029): una marca con un post `image`, su foto
- * procesada (`ig_4x5`), un texto aprobado por red e idioma (con hashtags) y una cuenta conectada
- * por red; las publicaciones nacen en `approved` al aprobar, en el candado del post. `toPublishing`
+ * Escenario de publicación de un post (F9-T06, ADR-0029): una marca con un post (por defecto
+ * `image`, con una foto), sus medios procesados (`ig_4x5` de cada foto y, con `video`, el
+ * `ig_reel`), un texto aprobado por red e idioma (con hashtags) y una cuenta conectada por red;
+ * las publicaciones nacen en `approved` al aprobar, en el candado del post. `kind`, `images` y
+ * `video` arman los tipos de Instagram (F9-T13: imagen suelta, carrusel y reel). `toPublishing`
  * las pasa a `publishing` directo (sin las revisiones de publicar), `deps` son las de publicar,
  * programar, el disparo y cancelar (F9-T07: los dos candados, la cola y lo que se lee fuera), y
  * `publishDeps` arma las dependencias de `publishPublication` con los dobles.
  */
 export async function createPostPublicationScenario(
-  options: { texts?: PostScenarioText[]; accounts?: PostScenarioAccount[] } = {},
+  options: {
+    texts?: PostScenarioText[];
+    accounts?: PostScenarioAccount[];
+    /** Lo que lleva el post; por defecto `image`. */
+    kind?: PostKind;
+    /** Cuántas fotos subió (cada una con su `ig_4x5`); por defecto 1. */
+    images?: number;
+    /** Un video subido con su `ig_reel` (por defecto 30 s); por defecto, sin video. */
+    video?: boolean | { durationS: number };
+  } = {},
 ) {
   const broker = contentBrokerFixture({ kind: "brand" });
   const brokers = createInMemoryBrokerRepository([broker]);
@@ -67,38 +84,76 @@ export async function createPostPublicationScenario(
   const post = await posts.create({
     brokerId: broker.id,
     topic: "Lo que aprendí construyendo",
-    kind: "image",
+    kind: options.kind ?? "image",
     status: "draft",
   });
   const media = createInMemoryMediaRepository();
   const storage = createInMemoryMediaStorage();
-  const original = await media.create({
-    listingId: null,
-    postId: post.id,
-    brokerId: broker.id,
-    kind: "image",
-    storagePath: `posts/${post.id}/original/foto.jpg`,
-    mime: "image/jpeg",
-    bytes: 10,
-    checksum: "sha-foto",
-    sortOrder: 0,
-    isCover: false,
-  });
-  const { media: image } = await media.upsertDerivative({
-    role: "processed",
-    variant: "ig_4x5",
-    parentMediaId: original.id,
-    postId: post.id,
-    brokerId: broker.id,
-    kind: "image",
-    storagePath: `posts/${post.id}/ig_4x5/foto.jpg`,
-    mime: "image/jpeg",
-    bytes: 8,
-    checksum: "sha-foto-4x5",
-    width: 1080,
-    height: 1350,
-    durationS: null,
-  });
+  const images: Media[] = [];
+  for (let index = 0; index < (options.images ?? 1); index += 1) {
+    const name = index === 0 ? "foto" : `foto-${index + 1}`;
+    const original = await media.create({
+      listingId: null,
+      postId: post.id,
+      brokerId: broker.id,
+      kind: "image",
+      storagePath: `posts/${post.id}/original/${name}.jpg`,
+      mime: "image/jpeg",
+      bytes: 10,
+      checksum: `sha-${name}`,
+      sortOrder: index,
+      isCover: false,
+    });
+    const { media: processed } = await media.upsertDerivative({
+      role: "processed",
+      variant: "ig_4x5",
+      parentMediaId: original.id,
+      postId: post.id,
+      brokerId: broker.id,
+      kind: "image",
+      storagePath: `posts/${post.id}/ig_4x5/${name}.jpg`,
+      mime: "image/jpeg",
+      bytes: 8,
+      checksum: `sha-${name}-4x5`,
+      width: 1080,
+      height: 1350,
+      durationS: null,
+    });
+    images.push(processed);
+  }
+  let reel: Media | null = null;
+  if (options.video !== undefined && options.video !== false) {
+    const durationS = options.video === true ? 30 : options.video.durationS;
+    const original = await media.create({
+      listingId: null,
+      postId: post.id,
+      brokerId: broker.id,
+      kind: "video",
+      storagePath: `posts/${post.id}/original/video.mov`,
+      mime: "video/quicktime",
+      bytes: 20,
+      checksum: "sha-video",
+      sortOrder: images.length,
+      isCover: false,
+    });
+    ({ media: reel } = await media.upsertDerivative({
+      role: "processed",
+      variant: "ig_reel",
+      parentMediaId: original.id,
+      postId: post.id,
+      brokerId: broker.id,
+      kind: "video",
+      storagePath: `posts/${post.id}/ig_reel/video.mp4`,
+      mime: "video/mp4",
+      bytes: 16,
+      checksum: "sha-video-reel",
+      width: 1080,
+      height: 1920,
+      durationS,
+    }));
+  }
+  /** La primera foto procesada (la de un post `image`), o `null` si el post no tiene fotos. */
+  const image = images[0] ?? null;
   const { contents, contentRuns } = createInMemoryContentRepositories();
   const publications = createInMemoryPublicationRepository();
   const platformAccounts = createInMemoryPlatformAccountRepository();
@@ -149,7 +204,7 @@ export async function createPostPublicationScenario(
     const saved = await platformAccounts.upsertConnected({
       brokerId: broker.id,
       platform: account.platform,
-      externalAccountId: `cuenta-${account.platform}`,
+      externalAccountId: account.externalAccountId ?? `cuenta-${account.platform}`,
       displayName: `@agentpey-${account.platform}`,
       tokenExpiresAt: account.tokenExpiresAt ?? null,
       meta: account.meta ?? {},
@@ -213,6 +268,8 @@ export async function createPostPublicationScenario(
     broker,
     post,
     image,
+    images,
+    reel,
     repos,
     posts,
     publications,
