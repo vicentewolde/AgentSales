@@ -488,7 +488,7 @@ describe("PATCH /contents/:id", () => {
   });
 });
 
-// F9-T05: hasta las rutas de posts (T12), `/contents/:id` es solo de avisos.
+// F9-T05: `/contents/:id` es solo de avisos; desde F9-T12 el mensaje apunta a `agentsales post`.
 describe("/contents/:id con un texto de post", () => {
   it("PATCH, approve y unapprove son 409 CONTENT_NOT_FOR_LISTING antes del candado, sin escribir", async () => {
     const broker = contentBrokerFixture();
@@ -542,7 +542,9 @@ describe("/contents/:id con un texto de post", () => {
       await send("POST", `/contents/${content?.id}/unapprove`),
     ]) {
       expect(response.status).toBe(409);
-      expect((await errorOf(response)).error.code).toBe("CONTENT_NOT_FOR_LISTING");
+      const { error } = await errorOf(response);
+      expect(error.code).toBe("CONTENT_NOT_FOR_LISTING");
+      expect(error.message).toContain(`agentsales post edit|approve ${post.id}`);
     }
     expect(locks).toBe(0);
     expect(await repos.contents.get(content?.id ?? "")).toMatchObject({

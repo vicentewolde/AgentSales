@@ -26,6 +26,7 @@ import {
   type RetirePublicationDeps,
   relistPublication,
   requestPublicationSync,
+  resolvePublication,
   resumePublication,
   retirePublication,
   type StartPublicationDeps,
@@ -51,6 +52,7 @@ import {
   publicationCloseBodySchema,
   publicationConfirmBodySchema,
   publicationConfirmedBodySchema,
+  publicationResolveBodySchema,
   publicationRetireBodySchema,
   publicationScheduleBodySchema,
 } from "../contracts/index.js";
@@ -430,6 +432,27 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
         const { url } = c.req.valid("json");
         const { publication, changed } = await confirmManualPublication(deps, {
           publicationId: c.req.valid("param").id,
+          actor: actorOf(c),
+          ...(url === undefined ? {} : { url }),
+        });
+        const body: PublicationConfirmResponse = {
+          publication: publicationView(publication),
+          changed,
+        };
+        return c.json(body, 200);
+      },
+    )
+    .post(
+      "/:id/resolve",
+      validated("param", idParamSchema),
+      validated("json", publicationResolveBodySchema),
+      async (c) => {
+        // Resultado dudoso (ADR-0029 punto 8, F9-T12): el operador dice si salió o no. Como
+        // `confirm`, el enlace nunca vuelve en un error ni va al log.
+        const { outcome, url } = c.req.valid("json");
+        const { publication, changed } = await resolvePublication(deps, {
+          publicationId: c.req.valid("param").id,
+          outcome,
           actor: actorOf(c),
           ...(url === undefined ? {} : { url }),
         });

@@ -45,6 +45,7 @@ export const publicationViewAt = (publication: Publication, now: Date): Publicat
   platformAccountId: publication.platformAccountId,
   platform: publication.platform,
   format: publication.format,
+  language: publication.language,
   contentId: publication.contentId,
   mediaIds: publication.mediaIds,
   status: publication.status,

@@ -68,6 +68,8 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /publications/:id/close": "session",
   "POST /publications/:id/confirm": "session",
   "POST /publications/:id/not-published": "session",
+  // F9-T12: decir si salió una publicación con resultado dudoso (aviso o post).
+  "POST /publications/:id/resolve": "session",
   "POST /publications/:id/sync": "session",
   "POST /schedule": "session",
   "GET /tracking": "session",
@@ -96,6 +98,14 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /posts/:id/archive": "session",
   "POST /posts/:id/uploads": "session",
   "POST /posts/:id/uploads/complete": "session",
+  // F9-T12: pedir los textos, editarlos, aprobarlos o quitarles la aprobación por red e idioma,
+  // publicar una red y programar; con `posts.manage` revisado en core y lo ajeno 404.
+  "POST /posts/:id/draft": "session",
+  "PATCH /posts/:id/contents/:platform/:language": "session",
+  "POST /posts/:id/contents/:platform/:language/approve": "session",
+  "POST /posts/:id/contents/:platform/:language/unapprove": "session",
+  "POST /posts/:id/publish": "session",
+  "POST /posts/:id/schedule": "session",
   // F8 (spec §4.4, ADR-0025): pedir la carga con sus URLs de subida y empezarla.
   "POST /imports/uploads": "session",
   "POST /imports/:id/start": "session",

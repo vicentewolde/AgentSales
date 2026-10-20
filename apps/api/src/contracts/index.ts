@@ -35,12 +35,14 @@ import {
   PLATFORMS,
   POST_KINDS,
   POST_LIMITS,
+  POST_PLATFORMS,
   POST_STATUSES,
   POST_UPLOAD,
   PROCESSED_MEDIA_VARIANTS,
   PUBLICATION_ACTORS,
   PUBLICATION_EVENT_TYPES,
   PUBLICATION_FORMATS,
+  PUBLICATION_RESOLUTIONS,
   PUBLICATION_STATUSES,
   postSchema,
   publicationErrorSchema,
@@ -347,6 +349,11 @@ export type ContentCheckView = z.infer<typeof contentCheckSchema>;
 export const contentViewSchema = z.object({
   id: z.string(),
   platform: z.enum(PLATFORMS),
+  /**
+   * El idioma del texto (F9-T12): un post tiene uno por red e idioma; un aviso, siempre `es`. Un
+   * servidor anterior no lo manda: se lee como `es`.
+   */
+  language: z.enum(LANGUAGES).default("es"),
   /** Portal y Marketplace; `null` en Instagram. */
   title: z.string().nullable(),
   body: z.string(),
@@ -448,6 +455,8 @@ export const publicationViewSchema = z.object({
   platformAccountId: z.string(),
   platform: z.enum(PLATFORMS),
   format: z.enum(PUBLICATION_FORMATS),
+  /** El idioma de su texto (F9-T12; un aviso, siempre `es`). Sin él (otro servidor), `es`. */
+  language: z.enum(LANGUAGES).default("es"),
   contentId: z.string(),
   mediaIds: z.array(z.string()),
   status: z.enum(PUBLICATION_STATUSES),
@@ -1304,10 +1313,18 @@ export type PostMediaItem = z.infer<typeof postMediaItemSchema>;
 export const postResponseSchema = z.object({ post: postJsonSchema });
 export type PostResponse = z.infer<typeof postResponseSchema>;
 
-/** `GET /posts/:id`: el post y sus medios originales, en orden. */
+/**
+ * `GET /posts/:id`: el post y sus medios originales, en orden; desde F9-T12, también sus textos
+ * vigentes por red e idioma con su revisión (`POST_PLATFORMS` y `LANGUAGES` en orden), la última
+ * corrida de textos y todas sus publicaciones (las más nuevas primero). Un servidor anterior no los
+ * manda: se leen vacíos.
+ */
 export const postDetailResponseSchema = z.object({
   post: postJsonSchema,
   media: z.array(postMediaItemSchema),
+  contents: z.array(contentViewSchema).default([]),
+  latestRun: contentRunViewSchema.nullable().default(null),
+  publications: z.array(publicationViewSchema).default([]),
 });
 export type PostDetailResponse = z.infer<typeof postDetailResponseSchema>;
 
@@ -1362,6 +1379,77 @@ export const postUploadCompleteResponseSchema = z.object({
   media: z.array(postMediaItemSchema),
 });
 export type PostUploadCompleteResponse = z.infer<typeof postUploadCompleteResponseSchema>;
+
+// ── Textos, aprobación, publicar y programar un post (F9-T12, spec F9 §4.10) ──
+
+/** `POST /posts/:id/draft`: pide los textos; `replaceEdits` reemplaza también los editados o aprobados. */
+export const postDraftBodySchema = z.object({ replaceEdits: z.boolean().optional() }).strict();
+export type PostDraftBody = z.infer<typeof postDraftBodySchema>;
+
+/** `/posts/:id/contents/:platform/:language`: el texto vigente de una red (de posts) e idioma. */
+export const postContentParamSchema = z.object({
+  id: z.uuid(),
+  platform: z.enum(POST_PLATFORMS),
+  language: z.enum(LANGUAGES),
+});
+export type PostContentParam = z.infer<typeof postContentParamSchema>;
+
+/**
+ * `POST /posts/:id/publish`: una red del post (todos sus idiomas); el modo lo pone la API
+ * (`PUBLISH_MODE`), nunca el cuerpo. Sin `--platform`, la CLI publica una red tras otra.
+ */
+export const postPublishBodySchema = z.object({ platform: z.enum(POST_PLATFORMS) }).strict();
+export type PostPublishBody = z.infer<typeof postPublishBodySchema>;
+
+/** Lo que hizo publicar una red del post: lo mismo que publicar un canal de un aviso. */
+export const postPublishResponseSchema = listingPublishResponseSchema;
+export type PostPublishResponse = ListingPublishResponse;
+
+/**
+ * `POST /posts/:id/schedule`: las redes (sin ellas, cada una con texto aprobado y la cuenta
+ * conectada) y la hora (ISO con zona; la CLI la pide en hora de Chile).
+ */
+export const postScheduleBodySchema = z
+  .object({
+    platforms: z.array(z.enum(POST_PLATFORMS)).min(1).optional(),
+    at: scheduleAtSchema,
+  })
+  .strict();
+export type PostScheduleBody = z.infer<typeof postScheduleBodySchema>;
+
+/** Una fila por red: programada (con su hora y sus publicaciones) o saltada (con el motivo). */
+export const postScheduleResponseSchema = z.object({
+  results: z.array(
+    z.object({
+      /** `null` si la fila es del post entero (`NOTHING_TO_PUBLISH`: ninguna red sirve). */
+      platform: z.enum(PLATFORMS).nullable(),
+      outcome: z.enum(["scheduled", "skipped"]),
+      at: z.coerce.date().optional(),
+      publications: z.array(publicationViewSchema).optional(),
+      code: z.string().optional(),
+      message: z.string().optional(),
+    }),
+  ),
+});
+export type PostScheduleResponse = z.infer<typeof postScheduleResponseSchema>;
+
+/**
+ * `POST /publications/:id/resolve` (ADR-0029 punto 8): el operador dice si una publicación con
+ * resultado dudoso salió (con su enlace, si lo tiene; en simulación se ignora) o no. El enlace nunca
+ * vuelve en un error ni va al log. Responde como `confirm` (`changed: false` si ya estaba así).
+ */
+export const publicationResolveBodySchema = z
+  .object({
+    outcome: z.enum(PUBLICATION_RESOLUTIONS),
+    url: z
+      .string()
+      .trim()
+      .min(1, "falta el enlace")
+      .max(MARKETPLACE_URL_MAX_LENGTH, "el enlace es demasiado largo")
+      .optional(),
+  })
+  .strict();
+export type PublicationResolveBody = z.infer<typeof publicationResolveBodySchema>;
 
 // ── Usuarios y sesiones (F7-T04 y T05, spec F7 §4.13, ADR-0021) ────────────
 
