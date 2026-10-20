@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-20
 **Fase actual:** F9 · Contenido de marca (spec **aprobado** el 2026-10-19: `docs/specs/fase-9-contenido-de-marca.md`; ADR-0029 y ADR-0030). F8 cerrada (`v1.0.0`)
-**Última tarea:** **entrega 2 de F9 terminada** (T15, T16, T26, T17, T18 y T19, todas revisadas y con la CI en verde): LinkedIn (a mano por defecto, y retirar borrando por la API), X con su tope de gasto, TikTok como borrador, el panel Contenido, el calendario, los botones de Cuentas, un consejo para cada error y la guía del operador. `CHANGELOG [1.2.0]` listo; la etiqueta `v1.2.0` se crea con tu permiso
-**Siguiente paso:** entrega 3 (`v1.3.0`): T20 el plan de ideas y T21 el plan en el panel y la CLI; después T22 a T25. Antes de publicar de verdad en cada red, tus pruebas S1 a S6 (abajo) y tu instrucción en el chat. Agrega a tu `.env` (y a `.env.example`) las variables de LinkedIn, X y TikTok (`CHANGELOG [1.2.0]`)
+**Última tarea:** **entrega 2 de F9 cerrada** con la etiqueta `v1.2.0` (T15, T16, T26, T17, T18 y T19). Empieza la entrega 3 (`v1.3.0`): T20 en curso
+**Siguiente paso:** T20 (el plan de ideas) → T21 (el plan en el panel y la CLI) y T22 (`pnpm eval:social`) a la vez → T23 (documentación), T24 (la prueba con tus cuentas, solo con tu instrucción) y T25 (cierre, `v1.3.0`). Antes de publicar de verdad en cada red, tus pruebas S1 a S6 (abajo) y tu instrucción en el chat. Agrega a tu `.env` (y a `.env.example`) las variables de LinkedIn, X y TikTok (`CHANGELOG [1.2.0]`)
 
 ## Pendiente tuyo de F9
 Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada prueba de entrada bloquea solo su red (spec §4.8; los pasos están en la sección 8 de cada nota de `docs/integraciones/`):
@@ -118,7 +118,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 2 | T17 Panel: Contenido | ✅ terminada | #189 |
 | 2 | T18 Panel: calendario | ✅ terminada | #190 |
 | 2 | T19 CLI de cuentas y guía del operador | ✅ terminada | #191 |
-| 3 · `v1.3.0` | T20 El plan de ideas (core y worker) | ⏳ pendiente | |
+| 3 · `v1.3.0` | T20 El plan de ideas (core y worker) | 🔨 en curso | |
 | 3 | T21 Plan en el panel y la CLI | ⏳ pendiente | |
 | 3 | T22 Evaluación de la calidad | ⏳ pendiente | |
 | 3 | T23 Documentación | ⏳ pendiente | |
