@@ -188,6 +188,11 @@ describe("panel: calendario", () => {
     expect(post.textContent).toContain("vinny");
     expect(listing.textContent).toContain("corredor");
     expect(screen.getByRole("link", { name: "Calendario" })).toBeTruthy();
+    // Lo que llegó a su hora y quedó a medio camino se resuelve en Seguimiento.
+    const note = screen.getByText(/Lo que falló, espera tu confirmación/);
+    expect(within(note).getByRole("link", { name: "Seguimiento" }).getAttribute("href")).toBe(
+      "/seguimiento",
+    );
   });
 
   it("mover la fecha reprograma con POST /publications/:id/schedule y la muestra en su nuevo día", async () => {

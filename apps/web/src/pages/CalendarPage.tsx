@@ -253,6 +253,15 @@ export function CalendarPage() {
       <p className="mt-1 text-sm text-slate-600">
         Lo programado y lo publicado, de propiedades y posts. Las horas son de Chile.
       </p>
+      {/* Al llegar su hora, una publicación deja de estar programada: si falló, espera tu
+          confirmación o quedó con resultado dudoso, sale de aquí y se resuelve en Seguimiento. */}
+      <p className="mt-1 text-sm text-slate-600">
+        Lo que falló, espera tu confirmación o quedó con resultado dudoso está en{" "}
+        <Link to="/seguimiento" className="text-sky-700 underline">
+          Seguimiento
+        </Link>
+        .
+      </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <fieldset className="flex gap-1">
