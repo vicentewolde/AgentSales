@@ -182,7 +182,7 @@ Migraciones desde la `0014` (o la siguiente libre). Reglas: **`ALTER TYPE … AD
 - **Borrado de Meta (ADR-0027):** no cambia. `eraseInstagramUser` ya filtra por cuenta e incluye las publicaciones de posts en esa cuenta; `posts` y `contents` son textos del operador y también alimentan X y LinkedIn, así que no se borran. T03 suma un test que lo fija.
 
 ### 4.12 Costos
-- **IA:** el plan y los textos van por `LLMProvider` y se anotan por marca (F7); en el servidor, la API de Anthropic con el tope mensual. `sumLlmCost` cuenta las corridas de avisos, las de posts y los planes (T11 y T20). Con dos idiomas, un post cuesta el doble de textos. Un plan de 10 ideas más sus textos es del orden de centavos de dólar (a medir en T22).
+- **IA:** el plan y los textos van por `LLMProvider` y se anotan por marca (F7); en el servidor, la API de Anthropic con el tope mensual. `sumLlmCost` cuenta las corridas de avisos, las de posts y los planes (T11 y T20). Con dos idiomas, un post cuesta el doble de textos. Un plan de 10 ideas más sus textos es del orden de centavos de dólar (a medir en T22: la estimación, unos US$ 0,12 con Sonnet 5.5 en dos idiomas, está en `docs/integraciones/anthropic-api.md` §13; la medición con la API la corre el operador).
 - **X:** pago por uso con créditos prepagados. El sistema anota el costo estimado de cada publicación en `cost_usd` (US$0,015; US$0,20 con enlace) y respeta `spendLimitUsd` de la cuenta (por defecto **US$10 al mes**, P2): pasado el límite, la publicación queda `failed` con la causa. El tope duro está en la consola de X.
 - Instagram, LinkedIn y Discord no cobran.
 
@@ -474,9 +474,11 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 ### F9-T22 · Evaluación de la calidad
 - **Depende de:** T20
 - **Descripción:** `pnpm eval:social` sobre perfiles de prueba, sin escribir en la base (`--provider fake` no gasta cuota): cuenta ideas repetidas, afirmaciones fuera del perfil, largos y escapes; imprime el costo estimado.
+- **Archivos principales:** `apps/worker/src/scripts/eval-social.ts`, `apps/worker/src/eval/run-social-eval.ts`, `social-profiles.ts`, `social-options.ts`
 - **Hecho cuando:**
-  - [ ] un perfil sin `facts` produce un plan sin cifras ni clientes inventados
-  - [ ] el costo de un plan y sus textos (con dos idiomas) queda medido en `docs/integraciones/anthropic-api.md`
+  - [x] un perfil sin `facts` produce un plan sin cifras ni clientes inventados
+  - [ ] el costo de un plan y sus textos (con dos idiomas) queda medido en `docs/integraciones/anthropic-api.md` (parcial: la estimación y el comando están en §13; la medición real queda pendiente del operador)
+- **Nota (2026-10-20):** `pnpm eval:social [--provider fake|claude-cli|anthropic-api] [--model <id>] [--profile <nombre>] [--ideas N] [--out]` corre el plan (`proposePlanIdeas`) y los textos de las primeras `N` ideas aceptadas (`draftPostTexts`, 3 por defecto) sobre tres marcas **inventadas** en el repo (`sin-hechos`, `dos-idiomas` con 10 ideas en cuatro redes, y `con-historial`), sin la base: no recibe repositorios ni se conecta, y con `fake` ni siquiera lee el `.env`. Cuenta ideas repetidas (los descartes por tema igual) y **parecidas** (advertencia: 60 % de palabras en común, lo que la verificación no ve), afirmaciones fuera del perfil (ideas y textos), largos, escapes (LinkedIn que solo cabe sin escapes, hashtags en el cuerpo, caracteres invisibles, markdown), menciones masivas, términos a evitar (advertencia) y los descartes por motivo; imprime el costo del plan y de los textos por separado y en total. Sale con 1 si hay fallas o problemas; un error de la IA queda en su perfil, salvo los que no se arreglan reintentando (sin sesión o clave, sin saldo, el límite de la CLI), que detienen la evaluación. Los medios se suponen subidos según el formato de la idea (los textos no se evalúan por medios). El primer criterio lo prueba un test con `fake`; los contadores, tests con respuestas inyectadas. **La medición real del costo queda pendiente del operador** (`pnpm eval:social --provider anthropic-api --profile dos-idiomas --ideas 10 --out`, y con `--model claude-haiku-5-5`): la estimación de §13 de `anthropic-api.md` es de unos US$ 0,12 con Sonnet 5.5 y US$ 0,006 con Haiku 5.5 por un plan de 10 ideas y sus textos en dos idiomas.
 
 ### F9-T23 · Documentación
 - **Depende de:** T01 a T22 y T26

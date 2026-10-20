@@ -248,8 +248,24 @@ La IA propone **ideas** para un período, no textos: cada idea queda como un pos
 
 **El reporte** (`planRunReportSchema`, en `plan_runs.report`): las ideas guardadas con el id de su post, el tema, la línea, sus redes, el formato, la fecha y las notas; las descartadas con su tema, código y detalle; las advertencias de la IA; y la llamada (proveedor, modelo, intentos y duración). Cero ideas válidas también es un plan terminado (`succeeded`): el reporte dice por qué. El reporte es una foto al terminar: después manda el post. Cada idea guarda **sus redes** en `posts.platforms` y, al aceptarla, `post.draft` redacta solo para esas (decisión del operador); un post manual tiene `null` (todas las de la marca). En los dos casos, `post.draft` deja fuera las redes que no sirven al tipo del post (Instagram sin imagen ni video; TikTok sin video, `kindProblem`); si no queda ninguna, `POST_NO_PLATFORMS`.
 
-**Sin la base (T22):** `proposePlanIdeas({ llm, beforeCall?, onUsage? }, { brief, period, sources, now })` hace la llamada, la validación y las verificaciones sin escribir nada; `runPlan` la usa y guarda el resultado.
+**Sin la base (T22):** `proposePlanIdeas({ llm, beforeCall?, onUsage? }, { brief, period, sources, now })` hace la llamada, la validación y las verificaciones sin escribir nada; `runPlan` la usa y guarda el resultado, y `pnpm eval:social` la usa sin guardar nada (sección siguiente).
 
 **El plan de ejemplo** (`LLM_PROVIDER=fake`, `samplePlanResponse`): lee lo pedido del bloque de datos del prompt y entrega, sin red ni azar, las ideas pedidas de una red cada una, en los días y horas de la cadencia (las 10:00 si no tiene) sin pasar los posts por semana, repartidas en el período, con las líneas por turno y temas que no repiten lo reciente ni lo descartado. Pasan todas las verificaciones con cualquier perfil. Si el período y la cadencia no dan para todas, entrega menos con una advertencia.
 
 **Límites conocidos:** la repetición se detecta por tema igual (normalizado), no por parecido: parafrasear lo reciente queda a cargo del prompt y del operador, que acepta o descarta cada idea. La heurística de hechos tiene los mismos límites que la de los textos (arriba).
+
+## La evaluación del plan y los textos (`pnpm eval:social`, F9-T22)
+
+Mide las reglas de las dos secciones anteriores con la IA de verdad, sin la base: sobre tres marcas **inventadas** (`apps/worker/src/eval/social-profiles.ts`: una sin hechos, una con hechos y dos idiomas en cuatro redes, y una con temas recientes y descartados), corre el plan (`proposePlanIdeas`) y redacta los textos de las primeras ideas aceptadas (`draftPostTexts`, por red e idioma, con los medios que pide su formato supuestos subidos). Cuenta:
+
+| Qué | Cómo |
+|---|---|
+| Ideas repetidas | Las descartadas por `REPEATED_TOPIC`, `DISCARDED_TOPIC` o `DUPLICATE_IN_PLAN` |
+| Ideas parecidas (advertencia) | Una aceptada que comparte el 60 % o más de sus palabras con peso (4 letras o más, sin "cómo", "para"…) con un tema del historial o con otra idea del plan: lo que la verificación no ve (arriba) |
+| Fuera del perfil | Las ideas descartadas por `FACT_NOT_IN_PROFILE` y cada `FACT_NOT_IN_PROFILE` o `LINK_NOT_ALLOWED` de los textos |
+| Largos | `TOO_LONG` y `HASHTAG_LIMIT` de los textos |
+| Escapes | LinkedIn que cabe sin los escapes y no con ellos; un hashtag dentro del cuerpo (va aparte y en LinkedIn saldría escapado); caracteres de ancho cero o la arroba ancha; y la advertencia `MARKDOWN` |
+| Menciones masivas | Ideas descartadas por `MASS_MENTION` y `MASS_MENTION` de los textos |
+| Términos a evitar (advertencia) | `AVOID_TERM` de los textos |
+
+Imprime cada idea (aceptada o descartada con su motivo) y cada texto con su revisión, y el costo estimado del plan y de los textos por separado y en total (tokens y US$ con la tabla de precios de core; `fake` y la CLI de Claude cuestan 0). Sale con 1 si hay fallas o problemas; las dos advertencias (parecidas y términos a evitar) no cuentan. La medición del costo con la API está en `docs/integraciones/anthropic-api.md` §13.
