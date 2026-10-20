@@ -100,7 +100,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 1 · `v1.1.0` | T01 Plataformas, marcas y estados nuevos | ✅ terminada | #170 |
 | 1 | T27 Despliegue parametrizado por instancia | ✅ terminada | #169 |
 | 1 | T02 Credenciales por plataforma y redactor | ⏳ pendiente | |
-| 1 | T03 Esquema de posts y migración | ⏳ pendiente | |
+| 1 | T03 Esquema de posts y migración | ✅ terminada | #172 |
 | 1 | T04 Repositorios con sujeto y `PostLock` | ⏳ pendiente | |
 | 1 | T05 Aprobar, editar y abrir publicaciones sobre un sujeto | ⏳ pendiente | |
 | 1 | T06 El intento de publicar, el traspaso por cuenta y el resultado dudoso | ⏳ pendiente | |
@@ -192,6 +192,7 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **F9, para el primer commit de T04 (revisión de T03):** varias lecturas de avisos recorren toda la tabla y validan `listingId` como texto: `listQueued` y `listAutoPublishPending` (`content-runs.ts`), y `listByStatus`, `listDue` y `listStalePublishing` (`publications.ts`). Con la primera fila de un post se caerían (por ejemplo `requeueQueuedContentRuns` al arrancar). T04 las filtra por `listing_id IS NOT NULL` o las mapea a `Subject` antes de que algo cree filas de posts; `sumLlmCost` pasa a sumar avisos, posts y `plan_runs`; el `PostLock` usa un espacio de llaves distinto del de `ListingLock`.
 - **F9, `outcome_unknown` (de T01):** todavía nada lo produce, pero `cancelPublication` respondería un `INVALID_TRANSITION` engañoso y `requireNothingInFlight` (`change-listing-status.ts`) no lo bloquea al cerrar o archivar un aviso. T06 y T08 suman la protección (como `MANUAL_CONFIRM_PENDING`) y deciden si `IG_PUBLISH_OUTCOME_UNKNOWN` de Instagram pasa a `outcome_unknown`. `platformOption` de la CLI acepta solo plataformas de avisos: T12 y T19 usan `ALL_PLATFORM_OPTION_NAMES`.
 - **Imagen (lote D):** la API sigue dependiendo de `@agentsales/media` (por el logo) y trae `playwright`; con una sola imagen para la API y el worker (D7) da igual (deuda de F7 cerrada así). El ffmpeg de la imagen y de la CI sale de BtbN, que conserva sus builds unos dos años: copiarlo a un bucket propio antes de que lo borren. La imagen fija Node por digest y Debian no se actualiza solo: subir la etiqueta y el digest de vez en cuando.
 - **Panel, el selector al recargar (F7-T17):** mientras cargan los corredores, el filtro todavía no se aplica y la primera consulta sale sin él (se repite al llegar la lista). No muestra nada ajeno (es del administrador), pero pide dos veces.
