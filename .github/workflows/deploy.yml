@@ -98,6 +98,8 @@ jobs:
         run: |
           fail() { echo "::error::$1"; exit 1; }
           value() { sed -nE "s/^[[:space:]]*$1 = \"([^\"]*)\".*/\1/p" "$2" | head -n 1; }
+          # Sin distinguir mayúsculas ni la barra final: `HTTPS://Dominio/` es el mismo dominio.
+          norm() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's:/*$::'; }
           printf '%s' "$INSTANCE" | grep -Eq '^[a-z][a-z0-9-]{0,29}$' \
             || fail "Nombre de instancia no válido: $INSTANCE (minúsculas, números y guiones)."
           config="fly.$INSTANCE.toml"
@@ -105,7 +107,7 @@ jobs:
           for key in app PUBLIC_URL Host BACKUP_R2_BUCKET; do
             mine="$(value "$key" "$config")"
             [ -n "$mine" ] || fail "$config no tiene $key."
-            [ "$mine" != "$(value "$key" fly.toml)" ] \
+            [ "$(norm "$mine")" != "$(norm "$(value "$key" fly.toml)")" ] \
               || fail "$config tiene el mismo $key que la instancia principal ($mine): cámbialo."
           done
           echo "Instancia $INSTANCE: app $(value app "$config") en $(value PUBLIC_URL "$config") ($config)"

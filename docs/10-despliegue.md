@@ -264,14 +264,14 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
    ```bash
    ENV_FILE=.env.<instancia> pnpm storage:check --origin https://<dominio>
    ```
-5. **Los secretos en Fly:** el mismo comando del paso 2, con el archivo y la app nuevos (si se suman variables de otras redes, como las de TikTok o X, su tarea las agrega a esta lista y a la del paso 2):
+5. **Los secretos en Fly:** el mismo comando del «Paso 2 · Los secretos» de arriba, con el archivo y la app nuevos (si se suman variables de otras redes, como las de TikTok o X, su tarea las agrega a esta lista y a la del paso 2):
    ```bash
    grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_BUCKET|APP_ENCRYPTION_KEY|ANTHROPIC_API_KEY|INSTAGRAM_APP_ID|INSTAGRAM_APP_SECRET|FACEBOOK_APP_SECRET|ML_APP_ID|ML_CLIENT_SECRET|BCCH_API_TOKEN|BACKUP_R2_ACCESS_KEY_ID|BACKUP_R2_SECRET_ACCESS_KEY)=' .env.<instancia> | fly secrets import --stage -a <app>
    ```
    ```bash
    fly secrets list -a <app>
    ```
-6. **El dominio y su certificado:** el paso 5 completo, con `<app>` y `<dominio>` (en Vercel, el registro `A` y el `AAAA` con el nombre del subdominio nuevo).
+6. **El dominio y su certificado:** el «Paso 5 · El dominio y su certificado» de arriba, completo, con `<app>` y `<dominio>` (en Vercel, el registro `A` y el `AAAA` con el nombre del subdominio nuevo).
 7. **El Environment de GitHub `production-<instancia>`, antes del primer despliegue:** el repositorio → **Settings** → **Environments** → **New environment** → `production-<instancia>` → **Configure environment**: **Deployment branches and tags** en **Selected branches and tags** con la regla **`main`**, y **Allow administrators to bypass configured protection rules** desmarcado (lo mismo que `production`, paso 3). Después, su token de Fly, que solo sirve para `<app>`:
    ```bash
    fly tokens create deploy -a <app> -n github-deploy -x 4380h | pbcopy
@@ -310,7 +310,7 @@ Sin `-f instance=…` (o con **Instancia** en `principal`), el flujo despliega l
    ```bash
    ENV_FILE=.env.<instancia> pnpm auth:admin --email tu@correo.cl
    ```
-2. El paso 6 con `https://<dominio>` (salud, entrar, activar el doble factor) y la CLI contra ella:
+2. El «Paso 6 · Comprobar que funciona» de arriba con `https://<dominio>` (salud, entrar, activar el doble factor) y la CLI contra ella:
    ```bash
    pnpm -s cli login --email tu@correo.cl --api https://<dominio>
    ```
