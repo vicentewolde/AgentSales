@@ -19,6 +19,7 @@ export {
 } from "./constants.js";
 export { isLinkedInNotSent, LINKEDIN_NOT_SENT_CODES, linkedinHttpError } from "./errors.js";
 export {
+  createLinkedInOperations,
   createLinkedInPublisher,
   deleteLinkedInPost,
   type LinkedInPublisherOptions,

@@ -23,11 +23,12 @@ import { modeOf, publicationNotFound } from "./publication-start.js";
 
 /**
  * Lo que una plataforma sabe hacer sobre lo publicado: lo implementa el publisher de Portal y lo
- * compone la API sin las fotos ni el catálogo (`createPortalOperations`, F4-T15).
+ * compone la API sin las fotos ni el catálogo (`createPortalOperations`, F4-T15); desde F9-T19,
+ * también borrar un post de LinkedIn (`remove`, para retirar).
  */
 export type PublicationOperations = Pick<
   Publisher,
-  "pause" | "resume" | "close" | "getStatus" | "update"
+  "pause" | "resume" | "close" | "getStatus" | "update" | "remove"
 >;
 
 /**
@@ -94,7 +95,7 @@ export function requireOperationPlatform(publication: Publication): void {
 export function operationsOf(
   deps: Pick<PublicationPlatformDeps, "operationsFor">,
   publication: Publication,
-): Required<Omit<PublicationOperations, "update">> {
+): Required<Omit<PublicationOperations, "update" | "remove">> {
   const operations = deps.operationsFor(publication.platform);
   const { pause, resume, close, getStatus } = operations ?? {};
   if (

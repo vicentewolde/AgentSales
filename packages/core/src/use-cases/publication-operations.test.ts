@@ -65,7 +65,7 @@ function fakeOperations(
       calls.push({ operation, ref: structuredCopy(ref), token: await ctx.accessToken() });
       return respond(operation, ref, ctx);
     };
-  const operations: Required<Omit<PublicationOperations, "update">> = {
+  const operations: Required<Omit<PublicationOperations, "update" | "remove">> = {
     pause: make("pause"),
     resume: make("resume"),
     close: make("close"),

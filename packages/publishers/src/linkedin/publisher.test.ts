@@ -20,6 +20,7 @@ import {
   LINKEDIN_VIDEO_PART_BYTES,
 } from "./constants.js";
 import {
+  createLinkedInOperations,
   createLinkedInPublisher,
   deleteLinkedInPost,
   type LinkedInPublishNote,
@@ -680,6 +681,53 @@ describe("borrar un post (DELETE /rest/posts/{urn})", () => {
         .then(() => undefined),
     );
     expect(error).toMatchObject({ code: "LINKEDIN_AUTH_INVALID" });
+  });
+});
+
+describe("retirar borrando por la API (F9-T19, createLinkedInOperations)", () => {
+  const platformCtx = () => ({ account, accessToken: async () => TOKEN });
+
+  it("borra el post con el token de la cuenta; repetirlo (404) no falla", async () => {
+    const seen: Array<{ path: string; auth: string | null; version: string | null }> = [];
+    server.use(
+      http.delete(`${API}/posts/*`, ({ request }) => {
+        seen.push({
+          path: new URL(request.url).pathname,
+          auth: request.headers.get("authorization"),
+          version: request.headers.get("linkedin-version"),
+        });
+        return new HttpResponse(null, { status: seen.length === 1 ? 204 : 404 });
+      }),
+    );
+    const { remove } = createLinkedInOperations();
+    await remove({ externalId: POST_URN, progress: null }, platformCtx());
+    await remove({ externalId: POST_URN, progress: null }, platformCtx());
+    expect(seen).toEqual([
+      {
+        path: "/rest/posts/urn%3Ali%3Ashare%3A7380000000000000001",
+        auth: `Bearer ${TOKEN}`,
+        version: LINKEDIN_API_VERSION,
+      },
+      {
+        path: "/rest/posts/urn%3Ali%3Ashare%3A7380000000000000001",
+        auth: `Bearer ${TOKEN}`,
+        version: LINKEDIN_API_VERSION,
+      },
+    ]);
+  });
+
+  it("un URN activity no llama; un 401 sube como LINKEDIN_AUTH_INVALID, sin el token", async () => {
+    const { remove } = createLinkedInOperations();
+    const unsupported = await caught(
+      remove({ externalId: "urn:li:activity:7380000000000000001", progress: null }, platformCtx()),
+    );
+    expect(isAppError(unsupported) && unsupported.code).toBe("LINKEDIN_DELETE_UNSUPPORTED");
+    expect(await recorded()).toEqual([]);
+
+    server.use(http.delete(`${API}/posts/*`, () => new HttpResponse(null, { status: 401 })));
+    const rejected = await caught(remove({ externalId: POST_URN, progress: null }, platformCtx()));
+    expect(rejected).toMatchObject({ code: "LINKEDIN_AUTH_INVALID" });
+    expect(errorText(rejected)).not.toContain(TOKEN);
   });
 });
 
