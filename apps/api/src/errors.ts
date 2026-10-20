@@ -289,6 +289,8 @@ const READINESS_CODES = new Set([
   "MARKETPLACE_NOT_READY",
   // F7-T13: el campo de la marca que no sirve (`BROKER_FIELD_INVALID`, su campo y el motivo).
   "BROKER_INVALID",
+  // F9-T09: el campo del perfil editorial que no sirve (`EDITORIAL_PROFILE_FIELD_INVALID`).
+  "EDITORIAL_PROFILE_INVALID",
 ]);
 
 /** Los errores que nombran la publicación de Marketplace que espera el clic final. */
@@ -298,8 +300,9 @@ const WAITING_PUBLICATION_CODES = new Set(["MANUAL_CONFIRM_PENDING", "MARKETPLAC
  * Lo único de `details` que sale (seguimiento de ADR-0011), campo por campo y validado; si no
  * calza, la respuesta va sin ello:
  * - `issues` de `PORTAL_NOT_READY` (desde F4-T19) y `MARKETPLACE_NOT_READY` (F5-T08): código,
- *   campo del Excel y motivo en español, sin datos del aviso; y de `BROKER_INVALID` (F7-T13): el
- *   campo de la marca y el motivo;
+ *   campo del Excel y motivo en español, sin datos del aviso; de `BROKER_INVALID` (F7-T13): el
+ *   campo de la marca y el motivo; y de `EDITORIAL_PROFILE_INVALID` (F9-T09): el campo del perfil
+ *   (`pillars[1].key`) y el motivo;
  * - `publicationId` de `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` (F5-T08): la publicación
  *   que espera el clic final (un id, para ofrecer "lo publiqué" o "no lo publiqué").
  */

@@ -144,6 +144,37 @@ De punta a punta, con `pnpm dev` corriendo. Todo se puede hacer en el panel (**C
 
 Para desactivar a alguien: **Desactivar** en su usuario (o `pnpm -s cli users disable <correo>`) cierra sus sesiones al tiro.
 
+## Llenar el perfil editorial de tus marcas (F9)
+
+El perfil editorial es **lo único que la IA sabe de una marca** cuando propone ideas y redacta posts. Lo que no está ahí, la IA no lo afirma. Se llena una vez y se ajusta cuando cambie algo. Con `pnpm dev` corriendo (o contra el servidor, con tu sesión de la CLI):
+
+```bash
+pnpm -s cli brand show --broker agentpey          # cómo está hoy
+pnpm -s cli brand edit --broker agentpey \
+  --languages es,en \
+  --audience "Corredores independientes que quieren publicar sin perder la tarde" \
+  --pillar "aprendizajes|Lo que aprendo construyendo|3|Errores, decisiones y lo que cambió" \
+  --pillar "producto|Producto|2|Qué hace AgentSales y para quién" \
+  --pillar "bastidores|Bastidores|1" \
+  --fact "AgentSales publica avisos en Instagram, Portal Inmobiliario y Marketplace" \
+  --fact "Lo construye una sola persona en Chile" \
+  --avoid "promesas de ventas o de resultados" \
+  --cadence "instagram/3/lun,mie,vie/10:00,19:00/6" \
+  --cadence "linkedin/1/mar/09:00" \
+  --hashtags "agentsales construirenpublico"
+```
+
+- **Idiomas:** `es`, `en` o `es,en`; el primero es el principal. Con dos, cada post sale en los dos idiomas como publicaciones separadas, espaciadas por la cadencia.
+- **Líneas de contenido** (`--pillar "clave|nombre|peso|descripción"`): los temas de los que habla la marca. El peso reparte las ideas del plan (una línea con peso 3 recibe el triple que una con 1). La clave va en minúsculas, sin espacios.
+- **Hechos** (`--fact`, uno por frase): **lo más importante**. Cifras, clientes, fechas y logros que la IA puede afirmar. Sin hechos, la IA escribe sobre ideas y criterios, pero no inventa números ni nombres. Revísalos: lo que pongas aquí puede salir publicado.
+- **Cosas que evitar** (`--avoid`): temas, palabras o promesas que no quieres ver.
+- **Cadencia** (`--cadence "red/posts por semana/días/horas/horas entre idiomas"`): por red (instagram, x, linkedin, discord, tiktok); los días como `lun,mar,mie,jue,vie,sab,dom` y las horas en **hora de Chile**. Las horas entre idiomas son 6 si no las pones. `--remove-cadence <red>` quita una red.
+- Cada opción **reemplaza** su campo y lo demás queda como estaba; `--add-fact` y `--add-avoid` suman a la lista. `--audience ""` lo borra.
+- **Con un archivo:** `pnpm -s cli brand show --broker agentpey --json > perfil.json`, lo editas y `pnpm -s cli brand edit --broker agentpey --file perfil.json`. Los campos que el archivo no trae quedan como estaban.
+- Si algo no sirve, la CLI dice qué campo y por qué (`EDITORIAL_PROFILE_INVALID`) y no guarda nada.
+- El tono sigue siendo el de la marca (`brokers edit --tone`) y los hashtags del perfil se suman a los fijos de la marca.
+- Un corredor edita solo el perfil de su marca; tú, el de cualquiera.
+
 ## Restaurar un respaldo de la base
 
 > Esto es para un respaldo de tu Mac. Para uno del servidor (el de R2), sigue `docs/10-despliegue.md`, "Paso 10 · Restaurar un respaldo".

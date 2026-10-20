@@ -83,6 +83,10 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "PATCH /brokers/:id": "session",
   "POST /brokers/:id/logo": "session",
   "GET /brokers/:id/template.xlsx": "session",
+  // F9-T09: el perfil editorial; leer con `broker.view` y editar con `brand.edit` (el corredor, el
+  // suyo), revisados en core; el de otro corredor es 404 (`ownedBy`).
+  "GET /brokers/:id/editorial-profile": "session",
+  "PUT /brokers/:id/editorial-profile": "session",
   // F8 (spec §4.4, ADR-0025): pedir la carga con sus URLs de subida y empezarla.
   "POST /imports/uploads": "session",
   "POST /imports/:id/start": "session",

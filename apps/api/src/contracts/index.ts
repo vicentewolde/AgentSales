@@ -14,6 +14,8 @@ import {
   CONTENT_STATUSES,
   contentRunReportSchema,
   contentRunSchema,
+  EDITORIAL_LIMITS,
+  editorialProfileSchema,
   FIELD_TYPES,
   IMPORT_UPLOAD,
   importRunSchema,
@@ -1097,6 +1099,63 @@ export const brokerLogoFormSchema = z.object({ logo: fileSchema });
 /** El tipo del archivo de `GET /brokers/:id/template.xlsx`. */
 export const XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+// ── Perfil editorial (F9-T09, spec F9 §4.3 y §4.10) ────────────────────────
+
+// Solo la forma y topes holgados (el tamaño del pedido): las reglas, con sus mensajes en español,
+// son de core (`normalizeEditorialProfile`, `EDITORIAL_PROFILE_INVALID` con `issues`).
+const profileText = (max: number) => z.string().max(max + 50);
+const profileList = (items: number, length: number) => z.array(profileText(length)).max(items * 2);
+
+/**
+ * `PUT /brokers/:id/editorial-profile`: el perfil completo (reemplaza al anterior). Estricto: un
+ * campo desconocido (o un `brokerId`, que es siempre el de la ruta) es 400.
+ */
+export const editorialProfileBodySchema = z
+  .object({
+    languages: profileList(EDITORIAL_LIMITS.languages, 10),
+    audience: profileText(EDITORIAL_LIMITS.audience).nullable(),
+    pillars: z
+      .array(
+        z
+          .object({
+            key: profileText(EDITORIAL_LIMITS.pillarKey),
+            name: profileText(EDITORIAL_LIMITS.pillarName),
+            description: profileText(EDITORIAL_LIMITS.pillarDescription).optional(),
+            weight: z.number(),
+          })
+          .strict(),
+      )
+      .max(EDITORIAL_LIMITS.pillars * 2),
+    facts: profileList(EDITORIAL_LIMITS.facts, EDITORIAL_LIMITS.fact),
+    avoid: profileList(EDITORIAL_LIMITS.avoid, EDITORIAL_LIMITS.avoidItem),
+    cadence: z
+      .record(
+        z.string().max(40),
+        z
+          .object({
+            postsPerWeek: z.number(),
+            days: profileList(7, 10).optional(),
+            hours: profileList(EDITORIAL_LIMITS.hoursPerPlatform, 10).optional(),
+            languageGapHours: z.number().optional(),
+          })
+          .strict(),
+      )
+      .refine((cadence) => Object.keys(cadence).length <= 20, { message: "Demasiadas redes" }),
+    defaultHashtags: profileList(EDITORIAL_LIMITS.hashtags, EDITORIAL_LIMITS.hashtag),
+  })
+  .strict();
+export type EditorialProfileBody = z.infer<typeof editorialProfileBodySchema>;
+
+/** El perfil como viaja en JSON: `updatedAt` es `null` si el corredor todavía no lo guarda. */
+export const editorialProfileViewSchema = editorialProfileSchema
+  .omit({ createdAt: true, updatedAt: true })
+  .extend({ updatedAt: z.coerce.date().nullable() });
+export type EditorialProfileJson = z.infer<typeof editorialProfileViewSchema>;
+
+/** `GET` y `PUT /brokers/:id/editorial-profile`: el guardado o, si no tiene, el vacío por defecto. */
+export const editorialProfileResponseSchema = z.object({ profile: editorialProfileViewSchema });
+export type EditorialProfileResponse = z.infer<typeof editorialProfileResponseSchema>;
 
 // ── Usuarios y sesiones (F7-T04 y T05, spec F7 §4.13, ADR-0021) ────────────
 

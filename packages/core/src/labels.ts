@@ -1,5 +1,6 @@
 import { formatChileTime } from "./chile-time.js";
 import type { ContentReelOutcome, ContentRun } from "./content.js";
+import type { EditorialWeekday } from "./editorial-profile.js";
 import type {
   BrokerKind,
   CloseReason,
@@ -7,6 +8,7 @@ import type {
   ContentRunStatus,
   ContentStatus,
   ImportRunStatus,
+  Language,
   ListingStatus,
   Operation,
   Platform,
@@ -79,6 +81,23 @@ export const PLATFORM_TEXT: Readonly<Record<Platform, string>> = {
   linkedin: "LinkedIn",
   discord: "Discord",
   tiktok: "TikTok",
+};
+
+/** Los idiomas de un perfil editorial y de un texto (F9). */
+export const LANGUAGE_TEXT: Readonly<Record<Language, string>> = {
+  es: "español",
+  en: "inglés",
+};
+
+/** Los días de la cadencia del perfil editorial (F9-T09), abreviados como en Chile. */
+export const EDITORIAL_WEEKDAY_TEXT: Readonly<Record<EditorialWeekday, string>> = {
+  mon: "lun",
+  tue: "mar",
+  wed: "mié",
+  thu: "jue",
+  fri: "vie",
+  sat: "sáb",
+  sun: "dom",
 };
 
 /** Qué es un corredor (`brokers.kind`, F9): lo que muestran la CLI y el panel. */

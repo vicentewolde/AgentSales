@@ -26,6 +26,7 @@ import {
   createContentRepository,
   createContentRunRepository,
   createDb,
+  createEditorialProfileRepository,
   createFieldDefinitionRepository,
   createImportRunRepository,
   createInvitationRepository,
@@ -180,6 +181,7 @@ const app = createApp({
   lock: createListingLock(database.db, { secretBox }),
   posts: createPostRepository(database.db),
   postLock: createPostLock(database.db, { secretBox }),
+  editorialProfiles: createEditorialProfileRepository(database.db),
   publications: createPublicationRepository(database.db),
   platformAccounts: createPlatformAccountRepository(database.db, { secretBox }),
   instagram: {

@@ -32,6 +32,22 @@ export const isListingPlatform = (platform: Platform): platform is ListingPlatfo
   (LISTING_PLATFORMS as readonly Platform[]).includes(platform);
 
 /**
+ * Las redes que publican posts de marca (F9, ADR-0029): todas menos Portal y Marketplace, que son
+ * de los avisos. La cadencia del perfil editorial va por estas (spec F9 §4.3).
+ */
+export const POST_PLATFORMS = [
+  "instagram",
+  "x",
+  "linkedin",
+  "discord",
+  "tiktok",
+] as const satisfies readonly Platform[];
+export type PostPlatform = (typeof POST_PLATFORMS)[number];
+
+export const isPostPlatform = (platform: string): platform is PostPlatform =>
+  (POST_PLATFORMS as readonly string[]).includes(platform);
+
+/**
  * Los nombres cortos de los canales para la CLI (`--platform portal`, spec F2 §4.7): se traducen a
  * `PLATFORMS` solo aquí.
  */

@@ -62,11 +62,25 @@ export {
   contentSchema,
 } from "./content.js";
 export {
+  DEFAULT_LANGUAGE_GAP_HOURS,
+  EDITORIAL_LIMITS,
+  EDITORIAL_WEEKDAYS,
+  type EditorialCadence,
+  type EditorialCadenceEntry,
   type EditorialPillar,
   type EditorialProfile,
   type EditorialProfileData,
+  type EditorialProfileInput,
+  type EditorialProfileIssue,
+  type EditorialProfileView,
+  type EditorialWeekday,
+  editorialCadenceEntrySchema,
+  editorialCadenceSchema,
   editorialPillarSchema,
   editorialProfileSchema,
+  editorialProfileView,
+  emptyEditorialProfileData,
+  normalizeEditorialProfile,
 } from "./editorial-profile.js";
 export * from "./enums.js";
 export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
@@ -113,9 +127,11 @@ export {
   CONTENT_RUN_STATUS_TEXT,
   CONTENT_STATUS_TEXT,
   contentRunProgressText,
+  EDITORIAL_WEEKDAY_TEXT,
   IMPORT_BROKER_OUTCOME_TEXT,
   IMPORT_ROW_OUTCOME_TEXT,
   IMPORT_RUN_STATUS_TEXT,
+  LANGUAGE_TEXT,
   LISTING_NOT_PREPARABLE_TEXT,
   LISTING_NOT_PUBLISHABLE_TEXT,
   LISTING_STATUS_TEXT,
@@ -790,6 +806,7 @@ export {
   type EditContentDeps,
   editContent,
 } from "./use-cases/edit-content.js";
+export { getEditorialProfile, saveEditorialProfile } from "./use-cases/editorial-profile.js";
 export {
   ACCESS_TOKEN_REFRESH_MARGIN_MS,
   accessTokenProvider,

@@ -4,6 +4,7 @@ import { colors } from "./colors.js";
 import * as accounts from "./commands/accounts.js";
 import * as agenda from "./commands/agenda.js";
 import * as approve from "./commands/approve.js";
+import * as brand from "./commands/brand.js";
 import * as brokers from "./commands/brokers.js";
 import * as content from "./commands/content.js";
 import * as doctor from "./commands/doctor/index.js";
@@ -48,6 +49,7 @@ for (const command of [
   tracking,
   accounts,
   brokers,
+  brand,
   users,
   usage,
 ]) {
