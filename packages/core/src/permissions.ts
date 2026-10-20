@@ -31,6 +31,12 @@ export const PERMISSIONS = [
    * y fijar el tope de gasto siguen siendo de `accounts.manage`.
    */
   "x.connect",
+  /**
+   * Conectar **su propio** perfil de LinkedIn con el OAuth (el botón de Cuentas, como
+   * `instagram.connect`; spec F9 §4.7, F9-T15). Renovar, desconectar y cambiar el modo siguen
+   * siendo de `accounts.manage`.
+   */
+  "linkedin.connect",
   /** Publicación automática, tope de IA y "corredor propio". */
   "broker.settings",
   "brokers.create",
@@ -51,6 +57,7 @@ const BROKER_PERMISSIONS: ReadonlySet<Permission> = new Set([
   "instagram.connect",
   // F9-T16: su propia cuenta de X.
   "x.connect",
+  "linkedin.connect",
 ]);
 
 type Actor = Pick<User, "role" | "brokerId">;

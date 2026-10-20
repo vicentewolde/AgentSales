@@ -165,6 +165,21 @@ export {
   userStateText,
 } from "./labels.js";
 export {
+  isLinkedInPostUrn,
+  LINKEDIN_ACCOUNT_MODES,
+  LINKEDIN_DEFAULT_MODE,
+  LINKEDIN_PUBLISH_SCOPE,
+  LINKEDIN_TOKEN_DAYS,
+  type LinkedInAccountMeta,
+  type LinkedInAccountMode,
+  type LinkedInPostRef,
+  linkedinAccountMetaSchema,
+  linkedinMemberIdSchema,
+  linkedinPersonUrn,
+  linkedinPostUrl,
+  parseLinkedInPostUrl,
+} from "./linkedin.js";
+export {
   canChangeListingStatus,
   canDoListingAction,
   canPrepareContent,
@@ -463,6 +478,7 @@ export type {
   InstagramToken,
 } from "./ports/instagram-auth.js";
 export type { EnqueueOptions, JobQueue } from "./ports/job-queue.js";
+export type { LinkedInAuth, LinkedInMember, LinkedInToken } from "./ports/linkedin-auth.js";
 export type { ListingLock, LockedRepositories } from "./ports/listing-lock.js";
 export type {
   ListingImportData,
@@ -851,6 +867,12 @@ export {
   INSTAGRAM_TOKEN_DAYS,
   requireBroker,
 } from "./use-cases/connect-account.js";
+export {
+  type ConnectLinkedInAccountDeps,
+  connectLinkedInAccount,
+  type SetAccountModeDeps,
+  setAccountMode,
+} from "./use-cases/connect-linkedin-account.js";
 export {
   type ConnectMarketplaceAccountDeps,
   connectManualMarketplaceAccount,

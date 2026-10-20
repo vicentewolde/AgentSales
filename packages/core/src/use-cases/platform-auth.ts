@@ -15,6 +15,9 @@ const ACCESS_REJECTED = new Set([
   "MARKETPLACE_SESSION_EXPIRED",
   "DISCORD_WEBHOOK_NOT_FOUND",
   "DISCORD_WEBHOOK_INVALID",
+  // LinkedIn (F9-T15, `linkedin.md` §7): un 401 es un token vencido o revocado; no se renueva solo,
+  // se reconecta.
+  "LINKEDIN_AUTH_INVALID",
 ]);
 
 export const isAccessRejected = (error: unknown): boolean =>

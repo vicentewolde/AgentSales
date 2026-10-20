@@ -536,7 +536,12 @@ describe("traspaso a mano por cuenta (ADR-0029 punto 9)", () => {
     );
     expect(confirmed).toMatchObject({
       changed: true,
-      publication: { status: "published", externalUrl: url, externalId: url, publishedAt: NOW },
+      publication: {
+        status: "published",
+        externalUrl: url,
+        externalId: "urn:li:share:7380000000000000000",
+        publishedAt: NOW,
+      },
     });
     expect(t.postLock.busy()).toEqual([]);
     await expect(
@@ -567,7 +572,11 @@ describe("traspaso a mano por cuenta (ADR-0029 punto 9)", () => {
       await codeOf(
         confirmManualPublication(
           { lock: t.lock, publications: t.publications },
-          { publicationId: publication.id, url: "https://www.linkedin.com/x", actor: "operator" },
+          {
+            publicationId: publication.id,
+            url: "https://www.linkedin.com/feed/update/urn:li:share:1/",
+            actor: "operator",
+          },
         ),
       ),
     ).toBe("SUBJECT_NOT_LISTING");
