@@ -4,7 +4,11 @@ import type {
   ProcessedMediaVariant,
   RenderedMediaVariant,
 } from "../enums.js";
-import { PROCESSED_MEDIA_VARIANTS, RENDERED_MEDIA_VARIANTS } from "../enums.js";
+import {
+  PROCESSED_MEDIA_VARIANTS,
+  RENDERED_MEDIA_VARIANTS,
+  VIDEO_MEDIA_VARIANTS,
+} from "../enums.js";
 import { AppError } from "../errors.js";
 import type { Media } from "../media.js";
 import {
@@ -89,8 +93,8 @@ export type DerivativeResult = { media: Media; previousPath: string | null };
 /**
  * Valida un derivado antes de tocar nada; la usan todas las implementaciones. Una variante que no
  * es de su rol (un `cover` como `processed`), un padre que no corresponde al rol, un tipo que no
- * calza (el reel es video; lo demás, imagen) o un render de un post es un bug de quien llama:
- * `MEDIA_DERIVATIVE_INVALID`, no reintentable.
+ * calza (el reel y el video para X son video; lo demás, imagen) o un render de un post es un bug
+ * de quien llama: `MEDIA_DERIVATIVE_INVALID`, no reintentable.
  */
 export function checkDerivative(derivative: NewDerivative): void {
   const variants: readonly MediaVariant[] =
@@ -99,8 +103,9 @@ export function checkDerivative(derivative: NewDerivative): void {
     derivative.role === "processed"
       ? typeof derivative.parentMediaId === "string" && derivative.parentMediaId.length > 0
       : derivative.parentMediaId === null;
-  // El reel es el único video; las demás variantes y los renders son imágenes.
-  const kindOk = derivative.kind === (derivative.variant === "ig_reel" ? "video" : "image");
+  // El reel y el video para X son video; las demás variantes y los renders son imágenes.
+  const isVideo = (VIDEO_MEDIA_VARIANTS as readonly MediaVariant[]).includes(derivative.variant);
+  const kindOk = derivative.kind === (isVideo ? "video" : "image");
   // Un post usa sus propios medios: sin portada ni ficha de plantilla (spec F9 §3).
   const subjectOk = derivative.role === "processed" || derivative.postId === undefined;
   if (!variants.includes(derivative.variant) || !parentOk || !kindOk || !subjectOk) {

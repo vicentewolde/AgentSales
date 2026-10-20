@@ -442,6 +442,25 @@ export function subjectRepositoriesContract(
             parentMediaId: null,
           }),
         ).rejects.toMatchObject({ code: "MEDIA_DERIVATIVE_INVALID" });
+
+        // F9-T10: el video para X es un video; como imagen, es un bug de quien llama.
+        const xVideo = {
+          ...variant,
+          variant: "x_video" as const,
+          kind: "video" as const,
+          storagePath: `posts/${post.id}/processed/x_video/${first.id}.mp4`,
+          mime: "video/mp4",
+          width: 720,
+          height: 1280,
+          durationS: 12.5,
+          checksum: unique("sha-x"),
+        };
+        await expect(repos.media.upsertDerivative(xVideo)).resolves.toMatchObject({
+          media: { variant: "x_video", kind: "video", postId: post.id },
+        });
+        await expect(
+          repos.media.upsertDerivative({ ...xVideo, kind: "image" }),
+        ).rejects.toMatchObject({ code: "MEDIA_DERIVATIVE_INVALID" });
       });
     });
 
@@ -486,6 +505,28 @@ export function subjectRepositoriesContract(
         expect(await repos.postUploads.markCompleted(fresh.id)).toBe(true);
         expect((await repos.postUploads.get(fresh.id))?.status).toBe("completed");
         expect(await repos.postUploads.markCompleted(repos.missingId)).toBe(false);
+      });
+
+      it("reopen vuelve a pendiente con el vencimiento nuevo, desde cualquier estado (F9-T10)", async () => {
+        const post = await newPost();
+        const now = new Date();
+        const upload = await repos.postUploads.create({
+          postId: post.id,
+          objectPath: `posts/${post.id}/original/${unique("sha")}.jpg`,
+          expectedBytes: 7,
+          expiresAt: new Date(now.getTime() - 1000),
+        });
+        expect(await repos.postUploads.markAbandoned(upload.id)).toBe(true);
+        const later = new Date(now.getTime() + 3_600_000);
+        const reopened = await repos.postUploads.reopen(upload.id, later);
+        expect(reopened).toMatchObject({ id: upload.id, status: "pending" });
+        expect(reopened?.expiresAt.getTime()).toBe(later.getTime());
+        expect((await repos.postUploads.listExpired(now)).map((item) => item.id)).not.toContain(
+          upload.id,
+        );
+        expect(await repos.postUploads.markCompleted(upload.id)).toBe(true);
+        expect((await repos.postUploads.reopen(upload.id, later))?.status).toBe("pending");
+        expect(await repos.postUploads.reopen(repos.missingId, later)).toBeNull();
       });
     });
 

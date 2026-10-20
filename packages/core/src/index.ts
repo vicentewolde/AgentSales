@@ -479,6 +479,7 @@ export type {
   ProcessedImage,
   ProcessedVideo,
   VideoOutput,
+  VideoProcessOptions,
 } from "./ports/media-processor.js";
 export {
   checkArrangement,
@@ -888,11 +889,45 @@ export {
 } from "./use-cases/pause-publication.js";
 export { expireAccountIfRejected, isAccessRejected } from "./use-cases/platform-auth.js";
 export {
+  type CloseAbandonedPostUploadsDeps,
+  type CloseAbandonedPostUploadsResult,
+  type CompletePostUploadsDeps,
+  type CompletePostUploadsResult,
+  closeAbandonedPostUploads,
+  completePostUploads,
+  POST_MEDIA_TYPES,
+  POST_UPLOAD,
+  type PostUploadFile,
+  type PostUploadTarget,
+  type RequestPostUploadsDeps,
+  requestPostUploads,
+} from "./use-cases/post-uploads.js";
+export {
+  archivePost,
+  assertPostAccess,
+  type CreatePostDeps,
+  type CreatePostInput,
+  createPost,
+  getPost,
+  type ListPostsFilters,
+  listPosts,
+  POST_LIMITS,
+  type UpdatePostDeps,
+  type UpdatePostInput,
+  updatePost,
+} from "./use-cases/posts.js";
+export {
   type PrepareContentDeps,
   type PrepareContentParams,
   type PrepareContentResult,
   prepareContent,
 } from "./use-cases/prepare-content.js";
+export {
+  POST_PHOTO_VARIANTS,
+  type ProcessPostMediaDeps,
+  type ProcessPostMediaResult,
+  processPostMedia,
+} from "./use-cases/process-post-media.js";
 export {
   availablePublicationOperations,
   enqueueSync,

@@ -136,10 +136,24 @@ export type MediaRole = (typeof MEDIA_ROLES)[number];
 
 /**
  * Variantes de un original (`role = processed`, spec F2 §4.2): miniatura para el panel, recortes
- * por canal y el reel. Una vigente por original y variante.
+ * por canal, el reel y, desde F9 (spec §4.5, solo posts), el video reducido para X. Una vigente
+ * por original y variante.
  */
-export const PROCESSED_MEDIA_VARIANTS = ["thumb", "ig_4x5", "pi_4x3", "ig_reel"] as const;
+export const PROCESSED_MEDIA_VARIANTS = [
+  "thumb",
+  "ig_4x5",
+  "pi_4x3",
+  "ig_reel",
+  "x_video",
+] as const;
 export type ProcessedMediaVariant = (typeof PROCESSED_MEDIA_VARIANTS)[number];
+
+/** Las variantes que son video (el resto, y los renders, son imágenes JPEG). */
+export const VIDEO_MEDIA_VARIANTS = [
+  "ig_reel",
+  "x_video",
+] as const satisfies readonly ProcessedMediaVariant[];
+export type VideoMediaVariant = (typeof VIDEO_MEDIA_VARIANTS)[number];
 
 /** Renders de plantillas (`role = rendered`): portada y ficha del carrusel. Uno por aviso. */
 export const RENDERED_MEDIA_VARIANTS = ["cover", "spec_sheet"] as const;

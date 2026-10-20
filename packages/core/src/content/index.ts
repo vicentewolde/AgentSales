@@ -59,7 +59,18 @@ export {
   draftListingTexts,
 } from "./draft-texts.js";
 export { type GenerateContentDraftResult, generateContentDraft } from "./generate.js";
-export { reelPath, reelTextInput, renderInput, renderPath, variantPath } from "./media-keys.js";
+export {
+  postObjectsPrefix,
+  postOriginalPath,
+  postOriginalsPrefix,
+  postVariantPath,
+  postVideoPath,
+  reelPath,
+  reelTextInput,
+  renderInput,
+  renderPath,
+  variantPath,
+} from "./media-keys.js";
 export { buildContentPrompt, CONTENT_PROMPT_VERSION } from "./prompt.js";
 export {
   coverData,
