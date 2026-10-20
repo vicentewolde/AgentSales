@@ -261,11 +261,15 @@ Mide las reglas de las dos secciones anteriores con la IA de verdad, sin la base
 | Qué | Cómo |
 |---|---|
 | Ideas repetidas | Las descartadas por `REPEATED_TOPIC`, `DISCARDED_TOPIC` o `DUPLICATE_IN_PLAN` |
-| Ideas parecidas (advertencia) | Una aceptada que comparte el 60 % o más de sus palabras con peso (4 letras o más, sin "cómo", "para"…) con un tema del historial o con otra idea del plan: lo que la verificación no ve (arriba) |
+| Ideas parecidas (advertencia) | Una aceptada que comparte el 60 % o más de sus palabras con peso (4 letras o más, sin "cómo", "para"…) con un tema del historial o con otra idea del plan: lo que la verificación no ve (arriba). El umbral queda en 60 % hasta la primera corrida real del operador; con el plan de `fake` ya marca como parecidos un mismo ángulo en dos líneas distintas |
 | Fuera del perfil | Las ideas descartadas por `FACT_NOT_IN_PROFILE` y cada `FACT_NOT_IN_PROFILE` o `LINK_NOT_ALLOWED` de los textos |
 | Largos | `TOO_LONG` y `HASHTAG_LIMIT` de los textos |
-| Escapes | LinkedIn que cabe sin los escapes y no con ellos; un hashtag dentro del cuerpo (va aparte y en LinkedIn saldría escapado); caracteres de ancho cero o la arroba ancha; y la advertencia `MARKDOWN` |
+| Escapes | LinkedIn que cabe sin los escapes y no con ellos; un hashtag dentro del cuerpo (va aparte y en LinkedIn saldría escapado); caracteres de ancho cero (U+200B a U+200D, U+2060, U+FEFF) o la arroba ancha (U+FF20). El markdown no cuenta aquí: es la advertencia `MARKDOWN` de la revisión y se muestra una vez, con ella |
 | Menciones masivas | Ideas descartadas por `MASS_MENTION` y `MASS_MENTION` de los textos |
 | Términos a evitar (advertencia) | `AVOID_TERM` de los textos |
 
-Imprime cada idea (aceptada o descartada con su motivo) y cada texto con su revisión, y el costo estimado del plan y de los textos por separado y en total (tokens y US$ con la tabla de precios de core; `fake` y la CLI de Claude cuestan 0). Sale con 1 si hay fallas o problemas; las dos advertencias (parecidas y términos a evitar) no cuentan. La medición del costo con la API está en `docs/integraciones/anthropic-api.md` §13.
+Imprime cada idea (aceptada o descartada con su motivo) y cada texto con su revisión, y el costo estimado del plan y de los textos por separado y en total (tokens y US$ con la tabla de precios de core; `fake` y la CLI de Claude cuestan 0; si solo algunas llamadas informaron tokens, dice cuántas y marca el costo como parcial). La medición del costo con la API está en `docs/integraciones/anthropic-api.md` §13.
+
+**Código de salida:** 1 si hubo fallas de la IA, un corte, o problemas que **llegan al operador**: textos con errores de la revisión o con problemas de escape. Las ideas que el plan descarta (repetidas, fuera del perfil, menciones masivas…) son la defensa funcionando: se muestran como estadística ("descartadas por el plan", por motivo) y no cambian la salida, salvo con `--strict`, que también sale con 1 si el plan descartó alguna. Las advertencias (parecidas y términos a evitar) nunca la cambian.
+
+**Límite conocido: "fuera del perfil" no es una garantía.** Cuenta lo que ve la heurística de hechos de core (`unsupportedFacts` y `checkPostContent`), con sus mismos límites (sección del texto por red). En particular, no ve clientes con nombre de empresa en una línea con forma de título: "Trabajamos con Banco Estado y Falabella", sin punto final y con sus palabras largas en mayúscula, se toma como título y no se revisa como nombres (con el perfil `sin-hechos` da `[]`). Un cero en ese contador no reemplaza leer las ideas y los textos: el operador sigue aprobando cada uno.
