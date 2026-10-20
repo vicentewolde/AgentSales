@@ -14,7 +14,7 @@ import { isUniqueViolation, withDbErrors } from "../errors.js";
 import { contentRuns, contents, listings } from "../schema.js";
 
 const ONE_ACTIVE_PER_LISTING = "content_runs_one_active_per_listing";
-const RUN_PLATFORM_UNIQUE = "contents_run_platform_unique";
+const RUN_PLATFORM_UNIQUE = "contents_run_platform_language_unique";
 
 /**
  * Fila → entidad. `stage`, `report` y `error` los escribió otro proceso: se validan al leerlos.
@@ -186,6 +186,15 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
               .where(and(eq(contentRuns.id, id), eq(contentRuns.status, "running")))
               .returning({ listingId: contentRuns.listingId });
             if (run === undefined) return false;
+            // Este camino es de avisos: una corrida de post (F9, `listing_id` nulo) la atiende T05.
+            // La transacción se deshace y la corrida queda como estaba.
+            if (run.listingId === null) {
+              throw new AppError(
+                "CONTENT_RUN_ROW_INVALID",
+                `La corrida de contenido ${id} no es de un aviso`,
+                { details: { id } },
+              );
+            }
             if (rows.length > 0) {
               await tx.insert(contents).values(
                 rows.map((row) => ({

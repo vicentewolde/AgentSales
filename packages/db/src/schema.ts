@@ -2,11 +2,13 @@
 // Los valores de los enums salen de @agentsales/core; nunca se repiten aquí.
 import {
   ACTIVE_CONTENT_RUN_STATUSES,
+  BRIEF_ORIGINS,
   BROKER_KINDS,
   CLOSE_REASONS,
   CONTENT_RUN_STATUSES,
   CONTENT_STATUSES,
   CURRENCIES,
+  DEFAULT_LANGUAGE,
   FIELD_TYPES,
   IMPORT_RUN_STATUSES,
   INVITATION_PURPOSES,
@@ -15,8 +17,13 @@ import {
   MEDIA_KINDS,
   MEDIA_ROLES,
   OPERATIONS,
+  PLAN_RUN_STATUSES,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  POST_KINDS,
+  POST_SOURCES,
+  POST_STATUSES,
+  POST_UPLOAD_STATUSES,
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
   SESSION_CLIENTS,
@@ -67,6 +74,13 @@ export const userRoleEnum = pgEnum("user_role", USER_ROLES);
 export const sessionClientEnum = pgEnum("session_client", SESSION_CLIENTS);
 export const invitationPurposeEnum = pgEnum("invitation_purpose", INVITATION_PURPOSES);
 export const brokerKindEnum = pgEnum("broker_kind", BROKER_KINDS);
+// F9 (spec F9 §4.11): los posts, sus planes y sus subidas.
+export const postStatusEnum = pgEnum("post_status", POST_STATUSES);
+export const postKindEnum = pgEnum("post_kind", POST_KINDS);
+export const postSourceEnum = pgEnum("post_source", POST_SOURCES);
+export const briefOriginEnum = pgEnum("brief_origin", BRIEF_ORIGINS);
+export const planRunStatusEnum = pgEnum("plan_run_status", PLAN_RUN_STATUSES);
+export const postUploadStatusEnum = pgEnum("post_upload_status", POST_UPLOAD_STATUSES);
 
 // ── Columnas comunes ─────────────────────────────────────────────────────
 
@@ -348,12 +362,136 @@ export const listings = pgTable(
   (t) => [unique().on(t.brokerId, t.externalRef)],
 );
 
+// ── Contenido de marca (F9, ADR-0029 y ADR-0030; spec F9 §4.11) ──────────
+
+/**
+ * Un plan de ideas de la IA para un período (job `content.plan`, ADR-0030): se crea con `posts`
+ * porque `posts.plan_run_id` la referencia; la lógica llega en F9-T20. Sus columnas de corrida
+ * (`error`, `llm_usage`, `started_at`, `finished_at`) son como las de `content_runs`.
+ */
+export const planRuns = pgTable(
+  "plan_runs",
+  {
+    id: id(),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
+    periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
+    status: planRunStatusEnum("status").notNull().default("queued"),
+    /** Lo pedido (redes, cuántas ideas…), sin secretos. */
+    request: jsonb("request").notNull().default({}),
+    /** Lo que propuso y lo que descartaron las verificaciones; `null` hasta que termina. */
+    report: jsonb("report"),
+    /** `{ code, message }` cuando `status = failed`. */
+    error: jsonb("error"),
+    /** `llmUsageSchema` (core): lo gastado en IA (spec F9 §4.12). */
+    llmUsage: jsonb("llm_usage"),
+    /** `SOCIAL_PROMPT_VERSION` con que corrió (ADR-0030, punto 6); `null` antes de llamar a la IA. */
+    promptVersion: text("prompt_version"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index("plan_runs_broker_created_idx").on(t.brokerId, t.createdAt)],
+);
+
+/**
+ * Un post de marca (ADR-0029): un tema con un texto por red e idioma (`contents.post_id`) y, a
+ * veces, medios (`media.post_id`). Cuelga de cualquier corredor o marca: que un aviso solo cuelgue
+ * de un `broker` es una regla de core, no de la base.
+ */
+export const posts = pgTable(
+  "posts",
+  {
+    id: id(),
+    brokerId: uuid("broker_id")
+      .notNull()
+      .references(() => brokers.id),
+    topic: text("topic").notNull(),
+    /** Lo que el post debe decir; `null` si no tiene. */
+    brief: text("brief"),
+    /** Quién escribió el brief (ADR-0030, punto 1): solo el del operador es fuente de hechos. */
+    briefOrigin: briefOriginEnum("brief_origin").notNull().default("operator"),
+    kind: postKindEnum("kind").notNull(),
+    status: postStatusEnum("status").notNull().default("draft"),
+    source: postSourceEnum("source").notNull().default("manual"),
+    /** La línea de contenido del perfil editorial (`pillars[].key`), si tiene. */
+    pillar: text("pillar"),
+    /** Cuándo se piensa publicar (la idea del plan o lo que fijó el operador). */
+    plannedAt: timestamp("planned_at", { withTimezone: true }),
+    planRunId: uuid("plan_run_id").references(() => planRuns.id),
+    /** Quién lo creó o pidió el plan; `null` si se borró el usuario. */
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    /** El porqué de una idea de la IA. */
+    rationale: text("rationale"),
+    ...timestamps,
+  },
+  (t) => [
+    index("posts_broker_status_planned_idx").on(t.brokerId, t.status, t.plannedAt),
+    // Las ideas de un plan (`GET /api/plans/:id`, F9-T20).
+    index("posts_plan_run_idx").on(t.planRunId),
+  ],
+);
+
+/** El perfil editorial de una marca (spec F9 §4.3): uno por corredor; lo llena el operador. */
+export const editorialProfiles = pgTable("editorial_profiles", {
+  brokerId: uuid("broker_id")
+    .primaryKey()
+    .references(() => brokers.id),
+  /** `LANGUAGES` (core), sin repetir; el primero es el principal. */
+  languages: text("languages")
+    .array()
+    .notNull()
+    .default(sql.raw(`'{${DEFAULT_LANGUAGE}}'::text[]`)),
+  /** A quién le habla, en una o dos frases. */
+  audience: text("audience"),
+  /** `[{ key, name, description, weight }]`. */
+  pillars: jsonb("pillars").notNull().default([]),
+  /** Los hechos que la IA puede afirmar (ADR-0030): lo que no está aquí no se afirma. */
+  facts: text("facts").array().notNull().default(sql`'{}'::text[]`),
+  avoid: text("avoid").array().notNull().default(sql`'{}'::text[]`),
+  /** Posts por semana en cada red, días y horas preferidos y horas entre idiomas. */
+  cadence: jsonb("cadence").notNull().default({}),
+  /** Se suman a `brokers.fixed_hashtags`. */
+  defaultHashtags: text("default_hashtags").array().notNull().default(sql`'{}'::text[]`),
+  ...timestamps,
+});
+
+/**
+ * Las subidas pendientes de un post (spec F9 §4.5, ADR-0025): la URL prefirmada se pidió y el
+ * archivo puede no haber llegado. La limpieza periódica borra de R2 lo abandonado.
+ */
+export const postUploads = pgTable(
+  "post_uploads",
+  {
+    id: id(),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => posts.id),
+    /** La clave de R2, bajo `posts/{postId}/…`. */
+    objectPath: text("object_path").notNull(),
+    expectedBytes: bigint("expected_bytes", { mode: "number" }).notNull(),
+    status: postUploadStatusEnum("status").notNull().default("pending"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    unique("post_uploads_object_path_unique").on(t.objectPath),
+    index("post_uploads_post_idx").on(t.postId),
+    // Las pendientes que vencen (la limpieza periódica).
+    index("post_uploads_status_expires_idx").on(t.status, t.expiresAt),
+  ],
+);
+
 export const media = pgTable(
   "media",
   {
     id: id(),
-    /** `null` para medios del corredor (logo). */
+    /** `null` para los medios de un post y los del corredor (logo). */
     listingId: uuid("listing_id").references(() => listings.id),
+    /** Desde F9 (ADR-0029): el post del medio; a lo más uno de `listing_id` y `post_id`. */
+    postId: uuid("post_id").references(() => posts.id),
     brokerId: uuid("broker_id")
       .notNull()
       .references(() => brokers.id),
@@ -387,6 +525,12 @@ export const media = pgTable(
     uniqueIndex("media_rendered_listing_variant_unique")
       .on(t.listingId, t.variant)
       .where(sql`"role" = 'rendered'`),
+    // F9: el mismo archivo no se sube dos veces a un post.
+    uniqueIndex("media_original_post_checksum_unique")
+      .on(t.postId, t.checksum)
+      .where(sql`"role" = 'original'`),
+    // Un medio es de un aviso, de un post o de ninguno (el logo del corredor).
+    check("media_at_most_one_subject", sql`num_nonnulls(${t.listingId}, ${t.postId}) <= 1`),
   ],
 );
 
@@ -398,14 +542,16 @@ const activeContentRun = sql.raw(
   `"status" IN (${ACTIVE_CONTENT_RUN_STATUSES.map((status) => `'${status}'`).join(", ")})`,
 );
 
-/** Corridas de contenido (job `content.prepare`, ADR-0012; spec F2 §4.3). */
+/**
+ * Corridas de contenido (job `content.prepare`, ADR-0012; spec F2 §4.3). Desde F9 (ADR-0029), de
+ * un aviso o de un post: exactamente uno de `listing_id` y `post_id`.
+ */
 export const contentRuns = pgTable(
   "content_runs",
   {
     id: id(),
-    listingId: uuid("listing_id")
-      .notNull()
-      .references(() => listings.id),
+    listingId: uuid("listing_id").references(() => listings.id),
+    postId: uuid("post_id").references(() => posts.id),
     status: contentRunStatusEnum("status").notNull().default("queued"),
     /** Si la corrida genera textos (`false`: solo medios y renders). */
     texts: boolean("texts").notNull().default(true),
@@ -429,21 +575,26 @@ export const contentRuns = pgTable(
   (t) => [
     uniqueIndex("content_runs_one_active_per_listing").on(t.listingId).where(activeContentRun),
     index("content_runs_listing_created_idx").on(t.listingId, t.createdAt),
+    uniqueIndex("content_runs_one_active_per_post").on(t.postId).where(activeContentRun),
+    index("content_runs_post_created_idx").on(t.postId, t.createdAt),
+    check("content_runs_one_subject", sql`num_nonnulls(${t.listingId}, ${t.postId}) = 1`),
   ],
 );
 
+/** Un texto por canal (y, desde F9, por idioma) de un aviso o de un post (ADR-0029). */
 export const contents = pgTable(
   "contents",
   {
     id: id(),
-    listingId: uuid("listing_id")
-      .notNull()
-      .references(() => listings.id),
+    listingId: uuid("listing_id").references(() => listings.id),
+    postId: uuid("post_id").references(() => posts.id),
     /** Corrida que lo generó (ADR-0012). */
     contentRunId: uuid("content_run_id")
       .notNull()
       .references(() => contentRuns.id),
     platform: platformEnum("platform").notNull(),
+    /** `LANGUAGES` (core); lo anterior a F9 es español. */
+    language: text("language").notNull().default(DEFAULT_LANGUAGE),
     title: text("title"),
     body: text("body").notNull(),
     hashtags: text("hashtags").array().notNull().default(sql`'{}'::text[]`),
@@ -455,10 +606,13 @@ export const contents = pgTable(
     ...timestamps,
   },
   (t) => [
-    // Un texto por canal y corrida: un intento solapado del job no duplica (spec F2 §4.4).
-    unique("contents_run_platform_unique").on(t.contentRunId, t.platform),
+    // Un texto por canal, idioma y corrida: un intento solapado del job no duplica (spec F2 §4.4).
+    // Los textos de un aviso son todos `es`: para ellos equivale al único de antes (canal y corrida).
+    unique("contents_run_platform_language_unique").on(t.contentRunId, t.platform, t.language),
     // El vigente de cada canal es el más reciente.
     index("contents_listing_platform_created_idx").on(t.listingId, t.platform, t.createdAt),
+    index("contents_post_platform_created_idx").on(t.postId, t.platform, t.createdAt),
+    check("contents_one_subject", sql`num_nonnulls(${t.listingId}, ${t.postId}) = 1`),
   ],
 );
 
@@ -470,19 +624,21 @@ const activePublication = sql.raw(
   `"status" NOT IN (${TERMINAL_PUBLICATION_STATUSES.map((status) => `'${status}'`).join(", ")})`,
 );
 
+/** Una publicación de un aviso o, desde F9, de un post (ADR-0029): exactamente uno de los dos. */
 export const publications = pgTable(
   "publications",
   {
     id: id(),
-    listingId: uuid("listing_id")
-      .notNull()
-      .references(() => listings.id),
+    listingId: uuid("listing_id").references(() => listings.id),
+    postId: uuid("post_id").references(() => posts.id),
     platformAccountId: uuid("platform_account_id")
       .notNull()
       .references(() => platformAccounts.id),
     platform: platformEnum("platform").notNull(),
     /** `post` (carrusel o imagen suelta) o `reel` (ADR-0014). */
     format: publicationFormatEnum("format").notNull(),
+    /** El idioma de su texto (`LANGUAGES`, core): dos idiomas son dos publicaciones (spec F9 §4.4). */
+    language: text("language").notNull().default(DEFAULT_LANGUAGE),
     contentId: uuid("content_id")
       .notNull()
       .references(() => contents.id),
@@ -504,6 +660,8 @@ export const publications = pgTable(
     listingSourceHash: text("listing_source_hash"),
     /** La publicación de Portal que esta republica (ADR-0020, spec F6 §4.7). */
     relistedFrom: uuid("relisted_from").references((): AnyPgColumn => publications.id),
+    /** El costo estimado en dólares (spec F9 §4.12): hoy solo X; `null` si la red no cobra. */
+    costUsd: numeric("cost_usd", { precision: 10, scale: 4 }),
     ...timestamps,
   },
   (t) => [
@@ -512,6 +670,12 @@ export const publications = pgTable(
       .on(t.listingId, t.platformAccountId, t.format)
       .where(activePublication),
     index("publications_listing_idx").on(t.listingId),
+    // F9: una activa por post, cuenta, formato e idioma (dos idiomas son dos publicaciones).
+    uniqueIndex("publications_one_active_per_post_format")
+      .on(t.postId, t.platformAccountId, t.format, t.language)
+      .where(activePublication),
+    index("publications_post_idx").on(t.postId),
+    check("publications_one_subject", sql`num_nonnulls(${t.listingId}, ${t.postId}) = 1`),
     // Las programadas que vencen (el disparo de cada minuto, spec F6 §4.4).
     index("publications_scheduled_due").on(t.scheduledAt).where(sql`"status" = 'scheduled'`),
     // Una sola republicación por publicación, sin contar las descartadas (spec F6 §4.12).

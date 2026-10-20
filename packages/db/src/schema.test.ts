@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ACTIVE_CONTENT_RUN_STATUSES,
+  BRIEF_ORIGINS,
   BROKER_KINDS,
   CLOSE_REASONS,
   CONTENT_RUN_STATUSES,
@@ -15,8 +16,13 @@ import {
   MEDIA_KINDS,
   MEDIA_ROLES,
   OPERATIONS,
+  PLAN_RUN_STATUSES,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  POST_KINDS,
+  POST_SOURCES,
+  POST_STATUSES,
+  POST_UPLOAD_STATUSES,
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
   SESSION_CLIENTS,
@@ -48,12 +54,21 @@ const EXPECTED_ENUMS: Record<string, readonly string[]> = {
   invitation_purpose: INVITATION_PURPOSES,
   // F9-T01 (0014): corredor o marca.
   broker_kind: BROKER_KINDS,
+  // F9-T03 (0015): los posts, sus planes y sus subidas.
+  brief_origin: BRIEF_ORIGINS,
+  plan_run_status: PLAN_RUN_STATUSES,
+  post_kind: POST_KINDS,
+  post_source: POST_SOURCES,
+  post_status: POST_STATUSES,
+  post_upload_status: POST_UPLOAD_STATUSES,
 };
 
 const EXPECTED_TABLES = [
   "brokers",
   "content_runs",
   "contents",
+  // F9-T03 (0015): el perfil editorial de una marca.
+  "editorial_profiles",
   "field_definitions",
   "import_runs",
   "invitations",
@@ -64,8 +79,12 @@ const EXPECTED_TABLES = [
   // F8-T17 (0013): los pedidos de borrado de Meta.
   "meta_deletion_requests",
   "oauth_states_used",
+  // F9-T03 (0015): los planes de ideas, sus posts y las subidas pendientes.
+  "plan_runs",
   "platform_accounts",
   "platform_catalog",
+  "post_uploads",
+  "posts",
   "publication_events",
   "publications",
   "sessions",
@@ -171,6 +190,34 @@ describe("migraciones", () => {
     expect(sql).toContain(
       `ALTER TABLE "contents" ADD CONSTRAINT "contents_run_platform_unique" UNIQUE("content_run_id","platform");`,
     );
+  });
+
+  it("un sujeto por texto, corrida y publicación, y a lo más uno por medio; los únicos del post (0015)", () => {
+    const terminals = TERMINAL_PUBLICATION_STATUSES.map((status) => `'${status}'`).join(", ");
+    for (const table of ["content_runs", "contents", "publications"]) {
+      expect(sql).toContain(
+        `CHECK (num_nonnulls("${table}"."listing_id", "${table}"."post_id") = 1)`,
+      );
+    }
+    expect(sql).toContain(`CHECK (num_nonnulls("media"."listing_id", "media"."post_id") <= 1)`);
+    expect(sql).toContain(`DROP CONSTRAINT "contents_run_platform_unique"`);
+    expect(sql).toContain(
+      `ALTER TABLE "contents" ADD CONSTRAINT "contents_run_platform_language_unique" UNIQUE("content_run_id","platform","language");`,
+    );
+    expect(sql).toContain(
+      `CREATE UNIQUE INDEX "publications_one_active_per_post_format" ON "publications" USING btree ("post_id","platform_account_id","format","language") WHERE "status" NOT IN (${terminals});`,
+    );
+    expect(sql).toContain(
+      `CREATE UNIQUE INDEX "media_original_post_checksum_unique" ON "media" USING btree ("post_id","checksum") WHERE "role" = 'original';`,
+    );
+  });
+
+  it("la 0015 no usa valores de enum que agregó la 0014 (se aplican en la misma transacción)", () => {
+    const file = readdirSync(MIGRATIONS_FOLDER).find((name) => name.startsWith("0015_"));
+    const migration = readFileSync(join(MIGRATIONS_FOLDER, file ?? ""), "utf8");
+    for (const value of ["outcome_unknown", "brand", "x", "linkedin", "discord", "tiktok"]) {
+      expect([value, migration.includes(`'${value}'`)]).toEqual([value, false]);
+    }
   });
 
   it("tienen los únicos de derivados de F2: una variante por original y un render por aviso (0005)", () => {

@@ -189,3 +189,51 @@ export type ContentRunStage = (typeof CONTENT_RUN_STAGES)[number];
 /** Categoría de un aviso (ADR-0006). `product` llega después del MVP. */
 export const LISTING_CATEGORIES = ["real_estate"] as const;
 export type ListingCategory = (typeof LISTING_CATEGORIES)[number];
+
+// ── Contenido de marca (F9, ADR-0029 y ADR-0030; spec F9 §4.2 y §4.11) ──────────────────────────
+
+/**
+ * Estado de un post (spec F9 §4.2): `idea` (propuesta de la IA, sin textos), `draft` (aceptado o
+ * creado a mano), `ready` (al menos un texto aprobado) y `archived` (descartado o terminado).
+ */
+export const POST_STATUSES = ["idea", "draft", "ready", "archived"] as const;
+export type PostStatus = (typeof POST_STATUSES)[number];
+
+/** Qué lleva un post: solo texto, una imagen, un carrusel o un video. */
+export const POST_KINDS = ["text", "image", "carousel", "video"] as const;
+export type PostKind = (typeof POST_KINDS)[number];
+
+/** De dónde salió un post: a mano o de un plan de la IA (`plan_runs`). */
+export const POST_SOURCES = ["manual", "ai"] as const;
+export type PostSource = (typeof POST_SOURCES)[number];
+
+/**
+ * Quién escribió el brief de un post (ADR-0030, punto 1): solo el del operador es fuente de hechos.
+ * Cuando el operador edita un brief de la IA, pasa a `operator`.
+ */
+export const BRIEF_ORIGINS = ["operator", "ai"] as const;
+export type BriefOrigin = (typeof BRIEF_ORIGINS)[number];
+
+/**
+ * Estado de un plan de ideas (`plan_runs`, job `content.plan`; ADR-0030). Mismos valores que las
+ * corridas de contenido, en su propio enum de Postgres. `succeeded` y `failed` son terminales.
+ */
+export const PLAN_RUN_STATUSES = ["queued", "running", "succeeded", "failed"] as const;
+export type PlanRunStatus = (typeof PLAN_RUN_STATUSES)[number];
+
+/**
+ * Estado de una subida pendiente de un post (`post_uploads`, spec F9 §4.5, ADR-0025): `pending`
+ * (con su URL prefirmada), `completed` (subida y registrada como medio) o `abandoned` (vencida; la
+ * limpieza periódica la borra de R2).
+ */
+export const POST_UPLOAD_STATUSES = ["pending", "completed", "abandoned"] as const;
+export type PostUploadStatus = (typeof POST_UPLOAD_STATUSES)[number];
+
+/**
+ * Idiomas de un texto y de una publicación (`contents.language`, `publications.language`) y del
+ * perfil editorial (`editorial_profiles.languages`, spec F9 §4.3). En la base son texto: se validan
+ * aquí. Lo anterior a F9 es español (`DEFAULT_LANGUAGE`).
+ */
+export const LANGUAGES = ["es", "en"] as const;
+export type Language = (typeof LANGUAGES)[number];
+export const DEFAULT_LANGUAGE = "es" satisfies Language;

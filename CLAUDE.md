@@ -44,7 +44,7 @@ pnpm test                # solo tests
 pnpm build               # build de producción sin tests (API, worker y paquetes con tsconfig.build.json; el panel con Vite)
 pnpm db:generate         # generar migración tras cambiar el esquema
 pnpm db:migrate          # aplicar migraciones
-pnpm db:seed             # seeds idempotentes
+pnpm db:seed             # seeds idempotentes (--operator-brands: también las marcas vinny y agentpey con su perfil vacío; solo en la instancia del operador, nunca en la de clientes: spec F9 D19)
 pnpm db:backup           # respaldo local de la base con pg_dump a BACKUP_DIR (fuera del proyecto; deja los últimos 14; no necesita pnpm dev; necesita brew install libpq)
 pnpm db:dev-scrub        # borra las credenciales copiadas en la rama dev de Neon (solo .env; se niega si parece producción: la misma base o clave que .env.production, o credenciales que la clave de .env abre; pide confirmación, --yes; lo corre el operador)
 pnpm storage:check       # verifica acceso al bucket de R2, el PUT prefirmado (y que R2 rechace otro contenido) y la regla de CORS para el panel (--origin <url>; con ENV_FILE=.env.production y --origin https://agentsales.agentpey.com, el bucket de producción; habla con R2: lo corre el operador)

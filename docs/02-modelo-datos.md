@@ -2,7 +2,7 @@
 
 Base de datos: Postgres en Neon (plan gratis, conexión directa). Esquema en `packages/db` con Drizzle; este documento es la referencia conceptual. Si difieren, **manda el código** y este documento se actualiza en la misma tarea.
 
-Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()` (salvo `platform_catalog`, que usa la llave `(platform, key)`); `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `publication_format`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`, `import_run_status`, `content_run_status`; desde F7, `user_role`, `session_client` e `invitation_purpose`; desde F9, `broker_kind`). **Un valor nuevo de un enum se agrega siempre con `ALTER TYPE … ADD VALUE`** (desde F9: nunca recrear el tipo como la `0006`, que se detiene si la tabla tiene filas), al final de la tupla de core, y ninguna migración usa en la misma transacción un valor recién agregado (el migrador de drizzle aplica las pendientes en una sola transacción). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable, salvo el borrado a pedido de Meta de ADR-0027: solo `created_at`) y, desde F7, `sessions` e `invitations` (solo `created_at`) y `oauth_states_used` (ninguna), y desde F8 `worker_heartbeats` y `meta_deletion_requests` (ninguna: llevan sus propias horas), `user_recovery_codes` y `login_challenges` (solo `created_at`). `updated_at` lo fija la base (`now()`, la hora de inicio de la transacción) al crear y en cada `update` de Drizzle (`$onUpdate`); un SQL crudo o un `onConflictDoUpdate` lo fija explícitamente (como `seed.ts`). Excepción: `publications` y `publication_events` usan `clock_timestamp()` (la hora real, no la del inicio de la transacción), para ordenarse dentro del candado y para que el sync de F4 compare `updated_at` por igualdad. Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications` y, desde F7, `sessions` e `invitations → users` (desde F8, también `user_recovery_codes` y `login_challenges → users`); `publication_events.user_id` e `invitations.created_by` quedan en `null` al borrar el usuario. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `brokers.kind = broker`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.status = queued`, `import_runs.dry_run = false`, `content_runs.status = queued`, `content_runs.texts = true`, `import_runs.rows_* = 0`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload` e `input` empiezan vacíos, e `import_runs.report`, `content_runs.report`, `publications.progress`, `publications.remote_state` y `publications.listing_source_hash` empiezan en `null`. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES` (solo `approved`, ADR-0014).
+Convenciones: tablas y columnas en inglés `snake_case`; `id uuid default gen_random_uuid()` (salvo `platform_catalog`, que usa la llave `(platform, key)`); `created_at` y `updated_at` en `timestamptz` (UTC); enums de Postgres para estados. Los valores de cada enum salen de las tuplas de `packages/core` (`PLATFORMS`, `PUBLICATION_STATUSES`…); el tipo de Postgres se llama como la columna en singular y con prefijo de la tabla cuando es ambiguo (`platform`, `listing_status`, `publication_status`, `publication_format`, `platform_account_status`, `field_type`, `operation`, `currency`, `media_kind`, `media_role`, `content_status`, `listing_source`, `close_reason`, `import_run_status`, `content_run_status`; desde F7, `user_role`, `session_client` e `invitation_purpose`; desde F9, `broker_kind` y, en la migración `0015`, `post_status`, `post_kind`, `post_source`, `brief_origin`, `plan_run_status` y `post_upload_status`). Los idiomas (`contents.language`, `publications.language`, `editorial_profiles.languages`) son texto, validado con `LANGUAGES` de core. **Un valor nuevo de un enum se agrega siempre con `ALTER TYPE … ADD VALUE`** (desde F9: nunca recrear el tipo como la `0006`, que se detiene si la tabla tiene filas), al final de la tupla de core, y ninguna migración usa en la misma transacción un valor recién agregado (el migrador de drizzle aplica las pendientes en una sola transacción). Las columnas son `NOT NULL` salvo las marcadas `null`. Todas las tablas tienen `created_at` y `updated_at`, salvo `publication_events` (inmutable, salvo el borrado a pedido de Meta de ADR-0027: solo `created_at`) y, desde F7, `sessions` e `invitations` (solo `created_at`) y `oauth_states_used` (ninguna), y desde F8 `worker_heartbeats` y `meta_deletion_requests` (ninguna: llevan sus propias horas), `user_recovery_codes` y `login_challenges` (solo `created_at`). `updated_at` lo fija la base (`now()`, la hora de inicio de la transacción) al crear y en cada `update` de Drizzle (`$onUpdate`); un SQL crudo o un `onConflictDoUpdate` lo fija explícitamente (como `seed.ts`). Excepción: `publications` y `publication_events` usan `clock_timestamp()` (la hora real, no la del inicio de la transacción), para ordenarse dentro del candado y para que el sync de F4 compare `updated_at` por igualdad. Las claves foráneas no borran en cascada (los avisos se archivan), salvo `publication_events → publications` y, desde F7, `sessions` e `invitations → users` (desde F8, también `user_recovery_codes` y `login_challenges → users`); `publication_events.user_id`, `invitations.created_by` y, desde F9, `posts.created_by` quedan en `null` al borrar el usuario. Valores por defecto relevantes: `listings.status = draft`, `listings.show_exact_address = false`, `publications.attempts = 0`, `brokers.auto_publish = false`, `brokers.kind = broker`, `field_definitions.active = true` (`required` e `is_core` en `false`, `sort_order` en `0`), `media.sort_order = 0`, `media.is_cover = false`, `contents.status = draft`, `import_runs.status = queued`, `import_runs.dry_run = false`, `content_runs.status = queued`, `content_runs.texts = true`, `import_runs.rows_* = 0`, y desde F9 `contents.language = es`, `publications.language = es`, `posts.status = draft`, `posts.source = manual`, `posts.brief_origin = operator`, `plan_runs.status = queued`, `post_uploads.status = pending` y `editorial_profiles.languages = {es}`; los arreglos (`fixed_hashtags`, `hashtags`, `media_ids`) y los jsonb `meta`, `attributes`, `payload` e `input` empiezan vacíos, e `import_runs.report`, `content_runs.report`, `publications.progress`, `publications.remote_state` y `publications.listing_source_hash` empiezan en `null`. `publications.status` no tiene default: se crea con uno de `INITIAL_PUBLICATION_STATUSES` (solo `approved`, ADR-0014).
 
 ## Diagrama
 
@@ -27,7 +27,18 @@ erDiagram
   users ||--o{ user_recovery_codes : "tiene códigos de recuperación"
   users ||--o{ login_challenges : "abre desafíos de doble factor"
   users |o--o{ publication_events : hace
+  brokers ||--o{ posts : "publica (F9)"
+  brokers ||--o| editorial_profiles : "tiene perfil editorial"
+  brokers ||--o{ plan_runs : "pide planes"
+  plan_runs |o--o{ posts : propone
+  posts ||--o{ media : contiene
+  posts ||--o{ content_runs : redacta
+  posts ||--o{ contents : tiene
+  posts ||--o{ publications : "se publica en"
+  posts ||--o{ post_uploads : "espera subidas"
 ```
+
+Desde F9 (ADR-0029), `content_runs`, `contents` y `publications` cuelgan de **un** sujeto: un aviso (`listing_id`) o un post (`post_id`), nunca de los dos ni de ninguno (`CHECK (num_nonnulls(listing_id, post_id) = 1)`). Un medio cuelga de un aviso, de un post o de ninguno (el logo del corredor: `<= 1`). Las demás reglas de sujeto (un aviso solo de un corredor `kind = broker`; un post de cualquiera) son de core, no de la base.
 
 ## Tablas
 
@@ -113,7 +124,8 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | Columna | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
-| listing_id | uuid FK null | `null` para medios del corredor (logo) |
+| listing_id | uuid FK null | `null` para los medios de un post y los del corredor (logo) |
+| post_id | uuid FK null | Desde F9 (migración `0015`): el post del medio, con su clave bajo `posts/{postId}/…`. `CHECK media_at_most_one_subject` `(num_nonnulls(listing_id, post_id) <= 1)` |
 | broker_id | uuid FK | |
 | kind | enum `media_kind` | `image`, `video` |
 | role | enum `media_role` | `original`, `processed`, `rendered` |
@@ -129,7 +141,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | is_cover | boolean | |
 | ai_metadata | jsonb null | Descripción y puntaje de la IA. Sin uso en F2: la IA no ve las fotos (D3 del spec F2); queda para la sugerencia de portada con visión (backlog) |
 
-Únicos (migración `0001`): `(listing_id, checksum) WHERE role = 'original'` (el mismo archivo no se sube dos veces a una propiedad) y `UNIQUE (storage_path)`, que también cubre el logo (`listing_id` null). El logo es un medio `original` sin aviso (`listing_id` null), en `brokers/{brokerId}/brand/{sha256}.{ext}`; `brokers.logo_media_id` apunta a él. Que sea un original sin aviso y del mismo corredor lo valida `BrokerRepository.setLogo`, no la base (solo hay FK). En F1, `width`, `height` y `duration_s` quedan en `null`; los mide la etapa `media` del job `content.prepare` en F2 (ADR-0012).
+Únicos (migración `0001`): `(listing_id, checksum) WHERE role = 'original'` (el mismo archivo no se sube dos veces a una propiedad) y `UNIQUE (storage_path)`, que también cubre el logo (`listing_id` null). El logo es un medio `original` sin aviso (`listing_id` null), en `brokers/{brokerId}/brand/{sha256}.{ext}`; `brokers.logo_media_id` apunta a él. Que sea un original sin aviso ni post y del mismo corredor lo valida `BrokerRepository.setLogo`, no la base (solo hay FK). Desde F9, único parcial `media_original_post_checksum_unique` `(post_id, checksum) WHERE role = 'original'`: el mismo archivo no se sube dos veces a un post. En F1, `width`, `height` y `duration_s` quedan en `null`; los mide la etapa `media` del job `content.prepare` en F2 (ADR-0012).
 
 **Derivados (F2-T03, migración `0005`):** una variante es un medio `processed` con `parent_media_id` (su original, del mismo aviso) y `variant`; un render es un medio `rendered` sin padre. Únicos parciales `media_processed_parent_variant_unique` `(parent_media_id, variant) WHERE role = 'processed'` y `media_rendered_listing_variant_unique` `(listing_id, variant) WHERE role = 'rendered'`: hay **uno vigente** por original y variante, y uno por aviso y variante de render. `MediaRepository.upsertDerivative` lo crea o lo reemplaza **en su lugar** (misma fila, clave nueva) y devuelve la clave anterior para borrarla de R2; `deleteDerivative` borra un derivado y nunca un original. Los métodos de la carga (`listOriginals`, `listCovers`, `findByStoragePath`, `create`, `arrange`) siguen viendo solo originales; `listByListing` ve todo el aviso. Que el padre sea un original del mismo aviso y corredor, y que el tipo calce con la variante (el reel es video), lo valida el repositorio, no la base. Un derivado que choca con un único es `MEDIA_CONFLICT`, reintentable. `duration_s` guarda 3 decimales (el doble en memoria redondea igual).
 
@@ -137,7 +149,8 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | Columna | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
-| listing_id | uuid FK | El corredor sale del aviso |
+| listing_id | uuid FK null | El corredor sale del aviso. Nulo desde F9 (migración `0015`) en las corridas de un post |
+| post_id | uuid FK null | Desde F9: la corrida de textos de un post. `CHECK content_runs_one_subject`: exactamente uno de `listing_id` y `post_id` |
 | status | enum `content_run_status` | `queued`, `running`, `succeeded`, `failed` (`CONTENT_RUN_STATUSES`) |
 | texts | boolean default true | Si la corrida genera textos; `false` solo rehace medios y renders |
 | stage | text null | Etapa en curso: `media`, `renders`, `reel` o `texts` (`CONTENT_RUN_STAGES`) |
@@ -148,15 +161,17 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | auto_publish_done_at | timestamptz null | Desde F8-T12 (migración `0011`): cuándo se resolvió el `auto_publish` de una corrida `succeeded` (se intentó, no aplicaba o se retomó al arrancar). `null` en una terminada con textos es un `auto_publish` cortado por un reinicio: el worker lo retoma al arrancar si terminó hace 12 h o menos (`listAutoPublishPending`), una sola vez (`markAutoPublishDone` es condicional). La migración la fija en las `succeeded` que ya existían |
 | llm_usage | jsonb null | `llmUsageSchema` (core, F7-T02): lo gastado en IA, sumado **por llamada** en cuanto vuelve (`addLlmUsage`, atómico con la fila bloqueada), también las de una corrida que después falla: llamadas, proveedor y modelo de la última, tokens (entrada sin caché, escritura y lectura de caché, salida), `costUsd` estimado con la tabla de precios de core y su fecha (`priceTable`: la fecha; con "(sin precio: el más caro)" si el modelo de la API no estaba en la tabla; `null` con el plan o `fake`, que cuestan 0), en micro-dólares, y los `requestIds`. `null` si no llamó al modelo. El gasto del mes de un corredor suma las corridas **creadas** en el mes de Chile (`sumLlmCost`, cruzando con `listings.broker_id`) |
 
-Único parcial `content_runs_one_active_per_listing`: `(listing_id) WHERE status IN ('queued', 'running')` (`ACTIVE_CONTENT_RUN_STATUSES`), una sola corrida activa por aviso; un segundo `create` es `CONTENT_RUN_CONFLICT`, reintentable. Índice `(listing_id, created_at)` para la última corrida. Los cambios de estado son condicionales, como los de `import_runs`, y `markSucceeded` guarda el estado y las filas de `contents` en una sola transacción (migración `0004`, F2-T02).
+Único parcial `content_runs_one_active_per_listing`: `(listing_id) WHERE status IN ('queued', 'running')` (`ACTIVE_CONTENT_RUN_STATUSES`), una sola corrida activa por aviso; un segundo `create` es `CONTENT_RUN_CONFLICT`, reintentable. Índice `(listing_id, created_at)` para la última corrida. Los cambios de estado son condicionales, como los de `import_runs`, y `markSucceeded` guarda el estado y las filas de `contents` en una sola transacción (migración `0004`, F2-T02). Desde F9 (migración `0015`): único parcial `content_runs_one_active_per_post` `(post_id) WHERE status IN ('queued', 'running')`, una corrida activa por post, e índice `(post_id, created_at)`. Hasta F9-T04 el repositorio solo sabe de avisos: una corrida de post en un camino de avisos es `CONTENT_RUN_ROW_INVALID` (también en `markSucceeded`, que no escribe nada).
 
 ### contents — textos generados por plataforma
 | Columna | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
-| listing_id | uuid FK | |
+| listing_id | uuid FK null | Nulo desde F9 (migración `0015`) en los textos de un post |
+| post_id | uuid FK null | Desde F9: el texto de un post (uno por red e idioma). `CHECK contents_one_subject`: exactamente uno de `listing_id` y `post_id` |
 | content_run_id | uuid FK | Corrida que lo generó (ADR-0012). `NOT NULL` desde la migración `0004`, que falla a propósito si la tabla ya tenía filas |
 | platform | enum `platform` | |
+| language | text default `es` | Desde F9: el idioma del texto (`LANGUAGES`). Lo anterior es español; los textos de un aviso siguen siendo `es` |
 | title | text null | Portal y Marketplace |
 | body | text | Caption (sin los hashtags) o descripción |
 | hashtags | text[] | Solo Instagram: el caption que se publica es `body`, una línea en blanco y los hashtags (`instagramCaption`, core) |
@@ -164,18 +179,21 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | llm_provider, llm_model, prompt_version | text | Trazabilidad |
 | raw_output | jsonb | Salida validada de la IA; si falta, `null` de JSON (no NULL de SQL) |
 
-Único `contents_run_platform_unique` `(content_run_id, platform)`: un texto por canal y corrida, así un intento solapado del job no duplica. El **vigente** de un aviso en un canal es su fila más reciente (`created_at` y después `id`; índice `(listing_id, platform, created_at)`); las anteriores quedan como historial. En F2 no hay `approved`: lo usa F3.
+Único `contents_run_platform_language_unique` `(content_run_id, platform, language)` (desde la migración `0015`; antes `contents_run_platform_unique` `(content_run_id, platform)`, que para los avisos, todos en `es`, es lo mismo): un texto por canal, idioma y corrida, así un intento solapado del job no duplica. El **vigente** de un aviso en un canal es su fila más reciente (`created_at` y después `id`; índice `(listing_id, platform, created_at)`); las anteriores quedan como historial. Desde F9, índice `(post_id, platform, created_at)` para el vigente de un post. En F2 no hay `approved`: lo usa F3.
 
-### publications — un aviso en una cuenta y un formato (ADR-0014)
+### publications — un aviso (o un post) en una cuenta y un formato (ADR-0014, ADR-0029)
 Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `media_ids` fijos (spec F3 §4.2). Entidad en core: `publicationSchema` (`packages/core/src/publication.ts`).
 
 | Columna | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
-| listing_id | uuid FK | |
+| listing_id | uuid FK null | Nulo desde F9 (migración `0015`) en las publicaciones de un post |
+| post_id | uuid FK null | Desde F9: la publicación de un post. `CHECK publications_one_subject`: exactamente uno de `listing_id` y `post_id` |
 | platform_account_id | uuid FK | |
 | platform | enum `platform` | Denormalizado para consultas |
 | format | enum `publication_format` | `post` (carrusel o imagen suelta) o `reel` (`PUBLICATION_FORMATS`) |
+| language | text default `es` | Desde F9: el idioma de su texto. Con dos idiomas, un post sale en dos publicaciones de la misma cuenta (spec F9 §4.4) |
+| cost_usd | numeric(10,4) null | Desde F9: el costo estimado de publicar (spec F9 §4.12); hoy solo X (US$0,015, o US$0,20 con enlace), sumado por cuenta y mes para `spendLimitUsd`. `null` en las redes que no cobran. No se extiende a anuncios |
 | content_id | uuid FK | Texto aprobado que se publica; no cambia mientras la publicación está activa |
 | media_ids | uuid[] | Medios usados, en orden, fijados al nacer |
 | status | enum `publication_status` | `approved`, `scheduled`, `publishing`, `awaiting_manual_confirm`, `published`, `failed`, `paused`, `unpublished`, `cancelled` (sin `draft` ni `pending_approval` desde la migración `0006`) y, desde F9 (migración `0014`, ADR-0029 punto 8), `outcome_unknown`: el intento se cortó después de enviar y no se sabe si la red publicó; es pendiente (`PENDING_PUBLICATION_STATUSES`) y activa, y solo sale a `published` o `failed` cuando el operador la resuelve. Transiciones en `01-arquitectura.md` |
@@ -190,7 +208,76 @@ Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `medi
 | relisted_from | uuid null | La publicación de Portal que esta republica (ADR-0020, migración `0008`): FK a `publications`, sin cascada. Único parcial `publications_relisted_from_unique` `(relisted_from) WHERE relisted_from IS NOT NULL AND status <> 'cancelled'`: una sola republicación por publicación, sin contar las descartadas (`PUBLICATION_CONFLICT`) |
 | listing_source_hash | text null | `source_hash` del aviso al nacer la publicación (ADR-0015, spec F4 §4.6): las plataformas que envían datos del aviso (Portal) no publican si cambió. `null` en las anteriores a la migración `0007` (un valor vacío también queda en `null`). Desde F4-T16 es obligatoria al crear (`NewPublication.listingSourceHash`): quien abre las publicaciones la lee dentro del candado |
 
-Único parcial `publications_one_active_per_format`: una publicación activa por `(listing_id, platform_account_id, format)`, con `WHERE status NOT IN ('unpublished', 'cancelled')` (los estados de `ACTIVE_PUBLICATION_STATUSES` en `core`, así que `outcome_unknown` cuenta como activa): el carrusel y el reel de un aviso conviven. Índice `(listing_id)`. La migración `0006` (F3-T01) recreó el tipo `publication_status` con el SQL ajustado a mano (primero el índice viejo, después el tipo) y falla a propósito si la tabla tiene filas.
+Único parcial `publications_one_active_per_format`: una publicación activa por `(listing_id, platform_account_id, format)`, con `WHERE status NOT IN ('unpublished', 'cancelled')` (los estados de `ACTIVE_PUBLICATION_STATUSES` en `core`, así que `outcome_unknown` cuenta como activa): el carrusel y el reel de un aviso conviven. Índice `(listing_id)`. Desde F9 (migración `0015`), único parcial `publications_one_active_per_post_format` `(post_id, platform_account_id, format, language)` con el mismo `WHERE` (derivado de los terminales que ya existían: la `0015` no usa `outcome_unknown`, que agrega la `0014` y puede aplicarse en la misma transacción), e índice `(post_id)`. La migración `0006` (F3-T01) recreó el tipo `publication_status` con el SQL ajustado a mano (primero el índice viejo, después el tipo) y falla a propósito si la tabla tiene filas.
+
+### posts — contenido de marca (F9-T03, ADR-0029)
+Un tema o idea con un texto por red e idioma (`contents.post_id`), a veces medios (`media.post_id`) y sus publicaciones (`publications.post_id`). Cuelga de cualquier corredor o marca (`brokers.kind`): la regla de que un aviso solo cuelga de un `broker` es de core, no un `CHECK`. Migración `0015`; los repositorios llegan en F9-T04.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| broker_id | uuid FK | La marca (o el corredor) dueña del post |
+| topic | text | El tema; es el título en la agenda y el seguimiento |
+| brief | text null | Lo que el post debe decir |
+| brief_origin | enum `brief_origin` default `operator` | `operator` o `ai` (ADR-0030, punto 1): solo un brief del operador es fuente de hechos; al editarlo el operador pasa a `operator` |
+| kind | enum `post_kind` | `text`, `image`, `carousel` o `video` (`POST_KINDS`) |
+| status | enum `post_status` default `draft` | `idea` (propuesta de la IA, sin textos), `draft`, `ready` (al menos un texto aprobado) o `archived` (spec F9 §4.2). Nunca `active` ni se cierra por venta |
+| source | enum `post_source` default `manual` | `manual` o `ai` (vino de un plan) |
+| pillar | text null | La línea de contenido del perfil editorial (`pillars[].key`) |
+| planned_at | timestamptz null | Cuándo se piensa publicar |
+| plan_run_id | uuid FK null | El plan que lo propuso |
+| created_by | uuid FK null | Quién lo creó; `null` al borrar el usuario |
+| rationale | text null | El porqué de una idea de la IA |
+
+Índice `(broker_id, status, planned_at)` para el contenido y el calendario de una marca.
+
+### plan_runs — planes de ideas de la IA (F9, ADR-0030)
+Se crea con `posts` (migración `0015`) porque `posts.plan_run_id` la referencia; la lógica (job `content.plan`) llega en F9-T20.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| broker_id | uuid FK | La marca del plan |
+| period_start, period_end | timestamptz | El período que propone (por defecto, las próximas 2 semanas) |
+| status | enum `plan_run_status` default `queued` | `queued`, `running`, `succeeded`, `failed` (`PLAN_RUN_STATUSES`) |
+| request | jsonb | Lo pedido (redes, cuántas ideas), sin secretos |
+| report | jsonb null | Lo propuesto y lo que descartaron las verificaciones; `null` hasta que termina |
+| error | jsonb null | `{ code, message }` cuando `status = failed` |
+| llm_usage | jsonb null | `llmUsageSchema`, como en `content_runs`; entra en `sumLlmCost` desde F9-T04 |
+| prompt_version | text null | `SOCIAL_PROMPT_VERSION` con que corrió (ADR-0030, punto 6) |
+| started_at, finished_at | timestamptz null | |
+
+Índice `(broker_id, created_at)`.
+
+### editorial_profiles — perfil editorial de una marca (F9, spec F9 §4.3)
+Uno por corredor (`broker_id` es la llave). `pnpm db:seed --operator-brands` (solo con ese parámetro y solo en la instancia del operador, spec F9 D19; sin él, el seed no las toca) crea las marcas del operador, `vinny` ("Vinny") y `agentpey` ("AgentPey"), con `kind = brand`, `operator_owned = true`, sin cuentas y con su perfil vacío, que llena el operador; correrlo de nuevo no las duplica ni pisa lo que el operador cambió (`ON CONFLICT DO NOTHING`, a diferencia del corredor demo).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| broker_id | uuid PK, FK | |
+| languages | text[] default `{es}` | `LANGUAGES` (core), sin repetir; el primero es el principal |
+| audience | text null | A quién le habla |
+| pillars | jsonb default `[]` | `[{ key, name, description, weight }]` |
+| facts | text[] | Los hechos que la IA puede afirmar (ADR-0030): lo que no está aquí no se afirma |
+| avoid | text[] | Temas, palabras o promesas que no se usan |
+| cadence | jsonb default `{}` | Posts por semana en cada red, días y horas preferidos (hora de Chile) y horas entre un idioma y el otro |
+| default_hashtags | text[] | Se suman a `brokers.fixed_hashtags` |
+
+El tono sigue en `brokers.tone`. Las formas de `pillars` y `cadence` las valida core (F9-T09).
+
+### post_uploads — subidas pendientes de un post (F9, spec F9 §4.5)
+El registro de las URL prefirmadas de R2 pedidas para un post (ADR-0025); `import_runs` es de planillas.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| post_id | uuid FK | |
+| object_path | text | La clave de R2, bajo `posts/{postId}/…`. Único `post_uploads_object_path_unique` |
+| expected_bytes | bigint | El tamaño anunciado al pedir la URL |
+| status | enum `post_upload_status` default `pending` | `pending`, `completed` (registrada como medio) o `abandoned` (vencida; la limpieza la borra de R2) |
+| expires_at | timestamptz | Cuándo vence la URL |
+
+Índices `(post_id)` y `(status, expires_at)` (la limpieza periódica).
 
 ### platform_catalog — catálogo de las plataformas (ADR-0015, F4-T01)
 Datos públicos que solo se leen con token y cambian con el tiempo: en Mercado Libre, categorías (con sus hijas y `settings`), atributos de una hoja y ubicaciones de Chile. Se bajan a pedido y vencen a los 7 días. Sin secretos ni datos del corredor. Entidad en core: `platformCatalogEntrySchema`.
@@ -310,7 +397,7 @@ La vigilancia de cada hora (`publications.watch`, `purgeExpiredAuth`) borra los 
 | completed_at | timestamptz null | Cuándo se borró (hoy, el mismo `received_at`) |
 | accounts_affected | integer | Cuántas cuentas de Instagram se borraron (0 si el usuario no calzó con ninguna) |
 
-Sin `created_at` ni `updated_at` (lleva sus propias horas). En la misma transacción que la anota (`eraseInstagramUser`), cada cuenta de Instagram de ese usuario queda `revoked`, sin credenciales ni `token_expires_at`, con `external_account_id = 'borrada:<id>'`, `display_name = '(datos borrados a pedido de Meta)'` y `meta = {}`; sus publicaciones quedan sin `external_id`, `external_url` ni `progress`, en su estado, con un `data_deleted` cada una (migración `0013`).
+Sin `created_at` ni `updated_at` (lleva sus propias horas). En la misma transacción que la anota (`eraseInstagramUser`), cada cuenta de Instagram de ese usuario queda `revoked`, sin credenciales ni `token_expires_at`, con `external_account_id = 'borrada:<id>'`, `display_name = '(datos borrados a pedido de Meta)'` y `meta = {}`; sus publicaciones quedan sin `external_id`, `external_url` ni `progress`, en su estado, con un `data_deleted` cada una (migración `0013`). Desde F9 el borrado no cambia: filtra por cuenta, así que incluye las publicaciones de posts en esa cuenta, y no toca `posts` ni `contents`, que son textos del operador y alimentan también otras redes (spec F9 §4.11; lo fija un test).
 
 ### import_runs — historial de cargas
 | Columna | Tipo | Notas |

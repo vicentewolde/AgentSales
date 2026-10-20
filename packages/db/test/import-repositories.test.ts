@@ -20,7 +20,7 @@ import { createFieldDefinitionRepository } from "../src/repositories/field-defin
 import { createImportRunRepository } from "../src/repositories/import-runs.js";
 import { createListingRepository } from "../src/repositories/listings.js";
 import { createMediaRepository } from "../src/repositories/media.js";
-import { brokers, importRuns, listings, media } from "../src/schema.js";
+import { brokers, importRuns, listings, media, posts } from "../src/schema.js";
 import { seed } from "../src/seed.js";
 import {
   brokerData,
@@ -120,6 +120,30 @@ describe("repositorios Drizzle · lo que el puerto no muestra (PGlite)", () => {
       brokerData("con-logo", { tone: "Formal" }),
     );
     expect(updated).toMatchObject({ tone: "Formal", logoMediaId: logo?.id });
+  });
+
+  it("setLogo no acepta un medio de un post (F9), aunque no tenga aviso", async () => {
+    const broker = await repos.brokers.create(brokerData("logo-post"));
+    const [post] = await repos.db
+      .insert(posts)
+      .values({ brokerId: broker.id, topic: "Un post", kind: "image" })
+      .returning({ id: posts.id });
+    const [postMedia] = await repos.db
+      .insert(media)
+      .values({
+        postId: post?.id,
+        brokerId: broker.id,
+        kind: "image",
+        role: "original",
+        storagePath: `posts/${post?.id}/foto.png`,
+        mime: "image/png",
+        bytes: 10,
+        checksum: "sha-post",
+      })
+      .returning({ id: media.id });
+    await expect(repos.brokers.setLogo(broker.id, postMedia?.id ?? "")).rejects.toMatchObject({
+      code: "MEDIA_NOT_FOUND",
+    });
   });
 
   it("update fija updated_at en corredores, avisos y runs", async () => {
