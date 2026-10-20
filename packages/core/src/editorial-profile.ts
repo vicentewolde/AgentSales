@@ -167,8 +167,10 @@ const FIELD_LABELS: Record<keyof EditorialProfileInput, string> = {
   defaultHashtags: "Hashtags",
 };
 
+// Controles C0 y C1, separadores de línea y párrafo Unicode y controles bidireccionales: los textos
+// del perfil viajan al prompt de la IA (ADR-0030) y no deben esconder saltos ni texto invertido.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: justamente los que se rechazan
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e]/;
 /** La clave de una línea: minúsculas, números y guiones (la usa `posts.pillar`). */
 const PILLAR_KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** El cuerpo de un hashtag: letras (con tildes), números y `_`, como los acepta Instagram. */

@@ -268,7 +268,7 @@ export function createApp(input: AppDeps) {
     .use(deps.rateLimit === null ? passThrough : rateLimitByUser(deps.rateLimit))
     // `/x/:id/*` también calza con `/x/:id` en Hono: una sola vez por prefijo (una lectura).
     .use("/listings/:id/*", ownership.listing)
-    // Las rutas de posts llegan en F9-T09 y T10; el dueño ya se resuelve por el corredor del post.
+    // Las rutas de posts llegan en F9-T10; el dueño ya se resuelve por el corredor del post.
     .use("/posts/:id/*", ownership.post)
     .use("/content-runs/:id/*", ownership.contentRun)
     .use("/contents/:id/*", ownership.content)

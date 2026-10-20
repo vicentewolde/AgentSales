@@ -131,6 +131,9 @@ describe("normalizeEditorialProfile", () => {
     expect(fieldsOf(valid({ facts }))).toEqual(["facts"]);
     expect(fieldsOf(valid({ facts: ["x".repeat(301)] }))).toEqual(["facts[0]"]);
     expect(fieldsOf(valid({ facts: ["uno\ndos"] }))).toEqual(["facts[0]"]);
+    for (const hidden of ["\u0085", "\u2028", "\u2029", "\u202e"]) {
+      expect(fieldsOf(valid({ facts: [`uno${hidden}dos`] }))).toEqual(["facts[0]"]);
+    }
     expect(fieldsOf(valid({ avoid: ["x".repeat(201)] }))).toEqual(["avoid[0]"]);
     expect(fieldsOf(valid({ audience: "x".repeat(501) }))).toEqual(["audience"]);
   });

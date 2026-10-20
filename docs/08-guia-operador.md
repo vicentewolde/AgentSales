@@ -168,7 +168,7 @@ pnpm -s cli brand edit --broker agentpey \
 - **Líneas de contenido** (`--pillar "clave|nombre|peso|descripción"`): los temas de los que habla la marca. El peso reparte las ideas del plan (una línea con peso 3 recibe el triple que una con 1). La clave va en minúsculas, sin espacios.
 - **Hechos** (`--fact`, uno por frase): **lo más importante**. Cifras, clientes, fechas y logros que la IA puede afirmar. Sin hechos, la IA escribe sobre ideas y criterios, pero no inventa números ni nombres. Revísalos: lo que pongas aquí puede salir publicado.
 - **Cosas que evitar** (`--avoid`): temas, palabras o promesas que no quieres ver.
-- **Cadencia** (`--cadence "red/posts por semana/días/horas/horas entre idiomas"`): por red (instagram, x, linkedin, discord); los días como `lun,mar,mie,jue,vie,sab,dom` y las horas en **hora de Chile**. Las horas entre idiomas son 6 si no las pones. `--remove-cadence <red>` quita una red.
+- **Cadencia** (`--cadence "red/posts por semana/días/horas/horas entre idiomas"`): por red (instagram, x, linkedin, discord, tiktok); los días como `lun,mar,mie,jue,vie,sab,dom` y las horas en **hora de Chile**. Las horas entre idiomas son 6 si no las pones. `--remove-cadence <red>` quita una red.
 - Cada opción **reemplaza** su campo y lo demás queda como estaba; `--add-fact` y `--add-avoid` suman a la lista. `--audience ""` lo borra.
 - **Con un archivo:** `pnpm -s cli brand show --broker agentpey --json > perfil.json`, lo editas y `pnpm -s cli brand edit --broker agentpey --file perfil.json`. Los campos que el archivo no trae quedan como estaban.
 - Si algo no sirve, la CLI dice qué campo y por qué (`EDITORIAL_PROFILE_INVALID`) y no guarda nada.
