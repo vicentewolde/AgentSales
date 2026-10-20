@@ -284,6 +284,9 @@ export function createLinkedInPublisher(options: LinkedInPublisherOptions = {}):
       // Con un envío anterior (dudoso o ya hecho), `sendOnce` decide sin llamar: no se sube nada.
       const fresh = pendingSend(ctx.progress).kind === "none";
       try {
+        // El token se pide **antes** de "enviando" (también en un post de solo texto): un fallo al
+        // leer las credenciales no deja `outcome_unknown` sin haber enviado nada.
+        if (fresh) await accessToken();
         if (fresh && input.media.length > 0) {
           let uploaded = reusableUploads(ctx.progress, input);
           if (uploaded === null) {

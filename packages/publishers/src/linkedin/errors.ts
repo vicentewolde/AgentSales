@@ -16,7 +16,8 @@ export const LINKEDIN_NOT_SENT_CODES: ReadonlySet<string> = new Set([
   "LINKEDIN_AUTH_INVALID",
   "LINKEDIN_FORBIDDEN",
   "LINKEDIN_NOT_FOUND",
-  "LINKEDIN_CONFLICT",
+  // `LINKEDIN_CONFLICT` (409) **no** está: que un 409 de `/rest/posts` pruebe que el post no se creó
+  // es NO VERIFICADO (S2); tratarlo como "no enviado" podría duplicarlo, así que queda dudoso.
   "LINKEDIN_RATE_LIMITED",
   "LINKEDIN_REQUEST_REJECTED",
   "LINKEDIN_TEXT_TOO_LONG",
@@ -138,7 +139,8 @@ const MEDIA_REJECTED_CODES: ReadonlySet<string> = new Set([
  * - 401: `LINKEDIN_AUTH_INVALID` (token vencido, revocado o inválido; la cuenta queda vencida y se
  *   reconecta: el token de 60 días no se renueva solo);
  * - 403: `LINKEDIN_FORBIDDEN` (falta el permiso o el recurso es de otro);
- * - 404: `LINKEDIN_NOT_FOUND`; 409: `LINKEDIN_CONFLICT` (reintentable: "reintenta la petición");
+ * - 404: `LINKEDIN_NOT_FOUND`; 409: `LINKEDIN_CONFLICT` (reintentable: "reintenta la petición"; al
+ *   crear el post queda dudoso, porque que no salió es NO VERIFICADO, S2);
  * - 426: `LINKEDIN_VERSION_DEPRECATED` (hay que subir `LINKEDIN_API_VERSION`);
  * - 429: `LINKEDIN_RATE_LIMITED`, reintentable, con `waitMinutes` (core reprograma, ADR-0018);
  * - 400 con `FIELD_LENGTH_TOO_LONG`: `LINKEDIN_TEXT_TOO_LONG`; con `MEDIA_ASSET_WAITING_UPLOAD`:

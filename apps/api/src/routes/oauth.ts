@@ -179,7 +179,7 @@ export type OAuthDeps = Omit<ConnectAccountDeps, "instagram"> & {
  * clave secreta equivocada de una dirección de retorno que no coincide o de un código usado. Nunca
  * el código de autorización ni los tokens: no están en el error.
  */
-function failureFields(caught: unknown) {
+export function failureFields(caught: unknown) {
   if (isAppError(caught)) {
     return caught.details === undefined
       ? { code: caught.code }

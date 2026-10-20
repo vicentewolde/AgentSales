@@ -1,4 +1,5 @@
 import {
+  AppError,
   isAppError,
   LINKEDIN_RESERVED_CHARACTERS,
   OUTCOME_UNKNOWN,
@@ -516,6 +517,34 @@ describe("errores de LinkedIn al publicar", () => {
       code: "LINKEDIN_MEDIA_REJECTED",
     });
     expect(rejected.progress).toBeNull();
+  });
+
+  it("409 al crear el post: OUTCOME_UNKNOWN (que no salió es NO VERIFICADO, S2), sin reenviar", async () => {
+    let calls = 0;
+    fakeLinkedIn({
+      post: () => {
+        calls += 1;
+        return HttpResponse.json({ status: 409 }, { status: 409 });
+      },
+    });
+    const ctx = context();
+    const error = await caught(createLinkedInPublisher().publish(input(), ctx));
+    expect(error).toMatchObject({ code: OUTCOME_UNKNOWN, retriable: false });
+    expect(ctx.progress).toMatchObject({ send: { startedAt: expect.any(String) } });
+    expect(calls).toBe(1);
+  });
+
+  it("solo texto: un fallo al pedir el token sube tal cual, antes de 'enviando' (no queda dudoso)", async () => {
+    const ctx = context(null, {
+      accessToken: async () => {
+        throw new AppError("CREDENTIALS_UNREADABLE", "no se pudieron leer las credenciales");
+      },
+    });
+    const error = await caught(createLinkedInPublisher().publish(input(), ctx));
+    expect(error).toMatchObject({ code: "CREDENTIALS_UNREADABLE" });
+    expect(ctx.saved).toEqual([]);
+    expect(ctx.progress).toBeNull();
+    expect(await recorded()).toEqual([]);
   });
 
   it("426: LINKEDIN_VERSION_DEPRECATED (hay que subir la versión)", async () => {

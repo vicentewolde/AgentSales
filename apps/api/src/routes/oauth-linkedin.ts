@@ -3,7 +3,6 @@ import {
   type ConnectLinkedInAccountDeps,
   can,
   connectLinkedInAccount,
-  isAppError,
   type LinkedInAuth,
   type OAuthStateRepository,
 } from "@agentsales/core";
@@ -14,6 +13,7 @@ import { oauthStartQuerySchema } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
 import { validated } from "../validation.js";
 import {
+  failureFields,
   linkedinStateCookieName,
   OAUTH_STATE_PLATFORMS,
   OAUTH_STATE_TTL_SECONDS,
@@ -42,19 +42,6 @@ export type LinkedInOAuthDeps = {
   logger: AppLogger;
   now?: () => Date;
 };
-
-/** Lo que se anota de una conexión que falló: el código y los `details` del error, nunca el código del OAuth ni el token. */
-function failureFields(caught: unknown) {
-  if (isAppError(caught)) {
-    return caught.details === undefined
-      ? { code: caught.code }
-      : { code: caught.code, details: caught.details };
-  }
-  return {
-    code: "INTERNAL_ERROR",
-    errorName: caught instanceof Error ? caught.name : typeof caught,
-  };
-}
 
 /**
  * `/oauth/linkedin` (spec F9 §4.6 y §4.7, F9-T15): el OAuth del perfil personal de LinkedIn.

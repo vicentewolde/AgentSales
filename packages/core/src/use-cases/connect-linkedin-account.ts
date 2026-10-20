@@ -94,8 +94,10 @@ export type SetAccountModeDeps = {
 /**
  * Cambia el modo de una cuenta de una red de contenido de marca (ADR-0029 punto 9; spec F9 §4.6,
  * D5): `manual` (el intento deja el texto y los medios listos, sin llamar a la red) o `api`. Solo
- * el administrador (la ruta es `admin`). En LinkedIn, pasar a `api` es decisión del operador
- * cuando S2 y S3 estén resueltas. Errores (no reintentables): `ACCOUNT_NOT_FOUND`, y
+ * el administrador (la ruta es `admin`). En LinkedIn, pasar a `api` solo debe hacerse **después de S2
+ * y S3** (spec F9 §4.8); este caso de uso no lo impide a propósito: la barrera real hoy es
+ * `PUBLISH_MODE=dry-run` (en `dry-run` ninguna cuenta escribe en la red, ADR-0016). Errores (no
+ * reintentables): `ACCOUNT_NOT_FOUND`, y
  * `ACCOUNT_MODE_NOT_SUPPORTED` si la plataforma no está en `MANUAL_MODE_PLATFORMS` (Instagram,
  * Portal; Marketplace tiene su propio modo a mano, ADR-0023). Devuelve la cuenta y si cambió.
  */
