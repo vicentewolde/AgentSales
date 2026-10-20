@@ -193,47 +193,66 @@ Cada despliegue queda con la etiqueta de su commit (`sha-…`).
    fly deploy -a agentsales --image registry.fly.io/agentsales:sha-<los 12 primeros caracteres del commit>
    ```
 
-Volver atrás **no deshace migraciones** (por eso son siempre aditivas: la versión anterior sigue funcionando con la base nueva) ni cambios de secretos.
+Volver atrás **no deshace migraciones** ni cambios de secretos. Por eso las migraciones son aditivas: la versión anterior sigue funcionando con la base nueva. La excepción es la `0015` (F9), que además quita el `NOT NULL` de `listing_id` en textos, corridas y publicaciones y cambia el único de `contents`: es compatible hacia atrás solo mientras no haya filas de posts (abajo).
 
 **Ojo con los valores nuevos de F9 (migración `0014`).** La migración solo agrega (las redes `x`, `linkedin`, `discord` y `tiktok`, el estado `outcome_unknown` y la columna `brokers.kind`), así que volver a una versión anterior a F9 funciona **mientras ninguna fila use esos valores**. En cuanto exista una cuenta, un texto o una publicación de X, LinkedIn, Discord o TikTok, o una publicación que haya pasado por `outcome_unknown`, el código viejo no sabe leer esa fila: valida lo que lee y responde un error (`PLATFORM_ACCOUNT_ROW_INVALID`, `CONTENT_ROW_INVALID`, `PUBLICATION_ROW_INVALID` o `PUBLICATION_EVENT_ROW_INVALID`) en las pantallas y los trabajos que la tocan. Una marca (`kind = brand`) no da error, pero el código viejo no conoce la columna y la trata como un corredor más (le muestra Propiedades e Importar y deja activar su publicación automática). Antes de volver atrás a una versión sin F9, pásale a Claude qué versión quieres y te dirá qué filas revisar; lo normal es arreglar hacia adelante con una versión nueva.
 
-**Y con los posts (migración `0015`).** La `0015` suma las tablas de los posts (`posts`, `plan_runs`, `post_uploads`, `editorial_profiles`) y deja nulo `listing_id` en textos, corridas y publicaciones, con un `CHECK` de un solo sujeto. Mientras no exista ningún post con texto, corrida, medio o publicación, la versión anterior a F9 sigue funcionando. Apenas exista uno, el código viejo falla al leer esa fila (`listing_id` nulo → `CONTENT_ROW_INVALID`, `CONTENT_RUN_ROW_INVALID` o `PUBLICATION_ROW_INVALID`) en las pantallas y los trabajos que la tocan, y un trabajo que lista todas las corridas en cola o las publicaciones que vencen se detiene en ella. Revertirla a mano exige, **en este orden**: borrar lo de los posts (publicaciones con su bitácora, textos, corridas y medios de post; los archivos de R2 bajo `posts/` quedan y se borran aparte), quitar los `CHECK`, restaurar `contents_run_platform_unique`, quitar las columnas, tablas y tipos nuevos, volver a poner `SET NOT NULL` en `listing_id` y borrar el registro de la `0015` para que se vuelva a aplicar si después redespliegas F9. Lo normal es arreglar hacia adelante.
+**Y con los posts (migración `0015`).** La `0015` suma las tablas de los posts (`posts`, `plan_runs`, `post_uploads`, `editorial_profiles`) y deja nulo `listing_id` en textos, corridas y publicaciones, con un `CHECK` de un solo sujeto. Mientras no exista ningún post con texto, corrida, medio o publicación, la versión anterior a F9 sigue funcionando. Apenas exista uno, el código viejo falla al leer esa fila (`listing_id` nulo → `CONTENT_ROW_INVALID`, `CONTENT_RUN_ROW_INVALID` o `PUBLICATION_ROW_INVALID`) en las pantallas y los trabajos que la tocan, y un trabajo que lista todas las corridas en cola o las publicaciones que vencen se detiene en ella. **Las migraciones `0016` a `0018` (F9-T16, T17 y T20)** solo agregan: `posts.x_link_allowed`, el valor `uploaded` de `post_upload_status`, `posts.platforms` y el índice único de un plan activo por marca. Una versión que no las conoce ignora las columnas nuevas, pero falla al leer una subida en `uploaded` (`POST_UPLOAD_ROW_INVALID`) en lo que la toque, como la limpieza de cada hora, mientras exista.
 
-> **Solo a mano, con un respaldo previo (paso 10) y probado antes en una rama de Neon; lo decide el operador.** Borra para siempre los posts, sus textos y sus publicaciones. Es la referencia de cómo deshacer la `0015`, no un paso del despliegue (un test lo prueba sobre una copia en memoria).
+**Revertir los posts a mano** deshace la `0015` a la `0018` **juntas** (en producción las cuatro están aplicadas), en este orden: una guarda que se detiene si la última migración registrada no es la `0018`; borrar lo de los posts (publicaciones con su bitácora, textos, corridas y medios de post; los archivos de R2 bajo `posts/` quedan y se borran aparte); deshacer la `0018`, la `0017` y la `0016`; después la `0015` (los `CHECK`, el único de antes de `contents`, las columnas, tablas y tipos nuevos, y `SET NOT NULL` en `listing_id`); y borrar los **cuatro** registros del migrador. Los cuatro, porque el migrador de Drizzle mira solo el último registro y aplica las migraciones con un `when` mayor: si quedara el de la `0018`, al redesplegar F9 la `0015` no se volvería a aplicar y las tablas de los posts no existirían, sin ningún error. Lo normal es arreglar hacia adelante.
 
-<!-- revertir-0015: el test packages/db/test/f9-posts-migration.test.ts lee este bloque -->
+> **Solo a mano, con un respaldo previo (paso 10) y probado antes en una rama de Neon; lo decide el operador.** Borra para siempre los posts, sus textos y sus publicaciones. Es la referencia de cómo deshacer la `0015` a la `0018`, no un paso del despliegue: un test lo corre sobre una copia en memoria, vuelve a aplicar las migraciones con la regla del migrador y comprueba que el esquema queda igual al de una base nueva. Si la guarda se detiene porque hay una migración posterior a la `0018`, este bloque ya no sirve tal cual: pídele a Claude el que corresponde.
+
+<!-- revertir-0015-0018: el test packages/db/test/f9-posts-migration.test.ts lee este bloque -->
 ```sql
 BEGIN;
+-- 0. Guarda: la última migración registrada debe ser la 0018 (su "when" en
+--    packages/db/drizzle/meta/_journal.json). Si no, se detiene sin cambiar nada.
+DO $$
+BEGIN
+  IF (SELECT max(created_at) FROM drizzle.__drizzle_migrations) IS DISTINCT FROM 1792529761221 THEN
+    RAISE EXCEPTION 'La última migración registrada no es la 0018: este bloque no sirve tal cual';
+  END IF;
+END $$;
 -- 1. Lo de los posts (la bitácora de sus publicaciones se borra en cascada).
 DELETE FROM publications WHERE post_id IS NOT NULL;
 DELETE FROM contents WHERE post_id IS NOT NULL;
 DELETE FROM content_runs WHERE post_id IS NOT NULL;
 DELETE FROM media WHERE post_id IS NOT NULL;
--- 2. Los CHECK de un solo sujeto.
+-- 2. La 0018: el índice de un plan activo por marca y las redes del post.
+DROP INDEX plan_runs_one_active_per_broker;
+ALTER TABLE posts DROP COLUMN platforms;
+-- 3. La 0017: Postgres no quita un valor de un enum. 'uploaded' se va con el tipo
+--    post_upload_status entero, que se borra en el paso 6 (con post_uploads).
+-- 4. La 0016: la marca del enlace en X.
+ALTER TABLE posts DROP COLUMN x_link_allowed;
+-- 5. La 0015: los CHECK de un solo sujeto.
 ALTER TABLE publications DROP CONSTRAINT publications_one_subject;
 ALTER TABLE contents DROP CONSTRAINT contents_one_subject;
 ALTER TABLE content_runs DROP CONSTRAINT content_runs_one_subject;
 ALTER TABLE media DROP CONSTRAINT media_at_most_one_subject;
--- 3. El único de antes: un texto por corrida y canal.
+-- 6. La 0015: el único de antes, un texto por corrida y canal.
 ALTER TABLE contents DROP CONSTRAINT contents_run_platform_language_unique;
 ALTER TABLE contents ADD CONSTRAINT contents_run_platform_unique UNIQUE (content_run_id, platform);
--- 4. Las columnas (con sus llaves e índices), las tablas y los tipos nuevos.
+-- 7. La 0015: las columnas (con sus llaves e índices), las tablas y los tipos nuevos.
 ALTER TABLE publications DROP COLUMN post_id, DROP COLUMN language, DROP COLUMN cost_usd;
 ALTER TABLE contents DROP COLUMN post_id, DROP COLUMN language;
 ALTER TABLE content_runs DROP COLUMN post_id;
 ALTER TABLE media DROP COLUMN post_id;
 DROP TABLE post_uploads, posts, plan_runs, editorial_profiles;
 DROP TYPE post_upload_status, post_status, post_source, post_kind, plan_run_status, brief_origin;
--- 5. listing_id vuelve a ser obligatorio.
+-- 8. La 0015: listing_id vuelve a ser obligatorio.
 ALTER TABLE publications ALTER COLUMN listing_id SET NOT NULL;
 ALTER TABLE contents ALTER COLUMN listing_id SET NOT NULL;
 ALTER TABLE content_runs ALTER COLUMN listing_id SET NOT NULL;
--- 6. El registro de la 0015 (su "when" en packages/db/drizzle/meta/_journal.json).
-DELETE FROM drizzle.__drizzle_migrations WHERE created_at = 1792463061827;
+-- 9. Los registros de la 0015, 0016, 0017 y 0018 (sus "when" en _journal.json): así, al
+--    redesplegar F9, el migrador vuelve a aplicar las cuatro.
+DELETE FROM drizzle.__drizzle_migrations
+WHERE created_at IN (1792463061827, 1792508198594, 1792511001808, 1792529761221);
 COMMIT;
 ```
 
-**Las migraciones `0016` a `0018` (F9-T16, T17 y T20)** también solo agregan: `posts.x_link_allowed`, el valor `uploaded` de `post_upload_status`, `posts.platforms` y el índice único de un plan activo por marca. Una versión anterior que no las conoce ignora las columnas nuevas, pero falla al leer una subida en `uploaded` (`POST_UPLOAD_ROW_INVALID`) en lo que la toque, como la limpieza de cada hora, mientras exista. El bloque de arriba se lleva también lo de esas tres (borra `posts`, `plan_runs` y el tipo `post_upload_status`), pero no sus registros: con ellas aplicadas habría que borrar además sus filas de `drizzle.__drizzle_migrations` (sus `when` en `_journal.json`), o no se volverían a aplicar. Como con la `0014`, lo normal es arreglar hacia adelante.
+Después de correrlo, la base queda como tras la `0014`: una versión anterior a los posts la lee igual, y redesplegar F9 aplica de nuevo la `0015` a la `0018`.
 
 ## Paso 10 · Restaurar un respaldo
 
