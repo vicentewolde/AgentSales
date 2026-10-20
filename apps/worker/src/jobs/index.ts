@@ -1,4 +1,5 @@
 import type { RunImportDeps } from "@agentsales/core";
+import { type ContentPlanJobDeps, contentPlanJob } from "./content-plan.js";
 import { type ContentPrepareJobDeps, contentPrepareJob } from "./content-prepare.js";
 import { type DbBackupJobDeps, dbBackupJob } from "./db-backup.js";
 import type { Job } from "./define.js";
@@ -40,6 +41,8 @@ export type JobDeps = {
   postMedia: PostMediaJobDeps;
   /** Los textos de un post (spec F9 §4.9): repositorios, el candado del post y la IA. */
   postDraft: PostDraftJobDeps;
+  /** El plan de ideas de la IA (spec F9 §4.9): repositorios, la IA y el id de las ideas. */
+  contentPlan: ContentPlanJobDeps;
 };
 
 /** Jobs que procesa el worker, con sus dependencias inyectadas. Los de ADR-0005 llegan en su fase. */
@@ -57,5 +60,6 @@ export function buildJobs(deps: JobDeps): readonly Job[] {
     dbBackupJob(deps.dbBackup),
     postMediaJob(deps.postMedia),
     postDraftJob(deps.postDraft),
+    contentPlanJob(deps.contentPlan),
   ];
 }

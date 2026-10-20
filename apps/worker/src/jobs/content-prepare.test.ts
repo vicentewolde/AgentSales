@@ -14,6 +14,7 @@ import {
 } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
 import { captureLogger, contentJobSetup, silentLogger } from "../../test/content-fixture.js";
+import type { ContentPlanJobDeps } from "./content-plan.js";
 import {
   CONTENT_PREPARE_QUEUE,
   CONTENT_RUN_ABANDONED_AFTER_MS,
@@ -85,6 +86,7 @@ describe("job content.prepare · cola", () => {
         dbBackup: {} as DbBackupJobDeps,
         postMedia: {} as PostMediaJobDeps,
         postDraft: {} as PostDraftJobDeps,
+        contentPlan: {} as ContentPlanJobDeps,
       }).map((job) => job.name),
     ).toEqual([
       "system.ping",
@@ -99,6 +101,7 @@ describe("job content.prepare · cola", () => {
       "db.backup",
       "post.media",
       "post.draft",
+      "content.plan",
     ]);
   });
 });
@@ -119,6 +122,7 @@ describe("jobs · Marketplace en producción (F8-T20, D4)", () => {
         dbBackup: {} as DbBackupJobDeps,
         postMedia: {} as PostMediaJobDeps,
         postDraft: {} as PostDraftJobDeps,
+        contentPlan: {} as ContentPlanJobDeps,
       }).map((job) => job.name);
 
     expect(names(null)).not.toContain("marketplace.profile");
