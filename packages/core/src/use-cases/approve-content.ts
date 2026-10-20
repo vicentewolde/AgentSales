@@ -16,6 +16,7 @@ import { type MarketplaceReadiness, marketplaceReadiness } from "../marketplace/
 import { type PortalReadiness, portalReadiness } from "../portal/readiness.js";
 import { canDraftPost, postNotReady } from "../post.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { requirePostPlatform } from "../social/post-networks.js";
 import { listingSubject } from "../subject.js";
 import {
   runOnSubject,
@@ -194,6 +195,8 @@ async function approvePostContent(
   review: CheckedContent,
   actor: PublicationActor,
 ): Promise<ApprovedContent> {
+  // F9-T21: el texto de una red que se le quitó al post no se aprueba (abriría publicaciones).
+  requirePostPlatform(post, content.platform);
   const opening = await planPostPublications(locked, { post, content });
 
   // Recién aquí se escribe.

@@ -7,6 +7,7 @@ import {
   type PostStatus,
 } from "../enums.js";
 import { AppError } from "../errors.js";
+import { PLATFORM_TEXT } from "../labels.js";
 import { assertCan, scopeOf } from "../permissions.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
@@ -245,8 +246,9 @@ const postArchived = (postId: string) =>
  * Edita el tema, el brief, el tipo, la línea, la fecha planificada, la marca del enlace de X
  * (`xLinkAllowed`, F9-T16) o las redes (`platforms`, F9-T20) (spec F9 §4.10). Editar el
  * brief lo deja como del operador (`briefOrigin = operator`, ADR-0030 punto 1: desde ahí es fuente
- * de hechos). Un post archivado no se edita (`POST_ARCHIVED`, 409). Sin cambios, devuelve el post
- * tal cual.
+ * de hechos). Un post archivado no se edita (`POST_ARCHIVED`, 409). Quitar una red con
+ * publicaciones pendientes es `POST_HAS_PENDING_PUBLICATIONS` (409, F9-T21), con sus ids. Sin
+ * cambios, devuelve el post tal cual.
  */
 export async function updatePost(
   deps: UpdatePostDeps,
@@ -269,11 +271,31 @@ export async function updatePost(
     changes.pillar =
       (await checkPillar(deps.editorialProfiles, current.brokerId, input.pillar)) ?? null;
   }
-  return deps.postLock.run(postId, async ({ posts }) => {
+  return deps.postLock.run(postId, async ({ posts, publications }) => {
     const post = await posts.get(postId);
     if (post === null) throw postNotFound(postId);
     if (post.status === "archived") throw postArchived(postId);
     if (Object.keys(changes).length === 0) return post;
+    // F9-T21: una red con publicaciones pendientes no se quita del post (como archivarlo): primero
+    // se cancelan o se resuelven, así nada programado queda en una red que el post ya no tiene.
+    const kept = changes.platforms;
+    if (kept !== undefined && kept !== null) {
+      const pending = (await publications.listBySubject(postSubject(postId))).filter(
+        (publication) =>
+          (PENDING_PUBLICATION_STATUSES as readonly string[]).includes(publication.status) &&
+          !(kept as readonly string[]).includes(publication.platform),
+      );
+      if (pending.length > 0) {
+        const names = [
+          ...new Set(pending.map((publication) => PLATFORM_TEXT[publication.platform])),
+        ];
+        throw new AppError(
+          "POST_HAS_PENDING_PUBLICATIONS",
+          `El post tiene publicaciones pendientes en ${names.join(", ")}: cancélalas o resuélvelas antes de quitar esa red`,
+          { details: { postId, publicationIds: pending.map((publication) => publication.id) } },
+        );
+      }
+    }
     return posts.update(postId, changes);
   });
 }

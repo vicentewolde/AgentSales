@@ -323,6 +323,30 @@ describe("programar un post", () => {
     expect(back.results).toMatchObject([{ platform: "x", outcome: "scheduled" }]);
   });
 
+  it("una publicación de una red que se le quitó al post no sale: el reloj la deja failed; empezarla o programarla da POST_PLATFORM_EXCLUDED", async () => {
+    const t = await twoLanguages();
+    const xEs = await schedule(t, t.publicationOf("x", "es"));
+    const xEn = t.publicationOf("x", "en");
+    // Datos de antes de la regla (o cambiados por fuera): el post ya no tiene X.
+    await t.posts.update(t.post.id, { platforms: ["discord"] });
+
+    const result = await due(t, AFTER);
+    expect(result.failed).toEqual([{ publicationId: xEs.id, code: "POST_PLATFORM_EXCLUDED" }]);
+    expect(t.current(xEs.id)).toMatchObject({
+      status: "failed",
+      lastError: { code: "POST_PLATFORM_EXCLUDED", retriable: false },
+    });
+    expect(t.queue.jobs).toEqual([]);
+
+    expect(
+      await codeOf(
+        startPublication(t.deps, { publicationId: xEn.id, dryRun: true, actor: "operator" }),
+      ),
+    ).toBe("POST_PLATFORM_EXCLUDED");
+    expect(await codeOf(schedule(t, xEn))).toBe("POST_PLATFORM_EXCLUDED");
+    expect(t.current(xEn.id)?.status).toBe("approved");
+  });
+
   it("publishPost publica la red con todos sus idiomas y encola después del candado", async () => {
     const t = await twoLanguages();
 

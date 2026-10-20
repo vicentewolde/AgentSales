@@ -104,4 +104,12 @@ export {
 } from "./plan-prompt.js";
 export { type ProposedPlanIdeas, proposePlanIdeas } from "./plan-propose.js";
 export { samplePlanResponse } from "./plan-sample.js";
+export {
+  ideaNeedsDraft,
+  type PostNetworkGaps,
+  postNetworkGaps,
+  postPlatformExcluded,
+  postPublishesOn,
+  requirePostPlatform,
+} from "./post-networks.js";
 export { buildSocialPrompt, SOCIAL_PROMPT_VERSION, SOCIAL_SYSTEM_PROMPT } from "./prompt.js";

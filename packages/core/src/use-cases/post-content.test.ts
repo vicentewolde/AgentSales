@@ -26,6 +26,7 @@ import {
   postPublicationMatchesSubject,
   postPublicationPlan,
 } from "./open-publications.js";
+import { updatePost } from "./posts.js";
 import { type PrepareContentDeps, prepareContent } from "./prepare-content.js";
 import { requestContentRun } from "./request-content-run.js";
 import { unapproveContent } from "./unapprove-content.js";
@@ -154,6 +155,83 @@ async function setup(options: Setup = {}) {
   const postStatus = async () => (await posts.get(post.id))?.status;
   return { deps, repos, post, image, accounts, lock, postLock, contentId, postStatus };
 }
+
+describe("las redes del post al aprobar y al quitarlas (F9-T21)", () => {
+  const ADMIN = { id: "admin", role: "admin" as const, brokerId: null };
+  const codeOf = (promise: Promise<unknown>) =>
+    promise.then(
+      () => null,
+      (error: unknown) => (isAppError(error) ? error.code : error),
+    );
+
+  it("el texto de una red que no está en el post no se aprueba (POST_PLATFORM_EXCLUDED), sin abrir nada", async () => {
+    const t = await setup({
+      texts: [
+        { platform: "linkedin", language: "es" },
+        { platform: "instagram", language: "es" },
+      ],
+      accounts: ["linkedin", "instagram"],
+    });
+    await t.repos.posts.update(t.post.id, { platforms: ["linkedin"] });
+    const igId = await t.contentId("instagram");
+    expect(await codeOf(approveContent(t.deps, { contentId: igId, actor: "operator" }))).toBe(
+      "POST_PLATFORM_EXCLUDED",
+    );
+    expect((await t.repos.contents.get(igId))?.status).toBe("draft");
+    expect(await t.repos.publications.listBySubject(postSubject(t.post.id))).toEqual([]);
+    // La que sí está en el post se aprueba como siempre.
+    const ok = await approveContent(t.deps, {
+      contentId: await t.contentId("linkedin"),
+      actor: "operator",
+    });
+    expect(ok.created).toHaveLength(1);
+  });
+
+  it("quitar una red con publicaciones pendientes es POST_HAS_PENDING_PUBLICATIONS; cancelada, se quita", async () => {
+    const t = await setup({
+      texts: [
+        { platform: "linkedin", language: "es" },
+        { platform: "instagram", language: "es" },
+      ],
+      accounts: ["linkedin", "instagram"],
+    });
+    const { created } = await approveContent(t.deps, {
+      contentId: await t.contentId("instagram"),
+      actor: "operator",
+    });
+    const [pending] = created;
+    if (pending === undefined) throw new Error("sin publicación");
+    const deps = {
+      posts: t.repos.posts,
+      postLock: t.postLock,
+      editorialProfiles: createInMemoryEditorialProfileRepository(),
+    };
+    const error = await updatePost(deps, ADMIN, t.post.id, { platforms: ["linkedin"] }).then(
+      () => null,
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({
+      code: "POST_HAS_PENDING_PUBLICATIONS",
+      details: { postId: t.post.id, publicationIds: [pending.id] },
+    });
+    expect((await t.repos.posts.get(t.post.id))?.platforms).toBeNull();
+    // Dejar la red (u otras cosas) sí se puede.
+    await expect(
+      updatePost(deps, ADMIN, t.post.id, { platforms: ["instagram", "linkedin"] }),
+    ).resolves.toMatchObject({ platforms: ["instagram", "linkedin"] });
+
+    await t.postLock.run(t.post.id, ({ publications }) =>
+      publications.transition(
+        pending.id,
+        { from: "approved", to: "cancelled" },
+        { actor: "operator" },
+      ),
+    );
+    await expect(
+      updatePost(deps, ADMIN, t.post.id, { platforms: ["linkedin"] }),
+    ).resolves.toMatchObject({ platforms: ["linkedin"] });
+  });
+});
 
 describe("approveContent con un post", () => {
   it("aprueba, abre una publicación por cuenta con su idioma y sin versión del aviso, y deja el post listo", async () => {

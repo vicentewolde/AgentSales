@@ -322,6 +322,47 @@ describe("publicar y programar un post", () => {
     expect((await errorOf(tooSoon)).code).toBe("SCHEDULE_TOO_SOON");
   });
 
+  it("las redes del post (F9-T21): no se quita una red con pendientes, y una red quitada no se aprueba, publica ni programa", async () => {
+    const s = await approvedPost();
+    const [publication] = await s.deps.publications.listBySubject({ kind: "post", id: s.post.id });
+    if (publication === undefined) throw new Error("sin publicación");
+
+    const remove = await s.broker(`/posts/${s.post.id}`, {
+      method: "PATCH",
+      json: { platforms: ["x"] },
+    });
+    expect(remove.status).toBe(409);
+    expect((await errorOf(remove)).code).toBe("POST_HAS_PENDING_PUBLICATIONS");
+    expect((await s.deps.posts.get(s.post.id))?.platforms).toBeNull();
+
+    // Datos de antes de la regla: el post ya no tiene Discord y su publicación sigue aprobada.
+    await s.deps.posts.update(s.post.id, { platforms: ["x"] });
+    for (const [path, json] of [
+      [`/publications/${publication.id}/publish`, undefined],
+      [`/publications/${publication.id}/schedule`, { at: inHours(3) }],
+      [`/posts/${s.post.id}/publish`, { platform: "discord" }],
+      [`/posts/${s.post.id}/contents/discord/es/approve`, undefined],
+    ] as const) {
+      const response = await s.broker(path, { method: "POST", json });
+      expect([path, response.status]).toEqual([path, 409]);
+      expect((await errorOf(response)).code).toBe("POST_PLATFORM_EXCLUDED");
+    }
+    // Programar el post pidiendo esa red: una fila saltada con el motivo (200).
+    const scheduled = await s.broker(`/posts/${s.post.id}/schedule`, {
+      method: "POST",
+      json: { at: inHours(3), platforms: ["discord"] },
+    });
+    expect(scheduled.status).toBe(200);
+    expect(postScheduleResponseSchema.parse(await scheduled.json()).results).toEqual([
+      expect.objectContaining({
+        platform: "discord",
+        outcome: "skipped",
+        code: "POST_PLATFORM_EXCLUDED",
+      }),
+    ]);
+    expect((await s.deps.publications.get(publication.id))?.status).toBe("approved");
+  });
+
   it("publicar una red la pasa a publishing y encola publication.publish", async () => {
     const s = await approvedPost();
     const response = await s.broker(`/posts/${s.post.id}/publish`, {
