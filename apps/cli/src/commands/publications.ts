@@ -351,13 +351,18 @@ async function loadTarget(client: ApiClient, publicationId: string) {
     client.publications[":id"].$get({ param: { id: publicationId } }),
     publicationResponseSchema,
   );
-  const ref = await unwrap(
-    client.listings[":id"].$get({ param: { id: publication.listingId } }),
-    listingDetailResponseSchema,
-  ).then(
-    (detail) => detail.listing.externalRef,
-    () => publication.listingId,
-  );
+  const { listingId } = publication;
+  // Una publicación de un post (F9-T06) no tiene propiedad: se nombra por su post.
+  const ref =
+    listingId === null
+      ? (publication.postId ?? publication.id)
+      : await unwrap(
+          client.listings[":id"].$get({ param: { id: listingId } }),
+          listingDetailResponseSchema,
+        ).then(
+          (detail) => detail.listing.externalRef,
+          () => listingId,
+        );
   return { publication, ref };
 }
 

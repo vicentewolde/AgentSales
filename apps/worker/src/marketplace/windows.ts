@@ -254,6 +254,8 @@ export async function sweepClosedWindows(
 ): Promise<number> {
   let marked = 0;
   for (const publication of await publications.listByStatus("awaiting_manual_confirm")) {
+    // Solo Marketplace tiene ventana: una cuenta a mano de otra red también espera (F9-T06).
+    if (publication.platform !== "fb_marketplace") continue;
     if (await markWindowClosed(publications, publication.id, publication.attempts, now))
       marked += 1;
   }

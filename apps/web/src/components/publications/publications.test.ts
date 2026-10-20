@@ -33,6 +33,7 @@ const content = (overrides: Partial<ContentView> = {}): ContentView => ({
 const publication = (overrides: Partial<PublicationView> = {}): PublicationView => ({
   id: "p-1",
   listingId: "l-1",
+  postId: null,
   platformAccountId: "a-1",
   platform: "instagram",
   format: "post",

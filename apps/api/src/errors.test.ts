@@ -129,6 +129,11 @@ describe("httpStatusFor", () => {
     ["MARKETPLACE_PROFILE_ACTION_PENDING", 409],
     ["MARKETPLACE_URL_INVALID", 400],
     ["MARKETPLACE_URL_REQUIRED", 400],
+    // F9-T06: el resultado dudoso, el enlace de una publicación a mano y la app de X o TikTok.
+    ["OUTCOME_UNKNOWN_PENDING", 409],
+    ["PUBLISHED_URL_REQUIRED", 400],
+    ["PUBLISHED_URL_INVALID", 400],
+    ["TOKEN_REFRESH_NOT_CONFIGURED", 503],
     ["MARKETPLACE_PROFILE_BUSY", 503],
     // Errores de programación: por su sufijo caerían en 503 o 400.
     ["ACCESS_TOKEN_UNAVAILABLE", 500],
@@ -175,7 +180,11 @@ describe("createErrorHandler · lo que sale de details (seguimiento de ADR-0011)
         )
       ).error,
     ).toEqual({ code: "MARKETPLACE_NOT_READY", message: "falta", issues: [issue] });
-    for (const code of ["MANUAL_CONFIRM_PENDING", "MARKETPLACE_FORM_OPEN"]) {
+    for (const code of [
+      "MANUAL_CONFIRM_PENDING",
+      "MARKETPLACE_FORM_OPEN",
+      "OUTCOME_UNKNOWN_PENDING",
+    ]) {
       expect(
         (await bodyOf(new AppError(code, "espera", { details: { publicationId: PUBLICATION_ID } })))
           .error,
