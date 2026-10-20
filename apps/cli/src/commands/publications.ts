@@ -86,6 +86,14 @@ function explained(error: unknown, publicationId: string): unknown {
       `Un aviso de Portal se cierra: agentsales publications close ${publicationId}`,
     );
   }
+  // F9-T19: con --delete y la cuenta vencida o desconectada, reconectar o borrar a mano.
+  if (error.code === "ACCOUNT_NOT_CONNECTED") {
+    return new CliError(
+      error.code,
+      error.apiMessage ?? error.message,
+      `Reconecta la cuenta (agentsales accounts) y repite, o bórrala a mano en la red y corre: agentsales publications retire ${publicationId}`,
+    );
+  }
   // F9-T19: borrar por la API no se pudo; se borra a mano y se confirma sin --delete.
   if (error.code === "RETIRE_DELETE_UNSUPPORTED" || error.code === "LINKEDIN_DELETE_UNSUPPORTED") {
     return new CliError(
@@ -266,7 +274,7 @@ export function runRetirePublication(
       deps.print(
         c.dim(
           live
-            ? `  Se borró en ${platform}`
+            ? `  Se borró en ${platform} (o ya no estaba)`
             : "  Era una simulación: no había nada que borrar en la red",
         ),
       );

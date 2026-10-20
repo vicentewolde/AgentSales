@@ -72,7 +72,7 @@ describe("publications retire --delete (F9-T19)", () => {
     expect(await runRetirePublication(deps(true), publication.id, { delete: true })).toBe(0);
     expect(removed).toEqual([POST_URN]);
     expect(t.current(publication.id)?.status).toBe("unpublished");
-    expect(h.text()).toContain("Se borró en LinkedIn");
+    expect(h.text()).toContain("Se borró en LinkedIn (o ya no estaba)");
   });
 
   it("sin --delete, en LinkedIn sigue a mano y recuerda --delete al no confirmar", async () => {
@@ -134,5 +134,17 @@ describe("publications retire --delete (F9-T19)", () => {
     ).toBe(1);
     expect(simulated.h.errors()).toContain("PUBLISH_MODE_MISMATCH");
     expect(simulated.removed).toEqual([]);
+  });
+
+  it("con la cuenta vencida, dice reconectar o borrar a mano y retirar sin --delete", async () => {
+    const s = await setup();
+    const account = s.publication.platformAccountId;
+    await s.t.platformAccounts.changeStatus(account, "connected", "expired");
+    expect(
+      await runRetirePublication(s.deps(true), s.publication.id, { delete: true, yes: true }),
+    ).toBe(1);
+    expect(s.h.errors()).toContain("ACCOUNT_NOT_CONNECTED");
+    expect(s.h.errors()).toContain(`agentsales publications retire ${s.publication.id}`);
+    expect(s.removed).toEqual([]);
   });
 });

@@ -6,8 +6,12 @@ import { describe, expect, it } from "vitest";
 
 // F9-T19 (spec F9 §5): cada código de error que puede producir el publisher o la conexión de una
 // red de contenido de marca tiene su consejo en `publicationErrorAdvice` (el panel y la CLI lo
-// muestran bajo el error). La prueba lee el código de cada red y junta los literales con su
-// prefijo: un código nuevo sin consejo la hace fallar.
+// muestran bajo el error). La prueba lee el código de cada red (los archivos de su carpeta, sin
+// subcarpetas) y junta todo literal `"PREFIJO_…"`: un código nuevo sin consejo la hace fallar. Es
+// amplia a propósito (los códigos se escriben en `error(…)`, listas y `code:`), así que un literal
+// con el prefijo que no sea un código también pide consejo o entrar a una lista. No ve códigos
+// armados con plantillas (hoy no hay) ni los de la conexión de Instagram (`INSTAGRAM_*`, `OAUTH_*`),
+// que se cubren en `F9_CONNECT_AND_RETIRE` de core.
 
 const NETWORKS = {
   instagram: "IG_",
