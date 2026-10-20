@@ -54,6 +54,7 @@ import {
 import { createDiscordPublisher } from "@agentsales/publishers/discord";
 import { createLinkedInPublisher } from "@agentsales/publishers/linkedin";
 import { marketplaceProfileDir, openMarketplaceProfile } from "@agentsales/publishers/marketplace";
+import { createTikTokAuth, createTikTokPublisher } from "@agentsales/publishers/tiktok";
 import { createBancoCentralUf } from "@agentsales/publishers/uf";
 import { createXAuth, createXPublisher } from "@agentsales/publishers/x";
 import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
@@ -160,13 +161,20 @@ const instagram = createInstagramPublisher({ onNote: instagramNoteLogger(logger)
 const discord = createDiscordPublisher({
   onNote: (note) => logger.info(note, "nota del publicador de Discord"),
 });
-// X (F9-T16): el publisher en los dos modos (en `dry-run` lo envuelve `withDryRun` y no llama) y
-// la renovación del token (2 h) al publicar y en `tokens.refresh`, con la misma función
-// (`ensureRotatingAccessToken`). Sin el par de la app, no hay renovación: un token por vencer es
-// `TOKEN_REFRESH_NOT_CONFIGURED`. Sus notas van al log solo con ids y cifras, nunca con un token.
+// X (F9-T16): el publisher en los dos modos (en `dry-run` lo envuelve `withDryRun` y no llama).
+// Sus notas van al log solo con ids y cifras, nunca con un token.
 const x = createXPublisher({ onNote: (note) => logger.info(note, "nota del publicador de X") });
-const xRefreshers =
-  env.X_CLIENT_ID && env.X_CLIENT_SECRET
+// TikTok (F9-T26): el video como borrador en la bandeja (modo Upload); registrado en los dos modos
+// (en `dry-run` lo envuelve `withDryRun` y no llama a TikTok). Sus notas, solo con ids y cifras.
+const tiktok = createTikTokPublisher({
+  onNote: (note) => logger.info(note, "nota del publicador de TikTok"),
+});
+// La renovación de los tokens que rotan (X cada 2 h, TikTok cada 24 h; ADR-0029 punto 11), al
+// publicar y en `tokens.refresh`, con la misma función (`ensureRotatingAccessToken`). Sin el par de
+// la app de una red no se arma su renovación, y una cuenta suya por renovar es
+// `TOKEN_REFRESH_NOT_CONFIGURED` sin cambiarla.
+const tokenRefreshers = {
+  ...(env.X_CLIENT_ID && env.X_CLIENT_SECRET
     ? {
         x: createXAuth({
           clientId: env.X_CLIENT_ID,
@@ -174,7 +182,17 @@ const xRefreshers =
           redirectUri: env.X_REDIRECT_URI,
         }),
       }
-    : {};
+    : {}),
+  ...(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET
+    ? {
+        tiktok: createTikTokAuth({
+          clientKey: env.TIKTOK_CLIENT_KEY,
+          clientSecret: env.TIKTOK_CLIENT_SECRET,
+          redirectUri: env.TIKTOK_REDIRECT_URI,
+        }),
+      }
+    : {}),
+};
 // LinkedIn, perfil personal (F9-T15): solo llega aquí una cuenta en modo `api`; en `manual` (el de
 // por defecto, D5) core deja el texto listo sin llamar a la red. Sus notas van al log solo con ids
 // y cifras, nunca con el token ni una URL.
@@ -320,6 +338,7 @@ const jobs = buildJobs({
         discord,
         x,
         linkedin,
+        tiktok,
         portal_inmobiliario: portal.publisher,
         // En `live` llena el formulario y deja la ventana al registro; en `dry-run` no abre nada.
         // En producción no se registra (D4): publicar con una cuenta de perfil ya falló en core.
@@ -341,8 +360,8 @@ const jobs = buildJobs({
       uf: ufSource,
       // El token de Portal se asegura (y se refresca) con el par de la app (spec F4 §4.3).
       mercadoLibre: mercadoLibreAuth,
-      // X (F9-T16): la renovación de su token y la marca del enlace de cada post.
-      tokenRefreshers: xRefreshers,
+      // X y TikTok (F9-T16, T26): la renovación de su token; X, además, la marca del enlace de cada post.
+      tokenRefreshers,
       posts,
     },
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
@@ -364,7 +383,7 @@ const jobs = buildJobs({
     platformAccounts,
     instagram: instagramAuth,
     mercadoLibre: mercadoLibreAuth,
-    refreshers: xRefreshers,
+    refreshers: tokenRefreshers,
     signal: jobsAbort.signal,
   },
   marketplaceProfile: marketplaceAutomation

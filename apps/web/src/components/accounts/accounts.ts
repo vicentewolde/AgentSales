@@ -14,6 +14,7 @@ export const PROVIDER_NAME: Readonly<Record<OAuthProvider, string>> = {
   instagram: "Instagram",
   mercadolibre: "Mercado Libre",
   linkedin: "LinkedIn",
+  tiktok: "TikTok",
 };
 
 /** Por qué el OAuth volvió con `?error=` (los códigos del contrato; `{proveedor}` es Instagram o Mercado Libre). */
@@ -28,6 +29,8 @@ const OAUTH_ERROR_TEXT: Readonly<Record<OAuthRedirectError, string>> = {
     "A la API le faltan ML_APP_ID y ML_CLIENT_SECRET: agrégalos y reiníciala.",
   LINKEDIN_NOT_CONFIGURED:
     "A la API le faltan LINKEDIN_CLIENT_ID y LINKEDIN_CLIENT_SECRET: agrégalos y reiníciala.",
+  TIKTOK_NOT_CONFIGURED:
+    "A la API le faltan TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET: agrégalos y reiníciala.",
   BROKER_NOT_FOUND: "El corredor del enlace no existe: vuelve a conectar desde esta página.",
   INTERNAL_ERROR: "La conexión falló por un error interno: revisa el log de la API.",
 };
@@ -62,10 +65,22 @@ const LINKEDIN_ERROR_TEXT: Readonly<Record<string, string>> = {
   LINKEDIN_UNAVAILABLE: "LinkedIn no respondió: vuelve a intentarlo en unos minutos.",
 };
 
+/** TikTok (F9-T26): Login Kit con `video.upload`. */
+const TIKTOK_ERROR_TEXT: Readonly<Record<string, string>> = {
+  TIKTOK_AUTH_INVALID:
+    "TikTok no aceptó la conexión (el código venció o ya se usó): vuelve a conectar.",
+  TIKTOK_PERMISSION_DENIED:
+    "No diste el permiso de subir videos: vuelve a conectar y déjalo marcado.",
+  TIKTOK_APP_CREDENTIALS_INVALID:
+    "TikTok no reconoce la app: revisa TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET.",
+  TIKTOK_UNAVAILABLE: "TikTok no respondió: vuelve a intentarlo en unos minutos.",
+};
+
 const PROVIDER_ERROR_TEXT: Readonly<Record<OAuthProvider, Readonly<Record<string, string>>>> = {
   instagram: INSTAGRAM_ERROR_TEXT,
   mercadolibre: MERCADOLIBRE_ERROR_TEXT,
   linkedin: LINKEDIN_ERROR_TEXT,
+  tiktok: TIKTOK_ERROR_TEXT,
 };
 
 const isOAuthError = (code: string): code is OAuthRedirectError =>

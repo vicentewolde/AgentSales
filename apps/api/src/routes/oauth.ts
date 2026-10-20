@@ -4,12 +4,14 @@ import {
   can,
   connectAccount,
   connectMercadoLibreAccount,
+  connectTikTokAccount,
   connectXAccount,
   type InstagramAuth,
   isAppError,
   type MercadoLibreAuth,
   type OAuthStateRepository,
   type PlatformAccountRepository,
+  type TikTokAuth,
   type XAuth,
 } from "@agentsales/core";
 import { Hono } from "hono";
@@ -51,6 +53,14 @@ export const mercadoLibreStateCookieName = (secure: boolean): string =>
 export const linkedinStateCookieName = (secure: boolean): string =>
   secure ? "__Host-agentsales_oauth_li" : "agentsales_oauth_state_li";
 
+/**
+ * La cookie del `state` de TikTok (F9-T26, spec F9 §4.7): la pone `/oauth/tiktok/start` y la vuelta
+ * la exige igual al `state` de la URL. Con HTTPS, `__Host-agentsales_oauth_tt`; sin él, la de
+ * desarrollo. Una por proveedor: dos conexiones no se pisan.
+ */
+export const tiktokStateCookieName = (secure: boolean): string =>
+  secure ? "__Host-agentsales_oauth_tt" : "agentsales_oauth_state_tt";
+
 /** `Lax` (la vuelta llega desde `auth.mercadolibre.cl`), `Path=/` y sin `Domain`, como la de Instagram. */
 export const oauthStateCookieOptions = (secure: boolean) => ({
   path: "/",
@@ -81,6 +91,8 @@ export const OAUTH_STATE_PLATFORMS = {
   mercadolibre: "mercadolibre",
   x: "x",
   linkedin: "linkedin",
+  // F9-T26.
+  tiktok: "tiktok",
 } as const;
 export type OAuthStatePlatform = (typeof OAUTH_STATE_PLATFORMS)[keyof typeof OAUTH_STATE_PLATFORMS];
 
@@ -135,6 +147,24 @@ export function instagramStartUrlOf(redirectUri: string): string {
   return new URL(path, url.origin).toString();
 }
 
+/**
+ * El inicio de un OAuth en el host y la ruta de su URI de retorno (`…/callback` → `…/start`): el
+ * de Instagram (F3-T17) y el de TikTok (F9-T26).
+ */
+export const oauthStartUrlOf = instagramStartUrlOf;
+
+/**
+ * TikTok (F9-T26, spec F9 §4.7): Login Kit con la vuelta automática. `configured` si están
+ * `TIKTOK_CLIENT_KEY` y `TIKTOK_CLIENT_SECRET` (sin ellos no se arma la URL ni se canjea);
+ * `secureCookie` con HTTPS; `startUrl`, el inicio en el host de `TIKTOK_REDIRECT_URI`.
+ */
+export type TikTokOAuthDeps = {
+  auth: TikTokAuth;
+  configured: boolean;
+  secureCookie: boolean;
+  startUrl: string;
+};
+
 export type OAuthDeps = Omit<ConnectAccountDeps, "instagram"> & {
   brokers: Pick<BrokerRepository, "findBySlug">;
   instagram: {
@@ -162,6 +192,8 @@ export type OAuthDeps = Omit<ConnectAccountDeps, "instagram"> & {
   };
   /** `listByBroker`: conectar X conserva el tope de una cuenta anterior del mismo usuario. */
   platformAccounts: Pick<PlatformAccountRepository, "upsertConnected" | "listByBroker">;
+  /** TikTok (F9-T26); sin él, conectar vuelve al panel con `TIKTOK_NOT_CONFIGURED`. */
+  tiktok?: TikTokOAuthDeps;
   oauthState: OAuthStateSigner;
   /** Los `state` ya usados (spec F8 §4.11): el de Instagram sirve una vez, como el de Mercado Libre. */
   oauthStates: Pick<OAuthStateRepository, "markUsed">;
@@ -201,6 +233,13 @@ export function failureFields(caught: unknown) {
  * pegar la dirección. La protegen el `state` firmado (de un solo uso) y su cookie, que puso
  * `authorize-url`; termina en el panel igual (`?conectada=mercadolibre&proveedor=mercadolibre` o
  * `?error=<código>&proveedor=mercadolibre`).
+ *
+ * `/oauth/tiktok` (F9-T26, spec F9 §4.7): Login Kit de TikTok, como el de Instagram: `start` (con
+ * sesión y el permiso `tiktok.connect`: el administrador conecta a cualquiera; un corredor o una
+ * marca, solo la suya) firma el `state` con la plataforma y el corredor y lo deja en su cookie
+ * `__Host-`; la vuelta lo exige igual a la cookie, vigente, de TikTok y sin usar (de un solo uso),
+ * antes de canjear. Termina en el panel (`?conectada=tiktok&proveedor=tiktok` o
+ * `?error=<código>&proveedor=tiktok`).
  */
 export function oauthRoutes(deps: OAuthDeps) {
   const toPanel = (params: Record<string, string>) => {
@@ -253,6 +292,11 @@ export function oauthRoutes(deps: OAuthDeps) {
     }
     return { broker: verified.broker, verifier };
   };
+  const ttSecure = deps.tiktok?.secureCookie ?? false;
+  const ttCookieName = tiktokStateCookieName(ttSecure);
+  const ttCookieOptions = oauthStateCookieOptions(ttSecure);
+  const toPanelFromTikTok = (params: Record<string, string>) =>
+    toPanel({ ...params, proveedor: OAUTH_STATE_PLATFORMS.tiktok });
 
   /**
    * El `state` de una vuelta: igual al de su cookie, firmado, vigente, de la plataforma esperada y
@@ -426,6 +470,68 @@ export function oauthRoutes(deps: OAuthDeps) {
           const fields = failureFields(caught);
           deps.logger.warn(fields, "no se pudo conectar la cuenta de X");
           return c.redirect(toPanelFromX({ error: fields.code }), 302);
+        }
+      })
+      // TikTok (F9-T26): Login Kit. El inicio pide sesión y `tiktok.connect`; la vuelta la protege el
+      // `state` firmado de un solo uso igual a su cookie `Lax`.
+      .get("/tiktok/start", validated("query", oauthStartQuerySchema), async (c) => {
+        const { broker } = c.req.valid("query");
+        const tiktok = deps.tiktok;
+        if (tiktok === undefined || !tiktok.configured) {
+          return c.redirect(toPanelFromTikTok({ error: "TIKTOK_NOT_CONFIGURED" }), 302);
+        }
+        const target = await deps.brokers.findBySlug(broker);
+        // Un corredor solo conecta el suyo; el de otro responde como uno que no existe (ADR-0022).
+        if (target === null || !can(requireAuth(c).user, "tiktok.connect", target.id)) {
+          return c.redirect(toPanelFromTikTok({ error: "BROKER_NOT_FOUND" }), 302);
+        }
+        // Con la plataforma: un `state` de Instagram o de Mercado Libre no sirve en esta vuelta.
+        const state = deps.oauthState.sign(
+          { platform: OAUTH_STATE_PLATFORMS.tiktok, broker },
+          { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
+        );
+        setCookie(c, ttCookieName, state, { ...ttCookieOptions, maxAge: OAUTH_STATE_TTL_SECONDS });
+        return c.redirect(tiktok.auth.authorizeUrl(state), 302);
+      })
+      .get("/tiktok/callback", async (c) => {
+        const cookie = getCookie(c, ttCookieName);
+        // Un `state` sirve una sola vez: la cookie se borra pase lo que pase.
+        deleteCookie(c, ttCookieName, ttCookieOptions);
+        const { code, state, error } = c.req.query();
+        // El operador rechazó en TikTok: solo un aviso para el panel.
+        if (error !== undefined)
+          return c.redirect(toPanelFromTikTok({ error: "OAUTH_DENIED" }), 302);
+
+        // Sin llamar a TikTok: un `state` ajeno (también el de otra red), vencido, ya usado o sin su
+        // cookie no canjea nada.
+        const verified = await takeState(state, cookie, OAUTH_STATE_PLATFORMS.tiktok);
+        if (verified === null) {
+          return c.redirect(toPanelFromTikTok({ error: "OAUTH_STATE_INVALID" }), 302);
+        }
+        if (code === undefined || code === "") {
+          return c.redirect(toPanelFromTikTok({ error: "OAUTH_CODE_MISSING" }), 302);
+        }
+        const tiktok = deps.tiktok;
+        // Sin el par de la app, el canje mandaría un secret vacío: ni se intenta.
+        if (tiktok === undefined || !tiktok.configured) {
+          return c.redirect(toPanelFromTikTok({ error: "TIKTOK_NOT_CONFIGURED" }), 302);
+        }
+
+        try {
+          await connectTikTokAccount(
+            {
+              brokers: deps.brokers,
+              platformAccounts: deps.platformAccounts,
+              tiktok: tiktok.auth,
+              ...(deps.now === undefined ? {} : { now: deps.now }),
+            },
+            { broker: verified.broker, code, signal: c.req.raw.signal },
+          );
+          return c.redirect(toPanelFromTikTok({ conectada: "tiktok" }), 302);
+        } catch (caught) {
+          const fields = failureFields(caught);
+          deps.logger.warn(fields, "no se pudo conectar la cuenta de TikTok");
+          return c.redirect(toPanelFromTikTok({ error: fields.code }), 302);
         }
       })
   );

@@ -162,6 +162,11 @@ export type AppDeps = {
    */
   linkedin: LinkedInOAuthDeps["linkedin"] & { startUrl: string };
   /**
+   * TikTok (F9-T26): Login Kit (`createTikTokAuth`), si tiene el par de la app, la cookie `Secure`
+   * y el inicio del OAuth. Sin él, conectar TikTok vuelve al panel con `TIKTOK_NOT_CONFIGURED`.
+   */
+  tiktok?: OAuthDeps["tiktok"];
+  /**
    * Mercado Libre (spec F4 §4.2): el OAuth con la dirección pegada, `configured` si está el par de
    * la app (sin él, conectar no llama) y la dirección de retorno que se muestra (`ML_REDIRECT_URI`).
    */

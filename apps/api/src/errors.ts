@@ -163,6 +163,11 @@ const PLATFORM_REJECTIONS = new Set([
   "LINKEDIN_PERMISSION_DENIED",
   "LINKEDIN_FORBIDDEN",
   "LINKEDIN_REQUEST_REJECTED",
+  // TikTok al conectar o renovar (F9-T26): un código vencido o un permiso que falta se arreglan
+  // conectando de nuevo.
+  "TIKTOK_AUTH_INVALID",
+  "TIKTOK_PERMISSION_DENIED",
+  "TIKTOK_REQUEST_REJECTED",
 ]);
 
 /**
@@ -175,6 +180,7 @@ const PLATFORM_UNEXPECTED = new Set([
   "ML_UNEXPECTED_RESPONSE",
   "DISCORD_UNEXPECTED_RESPONSE",
   "LINKEDIN_UNEXPECTED_RESPONSE",
+  "TIKTOK_UNEXPECTED_RESPONSE",
   // F7-T11: la API de Anthropic rechazó una petición que arma el servidor (en la corrida, no aquí).
   "LLM_REQUEST_REJECTED",
   // La IA no entregó los textos en el formato pedido (en la corrida de `post.draft` o
@@ -201,6 +207,8 @@ const NOT_CONFIGURED = new Set([
   // F9-T15: falta el par de la app de LinkedIn, o LinkedIn no lo reconoce.
   "LINKEDIN_NOT_CONFIGURED",
   "LINKEDIN_APP_CREDENTIALS_INVALID",
+  // F9-T26: TikTok no reconoce el par de la app.
+  "TIKTOK_APP_CREDENTIALS_INVALID",
   // La UF (spec F5 §4.6): sin token del Banco Central, o con uno que rechaza; el Banco Central
   // todavía no publica el valor de hoy (se reintenta más tarde).
   "UF_SOURCE_NOT_CONFIGURED",
@@ -229,6 +237,9 @@ const BUSY = new Set([
   // F9-T15: conectar LinkedIn no llegó a conectar o se cortó.
   "LINKEDIN_UNREACHABLE",
   "LINKEDIN_ABORTED",
+  // F9-T26: conectar o renovar TikTok no llegó a conectar o se cortó.
+  "TIKTOK_UNREACHABLE",
+  "TIKTOK_ABORTED",
   // F5: el perfil de Facebook lo tiene otra ventana un momento.
   "MARKETPLACE_PROFILE_BUSY",
   // F6-T14: otro respaldo en curso, o uno cortado por el apagado (no llegan a la API).

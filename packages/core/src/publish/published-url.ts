@@ -2,8 +2,8 @@ import type { Platform } from "../enums.js";
 import { AppError } from "../errors.js";
 import { parseLinkedInPostUrl } from "../linkedin.js";
 import { parseMarketplaceItemUrl } from "../marketplace/url.js";
-import { parseXPostUrl } from "../x/post-url.js";
 import { parseTikTokVideoUrl } from "../tiktok/url.js";
+import { parseXPostUrl } from "../x/post-url.js";
 
 /**
  * `https://` + un host (letras, dígitos, puntos y guiones; sin usuario, clave ni puerto) + una ruta

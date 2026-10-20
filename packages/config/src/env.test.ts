@@ -504,6 +504,27 @@ describe("loadEnv", () => {
       ]);
     });
 
+    it("TikTok (F9-T26): la vuelta sale de PUBLIC_URL o de la API local, y en producción debe ser del mismo host", () => {
+      expect(loadEnv(validSource).TIKTOK_REDIRECT_URI).toBe(
+        "http://localhost:8787/api/oauth/tiktok/callback",
+      );
+      expect(
+        loadEnv({ ...production, CLIENT_IP_HEADER: "Fly-Client-IP" }).TIKTOK_REDIRECT_URI,
+      ).toBe("https://agentsales.agentpey.com/api/oauth/tiktok/callback");
+      expect(
+        envErrorOf({
+          ...production,
+          CLIENT_IP_HEADER: "Fly-Client-IP",
+          TIKTOK_REDIRECT_URI: "https://otro.example/api/oauth/tiktok/callback",
+        }).issues,
+      ).toEqual([
+        {
+          variable: "TIKTOK_REDIRECT_URI",
+          message: "debe empezar con PUBLIC_URL con NODE_ENV=production",
+        },
+      ]);
+    });
+
     it("en producción BROWSER_PROFILES_DIR se rechaza (el formulario automático no corre allí, F8-T20)", () => {
       const error = envErrorOf({ ...production, BROWSER_PROFILES_DIR: "/data/perfiles" });
 
