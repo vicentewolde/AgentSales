@@ -4,6 +4,38 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [1.1.0] - 2026-10-20 · F9 Contenido de marca, entrega 1
+AgentSales ya no es solo para avisos: el contenido de tu marca personal y de AgentPey se crea, se redacta con IA por red e idioma, se aprueba, se programa y se publica con el mismo calendario, reintentos y seguimiento que los avisos. Esta primera entrega publica en **Instagram** y **Discord** y se maneja por la CLI; el panel, LinkedIn, X y TikTok llegan en la entrega 2, y la IA que propone ideas en la 3 (spec `docs/specs/fase-9-contenido-de-marca.md`, ADR-0029 y ADR-0030).
+
+Todo está probado contra simulaciones. **Nada se publicó de verdad:** publicar en Instagram exige antes la prueba S1 y en Discord la S5, y siempre tu instrucción en el chat. El servidor sigue en `dry-run`.
+
+### Añadido
+- **Marcas:** `brokers create --kind brand` crea una marca (solo contenido, sin propiedades en el panel). `pnpm db:seed --operator-brands` crea las tuyas, `vinny` y `agentpey`, solo en tu instancia.
+- **Perfil editorial de cada marca:** idiomas, público, líneas de contenido, **hechos que la IA puede afirmar**, cosas que evitar, cadencia por red y hashtags (`brand show|edit`, y en la API).
+- **Posts:** `post create|list|show|upload|draft|edit|approve|publish|schedule|archive`. Los medios suben directo a R2 (con su sha256) y el worker arma las variantes (4:5, reel 9:16 y una variante de video para X).
+- **Texto con IA por red e idioma:** la IA escribe un texto por red y por idioma con tu perfil y el brief que escribes tú. Antes de aprobar se revisa el largo de cada red, que no haya `@everyone`/`@here`, y que no aparezcan cifras, nombres ni enlaces que no estén en tu perfil o en tu brief. El gasto cuenta para el tope mensual de la marca.
+- **Instagram para posts:** imagen, carrusel de 2 a 10 o reel, con la cuota diaria compartida con los avisos de la misma cuenta.
+- **Discord:** se conecta con la URL del webhook de un canal (`pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin`), que queda cifrada y nunca se imprime. Publica texto y hasta 10 archivos, siempre sin notificar a todo el canal.
+- **Resultado dudoso:** si una red pudo haber publicado y no se sabe (un corte justo al enviar), la publicación queda en "resultado dudoso" y no se reintenta sola; la resuelves con `publications resolve <id> --published|--not-published`. Así nunca sale dos veces.
+- **Publicar a mano por cuenta:** una cuenta en modo a mano (pensado para LinkedIn) nunca llama a la red; a la hora deja todo listo y tú confirmas con el enlace.
+- **`publications retry <id>`:** reintenta o publica ya una publicación, de un aviso o de un post.
+- **Agenda y seguimiento con posts:** avisos y posts juntos, más tres clases nuevas: resultado dudoso, tareas a mano fuera de Marketplace y cuentas por reconectar.
+- **Una segunda instancia del mismo código, cuando llegue el primer cliente:** el despliegue acepta `-f instance=<instancia>` sin cambiar la de hoy (guía en `docs/10-despliegue.md`).
+
+### Cambiado
+- **Más rápido:** desde esta fase se trabaja con hasta tres ramas en paralelo, cada una con su agente, y la CI de GitHub como juez (`CLAUDE.md`, regla 2).
+- **Credenciales por red:** cada red guarda lo suyo (Discord, la URL del webhook), y el redactor oculta en los logs las URLs de webhooks y los tokens `Bearer`.
+- **El gasto de IA de la marca** suma los textos de avisos, los de posts y los planes.
+
+### Base de datos
+- Migraciones `0014` (plataformas nuevas, estado `outcome_unknown` y el tipo de corredor) y `0015` (posts, planes, subidas, perfil editorial y el sujeto aviso o post en textos, corridas, publicaciones y medios). Solo agregan: no cambian ninguna fila. Volver a una versión anterior después de crear posts exige revertirlas a mano (`docs/10-despliegue.md`).
+
+### Pendiente fuera del código
+- **S1 (Instagram) y S5 (Discord):** obligatorias antes de cualquier publicación real (`docs/ESTADO.md`).
+- **Desplegar** esta versión en el servidor lo haces tú (`docs/10-despliegue.md`), y después `pnpm db:seed --operator-brands` con `ENV_FILE=.env.production` si quieres tus marcas ahí. Para que el calendario publique con el Mac apagado, el worker del servidor tiene que estar encendido.
+- **Meta:** el App Review sigue sin enviar.
+
+
 ## [1.0.0] - 2026-10-19 · F8 En internet
 Es el MVP completo. AgentSales ya está en internet, en `https://agentsales.agentpey.com`, en simulación (`dry-run`). El operador y los corredores entran al panel desde cualquier lugar, la CLI del Mac habla con el servidor, las cargas suben directo a R2, y el calendario y los respaldos corren en el servidor con el Mac dormido. Por ahora es un **servidor de demostración** en Fly.io (el worker se enciende solo los días en que se muestra la herramienta); dejarlo siempre encendido es cambiar el plan, no el código. La conexión de Instagram con el botón funciona con el inicio de sesión de Instagram de verdad; el App Review de Meta **no está enviado** y queda como trámite tuyo (cerraste la fase así el 2026-10-19).
 
