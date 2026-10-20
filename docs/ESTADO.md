@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-20
 **Fase actual:** F9 · Contenido de marca (spec **aprobado** el 2026-10-19: `docs/specs/fase-9-contenido-de-marca.md`; ADR-0029 y ADR-0030). F8 cerrada (`v1.0.0`)
-**Última tarea:** **entrega 1 de F9 terminada** (T01 a T14 y T27, todas revisadas y con la CI en verde): marcas y perfil editorial, posts con medios en R2, texto con IA por red e idioma con la regla de hechos, publicar y programar posts con el mismo calendario que los avisos, el resultado dudoso (`outcome_unknown`), el traspaso a mano por cuenta, la agenda con posts, Instagram y Discord (contra simulaciones) y la CLI `post …`. `CHANGELOG [1.1.0]` listo; la etiqueta `v1.1.0` se crea con tu permiso
-**Siguiente paso:** entrega 2 casi lista: T15 LinkedIn, T16 X, T26 TikTok y T17 el panel Contenido terminadas; T18 (calendario) y T19 (cuentas, consejos de error y guía) terminadas; falta el cierre con `v1.2.0`. Nada se publica de verdad hasta tus pruebas S1 a S6 (abajo) y tu instrucción en el chat
+**Última tarea:** **entrega 2 de F9 terminada** (T15, T16, T26, T17, T18 y T19, todas revisadas y con la CI en verde): LinkedIn (a mano por defecto, y retirar borrando por la API), X con su tope de gasto, TikTok como borrador, el panel Contenido, el calendario, los botones de Cuentas, un consejo para cada error y la guía del operador. `CHANGELOG [1.2.0]` listo; la etiqueta `v1.2.0` se crea con tu permiso
+**Siguiente paso:** entrega 3 (`v1.3.0`): T20 el plan de ideas y T21 el plan en el panel y la CLI; después T22 a T25. Antes de publicar de verdad en cada red, tus pruebas S1 a S6 (abajo) y tu instrucción en el chat. Agrega a tu `.env` (y a `.env.example`) las variables de LinkedIn, X y TikTok (`CHANGELOG [1.2.0]`)
 
 ## Pendiente tuyo de F9
 Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada prueba de entrada bloquea solo su red (spec §4.8; los pasos están en la sección 8 de cada nota de `docs/integraciones/`):

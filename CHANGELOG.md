@@ -4,6 +4,33 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [1.2.0] - 2026-10-20 · F9 Contenido de marca, entrega 2
+Tu contenido llega a **LinkedIn, X y TikTok**, y ya se maneja desde el **panel**: la pantalla Contenido para crear, redactar, aprobar y publicar posts, y un calendario con lo programado y lo publicado de posts y avisos. La IA que propone ideas llega en la entrega 3 (spec `docs/specs/fase-9-contenido-de-marca.md`).
+
+Todo está probado contra simulaciones. **Nada se publicó de verdad:** antes de publicar en cada red van tus pruebas S1 (Instagram), S2 y S3 (LinkedIn), S4 (X), S5 (Discord) y S6 (TikTok), y siempre tu instrucción en el chat. El servidor sigue en `dry-run`.
+
+### Añadido
+- **LinkedIn (perfil personal):** se conecta con su OAuth (`accounts connect linkedin --broker <slug>` o el botón de Cuentas). La cuenta nace **a mano**: a la hora, AgentSales deja el texto listo y tú lo publicas y confirmas con el enlace. Con `accounts mode <id> api` (administrador) publica texto, hasta 20 imágenes o un video por la API. Un post de LinkedIn publicado por la API se puede retirar borrándolo: `publications retire <id> --delete` (pregunta antes; nunca en simulación).
+- **X:** se conecta con OAuth y PKCE (`accounts connect x --broker <slug>` o el botón). Publica texto, imágenes o un video, anota el costo de cada post y respeta un **tope de gasto mensual** por cuenta (`accounts spend-limit <id> <dólares>`, US$10 por defecto). Un post con enlace pide tu marca explícita (cuesta US$0,20). El token se renueva solo.
+- **TikTok:** se conecta con Login Kit (`accounts connect tiktok --broker <slug>` o el botón). El video sube como **borrador a tu bandeja** de TikTok; tú lo publicas en la app y confirmas con el enlace. El token se renueva solo.
+- **Panel · Contenido:** lista de posts por marca y estado; editor con una pestaña por red e idioma, conteo de caracteres, vista previa y verificaciones; subir medios con avance; aprobar, programar y publicar; el perfil editorial de la marca; resolver un resultado dudoso y confirmar una publicación a mano.
+- **Panel · Calendario:** vista semanal y mensual en hora de Chile, con posts y avisos juntos; mover una fecha usa el mismo programar de siempre (en vivo, con confirmación). Lo que falló o espera tu confirmación se resuelve en Seguimiento.
+- **Panel · Cuentas:** botones para conectar LinkedIn, X y TikTok, el modo de cada cuenta (a mano o por la API) y el tope de X; Discord muestra el comando para conectarlo por la CLI (la URL del webhook nunca se pega en el panel).
+- **Qué hacer ante cada error:** cada error de cada red tiene su consejo, en el panel y en la CLI (`publications`, `publish`, `post show`, `agenda`), con una prueba que falla si aparece un código sin consejo.
+- **Guía del operador:** sección nueva para conectar las redes de los posts, las variables de `.env` de cada una, el modo a mano, resolver y confirmar, y los errores comunes (`docs/08-guia-operador.md`).
+
+### Cambiado
+- **Medios grandes:** sobre 100 MB el panel ya no calcula el sha256 en el navegador; lo calcula el worker al terminar la subida, y deduplica igual (ADR-0025).
+- **`accounts`** lista las redes sin cuenta con el comando para conectar cada una.
+
+### Base de datos
+- Migraciones `0016` (la marca de enlace permitido en X por post) y `0017` (el estado `uploaded` de una subida grande). Solo agregan.
+
+### Pendiente fuera del código
+- **Variables nuevas en tu `.env`** (vacías hasta que crees cada app): `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_REDIRECT_URI`, `X_CLIENT_ID`, `X_CLIENT_SECRET`, `X_REDIRECT_URI`, `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` (súmalas también a `.env.example`; detalle en `docs/08-guia-operador.md`).
+- **S1 a S6:** obligatorias antes de cualquier publicación real en cada red (`docs/ESTADO.md`).
+- **Desplegar** esta versión lo haces tú (`docs/10-despliegue.md`): primero el servidor y después usar la CLI nueva contra él.
+
 ## [1.1.0] - 2026-10-20 · F9 Contenido de marca, entrega 1
 AgentSales ya no es solo para avisos: el contenido de tu marca personal y de AgentPey se crea, se redacta con IA por red e idioma, se aprueba, se programa y se publica con el mismo calendario, reintentos y seguimiento que los avisos. Esta primera entrega publica en **Instagram** y **Discord** y se maneja por la CLI; el panel, LinkedIn, X y TikTok llegan en la entrega 2, y la IA que propone ideas en la 3 (spec `docs/specs/fase-9-contenido-de-marca.md`, ADR-0029 y ADR-0030).
 
