@@ -257,6 +257,19 @@ describe("post de punta a punta", () => {
     expect(shown).toContain("Publicaciones (1)");
     expect(shown).toContain("programada");
 
+    // `--json` no imprime las URLs prefirmadas de R2 de los medios.
+    s.h.out.length = 0;
+    expect(await runPostShow(s.deps(), post.id, { json: true })).toBe(0);
+    const json = s.h.text();
+    expect(json).not.toContain("r2.test");
+    const parsed = JSON.parse(json) as { media: Record<string, unknown>[] };
+    expect(parsed.media).toHaveLength(2);
+    for (const item of parsed.media) {
+      expect(item).not.toHaveProperty("url");
+      expect(item).not.toHaveProperty("thumbUrl");
+      expect(item).toHaveProperty("variants");
+    }
+
     s.h.out.length = 0;
     expect(await runPostList(s.deps(), { status: "ready" })).toBe(0);
     expect(s.h.text()).toContain(post.id);
@@ -398,6 +411,71 @@ describe("publications resolve, retry, confirm y not-published con posts", () =>
     expect(await runAgenda(s.deps())).toBe(0);
     expect(s.h.text()).toContain(`→ agentsales post show ${post.id}`);
     expect(s.h.text()).toContain(`→ agentsales publications retry ${publication.id}`);
+  });
+});
+
+describe("ajustes de la revisión", () => {
+  it("edit con solo --hashtags y la entrada estándar vacía (sin TTY) cambia solo los hashtags", async () => {
+    const s = await setup();
+    await runPostCreate(s.deps(), "Hashtags", { broker: "agentpey" });
+    const post = await s.created();
+    await runPostDraft(s.deps(), post.id);
+    s.setStdin("");
+    expect(
+      await runPostEdit(s.deps(), post.id, { platform: "discord", hashtags: "#agentpey ia" }),
+    ).toBe(0);
+    const [content] = await s.h.contents.listCurrent({ kind: "post", id: post.id });
+    expect(content).toMatchObject({
+      status: "edited",
+      body: "Texto en es para discord",
+      hashtags: ["#agentpey", "#ia"],
+    });
+  });
+
+  it("upload se rinde con POST_UPLOAD_INCOMPLETE si R2 sigue sin el archivo tras 3 vueltas", async () => {
+    const s = await setup();
+    await writeFile(join(s.cwd, "foto.jpg"), "foto de prueba");
+    await runPostCreate(s.deps(), "Sin llegar", { broker: "agentpey", kind: "image" });
+    const post = await s.created();
+    let calls = 0;
+    // El PUT "termina bien", pero el archivo nunca llega a R2.
+    const lost: PutFile = async () => {
+      calls += 1;
+    };
+    expect(await runPostUpload(s.deps({ putFile: lost }), post.id, ["foto.jpg"])).toBe(1);
+    expect(calls).toBe(3);
+    expect(s.h.errors()).toContain("POST_UPLOAD_INCOMPLETE");
+    expect(s.h.errors()).toContain("foto.jpg");
+    expect(s.h.errors()).toContain(`agentsales post upload ${post.id}`);
+  });
+
+  it("publish dice por qué un idioma no se publicó (skipped: una activa de un texto anterior)", async () => {
+    const s = await setup();
+    const { post, publication } = await approvedPost(s);
+    await s.move(post.id, publication.id, ["publishing", "published"]);
+    // Textos nuevos en dos idiomas: el español choca con la publicada del texto anterior.
+    s.setDraft({
+      texts: [
+        { platform: "discord", language: "es" },
+        { platform: "discord", language: "en" },
+      ],
+    });
+    expect(await runPostDraft(s.deps(), post.id, { replaceEdits: true })).toBe(0);
+    await runPostApprove(s.deps(), post.id, {});
+    const publishing = fakeClock(async () => {
+      for (const p of s.publicationsOf(post.id)) {
+        if (p.status === "publishing") await s.move(post.id, p.id, ["published"]);
+      }
+    });
+    expect(
+      await runPostPublish(s.deps({ sleep: publishing.sleep, now: publishing.now }), post.id, {
+        platform: "discord",
+      }),
+    ).toBe(0);
+    expect(s.h.text()).toContain("Publicando en Discord: 1 publicación(es)");
+    expect(s.h.errors()).toContain(
+      `ya hay una publicación activa de un texto anterior (${publication.id})`,
+    );
   });
 });
 

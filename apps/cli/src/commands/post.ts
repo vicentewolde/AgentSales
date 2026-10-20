@@ -421,13 +421,24 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
   return lines.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
+/**
+ * El detalle para `--json` sin las URLs de los medios: son URLs prefirmadas de R2 (dan acceso de
+ * lectura por un rato) y la CLI no las imprime. Cada medio queda con su id, tipo, tamaño y variantes.
+ */
+export function withoutSignedUrls(detail: PostDetailResponse) {
+  return {
+    ...detail,
+    media: detail.media.map(({ url: _url, thumbUrl: _thumbUrl, ...item }) => item),
+  };
+}
+
 /** `agentsales post show <id> [--json]`. */
 export function runPostShow(deps: PostDeps, id: string, options: { json?: boolean } = {}) {
   return guarded(deps, async () => {
     const postId = postIdOf(id);
     const detail = await fetchPost(deps.client, postId);
     if (options.json) {
-      deps.print(JSON.stringify(detail, null, 2));
+      deps.print(JSON.stringify(withoutSignedUrls(detail), null, 2));
       return 0;
     }
     const brokers = await fetchBrokers(deps.client);
@@ -714,7 +725,9 @@ export function runPostEdit(deps: PostDeps, id: string, options: PostEditOptions
         throw new CliError("POST_FILE_NOT_FOUND", `No se pudo leer ${path}`);
       });
     } else if (!deps.stdinIsTty()) {
-      body = await deps.readStdin();
+      const piped = await deps.readStdin();
+      // Con --hashtags y una entrada estándar vacía (un script sin TTY), se editan solo los hashtags.
+      if (piped.trim() !== "" || options.hashtags === undefined) body = piped;
     } else if (options.hashtags === undefined) {
       throw new CliError(
         "TEXT_REQUIRED",
@@ -898,10 +911,17 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
         deps.print(
           `Publicando en ${PLATFORM_TEXT[platform]}: ${started.length} publicación(es)${result.requeued.length > 0 ? ` (${result.requeued.length} ya estaban en curso)` : ""}`,
         );
+        for (const skipped of result.skipped) {
+          deps.printError(
+            c.yellow(
+              `  ${publicationFormatText(platform, skipped.format)}: ya hay una publicación activa de un texto anterior (${skipped.publicationId}): descártala o retírala para publicar este`,
+            ),
+          );
+        }
         if (result.stranded.length > 0) {
           deps.printError(
             c.yellow(
-              `  ${result.stranded.length} pendiente(s) de una cuenta desconectada no se publican`,
+              `  ${result.stranded.length} pendiente(s) de una cuenta desconectada no se publican: descártalas o reconecta la cuenta`,
             ),
           );
         }

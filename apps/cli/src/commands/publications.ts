@@ -256,12 +256,6 @@ function explainedManual(error: unknown, publicationId: string): unknown {
 }
 
 /**
- * `pbpaste | agentsales publications confirm <id> --url-stdin` (spec F5 §4.3 y §4.12): "lo
- * publiqué" de una publicación de Marketplace que espera el clic final. El enlace del aviso llega
- * por la entrada estándar (nunca como argumento: quedaría en el historial) y no se imprime ni se
- * pone en un error. Sin `--url-stdin` solo sirve en simulación (la API pide el enlace en vivo).
- */
-/**
  * El enlace pegado por la entrada estándar (`pbpaste | …`): nunca como argumento (quedaría en el
  * historial), y sin mostrar lo recibido si no parece un enlace.
  */
@@ -291,6 +285,12 @@ async function urlFromStdin(
   return url;
 }
 
+/**
+ * `pbpaste | agentsales publications confirm <id> --url-stdin` (spec F5 §4.3 y §4.12): "lo
+ * publiqué" de una publicación de Marketplace que espera el clic final, o de una red a mano (aviso o post, F9-T06). El enlace del aviso llega
+ * por la entrada estándar (nunca como argumento: quedaría en el historial) y no se imprime ni se
+ * pone en un error. Sin `--url-stdin` solo sirve en simulación (la API pide el enlace en vivo).
+ */
 export function runConfirmPublication(deps: ConfirmDeps, id: string, options: ConfirmOptions = {}) {
   const c = deps.colors;
   return guarded(deps, async () => {
@@ -354,6 +354,11 @@ const lookAt = (publication: Pick<PublicationView, "postId" | "listingId">) =>
   publication.postId !== null
     ? `agentsales post show ${publication.postId}`
     : `agentsales publications ${publication.listingId ?? "<propiedad>"}`;
+
+// `resolve` y `retry` sobre una publicación de un post no revisan `posts.manage` (la API solo pasa
+// por `ownedBy`: lo ajeno es 404, como `confirm` y `not-published`). Hoy da igual, porque el
+// administrador y el corredor tienen ese permiso; si un rol lo pierde, la revisión va en las rutas
+// de `/publications/:id/*` (o en core), no aquí.
 
 /**
  * `agentsales publications resolve <id> --published [--url-stdin] | --not-published` (ADR-0029

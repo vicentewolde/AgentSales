@@ -448,7 +448,10 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       validated("json", publicationResolveBodySchema),
       async (c) => {
         // Resultado dudoso (ADR-0029 punto 8, F9-T12): el operador dice si salió o no. Como
-        // `confirm`, el enlace nunca vuelve en un error ni va al log.
+        // `confirm`, el enlace nunca vuelve en un error ni va al log. Como `confirm` y `publish`,
+        // en una publicación de post solo pasa por `ownedBy` (lo ajeno es 404), sin revisar
+        // `posts.manage`: hoy el administrador y el corredor lo tienen; si un rol lo pierde, la
+        // revisión va aquí (o en core) para todo `/publications/:id/*`.
         const { outcome, url } = c.req.valid("json");
         const { publication, changed } = await resolvePublication(deps, {
           publicationId: c.req.valid("param").id,
