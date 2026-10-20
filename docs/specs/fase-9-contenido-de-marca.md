@@ -96,7 +96,7 @@ Verificaciones comunes (`checkPostContent`): largo, caracteres reservados, menci
 
 ### 4.5 Los medios de un post
 - Subida directa a R2 con URL prefirmada (ADR-0025), por la misma ruta de la API y del panel que las cargas: `POST /api/posts/:id/uploads` y `…/uploads/complete`. El registro de lo pendiente vive en `post_uploads` (la tabla de cargas, `import_runs`, es de planillas); un trabajo periódico borra de R2 lo abandonado, como la limpieza de las cargas. Imágenes (JPEG, PNG, WebP, HEIC) y videos (MP4, MOV), con los topes de la carga. Las claves de R2 de un post van bajo `posts/{postId}/…`.
-- El worker procesa lo subido con el pipeline existente (`MediaProcessor`): variantes `ig_4x5` y `thumb`, y el reel 9:16 con tope de 90 s. Para X se agrega una variante de video reducida (la doc fija un máximo de 1280×1024: NO VERIFICADO, `x.md` §5), y para Discord un video bajo 20 MiB o, si no cabe, solo un enlace (D8).
+- El worker procesa lo subido con el pipeline existente (`MediaProcessor`): variantes `ig_4x5` y `thumb`, y el reel 9:16 con tope de 90 s. Para X se agrega una variante de video reducida (la doc fija un máximo de 1280×1024: NO VERIFICADO, `x.md` §5), y para Discord un video bajo 20 MiB o, si no cabe, solo un enlace (D8). **Así quedó en F9-T14:** Discord no tiene variante propia; su publicación fija la más liviana del video entre `x_video` (720p, 8 Mbps como mucho) e `ig_reel`, y el publisher la adjunta si pesa hasta 20 MiB. Si no cabe, no se adjunta y, como hoy no hay un enlace al video que no exponga una URL firmada de larga vida (R2 no tiene un dominio público), se publica **solo el texto** con una nota en la bitácora; el enlace estable queda pendiente (un dominio público de medios, después de S5).
 - Cada publicación fija los medios (`media_ids`) al nacer, como en ADR-0014.
 
 ### 4.6 Las cuatro redes
@@ -129,8 +129,8 @@ Todas respetan `PUBLISH_MODE` y el `dry-run` de la publicación (ADR-0016): en `
 - `meta` por plataforma con su esquema zod, como Instagram y Mercado Libre. LinkedIn suma `mode` (`api` | `manual`); X suma `spendLimitUsd`.
 - Los secretos nunca van a logs ni a la bitácora: `redactText` reconoce la URL del webhook de Discord (`discord.com/api/webhooks/<id>/<token>`) y los `Bearer`, antes de que exista el primer publisher nuevo (T02).
 
-### 4.8 Pruebas de entrada (las hace el operador, antes de construir lo que dependa)
-Se hacen **a mano**, con la consola o el generador de tokens de cada plataforma y los comandos de la sección 8 de su nota de integración; no necesitan el código de la aplicación. Cada una responde un NO VERIFICADO que decide el diseño. Después, cada publisher trae su propio `pnpm social:smoke --platform …` (que sí publica de verdad y por eso se declara en `CLAUDE.md` como `ml:test-user`, solo para el operador, en cuentas o servidores de prueba y con su instrucción en el chat).
+### 4.8 Pruebas de entrada (las hace el operador, antes de construir lo que dependa; S1 y S5, antes de publicar de verdad)
+**S1 (Instagram) y S5 (Discord) no bloquean construir** (decisión del operador, 2026-10-20): T13 y T14 se construyen contra simulaciones (`msw`), y la prueba es una **verificación obligatoria antes de cualquier publicación real** en esa red; si falla, se ajusta el código antes de publicar. Las demás siguen antes de construir lo que dependa de ellas. Se hacen **a mano**, con la consola o el generador de tokens de cada plataforma y los comandos de la sección 8 de su nota de integración; no necesitan el código de la aplicación. Cada una responde un NO VERIFICADO que decide el diseño. Después, cada publisher trae su propio `pnpm social:smoke --platform …` (que sí publica de verdad y por eso se declara en `CLAUDE.md` como `ml:test-user`, solo para el operador, en cuentas o servidores de prueba y con su instrucción en el chat).
 
 | # | Prueba | Si falla |
 |---|---|---|
@@ -203,7 +203,7 @@ Migraciones desde la `0014` (o la siguiente libre). Reglas: **`ALTER TYPE … AD
 | D5 | LinkedIn: perfil personal, cuenta en modo `manual`; pasa a `api` solo si LinkedIn aclara su término (S3) | **Respondida (P1)** |
 | D6 | X: enlaces permitidos y marcados (cuestan más), sin hilos, tope por defecto de US$10 al mes; en `dry-run` no se escribe | **Respondida (P2)** |
 | D7 | Discord: webhook de canal, sin bot, sin foros ni embeds | Tomada |
-| D8 | Discord y videos: variante bajo 20 MiB si cabe; si no, un enlace al video | **Respondida (P5)** |
+| D8 | Discord y videos: variante bajo 20 MiB si cabe; si no, un enlace al video (F9-T14: mientras no haya un enlace seguro, solo el texto con una nota en la bitácora, §4.5) | **Respondida (P5)** |
 | D9 | Las ideas de la IA son posts `idea`; aceptar, aprobar y programar son pasos distintos (ADR-0030) | Tomada |
 | D10 | La IA solo afirma lo que está en `facts` o en un brief escrito por el operador (ADR-0030) | Tomada |
 | D11 | Instagram solo imagen, carrusel y reel; sin Stories ni música en F9 | Tomada |
@@ -256,7 +256,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 
 ### 5.2 Ejecución en paralelo (D21)
 **Olas** (lo que se puede hacer a la vez, según las dependencias):
-- **Entrega 1:** ola 1, T01 y T27 → ola 2, T02 y T03 → ola 3, T04 → ola 4, dos cadenas a la vez: el núcleo (T05 → T06 → T07 → T08) y la marca y el texto (T09 → T10 → T11) → ola 5, T12, T13 (tras S1) y T14 (tras S5).
+- **Entrega 1:** ola 1, T01 y T27 → ola 2, T02 y T03 → ola 3, T04 → ola 4, dos cadenas a la vez: el núcleo (T05 → T06 → T07 → T08) y la marca y el texto (T09 → T10 → T11) → ola 5, T12, T13 y T14 (S1 y S5, antes de publicar de verdad en Instagram y Discord; decisión del operador 2026-10-20).
 - **Entrega 2:** T15, T16, T26 y la cadena T17 → T18 a la vez; T19 al final (depende de los publishers).
 - **Entrega 3:** T20 → T21 y T22 a la vez → T23, T24 y T25.
 
@@ -380,7 +380,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] `pnpm check` pasa
 
 ### F9-T13 · Instagram para posts
-- **Depende de:** T07, T10, **prueba S1**
+- **Depende de:** T07, T10 (S1: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
 - **Descripción:** el publisher de Instagram arma su input desde un post (imagen suelta, carrusel de 2 a 10, reel) y comparte la cuota de la cuenta con los avisos.
 - **Archivos principales:** `packages/core/src/publish/input.ts`, `packages/publishers/src/instagram`
 - **Hecho cuando:**
@@ -389,9 +389,10 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] `pnpm check` pasa
 
 ### F9-T14 · Discord
-- **Depende de:** T07, T10, **prueba S5**
+- **Depende de:** T07, T10 (S5: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
 - **Descripción:** publisher de webhook (texto y archivos), `allowed_mentions` fijo, `outcome_unknown` ante un corte, límites y 429, conexión con `accounts connect discord --webhook-stdin`, `social:smoke --platform discord`.
 - **Archivos principales:** `packages/publishers/src/discord/*`, `packages/core/src/use-cases/connect-account.ts`
+- **Nota (2026-10-20):** `social:smoke --platform discord` no se construyó: S5 se hace a mano (§4.8) y es la verificación antes de publicar de verdad. El lector del enlace del mensaje (`parseDiscordMessageUrl`, en core y sin red) deja como `external_id` el id del mensaje, el mismo que guarda el publisher.
 - **Hecho cuando:**
   - [ ] contratos con `msw` (éxito, 429 con `retry_after`, 404 del webhook, corte → `outcome_unknown`)
   - [ ] la URL del webhook no aparece en ningún log ni evento
@@ -521,7 +522,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 ## 8. Riesgos y mitigaciones
 | Riesgo | Mitigación |
 |---|---|
-| La app de Meta en desarrollo no muestra lo publicado a quien no tiene rol (`instagram-contenido-propio.md` §5) | Prueba S1 antes de construir; si falla, Instagram espera la aprobación de F8 |
+| La app de Meta en desarrollo no muestra lo publicado a quien no tiene rol (`instagram-contenido-propio.md` §5) | Prueba S1 antes de publicar de verdad en Instagram (T13 se construye antes, contra simulaciones; decisión del operador 2026-10-20); si falla, Instagram espera la aprobación de F8 |
 | Los términos de LinkedIn prohíben "automatizar publicaciones" | Modo `manual` por defecto (P1) y consulta a LinkedIn (S3); sin navegador automatizado |
 | La IA inventa datos de la marca | Solo `facts` y un brief escrito por el operador; `checkPostContent` bloquea cifras y nombres ajenos; `eval:social` (T22); el humano aprueba |
 | X cobra más de lo previsto o suspende la cuenta por automatización | `spendLimitUsd` de US$10, el aviso de costo por enlace, tope en la consola de X, publicar solo posts aprobados y declarar la cuenta si X lo pide |
@@ -531,7 +532,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 | El token de LinkedIn vence cada 60 días y nadie lo nota | Clase "token por vencer" en la agenda, 7 días antes |
 | El alcance es grande para una fase | Los lotes se pueden cerrar por separado: A y B dejan un gestor manual; cada red del lote C es independiente; E es el último y se puede mover a F10 |
 | Cuentas personales o de marca restringidas por las redes | Cuentas de prueba en las pruebas de entrada, ritmo bajo y publicación solo con aprobación humana |
-| El App Review de Meta no está enviado y tarda unas 5 semanas: mientras, los corredores son evaluadores y puede que el público no vea lo publicado | Prueba S1 antes de construir Instagram; la verificación del negocio con Certilink SpA ya está en marcha y sirve también a la app de anuncios del piloto |
+| El App Review de Meta no está enviado y tarda unas 5 semanas: mientras, los corredores son evaluadores y puede que el público no vea lo publicado | Prueba S1 antes de publicar de verdad en Instagram; la verificación del negocio con Certilink SpA ya está en marcha y sirve también a la app de anuncios del piloto |
 | TikTok pide auditoría para publicar en público y puede rechazarla si la app solo atiende al operador | F9 solo usa el modo borrador; la auditoría se presenta con el piloto, que es el caso de uso real |
 
 ## 9. Preguntas abiertas
@@ -554,3 +555,4 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 | 2026-10-20 | F9-T07: aclarado que una publicación de una cuenta en modo `manual` (LinkedIn) programada no es solo un recordatorio como Marketplace: a la hora el reloj la deja en `awaiting_manual_confirm`, lista para publicar a mano, sin llamar a la red |
 | 2026-10-20 | Revisión de F9-T11: F9-T16 suma el criterio de la marca explícita del operador por post para un enlace en X (hasta T16, "marcar" es escribirlo en el brief del operador) |
 | 2026-10-20 | Revisión de F9-T08: T12 suma el criterio de los comandos que la agenda ya sugiere para posts (incluido reintentar por id de publicación) |
+| 2026-10-20 | **Decisión del operador:** T13 (Instagram) y T14 (Discord) se construyen ya, contra simulaciones (`msw`); S1 y S5 pasan a ser verificación obligatoria **antes de cualquier publicación real**, no antes de construir (§4.8, dependencias de T13 y T14, §5.2 y riesgos). F9-T14: el video de Discord es la variante más liviana entre `x_video` e `ig_reel`, y si no cabe en 20 MiB sale solo el texto con una nota (sin enlace seguro todavía, §4.5 y D8); `social:smoke --platform discord` queda sin construir (S5 es a mano) |
