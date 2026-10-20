@@ -266,7 +266,8 @@ export type PostChannelStart = {
  * `CONTENT_RUN_ACTIVE`; ningún texto aprobado en esa red → `CONTENT_NOT_APPROVED`; sin cuenta
  * conectada (o lo pendiente es de una desconectada) → `ACCOUNT_NOT_CONNECTED`; una del canal con
  * resultado dudoso → `OUTCOME_UNKNOWN_PENDING`; una fallida que empezó en `live` pedida en
- * `dry-run` → `PUBLISH_MODE_LOCKED`; nada que hacer → `NOTHING_TO_PUBLISH`.
+ * `dry-run` → `PUBLISH_MODE_LOCKED`; nada que hacer → `NOTHING_TO_PUBLISH` (si lo que queda espera
+ * la confirmación de una publicación a mano, el mensaje lo dice y `details.publicationIds` las da).
  */
 export async function preparePostChannelStart(
   locked: PostLockedRepositories,
@@ -322,6 +323,15 @@ export async function preparePostChannelStart(
         "ACCOUNT_NOT_CONNECTED",
         "Las publicaciones pendientes son de una cuenta desconectada: reconéctala o descártalas",
         { details: { postId: post.id, platform, publicationIds: stranded.map((p) => p.id) } },
+      );
+    }
+    // Lo que queda espera la palabra del operador (una cuenta a mano, ADR-0029 punto 9).
+    const waiting = channel.filter((p) => p.status === "awaiting_manual_confirm");
+    if (waiting.length > 0) {
+      throw new AppError(
+        "NOTHING_TO_PUBLISH",
+        "Las publicaciones de esta red esperan tu confirmación: di si las publicaste a mano (pega el enlace) o márcalas como no publicadas",
+        { details: { postId: post.id, platform, publicationIds: waiting.map((p) => p.id) } },
       );
     }
     throw new AppError(

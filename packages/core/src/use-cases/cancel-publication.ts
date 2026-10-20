@@ -38,7 +38,8 @@ export async function cancelPublication(
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     // El sistema nunca da por no publicado lo que no vio (spec F5 §4.3, D11).
-    if (publication.status === "awaiting_manual_confirm") throw manualConfirmPending(publicationId);
+    if (publication.status === "awaiting_manual_confirm")
+      throw manualConfirmPending(publicationId, publication.platform);
     // Tampoco lo que pudo haber salido (ADR-0029 punto 8): primero dice si salió o no.
     if (publication.status === "outcome_unknown") throw outcomeUnknownPending(publicationId);
     if (publication.status === "publishing") {

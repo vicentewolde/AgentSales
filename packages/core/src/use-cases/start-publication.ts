@@ -73,7 +73,8 @@ export async function startPublication(
     if (publication === null) throw publicationNotFound(publicationId);
     if (publication.status === "publishing") return { publication, requeued: true };
     // Marketplace: primero el operador dice si la publicó (spec F5 §4.3).
-    if (publication.status === "awaiting_manual_confirm") throw manualConfirmPending(publicationId);
+    if (publication.status === "awaiting_manual_confirm")
+      throw manualConfirmPending(publicationId, publication.platform);
     // No se sabe si salió (ADR-0029 punto 8): reintentar podría publicarla dos veces.
     if (publication.status === "outcome_unknown") throw outcomeUnknownPending(publicationId);
     if (publication.status === "published") {

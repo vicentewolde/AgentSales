@@ -57,7 +57,7 @@ export async function unapproveContent(
       (publication) => publication.contentId === content.id,
     );
     const waiting = own.find((publication) => publication.status === "awaiting_manual_confirm");
-    if (waiting !== undefined) throw manualConfirmPending(waiting.id);
+    if (waiting !== undefined) throw manualConfirmPending(waiting.id, waiting.platform);
     // Lo que pudo haber salido (ADR-0029 punto 8) se resuelve antes de soltar el texto.
     const unknown = own.find((publication) => publication.status === "outcome_unknown");
     if (unknown !== undefined) throw outcomeUnknownPending(unknown.id);

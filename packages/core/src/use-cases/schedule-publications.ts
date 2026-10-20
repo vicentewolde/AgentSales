@@ -139,7 +139,8 @@ export async function schedulePublication(
         { details: { publicationId } },
       );
     }
-    if (publication.status === "awaiting_manual_confirm") throw manualConfirmPending(publicationId);
+    if (publication.status === "awaiting_manual_confirm")
+      throw manualConfirmPending(publicationId, publication.platform);
     // No se sabe si salió (ADR-0029 punto 8): programarla podría publicarla dos veces.
     if (publication.status === "outcome_unknown") throw outcomeUnknownPending(publicationId);
     if (publication.status === "published") {
@@ -280,7 +281,9 @@ const SILENT_WITHOUT_PLATFORMS = new Set(["CONTENT_NOT_APPROVED", "ACCOUNT_NOT_C
  * conectada), a `at + i × spacingMinutes`. Una propiedad o un canal que no se puede programar no
  * corta el lote: queda `skipped` con su código y motivo. La hora se revisa una vez, para la primera
  * (y la última no puede pasar de 60 días). Errores del pedido: `SCHEDULE_BATCH_INVALID` (lista
- * vacía, repetida, más de 50, o un espaciado fuera de 0 a 240) y los de la hora.
+ * vacía, repetida, más de 50, o un espaciado fuera de 0 a 240), los de la hora y cualquier error
+ * reintentable (la base: corta el lote con lo ya programado escrito, en vez de informarlo como
+ * motivo de una propiedad).
  */
 export async function scheduleListings(
   deps: Omit<ScheduleDeps, "publications">,
@@ -347,7 +350,8 @@ export async function scheduleListings(
           publications: done.scheduled,
         });
       } catch (error) {
-        if (!isAppError(error)) throw error;
+        // Un error pasajero (la base, la red) corta el lote: no es un motivo de esa propiedad.
+        if (!isAppError(error) || error.retriable) throw error;
         if (!asked && SILENT_WITHOUT_PLATFORMS.has(error.code)) continue;
         own.push({
           listingId,
@@ -428,8 +432,13 @@ export type SchedulePostOutcome =
  * están publicando no cuentan). El modo es el de la API (`dryRun`). Una red que no se puede
  * programar no corta las demás: queda `skipped` con su código; sin redes pedidas, las que no tienen
  * texto aprobado o cuenta no se informan, y si no queda ninguna, una fila sin red
- * (`NOTHING_TO_PUBLISH`). Errores del pedido: los de la hora (`SCHEDULE_TOO_SOON`,
- * `SCHEDULE_TOO_FAR`, `SCHEDULE_AT_INVALID`) y `SUBJECT_NOT_LISTING` sin `postLock`.
+ * (`NOTHING_TO_PUBLISH`). Programa **red por red, cada una en su propia vuelta del candado** (como
+ * `scheduleListings` con cada canal): si el post cambia a medias (lo archivan, se cae la base),
+ * el pedido puede fallar con algunas redes ya programadas; lo programado queda y repetir el pedido
+ * es idempotente (a la misma hora y modo, no cambia nada). Errores del pedido (cortan sin seguir):
+ * los de la hora (`SCHEDULE_TOO_SOON`, `SCHEDULE_TOO_FAR`, `SCHEDULE_AT_INVALID`), los del post
+ * (`POST_NOT_FOUND`, `POST_NOT_READY`), `SUBJECT_NOT_LISTING` sin `postLock` y cualquier error
+ * reintentable (la base).
  */
 export async function schedulePost(
   deps: SubjectLocks & { now?: () => Date },
@@ -468,7 +477,10 @@ export async function schedulePost(
       });
       results.push({ platform, outcome: "scheduled", at: when, publications: scheduled });
     } catch (error) {
-      if (!isAppError(error) || POST_REQUEST_ERRORS.has(error.code)) throw error;
+      // Un error pasajero (la base) o del post entero corta el pedido: no es un motivo de la red.
+      if (!isAppError(error) || error.retriable || POST_REQUEST_ERRORS.has(error.code)) {
+        throw error;
+      }
       if (!asked && SILENT_WITHOUT_PLATFORMS.has(error.code)) continue;
       results.push({ platform, outcome: "skipped", code: error.code, message: error.message });
     }

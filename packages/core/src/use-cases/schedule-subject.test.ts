@@ -5,6 +5,7 @@ import { OUTCOME_UNKNOWN } from "../publish/outcome.js";
 import { SCHEDULE_OVERDUE_MS } from "../schedule.js";
 import {
   createPostPublicationScenario,
+  createPublicationScenario,
   createSendOncePublisher,
   type PostPublicationScenario,
 } from "../testing/index.js";
@@ -13,6 +14,7 @@ import { publishPost } from "./publish-listing.js";
 import { publishPublication } from "./publish-publication.js";
 import { retirePublication } from "./retire-publication.js";
 import {
+  scheduleListings,
   schedulePost,
   schedulePublication,
   unschedulePublication,
@@ -410,5 +412,240 @@ describe("la vigilancia con posts", () => {
       publishPublication(t.publishDeps({}), { publicationId: linkedin.id, isLastAttempt: false }),
     ).resolves.toMatchObject({ outcome: "awaiting_manual_confirm" });
     expect((await watch(t)).requeued).not.toContain(linkedin.id);
+  });
+});
+
+describe("revisiones del post (ajustes de la revisión de F9-T07)", () => {
+  const postScheduled = async (status: "archived" | "idea") => {
+    const t = await createPostPublicationScenario();
+    const publication = await schedule(t, t.publicationOf("discord"));
+    await t.posts.update(t.post.id, { status });
+    return { t, publication };
+  };
+
+  it("un post archivado o idea es POST_NOT_READY al publicar, programar y publicar una", async () => {
+    for (const status of ["archived", "idea"] as const) {
+      const t = await createPostPublicationScenario();
+      const publication = t.publicationOf("discord");
+      await t.posts.update(t.post.id, { status });
+
+      expect(
+        await codeOf(
+          publishPost(t.deps, {
+            postId: t.post.id,
+            platform: "discord",
+            dryRun: true,
+            actor: "operator",
+          }),
+        ),
+      ).toBe("POST_NOT_READY");
+      expect(
+        await codeOf(
+          schedulePost(
+            { ...t.deps, now: () => NOW },
+            { postId: t.post.id, at: AT, dryRun: true, actor: "operator" },
+          ),
+        ),
+      ).toBe("POST_NOT_READY");
+      expect(
+        await codeOf(
+          startPublication(t.deps, {
+            publicationId: publication.id,
+            dryRun: true,
+            actor: "operator",
+          }),
+        ),
+      ).toBe("POST_NOT_READY");
+      expect(await codeOf(schedule(t, publication))).toBe("POST_NOT_READY");
+      expect(t.current(publication.id)?.status).toBe("approved");
+      expect(t.queue.jobs).toEqual([]);
+    }
+  });
+
+  it("a la hora, la programada de un post archivado queda failed con POST_NOT_READY", async () => {
+    const { t, publication } = await postScheduled("archived");
+
+    expect((await due(t, AFTER)).failed).toEqual([
+      { publicationId: publication.id, code: "POST_NOT_READY" },
+    ]);
+    expect(t.current(publication.id)).toMatchObject({
+      status: "failed",
+      lastError: { code: "POST_NOT_READY" },
+    });
+    expect(t.queue.jobs).toEqual([]);
+  });
+
+  it("publishPost con una corrida activa es CONTENT_RUN_ACTIVE y con una dudosa OUTCOME_UNKNOWN_PENDING", async () => {
+    const t = await twoLanguages();
+    const run = await t.repos.contentRuns.create({ postId: t.post.id, texts: true });
+    const error = await caught(
+      publishPost(t.deps, { postId: t.post.id, platform: "x", dryRun: true, actor: "operator" }),
+    );
+    expect(error).toMatchObject({
+      code: "CONTENT_RUN_ACTIVE",
+      details: { postId: t.post.id, contentRunId: run.id },
+    });
+    await t.repos.contentRuns.markRunning(run.id);
+    await t.repos.contentRuns.markFailed(run.id, {
+      code: "LLM_ERROR",
+      message: "x",
+    });
+
+    const xEn = await t.toPublishing(t.publicationOf("x", "en"));
+    await t.publications.transition(
+      xEn.id,
+      {
+        from: "publishing",
+        to: "outcome_unknown",
+        changes: { lastError: { code: OUTCOME_UNKNOWN, message: "x", retriable: false } },
+      },
+      { actor: "system" },
+    );
+    await expect(
+      caught(
+        publishPost(t.deps, { postId: t.post.id, platform: "x", dryRun: true, actor: "operator" }),
+      ),
+    ).resolves.toMatchObject({
+      code: "OUTCOME_UNKNOWN_PENDING",
+      details: { publicationId: xEn.id },
+    });
+    expect(t.current(t.publicationOf("x", "es").id)?.status).toBe("approved");
+  });
+
+  it("un aviso con resultado dudoso: publicar o programar esa publicación da OUTCOME_UNKNOWN_PENDING (cambio intencional desde F9-T06)", async () => {
+    const t = await createPublicationScenario();
+    const publication = t.byFormat("post") as Publication;
+    await t.publications.transition(
+      publication.id,
+      { from: "approved", to: "publishing", changes: { dryRun: false } },
+      { actor: "operator" },
+    );
+    await t.publications.transition(
+      publication.id,
+      {
+        from: "publishing",
+        to: "outcome_unknown",
+        changes: { lastError: { code: OUTCOME_UNKNOWN, message: "x", retriable: false } },
+      },
+      { actor: "system" },
+    );
+
+    expect(
+      await codeOf(
+        startPublication(t.deps, {
+          publicationId: publication.id,
+          dryRun: false,
+          actor: "operator",
+        }),
+      ),
+    ).toBe("OUTCOME_UNKNOWN_PENDING");
+    expect(
+      await codeOf(
+        schedulePublication(
+          { ...t.deps, now: () => new Date() },
+          {
+            publicationId: publication.id,
+            at: new Date(Date.now() + 3600e3),
+            dryRun: false,
+            actor: "operator",
+          },
+        ),
+      ),
+    ).toBe("OUTCOME_UNKNOWN_PENDING");
+    expect(t.publications.all().find((p) => p.id === publication.id)?.status).toBe(
+      "outcome_unknown",
+    );
+  });
+});
+
+describe("una publicación a mano que espera confirmación", () => {
+  const manualLinkedIn = async () => {
+    const t = await createPostPublicationScenario({
+      texts: [{ platform: "linkedin", language: "es" }],
+      accounts: [{ platform: "linkedin", meta: { mode: "manual" } }],
+    });
+    const publication = await t.toPublishing(t.publicationOf("linkedin"));
+    await publishPublication(t.publishDeps({}), {
+      publicationId: publication.id,
+      isLastAttempt: false,
+    });
+    expect(t.current(publication.id)?.status).toBe("awaiting_manual_confirm");
+    return { t, publication };
+  };
+
+  it("MANUAL_CONFIRM_PENDING habla de publicarla a mano en su red, no de Marketplace", async () => {
+    const { t, publication } = await manualLinkedIn();
+    for (const attempt of [
+      startPublication(t.deps, { publicationId: publication.id, dryRun: false, actor: "operator" }),
+      schedule(t, publication),
+      cancelPublication(t.deps, { publicationId: publication.id, actor: "operator" }),
+    ]) {
+      const error = await caught(attempt);
+      expect(error).toMatchObject({
+        code: "MANUAL_CONFIRM_PENDING",
+        message: expect.stringContaining("publiques a mano en LinkedIn"),
+      });
+      expect((error as AppError).message).not.toContain("Marketplace");
+    }
+  });
+
+  it("publicar la red cuando todo espera confirmación dice eso, no que está publicado", async () => {
+    const { t, publication } = await manualLinkedIn();
+    const error = await caught(
+      publishPost(t.deps, {
+        postId: t.post.id,
+        platform: "linkedin",
+        dryRun: false,
+        actor: "operator",
+      }),
+    );
+    expect(error).toMatchObject({
+      code: "NOTHING_TO_PUBLISH",
+      message: expect.stringContaining("esperan tu confirmación"),
+      details: { publicationIds: [publication.id] },
+    });
+  });
+});
+
+describe("un error pasajero corta el pedido de programar", () => {
+  const transient = () =>
+    new AppError("DB_UNAVAILABLE", "la base no respondió", { retriable: true });
+
+  it("schedulePost lo relanza en vez de dejar la red como saltada", async () => {
+    const t = await createPostPublicationScenario();
+    const failure = transient();
+    await expect(
+      schedulePost(
+        {
+          ...t.deps,
+          postLock: {
+            run: async () => {
+              throw failure;
+            },
+          },
+          now: () => NOW,
+        },
+        { postId: t.post.id, at: AT, dryRun: true, actor: "operator" },
+      ),
+    ).rejects.toBe(failure);
+  });
+
+  it("scheduleListings también (paridad)", async () => {
+    const t = await createPublicationScenario();
+    const failure = transient();
+    await expect(
+      scheduleListings(
+        {
+          ...t.deps,
+          lock: {
+            run: async () => {
+              throw failure;
+            },
+          },
+          now: () => NOW,
+        },
+        { listingIds: [t.listingId], at: AT, dryRun: true, actor: "operator" },
+      ),
+    ).rejects.toBe(failure);
   });
 });
