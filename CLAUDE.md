@@ -76,6 +76,7 @@ pnpm -s cli tracking     # cada propiedad por plataforma (--broker, --archived, 
 pnpm -s cli listing ready|pause|resume|reopen|archive <id_propiedad>  # la propiedad manda sobre sus publicaciones; listing close <id_propiedad> --reason vendida|arrendada|retirada (pide confirmación; --yes)
 pnpm -s cli brokers auto-publish <slug> on|off  # publicación automática del corredor (pregunta siempre; --yes)
 pnpm -s cli brokers create|edit|show|logo|template  # corredores: crear (--slug --name --brand --color …; --kind brand crea una marca, F9), editar la marca (--own/--not-own y --cap/--no-cap, solo el administrador), su lista de alta, el logo (PNG, JPEG o WebP) y su planilla (--out, --force)
+pnpm -s cli brand show|edit [--broker <slug>]  # el perfil editorial de una marca (F9): show legible o --json; edit con una opción por campo (--languages, --audience, --pillar "clave|nombre|peso|descripción", --fact/--add-fact, --avoid/--add-avoid, --cadence "red/posts/días/horas/espacio", --remove-cadence, --hashtags) o --file <perfil.json>; lo demás queda como estaba
 pnpm -s cli users list|invite|reset|disable|enable  # usuarios (administrador): invite --email --name --broker <slug>|--admin; el enlace va al portapapeles, nunca a la pantalla (no lo pegues en el chat)
 pnpm -s cli usage [--month AAAA-MM]  # el gasto de IA del mes por corredor (estimado), con su tope
 pbpaste | pnpm -s cli publications confirm <id> --url-stdin  # Marketplace: lo publicaste (el enlace no se imprime); publications not-published <id> si no

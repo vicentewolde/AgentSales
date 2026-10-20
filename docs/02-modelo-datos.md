@@ -260,10 +260,10 @@ Uno por corredor (`broker_id` es la llave). `pnpm db:seed --operator-brands` (so
 | pillars | jsonb default `[]` | `[{ key, name, description, weight }]` |
 | facts | text[] | Los hechos que la IA puede afirmar (ADR-0030): lo que no está aquí no se afirma |
 | avoid | text[] | Temas, palabras o promesas que no se usan |
-| cadence | jsonb default `{}` | Posts por semana en cada red, días y horas preferidos (hora de Chile) y horas entre un idioma y el otro |
+| cadence | jsonb default `{}` | Por red de `POST_PLATFORMS` (sin Portal ni Marketplace): `{ postsPerWeek, days: ["mon"…"sun"], hours: ["HH:MM"] (hora de Chile), languageGapHours }` (6 h por defecto). Una red sin entrada no tiene cadencia |
 | default_hashtags | text[] | Se suman a `brokers.fixed_hashtags` |
 
-El tono sigue en `brokers.tone`. Las formas de `pillars` y `cadence` las valida core (F9-T09).
+El tono sigue en `brokers.tone`. La forma (`editorialProfileSchema`) se valida al leer; las reglas al escribir (topes, claves únicas, pesos, horas) las aplica `normalizeEditorialProfile` en core (F9-T09; ver `docs/01-arquitectura.md`, "Perfil editorial").
 
 ### post_uploads — subidas pendientes de un post (F9, spec F9 §4.5)
 El registro de las URL prefirmadas de R2 pedidas para un post (ADR-0025); `import_runs` es de planillas.
