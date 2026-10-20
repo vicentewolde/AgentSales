@@ -30,3 +30,4 @@ Además, X pide aprobación previa para respuestas generadas por IA y puede sanc
 - **Dejar que la IA busque noticias o tendencias en internet:** introduce fuentes que no controlamos y datos inventados con apariencia de verdad.
 
 ## Seguimiento (opcional)
+- **F9-T20 (2026-10-20):** el plan guarda en `plan_runs.prompt_version` una versión **propia**, `PLAN_PROMPT_VERSION` (`social-plan-v1`), y no `SOCIAL_PROMPT_VERSION`: el prompt de ideas y el de textos cambian por separado y la evaluación (T22) los mide por separado. `contents.prompt_version` sigue con `SOCIAL_PROMPT_VERSION`. Las ideas descartadas que el plan no repite son las de los últimos 180 días (las ideas de la IA archivadas); los temas recientes, los de 60 días (punto 5). Las redes de cada idea quedan en el reporte del plan: el post no las guarda y, al aceptarla, se redacta para todas las redes de la marca.

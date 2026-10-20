@@ -233,7 +233,7 @@ Un tema o idea con un texto por red e idioma (`contents.post_id`), a veces medio
 Índice `(broker_id, status, planned_at)` para el contenido y el calendario de una marca.
 
 ### plan_runs — planes de ideas de la IA (F9, ADR-0030)
-Se crea con `posts` (migración `0015`) porque `posts.plan_run_id` la referencia; la lógica (job `content.plan`) llega en F9-T20.
+Se crea con `posts` (migración `0015`) porque `posts.plan_run_id` la referencia; la lógica (job `content.plan`) es de F9-T20: al terminar, el reporte y los posts `idea` de sus ideas se guardan en una sola transacción.
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -241,11 +241,11 @@ Se crea con `posts` (migración `0015`) porque `posts.plan_run_id` la referencia
 | broker_id | uuid FK | La marca del plan |
 | period_start, period_end | timestamptz | El período que propone (por defecto, las próximas 2 semanas) |
 | status | enum `plan_run_status` default `queued` | `queued`, `running`, `succeeded`, `failed` (`PLAN_RUN_STATUSES`) |
-| request | jsonb | Lo pedido (redes, cuántas ideas), sin secretos |
-| report | jsonb null | Lo propuesto y lo que descartaron las verificaciones; `null` hasta que termina |
+| request | jsonb | Lo pedido (`planRunRequestSchema`, core): `{ platforms, count, days, requestedBy }`, sin secretos |
+| report | jsonb null | `planRunReportSchema` (core, F9-T20): las ideas guardadas (id del post, tema, línea, **redes**, formato, fecha y notas), las descartadas con su código, las advertencias de la IA y la llamada; `null` hasta que termina bien |
 | error | jsonb null | `{ code, message }` cuando `status = failed` |
 | llm_usage | jsonb null | `llmUsageSchema`, como en `content_runs`; entra en `sumLlmCost` desde F9-T04 |
-| prompt_version | text null | `SOCIAL_PROMPT_VERSION` con que corrió (ADR-0030, punto 6) |
+| prompt_version | text null | La versión del prompt del plan con que corrió (`PLAN_PROMPT_VERSION`, `social-plan-v1`, F9-T20; propia del plan, no la de los textos) |
 | started_at, finished_at | timestamptz null | |
 
 Índice `(broker_id, created_at)`.
