@@ -238,6 +238,80 @@ describe("panel: Plan", () => {
 });
 
 describe("panel: las redes de un post (F9-T21)", () => {
+  /** Un post de la marca con un texto por red, ya redactado (la corrida terminada). */
+  const postWithTexts = async (
+    s: Awaited<ReturnType<typeof setup>>,
+    topic: string,
+    platforms: ("discord" | "x")[],
+    own: ("discord" | "x")[] | null = null,
+  ) => {
+    const post = await s.deps.posts.create({
+      brokerId: s.brand.id,
+      topic,
+      kind: "text",
+      status: "draft",
+      platforms: own,
+    });
+    const { run } = await requestContentRun(s.deps, { postId: post.id });
+    await s.contentRuns.markRunning(run.id);
+    await s.contentRuns.markSucceeded(run.id, {
+      report: { warnings: [] },
+      contents: platforms.map((platform) => ({
+        platform,
+        language: "es" as const,
+        title: null,
+        body: `Texto para ${platform}`,
+        hashtags: [],
+        llmProvider: "fake" as const,
+        llmModel: "fake",
+        promptVersion: "social-post-v1",
+        rawOutput: null,
+      })),
+    });
+    return post;
+  };
+
+  it("una red quitada con su texto aprobado: no se ofrece publicarla y se dice por qué", async () => {
+    const s = await setup();
+    await s.platformAccounts.upsertConnected({
+      brokerId: s.brand.id,
+      platform: "discord",
+      externalAccountId: "canal-1",
+      displayName: "#anuncios",
+      tokenExpiresAt: null,
+      meta: {},
+      credentials: { webhookUrl: "https://discord.com/api/webhooks/123456/token-de-prueba" },
+    });
+    const post = await postWithTexts(s, "Un post sin Discord", ["discord", "x"]);
+    // Discord aprobado antes de quitarle la red al post (datos de antes de la regla).
+    await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
+      param: { id: post.id, platform: "discord", language: "es" },
+    });
+    await s.deps.posts.update(post.id, { platforms: ["x"] });
+    s.renderApp(`/contenido/${post.id}`);
+    expect(
+      await screen.findByText(/Los textos aprobados son de redes que ya no están en el post/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Publicar en Discord/ })).toBeNull();
+    // La pestaña de X, una red del post, sí se aprueba.
+    fireEvent.click(screen.getByRole("tab", { name: /^X · español/ }));
+    const approve = screen.getByRole("button", { name: "Aprobar" }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(false);
+  });
+
+  it("aprobar el texto de una red quitada está desactivado, con el motivo", async () => {
+    const s = await setup();
+    const post = await postWithTexts(s, "Solo X", ["discord"], ["x"]);
+    s.renderApp(`/contenido/${post.id}`);
+    const approve = (await screen.findByRole("button", { name: "Aprobar" })) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    expect(
+      screen.getByText(
+        /Discord ya no está entre las redes del post: agrégala con «Editar el post»/,
+      ),
+    ).toBeTruthy();
+  });
+
   it("el detalle dice qué texto falta de una red agregada y cuál ya no corresponde", async () => {
     const s = await setup();
     const post = await s.deps.posts.create({

@@ -2,6 +2,7 @@ import {
   AppError,
   addLlmCall,
   llmUsageSchema,
+  PLAN_RUNS_LIST_LIMIT,
   type PlanRun,
   type PlanRunRepository,
   planRunSchema,
@@ -71,7 +72,7 @@ export function createPlanRunRepository(db: SchemaDatabase): PlanRunRepository {
       });
     },
 
-    listByBroker(brokerId, limit = 20) {
+    listByBroker(brokerId, limit = PLAN_RUNS_LIST_LIMIT.default) {
       return withDbErrors(async () => {
         const rows = await db
           .select()

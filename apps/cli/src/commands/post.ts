@@ -423,8 +423,11 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     );
   });
 
+  // Una red agregada al post después de redactar (F9-T21): falta su texto. Si no hay ninguno,
+  // ese aviso basta (no se repite el "ninguno").
+  const { missing } = postNetworkGaps(detail);
   lines.push("", c.bold(`Textos (${contents.length})`));
-  if (contents.length === 0)
+  if (contents.length === 0 && missing.length === 0)
     lines.push(c.dim(`  (ninguno: pídelos con agentsales post draft ${post.id})`));
   for (const content of contents) {
     lines.push(renderPostContent(content, c));
@@ -437,8 +440,6 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     }
     lines.push("");
   }
-  // Una red agregada al post después de redactar (F9-T21): falta su texto.
-  const { missing } = postNetworkGaps(detail);
   if (missing.length > 0) {
     lines.push(
       c.yellow(
@@ -901,14 +902,40 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
     const platform =
       options.platform === undefined ? undefined : postPlatformOption(options.platform);
     const language = options.language === undefined ? undefined : languageOption(options.language);
-    const { contents } = await fetchPost(deps.client, postId);
+    const { post, contents } = await fetchPost(deps.client, postId);
+    // Sin red pedida, al aprobar, solo las redes del post (F9-T21): los textos de una red quitada
+    // no se aprueban (el servidor los rechazaría con POST_PLATFORM_EXCLUDED).
+    const skippedExcluded =
+      platform === undefined && !options.undo
+        ? contents.filter(
+            (item) =>
+              !postPublishesOn(post, item.platform) &&
+              (language === undefined || item.language === language),
+          )
+        : [];
     const chosen = contents.filter(
       (item) =>
         (platform === undefined || item.platform === platform) &&
         (language === undefined || item.language === language) &&
         // Sin red pedida, con --undo, solo los aprobados.
-        !(platform === undefined && options.undo && item.status !== "approved"),
+        !(platform === undefined && options.undo && item.status !== "approved") &&
+        !skippedExcluded.includes(item),
     );
+    if (skippedExcluded.length > 0) {
+      const names = [...new Set(skippedExcluded.map((item) => PLATFORM_TEXT[item.platform]))];
+      deps.printError(
+        c.dim(
+          `  Sin aprobar: ${names.join(", ")} ya no está entre las redes del post (agrégala con agentsales post edit ${postId} --platforms <redes>)`,
+        ),
+      );
+    }
+    if (chosen.length === 0 && skippedExcluded.length > 0) {
+      throw new CliError(
+        "POST_PLATFORM_EXCLUDED",
+        "Los textos del post son de redes que ya no están entre las suyas",
+        `Agrégalas con agentsales post edit ${postId} --platforms <redes>`,
+      );
+    }
     if (chosen.length === 0) {
       throw new CliError(
         "CONTENT_NOT_FOUND",

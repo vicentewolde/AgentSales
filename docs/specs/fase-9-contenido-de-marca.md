@@ -59,7 +59,7 @@ Un post tiene un estado propio:
 | `ready` | Al menos un texto aprobado (las publicaciones nacen de ahí, como en ADR-0014) |
 | `archived` | Descartado o terminado; no se programa |
 
-Reglas de los posts (F9-T10): un post archivado no se edita ni recibe medios (`POST_ARCHIVED`, 409); un post con publicaciones pendientes (`PENDING_PUBLICATION_STATUSES`) no se archiva hasta cancelarlas o resolverlas (`POST_HAS_PENDING_PUBLICATIONS`, 409); un post tiene hasta 20 medios, contando las subidas pendientes. Desde F9-T21, sus redes (`posts.platforms`) mandan al aprobar, publicar y programar (`POST_PLATFORM_EXCLUDED`) y una red con publicaciones pendientes no se le quita (`POST_HAS_PENDING_PUBLICATIONS`, 409, con sus ids: primero se cancelan o resuelven).
+Reglas de los posts (F9-T10): un post archivado no se edita ni recibe medios (`POST_ARCHIVED`, 409); un post con publicaciones pendientes (`PENDING_PUBLICATION_STATUSES`) no se archiva hasta cancelarlas o resolverlas (`POST_HAS_PENDING_PUBLICATIONS`, 409); un post tiene hasta 20 medios, contando las subidas pendientes. Desde F9-T21, sus redes (`posts.platforms`) mandan al aprobar, publicar y programar (`POST_PLATFORM_EXCLUDED`; el texto aprobado se revisa antes: una red quitada, pedida a mano y sin texto aprobado da `CONTENT_NOT_APPROVED`) y una red con publicaciones pendientes no se le quita (`POST_HAS_PENDING_PUBLICATIONS`, 409, con sus ids: primero se cancelan o resuelven).
 
 El estado de la publicación de cada red es el de ADR-0014 más `outcome_unknown` (§4.6), con la misma bitácora. La agenda y el seguimiento (F6) muestran posts y avisos juntos, con el tema del post como título.
 

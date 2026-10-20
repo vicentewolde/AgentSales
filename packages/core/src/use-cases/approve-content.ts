@@ -73,6 +73,8 @@ export type ApprovedContent = CheckedContent & {
  * - el aviso no está en `ready`, `active` o `paused` → `LISTING_NOT_READY`; el post no está en
  *   `draft` ni `ready` → `POST_NOT_READY`;
  * - hay una corrida activa (de textos o de imágenes, que reemplaza los medios) → `CONTENT_RUN_ACTIVE`;
+ * - el texto es de una red que no está entre las del post (`posts.platforms`, F9-T21) →
+ *   `POST_PLATFORM_EXCLUDED`;
  * - la revisión editorial tiene errores → `CONTENT_HAS_ERRORS` (las advertencias no bloquean);
  * - con una cuenta conectada, faltan los medios del canal → `CONTENT_NOT_READY`.
  * Aprobar un texto ya aprobado vuelve a revisar y abre lo que falte (idempotente). En Portal,

@@ -341,7 +341,7 @@ export {
   type Permission,
   scopeOf,
 } from "./permissions.js";
-export { type PlanRun, planRunSchema } from "./plan-run.js";
+export { PLAN_RUNS_LIST_LIMIT, type PlanRun, planRunSchema } from "./plan-run.js";
 export {
   type AccessTokenCredentials,
   accessTokenCredentialsSchema,
@@ -1153,8 +1153,7 @@ export {
   enqueuePlanRun,
   getPlanRun,
   listPlanRuns,
-  PLAN_RUNS_LIST_LIMIT,
-  type PlanRunView,
+  type PlanRunDetail,
   type RequestPlanRunDeps,
   type RequestPlanRunInput,
   type RequestPlanRunResult,

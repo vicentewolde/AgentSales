@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
   ALL_SCOPE,
+  AppError,
   editorialProfileView,
   type LLMProvider,
   runPlan,
   samplePlanResponse,
 } from "@agentsales/core";
+import { createInMemoryJobQueue } from "@agentsales/core/testing";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 import { brokerData, fakeClock, harness } from "../../test/harness.js";
@@ -24,7 +26,15 @@ const sampleLlm: LLMProvider = {
 };
 
 async function setup() {
-  const h = harness();
+  // La cola de la API: `failQueue` la deja caída (QUEUE_UNAVAILABLE) para lo que se encole después.
+  let queueDown = false;
+  const queue = createInMemoryJobQueue({
+    fail: () =>
+      queueDown
+        ? new AppError("QUEUE_UNAVAILABLE", "La cola no responde", { retriable: true })
+        : undefined,
+  });
+  const h = Object.assign(harness({ deps: { queue } }), { queue });
   const brand = await h.brokers.create(brokerData("agentpey"), { kind: "brand" });
   await h.brokers.create(brokerData("vinny"), { kind: "brand" });
   await h.editorialProfiles.upsert(brand.id, {
@@ -77,6 +87,9 @@ async function setup() {
     ideasOf,
     failNext: (error: { code: string; message: string }) => {
       failWith = error;
+    },
+    failQueue: () => {
+      queueDown = true;
     },
   };
 }
@@ -132,6 +145,9 @@ describe("agentsales plan", () => {
     expect(await runPostAccept(s.postDeps(), accepted.id)).toBe(1);
     expect(s.h.errors()).toContain("POST_NOT_IDEA");
     expect(s.h.errors()).toContain(`agentsales post show ${accepted.id}`);
+    expect(s.h.errors()).toContain(
+      `Si quedó aceptada sin textos, pídelos con agentsales post draft ${accepted.id}`,
+    );
     expect(await runPostDiscard(s.postDeps(), accepted.id)).toBe(1);
     expect((await s.h.posts.get(accepted.id))?.status).toBe("draft");
 
@@ -143,6 +159,19 @@ describe("agentsales plan", () => {
       `La IA está redactando sus textos: espera con agentsales post draft ${accepted.id}`,
     );
     expect(s.h.text()).toContain("(archivado)");
+  });
+
+  it("aceptar con la cola caída: la idea queda aceptada y el consejo dice arrancar el worker y pedir los textos", async () => {
+    const s = await setup();
+    expect(await runPlanRequest(s.deps(), { broker: "agentpey", count: "1" })).toBe(0);
+    const [idea] = await s.ideasOf();
+    if (idea === undefined) throw new Error("sin idea");
+    s.failQueue();
+    expect(await runPostAccept(s.postDeps(), idea.id)).toBe(1);
+    expect(s.h.errors()).toContain("QUEUE_UNAVAILABLE");
+    expect(s.h.errors()).toContain("arranca el worker");
+    expect(s.h.errors()).toContain("agentsales post draft");
+    expect((await s.h.posts.get(idea.id))?.status).toBe("draft");
   });
 
   it("editar una idea antes de aceptarla: redes, fecha y brief", async () => {

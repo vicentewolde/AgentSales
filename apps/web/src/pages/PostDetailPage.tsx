@@ -380,6 +380,7 @@ export function PostDetailPage() {
         <PostNetworksNotice post={item} contents={contents} run={latestRun} />
         <PostTexts
           postId={item.id}
+          post={item}
           contents={contents}
           media={media}
           publications={publications}

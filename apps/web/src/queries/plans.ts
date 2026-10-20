@@ -11,7 +11,7 @@ import {
 } from "@agentsales/api/contracts";
 import { isTerminalContentRun, RUN_WAIT } from "@agentsales/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { unwrap } from "../api/client.js";
 import { useApiClient } from "../api/context.js";
 import { postKeys } from "./posts.js";
@@ -63,13 +63,13 @@ export function planInProgress(detail: PlanDetailResponse): boolean {
  */
 export function usePlan(id: string | undefined) {
   const client = useApiClient();
-  // Desde cuándo se sondea este plan: al elegir otro plan, el tope de 2 h cuenta de nuevo.
+  // Desde cuándo se sondea este plan (lo escribe `refetchInterval`, fuera del render): al elegir
+  // otro plan, el tope de 2 h cuenta de nuevo.
   const since = useRef<number | null>(null);
-  const polledId = useRef(id);
-  if (polledId.current !== id) {
-    polledId.current = id;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: se reinicia justamente cuando cambia el plan
+  useEffect(() => {
     since.current = null;
-  }
+  }, [id]);
   return useQuery({
     queryKey: planKeys.detail(id ?? ""),
     enabled: id !== undefined,

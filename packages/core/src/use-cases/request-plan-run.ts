@@ -4,7 +4,7 @@ import { isPostPlatform, type PostPlatform } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import { assertLlmBudget } from "../llm-budget.js";
 import { assertCan, scopeOf } from "../permissions.js";
-import type { PlanRun } from "../plan-run.js";
+import { PLAN_RUNS_LIST_LIMIT, type PlanRun } from "../plan-run.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRunRepository } from "../ports/content-repository.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
@@ -191,7 +191,7 @@ async function activePlanOf(
 }
 
 /** Un plan con sus ideas, para la API, la CLI y el panel (T21). */
-export type PlanRunView = {
+export type PlanRunDetail = {
   run: PlanRun;
   /** El reporte leído con su esquema; `null` mientras corre, si falló o si no se pudo leer. */
   report: PlanRunReport | null;
@@ -210,7 +210,7 @@ export async function getPlanRun(
   },
   actor: Actor,
   planRunId: string,
-): Promise<PlanRunView> {
+): Promise<PlanRunDetail> {
   const run = await deps.planRuns.get(planRunId);
   const scope = scopeOf(actor);
   if (run === null || !inScope(scope, run.brokerId)) throw planNotFound(planRunId);
@@ -222,9 +222,6 @@ export async function getPlanRun(
     ideas: await deps.posts.list({ planRunId, brokerId: run.brokerId }, scope),
   };
 }
-
-/** Cuántos planes da `listPlanRuns`, por defecto y como mucho. */
-export const PLAN_RUNS_LIST_LIMIT = { default: 20, max: 100 } as const;
 
 /**
  * Los planes de una marca, los más recientes primero (`GET /api/plans?brokerId`, T21). El

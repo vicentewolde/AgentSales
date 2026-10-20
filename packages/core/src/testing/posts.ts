@@ -2,7 +2,7 @@ import { inScope } from "../access.js";
 import type { EditorialProfile } from "../editorial-profile.js";
 import { AppError } from "../errors.js";
 import { addLlmCall } from "../llm-usage.js";
-import type { PlanRun } from "../plan-run.js";
+import { PLAN_RUNS_LIST_LIMIT, type PlanRun } from "../plan-run.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
 import { lockedMedia } from "../ports/media-repository.js";
 import type { PlanRunRepository } from "../ports/plan-run-repository.js";
@@ -268,7 +268,7 @@ export function createInMemoryPlanRunRepository(
       const run = runs.get(id);
       return run === undefined ? null : structuredCopy(run);
     },
-    async listByBroker(brokerId, limit = 20) {
+    async listByBroker(brokerId, limit = PLAN_RUNS_LIST_LIMIT.default) {
       return [...runs.values()]
         .filter((run) => run.brokerId === brokerId)
         .reverse()

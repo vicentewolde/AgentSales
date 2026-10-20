@@ -29,6 +29,7 @@ export interface PlanRunRepository {
   create(run: NewPlanRun): Promise<PlanRun>;
   get(id: string): Promise<PlanRun | null>;
   /** Los de un corredor, los más recientes primero, como mucho `limit` (por defecto 20). */
+  /** Por defecto `PLAN_RUNS_LIST_LIMIT.default` (20). */
   listByBroker(brokerId: string, limit?: number): Promise<PlanRun[]>;
   /** `queued` o `running` → `running`; fija `started_at` solo la primera vez. */
   markRunning(id: string): Promise<boolean>;

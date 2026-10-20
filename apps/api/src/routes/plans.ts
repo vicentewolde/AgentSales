@@ -82,7 +82,7 @@ export function planRoutes(deps: PlanRoutesDeps) {
         const body: PlanRequestResponse = { plan: planRunView(run), reused };
         return c.json(body, 202);
       })
-      // Los 20 más recientes (`PLAN_RUNS_LIST_LIMIT.default`); el contrato no expone `limit`.
+      // Los más recientes, `PLAN_RUNS_LIST_LIMIT.default` (20); el contrato no expone `limit`.
       .get("/", validated("query", planQuerySchema), async (c) => {
         const { brokerId } = c.req.valid("query");
         const runs = await listPlanRuns(deps, requireAuth(c).user, { brokerId });
