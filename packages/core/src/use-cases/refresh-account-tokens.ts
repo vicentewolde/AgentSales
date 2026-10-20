@@ -37,13 +37,14 @@ export const MERCADOLIBRE_REFRESH_AGE_MS = 7 * DAY_MS;
 
 /**
  * Las plataformas con refresco, cada una con su política. X entra con su cliente (F9-T16) con la
- * política del token que rota (`ensureRotatingAccessToken`, F9-T06, la misma que al publicar);
- * TikTok sumará su `case` en `refreshConnected` (T26).
+ * política del token que rota (`ensureRotatingAccessToken`, F9-T06, la misma que al publicar), y
+ * TikTok con la misma (F9-T26).
  */
 const REFRESHABLE_PLATFORMS: ReadonlySet<Platform> = new Set([
   "instagram",
   "portal_inmobiliario",
   "x",
+  "tiktok",
 ]);
 
 export type RefreshAccountTokensDeps = {
@@ -60,9 +61,9 @@ export type RefreshAccountTokensDeps = {
    */
   mercadoLibre: Pick<MercadoLibreAuth, "refresh"> | null;
   /**
-   * La renovación de las plataformas con token que rota (X, F9-T16; ADR-0029 punto 11): la misma
-   * que usa el intento. Sin la de X (falta `X_CLIENT_ID` o `X_CLIENT_SECRET`), una cuenta de X a la
-   * que le toca es `TOKEN_REFRESH_NOT_CONFIGURED`, sin llamar ni cambiarla.
+   * La renovación de las plataformas con token que rota (X, F9-T16, y TikTok, F9-T26; ADR-0029
+   * punto 11): la misma que usa el intento. Sin la de una plataforma (falta su par de la app), una
+   * cuenta suya a la que le toca es `TOKEN_REFRESH_NOT_CONFIGURED`, sin llamar ni cambiarla.
    */
   refreshers?: Readonly<Partial<Record<Platform, PlatformTokenRefresher>>>;
   now?: () => Date;
@@ -138,7 +139,7 @@ export async function refreshAccountToken(
   if (!REFRESHABLE_PLATFORMS.has(account.platform)) {
     throw new AppError(
       "ACCOUNT_REFRESH_UNSUPPORTED",
-      `El acceso de ${account.platform} no se refresca: solo el de Instagram, el de Mercado Libre y el de X`,
+      `El acceso de ${account.platform} no se refresca: solo el de Instagram, el de Mercado Libre, el de X y el de TikTok`,
       { details: { accountId, platform: account.platform } },
     );
   }
@@ -174,12 +175,12 @@ function refreshConnected(
     case "portal_inmobiliario":
       return refreshMercadoLibre(deps, account, options);
     case "x":
+    case "tiktok":
       return refreshRotating(deps, account, options);
     case "fb_marketplace":
-    // F9: TikTok se renueva con su publisher (T26); LinkedIn no tiene refresco y Discord no vence.
+    // F9: LinkedIn no tiene refresco y Discord no vence.
     case "linkedin":
     case "discord":
-    case "tiktok":
       // `REFRESHABLE_PLATFORMS` ya la dejó fuera; el `switch` obliga a decidir al sumar otra.
       throw new AppError(
         "ACCOUNT_REFRESH_UNSUPPORTED",

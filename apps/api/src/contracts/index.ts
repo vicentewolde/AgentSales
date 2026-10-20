@@ -778,6 +778,14 @@ export const accountListResponseSchema = z.object({
       configured: z.boolean(),
       startUrl: z.url({ protocol: /^https?$/ }),
     }),
+    /**
+     * TikTok (F9-T26): `configured` si la API tiene el par de la app (sin él, el inicio vuelve al
+     * panel con `TIKTOK_NOT_CONFIGURED`), y el inicio del OAuth (`/api/oauth/tiktok/start`), que la
+     * CLI abre con `?broker=<slug>`.
+     */
+    tiktok: z
+      .object({ configured: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) })
+      .optional(),
   }),
 });
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
@@ -958,6 +966,8 @@ export const OAUTH_REDIRECT_ERRORS = [
   "MERCADOLIBRE_NOT_CONFIGURED",
   // F9-T15: falta el par de la app de LinkedIn.
   "LINKEDIN_NOT_CONFIGURED",
+  // F9-T26: a la API le falta el par de la app de TikTok.
+  "TIKTOK_NOT_CONFIGURED",
   "BROKER_NOT_FOUND",
   "INTERNAL_ERROR",
 ] as const;
@@ -967,7 +977,7 @@ export type OAuthRedirectError = (typeof OAUTH_REDIRECT_ERRORS)[number];
  * El proveedor con que vuelve el OAuth (`/cuentas?proveedor=…`, F8-T19): sin él, Instagram (la vuelta
  * de F3). Cambia el texto del aviso del panel.
  */
-export const OAUTH_PROVIDERS = ["instagram", "mercadolibre", "linkedin"] as const;
+export const OAUTH_PROVIDERS = ["instagram", "mercadolibre", "linkedin", "tiktok"] as const;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
 // --- F6-T10: calendario, la propiedad, Portal y el seguimiento (spec F6 §4.13) ---

@@ -61,6 +61,7 @@ import {
 import { createDiscordWebhooks } from "@agentsales/publishers/discord";
 // La subruta de LinkedIn (F9-T15): solo su OAuth, para conectar el perfil sin publicar.
 import { createLinkedInAuth } from "@agentsales/publishers/linkedin";
+import { createTikTokAuth } from "@agentsales/publishers/tiktok";
 import { createPkcePair, createXAuth } from "@agentsales/publishers/x";
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage, r2BucketOrigin } from "@agentsales/storage";
@@ -72,7 +73,7 @@ import { backupStatusReader } from "./backup-status.js";
 import { createApiOperations } from "./portal.js";
 import { clientIpResolver, createRateLimiter } from "./rate-limit.js";
 import { createRequestContext } from "./request-context-node.js";
-import { instagramStartUrlOf } from "./routes/oauth.js";
+import { instagramStartUrlOf, oauthStartUrlOf } from "./routes/oauth.js";
 import { internetAccess, localAccess } from "./security.js";
 import { createServerApp } from "./server-app.js";
 import { readApiVersion } from "./version.js";
@@ -230,6 +231,19 @@ const app = createApp({
     configured: Boolean(env.LINKEDIN_CLIENT_ID && env.LINKEDIN_CLIENT_SECRET),
     secureCookie: env.LINKEDIN_REDIRECT_URI.startsWith("https://"),
     startUrl: instagramStartUrlOf(env.LINKEDIN_REDIRECT_URI),
+  },
+  // TikTok (F9-T26): Login Kit con la vuelta automática. Sin el par de la app, el inicio vuelve
+  // al panel con TIKTOK_NOT_CONFIGURED y el refresco a pedido no renueva. La renovación tiene su
+  // propio tope de 10 s.
+  tiktok: {
+    auth: createTikTokAuth({
+      clientKey: env.TIKTOK_CLIENT_KEY ?? "",
+      clientSecret: env.TIKTOK_CLIENT_SECRET ?? "",
+      redirectUri: env.TIKTOK_REDIRECT_URI,
+    }),
+    configured: Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET),
+    secureCookie: env.TIKTOK_REDIRECT_URI.startsWith("https://"),
+    startUrl: oauthStartUrlOf(env.TIKTOK_REDIRECT_URI),
   },
   mercadoLibre: {
     // Sin el par de la app, conectar responde MERCADOLIBRE_NOT_CONFIGURED sin llamar (el canje

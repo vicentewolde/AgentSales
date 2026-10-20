@@ -141,6 +141,10 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   // suyo) y la vuelta pública, protegida por el `state` firmado de un solo uso y su cookie `Lax`.
   "GET /oauth/linkedin/start": "session",
   "GET /oauth/linkedin/callback": "public",
+  // TikTok (F9-T26): el inicio, con sesión (la ruta revisa `tiktok.connect`); la vuelta llega desde
+  // TikTok, sin la cookie `Strict`: la protegen el `state` firmado de un solo uso y su cookie `Lax`.
+  "GET /oauth/tiktok/start": "session",
+  "GET /oauth/tiktok/callback": "public",
   // Las vueltas de Meta (F8-T17): de servidor a servidor, las protege la firma de la app; la página
   // del pedido la abre la persona que pidió el borrado (con su código).
   "POST /meta/deauthorize": "public",

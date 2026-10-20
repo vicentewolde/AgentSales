@@ -614,6 +614,7 @@ export {
   type SpecSheetData,
   slideKeyInput,
 } from "./ports/slide-templates.js";
+export type { TikTokAuth, TikTokCodeExchange, TikTokUser } from "./ports/tiktok-auth.js";
 export type { PlatformTokenRefresher, RefreshedTokens } from "./ports/token-refresher.js";
 export type { UfValue, UfValueSource } from "./ports/uf-value-source.js";
 export type {
@@ -687,7 +688,12 @@ export {
   TERMINAL_PUBLICATION_STATUSES,
   transition,
 } from "./publication-state.js";
-export { DRY_RUN_HANDOFF_NOTE, dryRunExternalId, withDryRun } from "./publish/dry-run.js";
+export {
+  DRY_RUN_HANDOFF_NOTE,
+  DRY_RUN_UPLOAD_NOTE,
+  dryRunExternalId,
+  withDryRun,
+} from "./publish/dry-run.js";
 export { GENERIC_ERROR_ADVICE, publicationErrorAdvice } from "./publish/error-advice.js";
 export {
   assemblePublishInput,
@@ -757,6 +763,16 @@ export {
   type SubjectLockedRepositories,
   type SubjectLocks,
 } from "./subject-lock.js";
+// TikTok (F9-T26): la cuenta, el enlace del video y conectar con Login Kit.
+export {
+  TIKTOK_PROFILE_SCOPE,
+  TIKTOK_REFRESH_TOKEN_DAYS,
+  TIKTOK_SCOPES,
+  TIKTOK_UPLOAD_SCOPE,
+  type TikTokAccountMeta,
+  tiktokAccountMetaSchema,
+} from "./tiktok/account.js";
+export { parseTikTokVideoUrl, type TikTokVideoRef, tiktokVideoUrl } from "./tiktok/url.js";
 export {
   AGENDA_ACTIONS,
   AGENDA_KINDS,
@@ -884,6 +900,10 @@ export {
   connectMercadoLibreAccount,
   MERCADOLIBRE_REQUIRED_SCOPES,
 } from "./use-cases/connect-mercadolibre-account.js";
+export {
+  type ConnectTikTokAccountDeps,
+  connectTikTokAccount,
+} from "./use-cases/connect-tiktok-account.js";
 export {
   type CreateBrokerInput,
   createBroker,

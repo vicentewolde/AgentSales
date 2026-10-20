@@ -37,6 +37,11 @@ export const PERMISSIONS = [
    * siendo de `accounts.manage`.
    */
   "linkedin.connect",
+  /**
+   * Conectar **su propia** cuenta de TikTok con Login Kit (spec F9 §4.7, F9-T26), como
+   * `instagram.connect`: renovar y desconectar siguen siendo de `accounts.manage`.
+   */
+  "tiktok.connect",
   /** Publicación automática, tope de IA y "corredor propio". */
   "broker.settings",
   "brokers.create",
@@ -58,6 +63,8 @@ const BROKER_PERMISSIONS: ReadonlySet<Permission> = new Set([
   // F9-T16: su propia cuenta de X.
   "x.connect",
   "linkedin.connect",
+  // F9-T26: el corredor o la marca conecta su TikTok.
+  "tiktok.connect",
 ]);
 
 type Actor = Pick<User, "role" | "brokerId">;

@@ -112,6 +112,9 @@ export function runAccounts(deps: AccountsDeps) {
       deps.print(
         c.dim("→ Conecta LinkedIn con: pnpm -s cli accounts connect linkedin --broker <slug>"),
       );
+      deps.print(
+        c.dim("→ Conecta TikTok con: pnpm -s cli accounts connect tiktok --broker <slug>"),
+      );
       return 0;
     }
     const now = deps.now();
@@ -227,6 +230,40 @@ async function connectDiscord(
       "  Un canal por marca: si había otro webhook, quedó desconectado. Para cambiarlo, conecta el nuevo igual",
     ),
   );
+  return 0;
+}
+
+/**
+ * `agentsales accounts connect tiktok --broker <slug>` (spec F9 §4.7, F9-T26): TikTok se conecta
+ * con Login Kit (OAuth) en el navegador, como Instagram con HTTPS. Imprime y abre el inicio del
+ * OAuth que da la API (`connect.tiktok.startUrl`, en el host de `TIKTOK_REDIRECT_URI`) con el
+ * corredor; el navegador necesita la sesión del panel en ese host. La vuelta la recibe la API (el
+ * `state` firmado y de un solo uso) y termina en Cuentas del panel. Sin el par de la app en la API,
+ * `TIKTOK_NOT_CONFIGURED`.
+ */
+async function connectTikTok(deps: AccountsDeps, broker: string): Promise<number> {
+  const c = deps.colors;
+  const { connect } = await unwrap(
+    deps.client.accounts.$get({ query: {} }),
+    accountListResponseSchema,
+  );
+  if (connect.tiktok === undefined || !connect.tiktok.configured) {
+    throw new CliError(
+      "TIKTOK_NOT_CONFIGURED",
+      "A la API le falta la app de TikTok (TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET)",
+      "Crea la app en developers.tiktok.com (Login Kit y Content Posting API), anota el par en el .env de la API y reiníciala: docs/integraciones/tiktok.md",
+    );
+  }
+  // El host lo decide la API (el de la URI de retorno: la cookie del `state` lo distingue).
+  const url = `${connect.tiktok.startUrl}?broker=${encodeURIComponent(broker)}`;
+  deps.print(`Abre este enlace para conectar TikTok: ${url}`);
+  deps.openUrl(url);
+  deps.print(
+    c.dim(
+      "  En ese navegador necesitas la sesión del panel. Autoriza con la cuenta de TikTok y deja marcado el permiso de subir videos",
+    ),
+  );
+  deps.print(c.dim("→ Al terminar, revisa la cuenta con: agentsales accounts"));
   return 0;
 }
 
@@ -534,11 +571,12 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
       channel !== "mercadolibre" &&
       channel !== "marketplace" &&
       channel !== "discord" &&
-      channel !== "linkedin"
+      channel !== "linkedin" &&
+      channel !== "tiktok"
     ) {
       throw new CliError(
         "PLATFORM_INVALID",
-        `Se conecta instagram, mercadolibre, marketplace, discord o linkedin: "${platform}"`,
+        `Se conecta instagram, mercadolibre, marketplace, discord, linkedin o tiktok: "${platform}"`,
       );
     }
     // Una opción de otro canal no se ignora en silencio.
@@ -559,7 +597,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
     if (foreign !== null) {
       throw new CliError(
         "OPTION_NOT_FOR_PLATFORM",
-        `${foreign} no es para ${channel}${options.manual && channel === "marketplace" ? " a mano" : ""}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label (o --manual, sin --label); Discord, --webhook-stdin`,
+        `${foreign} no es para ${channel}${options.manual && channel === "marketplace" ? " a mano" : ""}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label (o --manual, sin --label); Discord, --webhook-stdin; TikTok, ninguna`,
       );
     }
     if (options.broker === undefined) {
@@ -568,6 +606,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
     const broker = brokerSlugOf(options.broker);
     if (channel === "discord") return connectDiscord(deps, broker, options.webhookStdin === true);
     if (channel === "linkedin") return connectLinkedIn(deps, broker);
+    if (channel === "tiktok") return connectTikTok(deps, broker);
     if (channel === "mercadolibre")
       return connectMercadoLibre(deps, broker, options.urlStdin === true);
     if (channel === "marketplace" && options.manual) return connectMarketplaceManual(deps, broker);
@@ -927,15 +966,15 @@ export function register(program: Command, ctx: CliContext): void {
   const accounts = program
     .command("accounts")
     .description(
-      "Cuentas conectadas (Instagram, Mercado Libre, Marketplace, Discord y LinkedIn): estado y vencimiento",
+      "Cuentas conectadas (Instagram, Mercado Libre, Marketplace, Discord, LinkedIn y TikTok): estado y vencimiento",
     )
     .action(() => exitWith(() => runAccounts(deps())));
   accounts
     .command("connect")
     .description(
-      "Conecta una cuenta: Instagram con el token de Generate token; Mercado Libre con el enlace y la dirección de vuelta pegada; Marketplace iniciando sesión en una ventana de Chromium; Discord con la URL del webhook pegada; LinkedIn con su OAuth en el navegador",
+      "Conecta una cuenta: Instagram con el token de Generate token; Mercado Libre con el enlace y la dirección de vuelta pegada; Marketplace iniciando sesión en una ventana de Chromium; Discord con la URL del webhook pegada; LinkedIn con su OAuth en el navegador; TikTok con el enlace de Login Kit en el navegador",
     )
-    .argument("<canal>", "instagram, mercadolibre, marketplace, discord o linkedin")
+    .argument("<canal>", "instagram, mercadolibre, marketplace, discord, linkedin o tiktok")
     .option("--broker <slug>", "corredor de la cuenta")
     .option(
       "--label <nombre>",

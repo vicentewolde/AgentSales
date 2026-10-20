@@ -305,6 +305,15 @@ const envSchema = z
     // Sin valor: `<PUBLIC_URL>/api/oauth/linkedin/callback`, o la API local (ver abajo).
     LINKEDIN_REDIRECT_URI: httpUrl.optional(),
 
+    // TikTok (F9-T26): la app de developers.tiktok.com con Login Kit y Content Posting API (modo
+    // Upload, `video.upload`). Sin el par, conectar responde TIKTOK_NOT_CONFIGURED y el token no
+    // se renueva. La dirección de retorno es la registrada en la app (https; si acepta
+    // `https://localhost` es parte de la prueba S6). Sin valor: `<PUBLIC_URL>/api/oauth/tiktok/callback`,
+    // o la API local.
+    TIKTOK_CLIENT_KEY: z.string().optional(),
+    TIKTOK_CLIENT_SECRET: z.string().optional(),
+    TIKTOK_REDIRECT_URI: httpUrl.optional(),
+
     // Facebook Marketplace (F5): avisos por día y cuenta (D8), la carpeta de los perfiles del
     // navegador (fuera del proyecto: guardan la sesión de Facebook, ADR-0017; la resuelve
     // `resolveBrowserProfilesDir`) y cuánto espera la ventana el clic del operador (spec F5 §4.5).
@@ -366,6 +375,11 @@ const envSchema = z
       (env.PUBLIC_URL === undefined
         ? `http://localhost:${env.API_PORT}${API_PREFIX}/oauth/linkedin/callback`
         : `${env.PUBLIC_URL}${API_PREFIX}/oauth/linkedin/callback`),
+    TIKTOK_REDIRECT_URI:
+      env.TIKTOK_REDIRECT_URI ??
+      (env.PUBLIC_URL === undefined
+        ? `http://localhost:${env.API_PORT}${API_PREFIX}/oauth/tiktok/callback`
+        : `${env.PUBLIC_URL}${API_PREFIX}/oauth/tiktok/callback`),
   }));
 
 /** Lo que mira `backupIssues`: el respaldo a R2 necesita su bucket y su token, distintos de los de los medios. */
@@ -425,6 +439,7 @@ type ParsedEnv = {
   ML_REDIRECT_URI?: string | undefined;
   X_REDIRECT_URI?: string | undefined;
   LINKEDIN_REDIRECT_URI?: string | undefined;
+  TIKTOK_REDIRECT_URI?: string | undefined;
 };
 
 /**
@@ -455,6 +470,7 @@ function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
       "ML_REDIRECT_URI",
       "X_REDIRECT_URI",
       "LINKEDIN_REDIRECT_URI",
+      "TIKTOK_REDIRECT_URI",
     ] as const) {
       const value = env[variable];
       if (value !== undefined && !value.startsWith(`${env.PUBLIC_URL}/`)) {

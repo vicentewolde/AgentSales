@@ -112,7 +112,10 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
           await windows?.discard(publicationId);
           logger.info(
             { mode, platform: result.publication.platform },
-            "cuenta a mano: el texto y los medios quedaron listos; espera la confirmación con el enlace",
+            // TikTok (F9-T26): el video quedó como borrador en la bandeja del creador.
+            result.publication.platform === "tiktok"
+              ? "TikTok: el borrador quedó en la bandeja; espera la confirmación con el enlace"
+              : "cuenta a mano: el texto y los medios quedaron listos; espera la confirmación con el enlace",
           );
           return;
         }

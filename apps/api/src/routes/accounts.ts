@@ -65,6 +65,7 @@ import {
   OAUTH_STATE_TTL_SECONDS,
   type OAuthStateSigner,
   oauthStateCookieOptions,
+  type TikTokOAuthDeps,
   verifyOAuthStateData,
 } from "./oauth.js";
 
@@ -110,6 +111,11 @@ export type AccountRoutesDeps = ConnectAccountDeps &
      * `LINKEDIN_REDIRECT_URI`), para la CLI.
      */
     linkedin: { configured: boolean; startUrl: string };
+    /**
+     * TikTok (F9-T26): si está configurado y dónde empieza el OAuth (para la lista), y su
+     * renovación del token que rota (para el refresco a pedido).
+     */
+    tiktok?: TikTokOAuthDeps;
   };
 
 /** Sin el par de la app no se arma la URL ni se canjea: el canje mandaría un secret vacío. */
@@ -356,6 +362,11 @@ export function accountRoutes(deps: AccountRoutesDeps) {
           marketplace: { automation: deps.marketplaceAutomation },
           x: { configured: deps.x.configured, startUrl: deps.x.startUrl },
           linkedin: { configured: deps.linkedin.configured, startUrl: deps.linkedin.startUrl },
+          ...(deps.tiktok === undefined
+            ? {}
+            : {
+                tiktok: { configured: deps.tiktok.configured, startUrl: deps.tiktok.startUrl },
+              }),
         },
       };
       return c.json(body, 200);
