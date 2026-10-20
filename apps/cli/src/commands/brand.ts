@@ -39,7 +39,7 @@ const PROFILE_FILE_MAX_BYTES = 256 * 1024;
  * La marca del comando: la de `--broker`, o la única que ve el usuario (el corredor, la suya).
  * El administrador con varias tiene que decir cuál.
  */
-async function brandOf(client: ApiClient, option: string | undefined): Promise<Broker> {
+export async function brandOf(client: ApiClient, option: string | undefined): Promise<Broker> {
   const brokers = [...(await fetchBrokers(client)).values()];
   if (option !== undefined) {
     const slug = brokerSlugOf(option);

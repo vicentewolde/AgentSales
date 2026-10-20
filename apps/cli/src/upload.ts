@@ -29,7 +29,7 @@ export type ImportManifest = {
 export const uploadKey = (target: Pick<ImportUploadTargetView, "kind" | "name">) =>
   `${target.kind}:${target.name}`;
 
-async function sha256Of(path: string): Promise<string> {
+export async function sha256Of(path: string): Promise<string> {
   const hash = createHash("sha256");
   await pipeline(createReadStream(path), hash);
   return hash.digest("hex");

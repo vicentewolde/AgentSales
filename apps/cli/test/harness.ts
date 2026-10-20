@@ -27,6 +27,9 @@ import {
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPostLock,
+  createInMemoryPostRepository,
+  createInMemoryPostUploadRepository,
   createInMemoryPublicationRepository,
   createPublicationScenario,
 } from "@agentsales/core/testing";
@@ -59,10 +62,13 @@ export function harness(options: HarnessOptions = {}) {
   const brokers = createInMemoryBrokerRepository([], { nextId: randomUUID });
   const media = createInMemoryMediaRepository();
   const queue = createInMemoryJobQueue();
-  // El gasto de IA por corredor (F7-T12) cruza la corrida con su aviso, como Postgres.
+  // Los posts de una marca (F9-T12): la CLI de `post` habla con sus rutas.
+  const posts = createInMemoryPostRepository();
+  // El gasto de IA por corredor (F7-T12) cruza la corrida con su aviso o su post, como Postgres.
   const content = createInMemoryContentRepositories({
     nextId: randomUUID,
     brokerOfListing: async (id) => (await listings.get(id))?.brokerId ?? null,
+    brokerOfPost: async (id) => (await posts.get(id))?.brokerId ?? null,
   });
   // La API y el candado comparten repositorios: el candado se arma con los que quedan después de
   // los reemplazos de `options.deps`, salvo que el test traiga el suyo. Las publicaciones completas
@@ -98,6 +104,17 @@ export function harness(options: HarnessOptions = {}) {
       publications,
       platformAccounts: repos.platformAccounts,
     });
+  // El candado del post (F9), con los mismos repositorios que la API y el candado del aviso.
+  const postLock = createInMemoryPostLock({
+    brokers: repos.brokers,
+    posts,
+    postUploads: createInMemoryPostUploadRepository(),
+    media: repos.media,
+    contentRuns: repos.contentRuns,
+    contents: repos.contents,
+    publications,
+    platformAccounts: repos.platformAccounts,
+  });
   // Con la sesión del administrador en cada pedido (F7-T06): los comandos de antes siguen igual.
   // Los usuarios y sesiones de la API, para sembrar el de un corredor (F7-T16).
   const auth = testAuth();
@@ -110,6 +127,8 @@ export function harness(options: HarnessOptions = {}) {
         importRuns,
         queue,
         publications,
+        posts,
+        postLock,
         ...repos,
         lock,
       }),
@@ -205,6 +224,9 @@ export function harness(options: HarnessOptions = {}) {
     get editorialProfiles() {
       return own("editorialProfiles", editorialProfiles);
     },
+    /** Los posts de la API (F9-T12) y su candado (para mover publicaciones como el worker). */
+    posts,
+    postLock,
   };
 }
 

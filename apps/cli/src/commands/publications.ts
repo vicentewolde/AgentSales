@@ -7,12 +7,15 @@ import {
   publicationConfirmResponseSchema,
   publicationEventsResponseSchema,
   publicationOperationResponseSchema,
+  publicationPublishResponseSchema,
   publicationResponseSchema,
   publicationRetireResponseSchema,
   publicationSyncResponseSchema,
 } from "@agentsales/api/contracts";
 import {
   availablePublicationOperations,
+  healthReportSchema,
+  LANGUAGE_TEXT,
   manualConfirmCommands,
   OPERATION_PLATFORMS,
   PLATFORM_TEXT,
@@ -258,33 +261,42 @@ function explainedManual(error: unknown, publicationId: string): unknown {
  * por la entrada estándar (nunca como argumento: quedaría en el historial) y no se imprime ni se
  * pone en un error. Sin `--url-stdin` solo sirve en simulación (la API pide el enlace en vivo).
  */
+/**
+ * El enlace pegado por la entrada estándar (`pbpaste | …`): nunca como argumento (quedaría en el
+ * historial), y sin mostrar lo recibido si no parece un enlace.
+ */
+async function urlFromStdin(
+  deps: Pick<ConfirmDeps, "stdinIsTty" | "readStdin">,
+  pipe: string,
+): Promise<string> {
+  if (deps.stdinIsTty()) {
+    throw new CliError(
+      "URL_STDIN_REQUIRED",
+      "El enlace va por la entrada estándar, no escrito en la terminal",
+      `Copia el enlace y corre: ${pipe}`,
+    );
+  }
+  const url = (await deps.readStdin()).trim();
+  if (url === "") {
+    throw new CliError("URL_MISSING", "No llegó ningún enlace por la entrada estándar", pipe);
+  }
+  // Sin mostrar lo recibido: un pegado de otra cosa no se manda a la API.
+  if (url.length > MARKETPLACE_URL_MAX_LENGTH || /\s/.test(url)) {
+    throw new CliError(
+      "URL_INVALID",
+      "Lo que llegó por la entrada estándar no parece un enlace (tiene espacios o saltos de línea, o es demasiado largo)",
+      "Copia solo el enlace desde la barra del navegador y vuelve a intentarlo",
+    );
+  }
+  return url;
+}
+
 export function runConfirmPublication(deps: ConfirmDeps, id: string, options: ConfirmOptions = {}) {
   const c = deps.colors;
   return guarded(deps, async () => {
     const publicationId = publicationIdOf(id);
     const pipe = manualConfirmCommands(publicationId).confirm;
-    let url: string | undefined;
-    if (options.urlStdin) {
-      if (deps.stdinIsTty()) {
-        throw new CliError(
-          "URL_STDIN_REQUIRED",
-          "El enlace va por la entrada estándar, no escrito en la terminal",
-          `Copia el enlace del aviso y corre: ${pipe}`,
-        );
-      }
-      url = (await deps.readStdin()).trim();
-      if (url === "") {
-        throw new CliError("URL_MISSING", "No llegó ningún enlace por la entrada estándar", pipe);
-      }
-      // Sin mostrar lo recibido: un pegado de otra cosa no se manda a la API.
-      if (url.length > MARKETPLACE_URL_MAX_LENGTH || /\s/.test(url)) {
-        throw new CliError(
-          "URL_INVALID",
-          "Lo que llegó por la entrada estándar no parece un enlace (tiene espacios o saltos de línea, o es demasiado largo)",
-          "Copia solo el enlace del aviso desde la barra del navegador y vuelve a intentarlo",
-        );
-      }
-    }
+    const url = options.urlStdin ? await urlFromStdin(deps, pipe) : undefined;
     const { publication, changed } = await unwrap(
       deps.client.publications[":id"].confirm.$post({
         param: { id: publicationId },
@@ -326,11 +338,164 @@ export function runNotPublished(deps: PublicationsDeps, id: string) {
     );
     deps.printError(
       c.dim(
-        `→ Reintenta (abre un formulario nuevo) con agentsales publish <propiedad> --platform marketplace, o descártala con agentsales publications cancel ${publication.id}`,
+        publication.postId === null
+          ? `→ Reintenta (abre un formulario nuevo) con agentsales publish <propiedad> --platform marketplace, o descártala con agentsales publications cancel ${publication.id}`
+          : `→ Reintenta (deja el texto listo otra vez) con agentsales publications retry ${publication.id}, o descártala con agentsales publications cancel ${publication.id}`,
       ),
     );
     return 0;
   });
+}
+
+export type ResolveOptions = { published?: boolean; notPublished?: boolean; urlStdin?: boolean };
+
+/** Dónde se mira una publicación: su post o su propiedad. */
+const lookAt = (publication: Pick<PublicationView, "postId" | "listingId">) =>
+  publication.postId !== null
+    ? `agentsales post show ${publication.postId}`
+    : `agentsales publications ${publication.listingId ?? "<propiedad>"}`;
+
+/**
+ * `agentsales publications resolve <id> --published [--url-stdin] | --not-published` (ADR-0029
+ * punto 8, F9-T12): una publicación con resultado dudoso (`outcome_unknown`; el envío se cortó y no
+ * se sabe si salió) la resuelve el operador después de mirar la red: salió (con el enlace, si lo
+ * tiene, por la entrada estándar) o no salió (queda fallida, para reintentar o descartar). Vale
+ * para un aviso o un post.
+ */
+export function runResolvePublication(deps: ConfirmDeps, id: string, options: ResolveOptions = {}) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const publicationId = publicationIdOf(id);
+    if (Boolean(options.published) === Boolean(options.notPublished)) {
+      throw new CliError(
+        "RESOLVE_OUTCOME_REQUIRED",
+        "Di si salió con --published o si no salió con --not-published (una de las dos)",
+        "Mira la red antes de decidir: si la ves publicada, es --published",
+      );
+    }
+    if (options.urlStdin && options.notPublished) {
+      throw new CliError("RESOLVE_OUTCOME_INVALID", "--url-stdin va solo con --published");
+    }
+    const pipe = `pbpaste | agentsales publications resolve ${publicationId} --published --url-stdin`;
+    const url = options.urlStdin ? await urlFromStdin(deps, pipe) : undefined;
+    const outcome = options.published ? ("published" as const) : ("not_published" as const);
+    const { publication, changed } = await unwrap(
+      deps.client.publications[":id"].resolve.$post({
+        param: { id: publicationId },
+        json: { outcome, ...(url === undefined ? {} : { url }) },
+      }),
+      publicationConfirmResponseSchema,
+    ).catch((error: unknown) => {
+      throw explainedResolve(error);
+    });
+    const name = `${publicationName(publication)} (${LANGUAGE_TEXT[publication.language]})`;
+    if (!changed) {
+      deps.print(`${c.green("✓")} ${name} ya estaba así: sin cambios`);
+      return 0;
+    }
+    if (outcome === "published") {
+      deps.print(
+        `${c.green("✓")} ${name} ${paintPublicationStatus(publication, c)} (${publicationModeText(publication.dryRun)})`,
+      );
+      if (publication.dryRun) deps.print(c.dim("  Simulación: el enlace no se guarda"));
+    } else {
+      deps.print(
+        `${c.green("✓")} ${name} ${paintPublicationStatus(publication, c)}: anotado que no salió`,
+      );
+      deps.printError(
+        c.dim(
+          `→ Reintenta con agentsales publications retry ${publication.id}, o descártala con agentsales publications cancel ${publication.id}`,
+        ),
+      );
+    }
+    return 0;
+  });
+}
+
+/** Los errores de resolver, con qué hacer. */
+function explainedResolve(error: unknown): unknown {
+  if (!(error instanceof ApiCallError)) return error;
+  const hints: Record<string, string> = {
+    INVALID_TRANSITION:
+      "Solo se resuelve una publicación que no se sabe si salió: mira su estado (agentsales agenda)",
+    PUBLICATION_ALREADY_CONFIRMED:
+      "Ya se marcó publicada con otro enlace: mira su estado (agentsales agenda)",
+    PUBLISHED_URL_INVALID:
+      "Copia el enlace de la publicación desde la barra del navegador (empieza con https://)",
+  };
+  const hint = error.code === undefined ? undefined : hints[error.code];
+  if (hint === undefined) return error;
+  return new CliError(error.code ?? "API_ERROR", error.apiMessage ?? error.message, hint);
+}
+
+export type RetryOptions = { yes?: boolean };
+
+/**
+ * `agentsales publications retry <id> [--yes]` (F9-T12): publica ya, o reintenta, una publicación
+ * por su id (aviso o post): una aprobada, programada (la adelanta) o fallida pasa a publicándose y
+ * se encola; una que ya estaba en curso se vuelve a encolar. En vivo pregunta antes (salvo `--yes`).
+ * No espera el resultado: se mira en el post o la propiedad.
+ */
+export function runRetryPublication(
+  deps: PublicationsDeps,
+  id: string,
+  options: RetryOptions = {},
+) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const publicationId = publicationIdOf(id);
+    const { publication: current } = await unwrap(
+      deps.client.publications[":id"].$get({ param: { id: publicationId } }),
+      publicationResponseSchema,
+    );
+    const { publishMode } = await unwrap(deps.client.health.$get(), healthReportSchema);
+    if (publishMode === "live" && !options.yes) {
+      const confirmed = await deps.confirm(
+        `La API está en vivo (PUBLISH_MODE=live): ¿publicar de verdad el ${publicationName(current)}?`,
+      );
+      if (!confirmed) {
+        deps.printError(c.yellow("No se publicó nada: confirma en la terminal o usa --yes"));
+        return 1;
+      }
+    }
+    const { publication, requeued } = await unwrap(
+      deps.client.publications[":id"].publish.$post({ param: { id: publicationId } }),
+      publicationPublishResponseSchema,
+    ).catch((error: unknown) => {
+      throw explainedRetry(error, current);
+    });
+    deps.print(
+      requeued
+        ? `${c.green("✓")} ${publicationName(publication)} ya estaba en curso: se volvió a encolar`
+        : `${c.green("✓")} ${publicationName(publication)} ${paintPublicationStatus(publication, c)} (${publicationModeText(publication.dryRun)})`,
+    );
+    deps.printError(c.dim(`→ Mira el resultado en un momento con ${lookAt(publication)}`));
+    return 0;
+  });
+}
+
+/** Los errores de publicar o reintentar una por su id, con qué hacer. */
+function explainedRetry(error: unknown, publication: PublicationView): unknown {
+  if (!(error instanceof ApiCallError)) return error;
+  const id = publication.id;
+  const hints: Record<string, string> = {
+    OUTCOME_UNKNOWN_PENDING: `No se sabe si salió: mira la red y dilo con agentsales publications resolve ${id} --published|--not-published`,
+    MANUAL_CONFIRM_PENDING: manualConfirmHint(error.publicationId ?? id),
+    NOTHING_TO_PUBLISH: `Ya está publicada: mírala con ${lookAt(publication)}`,
+    INVALID_TRANSITION: `Se descartó o se retiró: mira su estado con ${lookAt(publication)}`,
+    CONTENT_NOT_APPROVED:
+      publication.postId === null
+        ? "Aprueba el texto con agentsales approve <propiedad>"
+        : `Aprueba el texto con agentsales post approve ${publication.postId}`,
+    ACCOUNT_NOT_CONNECTED: "Conecta la cuenta de la red: agentsales accounts",
+    PUBLISH_MODE_LOCKED:
+      "Ya empezó en vivo y no se reintenta en simulación: descártala con agentsales publications cancel <id>, o reinicia la API en vivo si lo decides tú",
+    POST_NOT_READY: `Mira el post con ${lookAt(publication)}: uno archivado ya no se publica`,
+    CONTENT_RUN_ACTIVE: `Espera a que terminen los textos (${lookAt(publication)})`,
+  };
+  const hint = error.code === undefined ? undefined : hints[error.code];
+  if (hint === undefined) return error;
+  return new CliError(error.code ?? "API_ERROR", error.apiMessage ?? error.message, hint);
 }
 
 /** Pausar, reactivar y cerrar un aviso de Portal (spec F4 §4.9): síncronos en la API. */
@@ -620,7 +785,7 @@ export function register(program: Command, ctx: CliContext): void {
   publications
     .command("confirm")
     .description(
-      "Marketplace: lo publicaste (pega el enlace del aviso: pbpaste | … --url-stdin; no se imprime)",
+      "Marketplace o una red a mano: lo publicaste (pega el enlace: pbpaste | … --url-stdin; no se imprime)",
     )
     .argument("<id>", "id de la publicación (agentsales publications <propiedad>)")
     .option("--url-stdin", "lee el enlace del aviso desde la entrada estándar (pbpaste | …)")
@@ -629,9 +794,33 @@ export function register(program: Command, ctx: CliContext): void {
     );
   publications
     .command("not-published")
-    .description("Marketplace: no lo publicaste (queda fallida, para reintentar o descartar)")
+    .description(
+      "Marketplace o una red a mano: no lo publicaste (queda fallida, para reintentar o descartar)",
+    )
     .argument("<id>", "id de la publicación (agentsales publications <propiedad>)")
     .action((id: string) => exitWith(() => runNotPublished(deps(), id)));
+  publications
+    .command("resolve")
+    .description(
+      "Una publicación que no se sabe si salió: salió (--published, con el enlace: pbpaste | … --url-stdin) o no (--not-published)",
+    )
+    .argument("<id>", "id de la publicación (agentsales agenda)")
+    .option("--published", "salió: la ves publicada en la red")
+    .option("--not-published", "no salió: queda fallida, para reintentar o descartar")
+    .option("--url-stdin", "con --published, lee el enlace desde la entrada estándar (pbpaste | …)")
+    .action((id: string, options: ResolveOptions) =>
+      exitWith(() => runResolvePublication(deps(), id, options)),
+    );
+  publications
+    .command("retry")
+    .description(
+      "Publica ya o reintenta una publicación por su id, de una propiedad o un post (en vivo pide confirmación)",
+    )
+    .argument("<id>", "id de la publicación (agentsales agenda, post show)")
+    .option("--yes", "no pide confirmación con la API en vivo")
+    .action((id: string, options: RetryOptions) =>
+      exitWith(() => runRetryPublication(deps(), id, options)),
+    );
   publications
     .command("pause")
     .description("Pausa un aviso de Portal en Mercado Libre")
