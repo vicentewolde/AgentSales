@@ -154,7 +154,7 @@ operador: acepta (→ draft y se encola post.draft), edita el brief, mueve la fe
 post.draft → la IA redacta el texto de cada idioma de las redes sugeridas de la idea que sirven al formato → verificaciones → contents en draft
 operador: revisa, edita, aprueba y programa (o publica)
 ```
-Una idea sin aceptar no gasta IA en textos y no ocupa un cupo del calendario. `auto_publish` no aplica (ADR-0030, punto 4).
+Una idea sin aceptar no gasta IA en textos ni tiene publicaciones: no se programa ni ocupa un horario del calendario de publicación. Mientras no se descarte, sí cuenta en los posts por semana de la cadencia cuando se pide otro plan que cubre su fecha (`plannedSlots`), para que dos planes no llenen dos veces la misma semana; descartarla, o moverla fuera del período, libera ese cupo. `auto_publish` no aplica (ADR-0030, punto 4).
 
 ### 4.10 Contratos (API, ADR-0011; todo bajo `/api` con sesión y alcance por marca)
 - `GET/PUT /api/brokers/:id/editorial-profile`.
