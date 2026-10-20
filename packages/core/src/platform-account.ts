@@ -430,15 +430,30 @@ export function isManualMarketplaceAccount(
 }
 
 /**
+ * Las redes donde una cuenta puede estar en modo `manual` por su `meta.mode` (ADR-0029 punto 9):
+ * las de contenido de marca. Marketplace tiene su propio modo a mano (ADR-0023). En Instagram y
+ * Portal no vale: su enlace no es su id (Portal opera el ítem por su número: sync, pausar,
+ * cerrar), así que un `mode: "manual"` ahí se ignora y la cuenta publica por API como siempre.
+ */
+export const MANUAL_MODE_PLATFORMS = [
+  "linkedin",
+  "x",
+  "discord",
+  "tiktok",
+] as const satisfies readonly Platform[];
+
+/**
  * Si una cuenta publica a mano (ADR-0029 punto 9): nunca llama a la red; el intento deja el texto y
  * los medios listos (`awaiting_manual_confirm`) y el operador confirma con el enlace. En
- * Marketplace, la cuenta a mano de F7 (`isManualMarketplaceAccount`); en las demás, `meta.mode =
- * "manual"` (LinkedIn por defecto, spec F9 §4.6). Lee solo esa clave: una `meta` vieja no falla.
+ * Marketplace, la cuenta a mano de F7 (`isManualMarketplaceAccount`); en las redes de
+ * `MANUAL_MODE_PLATFORMS`, `meta.mode = "manual"` (LinkedIn por defecto, spec F9 §4.6); en
+ * Instagram y Portal, nunca. Lee solo esa clave: una `meta` vieja no falla.
  */
 export function isManualAccount(
   account: Pick<PlatformAccount, "platform" | "meta"> &
     Partial<Pick<PlatformAccount, "externalAccountId">>,
 ): boolean {
   if (account.platform === "fb_marketplace") return isManualMarketplaceAccount(account);
+  if (!(MANUAL_MODE_PLATFORMS as readonly Platform[]).includes(account.platform)) return false;
   return account.meta.mode === "manual";
 }

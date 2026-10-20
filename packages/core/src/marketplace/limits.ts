@@ -12,7 +12,7 @@ export const MANUAL_CONFIRM_PLATFORMS: ReadonlySet<Platform> = new Set(["fb_mark
 /**
  * Si el último paso lo hace el operador (ADR-0017; por cuenta desde ADR-0029 punto 9): en la
  * plataforma (Marketplace, siempre) o, si se pasa la cuenta, también en una cuenta en modo `manual`
- * de cualquier plataforma (`isManualAccount`), que nunca llama a la red. Sin la cuenta responde solo
+ * de una red de marca (`isManualAccount`, `MANUAL_MODE_PLATFORMS`), que nunca llama a la red. Sin la cuenta responde solo
  * por la plataforma, como antes de F9.
  */
 export const requiresManualConfirm = (

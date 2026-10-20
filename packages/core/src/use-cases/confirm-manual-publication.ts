@@ -140,7 +140,8 @@ const notPublishedError = (platform: Platform) =>
  * la palabra del operador de que no se publicó. `awaiting_manual_confirm` → `failed` con
  * `MARKETPLACE_NOT_PUBLISHED` (Marketplace) o `MANUAL_NOT_PUBLISHED` (las demás), para reintentar
  * (abre un formulario nuevo, o deja todo listo otra vez) o descartar, dentro del candado de su
- * sujeto. No se deshace (D14): la máquina no permite `failed → published`. La ventana de
+ * sujeto. Fuera de Marketplace borra el progreso del traspaso (el reintento parte de cero, también
+ * si la cuenta pasó a modo `api`). No se deshace (D14): la máquina no permite `failed → published`. La ventana de
  * Marketplace, si seguía abierta, la cierra el worker al ver que ya no espera.
  */
 export async function markNotPublished(
@@ -159,7 +160,12 @@ export async function markNotPublished(
       {
         from: "awaiting_manual_confirm",
         to: "failed",
-        changes: { lastError: notPublishedError(publication.platform) },
+        // Fuera de Marketplace se borra el traspaso (`{ manual }`): si la cuenta pasa después a
+        // modo `api`, el reintento envía desde cero. Marketplace conserva su formulario (F5).
+        changes: {
+          lastError: notPublishedError(publication.platform),
+          ...(publication.platform === "fb_marketplace" ? {} : { progress: null }),
+        },
       },
       { actor, payload: { mode: modeOf(publication.dryRun), reason: "not_published" } },
     );

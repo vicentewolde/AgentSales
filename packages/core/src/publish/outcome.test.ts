@@ -84,12 +84,62 @@ describe("sendOnce", () => {
     ).resolves.toEqual(RESULT);
   });
 
-  it("un progreso que no se lee es dudoso, sin llamar", async () => {
-    const { ctx } = context({ otro: true });
-    await expect(sendOnce(ctx, { send: async () => RESULT })).rejects.toMatchObject({
-      code: OUTCOME_UNKNOWN,
-      details: { reason: "progress_unreadable" },
+  it("un progreso que no se lee (no es un objeto, o su «enviando» no calza) es dudoso, sin llamar", async () => {
+    for (const progress of ["texto", [1], { send: { startedAt: "ayer" } }]) {
+      const { ctx } = context(progress);
+      await expect(sendOnce(ctx, { send: async () => RESULT })).rejects.toMatchObject({
+        code: OUTCOME_UNKNOWN,
+        details: { reason: "progress_unreadable" },
+      });
+    }
+  });
+
+  it("un progreso sin la clave send cuenta como «aún no se envió»: envía una vez y conserva lo del publisher", async () => {
+    const { ctx, saved } = context({ uploaded: ["media-1"] });
+    let calls = 0;
+    await expect(
+      sendOnce(ctx, {
+        now: () => NOW,
+        send: async () => {
+          calls += 1;
+          return RESULT;
+        },
+      }),
+    ).resolves.toEqual(RESULT);
+    expect(calls).toBe(1);
+    expect(saved).toEqual([
+      { uploaded: ["media-1"], send: { startedAt: NOW.toISOString() } },
+      { uploaded: ["media-1"], send: { startedAt: NOW.toISOString(), result: RESULT } },
+    ]);
+  });
+
+  it("suma «enviando» al progreso vigente (lo guardado en este intento) y no arrastra un traspaso a mano", async () => {
+    const { ctx, saved } = context({
+      manual: { attempt: 1, simulated: false, readyAt: NOW.toISOString(), media: 1 },
     });
+    await sendOnce(ctx, {
+      now: () => NOW,
+      progress: { uploaded: ["media-1", "media-2"], manual: { attempt: 1 } },
+      send: async () => RESULT,
+    });
+    expect(saved[0]).toEqual({
+      uploaded: ["media-1", "media-2"],
+      send: { startedAt: NOW.toISOString() },
+    });
+  });
+
+  it("un error que prueba que no salió quita el «enviando» y deja lo del publisher", async () => {
+    const limited = new AppError("X_RATE_LIMITED", "espera", { retriable: true });
+    const { ctx, saved } = context({ uploaded: ["media-1"] });
+    await expect(
+      sendOnce(ctx, {
+        notSent: (error) => error === limited,
+        send: async () => {
+          throw limited;
+        },
+      }),
+    ).rejects.toBe(limited);
+    expect(saved.at(-1)).toEqual({ uploaded: ["media-1"] });
   });
 
   it("si no se puede guardar «enviando», el error sube y no se llama", async () => {
@@ -147,7 +197,15 @@ describe("sendOnce", () => {
           manual: { attempt: 1, simulated: true, readyAt: NOW.toISOString(), media: 0 },
         }),
       ).not.toThrow();
-      expect(() => checkPublicationProgress(platform, { otro: 1 })).toThrow();
+      // Lo del publisher se guarda al lado del «enviando» sin perderse.
+      expect(
+        checkPublicationProgress(platform, {
+          uploaded: ["media-1"],
+          send: { startedAt: NOW.toISOString() },
+        }),
+      ).toEqual({ uploaded: ["media-1"], send: { startedAt: NOW.toISOString() } });
+      expect(() => checkPublicationProgress(platform, "texto")).toThrow();
+      expect(() => checkPublicationProgress(platform, { send: { startedAt: "ayer" } })).toThrow();
     }
     expect(socialProgressSchema.safeParse({ send: {} }).success).toBe(false);
   });
@@ -223,7 +281,17 @@ describe("socialCaption", () => {
 });
 
 describe("cuenta a mano", () => {
-  it("isManualAccount: meta.mode = manual en cualquier red; en Marketplace, la cuenta a mano de F7", () => {
+  it("isManualAccount: Instagram y Portal nunca son a mano, aunque su meta lo diga", () => {
+    expect(isManualAccount({ platform: "instagram", meta: { mode: "manual" } })).toBe(false);
+    expect(isManualAccount({ platform: "portal_inmobiliario", meta: { mode: "manual" } })).toBe(
+      false,
+    );
+    for (const platform of ["linkedin", "x", "discord", "tiktok"] as const) {
+      expect(isManualAccount({ platform, meta: { mode: "manual" } })).toBe(true);
+    }
+  });
+
+  it("isManualAccount: meta.mode = manual en las redes de marca; en Marketplace, la cuenta a mano de F7", () => {
     expect(isManualAccount({ platform: "linkedin", meta: { mode: "manual" } })).toBe(true);
     expect(isManualAccount({ platform: "linkedin", meta: { mode: "api" } })).toBe(false);
     expect(isManualAccount({ platform: "instagram", meta: {} })).toBe(false);

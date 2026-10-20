@@ -43,3 +43,4 @@ La máquina de estados, el calendario de un minuto, los reintentos con progreso,
 - **Renombrar `brokers` a `brands`**: es lo correcto a largo plazo, pero toca la API, el panel, la CLI y la documentación completa sin aportar a esta fase. `kind` basta; se reevalúa si llegan los productos (ADR-0006).
 
 ## Seguimiento (opcional)
+- **2026-10-20, F9-T06 (punto 11):** la implementación es `ensureRotatingAccessToken` (core) para las plataformas de `ROTATING_TOKEN_PLATFORMS` (X y TikTok), con el candado de credenciales y el puerto `PlatformTokenRefresher` que implementa el cliente de cada red (T16 y T26); el intento lo pasa en `ctx.accessToken`. Portal sigue con `ensureAccessToken` (Mercado Libre, ADR-0015) e Instagram y LinkedIn con el token guardado. El job `tokens.refresh` suma X en T16 con la misma función. (Puntos 8 y 9: `sendOnce` y `pendingSend` en `publish/outcome.ts`; el modo a mano por cuenta vale solo en `MANUAL_MODE_PLATFORMS`.)

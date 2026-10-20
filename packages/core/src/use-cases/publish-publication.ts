@@ -59,7 +59,12 @@ import {
   publishAttemptRecord,
   publishInputInvalid,
 } from "../publish/input.js";
-import { isOutcomeUnknown, type ManualHandoffProgress } from "../publish/outcome.js";
+import {
+  isOutcomeUnknown,
+  type ManualHandoffProgress,
+  outcomeUnknown,
+  pendingSend,
+} from "../publish/outcome.js";
 import {
   consecutiveLimitWaits,
   MAX_LIMIT_WAITS,
@@ -183,8 +188,8 @@ export type PublishPublicationResult =
 /**
  * La espera ante un límite (spec F6 §4.5, ADR-0018 punto 6): si el error trae la señal de espera,
  * la plataforma no es de paso manual (Marketplace nunca se reprograma sola) y la publicación lleva
- * menos de 3 esperas seguidas, pasa `publishing` → `scheduled` para cuando se libere, con su propio
- * modo, el motivo en `last_error` y el progreso intacto (el publisher retoma desde él). `null` si no
+ * menos de 3 esperas seguidas (y es de un aviso: un post no, hasta F9-T07), pasa `publishing` →
+ * `scheduled` para cuando se libere, con su propio modo, el motivo en `last_error` y el progreso intacto (el publisher retoma desde él). `null` si no
  * corresponde esperar, o si la bitácora o la transición fallaron por algo que no es pasajero
  * (entonces sigue el camino de siempre, `failed`). Un fallo pasajero de la base se relanza.
  */
@@ -206,6 +211,10 @@ async function waitForLimit(
 ): Promise<{ publication: Publication; retryAt: Date } | null> {
   const minutes = waitMinutesOf(error);
   if (minutes === null || requiresManualConfirm(publication.platform)) return null;
+  // Un post no se reprograma solo hasta F9-T07: el disparo de las programadas todavía es de avisos
+  // y la dejaría `scheduled` sin dueño. Sigue el camino de siempre (la cola reintenta si el error
+  // es reintentable; si no, o en el último intento, `failed` con el motivo).
+  if (publication.subject.kind !== "listing") return null;
   try {
     const waits = consecutiveLimitWaits(await deps.publications.listEvents(publication.id));
     if (waits >= MAX_LIMIT_WAITS) return null;
@@ -284,7 +293,8 @@ const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_E
  *    `expired`. Un error que
  *    no es `AppError` es `INTERNAL_ERROR` (no reintentable).
  * 7 bis. Un límite de la plataforma (F6, ADR-0018): si el error trae la señal `waitMinutes`, la
- *    plataforma no es de paso manual y van menos de 3 esperas seguidas, en vez del paso 7 la
+ *    plataforma no es de paso manual, la publicación es de un aviso (un post no se reprograma
+ *    solo hasta F9-T07) y van menos de 3 esperas seguidas, en vez del paso 7 la
  *    publicación pasa a `scheduled` para cuando se libere (con su modo y el progreso intacto), el
  *    intento queda `rescheduled` y se devuelve `outcome: "rescheduled"` sin relanzar.
  * 7 ter. Resultado dudoso (F9, ADR-0029 punto 8): un `OUTCOME_UNKNOWN` del publisher (encontró su
@@ -364,7 +374,10 @@ export async function publishPublication(
   try {
     const prepared = await prepareAttempt(deps, publication, now(), signal);
     sent = prepared.sent;
-    if (prepared.kind === "byHand") {
+    if (prepared.kind === "byHand" && prepared.alreadySent !== null) {
+      // Un envío automático anterior ya salió: se guarda como publicado, sin traspaso.
+      result = { ...prepared.alreadySent, simulated: false };
+    } else if (prepared.kind === "byHand") {
       // A mano: nada que llamar ni ventana que abrir; el traspaso es de core (ADR-0023).
       handoff = {
         notes: [BY_HAND_NOTE],
@@ -434,6 +447,8 @@ export async function publishPublication(
           await addAttempt("retry", { error: lastErrorOf(error), sent });
           throw failure;
         }
+        // Otro error (la publicación cambió de estado entretanto): si quedó en `publishing`, la
+        // vigilancia de cada hora la reencola y el "enviando" la vuelve a llevar a `outcome_unknown`.
         throw error;
       }
     }
@@ -727,11 +742,17 @@ async function prepareAttempt(
       const rules = deps.publishers[publication.platform];
       if (rules !== undefined) checkPublishInput(rules, input);
     }
+    // Un envío automático pendiente (la cuenta pasó a modo `manual` con un reintento en curso): la
+    // misma revisión que `sendOnce`. Si pudo haber salido, es dudoso: no se ofrece publicarlo a
+    // mano otra vez; si salió y no se alcanzó a guardar, se guarda como publicado.
+    const previous = manual ? null : pendingSend(publication.progress);
+    if (previous?.kind === "unknown") throw outcomeUnknown(previous.reason);
     return {
       kind: "byHand" as const,
       input,
       account,
       sent: publishAttemptRecord(input, account),
+      alreadySent: previous?.kind === "sent" ? previous.result : null,
     };
   }
   if (!publication.dryRun) checkPublishInput(publisher, input);

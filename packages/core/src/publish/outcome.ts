@@ -53,41 +53,80 @@ export const sentResultSchema = z.object({
 });
 export type SentResult = z.infer<typeof sentResultSchema>;
 
-/**
- * El progreso "enviando" (`publications.progress.send`): cuándo empezó la llamada que publica y,
- * si respondió, su resultado. Sin `result`, no se sabe si salió. Laxo: el publisher de cada red
- * puede guardar lo suyo al lado (por ejemplo, los medios ya subidos).
- */
-export const sendProgressSchema = z.looseObject({
-  send: z.object({
-    startedAt: z.iso.datetime(),
-    result: sentResultSchema.optional(),
-  }),
+/** El "enviando" (`publications.progress.send`): cuándo empezó la llamada que publica y su resultado. */
+export const sendStateSchema = z.object({
+  startedAt: z.iso.datetime(),
+  result: sentResultSchema.optional(),
 });
+export type SendState = z.infer<typeof sendStateSchema>;
+
+/**
+ * El progreso con "enviando" (`publications.progress.send`). Sin `result`, no se sabe si salió.
+ * Laxo: el publisher de cada red guarda lo suyo al lado (por ejemplo, los medios ya subidos de X).
+ */
+export const sendProgressSchema = z.looseObject({ send: sendStateSchema });
 export type SendProgress = z.infer<typeof sendProgressSchema>;
+
+/** El traspaso a mano (`publications.progress.manual`): lo que dejó listo el intento. */
+export const manualHandoffStateSchema = z.object({
+  /** `publications.attempts` del intento que lo dejó listo. */
+  attempt: z.number().int().nonnegative(),
+  simulated: z.boolean(),
+  readyAt: z.iso.datetime(),
+  /** Cuántos medios quedaron listos para subir a mano. */
+  media: z.number().int().nonnegative(),
+});
 
 /**
  * El traspaso a mano de una cuenta en modo `manual` fuera de Marketplace (ADR-0029 punto 9): el
  * intento dejó el texto y los medios listos (`awaiting_manual_confirm`) sin llamar a la red.
  */
-export const manualHandoffProgressSchema = z.object({
-  manual: z.object({
-    /** `publications.attempts` del intento que lo dejó listo. */
-    attempt: z.number().int().nonnegative(),
-    simulated: z.boolean(),
-    readyAt: z.iso.datetime(),
-    /** Cuántos medios quedaron listos para subir a mano. */
-    media: z.number().int().nonnegative(),
-  }),
-});
+export const manualHandoffProgressSchema = z.object({ manual: manualHandoffStateSchema });
 export type ManualHandoffProgress = z.infer<typeof manualHandoffProgressSchema>;
 
 /**
- * El progreso de las redes de contenido de marca (X, LinkedIn, Discord y TikTok, spec F9 §4.6): el
- * "enviando" del publisher o el traspaso a mano. Cada publisher (F9-T14 a T16 y T26) puede
- * reemplazarlo por uno propio que lo extienda.
+ * El progreso de las redes de contenido de marca (X, LinkedIn, Discord y TikTok, spec F9 §4.6): un
+ * objeto con el "enviando" (`send`), el traspaso a mano (`manual`) y, al lado, lo que guarde cada
+ * publisher (F9-T14 a T16 y T26), que puede reemplazarlo por uno propio que lo extienda. Laxo a
+ * propósito: un esquema que descartara las claves desconocidas borraría el "enviando" o lo del
+ * publisher al guardar.
  */
-export const socialProgressSchema = z.union([manualHandoffProgressSchema, sendProgressSchema]);
+export const socialProgressSchema = z.looseObject({
+  send: sendStateSchema.optional(),
+  manual: manualHandoffStateSchema.optional(),
+});
+
+/**
+ * Lo que dice un progreso de un envío anterior (ADR-0029 punto 8): `none` si no hay "enviando"
+ * (sin progreso, o un objeto sin la clave `send`: lo de un publisher que todavía no envía, o un
+ * traspaso a mano); `sent` con el resultado guardado; `unknown` si hay "enviando" sin resultado, o
+ * un progreso que no se lee (no es un objeto, o `send` no calza). Lo usan `sendOnce` y el camino a
+ * mano del intento, que no ofrece publicar a mano lo que pudo haber salido.
+ */
+export type PendingSend =
+  | { kind: "none" }
+  | { kind: "sent"; result: SentResult }
+  | { kind: "unknown"; reason: "interrupted" | "progress_unreadable" };
+
+export function pendingSend(progress: unknown): PendingSend {
+  if (progress === null || progress === undefined) return { kind: "none" };
+  if (typeof progress !== "object" || Array.isArray(progress)) {
+    return { kind: "unknown", reason: "progress_unreadable" };
+  }
+  if (!("send" in progress) || progress.send === undefined) return { kind: "none" };
+  const send = sendStateSchema.safeParse(progress.send);
+  if (!send.success) return { kind: "unknown", reason: "progress_unreadable" };
+  return send.data.result === undefined
+    ? { kind: "unknown", reason: "interrupted" }
+    : { kind: "sent", result: send.data.result };
+}
+
+/** El progreso sin `send` ni `manual`: lo propio del publisher, sobre lo que se suma el "enviando". */
+function publisherPart(progress: unknown): Record<string, unknown> {
+  if (progress === null || typeof progress !== "object" || Array.isArray(progress)) return {};
+  const { send: _send, manual: _manual, ...rest } = progress as Record<string, unknown>;
+  return rest;
+}
 
 export type SendOnceOptions = {
   /** La llamada que publica: **una** sola, que devuelve el id y el enlace. */
@@ -99,47 +138,56 @@ export type SendOnceOptions = {
    * leer) es `OUTCOME_UNKNOWN`. Sin esto, todo error lo es.
    */
   notSent?: (error: unknown) => boolean;
+  /**
+   * El progreso vigente: lo último que el publisher guardó en **este** intento (por ejemplo, los
+   * medios ya subidos). Por defecto, `ctx.progress` (el del inicio del intento): un publisher que
+   * guardó algo antes de enviar lo pasa aquí, para que el "enviando" se sume a eso y no lo pise.
+   */
+  progress?: unknown;
   now?: () => Date;
 };
 
 /**
  * La llamada que publica, una sola vez (ADR-0029 punto 8), para los publishers sin idempotencia en
- * la red (Discord, X): con el progreso del intento (`ctx.progress`),
- * 1. si ya trae un resultado, lo devuelve sin llamar (el intento anterior publicó y no alcanzó a
+ * la red (Discord, X), mirando el progreso vigente (`options.progress`, o `ctx.progress`) con
+ * `pendingSend`:
+ * 1. con el resultado guardado, lo devuelve sin llamar (el intento anterior publicó y no alcanzó a
  *    guardar `published`);
- * 2. si trae "enviando" sin resultado, o un progreso que no se lee, `OUTCOME_UNKNOWN` sin llamar;
- * 3. si no, guarda "enviando" (si eso falla, el error sube: no se envió nada), llama a `send` y
- *    guarda el resultado. Si guardar el resultado falla, lo devuelve igual: el intento lo da por
- *    publicado, y si tampoco alcanza a guardarlo, el reintento verá "enviando" y lo dejará dudoso
- *    (nunca publica dos veces).
- * Un error de `send` que `notSent` reconoce borra el "enviando" y sube tal cual; cualquier otro es
- * `OUTCOME_UNKNOWN` (no reintentable), con el original como causa.
+ * 2. con "enviando" sin resultado, o un progreso que no se lee, `OUTCOME_UNKNOWN` sin llamar;
+ * 3. sin "enviando" (sin progreso, o un objeto sin la clave `send`), **suma** "enviando" a lo que
+ *    el publisher ya guardó (si guardarlo falla, el error sube: no se envió nada), llama a `send` y
+ *    guarda el resultado, también sumado. Si guardar el resultado falla, lo devuelve igual: el
+ *    intento lo da por publicado, y si tampoco alcanza a guardarlo, el reintento verá "enviando" y
+ *    lo dejará dudoso (nunca publica dos veces).
+ * Un error de `send` que `notSent` reconoce quita el "enviando" (deja lo del publisher) y sube tal
+ * cual; cualquier otro es `OUTCOME_UNKNOWN` (no reintentable), con el original como causa. Un
+ * `manual` de un traspaso anterior no se arrastra.
  */
 export async function sendOnce(
   ctx: Pick<PublishContext, "progress" | "saveProgress">,
-  { send, notSent, now = () => new Date() }: SendOnceOptions,
+  options: SendOnceOptions,
 ): Promise<SentResult> {
-  if (ctx.progress !== null && ctx.progress !== undefined) {
-    const saved = sendProgressSchema.safeParse(ctx.progress);
-    if (!saved.success) throw outcomeUnknown("progress_unreadable");
-    if (saved.data.send.result !== undefined) return saved.data.send.result;
-    throw outcomeUnknown("interrupted");
-  }
+  const { send, notSent, now = () => new Date() } = options;
+  const current = "progress" in options ? options.progress : ctx.progress;
+  const pending = pendingSend(current);
+  if (pending.kind === "sent") return pending.result;
+  if (pending.kind === "unknown") throw outcomeUnknown(pending.reason);
+  const base = publisherPart(current);
   const startedAt = now().toISOString();
-  await ctx.saveProgress({ send: { startedAt } } satisfies SendProgress);
+  await ctx.saveProgress({ ...base, send: { startedAt } } satisfies SendProgress);
   let result: SentResult;
   try {
     result = await send();
   } catch (error) {
     if (notSent?.(error) === true) {
-      // Si no se puede borrar, el reintento verá "enviando" y la dejará dudosa: nunca publica dos veces.
-      await ctx.saveProgress(null).catch(() => undefined);
+      // Si no se puede quitar, el reintento verá "enviando" y la dejará dudosa: nunca publica dos veces.
+      await ctx.saveProgress(Object.keys(base).length === 0 ? null : base).catch(() => undefined);
       throw error;
     }
     throw outcomeUnknown("send_failed", error);
   }
   await ctx
-    .saveProgress({ send: { startedAt, result } } satisfies SendProgress)
+    .saveProgress({ ...base, send: { startedAt, result } } satisfies SendProgress)
     .catch(() => undefined);
   return result;
 }

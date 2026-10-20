@@ -34,8 +34,8 @@ const notPublishedError = () => ({
  * del aviso o el del post) y de forma condicional.
  * - `published` ("salió"): `outcome_unknown` → `published`, con el enlace si lo tiene
  *   (`parsePublishedUrl`: `MARKETPLACE_URL_INVALID` o `PUBLISHED_URL_INVALID`, revisado antes del
- *   candado); `external_id` = el id del enlace, o `null` si no lo pegó (`dry-run:<id>` en
- *   simulación). En `live`, un aviso pasa de `ready` a `active`, como al publicar; un post nunca.
+ *   candado); `external_id` = el id del enlace, o `null` si no lo pegó; en simulación el enlace
+ *   se ignora (`dry-run:<id>`, sin enlace), como en `confirmManualPublication`. En `live`, un aviso pasa de `ready` a `active`, como al publicar; un post nunca.
  * - `not_published` ("no salió"): → `failed` con `OUTCOME_RESOLVED_NOT_PUBLISHED` y **sin el
  *   progreso**, desde donde se puede volver a intentar (envía desde cero: el "enviando" ya no
  *   está) o descartar.
@@ -62,8 +62,11 @@ export async function resolvePublication(
   if (found === null) throw publicationNotFound(publicationId);
   const now = deps.now ?? (() => new Date());
   // El enlace se revisa antes del candado: un enlace malo no toca nada.
+  // En `dry-run` un enlace se ignora, como al confirmar: nada salió de verdad.
   const item =
-    outcome !== "published" || url === undefined ? null : parsePublishedUrl(found.platform, url);
+    outcome !== "published" || url === undefined || found.dryRun
+      ? null
+      : parsePublishedUrl(found.platform, url);
 
   return runOnSubject(deps, found.subject, async (locked) => {
     const publication = await locked.repos.publications.get(publicationId);
