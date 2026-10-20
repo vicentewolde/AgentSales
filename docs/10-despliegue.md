@@ -14,6 +14,7 @@ Guía paso a paso para poner AgentSales en internet, en `https://agentsales.agen
 - **Modo demo (D1):** las máquinas se encienden los días de demo y se apagan después. Cuesta unos US$ 0,56 por día encendido, más centavos por el disco de las máquinas apagadas. Con el worker apagado, Neon se duerme y no gasta su cupo gratis.
 - **Simulación (D9):** el servidor corre con `PUBLISH_MODE=dry-run` (en `fly.toml`). Pasarlo a `live` es una decisión tuya, que pides en el chat.
 - **Las migraciones** se aplican solas en cada despliegue, antes de reemplazar nada. Si fallan, el despliegue se detiene y queda la versión anterior.
+- **Una sola instancia por ahora (D19 de F9):** esta guía es la de la instancia de hoy (`principal`). Cuando haga falta otra del mismo código, con sus propios datos y cuentas, sigue "Una segunda instancia", al final.
 - **Lo que no corre en el servidor:** el formulario automático de Marketplace (D4: en producción, Marketplace es a mano para todos; el worker no registra su publisher ni el job `marketplace.profile`, y `BROWSER_PROFILES_DIR` no va en el entorno: si está en tu `.env.production`, quítala, porque `loadEnv` la rechaza con `NODE_ENV=production`) y la CLI de Claude (la IA va por la API de Anthropic).
 
 ## Antes de empezar (una vez)
@@ -79,7 +80,7 @@ Anota en tu calendario renovarlo antes de que venza (el creado el 2026-10-19 dur
 
 Solo se puede desplegar `main` con la CI en verde (el flujo se niega si no). **Es la CI del commit exacto de `main`**: al mezclar un PR, `main` recibe un commit nuevo y su CI (`check` e `image`) tarda unos minutos; si despliegas antes, el primer paso falla con "La CI (check) no está en verde sobre … sin resultado" sin tocar Fly. Espera a que termine (`gh run list --branch main --limit 3`) y repite. Elige una de estas dos formas:
 
-- **En GitHub:** el repositorio → **Actions** → **Desplegar** → **Run workflow** → rama `main` → **Run workflow**.
+- **En GitHub:** el repositorio → **Actions** → **Desplegar** → **Run workflow** → rama `main` (deja **Instancia** en `principal`) → **Run workflow**.
 - **En la terminal:**
   ```bash
   gh workflow run deploy.yml --ref main
@@ -223,6 +224,111 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
 2. Pídele a Claude el cambio de `fly.toml` (la API sin apagarse sola y el worker siempre encendido) y despliega.
 3. El costo total queda en unos US$ 37 a 48 al mes (spec F8 §4.15).
 
+## Una segunda instancia (D19 de F9)
+
+**Cuándo:** mientras solo la uses tú, hay **una instancia** (la de esta guía). Según la D19 del spec F9, se arma una segunda **del mismo código** cuando ocurra lo primero de esto: entra el primer dato real de un cliente, la oficina firma el piloto, o un incidente con una red amenaza la app compartida. Cada instancia tiene lo suyo: app de Fly, dominio, base, buckets, secretos, Environment de GitHub y apps de Meta, TikTok y X. Lo único que comparten es el código (y tus cuentas de Fly, Neon, Cloudflare y GitHub).
+
+**Los nombres:** en el flujo de despliegue, la de hoy se llama **`principal`** (usa `fly.toml` y el Environment `production`) y **no cambia en nada**. La nueva necesita un nombre corto en minúsculas, por ejemplo `clientes` o `personal`. Cuál queda para tus clientes y cuál para tu marca lo decides tú: si la de hoy pasa a ser la de clientes, no hay que moverla. Abajo, reemplaza:
+
+- `<instancia>`: el nombre corto (por ejemplo `clientes`).
+- `<app>`: su app de Fly (por ejemplo `agentsales-clientes`).
+- `<dominio>`: su dirección (por ejemplo `clientes.agentpey.com`), otro nombre que el de la principal.
+
+**Quién hace qué:** los archivos los prepara Claude con un PR (paso B). Todo lo demás lo haces tú, en tu terminal o en el navegador. Como siempre, ningún secreto pasa por el chat ni queda en un archivo del proyecto que vaya a git.
+
+### A · Las cuentas y los servicios (tú)
+
+1. **La app de Fly y sus direcciones IP** (la IPv4 compartida y la IPv6 no cuestan; no pidas una IPv4 dedicada):
+   ```bash
+   fly apps create <app>
+   ```
+   ```bash
+   fly ips allocate-v4 --shared -a <app>
+   ```
+   ```bash
+   fly ips allocate-v6 -a <app>
+   ```
+2. **La base de Neon:** un **proyecto nuevo** en **console.neon.tech** → **New project**, en la misma región que el de hoy (AWS São Paulo), y sigue `docs/09-alta-neon-r2.md` (parte A: la cadena **sin** `-pooler`). Un proyecto aparte, y no una rama del de hoy, deja separados los datos, el cupo gratis y los respaldos de Neon. Cuántos proyectos permite el plan gratis es NO VERIFICADO: si Neon no te deja crear otro, avísale a Claude antes de usar una rama del proyecto de hoy.
+3. **Los dos buckets de R2** (`docs/09-alta-neon-r2.md`, parte B), cada uno con **su propio token** "Object Read & Write" limitado a él:
+   - `<app>-media`, con la misma regla de CORS que `agentsales-media` pero desde el dominio nuevo: solo `PUT`, origen `https://<dominio>`, cabeceras `content-type` y `x-amz-checksum-sha256`.
+   - `<app>-backups`, para el respaldo diario (su token no puede ser el del bucket de medios: el servidor no arranca si son el mismo).
+4. **El archivo `.env.<instancia>`** en la carpeta del proyecto (git ya lo ignora, como `.env.production`; Claude no lo lee). Lleva los mismos nombres que `.env.production`, con los valores de la instancia nueva:
+   - `PUBLIC_URL=https://<dominio>` (la usan los scripts como `auth:admin`).
+   - `DATABASE_URL` del proyecto nuevo de Neon; `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET=<app>-media`; `BACKUP_R2_ACCESS_KEY_ID` y `BACKUP_R2_SECRET_ACCESS_KEY` del token de `<app>-backups`.
+   - **Una `APP_ENCRYPTION_KEY` nueva** (44 caracteres aleatorios con tu gestor de contraseñas, o `openssl rand -base64 32 | pbcopy`, que la deja en el portapapeles sin mostrarla), guardada también en tu gestor: sin ella no se leen los tokens de las cuentas que conectes en esa instancia.
+   - `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` y `FACEBOOK_APP_SECRET` de **su** app de Meta (punto 8).
+   - `ANTHROPIC_API_KEY`: mejor otra clave, para ver el gasto de cada instancia por separado. `BCCH_API_TOKEN` puede ser el mismo. `ML_APP_ID` y `ML_CLIENT_SECRET`, solo si esa instancia usa Portal (punto 8).
+   - Las direcciones de vuelta de los OAuth no van: salen de `PUBLIC_URL`.
+
+   Revisa el bucket y su CORS (habla con R2, no con la base):
+   ```bash
+   ENV_FILE=.env.<instancia> pnpm storage:check --origin https://<dominio>
+   ```
+5. **Los secretos en Fly:** el mismo comando del paso 2, con el archivo y la app nuevos (si se suman variables de otras redes, como las de TikTok o X, su tarea las agrega a esta lista y a la del paso 2):
+   ```bash
+   grep -E '^(DATABASE_URL|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY|R2_BUCKET|APP_ENCRYPTION_KEY|ANTHROPIC_API_KEY|INSTAGRAM_APP_ID|INSTAGRAM_APP_SECRET|FACEBOOK_APP_SECRET|ML_APP_ID|ML_CLIENT_SECRET|BCCH_API_TOKEN|BACKUP_R2_ACCESS_KEY_ID|BACKUP_R2_SECRET_ACCESS_KEY)=' .env.<instancia> | fly secrets import --stage -a <app>
+   ```
+   ```bash
+   fly secrets list -a <app>
+   ```
+6. **El dominio y su certificado:** el paso 5 completo, con `<app>` y `<dominio>` (en Vercel, el registro `A` y el `AAAA` con el nombre del subdominio nuevo).
+7. **El Environment de GitHub `production-<instancia>`, antes del primer despliegue:** el repositorio → **Settings** → **Environments** → **New environment** → `production-<instancia>` → **Configure environment**: **Deployment branches and tags** en **Selected branches and tags** con la regla **`main`**, y **Allow administrators to bypass configured protection rules** desmarcado (lo mismo que `production`, paso 3). Después, su token de Fly, que solo sirve para `<app>`:
+   ```bash
+   fly tokens create deploy -a <app> -n github-deploy -x 4380h | pbcopy
+   ```
+   ```bash
+   pbpaste | gh secret set FLY_API_TOKEN --env production-<instancia>
+   ```
+   Si un despliegue de esa instancia corre antes de crearlo, GitHub crea el Environment vacío y **sin la regla de `main`**: el flujo se corta por la falta del token, pero configúralo igual (la regla y el token) antes de seguir. Anota en tu calendario renovar este token (6 meses), aparte del de `production`.
+8. **Las apps propias de cada red:** la instancia nueva no usa las apps de la principal (D19), así un problema con una red en una no toca a la otra.
+   - **Meta:** una app nueva como `AgentSales-IG`, con el caso de uso de Instagram y, en *Business login settings* (`docs/07-checklist-cuentas.md`, "Direcciones de vuelta de Meta"): la vuelta `https://<dominio>/api/oauth/instagram/callback`, la de cancelar la autorización `https://<dominio>/api/meta/deauthorize` y la de eliminación de datos `https://<dominio>/api/meta/data-deletion`. Su revisión de Meta (App Review) y la verificación de la empresa van por separado (`docs/11-app-review-meta.md`).
+   - **TikTok y X:** una app propia en cada una, con la dirección de vuelta en `https://<dominio>/api/oauth/…`; la dirección exacta la fija la tarea de cada red (por ejemplo T26 para TikTok) y queda en su nota de `docs/integraciones/`.
+   - **Mercado Libre** (si esa instancia usa Portal): mejor una app propia; con la de hoy también funciona, agregando `https://<dominio>/api/oauth/mercadolibre/callback` en **Redirect URIs** (el panel acepta varias), pero entonces comparten la app.
+
+### B · Los archivos de la instancia (Claude, con un PR)
+
+Pídele a Claude "la instancia `<instancia>` con la app `<app>` y el dominio `<dominio>`". El PR trae:
+
+- **`fly.<instancia>.toml`:** una copia de `fly.toml` con cuatro valores cambiados: `app = "<app>"`, `PUBLIC_URL = "https://<dominio>"`, el `Host` del chequeo (`<dominio>`) y `BACKUP_R2_BUCKET = "<app>-backups"`. Todo lo demás igual, también `PUBLISH_MODE = "dry-run"` (pasarlo a `live` en esa instancia es otra decisión tuya, en el chat).
+- **`.github/workflows/deploy.yml`:** `<instancia>` agregada a las opciones de la entrada `instance`.
+
+El flujo se niega a desplegar otra instancia si falta su archivo o si repite la app, el dominio, el `Host` o el bucket de respaldos de la principal: una copia a medio cambiar nunca despliega encima de la instancia de hoy.
+
+### C · Desplegar esa instancia (tú)
+
+Igual que el paso 4 (solo `main`, con la CI en verde), eligiendo la instancia:
+
+- **En GitHub:** **Actions** → **Desplegar** → **Run workflow** → rama `main` → **Instancia** `<instancia>` → **Run workflow**.
+- **En la terminal:**
+  ```bash
+  gh workflow run deploy.yml --ref main -f instance=<instancia>
+  ```
+
+Sin `-f instance=…` (o con **Instancia** en `principal`), el flujo despliega la de hoy, como siempre. En la base nueva, el `release_command` aplica todas las migraciones desde cero. Después:
+
+1. Tu administrador en esa instancia (el enlace queda en el portapapeles):
+   ```bash
+   ENV_FILE=.env.<instancia> pnpm auth:admin --email tu@correo.cl
+   ```
+2. El paso 6 con `https://<dominio>` (salud, entrar, activar el doble factor) y la CLI contra ella:
+   ```bash
+   pnpm -s cli login --email tu@correo.cl --api https://<dominio>
+   ```
+   La CLI recuerda un servidor a la vez: para volver a la principal, entra de nuevo con su `--api`.
+3. El corredor de pruebas (`agentsales-pruebas`) no se crea solo; si lo quieres en esa instancia: `ENV_FILE=.env.<instancia> pnpm db:seed`. Los corredores reales se crean desde el panel o con `brokers create`.
+
+### D · El día a día con dos instancias
+
+- **Cada comando de `fly` lleva el `-a` de su instancia** (logs, máquinas, secretos, versiones): `fly logs -a <app>`, `fly machine list -a <app>`… El modo demo (paso 8) y el cupo de Neon van por separado en cada una.
+- **Volver atrás en la otra instancia, siempre con su archivo:**
+  ```bash
+  fly deploy -c fly.<instancia>.toml --image registry.fly.io/<app>:sha-<los 12 primeros caracteres del commit>
+  ```
+  Con `-a <app>` y sin `-c`, `fly deploy` toma `fly.toml`, el de la principal (su dominio y su bucket), y arrancaría la otra instancia mal configurada.
+- **Cada instancia se despliega por separado:** un `main` en verde puede ir a una y no a la otra, y cada una aplica sus migraciones al desplegarse (por eso siguen siendo aditivas). El flujo hace un despliegue a la vez, también entre instancias, y GitHub deja **uno solo esperando**: si lanzas un tercero mientras uno corre y otro espera, el que esperaba se cancela (aunque sea de la otra instancia). Lanza el siguiente cuando termine el anterior.
+- **Si cambia `fly.toml`** (memoria, procesos, chequeos…), el mismo cambio va en cada `fly.<instancia>.toml`, en el mismo PR.
+- **El `.env` del Mac nunca apunta a la base de la otra instancia:** `pnpm db:dev-scrub` reconoce producción solo por `.env.production` (la misma base o clave), así que no protegería la base de `<instancia>`, cuya clave es otra.
+
 ## Problemas comunes
 
 | Qué ves | Qué hacer |
@@ -236,3 +342,5 @@ Fuera de F8. Cuando quieras que los corredores usen la herramienta cualquier dí
 | `doctor` dice que el worker está apagado | Si es día de demo, enciéndelo (paso 8) |
 | `doctor` dice que el respaldo está atrasado o que falló | Con el worker encendido, respalda al arrancar (si el último tiene más de 20 h) y cada día a las 13:00. El código del error está en los logs del worker (paso 7). `STORAGE_ERROR`: el token o el bucket de respaldos no calzan (paso 2); `STORAGE_UNAVAILABLE`: R2 no respondió y se reintenta a los 5 min |
 | Se agotó el cupo de Neon | Quedó el worker encendido. Neon no borra datos: vuelve el mes siguiente o pasa a Launch (paso 11) |
+| El flujo dice "Falta `fly.<instancia>.toml` en main" o "tiene el mismo … que la instancia principal" | Otra instancia sin su archivo, o con un valor copiado de `fly.toml`: pídele a Claude el PR del paso B de "Una segunda instancia" |
+| "Falta el secreto FLY_API_TOKEN en el Environment `production-<instancia>`" | El Environment de esa instancia no tiene su token (o lo creó GitHub vacío): punto 7 de "Una segunda instancia" |
