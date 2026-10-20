@@ -2,10 +2,10 @@
 
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
-**Actualizado:** 2026-10-19
+**Actualizado:** 2026-10-20
 **Fase actual:** F9 · Contenido de marca (spec **aprobado** el 2026-10-19: `docs/specs/fase-9-contenido-de-marca.md`; ADR-0029 y ADR-0030). F8 cerrada (`v1.0.0`)
-**Última tarea:** T04 (el sujeto aviso o post en los repositorios, los repositorios de posts, planes, subidas y perfil, `PostLock` con su regla de no anidar, `sumLlmCost` con posts y planes, y los barridos de avisos que ignoran posts). Antes: T02 (credenciales por plataforma, la marca de token que no vence en `meta`, el redactor de webhooks y `Bearer`) y T03 (esquema de posts y migración `0015`, con su reversión documentada)
-**Siguiente paso:** ola 4 en curso: T05 (aprobar, editar y abrir sobre un sujeto) y T09 (perfil editorial) en paralelo; después T06 → T08 y T10 → T11. Tus pruebas de entrada (abajo) corren en paralelo al código
+**Última tarea:** **entrega 1 de F9 terminada** (T01 a T14 y T27, todas revisadas y con la CI en verde): marcas y perfil editorial, posts con medios en R2, texto con IA por red e idioma con la regla de hechos, publicar y programar posts con el mismo calendario que los avisos, el resultado dudoso (`outcome_unknown`), el traspaso a mano por cuenta, la agenda con posts, Instagram y Discord (contra simulaciones) y la CLI `post …`. `CHANGELOG [1.1.0]` listo; la etiqueta `v1.1.0` se crea con tu permiso
+**Siguiente paso:** entrega 2 en curso en paralelo: T15 LinkedIn y T26 TikTok (en revisión), T16 X y T17 el panel Contenido; después T18 (calendario) y T19 (cuentas y guía). Nada se publica de verdad hasta tus pruebas S1 a S6 (abajo) y tu instrucción en el chat
 
 ## Pendiente tuyo de F9
 Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada prueba de entrada bloquea solo su red (spec §4.8; los pasos están en la sección 8 de cada nota de `docs/integraciones/`):
