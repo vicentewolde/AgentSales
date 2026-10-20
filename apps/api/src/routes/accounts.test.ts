@@ -10,6 +10,7 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   accountListResponseSchema,
+  accountModeResponseSchema,
   accountRefreshResponseSchema,
   accountResponseSchema,
   errorBodySchema,
@@ -250,6 +251,7 @@ describe("cuentas · seguridad y mensajes", () => {
         instagram: { oauth: true, startUrl },
         mercadolibre: { configured: true, redirectUri, automatic: false },
         marketplace: { automation: true },
+        linkedin: { configured: true, startUrl },
       },
     });
     expect(accountListResponseSchema.safeParse(body("https://agentsales.test/x")).success).toBe(
@@ -657,5 +659,97 @@ describe("POST /accounts/discord/connect (F9-T14)", () => {
       expect(log()).not.toContain(token);
     }
     expect(await platformAccounts.list(ALL_SCOPE)).toEqual([]);
+  });
+});
+
+describe("LinkedIn en /accounts (F9-T15)", () => {
+  async function linkedinSetup() {
+    const broker = contentBrokerFixture({ kind: "brand" });
+    const brokers = createInMemoryBrokerRepository([broker]);
+    const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+    const app = adminApp(testDeps({ brokers, platformAccounts }));
+    const stored = await brokers.findBySlug(broker.slug);
+    const account = await platformAccounts.upsertConnected(
+      {
+        brokerId: stored?.id ?? "",
+        platform: "linkedin",
+        externalAccountId: "miembro-123",
+        displayName: "Vicente Wolde",
+        tokenExpiresAt: new Date("2026-12-19T12:00:00Z"),
+        meta: {
+          mode: "manual",
+          scopes: ["openid", "profile", "w_member_social"],
+          connectedAt: "2026-10-20T12:00:00.000Z",
+        },
+        credentials: { accessToken: "token-linkedin-de-prueba" },
+      },
+      { revokeOthers: true },
+    );
+    const mode = (id: string, body: unknown) =>
+      app.request(`/accounts/${id}/mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    return { app, platformAccounts, account, mode };
+  }
+
+  it("GET /accounts: la cuenta con su modo y permisos, y dónde empieza el OAuth", async () => {
+    const { app } = await linkedinSetup();
+    const response = await app.request("/accounts");
+    const text = await response.text();
+    expect(text).not.toContain("token-linkedin-de-prueba");
+    const body = accountListResponseSchema.parse(JSON.parse(text));
+    expect(body.connect.linkedin).toEqual({
+      configured: true,
+      startUrl: "http://localhost:8787/api/oauth/linkedin/start",
+    });
+    expect(body.accounts[0]).toMatchObject({
+      platform: "linkedin",
+      publishingMode: "manual",
+      permissions: ["openid", "profile", "w_member_social"],
+      connectedAt: new Date("2026-10-20T12:00:00.000Z"),
+    });
+  });
+
+  it("POST /accounts/:id/mode cambia a api y vuelve a manual; dice si cambió", async () => {
+    const { account, mode, platformAccounts } = await linkedinSetup();
+    const toApi = await mode(account.id, { mode: "api" });
+    expect(toApi.status).toBe(200);
+    expect(accountModeResponseSchema.parse(await toApi.json())).toMatchObject({
+      changed: true,
+      account: { publishingMode: "api" },
+    });
+    expect((await platformAccounts.get(account.id))?.meta.mode).toBe("api");
+    const again = accountModeResponseSchema.parse(
+      await (await mode(account.id, { mode: "api" })).json(),
+    );
+    expect(again.changed).toBe(false);
+    expect(
+      accountModeResponseSchema.parse(await (await mode(account.id, { mode: "manual" })).json())
+        .account.publishingMode,
+    ).toBe("manual");
+  });
+
+  it("un modo inválido es 400; una cuenta de Instagram, 409 ACCOUNT_MODE_NOT_SUPPORTED", async () => {
+    const { account, mode, platformAccounts } = await linkedinSetup();
+    expect((await mode(account.id, { mode: "auto" })).status).toBe(400);
+    const instagram = await platformAccounts.upsertConnected(
+      {
+        brokerId: account.brokerId,
+        platform: "instagram",
+        externalAccountId: "1",
+        displayName: "@x",
+        tokenExpiresAt: null,
+        meta: {},
+        credentials: { accessToken: "token-instagram-de-prueba" },
+      },
+      { revokeOthers: true },
+    );
+    const response = await mode(instagram.id, { mode: "manual" });
+    expect(response.status).toBe(409);
+    expect(errorBodySchema.parse(await response.json()).error.code).toBe(
+      "ACCOUNT_MODE_NOT_SUPPORTED",
+    );
   });
 });

@@ -52,6 +52,7 @@ import {
   MERCADOLIBRE_REFRESH_TIMEOUT_MS,
 } from "@agentsales/publishers";
 import { createDiscordPublisher } from "@agentsales/publishers/discord";
+import { createLinkedInPublisher } from "@agentsales/publishers/linkedin";
 import { marketplaceProfileDir, openMarketplaceProfile } from "@agentsales/publishers/marketplace";
 import { createBancoCentralUf } from "@agentsales/publishers/uf";
 import { createXAuth, createXPublisher } from "@agentsales/publishers/x";
@@ -167,6 +168,12 @@ const xRefreshers =
         }),
       }
     : {};
+// LinkedIn, perfil personal (F9-T15): solo llega aquí una cuenta en modo `api`; en `manual` (el de
+// por defecto, D5) core deja el texto listo sin llamar a la red. Sus notas van al log solo con ids
+// y cifras, nunca con el token ni una URL.
+const linkedin = createLinkedInPublisher({
+  onNote: (note) => logger.info(note, "nota del publicador de LinkedIn"),
+});
 // Refresco de tokens (spec F3 §4.6): solo usa el token, así que funciona sin el par de la app
 // (como en la API); el par lo necesita solo el canje del OAuth, que el worker no hace.
 const instagramAuth = createInstagramAuth({
@@ -305,6 +312,7 @@ const jobs = buildJobs({
         instagram,
         discord,
         x,
+        linkedin,
         portal_inmobiliario: portal.publisher,
         // En `live` llena el formulario y deja la ventana al registro; en `dry-run` no abre nada.
         // En producción no se registra (D4): publicar con una cuenta de perfil ya falló en core.

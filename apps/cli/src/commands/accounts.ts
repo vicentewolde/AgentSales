@@ -1,5 +1,6 @@
 import {
   accountListResponseSchema,
+  accountModeResponseSchema,
   accountRefreshResponseSchema,
   accountResponseSchema,
   marketplaceLoginResponseSchema,
@@ -108,6 +109,9 @@ export function runAccounts(deps: AccountsDeps) {
           "→ Conecta Discord con: pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin",
         ),
       );
+      deps.print(
+        c.dim("→ Conecta LinkedIn con: pnpm -s cli accounts connect linkedin --broker <slug>"),
+      );
       return 0;
     }
     const now = deps.now();
@@ -117,7 +121,10 @@ export function runAccounts(deps: AccountsDeps) {
         accounts.map((account) => [
           account.id,
           brokers.get(account.brokerId)?.slug ?? account.brokerId,
-          PLATFORM_TEXT[account.platform],
+          // F9-T15: una red con modo por cuenta dice si publica a mano.
+          account.publishingMode === "manual"
+            ? `${PLATFORM_TEXT[account.platform]} (a mano)`
+            : PLATFORM_TEXT[account.platform],
           account.displayName,
           paintStatus(account, c),
           expiryText(account, now, c),
@@ -474,6 +481,43 @@ async function connectMarketplaceManual(deps: AccountsDeps, broker: string): Pro
 }
 
 /**
+ * `agentsales accounts connect linkedin --broker <slug>` (spec F9 §4.6 y §4.7, F9-T15): LinkedIn se
+ * conecta con su OAuth en el navegador, nunca pegando un token. La CLI pide a la API dónde empieza
+ * (`connect.linkedin.startUrl`, en el host de la dirección de retorno), le suma el corredor y lo abre:
+ * el inicio usa la sesión del panel de ese navegador, firma el `state` (de un solo uso) y manda a
+ * LinkedIn; la vuelta conecta la cuenta en modo a mano (D5) y termina en Cuentas del panel.
+ */
+async function connectLinkedIn(deps: AccountsDeps, broker: string): Promise<number> {
+  const c = deps.colors;
+  const { connect } = await unwrap(
+    deps.client.accounts.$get({ query: {} }),
+    accountListResponseSchema,
+  );
+  if (!connect.linkedin.configured) {
+    throw new CliError(
+      "LINKEDIN_NOT_CONFIGURED",
+      "A la API le falta la app de LinkedIn: LINKEDIN_CLIENT_ID y LINKEDIN_CLIENT_SECRET",
+      "Créala en linkedin.com/developers (Share on LinkedIn y Sign In with LinkedIn), anótalas en .env y reinicia la API (docs/integraciones/linkedin.md)",
+    );
+  }
+  const url = `${connect.linkedin.startUrl}?broker=${encodeURIComponent(broker)}`;
+  deps.print(`Abre este enlace para conectar LinkedIn: ${url}`);
+  deps.openUrl(url);
+  deps.print(
+    c.dim(
+      "→ Ábrelo en el navegador donde tienes el panel abierto (usa tu sesión). Autoriza en LinkedIn y vuelves a Cuentas",
+    ),
+  );
+  deps.print(
+    c.dim(
+      "  La cuenta queda a mano: AgentSales deja el texto listo y tú publicas y pegas el enlace. El acceso dura 60 días: la agenda avisa antes de que venza",
+    ),
+  );
+  deps.print(c.dim("→ Al terminar, revisa la cuenta con: agentsales accounts"));
+  return 0;
+}
+
+/**
  * `agentsales accounts connect instagram --broker <slug> --token-stdin` (spec F3 §4.6 y D4): lee el
  * token largo de Generate token desde la entrada estándar (`pbpaste | …`), nunca de un argumento,
  * y no lo muestra ni lo pone en un error. Sin `--token-stdin`, solo si la API ofrece el OAuth
@@ -489,11 +533,12 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
       channel !== "instagram" &&
       channel !== "mercadolibre" &&
       channel !== "marketplace" &&
-      channel !== "discord"
+      channel !== "discord" &&
+      channel !== "linkedin"
     ) {
       throw new CliError(
         "PLATFORM_INVALID",
-        `Se conecta instagram, mercadolibre, marketplace o discord: "${platform}"`,
+        `Se conecta instagram, mercadolibre, marketplace, discord o linkedin: "${platform}"`,
       );
     }
     // Una opción de otro canal no se ignora en silencio.
@@ -522,6 +567,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
     }
     const broker = brokerSlugOf(options.broker);
     if (channel === "discord") return connectDiscord(deps, broker, options.webhookStdin === true);
+    if (channel === "linkedin") return connectLinkedIn(deps, broker);
     if (channel === "mercadolibre")
       return connectMercadoLibre(deps, broker, options.urlStdin === true);
     if (channel === "marketplace" && options.manual) return connectMarketplaceManual(deps, broker);
@@ -748,6 +794,48 @@ export function runRefresh(deps: AccountsDeps, id: string, options: RefreshOptio
   });
 }
 
+export type ModeOptions = { yes?: boolean };
+
+/**
+ * `agentsales accounts mode <id> manual|api [--yes]` (F9-T15, ADR-0029 punto 9; administrador): cómo
+ * publica una cuenta de una red de contenido de marca. `manual` deja el texto y los medios listos y
+ * se publica a mano; `api` publica sola a la hora programada. Pasar a `api` pregunta antes (salvo
+ * `--yes`): en LinkedIn, solo cuando S2 y S3 estén resueltas (spec F9 §4.8).
+ */
+export function runMode(deps: AccountsDeps, id: string, mode: string, options: ModeOptions = {}) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const accountId = accountIdOf(id);
+    const wanted = mode.trim().toLowerCase();
+    if (wanted !== "manual" && wanted !== "api") {
+      throw new CliError("MODE_INVALID", `El modo es manual o api: "${mode}"`);
+    }
+    if (wanted === "api" && !options.yes) {
+      const confirmed = await deps.confirm(
+        "¿Publicar por API? La cuenta publicará sola a la hora programada, sin tu clic. En LinkedIn hazlo solo con S2 y S3 resueltas (spec F9 §4.8).",
+      );
+      if (!confirmed) {
+        deps.printError(c.yellow("No se cambió el modo: confirma en la terminal o usa --yes"));
+        return 1;
+      }
+    }
+    const { account, changed } = await unwrap(
+      deps.client.accounts[":id"].mode.$post({
+        param: { id: accountId },
+        json: { mode: wanted },
+      }),
+      accountModeResponseSchema,
+    );
+    const text = wanted === "manual" ? "a mano" : "por API";
+    deps.print(
+      changed
+        ? `${c.green("✓")} ${account.displayName} (${PLATFORM_TEXT[account.platform]}) publica ${text}`
+        : `Sin cambios: ${account.displayName} (${PLATFORM_TEXT[account.platform]}) ya publicaba ${text}`,
+    );
+    return 0;
+  });
+}
+
 export type DisconnectOptions = { yes?: boolean };
 
 /** El id de una cuenta: un uuid, como lo muestra `agentsales accounts`. */
@@ -839,15 +927,15 @@ export function register(program: Command, ctx: CliContext): void {
   const accounts = program
     .command("accounts")
     .description(
-      "Cuentas conectadas (Instagram, Mercado Libre, Marketplace y Discord): estado y vencimiento",
+      "Cuentas conectadas (Instagram, Mercado Libre, Marketplace, Discord y LinkedIn): estado y vencimiento",
     )
     .action(() => exitWith(() => runAccounts(deps())));
   accounts
     .command("connect")
     .description(
-      "Conecta una cuenta: Instagram con el token de Generate token; Mercado Libre con el enlace y la dirección de vuelta pegada; Marketplace iniciando sesión en una ventana de Chromium; Discord con la URL del webhook pegada",
+      "Conecta una cuenta: Instagram con el token de Generate token; Mercado Libre con el enlace y la dirección de vuelta pegada; Marketplace iniciando sesión en una ventana de Chromium; Discord con la URL del webhook pegada; LinkedIn con su OAuth en el navegador",
     )
-    .argument("<canal>", "instagram, mercadolibre, marketplace o discord")
+    .argument("<canal>", "instagram, mercadolibre, marketplace, discord o linkedin")
     .option("--broker <slug>", "corredor de la cuenta")
     .option(
       "--label <nombre>",
@@ -890,6 +978,17 @@ export function register(program: Command, ctx: CliContext): void {
     .option("--force", "renueva aunque no toque todavía (en Instagram, nunca antes de 24 h)")
     .action((id: string, options: RefreshOptions) =>
       exitWith(() => runRefresh(deps(), id, options)),
+    );
+  accounts
+    .command("mode")
+    .description(
+      "Cómo publica una cuenta de LinkedIn, X, Discord o TikTok: manual (deja el texto listo) o api (pregunta antes de api)",
+    )
+    .argument("<id>", "id de la cuenta (agentsales accounts)")
+    .argument("<modo>", "manual o api")
+    .option("--yes", "no pide confirmación al pasar a api")
+    .action((id: string, mode: string, options: ModeOptions) =>
+      exitWith(() => runMode(deps(), id, mode, options)),
     );
   accounts
     .command("disconnect")

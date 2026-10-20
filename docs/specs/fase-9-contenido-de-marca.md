@@ -18,7 +18,7 @@ AgentSales deja de ser solo para avisos: el operador gestiona su contenido de ma
 - **La IA propone** (ADR-0030): un plan de ideas con fecha sugerida para un período; el operador acepta, edita o descarta cada idea; al aceptar, se redactan los textos.
 - **Verificaciones por red** antes de aprobar: largo, escape de caracteres, menciones masivas, enlaces en X, datos que no están en el perfil.
 - **Panel y CLI:** Contenido (lista, editor por red con conteo de caracteres, medios), Plan (ideas), calendario semanal que mezcla posts y avisos, y la CLI `post`, `plan` y `brand`.
-- **Pruebas de entrada** (§4.8) con las cuentas reales, que hace el operador, antes de construir lo que dependa de ellas.
+- **Pruebas de entrada** (§4.8) con las cuentas reales, que hace el operador: desde el 2026-10-20, verificación obligatoria antes de publicar de verdad en cada red, no antes de construir.
 - **Costos y topes:** gasto de IA por marca (tope de F7, ahora también con posts y planes) y el costo de X anotado por publicación.
 
 ## 3. Fuera de alcance
@@ -129,8 +129,8 @@ Todas respetan `PUBLISH_MODE` y el `dry-run` de la publicación (ADR-0016): en `
 - `meta` por plataforma con su esquema zod, como Instagram y Mercado Libre. LinkedIn suma `mode` (`api` | `manual`); X suma `spendLimitUsd`.
 - Los secretos nunca van a logs ni a la bitácora: `redactText` reconoce la URL del webhook de Discord (`discord.com/api/webhooks/<id>/<token>`) y los `Bearer`, antes de que exista el primer publisher nuevo (T02).
 
-### 4.8 Pruebas de entrada (las hace el operador, antes de construir lo que dependa; S1 y S5, antes de publicar de verdad)
-**S1 (Instagram) y S5 (Discord) no bloquean construir** (decisión del operador, 2026-10-20): T13 y T14 se construyen contra simulaciones (`msw`), y la prueba es una **verificación obligatoria antes de cualquier publicación real** en esa red; si falla, se ajusta el código antes de publicar. Las demás siguen antes de construir lo que dependa de ellas. Se hacen **a mano**, con la consola o el generador de tokens de cada plataforma y los comandos de la sección 8 de su nota de integración; no necesitan el código de la aplicación. Cada una responde un NO VERIFICADO que decide el diseño. Después, cada publisher trae su propio `pnpm social:smoke --platform …` (que sí publica de verdad y por eso se declara en `CLAUDE.md` como `ml:test-user`, solo para el operador, en cuentas o servidores de prueba y con su instrucción en el chat).
+### 4.8 Pruebas de entrada (las hace el operador; ninguna bloquea construir: todas son verificación obligatoria antes de publicar de verdad)
+**Ninguna prueba bloquea construir** (decisiones del operador del 2026-10-20): S1 (Instagram) y S5 (Discord) para T13 y T14, y después S2 y S3 (LinkedIn), S4 (X) y S6 (TikTok) para T15, T16 y T26. Todo se construye contra simulaciones (`msw`), y cada prueba es una **verificación obligatoria antes de cualquier publicación real** en esa red; si falla, se ajusta el código (o el modo de la cuenta) antes de publicar. En LinkedIn, además, la cuenta nace en modo `manual` (D5) y solo pasa a `api` con S2 y S3 resueltas. Se hacen **a mano**, con la consola o el generador de tokens de cada plataforma y los comandos de la sección 8 de su nota de integración; no necesitan el código de la aplicación. Cada una responde un NO VERIFICADO que decide el diseño. Después, cada publisher trae su propio `pnpm social:smoke --platform …` (que sí publica de verdad y por eso se declara en `CLAUDE.md` como `ml:test-user`, solo para el operador, en cuentas o servidores de prueba y con su instrucción en el chat).
 
 | # | Prueba | Si falla |
 |---|---|---|
@@ -237,7 +237,7 @@ Una tarea (o un lote de tareas relacionadas) = una rama = un PR. F8 cerró (`v1.
 
 - **A** · el sujeto genérico, sin cambiar los avisos: T01 a T08
 - **B** · la marca, los posts y el texto: T09 a T12
-- **C** · las redes: T13 a T16 y T26 (TikTok); cada una sigue a su prueba de entrada
+- **C** · las redes: T13 a T16 y T26 (TikTok); cada una se construye contra simulaciones y su prueba de entrada se hace antes de publicar de verdad (decisión del operador, 2026-10-20)
 - **D** · panel y CLI: T17 a T19
 - **E** · la IA propone: T20 a T22
 - **F** · cierre: T23 a T25
@@ -257,7 +257,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 ### 5.2 Ejecución en paralelo (D21)
 **Olas** (lo que se puede hacer a la vez, según las dependencias):
 - **Entrega 1:** ola 1, T01 y T27 → ola 2, T02 y T03 → ola 3, T04 → ola 4, dos cadenas a la vez: el núcleo (T05 → T06 → T07 → T08) y la marca y el texto (T09 → T10 → T11) → ola 5, T12, T13 y T14 (S1 y S5, antes de publicar de verdad en Instagram y Discord; decisión del operador 2026-10-20).
-- **Entrega 2:** T15, T16, T26 y la cadena T17 → T18 a la vez; T19 al final (depende de los publishers).
+- **Entrega 2:** T15, T16, T26 y la cadena T17 → T18 a la vez (S2 y S3, S4 y S6, antes de publicar de verdad en LinkedIn, X y TikTok; decisión del operador 2026-10-20); T19 al final (depende de los publishers).
 - **Entrega 3:** T20 → T21 y T22 a la vez → T23, T24 y T25.
 
 **Reglas:**
@@ -399,9 +399,10 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] `pnpm check` pasa
 
 ### F9-T15 · LinkedIn
-- **Depende de:** T07, T10, **pruebas S2 y S3**
+- **Depende de:** T07, T10 (S2 y S3: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
 - **Descripción:** OAuth del perfil personal (con `state` firmado y de un solo uso), publisher de texto, imagen, varias imágenes y video por `/rest/posts` con la cabecera de versión, función de escape de `commentary`, modo `manual` por defecto (deja el texto listo y espera la confirmación), recordatorio en la agenda, aviso 7 días antes de que venza el token.
 - **Archivos principales:** `packages/publishers/src/linkedin/*`, `apps/api/src/routes/oauth.ts`
+- **Nota (2026-10-20):** el OAuth vive en `apps/api/src/routes/oauth-linkedin.ts` (montado en `/oauth/linkedin`, con el `state` de `oauth.ts`). `accounts connect linkedin --broker <slug>` abre el inicio del OAuth en el navegador (con la sesión del panel); el botón del panel queda para T17/T19. `accounts mode <id> manual|api` (administrador) cambia el modo; reconectar el mismo perfil conserva el modo. El lector del enlace (`parseLinkedInPostUrl`, en core y sin red) deja como `external_id` el URN del post, el mismo formato que guarda el publisher (`x-restli-id`); el enlace de «Copiar enlace» trae un URN `activity`, que no es el `share` de la API. El `DELETE` está en el cliente (`deleteLinkedInPost`, solo con URN `share` o `ugcPost`), pero retirar desde AgentSales sigue marcándose a mano (`retirePublication`): conectarlo queda para T19. `social:smoke --platform linkedin` no se construyó: S2 se hace a mano (§4.8).
 - **Hecho cuando:**
   - [ ] contratos con `msw` y tests del escape con todos los caracteres reservados
   - [ ] en modo `manual` no se llama a la red y la confirmación guarda el enlace
@@ -409,7 +410,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] `pnpm check` pasa
 
 ### F9-T16 · X
-- **Depende de:** T07, T10, **prueba S4**
+- **Depende de:** T07, T10 (S4: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
 - **Descripción:** OAuth 2.0 con PKCE (el verificador en la cookie firmada), refresco al publicar y en `tokens.refresh`, publisher de texto con imágenes o video (subida por partes), conteo ponderado de caracteres, `cost_usd`, `spendLimitUsd`, el 403 por texto repetido como `outcome_unknown`.
 - **Archivos principales:** `packages/publishers/src/x/*`
 - **Nota (2026-10-20):** construido contra simulaciones (msw); S4 es la verificación obligatoria antes de publicar de verdad (`x.md` §0). La marca del enlace es **por post** (`posts.x_link_allowed`, migración `0016`, `PATCH /api/posts/:id`): se suma al brief (el enlace tiene que estar en los dos), y sin ella la IA no recibe enlaces para X. El tope se fija con `accounts spend-limit <id> <dólares>` (administrador) y suma el `cost_usd` en `live` del mes de Chile de la cuenta sin contar las fallidas. `social:smoke --platform x` no se construyó (S4 se hace a mano). Falta la opción de la marca en `post edit` de la CLI (F9-T12) y en el panel (T17).
@@ -488,7 +489,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] `pnpm check` (o la CI) pasa
 
 ### F9-T26 · TikTok (video como borrador)
-- **Depende de:** T07, T10, **prueba S6**
+- **Depende de:** T07, T10 (S6: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
 - **Descripción:** OAuth (Login Kit) con refresco que rota, publisher en modo *Upload* (`video.upload`, `FILE_UPLOAD` por partes desde R2), estado asíncrono (consulta o webhook), traspaso a mano (`awaiting_manual_confirm`) hasta que el operador pega el enlace, variante de video para TikTok, `accounts connect tiktok`.
 - **Archivos principales:** `packages/publishers/src/tiktok/*`, `apps/api/src/routes/oauth.ts`
 - **Hecho cuando:**
@@ -557,3 +558,4 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 | 2026-10-20 | Revisión de F9-T11: F9-T16 suma el criterio de la marca explícita del operador por post para un enlace en X (hasta T16, "marcar" es escribirlo en el brief del operador) |
 | 2026-10-20 | Revisión de F9-T08: T12 suma el criterio de los comandos que la agenda ya sugiere para posts (incluido reintentar por id de publicación) |
 | 2026-10-20 | **Decisión del operador:** T13 (Instagram) y T14 (Discord) se construyen ya, contra simulaciones (`msw`); S1 y S5 pasan a ser verificación obligatoria **antes de cualquier publicación real**, no antes de construir (§4.8, dependencias de T13 y T14, §5.2 y riesgos). F9-T14: el video de Discord es la variante más liviana entre `x_video` e `ig_reel`, y si no cabe en 20 MiB sale solo el texto con una nota (sin enlace seguro todavía, §4.5 y D8); `social:smoke --platform discord` queda sin construir (S5 es a mano) |
+| 2026-10-20 | **Decisión del operador:** LinkedIn (T15), X (T16) y TikTok (T26) también se construyen ya, contra simulaciones (`msw`); S2 y S3 (LinkedIn), S4 (X) y S6 (TikTok) pasan a ser verificación obligatoria **antes de cualquier publicación real**, no antes de construir (§4.8 y dependencias de T15, T16 y T26). S4 (X) y S6 (TikTok) quedan igual que S2 y S3: se verifican antes de publicar de verdad en X y TikTok, no antes de construir T16 y T26. F9-T15: el OAuth en `routes/oauth-linkedin.ts`, `accounts connect linkedin` abre el inicio del OAuth (el botón del panel, T17/T19), `accounts mode` cambia el modo, el `DELETE` existe en el cliente pero retirar sigue a mano hasta T19, y `social:smoke --platform linkedin` queda sin construir (S2 es a mano) |

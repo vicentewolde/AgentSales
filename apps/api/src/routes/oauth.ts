@@ -20,7 +20,7 @@ import type { AppLogger } from "../logger.js";
 import { validated } from "../validation.js";
 
 /** Compara dos textos en tiempo constante (sin `node:crypto`: este módulo entra en `AppType`). */
-function sameText(a: string, b: string): boolean {
+export function sameText(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
@@ -44,6 +44,12 @@ export const instagramStateCookieName = (secure: boolean): string =>
  */
 export const mercadoLibreStateCookieName = (secure: boolean): string =>
   secure ? "__Host-agentsales_oauth_ml" : "agentsales_oauth_state_ml";
+/**
+ * La cookie del `state` de LinkedIn (spec F9 §4.7, F9-T15): con HTTPS, `__Host-agentsales_oauth_li`;
+ * sin él, la de desarrollo. Una por proveedor.
+ */
+export const linkedinStateCookieName = (secure: boolean): string =>
+  secure ? "__Host-agentsales_oauth_li" : "agentsales_oauth_state_li";
 
 /** `Lax` (la vuelta llega desde `auth.mercadolibre.cl`), `Path=/` y sin `Domain`, como la de Instagram. */
 export const oauthStateCookieOptions = (secure: boolean) => ({
@@ -74,6 +80,7 @@ export const OAUTH_STATE_PLATFORMS = {
   instagram: "instagram",
   mercadolibre: "mercadolibre",
   x: "x",
+  linkedin: "linkedin",
 } as const;
 export type OAuthStatePlatform = (typeof OAUTH_STATE_PLATFORMS)[keyof typeof OAUTH_STATE_PLATFORMS];
 
@@ -172,7 +179,7 @@ export type OAuthDeps = Omit<ConnectAccountDeps, "instagram"> & {
  * clave secreta equivocada de una dirección de retorno que no coincide o de un código usado. Nunca
  * el código de autorización ni los tokens: no están en el error.
  */
-function failureFields(caught: unknown) {
+export function failureFields(caught: unknown) {
   if (isAppError(caught)) {
     return caught.details === undefined
       ? { code: caught.code }

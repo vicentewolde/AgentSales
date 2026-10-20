@@ -122,6 +122,8 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /accounts/marketplace/manual": "admin",
   "POST /accounts/:id/refresh": "admin",
   "POST /accounts/:id/disconnect": "admin",
+  // F9-T15 (ADR-0029 punto 9): pasar una red de contenido de marca a `manual` o `api`.
+  "POST /accounts/:id/mode": "admin",
   // De sesión: el administrador conecta a cualquier corredor y un corredor, solo el suyo (la ruta
   // lo revisa con `instagram.connect`, ADR-0028).
   "GET /oauth/instagram/start": "session",
@@ -135,6 +137,10 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "GET /oauth/x/start": "session",
   "GET /oauth/x/callback": "public",
   "POST /accounts/:id/spend-limit": "admin",
+  // LinkedIn (F9-T15): el inicio con sesión (la ruta revisa `linkedin.connect`: el corredor, el
+  // suyo) y la vuelta pública, protegida por el `state` firmado de un solo uso y su cookie `Lax`.
+  "GET /oauth/linkedin/start": "session",
+  "GET /oauth/linkedin/callback": "public",
   // Las vueltas de Meta (F8-T17): de servidor a servidor, las protege la firma de la app; la página
   // del pedido la abre la persona que pidió el borrado (con su código).
   "POST /meta/deauthorize": "public",

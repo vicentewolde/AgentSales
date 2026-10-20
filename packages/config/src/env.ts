@@ -296,6 +296,14 @@ const envSchema = z
     X_CLIENT_ID: z.string().optional(),
     X_CLIENT_SECRET: z.string().optional(),
     X_REDIRECT_URI: httpUrl.optional(),
+    // LinkedIn (F9-T15, spec F9 §4.7): el par de la app de linkedin.com/developers (productos Share on
+    // LinkedIn y Sign In with LinkedIn using OpenID Connect). La dirección de retorno es la misma
+    // registrada en la pestaña Auth (comparación exacta). Si `http://localhost` se acepta: NO
+    // VERIFICADO (`linkedin.md` §3.3); en el servidor es la de `PUBLIC_URL`.
+    LINKEDIN_CLIENT_ID: z.string().optional(),
+    LINKEDIN_CLIENT_SECRET: z.string().optional(),
+    // Sin valor: `<PUBLIC_URL>/api/oauth/linkedin/callback`, o la API local (ver abajo).
+    LINKEDIN_REDIRECT_URI: httpUrl.optional(),
 
     // Facebook Marketplace (F5): avisos por día y cuenta (D8), la carpeta de los perfiles del
     // navegador (fuera del proyecto: guardan la sesión de Facebook, ADR-0017; la resuelve
@@ -353,6 +361,11 @@ const envSchema = z
       (env.PUBLIC_URL === undefined
         ? `http://127.0.0.1:${env.API_PORT}${API_PREFIX}/oauth/x/callback`
         : `${env.PUBLIC_URL}${API_PREFIX}/oauth/x/callback`),
+    LINKEDIN_REDIRECT_URI:
+      env.LINKEDIN_REDIRECT_URI ??
+      (env.PUBLIC_URL === undefined
+        ? `http://localhost:${env.API_PORT}${API_PREFIX}/oauth/linkedin/callback`
+        : `${env.PUBLIC_URL}${API_PREFIX}/oauth/linkedin/callback`),
   }));
 
 /** Lo que mira `backupIssues`: el respaldo a R2 necesita su bucket y su token, distintos de los de los medios. */
@@ -411,6 +424,7 @@ type ParsedEnv = {
   INSTAGRAM_REDIRECT_URI?: string | undefined;
   ML_REDIRECT_URI?: string | undefined;
   X_REDIRECT_URI?: string | undefined;
+  LINKEDIN_REDIRECT_URI?: string | undefined;
 };
 
 /**
@@ -440,6 +454,7 @@ function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
       "INSTAGRAM_REDIRECT_URI",
       "ML_REDIRECT_URI",
       "X_REDIRECT_URI",
+      "LINKEDIN_REDIRECT_URI",
     ] as const) {
       const value = env[variable];
       if (value !== undefined && !value.startsWith(`${env.PUBLIC_URL}/`)) {

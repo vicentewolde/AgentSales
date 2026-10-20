@@ -719,6 +719,11 @@ export const platformAccountViewSchema = z.object({
    * por defecto, US$10). Ausente en las demás plataformas.
    */
   spendLimitUsd: z.number().nonnegative().optional(),
+  /**
+   * Las redes de contenido de marca con modo por cuenta (ADR-0029 punto 9; LinkedIn desde F9-T15):
+   * `manual` (deja el texto listo y se publica a mano) o `api`; `null` en las demás plataformas.
+   */
+  publishingMode: z.enum(["api", "manual"]).nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -764,6 +769,15 @@ export const accountListResponseSchema = z.object({
      * anterior a F9-T16.
      */
     x: z.object({ configured: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) }).optional(),
+    /**
+     * LinkedIn (F9-T15): `configured` si la API tiene el par de la app (sin él, el inicio vuelve al
+     * panel con `LINKEDIN_NOT_CONFIGURED`), y el inicio del OAuth en el host de la dirección de
+     * retorno: la CLI le suma `?broker=<slug>` y lo abre en el navegador con la sesión del panel.
+     */
+    linkedin: z.object({
+      configured: z.boolean(),
+      startUrl: z.url({ protocol: /^https?$/ }),
+    }),
   }),
 });
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
@@ -851,6 +865,20 @@ export const discordConnectBodySchema = z
 export type DiscordConnectBody = z.infer<typeof discordConnectBodySchema>;
 
 /**
+ * `POST /accounts/:id/mode` (F9-T15, ADR-0029 punto 9): el modo de una cuenta de una red de
+ * contenido de marca, `manual` o `api` (solo el administrador; LinkedIn nace `manual`, D5).
+ */
+export const accountModeBodySchema = z.object({ mode: z.enum(["api", "manual"]) }).strict();
+export type AccountModeBody = z.infer<typeof accountModeBodySchema>;
+
+/** La respuesta de cambiar el modo: la cuenta y si cambió. */
+export const accountModeResponseSchema = z.object({
+  account: platformAccountViewSchema,
+  changed: z.boolean(),
+});
+export type AccountModeResponse = z.infer<typeof accountModeResponseSchema>;
+
+/**
  * `POST /accounts/:id/disconnect` (spec F5 §4.2): Marketplace exige `confirmed: true` (borra el
  * perfil del navegador con la sesión de Facebook). El cuerpo va siempre (`{}` sin confirmar).
  */
@@ -928,6 +956,8 @@ export const OAUTH_REDIRECT_ERRORS = [
   "OAUTH_CODE_MISSING",
   "INSTAGRAM_NOT_CONFIGURED",
   "MERCADOLIBRE_NOT_CONFIGURED",
+  // F9-T15: falta el par de la app de LinkedIn.
+  "LINKEDIN_NOT_CONFIGURED",
   "BROKER_NOT_FOUND",
   "INTERNAL_ERROR",
 ] as const;
@@ -937,7 +967,7 @@ export type OAuthRedirectError = (typeof OAUTH_REDIRECT_ERRORS)[number];
  * El proveedor con que vuelve el OAuth (`/cuentas?proveedor=…`, F8-T19): sin él, Instagram (la vuelta
  * de F3). Cambia el texto del aviso del panel.
  */
-export const OAUTH_PROVIDERS = ["instagram", "mercadolibre"] as const;
+export const OAUTH_PROVIDERS = ["instagram", "mercadolibre", "linkedin"] as const;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
 // --- F6-T10: calendario, la propiedad, Portal y el seguimiento (spec F6 §4.13) ---

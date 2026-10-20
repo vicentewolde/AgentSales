@@ -9,6 +9,7 @@ import {
   type DiscordWebhooks,
   discordWebhookParts,
   type InstagramAuth,
+  type LinkedInAuth,
   type MercadoLibreAuth,
   type SessionClient,
   type XAuth,
@@ -168,6 +169,44 @@ export function fakeXAuth(): XAuth & { calls: Array<{ code: string; verifier: st
       };
     },
     isRejected: () => false,
+  };
+}
+
+/**
+ * LinkedIn falso para la API (F9-T15): arma la URL de autorización con el `state`, canjea un código
+ * y responde el miembro, y registra las llamadas sin valores. El código decide el caso: `malo…` es
+ * `LINKEDIN_AUTH_INVALID`, `sin-permiso…` no trae `w_member_social` y `otro…` responde otro miembro.
+ */
+export function fakeLinkedInAuth(): LinkedInAuth & { calls: string[] } {
+  const calls: string[] = [];
+  let lastCode = "";
+  return {
+    calls,
+    authorizeUrl: (state) =>
+      `https://www.linkedin.com/oauth/v2/authorization?client_id=app&state=${encodeURIComponent(state)}`,
+    async exchangeCode(code) {
+      calls.push("exchangeCode");
+      lastCode = code;
+      if (code.startsWith("malo")) {
+        throw new AppError(
+          "LINKEDIN_AUTH_INVALID",
+          "LinkedIn no aceptó la autorización (venció, ya se usó o la dirección de retorno no coincide): conecta de nuevo",
+        );
+      }
+      return {
+        accessToken: "token-linkedin-de-prueba",
+        expiresAt: new Date("2026-12-19T12:00:00Z"),
+        scopes: code.startsWith("sin-permiso")
+          ? ["openid", "profile"]
+          : ["openid", "profile", "w_member_social"],
+      };
+    },
+    async me() {
+      calls.push("me");
+      return lastCode.startsWith("otro")
+        ? { memberId: "otro-miembro", name: "Otra Persona" }
+        : { memberId: "miembro-123", name: "Vicente Wolde" };
+    },
   };
 }
 
@@ -427,6 +466,12 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
       secureCookie: false,
       pkce: () => ({ verifier: TEST_PKCE_VERIFIER, challenge: "desafio-de-prueba" }),
       startUrl: "http://127.0.0.1:8787/api/oauth/x/start",
+    },
+    linkedin: {
+      auth: fakeLinkedInAuth(),
+      configured: true,
+      secureCookie: false,
+      startUrl: "http://localhost:8787/api/oauth/linkedin/start",
     },
     mercadoLibre: {
       auth: fakeMercadoLibreAuth(),

@@ -226,18 +226,25 @@ describe("parsePublishedUrl", () => {
   });
 
   it("las demás: el enlace https sin la consulta ni el fragmento", () => {
+    // Instagram no tiene lector propio (X, LinkedIn y Discord sí, cada uno con su prueba).
+    expect(parsePublishedUrl("instagram", "  https://www.instagram.com/p/AbC1/?igsh=1#c ")).toEqual(
+      {
+        externalId: "https://www.instagram.com/p/AbC1/",
+        url: "https://www.instagram.com/p/AbC1/",
+      },
+    );
+  });
+
+  it("LinkedIn: el URN del post (el formato que guarda el publisher) y su enlace limpio", () => {
     expect(
       parsePublishedUrl(
         "linkedin",
         "  https://www.linkedin.com/feed/update/urn:li:share:9/?utm=1#c ",
       ),
     ).toEqual({
-      externalId: "https://www.linkedin.com/feed/update/urn:li:share:9/",
+      externalId: "urn:li:share:9",
       url: "https://www.linkedin.com/feed/update/urn:li:share:9/",
     });
-    expect(parsePublishedUrl("x", "https://x.com/agentpey/status/1").url).toBe(
-      "https://x.com/agentpey/status/1",
-    );
   });
 
   it("Discord: el id del mensaje (el mismo que guarda el publisher) y su enlace limpio", () => {

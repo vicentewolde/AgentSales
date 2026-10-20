@@ -19,6 +19,7 @@ const BROKER_CAN: Readonly<Record<Permission, boolean>> = {
   "instagram.connect": true,
   // F9-T16: conectar su propia cuenta de X.
   "x.connect": true,
+  "linkedin.connect": true,
   "broker.settings": false,
   "brokers.create": false,
   "users.manage": false,

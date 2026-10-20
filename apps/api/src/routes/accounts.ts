@@ -10,7 +10,10 @@ import {
   discordAccountMetaSchema,
   instagramAccountMetaSchema,
   isAppError,
+  isManualAccount,
   type JobQueue,
+  linkedinAccountMetaSchema,
+  MANUAL_MODE_PLATFORMS,
   type MercadoLibreAuth,
   marketplaceAccountMetaSchema,
   marketplaceLoginErrorText,
@@ -23,6 +26,7 @@ import {
   refreshAccountToken,
   requestMarketplaceLogin,
   requireBroker,
+  setAccountMode,
   setXSpendLimit,
   type TokenRefreshResult,
   xAccountMetaSchema,
@@ -33,10 +37,12 @@ import { setCookie } from "hono/cookie";
 import type { AppEnv } from "../auth.js";
 import {
   type AccountListResponse,
+  type AccountModeResponse,
   type AccountRefreshResponse,
   type AccountResponse,
   accountDisconnectBodySchema,
   accountListQuerySchema,
+  accountModeBodySchema,
   accountRefreshBodySchema,
   connectTokenBodySchema,
   discordConnectBodySchema,
@@ -99,6 +105,11 @@ export type AccountRoutesDeps = ConnectAccountDeps &
      * `X_REDIRECT_URI`), para `GET /accounts`.
      */
     x: { configured: boolean; startUrl: string };
+    /**
+     * LinkedIn (F9-T15): si está el par de la app y dónde empieza su OAuth (en el host de
+     * `LINKEDIN_REDIRECT_URI`), para la CLI.
+     */
+    linkedin: { configured: boolean; startUrl: string };
   };
 
 /** Sin el par de la app no se arma la URL ni se canjea: el canje mandaría un secret vacío. */
@@ -225,6 +236,19 @@ function shownMeta(account: PlatformAccount): ShownMeta | null {
       ...NO_SESSION,
     };
   }
+  if (account.platform === "linkedin") {
+    // LinkedIn (F9-T15): el token de 60 días no se renueva solo; los permisos del canje.
+    const meta = linkedinAccountMetaSchema.safeParse(account.meta);
+    if (!meta.success) return null;
+    return {
+      tokenExpiryEstimated: false,
+      connectedAt: meta.data.connectedAt,
+      tokenRefreshedAt: null,
+      accountType: null,
+      permissions: meta.data.scopes,
+      ...NO_SESSION,
+    };
+  }
   if (account.platform === "portal_inmobiliario") {
     const meta = mercadoLibreAccountMetaSchema.safeParse(account.meta);
     if (!meta.success) return null;
@@ -271,6 +295,12 @@ export function accountView(account: PlatformAccount): PlatformAccountView {
     marketplaceMode: known?.marketplaceMode ?? null,
     // X (F9-T16): el tope de gasto del mes.
     ...(account.platform === "x" ? { spendLimitUsd: xSpendLimitOf(account) } : {}),
+    // F9-T15: el modo de una red de contenido de marca (ADR-0029 punto 9); sin `mode`, por API.
+    publishingMode: (MANUAL_MODE_PLATFORMS as readonly string[]).includes(account.platform)
+      ? isManualAccount(account)
+        ? "manual"
+        : "api"
+      : null,
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
   };
@@ -325,6 +355,7 @@ export function accountRoutes(deps: AccountRoutesDeps) {
           },
           marketplace: { automation: deps.marketplaceAutomation },
           x: { configured: deps.x.configured, startUrl: deps.x.startUrl },
+          linkedin: { configured: deps.linkedin.configured, startUrl: deps.linkedin.startUrl },
         },
       };
       return c.json(body, 200);
@@ -474,6 +505,21 @@ export function accountRoutes(deps: AccountRoutesDeps) {
           spendLimitUsd: c.req.valid("json").spendLimitUsd,
         });
         const body: AccountResponse = { account: accountView(account) };
+        return c.json(body, 200);
+      },
+    )
+    .post(
+      "/:id/mode",
+      validated("param", idParamSchema),
+      validated("json", accountModeBodySchema),
+      async (c) => {
+        // F9-T15 (ADR-0029 punto 9): `manual` o `api` en una red de contenido de marca; solo el
+        // administrador (`ROUTE_ACCESS`). LinkedIn pasa a `api` cuando S2 y S3 estén resueltas.
+        const { account, changed } = await setAccountMode(deps, {
+          accountId: c.req.valid("param").id,
+          mode: c.req.valid("json").mode,
+        });
+        const body: AccountModeResponse = { account: accountView(account), changed };
         return c.json(body, 200);
       },
     )

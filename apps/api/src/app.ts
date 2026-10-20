@@ -46,6 +46,7 @@ import { importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
 import { type MetaSignatureVerifier, metaRoutes } from "./routes/meta.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
+import { type LinkedInOAuthDeps, linkedinOAuthRoutes } from "./routes/oauth-linkedin.js";
 import { postRoutes } from "./routes/posts.js";
 import {
   listingPublicationRoutes,
@@ -148,6 +149,12 @@ export type AppDeps = {
    * `X_REDIRECT_URI` (como `instagramStartUrl`).
    */
   x: Omit<OAuthDeps["x"], "auth"> & { auth: XAuth; startUrl: string };
+  /**
+   * LinkedIn (F9-T15): el OAuth del perfil personal (`createLinkedInAuth`), si está el par de la app,
+   * si la cookie del `state` va `Secure` (dirección de retorno `https://`) y dónde empieza el OAuth
+   * (`/api/oauth/linkedin/start` en el host de `LINKEDIN_REDIRECT_URI`).
+   */
+  linkedin: LinkedInOAuthDeps["linkedin"] & { startUrl: string };
   /**
    * Mercado Libre (spec F4 §4.2): el OAuth con la dirección pegada, `configured` si está el par de
    * la app (sin él, conectar no llama) y la dirección de retorno que se muestra (`ML_REDIRECT_URI`).
@@ -350,6 +357,10 @@ export function createApp(input: AppDeps) {
       }),
     )
     .route("/oauth", oauthRoutes({ ...deps, stateHash: (nonce) => deps.auth.tokens.hash(nonce) }))
+    .route(
+      "/oauth/linkedin",
+      linkedinOAuthRoutes({ ...deps, stateHash: (nonce) => deps.auth.tokens.hash(nonce) }),
+    )
     .route("/meta", metaRoutes(deps));
   app.onError(createErrorHandler(deps.logger));
   app.notFound(notFoundHandler);

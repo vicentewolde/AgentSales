@@ -58,6 +58,8 @@ import {
 } from "@agentsales/publishers";
 // La subruta de Discord (F9-T14): solo el cliente del webhook, para conectarlo sin publicar.
 import { createDiscordWebhooks } from "@agentsales/publishers/discord";
+// La subruta de LinkedIn (F9-T15): solo su OAuth, para conectar el perfil sin publicar.
+import { createLinkedInAuth } from "@agentsales/publishers/linkedin";
 import { createPkcePair, createXAuth } from "@agentsales/publishers/x";
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage, r2BucketOrigin } from "@agentsales/storage";
@@ -213,6 +215,19 @@ const app = createApp({
     pkce: createPkcePair,
     // En el host de la vuelta: la cookie firmada con el verificador distingue `127.0.0.1`.
     startUrl: instagramStartUrlOf(env.X_REDIRECT_URI),
+  },
+  // LinkedIn (F9-T15): sin el par de la app, el inicio vuelve al panel con LINKEDIN_NOT_CONFIGURED
+  // sin llamar. Tope de 10 s: el operador espera la vuelta.
+  linkedin: {
+    auth: createLinkedInAuth({
+      clientId: env.LINKEDIN_CLIENT_ID ?? "",
+      clientSecret: env.LINKEDIN_CLIENT_SECRET ?? "",
+      redirectUri: env.LINKEDIN_REDIRECT_URI,
+      timeoutMs: 10_000,
+    }),
+    configured: Boolean(env.LINKEDIN_CLIENT_ID && env.LINKEDIN_CLIENT_SECRET),
+    secureCookie: env.LINKEDIN_REDIRECT_URI.startsWith("https://"),
+    startUrl: instagramStartUrlOf(env.LINKEDIN_REDIRECT_URI),
   },
   mercadoLibre: {
     // Sin el par de la app, conectar responde MERCADOLIBRE_NOT_CONFIGURED sin llamar (el canje

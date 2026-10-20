@@ -142,6 +142,25 @@ const ADVICE: Readonly<Record<string, string>> = {
   X_MEDIA_REJECTED: "X no aceptó un medio: revisa el video o las imágenes del post y reintenta.",
   X_MEDIA_UNAVAILABLE: RETRY_LATER,
   X_UNREACHABLE: RETRY_LATER,
+  // LinkedIn (F9-T15, `linkedin.md` §7): el token dura 60 días y no se renueva solo.
+  LINKEDIN_AUTH_INVALID:
+    "El acceso de LinkedIn venció o se revocó: reconecta con accounts connect linkedin y reintenta.",
+  LINKEDIN_PERMISSION_DENIED:
+    "Reconecta LinkedIn y acepta el permiso para publicar (la app necesita Share on LinkedIn).",
+  LINKEDIN_FORBIDDEN:
+    "LinkedIn no dejó publicar con esta cuenta: reconéctala; si se repite, publícala a mano.",
+  LINKEDIN_RATE_LIMITED:
+    "LinkedIn limitó las llamadas del día (se reinician a medianoche UTC): el sistema la reprograma; si no, reintenta mañana.",
+  LINKEDIN_REQUEST_REJECTED: "Corrige lo que dice el mensaje (el texto o los medios) y reintenta.",
+  LINKEDIN_TEXT_TOO_LONG:
+    "Acorta el texto de LinkedIn (máx. 3.000 caracteres) y apruébalo de nuevo.",
+  LINKEDIN_MEDIA_REJECTED:
+    "LinkedIn rechazó un medio: revisa lo que dice el mensaje, prepara de nuevo y reintenta.",
+  LINKEDIN_MEDIA_NOT_READY: RETRY_LATER,
+  LINKEDIN_MEDIA_UNAVAILABLE: RETRY_LATER,
+  LINKEDIN_VERSION_DEPRECATED:
+    "LinkedIn cerró la versión de su API que usa AgentSales: hay que subir LINKEDIN_API_VERSION en el código.",
+  LINKEDIN_UNREACHABLE: RETRY_LATER,
   // Del sistema.
   PUBLISHER_NOT_CONFIGURED: ASK_HELP,
   INTERNAL_ERROR: ASK_HELP,

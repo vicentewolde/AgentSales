@@ -11,6 +11,7 @@ Resumen de cómo se integra cada canal. Antes de implementar un publisher, el su
 | TikTok | Content Posting API | Post-MVP | Medio |
 | Discord | Webhook de canal (Execute Webhook) | F9 (T14) | Bajo |
 | X | API v2 con OAuth 2.0 y PKCE (pago por uso) | F9 (T16) | Medio-alto |
+| LinkedIn | Posts API (`/rest/posts`), perfil personal, a mano por defecto | F9 (T15) | Medio-alto (términos) |
 
 ## Instagram
 
@@ -80,6 +81,15 @@ Detalle en `docs/integraciones/x.md` (§0, lo que hace hoy AgentSales) y spec F9
 - **Publicar:** texto de 280 caracteres ponderados con hasta 4 imágenes o 1 video (`x_video`, subido por partes), una sola vez (`sendOnce`). El 402 por saldo y el 429 son "no enviado" (el 429 se reprograma); el 403 por texto repetido, un 5xx o un corte dejan `outcome_unknown`. Sin hilos.
 - **Costo:** pago por uso. Cada publicación anota `cost_usd` (US$0,015; US$0,20 con enlace). Un enlace exige la marca explícita del operador en el post (`xLinkAllowed`). Pasado el tope del mes de la cuenta (`spendLimitUsd`, US$10 por defecto; `accounts spend-limit <id> <dólares>`), la publicación queda `failed` sin llamar a X.
 - **Estado:** construido y probado solo con simulaciones (msw). **La prueba S4 del operador (spec F9 §4.8) es obligatoria antes de publicar de verdad.**
+
+## LinkedIn (F9, contenido de marca)
+
+Detalle en `docs/integraciones/linkedin.md` (§0, lo que hace hoy AgentSales) y spec F9 §4.4 a §4.7.
+
+- **Cuenta y conexión:** el **perfil personal** (la página de empresa, después: exige Community Management). OAuth 2.0 con `openid profile w_member_social` (app con *Share on LinkedIn* y *Sign In with LinkedIn using OpenID Connect*; `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` y `LINKEDIN_REDIRECT_URI`). `pnpm -s cli accounts connect linkedin --broker <slug>` abre el inicio en el navegador (con la sesión del panel; el corredor conecta el suyo con `linkedin.connect`); el `state` va firmado con la plataforma y la marca, en la cookie `__Host-agentsales_oauth_li`, y es de un solo uso. Token de **60 días sin refresco**: la agenda avisa 7 días antes y se reconecta.
+- **Modo:** **`manual` por defecto** (D5, por el §3.1(26) de sus términos): a la hora programada la publicación queda lista para publicar a mano (`awaiting_manual_confirm`, sin llamar a LinkedIn) y se confirma con el enlace (el URN del post es el `external_id`). `accounts mode <id> api` (administrador) solo con S2 y S3 resueltas.
+- **Publicar en `api`:** `POST /rest/posts` con `Linkedin-Version: 202610`: texto (3.000 caracteres con el `commentary` escapado y los hashtags como texto), imagen, varias imágenes (2 a 20) o un video MP4 (subida por partes de 4 MiB). Una sola vez (`sendOnce`); un 5xx o un corte dejan `outcome_unknown`. Un 401 deja la cuenta vencida; un 429 reprograma. `DELETE /rest/posts/{urn}` existe en el cliente; retirar desde AgentSales sigue a mano hasta F9-T19.
+- **Estado:** construido y probado solo con simulaciones (msw). **Las pruebas S2 y S3 del operador (spec F9 §4.8) son obligatorias antes de publicar de verdad.**
 
 ## Yapo (post-MVP)
 
