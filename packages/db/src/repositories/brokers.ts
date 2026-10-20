@@ -155,6 +155,8 @@ export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
                 eq(media.id, mediaId),
                 eq(media.brokerId, id),
                 isNull(media.listingId),
+                // Desde F9 un medio sin aviso puede ser de un post (ADR-0029): ese no es un logo.
+                isNull(media.postId),
                 eq(media.role, "original"),
               ),
             );

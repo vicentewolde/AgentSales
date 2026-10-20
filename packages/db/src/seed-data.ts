@@ -16,6 +16,32 @@ export const DEMO_BROKER = {
 } satisfies typeof brokers.$inferInsert;
 
 /**
+ * Las marcas del operador (spec F9 §4.3 y §4.11, ADR-0029 punto 7): su marca personal y AgentPey,
+ * sin cuentas y con su perfil editorial vacío, que el operador llena. Los colores son provisorios:
+ * se cambian con `agentsales brokers edit`, y el seed no los vuelve a pisar.
+ */
+export const OPERATOR_BRANDS = [
+  {
+    slug: "vinny",
+    name: "Vinny",
+    brandName: "Vinny",
+    primaryColor: "#111827",
+    secondaryColor: "#F2A900",
+    kind: "brand",
+    operatorOwned: true,
+  },
+  {
+    slug: "agentpey",
+    name: "AgentPey",
+    brandName: "AgentPey",
+    primaryColor: "#1F4E79",
+    secondaryColor: "#F2A900",
+    kind: "brand",
+    operatorOwned: true,
+  },
+] as const satisfies readonly (typeof brokers.$inferInsert)[];
+
+/**
  * Encabezados de la hoja **Propiedades** de `data/plantillas/plantilla_propiedades.xlsx`, en
  * orden. El lector de Excel (F1-T03) verifica que la plantilla real coincida.
  */

@@ -25,7 +25,7 @@ import { createMediaRepository } from "../src/repositories/media.js";
 import { createMetaDeletionRepository } from "../src/repositories/meta-deletion-requests.js";
 import { createPlatformAccountRepository } from "../src/repositories/platform-accounts.js";
 import { createPublicationRepository } from "../src/repositories/publications.js";
-import { metaDeletionRequests } from "../src/schema.js";
+import { contentRuns, contents, metaDeletionRequests, posts, publications } from "../src/schema.js";
 import { newContent } from "./content-repositories.contract.js";
 import { brokerData, newListing } from "./import-repositories.contract.js";
 import { createTestDatabase, type TestDatabase } from "./pglite.js";
@@ -339,6 +339,88 @@ describe("pedidos de borrado de Meta · lo que el puerto no muestra (PGlite)", (
     expect(
       (await repos.publications.listEvents(publication.id)).some((e) => e.type === "data_deleted"),
     ).toBe(false);
+  });
+
+  it("borrar los datos no toca los posts ni sus textos; sí la publicación del post en esa cuenta (F9)", async () => {
+    // Spec F9 §4.11: `posts` y `contents` son textos del operador que también alimentan X y
+    // LinkedIn; el borrado sigue filtrando por cuenta (ADR-0027).
+    const database = await createTestDatabase();
+    databases.push(database);
+    const { db } = database;
+    const repos: Repos = {
+      brokers: createBrokerRepository(db),
+      listings: createListingRepository(db),
+      media: createMediaRepository(db),
+      contentRuns: createContentRunRepository(db),
+      contents: createContentRepository(db),
+      publications: createPublicationRepository(db),
+      platformAccounts: createPlatformAccountRepository(db, {
+        secretBox: createSecretBox("k".repeat(32)),
+      }),
+      metaDeletion: createMetaDeletionRepository(db),
+    };
+    const user = unique("1784");
+    const { account } = await seed(repos, user);
+    const [post] = await db
+      .insert(posts)
+      .values({
+        brokerId: account.brokerId,
+        topic: "Lo que aprendo",
+        brief: "Brief",
+        kind: "image",
+      })
+      .returning();
+    const [run] = await db
+      .insert(contentRuns)
+      .values({ postId: post?.id, status: "succeeded" })
+      .returning();
+    const [text] = await db
+      .insert(contents)
+      .values({
+        postId: post?.id,
+        contentRunId: run?.id ?? "",
+        platform: "instagram",
+        language: "en",
+        body: "Texto del post",
+        status: "approved",
+        llmProvider: "fake",
+        llmModel: "fake",
+        promptVersion: "social-v1",
+        rawOutput: { body: "Texto del post" },
+      })
+      .returning();
+    const [postPublication] = await db
+      .insert(publications)
+      .values({
+        postId: post?.id,
+        platformAccountId: account.id,
+        platform: "instagram",
+        format: "post",
+        language: "en",
+        contentId: text?.id ?? "",
+        status: "published",
+        dryRun: false,
+        externalId: "17900000000000002",
+        externalUrl: "https://www.instagram.com/p/post/",
+      })
+      .returning();
+    const postsBefore = await db.select().from(posts);
+    const contentsBefore = await db.select().from(contents);
+
+    await repos.metaDeletion.eraseInstagramUser({
+      instagramUserId: user,
+      instagramUserIdHash: "hmac",
+      code: unique("codigo"),
+      receivedAt: RECEIVED,
+    });
+
+    expect(await db.select().from(posts)).toEqual(postsBefore);
+    expect(await db.select().from(contents)).toEqual(contentsBefore);
+    const [erased] = await db
+      .select()
+      .from(publications)
+      .where(eq(publications.id, postPublication?.id ?? ""));
+    expect(erased).toMatchObject({ status: "published", externalId: null, externalUrl: null });
   });
 
   it("la base guarda el hash del usuario, nunca el user_id", async () => {

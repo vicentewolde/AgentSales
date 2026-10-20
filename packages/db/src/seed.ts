@@ -1,8 +1,8 @@
 import { AppError } from "@agentsales/core";
-import { type SQL, sql } from "drizzle-orm";
+import { inArray, type SQL, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "./client.js";
-import { brokers, fieldDefinitions } from "./schema.js";
-import { DEMO_BROKER, REAL_ESTATE_FIELD_DEFINITIONS } from "./seed-data.js";
+import { brokers, editorialProfiles, fieldDefinitions } from "./schema.js";
+import { DEMO_BROKER, OPERATOR_BRANDS, REAL_ESTATE_FIELD_DEFINITIONS } from "./seed-data.js";
 
 /** `excluded.<columna>` de un upsert: el valor que se intentó insertar. */
 const excluded = (column: { name: string }): SQL => sql.raw(`excluded."${column.name}"`);
@@ -47,5 +47,32 @@ export async function seed(db: SchemaDatabase): Promise<SeedResult> {
     })
     .returning({ id: fieldDefinitions.id });
 
+  await seedOperatorBrands(db);
+
   return { brokerId: row.id, fieldDefinitions: defs.length };
+}
+
+/**
+ * Las marcas del operador y sus perfiles editoriales vacíos (spec F9 §4.11). A diferencia del
+ * corredor demo, **no pisa** lo que ya existe: el operador edita la marca y llena su perfil, y
+ * correrlo de nuevo no lo borra (`ON CONFLICT DO NOTHING`). Devuelve los id por slug.
+ */
+export async function seedOperatorBrands(db: SchemaDatabase): Promise<Record<string, string>> {
+  await db
+    .insert(brokers)
+    .values([...OPERATOR_BRANDS])
+    .onConflictDoNothing({ target: brokers.slug });
+  const slugs = OPERATOR_BRANDS.map((brand) => brand.slug);
+  const rows = await db
+    .select({ id: brokers.id, slug: brokers.slug })
+    .from(brokers)
+    .where(inArray(brokers.slug, slugs));
+  if (rows.length !== slugs.length) {
+    throw new AppError("SEED_FAILED", "No se pudieron sembrar las marcas del operador");
+  }
+  await db
+    .insert(editorialProfiles)
+    .values(rows.map((brand) => ({ brokerId: brand.id })))
+    .onConflictDoNothing({ target: editorialProfiles.brokerId });
+  return Object.fromEntries(rows.map((brand) => [brand.slug, brand.id]));
 }
