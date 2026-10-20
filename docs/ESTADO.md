@@ -3,9 +3,18 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-19
-**Fase actual:** ninguna en curso. F8 · En internet cerrada el 2026-10-19 (`v1.0.0`, el MVP; spec `docs/specs/fase-8-en-internet.md`)
-**Última tarea:** T22 (cierre de F8): criterios verificados, auditoría del `arquitecto`, `CHANGELOG [1.0.0]` y tag `v1.0.0` (con tu permiso). D5 cambiada por ti: F8 cerró con el App Review pendiente, no enviado
-**Siguiente paso:** lo que sigue sale del backlog Post-MVP de `docs/06-roadmap.md` (respuestas a DMs y comentarios, Google Sheets como origen de la carga, Yapo, TikTok…); cuando elijas, `/fase-plan 9`. Entre tanto, tus pendientes de abajo
+**Fase actual:** F9 · Contenido de marca (spec **aprobado** el 2026-10-19: `docs/specs/fase-9-contenido-de-marca.md`; ADR-0029 y ADR-0030). F8 cerrada (`v1.0.0`)
+**Última tarea:** `/fase-plan 9`: spec de F9 aprobado con tres entregas (`v1.1.0`, `v1.2.0`, `v1.3.0`), ejecución en paralelo con agentes en worktrees y la CI como juez, y la decisión de una instancia ahora y dos del mismo código al llegar el primer cliente (D19)
+**Siguiente paso:** entrega 1, ola 1: T01 (plataformas, marcas y estados nuevos) y T27 (despliegue parametrizado) en paralelo. Tus pruebas de entrada (abajo) corren en paralelo al código
+
+## Pendiente tuyo de F9
+Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada prueba de entrada bloquea solo su red (spec §4.8; los pasos están en la sección 8 de cada nota de `docs/integraciones/`):
+- [ ] **S1 · Instagram:** una publicación real y neutra en tu cuenta profesional, vista desde una cuenta **sin rol** en la app (modo desarrollo), solo con tu instrucción en el chat. Bloquea T13
+- [ ] **S2 y S3 · LinkedIn:** el token de «Share on LinkedIn» publica en `/rest/posts`; escribir a LinkedIn Developer Support por el §3.1(26) de sus términos. Bloquea T15
+- [ ] **S4 · X:** cuenta de desarrollador con créditos (tope sugerido US$10 al mes), un post, un reply a ti mismo y un texto repetido. Bloquea T16
+- [ ] **S5 · Discord:** un servidor privado de pruebas con un webhook; texto, imagen y un video. Bloquea T14
+- [ ] **S6 · TikTok:** crear la app con tu cuenta de Chile, autorizar una cuenta personal con `video.upload` y ver un borrador en la bandeja. Bloquea T26
+- [ ] **Para el piloto (F10), sin código y de plazo largo:** la segunda app de Meta (anuncios), la Página y la cuenta publicitaria de la oficina, el plan Pro de ManyChat, el abogado por la Ley 21.719 y las pruebas A1 y A2 (spec §4.17)
 
 ## Pendiente tuyo tras cerrar F8
 - [ ] **Meta:** verificación del negocio → verificación como proveedor técnico → enviar el App Review de `instagram_business_basic` e `instagram_business_content_publish` (videos, una llamada exitosa por permiso en los 30 días previos, el usuario de demostración). Unas 5 semanas sin rechazos; puede pedir una empresa o inicio de actividades. Mientras, los corredores que publican en Instagram son evaluadores
@@ -83,10 +92,38 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota de Instagram §8, punto 8)
 
 ## Progreso de la fase
-Sin fase en curso (F8 cerrada: 22 tareas, `v1.0.0`; su detalle está en el spec y en `CHANGELOG.md`). Al planificar la siguiente, `/fase-plan N` reinicia esta tabla.
+F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 ramas con código a la vez, cada una en su worktree, con la CI como juez.
 
-| Tarea | Estado | PR |
-|---|---|---|
+| Entrega | Tarea | Estado | PR |
+|---|---|---|---|
+| — | Spec F9 (`/fase-plan 9`) | ✅ aprobado | (este PR) |
+| 1 · `v1.1.0` | T01 Plataformas, marcas y estados nuevos | ⏳ pendiente | |
+| 1 | T27 Despliegue parametrizado por instancia | ⏳ pendiente | |
+| 1 | T02 Credenciales por plataforma y redactor | ⏳ pendiente | |
+| 1 | T03 Esquema de posts y migración | ⏳ pendiente | |
+| 1 | T04 Repositorios con sujeto y `PostLock` | ⏳ pendiente | |
+| 1 | T05 Aprobar, editar y abrir publicaciones sobre un sujeto | ⏳ pendiente | |
+| 1 | T06 El intento de publicar, el traspaso por cuenta y el resultado dudoso | ⏳ pendiente | |
+| 1 | T07 Programar, reloj, vigilancia y cancelar sobre un sujeto | ⏳ pendiente | |
+| 1 | T08 Agenda y seguimiento con posts | ⏳ pendiente | |
+| 1 | T09 Perfil editorial | ⏳ pendiente | |
+| 1 | T10 Posts manuales y sus medios | ⏳ pendiente | |
+| 1 | T11 El texto por red con IA | ⏳ pendiente | |
+| 1 | T12 Aprobar, publicar y programar un post (CLI) | ⏳ pendiente | |
+| 1 | T13 Instagram para posts (tras S1) | ⏳ pendiente | |
+| 1 | T14 Discord (tras S5) | ⏳ pendiente | |
+| 2 · `v1.2.0` | T15 LinkedIn (tras S2 y S3) | ⏳ pendiente | |
+| 2 | T16 X (tras S4) | ⏳ pendiente | |
+| 2 | T26 TikTok, video como borrador (tras S6) | ⏳ pendiente | |
+| 2 | T17 Panel: Contenido | ⏳ pendiente | |
+| 2 | T18 Panel: calendario | ⏳ pendiente | |
+| 2 | T19 CLI de cuentas y guía del operador | ⏳ pendiente | |
+| 3 · `v1.3.0` | T20 El plan de ideas (core y worker) | ⏳ pendiente | |
+| 3 | T21 Plan en el panel y la CLI | ⏳ pendiente | |
+| 3 | T22 Evaluación de la calidad | ⏳ pendiente | |
+| 3 | T23 Documentación | ⏳ pendiente | |
+| 3 | T24 Prueba con las cuentas reales (contigo) | ⏳ pendiente | |
+| 3 | T25 Cierre de fase | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 

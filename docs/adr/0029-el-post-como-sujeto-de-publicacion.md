@@ -1,0 +1,45 @@
+# ADR-0029 · Un post es otro sujeto de publicación, junto al aviso
+
+- **Estado:** Aceptado
+- **Fecha:** 2026-10-19
+- **Reemplaza a / Modifica a:** ADR-0006 (el aviso deja de ser la única cosa que se publica), ADR-0014 (la publicación puede colgar de un post y suma un resultado dudoso), ADR-0015 (el access token se renueva al publicar, por plataforma) y ADR-0017 y ADR-0023 (el traspaso a mano deja de ser solo de Marketplace)
+
+## Contexto
+AgentSales publica avisos (`listings`). El operador quiere usarlo también como gestor de contenido de marca (su marca personal y AgentPey) en Instagram, X, LinkedIn y Discord, y más adelante ofrecerlo a otros. Un post de marca no tiene precio, comuna ni ficha: es un tema, un texto por red y, a veces, imágenes o video.
+
+Hoy `contents`, `content_runs` y `publications` cuelgan de `listing_id NOT NULL`; `media`, de `listing_id` (nulo solo para el logo). El candado (`ListingLock`), el paso del aviso a `active` y la vigilancia de F6 también parten del aviso. En cambio, lo que hace Instagram con el texto y los medios no depende del aviso: `PublishInput` lleva `listing` solo para Portal y Marketplace.
+
+La máquina de estados, el calendario de un minuto, los reintentos con progreso, la bitácora, los tokens cifrados y el panel de seguimiento (ADR-0014, ADR-0018) ya funcionan y están probados. Duplicarlos para posts abriría dos caminos de publicación que mantener.
+
+## Decisión
+1. Entidad nueva **`posts`** (un tema o idea con sus textos y medios), de una marca (`broker_id`). Un post y un aviso son **sujetos** distintos de una publicación.
+2. `contents`, `content_runs`, `publications` y `media` suman `post_id` (nulo) y vuelven `listing_id` nulo, con un `CHECK` que exige **exactamente uno** (`media` admite ninguno: el logo). Los índices únicos se repiten para el post (una publicación activa por post, cuenta y formato; una corrida activa por post; un original por post y checksum).
+3. Un **candado por post** (`PostLock`, mismas reglas que `ListingLock`: transacción que bloquea la fila, sin red ni cola dentro). `ListingLock` no cambia.
+4. Los casos de uso de publicar, programar, vigilar y cancelar (`publish-publication`, `schedule`, `start-checks`, `cancel`) trabajan sobre un **sujeto** (`{ kind: "listing" | "post", id }`). Lo propio del aviso (pasar a `active`, `listing_source_hash`, reglas de Portal y Marketplace, cerrar por venta) se ejecuta solo si el sujeto es un aviso.
+5. La marca sigue siendo el **corredor**: `brokers.kind` (`broker` | `brand`) decide qué ve el panel (las propiedades solo en `broker`). No se renombra la tabla ni el glosario; "marca" es un `Broker` con `kind = brand`.
+6. Las plataformas nuevas (`x`, `linkedin`, `discord`) entran al enum `platform` y se implementan como `Publisher` (ADR-0014), sin cambiar el contrato salvo lo que pida cada una (por ejemplo, un resultado "dudoso" en Discord).
+7. **Se mantiene** una sola cuenta conectada por marca y plataforma (`docs/02-modelo-datos.md`). El perfil personal y AgentPey son dos marcas, cada una con la suya.
+8. **Resultado dudoso.** Se suma el estado `outcome_unknown` (la red pudo haber publicado y no se sabe). El publisher guarda en su progreso "enviando" **antes** de la llamada que publica; si un intento encuentra ese progreso sin resultado (corte, reinicio del worker, reencolado de `publishing`), no reintenta: devuelve un error no reintentable `OUTCOME_UNKNOWN` y core pasa la publicación a `outcome_unknown`. El operador la resuelve con un paso (`resolvePublication`: "salió", con el enlace si lo tiene, o "no salió"). `outcome_unknown` es un estado pendiente (cuenta como activa para el único parcial y para las vigilancias) y la agenda lo muestra con su clase propia.
+9. **Traspaso a mano por cuenta.** `requiresManualConfirm` pasa a decidirse por plataforma **y cuenta** (`meta.mode = manual`), no solo por Marketplace: una cuenta en modo `manual` nunca llama a la red; deja el texto y los medios listos y espera la confirmación con el enlace (`confirmManualPublication`, que deja de asumir el candado del aviso, la URL de Marketplace y el paso a `active`). El primer uso es LinkedIn.
+10. **Credenciales por plataforma.** `platformCredentialsSchema` pasa a una unión por plataforma (`{ accessToken, refreshToken? }`, o `{ webhookUrl }` en Discord). `redactText` reconoce las URL de webhook de Discord y los `Bearer` genéricos antes de que exista el primer publisher nuevo.
+11. **Access token al publicar.** `ensureAccessToken` (ADR-0015) se usa para toda plataforma con token de vida corta (X: 2 h) y no solo en Portal; el refresco por candado de credenciales se hace antes del intento. X entra a `REFRESHABLE_PLATFORMS`; LinkedIn no (60 días y sin refresco: se reconecta).
+12. **Reglas de sujeto en core, como predicados y no como `CHECK`** (para poder relajarlas): un aviso solo cuelga de un `Broker` con `kind = broker`; un post puede colgar de **cualquier** corredor o marca, porque una oficina que publica avisos también publica contenido de marca. `auto_publish` no se aplica a los posts. Los permisos suman `posts.manage` y un permiso de conexión por plataforma, como `instagram.connect` (ADR-0022, ADR-0028); el dueño de un post se resuelve por su corredor.
+13. **Puertas abiertas a las organizaciones.** `kind` solo dice qué ve el panel y podrá sumar valores con `ALTER TYPE … ADD VALUE`; no decide permisos. El código nuevo decide el alcance siempre con `scopeOf`, `inScope` y `can`, nunca comparando ids, para que un alcance por conjunto de nodos se cambie en un solo lugar. "Una cuenta conectada por marca y plataforma" sigue siendo una regla de los casos de uso y no un índice único. La unión de credenciales admite un token que no vence. `operator_owned` no gana significados nuevos.
+14. Esta generalización va primero, **sin cambiar el comportamiento** de los avisos: sus tests de contrato (repositorios) y de casos de uso pasan sin cambios antes de agregar nada de posts.
+
+## Consecuencias
+- Un post se aprueba, se programa, se reintenta, se vigila y se registra con el mismo código y la misma bitácora que un aviso; el panel de seguimiento y la agenda lo muestran sin un segundo camino.
+- Más cuidado en la migración: tablas con datos reales de producción (F8) cambian una columna a nula y suman un `CHECK`. La migración debe ser reversible a mano y probarse con datos.
+- Dos candados (aviso y post) y los casos de uso con sujeto aumentan la superficie; los tipos (`Subject`) evitan mezclarlos.
+- Los permisos por corredor (ADR-0022) se extienden a `posts`: la tabla de permisos y su test los cubren.
+- Volver atrás una versión desplegada **después** de que exista una fila con `x`, `linkedin`, `discord` u `outcome_unknown` hace fallar al código viejo al leerla (zod): `docs/10-despliegue.md` lo dice, y las migraciones usan `ALTER TYPE … ADD VALUE`, nunca recrear un tipo (la `0006` lo hizo y se detiene si la tabla tiene filas).
+- Una migración no puede usar un valor de enum recién agregado dentro de la misma transacción: los valores nuevos solo se usan en código y en migraciones posteriores.
+- Las consultas que asumían `listing_id` no nulo (bitácora, agenda, seguimiento) se revisan una por una (T02 a T04).
+
+## Alternativas descartadas
+- **Tablas paralelas** (`post_contents`, `post_publications`, otro job y otro calendario): aislaría F3–F6, pero duplica la máquina de estados, el reloj, los reintentos y la bitácora, y las dos copias divergirían.
+- **Seguir llamando `needs_review` al resultado dudoso:** ya existe una clase de agenda con ese nombre (un texto que espera revisión con `auto_publish`).
+- **Un post como `Listing` con `category = post`** (ADR-0006): reutiliza todo, pero obliga a llenar o ignorar precio, moneda, ubicación y estado de aviso, y mezcla en la misma lista cosas que se muestran y se validan distinto.
+- **Renombrar `brokers` a `brands`**: es lo correcto a largo plazo, pero toca la API, el panel, la CLI y la documentación completa sin aportar a esta fase. `kind` basta; se reevalúa si llegan los productos (ADR-0006).
+
+## Seguimiento (opcional)
