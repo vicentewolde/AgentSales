@@ -69,7 +69,7 @@ const profile = (overrides: Partial<EditorialProfileData> = {}): EditorialProfil
   pillars: [{ key: "producto", name: "Producto", description: "Lo que hace", weight: 2 }],
   facts: ["AgentSales publica en Instagram"],
   avoid: ["promesas de venta"],
-  cadence: { instagram: { perWeek: 3 } },
+  cadence: { instagram: { postsPerWeek: 3, days: ["mon"], hours: ["10:00"], languageGapHours: 6 } },
   defaultHashtags: ["#agentsales"],
   ...overrides,
 });
