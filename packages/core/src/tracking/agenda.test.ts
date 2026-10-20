@@ -20,6 +20,7 @@ function publication(extra: Partial<Publication> = {}): Publication {
     platformAccountId: "acc",
     platform: "instagram",
     format: "post",
+    language: "es",
     contentId: "c",
     mediaIds: [],
     status: "approved",
@@ -34,9 +35,12 @@ function publication(extra: Partial<Publication> = {}): Publication {
     remoteState: null,
     listingSourceHash: "h",
     relistedFrom: null,
+    costUsd: null,
     createdAt: minutes(-600),
     updatedAt: minutes(-60),
     ...extra,
+    // El sujeto sigue al aviso del caso (`listingId` es su atajo).
+    subject: { kind: "listing", id: extra.listingId ?? "l1" },
   };
 }
 

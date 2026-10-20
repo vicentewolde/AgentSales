@@ -64,6 +64,7 @@ import {
   waitMinutesOf,
 } from "../publish/wait.js";
 import { scrubMessage } from "../redact.js";
+import { listingIdOf } from "../subject.js";
 import { accessTokenProvider } from "./ensure-access-token.js";
 import { expireAccountIfRejected } from "./platform-auth.js";
 import { modeOf, publicationNotFound } from "./publication-start.js";
@@ -279,9 +280,10 @@ export async function publishPublication(
   const warn = (step: PublishWarning["step"], error: unknown) =>
     deps.onWarning?.({ publicationId, step, code: codeOf(error) });
   const listingToActive = async () => {
-    if (publication.dryRun) return;
+    // Un post nunca pasa a `active` (ADR-0029, punto 4): solo el aviso.
+    if (publication.dryRun || publication.subject.kind !== "listing") return;
     await deps.listings
-      .changeStatus(publication.listingId, "ready", "active")
+      .changeStatus(publication.subject.id, "ready", "active")
       .catch((error: unknown) => warn("listing_active", error));
   };
   if (publication.status !== "publishing") {
@@ -577,7 +579,7 @@ async function requireAutomationAllowed(
   deps: PublishPublicationDeps,
   publication: Publication,
 ): Promise<void> {
-  const listing = await deps.listings.get(publication.listingId);
+  const listing = await deps.listings.get(listingIdOf(publication.subject));
   const broker = listing === null ? null : await deps.brokers.findById(listing.brokerId);
   if (broker === null) {
     throw new AppError("BROKER_NOT_FOUND", "No existe el corredor de esta publicación");
@@ -634,7 +636,7 @@ async function prepareAttempt(
   let input: PublishInput = await buildPublishInput(deps, {
     publication,
     content,
-    media: await deps.media.listByListing(publication.listingId),
+    media: await deps.media.listByListing(listingIdOf(publication.subject)),
   });
   if (manual && input.listing !== undefined) {
     const price = await marketplacePrice(input.listing, {

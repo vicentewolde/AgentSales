@@ -39,6 +39,7 @@ import {
   type SlideTemplates,
 } from "../ports/slide-templates.js";
 import { scrubMessage } from "../redact.js";
+import { listingIdOf } from "../subject.js";
 
 export type PrepareContentDeps = {
   contentRuns: ContentRunRepository;
@@ -216,7 +217,7 @@ async function load(
   report: ContentRunReport,
   signal: AbortSignalLike | undefined,
 ): Promise<Run> {
-  const { listing, broker, ctx } = await loadCheckContext(deps, run.listingId);
+  const { listing, broker, ctx } = await loadCheckContext(deps, listingIdOf(run.subject));
   return {
     deps,
     run,

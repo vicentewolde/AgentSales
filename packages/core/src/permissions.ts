@@ -8,6 +8,11 @@ import type { User } from "./user.js";
 export const PERMISSIONS = [
   /** Ver, cargar, preparar, editar textos, aprobar, publicar, programar y cambiar propiedades. */
   "listings.manage",
+  /**
+   * Los posts de su marca (F9, ADR-0029): crear, editar, subir medios, pedir textos, aprobar,
+   * programar, publicar y archivar. El dueño de un post es su corredor o marca.
+   */
+  "posts.manage",
   /** "Lo publiqué" o "No lo publiqué" en Marketplace. */
   "marketplace.confirm",
   /** Editar la marca, subir el logo y bajar la planilla. */
@@ -34,6 +39,7 @@ export type Permission = (typeof PERMISSIONS)[number];
 /** Lo que un usuario de corredor puede hacer, siempre con lo suyo. */
 const BROKER_PERMISSIONS: ReadonlySet<Permission> = new Set([
   "listings.manage",
+  "posts.manage",
   "marketplace.confirm",
   "brand.edit",
   "broker.view",

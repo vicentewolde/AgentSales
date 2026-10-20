@@ -3,6 +3,7 @@ import type { PublicationStatus } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { RemoteStatus } from "../ports/publisher.js";
 import type { Publication, RemoteState, SyncPayload } from "../publication.js";
+import { listingIdOf } from "../subject.js";
 import {
   failedCall,
   findPublication,
@@ -113,7 +114,7 @@ export async function syncPublication(
     );
   }
 
-  return deps.lock.run(found.listingId, async (locked) => {
+  return deps.lock.run(listingIdOf(found.subject), async (locked) => {
     const current = await locked.publications.get(publicationId);
     if (current === null) throw publicationNotFound(publicationId);
     if (current.updatedAt.getTime() !== readUpdatedAt) {
@@ -138,7 +139,9 @@ export async function syncPublication(
       { actor: "system", payload: { mode: "live", sync: true, remoteStatus: remote.status } },
     );
     const listingBackToReady =
-      target === "unpublished" ? await listingBackToReadyIfLast(locked, found.listingId) : false;
+      target === "unpublished"
+        ? await listingBackToReadyIfLast(locked, listingIdOf(found.subject))
+        : false;
     return {
       outcome: "synced",
       publication,

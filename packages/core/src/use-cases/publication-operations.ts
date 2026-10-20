@@ -14,6 +14,7 @@ import {
   type RemoteState,
   remoteStateSchema,
 } from "../publication.js";
+import { listingIdOf } from "../subject.js";
 import { accessTokenProvider } from "./ensure-access-token.js";
 import { expireAccountIfRejected } from "./platform-auth.js";
 import { modeOf, publicationNotFound } from "./publication-start.js";
@@ -231,7 +232,7 @@ export async function requestSync(
 ): Promise<void> {
   const publicationId = publication.id;
   await deps.lock
-    .run(publication.listingId, async (locked) => {
+    .run(listingIdOf(publication.subject), async (locked) => {
       const current = await locked.publications.get(publicationId);
       if (current !== null) {
         await locked.publications.setRemoteState(publicationId, current.remoteState);
@@ -383,7 +384,7 @@ export async function operatePublication(
   }
 
   try {
-    return await deps.lock.run(found.listingId, async (locked) => {
+    return await deps.lock.run(listingIdOf(found.subject), async (locked) => {
       const current = await locked.publications.get(publicationId);
       if (current !== null && current.status === move.to && live) {
         // Un sync leyó Mercado Libre justo después del cambio y ya lo aplicó: lo pedido está hecho.
@@ -410,7 +411,7 @@ export async function operatePublication(
               );
         const listingBackToReady =
           operation === "close" && !keepListing
-            ? await listingBackToReadyIfLast(locked, found.listingId)
+            ? await listingBackToReadyIfLast(locked, listingIdOf(found.subject))
             : false;
         return { publication, listingBackToReady };
       }
@@ -434,7 +435,7 @@ export async function operatePublication(
       // Un error de la base dentro del candado no se recupera: deshace todo y el sync lo corrige.
       const listingBackToReady =
         live && operation === "close" && !keepListing
-          ? await listingBackToReadyIfLast(locked, found.listingId)
+          ? await listingBackToReadyIfLast(locked, listingIdOf(found.subject))
           : false;
       return { publication, listingBackToReady };
     });

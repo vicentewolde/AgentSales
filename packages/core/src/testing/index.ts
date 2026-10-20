@@ -82,6 +82,15 @@ export {
   type InMemoryPlatformCatalogRepository,
 } from "./platform-catalog.js";
 export {
+  createInMemoryEditorialProfileRepository,
+  createInMemoryPlanRunRepository,
+  createInMemoryPostLock,
+  createInMemoryPostRepository,
+  createInMemoryPostUploadRepository,
+  type InMemoryPlanRunRepository,
+  type InMemoryPostRepository,
+} from "./posts.js";
+export {
   createPublicationScenario,
   PORTAL_SCENARIO_TOKENS,
   PUBLICATION_SCENARIO_TOKEN,

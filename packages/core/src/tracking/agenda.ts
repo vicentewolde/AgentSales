@@ -137,7 +137,9 @@ export function agendaItems(input: AgendaInput): AgendaItem[] {
   const relisted = relistedIds(input.publications);
   const items: AgendaItem[] = [];
   for (const publication of input.publications) {
-    const listing = listings.get(publication.listingId);
+    // `listForTracking` trae publicaciones de avisos; las de posts llegan a la agenda en F9-T08.
+    const listing =
+      publication.listingId === null ? undefined : listings.get(publication.listingId);
     if (listing === undefined) continue;
     const item = (
       kind: AgendaKind,

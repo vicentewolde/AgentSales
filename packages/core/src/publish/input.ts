@@ -18,6 +18,7 @@ import type {
   PublishMediaItem,
 } from "../ports/publisher.js";
 import type { Publication, PublishAttemptRecord } from "../publication.js";
+import { listingIdOf } from "../subject.js";
 
 /** Vigencia de las URLs firmadas de un intento (spec F3 §4.4): 1 hora, recién creadas. */
 export const PUBLISH_MEDIA_URL_TTL_S = 3600;
@@ -83,9 +84,9 @@ async function listingPart(
   }
   // Primero el aviso y después su versión: una carga del Excel que se cruce entre las dos lecturas
   // cambia la versión y corta aquí, en vez de colar datos nuevos con la versión vieja.
-  const listing = await deps.listings.get(publication.listingId);
+  const listing = await deps.listings.get(listingIdOf(publication.subject));
   const current =
-    listing === null ? null : await deps.listings.getSourceHash(publication.listingId);
+    listing === null ? null : await deps.listings.getSourceHash(listingIdOf(publication.subject));
   if (listing === null || current !== publication.listingSourceHash) {
     throw listingChanged(publication.id, "changed");
   }

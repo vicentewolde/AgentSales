@@ -26,6 +26,9 @@ import {
   createInMemoryMediaStorage,
   createInMemoryMetaDeletionRepository,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPostLock,
+  createInMemoryPostRepository,
+  createInMemoryPostUploadRepository,
   createInMemoryPublicationRepository,
   createInMemoryUserRepositories,
   type InMemoryMediaStorage,
@@ -280,11 +283,14 @@ export const adminApp = (deps: AppDeps) => withAdminSession(createApp(deps));
  * usa http://localhost/x: el Host es "localhost", y el origen del panel, el 5173.
  */
 export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
-  // El gasto de IA por corredor (F7-T12) cruza la corrida con el aviso, como Postgres.
+  // El gasto de IA por corredor (F7-T12) cruza la corrida con el aviso (o, desde F9, con el
+  // post), como Postgres.
   let listingsRef: AppDeps["listings"] | undefined;
+  const posts = overrides.posts ?? createInMemoryPostRepository();
   const content = createInMemoryContentRepositories({
     nextId: randomUUID,
     brokerOfListing: async (id) => (await listingsRef?.get(id))?.brokerId ?? null,
+    brokerOfPost: async (id) => (await posts.get(id))?.brokerId ?? null,
   });
   // La app solo lee las publicaciones; el candado las cambia. Un test que trae las suyas trae
   // también su candado (como el escenario de publicación), para que los dos vean las mismas.
@@ -293,7 +299,10 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   }
   const publications = createInMemoryPublicationRepository();
   const brokers = overrides.brokers ?? createInMemoryBrokerRepository([], { nextId: randomUUID });
-  const deps: Omit<AppDeps, "lock"> & { lock?: AppDeps["lock"] } = {
+  const deps: Omit<AppDeps, "lock" | "postLock"> & {
+    lock?: AppDeps["lock"];
+    postLock?: AppDeps["postLock"];
+  } = {
     // La autenticación ve los mismos corredores que la app (`/auth/me`).
     auth: { ...testAuth(), brokers },
     oauthStates: createInMemoryUserRepositories().oauthStates,
@@ -323,6 +332,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     maxUploadBytes: 50 * 1024 * 1024,
     contentRuns: content.contentRuns,
     contents: content.contents,
+    posts,
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
     publications,
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
@@ -364,5 +374,18 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
       publications,
       platformAccounts: deps.platformAccounts,
     });
-  return { ...deps, lock };
+  // El candado del post, con los mismos repositorios (F9).
+  const postLock =
+    deps.postLock ??
+    createInMemoryPostLock({
+      brokers: deps.brokers,
+      posts: deps.posts,
+      postUploads: createInMemoryPostUploadRepository(),
+      media: deps.media,
+      contentRuns: deps.contentRuns,
+      contents: deps.contents,
+      publications,
+      platformAccounts: deps.platformAccounts,
+    });
+  return { ...deps, lock, postLock };
 }

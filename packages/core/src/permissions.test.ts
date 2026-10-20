@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ALL_SCOPE, brokerScope, inScope, scopedBrokerId } from "./access.js";
 import { assertCan, can, PERMISSIONS, type Permission, scopeOf } from "./permissions.js";
 
-// F7-T03 (spec F7 §4.5): cada fila de la tabla de permisos, y el alcance de cada rol.
+// F7-T03 (spec F7 §4.5): cada fila de la tabla de permisos, y el alcance de cada rol. F9-T04
+// (spec F9 §4.10): `posts.manage`, los posts de su marca.
 
 const admin = { role: "admin" as const, brokerId: null };
 const broker = { role: "broker" as const, brokerId: "b1" };
@@ -10,6 +11,7 @@ const broker = { role: "broker" as const, brokerId: "b1" };
 /** La tabla §4.5: lo que el corredor puede hacer con lo suyo. */
 const BROKER_CAN: Readonly<Record<Permission, boolean>> = {
   "listings.manage": true,
+  "posts.manage": true,
   "marketplace.confirm": true,
   "brand.edit": true,
   "broker.view": true,

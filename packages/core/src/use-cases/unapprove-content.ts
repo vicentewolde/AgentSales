@@ -10,6 +10,7 @@ import { manualConfirmPending } from "../marketplace/limits.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { canTransition } from "../publication-state.js";
+import { listingIdOf } from "../subject.js";
 import { channelPublications } from "./open-publications.js";
 
 export type UnapproveContentDeps = ContentLockDeps & { lock: ListingLock };
@@ -46,7 +47,7 @@ export async function unapproveContent(
         details: { contentId, status: content.status },
       });
     }
-    const own = (await locked.publications.listByListing(content.listingId)).filter(
+    const own = (await locked.publications.listByListing(listingIdOf(content.subject))).filter(
       (publication) => publication.contentId === content.id,
     );
     const waiting = own.find((publication) => publication.status === "awaiting_manual_confirm");
@@ -76,7 +77,11 @@ export async function unapproveContent(
     return {
       ...checked(edited, ctx),
       cancelled,
-      publications: await channelPublications(locked, content.listingId, content.platform),
+      publications: await channelPublications(
+        locked,
+        listingIdOf(content.subject),
+        content.platform,
+      ),
     };
   });
 }

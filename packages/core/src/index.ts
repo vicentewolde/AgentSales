@@ -61,6 +61,13 @@ export {
   contentRunSchema,
   contentSchema,
 } from "./content.js";
+export {
+  type EditorialPillar,
+  type EditorialProfile,
+  type EditorialProfileData,
+  editorialPillarSchema,
+  editorialProfileSchema,
+} from "./editorial-profile.js";
 export * from "./enums.js";
 export { AppError, type AppErrorOptions, isAppError } from "./errors.js";
 export { type FieldDefinition, fieldDefinitionSchema } from "./field-definition.js";
@@ -296,6 +303,7 @@ export {
   type Permission,
   scopeOf,
 } from "./permissions.js";
+export { type PlanRun, planRunSchema } from "./plan-run.js";
 export {
   type AccessTokenCredentials,
   accessTokenCredentialsSchema,
@@ -407,10 +415,12 @@ export {
   type ContentRepository,
   type ContentRunRepository,
   checkNewContents,
+  languageOf,
   type NewContent,
   type NewContentRun,
   pickContentChanges,
 } from "./ports/content-repository.js";
+export type { EditorialProfileRepository } from "./ports/editorial-profile-repository.js";
 export type {
   FieldDefinitionQuery,
   FieldDefinitionRepository,
@@ -455,6 +465,7 @@ export type {
 export {
   checkArrangement,
   checkDerivative,
+  checkNewMedia,
   type DerivativeResult,
   type MediaArrangement,
   type MediaMeasurements,
@@ -488,6 +499,7 @@ export type {
   MetaDeletionRepository,
   MetaDeletionRequest,
 } from "./ports/meta-deletion-repository.js";
+export type { NewPlanRun, PlanRunRepository } from "./ports/plan-run-repository.js";
 export {
   type ConnectedAccount,
   CREDENTIALS_LOCK_TIMEOUT_MS,
@@ -497,8 +509,20 @@ export {
   type TokenUpdate,
 } from "./ports/platform-account-repository.js";
 export type { PlatformCatalogRepository } from "./ports/platform-catalog-repository.js";
+export type { PostLock, PostLockedRepositories } from "./ports/post-lock.js";
+export {
+  type NewPost,
+  type NewPostUpload,
+  type PostChanges,
+  type PostFilters,
+  type PostRepository,
+  type PostUploadRepository,
+  pickPostChanges,
+} from "./ports/post-repository.js";
 export type {
   DueQuery,
+  NewListingPublication,
+  NewPostPublication,
   NewPublication,
   NewPublicationEvent,
   PublicationChanges,
@@ -559,6 +583,7 @@ export type {
   UserRepository,
 } from "./ports/user-repository.js";
 export type { WorkerHeartbeatRepository } from "./ports/worker-heartbeat-repository.js";
+export { type Post, type PostUpload, postSchema, postUploadSchema } from "./post.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   checkPublicationProgress,
@@ -640,6 +665,7 @@ export {
   scheduleAt,
   scheduleState,
 } from "./schedule.js";
+export * from "./subject.js";
 export {
   AGENDA_ACTIONS,
   AGENDA_KINDS,

@@ -216,6 +216,13 @@ const SERVER_INVALID = new Set([
   "ACCOUNT_CREDENTIALS_NOT_ALLOWED",
   "MARKETPLACE_PROFILE_PATH_INVALID",
   "MARKETPLACE_SESSION_ID_INVALID",
+  // F9-T04 (ADR-0029): una referencia que no existe al crear un post, una subida, un plan o un
+  // perfil, y un medio de un aviso y de un post a la vez: errores de programación.
+  "POST_REFERENCE_INVALID",
+  "POST_UPLOAD_REFERENCE_INVALID",
+  "PLAN_RUN_REFERENCE_INVALID",
+  "EDITORIAL_PROFILE_REFERENCE_INVALID",
+  "MEDIA_SUBJECT_INVALID",
 ]);
 
 /**

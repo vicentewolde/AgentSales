@@ -1,4 +1,4 @@
-import type { NewPublication, PublicationRepository } from "@agentsales/core";
+import type { NewListingPublication, PublicationRepository } from "@agentsales/core";
 import { beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -51,8 +51,8 @@ export function publicationRepositoryContract(
     });
 
     const newPublication = async (
-      overrides: Partial<NewPublication> = {},
-    ): Promise<NewPublication> => {
+      overrides: Partial<NewListingPublication> = {},
+    ): Promise<NewListingPublication> => {
       const { listingId, accountId, contentId } = await repos.fixtures();
       return {
         listingId,
@@ -792,7 +792,7 @@ export function publicationRepositoryContract(
     it("listDue trae las vencidas de la ventana, por hora, sin las excluidas y con tope (F6)", async () => {
       const now = new Date("2032-04-10T12:00:00.000Z");
       const since = new Date("2032-04-10T00:00:00.000Z");
-      const make = async (at: Date, platform: NewPublication["platform"] = "instagram") => {
+      const make = async (at: Date, platform: NewListingPublication["platform"] = "instagram") => {
         const created = await repos.publications.create(
           await newPublication({ platform }),
           operator,
@@ -828,7 +828,7 @@ export function publicationRepositoryContract(
     });
 
     it("listStalePublishing trae las publishing sin cambios desde antes, sin las excluidas (F6)", async () => {
-      const make = async (platform: NewPublication["platform"]) => {
+      const make = async (platform: NewListingPublication["platform"]) => {
         const created = await repos.publications.create(
           await newPublication({ platform }),
           operator,

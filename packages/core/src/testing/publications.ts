@@ -1,3 +1,4 @@
+import { DEFAULT_LANGUAGE } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { ListingLock, LockedRepositories } from "../ports/listing-lock.js";
 import type {
@@ -18,6 +19,7 @@ import {
   canTransition,
   TERMINAL_PUBLICATION_STATUSES,
 } from "../publication-state.js";
+import { sameSubject, subjectFieldsFor, subjectOfInput } from "../subject.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryPublicationRepository = PublicationRepository & {
@@ -84,18 +86,29 @@ export function createInMemoryPublicationRepository(
   return {
     async create(input, event) {
       normalizeEventPayload(event.payload);
+      const subject = subjectOfInput(input);
+      const language = input.language ?? DEFAULT_LANGUAGE;
+      // Como los únicos de Postgres: por aviso, cuenta y formato; por post, también por idioma.
       const clash = [...publications.values()].some(
         ({ publication }) =>
-          publication.listingId === input.listingId &&
+          sameSubject(publication.subject, subject) &&
           publication.platformAccountId === input.platformAccountId &&
           publication.format === input.format &&
+          (subject.kind === "listing" || publication.language === language) &&
           ACTIVE_PUBLICATION_STATUSES.includes(publication.status),
       );
       if (clash) {
         throw new AppError(
           "PUBLICATION_CONFLICT",
-          "Ya hay una publicación activa de ese aviso, cuenta y formato",
-          { details: { listingId: input.listingId, format: input.format } },
+          subject.kind === "listing"
+            ? "Ya hay una publicación activa de ese aviso, cuenta y formato"
+            : "Ya hay una publicación activa de ese post, cuenta, formato e idioma",
+          {
+            details:
+              subject.kind === "listing"
+                ? { listingId: subject.id, format: input.format }
+                : { postId: subject.id, format: input.format, language },
+          },
         );
       }
       const relistedFrom = input.relistedFrom ?? null;
@@ -114,10 +127,11 @@ export function createInMemoryPublicationRepository(
       const publication: Publication = {
         // Con forma de uuid, como en Postgres: los datos del job `publication.publish` lo exigen.
         id: `00000000-0000-4000-8000-${String(++nextPublication).padStart(12, "0")}`,
-        listingId: input.listingId,
+        ...subjectFieldsFor(subject),
         platformAccountId: input.platformAccountId,
         platform: input.platform,
         format: input.format,
+        language,
         contentId: input.contentId,
         mediaIds: [...input.mediaIds],
         status: "approved",
@@ -132,6 +146,7 @@ export function createInMemoryPublicationRepository(
         remoteState: null,
         listingSourceHash: input.listingSourceHash || null,
         relistedFrom,
+        costUsd: input.costUsd ?? null,
         createdAt: now,
         updatedAt: now,
       };
@@ -146,8 +161,14 @@ export function createInMemoryPublicationRepository(
     async listByListing(listingId) {
       return ordered((publication) => publication.listingId === listingId);
     },
+    async listBySubject(subject) {
+      return ordered((publication) => sameSubject(publication.subject, subject));
+    },
     async listByStatus(status) {
-      return ordered((publication) => publication.status === status);
+      // Solo de avisos, como en Postgres (hasta F9-T06 y T07).
+      return ordered(
+        (publication) => publication.status === status && publication.subject.kind === "listing",
+      );
     },
     async listDue({ now, since, excludePlatforms, limit }) {
       return [...publications.values()]
@@ -155,6 +176,7 @@ export function createInMemoryPublicationRepository(
         .filter(
           (publication) =>
             publication.status === "scheduled" &&
+            publication.subject.kind === "listing" &&
             publication.scheduledAt !== null &&
             publication.scheduledAt.getTime() <= now.getTime() &&
             publication.scheduledAt.getTime() >= since.getTime() &&
@@ -174,6 +196,7 @@ export function createInMemoryPublicationRepository(
         .filter(
           (publication) =>
             publication.status === "publishing" &&
+            publication.subject.kind === "listing" &&
             publication.updatedAt.getTime() < before.getTime() &&
             !excludePlatforms.includes(publication.platform),
         )
@@ -185,13 +208,14 @@ export function createInMemoryPublicationRepository(
       return [...publications.values()]
         .filter(
           ({ publication }) =>
+            publication.listingId !== null &&
             listingIds.includes(publication.listingId) &&
             (!terminal.includes(publication.status) ||
               publication.updatedAt.getTime() >= since.getTime()),
         )
         .sort(
           (a, b) =>
-            a.publication.listingId.localeCompare(b.publication.listingId) ||
+            (a.publication.listingId ?? "").localeCompare(b.publication.listingId ?? "") ||
             a.sequence - b.sequence,
         )
         .map(({ publication }) => structuredCopy(publication));

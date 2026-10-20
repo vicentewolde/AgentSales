@@ -1,17 +1,27 @@
 import type { Content, ContentRun, ContentRunError, ContentRunReport } from "../content.js";
-import type { ContentRunStage, ContentStatus, LlmProvider, Platform } from "../enums.js";
+import {
+  type ContentRunStage,
+  type ContentStatus,
+  DEFAULT_LANGUAGE,
+  type Language,
+  type LlmProvider,
+  type Platform,
+} from "../enums.js";
 import { AppError } from "../errors.js";
 import type { BrokerLlmSpend, LlmCallUsage } from "../llm-usage.js";
+import type { SubjectInput, SubjectRef } from "../subject.js";
 
-export type NewContentRun = {
-  listingId: string;
+/** Una corrida nueva de un aviso (`listingId`, como antes de F9) o de un post (`postId`). */
+export type NewContentRun = SubjectInput & {
   /** Si la corrida genera textos (`false`: solo medios y renders). */
   texts: boolean;
 };
 
-/** Un texto nuevo de una corrida: nace en `draft` y hereda el aviso de la corrida. */
+/** Un texto nuevo de una corrida: nace en `draft` y hereda el sujeto (aviso o post) de la corrida. */
 export type NewContent = {
   platform: Platform;
+  /** Por defecto `es` (`DEFAULT_LANGUAGE`): los textos de un aviso son en español. */
+  language?: Language;
   title: string | null;
   body: string;
   hashtags: string[];
@@ -25,19 +35,21 @@ export type NewContent = {
  * Corridas de contenido (`content_runs`, ADR-0012; spec F2 §4.3 y §4.4). Los cambios de estado son
  * **condicionales** y devuelven si cambiaron, como los de `ImportRunRepository`: un reintento sobre
  * una corrida terminal no hace nada. Errores (`AppError`):
- * - `create` con una corrida activa (`queued` o `running`) del mismo aviso → `CONTENT_RUN_CONFLICT`,
- *   **reintentable**: otra petición ganó la carrera, y quien llama busca la activa con `findActive`;
+ * - `create` con una corrida activa (`queued` o `running`) del mismo aviso o post →
+ *   `CONTENT_RUN_CONFLICT`, **reintentable**: otra petición ganó la carrera, y quien llama busca la
+ *   activa con `findActive`;
  * - fallo de conexión → `DB_UNAVAILABLE`, reintentable.
- * Los ids son uuid: la API los valida antes de llegar aquí.
+ * Los ids son uuid: la API los valida antes de llegar aquí. Donde antes iba el id del aviso, desde
+ * F9 va un `SubjectRef`: un `Subject` (aviso o post) o, como antes, el id de un aviso.
  */
 export interface ContentRunRepository {
   /** Nace en `queued`, sin etapa, reporte ni fechas. */
   create(run: NewContentRun): Promise<ContentRun>;
   get(id: string): Promise<ContentRun | null>;
-  /** La corrida `queued` o `running` del aviso, si hay (a lo más una). */
-  findActive(listingId: string): Promise<ContentRun | null>;
-  /** La corrida más reciente del aviso (`created_at` y después `id`), en cualquier estado. */
-  latest(listingId: string): Promise<ContentRun | null>;
+  /** La corrida `queued` o `running` del aviso o post, si hay (a lo más una). */
+  findActive(subject: SubjectRef): Promise<ContentRun | null>;
+  /** La corrida más reciente del aviso o post (`created_at` y después `id`), en cualquier estado. */
+  latest(subject: SubjectRef): Promise<ContentRun | null>;
   /**
    * Las corridas de avisos en `queued`, las más antiguas primero: el worker las reencola al
    * arrancar. Las de posts (F9) no son de `content.prepare` y quedan fuera.
@@ -62,12 +74,13 @@ export interface ContentRunRepository {
   /** Fija la etapa en curso, solo mientras la corrida está en `running`. */
   setStage(id: string, stage: ContentRunStage): Promise<boolean>;
   /**
-   * `running` → `succeeded` con `report` y `finished_at`, y guarda `contents` (en `draft`, del aviso
-   * de la corrida) **en la misma transacción**: o queda todo, o nada. `false`, sin escribir nada,
-   * si la corrida no está en `running` o si alguno de sus canales ya tiene fila (un intento
-   * solapado ya guardó): ese intento termina como `skipped`. Una corrida con `texts = false` pasa
-   * `contents` vacío. Un canal repetido en `contents` es un bug de quien llama:
-   * `CONTENT_PLATFORM_DUPLICATED`, no reintentable, sin escribir nada (`checkNewContents`).
+   * `running` → `succeeded` con `report` y `finished_at`, y guarda `contents` (en `draft`, del
+   * aviso o post de la corrida) **en la misma transacción**: o queda todo, o nada. `false`, sin
+   * escribir nada, si la corrida no está en `running` o si alguno de sus canales e idiomas ya tiene
+   * fila (un intento solapado ya guardó): ese intento termina como `skipped`. Una corrida con
+   * `texts = false` pasa `contents` vacío. Un canal e idioma repetidos en `contents` son un bug de
+   * quien llama: `CONTENT_PLATFORM_DUPLICATED`, no reintentable, sin escribir nada
+   * (`checkNewContents`).
    */
   markSucceeded(
     id: string,
@@ -92,7 +105,9 @@ export interface ContentRunRepository {
   addLlmUsage(id: string, call: LlmCallUsage): Promise<ContentRun>;
   /**
    * El gasto por corredor de las corridas **creadas** en `[from, to)` (el mes de Chile,
-   * `chileMonthRange`); con `brokerId`, solo ese. Los corredores sin gasto no aparecen.
+   * `chileMonthRange`); con `brokerId`, solo ese. Los corredores sin gasto no aparecen. Desde F9
+   * (ADR-0030, punto 6) suma las corridas de avisos, las de posts (el corredor del aviso o del post)
+   * y los planes de ideas (`plan_runs`): `runs` cuenta las tres.
    */
   sumLlmCost(query: { from: Date; to: Date; brokerId?: string }): Promise<BrokerLlmSpend[]>;
 }
@@ -105,13 +120,17 @@ export type ContentChanges = {
   status?: ContentStatus;
 };
 
+/** El idioma de un texto nuevo: el suyo o, si no trae, `es`. */
+export const languageOf = (content: Pick<NewContent, "language">): Language =>
+  content.language ?? DEFAULT_LANGUAGE;
+
 /**
  * Valida los textos de `markSucceeded` antes de tocar nada; la usan todas las implementaciones.
- * Un canal repetido es `CONTENT_PLATFORM_DUPLICATED`, no reintentable.
+ * Un canal repetido en el mismo idioma es `CONTENT_PLATFORM_DUPLICATED`, no reintentable.
  */
 export function checkNewContents(contents: readonly NewContent[]): void {
-  const platforms = contents.map((content) => content.platform);
-  if (new Set(platforms).size !== platforms.length) {
+  const keys = contents.map((content) => `${content.platform}:${languageOf(content)}`);
+  if (new Set(keys).size !== keys.length) {
     throw new AppError("CONTENT_PLATFORM_DUPLICATED", "Un canal aparece dos veces en los textos");
   }
 }
@@ -131,14 +150,18 @@ export function pickContentChanges(changes: ContentChanges): ContentChanges {
 }
 
 /**
- * Textos generados (`contents`). El **vigente** de un aviso en un canal es su fila más reciente
- * (`created_at` y después `id`, ADR-0012). Las filas las crea `ContentRunRepository.markSucceeded`.
- * `update` no verifica que el texto sea el vigente: quien llama lo compara con `listCurrent`
- * (`editContent`, F2-T12). Un `update` de un id que no existe es `CONTENT_NOT_FOUND`.
+ * Textos generados (`contents`). El **vigente** de un aviso o post en un canal e idioma es su fila
+ * más reciente (`created_at` y después `id`, ADR-0012). Las filas las crea
+ * `ContentRunRepository.markSucceeded`. `update` no verifica que el texto sea el vigente: quien
+ * llama lo compara con `listCurrent` (`editContent`, F2-T12). Un `update` de un id que no existe es
+ * `CONTENT_NOT_FOUND`.
  */
 export interface ContentRepository {
-  /** El texto vigente de cada canal del aviso, uno por plataforma, en el orden de `LISTING_PLATFORMS`. */
-  listCurrent(listingId: string): Promise<Content[]>;
+  /**
+   * El texto vigente de cada canal e idioma del aviso o post, en el orden de `PLATFORMS` y después
+   * de `LANGUAGES`. Un aviso tiene uno por canal (todos `es`), en el orden de `LISTING_PLATFORMS`.
+   */
+  listCurrent(subject: SubjectRef): Promise<Content[]>;
   /** Los vigentes de varios avisos en una consulta (Seguimiento y agenda, deuda de F6). */
   listCurrentMany(listingIds: readonly string[]): Promise<Content[]>;
   get(id: string): Promise<Content | null>;

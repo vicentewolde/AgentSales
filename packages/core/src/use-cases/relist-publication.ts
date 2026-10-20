@@ -4,6 +4,7 @@ import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { listingIdOf } from "../subject.js";
 import { createPublications } from "./open-publications.js";
 import {
   enqueuePublications,
@@ -93,14 +94,14 @@ export async function relistPublication(
   requireRelistMode(previous, dryRun, confirmed);
   const definitions = await portalDefinitionsBeforeLock(
     deps,
-    previous.listingId,
+    listingIdOf(previous.subject),
     previous.platform,
   );
 
-  const started = await deps.lock.run(previous.listingId, async (locked) => {
+  const started = await deps.lock.run(listingIdOf(previous.subject), async (locked) => {
     const { listing, content, opening, startable } = await prepareChannelStart(
       locked,
-      { listingId: previous.listingId, platform: previous.platform },
+      { listingId: listingIdOf(previous.subject), platform: previous.platform },
       {
         dryRun,
         definitions,

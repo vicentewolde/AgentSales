@@ -1,7 +1,12 @@
-import type { ListingLock, LockedRepositories } from "@agentsales/core";
+import type {
+  ListingLock,
+  LockedRepositories,
+  PostLock,
+  PostLockedRepositories,
+} from "@agentsales/core";
 import { createInMemoryPublicationRepository } from "@agentsales/core/testing";
 import { describe, expect, it } from "vitest";
-import { withEventUser } from "./request-context.js";
+import { withEventUser, withPostEventUser } from "./request-context.js";
 import { createRequestContext } from "./request-context-node.js";
 
 // F7-T10 (spec F7 §4.3): la persona de cada evento sale del pedido, también con pedidos a la vez.
@@ -62,5 +67,54 @@ describe("el usuario del pedido en la bitácora", () => {
       ),
     );
     expect(await userOf(system.id)).toBeNull();
+  });
+
+  it("con el candado de un post (F9) también firma cada evento con el usuario del pedido", async () => {
+    const publications = createInMemoryPublicationRepository();
+    const lock: PostLock = {
+      run: async (_postId, fn) => {
+        await delay(5);
+        return fn({ publications } as unknown as PostLockedRepositories);
+      },
+    };
+    const context = createRequestContext();
+    const wrapped = withPostEventUser(lock, context);
+    const create = (language: "es" | "en") =>
+      wrapped.run("post-1", async (repos) => {
+        await delay(language === "es" ? 10 : 1);
+        return repos.publications.create(
+          {
+            postId: "post-1",
+            platformAccountId: "account-1",
+            platform: "instagram",
+            format: "post",
+            language,
+            contentId: `content-${language}`,
+            mediaIds: [],
+          },
+          { actor: "operator" },
+        );
+      });
+    const [spanish, english] = await Promise.all([
+      context.run("usuario-a", () => create("es")),
+      context.run("usuario-b", () => create("en")),
+    ]);
+    const events = async (id: string) => publications.listEvents(id);
+    expect((await events(spanish.id))[0]?.userId).toBe("usuario-a");
+    expect((await events(english.id))[0]?.userId).toBe("usuario-b");
+    // También las transiciones dentro del candado.
+    await context.run("usuario-c", () =>
+      wrapped.run("post-1", (repos) =>
+        repos.publications.transition(
+          spanish.id,
+          { from: "approved", to: "cancelled" },
+          { actor: "operator" },
+        ),
+      ),
+    );
+    expect((await events(spanish.id)).map((event) => event.userId)).toEqual([
+      "usuario-a",
+      "usuario-c",
+    ]);
   });
 });

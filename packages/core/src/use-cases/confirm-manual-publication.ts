@@ -4,6 +4,7 @@ import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { dryRunExternalId } from "../publish/dry-run.js";
+import { listingIdOf } from "../subject.js";
 import { modeOf, publicationNotFound } from "./publication-start.js";
 
 export type ManualPublicationDeps = {
@@ -54,7 +55,7 @@ export async function confirmManualPublication(
   // El enlace se revisa antes del candado: un enlace malo no toca nada.
   const item = found.dryRun || url === undefined ? null : parseMarketplaceItemUrl(url);
 
-  return deps.lock.run(found.listingId, async (locked) => {
+  return deps.lock.run(listingIdOf(found.subject), async (locked) => {
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     const live = !publication.dryRun;
@@ -94,9 +95,9 @@ export async function confirmManualPublication(
     );
     if (live) {
       // Como el intento al publicar (spec F3 §4.3): el aviso pasa a `active` si estaba `ready`.
-      const listing = await locked.listings.get(publication.listingId);
+      const listing = await locked.listings.get(listingIdOf(publication.subject));
       if (listing?.status === "ready") {
-        await locked.listings.changeStatus(publication.listingId, "ready", "active");
+        await locked.listings.changeStatus(listingIdOf(publication.subject), "ready", "active");
       }
     }
     return { publication: published, changed: true };
@@ -117,7 +118,7 @@ export async function markNotPublished(
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
 
-  return deps.lock.run(found.listingId, async (locked) => {
+  return deps.lock.run(listingIdOf(found.subject), async (locked) => {
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     if (publication.status !== "awaiting_manual_confirm") throw notWaiting(publication, "failed");

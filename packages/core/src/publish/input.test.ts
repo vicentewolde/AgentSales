@@ -58,6 +58,7 @@ function mediaItem(id: string, overrides: Partial<Media> = {}): Media {
   return {
     id,
     listingId: "listing-1",
+    postId: null,
     brokerId: "broker-1",
     kind: "image",
     role: "processed",
@@ -79,9 +80,11 @@ function mediaItem(id: string, overrides: Partial<Media> = {}): Media {
 function content(overrides: Partial<Content> = {}): Content {
   return {
     id: "content-1",
+    subject: { kind: "listing", id: "listing-1" },
     listingId: "listing-1",
     contentRunId: "run-1",
     platform: "instagram",
+    language: "es",
     title: null,
     body: "Departamento luminoso en Ñuñoa.",
     hashtags: ["#nunoa", "#departamentoventa"],
@@ -99,10 +102,12 @@ function content(overrides: Partial<Content> = {}): Content {
 function publication(overrides: Partial<Publication> = {}): Publication {
   return {
     id: "pub-1",
+    subject: { kind: "listing", id: "listing-1" },
     listingId: "listing-1",
     platformAccountId: "account-1",
     platform: "instagram",
     format: "post",
+    language: "es",
     contentId: "content-1",
     mediaIds: ["m-3", "m-1"],
     status: "publishing",
@@ -117,6 +122,7 @@ function publication(overrides: Partial<Publication> = {}): Publication {
     remoteState: null,
     listingSourceHash: null,
     relistedFrom: null,
+    costUsd: null,
     createdAt: at,
     updatedAt: at,
     ...overrides,

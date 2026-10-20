@@ -12,6 +12,7 @@ import {
   type RemoteState,
 } from "../publication.js";
 import { assemblePublishInput, toPublishListing } from "../publish/input.js";
+import { listingIdOf } from "../subject.js";
 import {
   codeOf,
   enqueueSync,
@@ -80,7 +81,7 @@ export async function updatePortalPublication(
       { details: { publicationId, from: found.status, to: found.status } },
     );
   }
-  const listing = await deps.listings.get(found.listingId);
+  const listing = await deps.listings.get(listingIdOf(found.subject));
   if (
     listing === null ||
     !(UPDATABLE_LISTING_STATUSES as readonly string[]).includes(listing.status)
@@ -91,7 +92,7 @@ export async function updatePortalPublication(
       { details: { listingId: found.listingId, status: listing?.status ?? null } },
     );
   }
-  const content = (await deps.contents.listCurrent(found.listingId)).find(
+  const content = (await deps.contents.listCurrent(listingIdOf(found.subject))).find(
     (current) => current.platform === "portal_inmobiliario",
   );
   if (content === undefined || content.status !== "approved") {
@@ -101,7 +102,7 @@ export async function updatePortalPublication(
       { details: { publicationId, status: content?.status ?? null } },
     );
   }
-  const currentHash = await deps.listings.getSourceHash(found.listingId);
+  const currentHash = await deps.listings.getSourceHash(listingIdOf(found.subject));
   if (currentHash === null || currentHash === "") {
     throw new AppError("LISTING_NOT_FOUND", `No existe el aviso ${found.listingId}`, {
       details: { listingId: found.listingId },
@@ -192,7 +193,7 @@ export async function updatePortalPublication(
 
   let publication: Publication;
   try {
-    publication = await deps.lock.run(found.listingId, async (locked) => {
+    publication = await deps.lock.run(listingIdOf(found.subject), async (locked) => {
       const current = await locked.publications.get(publicationId);
       if (current === null || current.updatedAt.getTime() !== found.updatedAt.getTime()) {
         throw new AppError(

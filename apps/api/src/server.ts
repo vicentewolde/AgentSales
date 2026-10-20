@@ -37,6 +37,8 @@ import {
   createOAuthStateRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostLock,
+  createPostRepository,
   createPublicationRepository,
   createSessionRepository,
   createUserRepository,
@@ -176,6 +178,8 @@ const app = createApp({
   contentRuns: createContentRunRepository(database.db),
   contents: createContentRepository(database.db),
   lock: createListingLock(database.db, { secretBox }),
+  posts: createPostRepository(database.db),
+  postLock: createPostLock(database.db, { secretBox }),
   publications: createPublicationRepository(database.db),
   platformAccounts: createPlatformAccountRepository(database.db, { secretBox }),
   instagram: {

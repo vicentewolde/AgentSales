@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  LANGUAGES,
   MEDIA_KINDS,
   PLATFORMS,
   type Platform,
@@ -11,6 +12,7 @@ import {
 import { AppError } from "./errors.js";
 import { marketplaceProgressSchema } from "./marketplace/progress.js";
 import { portalProgressSchema } from "./portal/progress.js";
+import { subjectFields } from "./subject.js";
 
 /**
  * Lo que el publisher de Instagram ya creó en la plataforma (`publications.progress`, ADR-0014):
@@ -204,16 +206,19 @@ export const publicationErrorSchema = z.object({
 export type PublicationError = z.infer<typeof publicationErrorSchema>;
 
 /**
- * Un aviso en una cuenta y un formato (`publications`, ADR-0014). Nace en `approved` con
- * `contentId` y `mediaIds` fijos; `progress` debe calzar con el esquema de su plataforma.
+ * Un aviso (o, desde F9, un post: `subject`, ADR-0029) en una cuenta, un formato y un idioma
+ * (`publications`, ADR-0014). Nace en `approved` con `contentId` y `mediaIds` fijos; `progress` debe
+ * calzar con el esquema de su plataforma.
  */
 export const publicationSchema = z
   .object({
     id: z.string(),
-    listingId: z.string(),
+    ...subjectFields,
     platformAccountId: z.string(),
     platform: z.enum(PLATFORMS),
     format: z.enum(PUBLICATION_FORMATS),
+    /** El idioma de su texto (`LANGUAGES`): las de un aviso son `es` (spec F9 §4.4). */
+    language: z.enum(LANGUAGES),
     contentId: z.string(),
     /** Medios que se publican, en orden. */
     mediaIds: z.array(z.string()),
@@ -236,6 +241,8 @@ export const publicationSchema = z
     listingSourceHash: z.string().min(1).nullable(),
     /** La publicación de Portal que esta republica (ADR-0020); `null` en las demás. */
     relistedFrom: z.string().nullable(),
+    /** El costo estimado en dólares (spec F9 §4.12): hoy solo X; `null` si la red no cobra. */
+    costUsd: z.number().nonnegative().nullable(),
     createdAt: z.date(),
     updatedAt: z.date(),
   })

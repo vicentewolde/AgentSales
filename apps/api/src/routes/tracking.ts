@@ -9,6 +9,7 @@ import {
   connectedPlatforms,
   type Listing,
   type ListingRepository,
+  listingIdOf,
   type MediaRepository,
   type MediaStorage,
   type PendingReview,
@@ -85,10 +86,9 @@ async function pendingReviews(
       ? []
       : await deps.contents.listCurrentMany(candidates.map((listing) => listing.id));
   for (const content of current) {
-    contentsByListing.set(content.listingId, [
-      ...(contentsByListing.get(content.listingId) ?? []),
-      content,
-    ]);
+    // `listCurrentMany` es de avisos: cada texto tiene su aviso.
+    const listingId = listingIdOf(content.subject);
+    contentsByListing.set(listingId, [...(contentsByListing.get(listingId) ?? []), content]);
   }
   return pendingReviewsOf({ listings: candidates, brokers, connectedByBroker, contentsByListing });
 }

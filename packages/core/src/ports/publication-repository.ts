@@ -1,4 +1,4 @@
-import type { Platform, PublicationFormat, PublicationStatus } from "../enums.js";
+import type { Language, Platform, PublicationFormat, PublicationStatus } from "../enums.js";
 import type {
   Publication,
   PublicationActor,
@@ -7,23 +7,48 @@ import type {
   PublicationEventType,
   RemoteState,
 } from "../publication.js";
+import type { Subject } from "../subject.js";
 
-/** Una publicación que nace (ADR-0014): siempre en `approved`, con su texto y sus medios fijos. */
-export type NewPublication = {
-  listingId: string;
+/** Lo común de una publicación que nace, sea de un aviso o de un post. */
+type NewPublicationBase = {
   platformAccountId: string;
   platform: Platform;
   format: PublicationFormat;
   contentId: string;
   mediaIds: readonly string[];
+  /** El idioma de su texto; por defecto `es` (las de un aviso siempre lo son). */
+  language?: Language;
+  /** El costo estimado en dólares (spec F9 §4.12, hoy solo X); por defecto `null`. */
+  costUsd?: number | null;
+};
+
+/**
+ * Una publicación que nace (ADR-0014): siempre en `approved`, con su texto y sus medios fijos. De
+ * un aviso (`listingId`, como antes de F9) o, desde F9 (ADR-0029), de un post (`postId`).
+ */
+export type NewPublication = NewListingPublication | NewPostPublication;
+
+/** Una publicación nueva de un aviso (lo de antes de F9). */
+export type NewListingPublication = NewPublicationBase & {
+  listingId: string;
+  postId?: undefined;
   /**
-   * `source_hash` del aviso al nacer (ADR-0015, spec F4 §4.6): obligatorio desde F4-T16, para que
-   * una publicación de Portal sin versión no nazca. La columna sigue admitiendo `null` (las
-   * publicaciones anteriores a la migración `0007`).
+   * `source_hash` del aviso al nacer (ADR-0015, spec F4 §4.6): obligatorio desde F4-T16, para
+   * que una publicación de Portal sin versión no nazca. La columna sigue admitiendo `null` (las
+   * publicaciones anteriores a la migración `0007`, y las de posts).
    */
   listingSourceHash: string;
   /** La publicación de Portal que esta republica (ADR-0020, spec F6 §4.7); por defecto `null`. */
   relistedFrom?: string | null;
+};
+
+/** Una publicación nueva de un post (F9, ADR-0029). */
+export type NewPostPublication = NewPublicationBase & {
+  postId: string;
+  listingId?: undefined;
+  /** Un post no tiene ficha que versionar ni se republica: siempre `null`. */
+  listingSourceHash?: null;
+  relistedFrom?: null;
 };
 
 /** Quién causó un cambio y qué se anota en la bitácora (sin secretos: se guarda tal cual). */
@@ -86,8 +111,9 @@ export type NewPublicationEvent = PublicationEventInput & {
  * Publicaciones y su bitácora (`publications` y `publication_events`, ADR-0014 y spec F3 §4.3).
  * Cada cambio de estado guarda la fila y su evento `status_changed` en una sola transacción, y es
  * condicional: solo si la publicación sigue en `from`. Errores (`AppError`):
- * - una segunda publicación activa del mismo aviso, cuenta y formato → `PUBLICATION_CONFLICT`;
- * - un aviso, una cuenta o un texto que no existen al crear → `PUBLICATION_REFERENCE_INVALID`;
+ * - una segunda publicación activa del mismo aviso, cuenta y formato (o del mismo post, cuenta,
+ *   formato e idioma) → `PUBLICATION_CONFLICT`;
+ * - un aviso o post, una cuenta o un texto que no existen al crear → `PUBLICATION_REFERENCE_INVALID`;
  * - una publicación que no existe → `PUBLICATION_NOT_FOUND`;
  * - una transición que la máquina no permite, o desde un estado que ya cambió →
  *   `INVALID_TRANSITION` (sin escribir nada);
@@ -117,6 +143,8 @@ export interface PublicationRepository {
   get(id: string): Promise<Publication | null>;
   /** Las de un aviso, por fecha de creación. */
   listByListing(listingId: string): Promise<Publication[]>;
+  /** Las de un aviso o post (F9), por fecha de creación. */
+  listBySubject(subject: Subject): Promise<Publication[]>;
   /**
    * Las de avisos que están en un estado (por ejemplo, `publishing` para reencolarlas al arrancar).
    * Este barrido, `listDue` y `listStalePublishing` no ven las de posts hasta que sus casos de uso

@@ -7,6 +7,7 @@ import { manualConfirmPending, requiresManualConfirm } from "../marketplace/limi
 import type { LockedRepositories } from "../ports/listing-lock.js";
 import type { Publication } from "../publication.js";
 import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
+import { listingIdOf } from "../subject.js";
 import {
   channelPublications,
   type PublicationOpening,
@@ -55,10 +56,10 @@ export async function requireStartableOne(
   options: StartCheckOptions,
 ): Promise<Listing> {
   const listing = requirePublishableListing(
-    await locked.listings.get(publication.listingId),
-    publication.listingId,
+    await locked.listings.get(listingIdOf(publication.subject)),
+    listingIdOf(publication.subject),
   );
-  await requireNoActiveRun(locked, publication.listingId);
+  await requireNoActiveRun(locked, listingIdOf(publication.subject));
   const content = await locked.contents.get(publication.contentId);
   if (content === null || content.status !== "approved") {
     throw new AppError(

@@ -4,6 +4,7 @@ import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { listingIdOf } from "../subject.js";
 import {
   enqueuePublications,
   type MarketplaceStartOptions,
@@ -63,9 +64,13 @@ export async function startPublication(
 ): Promise<StartPublicationResult> {
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
-  const definitions = await portalDefinitionsBeforeLock(deps, found.listingId, found.platform);
+  const definitions = await portalDefinitionsBeforeLock(
+    deps,
+    listingIdOf(found.subject),
+    found.platform,
+  );
 
-  const result = await deps.lock.run(found.listingId, async (locked) => {
+  const result = await deps.lock.run(listingIdOf(found.subject), async (locked) => {
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     if (publication.status === "publishing") return { publication, requeued: true };

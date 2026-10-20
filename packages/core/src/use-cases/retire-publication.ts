@@ -3,6 +3,7 @@ import { PLATFORM_TEXT } from "../labels.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { listingIdOf } from "../subject.js";
 import { listingBackToReadyIfLast, OPERATION_PLATFORMS } from "./publication-operations.js";
 import { publicationNotFound } from "./publication-start.js";
 
@@ -49,7 +50,7 @@ export async function retirePublication(
     );
   }
 
-  return deps.lock.run(found.listingId, async (locked) => {
+  return deps.lock.run(listingIdOf(found.subject), async (locked) => {
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     if (publication.status !== "published") {
@@ -71,7 +72,7 @@ export async function retirePublication(
       { actor, payload: { mode: live ? "live" : "dry-run", removedByHand: live } },
     );
     const listingBackToReady = live
-      ? await listingBackToReadyIfLast(locked, publication.listingId)
+      ? await listingBackToReadyIfLast(locked, listingIdOf(publication.subject))
       : false;
     return { publication: retired, listingBackToReady };
   });
