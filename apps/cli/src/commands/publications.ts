@@ -221,6 +221,14 @@ export function runRetirePublication(
       !OPERATION_PLATFORMS.has(current.platform);
     const platform = PLATFORM_TEXT[current.platform];
     const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
+    // Hoy solo LinkedIn borra por la API: en otra red se dice antes de preguntar.
+    if (options.delete && current.platform !== "linkedin") {
+      throw new CliError(
+        "RETIRE_DELETE_UNSUPPORTED",
+        `AgentSales no borra en ${platform}: solo un post de LinkedIn con la cuenta en modo api`,
+        `Bórrala a mano en ${platform} y corre: agentsales publications retire ${publicationId}`,
+      );
+    }
     if (live && !options.yes) {
       const confirmed = await deps.confirm(
         options.delete

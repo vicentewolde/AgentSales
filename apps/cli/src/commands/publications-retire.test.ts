@@ -83,6 +83,37 @@ describe("publications retire --delete (F9-T19)", () => {
     expect(removed).toEqual([]);
   });
 
+  it("en otra red, --delete se explica antes de preguntar y sin llamar a la API", async () => {
+    const t = await createPostPublicationScenario();
+    const started = await t.toPublishing(t.publicationOf("discord"));
+    const published = await t.publications.transition(
+      started.id,
+      { from: "publishing", to: "published", changes: { externalId: "123" } },
+      { actor: "system", payload: { mode: "live" } },
+    );
+    const h = harness({
+      deps: {
+        brokers: t.repos.brokers,
+        posts: t.posts,
+        publications: t.publications,
+        platformAccounts: t.platformAccounts,
+        lock: t.lock,
+        postLock: t.postLock,
+        publishMode: "live",
+      },
+    });
+    const confirm = async () => {
+      throw new Error("no debía preguntar");
+    };
+    expect(
+      await runRetirePublication({ ...h.io, client: h.client, confirm }, published.id, {
+        delete: true,
+      }),
+    ).toBe(1);
+    expect(h.errors()).toContain("RETIRE_DELETE_UNSUPPORTED");
+    expect(t.current(published.id)?.status).toBe("published");
+  });
+
   it("con la cuenta a mano o la API en simulación, explica cómo seguir a mano", async () => {
     const manual = await setup({ mode: "manual" });
     expect(
