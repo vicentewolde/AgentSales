@@ -1,8 +1,8 @@
 # AgentSales
 
-Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento.
+Publica avisos inmobiliarios (y luego productos en general) en Instagram, Portal Inmobiliario y Facebook Marketplace: la IA redacta, procesa fotos y videos, y el sistema publica, programa y hace seguimiento. Desde F9 hace lo mismo con el contenido de marca (posts) en Instagram, X, LinkedIn, Discord y TikTok, con una IA que propone ideas y el operador aprobando todo.
 
-> Estado: **F8 · En internet cerrada (`v1.0.0`, el MVP)**: AgentSales corre en `https://agentsales.agentpey.com` (simulación), con doble factor, respaldo en R2 y Instagram y Mercado Libre conectados con el botón. Pendiente del operador: el App Review de Meta. Ver `docs/ESTADO.md`.
+> Estado: **F9 · Contenido de marca**: entregas 1 y 2 cerradas (`v1.1.0` y `v1.2.0`); la 3 (el plan de ideas) está construida y faltan la prueba en vivo de cada red y el cierre (`v1.3.0`). El MVP (`v1.0.0`, F8) corre en `https://agentsales.agentpey.com` (simulación). Pendientes del operador: el App Review de Meta y las pruebas de entrada de las redes (S1 a S6). Ver `docs/ESTADO.md`.
 
 ## Requisitos
 - Node.js 26 (`.nvmrc`) y pnpm 11 (`npm i -g pnpm@11`; Node 26 ya no trae corepack)
@@ -22,7 +22,7 @@ cp .env.example .env     # completar DATABASE_URL, R2_* y APP_ENCRYPTION_KEY (do
 pnpm install
 pnpm --filter @agentsales/media exec playwright install chromium   # el Chromium que pide Playwright (repetir al actualizarlo)
 pnpm db:migrate          # aplica las migraciones en Neon
-pnpm db:seed             # crea el corredor demo y las 36 definiciones de campos (se puede repetir)
+pnpm db:seed             # crea el corredor demo y las 36 definiciones de campos (se puede repetir; --operator-brands suma tus marcas, F9)
 pnpm storage:check       # sube, lee y borra un objeto de prueba en R2
 pnpm auth:admin --email tu@correo.cl   # tu usuario de administrador: el enlace para elegir la contraseña queda en el portapapeles
 pnpm dev                 # API en 127.0.0.1:8787 · worker · panel en http://localhost:5173
@@ -112,6 +112,22 @@ pnpm -s cli brokers show|edit|logo <slug>                    # su marca, sus aju
 pnpm llm:smoke --provider anthropic-api                      # una llamada corta por la API (gasta centavos)
 ```
 En el panel: **Corredores** (alta, marca, logo, planilla, usuarios y gasto), **Ver corredor** para mirar uno a la vez y, para el corredor, **Mi marca**. Los enlaces de invitación son secretos: envíalos por un canal privado.
+
+Contenido de marca (F9), con `pnpm dev` corriendo. Cada red necesita su app y sus variables en `.env` (salvo Discord) y su prueba de entrada antes de publicar de verdad (`docs/07-checklist-cuentas.md`, "F9 · Contenido de marca"); el paso a paso está en `docs/08-guia-operador.md` ("El contenido de tus marcas, de punta a punta"):
+```bash
+pnpm db:seed --operator-brands                               # tus marcas vinny y agentpey (solo en tu instancia)
+pnpm -s cli brand show|edit --broker <slug>                  # el perfil editorial: idiomas, líneas, hechos, cadencia
+pnpm -s cli accounts connect linkedin|x|tiktok --broker <slug>   # OAuth en el navegador donde tienes el panel
+pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin
+pnpm -s cli accounts mode <id> manual|api                    # LinkedIn nace a mano; spend-limit <id> <usd> para X
+pnpm -s cli plan --broker <slug> [--days 14]                 # la IA propone ideas con fecha; plan show|list
+pnpm -s cli post accept|discard <id>                         # aceptar una idea redacta sus textos
+pnpm -s cli post create|list|show|upload|draft|edit|approve|publish|schedule|archive
+pnpm -s cli publications resolve <id> --published|--not-published   # "no se sabe si salió"
+pbpaste | pnpm -s cli publications confirm <id> --url-stdin  # LinkedIn a mano o TikTok: lo publicaste
+pnpm eval:social                                             # evalúa el plan y los textos sin la base (--provider fake no gasta)
+```
+En el panel: **Contenido** (posts, textos por red e idioma, medios, aprobar, programar, resolver y confirmar), **Plan** (las ideas por semana) y **Calendario** (lo programado de posts y propiedades); el perfil editorial, en **Mi marca**.
 - **`PUBLISH_MODE=dry-run` por defecto:** no se publica nada de verdad. En `live` se ve en rojo en el panel y la CLI.
 - **La cola la inicializa el worker:** la primera vez aparece con error hasta que el worker arranca (lo hace `pnpm dev`); refresca el panel.
 - **Detén `pnpm dev` al terminar** (Ctrl+C): el worker y el panel mantienen Neon despierto y consumen las horas del plan gratis.
