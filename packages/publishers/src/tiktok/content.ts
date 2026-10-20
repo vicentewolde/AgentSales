@@ -20,13 +20,16 @@ export type ChunkPlan = {
 export type ChunkRange = { index: number; first: number; last: number };
 
 /**
- * El plan de trozos de un video (`tiktok.md` §5): hasta `chunkBytes`, uno solo del tamaño del
- * video (la doc exige uno solo bajo 5 MB); si es mayor, `floor(tamaño / trozo)` trozos de
- * `chunkBytes`, y el último se lleva el resto.
+ * El plan de trozos de un video (`tiktok.md` §5): `floor(tamaño / trozo)` trozos de `chunkBytes`,
+ * y el último se lleva el resto. Si eso da uno solo (un video de menos de `2 × chunkBytes`; la doc
+ * exige uno solo bajo 5 MB), su `chunk_size` es el tamaño del video.
  */
 export function chunkPlan(videoSize: number, chunkBytes = TIKTOK_CHUNK_BYTES): ChunkPlan {
-  if (videoSize <= chunkBytes) return { videoSize, chunkSize: videoSize, totalChunks: 1 };
-  return { videoSize, chunkSize: chunkBytes, totalChunks: Math.floor(videoSize / chunkBytes) };
+  const totalChunks = Math.max(1, Math.floor(videoSize / chunkBytes));
+  // Un solo trozo (hasta `2 × chunkBytes - 1`, lejos de los 64 MB de un trozo): el `PUT` lleva el
+  // video entero, así que `chunk_size` es el tamaño del video, no el del trozo.
+  if (totalChunks === 1) return { videoSize, chunkSize: videoSize, totalChunks: 1 };
+  return { videoSize, chunkSize: chunkBytes, totalChunks };
 }
 
 /** Los trozos del plan, en orden (el último hasta el final del video). */

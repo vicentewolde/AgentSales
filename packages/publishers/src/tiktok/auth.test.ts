@@ -132,6 +132,53 @@ describe("createTikTokAuth", () => {
     }
   });
 
+  it("la renovación no descarta un par ya rotado por campos que no usa (sin open_id ni scope, o raros)", async () => {
+    for (const extra of [{}, { open_id: 123, scope: ["video.upload"], refresh_expires_in: "x" }]) {
+      server.use(
+        http.post(TOKEN_URL, () =>
+          HttpResponse.json({
+            access_token: "act.nuevo",
+            refresh_token: "rft.rotado",
+            expires_in: 86400,
+            ...extra,
+          }),
+        ),
+      );
+
+      await expect(auth().refresh("rft.viejo")).resolves.toEqual({
+        accessToken: "act.nuevo",
+        refreshToken: "rft.rotado",
+        accessTokenExpiresAt: new Date(NOW.getTime() + 86400 * 1000),
+        refreshTokenExpiresAt: null,
+      });
+    }
+  });
+
+  it("una renovación colgada corta en su tope: TIKTOK_UNAVAILABLE reintentable, que no es un rechazo", async () => {
+    server.use(
+      http.post(TOKEN_URL, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        return HttpResponse.json(tokenBody(2));
+      }),
+    );
+    const tiktok = createTikTokAuth({
+      clientKey: "clave-de-la-app",
+      clientSecret: SECRET,
+      redirectUri: "https://agentsales.agentpey.com/api/oauth/tiktok/callback",
+      refreshTimeoutMs: 50,
+      now: () => NOW,
+    });
+
+    const error = await tiktok.refresh("rft.x").catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "TIKTOK_UNAVAILABLE",
+      retriable: true,
+      details: { call: "refresh", reason: "timeout" },
+    });
+    expect(tiktok.isRejected(error)).toBe(false);
+  });
+
   it("una renovación sin el par es TIKTOK_UNEXPECTED_RESPONSE", async () => {
     server.use(http.post(TOKEN_URL, () => HttpResponse.json({ access_token: "act.solo" })));
 
@@ -193,6 +240,44 @@ describe("el refresh que rota con ensureRotatingAccessToken (ADR-0029 punto 11)"
     await ensureRotatingAccessToken(deps, account.id);
     const forms = (await recorded()).map((request) => request.form?.get("refresh_token"));
     expect(forms).toEqual(["rft.refresco-1", "rft.refresco-2"]);
+  });
+
+  it("una renovación colgada no vence la cuenta: el error sube reintentable y el par no cambia", async () => {
+    server.use(
+      http.post(TOKEN_URL, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        return HttpResponse.json(tokenBody(2));
+      }),
+    );
+    const platformAccounts = createInMemoryPlatformAccountRepository();
+    const account = await platformAccounts.upsertConnected({
+      brokerId: "marca",
+      platform: "tiktok",
+      externalAccountId: "open-id-1",
+      displayName: "AgentPey",
+      tokenExpiresAt: null,
+      meta: {},
+      credentials: { accessToken: "act.viejo", refreshToken: "rft.viejo" },
+    });
+    const slow = createTikTokAuth({
+      clientKey: "clave",
+      clientSecret: SECRET,
+      redirectUri: "https://agentsales.agentpey.com/api/oauth/tiktok/callback",
+      refreshTimeoutMs: 50,
+      now: () => NOW,
+    });
+
+    await expect(
+      ensureRotatingAccessToken(
+        { platformAccounts, refreshers: { tiktok: slow }, now: () => NOW },
+        account.id,
+      ),
+    ).rejects.toMatchObject({ code: "TIKTOK_UNAVAILABLE", retriable: true });
+    expect((await platformAccounts.get(account.id))?.status).toBe("connected");
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({
+      accessToken: "act.viejo",
+      refreshToken: "rft.viejo",
+    });
   });
 
   it("un refresh token rechazado deja la cuenta vencida (TOKEN_REFRESH_REJECTED)", async () => {

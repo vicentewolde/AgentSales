@@ -194,6 +194,18 @@ describe("chunkPlan", () => {
     expect(chunkPlan(10, 10)).toEqual({ videoSize: 10, chunkSize: 10, totalChunks: 1 });
   });
 
+  it("de un trozo a menos de dos: uno solo, con chunk_size = el tamaño del video (el PUT lo lleva entero)", () => {
+    expect(chunkPlan(15, 10)).toEqual({ videoSize: 15, chunkSize: 15, totalChunks: 1 });
+    expect(chunkPlan(19, 10)).toEqual({ videoSize: 19, chunkSize: 19, totalChunks: 1 });
+    expect(chunkRanges(chunkPlan(19, 10))).toEqual([{ index: 0, first: 0, last: 18 }]);
+    const mib = 1024 * 1024;
+    expect(chunkPlan(15 * mib)).toEqual({
+      videoSize: 15 * mib,
+      chunkSize: 15 * mib,
+      totalChunks: 1,
+    });
+  });
+
   it("más grande: floor(tamaño / trozo) trozos, y el último se lleva el resto", () => {
     const plan = chunkPlan(25, 10);
     expect(plan).toEqual({ videoSize: 25, chunkSize: 10, totalChunks: 2 });
@@ -298,6 +310,19 @@ describe("createTikTokPublisher · publish (modo Upload, la bandeja)", () => {
     ]);
     expect(notes.map((note) => note.kind)).toEqual(["uploaded", "status"]);
     expect(JSON.stringify(notes)).not.toMatch(/subida-secreta|firma-r2|act\./);
+  });
+
+  it("un video de entre uno y dos trozos va en uno solo y el init lo anuncia con su tamaño", async () => {
+    fakeR2(15);
+    const tiktok = fakeTikTok({ statuses: ["SEND_TO_USER_INBOX"] });
+
+    await publisherWith().publish(input([video(15)]), context());
+
+    const init = (await recorded()).find((request) => request.url.href === INIT);
+    expect(init?.json).toEqual({
+      source_info: { source: "FILE_UPLOAD", video_size: 15, chunk_size: 15, total_chunk_count: 1 },
+    });
+    expect(tiktok.chunks.map((chunk) => chunk.range)).toEqual(["bytes 0-14/15"]);
   });
 
   it("un video chico va en un solo trozo", async () => {

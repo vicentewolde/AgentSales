@@ -45,7 +45,7 @@ const scopeSchema = z
   .catch(undefined)
   .transform((value) => (value ?? "").split(/[\s,]+/).filter((scope) => scope !== ""));
 
-/** La respuesta del canje y de la renovación (`tiktok.md` §4). */
+/** La respuesta del canje (`tiktok.md` §4): todo lo que se guarda al conectar. */
 const tokenResponseSchema = z.object({
   access_token: tokenSchema,
   refresh_token: tokenSchema,
@@ -53,6 +53,21 @@ const tokenResponseSchema = z.object({
   expires_in: secondsSchema,
   refresh_expires_in: secondsSchema.optional().catch(undefined),
   scope: scopeSchema,
+});
+
+/**
+ * La respuesta de la renovación: solo exige el par y la vida del `access_token`, porque TikTok pudo
+ * rotar ya el refresh token y descartar la respuesta obligaría a reconectar (como en Mercado
+ * Libre, ADR-0015). `open_id`, `scope` y `refresh_expires_in` no se usan aquí: si no vienen o no se
+ * entienden, no importa.
+ */
+const refreshResponseSchema = z.object({
+  access_token: tokenSchema,
+  refresh_token: tokenSchema,
+  expires_in: secondsSchema,
+  refresh_expires_in: secondsSchema.optional().catch(undefined),
+  open_id: z.unknown().optional(),
+  scope: z.unknown().optional(),
 });
 
 const userResponseSchema = z.object({
@@ -140,7 +155,7 @@ export function createTikTokAuth(options: TikTokAuthOptions): TikTokAuth {
         { signal, timeoutMs: refreshTimeoutMs },
       );
       // Sin el par (el anterior pudo dejar de servir), `TIKTOK_UNEXPECTED_RESPONSE`.
-      const tokens = parseTikTokBody("refresh", tokenResponseSchema, body);
+      const tokens = parseTikTokBody("refresh", refreshResponseSchema, body);
       return {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,

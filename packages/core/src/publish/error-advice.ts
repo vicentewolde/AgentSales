@@ -166,7 +166,7 @@ const ADVICE: Readonly<Record<string, string>> = {
   TIKTOK_PERMISSION_DENIED:
     "Reconecta TikTok con accounts connect tiktok y deja marcado el permiso de subir videos.",
   TIKTOK_PENDING_LIMIT:
-    "Hay 5 videos esperando en la bandeja de TikTok: publícalos o descártalos en la app; el sistema reintenta solo.",
+    "Hay 5 videos esperando en la bandeja de TikTok: publícalos o descártalos en la app. El sistema vuelve a intentar solo hasta 3 veces; después reintenta tú.",
   TIKTOK_POST_LIMIT: "La cuenta llegó a su máximo de publicaciones del día: reintenta mañana.",
   TIKTOK_ACCOUNT_RESTRICTED:
     "TikTok no deja publicar a esta cuenta: revisa sus avisos en la app de TikTok.",
@@ -175,7 +175,17 @@ const ADVICE: Readonly<Record<string, string>> = {
   TIKTOK_UPLOAD_FAILED:
     "TikTok no aceptó el video: revisa lo que dice el mensaje, prepara el post de nuevo y reintenta.",
   TIKTOK_STILL_PROCESSING:
-    "TikTok sigue procesando el video: el sistema vuelve a mirar solo; si no, reintenta en unos minutos.",
+    "TikTok sigue procesando el video: el sistema vuelve a mirar solo hasta 3 veces (sin subirlo de nuevo); después reintenta tú.",
+  TIKTOK_UPLOAD_REJECTED:
+    "TikTok rechazó una parte del video: reintenta (se sube desde el principio); si se repite, prepara el post de nuevo.",
+  TIKTOK_UNAVAILABLE: RETRY_LATER,
+  TIKTOK_UNREACHABLE: RETRY_LATER,
+  TIKTOK_RATE_LIMITED:
+    "TikTok limitó las llamadas: el sistema reintenta solo; si no, reintenta en unos minutos.",
+  TIKTOK_UNEXPECTED_RESPONSE:
+    "TikTok respondió algo inesperado: reintenta, y si se repite, revisa el log del worker.",
+  TIKTOK_APP_CREDENTIALS_INVALID:
+    "TikTok no reconoce la app: revisa TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET en .env y reinicia.",
   TIKTOK_REQUEST_REJECTED: "Corrige lo que dice el mensaje (el video) y reintenta.",
   TIKTOK_MEDIA_UNAVAILABLE: RETRY_LATER,
   // Del sistema.
