@@ -23,7 +23,10 @@ import {
   refreshAccountToken,
   requestMarketplaceLogin,
   requireBroker,
+  setXSpendLimit,
   type TokenRefreshResult,
+  xAccountMetaSchema,
+  xSpendLimitOf,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
@@ -45,6 +48,7 @@ import {
   mercadoLibreAuthorizeUrlBodySchema,
   mercadoLibreConnectBodySchema,
   type PlatformAccountView,
+  xSpendLimitBodySchema,
 } from "../contracts/index.js";
 import type { AppLogger } from "../logger.js";
 import { listScope } from "../scope.js";
@@ -90,6 +94,11 @@ export type AccountRoutesDeps = ConnectAccountDeps &
     marketplaceAutomation: boolean;
     /** Discord (F9-T14): leer el webhook al conectarlo, sin publicar. */
     discord: DiscordWebhooks;
+    /**
+     * X (F9-T16): si la API tiene el par de la app y el inicio del OAuth con PKCE (en el host de
+     * `X_REDIRECT_URI`), para `GET /accounts`.
+     */
+    x: { configured: boolean; startUrl: string };
   };
 
 /** Sin el par de la app no se arma la URL ni se canjea: el canje mandaría un secret vacío. */
@@ -203,6 +212,19 @@ function shownMeta(account: PlatformAccount): ShownMeta | null {
       ...NO_SESSION,
     };
   }
+  if (account.platform === "x") {
+    // X (F9-T16): el usuario, los permisos y el último refresco; el token vive 2 h y se renueva.
+    const meta = xAccountMetaSchema.safeParse(account.meta);
+    if (!meta.success) return null;
+    return {
+      tokenExpiryEstimated: false,
+      connectedAt: meta.data.connectedAt,
+      tokenRefreshedAt: meta.data.tokenRefreshedAt,
+      accountType: null,
+      permissions: meta.data.scopes,
+      ...NO_SESSION,
+    };
+  }
   if (account.platform === "portal_inmobiliario") {
     const meta = mercadoLibreAccountMetaSchema.safeParse(account.meta);
     if (!meta.success) return null;
@@ -247,6 +269,8 @@ export function accountView(account: PlatformAccount): PlatformAccountView {
             at: new Date(known.lastLoginError.at),
           },
     marketplaceMode: known?.marketplaceMode ?? null,
+    // X (F9-T16): el tope de gasto del mes.
+    ...(account.platform === "x" ? { spendLimitUsd: xSpendLimitOf(account) } : {}),
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
   };
@@ -300,6 +324,7 @@ export function accountRoutes(deps: AccountRoutesDeps) {
               ),
           },
           marketplace: { automation: deps.marketplaceAutomation },
+          x: { configured: deps.x.configured, startUrl: deps.x.startUrl },
         },
       };
       return c.json(body, 200);
@@ -436,6 +461,20 @@ export function accountRoutes(deps: AccountRoutesDeps) {
           },
         );
         return c.json(refreshView(result), 200);
+      },
+    )
+    .post(
+      "/:id/spend-limit",
+      validated("param", idParamSchema),
+      validated("json", xSpendLimitBodySchema),
+      async (c) => {
+        // X (F9-T16, spec F9 §4.12): el tope de gasto del mes; no llama a X.
+        const account = await setXSpendLimit(deps, {
+          accountId: c.req.valid("param").id,
+          spendLimitUsd: c.req.valid("json").spendLimitUsd,
+        });
+        const body: AccountResponse = { account: accountView(account) };
+        return c.json(body, 200);
       },
     )
     .post(
