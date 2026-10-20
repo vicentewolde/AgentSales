@@ -11,7 +11,6 @@ import {
 } from "../editorial-profile.js";
 import {
   LLM_PROVIDERS,
-  type PlanRunStatus,
   POST_KINDS,
   POST_PLATFORMS,
   type PostKind,
@@ -24,9 +23,10 @@ import { hasMassMention, unsupportedFacts } from "./check.js";
 import { kindProblem } from "./networks.js";
 
 // El plan de ideas de la IA (spec F9 §4.9, ADR-0030): el período, lo que ve la IA, la forma de su
-// respuesta y las verificaciones de cada idea. Funciones puras: las usan `requestPlanRun` y
-// `runPlan` (use-cases) y la evaluación de T22. Una idea que no pasa se **descarta** y queda en el
-// reporte; no tumba el plan.
+// respuesta, las verificaciones de cada idea, el reporte, qué hacer si falla y cómo se agrupan sus
+// ideas por semana. Funciones puras: las usan `requestPlanRun` y `runPlan` (use-cases), la
+// evaluación de T22 y, desde T21, la API, la CLI y el panel. Una idea que no pasa se **descarta** y
+// queda en el reporte; no tumba el plan. Los textos del estado de un plan están en `labels.ts`.
 
 /** Días del período por defecto: las próximas 2 semanas (spec F9 §4.9). */
 export const PLAN_DEFAULT_DAYS = 14;
@@ -130,6 +130,25 @@ export function planPeriod(params: { now: Date; startDay?: string; days?: number
     days,
     start: chileDateStart(firstDay),
     end: chileDateStart(addDays(firstDay, days)),
+  };
+}
+
+/**
+ * El período de un plan guardado (`plan_runs.period_start` y `period_end`, `[start, end)`), en
+ * días de Chile: lo usan `runPlan` y la API (F9-T21), con una sola fórmula. `periodEnd` es el
+ * inicio del día siguiente al último; medio día antes cae siempre en el último (aun con el cambio
+ * de hora).
+ */
+export function planRunPeriod(run: { periodStart: Date; periodEnd: Date }): PlanPeriod {
+  const firstDay = chileDateOf(run.periodStart);
+  const lastDay = chileDateOf(new Date(run.periodEnd.getTime() - DAY_MS / 2));
+  const utc = (day: string) => Date.parse(`${day}T00:00:00Z`);
+  return {
+    firstDay,
+    lastDay,
+    days: Math.round((utc(lastDay) - utc(firstDay)) / DAY_MS) + 1,
+    start: run.periodStart,
+    end: run.periodEnd,
   };
 }
 
@@ -635,9 +654,10 @@ export function checkPlanIdeas(params: {
 // --- El reporte -------------------------------------------------------------------------------
 
 /**
- * El reporte de un plan terminado (`plan_runs.report`): las ideas que quedaron como posts (con
- * sus redes, que el post no guarda), las descartadas con su motivo, las advertencias de la IA y la
- * llamada. Es lo que leen T21 (API, CLI y panel) y T22 (evaluación).
+ * El reporte de un plan terminado (`plan_runs.report`): las ideas que quedaron como posts (con sus
+ * redes —que el post también guarda en `platforms` desde T20— y las que se le quitaron, `notes`),
+ * las descartadas con su motivo, las advertencias de la IA y la llamada. Es lo que leen T21 (API,
+ * CLI y panel) y T22 (evaluación).
  */
 export const planRunReportSchema = z.object({
   ideas: z.array(
@@ -708,14 +728,6 @@ export function planRunErrorAdvice(code: string): string {
 }
 
 // --- Cómo se muestra --------------------------------------------------------------------------
-
-/** El estado de un plan en palabras (la CLI y el panel, F9-T21). */
-export const PLAN_RUN_STATUS_TEXT: Readonly<Record<PlanRunStatus, string>> = {
-  queued: "en cola",
-  running: "la IA está proponiendo ideas",
-  succeeded: "listo",
-  failed: "falló",
-};
 
 /** `Semana del 19-10 al 25-10`: una semana de lunes a domingo, por su lunes (`AAAA-MM-DD`). */
 export function planWeekText(monday: string): string {

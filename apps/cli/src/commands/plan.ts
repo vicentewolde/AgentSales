@@ -9,6 +9,7 @@ import {
 import {
   formatChileTime,
   groupByPlanWeek,
+  ideaNeedsDraft,
   PLAN_DEFAULT_DAYS,
   PLAN_RUN_STATUS_TEXT,
   PLATFORM_TEXT,
@@ -110,12 +111,11 @@ function ideaNextSteps(idea: PlanIdeaView): string[] {
       `Aceptar: agentsales post accept ${idea.id} · descartar: agentsales post discard ${idea.id}`,
     ];
   }
+  if (ideaNeedsDraft(idea)) {
+    return [`Aceptada sin textos: pídelos con agentsales post draft ${idea.id}`];
+  }
   if (idea.status === "draft" && idea.texts === 0) {
-    const running =
-      idea.latestRun !== null && ["queued", "running"].includes(idea.latestRun.status);
-    return running
-      ? [`La IA está redactando sus textos: espera con agentsales post draft ${idea.id}`]
-      : [`Aceptada sin textos: pídelos con agentsales post draft ${idea.id}`];
+    return [`La IA está redactando sus textos: espera con agentsales post draft ${idea.id}`];
   }
   if (idea.status === "draft" || idea.status === "ready") {
     return [`Revisa, aprueba y programa: agentsales post show ${idea.id}`];

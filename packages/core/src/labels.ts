@@ -11,6 +11,7 @@ import type {
   Language,
   ListingStatus,
   Operation,
+  PlanRunStatus,
   Platform,
   PlatformAccountStatus,
   PublicationFormat,
@@ -110,6 +111,14 @@ export const CONTENT_RUN_STATUS_TEXT: Readonly<Record<ContentRunStatus, string>>
   queued: "en cola",
   running: "preparando",
   succeeded: "lista",
+  failed: "falló",
+};
+
+/** El estado de un plan de ideas en palabras (la CLI y el panel, F9-T21). */
+export const PLAN_RUN_STATUS_TEXT: Readonly<Record<PlanRunStatus, string>> = {
+  queued: "en cola",
+  running: "la IA está proponiendo ideas",
+  succeeded: "listo",
   failed: "falló",
 };
 

@@ -17,6 +17,7 @@ import {
   plannedSlots,
   planPeriod,
   planRunErrorAdvice,
+  planRunPeriod,
   planRunReportSchema,
   planWeeks,
   planWeekText,
@@ -584,5 +585,19 @@ describe("las ideas por semana (F9-T21)", () => {
       [null, ["sin fecha"]],
     ]);
     expect(planWeekText("2026-10-26")).toBe("Semana del 26-10 al 01-11");
+  });
+});
+
+describe("el período de un plan guardado (F9-T21)", () => {
+  it("da los mismos días que el pedido, también cruzando el cambio de hora", () => {
+    const later = new Date("2027-03-20T15:00:00Z");
+    for (const asked of [
+      period,
+      // Chile atrasa el reloj el primer domingo de abril y lo adelanta el primero de septiembre.
+      planPeriod({ now: later, startDay: "2027-03-30", days: 14 }),
+      planPeriod({ now: new Date("2027-08-25T15:00:00Z"), startDay: "2027-08-30", days: 10 }),
+    ]) {
+      expect(planRunPeriod({ periodStart: asked.start, periodEnd: asked.end })).toEqual(asked);
+    }
   });
 });

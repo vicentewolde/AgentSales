@@ -1,6 +1,5 @@
 import type { AbortSignalLike } from "../abort.js";
 import { brokerScope } from "../access.js";
-import { chileDateOf } from "../chile-time.js";
 import { contentRunErrorOf } from "../content/run-error.js";
 import { editorialProfileView } from "../editorial-profile.js";
 import type { PlanRunStatus } from "../enums.js";
@@ -16,12 +15,12 @@ import type { PlanRunRepository } from "../ports/plan-run-repository.js";
 import type { NewPost, PostRepository } from "../ports/post-repository.js";
 import { profileSources } from "../social/check.js";
 import {
-  addDays,
   buildPlanBrief,
   PLAN_RECENT_DAYS,
   type PlanRunReport,
   planHistory,
   plannedSlots,
+  planRunPeriod,
   planRunRequestSchema,
   planWeeks,
 } from "../social/plan.js";
@@ -198,14 +197,7 @@ async function propose(
     broker.id,
     new Date(today.getTime() - PLAN_RECENT_DAYS * DAY_MS),
   );
-  const firstDay = chileDateOf(run.periodStart);
-  const period = {
-    firstDay,
-    lastDay: addDays(firstDay, request.days - 1),
-    days: request.days,
-    start: run.periodStart,
-    end: run.periodEnd,
-  };
+  const period = planRunPeriod(run);
   const weeks = planWeeks(period);
   const planned = await deps.posts.list(
     {

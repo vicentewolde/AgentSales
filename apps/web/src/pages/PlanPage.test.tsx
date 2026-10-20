@@ -121,6 +121,12 @@ describe("panel: Plan", () => {
     const card = screen.getByRole("listitem", { name: ideas[0]?.topic ?? "" });
     expect(within(card).getByText(/^Por qué:/)).toBeTruthy();
     expect(within(card).getByText(/LinkedIn · línea Producto/)).toBeTruthy();
+
+    // Terminado el plan (y sin textos redactándose), la página deja de volver a mirar.
+    const reads = () => s.requests.filter((request) => request === `GET /plans/${run?.id}`).length;
+    const before = reads();
+    await new Promise((done) => setTimeout(done, 2_500));
+    expect(reads()).toBe(before);
   });
 
   it("aceptar una idea la pasa a borrador y encola sus textos; descartarla pide confirmación", async () => {
@@ -269,5 +275,64 @@ describe("panel: las redes de un post (F9-T21)", () => {
     await waitFor(async () =>
       expect(await s.deps.contentRuns.findActive({ kind: "post", id: post.id })).not.toBeNull(),
     );
+  });
+
+  it("quitar una red con una publicación pendiente se rechaza con qué hacer", async () => {
+    const s = await setup();
+    await s.platformAccounts.upsertConnected({
+      brokerId: s.brand.id,
+      platform: "discord",
+      externalAccountId: "canal-1",
+      displayName: "#anuncios",
+      tokenExpiresAt: null,
+      meta: {},
+      credentials: { webhookUrl: "https://discord.com/api/webhooks/123456/token-de-prueba" },
+    });
+    const post = await s.deps.posts.create({
+      brokerId: s.brand.id,
+      topic: "Un post aprobado",
+      kind: "text",
+      status: "draft",
+    });
+    const { run } = await requestContentRun(s.deps, { postId: post.id });
+    await s.contentRuns.markRunning(run.id);
+    await s.contentRuns.markSucceeded(run.id, {
+      report: { warnings: [] },
+      contents: [
+        {
+          platform: "discord",
+          language: "es",
+          title: null,
+          body: "Texto para Discord",
+          hashtags: [],
+          llmProvider: "fake",
+          llmModel: "fake",
+          promptVersion: "social-post-v1",
+          rawOutput: null,
+        },
+      ],
+    });
+    const [content] = await s.contents.listCurrent({ kind: "post", id: post.id });
+    s.renderApp(`/contenido/${post.id}`);
+    await screen.findByRole("heading", { name: "Un post aprobado" });
+    await s.client.posts[":id"].contents[":platform"][":language"].approve.$post({
+      param: { id: post.id, platform: "discord", language: content?.language ?? "es" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Editar el post" }));
+    const form = screen.getByRole("form", { name: "Editar el post" });
+    // Solo las redes de la marca (Discord por su cuenta; X y LinkedIn por su cadencia).
+    await waitFor(() =>
+      expect(
+        within(form)
+          .getAllByRole("checkbox")
+          .map((box) => box.parentElement?.textContent),
+      ).toEqual(["X", "LinkedIn", "Discord"]),
+    );
+    fireEvent.click(within(form).getByRole("checkbox", { name: "X" }));
+    fireEvent.click(within(form).getByRole("button", { name: "Guardar" }));
+    const alert = await within(form).findByRole("alert");
+    expect(alert.textContent).toContain("Discord");
+    expect(alert.textContent).toContain("Cancélalas en Publicaciones");
+    expect((await s.deps.posts.get(post.id))?.platforms).toBeNull();
   });
 });

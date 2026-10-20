@@ -280,9 +280,6 @@ export async function preparePostChannelStart(
   const post = await locked.posts.get(subject.id);
   if (post === null) throw postNotFound(subject.id);
   if (!canDraftPost(post.status)) throw postNotReady(post);
-  // Las redes del post (F9-T20/T21): un texto de una red que el operador le quitó no se publica ni
-  // se programa, aunque siga aprobado (no se borra: vuelve a servir si la red vuelve al post).
-  requirePostPlatform(post, platform);
   await requireNoActiveRun(locked, subject);
   const approved = (await locked.contents.listCurrent(subject)).filter(
     (content) => content.platform === platform && content.status === "approved",
@@ -294,6 +291,9 @@ export async function preparePostChannelStart(
       { details: { postId: post.id, platform } },
     );
   }
+  // Las redes del post (F9-T20/T21): un texto aprobado de una red que el operador le quitó no se
+  // publica ni se programa (no se borra: vuelve a servir si la red vuelve al post).
+  requirePostPlatform(post, platform);
   const connected = new Set(
     (await locked.platformAccounts.listByBroker(post.brokerId, platform))
       .filter((account) => account.status === "connected")

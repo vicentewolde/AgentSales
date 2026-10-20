@@ -36,6 +36,8 @@ import {
   type PostStatus,
   PUBLICATION_QUEUED_WARNING_TEXT,
   PUBLICATION_STATUS_TEXT,
+  postNetworkGaps,
+  postPublishesOn,
   publicationFormatText,
   publicationModeText,
 } from "@agentsales/core";
@@ -117,11 +119,13 @@ const textName = (item: { platform: PostPlatform | string; language: Language })
 function postHint(error: ApiCallError, postId: string): string | undefined {
   const hints: Record<string, string> = {
     POST_NOT_FOUND: "Mira tus posts con agentsales post list",
-    POST_NOT_IDEA: `Ya no es una idea: míralo con ${show(postId)} (un post aceptado se archiva con agentsales post archive ${postId})`,
+    POST_NOT_IDEA: `Ya no es una idea: míralo con ${show(postId)}. Si quedó aceptada sin textos, pídelos con agentsales post draft ${postId}; un post aceptado se archiva con agentsales post archive ${postId}`,
+    QUEUE_UNAVAILABLE:
+      "El worker o la cola no responden: arranca el worker (pnpm dev, o el del servidor) y vuelve a intentarlo; si la idea quedó aceptada, pide sus textos con agentsales post draft",
     POST_PLATFORM_EXCLUDED: `Esa red no está entre las del post: agrégala con agentsales post edit ${postId} --platforms <redes>`,
     POST_NOT_READY: `Mira su estado con ${show(postId)}: una idea se acepta primero y un post archivado ya no cambia`,
     POST_ARCHIVED: "Un post archivado no cambia: crea otro con agentsales post create",
-    POST_HAS_PENDING_PUBLICATIONS: `Descártalas (agentsales publications cancel <id>) o resuélvelas antes de archivar; míralas con ${show(postId)}`,
+    POST_HAS_PENDING_PUBLICATIONS: `Cancélalas con agentsales publications cancel <id> (o resuélvelas) antes de archivar el post o quitarle esa red; míralas con ${show(postId)}`,
     POST_NO_PLATFORMS:
       "Conecta una cuenta de la marca (agentsales accounts) o define la cadencia de una red en su perfil (agentsales brand edit)",
     LLM_BUDGET_EXCEEDED:
@@ -423,10 +427,8 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
   if (contents.length === 0)
     lines.push(c.dim(`  (ninguno: pídelos con agentsales post draft ${post.id})`));
   for (const content of contents) {
-    const excluded =
-      post.platforms !== null && !post.platforms.includes(content.platform as PostPlatform);
     lines.push(renderPostContent(content, c));
-    if (excluded) {
+    if (!postPublishesOn(post, content.platform)) {
       lines.push(
         c.yellow(
           `  ${PLATFORM_TEXT[content.platform]} ya no está entre las redes del post: este texto no se publica ni se programa`,
@@ -436,7 +438,7 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     lines.push("");
   }
   // Una red agregada al post después de redactar (F9-T21): falta su texto.
-  const missing = missingTextPlatforms(detail);
+  const { missing } = postNetworkGaps(detail);
   if (missing.length > 0) {
     lines.push(
       c.yellow(
@@ -453,20 +455,6 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     lines.push(renderPostPublications(publications, c));
   }
   return lines.join("\n").replace(/\n{3,}/g, "\n\n");
-}
-
-/**
- * Las redes del post (`posts.platforms`, no `null`) que todavía no tienen texto, si el post ya tiene
- * otros textos y no se están redactando: una red agregada después (F9-T21).
- */
-export function missingTextPlatforms(
-  detail: Pick<PostDetailResponse, "post" | "contents" | "latestRun">,
-): PostPlatform[] {
-  const { post, contents, latestRun } = detail;
-  if (post.platforms === null || contents.length === 0) return [];
-  if (latestRun !== null && !isTerminalContentRun(latestRun.status)) return [];
-  const drafted = new Set(contents.map((content) => content.platform));
-  return post.platforms.filter((platform) => !drafted.has(platform));
 }
 
 /**
@@ -1021,9 +1009,7 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
       }
       // Sin --platform, solo las redes del post (F9-T21): un texto aprobado de una red que le
       // quitaron no se publica.
-      platforms = approved.filter(
-        (platform) => post.platforms === null || post.platforms.includes(platform),
-      );
+      platforms = approved.filter((platform) => postPublishesOn(post, platform));
       if (platforms.length === 0) {
         throw new CliError(
           "POST_PLATFORM_EXCLUDED",

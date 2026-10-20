@@ -63,7 +63,13 @@ export function planInProgress(detail: PlanDetailResponse): boolean {
  */
 export function usePlan(id: string | undefined) {
   const client = useApiClient();
+  // Desde cuándo se sondea este plan: al elegir otro plan, el tope de 2 h cuenta de nuevo.
   const since = useRef<number | null>(null);
+  const polledId = useRef(id);
+  if (polledId.current !== id) {
+    polledId.current = id;
+    since.current = null;
+  }
   return useQuery({
     queryKey: planKeys.detail(id ?? ""),
     enabled: id !== undefined,

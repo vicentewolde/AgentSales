@@ -29,6 +29,7 @@ import {
 } from "./post.js";
 import { adviceText } from "./publication-view.js";
 import {
+  runCancelPublication,
   runConfirmPublication,
   runNotPublished,
   runResolvePublication,
@@ -551,6 +552,12 @@ describe("errores con su consejo y permisos", () => {
   it("las redes del post (F9-T21): edit las cambia y publicar sin --platform usa solo esas", async () => {
     const s = await setup();
     const { post, publication } = await approvedPost(s);
+    // Quitar Discord con su publicación pendiente no se puede: primero se cancela.
+    expect(await runPostEdit(s.deps(), post.id, { platforms: "x,linkedin" })).toBe(1);
+    expect(s.h.errors()).toContain("POST_HAS_PENDING_PUBLICATIONS");
+    expect(s.h.errors()).toContain("agentsales publications cancel <id>");
+    expect((await s.h.posts.get(post.id))?.platforms).toBeNull();
+    expect(await runCancelPublication(s.deps(), publication.id)).toBe(0);
     // Le quita Discord al post: el texto aprobado sigue, pero ya no se publica sin pedirlo.
     expect(await runPostEdit(s.deps(), post.id, { platforms: "x,linkedin" })).toBe(0);
     expect(s.h.text()).toContain("actualizado (redes: X, LinkedIn");
@@ -567,7 +574,7 @@ describe("errores con su consejo y permisos", () => {
     // Pedida a mano, la API también la rechaza (409), sin cambiar nada.
     expect(await runPostPublish(s.deps(), post.id, { platform: "discord" })).toBe(1);
     expect(s.h.errors()).toContain("no está entre las redes del post");
-    expect(s.publicationsOf(post.id)[0]).toMatchObject({ id: publication.id, status: "approved" });
+    expect(s.publicationsOf(post.id)[0]).toMatchObject({ id: publication.id, status: "cancelled" });
 
     // Mover la fecha y volver a todas las redes.
     expect(

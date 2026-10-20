@@ -1609,7 +1609,10 @@ export const planRequestBodySchema = z
   .strict();
 export type PlanRequestBody = z.infer<typeof planRequestBodySchema>;
 
-/** `GET /plans`: los planes de una marca (el administrador la manda; un corredor ve los suyos). */
+/**
+ * `GET /plans`: los planes de una marca (el administrador la manda; un corredor ve los suyos), los
+ * 20 más recientes (fijo: el contrato no expone `limit`).
+ */
 export const planQuerySchema = z.object({ brokerId: z.uuid().optional() });
 
 /**

@@ -3,6 +3,7 @@ import {
   chileInputValue,
   formatChileTime,
   groupByPlanWeek,
+  ideaNeedsDraft,
   isAppError,
   isTerminalContentRun,
   PLAN_DEFAULT_DAYS,
@@ -14,13 +15,12 @@ import {
   type PostPlatform,
   parseChileTime,
   planWeekText,
-  postPlatforms,
 } from "@agentsales/core";
 import { type FormEvent, useId, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
-import { useAccounts } from "../queries/accounts.js";
 import { useMe } from "../queries/auth.js";
 import {
   useAcceptIdea,
@@ -32,7 +32,7 @@ import {
   useUpdateIdea,
 } from "../queries/plans.js";
 import { useEditorialProfile } from "../queries/posts.js";
-import { useBrokerFilter, useRole } from "../scope/broker-scope.js";
+import { useRole } from "../scope/broker-scope.js";
 import { useScopedBrokerId } from "./PostsPage.js";
 
 const FIELD = "mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
@@ -51,20 +51,6 @@ function usePlanBrandId(): string | undefined {
   const scoped = useScopedBrokerId();
   if (role === "admin") return scoped;
   return me.data?.brokerId ?? undefined;
-}
-
-/**
- * Las redes que se ofrecen al pedir un plan: las de la marca (con cuenta o con cadencia en su
- * perfil, como `requestPlanRun`); mientras no se sabe, todas las de los posts.
- */
-function useBrandPlatforms(brandId: string | undefined): readonly PostPlatform[] {
-  const profile = useEditorialProfile(brandId);
-  const accounts = useAccounts(useBrokerFilter());
-  if (profile.data === undefined || accounts.data === undefined) return POST_PLATFORMS;
-  return postPlatforms(
-    profile.data,
-    accounts.data.accounts.filter((account) => account.brokerId === brandId),
-  );
 }
 
 const networksText = (platforms: readonly PostPlatform[] | null) =>
@@ -443,12 +429,7 @@ function IdeaCard({
 
 /** Las ideas aceptadas que quedaron sin textos ni corrida en curso (las pide "Redactar lo aceptado"). */
 export const acceptedWithoutTexts = (ideas: readonly PlanIdeaView[]) =>
-  ideas.filter(
-    (idea) =>
-      idea.status === "draft" &&
-      idea.texts === 0 &&
-      (idea.latestRun === null || idea.latestRun.status === "failed"),
-  );
+  ideas.filter(ideaNeedsDraft);
 
 /** "Redactar lo aceptado": pide los textos de las aceptadas que quedaron sin ellos. */
 function DraftAccepted({ planId, ideas }: { planId: string; ideas: readonly PlanIdeaView[] }) {

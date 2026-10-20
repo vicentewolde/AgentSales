@@ -5,15 +5,18 @@ import {
   isAppError,
   isTerminalContentRun,
   PLATFORM_TEXT,
+  type Platform,
   POST_KINDS,
   POST_PLATFORMS,
   type PostKind,
   type PostPlatform,
   parseChileTime,
+  postNetworkGaps,
 } from "@agentsales/core";
 import { type FormEvent, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
 import { PostMedia } from "../components/posts/PostMedia.js";
 import { PostPublications, PostPublishBar } from "../components/posts/PostPublishing.js";
@@ -51,6 +54,8 @@ function runText(run: ContentRunView): string {
 function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }) {
   const update = useUpdatePost(post.id);
   const profile = useEditorialProfile(post.brokerId);
+  // Solo las redes de la marca (y las que el post ya tenga), como en el plan.
+  const brandNetworks = useBrandPlatforms(post.brokerId);
   const [problem, setProblem] = useState<string | null>(null);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -133,7 +138,9 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
       <fieldset className="text-sm text-slate-700 md:col-span-2">
         <legend className="font-medium">Redes (sin marcar ninguna: todas las de la marca)</legend>
         <div className="mt-1 flex flex-wrap gap-3">
-          {POST_PLATFORMS.map((platform) => (
+          {POST_PLATFORMS.filter(
+            (platform) => brandNetworks.includes(platform) || post.platforms?.includes(platform),
+          ).map((platform) => (
             <label key={platform} className="flex items-center gap-1">
               <input
                 type="checkbox"
@@ -234,18 +241,12 @@ function PostNetworksNotice({
   run,
 }: {
   post: PostJson;
-  contents: readonly { platform: string }[];
+  contents: readonly { platform: Platform }[];
   run: ContentRunView | null;
 }) {
   const draft = useRequestPostDraft(post.id);
-  if (post.platforms === null || post.status === "idea" || post.status === "archived") return null;
-  const own: readonly PostPlatform[] = post.platforms;
-  const drafted = new Set(contents.map((content) => content.platform));
-  const running = run !== null && !isTerminalContentRun(run.status);
-  const missing = contents.length === 0 || running ? [] : own.filter((p) => !drafted.has(p));
-  const excluded = POST_PLATFORMS.filter(
-    (platform) => drafted.has(platform) && !own.includes(platform),
-  );
+  if (post.status === "idea" || post.status === "archived") return null;
+  const { missing, excluded } = postNetworkGaps({ post, contents, latestRun: run });
   if (missing.length === 0 && excluded.length === 0) return null;
   const names = (platforms: readonly PostPlatform[]) =>
     platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ");
@@ -396,6 +397,7 @@ export function PostDetailPage() {
       <section aria-label="Publicar" className="mt-6 space-y-3">
         <h2 className="text-lg font-semibold">Publicar y programar</h2>
         <PostPublishBar
+          post={item}
           postId={item.id}
           contents={contents}
           publishMode={publishMode}

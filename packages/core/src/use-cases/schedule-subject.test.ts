@@ -347,6 +347,22 @@ describe("programar un post", () => {
     expect(t.current(xEn.id)?.status).toBe("approved");
   });
 
+  it("sin redes pedidas y con todos los textos aprobados en redes quitadas, la fila sin red lo dice", async () => {
+    const t = await twoLanguages();
+    await t.posts.update(t.post.id, { platforms: ["linkedin"] });
+    const { results } = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      { postId: t.post.id, at: AT, dryRun: true, actor: "operator" },
+    );
+    expect(results).toEqual([
+      expect.objectContaining({
+        platform: null,
+        code: "NOTHING_TO_PUBLISH",
+        message: expect.stringContaining("se quitaron del post"),
+      }),
+    ]);
+  });
+
   it("publishPost publica la red con todos sus idiomas y encola después del candado", async () => {
     const t = await twoLanguages();
 
