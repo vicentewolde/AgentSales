@@ -1,9 +1,11 @@
 import type { Platform } from "../enums.js";
 import type { JobQueue } from "../ports/job-queue.js";
-import type { ListingLock } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { listingSubject, postSubject, type Subject } from "../subject.js";
+import { type LockedSubject, runOnSubject, type SubjectLocks } from "../subject-lock.js";
 import {
   channelPublications,
+  createPostPublications,
   createPublications,
   type SkippedPublication,
 } from "./open-publications.js";
@@ -11,18 +13,19 @@ import {
   enqueuePublications,
   type MarketplaceStartOptions,
   type PortalCheckDeps,
-  portalDefinitionsBeforeLock,
   startOne,
+  subjectDefinitionsBeforeLock,
 } from "./publication-start.js";
-import { prepareChannelStart } from "./start-checks.js";
+import { prepareChannelStart, preparePostChannelStart } from "./start-checks.js";
 
-export type PublishListingDeps = PortalCheckDeps & {
-  lock: ListingLock;
-  queue: JobQueue;
-  /** Marketplace: el límite diario y si se puede convertir la UF (spec F5 §4.6 y §4.7). */
-  marketplace?: MarketplaceStartOptions;
-  now?: () => Date;
-};
+/** `postLock` hace falta solo para publicar un post (`publishPost`). */
+export type PublishListingDeps = PortalCheckDeps &
+  SubjectLocks & {
+    queue: JobQueue;
+    /** Marketplace: el límite diario y si se puede convertir la UF (spec F5 §4.6 y §4.7). */
+    marketplace?: MarketplaceStartOptions;
+    now?: () => Date;
+  };
 
 export type PublishListingResult = {
   /** Las que pasaron a `publishing` ahora. */
@@ -63,7 +66,7 @@ export type PublishListingResult = {
  *   `details.publicationIds`: siguen en `publishing` y se reencolan publicando otra vez o al
  *   arrancar el worker.
  */
-export async function publishListing(
+export function publishListing(
   deps: PublishListingDeps,
   {
     listingId,
@@ -72,44 +75,129 @@ export async function publishListing(
     actor,
   }: { listingId: string; platform: Platform; dryRun: boolean; actor: PublicationActor },
 ): Promise<PublishListingResult> {
-  const definitions = await portalDefinitionsBeforeLock(deps, listingId, platform);
-  const result = await deps.lock.run(listingId, async (locked) => {
-    const { listing, content, opening, startable, stranded, inFlight } = await prepareChannelStart(
-      locked,
-      { listingId, platform },
-      {
-        dryRun,
-        definitions,
-        marketplace: deps.marketplace ?? {},
-        now: (deps.now ?? (() => new Date()))(),
-        manualLimits: true,
-        countInFlight: true,
-        nothingMessage: "No hay nada que publicar en este canal: todo está publicado",
-      },
-    );
+  return publishSubject(deps, { subject: listingSubject(listingId), platform, dryRun, actor });
+}
 
-    // Recién aquí se escribe.
-    const created = await createPublications(locked, {
-      listing,
-      content,
-      planned: opening.toCreate,
-      actor,
-    });
-    const started: Publication[] = [];
-    for (const publication of [...startable, ...created]) {
-      started.push(await startOne(locked.publications, publication, { dryRun, actor }));
-    }
-    return {
-      started,
-      requeued: inFlight,
-      created,
-      skipped: opening.skipped,
-      stranded,
-      publications: await channelPublications(locked, listingId, platform),
-    };
-  });
+/**
+ * Publica un canal de un **post** (F9-T07, ADR-0029 punto 4; `POST /posts/:id/publish`, F9-T12):
+ * como `publishListing`, dentro del candado del post, con una red y todos sus idiomas (abre las que
+ * falten de cada texto aprobado y pasa a `publishing` las pendientes de cuentas conectadas), y
+ * encola después. Errores: los de `preparePostChannelStart` y `QUEUE_UNAVAILABLE`. Un post nunca
+ * pasa a `active` (lo del aviso no aplica).
+ */
+export function publishPost(
+  deps: PublishListingDeps,
+  {
+    postId,
+    platform,
+    dryRun,
+    actor,
+  }: { postId: string; platform: Platform; dryRun: boolean; actor: PublicationActor },
+): Promise<PublishListingResult> {
+  return publishSubject(deps, { subject: postSubject(postId), platform, dryRun, actor });
+}
+
+/** Publica un canal del sujeto (aviso o post) dentro de su candado y encola después. */
+async function publishSubject(
+  deps: PublishListingDeps,
+  {
+    subject,
+    platform,
+    dryRun,
+    actor,
+  }: { subject: Subject; platform: Platform; dryRun: boolean; actor: PublicationActor },
+): Promise<PublishListingResult> {
+  const definitions = await subjectDefinitionsBeforeLock(deps, subject, platform);
+  const result = await runOnSubject(deps, subject, (locked) =>
+    locked.kind === "listing"
+      ? publishListingChannel(deps, locked, { platform, dryRun, actor, definitions })
+      : publishPostChannel(locked, { platform, dryRun, actor }),
+  );
 
   // Ya confirmado: encolar todas, también las que ya estaban en curso (idempotente).
   await enqueuePublications(deps.queue, [...result.started, ...result.requeued]);
   return result;
+}
+
+type ChannelParams = { platform: Platform; dryRun: boolean; actor: PublicationActor };
+
+/** El canal de un aviso, dentro de su candado (lo de siempre, spec F3 §4.3). */
+async function publishListingChannel(
+  deps: Pick<PublishListingDeps, "marketplace" | "now">,
+  { subject, repos: locked }: Extract<LockedSubject, { kind: "listing" }>,
+  {
+    platform,
+    dryRun,
+    actor,
+    definitions,
+  }: ChannelParams & { definitions: Awaited<ReturnType<typeof subjectDefinitionsBeforeLock>> },
+): Promise<PublishListingResult> {
+  const listingId = subject.id;
+  const { listing, content, opening, startable, stranded, inFlight } = await prepareChannelStart(
+    locked,
+    { listingId, platform },
+    {
+      dryRun,
+      definitions,
+      marketplace: deps.marketplace ?? {},
+      now: (deps.now ?? (() => new Date()))(),
+      manualLimits: true,
+      countInFlight: true,
+      nothingMessage: "No hay nada que publicar en este canal: todo está publicado",
+    },
+  );
+
+  // Recién aquí se escribe.
+  const created = await createPublications(locked, {
+    listing,
+    content,
+    planned: opening.toCreate,
+    actor,
+  });
+  const started: Publication[] = [];
+  for (const publication of [...startable, ...created]) {
+    started.push(await startOne(locked.publications, publication, { dryRun, actor }));
+  }
+  return {
+    started,
+    requeued: inFlight,
+    created,
+    skipped: opening.skipped,
+    stranded,
+    publications: await channelPublications(locked, listingId, platform),
+  };
+}
+
+/** El canal de un post (una red, todos sus idiomas), dentro de su candado. */
+async function publishPostChannel(
+  { subject, repos: locked }: Extract<LockedSubject, { kind: "post" }>,
+  { platform, dryRun, actor }: ChannelParams,
+): Promise<PublishListingResult> {
+  const { post, opening, startable, stranded, inFlight } = await preparePostChannelStart(
+    locked,
+    { subject, platform },
+    {
+      dryRun,
+      countInFlight: true,
+      nothingMessage: "No hay nada que publicar en esta red: todo está publicado",
+    },
+  );
+
+  // Recién aquí se escribe.
+  const created: Publication[] = [];
+  for (const { content, planned } of opening.toCreate) {
+    created.push(...(await createPostPublications(locked, { post, content, planned, actor })));
+  }
+  const started: Publication[] = [];
+  for (const publication of [...startable, ...created]) {
+    started.push(await startOne(locked.publications, publication, { dryRun, actor }));
+  }
+  return {
+    started,
+    requeued: inFlight,
+    created,
+    skipped: opening.skipped,
+    stranded,
+    publications: await channelPublications(locked, subject, platform),
+  };
 }

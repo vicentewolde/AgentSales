@@ -985,6 +985,7 @@ export {
   type PublishListingDeps,
   type PublishListingResult,
   publishListing,
+  publishPost,
 } from "./use-cases/publish-listing.js";
 export {
   type PublishPublicationDeps,
@@ -1086,8 +1087,10 @@ export {
   type ScheduleDeps,
   type ScheduleListingOutcome,
   type ScheduleListingsResult,
+  type SchedulePostOutcome,
   scheduleChannel,
   scheduleListings,
+  schedulePost,
   schedulePublication,
   unschedulePublication,
 } from "./use-cases/schedule-publications.js";

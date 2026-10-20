@@ -14,6 +14,7 @@ import {
   createInMemoryBrokerRepository,
   createInMemoryListingRepository,
 } from "./import-repositories.js";
+import { createInMemoryJobQueue } from "./job-queue.js";
 import { createInMemoryMediaRepository, createInMemoryMediaStorage } from "./media.js";
 import { createInMemoryPlatformAccountRepository } from "./platform-accounts.js";
 import {
@@ -52,7 +53,8 @@ function defaultCredentials(platform: Platform): PlatformCredentials {
  * Escenario de publicación de un post (F9-T06, ADR-0029): una marca con un post `image`, su foto
  * procesada (`ig_4x5`), un texto aprobado por red e idioma (con hashtags) y una cuenta conectada
  * por red; las publicaciones nacen en `approved` al aprobar, en el candado del post. `toPublishing`
- * las pasa a `publishing` como lo haría publicar (T07 trae el camino de los posts), y
+ * las pasa a `publishing` directo (sin las revisiones de publicar), `deps` son las de publicar,
+ * programar, el disparo y cancelar (F9-T07: los dos candados, la cola y lo que se lee fuera), y
  * `publishDeps` arma las dependencias de `publishPublication` con los dobles.
  */
 export async function createPostPublicationScenario(
@@ -173,7 +175,7 @@ export async function createPostPublicationScenario(
     if (found === undefined) throw new Error(`sin publicación ${platform}/${language}`);
     return found;
   };
-  /** `approved` → `publishing` en el modo pedido, como lo haría publicar. */
+  /** `approved` → `publishing` en el modo pedido, sin las revisiones de publicar. */
   const toPublishing = (publication: Publication, { dryRun = false } = {}) =>
     publications.transition(
       publication.id,
@@ -202,6 +204,8 @@ export async function createPostPublicationScenario(
     ...extra,
   });
   const current = (id: string) => publications.all().find((p) => p.id === id);
+  const queue = createInMemoryJobQueue();
+  const fieldDefinitions = createInMemoryFieldDefinitionRepository([]);
   return {
     broker,
     post,
@@ -224,6 +228,12 @@ export async function createPostPublicationScenario(
     current,
     /** Las de confirmar, no publicar y resolver: los dos candados y la lectura de fuera. */
     subjectDeps: { lock, postLock, publications },
+    queue,
+    /**
+     * Las de publicar, programar, el disparo de las programadas, desprogramar, descartar y retirar
+     * (F9-T07): los dos candados, la cola y lo que se lee fuera del candado.
+     */
+    deps: { lock, postLock, queue, publications, listings, fieldDefinitions },
   };
 }
 
