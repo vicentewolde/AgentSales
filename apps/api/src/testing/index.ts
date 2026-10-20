@@ -331,6 +331,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     queue: createInMemoryJobQueue(),
     newId: randomUUID,
     maxUploadBytes: 50 * 1024 * 1024,
+    maxVideoBytes: 30 * 1024 * 1024,
     contentRuns: content.contentRuns,
     contents: content.contents,
     posts,

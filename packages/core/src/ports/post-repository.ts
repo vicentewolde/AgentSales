@@ -114,4 +114,10 @@ export interface PostUploadRepository {
   markCompleted(id: string): Promise<boolean>;
   /** `pending` → `abandoned`; `false` si ya no estaba pendiente o no existe. */
   markAbandoned(id: string): Promise<boolean>;
+  /**
+   * Vuelve a `pending` con un vencimiento nuevo, venga del estado que venga (F9-T10): el mismo
+   * archivo pedido otra vez (una URL vencida, o una subida que la limpieza abandonó) reutiliza su
+   * fila y su clave. Devuelve la subida actualizada; `null` si no existe.
+   */
+  reopen(id: string, expiresAt: Date): Promise<PostUpload | null>;
 }

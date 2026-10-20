@@ -231,6 +231,7 @@ const app = createApp({
   // Las cargas suben directo a R2 (spec F8 §4.4, ADR-0025): la API solo firma y revisa.
   newId: randomUUID,
   maxUploadBytes: env.MAX_IMPORT_UPLOAD_MB * 1024 * 1024,
+  maxVideoBytes: env.MAX_VIDEO_MB * 1024 * 1024,
   publishMode: env.PUBLISH_MODE,
   environment: env.NODE_ENV === "production" ? "production" : "development",
   // Marketplace (spec F5 §4.6 y §4.7): el límite diario y si se puede convertir la UF.

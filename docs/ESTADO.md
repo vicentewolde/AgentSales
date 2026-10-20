@@ -107,7 +107,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 1 | T07 Programar, reloj, vigilancia y cancelar sobre un sujeto | ⏳ pendiente | |
 | 1 | T08 Agenda y seguimiento con posts | ⏳ pendiente | |
 | 1 | T09 Perfil editorial | ✅ terminada | #175 |
-| 1 | T10 Posts manuales y sus medios | ⏳ pendiente | |
+| 1 | T10 Posts manuales y sus medios | ✅ terminada | #177 |
 | 1 | T11 El texto por red con IA | ⏳ pendiente | |
 | 1 | T12 Aprobar, publicar y programar un post (CLI) | ⏳ pendiente | |
 | 1 | T13 Instagram para posts (tras S1) | ⏳ pendiente | |

@@ -14,7 +14,7 @@ import { fakeHash } from "./fake-hash.js";
 /** Una llamada recibida por el procesador falso (sin los bytes). */
 export type MediaProcessorCall =
   | { kind: "image"; mime: string; variants: ImageVariant[]; inputBytes: number }
-  | { kind: "video"; reel: boolean; inputBytes: number };
+  | { kind: "video"; reel: boolean; xVideo: boolean; inputBytes: number };
 
 export type InMemoryMediaProcessorOptions = {
   version?: string;
@@ -86,7 +86,7 @@ export function createInMemoryMediaProcessor(
         outputs: variants.map((variant) => output(variant, input, version)),
       };
     },
-    async processVideo(input, { reel }, signal): Promise<ProcessedVideo> {
+    async processVideo(input, { reel, xVideo = false }, signal): Promise<ProcessedVideo> {
       throwIfAborted(signal);
       const chunks: Uint8Array[] = [];
       for await (const chunk of input) chunks.push(chunk);
@@ -96,7 +96,7 @@ export function createInMemoryMediaProcessor(
         bytes.set(chunk, offset);
         offset += chunk.length;
       }
-      calls.push({ kind: "video", reel: reel !== null, inputBytes: bytes.length });
+      calls.push({ kind: "video", reel: reel !== null, xVideo, inputBytes: bytes.length });
       if (isCorrupt(bytes)) throw decodeFailed();
       const measurements = measure(bytes, "video");
       // Como el adaptador (F2-T08): menos de 3 s no da reel; más de 90 s se corta.
@@ -104,7 +104,11 @@ export function createInMemoryMediaProcessor(
       const reelBytes =
         reel === null || duration < REEL_MIN_DURATION_S
           ? null
-          : encoder.encode(`reel:v${version}:${decoder.decode(bytes)}:${reel.overlayPng.length}`);
+          : encoder.encode(
+              `reel:v${version}:${decoder.decode(bytes)}:${reel.overlayPng?.length ?? 0}`,
+            );
+      // El video para X: con la duración completa (sin el tope del reel), como el adaptador.
+      const xBytes = xVideo ? encoder.encode(`x_video:v${version}:${decoder.decode(bytes)}`) : null;
       return {
         measurements,
         thumb: output("thumb", bytes, version),
@@ -119,6 +123,19 @@ export function createInMemoryMediaProcessor(
                 durationS: Math.min(duration, REEL_MAX_DURATION_S),
                 async *open() {
                   yield reelBytes;
+                },
+              },
+        xVideo:
+          xBytes === null
+            ? null
+            : {
+                size: xBytes.length,
+                sha256: fakeHash(decoder.decode(xBytes)),
+                width: 1280,
+                height: 720,
+                durationS: duration,
+                async *open() {
+                  yield xBytes;
                 },
               },
       };

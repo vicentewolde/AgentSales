@@ -33,6 +33,9 @@ import {
   createOAuthStateRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
+  createPostLock,
+  createPostRepository,
+  createPostUploadRepository,
   createPublicationRepository,
   createSessionRepository,
   createWorkerHeartbeatRepository,
@@ -197,6 +200,9 @@ const backupTarget: BackupTarget =
         status: storage,
       };
 const listingLock = createListingLock(database.db, { secretBox });
+// Los posts (spec F9 §4.5): sus medios y la limpieza de sus subidas, con el candado del post.
+const posts = createPostRepository(database.db);
+const postLock = createPostLock(database.db, { secretBox });
 const marketplaceWindows = createMarketplaceWindows({
   publications,
   confirm: (publicationId, url) =>
@@ -346,8 +352,25 @@ const jobs = buildJobs({
     },
     // Las subidas que nadie terminó y lo que quedó en R2 de cargas terminadas (spec F8 §4.4).
     importCleanup: { importRuns, storage },
+    // Las subidas de medios de posts que nadie terminó en 24 h (spec F9 §4.5).
+    postUploadCleanup: {
+      postUploads: createPostUploadRepository(database.db),
+      postLock,
+      storage,
+    },
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
+  },
+  postMedia: {
+    shared: { posts, media: repositories.media, storage },
+    createProcessor: (workDir) =>
+      createMediaProcessor({
+        ffmpegPath: env.FFMPEG_PATH,
+        ffprobePath: env.FFPROBE_PATH,
+        workDir,
+      }),
+    tmpRoot: contentTmpRoot,
+    signal: jobsAbort.signal,
   },
   dbBackup: {
     target: backupTarget,

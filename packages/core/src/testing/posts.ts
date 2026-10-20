@@ -162,6 +162,18 @@ export function createInMemoryPostUploadRepository(): PostUploadRepository {
     async markAbandoned(id) {
       return settle(id, "abandoned");
     },
+    async reopen(id, expiresAt) {
+      const current = uploads.get(id);
+      if (current === undefined) return null;
+      const upload: PostUpload = {
+        ...current,
+        status: "pending",
+        expiresAt: new Date(expiresAt),
+        updatedAt: later(current.updatedAt),
+      };
+      uploads.set(id, upload);
+      return structuredCopy(upload);
+    },
   };
 }
 

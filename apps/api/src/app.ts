@@ -45,6 +45,7 @@ import { importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
 import { type MetaSignatureVerifier, metaRoutes } from "./routes/meta.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
+import { postRoutes } from "./routes/posts.js";
 import {
   listingPublicationRoutes,
   operationDeps,
@@ -101,8 +102,10 @@ export type AppDeps = {
   queue: JobQueue;
   /** uuid de una carga nueva: se necesita antes de crearla, para sus claves de R2 (spec F8 §4.4). */
   newId: () => string;
-  /** `MAX_IMPORT_UPLOAD_MB` en bytes: el tope de cada archivo de una carga. */
+  /** `MAX_IMPORT_UPLOAD_MB` en bytes: el tope de cada archivo de una carga (y de un post). */
   maxUploadBytes: number;
+  /** `MAX_VIDEO_MB` en bytes: el tope de un video de un post (el de la carga, F9-T10). */
+  maxVideoBytes: number;
   // Contenido (F2-T12): la API pide corridas y edita textos; las corre el worker (ADR-0012).
   contentRuns: ContentRunRepository;
   contents: ContentRepository;
@@ -112,8 +115,8 @@ export type AppDeps = {
    */
   lock: ListingLock;
   /**
-   * Posts de marca (F9, ADR-0029): por ahora, el dueño de un recurso de un post (el corredor del
-   * post) y lo que necesiten sus rutas (F9-T09 y T10).
+   * Posts de marca (F9, ADR-0029): el dueño de un recurso de un post (el corredor del post) y sus
+   * rutas (`/posts`, F9-T10).
    */
   posts: PostRepository;
   /**
@@ -268,7 +271,7 @@ export function createApp(input: AppDeps) {
     .use(deps.rateLimit === null ? passThrough : rateLimitByUser(deps.rateLimit))
     // `/x/:id/*` también calza con `/x/:id` en Hono: una sola vez por prefijo (una lectura).
     .use("/listings/:id/*", ownership.listing)
-    // Las rutas de posts llegan en F9-T10; el dueño ya se resuelve por el corredor del post.
+    // Un post es de su corredor o marca (F9-T10): lo ajeno es 404, también sus subidas.
     .use("/posts/:id/*", ownership.post)
     .use("/content-runs/:id/*", ownership.contentRun)
     .use("/contents/:id/*", ownership.content)
@@ -312,6 +315,7 @@ export function createApp(input: AppDeps) {
     .route("/contents", contentRoutes(contentDeps))
     .route("/brokers", brokerRoutes(deps))
     .route("/brokers", editorialProfileRoutes(deps))
+    .route("/posts", postRoutes(deps))
     .route("/schedule", scheduleRoutes(publicationDeps))
     .route(
       "/",

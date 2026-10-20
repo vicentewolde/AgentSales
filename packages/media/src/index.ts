@@ -10,6 +10,7 @@ export {
   type ImageVariantSpec,
   MEDIA_PIPELINE_VERSION,
   REEL_SPEC,
+  X_VIDEO_SPEC,
 } from "./pipeline.js";
 export {
   type ClosableHtmlRenderer,

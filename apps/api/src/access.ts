@@ -87,6 +87,15 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   // suyo), revisados en core; el de otro corredor es 404 (`ownedBy`).
   "GET /brokers/:id/editorial-profile": "session",
   "PUT /brokers/:id/editorial-profile": "session",
+  // F9-T10: los posts y sus medios, con `posts.manage` revisado en core; un corredor ve y gestiona
+  // solo los de su marca (lo ajeno es 404: `ownedBy` y core), el administrador todos.
+  "GET /posts": "session",
+  "POST /posts": "session",
+  "GET /posts/:id": "session",
+  "PATCH /posts/:id": "session",
+  "POST /posts/:id/archive": "session",
+  "POST /posts/:id/uploads": "session",
+  "POST /posts/:id/uploads/complete": "session",
   // F8 (spec §4.4, ADR-0025): pedir la carga con sus URLs de subida y empezarla.
   "POST /imports/uploads": "session",
   "POST /imports/:id/start": "session",

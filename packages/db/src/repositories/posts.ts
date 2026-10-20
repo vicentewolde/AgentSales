@@ -217,5 +217,16 @@ export function createPostUploadRepository(db: SchemaDatabase): PostUploadReposi
 
     markCompleted: (id) => settle(id, "completed"),
     markAbandoned: (id) => settle(id, "abandoned"),
+
+    reopen(id, expiresAt) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .update(postUploads)
+          .set({ status: "pending", expiresAt, updatedAt: sql`now()` })
+          .where(eq(postUploads.id, id))
+          .returning();
+        return row === undefined ? null : toPostUpload(row);
+      });
+    },
   };
 }

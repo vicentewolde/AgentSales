@@ -99,7 +99,13 @@ async function ownedBy(deps: ReturnType<typeof testDeps>, slug: string) {
     input: { xlsxPath: "/tmp/x.xlsx", mediaDir: null, broker: slug },
     brokerId: broker.id,
   });
-  return { broker, listing, run, content, account, publication, importRun };
+  // F9-T10: un post de su marca (las rutas `/posts/:id…`).
+  const post = await deps.posts.create({
+    brokerId: broker.id,
+    topic: `Post ${slug}`,
+    kind: "text",
+  });
+  return { broker, listing, run, content, account, publication, importRun, post };
 }
 
 async function setup() {
@@ -155,6 +161,7 @@ function idFor(path: string, owned: Awaited<ReturnType<typeof ownedBy>>): string
   if (path.startsWith("/publications")) return owned.publication.id;
   if (path.startsWith("/imports")) return owned.importRun.id;
   if (path.startsWith("/brokers")) return owned.broker.id;
+  if (path.startsWith("/posts")) return owned.post.id;
   return owned.account.id;
 }
 
@@ -253,14 +260,14 @@ describe("el dueño de un post es su corredor (F9-T04)", () => {
     expect((await s.admin(`/publications/${theirs.publication.id}/events`)).status).toBe(200);
   });
 
-  it("/posts/:id/… de otro corredor no existe (las rutas llegan en T09 y T10)", async () => {
+  it("/posts/:id/… de otro corredor no existe, también en una ruta que todavía no existe", async () => {
     const s = await setup();
     const mine = await postOf(s.deps, s.mine);
     const theirs = await postOf(s.deps, s.theirs);
     const foreign = await s.broker(`/posts/${theirs.post.id}/contents`);
     expect(foreign.status).toBe(404);
     expect((await errorOf(foreign)).code).toBe("POST_NOT_FOUND");
-    // Lo suyo pasa el dueño y llega a la ruta (que todavía no existe).
+    // Lo suyo pasa el dueño y llega a la ruta (los textos de un post llegan en T11 y T12).
     const own = await s.broker(`/posts/${mine.post.id}/contents`);
     expect(own.status).toBe(404);
     expect((await errorOf(own)).code).toBe("ROUTE_NOT_FOUND");
@@ -451,6 +458,10 @@ describe("el guardia de dueño", () => {
     expect((await s.deps.listings.get(s.theirs.listing.id))?.status).toBe(s.theirs.listing.status);
     expect((await s.deps.contents.get(s.theirs.content?.id ?? ""))?.status).toBe("draft");
     expect(await s.deps.contentRuns.findActive(s.theirs.listing.id)).toBeNull();
+    expect(await s.deps.posts.get(s.theirs.post.id)).toMatchObject({
+      status: "draft",
+      topic: "Post ajeno",
+    });
   });
 });
 

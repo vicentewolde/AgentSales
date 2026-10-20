@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createMediaProcessor, REEL_SPEC } from "../src/index.js";
+import { createMediaProcessor, REEL_SPEC, X_VIDEO_SPEC } from "../src/index.js";
+import { xVideoSize } from "../src/video.js";
 import { alive, errorOf, FFMPEG, FFPROBE, fakeFfmpeg, TEST_THREADS, waitFor } from "./images.js";
 
 // Videos generados con ffmpeg (`testsrc`, `color` y `sine`; spec F2-T08), sin archivos de clientes.
@@ -299,6 +300,98 @@ describe("processVideo: reel", () => {
     expect(files[0]).toMatch(/-reel\.mp4$/);
     expect((await readFile(join(work, files[0] ?? ""))).length).toBe(result.reel?.size);
   }, 60_000);
+});
+
+describe("processVideo: reel sin texto y video para X (F9-T10)", () => {
+  it("el reel de un post va sin texto: 1080×1920, y arriba se ve el video, no la franja", async () => {
+    const result = await (await processor()).processVideo(video("azul"), {
+      reel: { overlayPng: null },
+    });
+    if (result.reel === null) throw new Error("falta el reel");
+    const { path } = await saveReel(result.reel.open);
+    const info = probeFile(path);
+    expect(info.streams.find((stream) => stream.codec_type === "video")).toMatchObject({
+      codec_name: "h264",
+      pix_fmt: "yuv420p",
+      width: 1080,
+      height: 1920,
+    });
+    // `azul` no tiene audio: también recibe la pista silenciosa (va en otra entrada sin el texto).
+    expect(info.streams.find((stream) => stream.codec_type === "audio")).toMatchObject({
+      codec_name: "aac",
+    });
+    // Al centro, el azul del video desde el primer segundo (con texto, la franja verde iría arriba).
+    const [r = 0, g = 0, b = 0] = await framePixel(path, 0.5, 540, 960);
+    expect(b).toBeGreaterThan(200);
+    expect(Math.max(r, g)).toBeLessThan(60);
+    expect(result.xVideo).toBeNull();
+  }, 60_000);
+
+  it("el video para X: H.264 High 4:2:0 a 30 fps, sin ampliar, GOP cerrado, moov al inicio", async () => {
+    const result = await (await processor()).processVideo(video("horizontal"), {
+      reel: null,
+      xVideo: true,
+    });
+    expect(result.reel).toBeNull();
+    const x = result.xVideo;
+    if (x === null) throw new Error("falta el video para X");
+    const { path, bytes } = await saveReel(x.open);
+    const info = probeFile(path);
+    expect(info.streams.find((stream) => stream.codec_type === "video")).toMatchObject({
+      codec_name: "h264",
+      profile: "High",
+      pix_fmt: "yuv420p",
+      // 640×360 cabe en 1280×720: no se amplía.
+      width: 640,
+      height: 360,
+      r_frame_rate: `${X_VIDEO_SPEC.fps}/1`,
+    });
+    expect(info.streams.find((stream) => stream.codec_type === "audio")).toMatchObject({
+      codec_name: "aac",
+      channels: 2,
+    });
+    expect(bytes.indexOf("moov")).toBeLessThan(bytes.indexOf("mdat"));
+    expect(bytes.toString("latin1")).toContain("open_gop=0");
+    expect({ size: x.size, sha256: x.sha256, width: x.width, height: x.height }).toEqual({
+      size: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      width: 640,
+      height: 360,
+    });
+  }, 60_000);
+
+  it("sin audio, el video para X va sin pista de audio; con un video de 2 s también sale", async () => {
+    const silent = await (await processor()).processVideo(video("sinAudio"), {
+      reel: null,
+      xVideo: true,
+    });
+    if (silent.xVideo === null) throw new Error("falta el video para X");
+    const { path } = await saveReel(silent.xVideo.open);
+    expect(probeFile(path).streams.map((stream) => stream.codec_type)).toEqual(["video"]);
+
+    const short = await (await processor()).processVideo(video("corto"), {
+      reel: { overlayPng: null },
+      xVideo: true,
+    });
+    expect(short.reel).toBeNull();
+    expect(short.xVideo?.durationS).toBeGreaterThan(1.5);
+  }, 60_000);
+
+  it("el video para X no se corta: uno de 100 s sale entero (el reel sí se corta a 90 s)", async () => {
+    const result = await (await processor()).processVideo(video("largo"), {
+      reel: null,
+      xVideo: true,
+    });
+    expect(result.xVideo?.durationS).toBeGreaterThan(99.5);
+  }, 240_000);
+
+  it("las medidas para X caben en 1280×720, 720×1280 o 720×720, pares y sin ampliar", () => {
+    expect(xVideoSize({ width: 1920, height: 1080 })).toEqual({ width: 1280, height: 720 });
+    expect(xVideoSize({ width: 1080, height: 1920 })).toEqual({ width: 720, height: 1280 });
+    expect(xVideoSize({ width: 3840, height: 1600 })).toEqual({ width: 1280, height: 532 });
+    expect(xVideoSize({ width: 2000, height: 2000 })).toEqual({ width: 720, height: 720 });
+    expect(xVideoSize({ width: 641, height: 361 })).toEqual({ width: 640, height: 360 });
+  });
 });
 
 describe("processVideo: herramientas y corte", () => {

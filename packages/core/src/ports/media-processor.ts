@@ -1,9 +1,9 @@
 import type { AbortSignalLike } from "../abort.js";
-import type { ProcessedMediaVariant } from "../enums.js";
+import type { ProcessedMediaVariant, VideoMediaVariant } from "../enums.js";
 import type { MediaMeasurements } from "./media-repository.js";
 
-/** Variantes de una foto: todas menos el reel. */
-export type ImageVariant = Exclude<ProcessedMediaVariant, "ig_reel">;
+/** Variantes de una foto (y el `thumb` de un video): todas menos las de video. */
+export type ImageVariant = Exclude<ProcessedMediaVariant, VideoMediaVariant>;
 
 /** Una variante de imagen producida (JPEG), con el sha256 de sus bytes (spec F2 §4.2). */
 export type ImageOutput = {
@@ -16,8 +16,8 @@ export type ImageOutput = {
 };
 
 /**
- * El reel producido: queda en el temporal del intento y se sube con `putStream` (`open()`), porque
- * puede pesar hasta 300 MB. `size` en bytes.
+ * Un video producido (el reel o el video para X): queda en el temporal del intento y se sube con
+ * `putStream` (`open()`), porque puede pesar hasta 300 MB. `size` en bytes.
  */
 export type VideoOutput = {
   size: number;
@@ -40,6 +40,22 @@ export type ProcessedVideo = {
   thumb: ImageOutput;
   /** `null` si no se pidió o si el video dura menos de `REEL_MIN_DURATION_S`. */
   reel: VideoOutput | null;
+  /**
+   * El video reducido para X (spec F9 §4.5, solo posts): `null` si no se pidió. Con la duración
+   * completa del original: el límite de X es NO VERIFICADO y lo revisa quien publica (T16).
+   */
+  xVideo: VideoOutput | null;
+};
+
+/**
+ * Lo que se pide de un video además de sus medidas y su `thumb`:
+ * - `reel`: el reel 9:16; `overlayPng` es el texto que va encima los primeros 2 s (el de un aviso)
+ *   o `null` para un reel sin texto (un post, spec F9 §4.5);
+ * - `xVideo`: el video reducido para X (por defecto, no).
+ */
+export type VideoProcessOptions = {
+  reel: { overlayPng: Uint8Array | null } | null;
+  xVideo?: boolean;
 };
 
 /**
@@ -63,12 +79,13 @@ export interface MediaProcessor {
     signal?: AbortSignalLike,
   ): Promise<ProcessedImage>;
   /**
-   * Medidas y `thumb` de un video; con `reel`, además el reel con el PNG del texto encima durante
-   * los primeros 2 s, cortado a `REEL_MAX_DURATION_S` (F2-T08).
+   * Medidas y `thumb` de un video; con `reel`, además el reel (con el PNG del texto encima durante
+   * los primeros 2 s, si viene), cortado a `REEL_MAX_DURATION_S` (F2-T08); con `xVideo`, el video
+   * reducido para X (F9-T10).
    */
   processVideo(
     input: AsyncIterable<Uint8Array>,
-    options: { reel: { overlayPng: Uint8Array } | null },
+    options: VideoProcessOptions,
     signal?: AbortSignalLike,
   ): Promise<ProcessedVideo>;
 }

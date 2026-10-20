@@ -32,10 +32,16 @@ import {
   OPERATIONS,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
+  POST_KINDS,
+  POST_LIMITS,
+  POST_STATUSES,
+  POST_UPLOAD,
+  PROCESSED_MEDIA_VARIANTS,
   PUBLICATION_ACTORS,
   PUBLICATION_EVENT_TYPES,
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
+  postSchema,
   publicationErrorSchema,
   remoteStateSchema,
   SCHEDULE_STATES,
@@ -1156,6 +1162,150 @@ export type EditorialProfileJson = z.infer<typeof editorialProfileViewSchema>;
 /** `GET` y `PUT /brokers/:id/editorial-profile`: el guardado o, si no tiene, el vacío por defecto. */
 export const editorialProfileResponseSchema = z.object({ profile: editorialProfileViewSchema });
 export type EditorialProfileResponse = z.infer<typeof editorialProfileResponseSchema>;
+
+// ── Posts y sus medios (F9-T10, spec F9 §4.2, §4.5 y §4.10) ─────────────────
+
+// Solo la forma y topes holgados (el tamaño del pedido): las reglas, con sus mensajes en español,
+// son de core (`POST_INVALID`, `POST_UPLOAD_INVALID`, `POST_UPLOAD_TOO_LARGE`).
+
+/** Una fecha en ISO con zona (el filtro de la lista queda como texto: ver `postQuerySchema`). */
+const postDateText = z.iso.datetime({ offset: true });
+
+/**
+ * La fecha de un cuerpo: ISO con zona, que el esquema entrega como `Date` (la ruta no convierte).
+ * El cliente `hc` la tipa como `Date`, que viaja como su ISO en UTC (`JSON.stringify`) y calza.
+ */
+const postDateSchema = postDateText.transform((value) => new Date(value));
+
+/** Un post tal como viaja en JSON: las fechas llegan como texto ISO y se vuelven `Date`. */
+export const postJsonSchema = postSchema.extend({
+  plannedAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type PostJson = z.infer<typeof postJsonSchema>;
+
+/**
+ * Filtros de `GET /posts`: el corredor o marca (su id; un corredor que pide otro recibe 404), el
+ * estado y el rango de `planned_at` `[from, to)` (los sin fecha quedan fuera si viene alguno).
+ * `from` y `to` quedan como texto ISO: el cliente `hc` tipa la consulta con lo que sale del
+ * validador y arma la URL con `String(valor)`, que de un `Date` no da un ISO. La ruta los convierte.
+ */
+export const postQuerySchema = z.object({
+  brokerId: z.uuid().optional(),
+  status: z.enum(POST_STATUSES).optional(),
+  from: postDateText.optional(),
+  to: postDateText.optional(),
+});
+export type PostQuery = z.infer<typeof postQuerySchema>;
+
+const postTopic = z.string().max(POST_LIMITS.topic + 50);
+const postBrief = z
+  .string()
+  .max(POST_LIMITS.brief + 100)
+  .nullable();
+const postPillar = z.string().max(100).nullable();
+
+/**
+ * `POST /posts`: un post manual (en `draft`, con el brief del operador). El administrador manda el
+ * corredor o marca; un usuario corredor lo omite (o manda el suyo). `kind` por defecto `text`.
+ */
+export const createPostBodySchema = z
+  .object({
+    brokerId: z.uuid().optional(),
+    topic: postTopic,
+    brief: postBrief.optional(),
+    kind: z.enum(POST_KINDS).optional(),
+    pillar: postPillar.optional(),
+    plannedAt: postDateSchema.nullable().optional(),
+  })
+  .strict();
+export type CreatePostBody = z.infer<typeof createPostBodySchema>;
+
+/** `PATCH /posts/:id`: lo que cambia (`null` borra el brief, la línea o la fecha). */
+export const updatePostBodySchema = z
+  .object({
+    topic: postTopic.optional(),
+    brief: postBrief.optional(),
+    kind: z.enum(POST_KINDS).optional(),
+    pillar: postPillar.optional(),
+    plannedAt: postDateSchema.nullable().optional(),
+  })
+  .strict();
+export type UpdatePostBody = z.infer<typeof updatePostBodySchema>;
+
+/**
+ * Un medio original de un post con su URL de lectura temporal y su miniatura, como los de un aviso,
+ * más las variantes que ya tiene (`thumb`, `ig_4x5`, `ig_reel`, `x_video`): mientras falten, el
+ * worker las está armando.
+ */
+export const postMediaItemSchema = mediaItemSchema.extend({
+  variants: z.array(z.enum(PROCESSED_MEDIA_VARIANTS)),
+});
+export type PostMediaItem = z.infer<typeof postMediaItemSchema>;
+
+/** `POST /posts`, `PATCH /posts/:id` y `POST /posts/:id/archive`. */
+export const postResponseSchema = z.object({ post: postJsonSchema });
+export type PostResponse = z.infer<typeof postResponseSchema>;
+
+/** `GET /posts/:id`: el post y sus medios originales, en orden. */
+export const postDetailResponseSchema = z.object({
+  post: postJsonSchema,
+  media: z.array(postMediaItemSchema),
+});
+export type PostDetailResponse = z.infer<typeof postDetailResponseSchema>;
+
+export const postListResponseSchema = z.object({ posts: z.array(postJsonSchema) });
+export type PostListResponse = z.infer<typeof postListResponseSchema>;
+
+/**
+ * `POST /posts/:id/uploads` (ADR-0025): cada archivo con su nombre, su tamaño exacto y su sha256 en
+ * hexadecimal (obligatorio: es su identidad, a diferencia de la carga). Tipos y topes, en core.
+ */
+export const postUploadRequestSchema = z
+  .object({
+    files: z
+      .array(z.object({ name: uploadName, size: uploadSize, sha256: z.string().max(64) }).strict())
+      .max(2 * POST_UPLOAD.maxFilesPerRequest),
+  })
+  .strict();
+export type PostUploadRequest = z.infer<typeof postUploadRequestSchema>;
+
+/**
+ * Por archivo, en el orden pedido: `upload` (un `PUT` a `url` con exactamente `headers` y el
+ * archivo como cuerpo; `uploadId` es la subida), o `existing` (ese contenido ya es un medio del
+ * post: nada que subir).
+ */
+export const postUploadTargetSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("upload"),
+    name: z.string(),
+    uploadId: z.string(),
+    url: z.string(),
+    headers: z.record(z.string(), z.string()),
+  }),
+  z.object({ status: z.literal("existing"), name: z.string(), mediaId: z.string() }),
+]);
+export type PostUploadTargetView = z.infer<typeof postUploadTargetSchema>;
+
+/** `POST /posts/:id/uploads` (201). */
+export const postUploadResponseSchema = z.object({
+  post: postJsonSchema,
+  uploads: z.array(postUploadTargetSchema),
+});
+export type PostUploadResponse = z.infer<typeof postUploadResponseSchema>;
+
+/**
+ * `POST /posts/:id/uploads/complete`: las subidas que quedaron como medios (`completed`), las que
+ * siguen sin llegar a R2 (`missing`: se suben y se vuelve a llamar) y los medios del post.
+ */
+export const postUploadCompleteResponseSchema = z.object({
+  post: postJsonSchema,
+  completed: z.array(z.string()),
+  missing: z.array(z.string()),
+  media: z.array(postMediaItemSchema),
+});
+export type PostUploadCompleteResponse = z.infer<typeof postUploadCompleteResponseSchema>;
 
 // ── Usuarios y sesiones (F7-T04 y T05, spec F7 §4.13, ADR-0021) ────────────
 

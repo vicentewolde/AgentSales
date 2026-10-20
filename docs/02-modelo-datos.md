@@ -129,7 +129,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | broker_id | uuid FK | |
 | kind | enum `media_kind` | `image`, `video` |
 | role | enum `media_role` | `original`, `processed`, `rendered` |
-| variant | text null | `MEDIA_VARIANTS` (core): de un `processed`, `thumb`, `ig_4x5`, `pi_4x3` o `ig_reel`; de un `rendered`, `cover` o `spec_sheet`. `null` en un original |
+| variant | text null | `MEDIA_VARIANTS` (core): de un `processed`, `thumb`, `ig_4x5`, `pi_4x3`, `ig_reel` o, desde F9-T10 (solo posts, sin migración), `x_video` (el video reducido para X); de un `rendered`, `cover` o `spec_sheet`. `null` en un original. `ig_reel` y `x_video` son `kind = video` |
 | parent_media_id | uuid null | Derivado de qué original |
 | storage_path | text | Ruta en el bucket |
 | mime | text | |
@@ -141,7 +141,7 @@ Una definición del corredor con el mismo `key` **sobrescribe** la global. Únic
 | is_cover | boolean | |
 | ai_metadata | jsonb null | Descripción y puntaje de la IA. Sin uso en F2: la IA no ve las fotos (D3 del spec F2); queda para la sugerencia de portada con visión (backlog) |
 
-Únicos (migración `0001`): `(listing_id, checksum) WHERE role = 'original'` (el mismo archivo no se sube dos veces a una propiedad) y `UNIQUE (storage_path)`, que también cubre el logo (`listing_id` null). El logo es un medio `original` sin aviso (`listing_id` null), en `brokers/{brokerId}/brand/{sha256}.{ext}`; `brokers.logo_media_id` apunta a él. Que sea un original sin aviso ni post y del mismo corredor lo valida `BrokerRepository.setLogo`, no la base (solo hay FK). Desde F9, único parcial `media_original_post_checksum_unique` `(post_id, checksum) WHERE role = 'original'`: el mismo archivo no se sube dos veces a un post. En F1, `width`, `height` y `duration_s` quedan en `null`; los mide la etapa `media` del job `content.prepare` en F2 (ADR-0012).
+Únicos (migración `0001`): `(listing_id, checksum) WHERE role = 'original'` (el mismo archivo no se sube dos veces a una propiedad) y `UNIQUE (storage_path)`, que también cubre el logo (`listing_id` null). El logo es un medio `original` sin aviso (`listing_id` null), en `brokers/{brokerId}/brand/{sha256}.{ext}`; `brokers.logo_media_id` apunta a él. Que sea un original sin aviso ni post y del mismo corredor lo valida `BrokerRepository.setLogo`, no la base (solo hay FK). Desde F9, único parcial `media_original_post_checksum_unique` `(post_id, checksum) WHERE role = 'original'`: el mismo archivo no se sube dos veces a un post. Los originales de un post van en `posts/{postId}/original/{sha256}.{ext}` y sus variantes en `posts/{postId}/processed/{variante}/{sha256}-v{versión}.jpg|.mp4` (F9-T10). En F1, `width`, `height` y `duration_s` quedan en `null`; los mide la etapa `media` del job `content.prepare` en F2 (ADR-0012).
 
 **Derivados (F2-T03, migración `0005`):** una variante es un medio `processed` con `parent_media_id` (su original, del mismo aviso) y `variant`; un render es un medio `rendered` sin padre. Únicos parciales `media_processed_parent_variant_unique` `(parent_media_id, variant) WHERE role = 'processed'` y `media_rendered_listing_variant_unique` `(listing_id, variant) WHERE role = 'rendered'`: hay **uno vigente** por original y variante, y uno por aviso y variante de render. `MediaRepository.upsertDerivative` lo crea o lo reemplaza **en su lugar** (misma fila, clave nueva) y devuelve la clave anterior para borrarla de R2; `deleteDerivative` borra un derivado y nunca un original. Los métodos de la carga (`listOriginals`, `listCovers`, `findByStoragePath`, `create`, `arrange`) siguen viendo solo originales; `listByListing` ve todo el aviso. Que el padre sea un original del mismo aviso y corredor, y que el tipo calce con la variante (el reel es video), lo valida el repositorio, no la base. Un derivado que choca con un único es `MEDIA_CONFLICT`, reintentable. `duration_s` guarda 3 decimales (el doble en memoria redondea igual).
 
@@ -272,10 +272,10 @@ El registro de las URL prefirmadas de R2 pedidas para un post (ADR-0025); `impor
 |---|---|---|
 | id | uuid PK | |
 | post_id | uuid FK | |
-| object_path | text | La clave de R2, bajo `posts/{postId}/…`. Único `post_uploads_object_path_unique` |
+| object_path | text | La clave de R2: `posts/{postId}/original/{sha256}.{ext}` (F9-T10; el sha256 que trae el pedido). Único `post_uploads_object_path_unique`: pedir otra vez el mismo archivo reabre la misma fila |
 | expected_bytes | bigint | El tamaño anunciado al pedir la URL |
-| status | enum `post_upload_status` default `pending` | `pending`, `completed` (registrada como medio) o `abandoned` (vencida; la limpieza la borra de R2) |
-| expires_at | timestamptz | Cuándo vence la URL |
+| status | enum `post_upload_status` default `pending` | `pending`, `completed` (registrada como medio) o `abandoned` (vencida; la limpieza la borró de R2). Un pedido nuevo del mismo archivo la vuelve a `pending` |
+| expires_at | timestamptz | Cuándo vence la subida: 24 h después de pedirla (la URL dura 6 h) |
 
 Índices `(post_id)` y `(status, expires_at)` (la limpieza periódica).
 

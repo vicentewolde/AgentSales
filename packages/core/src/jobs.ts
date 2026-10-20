@@ -17,6 +17,7 @@ export const JOB_NAMES = [
   "publications.watch",
   "db.backup",
   "post.draft",
+  "post.media",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -83,6 +84,11 @@ export const JOB_PAYLOADS = {
    * `QUEUE_UNAVAILABLE`). Nunca va por `content.prepare`, que es de avisos.
    */
   "post.draft": z.object({ contentRunId: z.uuid() }),
+  /**
+   * Las variantes de los medios de un post (spec F9 §4.5, F9-T10): lo encola `…/uploads/complete`.
+   * Lee de la base los originales del post y arma solo lo que falta (`processPostMedia`).
+   */
+  "post.media": z.object({ postId: z.uuid() }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;

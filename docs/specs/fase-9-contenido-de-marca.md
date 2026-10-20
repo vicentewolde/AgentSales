@@ -59,6 +59,8 @@ Un post tiene un estado propio:
 | `ready` | Al menos un texto aprobado (las publicaciones nacen de ahí, como en ADR-0014) |
 | `archived` | Descartado o terminado; no se programa |
 
+Reglas de los posts (F9-T10): un post archivado no se edita ni recibe medios (`POST_ARCHIVED`, 409); un post con publicaciones pendientes (`PENDING_PUBLICATION_STATUSES`) no se archiva hasta cancelarlas o resolverlas (`POST_HAS_PENDING_PUBLICATIONS`, 409); un post tiene hasta 20 medios, contando las subidas pendientes.
+
 El estado de la publicación de cada red es el de ADR-0014 más `outcome_unknown` (§4.6), con la misma bitácora. La agenda y el seguimiento (F6) muestran posts y avisos juntos, con el tema del post como título.
 
 ### 4.3 Marcas y perfil editorial
@@ -418,6 +420,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Descripción:** lista de posts por marca y estado; editor con una pestaña por red e idioma (conteo de caracteres, vista previa, verificaciones), medios con avance, aprobar, programar y publicar; editor del perfil editorial; resolver una `outcome_unknown` y confirmar una publicación a mano.
 - **Archivos principales:** `apps/web/src/pages/Posts*.tsx`, `BrandPage.tsx`
 - **Hecho cuando:**
+  - [ ] el sha256 de un medio es obligatorio hasta 100 MB y opcional sobre eso, como ADR-0025 punto 2 (el navegador no puede hashear en streaming): la clave pasa a `posts/{postId}/original/{uploadId}.{ext}`, `post_uploads` suma un estado `uploaded` y el worker calcula el sha256 en streaming, crea el medio y deduplica; con un seguimiento en ADR-0025 (hoy, F9-T10, el sha256 es obligatorio siempre)
   - [ ] tests de componentes y de las consultas; sin dependencias nuevas
   - [ ] `pnpm check` pasa
 
@@ -545,3 +548,4 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 | 2026-10-19 | Respuestas del operador: LinkedIn a mano (P1), X con enlaces y tope de US$10 (P2), prueba de Instagram por el operador (P3) y dos idiomas por marca (P4, pendiente la forma de publicarlos) |
 | 2026-10-19 | F8 cerró (`v1.0.0`): ADR renumerados (el 0028 lo tomó «el corredor conecta su propio Instagram»; los de este spec pasan a 0029 y 0030). Acuerdos con el operador: orden F9 → piloto con una oficina → organizaciones (§4.17), TikTok como borrador de video (D16, T26), posts en cualquier corredor, `kind` extensible, alcance siempre por `inScope`/`can`, credenciales que admiten tokens que no vencen y los permisos de anuncios en otra app de Meta (D13). Anuncios, dinero y leads quedan como borradores ADR-0031 a ADR-0033 |
 | 2026-10-19 | **Aprobado por el operador**: el plan tal como está; tres entregas (D20, §5.1); ejecución en paralelo con agentes en worktrees y la CI como juez (D21, §5.2); P4 y P5 con las recomendaciones; la decisión de arquitectura D19 (una instancia ahora, dos del mismo código al llegar el primer cliente) y su tarea T27. ADR-0029 y ADR-0030 pasan a Aceptados |
+| 2026-10-20 | Revisión de F9-T10: §4.2 suma las reglas de los posts (archivado no se edita, no se archiva con publicaciones pendientes, hasta 20 medios); F9-T17 suma el criterio del sha256 opcional sobre 100 MB (ADR-0025 punto 2); el video para X sale con la duración completa (su límite lo revisa T16) |
