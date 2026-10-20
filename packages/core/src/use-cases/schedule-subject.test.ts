@@ -284,6 +284,45 @@ describe("programar un post", () => {
     ).toBe("SCHEDULE_TOO_SOON");
   });
 
+  it("las redes del post mandan (F9-T21): sin redes pedidas, solo las suyas; una que le quitaron no se programa ni se publica", async () => {
+    const t = await twoLanguages();
+    // El operador le quitó X al post: sus textos siguen aprobados, pero ya no corresponden.
+    await t.posts.update(t.post.id, { platforms: ["discord"] });
+
+    const { results } = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      { postId: t.post.id, at: AT, dryRun: true, actor: "operator" },
+    );
+    expect(results.map((result) => [result.platform, result.outcome])).toEqual([
+      ["discord", "scheduled"],
+    ]);
+    expect(t.current(t.publicationOf("x", "es").id)?.status).toBe("approved");
+    expect(t.current(t.publicationOf("x", "en").id)?.status).toBe("approved");
+
+    // Pedida a mano, se informa con su motivo; publicarla, igual.
+    const asked = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      { postId: t.post.id, platforms: ["x"], at: AT, dryRun: true, actor: "operator" },
+    );
+    expect(asked.results).toMatchObject([
+      { platform: "x", outcome: "skipped", code: "POST_PLATFORM_EXCLUDED" },
+    ]);
+    expect(
+      await codeOf(
+        publishPost(t.deps, { postId: t.post.id, platform: "x", dryRun: true, actor: "operator" }),
+      ),
+    ).toBe("POST_PLATFORM_EXCLUDED");
+    expect(t.current(t.publicationOf("x", "es").id)?.status).toBe("approved");
+
+    // Si la red vuelve al post, su texto aprobado vuelve a servir.
+    await t.posts.update(t.post.id, { platforms: null });
+    const back = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      { postId: t.post.id, platforms: ["x"], at: AT, dryRun: true, actor: "operator" },
+    );
+    expect(back.results).toMatchObject([{ platform: "x", outcome: "scheduled" }]);
+  });
+
   it("publishPost publica la red con todos sus idiomas y encola después del candado", async () => {
     const t = await twoLanguages();
 

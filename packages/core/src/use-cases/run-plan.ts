@@ -1,4 +1,5 @@
 import type { AbortSignalLike } from "../abort.js";
+import { brokerScope } from "../access.js";
 import { chileDateOf } from "../chile-time.js";
 import { contentRunErrorOf } from "../content/run-error.js";
 import { editorialProfileView } from "../editorial-profile.js";
@@ -22,6 +23,7 @@ import {
   planHistory,
   plannedSlots,
   planRunRequestSchema,
+  planWeeks,
 } from "../social/plan.js";
 import { PLAN_PROMPT_VERSION } from "../social/plan-prompt.js";
 import { proposePlanIdeas } from "../social/plan-propose.js";
@@ -35,7 +37,12 @@ export type RunPlanDeps = {
     PlanRunRepository,
     "get" | "markRunning" | "markSucceeded" | "markFailed" | "addLlmUsage"
   >;
-  posts: Pick<PostRepository, "listRecent">;
+  /**
+   * `listRecent`: los temas que no se repiten (60 días). `list` por rango de `planned_at`: lo ya
+   * planificado en las semanas del período (`planWeeks`), sin el tope de 300 de `listRecent`, que
+   * ordena por `created_at` y podría dejar fuera un post viejo planificado para esas semanas.
+   */
+  posts: Pick<PostRepository, "listRecent" | "list">;
   brokers: Pick<BrokerRepository, "findById">;
   editorialProfiles: Pick<EditorialProfileRepository, "get">;
   /** Para el tope de IA del mes (`sumLlmCost` suma también los planes). */
@@ -184,6 +191,9 @@ async function propose(
   const clock = deps.clock ?? (() => new Date());
   const now = deps.now ?? Date.now;
   const today = clock();
+  // Los temas que no se repiten: los más nuevos primero, con el tope de 300 de `listRecent`. Basta,
+  // porque a la IA viajan como mucho `PLAN_HISTORY_MAX` (100) por lista; lo planificado en las
+  // semanas del período se lee aparte, por rango de `planned_at` y sin ese tope.
   const recent = await deps.posts.listRecent(
     broker.id,
     new Date(today.getTime() - PLAN_RECENT_DAYS * DAY_MS),
@@ -196,6 +206,16 @@ async function propose(
     start: run.periodStart,
     end: run.periodEnd,
   };
+  const weeks = planWeeks(period);
+  const planned = await deps.posts.list(
+    {
+      brokerId: broker.id,
+      status: ["idea", "draft", "ready"],
+      from: weeks.start,
+      to: weeks.end,
+    },
+    brokerScope(broker.id),
+  );
   const brief = buildPlanBrief({
     broker,
     profile,
@@ -203,7 +223,7 @@ async function propose(
     platforms: request.platforms,
     count: request.count,
     history: planHistory(recent, today),
-    planned: plannedSlots(recent, period, request.platforms),
+    planned: plannedSlots(planned, period, request.platforms),
   });
 
   const started = now();

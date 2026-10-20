@@ -122,6 +122,8 @@ const CONFLICTS = new Set([
   "POST_NOT_IDEA",
   // F9-T20: dos pedidos de plan cruzados (no debería llegar: `requestPlanRun` devuelve el activo).
   "PLAN_RUN_CONFLICT",
+  // F9-T21: publicar o programar una red que no está entre las del post (se agrega al post).
+  "POST_PLATFORM_EXCLUDED",
 ]);
 
 /**

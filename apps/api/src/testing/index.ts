@@ -31,6 +31,7 @@ import {
   createInMemoryMediaRepository,
   createInMemoryMediaStorage,
   createInMemoryMetaDeletionRepository,
+  createInMemoryPlanRunRepository,
   createInMemoryPlatformAccountRepository,
   createInMemoryPostLock,
   createInMemoryPostRepository,
@@ -433,10 +434,14 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   // post), como Postgres.
   let listingsRef: AppDeps["listings"] | undefined;
   const posts = overrides.posts ?? createInMemoryPostRepository();
+  // Los planes de ideas (F9-T21) guardan sus ideas en los mismos posts; su gasto entra al tope.
+  const ownPlanRuns = createInMemoryPlanRunRepository({ posts });
+  const planRuns = overrides.planRuns ?? ownPlanRuns;
   const content = createInMemoryContentRepositories({
     nextId: randomUUID,
     brokerOfListing: async (id) => (await listingsRef?.get(id))?.brokerId ?? null,
     brokerOfPost: async (id) => (await posts.get(id))?.brokerId ?? null,
+    planRuns: () => (overrides.planRuns === undefined ? ownPlanRuns.all() : []),
   });
   // La app solo lee las publicaciones; el candado las cambia. Un test que trae las suyas trae
   // también su candado (como el escenario de publicación), para que los dos vean las mismas.
@@ -483,6 +488,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     contents: content.contents,
     posts,
     postUploads,
+    planRuns,
     editorialProfiles: createInMemoryEditorialProfileRepository(),
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
     publications,

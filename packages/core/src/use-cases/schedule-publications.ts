@@ -481,7 +481,14 @@ export async function schedulePost(
       if (!isAppError(error) || error.retriable || POST_REQUEST_ERRORS.has(error.code)) {
         throw error;
       }
-      if (!asked && SILENT_WITHOUT_PLATFORMS.has(error.code)) continue;
+      // Sin redes pedidas, solo las del post (`posts.platforms`, F9-T21): una red que el operador
+      // le quitó no se programa ni se informa, aunque su texto siga aprobado.
+      if (
+        !asked &&
+        (SILENT_WITHOUT_PLATFORMS.has(error.code) || error.code === "POST_PLATFORM_EXCLUDED")
+      ) {
+        continue;
+      }
       results.push({ platform, outcome: "skipped", code: error.code, message: error.message });
     }
   }

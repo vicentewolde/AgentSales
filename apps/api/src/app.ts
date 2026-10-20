@@ -18,6 +18,7 @@ import {
   type MercadoLibreAuth,
   type MetaDeletionRepository,
   type OAuthStateRepository,
+  type PlanRunRepository,
   type Platform,
   type PlatformAccountRepository,
   type PostLock,
@@ -48,6 +49,7 @@ import { listingRoutes } from "./routes/listings.js";
 import { type MetaSignatureVerifier, metaRoutes } from "./routes/meta.js";
 import { type OAuthDeps, oauthRoutes } from "./routes/oauth.js";
 import { type LinkedInOAuthDeps, linkedinOAuthRoutes } from "./routes/oauth-linkedin.js";
+import { planRoutes } from "./routes/plans.js";
 import { postRoutes } from "./routes/posts.js";
 import {
   listingPublicationRoutes,
@@ -134,6 +136,11 @@ export type AppDeps = {
   postUploads: Pick<PostUploadRepository, "listByPost">;
   /** El perfil editorial de cada corredor o marca (F9-T09): lo lee la IA de los posts. */
   editorialProfiles: EditorialProfileRepository;
+  /**
+   * Los planes de ideas (F9-T21, ADR-0030): pedirlos (`content.plan` los corre en el worker), listar
+   * los de una marca y ver uno con sus ideas.
+   */
+  planRuns: PlanRunRepository;
   /**
    * Publicaciones (F3-T15): leer las de un aviso y su bitácora, y saber de qué aviso es una antes
    * del candado. Los cambios de estado van dentro del candado, con sus repositorios.
@@ -287,6 +294,11 @@ export function createApp(input: AppDeps) {
       async (id) => (await deps.platformAccounts.get(id))?.brokerId ?? null,
       notFound("ACCOUNT_NOT_FOUND", "No existe la cuenta"),
     ),
+    // Un plan de ideas es de su marca (F9-T21).
+    plan: ownedBy(
+      async (id) => (await deps.planRuns.get(id))?.brokerId ?? null,
+      notFound("PLAN_RUN_NOT_FOUND", "No existe el plan"),
+    ),
     // El corredor es su propio dueño: un corredor solo llega al suyo (F7-T13).
     broker: ownedBy(async (id) => id, notFound("BROKER_NOT_FOUND", "No existe el corredor")),
   };
@@ -302,6 +314,7 @@ export function createApp(input: AppDeps) {
     .use("/listings/:id/*", ownership.listing)
     // Un post es de su corredor o marca (F9-T10): lo ajeno es 404, también sus subidas.
     .use("/posts/:id/*", ownership.post)
+    .use("/plans/:id/*", ownership.plan)
     .use("/content-runs/:id/*", ownership.contentRun)
     .use("/contents/:id/*", ownership.content)
     .use("/publications/:id/*", ownership.publication)
@@ -345,6 +358,7 @@ export function createApp(input: AppDeps) {
     .route("/brokers", brokerRoutes(deps))
     .route("/brokers", editorialProfileRoutes(deps))
     .route("/posts", postRoutes(deps))
+    .route("/plans", planRoutes(deps))
     .route("/schedule", scheduleRoutes(publicationDeps))
     .route(
       "/",

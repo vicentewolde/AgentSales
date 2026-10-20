@@ -218,22 +218,40 @@ export function planHistory(
 export type PlannedSlot = { date: string; platforms: PostPlatform[] };
 
 /**
- * Los posts de la marca que ya están planificados dentro del período (ideas sin decidir, borradores
- * y listos con `planned_at`; no los archivados), con sus redes entre las pedidas: un post sin redes
- * propias (`platforms = null`) cuenta en todas. Ocupan su cupo de la semana en la cadencia.
+ * Las semanas completas (de lunes a domingo, hora de Chile) que toca un período: desde el lunes de
+ * su primer día hasta el fin del domingo de su último día, `[start, end)`. Lo planificado ahí ocupa
+ * el cupo semanal aunque caiga fuera del período (F9-T21: las semanas parciales del borde).
+ */
+export function planWeeks(period: Pick<PlanPeriod, "firstDay" | "lastDay">): {
+  start: Date;
+  end: Date;
+} {
+  return {
+    start: chileDateStart(weekOf(period.firstDay)),
+    end: chileDateStart(addDays(weekOf(period.lastDay), 7)),
+  };
+}
+
+/**
+ * Los posts de la marca que ya están planificados en las semanas del período (`planWeeks`: del
+ * lunes de la primera al domingo de la última, así una semana parcial del borde no pasa su tope):
+ * ideas sin decidir, borradores y listos con `planned_at` (no los archivados), con sus redes entre
+ * las pedidas; un post sin redes propias (`platforms = null`) cuenta en todas. Ocupan su cupo de la
+ * semana en la cadencia.
  */
 export function plannedSlots(
   posts: readonly Pick<Post, "status" | "plannedAt" | "platforms">[],
-  period: Pick<PlanPeriod, "start" | "end">,
+  period: Pick<PlanPeriod, "firstDay" | "lastDay">,
   requested: readonly PostPlatform[],
 ): PlannedSlot[] {
+  const weeks = planWeeks(period);
   return posts
     .filter(
       (post) =>
         post.status !== "archived" &&
         post.plannedAt !== null &&
-        post.plannedAt >= period.start &&
-        post.plannedAt < period.end,
+        post.plannedAt >= weeks.start &&
+        post.plannedAt < weeks.end,
     )
     .map((post) => ({
       date: chileDateOf(post.plannedAt as Date),
@@ -646,3 +664,44 @@ export const planRunReportSchema = z.object({
     .optional(),
 });
 export type PlanRunReport = z.infer<typeof planRunReportSchema>;
+
+// --- Qué hacer si falla -----------------------------------------------------------------------
+
+const PLAN_RETRY_LATER = "Es pasajero: pide el plan de nuevo en unos minutos.";
+
+/** Consejos por código de un plan fallido (`plan_runs.error`), para el panel y la CLI (F9-T21). */
+const PLAN_ERROR_ADVICE: Readonly<Record<string, string>> = {
+  LLM_BUDGET_EXCEEDED:
+    "La marca llegó a su tope de IA del mes: mira el gasto (agentsales usage) y pide al administrador subir el tope, o espera al mes siguiente.",
+  LLM_OUTPUT_INVALID: "La IA no entregó el plan en el formato pedido: pide el plan de nuevo.",
+  LLM_AUTH_REQUIRED:
+    "La sesión de la CLI de Claude venció: el operador la renueva (/login en claude) y después pides el plan de nuevo.",
+  LLM_NOT_CONFIGURED:
+    "Falta configurar la IA del servidor (LLM_PROVIDER o ANTHROPIC_API_KEY): el operador lo revisa con pnpm -s cli doctor.",
+  LLM_ACCOUNT_LIMIT:
+    "La cuenta de IA llegó a su límite de uso: espera a que se renueve y pide el plan de nuevo.",
+  LLM_REQUEST_REJECTED:
+    "La IA rechazó el pedido: revisa el perfil editorial de la marca y pide el plan de nuevo.",
+  PLAN_RUN_ABANDONED: "El worker se cortó mientras armaba el plan: pide el plan de nuevo.",
+  PLAN_RUN_INVALID: "El plan quedó mal pedido: pídelo de nuevo.",
+  QUEUE_UNAVAILABLE: "El worker no está corriendo: arráncalo y pide el plan de nuevo.",
+  POST_NO_PLATFORMS:
+    "La marca no tiene redes: conecta una cuenta o define la cadencia de una red en su perfil editorial.",
+  BROKER_NOT_FOUND: "La marca del plan ya no existe.",
+  INTERNAL_ERROR:
+    "Es un error del sistema: pide el plan de nuevo y, si se repite, revisa el log del worker.",
+};
+
+/**
+ * Qué hacer ante un plan fallido (F9-T21): el consejo de su código; los pasajeros (`_UNAVAILABLE`,
+ * `_TIMEOUT`, `_ABORTED`, `_RATE_LIMITED`, `LLM_ERROR`), volver a pedirlo en unos minutos; si no,
+ * uno genérico.
+ */
+export function planRunErrorAdvice(code: string): string {
+  const own = PLAN_ERROR_ADVICE[code];
+  if (own !== undefined) return own;
+  if (/_(UNAVAILABLE|TIMEOUT|ABORTED|RATE_LIMITED)$/.test(code) || code === "LLM_ERROR") {
+    return PLAN_RETRY_LATER;
+  }
+  return "Pide el plan de nuevo; si se repite, revisa el log del worker.";
+}

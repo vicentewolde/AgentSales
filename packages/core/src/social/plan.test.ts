@@ -15,7 +15,9 @@ import {
   planHistory,
   plannedSlots,
   planPeriod,
+  planRunErrorAdvice,
   planRunReportSchema,
+  planWeeks,
   topicKey,
   validatePlanResponse,
   weekdayOf,
@@ -198,6 +200,31 @@ describe("lo ya planificado en el período", () => {
       { date: "2026-10-22", platforms: ["x"] },
       { date: "2026-10-23", platforms: ["x", "linkedin"] },
     ]);
+  });
+
+  it("las semanas parciales del borde cuentan completas, de lunes a domingo (F9-T21)", () => {
+    // El período va del miércoles 21-10 al martes 3-11: sus semanas, del lunes 19-10 al domingo 8-11.
+    expect(planWeeks(period)).toEqual({
+      start: new Date("2026-10-19T03:00:00.000Z"),
+      end: new Date("2026-11-09T03:00:00.000Z"),
+    });
+    const slots = plannedSlots(
+      [
+        planned("2026-10-19T12:00:00Z", ["x"]), // lunes de la primera semana, antes del período
+        planned("2026-10-19T02:59:00Z", ["x"]), // domingo 18 en Chile: otra semana
+        planned("2026-11-08T23:00:00Z", ["x"]), // domingo 8 a las 20:00 de Chile: la última semana
+        planned("2026-11-09T03:00:00Z", ["x"]), // lunes 9: ya no
+      ],
+      period,
+      ["x"],
+    );
+    expect(slots.map((slot) => slot.date)).toEqual(["2026-10-19", "2026-11-08"]);
+    // X publica 1 por semana: el del lunes 19 llena la primera semana aunque esté fuera del período.
+    const result = check(
+      [idea({ tema: "La primera semana", redes: ["x"], fecha: "2026-10-23" })],
+      brief({ planned: slots }),
+    );
+    expect(result.discarded.map((item) => item.code)).toEqual(["WEEK_FULL"]);
   });
 
   it("cuenta para los posts por semana de cada red y lo ve la IA", () => {
@@ -522,5 +549,16 @@ describe("el plan de ejemplo (LLM_PROVIDER=fake)", () => {
         warnings: [],
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("qué hacer si un plan falla (F9-T21)", () => {
+  it("el tope de IA, la sesión de Claude y los pasajeros tienen su consejo; lo demás, uno genérico", () => {
+    expect(planRunErrorAdvice("LLM_BUDGET_EXCEEDED")).toContain("tope de IA");
+    expect(planRunErrorAdvice("LLM_AUTH_REQUIRED")).toContain("/login");
+    for (const code of ["LLM_UNAVAILABLE", "LLM_TIMEOUT", "PLAN_RUN_ABORTED", "LLM_RATE_LIMITED"]) {
+      expect([code, planRunErrorAdvice(code)]).toEqual([code, expect.stringContaining("pasajero")]);
+    }
+    expect(planRunErrorAdvice("ALGO_NUEVO")).toContain("log del worker");
   });
 });

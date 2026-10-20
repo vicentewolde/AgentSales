@@ -105,7 +105,14 @@ async function ownedBy(deps: ReturnType<typeof testDeps>, slug: string) {
     topic: `Post ${slug}`,
     kind: "text",
   });
-  return { broker, listing, run, content, account, publication, importRun, post };
+  // F9-T21: un plan de ideas de su marca (las rutas `/plans/:id`).
+  const plan = await deps.planRuns.create({
+    brokerId: broker.id,
+    periodStart: new Date("2026-10-21T03:00:00Z"),
+    periodEnd: new Date("2026-11-04T03:00:00Z"),
+    request: { platforms: ["linkedin"], count: 2, days: 14, requestedBy: null },
+  });
+  return { broker, listing, run, content, account, publication, importRun, post, plan };
 }
 
 async function setup() {
@@ -162,6 +169,7 @@ function idFor(path: string, owned: Awaited<ReturnType<typeof ownedBy>>): string
   if (path.startsWith("/imports")) return owned.importRun.id;
   if (path.startsWith("/brokers")) return owned.broker.id;
   if (path.startsWith("/posts")) return owned.post.id;
+  if (path.startsWith("/plans")) return owned.plan.id;
   return owned.account.id;
 }
 

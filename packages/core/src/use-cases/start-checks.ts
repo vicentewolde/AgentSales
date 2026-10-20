@@ -2,6 +2,7 @@ import type { Content } from "../content.js";
 import type { Platform } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { FieldDefinition } from "../field-definition.js";
+import { PLATFORM_TEXT } from "../labels.js";
 import type { Listing } from "../listing.js";
 import { manualConfirmPending, requiresManualConfirm } from "../marketplace/limits.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
@@ -133,6 +134,17 @@ async function requireApprovedAndConnected(
 
 const postNotFound = (postId: string) =>
   new AppError("POST_NOT_FOUND", `No existe el post ${postId}`, { details: { postId } });
+
+/**
+ * `POST_PLATFORM_EXCLUDED` (409, F9-T21): la red no está entre las del post (`posts.platforms`).
+ * Sus textos no se borran, pero no se publican ni se programan hasta que la red vuelva al post.
+ */
+export const postPlatformExcluded = (postId: string, platform: Platform) =>
+  new AppError(
+    "POST_PLATFORM_EXCLUDED",
+    `${PLATFORM_TEXT[platform]} no está entre las redes del post: agrégala al post para publicar o programar su texto`,
+    { details: { postId, platform } },
+  );
 
 /** El canal de un aviso, revisado y listo para escribir (spec F3 §4.3). */
 export type ChannelStart = {
@@ -277,6 +289,11 @@ export async function preparePostChannelStart(
   const post = await locked.posts.get(subject.id);
   if (post === null) throw postNotFound(subject.id);
   if (!canDraftPost(post.status)) throw postNotReady(post);
+  // Las redes del post (F9-T20/T21): un texto de una red que el operador le quitó no se publica ni
+  // se programa, aunque siga aprobado (no se borra: vuelve a servir si la red vuelve al post).
+  if (post.platforms !== null && !(post.platforms as readonly Platform[]).includes(platform)) {
+    throw postPlatformExcluded(post.id, platform);
+  }
   await requireNoActiveRun(locked, subject);
   const approved = (await locked.contents.listCurrent(subject)).filter(
     (content) => content.platform === platform && content.status === "approved",
