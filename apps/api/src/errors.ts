@@ -98,6 +98,8 @@ const CONFLICTS = new Set([
   // F9-T05 (spec F9 §4.2): pedir o aprobar los textos de un post que es una idea sin aceptar o
   // está archivado.
   "POST_NOT_READY",
+  // F9-T05: `/contents/:id` es solo de avisos hasta las rutas de posts (T12).
+  "CONTENT_NOT_FOR_LISTING",
   // F7-T12 (spec F7 §4.7): el corredor llegó a su tope de IA del mes (subir el tope o esperar).
   "LLM_BUDGET_EXCEEDED",
   // F8 (spec §4.14): empezar una carga a la que le faltan archivos (subirlos y volver a empezar).

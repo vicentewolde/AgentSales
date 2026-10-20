@@ -172,7 +172,7 @@ CLI o panel: descartar (cancelPublication: approved/failed → cancelled) y marc
   se borró a mano; la última en live devuelve el aviso de active a ready)
 ```
 
-**Sobre un sujeto (F9-T05, ADR-0029):** aprobar, quitar la aprobación y editar reciben el id del texto y corren en el candado de **su** sujeto, el del aviso o el del post (`runOnSubject`, ver "Aprobación"). En un post, aprobar abre una publicación por cuenta conectada de la marca, formato **e idioma** (`planPostPublications`), sin `listing_source_hash` y sin las reglas de Portal y Marketplace, y deja el post en `ready`; quitar la aprobación o editar el último texto aprobado lo devuelve a `draft`. Publicar, programar y el intento sobre un post llegan con T06 y T07; `auto_publish` no aplica a los posts.
+**Sobre un sujeto (F9-T05, ADR-0029):** aprobar, quitar la aprobación y editar reciben el id del texto y corren en el candado de **su** sujeto, el del aviso o el del post (`runOnSubject`, ver "Aprobación"). En un post, aprobar abre una publicación por cuenta conectada de la marca, formato **e idioma** (`planPostPublications`), sin `listing_source_hash` y sin las reglas de Portal y Marketplace, y deja el post en `ready`; quitar la aprobación o editar el último texto aprobado lo devuelve a `draft`. Publicar, programar y el intento sobre un post llegan con T06 y T07; `auto_publish` no aplica a los posts. Hasta las rutas de posts (T12), la API de `/contents/:id` (editar, aprobar, quitar la aprobación) es solo de avisos: un texto de post es `CONTENT_NOT_FOR_LISTING` (409) antes del candado, sin escribir nada.
 
 ```
 API (aprobar un texto de post) → approveContent (core, con el candado del post)

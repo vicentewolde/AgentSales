@@ -1,6 +1,11 @@
 import type { ListingLock, LockedRepositories } from "./ports/listing-lock.js";
 import type { PostLock, PostLockedRepositories } from "./ports/post-lock.js";
-import { type ListingSubject, listingIdOf, type PostSubject, type Subject } from "./subject.js";
+import {
+  type ListingSubject,
+  type PostSubject,
+  type Subject,
+  subjectNotListing,
+} from "./subject.js";
 
 /**
  * Los candados de los dos sujetos (ADR-0029, punto 3). `postLock` falta en quien solo trabaja con
@@ -47,8 +52,8 @@ export async function runOnSubject<T>(
     return locks.lock.run(listing.id, (repos) => fn({ kind: "listing", subject: listing, repos }));
   }
   const { postLock } = locks;
-  // Quien no tiene el candado del post solo trabaja con avisos: el mismo error que `listingIdOf`.
-  if (postLock === undefined) return listingIdOf(subject) as never;
   const post: PostSubject = { kind: "post", id: subject.id };
+  // Quien no tiene el candado del post solo trabaja con avisos: el mismo error que `listingIdOf`.
+  if (postLock === undefined) throw subjectNotListing(post);
   return postLock.run(post.id, (repos) => fn({ kind: "post", subject: post, repos }));
 }

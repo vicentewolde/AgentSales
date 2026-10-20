@@ -133,8 +133,26 @@ export function contentRunRoutes(deps: Pick<ContentRoutesDeps, "contentRuns">) {
 }
 
 /**
+ * Hasta las rutas de posts (`/posts/:id/contents/…`, F9-T12), `/contents/:id` es solo de avisos:
+ * un texto de post es `CONTENT_NOT_FOR_LISTING` (409) **antes** del candado, sin escribir nada (la
+ * respuesta de estas rutas arma vistas de avisos). Un texto que no existe sigue al caso de uso
+ * (`CONTENT_NOT_FOUND`).
+ */
+async function assertListingContent(deps: EditContentDeps, contentId: string): Promise<void> {
+  const content = await deps.contents.get(contentId);
+  if (content?.subject.kind === "post") {
+    throw new AppError(
+      "CONTENT_NOT_FOR_LISTING",
+      "Ese texto es de un post: edítalo, apruébalo o quítale la aprobación desde el post",
+      { details: { contentId } },
+    );
+  }
+}
+
+/**
  * `/contents/:id`: editar el texto vigente de un canal (`editContent`), aprobarlo y quitarle la
- * aprobación (spec F3 §4.2, ADR-0014). Los tres corren dentro del candado del aviso (core).
+ * aprobación (spec F3 §4.2, ADR-0014). Los tres corren dentro del candado del aviso (core); un
+ * texto de post se rechaza antes (`assertListingContent`).
  */
 export function contentRoutes(deps: EditContentDeps) {
   return new Hono()
@@ -143,6 +161,7 @@ export function contentRoutes(deps: EditContentDeps) {
       validated("param", idParamSchema),
       validated("json", contentEditBodySchema),
       async (c) => {
+        await assertListingContent(deps, c.req.valid("param").id);
         const result = await editContent(deps, {
           contentId: c.req.valid("param").id,
           edit: c.req.valid("json"),
@@ -152,6 +171,7 @@ export function contentRoutes(deps: EditContentDeps) {
       },
     )
     .post("/:id/approve", validated("param", idParamSchema), async (c) => {
+      await assertListingContent(deps, c.req.valid("param").id);
       const result = await approveContent(deps, {
         contentId: c.req.valid("param").id,
         actor: actorOf(c),
@@ -171,6 +191,7 @@ export function contentRoutes(deps: EditContentDeps) {
       return c.json(body, 200);
     })
     .post("/:id/unapprove", validated("param", idParamSchema), async (c) => {
+      await assertListingContent(deps, c.req.valid("param").id);
       const result = await unapproveContent(deps, {
         contentId: c.req.valid("param").id,
         actor: actorOf(c),
