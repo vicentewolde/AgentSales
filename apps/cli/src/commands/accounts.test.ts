@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   fakeInstagramAuth,
+  fakeLinkedInAuth,
   fakeMercadoLibreAuth,
   fakeXAuth,
   TEST_ML_REDIRECT_URI,
@@ -13,6 +14,7 @@ import {
   type ConnectOptions,
   runAccounts,
   runConnect,
+  runMode,
   runRefresh,
   runSpendLimit,
 } from "./accounts.js";
@@ -650,5 +652,106 @@ describe("accounts connect x y accounts spend-limit (F9-T16)", () => {
     expect(h.errors()).toContain("X_SPEND_LIMIT_INVALID");
     expect(await runSpendLimit(deps(), account.id, "5000")).toBe(1);
     expect(h.errors()).toContain("1.000");
+  });
+});
+
+describe("accounts connect linkedin y accounts mode (F9-T15)", () => {
+  async function linkedinSetup(options: { configured?: boolean; confirm?: boolean } = {}) {
+    const opened: string[] = [];
+    const h = harness({
+      deps: {
+        linkedin: {
+          auth: fakeLinkedInAuth(),
+          configured: options.configured ?? true,
+          secureCookie: false,
+          // Distinto del que escribiría alguien a mano: el enlace tiene que venir de la API.
+          startUrl: "https://agentsales.test/api/oauth/linkedin/start",
+        },
+      },
+    });
+    const broker = await h.brokers.create(brokerData("marca"));
+    const deps = (): AccountsDeps => ({
+      ...h.io,
+      client: h.client,
+      stdinIsTty: () => true,
+      readStdin: async () => "",
+      openUrl: (url) => opened.push(url),
+      now: () => new Date("2026-10-20T12:00:00Z"),
+      confirm: async () => options.confirm ?? false,
+      sleep: async () => {},
+      clock: () => 0,
+    });
+    const linkedin = () =>
+      h.platformAccounts.upsertConnected(
+        {
+          brokerId: broker.id,
+          platform: "linkedin",
+          externalAccountId: "miembro-123",
+          displayName: "Vicente Wolde",
+          tokenExpiresAt: new Date("2026-12-19T12:00:00Z"),
+          meta: { mode: "manual", scopes: null, connectedAt: "2026-10-20T12:00:00.000Z" },
+          credentials: { accessToken: "token-linkedin-de-prueba" },
+        },
+        { revokeOthers: true },
+      );
+    return { h, deps, opened, linkedin };
+  }
+
+  it("connect linkedin abre el inicio del OAuth que da la API, con el corredor", async () => {
+    const { h, deps, opened } = await linkedinSetup();
+    expect(await runConnect(deps(), "linkedin", { broker: "marca" })).toBe(0);
+    const url = "https://agentsales.test/api/oauth/linkedin/start?broker=marca";
+    expect(opened).toEqual([url]);
+    expect(h.text()).toContain(url);
+    expect(h.text()).toContain("a mano");
+  });
+
+  it("sin la app de LinkedIn en la API: LINKEDIN_NOT_CONFIGURED, sin abrir nada", async () => {
+    const { h, deps, opened } = await linkedinSetup({ configured: false });
+    expect(await runConnect(deps(), "linkedin", { broker: "marca" })).toBe(1);
+    expect(h.errors()).toContain("LINKEDIN_NOT_CONFIGURED");
+    expect(opened).toEqual([]);
+  });
+
+  it("una opción de otro canal no se ignora", async () => {
+    const { h, deps } = await linkedinSetup();
+    expect(await runConnect(deps(), "linkedin", { broker: "marca", tokenStdin: true })).toBe(1);
+    expect(h.errors()).toContain("OPTION_NOT_FOR_PLATFORM");
+  });
+
+  it("accounts muestra la cuenta de LinkedIn a mano", async () => {
+    const { h, deps, linkedin } = await linkedinSetup();
+    await linkedin();
+    expect(await runAccounts(deps())).toBe(0);
+    expect(h.text()).toContain("LinkedIn (a mano)");
+    expect(h.text()).not.toContain("token-linkedin-de-prueba");
+  });
+
+  it("mode api pregunta antes; con --yes cambia, y manual vuelve sin preguntar", async () => {
+    const { h, deps, linkedin } = await linkedinSetup();
+    const account = await linkedin();
+
+    expect(await runMode(deps(), account.id, "api")).toBe(1);
+    expect(h.errors()).toContain("No se cambió el modo");
+    expect((await h.platformAccounts.get(account.id))?.meta.mode).toBe("manual");
+
+    expect(await runMode(deps(), account.id, "api", { yes: true })).toBe(0);
+    expect(h.text()).toContain("✓ Vicente Wolde (LinkedIn) publica por API");
+    expect((await h.platformAccounts.get(account.id))?.meta.mode).toBe("api");
+
+    expect(await runMode(deps(), account.id, "manual")).toBe(0);
+    expect(h.text()).toContain("publica a mano");
+    expect(await runMode(deps(), account.id, "manual")).toBe(0);
+    expect(h.text()).toContain("Sin cambios");
+  });
+
+  it("mode con un modo o un id que no sirven no llama a la API", async () => {
+    const { h, deps, linkedin } = await linkedinSetup();
+    const account = await linkedin();
+    expect(await runMode(deps(), account.id, "auto")).toBe(1);
+    expect(h.errors()).toContain("MODE_INVALID");
+    expect(await runMode(deps(), "no-es-un-id", "manual")).toBe(1);
+    expect(h.errors()).toContain("ACCOUNT_ID_INVALID");
+    expect(h.requests).toEqual([]);
   });
 });
