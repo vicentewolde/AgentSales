@@ -4,6 +4,12 @@ import { checkPublishInput, publishInputInvalid } from "./input.js";
 /** La nota del "formulario listo" simulado (spec F5 §4.3, D4). */
 export const DRY_RUN_HANDOFF_NOTE = "Simulación: no se abrió Facebook";
 
+/**
+ * La nota del traspaso simulado de otra red con paso manual (TikTok, F9-T26: el borrador en la
+ * bandeja): no se llamó a la red.
+ */
+export const DRY_RUN_UPLOAD_NOTE = "Simulación: no se subió nada a la red";
+
 /** Id simulado de una publicación en `dry-run`. */
 export const dryRunExternalId = (publicationId: string) => `dry-run:${publicationId}`;
 
@@ -43,7 +49,10 @@ export function withDryRun(publisher: Publisher): Publisher {
         return {
           handoff: "manual_confirm",
           simulated: true,
-          notes: [DRY_RUN_HANDOFF_NOTE, ...notes],
+          notes: [
+            publisher.platform === "fb_marketplace" ? DRY_RUN_HANDOFF_NOTE : DRY_RUN_UPLOAD_NOTE,
+            ...notes,
+          ],
         };
       }
       return {

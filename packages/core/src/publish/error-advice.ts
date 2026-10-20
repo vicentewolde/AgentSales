@@ -161,6 +161,23 @@ const ADVICE: Readonly<Record<string, string>> = {
   LINKEDIN_VERSION_DEPRECATED:
     "LinkedIn cerró la versión de su API que usa AgentSales: hay que subir LINKEDIN_API_VERSION en el código.",
   LINKEDIN_UNREACHABLE: RETRY_LATER,
+  // TikTok (F9-T26): el video va como borrador a la bandeja; el operador lo publica en la app.
+  TIKTOK_AUTH_INVALID: RECONNECT,
+  TIKTOK_PERMISSION_DENIED:
+    "Reconecta TikTok con accounts connect tiktok y deja marcado el permiso de subir videos.",
+  TIKTOK_PENDING_LIMIT:
+    "Hay 5 videos esperando en la bandeja de TikTok: publícalos o descártalos en la app; el sistema reintenta solo.",
+  TIKTOK_POST_LIMIT: "La cuenta llegó a su máximo de publicaciones del día: reintenta mañana.",
+  TIKTOK_ACCOUNT_RESTRICTED:
+    "TikTok no deja publicar a esta cuenta: revisa sus avisos en la app de TikTok.",
+  TIKTOK_APP_RESTRICTED:
+    "La app de TikTok todavía no tiene la auditoría para esto: revisa docs/integraciones/tiktok.md (prueba S6).",
+  TIKTOK_UPLOAD_FAILED:
+    "TikTok no aceptó el video: revisa lo que dice el mensaje, prepara el post de nuevo y reintenta.",
+  TIKTOK_STILL_PROCESSING:
+    "TikTok sigue procesando el video: el sistema vuelve a mirar solo; si no, reintenta en unos minutos.",
+  TIKTOK_REQUEST_REJECTED: "Corrige lo que dice el mensaje (el video) y reintenta.",
+  TIKTOK_MEDIA_UNAVAILABLE: RETRY_LATER,
   // Del sistema.
   PUBLISHER_NOT_CONFIGURED: ASK_HELP,
   INTERNAL_ERROR: ASK_HELP,

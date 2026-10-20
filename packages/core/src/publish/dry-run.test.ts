@@ -8,7 +8,7 @@ import {
   storedAccessToken,
 } from "../ports/publisher.js";
 import { createFakePublisher } from "../testing/index.js";
-import { DRY_RUN_HANDOFF_NOTE, withDryRun } from "./dry-run.js";
+import { DRY_RUN_HANDOFF_NOTE, DRY_RUN_UPLOAD_NOTE, withDryRun } from "./dry-run.js";
 import { publishAttemptRecord } from "./input.js";
 
 const at = new Date("2026-10-05T12:00:00Z");
@@ -105,6 +105,22 @@ describe("withDryRun", () => {
     });
     expect(fake.published).toEqual([]);
     expect(withDryRun(createFakePublisher()).manualConfirm).toBeUndefined();
+  });
+
+  it("con paso manual en otra red (TikTok, F9-T26), la nota no habla de Facebook", async () => {
+    const tiktokInput: PublishInput = { ...input, platform: "tiktok", format: "post" };
+    const fake = createFakePublisher({
+      platform: "tiktok",
+      formats: ["post"],
+      manualConfirm: true,
+    });
+
+    await expect(withDryRun(fake).publish(tiktokInput, context())).resolves.toEqual({
+      handoff: "manual_confirm",
+      simulated: true,
+      notes: [DRY_RUN_UPLOAD_NOTE],
+    });
+    expect(fake.published).toEqual([]);
   });
 
   it("conserva la plataforma, los formatos y la validación del envuelto", () => {

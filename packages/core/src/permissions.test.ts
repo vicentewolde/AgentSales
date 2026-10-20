@@ -20,6 +20,8 @@ const BROKER_CAN: Readonly<Record<Permission, boolean>> = {
   // F9-T16: conectar su propia cuenta de X.
   "x.connect": true,
   "linkedin.connect": true,
+  // F9-T26: conectar su TikTok.
+  "tiktok.connect": true,
   "broker.settings": false,
   "brokers.create": false,
   "users.manage": false,
