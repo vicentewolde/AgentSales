@@ -120,6 +120,11 @@ export interface PostUploadRepository {
   /** Las `pending` vencidas (`expires_at` anterior a `now`), las más antiguas primero. */
   listExpired(now: Date): Promise<PostUpload[]>;
   /**
+   * Las `uploaded` (F9-T17) que quedaron así desde antes de `before` (`updated_at`: la hora en que
+   * llegaron), las más antiguas primero: el worker no pudo revisarlas (agotó sus reintentos).
+   */
+  listStaleUploaded(before: Date): Promise<PostUpload[]>;
+  /**
    * `pending` o `uploaded` → `completed`; `false` si ya no estaba en uno de esos estados o no
    * existe.
    */

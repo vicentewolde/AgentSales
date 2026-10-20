@@ -414,11 +414,18 @@ export async function completePostUploads(
 }
 
 export type CloseAbandonedPostUploadsDeps = {
-  postUploads: Pick<PostUploadRepository, "listExpired">;
+  postUploads: Pick<PostUploadRepository, "listExpired" | "listStaleUploaded">;
   postLock: PostLock;
   storage: Pick<MediaStorage, "delete">;
   now?: () => Date;
 };
+
+/**
+ * Cuánto puede quedar una subida `uploaded` sin que el worker la revise (F9-T17): `post.media` la
+ * revisa en minutos y agota sus reintentos en menos de una hora; pasadas 24 h desde que llegó, nadie
+ * más la va a tomar (salvo otro `complete`), así que la limpieza la cierra como una vencida.
+ */
+export const STALE_UPLOADED_AFTER_MS = POST_UPLOAD.abandonedAfterMs;
 
 export type CloseAbandonedPostUploadsResult = {
   /** Subidas cerradas como `abandoned` (su objeto ya se borró de R2). */
@@ -429,7 +436,9 @@ export type CloseAbandonedPostUploadsResult = {
 
 /**
  * La limpieza de las subidas de posts (en `publications.watch`, cada hora, como la de las cargas):
- * cada subida pendiente vencida (24 h) se borra de R2 y queda `abandoned`.
+ * cada subida pendiente vencida (24 h) se borra de R2 y queda `abandoned`. Desde F9-T17, también
+ * cada `uploaded` que lleva más de 24 h así (el worker agotó sus reintentos sin revisarla), con la
+ * misma revisión en el candado.
  *
  * Todo pasa dentro del candado del post: se vuelve a leer la subida, se comprueba que siga
  * pendiente y vencida (un pedido nuevo del mismo archivo pudo reabrirla) y que su objeto no sea
@@ -446,11 +455,20 @@ export async function closeAbandonedPostUploads(
   const now = (deps.now ?? (() => new Date()))();
   const abandoned: string[] = [];
   const failed: string[] = [];
-  for (const upload of await deps.postUploads.listExpired(now)) {
+  const staleBefore = new Date(now.getTime() - STALE_UPLOADED_AFTER_MS);
+  const candidates = [
+    ...(await deps.postUploads.listExpired(now)),
+    ...(await deps.postUploads.listStaleUploaded(staleBefore)),
+  ];
+  for (const upload of candidates) {
     try {
       const closed = await deps.postLock.run(upload.postId, async ({ postUploads, media }) => {
         const current = await postUploads.get(upload.id);
-        if (current?.status !== "pending" || current.expiresAt >= now) return false;
+        // Sigue como se listó: pendiente y vencida, o subida y sin revisar desde hace 24 h (el
+        // worker pudo revisarla entre medio).
+        const expired = current?.status === "pending" && current.expiresAt < now;
+        const stale = current?.status === "uploaded" && current.updatedAt < staleBefore;
+        if (current === null || (!expired && !stale)) return false;
         if ((await media.findByStoragePath(current.objectPath)) !== null) {
           // El archivo ya es un medio (la subida se completó por otro camino): no se abandona.
           await postUploads.markCompleted(current.id);

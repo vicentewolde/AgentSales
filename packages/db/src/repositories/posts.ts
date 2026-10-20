@@ -224,6 +224,17 @@ export function createPostUploadRepository(db: SchemaDatabase): PostUploadReposi
       });
     },
 
+    listStaleUploaded(before) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(postUploads)
+          .where(and(eq(postUploads.status, "uploaded"), lt(postUploads.updatedAt, before)))
+          .orderBy(asc(postUploads.updatedAt), asc(postUploads.id));
+        return rows.map(toPostUpload);
+      });
+    },
+
     markCompleted: (id) => settle(id, "completed", ["pending", "uploaded"]),
     markUploaded: (id) => settle(id, "uploaded"),
     markAbandoned: (id) => settle(id, "abandoned", ["pending", "uploaded"]),

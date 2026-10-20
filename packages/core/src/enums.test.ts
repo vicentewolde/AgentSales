@@ -68,7 +68,7 @@ describe("enums de dominio", () => {
     expect(POST_SOURCES).toEqual(["manual", "ai"]);
     expect(BRIEF_ORIGINS).toEqual(["operator", "ai"]);
     expect(PLAN_RUN_STATUSES).toEqual(["queued", "running", "succeeded", "failed"]);
-    // `uploaded` (F9-T17) va al final: se agregó con `ALTER TYPE … ADD VALUE` (migración 0016).
+    // `uploaded` (F9-T17) va al final: se agregó con `ALTER TYPE … ADD VALUE` (migración 0017).
     expect(POST_UPLOAD_STATUSES).toEqual(["pending", "completed", "abandoned", "uploaded"]);
     expect(LANGUAGES).toEqual(["es", "en"]);
     expect(DEFAULT_LANGUAGE).toBe("es");

@@ -683,6 +683,14 @@ export function subjectRepositoriesContract(
         expect(await repos.postUploads.markUploaded(id)).toBe(true);
         expect(await repos.postUploads.markUploaded(id)).toBe(false);
         expect((await repos.postUploads.get(id))?.status).toBe("uploaded");
+        // Las `uploaded` viejas (la limpieza): por la hora en que llegaron (`updated_at`).
+        const stale = (before: Date) =>
+          repos.postUploads.listStaleUploaded(before).then((rows) => rows.map((row) => row.id));
+        expect(await stale(new Date(Date.now() + 60_000))).toContain(id);
+        expect(await stale(new Date(Date.now() - 3_600_000))).not.toContain(id);
+        expect(
+          await repos.postUploads.listExpired(new Date(Date.now() + 86_400_000)),
+        ).not.toContainEqual(expect.objectContaining({ id }));
         expect(await repos.postUploads.markCompleted(id)).toBe(true);
         expect((await repos.postUploads.get(id))?.status).toBe("completed");
         expect(await repos.postUploads.markAbandoned(id)).toBe(false);

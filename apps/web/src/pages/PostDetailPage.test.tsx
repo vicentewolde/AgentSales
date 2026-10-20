@@ -224,6 +224,30 @@ describe("panel: detalle de un post", () => {
     expect(s.requests).toContain(`POST /posts/${s.post.id}/uploads/complete`);
   });
 
+  it("un archivo grande que el worker revisa se avisa (también al recargar) y el aviso se va al terminar", async () => {
+    const s = await setup();
+    const id = "cccccccc-0000-4000-8000-000000000001";
+    await s.deps.postLock.run(s.post.id, async ({ postUploads }) => {
+      await postUploads.create({
+        id,
+        postId: s.post.id,
+        objectPath: `posts/${s.post.id}/original/${id}.mp4`,
+        expectedBytes: 200 * 1024 * 1024,
+        expiresAt: new Date(Date.now() + 3_600_000),
+      });
+      await postUploads.markUploaded(id);
+    });
+    await s.open();
+    const region = screen.getByRole("region", { name: "Medios" });
+    expect(within(region).getByText(/Un archivo grande se está revisando/)).toBeTruthy();
+    // El worker lo resolvió (un duplicado, por ejemplo): el próximo sondeo apaga el aviso.
+    await s.deps.postLock.run(s.post.id, ({ postUploads }) => postUploads.markCompleted(id));
+    await waitFor(
+      () => expect(within(region).queryByText(/Un archivo grande se está revisando/)).toBeNull(),
+      { timeout: 4_500 },
+    );
+  });
+
   it("un post archivado no se edita, ni pide textos ni recibe medios", async () => {
     const s = await setup();
     await s.deps.posts.archive(s.post.id);

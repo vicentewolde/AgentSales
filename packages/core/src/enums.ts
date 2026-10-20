@@ -256,7 +256,7 @@ export type PlanRunStatus = (typeof PLAN_RUN_STATUSES)[number];
  * (con su URL prefirmada), `uploaded` (F9-T17: un archivo de más de 100 MB que llegó sin sha256; el
  * worker lo calcula en streaming, crea el medio y deduplica), `completed` (subida y registrada como
  * medio) o `abandoned` (vencida; la limpieza periódica la borra de R2). `uploaded` se agregó con
- * `ALTER TYPE … ADD VALUE` (migración 0016), al final del tipo.
+ * `ALTER TYPE … ADD VALUE` (migración 0017), al final del tipo.
  */
 export const POST_UPLOAD_STATUSES = ["pending", "completed", "abandoned", "uploaded"] as const;
 export type PostUploadStatus = (typeof POST_UPLOAD_STATUSES)[number];

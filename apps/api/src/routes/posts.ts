@@ -17,6 +17,7 @@ import {
   type MediaStorage,
   type PostLock,
   type PostRepository,
+  type PostUploadRepository,
   PROCESSED_MEDIA_VARIANTS,
   type ProcessedMediaVariant,
   type PublicationRepository,
@@ -68,6 +69,8 @@ export type PostRoutesDeps = EditContentDeps &
     posts: PostRepository;
     /** Las escrituras de un post van dentro de su candado (ADR-0029, punto 3). */
     postLock: PostLock;
+    /** Las subidas del post, solo para contar las que el worker revisa (F9-T17). */
+    postUploads: Pick<PostUploadRepository, "listByPost">;
     /** La línea de contenido de un post tiene que estar en el perfil editorial de su marca. */
     editorialProfiles: Pick<EditorialProfileRepository, "get">;
     media: Pick<MediaRepository, "listBySubject">;
@@ -190,6 +193,9 @@ export function postRoutes(deps: PostRoutesDeps) {
           contents: contents.map(contentView),
           latestRun: latestRun === null ? null : contentRunView(latestRun),
           publications: publications.map(publicationView),
+          uploadsInReview: (await deps.postUploads.listByPost(id)).filter(
+            (upload) => upload.status === "uploaded",
+          ).length,
         };
         return c.json(body, 200);
       })

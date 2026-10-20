@@ -28,14 +28,14 @@ function progressText(progress: PostUploadProgress): string {
 /**
  * Los medios del post (spec F9 §4.5): los que tiene, con "procesando…" mientras el worker arma sus
  * variantes, y subir más directo a R2 con avance, cancelar y reintentar. Un archivo de más de
- * 100 MB va sin sha256 (F9-T17): el worker lo revisa y aparece al rato (`onBigUploaded`).
+ * 100 MB va sin sha256 (F9-T17): el worker lo revisa y aparece al rato (`waiting`, lo que la API
+ * cuenta como `uploadsInReview`).
  */
 export function PostMedia({
   postId,
   media,
   lockReason,
   waiting,
-  onBigUploaded,
 }: {
   postId: string;
   media: readonly PostMediaItem[];
@@ -43,8 +43,6 @@ export function PostMedia({
   lockReason: string | null;
   /** Archivos grandes que el worker todavía revisa (todavía no son medios). */
   waiting: number;
-  /** Cuántos archivos grandes quedaron en revisión en el worker. */
-  onBigUploaded: (count: number) => void;
 }) {
   const id = useId();
   const client = useApiClient();
@@ -69,12 +67,11 @@ export function PostMedia({
     setError(null);
     setFailed(null);
     try {
-      const done = await uploadPostMedia(client, postId, files, {
+      await uploadPostMedia(client, postId, files, {
         ...deps,
         signal: controller.signal,
         onProgress: setProgress,
       });
-      if (done.uploaded.length > 0) onBigUploaded(done.uploaded.length);
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
         setError(new Error("Subida cancelada: lo que alcanzó a subir quedó guardado."));

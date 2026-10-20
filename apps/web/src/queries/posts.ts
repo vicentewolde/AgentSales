@@ -75,14 +75,14 @@ export function usePosts(filters: { brokerId?: string | undefined; status?: Post
 /**
  * Lo que sigue en curso en un post y vale volver a mirar: una corrida de textos en cola o
  * corriendo, una publicación publicándose, un medio sin sus variantes ("procesando…") o archivos
- * grandes que el worker todavía revisa (`waitingMedia`, lo que quedó `uploaded` al subir y todavía
- * no aparece como medio).
+ * grandes que el worker todavía revisa (`uploadsInReview`, F9-T17: lo cuenta la API, así que se ve
+ * igual al recargar y se apaga si el archivo resultó duplicado o se perdió).
  */
-export function postInProgress(detail: PostDetailResponse, waitingMedia = 0): boolean {
+export function postInProgress(detail: PostDetailResponse): boolean {
   const run = detail.latestRun;
   if (run !== null && !isTerminalContentRun(run.status)) return true;
   if (detail.publications.some((publication) => publication.status === "publishing")) return true;
-  if (waitingMedia > 0) return true;
+  if (detail.uploadsInReview > 0) return true;
   return detail.media.some((item) => mediaProcessing(item));
 }
 
@@ -100,10 +100,7 @@ export const POST_POLL_MS = RUN_WAIT.pollMs;
  * publicaciones. Mientras algo sigue en curso (`postInProgress`) se vuelve a pedir cada 2 s, hasta
  * el tope de `RUN_WAIT` (2 h): así algo atascado no mantiene Neon despierto con la pestaña abierta.
  */
-export function usePost(
-  id: string,
-  waitingMedia: (detail: PostDetailResponse) => number = () => 0,
-) {
+export function usePost(id: string) {
   const client = useApiClient();
   const since = useRef<number | null>(null);
   return useQuery({
@@ -116,7 +113,7 @@ export function usePost(
     staleTime: POST_STALE_MS,
     refetchInterval: (query) => {
       const data = query.state.data;
-      if (data === undefined || !postInProgress(data, waitingMedia(data))) {
+      if (data === undefined || !postInProgress(data)) {
         since.current = null;
         return false;
       }

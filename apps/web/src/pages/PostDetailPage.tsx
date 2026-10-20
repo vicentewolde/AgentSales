@@ -201,11 +201,7 @@ function DraftBox({
  */
 export function PostDetailPage() {
   const { id = "" } = useParams();
-  // Los archivos grandes que el worker todavía revisa (F9-T17): cuántos y sobre cuántos medios.
-  const [big, setBig] = useState<{ count: number; baseline: number } | null>(null);
-  const waitingOf = (mediaCount: number) =>
-    big === null ? 0 : Math.max(0, big.baseline + big.count - mediaCount);
-  const post = usePost(id, (detail) => waitingOf(detail.media.length));
+  const post = usePost(id);
   const health = useHealth();
   const archive = useArchivePost(id);
   const [editing, setEditing] = useState(false);
@@ -213,8 +209,7 @@ export function PostDetailPage() {
 
   if (post.error) return <ErrorAlert error={post.error} onRetry={() => void post.refetch()} />;
   if (post.data === undefined) return <p className="text-slate-600">Cargando…</p>;
-  const { post: item, media, contents, latestRun, publications } = post.data;
-  const waiting = waitingOf(media.length);
+  const { post: item, media, contents, latestRun, publications, uploadsInReview } = post.data;
   const publishMode = health.data?.publishMode;
   const archived = item.status === "archived";
   const runActive = latestRun !== null && !isTerminalContentRun(latestRun.status);
@@ -296,8 +291,7 @@ export function PostDetailPage() {
         postId={item.id}
         media={media}
         lockReason={archived ? "El post está archivado." : null}
-        waiting={waiting}
-        onBigUploaded={(count) => setBig({ count: waiting + count, baseline: media.length })}
+        waiting={uploadsInReview}
       />
 
       <section aria-label="Publicar" className="mt-6 space-y-3">

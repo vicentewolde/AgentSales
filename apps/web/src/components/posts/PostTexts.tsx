@@ -16,6 +16,7 @@ import { Checks } from "../content/Checks.js";
 import { parseHashtags } from "../content/editor.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { editBlockedReason, unapproveBlockedReason } from "../publications/publications.js";
+import { type PostContentView, postContents } from "./labels.js";
 
 const FIELD =
   "mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none";
@@ -27,9 +28,6 @@ const PRIMARY =
 /** El nombre de una pestaña: la red y el idioma. */
 export const tabName = (content: Pick<ContentView, "platform" | "language">) =>
   `${PLATFORM_TEXT[content.platform]} · ${LANGUAGE_TEXT[content.language]}`;
-
-/** Una red de posts (las de los avisos no llegan aquí). */
-const asPostPlatform = (platform: ContentView["platform"]) => platform as PostPlatform;
 
 /**
  * El largo como lo cuenta la red (`postTextLength`, la misma función de la revisión): X ponderado
@@ -111,11 +109,11 @@ function Editor({
   onClose,
 }: {
   postId: string;
-  content: ContentView;
+  content: PostContentView;
   onClose: () => void;
 }) {
   const ids = useId();
-  const platform = asPostPlatform(content.platform);
+  const { platform } = content;
   const [body, setBody] = useState(content.body);
   const [hashtags, setHashtags] = useState(content.hashtags.join(" "));
   const save = useEditPostContent(postId);
@@ -183,14 +181,14 @@ function TextTab({
   lockReason,
 }: {
   postId: string;
-  content: ContentView;
+  content: PostContentView;
   media: readonly PostMediaItem[];
   publications: readonly PublicationView[];
   lockReason: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const approval = usePostApproval(postId);
-  const platform = asPostPlatform(content.platform);
+  const { platform } = content;
   const editBlocked = lockReason ?? editBlockedReason(content, publications);
   const approved = content.status === "approved";
   const approveBlocked =
@@ -268,18 +266,18 @@ export function PostTexts({
 }) {
   const ids = useId();
   const [selected, setSelected] = useState<string | null>(null);
-  if (contents.length === 0) {
+  const texts = postContents(contents);
+  if (texts.length === 0) {
     return <p className="text-sm text-slate-600">Todavía no hay textos: pídelos a la IA.</p>;
   }
   const current =
-    contents.find((content) => `${content.platform}:${content.language}` === selected) ??
-    contents[0];
+    texts.find((content) => `${content.platform}:${content.language}` === selected) ?? texts[0];
   if (current === undefined) return null;
   const keyOf = (content: ContentView) => `${content.platform}:${content.language}`;
   return (
     <div>
       <div role="tablist" aria-label="Textos por red e idioma" className="flex flex-wrap gap-1">
-        {contents.map((content) => {
+        {texts.map((content) => {
           const active = keyOf(content) === keyOf(current);
           return (
             <button

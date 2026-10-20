@@ -21,6 +21,7 @@ import { ErrorAlert } from "../ErrorAlert.js";
 import { publishButtonText, safeExternalUrl } from "../publications/publications.js";
 import { ScheduleForm } from "../publications/ScheduleForm.js";
 import { LiveConfirmButton } from "./LiveConfirm.js";
+import { postContents } from "./labels.js";
 
 const SECONDARY =
   "rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50";
@@ -31,8 +32,8 @@ const FIELD = "w-full rounded-md border border-slate-300 bg-white px-2 py-1 text
 /** Las redes con al menos un texto aprobado, en el orden de los textos (el de la API). */
 export function approvedPlatforms(contents: readonly ContentView[]): PostPlatform[] {
   const platforms: PostPlatform[] = [];
-  for (const content of contents) {
-    const platform = content.platform as PostPlatform;
+  for (const content of postContents(contents)) {
+    const { platform } = content;
     if (content.status === "approved" && !platforms.includes(platform)) platforms.push(platform);
   }
   return platforms;

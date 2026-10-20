@@ -164,6 +164,12 @@ export function createInMemoryPostUploadRepository(): PostUploadRepository {
         .sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime() || a.id.localeCompare(b.id))
         .map(structuredCopy);
     },
+    async listStaleUploaded(before) {
+      return [...uploads.values()]
+        .filter((upload) => upload.status === "uploaded" && upload.updatedAt < before)
+        .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || a.id.localeCompare(b.id))
+        .map(structuredCopy);
+    },
     async markCompleted(id) {
       return settle(id, "completed", ["pending", "uploaded"]);
     },

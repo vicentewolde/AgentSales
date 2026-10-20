@@ -1379,6 +1379,11 @@ export const postDetailResponseSchema = z.object({
   contents: z.array(contentViewSchema).default([]),
   latestRun: contentRunViewSchema.nullable().default(null),
   publications: z.array(publicationViewSchema).default([]),
+  /**
+   * Los archivos grandes sin sha256 que llegaron y el worker todavía revisa (`uploaded`, F9-T17):
+   * todavía no son medios. Un servidor anterior no lo manda: se lee 0.
+   */
+  uploadsInReview: z.number().int().nonnegative().default(0),
 });
 export type PostDetailResponse = z.infer<typeof postDetailResponseSchema>;
 

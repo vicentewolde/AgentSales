@@ -49,7 +49,7 @@ describe("migración 0017 sobre una base con subidas de posts", () => {
     const brokerId = (
       await client.query<{ id: string }>(
         `INSERT INTO brokers (slug, name, brand_name, primary_color, secondary_color, kind)
-         VALUES ('marca-0016', 'Persona Inventada', 'Marca Inventada', '#112233', '#445566', 'brand')
+         VALUES ('marca-0017', 'Persona Inventada', 'Marca Inventada', '#112233', '#445566', 'brand')
          RETURNING id`,
       )
     ).rows[0]?.id;

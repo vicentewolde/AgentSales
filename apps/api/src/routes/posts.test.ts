@@ -340,5 +340,28 @@ describe("/posts/:id/uploads (ADR-0025)", () => {
     if (target?.status !== "upload") throw new Error("se esperaba una subida");
     expect(target.url).toContain(`posts/${post.id}/original/${target.uploadId}.mp4`);
     expect(target.headers["x-amz-checksum-sha256"]).toBeUndefined();
+
+    // Llega a R2 y `complete` la deja `uploaded`: el detalle la cuenta hasta que el worker la revise.
+    await s.storage.put(
+      `posts/${post.id}/original/${target.uploadId}.mp4`,
+      new Uint8Array(1),
+      "video/mp4",
+    );
+    const listSpy = s.storage.list;
+    s.storage.list = async (prefix) =>
+      (await listSpy(prefix)).map((item) =>
+        item.path.includes(target.uploadId) ? { ...item, size: 100 * 1024 * 1024 + 1 } : item,
+      );
+    const done = await app.request(`/posts/${post.id}/uploads/complete`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${MINE}`, origin: ORIGIN },
+    });
+    expect(postUploadCompleteResponseSchema.parse(await done.json()).uploaded).toEqual([
+      target.uploadId,
+    ]);
+    const detail = await app.request(`/posts/${post.id}`, {
+      headers: { authorization: `Bearer ${MINE}` },
+    });
+    expect(postDetailResponseSchema.parse(await detail.json()).uploadsInReview).toBe(1);
   });
 });

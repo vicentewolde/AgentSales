@@ -547,3 +547,61 @@ describe("subidas de más de 100 MB sin sha256 (F9-T17, ADR-0025 punto 2)", () =
     });
   });
 });
+
+describe("closeAbandonedPostUploads · `uploaded` que el worker no revisó (F9-T17)", () => {
+  const HOUR = 3_600_000;
+
+  async function staleSetup() {
+    const s = await setup();
+    /** Una subida grande que llegó (`uploaded`) con su objeto en R2. */
+    const arrived = async (id: string) => {
+      const path = `posts/${s.post.id}/original/${id}.mp4`;
+      await s.storage.put(path, bytes(10), "video/mp4");
+      await s.postUploads.create({
+        id,
+        postId: s.post.id,
+        objectPath: path,
+        expectedBytes: 10,
+        expiresAt: new Date(Date.now() + 48 * HOUR),
+      });
+      await s.postUploads.markUploaded(id);
+      return path;
+    };
+    const cleanupAt = (ms: number) =>
+      closeAbandonedPostUploads({ ...s.deps, now: () => new Date(Date.now() + ms) });
+    return { ...s, arrived, cleanupAt };
+  }
+
+  it("antes de 24 h no la toca; pasadas, borra su objeto y la deja abandoned", async () => {
+    const s = await staleSetup();
+    const id = "bbbbbbbb-0000-4000-8000-000000000001";
+    const path = await s.arrived(id);
+    expect(await s.cleanupAt(23 * HOUR)).toEqual({ abandoned: [], failed: [] });
+    expect((await s.postUploads.get(id))?.status).toBe("uploaded");
+
+    expect(await s.cleanupAt(25 * HOUR)).toEqual({ abandoned: [id], failed: [] });
+    expect((await s.postUploads.get(id))?.status).toBe("abandoned");
+    expect(s.storage.objects.has(path)).toBe(false);
+  });
+
+  it("si el worker alcanzó a crear el medio, solo la marca completed y no borra el objeto", async () => {
+    const s = await staleSetup();
+    const id = "bbbbbbbb-0000-4000-8000-000000000002";
+    const path = await s.arrived(id);
+    await s.media.create({
+      listingId: null,
+      postId: s.post.id,
+      brokerId: s.mine.id,
+      kind: "video",
+      storagePath: path,
+      mime: "video/mp4",
+      bytes: 10,
+      checksum: sha(42),
+      sortOrder: 0,
+      isCover: false,
+    });
+    expect(await s.cleanupAt(25 * HOUR)).toEqual({ abandoned: [], failed: [] });
+    expect((await s.postUploads.get(id))?.status).toBe("completed");
+    expect(s.storage.objects.has(path)).toBe(true);
+  });
+});
