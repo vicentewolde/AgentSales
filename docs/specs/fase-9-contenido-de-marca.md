@@ -412,6 +412,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Depende de:** T07, T10, **prueba S4**
 - **Descripción:** OAuth 2.0 con PKCE (el verificador en la cookie firmada), refresco al publicar y en `tokens.refresh`, publisher de texto con imágenes o video (subida por partes), conteo ponderado de caracteres, `cost_usd`, `spendLimitUsd`, el 403 por texto repetido como `outcome_unknown`.
 - **Archivos principales:** `packages/publishers/src/x/*`
+- **Nota (2026-10-20):** construido contra simulaciones (msw); S4 es la verificación obligatoria antes de publicar de verdad (`x.md` §0). La marca del enlace es **por post** (`posts.x_link_allowed`, migración `0016`, `PATCH /api/posts/:id`): se suma al brief (el enlace tiene que estar en los dos), y sin ella la IA no recibe enlaces para X. El tope se fija con `accounts spend-limit <id> <dólares>` (administrador) y suma el `cost_usd` en `live` del mes de Chile de la cuenta sin contar las fallidas. `social:smoke --platform x` no se construyó (S4 se hace a mano). Falta la opción de la marca en `post edit` de la CLI (F9-T12) y en el panel (T17).
 - **Hecho cuando:**
   - [ ] contratos con `msw`: éxito, 402 por saldo, 429, 403 por texto repetido, refresh que rota
   - [ ] un post con enlace pide la marca explícita y anota US$0,20; pasado el límite mensual, `failed` con la causa

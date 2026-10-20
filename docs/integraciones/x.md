@@ -6,6 +6,37 @@ Convención: **DOC** = documentación oficial de X (docs.x.com); **SNIPPET** = d
 
 Aviso de método: las páginas se leyeron con una herramienta que extrae y resume el texto, no en el navegador. Las cifras coinciden entre varias páginas, pero las citas literales cortas pueden tener paráfrasis. Antes de codificar algo crítico (tabla de errores, precios), abrir la página y confirmar. **Los precios y las reglas de X cambiaron cinco veces entre febrero y octubre de 2026** (sección 9): nada de lo de esta nota debe quedar fijo en el código.
 
+## 0. Qué hace hoy AgentSales (F9-T16, 2026-10-20)
+
+> **S4 pendiente y obligatoria antes de publicar de verdad.** X se construyó contra simulaciones (msw), por decisión del operador (2026-10-20). Antes de cualquier publicación real en X, el operador hace la prueba **S4** (spec F9 §4.8) con su cuenta y un *spending limit* bajo en la consola: crear un post, ver el saldo descontado, un reply a uno mismo, el rechazo por texto repetido (403, su cuerpo y su ventana) y si un 4xx cobra. Si algo no calza, se ajusta el código antes de publicar. Hasta entonces, X queda en `dry-run` como todo lo demás.
+
+**Conectar (OAuth 2.0 con PKCE, cliente confidencial).**
+- `.env`: `X_CLIENT_ID` y `X_CLIENT_SECRET` (el par OAuth 2.0 de la app "Web App" de console.x.com, con permisos de lectura y escritura) y, opcional, `X_REDIRECT_URI`. Sin valor, es `<PUBLIC_URL>/api/oauth/x/callback` en el servidor y `http://127.0.0.1:8787/api/oauth/x/callback` en el Mac (X pide `127.0.0.1`, no `localhost`, §3.1). Esa dirección se registra igual en la app de X.
+- `pnpm -s cli accounts connect x --broker <slug>` imprime y abre el inicio (`/api/oauth/x/start?broker=<slug>`, en el host de la dirección de retorno). El inicio pide la sesión del panel **en ese mismo host**: en el Mac, entra al panel por `http://127.0.0.1:5173` (no `localhost`) antes de abrir el enlace. El administrador conecta cualquier marca; un corredor, la suya (permiso `x.connect`).
+- El `state` va en la URL firmado con la plataforma y la marca, y es de un solo uso (`oauth_states_used`). El verificador de PKCE va **solo** en una cookie firmada (`__Host-agentsales_oauth_x` con HTTPS), amarrada al nonce de ese `state`: nunca en la URL ni en la base. La vuelta canjea el código (vale 30 s) con el verificador, exige `tweet.write`, `media.write` y `offline.access`, lee `GET /2/users/me` y guarda `{ accessToken, refreshToken }` cifrados; la `meta` lleva el usuario, los permisos y el vencimiento del access token (sin secretos). Reconectar el mismo usuario conserva su tope de gasto.
+
+**Renovar el token.** El access token vive unas 2 h. Al publicar, `ensureRotatingAccessToken` lo renueva si le quedan 30 min o menos, dentro del candado de credenciales; el job diario `tokens.refresh` usa **la misma función**, así un intento y el lote nunca usan el mismo refresh token a la vez. El cliente (`createXAuth`) pone su propio tope de 10 s, supone que el refresh token rota (si X no devuelve uno nuevo, se conserva el anterior) y **solo `invalid_grant`** deja la cuenta vencida; la red, un 5xx, un 429 o el par de la app (`invalid_client`) no la tocan.
+
+**Publicar** (`packages/publishers/src/x`): texto con hasta 4 imágenes (`ig_4x5`, JPEG/PNG/WebP/GIF de hasta 5 MB) o 1 video (el reducido `x_video` de F9-T10, de 0,5 s a 20 min). Antes de marcar "enviando": pide el token y sube los medios desde R2 (imágenes de una vez; el video por partes: INIT, APPEND de 4 MB, FINALIZE y el estado hasta `succeeded`), y guarda sus ids en el progreso (`xMedia`, al lado de `send` y `manual`) para reutilizarlos en un reintento si no vencen en la próxima hora. Después, **una** llamada a `POST /2/tweets` con `sendOnce`:
+
+| Respuesta de X | Qué hace AgentSales |
+|---|---|
+| 201 | `published` con el id del post y `https://x.com/<usuario>/status/<id>` |
+| 402 (sin créditos o tope de la consola) | No enviado: `failed` con `X_PAYMENT_REQUIRED` y el consejo de recargar créditos |
+| 429 | No enviado: `X_RATE_LIMITED` con la espera hasta `x-rate-limit-reset`; core la reprograma (hasta 3 veces seguidas) |
+| 401 | Pide otro token (`rejectedToken`) y repite **una** vez; si no se puede renovar, no enviado (`X_AUTH_INVALID`) |
+| 403 por texto repetido ("duplicate", NO VERIFICADO hasta S4) | **Dudoso**: `outcome_unknown`, nunca "no enviado" (pudo haber salido); el operador dice si salió |
+| Otro 403 u otro 4xx | No enviado: `X_FORBIDDEN` o `X_REQUEST_REJECTED` |
+| 5xx, corte, tope de tiempo o un 2xx sin el id | Dudoso: `outcome_unknown`, sin reenviar |
+
+Confirmar o resolver a mano acepta el enlace del post (`x.com` o `twitter.com`, `/<usuario>/status/<id>` o `/i/status/<id>`); el lector (`parseXPostUrl`, en core y sin red) deja como `external_id` el id del post, el mismo que guarda el publisher. En `dry-run` no se escribe nada en X: la revisión deja en la bitácora el costo estimado que tendría.
+
+**Enlaces y costo.** Un enlace en X necesita la **marca explícita del operador en el post** (`posts.x_link_allowed`; `PATCH /api/posts/:id` con `{ "xLinkAllowed": true }`): no basta con que el enlace esté en el brief. Sin la marca, la IA no recibe enlaces para X, la revisión da `LINK_NOT_ALLOWED` (no se aprueba) y, si la marca se quita después de aprobar, el intento falla con `X_LINK_NOT_ALLOWED` sin llamar a X. Cada publicación anota su costo estimado en `publications.cost_usd`: US$0,015, o US$0,20 si el texto lleva un enlace (también en `dry-run`, como referencia).
+
+**Tope de gasto.** Cada cuenta tiene `spendLimitUsd` en su `meta` (por defecto **US$10 al mes**, P2): `pnpm -s cli accounts spend-limit <id> <dólares>` (solo el administrador; `POST /api/accounts/:id/spend-limit`). Antes de llamar a X, el intento en `live` suma el `cost_usd` del mes de Chile de la cuenta (las publicaciones en vivo publicando, publicadas, pausadas, retiradas o dudosas; nunca las fallidas, hasta que S4 diga si un 4xx cobra) más el de este post: si pasa el tope, la publicación queda `failed` con `X_SPEND_LIMIT_REACHED` y la causa, sin llamar a la red. El tope duro sigue siendo el de la consola de X.
+
+**Lo que queda para S4 (y después):** el esquema exacto de la autenticación del cliente, si el refresh token rota y la forma del error con uno usado; el texto y la ventana del 403 por texto repetido; si un 4xx o la subida de medios cobran; si la URL de un medio cuenta como enlace; si 720×1280 pasa el máximo de 1280×1024; y el reply a uno mismo (sin hilos en F9). `social:smoke --platform x` no se construyó: S4 se hace a mano, como S5.
+
 ## 1. Resumen
 
 - **Mecanismo:** X API v2, `POST https://api.x.com/2/tweets` con un token de usuario (OAuth 2.0 con PKCE, o OAuth 1.0a). No hay SDK obligatorio; basta HTTP. Los medios se suben aparte (`/2/media/upload…`) y se adjuntan por `media_ids`. Madurez media; riesgo **medio-alto** por cambios frecuentes de precio y de política, y por las reglas contra la automatización.

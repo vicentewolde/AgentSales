@@ -10,6 +10,7 @@ Resumen de cómo se integra cada canal. Antes de implementar un publisher, el su
 | Yapo | Por definir (sin API pública conocida) | Post-MVP | Alto |
 | TikTok | Content Posting API | Post-MVP | Medio |
 | Discord | Webhook de canal (Execute Webhook) | F9 (T14) | Bajo |
+| X | API v2 con OAuth 2.0 y PKCE (pago por uso) | F9 (T16) | Medio-alto |
 
 ## Instagram
 
@@ -69,6 +70,16 @@ Detalle en `docs/integraciones/discord.md` (§0, lo que hace hoy AgentSales) y s
 - **Publicar:** Execute Webhook (`/api/v10/webhooks/<id>/<token>?wait=true`), texto de hasta 2.000 caracteres con `@everyone`/`@here` neutralizados y siempre `allowed_mentions: { parse: [] }`, y hasta 10 archivos de 20 MiB (`multipart`). El video es la variante más liviana del post (`x_video` o `ig_reel`); si pesa más de 20 MiB, sale solo el texto con una nota (sin enlace seguro al video todavía, D8).
 - **Sin idempotencia:** se envía una sola vez (`sendOnce`); un corte, un 5xx o una respuesta sin el mensaje dejan `outcome_unknown` y el operador dice si salió. Un 429 se espera (corto) o reprograma (largo); un 404 o 401 del webhook deja la cuenta vencida (hay que conectar otro).
 - **Estado:** construido y probado solo con simulaciones (msw). **La prueba S5 del operador (spec F9 §4.8) es obligatoria antes de publicar de verdad.**
+
+## X (F9, contenido de marca)
+
+Detalle en `docs/integraciones/x.md` (§0, lo que hace hoy AgentSales) y spec F9 §4.4 a §4.7 y §4.12.
+
+- **Conectar:** OAuth 2.0 con PKCE (cliente confidencial, `X_CLIENT_ID` y `X_CLIENT_SECRET`). `pnpm -s cli accounts connect x --broker <slug>` abre el inicio (`/api/oauth/x/start`) con la sesión del panel en el host de `X_REDIRECT_URI` (en el Mac, `127.0.0.1`). El `state` firmado es de un solo uso y el verificador de PKCE va solo en la cookie firmada. Credenciales `{ accessToken, refreshToken }` cifradas.
+- **Token:** dura unas 2 h; se renueva al publicar y en el job `tokens.refresh` con la misma función (`ensureRotatingAccessToken`), con tope de 10 s; solo `invalid_grant` deja la cuenta vencida.
+- **Publicar:** texto de 280 caracteres ponderados con hasta 4 imágenes o 1 video (`x_video`, subido por partes), una sola vez (`sendOnce`). El 402 por saldo y el 429 son "no enviado" (el 429 se reprograma); el 403 por texto repetido, un 5xx o un corte dejan `outcome_unknown`. Sin hilos.
+- **Costo:** pago por uso. Cada publicación anota `cost_usd` (US$0,015; US$0,20 con enlace). Un enlace exige la marca explícita del operador en el post (`xLinkAllowed`). Pasado el tope del mes de la cuenta (`spendLimitUsd`, US$10 por defecto; `accounts spend-limit <id> <dólares>`), la publicación queda `failed` sin llamar a X.
+- **Estado:** construido y probado solo con simulaciones (msw). **La prueba S4 del operador (spec F9 §4.8) es obligatoria antes de publicar de verdad.**
 
 ## Yapo (post-MVP)
 
