@@ -18,12 +18,18 @@ const sqlFiles = () =>
     .filter((file) => file.endsWith(".sql"))
     .sort();
 
-/** Aplica un archivo de migración tal cual, sentencia por sentencia (sin el migrador de drizzle). */
-async function applyFile(client: PGlite, file: string): Promise<void> {
+/**
+ * Aplica un archivo de migración tal cual, sentencia por sentencia (sin el migrador de drizzle). Con
+ * `transaction`, dentro de un solo `BEGIN … COMMIT`, como lo aplica el migrador al desplegar: un valor
+ * recién agregado a un enum no se puede usar en la misma transacción (ADR-0029).
+ */
+async function applyFile(client: PGlite, file: string, transaction = false): Promise<void> {
   const sql = readFileSync(join(MIGRATIONS_FOLDER, file), "utf8");
+  if (transaction) await client.exec("BEGIN");
   for (const statement of sql.split("--> statement-breakpoint")) {
     if (statement.trim() !== "") await client.exec(statement);
   }
+  if (transaction) await client.exec("COMMIT");
 }
 
 /** Las filas de una tabla en orden estable, para comparar antes y después. */
@@ -125,7 +131,7 @@ describe("migración 0014 sobre una base con avisos y publicaciones", () => {
     );
 
     for (const table of TABLES) before[table] = await rowsOf(client, table);
-    await applyFile(client, files[index] ?? "");
+    await applyFile(client, files[index] ?? "", true);
     ids = { brokers, listingId, igAccountId, contentId };
   });
   afterAll(() => client.close());

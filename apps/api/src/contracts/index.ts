@@ -364,7 +364,7 @@ export type ContentMedia = z.infer<typeof contentMediaSchema>;
 
 /** `GET /listings/:id/content`: lo que se publicaría en cada canal y la última corrida. */
 export const listingContentResponseSchema = z.object({
-  /** El vigente de cada canal, en el orden de `PLATFORMS`; vacío si nunca se generó. */
+  /** El vigente de cada canal, en el orden de `LISTING_PLATFORMS`; vacío si nunca se generó. */
   contents: z.array(contentViewSchema),
   /** Instagram: portada, fotos y ficha (hasta 10). */
   carousel: z.array(contentMediaSchema),
