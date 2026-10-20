@@ -47,7 +47,9 @@ export * from "./content/index.js";
 export {
   beforeContentLock,
   type ContentLockDeps,
+  type LockedContent,
   lockedCurrentContent,
+  settlePostStatus,
 } from "./content/locked-content.js";
 export {
   CONTENT_REEL_OUTCOMES,
@@ -600,7 +602,14 @@ export type {
   UserRepository,
 } from "./ports/user-repository.js";
 export type { WorkerHeartbeatRepository } from "./ports/worker-heartbeat-repository.js";
-export { type Post, type PostUpload, postSchema, postUploadSchema } from "./post.js";
+export {
+  canDraftPost,
+  type Post,
+  type PostUpload,
+  postNotReady,
+  postSchema,
+  postUploadSchema,
+} from "./post.js";
 export { formatListingPrice, formatNumber, formatPrice } from "./price.js";
 export {
   checkPublicationProgress,
@@ -683,6 +692,12 @@ export {
   scheduleState,
 } from "./schedule.js";
 export * from "./subject.js";
+export {
+  type LockedSubject,
+  runOnSubject,
+  type SubjectLockedRepositories,
+  type SubjectLocks,
+} from "./subject-lock.js";
 export {
   AGENDA_ACTIONS,
   AGENDA_KINDS,
@@ -853,11 +868,17 @@ export {
 } from "./use-cases/meta-data-deletion.js";
 export {
   channelPublications,
+  createPostPublications,
   createPublications,
+  type PlannedPostPublication,
   type PlannedPublication,
+  type PostPublicationOpening,
   type PublicationOpening,
   type PublicationPlanItem,
+  planPostPublications,
   planPublications,
+  postPublicationMatchesSubject,
+  postPublicationPlan,
   publicationPlan,
   type SkippedPublication,
 } from "./use-cases/open-publications.js";
@@ -926,6 +947,8 @@ export {
 } from "./use-cases/relist-publication.js";
 export {
   enqueueContentRun,
+  enqueuePostDraft,
+  enqueueRunOf,
   type RequestContentRunDeps,
   type RequestContentRunParams,
   type RequestContentRunResult,

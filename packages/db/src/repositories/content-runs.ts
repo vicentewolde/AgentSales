@@ -128,12 +128,17 @@ export function createContentRunRepository(db: SchemaDatabase): ContentRunReposi
       });
     },
 
-    listQueued() {
+    listQueued(kind = "listing") {
       return withDbErrors(async () => {
         const rows = await db
           .select()
           .from(contentRuns)
-          .where(and(eq(contentRuns.status, "queued"), ofListing))
+          .where(
+            and(
+              eq(contentRuns.status, "queued"),
+              kind === "listing" ? ofListing : isNotNull(contentRuns.postId),
+            ),
+          )
           .orderBy(asc(contentRuns.createdAt), asc(contentRuns.id));
         return rows.map(toContentRun);
       });

@@ -5,9 +5,11 @@ import {
   type AutoPublishDeps,
   type AutoPublishResult,
   autoPublishListing,
+  type ContentRun,
   type ContentRunReport,
   type ContentRunRepository,
   enqueueContentRun,
+  enqueuePostDraft,
   isAppError,
   type JobQueue,
   listingIdOf,
@@ -230,7 +232,9 @@ export async function resumeAutoPublishAtStart(
 
 /**
  * Al arrancar: cierra como `failed` (`CONTENT_RUN_ABANDONED`) las corridas en `running` con
- * `started_at` de hace más de 2 h. Las `queued` no se tocan: se reencolan. Devuelve los ids.
+ * `started_at` de hace más de 2 h, de avisos **y de posts** (`failAbandoned` no distingue): el
+ * motivo sirve para los dos, y `post.draft` (F9-T11) debe caber con sus reintentos en esas 2 h,
+ * como `content.prepare`. Las `queued` no se tocan: se reencolan. Devuelve los ids.
  */
 export function failAbandonedContentRuns(
   contentRuns: Pick<ContentRunRepository, "failAbandoned">,
@@ -243,20 +247,43 @@ export function failAbandonedContentRuns(
 }
 
 /**
- * Al arrancar, con las colas ya creadas: reencola **todas** las corridas `queued` (spec F2 §4.4).
- * Con el worker apagado, una corrida puede esperar días y su pedido sigue valiendo; si su job sigue
- * en la cola, `singletonKey` no lo duplica. Una que falla no corta las demás: devuelve cuántas se
- * reencolaron y los ids de las que no.
+ * Al arrancar, con las colas ya creadas: reencola **todas** las corridas `queued` de avisos como
+ * `content.prepare` (spec F2 §4.4). Con el worker apagado, una corrida puede esperar días y su
+ * pedido sigue valiendo; si su job sigue en la cola, `singletonKey` no lo duplica. Una que falla no
+ * corta las demás: devuelve cuántas se reencolaron y los ids de las que no. Las de posts no van
+ * aquí (`listQueued` sin tipo es de avisos): las reencola `requeueQueuedPostRuns`.
  */
-export async function requeueQueuedContentRuns(
+export function requeueQueuedContentRuns(
   contentRuns: Pick<ContentRunRepository, "listQueued">,
   queue: JobQueue,
 ): Promise<{ requeued: number; failed: string[] }> {
+  return requeueEach(contentRuns.listQueued(), (id) => enqueueContentRun(queue, id));
+}
+
+/**
+ * Al arrancar, después de `requeueQueuedContentRuns`: reencola las corridas `queued` de **posts**
+ * como `post.draft` (F9-T05), nunca como `content.prepare`. Sin esto, una corrida de post en cola
+ * quedaría huérfana tras un reinicio. La cola y el handler de `post.draft` llegan con F9-T11: hasta
+ * entonces no hay corridas de posts (nada las pide) y, si las hubiera, encolar da
+ * `QUEUE_UNAVAILABLE`: quedan en `failed` de esta función y siguen en cola para el próximo arranque.
+ */
+export function requeueQueuedPostRuns(
+  contentRuns: Pick<ContentRunRepository, "listQueued">,
+  queue: JobQueue,
+): Promise<{ requeued: number; failed: string[] }> {
+  return requeueEach(contentRuns.listQueued("post"), (id) => enqueuePostDraft(queue, id));
+}
+
+/** Encola cada corrida; una que falla no corta las demás. */
+async function requeueEach(
+  runs: Promise<ContentRun[]>,
+  enqueue: (contentRunId: string) => Promise<unknown>,
+): Promise<{ requeued: number; failed: string[] }> {
   const failed: string[] = [];
   let requeued = 0;
-  for (const run of await contentRuns.listQueued()) {
+  for (const run of await runs) {
     try {
-      await enqueueContentRun(queue, run.id);
+      await enqueue(run.id);
       requeued += 1;
     } catch {
       failed.push(run.id);

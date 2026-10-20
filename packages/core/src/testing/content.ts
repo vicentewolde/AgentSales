@@ -105,10 +105,10 @@ export function createInMemoryContentRepositories(
       const run = runs.findLast(ofSubject(toSubject(ref)));
       return run === undefined ? null : structuredCopy(run);
     },
-    async listQueued() {
-      // Solo de avisos, como en Postgres: las de posts no son de `content.prepare`.
+    async listQueued(kind = "listing") {
+      // Las de un solo tipo de sujeto, como en Postgres: las de posts no son de `content.prepare`.
       return runs
-        .filter((run) => run.status === "queued" && run.subject.kind === "listing")
+        .filter((run) => run.status === "queued" && run.subject.kind === kind)
         .map(structuredCopy);
     },
     async markRunning(id) {

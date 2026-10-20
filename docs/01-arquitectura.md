@@ -141,6 +141,13 @@ CLI (prepare) o panel (Preparar contenido)
 
 En F2 no se crean `publications` (ADR-0012). Desde F3 (ADR-0014) nacen aprobadas del texto aprobado de un canal: al aprobarlo, si hay una cuenta conectada, o al publicar. Detalle en el spec F2 §4.2 a §4.6 y en el spec F3 §4.2.
 
+**Un post (F9-T05, ADR-0029):** `requestContentRun` recibe el aviso (`listingId`) o el post (`postId`) y corre en el candado de su sujeto (`runOnSubject`). Un post pide solo textos (en `draft` o `ready`, con o sin medios; `POST_NOT_READY` si es una idea sin aceptar o está archivado) y su corrida se encola como **`post.draft`**, nunca como `content.prepare` (`enqueueRunOf`); `prepareContent` rechaza una corrida de post sin tocarla (`SUBJECT_NOT_LISTING`). El handler de `post.draft` (la IA de redes) llega con F9-T11.
+
+```
+API (pedir textos de un post) → requestContentRun (core, con el candado del post)
+  → content_run del post en queued y, ya confirmado, se encola post.draft (F9-T11 lo atiende)
+```
+
 ### 3. Aprobación y publicación (job `publication.publish`, F3, ADR-0014)
 
 ```
@@ -163,6 +170,15 @@ CLI (publish) o panel (Publicar)
 CLI o panel: descartar (cancelPublication: approved/failed → cancelled) y marcar como
   retirada (retirePublication: published → unpublished; en live con la confirmación de que
   se borró a mano; la última en live devuelve el aviso de active a ready)
+```
+
+**Sobre un sujeto (F9-T05, ADR-0029):** aprobar, quitar la aprobación y editar reciben el id del texto y corren en el candado de **su** sujeto, el del aviso o el del post (`runOnSubject`, ver "Aprobación"). En un post, aprobar abre una publicación por cuenta conectada de la marca, formato **e idioma** (`planPostPublications`), sin `listing_source_hash` y sin las reglas de Portal y Marketplace, y deja el post en `ready`; quitar la aprobación o editar el último texto aprobado lo devuelve a `draft`. Publicar, programar y el intento sobre un post llegan con T06 y T07; `auto_publish` no aplica a los posts. Hasta las rutas de posts (T12), la API de `/contents/:id` (editar, aprobar, quitar la aprobación) es solo de avisos: un texto de post es `CONTENT_NOT_FOR_LISTING` (409) antes del candado, sin escribir nada.
+
+```
+API (aprobar un texto de post) → approveContent (core, con el candado del post)
+  → el texto vigente de la red e idioma → approved; el post → ready
+  → por cada cuenta conectada de la marca en esa red: una publicación en approved
+    (post, cuenta, formato e idioma), con content_id y media_ids del post fijos
 ```
 
 ### 4. Seguimiento (job `publication.sync`, F4; desde F6, la vigilancia de cada hora)
@@ -370,7 +386,7 @@ Los jobs del worker (`apps/worker/src/jobs/`):
 - **Al arrancar:**
   - antes de conectar, borra los temporales de más de 24 h (solo directorios con nombre de uuid);
   - ya conectado, cierra como `failed` (`CONTENT_RUN_ABANDONED`) las corridas `running` con `started_at` de hace más de 2 h (3 intentos de 30 min y media hora de margen);
-  - con las colas creadas, reencola **todas** las `queued` (`enqueueContentRun`, idempotente por `singletonKey`) con la conexión del worker (`jobQueueFromBoss`); una que falla no corta las demás;
+  - con las colas creadas, reencola **todas** las `queued` de avisos (`enqueueContentRun`, idempotente por `singletonKey`) con la conexión del worker (`jobQueueFromBoss`); una que falla no corta las demás. **Desde F9-T05**, las `queued` de posts las reencola otro barrido como `post.draft` (`requeueQueuedPostRuns`, con `listQueued("post")`), nunca como `content.prepare`; hasta que F9-T11 cree esa cola, encolar da `QUEUE_UNAVAILABLE` y la corrida sigue en cola para el próximo arranque. El cierre de abandonadas (`failAbandoned`) no distingue: también cierra una corrida de post en `running` de hace más de 2 h, así que `post.draft` debe caber en ese plazo con sus reintentos;
   - **desde F8-T12**, retoma los `auto_publish` cortados (`resumeCutAutoPublish`, core, `use-cases/resume-auto-publish.ts`; el worker solo lo llama y registra cada resultado con `resumeAutoPublishAtStart`): las corridas `succeeded` con textos y `auto_publish_done_at` en `null`, terminadas hace 12 h o menos. Cada una se anota primero (`markAutoPublishDone`, condicional: un corte a mitad no la repite) y se retoma solo si sigue siendo la última corrida de la propiedad y no hay publicaciones creadas después de que terminó; si no, queda para el operador (la agenda la muestra). El handler anota `auto_publish_done_at` al final de `autoPublishAfter`, también si no aplicaba o falló.
 
 ### Job `import.run` (F1-T09)
@@ -888,6 +904,7 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 ## Aprobación (`approveContent` y `unapproveContent`, F3-T05)
 
 - **Antes del candado** (`beforeContentLock`, `content/locked-content.ts`): el texto, su aviso y las definiciones de campos, que `LockedRepositories` no trae y pide la revisión editorial. **Dentro** (`lockedCurrentContent`): el texto vigente, su aviso y el contexto de su revisión, con los repositorios de la transacción. Lo comparten aprobar, quitar la aprobación y (desde T06) editar.
+- **Sobre un sujeto (F9-T05, ADR-0029):** `runOnSubject(deps, subject, fn)` (`packages/core/src/subject-lock.ts`) elige el candado: `ListingLock` para un aviso y `PostLock` para un post, y entrega `LockedSubject` (`kind`, el sujeto y los repositorios de **ese** candado; lo común, `SubjectLockedRepositories`, sin bifurcar). Mismas reglas que los candados: sin red ni cola dentro, sin anidar y solo con su sujeto. `postLock` es opcional en las dependencias: quien no lo tiene (por ejemplo `auto_publish`, solo de avisos) recibe `SUBJECT_NOT_LISTING` con un post, antes de tomar un candado. `beforeContentLock` devuelve el sujeto (un post no lee definiciones de campos) y `lockedCurrentContent` la parte común (el texto existe, es de ese sujeto y es el vigente de su red **e idioma**) más lo propio del sujeto (`LockedContent`): en un aviso, el aviso y su revisión editorial; en un post, el post y su revisión (`review`, hoy sin verificaciones: `checkPostContent` se conecta con F9-T11). `settlePostStatus` deja el post en `ready` con algún texto vigente aprobado y en `draft` sin ninguno (una `idea` o un `archived` no cambian). En un post: aprobar exige `draft` o `ready` (`POST_NOT_READY`); un título es `CONTENT_TITLE_INVALID` y los hashtags valen en todas sus redes. `planPostPublications` abre una por cuenta conectada de la marca, formato e idioma (`postPublicationPlan`: un texto solo va sin medios salvo en Instagram y TikTok; una imagen o un carrusel, con sus `ig_4x5`; un video, con su `ig_reel`, como `reel` en Instagram; Portal y Marketplace no publican posts, `CONTENT_PLATFORM_INVALID`; las variantes propias de cada red llegan con T13 a T16), y `createPostPublications` revisa antes de escribir que la publicación, su texto y sus medios sean del mismo post y del mismo idioma (`postPublicationMatchesSubject`; si no, `PUBLICATION_SUBJECT_MISMATCH`, no reintentable). `channelPublications` recibe el sujeto (`listBySubject`).
 - **`approveContent`** (ADR-0014): revisa que el texto sea el vigente, que el aviso esté en `ready`, `active` o `paused`, que no haya una corrida activa, que la revisión no tenga errores y arma el plan de publicaciones (`planPublications`); **recién después** escribe: el texto a `approved` y las publicaciones (`createPublications`). Así un rechazo no deja nada a medias, aunque el candado en memoria no deshaga. Aprobar de nuevo es idempotente.
 - **`planPublications`**: una publicación por cuenta **conectada** del corredor en el canal y por formato (`publicationPlan`: Instagram, `post` con `composeCarousel` y, si hay reel, `reel`; Portal y Marketplace, `post` con `composePhotoSet`), con `content_id` y `media_ids` fijos. Un formato con una publicación activa en esa cuenta no se abre: si es de este texto, ya está; si es de otro, va en `skipped`. Con cuentas y sin medios, `CONTENT_NOT_READY`.
 - **`unapproveContent`**: revisa y después escribe: deja el texto en `edited` y cancela sus publicaciones que se pueden descartar; con una en `publishing`, `PUBLICATION_IN_PROGRESS` sin cambiar nada. Las publicadas no cambian.

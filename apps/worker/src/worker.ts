@@ -62,6 +62,7 @@ import { type Heartbeat, startHeartbeat, workerProcessId } from "./heartbeat.js"
 import {
   failAbandonedContentRuns,
   requeueQueuedContentRuns,
+  requeueQueuedPostRuns,
   resumeAutoPublishAtStart,
 } from "./jobs/content-prepare.js";
 import { type BackupTarget, backupStatusOf, requestBackupIfDue } from "./jobs/db-backup.js";
@@ -491,6 +492,19 @@ async function requeueContent(): Promise<void> {
     }
   } catch (error) {
     logger.warn({ err: error }, "no se pudieron reencolar las corridas en cola");
+  }
+  // Las de posts van a `post.draft`, nunca a `content.prepare` (F9-T05; su handler llega con T11).
+  try {
+    const { requeued, failed } = await requeueQueuedPostRuns(contentRuns, queue);
+    if (requeued > 0) logger.info({ requeued }, "corridas de posts en cola reencoladas");
+    if (failed.length > 0) {
+      logger.warn(
+        { contentRunIds: failed },
+        "no se pudieron reencolar algunas corridas de posts: se reintenta al próximo arranque",
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron reencolar las corridas de posts en cola");
   }
 }
 

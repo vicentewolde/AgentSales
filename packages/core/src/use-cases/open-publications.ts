@@ -1,12 +1,28 @@
-import { composeCarousel, composePhotoSet, composeReel } from "../content/compose.js";
+import {
+  CAROUSEL_MAX_ITEMS,
+  composeCarousel,
+  composePhotoSet,
+  composeReel,
+  variantOf,
+  videosOf,
+} from "../content/compose.js";
 import type { Content } from "../content.js";
-import type { Platform, PublicationFormat } from "../enums.js";
+import { isPostPlatform, type Language, type Platform, type PublicationFormat } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { Listing } from "../listing.js";
 import type { Media } from "../media.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
+import type { PostLockedRepositories } from "../ports/post-lock.js";
+import type { Post } from "../post.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { ACTIVE_PUBLICATION_STATUSES } from "../publication-state.js";
+import {
+  type PostSubject,
+  postSubject,
+  type SubjectRef,
+  sameSubject,
+  toSubject,
+} from "../subject.js";
 
 /** Lo que se publica de un canal: un formato con sus medios, en orden. */
 export type PublicationPlanItem = { format: PublicationFormat; mediaIds: string[] };
@@ -143,13 +159,211 @@ export async function createPublications(
   return created;
 }
 
-/** Las publicaciones de un canal del aviso, para devolverlas leídas dentro del candado. */
+/**
+ * Las publicaciones de un canal del aviso o del post (todos sus idiomas), para devolverlas leídas
+ * dentro del candado. Un texto es el id de un aviso, como antes de F9.
+ */
 export async function channelPublications(
   repos: Pick<LockedRepositories, "publications">,
-  listingId: string,
+  subject: SubjectRef,
   platform: Platform,
 ): Promise<Publication[]> {
-  return (await repos.publications.listByListing(listingId)).filter(
+  return (await repos.publications.listBySubject(toSubject(subject))).filter(
     (publication) => publication.platform === platform,
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Posts (F9, ADR-0029): una publicación por cuenta, formato **e idioma**. Lo propio del aviso
+// (`listing_source_hash`, las reglas de Portal y Marketplace, republicar) no aplica.
+
+/** Las imágenes de un post: el `ig_4x5` de cada foto original, en su orden. */
+const postImages = (media: readonly Media[]): Media[] =>
+  media
+    .filter((item) => item.role === "original" && item.kind === "image")
+    .sort((a, b) => a.sortOrder - b.sortOrder || (a.id < b.id ? -1 : 1))
+    .map((photo) => variantOf(media, photo.id, "ig_4x5"))
+    .filter((variant): variant is Media => variant !== null);
+
+/** El video de un post: el `ig_reel` (9:16, hasta 90 s) de su primer video original. */
+const postVideo = (media: readonly Media[]): Media | null => {
+  const first = videosOf(media)[0];
+  return first === undefined ? null : variantOf(media, first.id, "ig_reel");
+};
+
+const postMediaMissing = (platform: Platform, message: string) =>
+  new AppError("CONTENT_NOT_READY", message, { details: { platform } });
+
+/**
+ * El formato y los medios de un post en una red (spec F9 §4.4 y §4.6), según lo que lleva
+ * (`post.kind`): un texto solo va sin medios (Instagram y TikTok lo rechazan); una imagen o un
+ * carrusel, con sus `ig_4x5` (en Instagram, hasta 10); un video, con su `ig_reel` (en Instagram,
+ * como `reel`). Las verificaciones de cada red (X: hasta 4 imágenes, spec F9 §4.4) son de la
+ * revisión del texto, no de aquí, y las variantes propias de cada red (el video reducido de X) las
+ * afinan sus tareas (F9-T13 a T16). Lo que falta procesar es `CONTENT_NOT_READY`. Portal y
+ * Marketplace no publican posts: `CONTENT_PLATFORM_INVALID`.
+ */
+export function postPublicationPlan(
+  platform: Platform,
+  kind: Post["kind"],
+  media: readonly Media[],
+): PublicationPlanItem {
+  if (!isPostPlatform(platform)) {
+    throw new AppError("CONTENT_PLATFORM_INVALID", "Esa plataforma no publica posts", {
+      details: { platform },
+    });
+  }
+  const needsMedia = platform === "instagram" || platform === "tiktok";
+  if (kind === "text") {
+    if (needsMedia) {
+      throw postMediaMissing(platform, "Esta red necesita una imagen o un video: súbelos al post");
+    }
+    return { format: "post", mediaIds: [] };
+  }
+  if (kind === "video") {
+    const video = postVideo(media);
+    if (video === null) {
+      throw postMediaMissing(platform, "Falta el video procesado del post: espera a que termine");
+    }
+    return { format: platform === "instagram" ? "reel" : "post", mediaIds: [video.id] };
+  }
+  if (platform === "tiktok") {
+    throw postMediaMissing(platform, "TikTok publica solo video: súbelo al post");
+  }
+  const images = postImages(media);
+  if (images.length === 0) {
+    throw postMediaMissing(
+      platform,
+      "Faltan las imágenes procesadas del post: espera a que terminen",
+    );
+  }
+  const items = platform === "instagram" ? images.slice(0, CAROUSEL_MAX_ITEMS) : images;
+  return { format: "post", mediaIds: items.map((item) => item.id) };
+}
+
+/** Una publicación de un post por abrir: la de un aviso más su idioma (el del texto). */
+export type PlannedPostPublication = PlannedPublication & { language: Language };
+
+/** Lo que se va a abrir de un post y lo que se salta, sin haber escrito nada. */
+export type PostPublicationOpening = {
+  toCreate: PlannedPostPublication[];
+  skipped: SkippedPublication[];
+};
+
+/**
+ * Planifica las publicaciones del texto de un post, **sin escribir**, como `planPublications`: una
+ * por cuenta conectada de la marca en la red, en el formato que da `postPublicationPlan` y en el
+ * idioma del texto. Un formato que ya tiene una publicación activa en esa cuenta **y en ese
+ * idioma** no se abre (la del otro idioma es otra publicación, spec F9 §4.4): si es de este texto,
+ * ya está; si es de otro, se informa en `skipped`.
+ */
+export async function planPostPublications(
+  repos: Pick<PostLockedRepositories, "platformAccounts" | "media" | "publications">,
+  { post, content }: { post: Post; content: Content },
+): Promise<PostPublicationOpening> {
+  const accounts = (
+    await repos.platformAccounts.listByBroker(post.brokerId, content.platform)
+  ).filter((account) => account.status === "connected");
+  if (accounts.length === 0) return { toCreate: [], skipped: [] };
+
+  const subject = postSubject(post.id);
+  const item = postPublicationPlan(
+    content.platform,
+    post.kind,
+    await repos.media.listBySubject(subject),
+  );
+  const active = (await repos.publications.listBySubject(subject)).filter(
+    (publication) =>
+      ACTIVE_PUBLICATION_STATUSES.includes(publication.status) &&
+      publication.language === content.language,
+  );
+  const toCreate: PlannedPostPublication[] = [];
+  const skipped: SkippedPublication[] = [];
+  for (const account of accounts) {
+    const existing = active.find(
+      (publication) =>
+        publication.platformAccountId === account.id && publication.format === item.format,
+    );
+    if (existing === undefined) {
+      toCreate.push({ ...item, platformAccountId: account.id, language: content.language });
+    } else if (existing.contentId !== content.id) {
+      skipped.push({
+        platformAccountId: account.id,
+        format: item.format,
+        publicationId: existing.id,
+      });
+    }
+  }
+  return { toCreate, skipped };
+}
+
+/**
+ * Si una publicación de un post calza con su sujeto (ADR-0029, spec F9 §4.2): su texto es de ese
+ * post y de su idioma, y cada uno de sus medios es de ese post. Es una regla de core (no un `CHECK`
+ * de la base): `createPostPublications` la exige antes de escribir.
+ */
+export function postPublicationMatchesSubject(
+  subject: PostSubject,
+  publication: { language: Language; mediaIds: readonly string[] },
+  content: Pick<Content, "subject" | "language">,
+  media: readonly Pick<Media, "id" | "postId">[],
+): boolean {
+  if (!sameSubject(content.subject, subject) || content.language !== publication.language) {
+    return false;
+  }
+  const own = new Set(media.filter((item) => item.postId === subject.id).map((item) => item.id));
+  return publication.mediaIds.every((id) => own.has(id));
+}
+
+/**
+ * Crea las publicaciones planificadas de un post, en `approved`, con su texto, sus medios y su
+ * idioma fijos, sin `listing_source_hash` (un post no tiene ficha que versionar). Antes de escribir
+ * revisa que cada una calce con el post (`postPublicationMatchesSubject`); si no, es un bug de
+ * quien llama: `PUBLICATION_SUBJECT_MISMATCH`, no reintentable, sin escribir nada.
+ */
+export async function createPostPublications(
+  repos: Pick<PostLockedRepositories, "publications" | "media">,
+  {
+    post,
+    content,
+    planned,
+    actor,
+  }: {
+    post: Post;
+    content: Content;
+    planned: readonly PlannedPostPublication[];
+    actor: PublicationActor;
+  },
+): Promise<Publication[]> {
+  if (planned.length === 0) return [];
+  const subject = postSubject(post.id);
+  const media = await repos.media.listBySubject(subject);
+  const mismatch = planned.find(
+    (item) => !postPublicationMatchesSubject(subject, item, content, media),
+  );
+  if (mismatch !== undefined) {
+    throw new AppError(
+      "PUBLICATION_SUBJECT_MISMATCH",
+      "La publicación no calza con el texto o los medios del post",
+      { details: { postId: post.id, contentId: content.id } },
+    );
+  }
+  const created: Publication[] = [];
+  for (const item of planned) {
+    created.push(
+      await repos.publications.create(
+        {
+          postId: post.id,
+          platformAccountId: item.platformAccountId,
+          platform: content.platform,
+          format: item.format,
+          language: item.language,
+          contentId: content.id,
+          mediaIds: item.mediaIds,
+        },
+        { actor, payload: { contentId: content.id, mediaCount: item.mediaIds.length } },
+      ),
+    );
+  }
+  return created;
 }

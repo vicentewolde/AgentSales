@@ -3,6 +3,7 @@ import {
   AppError,
   CONTENT_PROMPT_VERSION,
   type NewListing,
+  postSubject,
   prepareContent,
   SAMPLE_CONTENT_DRAFT,
 } from "@agentsales/core";
@@ -22,6 +23,7 @@ import {
   createInMemoryMediaRepository,
   createInMemoryMediaStorage,
   createInMemoryPlatformAccountRepository,
+  createInMemoryPostRepository,
   createInMemoryPublicationRepository,
   createInMemorySlideTemplates,
   fakeHash,
@@ -478,6 +480,70 @@ describe("PATCH /contents/:id", () => {
     const response = await t.json("PATCH", `/contents/${portal?.id}`, { hashtags: ["#nunoa"] });
     expect(response.status).toBe(400);
     expect((await errorOf(response)).error.code).toBe("CONTENT_HASHTAGS_INVALID");
+  });
+});
+
+// F9-T05: hasta las rutas de posts (T12), `/contents/:id` es solo de avisos.
+describe("/contents/:id con un texto de post", () => {
+  it("PATCH, approve y unapprove son 409 CONTENT_NOT_FOR_LISTING antes del candado, sin escribir", async () => {
+    const broker = contentBrokerFixture();
+    const posts = createInMemoryPostRepository();
+    const post = await posts.create({ brokerId: broker.id, topic: "Bastidores", kind: "text" });
+    const repos = createInMemoryContentRepositories({ nextId: randomUUID });
+    const run = await repos.contentRuns.create({ postId: post.id, texts: true });
+    await repos.contentRuns.markRunning(run.id);
+    await repos.contentRuns.markSucceeded(run.id, {
+      report: { warnings: [] },
+      contents: [
+        {
+          platform: "linkedin",
+          language: "es",
+          title: null,
+          body: "Lo que aprendí esta semana",
+          hashtags: [],
+          llmProvider: "fake",
+          llmModel: "fake",
+          promptVersion: "social-v1",
+          rawOutput: null,
+        },
+      ],
+    });
+    const [content] = await repos.contents.listCurrent(postSubject(post.id));
+    let locks = 0;
+    const app = adminApp(
+      testDeps({
+        brokers: createInMemoryBrokerRepository([broker]),
+        posts,
+        contentRuns: repos.contentRuns,
+        contents: repos.contents,
+        postLock: {
+          run: async () => {
+            locks += 1;
+            throw new Error("no debía tomar el candado del post");
+          },
+        },
+      }),
+    );
+    const send = (method: string, path: string, body?: unknown) =>
+      app.request(path, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+
+    for (const response of [
+      await send("PATCH", `/contents/${content?.id}`, { body: "otro" }),
+      await send("POST", `/contents/${content?.id}/approve`),
+      await send("POST", `/contents/${content?.id}/unapprove`),
+    ]) {
+      expect(response.status).toBe(409);
+      expect((await errorOf(response)).error.code).toBe("CONTENT_NOT_FOR_LISTING");
+    }
+    expect(locks).toBe(0);
+    expect(await repos.contents.get(content?.id ?? "")).toMatchObject({
+      status: "draft",
+      body: "Lo que aprendí esta semana",
+    });
   });
 });
 

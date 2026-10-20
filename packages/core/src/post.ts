@@ -5,7 +5,9 @@ import {
   POST_SOURCES,
   POST_STATUSES,
   POST_UPLOAD_STATUSES,
+  type PostStatus,
 } from "./enums.js";
+import { AppError } from "./errors.js";
 
 // El post de marca (ADR-0029, spec F9 §4.2): el otro sujeto de una publicación, junto al aviso.
 
@@ -39,6 +41,22 @@ export const postSchema = z.object({
   updatedAt: z.date(),
 });
 export type Post = z.infer<typeof postSchema>;
+
+/**
+ * Estados en que un post pide, edita y aprueba sus textos (spec F9 §4.2): `draft` y `ready`. Una
+ * `idea` se acepta antes (pasa a `draft`) y un `archived` no se toca. Es el `canPrepareContent` de
+ * los avisos.
+ */
+export const canDraftPost = (status: PostStatus): boolean =>
+  status === "draft" || status === "ready";
+
+/** `POST_NOT_READY` (409): el post es una idea sin aceptar o está archivado. */
+export const postNotReady = (post: Pick<Post, "id" | "status">) =>
+  new AppError(
+    "POST_NOT_READY",
+    "El post tiene que estar en borrador o listo: acepta la idea o crea un post nuevo",
+    { details: { postId: post.id, status: post.status } },
+  );
 
 /**
  * Una subida pendiente de un post (`post_uploads`, spec F9 §4.5, ADR-0025): la URL prefirmada se

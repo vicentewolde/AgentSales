@@ -16,6 +16,7 @@ export const JOB_NAMES = [
   "publication.due",
   "publications.watch",
   "db.backup",
+  "post.draft",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -75,6 +76,13 @@ export const JOB_PAYLOADS = {
    * último tiene más de 20 h. Sin datos.
    */
   "db.backup": z.object({}),
+  /**
+   * Los textos de un post (spec F9 §4.9, ADR-0030): la corrida de textos del post guarda lo pedido;
+   * el job lleva su id. Lo encolan `requestContentRun` con un post y el worker al arrancar
+   * (`requeueQueuedPostRuns`); la cola y su handler llegan con F9-T11 (hasta entonces, encolarlo da
+   * `QUEUE_UNAVAILABLE`). Nunca va por `content.prepare`, que es de avisos.
+   */
+  "post.draft": z.object({ contentRunId: z.uuid() }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;

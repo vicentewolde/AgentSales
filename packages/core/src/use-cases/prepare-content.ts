@@ -39,7 +39,7 @@ import {
   type SlideTemplates,
 } from "../ports/slide-templates.js";
 import { scrubMessage } from "../redact.js";
-import { listingIdOf } from "../subject.js";
+import { listingIdOf, subjectNotListing } from "../subject.js";
 
 export type PrepareContentDeps = {
   contentRuns: ContentRunRepository;
@@ -165,6 +165,9 @@ export async function prepareContent(
     });
   }
   if (isTerminalContentRun(run.status)) return { outcome: "skipped", status: run.status };
+  // Una corrida de post es de `post.draft` (F9-T05): aquí no se toca (ni `running` ni `failed`), y
+  // el error no reintentable cierra el job sin quitarle la corrida a su job.
+  if (run.subject.kind === "post") throw subjectNotListing(run.subject);
   if (!(await deps.contentRuns.markRunning(run.id))) return skipped(deps, run);
 
   const report: ContentRunReport = { warnings: [] };

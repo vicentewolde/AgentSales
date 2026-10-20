@@ -365,6 +365,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] con `fake` y respuestas fijas, el texto de cada red e idioma cumple su largo y su escape; un `@everyone` o una cifra ajena al perfil impide aprobar; un brief de la IA no vale como fuente de hechos
   - [ ] el gasto queda anotado por marca y respeta el tope
+  - [ ] al terminar una corrida `post.draft` pedida con `replaceEdits` que sustituye textos aprobados, se llama a `settlePostStatus` (F9-T05): el post no queda `ready` sin un texto vigente aprobado, con test
   - [ ] `docs/04-formato-publicaciones.md` tiene la sección de redes; `pnpm check` pasa
 
 ### F9-T12 · Aprobar, publicar y programar un post (CLI)

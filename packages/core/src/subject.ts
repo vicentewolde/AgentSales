@@ -90,10 +90,14 @@ export const subjectOfInput = (input: SubjectInput): Subject =>
  */
 export function listingIdOf(subject: Subject): string {
   if (subject.kind === "listing") return subject.id;
-  throw new AppError("SUBJECT_NOT_LISTING", `El post ${subject.id} no es un aviso`, {
+  throw subjectNotListing(subject);
+}
+
+/** `SUBJECT_NOT_LISTING` (no reintentable): un post en un camino que solo es de avisos. */
+export const subjectNotListing = (subject: PostSubject): AppError =>
+  new AppError("SUBJECT_NOT_LISTING", `El post ${subject.id} no es un aviso`, {
     details: { postId: subject.id },
   });
-}
 
 /**
  * Los campos del sujeto en una entidad (`Content`, `ContentRun`, `Publication`): `subject` manda;
