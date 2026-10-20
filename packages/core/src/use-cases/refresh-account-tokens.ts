@@ -116,11 +116,10 @@ type RefreshOptions = { force: boolean; signal: AbortSignalLike | undefined };
 /**
  * Refresca el token de **una** cuenta con la política de su plataforma (spec F3 §4.6 y F4 §4.3):
  * lo usan el refresco a pedido de la API (`POST /accounts/:id/refresh`, síncrono) y el lote del job
- * `tokens.refresh`. La cuenta tiene que existir (`ACCOUNT_NOT_FOUND`), ser de Instagram, de Portal o
- * de X (`ACCOUNT_REFRESH_UNSUPPORTED`) y estar `connected` (`ACCOUNT_NOT_CONNECTED`). Las reglas de
- * cada plataforma están en `refreshInstagram`, `refreshMercadoLibre` y `refreshRotating` (X, F9-T16).
- * Ningún resultado ni error lleva
- * el token.
+ * `tokens.refresh`. La cuenta tiene que existir (`ACCOUNT_NOT_FOUND`), ser de Instagram, de Portal,
+ * de X o de TikTok (`ACCOUNT_REFRESH_UNSUPPORTED`) y estar `connected` (`ACCOUNT_NOT_CONNECTED`). Las
+ * reglas de cada plataforma están en `refreshInstagram`, `refreshMercadoLibre` y `refreshRotating`
+ * (X, F9-T16, y TikTok, F9-T26). Ningún resultado ni error lleva el token.
  */
 export async function refreshAccountToken(
   deps: RefreshAccountTokensDeps,

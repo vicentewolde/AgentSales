@@ -27,9 +27,12 @@ export const xPostHasLink = (caption: string): boolean => linksIn(caption).lengt
 export const xPostCostUsd = (caption: string): number =>
   xPostHasLink(caption) ? X_LINK_POST_COST_USD : X_POST_COST_USD;
 
-/** Dólares en español de Chile: `US$0,015`, `US$10`. */
+/** Dólares en español de Chile: `US$0,015`, `US$0,20`, `US$10` (con centavos, al menos dos decimales). */
 export const formatXUsd = (value: number): string =>
-  `US$${value.toLocaleString("es-CL", { maximumFractionDigits: 4 })}`;
+  `US$${value.toLocaleString("es-CL", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 4,
+  })}`;
 
 /**
  * `X_SPEND_LIMIT_REACHED` (no reintentable): con este post, el gasto estimado del mes de la cuenta
@@ -53,6 +56,6 @@ export const xSpendLimitReached = (details: {
 export const xLinkNotAllowed = (postId: string | null) =>
   new AppError(
     "X_LINK_NOT_ALLOWED",
-    `El texto de X lleva un enlace (cuesta ${formatXUsd(X_LINK_POST_COST_USD)} en vez de ${formatXUsd(X_POST_COST_USD)}) y el post no lo tiene permitido: márcalo en el post o quita el enlace`,
+    `El texto de X lleva un enlace (cuesta ${formatXUsd(X_LINK_POST_COST_USD)} en vez de ${formatXUsd(X_POST_COST_USD)}) y el post no lo tiene permitido: permítelo en el post («Permitir un enlace en X» en el panel, o post edit --x-link en la CLI) o quita el enlace`,
     { details: { postId } },
   );

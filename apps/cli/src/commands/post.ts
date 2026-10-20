@@ -10,6 +10,7 @@ import {
   contentUnapproveResponseSchema,
   ideaAcceptResponseSchema,
   type PostDetailResponse,
+  type PostJson,
   type PublicationView,
   postDetailResponseSchema,
   postListResponseSchema,
@@ -24,6 +25,7 @@ import {
   CONTENT_STATUS_TEXT,
   contentRunProgressText,
   formatChileTime,
+  formatXUsd,
   healthReportSchema,
   isTerminalContentRun,
   LANGUAGE_TEXT,
@@ -40,6 +42,9 @@ import {
   postPublishesOn,
   publicationFormatText,
   publicationModeText,
+  X_LINK_POST_COST_USD,
+  X_POST_COST_USD,
+  xPostHasLink,
 } from "@agentsales/core";
 import type { Command } from "commander";
 import { z } from "zod";
@@ -112,11 +117,32 @@ function postIdOf(id: string): string {
 const textName = (item: { platform: PostPlatform | string; language: Language }) =>
   `${PLATFORM_TEXT[item.platform as PostPlatform] ?? item.platform} · ${LANGUAGE_TEXT[item.language]}`;
 
+/** Lo que cuesta un enlace en X (`x.md` §2, spec F9 §4.12), con los montos de core. */
+const X_LINK_COST_TEXT = `${formatXUsd(X_LINK_POST_COST_USD)} en vez de ${formatXUsd(X_POST_COST_USD)}`;
+
+/** El comando que permite un enlace en el texto de X del post (F9-T16). */
+const xLinkCommand = (postId: string) => `agentsales post edit ${postId} --x-link`;
+
+/**
+ * Un texto de X que lleva un enlace sin la marca del post (`xLinkAllowed`, F9-T16): la revisión lo
+ * da por error (`LINK_NOT_ALLOWED`) y no se aprueba hasta permitirlo o quitar el enlace.
+ */
+const needsXLinkMark = (
+  post: Pick<PostJson, "xLinkAllowed">,
+  content: Pick<ContentView, "platform" | "body">,
+): boolean => content.platform === "x" && !post.xLinkAllowed && xPostHasLink(content.body);
+
+/** Qué hacer con un texto de X con enlace sin la marca del post. */
+const xLinkHint = (postId: string) =>
+  `Si el enlace va, permítelo con ${xLinkCommand(postId)} (en X cuesta ${X_LINK_COST_TEXT}; el enlace también tiene que estar en el brief) y vuelve a aprobar; si no, quita el enlace del texto (agentsales post edit ${postId} --platform x --file <texto>)`;
+
 /**
  * Qué hacer ante los errores de los posts (spec F9 §4.10): la API manda su código y su mensaje; la
- * CLI suma el comando que lo arregla.
+ * CLI suma el comando que lo arregla. Con `xLinkMissing` (un texto de X con enlace sin la marca del
+ * post), `CONTENT_HAS_ERRORS` dice cómo permitirlo.
  */
-function postHint(error: ApiCallError, postId: string): string | undefined {
+function postHint(error: ApiCallError, postId: string, xLinkMissing = false): string | undefined {
+  if (error.code === "CONTENT_HAS_ERRORS" && xLinkMissing) return xLinkHint(postId);
   const hints: Record<string, string> = {
     POST_NOT_FOUND: "Mira tus posts con agentsales post list",
     POST_NOT_IDEA: `Ya no es una idea: míralo con ${show(postId)}. Si quedó aceptada sin textos, pídelos con agentsales post draft ${postId}; un post aceptado se archiva con agentsales post archive ${postId}`,
@@ -160,10 +186,10 @@ function explained(error: unknown, postId: string): unknown {
 }
 
 /** Un rechazo para una red e idioma, con qué hacer, sin cortar los demás. */
-function reasonOf(error: unknown, postId: string): string {
+function reasonOf(error: unknown, postId: string, xLinkMissing = false): string {
   if (!(error instanceof ApiCallError) || error.status === undefined) throw error;
   const message = `${error.code ?? "ERROR"}: ${error.apiMessage ?? error.message}`;
-  const hint = postHint(error, postId);
+  const hint = postHint(error, postId, xLinkMissing);
   return hint === undefined ? message : `${message} → ${hint}`;
 }
 
@@ -394,6 +420,16 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     }`,
   );
   if (post.pillar !== null) lines.push(`  Línea: ${post.pillar}`);
+  // F9-T16: la marca del operador que permite un enlace en X (sin ella, un texto con enlace no se aprueba).
+  if (postPublishesOn(post, "x") || contents.some((content) => content.platform === "x")) {
+    lines.push(
+      `  Enlace en X: ${
+        post.xLinkAllowed
+          ? `permitido (un post con enlace cuesta ${X_LINK_COST_TEXT}; quítalo con agentsales post edit ${post.id} --no-x-link)`
+          : `no permitido (permítelo con ${xLinkCommand(post.id)}; cuesta ${X_LINK_COST_TEXT})`
+      }`,
+    );
+  }
   if (post.brief !== null) {
     const origin =
       post.briefOrigin === "operator" ? "tuyo" : "de la IA: no vale como fuente de hechos";
@@ -431,6 +467,12 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     lines.push(c.dim(`  (ninguno: pídelos con agentsales post draft ${post.id})`));
   for (const content of contents) {
     lines.push(renderPostContent(content, c));
+    if (needsXLinkMark(post, content)) {
+      lines.push(
+        c.yellow(`  Lleva un enlace y el post no lo permite en X: no se aprueba así.`),
+        c.dim(`  → ${xLinkHint(post.id)}`),
+      );
+    }
     if (!postPublishesOn(post, content.platform)) {
       lines.push(
         c.yellow(
@@ -742,6 +784,8 @@ export type PostEditOptions = {
   date?: string;
   /** El brief del operador (`""` lo borra), F9-T21. */
   brief?: string;
+  /** La marca que permite un enlace en X (`--x-link` / `--no-x-link`), F9-T16. */
+  xLink?: boolean;
 };
 
 /** `--platforms x,linkedin` → esas redes; `todas` → `null` (todas las de la marca). */
@@ -766,6 +810,7 @@ function postChangesOf(options: PostEditOptions) {
     platforms?: PostPlatform[] | null;
     plannedAt?: Date | null;
     brief?: string | null;
+    xLinkAllowed?: boolean;
   } = {};
   if (options.platforms !== undefined) changes.platforms = platformsOption(options.platforms);
   if (options.date !== undefined) {
@@ -776,6 +821,7 @@ function postChangesOf(options: PostEditOptions) {
   if (options.brief !== undefined) {
     changes.brief = options.brief.trim() === "" ? null : options.brief;
   }
+  if (options.xLink !== undefined) changes.xLinkAllowed = options.xLink;
   return Object.keys(changes).length === 0 ? null : changes;
 }
 
@@ -826,6 +872,13 @@ export function runPostEdit(deps: PostDeps, id: string, options: PostEditOptions
         ...(changes.brief === undefined
           ? []
           : [`brief: ${post.brief === null ? "sin brief" : "tuyo"}`]),
+        ...(changes.xLinkAllowed === undefined
+          ? []
+          : [
+              post.xLinkAllowed
+                ? `enlace en X: permitido, cuesta ${X_LINK_COST_TEXT}`
+                : "enlace en X: no permitido",
+            ]),
       ];
       deps.print(`${c.green("✓")} Post ${post.id} actualizado (${summary.join(" · ")})`);
       if (!editsText) {
@@ -985,7 +1038,10 @@ export function runPostApprove(deps: PostDeps, id: string, options: PostApproveO
         }
       } catch (error) {
         failed += 1;
-        deps.printError(`${c.red("✗")} ${textName(content)}: ${reasonOf(error, postId)}`);
+        const xLinkMissing = !options.undo && needsXLinkMark(post, content);
+        deps.printError(
+          `${c.red("✗")} ${textName(content)}: ${reasonOf(error, postId, xLinkMissing)}`,
+        );
       }
     }
     if (!options.undo && failed < chosen.length) {
@@ -1319,7 +1375,7 @@ export function register(program: Command, ctx: CliContext): void {
   post
     .command("edit")
     .description(
-      "Cambia el texto de una red e idioma (desde --file o la entrada estándar), o las redes, la fecha o el brief del post",
+      "Cambia el texto de una red e idioma (desde --file o la entrada estándar), o las redes, la fecha, el brief o el enlace en X del post",
     )
     .argument("<id>", "id del post")
     .option("--platform <red>", `la red del texto: ${networks}`)
@@ -1332,6 +1388,11 @@ export function register(program: Command, ctx: CliContext): void {
     )
     .option("--date <hora>", 'mueve la fecha planificada: "AAAA-MM-DD HH:MM" (Chile), o "ninguna"')
     .option("--brief <texto>", 'el brief del post (pasa a ser tuyo; "" lo borra)')
+    .option(
+      "--x-link",
+      `permite un enlace en el texto de X (cuesta ${X_LINK_COST_TEXT}; el enlace también va en el brief)`,
+    )
+    .option("--no-x-link", "quita el permiso del enlace en X")
     .action((id: string, options: PostEditOptions) =>
       exitWith(() => runPostEdit(deps(), id, options)),
     );

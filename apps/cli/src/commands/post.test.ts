@@ -9,13 +9,17 @@ import {
   type Platform,
   type PublicationStatus,
 } from "@agentsales/core";
+import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
-import { brokerData, fakeClock, harness, memoryPutFile } from "../../test/harness.js";
+import { brokerData, fakeClock, harness, memoryPutFile, PORT } from "../../test/harness.js";
+import { localServerUrl } from "../server.js";
+import { createMemorySessionStore } from "../session.js";
 import type { PutFile } from "../upload.js";
 import { runAgenda } from "./agenda.js";
 import {
   type PostDeps,
   publicationNextSteps,
+  register,
   runPostApprove,
   runPostArchive,
   runPostCreate,
@@ -682,5 +686,104 @@ describe("errores con su consejo y permisos", () => {
     expect(s.asked[1]).toContain("¿publicar el post de verdad en Discord?");
     expect(s.h.errors()).toContain("No se publicó nada");
     expect(s.publicationsOf(post.id)[0]?.status).toBe("approved");
+  });
+});
+
+describe("el enlace en X (F9-T16)", () => {
+  const LINK = "https://agentpey.com/guia";
+
+  /** Un post con el enlace en el brief y un texto de X que lo lleva (sin la marca del post). */
+  async function xPostWithLink(s: Awaited<ReturnType<typeof setup>>) {
+    expect(
+      await runPostCreate(s.deps(), "Lo que aprendí esta semana", {
+        broker: "agentpey",
+        brief: `La guía está en ${LINK}`,
+      }),
+    ).toBe(0);
+    const post = await s.created();
+    s.setDraft({ texts: [{ platform: "x", language: "es", body: `Texto en es para x: ${LINK}` }] });
+    expect(await runPostDraft(s.deps(), post.id)).toBe(0);
+    return post;
+  }
+
+  it("sin la marca, show y approve dicen el comando exacto; --x-link la pone y --no-x-link la quita", async () => {
+    const s = await setup();
+    const post = await xPostWithLink(s);
+    s.h.out.length = 0;
+    expect(await runPostShow(s.deps(), post.id)).toBe(0);
+    expect(s.h.text()).toContain(
+      `Enlace en X: no permitido (permítelo con agentsales post edit ${post.id} --x-link; cuesta US$0,20 en vez de US$0,015)`,
+    );
+    expect(s.h.text()).toContain("Lleva un enlace y el post no lo permite en X");
+    expect(s.h.text()).toContain("LINK_NOT_ALLOWED");
+
+    // Aprobar el texto de X falla con el consejo de permitirlo, no el genérico de corregir.
+    expect(await runPostApprove(s.deps(), post.id, { platform: "x" })).toBe(1);
+    expect(s.h.errors()).toContain("CONTENT_HAS_ERRORS");
+    expect(s.h.errors()).toContain(`permítelo con agentsales post edit ${post.id} --x-link`);
+    expect(s.h.errors()).not.toContain("Corrige el texto");
+
+    s.h.out.length = 0;
+    expect(await runPostEdit(s.deps(), post.id, { xLink: true })).toBe(0);
+    expect(s.h.text()).toContain("enlace en X: permitido, cuesta US$0,20 en vez de US$0,015");
+    expect((await s.h.posts.get(post.id))?.xLinkAllowed).toBe(true);
+    s.h.out.length = 0;
+    expect(await runPostShow(s.deps(), post.id)).toBe(0);
+    expect(s.h.text()).toContain("Enlace en X: permitido (un post con enlace cuesta US$0,20");
+    expect(s.h.text()).not.toContain("Lleva un enlace y el post no lo permite en X");
+    expect(s.h.text()).toContain("LINK_COST");
+
+    expect(await runPostApprove(s.deps(), post.id, { platform: "x" })).toBe(0);
+    const [content] = await s.h.contents.listCurrent({ kind: "post", id: post.id });
+    expect(content?.status).toBe("approved");
+
+    expect(await runPostApprove(s.deps(), post.id, { platform: "x", undo: true })).toBe(0);
+    s.h.out.length = 0;
+    expect(await runPostEdit(s.deps(), post.id, { xLink: false })).toBe(0);
+    expect(s.h.text()).toContain("enlace en X: no permitido");
+    expect((await s.h.posts.get(post.id))?.xLinkAllowed).toBe(false);
+  });
+
+  it("post edit --x-link y --no-x-link llegan a la API; sin ellas, la marca no cambia", async () => {
+    const s = await setup();
+    const post = await xPostWithLink(s);
+    const program = new Command().exitOverride();
+    register(program, {
+      ...s.h.io,
+      api: () => s.h.client,
+      server: () => ({
+        ok: true,
+        target: { url: localServerUrl(PORT), source: "local", remote: false, sessionUrl: null },
+      }),
+      localServer: () => localServerUrl(PORT),
+      localPort: () => PORT,
+      envApiUrl: undefined,
+      apiFor: () => s.h.client,
+      clientFrom: () => s.h.client,
+      session: createMemorySessionStore(),
+      readPassword: async () => null,
+      copyToClipboard: async () => {
+        throw new Error("no debía copiar");
+      },
+      cwd: s.cwd,
+      confirm: noQuestions,
+      stdinIsTty: () => true,
+      readStdin: async () => "",
+      openUrl: () => {},
+    });
+    await program.parseAsync(["post", "edit", post.id, "--x-link"], { from: "user" });
+    expect((await s.h.posts.get(post.id))?.xLinkAllowed).toBe(true);
+    // Sin la opción no se manda: la marca queda como esté (aquí, quitada por fuera).
+    await s.h.posts.update(post.id, { xLinkAllowed: false });
+    await program.parseAsync(["post", "edit", post.id, "--date", "2026-11-05 10:00"], {
+      from: "user",
+    });
+    expect(await s.h.posts.get(post.id)).toMatchObject({
+      xLinkAllowed: false,
+      plannedAt: new Date("2026-11-05T13:00:00Z"),
+    });
+    await s.h.posts.update(post.id, { xLinkAllowed: true });
+    await program.parseAsync(["post", "edit", post.id, "--no-x-link"], { from: "user" });
+    expect((await s.h.posts.get(post.id))?.xLinkAllowed).toBe(false);
   });
 });
