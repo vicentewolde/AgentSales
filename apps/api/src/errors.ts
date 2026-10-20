@@ -50,6 +50,8 @@ const CONFLICTS = new Set([
   // Libre); Mercado Libre rechazó el cambio o hubo un conflicto; el sync leyó algo que cambió.
   "RETIRE_NOT_SUPPORTED",
   "OPERATION_NOT_SUPPORTED",
+  // F9-T15: el modo `manual`/`api` es solo de las redes de contenido de marca.
+  "ACCOUNT_MODE_NOT_SUPPORTED",
   "PUBLISH_MODE_MISMATCH",
   "CLOSE_NOT_CONFIRMED",
   "PORTAL_PROGRESS_UNUSABLE",
@@ -155,6 +157,12 @@ const PLATFORM_REJECTIONS = new Set([
   "DISCORD_WEBHOOK_INVALID",
   "DISCORD_FORBIDDEN",
   "DISCORD_REQUEST_REJECTED",
+  // LinkedIn al conectar (F9-T15): un código vencido o usado, un token rechazado o sin el permiso
+  // para publicar se arreglan conectando de nuevo.
+  "LINKEDIN_AUTH_INVALID",
+  "LINKEDIN_PERMISSION_DENIED",
+  "LINKEDIN_FORBIDDEN",
+  "LINKEDIN_REQUEST_REJECTED",
 ]);
 
 /**
@@ -166,6 +174,7 @@ const PLATFORM_UNEXPECTED = new Set([
   "IG_UNEXPECTED_RESPONSE",
   "ML_UNEXPECTED_RESPONSE",
   "DISCORD_UNEXPECTED_RESPONSE",
+  "LINKEDIN_UNEXPECTED_RESPONSE",
   // F7-T11: la API de Anthropic rechazó una petición que arma el servidor (en la corrida, no aquí).
   "LLM_REQUEST_REJECTED",
   // La IA no entregó los textos en el formato pedido (en la corrida de `post.draft` o
@@ -189,6 +198,9 @@ const NOT_CONFIGURED = new Set([
   "PUBLISHER_NOT_CONFIGURED",
   // F9-T06: falta la app de una red con token que rota (X, TikTok) para renovar el acceso.
   "TOKEN_REFRESH_NOT_CONFIGURED",
+  // F9-T15: falta el par de la app de LinkedIn, o LinkedIn no lo reconoce.
+  "LINKEDIN_NOT_CONFIGURED",
+  "LINKEDIN_APP_CREDENTIALS_INVALID",
   // La UF (spec F5 §4.6): sin token del Banco Central, o con uno que rechaza; el Banco Central
   // todavía no publica el valor de hoy (se reintenta más tarde).
   "UF_SOURCE_NOT_CONFIGURED",
@@ -214,6 +226,9 @@ const BUSY = new Set([
   // F9-T14: conectar Discord no llegó a conectar o se cortó: se repite en un momento.
   "DISCORD_UNREACHABLE",
   "DISCORD_ABORTED",
+  // F9-T15: conectar LinkedIn no llegó a conectar o se cortó.
+  "LINKEDIN_UNREACHABLE",
+  "LINKEDIN_ABORTED",
   // F5: el perfil de Facebook lo tiene otra ventana un momento.
   "MARKETPLACE_PROFILE_BUSY",
   // F6-T14: otro respaldo en curso, o uno cortado por el apagado (no llegan a la API).

@@ -13,6 +13,7 @@ export const EXPIRY_WARNING_DAYS = 10;
 export const PROVIDER_NAME: Readonly<Record<OAuthProvider, string>> = {
   instagram: "Instagram",
   mercadolibre: "Mercado Libre",
+  linkedin: "LinkedIn",
 };
 
 /** Por qué el OAuth volvió con `?error=` (los códigos del contrato; `{proveedor}` es Instagram o Mercado Libre). */
@@ -25,6 +26,8 @@ const OAUTH_ERROR_TEXT: Readonly<Record<OAuthRedirectError, string>> = {
     "A la API le faltan INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET en el .env: agrégalos y reiníciala.",
   MERCADOLIBRE_NOT_CONFIGURED:
     "A la API le faltan ML_APP_ID y ML_CLIENT_SECRET: agrégalos y reiníciala.",
+  LINKEDIN_NOT_CONFIGURED:
+    "A la API le faltan LINKEDIN_CLIENT_ID y LINKEDIN_CLIENT_SECRET: agrégalos y reiníciala.",
   BROKER_NOT_FOUND: "El corredor del enlace no existe: vuelve a conectar desde esta página.",
   INTERNAL_ERROR: "La conexión falló por un error interno: revisa el log de la API.",
 };
@@ -48,9 +51,21 @@ const MERCADOLIBRE_ERROR_TEXT: Readonly<Record<string, string>> = {
   ML_UNAVAILABLE: "Mercado Libre no respondió: vuelve a intentarlo en unos minutos.",
 };
 
+/** LinkedIn (F9-T15): el perfil personal; queda en modo manual al conectar (D5). */
+const LINKEDIN_ERROR_TEXT: Readonly<Record<string, string>> = {
+  LINKEDIN_AUTH_INVALID:
+    "LinkedIn no aceptó la conexión (la autorización venció o ya se usó): vuelve a conectar.",
+  LINKEDIN_PERMISSION_DENIED:
+    "LinkedIn no dio el permiso para publicar: revisa que la app tenga Share on LinkedIn y vuelve a conectar.",
+  LINKEDIN_APP_CREDENTIALS_INVALID:
+    "LinkedIn no reconoce el par de la app: revisa LINKEDIN_CLIENT_ID y LINKEDIN_CLIENT_SECRET.",
+  LINKEDIN_UNAVAILABLE: "LinkedIn no respondió: vuelve a intentarlo en unos minutos.",
+};
+
 const PROVIDER_ERROR_TEXT: Readonly<Record<OAuthProvider, Readonly<Record<string, string>>>> = {
   instagram: INSTAGRAM_ERROR_TEXT,
   mercadolibre: MERCADOLIBRE_ERROR_TEXT,
+  linkedin: LINKEDIN_ERROR_TEXT,
 };
 
 const isOAuthError = (code: string): code is OAuthRedirectError =>
