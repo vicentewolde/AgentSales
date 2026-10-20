@@ -104,7 +104,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 1 | T04 Repositorios con sujeto y `PostLock` | ✅ terminada | #173 |
 | 1 | T05 Aprobar, editar y abrir publicaciones sobre un sujeto | ✅ terminada | #176 |
 | 1 | T06 El intento de publicar, el traspaso por cuenta y el resultado dudoso | ✅ terminada | #178 |
-| 1 | T07 Programar, reloj, vigilancia y cancelar sobre un sujeto | ⏳ pendiente | |
+| 1 | T07 Programar, reloj, vigilancia y cancelar sobre un sujeto | ✅ terminada | #179 |
 | 1 | T08 Agenda y seguimiento con posts | ⏳ pendiente | |
 | 1 | T09 Perfil editorial | ✅ terminada | #175 |
 | 1 | T10 Posts manuales y sus medios | ✅ terminada | #177 |
