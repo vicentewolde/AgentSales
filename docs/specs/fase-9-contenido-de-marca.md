@@ -484,7 +484,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 
 ### F9-T25 · Cierre de fase
 - **Depende de:** T24
-- **Descripción:** `/fase-cerrar 9`: criterios, changelog y tag `v1.1.0`.
+- **Descripción:** `/fase-cerrar 9`: criterios, changelog y tag `v1.3.0` (la etiqueta de la entrega 3, §5.1; `v1.1.0` y `v1.2.0` ya cerraron las entregas 1 y 2).
 
 ### F9-T27 · Despliegue parametrizado por instancia
 - **Depende de:** —
@@ -568,3 +568,4 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 | 2026-10-20 | **Decisión del operador:** T13 (Instagram) y T14 (Discord) se construyen ya, contra simulaciones (`msw`); S1 y S5 pasan a ser verificación obligatoria **antes de cualquier publicación real**, no antes de construir (§4.8, dependencias de T13 y T14, §5.2 y riesgos). F9-T14: el video de Discord es la variante más liviana entre `x_video` e `ig_reel`, y si no cabe en 20 MiB sale solo el texto con una nota (sin enlace seguro todavía, §4.5 y D8); `social:smoke --platform discord` queda sin construir (S5 es a mano) |
 | 2026-10-20 | **Decisión del operador:** LinkedIn (T15), X (T16) y TikTok (T26) también se construyen ya, contra simulaciones (`msw`); S2 y S3 (LinkedIn), S4 (X) y S6 (TikTok) pasan a ser verificación obligatoria **antes de cualquier publicación real**, no antes de construir (§4.8 y dependencias de T15, T16 y T26). S4 (X) y S6 (TikTok) quedan igual que S2 y S3: se verifican antes de publicar de verdad en X y TikTok, no antes de construir T16 y T26. F9-T15: el OAuth en `routes/oauth-linkedin.ts`, `accounts connect linkedin` abre el inicio del OAuth (el botón del panel, T17/T19), `accounts mode` cambia el modo, el `DELETE` existe en el cliente pero retirar sigue a mano hasta T19, y `social:smoke --platform linkedin` queda sin construir (S2 es a mano) |
 | 2026-10-20 | F9-T19: consejos para cada error de las redes (con su prueba que lee el código), conectar LinkedIn, X y TikTok desde Cuentas del panel y Discord con el comando de la CLI, `connect.x` y `connect.tiktok` obligatorios en el contrato, retirar un post de LinkedIn borrándolo por la API (`publications retire --delete`, `Publisher.remove`) y la sección de F9 en la guía del operador |
+| 2026-10-20 | F9-T25: la etiqueta del cierre es `v1.3.0` (decía `v1.1.0`, la de la entrega 1) |
