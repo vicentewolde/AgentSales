@@ -57,7 +57,7 @@ function inMemory() {
   const brokers = createInMemoryBrokerRepository();
   const listings = createInMemoryListingRepository();
   const postRepo = createInMemoryPostRepository();
-  const planRuns = createInMemoryPlanRunRepository();
+  const planRuns = createInMemoryPlanRunRepository({ posts: postRepo });
   const { contentRuns: runs, contents: texts } = createInMemoryContentRepositories({
     brokerOfListing: (id) => listings.all().find((listing) => listing.id === id)?.brokerId ?? null,
     brokerOfPost: async (id) => (await postRepo.get(id))?.brokerId ?? null,
@@ -202,6 +202,28 @@ describe("repositorios con sujeto · lo que el puerto no muestra (PGlite)", () =
         { actor: "operator" },
       ),
     ).rejects.toMatchObject({ code: "PUBLICATION_REFERENCE_INVALID" });
+  });
+
+  it("markSucceeded de un plan es todo o nada: una idea que no se puede guardar no deja nada (F9-T20)", async () => {
+    const repos = await pglite();
+    const brokerId = (await repos.brokers.create(brokerData(unique("plan-rollback")))).id;
+    const plan = await repos.planRuns.create({
+      brokerId,
+      periodStart: new Date(),
+      periodEnd: new Date(),
+      request: {},
+    });
+    await repos.planRuns.markRunning(plan.id);
+    const idea = { brokerId, topic: "Una idea", kind: "text" as const, planRunId: plan.id };
+    await expect(
+      repos.planRuns.markSucceeded(plan.id, {
+        report: {},
+        promptVersion: "v",
+        ideas: [idea, { ...idea, createdBy: MISSING_UUID }],
+      }),
+    ).rejects.toMatchObject({ code: "POST_REFERENCE_INVALID" });
+    expect((await repos.planRuns.get(plan.id))?.status).toBe("running");
+    expect(await repos.posts.list({ planRunId: plan.id }, { kind: "all" })).toEqual([]);
   });
 
   it("markSucceeded de un post es todo o nada, como el de un aviso", async () => {

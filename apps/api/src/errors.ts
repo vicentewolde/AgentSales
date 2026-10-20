@@ -118,6 +118,8 @@ const CONFLICTS = new Set([
   // F9-T10: editar o subir medios a un post archivado, o archivar uno con publicaciones pendientes.
   "POST_ARCHIVED",
   "POST_HAS_PENDING_PUBLICATIONS",
+  // F9-T20 (ADR-0030): aceptar o descartar algo que ya no es una idea del plan.
+  "POST_NOT_IDEA",
 ]);
 
 /**

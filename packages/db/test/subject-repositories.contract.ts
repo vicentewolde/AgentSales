@@ -755,6 +755,122 @@ export function subjectRepositoriesContract(
       });
     });
 
+    describe("el plan de ideas (F9-T20)", () => {
+      const newPlan = (brokerId = brand) =>
+        repos.planRuns.create({
+          brokerId,
+          periodStart: new Date("2026-11-01T03:00:00Z"),
+          periodEnd: new Date("2026-11-15T03:00:00Z"),
+          request: { platforms: ["x"], count: 2, days: 14, requestedBy: null },
+        });
+
+      it("markSucceeded guarda las ideas como posts con el id dado, una sola vez", async () => {
+        const plan = await newPlan();
+        const ids = [randomUUID(), randomUUID()];
+        const ideas = ids.map((id, index) => ({
+          id,
+          brokerId: brand,
+          topic: unique(`Idea ${index}`),
+          kind: "text" as const,
+          brief: null,
+          briefOrigin: "ai" as const,
+          status: "idea" as const,
+          source: "ai" as const,
+          pillar: "producto",
+          plannedAt: new Date(`2026-11-0${index + 2}T12:00:00Z`),
+          planRunId: plan.id,
+          rationale: "Porque sí",
+        }));
+        // Sin `running`, no guarda nada.
+        expect(
+          await repos.planRuns.markSucceeded(plan.id, { report: {}, promptVersion: "v", ideas }),
+        ).toBe(false);
+        expect(await repos.posts.list({ planRunId: plan.id }, ALL_SCOPE)).toEqual([]);
+
+        await repos.planRuns.markRunning(plan.id);
+        expect(
+          await repos.planRuns.markSucceeded(plan.id, {
+            report: { ideas: ids },
+            promptVersion: "social-plan-v1",
+            ideas,
+          }),
+        ).toBe(true);
+        const saved = await repos.posts.list({ planRunId: plan.id }, ALL_SCOPE);
+        expect(saved.map((post) => post.id)).toEqual(ids);
+        expect(saved[0]).toMatchObject({
+          status: "idea",
+          source: "ai",
+          briefOrigin: "ai",
+          pillar: "producto",
+          planRunId: plan.id,
+          rationale: "Porque sí",
+          plannedAt: new Date("2026-11-02T12:00:00Z"),
+        });
+        // Un intento repetido no duplica.
+        expect(
+          await repos.planRuns.markSucceeded(plan.id, { report: {}, promptVersion: "v", ideas }),
+        ).toBe(false);
+        expect(await repos.posts.list({ planRunId: plan.id }, ALL_SCOPE)).toHaveLength(2);
+      });
+
+      it("listQueued da los en cola (los más antiguos primero) y failAbandoned cierra los viejos", async () => {
+        const owner = (await repos.brokers.create(brokerData(unique("planes")))).id;
+        const first = await newPlan(owner);
+        const second = await newPlan(owner);
+        const running = await newPlan(owner);
+        await repos.planRuns.markRunning(running.id);
+        // (El orden entre dos creados en el mismo instante no está fijado: solo quiénes.)
+        const queued = (await repos.planRuns.listQueued()).map((run) => run.id);
+        expect(queued).toEqual(expect.arrayContaining([first.id, second.id]));
+        expect(queued).not.toContain(running.id);
+
+        // Un `running` reciente no se cierra; con un borde en el futuro, sí.
+        const error = { code: "PLAN_RUN_ABANDONED", message: "quedó a medias" };
+        expect(
+          await repos.planRuns.failAbandoned(new Date(Date.now() - 60 * 60_000), error),
+        ).not.toContain(running.id);
+        expect(await repos.planRuns.failAbandoned(new Date(Date.now() + 60_000), error)).toContain(
+          running.id,
+        );
+        expect(await repos.planRuns.get(running.id)).toMatchObject({ status: "failed", error });
+        // Los en cola no se tocan.
+        expect((await repos.planRuns.get(first.id))?.status).toBe("queued");
+      });
+    });
+
+    describe("PostRepository · lo del plan (F9-T20)", () => {
+      it("create con id; list por plan; listRecent por creado o planificado, lo más nuevo primero", async () => {
+        const owner = (await repos.brokers.create(brokerData(unique("recientes")))).id;
+        const id = randomUUID();
+        const withId = await repos.posts.create({
+          id,
+          brokerId: owner,
+          topic: "Con id",
+          kind: "text",
+        });
+        expect(withId.id).toBe(id);
+        const planned = await repos.posts.create({
+          brokerId: owner,
+          topic: "Planificado",
+          kind: "text",
+          plannedAt: new Date(Date.now() + 86_400_000),
+        });
+        await newPost(other);
+        const since = new Date(Date.now() - 60_000);
+        const recent = await repos.posts.listRecent(owner, since);
+        expect(recent.map((post) => post.id).sort()).toEqual([planned.id, withId.id].sort());
+        expect(recent[0]?.createdAt.getTime()).toBeGreaterThanOrEqual(
+          recent[1]?.createdAt.getTime() ?? 0,
+        );
+        // Creados antes del borde, pero uno planificado después: entra solo ese.
+        const later = new Date(Date.now() + 60_000);
+        expect((await repos.posts.listRecent(owner, later)).map((post) => post.id)).toEqual([
+          planned.id,
+        ]);
+        expect(await repos.posts.listRecent(owner, since, 1)).toHaveLength(1);
+      });
+    });
+
     describe("EditorialProfileRepository", () => {
       it("un perfil por corredor: get da null sin perfil, upsert crea y después reemplaza", async () => {
         const owner = (await repos.brokers.create(brokerData(unique("perfil")))).id;

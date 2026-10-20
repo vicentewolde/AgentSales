@@ -6,10 +6,11 @@ import {
   type PlanRunRepository,
   planRunSchema,
 } from "@agentsales/core";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { sqlStateOf, withDbErrors } from "../errors.js";
-import { planRuns } from "../schema.js";
+import { planRuns, posts } from "../schema.js";
+import { newPostValues, postReferenceInvalid } from "./posts.js";
 
 /**
  * Fila → entidad. `request`, `report`, `error` y `llm_usage` son jsonb: se validan al leer. Una fila
@@ -27,7 +28,7 @@ function toPlanRun(row: typeof planRuns.$inferSelect): PlanRun {
 
 const isActive = inArray(planRuns.status, ["queued", "running"]);
 
-/** `PlanRunRepository` sobre Drizzle (ADR-0030): lectura y escritura básicas (la lógica, F9-T20). */
+/** `PlanRunRepository` sobre Drizzle (ADR-0030); la lógica del plan es de core (F9-T20). */
 export function createPlanRunRepository(db: SchemaDatabase): PlanRunRepository {
   return {
     async create(input) {
@@ -91,21 +92,55 @@ export function createPlanRunRepository(db: SchemaDatabase): PlanRunRepository {
       });
     },
 
-    markSucceeded(id, { report, promptVersion }) {
+    async markSucceeded(id, { report, promptVersion, ideas = [] }) {
+      try {
+        return await withDbErrors(() =>
+          db.transaction(async (tx) => {
+            const updated = await tx
+              .update(planRuns)
+              .set({
+                status: "succeeded",
+                // jsonb: un reporte ausente se guarda como `null` de JSON, no como NULL de SQL.
+                report: report ?? sql`'null'::jsonb`,
+                promptVersion,
+                finishedAt: sql`now()`,
+                updatedAt: sql`now()`,
+              })
+              .where(and(eq(planRuns.id, id), eq(planRuns.status, "running")))
+              .returning({ id: planRuns.id });
+            // Otro intento ya lo cerró: sin ideas nuevas (no se duplican).
+            if (updated.length === 0) return false;
+            if (ideas.length > 0) await tx.insert(posts).values(ideas.map(newPostValues));
+            return true;
+          }),
+        );
+      } catch (error) {
+        if (sqlStateOf(error) === "23503") {
+          throw postReferenceInvalid(ideas[0]?.brokerId ?? "", error);
+        }
+        throw error;
+      }
+    },
+
+    listQueued() {
       return withDbErrors(async () => {
-        const updated = await db
+        const rows = await db
+          .select()
+          .from(planRuns)
+          .where(eq(planRuns.status, "queued"))
+          .orderBy(asc(planRuns.createdAt), asc(planRuns.id));
+        return rows.map(toPlanRun);
+      });
+    },
+
+    failAbandoned(startedBefore, error) {
+      return withDbErrors(async () => {
+        const closed = await db
           .update(planRuns)
-          .set({
-            status: "succeeded",
-            // jsonb: un reporte ausente se guarda como `null` de JSON, no como NULL de SQL.
-            report: report ?? sql`'null'::jsonb`,
-            promptVersion,
-            finishedAt: sql`now()`,
-            updatedAt: sql`now()`,
-          })
-          .where(and(eq(planRuns.id, id), eq(planRuns.status, "running")))
+          .set({ status: "failed", error, finishedAt: sql`now()`, updatedAt: sql`now()` })
+          .where(and(eq(planRuns.status, "running"), lt(planRuns.startedAt, startedBefore)))
           .returning({ id: planRuns.id });
-        return updated.length > 0;
+        return closed.map((row) => row.id);
       });
     },
 
