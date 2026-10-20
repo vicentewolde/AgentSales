@@ -30,12 +30,16 @@ export type LockedRepositories = {
  * de su condición y la escritura son una sola cosa. En Postgres es una transacción que bloquea la
  * fila del aviso (`FOR NO KEY UPDATE`); si `fn` falla, nada de lo que escribió queda.
  * Reglas para `fn`:
- * - usa solo los repositorios que recibe;
+ * - usa solo los repositorios que recibe, y **solo con el aviso de su candado**: nada de otro
+ *   aviso ni de un post. En especial `media.arrange`, que bloquea la fila de su sujeto: con otro
+ *   sería un segundo bloqueo anidado (los repositorios del candado lo rechazan con
+ *   `LOCK_SUBJECT_MISMATCH`);
  * - no encola, no toca R2 ni llama a plataformas: devuelve lo que haga falta (por ejemplo, ids) y
  *   quien llamó encola **después** de que `run` termina, ya confirmado;
  * - un error de la base dentro de `fn` no se recupera: aunque las escrituras de los repositorios
  *   corren como savepoints (y algunas se podrían retomar), la regla prudente es dejar que falle;
- * - no se anida: un `run` del mismo aviso dentro de `fn` se espera a sí mismo para siempre.
+ * - no se anida: un `run` del mismo aviso dentro de `fn` se espera a sí mismo para siempre, y
+ *   tampoco se abre dentro el candado de otro sujeto (`PostLock`), ni este dentro de aquel.
  * Un aviso que no existe es `LISTING_NOT_FOUND`.
  */
 export interface ListingLock {

@@ -18,7 +18,7 @@ import type {
   PublishMediaItem,
 } from "../ports/publisher.js";
 import type { Publication, PublishAttemptRecord } from "../publication.js";
-import { listingIdOf } from "../subject.js";
+import { isOfSubject, listingIdOf } from "../subject.js";
 
 /** Vigencia de las URLs firmadas de un intento (spec F3 §4.4): 1 hora, recién creadas. */
 export const PUBLISH_MEDIA_URL_TTL_S = 3600;
@@ -221,7 +221,8 @@ export async function buildPublishInput(
     );
   }
   const items = publication.mediaIds.map((mediaId) => {
-    const item = media.find((m) => m.id === mediaId && m.listingId === publication.listingId);
+    // Por sujeto (las dos columnas): en un post `listingId` es `null` y no distingue nada.
+    const item = media.find((m) => m.id === mediaId && isOfSubject(m, publication.subject));
     if (item === undefined) {
       throw new AppError(
         "PUBLICATION_MEDIA_MISSING",

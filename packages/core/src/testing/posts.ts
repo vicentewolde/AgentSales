@@ -4,6 +4,7 @@ import { AppError } from "../errors.js";
 import { addLlmCall } from "../llm-usage.js";
 import type { PlanRun } from "../plan-run.js";
 import type { EditorialProfileRepository } from "../ports/editorial-profile-repository.js";
+import { lockedMedia } from "../ports/media-repository.js";
 import type { PlanRunRepository } from "../ports/plan-run-repository.js";
 import type { PostLock, PostLockedRepositories } from "../ports/post-lock.js";
 import {
@@ -12,6 +13,7 @@ import {
   pickPostChanges,
 } from "../ports/post-repository.js";
 import type { Post, PostUpload } from "../post.js";
+import { postSubject } from "../subject.js";
 import { structuredCopy } from "./copy.js";
 
 /** Un id con forma de uuid, como en Postgres (los datos de los jobs lo exigen). */
@@ -301,7 +303,7 @@ export function createInMemoryPostLock(repos: PostLockedRepositories): PostLock 
             details: { postId },
           });
         }
-        return await fn(repos);
+        return await fn({ ...repos, media: lockedMedia(repos.media, postSubject(postId)) });
       } finally {
         release();
         if (tails.get(postId) === tail) tails.delete(postId);

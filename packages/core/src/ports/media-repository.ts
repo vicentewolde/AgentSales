@@ -7,7 +7,13 @@ import type {
 import { PROCESSED_MEDIA_VARIANTS, RENDERED_MEDIA_VARIANTS } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { Media } from "../media.js";
-import type { Subject, SubjectInput, SubjectRef } from "../subject.js";
+import {
+  type Subject,
+  type SubjectInput,
+  type SubjectRef,
+  sameSubject,
+  toSubject,
+} from "../subject.js";
 
 /** Un medio original guardado (`media` con `role = original`): lo que la ingesta necesita. */
 export type MediaRecord = {
@@ -195,4 +201,28 @@ export interface MediaRepository {
    * se borra aquí): es idempotente.
    */
   deleteDerivative(id: string): Promise<string | null>;
+}
+
+/**
+ * Los medios que entrega un candado (`ListingLock` o `PostLock`): `arrange` bloquea la fila de su
+ * sujeto, así que dentro del candado solo se usa con el sujeto de ese candado. Con otro sería un
+ * segundo bloqueo dentro del primero (el anidado que las reglas prohíben, y un deadlock posible):
+ * `LOCK_SUBJECT_MISMATCH`, no reintentable, sin tocar nada. La usan todas las implementaciones de
+ * los candados.
+ */
+export function lockedMedia(media: MediaRepository, subject: Subject): MediaRepository {
+  return {
+    ...media,
+    async arrange(ref, items) {
+      const target = toSubject(ref);
+      if (!sameSubject(target, subject)) {
+        throw new AppError(
+          "LOCK_SUBJECT_MISMATCH",
+          "Dentro de un candado solo se ordenan los medios de su propio aviso o post",
+          { details: { lock: subject, target } },
+        );
+      }
+      return media.arrange(ref, items);
+    },
+  };
 }

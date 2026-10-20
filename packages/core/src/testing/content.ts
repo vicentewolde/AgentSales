@@ -42,7 +42,8 @@ export function createInMemoryContentRepositories(
     nextId?: () => string;
     /**
      * El corredor de un aviso, para `sumLlmCost` (Postgres lo cruza con `listings`). Sin esto,
-     * `sumLlmCost` falla: solo lo necesitan los tests del gasto.
+     * `sumLlmCost` falla al encontrar una corrida de aviso con gasto: solo lo necesitan los tests
+     * del gasto.
      */
     brokerOfListing?: (listingId: string) => string | null | Promise<string | null>;
     /** El corredor de un post, para `sumLlmCost` (F9). Sin esto, un post no suma. */
@@ -204,9 +205,6 @@ export function createInMemoryContentRepositories(
       return structuredCopy(updated);
     },
     async sumLlmCost({ from, to, brokerId }) {
-      const brokerOfListing = options.brokerOfListing;
-      if (brokerOfListing === undefined)
-        throw new Error("El doble necesita `brokerOfListing` para sumLlmCost");
       const totals = new Map<string, { costUsd: number; runs: number }>();
       const add = (owner: string | null, costUsd: number) => {
         if (owner === null || (brokerId !== undefined && owner !== brokerId)) return;
@@ -214,12 +212,19 @@ export function createInMemoryContentRepositories(
         totals.set(owner, { costUsd: total.costUsd + costUsd, runs: total.runs + 1 });
       };
       const inRange = (createdAt: Date) => createdAt >= from && createdAt < to;
+      // Solo hace falta `brokerOfListing` si hay una corrida de aviso que sumar.
+      const brokerOfListingRun = (listingId: string) => {
+        if (options.brokerOfListing === undefined) {
+          throw new Error("El doble necesita `brokerOfListing` para sumar una corrida de aviso");
+        }
+        return options.brokerOfListing(listingId);
+      };
       for (const run of runs) {
         if (run.llmUsage === null || !inRange(run.createdAt)) continue;
         // Como el `left join` de Postgres: el corredor del aviso o del post, el que exista.
         const owner =
           run.subject.kind === "listing"
-            ? await brokerOfListing(run.subject.id)
+            ? await brokerOfListingRun(run.subject.id)
             : ((await options.brokerOfPost?.(run.subject.id)) ?? null);
         add(owner, run.llmUsage.costUsd);
       }

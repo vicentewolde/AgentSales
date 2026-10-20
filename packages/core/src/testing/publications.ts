@@ -1,6 +1,7 @@
 import { DEFAULT_LANGUAGE } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { ListingLock, LockedRepositories } from "../ports/listing-lock.js";
+import { lockedMedia } from "../ports/media-repository.js";
 import type {
   PublicationChanges,
   PublicationEventInput,
@@ -19,7 +20,7 @@ import {
   canTransition,
   TERMINAL_PUBLICATION_STATUSES,
 } from "../publication-state.js";
-import { sameSubject, subjectFieldsFor, subjectOfInput } from "../subject.js";
+import { listingSubject, sameSubject, subjectFieldsFor, subjectOfInput } from "../subject.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryPublicationRepository = PublicationRepository & {
@@ -475,7 +476,7 @@ export function createInMemoryListingLock(repos: LockedRepositories): ListingLoc
             details: { listingId },
           });
         }
-        return await fn(repos);
+        return await fn({ ...repos, media: lockedMedia(repos.media, listingSubject(listingId)) });
       } finally {
         release();
         if (tails.get(listingId) === tail) tails.delete(listingId);

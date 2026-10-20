@@ -395,6 +395,39 @@ describe("buildPublishInput", () => {
     expect(signed).toEqual([]);
   });
 
+  it("en un post (F9) solo valen sus medios: no el logo ni los de otro post o de un aviso", async () => {
+    const storage = createInMemoryMediaStorage();
+    const postPublication = publication({
+      subject: { kind: "post", id: "post-1" },
+      listingId: null,
+      mediaIds: ["p-1"],
+    });
+    const postContent = content({ subject: { kind: "post", id: "post-1" }, listingId: null });
+    const own = mediaItem("p-1", { listingId: null, postId: "post-1" });
+    const input = await buildPublishInput(
+      { storage, ...NO_LISTING },
+      { publication: postPublication, content: postContent, media: [own] },
+    );
+    expect(input.media.map((item) => item.mediaId)).toEqual(["p-1"]);
+    // El atajo `listingId` es `null` en un post, en el logo y en los medios de otro post: con él,
+    // los tres pasarían. Por sujeto, ninguno.
+    const logo = mediaItem("logo", { listingId: null, postId: null, role: "original" });
+    const otherPost = mediaItem("p-9", { listingId: null, postId: "post-2" });
+    const fromListing = mediaItem("m-1");
+    for (const item of [logo, otherPost, fromListing]) {
+      await expect(
+        buildPublishInput(
+          { storage, ...NO_LISTING },
+          {
+            publication: { ...postPublication, mediaIds: [item.id] },
+            content: postContent,
+            media: [own, logo, otherPost, fromListing],
+          },
+        ),
+      ).rejects.toMatchObject({ code: "PUBLICATION_MEDIA_MISSING" });
+    }
+  });
+
   it("un texto que no es el de la publicación (otro id o canal) es PUBLICATION_CONTENT_MISMATCH", async () => {
     for (const other of [content({ id: "content-2" }), content({ platform: "fb_marketplace" })]) {
       await expect(

@@ -2,6 +2,7 @@ import { createSecretBox } from "@agentsales/config";
 import {
   type ListingLock,
   type LockedRepositories,
+  listingSubject,
   type PostLock,
   type PostLockedRepositories,
   postSubject,
@@ -22,6 +23,7 @@ import {
 } from "@agentsales/core/testing";
 import { eq } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
+import { createListingLock } from "../src/listing-lock.js";
 import { createPostLock } from "../src/post-lock.js";
 import { createBrokerRepository } from "../src/repositories/brokers.js";
 import { createContentRunRepository } from "../src/repositories/content-runs.js";
@@ -35,7 +37,7 @@ import { createPostRepository, createPostUploadRepository } from "../src/reposit
 import { createPublicationRepository } from "../src/repositories/publications.js";
 import { contentRuns, contents, editorialProfiles, posts } from "../src/schema.js";
 import { newContent } from "./content-repositories.contract.js";
-import { brokerData } from "./import-repositories.contract.js";
+import { brokerData, newListing } from "./import-repositories.contract.js";
 import { createTestDatabase, type TestDatabase } from "./pglite.js";
 import { connectedAccount } from "./platform-accounts.contract.js";
 import { subjectRepositoriesContract } from "./subject-repositories.contract.js";
@@ -317,6 +319,26 @@ function postLockContract(
       expect((await repos.posts.get(ids.postId))?.status).toBe("ready");
     });
 
+    it("dentro del candado, arrange solo con su propio post (LOCK_SUBJECT_MISMATCH si no)", async () => {
+      const { repos, lock } = await make();
+      const ids = await seedPost(repos);
+      const other = await seedPost(repos);
+      await lock.run(ids.postId, async (locked) => {
+        await locked.media.arrange(postSubject(ids.postId), []);
+        await expect(locked.media.arrange(postSubject(other.postId), [])).rejects.toMatchObject({
+          code: "LOCK_SUBJECT_MISMATCH",
+          retriable: false,
+        });
+        // Un aviso con el mismo id es otro sujeto.
+        await expect(locked.media.arrange(listingSubject(ids.postId), [])).rejects.toMatchObject({
+          code: "LOCK_SUBJECT_MISMATCH",
+        });
+        await expect(locked.media.arrange(ids.postId, [])).rejects.toMatchObject({
+          code: "LOCK_SUBJECT_MISMATCH",
+        });
+      });
+    });
+
     it("un post que no existe es POST_NOT_FOUND, sin llamar a fn", async () => {
       const { lock } = await make();
       let called = false;
@@ -351,6 +373,49 @@ function postLockContract(
 
 postLockContract("en memoria", async () => inMemoryLock());
 postLockContract("Drizzle sobre PGlite", async () => pgliteLock());
+
+describe("ListingLock · arrange solo con su propio aviso", () => {
+  const inMemoryListing = () => {
+    const base = inMemory();
+    const lock = createInMemoryListingLock({
+      brokers: base.brokers,
+      listings: base.listings,
+      media: base.media,
+      contentRuns: base.contentRuns,
+      contents: base.contents,
+      publications: base.publications,
+      platformAccounts: base.accounts,
+    });
+    return { brokers: base.brokers, listings: base.listings, lock: lock as ListingLock };
+  };
+  const pgliteListing = async () => {
+    const base = await pglite();
+    return {
+      brokers: base.brokers,
+      listings: base.listings,
+      lock: createListingLock(base.db, { secretBox }),
+    };
+  };
+  it.each([
+    ["en memoria", async () => inMemoryListing()],
+    ["Drizzle sobre PGlite", pgliteListing],
+  ] as const)("%s: un post o un aviso ajeno es LOCK_SUBJECT_MISMATCH", async (_name, make) => {
+    const { brokers, listings, lock } = await make();
+    const brokerId = (await brokers.create(brokerData(unique("candado-aviso")))).id;
+    const listing = await listings.create(newListing(brokerId, unique("P-CAND")));
+    const other = await listings.create(newListing(brokerId, unique("P-CAND")));
+    await lock.run(listing.id, async (locked) => {
+      await locked.media.arrange(listing.id, []);
+      await locked.media.arrange(listingSubject(listing.id), []);
+      await expect(locked.media.arrange(other.id, [])).rejects.toMatchObject({
+        code: "LOCK_SUBJECT_MISMATCH",
+      });
+      await expect(locked.media.arrange(postSubject(listing.id), [])).rejects.toMatchObject({
+        code: "LOCK_SUBJECT_MISMATCH",
+      });
+    });
+  });
+});
 
 describe("PostLock · Postgres (PGlite)", () => {
   it("bloquea la fila del post (FOR NO KEY UPDATE en posts) y, si fn falla, deshace todo", async () => {

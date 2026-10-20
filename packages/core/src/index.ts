@@ -467,6 +467,7 @@ export {
   checkDerivative,
   checkNewMedia,
   type DerivativeResult,
+  lockedMedia,
   type MediaArrangement,
   type MediaMeasurements,
   type MediaRecord,

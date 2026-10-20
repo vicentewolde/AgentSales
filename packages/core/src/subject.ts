@@ -29,7 +29,11 @@ export const postSubject = (id: string): PostSubject => ({ kind: "post", id });
  */
 export type SubjectRef = Subject | string;
 
-/** Un `SubjectRef` como `Subject`: un texto es el id de un aviso. */
+/**
+ * Un `SubjectRef` como `Subject`: un texto se trata como el id de un **aviso** (lo de antes de F9,
+ * para que los casos de uso de avisos no cambien mientras T05 a T08 los pasan a sujetos). La rama
+ * `string` de `SubjectRef` se quita al terminar F9-T08 (criterio de esa tarea en el spec).
+ */
 export const toSubject = (ref: SubjectRef): Subject =>
   typeof ref === "string" ? listingSubject(ref) : ref;
 
@@ -38,6 +42,16 @@ export const sameSubject = (a: Subject, b: Subject): boolean => a.kind === b.kin
 
 /** Las columnas de un sujeto, como las guarda la base. */
 export type SubjectColumns = { listingId: string | null; postId: string | null };
+
+/**
+ * Si una fila (un medio, por ejemplo) es de ese sujeto, mirando **las dos** columnas. Nunca se
+ * compara solo `listingId`: en un post vale `null`, y `null === null` aceptaría el logo del
+ * corredor o lo de otro post.
+ */
+export const isOfSubject = (columns: SubjectColumns, subject: Subject): boolean =>
+  subject.kind === "listing"
+    ? columns.listingId === subject.id && columns.postId === null
+    : columns.postId === subject.id && columns.listingId === null;
 
 /** Las dos columnas de la base para un sujeto: la suya con el id y la otra nula. */
 export const subjectColumns = (subject: Subject): SubjectColumns =>

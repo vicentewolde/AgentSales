@@ -1,4 +1,10 @@
-import { AppError, type PostLock, type SecretBox } from "@agentsales/core";
+import {
+  AppError,
+  lockedMedia,
+  type PostLock,
+  postSubject,
+  type SecretBox,
+} from "@agentsales/core";
 import { eq } from "drizzle-orm";
 import type { SchemaDatabase } from "./client.js";
 import { withDbErrors } from "./errors.js";
@@ -41,7 +47,8 @@ export function createPostLock(
             brokers: createBrokerRepository(tx),
             posts: createPostRepository(tx),
             postUploads: createPostUploadRepository(tx),
-            media: createMediaRepository(tx),
+            // `arrange` solo con este post: con otro sujeto sería un segundo bloqueo anidado.
+            media: lockedMedia(createMediaRepository(tx), postSubject(postId)),
             contentRuns: createContentRunRepository(tx),
             contents: createContentRepository(tx),
             publications: createPublicationRepository(tx),
