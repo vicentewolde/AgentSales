@@ -15,7 +15,9 @@ import {
   planHistory,
   plannedSlots,
   planPeriod,
+  groupByPlanWeek,
   planRunErrorAdvice,
+  planWeekText,
   planRunReportSchema,
   planWeeks,
   topicKey,
@@ -560,5 +562,27 @@ describe("qué hacer si un plan falla (F9-T21)", () => {
       expect([code, planRunErrorAdvice(code)]).toEqual([code, expect.stringContaining("pasajero")]);
     }
     expect(planRunErrorAdvice("ALGO_NUEVO")).toContain("log del worker");
+  });
+});
+
+describe("las ideas por semana (F9-T21)", () => {
+  it("de lunes a domingo en hora de Chile, en orden; lo sin fecha al final", () => {
+    const at = (iso: string | null, topic: string) => ({
+      topic,
+      plannedAt: iso === null ? null : new Date(iso),
+    });
+    const groups = groupByPlanWeek([
+      at("2026-10-27T12:00:00Z", "martes 27"),
+      at(null, "sin fecha"),
+      at("2026-10-21T12:00:00Z", "miércoles 21"),
+      // Domingo 25 a las 23:30 de Chile (lunes 26 en UTC): todavía es la primera semana.
+      at("2026-10-26T02:30:00Z", "domingo 25"),
+    ]);
+    expect(groups.map((group) => [group.week, group.items.map((item) => item.topic)])).toEqual([
+      ["2026-10-19", ["miércoles 21", "domingo 25"]],
+      ["2026-10-26", ["martes 27"]],
+      [null, ["sin fecha"]],
+    ]);
+    expect(planWeekText("2026-10-26")).toBe("Semana del 26-10 al 01-11");
   });
 });

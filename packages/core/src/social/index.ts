@@ -69,6 +69,8 @@ export {
   PLAN_MAX_IDEAS,
   PLAN_MAX_START_AHEAD_DAYS,
   PLAN_RECENT_DAYS,
+  PLAN_RUN_STATUS_TEXT,
+  groupByPlanWeek,
   type PlanBrief,
   type PlanCadence,
   type PlanDiscardCode,
@@ -87,9 +89,11 @@ export {
   planRunReportSchema,
   planRunRequestSchema,
   planWeeks,
+  planWeekText,
   topicKey,
   validatePlanResponse,
   weekdayOf,
+  weekOf,
 } from "./plan.js";
 export {
   buildPlanPrompt,

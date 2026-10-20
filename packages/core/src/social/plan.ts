@@ -11,6 +11,7 @@ import {
 } from "../editorial-profile.js";
 import {
   LLM_PROVIDERS,
+  type PlanRunStatus,
   POST_KINDS,
   POST_PLATFORMS,
   type PostKind,
@@ -90,7 +91,7 @@ export function weekdayOf(day: string): EditorialWeekday {
 }
 
 /** El lunes de la semana (de lunes a domingo, como en Chile) de un día. */
-const weekOf = (day: string) => addDays(day, -EDITORIAL_WEEKDAYS.indexOf(weekdayOf(day)));
+export const weekOf = (day: string) => addDays(day, -EDITORIAL_WEEKDAYS.indexOf(weekdayOf(day)));
 
 // --- Lo que se pide ---------------------------------------------------------------------------
 
@@ -704,4 +705,42 @@ export function planRunErrorAdvice(code: string): string {
     return PLAN_RETRY_LATER;
   }
   return "Pide el plan de nuevo; si se repite, revisa el log del worker.";
+}
+
+// --- Cómo se muestra --------------------------------------------------------------------------
+
+/** El estado de un plan en palabras (la CLI y el panel, F9-T21). */
+export const PLAN_RUN_STATUS_TEXT: Readonly<Record<PlanRunStatus, string>> = {
+  queued: "en cola",
+  running: "la IA está proponiendo ideas",
+  succeeded: "listo",
+  failed: "falló",
+};
+
+/** `Semana del 19-10 al 25-10`: una semana de lunes a domingo, por su lunes (`AAAA-MM-DD`). */
+export function planWeekText(monday: string): string {
+  const short = (day: string) => `${day.slice(8, 10)}-${day.slice(5, 7)}`;
+  return `Semana del ${short(monday)} al ${short(addDays(monday, 6))}`;
+}
+
+/**
+ * Agrupa por semana (de lunes a domingo, hora de Chile) lo que tiene fecha, en orden; lo que no
+ * tiene fecha va al final, en un grupo con `week = null`. Así ven las ideas la CLI y el panel.
+ */
+export function groupByPlanWeek<T extends { plannedAt: Date | null }>(
+  items: readonly T[],
+): { week: string | null; items: T[] }[] {
+  const dated = items
+    .filter((item) => item.plannedAt !== null)
+    .sort((a, b) => (a.plannedAt as Date).getTime() - (b.plannedAt as Date).getTime());
+  const groups: { week: string | null; items: T[] }[] = [];
+  for (const item of dated) {
+    const week = weekOf(chileDateOf(item.plannedAt as Date));
+    const last = groups.at(-1);
+    if (last?.week === week) last.items.push(item);
+    else groups.push({ week, items: [item] });
+  }
+  const undated = items.filter((item) => item.plannedAt === null);
+  if (undated.length > 0) groups.push({ week: null, items: [...undated] });
+  return groups;
 }

@@ -548,6 +548,40 @@ describe("errores con su consejo y permisos", () => {
     expect(s.h.errors()).toContain("--platform debe ser instagram, x, linkedin, discord, tiktok");
   });
 
+  it("las redes del post (F9-T21): edit las cambia y publicar sin --platform usa solo esas", async () => {
+    const s = await setup();
+    const { post, publication } = await approvedPost(s);
+    // Le quita Discord al post: el texto aprobado sigue, pero ya no se publica sin pedirlo.
+    expect(await runPostEdit(s.deps(), post.id, { platforms: "x,linkedin" })).toBe(0);
+    expect(s.h.text()).toContain("actualizado (redes: X, LinkedIn");
+    expect((await s.h.posts.get(post.id))?.platforms).toEqual(["x", "linkedin"]);
+    s.h.out.length = 0;
+    expect(await runPostShow(s.deps(), post.id)).toBe(0);
+    expect(s.h.text()).toContain("Redes: X, LinkedIn");
+    expect(s.h.text()).toContain("Discord ya no está entre las redes del post");
+    expect(s.h.text()).toContain("Falta el texto de X, LinkedIn");
+
+    expect(await runPostPublish(s.deps(), post.id)).toBe(1);
+    expect(s.h.errors()).toContain("POST_PLATFORM_EXCLUDED");
+    expect(s.h.errors()).toContain("--platforms <redes>");
+    // Pedida a mano, la API también la rechaza (409), sin cambiar nada.
+    expect(await runPostPublish(s.deps(), post.id, { platform: "discord" })).toBe(1);
+    expect(s.h.errors()).toContain("no está entre las redes del post");
+    expect(s.publicationsOf(post.id)[0]).toMatchObject({ id: publication.id, status: "approved" });
+
+    // Mover la fecha y volver a todas las redes.
+    expect(
+      await runPostEdit(s.deps(), post.id, { platforms: "todas", date: "2026-11-05 10:00" }),
+    ).toBe(0);
+    expect(await s.h.posts.get(post.id)).toMatchObject({
+      platforms: null,
+      plannedAt: new Date("2026-11-05T13:00:00Z"),
+    });
+    expect(await runPostEdit(s.deps(), post.id, { platforms: "portal" })).toBe(1);
+    expect(await runPostEdit(s.deps(), post.id, { date: "mañana" })).toBe(1);
+    expect(s.h.errors()).toContain("--date");
+  });
+
   it("un corredor no ve ni toca los posts de otra marca (POST_NOT_FOUND)", async () => {
     const s = await setup();
     const foreign = await s.h.posts.create({

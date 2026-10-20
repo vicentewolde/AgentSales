@@ -8,6 +8,7 @@ import {
   contentRunRequestResponseSchema,
   contentRunResponseSchema,
   contentUnapproveResponseSchema,
+  ideaAcceptResponseSchema,
   type PostDetailResponse,
   type PublicationView,
   postDetailResponseSchema,
@@ -116,6 +117,8 @@ const textName = (item: { platform: PostPlatform | string; language: Language })
 function postHint(error: ApiCallError, postId: string): string | undefined {
   const hints: Record<string, string> = {
     POST_NOT_FOUND: "Mira tus posts con agentsales post list",
+    POST_NOT_IDEA: `Ya no es una idea: míralo con ${show(postId)} (un post aceptado se archiva con agentsales post archive ${postId})`,
+    POST_PLATFORM_EXCLUDED: `Esa red no está entre las del post: agrégala con agentsales post edit ${postId} --platforms <redes>`,
     POST_NOT_READY: `Mira su estado con ${show(postId)}: una idea se acepta primero y un post archivado ya no cambia`,
     POST_ARCHIVED: "Un post archivado no cambia: crea otro con agentsales post create",
     POST_HAS_PENDING_PUBLICATIONS: `Descártalas (agentsales publications cancel <id>) o resuélvelas antes de archivar; míralas con ${show(postId)}`,
@@ -379,6 +382,13 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     `  Id: ${post.id}`,
     `  Fecha planificada: ${post.plannedAt === null ? "sin fecha" : `${formatChileTime(post.plannedAt)} (hora de Chile)`}`,
   ];
+  lines.push(
+    `  Redes: ${
+      post.platforms === null
+        ? "todas las de la marca"
+        : post.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ")
+    }`,
+  );
   if (post.pillar !== null) lines.push(`  Línea: ${post.pillar}`);
   if (post.brief !== null) {
     const origin =
@@ -412,7 +422,29 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
   lines.push("", c.bold(`Textos (${contents.length})`));
   if (contents.length === 0)
     lines.push(c.dim(`  (ninguno: pídelos con agentsales post draft ${post.id})`));
-  for (const content of contents) lines.push(renderPostContent(content, c), "");
+  for (const content of contents) {
+    const excluded =
+      post.platforms !== null && !post.platforms.includes(content.platform as PostPlatform);
+    lines.push(renderPostContent(content, c));
+    if (excluded) {
+      lines.push(
+        c.yellow(
+          `  ${PLATFORM_TEXT[content.platform]} ya no está entre las redes del post: este texto no se publica ni se programa`,
+        ),
+      );
+    }
+    lines.push("");
+  }
+  // Una red agregada al post después de redactar (F9-T21): falta su texto.
+  const missing = missingTextPlatforms(detail);
+  if (missing.length > 0) {
+    lines.push(
+      c.yellow(
+        `  Falta el texto de ${missing.map((platform) => PLATFORM_TEXT[platform]).join(", ")}: pídelo con agentsales post draft ${post.id}`,
+      ),
+      "",
+    );
+  }
 
   lines.push(c.bold(`Publicaciones (${publications.length})`));
   if (publications.length === 0) {
@@ -421,6 +453,20 @@ export function renderPostDetail(detail: PostDetailResponse, brandSlug: string, 
     lines.push(renderPostPublications(publications, c));
   }
   return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+/**
+ * Las redes del post (`posts.platforms`, no `null`) que todavía no tienen texto, si el post ya tiene
+ * otros textos y no se están redactando: una red agregada después (F9-T21).
+ */
+export function missingTextPlatforms(
+  detail: Pick<PostDetailResponse, "post" | "contents" | "latestRun">,
+): PostPlatform[] {
+  const { post, contents, latestRun } = detail;
+  if (post.platforms === null || contents.length === 0) return [];
+  if (latestRun !== null && !isTerminalContentRun(latestRun.status)) return [];
+  const drafted = new Set(contents.map((content) => content.platform));
+  return post.platforms.filter((platform) => !drafted.has(platform));
 }
 
 /**
@@ -701,7 +747,60 @@ export type PostEditOptions = {
   language?: string;
   file?: string;
   hashtags?: string;
+  /** Las redes del post (`x,linkedin`, o `todas`), F9-T21. */
+  platforms?: string;
+  /** Mover la fecha planificada (`"AAAA-MM-DD HH:MM"`, o `ninguna`), F9-T21. */
+  date?: string;
+  /** El brief del operador (`""` lo borra), F9-T21. */
+  brief?: string;
 };
+
+/** `--platforms x,linkedin` → esas redes; `todas` → `null` (todas las de la marca). */
+function platformsOption(text: string): PostPlatform[] | null {
+  const parts = text
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
+  if (parts.length === 1 && ["todas", "all"].includes((parts[0] ?? "").toLowerCase())) return null;
+  if (parts.length === 0) {
+    throw new CliError(
+      "PLATFORM_INVALID",
+      `--platforms necesita una o más redes separadas por comas (${POST_PLATFORM_OPTION_NAMES.join(", ")}), o "todas"`,
+    );
+  }
+  return [...new Set(parts.map((part) => postPlatformOption(part)))];
+}
+
+/** Lo que `post edit` cambia del post mismo (no de un texto); `null` si no cambia nada. */
+function postChangesOf(options: PostEditOptions) {
+  const changes: {
+    platforms?: PostPlatform[] | null;
+    plannedAt?: Date | null;
+    brief?: string | null;
+  } = {};
+  if (options.platforms !== undefined) changes.platforms = platformsOption(options.platforms);
+  if (options.date !== undefined) {
+    changes.plannedAt = ["ninguna", "none", ""].includes(options.date.trim().toLowerCase())
+      ? null
+      : dateOption(options.date);
+  }
+  if (options.brief !== undefined) {
+    changes.brief = options.brief.trim() === "" ? null : options.brief;
+  }
+  return Object.keys(changes).length === 0 ? null : changes;
+}
+
+/** `--date "AAAA-MM-DD HH:MM"` en hora de Chile. */
+function dateOption(text: string): Date {
+  try {
+    return atOption(text);
+  } catch (error) {
+    if (error instanceof CliError) {
+      throw new CliError(error.code, error.message.replace(/^--at/, "--date"), error.hint);
+    }
+    throw error;
+  }
+}
 
 /** Los hashtags de `--hashtags "#a #b"` o `"#a,#b"` (vacío los borra). */
 const hashtagsOf = (text: string) =>
@@ -719,6 +818,38 @@ export function runPostEdit(deps: PostDeps, id: string, options: PostEditOptions
   const c = deps.colors;
   return guarded(deps, async () => {
     const postId = postIdOf(id);
+    // F9-T21: las redes, la fecha o el brief del post (una idea se edita así antes de aceptarla).
+    const changes = postChangesOf(options);
+    const editsText =
+      options.platform !== undefined ||
+      options.file !== undefined ||
+      options.hashtags !== undefined;
+    if (changes !== null) {
+      const { post } = await unwrap(
+        deps.client.posts[":id"].$patch({ param: { id: postId }, json: changes }),
+        postResponseSchema,
+      ).catch((error: unknown) => {
+        throw explained(error, postId);
+      });
+      const summary = [
+        `redes: ${post.platforms === null ? "todas las de la marca" : post.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ")}`,
+        `fecha: ${post.plannedAt === null ? "sin fecha" : `${formatChileTime(post.plannedAt)} (Chile)`}`,
+        ...(changes.brief === undefined
+          ? []
+          : [`brief: ${post.brief === null ? "sin brief" : "tuyo"}`]),
+      ];
+      deps.print(`${c.green("✓")} Post ${post.id} actualizado (${summary.join(" · ")})`);
+      if (!editsText) {
+        deps.print(
+          c.dim(
+            post.status === "idea"
+              ? `→ Acéptala con agentsales post accept ${post.id} o descártala con agentsales post discard ${post.id}`
+              : `→ Míralo con ${show(post.id)}`,
+          ),
+        );
+        return 0;
+      }
+    }
     const target = await textTarget(deps, postId, options);
     let body: string | undefined;
     if (options.file !== undefined) {
@@ -873,19 +1004,31 @@ export function runPostPublish(deps: PostDeps, id: string, options: PostPublishO
     if (options.platform !== undefined) {
       platforms = [postPlatformOption(options.platform)];
     } else {
-      const { contents } = await fetchPost(deps.client, postId);
-      platforms = [
+      const { post, contents } = await fetchPost(deps.client, postId);
+      const approved = [
         ...new Set(
           contents
             .filter((item) => item.status === "approved")
             .map((item) => item.platform as PostPlatform),
         ),
       ];
-      if (platforms.length === 0) {
+      if (approved.length === 0) {
         throw new CliError(
           "CONTENT_NOT_APPROVED",
           "El post no tiene textos aprobados",
           `Apruébalos con agentsales post approve ${postId}`,
+        );
+      }
+      // Sin --platform, solo las redes del post (F9-T21): un texto aprobado de una red que le
+      // quitaron no se publica.
+      platforms = approved.filter(
+        (platform) => post.platforms === null || post.platforms.includes(platform),
+      );
+      if (platforms.length === 0) {
+        throw new CliError(
+          "POST_PLATFORM_EXCLUDED",
+          `Los textos aprobados son de redes que ya no están en el post (${approved.map((platform) => PLATFORM_TEXT[platform]).join(", ")})`,
+          `Agrégalas con agentsales post edit ${postId} --platforms <redes>, o aprueba el texto de otra red`,
         );
       }
     }
@@ -1038,6 +1181,55 @@ export function runPostSchedule(deps: PostDeps, id: string, options: PostSchedul
   });
 }
 
+// ── accept y discard (las ideas del plan, F9-T21) ─────────────────────────
+
+/**
+ * `agentsales post accept <id>` (spec F9 §4.9, ADR-0030 punto 3): la idea pasa a borrador y la IA
+ * redacta sus textos (`post.draft`, solo para sus redes). No espera: se aceptan varias seguidas y
+ * los textos se miran con `post show` (o se esperan con `post draft`, que sigue la misma corrida).
+ * Aprobar y programar siguen siendo pasos aparte.
+ */
+export function runPostAccept(deps: PostDeps, id: string) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const postId = postIdOf(id);
+    const { post, contentRun, reused } = await unwrap(
+      deps.client.posts[":id"].accept.$post({ param: { id: postId } }),
+      ideaAcceptResponseSchema,
+    ).catch((error: unknown) => {
+      throw explained(error, postId);
+    });
+    deps.print(`${c.green("✓")} Idea aceptada: "${post.topic}" (${POST_STATUS_TEXT[post.status]})`);
+    deps.print(
+      `  La IA redacta sus textos (${contentRun.id}${reused ? ", ya estaba en curso" : ""}): ${contentRunProgressText(contentRun)}`,
+    );
+    deps.print(
+      c.dim(
+        `→ Espera los textos con agentsales post draft ${post.id}, o míralos después con ${show(post.id)}; luego los apruebas y programas (no se publica sola)`,
+      ),
+    );
+    return 0;
+  });
+}
+
+/** `agentsales post discard <id>`: descarta una idea (no se vuelve a proponer en 60 días). */
+export function runPostDiscard(deps: PostDeps, id: string) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const postId = postIdOf(id);
+    const { post } = await unwrap(
+      deps.client.posts[":id"].discard.$post({ param: { id: postId } }),
+      postResponseSchema,
+    ).catch((error: unknown) => {
+      throw explained(error, postId);
+    });
+    deps.print(
+      `${c.green("✓")} Idea descartada: "${post.topic}" (el plan no la vuelve a proponer en 60 días)`,
+    );
+    return 0;
+  });
+}
+
 /** `agentsales post archive <id>`: lo descarta o lo da por terminado (ya no se programa). */
 export function runPostArchive(deps: PostDeps, id: string) {
   const c = deps.colors;
@@ -1113,12 +1305,20 @@ export function register(program: Command, ctx: CliContext): void {
     );
   post
     .command("edit")
-    .description("Cambia el texto de una red e idioma (desde --file o la entrada estándar)")
+    .description(
+      "Cambia el texto de una red e idioma (desde --file o la entrada estándar), o las redes, la fecha o el brief del post",
+    )
     .argument("<id>", "id del post")
-    .option("--platform <red>", `la red: ${networks}`)
+    .option("--platform <red>", `la red del texto: ${networks}`)
     .option("--language <idioma>", "es o en (si la red tiene los dos)")
     .option("--file <archivo>", "el texto nuevo (si no, se lee de la entrada estándar)")
     .option("--hashtags <lista>", 'los hashtags, separados por espacios o comas ("" los borra)')
+    .option(
+      "--platforms <redes>",
+      `las redes del post, separadas por comas (${networks}), o "todas" (las de la marca)`,
+    )
+    .option("--date <hora>", 'mueve la fecha planificada: "AAAA-MM-DD HH:MM" (Chile), o "ninguna"')
+    .option("--brief <texto>", 'el brief del post (pasa a ser tuyo; "" lo borra)')
     .action((id: string, options: PostEditOptions) =>
       exitWith(() => runPostEdit(deps(), id, options)),
     );
@@ -1156,6 +1356,16 @@ export function register(program: Command, ctx: CliContext): void {
     .action((id: string, options: PostScheduleOptions) =>
       exitWith(() => runPostSchedule(deps(), id, options)),
     );
+  post
+    .command("accept")
+    .description("Acepta una idea del plan: pasa a borrador y la IA redacta sus textos")
+    .argument("<id>", "id de la idea (agentsales plan show <plan>)")
+    .action((id: string) => exitWith(() => runPostAccept(deps(), id)));
+  post
+    .command("discard")
+    .description("Descarta una idea del plan (no se vuelve a proponer en 60 días)")
+    .argument("<id>", "id de la idea (agentsales plan show <plan>)")
+    .action((id: string) => exitWith(() => runPostDiscard(deps(), id)));
   post
     .command("archive")
     .description("Archiva un post (descartado o terminado: ya no se programa)")
