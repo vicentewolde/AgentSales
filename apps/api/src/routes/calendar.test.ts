@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   AppError,
+  chileDateStart,
   type ListingImportData,
   type PlatformContext,
   type PublicationOperations,
@@ -12,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import {
   agendaResponseSchema,
   brokerResponseSchema,
+  calendarResponseSchema,
   errorBodySchema,
   publicationEventsResponseSchema,
   publicationResponseSchema,
@@ -27,7 +29,11 @@ const json = { "Content-Type": "application/json" };
 const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString();
 
 async function setup(
-  options: { publishMode?: PublishMode; platform?: "instagram" | "portal_inmobiliario" } = {},
+  options: {
+    publishMode?: PublishMode;
+    platform?: "instagram" | "portal_inmobiliario";
+    now?: () => Date;
+  } = {},
 ) {
   const t = await createPublicationScenario({
     nextId: randomUUID,
@@ -47,6 +53,7 @@ async function setup(
       lock: t.deps.lock,
       queue: t.deps.queue,
       publishMode: options.publishMode ?? "dry-run",
+      ...(options.now === undefined ? {} : { now: options.now }),
       healthDetails: {
         backupStatus: async () => null,
       },
@@ -236,6 +243,83 @@ describe("GET /tracking y GET /agenda", () => {
     ]);
     expect(items[0]).toMatchObject({ code: "IG_AUTH_INVALID", publicationId: reel });
     expect(items[0]?.advice).toBeTruthy();
+  });
+});
+
+describe("GET /calendar (F9-T18)", () => {
+  const range = (from: string, to: string) =>
+    `from=${encodeURIComponent(chileDateStart(from).toISOString())}&to=${encodeURIComponent(chileDateStart(to).toISOString())}`;
+
+  it("trae lo programado del rango; reprogramar (el caso de uso de F6) lo mueve de día", async () => {
+    // 2026-10-15 12:00 en Chile.
+    const now = new Date("2026-10-15T15:00:00.000Z");
+    const { t, app, post, brokerSlug } = await setup({ now: () => now });
+    const id = t.byFormat("post")?.id ?? "";
+    // El 16 a las 10:00 de Chile (UTC-3).
+    await post(`/publications/${id}/schedule`, { at: "2026-10-16T10:00:00-03:00" });
+
+    const day = async (from: string, to: string, broker = "") => {
+      const response = await app.request(`/calendar?${range(from, to)}${broker}`);
+      expect(response.status).toBe(200);
+      return calendarResponseSchema.parse(await response.json()).entries;
+    };
+    const [entry] = await day("2026-10-16", "2026-10-17", `&broker=${await brokerSlug()}`);
+    expect(entry).toMatchObject({
+      publicationId: id,
+      kind: "scheduled",
+      platform: "instagram",
+      format: "post",
+      status: "scheduled",
+      dryRun: true,
+      schedule: "upcoming",
+      listingId: t.listingId,
+      postId: null,
+      brokerSlug: await brokerSlug(),
+    });
+    expect(entry?.at.toISOString()).toBe("2026-10-16T13:00:00.000Z");
+    expect(await day("2026-10-17", "2026-10-18")).toEqual([]);
+
+    // Mover la fecha es `POST /publications/:id/schedule` (schedulePublication, F6).
+    const moved = await post(`/publications/${id}/schedule`, { at: "2026-10-17T09:30:00-03:00" });
+    expect(moved.status).toBe(200);
+    expect(await day("2026-10-16", "2026-10-17")).toEqual([]);
+    expect((await day("2026-10-17", "2026-10-18")).map((e) => e.publicationId)).toEqual([id]);
+  });
+
+  it("el día del cambio de hora (6 de septiembre) empieza a la 01:00 y guarda lo de esa madrugada", async () => {
+    const now = new Date("2026-09-01T15:00:00.000Z");
+    const { t, app, post } = await setup({ now: () => now });
+    const id = t.byFormat("post")?.id ?? "";
+    // 01:30 del 6 en Chile, ya en horario de verano (UTC-3): 04:30 UTC.
+    await post(`/publications/${id}/schedule`, { at: "2026-09-06T04:30:00Z" });
+
+    const entries = async (from: string, to: string) =>
+      calendarResponseSchema.parse(await (await app.request(`/calendar?${range(from, to)}`)).json())
+        .entries;
+    expect(await entries("2026-09-05", "2026-09-06")).toEqual([]);
+    expect((await entries("2026-09-06", "2026-09-07")).map((e) => e.publicationId)).toEqual([id]);
+  });
+
+  it("un rango al revés, vacío o de más de 43 días es 400; sin zona, 400; un corredor ajeno, 404", async () => {
+    const { app, codeOf } = await setup();
+    for (const query of [
+      range("2026-10-20", "2026-10-19"),
+      range("2026-10-20", "2026-10-20"),
+      range("2026-10-01", "2026-11-14"),
+      "from=2026-10-01T00:00:00&to=2026-10-08T00:00:00",
+      "from=2026-10-01T03:00:00Z",
+    ]) {
+      const response = await app.request(`/calendar?${query}`);
+      expect([query, response.status, await codeOf(response)]).toEqual([
+        query,
+        400,
+        "REQUEST_INVALID",
+      ]);
+    }
+    expect((await app.request(`/calendar?${range("2026-10-01", "2026-11-12")}`)).status).toBe(200);
+    expect(
+      (await app.request(`/calendar?${range("2026-10-01", "2026-10-08")}&broker=nadie`)).status,
+    ).toBe(404);
   });
 });
 

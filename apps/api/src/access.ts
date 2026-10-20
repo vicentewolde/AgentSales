@@ -74,6 +74,8 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /schedule": "session",
   "GET /tracking": "session",
   "GET /agenda": "session",
+  // F9-T18: el calendario (lo programado y lo publicado, avisos y posts) del alcance.
+  "GET /calendar": "session",
   // El gasto de IA del mes (F7-T12): cada uno ve el de su alcance.
   "GET /usage": "session",
   // Corredores y cargas.

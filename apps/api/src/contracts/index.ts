@@ -8,6 +8,8 @@ import {
   BRAND_TEXT_MAX,
   BROKER_KINDS,
   brokerSchema,
+  CALENDAR_ENTRY_KINDS,
+  CALENDAR_MAX_RANGE_MS,
   CLOSE_REASONS,
   CONTENT_CHECK_CODES,
   CONTENT_CHECK_SEVERITY_LEVELS,
@@ -1126,6 +1128,50 @@ export const agendaItemSchema = z.object({
 });
 export const agendaResponseSchema = z.object({ items: z.array(agendaItemSchema) });
 export type AgendaResponse = z.infer<typeof agendaResponseSchema>;
+
+/**
+ * `GET /calendar?from=&to=&broker=` (F9-T18): el rango `[from, to)` en ISO con zona (el panel lo
+ * arma con los días de Chile), de hasta 43 días (`CALENDAR_MAX_RANGE_MS`: la vista mensual de seis
+ * semanas), y el corredor o marca (slug; todo el alcance si falta).
+ */
+export const calendarQuerySchema = z
+  .object({
+    from: z.iso.datetime({ offset: true }),
+    to: z.iso.datetime({ offset: true }),
+    broker: brokerSlugSchema.optional(),
+  })
+  .refine(
+    ({ from, to }) => {
+      const span = Date.parse(to) - Date.parse(from);
+      return span > 0 && span <= CALENDAR_MAX_RANGE_MS;
+    },
+    { message: "El rango va de from a to, después de from y de hasta 43 días", path: ["to"] },
+  );
+export type CalendarQuery = z.infer<typeof calendarQuerySchema>;
+
+/** Una entrada del calendario: una publicación programada (se puede mover) o ya publicada. */
+export const calendarEntrySchema = z.object({
+  publicationId: z.string(),
+  kind: z.enum(CALENDAR_ENTRY_KINDS),
+  at: z.coerce.date(),
+  platform: z.enum(PLATFORMS),
+  format: z.enum(PUBLICATION_FORMATS),
+  language: z.enum(LANGUAGES),
+  status: z.enum(PUBLICATION_STATUSES),
+  dryRun: z.boolean(),
+  schedule: z.enum(SCHEDULE_STATES).nullable(),
+  /** El aviso o el post (uno de los dos), con su `id_propiedad` o su tema como título. */
+  listingId: z.string().nullable(),
+  postId: z.string().nullable(),
+  title: z.string(),
+  brokerId: z.string(),
+  /** El `slug` de su corredor o marca (para "Todos"); `null` si no se encontró. */
+  brokerSlug: z.string().nullable(),
+  externalUrl: z.string().nullable(),
+});
+export const calendarResponseSchema = z.object({ entries: z.array(calendarEntrySchema) });
+export type CalendarEntryView = z.infer<typeof calendarEntrySchema>;
+export type CalendarResponse = z.infer<typeof calendarResponseSchema>;
 
 /** `GET /usage?month=AAAA-MM` (spec F7 §4.7): por defecto, el mes de hoy en Chile. */
 export const usageQuerySchema = z.object({
