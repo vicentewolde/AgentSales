@@ -15,7 +15,8 @@ import type { MarketplaceProgress } from "../marketplace/progress.js";
 import { validateMarketplaceInput } from "../marketplace/validate.js";
 import {
   accessTokenOf,
-  isManualMarketplaceAccount,
+  isManualAccount,
+  type PlatformCredentials,
   usesSessionProfile,
 } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
@@ -34,6 +35,7 @@ import {
   type PublishResult,
   storedAccessToken,
 } from "../ports/publisher.js";
+import type { PlatformTokenRefresher } from "../ports/token-refresher.js";
 import type { UfValueSource } from "../ports/uf-value-source.js";
 
 /** Advertencias de un intento que van a la bitácora, como mucho (las causas de Mercado Libre, 20). */
@@ -57,6 +59,7 @@ import {
   publishAttemptRecord,
   publishInputInvalid,
 } from "../publish/input.js";
+import { isOutcomeUnknown, type ManualHandoffProgress } from "../publish/outcome.js";
 import {
   consecutiveLimitWaits,
   MAX_LIMIT_WAITS,
@@ -65,7 +68,11 @@ import {
 } from "../publish/wait.js";
 import { scrubMessage } from "../redact.js";
 import { listingIdOf } from "../subject.js";
-import { accessTokenProvider } from "./ensure-access-token.js";
+import {
+  accessTokenProvider,
+  ROTATING_TOKEN_PLATFORMS,
+  rotatingAccessTokenProvider,
+} from "./ensure-access-token.js";
 import { expireAccountIfRejected } from "./platform-auth.js";
 import { modeOf, publicationNotFound } from "./publication-start.js";
 
@@ -78,6 +85,7 @@ export type PublishWarning = {
   step:
     | "attempt_event"
     | "mark_failed"
+    | "mark_outcome_unknown"
     | "wait_limit"
     | "listing_active"
     | "account_status"
@@ -112,7 +120,8 @@ export type PublishPublicationDeps = {
    */
   mercadoLibre: Pick<MercadoLibreAuth, "refresh"> | null;
   contents: Pick<ContentRepository, "get">;
-  media: Pick<MediaRepository, "listByListing">;
+  /** Los medios del sujeto de la publicación (aviso o post, ADR-0029). */
+  media: Pick<MediaRepository, "listBySubject">;
   /** `get` y `getSourceHash`: el aviso de Portal y Marketplace en el input (spec F4 §4.6). */
   listings: Pick<ListingRepository, "changeStatus" | "get" | "getSourceHash">;
   /** El contacto del corredor en el input de Portal y Marketplace. */
@@ -135,6 +144,13 @@ export type PublishPublicationDeps = {
   marketplaceAutomation: boolean;
   /** La fuente de la UF para el precio de Marketplace (spec F5 §4.6); `null` sin el token. */
   uf?: UfValueSource | null;
+  /**
+   * La renovación del token de las plataformas con token que rota (X y TikTok,
+   * `ROTATING_TOKEN_PLATFORMS`; ADR-0029 punto 11): el intento lo asegura con
+   * `ensureRotatingAccessToken`. Sin la de una plataforma, un token por vencer es
+   * `TOKEN_REFRESH_NOT_CONFIGURED`.
+   */
+  tokenRefreshers?: Readonly<Partial<Record<Platform, PlatformTokenRefresher>>>;
   /** Reloj, para `published_at`. */
   now?: () => Date;
   onWarning?: (warning: PublishWarning) => void;
@@ -152,8 +168,13 @@ export type PublishPublicationParams = {
 
 export type PublishPublicationResult =
   | { outcome: "published"; publication: Publication }
-  /** Marketplace (ADR-0017): el formulario quedó listo y espera el clic del operador. */
+  /**
+   * Marketplace (ADR-0017): el formulario quedó listo y espera el clic del operador; o una cuenta a
+   * mano (ADR-0023, ADR-0029 punto 9) dejó el texto y los medios listos sin llamar a la red.
+   */
   | { outcome: "awaiting_manual_confirm"; publication: Publication }
+  /** ADR-0029 punto 8: no se sabe si la red publicó; espera la palabra del operador. */
+  | { outcome: "outcome_unknown"; publication: Publication }
   /** Un límite de la plataforma (F6, ADR-0018): quedó programada para `retryAt`. */
   | { outcome: "rescheduled"; publication: Publication; retryAt: Date }
   /** No estaba en `publishing` (ya terminó, se descartó o la tomó otro intento): no se publicó. */
@@ -266,6 +287,18 @@ const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_E
  *    plataforma no es de paso manual y van menos de 3 esperas seguidas, en vez del paso 7 la
  *    publicación pasa a `scheduled` para cuando se libere (con su modo y el progreso intacto), el
  *    intento queda `rescheduled` y se devuelve `outcome: "rescheduled"` sin relanzar.
+ * 7 ter. Resultado dudoso (F9, ADR-0029 punto 8): un `OUTCOME_UNKNOWN` del publisher (encontró su
+ *    progreso "enviando" sin resultado, o el envío falló sin certeza; `sendOnce`) **no** se
+ *    reintenta: la publicación pasa a `outcome_unknown` con el motivo en `last_error`, el intento
+ *    queda `outcome_unknown` y se devuelve `outcome: "outcome_unknown"` sin relanzar. El operador
+ *    la resuelve con `resolvePublication`. Si la base no responde, se relanza reintentable: el
+ *    reintento vuelve a dar `OUTCOME_UNKNOWN` sin llamar a la red.
+ * Sobre un sujeto (F9-T06): los medios son los del sujeto (`listBySubject`), el input lleva el
+ * idioma de la publicación y el texto de cada red (`socialCaption`), y un post nunca pasa a
+ * `active`. Una cuenta en modo `manual` (`isManualAccount`, ADR-0029 punto 9) nunca llama a la red:
+ * deja el texto y los medios listos (`awaiting_manual_confirm`) y el operador confirma con el
+ * enlace (`confirmManualPublication`). El token de X y TikTok lo asegura
+ * `ensureRotatingAccessToken` (ADR-0029 punto 11).
  * Cada intento deja **un** evento `publish_attempt` (`publishAttemptPayloadSchema`), salvo un corte
  * por apagado. Los pasos secundarios que fallan van a `onWarning`.
  * Para el worker: un error no reintentable ya dejó la publicación en `failed` (registrar el código y
@@ -383,6 +416,27 @@ export async function publishPublication(
             cause: error,
           });
     }
+    // Resultado dudoso (ADR-0029 punto 8): no se reintenta; el operador dice si salió.
+    if (isOutcomeUnknown(error)) {
+      try {
+        const unknown = await deps.publications.transition(
+          publicationId,
+          { from: "publishing", to: "outcome_unknown", changes: { lastError: lastErrorOf(error) } },
+          { actor: "system", payload: { mode, code: error.code } },
+        );
+        await addAttempt("outcome_unknown", { error: lastErrorOf(error), sent });
+        return { outcome: "outcome_unknown", publication: unknown };
+      } catch (failure) {
+        warn("mark_outcome_unknown", failure);
+        // Si la base no respondió, la cola reintenta: el progreso "enviando" vuelve a dar
+        // `OUTCOME_UNKNOWN` sin llamar a la red.
+        if (isAppError(failure) && failure.retriable) {
+          await addAttempt("retry", { error: lastErrorOf(error), sent });
+          throw failure;
+        }
+        throw error;
+      }
+    }
     await expireAccountIfRejected(
       deps.platformAccounts,
       publication.platformAccountId,
@@ -485,7 +539,8 @@ function remoteStateOf(
 
 /**
  * Pasa la publicación a `awaiting_manual_confirm` (spec F5 §4.3, ADR-0017) con el progreso de este
- * intento, armado aquí (`attempt`, `simulated`, `formReadyAt`, las fotos y el precio): así un
+ * intento, armado aquí (en Marketplace, `attempt`, `simulated`, `formReadyAt`, las fotos y el
+ * precio; en una cuenta a mano de otra red, `manualHandoffProgressSchema`): así un
  * `windowClosedAt` de un intento anterior nunca se arrastra. Si no se puede guardar,
  * `PUBLISH_RESULT_NOT_SAVED` (reintentable): el worker cierra la ventana y el reintento abre un
  * formulario nuevo (no se publicó nada).
@@ -512,15 +567,26 @@ async function awaitManualConfirm(
   },
 ): Promise<PublishPublicationResult> {
   const { input } = handoff;
-  const progress: MarketplaceProgress = {
-    attempt: publication.attempts,
-    simulated: handoff.simulated,
-    formReadyAt: now.toISOString(),
-    photos: input.media.length,
-    priceClp: input.priceClp ?? 0,
-    ...(input.uf == null ? {} : { ufValue: input.uf.value, ufDate: input.uf.date }),
-    ...(handoff.byHand === true ? { byHand: true as const } : {}),
-  };
+  // Marketplace guarda su formulario (precio, fotos, ventana); las demás, el traspaso genérico.
+  const progress: MarketplaceProgress | ManualHandoffProgress =
+    publication.platform === "fb_marketplace"
+      ? {
+          attempt: publication.attempts,
+          simulated: handoff.simulated,
+          formReadyAt: now.toISOString(),
+          photos: input.media.length,
+          priceClp: input.priceClp ?? 0,
+          ...(input.uf == null ? {} : { ufValue: input.uf.value, ufDate: input.uf.date }),
+          ...(handoff.byHand === true ? { byHand: true as const } : {}),
+        }
+      : {
+          manual: {
+            attempt: publication.attempts,
+            simulated: handoff.simulated,
+            readyAt: now.toISOString(),
+            media: input.media.length,
+          },
+        };
   let waiting: Publication;
   try {
     waiting = await deps.publications.transition(
@@ -608,9 +674,12 @@ async function prepareAttempt(
       { details: { accountStatus: account?.status ?? null } },
     );
   }
+  // Marketplace: el clic final siempre es del operador (ADR-0017).
   const manual = requiresManualConfirm(publication.platform);
-  // Marketplace a mano (F7, ADR-0023): sin publisher, sin límite diario ni "un formulario a la vez".
-  const byHand = manual && isManualMarketplaceAccount(account);
+  // A mano, por cuenta (ADR-0029 punto 9): Marketplace a mano (F7, ADR-0023) o una cuenta en modo
+  // `manual` de otra red. Nunca llama a la red: sin publisher, credenciales, límite diario ni "un
+  // formulario a la vez".
+  const byHand = isManualAccount(account);
   // El formulario automático, solo para un corredor propio y donde el ambiente lo permite (también
   // con una cuenta de perfil conectada antes de F7). Va **antes** de buscar el publisher: en
   // producción el worker no registra el de Marketplace (F8-T20), y el motivo es este, no
@@ -623,10 +692,12 @@ async function prepareAttempt(
     });
   }
   if (manual && !byHand) await requireManualCapacity(deps, publication, now);
-  // Marketplace no guarda credenciales: su sesión vive en el perfil del navegador (ADR-0017).
-  const stored = usesSessionProfile(publication.platform)
-    ? null
-    : await readCredentials(deps, publication, account.id);
+  // Marketplace no guarda credenciales: su sesión vive en el perfil del navegador (ADR-0017). A
+  // mano tampoco se leen: no se llama a la red.
+  const stored =
+    byHand || usesSessionProfile(publication.platform)
+      ? null
+      : await readCredentials(deps, publication, account.id);
   const content = await deps.contents.get(publication.contentId);
   if (content === null) {
     throw new AppError("CONTENT_NOT_FOUND", "No existe el texto de esta publicación", {
@@ -636,7 +707,7 @@ async function prepareAttempt(
   let input: PublishInput = await buildPublishInput(deps, {
     publication,
     content,
-    media: await deps.media.listByListing(listingIdOf(publication.subject)),
+    media: await deps.media.listBySubject(publication.subject),
   });
   if (manual && input.listing !== undefined) {
     const price = await marketplacePrice(input.listing, {
@@ -647,9 +718,15 @@ async function prepareAttempt(
     input = { ...input, priceClp: price.priceClp, uf: price.uf };
   }
   if (publisher === undefined) {
-    // A mano, las reglas del formulario igual: el corredor no copia algo que Facebook rechazará.
-    const issues = validateMarketplaceInput(input);
-    if (issues.length > 0) throw publishInputInvalid(publication.id, issues);
+    if (manual) {
+      // A mano, las reglas del formulario igual: el corredor no copia algo que Facebook rechazará.
+      const issues = validateMarketplaceInput(input);
+      if (issues.length > 0) throw publishInputInvalid(publication.id, issues);
+    } else {
+      // Otra red a mano: sus reglas, si su publisher está registrado (`validate` es pura).
+      const rules = deps.publishers[publication.platform];
+      if (rules !== undefined) checkPublishInput(rules, input);
+    }
     return {
       kind: "byHand" as const,
       input,
@@ -669,28 +746,7 @@ async function prepareAttempt(
       kind: "publisher" as const,
     };
   }
-  // Portal: el token lo asegura `ensureAccessToken` (fuera del candado del aviso), y el contexto no
-  // lleva el `refreshToken`. `credentials.accessToken` puede estar vencido o ya rotado: el
-  // publisher de Portal usa siempre `ctx.accessToken` (`platformContextOf` solo cae en él sin
-  // proveedor). Instagram: el guardado, que falla cerrado ante `rejectedToken`.
-  const portal = publication.platform === "portal_inmobiliario";
-  const credentials = portal ? { accessToken: accessTokenOf(stored) } : stored;
-  const accessToken: AccessTokenProvider = portal
-    ? accessTokenProvider(
-        {
-          platformAccounts: deps.platformAccounts,
-          mercadoLibre: deps.mercadoLibre,
-          ...(deps.now === undefined ? {} : { now: deps.now }),
-          onWarning: (warning) =>
-            deps.onWarning?.({
-              publicationId: publication.id,
-              step: "account_status",
-              code: warning.code,
-            }),
-        },
-        account.id,
-      )
-    : storedAccessToken(stored);
+  const { credentials, accessToken } = publishToken(deps, publication, account.id, stored);
   return {
     input,
     account,
@@ -700,6 +756,57 @@ async function prepareAttempt(
     target: publication.dryRun ? withDryRun(publisher) : publisher,
     kind: "publisher" as const,
   };
+}
+
+/**
+ * El token del intento, por plataforma (ADR-0015; ADR-0029 punto 11), siempre fuera de los
+ * candados del aviso y del post:
+ * - Portal: `ensureAccessToken` (Mercado Libre);
+ * - X y TikTok (`ROTATING_TOKEN_PLATFORMS`): `ensureRotatingAccessToken`, con la renovación de la
+ *   plataforma (`tokenRefreshers`) y el candado de credenciales;
+ * - las demás (Instagram, LinkedIn): el guardado, que falla cerrado ante `rejectedToken`.
+ * Donde el token se renueva, el contexto no lleva el `refreshToken` (es de un solo uso y queda viejo
+ * después de renovar) y `credentials.accessToken` puede estar vencido: el publisher usa siempre
+ * `ctx.accessToken` (`platformContextOf` solo cae en él sin proveedor).
+ */
+function publishToken(
+  deps: PublishPublicationDeps,
+  publication: Publication,
+  accountId: string,
+  stored: PlatformCredentials,
+): { credentials: PlatformCredentials; accessToken: AccessTokenProvider } {
+  const onWarning = (warning: { code: string }) =>
+    deps.onWarning?.({ publicationId: publication.id, step: "account_status", code: warning.code });
+  const clock = deps.now === undefined ? {} : { now: deps.now };
+  if (publication.platform === "portal_inmobiliario") {
+    return {
+      credentials: { accessToken: accessTokenOf(stored) },
+      accessToken: accessTokenProvider(
+        {
+          platformAccounts: deps.platformAccounts,
+          mercadoLibre: deps.mercadoLibre,
+          ...clock,
+          onWarning,
+        },
+        accountId,
+      ),
+    };
+  }
+  if (ROTATING_TOKEN_PLATFORMS.has(publication.platform)) {
+    return {
+      credentials: { accessToken: accessTokenOf(stored) },
+      accessToken: rotatingAccessTokenProvider(
+        {
+          platformAccounts: deps.platformAccounts,
+          refreshers: deps.tokenRefreshers ?? {},
+          ...clock,
+          onWarning,
+        },
+        accountId,
+      ),
+    };
+  }
+  return { credentials: stored, accessToken: storedAccessToken(stored) };
 }
 
 /** Las credenciales de la cuenta; si no se pueden leer, la cuenta pasa a `error` (`CREDENTIALS_UNREADABLE`). */

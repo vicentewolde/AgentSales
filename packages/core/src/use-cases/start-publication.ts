@@ -4,6 +4,7 @@ import type { JobQueue } from "../ports/job-queue.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { outcomeUnknownPending } from "../publish/outcome.js";
 import { listingIdOf } from "../subject.js";
 import {
   enqueuePublications,
@@ -76,6 +77,8 @@ export async function startPublication(
     if (publication.status === "publishing") return { publication, requeued: true };
     // Marketplace: primero el operador dice si la publicó (spec F5 §4.3).
     if (publication.status === "awaiting_manual_confirm") throw manualConfirmPending(publicationId);
+    // No se sabe si salió (ADR-0029 punto 8): reintentar podría publicarla dos veces.
+    if (publication.status === "outcome_unknown") throw outcomeUnknownPending(publicationId);
     if (publication.status === "published") {
       throw new AppError("NOTHING_TO_PUBLISH", "Esta publicación ya está publicada", {
         details: { publicationId },

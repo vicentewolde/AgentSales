@@ -166,10 +166,8 @@ export function createInMemoryPublicationRepository(
       return ordered((publication) => sameSubject(publication.subject, subject));
     },
     async listByStatus(status) {
-      // Solo de avisos, como en Postgres (hasta F9-T06 y T07).
-      return ordered(
-        (publication) => publication.status === status && publication.subject.kind === "listing",
-      );
+      // De avisos y de posts, como en Postgres (desde F9-T06).
+      return ordered((publication) => publication.status === status);
     },
     async listDue({ now, since, excludePlatforms, limit }) {
       return [...publications.values()]
@@ -177,7 +175,6 @@ export function createInMemoryPublicationRepository(
         .filter(
           (publication) =>
             publication.status === "scheduled" &&
-            publication.subject.kind === "listing" &&
             publication.scheduledAt !== null &&
             publication.scheduledAt.getTime() <= now.getTime() &&
             publication.scheduledAt.getTime() >= since.getTime() &&
@@ -197,7 +194,6 @@ export function createInMemoryPublicationRepository(
         .filter(
           (publication) =>
             publication.status === "publishing" &&
-            publication.subject.kind === "listing" &&
             publication.updatedAt.getTime() < before.getTime() &&
             !excludePlatforms.includes(publication.platform),
         )

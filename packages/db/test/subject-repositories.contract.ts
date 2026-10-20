@@ -317,7 +317,7 @@ export function subjectRepositoriesContract(
         ).resolves.toMatchObject({ status: "approved" });
       });
 
-      it("los barridos de avisos no ven las publicaciones de posts", async () => {
+      it("los barridos ven también las publicaciones de posts (F9-T06), con su sujeto", async () => {
         const { post, texts, accountId } = await postWithTexts();
         const publication = await repos.publications.create(
           {
@@ -340,14 +340,17 @@ export function subjectRepositoriesContract(
           { actor: "system" },
         );
         const scheduled = await repos.publications.listByStatus("scheduled");
-        expect(scheduled.map((item) => item.id)).not.toContain(publication.id);
+        expect(scheduled.find((item) => item.id === publication.id)?.subject).toEqual({
+          kind: "post",
+          id: post.id,
+        });
         const due = await repos.publications.listDue({
           now: new Date(),
           since: new Date(Date.now() - 3_600_000),
           excludePlatforms: [],
           limit: 100,
         });
-        expect(due.map((item) => item.id)).not.toContain(publication.id);
+        expect(due.map((item) => item.id)).toContain(publication.id);
       });
     });
 

@@ -9,6 +9,7 @@ import { AppError } from "../errors.js";
 import { manualConfirmPending } from "../marketplace/limits.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { canTransition } from "../publication-state.js";
+import { outcomeUnknownPending } from "../publish/outcome.js";
 import { runOnSubject, type SubjectLocks } from "../subject-lock.js";
 import { channelPublications } from "./open-publications.js";
 
@@ -57,6 +58,9 @@ export async function unapproveContent(
     );
     const waiting = own.find((publication) => publication.status === "awaiting_manual_confirm");
     if (waiting !== undefined) throw manualConfirmPending(waiting.id);
+    // Lo que pudo haber salido (ADR-0029 punto 8) se resuelve antes de soltar el texto.
+    const unknown = own.find((publication) => publication.status === "outcome_unknown");
+    if (unknown !== undefined) throw outcomeUnknownPending(unknown.id);
     const publishing = own.find((publication) => publication.status === "publishing");
     if (publishing !== undefined) {
       throw new AppError(

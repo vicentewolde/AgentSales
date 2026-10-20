@@ -13,9 +13,10 @@ import { brokerData, newListing } from "./import-repositories.contract.js";
 import { createTestDatabase, type TestDatabase } from "./pglite.js";
 import { connectedAccount } from "./platform-accounts.contract.js";
 
-// F9-T04 (revisión de T03): los barridos de avisos recorren toda la tabla. Una fila de un post
-// (`listing_id` nulo, ADR-0029) no debe romperlos ni colarse en ellos: siguen siendo de avisos
-// hasta que sus casos de uso trabajen sobre un sujeto (T05 a T07).
+// F9-T04 (revisión de T03): los barridos recorren toda la tabla. Una fila de un post (`listing_id`
+// nulo, ADR-0029) no debe romperlos. Los de corridas siguen siendo de avisos; desde F9-T06 los de
+// publicaciones ven también las de posts (se reencolan al arrancar y la vigilancia las ve), y quien
+// solo trabaja con avisos filtra por su cuenta.
 
 let database: TestDatabase;
 afterAll(async () => {
@@ -34,6 +35,7 @@ describe("barridos de avisos con filas de posts en la tabla (PGlite)", () => {
     due: "",
     stale: "",
   };
+  const postIds: { due: string; stale: string } = { due: "", stale: "" };
   const now = new Date();
   const longAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
@@ -134,15 +136,20 @@ describe("barridos de avisos con filas de posts en la tabla (PGlite)", () => {
       mediaIds: [],
       dryRun: true,
     };
-    await db.insert(publications).values([
-      {
-        ...postPublication,
-        format: "post",
-        status: "scheduled",
-        scheduledAt: new Date(now.getTime() - 60_000),
-      },
-      { ...postPublication, format: "reel", status: "publishing", updatedAt: longAgo },
-    ]);
+    const [postDue, postStale] = await db
+      .insert(publications)
+      .values([
+        {
+          ...postPublication,
+          format: "post",
+          status: "scheduled",
+          scheduledAt: new Date(now.getTime() - 30_000),
+        },
+        { ...postPublication, format: "reel", status: "publishing", updatedAt: longAgo },
+      ])
+      .returning({ id: publications.id });
+    postIds.due = postDue?.id ?? "";
+    postIds.stale = postStale?.id ?? "";
   });
 
   it("listQueued y listAutoPublishPending ven solo las corridas de avisos", async () => {
@@ -154,12 +161,20 @@ describe("barridos de avisos con filas de posts en la tabla (PGlite)", () => {
     ]);
   });
 
-  it("listByStatus, listDue y listStalePublishing ven solo las publicaciones de avisos", async () => {
+  it("listByStatus, listDue y listStalePublishing ven las de avisos y las de posts (F9-T06)", async () => {
+    const byStatus = async (status: "scheduled" | "publishing") =>
+      (await repos.publications.listByStatus(status)).map((item) => item.subject);
+    expect(await byStatus("scheduled")).toEqual([
+      { kind: "listing", id: expect.any(String) },
+      { kind: "post", id: expect.any(String) },
+    ]);
     expect((await repos.publications.listByStatus("scheduled")).map((item) => item.id)).toEqual([
       listingIds.due,
+      postIds.due,
     ]);
     expect((await repos.publications.listByStatus("publishing")).map((item) => item.id)).toEqual([
       listingIds.stale,
+      postIds.stale,
     ]);
     const due = await repos.publications.listDue({
       now,
@@ -167,11 +182,12 @@ describe("barridos de avisos con filas de posts en la tabla (PGlite)", () => {
       excludePlatforms: [],
       limit: 10,
     });
-    expect(due.map((item) => item.id)).toEqual([listingIds.due]);
+    // Por hora: la del aviso venció antes que la del post.
+    expect(due.map((item) => item.id)).toEqual([listingIds.due, postIds.due]);
     const stale = await repos.publications.listStalePublishing({
       before: new Date(now.getTime() - 60_000),
       excludePlatforms: [],
     });
-    expect(stale.map((item) => item.id)).toEqual([listingIds.stale]);
+    expect(stale.map((item) => item.id).sort()).toEqual([listingIds.stale, postIds.stale].sort());
   });
 });

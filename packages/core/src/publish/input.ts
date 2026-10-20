@@ -1,6 +1,6 @@
-import { instagramCaption } from "../content/assemble.js";
+import { socialCaption } from "../content/assemble.js";
 import type { Content } from "../content.js";
-import type { Platform } from "../enums.js";
+import type { Language, Platform } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { Listing } from "../listing.js";
 import type { Media } from "../media.js";
@@ -125,14 +125,16 @@ export function signPublishMedia(
 }
 
 /**
- * La parte pura de `buildPublishInput` (desde F4-T23): el texto según el canal (en Instagram,
- * `instagramCaption`, sin título), los medios ya firmados y, en Portal y Marketplace, el aviso y el
- * contacto. La usa también `ml:smoke --listing`, que no tiene publicación y no revisa la versión.
+ * La parte pura de `buildPublishInput` (desde F4-T23): el texto según el canal (`socialCaption`: en
+ * Instagram, LinkedIn, X y TikTok, el cuerpo con los hashtags; en Instagram, sin título), el idioma,
+ * los medios ya firmados y, en Portal y Marketplace, el aviso y el contacto. La usa también
+ * `ml:smoke --listing`, que no tiene publicación y no revisa la versión.
  */
 export function assemblePublishInput({
   publicationId,
   platform,
   format,
+  language,
   content,
   media,
   listingData,
@@ -140,6 +142,8 @@ export function assemblePublishInput({
   publicationId: string;
   platform: Platform;
   format: Publication["format"];
+  /** El de la publicación; falta en lo que se arma sin ella (`ml:smoke`). */
+  language?: Language;
   content: Pick<Content, "title" | "body" | "hashtags">;
   media: PublishMediaItem[];
   listingData: { listing: PublishListing; brokerContact: PublishBrokerContact } | null;
@@ -156,9 +160,9 @@ export function assemblePublishInput({
     publicationId,
     platform,
     format,
-    ...(platform === "instagram"
-      ? { title: null, caption: instagramCaption(content) }
-      : { title: content.title, caption: content.body }),
+    title: platform === "instagram" ? null : content.title,
+    caption: socialCaption(platform, content),
+    ...(language === undefined ? {} : { language }),
     media,
     ...(listingData ?? {}),
   };
@@ -184,10 +188,10 @@ async function relistOfPart(
 }
 
 /**
- * Arma lo que se publica en un intento (spec F3 §4.4): el caption del texto aprobado (en
- * Instagram, `instagramCaption`, sin título) y los medios de `media_ids`, en su orden, con URLs
- * firmadas nuevas. `media` son los medios del aviso (`MediaRepository.listByListing`). Antes de
- * firmar nada:
+ * Arma lo que se publica en un intento (spec F3 §4.4; sobre un sujeto desde F9-T06): el caption del
+ * texto aprobado (`socialCaption`; en Instagram, sin título), el idioma de la publicación y los
+ * medios de `media_ids`, en su orden, con URLs firmadas nuevas. `media` son los medios del sujeto
+ * (`MediaRepository.listBySubject`). Antes de firmar nada:
  * - `PUBLICATION_CONTENT_MISMATCH` si el texto no es el de la publicación (otro id o canal);
  * - `CONTENT_NOT_APPROVED` si el texto ya no está aprobado (no debería pasar: no se edita ni se
  *   desaprueba con la publicación en curso, ADR-0014);
@@ -241,6 +245,7 @@ export async function buildPublishInput(
       publicationId: publication.id,
       platform: publication.platform,
       format: publication.format,
+      language: publication.language,
       content,
       media: await signPublishMedia(deps.storage, items),
       listingData,

@@ -7,6 +7,7 @@ import { manualConfirmPending, requiresManualConfirm } from "../marketplace/limi
 import type { LockedRepositories } from "../ports/listing-lock.js";
 import type { Publication } from "../publication.js";
 import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
+import { outcomeUnknownPending } from "../publish/outcome.js";
 import { listingIdOf } from "../subject.js";
 import {
   channelPublications,
@@ -156,6 +157,9 @@ export async function prepareChannelStart(
   // Marketplace: una que espera el clic final se resuelve antes (spec F5 §4.3).
   const waiting = channel.find((p) => p.status === "awaiting_manual_confirm");
   if (manual && waiting !== undefined) throw manualConfirmPending(waiting.id);
+  // Una del canal con resultado dudoso (ADR-0029 punto 8) se resuelve antes, en cualquier red.
+  const unknown = channel.find((p) => p.status === "outcome_unknown");
+  if (unknown !== undefined) throw outcomeUnknownPending(unknown.id);
   const busy = options.countInFlight ? inFlight.length : 0;
   if (startable.length === 0 && opening.toCreate.length === 0 && busy === 0) {
     if (stranded.length > 0) {

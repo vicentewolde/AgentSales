@@ -146,19 +146,19 @@ export interface PublicationRepository {
   /** Las de un aviso o post (F9), por fecha de creación. */
   listBySubject(subject: Subject): Promise<Publication[]>;
   /**
-   * Las de avisos que están en un estado (por ejemplo, `publishing` para reencolarlas al arrancar).
-   * Este barrido, `listDue` y `listStalePublishing` no ven las de posts hasta que sus casos de uso
-   * trabajen sobre un sujeto (F9-T06 y T07).
+   * Las que están en un estado, de avisos y de posts (por ejemplo, `publishing` para reencolarlas al
+   * arrancar). Desde F9-T06 este barrido, `listDue` y `listStalePublishing` ven las de los dos
+   * sujetos: quien solo trabaja con avisos filtra por su cuenta (`subject.kind`).
    */
   listByStatus(status: PublicationStatus): Promise<Publication[]>;
   /**
-   * Las `scheduled` de avisos cuya hora venció dentro de la ventana (`since` ≤ `scheduled_at` ≤ `now`), sin
+   * Las `scheduled` (de avisos y de posts) cuya hora venció dentro de la ventana (`since` ≤ `scheduled_at` ≤ `now`), sin
    * las plataformas excluidas, por hora (y después id), como mucho `limit` (spec F6 §4.4): el
    * filtro va en la consulta para que las atrasadas y los recordatorios no ocupen los lugares.
    */
   listDue(query: DueQuery): Promise<Publication[]>;
   /**
-   * Las `publishing` de avisos sin cambios desde antes de `before`, sin las plataformas excluidas (la
+   * Las `publishing` (de avisos y de posts) sin cambios desde antes de `before`, sin las plataformas excluidas (la
    * vigilancia, spec F6 §4.6), por `updated_at`.
    */
   listStalePublishing(query: {

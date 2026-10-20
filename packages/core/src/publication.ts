@@ -12,6 +12,7 @@ import {
 import { AppError } from "./errors.js";
 import { marketplaceProgressSchema } from "./marketplace/progress.js";
 import { portalProgressSchema } from "./portal/progress.js";
+import { socialProgressSchema } from "./publish/outcome.js";
 import { subjectFields } from "./subject.js";
 
 /**
@@ -34,11 +35,19 @@ export const instagramProgressSchema = z.object({
 });
 export type InstagramProgress = z.infer<typeof instagramProgressSchema>;
 
-/** Esquema del progreso de cada plataforma; las que aún no publican no tienen. */
+/**
+ * Esquema del progreso de cada plataforma. Las redes de contenido de marca (F9-T06) parten con el
+ * genérico: el "enviando" del resultado dudoso o el traspaso a mano de una cuenta en modo `manual`
+ * (`socialProgressSchema`); cada publisher lo puede reemplazar por uno propio que lo extienda.
+ */
 export const PUBLICATION_PROGRESS_SCHEMAS = {
   instagram: instagramProgressSchema,
   portal_inmobiliario: portalProgressSchema,
   fb_marketplace: marketplaceProgressSchema,
+  x: socialProgressSchema,
+  linkedin: socialProgressSchema,
+  discord: socialProgressSchema,
+  tiktok: socialProgressSchema,
 } as const satisfies Readonly<Partial<Record<Platform, z.ZodType>>>;
 
 /**
@@ -348,8 +357,9 @@ export const publishAttemptRecordSchema = z.object({
 export type PublishAttemptRecord = z.infer<typeof publishAttemptRecordSchema>;
 
 /**
- * Resultado de un intento: publicado, se reintenta (sigue en `publishing`), quedó `failed` o, en
- * Marketplace, el formulario quedó listo (`awaiting_manual_confirm`).
+ * Resultado de un intento: publicado, se reintenta (sigue en `publishing`), quedó `failed`, quedó
+ * listo para el clic o el traspaso a mano (`awaiting_manual_confirm`), se reprogramó por un límite
+ * o no se sabe si salió (`outcome_unknown`).
  */
 export const PUBLISH_ATTEMPT_RESULTS = [
   "published",
@@ -359,6 +369,8 @@ export const PUBLISH_ATTEMPT_RESULTS = [
   "awaiting_manual_confirm",
   // F6 (ADR-0018): un límite de la plataforma; la publicación volvió a quedar programada.
   "rescheduled",
+  // F9 (ADR-0029 punto 8): no se sabe si la red publicó; espera la palabra del operador.
+  "outcome_unknown",
 ] as const;
 export type PublishAttemptResult = (typeof PUBLISH_ATTEMPT_RESULTS)[number];
 

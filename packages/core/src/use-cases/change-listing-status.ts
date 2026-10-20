@@ -5,6 +5,7 @@ import { canDoListingAction, type Listing, type ListingAction } from "../listing
 import { manualConfirmPending } from "../marketplace/limits.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { outcomeUnknownPending } from "../publish/outcome.js";
 import { manualTasksOf } from "../tracking/manual-tasks.js";
 import {
   type OperationModeDeps,
@@ -182,11 +183,17 @@ async function requirePhoto(locked: LockedRepositories, listing: Listing): Promi
   }
 }
 
-/** Pausar, cerrar y archivar esperan a que nada se esté publicando ni espere el clic final. */
+/**
+ * Pausar, cerrar y archivar esperan a que nada se esté publicando, espere el clic final ni tenga
+ * un resultado dudoso (`OUTCOME_UNKNOWN_PENDING`, F9-T06).
+ */
 function requireNothingInFlight(action: ListingAction, publications: readonly Publication[]): void {
   if (action !== "pause" && action !== "close" && action !== "archive") return;
   const waiting = publications.find((p) => p.status === "awaiting_manual_confirm");
   if (waiting !== undefined) throw manualConfirmPending(waiting.id);
+  // Lo que pudo haber salido (ADR-0029 punto 8) se resuelve antes: no se descarta ni se deja colgado.
+  const unknown = publications.find((p) => p.status === "outcome_unknown");
+  if (unknown !== undefined) throw outcomeUnknownPending(unknown.id);
   const publishing = publications.find((p) => p.status === "publishing");
   if (publishing !== undefined) {
     throw new AppError(

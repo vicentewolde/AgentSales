@@ -162,6 +162,7 @@ export const PUBLISH_ATTEMPT_RESULT_TEXT: Readonly<Record<PublishAttemptResult, 
   failed: "falló",
   awaiting_manual_confirm: "formulario listo, espera tu clic final",
   rescheduled: "reprogramada hasta que se libere el límite",
+  outcome_unknown: "no se sabe si salió: di si salió o no",
 };
 
 /** Quién hizo un cambio en la bitácora de una publicación. */

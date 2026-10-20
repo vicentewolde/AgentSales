@@ -428,3 +428,17 @@ export function isManualMarketplaceAccount(
   const meta = marketplaceAccountMetaSchema.safeParse(account.meta);
   return meta.success && meta.data.mode === "manual";
 }
+
+/**
+ * Si una cuenta publica a mano (ADR-0029 punto 9): nunca llama a la red; el intento deja el texto y
+ * los medios listos (`awaiting_manual_confirm`) y el operador confirma con el enlace. En
+ * Marketplace, la cuenta a mano de F7 (`isManualMarketplaceAccount`); en las demás, `meta.mode =
+ * "manual"` (LinkedIn por defecto, spec F9 §4.6). Lee solo esa clave: una `meta` vieja no falla.
+ */
+export function isManualAccount(
+  account: Pick<PlatformAccount, "platform" | "meta"> &
+    Partial<Pick<PlatformAccount, "externalAccountId">>,
+): boolean {
+  if (account.platform === "fb_marketplace") return isManualMarketplaceAccount(account);
+  return account.meta.mode === "manual";
+}

@@ -74,6 +74,35 @@ export function instagramCaption(text: Pick<AssembledText, "body" | "hashtags">)
 }
 
 /**
+ * Cómo va cada red con los hashtags (spec F9 §4.4): `appended`, el cuerpo y los hashtags al final,
+ * después de una línea en blanco (Instagram, `instagramCaption`; y las redes que no los separan:
+ * LinkedIn, X y TikTok, que los lee del mismo texto); `body`, solo el cuerpo (Portal y Marketplace,
+ * cuyos textos no llevan hashtags, y Discord, donde un hashtag no significa nada). Un `Record`
+ * exhaustivo: una plataforma nueva no compila hasta decidir.
+ */
+const SOCIAL_CAPTION_MODE: Readonly<Record<Platform, "appended" | "body">> = {
+  instagram: "appended",
+  linkedin: "appended",
+  x: "appended",
+  tiktok: "appended",
+  discord: "body",
+  portal_inmobiliario: "body",
+  fb_marketplace: "body",
+};
+
+/**
+ * Lo que se envía como texto en cada red (`socialCaption`, spec F9 §4.4), en vez de solo el cuerpo:
+ * en Instagram, LinkedIn, X y TikTok, el cuerpo y los hashtags (`instagramCaption`); en las demás,
+ * el cuerpo. El escape de LinkedIn y el conteo ponderado de X son de su publisher (F9-T15 y T16).
+ */
+export function socialCaption(
+  platform: Platform,
+  text: Pick<AssembledText, "body" | "hashtags">,
+): string {
+  return SOCIAL_CAPTION_MODE[platform] === "appended" ? instagramCaption(text) : text.body;
+}
+
+/**
  * Hashtag normalizado: `#` y después solo minúsculas sin tildes, números y `_` (`Ñuñoa` →
  * `#nunoa`, `#Plaza Ñuñoa` → `#plazanunoa`). `null` si no queda nada o es demasiado largo.
  */
