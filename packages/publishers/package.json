@@ -19,6 +19,11 @@
       "types": "./dist/src/linkedin/index.d.ts",
       "default": "./dist/src/linkedin/index.js"
     },
+    "./tiktok": {
+      "@agentsales/source": "./src/tiktok/index.ts",
+      "types": "./dist/src/tiktok/index.d.ts",
+      "default": "./dist/src/tiktok/index.js"
+    },
     "./marketplace": {
       "@agentsales/source": "./src/marketplace/index.ts",
       "types": "./dist/src/marketplace/index.d.ts",
