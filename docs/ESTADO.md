@@ -112,7 +112,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 1 | T12 Aprobar, publicar y programar un post (CLI) | ✅ terminada | #182 |
 | 1 | T13 Instagram para posts (S1 antes de publicar de verdad) | ✅ terminada | #184 |
 | 1 | T14 Discord (S5 antes de publicar de verdad) | ✅ terminada | #183 |
-| 2 · `v1.2.0` | T15 LinkedIn (tras S2 y S3) | ⏳ pendiente | |
+| 2 · `v1.2.0` | T15 LinkedIn (S2 y S3 antes de publicar de verdad) | ✅ terminada | #185 |
 | 2 | T16 X (S4 antes de publicar de verdad) | ✅ terminada | #187 |
 | 2 | T26 TikTok, video como borrador (tras S6) | ⏳ pendiente | |
 | 2 | T17 Panel: Contenido | ⏳ pendiente | |
