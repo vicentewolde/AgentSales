@@ -133,3 +133,12 @@ Spec: `docs/specs/fase-8-en-internet.md` (modo demo en Fly.io con Neon gratis, e
 
 **Anthropic:**
 - [x] Términos comerciales revisados por el subagente (`docs/integraciones/anthropic-terminos.md`): tu clave puede atender a los clientes de tu producto, sin revender el servicio. Opcional: escribirle a Anthropic para confirmar el cobro por aviso y si una persona natural puede ofrecerlo a terceros
+
+## Antes de publicar en LinkedIn (F9-T15)
+
+El código está construido y probado solo con simulaciones; la cuenta nace **a mano** (D5). Nada de esto lo hace Claude.
+- [ ] **App de LinkedIn** en `linkedin.com/developers/apps`, con los productos *Share on LinkedIn* y *Sign In with LinkedIn using OpenID Connect* (pestaña Products). En la pestaña Auth, registra la dirección de retorno: `https://agentsales.agentpey.com/api/oauth/linkedin/callback` en el servidor y, si LinkedIn la acepta (NO VERIFICADO), `http://localhost:8787/api/oauth/linkedin/callback` en el Mac.
+- [ ] Anotar `LINKEDIN_CLIENT_ID` y `LINKEDIN_CLIENT_SECRET` en `.env` (y en `.env.production` y los secretos de Fly, `docs/10-despliegue.md`), en el editor y sin pegarlos en el chat; `LINKEDIN_REDIRECT_URI` solo si registraste otra dirección. Agrégalas también, comentadas y vacías, a `.env.example`.
+- [ ] **S2** (spec F9 §4.8, `docs/integraciones/linkedin.md` §0 y §8): con el generador de tokens, un post de texto en `/rest/posts` con `visibility: CONNECTIONS`, `userinfo`, el enlace y el `DELETE`; anotar el resultado en `linkedin.md` y `docs/ESTADO.md`.
+- [ ] **S3:** escribir a LinkedIn Developer Support (`linkedin.com/help/linkedin/ask/dsapi`) sobre el §3.1(26) de los API Terms. Hasta su respuesta, LinkedIn sigue a mano.
+- [ ] Conectar tu perfil: `pnpm -s cli accounts connect linkedin --broker <slug>` (o el botón de Cuentas cuando exista). Pasar a `api` (`accounts mode <id> api`) solo con S2 y S3 resueltas.
