@@ -16,16 +16,20 @@ export {
 export { type Pingable, type PingOptions, pingDatabase, readServerVersion } from "./health.js";
 export { createListingLock } from "./listing-lock.js";
 export { MIGRATIONS_FOLDER } from "./migrations.js";
+export { createPostLock } from "./post-lock.js";
 export { createBrokerRepository } from "./repositories/brokers.js";
 export { createContentRunRepository } from "./repositories/content-runs.js";
 export { createContentRepository } from "./repositories/contents.js";
+export { createEditorialProfileRepository } from "./repositories/editorial-profiles.js";
 export { createFieldDefinitionRepository } from "./repositories/field-definitions.js";
 export { createImportRunRepository } from "./repositories/import-runs.js";
 export { createListingRepository } from "./repositories/listings.js";
 export { createMediaRepository } from "./repositories/media.js";
 export { createMetaDeletionRepository } from "./repositories/meta-deletion-requests.js";
+export { createPlanRunRepository } from "./repositories/plan-runs.js";
 export { createPlatformAccountRepository } from "./repositories/platform-accounts.js";
 export { createPlatformCatalogRepository } from "./repositories/platform-catalog.js";
+export { createPostRepository, createPostUploadRepository } from "./repositories/posts.js";
 export { createPublicationRepository } from "./repositories/publications.js";
 export {
   createInvitationRepository,

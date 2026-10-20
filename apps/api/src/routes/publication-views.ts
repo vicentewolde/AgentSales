@@ -1,5 +1,6 @@
 import {
   hasStartedLive,
+  listingIdOf,
   type MarketplaceReadiness,
   manualEditPayloadSchema,
   marketplaceManualState,
@@ -39,7 +40,8 @@ export const publicationView = (publication: Publication): PublicationView =>
  */
 export const publicationViewAt = (publication: Publication, now: Date): PublicationView => ({
   id: publication.id,
-  listingId: publication.listingId,
+  // Las vistas son de publicaciones de avisos; las de posts llegan con sus rutas (F9-T12).
+  listingId: listingIdOf(publication.subject),
   platformAccountId: publication.platformAccountId,
   platform: publication.platform,
   format: publication.format,

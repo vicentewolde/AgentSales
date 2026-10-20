@@ -320,6 +320,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] con un publisher falso: un corte tras "enviando" deja `outcome_unknown` y ningún reintento llama otra vez; el reencolado al arrancar el worker no vuelve a publicar
   - [ ] una cuenta en `manual` no llama a la red y la confirmación guarda el enlace; los tests de Marketplace pasan sin cambios
+  - [ ] el filtro `listing_id IS NOT NULL` de `listByStatus`, `listDue` y `listStalePublishing` (F9-T04) se quita o se parametriza cuando sus casos de uso trabajen con sujeto: las publicaciones `publishing` de posts también se reencolan al arrancar el worker (sin republicar: el progreso "enviando" las lleva a `outcome_unknown`) y la vigilancia las ve
   - [ ] `docs/01-arquitectura.md` (contrato Publisher, estados, flujo 3) actualizada; `pnpm check` pasa
 
 ### F9-T07 · Programar, reloj, vigilancia y cancelar sobre un sujeto
@@ -337,6 +338,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Archivos principales:** `packages/core/src/tracking/*`, `apps/api`, `apps/cli`
 - **Hecho cuando:**
   - [ ] la agenda ordena posts y avisos juntos; una `outcome_unknown` y un token de LinkedIn a 7 días aparecen con su comando
+  - [ ] `SubjectRef` ya no admite `string` (el id de un aviso, la rama de transición de F9-T04): todo llamador pasa un `Subject`; `listByListing` de medios y de publicaciones queda absorbido por `listBySubject`, y `listCurrent`, `findActive` y `listBySubject` tienen la misma firma (un `Subject`)
   - [ ] `pnpm check` pasa
 
 ### F9-T09 · Perfil editorial

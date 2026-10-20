@@ -19,9 +19,12 @@ import {
   type OAuthStateRepository,
   type Platform,
   type PlatformAccountRepository,
+  type PostLock,
+  type PostRepository,
   type PublicationOperations,
   type PublicationRepository,
   type PublishMode,
+  type Subject,
 } from "@agentsales/core";
 import { Hono, type MiddlewareHandler } from "hono";
 import { API_PREFIX } from "./access.js";
@@ -30,7 +33,7 @@ import { createErrorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, type HealthDetails, runHealth } from "./health.js";
 import type { AppLogger } from "./logger.js";
 import { type RateLimitDeps, rateLimitByIp, rateLimitByUser } from "./rate-limit.js";
-import { type RequestContext, withEventUser } from "./request-context.js";
+import { type RequestContext, withEventUser, withPostEventUser } from "./request-context.js";
 import { requestLogger } from "./request-logger.js";
 import { accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
@@ -106,6 +109,16 @@ export type AppDeps = {
    * desde T15, aprobar y publicar). `server.ts` compone `createListingLock` sobre la misma base.
    */
   lock: ListingLock;
+  /**
+   * Posts de marca (F9, ADR-0029): por ahora, el dueño de un recurso de un post (el corredor del
+   * post) y lo que necesiten sus rutas (F9-T09 y T10).
+   */
+  posts: PostRepository;
+  /**
+   * Candado por post (ADR-0029, punto 3): las rutas de posts escriben dentro de él, con los eventos
+   * firmados por el usuario del pedido. `server.ts` compone `createPostLock` sobre la misma base.
+   */
+  postLock: PostLock;
   /**
    * Publicaciones (F3-T15): leer las de un aviso y su bitácora, y saber de qué aviso es una antes
    * del candado. Los cambios de estado van dentro del candado, con sus repositorios.
@@ -191,6 +204,7 @@ export function createApp(input: AppDeps) {
   const deps: AppDeps = {
     ...input,
     lock: withEventUser(input.lock, input.requestContext),
+    postLock: withPostEventUser(input.postLock, input.requestContext),
     // Lo que publicar necesita saber de Marketplace: la configuración y lo que permite el ambiente.
     marketplace: { ...input.marketplace, automation: input.marketplaceAutomation },
   };
@@ -204,22 +218,29 @@ export function createApp(input: AppDeps) {
   const contentDeps = { ...deps, ufConfigured: deps.marketplace?.ufConfigured ?? false };
   // El corredor dueño de cada recurso por id (spec F7 §4.4): un corredor solo llega a lo suyo.
   const listingOwner = async (id: string) => (await deps.listings.get(id))?.brokerId ?? null;
-  const viaListing = async (listingId: string | undefined) =>
-    listingId === undefined ? null : listingOwner(listingId);
+  // Un post es de su corredor o marca (ADR-0029, punto 12), como un aviso.
+  const postOwner = async (id: string) => (await deps.posts.get(id))?.brokerId ?? null;
+  const viaSubject = async (subject: Subject | undefined) =>
+    subject === undefined
+      ? null
+      : subject.kind === "listing"
+        ? listingOwner(subject.id)
+        : postOwner(subject.id);
   const notFound = (code: string, message: string) => (id: string) =>
     new AppError(code, `${message} ${id}`);
   const ownership = {
     listing: ownedBy(listingOwner, notFound("LISTING_NOT_FOUND", "No existe el aviso")),
+    post: ownedBy(postOwner, notFound("POST_NOT_FOUND", "No existe el post")),
     contentRun: ownedBy(
-      async (id) => viaListing((await deps.contentRuns.get(id))?.listingId),
+      async (id) => viaSubject((await deps.contentRuns.get(id))?.subject),
       notFound("CONTENT_RUN_NOT_FOUND", "No existe la corrida"),
     ),
     content: ownedBy(
-      async (id) => viaListing((await deps.contents.get(id))?.listingId),
+      async (id) => viaSubject((await deps.contents.get(id))?.subject),
       notFound("CONTENT_NOT_FOUND", "No existe el texto"),
     ),
     publication: ownedBy(
-      async (id) => viaListing((await deps.publications.get(id))?.listingId),
+      async (id) => viaSubject((await deps.publications.get(id))?.subject),
       notFound("PUBLICATION_NOT_FOUND", "No existe la publicación"),
     ),
     importRun: ownedBy(
@@ -243,6 +264,8 @@ export function createApp(input: AppDeps) {
     .use(deps.rateLimit === null ? passThrough : rateLimitByUser(deps.rateLimit))
     // `/x/:id/*` también calza con `/x/:id` en Hono: una sola vez por prefijo (una lectura).
     .use("/listings/:id/*", ownership.listing)
+    // Las rutas de posts llegan en F9-T09 y T10; el dueño ya se resuelve por el corredor del post.
+    .use("/posts/:id/*", ownership.post)
     .use("/content-runs/:id/*", ownership.contentRun)
     .use("/contents/:id/*", ownership.content)
     .use("/publications/:id/*", ownership.publication)

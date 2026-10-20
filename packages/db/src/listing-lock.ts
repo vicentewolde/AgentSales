@@ -1,4 +1,10 @@
-import { AppError, type ListingLock, type SecretBox } from "@agentsales/core";
+import {
+  AppError,
+  type ListingLock,
+  listingSubject,
+  lockedMedia,
+  type SecretBox,
+} from "@agentsales/core";
 import { eq } from "drizzle-orm";
 import type { SchemaDatabase } from "./client.js";
 import { withDbErrors } from "./errors.js";
@@ -39,7 +45,8 @@ export function createListingLock(
           return fn({
             brokers: createBrokerRepository(tx),
             listings: createListingRepository(tx),
-            media: createMediaRepository(tx),
+            // `arrange` solo con este aviso: con otro sujeto sería un segundo bloqueo anidado.
+            media: lockedMedia(createMediaRepository(tx), listingSubject(listingId)),
             contentRuns: createContentRunRepository(tx),
             contents: createContentRepository(tx),
             publications: createPublicationRepository(tx),

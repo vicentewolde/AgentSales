@@ -10,6 +10,7 @@ import {
   enqueueContentRun,
   isAppError,
   type JobQueue,
+  listingIdOf,
   type MediaProcessor,
   type PrepareContentDeps,
   prepareContent,
@@ -167,11 +168,9 @@ async function autoPublishAfter(
     if (deps.autoPublish === undefined) return;
     const run = await deps.shared.contentRuns.get(contentRunId);
     if (run === null || !run.texts) return;
-    logAutoPublish(
-      run.listingId,
-      await autoPublishListing(deps.autoPublish, { listingId: run.listingId }),
-      logger,
-    );
+    // `content.prepare` es de avisos: una corrida de post aquí es un error (se registra abajo).
+    const listingId = listingIdOf(run.subject);
+    logAutoPublish(listingId, await autoPublishListing(deps.autoPublish, { listingId }), logger);
   } catch (error) {
     logger.warn({ code: codeOf(error) }, "auto_publish falló: la corrida queda como estaba");
   } finally {

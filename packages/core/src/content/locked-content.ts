@@ -6,6 +6,7 @@ import type { ContentRepository } from "../ports/content-repository.js";
 import type { FieldDefinitionRepository } from "../ports/field-definition-repository.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
+import { listingIdOf } from "../subject.js";
 import type { ContentCheckContext } from "./check.js";
 import { type CheckedContent, checked, loadCheckContext } from "./check-context.js";
 
@@ -30,7 +31,7 @@ export async function beforeContentLock(
 ): Promise<{ listingId: string; definitions: FieldDefinition[] }> {
   const content = await deps.contents.get(contentId);
   if (content === null) throw contentNotFound(contentId);
-  const listing = await deps.listings.get(content.listingId);
+  const listing = await deps.listings.get(listingIdOf(content.subject));
   if (listing === null) {
     throw new AppError("LISTING_NOT_FOUND", `No existe el aviso ${content.listingId}`, {
       details: { listingId: content.listingId },
@@ -56,7 +57,7 @@ export async function lockedCurrentContent(
 ): Promise<{ content: Content; listing: Listing; ctx: ContentCheckContext }> {
   const content = await locked.contents.get(contentId);
   if (content === null) throw contentNotFound(contentId);
-  const current = (await locked.contents.listCurrent(content.listingId)).find(
+  const current = (await locked.contents.listCurrent(listingIdOf(content.subject))).find(
     (item) => item.platform === content.platform,
   );
   if (current?.id !== content.id) {
@@ -72,7 +73,7 @@ export async function lockedCurrentContent(
       brokers: locked.brokers,
       fieldDefinitions: { list: async () => [...definitions] },
     },
-    content.listingId,
+    listingIdOf(content.subject),
   );
   return { content, listing, ctx };
 }

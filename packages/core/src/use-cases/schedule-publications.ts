@@ -16,6 +16,7 @@ import {
   scheduledPayloadSchema,
 } from "../publication.js";
 import { scheduleAt as checkScheduleAt, MAX_SCHEDULE_SPACING_MINUTES } from "../schedule.js";
+import { listingIdOf } from "../subject.js";
 import { channelPublications, createPublications } from "./open-publications.js";
 import {
   type MarketplaceStartOptions,
@@ -111,9 +112,13 @@ export async function schedulePublication(
   const when = checkScheduleAt(at, now);
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
-  const definitions = await portalDefinitionsBeforeLock(deps, found.listingId, found.platform);
+  const definitions = await portalDefinitionsBeforeLock(
+    deps,
+    listingIdOf(found.subject),
+    found.platform,
+  );
 
-  return deps.lock.run(found.listingId, async (locked) => {
+  return deps.lock.run(listingIdOf(found.subject), async (locked) => {
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     if (publication.status === "publishing") {
@@ -407,7 +412,7 @@ export async function unschedulePublication(
 ): Promise<Publication> {
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
-  return deps.lock.run(found.listingId, async (locked) => {
+  return deps.lock.run(listingIdOf(found.subject), async (locked) => {
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     if (publication.status !== "scheduled") {

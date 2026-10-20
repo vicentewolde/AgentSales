@@ -17,10 +17,12 @@ import {
 
 const base = {
   id: "p1",
+  subject: { kind: "listing", id: "l1" },
   listingId: "l1",
   platformAccountId: "a1",
   platform: "instagram",
   format: "post",
+  language: "es",
   contentId: "c1",
   mediaIds: ["m1", "m2"],
   status: "approved",
@@ -35,6 +37,7 @@ const base = {
   remoteState: null,
   listingSourceHash: null,
   relistedFrom: null,
+  costUsd: null,
   createdAt: new Date("2026-10-05T12:00:00Z"),
   updatedAt: new Date("2026-10-05T12:00:00Z"),
 } as const;

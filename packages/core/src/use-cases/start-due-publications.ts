@@ -6,6 +6,7 @@ import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationError } from "../publication.js";
 import { scrubMessage } from "../redact.js";
 import { SCHEDULE_OVERDUE_MS } from "../schedule.js";
+import { listingIdOf } from "../subject.js";
 import {
   enqueuePublication,
   type MarketplaceStartOptions,
@@ -100,10 +101,10 @@ async function startDueOne(
 ): Promise<Publication | null> {
   const definitions = await portalDefinitionsBeforeLock(
     deps,
-    candidate.listingId,
+    listingIdOf(candidate.subject),
     candidate.platform,
   );
-  return deps.lock.run(candidate.listingId, async (locked) => {
+  return deps.lock.run(listingIdOf(candidate.subject), async (locked) => {
     const publication = await locked.publications.get(candidate.id);
     if (
       publication === null ||

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BrokerData, NewListing } from "@agentsales/core";
+import { type BrokerData, type NewListing, postSubject } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import { ROUTE_ACCESS } from "./access.js";
 import { createApp } from "./app.js";
@@ -188,6 +188,82 @@ describe("lo de otro corredor no existe", () => {
     expect((await s.broker(`/publications/${s.mine.publication.id}/events`)).status).toBe(200);
     expect((await s.broker(`/imports/${s.mine.importRun.id}`)).status).toBe(200);
     expect((await s.admin(`/listings/${s.theirs.listing.id}`)).status).toBe(200);
+  });
+});
+
+/** Un post de un corredor con su corrida, su texto y una publicación (F9, ADR-0029). */
+async function postOf(
+  deps: ReturnType<typeof testDeps>,
+  owned: Awaited<ReturnType<typeof ownedBy>>,
+) {
+  const post = await deps.posts.create({
+    brokerId: owned.broker.id,
+    topic: "Un post",
+    kind: "text",
+  });
+  const run = await deps.contentRuns.create({ postId: post.id, texts: true });
+  await deps.contentRuns.markRunning(run.id);
+  await deps.contentRuns.markSucceeded(run.id, {
+    report: { warnings: [] },
+    contents: [
+      {
+        platform: "instagram",
+        title: null,
+        body: "Texto del post",
+        hashtags: [],
+        llmProvider: "fake",
+        llmModel: "fake",
+        promptVersion: "v1",
+        rawOutput: null,
+      },
+    ],
+  });
+  const [content] = await deps.contents.listCurrent(postSubject(post.id));
+  const publication = await deps.postLock.run(post.id, (repos) =>
+    repos.publications.create(
+      {
+        postId: post.id,
+        platformAccountId: owned.account.id,
+        platform: "instagram",
+        format: "post",
+        contentId: content?.id ?? "",
+        mediaIds: [],
+      },
+      { actor: "system" },
+    ),
+  );
+  return { post, run, publication };
+}
+
+describe("el dueño de un post es su corredor (F9-T04)", () => {
+  it("la corrida y la publicación de un post ajeno no existen; las del suyo sí", async () => {
+    const s = await setup();
+    const mine = await postOf(s.deps, s.mine);
+    const theirs = await postOf(s.deps, s.theirs);
+
+    const foreignRun = await s.broker(`/content-runs/${theirs.run.id}`);
+    expect(foreignRun.status).toBe(404);
+    expect((await errorOf(foreignRun)).code).toBe("CONTENT_RUN_NOT_FOUND");
+    const foreignEvents = await s.broker(`/publications/${theirs.publication.id}/events`);
+    expect(foreignEvents.status).toBe(404);
+    expect((await errorOf(foreignEvents)).code).toBe("PUBLICATION_NOT_FOUND");
+
+    expect((await s.broker(`/content-runs/${mine.run.id}`)).status).toBe(200);
+    expect((await s.broker(`/publications/${mine.publication.id}/events`)).status).toBe(200);
+    expect((await s.admin(`/publications/${theirs.publication.id}/events`)).status).toBe(200);
+  });
+
+  it("/posts/:id/… de otro corredor no existe (las rutas llegan en T09 y T10)", async () => {
+    const s = await setup();
+    const mine = await postOf(s.deps, s.mine);
+    const theirs = await postOf(s.deps, s.theirs);
+    const foreign = await s.broker(`/posts/${theirs.post.id}/contents`);
+    expect(foreign.status).toBe(404);
+    expect((await errorOf(foreign)).code).toBe("POST_NOT_FOUND");
+    // Lo suyo pasa el dueño y llega a la ruta (que todavía no existe).
+    const own = await s.broker(`/posts/${mine.post.id}/contents`);
+    expect(own.status).toBe(404);
+    expect((await errorOf(own)).code).toBe("ROUTE_NOT_FOUND");
   });
 });
 

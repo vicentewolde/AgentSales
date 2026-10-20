@@ -3,6 +3,7 @@ import {
   canTransition,
   checkPublicationProgress,
   checkRemoteState,
+  DEFAULT_LANGUAGE,
   normalizeEventPayload,
   type Publication,
   type PublicationChanges,
@@ -11,9 +12,11 @@ import {
   publicationEventSchema,
   publicationSchema,
   requirePublicationMode,
+  subjectFieldsOf,
+  subjectOfInput,
   TERMINAL_PUBLICATION_STATUSES,
 } from "@agentsales/core";
-import { and, asc, eq, gte, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { publicationEvents, publications } from "../schema.js";
@@ -27,17 +30,28 @@ const activeStatus = sql.raw(
 type EventRow = typeof publicationEvents.$inferSelect;
 type Writer = Pick<SchemaDatabase, "insert">;
 
+/**
+ * Los barridos por estado (reencolar, disparar las programadas, vigilar) son de avisos hasta que
+ * sus casos de uso trabajen sobre un sujeto (F9-T06 y T07): no ven las publicaciones de posts.
+ */
+const ofListing = isNotNull(publications.listingId);
+
 const ONE_ACTIVE_PER_FORMAT = "publications_one_active_per_format";
+/** F9: una activa por post, cuenta, formato e idioma; da el mismo `PUBLICATION_CONFLICT`. */
+const ONE_ACTIVE_PER_POST_FORMAT = "publications_one_active_per_post_format";
 const ONE_RELIST_PER_PUBLICATION = "publications_relisted_from_unique";
 
 /** Fila → entidad. Una fila que no calza (también un `progress` ajeno) es `PUBLICATION_ROW_INVALID`. */
 function toPublication(row: Row): Publication {
   const parsed = publicationSchema.safeParse({
     id: row.id,
-    listingId: row.listingId,
+    // Exactamente uno de `listing_id` y `post_id` (ADR-0029); si no, la fila no valida.
+    ...subjectFieldsOf(row),
     platformAccountId: row.platformAccountId,
     platform: row.platform,
     format: row.format,
+    // Texto en la base: se valida con `LANGUAGES` al leer.
+    language: row.language,
     contentId: row.contentId,
     mediaIds: row.mediaIds,
     status: row.status,
@@ -52,6 +66,8 @@ function toPublication(row: Row): Publication {
     remoteState: row.remoteState,
     listingSourceHash: row.listingSourceHash,
     relistedFrom: row.relistedFrom,
+    // `numeric` llega como texto.
+    costUsd: row.costUsd === null ? null : Number(row.costUsd),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -169,21 +185,31 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
   return {
     async create(input, event) {
       const payload = normalizeEventPayload(event.payload);
+      const subject = subjectOfInput(input);
+      const subjectDetails =
+        subject.kind === "listing" ? { listingId: subject.id } : { postId: subject.id };
       try {
         return await withDbErrors(() =>
           db.transaction(async (tx) => {
             const [row] = await tx
               .insert(publications)
               .values({
-                listingId: input.listingId,
+                ...(subject.kind === "listing"
+                  ? { listingId: subject.id }
+                  : { postId: subject.id }),
                 platformAccountId: input.platformAccountId,
                 platform: input.platform,
                 format: input.format,
+                language: input.language ?? DEFAULT_LANGUAGE,
                 contentId: input.contentId,
                 mediaIds: [...input.mediaIds],
                 // Vacío cuenta como sin versión: nunca se compara contra "".
                 listingSourceHash: input.listingSourceHash || null,
                 relistedFrom: input.relistedFrom ?? null,
+                costUsd:
+                  input.costUsd === undefined || input.costUsd === null
+                    ? null
+                    : String(input.costUsd),
                 status: "approved",
                 // El valor seguro: el modo de verdad se fija al pasar a `publishing`.
                 dryRun: true,
@@ -208,7 +234,20 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           throw new AppError(
             "PUBLICATION_CONFLICT",
             "Ya hay una publicación activa de ese aviso, cuenta y formato",
-            { details: { listingId: input.listingId, format: input.format } },
+            { details: { ...subjectDetails, format: input.format } },
+          );
+        }
+        if (isUniqueViolation(error, ONE_ACTIVE_PER_POST_FORMAT)) {
+          throw new AppError(
+            "PUBLICATION_CONFLICT",
+            "Ya hay una publicación activa de ese post, cuenta, formato e idioma",
+            {
+              details: {
+                ...subjectDetails,
+                format: input.format,
+                language: input.language ?? DEFAULT_LANGUAGE,
+              },
+            },
           );
         }
         if (isUniqueViolation(error, ONE_RELIST_PER_PUBLICATION)) {
@@ -216,12 +255,14 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
             details: { relistedFrom: input.relistedFrom },
           });
         }
-        // Una FK (aviso, cuenta o texto) que no existe: un bug de quien llama.
+        // Una FK (aviso o post, cuenta o texto) que no existe: un bug de quien llama.
         if (sqlStateOf(error) === "23503") {
           throw new AppError(
             "PUBLICATION_REFERENCE_INVALID",
-            "El aviso, la cuenta o el texto de la publicación no existen",
-            { details: { listingId: input.listingId } },
+            subject.kind === "listing"
+              ? "El aviso, la cuenta o el texto de la publicación no existen"
+              : "El post, la cuenta o el texto de la publicación no existen",
+            { details: subjectDetails },
           );
         }
         throw error;
@@ -244,12 +285,27 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
       });
     },
 
+    listBySubject(subject) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(publications)
+          .where(
+            subject.kind === "listing"
+              ? eq(publications.listingId, subject.id)
+              : eq(publications.postId, subject.id),
+          )
+          .orderBy(asc(publications.createdAt), asc(publications.id));
+        return rows.map(toPublication);
+      });
+    },
+
     listByStatus(status) {
       return withDbErrors(async () => {
         const rows = await db
           .select()
           .from(publications)
-          .where(eq(publications.status, status))
+          .where(and(eq(publications.status, status), ofListing))
           .orderBy(asc(publications.createdAt), asc(publications.id));
         return rows.map(toPublication);
       });
@@ -263,6 +319,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           .where(
             and(
               eq(publications.status, "scheduled"),
+              ofListing,
               lte(publications.scheduledAt, now),
               gte(publications.scheduledAt, since),
               excludePlatforms.length === 0
@@ -284,6 +341,7 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           .where(
             and(
               eq(publications.status, "publishing"),
+              ofListing,
               lt(publications.updatedAt, before),
               excludePlatforms.length === 0
                 ? undefined

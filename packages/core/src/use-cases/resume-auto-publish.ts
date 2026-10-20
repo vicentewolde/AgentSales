@@ -42,7 +42,9 @@ export async function resumeCutAutoPublish(
     new Date(now.getTime() - SCHEDULE_OVERDUE_MS),
   );
   for (const run of pending) {
-    const { listingId } = run;
+    // `listAutoPublishPending` solo trae corridas de avisos: los posts no tienen `auto_publish`.
+    if (run.subject.kind !== "listing") continue;
+    const listingId = run.subject.id;
     try {
       if (!(await deps.contentRuns.markAutoPublishDone(run.id))) {
         results.push({ listingId, outcome: "skipped", reason: "taken" });

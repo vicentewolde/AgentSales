@@ -1,8 +1,9 @@
-import type { ListingLock, PublicationRepository } from "@agentsales/core";
+import type { ListingLock, PostLock, PublicationRepository } from "@agentsales/core";
 
 // Quién hace el pedido, para la bitácora (spec F7 §4.3, seguimiento de ADR-0021): `authenticate`
 // corre cada pedido con el usuario de la sesión (`RequestContext.run`) y el candado de la app
-// (`withEventUser`) lo pone en cada evento que se escribe dentro de él. Así core no lleva el
+// (`withEventUser`, el del aviso, y `withPostEventUser`, el del post desde F9) lo pone en cada
+// evento que se escribe dentro de él. Así core no lleva el
 // usuario por cada caso de uso; lo del worker y lo de antes de F7 quedan sin usuario (`null`).
 // La implementación con `AsyncLocalStorage` (Node) vive en `request-context-node.ts`, que solo
 // importan `server.ts` y `testing/`: este módulo llega a `AppType` y no puede importar `node:*`.
@@ -49,6 +50,16 @@ export function withEventUser(lock: ListingLock, context: RequestContext): Listi
   return {
     run: (listingId, fn) =>
       lock.run(listingId, (repos) =>
+        fn({ ...repos, publications: withUserEvents(repos.publications, context) }),
+      ),
+  };
+}
+
+/** Lo mismo para el candado de un post (F9, ADR-0029): sus eventos también llevan al usuario. */
+export function withPostEventUser(lock: PostLock, context: RequestContext): PostLock {
+  return {
+    run: (postId, fn) =>
+      lock.run(postId, (repos) =>
         fn({ ...repos, publications: withUserEvents(repos.publications, context) }),
       ),
   };

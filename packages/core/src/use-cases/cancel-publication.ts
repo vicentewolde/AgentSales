@@ -4,6 +4,7 @@ import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { canTransition } from "../publication-state.js";
+import { listingIdOf } from "../subject.js";
 import { publicationNotFound } from "./publication-start.js";
 
 export type CancelPublicationDeps = {
@@ -29,7 +30,7 @@ export async function cancelPublication(
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
 
-  return deps.lock.run(found.listingId, async (locked) => {
+  return deps.lock.run(listingIdOf(found.subject), async (locked) => {
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     // El sistema nunca da por no publicado lo que no vio (spec F5 §4.3, D11).

@@ -10,6 +10,7 @@ import { AppError } from "../errors.js";
 import type { ContentChanges } from "../ports/content-repository.js";
 import type { ListingLock } from "../ports/listing-lock.js";
 import { ACTIVE_PUBLICATION_STATUSES, PENDING_PUBLICATION_STATUSES } from "../publication-state.js";
+import { listingIdOf } from "../subject.js";
 
 export type EditContentDeps = ContentLockDeps & { lock: ListingLock };
 
@@ -40,7 +41,7 @@ export async function editContent(
 
   return deps.lock.run(listingId, async (locked) => {
     const { content, ctx } = await lockedCurrentContent(locked, contentId, definitions);
-    const active = await locked.contentRuns.findActive(content.listingId);
+    const active = await locked.contentRuns.findActive(listingIdOf(content.subject));
     if (active?.texts) {
       throw new AppError(
         "CONTENT_RUN_ACTIVE",
@@ -48,7 +49,9 @@ export async function editContent(
         { details: { contentId, contentRunId: active.id } },
       );
     }
-    const publication = (await locked.publications.listByListing(content.listingId)).find(
+    const publication = (
+      await locked.publications.listByListing(listingIdOf(content.subject))
+    ).find(
       (item) => item.contentId === content.id && ACTIVE_PUBLICATION_STATUSES.includes(item.status),
     );
     if (publication !== undefined) {
