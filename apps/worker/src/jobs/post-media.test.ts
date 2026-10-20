@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,10 +31,30 @@ async function tmpRoot() {
   return root;
 }
 
+/** El sha256 en streaming, como lo compone `worker.ts`. */
+async function sha256Stream(stream: AsyncIterable<Uint8Array>): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of stream) hash.update(chunk);
+  return hash.digest("hex");
+}
+const sha256Of = (value: string) => createHash("sha256").update(text(value)).digest("hex");
+
 async function setup() {
   const posts = createInMemoryPostRepository();
   const media = createInMemoryMediaRepository();
   const storage = createInMemoryMediaStorage();
+  const postUploads = createInMemoryPostUploadRepository();
+  const content = createInMemoryContentRepositories();
+  const postLock = createInMemoryPostLock({
+    brokers: createInMemoryBrokerRepository(),
+    posts,
+    postUploads,
+    media,
+    contentRuns: content.contentRuns,
+    contents: content.contents,
+    publications: createInMemoryPublicationRepository(),
+    platformAccounts: createInMemoryPlatformAccountRepository(),
+  });
   const post = await posts.create({ brokerId: "brand-1", topic: "Bastidores", kind: "video" });
   for (const [n, kind] of [
     [1, "image"],
@@ -41,6 +62,7 @@ async function setup() {
   ] as const) {
     const path = `posts/${post.id}/original/${sha(n)}.${kind === "image" ? "jpg" : "mp4"}`;
     await storage.put(path, text(`${kind}-${n}`), kind === "image" ? "image/jpeg" : "video/mp4");
+    // El checksum de los de prueba es inventado (`sha(n)`): una subida grande nunca calza con él.
     await media.create({
       listingId: null,
       postId: post.id,
@@ -58,6 +80,7 @@ async function setup() {
   const workDirs: string[] = [];
   const deps = {
     shared: { posts, media, storage },
+    uploads: { posts, postLock, storage, sha256Stream },
     createProcessor: (workDir: string) => {
       workDirs.push(workDir);
       return createInMemoryMediaProcessor({ version: "1" });
@@ -65,7 +88,21 @@ async function setup() {
     tmpRoot: root,
     signal: new AbortController().signal,
   };
-  return { deps, post, media, posts, root, workDirs };
+  /** Una subida grande sin sha256 que ya llegó a R2 (`uploaded`), como la deja `complete`. */
+  const bigUpload = async (id: string, content: string, extension = "mp4") => {
+    const path = `posts/${post.id}/original/${id}.${extension}`;
+    await storage.put(path, text(content), "video/mp4");
+    const upload = await postUploads.create({
+      id,
+      postId: post.id,
+      objectPath: path,
+      expectedBytes: content.length,
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    await postUploads.markUploaded(upload.id);
+    return { upload, path };
+  };
+  return { deps, post, media, posts, root, workDirs, storage, postUploads, bigUpload };
 }
 
 const context = (logger: ReturnType<typeof captureLogger>["logger"]) => ({
@@ -102,6 +139,93 @@ describe("job post.media", () => {
     expect(lines.find((line) => line.msg === "medios del post procesados")).toMatchObject({
       media: { processed: 2, existing: 0, failed: 0 },
     });
+  });
+
+  it("una subida grande sin sha256: lo calcula en streaming, crea el medio y arma sus variantes (F9-T17)", async () => {
+    const t = await setup();
+    const id = "11111111-2222-4333-8444-555555555555";
+    const { upload, path } = await t.bigUpload(id, "un video grande");
+    const { logger, lines } = captureLogger();
+    await postMediaJob(t.deps).run({ postId: t.post.id }, context(logger));
+
+    expect((await t.postUploads.get(upload.id))?.status).toBe("completed");
+    const originals = await t.media.listOriginals({ kind: "post", id: t.post.id });
+    const created = originals.find((item) => item.storagePath === path);
+    expect(created).toMatchObject({
+      kind: "video",
+      mime: "video/mp4",
+      checksum: sha256Of("un video grande"),
+      sortOrder: 3,
+    });
+    // Entra en la misma vuelta: sus variantes ya están.
+    const variants = (await t.media.listBySubject({ kind: "post", id: t.post.id }))
+      .filter((item) => item.parentMediaId === created?.id)
+      .map((item) => item.variant)
+      .sort();
+    expect(variants).toEqual(["ig_reel", "thumb", "x_video"]);
+    expect(lines.find((line) => line.msg === "subidas grandes del post revisadas")).toMatchObject({
+      created: 1,
+      duplicates: 0,
+      missing: 0,
+    });
+  });
+
+  it("una subida grande con un contenido que ya es un medio del post: borra el objeto nuevo y no duplica", async () => {
+    const t = await setup();
+    const first = await t.bigUpload("11111111-2222-4333-8444-000000000001", "el mismo video");
+    await postMediaJob(t.deps).run({ postId: t.post.id }, context(captureLogger().logger));
+    const before = await t.media.listOriginals({ kind: "post", id: t.post.id });
+
+    const second = await t.bigUpload("11111111-2222-4333-8444-000000000002", "el mismo video");
+    const { logger, lines } = captureLogger();
+    await postMediaJob(t.deps).run({ postId: t.post.id }, context(logger));
+
+    expect(await t.media.listOriginals({ kind: "post", id: t.post.id })).toHaveLength(
+      before.length,
+    );
+    expect(t.storage.objects.has(second.path)).toBe(false);
+    expect(t.storage.objects.has(first.path)).toBe(true);
+    expect((await t.postUploads.get(second.upload.id))?.status).toBe("completed");
+    expect(lines.find((line) => line.msg === "subidas grandes del post revisadas")).toMatchObject({
+      created: 0,
+      duplicates: 1,
+    });
+  });
+
+  it("una subida grande cuyo archivo ya no está en R2 queda abandonada, sin medio", async () => {
+    const t = await setup();
+    const { upload, path } = await t.bigUpload("11111111-2222-4333-8444-000000000003", "se fue");
+    await t.storage.delete(path);
+    await postMediaJob(t.deps).run({ postId: t.post.id }, context(captureLogger().logger));
+    expect((await t.postUploads.get(upload.id))?.status).toBe("abandoned");
+    expect(
+      (await t.media.listOriginals({ kind: "post", id: t.post.id })).some(
+        (item) => item.storagePath === path,
+      ),
+    ).toBe(false);
+  });
+
+  it("si no puede borrar el duplicado, la subida sigue `uploaded` y el job falla para reintentar", async () => {
+    const t = await setup();
+    await t.bigUpload("11111111-2222-4333-8444-000000000004", "repetido");
+    await postMediaJob(t.deps).run({ postId: t.post.id }, context(captureLogger().logger));
+    const { upload } = await t.bigUpload("11111111-2222-4333-8444-000000000005", "repetido");
+    const failing = {
+      ...t.deps,
+      uploads: {
+        ...t.deps.uploads,
+        storage: {
+          getStream: t.storage.getStream.bind(t.storage),
+          delete: async () => {
+            throw Object.assign(new Error("R2 caído"), { code: "STORAGE_UNAVAILABLE" });
+          },
+        },
+      },
+    };
+    await expect(
+      postMediaJob(failing).run({ postId: t.post.id }, context(captureLogger().logger)),
+    ).rejects.toThrow();
+    expect((await t.postUploads.get(upload.id))?.status).toBe("uploaded");
   });
 
   it("un post archivado se salta y lo registra; datos inválidos no corren", async () => {

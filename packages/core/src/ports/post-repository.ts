@@ -92,6 +92,11 @@ export interface PostRepository {
 
 /** Una subida nueva de un post (ADR-0025): nace en `pending`. */
 export type NewPostUpload = {
+  /**
+   * El id, si ya va en la clave (F9-T17: un archivo de más de 100 MB sin sha256 se guarda en
+   * `posts/{postId}/original/{uploadId}.{ext}`). Sin él, lo pone el repositorio.
+   */
+  id?: string;
   postId: string;
   objectPath: string;
   expectedBytes: number;
@@ -114,9 +119,21 @@ export interface PostUploadRepository {
   listByPost(postId: string): Promise<PostUpload[]>;
   /** Las `pending` vencidas (`expires_at` anterior a `now`), las más antiguas primero. */
   listExpired(now: Date): Promise<PostUpload[]>;
-  /** `pending` → `completed`; `false` si ya no estaba pendiente o no existe. */
+  /**
+   * `pending` o `uploaded` → `completed`; `false` si ya no estaba en uno de esos estados o no
+   * existe.
+   */
   markCompleted(id: string): Promise<boolean>;
-  /** `pending` → `abandoned`; `false` si ya no estaba pendiente o no existe. */
+  /**
+   * `pending` → `uploaded` (F9-T17): el archivo grande sin sha256 llegó a R2 con su tamaño y espera
+   * que el worker lo hashee; `false` si ya no estaba pendiente o no existe.
+   */
+  markUploaded(id: string): Promise<boolean>;
+  /**
+   * `pending` o `uploaded` → `abandoned`; `false` si ya no estaba en uno de esos estados o no
+   * existe. Una `uploaded` solo se abandona si su archivo desapareció de R2 antes de que el worker
+   * lo revisara (F9-T17).
+   */
   markAbandoned(id: string): Promise<boolean>;
   /**
    * Vuelve a `pending` con un vencimiento nuevo, venga del estado que venga (F9-T10): el mismo

@@ -106,6 +106,13 @@ const contentRuns = createContentRunRepository(database.db);
 const workspaceRoot = findWorkspaceRoot();
 const contentTmpRoot = contentTmpRootOf(workspaceRoot);
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+
+/** sha256 hexadecimal de un archivo de R2 leído en streaming (F9-T17: sin cargarlo en memoria). */
+async function sha256OfStream(stream: AsyncIterable<Uint8Array>): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of stream) hash.update(chunk);
+  return hash.digest("hex");
+}
 const repositories = {
   brokers: createBrokerRepository(database.db),
   listings: createListingRepository(database.db),
@@ -404,6 +411,8 @@ const jobs = buildJobs({
   },
   postMedia: {
     shared: { posts, media: repositories.media, storage },
+    // Las subidas grandes sin sha256 (F9-T17): se hashean en streaming y se deduplican.
+    uploads: { posts, postLock, storage, sha256Stream: sha256OfStream },
     createProcessor: (workDir) =>
       createMediaProcessor({
         ffmpegPath: env.FFMPEG_PATH,

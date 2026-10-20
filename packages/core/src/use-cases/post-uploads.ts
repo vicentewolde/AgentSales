@@ -1,6 +1,7 @@
+import type { AbortSignalLike } from "../abort.js";
 import { postOriginalPath, postOriginalsPrefix } from "../content/media-keys.js";
 import type { MediaKind } from "../enums.js";
-import { AppError } from "../errors.js";
+import { AppError, isAppError } from "../errors.js";
 import type { JobQueue } from "../ports/job-queue.js";
 import type { MediaRecord } from "../ports/media-repository.js";
 import type { MediaStorage, SignedUpload } from "../ports/media-storage.js";
@@ -17,10 +18,16 @@ import { IMPORT_UPLOAD } from "./request-import.js";
 // (`…/uploads/complete`); ningún archivo pasa por la API. Lo pendiente vive en `post_uploads`, y la
 // limpieza de cada hora borra de R2 lo que nadie terminó de subir.
 //
-// A diferencia de la carga, **cada archivo trae su sha256**: es su identidad. Va en la clave
-// (`posts/{postId}/original/{sha256}.{ext}`, como los originales de un aviso), así el mismo archivo
-// pedido dos veces es la misma subida, y un original ya guardado no se vuelve a subir (el único
-// `(post_id, checksum)` de `media`).
+// A diferencia de la carga, **cada archivo de hasta 100 MB trae su sha256**: es su identidad. Va en
+// la clave (`posts/{postId}/original/{sha256}.{ext}`, como los originales de un aviso), así el mismo
+// archivo pedido dos veces es la misma subida, y un original ya guardado no se vuelve a subir (el
+// único `(post_id, checksum)` de `media`).
+//
+// Sobre 100 MB el sha256 es opcional (F9-T17, ADR-0025 punto 2: el navegador no puede hashear en
+// streaming un archivo que no cabe en memoria). Sin él, la clave es la de la subida
+// (`posts/{postId}/original/{uploadId}.{ext}`), `complete` la deja `uploaded` y el worker
+// (`finalizePostUploads`, en `post.media`) calcula el sha256 en streaming, crea el medio y, si ese
+// contenido ya era un medio del post, borra el objeto nuevo.
 
 type Actor = Pick<User, "id" | "role" | "brokerId">;
 
@@ -33,6 +40,8 @@ export const POST_UPLOAD = {
   urlTtlSeconds: IMPORT_UPLOAD.urlTtlSeconds,
   abandonedAfterMs: IMPORT_UPLOAD.abandonedAfterMs,
   maxNameBytes: IMPORT_UPLOAD.maxNameBytes,
+  /** Hasta este tamaño el sha256 es obligatorio; sobre él, opcional (el de la carga: 100 MB). */
+  sha256UpToBytes: IMPORT_UPLOAD.sha256UpToBytes,
 } as const;
 
 /**
@@ -52,8 +61,11 @@ export const POST_MEDIA_TYPES: Readonly<
   mov: { kind: "video", mime: "video/quicktime", extension: "mov" },
 };
 
-/** Un archivo pedido: su nombre (para mostrarlo), su tamaño exacto y su sha256 en hexadecimal. */
-export type PostUploadFile = { name: string; size: number; sha256: string };
+/**
+ * Un archivo pedido: su nombre (para mostrarlo), su tamaño exacto y su sha256 en hexadecimal
+ * (obligatorio hasta `POST_UPLOAD.sha256UpToBytes`; sobre eso, opcional).
+ */
+export type PostUploadFile = { name: string; size: number; sha256?: string | undefined };
 
 /**
  * La respuesta por archivo, en el orden pedido: `upload` con su URL de `PUT` (y el id de la subida,
@@ -89,7 +101,8 @@ const byteLength = (text: string) =>
 type CheckedFile = {
   name: string;
   size: number;
-  sha256: string;
+  /** `null`: un archivo grande sin sha256 (lo calcula el worker). */
+  sha256: string | null;
   kind: MediaKind;
   mime: string;
   extension: string;
@@ -126,10 +139,21 @@ function checkFile(
   if (file.size > max) {
     throw tooLarge(`${short} pasa de ${mb(max)}`, { name: short, size: file.size, maxBytes: max });
   }
+  if (file.sha256 === undefined || file.sha256 === "") {
+    if (file.size <= POST_UPLOAD.sha256UpToBytes) {
+      throw invalid(`${short}: falta su sha256 (es obligatorio hasta 100 MB)`, { name: short });
+    }
+    return { name, size: file.size, sha256: null, ...type };
+  }
   const sha256 = file.sha256.toLowerCase();
   if (!SHA256_HEX.test(sha256)) throw invalid(`${short}: sha256 inválido`, { name: short });
   return { name, size: file.size, sha256, ...type };
 }
+
+/** La identidad de un archivo sin sha256 (en vez del hash): este prefijo y el id de su subida. */
+const UPLOAD_IDENTITY = "subida:";
+const uploadIdOf = (identity: string) =>
+  identity.startsWith(UPLOAD_IDENTITY) ? identity.slice(UPLOAD_IDENTITY.length) : undefined;
 
 export type RequestPostUploadsDeps = {
   posts: Pick<PostRepository, "get">;
@@ -139,6 +163,8 @@ export type RequestPostUploadsDeps = {
   maxFileBytes: number;
   /** `MAX_VIDEO_MB` en bytes: el tope de un video (el de la carga, spec F1, D3). */
   maxVideoBytes: number;
+  /** El id de una subida sin sha256, que va en su clave (uuid, como Postgres). */
+  newId: () => string;
   now?: () => Date;
 };
 
@@ -147,7 +173,9 @@ export type RequestPostUploadsDeps = {
  * cada archivo: si ese contenido ya es un medio del post, `existing`; si no, una URL de `PUT` de
  * 6 h firmada con su tipo, su tamaño y su sha256, y su fila en `post_uploads` (pendiente, vence a
  * las 24 h). Pedir otra vez el mismo archivo (una URL vencida, un reintento) reabre su subida con
- * la misma clave. Dos nombres con el mismo contenido son una sola subida. Firmar no habla con R2.
+ * la misma clave. Dos nombres con el mismo contenido son una sola subida. Un archivo de más de
+ * 100 MB sin sha256 es siempre una subida nueva, con la clave de su id (F9-T17): pedirlo otra vez
+ * deja la anterior pendiente hasta que la limpieza la abandone. Firmar no habla con R2.
  * Errores: `POST_UPLOAD_INVALID` (400), `POST_UPLOAD_TOO_LARGE` (413), `POST_ARCHIVED` (409).
  */
 export async function requestPostUploads(
@@ -165,21 +193,27 @@ export async function requestPostUploads(
     });
   }
   const checked = files.map((file) => checkFile(file, deps));
-  // Un contenido, una subida: el primero de cada sha256 decide la clave.
+  // Un contenido, una subida: el primero de cada sha256 decide la clave. Un archivo sin sha256 es
+  // su propia subida (su identidad es el id de la subida, que va en la clave).
+  const identityOf = new Map<CheckedFile, string>();
   const unique = new Map<string, CheckedFile>();
-  for (const file of checked) if (!unique.has(file.sha256)) unique.set(file.sha256, file);
+  for (const file of checked) {
+    const identity = file.sha256 ?? `${UPLOAD_IDENTITY}${deps.newId()}`;
+    identityOf.set(file, identity);
+    if (!unique.has(identity)) unique.set(identity, file);
+  }
 
   // Se firma antes del candado (firmar no habla con R2, pero el candado no espera a nadie).
   const signed = new Map<string, { key: string; upload: SignedUpload }>();
-  for (const file of unique.values()) {
-    const key = postOriginalPath(postId, file.sha256, file.extension);
+  for (const [identity, file] of unique) {
+    const key = postOriginalPath(postId, uploadIdOf(identity) ?? identity, file.extension);
     const upload = await deps.storage.signedUploadUrl(key, {
       contentType: file.mime,
       contentLength: file.size,
-      sha256: file.sha256,
+      ...(file.sha256 === null ? {} : { sha256: file.sha256 }),
       ttlSeconds: POST_UPLOAD.urlTtlSeconds,
     });
-    signed.set(file.sha256, { key, upload });
+    signed.set(identity, { key, upload });
   }
   const expiresAt = new Date(
     (deps.now ?? (() => new Date()))().getTime() + POST_UPLOAD.abandonedAfterMs,
@@ -197,9 +231,12 @@ export async function requestPostUploads(
     const requested = new Set(
       [...signed].filter(([sha]) => !originals.has(sha)).map(([, target]) => target.key),
     );
-    // Lo que ya ocupa un lugar: los medios guardados y las subidas pendientes que no se repiten.
+    // Lo que ya ocupa un lugar: los medios guardados y las subidas pendientes (o subidas y por
+    // revisar en el worker) que no se repiten.
     const pendingOthers = uploads.filter(
-      (upload) => upload.status === "pending" && !requested.has(upload.objectPath),
+      (upload) =>
+        (upload.status === "pending" || upload.status === "uploaded") &&
+        !requested.has(upload.objectPath),
     ).length;
     if (originals.size + pendingOthers + requested.size > POST_UPLOAD.maxMediaPerPost) {
       throw invalid(`Un post tiene hasta ${POST_UPLOAD.maxMediaPerPost} medios`, {
@@ -216,9 +253,11 @@ export async function requestPostUploads(
       }
       const key = signed.get(sha)?.key ?? "";
       const previous = byPath.get(key);
+      const id = uploadIdOf(sha);
       const upload =
         previous === undefined
           ? await postUploads.create({
+              ...(id === undefined ? {} : { id }),
               postId,
               objectPath: key,
               expectedBytes: file.size,
@@ -232,11 +271,12 @@ export async function requestPostUploads(
   });
 
   const uploads = checked.map((file): PostUploadTarget => {
-    const entry = bySha.get(file.sha256);
+    const identity = identityOf.get(file) ?? "";
+    const entry = bySha.get(identity);
     if (entry !== undefined && "mediaId" in entry) {
       return { status: "existing", name: file.name, mediaId: entry.mediaId };
     }
-    const target = signed.get(file.sha256);
+    const target = signed.get(identity);
     if (entry === undefined || target === undefined) throw postNotFound(postId);
     return { status: "upload", name: file.name, uploadId: entry.upload.id, ...target.upload };
   });
@@ -245,6 +285,16 @@ export async function requestPostUploads(
 
 /** La clave de un original de un post: su sha256 y su extensión (las que armó `requestPostUploads`). */
 const ORIGINAL_KEY = /^posts\/[^/]+\/original\/([0-9a-f]{64})\.([a-z0-9]+)$/;
+
+/** La clave de un original grande sin sha256: el id de su subida (uuid) y su extensión (F9-T17). */
+const UPLOAD_KEY =
+  /^posts\/[^/]+\/original\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([a-z0-9]+)$/;
+
+/** El tipo de un original por la extensión de su clave (`undefined` si no es de un original). */
+const typeOfKey = (objectPath: string) => {
+  const extension = (ORIGINAL_KEY.exec(objectPath) ?? UPLOAD_KEY.exec(objectPath))?.[2];
+  return extension === undefined ? undefined : POST_MEDIA_TYPES[extension];
+};
 
 export type CompletePostUploadsDeps = {
   posts: Pick<PostRepository, "get">;
@@ -259,6 +309,11 @@ export type CompletePostUploadsResult = {
   completed: string[];
   /** Subidas pendientes cuyo archivo todavía no está en R2 (o tiene otro tamaño). */
   missing: string[];
+  /**
+   * Subidas grandes sin sha256 que llegaron completas (F9-T17): quedan `uploaded` y el worker las
+   * hashea, crea su medio y deduplica (`post.media`).
+   */
+  uploaded: string[];
   /** Los originales del post, en orden. */
   media: MediaRecord[];
 };
@@ -267,9 +322,11 @@ export type CompletePostUploadsResult = {
  * Termina las subidas de un post (`POST /api/posts/:id/uploads/complete`): revisa en R2 (un solo
  * `list`) cuáles de las pendientes llegaron con su tamaño, crea sus medios originales (en el orden
  * en que se pidieron, después de los que ya tenía) y las marca `completed`. Las que faltan siguen
- * pendientes: el cliente las sube y vuelve a llamar (avance y reintento). Si el post tiene medios,
- * encola `post.media` (`singletonKey = postId`) para armar sus variantes; llamar de nuevo con
- * nada pendiente lo vuelve a encolar (repara un encolado que falló), y el job salta lo hecho.
+ * pendientes: el cliente las sube y vuelve a llamar (avance y reintento). Una subida grande sin
+ * sha256 que llegó queda `uploaded` (F9-T17): su medio lo crea el worker. Si el post tiene medios o
+ * subidas `uploaded`, encola `post.media` (`singletonKey = postId`) para armar sus variantes;
+ * llamar de nuevo con nada pendiente lo vuelve a encolar (repara un encolado que falló), y el job
+ * salta lo hecho.
  */
 export async function completePostUploads(
   deps: CompletePostUploadsDeps,
@@ -294,8 +351,23 @@ export async function completePostUploads(
     let nextOrder = originals.reduce((max, item) => Math.max(max, item.sortOrder + 1), 0);
     const completed: string[] = [];
     const missing: string[] = [];
+    const uploaded: string[] = [];
+    let waiting = false;
     for (const upload of await postUploads.listByPost(postId)) {
+      if (upload.status === "uploaded") waiting = true;
       if (upload.status !== "pending") continue;
+      if (UPLOAD_KEY.test(upload.objectPath)) {
+        // Grande y sin sha256: si llegó con su tamaño, la revisa el worker.
+        if (
+          typeOfKey(upload.objectPath) !== undefined &&
+          listed.get(upload.objectPath) === upload.expectedBytes &&
+          (await postUploads.markUploaded(upload.id))
+        ) {
+          uploaded.push(upload.id);
+          waiting = true;
+        } else missing.push(upload.id);
+        continue;
+      }
       const match = ORIGINAL_KEY.exec(upload.objectPath);
       const type = match?.[2] === undefined ? undefined : POST_MEDIA_TYPES[match[2]];
       const sha256 = match?.[1];
@@ -325,13 +397,20 @@ export async function completePostUploads(
       await postUploads.markCompleted(upload.id);
       completed.push(upload.id);
     }
-    return { completed, missing, media: await media.listOriginals(postSubject(postId)) };
+    return {
+      completed,
+      missing,
+      uploaded,
+      waiting,
+      media: await media.listOriginals(postSubject(postId)),
+    };
   });
 
-  if (result.media.length > 0) {
+  const { waiting, ...rest } = result;
+  if (rest.media.length > 0 || waiting) {
     await deps.queue.enqueue("post.media", { postId }, { singletonKey: postId });
   }
-  return { post, ...result };
+  return { post, ...rest };
 }
 
 export type CloseAbandonedPostUploadsDeps = {
@@ -386,4 +465,95 @@ export async function closeAbandonedPostUploads(
     }
   }
   return { abandoned, failed };
+}
+
+export type FinalizePostUploadsDeps = {
+  posts: Pick<PostRepository, "get">;
+  postLock: PostLock;
+  storage: Pick<MediaStorage, "getStream" | "delete">;
+  /** sha256 hexadecimal de un archivo leído en streaming (core no usa `node:crypto`). */
+  sha256Stream: (stream: AsyncIterable<Uint8Array>) => Promise<string>;
+};
+
+export type FinalizePostUploadsResult = {
+  /** Subidas que quedaron como medios nuevos. */
+  created: string[];
+  /** Subidas cuyo contenido ya era un medio del post: su objeto se borró de R2. */
+  duplicates: string[];
+  /** Subidas cuyo archivo ya no estaba en R2: quedan `abandoned`. */
+  missing: string[];
+};
+
+/**
+ * Las subidas grandes sin sha256 de un post (F9-T17, ADR-0025 punto 2), al empezar `post.media`:
+ * por cada una en `uploaded`, lee el archivo de R2 en streaming y calcula su sha256 (fuera del
+ * candado), y en el candado del post vuelve a mirar que siga `uploaded` y busca ese contenido entre
+ * los originales del post. Si no estaba, crea el medio con la clave de la subida y la marca
+ * `completed`. Si ya estaba (el único `(post_id, checksum)`), borra de R2 el objeto nuevo (fuera
+ * del candado; si falla, el error sube, la subida sigue `uploaded` y el job la reintenta) y recién
+ * entonces la marca `completed`. Un archivo que ya no está en R2 deja la subida `abandoned`. Un
+ * error de R2 o de la base sube (el job reintenta); al apagar, `MEDIA_ABORTED`.
+ */
+export async function finalizePostUploads(
+  deps: FinalizePostUploadsDeps,
+  { postId, signal }: { postId: string; signal?: AbortSignalLike },
+): Promise<FinalizePostUploadsResult> {
+  const result: FinalizePostUploadsResult = { created: [], duplicates: [], missing: [] };
+  if ((await deps.posts.get(postId)) === null) return result;
+  const waiting = (
+    await deps.postLock.run(postId, ({ postUploads }) => postUploads.listByPost(postId))
+  ).filter((upload) => upload.status === "uploaded");
+
+  for (const upload of waiting) {
+    if (signal?.aborted) {
+      throw new AppError("MEDIA_ABORTED", "Se cortó el procesamiento de medios", {
+        retriable: true,
+      });
+    }
+    const type = typeOfKey(upload.objectPath);
+    let sha256: string;
+    try {
+      const stream = await deps.storage.getStream(
+        upload.objectPath,
+        signal === undefined ? {} : { signal },
+      );
+      sha256 = (await deps.sha256Stream(stream)).toLowerCase();
+    } catch (error) {
+      if (!isAppError(error) || error.code !== "STORAGE_NOT_FOUND") throw error;
+      await deps.postLock.run(postId, ({ postUploads }) => postUploads.markAbandoned(upload.id));
+      result.missing.push(upload.id);
+      continue;
+    }
+
+    const outcome = await deps.postLock.run(postId, async ({ posts, postUploads, media }) => {
+      const current = await postUploads.get(upload.id);
+      if (current?.status !== "uploaded") return "skipped" as const;
+      const post = await posts.get(postId);
+      if (post === null || type === undefined) return "skipped" as const;
+      const originals = await media.listOriginals(postSubject(postId));
+      if (originals.some((item) => item.checksum === sha256)) return "duplicate" as const;
+      await media.create({
+        listingId: null,
+        postId,
+        brokerId: post.brokerId,
+        kind: type.kind,
+        storagePath: current.objectPath,
+        mime: type.mime,
+        bytes: current.expectedBytes,
+        checksum: sha256,
+        sortOrder: originals.reduce((max, item) => Math.max(max, item.sortOrder + 1), 0),
+        isCover: false,
+      });
+      await postUploads.markCompleted(current.id);
+      return "created" as const;
+    });
+    if (outcome === "created") result.created.push(upload.id);
+    if (outcome !== "duplicate") continue;
+    // El mismo contenido ya es un medio del post: el objeto nuevo sobra. Se borra antes de cerrar la
+    // subida, así un fallo la deja `uploaded` y el reintento lo vuelve a intentar.
+    await deps.storage.delete(upload.objectPath);
+    await deps.postLock.run(postId, ({ postUploads }) => postUploads.markCompleted(upload.id));
+    result.duplicates.push(upload.id);
+  }
+  return result;
 }

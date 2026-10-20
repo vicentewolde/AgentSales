@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   ALL_SCOPE,
   type BrokerRepository,
@@ -656,6 +657,48 @@ export function subjectRepositoriesContract(
         expect(await repos.postUploads.markCompleted(upload.id)).toBe(true);
         expect((await repos.postUploads.reopen(upload.id, later))?.status).toBe("pending");
         expect(await repos.postUploads.reopen(repos.missingId, later)).toBeNull();
+      });
+
+      it("con su id en la clave: pending → uploaded → completed, o uploaded → abandoned (F9-T17)", async () => {
+        const post = await newPost();
+        const later = new Date(Date.now() + 3_600_000);
+        const id = randomUUID();
+        const upload = await repos.postUploads.create({
+          id,
+          postId: post.id,
+          objectPath: `posts/${post.id}/original/${id}.mp4`,
+          expectedBytes: 200 * 1024 * 1024,
+          expiresAt: later,
+        });
+        expect(upload).toMatchObject({ id, status: "pending" });
+        await expect(
+          repos.postUploads.create({
+            id,
+            postId: post.id,
+            objectPath: `posts/${post.id}/original/${id}-otra.mp4`,
+            expectedBytes: 1,
+            expiresAt: later,
+          }),
+        ).rejects.toMatchObject({ code: "POST_UPLOAD_CONFLICT" });
+        expect(await repos.postUploads.markUploaded(id)).toBe(true);
+        expect(await repos.postUploads.markUploaded(id)).toBe(false);
+        expect((await repos.postUploads.get(id))?.status).toBe("uploaded");
+        expect(await repos.postUploads.markCompleted(id)).toBe(true);
+        expect((await repos.postUploads.get(id))?.status).toBe("completed");
+        expect(await repos.postUploads.markAbandoned(id)).toBe(false);
+
+        const other = randomUUID();
+        await repos.postUploads.create({
+          id: other,
+          postId: post.id,
+          objectPath: `posts/${post.id}/original/${other}.mov`,
+          expectedBytes: 1,
+          expiresAt: later,
+        });
+        expect(await repos.postUploads.markUploaded(other)).toBe(true);
+        expect(await repos.postUploads.markAbandoned(other)).toBe(true);
+        expect((await repos.postUploads.get(other))?.status).toBe("abandoned");
+        expect(await repos.postUploads.markUploaded(repos.missingId)).toBe(false);
       });
     });
 

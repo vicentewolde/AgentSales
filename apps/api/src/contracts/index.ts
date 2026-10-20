@@ -1387,12 +1387,18 @@ export type PostListResponse = z.infer<typeof postListResponseSchema>;
 
 /**
  * `POST /posts/:id/uploads` (ADR-0025): cada archivo con su nombre, su tamaño exacto y su sha256 en
- * hexadecimal (obligatorio: es su identidad, a diferencia de la carga). Tipos y topes, en core.
+ * hexadecimal: obligatorio hasta 100 MB (`UPLOAD_SHA256_UP_TO_BYTES`, es su identidad) y opcional
+ * sobre eso (F9-T17: el navegador no puede hashear en streaming; lo calcula el worker). Tipos y
+ * topes, en core.
  */
 export const postUploadRequestSchema = z
   .object({
     files: z
-      .array(z.object({ name: uploadName, size: uploadSize, sha256: z.string().max(64) }).strict())
+      .array(
+        z
+          .object({ name: uploadName, size: uploadSize, sha256: z.string().max(64).optional() })
+          .strict(),
+      )
       .max(2 * POST_UPLOAD.maxFilesPerRequest),
   })
   .strict();
@@ -1430,6 +1436,11 @@ export const postUploadCompleteResponseSchema = z.object({
   post: postJsonSchema,
   completed: z.array(z.string()),
   missing: z.array(z.string()),
+  /**
+   * Las subidas grandes sin sha256 que llegaron (F9-T17): el worker calcula su sha256, crea su
+   * medio y deduplica. Un servidor anterior no lo manda: se lee vacío.
+   */
+  uploaded: z.array(z.string()).default([]),
   media: z.array(postMediaItemSchema),
 });
 export type PostUploadCompleteResponse = z.infer<typeof postUploadCompleteResponseSchema>;
