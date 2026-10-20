@@ -103,6 +103,9 @@ const CONFLICTS = new Set([
   // F9-T06 (ADR-0029 punto 8): una publicación con resultado dudoso espera que el operador diga si
   // salió (descartar, reintentar, programar, quitar la aprobación, cerrar o archivar).
   "OUTCOME_UNKNOWN_PENDING",
+  // F9-T11: pedir los textos de un post de una marca sin redes (ni cuentas ni cadencia en su
+  // perfil): se conecta una cuenta o se define la cadencia y se vuelve a pedir.
+  "POST_NO_PLATFORMS",
   // F7-T12 (spec F7 §4.7): el corredor llegó a su tope de IA del mes (subir el tope o esperar).
   "LLM_BUDGET_EXCEEDED",
   // F8 (spec §4.14): empezar una carga a la que le faltan archivos (subirlos y volver a empezar).
@@ -209,6 +212,9 @@ const BUSY = new Set([
  * repositorio de publicaciones recibe de core (F3-T15). Son 500 aunque terminen en `_INVALID`.
  */
 const SERVER_INVALID = new Set([
+  // F9-T11: revisar un texto de post sin el perfil editorial es un error de cableado (`postReview`),
+  // no un servicio caído: 500, no el 503 de `*_UNAVAILABLE`.
+  "POST_REVIEW_UNAVAILABLE",
   "JOB_PAYLOAD_INVALID",
   "IMPORT_RUN_INVALID",
   "PUBLICATION_EVENT_INVALID",
