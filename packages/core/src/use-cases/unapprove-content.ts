@@ -43,10 +43,10 @@ export async function unapproveContent(
   deps: UnapproveContentDeps,
   { contentId, actor }: { contentId: string; actor: PublicationActor },
 ): Promise<UnapprovedContent> {
-  const { subject, definitions } = await beforeContentLock(deps, contentId);
+  const before = await beforeContentLock(deps, contentId);
 
-  return runOnSubject(deps, subject, async (locked) => {
-    const found = await lockedCurrentContent(locked, contentId, definitions);
+  return runOnSubject(deps, before.subject, async (locked) => {
+    const found = await lockedCurrentContent(locked, contentId, before);
     const { repos, content } = found;
     if (content.status !== "approved") {
       throw new AppError("CONTENT_NOT_APPROVED", "Ese texto no está aprobado", {

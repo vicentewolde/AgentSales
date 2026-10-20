@@ -80,8 +80,8 @@ export const JOB_PAYLOADS = {
   /**
    * Los textos de un post (spec F9 §4.9, ADR-0030): la corrida de textos del post guarda lo pedido;
    * el job lleva su id. Lo encolan `requestContentRun` con un post y el worker al arrancar
-   * (`requeueQueuedPostRuns`); la cola y su handler llegan con F9-T11 (hasta entonces, encolarlo da
-   * `QUEUE_UNAVAILABLE`). Nunca va por `content.prepare`, que es de avisos.
+   * (`requeueQueuedPostRuns`); lo atiende `draftPost` (F9-T11). Nunca va por `content.prepare`,
+   * que es de avisos.
    */
   "post.draft": z.object({ contentRunId: z.uuid() }),
   /**
