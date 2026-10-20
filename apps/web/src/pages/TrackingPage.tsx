@@ -37,9 +37,9 @@ const ACTION_TEXT: Readonly<Record<AgendaAction, string>> = {
   review: "Revisa y aprueba el texto en Contenido",
   relist: "Republícala desde Contenido",
   sync: "Usa Actualizar en Contenido para leer su estado",
-  // F9-T08: lo de los posts y las cuentas (sus botones llegan con F9-T17; mientras, la CLI).
-  resolve: "Revisa la red y di si salió o no (agentsales publications resolve)",
-  confirm: "Publícala a mano en la red y confirma con el enlace",
+  // F9-T08 y T17: lo de los posts (en su página de Contenido) y las cuentas.
+  resolve: "Revisa la red y di si salió o no desde el post, en Contenido",
+  confirm: "Publícala a mano en la red y confirma con el enlace desde el post, en Contenido",
   reconnect: "Vuelve a conectar la cuenta en Cuentas",
   backup:
     "En el Mac, corre pnpm db:backup en tu terminal; en el servidor lo hace el worker al encenderse y a las 13:00 (el error está en sus logs)",
@@ -78,12 +78,15 @@ function AgendaEntry({ item }: { item: AgendaItem }) {
   const when = itemWhen(item);
   return (
     <li className="text-sm">
-      {item.listingId === null ? (
-        // Un post (con su tema) o una cuenta (con su nombre): todavía sin página propia (F9-T17).
-        <span className="font-semibold">
+      {item.postId !== null ? (
+        // Un post, con su tema: su página de Contenido (F9-T17).
+        <Link to={`/contenido/${item.postId}`} className="font-semibold underline">
           {item.title ?? item.externalRef}
-          {item.postId !== null && <span className="font-normal text-slate-500"> (post)</span>}
-        </span>
+          <span className="font-normal text-slate-500"> (post)</span>
+        </Link>
+      ) : item.listingId === null ? (
+        // Una cuenta (con su nombre): sin página propia.
+        <span className="font-semibold">{item.title ?? item.externalRef}</span>
       ) : (
         <Link to={`/propiedades/${item.listingId}`} className="font-semibold underline">
           {item.externalRef}

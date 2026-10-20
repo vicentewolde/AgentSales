@@ -8,6 +8,7 @@ import { OnboardingList } from "../components/brokers/OnboardingList.js";
 import { OneTimeLink } from "../components/brokers/OneTimeLink.js";
 import { SpendLine } from "../components/brokers/SpendLine.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { EditorialProfileSection } from "../components/posts/EditorialProfileForm.js";
 import { useBrokerDetail, useUpdateBroker } from "../queries/brokers.js";
 import { useUsage } from "../queries/usage.js";
 import { useInviteUser, useResetUser, useSetUserDisabled, useUsers } from "../queries/users.js";
@@ -213,6 +214,7 @@ export function BrokerPage() {
         </p>
       </section>
       <LogoAndTemplate broker={broker} />
+      <EditorialProfileSection brokerId={broker.id} />
       <BrokerUsers key={broker.id} brokerId={broker.id} />
     </div>
   );

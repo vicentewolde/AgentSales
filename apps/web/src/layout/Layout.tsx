@@ -27,6 +27,8 @@ export const MENU: readonly MenuItem[] = [
   // Sin `end`: también queda marcada en el detalle (`/propiedades/:id`).
   { label: "Propiedades", to: "/propiedades", listings: true },
   { label: "Importar", to: "/importar", listings: true },
+  // F9-T17: los posts, para marcas y corredores (sin `end`: también el detalle).
+  { label: "Contenido", to: "/contenido" },
   { label: "Seguimiento", to: "/seguimiento" },
   { label: "Cuentas", to: "/cuentas" },
   { label: "Corredores", to: "/corredores", needs: "brokers.create" },

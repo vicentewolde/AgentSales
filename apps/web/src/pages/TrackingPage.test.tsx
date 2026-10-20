@@ -79,7 +79,7 @@ describe("la agenda", () => {
     expect(backup.textContent).toContain("más de 48 h");
   });
 
-  it("un post va con su tema (sin enlace a una propiedad) y lo nuevo de F9 dice qué hacer", () => {
+  it("un post va con su tema y enlaza a su página de Contenido (F9-T17); lo nuevo de F9 dice qué hacer", () => {
     render(
       <MemoryRouter>
         <Agenda
@@ -114,7 +114,7 @@ describe("la agenda", () => {
     const unknown = screen.getByRole("region", { name: AGENDA_KIND_TEXT.outcome_unknown });
     expect(unknown.textContent).toContain("Bastidores (post)");
     expect(unknown.textContent).toContain("di si salió o no");
-    expect(within(unknown).queryByRole("link")).toBeNull();
+    expect(within(unknown).getByRole("link").getAttribute("href")).toBe("/contenido/post-1");
     const token = screen.getByRole("region", { name: AGENDA_KIND_TEXT.token_expiring });
     expect(token.textContent).toContain("Vinny en LinkedIn");
     expect(token.textContent).toContain("vence en 3 días");
