@@ -736,6 +736,7 @@ export {
   AGENDA_ACTIONS,
   AGENDA_KINDS,
   AGENDA_UPCOMING_MS,
+  type AgendaAccount,
   type AgendaAction,
   type AgendaInput,
   type AgendaItem,
@@ -747,11 +748,19 @@ export {
 } from "./tracking/agenda.js";
 export { isManualTask, manualTasksOf } from "./tracking/manual-tasks.js";
 export {
+  type TrackingPostRow,
   type TrackingPublication,
   type TrackingRow,
+  trackingPostRow,
   trackingPublication,
   trackingRow,
 } from "./tracking/row.js";
+export {
+  type AccountTokenExpiry,
+  accountTokenExpiry,
+  NON_RENEWING_TOKEN_PLATFORMS,
+  TOKEN_EXPIRY_NOTICE_DAYS,
+} from "./tracking/token-expiry.js";
 export {
   type ApproveContentDeps,
   type ApprovedContent,

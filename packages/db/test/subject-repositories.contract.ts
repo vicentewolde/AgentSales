@@ -352,6 +352,47 @@ export function subjectRepositoriesContract(
         });
         expect(due.map((item) => item.id)).toContain(publication.id);
       });
+
+      it("listForTracking trae las de esos posts junto a las de esos avisos (F9-T08)", async () => {
+        const { post, texts, accountId } = await postWithTexts();
+        const otherPost = await postWithTexts();
+        const input = {
+          platformAccountId: accountId,
+          platform: "instagram" as const,
+          format: "post" as const,
+          contentId: texts[0]?.id ?? "",
+          mediaIds: [],
+        };
+        const mine = await repos.publications.create(
+          { ...input, postId: post.id },
+          { actor: "system" },
+        );
+        const theirs = await repos.publications.create(
+          { ...input, postId: otherPost.post.id, platformAccountId: otherPost.accountId },
+          { actor: "system" },
+        );
+        const since = new Date(Date.now() - 60_000);
+        const found = await repos.publications.listForTracking({
+          listingIds: [],
+          postIds: [post.id],
+          since,
+        });
+        expect(found.map((item) => item.id)).toEqual([mine.id]);
+        expect(found[0]?.subject).toEqual(postSubject(post.id));
+        expect(
+          (
+            await repos.publications.listForTracking({
+              listingIds: [],
+              postIds: [post.id, otherPost.post.id],
+              since,
+            })
+          ).map((item) => item.id),
+        ).toEqual(expect.arrayContaining([mine.id, theirs.id]));
+        // Sin posts, las de posts no aparecen (los avisos de siempre).
+        expect(
+          await repos.publications.listForTracking({ listingIds: [repos.missingId], since }),
+        ).toEqual([]);
+      });
     });
 
     describe("medios de un post", () => {

@@ -338,7 +338,108 @@ describe("las listas sin nada ajeno", () => {
     const adminAgenda = (await (await s.admin("/agenda")).json()) as { items: { kind: string }[] };
     expect(adminAgenda.items.some((item) => item.kind === "backup")).toBe(true);
   });
+
+  it("los posts y las cuentas de otro corredor no aparecen en su agenda ni en su seguimiento (F9-T08)", async () => {
+    const s = await setup();
+    const mine = await scheduledPostPublication(s.deps, s.mine);
+    const theirs = await scheduledPostPublication(s.deps, s.theirs);
+    const myAccount = await linkedinExpiringSoon(s.deps, s.mine.broker.id, "mio");
+    await linkedinExpiringSoon(s.deps, s.theirs.broker.id, "ajeno");
+
+    type AgendaBody = {
+      items: { kind: string; postId: string | null; accountId: string | null; title: string }[];
+    };
+    const agenda = (await (await s.broker("/agenda")).json()) as AgendaBody;
+    expect(
+      agenda.items.filter((item) => item.postId !== null).map((item) => [item.kind, item.postId]),
+    ).toEqual([["upcoming", s.mine.post.id]]);
+    expect(agenda.items.find((item) => item.postId !== null)?.title).toBe("Post mio");
+    expect(
+      agenda.items.filter((item) => item.kind === "token_expiring").map((item) => item.accountId),
+    ).toEqual([myAccount.id]);
+
+    const tracking = (await (await s.broker("/tracking")).json()) as {
+      posts: { post: { id: string }; cells: { instagram: { id: string }[] } }[];
+    };
+    expect(tracking.posts.map((row) => row.post.id)).toEqual([s.mine.post.id]);
+    expect(tracking.posts[0]?.cells.instagram.map((cell) => cell.id)).toEqual([mine.id]);
+
+    // El administrador ve los dos, y con ?broker solo los de ese corredor.
+    const admin = (await (await s.admin("/agenda")).json()) as AgendaBody;
+    expect(admin.items.filter((item) => item.postId !== null).map((item) => item.postId)).toEqual(
+      expect.arrayContaining([s.mine.post.id, s.theirs.post.id]),
+    );
+    const filtered = (await (await s.admin("/tracking?broker=ajeno")).json()) as {
+      posts: { post: { id: string }; cells: { instagram: { id: string }[] } }[];
+    };
+    expect(filtered.posts.map((row) => row.post.id)).toEqual([s.theirs.post.id]);
+    expect(filtered.posts[0]?.cells.instagram.map((cell) => cell.id)).toEqual([theirs.id]);
+  });
 });
+
+/** Una publicación de Instagram del post del corredor, programada en una hora (F9-T08). */
+async function scheduledPostPublication(
+  deps: Awaited<ReturnType<typeof setup>>["deps"],
+  owned: Awaited<ReturnType<typeof ownedBy>>,
+) {
+  const run = await deps.contentRuns.create({ postId: owned.post.id, texts: true });
+  await deps.contentRuns.markRunning(run.id);
+  await deps.contentRuns.markSucceeded(run.id, {
+    report: { warnings: [] },
+    contents: [
+      {
+        platform: "instagram",
+        title: null,
+        body: "Texto del post",
+        hashtags: [],
+        llmProvider: "fake",
+        llmModel: "fake",
+        promptVersion: "v1",
+        rawOutput: null,
+      },
+    ],
+  });
+  const [content] = await deps.contents.listCurrent(postSubject(owned.post.id));
+  return deps.postLock.run(owned.post.id, async (repos) => {
+    const created = await repos.publications.create(
+      {
+        postId: owned.post.id,
+        platformAccountId: owned.account.id,
+        platform: "instagram",
+        format: "post",
+        contentId: content?.id ?? "",
+        mediaIds: [],
+      },
+      { actor: "system" },
+    );
+    return repos.publications.transition(
+      created.id,
+      {
+        from: "approved",
+        to: "scheduled",
+        changes: { dryRun: true, scheduledAt: new Date(Date.now() + 60 * 60 * 1000) },
+      },
+      { actor: "system" },
+    );
+  });
+}
+
+/** Una cuenta de LinkedIn cuyo token vence en 3 días (no se renueva sola). */
+function linkedinExpiringSoon(
+  deps: Awaited<ReturnType<typeof setup>>["deps"],
+  brokerId: string,
+  slug: string,
+) {
+  return deps.platformAccounts.upsertConnected({
+    brokerId,
+    platform: "linkedin",
+    externalAccountId: `li-${slug}`,
+    displayName: `LinkedIn ${slug}`,
+    tokenExpiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+    meta: { mode: "manual" },
+    credentials: { accessToken: `li-token-${slug}` },
+  });
+}
 
 describe("programar y cargar", () => {
   it("programar con una propiedad ajena no programa ninguna", async () => {

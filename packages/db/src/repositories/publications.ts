@@ -334,19 +334,27 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
       });
     },
 
-    listForTracking({ listingIds, since }) {
-      if (listingIds.length === 0) return Promise.resolve([]);
+    listForTracking({ listingIds, postIds = [], since }) {
+      if (listingIds.length === 0 && postIds.length === 0) return Promise.resolve([]);
+      const ofSubjects = [
+        ...(listingIds.length === 0 ? [] : [inArray(publications.listingId, [...listingIds])]),
+        ...(postIds.length === 0 ? [] : [inArray(publications.postId, [...postIds])]),
+      ];
       return withDbErrors(async () => {
         const rows = await db
           .select()
           .from(publications)
           .where(
-            and(
-              inArray(publications.listingId, [...listingIds]),
-              or(sql`${activeStatus}`, gte(publications.updatedAt, since)),
-            ),
+            and(or(...ofSubjects), or(sql`${activeStatus}`, gte(publications.updatedAt, since))),
           )
-          .orderBy(asc(publications.listingId), asc(publications.createdAt), asc(publications.id));
+          // Los avisos primero (en Postgres `NULL` va al final de un orden ascendente), después
+          // los posts.
+          .orderBy(
+            asc(publications.listingId),
+            asc(publications.postId),
+            asc(publications.createdAt),
+            asc(publications.id),
+          );
         return rows.map(toPublication);
       });
     },

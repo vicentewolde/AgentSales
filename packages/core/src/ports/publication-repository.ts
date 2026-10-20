@@ -167,10 +167,15 @@ export interface PublicationRepository {
     excludePlatforms: readonly Platform[];
   }): Promise<Publication[]>;
   /**
-   * Las de esos avisos que están activas o cambiaron desde `since` (la vista de seguimiento, spec
-   * F6 §4.9), por aviso y fecha de creación.
+   * Las de esos avisos y posts que están activas o cambiaron desde `since` (la vista de
+   * seguimiento, spec F6 §4.9; los posts desde F9-T08), por aviso, después por post y fecha de
+   * creación. Sin ids no consulta.
    */
-  listForTracking(query: { listingIds: readonly string[]; since: Date }): Promise<Publication[]>;
+  listForTracking(query: {
+    listingIds: readonly string[];
+    postIds?: readonly string[];
+    since: Date;
+  }): Promise<Publication[]>;
   /**
    * Cambia el estado de `from` a `to` con los campos de `changes` y anota el evento, todo junto.
    * Devuelve la publicación ya cambiada.
