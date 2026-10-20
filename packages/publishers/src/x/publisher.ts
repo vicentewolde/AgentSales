@@ -305,14 +305,24 @@ export function createXPublisher(options: XPublisherOptions = {}): DirectPublish
       }
       const provider: AccessTokenProvider = ctx.accessToken ?? platformContextOf(ctx).accessToken;
       const signal = ctx.signal === undefined ? {} : { signal: ctx.signal };
+      /** Los errores al renovar tras un 401: prueban que el post no se creó. */
+      const renewFailures = new Set<unknown>();
       const token = {
         current: await provider(signal),
         // Después de un 401: un token nuevo, una vez. Si no se puede, no salió nada.
         renew: async (call: string) => {
           try {
             token.current = await provider({ ...signal, rejectedToken: token.current });
-          } catch {
-            throw X_ERRORS.authInvalidAfterRefresh();
+          } catch (error) {
+            // El 401 ya probó que no salió nada: el error de renovar es "no enviado".
+            // Solo un refresh token rechazado pide reconectar; lo demás (la red, un 5xx, un 429,
+            // el candado ocupado) sube tal cual, con su `retriable`.
+            const failure =
+              isAppError(error) && error.code === "TOKEN_REFRESH_REJECTED"
+                ? X_ERRORS.authInvalidAfterRefresh()
+                : error;
+            renewFailures.add(failure);
+            throw failure;
           }
           options.onNote?.({
             publicationId: input.publicationId,
@@ -328,7 +338,7 @@ export function createXPublisher(options: XPublisherOptions = {}): DirectPublish
       const username = usernameOf(ctx);
       const sent = await sendOnce(ctx, {
         progress: media.progress,
-        notSent: isXNotSent,
+        notSent: (error) => isXNotSent(error) || renewFailures.has(error),
         send: async () => {
           const post = { text: input.caption, mediaIds: media.ids };
           let created: { id: string };

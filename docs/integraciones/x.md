@@ -37,6 +37,11 @@ Confirmar o resolver a mano acepta el enlace del post (`x.com` o `twitter.com`, 
 
 **Lo que queda para S4 (y después):** el esquema exacto de la autenticación del cliente, si el refresh token rota y la forma del error con uno usado; el texto y la ventana del 403 por texto repetido; si un 4xx o la subida de medios cobran; si la URL de un medio cuenta como enlace; si 720×1280 pasa el máximo de 1280×1024; y el reply a uno mismo (sin hilos en F9). `social:smoke --platform x` no se construyó: S4 se hace a mano, como S5.
 
+**Puntos de S4 y límites conocidos (revisión de F9-T16):**
+- **El texto exacto del 403 por texto repetido.** Hoy se reconoce con `/duplicate/i` en el título, el detalle o los errores (`isDuplicateContent`). Si X usa otra frase, ese 403 cae en `X_FORBIDDEN` ("no enviado") en vez de quedar dudoso: S4 debe anotar el cuerpo real y, si cambia, ajustar el patrón antes de publicar de verdad.
+- **El tope de gasto no es atómico.** La suma del mes (`sumCostUsdSince`) y el `setCostUsd` del intento no van en una transacción ni con candado por cuenta. Dos publicaciones simultáneas de la misma cuenta podrían pasarse del tope por el costo de un post (US$0,015 o US$0,20). Con el uso de hoy (pocos posts al día) se acepta, y el tope duro de la consola de X sigue mandando.
+- **El video se baja entero a memoria.** `downloadXMedia` lee el video de R2 completo antes de subirlo por partes, con un tope de 512 MB (`X_LIMITS.videoBytes`). La variante `x_video` (720p) queda muy por debajo. Se sugiere bajar el tope (por ejemplo a 200 MB) o subir por trozos desde R2 si se publican videos largos en una máquina con poca memoria.
+
 ## 1. Resumen
 
 - **Mecanismo:** X API v2, `POST https://api.x.com/2/tweets` con un token de usuario (OAuth 2.0 con PKCE, o OAuth 1.0a). No hay SDK obligatorio; basta HTTP. Los medios se suben aparte (`/2/media/upload…`) y se adjuntan por `media_ids`. Madurez media; riesgo **medio-alto** por cambios frecuentes de precio y de política, y por las reglas contra la automatización.

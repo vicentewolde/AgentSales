@@ -1,5 +1,6 @@
 import {
   type AccessTokenProvider,
+  AppError,
   isAppError,
   OUTCOME_UNKNOWN,
   type PlatformAccount,
@@ -402,14 +403,108 @@ describe("createXPublisher: errores", () => {
     expect(provider.calls).toEqual([{}, { rejectedToken: TOKEN }]);
   });
 
-  it("si el token no se puede renovar tras un 401, no salió nada (no dudoso)", async () => {
+  it("tras un 401, un refresh token rechazado pide reconectar y no salió nada (no dudoso)", async () => {
     fakeCreate(() => problem(401, { title: "Unauthorized" }));
-    const ctx = context(null, { accessToken: tokens(new Error("rechazado")).provider });
+    const rejected = new AppError("TOKEN_REFRESH_REJECTED", "rechazado");
+    const ctx = context(null, { accessToken: tokens(rejected).provider });
     const error = await createXPublisher({ api: api() })
       .publish(input(), ctx)
       .catch((caught: unknown) => caught);
     expect(codeOf(error)).toBe("X_AUTH_INVALID");
+    expect(isAppError(error) && error.retriable).toBe(false);
     expect(ctx.progress).toBeNull();
+  });
+
+  it("tras un 401, un fallo pasajero al renovar sube tal cual (reintentable) y no queda dudoso", async () => {
+    fakeCreate(() => problem(401, { title: "Unauthorized" }));
+    const busy = new AppError("ACCOUNT_LOCK_TIMEOUT", "ocupada", { retriable: true });
+    const ctx = context(null, { accessToken: tokens(busy).provider });
+    const error = await createXPublisher({ api: api() })
+      .publish(input(), ctx)
+      .catch((caught: unknown) => caught);
+    expect(error).toBe(busy);
+    expect(isAppError(error) && error.retriable).toBe(true);
+    expect(ctx.progress).toBeNull();
+  });
+
+  it("un segundo 401 seguido después de renovar no se repite: no enviado, sin dudas", async () => {
+    let calls = 0;
+    fakeCreate(() => {
+      calls += 1;
+      return problem(401, { title: "Unauthorized" });
+    });
+    const provider = tokens();
+    const ctx = context(null, { accessToken: provider.provider });
+    const error = await createXPublisher({ api: api() })
+      .publish(input(), ctx)
+      .catch((caught: unknown) => caught);
+    expect(codeOf(error)).toBe("X_AUTH_INVALID");
+    expect(calls).toBe(2);
+    expect(provider.calls).toEqual([{}, { rejectedToken: TOKEN }]);
+    expect(ctx.progress).toBeNull();
+  });
+
+  it("un 401 al subir un medio renueva el token y repite la subida una vez", async () => {
+    fakeR2();
+    let uploads = 0;
+    server.use(
+      http.post(`${API}/2/media/upload`, ({ request }) => {
+        uploads += 1;
+        return request.headers.get("authorization") === `Bearer ${NEW_TOKEN}`
+          ? HttpResponse.json({ data: { id: "901", expires_after_secs: 86400 } })
+          : problem(401, { title: "Unauthorized" });
+      }),
+    );
+    fakeCreate();
+    const provider = tokens();
+    const notes: XPublishNote[] = [];
+    await createXPublisher({ api: api(), onNote: (note) => notes.push(note) }).publish(
+      input({ media: [image(1)] }),
+      context(null, { accessToken: provider.provider }),
+    );
+    expect(uploads).toBe(2);
+    expect(provider.calls).toEqual([{}, { rejectedToken: TOKEN }]);
+    expect(notes).toContainEqual({
+      publicationId: "pub-1",
+      kind: "token_renewed_after_401",
+      call: "mediaUpload",
+    });
+    const create = (await recorded()).find((request) => request.url.pathname === "/2/tweets");
+    expect(create?.authorization).toBe(`Bearer ${NEW_TOKEN}`);
+  });
+
+  it.each([
+    ["429", () => problem(429, { title: "Too Many Requests" })],
+    ["402", () => problem(402, { title: "Payment Required" })],
+  ])("tras un %s, el reintento conserva xMedia y no vuelve a subir los medios", async (_, fail) => {
+    fakeR2();
+    let uploads = 0;
+    server.use(
+      http.post(`${API}/2/media/upload`, () => {
+        uploads += 1;
+        return HttpResponse.json({ data: { id: "901", expires_after_secs: 86400 } });
+      }),
+    );
+    let creates = 0;
+    fakeCreate(() => {
+      creates += 1;
+      return creates === 1 ? fail() : HttpResponse.json({ data: { id: "77" } }, { status: 201 });
+    });
+    const ctx = context();
+    const first = await createXPublisher({ api: api() })
+      .publish(input({ media: [image(1)] }), ctx)
+      .catch((caught: unknown) => caught);
+    expect(isAppError(first)).toBe(true);
+    // `sendOnce` quitó el "enviando" pero dejó los medios subidos.
+    expect(ctx.progress).toEqual({
+      xMedia: { items: [{ mediaId: "img-1", xMediaId: "901" }], expiresAt: expect.any(String) },
+    });
+    const result = await createXPublisher({ api: api() }).publish(
+      input({ media: [image(1)] }),
+      ctx,
+    );
+    expect(result.externalId).toBe("77");
+    expect(uploads).toBe(1);
   });
 
   it("un medio que X rechaza al procesarlo falla antes de 'enviando'", async () => {
