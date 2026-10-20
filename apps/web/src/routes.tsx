@@ -39,6 +39,13 @@ const MyBrandPage = lazy(() =>
 const AccountPage = lazy(() =>
   import("./pages/AccountPage.js").then((module) => ({ default: module.AccountPage })),
 );
+// F9-T17: Contenido (los posts de una marca o corredor).
+const PostsPage = lazy(() =>
+  import("./pages/PostsPage.js").then((module) => ({ default: module.PostsPage })),
+);
+const PostDetailPage = lazy(() =>
+  import("./pages/PostDetailPage.js").then((module) => ({ default: module.PostDetailPage })),
+);
 const ListingDetailPage = lazy(() =>
   import("./pages/ListingDetailPage.js").then((module) => ({ default: module.ListingDetailPage })),
 );
@@ -106,6 +113,9 @@ export const routes: RouteObject[] = [
           // Adonde vuelve el OAuth (`/cuentas?conectada=instagram` o `?error=`, spec F3 §4.6).
           { path: "cuentas", element: <AccountsPage /> },
           { path: "seguimiento", element: <TrackingPage /> },
+          // F9-T17: Contenido (posts de marca) y el detalle de un post.
+          { path: "contenido", element: <PostsPage /> },
+          { path: "contenido/:id", element: <PostDetailPage /> },
           // F7-T18: Corredores (el administrador) y Mi marca (el corredor).
           { path: "corredores", element: <BrokersPage /> },
           { path: "corredores/:id", element: <BrokerPage /> },

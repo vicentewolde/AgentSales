@@ -420,6 +420,8 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
   }
   const publications = createInMemoryPublicationRepository();
   const brokers = overrides.brokers ?? createInMemoryBrokerRepository([], { nextId: randomUUID });
+  // Las subidas de posts: la app las lee y el candado del post las cambia (los mismos datos).
+  const postUploads = createInMemoryPostUploadRepository();
   const deps: Omit<AppDeps, "lock" | "postLock"> & {
     lock?: AppDeps["lock"];
     postLock?: AppDeps["postLock"];
@@ -455,6 +457,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     contentRuns: content.contentRuns,
     contents: content.contents,
     posts,
+    postUploads,
     editorialProfiles: createInMemoryEditorialProfileRepository(),
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
     publications,
@@ -517,7 +520,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     createInMemoryPostLock({
       brokers: deps.brokers,
       posts: deps.posts,
-      postUploads: createInMemoryPostUploadRepository(),
+      postUploads,
       media: deps.media,
       contentRuns: deps.contentRuns,
       contents: deps.contents,

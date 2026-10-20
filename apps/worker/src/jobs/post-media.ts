@@ -1,6 +1,8 @@
 import {
   type AbortSignalLike,
   AppError,
+  type FinalizePostUploadsDeps,
+  finalizePostUploads,
   isAppError,
   type MediaProcessor,
   type ProcessPostMediaDeps,
@@ -28,6 +30,11 @@ export const POST_MEDIA_QUEUE: QueuePolicy = {
 export type PostMediaJobDeps = {
   /** Repositorios y R2 (sin el procesador, que es de cada intento). */
   shared: Omit<ProcessPostMediaDeps, "processor" | "onCleanupFailed">;
+  /**
+   * Las subidas grandes sin sha256 (F9-T17): el candado del post, R2 y el sha256 en streaming. Se
+   * revisan antes de armar las variantes, así su medio nuevo entra en la misma vuelta.
+   */
+  uploads: FinalizePostUploadsDeps;
   /** El procesador de medios de un intento, con su directorio temporal. */
   createProcessor: (workDir: string) => MediaProcessor;
   /** `<workspace>/tmp/content`: el mismo de las corridas (se limpia al arrancar). */
@@ -49,6 +56,14 @@ export function postMediaJob(deps: PostMediaJobDeps): Job {
     queue: POST_MEDIA_QUEUE,
     errorLogFields: (error) => ({ code: codeOf(error) }),
     handler: async ({ postId }, { logger }) => {
+      const finalized = await finalizePostUploads(deps.uploads, { postId, signal: deps.signal });
+      const { created, duplicates, missing } = finalized;
+      if (created.length + duplicates.length + missing.length > 0) {
+        logger.info(
+          { created: created.length, duplicates: duplicates.length, missing: missing.length },
+          "subidas grandes del post revisadas",
+        );
+      }
       let dir: Awaited<ReturnType<typeof createAttemptDir>>;
       try {
         dir = await createAttemptDir(deps.tmpRoot, postId);

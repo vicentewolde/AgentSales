@@ -119,20 +119,27 @@ export function createInMemoryPostRepository(): InMemoryPostRepository {
 export function createInMemoryPostUploadRepository(): PostUploadRepository {
   let sequence = 0;
   const uploads = new Map<string, PostUpload>();
-  const settle = (id: string, status: PostUpload["status"]) => {
+  const settle = (
+    id: string,
+    status: PostUpload["status"],
+    from: readonly PostUpload["status"][] = ["pending"],
+  ) => {
     const current = uploads.get(id);
-    if (current?.status !== "pending") return false;
+    if (current === undefined || !from.includes(current.status)) return false;
     uploads.set(id, { ...current, status, updatedAt: later(current.updatedAt) });
     return true;
   };
   return {
     async create(input) {
-      if ([...uploads.values()].some((upload) => upload.objectPath === input.objectPath)) {
+      if (
+        [...uploads.values()].some((upload) => upload.objectPath === input.objectPath) ||
+        (input.id !== undefined && uploads.has(input.id))
+      ) {
         throw new AppError("POST_UPLOAD_CONFLICT", "Ya hay una subida con esa clave");
       }
       const now = new Date();
       const upload: PostUpload = {
-        id: uuidLike("00000000", ++sequence),
+        id: input.id ?? uuidLike("00000000", ++sequence),
         postId: input.postId,
         objectPath: input.objectPath,
         expectedBytes: input.expectedBytes,
@@ -157,11 +164,20 @@ export function createInMemoryPostUploadRepository(): PostUploadRepository {
         .sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime() || a.id.localeCompare(b.id))
         .map(structuredCopy);
     },
+    async listStaleUploaded(before) {
+      return [...uploads.values()]
+        .filter((upload) => upload.status === "uploaded" && upload.updatedAt < before)
+        .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || a.id.localeCompare(b.id))
+        .map(structuredCopy);
+    },
     async markCompleted(id) {
-      return settle(id, "completed");
+      return settle(id, "completed", ["pending", "uploaded"]);
+    },
+    async markUploaded(id) {
+      return settle(id, "uploaded");
     },
     async markAbandoned(id) {
-      return settle(id, "abandoned");
+      return settle(id, "abandoned", ["pending", "uploaded"]);
     },
     async reopen(id, expiresAt) {
       const current = uploads.get(id);

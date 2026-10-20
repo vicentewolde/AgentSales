@@ -273,9 +273,9 @@ El registro de las URL prefirmadas de R2 pedidas para un post (ADR-0025); `impor
 |---|---|---|
 | id | uuid PK | |
 | post_id | uuid FK | |
-| object_path | text | La clave de R2: `posts/{postId}/original/{sha256}.{ext}` (F9-T10; el sha256 que trae el pedido). Único `post_uploads_object_path_unique`: pedir otra vez el mismo archivo reabre la misma fila |
+| object_path | text | La clave de R2: `posts/{postId}/original/{sha256}.{ext}` (F9-T10; el sha256 que trae el pedido) o, para un archivo de más de 100 MB que llega sin sha256 (F9-T17), `posts/{postId}/original/{id}.{ext}` con el id de la propia subida. Único `post_uploads_object_path_unique`: pedir otra vez el mismo archivo con su sha256 reabre la misma fila |
 | expected_bytes | bigint | El tamaño anunciado al pedir la URL |
-| status | enum `post_upload_status` default `pending` | `pending`, `completed` (registrada como medio) o `abandoned` (vencida; la limpieza la borró de R2). Un pedido nuevo del mismo archivo la vuelve a `pending` |
+| status | enum `post_upload_status` default `pending` | `pending`, `completed` (registrada como medio) o `abandoned` (vencida; la limpieza la borró de R2). Un pedido nuevo del mismo archivo la vuelve a `pending`. Desde F9-T17 (migración `0017`, `ALTER TYPE … ADD VALUE`, al final del tipo), `uploaded`: un archivo grande sin sha256 que llegó a R2 y espera que el worker lo hashee (`post.media`); de ahí pasa a `completed` (medio nuevo, o duplicado y su objeto borrado) o a `abandoned` (el archivo ya no estaba). La limpieza cierra las `pending` vencidas y las `uploaded` con más de 24 h desde que llegaron (`updated_at`: el worker agotó sus reintentos) |
 | expires_at | timestamptz | Cuándo vence la subida: 24 h después de pedirla (la URL dura 6 h) |
 
 Índices `(post_id)` y `(status, expires_at)` (la limpieza periódica).

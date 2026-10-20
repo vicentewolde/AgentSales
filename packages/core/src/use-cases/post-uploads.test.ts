@@ -52,6 +52,7 @@ const sha = (n: number) => n.toString(16).padStart(64, "0");
 const bytes = (size: number) => new Uint8Array(size).fill(7);
 
 async function setup(options: { now?: () => Date } = {}) {
+  let ids = 0;
   let clock = new Date("2026-10-20T12:00:00Z");
   const now = options.now ?? (() => clock);
   const brokers = createInMemoryBrokerRepository();
@@ -83,6 +84,7 @@ async function setup(options: { now?: () => Date } = {}) {
     media,
     maxFileBytes: 50 * MB,
     maxVideoBytes: 30 * MB,
+    newId: () => `aaaaaaaa-0000-4000-8000-${String(++ids).padStart(12, "0")}`,
     now,
   };
   return {
@@ -449,5 +451,157 @@ describe("closeAbandonedPostUploads", () => {
     expect(result).toMatchObject({ completed: [], missing: [], media: [] });
     expect(await s.media.listOriginals({ kind: "post", id: s.post.id })).toEqual([]);
     expect((await s.postUploads.get(target.uploadId))?.status).toBe("abandoned");
+  });
+});
+
+describe("subidas de más de 100 MB sin sha256 (F9-T17, ADR-0025 punto 2)", () => {
+  const BIG = POST_UPLOAD.sha256UpToBytes + 1;
+
+  /** Topes de 1 GB y un R2 que lista el objeto grande con su tamaño (sin guardar 100 MB). */
+  async function bigSetup() {
+    const s = await setup();
+    const sizes = new Map<string, number>();
+    const deps = {
+      ...s.deps,
+      maxFileBytes: 1024 * MB,
+      maxVideoBytes: 1024 * MB,
+      storage: {
+        signedUploadUrl: s.storage.signedUploadUrl,
+        list: async (prefix: string) =>
+          [...sizes]
+            .filter(([path]) => path.startsWith(prefix))
+            .map(([path, size]) => ({ path, size, lastModified: new Date() })),
+      },
+    };
+    return { ...s, deps, arrive: (path: string, size: number) => sizes.set(path, size) };
+  }
+
+  it("hasta 100 MB el sha256 sigue siendo obligatorio", async () => {
+    const s = await bigSetup();
+    await expect(
+      requestPostUploads(s.deps, ADMIN, s.post.id, [
+        { name: "clip.mp4", size: POST_UPLOAD.sha256UpToBytes },
+      ]),
+    ).rejects.toMatchObject({ code: "POST_UPLOAD_INVALID" });
+  });
+
+  it("sobre 100 MB: la clave es la de la subida, sin sha256 firmado; complete la deja `uploaded` y encola post.media", async () => {
+    const s = await bigSetup();
+    const { uploads } = await requestPostUploads(s.deps, ADMIN, s.post.id, [
+      { name: "grande.MP4", size: BIG },
+      { name: "foto.jpg", size: 1000, sha256: sha(1) },
+    ]);
+    const big = asUpload(uploads[0]);
+    expect(big.uploadId).toBe("aaaaaaaa-0000-4000-8000-000000000001");
+    expect(big.url).toContain(`posts/${s.post.id}/original/${big.uploadId}.mp4`);
+    expect(big.headers["x-amz-checksum-sha256"]).toBeUndefined();
+    expect(big.headers["content-type"]).toBe("video/mp4");
+    expect(await s.postUploads.get(big.uploadId)).toMatchObject({
+      status: "pending",
+      expectedBytes: BIG,
+    });
+
+    // Todavía no llega: sigue pendiente y nada se encola.
+    const first = await completePostUploads(s.deps, ADMIN, s.post.id);
+    expect(first.missing).toContain(big.uploadId);
+    expect(first.uploaded).toEqual([]);
+    expect(s.queue.jobs).toEqual([]);
+
+    s.arrive(`posts/${s.post.id}/original/${big.uploadId}.mp4`, BIG);
+    const second = await completePostUploads(s.deps, ADMIN, s.post.id);
+    expect(second.uploaded).toEqual([big.uploadId]);
+    expect(second.completed).toEqual([]);
+    // El medio lo crea el worker (con su sha256): todavía no hay.
+    expect(second.media).toEqual([]);
+    expect((await s.postUploads.get(big.uploadId))?.status).toBe("uploaded");
+    expect(s.queue.jobs).toEqual([
+      { name: "post.media", data: { postId: s.post.id }, options: { singletonKey: s.post.id } },
+    ]);
+    // Llamar otra vez no la vuelve a marcar, pero sí vuelve a encolar (el worker no ha pasado).
+    const third = await completePostUploads(s.deps, ADMIN, s.post.id);
+    expect(third.uploaded).toEqual([]);
+    expect(s.queue.jobs).toHaveLength(2);
+  });
+
+  it("cada pedido de un archivo grande es una subida nueva, y las `uploaded` ocupan su lugar", async () => {
+    const s = await bigSetup();
+    const one = asUpload(
+      (await requestPostUploads(s.deps, ADMIN, s.post.id, [{ name: "a.mov", size: BIG }]))
+        .uploads[0],
+    );
+    s.arrive(`posts/${s.post.id}/original/${one.uploadId}.mov`, BIG);
+    await completePostUploads(s.deps, ADMIN, s.post.id);
+    const two = asUpload(
+      (await requestPostUploads(s.deps, ADMIN, s.post.id, [{ name: "a.mov", size: BIG }]))
+        .uploads[0],
+    );
+    expect(two.uploadId).not.toBe(one.uploadId);
+    // Una `uploaded` y una pendiente ya ocupan dos de los 20 lugares.
+    const files = Array.from({ length: POST_UPLOAD.maxMediaPerPost - 1 }, (_, n) => ({
+      name: `f${n}.jpg`,
+      size: 10,
+      sha256: sha(100 + n),
+    }));
+    await expect(requestPostUploads(s.deps, ADMIN, s.post.id, files)).rejects.toMatchObject({
+      code: "POST_UPLOAD_INVALID",
+    });
+  });
+});
+
+describe("closeAbandonedPostUploads · `uploaded` que el worker no revisó (F9-T17)", () => {
+  const HOUR = 3_600_000;
+
+  async function staleSetup() {
+    const s = await setup();
+    /** Una subida grande que llegó (`uploaded`) con su objeto en R2. */
+    const arrived = async (id: string) => {
+      const path = `posts/${s.post.id}/original/${id}.mp4`;
+      await s.storage.put(path, bytes(10), "video/mp4");
+      await s.postUploads.create({
+        id,
+        postId: s.post.id,
+        objectPath: path,
+        expectedBytes: 10,
+        expiresAt: new Date(Date.now() + 48 * HOUR),
+      });
+      await s.postUploads.markUploaded(id);
+      return path;
+    };
+    const cleanupAt = (ms: number) =>
+      closeAbandonedPostUploads({ ...s.deps, now: () => new Date(Date.now() + ms) });
+    return { ...s, arrived, cleanupAt };
+  }
+
+  it("antes de 24 h no la toca; pasadas, borra su objeto y la deja abandoned", async () => {
+    const s = await staleSetup();
+    const id = "bbbbbbbb-0000-4000-8000-000000000001";
+    const path = await s.arrived(id);
+    expect(await s.cleanupAt(23 * HOUR)).toEqual({ abandoned: [], failed: [] });
+    expect((await s.postUploads.get(id))?.status).toBe("uploaded");
+
+    expect(await s.cleanupAt(25 * HOUR)).toEqual({ abandoned: [id], failed: [] });
+    expect((await s.postUploads.get(id))?.status).toBe("abandoned");
+    expect(s.storage.objects.has(path)).toBe(false);
+  });
+
+  it("si el worker alcanzó a crear el medio, solo la marca completed y no borra el objeto", async () => {
+    const s = await staleSetup();
+    const id = "bbbbbbbb-0000-4000-8000-000000000002";
+    const path = await s.arrived(id);
+    await s.media.create({
+      listingId: null,
+      postId: s.post.id,
+      brokerId: s.mine.id,
+      kind: "video",
+      storagePath: path,
+      mime: "video/mp4",
+      bytes: 10,
+      checksum: sha(42),
+      sortOrder: 0,
+      isCover: false,
+    });
+    expect(await s.cleanupAt(25 * HOUR)).toEqual({ abandoned: [], failed: [] });
+    expect((await s.postUploads.get(id))?.status).toBe("completed");
+    expect(s.storage.objects.has(path)).toBe(true);
   });
 });

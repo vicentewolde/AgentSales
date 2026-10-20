@@ -120,6 +120,13 @@
       "when": 1792508198594,
       "tag": "0016_f9_x_enlace",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792511001808,
+      "tag": "0017_f9_subida_grande",
+      "breakpoints": true
     }
   ]
 }

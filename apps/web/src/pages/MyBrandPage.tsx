@@ -3,13 +3,14 @@ import { LogoAndTemplate } from "../components/brokers/LogoAndTemplate.js";
 import { OnboardingList } from "../components/brokers/OnboardingList.js";
 import { SpendLine } from "../components/brokers/SpendLine.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { EditorialProfileSection } from "../components/posts/EditorialProfileForm.js";
 import { useMe } from "../queries/auth.js";
 import { useBrokerDetail, useUpdateBroker } from "../queries/brokers.js";
 import { useUsage } from "../queries/usage.js";
 
 /**
  * Mi marca (spec F7 §4.11, el corredor): editar la marca, subir el logo, bajar la planilla, su
- * gasto de IA del mes y su lista de alta. El tope, "propio" y la publicación automática son del
+ * gasto de IA del mes, su lista de alta y, desde F9-T17, el perfil editorial de sus posts. El tope, "propio" y la publicación automática son del
  * administrador: aquí no aparecen.
  */
 export function MyBrandPage() {
@@ -45,6 +46,7 @@ export function MyBrandPage() {
         </p>
       </section>
       <LogoAndTemplate broker={broker} />
+      <EditorialProfileSection brokerId={broker.id} />
     </div>
   );
 }

@@ -143,13 +143,17 @@ function toPostUpload(row: typeof postUploads.$inferSelect): PostUpload {
 
 /** `PostUploadRepository` sobre Drizzle (spec F9 §4.5, ADR-0025). */
 export function createPostUploadRepository(db: SchemaDatabase): PostUploadRepository {
-  const settle = (id: string, status: "completed" | "abandoned") =>
+  const settle = (
+    id: string,
+    status: "completed" | "abandoned" | "uploaded",
+    from: readonly ("pending" | "uploaded")[] = ["pending"],
+  ) =>
     withDbErrors(async () => {
-      // Condicional: solo una pendiente cambia (dos intentos solapados no se pisan).
+      // Condicional: solo una en `from` cambia (dos intentos solapados no se pisan).
       const updated = await db
         .update(postUploads)
         .set({ status, updatedAt: sql`now()` })
-        .where(and(eq(postUploads.id, id), eq(postUploads.status, "pending")))
+        .where(and(eq(postUploads.id, id), inArray(postUploads.status, [...from])))
         .returning({ id: postUploads.id });
       return updated.length > 0;
     });
@@ -160,6 +164,7 @@ export function createPostUploadRepository(db: SchemaDatabase): PostUploadReposi
           const [row] = await db
             .insert(postUploads)
             .values({
+              ...(input.id === undefined ? {} : { id: input.id }),
               postId: input.postId,
               objectPath: input.objectPath,
               expectedBytes: input.expectedBytes,
@@ -172,7 +177,10 @@ export function createPostUploadRepository(db: SchemaDatabase): PostUploadReposi
           return toPostUpload(row);
         });
       } catch (error) {
-        if (isUniqueViolation(error, "post_uploads_object_path_unique")) {
+        if (
+          isUniqueViolation(error, "post_uploads_object_path_unique") ||
+          isUniqueViolation(error, "post_uploads_pkey")
+        ) {
           throw new AppError("POST_UPLOAD_CONFLICT", "Ya hay una subida con esa clave", {
             cause: error,
           });
@@ -216,8 +224,20 @@ export function createPostUploadRepository(db: SchemaDatabase): PostUploadReposi
       });
     },
 
-    markCompleted: (id) => settle(id, "completed"),
-    markAbandoned: (id) => settle(id, "abandoned"),
+    listStaleUploaded(before) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(postUploads)
+          .where(and(eq(postUploads.status, "uploaded"), lt(postUploads.updatedAt, before)))
+          .orderBy(asc(postUploads.updatedAt), asc(postUploads.id));
+        return rows.map(toPostUpload);
+      });
+    },
+
+    markCompleted: (id) => settle(id, "completed", ["pending", "uploaded"]),
+    markUploaded: (id) => settle(id, "uploaded"),
+    markAbandoned: (id) => settle(id, "abandoned", ["pending", "uploaded"]),
 
     reopen(id, expiresAt) {
       return withDbErrors(async () => {

@@ -313,4 +313,55 @@ describe("/posts/:id/uploads (ADR-0025)", () => {
     expect(big.status).toBe(413);
     expect((await errorOf(big)).code).toBe("POST_UPLOAD_TOO_LARGE");
   });
+
+  it("el sha256 es obligatorio hasta 100 MB y opcional sobre eso: la clave lleva el id de la subida (F9-T17)", async () => {
+    const s = await setup();
+    s.deps.maxUploadBytes = 1024 * 1024 * 1024;
+    s.deps.maxVideoBytes = 1024 * 1024 * 1024;
+    const app = createApp(s.deps);
+    const post = await s.deps.posts.create({ brokerId: s.mine.id, topic: "X", kind: "video" });
+    const ask = (size: number) =>
+      app.request(`/posts/${post.id}/uploads`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${MINE}`,
+          origin: ORIGIN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ files: [{ name: "grande.mp4", size }] }),
+      });
+    const small = await ask(100 * 1024 * 1024);
+    expect(small.status).toBe(400);
+    expect((await errorOf(small)).message).toMatch(/sha256/);
+
+    const big = await ask(100 * 1024 * 1024 + 1);
+    expect(big.status).toBe(201);
+    const [target] = postUploadResponseSchema.parse(await big.json()).uploads;
+    if (target?.status !== "upload") throw new Error("se esperaba una subida");
+    expect(target.url).toContain(`posts/${post.id}/original/${target.uploadId}.mp4`);
+    expect(target.headers["x-amz-checksum-sha256"]).toBeUndefined();
+
+    // Llega a R2 y `complete` la deja `uploaded`: el detalle la cuenta hasta que el worker la revise.
+    await s.storage.put(
+      `posts/${post.id}/original/${target.uploadId}.mp4`,
+      new Uint8Array(1),
+      "video/mp4",
+    );
+    const listSpy = s.storage.list;
+    s.storage.list = async (prefix) =>
+      (await listSpy(prefix)).map((item) =>
+        item.path.includes(target.uploadId) ? { ...item, size: 100 * 1024 * 1024 + 1 } : item,
+      );
+    const done = await app.request(`/posts/${post.id}/uploads/complete`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${MINE}`, origin: ORIGIN },
+    });
+    expect(postUploadCompleteResponseSchema.parse(await done.json()).uploaded).toEqual([
+      target.uploadId,
+    ]);
+    const detail = await app.request(`/posts/${post.id}`, {
+      headers: { authorization: `Bearer ${MINE}` },
+    });
+    expect(postDetailResponseSchema.parse(await detail.json()).uploadsInReview).toBe(1);
+  });
 });

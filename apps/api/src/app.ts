@@ -22,6 +22,7 @@ import {
   type PlatformAccountRepository,
   type PostLock,
   type PostRepository,
+  type PostUploadRepository,
   type PublicationOperations,
   type PublicationRepository,
   type PublishMode,
@@ -126,6 +127,11 @@ export type AppDeps = {
    * firmados por el usuario del pedido. `server.ts` compone `createPostLock` sobre la misma base.
    */
   postLock: PostLock;
+  /**
+   * Las subidas de medios de los posts, solo para leer (F9-T17): `GET /posts/:id` cuenta las
+   * `uploaded` que el worker todavía revisa. Los cambios van en el candado del post.
+   */
+  postUploads: Pick<PostUploadRepository, "listByPost">;
   /** El perfil editorial de cada corredor o marca (F9-T09): lo lee la IA de los posts. */
   editorialProfiles: EditorialProfileRepository;
   /**
