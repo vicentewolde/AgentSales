@@ -61,7 +61,7 @@ function setup({ withRefresher = true }: { withRefresher?: boolean } = {}) {
     platformAccounts,
     instagram: unusedInstagram,
     mercadoLibre: null,
-    ...(withRefresher ? { tokenRefreshers: { tiktok: refresher } } : {}),
+    ...(withRefresher ? { refreshers: { tiktok: refresher } } : {}),
     now: () => NOW,
   };
   const add = ({

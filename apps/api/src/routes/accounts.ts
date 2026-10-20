@@ -493,9 +493,6 @@ export function accountRoutes(deps: AccountRoutesDeps) {
             // Sin el par, una cuenta de Mercado Libre a la que le toca es MERCADOLIBRE_NOT_CONFIGURED
             // (503) sin llamar ni cambiarla.
             mercadoLibre: deps.mercadoLibre.configured ? deps.mercadoLibre.auth : null,
-            // TikTok (F9-T26): sin el par de la app, una cuenta a la que le toca es
-            // TOKEN_REFRESH_NOT_CONFIGURED (503) sin llamar ni cambiarla.
-            tokenRefreshers: deps.tiktok?.configured === true ? { tiktok: deps.tiktok.auth } : {},
             onWarning: ({ accountId, code }) =>
               deps.logger.warn({ accountId, code }, "aviso del refresco de tokens"),
           },

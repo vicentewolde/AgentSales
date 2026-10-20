@@ -360,8 +360,13 @@ export function createApp(input: AppDeps) {
       "/accounts",
       accountRoutes({
         ...deps,
-        // X (F9-T16): el refresco a pedido renueva con la misma función que el intento.
-        refreshers: deps.x.configured ? { x: deps.x.auth } : {},
+        // X (F9-T16) y TikTok (F9-T26): el refresco a pedido renueva con la misma función que el
+        // intento. Sin el par de la app de una red, una cuenta suya a la que le toca es
+        // TOKEN_REFRESH_NOT_CONFIGURED (503) sin llamar ni cambiarla.
+        refreshers: {
+          ...(deps.x.configured ? { x: deps.x.auth } : {}),
+          ...(deps.tiktok?.configured === true ? { tiktok: deps.tiktok.auth } : {}),
+        },
         stateHash: (nonce) => deps.auth.tokens.hash(nonce),
         instagram: deps.instagram.auth,
         instagramOAuth: deps.instagram.oauthConfigured && deps.instagram.secureCookie,
