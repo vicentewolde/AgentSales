@@ -83,7 +83,7 @@ const ADVICE: Readonly<Record<string, string>> = {
   PUBLISH_INPUT_INVALID: "Corrige lo que dice el mensaje (el texto o los medios) y reintenta.",
   // El modo.
   PUBLISH_MODE_MISMATCH:
-    "La publicación y el worker no están en el mismo modo: reintenta en el modo correcto.",
+    "La publicación y AgentSales (la API o el worker) están en modos distintos, simulación o en vivo: repítelo con AgentSales en el modo de la publicación.",
   PUBLISH_MODE_LOCKED: "Ya empezó en vivo: reintenta en vivo o descártala.",
   // Marketplace.
   MARKETPLACE_SESSION_EXPIRED: "Inicia sesión de nuevo en Facebook desde Cuentas y reintenta.",
@@ -225,6 +225,9 @@ const ADVICE: Readonly<Record<string, string>> = {
   // Retirar un post (F9-T19).
   RETIRE_DELETE_UNSUPPORTED:
     "Bórrala a mano en la red y márcala como retirada con publications retire <id> (sin --delete).",
+  // La vuelta del OAuth con un corredor que no existe o no es del usuario (F9-T19).
+  BROKER_NOT_FOUND:
+    "El corredor del enlace no existe o no es tuyo: vuelve a conectar desde Cuentas, en el corredor correcto.",
   // Del sistema.
   PUBLISHER_NOT_CONFIGURED: ASK_HELP,
   INTERNAL_ERROR: ASK_HELP,

@@ -24,7 +24,8 @@ import { modeOf, publicationNotFound } from "./publication-start.js";
 /**
  * Lo que una plataforma sabe hacer sobre lo publicado: lo implementa el publisher de Portal y lo
  * compone la API sin las fotos ni el catálogo (`createPortalOperations`, F4-T15); desde F9-T19,
- * también borrar un post de LinkedIn (`remove`, para retirar).
+ * también borrar un post de LinkedIn (`remove`, para retirar). Tener operaciones no implica pausar
+ * ni cerrar; eso lo decide `OPERATION_PLATFORMS`.
  */
 export type PublicationOperations = Pick<
   Publisher,
@@ -33,7 +34,8 @@ export type PublicationOperations = Pick<
 
 /**
  * Las plataformas cuyas publicaciones se pausan, reactivan, cierran y sincronizan desde AgentSales.
- * Instagram no: se retira a mano (F3, D8).
+ * Instagram no: se retira a mano (F3, D8). Es aparte de `operationsFor`: LinkedIn tiene operaciones
+ * (`remove`, F9-T19) pero no está aquí, así que no se pausa ni se cierra (se retira).
  */
 export const OPERATION_PLATFORMS: ReadonlySet<Platform> = new Set(["portal_inmobiliario"]);
 
@@ -61,7 +63,8 @@ export type PublicationPlatformDeps = {
   mercadoLibre: Pick<MercadoLibreAuth, "refresh"> | null;
   /**
    * Las operaciones de una plataforma (sin envolver en `withDryRun`, que no las expone). Se pide
-   * **después** de decidir el modo con `publication.dryRun`: en `dry-run` no se llama.
+   * **después** de decidir el modo con `publication.dryRun`: en `dry-run` no se llama. Tener
+   * operaciones no implica pausar ni cerrar; eso lo decide `OPERATION_PLATFORMS`.
    */
   operationsFor(platform: Platform): PublicationOperations | undefined;
   now?: () => Date;

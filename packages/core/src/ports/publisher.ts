@@ -291,6 +291,8 @@ export type RemoteStatus = Omit<RemoteState, "checkedAt">;
  * - `remove` (F9-T19; LinkedIn con una cuenta en modo `api`): borra lo publicado. Es idempotente
  *   (lo que ya no existe cuenta como borrado), así que retirar se puede repetir sin `sendOnce`.
  *   Lo llama `retirePublication` solo con la publicación y la API en `live`.
+ *   Recibe solo el token guardado: una red con token que rota (`ROTATING_TOKEN_PLATFORMS`: X,
+ *   TikTok) no lo implementa hasta que retirar use `ensureRotatingAccessToken`.
  */
 export interface Publisher {
   readonly platform: Platform;

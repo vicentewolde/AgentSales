@@ -8,6 +8,7 @@ import type { PublicationRepository } from "../ports/publication-repository.js";
 import { storedAccessToken } from "../ports/publisher.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { runOnSubject, type SubjectLocks } from "../subject-lock.js";
+import { ROTATING_TOKEN_PLATFORMS } from "./ensure-access-token.js";
 import { expireAccountIfRejected } from "./platform-auth.js";
 import {
   codeOf,
@@ -152,8 +153,9 @@ const deleteUnsupported = (publication: Publication, reason: string) =>
 
 /**
  * Borra en la plataforma una publicación en `live` (F9-T19), fuera del candado. Revisa antes, sin
- * llamar: la API en `live`, que esté publicada, que la plataforma borre por la API, la cuenta
- * conectada y en modo `api`, y el id en la plataforma. Un acceso rechazado deja la cuenta `expired`.
+ * llamar: que esté publicada, que la plataforma borre por la API (una con token que rota, todavía
+ * no: `ROTATING_TOKEN_PLATFORMS`), la API en `live`, la cuenta conectada y en modo `api`, y el id
+ * en la plataforma. Un acceso rechazado deja la cuenta `expired`.
  */
 async function removeRemote(
   removal: RetireRemovalDeps | undefined,
@@ -169,6 +171,11 @@ async function removeRemote(
   const remove = removal?.operationsFor(publication.platform)?.remove;
   if (removal === undefined || remove === undefined) {
     throw deleteUnsupported(publication, "Esta red no se borra desde AgentSales");
+  }
+  // Borrar usa solo el token guardado: en una red con token que rota (X, TikTok) puede estar
+  // vencido. Hasta que se asegure con `ensureRotatingAccessToken`, no se llama (ADR-0029).
+  if (ROTATING_TOKEN_PLATFORMS.has(publication.platform)) {
+    throw deleteUnsupported(publication, "Esta red todavía no se borra desde AgentSales");
   }
   if (removal.apiMode !== "live") {
     throw new AppError(

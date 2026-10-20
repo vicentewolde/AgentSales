@@ -154,6 +154,47 @@ describe("retirar borrando por la API (F9-T19)", () => {
     expect(discord.current(published.id)?.status).toBe("published");
   });
 
+  it("X y TikTok (token que rota) no borran todavía, aunque tengan remove: no se llama", async () => {
+    for (const platform of ["x", "tiktok"] as const) {
+      // TikTok publica solo videos.
+      const t = await createPostPublicationScenario({
+        ...(platform === "tiktok" ? { kind: "video" as const, images: 0, video: true } : {}),
+        texts: [{ platform, language: "es" }],
+      });
+      const started = await t.toPublishing(t.publicationOf(platform));
+      const published = await t.publications.transition(
+        started.id,
+        { from: "publishing", to: "published", changes: { externalId: "id-en-la-red" } },
+        { actor: "system", payload: { mode: "live" } },
+      );
+      const calls: PublishedRef[] = [];
+      const error = await caught(
+        retirePublication(
+          {
+            ...t.subjectDeps,
+            removal: {
+              apiMode: "live",
+              platformAccounts: t.platformAccounts,
+              operationsFor: () => ({
+                async remove(ref) {
+                  calls.push(ref);
+                },
+              }),
+            },
+          },
+          { publicationId: published.id, actor: "operator", deleteRemote: true },
+        ),
+      );
+      expect(isAppError(error) && error.code).toBe("RETIRE_DELETE_UNSUPPORTED");
+      expect(isAppError(error) && error.details).toEqual({
+        publicationId: published.id,
+        platform,
+      });
+      expect(calls).toEqual([]);
+      expect(t.current(published.id)?.status).toBe("published");
+    }
+  });
+
   it("un acceso rechazado deja la cuenta vencida y la publicación publicada", async () => {
     const { t, publication, retire, fail } = await setup();
     fail(new AppError("LINKEDIN_AUTH_INVALID", "LinkedIn no acepta el acceso"));
