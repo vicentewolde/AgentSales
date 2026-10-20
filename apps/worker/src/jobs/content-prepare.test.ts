@@ -20,6 +20,7 @@ import {
   contentPrepareJob,
   failAbandonedContentRuns,
   requeueQueuedContentRuns,
+  requeueQueuedPostRuns,
   resumeAutoPublishAtStart,
 } from "./content-prepare.js";
 import type { DbBackupJobDeps } from "./db-backup.js";
@@ -460,6 +461,81 @@ describe("job content.prepare · arranque", () => {
       failed: [first.id],
     });
     expect(queue.jobs.map((job) => job.data)).toEqual([{ contentRunId: second.id }]);
+  });
+
+  // F9-T05: una corrida de post en cola no es de `content.prepare`; tiene su propio barrido.
+  it("una corrida de post en queued no se reencola como content.prepare, sino como post.draft", async () => {
+    const repos = createInMemoryContentRepositories();
+    const listingRun = await repos.contentRuns.create({ listingId: "l1", texts: true });
+    const postRun = await repos.contentRuns.create({
+      postId: "00000000-0000-4000-8000-000000000001",
+      texts: true,
+    });
+    const runningPost = await repos.contentRuns.create({
+      postId: "00000000-0000-4000-8000-000000000002",
+      texts: true,
+    });
+    await repos.contentRuns.markRunning(runningPost.id);
+    const queue = createInMemoryJobQueue();
+
+    expect(await requeueQueuedContentRuns(repos.contentRuns, queue)).toEqual({
+      requeued: 1,
+      failed: [],
+    });
+    expect(await requeueQueuedPostRuns(repos.contentRuns, queue)).toEqual({
+      requeued: 1,
+      failed: [],
+    });
+    expect(queue.jobs).toEqual([
+      {
+        name: "content.prepare",
+        data: { contentRunId: listingRun.id },
+        options: { singletonKey: listingRun.id },
+      },
+      {
+        name: "post.draft",
+        data: { contentRunId: postRun.id },
+        options: { singletonKey: postRun.id },
+      },
+    ]);
+  });
+
+  it("sin la cola de post.draft (antes de F9-T11), la corrida de post queda para el próximo arranque", async () => {
+    const repos = createInMemoryContentRepositories();
+    const postRun = await repos.contentRuns.create({
+      postId: "00000000-0000-4000-8000-000000000001",
+      texts: true,
+    });
+    const queue = createInMemoryJobQueue({
+      fail: () =>
+        new AppError("QUEUE_UNAVAILABLE", "La cola post.draft no existe", { retriable: true }),
+    });
+
+    expect(await requeueQueuedPostRuns(repos.contentRuns, queue)).toEqual({
+      requeued: 0,
+      failed: [postRun.id],
+    });
+    expect(await repos.contentRuns.get(postRun.id)).toMatchObject({ status: "queued" });
+  });
+
+  it("failAbandoned también cierra una corrida de post abandonada en running", async () => {
+    const repos = createInMemoryContentRepositories();
+    const postRun = await repos.contentRuns.create({
+      postId: "00000000-0000-4000-8000-000000000001",
+      texts: true,
+    });
+    await repos.contentRuns.markRunning(postRun.id);
+
+    const closed = await failAbandonedContentRuns(
+      repos.contentRuns,
+      Date.now() + CONTENT_RUN_ABANDONED_AFTER_MS + 1000,
+    );
+
+    expect(closed).toEqual([postRun.id]);
+    expect(await repos.contentRuns.get(postRun.id)).toMatchObject({
+      status: "failed",
+      error: { code: "CONTENT_RUN_ABANDONED" },
+    });
   });
 });
 

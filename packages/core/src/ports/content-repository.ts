@@ -9,7 +9,7 @@ import {
 } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { BrokerLlmSpend, LlmCallUsage } from "../llm-usage.js";
-import type { SubjectInput, SubjectRef } from "../subject.js";
+import type { SubjectInput, SubjectKind, SubjectRef } from "../subject.js";
 
 /** Una corrida nueva de un aviso (`listingId`, como antes de F9) o de un post (`postId`). */
 export type NewContentRun = SubjectInput & {
@@ -51,10 +51,11 @@ export interface ContentRunRepository {
   /** La corrida más reciente del aviso o post (`created_at` y después `id`), en cualquier estado. */
   latest(subject: SubjectRef): Promise<ContentRun | null>;
   /**
-   * Las corridas de avisos en `queued`, las más antiguas primero: el worker las reencola al
-   * arrancar. Las de posts (F9) no son de `content.prepare` y quedan fuera.
+   * Las corridas en `queued` de avisos (por defecto) o de posts (`kind = "post"`), las más antiguas
+   * primero: el worker las reencola al arrancar, las de avisos como `content.prepare` y las de posts
+   * como `post.draft` (F9-T05). Nunca mezcla los dos: una corrida de post no es de `content.prepare`.
    */
-  listQueued(): Promise<ContentRun[]>;
+  listQueued(kind?: SubjectKind): Promise<ContentRun[]>;
   /**
    * Las corridas de avisos `succeeded` con textos, terminadas desde `finishedSince`, cuyo
    * `auto_publish` quedó sin resolver (un apagado justo al terminar, F8-T12), las más antiguas

@@ -221,6 +221,10 @@ export function subjectRepositoriesContract(
         expect(await repos.contentRuns.findActive(listingSubject(listing.id))).toEqual(listingRun);
         // Las corridas de posts no son de `content.prepare`: el barrido no las ve.
         expect((await repos.contentRuns.listQueued()).map((item) => item.id)).not.toContain(run.id);
+        // Las reencola su propio barrido (`post.draft`, F9-T05), que no ve las de avisos.
+        const queuedPosts = (await repos.contentRuns.listQueued("post")).map((item) => item.id);
+        expect(queuedPosts).toContain(run.id);
+        expect(queuedPosts).not.toContain(listingRun.id);
       });
 
       it("markSucceeded guarda un texto por red e idioma del post; listCurrent los da en orden", async () => {
