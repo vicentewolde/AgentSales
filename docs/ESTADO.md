@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-20
 **Fase actual:** F9 · Contenido de marca (spec **aprobado** el 2026-10-19: `docs/specs/fase-9-contenido-de-marca.md`; ADR-0029 y ADR-0030). F8 cerrada (`v1.0.0`)
-**Última tarea:** **entrega 2 de F9 cerrada** con la etiqueta `v1.2.0` (T15, T16, T26, T17, T18 y T19). Empieza la entrega 3 (`v1.3.0`): T20 en curso
-**Siguiente paso:** T20 (el plan de ideas) → T21 (el plan en el panel y la CLI) y T22 (`pnpm eval:social`) a la vez → T23 (documentación), T24 (la prueba con tus cuentas, solo con tu instrucción) y T25 (cierre, `v1.3.0`). Antes de publicar de verdad en cada red, tus pruebas S1 a S6 (abajo) y tu instrucción en el chat. Agrega a tu `.env` (y a `.env.example`) las variables de LinkedIn, X y TikTok (`CHANGELOG [1.2.0]`)
+**Última tarea:** **entrega 2 de F9 cerrada** con la etiqueta `v1.2.0` (T15, T16, T26, T17, T18 y T19). Entrega 3 (`v1.3.0`): **T20 terminada** (#194, revisada por el `revisor` y el `arquitecto`): el plan de ideas en core y el worker (`content.plan`), aceptar y descartar, un plan activo por marca y la migración `0018` (`posts.platforms` y el índice). Tus decisiones del 2026-10-20: al aceptar una idea se redacta solo para sus redes sugeridas, y una idea descartada bloquea su tema 60 días. **T22 terminada** (#195): `pnpm eval:social` con tres marcas inventadas, sin escribir en la base; la medición real del costo te queda pendiente (abajo). **T21 terminada** (#196): el plan en el panel (página Plan) y la CLI (`plan`, `plan show|list`, `post accept|discard`, `post edit --platforms --date --brief`); las redes del post mandan al aprobar, publicar, programar y en el reloj (pedir a mano una red quitada se rechaza con su consejo, tu decisión del 2026-10-20), y quitar una red con publicaciones pendientes pide cancelarlas primero. T23 (documentación) en curso
+**Siguiente paso:** T23 (documentación) → T24, la prueba con tus cuentas reales (necesita tus pruebas S1 a S6 de abajo y tu instrucción en el chat) → T25, el cierre con `v1.3.0`. Antes de publicar de verdad en cada red, tus pruebas S1 a S6 (abajo) y tu instrucción en el chat. Agrega a tu `.env` (y a `.env.example`) las variables de LinkedIn, X y TikTok (`CHANGELOG [1.2.0]`)
 
 ## Pendiente tuyo de F9
 Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada prueba de entrada bloquea solo su red (spec §4.8; los pasos están en la sección 8 de cada nota de `docs/integraciones/`):
@@ -14,6 +14,7 @@ Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada 
 - [ ] **S4 · X:** cuenta de desarrollador con créditos (tope sugerido US$10 al mes), un post, un reply a ti mismo y un texto repetido. **Obligatoria antes de cualquier publicación real en X** (T16 ya está construido contra simulaciones)
 - [ ] **S5 · Discord:** un servidor privado de pruebas con un webhook; texto, imagen y un video. **Obligatoria antes de cualquier publicación real en Discord** (T14 ya está construido contra simulaciones; decisión del 2026-10-20)
 - [ ] **S6 · TikTok:** crear la app con tu cuenta de Chile, autorizar una cuenta personal con `video.upload` y ver un borrador en la bandeja. **Obligatoria antes de cualquier publicación real en TikTok** (T26 ya está construido contra simulaciones)
+- [ ] **Costo real del plan (T22):** `pnpm eval:social --provider anthropic-api --profile dos-idiomas --ideas 10 --out` (gasta centavos de tu clave; repetir con `--model claude-haiku-5-5`) y anotar lo medido en la tabla "Medido" de `docs/integraciones/anthropic-api.md` §13. La estimación es ~US$ 0,12 con Sonnet y ~US$ 0,006 con Haiku por un plan de 10 ideas y sus textos en dos idiomas
 - [ ] **Para el piloto (F10), sin código y de plazo largo:** la segunda app de Meta (anuncios), la Página y la cuenta publicitaria de la oficina, el plan Pro de ManyChat, el abogado por la Ley 21.719 y las pruebas A1 y A2 (spec §4.17)
 
 ## Pendiente tuyo tras cerrar F8
@@ -118,10 +119,10 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 2 | T17 Panel: Contenido | ✅ terminada | #189 |
 | 2 | T18 Panel: calendario | ✅ terminada | #190 |
 | 2 | T19 CLI de cuentas y guía del operador | ✅ terminada | #191 |
-| 3 · `v1.3.0` | T20 El plan de ideas (core y worker) | 🔨 en curso | |
-| 3 | T21 Plan en el panel y la CLI | ⏳ pendiente | |
-| 3 | T22 Evaluación de la calidad | ⏳ pendiente | |
-| 3 | T23 Documentación | ⏳ pendiente | |
+| 3 · `v1.3.0` | T20 El plan de ideas (core y worker) | ✅ terminada | #194 |
+| 3 | T21 Plan en el panel y la CLI | ✅ terminada | #196 |
+| 3 | T22 Evaluación de la calidad | ✅ terminada | #195 |
+| 3 | T23 Documentación | 🔨 en curso | |
 | 3 | T24 Prueba con las cuentas reales (contigo) | ⏳ pendiente | |
 | 3 | T25 Cierre de fase | ⏳ pendiente | |
 
