@@ -165,7 +165,7 @@ Una idea sin aceptar no gasta IA en textos ni tiene publicaciones: no se program
 - `POST /api/plans` (pedir un plan); `GET /api/plans?brokerId` (los planes de una marca, `listPlanRuns`); `GET /api/plans/:id`; `POST /api/posts/:id/accept` y `/discard` (ideas).
 - `GET /oauth/linkedin/start|callback` y `GET /oauth/x/start|callback`.
 - Permisos (ADR-0022): `posts.manage`, y cada ruta nueva entra a la tabla de permisos; un test la revisa. Un corredor ve solo los posts de su marca; el administrador ve todos.
-- CLI: `post create|list|show|draft|edit|approve|publish|schedule|archive`, `plan [--days 14] [--platform …]`, `plan show <id>`, `plan list` (F9-T21), `post accept|discard <id>`, `post edit --platforms|--date|--brief` (F9-T21), `brand show|edit` (perfil editorial), `publications resolve <id> --published|--not-published`, `accounts connect linkedin|x|discord`.
+- CLI: `post create|list|show|draft|edit|approve|publish|schedule|archive`, `plan [--days 14] [--platform …]`, `plan show <id>`, `plan list` (F9-T21), `post accept|discard <id>`, `post edit --platforms|--date|--brief` (F9-T21), `brand show|edit` (perfil editorial), `publications resolve <id> --published|--not-published`, `accounts connect linkedin|x|discord`. Así quedó (F9-T12 a T21): además `post upload <id> <archivos…>`, `publications retry <id>`, `accounts connect tiktok`, `accounts mode <id> manual|api`, `accounts spend-limit <id> <dólares>` y `publications retire <id> --delete` (LinkedIn); la marca del enlace en X no tiene opción en `post edit` (solo `PATCH /api/posts/:id`).
 
 ### 4.11 Datos
 Migraciones desde la `0014` (o la siguiente libre). Reglas: **`ALTER TYPE … ADD VALUE` para todo valor nuevo de un enum** (nunca recrear el tipo: la `0006` se detiene si la tabla tiene filas), y ninguna migración usa en la misma transacción un valor recién agregado.
@@ -275,7 +275,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] la migración aplica sobre una base con filas en `publications` (PGlite con datos de F3 a F8) y las marcas existentes quedan `broker`
   - [ ] la tabla de transiciones cubre `publishing → outcome_unknown → published | failed` con tests, y una `outcome_unknown` cuenta como activa
   - [ ] `docs/10-despliegue.md` explica que volver atrás después de usar los valores nuevos rompe la lectura
-  - [ ] `pnpm check` pasa, y docs y `docs/ESTADO.md` actualizados
+  - [x] `pnpm check` pasa, y docs y `docs/ESTADO.md` actualizados (CI en verde, PR #170)
 
 ### F9-T02 · Credenciales por plataforma y redactor
 - **Depende de:** T01
@@ -284,7 +284,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] `{ webhookUrl }` se guarda cifrada y se lee descifrada solo por `getCredentials`; las cuentas existentes siguen leyéndose
   - [ ] un test de redacción cubre la URL del webhook en logs, errores y eventos
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #171)
 
 ### F9-T03 · Esquema de posts y migración
 - **Depende de:** T01
@@ -294,7 +294,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] la migración aplica sobre datos reales de avisos (filas de todas las tablas tocadas) y no cambia ninguna fila
   - [ ] el `CHECK` rechaza una fila con los dos sujetos o con ninguno (`media` admite ninguno)
   - [ ] un test fija que el borrado de Meta no toca `posts` ni `contents`
-  - [ ] `docs/02-modelo-datos.md` actualizado; `pnpm check` pasa
+  - [x] `docs/02-modelo-datos.md` actualizado; `pnpm check` pasa (CI en verde, PR #172)
 
 ### F9-T04 · Repositorios con sujeto y `PostLock`
 - **Depende de:** T03
@@ -304,7 +304,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] contratos de repositorio con PGlite para posts, y los de avisos con las mismas aserciones
   - [ ] `PostLock` serializa dos operaciones sobre el mismo post y la bitácora anota al usuario (`request-context`)
   - [ ] `sumLlmCost` cuenta una corrida de post y un plan
-  - [ ] la tabla de permisos tiene `posts.manage` y su test pasa; `pnpm check` pasa
+  - [x] la tabla de permisos tiene `posts.manage` y su test pasa; `pnpm check` pasa (CI en verde, PR #173)
 
 ### F9-T05 · Aprobar, editar y abrir publicaciones sobre un sujeto
 - **Depende de:** T04
@@ -313,7 +313,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] los tests de avisos pasan y hay tests nuevos para posts (aprobar, quitar la aprobación, editar con la corrida activa)
   - [ ] una corrida de post `queued` no se reencola como `content.prepare`
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #176)
 
 ### F9-T06 · El intento de publicar, el traspaso por cuenta y el resultado dudoso
 - **Depende de:** T05
@@ -323,7 +323,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] con un publisher falso: un corte tras "enviando" deja `outcome_unknown` y ningún reintento llama otra vez; el reencolado al arrancar el worker no vuelve a publicar
   - [ ] una cuenta en `manual` no llama a la red y la confirmación guarda el enlace; los tests de Marketplace pasan sin cambios
   - [ ] el filtro `listing_id IS NOT NULL` de `listByStatus`, `listDue` y `listStalePublishing` (F9-T04) se quita o se parametriza cuando sus casos de uso trabajen con sujeto: las publicaciones `publishing` de posts también se reencolan al arrancar el worker (sin republicar: el progreso "enviando" las lleva a `outcome_unknown`) y la vigilancia las ve
-  - [ ] `docs/01-arquitectura.md` (contrato Publisher, estados, flujo 3) actualizada; `pnpm check` pasa
+  - [x] `docs/01-arquitectura.md` (contrato Publisher, estados, flujo 3) actualizada; `pnpm check` pasa (CI en verde, PR #178)
 
 ### F9-T07 · Programar, reloj, vigilancia y cancelar sobre un sujeto
 - **Depende de:** T06
@@ -332,7 +332,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] un post con un publisher falso recorre aprobar → programar → publicar → reintento → `published`
   - [ ] el reloj de un minuto publica posts programados y la vigilancia no confunde un post con un aviso
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #179)
 
 ### F9-T08 · Agenda y seguimiento con posts
 - **Depende de:** T07
@@ -341,7 +341,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] la agenda ordena posts y avisos juntos; una `outcome_unknown` y un token de LinkedIn a 7 días aparecen con su comando
   - [ ] `SubjectRef` ya no admite `string` (el id de un aviso, la rama de transición de F9-T04): todo llamador pasa un `Subject`; `listByListing` de medios y de publicaciones queda absorbido por `listBySubject`, y `listCurrent`, `findActive` y `listBySubject` tienen la misma firma (un `Subject`)
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #181)
 
 ### F9-T09 · Perfil editorial
 - **Depende de:** T04
@@ -349,7 +349,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Archivos principales:** `packages/core/src/editorial-profile.ts`, `apps/api`, `apps/cli`
 - **Hecho cuando:**
   - [ ] solo lo edita el administrador o el corredor de esa marca, y el perfil de una marca nunca se entrega a otra (tabla de permisos)
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #175)
 
 ### F9-T10 · Posts manuales y sus medios
 - **Depende de:** T04, T09
@@ -358,7 +358,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] subir una imagen y un video a un post con R2 falso, con avance y reintento; una subida abandonada se borra
   - [ ] el único `(post_id, checksum)` evita duplicados y las claves van bajo `posts/{postId}/`
-  - [ ] tabla de permisos y su test al día; `pnpm check` pasa
+  - [x] tabla de permisos y su test al día; `pnpm check` pasa (CI en verde, PR #177)
 
 ### F9-T11 · El texto por red con IA
 - **Depende de:** T09, T10
@@ -368,7 +368,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] con `fake` y respuestas fijas, el texto de cada red e idioma cumple su largo y su escape; un `@everyone` o una cifra ajena al perfil impide aprobar; un brief de la IA no vale como fuente de hechos
   - [ ] el gasto queda anotado por marca y respeta el tope
   - [ ] al terminar una corrida `post.draft` pedida con `replaceEdits` que sustituye textos aprobados, se llama a `settlePostStatus` (F9-T05): el post no queda `ready` sin un texto vigente aprobado, con test
-  - [ ] `docs/04-formato-publicaciones.md` tiene la sección de redes; `pnpm check` pasa
+  - [x] `docs/04-formato-publicaciones.md` tiene la sección de redes; `pnpm check` pasa (CI en verde, PR #180)
 
 ### F9-T12 · Aprobar, publicar y programar un post (CLI)
 - **Depende de:** T08, T11
@@ -377,7 +377,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] los comandos que la agenda ya sugiere para posts existen: `post show <id>`, `publications resolve <id> --published|--not-published`, `publications confirm <id> --url-stdin` y `publications not-published <id>` para un post, y uno para reintentar o publicar por id de publicación (revisión de F9-T08)
   - [ ] con un publisher falso, `post create → draft → approve → schedule` deja la publicación programada y `agenda` la muestra
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #182)
 
 ### F9-T13 · Instagram para posts
 - **Depende de:** T07, T10 (S1: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
@@ -386,7 +386,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] contratos con `msw` para los tres formatos y para el límite de cuota compartido
   - [ ] el resultado de S1 queda anotado en `instagram-contenido-propio.md` y en `docs/ESTADO.md`
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #184)
 
 ### F9-T14 · Discord
 - **Depende de:** T07, T10 (S5: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
@@ -396,7 +396,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] contratos con `msw` (éxito, 429 con `retry_after`, 404 del webhook, corte → `outcome_unknown`)
   - [ ] la URL del webhook no aparece en ningún log ni evento
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #183)
 
 ### F9-T15 · LinkedIn
 - **Depende de:** T07, T10 (S2 y S3: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
@@ -407,7 +407,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] contratos con `msw` y tests del escape con todos los caracteres reservados
   - [ ] en modo `manual` no se llama a la red y la confirmación guarda el enlace
   - [ ] el `state` del OAuth es de un solo uso y va amarrado a la marca
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #185)
 
 ### F9-T16 · X
 - **Depende de:** T07, T10 (S4: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
@@ -418,7 +418,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [ ] contratos con `msw`: éxito, 402 por saldo, 429, 403 por texto repetido, refresh que rota
   - [ ] un post con enlace pide la marca explícita y anota US$0,20; pasado el límite mensual, `failed` con la causa
   - [ ] un enlace en X requiere una marca explícita del operador por post (no basta con que el enlace esté en el brief), con el aviso del costo US$0,20. Hasta T16, "marcar" es escribirlo en el brief del operador (`checkPostContent`, F9-T11; `docs/04-formato-publicaciones.md`)
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #187)
 
 ### F9-T17 · Panel: Contenido
 - **Depende de:** T12
@@ -427,7 +427,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] el sha256 de un medio es obligatorio hasta 100 MB y opcional sobre eso, como ADR-0025 punto 2 (el navegador no puede hashear en streaming): la clave pasa a `posts/{postId}/original/{uploadId}.{ext}`, `post_uploads` suma un estado `uploaded` y el worker calcula el sha256 en streaming, crea el medio y deduplica; con un seguimiento en ADR-0025 (hoy, F9-T10, el sha256 es obligatorio siempre)
   - [ ] tests de componentes y de las consultas; sin dependencias nuevas
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #189)
 
 ### F9-T18 · Panel: calendario
 - **Depende de:** T17
@@ -436,7 +436,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Nota (2026-10-20):** la lectura es `GET /calendar?from=&to=&broker=` (en `routes/tracking.ts`, con `calendarEntries` de core y hasta 43 días por pedido); muestra las programadas por su hora y, para ver la semana completa, también lo ya publicado por su `publishedAt` (lo aprobado, publicándose o fallido sigue en Seguimiento). Mover una fecha no suma ruta: es `POST /publications/:id/schedule` (`schedulePublication`, F6) con el `ScheduleForm` de siempre (confirmación en vivo incluida). Sin arrastrar (opcional, sin dependencias nuevas). `chileDateStart` y `chileDateOf` (core) dan los bordes de los días de Chile.
 - **Hecho cuando:**
   - [ ] la hora se muestra en hora de Chile; reprogramar usa el mismo caso de uso de F6
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #190)
 
 ### F9-T19 · CLI de cuentas y guía del operador
 - **Depende de:** T12, T14 a T16
@@ -449,7 +449,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [x] una cuenta a mano no borra: `RETIRE_DELETE_UNSUPPORTED` y sigue sirviendo retirar a mano (`retire-publication.test.ts`; el 409, también `publications-retire.test.ts`)
   - [x] un 404 de LinkedIn cuenta como borrado (`packages/publishers/src/linkedin/publisher.test.ts`)
   - [x] X y TikTok no borran todavía: `RETIRE_DELETE_UNSUPPORTED` sin llamar (`retire-publication.test.ts`)
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #191)
 
 ### F9-T20 · El plan de ideas (core y worker)
 - **Depende de:** T09, T11
@@ -472,7 +472,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
   - [x] aceptar una idea encola `post.draft` y la idea pasa a `draft` (`apps/api/src/routes/plans.test.ts`, `apps/cli/src/commands/plan.test.ts`, `apps/web/src/pages/PlanPage.test.tsx`)
   - [x] cada ruta nueva está en la tabla de permisos y lo de otra marca es 404 (`plans.test.ts`, `scope.test.ts`)
   - [x] las redes del post mandan al aprobar, publicar, programar, empezar y en el reloj, y no se quita una red con pendientes (`schedule-subject.test.ts`, `post-content.test.ts`, `posts-content.test.ts`, `post.test.ts`, `PlanPage.test.tsx`); las semanas del borde cuentan completas (`social/plan.test.ts`, `use-cases/plan-run.test.ts`); un segundo `POST_REFERENCE_INVALID` al guardar las ideas sube y deja el plan en `failed` (`plan-run.test.ts`)
-  - [ ] `pnpm check` pasa (lo juzga la CI del PR)
+  - [x] `pnpm check` pasa (lo juzga la CI del PR) (CI en verde, PR #196)
 
 ### F9-T22 · Evaluación de la calidad
 - **Depende de:** T20
@@ -486,6 +486,11 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 ### F9-T23 · Documentación
 - **Depende de:** T01 a T22 y T26
 - **Descripción:** `03-plataformas.md`, `02-modelo-datos.md`, `01-arquitectura.md`, `04-formato-publicaciones.md`, `07-checklist-cuentas.md`, `10-despliegue.md`, `00-vision.md`, `06-roadmap.md`, y el seguimiento de ADR-0014, ADR-0015 y ADR-0023. `00-vision.md` se actualiza ya al aprobar el spec.
+- **Nota (2026-10-20):** revisados contra el código de `main` (hasta F9-T21): `00-vision.md` (F9 en la solución, la marca como usuario, las entregas y lo que queda fuera), `01-arquitectura.md` (los dos sujetos y el recorrido de un post, las redes en el diagrama, los puertos nuevos, los jobs `post.media` y `post.draft` en la tabla de colas, `tokens.refresh` con X y TikTok, `awaiting_manual_confirm` de las cuentas a mano y de TikTok, el panel con Plan y Calendario, la seguridad de los OAuth nuevos, y sin las frases de transición de T04 a T07), `02-modelo-datos.md` (la `meta`, el `external_account_id` y el vencimiento de LinkedIn, X y Discord, el progreso de las redes, los `nonce` de los OAuth nuevos y la tabla de las migraciones `0014` a `0018`), `03-plataformas.md` (Instagram para posts y el resumen de las cinco redes: conexión, modo, token, límites, costo, retirar, prueba y `dry-run`), `04-formato-publicaciones.md` (lo que se envía a cada red y TikTok sin texto), `06-roadmap.md` (F9 a F11 en la tabla y las tres entregas), `07-checklist-cuentas.md` (los trámites de cada red y S1 a S6), `08-guia-operador.md` (el recorrido de punta a punta y el calendario), `10-despliegue.md` (las variables de las redes, las marcas del operador, las migraciones `0016` a `0018` y las apps de la segunda instancia), `README.md` y los comandos de `CLAUDE.md`; seguimiento de F9 en ADR-0006, ADR-0014, ADR-0015, ADR-0017 y ADR-0023. Diferencias con el código que quedan como deuda: la marca del enlace en X (`xLinkAllowed`) solo se pone por la API (ni `post edit` ni el panel la ofrecen); `IG_PUBLISH_OUTCOME_UNKNOWN` sigue en `failed` porque el panel resuelve un resultado dudoso solo en los posts; y `pnpm social:smoke` no existe (S1 a S6 son a mano).
+- **Hecho cuando:**
+  - [x] cada doc de la descripción dice lo que hace el código de `main` (nota de arriba)
+  - [x] el seguimiento de ADR-0014, ADR-0015 y ADR-0023 (y de ADR-0006 y ADR-0017, que ADR-0029 también modifica)
+  - [ ] la CI pasa sobre el PR de la tarea
 
 ### F9-T24 · Prueba con las cuentas reales (contigo)
 - **Depende de:** T19, T21 y T26
@@ -502,7 +507,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] sin parámetros, el flujo despliega la instancia de hoy igual que antes (mismo `app`, mismo Environment, mismos guardias de la CI)
   - [ ] la guía de la segunda instancia está escrita y revisada por el `arquitecto`
-  - [ ] `pnpm check` (o la CI) pasa
+  - [x] `pnpm check` (o la CI) pasa (CI en verde, PR #169)
 
 ### F9-T26 · TikTok (video como borrador)
 - **Depende de:** T07, T10 (S6: verificación obligatoria antes de publicar de verdad, no antes de construir; decisión del operador 2026-10-20)
@@ -511,7 +516,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] contratos con `msw`: init, subida por trozos en orden, estados `PROCESSING_UPLOAD` / `SEND_TO_USER_INBOX` / `FAILED`, límite de envíos pendientes (5 por 24 h) y refresh que rota
   - [ ] en `dry-run` no se llama a TikTok; el `state` del OAuth es de un solo uso
-  - [ ] `pnpm check` pasa
+  - [x] `pnpm check` pasa (CI en verde, PR #186)
 
 ## 6. Criterios de aceptación de la fase
 1. Las dos marcas (personal y AgentPey) existen, sin propiedades en el panel, cada una con su perfil editorial y sus cuentas.
@@ -580,3 +585,4 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 | 2026-10-20 | F9-T20: el prompt del plan con versión propia (`PLAN_PROMPT_VERSION`, seguimiento en ADR-0030); una red que no sirve se le quita a la idea en vez de descartarla entera; ideas y `succeeded` en una transacción. Decisiones del operador en la revisión: al aceptar una idea se redacta solo para sus redes (`posts.platforms`, migración `0018`) y las descartadas dejan de bloquear un tema a los 60 días. Del `arquitecto`: un plan activo por marca con índice único parcial (`0018`), `post.draft` sin las redes que no sirven al tipo del post, `proposePlanIdeas` sin repositorios y `listPlanRuns` para T21 (§4.9, §4.10, §4.11 y F9-T21 al día) |
 | 2026-10-20 | F9-T25: la etiqueta del cierre es `v1.3.0` (decía `v1.1.0`, la de la entrega 1) |
 | 2026-10-20 | F9-T21: las rutas, la CLI y la pantalla Plan del plan de ideas; las redes del post mandan también al publicar y programar (`POST_PLATFORM_EXCLUDED`); `plannedSlots` cuenta las semanas completas del borde, leídas por rango de `planned_at` (§4.10 y F9-T21 al día) |
+| 2026-10-20 | F9-T23: la documentación de la fase revisada contra el código (nota de F9-T23); los "Hecho cuando" de `pnpm check` de las tareas ya mergeadas, marcados con su PR |
