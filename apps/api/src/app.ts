@@ -4,6 +4,7 @@ import {
   type BrokerRepository,
   type ContentRepository,
   type ContentRunRepository,
+  type EditorialProfileRepository,
   type FieldDefinitionRepository,
   type HealthCheckName,
   type ImportRunRepository,
@@ -39,6 +40,7 @@ import { accountRoutes } from "./routes/accounts.js";
 import { authRoutes } from "./routes/auth.js";
 import { brokerRoutes } from "./routes/brokers.js";
 import { contentRoutes, contentRunRoutes, listingContentRoutes } from "./routes/content.js";
+import { editorialProfileRoutes } from "./routes/editorial-profile.js";
 import { importRoutes } from "./routes/imports.js";
 import { listingRoutes } from "./routes/listings.js";
 import { type MetaSignatureVerifier, metaRoutes } from "./routes/meta.js";
@@ -119,6 +121,8 @@ export type AppDeps = {
    * firmados por el usuario del pedido. `server.ts` compone `createPostLock` sobre la misma base.
    */
   postLock: PostLock;
+  /** El perfil editorial de cada corredor o marca (F9-T09): lo lee la IA de los posts. */
+  editorialProfiles: EditorialProfileRepository;
   /**
    * Publicaciones (F3-T15): leer las de un aviso y su bitácora, y saber de qué aviso es una antes
    * del candado. Los cambios de estado van dentro del candado, con sus repositorios.
@@ -307,6 +311,7 @@ export function createApp(input: AppDeps) {
     .route("/content-runs", contentRunRoutes(deps))
     .route("/contents", contentRoutes(contentDeps))
     .route("/brokers", brokerRoutes(deps))
+    .route("/brokers", editorialProfileRoutes(deps))
     .route("/schedule", scheduleRoutes(publicationDeps))
     .route(
       "/",

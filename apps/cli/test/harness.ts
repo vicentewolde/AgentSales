@@ -19,6 +19,7 @@ import type { InMemoryMediaStorage } from "@agentsales/core/testing";
 import {
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
+  createInMemoryEditorialProfileRepository,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
   createInMemoryListingLock,
@@ -70,6 +71,8 @@ export function harness(options: HarnessOptions = {}) {
   }
   const publications = createInMemoryPublicationRepository();
   const platformAccounts = createInMemoryPlatformAccountRepository({ nextId: randomUUID });
+  // El perfil editorial de cada marca (F9-T09).
+  const editorialProfiles = createInMemoryEditorialProfileRepository();
   // R2 en memoria (spec F8 §4.4): `import` sube con las URLs firmadas a este doble.
   const storage = testStorage();
   const repos = {
@@ -80,6 +83,7 @@ export function harness(options: HarnessOptions = {}) {
     contentRuns: content.contentRuns,
     contents: content.contents,
     platformAccounts,
+    editorialProfiles,
     ...options.deps,
   };
   const lock =
@@ -196,6 +200,9 @@ export function harness(options: HarnessOptions = {}) {
     },
     get storage() {
       return own("storage", storage);
+    },
+    get editorialProfiles() {
+      return own("editorialProfiles", editorialProfiles);
     },
   };
 }

@@ -32,6 +32,9 @@ const API_HINTS: Readonly<Record<string, string>> = {
   DB_UNAVAILABLE: "Neon puede estar despertando: reintenta en unos segundos",
   QUEUE_UNAVAILABLE: "Arranca el worker (pnpm dev) y reintenta",
   STORAGE_UNAVAILABLE: "Revisa las variables R2_* y corre pnpm storage:check",
+  // F9-T09: el perfil editorial no pasó las reglas (el mensaje dice qué campo y por qué).
+  EDITORIAL_PROFILE_INVALID:
+    "Corrige lo indicado y vuelve a correr brand edit (brand show --json muestra el perfil actual)",
 };
 
 /**
