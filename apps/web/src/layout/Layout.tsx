@@ -5,7 +5,7 @@ import { onSessionExpired } from "../api/session-events.js";
 import { BrokerSelector } from "../components/BrokerSelector.js";
 import { useLogout, useMe } from "../queries/auth.js";
 import { BrokerScopeProvider } from "../scope/BrokerScopeProvider.js";
-import { useBrokerScope, useCan, useRole } from "../scope/broker-scope.js";
+import { useBrokerScope, useCan, useRole, useScopedBrokerKind } from "../scope/broker-scope.js";
 import { PublishModeBanner } from "./PublishModeBanner.js";
 
 type MenuItem = {
@@ -17,14 +17,16 @@ type MenuItem = {
   needs?: "brokers.create";
   /** Solo para el usuario de un corredor (F7): Mi marca. */
   brokerOnly?: boolean;
+  /** Lo de avisos (F9, ADR-0029): no se muestra cuando se mira una marca (`kind = brand`). */
+  listings?: boolean;
 };
 
 /** Cada sección se habilita en su fase. `end`: solo se marca en esa ruta exacta. */
 export const MENU: readonly MenuItem[] = [
   { label: "Estado", to: "/", end: true },
   // Sin `end`: también queda marcada en el detalle (`/propiedades/:id`).
-  { label: "Propiedades", to: "/propiedades" },
-  { label: "Importar", to: "/importar" },
+  { label: "Propiedades", to: "/propiedades", listings: true },
+  { label: "Importar", to: "/importar", listings: true },
   { label: "Seguimiento", to: "/seguimiento" },
   { label: "Cuentas", to: "/cuentas" },
   { label: "Corredores", to: "/corredores", needs: "brokers.create" },
@@ -125,11 +127,13 @@ function LayoutBody() {
   useSessionGuard();
   const role = useRole();
   const createsBrokers = useCan("brokers.create");
+  const brand = useScopedBrokerKind() === "brand";
   // Mientras no se sabe quién es, sin las entradas condicionadas (nada de más).
   const menu = MENU.filter(
     (item) =>
       (item.needs === undefined || createsBrokers) &&
-      (item.brokerOnly !== true || role === "broker"),
+      (item.brokerOnly !== true || role === "broker") &&
+      (item.listings !== true || !brand),
   );
   return (
     <div className="flex min-h-screen flex-col">

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BROKER_KINDS } from "./enums.js";
 import { AppError } from "./errors.js";
 import type { RawBrokerSheet } from "./listing-sheet.js";
 import type { FieldIssue } from "./listing-validator/index.js";
@@ -24,8 +25,51 @@ export const brokerSchema = z.object({
   operatorOwned: z.boolean(),
   /** Tope de gasto de IA del mes en dólares; `null` = sin tope (spec F7 §4.7). */
   llmMonthlyCapUsd: z.number().nonnegative().nullable(),
+  /**
+   * `broker` (con propiedades) o `brand` (una marca que solo publica posts), F9 y ADR-0029: dice qué
+   * ve el panel y **no decide permisos** (eso es de `can`, `permissions.ts`).
+   */
+  kind: z.enum(BROKER_KINDS),
 });
 export type Broker = z.infer<typeof brokerSchema>;
+
+// Reglas de sujeto (ADR-0029 punto 12): predicados de core y no `CHECK` de la base, para poder
+// relajarlas. Un post (F9) puede colgar de cualquier corredor o marca; un aviso, no.
+
+/** Si el corredor puede tener propiedades: solo uno con `kind = broker`. */
+export const brokerHoldsListings = (broker: Pick<Broker, "kind">): boolean =>
+  broker.kind === "broker";
+
+/**
+ * `BROKER_IS_BRAND` (409) si el corredor es una marca: a una marca no se le cargan propiedades.
+ */
+export function assertBrokerHoldsListings(broker: Pick<Broker, "kind" | "slug">): void {
+  if (!brokerHoldsListings(broker)) {
+    throw new AppError(
+      "BROKER_IS_BRAND",
+      `${broker.slug} es una marca: no tiene propiedades (carga las propiedades en un corredor)`,
+      { details: { slug: broker.slug } },
+    );
+  }
+}
+
+/**
+ * Si la publicación automática (F6, ADR-0019) se puede activar: es de los avisos, así que no en una
+ * marca (y nunca aplica a los posts, ADR-0030 punto 4).
+ */
+export const autoPublishAllowed = (broker: Pick<Broker, "kind">): boolean =>
+  brokerHoldsListings(broker);
+
+/** `BROKER_IS_BRAND` (409) al activar la publicación automática de una marca. */
+export function assertAutoPublishAllowed(broker: Pick<Broker, "kind" | "slug">): void {
+  if (!autoPublishAllowed(broker)) {
+    throw new AppError(
+      "BROKER_IS_BRAND",
+      `${broker.slug} es una marca: la publicación automática es de las propiedades y no se activa en una marca`,
+      { details: { slug: broker.slug } },
+    );
+  }
+}
 
 /** El tope de IA más alto que admite la base (`numeric(10,2)`). */
 const MAX_LLM_MONTHLY_CAP_USD = 99_999_999.99;

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { brokerData, harness, newListing } from "../../test/harness.js";
 import { runConnect } from "./accounts.js";
 import {
+  runAutoPublish,
   runBrokerCreate,
   runBrokerEdit,
   runBrokerLogo,
@@ -181,6 +182,44 @@ describe("brokers", () => {
     await expect(
       runBrokerCreate(broker, { slug: "otra", name: "X", brand: "X", color: "#000000" }),
     ).resolves.toBe(1);
+  });
+
+  it("create --kind brand crea una marca; un --kind desconocido no llama a la API (F9)", async () => {
+    const s = await setup();
+    const fields = { name: "Vinny", brand: "Vinny", color: "#112233" };
+    await expect(
+      runBrokerCreate(s.deps, { ...fields, slug: "vinny", kind: "brand" }),
+    ).resolves.toBe(0);
+    expect(s.h.text()).toContain("Marca creada");
+    expect(s.h.text()).toContain("Vinny (vinny) · marca");
+    expect((await s.h.brokers.findBySlug("vinny"))?.kind).toBe("brand");
+
+    await expect(
+      runBrokerCreate(s.deps, { ...fields, slug: "otra", kind: "oficina" }),
+    ).resolves.toBe(1);
+    expect(s.h.errors()).toContain("--kind debe ser broker o brand");
+    expect(await s.h.brokers.findBySlug("otra")).toBeNull();
+
+    // Sin --kind, un corredor de siempre.
+    await expect(runBrokerCreate(s.deps, { ...fields, slug: "corredor" })).resolves.toBe(0);
+    expect((await s.h.brokers.findBySlug("corredor"))?.kind).toBe("broker");
+  });
+
+  it("auto-publish on en una marca: BROKER_IS_BRAND sin preguntar ni cambiar nada (F9)", async () => {
+    const s = await setup();
+    const brand = await s.h.brokers.create(brokerData("vinny"), { kind: "brand" });
+    const asked: string[] = [];
+    const deps = {
+      ...s.deps,
+      confirm: async (question: string) => {
+        asked.push(question);
+        return true;
+      },
+    };
+    await expect(runAutoPublish(deps, "vinny", "on", { yes: true })).resolves.toBe(1);
+    expect(s.h.errors()).toContain("vinny es una marca");
+    expect(asked).toEqual([]);
+    expect((await s.h.brokers.findById(brand.id))?.autoPublish).toBe(false);
   });
 
   it("logo sube el archivo y template guarda la planilla (sin pisar una que existe)", async () => {

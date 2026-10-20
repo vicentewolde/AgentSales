@@ -1,6 +1,7 @@
 import { formatChileTime } from "./chile-time.js";
 import type { ContentReelOutcome, ContentRun } from "./content.js";
 import type {
+  BrokerKind,
   CloseReason,
   ContentRunStage,
   ContentRunStatus,
@@ -73,6 +74,17 @@ export const PLATFORM_TEXT: Readonly<Record<Platform, string>> = {
   instagram: "Instagram",
   portal_inmobiliario: "Portal Inmobiliario",
   fb_marketplace: "Facebook Marketplace",
+  // F9 (ADR-0029): las redes del contenido de marca.
+  x: "X",
+  linkedin: "LinkedIn",
+  discord: "Discord",
+  tiktok: "TikTok",
+};
+
+/** Qué es un corredor (`brokers.kind`, F9): lo que muestran la CLI y el panel. */
+export const BROKER_KIND_TEXT: Readonly<Record<BrokerKind, string>> = {
+  broker: "corredor",
+  brand: "marca",
 };
 
 export const CONTENT_RUN_STATUS_TEXT: Readonly<Record<ContentRunStatus, string>> = {
@@ -106,6 +118,7 @@ export const PUBLICATION_STATUS_TEXT: Readonly<Record<PublicationStatus, string>
   paused: "pausada",
   unpublished: "retirada",
   cancelled: "descartada",
+  outcome_unknown: "no se sabe si salió",
 };
 
 export const PUBLICATION_FORMAT_TEXT: Readonly<Record<PublicationFormat, string>> = {

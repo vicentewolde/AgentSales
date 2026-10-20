@@ -1,5 +1,5 @@
 import type { Content, ContentRun } from "../content.js";
-import { isTerminalContentRun, PLATFORMS } from "../enums.js";
+import { isTerminalContentRun, LISTING_PLATFORMS } from "../enums.js";
 import { AppError } from "../errors.js";
 import { addLlmCall } from "../llm-usage.js";
 import {
@@ -195,7 +195,7 @@ export function createInMemoryContentRepositories(
 
   const contentRepository: ContentRepository = {
     async listCurrent(listingId) {
-      return PLATFORMS.flatMap((platform) => {
+      return LISTING_PLATFORMS.flatMap((platform) => {
         const current = contents.findLast(
           (content) => content.listingId === listingId && content.platform === platform,
         );

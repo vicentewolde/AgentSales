@@ -75,7 +75,7 @@ pnpm -s cli agenda       # lo pendiente (atrasadas, te toca, atascadas, fallas, 
 pnpm -s cli tracking     # cada propiedad por plataforma (--broker, --archived, --json)
 pnpm -s cli listing ready|pause|resume|reopen|archive <id_propiedad>  # la propiedad manda sobre sus publicaciones; listing close <id_propiedad> --reason vendida|arrendada|retirada (pide confirmación; --yes)
 pnpm -s cli brokers auto-publish <slug> on|off  # publicación automática del corredor (pregunta siempre; --yes)
-pnpm -s cli brokers create|edit|show|logo|template  # corredores: crear (--slug --name --brand --color …), editar la marca (--own/--not-own y --cap/--no-cap, solo el administrador), su lista de alta, el logo (PNG, JPEG o WebP) y su planilla (--out, --force)
+pnpm -s cli brokers create|edit|show|logo|template  # corredores: crear (--slug --name --brand --color …; --kind brand crea una marca, F9), editar la marca (--own/--not-own y --cap/--no-cap, solo el administrador), su lista de alta, el logo (PNG, JPEG o WebP) y su planilla (--out, --force)
 pnpm -s cli users list|invite|reset|disable|enable  # usuarios (administrador): invite --email --name --broker <slug>|--admin; el enlace va al portapapeles, nunca a la pantalla (no lo pegues en el chat)
 pnpm -s cli usage [--month AAAA-MM]  # el gasto de IA del mes por corredor (estimado), con su tope
 pbpaste | pnpm -s cli publications confirm <id> --url-stdin  # Marketplace: lo publicaste (el enlace no se imprime); publications not-published <id> si no
@@ -84,7 +84,7 @@ pnpm -s cli accounts     # cuentas y vencimiento (pbpaste | pnpm -s cli accounts
 (Los comandos existen desde F0; si alguno falta, la tarea que lo introduce debe crearlo.)
 
 ## Glosario (español → código)
-corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) → `Media` · texto generado → `Content` · publicación (aviso × cuenta × formato: carrusel, reel o aviso en Portal) → `Publication` · cuenta conectada → `PlatformAccount` · campo configurable → `FieldDefinition` · carga → `ImportRun`.
+corredor → `Broker` · marca → `Broker` con `kind = brand` (solo publica posts, F9) · post (contenido de marca) → `Post` · propiedad/aviso → `Listing` · medio (foto/video) → `Media` · texto generado → `Content` · publicación (aviso × cuenta × formato: carrusel, reel o aviso en Portal) → `Publication` · cuenta conectada → `PlatformAccount` · campo configurable → `FieldDefinition` · carga → `ImportRun`.
 
 ## Reglas de trabajo (obligatorias)
 1. **Spec primero.** No implementes nada que no esté en el spec aprobado de la fase. Si falta algo, propónlo y actualiza el spec antes.
@@ -100,6 +100,7 @@ corredor → `Broker` · propiedad/aviso → `Listing` · medio (foto/video) →
 ## Reglas de seguridad (no negociables)
 - `PUBLISH_MODE=dry-run` por defecto. **Nunca** cambies a `live` ni publiques de verdad sin instrucción explícita del operador en el chat. En `dry-run`, Portal puede leer de Mercado Libre y validar sin publicar (ADR-0016), nunca crear ni cambiar un aviso.
 - `pnpm ml:test-user` es la única escritura en Mercado Libre que no mira `PUBLISH_MODE` (crea un usuario de prueba con la cuenta real; la corre solo el operador, ADR-0015).
+- `pnpm social:smoke` (F9, uno por red) publica de verdad en una cuenta propia: como `ml:test-user`, lo corre solo el operador, solo en cuentas o servidores de prueba y con su instrucción en el chat.
 - Ningún test llama APIs reales de Instagram, Mercado Libre, Facebook ni Anthropic. Usa msw o fakes.
 - No leas, muestres ni commitees `.env`. No loguees tokens ni secretos.
 - La sesión de la CLI (`~/.agentsales/cli-session.json`) es del operador: úsala a través de la CLI, pero nunca leas ni muestres ese archivo. Los enlaces de invitación (`/invitacion#…`) son secretos: no los imprimas ni los pegues en el chat.

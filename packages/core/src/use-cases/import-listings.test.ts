@@ -343,6 +343,44 @@ describe("importListings · hoja Corredor", () => {
   });
 });
 
+describe("importListings · una marca no tiene propiedades (F9, ADR-0029)", () => {
+  /** Una marca con el slug de la hoja (`marca-inventada`) o el de `--broker`. */
+  async function withBrand(slug = "marca-inventada") {
+    const s = setup();
+    const parsed = parseBrokerSheet(BROKER_SHEET, { slug });
+    if (!parsed.ok) throw new Error("hoja inválida");
+    const brand = await s.deps.brokers.create(parsed.data, { kind: "brand" });
+    return { ...s, brand };
+  }
+
+  it.each([
+    ["con --broker y sin hoja Corredor", false, "vinny"],
+    ["con la hoja Corredor de la marca (que además cambia el tono)", true, "marca-inventada"],
+  ] as const)(
+    "%s: BROKER_IS_BRAND, sin escribir nada y con el motivo en el reporte",
+    async (_label, withSheet, slug) => {
+      const { deps, createRun, brand } = await withBrand(slug);
+      for (const dryRun of [false, true]) {
+        const importRun = await createRun({ dryRun, ...(withSheet ? {} : { brokerSlug: slug }) });
+        const input = sheet([row(2)], {
+          broker: withSheet ? { ...BROKER_SHEET, tono: "Otro" } : null,
+        });
+        const error = await expectAppError(
+          importListings(deps, { runId: importRun.id, input }),
+          "BROKER_IS_BRAND",
+        );
+        expect((error as AppError).message).toContain("es una marca");
+        const report = (await deps.importRuns.get(importRun.id))?.report;
+        expect(report).toMatchObject({ headers: null, rows: [] });
+        expect(report?.broker).toMatchObject({ slug, outcome: "invalid" });
+      }
+      expect(deps.listings.all()).toEqual([]);
+      // La hoja tampoco cambia la marca.
+      expect(deps.brokers.all()).toEqual([brand]);
+    },
+  );
+});
+
 describe("importListings · errores del run", () => {
   it("definiciones que no permiten armar un listing → FIELD_CONFIG_INVALID", async () => {
     const { run } = setup(DEFS.filter((d) => d.key !== "precio"));

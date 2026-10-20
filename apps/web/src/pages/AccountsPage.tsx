@@ -1,5 +1,10 @@
 import type { AccountListResponse, PlatformAccountView } from "@agentsales/api/contracts";
-import { type Broker, marketplaceAutomationAllowed, type PublishMode } from "@agentsales/core";
+import {
+  type Broker,
+  brokerHoldsListings,
+  marketplaceAutomationAllowed,
+  type PublishMode,
+} from "@agentsales/core";
 import { type ReactNode, useId } from "react";
 import { AccountCard } from "../components/accounts/AccountCard.js";
 import { AutoPublishToggle } from "../components/accounts/AutoPublishToggle.js";
@@ -110,13 +115,15 @@ function BrokerAccounts({
   );
   // En el servidor el formulario automático no corre: todos publican a mano (F8-T20, D4).
   const automation = data.connect.marketplace.automation;
+  // Una marca (F9, ADR-0029) no tiene propiedades: sin Portal, Marketplace ni publicación automática.
+  const listings = brokerHoldsListings(broker);
   const headingId = `corredor-${broker.id}`;
   return (
     <section aria-labelledby={headingId}>
       <h2 id={headingId} className="text-lg font-semibold">
         {broker.brandName} <span className="text-sm text-slate-500">({broker.slug})</span>
       </h2>
-      {settings && <AutoPublishToggle broker={broker} publishMode={publishMode} />}
+      {settings && listings && <AutoPublishToggle broker={broker} publishMode={publishMode} />}
       <Channel
         title="Instagram"
         empty="Sin cuenta de Instagram."
@@ -135,50 +142,55 @@ function BrokerAccounts({
           />
         )}
       </Channel>
-      <Channel
-        title="Mercado Libre (Portal Inmobiliario)"
-        empty="Sin cuenta de Mercado Libre."
-        accounts={mercadoLibre.shown}
-        now={now}
-        manage={manage}
-        marketplaceAutomation={automation}
-      >
-        {mercadoLibre.offerConnect && (
-          <MercadoLibreConnectBox
-            broker={broker}
-            configured={data.connect.mercadolibre.configured}
-            redirectUri={data.connect.mercadolibre.redirectUri}
-            automatic={data.connect.mercadolibre.automatic}
-            reconnect={mercadoLibre.reconnect}
-          />
-        )}
-      </Channel>
-      <Channel
-        title="Facebook Marketplace"
-        empty="Sin cuenta de Facebook."
-        accounts={marketplace.shown}
-        now={now}
-        manage={manage}
-        marketplaceAutomation={automation}
-      >
-        {/* El perfil del navegador solo para un corredor propio (ADR-0023); siempre, porque sin
+      {listings && (
+        <>
+          <Channel
+            title="Mercado Libre (Portal Inmobiliario)"
+            empty="Sin cuenta de Mercado Libre."
+            accounts={mercadoLibre.shown}
+            now={now}
+            manage={manage}
+            marketplaceAutomation={automation}
+          >
+            {mercadoLibre.offerConnect && (
+              <MercadoLibreConnectBox
+                broker={broker}
+                configured={data.connect.mercadolibre.configured}
+                redirectUri={data.connect.mercadolibre.redirectUri}
+                automatic={data.connect.mercadolibre.automatic}
+                reconnect={mercadoLibre.reconnect}
+              />
+            )}
+          </Channel>
+          <Channel
+            title="Facebook Marketplace"
+            empty="Sin cuenta de Facebook."
+            accounts={marketplace.shown}
+            now={now}
+            manage={manage}
+            marketplaceAutomation={automation}
+          >
+            {/* El perfil del navegador solo para un corredor propio (ADR-0023); siempre, porque sin
             vencimiento que avise una sesión cerrada no se ve hasta publicar. */}
-        {marketplaceAutomationAllowed(broker, automation) && !manualActive && (
-          <MarketplaceConnectBox
-            broker={broker}
-            connected={!marketplace.offerConnect}
-            reconnect={marketplace.reconnect}
-          />
-        )}
-        <MarketplaceManualBox
-          broker={broker}
-          active={manualActive}
-          automation={automation}
-          replacesProfile={own("fb_marketplace").some(
-            (account) => account.status === "connected" && account.marketplaceMode === "profile",
-          )}
-        />
-      </Channel>
+            {marketplaceAutomationAllowed(broker, automation) && !manualActive && (
+              <MarketplaceConnectBox
+                broker={broker}
+                connected={!marketplace.offerConnect}
+                reconnect={marketplace.reconnect}
+              />
+            )}
+            <MarketplaceManualBox
+              broker={broker}
+              active={manualActive}
+              automation={automation}
+              replacesProfile={own("fb_marketplace").some(
+                (account) =>
+                  account.status === "connected" && account.marketplaceMode === "profile",
+              )}
+            />
+          </Channel>
+        </>
+      )}
     </section>
   );
 }

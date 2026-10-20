@@ -98,7 +98,7 @@ export function runSchedule(deps: ScheduleDeps, refs: readonly string[], options
         "Di qué programar: una o más propiedades, o --publication <id>",
       );
     }
-    const platforms = options.platform?.map(platformOption);
+    const platforms = options.platform?.map((option) => platformOption(option));
     const spacingMinutes = spacingOf(options.spacing);
     const live = await confirmLive(deps, options.yes ?? false);
     if (live === null) return 1;

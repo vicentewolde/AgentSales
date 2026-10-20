@@ -2,6 +2,7 @@ import type { ContentView, ListingPublicationView, ReadinessView } from "@agents
 import {
   ACTIVE_PUBLICATION_STATUSES,
   formatChileTime,
+  type ListingPlatform,
   type ListingStatus,
   PLATFORM_TEXT,
   type Platform,
@@ -64,7 +65,7 @@ export function PublicationsPanel({
   runActive,
   readiness = null,
 }: {
-  platform: Platform;
+  platform: ListingPlatform;
   listingId: string;
   listingStatus: ListingStatus;
   content: ContentView | undefined;

@@ -1,4 +1,4 @@
-import { can, type Permission } from "@agentsales/core";
+import { type BrokerKind, can, type Permission } from "@agentsales/core";
 import { createContext, useContext } from "react";
 import { useMe } from "../queries/auth.js";
 import { useBrokers } from "../queries/brokers.js";
@@ -47,6 +47,26 @@ export function useBrokerFilter(): string | undefined {
   if (!admin || selected === undefined) return undefined;
   // Uno que ya no existe (o todavía no se sabe) no filtra: la API respondería "no existe".
   return brokers.data?.some((broker) => broker.slug === selected) ? selected : undefined;
+}
+
+/**
+ * Qué es el corredor que se está mirando (F9, ADR-0029): el elegido por el administrador o el del
+ * usuario corredor. `undefined` con "Todos" o mientras no se sabe: entonces no se esconde nada (el
+ * panel esconde lo de avisos solo en una marca conocida; `kind` no decide permisos).
+ */
+export function useScopedBrokerKind(): BrokerKind | undefined {
+  const { selected } = useContext(BrokerScopeContext);
+  const me = useMe();
+  const brokers = useBrokers();
+  const user = me.data;
+  if (user === undefined) return undefined;
+  const scoped =
+    user.role === "admin"
+      ? selected === undefined
+        ? undefined
+        : brokers.data?.find((broker) => broker.slug === selected)
+      : brokers.data?.find((broker) => broker.id === user.brokerId);
+  return scoped?.kind;
 }
 
 export function useBrokerScope(): BrokerScope {

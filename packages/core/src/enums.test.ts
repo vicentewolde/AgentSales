@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  BROKER_KINDS,
   CLOSE_REASONS,
   CONTENT_STATUSES,
   CURRENCIES,
   FIELD_TYPES,
   IMPORT_RUN_STATUSES,
+  isListingPlatform,
   isTerminalImportRun,
+  LISTING_PLATFORMS,
   LISTING_SOURCES,
   LISTING_STATUSES,
   LLM_PROVIDERS,
@@ -13,6 +16,7 @@ import {
   MEDIA_ROLES,
   OPERATIONS,
   PLATFORM_ACCOUNT_STATUSES,
+  PLATFORM_SHORT_NAMES,
   PLATFORMS,
   PUBLISH_MODES,
 } from "./enums.js";
@@ -20,7 +24,17 @@ import {
 // Valores de docs/02-modelo-datos.md y ADR-0003; si cambian, cambia también el doc.
 describe("enums de dominio", () => {
   it("coinciden con el modelo de datos", () => {
-    expect(PLATFORMS).toEqual(["instagram", "portal_inmobiliario", "fb_marketplace"]);
+    expect(PLATFORMS).toEqual([
+      "instagram",
+      "portal_inmobiliario",
+      "fb_marketplace",
+      "x",
+      "linkedin",
+      "discord",
+      "tiktok",
+    ]);
+    expect(LISTING_PLATFORMS).toEqual(["instagram", "portal_inmobiliario", "fb_marketplace"]);
+    expect(BROKER_KINDS).toEqual(["broker", "brand"]);
     expect(LISTING_STATUSES).toEqual(["draft", "ready", "active", "paused", "closed", "archived"]);
     expect(CURRENCIES).toEqual(["UF", "CLP"]);
     expect(OPERATIONS).toEqual(["sale", "rent"]);
@@ -43,6 +57,11 @@ describe("enums de dominio", () => {
   it("dry-run es el primer modo de publicación y los proveedores de IA son los del ADR-0003", () => {
     expect(PUBLISH_MODES).toEqual(["dry-run", "live"]);
     expect(LLM_PROVIDERS).toEqual(["claude-cli", "anthropic-api", "fake"]);
+  });
+
+  it("cada plataforma tiene un nombre corto para la CLI, y las de avisos son las de F2 a F8", () => {
+    expect(Object.values(PLATFORM_SHORT_NAMES).sort()).toEqual([...PLATFORMS].sort());
+    expect(PLATFORMS.filter(isListingPlatform)).toEqual([...LISTING_PLATFORMS]);
   });
 
   it("una carga es terminal solo en succeeded o failed", () => {

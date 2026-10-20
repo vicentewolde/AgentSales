@@ -215,6 +215,9 @@ stateDiagram-v2
   publishing --> awaiting_manual_confirm: formulario listo (Marketplace)
   awaiting_manual_confirm --> published: el operador publicó (enlace detectado o pegado)
   awaiting_manual_confirm --> failed: "No lo publiqué"
+  publishing --> outcome_unknown: corte después de enviar (F9)
+  outcome_unknown --> published: el operador dice que salió
+  outcome_unknown --> failed: el operador dice que no salió
   unpublished --> [*]
   approved --> cancelled: descartar, o cerrar o archivar la propiedad
   scheduled --> cancelled: descartar, o cerrar o archivar la propiedad
@@ -225,11 +228,13 @@ stateDiagram-v2
 
 Para Marketplace (semiautomático) existe además `awaiting_manual_confirm` entre `publishing` y `published`: el formulario queda listo y el operador hace el clic final (ADR-0004, ADR-0017). Si aparece un captcha, una verificación o cualquier pantalla fuera de la lista blanca, el intento se detiene **en `publishing`** y la publicación pasa a `failed`. Desde `awaiting_manual_confirm`, solo la palabra del operador la lleva a `failed` ("No lo publiqué") o el enlace del aviso a `published`; el sistema nunca da por publicado ni por no publicado lo que no vio, así que en Marketplace descartar y quitar la aprobación esperan esa palabra (`MANUAL_CONFIRM_PENDING`, desde F5-T05), aunque la máquina admita `awaiting_manual_confirm → cancelled`.
 
+**Resultado dudoso (F9, ADR-0029 punto 8):** `outcome_unknown` es una publicación cuyo intento se cortó después de enviarla a la red, sin saber si salió. No se reintenta sola: el operador la resuelve, "salió" (`published`) o "no salió" (`failed`, desde donde se vuelve a intentar). Es pendiente y activa. F9-T01 deja el estado y sus transiciones; el publisher que lo produce, `resolvePublication` y su clase de agenda llegan con F9-T06 y T08.
+
 **Calendario (F6, ADR-0018):** `scheduled` es una publicación programada para una hora (`scheduled_at`, que solo tiene valor en ese estado: al salir se borra). Pasar a `scheduled` exige el modo y la hora (`PUBLICATION_MODE_REQUIRED`, `PUBLICATION_SCHEDULE_REQUIRED`): el modo se fija al programar y el disparo lo respeta. Se programa desde `approved` o `failed` (un reintento), se desprograma a `approved`, pasa a `failed` si a la hora la revisión de publicar falla, y vuelve desde `publishing` cuando el intento espera que se libere un límite de la plataforma (F6-T04). Reprogramar no es una transición: `PublicationRepository.reschedule` cambia la hora y el modo de una `scheduled` (condicional en la hora esperada) con un evento `schedule_changed`. Publicar ahora también arranca una `scheduled` (`STARTABLE_STATUSES`).
 
 Estado inicial (`INITIAL_PUBLICATION_STATUSES`): `approved`, siempre desde un texto aprobado (también con `auto_publish` en F6, que aprueba el texto solo).
 
-Estados terminales (`TERMINAL_PUBLICATION_STATUSES`): `unpublished` (estuvo en la plataforma y se bajó) y `cancelled` (nunca llegó a la plataforma). Todos los demás cuentan como **activos** (`ACTIVE_PUBLICATION_STATUSES`), incluido `failed`; por eso un `failed` se reintenta o se cancela antes de crear otra publicación del mismo aviso, cuenta y formato. Los activos que aún no están en la plataforma (`approved`, `scheduled`, `publishing`, `failed`, `awaiting_manual_confirm`) son **pendientes** (`PENDING_PUBLICATION_STATUSES`): mientras un aviso tenga uno, no se vuelve a preparar su contenido (spec F3, §4.2).
+Estados terminales (`TERMINAL_PUBLICATION_STATUSES`): `unpublished` (estuvo en la plataforma y se bajó) y `cancelled` (nunca llegó a la plataforma). Todos los demás cuentan como **activos** (`ACTIVE_PUBLICATION_STATUSES`), incluido `failed`; por eso un `failed` se reintenta o se cancela antes de crear otra publicación del mismo aviso, cuenta y formato. Los activos que aún no están en la plataforma (`approved`, `scheduled`, `publishing`, `failed`, `awaiting_manual_confirm` y, desde F9, `outcome_unknown`) son **pendientes** (`PENDING_PUBLICATION_STATUSES`): mientras un aviso tenga uno, no se vuelve a preparar su contenido (spec F3, §4.2).
 
 `transition()` no conoce la plataforma: el caso de uso solo lleva a `awaiting_manual_confirm` a publishers con paso manual, y solo pausa en plataformas que lo soportan.
 

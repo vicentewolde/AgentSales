@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { type BrokerData, normalizeBrokerBrand, parseUsdAmount } from "../broker.js";
+import {
+  assertAutoPublishAllowed,
+  assertBrokerHoldsListings,
+  autoPublishAllowed,
+  type BrokerData,
+  brokerHoldsListings,
+  normalizeBrokerBrand,
+  parseUsdAmount,
+} from "../broker.js";
 import { AppError } from "../errors.js";
 import { llmSpendText, ONBOARDING_STEP_TEXT, userStateText } from "../labels.js";
 import { onboardingSteps } from "../onboarding.js";
@@ -440,5 +448,58 @@ describe("revisión del lote H", () => {
     expect(llmSpendText({ spentUsd: 0.7, capUsd: 0.5 })).toBe("US$ 0,70 de US$ 0,50");
     expect(llmSpendText({ spentUsd: 0, capUsd: null })).toBe("US$ 0,00 (sin tope)");
     expect(Object.keys(ONBOARDING_STEP_TEXT)).toHaveLength(7);
+  });
+});
+
+describe("marcas (F9, ADR-0029)", () => {
+  it("createBroker crea un corredor por defecto o una marca con kind; kind no decide permisos", async () => {
+    const brokers = createInMemoryBrokerRepository();
+    const plain = await createBroker({ brokers }, ADMIN, base);
+    expect(plain.kind).toBe("broker");
+    const brand = await createBroker({ brokers }, ADMIN, {
+      ...base,
+      slug: "agentpey",
+      kind: "brand",
+    });
+    expect(brand).toMatchObject({ slug: "agentpey", kind: "brand", autoPublish: false });
+    // El usuario de una marca edita su marca como cualquier corredor: kind no cambia los permisos.
+    await expect(
+      updateBroker({ brokers }, brokerUser(brand.id), brand.id, { brandName: "AgentPey" }),
+    ).resolves.toMatchObject({ brandName: "AgentPey", kind: "brand" });
+    await expect(
+      createBroker({ brokers }, brokerUser(brand.id), { ...base, slug: "otra", kind: "brand" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("la publicación automática no se activa en una marca: BROKER_IS_BRAND, sin cambiar nada", async () => {
+    const brokers = createInMemoryBrokerRepository();
+    const brand = await createBroker({ brokers }, ADMIN, { ...base, kind: "brand" });
+    await expect(
+      updateBroker({ brokers }, ADMIN, brand.id, { brandName: "Otra", autoPublish: true }),
+    ).rejects.toMatchObject({ code: "BROKER_IS_BRAND", retriable: false });
+    expect(await brokers.findById(brand.id)).toEqual(brand);
+    // Apagarla (ya apagada) sí: no hay nada que proteger.
+    await expect(
+      updateBroker({ brokers }, ADMIN, brand.id, { autoPublish: false }),
+    ).resolves.toMatchObject({ autoPublish: false });
+  });
+
+  it("los predicados: un aviso y la publicación automática, solo en un corredor", () => {
+    const broker = contentBrokerFixture();
+    const brand = contentBrokerFixture({ kind: "brand", slug: "vinny" });
+    expect(brokerHoldsListings(broker)).toBe(true);
+    expect(brokerHoldsListings(brand)).toBe(false);
+    expect(autoPublishAllowed(broker)).toBe(true);
+    expect(autoPublishAllowed(brand)).toBe(false);
+    expect(() => assertBrokerHoldsListings(broker)).not.toThrow();
+    expect(() => assertBrokerHoldsListings(brand)).toThrow(
+      expect.objectContaining({
+        code: "BROKER_IS_BRAND",
+        message: expect.stringContaining("vinny"),
+      }),
+    );
+    expect(() => assertAutoPublishAllowed(brand)).toThrow(
+      expect.objectContaining({ code: "BROKER_IS_BRAND" }),
+    );
   });
 });

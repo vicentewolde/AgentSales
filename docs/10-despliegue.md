@@ -191,6 +191,8 @@ Cada despliegue queda con la etiqueta de su commit (`sha-…`).
 
 Volver atrás **no deshace migraciones** (por eso son siempre aditivas: la versión anterior sigue funcionando con la base nueva) ni cambios de secretos.
 
+**Ojo con los valores nuevos de F9 (migración `0014`).** La migración solo agrega (las redes `x`, `linkedin`, `discord` y `tiktok`, el estado `outcome_unknown` y la columna `brokers.kind`), así que volver a una versión anterior a F9 funciona **mientras ninguna fila use esos valores**. En cuanto exista una cuenta, un texto o una publicación de X, LinkedIn, Discord o TikTok, o una publicación que haya pasado por `outcome_unknown`, el código viejo no sabe leer esa fila: valida lo que lee y responde un error (`PLATFORM_ACCOUNT_ROW_INVALID`, `CONTENT_ROW_INVALID`, `PUBLICATION_ROW_INVALID` o `PUBLICATION_EVENT_ROW_INVALID`) en las pantallas y los trabajos que la tocan. Una marca (`kind = brand`) no da error, pero el código viejo no conoce la columna y la trata como un corredor más (le muestra Propiedades e Importar y deja activar su publicación automática). Antes de volver atrás a una versión sin F9, pásale a Claude qué versión quieres y te dirá qué filas revisar; lo normal es arreglar hacia adelante con una versión nueva.
+
 ## Paso 10 · Restaurar un respaldo
 
 Hazlo siempre primero en una **rama nueva de Neon**, nunca encima de la base de producción, y cámbiate a ella solo cuando hayas revisado que está bien.

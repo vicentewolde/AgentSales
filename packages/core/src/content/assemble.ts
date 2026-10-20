@@ -1,5 +1,5 @@
 import type { Broker } from "../broker.js";
-import type { Platform } from "../enums.js";
+import type { ListingPlatform, Platform } from "../enums.js";
 import { foldText } from "../listing-validator/normalizers.js";
 import { formatNumber } from "../price.js";
 import type { ContentBrief } from "./brief.js";
@@ -17,7 +17,7 @@ const HASHTAG_MAX_LENGTH = 50;
 
 /** El texto de un canal, como se guarda en `contents` (título, cuerpo y hashtags). */
 export type AssembledText = { title: string | null; body: string; hashtags: string[] };
-export type AssembledContents = Readonly<Record<Platform, AssembledText>>;
+export type AssembledContents = Readonly<Record<ListingPlatform, AssembledText>>;
 
 /** El contacto que el código agrega a los textos: nunca pasa por la IA. */
 export type ContentContact = Pick<Broker, "whatsapp">;

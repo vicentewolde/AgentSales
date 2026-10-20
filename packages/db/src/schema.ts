@@ -2,6 +2,7 @@
 // Los valores de los enums salen de @agentsales/core; nunca se repiten aquí.
 import {
   ACTIVE_CONTENT_RUN_STATUSES,
+  BROKER_KINDS,
   CLOSE_REASONS,
   CONTENT_RUN_STATUSES,
   CONTENT_STATUSES,
@@ -65,6 +66,7 @@ export const contentRunStatusEnum = pgEnum("content_run_status", CONTENT_RUN_STA
 export const userRoleEnum = pgEnum("user_role", USER_ROLES);
 export const sessionClientEnum = pgEnum("session_client", SESSION_CLIENTS);
 export const invitationPurposeEnum = pgEnum("invitation_purpose", INVITATION_PURPOSES);
+export const brokerKindEnum = pgEnum("broker_kind", BROKER_KINDS);
 
 // ── Columnas comunes ─────────────────────────────────────────────────────
 
@@ -104,6 +106,11 @@ export const brokers = pgTable("brokers", {
   operatorOwned: boolean("operator_owned").notNull().default(false),
   /** Tope de gasto de IA del mes en dólares (spec F7 §4.7); `null` = sin tope. */
   llmMonthlyCapUsd: numeric("llm_monthly_cap_usd", { precision: 10, scale: 2 }),
+  /**
+   * `broker` o `brand` (F9, ADR-0029): qué ve el panel; no decide permisos. Que un aviso solo cuelgue
+   * de un `broker` es una regla de core (`assertBrokerHoldsListings`), no un `CHECK`.
+   */
+  kind: brokerKindEnum("kind").notNull().default("broker"),
   ...timestamps,
 });
 

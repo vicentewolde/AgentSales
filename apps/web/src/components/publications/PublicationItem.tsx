@@ -132,6 +132,11 @@ const SIMULATION_TEXT: Readonly<Record<ListingPublicationView["platform"], strin
   instagram: "Simulación: no se envió nada a Instagram.",
   portal_inmobiliario: "Simulación: no se creó ni cambió nada en Mercado Libre.",
   fb_marketplace: "Simulación: no se abrió ni publicó nada en Facebook.",
+  // F9: las redes de los posts (sin publisher todavía).
+  x: "Simulación: no se envió nada a X.",
+  linkedin: "Simulación: no se envió nada a LinkedIn.",
+  discord: "Simulación: no se envió nada a Discord.",
+  tiktok: "Simulación: no se envió nada a TikTok.",
 };
 
 /** La confirmación de reintentar en vivo según el canal (Marketplace: quien publica es el operador). */

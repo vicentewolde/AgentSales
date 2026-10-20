@@ -1,6 +1,8 @@
 import { brokerListResponseSchema, listingListResponseSchema } from "@agentsales/api/contracts";
 import {
   type Broker,
+  isListingPlatform,
+  type ListingPlatform,
   manualConfirmCommands,
   PLATFORM_SHORT_NAMES,
   type Platform,
@@ -14,29 +16,39 @@ import { CliError, type Io } from "../output.js";
 
 /** Lo que usan varios comandos. */
 
-/** Los nombres cortos de `--platform` (`instagram`, `portal`, `marketplace`). */
-export const PLATFORM_OPTION_NAMES = Object.keys(PLATFORM_SHORT_NAMES);
-
 const isShortName = (name: string): name is PlatformShortName =>
   Object.hasOwn(PLATFORM_SHORT_NAMES, name);
 
-/** `--platform portal` → `portal_inmobiliario`; `PLATFORM_INVALID` si no es uno de los cortos. */
-export function platformOption(option: string): Platform {
+/** Todos los nombres cortos de `--platform`, también los de las redes de F9. */
+const ALL_PLATFORM_OPTION_NAMES = Object.keys(PLATFORM_SHORT_NAMES).filter(isShortName);
+
+/**
+ * Los nombres cortos de `--platform` en los comandos de propiedades (`instagram`, `portal`,
+ * `marketplace`): las redes de F9 son de los posts.
+ */
+export const PLATFORM_OPTION_NAMES: readonly string[] = ALL_PLATFORM_OPTION_NAMES.filter((name) =>
+  isListingPlatform(PLATFORM_SHORT_NAMES[name]),
+);
+
+/**
+ * `--platform portal` → `portal_inmobiliario` en los comandos de propiedades; `PLATFORM_INVALID` si
+ * no es uno de sus nombres cortos (las redes de F9 tampoco: son de los posts).
+ */
+export function platformOption(option: string): ListingPlatform {
   const name = option.trim().toLowerCase();
-  if (!isShortName(name)) {
+  const platform = isShortName(name) ? PLATFORM_SHORT_NAMES[name] : null;
+  if (platform === null || !isListingPlatform(platform)) {
     throw new CliError(
       "PLATFORM_INVALID",
       `--platform debe ser ${PLATFORM_OPTION_NAMES.join(", ")}: "${option}"`,
     );
   }
-  return PLATFORM_SHORT_NAMES[name];
+  return platform;
 }
 
 /** `portal_inmobiliario` → `portal`: el nombre corto que acepta `--platform`. */
 export function platformShortName(platform: Platform): PlatformShortName {
-  const found = PLATFORM_OPTION_NAMES.filter(isShortName).find(
-    (name) => PLATFORM_SHORT_NAMES[name] === platform,
-  );
+  const found = ALL_PLATFORM_OPTION_NAMES.find((name) => PLATFORM_SHORT_NAMES[name] === platform);
   if (found === undefined) throw new Error(`sin nombre corto para ${platform}`);
   return found;
 }

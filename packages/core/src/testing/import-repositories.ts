@@ -1,6 +1,6 @@
 import { type AccessScope, ALL_SCOPE, inScope } from "../access.js";
 import { type Broker, type BrokerData, normalizeLlmMonthlyCap } from "../broker.js";
-import type { CloseReason } from "../enums.js";
+import type { BrokerKind, CloseReason } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { ImportRun } from "../import-run.js";
 import type { Listing } from "../listing.js";
@@ -59,7 +59,7 @@ export function createInMemoryBrokerRepository(
         .sort((a, b) => bytes(key(a), key(b)) || bytes(a.id, b.id))
         .map(structuredCopy);
     },
-    async create(data: BrokerData) {
+    async create(data: BrokerData, createOptions: { kind?: BrokerKind } = {}) {
       if ([...stored.values()].some((broker) => broker.slug === data.slug)) {
         throw new AppError("BROKER_CONFLICT", `Ya existe el corredor ${data.slug}`, {
           retriable: true,
@@ -72,6 +72,7 @@ export function createInMemoryBrokerRepository(
         autoPublish: false,
         operatorOwned: false,
         llmMonthlyCapUsd: null,
+        kind: createOptions.kind ?? "broker",
       };
       stored.set(broker.id, broker);
       return structuredCopy(broker);

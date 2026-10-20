@@ -34,6 +34,7 @@ const broker: Broker = {
   autoPublish: false,
   operatorOwned: false,
   llmMonthlyCapUsd: null,
+  kind: "broker",
 };
 
 const load = async (bytes: Uint8Array | string) => {
@@ -56,6 +57,7 @@ describe("writeBrokerTemplate", () => {
       autoPublish: _a,
       operatorOwned: _o,
       llmMonthlyCapUsd: _c,
+      kind: _k,
       ...data
     } = broker;
     expect(parsed.data).toEqual(data);

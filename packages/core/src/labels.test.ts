@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  BROKER_KINDS,
   IMPORT_RUN_STATUSES,
   LISTING_STATUSES,
   OPERATIONS,
   PLATFORM_ACCOUNT_STATUSES,
+  PLATFORMS,
   PUBLICATION_FORMATS,
   PUBLICATION_STATUSES,
 } from "./enums.js";
 import { IMPORT_BROKER_OUTCOMES, IMPORT_ROW_OUTCOMES } from "./import-run.js";
 import {
   accountDisconnectText,
+  BROKER_KIND_TEXT,
   IMPORT_BROKER_OUTCOME_TEXT,
   IMPORT_ROW_OUTCOME_TEXT,
   IMPORT_RUN_STATUS_TEXT,
@@ -20,6 +23,7 @@ import {
   mercadoLibreConnectCommands,
   OPERATION_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
+  PLATFORM_TEXT,
   PUBLICATION_ACTOR_TEXT,
   PUBLICATION_FORMAT_TEXT,
   PUBLICATION_STATUS_TEXT,
@@ -44,6 +48,8 @@ describe("textos para el operador", () => {
       [PLATFORM_ACCOUNT_STATUSES, PLATFORM_ACCOUNT_STATUS_TEXT],
       [PUBLISH_ATTEMPT_RESULTS, PUBLISH_ATTEMPT_RESULT_TEXT],
       [PUBLICATION_ACTORS, PUBLICATION_ACTOR_TEXT],
+      [PLATFORMS, PLATFORM_TEXT],
+      [BROKER_KINDS, BROKER_KIND_TEXT],
     ] as const) {
       const labels = values.map((value) => (text as Record<string, string>)[value]);
       expect(labels.every((label) => typeof label === "string" && label.length > 0)).toBe(true);

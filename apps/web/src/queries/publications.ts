@@ -15,7 +15,7 @@ import {
   type SkippedPublicationView,
   scheduleResponseSchema,
 } from "@agentsales/api/contracts";
-import { MARKETPLACE_CONFIRM_CLIENT_WAIT_MS, type Platform } from "@agentsales/core";
+import { type ListingPlatform, MARKETPLACE_CONFIRM_CLIENT_WAIT_MS } from "@agentsales/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { unwrap } from "../api/client.js";
@@ -167,7 +167,7 @@ export function usePublishListing(listingId: string) {
   const client = useApiClient();
   const refresh = useRefreshAfter(listingId);
   return useMutation({
-    mutationFn: (platform: Platform) =>
+    mutationFn: (platform: ListingPlatform) =>
       unwrap(
         client.listings[":id"].publish.$post({ param: { id: listingId }, json: { platform } }),
         listingPublishResponseSchema,
@@ -367,7 +367,7 @@ export function useScheduleListings() {
   return useMutation({
     mutationFn: async (body: {
       listingIds: string[];
-      platforms?: Platform[];
+      platforms?: ListingPlatform[];
       at: string;
       spacingMinutes?: number;
     }): Promise<ScheduleResponse> =>
