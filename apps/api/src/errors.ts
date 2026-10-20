@@ -104,6 +104,9 @@ const CONFLICTS = new Set([
   "LLM_BUDGET_EXCEEDED",
   // F8 (spec §4.14): empezar una carga a la que le faltan archivos (subirlos y volver a empezar).
   "IMPORT_UPLOAD_INCOMPLETE",
+  // F9-T10: editar o subir medios a un post archivado, o archivar uno con publicaciones pendientes.
+  "POST_ARCHIVED",
+  "POST_HAS_PENDING_PUBLICATIONS",
 ]);
 
 /**
@@ -249,6 +252,8 @@ export function httpStatusFor(code: string): ContentfulStatusCode {
   if (code === "INVALID_TRANSITION" || CONFLICTS.has(code)) return 409;
   // F8 (spec §4.14): un archivo de la carga, o el Excel descomprimido, sobre su tope.
   if (code === "REQUEST_TOO_LARGE" || code === "IMPORT_UPLOAD_TOO_LARGE") return 413;
+  // F9-T10: un medio de un post sobre el tope de la carga.
+  if (code === "POST_UPLOAD_TOO_LARGE") return 413;
   if (code === "IMPORT_XLSX_TOO_LARGE") return 413;
   // F7-T14: el logo no es PNG, JPEG ni WebP.
   if (code === "LOGO_INVALID") return 415;
