@@ -425,6 +425,11 @@ export const posts = pgTable(
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     /** El porqué de una idea de la IA. */
     rationale: text("rationale"),
+    /**
+     * La marca del operador que permite un enlace en el texto de X (F9-T16, spec F9 §4.4): ese post
+     * cuesta US$0,20 en vez de US$0,015. Sin ella, un enlace en X impide aprobar y publicar.
+     */
+    xLinkAllowed: boolean("x_link_allowed").notNull().default(false),
     ...timestamps,
   },
   (t) => [

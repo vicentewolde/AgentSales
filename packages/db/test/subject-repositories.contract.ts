@@ -128,8 +128,13 @@ export function subjectRepositoriesContract(
           planRunId: null,
           createdBy: null,
           rationale: null,
+          xLinkAllowed: false,
         });
         expect(await repos.posts.get(post.id)).toEqual(post);
+        // La marca del enlace en X (F9-T16).
+        const marked = await repos.posts.update(post.id, { xLinkAllowed: true });
+        expect(marked.xLinkAllowed).toBe(true);
+        await repos.posts.update(post.id, { xLinkAllowed: false });
         expect(await repos.posts.get(repos.missingId)).toBeNull();
       });
 
@@ -315,6 +320,86 @@ export function subjectRepositoriesContract(
         await expect(
           repos.publications.create(input, { actor: "operator" }),
         ).resolves.toMatchObject({ status: "approved" });
+      });
+
+      it("el costo de X (F9-T16): setCostUsd solo publicando y sumCostUsdSince del gasto del mes", async () => {
+        const { post, texts, accountId } = await postWithTexts();
+        const [es, en] = texts;
+        const base = {
+          postId: post.id,
+          platformAccountId: accountId,
+          platform: "instagram" as const,
+          format: "post" as const,
+          mediaIds: [],
+        };
+        const live = await repos.publications.create(
+          { ...base, contentId: es?.id ?? "" },
+          { actor: "operator" },
+        );
+        // Fuera de `publishing` no se anota.
+        await expect(repos.publications.setCostUsd(live.id, 0.2)).rejects.toMatchObject({
+          code: "PUBLICATION_NOT_PUBLISHING",
+        });
+        await repos.publications.transition(
+          live.id,
+          { from: "approved", to: "publishing", changes: { dryRun: false } },
+          { actor: "operator" },
+        );
+        const costed = await repos.publications.setCostUsd(live.id, 0.123456);
+        expect(costed.costUsd).toBeCloseTo(0.1235, 10);
+        expect((await repos.publications.get(live.id))?.costUsd).toBeCloseTo(0.1235, 10);
+
+        const simulated = await repos.publications.create(
+          { ...base, contentId: en?.id ?? "", language: "en" },
+          { actor: "operator" },
+        );
+        await repos.publications.transition(
+          simulated.id,
+          { from: "approved", to: "publishing", changes: { dryRun: true } },
+          { actor: "operator" },
+        );
+        await repos.publications.setCostUsd(simulated.id, 0.015);
+
+        const since = new Date(Date.now() - 60_000);
+        // Solo la de `live`; la simulación no cuenta.
+        expect(await repos.publications.sumCostUsdSince(accountId, since)).toBeCloseTo(0.1235, 10);
+        expect(
+          await repos.publications.sumCostUsdSince(accountId, since, {
+            excludePublicationId: live.id,
+          }),
+        ).toBe(0);
+        expect(
+          await repos.publications.sumCostUsdSince(accountId, new Date(Date.now() + 3_600_000)),
+        ).toBe(0);
+        expect(await repos.publications.sumCostUsdSince(repos.missingId, since)).toBe(0);
+        // Publicada sigue contando; fallida, no.
+        await repos.publications.transition(
+          live.id,
+          {
+            from: "publishing",
+            to: "published",
+            changes: { externalId: "1", externalUrl: null, publishedAt: new Date() },
+          },
+          { actor: "system" },
+        );
+        expect(await repos.publications.sumCostUsdSince(accountId, since)).toBeCloseTo(0.1235, 10);
+        const failed = await repos.publications.create(
+          { ...base, contentId: es?.id ?? "", platform: "instagram", format: "reel" },
+          { actor: "operator" },
+        );
+        await repos.publications.transition(
+          failed.id,
+          { from: "approved", to: "publishing", changes: { dryRun: false } },
+          { actor: "operator" },
+        );
+        await repos.publications.setCostUsd(failed.id, 0.2);
+        expect(await repos.publications.sumCostUsdSince(accountId, since)).toBeCloseTo(0.3235, 10);
+        await repos.publications.transition(
+          failed.id,
+          { from: "publishing", to: "failed" },
+          { actor: "system" },
+        );
+        expect(await repos.publications.sumCostUsdSince(accountId, since)).toBeCloseTo(0.1235, 10);
       });
 
       it("los barridos ven también las publicaciones de posts (F9-T06), con su sujeto", async () => {

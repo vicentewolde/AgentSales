@@ -40,6 +40,11 @@ export type PostCheckContext = {
   sources: string;
   /** Los enlaces del brief del operador (`linkKey`): los únicos permitidos en X. */
   xLinks: string[];
+  /**
+   * La marca explícita del operador en el post (`posts.x_link_allowed`, F9-T16): sin ella, ningún
+   * enlace va en X, aunque esté en el brief.
+   */
+  xLinkAllowed: boolean;
   avoid: string[];
 };
 
@@ -50,7 +55,7 @@ export type PostCheckContext = {
  * de una idea lo escribió la IA). `avoid` no es fuente: es lo que no se usa. Nada de otra marca.
  */
 export function buildPostCheckContext(params: {
-  post: Pick<Post, "kind" | "topic" | "brief" | "briefOrigin" | "source">;
+  post: Pick<Post, "kind" | "topic" | "brief" | "briefOrigin" | "source" | "xLinkAllowed">;
   profile: Pick<
     EditorialProfileView,
     "facts" | "audience" | "pillars" | "defaultHashtags" | "avoid"
@@ -80,6 +85,7 @@ export function buildPostCheckContext(params: {
     },
     sources,
     xLinks: xLinksOf(post),
+    xLinkAllowed: post.xLinkAllowed,
     avoid: [...profile.avoid],
   };
 }
@@ -336,7 +342,8 @@ function mediaProblem(platform: PostPlatform, ctx: PostCheckContext): string | n
  * - `MASS_MENTION`: `@everyone` o `@here`, en cualquier red;
  * - `FACT_NOT_IN_PROFILE`: una cifra, un posible nombre propio, un enlace o una mención que no
  *   están en las fuentes de hechos (`buildPostCheckContext`; un brief de la IA no cuenta);
- * - `LINK_NOT_ALLOWED`: en X, un enlace que el operador no puso en el brief del post;
+ * - `LINK_NOT_ALLOWED`: en X, un enlace que el operador no puso en el brief del post, o cualquier
+ *   enlace si el post no tiene la marca explícita del operador (`xLinkAllowed`, F9-T16);
  * - `MEDIA_REQUIREMENT`: un video sin video, Instagram sin imagen ni video, un carrusel de
  *   Instagram fuera de 2 a 10 imágenes, TikTok sin video, X con más de 4 imágenes, Discord con
  *   más de 10.
@@ -399,6 +406,13 @@ export function checkPostContent(
         `En X, un enlace va solo si lo pones en el brief del post (cuesta ${usd(X_LINK_POST_COST_USD)}): «${link}»`,
       );
     }
+  }
+  // F9-T16: además del brief, la marca explícita del operador en el post (no basta con el brief).
+  if (platform === "x" && links.length > 0 && !ctx.xLinkAllowed) {
+    add(
+      "LINK_NOT_ALLOWED",
+      `En X un enlace cuesta ${usd(X_LINK_POST_COST_USD)} en vez de ${usd(X_POST_COST_USD)}: márcalo en el post (permitir enlace en X) o quítalo`,
+    );
   }
   if (platform === "x" && links.length > 0) {
     add(

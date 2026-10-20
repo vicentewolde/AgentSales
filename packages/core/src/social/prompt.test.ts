@@ -208,7 +208,7 @@ describe("SAMPLE_SOCIAL_DRAFT (el proveedor fake del worker)", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     const ctx = buildPostCheckContext({
-      post: { ...POST, kind: "video", brief: null, source: "ai" },
+      post: { ...POST, kind: "video", brief: null, source: "ai", xLinkAllowed: false },
       profile: editorialProfileView("marca-1", null),
       broker: BROKER,
       media: [{ role: "original", kind: "video" }],

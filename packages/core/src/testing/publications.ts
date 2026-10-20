@@ -21,6 +21,7 @@ import {
   TERMINAL_PUBLICATION_STATUSES,
 } from "../publication-state.js";
 import { listingSubject, sameSubject, subjectFieldsFor, subjectOfInput } from "../subject.js";
+import { COST_COUNTED_STATUSES } from "../x/cost.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryPublicationRepository = PublicationRepository & {
@@ -344,6 +345,38 @@ export function createInMemoryPublicationRepository(
       normalizeEventPayload(event.payload);
       find(publicationId);
       return pushEvent(publicationId, event.type, null, null, event);
+    },
+    async setCostUsd(id, costUsd) {
+      const found = find(id);
+      if (found.publication.status !== "publishing") {
+        throw new AppError(
+          "PUBLICATION_NOT_PUBLISHING",
+          "La publicación ya no se está publicando",
+          { details: { publicationId: id, status: found.publication.status } },
+        );
+      }
+      const publication = {
+        ...found.publication,
+        costUsd: costUsd === null ? null : Math.round(costUsd * 10_000) / 10_000,
+        updatedAt: later(found.publication.updatedAt),
+      };
+      publications.set(id, { ...found, publication });
+      return structuredCopy(publication);
+    },
+    async sumCostUsdSince(platformAccountId, since, options = {}) {
+      const counted: ReadonlySet<string> = new Set(COST_COUNTED_STATUSES);
+      return [...publications.values()]
+        .map(({ publication }) => publication)
+        .filter(
+          (publication) =>
+            publication.platformAccountId === platformAccountId &&
+            publication.id !== options.excludePublicationId &&
+            !publication.dryRun &&
+            publication.costUsd !== null &&
+            counted.has(publication.status) &&
+            (publication.publishedAt ?? publication.updatedAt).getTime() >= since.getTime(),
+        )
+        .reduce((sum, publication) => sum + (publication.costUsd ?? 0), 0);
     },
     async countLiveAttemptsSince(platformAccountId, since) {
       const own = new Set(

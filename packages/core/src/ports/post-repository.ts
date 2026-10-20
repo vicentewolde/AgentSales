@@ -19,6 +19,8 @@ export type NewPost = {
   planRunId?: string | null;
   createdBy?: string | null;
   rationale?: string | null;
+  /** Por defecto `false` (F9-T16). */
+  xLinkAllowed?: boolean;
 };
 
 /** Lo que se puede cambiar de un post; `undefined` = no tocar, `null` borra. */
@@ -31,6 +33,7 @@ export type PostChanges = {
   pillar?: string | null;
   plannedAt?: Date | null;
   rationale?: string | null;
+  xLinkAllowed?: boolean;
 };
 
 /**
@@ -61,6 +64,7 @@ export function pickPostChanges(changes: PostChanges): PostChanges {
     picked.plannedAt = changes.plannedAt === null ? null : new Date(changes.plannedAt);
   }
   if (changes.rationale !== undefined) picked.rationale = changes.rationale;
+  if (changes.xLinkAllowed !== undefined) picked.xLinkAllowed = changes.xLinkAllowed;
   return picked;
 }
 

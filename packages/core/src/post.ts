@@ -37,6 +37,12 @@ export const postSchema = z.object({
   createdBy: z.string().nullable(),
   /** El porqué de una idea de la IA. */
   rationale: z.string().nullable(),
+  /**
+   * La marca explícita del operador que permite un enlace en el texto de X (F9-T16, spec F9 §4.4):
+   * un post de X con enlace cuesta US$0,20 en vez de US$0,015. No basta con que el enlace esté en
+   * el brief: sin esta marca, la revisión lo da por error y el intento no llama a X.
+   */
+  xLinkAllowed: z.boolean(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

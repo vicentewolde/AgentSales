@@ -26,6 +26,11 @@ export const PERMISSIONS = [
    * Cuentas, ADR-0028). No renueva ni desconecta: eso sigue siendo de `accounts.manage`.
    */
   "instagram.connect",
+  /**
+   * F9-T16 (spec F9 §4.7): conectar **su propia** cuenta de X con OAuth y PKCE. Renovar, desconectar
+   * y fijar el tope de gasto siguen siendo de `accounts.manage`.
+   */
+  "x.connect",
   /** Publicación automática, tope de IA y "corredor propio". */
   "broker.settings",
   "brokers.create",
@@ -44,6 +49,8 @@ const BROKER_PERMISSIONS: ReadonlySet<Permission> = new Set([
   "brand.edit",
   "broker.view",
   "instagram.connect",
+  // F9-T16: su propia cuenta de X.
+  "x.connect",
 ]);
 
 type Actor = Pick<User, "role" | "brokerId">;
