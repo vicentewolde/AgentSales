@@ -26,6 +26,7 @@ import {
   createInMemoryListingLock,
   createInMemoryListingRepository,
   createInMemoryMediaRepository,
+  createInMemoryPlanRunRepository,
   createInMemoryPlatformAccountRepository,
   createInMemoryPostLock,
   createInMemoryPostRepository,
@@ -64,11 +65,14 @@ export function harness(options: HarnessOptions = {}) {
   const queue = createInMemoryJobQueue();
   // Los posts de una marca (F9-T12): la CLI de `post` habla con sus rutas.
   const posts = createInMemoryPostRepository();
+  // Los planes de ideas (F9-T21): sus ideas son posts; su gasto entra al tope de IA.
+  const planRuns = createInMemoryPlanRunRepository({ posts });
   // El gasto de IA por corredor (F7-T12) cruza la corrida con su aviso o su post, como Postgres.
   const content = createInMemoryContentRepositories({
     nextId: randomUUID,
     brokerOfListing: async (id) => (await listings.get(id))?.brokerId ?? null,
     brokerOfPost: async (id) => (await posts.get(id))?.brokerId ?? null,
+    planRuns: () => planRuns.all(),
   });
   // La API y el candado comparten repositorios: el candado se arma con los que quedan después de
   // los reemplazos de `options.deps`, salvo que el test traiga el suyo. Las publicaciones completas
@@ -129,6 +133,7 @@ export function harness(options: HarnessOptions = {}) {
         publications,
         posts,
         postLock,
+        planRuns,
         ...repos,
         lock,
       }),
@@ -227,6 +232,8 @@ export function harness(options: HarnessOptions = {}) {
     /** Los posts de la API (F9-T12) y su candado (para mover publicaciones como el worker). */
     posts,
     postLock,
+    /** Los planes de ideas de la API (F9-T21): el test los corre como el worker (`runPlan`). */
+    planRuns,
   };
 }
 

@@ -1,4 +1,9 @@
-import type { ContentView, PostMediaItem, PublicationView } from "@agentsales/api/contracts";
+import type {
+  ContentView,
+  PostJson,
+  PostMediaItem,
+  PublicationView,
+} from "@agentsales/api/contracts";
 import {
   CONTENT_STATUS_TEXT,
   hasContentErrors,
@@ -7,6 +12,7 @@ import {
   linksIn,
   PLATFORM_TEXT,
   type PostPlatform,
+  postPublishesOn,
   postTextLength,
   X_LINK_POST_COST_USD,
 } from "@agentsales/core";
@@ -175,12 +181,15 @@ function Editor({
 /** Una pestaña: el texto de una red e idioma con su conteo, vista previa, revisión y aprobación. */
 function TextTab({
   postId,
+  post,
   content,
   media,
   publications,
   lockReason,
 }: {
   postId: string;
+  /** Sus redes (`platforms`): el texto de una red quitada no se aprueba (F9-T21). */
+  post: Pick<PostJson, "platforms">;
   content: PostContentView;
   media: readonly PostMediaItem[];
   publications: readonly PublicationView[];
@@ -193,9 +202,12 @@ function TextTab({
   const approved = content.status === "approved";
   const approveBlocked =
     lockReason ??
-    (hasContentErrors(content.checks)
-      ? "La revisión tiene errores: corrígelos para poder aprobar."
-      : null);
+    // F9-T21: el texto de una red que se le quitó al post no se aprueba.
+    (!postPublishesOn(post, platform)
+      ? `${PLATFORM_TEXT[platform]} ya no está entre las redes del post: agrégala con «Editar el post» para aprobar este texto.`
+      : hasContentErrors(content.checks)
+        ? "La revisión tiene errores: corrígelos para poder aprobar."
+        : null);
   const unapproveBlocked = lockReason ?? unapproveBlockedReason(content, publications);
   const blocked = approved ? unapproveBlocked : approveBlocked;
   return (
@@ -253,12 +265,14 @@ function TextTab({
  */
 export function PostTexts({
   postId,
+  post,
   contents,
   media,
   publications,
   lockReason,
 }: {
   postId: string;
+  post: Pick<PostJson, "platforms">;
   contents: readonly ContentView[];
   media: readonly PostMediaItem[];
   publications: readonly PublicationView[];
@@ -310,6 +324,7 @@ export function PostTexts({
         <TextTab
           key={current.id}
           postId={postId}
+          post={post}
           content={current}
           media={media}
           publications={publications}

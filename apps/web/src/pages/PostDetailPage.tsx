@@ -4,13 +4,19 @@ import {
   formatChileTime,
   isAppError,
   isTerminalContentRun,
+  PLATFORM_TEXT,
+  type Platform,
   POST_KINDS,
+  POST_PLATFORMS,
   type PostKind,
+  type PostPlatform,
   parseChileTime,
+  postNetworkGaps,
 } from "@agentsales/core";
 import { type FormEvent, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ErrorAlert } from "../components/ErrorAlert.js";
+import { useBrandPlatforms } from "../components/posts/brand-platforms.js";
 import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js";
 import { PostMedia } from "../components/posts/PostMedia.js";
 import { PostPublications, PostPublishBar } from "../components/posts/PostPublishing.js";
@@ -48,6 +54,8 @@ function runText(run: ContentRunView): string {
 function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }) {
   const update = useUpdatePost(post.id);
   const profile = useEditorialProfile(post.brokerId);
+  // Solo las redes de la marca (y las que el post ya tenga), como en el plan.
+  const brandNetworks = useBrandPlatforms(post.brokerId);
   const [problem, setProblem] = useState<string | null>(null);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -62,14 +70,23 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
         return;
       }
     }
+    const platforms = form
+      .getAll("platforms")
+      .map(String)
+      .flatMap((value) => POST_PLATFORMS.filter((platform) => platform === value));
     setProblem(null);
     update.mutate(
       {
         topic: text("topic"),
-        brief: text("brief") === "" ? null : text("brief"),
+        // El brief solo se manda si cambió: editarlo lo deja como del operador (fuente de hechos).
+        ...(text("brief") === (post.brief ?? "")
+          ? {}
+          : { brief: text("brief") === "" ? null : text("brief") }),
         kind: (POST_KINDS.find((kind) => kind === text("kind")) ?? post.kind) satisfies PostKind,
         pillar: text("pillar") === "" ? null : text("pillar"),
         plannedAt,
+        // F9-T21: sin marcar ninguna, todas las redes de la marca.
+        platforms: platforms.length === 0 ? null : platforms,
       },
       { onSuccess: onClose },
     );
@@ -118,6 +135,24 @@ function PostEditForm({ post, onClose }: { post: PostJson; onClose: () => void }
           className={FIELD}
         />
       </label>
+      <fieldset className="text-sm text-slate-700 md:col-span-2">
+        <legend className="font-medium">Redes (sin marcar ninguna: todas las de la marca)</legend>
+        <div className="mt-1 flex flex-wrap gap-3">
+          {POST_PLATFORMS.filter(
+            (platform) => brandNetworks.includes(platform) || post.platforms?.includes(platform),
+          ).map((platform) => (
+            <label key={platform} className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                name="platforms"
+                value={platform}
+                defaultChecked={post.platforms?.includes(platform) ?? false}
+              />
+              {PLATFORM_TEXT[platform]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <div className="flex gap-2 md:col-span-2">
         <button type="submit" className={PRIMARY} disabled={update.isPending}>
           {update.isPending ? "Guardando…" : "Guardar"}
@@ -157,7 +192,7 @@ function DraftBox({
     post.status === "archived"
       ? "El post está archivado."
       : post.status === "idea"
-        ? "Es una idea: acéptala primero (Plan)."
+        ? "Es una idea: acéptala primero en Plan."
         : running
           ? "Ya se están redactando."
           : null;
@@ -191,6 +226,59 @@ function DraftBox({
       </div>
       {blocked !== null && <p className="mt-1 text-xs text-amber-800">{blocked}</p>}
       {draft.error && <ErrorAlert error={draft.error} />}
+    </div>
+  );
+}
+
+/**
+ * Las redes del post y sus textos (F9-T21): las agregadas al post que todavía no tienen texto
+ * (ofrece redactar) y los textos de redes que le quitaron (no se publican ni se programan; no se
+ * borran). Nada si el post tiene todas las redes de la marca (`platforms = null`).
+ */
+function PostNetworksNotice({
+  post,
+  contents,
+  run,
+}: {
+  post: PostJson;
+  contents: readonly { platform: Platform }[];
+  run: ContentRunView | null;
+}) {
+  const draft = useRequestPostDraft(post.id);
+  if (post.status === "idea" || post.status === "archived") return null;
+  const { missing, excluded } = postNetworkGaps({ post, contents, latestRun: run });
+  if (missing.length === 0 && excluded.length === 0) return null;
+  const names = (platforms: readonly PostPlatform[]) =>
+    platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ");
+  return (
+    <div
+      role="status"
+      className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+    >
+      {missing.length > 0 && (
+        <div>
+          <p>Falta el texto de {names(missing)}: la agregaste al post después de redactar.</p>
+          <button
+            type="button"
+            className={`${PRIMARY} mt-2`}
+            disabled={draft.isPending}
+            onClick={() => draft.mutate(false)}
+          >
+            Redactar los textos de nuevo
+          </button>
+          <p className="mt-1 text-xs">
+            La IA vuelve a redactar las redes del post; si editaste o aprobaste alguno, usa «Pedir
+            textos nuevos a la IA» con «Reemplazar también».
+          </p>
+          {draft.error && <ErrorAlert error={draft.error} />}
+        </div>
+      )}
+      {excluded.length > 0 && (
+        <p className={missing.length > 0 ? "mt-2" : ""}>
+          Los textos de {names(excluded)} no se publican ni se programan: esa red ya no está entre
+          las del post.
+        </p>
+      )}
     </div>
   );
 }
@@ -237,7 +325,18 @@ export function PostDetailPage() {
           ? "sin fecha planeada"
           : `planeado para el ${formatChileTime(item.plannedAt)} (hora de Chile)`}
         {item.source === "ai" && " · propuesto por la IA"}
+        {" · "}
+        {item.platforms === null
+          ? "todas las redes de la marca"
+          : `redes: ${item.platforms.map((platform) => PLATFORM_TEXT[platform]).join(", ")}`}
       </p>
+      {item.planRunId !== null && (
+        <p className="mt-1 text-sm">
+          <Link to={`/plan?plan=${item.planRunId}`} className="underline">
+            {item.status === "idea" ? "Acéptala o descártala en el plan" : "Ver el plan"}
+          </Link>
+        </p>
+      )}
       {item.brief !== null && (
         <p className="mt-2 whitespace-pre-wrap rounded-md bg-slate-50 p-2 text-sm text-slate-800">
           {item.brief}
@@ -278,8 +377,10 @@ export function PostDetailPage() {
       <section aria-label="Textos" className="mt-6 space-y-3">
         <h2 className="text-lg font-semibold">Textos por red</h2>
         <DraftBox post={item} run={latestRun} hasTexts={contents.length > 0} />
+        <PostNetworksNotice post={item} contents={contents} run={latestRun} />
         <PostTexts
           postId={item.id}
+          post={item}
           contents={contents}
           media={media}
           publications={publications}
@@ -297,6 +398,7 @@ export function PostDetailPage() {
       <section aria-label="Publicar" className="mt-6 space-y-3">
         <h2 className="text-lg font-semibold">Publicar y programar</h2>
         <PostPublishBar
+          post={item}
           postId={item.id}
           contents={contents}
           publishMode={publishMode}

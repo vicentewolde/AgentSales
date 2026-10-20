@@ -149,6 +149,7 @@ export {
   ONBOARDING_OWNER_TEXT,
   ONBOARDING_STEP_TEXT,
   OPERATION_TEXT,
+  PLAN_RUN_STATUS_TEXT,
   PLATFORM_ACCOUNT_STATUS_TEXT,
   PLATFORM_TEXT,
   PUBLICATION_ACTOR_TEXT,
@@ -340,7 +341,7 @@ export {
   type Permission,
   scopeOf,
 } from "./permissions.js";
-export { type PlanRun, planRunSchema } from "./plan-run.js";
+export { PLAN_RUNS_LIST_LIMIT, type PlanRun, planRunSchema } from "./plan-run.js";
 export {
   type AccessTokenCredentials,
   accessTokenCredentialsSchema,
@@ -1152,8 +1153,7 @@ export {
   enqueuePlanRun,
   getPlanRun,
   listPlanRuns,
-  PLAN_RUNS_LIST_LIMIT,
-  type PlanRunView,
+  type PlanRunDetail,
   type RequestPlanRunDeps,
   type RequestPlanRunInput,
   type RequestPlanRunResult,

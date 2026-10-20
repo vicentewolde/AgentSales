@@ -34,3 +34,9 @@ export const planRunSchema = z.object({
   updatedAt: z.date(),
 });
 export type PlanRun = z.infer<typeof planRunSchema>;
+
+/**
+ * Cuántos planes da la lista de una marca (`listPlanRuns`, `PlanRunRepository.listByBroker`), por
+ * defecto y como mucho: una sola constante para core, el repositorio y su doble (F9-T21).
+ */
+export const PLAN_RUNS_LIST_LIMIT = { default: 20, max: 100 } as const;

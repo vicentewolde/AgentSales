@@ -284,6 +284,85 @@ describe("programar un post", () => {
     ).toBe("SCHEDULE_TOO_SOON");
   });
 
+  it("las redes del post mandan (F9-T21): sin redes pedidas, solo las suyas; una que le quitaron no se programa ni se publica", async () => {
+    const t = await twoLanguages();
+    // El operador le quitó X al post: sus textos siguen aprobados, pero ya no corresponden.
+    await t.posts.update(t.post.id, { platforms: ["discord"] });
+
+    const { results } = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      { postId: t.post.id, at: AT, dryRun: true, actor: "operator" },
+    );
+    expect(results.map((result) => [result.platform, result.outcome])).toEqual([
+      ["discord", "scheduled"],
+    ]);
+    expect(t.current(t.publicationOf("x", "es").id)?.status).toBe("approved");
+    expect(t.current(t.publicationOf("x", "en").id)?.status).toBe("approved");
+
+    // Pedida a mano, se informa con su motivo; publicarla, igual.
+    const asked = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      { postId: t.post.id, platforms: ["x"], at: AT, dryRun: true, actor: "operator" },
+    );
+    expect(asked.results).toMatchObject([
+      { platform: "x", outcome: "skipped", code: "POST_PLATFORM_EXCLUDED" },
+    ]);
+    expect(
+      await codeOf(
+        publishPost(t.deps, { postId: t.post.id, platform: "x", dryRun: true, actor: "operator" }),
+      ),
+    ).toBe("POST_PLATFORM_EXCLUDED");
+    expect(t.current(t.publicationOf("x", "es").id)?.status).toBe("approved");
+
+    // Si la red vuelve al post, su texto aprobado vuelve a servir.
+    await t.posts.update(t.post.id, { platforms: null });
+    const back = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      { postId: t.post.id, platforms: ["x"], at: AT, dryRun: true, actor: "operator" },
+    );
+    expect(back.results).toMatchObject([{ platform: "x", outcome: "scheduled" }]);
+  });
+
+  it("una publicación de una red que se le quitó al post no sale: el reloj la deja failed; empezarla o programarla da POST_PLATFORM_EXCLUDED", async () => {
+    const t = await twoLanguages();
+    const xEs = await schedule(t, t.publicationOf("x", "es"));
+    const xEn = t.publicationOf("x", "en");
+    // Datos de antes de la regla (o cambiados por fuera): el post ya no tiene X.
+    await t.posts.update(t.post.id, { platforms: ["discord"] });
+
+    const result = await due(t, AFTER);
+    expect(result.failed).toEqual([{ publicationId: xEs.id, code: "POST_PLATFORM_EXCLUDED" }]);
+    expect(t.current(xEs.id)).toMatchObject({
+      status: "failed",
+      lastError: { code: "POST_PLATFORM_EXCLUDED", retriable: false },
+    });
+    expect(t.queue.jobs).toEqual([]);
+
+    expect(
+      await codeOf(
+        startPublication(t.deps, { publicationId: xEn.id, dryRun: true, actor: "operator" }),
+      ),
+    ).toBe("POST_PLATFORM_EXCLUDED");
+    expect(await codeOf(schedule(t, xEn))).toBe("POST_PLATFORM_EXCLUDED");
+    expect(t.current(xEn.id)?.status).toBe("approved");
+  });
+
+  it("sin redes pedidas y con todos los textos aprobados en redes quitadas, la fila sin red lo dice", async () => {
+    const t = await twoLanguages();
+    await t.posts.update(t.post.id, { platforms: ["linkedin"] });
+    const { results } = await schedulePost(
+      { ...t.deps, now: () => NOW },
+      { postId: t.post.id, at: AT, dryRun: true, actor: "operator" },
+    );
+    expect(results).toEqual([
+      expect.objectContaining({
+        platform: null,
+        code: "NOTHING_TO_PUBLISH",
+        message: expect.stringContaining("se quitaron del post"),
+      }),
+    ]);
+  });
+
   it("publishPost publica la red con todos sus idiomas y encola después del candado", async () => {
     const t = await twoLanguages();
 

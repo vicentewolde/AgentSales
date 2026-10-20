@@ -59,6 +59,7 @@ export {
   checkPlanIdeas,
   type DiscardedPlanIdea,
   defaultPlanCount,
+  groupByPlanWeek,
   PLAN_DEFAULT_DAYS,
   PLAN_DISCARD_CODES,
   PLAN_FALLBACK_PER_WEEK,
@@ -83,11 +84,16 @@ export {
   planIdeaSchema,
   plannedSlots,
   planPeriod,
+  planRunErrorAdvice,
+  planRunPeriod,
   planRunReportSchema,
   planRunRequestSchema,
+  planWeeks,
+  planWeekText,
   topicKey,
   validatePlanResponse,
   weekdayOf,
+  weekOf,
 } from "./plan.js";
 export {
   buildPlanPrompt,
@@ -98,4 +104,12 @@ export {
 } from "./plan-prompt.js";
 export { type ProposedPlanIdeas, proposePlanIdeas } from "./plan-propose.js";
 export { samplePlanResponse } from "./plan-sample.js";
+export {
+  ideaNeedsDraft,
+  type PostNetworkGaps,
+  postNetworkGaps,
+  postPlatformExcluded,
+  postPublishesOn,
+  requirePostPlatform,
+} from "./post-networks.js";
 export { buildSocialPrompt, SOCIAL_PROMPT_VERSION, SOCIAL_SYSTEM_PROMPT } from "./prompt.js";

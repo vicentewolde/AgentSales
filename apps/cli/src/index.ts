@@ -13,6 +13,7 @@ import * as imports from "./commands/imports.js";
 import * as listing from "./commands/listing.js";
 import * as listings from "./commands/listings.js";
 import * as login from "./commands/login.js";
+import * as plan from "./commands/plan.js";
 import * as post from "./commands/post.js";
 import * as prepare from "./commands/prepare.js";
 import * as publications from "./commands/publications.js";
@@ -52,6 +53,7 @@ for (const command of [
   brokers,
   brand,
   post,
+  plan,
   users,
   usage,
 ]) {

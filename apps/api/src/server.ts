@@ -36,6 +36,7 @@ import {
   createMediaRepository,
   createMetaDeletionRepository,
   createOAuthStateRepository,
+  createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
   createPostLock,
@@ -190,6 +191,8 @@ const app = createApp({
   postLock: createPostLock(database.db, { secretBox }),
   postUploads: createPostUploadRepository(database.db),
   editorialProfiles: createEditorialProfileRepository(database.db),
+  // Los planes de ideas (F9-T21): la API los pide y lee; el worker los corre (`content.plan`).
+  planRuns: createPlanRunRepository(database.db),
   publications: createPublicationRepository(database.db),
   platformAccounts: createPlatformAccountRepository(database.db, { secretBox }),
   instagram: {

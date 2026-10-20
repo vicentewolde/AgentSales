@@ -29,6 +29,7 @@ import {
 } from "./post.js";
 import { adviceText } from "./publication-view.js";
 import {
+  runCancelPublication,
   runConfirmPublication,
   runNotPublished,
   runResolvePublication,
@@ -546,6 +547,90 @@ describe("errores con su consejo y permisos", () => {
     expect(s.h.errors()).toContain("CONTENT_NOT_APPROVED");
     expect(await runPostApprove(s.deps(), post.id, { platform: "portal" })).toBe(1);
     expect(s.h.errors()).toContain("--platform debe ser instagram, x, linkedin, discord, tiktok");
+  });
+
+  it("las redes del post (F9-T21): edit las cambia y publicar sin --platform usa solo esas", async () => {
+    const s = await setup();
+    const { post, publication } = await approvedPost(s);
+    // Quitar Discord con su publicación pendiente no se puede: primero se cancela.
+    expect(await runPostEdit(s.deps(), post.id, { platforms: "x,linkedin" })).toBe(1);
+    expect(s.h.errors()).toContain("POST_HAS_PENDING_PUBLICATIONS");
+    expect(s.h.errors()).toContain("agentsales publications cancel <id>");
+    expect((await s.h.posts.get(post.id))?.platforms).toBeNull();
+    expect(await runCancelPublication(s.deps(), publication.id)).toBe(0);
+    // Le quita Discord al post: el texto aprobado sigue, pero ya no se publica sin pedirlo.
+    expect(await runPostEdit(s.deps(), post.id, { platforms: "x,linkedin" })).toBe(0);
+    expect(s.h.text()).toContain("actualizado (redes: X, LinkedIn");
+    expect((await s.h.posts.get(post.id))?.platforms).toEqual(["x", "linkedin"]);
+    s.h.out.length = 0;
+    expect(await runPostShow(s.deps(), post.id)).toBe(0);
+    expect(s.h.text()).toContain("Redes: X, LinkedIn");
+    expect(s.h.text()).toContain("Discord ya no está entre las redes del post");
+    expect(s.h.text()).toContain("Falta el texto de X, LinkedIn");
+
+    expect(await runPostPublish(s.deps(), post.id)).toBe(1);
+    expect(s.h.errors()).toContain("POST_PLATFORM_EXCLUDED");
+    expect(s.h.errors()).toContain("--platforms <redes>");
+    // Pedida a mano, la API también la rechaza (409), sin cambiar nada.
+    expect(await runPostPublish(s.deps(), post.id, { platform: "discord" })).toBe(1);
+    expect(s.h.errors()).toContain("no está entre las redes del post");
+    expect(s.publicationsOf(post.id)[0]).toMatchObject({ id: publication.id, status: "cancelled" });
+
+    // Mover la fecha y volver a todas las redes.
+    expect(
+      await runPostEdit(s.deps(), post.id, { platforms: "todas", date: "2026-11-05 10:00" }),
+    ).toBe(0);
+    expect(await s.h.posts.get(post.id)).toMatchObject({
+      platforms: null,
+      plannedAt: new Date("2026-11-05T13:00:00Z"),
+    });
+    expect(await runPostEdit(s.deps(), post.id, { platforms: "portal" })).toBe(1);
+    expect(await runPostEdit(s.deps(), post.id, { date: "mañana" })).toBe(1);
+    expect(s.h.errors()).toContain("--date");
+  });
+
+  it("approve sin --platform aprueba solo las redes del post; con todas quitadas, lo explica", async () => {
+    const s = await setup();
+    await runPostCreate(s.deps(), "Dos redes", { broker: "agentpey" });
+    const post = await s.created();
+    s.setDraft({
+      texts: [
+        { platform: "discord", language: "es" },
+        { platform: "x", language: "es" },
+      ],
+    });
+    expect(await runPostDraft(s.deps(), post.id)).toBe(0);
+    await s.h.posts.update(post.id, { platforms: ["discord"] });
+
+    expect(await runPostApprove(s.deps(), post.id)).toBe(0);
+    expect(s.h.errors()).toContain("Sin aprobar: X ya no está entre las redes del post");
+    const statuses = (await s.h.contents.listCurrent({ kind: "post", id: post.id })).map(
+      (content) => [content.platform, content.status],
+    );
+    expect(statuses).toEqual(
+      expect.arrayContaining([
+        ["discord", "approved"],
+        ["x", "draft"],
+      ]),
+    );
+
+    await s.h.posts.update(post.id, { platforms: ["linkedin"] });
+    expect(await runPostApprove(s.deps(), post.id, { undo: true })).toBe(0);
+    expect(await runPostApprove(s.deps(), post.id)).toBe(1);
+    expect(s.h.errors()).toContain("POST_PLATFORM_EXCLUDED");
+  });
+
+  it("show con una corrida terminada sin textos dice una sola vez qué falta", async () => {
+    const s = await setup();
+    await runPostCreate(s.deps(), "Sin textos", { broker: "agentpey" });
+    const post = await s.created();
+    await s.h.posts.update(post.id, { platforms: ["discord"] });
+    s.setDraft({ texts: [] });
+    expect(await runPostDraft(s.deps(), post.id)).toBe(0);
+    s.h.out.length = 0;
+    expect(await runPostShow(s.deps(), post.id)).toBe(0);
+    expect(s.h.text()).toContain("Falta el texto de Discord");
+    expect(s.h.text()).not.toContain("(ninguno: pídelos");
   });
 
   it("un corredor no ve ni toca los posts de otra marca (POST_NOT_FOUND)", async () => {

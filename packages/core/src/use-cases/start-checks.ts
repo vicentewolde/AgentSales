@@ -10,6 +10,7 @@ import { canDraftPost, type Post, postNotReady } from "../post.js";
 import type { Publication } from "../publication.js";
 import { PUBLISH_LISTING_PLATFORMS } from "../publish/input.js";
 import { outcomeUnknownPending } from "../publish/outcome.js";
+import { requirePostPlatform } from "../social/post-networks.js";
 import { listingSubject, type PostSubject } from "../subject.js";
 import type { LockedSubject, SubjectLockedRepositories } from "../subject-lock.js";
 import {
@@ -58,8 +59,9 @@ export type StartCheckOptions = {
  * - de un aviso: el aviso publicable, sin corridas, el texto aprobado, la cuenta conectada, el modo
  *   compatible y, según la plataforma, la versión del aviso, lo que pide Portal y lo que pide
  *   Marketplace;
- * - de un post: el post en `draft` o `ready` (`POST_NOT_READY`), sin corridas, el texto aprobado,
- *   la cuenta conectada y el modo compatible. Lo de Portal y Marketplace no aplica (un post nunca
+ * - de un post: el post en `draft` o `ready` (`POST_NOT_READY`), la red entre las del post
+ *   (`POST_PLATFORM_EXCLUDED`, F9-T21; el reloj deja así la programada en `failed`), sin corridas, el
+ *   texto aprobado, la cuenta conectada y el modo compatible. Lo de Portal y Marketplace no aplica (un post nunca
  *   es de esas plataformas).
  * Los errores son los de `startPublication`; el estado de la publicación lo revisa quien llama.
  */
@@ -72,6 +74,8 @@ export async function requireStartableOne(
     const post = await locked.repos.posts.get(locked.subject.id);
     if (post === null) throw postNotFound(locked.subject.id);
     if (!canDraftPost(post.status)) throw postNotReady(post);
+    // Una publicación (programada o no) de una red que se le quitó al post no sale (F9-T21).
+    requirePostPlatform(post, publication.platform);
     await requireNoActiveRun(locked.repos, locked.subject);
     await requireApprovedAndConnected(locked.repos, publication);
     requireCompatibleMode(publication, options.dryRun);
@@ -263,7 +267,9 @@ export type PostChannelStart = {
  * dentro del candado del post y antes de la primera escritura: como `prepareChannelStart`, pero un
  * canal es una red con un texto por idioma (spec F9 §4.4) y no hay reglas de Portal ni de
  * Marketplace. Errores: el post no está en `draft` ni `ready` → `POST_NOT_READY`; corrida activa →
- * `CONTENT_RUN_ACTIVE`; ningún texto aprobado en esa red → `CONTENT_NOT_APPROVED`; sin cuenta
+ * `CONTENT_RUN_ACTIVE`; ningún texto aprobado en esa red → `CONTENT_NOT_APPROVED` (se revisa antes
+ * que la red: una red quitada sin texto aprobado da este); un texto aprobado de una red que no está
+ * entre las del post → `POST_PLATFORM_EXCLUDED` (F9-T21); sin cuenta
  * conectada (o lo pendiente es de una desconectada) → `ACCOUNT_NOT_CONNECTED`; una del canal con
  * resultado dudoso → `OUTCOME_UNKNOWN_PENDING`; una fallida que empezó en `live` pedida en
  * `dry-run` → `PUBLISH_MODE_LOCKED`; nada que hacer → `NOTHING_TO_PUBLISH` (si lo que queda espera
@@ -288,6 +294,9 @@ export async function preparePostChannelStart(
       { details: { postId: post.id, platform } },
     );
   }
+  // Las redes del post (F9-T20/T21): un texto aprobado de una red que el operador le quitó no se
+  // publica ni se programa (no se borra: vuelve a servir si la red vuelve al post).
+  requirePostPlatform(post, platform);
   const connected = new Set(
     (await locked.platformAccounts.listByBroker(post.brokerId, platform))
       .filter((account) => account.status === "connected")

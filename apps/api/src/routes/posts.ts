@@ -1,4 +1,5 @@
 import {
+  acceptIdea,
   approveContent,
   archivePost,
   assertPostAccess,
@@ -7,6 +8,7 @@ import {
   type ContentRunRepository,
   completePostUploads,
   createPost,
+  discardIdea,
   type EditContentDeps,
   type EditorialProfileRepository,
   editContent,
@@ -41,6 +43,7 @@ import {
   type ContentUnapproveResponse,
   contentEditBodySchema,
   createPostBodySchema,
+  type IdeaAcceptResponse,
   idParamSchema,
   type PostContentParam,
   type PostDetailResponse,
@@ -76,8 +79,11 @@ export type PostRoutesDeps = EditContentDeps &
     media: Pick<MediaRepository, "listBySubject">;
     /** Los textos vigentes (con su revisión) y editar, aprobar o quitar la aprobación (F9-T12). */
     contents: Pick<ContentRepository, "get" | "listCurrent">;
-    /** La última corrida de textos y marcar `failed` una que no se pudo encolar (F9-T12). */
-    contentRuns: Pick<ContentRunRepository, "latest" | "markFailed">;
+    /**
+     * La última corrida de textos y marcar `failed` una que no se pudo encolar (F9-T12); el tope de
+     * IA del mes antes de aceptar una idea (`sumLlmCost`, F9-T21).
+     */
+    contentRuns: Pick<ContentRunRepository, "latest" | "markFailed" | "sumLlmCost">;
     /** Las publicaciones del post, solo para leer (los cambios van en el candado). */
     publications: Pick<PublicationRepository, "listBySubject">;
     /** Firmar las subidas, revisar que llegaron y las URLs de lectura (ADR-0025). */
@@ -212,6 +218,22 @@ export function postRoutes(deps: PostRoutesDeps) {
       )
       .post("/:id/archive", validated("param", idParamSchema), async (c) => {
         const post = await archivePost(deps, requireAuth(c).user, c.req.valid("param").id);
+        const body: PostResponse = { post };
+        return c.json(body, 200);
+      })
+      // F9-T21 (ADR-0030 punto 3): aceptar una idea la pasa a `draft` y pide sus textos
+      // (`post.draft`, solo para sus redes); descartarla la archiva. Lo demás es `POST_NOT_IDEA`.
+      .post("/:id/accept", validated("param", idParamSchema), async (c) => {
+        const { post, run, reused } = await acceptIdea(
+          deps,
+          requireAuth(c).user,
+          c.req.valid("param").id,
+        );
+        const body: IdeaAcceptResponse = { post, contentRun: contentRunView(run), reused };
+        return c.json(body, 202);
+      })
+      .post("/:id/discard", validated("param", idParamSchema), async (c) => {
+        const post = await discardIdea(deps, requireAuth(c).user, c.req.valid("param").id);
         const body: PostResponse = { post };
         return c.json(body, 200);
       })

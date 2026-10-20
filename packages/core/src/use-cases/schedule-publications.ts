@@ -462,6 +462,8 @@ export async function schedulePost(
   const asked = platforms !== undefined && platforms.length > 0;
   const channels = asked ? [...new Set(platforms)] : [...POST_PLATFORMS];
   const results: SchedulePostOutcome[] = [];
+  /** Sin redes pedidas: hubo textos aprobados de redes que se le quitaron al post. */
+  let excludedSeen = false;
   for (const platform of channels) {
     try {
       const scheduled = await runOnSubject(deps, subject, async (locked) => {
@@ -481,6 +483,12 @@ export async function schedulePost(
       if (!isAppError(error) || error.retriable || POST_REQUEST_ERRORS.has(error.code)) {
         throw error;
       }
+      // Sin redes pedidas, solo las del post (`posts.platforms`, F9-T21): una red que el operador
+      // le quitó no se programa ni se informa, aunque su texto siga aprobado.
+      if (!asked && error.code === "POST_PLATFORM_EXCLUDED") {
+        excludedSeen = true;
+        continue;
+      }
       if (!asked && SILENT_WITHOUT_PLATFORMS.has(error.code)) continue;
       results.push({ platform, outcome: "skipped", code: error.code, message: error.message });
     }
@@ -490,7 +498,9 @@ export async function schedulePost(
       platform: null,
       outcome: "skipped",
       code: "NOTHING_TO_PUBLISH",
-      message: "El post no tiene redes con el texto aprobado y la cuenta conectada",
+      message: excludedSeen
+        ? "El post no tiene redes con el texto aprobado y la cuenta conectada: hay textos aprobados de redes que se quitaron del post (agrégalas al post para programarlos)"
+        : "El post no tiene redes con el texto aprobado y la cuenta conectada",
     });
   }
   return { results };

@@ -31,6 +31,11 @@ function hintFor(error: Error): string | null {
     return "El límite cuenta los intentos en vivo de hoy (hora de Chile): sigue mañana.";
   if (code === "PUBLISHER_NOT_CONFIGURED")
     return "Revisa ML_APP_ID y ML_CLIENT_SECRET en el .env (pnpm -s cli doctor) y reinicia pnpm dev.";
+  // F9-T21: las redes del post.
+  if (code === "POST_HAS_PENDING_PUBLICATIONS")
+    return "Cancélalas en Publicaciones, más abajo (o con agentsales publications cancel <id>), y vuelve a intentarlo.";
+  if (code === "POST_PLATFORM_EXCLUDED")
+    return "Agrega esa red al post con «Editar el post», o usa el texto de otra red.";
   if (code === "CLOSE_NOT_CONFIRMED")
     return "La página estaba desactualizada: recárgala y vuelve a cerrar.";
   return null;

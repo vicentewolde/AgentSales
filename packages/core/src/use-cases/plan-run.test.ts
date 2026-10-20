@@ -848,4 +848,77 @@ describe("un plan activo por marca y la lista de planes (F9-T20)", () => {
     expect(ideas.length).toBeGreaterThan(0);
     expect(ideas.every((post) => post.createdBy === null)).toBe(true);
   });
+
+  it("si el segundo intento también falla con POST_REFERENCE_INVALID (la marca se borró), el error sube y el plan queda failed", async () => {
+    const t = await setup();
+    const { run } = await requestPlanRun(t.requestDeps, ADMIN, { brokerId: t.broker.id });
+    const tried: (string | null | undefined)[][] = [];
+    const planRuns = {
+      ...t.planRuns,
+      markSucceeded: async (
+        _id: string,
+        result: Parameters<typeof t.planRuns.markSucceeded>[1],
+      ) => {
+        tried.push((result.ideas ?? []).map((item) => item.createdBy));
+        throw new AppError("POST_REFERENCE_INVALID", "El corredor del post no existe");
+      },
+    };
+    const error = await caught(
+      runPlan({ ...t.runDeps, planRuns }, { planRunId: run.id, isLastAttempt: false }),
+    );
+    expect(codeOf(error)).toBe("POST_REFERENCE_INVALID");
+    // Primero con autor y después sin él; no hay un tercer intento.
+    expect(tried).toHaveLength(2);
+    expect(tried[0]?.every((createdBy) => createdBy === ADMIN.id)).toBe(true);
+    expect(tried[1]?.every((createdBy) => createdBy === null)).toBe(true);
+    expect(await t.planRuns.get(run.id)).toMatchObject({
+      status: "failed",
+      error: { code: "POST_REFERENCE_INVALID" },
+    });
+    expect(await t.posts.list({ planRunId: run.id }, { kind: "all" })).toEqual([]);
+  });
+
+  it("lo planificado en las semanas del borde ocupa su cupo, leído por rango de fechas (F9-T21)", async () => {
+    const t = await setup();
+    // Lunes 19 y martes 20 (antes del período, que empieza el miércoles 21): LinkedIn publica 2 por
+    // semana, así que esa semana ya está llena para LinkedIn.
+    for (const [topic, plannedAt] of [
+      ["Ya planificado el lunes", "2026-10-19T12:00:00Z"],
+      ["Ya planificado el martes", "2026-10-20T12:00:00Z"],
+    ] as const) {
+      await t.posts.create({
+        brokerId: t.broker.id,
+        topic,
+        kind: "text",
+        plannedAt: new Date(plannedAt),
+        platforms: ["linkedin"],
+      });
+    }
+    // Sin `listRecent` (como si sus 300 más nuevos no los trajeran): lo planificado se lee aparte.
+    const posts = { ...t.posts, listRecent: async () => [] };
+    const { run } = await requestPlanRun(t.requestDeps, ADMIN, {
+      brokerId: t.broker.id,
+      platforms: ["linkedin"],
+      count: 2,
+    });
+    const result = await runPlan(
+      { ...t.runDeps, posts },
+      { planRunId: run.id, isLastAttempt: false },
+    );
+    expect(result.outcome).toBe("succeeded");
+    const prompt = (t.llm as ReturnType<typeof samplePlanProvider>).requests[0]?.prompt ?? "";
+    const data = JSON.parse(prompt.slice(prompt.indexOf("{"), prompt.lastIndexOf("}") + 1)) as {
+      ya_planificados: { fecha: string; redes: string[] }[];
+    };
+    expect(data.ya_planificados).toEqual([
+      { fecha: "2026-10-19", redes: ["linkedin"] },
+      { fecha: "2026-10-20", redes: ["linkedin"] },
+    ]);
+    // Ninguna idea de LinkedIn cae en esa semana.
+    const ideas = await t.posts.list({ planRunId: run.id }, { kind: "all" });
+    expect(ideas.length).toBeGreaterThan(0);
+    for (const idea of ideas) {
+      expect((idea.plannedAt as Date) >= new Date("2026-10-26T03:00:00Z")).toBe(true);
+    }
+  });
 });

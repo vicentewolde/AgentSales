@@ -33,6 +33,7 @@ import {
   MEDIA_VARIANTS,
   ONBOARDING_STEPS,
   OPERATIONS,
+  PLAN_RUN_STATUSES,
   PLATFORM_ACCOUNT_STATUSES,
   PLATFORMS,
   POST_KINDS,
@@ -1412,6 +1413,11 @@ export const updatePostBodySchema = z
     plannedAt: postDateSchema.nullable().optional(),
     /** La marca que permite un enlace en el texto de X (F9-T16: cuesta US$0,20). */
     xLinkAllowed: z.boolean().optional(),
+    /**
+     * Las redes del post (F9-T20 y T21): `post.draft` redacta solo para estas y, sin redes
+     * pedidas, programar o publicar usa solo estas; `null` = todas las de la marca.
+     */
+    platforms: z.array(z.enum(POST_PLATFORMS)).max(POST_PLATFORMS.length).nullable().optional(),
   })
   .strict();
 export type UpdatePostBody = z.infer<typeof updatePostBodySchema>;
@@ -1583,6 +1589,101 @@ export const publicationResolveBodySchema = z
   })
   .strict();
 export type PublicationResolveBody = z.infer<typeof publicationResolveBodySchema>;
+
+// ── El plan de ideas (F9-T21, spec F9 §4.9 y §4.10, ADR-0030) ──────────────
+
+/**
+ * `POST /plans`: la marca (el administrador la manda; un corredor la omite o manda la suya), el
+ * primer día (`AAAA-MM-DD`, hora de Chile; por defecto mañana), los días (por defecto 14), las
+ * redes (por defecto, todas las de la marca) y cuántas ideas (por defecto, según la cadencia). Los
+ * rangos los revisa core (`PLAN_RUN_INVALID`, con su mensaje).
+ */
+export const planRequestBodySchema = z
+  .object({
+    brokerId: z.uuid().optional(),
+    startDay: z.string().max(10).optional(),
+    days: z.number().int().optional(),
+    platforms: z.array(z.enum(POST_PLATFORMS)).max(POST_PLATFORMS.length).optional(),
+    count: z.number().int().optional(),
+  })
+  .strict();
+export type PlanRequestBody = z.infer<typeof planRequestBodySchema>;
+
+/**
+ * `GET /plans`: los planes de una marca (el administrador la manda; un corredor ve los suyos), los
+ * 20 más recientes (fijo: el contrato no expone `limit`).
+ */
+export const planQuerySchema = z.object({ brokerId: z.uuid().optional() });
+
+/**
+ * Un plan como lo ven la CLI y el panel: su período (en días de Chile, los dos incluidos), su
+ * estado, lo pedido (redes y cuántas ideas) y, si falló, el error con qué hacer (`errorAdvice`).
+ * Sin el gasto ni el proveedor de IA (eso lo muestra `usage`).
+ */
+export const planRunViewSchema = z.object({
+  id: z.string(),
+  brokerId: z.string(),
+  periodStart: z.coerce.date(),
+  periodEnd: z.coerce.date(),
+  firstDay: z.string(),
+  lastDay: z.string(),
+  status: z.enum(PLAN_RUN_STATUSES),
+  platforms: z.array(z.enum(POST_PLATFORMS)),
+  count: z.number().int().nullable(),
+  error: z.object({ code: z.string(), message: z.string() }).nullable(),
+  errorAdvice: z.string().nullable(),
+  promptVersion: z.string().nullable(),
+  startedAt: z.coerce.date().nullable(),
+  finishedAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+});
+export type PlanRunView = z.infer<typeof planRunViewSchema>;
+
+/**
+ * Una idea del plan (un post con `plan_run_id`, en cualquier estado): el post, las redes que se le
+ * quitaron al proponerla (`notes`), cuántos textos vigentes tiene y su última corrida de textos.
+ * Una idea aceptada sin textos ni corrida activa es la que "Redactar lo aceptado" pide de nuevo.
+ */
+export const planIdeaViewSchema = postJsonSchema.extend({
+  notes: z.array(z.string()),
+  texts: z.number().int().nonnegative(),
+  latestRun: contentRunViewSchema.nullable(),
+});
+export type PlanIdeaView = z.infer<typeof planIdeaViewSchema>;
+
+/** Lo que las verificaciones descartaron (con su motivo) y las advertencias de la IA. */
+export const planReportViewSchema = z.object({
+  discarded: z.array(z.object({ topic: z.string(), code: z.string(), message: z.string() })),
+  warnings: z.array(z.string()),
+});
+export type PlanReportView = z.infer<typeof planReportViewSchema>;
+
+/** `GET /plans/:id`: el plan, su reporte (`null` mientras corre o si falló) y sus ideas. */
+export const planDetailResponseSchema = z.object({
+  plan: planRunViewSchema,
+  report: planReportViewSchema.nullable(),
+  ideas: z.array(planIdeaViewSchema),
+});
+export type PlanDetailResponse = z.infer<typeof planDetailResponseSchema>;
+
+/** `POST /plans` (202): el plan y `reused` si la marca ya tenía uno en cola o corriendo. */
+export const planRequestResponseSchema = z.object({ plan: planRunViewSchema, reused: z.boolean() });
+export type PlanRequestResponse = z.infer<typeof planRequestResponseSchema>;
+
+/** `GET /plans`: los de la marca, los más recientes primero. */
+export const planListResponseSchema = z.object({ plans: z.array(planRunViewSchema) });
+export type PlanListResponse = z.infer<typeof planListResponseSchema>;
+
+/**
+ * `POST /posts/:id/accept` (202): la idea aceptada (en `draft`) y la corrida de sus textos
+ * (`post.draft` encolado; `reused` si ya había una activa).
+ */
+export const ideaAcceptResponseSchema = z.object({
+  post: postJsonSchema,
+  contentRun: contentRunViewSchema,
+  reused: z.boolean(),
+});
+export type IdeaAcceptResponse = z.infer<typeof ideaAcceptResponseSchema>;
 
 // ── Usuarios y sesiones (F7-T04 y T05, spec F7 §4.13, ADR-0021) ────────────
 

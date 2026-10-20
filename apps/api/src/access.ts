@@ -108,6 +108,13 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   "POST /posts/:id/contents/:platform/:language/unapprove": "session",
   "POST /posts/:id/publish": "session",
   "POST /posts/:id/schedule": "session",
+  // F9-T21: el plan de ideas (pedirlo, listarlo y verlo) y aceptar o descartar una idea, con
+  // `posts.manage` revisado en core; un plan o una idea de otra marca es 404.
+  "POST /plans": "session",
+  "GET /plans": "session",
+  "GET /plans/:id": "session",
+  "POST /posts/:id/accept": "session",
+  "POST /posts/:id/discard": "session",
   // F8 (spec §4.4, ADR-0025): pedir la carga con sus URLs de subida y empezarla.
   "POST /imports/uploads": "session",
   "POST /imports/:id/start": "session",

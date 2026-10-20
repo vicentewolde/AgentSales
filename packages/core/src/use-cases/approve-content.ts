@@ -16,6 +16,7 @@ import { type MarketplaceReadiness, marketplaceReadiness } from "../marketplace/
 import { type PortalReadiness, portalReadiness } from "../portal/readiness.js";
 import { canDraftPost, postNotReady } from "../post.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { requirePostPlatform } from "../social/post-networks.js";
 import { listingSubject } from "../subject.js";
 import {
   runOnSubject,
@@ -72,6 +73,8 @@ export type ApprovedContent = CheckedContent & {
  * - el aviso no está en `ready`, `active` o `paused` → `LISTING_NOT_READY`; el post no está en
  *   `draft` ni `ready` → `POST_NOT_READY`;
  * - hay una corrida activa (de textos o de imágenes, que reemplaza los medios) → `CONTENT_RUN_ACTIVE`;
+ * - el texto es de una red que no está entre las del post (`posts.platforms`, F9-T21) →
+ *   `POST_PLATFORM_EXCLUDED`;
  * - la revisión editorial tiene errores → `CONTENT_HAS_ERRORS` (las advertencias no bloquean);
  * - con una cuenta conectada, faltan los medios del canal → `CONTENT_NOT_READY`.
  * Aprobar un texto ya aprobado vuelve a revisar y abre lo que falte (idempotente). En Portal,
@@ -194,6 +197,8 @@ async function approvePostContent(
   review: CheckedContent,
   actor: PublicationActor,
 ): Promise<ApprovedContent> {
+  // F9-T21: el texto de una red que se le quitó al post no se aprueba (abriría publicaciones).
+  requirePostPlatform(post, content.platform);
   const opening = await planPostPublications(locked, { post, content });
 
   // Recién aquí se escribe.

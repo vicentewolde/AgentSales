@@ -225,6 +225,42 @@ Todo lo anterior se puede hacer en el panel, en **Contenido** (el menú de la iz
 - **Videos de más de 100 MB:** el navegador los sube sin calcular su huella (sha256); el servidor la calcula después y el video aparece en unos minutos. Si ya estaba en el post, no se duplica.
 - **El perfil editorial** se edita en **Mi marca** (o, siendo administrador, en la página de cada corredor), con los mismos campos que `brand edit`. Si algo no sirve, el error aparece en rojo junto al campo y no se guarda nada.
 
+## Pedir a la IA un plan de ideas (F9)
+
+Si no sabes qué publicar, la IA te propone **ideas con fecha** para las próximas semanas, con el perfil editorial de la marca (sus líneas, sus hechos y su cadencia). **Una idea no se publica sola:** tú decides cuáles aceptar; al aceptar una, la IA redacta sus textos, y después los revisas, apruebas y programas como cualquier post. Cada plan gasta IA de la marca (entra a su tope del mes), aunque descartes todo.
+
+```bash
+# 1. Pedir el plan (por defecto, 14 días desde mañana, todas las redes de la marca y las ideas que
+#    pide su cadencia) y esperar: imprime las ideas por semana, cada una con su id y su comando
+pnpm -s cli plan --broker agentpey --days 14 --platform linkedin,x --count 8
+
+# 2. Decidir cada idea
+pnpm -s cli post accept <id_idea>      # pasa a borrador y la IA redacta sus textos
+pnpm -s cli post discard <id_idea>     # no se vuelve a proponer en 60 días
+pnpm -s cli post edit <id_idea> --date "2026-10-23 10:00" --platforms x,linkedin --brief "Lo que yo sé: …"
+
+# 3. Seguir como un post: revisar, aprobar y programar
+pnpm -s cli post show <id_idea>
+pnpm -s cli post approve <id_idea>
+pnpm -s cli post schedule <id_idea> --at "2026-10-23 10:00"
+```
+
+- **`plan show <id>`** vuelve a mostrar un plan con el estado de cada idea; **`plan list`** muestra los planes de la marca. `--no-wait` pide el plan y sale con su id.
+- **Un plan a la vez por marca:** si ya hay uno en curso, pedir otro te muestra ese.
+- **Lo que mira la IA:** no repite los temas de los últimos 60 días ni las ideas que descartaste, respeta la cadencia de cada red (días, horas y posts por semana, contando lo que ya está planificado esas semanas) y no inventa cifras ni nombres que no estén en el perfil. Las ideas que no pasan esas revisiones salen al final como "descartadas por las revisiones", con el motivo.
+- **Antes de aceptar** puedes mover la fecha, cambiar las redes o escribir tu brief. **El brief tuyo cuenta como fuente de hechos**: si sabes algo concreto del tema, escríbelo antes de aceptar para que la IA lo use.
+- **Las redes de cada idea** son las que la IA sugirió; al aceptarla, la IA redacta solo para esas. Si después le cambias las redes a un post, sus textos de las redes quitadas no se borran, pero ya no se aprueban, publican ni programan: aprobar, `post publish --platform` o publicar una publicación suya da `POST_PLATFORM_EXCLUDED`; `post schedule --platform` la informa como no programada, y sin `--platform` simplemente no se usa. Una red con publicaciones pendientes (aprobadas, programadas o fallidas, incluida la que el reloj dejó fallida con `POST_PLATFORM_EXCLUDED`) no se puede quitar (`POST_HAS_PENDING_PUBLICATIONS`): primero cancélalas con `publications cancel <id>`. `post show` y el panel avisan qué texto falta de una red agregada (pídelo con `post draft`; Instagram en un post de solo texto no cuenta, porque no sirve a ese tipo).
+- **Si el plan falla**, la CLI y el panel dicen el motivo y qué hacer: `LLM_BUDGET_EXCEEDED` (la marca llegó a su tope de IA del mes: `pnpm -s cli usage`), `LLM_OUTPUT_INVALID` (la IA no respondió en el formato pedido: pide el plan de nuevo), `LLM_AUTH_REQUIRED` (renueva la sesión de la CLI de Claude), `PLAN_RUN_ABANDONED` (el worker se cortó: pide el plan de nuevo), o un error pasajero (vuelve a pedirlo en unos minutos).
+
+### Lo mismo desde el panel (F9-T21)
+
+En **Plan** (el menú de la izquierda; el administrador elige la marca en "Ver corredor"):
+
+- **Pedir un plan:** los días (14 por defecto), las redes (sin marcar ninguna, todas las de la marca) y cuántas ideas (vacío: según la cadencia). Mientras la IA propone, la página lo dice y se actualiza sola.
+- **Las ideas por semana**, cada una con su fecha y hora (Chile), su línea, sus redes, su tipo y el porqué. Por idea: **Aceptar**, **Editar** (brief, fecha y redes) y **Descartar** (pide confirmación). Una aceptada lleva al post, donde revisas, apruebas y programas.
+- **Redactar lo aceptado:** si una idea quedó aceptada sin textos (por ejemplo, el worker no estaba al aceptarla), el botón pide sus textos.
+- **Si el plan falla**, el motivo aparece en rojo con qué hacer.
+
 ## Conectar las redes de los posts (F9)
 
 Cada marca (o corredor) publica sus posts en las cuentas que **tú** conectes. Se conectan en **Cuentas** del panel o con la CLI, con `pnpm dev` corriendo (o contra el servidor). `pnpm -s cli accounts` muestra las conectadas y, debajo, **las redes que faltan con el comando de cada una**.

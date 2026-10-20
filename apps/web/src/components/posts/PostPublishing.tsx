@@ -1,4 +1,9 @@
-import type { ContentView, PostScheduleResponse, PublicationView } from "@agentsales/api/contracts";
+import type {
+  ContentView,
+  PostJson,
+  PostScheduleResponse,
+  PublicationView,
+} from "@agentsales/api/contracts";
 import {
   formatChileTime,
   LANGUAGE_TEXT,
@@ -6,6 +11,7 @@ import {
   type PostPlatform,
   PUBLICATION_STATUS_TEXT,
   type PublishMode,
+  postPublishesOn,
   publicationFormatText,
   publicationModeText,
 } from "@agentsales/core";
@@ -29,12 +35,20 @@ const PRIMARY =
   "rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50";
 const FIELD = "w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm";
 
-/** Las redes con al menos un texto aprobado, en el orden de los textos (el de la API). */
-export function approvedPlatforms(contents: readonly ContentView[]): PostPlatform[] {
+/**
+ * Las redes con al menos un texto aprobado, en el orden de los textos (el de la API). Con el post,
+ * solo las que están entre sus redes (`postPublishesOn`, F9-T21): una red quitada no se ofrece.
+ */
+export function approvedPlatforms(
+  contents: readonly ContentView[],
+  post?: Pick<PostJson, "platforms">,
+): PostPlatform[] {
   const platforms: PostPlatform[] = [];
   for (const content of postContents(contents)) {
     const { platform } = content;
-    if (content.status === "approved" && !platforms.includes(platform)) platforms.push(platform);
+    if (content.status !== "approved" || platforms.includes(platform)) continue;
+    if (post !== undefined && !postPublishesOn(post, platform)) continue;
+    platforms.push(platform);
   }
   return platforms;
 }
@@ -66,11 +80,14 @@ function ScheduleResults({ result }: { result: PostScheduleResponse }) {
  */
 export function PostPublishBar({
   postId,
+  post,
   contents,
   publishMode,
   lockReason,
 }: {
   postId: string;
+  /** Sus redes (`platforms`): las quitadas no se ofrecen (F9-T21). */
+  post: Pick<PostJson, "platforms">;
   contents: readonly ContentView[];
   publishMode: PublishMode | undefined;
   lockReason: string | null;
@@ -78,7 +95,8 @@ export function PostPublishBar({
   const ids = useId();
   const publish = usePublishPost(postId);
   const schedule = useSchedulePost(postId);
-  const platforms = approvedPlatforms(contents);
+  const platforms = approvedPlatforms(contents, post);
+  const excludedOnly = platforms.length === 0 && approvedPlatforms(contents).length > 0;
   const [scheduling, setScheduling] = useState(false);
   const [chosen, setChosen] = useState<PostPlatform[] | null>(null);
   const [published, setPublished] = useState<string | null>(null);
@@ -86,7 +104,9 @@ export function PostPublishBar({
   if (platforms.length === 0) {
     return (
       <p className="text-sm text-slate-600">
-        Aprueba al menos un texto para publicarlo o programarlo.
+        {excludedOnly
+          ? "Los textos aprobados son de redes que ya no están en el post: agrégalas con «Editar el post» o aprueba el texto de otra red."
+          : "Aprueba al menos un texto para publicarlo o programarlo."}
       </p>
     );
   }

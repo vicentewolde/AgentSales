@@ -23,9 +23,10 @@ import { hasMassMention, unsupportedFacts } from "./check.js";
 import { kindProblem } from "./networks.js";
 
 // El plan de ideas de la IA (spec F9 §4.9, ADR-0030): el período, lo que ve la IA, la forma de su
-// respuesta y las verificaciones de cada idea. Funciones puras: las usan `requestPlanRun` y
-// `runPlan` (use-cases) y la evaluación de T22. Una idea que no pasa se **descarta** y queda en el
-// reporte; no tumba el plan.
+// respuesta, las verificaciones de cada idea, el reporte, qué hacer si falla y cómo se agrupan sus
+// ideas por semana. Funciones puras: las usan `requestPlanRun` y `runPlan` (use-cases), la
+// evaluación de T22 y, desde T21, la API, la CLI y el panel. Una idea que no pasa se **descarta** y
+// queda en el reporte; no tumba el plan. Los textos del estado de un plan están en `labels.ts`.
 
 /** Días del período por defecto: las próximas 2 semanas (spec F9 §4.9). */
 export const PLAN_DEFAULT_DAYS = 14;
@@ -90,7 +91,7 @@ export function weekdayOf(day: string): EditorialWeekday {
 }
 
 /** El lunes de la semana (de lunes a domingo, como en Chile) de un día. */
-const weekOf = (day: string) => addDays(day, -EDITORIAL_WEEKDAYS.indexOf(weekdayOf(day)));
+export const weekOf = (day: string) => addDays(day, -EDITORIAL_WEEKDAYS.indexOf(weekdayOf(day)));
 
 // --- Lo que se pide ---------------------------------------------------------------------------
 
@@ -129,6 +130,25 @@ export function planPeriod(params: { now: Date; startDay?: string; days?: number
     days,
     start: chileDateStart(firstDay),
     end: chileDateStart(addDays(firstDay, days)),
+  };
+}
+
+/**
+ * El período de un plan guardado (`plan_runs.period_start` y `period_end`, `[start, end)`), en
+ * días de Chile: lo usan `runPlan` y la API (F9-T21), con una sola fórmula. `periodEnd` es el
+ * inicio del día siguiente al último; medio día antes cae siempre en el último (aun con el cambio
+ * de hora).
+ */
+export function planRunPeriod(run: { periodStart: Date; periodEnd: Date }): PlanPeriod {
+  const firstDay = chileDateOf(run.periodStart);
+  const lastDay = chileDateOf(new Date(run.periodEnd.getTime() - DAY_MS / 2));
+  const utc = (day: string) => Date.parse(`${day}T00:00:00Z`);
+  return {
+    firstDay,
+    lastDay,
+    days: Math.round((utc(lastDay) - utc(firstDay)) / DAY_MS) + 1,
+    start: run.periodStart,
+    end: run.periodEnd,
   };
 }
 
@@ -218,22 +238,40 @@ export function planHistory(
 export type PlannedSlot = { date: string; platforms: PostPlatform[] };
 
 /**
- * Los posts de la marca que ya están planificados dentro del período (ideas sin decidir, borradores
- * y listos con `planned_at`; no los archivados), con sus redes entre las pedidas: un post sin redes
- * propias (`platforms = null`) cuenta en todas. Ocupan su cupo de la semana en la cadencia.
+ * Las semanas completas (de lunes a domingo, hora de Chile) que toca un período: desde el lunes de
+ * su primer día hasta el fin del domingo de su último día, `[start, end)`. Lo planificado ahí ocupa
+ * el cupo semanal aunque caiga fuera del período (F9-T21: las semanas parciales del borde).
+ */
+export function planWeeks(period: Pick<PlanPeriod, "firstDay" | "lastDay">): {
+  start: Date;
+  end: Date;
+} {
+  return {
+    start: chileDateStart(weekOf(period.firstDay)),
+    end: chileDateStart(addDays(weekOf(period.lastDay), 7)),
+  };
+}
+
+/**
+ * Los posts de la marca que ya están planificados en las semanas del período (`planWeeks`: del
+ * lunes de la primera al domingo de la última, así una semana parcial del borde no pasa su tope):
+ * ideas sin decidir, borradores y listos con `planned_at` (no los archivados), con sus redes entre
+ * las pedidas; un post sin redes propias (`platforms = null`) cuenta en todas. Ocupan su cupo de la
+ * semana en la cadencia.
  */
 export function plannedSlots(
   posts: readonly Pick<Post, "status" | "plannedAt" | "platforms">[],
-  period: Pick<PlanPeriod, "start" | "end">,
+  period: Pick<PlanPeriod, "firstDay" | "lastDay">,
   requested: readonly PostPlatform[],
 ): PlannedSlot[] {
+  const weeks = planWeeks(period);
   return posts
     .filter(
       (post) =>
         post.status !== "archived" &&
         post.plannedAt !== null &&
-        post.plannedAt >= period.start &&
-        post.plannedAt < period.end,
+        post.plannedAt >= weeks.start &&
+        post.plannedAt < weeks.end,
     )
     .map((post) => ({
       date: chileDateOf(post.plannedAt as Date),
@@ -616,9 +654,10 @@ export function checkPlanIdeas(params: {
 // --- El reporte -------------------------------------------------------------------------------
 
 /**
- * El reporte de un plan terminado (`plan_runs.report`): las ideas que quedaron como posts (con
- * sus redes, que el post no guarda), las descartadas con su motivo, las advertencias de la IA y la
- * llamada. Es lo que leen T21 (API, CLI y panel) y T22 (evaluación).
+ * El reporte de un plan terminado (`plan_runs.report`): las ideas que quedaron como posts (con sus
+ * redes —que el post también guarda en `platforms` desde T20— y las que se le quitaron, `notes`),
+ * las descartadas con su motivo, las advertencias de la IA y la llamada. Es lo que leen T21 (API,
+ * CLI y panel) y T22 (evaluación).
  */
 export const planRunReportSchema = z.object({
   ideas: z.array(
@@ -646,3 +685,74 @@ export const planRunReportSchema = z.object({
     .optional(),
 });
 export type PlanRunReport = z.infer<typeof planRunReportSchema>;
+
+// --- Qué hacer si falla -----------------------------------------------------------------------
+
+const PLAN_RETRY_LATER = "Es pasajero: pide el plan de nuevo en unos minutos.";
+
+/** Consejos por código de un plan fallido (`plan_runs.error`), para el panel y la CLI (F9-T21). */
+const PLAN_ERROR_ADVICE: Readonly<Record<string, string>> = {
+  LLM_BUDGET_EXCEEDED:
+    "La marca llegó a su tope de IA del mes: mira el gasto (agentsales usage) y pide al administrador subir el tope, o espera al mes siguiente.",
+  LLM_OUTPUT_INVALID: "La IA no entregó el plan en el formato pedido: pide el plan de nuevo.",
+  LLM_AUTH_REQUIRED:
+    "La sesión de la CLI de Claude venció: el operador la renueva (/login en claude) y después pides el plan de nuevo.",
+  LLM_NOT_CONFIGURED:
+    "Falta configurar la IA del servidor (LLM_PROVIDER o ANTHROPIC_API_KEY): el operador lo revisa con pnpm -s cli doctor.",
+  LLM_ACCOUNT_LIMIT:
+    "La cuenta de IA llegó a su límite de uso: espera a que se renueve y pide el plan de nuevo.",
+  LLM_REQUEST_REJECTED:
+    "La IA rechazó el pedido: revisa el perfil editorial de la marca y pide el plan de nuevo.",
+  PLAN_RUN_ABANDONED: "El worker se cortó mientras armaba el plan: pide el plan de nuevo.",
+  PLAN_RUN_INVALID: "El plan quedó mal pedido: pídelo de nuevo.",
+  QUEUE_UNAVAILABLE: "El worker no está corriendo: arráncalo y pide el plan de nuevo.",
+  POST_NO_PLATFORMS:
+    "La marca no tiene redes: conecta una cuenta o define la cadencia de una red en su perfil editorial.",
+  BROKER_NOT_FOUND: "La marca del plan ya no existe.",
+  INTERNAL_ERROR:
+    "Es un error del sistema: pide el plan de nuevo y, si se repite, revisa el log del worker.",
+};
+
+/**
+ * Qué hacer ante un plan fallido (F9-T21): el consejo de su código; los pasajeros (`_UNAVAILABLE`,
+ * `_TIMEOUT`, `_ABORTED`, `_RATE_LIMITED`, `LLM_ERROR`), volver a pedirlo en unos minutos; si no,
+ * uno genérico.
+ */
+export function planRunErrorAdvice(code: string): string {
+  const own = PLAN_ERROR_ADVICE[code];
+  if (own !== undefined) return own;
+  if (/_(UNAVAILABLE|TIMEOUT|ABORTED|RATE_LIMITED)$/.test(code) || code === "LLM_ERROR") {
+    return PLAN_RETRY_LATER;
+  }
+  return "Pide el plan de nuevo; si se repite, revisa el log del worker.";
+}
+
+// --- Cómo se muestra --------------------------------------------------------------------------
+
+/** `Semana del 19-10 al 25-10`: una semana de lunes a domingo, por su lunes (`AAAA-MM-DD`). */
+export function planWeekText(monday: string): string {
+  const short = (day: string) => `${day.slice(8, 10)}-${day.slice(5, 7)}`;
+  return `Semana del ${short(monday)} al ${short(addDays(monday, 6))}`;
+}
+
+/**
+ * Agrupa por semana (de lunes a domingo, hora de Chile) lo que tiene fecha, en orden; lo que no
+ * tiene fecha va al final, en un grupo con `week = null`. Así ven las ideas la CLI y el panel.
+ */
+export function groupByPlanWeek<T extends { plannedAt: Date | null }>(
+  items: readonly T[],
+): { week: string | null; items: T[] }[] {
+  const dated = items
+    .filter((item) => item.plannedAt !== null)
+    .sort((a, b) => (a.plannedAt as Date).getTime() - (b.plannedAt as Date).getTime());
+  const groups: { week: string | null; items: T[] }[] = [];
+  for (const item of dated) {
+    const week = weekOf(chileDateOf(item.plannedAt as Date));
+    const last = groups.at(-1);
+    if (last?.week === week) last.items.push(item);
+    else groups.push({ week, items: [item] });
+  }
+  const undated = items.filter((item) => item.plannedAt === null);
+  if (undated.length > 0) groups.push({ week: null, items: [...undated] });
+  return groups;
+}
