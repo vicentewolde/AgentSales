@@ -5,6 +5,7 @@ import {
   LINKEDIN_RESERVED_CHARACTERS,
   linkKey,
   linksIn,
+  neutralizeDiscordMentions,
   POST_TEXT_LIMITS,
   postTextLength,
   xWeightedLength,
@@ -76,6 +77,15 @@ describe("postTextLength", () => {
   it("LinkedIn mide con los escapes (lo más largo, mientras no se verifique)", () => {
     // `(`, `)` y los dos `#` suman cuatro barras.
     expect(postTextLength("linkedin", text)).toEqual({ length: 27, max: 3000 });
+  });
+
+  it("Discord mide el texto ya neutralizado, el mismo que envía su publisher (F9-T14)", () => {
+    expect(neutralizeDiscordMentions("Hola @everyone, a@Here")).toBe(
+      "Hola @\u200beveryone, a@\u200bHere",
+    );
+    const body = `${"a".repeat(1991)}@everyone`;
+    expect(body.length).toBe(2000);
+    expect(postTextLength("discord", { body, hashtags: [] })).toEqual({ length: 2001, max: 2000 });
   });
 
   it("X mide ponderado", () => {

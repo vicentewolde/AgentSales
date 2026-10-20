@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ALL_SCOPE } from "../access.js";
 import { AppError } from "../errors.js";
+import type { DiscordWebhookInfo } from "../ports/discord-webhooks.js";
 import type { InstagramAuth } from "../ports/instagram-auth.js";
 import {
   contentBrokerFixture,
@@ -9,7 +10,7 @@ import {
   createInMemoryPlatformAccountRepository,
   createInMemoryPublicationRepository,
 } from "../testing/index.js";
-import { connectAccount } from "./connect-account.js";
+import { connectAccount, connectDiscordAccount } from "./connect-account.js";
 import { type DisconnectAccountDeps, disconnectAccount } from "./disconnect-account.js";
 
 const NOW = new Date("2026-10-06T12:00:00Z");
@@ -187,5 +188,121 @@ describe("disconnectAccount", () => {
     ).rejects.toMatchObject({
       code: "ACCOUNT_NOT_FOUND",
     });
+  });
+});
+
+describe("connectDiscordAccount (F9-T14)", () => {
+  const TOKEN = "tokenSecretoDelWebhook-123_abc";
+  const URL = `https://discord.com/api/webhooks/987654321/${TOKEN}`;
+
+  function discordSetup(answer: (url: string) => Promise<DiscordWebhookInfo>) {
+    const broker = contentBrokerFixture({ kind: "brand" });
+    const brokers = createInMemoryBrokerRepository([broker]);
+    const platformAccounts = createInMemoryPlatformAccountRepository();
+    const calls: string[] = [];
+    const deps = {
+      brokers,
+      platformAccounts,
+      discord: {
+        get: async (url: string) => {
+          calls.push(url);
+          return answer(url);
+        },
+      },
+      now: () => NOW,
+    };
+    return { broker, platformAccounts, calls, deps };
+  }
+  const info = (id = "987654321"): DiscordWebhookInfo => ({
+    id,
+    name: "AgentSales",
+    guildId: "111",
+    channelId: "222",
+  });
+
+  it("lee el webhook y lo guarda conectado: el id como cuenta, el nombre a la vista y la URL cifrada", async () => {
+    const { broker, platformAccounts, calls, deps } = discordSetup(async () => info());
+
+    const account = await connectDiscordAccount(deps, {
+      broker: broker.slug,
+      webhookUrl: `  ${URL}\n`,
+    });
+
+    expect(calls).toEqual([URL]);
+    expect(account).toMatchObject({
+      brokerId: broker.id,
+      platform: "discord",
+      externalAccountId: "987654321",
+      displayName: "AgentSales",
+      status: "connected",
+      tokenExpiresAt: null,
+      meta: {
+        webhookName: "AgentSales",
+        guildId: "111",
+        channelId: "222",
+        connectedAt: NOW.toISOString(),
+      },
+    });
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({ webhookUrl: URL });
+    expect(JSON.stringify(account)).not.toContain(TOKEN);
+  });
+
+  it("otro webhook de la marca deja el anterior desconectado (un canal por marca)", async () => {
+    const { broker, platformAccounts, deps } = discordSetup(async (url) =>
+      info(url.includes("/111/") ? "111" : "987654321"),
+    );
+    await connectDiscordAccount(deps, { broker: broker.slug, webhookUrl: URL });
+    await connectDiscordAccount(deps, {
+      broker: broker.slug,
+      webhookUrl: "https://discord.com/api/webhooks/111/otroToken",
+    });
+    const accounts = await platformAccounts.list(ALL_SCOPE);
+    expect(accounts.map((a) => [a.externalAccountId, a.status])).toEqual([
+      ["987654321", "revoked"],
+      ["111", "connected"],
+    ]);
+  });
+
+  it("una URL que no es de un webhook es DISCORD_WEBHOOK_URL_INVALID, sin llamar y sin repetirla", async () => {
+    const { broker, calls, deps } = discordSetup(async () => info());
+    for (const pasted of [
+      "https://example.com/api/webhooks/1/x",
+      `http://discord.com/api/webhooks/987654321/${TOKEN}`,
+      `${URL}?wait=true`,
+      "no es una url",
+    ]) {
+      const error = await connectDiscordAccount(deps, {
+        broker: broker.slug,
+        webhookUrl: pasted,
+      }).catch((caught: unknown) => caught);
+      expect(error).toMatchObject({ code: "DISCORD_WEBHOOK_URL_INVALID" });
+      expect((error as Error).message).not.toContain(pasted);
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it("los errores de Discord pasan tal cual y no guardan nada; otro id en la respuesta tampoco", async () => {
+    const gone = new AppError("DISCORD_WEBHOOK_NOT_FOUND", "El webhook ya no existe");
+    const failing = discordSetup(async () => {
+      throw gone;
+    });
+    await expect(
+      connectDiscordAccount(failing.deps, { broker: failing.broker.slug, webhookUrl: URL }),
+    ).rejects.toBe(gone);
+    expect(await failing.platformAccounts.list(ALL_SCOPE)).toEqual([]);
+
+    const other = discordSetup(async () => info("42"));
+    await expect(
+      connectDiscordAccount(other.deps, { broker: other.broker.slug, webhookUrl: URL }),
+    ).rejects.toMatchObject({ code: "DISCORD_UNEXPECTED_RESPONSE" });
+    expect(await other.platformAccounts.list(ALL_SCOPE)).toEqual([]);
+  });
+
+  it("un corredor que no existe es BROKER_NOT_FOUND sin llamar a Discord", async () => {
+    const { calls, deps } = discordSetup(async () => info());
+    await expect(
+      connectDiscordAccount(deps, { broker: "no-existe", webhookUrl: URL }),
+    ).rejects.toMatchObject({ code: "BROKER_NOT_FOUND" });
+    expect(calls).toEqual([]);
   });
 });

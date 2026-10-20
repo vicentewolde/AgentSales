@@ -51,6 +51,7 @@ import {
   createMercadoLibreAuth,
   MERCADOLIBRE_REFRESH_TIMEOUT_MS,
 } from "@agentsales/publishers";
+import { createDiscordPublisher } from "@agentsales/publishers/discord";
 import { marketplaceProfileDir, openMarketplaceProfile } from "@agentsales/publishers/marketplace";
 import { createBancoCentralUf } from "@agentsales/publishers/uf";
 import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
@@ -145,6 +146,11 @@ const platformAccounts = createPlatformAccountRepository(database.db, { secretBo
 // Registrado en los dos modos: una publicación en `dry_run` también lo necesita (lo envuelve
 // `withDryRun`). El cliente de Instagram se arma recién al primer intento en `live` (perezoso).
 const instagram = createInstagramPublisher({ onNote: instagramNoteLogger(logger) });
+// Discord por webhook (F9-T14): sin cliente que armar ni secreto propio (la URL es la credencial
+// de cada cuenta). Sus notas van al log solo con ids y cifras, nunca con la URL.
+const discord = createDiscordPublisher({
+  onNote: (note) => logger.info(note, "nota del publicador de Discord"),
+});
 // Refresco de tokens (spec F3 §4.6): solo usa el token, así que funciona sin el par de la app
 // (como en la API); el par lo necesita solo el canje del OAuth, que el worker no hace.
 const instagramAuth = createInstagramAuth({
@@ -281,6 +287,7 @@ const jobs = buildJobs({
       storage,
       publishers: {
         instagram,
+        discord,
         portal_inmobiliario: portal.publisher,
         // En `live` llena el formulario y deja la ventana al registro; en `dry-run` no abre nada.
         // En producción no se registra (D4): publicar con una cuenta de perfil ya falló en core.

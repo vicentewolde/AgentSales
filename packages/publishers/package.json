@@ -9,6 +9,11 @@
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     },
+    "./discord": {
+      "@agentsales/source": "./src/discord/index.ts",
+      "types": "./dist/src/discord/index.d.ts",
+      "default": "./dist/src/discord/index.js"
+    },
     "./marketplace": {
       "@agentsales/source": "./src/marketplace/index.ts",
       "types": "./dist/src/marketplace/index.d.ts",

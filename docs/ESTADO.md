@@ -12,7 +12,7 @@ Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada 
 - [ ] **S1 · Instagram:** una publicación real y neutra en tu cuenta profesional, vista desde una cuenta **sin rol** en la app (modo desarrollo), solo con tu instrucción en el chat. **Obligatoria antes de cualquier publicación real de posts en Instagram** (T13 ya está construido contra simulaciones; decisión del 2026-10-20)
 - [ ] **S2 y S3 · LinkedIn:** el token de «Share on LinkedIn» publica en `/rest/posts`; escribir a LinkedIn Developer Support por el §3.1(26) de sus términos. Bloquea T15
 - [ ] **S4 · X:** cuenta de desarrollador con créditos (tope sugerido US$10 al mes), un post, un reply a ti mismo y un texto repetido. Bloquea T16
-- [ ] **S5 · Discord:** un servidor privado de pruebas con un webhook; texto, imagen y un video. Bloquea T14
+- [ ] **S5 · Discord:** un servidor privado de pruebas con un webhook; texto, imagen y un video. **Obligatoria antes de cualquier publicación real en Discord** (T14 ya está construido contra simulaciones; decisión del 2026-10-20)
 - [ ] **S6 · TikTok:** crear la app con tu cuenta de Chile, autorizar una cuenta personal con `video.upload` y ver un borrador en la bandeja. Bloquea T26
 - [ ] **Para el piloto (F10), sin código y de plazo largo:** la segunda app de Meta (anuncios), la Página y la cuenta publicitaria de la oficina, el plan Pro de ManyChat, el abogado por la Ley 21.719 y las pruebas A1 y A2 (spec §4.17)
 
@@ -111,7 +111,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 1 | T11 El texto por red con IA | ✅ terminada | #180 |
 | 1 | T12 Aprobar, publicar y programar un post (CLI) | ⏳ pendiente | |
 | 1 | T13 Instagram para posts (S1 antes de publicar de verdad) | ✅ terminada | #184 |
-| 1 | T14 Discord (tras S5) | ⏳ pendiente | |
+| 1 | T14 Discord (S5 antes de publicar de verdad) | ✅ terminada | #183 |
 | 2 · `v1.2.0` | T15 LinkedIn (tras S2 y S3) | ⏳ pendiente | |
 | 2 | T16 X (tras S4) | ⏳ pendiente | |
 | 2 | T26 TikTok, video como borrador (tras S6) | ⏳ pendiente | |
@@ -192,6 +192,7 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **F9, de T14:** un video de más de 20 MiB no se publica en Discord (sale solo el texto): no hay enlace seguro porque R2 no tiene un dominio público (spec D8 cambiada). Se resuelve con un dominio de medios (`media.agentpey.com`), el mismo que pedirá TikTok para fotos. `social:smoke --platform discord` no existe: S5 se hace a mano.
 - **F9, de T08:** la agenda ya sugiere para posts `agentsales post show <id>` y `publications resolve <id> --published|--not-published` (llegan en T12) y `accounts connect linkedin` (T19): hasta entonces esos comandos fallan. Una cuenta `expired` sin `token_expires_at` no aparece en "cuentas por reconectar". La matriz del panel aún no muestra posts (T18).
 - **F9, de T05:** las rutas viejas `PATCH /contents/:id`, `approve` y `unapprove` rechazan un texto de post con `CONTENT_NOT_FOR_LISTING` (409) hasta que T12 dé las rutas de posts. La revisión de textos de post es un marcador vacío hasta que T11 conecte `checkPostContent` (y cargue el perfil antes del candado). Los medios de un post salen por `post.kind` con `ig_4x5`/`ig_reel` en todas las redes: T13 a T16 los afinan por red. Las corridas de post en cola se reencolan como `post.draft` al arrancar el worker; hasta T11 no hay cola y quedan en espera con un aviso.
 - **F9, de T04 para T06 a T08:** los barridos de avisos (`listQueued`, `listAutoPublishPending`, `listByStatus`, `listDue`, `listStalePublishing`) filtran `listing_id IS NOT NULL`; T06 y T07 lo quitan o parametrizan cuando sus casos de uso trabajen con sujeto, para que las publicaciones `publishing` de posts también se reencolen sin republicar y la vigilancia las vea (criterio en T06). Unas 70 llamadas usan `listingIdOf` (lanza `SUBJECT_NOT_LISTING` con un post) y `SubjectRef` acepta un texto como id de aviso: T08 quita esa rama (criterio en T08). `GET /publications/:id` de una publicación de post respondería 500 hasta T06.

@@ -149,6 +149,12 @@ const PLATFORM_REJECTIONS = new Set([
   "ML_PERMISSION_DENIED",
   "ML_SITE_MISMATCH",
   "ML_REQUEST_REJECTED",
+  // Discord al conectar (F9-T14): un webhook borrado o con el token roto se cambia por otro (400,
+  // no el 404 del sufijo: la ruta existe), y uno que Discord no deja usar también es del cliente.
+  "DISCORD_WEBHOOK_NOT_FOUND",
+  "DISCORD_WEBHOOK_INVALID",
+  "DISCORD_FORBIDDEN",
+  "DISCORD_REQUEST_REJECTED",
 ]);
 
 /**
@@ -159,6 +165,7 @@ const PLATFORM_REJECTIONS = new Set([
 const PLATFORM_UNEXPECTED = new Set([
   "IG_UNEXPECTED_RESPONSE",
   "ML_UNEXPECTED_RESPONSE",
+  "DISCORD_UNEXPECTED_RESPONSE",
   // F7-T11: la API de Anthropic rechazó una petición que arma el servidor (en la corrida, no aquí).
   "LLM_REQUEST_REJECTED",
   "UF_UNEXPECTED_RESPONSE",
@@ -200,6 +207,9 @@ const BUSY = new Set([
   // F4-T19: una operación cortada por el tope de la API (las rutas de operaciones le ponen su
   // mensaje: ya pidió el sync).
   "ML_ABORTED",
+  // F9-T14: conectar Discord no llegó a conectar o se cortó: se repite en un momento.
+  "DISCORD_UNREACHABLE",
+  "DISCORD_ABORTED",
   // F5: el perfil de Facebook lo tiene otra ventana un momento.
   "MARKETPLACE_PROFILE_BUSY",
   // F6-T14: otro respaldo en curso, o uno cortado por el apagado (no llegan a la API).

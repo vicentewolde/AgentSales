@@ -9,6 +9,7 @@ Resumen de cómo se integra cada canal. Antes de implementar un publisher, el su
 | Facebook Marketplace | Navegador automatizado + clic final humano | F5 | Alto |
 | Yapo | Por definir (sin API pública conocida) | Post-MVP | Alto |
 | TikTok | Content Posting API | Post-MVP | Medio |
+| Discord | Webhook de canal (Execute Webhook) | F9 (T14) | Bajo |
 
 ## Instagram
 
@@ -59,6 +60,15 @@ Detalle verificado en `docs/integraciones/mercadolibre.md` (2026-10-06, leyendo 
 - **Desde el spec de F5** (ADR-0017, nota `docs/integraciones/fb-marketplace.md`): el operador hace también el clic de *Siguiente*; la sesión vive en un perfil fuera del repo (la base no guarda credenciales); el enlace lo detecta la ventana (solo la primera navegación desde el formulario) o lo pega el operador; no se leen estados de Facebook (las Condiciones de Meta prohíben recolectar datos con medios automatizados), así que retirar es a mano; `dry-run` no abre Facebook; ante cualquier pantalla fuera de la lista blanca, captura y se cierra la ventana; el precio va en pesos (la UF se convierte con el valor oficial del día, `docs/integraciones/uf.md`).
 - **Marketplace en producción (F8, D4):** a mano para todos, también los corredores propios; el servidor no registra el formulario automático (sin perfiles ni Chromium con ventana) y conectar un perfil, abrir la ventana o publicar con una cuenta de perfil responden `MARKETPLACE_AUTOMATION_NOT_ALLOWED`. El formulario automático sigue en el Mac del operador, para desarrollo.
 - **Marketplace a mano (F7, ADR-0023):** el formulario automático con el perfil del navegador queda solo para los corredores propios del operador (`operatorOwned`). Para los demás, la cuenta de Marketplace es "a mano" (`meta.mode = manual`, sin perfil ni Facebook abierto en el Mac del operador): al publicar, el sistema deja listos el texto, las fotos y el precio en pesos, el corredor publica él mismo y confirma con el enlace (o marca "No lo publiqué"). Abrir el formulario automático para un corredor ajeno responde `MARKETPLACE_AUTOMATION_NOT_ALLOWED` (403).
+
+## Discord (F9, contenido de marca)
+
+Detalle en `docs/integraciones/discord.md` (§0, lo que hace hoy AgentSales) y spec F9 §4.4 a §4.6.
+
+- **Mecanismo:** un **webhook de canal** (D7: sin bot, foros ni embeds). La URL del webhook es el secreto: se conecta con `pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin`, que la lee en Discord sin publicar y la guarda cifrada (`{ webhookUrl }`); nunca se imprime ni va al log. Un canal por marca.
+- **Publicar:** Execute Webhook (`/api/v10/webhooks/<id>/<token>?wait=true`), texto de hasta 2.000 caracteres con `@everyone`/`@here` neutralizados y siempre `allowed_mentions: { parse: [] }`, y hasta 10 archivos de 20 MiB (`multipart`). El video es la variante más liviana del post (`x_video` o `ig_reel`); si pesa más de 20 MiB, sale solo el texto con una nota (sin enlace seguro al video todavía, D8).
+- **Sin idempotencia:** se envía una sola vez (`sendOnce`); un corte, un 5xx o una respuesta sin el mensaje dejan `outcome_unknown` y el operador dice si salió. Un 429 se espera (corto) o reprograma (largo); un 404 o 401 del webhook deja la cuenta vencida (hay que conectar otro).
+- **Estado:** construido y probado solo con simulaciones (msw). **La prueba S5 del operador (spec F9 §4.8) es obligatoria antes de publicar de verdad.**
 
 ## Yapo (post-MVP)
 

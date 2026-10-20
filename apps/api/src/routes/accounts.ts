@@ -2,9 +2,12 @@ import {
   AppError,
   type ConnectAccountDeps,
   connectAccount,
+  connectDiscordAccount,
   connectManualMarketplaceAccount,
   connectMercadoLibreAccount,
+  type DiscordWebhooks,
   disconnectAccount,
+  discordAccountMetaSchema,
   instagramAccountMetaSchema,
   isAppError,
   type JobQueue,
@@ -33,6 +36,7 @@ import {
   accountListQuerySchema,
   accountRefreshBodySchema,
   connectTokenBodySchema,
+  discordConnectBodySchema,
   idParamSchema,
   type MarketplaceLoginResponse,
   type MercadoLibreAuthorizeUrlResponse,
@@ -84,6 +88,8 @@ export type AccountRoutesDeps = ConnectAccountDeps &
     queue: JobQueue;
     /** Si el ambiente permite el formulario automático (no en producción, spec F8 §4.10, D4). */
     marketplaceAutomation: boolean;
+    /** Discord (F9-T14): leer el webhook al conectarlo, sin publicar. */
+    discord: DiscordWebhooks;
   };
 
 /** Sin el par de la app no se arma la URL ni se canjea: el canje mandaría un secret vacío. */
@@ -184,6 +190,19 @@ function shownMeta(account: PlatformAccount): ShownMeta | null {
       marketplaceMode: meta.data.mode,
     };
   }
+  if (account.platform === "discord") {
+    // Un webhook no tiene token que venza ni permisos: solo cuándo se conectó (F9-T14).
+    const meta = discordAccountMetaSchema.safeParse(account.meta);
+    if (!meta.success) return null;
+    return {
+      tokenExpiryEstimated: false,
+      connectedAt: meta.data.connectedAt,
+      tokenRefreshedAt: null,
+      accountType: null,
+      permissions: null,
+      ...NO_SESSION,
+    };
+  }
   if (account.platform === "portal_inmobiliario") {
     const meta = mercadoLibreAccountMetaSchema.safeParse(account.meta);
     if (!meta.success) return null;
@@ -252,7 +271,8 @@ function refreshView(result: TokenRefreshResult): AccountRefreshResponse {
  * refrescar el token a pedido (Instagram o Mercado Libre, cada una con su política) y desconectar
  * (Marketplace pide `confirmed`: borra el perfil del navegador). Conectar y
  * refrescar llaman a la plataforma de forma síncrona (seguimiento de ADR-0014, punto 9). Desde
- * F7-T15 (ADR-0023), el administrador activa Marketplace a mano (`/marketplace/manual`). El token
+ * F7-T15 (ADR-0023), el administrador activa Marketplace a mano (`/marketplace/manual`), y desde
+ * F9-T14 conecta el webhook de un canal de Discord (`/discord/connect`). El token
  * nunca vuelve en la respuesta ni va al log (el log de la API no registra cuerpos, y la URL del
  * refresco de Instagram no sale de su cliente).
  */
@@ -292,6 +312,18 @@ export function accountRoutes(deps: AccountRoutesDeps) {
         signal: c.req.raw.signal,
       }).catch((error: unknown) => {
         throw tokenError(error);
+      });
+      const body: AccountResponse = { account: accountView(account) };
+      return c.json(body, 200);
+    })
+    .post("/discord/connect", validatedWithReason("json", discordConnectBodySchema), async (c) => {
+      // Discord (F9-T14): la URL del webhook pegada por la entrada estándar de la CLI. Se lee en
+      // Discord sin publicar y se guarda cifrada; nunca vuelve en la respuesta ni va al log.
+      const { broker, webhookUrl } = c.req.valid("json");
+      const account = await connectDiscordAccount(deps, {
+        broker,
+        webhookUrl,
+        signal: c.req.raw.signal,
       });
       const body: AccountResponse = { account: accountView(account) };
       return c.json(body, 200);

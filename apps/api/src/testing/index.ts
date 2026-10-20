@@ -6,6 +6,8 @@ import { Writable } from "node:stream";
 import { createLogger, createStateSigner, type Logger } from "@agentsales/config";
 import {
   AppError,
+  type DiscordWebhooks,
+  discordWebhookParts,
   type InstagramAuth,
   type MercadoLibreAuth,
   type SessionClient,
@@ -86,6 +88,35 @@ export function fakeInstagramAuth(): InstagramAuth & { calls: string[] } {
       calls.push("me");
       if (accessToken.startsWith("malo")) throw reject();
       return { userId: "17841400000000001", username: "corredora", accountType: "BUSINESS" };
+    },
+  };
+}
+
+/**
+ * Discord falso para la API (F9-T14): responde el webhook de la URL (su id, un nombre, el servidor y
+ * el canal) y registra las llamadas sin la URL. Un token que empiece con `borrado` es
+ * `DISCORD_WEBHOOK_NOT_FOUND`, y uno con `malo`, `DISCORD_WEBHOOK_INVALID`.
+ */
+export function fakeDiscordWebhooks(): DiscordWebhooks & { calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    async get(webhookUrl) {
+      calls.push("get");
+      const { id, token } = discordWebhookParts(webhookUrl);
+      if (token.startsWith("borrado")) {
+        throw new AppError(
+          "DISCORD_WEBHOOK_NOT_FOUND",
+          "El webhook ya no existe: vuelve a conectar con un webhook nuevo del canal",
+        );
+      }
+      if (token.startsWith("malo")) {
+        throw new AppError(
+          "DISCORD_WEBHOOK_INVALID",
+          "Discord no acepta el webhook (su token ya no sirve): crea otro en el canal y vuelve a conectar",
+        );
+      }
+      return { id, name: "AgentSales", guildId: "111", channelId: "222" };
     },
   };
 }
@@ -339,6 +370,7 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     platformAccounts: createInMemoryPlatformAccountRepository({ nextId: randomUUID }),
     publications,
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
+    discord: fakeDiscordWebhooks(),
     mercadoLibre: {
       auth: fakeMercadoLibreAuth(),
       configured: true,

@@ -195,6 +195,20 @@ const postVideo = (media: readonly Media[]): Media | null => {
   return first === undefined ? null : variantOf(media, first.id, "ig_reel");
 };
 
+/**
+ * El video de un post para Discord (spec F9 §4.5, D8; F9-T14): la variante más liviana del primer
+ * video entre el video reducido de X (`x_video`, 720p) y el reel (`ig_reel`), para que quepa en los
+ * 20 MiB por archivo de Discord. Si igual no cabe, el publisher no lo adjunta (`discord.md`).
+ */
+const discordVideo = (media: readonly Media[]): Media | null => {
+  const first = videosOf(media)[0];
+  if (first === undefined) return null;
+  const candidates = [variantOf(media, first.id, "x_video"), variantOf(media, first.id, "ig_reel")]
+    .filter((variant): variant is Media => variant !== null)
+    .sort((a, b) => a.bytes - b.bytes);
+  return candidates[0] ?? null;
+};
+
 const postMediaMissing = (platform: Platform, message: string) =>
   new AppError("CONTENT_NOT_READY", message, { details: { platform } });
 
@@ -251,10 +265,11 @@ function instagramPostPlan(kind: Post["kind"], media: readonly Media[]): Publica
  * El formato y los medios de un post en una red (spec F9 §4.4 y §4.6), según lo que lleva
  * (`post.kind`). Instagram tiene su propia selección (`instagramPostPlan`, F9-T13). En las demás
  * redes: un texto solo va sin medios (TikTok lo rechaza); una imagen o un carrusel, con sus
- * `ig_4x5`; un video, con su `ig_reel`. Las verificaciones de cada red (X: hasta 4 imágenes, spec
- * F9 §4.4) son de la revisión del texto, no de aquí, y las variantes propias de cada red (el video
- * reducido de X) las afinan sus tareas (F9-T14 a T16). Lo que falta procesar es
- * `CONTENT_NOT_READY`. Portal y Marketplace no publican posts: `CONTENT_PLATFORM_INVALID`.
+ * `ig_4x5`; un video, con su `ig_reel` (en Discord, la variante más liviana, `discordVideo`, F9-T14).
+ * Las verificaciones de cada red (X: hasta 4 imágenes, spec F9 §4.4) son de la revisión del texto,
+ * no de aquí, y las variantes propias de cada red (el video reducido de X) las afinan sus tareas
+ * (F9-T14 a T16). Lo que falta procesar es `CONTENT_NOT_READY`. Portal y Marketplace no publican
+ * posts: `CONTENT_PLATFORM_INVALID`.
  */
 export function postPublicationPlan(
   platform: Platform,
@@ -274,7 +289,7 @@ export function postPublicationPlan(
     return { format: "post", mediaIds: [] };
   }
   if (kind === "video") {
-    const video = postVideo(media);
+    const video = platform === "discord" ? discordVideo(media) : postVideo(media);
     if (video === null) {
       throw postMediaMissing(platform, "Falta el video procesado del post: espera a que termine");
     }

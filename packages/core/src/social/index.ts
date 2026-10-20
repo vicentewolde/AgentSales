@@ -35,6 +35,7 @@ export {
   LINKEDIN_RESERVED_CHARACTERS,
   linkKey,
   linksIn,
+  neutralizeDiscordMentions,
   POST_TEXT_LIMITS,
   postTextLength,
   X_LINK_POST_COST_USD,

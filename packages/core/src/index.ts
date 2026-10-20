@@ -332,8 +332,11 @@ export {
   checkConnectedCredentials,
   checkCredentials,
   checkTokenExpiry,
+  type DiscordAccountMeta,
   type DiscordCredentials,
+  discordAccountMetaSchema,
   discordCredentialsSchema,
+  discordWebhookParts,
   discordWebhookUrlSchema,
   ERASED_ACCOUNT_DISPLAY_NAME,
   erasedExternalAccountId,
@@ -442,6 +445,7 @@ export {
   type NewContentRun,
   pickContentChanges,
 } from "./ports/content-repository.js";
+export type { DiscordWebhookInfo, DiscordWebhooks } from "./ports/discord-webhooks.js";
 export type { EditorialProfileRepository } from "./ports/editorial-profile-repository.js";
 export type {
   FieldDefinitionQuery,
@@ -701,8 +705,11 @@ export {
   socialProgressSchema,
 } from "./publish/outcome.js";
 export {
+  type DiscordMessageRef,
+  discordMessageUrl,
   PUBLISHED_URL_MAX_LENGTH,
   type PublishedRefFromUrl,
+  parseDiscordMessageUrl,
   parsePublishedUrl,
 } from "./publish/published-url.js";
 export {
@@ -836,7 +843,9 @@ export {
 export {
   type AccountGrant,
   type ConnectAccountDeps,
+  type ConnectDiscordAccountDeps,
   connectAccount,
+  connectDiscordAccount,
   INSTAGRAM_TOKEN_DAYS,
   requireBroker,
 } from "./use-cases/connect-account.js";

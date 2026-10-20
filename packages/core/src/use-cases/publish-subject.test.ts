@@ -287,7 +287,8 @@ describe("resolvePublication", () => {
       changed: true,
       publication: {
         status: "published",
-        externalId: "https://discord.com/channels/1/2/3",
+        // El id del mensaje, el mismo que guarda el publisher de Discord (F9-T14).
+        externalId: "3",
         externalUrl: "https://discord.com/channels/1/2/3",
         lastError: null,
       },
