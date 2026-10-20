@@ -9,10 +9,11 @@ import {
   type ProcessedVideo,
   REEL_MIN_DURATION_S,
   type VideoOutput,
+  type VideoProcessOptions,
 } from "@agentsales/core";
 import { z } from "zod";
 import { decodeFailed, renderVariant } from "./image.js";
-import { REEL_SPEC } from "./pipeline.js";
+import { REEL_SPEC, X_VIDEO_SPEC } from "./pipeline.js";
 import { aborted, CommandFailedError, runTool, throwIfAborted } from "./run.js";
 
 export type VideoToolOptions = {
@@ -144,13 +145,26 @@ async function frameAt(
   return frame;
 }
 
-/** El grafo del reel: fondo desenfocado, el video al centro y el texto encima los primeros 2 s. */
-function reelFilter(): string {
+/**
+ * El grafo del reel: fondo desenfocado, el video al centro y, si hay, el texto encima los primeros
+ * 2 s (el de un aviso). Sin texto (un post, F9-T10) termina en el mismo formato; el grafo con texto
+ * no cambia (no sube `MEDIA_PIPELINE_VERSION`).
+ */
+function reelFilter(withText: boolean): string {
   const { width, height, fps, blur, overlayS } = REEL_SPEC;
-  return [
+  const background = [
     `[0:v]fps=${fps},split=2[bg][fg]`,
     `[bg]scale=${blur.width}:${blur.height}:force_original_aspect_ratio=increase,crop=${blur.width}:${blur.height},boxblur=${blur.radius}:2,scale=${width}:${height}[blurred]`,
     `[fg]scale=${width}:${height}:force_original_aspect_ratio=decrease[front]`,
+  ];
+  if (!withText) {
+    return [
+      ...background,
+      "[blurred][front]overlay=(W-w)/2:(H-h)/2,format=yuv420p,setsar=1[v]",
+    ].join(";");
+  }
+  return [
+    ...background,
     "[blurred][front]overlay=(W-w)/2:(H-h)/2[base]",
     `[1:v]scale=${width}:${height},format=rgba[text]`,
     `[base][text]overlay=0:0:enable='lt(t,${overlayS})',format=yuv420p,setsar=1[v]`,
@@ -163,18 +177,38 @@ async function sha256OfFile(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-/** Arma el reel en el temporal; lo sube quien lo pide, con `open()` y `putStream`. */
+/** Un video armado en el temporal, medido y con su sha256: lo sube quien lo pide (`open()`). */
+async function outputOf(
+  path: string,
+  options: VideoToolOptions,
+  signal?: AbortSignalLike,
+): Promise<VideoOutput> {
+  const output = await probe(path, options, signal);
+  return {
+    size: (await stat(path)).size,
+    sha256: await sha256OfFile(path),
+    width: output.width,
+    height: output.height,
+    durationS: output.durationS,
+    open: () => createReadStream(path) as AsyncIterable<Uint8Array>,
+  };
+}
+
+/**
+ * Arma el reel en el temporal; lo sube quien lo pide, con `open()` y `putStream`. Con
+ * `overlayPng = null`, sin texto encima.
+ */
 async function encodeReel(
   path: string,
   source: Probe,
-  overlayPng: Uint8Array,
+  overlayPng: Uint8Array | null,
   options: VideoToolOptions,
   signal?: AbortSignalLike,
 ): Promise<VideoOutput> {
   const id = randomUUID();
-  const overlayPath = join(options.workDir, `${id}-texto.png`);
+  const overlayPath = overlayPng === null ? null : join(options.workDir, `${id}-texto.png`);
   const reelPath = join(options.workDir, `${id}-reel.mp4`);
-  await writeFile(overlayPath, overlayPng);
+  if (overlayPath !== null && overlayPng !== null) await writeFile(overlayPath, overlayPng);
   const durationS = Math.min(source.durationS, REEL_SPEC.maxDurationS);
   const { x264, audio, fps } = REEL_SPEC;
   const gop = x264.gop;
@@ -191,17 +225,19 @@ async function encodeReel(
         "-i",
         `anullsrc=channel_layout=stereo:sample_rate=${audio.sampleRate}`,
       ];
+  // La pista silenciosa va después del video y, si hay, del texto.
+  const silenceInput = overlayPath === null ? 1 : 2;
   const args = [
     ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
     ...(threads === null ? [] : ["-filter_complex_threads", threads]),
-    ...["-i", path, "-i", overlayPath, ...silence],
+    ...["-i", path, ...(overlayPath === null ? [] : ["-i", overlayPath]), ...silence],
     ...[
       "-filter_complex",
-      reelFilter(),
+      reelFilter(overlayPath !== null),
       "-map",
       "[v]",
       "-map",
-      source.hasAudio ? "0:a:0" : "2:a:0",
+      source.hasAudio ? "0:a:0" : `${silenceInput}:a:0`,
     ],
     ...["-t", durationS.toFixed(3), "-r", String(fps)],
     ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high", "-crf", String(x264.crf)],
@@ -221,27 +257,83 @@ async function encodeReel(
     await rm(reelPath, { force: true });
     throw error;
   } finally {
-    await rm(overlayPath, { force: true });
+    if (overlayPath !== null) await rm(overlayPath, { force: true });
   }
-  const output = await probe(reelPath, options, signal);
-  return {
-    size: (await stat(reelPath)).size,
-    sha256: await sha256OfFile(reelPath),
-    width: output.width,
-    height: output.height,
-    durationS: output.durationS,
-    open: () => createReadStream(reelPath) as AsyncIterable<Uint8Array>,
-  };
+  return outputOf(reelPath, options, signal);
+}
+
+/** Lo que dura como mínimo un video en X (la guía de medios: 0,5 s). */
+export const X_VIDEO_MIN_DURATION_S = 0.5;
+
+/** Un número par (H.264 4:2:0 pide medidas pares), al menos 2. */
+const even = (value: number) => Math.max(2, Math.floor(value / 2) * 2);
+
+/**
+ * Las medidas del video para X: caben en 1280×720 (horizontal), 720×1280 (vertical) o 720×720
+ * (cuadrado), sin ampliar y con la proporción del original (`X_VIDEO_SPEC`).
+ */
+export function xVideoSize(source: { width: number; height: number }): {
+  width: number;
+  height: number;
+} {
+  const { longSide, shortSide } = X_VIDEO_SPEC;
+  const [maxWidth, maxHeight] =
+    source.width > source.height
+      ? [longSide, shortSide]
+      : source.width < source.height
+        ? [shortSide, longSide]
+        : [shortSide, shortSide];
+  const scale = Math.min(1, maxWidth / source.width, maxHeight / source.height);
+  return { width: even(source.width * scale), height: even(source.height * scale) };
+}
+
+/** Arma el video para X en el temporal (`X_VIDEO_SPEC`); lo sube quien lo pide. */
+async function encodeXVideo(
+  path: string,
+  source: Probe,
+  options: VideoToolOptions,
+  signal?: AbortSignalLike,
+): Promise<VideoOutput> {
+  const outPath = join(options.workDir, `${randomUUID()}-x.mp4`);
+  const { fps, x264, audio, maxDurationS } = X_VIDEO_SPEC;
+  const size = xVideoSize(source);
+  const durationS = Math.min(source.durationS, maxDurationS);
+  const threads = options.threads === undefined ? null : String(options.threads);
+  const args = [
+    ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
+    ...(threads === null ? [] : ["-filter_threads", threads]),
+    ...["-i", path, "-map", "0:v:0", ...(source.hasAudio ? ["-map", "0:a:0"] : [])],
+    ...["-vf", `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`],
+    ...["-t", durationS.toFixed(3), "-r", String(fps)],
+    ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high", "-crf", String(x264.crf)],
+    ...(threads === null ? [] : ["-threads", threads]),
+    ...["-maxrate", x264.maxrate, "-bufsize", x264.bufsize],
+    ...["-g", String(x264.gop), "-keyint_min", String(x264.gop), "-sc_threshold", "0"],
+    ...["-flags", "+cgop"],
+    ...(source.hasAudio
+      ? ["-c:a", "aac", "-b:a", audio.bitrate, "-ac", "2", "-ar", String(audio.sampleRate)]
+      : ["-an"]),
+    ...["-movflags", "+faststart", "-map_metadata", "-1", outPath],
+  ];
+  try {
+    await runOrDecodeFailed(options.ffmpegPath, args, signal);
+  } catch (error) {
+    await rm(outPath, { force: true });
+    throw error;
+  }
+  return outputOf(outPath, options, signal);
 }
 
 /**
- * Un video → sus medidas, su `thumb` y, con `reel`, el reel de Instagram (spec F2 §4.2, D5). Un
- * video de menos de 3 s no da reel; uno de más de 90 s se corta (los avisos son de core). Todo queda en el temporal del
- * intento, que el worker borra al terminar (el reel también: se sube antes con `open()`).
+ * Un video → sus medidas, su `thumb` y, con `reel`, el reel de Instagram (spec F2 §4.2, D5); con
+ * `xVideo`, el video reducido para X (spec F9 §4.5). Un video de menos de 3 s no da reel (sí video
+ * para X, desde 0,5 s); uno de más de 90 s se corta (los avisos son de core). Todo queda en el
+ * temporal del intento, que el worker borra al terminar (los videos también: se suben antes con
+ * `open()`).
  */
 export async function processVideo(
   input: AsyncIterable<Uint8Array>,
-  { reel }: { reel: { overlayPng: Uint8Array } | null },
+  { reel, xVideo = false }: VideoProcessOptions,
   options: VideoToolOptions,
   signal?: AbortSignalLike,
 ): Promise<ProcessedVideo> {
@@ -264,10 +356,15 @@ export async function processVideo(
       reel === null || source.durationS < REEL_MIN_DURATION_S
         ? null
         : await encodeReel(path, source, reel.overlayPng, options, signal);
+    const forX =
+      !xVideo || source.durationS < X_VIDEO_MIN_DURATION_S
+        ? null
+        : await encodeXVideo(path, source, options, signal);
     return {
       measurements: { width: source.width, height: source.height, durationS: source.durationS },
       thumb,
       reel: output,
+      xVideo: forX,
     };
   } finally {
     await rm(path, { force: true });
