@@ -164,7 +164,7 @@ async function publishListingChannel(
     created,
     skipped: opening.skipped,
     stranded,
-    publications: await channelPublications(locked, listingId, platform),
+    publications: await channelPublications(locked, listingSubject(listingId), platform),
   };
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AppError, isAppError } from "../errors.js";
 import type { NewMedia } from "../ports/media-repository.js";
+import { listingSubject } from "../subject.js";
 import { fakeHash } from "./fake-hash.js";
 import {
   createInMemoryMediaFileSource,
@@ -52,22 +53,23 @@ describe("createInMemoryMediaRepository", () => {
     const other = await repo.create(
       newMedia({ listingId: "listing-2", storagePath: "c.jpg", checksum: "c" }),
     );
-    expect((await repo.listOriginals("listing-1")).map((media) => media.id)).toEqual([b.id, a.id]);
+    expect(
+      (await repo.listOriginals(listingSubject("listing-1"))).map((media) => media.id),
+    ).toEqual([b.id, a.id]);
 
     const error = await caught(
-      repo.arrange("listing-1", [
+      repo.arrange(listingSubject("listing-1"), [
         { id: a.id, sortOrder: 0, isCover: true },
         { id: other.id, sortOrder: 1, isCover: false },
       ]),
     );
     expect(isAppError(error) && error.code).toBe("MEDIA_NOT_FOUND");
-    expect((await repo.listOriginals("listing-1")).map((media) => media.isCover)).toEqual([
-      false,
-      false,
-    ]);
+    expect(
+      (await repo.listOriginals(listingSubject("listing-1"))).map((media) => media.isCover),
+    ).toEqual([false, false]);
 
-    await repo.arrange("listing-1", [{ id: a.id, sortOrder: 0, isCover: true }]);
-    expect(await repo.listOriginals("listing-1")).toMatchObject([
+    await repo.arrange(listingSubject("listing-1"), [{ id: a.id, sortOrder: 0, isCover: true }]);
+    expect(await repo.listOriginals(listingSubject("listing-1"))).toMatchObject([
       { id: a.id, sortOrder: 0, isCover: true },
       { id: b.id, sortOrder: 0, isCover: false },
     ]);

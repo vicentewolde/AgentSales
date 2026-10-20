@@ -11,13 +11,7 @@ import {
 } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { Media } from "../media.js";
-import {
-  type Subject,
-  type SubjectInput,
-  type SubjectRef,
-  sameSubject,
-  toSubject,
-} from "../subject.js";
+import { type Subject, type SubjectInput, sameSubject } from "../subject.js";
 
 /** Un medio original guardado (`media` con `role = original`): lo que la ingesta necesita. */
 export type MediaRecord = {
@@ -145,12 +139,12 @@ export function checkArrangement(items: readonly MediaArrangement[]): void {
 
 /**
  * Medios (`media`). Los métodos de la carga (F1: `listOriginals`, `listCovers`,
- * `findByStoragePath`, `create` y `arrange`) ven solo originales; los de F2 (`listByListing`,
+ * `findByStoragePath`, `create` y `arrange`) ven solo originales; los de F2 (`listBySubject`,
  * `updateMeasurements` y los derivados) ven también variantes y renders. Únicos por
  * `(listing_id, checksum)` y, desde F9, `(post_id, checksum)` de los originales, por
  * `storage_path`, por `(parent_media_id, variant)` de las variantes y por `(listing_id, variant)`
  * de los renders (spec F1 §4.5, F2 §4.3 y F9 §4.11). Donde antes iba el id del aviso, desde F9 va
- * un `SubjectRef`: un `Subject` (aviso o post) o, como antes, el id de un aviso.
+ * un `Subject` (aviso o post; desde F9-T08, nunca el id suelto de un aviso).
  * Errores (`AppError`):
  * - `create` que choca con uno de esos únicos → `MEDIA_CONFLICT`, **reintentable**: dos intentos
  *   del job pueden solaparse, y el reintento lo encuentra con `listOriginals` o `findByStoragePath`;
@@ -165,7 +159,7 @@ export function checkArrangement(items: readonly MediaArrangement[]): void {
  */
 export interface MediaRepository {
   /** Originales de un aviso o post, por `sortOrder` y luego por id. */
-  listOriginals(subject: SubjectRef): Promise<MediaRecord[]>;
+  listOriginals(subject: Subject): Promise<MediaRecord[]>;
   /** Portadas (originales con `isCover`) de esos avisos, para la lista de la API. */
   listCovers(listingIds: readonly string[]): Promise<MediaRecord[]>;
   /** Para el logo, que no tiene aviso: su clave en R2 lleva el sha256. */
@@ -176,13 +170,12 @@ export interface MediaRepository {
    * portada** por aviso o post: si un item trae `isCover`, los demás originales dejan de serlo,
    * vengan o no en `items`. Solo considera originales (`role = original`).
    */
-  arrange(subject: SubjectRef, items: readonly MediaArrangement[]): Promise<void>;
+  arrange(subject: Subject, items: readonly MediaArrangement[]): Promise<void>;
   /**
-   * Todos los medios del aviso (originales, variantes y renders), por rol (`original`, `processed`,
-   * `rendered`), `sortOrder` e id. No incluye el logo del corredor, que no tiene aviso.
+   * Todos los medios del aviso o post (originales, variantes y renders), por rol (`original`,
+   * `processed`, `rendered`), `sortOrder` e id. No incluye el logo del corredor, que no tiene
+   * sujeto. Desde F9-T08 absorbe el `listByListing` de antes (un aviso es `listingSubject(id)`).
    */
-  listByListing(listingId: string): Promise<Media[]>;
-  /** Como `listByListing`, para un aviso o un post (F9). */
   listBySubject(subject: Subject): Promise<Media[]>;
   /** Un medio por id, de cualquier rol (por ejemplo, el logo del corredor); `null` si no existe. */
   get(id: string): Promise<Media | null>;
@@ -218,8 +211,7 @@ export interface MediaRepository {
 export function lockedMedia(media: MediaRepository, subject: Subject): MediaRepository {
   return {
     ...media,
-    async arrange(ref, items) {
-      const target = toSubject(ref);
+    async arrange(target, items) {
       if (!sameSubject(target, subject)) {
         throw new AppError(
           "LOCK_SUBJECT_MISMATCH",
@@ -227,7 +219,7 @@ export function lockedMedia(media: MediaRepository, subject: Subject): MediaRepo
           { details: { lock: subject, target } },
         );
       }
-      return media.arrange(ref, items);
+      return media.arrange(target, items);
     },
   };
 }

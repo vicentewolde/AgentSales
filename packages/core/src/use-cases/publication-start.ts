@@ -23,7 +23,7 @@ import type { JobQueue } from "../ports/job-queue.js";
 import type { LockedRepositories } from "../ports/listing-lock.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
 import { hasStartedLive, type Publication, type PublicationActor } from "../publication.js";
-import { type Subject, type SubjectRef, toSubject } from "../subject.js";
+import { listingSubject, type Subject } from "../subject.js";
 
 // Piezas comunes de publicar el canal (`publishListing`), publicar una (`startPublication`),
 // descartar y retirar (spec F3 §4.3).
@@ -99,14 +99,13 @@ export function requirePublishableListing(listing: Listing | null, listingId: st
 }
 
 /**
- * Sin corridas activas: una corrida puede reemplazar los medios o los textos (spec F3 §4.2). El id
- * de un aviso (como antes de F9) o un sujeto: en un post, `details.postId`.
+ * Sin corridas activas: una corrida puede reemplazar los medios o los textos (spec F3 §4.2). En un
+ * post, `details.postId`.
  */
 export async function requireNoActiveRun(
   locked: Pick<LockedRepositories, "contentRuns">,
-  subject: SubjectRef,
+  target: Subject,
 ): Promise<void> {
-  const target = toSubject(subject);
   const active = await locked.contentRuns.findActive(target);
   if (active !== null) {
     throw new AppError(
@@ -316,7 +315,7 @@ export async function requireMarketplaceStartable(
       LockedRepositories["publications"],
       "listByStatus" | "countLiveAttemptsSince"
     >;
-    media: Pick<LockedRepositories["media"], "listByListing">;
+    media: Pick<LockedRepositories["media"], "listBySubject">;
     platformAccounts: Pick<LockedRepositories["platformAccounts"], "get">;
     brokers: Pick<LockedRepositories["brokers"], "findById">;
   },
@@ -339,7 +338,7 @@ export async function requireMarketplaceStartable(
   },
 ): Promise<void> {
   const readiness = marketplaceReadiness(listing, {
-    photos: composePhotoSet(await locked.media.listByListing(listing.id)).length,
+    photos: composePhotoSet(await locked.media.listBySubject(listingSubject(listing.id))).length,
     ufConfigured: options.ufConfigured ?? false,
   });
   if (!readiness.ready) {

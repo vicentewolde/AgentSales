@@ -7,6 +7,7 @@ import type { Listing } from "../listing.js";
 import type { Media } from "../media.js";
 import type { NewListing } from "../ports/listing-repository.js";
 import type { LLMProvider } from "../ports/llm-provider.js";
+import { listingSubject } from "../subject.js";
 import {
   contentBrokerFixture,
   contentDefinitionsFixture,
@@ -150,7 +151,9 @@ async function setup(
   const prepare = async (runId: string, isLastAttempt = true) =>
     prepareContent(deps, { contentRunId: runId, isLastAttempt });
   const derivatives = async () =>
-    (await media.listByListing(created.id)).filter((item) => item.role !== "original");
+    (await media.listBySubject(listingSubject(created.id))).filter(
+      (item) => item.role !== "original",
+    );
   return {
     deps,
     media,
@@ -204,7 +207,7 @@ describe("prepareContent · corrida completa", () => {
       checks: { instagram: [], portal_inmobiliario: [], fb_marketplace: [] },
       warnings: [],
     });
-    const contents = await t.contentRepos.contents.listCurrent(t.listingId);
+    const contents = await t.contentRepos.contents.listCurrent(listingSubject(t.listingId));
     expect(contents.map((content) => [content.platform, content.status])).toEqual([
       ["instagram", "draft"],
       ["portal_inmobiliario", "draft"],
@@ -264,13 +267,13 @@ describe("prepareContent · corrida completa", () => {
   it("texts = false: sin IA, y el contenido anterior sigue vigente", async () => {
     const t = await setup();
     await t.prepare(await t.newRun());
-    const before = await t.contentRepos.contents.listCurrent(t.listingId);
+    const before = await t.contentRepos.contents.listCurrent(listingSubject(t.listingId));
 
     const result = await t.prepare(await t.newRun(false));
 
     expect(result).toMatchObject({ outcome: "succeeded" });
     expect(t.llm.requests).toHaveLength(1);
-    expect(await t.contentRepos.contents.listCurrent(t.listingId)).toEqual(before);
+    expect(await t.contentRepos.contents.listCurrent(listingSubject(t.listingId))).toEqual(before);
   });
 
   it("otra versión del procesador regenera las variantes y borra las anteriores de R2", async () => {
@@ -325,7 +328,7 @@ describe("prepareContent · corrida completa", () => {
     const oldReel = variantsOf(await t.derivatives(), "ig_reel")[0];
     expect(oldReel?.parentMediaId).toBe(t.ids["video-1"]);
 
-    await t.media.arrange(t.listingId, [
+    await t.media.arrange(listingSubject(t.listingId), [
       { id: t.ids["video-2"] ?? "", sortOrder: 3, isCover: false },
       { id: t.ids["video-1"] ?? "", sortOrder: 4, isCover: false },
     ]);
@@ -344,7 +347,7 @@ describe("prepareContent · avisos y datos", () => {
     expect(
       (
         await none.contentRepos.contentRuns.get(
-          (await none.contentRepos.contentRuns.latest(none.listingId))?.id ?? "",
+          (await none.contentRepos.contentRuns.latest(listingSubject(none.listingId)))?.id ?? "",
         )
       )?.report?.reel,
     ).toBe("none");
@@ -507,7 +510,7 @@ describe("prepareContent · errores", () => {
     const result = await prepareContent(overlapped, { contentRunId: runId, isLastAttempt: true });
 
     expect(result).toEqual({ outcome: "skipped", status: "succeeded" });
-    expect(await t.contentRepos.contents.listCurrent(t.listingId)).toHaveLength(3);
+    expect(await t.contentRepos.contents.listCurrent(listingSubject(t.listingId))).toHaveLength(3);
   });
 
   it("una corrida ya terminal no se toca", async () => {
@@ -690,7 +693,9 @@ describe("prepareContent · revisión de F2-T10", () => {
       isCover: false,
     });
     await t.storage.put("brokers/x/listings/y/original/corrupta", text("CORRUPTO"), "image/jpeg");
-    await t.media.arrange(t.listingId, [{ id: corrupt.id, sortOrder: 9, isCover: true }]);
+    await t.media.arrange(listingSubject(t.listingId), [
+      { id: corrupt.id, sortOrder: 9, isCover: true },
+    ]);
     const runId = await t.newRun();
     await t.prepare(runId);
 
@@ -725,7 +730,7 @@ describe("prepareContent · revisión de F2-T10", () => {
     });
     await t.prepare(await t.newRun());
 
-    const all = await t.media.listByListing(t.listingId);
+    const all = await t.media.listBySubject(listingSubject(t.listingId));
     expect([...t.storage.objects.keys()].sort()).toEqual(
       all.map((item) => item.storagePath).sort(),
     );

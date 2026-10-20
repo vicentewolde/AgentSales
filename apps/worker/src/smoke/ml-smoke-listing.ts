@@ -10,6 +10,7 @@ import {
   isAppError,
   isMercadoLibreRejectedAfterRefresh,
   type ListingRepository,
+  listingSubject,
   type MediaRepository,
   type MediaStorage,
   type MercadoLibreTokenDeps,
@@ -153,7 +154,7 @@ export type MlSmokeListingDeps = {
   };
   listings: Pick<ListingRepository, "list">;
   contents: Pick<ContentRepository, "listCurrent">;
-  media: Pick<MediaRepository, "listByListing">;
+  media: Pick<MediaRepository, "listBySubject">;
   storage: Pick<MediaStorage, "signedReadUrl">;
   /** El refresco de Mercado Libre, o `null` sin `ML_APP_ID` y `ML_CLIENT_SECRET`. */
   mercadoLibre: MercadoLibreTokenDeps["mercadoLibre"];
@@ -273,7 +274,7 @@ async function run(deps: MlSmokeListingDeps, options: MlSmokeListingOptions): Pr
       `Conéctala (con pnpm dev): pnpm -s cli accounts connect mercadolibre --broker ${slug}`,
     );
   }
-  const content = (await deps.contents.listCurrent(listing.id)).find(
+  const content = (await deps.contents.listCurrent(listingSubject(listing.id))).find(
     (item) => item.platform === "portal_inmobiliario",
   );
   if (content === undefined) {
@@ -283,7 +284,7 @@ async function run(deps: MlSmokeListingDeps, options: MlSmokeListingOptions): Pr
       `Prepáralo (con pnpm dev): pnpm -s cli prepare ${ref}`,
     );
   }
-  const all = await deps.media.listByListing(listing.id);
+  const all = await deps.media.listBySubject(listingSubject(listing.id));
   let mediaIds: string[];
   try {
     mediaIds = publicationPlan("portal_inmobiliario", all)[0]?.mediaIds ?? [];

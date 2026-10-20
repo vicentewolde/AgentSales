@@ -1,6 +1,7 @@
 import { isAppError } from "../errors.js";
 import type { ContentRunRepository } from "../ports/content-repository.js";
 import { SCHEDULE_OVERDUE_MS } from "../schedule.js";
+import { listingSubject } from "../subject.js";
 import {
   type AutoPublishDeps,
   type AutoPublishResult,
@@ -50,14 +51,14 @@ export async function resumeCutAutoPublish(
         results.push({ listingId, outcome: "skipped", reason: "taken" });
         continue;
       }
-      const latest = await deps.contentRuns.latest(listingId);
+      const latest = await deps.contentRuns.latest(listingSubject(listingId));
       if (latest?.id !== run.id) {
         results.push({ listingId, outcome: "skipped", reason: "superseded" });
         continue;
       }
       const finishedAt = run.finishedAt ?? now;
       const touched = await deps.lock.run(listingId, async (locked) =>
-        (await locked.publications.listByListing(listingId)).some(
+        (await locked.publications.listBySubject(listingSubject(listingId))).some(
           (publication) => publication.createdAt >= finishedAt,
         ),
       );

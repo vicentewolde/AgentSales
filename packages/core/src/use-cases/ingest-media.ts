@@ -11,6 +11,7 @@ import type {
 } from "../ports/media-file-source.js";
 import type { MediaArrangement, MediaRecord, MediaRepository } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
+import { listingSubject } from "../subject.js";
 import type { ImportedRow, ImportListingsResult } from "./import-listings.js";
 
 export type IngestMediaDeps = {
@@ -204,7 +205,7 @@ async function saveArrangement(
     const before = byId.get(item.id);
     return before?.sortOrder !== item.sortOrder || before.isCover !== item.isCover;
   });
-  if (changed) await deps.media.arrange(listingId, items);
+  if (changed) await deps.media.arrange(listingSubject(listingId), items);
 }
 
 type RowContext = {
@@ -251,7 +252,8 @@ async function ingestRow(ctx: RowContext, row: ImportedRow, warnings: string[]):
       details: { rowNumber: row.rowNumber },
     });
   }
-  const current = listingId === null ? [] : await deps.media.listOriginals(listingId);
+  const current =
+    listingId === null ? [] : await deps.media.listOriginals(listingSubject(listingId));
   const byChecksum = new Map(current.map((record) => [record.checksum, record]));
 
   const folder = control.mediaFolder ?? row.externalRef;

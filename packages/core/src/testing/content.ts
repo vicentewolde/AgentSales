@@ -11,11 +11,11 @@ import {
   pickContentChanges,
 } from "../ports/content-repository.js";
 import {
+  listingSubject,
   type Subject,
   sameSubject,
   subjectFieldsFor,
   subjectOfInput,
-  toSubject,
 } from "../subject.js";
 import { structuredCopy } from "./copy.js";
 
@@ -96,13 +96,12 @@ export function createInMemoryContentRepositories(
       const run = findRun(id);
       return run === undefined ? null : structuredCopy(run);
     },
-    async findActive(ref) {
-      const subject = toSubject(ref);
+    async findActive(subject) {
       const run = runs.find((stored) => ofSubject(subject)(stored) && isActive(stored.status));
       return run === undefined ? null : structuredCopy(run);
     },
-    async latest(ref) {
-      const run = runs.findLast(ofSubject(toSubject(ref)));
+    async latest(subject) {
+      const run = runs.findLast(ofSubject(subject));
       return run === undefined ? null : structuredCopy(run);
     },
     async listQueued(kind = "listing") {
@@ -237,8 +236,7 @@ export function createInMemoryContentRepositories(
   };
 
   const contentRepository: ContentRepository = {
-    async listCurrent(ref) {
-      const subject = toSubject(ref);
+    async listCurrent(subject) {
       // Un aviso tiene sus canales (en español); un post, uno por red e idioma.
       const platforms = subject.kind === "listing" ? LISTING_PLATFORMS : PLATFORMS;
       return platforms.flatMap((platform) =>
@@ -255,7 +253,9 @@ export function createInMemoryContentRepositories(
     },
     async listCurrentMany(listingIds) {
       const wanted = [...new Set(listingIds)];
-      return (await Promise.all(wanted.map((id) => contentRepository.listCurrent(id)))).flat();
+      return (
+        await Promise.all(wanted.map((id) => contentRepository.listCurrent(listingSubject(id))))
+      ).flat();
     },
     async get(id) {
       const content = contents.find((stored) => stored.id === id);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "../errors.js";
+import { listingSubject } from "../subject.js";
 import {
   createInMemoryListingLock,
   createPublicationScenario,
@@ -299,7 +300,7 @@ describe("cancelPublication", () => {
     expect(cancelled).toMatchObject({ id: post?.id, status: "cancelled" });
     const events = await t.publications.listEvents(post?.id ?? "");
     expect(events.at(-1)).toMatchObject({ fromStatus: "approved", toStatus: "cancelled" });
-    const content = (await t.contents.listCurrent(t.listingId)).find(
+    const content = (await t.contents.listCurrent(listingSubject(t.listingId))).find(
       (item) => item.platform === "instagram",
     );
     expect(content?.status).toBe("approved");

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { randomUUID } from "node:crypto";
+import { listingSubject } from "@agentsales/core";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -69,7 +70,7 @@ async function setup({
   }
   if (created[0]) {
     await h.media.arrange(
-      listing.id,
+      listingSubject(listing.id),
       created.map((item, index) => ({ id: item.id, sortOrder: index, isCover: index === 0 })),
     );
   }

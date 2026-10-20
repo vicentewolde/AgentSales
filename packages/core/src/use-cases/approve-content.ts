@@ -16,6 +16,7 @@ import { type MarketplaceReadiness, marketplaceReadiness } from "../marketplace/
 import { type PortalReadiness, portalReadiness } from "../portal/readiness.js";
 import { canDraftPost, postNotReady } from "../post.js";
 import type { Publication, PublicationActor } from "../publication.js";
+import { listingSubject } from "../subject.js";
 import {
   runOnSubject,
   type SubjectLockedRepositories,
@@ -162,7 +163,8 @@ async function approveListingContent(
   const marketplace =
     content.platform === "fb_marketplace"
       ? marketplaceReadiness(listing, {
-          photos: composePhotoSet(await locked.media.listByListing(listing.id)).length,
+          photos: composePhotoSet(await locked.media.listBySubject(listingSubject(listing.id)))
+            .length,
           ufConfigured: deps.ufConfigured ?? false,
         })
       : undefined;
@@ -180,7 +182,7 @@ async function approveListingContent(
     checks: review.checks,
     created,
     skipped: opening.skipped,
-    publications: await channelPublications(locked, listing.id, approved.platform),
+    publications: await channelPublications(locked, listingSubject(listing.id), approved.platform),
     ...(readiness === undefined ? {} : { portalReadiness: readiness }),
     ...(marketplace === undefined ? {} : { marketplaceReadiness: marketplace }),
   };

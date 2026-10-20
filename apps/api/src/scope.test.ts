@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { type BrokerData, type NewListing, postSubject } from "@agentsales/core";
+import { type BrokerData, listingSubject, type NewListing, postSubject } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
 import { ROUTE_ACCESS } from "./access.js";
 import { createApp } from "./app.js";
@@ -67,7 +67,7 @@ async function ownedBy(deps: ReturnType<typeof testDeps>, slug: string) {
       },
     ],
   });
-  const [content] = await deps.contents.listCurrent(listing.id);
+  const [content] = await deps.contents.listCurrent(listingSubject(listing.id));
   const account = await deps.platformAccounts.upsertConnected({
     brokerId: broker.id,
     platform: "instagram",
@@ -457,7 +457,7 @@ describe("el guardia de dueño", () => {
     expect((await s.deps.publications.get(s.theirs.publication.id))?.status).toBe("approved");
     expect((await s.deps.listings.get(s.theirs.listing.id))?.status).toBe(s.theirs.listing.status);
     expect((await s.deps.contents.get(s.theirs.content?.id ?? ""))?.status).toBe("draft");
-    expect(await s.deps.contentRuns.findActive(s.theirs.listing.id)).toBeNull();
+    expect(await s.deps.contentRuns.findActive(listingSubject(s.theirs.listing.id))).toBeNull();
     expect(await s.deps.posts.get(s.theirs.post.id)).toMatchObject({
       status: "draft",
       topic: "Post ajeno",

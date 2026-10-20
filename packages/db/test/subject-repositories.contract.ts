@@ -217,7 +217,7 @@ export function subjectRepositoriesContract(
         const listing = await repos.listings.create(newListing(brand, unique("P-SUJ")));
         const listingRun = await repos.contentRuns.create({ listingId: listing.id, texts: true });
         expect(listingRun.subject).toEqual(listingSubject(listing.id));
-        expect(await repos.contentRuns.findActive(listing.id)).toEqual(listingRun);
+        expect(await repos.contentRuns.findActive(listingSubject(listing.id))).toEqual(listingRun);
         expect(await repos.contentRuns.findActive(listingSubject(listing.id))).toEqual(listingRun);
         // Las corridas de posts no son de `content.prepare`: el barrido no las ve.
         expect((await repos.contentRuns.listQueued()).map((item) => item.id)).not.toContain(run.id);
@@ -253,7 +253,7 @@ export function subjectRepositoriesContract(
         expect(current[0]).toMatchObject({ subject: postSubject(post.id), listingId: null });
         expect(await repos.contents.get(current[0]?.id ?? "")).toEqual(current[0]);
         // Lo del post no aparece en un aviso.
-        expect(await repos.contents.listCurrent(post.id)).toEqual([]);
+        expect(await repos.contents.listCurrent(listingSubject(post.id))).toEqual([]);
       });
 
       it("un canal repetido en el mismo idioma es CONTENT_PLATFORM_DUPLICATED, sin escribir nada", async () => {

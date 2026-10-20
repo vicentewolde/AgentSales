@@ -268,17 +268,6 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
       return row === undefined ? null : toPublication(row);
     },
 
-    listByListing(listingId) {
-      return withDbErrors(async () => {
-        const rows = await db
-          .select()
-          .from(publications)
-          .where(eq(publications.listingId, listingId))
-          .orderBy(asc(publications.createdAt), asc(publications.id));
-        return rows.map(toPublication);
-      });
-    },
-
     listBySubject(subject) {
       return withDbErrors(async () => {
         const rows = await db

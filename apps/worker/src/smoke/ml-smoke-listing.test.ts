@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { isAppError } from "@agentsales/core";
+import { isAppError, listingSubject } from "@agentsales/core";
 import {
   createInMemoryPlatformCatalogRepository,
   createPublicationScenario,
@@ -162,7 +162,7 @@ describe("ml:smoke --listing", () => {
     expect(noAccount.text()).toContain("accounts connect mercadolibre --broker");
 
     const noText = await setup();
-    const current = await noText.t.contents.listCurrent(noText.t.listingId);
+    const current = await noText.t.contents.listCurrent(listingSubject(noText.t.listingId));
     const portal = current.find((item) => item.platform === "portal_inmobiliario");
     if (portal === undefined) throw new Error("falta el texto de Portal");
     vi.spyOn(noText.t.contents, "listCurrent").mockResolvedValue(
@@ -276,7 +276,7 @@ describe("ml:smoke --listing", () => {
     expect(wrongBroker.text()).toContain("BROKER_NOT_FOUND");
 
     const noPhotos = await setup();
-    vi.spyOn(noPhotos.t.media, "listByListing").mockResolvedValue([]);
+    vi.spyOn(noPhotos.t.media, "listBySubject").mockResolvedValue([]);
     expect(await noPhotos.run()).toBe(1);
     expect(noPhotos.text()).toContain("CONTENT_NOT_READY");
     expect(await sim.recorded()).toEqual([]);

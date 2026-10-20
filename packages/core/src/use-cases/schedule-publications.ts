@@ -18,7 +18,7 @@ import {
 } from "../publication.js";
 import { outcomeUnknownPending } from "../publish/outcome.js";
 import { scheduleAt as checkScheduleAt, MAX_SCHEDULE_SPACING_MINUTES } from "../schedule.js";
-import { type PostSubject, postSubject } from "../subject.js";
+import { listingSubject, type PostSubject, postSubject } from "../subject.js";
 import { runOnSubject, type SubjectLocks } from "../subject-lock.js";
 import {
   channelPublications,
@@ -241,8 +241,8 @@ export async function scheduleChannel(
     // Las del canal, releídas: el resultado muestra la hora y el modo guardados.
     const ids = new Set(scheduled.map((publication) => publication.id));
     return {
-      scheduled: (await channelPublications(locked, listingId, platform)).filter((publication) =>
-        ids.has(publication.id),
+      scheduled: (await channelPublications(locked, listingSubject(listingId), platform)).filter(
+        (publication) => ids.has(publication.id),
       ),
       created,
     };

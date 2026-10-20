@@ -9,6 +9,7 @@ import {
   type ContentRunReport,
   type ContentRunStage,
   type ImportReport,
+  listingSubject,
   type MarketplaceStartOptions,
   type NewContent,
   type NewListing,
@@ -467,7 +468,7 @@ export const sampleContentReport = (): ContentRunReport => ({
 /** Hace de worker para la corrida de contenido más reciente de un aviso. */
 export function simulateContentWorker(h: ReturnType<typeof harness>, listingId: string) {
   const runId = async () => {
-    const run = await h.contentRuns.latest(listingId);
+    const run = await h.contentRuns.latest(listingSubject(listingId));
     if (run === null) throw new Error("no hay corridas");
     return run;
   };

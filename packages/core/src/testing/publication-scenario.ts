@@ -3,6 +3,7 @@ import type { AppError } from "../errors.js";
 import type { ListingLock, LockedRepositories } from "../ports/listing-lock.js";
 import type { NewListing } from "../ports/listing-repository.js";
 import type { Publication } from "../publication.js";
+import { listingSubject } from "../subject.js";
 import { approveContent } from "../use-cases/approve-content.js";
 import { prepareContent } from "../use-cases/prepare-content.js";
 import { createInMemoryContentRepositories } from "./content.js";
@@ -178,7 +179,9 @@ export async function createPublicationScenario(
           });
   const account = options.account === false ? null : await connect();
   const contentIdOf = async (wanted: "instagram" | "portal_inmobiliario" | "fb_marketplace") =>
-    (await contents.listCurrent(listing.id)).find((item) => item.platform === wanted)?.id ?? "";
+    (await contents.listCurrent(listingSubject(listing.id))).find(
+      (item) => item.platform === wanted,
+    )?.id ?? "";
   const instagramId = () => contentIdOf("instagram");
   const portalId = () => contentIdOf("portal_inmobiliario");
   const approved =

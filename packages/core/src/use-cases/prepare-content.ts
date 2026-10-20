@@ -39,7 +39,7 @@ import {
   type SlideTemplates,
 } from "../ports/slide-templates.js";
 import { scrubMessage } from "../redact.js";
-import { listingIdOf, subjectNotListing } from "../subject.js";
+import { listingIdOf, listingSubject, subjectNotListing } from "../subject.js";
 
 export type PrepareContentDeps = {
   contentRuns: ContentRunRepository;
@@ -256,7 +256,7 @@ async function saveDerivative(
 async function mediaStage(state: Run): Promise<void> {
   const { deps, ids } = state;
   const counts = { processed: 0, existing: 0, failed: 0 };
-  const media = await deps.media.listByListing(ids.listingId);
+  const media = await deps.media.listBySubject(listingSubject(ids.listingId));
   const originals = ordered(media);
   const pathOf = (original: Media, variant: ImageVariant) =>
     variantPath(ids, variant, original.checksum, deps.processor.version);
@@ -314,7 +314,7 @@ async function mediaStage(state: Run): Promise<void> {
   state.report.media = counts;
 
   // Avisos de tamaño desde las medidas guardadas: también de las fotos que ya estaban procesadas.
-  const after = await deps.media.listByListing(ids.listingId);
+  const after = await deps.media.listBySubject(listingSubject(ids.listingId));
   ordered(after)
     .filter((item) => item.kind === "image")
     .forEach((photo, index) => {
@@ -384,7 +384,7 @@ async function dropDerivative(state: Run, media: Media | null | undefined): Prom
 async function rendersStage(state: Run): Promise<void> {
   const { deps, ids, ctx, broker, signal } = state;
   const counts = { rendered: 0, existing: 0 };
-  const media = await deps.media.listByListing(ids.listingId);
+  const media = await deps.media.listBySubject(listingSubject(ids.listingId));
   const coverOriginal = coverPhoto(media);
   const photo = coverOriginal === null ? null : variantOf(media, coverOriginal.id, "ig_4x5");
   const photoRef = imageRef(photo);
@@ -488,7 +488,7 @@ async function rendersStage(state: Run): Promise<void> {
  */
 async function reelStage(state: Run): Promise<void> {
   const { deps, ids, ctx, signal } = state;
-  const media = await deps.media.listByListing(ids.listingId);
+  const media = await deps.media.listBySubject(listingSubject(ids.listingId));
   const first = videosOf(media)[0] ?? null;
 
   for (const stale of media.filter(

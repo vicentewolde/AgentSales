@@ -141,9 +141,10 @@ export interface PublicationRepository {
    */
   create(publication: NewPublication, event: PublicationEventInput): Promise<Publication>;
   get(id: string): Promise<Publication | null>;
-  /** Las de un aviso, por fecha de creación. */
-  listByListing(listingId: string): Promise<Publication[]>;
-  /** Las de un aviso o post (F9), por fecha de creación. */
+  /**
+   * Las de un aviso o post (F9), por fecha de creación. Desde F9-T08 absorbe el `listByListing` de
+   * antes (un aviso es `listingSubject(id)`).
+   */
   listBySubject(subject: Subject): Promise<Publication[]>;
   /**
    * Las que están en un estado, de avisos y de posts (por ejemplo, `publishing` para reencolarlas al

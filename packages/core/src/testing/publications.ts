@@ -159,9 +159,6 @@ export function createInMemoryPublicationRepository(
       const found = publications.get(id);
       return found === undefined ? null : structuredCopy(found.publication);
     },
-    async listByListing(listingId) {
-      return ordered((publication) => publication.listingId === listingId);
-    },
     async listBySubject(subject) {
       return ordered((publication) => sameSubject(publication.subject, subject));
     },

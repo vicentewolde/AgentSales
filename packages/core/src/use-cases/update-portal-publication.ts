@@ -12,7 +12,7 @@ import {
   type RemoteState,
 } from "../publication.js";
 import { assemblePublishInput, toPublishListing } from "../publish/input.js";
-import { listingIdOf } from "../subject.js";
+import { listingIdOf, listingSubject } from "../subject.js";
 import {
   codeOf,
   enqueueSync,
@@ -92,9 +92,9 @@ export async function updatePortalPublication(
       { details: { listingId: found.listingId, status: listing?.status ?? null } },
     );
   }
-  const content = (await deps.contents.listCurrent(listingIdOf(found.subject))).find(
-    (current) => current.platform === "portal_inmobiliario",
-  );
+  const content = (
+    await deps.contents.listCurrent(listingSubject(listingIdOf(found.subject)))
+  ).find((current) => current.platform === "portal_inmobiliario");
   if (content === undefined || content.status !== "approved") {
     throw new AppError(
       "CONTENT_NOT_APPROVED",

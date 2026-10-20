@@ -10,7 +10,6 @@ import {
   subjectFieldsOf,
   subjectFromColumns,
   subjectOfInput,
-  toSubject,
 } from "./subject.js";
 
 // F9-T04 (ADR-0029): el sujeto de una publicación, un aviso o un post, y sus columnas.
@@ -51,9 +50,7 @@ describe("sujeto (aviso o post)", () => {
     ).toMatchObject({ subject: postSubject("p"), listingId: null });
   });
 
-  it("un texto es el id de un aviso, como antes de F9", () => {
-    expect(toSubject("l1")).toEqual(listingSubject("l1"));
-    expect(toSubject(postSubject("p1"))).toEqual(postSubject("p1"));
+  it("subjectOfInput: el aviso o el post de lo que se crea", () => {
     expect(subjectOfInput({ listingId: "l1" })).toEqual(listingSubject("l1"));
     expect(subjectOfInput({ postId: "p1" })).toEqual(postSubject("p1"));
   });

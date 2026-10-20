@@ -16,7 +16,7 @@ import {
   type NewMedia,
 } from "../ports/media-repository.js";
 import type { MediaStorage, StoredObjectInfo } from "../ports/media-storage.js";
-import { type Subject, toSubject } from "../subject.js";
+import type { Subject } from "../subject.js";
 import { structuredCopy } from "./copy.js";
 
 export type InMemoryMediaRepository = MediaRepository & {
@@ -84,11 +84,8 @@ export function createInMemoryMediaRepository(
   const conflict = (storagePath: string) =>
     new AppError("MEDIA_CONFLICT", `Ya existe el medio ${storagePath}`, { retriable: true });
   return {
-    async listOriginals(ref) {
-      return originals()
-        .filter(ofSubject(toSubject(ref)))
-        .sort(byOrder)
-        .map(toRecord);
+    async listOriginals(subject) {
+      return originals().filter(ofSubject(subject)).sort(byOrder).map(toRecord);
     },
     async listCovers(listingIds) {
       return originals()
@@ -133,9 +130,8 @@ export function createInMemoryMediaRepository(
       stored.set(created.id, created);
       return toRecord(created);
     },
-    async arrange(ref, items) {
+    async arrange(subject, items) {
       arrangeCalls += 1;
-      const subject = toSubject(ref);
       const own = ofSubject(subject);
       // Todo o nada: se valida antes de cambiar algo.
       checkArrangement(items);
@@ -168,12 +164,6 @@ export function createInMemoryMediaRepository(
         const current = stored.get(id);
         if (current !== undefined) stored.set(id, { ...current, sortOrder, isCover });
       }
-    },
-    async listByListing(listingId) {
-      return [...stored.values()]
-        .filter((media) => media.listingId === listingId)
-        .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || byOrder(a, b))
-        .map(structuredCopy);
     },
     async listBySubject(subject) {
       return [...stored.values()]

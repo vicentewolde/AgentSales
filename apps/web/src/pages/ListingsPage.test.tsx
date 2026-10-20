@@ -1,3 +1,4 @@
+import { listingSubject } from "@agentsales/core";
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -21,7 +22,7 @@ async function withListings(options: Parameters<typeof harness>[0] = {}) {
     sortOrder: 0,
     isCover: false,
   });
-  await h.media.arrange(sale.id, [{ id: photo.id, sortOrder: 0, isCover: true }]);
+  await h.media.arrange(listingSubject(sale.id), [{ id: photo.id, sortOrder: 0, isCover: true }]);
   await h.listings.promoteToReady(sale.id);
   await h.listings.create(
     newListing(broker.id, "P-002", {
