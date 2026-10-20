@@ -244,3 +244,35 @@ Adaptador en `packages/llm/src/anthropic-api.ts` (contrato en `docs/01-arquitect
 - **Reintentos y plazo (revisión del lote D):** el SDK reintenta 2 veces 408, 409, 429, 5xx y la conexión, y obedece `retry-after` y `retry-after-ms` (hasta unos 24 días si se lo piden) y la cabecera `x-should-retry`. El adaptador envuelve `fetch` (`retryGuard`) para responder `x-should-retry: false` en el 429 del tope de gasto (`enforced_spend_limit_reached`) y en una espera de más de 60 s (la reintenta el job). `timeout` del SDK es por intento, así que el adaptador suma un plazo total (`AbortSignal.timeout(LLM_TIMEOUT_SECONDS)`) que también corta las esperas: `LLM_TIMEOUT`.
 - **`ANTHROPIC_BASE_URL`:** el adaptador no le pasa `baseURL` al SDK, que entonces lee `ANTHROPIC_BASE_URL` del entorno. Así funciona la guardia de los tests; en uso normal, esa variable no debe estar en la terminal del operador (mandaría la clave a otro host). `.env` no la define.
 - **Clave del operador:** vence el 2026-12-31 y no tiene límite de gasto en la consola. Se recomienda ponerle uno (el tope mensual por corredor solo cubre lo que AgentSales anota) y anotar la renovación antes del vencimiento (un 401 da `LLM_AUTH_REQUIRED`).
+
+## 13. Costo de un plan y sus textos (F9-T22, 2026-10-20)
+
+Lo que cuesta, con la API, un plan de ideas de 10 ideas y los textos de esas 10 ideas en **dos idiomas** (spec F9 §4.12). Se mide con `pnpm eval:social` sobre el perfil de prueba `dos-idiomas` (`apps/worker/src/eval/social-profiles.ts`: una marca inventada con hechos, `es` y `en`, en Instagram, X, LinkedIn y Discord, 10 ideas en 14 días), sin tocar la base.
+
+**Comando (lo corre el operador: gasta centavos de la clave del `.env`):**
+
+```bash
+pnpm eval:social --provider anthropic-api --profile dos-idiomas --ideas 10 --out
+pnpm eval:social --provider anthropic-api --model claude-haiku-5-5 --profile dos-idiomas --ideas 10 --out
+```
+
+Al final imprime el costo del plan, de los textos (y por texto) y el total, con los tokens; `--out` deja el detalle en `tmp/eval-social/`.
+
+**Estimación antes de medir (INFERENCIA):** los caracteres son los que mide `pnpm eval:social --provider fake --profile dos-idiomas` (prompt de sistema más datos) y el esquema JSON de cada salida; los tokens se suponen a unos 3,5 caracteres por token (español e inglés con JSON), con unos 200 de más por llamada para las instrucciones de la salida estructurada (NO VERIFICADO). La salida supone unos 100 tokens por idea y unos 600 caracteres por texto, más algo de pensamiento con esfuerzo `low` (el adaptador lo pide así; en Sonnet 5.5 no se puede apagar, §11.2). Precios de §11.2.
+
+| Llamada | Caracteres (prompt + esquema) | Entrada (tokens) | Salida (tokens) | Sonnet 5.5 | Haiku 5.5 |
+|---|---|---|---|---|---|
+| Plan de 10 ideas (1 llamada) | 5.420 + 679 | ~2.000 | ~1.000 a 1.500 | ~US$ 0,02 | ~US$ 0,001 |
+| Textos de una idea en una red y dos idiomas (1 llamada, 2 textos) | ~3.780 + 558 | ~1.450 | ~500 a 800 | ~US$ 0,01 | ~US$ 0,0005 |
+| Textos de las 10 ideas (10 llamadas, unos 20 textos) | | ~14.500 | ~7.000 | ~US$ 0,10 | ~US$ 0,005 |
+| **Total: plan y textos** | | ~16.500 | ~8.500 | **~US$ 0,12** | **~US$ 0,006** |
+
+- Si la IA sugiere dos redes por idea, los textos se duplican (4 por llamada) y la salida casi también: el total sube a unos US$ 0,20 con Sonnet 5.5. Un idioma solo cuesta cerca de la mitad en textos.
+- Es del mismo orden que un aviso (§12: unos US$ 0,01 por propiedad con Sonnet 5.5). Con dos marcas y un plan cada dos semanas, unos US$ 0,50 al mes con Sonnet 5.5, muy por debajo del tope mensual por corredor (F7).
+
+**Medido** (lo llena el operador después de correr los comandos de arriba; la cifra oficial está en la consola de Anthropic):
+
+| Fecha | Modelo | Plan: entrada / salida (tokens) · US$ | Textos: llamadas · textos · entrada / salida (tokens) · US$ | Total US$ | Notas |
+|---|---|---|---|---|---|
+| | `claude-sonnet-5-5` | | | | |
+| | `claude-haiku-5-5` | | | | |

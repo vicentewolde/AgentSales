@@ -25,6 +25,7 @@
     "cli": "pnpm --silent --filter @agentsales/cli run cli",
     "llm:smoke": "pnpm --filter @agentsales/llm run smoke",
     "eval:content": "pnpm --silent --filter @agentsales/worker run eval:content",
+    "eval:social": "pnpm --silent --filter @agentsales/worker run eval:social",
     "ig:smoke": "pnpm --silent --filter @agentsales/worker run ig:smoke",
     "fb:smoke": "pnpm --silent --filter @agentsales/worker run fb:smoke",
     "uf:smoke": "pnpm --silent --filter @agentsales/worker run uf:smoke",
