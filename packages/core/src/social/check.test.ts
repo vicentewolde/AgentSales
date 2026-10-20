@@ -122,6 +122,27 @@ describe("checkPostContent: menciones", () => {
     expect(codes("discord", "Hola @Here")).toEqual(["MASS_MENTION"]);
   });
 
+  it("detecta la mención masiva pegada a otra cosa, con ancho cero o con la arroba ancha", () => {
+    for (const body of [
+      "a@everyone",
+      "Hola @@everyone",
+      "fin.@here",
+      "x@here ahora",
+      "Atención @\u200Beveryone",
+      "Atención @every\u200Done",
+      "Atención @\u2060here",
+      "Atención \uFEFF@here",
+      "Atención \uFF20everyone",
+    ]) {
+      expect(codes("discord", body)).toContain("MASS_MENTION");
+    }
+    expect(codes("discord", "Atención", context(), ["#ok", "@here"])).toContain("MASS_MENTION");
+    // Otras palabras que empiezan igual no son menciones masivas.
+    expect(codes("discord", "Escríbenos a contacto@hereford.example")).not.toContain(
+      "MASS_MENTION",
+    );
+  });
+
   it("una mención que no está en las fuentes es un hecho ajeno; un correo no es mención", () => {
     expect(codes("instagram", "Gracias @alguien por la idea")).toEqual(["FACT_NOT_IN_PROFILE"]);
     expect(codes("instagram", "Escríbenos a hola@agentpey.com")).toEqual(["FACT_NOT_IN_PROFILE"]);
@@ -145,6 +166,20 @@ describe("checkPostContent: hechos fuera del perfil", () => {
     expect(codes("x", "Seguimos.", ctx, ["#2026"])).toEqual(["FACT_NOT_IN_PROFILE"]);
   });
 
+  it("los marcadores de una lista numerada y el 24/7 no son cifras", () => {
+    expect(
+      codes(
+        "linkedin",
+        "Tres ideas:\n1. Publicar con calma.\n2) Revisar cada texto.\n 10. Medir.",
+        context(),
+      ),
+    ).toEqual([]);
+    expect(codes("linkedin", "Soporte 24/7 para tus avisos.")).toEqual([]);
+    // Una cifra dentro de la línea de la lista sí se revisa.
+    expect(codes("linkedin", "1. Somos 40 personas.")).toEqual(["FACT_NOT_IN_PROFILE"]);
+    expect(codes("linkedin", "Atendemos 24/72 casos.")).toContain("FACT_NOT_IN_PROFILE");
+  });
+
   it("una cifra pegada a letras (B2B, web3) es parte de un nombre, no una cifra", () => {
     expect(codes("linkedin", "Pensamos en B2B y en la web3 sin apuro.")).toEqual([]);
   });
@@ -159,6 +194,32 @@ describe("checkPostContent: hechos fuera del perfil", () => {
         "En octubre, AgentPey suma Discord. Los Corredores independientes lo piden.",
       ),
     ).toEqual([]);
+  });
+
+  it("una sigla o un énfasis en mayúsculas de 2 a 6 letras no es un nombre", () => {
+    expect(codes("linkedin", "Esto es GRATIS para siempre, con IA y B2B.")).toEqual(["AVOID_TERM"]);
+    expect(codes("linkedin", "Les presento a ACMECORP hoy.")).toEqual(["FACT_NOT_IN_PROFILE"]);
+  });
+
+  it("una ciudad que está en el perfil es fuente; una que no, se marca", () => {
+    const ctx = buildPostCheckContext({
+      post: OPERATOR_POST,
+      profile: { ...PROFILE, audience: "Corredores de Santiago y Concepción" },
+      broker: BRAND,
+      media: [{ role: "original", kind: "image" }],
+    });
+    expect(codes("linkedin", "Hoy estuvimos en Concepción.", ctx)).toEqual([]);
+    expect(codes("linkedin", "Hoy estuvimos en Temuco.", ctx)).toEqual(["FACT_NOT_IN_PROFILE"]);
+  });
+
+  it("una línea con forma de título (Title Case) se tolera como nombres, no como cifras", () => {
+    expect(codes("linkedin", "How We Pick Our Networks\nToday I share our criteria.")).toEqual([]);
+    const numbers = check("linkedin", "Our Best 500 Client Stories\nToday I share.");
+    expect(numbers.map((item) => item.message)).toEqual([
+      "La cifra «500» no está en los hechos del perfil ni en el brief del operador",
+    ]);
+    // Con puntuación final ya no es un título: sus nombres se revisan.
+    expect(codes("linkedin", "Today We Meet Banco Central.")).toEqual(["FACT_NOT_IN_PROFILE"]);
   });
 
   it("la mayúscula que abre una frase, una línea o una pregunta no es un nombre", () => {

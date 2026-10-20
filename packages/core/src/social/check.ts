@@ -86,6 +86,19 @@ export function buildPostCheckContext(params: {
 /** Una mención (`@algo`) que no es parte de un correo ni de una palabra. */
 const MENTION = /(?<![\p{L}\p{N}_.@])@([\p{L}\p{N}_.]*[\p{L}\p{N}_])/gu;
 
+/**
+ * Una mención masiva, donde sea que esté (Discord la reconoce también pegada a otra palabra:
+ * `a@everyone`, `.@here`). Se busca sobre el texto sin caracteres de ancho cero y con `＠` como `@`
+ * (`unmasked`), así no se esconde con un truco tipográfico.
+ */
+const MASS_MENTION = /@(?:everyone|here)(?![\p{L}\p{N}_])/iu;
+
+/** Caracteres de ancho cero (U+200B a U+200D, U+2060 y U+FEFF). */
+const ZERO_WIDTH = /[\u200B-\u200D\u2060\uFEFF]/g;
+
+/** El texto sin caracteres de ancho cero y con la arroba de ancho completo (U+FF20) como `@`. */
+const unmasked = (text: string) => text.replace(ZERO_WIDTH, "").replace(/\uFF20/g, "@");
+
 /** Un hashtag dentro del texto. */
 const HASHTAG_IN_TEXT = /(?<![\p{L}\p{N}_])#[\p{L}\p{N}_]+/gu;
 
@@ -95,6 +108,12 @@ const HASHTAG_IN_TEXT = /(?<![\p{L}\p{N}_])#[\p{L}\p{N}_]+/gu;
  * (`numberKey`), así `1.000` y `1,000` son la misma en los dos idiomas.
  */
 const NUMBER = /(?<![\p{L}\p{N}.,])\d+(?:[.,]\d+)*/gu;
+
+/** El marcador de una lista numerada al inicio de una línea (`1. …`, `2) …`): no es una cifra. */
+const LIST_MARKER = /^[ \t]*\d{1,3}[.)](?=\s)/gmu;
+
+/** "24/7" (todo el día, toda la semana) es una expresión, no un dato. */
+const ALWAYS_OPEN = /(?<![\p{N}/])24\/7(?![\p{N}/])/gu;
 
 /** La forma comparable de una cifra: solo los dígitos, sin ceros a la izquierda. */
 const numberKey = (raw: string) => raw.replace(/[.,]/g, "").replace(/^0+(?=\d)/, "");
@@ -180,18 +199,45 @@ const COMMON_CAPITALIZED: ReadonlySet<string> = new Set([
 /** `true` si la palabra lleva alguna mayúscula (`Banco`, `AgentPey`, `iPhone`, `CEO`). */
 const hasUppercase = (word: string) => /\p{Lu}/u.test(word);
 
+/**
+ * Una palabra toda en mayúsculas de 2 a 6 caracteres (`IA`, `B2B`, `GRATIS`, `CRM`): una sigla o
+ * un énfasis, no un nombre que la revisión pueda distinguir. No se marca.
+ */
+const isShoutOrAcronym = (word: string) => /^[\p{Lu}\p{N}]{2,6}$/u.test(word);
+
+/**
+ * Una línea con forma de título en inglés ("How We Pick Our Networks"): sin puntuación final, de 2
+ * a 10 palabras, y toda palabra de 4 letras o más con mayúscula inicial. Sus mayúsculas son de
+ * estilo, no nombres: la línea no se revisa como nombres propios (sí sus cifras, enlaces y
+ * menciones). El prompt pide no escribir así; el operador lo ve al aprobar.
+ */
+function isTitleLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed === "" || /[.!?…:;,]$/u.test(trimmed)) return false;
+  const words = trimmed.match(WORD) ?? [];
+  const long = words.filter((word) => word.length >= 4);
+  return (
+    words.length >= 2 &&
+    words.length <= 10 &&
+    long.length >= 2 &&
+    long.every((word) => /^\p{Lu}/u.test(word))
+  );
+}
+
 const foldedWords = (text: string) => new Set(foldText(text).match(/[\p{L}\p{N}]+/gu) ?? []);
 
 /**
  * Los posibles nombres propios de un texto que no están en las fuentes (heurística, spec F9 §4.4):
  * una palabra con mayúscula que **no** abre una frase (ni una línea, ni va tras `¿`, `¡` o una
- * comilla), que no está entre las palabras de las fuentes ni en `COMMON_CAPITALIZED`. Las que van
- * seguidas se juntan (`Banco Central`). No ve un nombre escrito en minúsculas ni los que abren una
+ * comilla), que no es una sigla o un énfasis en mayúsculas (`isShoutOrAcronym`), que no está entre
+ * las palabras de las fuentes ni en `COMMON_CAPITALIZED`, y que no va en una línea con forma de
+ * título (`isTitleLine`). Las que van seguidas se juntan (`Banco Central`). No ve un nombre escrito en minúsculas ni los que abren una
  * frase: la regla de hechos del prompt es la primera barrera y el operador revisa cada texto.
  */
 function unknownNames(text: string, sourceWords: ReadonlySet<string>): string[] {
   const names: string[] = [];
   for (const line of text.split("\n")) {
+    if (isTitleLine(line)) continue;
     for (const sentence of line.split(SENTENCE_BREAK)) {
       let run: { text: string; end: number } | null = null;
       let first = true;
@@ -205,6 +251,7 @@ function unknownNames(text: string, sourceWords: ReadonlySet<string>): string[] 
         const unknown =
           !opener &&
           hasUppercase(word) &&
+          !isShoutOrAcronym(word) &&
           !sourceWords.has(folded) &&
           !COMMON_CAPITALIZED.has(folded);
         if (!unknown) {
@@ -315,7 +362,7 @@ export function checkPostContent(
     [...ctx.sources.matchAll(MENTION)].map((match) => (match[1] ?? "").toLowerCase()),
   );
   const mentions = [...text.body.matchAll(MENTION)].map((match) => match[1] ?? "");
-  if (mentions.some((mention) => ["everyone", "here"].includes(mention.toLowerCase()))) {
+  if (MASS_MENTION.test(unmasked([text.body, ...text.hashtags].join("\n")))) {
     add("MASS_MENTION", "Tiene @everyone o @here: avisaría a todo un servidor o canal");
   }
   for (const mention of new Set(mentions)) {
@@ -352,6 +399,8 @@ export function checkPostContent(
 
   // Cifras y nombres propios, fuera de enlaces, menciones y hashtags del texto.
   const prose = text.body
+    .replace(LIST_MARKER, " ")
+    .replace(ALWAYS_OPEN, " ")
     .replace(linkPattern(), " ")
     .replace(MENTION, " ")
     .replace(HASHTAG_IN_TEXT, " ");
