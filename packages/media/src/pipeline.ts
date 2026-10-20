@@ -55,14 +55,14 @@ export const REEL_SPEC = {
  * (prueba de la sección 8 de la nota). Por eso cabe en 1280×720 (horizontal), 720×1280 (vertical)
  * o 720×720 (cuadrado), sin ampliar un video más chico, sin recorte ni barras. H.264 High 4:2:0 a
  * 30 fps con GOP cerrado de 2 s (X pide progresivo y sin GOP abierto), AAC estéreo si el original
- * tiene audio, `moov` al inicio. El tope de duración es el nuestro, el mismo del reel (X admite
- * 20 min en una cuenta normal).
+ * tiene audio, `moov` al inicio. **Sin tope de duración:** sale con la duración completa del
+ * original (el límite real de X también es NO VERIFICADO; lo revisa T16 al publicar, contra la
+ * cuenta).
  */
 export const X_VIDEO_SPEC = {
   longSide: 1280,
   shortSide: 720,
   fps: 30,
-  maxDurationS: REEL_MAX_DURATION_S,
   x264: { preset: "veryfast", crf: 23, maxrate: "8M", bufsize: "16M", gop: 60 },
   audio: { bitrate: "128k", sampleRate: 48000 },
 } as const;

@@ -166,7 +166,7 @@ describe("publications.watch · subidas de posts (F9-T10)", () => {
       platformAccounts,
       queue: { enqueue: async () => null },
       now: () => now,
-      postUploadCleanup: { postUploads, postLock, media, storage },
+      postUploadCleanup: { postUploads, postLock, storage },
     });
     await registerJobs(boss, [job], logger);
     await work?.([{ id: "job-1", data: {}, retryCount: 0, retryLimit: 1 }]);

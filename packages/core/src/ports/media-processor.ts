@@ -41,8 +41,8 @@ export type ProcessedVideo = {
   /** `null` si no se pidió o si el video dura menos de `REEL_MIN_DURATION_S`. */
   reel: VideoOutput | null;
   /**
-   * El video reducido para X (spec F9 §4.5, solo posts): `null` si no se pidió. Cortado a
-   * `REEL_MAX_DURATION_S`, como el reel.
+   * El video reducido para X (spec F9 §4.5, solo posts): `null` si no se pidió. Con la duración
+   * completa del original: el límite de X es NO VERIFICADO y lo revisa quien publica (T16).
    */
   xVideo: VideoOutput | null;
 };

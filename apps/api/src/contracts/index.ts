@@ -1168,8 +1168,14 @@ export type EditorialProfileResponse = z.infer<typeof editorialProfileResponseSc
 // Solo la forma y topes holgados (el tamaño del pedido): las reglas, con sus mensajes en español,
 // son de core (`POST_INVALID`, `POST_UPLOAD_INVALID`, `POST_UPLOAD_TOO_LARGE`).
 
-/** Una fecha en ISO con zona; la ruta la vuelve `Date` (como `at` del calendario). */
-const postDateSchema = z.iso.datetime({ offset: true });
+/** Una fecha en ISO con zona (el filtro de la lista queda como texto: ver `postQuerySchema`). */
+const postDateText = z.iso.datetime({ offset: true });
+
+/**
+ * La fecha de un cuerpo: ISO con zona, que el esquema entrega como `Date` (la ruta no convierte).
+ * El cliente `hc` la tipa como `Date`, que viaja como su ISO en UTC (`JSON.stringify`) y calza.
+ */
+const postDateSchema = postDateText.transform((value) => new Date(value));
 
 /** Un post tal como viaja en JSON: las fechas llegan como texto ISO y se vuelven `Date`. */
 export const postJsonSchema = postSchema.extend({
@@ -1182,12 +1188,14 @@ export type PostJson = z.infer<typeof postJsonSchema>;
 /**
  * Filtros de `GET /posts`: el corredor o marca (su id; un corredor que pide otro recibe 404), el
  * estado y el rango de `planned_at` `[from, to)` (los sin fecha quedan fuera si viene alguno).
+ * `from` y `to` quedan como texto ISO: el cliente `hc` tipa la consulta con lo que sale del
+ * validador y arma la URL con `String(valor)`, que de un `Date` no da un ISO. La ruta los convierte.
  */
 export const postQuerySchema = z.object({
   brokerId: z.uuid().optional(),
   status: z.enum(POST_STATUSES).optional(),
-  from: postDateSchema.optional(),
-  to: postDateSchema.optional(),
+  from: postDateText.optional(),
+  to: postDateText.optional(),
 });
 export type PostQuery = z.infer<typeof postQuerySchema>;
 

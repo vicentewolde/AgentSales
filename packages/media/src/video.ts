@@ -295,16 +295,16 @@ async function encodeXVideo(
   signal?: AbortSignalLike,
 ): Promise<VideoOutput> {
   const outPath = join(options.workDir, `${randomUUID()}-x.mp4`);
-  const { fps, x264, audio, maxDurationS } = X_VIDEO_SPEC;
+  // Sin `-t`: la duración completa (el límite de X lo revisa quien publica, T16).
+  const { fps, x264, audio } = X_VIDEO_SPEC;
   const size = xVideoSize(source);
-  const durationS = Math.min(source.durationS, maxDurationS);
   const threads = options.threads === undefined ? null : String(options.threads);
   const args = [
     ...["-hide_banner", "-loglevel", "error", "-nostdin", "-y"],
     ...(threads === null ? [] : ["-filter_threads", threads]),
     ...["-i", path, "-map", "0:v:0", ...(source.hasAudio ? ["-map", "0:a:0"] : [])],
     ...["-vf", `fps=${fps},scale=${size.width}:${size.height},format=yuv420p,setsar=1`],
-    ...["-t", durationS.toFixed(3), "-r", String(fps)],
+    ...["-r", String(fps)],
     ...["-c:v", "libx264", "-preset", x264.preset, "-profile:v", "high", "-crf", String(x264.crf)],
     ...(threads === null ? [] : ["-threads", threads]),
     ...["-maxrate", x264.maxrate, "-bufsize", x264.bufsize],
@@ -327,7 +327,8 @@ async function encodeXVideo(
 /**
  * Un video → sus medidas, su `thumb` y, con `reel`, el reel de Instagram (spec F2 §4.2, D5); con
  * `xVideo`, el video reducido para X (spec F9 §4.5). Un video de menos de 3 s no da reel (sí video
- * para X, desde 0,5 s); uno de más de 90 s se corta (los avisos son de core). Todo queda en el
+ * para X, desde 0,5 s); el reel de uno de más de 90 s se corta (los avisos son de core), y el video
+ * para X sale entero. Todo queda en el
  * temporal del intento, que el worker borra al terminar (los videos también: se suben antes con
  * `open()`).
  */

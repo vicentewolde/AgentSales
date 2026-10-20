@@ -356,7 +356,6 @@ const jobs = buildJobs({
     postUploadCleanup: {
       postUploads: createPostUploadRepository(database.db),
       postLock,
-      media: repositories.media,
       storage,
     },
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.

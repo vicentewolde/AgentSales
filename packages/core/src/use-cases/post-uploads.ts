@@ -2,7 +2,7 @@ import { postOriginalPath, postOriginalsPrefix } from "../content/media-keys.js"
 import type { MediaKind } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { JobQueue } from "../ports/job-queue.js";
-import type { MediaRecord, MediaRepository } from "../ports/media-repository.js";
+import type { MediaRecord } from "../ports/media-repository.js";
 import type { MediaStorage, SignedUpload } from "../ports/media-storage.js";
 import type { PostLock } from "../ports/post-lock.js";
 import type { PostRepository, PostUploadRepository } from "../ports/post-repository.js";
@@ -337,7 +337,6 @@ export async function completePostUploads(
 export type CloseAbandonedPostUploadsDeps = {
   postUploads: Pick<PostUploadRepository, "listExpired">;
   postLock: PostLock;
-  media: Pick<MediaRepository, "findByStoragePath">;
   storage: Pick<MediaStorage, "delete">;
   now?: () => Date;
 };
@@ -351,11 +350,16 @@ export type CloseAbandonedPostUploadsResult = {
 
 /**
  * La limpieza de las subidas de posts (en `publications.watch`, cada hora, como la de las cargas):
- * cada subida pendiente vencida (24 h) se borra de R2 y queda `abandoned`. Primero se borra y
- * después se cierra: si el borrado falla, sigue pendiente y se reintenta en la próxima vuelta. Se
- * cierra dentro del candado del post y solo si sigue pendiente y vencida (un pedido nuevo del mismo
- * archivo pudo reabrirla). Nunca borra el objeto de un medio guardado: si ya lo es, solo la marca
- * `completed`.
+ * cada subida pendiente vencida (24 h) se borra de R2 y queda `abandoned`.
+ *
+ * Todo pasa dentro del candado del post: se vuelve a leer la subida, se comprueba que siga
+ * pendiente y vencida (un pedido nuevo del mismo archivo pudo reabrirla) y que su objeto no sea
+ * ya un medio (un `complete` pudo guardarlo), y recién entonces se borra de R2 y se cierra. **Es la
+ * excepción a "nada de R2 dentro del candado" (`PostLock`):** hecho afuera, un `complete` o un
+ * pedido intercalado entre la revisión y el borrado dejaría un medio guardado sin su objeto. Es una
+ * sola llamada (`delete`, idempotente) y la limpieza corre una vez por hora. Si el borrado falla, la
+ * transacción no escribe nada: la subida sigue pendiente y vuelve en la próxima vuelta. Si el
+ * objeto ya es un medio, la subida solo se marca `completed`.
  */
 export async function closeAbandonedPostUploads(
   deps: CloseAbandonedPostUploadsDeps,
@@ -365,15 +369,16 @@ export async function closeAbandonedPostUploads(
   const failed: string[] = [];
   for (const upload of await deps.postUploads.listExpired(now)) {
     try {
-      const stored = (await deps.media.findByStoragePath(upload.objectPath)) !== null;
-      if (!stored) await deps.storage.delete(upload.objectPath);
-      const closed = await deps.postLock.run(upload.postId, async ({ postUploads }) => {
+      const closed = await deps.postLock.run(upload.postId, async ({ postUploads, media }) => {
         const current = await postUploads.get(upload.id);
         if (current?.status !== "pending" || current.expiresAt >= now) return false;
-        if (!stored) return postUploads.markAbandoned(upload.id);
-        // El archivo ya es un medio (la subida se completó por otro camino): no se abandona.
-        await postUploads.markCompleted(upload.id);
-        return false;
+        if ((await media.findByStoragePath(current.objectPath)) !== null) {
+          // El archivo ya es un medio (la subida se completó por otro camino): no se abandona.
+          await postUploads.markCompleted(current.id);
+          return false;
+        }
+        await deps.storage.delete(current.objectPath);
+        return postUploads.markAbandoned(current.id);
       });
       if (closed) abandoned.push(upload.id);
     } catch {

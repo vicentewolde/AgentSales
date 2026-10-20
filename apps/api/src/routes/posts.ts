@@ -11,6 +11,7 @@ import {
   type MediaStorage,
   type PostLock,
   type PostRepository,
+  PROCESSED_MEDIA_VARIANTS,
   type ProcessedMediaVariant,
   postSubject,
   requestPostUploads,
@@ -51,11 +52,9 @@ export type PostRoutesDeps = {
   maxVideoBytes: number;
 };
 
-/** Una fecha ISO del contrato como `Date`; `null` y `undefined` pasan tal cual. */
-const dateOf = <T extends string | null | undefined>(value: T) =>
-  (typeof value === "string" ? new Date(value) : value) as T extends string
-    ? Date
-    : Exclude<T, string>;
+/** Un filtro de fecha de la consulta (texto ISO ya validado) como `Date`. */
+const dateOf = (value: string | undefined): Date | undefined =>
+  value === undefined ? undefined : new Date(value);
 
 /**
  * `/posts` (spec F9 §4.10, F9-T10): crear, listar, ver, editar y archivar posts, y subir sus medios
@@ -69,10 +68,12 @@ export function postRoutes(deps: PostRoutesDeps) {
     const variants = new Map<string, ProcessedMediaVariant[]>();
     const thumbs = new Map<string, string>();
     for (const item of all) {
-      if (item.role !== "processed" || item.parentMediaId === null || item.variant === null)
+      // Solo las variantes de un original (un render no tiene padre ni es de un post).
+      const variant = PROCESSED_MEDIA_VARIANTS.find((known) => known === item.variant);
+      if (item.role !== "processed" || item.parentMediaId === null || variant === undefined)
         continue;
       const list = variants.get(item.parentMediaId) ?? [];
-      list.push(item.variant as ProcessedMediaVariant);
+      list.push(variant);
       variants.set(item.parentMediaId, list);
       if (item.variant === "thumb") thumbs.set(item.parentMediaId, item.storagePath);
     }
@@ -114,10 +115,7 @@ export function postRoutes(deps: PostRoutesDeps) {
     })
     .post("/", validated("json", createPostBodySchema), async (c) => {
       const input = c.req.valid("json");
-      const post = await createPost(deps, requireAuth(c).user, {
-        ...input,
-        plannedAt: dateOf(input.plannedAt),
-      });
+      const post = await createPost(deps, requireAuth(c).user, input);
       const body: PostResponse = { post };
       return c.json(body, 201);
     })
@@ -133,10 +131,7 @@ export function postRoutes(deps: PostRoutesDeps) {
       validated("json", updatePostBodySchema),
       async (c) => {
         const input = c.req.valid("json");
-        const post = await updatePost(deps, requireAuth(c).user, c.req.valid("param").id, {
-          ...input,
-          plannedAt: dateOf(input.plannedAt),
-        });
+        const post = await updatePost(deps, requireAuth(c).user, c.req.valid("param").id, input);
         const body: PostResponse = { post };
         return c.json(body, 200);
       },

@@ -107,7 +107,7 @@ export function createInMemoryMediaProcessor(
           : encoder.encode(
               `reel:v${version}:${decoder.decode(bytes)}:${reel.overlayPng?.length ?? 0}`,
             );
-      // El video para X: cortado a 90 s como el reel, sin mínimo (X acepta desde 0,5 s).
+      // El video para X: con la duración completa (sin el tope del reel), como el adaptador.
       const xBytes = xVideo ? encoder.encode(`x_video:v${version}:${decoder.decode(bytes)}`) : null;
       return {
         measurements,
@@ -133,7 +133,7 @@ export function createInMemoryMediaProcessor(
                 sha256: fakeHash(decoder.decode(xBytes)),
                 width: 1280,
                 height: 720,
-                durationS: Math.min(duration, REEL_MAX_DURATION_S),
+                durationS: duration,
                 async *open() {
                   yield xBytes;
                 },

@@ -369,4 +369,85 @@ describe("closeAbandonedPostUploads", () => {
     expect(s.storage.objects.has(`posts/${s.post.id}/original/${sha(8)}.jpg`)).toBe(true);
     expect((await s.postUploads.get(target.uploadId))?.status).toBe("completed");
   });
+
+  /** Una barrera: `wait()` queda esperando hasta `open()`. */
+  const gate = () => {
+    let open: () => void = () => {};
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    return { wait: () => opened, open };
+  };
+
+  it("complete y limpieza intercalados (la limpieza revisó antes): queda el medio con su objeto", async () => {
+    const s = await setup();
+    const { uploads } = await requestPostUploads(s.deps, ADMIN, s.post.id, [
+      { name: "tarde.jpg", size: 10, sha256: sha(10) },
+    ]);
+    const target = asUpload(uploads[0]);
+    await s.storage.receiveUpload(target.url, target.headers, bytes(10));
+    s.advance(POST_UPLOAD.abandonedAfterMs + 1000);
+
+    // La limpieza ya leyó las vencidas y espera su turno; mientras, `complete` corre entero.
+    const held = gate();
+    const reached = gate();
+    const cleanup = closeAbandonedPostUploads({
+      ...s.deps,
+      postLock: {
+        run: async (postId, fn) => {
+          reached.open();
+          await held.wait();
+          return s.deps.postLock.run(postId, fn);
+        },
+      },
+    });
+    await reached.wait();
+    const done = await completePostUploads(s.deps, ADMIN, s.post.id);
+    expect(done.completed).toEqual([target.uploadId]);
+    held.open();
+    expect(await cleanup).toEqual({ abandoned: [], failed: [] });
+
+    const [stored] = await s.media.listOriginals({ kind: "post", id: s.post.id });
+    expect(stored?.storagePath).toBe(`posts/${s.post.id}/original/${sha(10)}.jpg`);
+    expect(s.storage.objects.has(stored?.storagePath ?? "")).toBe(true);
+    expect((await s.postUploads.get(target.uploadId))?.status).toBe("completed");
+  });
+
+  it("complete y limpieza intercalados (complete listó antes): no queda un medio sin objeto", async () => {
+    const s = await setup();
+    const { uploads } = await requestPostUploads(s.deps, ADMIN, s.post.id, [
+      { name: "tarde.jpg", size: 10, sha256: sha(11) },
+    ]);
+    const target = asUpload(uploads[0]);
+    await s.storage.receiveUpload(target.url, target.headers, bytes(10));
+    s.advance(POST_UPLOAD.abandonedAfterMs + 1000);
+
+    // `complete` ya vio el objeto en R2 y espera; mientras, la limpieza lo borra y lo abandona.
+    const held = gate();
+    const reached = gate();
+    const list = s.storage.list.bind(s.storage);
+    const completing = completePostUploads(
+      {
+        ...s.deps,
+        storage: {
+          list: async (prefix) => {
+            const listed = await list(prefix);
+            reached.open();
+            await held.wait();
+            return listed;
+          },
+        },
+      },
+      ADMIN,
+      s.post.id,
+    );
+    await reached.wait();
+    expect((await closeAbandonedPostUploads(s.deps)).abandoned).toEqual([target.uploadId]);
+    held.open();
+    const result = await completing;
+
+    expect(result).toMatchObject({ completed: [], missing: [], media: [] });
+    expect(await s.media.listOriginals({ kind: "post", id: s.post.id })).toEqual([]);
+    expect((await s.postUploads.get(target.uploadId))?.status).toBe("abandoned");
+  });
 });

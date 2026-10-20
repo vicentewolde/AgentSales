@@ -377,6 +377,14 @@ describe("processVideo: reel sin texto y video para X (F9-T10)", () => {
     expect(short.xVideo?.durationS).toBeGreaterThan(1.5);
   }, 60_000);
 
+  it("el video para X no se corta: uno de 100 s sale entero (el reel sí se corta a 90 s)", async () => {
+    const result = await (await processor()).processVideo(video("largo"), {
+      reel: null,
+      xVideo: true,
+    });
+    expect(result.xVideo?.durationS).toBeGreaterThan(99.5);
+  }, 240_000);
+
   it("las medidas para X caben en 1280×720, 720×1280 o 720×720, pares y sin ampliar", () => {
     expect(xVideoSize({ width: 1920, height: 1080 })).toEqual({ width: 1280, height: 720 });
     expect(xVideoSize({ width: 1080, height: 1920 })).toEqual({ width: 720, height: 1280 });
