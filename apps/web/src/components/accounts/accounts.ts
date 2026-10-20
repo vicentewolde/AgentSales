@@ -14,10 +14,11 @@ export const PROVIDER_NAME: Readonly<Record<OAuthProvider, string>> = {
   instagram: "Instagram",
   mercadolibre: "Mercado Libre",
   linkedin: "LinkedIn",
+  x: "X",
   tiktok: "TikTok",
 };
 
-/** Por qué el OAuth volvió con `?error=` (los códigos del contrato; `{proveedor}` es Instagram o Mercado Libre). */
+/** Por qué el OAuth volvió con `?error=` (los códigos del contrato; `{proveedor}`, el nombre de la red). */
 const OAUTH_ERROR_TEXT: Readonly<Record<OAuthRedirectError, string>> = {
   OAUTH_DENIED: "Rechazaste los permisos en {proveedor}: no se conectó nada.",
   OAUTH_STATE_INVALID:
@@ -29,6 +30,7 @@ const OAUTH_ERROR_TEXT: Readonly<Record<OAuthRedirectError, string>> = {
     "A la API le faltan ML_APP_ID y ML_CLIENT_SECRET: agrégalos y reiníciala.",
   LINKEDIN_NOT_CONFIGURED:
     "A la API le faltan LINKEDIN_CLIENT_ID y LINKEDIN_CLIENT_SECRET: agrégalos y reiníciala.",
+  X_NOT_CONFIGURED: "A la API le faltan X_CLIENT_ID y X_CLIENT_SECRET: agrégalos y reiníciala.",
   TIKTOK_NOT_CONFIGURED:
     "A la API le faltan TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET: agrégalos y reiníciala.",
   BROKER_NOT_FOUND: "El corredor del enlace no existe: vuelve a conectar desde esta página.",
@@ -65,6 +67,20 @@ const LINKEDIN_ERROR_TEXT: Readonly<Record<string, string>> = {
   LINKEDIN_UNAVAILABLE: "LinkedIn no respondió: vuelve a intentarlo en unos minutos.",
 };
 
+/** X (F9-T16): OAuth 2.0 con PKCE; sin `offline.access` no se puede renovar el acceso. */
+const X_ERROR_TEXT: Readonly<Record<string, string>> = {
+  X_AUTH_INVALID:
+    "X no aceptó la conexión (la autorización venció o ya se usó): vuelve a conectar.",
+  X_PERMISSION_MISSING:
+    "X no dio todos los permisos (también seguir conectado): vuelve a conectar y acéptalos.",
+  X_APP_CREDENTIALS_INVALID:
+    "X no reconoce el par de la app: revisa X_CLIENT_ID y X_CLIENT_SECRET.",
+  X_FORBIDDEN:
+    "X no dejó conectar: revisa que la app tenga permisos de lectura y escritura y vuelve a conectar.",
+  X_UNAVAILABLE: "X no respondió: vuelve a intentarlo en unos minutos.",
+  X_UNREACHABLE: "No se pudo llegar a X: vuelve a intentarlo en unos minutos.",
+};
+
 /** TikTok (F9-T26): Login Kit con `video.upload`. */
 const TIKTOK_ERROR_TEXT: Readonly<Record<string, string>> = {
   TIKTOK_AUTH_INVALID:
@@ -80,6 +96,7 @@ const PROVIDER_ERROR_TEXT: Readonly<Record<OAuthProvider, Readonly<Record<string
   instagram: INSTAGRAM_ERROR_TEXT,
   mercadolibre: MERCADOLIBRE_ERROR_TEXT,
   linkedin: LINKEDIN_ERROR_TEXT,
+  x: X_ERROR_TEXT,
   tiktok: TIKTOK_ERROR_TEXT,
 };
 

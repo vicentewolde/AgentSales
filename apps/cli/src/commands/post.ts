@@ -324,6 +324,8 @@ export function publicationNextSteps(publication: PublicationView): string[] {
       ];
     case "failed":
       return [
+        // F9-T19: el consejo del error, como en el panel y la agenda.
+        ...(publication.errorAdvice === null ? [] : [`Qué hacer: ${publication.errorAdvice}`]),
         `Reintenta: agentsales publications retry ${id}`,
         `O descártala: agentsales publications cancel ${id}`,
       ];

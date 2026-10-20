@@ -9,6 +9,7 @@ import {
 } from "@agentsales/api/contracts";
 import {
   accountDisconnectText,
+  brokerHoldsListings,
   currentMarketplaceLoginError,
   discordWebhookUrlSchema,
   MARKETPLACE_LOGIN_CLIENT_WAIT_MS,
@@ -20,6 +21,8 @@ import {
   mercadoLibreConnectCommands,
   PLATFORM_ACCOUNT_STATUS_TEXT,
   PLATFORM_TEXT,
+  type Platform,
+  POST_PLATFORMS,
   tokenStdinCommand,
 } from "@agentsales/core";
 import type { Command } from "commander";
@@ -89,32 +92,9 @@ export function runAccounts(deps: AccountsDeps) {
     ]);
     if (accounts.length === 0) {
       deps.print(c.yellow("No hay cuentas conectadas"));
-      deps.print(
-        c.dim(
-          "→ Conecta Instagram con: pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin",
-        ),
-      );
-      deps.print(
-        c.dim(
-          "→ Conecta Mercado Libre con: pnpm -s cli accounts connect mercadolibre --broker <slug>",
-        ),
-      );
-      deps.print(
-        c.dim(
-          "→ Conecta Marketplace con: pnpm -s cli accounts connect marketplace --broker <slug>",
-        ),
-      );
-      deps.print(
-        c.dim(
-          "→ Conecta Discord con: pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin",
-        ),
-      );
-      deps.print(
-        c.dim("→ Conecta LinkedIn con: pnpm -s cli accounts connect linkedin --broker <slug>"),
-      );
-      deps.print(
-        c.dim("→ Conecta TikTok con: pnpm -s cli accounts connect tiktok --broker <slug>"),
-      );
+      for (const platform of CONNECT_ORDER) {
+        deps.print(c.dim(`→ Conecta ${PLATFORM_TEXT[platform]} con: ${CONNECT_HINT[platform]}`));
+      }
       return 0;
     }
     const now = deps.now();
@@ -157,9 +137,52 @@ export function runAccounts(deps: AccountsDeps) {
     if (accounts.some((account) => account.status === "expired" || account.status === "error")) {
       deps.print(c.dim("→ Una cuenta vencida o con error se reconecta con accounts connect"));
     }
+    // F9-T19: las redes sin ninguna cuenta (de las que alguien de la lista puede usar), con su
+    // comando. Portal y Marketplace solo si algún corredor tiene propiedades (una marca no).
+    const listings = [...brokers.values()].some((broker) => brokerHoldsListings(broker));
+    const missing = CONNECT_ORDER.filter(
+      (platform) =>
+        (listings || (POST_PLATFORMS as readonly Platform[]).includes(platform)) &&
+        !accounts.some((account) => account.platform === platform && account.status !== "revoked"),
+    );
+    if (missing.length > 0) {
+      deps.print(
+        c.dim(`Sin cuenta: ${missing.map((platform) => PLATFORM_TEXT[platform]).join(", ")}`),
+      );
+      for (const platform of missing) {
+        deps.print(c.dim(`→ ${PLATFORM_TEXT[platform]}: ${CONNECT_HINT[platform]}`));
+      }
+    }
     return 0;
   });
 }
+
+/** El orden en que la lista sugiere conectar las plataformas. */
+const CONNECT_ORDER: readonly Platform[] = [
+  "instagram",
+  "portal_inmobiliario",
+  "fb_marketplace",
+  "discord",
+  "linkedin",
+  "x",
+  "tiktok",
+];
+
+/**
+ * Cómo se conecta cada plataforma (F9-T19): el comando de la CLI, y lo que necesita. Instagram,
+ * LinkedIn, X y TikTok también tienen su botón en Cuentas del panel.
+ */
+const CONNECT_HINT: Readonly<Record<Platform, string>> = {
+  instagram:
+    "pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin (con HTTPS, el botón de Cuentas)",
+  portal_inmobiliario: "pnpm -s cli accounts connect mercadolibre --broker <slug>",
+  fb_marketplace: "pnpm -s cli accounts connect marketplace --broker <slug>",
+  discord:
+    "pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin (la URL del webhook del canal)",
+  linkedin: "pnpm -s cli accounts connect linkedin --broker <slug> (queda a mano)",
+  x: "pnpm -s cli accounts connect x --broker <slug> (con tope de gasto: accounts spend-limit)",
+  tiktok: "pnpm -s cli accounts connect tiktok --broker <slug> (el video queda como borrador)",
+};
 
 export type ConnectOptions = {
   broker?: string;
@@ -247,11 +270,11 @@ async function connectTikTok(deps: AccountsDeps, broker: string): Promise<number
     deps.client.accounts.$get({ query: {} }),
     accountListResponseSchema,
   );
-  if (connect.tiktok === undefined || !connect.tiktok.configured) {
+  if (!connect.tiktok.configured) {
     throw new CliError(
       "TIKTOK_NOT_CONFIGURED",
       "A la API le falta la app de TikTok (TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET)",
-      "Crea la app en developers.tiktok.com (Login Kit y Content Posting API), anota el par en el .env de la API y reiníciala: docs/integraciones/tiktok.md",
+      "Crea la app en developers.tiktok.com (Login Kit y Content Posting API), anota TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET y TIKTOK_REDIRECT_URI en el .env de la API y reiníciala (docs/08-guia-operador.md, docs/integraciones/tiktok.md)",
     );
   }
   // El host lo decide la API (el de la URI de retorno: la cookie del `state` lo distingue).
@@ -534,7 +557,7 @@ async function connectLinkedIn(deps: AccountsDeps, broker: string): Promise<numb
     throw new CliError(
       "LINKEDIN_NOT_CONFIGURED",
       "A la API le falta la app de LinkedIn: LINKEDIN_CLIENT_ID y LINKEDIN_CLIENT_SECRET",
-      "Créala en linkedin.com/developers (Share on LinkedIn y Sign In with LinkedIn), anótalas en .env y reinicia la API (docs/integraciones/linkedin.md)",
+      "Créala en linkedin.com/developers (Share on LinkedIn y Sign In with LinkedIn), anota LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET y LINKEDIN_REDIRECT_URI en .env y reinicia la API (docs/08-guia-operador.md, docs/integraciones/linkedin.md)",
     );
   }
   const url = `${connect.linkedin.startUrl}?broker=${encodeURIComponent(broker)}`;
@@ -576,7 +599,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
     ) {
       throw new CliError(
         "PLATFORM_INVALID",
-        `Se conecta instagram, mercadolibre, marketplace, discord, linkedin o tiktok: "${platform}"`,
+        `Se conecta instagram, mercadolibre, marketplace, discord, linkedin, x o tiktok: "${platform}"`,
       );
     }
     // Una opción de otro canal no se ignora en silencio.
@@ -597,7 +620,7 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
     if (foreign !== null) {
       throw new CliError(
         "OPTION_NOT_FOR_PLATFORM",
-        `${foreign} no es para ${channel}${options.manual && channel === "marketplace" ? " a mano" : ""}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label (o --manual, sin --label); Discord, --webhook-stdin; TikTok, ninguna`,
+        `${foreign} no es para ${channel}${options.manual && channel === "marketplace" ? " a mano" : ""}: Instagram usa --token-stdin; Mercado Libre, --url-stdin; Marketplace, --label (o --manual, sin --label); Discord, --webhook-stdin; LinkedIn, X y TikTok, ninguna`,
       );
     }
     if (options.broker === undefined) {
@@ -714,11 +737,11 @@ async function connectX(deps: AccountsDeps, options: ConnectOptions): Promise<nu
     deps.client.accounts.$get({ query: {} }),
     accountListResponseSchema,
   );
-  if (connect.x === undefined || !connect.x.configured) {
+  if (!connect.x.configured) {
     throw new CliError(
       "X_NOT_CONFIGURED",
-      "Falta configurar la app de X en la API: anota X_CLIENT_ID y X_CLIENT_SECRET en .env y reinicia",
-      "Guía: docs/integraciones/x.md (Cómo conectar)",
+      "A la API le falta la app de X (X_CLIENT_ID y X_CLIENT_SECRET)",
+      "Créala en console.x.com (OAuth 2.0, lectura y escritura), anota X_CLIENT_ID, X_CLIENT_SECRET y X_REDIRECT_URI en .env y reinicia la API (docs/08-guia-operador.md, docs/integraciones/x.md)",
     );
   }
   const url = `${connect.x.startUrl}?broker=${encodeURIComponent(broker)}`;
@@ -966,15 +989,24 @@ export function register(program: Command, ctx: CliContext): void {
   const accounts = program
     .command("accounts")
     .description(
-      "Cuentas conectadas (Instagram, Mercado Libre, Marketplace, Discord, LinkedIn y TikTok): estado y vencimiento",
+      "Cuentas conectadas (Instagram, Mercado Libre, Marketplace, Discord, LinkedIn, X y TikTok): estado, vencimiento y cómo conectar las que faltan",
     )
     .action(() => exitWith(() => runAccounts(deps())));
   accounts
     .command("connect")
     .description(
-      "Conecta una cuenta: Instagram con el token de Generate token; Mercado Libre con el enlace y la dirección de vuelta pegada; Marketplace iniciando sesión en una ventana de Chromium; Discord con la URL del webhook pegada; LinkedIn con su OAuth en el navegador; TikTok con el enlace de Login Kit en el navegador",
+      "Conecta una cuenta: Instagram con el token de Generate token (o su OAuth con HTTPS); Mercado Libre con el enlace y la dirección de vuelta pegada; Marketplace iniciando sesión en una ventana de Chromium; Discord con la URL del webhook pegada (--webhook-stdin); LinkedIn, X y TikTok con su OAuth en el navegador donde tienes el panel abierto. Si a la API le falta la app de una red, dice qué variable anotar en .env (docs/08-guia-operador.md)",
     )
-    .argument("<canal>", "instagram, mercadolibre, marketplace, discord, linkedin o tiktok")
+    .argument("<canal>", "instagram, mercadolibre, marketplace, discord, linkedin, x o tiktok")
+    .addHelpText(
+      "after",
+      `
+Ejemplos:
+  pbpaste | pnpm -s cli accounts connect discord --broker agentpey --webhook-stdin
+  pnpm -s cli accounts connect linkedin --broker vinny   (queda a mano: accounts mode <id> api, con S2 y S3)
+  pnpm -s cli accounts connect x --broker agentpey       (tope de gasto: accounts spend-limit <id> <dólares>)
+  pnpm -s cli accounts connect tiktok --broker agentpey  (el video llega como borrador a la app)`,
+    )
     .option("--broker <slug>", "corredor de la cuenta")
     .option(
       "--label <nombre>",

@@ -160,11 +160,33 @@ describe("accounts y accounts refresh", () => {
     );
   });
 
-  it("sin cuentas dice cómo conectar una", async () => {
+  it("sin cuentas dice cómo conectar cada red, también X (F9-T19)", async () => {
     const { h, deps } = await setup();
 
     expect(await runAccounts(deps())).toBe(0);
     expect(h.text()).toContain("No hay cuentas conectadas");
+    for (const command of [
+      "accounts connect instagram --broker <slug> --token-stdin",
+      "accounts connect discord --broker <slug> --webhook-stdin",
+      "accounts connect linkedin --broker <slug>",
+      "accounts connect x --broker <slug>",
+      "accounts connect tiktok --broker <slug>",
+    ]) {
+      expect(h.text()).toContain(command);
+    }
+  });
+
+  it("con cuentas, dice cuáles redes faltan y cómo conectarlas (F9-T19)", async () => {
+    const { h, deps, connect } = await setup();
+    await connect();
+
+    expect(await runAccounts(deps())).toBe(0);
+    const text = h.text();
+    expect(text).toContain(
+      "Sin cuenta: Portal Inmobiliario, Facebook Marketplace, Discord, LinkedIn, X, TikTok",
+    );
+    expect(text).toContain("→ X: pnpm -s cli accounts connect x --broker <slug>");
+    expect(text).not.toContain("→ Instagram:");
   });
 
   it("refresh: un token que no vence dice que no se renueva (F9-T02)", async () => {
@@ -618,6 +640,10 @@ describe("accounts connect x y accounts spend-limit (F9-T16)", () => {
     const off = await xSetup({ configured: false });
     expect(await runConnect(off.deps(), "x", { broker: "marca" })).toBe(1);
     expect(off.h.errors()).toContain("X_NOT_CONFIGURED");
+    // Qué hacer (F9-T19): las tres variables y la guía.
+    for (const hint of ["X_CLIENT_ID", "X_REDIRECT_URI", "docs/08-guia-operador.md"]) {
+      expect(off.h.errors()).toContain(hint);
+    }
     const { h, deps, opened } = await xSetup();
     expect(await runConnect(deps(), "x", { broker: "marca", tokenStdin: true })).toBe(1);
     expect(h.errors()).toContain("OPTION_NOT_FOR_PLATFORM");

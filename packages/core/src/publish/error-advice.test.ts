@@ -88,13 +88,36 @@ const WITH_ADVICE = [
   "TOKEN_REFRESH_ABORTED",
   "IG_UNEXPECTED_RESPONSE",
   "ML_UNEXPECTED_RESPONSE",
+  // F9-T19: Instagram también publica posts de marca; estos dos dejan de caer en el genérico.
+  "IG_REQUEST_REJECTED",
+  "IG_MEDIA_FETCH_FAILED",
+];
+
+// F9-T19: conectar una red y retirar un post. Los de cada publisher los recorre
+// `packages/publishers/src/error-advice.test.ts` leyendo su código.
+const F9_CONNECT_AND_RETIRE = [
+  "INSTAGRAM_NOT_CONFIGURED",
+  "LINKEDIN_NOT_CONFIGURED",
+  "X_NOT_CONFIGURED",
+  "TIKTOK_NOT_CONFIGURED",
+  "OAUTH_DENIED",
+  "OAUTH_STATE_INVALID",
+  "OAUTH_CODE_MISSING",
+  "DISCORD_WEBHOOK_URL_INVALID",
+  "X_PERMISSION_MISSING",
+  "X_SPEND_LIMIT_INVALID",
+  "LINKEDIN_PERMISSION_DENIED",
+  "LINKEDIN_APP_CREDENTIALS_INVALID",
+  "TIKTOK_PERMISSION_DENIED",
+  "TIKTOK_APP_CREDENTIALS_INVALID",
+  "X_APP_CREDENTIALS_INVALID",
+  "LINKEDIN_DELETE_UNSUPPORTED",
+  "RETIRE_DELETE_UNSUPPORTED",
 ];
 
 // Raros o de programación: el genérico basta (reintentar o descartar).
 const GENERIC_ON_PURPOSE = [
-  "IG_REQUEST_REJECTED",
   "ML_REQUEST_REJECTED",
-  "IG_MEDIA_FETCH_FAILED",
   "STORAGE_NOT_FOUND",
   "PUBLICATION_PROGRESS_INVALID",
   "PUBLISH_RESULT_NOT_SAVED",
@@ -110,6 +133,12 @@ describe("publicationErrorAdvice", () => {
     const advice = publicationErrorAdvice(code);
     expect(advice).not.toBe(GENERIC_ERROR_ADVICE);
     expect(advice.length).toBeGreaterThan(10);
+    expect(advice.endsWith(".")).toBe(true);
+  });
+
+  it.each(F9_CONNECT_AND_RETIRE)("%s (F9) dice qué hacer", (code) => {
+    const advice = publicationErrorAdvice(code);
+    expect(advice).not.toBe(GENERIC_ERROR_ADVICE);
     expect(advice.endsWith(".")).toBe(true);
   });
 

@@ -34,6 +34,28 @@ function MarketplaceDetails({ account }: { account: PlatformAccountView }) {
   );
 }
 
+/** Cuándo se renovó por última vez, o cómo se renueva si todavía no (F9-T19: las redes de posts). */
+function renewalText(account: PlatformAccountView): string {
+  if (account.tokenRefreshedAt !== null) return accountDateText(account.tokenRefreshedAt);
+  switch (account.platform) {
+    case "portal_inmobiliario":
+      return "Todavía no (se renueva sola cada 7 días mientras el worker corre)";
+    case "discord":
+      return "No hace falta (un webhook no vence)";
+    case "linkedin":
+      return "No se renueva sola: reconéctala antes de que venza";
+    case "x":
+    case "tiktok":
+      return "Todavía no (se renueva sola al publicar)";
+    default:
+      return "Todavía no (se renueva sola a las 24 h de conectarla)";
+  }
+}
+
+/** Dólares en español de Chile: `US$10`, `US$2,5`. */
+const usdText = (value: number) =>
+  `US$${value.toLocaleString("es-CL", { maximumFractionDigits: 4 })}`;
+
 /**
  * Una cuenta conectada (Instagram o Mercado Libre, desde F4-T21; Marketplace, desde F5-T12):
  * estado, vencimiento, renovación, permisos (en Marketplace, la sesión vista y el último inicio de
@@ -88,13 +110,23 @@ export function AccountCard({
             <AccountExpiry account={account} now={now} />
           </dd>
           <dt className="text-slate-500">Última renovación</dt>
-          <dd>
-            {account.tokenRefreshedAt === null
-              ? account.platform === "portal_inmobiliario"
-                ? "Todavía no (se renueva sola cada 7 días mientras el worker corre)"
-                : "Todavía no (se renueva sola a las 24 h de conectarla)"
-              : accountDateText(account.tokenRefreshedAt)}
-          </dd>
+          <dd>{renewalText(account)}</dd>
+          {account.publishingMode !== null && (
+            <>
+              <dt className="text-slate-500">Modo</dt>
+              <dd>
+                {account.publishingMode === "manual"
+                  ? "A mano (deja el texto listo; publicas tú y pegas el enlace)"
+                  : "Por la API"}
+              </dd>
+            </>
+          )}
+          {account.spendLimitUsd !== undefined && (
+            <>
+              <dt className="text-slate-500">Tope de gasto</dt>
+              <dd>{usdText(account.spendLimitUsd)} al mes</dd>
+            </>
+          )}
           <dt className="text-slate-500">Tipo</dt>
           <dd>{account.accountType ?? "—"}</dd>
           <dt className="text-slate-500">Permisos</dt>

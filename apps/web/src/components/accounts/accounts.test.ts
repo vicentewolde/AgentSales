@@ -54,6 +54,15 @@ describe("oauthErrorText", () => {
     expect(oauthErrorText("IG_OTRO")).toBe("No se pudo conectar Instagram (IG_OTRO).");
     expect(oauthErrorText("<b>hola</b>")).toBe("No se pudo conectar Instagram.");
   });
+
+  it("X tiene sus textos (F9-T19): el par que falta y la conexión rechazada", () => {
+    expect(oauthErrorText("X_NOT_CONFIGURED", "x")).toContain("X_CLIENT_ID");
+    expect(oauthErrorText("OAUTH_DENIED", "x")).toBe(
+      "Rechazaste los permisos en X: no se conectó nada.",
+    );
+    expect(oauthErrorText("X_PERMISSION_MISSING", "x")).toContain("vuelve a conectar");
+    expect(oauthErrorText("X_OTRO", "x")).toBe("No se pudo conectar X (X_OTRO).");
+  });
 });
 
 describe("visibleAccounts", () => {

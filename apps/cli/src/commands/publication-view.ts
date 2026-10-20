@@ -150,15 +150,33 @@ export function renderPublications(publications: readonly PublicationView[], c: 
       ? []
       : [`  ${publication.id}:`, ...lines.map((line) => `    ${line}`)];
   });
-  return [table, ...reasons, ...manual].join("\n");
+  const advice = publications.flatMap((publication) => {
+    const line = adviceText(publication);
+    return line === null ? [] : [c.dim(`  ${publication.id}: ${line}`)];
+  });
+  return [table, ...reasons, ...advice, ...manual].join("\n");
+}
+
+/**
+ * Qué hacer con una publicación fallida (`errorAdvice`, spec F6 §4.5; F9-T19 también en los posts):
+ * `null` si no falló o la API no mandó consejo.
+ */
+export function adviceText(
+  publication: Pick<PublicationView, "status" | "errorAdvice">,
+): string | null {
+  return publication.status === "failed" && publication.errorAdvice !== null
+    ? `Qué hacer: ${publication.errorAdvice}`
+    : null;
 }
 
 /** Una línea por publicación al terminar de publicar: estado, modo, enlace o error y, en Portal, su estado allá. */
 export function renderPublicationResult(publication: PublicationView, c: Colors): string {
   const head = `${publicationName(publication)}: ${paintPublicationStatus(publication, c)} (${publicationModeText(publication.dryRun)})`;
   const outcome = outcomeOf(publication, c);
+  const advice = adviceText(publication);
   const lines = [
     ...(outcome === "" ? [] : [outcome]),
+    ...(advice === null ? [] : [c.dim(advice)]),
     ...renderRemoteState(publication, c),
     ...renderManual(publication, c),
   ];
