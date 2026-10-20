@@ -11,6 +11,7 @@ import {
   type InstagramAuth,
   type MercadoLibreAuth,
   type SessionClient,
+  type XAuth,
 } from "@agentsales/core";
 import {
   createFakePasswordHasher,
@@ -118,6 +119,55 @@ export function fakeDiscordWebhooks(): DiscordWebhooks & { calls: string[] } {
       }
       return { id, name: "AgentSales", guildId: "111", channelId: "222" };
     },
+  };
+}
+
+/** El verificador de PKCE de los tests de X (43 caracteres, como uno de verdad). */
+export const TEST_PKCE_VERIFIER = "verificador-pkce-de-prueba-0123456789abcdefgh";
+
+/**
+ * X falso para la API (F9-T16): canjea un código con su verificador y responde `/2/users/me`, y
+ * registra las llamadas (el código y el verificador, para revisar que llegó el de la cookie). Un
+ * código que empiece con `malo` es `X_AUTH_INVALID`, y uno con `sin-permisos`, un canje sin
+ * `tweet.write`. El refresco entrega un par nuevo (`…-refrescado-<n>`).
+ */
+export function fakeXAuth(): XAuth & { calls: Array<{ code: string; verifier: string }> } {
+  const calls: Array<{ code: string; verifier: string }> = [];
+  let refreshes = 0;
+  return {
+    calls,
+    authorizeUrl: (state, challenge) =>
+      `https://x.com/i/oauth2/authorize?state=${encodeURIComponent(state)}&code_challenge=${challenge}`,
+    async exchangeCode(code, verifier) {
+      calls.push({ code, verifier });
+      if (code.startsWith("malo")) {
+        throw new AppError("X_AUTH_INVALID", "X no acepta el acceso de la cuenta", {
+          details: { oauthError: "invalid_grant" },
+        });
+      }
+      return {
+        accessToken: `access-${code}`,
+        refreshToken: `refresh-${code}`,
+        accessTokenExpiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+        refreshTokenExpiresAt: null,
+        scopes: code.startsWith("sin-permisos")
+          ? ["tweet.read", "users.read", "offline.access"]
+          : ["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"],
+      };
+    },
+    async me() {
+      return { id: "12345", username: "agentpey", name: "AgentPey" };
+    },
+    async refresh(refreshToken) {
+      refreshes += 1;
+      return {
+        accessToken: `${refreshToken}-access-refrescado-${refreshes}`,
+        refreshToken: `${refreshToken}-refrescado-${refreshes}`,
+        accessTokenExpiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+        refreshTokenExpiresAt: null,
+      };
+    },
+    isRejected: () => false,
   };
 }
 
@@ -371,6 +421,13 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     publications,
     instagram: { auth: fakeInstagramAuth(), oauthConfigured: true, secureCookie: false },
     discord: fakeDiscordWebhooks(),
+    x: {
+      auth: fakeXAuth(),
+      configured: true,
+      secureCookie: false,
+      pkce: () => ({ verifier: TEST_PKCE_VERIFIER, challenge: "desafio-de-prueba" }),
+      startUrl: "http://127.0.0.1:8787/api/oauth/x/start",
+    },
     mercadoLibre: {
       auth: fakeMercadoLibreAuth(),
       configured: true,

@@ -17,6 +17,7 @@ import type { PostLockedRepositories } from "../ports/post-lock.js";
 import type { Post } from "../post.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { ACTIVE_PUBLICATION_STATUSES } from "../publication-state.js";
+import { X_MAX_IMAGES } from "../social/networks.js";
 import {
   listingSubject,
   type PostSubject,
@@ -209,6 +210,15 @@ const discordVideo = (media: readonly Media[]): Media | null => {
   return candidates[0] ?? null;
 };
 
+/**
+ * El video de un post para X (F9-T16): el video reducido de X (`x_video`, 720p, F9-T10) de su
+ * primer video, que cabe en el máximo de 1280×1024 de la doc (`x.md` §5.3). Sin él, falta procesar.
+ */
+const xVideo = (media: readonly Media[]): Media | null => {
+  const first = videosOf(media)[0];
+  return first === undefined ? null : variantOf(media, first.id, "x_video");
+};
+
 const postMediaMissing = (platform: Platform, message: string) =>
   new AppError("CONTENT_NOT_READY", message, { details: { platform } });
 
@@ -265,7 +275,8 @@ function instagramPostPlan(kind: Post["kind"], media: readonly Media[]): Publica
  * El formato y los medios de un post en una red (spec F9 §4.4 y §4.6), según lo que lleva
  * (`post.kind`). Instagram tiene su propia selección (`instagramPostPlan`, F9-T13). En las demás
  * redes: un texto solo va sin medios (TikTok lo rechaza); una imagen o un carrusel, con sus
- * `ig_4x5`; un video, con su `ig_reel` (en Discord, la variante más liviana, `discordVideo`, F9-T14).
+ * `ig_4x5`; un video, con su `ig_reel` (en Discord, la variante más liviana, `discordVideo`, F9-T14;
+ * en X, el video reducido `x_video` y hasta 4 imágenes, F9-T16).
  * Las verificaciones de cada red (X: hasta 4 imágenes, spec F9 §4.4) son de la revisión del texto,
  * no de aquí, y las variantes propias de cada red (el video reducido de X) las afinan sus tareas
  * (F9-T14 a T16). Lo que falta procesar es `CONTENT_NOT_READY`. Portal y Marketplace no publican
@@ -289,7 +300,12 @@ export function postPublicationPlan(
     return { format: "post", mediaIds: [] };
   }
   if (kind === "video") {
-    const video = platform === "discord" ? discordVideo(media) : postVideo(media);
+    const video =
+      platform === "discord"
+        ? discordVideo(media)
+        : platform === "x"
+          ? xVideo(media)
+          : postVideo(media);
     if (video === null) {
       throw postMediaMissing(platform, "Falta el video procesado del post: espera a que termine");
     }
@@ -305,7 +321,9 @@ export function postPublicationPlan(
       "Faltan las imágenes procesadas del post: espera a que terminen",
     );
   }
-  return { format: "post", mediaIds: images.map((item) => item.id) };
+  // X lleva hasta 4 imágenes (la revisión del texto ya frena un post con más, F9-T11).
+  const kept = platform === "x" ? images.slice(0, X_MAX_IMAGES) : images;
+  return { format: "post", mediaIds: kept.map((item) => item.id) };
 }
 
 /** Una publicación de un post por abrir: la de un aviso más su idioma (el del texto). */

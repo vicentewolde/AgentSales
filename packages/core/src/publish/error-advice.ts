@@ -126,6 +126,22 @@ const ADVICE: Readonly<Record<string, string>> = {
     "Un archivo pesa más de lo que acepta Discord: quita el medio o súbelo a mano al canal.",
   DISCORD_MEDIA_UNAVAILABLE: RETRY_LATER,
   DISCORD_UNREACHABLE: RETRY_LATER,
+  // X (F9-T16): el saldo, el tope y la marca del enlace son decisiones del operador.
+  X_PAYMENT_REQUIRED:
+    "Recarga créditos en la consola de X (console.x.com, Billing) o revisa su tope de gasto, y reintenta.",
+  X_SPEND_LIMIT_REACHED:
+    "Sube el tope de la cuenta con accounts spend-limit <id> <dólares> o espera al mes siguiente, y reintenta.",
+  X_LINK_NOT_ALLOWED:
+    "Marca el post para permitir el enlace en X (cuesta US$0,20) o quita el enlace del texto, apruébalo y reintenta.",
+  X_RATE_LIMITED:
+    "X limitó los envíos: el sistema lo reprograma solo hasta 3 veces; si no, reintenta más tarde.",
+  X_AUTH_INVALID: RECONNECT,
+  X_FORBIDDEN:
+    "X no dejó publicar (permisos de la app, el video o la cuenta): revisa lo que dice el mensaje y reintenta.",
+  X_REQUEST_REJECTED: "Corrige lo que dice el mensaje (el texto o los medios) y reintenta.",
+  X_MEDIA_REJECTED: "X no aceptó un medio: revisa el video o las imágenes del post y reintenta.",
+  X_MEDIA_UNAVAILABLE: RETRY_LATER,
+  X_UNREACHABLE: RETRY_LATER,
   // Del sistema.
   PUBLISHER_NOT_CONFIGURED: ASK_HELP,
   INTERNAL_ERROR: ASK_HELP,

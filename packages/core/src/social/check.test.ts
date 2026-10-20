@@ -24,14 +24,19 @@ const PROFILE = {
   defaultHashtags: ["#corretaje"],
 };
 
-type PostFields = Pick<Post, "kind" | "topic" | "brief" | "briefOrigin" | "source">;
+type PostFields = Pick<
+  Post,
+  "kind" | "topic" | "brief" | "briefOrigin" | "source" | "xLinkAllowed"
+>;
 
+// Con la marca del enlace en X (F9-T16): los casos de enlace en X sin ella van aparte.
 const OPERATOR_POST: PostFields = {
   kind: "image",
   topic: "Lo que aprendimos en Valparaíso",
   brief: "Contar que ya integramos Discord. Más detalles en https://agentpey.com/discord",
   briefOrigin: "operator",
   source: "manual",
+  xLinkAllowed: true,
 };
 
 function context(
@@ -266,6 +271,20 @@ describe("checkPostContent: enlaces", () => {
   it("en X, un enlace de los hechos que el operador no marcó en el brief no se permite", () => {
     expect(codes("x", "La guía: agentpey.com/guia")).toEqual(["LINK_NOT_ALLOWED", "LINK_COST"]);
     expect(codes("linkedin", "La guía: agentpey.com/guia")).toEqual([]);
+  });
+
+  it("en X, un enlace del brief sin la marca explícita del post no se permite (F9-T16)", () => {
+    const unmarked = context({ xLinkAllowed: false });
+    const checks = check("x", "Ya integramos Discord: https://agentpey.com/discord", unmarked);
+    expect(checks.map((item) => item.code)).toEqual(["LINK_NOT_ALLOWED", "LINK_COST"]);
+    expect(checks[0]?.message).toContain("márcalo en el post");
+    expect(checks[0]?.message).toContain("US$0,20");
+    expect(hasContentErrors(checks)).toBe(true);
+    // Sin enlace, la marca no importa; en otra red, tampoco.
+    expect(codes("x", "Ya integramos Discord.", unmarked)).toEqual([]);
+    expect(
+      codes("linkedin", "Ya integramos Discord: https://agentpey.com/discord", unmarked),
+    ).toEqual([]);
   });
 });
 

@@ -244,4 +244,21 @@ export interface PublicationRepository {
    * Marketplace). Cuenta todos: también los reintentos de la misma publicación.
    */
   countLiveAttemptsSince(platformAccountId: string, since: Date): Promise<number>;
+  /**
+   * Anota el costo estimado de la publicación (`cost_usd`, spec F9 §4.12; hoy solo X), solo con la
+   * publicación en `publishing` (`PUBLICATION_NOT_PUBLISHING` si no), sin evento. `null` lo borra.
+   */
+  setCostUsd(id: string, costUsd: number | null): Promise<Publication>;
+  /**
+   * El gasto estimado de una cuenta desde `since`, incluido (F9-T16: el tope `spendLimitUsd` de X):
+   * la suma de `cost_usd` de sus publicaciones en `live` (no `dry_run`) que pudieron cobrar
+   * (`COST_COUNTED_STATUSES`: publicando, publicadas, pausadas, retiradas o con resultado dudoso;
+   * nunca las fallidas ni las canceladas), por `published_at` o, sin ella, `updated_at`. Sin
+   * contar `excludePublicationId` (la del intento en curso).
+   */
+  sumCostUsdSince(
+    platformAccountId: string,
+    since: Date,
+    options?: { excludePublicationId?: string },
+  ): Promise<number>;
 }

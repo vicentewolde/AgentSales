@@ -19,6 +19,11 @@
       "types": "./dist/src/marketplace/index.d.ts",
       "default": "./dist/src/marketplace/index.js"
     },
+    "./x": {
+      "@agentsales/source": "./src/x/index.ts",
+      "types": "./dist/src/x/index.d.ts",
+      "default": "./dist/src/x/index.js"
+    },
     "./uf": {
       "@agentsales/source": "./src/uf/index.ts",
       "types": "./dist/src/uf/index.d.ts",

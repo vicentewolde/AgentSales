@@ -714,6 +714,11 @@ export const platformAccountViewSchema = z.object({
    * `manual` (el corredor publica él mismo); `null` en las demás plataformas.
    */
   marketplaceMode: z.enum(["profile", "manual"]).nullable(),
+  /**
+   * X (F9-T16, spec F9 §4.12): el tope de gasto del mes de la cuenta (`meta.spendLimitUsd`, o el de
+   * por defecto, US$10). Ausente en las demás plataformas.
+   */
+  spendLimitUsd: z.number().nonnegative().optional(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -751,6 +756,14 @@ export const accountListResponseSchema = z.object({
      * quedó de antes se pasa a mano.
      */
     marketplace: z.object({ automation: z.boolean() }),
+    /**
+     * X (F9-T16, spec F9 §4.7): `configured` si la API tiene el par de la app (`X_CLIENT_ID` y
+     * `X_CLIENT_SECRET`), y el inicio del OAuth con PKCE en el host de `X_REDIRECT_URI` (la cookie
+     * firmada del `state` y del verificador lo distingue): el panel y la CLI le suman
+     * `?broker=<slug>` y lo abren en el navegador con la sesión del panel. Ausente en una API
+     * anterior a F9-T16.
+     */
+    x: z.object({ configured: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) }).optional(),
   }),
 });
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
@@ -769,6 +782,13 @@ export type AccountResponse = z.infer<typeof accountResponseSchema>;
  */
 export const accountRefreshBodySchema = z.object({ force: z.boolean().optional() });
 export type AccountRefreshBody = z.infer<typeof accountRefreshBodySchema>;
+
+/**
+ * `POST /accounts/:id/spend-limit` (F9-T16, spec F9 §4.12; administrador): el tope de gasto del mes
+ * de una cuenta de X, en dólares (0 a 1.000). Core lo redondea a 4 decimales.
+ */
+export const xSpendLimitBodySchema = z.object({ spendLimitUsd: z.number().finite() }).strict();
+export type XSpendLimitBody = z.infer<typeof xSpendLimitBodySchema>;
 
 /**
  * Lo que pasó al refrescar (los valores vienen de core): `refreshed` (token nuevo y vencimiento
@@ -1283,6 +1303,8 @@ export const createPostBodySchema = z
     kind: z.enum(POST_KINDS).optional(),
     pillar: postPillar.optional(),
     plannedAt: postDateSchema.nullable().optional(),
+    /** La marca que permite un enlace en el texto de X (F9-T16: cuesta US$0,20); por defecto no. */
+    xLinkAllowed: z.boolean().optional(),
   })
   .strict();
 export type CreatePostBody = z.infer<typeof createPostBodySchema>;
@@ -1295,6 +1317,8 @@ export const updatePostBodySchema = z
     kind: z.enum(POST_KINDS).optional(),
     pillar: postPillar.optional(),
     plannedAt: postDateSchema.nullable().optional(),
+    /** La marca que permite un enlace en el texto de X (F9-T16: cuesta US$0,20). */
+    xLinkAllowed: z.boolean().optional(),
   })
   .strict();
 export type UpdatePostBody = z.infer<typeof updatePostBodySchema>;

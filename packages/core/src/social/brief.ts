@@ -66,7 +66,10 @@ export type SocialBrief = {
   /** El brief del post, solo con `briefOrigin = operator`. */
   operatorBrief: string | null;
   kind: Post["kind"];
-  /** Los enlaces del brief del operador: los únicos que se permiten en X (spec F9 §4.4). */
+  /**
+   * Los enlaces del brief del operador: los únicos que se permiten en X (spec F9 §4.4), y solo si
+   * el post tiene la marca explícita (`xLinkAllowed`, F9-T16); sin ella, ninguno.
+   */
   xLinks: string[];
 };
 
@@ -94,7 +97,10 @@ export const xLinksOf = (post: Pick<Post, "brief" | "briefOrigin">): string[] =>
 
 /** Arma el brief de un post con el perfil de **su** marca y su corredor. */
 export function buildSocialBrief(params: {
-  post: Pick<Post, "topic" | "brief" | "briefOrigin" | "source" | "pillar" | "kind">;
+  post: Pick<
+    Post,
+    "topic" | "brief" | "briefOrigin" | "source" | "pillar" | "kind" | "xLinkAllowed"
+  >;
   profile: EditorialProfileView;
   broker: Pick<Broker, "brandName" | "tone" | "fixedHashtags">;
   targets: readonly SocialTarget[];
@@ -115,6 +121,7 @@ export function buildSocialBrief(params: {
     topicIsSource: post.source === "manual",
     operatorBrief: operatorBriefOf(post),
     kind: post.kind,
-    xLinks: xLinksOf(post),
+    // F9-T16: sin la marca del operador, la IA no pone enlaces en X (costarían US$0,20).
+    xLinks: post.xLinkAllowed ? xLinksOf(post) : [],
   };
 }

@@ -4,10 +4,13 @@ import {
   can,
   connectAccount,
   connectMercadoLibreAccount,
+  connectXAccount,
   type InstagramAuth,
   isAppError,
   type MercadoLibreAuth,
   type OAuthStateRepository,
+  type PlatformAccountRepository,
+  type XAuth,
 } from "@agentsales/core";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -70,8 +73,23 @@ export type OAuthStateSigner = {
 export const OAUTH_STATE_PLATFORMS = {
   instagram: "instagram",
   mercadolibre: "mercadolibre",
+  x: "x",
 } as const;
 export type OAuthStatePlatform = (typeof OAUTH_STATE_PLATFORMS)[keyof typeof OAUTH_STATE_PLATFORMS];
+
+/**
+ * La cookie del OAuth de X (F9-T16, spec F9 §4.7): lleva, **firmados**, el corredor, el nonce del
+ * `state` de la URL y el verificador de PKCE (que nunca va en la URL ni en la base). Con HTTPS,
+ * `__Host-agentsales_oauth_x`; sin él (el Mac con `http://127.0.0.1`), la de desarrollo.
+ */
+export const xStateCookieName = (secure: boolean): string =>
+  secure ? "__Host-agentsales_oauth_x" : "agentsales_oauth_state_x";
+
+/** La "plataforma" de la cookie firmada de X: otra que la del `state`, así no sirven cruzados. */
+const X_PKCE_COOKIE_PLATFORM = "x_pkce";
+
+/** Un verificador de PKCE (RFC 7636): de 43 a 128 caracteres sin reservar. */
+const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
 
 /**
  * Verifica un `state`: firma, vencimiento, la plataforma esperada y, si se pide, el corredor.
@@ -124,6 +142,19 @@ export type OAuthDeps = Omit<ConnectAccountDeps, "instagram"> & {
    * del `state` va `Secure` (con HTTPS, como la sesión).
    */
   mercadoLibre: { auth: MercadoLibreAuth; configured: boolean; secureCookie: boolean };
+  /**
+   * X (F9-T16, spec F9 §4.7): OAuth 2.0 con PKCE. `configured` si están `X_CLIENT_ID` y
+   * `X_CLIENT_SECRET`; `secureCookie` con una `X_REDIRECT_URI` `https://`; `pkce` arma el verificador
+   * y su desafío S256 (con `node:crypto`: lo compone `server.ts`, como la firma del `state`).
+   */
+  x: {
+    auth: Pick<XAuth, "authorizeUrl" | "exchangeCode" | "me">;
+    configured: boolean;
+    secureCookie: boolean;
+    pkce: () => { verifier: string; challenge: string };
+  };
+  /** `listByBroker`: conectar X conserva el tope de una cuenta anterior del mismo usuario. */
+  platformAccounts: Pick<PlatformAccountRepository, "upsertConnected" | "listByBroker">;
   oauthState: OAuthStateSigner;
   /** Los `state` ya usados (spec F8 §4.11): el de Instagram sirve una vez, como el de Mercado Libre. */
   oauthStates: Pick<OAuthStateRepository, "markUsed">;
@@ -177,6 +208,44 @@ export function oauthRoutes(deps: OAuthDeps) {
   const mlCookieOptions = oauthStateCookieOptions(deps.mercadoLibre.secureCookie);
   const toPanelFromMercadoLibre = (params: Record<string, string>) =>
     toPanel({ ...params, proveedor: OAUTH_STATE_PLATFORMS.mercadolibre });
+  const xCookieName = xStateCookieName(deps.x.secureCookie);
+  const xCookieOptions = oauthStateCookieOptions(deps.x.secureCookie);
+  const toPanelFromX = (params: Record<string, string>) =>
+    toPanel({ ...params, proveedor: OAUTH_STATE_PLATFORMS.x });
+
+  /**
+   * La vuelta de X (F9-T16): el `state` de la URL firmado, vigente y de X; la cookie firmada con el
+   * mismo corredor y el nonce de **ese** `state`, de donde sale el verificador de PKCE; y el nonce
+   * todavía sin usar (se anota aquí, antes de canjear). `null` si algo no calza: nunca se llama a X.
+   */
+  const takeXState = async (state: string | undefined, cookie: string | undefined) => {
+    if (state === undefined || cookie === undefined) return null;
+    const verified = verifyOAuthStateData(deps.oauthState, state, {
+      platform: OAUTH_STATE_PLATFORMS.x,
+    });
+    if (verified === null) return null;
+    let sealed: Readonly<Record<string, string | number | boolean>>;
+    try {
+      sealed = deps.oauthState.verify(cookie);
+    } catch {
+      return null;
+    }
+    const verifier = sealed.verifier;
+    if (
+      sealed.platform !== X_PKCE_COOKIE_PLATFORM ||
+      sealed.broker !== verified.broker ||
+      typeof sealed.stateNonce !== "string" ||
+      !sameText(sealed.stateNonce, verified.nonce) ||
+      typeof verifier !== "string" ||
+      !PKCE_VERIFIER.test(verifier)
+    ) {
+      return null;
+    }
+    if (!(await deps.oauthStates.markUsed(deps.stateHash(verified.nonce), verified.expiresAt))) {
+      return null;
+    }
+    return { broker: verified.broker, verifier };
+  };
 
   /**
    * El `state` de una vuelta: igual al de su cookie, firmado, vigente, de la plataforma esperada y
@@ -196,99 +265,161 @@ export function oauthRoutes(deps: OAuthDeps) {
       : null;
   };
 
-  return new Hono<AppEnv>()
-    .get("/instagram/start", validated("query", oauthStartQuerySchema), async (c) => {
-      const { broker } = c.req.valid("query");
-      if (!deps.instagram.oauthConfigured) {
-        return c.redirect(toPanel({ error: "INSTAGRAM_NOT_CONFIGURED" }), 302);
-      }
-      const target = await deps.brokers.findBySlug(broker);
-      // Un corredor solo conecta el suyo; el de otro responde como uno que no existe (ADR-0022).
-      if (target === null || !can(requireAuth(c).user, "instagram.connect", target.id)) {
-        return c.redirect(toPanel({ error: "BROKER_NOT_FOUND" }), 302);
-      }
-      // Con la plataforma: un `state` de Mercado Libre no sirve en esta vuelta (spec F4 §4.2).
-      const state = deps.oauthState.sign(
-        { platform: OAUTH_STATE_PLATFORMS.instagram, broker },
-        { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
-      );
-      setCookie(c, cookieName, state, {
-        ...cookieOptions,
-        maxAge: OAUTH_STATE_TTL_SECONDS,
-      });
-      return c.redirect(deps.instagram.auth.authorizeUrl(state), 302);
-    })
-    .get("/instagram/callback", async (c) => {
-      const cookie = getCookie(c, cookieName);
-      // Un `state` sirve una sola vez: la cookie se borra pase lo que pase.
-      deleteCookie(c, cookieName, cookieOptions);
-      const { code, state, error } = c.req.query();
-      // El operador rechazó en Instagram: no es un error de la app, solo un aviso para el panel.
-      if (error !== undefined) return c.redirect(toPanel({ error: "OAUTH_DENIED" }), 302);
-
-      // Sin llamar a Instagram: un `state` ajeno, vencido, de otra plataforma o sin cookie no canjea,
-      // y uno ya usado tampoco (deuda de F3: una vuelta repetida, aun con su cookie).
-      const verified = await takeState(state, cookie, OAUTH_STATE_PLATFORMS.instagram);
-      if (verified === null) return c.redirect(toPanel({ error: "OAUTH_STATE_INVALID" }), 302);
-      const { broker } = verified;
-      if (code === undefined || code === "") {
-        return c.redirect(toPanel({ error: "OAUTH_CODE_MISSING" }), 302);
-      }
-      // Sin el par de la app, el canje mandaría un `client_secret` vacío: ni se intenta.
-      if (!deps.instagram.oauthConfigured) {
-        return c.redirect(toPanel({ error: "INSTAGRAM_NOT_CONFIGURED" }), 302);
-      }
-
-      try {
-        await connectAccount(
-          { ...deps, instagram: deps.instagram.auth },
-          { broker, grant: { kind: "oauth_code", code }, signal: c.req.raw.signal },
+  return (
+    new Hono<AppEnv>()
+      .get("/instagram/start", validated("query", oauthStartQuerySchema), async (c) => {
+        const { broker } = c.req.valid("query");
+        if (!deps.instagram.oauthConfigured) {
+          return c.redirect(toPanel({ error: "INSTAGRAM_NOT_CONFIGURED" }), 302);
+        }
+        const target = await deps.brokers.findBySlug(broker);
+        // Un corredor solo conecta el suyo; el de otro responde como uno que no existe (ADR-0022).
+        if (target === null || !can(requireAuth(c).user, "instagram.connect", target.id)) {
+          return c.redirect(toPanel({ error: "BROKER_NOT_FOUND" }), 302);
+        }
+        // Con la plataforma: un `state` de Mercado Libre no sirve en esta vuelta (spec F4 §4.2).
+        const state = deps.oauthState.sign(
+          { platform: OAUTH_STATE_PLATFORMS.instagram, broker },
+          { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
         );
-        return c.redirect(toPanel({ conectada: "instagram" }), 302);
-      } catch (caught) {
-        const fields = failureFields(caught);
-        deps.logger.warn(fields, "no se pudo conectar la cuenta de Instagram");
-        return c.redirect(toPanel({ error: fields.code }), 302);
-      }
-    })
-    .get("/mercadolibre/callback", async (c) => {
-      const cookie = getCookie(c, mlCookieName);
-      // Un `state` sirve una sola vez: la cookie se borra pase lo que pase.
-      deleteCookie(c, mlCookieName, mlCookieOptions);
-      const { code, state, error } = c.req.query();
-      // El administrador rechazó en Mercado Libre: solo un aviso para el panel.
-      if (error !== undefined)
-        return c.redirect(toPanelFromMercadoLibre({ error: "OAUTH_DENIED" }), 302);
+        setCookie(c, cookieName, state, {
+          ...cookieOptions,
+          maxAge: OAUTH_STATE_TTL_SECONDS,
+        });
+        return c.redirect(deps.instagram.auth.authorizeUrl(state), 302);
+      })
+      .get("/instagram/callback", async (c) => {
+        const cookie = getCookie(c, cookieName);
+        // Un `state` sirve una sola vez: la cookie se borra pase lo que pase.
+        deleteCookie(c, cookieName, cookieOptions);
+        const { code, state, error } = c.req.query();
+        // El operador rechazó en Instagram: no es un error de la app, solo un aviso para el panel.
+        if (error !== undefined) return c.redirect(toPanel({ error: "OAUTH_DENIED" }), 302);
 
-      // Sin llamar a Mercado Libre: un `state` ajeno (también el de Instagram), vencido, ya usado o
-      // sin su cookie no canjea nada.
-      const verified = await takeState(state, cookie, OAUTH_STATE_PLATFORMS.mercadolibre);
-      if (verified === null) {
-        return c.redirect(toPanelFromMercadoLibre({ error: "OAUTH_STATE_INVALID" }), 302);
-      }
-      if (code === undefined || code === "") {
-        return c.redirect(toPanelFromMercadoLibre({ error: "OAUTH_CODE_MISSING" }), 302);
-      }
-      // Sin el par de la app, el canje mandaría un secret vacío: ni se intenta.
-      if (!deps.mercadoLibre.configured) {
-        return c.redirect(toPanelFromMercadoLibre({ error: "MERCADOLIBRE_NOT_CONFIGURED" }), 302);
-      }
+        // Sin llamar a Instagram: un `state` ajeno, vencido, de otra plataforma o sin cookie no canjea,
+        // y uno ya usado tampoco (deuda de F3: una vuelta repetida, aun con su cookie).
+        const verified = await takeState(state, cookie, OAUTH_STATE_PLATFORMS.instagram);
+        if (verified === null) return c.redirect(toPanel({ error: "OAUTH_STATE_INVALID" }), 302);
+        const { broker } = verified;
+        if (code === undefined || code === "") {
+          return c.redirect(toPanel({ error: "OAUTH_CODE_MISSING" }), 302);
+        }
+        // Sin el par de la app, el canje mandaría un `client_secret` vacío: ni se intenta.
+        if (!deps.instagram.oauthConfigured) {
+          return c.redirect(toPanel({ error: "INSTAGRAM_NOT_CONFIGURED" }), 302);
+        }
 
-      try {
-        await connectMercadoLibreAccount(
-          {
-            brokers: deps.brokers,
-            platformAccounts: deps.platformAccounts,
-            mercadoLibre: deps.mercadoLibre.auth,
-            ...(deps.now === undefined ? {} : { now: deps.now }),
-          },
-          { broker: verified.broker, code, signal: c.req.raw.signal },
+        try {
+          await connectAccount(
+            { ...deps, instagram: deps.instagram.auth },
+            { broker, grant: { kind: "oauth_code", code }, signal: c.req.raw.signal },
+          );
+          return c.redirect(toPanel({ conectada: "instagram" }), 302);
+        } catch (caught) {
+          const fields = failureFields(caught);
+          deps.logger.warn(fields, "no se pudo conectar la cuenta de Instagram");
+          return c.redirect(toPanel({ error: fields.code }), 302);
+        }
+      })
+      .get("/mercadolibre/callback", async (c) => {
+        const cookie = getCookie(c, mlCookieName);
+        // Un `state` sirve una sola vez: la cookie se borra pase lo que pase.
+        deleteCookie(c, mlCookieName, mlCookieOptions);
+        const { code, state, error } = c.req.query();
+        // El administrador rechazó en Mercado Libre: solo un aviso para el panel.
+        if (error !== undefined)
+          return c.redirect(toPanelFromMercadoLibre({ error: "OAUTH_DENIED" }), 302);
+
+        // Sin llamar a Mercado Libre: un `state` ajeno (también el de Instagram), vencido, ya usado o
+        // sin su cookie no canjea nada.
+        const verified = await takeState(state, cookie, OAUTH_STATE_PLATFORMS.mercadolibre);
+        if (verified === null) {
+          return c.redirect(toPanelFromMercadoLibre({ error: "OAUTH_STATE_INVALID" }), 302);
+        }
+        if (code === undefined || code === "") {
+          return c.redirect(toPanelFromMercadoLibre({ error: "OAUTH_CODE_MISSING" }), 302);
+        }
+        // Sin el par de la app, el canje mandaría un secret vacío: ni se intenta.
+        if (!deps.mercadoLibre.configured) {
+          return c.redirect(toPanelFromMercadoLibre({ error: "MERCADOLIBRE_NOT_CONFIGURED" }), 302);
+        }
+
+        try {
+          await connectMercadoLibreAccount(
+            {
+              brokers: deps.brokers,
+              platformAccounts: deps.platformAccounts,
+              mercadoLibre: deps.mercadoLibre.auth,
+              ...(deps.now === undefined ? {} : { now: deps.now }),
+            },
+            { broker: verified.broker, code, signal: c.req.raw.signal },
+          );
+          return c.redirect(toPanelFromMercadoLibre({ conectada: "mercadolibre" }), 302);
+        } catch (caught) {
+          const fields = failureFields(caught);
+          deps.logger.warn(fields, "no se pudo conectar la cuenta de Mercado Libre");
+          return c.redirect(toPanelFromMercadoLibre({ error: fields.code }), 302);
+        }
+      })
+      // X (F9-T16, spec F9 §4.7): OAuth 2.0 con PKCE. El inicio pide sesión y `x.connect` (un
+      // corredor conecta la suya); la vuelta la protegen el `state` firmado de un solo uso y la cookie
+      // firmada con el verificador. Las dos terminan en el panel (`?conectada=x&proveedor=x` o
+      // `?error=<código>&proveedor=x`), sin datos de la cuenta en la URL.
+      .get("/x/start", validated("query", oauthStartQuerySchema), async (c) => {
+        const { broker } = c.req.valid("query");
+        if (!deps.x.configured) return c.redirect(toPanelFromX({ error: "X_NOT_CONFIGURED" }), 302);
+        const target = await deps.brokers.findBySlug(broker);
+        // Un corredor solo conecta la suya; la de otro responde como una que no existe (ADR-0022).
+        if (target === null || !can(requireAuth(c).user, "x.connect", target.id)) {
+          return c.redirect(toPanelFromX({ error: "BROKER_NOT_FOUND" }), 302);
+        }
+        const state = deps.oauthState.sign(
+          { platform: OAUTH_STATE_PLATFORMS.x, broker },
+          { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
         );
-        return c.redirect(toPanelFromMercadoLibre({ conectada: "mercadolibre" }), 302);
-      } catch (caught) {
-        const fields = failureFields(caught);
-        deps.logger.warn(fields, "no se pudo conectar la cuenta de Mercado Libre");
-        return c.redirect(toPanelFromMercadoLibre({ error: fields.code }), 302);
-      }
-    });
+        const nonce = verifyOAuthStateData(deps.oauthState, state, {
+          platform: OAUTH_STATE_PLATFORMS.x,
+        })?.nonce;
+        if (nonce === undefined) return c.redirect(toPanelFromX({ error: "INTERNAL_ERROR" }), 302);
+        const { verifier, challenge } = deps.x.pkce();
+        // El verificador va **solo** en la cookie firmada (`HttpOnly`), amarrado a este `state`.
+        const sealed = deps.oauthState.sign(
+          { platform: X_PKCE_COOKIE_PLATFORM, broker, stateNonce: nonce, verifier },
+          { ttlSeconds: OAUTH_STATE_TTL_SECONDS },
+        );
+        setCookie(c, xCookieName, sealed, { ...xCookieOptions, maxAge: OAUTH_STATE_TTL_SECONDS });
+        return c.redirect(deps.x.auth.authorizeUrl(state, challenge), 302);
+      })
+      .get("/x/callback", async (c) => {
+        const cookie = getCookie(c, xCookieName);
+        // Un `state` sirve una sola vez: la cookie se borra pase lo que pase.
+        deleteCookie(c, xCookieName, xCookieOptions);
+        const { code, state, error } = c.req.query();
+        if (error !== undefined) return c.redirect(toPanelFromX({ error: "OAUTH_DENIED" }), 302);
+        // Sin llamar a X: un `state` ajeno, vencido, de otra plataforma, ya usado, sin su cookie o con
+        // la cookie de otro `state` no canjea nada.
+        const taken = await takeXState(state, cookie);
+        if (taken === null) return c.redirect(toPanelFromX({ error: "OAUTH_STATE_INVALID" }), 302);
+        if (code === undefined || code === "") {
+          return c.redirect(toPanelFromX({ error: "OAUTH_CODE_MISSING" }), 302);
+        }
+        if (!deps.x.configured) return c.redirect(toPanelFromX({ error: "X_NOT_CONFIGURED" }), 302);
+        try {
+          await connectXAccount(
+            {
+              brokers: deps.brokers,
+              platformAccounts: deps.platformAccounts,
+              x: deps.x.auth,
+              ...(deps.now === undefined ? {} : { now: deps.now }),
+            },
+            { broker: taken.broker, code, codeVerifier: taken.verifier, signal: c.req.raw.signal },
+          );
+          return c.redirect(toPanelFromX({ conectada: "x" }), 302);
+        } catch (caught) {
+          const fields = failureFields(caught);
+          deps.logger.warn(fields, "no se pudo conectar la cuenta de X");
+          return c.redirect(toPanelFromX({ error: fields.code }), 302);
+        }
+      })
+  );
 }

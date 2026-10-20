@@ -26,6 +26,7 @@ import {
   type PublicationRepository,
   type PublishMode,
   type Subject,
+  type XAuth,
 } from "@agentsales/core";
 import { Hono, type MiddlewareHandler } from "hono";
 import { API_PREFIX } from "./access.js";
@@ -140,6 +141,13 @@ export type AppDeps = {
   instagram: OAuthDeps["instagram"];
   /** Discord (F9-T14): leer el webhook al conectarlo (`createDiscordWebhooks`), sin publicar. */
   discord: AccountRoutesDeps["discord"];
+  /**
+   * X (F9-T16, spec F9 §4.7): el OAuth con PKCE (`createXAuth`, que también renueva el token en el
+   * refresco a pedido), si está el par de la app, si la cookie va `Secure` (`X_REDIRECT_URI`
+   * `https://`), el verificador de PKCE (`createPkcePair`) y el inicio del OAuth en el host de
+   * `X_REDIRECT_URI` (como `instagramStartUrl`).
+   */
+  x: Omit<OAuthDeps["x"], "auth"> & { auth: XAuth; startUrl: string };
   /**
    * Mercado Libre (spec F4 §4.2): el OAuth con la dirección pegada, `configured` si está el par de
    * la app (sin él, conectar no llama) y la dirección de retorno que se muestra (`ML_REDIRECT_URI`).
@@ -334,6 +342,8 @@ export function createApp(input: AppDeps) {
       "/accounts",
       accountRoutes({
         ...deps,
+        // X (F9-T16): el refresco a pedido renueva con la misma función que el intento.
+        refreshers: deps.x.configured ? { x: deps.x.auth } : {},
         stateHash: (nonce) => deps.auth.tokens.hash(nonce),
         instagram: deps.instagram.auth,
         instagramOAuth: deps.instagram.oauthConfigured && deps.instagram.secureCookie,

@@ -289,6 +289,14 @@ const envSchema = z
     // Sin valor: `<PUBLIC_URL>/api/oauth/mercadolibre/callback`, o `.test` en desarrollo (ver abajo).
     ML_REDIRECT_URI: mercadoLibreRedirectUri.optional(),
 
+    // X (F9-T16): el par OAuth 2.0 de la app (cliente confidencial, "Web App") de console.x.com. La
+    // dirección de retorno se registra igual en la app; en el Mac, X pide `127.0.0.1` y no
+    // `localhost` (`docs/integraciones/x.md` §3.1). Sin valor: `<PUBLIC_URL>/api/oauth/x/callback`,
+    // o `http://127.0.0.1:<API_PORT>/api/oauth/x/callback` en desarrollo.
+    X_CLIENT_ID: z.string().optional(),
+    X_CLIENT_SECRET: z.string().optional(),
+    X_REDIRECT_URI: httpUrl.optional(),
+
     // Facebook Marketplace (F5): avisos por día y cuenta (D8), la carpeta de los perfiles del
     // navegador (fuera del proyecto: guardan la sesión de Facebook, ADR-0017; la resuelve
     // `resolveBrowserProfilesDir`) y cuánto espera la ventana el clic del operador (spec F5 §4.5).
@@ -340,6 +348,11 @@ const envSchema = z
       (env.PUBLIC_URL === undefined
         ? DEV_ML_REDIRECT_URI
         : `${env.PUBLIC_URL}${API_PREFIX}/oauth/mercadolibre/callback`),
+    X_REDIRECT_URI:
+      env.X_REDIRECT_URI ??
+      (env.PUBLIC_URL === undefined
+        ? `http://127.0.0.1:${env.API_PORT}${API_PREFIX}/oauth/x/callback`
+        : `${env.PUBLIC_URL}${API_PREFIX}/oauth/x/callback`),
   }));
 
 /** Lo que mira `backupIssues`: el respaldo a R2 necesita su bucket y su token, distintos de los de los medios. */
@@ -397,6 +410,7 @@ type ParsedEnv = {
   PUBLIC_URL?: string | undefined;
   INSTAGRAM_REDIRECT_URI?: string | undefined;
   ML_REDIRECT_URI?: string | undefined;
+  X_REDIRECT_URI?: string | undefined;
 };
 
 /**
@@ -422,7 +436,11 @@ function productionIssues(env: ParsedEnv, ctx: z.RefinementCtx): void {
       message: "debe ser https:// con NODE_ENV=production",
     });
   } else {
-    for (const variable of ["INSTAGRAM_REDIRECT_URI", "ML_REDIRECT_URI"] as const) {
+    for (const variable of [
+      "INSTAGRAM_REDIRECT_URI",
+      "ML_REDIRECT_URI",
+      "X_REDIRECT_URI",
+    ] as const) {
       const value = env[variable];
       if (value !== undefined && !value.startsWith(`${env.PUBLIC_URL}/`)) {
         ctx.addIssue({

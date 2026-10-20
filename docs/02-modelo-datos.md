@@ -193,7 +193,7 @@ Nace en `approved` desde el texto aprobado de su canal, con `content_id` y `medi
 | platform | enum `platform` | Denormalizado para consultas |
 | format | enum `publication_format` | `post` (carrusel o imagen suelta) o `reel` (`PUBLICATION_FORMATS`) |
 | language | text default `es` | Desde F9: el idioma de su texto. Con dos idiomas, un post sale en dos publicaciones de la misma cuenta (spec F9 §4.4) |
-| cost_usd | numeric(10,4) null | Desde F9: el costo estimado de publicar (spec F9 §4.12); hoy solo X (US$0,015, o US$0,20 con enlace), sumado por cuenta y mes para `spendLimitUsd`. `null` en las redes que no cobran. No se extiende a anuncios |
+| cost_usd | numeric(10,4) null | Desde F9: el costo estimado de publicar (spec F9 §4.12); hoy solo X (US$0,015, o US$0,20 con enlace). Lo anota el intento (F9-T16, `setCostUsd`, solo en `publishing`) antes de llamar a X, también en `dry-run` como referencia. `sumCostUsdSince` suma por cuenta el del mes de Chile de las publicaciones en `live` que pudieron cobrar (`COST_COUNTED_STATUSES`: publicando, publicadas, pausadas, retiradas o con resultado dudoso; por `published_at` o, sin ella, `updated_at`) para el tope `meta.spendLimitUsd` de la cuenta de X (por defecto US$10). `null` en las redes que no cobran. No se extiende a anuncios |
 | content_id | uuid FK | Texto aprobado que se publica; no cambia mientras la publicación está activa |
 | media_ids | uuid[] | Medios usados, en orden, fijados al nacer |
 | status | enum `publication_status` | `approved`, `scheduled`, `publishing`, `awaiting_manual_confirm`, `published`, `failed`, `paused`, `unpublished`, `cancelled` (sin `draft` ni `pending_approval` desde la migración `0006`) y, desde F9 (migración `0014`, ADR-0029 punto 8), `outcome_unknown`: el intento se cortó después de enviar y no se sabe si la red publicó; es pendiente (`PENDING_PUBLICATION_STATUSES`) y activa, y solo sale a `published` o `failed` cuando el operador la resuelve. Transiciones en `01-arquitectura.md` |
@@ -228,6 +228,7 @@ Un tema o idea con un texto por red e idioma (`contents.post_id`), a veces medio
 | plan_run_id | uuid FK null | El plan que lo propuso |
 | created_by | uuid FK null | Quién lo creó; `null` al borrar el usuario |
 | rationale | text null | El porqué de una idea de la IA |
+| x_link_allowed | boolean default `false` | Desde F9-T16 (migración `0016`): la marca explícita del operador que permite un enlace en el texto de X (cuesta US$0,20 en vez de US$0,015). Sin ella, un enlace en X impide aprobar (`LINK_NOT_ALLOWED`) y publicar (`X_LINK_NOT_ALLOWED`) |
 
 Índice `(broker_id, status, planned_at)` para el contenido y el calendario de una marca.
 

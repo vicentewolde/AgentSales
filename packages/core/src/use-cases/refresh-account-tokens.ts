@@ -5,6 +5,7 @@ import type { Platform } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import {
   accountTokenNeverExpires,
+  hasAccessToken,
   instagramAccountMetaSchema,
   type PlatformAccount,
   type TokenCredentials,
@@ -13,7 +14,13 @@ import {
 import type { InstagramAuth } from "../ports/instagram-auth.js";
 import type { MercadoLibreAuth } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
-import { refreshMercadoLibreToken } from "./ensure-access-token.js";
+import type { PlatformTokenRefresher } from "../ports/token-refresher.js";
+import {
+  ACCESS_TOKEN_REFRESH_MARGIN_MS,
+  accessTokenStillFresh,
+  ensureRotatingAccessToken,
+  refreshMercadoLibreToken,
+} from "./ensure-access-token.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -29,11 +36,15 @@ export const TOKEN_REFRESH_WINDOW_MS = 30 * DAY_MS;
 export const MERCADOLIBRE_REFRESH_AGE_MS = 7 * DAY_MS;
 
 /**
- * Las plataformas con refresco, cada una con su política. X (y TikTok) entran con su cliente
- * (F9-T16 y T26): su política es la del token que rota (`ensureRotatingAccessToken`, F9-T06), que
- * ya se usa al publicar; aquí sumarán su `case` en `refreshConnected`.
+ * Las plataformas con refresco, cada una con su política. X entra con su cliente (F9-T16) con la
+ * política del token que rota (`ensureRotatingAccessToken`, F9-T06, la misma que al publicar);
+ * TikTok sumará su `case` en `refreshConnected` (T26).
  */
-const REFRESHABLE_PLATFORMS: ReadonlySet<Platform> = new Set(["instagram", "portal_inmobiliario"]);
+const REFRESHABLE_PLATFORMS: ReadonlySet<Platform> = new Set([
+  "instagram",
+  "portal_inmobiliario",
+  "x",
+]);
 
 export type RefreshAccountTokensDeps = {
   platformAccounts: Pick<
@@ -48,6 +59,12 @@ export type RefreshAccountTokensDeps = {
    * y sin cambiarla (Mercado Libre exige el par también para refrescar).
    */
   mercadoLibre: Pick<MercadoLibreAuth, "refresh"> | null;
+  /**
+   * La renovación de las plataformas con token que rota (X, F9-T16; ADR-0029 punto 11): la misma
+   * que usa el intento. Sin la de X (falta `X_CLIENT_ID` o `X_CLIENT_SECRET`), una cuenta de X a la
+   * que le toca es `TOKEN_REFRESH_NOT_CONFIGURED`, sin llamar ni cambiarla.
+   */
+  refreshers?: Readonly<Partial<Record<Platform, PlatformTokenRefresher>>>;
   now?: () => Date;
   /**
    * Algo secundario que no corta el refresco: una `meta` que no calza con el esquema de Instagram
@@ -98,9 +115,10 @@ type RefreshOptions = { force: boolean; signal: AbortSignalLike | undefined };
 /**
  * Refresca el token de **una** cuenta con la política de su plataforma (spec F3 §4.6 y F4 §4.3):
  * lo usan el refresco a pedido de la API (`POST /accounts/:id/refresh`, síncrono) y el lote del job
- * `tokens.refresh`. La cuenta tiene que existir (`ACCOUNT_NOT_FOUND`), ser de Instagram o de Portal
- * (`ACCOUNT_REFRESH_UNSUPPORTED`) y estar `connected` (`ACCOUNT_NOT_CONNECTED`). Las reglas de cada
- * plataforma están en `refreshInstagram` y `refreshMercadoLibre`. Ningún resultado ni error lleva
+ * `tokens.refresh`. La cuenta tiene que existir (`ACCOUNT_NOT_FOUND`), ser de Instagram, de Portal o
+ * de X (`ACCOUNT_REFRESH_UNSUPPORTED`) y estar `connected` (`ACCOUNT_NOT_CONNECTED`). Las reglas de
+ * cada plataforma están en `refreshInstagram`, `refreshMercadoLibre` y `refreshRotating` (X, F9-T16).
+ * Ningún resultado ni error lleva
  * el token.
  */
 export async function refreshAccountToken(
@@ -120,7 +138,7 @@ export async function refreshAccountToken(
   if (!REFRESHABLE_PLATFORMS.has(account.platform)) {
     throw new AppError(
       "ACCOUNT_REFRESH_UNSUPPORTED",
-      `El acceso de ${account.platform} no se refresca: solo el de Instagram y el de Mercado Libre`,
+      `El acceso de ${account.platform} no se refresca: solo el de Instagram, el de Mercado Libre y el de X`,
       { details: { accountId, platform: account.platform } },
     );
   }
@@ -155,10 +173,10 @@ function refreshConnected(
       return refreshInstagram(deps, account, options);
     case "portal_inmobiliario":
       return refreshMercadoLibre(deps, account, options);
-    case "fb_marketplace":
-    // F9: las redes nuevas todavía no se renuevan (X y TikTok, con su publisher; LinkedIn no tiene
-    // refresco y Discord no vence).
     case "x":
+      return refreshRotating(deps, account, options);
+    case "fb_marketplace":
+    // F9: TikTok se renueva con su publisher (T26); LinkedIn no tiene refresco y Discord no vence.
     case "linkedin":
     case "discord":
     case "tiktok":
@@ -327,6 +345,85 @@ async function refreshMercadoLibre(
     }
     throw error;
   }
+}
+
+/** Solo el reloj del token que rota, leído aparte del resto de `meta`. */
+const rotatingClockSchema = z.object({
+  tokenRefreshedAt: z.iso.datetime().nullish().catch(undefined),
+  accessTokenExpiresAt: z.iso.datetime({ offset: true }).optional().catch(undefined),
+});
+
+/**
+ * X (F9-T16; ADR-0029 punto 11), con `ensureRotatingAccessToken`, **la misma función** del intento:
+ * el candado de credenciales y la regla "se vuelve a mirar dentro" hacen que el lote y un intento
+ * nunca renueven a la vez con el mismo refresh token.
+ * 1. Sin `force`, solo si al access token le quedan 30 min o menos (`meta.accessTokenExpiresAt`;
+ *    sin la fecha, toca). Como vive unas 2 h, el lote diario casi siempre lo renueva: así el
+ *    refresh token se usa al menos una vez al día y no cae por desuso (su duración real no está
+ *    verificada, `x.md` §3.1). Si no toca, `skipped` (`not_due`) sin tomar el candado.
+ * 2. Con `force`, se pide renovar el token guardado como si X lo hubiera rechazado (`rejectedToken`):
+ *    dentro del candado se renueva solo si sigue siendo ese (otro proceso pudo renovarlo recién).
+ * 3. `refreshed` si la cuenta quedó con otro `tokenRefreshedAt`; si no (otro la renovó mientras se
+ *    esperaba el candado, o ya no tocaba), `skipped`.
+ * Un refresh token rechazado (`invalid_grant`, `TOKEN_REFRESH_REJECTED`; la cuenta ya quedó
+ * `expired` dentro del candado) es un resultado (`expired`, `token_rejected`). Los demás suben: sin
+ * la app de X, `TOKEN_REFRESH_NOT_CONFIGURED`; la red, el tope de 10 s o el candado ocupado, sin
+ * cambiar la cuenta; credenciales ilegibles o sin `refreshToken`, con la cuenta en `error`.
+ */
+async function refreshRotating(
+  deps: RefreshAccountTokensDeps,
+  account: PlatformAccount,
+  { force, signal }: RefreshOptions,
+): Promise<TokenRefreshResult> {
+  const now = deps.now ?? (() => new Date());
+  if (!force && accessTokenStillFresh(account, now())) {
+    const { accessTokenExpiresAt } = rotatingClockSchema.parse(account.meta);
+    return {
+      outcome: "skipped",
+      reason: "not_due",
+      account,
+      refreshableAt: new Date(
+        new Date(accessTokenExpiresAt ?? now().toISOString()).getTime() -
+          ACCESS_TOKEN_REFRESH_MARGIN_MS,
+      ),
+    };
+  }
+  const before = rotatingClockSchema.parse(account.meta).tokenRefreshedAt ?? null;
+  const rotating = {
+    platformAccounts: deps.platformAccounts,
+    refreshers: deps.refreshers ?? {},
+    ...(deps.now === undefined ? {} : { now: deps.now }),
+    ...(deps.onWarning === undefined ? {} : { onWarning: deps.onWarning }),
+  };
+  try {
+    let rejectedToken: string | undefined;
+    if (force) {
+      // Si no se leen, `ensureRotatingAccessToken` las vuelve a leer y deja la cuenta en `error`.
+      const stored = await deps.platformAccounts.getCredentials(account.id).catch(() => null);
+      rejectedToken = stored !== null && hasAccessToken(stored) ? stored.accessToken : undefined;
+    }
+    await ensureRotatingAccessToken(rotating, account.id, {
+      ...(rejectedToken === undefined ? {} : { rejectedToken }),
+      ...(signal === undefined ? {} : { signal }),
+    });
+  } catch (error) {
+    if (isAppError(error) && error.code === "TOKEN_REFRESH_REJECTED") {
+      return { outcome: "expired", reason: "token_rejected", account: await reread(deps, account) };
+    }
+    throw error;
+  }
+  const after = await reread(deps, account);
+  const clock = rotatingClockSchema.parse(after.meta);
+  if ((clock.tokenRefreshedAt ?? null) !== before) return { outcome: "refreshed", account: after };
+  return {
+    outcome: "skipped",
+    reason: "not_due",
+    account: after,
+    refreshableAt: new Date(
+      new Date(clock.accessTokenExpiresAt ?? now().toISOString()).getTime() -
+        ACCESS_TOKEN_REFRESH_MARGIN_MS,
+    ),
+  };
 }
 
 /** Relee la cuenta después de que el núcleo la marcó; si no se puede, la que se tenía. */

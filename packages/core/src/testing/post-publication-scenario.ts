@@ -76,6 +76,13 @@ export async function createPostPublicationScenario(
     images?: number;
     /** Un video subido con su `ig_reel` (por defecto 30 s); por defecto, sin video. */
     video?: boolean | { durationS: number };
+    /**
+     * F9-T16: el brief del operador, la marca del enlace en X y el cuerpo de cada red (por defecto
+     * `Texto en <idioma> para <red>`), para los textos con enlace.
+     */
+    brief?: string;
+    xLinkAllowed?: boolean;
+    bodies?: Partial<Record<Platform, string>>;
   } = {},
 ) {
   const broker = contentBrokerFixture({ kind: "brand" });
@@ -86,6 +93,8 @@ export async function createPostPublicationScenario(
     topic: "Lo que aprendí construyendo",
     kind: options.kind ?? "image",
     status: "draft",
+    ...(options.brief === undefined ? {} : { brief: options.brief }),
+    ...(options.xLinkAllowed === undefined ? {} : { xLinkAllowed: options.xLinkAllowed }),
   });
   const media = createInMemoryMediaRepository();
   const storage = createInMemoryMediaStorage();
@@ -151,6 +160,22 @@ export async function createPostPublicationScenario(
       height: 1920,
       durationS,
     }));
+    // El video reducido de X (F9-T10), el que publica X (F9-T16).
+    await media.upsertDerivative({
+      role: "processed",
+      variant: "x_video",
+      parentMediaId: original.id,
+      postId: post.id,
+      brokerId: broker.id,
+      kind: "video",
+      storagePath: `posts/${post.id}/x_video/video.mp4`,
+      mime: "video/mp4",
+      bytes: 12,
+      checksum: "sha-video-x",
+      width: 720,
+      height: 1280,
+      durationS,
+    });
   }
   /** La primera foto procesada (la de un post `image`), o `null` si el post no tiene fotos. */
   const image = images[0] ?? null;
@@ -188,7 +213,7 @@ export async function createPostPublicationScenario(
       platform: text.platform,
       language: text.language,
       title: null,
-      body: `Texto en ${text.language} para ${text.platform}`,
+      body: options.bodies?.[text.platform] ?? `Texto en ${text.language} para ${text.platform}`,
       hashtags: ["#agentpey", "#ia"],
       llmProvider: "fake",
       llmModel: "fake",
@@ -259,6 +284,7 @@ export async function createPostPublicationScenario(
     publishers,
     workerMode: "live",
     marketplaceAutomation: false,
+    posts,
     ...extra,
   });
   const current = (id: string) => publications.all().find((p) => p.id === id);

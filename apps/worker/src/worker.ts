@@ -54,6 +54,7 @@ import {
 import { createDiscordPublisher } from "@agentsales/publishers/discord";
 import { marketplaceProfileDir, openMarketplaceProfile } from "@agentsales/publishers/marketplace";
 import { createBancoCentralUf } from "@agentsales/publishers/uf";
+import { createXAuth, createXPublisher } from "@agentsales/publishers/x";
 import { createBoss, jobQueueFromBoss } from "@agentsales/queue";
 import { createR2Storage } from "@agentsales/storage";
 import { createSlideTemplates } from "@agentsales/templates";
@@ -151,6 +152,21 @@ const instagram = createInstagramPublisher({ onNote: instagramNoteLogger(logger)
 const discord = createDiscordPublisher({
   onNote: (note) => logger.info(note, "nota del publicador de Discord"),
 });
+// X (F9-T16): el publisher en los dos modos (en `dry-run` lo envuelve `withDryRun` y no llama) y
+// la renovación del token (2 h) al publicar y en `tokens.refresh`, con la misma función
+// (`ensureRotatingAccessToken`). Sin el par de la app, no hay renovación: un token por vencer es
+// `TOKEN_REFRESH_NOT_CONFIGURED`. Sus notas van al log solo con ids y cifras, nunca con un token.
+const x = createXPublisher({ onNote: (note) => logger.info(note, "nota del publicador de X") });
+const xRefreshers =
+  env.X_CLIENT_ID && env.X_CLIENT_SECRET
+    ? {
+        x: createXAuth({
+          clientId: env.X_CLIENT_ID,
+          clientSecret: env.X_CLIENT_SECRET,
+          redirectUri: env.X_REDIRECT_URI,
+        }),
+      }
+    : {};
 // Refresco de tokens (spec F3 §4.6): solo usa el token, así que funciona sin el par de la app
 // (como en la API); el par lo necesita solo el canje del OAuth, que el worker no hace.
 const instagramAuth = createInstagramAuth({
@@ -288,6 +304,7 @@ const jobs = buildJobs({
       publishers: {
         instagram,
         discord,
+        x,
         portal_inmobiliario: portal.publisher,
         // En `live` llena el formulario y deja la ventana al registro; en `dry-run` no abre nada.
         // En producción no se registra (D4): publicar con una cuenta de perfil ya falló en core.
@@ -309,6 +326,9 @@ const jobs = buildJobs({
       uf: ufSource,
       // El token de Portal se asegura (y se refresca) con el par de la app (spec F4 §4.3).
       mercadoLibre: mercadoLibreAuth,
+      // X (F9-T16): la renovación de su token y la marca del enlace de cada post.
+      tokenRefreshers: xRefreshers,
+      posts,
     },
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
@@ -329,6 +349,7 @@ const jobs = buildJobs({
     platformAccounts,
     instagram: instagramAuth,
     mercadoLibre: mercadoLibreAuth,
+    refreshers: xRefreshers,
     signal: jobsAbort.signal,
   },
   marketplaceProfile: marketplaceAutomation

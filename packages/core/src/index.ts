@@ -612,6 +612,8 @@ export type {
   UserRepository,
 } from "./ports/user-repository.js";
 export type { WorkerHeartbeatRepository } from "./ports/worker-heartbeat-repository.js";
+// X (F9-T16): la cuenta, el tope de gasto, el costo, el enlace del post y la conexión por OAuth.
+export type { XAuth, XCodeExchange, XUser } from "./ports/x-auth.js";
 export {
   canDraftPost,
   type Post,
@@ -1167,6 +1169,12 @@ export {
   type WatchPublicationsResult,
   watchPublications,
 } from "./use-cases/watch-publications.js";
+export {
+  type ConnectXAccountDeps,
+  connectXAccount,
+  type SetXSpendLimitDeps,
+  setXSpendLimit,
+} from "./use-cases/x-account.js";
 export * from "./user.js";
 export {
   WORKER_HEARTBEAT_INTERVAL_MS,
@@ -1179,3 +1187,22 @@ export {
   workerStatusSchema,
   workerStatusText,
 } from "./worker-heartbeat.js";
+export {
+  X_DEFAULT_SPEND_LIMIT_USD,
+  X_MAX_SPEND_LIMIT_USD,
+  X_OAUTH_SCOPES,
+  X_REQUIRED_SCOPES,
+  type XAccountMeta,
+  xAccountMetaSchema,
+  xSpendLimitOf,
+  xSpendLimitSchema,
+} from "./x/account.js";
+export {
+  COST_COUNTED_STATUSES,
+  formatXUsd,
+  xLinkNotAllowed,
+  xPostCostUsd,
+  xPostHasLink,
+  xSpendLimitReached,
+} from "./x/cost.js";
+export { parseXPostUrl, type XPostRef, xPostUrl } from "./x/post-url.js";

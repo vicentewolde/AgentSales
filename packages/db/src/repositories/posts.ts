@@ -49,6 +49,7 @@ export function createPostRepository(db: SchemaDatabase): PostRepository {
               planRunId: input.planRunId ?? null,
               createdBy: input.createdBy ?? null,
               rationale: input.rationale ?? null,
+              xLinkAllowed: input.xLinkAllowed ?? false,
             })
             .returning();
           if (row === undefined) throw new AppError("POST_WRITE_FAILED", "No se creó el post");

@@ -58,6 +58,7 @@ import {
 } from "@agentsales/publishers";
 // La subruta de Discord (F9-T14): solo el cliente del webhook, para conectarlo sin publicar.
 import { createDiscordWebhooks } from "@agentsales/publishers/discord";
+import { createPkcePair, createXAuth } from "@agentsales/publishers/x";
 import { checkQueueSchema, createJobQueue } from "@agentsales/queue";
 import { createR2Storage, r2BucketOrigin } from "@agentsales/storage";
 import { serve } from "@hono/node-server";
@@ -199,6 +200,20 @@ const app = createApp({
   },
   // Conectar un webhook lo lee en Discord sin publicar (tope de 10 s: el operador espera).
   discord: createDiscordWebhooks({ timeoutMs: 10_000 }),
+  // X (F9-T16): OAuth 2.0 con PKCE y el refresco a pedido. Sin el par de la app, `/oauth/x/start`
+  // vuelve al panel con X_NOT_CONFIGURED sin llamar. El canje y el refresco tienen tope de 10 s.
+  x: {
+    auth: createXAuth({
+      clientId: env.X_CLIENT_ID ?? "",
+      clientSecret: env.X_CLIENT_SECRET ?? "",
+      redirectUri: env.X_REDIRECT_URI,
+    }),
+    configured: Boolean(env.X_CLIENT_ID && env.X_CLIENT_SECRET),
+    secureCookie: env.X_REDIRECT_URI.startsWith("https://"),
+    pkce: createPkcePair,
+    // En el host de la vuelta: la cookie firmada con el verificador distingue `127.0.0.1`.
+    startUrl: instagramStartUrlOf(env.X_REDIRECT_URI),
+  },
   mercadoLibre: {
     // Sin el par de la app, conectar responde MERCADOLIBRE_NOT_CONFIGURED sin llamar (el canje
     // mandaría un secret vacío). Tope de 10 s: el operador espera la respuesta (spec F4 §4.3).

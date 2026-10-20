@@ -1,6 +1,7 @@
 import type { Platform } from "../enums.js";
 import { AppError } from "../errors.js";
 import { parseMarketplaceItemUrl } from "../marketplace/url.js";
+import { parseXPostUrl } from "../x/post-url.js";
 
 /**
  * `https://` + un host (letras, dígitos, puntos y guiones; sin usuario, clave ni puerto) + una ruta
@@ -63,6 +64,8 @@ export type PublishedRefFromUrl = { externalId: string; url: string };
  * - Marketplace: `parseMarketplaceItemUrl` (el número del aviso; `MARKETPLACE_URL_INVALID`);
  * - Discord: `parseDiscordMessageUrl` (el id del mensaje, el mismo que guarda el publisher;
  *   `PUBLISHED_URL_INVALID`);
+ * - X: `parseXPostUrl` (el id del post, el mismo que guarda el publisher, F9-T16;
+ *   `PUBLISHED_URL_INVALID`);
  * - las demás: un enlace `https` (sin usuario, clave ni puerto) de hasta 500 caracteres, sin la
  *   consulta ni el fragmento (traen datos de rastreo); el id es el mismo enlace limpio. Si no,
  *   `PUBLISHED_URL_INVALID` (no reintentable), sin repetir lo recibido en el mensaje.
@@ -76,6 +79,11 @@ export function parsePublishedUrl(platform: Platform, value: string): PublishedR
   if (platform === "discord") {
     const message = parseDiscordMessageUrl(value);
     return { externalId: message.messageId, url: message.url };
+  }
+  // X (F9-T16): el id del post, el mismo que guarda el publisher.
+  if (platform === "x") {
+    const post = parseXPostUrl(value);
+    return { externalId: post.postId, url: post.url };
   }
   const clean = PUBLISHED_URL.exec(value.trim())?.[1];
   if (clean === undefined || clean.length > PUBLISHED_URL_MAX_LENGTH) {

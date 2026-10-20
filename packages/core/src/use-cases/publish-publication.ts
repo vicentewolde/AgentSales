@@ -1,4 +1,5 @@
 import type { AbortSignalLike } from "../abort.js";
+import { chileMonthOf, chileMonthRange } from "../chile-time.js";
 import type { Platform, PublishMode } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import { assertMarketplaceAutomationAllowed } from "../marketplace/automation.js";
@@ -16,6 +17,7 @@ import { validateMarketplaceInput } from "../marketplace/validate.js";
 import {
   accessTokenOf,
   isManualAccount,
+  type PlatformAccount,
   type PlatformCredentials,
   usesSessionProfile,
 } from "../platform-account.js";
@@ -26,6 +28,7 @@ import type { MediaRepository } from "../ports/media-repository.js";
 import type { MediaStorage } from "../ports/media-storage.js";
 import type { MercadoLibreAuth } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
+import type { PostRepository } from "../ports/post-repository.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import {
   type AccessTokenProvider,
@@ -73,6 +76,8 @@ import {
 } from "../publish/wait.js";
 import { scrubMessage } from "../redact.js";
 import { listingIdOf } from "../subject.js";
+import { xSpendLimitOf } from "../x/account.js";
+import { xLinkNotAllowed, xPostCostUsd, xPostHasLink, xSpendLimitReached } from "../x/cost.js";
 import {
   accessTokenProvider,
   ROTATING_TOKEN_PLATFORMS,
@@ -112,7 +117,14 @@ export type PublishPublicationDeps = {
     | "listByStatus"
     | "countLiveAttemptsSince"
     | "listEvents"
+    | "setCostUsd"
+    | "sumCostUsdSince"
   >;
+  /**
+   * El post de una publicación de X (F9-T16): su marca `xLinkAllowed` decide si un texto con enlace
+   * puede salir. Sin esto, un texto de X con enlace no sale (`X_LINK_NOT_ALLOWED`).
+   */
+  posts?: Pick<PostRepository, "get">;
   /** `withCredentialsLock`: el refresco del token de Mercado Libre (`ensureAccessToken`, Portal). */
   platformAccounts: Pick<
     PlatformAccountRepository,
@@ -753,6 +765,9 @@ async function prepareAttempt(
     };
   }
   if (!publication.dryRun) checkPublishInput(publisher, input);
+  // X cobra cada post (spec F9 §4.12): la marca del enlace, el tope del mes y el costo, antes de
+  // llamar a la red.
+  if (publication.platform === "x") await requireXBudget(deps, publication, account, input, now);
   if (stored === null) {
     return {
       input,
@@ -774,6 +789,51 @@ async function prepareAttempt(
     target: publication.dryRun ? withDryRun(publisher) : publisher,
     kind: "publisher" as const,
   };
+}
+
+/**
+ * X (spec F9 §4.4 y §4.12, F9-T16), antes de llamar a la red y en los dos modos:
+ * 1. con un envío anterior en el progreso (dudoso o hecho), nada: `sendOnce` decide sin llamar y
+ *    sin cobrar otra vez;
+ * 2. un texto con enlace necesita la marca explícita del operador en el post (`xLinkAllowed`): sin
+ *    ella, `X_LINK_NOT_ALLOWED` (no reintentable), aunque el texto se haya aprobado antes de quitar
+ *    la marca;
+ * 3. en `live`, el gasto estimado del mes de la cuenta (mes de Chile, `sumCostUsdSince`, sin esta
+ *    publicación) más el de este post no puede pasar `spendLimitUsd` (por defecto US$10): si no,
+ *    `X_SPEND_LIMIT_REACHED` (no reintentable) y la publicación queda `failed` con la causa;
+ * 4. anota el costo estimado en `cost_usd` (US$0,015, o US$0,20 con enlace); en `dry-run` también,
+ *    como referencia (no cuenta para el tope: solo suman las de `live`).
+ */
+async function requireXBudget(
+  deps: PublishPublicationDeps,
+  publication: Publication,
+  account: Pick<PlatformAccount, "id" | "meta">,
+  input: PublishInput,
+  now: Date,
+): Promise<void> {
+  if (pendingSend(publication.progress).kind !== "none") return;
+  const costUsd = xPostCostUsd(input.caption);
+  if (xPostHasLink(input.caption)) {
+    const postId = publication.subject.kind === "post" ? publication.subject.id : null;
+    const post = postId === null || deps.posts === undefined ? null : await deps.posts.get(postId);
+    if (post?.xLinkAllowed !== true) throw xLinkNotAllowed(postId);
+  }
+  if (!publication.dryRun) {
+    const limitUsd = xSpendLimitOf(account);
+    const { from } = chileMonthRange(chileMonthOf(now));
+    const spentUsd = await deps.publications.sumCostUsdSince(account.id, from, {
+      excludePublicationId: publication.id,
+    });
+    // Con margen de redondeo: los montos van con 4 decimales.
+    if (spentUsd + costUsd > limitUsd + 1e-9) {
+      throw xSpendLimitReached({
+        spentUsd: Math.round(spentUsd * 10_000) / 10_000,
+        costUsd,
+        limitUsd,
+      });
+    }
+  }
+  await deps.publications.setCostUsd(publication.id, costUsd);
 }
 
 /**

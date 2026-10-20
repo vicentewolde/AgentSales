@@ -185,12 +185,12 @@ El texto de cada red se mide **con los hashtags**, en un párrafo aparte separad
 | Red | Largo | Cómo se cuenta y qué más |
 |---|---|---|
 | Instagram | 2.200 | En UTF-16, como hoy. Hasta 30 hashtags (contando los que vayan dentro del texto). Necesita imagen o video |
-| X | 280 **ponderados** | `xWeightedLength`, sin la librería `twitter-text`: cada URL pesa 23 (también un dominio suelto como `agentpey.com`), cada emoji 2 (con sus modificadores y uniones), las letras latinas con tilde 1 y los CJK 2; el texto se normaliza a NFC. Hasta 4 imágenes o 1 video. Un enlace solo si el operador lo puso en el brief (ver abajo) |
+| X | 280 **ponderados** | `xWeightedLength`, sin la librería `twitter-text`: cada URL pesa 23 (también un dominio suelto como `agentpey.com`), cada emoji 2 (con sus modificadores y uniones), las letras latinas con tilde 1 y los CJK 2; el texto se normaliza a NFC. Hasta 4 imágenes o 1 video. Un enlace solo si el operador lo puso en el brief y marcó el post (ver abajo) |
 | LinkedIn | 3.000 | Contando los **escapes**: el campo `commentary` exige escapar con `\` los 15 caracteres reservados <code>&#124; { } @ [ ] ( ) &lt; &gt; # \ * _ ~</code> (`escapeLinkedInText`, probada con todos; los hashtags quedan como texto). Si el límite de LinkedIn cuenta la cadena escapada o la visible no está verificado (`linkedin.md` §5.3): se mide la escapada, la más larga. El publisher (T15) envía el texto escapado |
 | Discord | 2.000 | `@everyone` y `@here` impiden aprobar; además, el publisher (T14) envía siempre `allowed_mentions: { parse: [] }` y neutraliza las menciones masivas en el texto (`discord.md` §4). Hasta 10 archivos. Muestra markdown |
 | TikTok | 2.200 | El texto que acompaña al video (solo video en F9) |
 
-**Enlaces en X (D6).** Un post de X con enlace cuesta US$0,20 en vez de US$0,015 (`x.md` §2). Desde F9-T11, "el operador lo marca" es escribirlo en el **brief del post**: un enlace del brief del operador se permite en X con la advertencia `LINK_COST`; uno que está en los `facts` pero no en el brief es `LINK_NOT_ALLOWED` (sirve en las demás redes, no en X). T16 puede sumar una marca explícita en el post y anota el costo en `publications.cost_usd`.
+**Enlaces en X (D6).** Un post de X con enlace cuesta US$0,20 en vez de US$0,015 (`x.md` §2). Un enlace en X necesita **dos** cosas del operador: que esté en el **brief del post** (F9-T11; uno que está en los `facts` pero no en el brief es `LINK_NOT_ALLOWED`: sirve en las demás redes, no en X) y la **marca explícita en el post** (`posts.x_link_allowed`, F9-T16: `PATCH /api/posts/:id` con `xLinkAllowed: true`). Sin la marca, la IA no recibe enlaces para X (`enlaces_permitidos_en_x` va vacío) y un enlace en el texto de X es `LINK_NOT_ALLOWED`, aunque esté en el brief; con ella, se permite con la advertencia `LINK_COST`. Al publicar, el costo estimado queda en `publications.cost_usd` y, si la marca se quitó después de aprobar, el intento falla con `X_LINK_NOT_ALLOWED` sin llamar a X.
 
 ### Cómo revisa (`checkPostContent`)
 
@@ -202,7 +202,7 @@ Como `checkContent`, es una función pura que corre sobre el texto final, tambi�
 | `HASHTAG_LIMIT` | error | Más de 30 hashtags en Instagram |
 | `MASS_MENTION` | error | `@everyone` o `@here` (sin mirar mayúsculas), en cualquier red y en cualquier parte del texto o de los hashtags, también pegada a otra palabra (`a@everyone`, `.@here`), con caracteres de ancho cero en medio (U+200B a U+200D, U+2060, U+FEFF) o con la arroba ancha `＠` |
 | `FACT_NOT_IN_PROFILE` | error | Un hecho que no está en las fuentes (heurística, abajo): una **cifra**, un posible **nombre propio**, un **enlace** o una **mención** |
-| `LINK_NOT_ALLOWED` | error | En X, un enlace de las fuentes que el operador no puso en el brief del post |
+| `LINK_NOT_ALLOWED` | error | En X, un enlace de las fuentes que el operador no puso en el brief del post, o cualquier enlace si el post no tiene la marca `xLinkAllowed` (F9-T16) |
 | `MEDIA_REQUIREMENT` | error | Un post de video sin video (un reel exige video); Instagram sin imagen ni video; un carrusel de Instagram fuera de 2 a 10 imágenes (F9-T13; una imagen suelta usa solo la primera foto); TikTok sin video; X con más de 4 imágenes; Discord con más de 10; un post de imágenes sin imágenes. Se cuentan los originales que subió el operador |
 | `LINK_COST` | advertencia | X con un enlace: cuesta US$0,20 en vez de US$0,015 |
 | `MEDIA_UNUSED` | advertencia | Un post de imagen con varias fotos en Instagram: sale solo la primera; para publicarlas todas, carrusel (F9-T13) |

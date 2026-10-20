@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   fakeInstagramAuth,
   fakeMercadoLibreAuth,
+  fakeXAuth,
   TEST_ML_REDIRECT_URI,
 } from "@agentsales/api/testing";
 import { ALL_SCOPE } from "@agentsales/core";
@@ -13,6 +14,7 @@ import {
   runAccounts,
   runConnect,
   runRefresh,
+  runSpendLimit,
 } from "./accounts.js";
 
 const TOKEN = "IGAA-token-del-panel-0123456789-secreto";
@@ -569,5 +571,84 @@ describe("accounts connect discord (F9-T14)", () => {
     expect(code).toBe(1);
     expect(h.errors()).toContain("DISCORD_WEBHOOK_NOT_FOUND");
     expect(h.errors()).not.toContain("borradoToken");
+  });
+});
+
+describe("accounts connect x y accounts spend-limit (F9-T16)", () => {
+  async function xSetup(options: { configured?: boolean } = {}) {
+    const opened: string[] = [];
+    const h = harness({
+      deps: {
+        x: {
+          auth: fakeXAuth(),
+          configured: options.configured ?? true,
+          secureCookie: false,
+          pkce: () => ({ verifier: "v".repeat(43), challenge: "c" }),
+          // Distinto del que escribiría alguien a mano: el enlace tiene que venir de la API.
+          startUrl: "http://127.0.0.1:8787/api/oauth/x/start",
+        },
+      },
+    });
+    const brand = await h.brokers.create(brokerData("marca"));
+    const deps = (): AccountsDeps => ({
+      ...h.io,
+      client: h.client,
+      stdinIsTty: () => true,
+      readStdin: async () => "",
+      openUrl: (url) => opened.push(url),
+      now: () => new Date("2026-10-20T12:00:00Z"),
+      confirm: async () => false,
+      sleep: async () => {},
+      clock: () => 0,
+    });
+    return { h, deps, opened, brand };
+  }
+
+  it("imprime y abre el inicio del OAuth de X que da la API, con la marca", async () => {
+    const { h, deps, opened } = await xSetup();
+    expect(await runConnect(deps(), "x", { broker: "Marca" })).toBe(0);
+    expect(opened).toEqual(["http://127.0.0.1:8787/api/oauth/x/start?broker=marca"]);
+    expect(h.text()).toContain(opened[0]);
+    expect(h.text()).toContain("127.0.0.1");
+  });
+
+  it("sin el par de la app, una opción de otro canal o sin --broker, no abre nada", async () => {
+    const off = await xSetup({ configured: false });
+    expect(await runConnect(off.deps(), "x", { broker: "marca" })).toBe(1);
+    expect(off.h.errors()).toContain("X_NOT_CONFIGURED");
+    const { h, deps, opened } = await xSetup();
+    expect(await runConnect(deps(), "x", { broker: "marca", tokenStdin: true })).toBe(1);
+    expect(h.errors()).toContain("OPTION_NOT_FOR_PLATFORM");
+    expect(await runConnect(deps(), "x", {})).toBe(1);
+    expect(h.errors()).toContain("BROKER_REQUIRED");
+    expect(opened).toEqual([]);
+  });
+
+  it("spend-limit fija el tope en dólares (acepta coma) y accounts lo muestra", async () => {
+    const { h, deps, brand } = await xSetup();
+    const account = await h.platformAccounts.upsertConnected({
+      brokerId: brand.id,
+      platform: "x",
+      externalAccountId: "12345",
+      displayName: "@agentpey",
+      tokenExpiresAt: null,
+      meta: {
+        userId: "12345",
+        username: "agentpey",
+        scopes: ["tweet.write", "media.write", "offline.access"],
+        connectedAt: "2026-10-20T12:00:00.000Z",
+        tokenRefreshedAt: null,
+        accessTokenExpiresAt: "2026-10-20T14:00:00.000Z",
+      },
+      credentials: { accessToken: "access-x", refreshToken: "refresh-x" },
+    });
+    expect(await runAccounts(deps())).toBe(0);
+    expect(h.text()).toContain("tope de gasto en X de US$10 al mes");
+    expect(await runSpendLimit(deps(), account.id, "2,5")).toBe(0);
+    expect(h.text()).toContain("US$2,5 al mes");
+    expect(await runSpendLimit(deps(), account.id, "mucho")).toBe(1);
+    expect(h.errors()).toContain("X_SPEND_LIMIT_INVALID");
+    expect(await runSpendLimit(deps(), account.id, "5000")).toBe(1);
+    expect(h.errors()).toContain("1.000");
   });
 });

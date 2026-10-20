@@ -141,6 +141,23 @@ describe("/posts: crear, listar, ver, editar y archivar", () => {
     expect((await errorOf(late)).code).toBe("POST_ARCHIVED");
   });
 
+  it("la marca del enlace en X (F9-T16): nace apagada y el operador la prende y la apaga", async () => {
+    const s = await setup();
+    const post = await s.deps.posts.create({ brokerId: s.mine.id, topic: "Guía", kind: "text" });
+    expect(post.xLinkAllowed).toBe(false);
+    const marked = await s.broker(`/posts/${post.id}`, {
+      method: "PATCH",
+      json: { xLinkAllowed: true },
+    });
+    expect(marked.status).toBe(200);
+    expect(postResponseSchema.parse(await marked.json()).post.xLinkAllowed).toBe(true);
+    const unmarked = await s.broker(`/posts/${post.id}`, {
+      method: "PATCH",
+      json: { xLinkAllowed: false },
+    });
+    expect(postResponseSchema.parse(await unmarked.json()).post.xLinkAllowed).toBe(false);
+  });
+
   it("validación: un campo desconocido o un tema vacío son 400", async () => {
     const s = await setup();
     const unknown = await s.broker("/posts", {

@@ -129,6 +129,12 @@ export const ROUTE_ACCESS: Readonly<Record<string, RoutePolicy>> = {
   // La vuelta automática de Mercado Libre (F8-T19): llega desde Mercado Libre, sin la cookie
   // `Strict`; la protegen el `state` firmado de un solo uso y su propia cookie `Lax`.
   "GET /oauth/mercadolibre/callback": "public",
+  // X (F9-T16): el inicio, de sesión (la ruta revisa `x.connect`); la vuelta llega desde X, sin la
+  // cookie `Strict`: la protegen el `state` firmado de un solo uso y la cookie firmada con PKCE. El
+  // tope de gasto de una cuenta de X lo fija el administrador.
+  "GET /oauth/x/start": "session",
+  "GET /oauth/x/callback": "public",
+  "POST /accounts/:id/spend-limit": "admin",
   // Las vueltas de Meta (F8-T17): de servidor a servidor, las protege la firma de la app; la página
   // del pedido la abre la persona que pidió el borrado (con su código).
   "POST /meta/deauthorize": "public",

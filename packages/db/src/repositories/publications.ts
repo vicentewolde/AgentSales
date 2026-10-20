@@ -1,5 +1,6 @@
 import {
   AppError,
+  COST_COUNTED_STATUSES,
   canTransition,
   checkPublicationProgress,
   checkRemoteState,
@@ -16,7 +17,7 @@ import {
   subjectOfInput,
   TERMINAL_PUBLICATION_STATUSES,
 } from "@agentsales/core";
-import { and, asc, eq, gte, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { publicationEvents, publications } from "../schema.js";
@@ -550,6 +551,49 @@ export function createPublicationRepository(db: SchemaDatabase): PublicationRepo
           payload,
         }),
       );
+    },
+
+    async setCostUsd(id, costUsd) {
+      const [row] = await withDbErrors(() =>
+        db
+          .update(publications)
+          .set({
+            costUsd: costUsd === null ? null : (Math.round(costUsd * 10_000) / 10_000).toFixed(4),
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(and(eq(publications.id, id), eq(publications.status, "publishing")))
+          .returning(),
+      );
+      if (row === undefined) {
+        if ((await findRow(id)) === undefined) throw notFound(id);
+        throw new AppError(
+          "PUBLICATION_NOT_PUBLISHING",
+          "La publicación ya no se está publicando",
+          { details: { publicationId: id } },
+        );
+      }
+      return toPublication(row);
+    },
+
+    sumCostUsdSince(platformAccountId, since, options = {}) {
+      return withDbErrors(async () => {
+        const [row] = await db
+          .select({ total: sql<string | null>`sum(${publications.costUsd})` })
+          .from(publications)
+          .where(
+            and(
+              eq(publications.platformAccountId, platformAccountId),
+              eq(publications.dryRun, false),
+              sql`${publications.costUsd} IS NOT NULL`,
+              inArray(publications.status, [...COST_COUNTED_STATUSES]),
+              sql`coalesce(${publications.publishedAt}, ${publications.updatedAt}) >= ${since.toISOString()}::timestamptz`,
+              options.excludePublicationId === undefined
+                ? undefined
+                : ne(publications.id, options.excludePublicationId),
+            ),
+          );
+        return row?.total == null ? 0 : Number(row.total);
+      });
     },
 
     countLiveAttemptsSince(platformAccountId, since) {

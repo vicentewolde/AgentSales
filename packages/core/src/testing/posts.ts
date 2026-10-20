@@ -67,6 +67,7 @@ export function createInMemoryPostRepository(): InMemoryPostRepository {
         planRunId: input.planRunId ?? null,
         createdBy: input.createdBy ?? null,
         rationale: input.rationale ?? null,
+        xLinkAllowed: input.xLinkAllowed ?? false,
         createdAt: now,
         updatedAt: now,
       });

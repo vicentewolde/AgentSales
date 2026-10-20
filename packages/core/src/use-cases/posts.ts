@@ -109,6 +109,8 @@ export type CreatePostInput = {
   kind?: PostKind | undefined;
   pillar?: string | null | undefined;
   plannedAt?: Date | null | undefined;
+  /** La marca que permite un enlace en X (F9-T16); por defecto `false`. */
+  xLinkAllowed?: boolean | undefined;
 };
 
 /**
@@ -141,6 +143,7 @@ export async function createPost(
     pillar,
     plannedAt,
     createdBy: actor.id,
+    xLinkAllowed: input.xLinkAllowed ?? false,
   });
 }
 
@@ -198,6 +201,11 @@ export type UpdatePostInput = {
   kind?: PostKind | undefined;
   pillar?: string | null | undefined;
   plannedAt?: Date | null | undefined;
+  /**
+   * La marca explícita del operador que permite un enlace en el texto de X (F9-T16, spec F9 §4.4):
+   * con ella, un post de X con enlace se puede aprobar y cuesta US$0,20 en vez de US$0,015.
+   */
+  xLinkAllowed?: boolean | undefined;
 };
 
 const postArchived = (postId: string) =>
@@ -206,7 +214,8 @@ const postArchived = (postId: string) =>
   });
 
 /**
- * Edita el tema, el brief, el tipo, la línea o la fecha planificada (spec F9 §4.10). Editar el
+ * Edita el tema, el brief, el tipo, la línea, la fecha planificada o la marca del enlace de X
+ * (`xLinkAllowed`, F9-T16) (spec F9 §4.10). Editar el
  * brief lo deja como del operador (`briefOrigin = operator`, ADR-0030 punto 1: desde ahí es fuente
  * de hechos). Un post archivado no se edita (`POST_ARCHIVED`, 409). Sin cambios, devuelve el post
  * tal cual.
@@ -225,6 +234,7 @@ export async function updatePost(
     changes.briefOrigin = "operator";
   }
   if (input.kind !== undefined) changes.kind = input.kind;
+  if (input.xLinkAllowed !== undefined) changes.xLinkAllowed = input.xLinkAllowed;
   if (input.plannedAt !== undefined) changes.plannedAt = checkDate(input.plannedAt) ?? null;
   if (input.pillar !== undefined) {
     changes.pillar =

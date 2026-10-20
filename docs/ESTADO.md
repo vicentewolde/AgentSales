@@ -113,7 +113,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 1 | T13 Instagram para posts (S1 antes de publicar de verdad) | ✅ terminada | #184 |
 | 1 | T14 Discord (S5 antes de publicar de verdad) | ✅ terminada | #183 |
 | 2 · `v1.2.0` | T15 LinkedIn (tras S2 y S3) | ⏳ pendiente | |
-| 2 | T16 X (tras S4) | ⏳ pendiente | |
+| 2 | T16 X (S4 antes de publicar de verdad) | ✅ terminada | #187 |
 | 2 | T26 TikTok, video como borrador (tras S6) | ⏳ pendiente | |
 | 2 | T17 Panel: Contenido | ⏳ pendiente | |
 | 2 | T18 Panel: calendario | ⏳ pendiente | |
@@ -192,6 +192,7 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **F9, de T15, T16 y T26:** faltan en `.env.example` `LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI`, `X_CLIENT_ID/SECRET/REDIRECT_URI` y `TIKTOK_CLIENT_KEY/SECRET/REDIRECT_URI` (los agentes no tocan `.env*`; los agregas tú). La marca del enlace en X (`posts.x_link_allowed`) solo se pone con `PATCH /api/posts/:id` hasta que la CLI (`post edit`) y el panel la sumen. Conectar LinkedIn, X y TikTok es por la CLI (botones del panel, T19). Retirar en LinkedIn con `DELETE` queda para T19. Ninguna de las tres redes publica de verdad hasta S2, S3, S4 y S6.
 - **F9, de T14:** un video de más de 20 MiB no se publica en Discord (sale solo el texto): no hay enlace seguro porque R2 no tiene un dominio público (spec D8 cambiada). Se resuelve con un dominio de medios (`media.agentpey.com`), el mismo que pedirá TikTok para fotos. `social:smoke --platform discord` no existe: S5 se hace a mano.
 - **F9, de T08:** la agenda ya sugiere para posts `agentsales post show <id>` y `publications resolve <id> --published|--not-published` (llegan en T12) y `accounts connect linkedin` (T19): hasta entonces esos comandos fallan. Una cuenta `expired` sin `token_expires_at` no aparece en "cuentas por reconectar". La matriz del panel aún no muestra posts (T18).
 - **F9, de T05:** las rutas viejas `PATCH /contents/:id`, `approve` y `unapprove` rechazan un texto de post con `CONTENT_NOT_FOR_LISTING` (409) hasta que T12 dé las rutas de posts. La revisión de textos de post es un marcador vacío hasta que T11 conecte `checkPostContent` (y cargue el perfil antes del candado). Los medios de un post salen por `post.kind` con `ig_4x5`/`ig_reel` en todas las redes: T13 a T16 los afinan por red. Las corridas de post en cola se reencolan como `post.draft` al arrancar el worker; hasta T11 no hay cola y quedan en espera con un aviso.

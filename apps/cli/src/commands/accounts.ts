@@ -135,6 +135,15 @@ export function runAccounts(deps: AccountsDeps) {
         ),
       );
     }
+    // X (F9-T16): el tope de gasto del mes de cada cuenta.
+    for (const account of accounts) {
+      if (account.platform !== "x" || account.spendLimitUsd === undefined) continue;
+      deps.print(
+        c.dim(
+          `  ${account.displayName}: tope de gasto en X de ${usdText(account.spendLimitUsd)} al mes (accounts spend-limit ${account.id} <dólares>)`,
+        ),
+      );
+    }
     if (accounts.some((account) => account.status === "expired" || account.status === "error")) {
       deps.print(c.dim("→ Una cuenta vencida o con error se reconecta con accounts connect"));
     }
@@ -474,6 +483,8 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
   const c = deps.colors;
   const channel = platform.trim().toLowerCase();
   return guarded(deps, async () => {
+    // X (F9-T16): OAuth con PKCE en el navegador, con la sesión del panel.
+    if (channel === "x") return connectX(deps, options);
     if (
       channel !== "instagram" &&
       channel !== "mercadolibre" &&
@@ -574,6 +585,97 @@ export function runConnect(deps: AccountsDeps, platform: string, options: Connec
         ),
       );
     }
+    return 0;
+  });
+}
+
+/** Dólares en español de Chile: `US$10`, `US$2,5`. */
+const usdText = (value: number) =>
+  `US$${value.toLocaleString("es-CL", { maximumFractionDigits: 4 })}`;
+
+/**
+ * `agentsales accounts connect x --broker <slug>` (F9-T16, spec F9 §4.7): imprime y abre el inicio
+ * del OAuth con PKCE de X (`connect.x.startUrl?broker=<slug>`), que pide la sesión del panel en ese
+ * mismo host (en el Mac, `http://127.0.0.1`: X no acepta `localhost`). El verificador de PKCE y el
+ * `state` los arma la API; la CLI no ve ningún token.
+ */
+async function connectX(deps: AccountsDeps, options: ConnectOptions): Promise<number> {
+  const c = deps.colors;
+  const foreign = options.tokenStdin
+    ? "--token-stdin"
+    : options.urlStdin
+      ? "--url-stdin"
+      : options.webhookStdin
+        ? "--webhook-stdin"
+        : options.label !== undefined
+          ? "--label"
+          : options.manual
+            ? "--manual"
+            : null;
+  if (foreign !== null) {
+    throw new CliError(
+      "OPTION_NOT_FOR_PLATFORM",
+      `${foreign} no es para x: X se conecta en el navegador con el enlace que da este comando`,
+    );
+  }
+  if (options.broker === undefined) {
+    throw new CliError(
+      "BROKER_REQUIRED",
+      "Falta --broker <slug>: la marca o el corredor de la cuenta",
+    );
+  }
+  const broker = brokerSlugOf(options.broker);
+  const { connect } = await unwrap(
+    deps.client.accounts.$get({ query: {} }),
+    accountListResponseSchema,
+  );
+  if (connect.x === undefined || !connect.x.configured) {
+    throw new CliError(
+      "X_NOT_CONFIGURED",
+      "Falta configurar la app de X en la API: anota X_CLIENT_ID y X_CLIENT_SECRET en .env y reinicia",
+      "Guía: docs/integraciones/x.md (Cómo conectar)",
+    );
+  }
+  const url = `${connect.x.startUrl}?broker=${encodeURIComponent(broker)}`;
+  deps.print(`Abre este enlace para conectar X: ${url}`);
+  deps.print(
+    c.dim(
+      `  Necesita la sesión del panel en ${new URL(connect.x.startUrl).origin} (en el Mac, entra al panel por 127.0.0.1 y no por localhost)`,
+    ),
+  );
+  deps.openUrl(url);
+  deps.print(c.dim("→ Al terminar, revisa la cuenta con: agentsales accounts"));
+  return 0;
+}
+
+/**
+ * `agentsales accounts spend-limit <id> <dólares>` (F9-T16, spec F9 §4.12; administrador): el tope
+ * de gasto del mes de una cuenta de X. Pasado el tope, una publicación queda `failed` con la causa
+ * sin llamar a X. Acepta `2,5` y `2.5`.
+ */
+export function runSpendLimit(deps: AccountsDeps, id: string, amount: string) {
+  const c = deps.colors;
+  return guarded(deps, async () => {
+    const accountId = accountIdOf(id);
+    const text = amount.trim().replace(/^US\$/i, "").replace(",", ".");
+    const spendLimitUsd = /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : Number.NaN;
+    if (!Number.isFinite(spendLimitUsd)) {
+      throw new CliError(
+        "X_SPEND_LIMIT_INVALID",
+        "El tope va en dólares, de 0 a 1.000 (por ejemplo 10 o 2,5)",
+      );
+    }
+    const { account } = await unwrap(
+      deps.client.accounts[":id"]["spend-limit"].$post({
+        param: { id: accountId },
+        json: { spendLimitUsd },
+      }),
+      accountResponseSchema,
+    );
+    deps.print(
+      `${c.green("✓")} Tope de gasto de ${account.displayName} en X: ${usdText(account.spendLimitUsd ?? spendLimitUsd)} al mes`,
+    );
+    deps.print(c.dim("  Es el tope de AgentSales; el de la consola de X es aparte (y manda)"));
     return 0;
   });
 }
@@ -770,6 +872,15 @@ export function register(program: Command, ctx: CliContext): void {
     .action((platform: string, options: ConnectOptions) =>
       exitWith(() => runConnect(deps(), platform, options)),
     );
+  // X (F9-T16): el tope de gasto del mes de una cuenta (administrador).
+  accounts
+    .command("spend-limit")
+    .description(
+      "X: fija el tope de gasto del mes de la cuenta, en dólares (por defecto 10; pasado el tope no se publica)",
+    )
+    .argument("<id>", "id de la cuenta de X (agentsales accounts)")
+    .argument("<dolares>", "el tope en dólares, por ejemplo 10 o 2,5")
+    .action((id: string, amount: string) => exitWith(() => runSpendLimit(deps(), id, amount)));
   accounts
     .command("refresh")
     .description(
