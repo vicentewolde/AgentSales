@@ -85,6 +85,7 @@ CREATE INDEX "plan_runs_broker_created_idx" ON "plan_runs" USING btree ("broker_
 CREATE INDEX "post_uploads_post_idx" ON "post_uploads" USING btree ("post_id");--> statement-breakpoint
 CREATE INDEX "post_uploads_status_expires_idx" ON "post_uploads" USING btree ("status","expires_at");--> statement-breakpoint
 CREATE INDEX "posts_broker_status_planned_idx" ON "posts" USING btree ("broker_id","status","planned_at");--> statement-breakpoint
+CREATE INDEX "posts_plan_run_idx" ON "posts" USING btree ("plan_run_id");--> statement-breakpoint
 ALTER TABLE "content_runs" ADD CONSTRAINT "content_runs_post_id_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."posts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contents" ADD CONSTRAINT "contents_post_id_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."posts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "media" ADD CONSTRAINT "media_post_id_posts_id_fk" FOREIGN KEY ("post_id") REFERENCES "public"."posts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

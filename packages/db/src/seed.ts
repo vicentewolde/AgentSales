@@ -9,12 +9,20 @@ const excluded = (column: { name: string }): SQL => sql.raw(`excluded."${column.
 
 export type SeedResult = { brokerId: string; fieldDefinitions: number };
 
+export type SeedOptions = {
+  /**
+   * También las marcas del operador (`pnpm db:seed --operator-brands`). Nunca por defecto: con dos
+   * instancias del mismo código (spec F9, D19), la de clientes no lleva las marcas del operador.
+   */
+  operatorBrands?: boolean;
+};
+
 /**
  * Idempotente: correrlo de nuevo actualiza en vez de duplicar. Ojo: pisa cualquier cambio hecho a
  * mano en el corredor demo (tono, colores, `auto_publish`) y en las definiciones **globales** de
  * `real_estate`. Para personalizar un campo, se crea una definición del corredor.
  */
-export async function seed(db: SchemaDatabase): Promise<SeedResult> {
+export async function seed(db: SchemaDatabase, options: SeedOptions = {}): Promise<SeedResult> {
   const { slug, ...rest } = DEMO_BROKER;
   const [row] = await db
     .insert(brokers)
@@ -47,7 +55,7 @@ export async function seed(db: SchemaDatabase): Promise<SeedResult> {
     })
     .returning({ id: fieldDefinitions.id });
 
-  await seedOperatorBrands(db);
+  if (options.operatorBrands === true) await seedOperatorBrands(db);
 
   return { brokerId: row.id, fieldDefinitions: defs.length };
 }

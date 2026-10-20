@@ -268,6 +268,18 @@ describe("migración 0015 sobre una base con avisos de F3 a F8", () => {
     expect(profile).toEqual({ languages: ["es"], facts: [] });
   });
 
+  it("los posts tienen sus índices por marca y calendario, y por plan", async () => {
+    const indexes = await client.query<{ indexname: string; indexdef: string }>(
+      `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'posts' AND indexname <> 'posts_pkey'
+       ORDER BY indexname`,
+    );
+    expect(indexes.rows.map((row) => row.indexname)).toEqual([
+      "posts_broker_status_planned_idx",
+      "posts_plan_run_idx",
+    ]);
+    expect(indexes.rows[1]?.indexdef).toContain("(plan_run_id)");
+  });
+
   describe("el CHECK de un solo sujeto", () => {
     it("una corrida exige exactamente un aviso o un post", async () => {
       const insert = (listing: string | null, post: string | null) =>
@@ -424,6 +436,145 @@ describe("un despliegue nuevo aplica la 0014 y la 0015 en la misma transacción"
       );
       expect(tables.rows.map((row) => row.table_name)).toEqual(["plan_runs", "posts"]);
     } finally {
+      await client.close();
+    }
+  });
+});
+
+/** El SQL de reversión de la 0015 tal como lo trae `docs/10-despliegue.md` (bloque tras su marca). */
+function revertSqlFromDocs(): string {
+  const doc = readFileSync(
+    join(MIGRATIONS_FOLDER, "..", "..", "..", "docs", "10-despliegue.md"),
+    "utf8",
+  );
+  const marker = doc.indexOf("<!-- revertir-0015");
+  const block = /```sql\n([\s\S]*?)```/.exec(doc.slice(marker));
+  if (marker < 0 || block?.[1] === undefined) throw new Error("falta el SQL de reversión");
+  return block[1];
+}
+
+/** El "when" de una migración en el journal: el migrador lo anota como `created_at`. */
+function journalWhen(tag: string): number {
+  const journal = JSON.parse(
+    readFileSync(join(MIGRATIONS_FOLDER, "meta", "_journal.json"), "utf8"),
+  ) as { entries: { tag: string; when: number }[] };
+  const entry = journal.entries.find((candidate) => candidate.tag.startsWith(tag));
+  if (entry === undefined) throw new Error(`falta ${tag} en el journal`);
+  return entry.when;
+}
+
+/** Columnas, restricciones, índices y tipos del esquema `public`, para comparar dos bases. */
+async function schemaOf(client: PGlite) {
+  const query = async (sql: string) => (await client.query<Row>(sql)).rows;
+  return {
+    columns: await query(
+      `SELECT table_name, column_name, is_nullable, udt_name, column_default
+       FROM information_schema.columns WHERE table_schema = 'public'
+       ORDER BY table_name, column_name`,
+    ),
+    constraints: await query(
+      `SELECT conrelid::regclass::text AS table_name, conname, pg_get_constraintdef(oid) AS def
+       FROM pg_constraint WHERE connamespace = 'public'::regnamespace ORDER BY 1, 2`,
+    ),
+    indexes: await query(
+      `SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = 'public'
+       ORDER BY 1, 2`,
+    ),
+    types: await query(
+      `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+       WHERE n.nspname = 'public' AND t.typtype = 'e' ORDER BY 1`,
+    ),
+  };
+}
+
+describe("revertir la 0015 a mano (el SQL de docs/10-despliegue.md)", () => {
+  it("borra lo de los posts y deja el esquema y los avisos como tras la 0014", async () => {
+    const files = sqlFiles();
+    const index = files.findIndex((file) => file.startsWith("0015_"));
+    const reference = new PGlite();
+    const client = new PGlite();
+    try {
+      await applyFiles(reference, files.slice(0, index));
+      const expected = await schemaOf(reference);
+
+      await applyFiles(client, files.slice(0, index));
+      const ids = await loadListingData(client, "revertir");
+      const before: Record<string, Row[]> = {};
+      for (const table of TABLES) before[table] = await rowsOf(client, table);
+      // El registro del migrador, como en una base desplegada.
+      await client.exec(
+        `CREATE SCHEMA drizzle;
+         CREATE TABLE drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text NOT NULL,
+           created_at bigint)`,
+      );
+      await client.query(
+        `INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('0014', $1), ('0015', $2)`,
+        [journalWhen("0014_"), journalWhen("0015_")],
+      );
+      await applyFiles(client, [files[index] ?? ""], true);
+
+      // Un post con todo lo que puede tener.
+      const postId = await one(
+        client,
+        `INSERT INTO posts (broker_id, topic, kind) VALUES ($1, 'Post', 'image') RETURNING id`,
+        [ids.brokerId],
+      );
+      await client.query(`INSERT INTO editorial_profiles (broker_id) VALUES ($1)`, [ids.brokerId]);
+      await client.query(
+        `INSERT INTO post_uploads (post_id, object_path, expected_bytes, expires_at)
+         VALUES ($1, 'posts/x/a.jpg', 1, now())`,
+        [postId],
+      );
+      const mediaId = await one(
+        client,
+        `INSERT INTO media (post_id, broker_id, kind, role, storage_path, mime, bytes, checksum)
+         VALUES ($1, $2, 'image', 'original', 'posts/x/a.jpg', 'image/jpeg', 1, 'sha') RETURNING id`,
+        [postId, ids.brokerId],
+      );
+      await client.query(
+        `INSERT INTO media (post_id, broker_id, kind, role, variant, parent_media_id, storage_path,
+           mime, bytes, checksum)
+         VALUES ($1, $2, 'image', 'processed', 'thumb', $3, 'posts/x/thumb.jpg', 'image/jpeg', 1,
+           'sha2')`,
+        [postId, ids.brokerId, mediaId],
+      );
+      const runId = await one(
+        client,
+        `INSERT INTO content_runs (post_id, status) VALUES ($1, 'succeeded') RETURNING id`,
+        [postId],
+      );
+      const contentId = await one(
+        client,
+        `INSERT INTO contents (post_id, content_run_id, platform, language, body, llm_provider,
+           llm_model, prompt_version, raw_output)
+         VALUES ($1, $2, 'instagram', 'en', 'Text', 'fake', 'fake', 'v2', 'null'::jsonb)
+         RETURNING id`,
+        [postId, runId],
+      );
+      const publicationId = await one(
+        client,
+        `INSERT INTO publications (post_id, platform_account_id, platform, format, language,
+           content_id, status, dry_run, cost_usd)
+         VALUES ($1, $2, 'instagram', 'post', 'en', $3, 'approved', true, 0.015) RETURNING id`,
+        [postId, ids.igAccountId, contentId],
+      );
+      await client.query(
+        `INSERT INTO publication_events (publication_id, type, actor) VALUES ($1, 'created', 'cli')`,
+        [publicationId],
+      );
+
+      await client.exec(revertSqlFromDocs());
+
+      expect(await schemaOf(client)).toEqual(expected);
+      for (const table of TABLES) {
+        expect([table, await rowsOf(client, table)]).toEqual([table, before[table]]);
+      }
+      const migrations = await client.query<{ hash: string }>(
+        `SELECT hash FROM drizzle.__drizzle_migrations ORDER BY id`,
+      );
+      expect(migrations.rows).toEqual([{ hash: "0014" }]);
+    } finally {
+      await reference.close();
       await client.close();
     }
   });

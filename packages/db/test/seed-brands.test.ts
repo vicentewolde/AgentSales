@@ -4,8 +4,9 @@ import { brokers, editorialProfiles } from "../src/schema.js";
 import { seed } from "../src/seed.js";
 import { createTestDatabase, type TestDatabase } from "./pglite.js";
 
-// F9-T03 (spec F9 §4.11): el seed siembra las dos marcas del operador con su perfil editorial vacío,
-// sin duplicarlas ni pisar lo que el operador ya cambió.
+// F9-T03 (spec F9 §4.11): solo con `--operator-brands` (D19: la instancia de clientes no las lleva),
+// el seed siembra las dos marcas del operador con su perfil editorial vacío, sin duplicarlas ni pisar
+// lo que el operador ya cambió. Las pruebas van en orden sobre la misma base.
 
 let test: TestDatabase;
 
@@ -31,7 +32,15 @@ const brandRows = () =>
     .orderBy(brokers.slug);
 
 describe("seed · marcas del operador (PGlite)", () => {
-  it("crea Vinny y AgentPey como marcas del operador, con su perfil editorial vacío", async () => {
+  it("sin el parámetro no las crea (ni sus perfiles): el seed de siempre", async () => {
+    expect(await brandRows()).toEqual([]);
+    expect(await test.db.select().from(editorialProfiles)).toEqual([]);
+    const demo = await test.db.select().from(brokers).where(eq(brokers.slug, "demo"));
+    expect(demo).toHaveLength(1);
+  });
+
+  it("con el parámetro crea Vinny y AgentPey como marcas del operador, con su perfil vacío", async () => {
+    await seed(test.db, { operatorBrands: true });
     const rows = await brandRows();
     expect(rows.map(({ id: _id, ...rest }) => rest)).toEqual([
       {
@@ -66,7 +75,7 @@ describe("seed · marcas del operador (PGlite)", () => {
     }
   });
 
-  it("otra vez no duplica ni pisa lo que el operador cambió en la marca o en su perfil", async () => {
+  it("con el parámetro otra vez no duplica ni pisa lo que el operador cambió en la marca o en su perfil", async () => {
     const [agentpey] = await brandRows();
     await test.db
       .update(brokers)
@@ -77,7 +86,9 @@ describe("seed · marcas del operador (PGlite)", () => {
       .set({ facts: ["AgentPey publica avisos"], languages: ["es", "en"] })
       .where(eq(editorialProfiles.brokerId, agentpey?.id ?? ""));
 
-    await seed(test.db);
+    await seed(test.db, { operatorBrands: true });
+    await seed(test.db, { operatorBrands: true });
+    // Sin el parámetro, tampoco las borra.
     await seed(test.db);
 
     const rows = await brandRows();

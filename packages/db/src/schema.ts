@@ -427,7 +427,11 @@ export const posts = pgTable(
     rationale: text("rationale"),
     ...timestamps,
   },
-  (t) => [index("posts_broker_status_planned_idx").on(t.brokerId, t.status, t.plannedAt)],
+  (t) => [
+    index("posts_broker_status_planned_idx").on(t.brokerId, t.status, t.plannedAt),
+    // Las ideas de un plan (`GET /api/plans/:id`, F9-T20).
+    index("posts_plan_run_idx").on(t.planRunId),
+  ],
 );
 
 /** El perfil editorial de una marca (spec F9 §4.3): uno por corredor; lo llena el operador. */

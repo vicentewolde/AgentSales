@@ -1,5 +1,5 @@
 {
-  "id": "dd10da8e-af43-43a7-9493-c336566ba17d",
+  "id": "7034aa71-2bbf-4e80-9c90-a328e994e896",
   "prevId": "ecdf657c-64e4-424d-a9ed-c3c15df9efc5",
   "version": "7",
   "dialect": "postgresql",
@@ -2334,6 +2334,21 @@
             },
             {
               "expression": "planned_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "posts_plan_run_idx": {
+          "name": "posts_plan_run_idx",
+          "columns": [
+            {
+              "expression": "plan_run_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

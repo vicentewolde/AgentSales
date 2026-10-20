@@ -250,7 +250,7 @@ Se crea con `posts` (migración `0015`) porque `posts.plan_run_id` la referencia
 Índice `(broker_id, created_at)`.
 
 ### editorial_profiles — perfil editorial de una marca (F9, spec F9 §4.3)
-Uno por corredor (`broker_id` es la llave). `pnpm db:seed` crea las marcas del operador, `vinny` ("Vinny") y `agentpey` ("AgentPey"), con `kind = brand`, `operator_owned = true`, sin cuentas y con su perfil vacío, que llena el operador; correrlo de nuevo no las duplica ni pisa lo que el operador cambió (`ON CONFLICT DO NOTHING`, a diferencia del corredor demo).
+Uno por corredor (`broker_id` es la llave). `pnpm db:seed --operator-brands` (solo con ese parámetro y solo en la instancia del operador, spec F9 D19; sin él, el seed no las toca) crea las marcas del operador, `vinny` ("Vinny") y `agentpey` ("AgentPey"), con `kind = brand`, `operator_owned = true`, sin cuentas y con su perfil vacío, que llena el operador; correrlo de nuevo no las duplica ni pisa lo que el operador cambió (`ON CONFLICT DO NOTHING`, a diferencia del corredor demo).
 
 | Columna | Tipo | Notas |
 |---|---|---|
