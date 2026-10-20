@@ -115,7 +115,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 2 · `v1.2.0` | T15 LinkedIn (S2 y S3 antes de publicar de verdad) | ✅ terminada | #185 |
 | 2 | T16 X (S4 antes de publicar de verdad) | ✅ terminada | #187 |
 | 2 | T26 TikTok, video como borrador (tras S6) | ⏳ pendiente | |
-| 2 | T17 Panel: Contenido | ⏳ pendiente | |
+| 2 | T17 Panel: Contenido | ✅ terminada | #189 |
 | 2 | T18 Panel: calendario | ⏳ pendiente | |
 | 2 | T19 CLI de cuentas y guía del operador | ⏳ pendiente | |
 | 3 · `v1.3.0` | T20 El plan de ideas (core y worker) | ⏳ pendiente | |
