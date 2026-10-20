@@ -485,7 +485,7 @@ export function checkPostContent(
   if (platform === "x" && links.length > 0 && !ctx.xLinkAllowed) {
     add(
       "LINK_NOT_ALLOWED",
-      `En X un enlace cuesta ${usd(X_LINK_POST_COST_USD)} en vez de ${usd(X_POST_COST_USD)}: márcalo en el post (permitir enlace en X) o quítalo`,
+      `En X un enlace cuesta ${usd(X_LINK_POST_COST_USD)} en vez de ${usd(X_POST_COST_USD)}: márcalo en el post («Permitir un enlace en X» en el panel, o post edit --x-link en la CLI) o quítalo`,
     );
   }
   if (platform === "x" && links.length > 0) {

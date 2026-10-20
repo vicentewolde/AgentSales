@@ -14,7 +14,6 @@ import {
   type PostPlatform,
   postPublishesOn,
   postTextLength,
-  X_LINK_POST_COST_USD,
 } from "@agentsales/core";
 import { useId, useState } from "react";
 import { useEditPostContent, usePostApproval } from "../../queries/posts.js";
@@ -23,6 +22,7 @@ import { parseHashtags } from "../content/editor.js";
 import { ErrorAlert } from "../ErrorAlert.js";
 import { editBlockedReason, unapproveBlockedReason } from "../publications/publications.js";
 import { type PostContentView, postContents } from "./labels.js";
+import { needsXLinkMark, X_LINK_COST_TEXT } from "./XLinkControl.js";
 
 const FIELD =
   "mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none";
@@ -66,8 +66,7 @@ function XLinkNote({ platform, text }: { platform: PostPlatform; text: string })
   if (platform !== "x" || linksIn(text).length === 0) return null;
   return (
     <p className="text-xs text-amber-800">
-      Lleva un enlace: en X ese post cuesta US${X_LINK_POST_COST_USD.toFixed(2).replace(".", ",")}{" "}
-      en vez del precio normal.
+      Lleva un enlace: en X ese post cuesta {X_LINK_COST_TEXT}.
     </p>
   );
 }
@@ -188,8 +187,11 @@ function TextTab({
   lockReason,
 }: {
   postId: string;
-  /** Sus redes (`platforms`): el texto de una red quitada no se aprueba (F9-T21). */
-  post: Pick<PostJson, "platforms">;
+  /**
+   * Sus redes (`platforms`): el texto de una red quitada no se aprueba (F9-T21); y la marca del
+   * enlace en X (`xLinkAllowed`, F9-T16).
+   */
+  post: Pick<PostJson, "platforms" | "xLinkAllowed">;
   content: PostContentView;
   media: readonly PostMediaItem[];
   publications: readonly PublicationView[];
@@ -205,9 +207,11 @@ function TextTab({
     // F9-T21: el texto de una red que se le quitó al post no se aprueba.
     (!postPublishesOn(post, platform)
       ? `${PLATFORM_TEXT[platform]} ya no está entre las redes del post: agrégala con «Editar el post» para aprobar este texto.`
-      : hasContentErrors(content.checks)
-        ? "La revisión tiene errores: corrígelos para poder aprobar."
-        : null);
+      : needsXLinkMark(post, content)
+        ? "Lleva un enlace y el post no lo permite en X: marca «Permitir un enlace en X» o quita el enlace."
+        : hasContentErrors(content.checks)
+          ? "La revisión tiene errores: corrígelos para poder aprobar."
+          : null);
   const unapproveBlocked = lockReason ?? unapproveBlockedReason(content, publications);
   const blocked = approved ? unapproveBlocked : approveBlocked;
   return (
@@ -272,7 +276,7 @@ export function PostTexts({
   lockReason,
 }: {
   postId: string;
-  post: Pick<PostJson, "platforms">;
+  post: Pick<PostJson, "platforms" | "xLinkAllowed">;
   contents: readonly ContentView[];
   media: readonly PostMediaItem[];
   publications: readonly PublicationView[];
