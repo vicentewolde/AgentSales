@@ -188,8 +188,9 @@ export type PublishPublicationResult =
 /**
  * La espera ante un límite (spec F6 §4.5, ADR-0018 punto 6): si el error trae la señal de espera,
  * la plataforma no es de paso manual (Marketplace nunca se reprograma sola) y la publicación lleva
- * menos de 3 esperas seguidas (y es de un aviso: un post no, hasta F9-T07), pasa `publishing` →
- * `scheduled` para cuando se libere, con su propio modo, el motivo en `last_error` y el progreso intacto (el publisher retoma desde él). `null` si no
+ * menos de 3 esperas seguidas, pasa `publishing` → `scheduled` para cuando se libere, con su propio
+ * modo, el motivo en `last_error` y el progreso intacto (el publisher retoma desde él). Vale igual
+ * para un aviso y un post (F9-T07): el disparo de cada minuto la retoma. `null` si no
  * corresponde esperar, o si la bitácora o la transición fallaron por algo que no es pasajero
  * (entonces sigue el camino de siempre, `failed`). Un fallo pasajero de la base se relanza.
  */
@@ -211,10 +212,6 @@ async function waitForLimit(
 ): Promise<{ publication: Publication; retryAt: Date } | null> {
   const minutes = waitMinutesOf(error);
   if (minutes === null || requiresManualConfirm(publication.platform)) return null;
-  // Un post no se reprograma solo hasta F9-T07: el disparo de las programadas todavía es de avisos
-  // y la dejaría `scheduled` sin dueño. Sigue el camino de siempre (la cola reintenta si el error
-  // es reintentable; si no, o en el último intento, `failed` con el motivo).
-  if (publication.subject.kind !== "listing") return null;
   try {
     const waits = consecutiveLimitWaits(await deps.publications.listEvents(publication.id));
     if (waits >= MAX_LIMIT_WAITS) return null;
@@ -293,8 +290,8 @@ const codeOf = (error: unknown) => (isAppError(error) ? error.code : "INTERNAL_E
  *    `expired`. Un error que
  *    no es `AppError` es `INTERNAL_ERROR` (no reintentable).
  * 7 bis. Un límite de la plataforma (F6, ADR-0018): si el error trae la señal `waitMinutes`, la
- *    plataforma no es de paso manual, la publicación es de un aviso (un post no se reprograma
- *    solo hasta F9-T07) y van menos de 3 esperas seguidas, en vez del paso 7 la
+ *    plataforma no es de paso manual y van menos de 3 esperas seguidas (un aviso o un post: el
+ *    disparo de cada minuto ve los dos desde F9-T07), en vez del paso 7 la
  *    publicación pasa a `scheduled` para cuando se libere (con su modo y el progreso intacto), el
  *    intento queda `rescheduled` y se devuelve `outcome: "rescheduled"` sin relanzar.
  * 7 ter. Resultado dudoso (F9, ADR-0029 punto 8): un `OUTCOME_UNKNOWN` del publisher (encontró su

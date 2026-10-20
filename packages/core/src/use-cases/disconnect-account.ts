@@ -66,7 +66,7 @@ export async function disconnectAccount(
     const waiting = (await deps.publications.listByStatus("awaiting_manual_confirm")).find(
       (publication) => publication.platformAccountId === accountId,
     );
-    if (waiting !== undefined) throw manualConfirmPending(waiting.id);
+    if (waiting !== undefined) throw manualConfirmPending(waiting.id, waiting.platform);
     const filling = (await deps.publications.listByStatus("publishing")).find(
       (publication) => publication.platformAccountId === accountId,
     );

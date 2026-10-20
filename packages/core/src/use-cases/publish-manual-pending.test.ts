@@ -11,10 +11,11 @@ import { markNotPublished } from "./confirm-manual-publication.js";
 import { publishListing } from "./publish-listing.js";
 import { publishPublication } from "./publish-publication.js";
 import { resolvePublication } from "./resolve-publication.js";
+import { startDuePublications } from "./start-due-publications.js";
 
 // F9-T06, ajustes de la revisión (revisor y arquitecto): el traspaso a mano y un envío pendiente,
-// la lista cerrada de redes con modo a mano, la espera ante un límite en un post y resolver en
-// `dry-run`.
+// la lista cerrada de redes con modo a mano, la espera ante un límite en un post (desde F9-T07,
+// reprogramado como un aviso) y resolver en `dry-run`.
 
 const NOW = new Date("2026-10-20T15:00:00Z");
 
@@ -121,34 +122,37 @@ describe("lista cerrada de redes con modo a mano", () => {
   });
 });
 
-describe("espera ante un límite con un post (hasta F9-T07)", () => {
-  it("no lo reprograma: la cola reintenta y el último intento lo deja failed", async () => {
-    const limit = () =>
-      new AppError("DISCORD_RATE_LIMITED", "espera", {
-        retriable: true,
-        details: { waitMinutes: 5 },
-      });
-    const t = await createPostPublicationScenario();
-    const first = limit();
-    const second = limit();
-    const discord = createSendOncePublisher("discord", {
-      steps: [{ notSent: first }, { notSent: second }],
+describe("espera ante un límite con un post (F9-T07)", () => {
+  it("lo reprograma como a un aviso y el reloj lo retoma a la hora", async () => {
+    const limit = new AppError("DISCORD_RATE_LIMITED", "espera", {
+      retriable: true,
+      details: { waitMinutes: 5 },
     });
-    const deps = t.publishDeps({ discord });
+    const t = await createPostPublicationScenario();
+    const discord = createSendOncePublisher("discord", { steps: [{ notSent: limit }] });
+    const deps = t.publishDeps({ discord }, { now: () => NOW });
     const publication = await t.toPublishing(t.publicationOf("discord"));
+    const retryAt = new Date(NOW.getTime() + 5 * 60_000);
 
     await expect(
       publishPublication(deps, { publicationId: publication.id, isLastAttempt: false }),
-    ).rejects.toBe(first);
-    expect(t.current(publication.id)?.status).toBe("publishing");
-    await expect(
-      publishPublication(deps, { publicationId: publication.id, isLastAttempt: true }),
-    ).rejects.toBe(second);
+    ).resolves.toMatchObject({ outcome: "rescheduled", retryAt });
     expect(t.current(publication.id)).toMatchObject({
-      status: "failed",
-      scheduledAt: null,
+      status: "scheduled",
+      scheduledAt: retryAt,
+      dryRun: false,
       lastError: { code: "DISCORD_RATE_LIMITED" },
     });
+
+    const started = await startDuePublications({
+      ...t.deps,
+      now: () => new Date(retryAt.getTime() + 30_000),
+    });
+    expect(started.started).toEqual([publication.id]);
+    await expect(
+      publishPublication(deps, { publicationId: publication.id, isLastAttempt: false }),
+    ).resolves.toMatchObject({ outcome: "published" });
+    expect(discord.sends).toHaveLength(2);
   });
 });
 

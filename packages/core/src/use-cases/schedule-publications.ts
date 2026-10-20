@@ -1,4 +1,4 @@
-import { LISTING_PLATFORMS, type Platform } from "../enums.js";
+import { LISTING_PLATFORMS, type Platform, POST_PLATFORMS } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import {
   dateIn,
@@ -6,7 +6,8 @@ import {
   manualConfirmPending,
   requiresManualConfirm,
 } from "../marketplace/limits.js";
-import type { ListingLock, LockedRepositories } from "../ports/listing-lock.js";
+import type { LockedRepositories } from "../ports/listing-lock.js";
+import type { PostLockedRepositories } from "../ports/post-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import {
   type Publication,
@@ -17,8 +18,13 @@ import {
 } from "../publication.js";
 import { outcomeUnknownPending } from "../publish/outcome.js";
 import { scheduleAt as checkScheduleAt, MAX_SCHEDULE_SPACING_MINUTES } from "../schedule.js";
-import { listingIdOf } from "../subject.js";
-import { channelPublications, createPublications } from "./open-publications.js";
+import { type PostSubject, postSubject } from "../subject.js";
+import { runOnSubject, type SubjectLocks } from "../subject-lock.js";
+import {
+  channelPublications,
+  createPostPublications,
+  createPublications,
+} from "./open-publications.js";
 import {
   type MarketplaceStartOptions,
   modeOf,
@@ -26,20 +32,26 @@ import {
   portalDefinitionsBeforeLock,
   publicationNotFound,
   STARTABLE_STATUSES,
+  subjectDefinitionsBeforeLock,
 } from "./publication-start.js";
-import { prepareChannelStart, requireStartableOne } from "./start-checks.js";
+import {
+  prepareChannelStart,
+  preparePostChannelStart,
+  requireStartableOne,
+} from "./start-checks.js";
 
 // Programar, reprogramar y desprogramar (spec F6 §4.3, ADR-0018). Lo programado vive en la base:
 // nada se encola aquí. El disparo de cada minuto (`startDuePublications`) lo empieza a la hora.
 
-export type ScheduleDeps = PortalCheckDeps & {
-  lock: ListingLock;
-  /** Marketplace: si se puede convertir la UF (lo que falta al aviso). */
-  marketplace?: MarketplaceStartOptions;
-  now?: () => Date;
-  /** Fuera del candado: solo para saber de qué aviso es la publicación. */
-  publications: Pick<PublicationRepository, "get">;
-};
+/** `postLock` hace falta para programar un post (sin él, `SUBJECT_NOT_LISTING`). */
+export type ScheduleDeps = PortalCheckDeps &
+  SubjectLocks & {
+    /** Marketplace: si se puede convertir la UF (lo que falta al aviso). */
+    marketplace?: MarketplaceStartOptions;
+    now?: () => Date;
+    /** Fuera del candado: solo para saber de qué sujeto es la publicación. */
+    publications: Pick<PublicationRepository, "get">;
+  };
 
 /** Cuántos recordatorios de Marketplace por cuenta y día se avisan en un lote (el límite, D8 de F5). */
 const MARKETPLACE_REMINDERS_PER_DAY = 3;
@@ -97,8 +109,10 @@ async function scheduleOne(
  * Programa o reprograma **una** publicación (`POST /publications/:id/schedule`): `approved`,
  * `failed` o `scheduled`, con la misma revisión que publicarla (`startPublication`), salvo el
  * límite del día y "un formulario a la vez" de Marketplace (spec F6 §4.3). El modo es el de la API
- * (`dryRun`). Errores: los de publicar, más `SCHEDULE_TOO_SOON`, `SCHEDULE_TOO_FAR` y
- * `SCHEDULE_AT_INVALID` (400); una en `publishing` → `PUBLICATION_IN_PROGRESS`.
+ * (`dryRun`). Dentro del candado de su sujeto: el del aviso o el del post (F9-T07; un post no
+ * tiene las revisiones de Portal ni de Marketplace). Errores: los de publicar, más
+ * `SCHEDULE_TOO_SOON`, `SCHEDULE_TOO_FAR` y `SCHEDULE_AT_INVALID` (400); una en `publishing` →
+ * `PUBLICATION_IN_PROGRESS`; con resultado dudoso → `OUTCOME_UNKNOWN_PENDING`.
  */
 export async function schedulePublication(
   deps: ScheduleDeps,
@@ -113,14 +127,10 @@ export async function schedulePublication(
   const when = checkScheduleAt(at, now);
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
-  const definitions = await portalDefinitionsBeforeLock(
-    deps,
-    listingIdOf(found.subject),
-    found.platform,
-  );
+  const definitions = await subjectDefinitionsBeforeLock(deps, found.subject, found.platform);
 
-  return deps.lock.run(listingIdOf(found.subject), async (locked) => {
-    const publication = await locked.publications.get(publicationId);
+  return runOnSubject(deps, found.subject, async (locked) => {
+    const publication = await locked.repos.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     if (publication.status === "publishing") {
       throw new AppError(
@@ -129,7 +139,8 @@ export async function schedulePublication(
         { details: { publicationId } },
       );
     }
-    if (publication.status === "awaiting_manual_confirm") throw manualConfirmPending(publicationId);
+    if (publication.status === "awaiting_manual_confirm")
+      throw manualConfirmPending(publicationId, publication.platform);
     // No se sabe si salió (ADR-0029 punto 8): programarla podría publicarla dos veces.
     if (publication.status === "outcome_unknown") throw outcomeUnknownPending(publicationId);
     if (publication.status === "published") {
@@ -151,7 +162,7 @@ export async function schedulePublication(
       now,
       manualLimits: false,
     });
-    return scheduleOne(locked.publications, publication, {
+    return scheduleOne(locked.repos.publications, publication, {
       at: when,
       dryRun,
       actor,
@@ -270,7 +281,9 @@ const SILENT_WITHOUT_PLATFORMS = new Set(["CONTENT_NOT_APPROVED", "ACCOUNT_NOT_C
  * conectada), a `at + i × spacingMinutes`. Una propiedad o un canal que no se puede programar no
  * corta el lote: queda `skipped` con su código y motivo. La hora se revisa una vez, para la primera
  * (y la última no puede pasar de 60 días). Errores del pedido: `SCHEDULE_BATCH_INVALID` (lista
- * vacía, repetida, más de 50, o un espaciado fuera de 0 a 240) y los de la hora.
+ * vacía, repetida, más de 50, o un espaciado fuera de 0 a 240), los de la hora y cualquier error
+ * reintentable (la base: corta el lote con lo ya programado escrito, en vez de informarlo como
+ * motivo de una propiedad).
  */
 export async function scheduleListings(
   deps: Omit<ScheduleDeps, "publications">,
@@ -337,7 +350,8 @@ export async function scheduleListings(
           publications: done.scheduled,
         });
       } catch (error) {
-        if (!isAppError(error)) throw error;
+        // Un error pasajero (la base, la red) corta el lote: no es un motivo de esa propiedad.
+        if (!isAppError(error) || error.retriable) throw error;
         if (!asked && SILENT_WITHOUT_PLATFORMS.has(error.code)) continue;
         own.push({
           listingId,
@@ -405,17 +419,146 @@ export function marketplaceReminderNotes(results: readonly ScheduleListingOutcom
   );
 }
 
+/** El resultado de programar un post en una red (F9-T07). */
+export type SchedulePostOutcome =
+  | { platform: Platform; outcome: "scheduled"; at: Date; publications: Publication[] }
+  | { platform: Platform | null; outcome: "skipped"; code: string; message: string };
+
+/**
+ * Programa un post (F9-T07, ADR-0029 punto 4; `POST /posts/:id/schedule`, F9-T12): cada red pedida
+ * (o, sin `platforms`, cada red con un texto aprobado y la cuenta conectada) a la hora `at`, dentro
+ * del candado del post, con las mismas revisiones que publicarlo (`preparePostChannelStart`): abre
+ * las que falten de cada idioma y programa las pendientes de cuentas conectadas (las que ya se
+ * están publicando no cuentan). El modo es el de la API (`dryRun`). Una red que no se puede
+ * programar no corta las demás: queda `skipped` con su código; sin redes pedidas, las que no tienen
+ * texto aprobado o cuenta no se informan, y si no queda ninguna, una fila sin red
+ * (`NOTHING_TO_PUBLISH`). Programa **red por red, cada una en su propia vuelta del candado** (como
+ * `scheduleListings` con cada canal): si el post cambia a medias (lo archivan, se cae la base),
+ * el pedido puede fallar con algunas redes ya programadas; lo programado queda y repetir el pedido
+ * es idempotente (a la misma hora y modo, no cambia nada). Errores del pedido (cortan sin seguir):
+ * los de la hora (`SCHEDULE_TOO_SOON`, `SCHEDULE_TOO_FAR`, `SCHEDULE_AT_INVALID`), los del post
+ * (`POST_NOT_FOUND`, `POST_NOT_READY`), `SUBJECT_NOT_LISTING` sin `postLock` y cualquier error
+ * reintentable (la base).
+ */
+export async function schedulePost(
+  deps: SubjectLocks & { now?: () => Date },
+  {
+    postId,
+    platforms,
+    at,
+    dryRun,
+    actor,
+  }: {
+    postId: string;
+    platforms?: readonly Platform[];
+    at: Date;
+    dryRun: boolean;
+    actor: PublicationActor;
+  },
+): Promise<{ results: SchedulePostOutcome[] }> {
+  const now = (deps.now ?? (() => new Date()))();
+  const when = checkScheduleAt(at, now);
+  const subject = postSubject(postId);
+  const asked = platforms !== undefined && platforms.length > 0;
+  const channels = asked ? [...new Set(platforms)] : [...POST_PLATFORMS];
+  const results: SchedulePostOutcome[] = [];
+  for (const platform of channels) {
+    try {
+      const scheduled = await runOnSubject(deps, subject, async (locked) => {
+        // `runOnSubject` con un post siempre da el candado del post.
+        if (locked.kind !== "post") throw new AppError("INTERNAL_ERROR", "Candado equivocado");
+        return schedulePostChannel(locked.repos, {
+          subject,
+          platform,
+          at: when,
+          dryRun,
+          actor,
+        });
+      });
+      results.push({ platform, outcome: "scheduled", at: when, publications: scheduled });
+    } catch (error) {
+      // Un error pasajero (la base) o del post entero corta el pedido: no es un motivo de la red.
+      if (!isAppError(error) || error.retriable || POST_REQUEST_ERRORS.has(error.code)) {
+        throw error;
+      }
+      if (!asked && SILENT_WITHOUT_PLATFORMS.has(error.code)) continue;
+      results.push({ platform, outcome: "skipped", code: error.code, message: error.message });
+    }
+  }
+  if (results.length === 0) {
+    results.push({
+      platform: null,
+      outcome: "skipped",
+      code: "NOTHING_TO_PUBLISH",
+      message: "El post no tiene redes con el texto aprobado y la cuenta conectada",
+    });
+  }
+  return { results };
+}
+
+/** Errores del post o del pedido (no de una red): cortan `schedulePost` en vez de saltar la red. */
+const POST_REQUEST_ERRORS = new Set(["POST_NOT_FOUND", "POST_NOT_READY", "SUBJECT_NOT_LISTING"]);
+
+/** Un canal de un post (una red, todos sus idiomas), dentro de su candado: abre y programa. */
+async function schedulePostChannel(
+  locked: PostLockedRepositories,
+  {
+    subject,
+    platform,
+    at,
+    dryRun,
+    actor,
+  }: {
+    subject: PostSubject;
+    platform: Platform;
+    at: Date;
+    dryRun: boolean;
+    actor: PublicationActor;
+  },
+): Promise<Publication[]> {
+  const { post, opening, startable } = await preparePostChannelStart(
+    locked,
+    { subject, platform },
+    {
+      dryRun,
+      countInFlight: false,
+      nothingMessage: "No hay nada que programar en esta red: todo está publicado o publicándose",
+    },
+  );
+  // Recién aquí se escribe.
+  const created: Publication[] = [];
+  for (const { content, planned } of opening.toCreate) {
+    created.push(...(await createPostPublications(locked, { post, content, planned, actor })));
+  }
+  const ids = new Set<string>();
+  for (const publication of [...startable, ...created]) {
+    ids.add(
+      (
+        await scheduleOne(locked.publications, publication, {
+          at,
+          dryRun,
+          actor,
+          reason: "operator",
+        })
+      ).id,
+    );
+  }
+  // Releídas: el resultado muestra la hora y el modo guardados.
+  return (await channelPublications(locked, subject, platform)).filter((p) => ids.has(p.id));
+}
+
 /**
  * Desprograma una publicación (`POST /publications/:id/unschedule`): `scheduled` → `approved`, sin
- * tocar su texto (sigue aprobado). Otra cosa → `INVALID_TRANSITION`.
+ * tocar su texto (sigue aprobado), dentro del candado de su sujeto (aviso o post). Otra cosa →
+ * `INVALID_TRANSITION`.
  */
 export async function unschedulePublication(
-  deps: { lock: ListingLock; publications: Pick<PublicationRepository, "get"> },
+  deps: SubjectLocks & { publications: Pick<PublicationRepository, "get"> },
   { publicationId, actor }: { publicationId: string; actor: PublicationActor },
 ): Promise<Publication> {
   const found = await deps.publications.get(publicationId);
   if (found === null) throw publicationNotFound(publicationId);
-  return deps.lock.run(listingIdOf(found.subject), async (locked) => {
+  return runOnSubject(deps, found.subject, async ({ repos: locked }) => {
     const publication = await locked.publications.get(publicationId);
     if (publication === null) throw publicationNotFound(publicationId);
     if (publication.status !== "scheduled") {

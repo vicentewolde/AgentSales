@@ -336,6 +336,8 @@ const jobs = buildJobs({
     : null,
   publicationDue: {
     lock: listingLock,
+    // Las programadas de posts (F9-T07) se empiezan en el candado del post.
+    postLock,
     // Se arma más abajo (`jobQueueFromBoss`); los handlers corren después de arrancar.
     queue: { enqueue: (name, data, options) => queue.enqueue(name, data, options) },
     publications,

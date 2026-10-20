@@ -80,6 +80,13 @@ export type WatchPublicationsResult = {
  *    **salvo Marketplace**: un formulario nunca se reabre sin el operador (D7); esas quedan
  *    atascadas en la agenda. `enqueuePublication` es `exclusive` por publicación: si todavía tiene
  *    job, no se duplica.
+ * Ve avisos y posts (F9-T07, ADR-0029 punto 4) sin distinguirlos: lo que excluye es la
+ * **plataforma** (Marketplace), no el sujeto. Reencolar un post no lo publica dos veces: un
+ * "enviando" sin resultado lo lleva a `outcome_unknown` sin llamar a la red (punto 8), y una cuenta
+ * en modo `manual` (punto 9) solo lo deja listo para publicar a mano. Las que esperan al operador
+ * (`awaiting_manual_confirm`, `outcome_unknown`) no están en `publishing`: nunca se tocan aquí. El
+ * sync de Portal no ve posts (un post nunca es de Portal), y nada de esto pasa un aviso a `active`
+ * ni lo cierra (eso es del intento y de la propiedad, solo en avisos).
  * Nada se lanza por una publicación: el resultado dice qué pasó. Lo que falla al listar sube.
  */
 export async function watchPublications(
