@@ -907,6 +907,12 @@ export {
   type ListingContent,
 } from "./use-cases/get-listing-content.js";
 export {
+  type GetPostContentDeps,
+  getPostContent,
+  type PostContent,
+  postContentId,
+} from "./use-cases/get-post-content.js";
+export {
   type ImportedRow,
   type ImportListingsDeps,
   type ImportListingsParams,

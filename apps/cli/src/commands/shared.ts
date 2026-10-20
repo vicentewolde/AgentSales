@@ -2,11 +2,15 @@ import { brokerListResponseSchema, listingListResponseSchema } from "@agentsales
 import {
   type Broker,
   isListingPlatform,
+  isPostPlatform,
+  LANGUAGES,
+  type Language,
   type ListingPlatform,
   manualConfirmCommands,
   PLATFORM_SHORT_NAMES,
   type Platform,
   type PlatformShortName,
+  type PostPlatform,
   slugify,
 } from "@agentsales/core";
 import { z } from "zod";
@@ -44,6 +48,37 @@ export function platformOption(option: string): ListingPlatform {
     );
   }
   return platform;
+}
+
+/** Los nombres de `--platform` en los comandos de posts (F9-T12): las redes de `POST_PLATFORMS`. */
+export const POST_PLATFORM_OPTION_NAMES: readonly string[] = ALL_PLATFORM_OPTION_NAMES.filter(
+  (name) => isPostPlatform(PLATFORM_SHORT_NAMES[name]),
+);
+
+/** `--platform discord` en los comandos de posts; `PLATFORM_INVALID` si no es una red de posts. */
+export function postPlatformOption(option: string): PostPlatform {
+  const name = option.trim().toLowerCase();
+  const platform = isShortName(name) ? PLATFORM_SHORT_NAMES[name] : null;
+  if (platform === null || !isPostPlatform(platform)) {
+    throw new CliError(
+      "PLATFORM_INVALID",
+      `--platform debe ser ${POST_PLATFORM_OPTION_NAMES.join(", ")}: "${option}"`,
+    );
+  }
+  return platform;
+}
+
+/** `--language es|en` (F9): el idioma de un texto de post. */
+export function languageOption(option: string): Language {
+  const language = option.trim().toLowerCase();
+  const found = LANGUAGES.find((candidate) => candidate === language);
+  if (found === undefined) {
+    throw new CliError(
+      "LANGUAGE_INVALID",
+      `--language debe ser ${LANGUAGES.join(" o ")}: "${option}"`,
+    );
+  }
+  return found;
 }
 
 /** `portal_inmobiliario` → `portal`: el nombre corto que acepta `--platform`. */

@@ -12,6 +12,8 @@ describe("httpStatusFor", () => {
     ["LLM_NOT_CONFIGURED", 503],
     ["LLM_ACCOUNT_LIMIT", 503],
     ["LLM_REQUEST_REJECTED", 502],
+    // F9-T12: la IA no entregó los textos en el formato pedido (un fallo del modelo, no un 400).
+    ["LLM_OUTPUT_INVALID", 502],
     ["LLM_RATE_LIMITED", 429],
     ["RATE_LIMITED", 429],
     // Al conectar una cuenta (F3-T13).

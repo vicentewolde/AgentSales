@@ -45,9 +45,10 @@ export type ContentRoutesDeps = RequestContentRunDeps &
   };
 
 /** La vista HTTP de un texto: sin `rawOutput` ni datos del modelo, y solo los `checks`. */
-const contentView = ({ content, checks }: CheckedContent): ContentView => ({
+export const contentView = ({ content, checks }: CheckedContent): ContentView => ({
   id: content.id,
   platform: content.platform,
+  language: content.language,
   title: content.title,
   body: content.body,
   hashtags: content.hashtags,
@@ -133,17 +134,18 @@ export function contentRunRoutes(deps: Pick<ContentRoutesDeps, "contentRuns">) {
 }
 
 /**
- * Hasta las rutas de posts (`/posts/:id/contents/…`, F9-T12), `/contents/:id` es solo de avisos:
- * un texto de post es `CONTENT_NOT_FOR_LISTING` (409) **antes** del candado, sin escribir nada (la
- * respuesta de estas rutas arma vistas de avisos). Un texto que no existe sigue al caso de uso
- * (`CONTENT_NOT_FOUND`).
+ * `/contents/:id` es solo de avisos: los textos de un post van por su red e idioma en
+ * `/posts/:id/contents/:platform/:language` (F9-T12), que revisan `posts.manage` y responden con
+ * el idioma. Un texto de post es `CONTENT_NOT_FOR_LISTING` (409) **antes** del candado, sin escribir
+ * nada, con el comando que sirve. Un texto que no existe sigue al caso de uso (`CONTENT_NOT_FOUND`).
  */
 async function assertListingContent(deps: EditContentDeps, contentId: string): Promise<void> {
   const content = await deps.contents.get(contentId);
   if (content?.subject.kind === "post") {
+    const ref = `${content.subject.id} --platform ${content.platform} --language ${content.language}`;
     throw new AppError(
       "CONTENT_NOT_FOR_LISTING",
-      "Ese texto es de un post: edítalo, apruébalo o quítale la aprobación desde el post",
+      `Ese texto es de un post: edítalo, apruébalo o quítale la aprobación desde el post (agentsales post edit|approve ${ref}, o approve --undo)`,
       { details: { contentId } },
     );
   }

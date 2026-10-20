@@ -175,6 +175,42 @@ pnpm -s cli brand edit --broker agentpey \
 - El tono sigue siendo el de la marca (`brokers edit --tone`) y los hashtags del perfil se suman a los fijos de la marca.
 - Un corredor edita solo el perfil de su marca; tú, el de cualquiera.
 
+## Publicar un post de una marca (F9)
+
+Un post es una publicación de la marca que no es un aviso: una idea, un aprendizaje, una novedad. Tiene **un texto por red y por idioma** (si la marca publica en dos idiomas, cada uno sale como una publicación aparte). Todo funciona en `dry-run` igual que en vivo, salvo que en `dry-run` nada sale a las redes. Con `pnpm dev` corriendo (o contra el servidor):
+
+```bash
+# 1. Crear: el tema y tu brief (lo que la IA puede usar y afirmar, además del perfil de la marca)
+pnpm -s cli post create "Lo que aprendí esta semana" --broker agentpey \
+  --brief "Tres cosas: …" --kind image --pillar aprendizajes --date "2026-10-23 10:00"
+
+# 2. Subir medios (si el post lleva foto o video): van directo a R2, con avance
+pnpm -s cli post upload <id_post> foto.jpg clip.mp4
+
+# 3. Pedir los textos a la IA y esperar
+pnpm -s cli post draft <id_post>
+
+# 4. Revisar, corregir y aprobar
+pnpm -s cli post show <id_post>
+pbpaste | pnpm -s cli post edit <id_post> --platform linkedin --language es
+pnpm -s cli post approve <id_post>                       # todas las redes, o --platform x
+
+# 5. Programar (hora de Chile) o publicar ya
+pnpm -s cli post schedule <id_post> --at "2026-10-23 10:00"   # --platform para algunas redes
+pnpm -s cli post publish <id_post>                            # --platform para una sola
+```
+
+- **`post list`** muestra tus posts (`--broker`, `--status idea|draft|ready|archived`, `--from` y `--to` como `AAAA-MM-DD`). **`post show`** dice todo: estado, medios y sus variantes ("procesando…" mientras el worker las arma), cada texto por red e idioma con su revisión, y cada publicación con el comando que le toca.
+- **El brief tuyo cuenta como fuente de hechos; el de la IA no.** La revisión marca cifras, nombres o enlaces que no están en el perfil ni en tu brief: corrígelos o súmalos al perfil antes de aprobar.
+- **Los medios** se suben una vez: si repites `post upload` con el mismo archivo, no se vuelve a subir. Si se corta, vuelve a correr el comando: retoma lo que falta.
+- **Aprobar** abre una publicación por cada red con la cuenta conectada; sin cuenta, el texto queda aprobado y la publicación nace cuando la conectes. `post approve --undo` quita la aprobación y descarta lo que no salió.
+- **En vivo** (`PUBLISH_MODE=live`), `post publish`, `post schedule` y `publications retry` preguntan antes (`--yes` no pregunta). A la hora programada el reloj del worker publica sin volver a preguntar.
+- **Una red a mano** (por ejemplo LinkedIn): a la hora queda lista para que la publiques tú; después `pbpaste | pnpm -s cli publications confirm <id> --url-stdin` con el enlace, o `publications not-published <id>` si no la publicaste.
+- **"No se sabe si salió"** (`outcome_unknown`): el envío se cortó y AgentSales no sabe si la red la publicó. **Mira la red** y dilo: `pnpm -s cli publications resolve <id> --published` (con el enlace, si lo tienes: `pbpaste | … --published --url-stdin`) o `--not-published` (queda fallida). AgentSales nunca la reintenta solo, para no publicarla dos veces.
+- **Reintentar o publicar ya una sola publicación:** `pnpm -s cli publications retry <id>` (el id sale en `post show` y en la agenda). Descartarla: `publications cancel <id>`.
+- **`agenda`** muestra los posts junto a las propiedades, con el comando de cada cosa pendiente. **`post archive <id>`** da por terminado un post (primero hay que resolver o descartar sus publicaciones pendientes).
+- Si algo falla, la CLI muestra el código y qué hacer: `POST_NO_PLATFORMS` (la marca no tiene cuentas ni cadencia: conecta una o define la cadencia en `brand edit`), `LLM_BUDGET_EXCEEDED` (la marca llegó a su tope de IA del mes: `pnpm -s cli usage`), `LLM_OUTPUT_INVALID` (la IA no respondió en el formato pedido: vuelve a pedir los textos), `CONTENT_EDITED` (ya editaste o aprobaste: `post draft --replace-edits` los reemplaza), `POST_NOT_READY` (una idea sin aceptar o un post archivado), `OUTCOME_UNKNOWN_PENDING` (primero di si salió).
+
 ## Restaurar un respaldo de la base
 
 > Esto es para un respaldo de tu Mac. Para uno del servidor (el de R2), sigue `docs/10-despliegue.md`, "Paso 10 · Restaurar un respaldo".

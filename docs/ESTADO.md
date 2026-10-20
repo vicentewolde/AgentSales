@@ -109,7 +109,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 1 | T09 Perfil editorial | ✅ terminada | #175 |
 | 1 | T10 Posts manuales y sus medios | ✅ terminada | #177 |
 | 1 | T11 El texto por red con IA | ✅ terminada | #180 |
-| 1 | T12 Aprobar, publicar y programar un post (CLI) | ⏳ pendiente | |
+| 1 | T12 Aprobar, publicar y programar un post (CLI) | ✅ terminada | #182 |
 | 1 | T13 Instagram para posts (S1 antes de publicar de verdad) | ✅ terminada | #184 |
 | 1 | T14 Discord (S5 antes de publicar de verdad) | ✅ terminada | #183 |
 | 2 · `v1.2.0` | T15 LinkedIn (tras S2 y S3) | ⏳ pendiente | |

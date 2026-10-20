@@ -61,7 +61,7 @@ export function renderContentRun(run: ContentRunView, c: Colors): string {
 }
 
 /** Los problemas de la revisión de un texto, uno por línea (errores en rojo). */
-function renderChecks(content: ContentView, c: Colors, indent: string): string[] {
+export function renderChecks(content: ContentView, c: Colors, indent: string): string[] {
   if (content.checks.length === 0) return [`${indent}${c.green("✓ sin problemas")}`];
   return content.checks.map((check) =>
     check.severity === "error"

@@ -24,7 +24,7 @@ type Item = AgendaResponse["items"][number];
 
 /**
  * Los comandos de una publicación por su id, que valen igual para un aviso o un post: resolver una
- * `outcome_unknown` y confirmar una a mano (`publications resolve` llega con F9-T12).
+ * `outcome_unknown` y confirmar una a mano (`publications resolve`, F9-T12).
  */
 function publicationCommands(item: Item): string[] | null {
   const id = item.publicationId;
@@ -45,20 +45,26 @@ function publicationCommands(item: Item): string[] | null {
 }
 
 /**
- * Los comandos de un post (F9-T08): verlo (`agentsales post show`, que crea F9-T12, con sus textos
- * y publicaciones) y lo que se hace por el id de la publicación.
+ * Los comandos de un post (F9-T08): verlo (`agentsales post show`, con sus textos y publicaciones)
+ * y lo que se hace por el id de la publicación: resolver, confirmar, publicar ya o reintentar
+ * (`publications retry`, F9-T12), reprogramar o desprogramar.
  */
 function postCommands(item: Item, postId: string): string[] {
   const show = `agentsales post show ${postId}`;
   const byId = publicationCommands(item);
   if (byId !== null) return [show, ...byId];
+  const retry = `agentsales publications retry ${item.publicationId}`;
   if (item.kind === "overdue") {
     return [
       show,
+      retry,
       `agentsales schedule --publication ${item.publicationId} --at "AAAA-MM-DD HH:MM"`,
     ];
   }
   if (item.kind === "upcoming") return [show, `agentsales unschedule ${item.publicationId}`];
+  if (item.action === "publish" || item.action === "retry" || item.action === "requeue") {
+    return [show, retry];
+  }
   return [show];
 }
 

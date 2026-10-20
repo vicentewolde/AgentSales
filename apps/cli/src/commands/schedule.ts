@@ -29,7 +29,7 @@ export type ScheduleOptions = {
 };
 
 /** `--platform instagram,portal` o repetido: la lista de canales. */
-const collect = (value: string, previous: string[] = []) => [
+export const collect = (value: string, previous: string[] = []) => [
   ...previous,
   ...value
     .split(",")
@@ -50,7 +50,7 @@ function spacingOf(text: string | undefined): number | undefined {
 }
 
 /** `--at` en hora de Chile (`parseChileTime`, core); su error se muestra como de la CLI. */
-function atOption(text: string): Date {
+export function atOption(text: string): Date {
   try {
     return parseChileTime(text);
   } catch (error) {
@@ -60,7 +60,7 @@ function atOption(text: string): Date {
 }
 
 /** En vivo, programar pide la misma confirmación que publicar (spec F6 §4.3). */
-async function confirmLive(deps: ScheduleDeps, yes: boolean): Promise<boolean | null> {
+export async function confirmLive(deps: ScheduleDeps, yes: boolean): Promise<boolean | null> {
   const { publishMode } = await createHealthFetcher(deps.client)();
   if (publishMode !== "live" || yes) return publishMode === "live";
   const confirmed = await deps.confirm(

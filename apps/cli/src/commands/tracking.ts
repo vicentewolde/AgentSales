@@ -29,7 +29,7 @@ type PostRow = TrackingResponse["posts"][number];
 type Cell = Row["cells"][keyof Row["cells"]][number];
 
 /** El estado de un post (spec F9 §4.2), como lo ve el operador. */
-const POST_STATUS_TEXT: Readonly<Record<PostStatus, string>> = {
+export const POST_STATUS_TEXT: Readonly<Record<PostStatus, string>> = {
   idea: "idea",
   draft: "borrador",
   ready: "listo",

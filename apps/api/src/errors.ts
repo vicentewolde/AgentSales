@@ -168,6 +168,10 @@ const PLATFORM_UNEXPECTED = new Set([
   "DISCORD_UNEXPECTED_RESPONSE",
   // F7-T11: la API de Anthropic rechazó una petición que arma el servidor (en la corrida, no aquí).
   "LLM_REQUEST_REJECTED",
+  // La IA no entregó los textos en el formato pedido (en la corrida de `post.draft` o
+  // `content.prepare`; por si llegara): un fallo del modelo, no del cliente (sin el 400 de
+  // `_INVALID`).
+  "LLM_OUTPUT_INVALID",
   "UF_UNEXPECTED_RESPONSE",
   "UF_VALUE_INVALID",
   "UF_VALUE_SUSPICIOUS",
