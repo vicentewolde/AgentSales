@@ -20,6 +20,7 @@ import { AppError } from "../errors.js";
 import { foldText } from "../listing-validator/normalizers.js";
 import type { Post } from "../post.js";
 import { hasMassMention, unsupportedFacts } from "./check.js";
+import { kindProblem } from "./networks.js";
 
 // El plan de ideas de la IA (spec F9 §4.9, ADR-0030): el período, lo que ve la IA, la forma de su
 // respuesta y las verificaciones de cada idea. Funciones puras: las usan `requestPlanRun` y
@@ -35,10 +36,12 @@ export const PLAN_MAX_IDEAS = 20;
 export const PLAN_MAX_START_AHEAD_DAYS = 60;
 /** Posts por semana que se suponen si ninguna red pedida tiene cadencia. */
 export const PLAN_FALLBACK_PER_WEEK = 3;
-/** Los temas que no se repiten: los de los últimos 60 días (ADR-0030, punto 5). */
+/**
+ * Los temas que no se repiten (ADR-0030, punto 5): los de los posts de los últimos 60 días y las
+ * ideas descartadas en ese mismo plazo (decisión del operador, 2026-10-20: después, un tema vuelve
+ * a estar disponible).
+ */
 export const PLAN_RECENT_DAYS = 60;
-/** Las ideas descartadas que no se repiten: las de los últimos 180 días. */
-export const PLAN_DISCARDED_DAYS = 180;
 /** Cuántos temas de cada lista viajan a la IA, los más recientes (el prompt no crece sin control). */
 export const PLAN_HISTORY_MAX = 100;
 
@@ -166,14 +169,14 @@ export const topicKey = (topic: string): string =>
 export type PlanHistory = {
   /** Los de los posts de los últimos 60 días (creados o planificados), salvo las ideas descartadas. */
   recentTopics: string[];
-  /** Las ideas de la IA que se descartaron (archivadas) en los últimos 180 días. */
+  /** Las ideas de la IA que se descartaron (archivadas) en los últimos 60 días. */
   discardedTopics: string[];
 };
 
 /**
  * Los temas que el plan no repite, de los posts recientes de la marca (`PostRepository.listRecent`):
  * - descartadas: las ideas de la IA archivadas (`source = ai`, `archived`) creadas en los últimos
- *   `PLAN_DISCARDED_DAYS`. Una idea aceptada que después se archivó también cuenta: es un tema que
+ *   `PLAN_RECENT_DAYS`. Una idea aceptada que después se archivó también cuenta: es un tema que
  *   ya pasó por el operador;
  * - recientes: los demás posts (manuales o ideas, en cualquier estado) creados o planificados en
  *   los últimos `PLAN_RECENT_DAYS`, incluidas las ideas aún sin decidir.
@@ -184,7 +187,6 @@ export function planHistory(
   now: Date,
 ): PlanHistory {
   const recentSince = now.getTime() - PLAN_RECENT_DAYS * DAY_MS;
-  const discardedSince = now.getTime() - PLAN_DISCARDED_DAYS * DAY_MS;
   const newestFirst = [...posts].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const recent: string[] = [];
   const discarded: string[] = [];
@@ -201,7 +203,7 @@ export function planHistory(
   };
   for (const post of newestFirst) {
     if (post.status === "archived" && post.source === "ai") {
-      if (post.createdAt.getTime() >= discardedSince) push(discarded, post.topic);
+      if (post.createdAt.getTime() >= recentSince) push(discarded, post.topic);
     } else if (
       post.createdAt.getTime() >= recentSince ||
       (post.plannedAt !== null && post.plannedAt.getTime() >= recentSince)
@@ -210,6 +212,37 @@ export function planHistory(
     }
   }
   return { recentTopics: recent, discardedTopics: discarded };
+}
+
+/** Un post que ya ocupa un día del período en unas redes (cuenta para los posts por semana). */
+export type PlannedSlot = { date: string; platforms: PostPlatform[] };
+
+/**
+ * Los posts de la marca que ya están planificados dentro del período (ideas sin decidir, borradores
+ * y listos con `planned_at`; no los archivados), con sus redes entre las pedidas: un post sin redes
+ * propias (`platforms = null`) cuenta en todas. Ocupan su cupo de la semana en la cadencia.
+ */
+export function plannedSlots(
+  posts: readonly Pick<Post, "status" | "plannedAt" | "platforms">[],
+  period: Pick<PlanPeriod, "start" | "end">,
+  requested: readonly PostPlatform[],
+): PlannedSlot[] {
+  return posts
+    .filter(
+      (post) =>
+        post.status !== "archived" &&
+        post.plannedAt !== null &&
+        post.plannedAt >= period.start &&
+        post.plannedAt < period.end,
+    )
+    .map((post) => ({
+      date: chileDateOf(post.plannedAt as Date),
+      platforms: requested.filter(
+        (platform) => post.platforms === null || post.platforms.includes(platform),
+      ),
+    }))
+    .filter((slot) => slot.platforms.length > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** La cadencia de una red tal como la ve la IA (las horas de espacio entre idiomas no aplican). */
@@ -239,6 +272,8 @@ export type PlanBrief = {
   count: number;
   recentTopics: string[];
   discardedTopics: string[];
+  /** Lo que ya está planificado en el período: ocupa su cupo de la semana. */
+  planned: PlannedSlot[];
 };
 
 /** Arma lo que ve la IA con el perfil de **su** marca y su corredor. */
@@ -249,6 +284,8 @@ export function buildPlanBrief(params: {
   platforms: readonly PostPlatform[];
   count: number;
   history: PlanHistory;
+  /** Lo ya planificado en el período (`plannedSlots`); por defecto, nada. */
+  planned?: readonly PlannedSlot[];
 }): PlanBrief {
   const { broker, profile, period } = params;
   const cadence: Partial<Record<PostPlatform, PlanCadence>> = {};
@@ -280,6 +317,7 @@ export function buildPlanBrief(params: {
     count: params.count,
     recentTopics: [...params.history.recentTopics],
     discardedTopics: [...params.history.discardedTopics],
+    planned: (params.planned ?? []).map((slot) => ({ ...slot, platforms: [...slot.platforms] })),
   };
 }
 
@@ -397,12 +435,8 @@ function platformProblem(
   if (!brief.platforms.includes(platform)) {
     return { code: "PLATFORM_NOT_REQUESTED", message: `${name} no estaba entre las redes pedidas` };
   }
-  if (platform === "instagram" && idea.formato === "text") {
-    return { code: "FORMAT_NOT_SUPPORTED", message: "Instagram necesita una imagen o un video" };
-  }
-  if (platform === "tiktok" && idea.formato !== "video") {
-    return { code: "FORMAT_NOT_SUPPORTED", message: "TikTok publica solo video" };
-  }
+  const unsupported = kindProblem(platform, idea.formato);
+  if (unsupported !== null) return { code: "FORMAT_NOT_SUPPORTED", message: unsupported };
   const cadence = brief.cadence[platform];
   if (cadence === undefined) return null;
   if (cadence.postsPerWeek === 0) {
@@ -437,8 +471,8 @@ function platformProblem(
  *    `REPEATED_TOPIC`, `DISCARDED_TOPIC`, `DUPLICATE_IN_PLAN`;
  * 6. ya hay `count` ideas → `OVER_COUNT`;
  * 7. cada red: pedida, con un formato que admite (Instagram no publica solo texto; TikTok, solo
- *    video), en un día y hora de su cadencia y sin pasar sus posts por semana (de lunes a domingo,
- *    contando las ideas de este plan). Una red que no sirve se le quita a la idea (queda en
+ *    video, `kindProblem`), en un día y hora de su cadencia y sin pasar sus posts por semana (de lunes
+ *    a domingo, contando lo ya planificado, `brief.planned`, y las ideas de este plan). Una red que no sirve se le quita a la idea (queda en
  *    `notes`); si no le queda ninguna, la idea se descarta con el motivo de la primera.
  * Las que pasan quedan en el orden de la respuesta.
  */
@@ -457,8 +491,14 @@ export function checkPlanIdeas(params: {
   const discardedBefore = new Set(brief.discardedTopics.map(topicKey));
   const planned = new Set<string>();
   const pillars = new Set(brief.pillars.map((pillar) => pillar.key));
-  /** Ideas por red y por semana (el lunes), de este plan. */
+  /** Posts por red y por semana (el lunes): lo ya planificado y las ideas de este plan. */
   const perWeek = new Map<string, number>();
+  for (const slot of brief.planned) {
+    for (const platform of slot.platforms) {
+      const key = `${platform}:${weekOf(slot.date)}`;
+      perWeek.set(key, (perWeek.get(key) ?? 0) + 1);
+    }
+  }
 
   for (const raw of params.ideas) {
     const parsed = planIdeaSchema.safeParse(raw);
@@ -543,7 +583,7 @@ export function checkPlanIdeas(params: {
       ) {
         problem = {
           code: "WEEK_FULL",
-          message: `${NAME[platform]} ya tiene ${cadence.postsPerWeek} ideas esa semana`,
+          message: `${NAME[platform]} ya tiene ${cadence.postsPerWeek} posts planificados esa semana`,
         };
       }
       if (problem === null) platforms.push(platform);

@@ -90,7 +90,8 @@ export type RequestPlanRunResult = {
  * - con la marca en su tope de IA del mes, `LLM_BUDGET_EXCEEDED` (409; el worker lo revisa otra vez
  *   antes de llamar);
  * - si la marca ya tiene un plan en `queued` o `running`, lo devuelve (`reused`) y lo vuelve a
- *   encolar (idempotente), como `requestContentRun`;
+ *   encolar (idempotente), como `requestContentRun`; la base admite uno solo (índice único
+ *   parcial): si dos pedidos se cruzan, el segundo recibe el del primero;
  * - si no, crea el plan en `queued` y, ya creado, encola `content.plan`. Si la cola no está
  *   (`QUEUE_UNAVAILABLE`, 503), el plan nuevo queda en `failed` con ese motivo.
  */
@@ -141,22 +142,27 @@ export async function requestPlanRun(
   }
   await assertLlmBudget(deps, broker, now);
 
-  const active = (await deps.planRuns.listByBroker(brokerId)).find(
-    (run) => run.status === "queued" || run.status === "running",
-  );
+  const owner: string = brokerId;
   const request: PlanRunRequest = { platforms, count, days: period.days, requestedBy: actor.id };
-  const result: RequestPlanRunResult =
-    active === undefined
-      ? {
-          run: await deps.planRuns.create({
-            brokerId,
-            periodStart: period.start,
-            periodEnd: period.end,
-            request,
-          }),
-          reused: false,
-        }
-      : { run: active, reused: true };
+  const result = (await activePlanOf(deps, owner)) ?? (await createPlan());
+
+  /** Crea el plan; si otro pedido ganó la carrera (`PLAN_RUN_CONFLICT`), devuelve ese. */
+  async function createPlan(): Promise<RequestPlanRunResult> {
+    try {
+      const run = await deps.planRuns.create({
+        brokerId: owner,
+        periodStart: period.start,
+        periodEnd: period.end,
+        request,
+      });
+      return { run, reused: false };
+    } catch (error) {
+      if (!isAppError(error) || error.code !== "PLAN_RUN_CONFLICT") throw error;
+      const active = await activePlanOf(deps, owner);
+      if (active === null) throw error;
+      return active;
+    }
+  }
 
   // Ya creado: encolar (también uno activo, por si su job se perdió).
   try {
@@ -171,6 +177,17 @@ export async function requestPlanRun(
     throw error;
   }
   return result;
+}
+
+/** El plan de la marca en `queued` o `running`, si tiene (hay como mucho uno: índice único). */
+async function activePlanOf(
+  deps: Pick<RequestPlanRunDeps, "planRuns">,
+  brokerId: string,
+): Promise<RequestPlanRunResult | null> {
+  const active = (await deps.planRuns.listByBroker(brokerId)).find(
+    (run) => run.status === "queued" || run.status === "running",
+  );
+  return active === undefined ? null : { run: active, reused: true };
 }
 
 /** Un plan con sus ideas, para la API, la CLI y el panel (T21). */
@@ -204,4 +221,29 @@ export async function getPlanRun(
     report: run.status === "succeeded" && parsed.success ? parsed.data : null,
     ideas: await deps.posts.list({ planRunId, brokerId: run.brokerId }, scope),
   };
+}
+
+/** Cuántos planes da `listPlanRuns`, por defecto y como mucho. */
+export const PLAN_RUNS_LIST_LIMIT = { default: 20, max: 100 } as const;
+
+/**
+ * Los planes de una marca, los más recientes primero (`GET /api/plans?brokerId`, T21). El
+ * administrador elige la marca (obligatoria: `PLAN_RUN_INVALID`); un corredor ve los suyos y otra
+ * marca no existe para él (`BROKER_NOT_FOUND`); sin `posts.manage`, `FORBIDDEN`. `limit` de 1 a
+ * 100 (por defecto 20).
+ */
+export async function listPlanRuns(
+  deps: { planRuns: Pick<PlanRunRepository, "listByBroker"> },
+  actor: Actor,
+  input: { brokerId?: string | undefined; limit?: number | undefined } = {},
+): Promise<PlanRun[]> {
+  const brokerId = input.brokerId ?? actor.brokerId ?? undefined;
+  if (brokerId === undefined) throw invalid("Falta la marca o el corredor de los planes");
+  if (!inScope(scopeOf(actor), brokerId)) throw brokerNotFound(brokerId);
+  assertCan(actor, "posts.manage", brokerId);
+  const limit = input.limit ?? PLAN_RUNS_LIST_LIMIT.default;
+  if (!Number.isInteger(limit) || limit < 1 || limit > PLAN_RUNS_LIST_LIMIT.max) {
+    throw invalid(`Se listan de 1 a ${PLAN_RUNS_LIST_LIMIT.max} planes`, { limit });
+  }
+  return deps.planRuns.listByBroker(brokerId, limit);
 }

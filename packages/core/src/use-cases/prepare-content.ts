@@ -12,6 +12,7 @@ import {
   variantPath,
 } from "../content/media-keys.js";
 import { CONTENT_PROMPT_VERSION } from "../content/prompt.js";
+import { contentRunErrorOf } from "../content/run-error.js";
 import { coverData, reelOverlayData, slideBrand, specSheetData } from "../content/slides-data.js";
 import type { ContentRun, ContentRunReport } from "../content.js";
 import { type ContentRunStage, isTerminalContentRun, type RenderedMediaVariant } from "../enums.js";
@@ -38,7 +39,6 @@ import {
   type SlideImageRef,
   type SlideTemplates,
 } from "../ports/slide-templates.js";
-import { scrubMessage } from "../redact.js";
 import { listingIdOf, listingSubject, subjectNotListing } from "../subject.js";
 
 export type PrepareContentDeps = {
@@ -94,29 +94,6 @@ const ordered = (media: readonly Media[]) =>
 
 const isDecodeFailed = (error: unknown) =>
   isAppError(error) && error.code === "MEDIA_DECODE_FAILED";
-
-/**
- * Mensajes fijos para los errores que pueden traer claves de R2 o rutas (`STORAGE_*`, `MEDIA_*`):
- * el error de la corrida lo muestran la API, el panel y la CLI (spec F2 §4.9).
- */
-const FIXED_MESSAGES: Readonly<Record<string, string>> = {
-  STORAGE_NOT_FOUND:
-    "Falta un archivo del aviso en el almacenamiento: vuelve a importar sus medios",
-  STORAGE_UNAVAILABLE: "El almacenamiento de archivos no respondió",
-  STORAGE_ERROR: "El almacenamiento de archivos rechazó la operación",
-  STORAGE_CONTENT_MISMATCH: "Un archivo cambió mientras se subía",
-  MEDIA_CONFLICT: "Otra preparación del mismo aviso escribió los medios al mismo tiempo",
-  MEDIA_NOT_FOUND: "Falta un medio del aviso",
-};
-
-/**
- * El error que se guarda en la corrida: sin claves de R2 ni rutas absolutas (dos o más tramos; un
- * comando como `/login` queda).
- */
-export function contentRunErrorOf(error: AppError): { code: string; message: string } {
-  const message = FIXED_MESSAGES[error.code] ?? scrubMessage(error.message);
-  return { code: error.code, message };
-}
 
 const aborted = (cause?: unknown) =>
   new AppError("CONTENT_RUN_ABORTED", "Se cortó la corrida de contenido", {

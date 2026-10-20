@@ -120,6 +120,8 @@ const CONFLICTS = new Set([
   "POST_HAS_PENDING_PUBLICATIONS",
   // F9-T20 (ADR-0030): aceptar o descartar algo que ya no es una idea del plan.
   "POST_NOT_IDEA",
+  // F9-T20: dos pedidos de plan cruzados (no debería llegar: `requestPlanRun` devuelve el activo).
+  "PLAN_RUN_CONFLICT",
 ]);
 
 /**

@@ -1,6 +1,6 @@
 import type { AbortSignalLike } from "../abort.js";
 import { chileDateOf } from "../chile-time.js";
-import { generateValidated } from "../content/generate.js";
+import { contentRunErrorOf } from "../content/run-error.js";
 import { editorialProfileView } from "../editorial-profile.js";
 import type { PlanRunStatus } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
@@ -17,16 +17,14 @@ import { profileSources } from "../social/check.js";
 import {
   addDays,
   buildPlanBrief,
-  checkPlanIdeas,
-  PLAN_DISCARDED_DAYS,
-  PLAN_JSON_SCHEMA,
+  PLAN_RECENT_DAYS,
   type PlanRunReport,
   planHistory,
+  plannedSlots,
   planRunRequestSchema,
-  validatePlanResponse,
 } from "../social/plan.js";
-import { buildPlanPrompt, PLAN_PROMPT_VERSION } from "../social/plan-prompt.js";
-import { contentRunErrorOf } from "./prepare-content.js";
+import { PLAN_PROMPT_VERSION } from "../social/plan-prompt.js";
+import { proposePlanIdeas } from "../social/plan-propose.js";
 
 // La corrida de un plan de ideas (el handler del job `content.plan`, spec F9 §4.9, ADR-0030).
 
@@ -90,9 +88,12 @@ const normalized = (error: unknown): AppError =>
  *    cada llamada (`LLM_BUDGET_EXCEEDED`, F7) y anota cada llamada en el plan en cuanto vuelve
  *    (también si después falla: entra a `sumLlmCost`). La respuesta se valida con zod (con un
  *    reintento si el sobre no calza: `LLM_OUTPUT_INVALID` después).
- * 3. Verifica cada idea (`checkPlanIdeas`): las que no pasan se descartan y quedan en el reporte.
+ * 3. Verifica cada idea (`checkPlanIdeas`, dentro de `proposePlanIdeas`, que T22 usa sin la base):
+ *    las que no pasan se descartan y quedan en el reporte. Lo ya planificado en el período
+ *    (`plannedSlots`) ocupa su cupo de la semana.
  * 4. Guarda, en una transacción, el reporte con `succeeded` y un post `idea` por cada idea válida
- *    (`source = ai`, `brief_origin = ai`, `plan_run_id`, `planned_at`, `pillar`, `rationale`),
+ *    (`source = ai`, `brief_origin = ai`, `plan_run_id`, `planned_at`, `pillar`, `rationale` y sus
+ *    redes, `platforms`),
  *    **sin textos ni publicaciones** (ADR-0030, puntos 2 y 4). Cero ideas válidas también es un
  *    plan terminado: el reporte dice por qué.
  * Como `draftPost`: un plan terminal no se toca (`skipped`); un error no reintentable, o el del
@@ -116,11 +117,7 @@ export async function runPlan(
     if (signal?.aborted) throw aborted();
     const { report, ideas } = await propose(deps, run, signal);
     if (signal?.aborted) throw aborted();
-    const saved = await deps.planRuns.markSucceeded(run.id, {
-      report,
-      promptVersion: PLAN_PROMPT_VERSION,
-      ideas,
-    });
+    const saved = await saveIdeas(deps, run.id, report, ideas);
     if (!saved) return skipped(deps, run);
     return { outcome: "succeeded", report };
   } catch (caught) {
@@ -130,6 +127,32 @@ export async function runPlan(
       await deps.planRuns.markFailed(run.id, contentRunErrorOf(error)).catch(() => false);
     }
     throw error;
+  }
+}
+
+/**
+ * Guarda el reporte y las ideas. Si quien pidió el plan ya no existe (se borró el usuario entre el
+ * pedido y la corrida: `POST_REFERENCE_INVALID` por `created_by`), las ideas se guardan sin autor
+ * en vez de perder el plan, como el `ON DELETE SET NULL` de `posts.created_by`.
+ */
+async function saveIdeas(
+  deps: RunPlanDeps,
+  planRunId: string,
+  report: PlanRunReport,
+  ideas: NewPost[],
+): Promise<boolean> {
+  const save = (list: NewPost[]) =>
+    deps.planRuns.markSucceeded(planRunId, {
+      report,
+      promptVersion: PLAN_PROMPT_VERSION,
+      ideas: list,
+    });
+  try {
+    return await save(ideas);
+  } catch (error) {
+    const withAuthor = ideas.some((idea) => idea.createdBy != null);
+    if (!withAuthor || !isAppError(error) || error.code !== "POST_REFERENCE_INVALID") throw error;
+    return save(ideas.map((idea) => ({ ...idea, createdBy: null })));
   }
 }
 
@@ -163,7 +186,7 @@ async function propose(
   const today = clock();
   const recent = await deps.posts.listRecent(
     broker.id,
-    new Date(today.getTime() - PLAN_DISCARDED_DAYS * DAY_MS),
+    new Date(today.getTime() - PLAN_RECENT_DAYS * DAY_MS),
   );
   const firstDay = chileDateOf(run.periodStart);
   const period = {
@@ -180,13 +203,14 @@ async function propose(
     platforms: request.platforms,
     count: request.count,
     history: planHistory(recent, today),
+    planned: plannedSlots(recent, period, request.platforms),
   });
 
   const started = now();
   // El proveedor de la marca y su tope del mes antes de cada llamada (spec F7 §4.7), con la marca
   // releída: el tope pudo cambiar entre medio.
   const llm = llmProviderFor(broker, { own: deps.llm, api: deps.apiLlm ?? null });
-  const result = await generateValidated(
+  const result = await proposePlanIdeas(
     {
       llm,
       beforeCall: async () => {
@@ -199,25 +223,19 @@ async function propose(
       },
     },
     {
-      buildPrompt: (issues) => buildPlanPrompt(brief, issues),
-      jsonSchema: PLAN_JSON_SCHEMA,
-      validate: validatePlanResponse,
+      brief,
+      period,
+      sources: profileSources(profile, broker),
+      now: clock(),
       ...(signal === undefined ? {} : { signal }),
     },
   );
-  const checked = checkPlanIdeas({
-    ideas: result.data.ideas,
-    brief,
-    period,
-    sources: profileSources(profile, broker),
-    now: clock(),
-  });
 
   const ideas: NewPost[] = [];
   const report: PlanRunReport = {
     ideas: [],
-    discarded: checked.discarded,
-    warnings: [...result.data.warnings],
+    discarded: result.discarded,
+    warnings: result.warnings,
     llm: {
       provider: llm.name,
       model: result.model,
@@ -225,7 +243,7 @@ async function propose(
       durationMs: Math.max(0, Math.round(now() - started)),
     },
   };
-  for (const idea of checked.ideas) {
+  for (const idea of result.ideas) {
     const id = deps.newId();
     ideas.push({
       id,
@@ -241,6 +259,8 @@ async function propose(
       planRunId: run.id,
       createdBy: request.requestedBy,
       rationale: idea.rationale,
+      // Al aceptarla se redacta solo para estas (decisión del operador, F9-T20).
+      platforms: idea.platforms,
     });
     report.ideas.push({
       postId: id,

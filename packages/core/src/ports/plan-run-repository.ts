@@ -17,6 +17,8 @@ export type NewPlanRun = {
  * (F9-T20). Los cambios de estado son condicionales, como los de `ContentRunRepository`, y
  * devuelven si cambiaron. Errores (`AppError`):
  * - `create` de un corredor que no existe → `PLAN_RUN_REFERENCE_INVALID`;
+ * - `create` de un corredor que ya tiene un plan en `queued` o `running` → `PLAN_RUN_CONFLICT` (un
+ *   plan activo por marca, índice único parcial de la base; F9-T20);
  * - `markSucceeded` con una idea cuyo corredor, plan o usuario no existen →
  *   `POST_REFERENCE_INVALID` (y no guarda nada);
  * - `addLlmUsage` de un plan que no existe → `PLAN_RUN_NOT_FOUND`;

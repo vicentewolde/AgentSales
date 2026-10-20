@@ -71,6 +71,8 @@ export function createInMemoryPostRepository(): InMemoryPostRepository {
         createdBy: input.createdBy ?? null,
         rationale: input.rationale ?? null,
         xLinkAllowed: input.xLinkAllowed ?? false,
+        platforms:
+          input.platforms === undefined || input.platforms === null ? null : [...input.platforms],
         createdAt: now,
         updatedAt: now,
       });
@@ -232,6 +234,16 @@ export function createInMemoryPlanRunRepository(
   };
   return {
     async create(input) {
+      // Como el índice único parcial de Postgres: un plan activo por marca.
+      if (
+        [...runs.values()].some(
+          (run) =>
+            run.brokerId === input.brokerId &&
+            (run.status === "queued" || run.status === "running"),
+        )
+      ) {
+        throw new AppError("PLAN_RUN_CONFLICT", "La marca ya tiene un plan en curso");
+      }
       const now = new Date();
       const run: PlanRun = {
         id: uuidLike("00000000", ++sequence),

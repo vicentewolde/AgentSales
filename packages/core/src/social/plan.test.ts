@@ -3,6 +3,7 @@ import { editorialProfileView } from "../editorial-profile.js";
 import { isAppError } from "../errors.js";
 import { POST_LIMITS } from "../use-cases/posts.js";
 import { profileSources } from "./check.js";
+import { kindProblem } from "./networks.js";
 import {
   addDays,
   buildPlanBrief,
@@ -12,6 +13,7 @@ import {
   PLAN_JSON_SCHEMA,
   type PlanIdea,
   planHistory,
+  plannedSlots,
   planPeriod,
   planRunReportSchema,
   topicKey,
@@ -140,15 +142,16 @@ describe("los temas que no se repiten", () => {
     plannedAt: plannedInDays === null ? null : new Date(NOW.getTime() + plannedInDays * 86_400_000),
   });
 
-  it("recientes de 60 días (también ideas sin decidir y lo planificado), descartadas de 180", () => {
+  it("recientes y descartadas de los últimos 60 días (también ideas sin decidir y lo planificado)", () => {
     const history = planHistory(
       [
         post("Un post manual reciente", 10),
         post("Una idea sin decidir", 2, "idea", "ai"),
         post("Un post viejo", 90),
         post("Uno viejo pero planificado", 90, "draft", "manual", 3),
-        post("Una idea descartada", 100, "archived", "ai"),
-        post("Una descartada muy vieja", 200, "archived", "ai"),
+        post("Una idea descartada", 30, "archived", "ai"),
+        // Pasados 60 días, una descartada vuelve a estar disponible (decisión del operador).
+        post("Una descartada vieja", 61, "archived", "ai"),
         post("Un manual archivado", 5, "archived", "manual"),
         post("un post manual RECIENTE!", 1),
       ],
@@ -168,6 +171,59 @@ describe("los temas que no se repiten", () => {
     expect(topicKey("¡Cómo   publicamos, en LinkedIn!")).toBe(
       topicKey("como publicamos en linkedin"),
     );
+  });
+});
+
+describe("lo ya planificado en el período", () => {
+  const planned = (
+    plannedAt: string | null,
+    platforms: ("x" | "linkedin" | "instagram")[] | null,
+    status: "idea" | "draft" | "ready" | "archived" = "draft",
+  ) => ({ status, plannedAt: plannedAt === null ? null : new Date(plannedAt), platforms });
+
+  it("ocupa su cupo: un post sin redes propias cuenta en todas las pedidas", () => {
+    const slots = plannedSlots(
+      [
+        planned("2026-10-22T12:00:00Z", ["x"]),
+        planned("2026-10-23T12:00:00Z", null, "idea"),
+        planned("2026-10-24T12:00:00Z", ["instagram"]),
+        planned("2026-10-25T12:00:00Z", ["x"], "archived"),
+        planned("2026-11-20T12:00:00Z", ["x"]),
+        planned(null, ["x"]),
+      ],
+      period,
+      ["x", "linkedin"],
+    );
+    expect(slots).toEqual([
+      { date: "2026-10-22", platforms: ["x"] },
+      { date: "2026-10-23", platforms: ["x", "linkedin"] },
+    ]);
+  });
+
+  it("cuenta para los posts por semana de cada red y lo ve la IA", () => {
+    // X publica 1 por semana: con uno ya planificado el miércoles, la idea del viernes no cabe.
+    const planBrief = brief({ planned: [{ date: "2026-10-21", platforms: ["x"] }] });
+    const result = check(
+      [
+        idea({ tema: "Esa semana", redes: ["x"], fecha: "2026-10-23" }),
+        idea({ tema: "La otra", redes: ["x"], fecha: "2026-10-27" }),
+      ],
+      planBrief,
+    );
+    expect(result.ideas.map((item) => item.topic)).toEqual(["La otra"]);
+    expect(result.discarded.map((item) => item.code)).toEqual(["WEEK_FULL"]);
+    expect(buildPlanPrompt(planBrief).prompt).toContain('"ya_planificados"');
+    // El plan de ejemplo también lo respeta.
+    const sample = samplePlanResponse(buildPlanPrompt(planBrief).prompt);
+    expect(check(sample.ideas, planBrief).discarded).toEqual([]);
+  });
+
+  it("qué tipo de post admite cada red", () => {
+    expect(kindProblem("instagram", "text")).not.toBeNull();
+    expect(kindProblem("instagram", "carousel")).toBeNull();
+    expect(kindProblem("tiktok", "image")).not.toBeNull();
+    expect(kindProblem("tiktok", "video")).toBeNull();
+    expect(kindProblem("x", "text")).toBeNull();
   });
 });
 

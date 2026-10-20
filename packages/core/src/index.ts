@@ -1151,6 +1151,8 @@ export {
 export {
   enqueuePlanRun,
   getPlanRun,
+  listPlanRuns,
+  PLAN_RUNS_LIST_LIMIT,
   type PlanRunView,
   type RequestPlanRunDeps,
   type RequestPlanRunInput,

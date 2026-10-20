@@ -3,6 +3,7 @@ import { editorialProfileView } from "../editorial-profile.js";
 import { AppError, isAppError } from "../errors.js";
 import { monthlySpend } from "../llm-budget.js";
 import type { LlmTokenUsage } from "../llm-usage.js";
+import type { NewListing } from "../ports/listing-repository.js";
 import type { LLMProvider, LLMRequest } from "../ports/llm-provider.js";
 import type { PostLockedRepositories } from "../ports/post-lock.js";
 import { planRunReportSchema } from "../social/plan.js";
@@ -11,6 +12,7 @@ import { samplePlanResponse } from "../social/plan-sample.js";
 import { postSubject } from "../subject.js";
 import {
   contentBrokerFixture,
+  contentListingFixture,
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
   createInMemoryEditorialProfileRepository,
@@ -31,7 +33,7 @@ import {
 import { draftPost } from "./draft-post.js";
 import { acceptIdea, discardIdea } from "./plan-ideas.js";
 import { updatePost } from "./posts.js";
-import { getPlanRun, requestPlanRun } from "./request-plan-run.js";
+import { getPlanRun, listPlanRuns, requestPlanRun } from "./request-plan-run.js";
 import { runPlan } from "./run-plan.js";
 
 // El plan de ideas de punta a punta en core (F9-T20, spec F9 §4.9, ADR-0030): pedirlo, correrlo
@@ -144,9 +146,20 @@ async function setup(options: Setup = {}) {
     platformAccounts,
   };
   const postLock = createInMemoryPostLock(repos);
+  const listings = createInMemoryListingRepository();
+  // Lo que nunca va a la IA del plan: las notas internas de un aviso de la marca y el brief de un
+  // post (el plan ve solo los temas).
+  await listings.create({
+    ...(contentListingFixture({
+      brokerId: broker.id,
+      internalNotes: "NOTA INTERNA: el dueño debe dos meses",
+    }) as unknown as NewListing),
+    externalRef: "P-NOTAS",
+    sourceHash: "x",
+  });
   const lock = createInMemoryListingLock({
     brokers,
-    listings: createInMemoryListingRepository(),
+    listings,
     media,
     contentRuns,
     contents,
@@ -324,6 +337,12 @@ describe("requestPlanRun", () => {
 describe("runPlan con el plan de ejemplo (fake)", () => {
   it("un plan de N ideas crea N posts idea de la IA, sin textos ni publicaciones", async () => {
     const t = await setup();
+    await t.posts.create({
+      brokerId: t.broker.id,
+      topic: "Un post del operador",
+      kind: "text",
+      brief: "BRIEF RESERVADO del operador",
+    });
     const { run, result, saved } = await t.plan({ count: 4 });
 
     expect(result.outcome).toBe("succeeded");
@@ -358,10 +377,19 @@ describe("runPlan con el plan de ejemplo (fake)", () => {
     );
     expect(report.discarded).toEqual([]);
     expect(report.llm).toMatchObject({ provider: "fake", model: "fake", attempts: 1 });
-    // La IA recibió el perfil de su marca y nada de otra; nunca las notas internas.
+    // Cada idea guarda sus redes (las del reporte): al aceptarla se redacta solo para esas.
+    for (const item of report.ideas) {
+      expect(ideas.find((post) => post.id === item.postId)?.platforms).toEqual(item.platforms);
+    }
+    // La IA recibió el perfil de su marca y nada de otra; nunca notas internas ni briefs.
     const [request] = (t.llm as ReturnType<typeof samplePlanProvider>).requests;
     expect(request?.prompt).toContain("AgentPey publica en LinkedIn y X");
     expect(request?.prompt).not.toContain("Otra");
+    expect(request?.prompt).not.toContain("NOTA INTERNA");
+    expect(request?.prompt).not.toContain("debe dos meses");
+    expect(request?.prompt).not.toContain("BRIEF RESERVADO");
+    // Su tema sí: es un tema reciente que no se repite.
+    expect(request?.prompt).toContain("Un post del operador");
   });
 
   it("un segundo plan no repite los temas del primero ni las ideas descartadas", async () => {
@@ -569,14 +597,11 @@ describe("el gasto del plan", () => {
   it("respeta el tope: alcanzado entre el pedido y la corrida, no llama a la IA y falla", async () => {
     const t = await setup({ apiLlm: [], capUsd: 0.01 });
     const { run } = await requestPlanRun(t.requestDeps, ADMIN, { brokerId: t.broker.id });
-    // Otro plan gastó entre medio.
-    const spent = await t.planRuns.create({
-      brokerId: t.broker.id,
-      periodStart: NOW,
-      periodEnd: NOW,
-      request: {},
-    });
-    await t.planRuns.addLlmUsage(spent.id, {
+    // Los textos de un post de la marca gastaron entre medio (un plan activo por marca, así que
+    // el gasto viene de otra corrida).
+    const post = await t.posts.create({ brokerId: t.broker.id, topic: "Otro", kind: "text" });
+    const spent = await t.contentRuns.create({ postId: post.id, texts: true });
+    await t.contentRuns.addLlmUsage(spent.id, {
       provider: "anthropic-api",
       model: "claude-sonnet-5-5",
       inputTokens: 1,
@@ -691,5 +716,136 @@ describe("aceptar, descartar y editar ideas", () => {
         ),
       ),
     ).toBe("PLAN_RUN_NOT_FOUND");
+  });
+});
+
+describe("las redes de una idea aceptada (decisión del operador, F9-T20)", () => {
+  it("al aceptar, se redacta solo para las redes que la IA sugirió para esa idea", async () => {
+    const t = await setup({
+      llm: [
+        {
+          data: {
+            ideas: [idea("Solo para X", { redes: ["x"], fecha: "2026-10-23" })],
+            warnings: [],
+          },
+        },
+      ],
+    });
+    const { run } = await t.plan({ count: 1 });
+    const [ideaPost] = await t.posts.list({ planRunId: run.id }, { kind: "all" });
+    expect(ideaPost?.platforms).toEqual(["x"]);
+    const accepted = await acceptIdea(t.ideaDeps, ADMIN, ideaPost?.id ?? "");
+    const draftLlm = createInMemoryLlmProvider([
+      {
+        data: {
+          texts: [
+            { platform: "x", language: "es", body: "Una idea para pensar.", hashtags: [] },
+            { platform: "linkedin", language: "es", body: "Una idea para pensar.", hashtags: [] },
+          ],
+          warnings: [],
+        },
+      },
+    ]);
+    await draftPost(
+      {
+        contentRuns: t.contentRuns,
+        posts: t.posts,
+        brokers: t.brokers,
+        editorialProfiles: t.editorialProfiles,
+        platformAccounts: t.platformAccounts,
+        media: t.media,
+        postLock: t.postLock,
+        llm: draftLlm,
+        clock: () => NOW,
+      },
+      { contentRunId: accepted.run.id, isLastAttempt: false },
+    );
+    const texts = await t.contents.listCurrent(postSubject(ideaPost?.id ?? ""));
+    expect(texts.map((item) => item.platform)).toEqual(["x"]);
+    // La IA de los textos recibió solo X.
+    expect(draftLlm.requests[0]?.prompt).toContain('"platform": "x"');
+    expect(draftLlm.requests[0]?.prompt).not.toContain('"platform": "linkedin"');
+  });
+
+  it("updatePost cambia las redes de una idea; una red que no publica posts es POST_INVALID", async () => {
+    const t = await setup();
+    const { run } = await t.plan({ count: 1 });
+    const [ideaPost] = await t.posts.list({ planRunId: run.id }, { kind: "all" });
+    const deps = { posts: t.posts, postLock: t.postLock, editorialProfiles: t.editorialProfiles };
+    const edited = await updatePost(deps, ADMIN, ideaPost?.id ?? "", {
+      platforms: ["LinkedIn", "x", "x"],
+    });
+    expect(edited.platforms).toEqual(["x", "linkedin"]);
+    expect(
+      (await updatePost(deps, ADMIN, ideaPost?.id ?? "", { platforms: null })).platforms,
+    ).toBeNull();
+    expect(
+      codeOf(
+        await caught(
+          updatePost(deps, ADMIN, ideaPost?.id ?? "", { platforms: ["portal_inmobiliario"] }),
+        ),
+      ),
+    ).toBe("POST_INVALID");
+    expect(
+      codeOf(await caught(updatePost(deps, ADMIN, ideaPost?.id ?? "", { platforms: [] }))),
+    ).toBe("POST_INVALID");
+  });
+});
+
+describe("un plan activo por marca y la lista de planes (F9-T20)", () => {
+  it("dos pedidos a la vez: uno crea el plan y el otro recibe ese", async () => {
+    const t = await setup();
+    const [first, second] = await Promise.all([
+      requestPlanRun(t.requestDeps, ADMIN, { brokerId: t.broker.id }),
+      requestPlanRun(t.requestDeps, ADMIN, { brokerId: t.broker.id }),
+    ]);
+    expect(first?.run.id).toBe(second?.run.id);
+    expect([first?.reused, second?.reused].sort()).toEqual([false, true]);
+    expect(t.planRuns.all()).toHaveLength(1);
+  });
+
+  it("listPlanRuns: los de la marca, dentro del alcance", async () => {
+    const t = await setup();
+    const { run } = await t.plan({ count: 1 });
+    const deps = { planRuns: t.planRuns };
+    expect(
+      (await listPlanRuns(deps, ADMIN, { brokerId: t.broker.id })).map((item) => item.id),
+    ).toEqual([run.id]);
+    expect((await listPlanRuns(deps, brandUser(t.broker.id))).map((item) => item.id)).toEqual([
+      run.id,
+    ]);
+    expect(codeOf(await caught(listPlanRuns(deps, ADMIN)))).toBe("PLAN_RUN_INVALID");
+    expect(
+      codeOf(await caught(listPlanRuns(deps, brandUser(t.other.id), { brokerId: t.broker.id }))),
+    ).toBe("BROKER_NOT_FOUND");
+    expect(
+      codeOf(await caught(listPlanRuns(deps, ADMIN, { brokerId: t.broker.id, limit: 0 }))),
+    ).toBe("PLAN_RUN_INVALID");
+  });
+
+  it("si quien pidió el plan ya no existe, las ideas se guardan sin autor", async () => {
+    const t = await setup();
+    const { run } = await requestPlanRun(t.requestDeps, ADMIN, { brokerId: t.broker.id });
+    // Como la FK de Postgres: el primer intento con `created_by` falla.
+    let calls = 0;
+    const planRuns = {
+      ...t.planRuns,
+      markSucceeded: async (id: string, result: Parameters<typeof t.planRuns.markSucceeded>[1]) => {
+        calls += 1;
+        if (result.ideas?.some((item) => item.createdBy != null)) {
+          throw new AppError("POST_REFERENCE_INVALID", "El usuario del post no existe");
+        }
+        return t.planRuns.markSucceeded(id, result);
+      },
+    };
+    const result = await runPlan(
+      { ...t.runDeps, planRuns },
+      { planRunId: run.id, isLastAttempt: false },
+    );
+    expect(result.outcome).toBe("succeeded");
+    expect(calls).toBe(2);
+    const ideas = await t.posts.list({ planRunId: run.id }, { kind: "all" });
+    expect(ideas.length).toBeGreaterThan(0);
+    expect(ideas.every((post) => post.createdBy === null)).toBe(true);
   });
 });

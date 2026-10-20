@@ -1,5 +1,5 @@
 import type { AccessScope } from "../access.js";
-import type { BriefOrigin, PostKind, PostSource, PostStatus } from "../enums.js";
+import type { BriefOrigin, PostKind, PostPlatform, PostSource, PostStatus } from "../enums.js";
 import type { Post, PostUpload } from "../post.js";
 
 /** Un post nuevo (spec F9 §4.2): manual por defecto, en `draft` y con el brief del operador. */
@@ -26,6 +26,8 @@ export type NewPost = {
   rationale?: string | null;
   /** Por defecto `false` (F9-T16). */
   xLinkAllowed?: boolean;
+  /** Las redes del post (F9-T20); por defecto `null` = todas las de la marca. */
+  platforms?: readonly PostPlatform[] | null;
 };
 
 /** Lo que se puede cambiar de un post; `undefined` = no tocar, `null` borra. */
@@ -39,6 +41,8 @@ export type PostChanges = {
   plannedAt?: Date | null;
   rationale?: string | null;
   xLinkAllowed?: boolean;
+  /** Las redes del post (F9-T20); `null` = todas las de la marca. */
+  platforms?: PostPlatform[] | null;
 };
 
 /**
@@ -72,6 +76,9 @@ export function pickPostChanges(changes: PostChanges): PostChanges {
   }
   if (changes.rationale !== undefined) picked.rationale = changes.rationale;
   if (changes.xLinkAllowed !== undefined) picked.xLinkAllowed = changes.xLinkAllowed;
+  if (changes.platforms !== undefined) {
+    picked.platforms = changes.platforms === null ? null : [...changes.platforms];
+  }
   return picked;
 }
 

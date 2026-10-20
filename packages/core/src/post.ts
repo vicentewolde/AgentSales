@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   BRIEF_ORIGINS,
   POST_KINDS,
+  POST_PLATFORMS,
   POST_SOURCES,
   POST_STATUSES,
   POST_UPLOAD_STATUSES,
@@ -43,6 +44,12 @@ export const postSchema = z.object({
    * el brief: sin esta marca, la revisión lo da por error y el intento no llama a X.
    */
   xLinkAllowed: z.boolean(),
+  /**
+   * Las redes del post (F9-T20): las que el plan sugirió para una idea, o las que fijó el operador.
+   * `null` = todas las de la marca (`postPlatforms`), como un post manual. `post.draft` redacta solo
+   * para estas, y solo las que sirven a su `kind` (`kindProblem`).
+   */
+  platforms: z.array(z.enum(POST_PLATFORMS)).nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

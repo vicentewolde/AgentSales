@@ -39,6 +39,7 @@ export {
   escapeLinkedInText,
   INSTAGRAM_HASHTAGS_LIMIT,
   joinedPostText,
+  kindProblem,
   LINKEDIN_RESERVED_CHARACTERS,
   linkKey,
   linksIn,
@@ -60,7 +61,6 @@ export {
   defaultPlanCount,
   PLAN_DEFAULT_DAYS,
   PLAN_DISCARD_CODES,
-  PLAN_DISCARDED_DAYS,
   PLAN_FALLBACK_PER_WEEK,
   PLAN_HISTORY_MAX,
   PLAN_IDEA_LIMITS,
@@ -74,12 +74,14 @@ export {
   type PlanDiscardCode,
   type PlanHistory,
   type PlanIdea,
+  type PlannedSlot,
   type PlanPeriod,
   type PlanResponse,
   type PlanRunReport,
   type PlanRunRequest,
   planHistory,
   planIdeaSchema,
+  plannedSlots,
   planPeriod,
   planRunReportSchema,
   planRunRequestSchema,
@@ -94,5 +96,6 @@ export {
   PLAN_SYSTEM_PROMPT,
   planBriefData,
 } from "./plan-prompt.js";
+export { type ProposedPlanIdeas, proposePlanIdeas } from "./plan-propose.js";
 export { samplePlanResponse } from "./plan-sample.js";
 export { buildSocialPrompt, SOCIAL_PROMPT_VERSION, SOCIAL_SYSTEM_PROMPT } from "./prompt.js";

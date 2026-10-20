@@ -17,6 +17,7 @@ describe("httpStatusFor", () => {
     ["LLM_RATE_LIMITED", 429],
     // F9-T20: aceptar o descartar algo que no es una idea; un plan pedido fuera de rango.
     ["POST_NOT_IDEA", 409],
+    ["PLAN_RUN_CONFLICT", 409],
     ["PLAN_RUN_INVALID", 400],
     ["PLAN_RUN_NOT_FOUND", 404],
     ["RATE_LIMITED", 429],

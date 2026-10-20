@@ -27,7 +27,7 @@ Reglas obligatorias:
 3. En "tema" y "porque" no escribas cifras ni nombres propios que no estén tal cual en los datos (la marca, sus hechos y sus líneas). La fecha va solo en "fecha" y "hora". Sin enlaces, sin menciones (@) y nunca @everyone ni @here.
 4. "linea": la "clave" de una de "lineas" (reparte las ideas según su "peso"), o null si no hay líneas.
 5. "redes": una o más de "redes_pedidas", y ninguna otra. "formato": "text" (solo texto), "image" (una imagen), "carousel" (varias imágenes) o "video". Instagram necesita "image", "carousel" o "video"; TikTok, "video".
-6. "fecha" (AAAA-MM-DD) es uno de "dias_del_periodo"; "hora" (HH:MM) es hora de Chile. Si una red tiene "cadencia": la fecha cae en uno de sus "dias" (si los tiene), la hora es una de sus "horas" (si las tiene) y no pases sus "posts_por_semana" en una misma semana (de lunes a domingo). Reparte las ideas en el período.
+6. "fecha" (AAAA-MM-DD) es uno de "dias_del_periodo"; "hora" (HH:MM) es hora de Chile. Si una red tiene "cadencia": la fecha cae en uno de sus "dias" (si los tiene), la hora es una de sus "horas" (si las tiene) y no pases sus "posts_por_semana" en una misma semana (de lunes a domingo), contando lo que ya está en "ya_planificados". Reparte las ideas en el período.
 7. No repitas ni parafrasees "temas_recientes" ni "ideas_descartadas".
 8. Respeta "evitar": no propongas esos temas, palabras ni promesas.
 9. "tema": una frase corta (hasta 120 caracteres) en el idioma principal (el primero de "idiomas"), con mayúscula solo al inicio y en los nombres propios. Tono: el de "tono"; si no viene, cercano y profesional. Habla a "publico" si viene.
@@ -82,6 +82,7 @@ export function planBriefData(brief: PlanBrief): Record<string, unknown> {
     ideas_pedidas: brief.count,
     temas_recientes: brief.recentTopics,
     ideas_descartadas: brief.discardedTopics,
+    ya_planificados: brief.planned.map((slot) => ({ fecha: slot.date, redes: slot.platforms })),
   };
   return Object.fromEntries(
     Object.entries(data).filter(

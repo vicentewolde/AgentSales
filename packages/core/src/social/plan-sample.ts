@@ -30,6 +30,7 @@ const sampleDataSchema = z.object({
   ideas_pedidas: z.number().int().nonnegative().default(0),
   temas_recientes: z.array(z.string()).default([]),
   ideas_descartadas: z.array(z.string()).default([]),
+  ya_planificados: z.array(z.object({ fecha: z.string(), redes: z.array(z.string()) })).default([]),
 });
 
 /** Ángulos de un tema: frases sin cifras ni nombres propios (pasan `unsupportedFacts`). */
@@ -93,6 +94,13 @@ export function samplePlanResponse(prompt: string): { ideas: PlanIdea[]; warning
   // Los huecos posibles: cada día y cada red, en su cadencia y sin pasar su tope semanal.
   const slots: { date: string; hour: string; platform: PostPlatform }[] = [];
   const perWeek = new Map<string, number>();
+  // Lo ya planificado ocupa su cupo de la semana.
+  for (const { fecha, redes } of data.ya_planificados) {
+    for (const platform of redes) {
+      const key = `${platform}:${mondayOf(fecha)}`;
+      perWeek.set(key, (perWeek.get(key) ?? 0) + 1);
+    }
+  }
   for (const { fecha, dia } of data.dias_del_periodo) {
     for (const platform of data.redes_pedidas) {
       const cadence = data.cadencia[platform];
