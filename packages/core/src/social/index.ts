@@ -10,7 +10,14 @@ export {
   socialTargets,
   xLinksOf,
 } from "./brief.js";
-export { buildPostCheckContext, checkPostContent, type PostCheckContext } from "./check.js";
+export {
+  buildPostCheckContext,
+  checkPostContent,
+  hasMassMention,
+  type PostCheckContext,
+  profileSources,
+  unsupportedFacts,
+} from "./check.js";
 export {
   normalizePostHashtag,
   normalizePostHashtags,
@@ -32,6 +39,7 @@ export {
   escapeLinkedInText,
   INSTAGRAM_HASHTAGS_LIMIT,
   joinedPostText,
+  kindProblem,
   LINKEDIN_RESERVED_CHARACTERS,
   linkKey,
   linksIn,
@@ -44,4 +52,50 @@ export {
   X_URL_WEIGHT,
   xWeightedLength,
 } from "./networks.js";
+export {
+  addDays,
+  buildPlanBrief,
+  type CheckedPlanIdea,
+  checkPlanIdeas,
+  type DiscardedPlanIdea,
+  defaultPlanCount,
+  PLAN_DEFAULT_DAYS,
+  PLAN_DISCARD_CODES,
+  PLAN_FALLBACK_PER_WEEK,
+  PLAN_HISTORY_MAX,
+  PLAN_IDEA_LIMITS,
+  PLAN_JSON_SCHEMA,
+  PLAN_MAX_DAYS,
+  PLAN_MAX_IDEAS,
+  PLAN_MAX_START_AHEAD_DAYS,
+  PLAN_RECENT_DAYS,
+  type PlanBrief,
+  type PlanCadence,
+  type PlanDiscardCode,
+  type PlanHistory,
+  type PlanIdea,
+  type PlannedSlot,
+  type PlanPeriod,
+  type PlanResponse,
+  type PlanRunReport,
+  type PlanRunRequest,
+  planHistory,
+  planIdeaSchema,
+  plannedSlots,
+  planPeriod,
+  planRunReportSchema,
+  planRunRequestSchema,
+  topicKey,
+  validatePlanResponse,
+  weekdayOf,
+} from "./plan.js";
+export {
+  buildPlanPrompt,
+  PLAN_DATA_TAG,
+  PLAN_PROMPT_VERSION,
+  PLAN_SYSTEM_PROMPT,
+  planBriefData,
+} from "./plan-prompt.js";
+export { type ProposedPlanIdeas, proposePlanIdeas } from "./plan-propose.js";
+export { samplePlanResponse } from "./plan-sample.js";
 export { buildSocialPrompt, SOCIAL_PROMPT_VERSION, SOCIAL_SYSTEM_PROMPT } from "./prompt.js";

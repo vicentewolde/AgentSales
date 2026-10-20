@@ -15,6 +15,11 @@ describe("httpStatusFor", () => {
     // F9-T12: la IA no entregó los textos en el formato pedido (un fallo del modelo, no un 400).
     ["LLM_OUTPUT_INVALID", 502],
     ["LLM_RATE_LIMITED", 429],
+    // F9-T20: aceptar o descartar algo que no es una idea; un plan pedido fuera de rango.
+    ["POST_NOT_IDEA", 409],
+    ["PLAN_RUN_CONFLICT", 409],
+    ["PLAN_RUN_INVALID", 400],
+    ["PLAN_RUN_NOT_FOUND", 404],
     ["RATE_LIMITED", 429],
     // Al conectar una cuenta (F3-T13).
     ["IG_AUTH_INVALID", 400],

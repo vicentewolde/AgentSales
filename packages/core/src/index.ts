@@ -1009,6 +1009,12 @@ export {
   type PausePublicationDeps,
   pausePublication,
 } from "./use-cases/pause-publication.js";
+export {
+  type AcceptIdeaDeps,
+  type AcceptIdeaResult,
+  acceptIdea,
+  discardIdea,
+} from "./use-cases/plan-ideas.js";
 export { expireAccountIfRejected, isAccessRejected } from "./use-cases/platform-auth.js";
 export {
   type CloseAbandonedPostUploadsDeps,
@@ -1143,6 +1149,17 @@ export {
   requestMarketplaceLogin,
 } from "./use-cases/request-marketplace-login.js";
 export {
+  enqueuePlanRun,
+  getPlanRun,
+  listPlanRuns,
+  PLAN_RUNS_LIST_LIMIT,
+  type PlanRunView,
+  type RequestPlanRunDeps,
+  type RequestPlanRunInput,
+  type RequestPlanRunResult,
+  requestPlanRun,
+} from "./use-cases/request-plan-run.js";
+export {
   NOT_PUBLISHED_RESOLUTION_CODE,
   PUBLICATION_RESOLUTIONS,
   type PublicationResolution,
@@ -1171,6 +1188,12 @@ export {
   type RunImportResult,
   runImport,
 } from "./use-cases/run-import.js";
+export {
+  type RunPlanDeps,
+  type RunPlanParams,
+  type RunPlanResult,
+  runPlan,
+} from "./use-cases/run-plan.js";
 export {
   type ChannelScheduled,
   MAX_SCHEDULE_BATCH,

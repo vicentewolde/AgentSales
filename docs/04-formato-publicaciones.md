@@ -216,3 +216,40 @@ Como `checkContent`, es una función pura que corre sobre el texto final, tambi�
 - **Menciones:** `@algo` debe estar en las fuentes (un correo no es una mención, pero su dominio es un enlace).
 
 **Límites conocidos:** no ve un nombre propio escrito en minúsculas, uno que abre una frase, uno de 2 a 6 mayúsculas (`ACME`) ni uno dentro de una línea con forma de título, ni una cifra escrita con palabras ("tres clientes"); un número se acepta si aparece en cualquier fuente, aunque hable de otra cosa; y un hashtag inventado sin cifras (`#RemaxChile`) no se revisa como nombre. La regla del prompt es la primera barrera y el operador aprueba cada texto. Ampliar la lista de palabras comunes no cambia `SOCIAL_PROMPT_VERSION`.
+
+## Posts de marca: el plan de ideas (F9-T20, spec F9 §4.9, ADR-0030)
+
+La IA propone **ideas** para un período, no textos: cada idea queda como un post en estado `idea` (`source = ai`, `brief_origin = ai`, sin brief, sin textos ni publicaciones) y los textos se redactan recién al **aceptarla** (`post.draft`, la sección anterior). Una idea sin aceptar no gasta IA en textos ni tiene publicaciones: no se programa ni ocupa un horario del calendario de publicación. Mientras no se descarte, sí cuenta en los posts por semana de la cadencia cuando se pide otro plan que cubre su fecha (`plannedSlots`), para que dos planes no llenen dos veces la misma semana; descartarla, o moverla fuera del período, libera ese cupo. Código en `packages/core/src/social/plan.ts` (período, verificaciones, reporte), `plan-prompt.ts` (el prompt) y `plan-sample.ts` (el plan de ejemplo de `fake`).
+
+**Lo pedido** (`requestPlanRun`, en `plan_runs.request`): las redes (por defecto, todas las de la marca: con cuenta o con cadencia en el perfil, `postPlatforms`), el período (por defecto desde mañana y 14 días, en días de Chile; de 1 a 31 días, empezando hoy o hasta 60 días más adelante) y cuántas ideas (de 1 a 20; por defecto, los posts por semana de la red pedida que más publica por las semanas del período, o 3 por semana si ninguna tiene cadencia).
+
+**Lo que ve la IA** (`buildPlanBrief`, solo de **su** marca): nombre, tono, público, idiomas (el tema y el porqué van en el principal), líneas de contenido con su clave y su peso, `facts`, `avoid`, el período con **cada día y su día de la semana** (la IA no calcula calendarios), las redes pedidas con su cadencia (posts por semana, días y horas de Chile), cuántas ideas, y lo que no repite: los **temas de los últimos 60 días** (los posts de la marca creados o planificados en ese plazo, manuales o ideas, incluidas las que esperan decisión) y las **ideas descartadas** de los mismos 60 días (las de la IA que se archivaron; después, el tema vuelve a estar disponible). Como mucho 100 de cada lista, las más recientes. Además, lo **ya planificado** en el período (`plannedSlots`: ideas, borradores y listos de la marca con `planned_at` dentro del período, con sus redes entre las pedidas; uno sin redes propias cuenta en todas), que ocupa su cupo semanal. Nunca `internal_notes`, los briefs de los posts ni nada de otra marca.
+
+**El prompt** (`social-plan-v1`, `PLAN_PROMPT_VERSION`, guardado en `plan_runs.prompt_version`): las reglas en el prompt de sistema y los datos como JSON en un bloque `<datos_del_plan>`, escapado como el de los textos y con la instrucción de tratarlo solo como datos. La versión es **propia del plan**, no `SOCIAL_PROMPT_VERSION`: los dos prompts cambian por separado. Reglas: exactamente las ideas pedidas, distintas; solo apoyarse en `hechos`; en el tema y el porqué, sin cifras ni nombres propios que no estén en los datos, sin enlaces ni menciones y nunca `@everyone`/`@here` (la fecha va solo en `fecha` y `hora`); `linea` es la clave de una línea (repartidas según su peso) o `null`; `redes` solo de las pedidas; Instagram necesita imagen, carrusel o video y TikTok, video; la fecha es un día del período y la hora, de Chile, dentro de la cadencia de cada red (días, horas y posts por semana, de lunes a domingo); no repetir ni parafrasear lo reciente ni lo descartado; respetar `evitar`; el tema, una frase corta en sentence case; el porqué, una o dos frases.
+
+**Salida estructurada:** `{ ideas: [{ tema, linea, redes, formato, fecha, hora, porque }], warnings }`. El sobre se valida entero (hasta 40 ideas y 10 advertencias; si no calza, un reintento con los motivos y después `LLM_OUTPUT_INVALID`); **cada idea se valida por separado**, así una mal formada se descarta sin tumbar el plan.
+
+**Las verificaciones** (`checkPlanIdeas`), en orden; una idea que no pasa se **descarta** y queda en el reporte con su código:
+
+| Código | Cuándo |
+|---|---|
+| `FORMAT_INVALID` | La idea no tiene la forma pedida (falta un campo, un formato que no existe, un tema de más de 200 caracteres…) |
+| `DATE_INVALID` | La fecha o la hora no existen en Chile |
+| `OUT_OF_PERIOD` | La fecha está fuera del período |
+| `IN_THE_PAST` | Dentro del período, pero ya pasó (el plan corrió tarde) |
+| `PILLAR_UNKNOWN` | La línea no está en el perfil (`null` sí vale) |
+| `MASS_MENTION` | `@everyone` o `@here` en el tema o el porqué |
+| `FACT_NOT_IN_PROFILE` | Una cifra, un posible nombre propio, un enlace o una mención del tema o el porqué que no están en el perfil (la misma heurística de `checkPostContent`, `unsupportedFacts`; las fuentes son las del perfil, `profileSources`: una idea no tiene brief del operador) |
+| `REPEATED_TOPIC` | El tema repite uno de los últimos 60 días (se compara sin tildes, mayúsculas ni puntuación) |
+| `DISCARDED_TOPIC` | El tema repite una idea descartada |
+| `DUPLICATE_IN_PLAN` | El tema repite otra idea del mismo plan |
+| `OVER_COUNT` | Ya hay tantas ideas como las pedidas |
+| `PLATFORM_NOT_REQUESTED`, `FORMAT_NOT_SUPPORTED`, `OUT_OF_CADENCE`, `WEEK_FULL` | Cada red de la idea: que se haya pedido, que admita el formato (`kindProblem`, la misma regla que usa `post.draft`), que el día y la hora estén en su cadencia y que la semana no tenga ya sus posts por semana (contando lo ya planificado y las ideas del plan). Una red que no sirve **se le quita** a la idea (queda en sus `notes`); si no le queda ninguna, la idea se descarta con el motivo de la primera |
+
+**El reporte** (`planRunReportSchema`, en `plan_runs.report`): las ideas guardadas con el id de su post, el tema, la línea, sus redes, el formato, la fecha y las notas; las descartadas con su tema, código y detalle; las advertencias de la IA; y la llamada (proveedor, modelo, intentos y duración). Cero ideas válidas también es un plan terminado (`succeeded`): el reporte dice por qué. El reporte es una foto al terminar: después manda el post. Cada idea guarda **sus redes** en `posts.platforms` y, al aceptarla, `post.draft` redacta solo para esas (decisión del operador); un post manual tiene `null` (todas las de la marca). En los dos casos, `post.draft` deja fuera las redes que no sirven al tipo del post (Instagram sin imagen ni video; TikTok sin video, `kindProblem`); si no queda ninguna, `POST_NO_PLATFORMS`.
+
+**Sin la base (T22):** `proposePlanIdeas({ llm, beforeCall?, onUsage? }, { brief, period, sources, now })` hace la llamada, la validación y las verificaciones sin escribir nada; `runPlan` la usa y guarda el resultado.
+
+**El plan de ejemplo** (`LLM_PROVIDER=fake`, `samplePlanResponse`): lee lo pedido del bloque de datos del prompt y entrega, sin red ni azar, las ideas pedidas de una red cada una, en los días y horas de la cadencia (las 10:00 si no tiene) sin pasar los posts por semana, repartidas en el período, con las líneas por turno y temas que no repiten lo reciente ni lo descartado. Pasan todas las verificaciones con cualquier perfil. Si el período y la cadencia no dan para todas, entrega menos con una advertencia.
+
+**Límites conocidos:** la repetición se detecta por tema igual (normalizado), no por parecido: parafrasear lo reciente queda a cargo del prompt y del operador, que acepta o descarta cada idea. La heurística de hechos tiene los mismos límites que la de los textos (arriba).

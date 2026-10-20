@@ -1,5 +1,11 @@
 import { inScope } from "../access.js";
-import type { PostKind, PostStatus } from "../enums.js";
+import {
+  isPostPlatform,
+  POST_PLATFORMS,
+  type PostKind,
+  type PostPlatform,
+  type PostStatus,
+} from "../enums.js";
 import { AppError } from "../errors.js";
 import { assertCan, scopeOf } from "../permissions.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
@@ -206,7 +212,29 @@ export type UpdatePostInput = {
    * con ella, un post de X con enlace se puede aprobar y cuesta US$0,20 en vez de US$0,015.
    */
   xLinkAllowed?: boolean | undefined;
+  /**
+   * Las redes del post (F9-T20): `post.draft` redacta solo para estas (dentro de las de la marca);
+   * `null` = todas las de la marca. Una lista vacía o con una red que no publica posts es
+   * `POST_INVALID`.
+   */
+  platforms?: readonly string[] | null | undefined;
 };
+
+/** Las redes de un post: de `POST_PLATFORMS`, sin repetir y en su orden; `null` = todas. */
+function normalizePlatforms(platforms: readonly string[] | null): PostPlatform[] | null {
+  if (platforms === null) return null;
+  const asked = platforms.map((platform) => platform.trim().toLowerCase());
+  const unknown = asked.filter((platform) => !isPostPlatform(platform));
+  if (unknown.length > 0) {
+    throw invalid(`${unknown.map((item) => item.slice(0, 20)).join(", ")} no publica posts`, {
+      platforms: unknown.map((item) => item.slice(0, 20)),
+    });
+  }
+  if (asked.length === 0) {
+    throw invalid("Un post necesita al menos una red (o ninguna lista: todas las de la marca)");
+  }
+  return POST_PLATFORMS.filter((platform) => asked.includes(platform));
+}
 
 const postArchived = (postId: string) =>
   new AppError("POST_ARCHIVED", "El post está archivado: ya no se edita", {
@@ -214,8 +242,8 @@ const postArchived = (postId: string) =>
   });
 
 /**
- * Edita el tema, el brief, el tipo, la línea, la fecha planificada o la marca del enlace de X
- * (`xLinkAllowed`, F9-T16) (spec F9 §4.10). Editar el
+ * Edita el tema, el brief, el tipo, la línea, la fecha planificada, la marca del enlace de X
+ * (`xLinkAllowed`, F9-T16) o las redes (`platforms`, F9-T20) (spec F9 §4.10). Editar el
  * brief lo deja como del operador (`briefOrigin = operator`, ADR-0030 punto 1: desde ahí es fuente
  * de hechos). Un post archivado no se edita (`POST_ARCHIVED`, 409). Sin cambios, devuelve el post
  * tal cual.
@@ -235,6 +263,7 @@ export async function updatePost(
   }
   if (input.kind !== undefined) changes.kind = input.kind;
   if (input.xLinkAllowed !== undefined) changes.xLinkAllowed = input.xLinkAllowed;
+  if (input.platforms !== undefined) changes.platforms = normalizePlatforms(input.platforms);
   if (input.plannedAt !== undefined) changes.plannedAt = checkDate(input.plannedAt) ?? null;
   if (input.pillar !== undefined) {
     changes.pillar =

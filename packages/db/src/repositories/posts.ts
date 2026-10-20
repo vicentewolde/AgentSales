@@ -1,5 +1,6 @@
 import {
   AppError,
+  type NewPost,
   type Post,
   type PostRepository,
   type PostUpload,
@@ -9,7 +10,7 @@ import {
   postUploadSchema,
   scopedBrokerId,
 } from "@agentsales/core";
-import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
 import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { posts, postUploads } from "../schema.js";
@@ -25,6 +26,38 @@ function toPost(row: typeof posts.$inferSelect): Post {
   return parsed.data;
 }
 
+/**
+ * Las columnas de un post nuevo, con los valores por defecto de `NewPost`. La usan `create` y el
+ * plan de ideas (`PlanRunRepository.markSucceeded`, F9-T20), que guarda las ideas en su transacción.
+ */
+export function newPostValues(input: NewPost): typeof posts.$inferInsert {
+  return {
+    ...(input.id === undefined ? {} : { id: input.id }),
+    brokerId: input.brokerId,
+    topic: input.topic,
+    kind: input.kind,
+    brief: input.brief ?? null,
+    briefOrigin: input.briefOrigin ?? "operator",
+    status: input.status ?? "draft",
+    source: input.source ?? "manual",
+    pillar: input.pillar ?? null,
+    plannedAt: input.plannedAt ?? null,
+    planRunId: input.planRunId ?? null,
+    createdBy: input.createdBy ?? null,
+    rationale: input.rationale ?? null,
+    xLinkAllowed: input.xLinkAllowed ?? false,
+    platforms:
+      input.platforms === undefined || input.platforms === null ? null : [...input.platforms],
+  };
+}
+
+/** Un corredor, un plan o un usuario que no existen al crear un post: un bug de quien llama. */
+export const postReferenceInvalid = (brokerId: string, cause: unknown) =>
+  new AppError("POST_REFERENCE_INVALID", "El corredor, el plan o el usuario del post no existen", {
+    details: { brokerId },
+    cause,
+  });
+
 const postNotFound = (id: string) =>
   new AppError("POST_NOT_FOUND", `No existe el post ${id}`, { details: { postId: id } });
 
@@ -34,36 +67,13 @@ export function createPostRepository(db: SchemaDatabase): PostRepository {
     async create(input) {
       try {
         return await withDbErrors(async () => {
-          const [row] = await db
-            .insert(posts)
-            .values({
-              brokerId: input.brokerId,
-              topic: input.topic,
-              kind: input.kind,
-              brief: input.brief ?? null,
-              briefOrigin: input.briefOrigin ?? "operator",
-              status: input.status ?? "draft",
-              source: input.source ?? "manual",
-              pillar: input.pillar ?? null,
-              plannedAt: input.plannedAt ?? null,
-              planRunId: input.planRunId ?? null,
-              createdBy: input.createdBy ?? null,
-              rationale: input.rationale ?? null,
-              xLinkAllowed: input.xLinkAllowed ?? false,
-            })
-            .returning();
+          const [row] = await db.insert(posts).values(newPostValues(input)).returning();
           if (row === undefined) throw new AppError("POST_WRITE_FAILED", "No se creó el post");
           return toPost(row);
         });
       } catch (error) {
         // Un corredor, un plan o un usuario que no existen: un bug de quien llama.
-        if (sqlStateOf(error) === "23503") {
-          throw new AppError(
-            "POST_REFERENCE_INVALID",
-            "El corredor, el plan o el usuario del post no existen",
-            { details: { brokerId: input.brokerId }, cause: error },
-          );
-        }
+        if (sqlStateOf(error) === "23503") throw postReferenceInvalid(input.brokerId, error);
         throw error;
       }
     },
@@ -91,6 +101,7 @@ export function createPostRepository(db: SchemaDatabase): PostRepository {
             and(
               scoped === undefined ? undefined : eq(posts.brokerId, scoped),
               filters.brokerId === undefined ? undefined : eq(posts.brokerId, filters.brokerId),
+              filters.planRunId === undefined ? undefined : eq(posts.planRunId, filters.planRunId),
               statuses === undefined ? undefined : inArray(posts.status, statuses),
               filters.from === undefined ? undefined : gte(posts.plannedAt, filters.from),
               filters.to === undefined ? undefined : lt(posts.plannedAt, filters.to),
@@ -125,6 +136,23 @@ export function createPostRepository(db: SchemaDatabase): PostRepository {
         const [current] = await db.select().from(posts).where(eq(posts.id, id));
         if (current === undefined) throw postNotFound(id);
         return toPost(current);
+      });
+    },
+
+    listRecent(brokerId, since, limit = 300) {
+      return withDbErrors(async () => {
+        const rows = await db
+          .select()
+          .from(posts)
+          .where(
+            and(
+              eq(posts.brokerId, brokerId),
+              or(gte(posts.createdAt, since), gte(posts.plannedAt, since)),
+            ),
+          )
+          .orderBy(desc(posts.createdAt), desc(posts.id))
+          .limit(limit);
+        return rows.map(toPost);
       });
     },
   };

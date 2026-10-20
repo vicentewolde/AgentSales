@@ -127,6 +127,13 @@
       "when": 1792511001808,
       "tag": "0017_f9_subida_grande",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792529761221,
+      "tag": "0018_f9_plan_ideas",
+      "breakpoints": true
     }
   ]
 }

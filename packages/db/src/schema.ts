@@ -387,13 +387,22 @@ export const planRuns = pgTable(
     error: jsonb("error"),
     /** `llmUsageSchema` (core): lo gastado en IA (spec F9 §4.12). */
     llmUsage: jsonb("llm_usage"),
-    /** `SOCIAL_PROMPT_VERSION` con que corrió (ADR-0030, punto 6); `null` antes de llamar a la IA. */
+    /**
+     * `PLAN_PROMPT_VERSION` con que corrió (F9-T20; ADR-0030, punto 6, y su seguimiento); `null`
+     * hasta que termina bien.
+     */
     promptVersion: text("prompt_version"),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [index("plan_runs_broker_created_idx").on(t.brokerId, t.createdAt)],
+  (t) => [
+    index("plan_runs_broker_created_idx").on(t.brokerId, t.createdAt),
+    // F9-T20: un plan activo (en cola o corriendo) por marca; un segundo pedido recibe ese.
+    uniqueIndex("plan_runs_one_active_per_broker")
+      .on(t.brokerId)
+      .where(sql`"status" IN ('queued', 'running')`),
+  ],
 );
 
 /**
@@ -430,6 +439,12 @@ export const posts = pgTable(
      * cuesta US$0,20 en vez de US$0,015. Sin ella, un enlace en X impide aprobar y publicar.
      */
     xLinkAllowed: boolean("x_link_allowed").notNull().default(false),
+    /**
+     * Las redes del post (F9-T20): las que sugirió el plan para una idea, o las que fije el
+     * operador. `null` = todas las de la marca (un post manual). Texto validado con
+     * `POST_PLATFORMS` de core, como `editorial_profiles.languages`.
+     */
+    platforms: text("platforms").array(),
     ...timestamps,
   },
   (t) => [

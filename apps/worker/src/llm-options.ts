@@ -1,5 +1,5 @@
 import type { Env } from "@agentsales/config";
-import { SAMPLE_CONTENT_DRAFT, SAMPLE_SOCIAL_DRAFT } from "@agentsales/core";
+import { SAMPLE_CONTENT_DRAFT, SAMPLE_SOCIAL_DRAFT, samplePlanResponse } from "@agentsales/core";
 import type { LlmProviderOptions } from "@agentsales/llm";
 
 /**
@@ -67,5 +67,20 @@ export function socialLlmProviderOptions(
 ): LlmProviderOptions {
   return env.LLM_PROVIDER === "fake"
     ? { provider: "fake", data: SAMPLE_SOCIAL_DRAFT }
+    : llmProviderOptions(env, baseEnv);
+}
+
+/**
+ * Las opciones del proveedor para el plan de ideas (`content.plan`, F9-T20): las mismas que
+ * `llmProviderOptions`, salvo con `fake`, que arma un plan de ejemplo determinista con lo que pide
+ * el prompt (`samplePlanResponse`: las ideas pedidas, en el período y la cadencia) en vez de
+ * devolver un dato fijo.
+ */
+export function planLlmProviderOptions(
+  env: LlmEnv,
+  baseEnv: Readonly<Record<string, string | undefined>>,
+): LlmProviderOptions {
+  return env.LLM_PROVIDER === "fake"
+    ? { provider: "fake", data: null, respond: ({ prompt }) => samplePlanResponse(prompt) }
     : llmProviderOptions(env, baseEnv);
 }

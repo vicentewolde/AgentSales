@@ -49,6 +49,28 @@ export type PostCheckContext = {
 };
 
 /**
+ * Las fuentes de hechos del perfil de una marca (ADR-0030, punto 1), juntas: el nombre de la
+ * marca, los `facts`, el público, las líneas de contenido y los hashtags del perfil y del corredor.
+ * `avoid` no es fuente. Las usan la revisión de un texto (`buildPostCheckContext`, que suma el brief
+ * y el tema del operador) y la de las ideas de un plan (F9-T20), que no tienen brief.
+ */
+export function profileSources(
+  profile: Pick<EditorialProfileView, "facts" | "audience" | "pillars" | "defaultHashtags">,
+  broker: Pick<Broker, "brandName" | "fixedHashtags">,
+): string {
+  return [
+    broker.brandName,
+    ...profile.facts,
+    profile.audience ?? "",
+    ...profile.pillars.flatMap((pillar) => [pillar.name, pillar.description]),
+    ...profile.defaultHashtags,
+    ...broker.fixedHashtags,
+  ]
+    .filter((text) => text.trim() !== "")
+    .join("\n");
+}
+
+/**
  * El contexto de la revisión de un post. Fuentes de hechos (ADR-0030, punto 1): el nombre de la
  * marca, los `facts`, el público, las líneas de contenido y los hashtags del perfil y del corredor;
  * el brief del post solo con `briefOrigin = operator`, y el tema solo en un post manual (el tema
@@ -66,12 +88,7 @@ export function buildPostCheckContext(params: {
   const { post, profile, broker } = params;
   const originals = params.media.filter((item) => item.role === "original");
   const sources = [
-    broker.brandName,
-    ...profile.facts,
-    profile.audience ?? "",
-    ...profile.pillars.flatMap((pillar) => [pillar.name, pillar.description]),
-    ...profile.defaultHashtags,
-    ...broker.fixedHashtags,
+    profileSources(profile, broker),
     operatorBriefOf(post) ?? "",
     post.source === "manual" ? post.topic : "",
   ]
@@ -334,6 +351,69 @@ function mediaProblem(platform: PostPlatform, ctx: PostCheckContext): string | n
   return null;
 }
 
+/** `true` si el texto tiene `@everyone` o `@here`, aunque lo escondan con un truco tipográfico. */
+export const hasMassMention = (text: string): boolean => MASS_MENTION.test(unmasked(text));
+
+/** Las menciones (`@algo`) del texto que no están en las fuentes, sin las masivas ni repetidas. */
+function unknownMentions(body: string, sources: string): string[] {
+  const sourceMentions = new Set(
+    [...sources.matchAll(MENTION)].map((match) => (match[1] ?? "").toLowerCase()),
+  );
+  const mentions = new Set([...body.matchAll(MENTION)].map((match) => match[1] ?? ""));
+  return [...mentions].filter((mention) => {
+    const key = mention.toLowerCase();
+    return key !== "everyone" && key !== "here" && !sourceMentions.has(key);
+  });
+}
+
+/** El texto sin lo que no es prosa: listas numeradas, "24/7", enlaces, menciones y hashtags. */
+const proseOf = (body: string) =>
+  body
+    .replace(LIST_MARKER, " ")
+    .replace(ALWAYS_OPEN, " ")
+    .replace(linkPattern(), " ")
+    .replace(MENTION, " ")
+    .replace(HASHTAG_IN_TEXT, " ");
+
+/** Las cifras del texto que no están en las fuentes, tal cual aparecen y sin repetir. */
+function unknownNumbers(text: string, sources: string): string[] {
+  const sourceNumbers = new Set((sources.match(NUMBER) ?? []).map(numberKey));
+  const reported = new Set<string>();
+  const found: string[] = [];
+  for (const raw of text.match(NUMBER) ?? []) {
+    const key = numberKey(raw);
+    if (sourceNumbers.has(key) || reported.has(key)) continue;
+    reported.add(key);
+    found.push(raw);
+  }
+  return found;
+}
+
+/**
+ * Lo que un texto afirma sin que esté en las fuentes (ADR-0030, punto 1): menciones, enlaces,
+ * cifras y posibles nombres propios, con la misma regla que `checkPostContent`
+ * (`FACT_NOT_IN_PROFILE`). Devuelve un mensaje por cada uno; vacío si no hay nada. La usa el plan
+ * de ideas (F9-T20) sobre el tema y el porqué de cada idea, que no tienen brief del operador.
+ */
+export function unsupportedFacts(text: string, sources: string): string[] {
+  const messages: string[] = [];
+  for (const mention of unknownMentions(text, sources)) {
+    messages.push(`La mención «@${mention}» no está en el perfil`);
+  }
+  const sourceLinks = new Set(linksIn(sources).map(linkKey));
+  for (const link of new Set(linksIn(text))) {
+    if (!sourceLinks.has(linkKey(link))) messages.push(`El enlace «${link}» no está en el perfil`);
+  }
+  const prose = proseOf(text);
+  for (const raw of unknownNumbers(prose, sources)) {
+    messages.push(`La cifra «${raw}» no está en los hechos del perfil`);
+  }
+  for (const found of unknownNames(prose, foldedWords(sources))) {
+    messages.push(`«${found}» parece un nombre propio que no está en el perfil`);
+  }
+  return messages;
+}
+
 /**
  * Revisa el texto de un post en una red (spec F9 §4.4). Errores (impiden aprobar):
  * - `TOO_LONG`: el largo de la red con los hashtags (`postTextLength`: X ponderado, LinkedIn con
@@ -375,16 +455,10 @@ export function checkPostContent(
   }
 
   // Menciones: las masivas nunca; las demás, solo si están en las fuentes.
-  const sourceMentions = new Set(
-    [...ctx.sources.matchAll(MENTION)].map((match) => (match[1] ?? "").toLowerCase()),
-  );
-  const mentions = [...text.body.matchAll(MENTION)].map((match) => match[1] ?? "");
-  if (MASS_MENTION.test(unmasked([text.body, ...text.hashtags].join("\n")))) {
+  if (hasMassMention([text.body, ...text.hashtags].join("\n"))) {
     add("MASS_MENTION", "Tiene @everyone o @here: avisaría a todo un servidor o canal");
   }
-  for (const mention of new Set(mentions)) {
-    const key = mention.toLowerCase();
-    if (key === "everyone" || key === "here" || sourceMentions.has(key)) continue;
+  for (const mention of unknownMentions(text.body, ctx.sources)) {
     add(
       "FACT_NOT_IN_PROFILE",
       `La mención «@${mention}» no está en el perfil ni en el brief del operador`,
@@ -422,18 +496,8 @@ export function checkPostContent(
   }
 
   // Cifras y nombres propios, fuera de enlaces, menciones y hashtags del texto.
-  const prose = text.body
-    .replace(LIST_MARKER, " ")
-    .replace(ALWAYS_OPEN, " ")
-    .replace(linkPattern(), " ")
-    .replace(MENTION, " ")
-    .replace(HASHTAG_IN_TEXT, " ");
-  const sourceNumbers = new Set((ctx.sources.match(NUMBER) ?? []).map(numberKey));
-  const reported = new Set<string>();
-  for (const raw of [prose, ...text.hashtags].join("\n").match(NUMBER) ?? []) {
-    const key = numberKey(raw);
-    if (sourceNumbers.has(key) || reported.has(key)) continue;
-    reported.add(key);
+  const prose = proseOf(text.body);
+  for (const raw of unknownNumbers([prose, ...text.hashtags].join("\n"), ctx.sources)) {
     add(
       "FACT_NOT_IN_PROFILE",
       `La cifra «${raw}» no está en los hechos del perfil ni en el brief del operador`,

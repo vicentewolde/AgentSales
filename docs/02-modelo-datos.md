@@ -228,12 +228,13 @@ Un tema o idea con un texto por red e idioma (`contents.post_id`), a veces medio
 | plan_run_id | uuid FK null | El plan que lo propuso |
 | created_by | uuid FK null | Quién lo creó; `null` al borrar el usuario |
 | rationale | text null | El porqué de una idea de la IA |
+| platforms | text[] null | Desde F9-T20 (migración `0018`): las redes del post, de `POST_PLATFORMS` (core, validado al leer). Las llena el plan con las redes que la IA sugirió y que pasaron las verificaciones de cada idea, y las cambia el operador (`updatePost`). `null` = todas las redes de la marca (un post manual). `post.draft` redacta solo para estas, dentro de las de la marca y que sirvan al `kind` del post |
 | x_link_allowed | boolean default `false` | Desde F9-T16 (migración `0016`): la marca explícita del operador que permite un enlace en el texto de X (cuesta US$0,20 en vez de US$0,015). Sin ella, un enlace en X impide aprobar (`LINK_NOT_ALLOWED`) y publicar (`X_LINK_NOT_ALLOWED`) |
 
 Índice `(broker_id, status, planned_at)` para el contenido y el calendario de una marca.
 
 ### plan_runs — planes de ideas de la IA (F9, ADR-0030)
-Se crea con `posts` (migración `0015`) porque `posts.plan_run_id` la referencia; la lógica (job `content.plan`) llega en F9-T20.
+Se crea con `posts` (migración `0015`) porque `posts.plan_run_id` la referencia; la lógica (job `content.plan`) es de F9-T20: al terminar, el reporte y los posts `idea` de sus ideas se guardan en una sola transacción.
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -241,14 +242,14 @@ Se crea con `posts` (migración `0015`) porque `posts.plan_run_id` la referencia
 | broker_id | uuid FK | La marca del plan |
 | period_start, period_end | timestamptz | El período que propone (por defecto, las próximas 2 semanas) |
 | status | enum `plan_run_status` default `queued` | `queued`, `running`, `succeeded`, `failed` (`PLAN_RUN_STATUSES`) |
-| request | jsonb | Lo pedido (redes, cuántas ideas), sin secretos |
-| report | jsonb null | Lo propuesto y lo que descartaron las verificaciones; `null` hasta que termina |
+| request | jsonb | Lo pedido (`planRunRequestSchema`, core): `{ platforms, count, days, requestedBy }`, sin secretos |
+| report | jsonb null | `planRunReportSchema` (core, F9-T20): las ideas guardadas (id del post, tema, línea, redes, formato, fecha y notas), las descartadas con su código, las advertencias de la IA y la llamada; `null` hasta que termina bien. Es una **foto al terminar el plan**: después manda el post (su tema, línea, fecha y redes, que el operador puede cambiar) |
 | error | jsonb null | `{ code, message }` cuando `status = failed` |
 | llm_usage | jsonb null | `llmUsageSchema`, como en `content_runs`; entra en `sumLlmCost` desde F9-T04 |
-| prompt_version | text null | `SOCIAL_PROMPT_VERSION` con que corrió (ADR-0030, punto 6) |
+| prompt_version | text null | La versión del prompt del plan con que corrió (`PLAN_PROMPT_VERSION`, `social-plan-v1`, F9-T20; propia del plan, no la de los textos) |
 | started_at, finished_at | timestamptz null | |
 
-Índice `(broker_id, created_at)`.
+Índice `(broker_id, created_at)` y, desde F9-T20 (migración `0018`), el índice único parcial `plan_runs_one_active_per_broker` sobre `(broker_id) WHERE status IN ('queued', 'running')`: un plan activo por marca (un segundo `create` es `PLAN_RUN_CONFLICT` y `requestPlanRun` devuelve el que está en curso).
 
 ### editorial_profiles — perfil editorial de una marca (F9, spec F9 §4.3)
 Uno por corredor (`broker_id` es la llave). `pnpm db:seed --operator-brands` (solo con ese parámetro y solo en la instancia del operador, spec F9 D19; sin él, el seed no las toca) crea las marcas del operador, `vinny` ("Vinny") y `agentpey` ("AgentPey"), con `kind = brand`, `operator_owned = true`, sin cuentas y con su perfil vacío, que llena el operador; correrlo de nuevo no las duplica ni pisa lo que el operador cambió (`ON CONFLICT DO NOTHING`, a diferencia del corredor demo).

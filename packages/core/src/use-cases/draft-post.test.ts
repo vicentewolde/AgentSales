@@ -74,6 +74,8 @@ type Setup = {
   /** Respuestas de la API (marca de un tercero: `operatorOwned = false`). */
   apiLlm?: ScriptedLlmResponse[];
   capUsd?: number | null;
+  /** Las redes del post (F9-T20); por defecto `null`, todas las de la marca. */
+  platforms?: PostPlatform[] | null;
 };
 
 async function setup(options: Setup = {}) {
@@ -94,6 +96,7 @@ async function setup(options: Setup = {}) {
     status: options.status ?? "draft",
     brief: "Contar que ya sumamos 3 redes",
     briefOrigin: options.briefOrigin ?? "operator",
+    platforms: options.platforms ?? null,
   });
   const editorialProfiles = createInMemoryEditorialProfileRepository();
   await editorialProfiles.upsert(broker.id, {
@@ -589,5 +592,37 @@ describe("AppError de la corrida", () => {
     const { run } = await t.request();
     await caught(draftPost(t.deps, { contentRunId: run.id, isLastAttempt: false }));
     expect((await t.contentRuns.get(run.id))?.error?.message).not.toContain("/Users/vinny");
+  });
+});
+
+describe("draftPost · las redes que sirven al post (F9-T20)", () => {
+  it("un post de solo texto no se redacta para Instagram, aunque la marca lo tenga", async () => {
+    const t = await setup({
+      accounts: ["instagram", "x"],
+      llm: [{ data: answer([{ platform: "x", language: "es" }]) }],
+    });
+    const { run } = await t.request();
+    await draftPost(t.deps, { contentRunId: run.id, isLastAttempt: false });
+    expect((await t.current()).map((item) => item.platform)).toEqual(["x"]);
+  });
+
+  it("con redes propias, solo esas (dentro de las de la marca)", async () => {
+    const t = await setup({
+      platforms: ["linkedin", "discord"],
+      llm: [{ data: answer([{ platform: "linkedin", language: "es" }]) }],
+    });
+    const { run } = await t.request();
+    await draftPost(t.deps, { contentRunId: run.id, isLastAttempt: false });
+    // Discord no es de la marca (sin cuenta ni cadencia): queda fuera.
+    expect((await t.current()).map((item) => item.platform)).toEqual(["linkedin"]);
+  });
+
+  it("si no queda ninguna red que sirva, POST_NO_PLATFORMS sin llamar a la IA", async () => {
+    const t = await setup({ accounts: ["instagram"], platforms: ["instagram"] });
+    const { run } = await t.request();
+    const error = await caught(draftPost(t.deps, { contentRunId: run.id, isLastAttempt: false }));
+    expect(codeOf(error)).toBe("POST_NO_PLATFORMS");
+    expect(t.llm.requests).toEqual([]);
+    expect((await t.contentRuns.get(run.id))?.error?.code).toBe("POST_NO_PLATFORMS");
   });
 });

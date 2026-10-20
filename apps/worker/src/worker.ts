@@ -32,6 +32,7 @@ import {
   createLoginChallengeRepository,
   createMediaRepository,
   createOAuthStateRepository,
+  createPlanRunRepository,
   createPlatformAccountRepository,
   createPlatformCatalogRepository,
   createPostLock,
@@ -67,6 +68,7 @@ import {
   marketplaceTmpRootOf,
 } from "./content-tmp.js";
 import { type Heartbeat, startHeartbeat, workerProcessId } from "./heartbeat.js";
+import { failAbandonedPlanRuns, requeueQueuedPlanRuns } from "./jobs/content-plan.js";
 import {
   failAbandonedContentRuns,
   requeueQueuedContentRuns,
@@ -80,7 +82,12 @@ import { enqueuePublicationDue } from "./jobs/publication-due.js";
 import { instagramNoteLogger, requeuePublishingPublications } from "./jobs/publication-publish.js";
 import { registerJobs } from "./jobs/registry.js";
 import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
-import { apiLlmOptions, llmProviderOptions, socialLlmProviderOptions } from "./llm-options.js";
+import {
+  apiLlmOptions,
+  llmProviderOptions,
+  planLlmProviderOptions,
+  socialLlmProviderOptions,
+} from "./llm-options.js";
 import { createWorkerMarketplacePublisher } from "./marketplace/publisher.js";
 import { createMarketplaceWindows, sweepClosedWindows } from "./marketplace/windows.js";
 import { createWorkerPortal } from "./portal.js";
@@ -258,6 +265,8 @@ const listingLock = createListingLock(database.db, { secretBox });
 // Los posts (spec F9 §4.5): sus medios y la limpieza de sus subidas, con el candado del post.
 const posts = createPostRepository(database.db);
 const postLock = createPostLock(database.db, { secretBox });
+// Los planes de ideas (spec F9 §4.9): sus ideas se guardan como posts en la misma transacción.
+const planRuns = createPlanRunRepository(database.db);
 const marketplaceWindows = createMarketplaceWindows({
   publications,
   confirm: (publicationId, url) =>
@@ -458,6 +467,22 @@ const jobs = buildJobs({
     },
     signal: jobsAbort.signal,
   },
+  // El plan de ideas (spec F9 §4.9, F9-T20): el perfil de la marca, sus posts recientes (los temas
+  // que no se repiten) y la IA; las ideas quedan como posts `idea`, sin textos ni publicaciones.
+  contentPlan: {
+    shared: {
+      planRuns,
+      posts,
+      brokers: repositories.brokers,
+      editorialProfiles: createEditorialProfileRepository(database.db),
+      contentRuns,
+      // Con `fake`, un plan de ejemplo armado con lo que pide el prompt.
+      llm: createLlmProvider(planLlmProviderOptions(env, process.env)),
+      apiLlm,
+      newId: randomUUID,
+    },
+    signal: jobsAbort.signal,
+  },
   dbBackup: {
     target: backupTarget,
     databaseUrl: env.DATABASE_URL,
@@ -577,6 +602,30 @@ async function failAbandonedContent(): Promise<void> {
     if (closed.length > 0) logger.warn({ contentRunIds: closed }, "corridas abandonadas cerradas");
   } catch (error) {
     logger.warn({ err: error }, "no se pudieron revisar las corridas abandonadas");
+  }
+}
+
+async function failAbandonedPlans(): Promise<void> {
+  try {
+    const closed = await failAbandonedPlanRuns(planRuns);
+    if (closed.length > 0) logger.warn({ planRunIds: closed }, "planes abandonados cerrados");
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron revisar los planes abandonados");
+  }
+}
+
+async function requeuePlans(): Promise<void> {
+  try {
+    const { requeued, failed } = await requeueQueuedPlanRuns(planRuns, queue);
+    if (requeued > 0) logger.info({ requeued }, "planes de ideas en cola reencolados");
+    if (failed.length > 0) {
+      logger.warn(
+        { planRunIds: failed },
+        "no se pudieron reencolar algunos planes: se reintenta al próximo arranque o al pedirlos",
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, "no se pudieron reencolar los planes en cola");
   }
 }
 
@@ -734,6 +783,7 @@ try {
   await sweepMarketplaceWindows();
   await failAbandonedRuns();
   await failAbandonedContent();
+  await failAbandonedPlans();
   await cleanStaging(true);
   // Una señal durante el arranque: `shutdown` ya está deteniendo pg-boss; no se registra nada más.
   const registered =
@@ -748,6 +798,7 @@ try {
     // Una señal mientras empezaba a latir: el apagado ya pasó por `stopHeartbeat` sin latido.
     if (shuttingDown) await heartbeat.stop();
     await requeueContent();
+    await requeuePlans();
     await requeuePublications();
     await resumeAutoPublish();
     await requestLiveSyncs();

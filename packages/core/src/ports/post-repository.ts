@@ -1,9 +1,14 @@
 import type { AccessScope } from "../access.js";
-import type { BriefOrigin, PostKind, PostSource, PostStatus } from "../enums.js";
+import type { BriefOrigin, PostKind, PostPlatform, PostSource, PostStatus } from "../enums.js";
 import type { Post, PostUpload } from "../post.js";
 
 /** Un post nuevo (spec F9 §4.2): manual por defecto, en `draft` y con el brief del operador. */
 export type NewPost = {
+  /**
+   * El id, si ya lo conoce quien llama (F9-T20: el plan anota en su reporte el id de cada idea
+   * antes de guardarlas). Sin él, lo pone el repositorio.
+   */
+  id?: string;
   brokerId: string;
   topic: string;
   kind: PostKind;
@@ -21,6 +26,8 @@ export type NewPost = {
   rationale?: string | null;
   /** Por defecto `false` (F9-T16). */
   xLinkAllowed?: boolean;
+  /** Las redes del post (F9-T20); por defecto `null` = todas las de la marca. */
+  platforms?: readonly PostPlatform[] | null;
 };
 
 /** Lo que se puede cambiar de un post; `undefined` = no tocar, `null` borra. */
@@ -34,6 +41,8 @@ export type PostChanges = {
   plannedAt?: Date | null;
   rationale?: string | null;
   xLinkAllowed?: boolean;
+  /** Las redes del post (F9-T20); `null` = todas las de la marca. */
+  platforms?: PostPlatform[] | null;
 };
 
 /**
@@ -43,6 +52,8 @@ export type PostChanges = {
  */
 export type PostFilters = {
   brokerId?: string;
+  /** Las ideas de un plan (`posts.plan_run_id`, F9-T20). */
+  planRunId?: string;
   status?: PostStatus | readonly PostStatus[];
   from?: Date;
   to?: Date;
@@ -65,6 +76,9 @@ export function pickPostChanges(changes: PostChanges): PostChanges {
   }
   if (changes.rationale !== undefined) picked.rationale = changes.rationale;
   if (changes.xLinkAllowed !== undefined) picked.xLinkAllowed = changes.xLinkAllowed;
+  if (changes.platforms !== undefined) {
+    picked.platforms = changes.platforms === null ? null : [...changes.platforms];
+  }
   return picked;
 }
 
@@ -88,6 +102,12 @@ export interface PostRepository {
   update(id: string, changes: PostChanges): Promise<Post>;
   /** Lo pasa a `archived` (descartado o terminado); si ya lo estaba, lo devuelve igual. */
   archive(id: string): Promise<Post>;
+  /**
+   * Los posts de un corredor creados o planificados (`planned_at`) desde `since`, en cualquier
+   * estado, los más nuevos primero (por `created_at` y después por id), como mucho `limit` (por
+   * defecto 300). Son los temas que el plan de ideas no repite (F9-T20, ADR-0030 punto 5).
+   */
+  listRecent(brokerId: string, since: Date, limit?: number): Promise<Post[]>;
 }
 
 /** Una subida nueva de un post (ADR-0025): nace en `pending`. */

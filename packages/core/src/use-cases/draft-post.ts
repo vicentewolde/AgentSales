@@ -1,5 +1,6 @@
 import type { AbortSignalLike } from "../abort.js";
 import { settlePostStatus } from "../content/locked-content.js";
+import { contentRunErrorOf } from "../content/run-error.js";
 import type { ContentRun, ContentRunReport } from "../content.js";
 import { editorialProfileView } from "../editorial-profile.js";
 import { isTerminalContentRun, type PostStatus } from "../enums.js";
@@ -18,9 +19,9 @@ import { canDraftPost, postNotReady } from "../post.js";
 import { buildSocialBrief, postPlatforms, socialTargets } from "../social/brief.js";
 import { buildPostCheckContext } from "../social/check.js";
 import { draftPostTexts } from "../social/draft-texts.js";
+import { kindProblem } from "../social/networks.js";
 import { SOCIAL_PROMPT_VERSION } from "../social/prompt.js";
 import { postSubject } from "../subject.js";
-import { contentRunErrorOf } from "./prepare-content.js";
 
 export type DraftPostDeps = {
   contentRuns: ContentRunRepository;
@@ -161,12 +162,30 @@ async function texts(
     });
   }
   const profile = editorialProfileView(broker.id, await deps.editorialProfiles.get(broker.id));
-  const platforms = postPlatforms(profile, await deps.platformAccounts.listByBroker(broker.id));
-  if (platforms.length === 0) {
+  const brandPlatforms = postPlatforms(
+    profile,
+    await deps.platformAccounts.listByBroker(broker.id),
+  );
+  if (brandPlatforms.length === 0) {
     throw new AppError(
       "POST_NO_PLATFORMS",
       "La marca no tiene redes para este post: conecta una cuenta o define la cadencia de una red en su perfil editorial",
       { details: { postId: post.id } },
+    );
+  }
+  // F9-T20: las redes del post (las que sugirió el plan, o las que fijó el operador) dentro de las
+  // de la marca, y solo las que sirven al tipo del post (Instagram no publica solo texto; TikTok,
+  // solo video).
+  const platforms = brandPlatforms.filter(
+    (platform) =>
+      (post.platforms === null || post.platforms.includes(platform)) &&
+      kindProblem(platform, post.kind) === null,
+  );
+  if (platforms.length === 0) {
+    throw new AppError(
+      "POST_NO_PLATFORMS",
+      "Ninguna red del post sirve: revisa sus redes o su tipo (Instagram necesita imagen o video; TikTok, video)",
+      { details: { postId: post.id, kind: post.kind } },
     );
   }
   const targets = socialTargets(platforms, profile.languages);

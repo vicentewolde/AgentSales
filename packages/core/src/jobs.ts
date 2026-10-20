@@ -18,6 +18,7 @@ export const JOB_NAMES = [
   "db.backup",
   "post.draft",
   "post.media",
+  "content.plan",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -89,6 +90,12 @@ export const JOB_PAYLOADS = {
    * Lee de la base los originales del post y arma solo lo que falta (`processPostMedia`).
    */
   "post.media": z.object({ postId: z.uuid() }),
+  /**
+   * Un plan de ideas de la IA (spec F9 §4.9, ADR-0030): el plan guarda lo pedido; el job lleva su
+   * id. Lo encolan `requestPlanRun` y el worker al arrancar (`requeueQueuedPlanRuns`); lo atiende
+   * `runPlan` (F9-T20).
+   */
+  "content.plan": z.object({ planRunId: z.uuid() }),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof JOB_PAYLOADS)[N]>;

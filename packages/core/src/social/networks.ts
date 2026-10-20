@@ -1,5 +1,5 @@
 import { EMOJI_PATTERN, INSTAGRAM_CAPTION_MAX_LENGTH } from "../content/assemble.js";
-import type { PostPlatform } from "../enums.js";
+import type { PostKind, PostPlatform } from "../enums.js";
 
 // Las reglas de texto de cada red para los posts (spec F9 §4.4): cuánto puede medir, cómo se
 // cuenta y qué caracteres hay que escapar. Funciones puras: las usan la revisión
@@ -208,4 +208,18 @@ export function postTextLength(
     default:
       return { length: joined.length, max };
   }
+}
+
+/**
+ * Si la red publica un post de ese tipo (F9-T20): Instagram necesita una imagen, un carrusel o un
+ * video, y TikTok publica solo video (F9-T26); las demás aceptan todo. Devuelve el motivo, o `null`
+ * si sirve. La usan el plan (una red que no sirve se le quita a la idea) y `post.draft` (no redacta
+ * para una red que no sirve al tipo del post). Que falte subir el medio lo revisa
+ * `checkPostContent` (`MEDIA_REQUIREMENT`), no esto.
+ */
+export function kindProblem(platform: PostPlatform, kind: PostKind): string | null {
+  if (platform === "instagram" && kind === "text")
+    return "Instagram necesita una imagen o un video";
+  if (platform === "tiktok" && kind !== "video") return "TikTok publica solo video";
+  return null;
 }

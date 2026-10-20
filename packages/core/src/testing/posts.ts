@@ -50,8 +50,11 @@ export function createInMemoryPostRepository(): InMemoryPostRepository {
   return {
     async create(input) {
       const now = new Date();
+      if (input.id !== undefined && posts.has(input.id)) {
+        throw new AppError("DB_QUERY_FAILED", `Ya existe el post ${input.id}`);
+      }
       return save({
-        id: uuidLike("00000000", ++sequence),
+        id: input.id ?? uuidLike("00000000", ++sequence),
         brokerId: input.brokerId,
         topic: input.topic,
         brief: input.brief ?? null,
@@ -68,6 +71,8 @@ export function createInMemoryPostRepository(): InMemoryPostRepository {
         createdBy: input.createdBy ?? null,
         rationale: input.rationale ?? null,
         xLinkAllowed: input.xLinkAllowed ?? false,
+        platforms:
+          input.platforms === undefined || input.platforms === null ? null : [...input.platforms],
         createdAt: now,
         updatedAt: now,
       });
@@ -89,6 +94,7 @@ export function createInMemoryPostRepository(): InMemoryPostRepository {
           (post) =>
             inScope(scope, post.brokerId) &&
             (filters.brokerId === undefined || post.brokerId === filters.brokerId) &&
+            (filters.planRunId === undefined || post.planRunId === filters.planRunId) &&
             (statuses === undefined || statuses.includes(post.status)) &&
             (filters.from === undefined ||
               (post.plannedAt !== null && post.plannedAt >= filters.from)) &&
@@ -110,6 +116,17 @@ export function createInMemoryPostRepository(): InMemoryPostRepository {
       const current = find(id);
       if (current.status === "archived") return structuredCopy(current);
       return save({ ...current, status: "archived", updatedAt: later(current.updatedAt) });
+    },
+    async listRecent(brokerId, since, limit = 300) {
+      return [...posts.values()]
+        .filter(
+          (post) =>
+            post.brokerId === brokerId &&
+            (post.createdAt >= since || (post.plannedAt !== null && post.plannedAt >= since)),
+        )
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id))
+        .slice(0, limit)
+        .map(structuredCopy);
     },
     all: () => [...posts.values()].map(structuredCopy),
   };
@@ -199,8 +216,14 @@ export type InMemoryPlanRunRepository = PlanRunRepository & {
   all(): PlanRun[];
 };
 
-/** `PlanRunRepository` en memoria, con cambios de estado condicionales como el de Drizzle. */
-export function createInMemoryPlanRunRepository(): InMemoryPlanRunRepository {
+/**
+ * `PlanRunRepository` en memoria, con cambios de estado condicionales como el de Drizzle. Con
+ * `posts`, `markSucceeded` guarda allí las ideas (sin `posts`, un plan con ideas es un error del
+ * test). No es atómico como la transacción de Postgres: el doble no falla a medias.
+ */
+export function createInMemoryPlanRunRepository(
+  options: { posts?: Pick<PostRepository, "create"> } = {},
+): InMemoryPlanRunRepository {
   let sequence = 0;
   const runs = new Map<string, PlanRun>();
   const change = (id: string, from: readonly PlanRun["status"][], patch: Partial<PlanRun>) => {
@@ -211,6 +234,16 @@ export function createInMemoryPlanRunRepository(): InMemoryPlanRunRepository {
   };
   return {
     async create(input) {
+      // Como el índice único parcial de Postgres: un plan activo por marca.
+      if (
+        [...runs.values()].some(
+          (run) =>
+            run.brokerId === input.brokerId &&
+            (run.status === "queued" || run.status === "running"),
+        )
+      ) {
+        throw new AppError("PLAN_RUN_CONFLICT", "La marca ya tiene un plan en curso");
+      }
       const now = new Date();
       const run: PlanRun = {
         id: uuidLike("00000000", ++sequence),
@@ -249,7 +282,12 @@ export function createInMemoryPlanRunRepository(): InMemoryPlanRunRepository {
         startedAt: current?.startedAt ?? new Date(),
       });
     },
-    async markSucceeded(id, { report, promptVersion }) {
+    async markSucceeded(id, { report, promptVersion, ideas = [] }) {
+      if (runs.get(id)?.status !== "running") return false;
+      if (ideas.length > 0 && options.posts === undefined) {
+        throw new Error("createInMemoryPlanRunRepository: las ideas necesitan `posts`");
+      }
+      for (const idea of ideas) await options.posts?.create(idea);
       return change(id, ["running"], {
         status: "succeeded",
         report: structuredCopy(report ?? null),
@@ -263,6 +301,24 @@ export function createInMemoryPlanRunRepository(): InMemoryPlanRunRepository {
         error: { ...error },
         finishedAt: new Date(),
       });
+    },
+    async listQueued() {
+      return [...runs.values()].filter((run) => run.status === "queued").map(structuredCopy);
+    },
+    async failAbandoned(startedBefore, error) {
+      const closed: string[] = [];
+      for (const run of runs.values()) {
+        if (run.status !== "running" || run.startedAt === null || run.startedAt >= startedBefore) {
+          continue;
+        }
+        change(run.id, ["running"], {
+          status: "failed",
+          error: { ...error },
+          finishedAt: new Date(),
+        });
+        closed.push(run.id);
+      }
+      return closed;
     },
     async addLlmUsage(id, call) {
       const current = runs.get(id);
