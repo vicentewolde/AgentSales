@@ -11,14 +11,16 @@ const PAGES = ["terminos", "privacidad", "eliminacion-de-datos"] as const;
 
 describe("páginas públicas", () => {
   it.each(PAGES)(
-    "%s: en español, sin JavaScript ni estilos en línea, aprobada el 19 de octubre de 2026",
+    "%s: en español, sin JavaScript ni estilos en línea, con su fecha de actualización",
     (name) => {
       const html = page(name);
       expect(html).toMatch(/^<!doctype html>\n<html lang="es">/);
       expect(html).not.toMatch(/<script|<style|style=|\son[a-z]+=/i);
       expect(html).toContain('<link rel="stylesheet" href="/legal/legal.css">');
-      // Aprobada por el operador (F8-T18, 2026-10-19): con su fecha y sin el aviso de borrador.
-      expect(html).toContain("Última actualización: 19 de octubre de 2026");
+      // Aprobadas por el operador (F8-T18, 2026-10-19), con su fecha y sin el aviso de borrador. Los
+      // términos y la privacidad se actualizaron el 2026-10-20: las opera CERTILINK SPA.
+      const updated = name === "eliminacion-de-datos" ? "19" : "20";
+      expect(html).toContain(`Última actualización: ${updated} de octubre de 2026`);
       expect(html).not.toContain("Borrador en revisión");
       // Enlaza a las otras dos y a Entrar.
       for (const other of PAGES.filter((p) => p !== name)) {
@@ -34,7 +36,13 @@ describe("páginas públicas", () => {
       expect(html).toContain('href="mailto:vicente@agentpey.com"');
       expect(html.match(/\[[A-ZÁÉÍÓÚÑ ]+\]/g) ?? []).toEqual([]);
     }
-    expect(page("privacidad")).toContain("Vicente Wolde Cepeda");
+    // Quien opera AgentSales es la empresa (Meta la compara con su verificación); él es su representante.
+    for (const name of ["privacidad", "terminos"] as const) {
+      expect(page(name)).toContain("CERTILINK SPA (RUT 78.344.583-2)");
+      expect(page(name)).toContain("Santa Teresa #6, Huelquén, comuna de Paine");
+      expect(page(name)).toContain("representada por Vicente Wolde Cepeda");
+    }
+    expect(page("privacidad")).toContain("+56 9 8509 0820");
     expect(page("privacidad")).toContain("15 días hábiles");
     expect(page("terminos")).toContain("sin costo durante 7 días");
   });

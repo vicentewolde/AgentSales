@@ -48,9 +48,9 @@ Para ti (Vinny). Reúne lo que Claude puede dejar escrito para el trámite de Me
 > The agent prepares a property listing in AgentSales (photos, video and a caption written by an AI assistant), reviews and approves the text, and then presses "Publish on Instagram". We use `instagram_business_content_publish` to create and publish that carousel or reel on the agent's own account. Nothing is published without the agent's explicit approval and click. We never publish to accounts that have not connected AgentSales, and we do not post on anyone's behalf automatically unless the agent turned on the optional auto-publish setting.
 
 ### 4.3 Tech Provider / uso de datos de otros negocios
-> AgentSales is a SaaS tool operated by [Certilink SpA, or Vicente Wolde Cepeda if the business is verified as an individual], Chile. Independent real-estate agents connect their own Instagram professional account so AgentSales can publish their property listings on their behalf. We process only the account ID, username and access token (stored encrypted) and the content the agent chose to publish. Data is used only to provide this service; see https://agentsales.agentpey.com/legal/privacidad.html. Data deletion: https://agentsales.agentpey.com/legal/eliminacion-de-datos.html.
+> AgentSales is a SaaS tool operated by CERTILINK SPA (Chilean tax ID 78.344.583-2), Chile. Independent real-estate agents connect their own Instagram professional account so AgentSales can publish their property listings on their behalf. We process only the account ID, username and access token (stored encrypted) and the content the agent chose to publish. Data is used only to provide this service; see https://agentsales.agentpey.com/legal/privacidad.html. Data deletion: https://agentsales.agentpey.com/legal/eliminacion-de-datos.html.
 
-(El nombre entre corchetes depende de la decisión de la empresa; quedan pendientes de revisar contigo antes de pegarlos.)
+(Decidido el 2026-10-20: opera Certilink SpA; las páginas legales de AgentSales ya la nombran.)
 
 ## 5. Instrucciones para el revisor (para pegar en el formulario)
 
