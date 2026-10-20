@@ -136,7 +136,7 @@ export function tokensRefreshJob(deps: TokensRefreshJobDeps): Job {
       if (blocked.length > 0) {
         logger.warn(
           { failed: blocked },
-          "cuentas sin renovar que un reintento no arregla: revisa el código (MERCADOLIBRE_NOT_CONFIGURED: falta ML_APP_ID o ML_CLIENT_SECRET en .env; TOKEN_REFRESH_NOT_CONFIGURED: falta TIKTOK_CLIENT_KEY o TIKTOK_CLIENT_SECRET)",
+          "cuentas sin renovar que un reintento no arregla: revisa el código (MERCADOLIBRE_NOT_CONFIGURED: falta ML_APP_ID o ML_CLIENT_SECRET en .env; TOKEN_REFRESH_NOT_CONFIGURED: falta el par de la app de X o de TikTok en .env)",
         );
       }
       const pending = report.failed.filter((failure) => failure.retriable);
