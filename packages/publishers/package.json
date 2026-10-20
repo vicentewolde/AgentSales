@@ -14,6 +14,11 @@
       "types": "./dist/src/discord/index.d.ts",
       "default": "./dist/src/discord/index.js"
     },
+    "./linkedin": {
+      "@agentsales/source": "./src/linkedin/index.ts",
+      "types": "./dist/src/linkedin/index.d.ts",
+      "default": "./dist/src/linkedin/index.js"
+    },
     "./marketplace": {
       "@agentsales/source": "./src/marketplace/index.ts",
       "types": "./dist/src/marketplace/index.d.ts",
