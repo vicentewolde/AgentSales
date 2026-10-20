@@ -13,6 +13,9 @@ Cada fase entrega algo **usable y demostrable**. Una fase empieza con su spec en
 | F6 | Calendario + seguimiento | Programación, reintentos, sincronización, "vendida" cierra Portal y deja tareas a mano en Instagram y Marketplace | v0.6.0 |
 | F7 | Varios corredores | Login, cada corredor ve solo lo suyo, alta de corredores, IA por API con gasto por corredor (en el Mac del operador) | v0.7.0 |
 | F8 | En internet | Despliegue con HTTPS (en modo demo), subidas a R2, respaldos fuera del Mac, OAuth de Instagram y términos (el App Review de Meta queda como trámite pendiente del operador) | v1.0.0 |
+| F9 | Contenido de marca | Posts de las marcas del operador en Instagram, X, LinkedIn, Discord y TikTok, con perfil editorial, textos por red e idioma, calendario y un plan de ideas de la IA, en tres entregas | v1.1.0, v1.2.0 y v1.3.0 |
+| F10 | Piloto con una oficina | Anuncios de Meta, leads y ManyChat para una oficina de una corredora grande (hoja de ruta) | — |
+| F11 | Organizaciones | Organización → oficina → agente, roles y aprobación por niveles (hoja de ruta) | — |
 
 ## F0 · Fundaciones
 Spec detallado: `docs/specs/fase-0-fundaciones.md`.
@@ -133,10 +136,18 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 ## F9 · Contenido de marca
 - Gestor de contenido de redes sociales para el operador (su marca personal y AgentPey), con el mismo calendario, aprobación y seguimiento que los avisos: Instagram, X, LinkedIn, Discord y TikTok (video como borrador en la bandeja del creador).
 - El post como otro sujeto de publicación junto al aviso (ADR-0029); el perfil editorial de cada marca; la IA propone ideas y fechas y el operador acepta, aprueba y programa (ADR-0030); dos idiomas por marca; el resultado dudoso `outcome_unknown`.
-- Pruebas de entrada con las cuentas reales (visibilidad de Instagram en modo desarrollo, LinkedIn, X, Discord y TikTok) antes de construir cada red.
+- Pruebas de entrada con las cuentas reales (S1 a S6: visibilidad de Instagram en modo desarrollo, LinkedIn, X, Discord y TikTok). Desde el 2026-10-20 (decisión del operador) cada red se construye contra simulaciones y su prueba es obligatoria **antes de publicar de verdad** en ella, no antes de construirla.
 - Sin código de anuncios, pero sin cerrar puertas para ellos ni para las organizaciones.
 
-**Spec:** `docs/specs/fase-9-contenido-de-marca.md`, **aprobado** el 2026-10-19 (ADR-0029 y ADR-0030). Tres entregas: `v1.1.0` publicar lo propio en Instagram y Discord, `v1.2.0` LinkedIn, X, TikTok y el panel, `v1.3.0` la IA que propone. Ejecución en paralelo con agentes en worktrees y la CI como juez. Una instancia ahora y dos del mismo código al llegar el primer cliente (D19).
+**Spec:** `docs/specs/fase-9-contenido-de-marca.md`, **aprobado** el 2026-10-19 (ADR-0029 y ADR-0030). Ejecución en paralelo con agentes en worktrees y la CI como juez. Una instancia ahora y dos del mismo código al llegar el primer cliente (D19; el despliegue ya acepta una segunda instancia, T27).
+
+| Entrega | Tareas | Etiqueta | Queda funcionando |
+|---|---|---|---|
+| 1 · Publicar lo mío | T01 a T14 y T27 | `v1.1.0` (cerrada) | Posts con perfil editorial, texto con IA por red e idioma, aprobación, calendario y CLI; Instagram y Discord |
+| 2 · Más redes y panel | T15, T16, T26, T17, T18 y T19 | `v1.2.0` (cerrada) | LinkedIn (a mano), X, TikTok (borrador), la pantalla Contenido, el calendario y la guía |
+| 3 · La IA propone | T20 a T22, y T23 a T25 | `v1.3.0` (cierre de la fase) | El plan de ideas, `pnpm eval:social`, la documentación, la prueba con todas las cuentas y el cierre |
+
+**Aceptación:** los criterios de la fase están en el spec, §6. La prueba en vivo de cada red (T24) va solo con la instrucción del operador en el chat.
 
 ## F10 · Piloto con una oficina (hoja de ruta)
 - Una oficina (3 a 10 agentes) de una corredora grande, con servicio operado por el operador.

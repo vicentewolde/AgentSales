@@ -7,7 +7,8 @@ import { MIGRATIONS_FOLDER } from "../src/migrations.js";
 // Migración 0015 (F9-T03, ADR-0029): `posts`, `plan_runs`, `post_uploads` y `editorial_profiles`;
 // `post_id` en textos, corridas, publicaciones y medios, con `listing_id` nulo y un `CHECK` de un
 // solo sujeto; `language` y `cost_usd`. Se aplica sobre una base con datos de avisos de F3 a F8,
-// dentro de una transacción como la del migrador, y no cambia ninguna fila.
+// dentro de una transacción como la del migrador, y no cambia ninguna fila. Al final, el SQL de
+// `docs/10-despliegue.md` que deshace la 0015 a la 0018 juntas, y el migrador que las vuelve a aplicar.
 
 const sqlFiles = () =>
   readdirSync(MIGRATIONS_FOLDER)
@@ -441,13 +442,16 @@ describe("un despliegue nuevo aplica la 0014 y la 0015 en la misma transacción"
   });
 });
 
-/** El SQL de reversión de la 0015 tal como lo trae `docs/10-despliegue.md` (bloque tras su marca). */
+/**
+ * El SQL de reversión de la 0015 a la 0018 tal como lo trae `docs/10-despliegue.md` (el bloque tras
+ * su marca): el test corre exactamente lo que dice el doc.
+ */
 function revertSqlFromDocs(): string {
   const doc = readFileSync(
     join(MIGRATIONS_FOLDER, "..", "..", "..", "docs", "10-despliegue.md"),
     "utf8",
   );
-  const marker = doc.indexOf("<!-- revertir-0015");
+  const marker = doc.indexOf("<!-- revertir-0015-0018");
   const block = /```sql\n([\s\S]*?)```/.exec(doc.slice(marker));
   if (marker < 0 || block?.[1] === undefined) throw new Error("falta el SQL de reversión");
   return block[1];
@@ -481,48 +485,110 @@ async function schemaOf(client: PGlite) {
        ORDER BY 1, 2`,
     ),
     types: await query(
-      `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
-       WHERE n.nspname = 'public' AND t.typtype = 'e' ORDER BY 1`,
+      `SELECT t.typname, string_agg(e.enumlabel, ',' ORDER BY e.enumsortorder) AS labels
+       FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+       JOIN pg_enum e ON e.enumtypid = t.oid
+       WHERE n.nspname = 'public' AND t.typtype = 'e' GROUP BY t.typname ORDER BY 1`,
     ),
   };
 }
 
-describe("revertir la 0015 a mano (el SQL de docs/10-despliegue.md)", () => {
-  it("borra lo de los posts y deja el esquema y los avisos como tras la 0014", async () => {
-    const files = sqlFiles();
-    const index = files.findIndex((file) => file.startsWith("0015_"));
-    const reference = new PGlite();
+/** El nombre de una migración sin `.sql` (el `tag` del journal). */
+const tagOf = (file: string) => file.replace(/\.sql$/, "");
+
+/** El registro del migrador, como en una base desplegada: una fila por migración aplicada. */
+async function createMigrationsTable(client: PGlite, files: string[]): Promise<void> {
+  await client.exec(
+    `CREATE SCHEMA drizzle;
+     CREATE TABLE drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text NOT NULL,
+       created_at bigint)`,
+  );
+  for (const file of files) {
+    await client.query(
+      `INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)`,
+      [tagOf(file), journalWhen(tagOf(file))],
+    );
+  }
+}
+
+/**
+ * Aplica las pendientes con la regla del migrador de Drizzle (`drizzle-orm/pg-core/dialect.js`): lee
+ * **solo el último** registro y aplica, en una transacción, cada migración con un `when` mayor,
+ * anotando su registro. Devuelve las que aplicó.
+ */
+async function migrateLikeDrizzle(client: PGlite, files: string[]): Promise<string[]> {
+  const last = await client.query<{ created_at: string }>(
+    `SELECT created_at FROM drizzle.__drizzle_migrations ORDER BY created_at DESC LIMIT 1`,
+  );
+  const lastWhen = Number(last.rows[0]?.created_at ?? 0);
+  const pending = files.filter((file) => journalWhen(tagOf(file)) > lastWhen);
+  await client.exec("BEGIN");
+  for (const file of pending) {
+    for (const statement of statementsOf(file)) await client.exec(statement);
+    await client.query(
+      `INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)`,
+      [tagOf(file), journalWhen(tagOf(file))],
+    );
+  }
+  await client.exec("COMMIT");
+  return pending.map(tagOf);
+}
+
+describe("revertir la 0015 a la 0018 a mano (el SQL de docs/10-despliegue.md)", () => {
+  const files = sqlFiles();
+  const at = (prefix: string) => files.findIndex((file) => file.startsWith(prefix));
+  /** Hasta la 0014 y hasta la 0018: el bloque del doc es de esas cuatro. */
+  const upTo0014 = files.slice(0, at("0015_"));
+  const upTo0018 = files.slice(0, at("0018_") + 1);
+
+  it("las cuatro migraciones que deshace son la 0015 a la 0018, seguidas", () => {
+    expect(upTo0018.slice(upTo0014.length).map((file) => file.slice(0, 4))).toEqual([
+      "0015",
+      "0016",
+      "0017",
+      "0018",
+    ]);
+  });
+
+  it("borra lo de los posts, deja la base como tras la 0014 y el migrador vuelve a aplicar las cuatro", async () => {
+    const after0014 = new PGlite();
+    const fresh = new PGlite();
     const client = new PGlite();
     try {
-      await applyFiles(reference, files.slice(0, index));
-      const expected = await schemaOf(reference);
+      await applyFiles(after0014, upTo0014);
+      const expectedAfterRevert = await schemaOf(after0014);
+      await applyFiles(fresh, upTo0018);
+      const expectedAfterRedeploy = await schemaOf(fresh);
 
-      await applyFiles(client, files.slice(0, index));
+      // 1. Una base de producción: avisos de F3 a F8, y la 0015 a la 0018 aplicadas juntas con sus
+      //    cuatro registros.
+      await applyFiles(client, upTo0014);
       const ids = await loadListingData(client, "revertir");
       const before: Record<string, Row[]> = {};
       for (const table of TABLES) before[table] = await rowsOf(client, table);
-      // El registro del migrador, como en una base desplegada.
-      await client.exec(
-        `CREATE SCHEMA drizzle;
-         CREATE TABLE drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text NOT NULL,
-           created_at bigint)`,
+      await createMigrationsTable(client, upTo0014);
+      expect(await migrateLikeDrizzle(client, upTo0018)).toEqual(
+        upTo0018.slice(upTo0014.length).map(tagOf),
       );
-      await client.query(
-        `INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('0014', $1), ('0015', $2)`,
-        [journalWhen("0014_"), journalWhen("0015_")],
-      );
-      await applyFiles(client, [files[index] ?? ""], true);
 
-      // Un post con todo lo que puede tener.
+      // 2. Un post con todo lo que puede tener, también lo de la 0016 a la 0018.
+      const planRunId = await one(
+        client,
+        `INSERT INTO plan_runs (broker_id, period_start, period_end, status)
+         VALUES ($1, now(), now() + interval '14 days', 'queued') RETURNING id`,
+        [ids.brokerId],
+      );
       const postId = await one(
         client,
-        `INSERT INTO posts (broker_id, topic, kind) VALUES ($1, 'Post', 'image') RETURNING id`,
-        [ids.brokerId],
+        `INSERT INTO posts (broker_id, topic, kind, status, source, brief_origin, plan_run_id,
+           platforms, x_link_allowed)
+         VALUES ($1, 'Post', 'image', 'idea', 'ai', 'ai', $2, '{x,linkedin}', true) RETURNING id`,
+        [ids.brokerId, planRunId],
       );
       await client.query(`INSERT INTO editorial_profiles (broker_id) VALUES ($1)`, [ids.brokerId]);
       await client.query(
-        `INSERT INTO post_uploads (post_id, object_path, expected_bytes, expires_at)
-         VALUES ($1, 'posts/x/a.jpg', 1, now())`,
+        `INSERT INTO post_uploads (post_id, object_path, expected_bytes, expires_at, status)
+         VALUES ($1, 'posts/x/a.jpg', 1, now(), 'pending'), ($1, 'posts/x/b.mp4', 1, now(), 'uploaded')`,
         [postId],
       );
       const mediaId = await one(
@@ -547,7 +613,7 @@ describe("revertir la 0015 a mano (el SQL de docs/10-despliegue.md)", () => {
         client,
         `INSERT INTO contents (post_id, content_run_id, platform, language, body, llm_provider,
            llm_model, prompt_version, raw_output)
-         VALUES ($1, $2, 'instagram', 'en', 'Text', 'fake', 'fake', 'v2', 'null'::jsonb)
+         VALUES ($1, $2, 'x', 'en', 'Text', 'fake', 'fake', 'v2', 'null'::jsonb)
          RETURNING id`,
         [postId, runId],
       );
@@ -555,7 +621,7 @@ describe("revertir la 0015 a mano (el SQL de docs/10-despliegue.md)", () => {
         client,
         `INSERT INTO publications (post_id, platform_account_id, platform, format, language,
            content_id, status, dry_run, cost_usd)
-         VALUES ($1, $2, 'instagram', 'post', 'en', $3, 'approved', true, 0.015) RETURNING id`,
+         VALUES ($1, $2, 'instagram', 'post', 'en', $3, 'approved', true, 0.2) RETURNING id`,
         [postId, ids.igAccountId, contentId],
       );
       await client.query(
@@ -563,18 +629,52 @@ describe("revertir la 0015 a mano (el SQL de docs/10-despliegue.md)", () => {
         [publicationId],
       );
 
+      // 3. El bloque del doc.
       await client.exec(revertSqlFromDocs());
 
-      expect(await schemaOf(client)).toEqual(expected);
+      expect(await schemaOf(client)).toEqual(expectedAfterRevert);
       for (const table of TABLES) {
         expect([table, await rowsOf(client, table)]).toEqual([table, before[table]]);
       }
-      const migrations = await client.query<{ hash: string }>(
-        `SELECT hash FROM drizzle.__drizzle_migrations ORDER BY id`,
+      const remaining = await client.query<{ hash: string }>(
+        `SELECT hash FROM drizzle.__drizzle_migrations ORDER BY created_at DESC LIMIT 1`,
       );
-      expect(migrations.rows).toEqual([{ hash: "0014" }]);
+      expect(remaining.rows).toEqual([{ hash: tagOf(upTo0014.at(-1) ?? "") }]);
+
+      // 4. Redesplegar F9: el migrador ve como último registro el de la 0014 y aplica las cuatro.
+      expect(await migrateLikeDrizzle(client, upTo0018)).toEqual(
+        upTo0018.slice(upTo0014.length).map(tagOf),
+      );
+
+      // 5. El esquema queda igual al de una base nueva.
+      expect(await schemaOf(client)).toEqual(expectedAfterRedeploy);
     } finally {
-      await reference.close();
+      await after0014.close();
+      await fresh.close();
+      await client.close();
+    }
+  });
+
+  it("la guarda se detiene sin cambiar nada si hay una migración registrada después de la 0018", async () => {
+    const client = new PGlite();
+    try {
+      await applyFiles(client, upTo0018);
+      await createMigrationsTable(client, upTo0018);
+      await client.query(
+        `INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('0019_futura', $1)`,
+        [journalWhen("0018_") + 1],
+      );
+      const expected = await schemaOf(client);
+
+      await expect(client.exec(revertSqlFromDocs())).rejects.toThrow(/no es la 0018/);
+      await client.exec("ROLLBACK");
+
+      expect(await schemaOf(client)).toEqual(expected);
+      const records = await client.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`,
+      );
+      expect(records.rows[0]?.n).toBe(upTo0018.length + 1);
+    } finally {
       await client.close();
     }
   });

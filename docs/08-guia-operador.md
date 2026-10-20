@@ -145,6 +145,23 @@ De punta a punta, con `pnpm dev` corriendo. Todo se puede hacer en el panel (**C
 
 Para desactivar a alguien: **Desactivar** en su usuario (o `pnpm -s cli users disable <correo>`) cierra sus sesiones al tiro.
 
+## El contenido de tus marcas, de punta a punta (F9)
+
+El recorrido completo de un post de marca, en orden. Cada paso tiene su sección más abajo; todo se hace en el panel o en la CLI, con `pnpm dev` corriendo (o contra el servidor).
+
+1. **Las marcas:** `pnpm db:seed --operator-brands` crea `vinny` y `agentpey` (solo en tu instancia; `docs/07-checklist-cuentas.md`, "F9 · Contenido de marca"). Otra marca: `pnpm -s cli brokers create --kind brand …`.
+2. **Sus redes:** conecta cada cuenta (Instagram, Discord, LinkedIn, X, TikTok) y haz su prueba de entrada antes de publicar de verdad ("Conectar las redes de los posts").
+3. **El perfil editorial:** idiomas, líneas, hechos, cosas que evitar y cadencia ("Llenar el perfil editorial").
+4. **El plan:** la IA propone ideas con fecha; tú aceptas, editas o descartas cada una ("Pedir a la IA un plan de ideas"). O creas un post a mano ("Publicar un post de una marca").
+5. **Los textos:** al aceptar una idea (o con `post draft`) la IA redacta un texto por red e idioma; los revisas y corriges.
+6. **Aprobar:** cada texto por separado; aprobar abre una publicación por cuenta, formato e idioma.
+7. **Programar o publicar:** a una hora de Chile (el reloj del worker publica a la hora) o ya.
+8. **Lo que queda pendiente**, siempre con su comando en la `agenda` y en el detalle del post:
+   - **"No se sabe si salió"** (`outcome_unknown`): miras la red y dices si salió o no (`publications resolve`).
+   - **LinkedIn a mano:** a la hora el texto queda listo; lo publicas tú y confirmas con el enlace (`publications confirm`).
+   - **TikTok:** el video llega como borrador a la bandeja de la app; pegas el texto, lo publicas allá y confirmas con el enlace.
+   - **Reconectar LinkedIn** cada 60 días (la agenda avisa 7 días antes).
+
 ## Llenar el perfil editorial de tus marcas (F9)
 
 El perfil editorial es **lo único que la IA sabe de una marca** cuando propone ideas y redacta posts. Lo que no está ahí, la IA no lo afirma. Se llena una vez y se ajusta cuando cambie algo. Con `pnpm dev` corriendo (o contra el servidor, con tu sesión de la CLI):
@@ -194,6 +211,7 @@ pnpm -s cli post draft <id_post>
 # 4. Revisar, corregir y aprobar
 pnpm -s cli post show <id_post>
 pbpaste | pnpm -s cli post edit <id_post> --platform linkedin --language es
+pnpm -s cli post edit <id_post> --x-link                  # solo si el texto de X lleva un enlace (US$0,20; --no-x-link lo quita)
 pnpm -s cli post approve <id_post>                       # todas las redes, o --platform x
 
 # 5. Programar (hora de Chile) o publicar ya
@@ -202,6 +220,7 @@ pnpm -s cli post publish <id_post>                            # --platform para 
 ```
 
 - **`post list`** muestra tus posts (`--broker`, `--status idea|draft|ready|archived`, `--from` y `--to` como `AAAA-MM-DD`). **`post show`** dice todo: estado, medios y sus variantes ("procesando…" mientras el worker las arma), cada texto por red e idioma con su revisión, y cada publicación con el comando que le toca.
+- **Un enlace en X** necesita dos cosas tuyas: que esté en tu brief y que lo permitas en el post (`post edit <id> --x-link`, o la casilla «Permitir un enlace en X» en el panel), porque ese post cuesta US$0,20 en vez de US$0,015. Sin el permiso, la revisión no deja aprobar el texto de X con un enlace.
 - **El brief tuyo cuenta como fuente de hechos; el de la IA no.** La revisión marca cifras, nombres o enlaces que no están en el perfil ni en tu brief: corrígelos o súmalos al perfil antes de aprobar.
 - **Los medios** se suben una vez: si repites `post upload` con el mismo archivo, no se vuelve a subir. Si se corta, vuelve a correr el comando: retoma lo que falta.
 - **Aprobar** abre una publicación por cada red con la cuenta conectada; sin cuenta, el texto queda aprobado y la publicación nace cuando la conectes. `post approve --undo` quita la aprobación y descarta lo que no salió.
@@ -218,11 +237,12 @@ pnpm -s cli post publish <id_post>                            # --platform para 
 Todo lo anterior se puede hacer en el panel, en **Contenido** (el menú de la izquierda; el administrador elige la marca en "Ver corredor"):
 
 - **La lista** muestra los posts de la marca por estado (los archivados, con su filtro). Abajo, **Nuevo post**: tema, brief, tipo y fecha planeada (hora de Chile). Con "Todos" eliges la marca.
-- **El detalle de un post** tiene, en orden: **Pedir los textos a la IA** (con "Reemplazar también los textos editados o aprobados" si ya los tocaste); **una pestaña por red e idioma** con el texto, el conteo de esa red (en X cuenta como X: un enlace vale 23 y un emoji 2, y avisa que un enlace encarece el post), la vista previa, la revisión con lo que hay que corregir, **Editar** y **Aprobar** (o quitar la aprobación); **Fotos y videos** para subir con avance (puedes cancelar, y si falla, **Reintentar**; cada medio dice "procesando…" hasta que el worker arma sus versiones); **Publicar en …** una red a la vez y **Programar…** las redes que elijas a una hora de Chile; y la lista de **Publicaciones**.
+- **El detalle de un post** tiene, en orden: **Pedir los textos a la IA** (con "Reemplazar también los textos editados o aprobados" si ya los tocaste); **una pestaña por red e idioma** con el texto, el conteo de esa red (en X cuenta como X: un enlace vale 23 y un emoji 2, y avisa que un enlace encarece el post; un enlace en X se permite con la casilla «Permitir un enlace en X» del post, que cuesta US$0,20 en vez de US$0,015), la vista previa, la revisión con lo que hay que corregir, **Editar** y **Aprobar** (o quitar la aprobación); **Fotos y videos** para subir con avance (puedes cancelar, y si falla, **Reintentar**; cada medio dice "procesando…" hasta que el worker arma sus versiones); **Publicar en …** una red a la vez y **Programar…** las redes que elijas a una hora de Chile; y la lista de **Publicaciones**.
 - **"No se sabe si salió"**: la publicación lo dice en ámbar. Mira la red y aprieta **Sí, salió** (pega el enlace si lo tienes) o **No salió** (queda fallida y puedes **Reintentar**).
 - **Una red a mano** (LinkedIn): la publicación te pide publicarla tú; después pega el enlace y aprieta **Lo publiqué**, o **No lo publiqué**.
 - **En vivo**, publicar y reintentar piden un segundo clic ("Sí, publicar en vivo"), y programar lo avisa en rojo.
 - **Videos de más de 100 MB:** el navegador los sube sin calcular su huella (sha256); el servidor la calcula después y el video aparece en unos minutos. Si ya estaba en el post, no se duplica.
+- **Calendario** (F9-T18, en el menú): la semana o el mes con lo programado y lo ya publicado, posts y propiedades juntos, en hora de Chile. Desde ahí cambias la hora de una publicación programada (la misma confirmación en vivo de siempre); lo aprobado sin programar, lo que se está publicando y lo fallido siguen en **Seguimiento**.
 - **El perfil editorial** se edita en **Mi marca** (o, siendo administrador, en la página de cada corredor), con los mismos campos que `brand edit`. Si algo no sirve, el error aparece en rojo junto al campo y no se guarda nada.
 
 ## Pedir a la IA un plan de ideas (F9)
@@ -285,7 +305,7 @@ La dirección de retorno se registra **igual** en la app de cada red. Nunca pegu
 
 - **Instagram:** igual que para los avisos (más arriba, "Dar de alta un corredor"): en el servidor, el botón **Conectar Instagram**; en el Mac, `pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin` con el token de *Generate token*. Detalle de los posts en `docs/integraciones/instagram-contenido-propio.md`.
 - **LinkedIn** (tu perfil personal): el botón **Conectar LinkedIn** en Cuentas, o `pnpm -s cli accounts connect linkedin --broker <slug>`, que abre el enlace en el navegador donde tienes el panel abierto. Autoriza en LinkedIn y vuelves a Cuentas. **La cuenta queda a mano** (ver "El modo a mano", abajo). El acceso dura 60 días y **no se renueva solo**: la agenda avisa una semana antes y se reconecta igual. Nota: `docs/integraciones/linkedin.md`.
-- **X:** el botón **Conectar X**, o `pnpm -s cli accounts connect x --broker <slug>`. En el Mac, abre el panel en `http://127.0.0.1:5173` (no `localhost`) antes de conectar: el panel lo avisa si estás en otro. **Cada post cuesta créditos de X** (unos US$0,015; con un enlace, US$0,20, y el enlace hay que permitirlo en el post). Cada cuenta tiene un **tope de gasto del mes** (por defecto US$10): `pnpm -s cli accounts spend-limit <id> <dólares>`. Pasado el tope, la publicación falla sin llamar a X (`X_SPEND_LIMIT_REACHED`). El tope duro sigue siendo el de la consola de X. Nota: `docs/integraciones/x.md`.
+- **X:** el botón **Conectar X**, o `pnpm -s cli accounts connect x --broker <slug>`. En el Mac, abre el panel en `http://127.0.0.1:5173` (no `localhost`) antes de conectar: el panel lo avisa si estás en otro. **Cada post cuesta créditos de X** (unos US$0,015; con un enlace, US$0,20, y el enlace hay que permitirlo en el post: con `pnpm -s cli post edit <id> --x-link` o la casilla «Permitir un enlace en X» del post). Cada cuenta tiene un **tope de gasto del mes** (por defecto US$10): `pnpm -s cli accounts spend-limit <id> <dólares>`. Pasado el tope, la publicación falla sin llamar a X (`X_SPEND_LIMIT_REACHED`). El tope duro sigue siendo el de la consola de X. Nota: `docs/integraciones/x.md`.
 - **Discord:** se conecta el **webhook de un canal**. En Discord: Ajustes del servidor → Integraciones → Webhooks → Nuevo webhook (elige el canal) → **Copiar URL del webhook**. Después, en la terminal: `pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin`. La URL es **el secreto del canal**: va del portapapeles a la API, nunca se escribe en la terminal ni se pega en el panel (por eso el panel solo muestra el comando para copiar). Un canal por marca: conectar otro webhook desconecta el anterior. Nota: `docs/integraciones/discord.md`.
 - **TikTok:** el botón **Conectar TikTok**, o `pnpm -s cli accounts connect tiktok --broker <slug>`; autoriza y deja marcado el permiso de subir videos. Solo publica **video**, y llega como **borrador** a la bandeja de la app de TikTok: tú lo abres, pegas el texto que está en AgentSales, lo publicas y confirmas con el enlace (`pbpaste | pnpm -s cli publications confirm <id> --url-stdin`). Nota: `docs/integraciones/tiktok.md`.
 
@@ -317,7 +337,7 @@ Debajo de cada publicación fallida, el panel (**Qué hacer:**), `post show`, `p
 | `DISCORD_WEBHOOK_NOT_FOUND`, `DISCORD_WEBHOOK_INVALID` | El webhook se borró o cambió: crea otro en el canal y conéctalo de nuevo |
 | `X_PAYMENT_REQUIRED` | Sin créditos en X: recarga en console.x.com (Billing) |
 | `X_SPEND_LIMIT_REACHED` | Llegaste al tope del mes: súbelo con `accounts spend-limit` o espera al mes siguiente |
-| `X_LINK_NOT_ALLOWED` | Permite el enlace en el post (cuesta US$0,20) o quítalo del texto |
+| `X_LINK_NOT_ALLOWED` | Permite el enlace en el post (`pnpm -s cli post edit <id> --x-link` o la casilla «Permitir un enlace en X»; cuesta US$0,20) o quita el enlace del texto de X; después apruébalo y reintenta |
 | `TIKTOK_PENDING_LIMIT` | Hay 5 borradores esperando en la app de TikTok: publícalos o descártalos |
 | `TIKTOK_APP_RESTRICTED` | La app de TikTok todavía no tiene la auditoría: revisa S6 en `tiktok.md` |
 | `*_RATE_LIMITED`, `*_UNAVAILABLE`, `*_UNREACHABLE` | Es pasajero: el sistema reintenta solo; si no, reintenta más tarde |

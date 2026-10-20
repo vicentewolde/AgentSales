@@ -1,6 +1,6 @@
 # ADR-0017 · Marketplace: la sesión vive en un perfil local, sin credenciales en la base, y la publicación se confirma en dos tiempos
 
-- **Estado:** Aceptado (modificado por ADR-0023: cuenta a mano; y por ADR-0024: sin formulario automático en producción)
+- **Estado:** Aceptado (modificado por ADR-0023: cuenta a mano; por ADR-0024: sin formulario automático en producción; y por ADR-0029: la confirmación en dos tiempos también para las cuentas a mano de otras redes)
 - **Fecha:** 2026-10-09
 - **Modifica a:** ADR-0004 (detalla cómo se implementa; las "pausas aleatorias" pasan a ser pausas fijas), ADR-0005 (job `marketplace.profile`), ADR-0014 (punto 8, contrato de `Publisher`; descartar y quitar la aprobación), ADR-0015 (punto 7), ADR-0016 (Marketplace no declara `preflight`), `docs/01-arquitectura.md` y `docs/02-modelo-datos.md`
 
@@ -47,3 +47,4 @@
 - 2026-10-16 (`/fase-plan 7`): ADR-0023 suma la cuenta de Marketplace **a mano** para los corredores y deja este flujo (perfil del navegador y formulario automático) solo para los corredores propios del operador.
 - 2026-10-17 (cierre de F7): "Un despliegue en la nube (F7)" del contexto pasó a **F8 · En internet** cuando el operador partió la antigua fase "Listo para terceros" (2026-10-16). En F7, el formulario automático quedó solo para los corredores propios (ADR-0023).
 - 2026-10-18 (`/fase-plan 8`, ADR-0024): en producción el formulario automático no corre (el worker no lo registra y `marketplaceAutomationAllowed` lo niega); Marketplace es a mano para todos, también los corredores propios (D4 de F8). El punto 8 ("Marketplace solo funciona donde el worker tiene pantalla") queda solo para el desarrollo en el Mac.
+- 2026-10-20 (F9, ADR-0029 punto 9): la confirmación en dos tiempos deja de ser solo de Marketplace. `requiresManualConfirm` decide por la plataforma **y la cuenta** (una cuenta en modo `manual` de LinkedIn, X, Discord o TikTok), y `confirmManualPublication` y `markNotPublished` ya no asumen el candado del aviso, la URL de Marketplace ni el paso a `active`: corren en el candado del sujeto y leen el enlace de cada red. La bandera `manualConfirm` del contrato `Publisher` la tiene también TikTok (el video queda como borrador en la bandeja). Para Marketplace nada cambia: el formulario, la ventana, el límite diario, "un formulario a la vez" y `MARKETPLACE_*`.

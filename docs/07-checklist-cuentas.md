@@ -134,11 +134,43 @@ Spec: `docs/specs/fase-8-en-internet.md` (modo demo en Fly.io con Neon gratis, e
 **Anthropic:**
 - [x] Términos comerciales revisados por el subagente (`docs/integraciones/anthropic-terminos.md`): tu clave puede atender a los clientes de tu producto, sin revender el servicio. Opcional: escribirle a Anthropic para confirmar el cobro por aviso y si una persona natural puede ofrecerlo a terceros
 
-## Antes de publicar en LinkedIn (F9-T15)
+## F9 · Contenido de marca
 
-El código está construido y probado solo con simulaciones; la cuenta nace **a mano** (D5). Nada de esto lo hace Claude.
+Todas las redes de F9 están construidas y probadas **solo con simulaciones**. Cada una exige su **prueba de entrada** (S1 a S6, spec F9 §4.8) antes de la primera publicación real; la haces tú, a mano, con tu cuenta, y anotas el resultado en su nota de `docs/integraciones/` (y se lo cuentas a Claude para `docs/ESTADO.md`). Hasta entonces, esa red se usa solo en `dry-run`. Ningún par de claves pasa por el chat: van al `.env` (Mac), a `.env.production` y a los secretos de Fly (`docs/10-despliegue.md`, paso 2), en el editor. Agrega también cada variable nueva, comentada y vacía, a `.env.example`. Después de anotar un par, reinicia `pnpm dev` (o, en el servidor, súbelo con `fly secrets import`). Cómo se conecta cada red, en `docs/08-guia-operador.md` ("Conectar las redes de los posts").
+
+### Las marcas y su perfil
+- [ ] Tus dos marcas, **solo en tu instancia** (spec F9 D19): `pnpm db:seed --operator-brands` crea `vinny` y `agentpey` (`kind = brand`, propias, sin cuentas y con el perfil vacío; correrlo de nuevo no las duplica ni pisa lo tuyo). En el servidor, `ENV_FILE=.env.production pnpm db:seed --operator-brands`. Nunca en la instancia de clientes. Una marca más: `pnpm -s cli brokers create --kind brand …`
+- [ ] **El perfil editorial** de cada marca (idiomas, público, líneas, **hechos**, cosas que evitar, cadencia por red y hashtags): `pnpm -s cli brand edit --broker <slug> …` o **Mi marca** en el panel. Los hechos son lo único que la IA puede afirmar: revísalos tú
+- [ ] (Opcional, gasta centavos) Medir el costo real de un plan y sus textos: `pnpm eval:social --provider anthropic-api --profile dos-idiomas --ideas 10 --out` (y con `--model claude-haiku-5-5`); cuéntale a Claude el costo que imprime para `docs/integraciones/anthropic-api.md` §13
+
+### Instagram para posts (S1)
+- [ ] Conectar la cuenta profesional de cada marca a la app `AgentSales-IG` como hasta hoy (en el servidor, el botón **Conectar Instagram**; en el Mac, `--token-stdin` con *Generate token*). La cuenta debe ser tester de la app mientras esté en modo desarrollo
+- [ ] **S1:** una publicación real y neutra en tu cuenta (con tu instrucción en el chat) y verla desde una cuenta **sin rol** en la app. Si no se ve, Instagram espera el App Review; las demás redes siguen. Resultado en `docs/integraciones/instagram-contenido-propio.md` §13
+
+### Discord (S5)
+- [ ] Un **servidor privado de pruebas** con un canal; en Ajustes del servidor → Integraciones → Webhooks → **Nuevo webhook** → **Copiar URL del webhook**. No necesita app ni variables: la URL es el secreto (nunca al chat)
+- [ ] Conectarlo: `pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin`
+- [ ] **S5:** con tu instrucción, un mensaje con texto, una imagen y un video en ese canal. Resultado en `docs/integraciones/discord.md` §0
+
+### LinkedIn (S2 y S3)
+
+La cuenta nace **a mano** (D5). Nada de esto lo hace Claude.
 - [ ] **App de LinkedIn** en `linkedin.com/developers/apps`, con los productos *Share on LinkedIn* y *Sign In with LinkedIn using OpenID Connect* (pestaña Products). En la pestaña Auth, registra la dirección de retorno: `https://agentsales.agentpey.com/api/oauth/linkedin/callback` en el servidor y, si LinkedIn la acepta (NO VERIFICADO), `http://localhost:8787/api/oauth/linkedin/callback` en el Mac.
 - [ ] Anotar `LINKEDIN_CLIENT_ID` y `LINKEDIN_CLIENT_SECRET` en `.env` (y en `.env.production` y los secretos de Fly, `docs/10-despliegue.md`), en el editor y sin pegarlos en el chat; `LINKEDIN_REDIRECT_URI` solo si registraste otra dirección. Agrégalas también, comentadas y vacías, a `.env.example`.
 - [ ] **S2** (spec F9 §4.8, `docs/integraciones/linkedin.md` §0 y §8): con el generador de tokens, un post de texto en `/rest/posts` con `visibility: CONNECTIONS`, `userinfo`, el enlace y el `DELETE`; anotar el resultado en `linkedin.md` y `docs/ESTADO.md`.
 - [ ] **S3:** escribir a LinkedIn Developer Support (`linkedin.com/help/linkedin/ask/dsapi`) sobre el §3.1(26) de los API Terms. Hasta su respuesta, LinkedIn sigue a mano.
-- [ ] Conectar tu perfil: `pnpm -s cli accounts connect linkedin --broker <slug>` (o el botón de Cuentas cuando exista). Pasar a `api` (`accounts mode <id> api`) solo con S2 y S3 resueltas.
+- [ ] Conectar tu perfil: el botón **Conectar LinkedIn** de Cuentas, o `pnpm -s cli accounts connect linkedin --broker <slug>`. Pasar a `api` (`accounts mode <id> api`) solo con S2 y S3 resueltas.
+- [ ] Anotar en tu calendario reconectar LinkedIn cada **60 días** (el token no se renueva solo; la agenda avisa 7 días antes).
+
+### X (S4)
+- [ ] **Cuenta de desarrollador** en console.x.com y una app tipo **Web App** con OAuth 2.0 (cliente confidencial) de **lectura y escritura**. Registra la dirección de retorno: `https://agentsales.agentpey.com/api/oauth/x/callback` en el servidor y `http://127.0.0.1:8787/api/oauth/x/callback` en el Mac (X no acepta `localhost`).
+- [ ] Anotar `X_CLIENT_ID` y `X_CLIENT_SECRET` (y `X_REDIRECT_URI` solo si registraste otra dirección). El worker también los usa para renovar el token (vive unas 2 h): al publicar, si le quedan 30 min o menos, y en el refresco diario de `tokens.refresh`.
+- [ ] **Créditos y tope duro** en la consola de X (Billing): pago por uso, unos US$0,015 por post y US$0,20 con un enlace. Pon un *spending limit* bajo en la consola; el de AgentSales (US$10 al mes por cuenta, `accounts spend-limit`) es una segunda barrera.
+- [ ] Conectar: el botón **Conectar X**, o `pnpm -s cli accounts connect x --broker <slug>` (en el Mac, con el panel abierto en `http://127.0.0.1:5173`).
+- [ ] **S4:** con tu instrucción, crear un post, ver el saldo descontado, un reply a ti mismo, el rechazo de un texto repetido y si un 4xx cobra. Resultado en `docs/integraciones/x.md` §0.
+
+### TikTok (S6)
+- [ ] **App de TikTok** en developers.tiktok.com (con tu cuenta de Chile), con **Login Kit** y **Content Posting API** (permiso `video.upload`, modo *Upload*). Registra la dirección de retorno `https://agentsales.agentpey.com/api/oauth/tiktok/callback` (TikTok exige `https`; si acepta `https://localhost` es parte de S6).
+- [ ] Anotar `TIKTOK_CLIENT_KEY` y `TIKTOK_CLIENT_SECRET` (y `TIKTOK_REDIRECT_URI` solo si registraste otra dirección). En el servidor van después de S6 (`docs/10-despliegue.md`, paso 2).
+- [ ] Conectar: el botón **Conectar TikTok**, o `pnpm -s cli accounts connect tiktok --broker <slug>`, dejando marcado el permiso de subir videos.
+- [ ] **S6:** autorizar una cuenta personal, subir un video de R2 y ver el borrador en la bandeja de la app; anotar si el refresh token rota. Si una cuenta personal no puede autorizar, probar una Creator o Business; si el borrador no llega sin auditoría, TikTok pasa al piloto. Resultado en `docs/integraciones/tiktok.md` §0.
