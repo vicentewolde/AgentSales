@@ -211,6 +211,7 @@ pnpm -s cli post draft <id_post>
 # 4. Revisar, corregir y aprobar
 pnpm -s cli post show <id_post>
 pbpaste | pnpm -s cli post edit <id_post> --platform linkedin --language es
+pnpm -s cli post edit <id_post> --x-link                  # solo si el texto de X lleva un enlace (US$0,20; --no-x-link lo quita)
 pnpm -s cli post approve <id_post>                       # todas las redes, o --platform x
 
 # 5. Programar (hora de Chile) o publicar ya
@@ -219,6 +220,7 @@ pnpm -s cli post publish <id_post>                            # --platform para 
 ```
 
 - **`post list`** muestra tus posts (`--broker`, `--status idea|draft|ready|archived`, `--from` y `--to` como `AAAA-MM-DD`). **`post show`** dice todo: estado, medios y sus variantes ("procesando…" mientras el worker las arma), cada texto por red e idioma con su revisión, y cada publicación con el comando que le toca.
+- **Un enlace en X** necesita dos cosas tuyas: que esté en tu brief y que lo permitas en el post (`post edit <id> --x-link`, o la casilla «Permitir un enlace en X» en el panel), porque ese post cuesta US$0,20 en vez de US$0,015. Sin el permiso, la revisión no deja aprobar el texto de X con un enlace.
 - **El brief tuyo cuenta como fuente de hechos; el de la IA no.** La revisión marca cifras, nombres o enlaces que no están en el perfil ni en tu brief: corrígelos o súmalos al perfil antes de aprobar.
 - **Los medios** se suben una vez: si repites `post upload` con el mismo archivo, no se vuelve a subir. Si se corta, vuelve a correr el comando: retoma lo que falta.
 - **Aprobar** abre una publicación por cada red con la cuenta conectada; sin cuenta, el texto queda aprobado y la publicación nace cuando la conectes. `post approve --undo` quita la aprobación y descarta lo que no salió.
@@ -235,7 +237,7 @@ pnpm -s cli post publish <id_post>                            # --platform para 
 Todo lo anterior se puede hacer en el panel, en **Contenido** (el menú de la izquierda; el administrador elige la marca en "Ver corredor"):
 
 - **La lista** muestra los posts de la marca por estado (los archivados, con su filtro). Abajo, **Nuevo post**: tema, brief, tipo y fecha planeada (hora de Chile). Con "Todos" eliges la marca.
-- **El detalle de un post** tiene, en orden: **Pedir los textos a la IA** (con "Reemplazar también los textos editados o aprobados" si ya los tocaste); **una pestaña por red e idioma** con el texto, el conteo de esa red (en X cuenta como X: un enlace vale 23 y un emoji 2, y avisa que un enlace encarece el post), la vista previa, la revisión con lo que hay que corregir, **Editar** y **Aprobar** (o quitar la aprobación); **Fotos y videos** para subir con avance (puedes cancelar, y si falla, **Reintentar**; cada medio dice "procesando…" hasta que el worker arma sus versiones); **Publicar en …** una red a la vez y **Programar…** las redes que elijas a una hora de Chile; y la lista de **Publicaciones**.
+- **El detalle de un post** tiene, en orden: **Pedir los textos a la IA** (con "Reemplazar también los textos editados o aprobados" si ya los tocaste); **una pestaña por red e idioma** con el texto, el conteo de esa red (en X cuenta como X: un enlace vale 23 y un emoji 2, y avisa que un enlace encarece el post; un enlace en X se permite con la casilla «Permitir un enlace en X» del post, que cuesta US$0,20 en vez de US$0,015), la vista previa, la revisión con lo que hay que corregir, **Editar** y **Aprobar** (o quitar la aprobación); **Fotos y videos** para subir con avance (puedes cancelar, y si falla, **Reintentar**; cada medio dice "procesando…" hasta que el worker arma sus versiones); **Publicar en …** una red a la vez y **Programar…** las redes que elijas a una hora de Chile; y la lista de **Publicaciones**.
 - **"No se sabe si salió"**: la publicación lo dice en ámbar. Mira la red y aprieta **Sí, salió** (pega el enlace si lo tienes) o **No salió** (queda fallida y puedes **Reintentar**).
 - **Una red a mano** (LinkedIn): la publicación te pide publicarla tú; después pega el enlace y aprieta **Lo publiqué**, o **No lo publiqué**.
 - **En vivo**, publicar y reintentar piden un segundo clic ("Sí, publicar en vivo"), y programar lo avisa en rojo.
@@ -335,7 +337,7 @@ Debajo de cada publicación fallida, el panel (**Qué hacer:**), `post show`, `p
 | `DISCORD_WEBHOOK_NOT_FOUND`, `DISCORD_WEBHOOK_INVALID` | El webhook se borró o cambió: crea otro en el canal y conéctalo de nuevo |
 | `X_PAYMENT_REQUIRED` | Sin créditos en X: recarga en console.x.com (Billing) |
 | `X_SPEND_LIMIT_REACHED` | Llegaste al tope del mes: súbelo con `accounts spend-limit` o espera al mes siguiente |
-| `X_LINK_NOT_ALLOWED` | Quita el enlace del texto de X, o permítelo en el post (cuesta US$0,20: `pnpm -s cli post edit <id> --x-link` o la casilla «Permitir un enlace en X» del post) |
+| `X_LINK_NOT_ALLOWED` | Permite el enlace en el post (`pnpm -s cli post edit <id> --x-link` o la casilla «Permitir un enlace en X»; cuesta US$0,20) o quita el enlace del texto de X; después apruébalo y reintenta |
 | `TIKTOK_PENDING_LIMIT` | Hay 5 borradores esperando en la app de TikTok: publícalos o descártalos |
 | `TIKTOK_APP_RESTRICTED` | La app de TikTok todavía no tiene la auditoría: revisa S6 en `tiktok.md` |
 | `*_RATE_LIMITED`, `*_UNAVAILABLE`, `*_UNREACHABLE` | Es pasajero: el sistema reintenta solo; si no, reintenta más tarde |
