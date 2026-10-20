@@ -374,12 +374,27 @@ export function publicationRoutes(deps: PublicationRoutesDeps) {
       validated("param", idParamSchema),
       validated("json", publicationRetireBodySchema),
       async (c) => {
-        const { removedByHand } = c.req.valid("json");
-        const result = await retirePublication(deps, {
-          publicationId: c.req.valid("param").id,
-          actor: actorOf(c),
-          ...(removedByHand === undefined ? {} : { removedByHand }),
-        });
+        const { removedByHand, deleteRemote } = c.req.valid("json");
+        // F9-T19: borrar por la API (LinkedIn en modo `api`) es síncrono, con el tope de las
+        // operaciones; el modo lo decide la publicación y la API (nunca en simulación).
+        const result = await retirePublication(
+          {
+            ...deps,
+            removal: {
+              apiMode: deps.publishMode,
+              platformAccounts: deps.platformAccounts,
+              operationsFor: deps.operationsFor,
+              onWarning: operations.onWarning,
+            },
+          },
+          {
+            publicationId: c.req.valid("param").id,
+            actor: actorOf(c),
+            ...(removedByHand === undefined ? {} : { removedByHand }),
+            ...(deleteRemote === undefined ? {} : { deleteRemote }),
+            ...(deleteRemote === true ? { signal: timeout() } : {}),
+          },
+        );
         const body: PublicationRetireResponse = {
           publication: publicationView(result.publication),
           listingBackToReady: result.listingBackToReady,

@@ -17,4 +17,11 @@ describe("createApiOperations (F4-T19)", () => {
     }
     expect(operationsFor("instagram")).toBeUndefined();
   });
+
+  it("LinkedIn solo borra un post al retirarlo (F9-T19): no se pausa, reactiva ni cierra", () => {
+    const linkedin = createApiOperations()("linkedin");
+    expect(linkedin?.remove).toBeTypeOf("function");
+    expect(linkedin?.pause).toBeUndefined();
+    expect(linkedin?.close).toBeUndefined();
+  });
 });

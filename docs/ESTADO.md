@@ -5,7 +5,7 @@
 **Actualizado:** 2026-10-20
 **Fase actual:** F9 · Contenido de marca (spec **aprobado** el 2026-10-19: `docs/specs/fase-9-contenido-de-marca.md`; ADR-0029 y ADR-0030). F8 cerrada (`v1.0.0`)
 **Última tarea:** **entrega 1 de F9 terminada** (T01 a T14 y T27, todas revisadas y con la CI en verde): marcas y perfil editorial, posts con medios en R2, texto con IA por red e idioma con la regla de hechos, publicar y programar posts con el mismo calendario que los avisos, el resultado dudoso (`outcome_unknown`), el traspaso a mano por cuenta, la agenda con posts, Instagram y Discord (contra simulaciones) y la CLI `post …`. `CHANGELOG [1.1.0]` listo; la etiqueta `v1.1.0` se crea con tu permiso
-**Siguiente paso:** entrega 2 casi lista: T15 LinkedIn, T16 X, T26 TikTok y T17 el panel Contenido terminadas; T18 (calendario) terminada; falta T19 (cuentas y guía), y después el cierre con `v1.2.0`. Nada se publica de verdad hasta tus pruebas S1 a S6 (abajo) y tu instrucción en el chat
+**Siguiente paso:** entrega 2 casi lista: T15 LinkedIn, T16 X, T26 TikTok y T17 el panel Contenido terminadas; T18 (calendario) y T19 (cuentas, consejos de error y guía) terminadas; falta el cierre con `v1.2.0`. Nada se publica de verdad hasta tus pruebas S1 a S6 (abajo) y tu instrucción en el chat
 
 ## Pendiente tuyo de F9
 Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada prueba de entrada bloquea solo su red (spec §4.8; los pasos están en la sección 8 de cada nota de `docs/integraciones/`):
@@ -117,7 +117,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | 2 | T26 TikTok, video como borrador (S6 antes de publicar de verdad) | ✅ terminada | #186 |
 | 2 | T17 Panel: Contenido | ✅ terminada | #189 |
 | 2 | T18 Panel: calendario | ✅ terminada | #190 |
-| 2 | T19 CLI de cuentas y guía del operador | ⏳ pendiente | |
+| 2 | T19 CLI de cuentas y guía del operador | ✅ terminada | #191 |
 | 3 · `v1.3.0` | T20 El plan de ideas (core y worker) | ⏳ pendiente | |
 | 3 | T21 Plan en el panel y la CLI | ⏳ pendiente | |
 | 3 | T22 Evaluación de la calidad | ⏳ pendiente | |

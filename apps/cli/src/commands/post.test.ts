@@ -15,6 +15,7 @@ import type { PutFile } from "../upload.js";
 import { runAgenda } from "./agenda.js";
 import {
   type PostDeps,
+  publicationNextSteps,
   runPostApprove,
   runPostArchive,
   runPostCreate,
@@ -26,6 +27,7 @@ import {
   runPostShow,
   runPostUpload,
 } from "./post.js";
+import { adviceText } from "./publication-view.js";
 import {
   runConfirmPublication,
   runNotPublished,
@@ -411,6 +413,28 @@ describe("publications resolve, retry, confirm y not-published con posts", () =>
     expect(await runAgenda(s.deps())).toBe(0);
     expect(s.h.text()).toContain(`→ agentsales post show ${post.id}`);
     expect(s.h.text()).toContain(`→ agentsales publications retry ${publication.id}`);
+  });
+});
+
+describe("el consejo del error en los posts (F9-T19)", () => {
+  const failed = {
+    id: "pub-1",
+    status: "failed" as const,
+    errorAdvice: "Recarga créditos en la consola de X y reintenta.",
+  };
+
+  it("post show lo pone antes de reintentar o descartar", () => {
+    expect(publicationNextSteps(failed as Parameters<typeof publicationNextSteps>[0])).toEqual([
+      "Qué hacer: Recarga créditos en la consola de X y reintenta.",
+      "Reintenta: agentsales publications retry pub-1",
+      "O descártala: agentsales publications cancel pub-1",
+    ]);
+  });
+
+  it("publications y publish lo muestran solo en una fallida", () => {
+    expect(adviceText(failed)).toBe("Qué hacer: Recarga créditos en la consola de X y reintenta.");
+    expect(adviceText({ ...failed, errorAdvice: null })).toBeNull();
+    expect(adviceText({ ...failed, status: "published" })).toBeNull();
   });
 });
 

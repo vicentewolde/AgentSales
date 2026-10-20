@@ -111,6 +111,8 @@ const STATUS_PAYLOAD_KEYS = [
   "code",
   "attempt",
   "removedByHand",
+  // F9-T19: retirada borrando por la API (LinkedIn en modo `api`).
+  "removedByApi",
   // Pausar, reactivar, cerrar y el sync (F4-T17): la operación y el estado en la plataforma.
   "operation",
   "sync",

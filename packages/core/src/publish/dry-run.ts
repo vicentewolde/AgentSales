@@ -25,9 +25,9 @@ export const dryRunExternalId = (publicationId: string) => `dry-run:${publicatio
  * 3. Devuelve un resultado simulado (`dry-run:<publicationId>`, sin enlace) o, si el publisher
  *    tiene paso manual (`manualConfirm`, Marketplace: ADR-0017), el "formulario listo" simulado
  *    (`handoff` con `simulated: true`): nunca abre el navegador.
- * **Nunca** llama a `publish`, `pause`, `resume` ni `close` del envuelto (no los expone) ni guarda
- * progreso: no hay nada creado en la plataforma. Lo que se habría enviado lo registra quien llama,
- * igual que en `live` (`publishAttemptRecord`).
+ * **Nunca** llama a `publish`, `pause`, `resume`, `close`, `update` ni `remove` del envuelto (no los
+ * expone) ni guarda progreso: no hay nada creado en la plataforma. Lo que se habría enviado lo
+ * registra quien llama, igual que en `live` (`publishAttemptRecord`).
  */
 export function withDryRun(publisher: Publisher): Publisher {
   const preflight = publisher.preflight?.bind(publisher);

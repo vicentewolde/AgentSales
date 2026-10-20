@@ -14,6 +14,7 @@ import { MarketplaceConnectBox } from "../components/accounts/MarketplaceConnect
 import { MarketplaceManualBox } from "../components/accounts/MarketplaceManualBox.js";
 import { MercadoLibreConnectBox } from "../components/accounts/MercadoLibreConnectBox.js";
 import { OAuthReturn } from "../components/accounts/OAuthReturn.js";
+import { DiscordConnectBox, OAuthConnectBox } from "../components/accounts/SocialConnectBox.js";
 import { ErrorAlert } from "../components/ErrorAlert.js";
 import { useAccounts } from "../queries/accounts.js";
 import { useBrokers } from "../queries/brokers.js";
@@ -107,9 +108,18 @@ function BrokerAccounts({
   const instagram = channelState(own("instagram"), now);
   const mercadoLibre = channelState(own("portal_inmobiliario"), now);
   const marketplace = channelState(own("fb_marketplace"), now);
+  // F9-T19: las redes del contenido de marca (cualquier corredor o marca publica posts).
+  const discord = channelState(own("discord"), now);
+  const linkedin = channelState(own("linkedin"), now);
+  const x = channelState(own("x"), now);
+  const tiktok = channelState(own("tiktok"), now);
   const settings = useCan("broker.settings", broker.id);
   // El corredor conecta su propio Instagram, solo con el inicio de sesión de Instagram (ADR-0028).
   const connectInstagram = useCan("instagram.connect", broker.id);
+  // Y su LinkedIn, X y TikTok con el OAuth de cada una (F9-T15, T16 y T26).
+  const connectLinkedIn = useCan("linkedin.connect", broker.id);
+  const connectX = useCan("x.connect", broker.id);
+  const connectTikTok = useCan("tiktok.connect", broker.id);
   const manualActive = own("fb_marketplace").some(
     (account) => account.status === "connected" && account.marketplaceMode === "manual",
   );
@@ -191,14 +201,83 @@ function BrokerAccounts({
           </Channel>
         </>
       )}
+      <Channel
+        title="Discord"
+        empty="Sin webhook de Discord."
+        accounts={discord.shown}
+        now={now}
+        manage={manage}
+        marketplaceAutomation={automation}
+      >
+        {discord.offerConnect && (
+          <DiscordConnectBox broker={broker} reconnect={discord.reconnect} />
+        )}
+      </Channel>
+      <Channel
+        title="LinkedIn"
+        empty="Sin perfil de LinkedIn."
+        accounts={linkedin.shown}
+        now={now}
+        manage={manage}
+        connect={manage || connectLinkedIn}
+        marketplaceAutomation={automation}
+      >
+        {linkedin.offerConnect && (
+          <OAuthConnectBox
+            broker={broker}
+            network="linkedin"
+            configured={data.connect.linkedin.configured}
+            startUrl={data.connect.linkedin.startUrl}
+            reconnect={linkedin.reconnect}
+          />
+        )}
+      </Channel>
+      <Channel
+        title="X"
+        empty="Sin cuenta de X."
+        accounts={x.shown}
+        now={now}
+        manage={manage}
+        connect={manage || connectX}
+        marketplaceAutomation={automation}
+      >
+        {x.offerConnect && (
+          <OAuthConnectBox
+            broker={broker}
+            network="x"
+            configured={data.connect.x.configured}
+            startUrl={data.connect.x.startUrl}
+            reconnect={x.reconnect}
+          />
+        )}
+      </Channel>
+      <Channel
+        title="TikTok"
+        empty="Sin cuenta de TikTok."
+        accounts={tiktok.shown}
+        now={now}
+        manage={manage}
+        connect={manage || connectTikTok}
+        marketplaceAutomation={automation}
+      >
+        {tiktok.offerConnect && (
+          <OAuthConnectBox
+            broker={broker}
+            network="tiktok"
+            configured={data.connect.tiktok.configured}
+            startUrl={data.connect.tiktok.startUrl}
+            reconnect={tiktok.reconnect}
+          />
+        )}
+      </Channel>
     </section>
   );
 }
 
 /**
  * Página Cuentas (spec F3 §4.9 y, desde F4-T21, spec F4 §4.12; Marketplace desde F5-T12): por
- * corredor, su cuenta de Instagram, la de Mercado Libre y la de Facebook, conectar o reconectar y
- * desconectar. No sondea (salvo mientras espera un inicio de sesión de Marketplace): vuelve a pedir
+ * corredor, su cuenta de Instagram, la de Mercado Libre y la de Facebook (desde F9-T19, también
+ * Discord, LinkedIn, X y TikTok), conectar o reconectar y desconectar. No sondea (salvo mientras espera un inicio de sesión de Marketplace): vuelve a pedir
  * las cuentas al volver a la pestaña (TanStack Query), lo que cubre una conexión hecha desde la CLI.
  */
 export function AccountsPage() {
@@ -223,9 +302,11 @@ export function AccountsPage() {
     <div>
       <h1 className="text-2xl font-semibold tracking-tight">Cuentas</h1>
       <p className="mt-1 text-slate-600">
-        Las cuentas de Instagram, Mercado Libre y Facebook de cada corredor. Se renuevan solas
-        mientras el worker está encendido: Instagram dura 60 días; Mercado Libre se da de baja tras
-        4 meses sin renovarse. Facebook no vence: si se cierra la sesión, vuelves a iniciarla.
+        Las cuentas de cada corredor o marca: Instagram, Mercado Libre y Facebook para las
+        propiedades, y Discord, LinkedIn, X y TikTok para los posts. Se renuevan solas mientras el
+        worker está encendido: Instagram dura 60 días; Mercado Libre se da de baja tras 4 meses sin
+        renovarse; X y TikTok se renuevan al publicar. Facebook y Discord no vencen; LinkedIn dura
+        60 días y se reconecta antes de que venza (la agenda avisa).
       </p>
       <OAuthReturn />
       {error && (

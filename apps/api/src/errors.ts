@@ -49,6 +49,9 @@ const CONFLICTS = new Set([
   // confirmar el cierre, o lo guardado de la publicación no sirve (se cambia a mano en Mercado
   // Libre); Mercado Libre rechazó el cambio o hubo un conflicto; el sync leyó algo que cambió.
   "RETIRE_NOT_SUPPORTED",
+  // F9-T19: borrar por la API al retirar no se puede (la red, el modo de la cuenta o el enlace).
+  "RETIRE_DELETE_UNSUPPORTED",
+  "LINKEDIN_DELETE_UNSUPPORTED",
   "OPERATION_NOT_SUPPORTED",
   // F9-T15: el modo `manual`/`api` es solo de las redes de contenido de marca.
   "ACCOUNT_MODE_NOT_SUPPORTED",
@@ -237,6 +240,8 @@ const BUSY = new Set([
   // F9-T15: conectar LinkedIn no llegó a conectar o se cortó.
   "LINKEDIN_UNREACHABLE",
   "LINKEDIN_ABORTED",
+  // F9-T19: borrar un post de LinkedIn al retirar, y LinkedIn pidió reintentar (409).
+  "LINKEDIN_CONFLICT",
   // F9-T26: conectar o renovar TikTok no llegó a conectar o se cortó.
   "TIKTOK_UNREACHABLE",
   "TIKTOK_ABORTED",

@@ -252,6 +252,8 @@ describe("cuentas · seguridad y mensajes", () => {
         mercadolibre: { configured: true, redirectUri, automatic: false },
         marketplace: { automation: true },
         linkedin: { configured: true, startUrl },
+        x: { configured: true, startUrl },
+        tiktok: { configured: true, startUrl },
       },
     });
     expect(accountListResponseSchema.safeParse(body("https://agentsales.test/x")).success).toBe(
@@ -266,6 +268,28 @@ describe("cuentas · seguridad y mensajes", () => {
         accountListResponseSchema.safeParse(body("https://agentsales.test/x", bad)).success,
       ).toBe(false);
     }
+  });
+
+  it("GET /accounts siempre dice cómo conectar X, LinkedIn y TikTok (F9-T19), aunque falte el par", async () => {
+    const app = adminApp(testDeps());
+    const { connect } = accountListResponseSchema.parse(
+      await (await app.request("/accounts")).json(),
+    );
+    expect(connect.x).toEqual({
+      configured: true,
+      startUrl: "http://127.0.0.1:8787/api/oauth/x/start",
+    });
+    expect(connect.linkedin.configured).toBe(true);
+    // Los tests de siempre no tienen el par de TikTok: igual llega, sin configurar.
+    expect(connect.tiktok).toEqual({
+      configured: false,
+      startUrl: "http://localhost:8787/api/oauth/tiktok/start",
+    });
+    // Sin `x` o sin `tiktok`, el contrato ya no se lee (la CLI y el panel cuentan con ellos).
+    const { tiktok: _tiktok, ...withoutTikTok } = connect;
+    expect(
+      accountListResponseSchema.safeParse({ accounts: [], connect: withoutTikTok }).success,
+    ).toBe(false);
   });
 
   it("GET /accounts dice si el panel puede ofrecer el OAuth (par de la app y https)", async () => {

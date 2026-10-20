@@ -8,6 +8,7 @@ import {
   linkedinMemberIdSchema,
   linkedinPersonUrn,
   linkedinPostUrl,
+  type PublicationOperations,
   type PublishContext,
   type PublishInput,
   type PublishIssue,
@@ -423,8 +424,7 @@ export function createLinkedInPublisher(options: LinkedInPublisherOptions = {}):
  * Borra un post publicado por la API (`DELETE /rest/posts/{urn}`, `linkedin.md` §4.5): idempotente.
  * Solo con un URN `share` o `ugcPost` (los que crea la API); uno `activity` (el del enlace que pega
  * el operador) no se sabe si sirve (S2): `LINKEDIN_DELETE_UNSUPPORTED`, y se borra a mano.
- * Retirar desde AgentSales todavía lo marca a mano (`retirePublication`); conectarlo aquí queda para
- * F9-T19 (spec F9, registro de cambios).
+ * Lo usa retirar con `deleteRemote` (F9-T19) por `createLinkedInOperations`.
  */
 export async function deleteLinkedInPost({
   api = createLinkedInApi(),
@@ -444,4 +444,28 @@ export async function deleteLinkedInPost({
     );
   }
   await api.deletePost(accessToken, urn, signal === undefined ? {} : { signal });
+}
+
+/**
+ * Lo que la API hace con lo publicado en LinkedIn (F9-T19): borrar un post al retirarlo
+ * (`retirePublication` con `deleteRemote`), con el token guardado de la cuenta. **Sin envolver**:
+ * core decide antes el modo (nunca en simulación) y que la cuenta esté en modo `api`.
+ */
+export function createLinkedInOperations({
+  api = createLinkedInApi(),
+}: {
+  api?: LinkedInApi;
+} = {}): Required<Pick<PublicationOperations, "remove">> {
+  return {
+    async remove(ref, ctx) {
+      const signal = ctx.signal;
+      const accessToken = await ctx.accessToken(signal === undefined ? {} : { signal });
+      await deleteLinkedInPost({
+        api,
+        accessToken,
+        urn: ref.externalId,
+        ...(signal === undefined ? {} : { signal }),
+      });
+    },
+  };
 }

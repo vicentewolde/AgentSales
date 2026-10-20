@@ -72,13 +72,18 @@ const ADVICE: Readonly<Record<string, string>> = {
   ML_PICTURE_INVALID:
     "Mercado Libre no aceptó una foto: prepara el contenido de nuevo y reintenta.",
   IG_MEDIA_NOT_READY: RETRY_LATER,
+  // F9-T19: también para los posts de marca.
+  IG_REQUEST_REJECTED:
+    "Instagram rechazó la publicación: revisa lo que dice el mensaje (el texto o los medios), corrígelo y reintenta.",
+  IG_MEDIA_FETCH_FAILED:
+    "Instagram no pudo bajar un medio: reintenta (se mandan enlaces nuevos); si se repite, prepara de nuevo.",
   MARKETPLACE_OPERATION_UNSUPPORTED: "Marketplace solo publica arriendos: descarta la publicación.",
   MARKETPLACE_TYPE_UNSUPPORTED:
     "El formulario de Marketplace no tiene ese tipo de propiedad: descarta la publicación.",
   PUBLISH_INPUT_INVALID: "Corrige lo que dice el mensaje (el texto o los medios) y reintenta.",
   // El modo.
   PUBLISH_MODE_MISMATCH:
-    "La publicación y el worker no están en el mismo modo: reintenta en el modo correcto.",
+    "La publicación y AgentSales (la API o el worker) están en modos distintos, simulación o en vivo: repítelo con AgentSales en el modo de la publicación.",
   PUBLISH_MODE_LOCKED: "Ya empezó en vivo: reintenta en vivo o descártala.",
   // Marketplace.
   MARKETPLACE_SESSION_EXPIRED: "Inicia sesión de nuevo en Facebook desde Cuentas y reintenta.",
@@ -112,9 +117,24 @@ const ADVICE: Readonly<Record<string, string>> = {
   TOKEN_REFRESH_REJECTED: RECONNECT,
   TOKEN_REFRESH_NOT_CONFIGURED:
     "Falta configurar la app de la red en .env para renovar el acceso: agrégala y reinicia.",
+  // Conectar una red (F9-T19): falta el par de la app en el .env de la API, o el OAuth volvió mal.
+  INSTAGRAM_NOT_CONFIGURED:
+    "Falta INSTAGRAM_APP_ID o INSTAGRAM_APP_SECRET en .env: agrégalos y reinicia la API (docs/07-checklist-cuentas.md).",
+  LINKEDIN_NOT_CONFIGURED:
+    "Falta LINKEDIN_CLIENT_ID o LINKEDIN_CLIENT_SECRET en .env: agrégalos y reinicia la API (docs/integraciones/linkedin.md).",
+  X_NOT_CONFIGURED:
+    "Falta X_CLIENT_ID o X_CLIENT_SECRET en .env: agrégalos y reinicia la API (docs/integraciones/x.md).",
+  TIKTOK_NOT_CONFIGURED:
+    "Falta TIKTOK_CLIENT_KEY o TIKTOK_CLIENT_SECRET en .env: agrégalos y reinicia la API (docs/integraciones/tiktok.md).",
+  OAUTH_DENIED: "Rechazaste los permisos en la red: vuelve a conectar y acéptalos.",
+  OAUTH_STATE_INVALID:
+    "El enlace de conexión venció o se abrió en otro navegador: vuelve a conectar desde el principio.",
+  OAUTH_CODE_MISSING: "La red no devolvió el código de conexión: vuelve a conectar.",
   // Discord (F9-T14): el webhook es la cuenta; si se borró o cambió, se crea otro y se reconecta.
   DISCORD_WEBHOOK_NOT_FOUND:
     "El webhook ya no existe: crea otro en el canal de Discord y vuelve a conectar con accounts connect discord.",
+  DISCORD_WEBHOOK_URL_INVALID:
+    "Copia solo la URL del webhook (Copiar URL del webhook) y vuelve a conectar con accounts connect discord.",
   DISCORD_WEBHOOK_INVALID:
     "Discord no acepta el webhook: crea otro en el canal y vuelve a conectar con accounts connect discord.",
   DISCORD_FORBIDDEN:
@@ -142,6 +162,13 @@ const ADVICE: Readonly<Record<string, string>> = {
   X_MEDIA_REJECTED: "X no aceptó un medio: revisa el video o las imágenes del post y reintenta.",
   X_MEDIA_UNAVAILABLE: RETRY_LATER,
   X_UNREACHABLE: RETRY_LATER,
+  X_DUPLICATE_CONTENT:
+    "X dice que el texto se repite: revisa la cuenta en X; si salió, márcala como publicada con el enlace (publications resolve); si no, cambia un poco el texto y reintenta.",
+  X_APP_CREDENTIALS_INVALID:
+    "X no reconoce la app: revisa X_CLIENT_ID y X_CLIENT_SECRET en .env y reinicia la API.",
+  X_PERMISSION_MISSING:
+    "Vuelve a conectar con accounts connect x y acepta todos los permisos (también seguir conectado).",
+  X_SPEND_LIMIT_INVALID: "Escribe el tope en dólares, entre 0 y 1.000 (por ejemplo 10 o 2,5).",
   // LinkedIn (F9-T15, `linkedin.md` §7): el token dura 60 días y no se renueva solo.
   LINKEDIN_AUTH_INVALID:
     "El acceso de LinkedIn venció o se revocó: reconecta con accounts connect linkedin y reintenta.",
@@ -161,6 +188,13 @@ const ADVICE: Readonly<Record<string, string>> = {
   LINKEDIN_VERSION_DEPRECATED:
     "LinkedIn cerró la versión de su API que usa AgentSales: hay que subir LINKEDIN_API_VERSION en el código.",
   LINKEDIN_UNREACHABLE: RETRY_LATER,
+  LINKEDIN_CONFLICT: RETRY_LATER,
+  LINKEDIN_NOT_FOUND:
+    "LinkedIn no encontró el post o el medio: revisa el perfil en LinkedIn; si ya no está, márcala como retirada.",
+  LINKEDIN_APP_CREDENTIALS_INVALID:
+    "LinkedIn no reconoce la app: revisa LINKEDIN_CLIENT_ID y LINKEDIN_CLIENT_SECRET en .env y reinicia la API.",
+  LINKEDIN_DELETE_UNSUPPORTED:
+    "Bórrala a mano en LinkedIn y márcala como retirada con publications retire <id> (sin --delete).",
   // TikTok (F9-T26): el video va como borrador a la bandeja; el operador lo publica en la app.
   TIKTOK_AUTH_INVALID: RECONNECT,
   TIKTOK_PERMISSION_DENIED:
@@ -188,6 +222,12 @@ const ADVICE: Readonly<Record<string, string>> = {
     "TikTok no reconoce la app: revisa TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET en .env y reinicia.",
   TIKTOK_REQUEST_REJECTED: "Corrige lo que dice el mensaje (el video) y reintenta.",
   TIKTOK_MEDIA_UNAVAILABLE: RETRY_LATER,
+  // Retirar un post (F9-T19).
+  RETIRE_DELETE_UNSUPPORTED:
+    "Bórrala a mano en la red y márcala como retirada con publications retire <id> (sin --delete).",
+  // La vuelta del OAuth con un corredor que no existe o no es del usuario (F9-T19).
+  BROKER_NOT_FOUND:
+    "El corredor del enlace no existe o no es tuyo: vuelve a conectar desde Cuentas, en el corredor correcto.",
   // Del sistema.
   PUBLISHER_NOT_CONFIGURED: ASK_HELP,
   INTERNAL_ERROR: ASK_HELP,

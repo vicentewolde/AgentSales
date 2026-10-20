@@ -8,6 +8,7 @@ import {
   type MercadoLibreHttpOptions,
   type MercadoLibreItems,
 } from "@agentsales/publishers";
+import { createLinkedInApi, createLinkedInOperations } from "@agentsales/publishers/linkedin";
 
 /**
  * Las operaciones de cada plataforma para la API (pausar, reactivar, cerrar y el sync de Portal;
@@ -16,6 +17,7 @@ import {
  * actualizar, el catálogo de Mercado Libre con su caché en la base. Sin fotos: actualizar usa las
  * del ítem. **Sin envolver**: el modo lo decide cada publicación. `createItems` es el cliente real;
  * los tests revisan con qué tope se arma. Sin `catalogRepository`, actualizar no está configurado.
+ * Desde F9-T19, también borrar un post de LinkedIn al retirarlo (con el mismo tope de 10 s).
  */
 export function createApiOperations(
   createItems: (options: MercadoLibreHttpOptions) => MercadoLibreItems = createMercadoLibreItems,
@@ -32,5 +34,9 @@ export function createApiOperations(
           }),
         }),
   });
-  return (platform) => (platform === "portal_inmobiliario" ? portal : undefined);
+  const linkedin = createLinkedInOperations({
+    api: createLinkedInApi({ timeoutMs: MERCADOLIBRE_API_TIMEOUT_MS }),
+  });
+  return (platform) =>
+    platform === "portal_inmobiliario" ? portal : platform === "linkedin" ? linkedin : undefined;
 }

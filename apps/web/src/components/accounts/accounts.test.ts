@@ -1,4 +1,8 @@
-import type { PlatformAccountView } from "@agentsales/api/contracts";
+import {
+  OAUTH_PROVIDERS,
+  OAUTH_REDIRECT_ERRORS,
+  type PlatformAccountView,
+} from "@agentsales/api/contracts";
 import { describe, expect, it } from "vitest";
 import { accountDateText, expiryState, oauthErrorText, visibleAccounts } from "./accounts.js";
 
@@ -53,6 +57,27 @@ describe("oauthErrorText", () => {
     expect(oauthErrorText("IG_AUTH_INVALID")).toContain("Instagram no aceptó la conexión");
     expect(oauthErrorText("IG_OTRO")).toBe("No se pudo conectar Instagram (IG_OTRO).");
     expect(oauthErrorText("<b>hola</b>")).toBe("No se pudo conectar Instagram.");
+  });
+
+  it("X tiene sus textos (F9-T19): el par que falta y la conexión rechazada", () => {
+    expect(oauthErrorText("X_NOT_CONFIGURED", "x")).toContain("X_CLIENT_ID");
+    expect(oauthErrorText("OAUTH_DENIED", "x")).toBe(
+      "Rechazaste los permisos en X: no se conectó nada.",
+    );
+    expect(oauthErrorText("X_PERMISSION_MISSING", "x")).toContain("vuelve a conectar");
+    expect(oauthErrorText("X_OTRO", "x")).toBe("No se pudo conectar X (X_OTRO).");
+  });
+
+  // F9-T19: lo que ve el operador al volver del OAuth. Cada código de la vuelta, con cada red,
+  // tiene su texto propio (no el genérico "No se pudo conectar"), con el nombre de la red puesto.
+  const everyPair = OAUTH_REDIRECT_ERRORS.flatMap((code) =>
+    OAUTH_PROVIDERS.map((provider) => [code, provider] as const),
+  );
+  it.each(everyPair)("%s con %s tiene su texto", (code, provider) => {
+    const text = oauthErrorText(code, provider);
+    expect(text.startsWith("No se pudo conectar")).toBe(false);
+    expect(text).not.toContain("{proveedor}");
+    expect(text.endsWith(".")).toBe(true);
   });
 });
 

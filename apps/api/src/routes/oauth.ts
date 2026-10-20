@@ -192,8 +192,8 @@ export type OAuthDeps = Omit<ConnectAccountDeps, "instagram"> & {
   };
   /** `listByBroker`: conectar X conserva el tope de una cuenta anterior del mismo usuario. */
   platformAccounts: Pick<PlatformAccountRepository, "upsertConnected" | "listByBroker">;
-  /** TikTok (F9-T26); sin él, conectar vuelve al panel con `TIKTOK_NOT_CONFIGURED`. */
-  tiktok?: TikTokOAuthDeps;
+  /** TikTok (F9-T26); sin el par de la app, conectar vuelve al panel con `TIKTOK_NOT_CONFIGURED`. */
+  tiktok: TikTokOAuthDeps;
   oauthState: OAuthStateSigner;
   /** Los `state` ya usados (spec F8 §4.11): el de Instagram sirve una vez, como el de Mercado Libre. */
   oauthStates: Pick<OAuthStateRepository, "markUsed">;
@@ -292,7 +292,7 @@ export function oauthRoutes(deps: OAuthDeps) {
     }
     return { broker: verified.broker, verifier };
   };
-  const ttSecure = deps.tiktok?.secureCookie ?? false;
+  const ttSecure = deps.tiktok.secureCookie;
   const ttCookieName = tiktokStateCookieName(ttSecure);
   const ttCookieOptions = oauthStateCookieOptions(ttSecure);
   const toPanelFromTikTok = (params: Record<string, string>) =>
@@ -477,7 +477,7 @@ export function oauthRoutes(deps: OAuthDeps) {
       .get("/tiktok/start", validated("query", oauthStartQuerySchema), async (c) => {
         const { broker } = c.req.valid("query");
         const tiktok = deps.tiktok;
-        if (tiktok === undefined || !tiktok.configured) {
+        if (!tiktok.configured) {
           return c.redirect(toPanelFromTikTok({ error: "TIKTOK_NOT_CONFIGURED" }), 302);
         }
         const target = await deps.brokers.findBySlug(broker);
@@ -513,7 +513,7 @@ export function oauthRoutes(deps: OAuthDeps) {
         }
         const tiktok = deps.tiktok;
         // Sin el par de la app, el canje mandaría un secret vacío: ni se intenta.
-        if (tiktok === undefined || !tiktok.configured) {
+        if (!tiktok.configured) {
           return c.redirect(toPanelFromTikTok({ error: "TIKTOK_NOT_CONFIGURED" }), 302);
         }
 

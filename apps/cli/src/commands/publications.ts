@@ -86,6 +86,29 @@ function explained(error: unknown, publicationId: string): unknown {
       `Un aviso de Portal se cierra: agentsales publications close ${publicationId}`,
     );
   }
+  // F9-T19: con --delete y la cuenta vencida o desconectada, reconectar o borrar a mano.
+  if (error.code === "ACCOUNT_NOT_CONNECTED") {
+    return new CliError(
+      error.code,
+      error.apiMessage ?? error.message,
+      `Reconecta la cuenta (agentsales accounts) y repite, o bórrala a mano en la red y corre: agentsales publications retire ${publicationId}`,
+    );
+  }
+  // F9-T19: borrar por la API no se pudo; se borra a mano y se confirma sin --delete.
+  if (error.code === "RETIRE_DELETE_UNSUPPORTED" || error.code === "LINKEDIN_DELETE_UNSUPPORTED") {
+    return new CliError(
+      error.code,
+      error.apiMessage ?? error.message,
+      `Bórrala a mano en la red y corre: agentsales publications retire ${publicationId}`,
+    );
+  }
+  if (error.code === "PUBLISH_MODE_MISMATCH") {
+    return new CliError(
+      error.code,
+      error.apiMessage ?? error.message,
+      `En simulación AgentSales no borra nada en la red: bórrala a mano y corre agentsales publications retire ${publicationId}`,
+    );
+  }
   return error;
 }
 
@@ -176,12 +199,14 @@ export function runCancelPublication(deps: PublicationsDeps, id: string) {
   });
 }
 
-export type RetireOptions = { yes?: boolean };
+export type RetireOptions = { yes?: boolean; delete?: boolean };
 
 /**
  * `agentsales publications retire <id> [--yes]` (spec F3 §4.3 y D8, F5 §4.3): Instagram y
  * Marketplace no dejan borrar desde AgentSales, así que una publicada en vivo se borra a mano y
  * aquí se confirma; en simulación no hay nada que borrar. Lee la publicación antes para saber su modo.
+ * F9-T19, `--delete`: la borra AgentSales por la API (LinkedIn con la cuenta en modo `api`, con la
+ * API en vivo); pregunta antes (es definitivo) salvo con `--yes`.
  */
 export function runRetirePublication(
   deps: PublicationsDeps,
@@ -202,16 +227,32 @@ export function runRetirePublication(
       current.status === "published" &&
       // Los que no se cierran desde AgentSales (Instagram y Marketplace) se borran a mano.
       !OPERATION_PLATFORMS.has(current.platform);
+    const platform = PLATFORM_TEXT[current.platform];
+    const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
+    // Hoy solo LinkedIn borra por la API: en otra red se dice antes de preguntar.
+    if (options.delete && current.platform !== "linkedin") {
+      throw new CliError(
+        "RETIRE_DELETE_UNSUPPORTED",
+        `AgentSales no borra en ${platform}: solo un post de LinkedIn con la cuenta en modo api`,
+        `Bórrala a mano en ${platform} y corre: agentsales publications retire ${publicationId}`,
+      );
+    }
     if (live && !options.yes) {
-      const platform = PLATFORM_TEXT[current.platform];
-      const where = current.externalUrl === null ? "" : ` (${current.externalUrl})`;
       const confirmed = await deps.confirm(
-        `¿Ya borraste a mano en ${platform} el ${publicationName(current)}${where}?`,
+        options.delete
+          ? `¿Borrar en ${platform} el ${publicationName(current)}${where}? Es definitivo`
+          : `¿Ya borraste a mano en ${platform} el ${publicationName(current)}${where}?`,
       );
       if (!confirmed) {
         deps.printError(
           c.yellow(
-            `No se marcó como retirada: bórrala primero en ${platform} y confirma (o usa --yes)`,
+            options.delete
+              ? "No se borró nada"
+              : `No se marcó como retirada: bórrala primero en ${platform} y confirma (o usa --yes)${
+                  current.platform === "linkedin"
+                    ? "; con la cuenta en modo api, AgentSales la borra con --delete"
+                    : ""
+                }`,
           ),
         );
         return 1;
@@ -220,7 +261,7 @@ export function runRetirePublication(
     const { publication, listingBackToReady } = await unwrap(
       deps.client.publications[":id"].retire.$post({
         param: { id: publicationId },
-        json: live ? { removedByHand: true } : {},
+        json: options.delete ? { deleteRemote: true } : live ? { removedByHand: true } : {},
       }),
       publicationRetireResponseSchema,
     ).catch((error: unknown) => {
@@ -229,6 +270,15 @@ export function runRetirePublication(
     deps.print(
       `${c.green("✓")} ${publicationName(publication)} ${paintPublicationStatus(publication, c)}`,
     );
+    if (options.delete) {
+      deps.print(
+        c.dim(
+          live
+            ? `  Se borró en ${platform} (o ya no estaba)`
+            : "  Era una simulación: no había nada que borrar en la red",
+        ),
+      );
+    }
     if (listingBackToReady) {
       deps.print(c.dim("  Era la última publicada en vivo: la propiedad volvió a lista"));
     }
@@ -780,10 +830,14 @@ export function register(program: Command, ctx: CliContext): void {
   publications
     .command("retire")
     .description(
-      "Marca como retirada una publicación (en vivo, después de borrarla en Instagram o Marketplace)",
+      "Marca como retirada una publicación (en vivo, después de borrarla a mano en la red; un post de LinkedIn en modo api lo borra AgentSales con --delete)",
     )
     .argument("<id>", "id de la publicación (agentsales publications <propiedad>)")
-    .option("--yes", "no pregunta si ya la borraste a mano")
+    .option(
+      "--delete",
+      "LinkedIn con la cuenta en modo api: AgentSales borra el post en LinkedIn (solo en vivo; pregunta antes)",
+    )
+    .option("--yes", "no pregunta (si ya la borraste a mano, o antes de borrar con --delete)")
     .action((id: string, options: RetireOptions) =>
       exitWith(() => runRetirePublication(deps(), id, options)),
     );

@@ -12,6 +12,7 @@ import {
   type LinkedInAuth,
   type MercadoLibreAuth,
   type SessionClient,
+  type TikTokAuth,
   type XAuth,
 } from "@agentsales/core";
 import {
@@ -207,6 +208,30 @@ export function fakeLinkedInAuth(): LinkedInAuth & { calls: string[] } {
         ? { memberId: "otro-miembro", name: "Otra Persona" }
         : { memberId: "miembro-123", name: "Vicente Wolde" };
     },
+  };
+}
+
+/**
+ * TikTok sin el par de la app (F9-T19: `tiktok` es obligatorio en `AppDeps`, como X y LinkedIn): los
+ * tests de siempre ven TikTok sin configurar y nunca lo llaman; `oauth-tiktok.test.ts` pasa el suyo.
+ */
+export function unconfiguredTikTokAuth(): TikTokAuth {
+  const notConfigured = () =>
+    new AppError("TIKTOK_NOT_CONFIGURED", "TikTok no está configurado en los tests");
+  return {
+    authorizeUrl: () => {
+      throw notConfigured();
+    },
+    exchangeCode: async () => {
+      throw notConfigured();
+    },
+    user: async () => {
+      throw notConfigured();
+    },
+    refresh: async () => {
+      throw notConfigured();
+    },
+    isRejected: () => false,
   };
 }
 
@@ -475,6 +500,12 @@ export function testDeps(overrides: Partial<AppDeps> = {}): AppDeps {
       configured: true,
       secureCookie: false,
       startUrl: "http://localhost:8787/api/oauth/linkedin/start",
+    },
+    tiktok: {
+      auth: unconfiguredTikTokAuth(),
+      configured: false,
+      secureCookie: false,
+      startUrl: "http://localhost:8787/api/oauth/tiktok/start",
     },
     mercadoLibre: {
       auth: fakeMercadoLibreAuth(),

@@ -615,8 +615,15 @@ export type PublicationConfirmResponse = z.infer<typeof publicationConfirmRespon
 /**
  * `POST /publications/:id/retire`: en `live`, `removedByHand: true` confirma que se borró a mano en
  * la plataforma (Instagram Login no deja borrar por la API, D8). El cuerpo va siempre (`{}`).
+ * F9-T19: `deleteRemote: true` la borra AgentSales por la API (LinkedIn con la cuenta en modo
+ * `api`, con la API en `live`); no se junta con `removedByHand`.
  */
-export const publicationRetireBodySchema = z.object({ removedByHand: z.boolean().optional() });
+export const publicationRetireBodySchema = z
+  .object({ removedByHand: z.boolean().optional(), deleteRemote: z.boolean().optional() })
+  .refine((body) => !(body.removedByHand === true && body.deleteRemote === true), {
+    message:
+      "o la borraste a mano (removedByHand) o la borra AgentSales (deleteRemote), no las dos",
+  });
 export type PublicationRetireBody = z.infer<typeof publicationRetireBodySchema>;
 
 /** `listingBackToReady`: era la última publicada en `live` y el aviso volvió de `active` a `ready`. */
@@ -767,10 +774,10 @@ export const accountListResponseSchema = z.object({
      * X (F9-T16, spec F9 §4.7): `configured` si la API tiene el par de la app (`X_CLIENT_ID` y
      * `X_CLIENT_SECRET`), y el inicio del OAuth con PKCE en el host de `X_REDIRECT_URI` (la cookie
      * firmada del `state` y del verificador lo distingue): el panel y la CLI le suman
-     * `?broker=<slug>` y lo abren en el navegador con la sesión del panel. Ausente en una API
-     * anterior a F9-T16.
+     * `?broker=<slug>` y lo abren en el navegador con la sesión del panel. Siempre presente desde
+     * F9-T19 (como LinkedIn y TikTok).
      */
-    x: z.object({ configured: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) }).optional(),
+    x: z.object({ configured: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) }),
     /**
      * LinkedIn (F9-T15): `configured` si la API tiene el par de la app (sin él, el inicio vuelve al
      * panel con `LINKEDIN_NOT_CONFIGURED`), y el inicio del OAuth en el host de la dirección de
@@ -782,12 +789,10 @@ export const accountListResponseSchema = z.object({
     }),
     /**
      * TikTok (F9-T26): `configured` si la API tiene el par de la app (sin él, el inicio vuelve al
-     * panel con `TIKTOK_NOT_CONFIGURED`), y el inicio del OAuth (`/api/oauth/tiktok/start`), que la
-     * CLI abre con `?broker=<slug>`.
+     * panel con `TIKTOK_NOT_CONFIGURED`), y el inicio del OAuth (`/api/oauth/tiktok/start`), que el
+     * panel y la CLI abren con `?broker=<slug>`. Siempre presente desde F9-T19.
      */
-    tiktok: z
-      .object({ configured: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) })
-      .optional(),
+    tiktok: z.object({ configured: z.boolean(), startUrl: z.url({ protocol: /^https?$/ }) }),
   }),
 });
 export type AccountListResponse = z.infer<typeof accountListResponseSchema>;
@@ -968,6 +973,8 @@ export const OAUTH_REDIRECT_ERRORS = [
   "MERCADOLIBRE_NOT_CONFIGURED",
   // F9-T15: falta el par de la app de LinkedIn.
   "LINKEDIN_NOT_CONFIGURED",
+  // F9-T16: falta el par de la app de X (`/oauth/x/*` vuelve con `proveedor=x`).
+  "X_NOT_CONFIGURED",
   // F9-T26: a la API le falta el par de la app de TikTok.
   "TIKTOK_NOT_CONFIGURED",
   "BROKER_NOT_FOUND",
@@ -979,7 +986,7 @@ export type OAuthRedirectError = (typeof OAUTH_REDIRECT_ERRORS)[number];
  * El proveedor con que vuelve el OAuth (`/cuentas?proveedor=…`, F8-T19): sin él, Instagram (la vuelta
  * de F3). Cambia el texto del aviso del panel.
  */
-export const OAUTH_PROVIDERS = ["instagram", "mercadolibre", "linkedin", "tiktok"] as const;
+export const OAUTH_PROVIDERS = ["instagram", "mercadolibre", "linkedin", "x", "tiktok"] as const;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
 // --- F6-T10: calendario, la propiedad, Portal y el seguimiento (spec F6 §4.13) ---
