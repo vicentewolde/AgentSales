@@ -207,7 +207,8 @@ pnpm -s cli post publish <id_post>                            # --platform para 
 - **En vivo** (`PUBLISH_MODE=live`), `post publish`, `post schedule` y `publications retry` preguntan antes (`--yes` no pregunta). A la hora programada el reloj del worker publica sin volver a preguntar.
 - **Una red a mano** (por ejemplo LinkedIn): a la hora queda lista para que la publiques tú; después `pbpaste | pnpm -s cli publications confirm <id> --url-stdin` con el enlace, o `publications not-published <id>` si no la publicaste.
 - **"No se sabe si salió"** (`outcome_unknown`): el envío se cortó y AgentSales no sabe si la red la publicó. **Mira la red** y dilo: `pnpm -s cli publications resolve <id> --published` (con el enlace, si lo tienes: `pbpaste | … --published --url-stdin`) o `--not-published` (queda fallida). AgentSales nunca la reintenta solo, para no publicarla dos veces.
-- **Reintentar o publicar ya una sola publicación:** `pnpm -s cli publications retry <id>` (el id sale en `post show` y en la agenda). Descartarla: `publications cancel <id>`.
+- **Reintentar o publicar ya una sola publicación:** `pnpm -s cli publications retry <id>` (el id sale en `post show` y en la agenda). Descartarla: `publications cancel <id>`. Retirar una publicada: `publications retire <id>` (en LinkedIn por la API, `--delete` la borra por ti; ver "Conectar las redes de los posts").
+- **Antes de conectar las cuentas** de la marca, mira "Conectar las redes de los posts (F9)", más abajo: qué va en el `.env`, cómo se conecta cada red y las pruebas S1 a S6 antes de publicar de verdad.
 - **`agenda`** muestra los posts junto a las propiedades, con el comando de cada cosa pendiente. **`post archive <id>`** da por terminado un post (primero hay que resolver o descartar sus publicaciones pendientes).
 - Si algo falla, la CLI muestra el código y qué hacer: `POST_NO_PLATFORMS` (la marca no tiene cuentas ni cadencia: conecta una o define la cadencia en `brand edit`), `LLM_BUDGET_EXCEEDED` (la marca llegó a su tope de IA del mes: `pnpm -s cli usage`), `LLM_OUTPUT_INVALID` (la IA no respondió en el formato pedido: vuelve a pedir los textos), `CONTENT_EDITED` (ya editaste o aprobaste: `post draft --replace-edits` los reemplaza), `POST_NOT_READY` (una idea sin aceptar o un post archivado), `OUTCOME_UNKNOWN_PENDING` (primero di si salió).
 
@@ -222,6 +223,68 @@ Todo lo anterior se puede hacer en el panel, en **Contenido** (el menú de la iz
 - **En vivo**, publicar y reintentar piden un segundo clic ("Sí, publicar en vivo"), y programar lo avisa en rojo.
 - **Videos de más de 100 MB:** el navegador los sube sin calcular su huella (sha256); el servidor la calcula después y el video aparece en unos minutos. Si ya estaba en el post, no se duplica.
 - **El perfil editorial** se edita en **Mi marca** (o, siendo administrador, en la página de cada corredor), con los mismos campos que `brand edit`. Si algo no sirve, el error aparece en rojo junto al campo y no se guarda nada.
+
+## Conectar las redes de los posts (F9)
+
+Cada marca (o corredor) publica sus posts en las cuentas que **tú** conectes. Se conectan en **Cuentas** del panel o con la CLI, con `pnpm dev` corriendo (o contra el servidor). `pnpm -s cli accounts` muestra las conectadas y, debajo, **las redes que faltan con el comando de cada una**.
+
+> **Antes de publicar de verdad en una red, haz su prueba de entrada** (spec F9 §4.8): **S1** Instagram, **S2 y S3** LinkedIn, **S4** X, **S5** Discord y **S6** TikTok. Son obligatorias, a mano y con tus cuentas. El código se construyó contra simulaciones: hasta que hagas la prueba de una red y anotes el resultado en su nota de `docs/integraciones/`, esa red se usa solo en `dry-run`. Pasar a `live` lo decides tú, en el chat.
+
+### Lo que va en el `.env` de la API
+
+Cada red (salvo Discord) necesita **su app** creada en la plataforma, con su par de claves en el `.env`. Después de anotarlas, reinicia la API (`pnpm dev`, o en el servidor, sus secretos: `docs/10-despliegue.md`). Sin el par, conectar dice qué variable falta (`LINKEDIN_NOT_CONFIGURED`, `X_NOT_CONFIGURED`, `TIKTOK_NOT_CONFIGURED`) y no abre nada.
+
+| Red | Variables | Dónde se crea la app | La dirección de retorno, si no la pones |
+|---|---|---|---|
+| Instagram | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_REDIRECT_URI` | developers.facebook.com (la de los avisos: `docs/07-checklist-cuentas.md`) | `<PUBLIC_URL>/api/oauth/instagram/callback` |
+| LinkedIn | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_REDIRECT_URI` | linkedin.com/developers, con *Share on LinkedIn* y *Sign In with LinkedIn using OpenID Connect* | `<PUBLIC_URL>/api/oauth/linkedin/callback` (en el Mac, `http://localhost:8787/…`) |
+| X | `X_CLIENT_ID`, `X_CLIENT_SECRET`, `X_REDIRECT_URI` | console.x.com, una "Web App" con OAuth 2.0 de lectura y escritura | `<PUBLIC_URL>/api/oauth/x/callback` (en el Mac, `http://127.0.0.1:8787/…`: X no acepta `localhost`) |
+| TikTok | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` | developers.tiktok.com, con Login Kit y Content Posting API (`video.upload`) | `<PUBLIC_URL>/api/oauth/tiktok/callback` (TikTok exige `https`) |
+| Discord | ninguna | — (un webhook por canal) | — |
+
+La dirección de retorno se registra **igual** en la app de cada red. Nunca pegues una clave en el chat.
+
+### Cómo se conecta cada una
+
+- **Instagram:** igual que para los avisos (más arriba, "Dar de alta un corredor"): en el servidor, el botón **Conectar Instagram**; en el Mac, `pbpaste | pnpm -s cli accounts connect instagram --broker <slug> --token-stdin` con el token de *Generate token*. Detalle de los posts en `docs/integraciones/instagram-contenido-propio.md`.
+- **LinkedIn** (tu perfil personal): el botón **Conectar LinkedIn** en Cuentas, o `pnpm -s cli accounts connect linkedin --broker <slug>`, que abre el enlace en el navegador donde tienes el panel abierto. Autoriza en LinkedIn y vuelves a Cuentas. **La cuenta queda a mano** (ver "El modo a mano", abajo). El acceso dura 60 días y **no se renueva solo**: la agenda avisa una semana antes y se reconecta igual. Nota: `docs/integraciones/linkedin.md`.
+- **X:** el botón **Conectar X**, o `pnpm -s cli accounts connect x --broker <slug>`. En el Mac, abre el panel en `http://127.0.0.1:5173` (no `localhost`) antes de conectar: el panel lo avisa si estás en otro. **Cada post cuesta créditos de X** (unos US$0,015; con un enlace, US$0,20, y el enlace hay que permitirlo en el post). Cada cuenta tiene un **tope de gasto del mes** (por defecto US$10): `pnpm -s cli accounts spend-limit <id> <dólares>`. Pasado el tope, la publicación falla sin llamar a X (`X_SPEND_LIMIT_REACHED`). El tope duro sigue siendo el de la consola de X. Nota: `docs/integraciones/x.md`.
+- **Discord:** se conecta el **webhook de un canal**. En Discord: Ajustes del servidor → Integraciones → Webhooks → Nuevo webhook (elige el canal) → **Copiar URL del webhook**. Después, en la terminal: `pbpaste | pnpm -s cli accounts connect discord --broker <slug> --webhook-stdin`. La URL es **el secreto del canal**: va del portapapeles a la API, nunca se escribe en la terminal ni se pega en el panel (por eso el panel solo muestra el comando para copiar). Un canal por marca: conectar otro webhook desconecta el anterior. Nota: `docs/integraciones/discord.md`.
+- **TikTok:** el botón **Conectar TikTok**, o `pnpm -s cli accounts connect tiktok --broker <slug>`; autoriza y deja marcado el permiso de subir videos. Solo publica **video**, y llega como **borrador** a la bandeja de la app de TikTok: tú lo abres, pegas el texto que está en AgentSales, lo publicas y confirmas con el enlace (`pbpaste | pnpm -s cli publications confirm <id> --url-stdin`). Nota: `docs/integraciones/tiktok.md`.
+
+Un corredor puede conectar **su propio** Instagram, LinkedIn, X y TikTok desde su usuario (solo los suyos); Discord, renovar, desconectar, el modo y el tope de gasto son tuyos (administrador).
+
+### El modo a mano (`accounts mode`)
+
+Una cuenta de LinkedIn, X, Discord o TikTok puede estar **a mano** o **por la API**:
+
+- **A mano:** a la hora programada, AgentSales deja el texto y los medios listos **sin llamar a la red**; tú publicas y confirmas con el enlace (`pbpaste | pnpm -s cli publications confirm <id> --url-stdin`), o `publications not-published <id>` si no lo hiciste. LinkedIn **nace a mano** y se queda así hasta que S2 y S3 estén resueltas.
+- **Por la API:** AgentSales publica solo (en `live`).
+- Se cambia con `pnpm -s cli accounts mode <id> manual|api` (pasar a `api` pregunta antes; `--yes`). El id sale en `pnpm -s cli accounts`. La tarjeta de la cuenta en Cuentas dice en qué modo está.
+
+### Confirmar, resolver y retirar
+
+- **Confirmar una publicación a mano** (LinkedIn a mano, TikTok, Marketplace): `pbpaste | pnpm -s cli publications confirm <id> --url-stdin` con el enlace copiado (no se imprime), o en el panel, **Lo publiqué**.
+- **"No se sabe si salió"** (`outcome_unknown`): el envío se cortó y la red pudo haberlo publicado. Mira la red y di qué pasó: `pnpm -s cli publications resolve <id> --published` (con el enlace: `pbpaste | … --published --url-stdin`) o `--not-published`. AgentSales nunca la reintenta solo, para no publicarla dos veces. En X, un "texto repetido" también queda así: si no salió, cambia un poco el texto antes de reintentar.
+- **Retirar un post publicado:** bórralo a mano en la red y márcalo con `pnpm -s cli publications retire <id>` (pregunta si ya lo borraste). **En LinkedIn con la cuenta por la API**, AgentSales lo puede borrar por ti: `pnpm -s cli publications retire <id> --delete` (pregunta antes: es definitivo; solo en `live`). Si el post se publicó a mano y pegaste el enlace de "Copiar enlace", LinkedIn no acepta borrarlo por la API: la CLI te dice que lo borres a mano.
+
+### Qué hacer cuando una red falla
+
+Debajo de cada publicación fallida, el panel (**Qué hacer:**), `post show`, `publications`, `publish` y la `agenda` muestran **el consejo de su error**. Los más comunes:
+
+| Lo que ves | Qué hacer |
+|---|---|
+| `LINKEDIN_NOT_CONFIGURED`, `X_NOT_CONFIGURED`, `TIKTOK_NOT_CONFIGURED` | Anota el par de la app en `.env` (tabla de arriba) y reinicia la API |
+| `*_AUTH_INVALID`, `TOKEN_REFRESH_REJECTED`, cuenta "vencida" | Reconecta la cuenta (el mismo botón o `accounts connect`) y reintenta |
+| `*_PERMISSION_DENIED`, `X_PERMISSION_MISSING` | Reconecta y acepta **todos** los permisos que pide la red |
+| `DISCORD_WEBHOOK_NOT_FOUND`, `DISCORD_WEBHOOK_INVALID` | El webhook se borró o cambió: crea otro en el canal y conéctalo de nuevo |
+| `X_PAYMENT_REQUIRED` | Sin créditos en X: recarga en console.x.com (Billing) |
+| `X_SPEND_LIMIT_REACHED` | Llegaste al tope del mes: súbelo con `accounts spend-limit` o espera al mes siguiente |
+| `X_LINK_NOT_ALLOWED` | Permite el enlace en el post (cuesta US$0,20) o quítalo del texto |
+| `TIKTOK_PENDING_LIMIT` | Hay 5 borradores esperando en la app de TikTok: publícalos o descártalos |
+| `TIKTOK_APP_RESTRICTED` | La app de TikTok todavía no tiene la auditoría: revisa S6 en `tiktok.md` |
+| `*_RATE_LIMITED`, `*_UNAVAILABLE`, `*_UNREACHABLE` | Es pasajero: el sistema reintenta solo; si no, reintenta más tarde |
+| `RETIRE_DELETE_UNSUPPORTED` | Esa red o esa cuenta no borra por la API: bórrala a mano y `publications retire <id>` |
 
 ## Restaurar un respaldo de la base
 
