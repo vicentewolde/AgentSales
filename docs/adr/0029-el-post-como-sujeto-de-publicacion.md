@@ -1,6 +1,6 @@
 # ADR-0029 · Un post es otro sujeto de publicación, junto al aviso
 
-- **Estado:** Propuesto
+- **Estado:** Aceptado
 - **Fecha:** 2026-10-19
 - **Reemplaza a / Modifica a:** ADR-0006 (el aviso deja de ser la única cosa que se publica), ADR-0014 (la publicación puede colgar de un post y suma un resultado dudoso), ADR-0015 (el access token se renueva al publicar, por plataforma) y ADR-0017 y ADR-0023 (el traspaso a mano deja de ser solo de Marketplace)
 

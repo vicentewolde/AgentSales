@@ -136,7 +136,7 @@ Spec detallado: `docs/specs/fase-7-varios-corredores.md` (2026-10-16: el operado
 - Pruebas de entrada con las cuentas reales (visibilidad de Instagram en modo desarrollo, LinkedIn, X, Discord y TikTok) antes de construir cada red.
 - Sin código de anuncios, pero sin cerrar puertas para ellos ni para las organizaciones.
 
-**Spec:** `docs/specs/fase-9-contenido-de-marca.md` (borrador, 2026-10-19; ADR-0029 y ADR-0030 propuestos). F8 cerró con `v1.0.0`.
+**Spec:** `docs/specs/fase-9-contenido-de-marca.md`, **aprobado** el 2026-10-19 (ADR-0029 y ADR-0030). Tres entregas: `v1.1.0` publicar lo propio en Instagram y Discord, `v1.2.0` LinkedIn, X, TikTok y el panel, `v1.3.0` la IA que propone. Ejecución en paralelo con agentes en worktrees y la CI como juez. Una instancia ahora y dos del mismo código al llegar el primer cliente (D19).
 
 ## F10 · Piloto con una oficina (hoja de ruta)
 - Una oficina (3 a 10 agentes) de una corredora grande, con servicio operado por el operador.

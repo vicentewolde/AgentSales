@@ -18,6 +18,7 @@ Estado del repositorio:
 - Si hay cambios sin commitear que no son de esta tarea, detente y pregunta qué hacer con ellos.
 - Un **lote** (varias tareas relacionadas, desde 2026-10-09) va en una sola rama y un solo PR; cada tarea conserva sus criterios "Hecho cuando".
 - Parte desde `main` actualizado y crea la rama `<tipo>/<id-en-minúsculas>-<resumen-corto>` (ej. `feat/f0-t02-config` o `feat/f4-t21-t22-panel-portal`).
+- **En paralelo** (desde F9, `CLAUDE.md` regla 2): cada tarea va en su propio worktree (`git worktree add`) desde `main` actualizado; como máximo 3 ramas con código a la vez y sin tocar los mismos archivos calientes que otra rama abierta.
 - Marca la tarea como 🔨 en `docs/ESTADO.md`.
 
 ## 2. Planificar
@@ -41,7 +42,7 @@ Lee los docs que la tarea toca (modelo de datos, plataformas, convenciones, ADRs
   3. Instala la versión anterior que sí tenga la antigüedad mínima (`pnpm add <paquete>@<versión>`) y vuelve a revisar el diff.
 
 ## 4. Verificar
-- `pnpm check` debe pasar completo, una vez (si solo fallan pruebas por "timed out" de PGlite o del panel, repítelo). Si falla, arréglalo; nunca desactives reglas ni tests para pasar.
+- `pnpm check` debe pasar completo, una vez (si solo fallan pruebas por "timed out" de PGlite o del panel, repítelo). **Si hay otras ramas trabajando en paralelo**, no corras `pnpm check` completo: corre las pruebas y el typecheck de los paquetes que tocaste (`pnpm --filter <paquete> test`) y deja el chequeo completo a la CI del PR. Si falla, arréglalo; nunca desactives reglas ni tests para pasar.
 - Revisa uno por uno los criterios "Hecho cuando" de la tarea y demuestra cada uno (comando, salida o test).
 - **CI:** desde 2026-10-09 no se simula en local: la CI de GitHub corre en un clon limpio, sin `.env` ni artefactos de build, y el merge la exige en verde sobre el último commit. Si falla, lee el log (`gh run view <id> --log-failed`), arréglalo en la rama y vuelve a hacer push. Si falla `db:generate`, falta una migración: genérala y commitéala.
 

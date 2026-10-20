@@ -1,8 +1,8 @@
 # Spec F9 · Contenido de marca
 
-- **Estado:** **Borrador** (2026-10-19): revisado por el `arquitecto` (11 bloqueantes aplicados), con las respuestas del operador a P1 a P3, TikTok como borrador de video y el piloto con una oficina y los anuncios como fases siguientes (§4.17). F8 ya cerró (`v1.0.0`). Falta cerrar P4 y P5 y su aprobación
+- **Estado:** **Aprobado** el 2026-10-19 por el operador (revisado por el `arquitecto`; P1 a P6 respondidas; tres entregas, ejecución en paralelo y la decisión de arquitectura D19)
 - **Rama base:** `main`, con F8 cerrada (`v1.0.0`)
-- **Tag al cerrar:** `v1.1.0`
+- **Tag al cerrar:** `v1.1.0` (entrega 1), `v1.2.0` (entrega 2) y `v1.3.0` (entrega 3, cierre de la fase)
 - **Referencias:** `docs/00-vision.md`, ADR-0006, ADR-0013, ADR-0014, ADR-0015, ADR-0017, ADR-0018, ADR-0019, ADR-0021 a ADR-0023, ADR-0025, ADR-0027, ADR-0029 y ADR-0030 (nuevos), `docs/01-arquitectura.md`, `docs/02-modelo-datos.md`, `docs/04-formato-publicaciones.md`, `docs/10-despliegue.md`, `docs/11-app-review-meta.md`, `docs/integraciones/meta-verificacion-empresa.md`, ADR-0028 (el corredor conecta su Instagram, F8), y las notas de integración nuevas: `docs/integraciones/x.md`, `linkedin.md`, `discord.md`, `tiktok.md`, `instagram-contenido-propio.md`, `meta-ads.md` y `manychat.md` (2026-10-19)
 
 ## 1. Objetivo
@@ -90,7 +90,7 @@ Un post tiene **un texto por red y por idioma** (`contents` con `post_id` y `lan
 
 Verificaciones comunes (`checkPostContent`): largo, caracteres reservados, menciones masivas, **cifras, nombres propios y enlaces que no estén en el perfil o en un brief escrito por el operador**, y requisitos de medios (un reel exige video; X, hasta 4 imágenes o 1 video).
 
-**Dos idiomas (P4):** si la marca tiene dos idiomas, el borrador crea un texto por idioma en cada red. Cada texto se aprueba y se publica por separado, como publicaciones distintas de la misma cuenta, espaciadas por la cadencia. Cómo se publican exactamente es la pregunta P4.
+**Dos idiomas (P4):** si la marca tiene dos idiomas, el borrador crea un texto por idioma en cada red. Cada texto se aprueba y se publica por separado, como publicaciones distintas de la misma cuenta, espaciadas por la cadencia. Respondido (P4): son publicaciones separadas, espaciadas por la cadencia (6 h por defecto).
 
 ### 4.5 Los medios de un post
 - Subida directa a R2 con URL prefirmada (ADR-0025), por la misma ruta de la API y del panel que las cargas: `POST /api/posts/:id/uploads` y `…/uploads/complete`. El registro de lo pendiente vive en `post_uploads` (la tabla de cargas, `import_runs`, es de planillas); un trabajo periódico borra de R2 lo abandonado, como la limpieza de las cargas. Imágenes (JPEG, PNG, WebP, HEIC) y videos (MP4, MOV), con los topes de la carga. Las claves de R2 de un post van bajo `posts/{postId}/…`.
@@ -197,11 +197,11 @@ Migraciones desde la `0014` (o la siguiente libre). Reglas: **`ALTER TYPE … AD
 | D1 | Una marca es un `Broker` con `kind = brand`; un post cuelga de cualquier corredor y un aviso solo de `kind = broker` (predicado de core, ADR-0029) | Tomada |
 | D2 | El post es otro sujeto de publicación, con `CHECK` de uno solo (ADR-0029) | Tomada |
 | D3 | Se mantiene una cuenta conectada por marca y plataforma: el perfil personal y AgentPey son dos marcas | Tomada |
-| D4 | Los idiomas son del perfil de la marca y cada texto tiene el suyo | Tomada; la forma de publicar los dos, P4 |
+| D4 | Los idiomas son del perfil de la marca y cada texto tiene el suyo; con dos idiomas salen dos publicaciones separadas, espaciadas por la cadencia | **Respondida (P4)** |
 | D5 | LinkedIn: perfil personal, cuenta en modo `manual`; pasa a `api` solo si LinkedIn aclara su término (S3) | **Respondida (P1)** |
 | D6 | X: enlaces permitidos y marcados (cuestan más), sin hilos, tope por defecto de US$10 al mes; en `dry-run` no se escribe | **Respondida (P2)** |
 | D7 | Discord: webhook de canal, sin bot, sin foros ni embeds | Tomada |
-| D8 | Discord y videos: variante bajo 20 MiB si cabe; si no, un enlace al video (a decidir con S5) | Propuesta |
+| D8 | Discord y videos: variante bajo 20 MiB si cabe; si no, un enlace al video | **Respondida (P5)** |
 | D9 | Las ideas de la IA son posts `idea`; aceptar, aprobar y programar son pasos distintos (ADR-0030) | Tomada |
 | D10 | La IA solo afirma lo que está en `facts` o en un brief escrito por el operador (ADR-0030) | Tomada |
 | D11 | Instagram solo imagen, carrusel y reel; sin Stories ni música en F9 | Tomada |
@@ -212,9 +212,12 @@ Migraciones desde la `0014` (o la siguiente libre). Reglas: **`ALTER TYPE … AD
 | D16 | TikTok en F9: solo video, como borrador en la bandeja (modo *Upload*); la publicación directa pública y las fotos, con el piloto | **Respondida** |
 | D17 | Orden: F9 propio → F10 piloto con una oficina (servicio operado por el operador) → F11 organizaciones | **Respondida** |
 | D18 | Anuncios (F10): campañas por aviso incluidas, la corredora paga a Meta directo, ManyChat conviviendo con interfaz propia que permite reemplazarlo | **Respondida** |
+| D19 | **Arquitectura de despliegue:** una base de código y **una instancia** mientras solo la use el operador; **dos instancias del mismo código** (personal y de clientes, cada una con sus datos, cuentas y apps de Meta, TikTok y X) cuando ocurra lo primero de: entra el primer dato real de un cliente, la oficina firma el piloto, o un incidente de una red amenaza la app compartida. Dos plataformas con dos bases de código: descartado (el piloto necesita el mismo motor de posts). T27 deja barato el corte | **Respondida** |
+| D20 | Tres entregas con su etiqueta: `v1.1.0`, `v1.2.0` y `v1.3.0` (§5.1) | **Respondida** |
+| D21 | Ejecución en paralelo: agentes en worktrees, con la CI de GitHub como juez (§5.2) | **Respondida** |
 
 ### 4.15 ADRs
-ADR-0029 (el post como sujeto de publicación, el resultado dudoso, el traspaso a mano por cuenta, las credenciales por plataforma y el access token al publicar; modifica ADR-0006, 0014, 0015, 0017 y 0023) y ADR-0030 (la IA propone, el operador decide; modifica ADR-0013 solo para posts), ambos **Propuestos**. Pasan a **Aceptados** con la aprobación del spec. Los ADR-0031 a ADR-0033 (anuncios, dinero y leads) son del piloto: quedan **Propuestos** como borrador para no cerrar puertas, y se aprueban con el spec de esa fase.
+ADR-0029 (el post como sujeto de publicación, el resultado dudoso, el traspaso a mano por cuenta, las credenciales por plataforma y el access token al publicar; modifica ADR-0006, 0014, 0015, 0017 y 0023) y ADR-0030 (la IA propone, el operador decide; modifica ADR-0013 solo para posts), ambos **Aceptados** con la aprobación del spec (2026-10-19). Los ADR-0031 a ADR-0033 (anuncios, dinero y leads) son del piloto: quedan **Propuestos** como borrador para no cerrar puertas, y se aprueban con el spec de esa fase.
 
 ### 4.16 Dependencias nuevas
 Ninguna prevista. LinkedIn y X se hablan con `fetch` y zod, como Mercado Libre; Discord, con `fetch` y `FormData`. Si la subida por partes de X lo justifica, se evalúa en T16, con su justificación en el PR.
@@ -228,7 +231,7 @@ Orden acordado con el operador (2026-10-19): **F9** para sus dos marcas → **F1
 - **Trámites del operador que pueden empezar ya, sin código** (los de plazo más largo): la verificación del negocio con Certilink SpA, que sirve para todo el portafolio de Meta (`meta-verificacion-empresa.md`); una **segunda app de Meta** para anuncios (Facebook Login for Business y Marketing API; la `AgentSales-IG` usa Instagram Login, que no puede manejar anuncios); la Página de Facebook vinculada al Instagram, la cuenta publicitaria en pesos y su medio de pago en el portafolio de la oficina; el plan Pro de ManyChat de la corredora; un abogado para el contrato de encargo y la privacidad de leads antes del 2026-12-01 (Ley 21.719, salvo que se postergue); y dos pruebas en el Graph API Explorer: que el id de un medio publicado con Instagram Login sirva como `source_instagram_media_id` en la Marketing API (A1) y que exista una validación de anuncios sin efectos (A2).
 
 ## 5. Tareas
-Una tarea (o un lote de tareas relacionadas) = una rama = un PR. **Nada de este código empieza antes de que F8 cierre** (`v1.0.0`): las dos fases tocan las mismas tablas y el mismo despliegue. Antes solo se hacen las pruebas de entrada (§4.8), que no usan el código de la aplicación.
+Una tarea (o un lote de tareas relacionadas) = una rama = un PR. F8 cerró (`v1.0.0`). Las pruebas de entrada (§4.8) las hace el operador en paralelo al código, que se construye contra simulaciones (`msw` y fakes).
 
 - **A** · el sujeto genérico, sin cambiar los avisos: T01 a T08
 - **B** · la marca, los posts y el texto: T09 a T12
@@ -236,8 +239,31 @@ Una tarea (o un lote de tareas relacionadas) = una rama = un PR. **Nada de este 
 - **D** · panel y CLI: T17 a T19
 - **E** · la IA propone: T20 a T22
 - **F** · cierre: T23 a T25
+- Y **T27**, el despliegue parametrizado por instancia (D19), independiente de todo lo demás
 
 Los tests de contrato de repositorios y de casos de uso de avisos pasan sin cambiar sus aserciones de comportamiento (se actualizan solo los datos de prueba que ahora llevan `postId: null`).
+
+### 5.1 Entregas (D20)
+| Entrega | Tareas | Etiqueta | Queda funcionando |
+|---|---|---|---|
+| **1 · Publicar lo mío** | T01 a T14 y T27 | `v1.1.0` | Posts con perfil editorial, texto con IA por red e idioma, aprobación, calendario y CLI; publicar en Instagram y Discord |
+| **2 · Más redes y panel** | T15, T16, T26, T17, T18 y T19 | `v1.2.0` | LinkedIn (a mano), X, TikTok (borrador), la pantalla Contenido, el calendario y la guía |
+| **3 · La IA propone** | T20 a T22, y T23 a T25 | `v1.3.0` | El plan de ideas, la evaluación de calidad, la documentación completa, la prueba con todas las cuentas y el cierre de la fase |
+
+Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CHANGELOG` y la etiqueta (con el permiso del operador, como `v1.0.0`). La prueba en vivo de lo que entrega, solo con su instrucción en el chat. T25 es el cierre de la fase (`/fase-cerrar 9`).
+
+### 5.2 Ejecución en paralelo (D21)
+**Olas** (lo que se puede hacer a la vez, según las dependencias):
+- **Entrega 1:** ola 1, T01 y T27 → ola 2, T02 y T03 → ola 3, T04 → ola 4, dos cadenas a la vez: el núcleo (T05 → T06 → T07 → T08) y la marca y el texto (T09 → T10 → T11) → ola 5, T12, T13 (tras S1) y T14 (tras S5).
+- **Entrega 2:** T15, T16, T26 y la cadena T17 → T18 a la vez; T19 al final (depende de los publishers).
+- **Entrega 3:** T20 → T21 y T22 a la vez → T23, T24 y T25.
+
+**Reglas:**
+- Cada tarea, en su **worktree** y su rama `feat/f9-tXX-…`, la hace un agente; el agente principal coordina, revisa y hace los merges.
+- **Como máximo 3 ramas con código a la vez** (la Mac de 8 GB). En el Mac cada rama corre solo las pruebas y el typecheck de los paquetes que toca; **nunca dos `pnpm check` completos a la vez**. El chequeo completo lo corre la CI de GitHub en cada PR, y el merge exige `check` e `image` en verde sobre el último commit, como siempre.
+- **Archivos calientes en serie:** dos ramas en paralelo no tocan los mismos archivos de alto choque (`packages/db/src/schema.ts` y las migraciones, `packages/core/src/enums.ts`, `permissions.ts`, `apps/api/src/access.ts` y los `index.ts` que reexportan). Si dos tareas los necesitan, se encadenan o la segunda se rebasa sobre la primera ya mergeada. Las migraciones de F9 se numeran al hacer el merge.
+- `revisor` revisa cada PR (y el `arquitecto` los que cambian contratos), en paralelo con la CI.
+- El operador **no aprueba tarea por tarea** (su aprobación permanente del 2026-10-01). Sí decide sus cuentas, las pruebas de entrada, todo lo que sea `live` y las etiquetas.
 
 ### F9-T01 · Plataformas, marcas y estados nuevos
 - **Depende de:** F8 cerrada
@@ -442,6 +468,15 @@ Los tests de contrato de repositorios y de casos de uso de avisos pasan sin camb
 - **Depende de:** T24
 - **Descripción:** `/fase-cerrar 9`: criterios, changelog y tag `v1.1.0`.
 
+### F9-T27 · Despliegue parametrizado por instancia
+- **Depende de:** —
+- **Descripción:** deja listo desplegar una segunda instancia del mismo código (D19) sin cambiar la actual: el nombre de la app de Fly, el dominio y el Environment de GitHub pasan a ser parámetros del flujo de despliegue (por ejemplo, un `fly.<instancia>.toml` y una entrada `instance` en `deploy.yml`). La guía `docs/10-despliegue.md` explica cómo crear la segunda instancia (app de Fly, base de Neon, bucket de R2, secretos, y sus propias apps de Meta, TikTok y X). **No se despliega nada:** desplegar es del operador (D8 de F8).
+- **Archivos principales:** `fly.toml`, `.github/workflows/deploy.yml`, `docs/10-despliegue.md`
+- **Hecho cuando:**
+  - [ ] sin parámetros, el flujo despliega la instancia de hoy igual que antes (mismo `app`, mismo Environment, mismos guardias de la CI)
+  - [ ] la guía de la segunda instancia está escrita y revisada por el `arquitecto`
+  - [ ] `pnpm check` (o la CI) pasa
+
 ### F9-T26 · TikTok (video como borrador)
 - **Depende de:** T07, T10, **prueba S6**
 - **Descripción:** OAuth (Login Kit) con refresco que rota, publisher en modo *Upload* (`video.upload`, `FILE_UPLOAD` por partes desde R2), estado asíncrono (consulta o webhook), traspaso a mano (`awaiting_manual_confirm`) hasta que el operador pega el enlace, variante de video para TikTok, `accounts connect tiktok`.
@@ -495,8 +530,8 @@ Los tests de contrato de repositorios y de casos de uso de avisos pasan sin camb
 - [x] **P1 · LinkedIn** (respondida 2026-10-19): perfil personal a mano; se escribe a LinkedIn por el §3.1(26) y se pasa a API solo si lo permiten. La página de AgentPey queda para cuando exista la organización.
 - [x] **P2 · X** (respondida 2026-10-19): enlaces permitidos y marcados, tope de US$10 al mes.
 - [x] **P3 · Instagram** (respondida 2026-10-19): la prueba S1 la hace el operador cuando llegue el momento.
-- [ ] **P4 · Idiomas.** Elegiste "ambas marcas en los dos idiomas". ¿Cada idea sale como **dos posts separados** (uno en español y otro en inglés, espaciados unas horas, en la misma cuenta) o **un solo post bilingüe** (los dos idiomas en el mismo texto)? Recomendación: separados. En X un texto bilingüe no cabe en 280 caracteres, y separados se pueden aprobar y programar cada uno. Si dices bilingüe en un solo texto, `language` se vuelve una propiedad del post y no del texto. ¿Y las dos cuentas de Instagram, X y LinkedIn son la misma audiencia mezclada o una por idioma?
-- [ ] **P5 · Discord.** ¿Habrá un servidor de pruebas privado para S5? ¿Los reels van a Discord (variante liviana o solo un enlace)? Mi propuesta: un servidor privado y, si el reel supera 20 MiB, un enlace.
+- [x] **P4 · Idiomas** (respondida 2026-10-19, la recomendación): cada idea sale como **dos posts separados**, uno por idioma, espaciados unas horas (6 h por defecto) en la misma cuenta.
+- [x] **P5 · Discord** (respondida 2026-10-19, la recomendación): un servidor de pruebas privado que crea el operador para S5; si el reel supera 20 MiB, va un enlace.
 - [x] **P6 · TikTok** (respondida 2026-10-19): solo video y como borrador en F9; el operador tiene cuentas personales de TikTok y un dominio propio para el piloto.
 
 ## 10. Registro de cambios del spec
@@ -506,3 +541,4 @@ Los tests de contrato de repositorios y de casos de uso de avisos pasan sin camb
 | 2026-10-19 | Revisión del `arquitecto` (11 bloqueantes, aplicados): la migración de enums solo con `ALTER TYPE … ADD VALUE` (la `0006` se detiene con filas) y volver atrás documentado; el resultado dudoso se llama `outcome_unknown` (el `needs_review` de la agenda ya existe) con el progreso "enviando" y sin reintento ciego; el traspaso a mano generalizado por cuenta (LinkedIn); el access token de X al publicar; credenciales por plataforma y redactor de la URL del webhook; el gasto de IA de posts y planes dentro del tope; las corridas de posts fuera de `content.prepare` y del reintento de `auto_publish`; `plan_runs` junto con `posts`; la clase de agenda "token por vencer" (no existía); tareas partidas (T01 a T08), sin tarjeta de texto y con el registro de subidas de posts. Además: índices, unique por idioma, `cost_usd`, `brief_origin`, PKCE en la cookie firmada, permisos `posts.manage`, reglas aviso/post por `kind`, `social:smoke` en `CLAUDE.md`, el borrado de Meta sin tocar `posts` ni `contents`, y las pruebas de entrada hechas a mano |
 | 2026-10-19 | Respuestas del operador: LinkedIn a mano (P1), X con enlaces y tope de US$10 (P2), prueba de Instagram por el operador (P3) y dos idiomas por marca (P4, pendiente la forma de publicarlos) |
 | 2026-10-19 | F8 cerró (`v1.0.0`): ADR renumerados (el 0028 lo tomó «el corredor conecta su propio Instagram»; los de este spec pasan a 0029 y 0030). Acuerdos con el operador: orden F9 → piloto con una oficina → organizaciones (§4.17), TikTok como borrador de video (D16, T26), posts en cualquier corredor, `kind` extensible, alcance siempre por `inScope`/`can`, credenciales que admiten tokens que no vencen y los permisos de anuncios en otra app de Meta (D13). Anuncios, dinero y leads quedan como borradores ADR-0031 a ADR-0033 |
+| 2026-10-19 | **Aprobado por el operador**: el plan tal como está; tres entregas (D20, §5.1); ejecución en paralelo con agentes en worktrees y la CI como juez (D21, §5.2); P4 y P5 con las recomendaciones; la decisión de arquitectura D19 (una instancia ahora, dos del mismo código al llegar el primer cliente) y su tarea T27. ADR-0029 y ADR-0030 pasan a Aceptados |

@@ -1,6 +1,6 @@
 # ADR-0030 · La IA propone ideas y calendario; nada se publica sin que el operador lo apruebe
 
-- **Estado:** Propuesto
+- **Estado:** Aceptado
 - **Fecha:** 2026-10-19
 - **Reemplaza a / Modifica a:** ADR-0013, punto 1, **solo para posts**: la IA escribe el texto completo de cada red (JSON validado) y no frases que el código ensambla, porque un post de marca no tiene datos estructurados que ensamblar; los textos de avisos no cambian (extiende también ADR-0003)
 
