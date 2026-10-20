@@ -46,6 +46,8 @@ export function newPostValues(input: NewPost): typeof posts.$inferInsert {
     createdBy: input.createdBy ?? null,
     rationale: input.rationale ?? null,
     xLinkAllowed: input.xLinkAllowed ?? false,
+    platforms:
+      input.platforms === undefined || input.platforms === null ? null : [...input.platforms],
   };
 }
 

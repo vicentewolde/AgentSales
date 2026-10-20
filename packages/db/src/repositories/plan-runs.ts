@@ -8,7 +8,7 @@ import {
 } from "@agentsales/core";
 import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { SchemaDatabase } from "../client.js";
-import { sqlStateOf, withDbErrors } from "../errors.js";
+import { isUniqueViolation, sqlStateOf, withDbErrors } from "../errors.js";
 import { planRuns, posts } from "../schema.js";
 import { newPostValues, postReferenceInvalid } from "./posts.js";
 
@@ -47,6 +47,13 @@ export function createPlanRunRepository(db: SchemaDatabase): PlanRunRepository {
           return toPlanRun(row);
         });
       } catch (error) {
+        // F9-T20: la marca ya tiene un plan en cola o corriendo (el índice único parcial).
+        if (isUniqueViolation(error, "plan_runs_one_active_per_broker")) {
+          throw new AppError("PLAN_RUN_CONFLICT", "La marca ya tiene un plan en curso", {
+            details: { brokerId: input.brokerId },
+            cause: error,
+          });
+        }
         if (sqlStateOf(error) === "23503") {
           throw new AppError("PLAN_RUN_REFERENCE_INVALID", "El corredor del plan no existe", {
             details: { brokerId: input.brokerId },

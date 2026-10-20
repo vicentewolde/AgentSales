@@ -1,0 +1,2 @@
+ALTER TABLE "posts" ADD COLUMN "platforms" text[];--> statement-breakpoint
+CREATE UNIQUE INDEX "plan_runs_one_active_per_broker" ON "plan_runs" USING btree ("broker_id") WHERE "status" IN ('queued', 'running');

@@ -204,6 +204,25 @@ describe("repositorios con sujeto · lo que el puerto no muestra (PGlite)", () =
     ).rejects.toMatchObject({ code: "PUBLICATION_REFERENCE_INVALID" });
   });
 
+  it("dos planes de la misma marca creados a la vez: uno queda y el otro es PLAN_RUN_CONFLICT (F9-T20)", async () => {
+    const repos = await pglite();
+    const brokerId = (await repos.brokers.create(brokerData(unique("plan-carrera")))).id;
+    const create = () =>
+      repos.planRuns.create({
+        brokerId,
+        periodStart: new Date(),
+        periodEnd: new Date(),
+        request: {},
+      });
+    const results = await Promise.allSettled([create(), create()]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const [rejected] = results.filter((result) => result.status === "rejected");
+    expect(rejected?.status === "rejected" ? rejected.reason : null).toMatchObject({
+      code: "PLAN_RUN_CONFLICT",
+    });
+    expect(await repos.planRuns.listByBroker(brokerId)).toHaveLength(1);
+  });
+
   it("markSucceeded de un plan es todo o nada: una idea que no se puede guardar no deja nada (F9-T20)", async () => {
     const repos = await pglite();
     const brokerId = (await repos.brokers.create(brokerData(unique("plan-rollback")))).id;

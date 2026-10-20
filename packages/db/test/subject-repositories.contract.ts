@@ -755,15 +755,15 @@ export function subjectRepositoriesContract(
       });
     });
 
-    describe("el plan de ideas (F9-T20)", () => {
-      const newPlan = (brokerId = brand) =>
-        repos.planRuns.create({
-          brokerId,
-          periodStart: new Date("2026-11-01T03:00:00Z"),
-          periodEnd: new Date("2026-11-15T03:00:00Z"),
-          request: { platforms: ["x"], count: 2, days: 14, requestedBy: null },
-        });
+    const newPlan = (brokerId = brand) =>
+      repos.planRuns.create({
+        brokerId,
+        periodStart: new Date("2026-11-01T03:00:00Z"),
+        periodEnd: new Date("2026-11-15T03:00:00Z"),
+        request: { platforms: ["x"], count: 2, days: 14, requestedBy: null },
+      });
 
+    describe("el plan de ideas (F9-T20)", () => {
       it("markSucceeded guarda las ideas como posts con el id dado, una sola vez", async () => {
         const plan = await newPlan();
         const ids = [randomUUID(), randomUUID()];
@@ -814,10 +814,11 @@ export function subjectRepositoriesContract(
       });
 
       it("listQueued da los en cola (los más antiguos primero) y failAbandoned cierra los viejos", async () => {
-        const owner = (await repos.brokers.create(brokerData(unique("planes")))).id;
-        const first = await newPlan(owner);
-        const second = await newPlan(owner);
-        const running = await newPlan(owner);
+        // Un plan activo por marca (F9-T20): cada uno de otra marca.
+        const owner = async () => (await repos.brokers.create(brokerData(unique("planes")))).id;
+        const first = await newPlan(await owner());
+        const second = await newPlan(await owner());
+        const running = await newPlan(await owner());
         await repos.planRuns.markRunning(running.id);
         // (El orden entre dos creados en el mismo instante no está fijado: solo quiénes.)
         const queued = (await repos.planRuns.listQueued()).map((run) => run.id);
@@ -838,7 +839,33 @@ export function subjectRepositoriesContract(
       });
     });
 
+    describe("un plan activo por marca (F9-T20)", () => {
+      it("un segundo plan en cola de la misma marca es PLAN_RUN_CONFLICT; terminado el primero, se puede", async () => {
+        const owner = (await repos.brokers.create(brokerData(unique("activo")))).id;
+        const first = await newPlan(owner);
+        await expect(newPlan(owner)).rejects.toMatchObject({ code: "PLAN_RUN_CONFLICT" });
+        await repos.planRuns.markRunning(first.id);
+        await expect(newPlan(owner)).rejects.toMatchObject({ code: "PLAN_RUN_CONFLICT" });
+        await repos.planRuns.markFailed(first.id, { code: "X", message: "x" });
+        expect((await newPlan(owner)).status).toBe("queued");
+        // Otra marca no choca.
+        expect((await newPlan()).brokerId).toBe(brand);
+      });
+    });
+
     describe("PostRepository · lo del plan (F9-T20)", () => {
+      it("las redes del post: null por defecto, se guardan y se cambian", async () => {
+        const post = await newPost();
+        expect(post.platforms).toBeNull();
+        const withPlatforms = await newPost(brand, { platforms: ["x", "linkedin"] });
+        expect(withPlatforms.platforms).toEqual(["x", "linkedin"]);
+        expect((await repos.posts.get(withPlatforms.id))?.platforms).toEqual(["x", "linkedin"]);
+        expect((await repos.posts.update(post.id, { platforms: ["discord"] })).platforms).toEqual([
+          "discord",
+        ]);
+        expect((await repos.posts.update(post.id, { platforms: null })).platforms).toBeNull();
+      });
+
       it("create con id; list por plan; listRecent por creado o planificado, lo más nuevo primero", async () => {
         const owner = (await repos.brokers.create(brokerData(unique("recientes")))).id;
         const id = randomUUID();
@@ -904,6 +931,8 @@ export function subjectRepositoriesContract(
         request: {},
       });
       await repos.planRuns.addLlmUsage(plan.id, call(0.05));
+      // Un plan activo por marca (F9-T20): el primero termina antes del segundo.
+      await repos.planRuns.markFailed(plan.id, { code: "X", message: "x" });
       // Un plan sin gasto no cuenta.
       await repos.planRuns.create({
         brokerId: owner,
