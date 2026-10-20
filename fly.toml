@@ -3,6 +3,10 @@
 # solo; se enciende y se apaga a mano en modo demo, docs/10-despliegue.md). Desplegar es del
 # operador (D8): `.github/workflows/deploy.yml`. Sintaxis verificada: docs/integraciones/hosting.md §14.
 # Aquí solo va lo que no es secreto; los secretos los pone el operador con `fly secrets import`.
+# Es la instancia `principal` (D19 de F9). Otra instancia del mismo código tiene su propio
+# `fly.<instancia>.toml`, una copia de este con otra `app`, `PUBLIC_URL`, `Host` del chequeo y
+# `BACKUP_R2_BUCKET`: lo que cambies aquí que no sea de la instancia, cámbialo también allá
+# (docs/10-despliegue.md, "Una segunda instancia").
 
 app = "agentsales"
 primary_region = "gru"        # São Paulo, la misma región que Neon (aws-sa-east-1)

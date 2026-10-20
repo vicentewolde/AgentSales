@@ -6,10 +6,23 @@
 # El token de Fly vive en el Environment `production` de GitHub, que solo acepta la rama `main`:
 # el guardia de abajo solo da un mensaje claro, pero quien pudiera subir otra rama con este archivo
 # cambiado igual no llegaría al token (lo bloquea GitHub, no este archivo).
+#
+# Instancias (D19 de F9, T27): sin elegir nada se despliega la de hoy (`principal`: `fly.toml` y el
+# Environment `production`), exactamente como antes. Otra instancia del mismo código usa su propio
+# `fly.<instancia>.toml` (otra app de Fly, otro dominio) y su propio Environment
+# `production-<instancia>`, con su token y la misma regla "solo `main`". Para agregar una, la sección
+# "Una segunda instancia" de docs/10-despliegue.md: su archivo, su opción abajo y su Environment.
 name: Desplegar
 
 on:
   workflow_dispatch:
+    inputs:
+      instance:
+        description: "Instancia: principal es la de hoy (fly.toml, Environment production); otra usa fly.<instancia>.toml y production-<instancia>"
+        type: choice
+        options:
+          - principal
+        default: principal
 
 # Solo lectura del repositorio y de los resultados de la CI.
 permissions:
@@ -25,8 +38,11 @@ jobs:
   deploy:
     name: deploy
     runs-on: ubuntu-latest
-    environment: production
+    # `principal` (o sin elegir) → `production`, el de siempre; otra → `production-<instancia>`.
+    environment: ${{ (inputs.instance == '' || inputs.instance == 'principal') && 'production' || format('production-{0}', inputs.instance) }}
     timeout-minutes: 30
+    env:
+      INSTANCE: ${{ inputs.instance || 'principal' }}
     steps:
       - name: Solo desde main
         if: github.ref != 'refs/heads/main'
@@ -55,8 +71,13 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
+          if [ "$INSTANCE" = "principal" ]; then
+            where="el Environment production de GitHub (docs/10-despliegue.md, paso 3)"
+          else
+            where="el Environment production-$INSTANCE de GitHub (docs/10-despliegue.md, \"Una segunda instancia\", punto 7)"
+          fi
           if [ -z "$FLY_API_TOKEN" ]; then
-            echo "::error::Falta el secreto FLY_API_TOKEN en el Environment production de GitHub (docs/10-despliegue.md, paso 3)."
+            echo "::error::Falta el secreto FLY_API_TOKEN en $where."
             exit 1
           fi
 
@@ -68,10 +89,39 @@ jobs:
         with:
           version: 0.4.118
 
+      # Solo para otra instancia (la principal se salta este paso): su archivo existe y no repite la
+      # app, el dominio (`PUBLIC_URL` y el `Host` del chequeo) ni el bucket de respaldos de la
+      # principal: una copia de `fly.toml` a medio cambiar no debe desplegar encima de la instancia
+      # de hoy ni mezclar sus respaldos.
+      - name: La configuración de la instancia
+        if: env.INSTANCE != 'principal'
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          value() { sed -nE "s/^[[:space:]]*$1 = \"([^\"]*)\".*/\1/p" "$2" | head -n 1; }
+          # Sin distinguir mayúsculas ni la barra final: `HTTPS://Dominio/` es el mismo dominio.
+          norm() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's:/*$::'; }
+          printf '%s' "$INSTANCE" | grep -Eq '^[a-z][a-z0-9-]{0,29}$' \
+            || fail "Nombre de instancia no válido: $INSTANCE (minúsculas, números y guiones)."
+          config="fly.$INSTANCE.toml"
+          [ -f "$config" ] || fail "Falta $config en main (docs/10-despliegue.md, \"Una segunda instancia\")."
+          for key in app PUBLIC_URL Host BACKUP_R2_BUCKET; do
+            mine="$(value "$key" "$config")"
+            [ -n "$mine" ] || fail "$config no tiene $key."
+            [ "$(norm "$mine")" != "$(norm "$(value "$key" fly.toml)")" ] \
+              || fail "$config tiene el mismo $key que la instancia principal ($mine): cámbialo."
+          done
+          echo "Instancia $INSTANCE: app $(value app "$config") en $(value PUBLIC_URL "$config") ($config)"
+
       # La imagen se construye en Fly (`--remote-only`) y queda con la etiqueta del commit, para
-      # volver a ella sin reconstruir. `--ha=false`: una máquina por proceso (modo demo, D1).
+      # volver a ella sin reconstruir. `--ha=false`: una máquina por proceso (modo demo, D1). La
+      # principal, con el mismo comando de siempre (`fly.toml`); otra, con `--config` de su archivo.
       - name: Desplegar
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           SHA: ${{ github.sha }}
-        run: flyctl deploy --remote-only --ha=false --image-label "sha-${SHA::12}"
+        run: |
+          if [ "$INSTANCE" = "principal" ]; then
+            flyctl deploy --remote-only --ha=false --image-label "sha-${SHA::12}"
+          else
+            flyctl deploy --config "fly.$INSTANCE.toml" --remote-only --ha=false --image-label "sha-${SHA::12}"
+          fi

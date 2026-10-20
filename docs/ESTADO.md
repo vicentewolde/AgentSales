@@ -98,7 +98,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 |---|---|---|---|
 | — | Spec F9 (`/fase-plan 9`) | ✅ aprobado | (este PR) |
 | 1 · `v1.1.0` | T01 Plataformas, marcas y estados nuevos | ⏳ pendiente | |
-| 1 | T27 Despliegue parametrizado por instancia | ⏳ pendiente | |
+| 1 | T27 Despliegue parametrizado por instancia | ✅ terminada | #169 |
 | 1 | T02 Credenciales por plataforma y redactor | ⏳ pendiente | |
 | 1 | T03 Esquema de posts y migración | ⏳ pendiente | |
 | 1 | T04 Repositorios con sujeto y `PostLock` | ⏳ pendiente | |
