@@ -48,6 +48,7 @@ Preparar el contenido de una propiedad lista (fotos para cada canal, portada, fi
 pnpm -s cli prepare <id_propiedad>                   # --no-texts rehace solo las imágenes; --replace-edits reemplaza tus ediciones
 pnpm -s cli content <id_propiedad> [--platform portal] [--json]
 pnpm eval:content                                    # evalúa los textos de la IA sin guardar nada (gasta cuota; --provider fake no)
+pnpm eval:social                                     # evalúa el plan de ideas y los textos de posts sobre perfiles de prueba, sin la base (gasta cuota; --provider fake no)
 pnpm llm:smoke                                       # una llamada corta a la CLI de Claude con datos inventados
 ```
 En el panel, el detalle de cada propiedad tiene la sección **Contenido**: preparar, el avance, la vista previa por canal (carrusel, caption, reel, Portal y Marketplace) con su revisión editorial y la edición de los textos.

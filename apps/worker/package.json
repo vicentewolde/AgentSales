@@ -9,6 +9,7 @@
     "start": "node dist/src/worker.js",
     "job:ping": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ping.ts",
     "eval:content": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/eval-content.ts",
+    "eval:social": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/eval-social.ts",
     "ig:smoke": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/ig-smoke.ts",
     "fb:smoke": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/fb-smoke.ts",
     "uf:smoke": "NODE_OPTIONS=--conditions=@agentsales/source tsx src/scripts/uf-smoke.ts",
