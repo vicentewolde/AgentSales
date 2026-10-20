@@ -15,6 +15,7 @@ import {
   scheduleChangedPayloadSchema,
   scheduledPayloadSchema,
 } from "../publication.js";
+import { outcomeUnknownPending } from "../publish/outcome.js";
 import { scheduleAt as checkScheduleAt, MAX_SCHEDULE_SPACING_MINUTES } from "../schedule.js";
 import { listingIdOf } from "../subject.js";
 import { channelPublications, createPublications } from "./open-publications.js";
@@ -129,6 +130,8 @@ export async function schedulePublication(
       );
     }
     if (publication.status === "awaiting_manual_confirm") throw manualConfirmPending(publicationId);
+    // No se sabe si salió (ADR-0029 punto 8): programarla podría publicarla dos veces.
+    if (publication.status === "outcome_unknown") throw outcomeUnknownPending(publicationId);
     if (publication.status === "published") {
       throw new AppError("NOTHING_TO_PUBLISH", "Esta publicación ya está publicada", {
         details: { publicationId },

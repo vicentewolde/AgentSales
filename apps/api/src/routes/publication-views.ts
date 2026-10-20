@@ -1,6 +1,5 @@
 import {
   hasStartedLive,
-  listingIdOf,
   type MarketplaceReadiness,
   manualEditPayloadSchema,
   marketplaceManualState,
@@ -40,8 +39,9 @@ export const publicationView = (publication: Publication): PublicationView =>
  */
 export const publicationViewAt = (publication: Publication, now: Date): PublicationView => ({
   id: publication.id,
-  // Las vistas son de publicaciones de avisos; las de posts llegan con sus rutas (F9-T12).
-  listingId: listingIdOf(publication.subject),
+  // El sujeto en sus dos campos (F9-T06): exactamente uno tiene valor.
+  listingId: publication.subject.kind === "listing" ? publication.subject.id : null,
+  postId: publication.subject.kind === "post" ? publication.subject.id : null,
   platformAccountId: publication.platformAccountId,
   platform: publication.platform,
   format: publication.format,
@@ -123,6 +123,8 @@ const STATUS_PAYLOAD_KEYS = [
   "due",
   "byListing",
   "action",
+  // Resolver una con resultado dudoso (F9-T06): lo que dijo el operador.
+  "outcome",
 ] as const;
 
 /**

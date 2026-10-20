@@ -106,6 +106,16 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
       }
       if (result.outcome === "awaiting_manual_confirm") {
         const mode = result.publication.dryRun ? "dry-run" : "live";
+        // Una cuenta a mano de otra red (F9-T06, ADR-0029 punto 9): no hay ventana; el operador la
+        // publica y confirma con el enlace.
+        if (result.publication.platform !== "fb_marketplace") {
+          await windows?.discard(publicationId);
+          logger.info(
+            { mode, platform: result.publication.platform },
+            "cuenta a mano: el texto y los medios quedaron listos; espera la confirmación con el enlace",
+          );
+          return;
+        }
         // A mano (F7, ADR-0023): no hay ventana; el corredor lo publica y confirma.
         if (marketplaceManualState(result.publication)?.byHand === true) {
           await windows?.discard(publicationId);
@@ -123,6 +133,14 @@ export function publicationPublishJob(deps: PublicationPublishJobDeps): Job {
         return;
       }
       await windows?.discard(publicationId);
+      if (result.outcome === "outcome_unknown") {
+        // ADR-0029 punto 8: no se reintenta; el operador dice si salió.
+        logger.warn(
+          { code: result.publication.lastError?.code },
+          "no se sabe si la publicación salió: espera que el operador diga si salió o no",
+        );
+        return;
+      }
       if (result.outcome === "rescheduled") {
         logger.info(
           { retryAt: result.retryAt.toISOString(), code: result.publication.lastError?.code },

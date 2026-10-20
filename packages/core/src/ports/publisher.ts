@@ -1,6 +1,6 @@
 import type { AbortSignalLike } from "../abort.js";
 import type { Broker } from "../broker.js";
-import type { MediaKind, Platform, PublicationFormat } from "../enums.js";
+import type { Language, MediaKind, Platform, PublicationFormat } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { Listing } from "../listing.js";
 import {
@@ -67,8 +67,16 @@ export type PublishInput = {
   format: PublicationFormat;
   /** Portal y Marketplace; `null` en Instagram. */
   title: string | null;
-  /** Instagram: el cuerpo y los hashtags (`instagramCaption`); los demás canales: el cuerpo. */
+  /**
+   * Lo que se envía como texto (`socialCaption`, spec F9 §4.4): en Instagram, LinkedIn, X y TikTok,
+   * el cuerpo y los hashtags; en Portal, Marketplace y Discord, el cuerpo.
+   */
   caption: string;
+  /**
+   * El idioma del texto (el de la publicación, spec F9 §4.4). Lo pone siempre el intento
+   * (`buildPublishInput`); falta solo en lo que se arma sin publicación (`ml:smoke`, `fb:smoke`).
+   */
+  language?: Language;
   media: PublishMediaItem[];
   /** Portal y Marketplace: el aviso, tal como se aprobó (`listing_source_hash`, spec F4 §4.6). */
   listing?: PublishListing;
@@ -264,6 +272,15 @@ export type RemoteStatus = Omit<RemoteState, "checkedAt">;
  *   y `withDryRun` en `dry-run`); un adaptador puede volver a revisarlo, porque es barato.
  * - `publish` lanza `AppError` con `retriable` según la plataforma; puede llamar a `saveProgress`
  *   y retomar desde `ctx.progress`.
+ * - Resultado dudoso (F9, ADR-0029 punto 8): el publisher guarda en su progreso "enviando" **antes**
+ *   de la llamada que publica; si un intento encuentra ese progreso sin resultado (un corte, un
+ *   reinicio del worker, un reencolado), **no** vuelve a llamar: lanza `OUTCOME_UNKNOWN` (no
+ *   reintentable) y el intento deja la publicación en `outcome_unknown`. Un envío que falla sin
+ *   certeza también es `OUTCOME_UNKNOWN`. Las redes sin idempotencia propia (Discord, X) usan
+ *   `sendOnce` (`publish/outcome.ts`), que hace las dos cosas; Instagram y Portal tienen la suya
+ *   (el contenedor y la marca del ítem, F3 y F4) y no cambian.
+ * - Una cuenta en modo `manual` (ADR-0029 punto 9) nunca llega a `publish`: el intento deja el
+ *   texto y los medios listos sin llamar a la red; de ella solo se usa `validate`.
  * - `manualConfirm` (Marketplace, ADR-0017): `publish` deja el formulario listo y devuelve
  *   `PublishHandoff`, nunca "publicado"; el operador hace el clic final y el intento pasa a
  *   `awaiting_manual_confirm`. Un publisher sin la bandera nunca devuelve `PublishHandoff`.

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AbortSignalLike } from "../abort.js";
+import type { Platform } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import {
   hasAccessToken,
@@ -12,6 +13,7 @@ import {
 import type { MercadoLibreAuth } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 import type { AccessTokenProvider } from "../ports/publisher.js";
+import type { PlatformTokenRefresher, RefreshedTokens } from "../ports/token-refresher.js";
 
 /** Con menos de esto de vida, el `access_token` se refresca antes de usarlo (spec F4 §4.3). */
 export const ACCESS_TOKEN_REFRESH_MARGIN_MS = 30 * 60 * 1000;
@@ -64,14 +66,20 @@ const accessTokenClockSchema = z.object({
   accessTokenExpiresAt: z.iso.datetime({ offset: true }).optional().catch(undefined),
 });
 
-/** ¿Le quedan al `access_token` de la cuenta más de 30 min? Sin la fecha, no. */
-export function mercadoLibreTokenStillFresh(account: PlatformAccount, now: Date): boolean {
+/**
+ * ¿Le quedan al `access_token` de la cuenta más de 30 min (`meta.accessTokenExpiresAt`)? Sin la
+ * fecha, no. Lo comparten Mercado Libre y las plataformas con token que rota (X, TikTok).
+ */
+export function accessTokenStillFresh(account: PlatformAccount, now: Date): boolean {
   const { accessTokenExpiresAt } = accessTokenClockSchema.parse(account.meta);
   return (
     accessTokenExpiresAt !== undefined &&
     new Date(accessTokenExpiresAt).getTime() - now.getTime() > ACCESS_TOKEN_REFRESH_MARGIN_MS
   );
 }
+
+/** ¿Le quedan al `access_token` de la cuenta de Mercado Libre más de 30 min? Sin la fecha, no. */
+export const mercadoLibreTokenStillFresh = accessTokenStillFresh;
 
 /** Las credenciales de Mercado Libre: siempre con el `refresh_token` (ADR-0015), o `null`. */
 function withRefreshToken(
@@ -229,7 +237,10 @@ export async function refreshMercadoLibreToken(
 
 /** Marca la cuenta fuera del candado; si no se puede, lo avisa (sin cortar el error original). */
 async function markOutside(
-  deps: MercadoLibreTokenDeps,
+  deps: {
+    platformAccounts: Pick<PlatformAccountRepository, "changeStatus">;
+    onWarning?: (warning: { accountId: string; code: string }) => void;
+  },
   accountId: string,
   to: "expired" | "error",
 ): Promise<void> {
@@ -311,3 +322,176 @@ export async function ensureAccessToken(
   });
   return result.accessToken;
 }
+
+/**
+ * Las plataformas con access token de vida corta y refresh token que rota (ADR-0029 punto 11, spec
+ * F9 §4.7): el intento asegura el token antes de publicar con `ensureRotatingAccessToken`. X tiene
+ * un token de 2 h (F9-T16) y TikTok uno de 24 h (T26). Mercado Libre tiene su propio camino
+ * (`ensureAccessToken`), anterior a F9.
+ */
+export const ROTATING_TOKEN_PLATFORMS: ReadonlySet<Platform> = new Set(["x", "tiktok"]);
+
+export type RotatingTokenDeps = {
+  platformAccounts: Pick<
+    PlatformAccountRepository,
+    "get" | "getCredentials" | "withCredentialsLock" | "changeStatus"
+  >;
+  /**
+   * La renovación de cada plataforma (`packages/publishers`). Sin la de la plataforma de la cuenta,
+   * un token por vencer es `TOKEN_REFRESH_NOT_CONFIGURED`, sin llamar ni cambiar la cuenta.
+   */
+  refreshers: Readonly<Partial<Record<Platform, PlatformTokenRefresher>>>;
+  now?: () => Date;
+  /** Algo secundario que no corta (`ACCOUNT_STATUS_NOT_SAVED`). Solo ids y códigos. */
+  onWarning?: (warning: { accountId: string; code: string }) => void;
+};
+
+/** Lo que pasó dentro del candado de una cuenta con token que rota. */
+type RotatingOutcome =
+  | { kind: "refreshed" | "kept"; accessToken: string }
+  | { kind: "rejected" | "refresh_token_missing" };
+
+const rotatingMissingRefreshToken = (accountId: string) =>
+  new AppError("CREDENTIALS_INVALID", "Faltan datos del acceso guardado: reconecta la cuenta", {
+    details: { accountId, reason: "refresh_token_missing" },
+  });
+
+/**
+ * Un `access_token` vigente de una cuenta con token que rota (X, TikTok; ADR-0029 punto 11), para
+ * publicar, **siempre fuera** de los candados del aviso y del post. Las reglas son las de
+ * `ensureAccessToken` (ADR-0015), con la renovación de la plataforma (`refreshers`):
+ * 1. la cuenta tiene que existir (`ACCOUNT_NOT_FOUND`), ser de una plataforma con token que rota
+ *    (`ACCOUNT_REFRESH_UNSUPPORTED`) y estar conectada (`ACCOUNT_NOT_CONNECTED`), con su
+ *    `refreshToken` (`CREDENTIALS_INVALID`; la cuenta queda en `error`);
+ * 2. si a `meta.accessTokenExpiresAt` le quedan más de 30 min, devuelve el guardado sin bloquear
+ *    (con `rejectedToken`, solo si el guardado ya no es el rechazado);
+ * 3. si no, sin la renovación de la plataforma, `TOKEN_REFRESH_NOT_CONFIGURED`; con la señal ya
+ *    disparada, `TOKEN_REFRESH_ABORTED` (reintentable) sin llamar; y si no, entra al candado de
+ *    credenciales, vuelve a mirar la cuenta y el token y solo entonces renueva **una** vez. Guarda
+ *    el par, `tokenRefreshedAt`, `accessTokenExpiresAt` y `token_expires_at` (el vencimiento del
+ *    refresh token, si la plataforma lo informa) **antes** de devolver el token.
+ * Un refresh token rechazado (`isRejected`) deja la cuenta `expired` dentro del candado y es
+ * `TOKEN_REFRESH_REJECTED` (no reintentable: reconectar); la red, el tope y el candado ocupado
+ * (`ACCOUNT_LOCK_TIMEOUT`) suben sin cambiarla. Riesgo aceptado (ADR-0015): si la plataforma rotó
+ * el par y no se guarda, el próximo refresco será rechazado y habrá que reconectar.
+ */
+export async function ensureRotatingAccessToken(
+  deps: RotatingTokenDeps,
+  accountId: string,
+  { rejectedToken, signal }: EnsureAccessTokenOptions = {},
+): Promise<string> {
+  const now = deps.now ?? (() => new Date());
+  const account = await deps.platformAccounts.get(accountId);
+  if (account === null) {
+    throw new AppError("ACCOUNT_NOT_FOUND", `No existe la cuenta ${accountId}`, {
+      details: { accountId },
+    });
+  }
+  if (!ROTATING_TOKEN_PLATFORMS.has(account.platform)) {
+    throw new AppError(
+      "ACCOUNT_REFRESH_UNSUPPORTED",
+      `El acceso de ${account.platform} no se renueva al publicar`,
+      { details: { accountId, platform: account.platform } },
+    );
+  }
+  if (account.status !== "connected" || !account.hasCredentials) {
+    throw new AppError("ACCOUNT_NOT_CONNECTED", "La cuenta no está conectada: conéctala de nuevo", {
+      details: { accountId, accountStatus: account.status },
+    });
+  }
+  const markOutsideRotating = (to: "expired" | "error") => markOutside(deps, accountId, to);
+
+  let stored: RefreshableCredentials | null;
+  try {
+    stored = withRefreshToken(await deps.platformAccounts.getCredentials(accountId));
+    if (stored === null) throw rotatingMissingRefreshToken(accountId);
+  } catch (error) {
+    if (isAppError(error) && CREDENTIALS_BROKEN.has(error.code)) await markOutsideRotating("error");
+    throw error;
+  }
+  const rejectedIsStored = rejectedToken !== undefined && stored.accessToken === rejectedToken;
+  if (!rejectedIsStored && accessTokenStillFresh(account, now())) return stored.accessToken;
+
+  const refresher = deps.refreshers[account.platform];
+  if (refresher === undefined) {
+    throw new AppError(
+      "TOKEN_REFRESH_NOT_CONFIGURED",
+      `Falta configurar la app de ${account.platform} para renovar el acceso de la cuenta`,
+      { details: { accountId, platform: account.platform } },
+    );
+  }
+  const abortedRefresh = () =>
+    new AppError("TOKEN_REFRESH_ABORTED", "Se cortó el pedido antes de renovar el acceso", {
+      retriable: true,
+      details: { accountId },
+    });
+  if (signal?.aborted) throw abortedRefresh();
+
+  let outcome: RotatingOutcome;
+  try {
+    outcome = await deps.platformAccounts.withCredentialsLock(
+      accountId,
+      async ({ account: current, credentials, save, markProblem }): Promise<RotatingOutcome> => {
+        const pair = withRefreshToken(credentials);
+        if (pair === null) {
+          await markProblem("error");
+          return { kind: "refresh_token_missing" };
+        }
+        const mustRefresh =
+          rejectedToken !== undefined && pair.accessToken === rejectedToken
+            ? true
+            : !accessTokenStillFresh(current, now());
+        if (!mustRefresh) return { kind: "kept", accessToken: pair.accessToken };
+        if (signal?.aborted) throw abortedRefresh();
+        let refreshed: RefreshedTokens;
+        try {
+          // Sin la señal: cortar después de enviar perdería el par que la plataforma ya rotó.
+          refreshed = await refresher.refresh(pair.refreshToken);
+        } catch (error) {
+          if (refresher.isRejected(error)) {
+            await markProblem("expired");
+            return { kind: "rejected" };
+          }
+          throw error;
+        }
+        const refreshedAt = now();
+        await save({
+          credentials: {
+            ...pair,
+            accessToken: refreshed.accessToken,
+            refreshToken: refreshed.refreshToken,
+          },
+          tokenExpiresAt: refreshed.refreshTokenExpiresAt,
+          meta: {
+            tokenRefreshedAt: refreshedAt.toISOString(),
+            accessTokenExpiresAt: refreshed.accessTokenExpiresAt.toISOString(),
+          },
+        });
+        return { kind: "refreshed", accessToken: refreshed.accessToken };
+      },
+    );
+  } catch (error) {
+    if (isAppError(error) && CREDENTIALS_BROKEN.has(error.code)) await markOutsideRotating("error");
+    throw error;
+  }
+
+  switch (outcome.kind) {
+    case "refreshed":
+    case "kept":
+      return outcome.accessToken;
+    case "rejected":
+      throw new AppError(
+        "TOKEN_REFRESH_REJECTED",
+        "La plataforma ya no acepta el acceso de la cuenta (venció o se revocó): reconéctala",
+        { details: { accountId, reason: "refresh_rejected" } },
+      );
+    case "refresh_token_missing":
+      throw rotatingMissingRefreshToken(accountId);
+  }
+}
+
+/** El proveedor de token de una cuenta con token que rota, para el contexto del publisher. */
+export const rotatingAccessTokenProvider =
+  (deps: RotatingTokenDeps, accountId: string): AccessTokenProvider =>
+  (options) =>
+    ensureRotatingAccessToken(deps, accountId, options);

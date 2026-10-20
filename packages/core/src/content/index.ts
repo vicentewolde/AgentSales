@@ -17,6 +17,7 @@ export {
   listingTitle,
   normalizeHashtag,
   normalizeHashtags,
+  socialCaption,
   stripEmoji,
 } from "./assemble.js";
 export { type BriefFeature, buildContentBrief, type ContentBrief } from "./brief.js";

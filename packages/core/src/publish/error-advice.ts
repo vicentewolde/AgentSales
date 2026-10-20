@@ -102,6 +102,16 @@ const ADVICE: Readonly<Record<string, string>> = {
     "No se sabe si salió: revisa el perfil de Instagram antes de reintentar (podría duplicarse).",
   ML_PUBLISH_OUTCOME_UNKNOWN:
     "No se sabe si se creó el aviso: revisa tus publicaciones en Mercado Libre antes de reintentar.",
+  // F9 (ADR-0029 punto 8): el estado `outcome_unknown`; no se reintenta, se resuelve.
+  OUTCOME_UNKNOWN:
+    "Revisa la cuenta en la red: si salió, márcala como publicada (con el enlace); si no, márcala como no publicada y reintenta.",
+  OUTCOME_RESOLVED_NOT_PUBLISHED: "Reintenta para publicarla de nuevo, o descártala.",
+  // Una cuenta a mano de otra red (F9-T06, ADR-0029 punto 9).
+  MANUAL_NOT_PUBLISHED: "Reintenta para dejar el texto listo de nuevo, o descártala.",
+  // El token de X o TikTok al publicar (F9-T06, ADR-0029 punto 11).
+  TOKEN_REFRESH_REJECTED: RECONNECT,
+  TOKEN_REFRESH_NOT_CONFIGURED:
+    "Falta configurar la app de la red en .env para renovar el acceso: agrégala y reinicia.",
   // Del sistema.
   PUBLISHER_NOT_CONFIGURED: ASK_HELP,
   INTERNAL_ERROR: ASK_HELP,

@@ -9,7 +9,9 @@ import {
   createFakePublisher,
   createInMemoryJobQueue,
   createInMemoryPublicationRepository,
+  createPostPublicationScenario,
   createPublicationScenario,
+  createSendOncePublisher,
   type FakePublisherOptions,
   PUBLICATION_SCENARIO_TOKEN,
 } from "@agentsales/core/testing";
@@ -490,5 +492,111 @@ describe("job publication.publish · Marketplace a mano (F7-T15)", () => {
         (line) => line.msg === "Marketplace a mano: espera que el corredor lo publique y confirme",
       ),
     ).toMatchObject({ mode: "live" });
+  });
+});
+
+describe("job publication.publish · posts (F9-T06)", () => {
+  /** El job sobre las publicaciones de un post, con su publisher y las ventanas vigiladas. */
+  async function postSetup(
+    options: Parameters<typeof createPostPublicationScenario>[0] = {},
+    publishers: Parameters<
+      Awaited<ReturnType<typeof createPostPublicationScenario>>["publishDeps"]
+    >[0] = {},
+  ) {
+    const t = await createPostPublicationScenario(options);
+    const controller = new AbortController();
+    const windows = { activate: vi.fn(async () => true), discard: vi.fn(async () => {}) };
+    const job = publicationPublishJob({
+      shared: t.publishDeps(publishers),
+      queue: createInMemoryJobQueue(),
+      signal: controller.signal,
+      marketplaceWindows: windows,
+    });
+    const { logger, lines } = captureLogger();
+    const { boss, workers } = fakeBoss();
+    await registerJobs(boss, [job], logger);
+    const attempt = (publication: Publication, retryCount = 0) =>
+      workers.get("publication.publish")?.([
+        {
+          id: `job-${retryCount}`,
+          data: { publicationId: publication.id },
+          retryCount,
+          retryLimit: 3,
+        },
+      ]);
+    return { t, controller, windows, lines, attempt };
+  }
+
+  it("un corte del worker tras «enviando»: el arranque la reencola y el reintento la deja dudosa sin volver a publicar", async () => {
+    const holder: { controller?: AbortController } = {};
+    const abort = { abort: () => holder.controller?.abort() };
+    const discord = createSendOncePublisher("discord", { steps: [{ abort }] });
+    const { t, controller, lines, attempt, windows } = await postSetup({}, { discord });
+    holder.controller = controller;
+    const publication = await t.toPublishing(t.publicationOf("discord"));
+
+    await expect(attempt(publication, 0)).rejects.toMatchObject({
+      code: "PUBLISH_ABORTED",
+      retriable: true,
+    });
+    expect(t.current(publication.id)?.status).toBe("publishing");
+
+    // Al arrancar, el worker reencola también las `publishing` de posts.
+    const queue = createInMemoryJobQueue();
+    await expect(requeuePublishingPublications(t.publications, queue)).resolves.toEqual({
+      requeued: 1,
+      failed: [],
+    });
+    expect(queue.jobs.map((job) => job.data)).toEqual([{ publicationId: publication.id }]);
+
+    // El reintento (con un worker nuevo, sin el corte) no vuelve a llamar a la red.
+    const second = publicationPublishJob({
+      shared: t.publishDeps({ discord }),
+      queue: createInMemoryJobQueue(),
+      signal: new AbortController().signal,
+      marketplaceWindows: windows,
+    });
+    const logged = captureLogger();
+    const { boss, workers } = fakeBoss();
+    await registerJobs(boss, [second], logged.logger);
+    await expect(
+      workers.get("publication.publish")?.([
+        { id: "job-1", data: { publicationId: publication.id }, retryCount: 1, retryLimit: 3 },
+      ]),
+    ).resolves.toBeUndefined();
+    expect(t.current(publication.id)).toMatchObject({
+      status: "outcome_unknown",
+      lastError: { code: "OUTCOME_UNKNOWN" },
+    });
+    expect(discord.sends).toHaveLength(1);
+    expect(
+      logged.lines.find(
+        (line) =>
+          line.msg ===
+          "no se sabe si la publicación salió: espera que el operador diga si salió o no",
+      ),
+    ).toMatchObject({ code: "OUTCOME_UNKNOWN" });
+    expect(lines.at(-1)).toMatchObject({ code: "PUBLISH_ABORTED" });
+  });
+
+  it("una cuenta a mano de otra red: sin ventana, el job lo registra y termina bien", async () => {
+    const { t, windows, lines, attempt } = await postSetup({
+      texts: [{ platform: "linkedin", language: "es" }],
+      accounts: [{ platform: "linkedin", meta: { mode: "manual" } }],
+    });
+    const publication = await t.toPublishing(t.publicationOf("linkedin"));
+
+    await expect(attempt(publication)).resolves.toBeUndefined();
+
+    expect(t.current(publication.id)?.status).toBe("awaiting_manual_confirm");
+    expect(windows.activate).not.toHaveBeenCalled();
+    expect(windows.discard).toHaveBeenCalledWith(publication.id);
+    expect(
+      lines.find(
+        (line) =>
+          line.msg ===
+          "cuenta a mano: el texto y los medios quedaron listos; espera la confirmación con el enlace",
+      ),
+    ).toMatchObject({ mode: "live", platform: "linkedin" });
   });
 });

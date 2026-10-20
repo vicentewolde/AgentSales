@@ -4,6 +4,7 @@ import type { ListingLock } from "../ports/listing-lock.js";
 import type { PublicationRepository } from "../ports/publication-repository.js";
 import type { Publication, PublicationActor } from "../publication.js";
 import { canTransition } from "../publication-state.js";
+import { outcomeUnknownPending } from "../publish/outcome.js";
 import { listingIdOf } from "../subject.js";
 import { publicationNotFound } from "./publication-start.js";
 
@@ -19,6 +20,8 @@ export type CancelPublicationDeps = {
  * texto sigue aprobado: publicar de nuevo abre otra. Errores (`AppError`):
  * - espera el clic final de Marketplace → `MANUAL_CONFIRM_PENDING` (409): la máquina deja
  *   descartarla, pero primero el operador dice si la publicó (spec F5 §4.3, D11);
+ * - no se sabe si salió (`outcome_unknown`, ADR-0029 punto 8) → `OUTCOME_UNKNOWN_PENDING` (409):
+ *   primero el operador la resuelve (`resolvePublication`);
  * - no existe → `PUBLICATION_NOT_FOUND` (404);
  * - se está publicando → `PUBLICATION_IN_PROGRESS` (409: espera a que termine);
  * - ya publicada, descartada o retirada → `INVALID_TRANSITION` (409; una publicada se retira).
@@ -35,6 +38,8 @@ export async function cancelPublication(
     if (publication === null) throw publicationNotFound(publicationId);
     // El sistema nunca da por no publicado lo que no vio (spec F5 §4.3, D11).
     if (publication.status === "awaiting_manual_confirm") throw manualConfirmPending(publicationId);
+    // Tampoco lo que pudo haber salido (ADR-0029 punto 8): primero dice si salió o no.
+    if (publication.status === "outcome_unknown") throw outcomeUnknownPending(publicationId);
     if (publication.status === "publishing") {
       throw new AppError(
         "PUBLICATION_IN_PROGRESS",

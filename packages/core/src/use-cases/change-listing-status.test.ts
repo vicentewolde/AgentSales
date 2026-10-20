@@ -142,6 +142,11 @@ async function addPublication(
     });
   } else if (status === "awaiting_manual_confirm") {
     await move("publishing", "awaiting_manual_confirm");
+  } else if (status === "outcome_unknown") {
+    // F9-T06: no se sabe si salió.
+    await move("publishing", "outcome_unknown", {
+      lastError: { code: "OUTCOME_UNKNOWN", message: "x", retriable: false },
+    });
   } else if (status === "published") {
     await move("publishing", "published", { externalId: `ext-${id}`, publishedAt: NOW });
   } else {
@@ -374,6 +379,8 @@ describe("changeListingStatus", () => {
     for (const [status, code] of [
       ["publishing", "PUBLICATION_IN_PROGRESS"],
       ["awaiting_manual_confirm", "MANUAL_CONFIRM_PENDING"],
+      // F9-T06 (ADR-0029 punto 8): una con resultado dudoso se resuelve antes.
+      ["outcome_unknown", "OUTCOME_UNKNOWN_PENDING"],
     ] as const) {
       const { t, deps, calls } = await setup();
       await addPublication(t, "fb_marketplace", status);
@@ -575,6 +582,8 @@ describe("changeListingStatus", () => {
     for (const [status, code] of [
       ["publishing", "PUBLICATION_IN_PROGRESS"],
       ["awaiting_manual_confirm", "MANUAL_CONFIRM_PENDING"],
+      // F9-T06 (ADR-0029 punto 8): una con resultado dudoso se resuelve antes.
+      ["outcome_unknown", "OUTCOME_UNKNOWN_PENDING"],
     ] as const) {
       const { t, deps, portalId } = await setup({ dryRun: true, apiMode: "dry-run" });
       await t.publications.transition(

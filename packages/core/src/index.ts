@@ -339,8 +339,10 @@ export {
   INSTAGRAM_PUBLISH_SCOPE,
   type InstagramAccountMeta,
   instagramAccountMetaSchema,
+  isManualAccount,
   isManualMarketplaceAccount,
   MANUAL_MARKETPLACE_ACCOUNT_ID,
+  MANUAL_MODE_PLATFORMS,
   type MarketplaceAccountMeta,
   type MarketplaceManualMeta,
   type MarketplaceProfileMeta,
@@ -590,6 +592,7 @@ export {
   type SpecSheetData,
   slideKeyInput,
 } from "./ports/slide-templates.js";
+export type { PlatformTokenRefresher, RefreshedTokens } from "./ports/token-refresher.js";
 export type { UfValue, UfValueSource } from "./ports/uf-value-source.js";
 export type {
   InvitationRepository,
@@ -673,6 +676,33 @@ export {
   signPublishMedia,
   toPublishListing,
 } from "./publish/input.js";
+export {
+  isOutcomeUnknown,
+  type ManualHandoffProgress,
+  manualHandoffProgressSchema,
+  manualHandoffStateSchema,
+  OUTCOME_UNKNOWN,
+  OUTCOME_UNKNOWN_CODES,
+  type OutcomeUnknownReason,
+  outcomeUnknown,
+  outcomeUnknownPending,
+  type PendingSend,
+  pendingSend,
+  type SendOnceOptions,
+  type SendProgress,
+  type SendState,
+  type SentResult,
+  sendOnce,
+  sendProgressSchema,
+  sendStateSchema,
+  sentResultSchema,
+  socialProgressSchema,
+} from "./publish/outcome.js";
+export {
+  PUBLISHED_URL_MAX_LENGTH,
+  type PublishedRefFromUrl,
+  parsePublishedUrl,
+} from "./publish/published-url.js";
 export {
   consecutiveLimitWaits,
   MAX_LIMIT_WAIT_MINUTES,
@@ -826,12 +856,17 @@ export { getEditorialProfile, saveEditorialProfile } from "./use-cases/editorial
 export {
   ACCESS_TOKEN_REFRESH_MARGIN_MS,
   accessTokenProvider,
+  accessTokenStillFresh,
   type EnsureAccessTokenOptions,
   ensureAccessToken,
+  ensureRotatingAccessToken,
   type MercadoLibreRefreshResult,
   type MercadoLibreTokenDeps,
   mercadoLibreTokenStillFresh,
+  ROTATING_TOKEN_PLATFORMS,
+  type RotatingTokenDeps,
   refreshMercadoLibreToken,
+  rotatingAccessTokenProvider,
 } from "./use-cases/ensure-access-token.js";
 export {
   type EvaluatedText,
@@ -1016,6 +1051,14 @@ export {
   type RequestMarketplaceLoginDeps,
   requestMarketplaceLogin,
 } from "./use-cases/request-marketplace-login.js";
+export {
+  NOT_PUBLISHED_RESOLUTION_CODE,
+  PUBLICATION_RESOLUTIONS,
+  type PublicationResolution,
+  type ResolvePublicationDeps,
+  type ResolvePublicationResult,
+  resolvePublication,
+} from "./use-cases/resolve-publication.js";
 export {
   type ResumeAutoPublishDeps,
   type ResumedAutoPublish,

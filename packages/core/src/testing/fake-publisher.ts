@@ -10,6 +10,7 @@ import type {
   PublishValidation,
   RemoteStatus,
 } from "../ports/publisher.js";
+import { sendOnce } from "../publish/outcome.js";
 import { structuredCopy } from "./copy.js";
 
 /**
@@ -164,6 +165,78 @@ export function createFakePublisher(options: FakePublisherOptions = {}): FakePub
         externalUrl: `https://example.test/p/${input.publicationId}`,
       };
       return { simulated: false, ...result };
+    },
+  };
+}
+
+/** Lo que hace la llamada que publica de `createSendOncePublisher`, en orden. */
+export type FakeSendStep =
+  /** Publica: devuelve un id y un enlace. */
+  | "ok"
+  /** Falla sin certeza (un corte de red): `sendOnce` lo vuelve `OUTCOME_UNKNOWN`. */
+  | "cut"
+  /** Dispara `abort` (el apagado del worker) y falla: el intento queda en `publishing`. */
+  | { abort: { abort(): void } }
+  /** Falla con un error que prueba que no salió (`notSent`): se borra el "enviando". */
+  | { notSent: Error };
+
+export type SendOncePublisher = Publisher & {
+  /** Los inputs de cada llamada que publica (las que llegaron a la red), en orden. */
+  sends: PublishInput[];
+  /** Los tokens que pidió al proveedor del contexto, en orden. */
+  tokens: string[];
+};
+
+/**
+ * Publisher falso de una red sin idempotencia (Discord, X) que usa `sendOnce` (ADR-0029 punto 8),
+ * para los tests del resultado dudoso: registra solo las llamadas que publican. Con
+ * `useAccessToken`, pide el token al contexto antes de enviar (X: `ensureRotatingAccessToken`).
+ */
+export function createSendOncePublisher(
+  platform: Platform,
+  {
+    steps = [],
+    useAccessToken = false,
+    now,
+  }: { steps?: FakeSendStep[]; useAccessToken?: boolean; now?: () => Date } = {},
+): SendOncePublisher {
+  const pending = [...steps];
+  const sends: PublishInput[] = [];
+  const tokens: string[] = [];
+  const notSentErrors = new Set<unknown>();
+  return {
+    platform,
+    formats: ["post"],
+    sends,
+    tokens,
+    validate: () => ({ ok: true }),
+    async publish(input: PublishInput, ctx: PublishContext): Promise<PublishOutcome> {
+      if (useAccessToken) {
+        if (ctx.accessToken === undefined) throw new Error("el intento no armó el proveedor");
+        tokens.push(await ctx.accessToken());
+      }
+      const result = await sendOnce(ctx, {
+        ...(now === undefined ? {} : { now }),
+        notSent: (error) => notSentErrors.has(error),
+        send: async () => {
+          sends.push(structuredCopy(input));
+          const step = pending.shift() ?? "ok";
+          if (step === "ok") {
+            return {
+              externalId: `msg-${sends.length}`,
+              externalUrl: `https://example.test/${platform}/${sends.length}`,
+            };
+          }
+          if (step === "cut") throw new Error("se cortó la conexión");
+          if ("abort" in step) {
+            step.abort.abort();
+            throw new Error("se cortó la llamada");
+          }
+          notSentErrors.add(step.notSent);
+          throw step.notSent;
+        },
+      });
+      return { ...result, simulated: false };
     },
   };
 }

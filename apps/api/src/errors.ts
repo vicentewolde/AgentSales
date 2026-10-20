@@ -100,6 +100,9 @@ const CONFLICTS = new Set([
   "POST_NOT_READY",
   // F9-T05: `/contents/:id` es solo de avisos hasta las rutas de posts (T12).
   "CONTENT_NOT_FOR_LISTING",
+  // F9-T06 (ADR-0029 punto 8): una publicación con resultado dudoso espera que el operador diga si
+  // salió (descartar, reintentar, programar, quitar la aprobación, cerrar o archivar).
+  "OUTCOME_UNKNOWN_PENDING",
   // F7-T12 (spec F7 §4.7): el corredor llegó a su tope de IA del mes (subir el tope o esperar).
   "LLM_BUDGET_EXCEEDED",
   // F8 (spec §4.14): empezar una carga a la que le faltan archivos (subirlos y volver a empezar).
@@ -115,6 +118,8 @@ const CONFLICTS = new Set([
  */
 const CLIENT_MISSING = new Set([
   "MARKETPLACE_URL_REQUIRED",
+  // F9-T06: confirmar en vivo una publicación a mano de otra red sin su enlace.
+  "PUBLISHED_URL_REQUIRED",
   // F6-T10: una hora de programar fuera del rango (2 min a 60 días) y cerrar sin el motivo.
   "SCHEDULE_TOO_SOON",
   "SCHEDULE_TOO_FAR",
@@ -168,6 +173,8 @@ const NOT_CONFIGURED = new Set([
   // F4-T19: la API no tiene las operaciones de esa plataforma (no debería pasar: `server.ts` las
   // compone).
   "PUBLISHER_NOT_CONFIGURED",
+  // F9-T06: falta la app de una red con token que rota (X, TikTok) para renovar el acceso.
+  "TOKEN_REFRESH_NOT_CONFIGURED",
   // La UF (spec F5 §4.6): sin token del Banco Central, o con uno que rechaza; el Banco Central
   // todavía no publica el valor de hoy (se reintenta más tarde).
   "UF_SOURCE_NOT_CONFIGURED",
@@ -304,7 +311,12 @@ const READINESS_CODES = new Set([
 ]);
 
 /** Los errores que nombran la publicación de Marketplace que espera el clic final. */
-const WAITING_PUBLICATION_CODES = new Set(["MANUAL_CONFIRM_PENDING", "MARKETPLACE_FORM_OPEN"]);
+const WAITING_PUBLICATION_CODES = new Set([
+  "MANUAL_CONFIRM_PENDING",
+  "MARKETPLACE_FORM_OPEN",
+  // F9-T06: la publicación con resultado dudoso que hay que resolver primero.
+  "OUTCOME_UNKNOWN_PENDING",
+]);
 
 /**
  * Lo único de `details` que sale (seguimiento de ADR-0011), campo por campo y validado; si no
@@ -314,7 +326,8 @@ const WAITING_PUBLICATION_CODES = new Set(["MANUAL_CONFIRM_PENDING", "MARKETPLAC
  *   campo de la marca y el motivo; y de `EDITORIAL_PROFILE_INVALID` (F9-T09): el campo del perfil
  *   (`pillars[1].key`) y el motivo;
  * - `publicationId` de `MANUAL_CONFIRM_PENDING` y `MARKETPLACE_FORM_OPEN` (F5-T08): la publicación
- *   que espera el clic final (un id, para ofrecer "lo publiqué" o "no lo publiqué").
+ *   que espera el clic final (un id, para ofrecer "lo publiqué" o "no lo publiqué"); y desde F9-T06
+ *   de `OUTCOME_UNKNOWN_PENDING`: la que espera que el operador diga si salió.
  */
 function extrasOf(code: string, details: Record<string, unknown> | undefined): ErrorExtras {
   if (READINESS_CODES.has(code)) {

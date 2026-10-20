@@ -437,7 +437,13 @@ export type MarketplaceManualView = z.infer<typeof marketplaceManualSchema>;
  */
 export const publicationViewSchema = z.object({
   id: z.string(),
-  listingId: z.string(),
+  /** El aviso de la publicación; `null` si es de un post (F9-T06, ADR-0029). */
+  listingId: z.string().nullable(),
+  /**
+   * El post de la publicación (F9-T06, ADR-0029); `null` si es de un aviso. Un servidor anterior a
+   * F9-T06 no lo manda: se lee como `null` (sus publicaciones son todas de avisos).
+   */
+  postId: z.string().nullable().default(null),
   platformAccountId: z.string(),
   platform: z.enum(PLATFORMS),
   format: z.enum(PUBLICATION_FORMATS),

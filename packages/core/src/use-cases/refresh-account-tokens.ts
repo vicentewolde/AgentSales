@@ -28,7 +28,11 @@ export const TOKEN_REFRESH_WINDOW_MS = 30 * DAY_MS;
  */
 export const MERCADOLIBRE_REFRESH_AGE_MS = 7 * DAY_MS;
 
-/** Las plataformas con refresco, cada una con su política. */
+/**
+ * Las plataformas con refresco, cada una con su política. X (y TikTok) entran con su cliente
+ * (F9-T16 y T26): su política es la del token que rota (`ensureRotatingAccessToken`, F9-T06), que
+ * ya se usa al publicar; aquí sumarán su `case` en `refreshConnected`.
+ */
 const REFRESHABLE_PLATFORMS: ReadonlySet<Platform> = new Set(["instagram", "portal_inmobiliario"]);
 
 export type RefreshAccountTokensDeps = {

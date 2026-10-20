@@ -144,6 +144,8 @@ describe("buildPublishInput", () => {
       format: "post",
       title: null,
       caption: "Departamento luminoso en Ñuñoa.\n\n#nunoa #departamentoventa",
+      // F9-T06: el idioma de la publicación (las de un aviso son `es`).
+      language: "es",
       media: ["m-3", "m-1"].map((id) => {
         const { storagePath, mime, bytes, width, height, durationS, kind } = mediaItem(id);
         return {

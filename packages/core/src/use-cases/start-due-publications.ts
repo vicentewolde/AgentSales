@@ -68,7 +68,10 @@ export async function startDuePublications(deps: StartDueDeps): Promise<StartDue
     skipped: [],
     errors: [],
   };
-  for (const candidate of due) {
+  // `listDue` ve también las de posts (F9-T06); el disparo sigue siendo de avisos hasta F9-T07.
+  // Hasta entonces nada deja un post en `scheduled`: programar es de avisos y la espera ante un
+  // límite no reprograma un post (`waitForLimit`). Si apareciera una, se salta.
+  for (const candidate of due.filter((publication) => publication.subject.kind === "listing")) {
     try {
       const outcome = await startDueOne(deps, candidate, now);
       if (outcome === null) {
