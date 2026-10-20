@@ -4,7 +4,7 @@ import type {
   ListingContentResponse,
   PortalReadinessView,
 } from "@agentsales/api/contracts";
-import { PLATFORM_TEXT, PLATFORMS, type Platform } from "@agentsales/core";
+import { LISTING_PLATFORMS, type ListingPlatform, PLATFORM_TEXT } from "@agentsales/core";
 import { type KeyboardEvent, useRef, useState } from "react";
 import { PublicationsPanel } from "../publications/PublicationsPanel.js";
 import { portalIssuesHint, ReadinessIssueList } from "../ReadinessIssueList.js";
@@ -136,7 +136,7 @@ function ListingPanel({
   edit,
   portalReadiness,
 }: {
-  platform: Platform;
+  platform: ListingPlatform;
   content: ContentView | undefined;
   photos: ContentMedia[];
   edit: EditContext;
@@ -188,19 +188,20 @@ function ListingPanel({
  * la activa se enfoca con Tab, y las flechas, Inicio y Fin cambian de pestaña.
  */
 export function Preview({ content, ...edit }: { content: ListingContentResponse } & EditContext) {
-  const [platform, setPlatform] = useState<Platform>("instagram");
-  const tabs = useRef(new Map<Platform, HTMLButtonElement>());
-  const textOf = (target: Platform) => content.contents.find((item) => item.platform === target);
-  const hasErrors = (target: Platform) =>
+  const [platform, setPlatform] = useState<ListingPlatform>("instagram");
+  const tabs = useRef(new Map<ListingPlatform, HTMLButtonElement>());
+  const textOf = (target: ListingPlatform) =>
+    content.contents.find((item) => item.platform === target);
+  const hasErrors = (target: ListingPlatform) =>
     textOf(target)?.checks.some((check) => check.severity === "error") ?? false;
 
-  const select = (target: Platform) => {
+  const select = (target: ListingPlatform) => {
     setPlatform(target);
     tabs.current.get(target)?.focus();
   };
   const onKeyDown = (event: KeyboardEvent) => {
-    const index = PLATFORMS.indexOf(platform);
-    const last = PLATFORMS.length - 1;
+    const index = LISTING_PLATFORMS.indexOf(platform);
+    const last = LISTING_PLATFORMS.length - 1;
     const next = {
       ArrowRight: index === last ? 0 : index + 1,
       ArrowLeft: index === 0 ? last : index - 1,
@@ -209,7 +210,7 @@ export function Preview({ content, ...edit }: { content: ListingContentResponse 
     }[event.key];
     if (next === undefined) return;
     event.preventDefault();
-    select(PLATFORMS[next] ?? platform);
+    select(LISTING_PLATFORMS[next] ?? platform);
   };
 
   return (
@@ -220,7 +221,7 @@ export function Preview({ content, ...edit }: { content: ListingContentResponse 
         onKeyDown={onKeyDown}
         className="flex gap-1 border-b border-slate-200"
       >
-        {PLATFORMS.map((target) => {
+        {LISTING_PLATFORMS.map((target) => {
           const selected = platform === target;
           return (
             <button
@@ -254,7 +255,7 @@ export function Preview({ content, ...edit }: { content: ListingContentResponse 
       </div>
       {/* Los tres paneles quedan montados (solo se ve el elegido): un borrador abierto en un canal
           no se pierde ni se cruza con otro al cambiar de pestaña. */}
-      {PLATFORMS.map((target) => (
+      {LISTING_PLATFORMS.map((target) => (
         <div
           key={target}
           role="tabpanel"

@@ -32,4 +32,6 @@ export const PUBLICATION_STATUS_TONE: Readonly<Record<PublicationStatus, string>
   paused: "bg-slate-200 text-slate-600",
   unpublished: "bg-slate-200 text-slate-600",
   cancelled: "bg-slate-200 text-slate-600",
+  // F9 (ADR-0029): espera que el operador diga si salió.
+  outcome_unknown: "bg-amber-100 text-amber-800",
 };

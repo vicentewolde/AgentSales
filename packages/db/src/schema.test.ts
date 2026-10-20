@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ACTIVE_CONTENT_RUN_STATUSES,
+  BROKER_KINDS,
   CLOSE_REASONS,
   CONTENT_RUN_STATUSES,
   CONTENT_STATUSES,
@@ -45,6 +46,8 @@ const EXPECTED_ENUMS: Record<string, readonly string[]> = {
   user_role: USER_ROLES,
   session_client: SESSION_CLIENTS,
   invitation_purpose: INVITATION_PURPOSES,
+  // F9-T01 (0014): corredor o marca.
+  broker_kind: BROKER_KINDS,
 };
 
 const EXPECTED_TABLES = [

@@ -4,6 +4,7 @@ import {
   MEDIA_ZIP_EXTENSION,
   XLSX_EXTENSION,
 } from "@agentsales/api/contracts";
+import { brokerHoldsListings } from "@agentsales/core";
 import { type FormEvent, useId, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { checkFolder, folderSelection, type UploadProgress } from "../api/upload.js";
@@ -193,7 +194,8 @@ function ImportForm() {
           </label>
           <select id={ids.broker} name="broker" defaultValue="" className={fieldClass}>
             <option value="">Desde la hoja Corredor del Excel</option>
-            {(brokers.data ?? []).map((broker) => (
+            {/* Una marca (F9) no tiene propiedades: no se ofrece. */}
+            {(brokers.data ?? []).filter(brokerHoldsListings).map((broker) => (
               <option key={broker.id} value={broker.slug}>
                 {broker.brandName} ({broker.slug})
               </option>

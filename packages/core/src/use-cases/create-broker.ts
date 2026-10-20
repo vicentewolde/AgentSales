@@ -6,6 +6,7 @@ import {
   normalizeBrokerBrand,
   normalizeLlmMonthlyCap,
 } from "../broker.js";
+import type { BrokerKind } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import { assertCan } from "../permissions.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
@@ -13,6 +14,8 @@ import type { User } from "../user.js";
 
 export type CreateBrokerInput = BrokerBrandInput & {
   slug: string;
+  /** `broker` (por defecto) o `brand`, una marca que solo publica posts (F9, ADR-0029). */
+  kind?: BrokerKind;
   /** Corredor propio del operador (su plan de Claude, Marketplace automático). Por defecto, no. */
   operatorOwned?: boolean;
   /** Tope de IA del mes en dólares; `null` o ausente = sin tope. */
@@ -63,19 +66,22 @@ export async function createBroker(
   if ((await deps.brokers.findBySlug(slug)) !== null) throw slugTaken(slug);
   let broker: Broker;
   try {
-    broker = await deps.brokers.create({
-      slug,
-      name: brand.name ?? "",
-      brandName: brand.brandName ?? "",
-      primaryColor: brand.primaryColor ?? "",
-      secondaryColor: brand.secondaryColor ?? brand.primaryColor ?? "",
-      whatsapp: brand.whatsapp ?? null,
-      email: brand.email ?? null,
-      instagramHandle: brand.instagramHandle ?? null,
-      website: brand.website ?? null,
-      tone: brand.tone ?? null,
-      fixedHashtags: brand.fixedHashtags ?? [],
-    });
+    broker = await deps.brokers.create(
+      {
+        slug,
+        name: brand.name ?? "",
+        brandName: brand.brandName ?? "",
+        primaryColor: brand.primaryColor ?? "",
+        secondaryColor: brand.secondaryColor ?? brand.primaryColor ?? "",
+        whatsapp: brand.whatsapp ?? null,
+        email: brand.email ?? null,
+        instagramHandle: brand.instagramHandle ?? null,
+        website: brand.website ?? null,
+        tone: brand.tone ?? null,
+        fixedHashtags: brand.fixedHashtags ?? [],
+      },
+      input.kind === undefined ? {} : { kind: input.kind },
+    );
   } catch (error) {
     // Dos altas del mismo `slug` a la vez: la segunda pierde (el repositorio lo informa así).
     if (isAppError(error) && error.code === "BROKER_CONFLICT") throw slugTaken(slug);

@@ -1,9 +1,9 @@
 import {
   formatChileTime,
+  LISTING_PLATFORMS,
+  type ListingPlatform,
   MAX_SCHEDULE_SPACING_MINUTES,
   PLATFORM_TEXT,
-  PLATFORMS,
-  type Platform,
   type PublishMode,
 } from "@agentsales/core";
 import { useId, useState } from "react";
@@ -30,7 +30,7 @@ export function BatchSchedule({
   const schedule = useScheduleListings();
   const spacingId = useId();
   const [open, setOpen] = useState(false);
-  const [platforms, setPlatforms] = useState<Platform[]>([]);
+  const [platforms, setPlatforms] = useState<ListingPlatform[]>([]);
   const [spacing, setSpacing] = useState("0");
   const refOf = new Map(selected.map((listing) => [listing.id, listing.externalRef]));
   const spacingMinutes = Number(spacing);
@@ -39,7 +39,7 @@ export function BatchSchedule({
     spacingMinutes >= 0 &&
     spacingMinutes <= MAX_SCHEDULE_SPACING_MINUTES;
 
-  const toggle = (platform: Platform, on: boolean) =>
+  const toggle = (platform: ListingPlatform, on: boolean) =>
     setPlatforms((current) =>
       on ? [...current, platform] : current.filter((value) => value !== platform),
     );
@@ -80,7 +80,7 @@ export function BatchSchedule({
                 <legend className="font-medium text-slate-700">
                   Canales (sin marcar: todos los que tengan texto aprobado)
                 </legend>
-                {PLATFORMS.map((platform) => (
+                {LISTING_PLATFORMS.map((platform) => (
                   <label key={platform} className="flex items-center gap-1">
                     <input
                       type="checkbox"

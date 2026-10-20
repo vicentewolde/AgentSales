@@ -1,5 +1,5 @@
 import type { AbortSignalLike } from "../abort.js";
-import { PLATFORMS, type Platform } from "../enums.js";
+import { LISTING_PLATFORMS, type Platform } from "../enums.js";
 import { type AssembledText, assembleContents } from "./assemble.js";
 import { type ContentCheck, type ContentCheckContext, checkContent } from "./check.js";
 import { type GenerateContentDraftResult, generateContentDraft } from "./generate.js";
@@ -27,7 +27,7 @@ export async function draftListingTexts(
   const assembled = assembleContents(ctx.brief, result.draft, ctx.contact);
   return {
     ...result,
-    texts: PLATFORMS.map((platform) => ({
+    texts: LISTING_PLATFORMS.map((platform) => ({
       platform,
       text: assembled[platform],
       checks: checkContent(platform, assembled[platform], ctx),

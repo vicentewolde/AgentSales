@@ -1,4 +1,5 @@
 import {
+  assertAutoPublishAllowed,
   type Broker,
   type BrokerBrandInput,
   normalizeBrokerBrand,
@@ -35,6 +36,7 @@ const BRAND_KEYS = [
  * (`broker.settings`, si no `FORBIDDEN` 403, sin cambiar nada). La marca se valida entera antes de
  * escribir (`BROKER_INVALID`). La marca, los ajustes y `autoPublish` se escriben por separado: un
  * fallo de la base entre medio deja lo primero guardado, y repetir el pedido lo completa.
+ * Activar `autoPublish` en una marca es `BROKER_IS_BRAND` (409), sin cambiar nada (F9).
  */
 export async function updateBroker(
   deps: {
@@ -75,6 +77,8 @@ export async function updateBroker(
   if (broker === null) {
     throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${id}`, { details: { id } });
   }
+  // Antes de escribir nada: la publicación automática no se activa en una marca (F9, ADR-0029).
+  if (input.autoPublish === true) assertAutoPublishAllowed(broker);
   if (clearSecondary) brand.secondaryColor = brand.primaryColor ?? broker.primaryColor;
   if (hasBrand) {
     const {
@@ -83,6 +87,7 @@ export async function updateBroker(
       autoPublish: _auto,
       operatorOwned: _own,
       llmMonthlyCapUsd: _cap,
+      kind: _kind,
       ...data
     } = broker;
     broker = await deps.brokers.update(id, { ...data, ...brand });

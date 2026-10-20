@@ -133,7 +133,7 @@ export function pickContentChanges(changes: ContentChanges): ContentChanges {
  * (`editContent`, F2-T12). Un `update` de un id que no existe es `CONTENT_NOT_FOUND`.
  */
 export interface ContentRepository {
-  /** El texto vigente de cada canal del aviso, uno por plataforma, en el orden de `PLATFORMS`. */
+  /** El texto vigente de cada canal del aviso, uno por plataforma, en el orden de `LISTING_PLATFORMS`. */
   listCurrent(listingId: string): Promise<Content[]>;
   /** Los vigentes de varios avisos en una consulta (Seguimiento y agenda, deuda de F6). */
   listCurrentMany(listingIds: readonly string[]): Promise<Content[]>;

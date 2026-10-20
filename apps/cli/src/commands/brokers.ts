@@ -6,7 +6,11 @@ import {
   brokerResponseSchema,
 } from "@agentsales/api/contracts";
 import {
+  autoPublishAllowed,
+  BROKER_KIND_TEXT,
+  BROKER_KINDS,
   type Broker,
+  type BrokerKind,
   formatUsd,
   MAX_LOGO_BYTES,
   ONBOARDING_OWNER_TEXT,
@@ -46,6 +50,13 @@ export function runAutoPublish(
     const broker = [...(await fetchBrokers(deps.client)).values()].find((b) => b.slug === slug);
     if (broker === undefined) {
       throw new CliError("BROKER_NOT_FOUND", `No existe el corredor ${slug}`);
+    }
+    // La regla de core (F9, ADR-0029): la publicación automática es de las propiedades.
+    if (on === "on" && !autoPublishAllowed(broker)) {
+      throw new CliError(
+        "BROKER_IS_BRAND",
+        `${slug} es una marca: la publicación automática es de las propiedades y no se activa en una marca`,
+      );
     }
     const { publishMode } = await createHealthFetcher(deps.client)();
     if (on === "on" && publishMode === "live") {
@@ -87,7 +98,7 @@ async function brokerBySlug(client: ApiClient, slugOption: string): Promise<Brok
 function printBrokerDetail(deps: Io, { broker, onboarding }: BrokerDetailResponse): void {
   const c = deps.colors;
   deps.print(
-    `${c.bold(broker.brandName)} (${broker.slug})${broker.operatorOwned ? " · propio" : ""}`,
+    `${c.bold(broker.brandName)} (${broker.slug})${broker.kind === "brand" ? ` · ${BROKER_KIND_TEXT.brand}` : ""}${broker.operatorOwned ? " · propio" : ""}`,
   );
   deps.print(
     c.dim(
@@ -166,7 +177,17 @@ function brandBody(options: BrandOptions) {
   };
 }
 
-export type CreateOptions = BrandOptions & { slug?: string };
+export type CreateOptions = BrandOptions & { slug?: string; kind?: string };
+
+/** `--kind broker|brand` (F9): un corredor (por defecto) o una marca que solo publica posts. */
+function kindOption(option: string | undefined): BrokerKind | undefined {
+  if (option === undefined) return undefined;
+  const kind = option.trim().toLowerCase();
+  if (!(BROKER_KINDS as readonly string[]).includes(kind)) {
+    throw new CliError("KIND_INVALID", `--kind debe ser ${BROKER_KINDS.join(" o ")}: "${option}"`);
+  }
+  return kind as BrokerKind;
+}
 
 /** `agentsales brokers create --slug <slug> --name … --brand … --color … [más]` (administrador). */
 export function runBrokerCreate(deps: BrokersDeps, options: CreateOptions) {
@@ -182,10 +203,12 @@ export function runBrokerCreate(deps: BrokersDeps, options: CreateOptions) {
         "Faltan --slug, --name, --brand y --color (#RRGGBB): son obligatorios",
       );
     }
+    const kind = kindOption(options.kind);
     const detail = await unwrap(
       deps.client.brokers.$post({
         json: {
           ...brandBody(options),
+          ...(kind === undefined ? {} : { kind }),
           slug: options.slug,
           name: options.name,
           brandName: options.brand,
@@ -194,7 +217,9 @@ export function runBrokerCreate(deps: BrokersDeps, options: CreateOptions) {
       }),
       brokerDetailResponseSchema,
     );
-    deps.print(`${deps.colors.green("✓")} Corredor creado`);
+    deps.print(
+      `${deps.colors.green("✓")} ${detail.broker.kind === "brand" ? "Marca creada" : "Corredor creado"}`,
+    );
     printBrokerDetail(deps, detail);
     return 0;
   });
@@ -345,8 +370,12 @@ export function register(program: Command, ctx: CliContext): void {
   brandOptions(
     brokers
       .command("create")
-      .description("Crea un corredor (administrador)")
-      .option("--slug <slug>", "identificador: minúsculas, números y guiones"),
+      .description("Crea un corredor o una marca (administrador)")
+      .option("--slug <slug>", "identificador: minúsculas, números y guiones")
+      .option(
+        "--kind <broker|brand>",
+        "broker (corredor con propiedades, por defecto) o brand (marca que solo publica posts)",
+      ),
   ).action((options: CreateOptions) => exitWith(() => runBrokerCreate(deps(), options)));
   brandOptions(
     brokers.command("edit").description("Edita un corredor").argument("<slug>", "corredor"),

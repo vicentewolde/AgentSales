@@ -1,8 +1,8 @@
 import { type TrackingResponse, trackingResponseSchema } from "@agentsales/api/contracts";
 import {
   CLOSE_REASON_TEXT,
+  LISTING_PLATFORMS,
   LISTING_STATUS_TEXT,
-  PLATFORMS,
   PUBLICATION_STATUS_TEXT,
   publicationFormatText,
 } from "@agentsales/core";
@@ -21,7 +21,11 @@ export type TrackingOptions = { broker?: string; archived?: boolean; json?: bool
 type Row = TrackingResponse["rows"][number];
 type Cell = Row["cells"][keyof Row["cells"]][number];
 
-function cellText(platform: (typeof PLATFORMS)[number], publication: Cell, c: Colors): string {
+function cellText(
+  platform: (typeof LISTING_PLATFORMS)[number],
+  publication: Cell,
+  c: Colors,
+): string {
   const notes = [
     publication.schedule === "overdue" ? c.yellow("atrasada") : null,
     publication.manualTask ? c.yellow("a mano") : null,
@@ -39,7 +43,7 @@ export function renderTracking(rows: readonly Row[], c: Colors): string {
     rows.map((row) => [
       row.listing.externalRef,
       `${LISTING_STATUS_TEXT[row.listing.status]}${row.listing.closeReason === null ? "" : ` (${CLOSE_REASON_TEXT[row.listing.closeReason]})`}`,
-      ...PLATFORMS.map((platform) => {
+      ...LISTING_PLATFORMS.map((platform) => {
         const cell = row.cells[platform];
         return cell.length === 0
           ? c.dim("—")

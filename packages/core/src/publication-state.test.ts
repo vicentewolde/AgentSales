@@ -11,8 +11,8 @@ import {
   transition,
 } from "./publication-state.js";
 
-// Copia literal del diagrama de docs/01-arquitectura.md (ADR-0014 y ADR-0018), independiente de la
-// implementación.
+// Copia literal del diagrama de docs/01-arquitectura.md (ADR-0014, ADR-0018 y, desde F9, ADR-0029:
+// `outcome_unknown`), independiente de la implementación.
 const STATUSES: readonly PublicationStatus[] = [
   "approved",
   "scheduled",
@@ -23,6 +23,7 @@ const STATUSES: readonly PublicationStatus[] = [
   "paused",
   "unpublished",
   "cancelled",
+  "outcome_unknown",
 ];
 
 const VALID: readonly [PublicationStatus, PublicationStatus][] = [
@@ -37,6 +38,7 @@ const VALID: readonly [PublicationStatus, PublicationStatus][] = [
   ["publishing", "failed"],
   ["publishing", "awaiting_manual_confirm"],
   ["publishing", "scheduled"],
+  ["publishing", "outcome_unknown"],
   ["awaiting_manual_confirm", "published"],
   ["awaiting_manual_confirm", "failed"],
   ["awaiting_manual_confirm", "cancelled"],
@@ -47,6 +49,8 @@ const VALID: readonly [PublicationStatus, PublicationStatus][] = [
   ["published", "unpublished"],
   ["paused", "published"],
   ["paused", "unpublished"],
+  ["outcome_unknown", "published"],
+  ["outcome_unknown", "failed"],
 ];
 
 const isValid = (from: PublicationStatus, to: PublicationStatus) =>
@@ -59,14 +63,14 @@ const INVALID = STATUSES.flatMap((from) =>
 );
 
 describe("máquina de estados de una publicación", () => {
-  it("usa exactamente los 9 estados del diagrama (sin draft ni pending_approval)", () => {
+  it("usa exactamente los 10 estados del diagrama (sin draft ni pending_approval)", () => {
     expect(PUBLICATION_STATUSES).toEqual(STATUSES);
     expect(Object.keys(PUBLICATION_TRANSITIONS).sort()).toEqual([...STATUSES].sort());
   });
 
-  it("cubre la matriz completa de 81 pares: 21 válidos y 60 inválidos", () => {
-    expect(VALID).toHaveLength(21);
-    expect(INVALID).toHaveLength(60);
+  it("cubre la matriz completa de 100 pares: 24 válidos y 76 inválidos", () => {
+    expect(VALID).toHaveLength(24);
+    expect(INVALID).toHaveLength(76);
   });
 
   it.each(VALID)("permite %s → %s", (from, to) => {
@@ -99,11 +103,23 @@ describe("máquina de estados de una publicación", () => {
     ]);
   });
 
-  it("activa es todo estado no terminal, incluido failed", () => {
+  it("activa es todo estado no terminal, incluidos failed y outcome_unknown", () => {
     expect(ACTIVE_PUBLICATION_STATUSES).toEqual(
       STATUSES.filter((status) => status !== "unpublished" && status !== "cancelled"),
     );
     expect(ACTIVE_PUBLICATION_STATUSES).toContain("failed");
+    expect(ACTIVE_PUBLICATION_STATUSES).toContain("outcome_unknown");
+  });
+
+  it("el resultado dudoso: publishing → outcome_unknown → published | failed (ADR-0029)", () => {
+    expect(transition("publishing", "outcome_unknown")).toBe("outcome_unknown");
+    expect(PUBLICATION_TRANSITIONS.outcome_unknown).toEqual(["published", "failed"]);
+    // Solo se llega desde un intento en curso; no se reintenta ni se descarta sin resolverla.
+    expect(STATUSES.filter((status) => canTransition(status, "outcome_unknown"))).toEqual([
+      "publishing",
+    ]);
+    expect(canTransition("outcome_unknown", "publishing")).toBe(false);
+    expect(canTransition("outcome_unknown", "cancelled")).toBe(false);
   });
 
   it("solo nace en approved, desde el texto aprobado (ADR-0014)", () => {
@@ -117,6 +133,7 @@ describe("máquina de estados de una publicación", () => {
       "publishing",
       "failed",
       "awaiting_manual_confirm",
+      "outcome_unknown",
     ]);
     expect(
       ACTIVE_PUBLICATION_STATUSES.filter(

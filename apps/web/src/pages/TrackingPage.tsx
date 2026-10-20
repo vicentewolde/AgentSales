@@ -5,8 +5,8 @@ import {
   type AgendaAction,
   CLOSE_REASON_TEXT,
   formatChileTime,
+  LISTING_PLATFORMS,
   PLATFORM_TEXT,
-  PLATFORMS,
   type Platform,
   PUBLICATION_STATUS_TEXT,
   publicationFormatText,
@@ -174,7 +174,7 @@ export function TrackingMatrix({ rows }: { rows: readonly Row[] }) {
             <th scope="col" className="py-2 pr-3">
               Propiedad
             </th>
-            {PLATFORMS.map((platform) => (
+            {LISTING_PLATFORMS.map((platform) => (
               <th key={platform} scope="col" className="py-2 pr-3">
                 {PLATFORM_TEXT[platform]}
               </th>
@@ -197,7 +197,7 @@ export function TrackingMatrix({ rows }: { rows: readonly Row[] }) {
                   )}
                 </span>
               </th>
-              {PLATFORMS.map((platform) => (
+              {LISTING_PLATFORMS.map((platform) => (
                 <td key={platform} className="py-2 pr-3">
                   {row.cells[platform].length === 0 ? (
                     <span className="text-slate-400">—</span>

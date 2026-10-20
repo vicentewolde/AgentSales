@@ -112,6 +112,7 @@ describe("slugify y brokerDiffers", () => {
       autoPublish: true,
       operatorOwned: false,
       llmMonthlyCapUsd: null,
+      kind: "broker",
     };
     expect(brokerDiffers(broker, parsed.data)).toBe(false);
     expect(brokerDiffers(broker, { ...parsed.data, fixedHashtags: ["#uno"] })).toBe(true);

@@ -38,6 +38,7 @@ function toBroker(row: typeof brokers.$inferSelect): Broker {
     operatorOwned: row.operatorOwned,
     // `numeric` llega como texto: a número (dos decimales).
     llmMonthlyCapUsd: row.llmMonthlyCapUsd === null ? null : Number(row.llmMonthlyCapUsd),
+    kind: row.kind,
   });
   if (!parsed.success) {
     throw new AppError("BROKER_ROW_INVALID", `El corredor ${row.slug} tiene datos inválidos`, {
@@ -47,7 +48,7 @@ function toBroker(row: typeof brokers.$inferSelect): Broker {
   return parsed.data;
 }
 
-/** Columnas que escribe la hoja Corredor; nunca `logo_media_id` ni `auto_publish`. */
+/** Columnas que escribe la hoja Corredor; nunca `logo_media_id`, `auto_publish` ni `kind`. */
 function columnsOf(data: BrokerData) {
   return {
     slug: data.slug,
@@ -95,10 +96,16 @@ export function createBrokerRepository(db: SchemaDatabase): BrokerRepository {
       });
     },
 
-    async create(data) {
+    async create(data, options = {}) {
       try {
         return await withDbErrors(async () => {
-          const [row] = await db.insert(brokers).values(columnsOf(data)).returning();
+          const [row] = await db
+            .insert(brokers)
+            .values({
+              ...columnsOf(data),
+              ...(options.kind === undefined ? {} : { kind: options.kind }),
+            })
+            .returning();
           if (row === undefined)
             throw new AppError("BROKER_WRITE_FAILED", "No se creó el corredor");
           return toBroker(row);

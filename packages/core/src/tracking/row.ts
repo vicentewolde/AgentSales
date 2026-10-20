@@ -1,4 +1,4 @@
-import { PLATFORMS, type Platform, type PublicationFormat } from "../enums.js";
+import { LISTING_PLATFORMS, type ListingPlatform, type PublicationFormat } from "../enums.js";
 import type { Listing } from "../listing.js";
 import { type PortalExpiry, portalExpiry } from "../portal/expiry.js";
 import type { Publication, PublicationError } from "../publication.js";
@@ -42,7 +42,7 @@ export type TrackingRow = {
     | "comuna"
   >;
   /** Por plataforma, la publicación más reciente de cada formato (en el orden de `PUBLICATION_FORMATS`). */
-  cells: Record<Platform, TrackingPublication[]>;
+  cells: Record<ListingPlatform, TrackingPublication[]>;
 };
 
 const httpsOrNull = (url: string | null) => (url?.startsWith("https://") ? url : null);
@@ -93,14 +93,14 @@ export function trackingRow(
     }
   }
   const cells = Object.fromEntries(
-    PLATFORMS.map((platform) => [
+    LISTING_PLATFORMS.map((platform) => [
       platform,
       [...latest.values()]
         .filter((publication) => publication.platform === platform)
         .sort((a, b) => a.format.localeCompare(b.format))
         .map((publication) => trackingPublication(listing, publication, now)),
     ]),
-  ) as Record<Platform, TrackingPublication[]>;
+  ) as Record<ListingPlatform, TrackingPublication[]>;
   return {
     listing: {
       id: listing.id,

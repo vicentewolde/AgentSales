@@ -11,6 +11,9 @@ import { AppError } from "./errors.js";
  * - `scheduled` (F6, ADR-0018): programada para una hora. Se programa desde `approved` o `failed`
  *   (un reintento), se desprograma a `approved`, pasa a `failed` si a la hora no se pudo empezar, y
  *   vuelve desde `publishing` cuando el intento espera que se libere un límite de la plataforma.
+ * - `outcome_unknown` (F9, ADR-0029 punto 8): el intento se cortó después de mandar la publicación y
+ *   no se sabe si la red la publicó. No se reintenta solo: el operador la resuelve, "salió"
+ *   (`published`) o "no salió" (`failed`, desde donde se puede volver a intentar).
  * Los reintentos automáticos de la cola no cambian de estado: la publicación sigue en `publishing`.
  */
 export const PUBLICATION_TRANSITIONS: Readonly<
@@ -18,13 +21,14 @@ export const PUBLICATION_TRANSITIONS: Readonly<
 > = {
   approved: ["scheduled", "publishing", "cancelled"],
   scheduled: ["publishing", "approved", "failed", "cancelled"],
-  publishing: ["published", "failed", "awaiting_manual_confirm", "scheduled"],
+  publishing: ["published", "failed", "awaiting_manual_confirm", "scheduled", "outcome_unknown"],
   awaiting_manual_confirm: ["published", "failed", "cancelled"],
   published: ["paused", "unpublished"],
   failed: ["publishing", "scheduled", "cancelled"],
   paused: ["published", "unpublished"],
   unpublished: [],
   cancelled: [],
+  outcome_unknown: ["published", "failed"],
 };
 
 /**
@@ -52,6 +56,7 @@ export const ACTIVE_PUBLICATION_STATUSES: readonly PublicationStatus[] =
 /**
  * Activas que aún no están en la plataforma (spec F3 §4.2). Mientras un aviso tenga una, no se
  * vuelve a preparar su contenido: reemplazaría el texto o los medios fijados al aprobar.
+ * `outcome_unknown` (F9) también: hasta que el operador la resuelva, no se sabe si salió.
  */
 export const PENDING_PUBLICATION_STATUSES = [
   "approved",
@@ -59,6 +64,7 @@ export const PENDING_PUBLICATION_STATUSES = [
   "publishing",
   "failed",
   "awaiting_manual_confirm",
+  "outcome_unknown",
 ] as const satisfies readonly PublicationStatus[];
 
 export function canTransition(from: PublicationStatus, to: PublicationStatus): boolean {

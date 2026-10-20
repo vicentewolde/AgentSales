@@ -21,7 +21,7 @@ export type GetListingContentDeps = ContentCheckDeps & {
 };
 
 export type ListingContent = {
-  /** El texto vigente de cada canal (en el orden de `PLATFORMS`); vacío si nunca se generó. */
+  /** El texto vigente de cada canal (en el orden de `LISTING_PLATFORMS`); vacío si nunca se generó. */
   contents: CheckedContent[];
   /** El carrusel de Instagram: portada, fotos `ig_4x5` y ficha (hasta 10). */
   carousel: Media[];

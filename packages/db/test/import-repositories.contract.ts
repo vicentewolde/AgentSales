@@ -164,6 +164,17 @@ export function importRepositoriesContract(name: string, make: () => Promise<Imp
       expect(await repos.brokers.findBySlug(slug)).toEqual(updated);
     });
 
+    it("kind: broker por defecto, brand si se pide al crear, y update de la hoja no lo cambia (F9)", async () => {
+      const plain = await repos.brokers.create(brokerData(unique("corredor")));
+      expect(plain.kind).toBe("broker");
+      const slug = unique("marca");
+      const brand = await repos.brokers.create(brokerData(slug), { kind: "brand" });
+      expect(brand).toMatchObject({ slug, kind: "brand", autoPublish: false });
+      const updated = await repos.brokers.update(brand.id, brokerData(slug, { tone: "Formal" }));
+      expect(updated).toEqual({ ...brand, tone: "Formal" });
+      expect(await repos.brokers.findById(brand.id)).toEqual(updated);
+    });
+
     it("setAutoPublish lo activa y lo apaga sin tocar lo demás; un id desconocido → BROKER_NOT_FOUND (F6-T09)", async () => {
       const created = await repos.brokers.create(brokerData(unique("corredor")));
       const on = await repos.brokers.setAutoPublish(created.id, true);

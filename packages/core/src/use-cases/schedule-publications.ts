@@ -1,4 +1,4 @@
-import { PLATFORMS, type Platform } from "../enums.js";
+import { LISTING_PLATFORMS, type Platform } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
 import {
   dateIn,
@@ -302,7 +302,7 @@ export async function scheduleListings(
     now,
   );
   const asked = platforms !== undefined && platforms.length > 0;
-  const channels = asked ? [...new Set(platforms)] : [...PLATFORMS];
+  const channels = asked ? [...new Set(platforms)] : [...LISTING_PLATFORMS];
   // Un solo reloj para todo el lote: la hora se revisó contra este `now`, y un lote largo no debe
   // dejar las últimas propiedades fuera por los segundos que tardó en recorrerse.
   const fixed = { ...deps, now: () => now };

@@ -74,6 +74,53 @@ describe("el alcance (F7-T17)", () => {
   });
 });
 
+describe("una marca (F9, ADR-0029)", () => {
+  it("el administrador que mira una marca no ve Propiedades, Importar ni las cuentas de avisos", async () => {
+    const { h } = await twoBrokers();
+    await h.brokers.create(brokerData("vinny"), { kind: "brand" });
+    h.renderApp("/cuentas");
+
+    // Con "Todos" se ve todo; la marca muestra solo Instagram.
+    expect(await within(menu()).findByRole("link", { name: "Propiedades" })).toBeTruthy();
+    const brand = await screen.findByRole("region", { name: /Marca vinny/ });
+    expect(within(brand).getByRole("heading", { name: "Instagram" })).toBeTruthy();
+    expect(within(brand).queryByRole("heading", { name: /Mercado Libre/ })).toBeNull();
+    expect(within(brand).queryByRole("heading", { name: "Facebook Marketplace" })).toBeNull();
+    expect(within(brand).queryByRole("checkbox", { name: /publicación automática/i })).toBeNull();
+    const broker = screen.getByRole("region", { name: /Marca mio/ });
+    expect(within(broker).getByRole("heading", { name: /Mercado Libre/ })).toBeTruthy();
+
+    const selector = (await screen.findByLabelText("Ver corredor")) as HTMLSelectElement;
+    await waitFor(() => expect(within(selector).getAllByRole("option")).toHaveLength(4));
+    fireEvent.change(selector, { target: { value: "vinny" } });
+    await waitFor(() =>
+      expect(within(menu()).queryByRole("link", { name: "Propiedades" })).toBeNull(),
+    );
+    expect(within(menu()).queryByRole("link", { name: "Importar" })).toBeNull();
+    expect(within(menu()).getByRole("link", { name: "Seguimiento" })).toBeTruthy();
+
+    // De vuelta a un corredor, vuelve todo; Importar no ofrece la marca.
+    fireEvent.change(selector, { target: { value: "mio" } });
+    fireEvent.click(await within(menu()).findByRole("link", { name: "Importar" }));
+    const target = (await screen.findByLabelText("Corredor")) as HTMLSelectElement;
+    await waitFor(() => expect(within(target).getAllByRole("option")).toHaveLength(3));
+    expect(within(target).queryByRole("option", { name: /vinny/ })).toBeNull();
+  });
+
+  it("el usuario de una marca tampoco ve Propiedades ni Importar", async () => {
+    const h = harness();
+    const brand = await h.brokers.create(brokerData("vinny"), { kind: "brand" });
+    h.signInAsBroker(brand.id);
+    h.renderApp("/");
+
+    expect(await within(menu()).findByRole("link", { name: "Mi marca" })).toBeTruthy();
+    await waitFor(() =>
+      expect(within(menu()).queryByRole("link", { name: "Propiedades" })).toBeNull(),
+    );
+    expect(within(menu()).queryByRole("link", { name: "Importar" })).toBeNull();
+  });
+});
+
 describe("Corredores (F7-T18)", () => {
   it("crear un corredor, invitar (el enlace se ve una vez y se copia), restablecer y desactivar", async () => {
     const writeText = vi.fn(async () => {});

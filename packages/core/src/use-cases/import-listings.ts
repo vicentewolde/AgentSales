@@ -1,4 +1,9 @@
-import { type Broker, brokerDiffers, parseBrokerSheet } from "../broker.js";
+import {
+  assertBrokerHoldsListings,
+  type Broker,
+  brokerDiffers,
+  parseBrokerSheet,
+} from "../broker.js";
 import { canonicalJson } from "../canonical-json.js";
 import type { ListingCategory, ListingStatus } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
@@ -81,6 +86,29 @@ async function failWithReport(
   throw error;
 }
 
+/**
+ * Un aviso solo cuelga de un corredor con `kind = broker` (ADR-0029 punto 12): con una marca, la
+ * carga termina con `BROKER_IS_BRAND` y su motivo en el run, sin escribir nada.
+ */
+async function rejectBrand(
+  deps: ImportListingsDeps,
+  run: ImportRun,
+  broker: Broker,
+  warnings: string[],
+): Promise<void> {
+  try {
+    assertBrokerHoldsListings(broker);
+  } catch (error) {
+    if (!isAppError(error)) throw error;
+    await failWithReport(
+      deps,
+      run,
+      { slug: broker.slug, outcome: "invalid", issues: [], warnings },
+      error,
+    );
+  }
+}
+
 async function resolveBroker(
   deps: ImportListingsDeps,
   run: ImportRun,
@@ -116,6 +144,7 @@ async function resolveBroker(
         details: { slug: brokerSlug },
       });
     }
+    await rejectBrand(deps, run, broker, []);
     return {
       broker,
       logoFile: null,
@@ -150,6 +179,8 @@ async function resolveBroker(
       ),
     );
   }
+  // Una marca (F9) no tiene propiedades: su hoja Corredor tampoco la cambia.
+  if (existing !== null) await rejectBrand(deps, run, existing, parsed.warnings);
   const outcome =
     existing === null ? "created" : brokerDiffers(existing, parsed.data) ? "updated" : "unchanged";
   let broker = existing;

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { AppError } from "@agentsales/core";
 import {
+  createInMemoryBrokerRepository,
   createInMemoryImportRunRepository,
   createInMemoryJobQueue,
 } from "@agentsales/core/testing";
@@ -109,6 +110,38 @@ describe("POST /imports/uploads", () => {
       expect((await errorOf(response)).code).toBe(code);
     }
     expect(await importRuns.list(50, { kind: "all" })).toEqual([]);
+  });
+
+  it("a una marca no se le cargan propiedades: 409 BROKER_IS_BRAND sin crear la carga (F9)", async () => {
+    const brokers = createInMemoryBrokerRepository([], { nextId: randomUUID });
+    await brokers.create(
+      {
+        slug: "vinny",
+        name: "Vinny",
+        brandName: "Vinny",
+        primaryColor: "#112233",
+        secondaryColor: "#112233",
+        whatsapp: null,
+        email: null,
+        instagramHandle: null,
+        website: null,
+        tone: null,
+        fixedHashtags: [],
+      },
+      { kind: "brand" },
+    );
+    const { app, importRuns } = setup({ brokers });
+
+    const response = await post(app, "/imports/uploads", request({ broker: "vinny" }));
+
+    expect(response.status).toBe(409);
+    expect(await errorOf(response)).toMatchObject({
+      code: "BROKER_IS_BRAND",
+      message: expect.stringContaining("vinny es una marca"),
+    });
+    expect(await importRuns.list(50, { kind: "all" })).toEqual([]);
+    // Un slug que todavía no existe sigue pasando: lo puede crear la hoja Corredor.
+    expect((await post(app, "/imports/uploads", request({ broker: "nueva" }))).status).toBe(201);
   });
 });
 

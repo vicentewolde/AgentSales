@@ -1,5 +1,6 @@
 import type { AccessScope } from "../access.js";
 import type { Broker, BrokerData } from "../broker.js";
+import type { BrokerKind } from "../enums.js";
 
 /**
  * Corredores (`brokers`), únicos por `slug`. Decidir si hay que actualizar es del caso de uso.
@@ -19,7 +20,11 @@ export interface BrokerRepository {
    * Los corredores del alcance, por nombre de marca (para el selector de Importar), spec F7 §4.4.
    */
   list(scope: AccessScope): Promise<Broker[]>;
-  create(data: BrokerData): Promise<Broker>;
+  /**
+   * Crea el corredor; `kind` (F9) por defecto `broker`. `kind` no se cambia después: ni la hoja
+   * Corredor ni `update` lo tocan.
+   */
+  create(data: BrokerData, options?: { kind?: BrokerKind }): Promise<Broker>;
   /** Actualiza los datos de la hoja Corredor; no toca `logoMediaId` ni `autoPublish`. */
   update(id: string, data: BrokerData): Promise<Broker>;
   /**

@@ -123,6 +123,7 @@ export function contentBrokerFixture(overrides: Partial<Broker> = {}): Broker {
     fixedHashtags: ["#InventadaPropiedades", "#propiedades"],
     autoPublish: false,
     operatorOwned: false,
+    kind: "broker",
     llmMonthlyCapUsd: null,
     ...overrides,
   };

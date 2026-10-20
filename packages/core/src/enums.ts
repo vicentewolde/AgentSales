@@ -1,8 +1,35 @@
 // Valores de dominio compartidos. Son tuplas `as const` para usarlas directo en
 // `z.enum()` y en `pgEnum()` de Drizzle. Fuente: docs/02-modelo-datos.md.
 
-export const PLATFORMS = ["instagram", "portal_inmobiliario", "fb_marketplace"] as const;
+/**
+ * Las plataformas. Desde F9 (ADR-0029) suman las redes del contenido de marca: `x`, `linkedin`,
+ * `discord` y `tiktok` (una sola migración, la `0014`, con `ALTER TYPE … ADD VALUE`). Una plataforma
+ * sin publisher todavía no publica: el registro de publishers es parcial (`Partial<Record<…>>`).
+ */
+export const PLATFORMS = [
+  "instagram",
+  "portal_inmobiliario",
+  "fb_marketplace",
+  "x",
+  "linkedin",
+  "discord",
+  "tiktok",
+] as const;
 export type Platform = (typeof PLATFORMS)[number];
+
+/**
+ * Las plataformas de los avisos (F2 a F8): los textos de un aviso, el seguimiento y la publicación
+ * de una propiedad recorren solo estas, en este orden. Las redes de F9 son de los posts.
+ */
+export const LISTING_PLATFORMS = [
+  "instagram",
+  "portal_inmobiliario",
+  "fb_marketplace",
+] as const satisfies readonly Platform[];
+export type ListingPlatform = (typeof LISTING_PLATFORMS)[number];
+
+export const isListingPlatform = (platform: Platform): platform is ListingPlatform =>
+  (LISTING_PLATFORMS as readonly Platform[]).includes(platform);
 
 /**
  * Los nombres cortos de los canales para la CLI (`--platform portal`, spec F2 §4.7): se traducen a
@@ -12,8 +39,20 @@ export const PLATFORM_SHORT_NAMES = {
   instagram: "instagram",
   portal: "portal_inmobiliario",
   marketplace: "fb_marketplace",
+  x: "x",
+  linkedin: "linkedin",
+  discord: "discord",
+  tiktok: "tiktok",
 } as const satisfies Record<string, Platform>;
 export type PlatformShortName = keyof typeof PLATFORM_SHORT_NAMES;
+
+/**
+ * Qué es un corredor (`brokers.kind`, ADR-0029 puntos 5 y 13): `broker` (el de siempre, con
+ * propiedades) o `brand` (una marca que solo publica contenido). Solo dice qué ve el panel y **no
+ * decide permisos**; podrá sumar valores (`org`, `office`) con `ALTER TYPE … ADD VALUE`.
+ */
+export const BROKER_KINDS = ["broker", "brand"] as const;
+export type BrokerKind = (typeof BROKER_KINDS)[number];
 
 export const LISTING_STATUSES = [
   "draft",
@@ -28,6 +67,8 @@ export type ListingStatus = (typeof LISTING_STATUSES)[number];
 /**
  * Estados de una publicación. Transiciones en `publication-state.ts`. Desde ADR-0014 nace en
  * `approved` (lo que se aprueba es el texto de su canal): ya no existen `draft` ni `pending_approval`.
+ * `outcome_unknown` (F9, ADR-0029 punto 8): la red pudo haber publicado y no se sabe; va al final
+ * porque la migración lo agrega con `ALTER TYPE … ADD VALUE`.
  */
 export const PUBLICATION_STATUSES = [
   "approved",
@@ -39,6 +80,7 @@ export const PUBLICATION_STATUSES = [
   "paused",
   "unpublished",
   "cancelled",
+  "outcome_unknown",
 ] as const;
 export type PublicationStatus = (typeof PUBLICATION_STATUSES)[number];
 

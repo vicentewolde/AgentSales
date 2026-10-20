@@ -6,6 +6,7 @@ import {
   AGENDA_ACTIONS,
   AGENDA_KINDS,
   BRAND_TEXT_MAX,
+  BROKER_KINDS,
   brokerSchema,
   CLOSE_REASONS,
   CONTENT_CHECK_CODES,
@@ -17,6 +18,7 @@ import {
   IMPORT_UPLOAD,
   importRunSchema,
   LISTING_ACTIONS,
+  LISTING_PLATFORMS,
   LISTING_STATUSES,
   listingSchema,
   MAX_SCHEDULE_BATCH,
@@ -362,7 +364,7 @@ export type ContentMedia = z.infer<typeof contentMediaSchema>;
 
 /** `GET /listings/:id/content`: lo que se publicaría en cada canal y la última corrida. */
 export const listingContentResponseSchema = z.object({
-  /** El vigente de cada canal, en el orden de `PLATFORMS`; vacío si nunca se generó. */
+  /** El vigente de cada canal, en el orden de `LISTING_PLATFORMS`; vacío si nunca se generó. */
   contents: z.array(contentViewSchema),
   /** Instagram: portada, fotos y ficha (hasta 10). */
   carousel: z.array(contentMediaSchema),
@@ -528,8 +530,11 @@ export const listingPublicationsResponseSchema = z.object({
 });
 export type ListingPublicationsResponse = z.infer<typeof listingPublicationsResponseSchema>;
 
-/** `POST /listings/:id/publish`: el canal; el modo lo pone la API (`PUBLISH_MODE`), nunca el cuerpo. */
-export const listingPublishBodySchema = z.object({ platform: z.enum(PLATFORMS) });
+/**
+ * `POST /listings/:id/publish`: el canal; el modo lo pone la API (`PUBLISH_MODE`), nunca el cuerpo.
+ * Solo los canales de avisos (`LISTING_PLATFORMS`): las redes de F9 son de los posts.
+ */
+export const listingPublishBodySchema = z.object({ platform: z.enum(LISTING_PLATFORMS) });
 export type ListingPublishBody = z.infer<typeof listingPublishBodySchema>;
 
 /**
@@ -898,7 +903,7 @@ export type PublicationScheduleBody = z.infer<typeof publicationScheduleBodySche
  */
 export const scheduleBodySchema = z.object({
   listingIds: z.array(z.uuid()).min(1).max(MAX_SCHEDULE_BATCH),
-  platforms: z.array(z.enum(PLATFORMS)).min(1).optional(),
+  platforms: z.array(z.enum(LISTING_PLATFORMS)).min(1).optional(),
   at: scheduleAtSchema,
   spacingMinutes: z.number().int().min(0).max(MAX_SCHEDULE_SPACING_MINUTES).optional(),
 });
@@ -1040,10 +1045,14 @@ const brokerSettingsBodySchema = z.object({
   llmMonthlyCapUsd: z.number().nullable().optional(),
 });
 
-/** `POST /brokers` (administrador): el `slug`, la marca y si es propio y su tope. */
+/**
+ * `POST /brokers` (administrador): el `slug`, la marca, si es propio y su tope y, desde F9, si es un
+ * corredor o una marca (`kind`, por defecto `broker`; no se cambia después).
+ */
 export const brokerCreateBodySchema = brokerBrandBodySchema
   .extend(brokerSettingsBodySchema.shape)
   .extend({
+    kind: z.enum(BROKER_KINDS).optional(),
     slug: z.string().max(100),
     name: brandText,
     brandName: brandText,

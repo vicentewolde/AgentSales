@@ -134,6 +134,12 @@ function refreshConnected(
     case "portal_inmobiliario":
       return refreshMercadoLibre(deps, account, options);
     case "fb_marketplace":
+    // F9: las redes nuevas todavía no se renuevan (X y TikTok, con su publisher; LinkedIn no tiene
+    // refresco y Discord no vence).
+    case "x":
+    case "linkedin":
+    case "discord":
+    case "tiktok":
       // `REFRESHABLE_PLATFORMS` ya la dejó fuera; el `switch` obliga a decidir al sumar otra.
       throw new AppError(
         "ACCOUNT_REFRESH_UNSUPPORTED",

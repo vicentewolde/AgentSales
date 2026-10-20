@@ -1,6 +1,6 @@
 import type { Broker } from "../broker.js";
 import type { Content } from "../content.js";
-import { PLATFORMS, type Platform } from "../enums.js";
+import { LISTING_PLATFORMS, type Platform } from "../enums.js";
 import { isAppError } from "../errors.js";
 import type { Listing } from "../listing.js";
 import type { PlatformAccount } from "../platform-account.js";
@@ -69,12 +69,12 @@ export function connectedPlatforms(
   );
 }
 
-/** El texto vigente de cada canal conectado, en el orden de `PLATFORMS`. */
+/** El texto vigente de cada canal conectado, en el orden de `LISTING_PLATFORMS`. */
 export function autoPublishContents<C extends Pick<Content, "platform">>(
   contents: readonly C[],
   connected: ReadonlySet<Platform>,
 ): C[] {
-  return PLATFORMS.flatMap((platform) => {
+  return LISTING_PLATFORMS.flatMap((platform) => {
     const content = contents.find((item) => item.platform === platform);
     return content === undefined || !connected.has(platform) ? [] : [content];
   });

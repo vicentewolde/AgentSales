@@ -4,8 +4,8 @@
 
 **Actualizado:** 2026-10-19
 **Fase actual:** F9 · Contenido de marca (spec **aprobado** el 2026-10-19: `docs/specs/fase-9-contenido-de-marca.md`; ADR-0029 y ADR-0030). F8 cerrada (`v1.0.0`)
-**Última tarea:** `/fase-plan 9`: spec de F9 aprobado con tres entregas (`v1.1.0`, `v1.2.0`, `v1.3.0`), ejecución en paralelo con agentes en worktrees y la CI como juez, y la decisión de una instancia ahora y dos del mismo código al llegar el primer cliente (D19)
-**Siguiente paso:** entrega 1, ola 1: T01 (plataformas, marcas y estados nuevos) y T27 (despliegue parametrizado) en paralelo. Tus pruebas de entrada (abajo) corren en paralelo al código
+**Última tarea:** ola 1 de la entrega 1: T01 (plataformas `x`, `linkedin`, `discord` y `tiktok`, el estado `outcome_unknown`, `brokers.kind` con la regla `BROKER_IS_BRAND` y la migración `0014`, solo aditiva) y T27 (el despliegue elige la instancia, sin cambiar la actual), en paralelo y revisadas por el `revisor`
+**Siguiente paso:** ola 2: T02 (credenciales por plataforma y redactor) y T03 (esquema de posts y migración `0015`) en paralelo. Tus pruebas de entrada (abajo) corren en paralelo al código
 
 ## Pendiente tuyo de F9
 Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada prueba de entrada bloquea solo su red (spec §4.8; los pasos están en la sección 8 de cada nota de `docs/integraciones/`):
@@ -97,7 +97,7 @@ F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 
 | Entrega | Tarea | Estado | PR |
 |---|---|---|---|
 | — | Spec F9 (`/fase-plan 9`) | ✅ aprobado | (este PR) |
-| 1 · `v1.1.0` | T01 Plataformas, marcas y estados nuevos | ⏳ pendiente | |
+| 1 · `v1.1.0` | T01 Plataformas, marcas y estados nuevos | ✅ terminada | #170 |
 | 1 | T27 Despliegue parametrizado por instancia | ✅ terminada | #169 |
 | 1 | T02 Credenciales por plataforma y redactor | ⏳ pendiente | |
 | 1 | T03 Esquema de posts y migración | ⏳ pendiente | |
@@ -192,6 +192,7 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
+- **F9, `outcome_unknown` (de T01):** todavía nada lo produce, pero `cancelPublication` respondería un `INVALID_TRANSITION` engañoso y `requireNothingInFlight` (`change-listing-status.ts`) no lo bloquea al cerrar o archivar un aviso. T06 y T08 suman la protección (como `MANUAL_CONFIRM_PENDING`) y deciden si `IG_PUBLISH_OUTCOME_UNKNOWN` de Instagram pasa a `outcome_unknown`. `platformOption` de la CLI acepta solo plataformas de avisos: T12 y T19 usan `ALL_PLATFORM_OPTION_NAMES`.
 - **Imagen (lote D):** la API sigue dependiendo de `@agentsales/media` (por el logo) y trae `playwright`; con una sola imagen para la API y el worker (D7) da igual (deuda de F7 cerrada así). El ffmpeg de la imagen y de la CI sale de BtbN, que conserva sus builds unos dos años: copiarlo a un bucket propio antes de que lo borren. La imagen fija Node por digest y Debian no se actualiza solo: subir la etiqueta y el digest de vez en cuando.
 - **Panel, el selector al recargar (F7-T17):** mientras cargan los corredores, el filtro todavía no se aplica y la primera consulta sale sin él (se repite al llegar la lista). No muestra nada ajeno (es del administrador), pero pide dos veces.
 - **Logos reemplazados (F7-T14):** al subir otro logo, el anterior queda como medio del corredor y en R2 (no se borra). Ocupa poco; limpiarlo junto con los medios huérfanos cuando haga falta.
