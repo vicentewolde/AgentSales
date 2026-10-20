@@ -164,7 +164,7 @@ La cuenta nace **a mano** (D5). Nada de esto lo hace Claude.
 
 ### X (S4)
 - [ ] **Cuenta de desarrollador** en console.x.com y una app tipo **Web App** con OAuth 2.0 (cliente confidencial) de **lectura y escritura**. Registra la dirección de retorno: `https://agentsales.agentpey.com/api/oauth/x/callback` en el servidor y `http://127.0.0.1:8787/api/oauth/x/callback` en el Mac (X no acepta `localhost`).
-- [ ] Anotar `X_CLIENT_ID` y `X_CLIENT_SECRET` (y `X_REDIRECT_URI` solo si registraste otra dirección). El worker también los usa para renovar el token cada 2 h.
+- [ ] Anotar `X_CLIENT_ID` y `X_CLIENT_SECRET` (y `X_REDIRECT_URI` solo si registraste otra dirección). El worker también los usa para renovar el token (vive unas 2 h): al publicar, si le quedan 30 min o menos, y en el refresco diario de `tokens.refresh`.
 - [ ] **Créditos y tope duro** en la consola de X (Billing): pago por uso, unos US$0,015 por post y US$0,20 con un enlace. Pon un *spending limit* bajo en la consola; el de AgentSales (US$10 al mes por cuenta, `accounts spend-limit`) es una segunda barrera.
 - [ ] Conectar: el botón **Conectar X**, o `pnpm -s cli accounts connect x --broker <slug>` (en el Mac, con el panel abierto en `http://127.0.0.1:5173`).
 - [ ] **S4:** con tu instrucción, crear un post, ver el saldo descontado, un reply a ti mismo, el rechazo de un texto repetido y si un 4xx cobra. Resultado en `docs/integraciones/x.md` §0.

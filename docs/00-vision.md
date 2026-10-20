@@ -34,7 +34,7 @@ Desde F9 hace lo mismo con el **contenido de marca** (posts que no son avisos) e
 - Publicar en el momento o programado.
 - Seguimiento por propiedad y por plataforma.
 - Multi-corredor desde el modelo de datos: cada corredor publica desde sus propias cuentas. Desde F7, usuarios con contraseña (el operador administra, cada corredor ve solo lo suyo), la IA de los corredores por la API de Anthropic con tope de gasto, y Marketplace a mano para los corredores que no son del operador (ADR-0021 a ADR-0023).
-- Corre en local; interfaz web simple y CLI.
+- Interfaz web simple y CLI. Hasta F7 corría en el Mac del operador; desde F8 (`v1.0.0`) también en internet, en Fly.io con HTTPS (`agentsales.agentpey.com`, en modo demo y en simulación).
 
 ## Fuera de alcance del MVP
 
@@ -43,13 +43,13 @@ Desde F9 hace lo mismo con el **contenido de marca** (posts que no son avisos) e
 - Yapo (post-MVP). TikTok, anuncios pagados y leads: ver «Después del MVP».
 - Carga de avisos por chat (post-MVP).
 - Cobro, planes o facturación a clientes.
-- Despliegue en la nube con acceso de terceros desde internet (F8 · En internet).
+- El despliegue en internet quedó fuera del piloto inicial y llegó con F8 · En internet (`v1.0.0`, ADR-0024).
 
 ## Después del MVP (`v1.0.0`)
 Acordado con el operador el 2026-10-19; los specs están en `docs/specs/` y las fases en `docs/06-roadmap.md`:
 - **F9 · Contenido de marca:** el mismo calendario, aprobación y seguimiento para el contenido de marca del operador (su marca personal y AgentPey) en Instagram, X, LinkedIn, Discord y TikTok (video como borrador), con una IA que propone ideas y fechas y el humano aprobando todo. Primer paso para ofrecerlo a una corredora grande. Construida en tres entregas: `v1.1.0` (posts, perfil editorial, textos por red e idioma, Instagram y Discord), `v1.2.0` (LinkedIn a mano, X, TikTok como borrador, el panel Contenido y el calendario) y `v1.3.0` (el plan de ideas, `pnpm eval:social` y el cierre, con la prueba en vivo de cada red). Cada red se construyó contra simulaciones y publica de verdad solo después de su prueba de entrada con las cuentas del operador (S1 a S6, spec F9 §4.8).
-  - **Fuera de F9:** anuncios pagados, leads y ManyChat (F10); métricas y aprender de lo que funcionó; leer o responder comentarios; organizaciones (F11); marcas de terceros con sus propias cuentas y cobro; Stories, hilos de X, la página de empresa de LinkedIn y TikTok público; imágenes generadas por IA; y la IA buscando noticias en internet o publicando sin aprobar.
-- **F10 · Piloto con una oficina** de una corredora grande (tipo RE/MAX): anuncios de Meta sobre publicaciones de Instagram (la corredora paga a Meta directo; AgentSales no cobra ni recibe dinero de anuncios), leads con atribución, ManyChat conviviendo y TikTok público.
+  - **Fuera de F9:** anuncios pagados, leads, ManyChat, el reporte de gasto y TikTok público y con fotos (F10); métricas y aprender de lo que funcionó; leer o responder comentarios; organizaciones (F11); marcas de terceros con sus propias cuentas y cobro; Stories, hilos de X y la página de empresa de LinkedIn; imágenes generadas por IA; y la IA buscando noticias en internet o publicando sin aprobar.
+- **F10 · Piloto con una oficina** de una corredora grande (tipo RE/MAX): anuncios de Meta sobre publicaciones de Instagram, de dos formas: **impulsar un post** ya publicado con un clic y **campañas por aviso** (en los dos casos, los anuncios nacen pausados, con dos aprobaciones, del texto y del gasto, y tres topes; la corredora paga a Meta directo y AgentSales no cobra ni recibe dinero de anuncios; ADR-0031 y ADR-0032, propuestos); leads con atribución a aviso y oficina; ManyChat conviviendo con una interfaz propia (ADR-0033, propuesto); un reporte de gasto; y TikTok público y con fotos.
 - **F11 · Organizaciones:** franquicia con organización → oficina → agente, roles, aprobación por niveles y contenido corporativo con la marca de cada agente.
 - Siguen fuera: responder mensajes y comentarios dentro de AgentSales, Yapo, la carga por chat y el cobro a clientes.
 

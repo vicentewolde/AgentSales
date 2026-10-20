@@ -276,8 +276,8 @@ export type RemoteStatus = Omit<RemoteState, "checkedAt">;
  *   de la llamada que publica; si un intento encuentra ese progreso sin resultado (un corte, un
  *   reinicio del worker, un reencolado), **no** vuelve a llamar: lanza `OUTCOME_UNKNOWN` (no
  *   reintentable) y el intento deja la publicación en `outcome_unknown`. Un envío que falla sin
- *   certeza también es `OUTCOME_UNKNOWN`. Las redes sin idempotencia propia (Discord, X) usan
- *   `sendOnce` (`publish/outcome.ts`), que hace las dos cosas; Instagram y Portal tienen la suya
+ *   certeza también es `OUTCOME_UNKNOWN`. Las redes sin idempotencia propia (Discord, LinkedIn, X
+ *   y TikTok) usan `sendOnce` (`publish/outcome.ts`), que hace las dos cosas; Instagram y Portal tienen la suya
  *   (el contenedor y la marca del ítem, F3 y F4) y no cambian.
  * - Una cuenta en modo `manual` (ADR-0029 punto 9) nunca llega a `publish`: el intento deja el
  *   texto y los medios listos sin llamar a la red; de ella solo se usa `validate`.

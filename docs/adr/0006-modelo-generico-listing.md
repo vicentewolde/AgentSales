@@ -1,6 +1,6 @@
 # ADR-0006 · Modelo genérico de aviso con campos configurables
 
-- **Estado:** Aceptado
+- **Estado:** Aceptado (modificado por ADR-0029: el aviso deja de ser el único sujeto de publicación)
 - **Fecha:** 2026-09-28
 
 ## Contexto

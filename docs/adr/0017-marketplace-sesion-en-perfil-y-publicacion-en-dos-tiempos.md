@@ -1,6 +1,6 @@
 # ADR-0017 · Marketplace: la sesión vive en un perfil local, sin credenciales en la base, y la publicación se confirma en dos tiempos
 
-- **Estado:** Aceptado (modificado por ADR-0023: cuenta a mano; y por ADR-0024: sin formulario automático en producción)
+- **Estado:** Aceptado (modificado por ADR-0023: cuenta a mano; por ADR-0024: sin formulario automático en producción; y por ADR-0029: la confirmación en dos tiempos también para las cuentas a mano de otras redes)
 - **Fecha:** 2026-10-09
 - **Modifica a:** ADR-0004 (detalla cómo se implementa; las "pausas aleatorias" pasan a ser pausas fijas), ADR-0005 (job `marketplace.profile`), ADR-0014 (punto 8, contrato de `Publisher`; descartar y quitar la aprobación), ADR-0015 (punto 7), ADR-0016 (Marketplace no declara `preflight`), `docs/01-arquitectura.md` y `docs/02-modelo-datos.md`
 
