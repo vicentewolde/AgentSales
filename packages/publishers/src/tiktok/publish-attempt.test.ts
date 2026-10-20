@@ -138,6 +138,31 @@ describe("publicar un post en TikTok (el intento completo)", () => {
     expect(text).not.toContain(POST_SCENARIO_TOKEN);
   });
 
+  it("con 5 envíos pendientes en la bandeja, la publicación se reprograma (waitMinutes), sin dejarla dudosa", async () => {
+    fakeTikTok();
+    server.use(
+      http.post(`${API}/v2/post/publish/inbox/video/init/`, () =>
+        HttpResponse.json(
+          { data: {}, error: { code: "spam_risk_too_many_pending_share", message: "x" } },
+          { status: 403 },
+        ),
+      ),
+    );
+    const { t, deps } = await setup({ accessTokenExpiresAt: new Date(NOW.getTime() + 86400000) });
+    const publication = await t.toPublishing(t.publicationOf("tiktok"));
+
+    const result = await publishPublication(deps, {
+      publicationId: publication.id,
+      isLastAttempt: false,
+    });
+
+    expect(result).toMatchObject({
+      outcome: "rescheduled",
+      publication: { status: "scheduled", lastError: { code: "TIKTOK_PENDING_LIMIT" } },
+    });
+    expect(t.current(publication.id)?.progress).toBeNull();
+  });
+
   it("en dry-run no llama a TikTok: queda esperando la confirmación, simulado", async () => {
     fakeTikTok();
     const { t, deps } = await setup({ accessTokenExpiresAt: new Date(NOW.getTime() + 86400000) });

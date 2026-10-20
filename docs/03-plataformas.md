@@ -8,7 +8,7 @@ Resumen de cómo se integra cada canal. Antes de implementar un publisher, el su
 | Portal Inmobiliario | API de Mercado Libre (sitio MLC) | F4 | Medio |
 | Facebook Marketplace | Navegador automatizado + clic final humano | F5 | Alto |
 | Yapo | Por definir (sin API pública conocida) | Post-MVP | Alto |
-| TikTok | Content Posting API | Post-MVP | Medio |
+| TikTok | Content Posting API, modo *Upload* (video como borrador en la bandeja) | F9 (T26) | Medio |
 | Discord | Webhook de canal (Execute Webhook) | F9 (T14) | Bajo |
 | X | API v2 con OAuth 2.0 y PKCE (pago por uso) | F9 (T16) | Medio-alto |
 | LinkedIn | Posts API (`/rest/posts`), perfil personal, a mano por defecto | F9 (T15) | Medio-alto (términos) |
@@ -95,9 +95,14 @@ Detalle en `docs/integraciones/linkedin.md` (§0, lo que hace hoy AgentSales) y 
 
 Sin API pública conocida. Evaluar el mismo enfoque que Marketplace y revisar sus términos de uso antes.
 
-## TikTok (post-MVP)
+## TikTok (F9, contenido de marca)
 
-Content Posting API. Las apps no auditadas solo pueden publicar en modo privado (verificar); requiere auditoría para publicar en público.
+Detalle en `docs/integraciones/tiktok.md` (§0, lo que hace hoy AgentSales) y spec F9 §4.6 y §4.7 (D16).
+
+- **Mecanismo:** Content Posting API en modo *Upload* (permiso `video.upload`): el video va como **borrador a la bandeja** del creador, que lo termina (pega el texto, que en este modo no se envía) y lo publica en la app. Solo video: un post sin video no va a TikTok. Publicar directo en público (*Direct Post*, con auditoría), fotos y el compositor con las etiquetas comerciales y de IA quedan para el piloto.
+- **Conexión:** Login Kit (OAuth) con `pnpm -s cli accounts connect tiktok --broker <slug>`, que abre `/api/oauth/tiktok/start?broker=<slug>` en el navegador (con la sesión del panel); el `state` va firmado con la plataforma y la marca en la cookie `__Host-agentsales_oauth_tt` y sirve una vez. Permiso `tiktok.connect` (el corredor o la marca conecta la suya). Credenciales `{ accessToken, refreshToken }` cifradas; el token de 24 h se renueva con el refresh token (365 días, puede rotar) al publicar y en `tokens.refresh`, con `ensureRotatingAccessToken`. Variables: `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` y `TIKTOK_REDIRECT_URI`.
+- **Publicar:** init con `FILE_UPLOAD`, el video (la variante `ig_reel`, 9:16) leído de R2 por trozos de 10 MiB con `Range` y subido en orden, y la consulta del estado (sin webhooks). Al llegar a `SEND_TO_USER_INBOX` la publicación queda en `awaiting_manual_confirm` hasta que el operador pega el enlace del video (`publications confirm`). `FAILED` la deja fallida (el reintento sube desde cero); el tope de 5 envíos pendientes por 24 h reprograma. En `dry-run` no se llama a TikTok.
+- **Estado:** construido y probado solo con simulaciones (msw). **La prueba S6 del operador (spec F9 §4.8) es obligatoria antes de publicar de verdad.**
 
 ## Checklist para agregar una plataforma nueva
 
