@@ -299,6 +299,7 @@ describe("las listas sin nada ajeno", () => {
       "/listings?broker=ajeno",
       "/tracking?broker=ajeno",
       "/agenda?broker=ajeno",
+      `/calendar?broker=ajeno&${nextWeek()}`,
     ]) {
       const response = await s.broker(path);
       expect([path, response.status]).toEqual([path, 404]);
@@ -374,6 +375,58 @@ describe("las listas sin nada ajeno", () => {
     };
     expect(filtered.posts.map((row) => row.post.id)).toEqual([s.theirs.post.id]);
     expect(filtered.posts[0]?.cells.instagram.map((cell) => cell.id)).toEqual([theirs.id]);
+  });
+});
+
+/** El rango de los próximos 7 días, para `GET /calendar` (F9-T18). */
+function nextWeek(): string {
+  const from = new Date(Date.now() - 60 * 60 * 1000);
+  const to = new Date(from.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return `from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
+}
+
+describe("el calendario solo con lo suyo (F9-T18)", () => {
+  it("un corredor ve sus posts y avisos programados, no los de otro; el administrador, los dos", async () => {
+    const s = await setup();
+    const mine = await scheduledPostPublication(s.deps, s.mine);
+    const theirs = await scheduledPostPublication(s.deps, s.theirs);
+    const scheduleListing = (owned: Awaited<ReturnType<typeof ownedBy>>) =>
+      s.deps.lock.run(owned.listing.id, (repos) =>
+        repos.publications.transition(
+          owned.publication.id,
+          {
+            from: "approved",
+            to: "scheduled",
+            changes: { dryRun: true, scheduledAt: new Date(Date.now() + 2 * 60 * 60 * 1000) },
+          },
+          { actor: "system" },
+        ),
+      );
+    await scheduleListing(s.mine);
+    await scheduleListing(s.theirs);
+
+    type CalendarBody = {
+      entries: { publicationId: string; title: string; brokerSlug: string | null }[];
+    };
+    const ids = async (response: Response) =>
+      ((await response.json()) as CalendarBody).entries.map((entry) => entry.publicationId);
+
+    const own = await s.broker(`/calendar?${nextWeek()}`);
+    expect(own.status).toBe(200);
+    expect(await ids(own)).toEqual([mine.id, s.mine.publication.id]);
+    expect(await ids(await s.admin(`/calendar?${nextWeek()}`))).toEqual(
+      expect.arrayContaining([mine.id, theirs.id, s.mine.publication.id, s.theirs.publication.id]),
+    );
+    expect(await ids(await s.admin(`/calendar?broker=ajeno&${nextWeek()}`))).toEqual([
+      theirs.id,
+      s.theirs.publication.id,
+    ]);
+    // Mover la fecha de lo ajeno: no existe (el mismo 404 de siempre, `ownedBy`).
+    const move = await s.broker(`/publications/${theirs.id}/schedule`, {
+      method: "POST",
+      body: JSON.stringify({ at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString() }),
+    });
+    expect([move.status, (await errorOf(move)).code]).toEqual([404, "PUBLICATION_NOT_FOUND"]);
   });
 });
 

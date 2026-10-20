@@ -46,6 +46,10 @@ const PostsPage = lazy(() =>
 const PostDetailPage = lazy(() =>
   import("./pages/PostDetailPage.js").then((module) => ({ default: module.PostDetailPage })),
 );
+// F9-T18: el calendario de lo programado (posts y avisos).
+const CalendarPage = lazy(() =>
+  import("./pages/CalendarPage.js").then((module) => ({ default: module.CalendarPage })),
+);
 const ListingDetailPage = lazy(() =>
   import("./pages/ListingDetailPage.js").then((module) => ({ default: module.ListingDetailPage })),
 );
@@ -116,6 +120,8 @@ export const routes: RouteObject[] = [
           // F9-T17: Contenido (posts de marca) y el detalle de un post.
           { path: "contenido", element: <PostsPage /> },
           { path: "contenido/:id", element: <PostDetailPage /> },
+          // F9-T18: el calendario (`?vista=semana|mes&dia=AAAA-MM-DD`).
+          { path: "calendario", element: <CalendarPage /> },
           // F7-T18: Corredores (el administrador) y Mi marca (el corredor).
           { path: "corredores", element: <BrokersPage /> },
           { path: "corredores/:id", element: <BrokerPage /> },

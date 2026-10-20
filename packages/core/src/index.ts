@@ -37,6 +37,8 @@ export {
 } from "./broker.js";
 export {
   CHILE_TIME_ZONE,
+  chileDateOf,
+  chileDateStart,
   chileInputValue,
   chileMonthOf,
   chileMonthRange,
@@ -787,6 +789,14 @@ export {
   pendingReviewsOf,
   TRACKING_WINDOW_MS,
 } from "./tracking/agenda.js";
+export {
+  CALENDAR_ENTRY_KINDS,
+  CALENDAR_MAX_RANGE_MS,
+  type CalendarEntry,
+  type CalendarEntryKind,
+  type CalendarInput,
+  calendarEntries,
+} from "./tracking/calendar.js";
 export { isManualTask, manualTasksOf } from "./tracking/manual-tasks.js";
 export {
   type TrackingPostRow,

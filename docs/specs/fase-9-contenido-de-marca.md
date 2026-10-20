@@ -433,6 +433,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Depende de:** T17
 - **Descripción:** vista semanal y mensual de lo programado, con posts y avisos, y mover una fecha.
 - **Archivos principales:** `apps/web/src/pages/CalendarPage.tsx`
+- **Nota (2026-10-20):** la lectura es `GET /calendar?from=&to=&broker=` (en `routes/tracking.ts`, con `calendarEntries` de core y hasta 43 días por pedido); muestra las programadas por su hora y, para ver la semana completa, también lo ya publicado por su `publishedAt` (lo aprobado, publicándose o fallido sigue en Seguimiento). Mover una fecha no suma ruta: es `POST /publications/:id/schedule` (`schedulePublication`, F6) con el `ScheduleForm` de siempre (confirmación en vivo incluida). Sin arrastrar (opcional, sin dependencias nuevas). `chileDateStart` y `chileDateOf` (core) dan los bordes de los días de Chile.
 - **Hecho cuando:**
   - [ ] la hora se muestra en hora de Chile; reprogramar usa el mismo caso de uso de F6
   - [ ] `pnpm check` pasa

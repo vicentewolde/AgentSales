@@ -7,6 +7,7 @@ import {
   type BrokerRepository,
   type Content,
   type ContentRepository,
+  calendarEntries,
   connectedPlatforms,
   type Listing,
   type ListingRepository,
@@ -30,6 +31,8 @@ import type { AppEnv } from "../auth.js";
 import {
   type AgendaResponse,
   agendaQuerySchema,
+  type CalendarResponse,
+  calendarQuerySchema,
   type TrackingResponse,
   trackingQuerySchema,
 } from "../contracts/index.js";
@@ -107,7 +110,8 @@ async function pendingReviews(
  * `GET /tracking` y `GET /agenda` (spec F6 §4.9): la matriz por propiedad y plataforma y la
  * agenda, armadas por `trackingRow`, `trackingPostRow` y `agendaItems` (core, puras) con las
  * propiedades y, desde F9-T08, los posts del alcance y sus publicaciones de `listForTracking`. La
- * agenda suma las cuentas del alcance (el token por vencer). Solo leen.
+ * agenda suma las cuentas del alcance (el token por vencer). `GET /calendar` (F9-T18): lo
+ * programado y lo publicado en un rango, de avisos y posts (`calendarEntries`, core). Solo leen.
  */
 export function trackingRoutes(deps: TrackingRoutesDeps) {
   const now = () => (deps.now ?? (() => new Date()))();
@@ -180,6 +184,34 @@ export function trackingRoutes(deps: TrackingRoutesDeps) {
           ...(backup === undefined ? {} : { backup }),
           now: at,
         }),
+      };
+      return c.json(body, 200);
+    })
+    .get("/calendar", validated("query", calendarQuerySchema), async (c) => {
+      const query = c.req.valid("query");
+      const from = new Date(query.from);
+      const to = new Date(query.to);
+      const scope = await scopeOf(c, deps, query.broker);
+      // Todos los avisos y posts del alcance (también archivados: lo que ya salió sigue en su día);
+      // las ideas no tienen publicaciones. `listForTracking` desde `from` trae las activas (las
+      // programadas) y las que cambiaron desde entonces (las publicadas en el rango).
+      const listings = await deps.listings.list({}, scope);
+      const posts = await postsOf(deps, scope, true);
+      const publications =
+        listings.length === 0 && posts.length === 0
+          ? []
+          : await deps.publications.listForTracking({
+              listingIds: listings.map((listing) => listing.id),
+              postIds: posts.map((post) => post.id),
+              since: from,
+            });
+      const slugs = new Map(
+        (await deps.brokers.list(requestScope(c))).map((broker) => [broker.id, broker.slug]),
+      );
+      const body: CalendarResponse = {
+        entries: calendarEntries({ listings, posts, publications, from, to, now: now() }).map(
+          (entry) => ({ ...entry, brokerSlug: slugs.get(entry.brokerId) ?? null }),
+        ),
       };
       return c.json(body, 200);
     });
