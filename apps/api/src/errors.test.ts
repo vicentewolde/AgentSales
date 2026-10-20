@@ -55,6 +55,11 @@ describe("httpStatusFor", () => {
     ["ML_CONFLICT", 409],
     ["PUBLISHER_NOT_CONFIGURED", 503],
     ["ML_ABORTED", 503],
+    // F9-T14: conectar Discord sin llegar a conectar o cortado.
+    ["DISCORD_UNREACHABLE", 503],
+    ["DISCORD_ABORTED", 503],
+    ["DISCORD_WEBHOOK_NOT_FOUND", 400],
+    ["DISCORD_UNEXPECTED_RESPONSE", 502],
     ["ML_UNAVAILABLE", 503],
     ["ML_RATE_LIMITED", 429],
     ["PUBLICATION_REMOTE_STATE_INVALID", 500],

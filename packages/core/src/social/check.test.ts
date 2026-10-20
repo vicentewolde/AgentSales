@@ -100,6 +100,12 @@ describe("checkPostContent: largo por red", () => {
     expect(tooLong?.message).toContain("281 caracteres ponderados");
   });
 
+  it("Discord: 2.000 contando el texto neutralizado, como al publicar (F9-T14)", () => {
+    expect(codes("discord", "a".repeat(2000))).toEqual([]);
+    // 2.000 visibles; con la arroba neutralizada son 2.001, que el publisher rechazaría.
+    expect(codes("discord", `${"a".repeat(1991)}@everyone`)).toContain("TOO_LONG");
+  });
+
   it("LinkedIn: 3.000 contando los escapes de sus caracteres reservados", () => {
     expect(codes("linkedin", "a".repeat(3000))).toEqual([]);
     // 2.999 visibles y 3.001 escapados: los dos paréntesis llevan su barra.

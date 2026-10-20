@@ -4,6 +4,8 @@ import {
   type DirectPublisher,
   discordAccountMetaSchema,
   discordMessageUrl,
+  discordWebhookParts,
+  neutralizeDiscordMentions,
   type PublishContext,
   type PublishInput,
   type PublishIssue,
@@ -45,13 +47,11 @@ export type DiscordPublisherOptions = {
 };
 
 /**
- * `@everyone` y `@here` neutralizados (spec F9 §4.4, `discord.md` §11): un espacio de ancho cero
- * después de la arroba, como hacen los bots de Discord. Discord los reconoce también pegados a otra
- * palabra (`a@everyone`), así que se cambian donde estén. Además, cada envío lleva
- * `allowed_mentions: { parse: [] }` (`DISCORD_ALLOWED_MENTIONS`): ninguna mención avisa a nadie.
+ * `@everyone` y `@here` neutralizados (`neutralizeDiscordMentions` de core, la misma que mide la
+ * revisión del texto). Además, cada envío lleva `allowed_mentions: { parse: [] }`
+ * (`DISCORD_ALLOWED_MENTIONS`): ninguna mención avisa a nadie.
  */
-export const neutralizeMassMentions = (text: string): string =>
-  text.replace(/@(everyone|here)/gi, "@​$1");
+export const neutralizeMassMentions = neutralizeDiscordMentions;
 
 /** La nota (bitácora) de un video que no cabe en Discord y no se adjunta (D8). */
 export const DISCORD_VIDEO_NOT_ATTACHED_NOTE =
@@ -298,7 +298,14 @@ export function createDiscordPublisher(options: DiscordPublisherOptions = {}): D
       checkPublishInput(publisher, input);
       if (ctx.signal?.aborted) throw DISCORD_ERRORS.aborted();
       const webhookUrl = ctx.credentials?.webhookUrl;
+      // Antes de "enviando": una URL guardada que no es la de un webhook no llega a `send` (ahí
+      // quedaría dudosa sin haber salido nada).
       if (typeof webhookUrl !== "string") throw DISCORD_ERRORS.webhookMissing();
+      try {
+        discordWebhookParts(webhookUrl);
+      } catch {
+        throw DISCORD_ERRORS.webhookMissing();
+      }
       const content = neutralizeMassMentions(input.caption);
       const { files: attached, videoLeftOut } = discordAttachments(input);
 

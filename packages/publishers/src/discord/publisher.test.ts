@@ -237,12 +237,19 @@ describe("createDiscordPublisher: publicar", () => {
     expect(await recorded()).toEqual([]);
   });
 
-  it("sin la URL del webhook en las credenciales es CREDENTIALS_INVALID, sin llamar ni dejar 'enviando'", async () => {
+  it("sin la URL del webhook en las credenciales, o con una que no es de un webhook, es CREDENTIALS_INVALID sin llamar ni dejar 'enviando'", async () => {
     fakeDiscord();
-    const ctx = context(null, { credentials: { accessToken: "no-es-un-webhook" } });
-    const error = await caught(createDiscordPublisher().publish(input(), ctx));
-    expect(error).toMatchObject({ code: "CREDENTIALS_INVALID", retriable: false });
-    expect(ctx.saved).toEqual([]);
+    for (const credentials of [
+      { accessToken: "no-es-un-webhook" },
+      { webhookUrl: "https://example.com/api/webhooks/1/secretoGuardado" },
+      { webhookUrl: "no es un webhook" },
+    ]) {
+      const ctx = context(null, { credentials: credentials as PublishContext["credentials"] });
+      const error = await caught(createDiscordPublisher().publish(input(), ctx));
+      expect(error).toMatchObject({ code: "CREDENTIALS_INVALID", retriable: false });
+      expect(errorText(error)).not.toContain("secretoGuardado");
+      expect(ctx.saved).toEqual([]);
+    }
     expect(await recorded()).toEqual([]);
   });
 });

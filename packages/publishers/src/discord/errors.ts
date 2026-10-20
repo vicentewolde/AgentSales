@@ -18,6 +18,8 @@ export const DISCORD_NOT_SENT_CODES: ReadonlySet<string> = new Set([
   "DISCORD_FILE_TOO_LARGE",
   "DISCORD_REQUEST_REJECTED",
   "DISCORD_UNREACHABLE",
+  // La URL guardada no es la de un webhook: el cliente lo ve antes de llamar (no salió nada).
+  "CREDENTIALS_INVALID",
 ]);
 
 /** Si un error de Discord prueba que el mensaje no se creó. */

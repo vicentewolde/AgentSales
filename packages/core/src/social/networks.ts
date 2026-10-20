@@ -175,8 +175,18 @@ export function xWeightedLength(text: string): number {
 }
 
 /**
+ * `@everyone` y `@here` neutralizados para Discord (spec F9 §4.4, `discord.md` §11): un espacio de
+ * ancho cero después de la arroba, como hacen los bots de Discord, donde sea que estén (Discord los
+ * reconoce también pegados a otra palabra, `a@everyone`). Lo envía así el publisher (F9-T14), y la
+ * revisión mide este texto (`postTextLength`), así los dos cuentan lo mismo.
+ */
+export const neutralizeDiscordMentions = (text: string): string =>
+  text.replace(/@(everyone|here)/gi, "@\u200b$1");
+
+/**
  * El largo del texto de un post en una red, como lo cuenta esa red, con los hashtags
- * (`joinedPostText`): X con su conteo ponderado; LinkedIn **con los escapes** (si su límite cuenta
+ * (`joinedPostText`): X con su conteo ponderado; Discord con `@everyone`/`@here` neutralizados
+ * (`neutralizeDiscordMentions`, lo que envía su publisher); LinkedIn **con los escapes** (si su límite cuenta
  * la cadena escapada o la visible no está verificado, `linkedin.md` §5.3: se mide lo más largo);
  * las demás, en unidades de UTF-16 (como `instagramCaption`). Lo usan la revisión y el contador del
  * editor, así no pueden divergir.
@@ -192,6 +202,9 @@ export function postTextLength(
       return { length: xWeightedLength(joined), max };
     case "linkedin":
       return { length: escapeLinkedInText(joined).length, max };
+    // Lo que envía el publisher: con las menciones masivas neutralizadas (F9-T14).
+    case "discord":
+      return { length: neutralizeDiscordMentions(joined).length, max };
     default:
       return { length: joined.length, max };
   }

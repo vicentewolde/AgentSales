@@ -207,6 +207,9 @@ const BUSY = new Set([
   // F4-T19: una operación cortada por el tope de la API (las rutas de operaciones le ponen su
   // mensaje: ya pidió el sync).
   "ML_ABORTED",
+  // F9-T14: conectar Discord no llegó a conectar o se cortó: se repite en un momento.
+  "DISCORD_UNREACHABLE",
+  "DISCORD_ABORTED",
   // F5: el perfil de Facebook lo tiene otra ventana un momento.
   "MARKETPLACE_PROFILE_BUSY",
   // F6-T14: otro respaldo en curso, o uno cortado por el apagado (no llegan a la API).
