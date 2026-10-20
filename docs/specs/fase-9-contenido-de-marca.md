@@ -167,7 +167,7 @@ Una idea sin aceptar no gasta IA en textos y no ocupa un cupo del calendario. `a
 
 ### 4.11 Datos
 Migraciones desde la `0014` (o la siguiente libre). Reglas: **`ALTER TYPE … ADD VALUE` para todo valor nuevo de un enum** (nunca recrear el tipo: la `0006` se detiene si la tabla tiene filas), y ninguna migración usa en la misma transacción un valor recién agregado.
-- `platform` suma `x`, `linkedin`, `discord`; `publication_status` suma `outcome_unknown`.
+- `platform` suma `x`, `linkedin`, `discord` y `tiktok`; `publication_status` suma `outcome_unknown`.
 - `brokers.kind` enum nuevo (`broker` default, `brand`).
 - `editorial_profiles` (`broker_id` PK/FK, `languages` text[], `audience`, `pillars` jsonb, `facts` text[], `avoid` text[], `cadence` jsonb, `default_hashtags` text[], timestamps).
 - `posts` (`id`, `broker_id`, `topic`, `brief`, `brief_origin` `operator|ai`, `kind` `text|image|carousel|video`, `status`, `source` `manual|ai`, `pillar` null, `planned_at` null, `plan_run_id` FK null, `created_by`, `rationale` null, timestamps). Índice `(broker_id, status, planned_at)`.
@@ -267,7 +267,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 
 ### F9-T01 · Plataformas, marcas y estados nuevos
 - **Depende de:** F8 cerrada
-- **Descripción:** `x`, `linkedin` y `discord` en `PLATFORMS`, sus etiquetas y nombres cortos; `outcome_unknown` en los estados de publicación (transiciones, `PENDING_PUBLICATION_STATUSES`, único parcial activo); `brokers.kind` y `agentsales brokers create --kind`; la regla «un aviso solo cuelga de un corredor `kind = broker`» (un post, de cualquiera) y `auto_publish` fuera de los posts; el panel esconde lo de avisos en una `brand`. En `CLAUDE.md`: el glosario (`Post`, marca) y la regla de `social:smoke`. Sin publishers todavía.
+- **Descripción:** `x`, `linkedin`, `discord` y `tiktok` en `PLATFORMS` (una sola migración para las cuatro), sus etiquetas y nombres cortos; `outcome_unknown` en los estados de publicación (transiciones, `PENDING_PUBLICATION_STATUSES`, único parcial activo); `brokers.kind` y `agentsales brokers create --kind`; la regla «un aviso solo cuelga de un corredor `kind = broker`» (un post, de cualquiera) y `auto_publish` fuera de los posts; el panel esconde lo de avisos en una `brand`. En `CLAUDE.md`: el glosario (`Post`, marca) y la regla de `social:smoke`. Sin publishers todavía.
 - **Archivos principales:** `packages/core/src/enums.ts`, `labels.ts`, `publication-state.ts`, `broker.ts`; `packages/db/src/schema.ts` y migración `0014` (solo `ALTER TYPE … ADD VALUE` y la columna `kind`); `apps/cli`, `apps/web` (navegación); `CLAUDE.md`.
 - **Hecho cuando:**
   - [ ] la migración aplica sobre una base con filas en `publications` (PGlite con datos de F3 a F8) y las marcas existentes quedan `broker`
