@@ -14,9 +14,11 @@ export const OUTCOME_UNKNOWN = "OUTCOME_UNKNOWN";
 /**
  * Los códigos que el intento lleva a `outcome_unknown` en vez de a `failed`. Por ahora solo el
  * genérico: `IG_PUBLISH_OUTCOME_UNKNOWN` de Instagram sigue en `failed` (con su consejo de revisar
- * el perfil) hasta que exista la salida del operador, `POST /publications/:id/resolve` y
- * `publications resolve` (F9-T12 y T17); sin ella, una publicación de un aviso quedaría sin forma
- * de cerrarse desde el panel. Sumarlo aquí es una línea (y su consejo en `error-advice.ts`).
+ * el perfil). La salida del operador ya existe (`POST /publications/:id/resolve` y
+ * `publications resolve`, F9-T12; en el panel, F9-T17), pero el panel la ofrece solo en el detalle
+ * de un post, no en el de una propiedad: sumarlo aquí dejaría una publicación de un aviso sin forma
+ * de cerrarse desde el panel. Cuando el panel la tenga también para las propiedades, es una línea
+ * (y su consejo en `error-advice.ts`).
  */
 export const OUTCOME_UNKNOWN_CODES: ReadonlySet<string> = new Set([OUTCOME_UNKNOWN]);
 
