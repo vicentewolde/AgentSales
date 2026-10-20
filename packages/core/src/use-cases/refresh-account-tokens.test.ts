@@ -490,6 +490,86 @@ describe("refreshAccountToken · vencimiento y errores", () => {
   });
 });
 
+describe("refreshAccountToken · token que no vence y lo que se conserva (F9-T02)", () => {
+  it("con meta.tokenNeverExpires no descifra ni llama, tampoco con force, y la cuenta sigue conectada", async () => {
+    const { platformAccounts, calls, deps, add } = setup();
+    // Un token que Meta rechazaría (`malo-*`): si se refrescara, la cuenta quedaría vencida.
+    const account = await add({
+      token: "malo-system-user",
+      expiresAt: null,
+      meta: { tokenNeverExpires: true },
+    });
+    let decrypted = 0;
+    const counted: RefreshAccountTokensDeps = {
+      ...deps,
+      platformAccounts: {
+        ...platformAccounts,
+        async getCredentials(id) {
+          decrypted += 1;
+          return platformAccounts.getCredentials(id);
+        },
+      },
+    };
+
+    for (const force of [false, true]) {
+      const result = await refreshAccountToken(counted, { accountId: account.id, force });
+      expect(result).toMatchObject({
+        outcome: "skipped",
+        reason: "never_expires",
+        refreshableAt: null,
+      });
+    }
+    expect(calls).toEqual([]);
+    expect(decrypted).toBe(0);
+    expect(await platformAccounts.get(account.id)).toMatchObject({
+      status: "connected",
+      tokenExpiresAt: null,
+    });
+    expect(platformAccounts.storedCredentials(account.id)).toEqual({
+      accessToken: "malo-system-user",
+    });
+
+    const report = await refreshAccountTokens(counted);
+    expect(report).toMatchObject({ refreshed: [], expired: [], skipped: 1, failed: [] });
+  });
+
+  it("una cuenta con la marca no puede tener vencimiento (ACCOUNT_META_INVALID)", async () => {
+    const { add } = setup();
+    await expect(
+      add({ expiresAt: fromNow(20 * DAY), meta: { tokenNeverExpires: true } }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_META_INVALID", retriable: false });
+  });
+
+  it("al reescribir las credenciales solo cambia el token: lo demás se conserva", async () => {
+    const { platformAccounts, deps, add } = setup();
+    const account = await add();
+    const written: unknown[] = [];
+    const spied: RefreshAccountTokensDeps = {
+      ...deps,
+      platformAccounts: {
+        ...platformAccounts,
+        // Unas credenciales con un campo que el refresco no conoce (lo que traiga una variante
+        // futura): no se pierde al guardar el token nuevo.
+        async getCredentials(id) {
+          return { ...(await platformAccounts.getCredentials(id)), otro: "se-conserva" } as never;
+        },
+        async updateToken(id, update) {
+          written.push(update.credentials);
+          return platformAccounts.updateToken(id, {
+            ...update,
+            credentials: { accessToken: update.credentials.accessToken ?? "" },
+          });
+        },
+      },
+    };
+
+    const result = await refreshAccountToken(spied, { accountId: account.id });
+
+    expect(result.outcome).toBe("refreshed");
+    expect(written).toEqual([{ otro: "se-conserva", accessToken: "IGAA-token-nuevo" }]);
+  });
+});
+
 describe("refreshAccountToken · Mercado Libre", () => {
   it("sin force, con 7 días o más desde el último refresco: refresca y guarda el par completo, los vencimientos y meta", async () => {
     const { platformAccounts, mlCalls, deps, addMl } = setup();

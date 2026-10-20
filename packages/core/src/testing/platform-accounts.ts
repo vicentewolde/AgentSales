@@ -3,6 +3,7 @@ import { AppError } from "../errors.js";
 import {
   checkConnectedCredentials,
   checkCredentials,
+  checkTokenExpiry,
   ERASED_ACCOUNT_DISPLAY_NAME,
   erasedExternalAccountId,
   normalizeAccountMeta,
@@ -92,6 +93,7 @@ export function createInMemoryPlatformAccountRepository(
   const upsert = async (input: ConnectedAccount): Promise<PlatformAccount> => {
     const credentials = checkConnectedCredentials(input.platform, input.credentials);
     const meta = normalizeAccountMeta(input.meta);
+    checkTokenExpiry(meta, input.tokenExpiresAt);
     if (options.brokers && (await options.brokers.findById(input.brokerId)) === null) {
       throw new AppError("BROKER_NOT_FOUND", `No existe el corredor ${input.brokerId}`, {
         details: { brokerId: input.brokerId },
@@ -178,6 +180,7 @@ export function createInMemoryPlatformAccountRepository(
       const patch = normalizeAccountMeta(update.meta);
       const current = find(id);
       const credentials = checkCredentials(update.credentials, current.account.platform);
+      checkTokenExpiry({ ...current.account.meta, ...patch }, update.tokenExpiresAt);
       if (current.account.status !== "connected" || current.credentials === null) {
         throw notConnected(id);
       }
@@ -200,7 +203,9 @@ export function createInMemoryPlatformAccountRepository(
     },
     async mergeMeta(id, meta) {
       const patch = normalizeAccountMeta(meta);
-      return save(id, { meta: { ...find(id).account.meta, ...patch } });
+      const current = find(id);
+      checkTokenExpiry(patch, current.account.tokenExpiresAt);
+      return save(id, { meta: { ...current.account.meta, ...patch } });
     },
     storedCredentials(id) {
       const found = stored.get(id);

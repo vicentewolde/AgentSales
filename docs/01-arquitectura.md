@@ -840,6 +840,8 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
 
 `refreshAccountToken` (core) refresca una cuenta `connected` de Instagram o de Portal con la **política de su plataforma** (ADR-0015, punto 2); Marketplace es `ACCOUNT_REFRESH_UNSUPPORTED` y una cuenta no conectada, `ACCOUNT_NOT_CONNECTED` (los dos 409).
 
+- **Token que no vence** (F9-T02): si `meta.tokenNeverExpires` es `true` (un system user de Meta), no se refresca nunca, tampoco con `force`: `skipped` con `reason: "never_expires"` y `refreshableAt: null`, antes de descifrar y de llamar a la plataforma (un rechazo dejaría vencida una cuenta sana). Al reescribir las credenciales, los dos refrescos solo cambian el token (o el par) y conservan lo demás (`{ ...actual, accessToken }`).
+
 - **Instagram** (`refreshInstagram`, sin cambios desde F3-T14):
   1. Un token vencido deja la cuenta en `expired` sin llamar a Instagram (`token_expired`).
   2. Con menos de 24 h desde el último refresco no se refresca, tampoco con `force` (`too_recent`, con `refreshableAt`). El último refresco es `meta.tokenRefreshedAt` o, si es `null` (token del panel), `meta.connectedAt`. Esas dos fechas se leen con un esquema propio, aparte del resto de `meta`: una `meta` que no calza con `instagramAccountMetaSchema` se refresca con un aviso (`ACCOUNT_META_UNREADABLE`) pero conserva las 24 h; solo sin ninguna de las dos fechas se refresca sin ese tope (Instagram lo revisa).
@@ -864,7 +866,7 @@ El prompt, el esquema de salida, el ensamblado y la revisión editorial viven ju
   - registra cuántas se refrescaron, las vencidas (con un aviso para reconectarlas) y las fallidas, sin tokens; las que fallaron por algo que un reintento no arregla (`MERCADOLIBRE_NOT_CONFIGURED`, credenciales que no sirven) van además en un aviso aparte; los avisos van con id y código;
   - la expiración de 5 min no corta el handler (solo lo hace la señal de apagado): si un intento se pasara y pg-boss lo reintentara, los dos podrían refrescar la misma cuenta. **Desde F8-T12** el lote tiene un presupuesto de 4 min (`TOKENS_REFRESH_BUDGET_MS`, `budgetMs` de `refreshAccountTokens`): pasado ese tiempo no empieza otra cuenta, y las que faltan quedan en `deferred` (en el log, con sus ids) para la siguiente corrida, que las toma porque a las ya refrescadas no les toca.
 - **A pedido** (`POST /accounts/:id/refresh` `{ force? }`, síncrono, seguimiento de ADR-0014 punto 9):
-  - responde una unión por `outcome` (`accountRefreshResponseSchema`): `refreshed`; `skipped` con `reason` (`too_recent`, `not_due`) y `refreshableAt`; o `expired` con `reason` (`token_expired`, `token_rejected`); los valores vienen de core (`TOKEN_REFRESH_OUTCOMES` y los motivos);
+  - responde una unión por `outcome` (`accountRefreshResponseSchema`): `refreshed`; `skipped` con `reason` (`too_recent`, `not_due` y, desde F9-T02, `never_expires`) y `refreshableAt` (`null` con `never_expires`); o `expired` con `reason` (`token_expired`, `token_rejected`); los valores vienen de core (`TOKEN_REFRESH_OUTCOMES` y los motivos);
   - los `IG_*` tienen su HTTP (§4.8 del spec F3), y los avisos van al log de la API con id y código;
   - con Mercado Libre (F4-T08): la ruta pasa `mercadoLibre.auth` solo si `configured`; un rechazo es `200` con `expired` (no el 400 de conectar), y el candado ocupado es `503 ACCOUNT_LOCK_TIMEOUT`;
   - `AppDeps.now` fija el reloj en los tests.

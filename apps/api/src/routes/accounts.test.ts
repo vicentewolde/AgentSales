@@ -334,8 +334,39 @@ describe("POST /accounts/:id/refresh", () => {
       clock = new Date(clock.getTime() + ms);
     };
     const refreshCalls = () => auth.calls.filter((call) => call === "refresh").length;
-    return { app, auth, platformAccounts, connect, refresh, advance, refreshCalls };
+    return { app, auth, platformAccounts, connect, refresh, advance, refreshCalls, broker };
   }
+
+  it("un token que no vence (meta.tokenNeverExpires) nunca se refresca: skipped sin fecha (F9-T02)", async () => {
+    const { platformAccounts, refresh, refreshCalls, broker } = await refreshSetup();
+    const account = await platformAccounts.upsertConnected({
+      brokerId: broker.id,
+      platform: "instagram",
+      externalAccountId: "17841400000000099",
+      displayName: "@system-user",
+      tokenExpiresAt: null,
+      meta: {
+        accountType: "BUSINESS",
+        permissions: null,
+        connectedAt: CONNECTED_AT.toISOString(),
+        tokenRefreshedAt: null,
+        tokenExpiryEstimated: false,
+        tokenNeverExpires: true,
+      },
+      credentials: { accessToken: "IGAA-system-user-falso" },
+    });
+
+    const response = await refresh(account.id, { force: true });
+
+    expect(response.status).toBe(200);
+    expect(accountRefreshResponseSchema.parse(await response.json())).toMatchObject({
+      outcome: "skipped",
+      reason: "never_expires",
+      refreshableAt: null,
+      account: { status: "connected" },
+    });
+    expect(refreshCalls()).toBe(0);
+  });
 
   it("recién conectada con el token del panel: ni con force se refresca antes de 24 h", async () => {
     const { connect, refresh, refreshCalls } = await refreshSetup();

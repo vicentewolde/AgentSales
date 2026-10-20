@@ -55,9 +55,11 @@ export type PlatformAccountProblemStatus = Extract<PlatformAccountStatus, "expir
  * Errores (`AppError`, ninguno reintentable salvo `DB_UNAVAILABLE`):
  * - un corredor que no existe → `BROKER_NOT_FOUND`;
  * - una cuenta que no existe → `ACCOUNT_NOT_FOUND`;
- * - credenciales vacías o que no calzan con la variante de su plataforma al guardar (Discord exige
- *   `webhookUrl`; X y TikTok, también `refreshToken`) → `CREDENTIALS_INVALID`; `meta` que no es un
- *   objeto → `ACCOUNT_META_INVALID`;
+ * - credenciales vacías o que no calzan con la variante de su plataforma al guardar, en modo
+ *   estricto (Discord exige `webhookUrl`; X y TikTok, también `refreshToken`; una clave de más no
+ *   calza) → `CREDENTIALS_INVALID`, siempre después de `ACCOUNT_NOT_FOUND` en `updateToken`;
+ * - `meta` que no es un objeto, o que marca `tokenNeverExpires` en una cuenta con vencimiento (al
+ *   conectar, en `updateToken` o en `mergeMeta`) → `ACCOUNT_META_INVALID`;
  * - al conectar, sin credenciales fuera de Marketplace → `ACCOUNT_CREDENTIALS_REQUIRED`, y con
  *   credenciales en Marketplace → `ACCOUNT_CREDENTIALS_NOT_ALLOWED` (ADR-0017);
  * - `getCredentials` de una cuenta sin credenciales (desconectada, o de Marketplace) →
@@ -85,10 +87,10 @@ export interface PlatformAccountRepository {
   /** Las de un corredor, opcionalmente de una plataforma, por fecha de creación. */
   listByBroker(brokerId: string, platform?: Platform): Promise<PlatformAccount[]>;
   /**
-   * Las credenciales descifradas, en la variante de la plataforma de la cuenta (spec F9 §4.7: lo
-   * guardado que no calza con ella es `CREDENTIALS_UNREADABLE`): solo para publicar o refrescar, y
-   * nunca se loguean. Una cuenta
-   * `expired` o `error` todavía las devuelve: quien publica revisa el estado aparte.
+   * Las credenciales descifradas, en la variante de la plataforma de la cuenta (spec F9 §4.7: se
+   * leen en modo laxo, y lo guardado que no calza con ella es `CREDENTIALS_UNREADABLE`): solo para
+   * publicar o refrescar, y nunca se loguean. Una cuenta `expired` o `error` todavía las devuelve:
+   * quien publica revisa el estado aparte.
    */
   getCredentials(id: string): Promise<PlatformCredentials>;
   /**

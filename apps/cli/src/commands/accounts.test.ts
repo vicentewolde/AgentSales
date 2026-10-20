@@ -163,6 +163,23 @@ describe("accounts y accounts refresh", () => {
     expect(h.text()).toContain("No hay cuentas conectadas");
   });
 
+  it("refresh: un token que no vence dice que no se renueva (F9-T02)", async () => {
+    const { h, deps } = await setup();
+    const broker = await h.brokers.findBySlug("marca");
+    const account = await h.platformAccounts.upsertConnected({
+      brokerId: broker?.id ?? "",
+      platform: "instagram",
+      externalAccountId: "17841400000000099",
+      displayName: "@system-user",
+      tokenExpiresAt: null,
+      meta: { accountType: "BUSINESS", tokenNeverExpires: true },
+      credentials: { accessToken: "IGAA-system-user-falso" },
+    });
+
+    expect(await runRefresh(deps(), account.id, { force: true })).toBe(0);
+    expect(h.text()).toContain("Sin cambios: el acceso de @system-user no vence");
+  });
+
   it("refresh: antes de 24 h no cambia y dice desde cuándo; después renueva con el vencimiento real", async () => {
     const { h, deps, connect, advance } = await setup();
     await connect();

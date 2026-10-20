@@ -323,6 +323,18 @@ describe("cuentas conectadas · cifrado en la base (PGlite)", () => {
     });
   });
 
+  it("la lectura es laxa: una clave de más en lo guardado se descarta, no lo vuelve ilegible", async () => {
+    const account = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+    await sealRaw(account.id, `instagram:${brokerId}:${account.externalAccountId}`, {
+      accessToken: "IGAA-con-extra",
+      expires: "never",
+    });
+
+    expect(await repos.accounts.getCredentials(account.id)).toEqual({
+      accessToken: "IGAA-con-extra",
+    });
+  });
+
   it("el webhook de Discord va cifrado con la AAD de siempre, y la variante sale de la plataforma de la fila", async () => {
     const webhookUrl = "https://discord.com/api/webhooks/42/falso-webhook_pglite";
     const discord = await repos.accounts.upsertConnected(

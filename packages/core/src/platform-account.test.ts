@@ -2,17 +2,18 @@ import { describe, expect, it } from "vitest";
 import { PLATFORMS } from "./enums.js";
 import {
   accessTokenOf,
+  accountTokenNeverExpires,
   checkConnectedCredentials,
   checkCredentials,
+  checkTokenExpiry,
   hasAccessToken,
+  instagramAccountMetaSchema,
   isManualMarketplaceAccount,
   MERCADOLIBRE_SITE_ID,
   marketplaceAccountMetaSchema,
   mercadoLibreAccountMetaSchema,
   PLATFORM_CREDENTIALS_SCHEMAS,
   platformCredentialsSchema,
-  TOKEN_NEVER_EXPIRES,
-  tokenNeverExpires,
   usesSessionProfile,
 } from "./platform-account.js";
 
@@ -153,18 +154,48 @@ describe("credenciales por plataforma (spec F9 §4.7)", () => {
     expect(Object.keys(PLATFORM_CREDENTIALS_SCHEMAS).sort()).toEqual([...PLATFORMS].sort());
   });
 
-  it("un token puede marcarse como que no vence, distinto de no saber cuándo vence", () => {
-    const forever = checkCredentials(
-      { accessToken: "IGAA-system-user", expires: TOKEN_NEVER_EXPIRES },
-      "instagram",
+  it("al escribir es estricta (una clave de más no calza) y al leer, laxa", () => {
+    for (const [platform, credentials] of [
+      ["instagram", { accessToken: "IGAA-a", expires: "never" }],
+      ["instagram", { accessToken: "IGAA-a", refreshToken: "r" }],
+      ["portal_inmobiliario", { accessToken: "APP_USR-a", refreshToken: "TG-b", extra: "x" }],
+      ["discord", { webhookUrl: WEBHOOK, accessToken: "a" }],
+    ] as const) {
+      expect(() => checkCredentials(credentials, platform), platform).toThrow(
+        expect.objectContaining({ code: "CREDENTIALS_INVALID" }),
+      );
+    }
+    // Lo guardado con una clave de más se sigue leyendo: la variante laxa la descarta.
+    expect(
+      platformCredentialsSchema.parse({
+        platform: "instagram",
+        credentials: { accessToken: "IGAA-a", expires: "never" },
+      }),
+    ).toEqual({ platform: "instagram", credentials: { accessToken: "IGAA-a" } });
+  });
+
+  it("la marca de que el token no vence vive en meta, sin secretos, y no admite vencimiento", () => {
+    const meta = {
+      accountType: "BUSINESS",
+      permissions: null,
+      connectedAt: "2026-10-19T12:00:00.000Z",
+      tokenRefreshedAt: null,
+      tokenExpiryEstimated: false,
+      tokenNeverExpires: true,
+    };
+    expect(instagramAccountMetaSchema.parse(meta)).toEqual(meta);
+    expect(
+      instagramAccountMetaSchema.safeParse({ ...meta, tokenNeverExpires: false }).success,
+    ).toBe(false);
+    expect(accountTokenNeverExpires({ meta })).toBe(true);
+    expect(accountTokenNeverExpires({ meta: { tokenNeverExpires: "true" } })).toBe(false);
+    expect(accountTokenNeverExpires({ meta: {} })).toBe(false);
+
+    expect(() => checkTokenExpiry(meta, null)).not.toThrow();
+    expect(() => checkTokenExpiry({}, new Date("2027-01-01T00:00:00Z"))).not.toThrow();
+    expect(() => checkTokenExpiry(meta, new Date("2027-01-01T00:00:00Z"))).toThrow(
+      expect.objectContaining({ code: "ACCOUNT_META_INVALID", retriable: false }),
     );
-    expect(forever).toEqual({ accessToken: "IGAA-system-user", expires: "never" });
-    expect(tokenNeverExpires(forever)).toBe(true);
-    expect(tokenNeverExpires(checkCredentials({ accessToken: "IGAA-a" }, "instagram"))).toBe(false);
-    expect(tokenNeverExpires({ webhookUrl: WEBHOOK })).toBe(false);
-    expect(() =>
-      checkCredentials({ accessToken: "IGAA-a", expires: "2027-01-01" }, "instagram"),
-    ).toThrow(expect.objectContaining({ code: "CREDENTIALS_INVALID" }));
   });
 
   it("accessTokenOf entrega el token y falla cerrado con un webhook", () => {

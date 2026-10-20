@@ -4,6 +4,7 @@ import {
   CREDENTIALS_LOCK_TIMEOUT_MS,
   checkConnectedCredentials,
   checkCredentials,
+  checkTokenExpiry,
   normalizeAccountMeta,
   type PlatformAccount,
   type PlatformAccountRepository,
@@ -56,6 +57,12 @@ function toAccount(row: Row): PlatformAccount {
   }
   return parsed.data;
 }
+
+/** La `meta` guardada como objeto (una que no lo es se reemplaza al mezclar, como en `updateToken`). */
+const storedMeta = (row: Row): Record<string, unknown> =>
+  typeof row.meta === "object" && row.meta !== null && !Array.isArray(row.meta)
+    ? (row.meta as Record<string, unknown>)
+    : {};
 
 const notFound = (id: string) =>
   new AppError("ACCOUNT_NOT_FOUND", `No existe la cuenta ${id}`, { details: { accountId: id } });
@@ -126,6 +133,7 @@ export function createPlatformAccountRepository(
     async upsertConnected(account, options = {}) {
       const credentials = checkConnectedCredentials(account.platform, account.credentials);
       const meta = normalizeAccountMeta(account.meta);
+      checkTokenExpiry(meta, account.tokenExpiresAt);
       const values = {
         brokerId: account.brokerId,
         platform: account.platform,
@@ -242,6 +250,7 @@ export function createPlatformAccountRepository(
       const row = await findRow(id);
       if (row === undefined) throw notFound(id);
       const checked = checkCredentials(credentials, row.platform);
+      checkTokenExpiry({ ...storedMeta(row), ...patch }, tokenExpiresAt);
       const [updated] = await withDbErrors(() =>
         // Condicional: un refresco que se cruza con una desconexión o un vencimiento no revive la
         // cuenta. La mezcla de `meta` es en la base (`||`), a un nivel, y reemplaza una `meta`
@@ -268,6 +277,11 @@ export function createPlatformAccountRepository(
 
     async mergeMeta(id, meta) {
       const patch = normalizeAccountMeta(meta);
+      if (patch.tokenNeverExpires === true) {
+        const row = await findRow(id);
+        if (row === undefined) throw notFound(id);
+        checkTokenExpiry(patch, row.tokenExpiresAt);
+      }
       const [row] = await withDbErrors(() =>
         db
           .update(platformAccounts)

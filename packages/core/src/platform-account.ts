@@ -43,18 +43,10 @@ export const INSTAGRAM_PUBLISH_SCOPE = "instagram_business_content_publish";
 const secret = z.string().min(1);
 
 /**
- * Marca de un token que **no vence** (spec F9 §4.7 y §4.17): `expires: "never"` dentro de las
- * credenciales cifradas. Es explícita porque `token_expires_at = null` ya significa «no se sabe
- * cuándo vence». Sin el campo, el token vence (o no se sabe) como siempre. Por ahora nada la usa:
- * será el token de un system user de Meta en el piloto (F10).
+ * Instagram y LinkedIn: solo el token de acceso. Que no venza no va aquí sino en `meta`
+ * (`tokenNeverExpires`), la única fuente de verdad, que se lee sin descifrar.
  */
-export const TOKEN_NEVER_EXPIRES = "never";
-
-/** Instagram y LinkedIn: solo el token de acceso (que puede marcarse como que no vence). */
-export const accessTokenCredentialsSchema = z.object({
-  accessToken: secret,
-  expires: z.literal(TOKEN_NEVER_EXPIRES).optional(),
-});
+export const accessTokenCredentialsSchema = z.object({ accessToken: secret });
 export type AccessTokenCredentials = z.infer<typeof accessTokenCredentialsSchema>;
 
 /**
@@ -96,8 +88,10 @@ export const discordCredentialsSchema = z.object({ webhookUrl: discordWebhookUrl
 export type DiscordCredentials = z.infer<typeof discordCredentialsSchema>;
 
 /**
- * El esquema de las credenciales de cada plataforma. Marketplace no guarda (ADR-0017): su sesión
- * vive en el perfil del navegador.
+ * El esquema de las credenciales de cada plataforma, **laxo**: el que lee lo guardado (una clave de
+ * más en una fila vieja se descarta, no la vuelve ilegible). Lo que se escribe pasa por
+ * `checkCredentials`, estricto. Marketplace no guarda (ADR-0017): su sesión vive en el perfil del
+ * navegador.
  */
 export const PLATFORM_CREDENTIALS_SCHEMAS = {
   instagram: accessTokenCredentialsSchema,
@@ -158,24 +152,40 @@ const everyPlatformHasCredentials: [MissingCredentialsPlatform] extends [never] 
   true;
 void everyPlatformHasCredentials;
 
+/** Estricto: una clave de otra variante o desconocida no se descarta en silencio, no calza. */
+const strict = <S extends z.ZodRawShape>(schema: z.ZodObject<S>) => z.strictObject(schema.shape);
+
 /**
- * Sin plataforma (compatibilidad con F3 a F8): cualquiera de las variantes, estricta (una clave de
- * otra variante o desconocida no se descarta en silencio: no calza). Lo que se guarda pasa siempre
- * por el esquema de la plataforma de la cuenta.
+ * Lo que se escribe (conectar, `updateToken`): la variante de cada plataforma, estricta.
+ * Marketplace sigue en `null`.
+ */
+const WRITE_CREDENTIALS_SCHEMAS = {
+  instagram: strict(accessTokenCredentialsSchema),
+  linkedin: strict(accessTokenCredentialsSchema),
+  portal_inmobiliario: strict(mercadoLibreCredentialsSchema),
+  x: strict(refreshableCredentialsSchema),
+  tiktok: strict(refreshableCredentialsSchema),
+  discord: strict(discordCredentialsSchema),
+  fb_marketplace: z.null(),
+} as const satisfies Record<Platform, z.ZodType>;
+
+/**
+ * Sin plataforma (compatibilidad con F3 a F8): cualquiera de las variantes, estricta. Lo que se
+ * guarda pasa siempre por el esquema de la plataforma de la cuenta.
  */
 const anyCredentialsSchema = z.union([
-  z.strictObject(accessTokenCredentialsSchema.shape),
-  z.strictObject(mercadoLibreCredentialsSchema.shape),
-  z.strictObject(discordCredentialsSchema.shape),
+  strict(accessTokenCredentialsSchema),
+  strict(mercadoLibreCredentialsSchema),
+  strict(discordCredentialsSchema),
 ]);
 
 const credentialsInvalid = () =>
   new AppError("CREDENTIALS_INVALID", "Las credenciales de la cuenta no son válidas");
 
 /**
- * Valida las credenciales antes de guardarlas: con la plataforma, contra su variante (Discord exige
- * `webhookUrl`; las de token, `accessToken`; X y TikTok también `refreshToken`). Sin ella, contra
- * cualquiera. `CREDENTIALS_INVALID` (no reintentable) si no calzan, también en Marketplace (que no
+ * Valida las credenciales antes de guardarlas, en modo **estricto**: con la plataforma, contra su
+ * variante (Discord exige `webhookUrl`; las de token, `accessToken`; X y TikTok también
+ * `refreshToken`; una clave de más no calza). Sin ella, contra cualquiera. `CREDENTIALS_INVALID` (no reintentable) si no calzan, también en Marketplace (que no
  * guarda credenciales). El error no lleva el valor recibido.
  */
 export function checkCredentials(credentials: unknown): PlatformCredentials;
@@ -185,7 +195,7 @@ export function checkCredentials<P extends Platform>(
 ): NonNullable<PlatformCredentialsFor<P>>;
 export function checkCredentials(credentials: unknown, platform?: Platform): PlatformCredentials {
   const schema =
-    platform === undefined ? anyCredentialsSchema : PLATFORM_CREDENTIALS_SCHEMAS[platform];
+    platform === undefined ? anyCredentialsSchema : WRITE_CREDENTIALS_SCHEMAS[platform];
   const parsed = schema.safeParse(credentials);
   if (!parsed.success || parsed.data === null) throw credentialsInvalid();
   return parsed.data;
@@ -200,13 +210,43 @@ export const hasAccessToken = (credentials: PlatformCredentials): credentials is
  * plataforma no usa token (Discord): pedirlo es un error de programación.
  */
 export function accessTokenOf(credentials: PlatformCredentials): string {
-  if (hasAccessToken(credentials)) return credentials.accessToken;
+  return tokenCredentialsOf(credentials).accessToken;
+}
+
+/** Las credenciales de token (para reescribirlas sin perder campos), o el error de `accessTokenOf`. */
+export function tokenCredentialsOf(credentials: PlatformCredentials): TokenCredentials {
+  if (hasAccessToken(credentials)) return credentials;
   throw new AppError("ACCESS_TOKEN_UNAVAILABLE", "Esta cuenta no usa un token de acceso");
 }
 
-/** Si el token está marcado como que no vence (`expires: "never"`). */
-export const tokenNeverExpires = (credentials: PlatformCredentials): boolean =>
-  credentials.expires === TOKEN_NEVER_EXPIRES;
+/**
+ * Marca de un token que **no vence** (spec F9 §4.7 y §4.17): `meta.tokenNeverExpires: true`, sin
+ * secretos y legible sin descifrar (la agenda y el refresco la ven). Es explícita porque
+ * `token_expires_at = null` ya significa «no se sabe cuándo vence», y por eso una cuenta con la marca
+ * tiene `token_expires_at = null` (`checkTokenExpiry`). Sin la marca, el token vence (o no se sabe)
+ * como siempre. Por ahora nada la pone: será el token de un system user de Meta en el piloto (F10).
+ * Cada `meta` que la admita la suma con `.extend(neverExpiringTokenMetaShape)`.
+ */
+export const neverExpiringTokenMetaShape = {
+  tokenNeverExpires: z.literal(true).optional(),
+};
+
+/** Si la `meta` de la cuenta marca que su token no vence. Lee solo esa clave (una `meta` vieja no falla). */
+export const accountTokenNeverExpires = (account: Pick<PlatformAccount, "meta">): boolean =>
+  account.meta.tokenNeverExpires === true;
+
+/**
+ * Coherencia de la marca al guardar (conectar, refrescar o mezclar `meta`): una cuenta cuyo token
+ * no vence no tiene vencimiento. `ACCOUNT_META_INVALID` (no reintentable) si llegan los dos.
+ */
+export function checkTokenExpiry(meta: Record<string, unknown>, tokenExpiresAt: Date | null): void {
+  if (meta.tokenNeverExpires === true && tokenExpiresAt !== null) {
+    throw new AppError(
+      "ACCOUNT_META_INVALID",
+      "Una cuenta cuyo token no vence no puede tener fecha de vencimiento",
+    );
+  }
+}
 
 /**
  * `meta` tal como queda guardada (jsonb): un objeto JSON, sin `undefined` ni fechas como `Date`.
@@ -227,6 +267,7 @@ export function normalizeAccountMeta(meta: unknown): Record<string, unknown> {
  * y el vencimiento es una estimación (`tokenExpiryEstimated`).
  */
 export const instagramAccountMetaSchema = z.object({
+  ...neverExpiringTokenMetaShape,
   /** `BUSINESS` o `MEDIA_CREATOR`. */
   accountType: z.string(),
   permissions: z.array(z.string()).nullable(),
