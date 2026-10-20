@@ -98,7 +98,7 @@ Tarda varios minutos (Fly construye la imagen). Al terminar:
 fly status -a agentsales
 ```
 
-Debe mostrar una máquina `api` y una `worker`. **Después de cada despliegue en modo demo, revisa que el worker quedó como querías** (un despliegue puede encenderlo: NO VERIFICADO, `hosting.md` §14.2). Si no es día de demo, apágalo (paso 8).
+Debe mostrar una máquina `api` y una `worker`. **Al actualizar, primero se despliega el servidor y después se usa la CLI nueva contra él** (`login --api`): la CLI nueva exige campos que un servidor viejo no manda (por ejemplo, `connect.x`, `connect.linkedin` y `connect.tiktok` en `GET /accounts`, desde F9-T19) y rechaza su respuesta. **Después de cada despliegue en modo demo, revisa que el worker quedó como querías** (un despliegue puede encenderlo: NO VERIFICADO, `hosting.md` §14.2). Si no es día de demo, apágalo (paso 8).
 
 ## Paso 5 · El dominio y su certificado
 
