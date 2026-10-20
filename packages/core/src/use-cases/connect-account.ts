@@ -1,12 +1,17 @@
 import type { AbortSignalLike } from "../abort.js";
 import { AppError } from "../errors.js";
 import {
+  type DiscordAccountMeta,
+  discordAccountMetaSchema,
+  discordWebhookParts,
+  discordWebhookUrlSchema,
   INSTAGRAM_PUBLISH_SCOPE,
   type InstagramAccountMeta,
   instagramAccountMetaSchema,
   type PlatformAccount,
 } from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
+import type { DiscordWebhooks } from "../ports/discord-webhooks.js";
 import type { InstagramAuth } from "../ports/instagram-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
 
@@ -103,6 +108,74 @@ export async function connectAccount(
       tokenExpiresAt,
       meta,
       credentials: { accessToken },
+    },
+    { revokeOthers: true },
+  );
+}
+
+export type ConnectDiscordAccountDeps = {
+  brokers: Pick<BrokerRepository, "findBySlug">;
+  platformAccounts: Pick<PlatformAccountRepository, "upsertConnected">;
+  /** Lee el webhook sin publicar («Get Webhook with Token»). */
+  discord: DiscordWebhooks;
+  now?: () => Date;
+};
+
+/**
+ * Conecta el webhook de un canal de Discord a una marca (spec F9 §4.6 y §4.7, F9-T14):
+ * 1. el corredor (`broker`, su slug) tiene que existir (`BROKER_NOT_FOUND`);
+ * 2. la URL tiene que ser la de un webhook (`discordWebhookUrlSchema`, de T02), o
+ *    `DISCORD_WEBHOOK_URL_INVALID`;
+ * 3. la lee en Discord **sin publicar** (`DISCORD_WEBHOOK_NOT_FOUND` si se borró,
+ *    `DISCORD_WEBHOOK_INVALID` si el token no sirve; pasan tal cual) y exige que sea el mismo
+ *    webhook de la URL;
+ * 4. la guarda conectada, con la URL cifrada por el repositorio como credencial (`{ webhookUrl }`),
+ *    el id del webhook como cuenta externa y su nombre a la vista. Sin vencimiento: un webhook no
+ *    vence (se borra). Un canal por marca: otro webhook de Discord de la marca queda desconectado
+ *    en el mismo paso; reconectar el mismo actualiza su fila.
+ * Ningún error lleva la URL ni su token.
+ */
+export async function connectDiscordAccount(
+  deps: ConnectDiscordAccountDeps,
+  {
+    broker: slug,
+    webhookUrl: pasted,
+    signal,
+  }: { broker: string; webhookUrl: string; signal?: AbortSignalLike },
+): Promise<PlatformAccount> {
+  const broker = await requireBroker(deps.brokers, slug);
+  const parsed = discordWebhookUrlSchema.safeParse(pasted.trim());
+  if (!parsed.success) {
+    throw new AppError(
+      "DISCORD_WEBHOOK_URL_INVALID",
+      "No es la URL de un webhook de Discord: cópiala en Ajustes del servidor > Integraciones > Webhooks (Copiar URL del webhook)",
+    );
+  }
+  const webhookUrl = parsed.data;
+  const { id } = discordWebhookParts(webhookUrl);
+  const info = await deps.discord.get(webhookUrl, signal === undefined ? {} : { signal });
+  if (info.id !== id) {
+    throw new AppError(
+      "DISCORD_UNEXPECTED_RESPONSE",
+      "Discord respondió con otro webhook: vuelve a intentarlo",
+    );
+  }
+  const now = deps.now ?? (() => new Date());
+  const meta: DiscordAccountMeta = discordAccountMetaSchema.parse({
+    webhookName: info.name,
+    guildId: info.guildId,
+    channelId: info.channelId,
+    connectedAt: now().toISOString(),
+  });
+  return deps.platformAccounts.upsertConnected(
+    {
+      brokerId: broker.id,
+      platform: "discord",
+      externalAccountId: info.id,
+      displayName: info.name,
+      tokenExpiresAt: null,
+      meta,
+      credentials: { webhookUrl },
     },
     { revokeOthers: true },
   );

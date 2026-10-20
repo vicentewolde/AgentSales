@@ -505,6 +505,60 @@ describe("postPublicationPlan", () => {
   });
 });
 
+describe("postPublicationPlan: el video de Discord (F9-T14, D8)", () => {
+  it("usa la variante más liviana del video (x_video o ig_reel); sin ninguna, CONTENT_NOT_READY", async () => {
+    const media = createInMemoryMediaRepository();
+    const subject = postSubject("post-1");
+    const original = await media.create({
+      listingId: null,
+      postId: "post-1",
+      brokerId: "marca",
+      kind: "video",
+      storagePath: "posts/post-1/original/video.mov",
+      mime: "video/quicktime",
+      bytes: 90_000_000,
+      checksum: "sha-video",
+      sortOrder: 0,
+      isCover: false,
+    });
+    const derivative = async (variant: "x_video" | "ig_reel", bytes: number) =>
+      (
+        await media.upsertDerivative({
+          role: "processed",
+          variant,
+          parentMediaId: original.id,
+          postId: "post-1",
+          brokerId: "marca",
+          kind: "video",
+          storagePath: `posts/post-1/${variant}/video.mp4`,
+          mime: "video/mp4",
+          bytes,
+          checksum: `sha-${variant}`,
+          width: 720,
+          height: 1280,
+          durationS: 30,
+        })
+      ).media;
+    const error = await caught(
+      media.listBySubject(subject).then((items) => postPublicationPlan("discord", "video", items)),
+    );
+    expect(codeOf(error)).toBe("CONTENT_NOT_READY");
+
+    const reel = await derivative("ig_reel", 40_000_000);
+    expect(
+      postPublicationPlan("discord", "video", await media.listBySubject(subject)).mediaIds,
+    ).toEqual([reel.id]);
+    const light = await derivative("x_video", 12_000_000);
+    const all = await media.listBySubject(subject);
+    expect(postPublicationPlan("discord", "video", all)).toEqual({
+      format: "post",
+      mediaIds: [light.id],
+    });
+    // Instagram sigue con su reel.
+    expect(postPublicationPlan("instagram", "video", all).mediaIds).toEqual([reel.id]);
+  });
+});
+
 describe("postPublicationMatchesSubject", () => {
   const subject = postSubject("post-1");
   const content = { subject, language: "es" as const };

@@ -11,7 +11,7 @@ import {
   sendOnce,
   socialProgressSchema,
 } from "./outcome.js";
-import { parsePublishedUrl } from "./published-url.js";
+import { discordMessageUrl, parseDiscordMessageUrl, parsePublishedUrl } from "./published-url.js";
 
 // F9-T06 (ADR-0029 puntos 8 y 9): el "enviando" del resultado dudoso, el enlace que pega el
 // operador, el texto por red y la cuenta a mano.
@@ -238,6 +238,50 @@ describe("parsePublishedUrl", () => {
     expect(parsePublishedUrl("x", "https://x.com/agentpey/status/1").url).toBe(
       "https://x.com/agentpey/status/1",
     );
+  });
+
+  it("Discord: el id del mensaje (el mismo que guarda el publisher) y su enlace limpio", () => {
+    const clean = "https://discord.com/channels/111/222/333";
+    for (const pasted of [
+      clean,
+      ` ${clean}/ `,
+      "https://ptb.discord.com/channels/111/222/333?x=1",
+      "https://discordapp.com/channels/111/222/333#a",
+      "https://canary.discord.com/channels/111/222/333",
+    ]) {
+      expect(parsePublishedUrl("discord", pasted)).toEqual({ externalId: "333", url: clean });
+    }
+    expect(parseDiscordMessageUrl(clean)).toEqual({
+      guildId: "111",
+      channelId: "222",
+      messageId: "333",
+      url: clean,
+    });
+    expect(discordMessageUrl("111", "222", "333")).toBe(clean);
+  });
+
+  it("Discord: otro enlace (un canal, un webhook, otro host) es PUBLISHED_URL_INVALID, sin repetirlo", () => {
+    for (const value of [
+      "https://discord.com/channels/111/222",
+      "https://discord.com/channels/@me/222/333",
+      "https://discord.com/api/webhooks/1/token-secreto",
+      "https://discord.evil.com/channels/111/222/333",
+      "http://discord.com/channels/111/222/333",
+    ]) {
+      const error = (() => {
+        try {
+          parsePublishedUrl("discord", value);
+          return null;
+        } catch (caught) {
+          return caught;
+        }
+      })();
+      expect(error, value).toMatchObject({
+        code: "PUBLISHED_URL_INVALID",
+        details: { platform: "discord" },
+      });
+      expect((error as Error).message).not.toContain(value);
+    }
   });
 
   it("rechaza lo que no es un enlace https limpio, sin repetirlo", () => {

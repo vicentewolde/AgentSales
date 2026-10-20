@@ -112,6 +112,20 @@ const ADVICE: Readonly<Record<string, string>> = {
   TOKEN_REFRESH_REJECTED: RECONNECT,
   TOKEN_REFRESH_NOT_CONFIGURED:
     "Falta configurar la app de la red en .env para renovar el acceso: agrégala y reinicia.",
+  // Discord (F9-T14): el webhook es la cuenta; si se borró o cambió, se crea otro y se reconecta.
+  DISCORD_WEBHOOK_NOT_FOUND:
+    "El webhook ya no existe: crea otro en el canal de Discord y vuelve a conectar con accounts connect discord.",
+  DISCORD_WEBHOOK_INVALID:
+    "Discord no acepta el webhook: crea otro en el canal y vuelve a conectar con accounts connect discord.",
+  DISCORD_FORBIDDEN:
+    "Revisa en Discord que el canal y el webhook sigan activos; si se repite, espera una hora antes de reintentar.",
+  DISCORD_RATE_LIMITED:
+    "Discord limitó los envíos: el sistema reintenta solo; si no, reintenta en unos minutos.",
+  DISCORD_REQUEST_REJECTED: "Corrige lo que dice el mensaje (el texto o los medios) y reintenta.",
+  DISCORD_FILE_TOO_LARGE:
+    "Un archivo pesa más de lo que acepta Discord: quita el medio o súbelo a mano al canal.",
+  DISCORD_MEDIA_UNAVAILABLE: RETRY_LATER,
+  DISCORD_UNREACHABLE: RETRY_LATER,
   // Del sistema.
   PUBLISHER_NOT_CONFIGURED: ASK_HELP,
   INTERNAL_ERROR: ASK_HELP,
