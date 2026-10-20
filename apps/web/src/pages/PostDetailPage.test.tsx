@@ -248,6 +248,60 @@ describe("panel: detalle de un post", () => {
     );
   });
 
+  it("«Permitir un enlace en X» avisa el costo, manda el PATCH y deja aprobar el texto con enlace (F9-T16)", async () => {
+    const s = await setup();
+    const link = "https://agentpey.com/guia";
+    // El enlace está en el brief del operador; falta la marca del post.
+    await s.client.posts[":id"].$patch({
+      param: { id: s.post.id },
+      json: { brief: `La guía está en ${link}` },
+    });
+    await s.draft([{ platform: "x", language: "es", body: `Texto en es para x: ${link}` }]);
+    await s.open();
+    const control = screen.getByRole("group", { name: "Enlace en X" });
+    const box = within(control).getByRole("checkbox", { name: "Permitir un enlace en X" });
+    expect(box).toHaveProperty("checked", false);
+    expect(
+      within(control).getByText(
+        /^No permitido\. En X, un post con enlace cuesta US\$0,20 en vez de US\$0,015/,
+      ),
+    ).toBeTruthy();
+    expect(
+      within(control).getByText(/El texto de X en español lleva un enlace y el post no lo permite/),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Aprobar" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/Lleva un enlace y el post no lo permite en X: marca/)).toBeTruthy();
+
+    fireEvent.click(box);
+    await waitFor(() => expect(s.requests).toContain(`PATCH /posts/${s.post.id}`));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Aprobar" }).hasAttribute("disabled")).toBe(false),
+    );
+    expect((await s.deps.posts.get(s.post.id))?.xLinkAllowed).toBe(true);
+    expect(within(control).getByText(/^Permitido\./)).toBeTruthy();
+    expect(within(control).queryByText(/lleva un enlace y el post no lo permite/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Aprobar" }));
+    await waitFor(() =>
+      expect(s.requests).toContain(`POST /posts/${s.post.id}/contents/x/es/approve`),
+    );
+    expect(await screen.findByText(/^Texto: aprobado/)).toBeTruthy();
+  });
+
+  it("quitar la marca del enlace en X manda el PATCH con false", async () => {
+    const s = await setup();
+    await s.deps.posts.update(s.post.id, { xLinkAllowed: true, platforms: ["x"] });
+    await s.open();
+    // Un post de X sin textos todavía: el control se ve igual.
+    const box = await screen.findByRole("checkbox", { name: "Permitir un enlace en X" });
+    expect(box).toHaveProperty("checked", true);
+    fireEvent.click(box);
+    await waitFor(async () =>
+      expect((await s.deps.posts.get(s.post.id))?.xLinkAllowed).toBe(false),
+    );
+    expect(s.requests).toContain(`PATCH /posts/${s.post.id}`);
+  });
+
   it("un post archivado no se edita, ni pide textos ni recibe medios", async () => {
     const s = await setup();
     await s.deps.posts.archive(s.post.id);

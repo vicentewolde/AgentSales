@@ -21,6 +21,7 @@ import { POST_KIND_LABEL, PostStatusBadge } from "../components/posts/labels.js"
 import { PostMedia } from "../components/posts/PostMedia.js";
 import { PostPublications, PostPublishBar } from "../components/posts/PostPublishing.js";
 import { PostTexts } from "../components/posts/PostTexts.js";
+import { XLinkControl } from "../components/posts/XLinkControl.js";
 import { useHealth } from "../queries/health.js";
 import {
   useArchivePost,
@@ -373,6 +374,11 @@ export function PostDetailPage() {
       )}
       {editing && <PostEditForm post={item} onClose={() => setEditing(false)} />}
       {archive.error && <ErrorAlert error={archive.error} />}
+      <XLinkControl
+        post={item}
+        contents={contents}
+        lockReason={archived ? "El post está archivado." : null}
+      />
 
       <section aria-label="Textos" className="mt-6 space-y-3">
         <h2 className="text-lg font-semibold">Textos por red</h2>

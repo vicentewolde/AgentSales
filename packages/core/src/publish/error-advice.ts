@@ -2,6 +2,9 @@
 // `last_error`, qué hacer en una frase. El mensaje del error dice qué pasó; esto dice qué hacer.
 // Lo usan el panel y la CLI bajo el error.
 
+import { X_LINK_POST_COST_USD } from "../social/networks.js";
+import { formatXUsd } from "../x/cost.js";
+
 const RECONNECT = "Reconecta la cuenta en Cuentas y reintenta.";
 const RETRY_LATER = "Es pasajero: reintenta en unos minutos.";
 const FIX_SHEET = "Corrige la planilla, vuelve a cargarla y aprueba el texto de nuevo.";
@@ -151,8 +154,7 @@ const ADVICE: Readonly<Record<string, string>> = {
     "Recarga créditos en la consola de X (console.x.com, Billing) o revisa su tope de gasto, y reintenta.",
   X_SPEND_LIMIT_REACHED:
     "Sube el tope de la cuenta con accounts spend-limit <id> <dólares> o espera al mes siguiente, y reintenta.",
-  X_LINK_NOT_ALLOWED:
-    "Marca el post para permitir el enlace en X (cuesta US$0,20) o quita el enlace del texto, apruébalo y reintenta.",
+  X_LINK_NOT_ALLOWED: `Permite el enlace en el post («Permitir un enlace en X» en el panel, o agentsales post edit <id_post> --x-link; cuesta ${formatXUsd(X_LINK_POST_COST_USD)}) o quita el enlace del texto, apruébalo y reintenta.`,
   X_RATE_LIMITED:
     "X limitó los envíos: el sistema lo reprograma solo hasta 3 veces; si no, reintenta más tarde.",
   X_AUTH_INVALID: RECONNECT,
