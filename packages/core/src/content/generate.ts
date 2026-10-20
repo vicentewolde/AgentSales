@@ -52,42 +52,53 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * ruta (claves del esquema e índices) y un texto fijo, sin valores ni claves que haya inventado la
  * IA (podrían repetir datos del aviso o una instrucción, y van al prompt de reintento sin escape).
  */
-function describeIssues(error: z.ZodError): string[] {
+export function describeIssues(error: z.ZodError): string[] {
   return error.issues.map((issue) => {
     const path = issue.path.map(String).join(".");
     return path === "" ? describeIssue(issue) : `${path}: ${describeIssue(issue)}`;
   });
 }
 
+/** Las dependencias de una llamada validada a la IA (avisos y posts). */
+export type GenerateDeps = {
+  llm: LLMProvider;
+  /**
+   * Cada llamada que el proveedor informa como cobrada, en cuanto vuelve (spec F7 §4.7): también
+   * la que después no valida o falla con `LLM_OUTPUT_INVALID` (se cobró igual).
+   */
+  onUsage?: (model: string, usage: LlmTokenUsage) => Promise<void>;
+  /** Antes de cada llamada (también la del reintento): el tope de IA del mes (F7-T12). */
+  beforeCall?: () => Promise<void>;
+};
+
+/** El resultado de validar una respuesta: el dato o los motivos (textos fijos, sin lo que dijo la IA). */
+export type Validated<T> = { success: true; data: T } | { success: false; issues: string[] };
+
 /**
- * Pide el borrador a la IA y lo valida con `contentDraftSchema` (ADR-0013). Si no calza, reintenta
- * **una vez** con los motivos en el prompt; si vuelve a fallar, `LLM_OUTPUT_INVALID` (no
- * reintentable: el contenido anterior sigue vigente). Los errores del proveedor (`LLM_*`) suben
- * tal cual; el job decide si reintenta.
+ * Pide a la IA una salida estructurada y la valida (ADR-0013): si no calza, reintenta **una vez**
+ * con los motivos en el prompt; si vuelve a fallar, `LLM_OUTPUT_INVALID` (no reintentable). Los
+ * errores del proveedor (`LLM_*`) suben tal cual; el job decide si reintenta. La comparten los
+ * textos de avisos (`generateContentDraft`) y los de posts (`generateSocialDraft`, F9-T11).
  */
-export async function generateContentDraft(
-  deps: {
-    llm: LLMProvider;
-    /**
-     * Cada llamada que el proveedor informa como cobrada, en cuanto vuelve (spec F7 §4.7): también
-     * la que después no valida o falla con `LLM_OUTPUT_INVALID` (se cobró igual).
-     */
-    onUsage?: (model: string, usage: LlmTokenUsage) => Promise<void>;
-    /** Antes de cada llamada (también la del reintento): el tope de IA del mes (F7-T12). */
-    beforeCall?: () => Promise<void>;
+export async function generateValidated<T>(
+  deps: GenerateDeps,
+  params: {
+    buildPrompt: (issues: readonly string[]) => { system: string; prompt: string };
+    jsonSchema: Record<string, unknown>;
+    validate: (data: unknown) => Validated<T>;
+    signal?: AbortSignalLike;
   },
-  params: { brief: ContentBrief; signal?: AbortSignalLike },
-): Promise<GenerateContentDraftResult> {
+): Promise<{ data: T; model: string; attempts: number; promptChars: number }> {
   let issues: string[] = [];
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const { system, prompt } = buildContentPrompt(params.brief, issues);
+    const { system, prompt } = params.buildPrompt(issues);
     let response: LLMResponse;
     await deps.beforeCall?.();
     try {
       response = await deps.llm.generateStructured({
         system,
         prompt,
-        jsonSchema: CONTENT_DRAFT_JSON_SCHEMA,
+        jsonSchema: params.jsonSchema,
         ...(params.signal === undefined ? {} : { signal: params.signal }),
       });
     } catch (error) {
@@ -97,20 +108,44 @@ export async function generateContentDraft(
       throw error;
     }
     if (response.usage !== undefined) await deps.onUsage?.(response.model, response.usage);
-    const parsed = contentDraftSchema.safeParse(response.data);
-    if (parsed.success) {
+    const validated = params.validate(response.data);
+    if (validated.success) {
       return {
-        draft: parsed.data,
+        data: validated.data,
         model: response.model,
         attempts: attempt,
         promptChars: system.length + prompt.length,
       };
     }
-    issues = describeIssues(parsed.error);
+    issues = validated.issues;
   }
   throw new AppError(
     "LLM_OUTPUT_INVALID",
     "La IA no entregó los textos en el formato pedido después de reintentar",
     { details: { attempts: MAX_ATTEMPTS, issues } },
   );
+}
+
+/**
+ * Pide el borrador a la IA y lo valida con `contentDraftSchema` (ADR-0013). Si no calza, reintenta
+ * **una vez** con los motivos en el prompt; si vuelve a fallar, `LLM_OUTPUT_INVALID` (no
+ * reintentable: el contenido anterior sigue vigente). Los errores del proveedor (`LLM_*`) suben
+ * tal cual; el job decide si reintenta.
+ */
+export async function generateContentDraft(
+  deps: GenerateDeps,
+  params: { brief: ContentBrief; signal?: AbortSignalLike },
+): Promise<GenerateContentDraftResult> {
+  const { data, ...rest } = await generateValidated(deps, {
+    buildPrompt: (issues) => buildContentPrompt(params.brief, issues),
+    jsonSchema: CONTENT_DRAFT_JSON_SCHEMA,
+    validate: (raw) => {
+      const parsed = contentDraftSchema.safeParse(raw);
+      return parsed.success
+        ? { success: true, data: parsed.data }
+        : { success: false, issues: describeIssues(parsed.error) };
+    },
+    ...(params.signal === undefined ? {} : { signal: params.signal }),
+  });
+  return { draft: data, ...rest };
 }

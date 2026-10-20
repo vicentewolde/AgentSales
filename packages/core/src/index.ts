@@ -46,9 +46,11 @@ export {
 export * from "./content/index.js";
 export {
   beforeContentLock,
+  type ContentLockContext,
   type ContentLockDeps,
   type LockedContent,
   lockedCurrentContent,
+  type PostReviewDeps,
   settlePostStatus,
 } from "./content/locked-content.js";
 export {
@@ -722,6 +724,7 @@ export {
   scheduleAt,
   scheduleState,
 } from "./schedule.js";
+export * from "./social/index.js";
 export * from "./subject.js";
 export {
   type LockedSubject,
@@ -847,6 +850,12 @@ export {
   type DisconnectAccountDeps,
   disconnectAccount,
 } from "./use-cases/disconnect-account.js";
+export {
+  type DraftPostDeps,
+  type DraftPostParams,
+  type DraftPostResult,
+  draftPost,
+} from "./use-cases/draft-post.js";
 export {
   type ContentEdit,
   type EditContentDeps,

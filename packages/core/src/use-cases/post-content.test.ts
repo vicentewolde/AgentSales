@@ -7,6 +7,7 @@ import {
   contentBrokerFixture,
   createInMemoryBrokerRepository,
   createInMemoryContentRepositories,
+  createInMemoryEditorialProfileRepository,
   createInMemoryFieldDefinitionRepository,
   createInMemoryJobQueue,
   createInMemoryListingLock,
@@ -139,6 +140,7 @@ async function setup(options: Setup = {}) {
     contents,
     listings,
     fieldDefinitions: createInMemoryFieldDefinitionRepository([]),
+    postReview: { posts, editorialProfiles: createInMemoryEditorialProfileRepository() },
     lock,
     postLock,
   };
@@ -245,11 +247,37 @@ describe("approveContent con un post", () => {
     expect(await t.postStatus()).toBe("draft");
   });
 
-  it("Instagram sin medios en un post de solo texto es CONTENT_NOT_READY", async () => {
+  it("Instagram en un post de solo texto: la revisión lo frena con MEDIA_REQUIREMENT (F9-T11)", async () => {
     const t = await setup({
       kind: "text",
       texts: [{ platform: "instagram", language: "es" }],
       accounts: ["instagram"],
+    });
+    const error = await caught(
+      approveContent(t.deps, { contentId: await t.contentId("instagram"), actor: "operator" }),
+    );
+    expect(codeOf(error)).toBe("CONTENT_HAS_ERRORS");
+    expect(isAppError(error) && error.details?.codes).toEqual(["MEDIA_REQUIREMENT"]);
+    expect(await t.postStatus()).toBe("draft");
+  });
+
+  it("un video subido que aún no se procesa es CONTENT_NOT_READY", async () => {
+    const t = await setup({
+      kind: "video",
+      texts: [{ platform: "instagram", language: "es" }],
+      accounts: ["instagram"],
+    });
+    await t.repos.media.create({
+      listingId: null,
+      postId: t.post.id,
+      brokerId: t.post.brokerId,
+      kind: "video",
+      storagePath: `posts/${t.post.id}/original/video.mp4`,
+      mime: "video/mp4",
+      bytes: 10,
+      checksum: "sha-video",
+      sortOrder: 1,
+      isCover: false,
     });
     const error = await caught(
       approveContent(t.deps, { contentId: await t.contentId("instagram"), actor: "operator" }),

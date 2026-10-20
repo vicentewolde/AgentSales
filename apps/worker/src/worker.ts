@@ -24,6 +24,7 @@ import {
   createContentRepository,
   createContentRunRepository,
   createDb,
+  createEditorialProfileRepository,
   createFieldDefinitionRepository,
   createImportRunRepository,
   createListingLock,
@@ -75,7 +76,7 @@ import { enqueuePublicationDue } from "./jobs/publication-due.js";
 import { instagramNoteLogger, requeuePublishingPublications } from "./jobs/publication-publish.js";
 import { registerJobs } from "./jobs/registry.js";
 import { enqueueTokensRefresh } from "./jobs/tokens-refresh.js";
-import { apiLlmOptions, llmProviderOptions } from "./llm-options.js";
+import { apiLlmOptions, llmProviderOptions, socialLlmProviderOptions } from "./llm-options.js";
 import { createWorkerMarketplacePublisher } from "./marketplace/publisher.js";
 import { createMarketplaceWindows, sweepClosedWindows } from "./marketplace/windows.js";
 import { createWorkerPortal } from "./portal.js";
@@ -240,6 +241,10 @@ const autoPublish: AutoPublishDeps = {
   },
   dryRun: env.PUBLISH_MODE !== "live",
 };
+// La API de Anthropic para los corredores y marcas que no son del operador (spec F7 §4.7).
+const apiLlm = ((options) => (options === null ? null : createLlmProvider(options)))(
+  apiLlmOptions(env),
+);
 const jobs = buildJobs({
   importRun,
   contentPrepare: {
@@ -251,9 +256,7 @@ const jobs = buildJobs({
       renderer,
       // El del operador para sus corredores propios, y la API para los demás (spec F7 §4.7).
       llm: createLlmProvider(llmProviderOptions(env, process.env)),
-      apiLlm: ((options) => (options === null ? null : createLlmProvider(options)))(
-        apiLlmOptions(env),
-      ),
+      apiLlm,
       sha256,
     },
     // Sin `threads`: ffmpeg usa todos los núcleos (los tests limitan a 2).
@@ -372,6 +375,23 @@ const jobs = buildJobs({
         workDir,
       }),
     tmpRoot: contentTmpRoot,
+    signal: jobsAbort.signal,
+  },
+  // Los textos de un post (spec F9 §4.9, F9-T11): el perfil de su marca, sus cuentas y sus medios,
+  // y el candado del post para guardar los textos y dejar su estado al día.
+  postDraft: {
+    shared: {
+      contentRuns,
+      posts,
+      brokers: repositories.brokers,
+      editorialProfiles: createEditorialProfileRepository(database.db),
+      platformAccounts,
+      media: repositories.media,
+      postLock,
+      // Con `fake`, el borrador de ejemplo de un post (no el de un aviso).
+      llm: createLlmProvider(socialLlmProviderOptions(env, process.env)),
+      apiLlm,
+    },
     signal: jobsAbort.signal,
   },
   dbBackup: {
@@ -518,7 +538,7 @@ async function requeueContent(): Promise<void> {
   } catch (error) {
     logger.warn({ err: error }, "no se pudieron reencolar las corridas en cola");
   }
-  // Las de posts van a `post.draft`, nunca a `content.prepare` (F9-T05; su handler llega con T11).
+  // Las de posts van a `post.draft`, nunca a `content.prepare` (F9-T05; su handler, F9-T11).
   try {
     const { requeued, failed } = await requeueQueuedPostRuns(contentRuns, queue);
     if (requeued > 0) logger.info({ requeued }, "corridas de posts en cola reencoladas");

@@ -41,10 +41,10 @@ export async function editContent(
   deps: EditContentDeps,
   { contentId, edit }: { contentId: string; edit: ContentEdit },
 ): Promise<CheckedContent> {
-  const { subject, definitions } = await beforeContentLock(deps, contentId);
+  const before = await beforeContentLock(deps, contentId);
 
-  return runOnSubject(deps, subject, async (locked) => {
-    const found = await lockedCurrentContent(locked, contentId, definitions);
+  return runOnSubject(deps, before.subject, async (locked) => {
+    const found = await lockedCurrentContent(locked, contentId, before);
     const { repos, content } = found;
     const active = await repos.contentRuns.findActive(content.subject);
     if (active?.texts) {

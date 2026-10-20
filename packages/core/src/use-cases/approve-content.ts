@@ -81,10 +81,10 @@ export async function approveContent(
   deps: ApproveContentDeps,
   { contentId, actor }: { contentId: string; actor: PublicationActor },
 ): Promise<ApprovedContent> {
-  const { subject, definitions } = await beforeContentLock(deps, contentId);
+  const before = await beforeContentLock(deps, contentId);
 
-  return runOnSubject(deps, subject, async (locked) => {
-    const found = await lockedCurrentContent(locked, contentId, definitions);
+  return runOnSubject(deps, before.subject, async (locked) => {
+    const found = await lockedCurrentContent(locked, contentId, before);
     if (found.kind === "listing" && !canPrepareContent(found.listing.status)) {
       throw new AppError("LISTING_NOT_READY", LISTING_NOT_PREPARABLE_TEXT, {
         details: { listingId: found.listing.id, status: found.listing.status },

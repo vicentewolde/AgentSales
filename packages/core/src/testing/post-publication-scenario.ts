@@ -18,6 +18,7 @@ import { createInMemoryJobQueue } from "./job-queue.js";
 import { createInMemoryMediaRepository, createInMemoryMediaStorage } from "./media.js";
 import { createInMemoryPlatformAccountRepository } from "./platform-accounts.js";
 import {
+  createInMemoryEditorialProfileRepository,
   createInMemoryPostLock,
   createInMemoryPostRepository,
   createInMemoryPostUploadRepository,
@@ -160,6 +161,8 @@ export async function createPostPublicationScenario(
     contents,
     listings,
     fieldDefinitions: createInMemoryFieldDefinitionRepository([]),
+    // La revisión de un texto de post (F9-T11) lee el perfil de la marca antes del candado.
+    postReview: { posts, editorialProfiles: createInMemoryEditorialProfileRepository() },
     lock,
     postLock,
   };

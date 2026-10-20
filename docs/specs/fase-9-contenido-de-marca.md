@@ -413,6 +413,7 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 - **Hecho cuando:**
   - [ ] contratos con `msw`: éxito, 402 por saldo, 429, 403 por texto repetido, refresh que rota
   - [ ] un post con enlace pide la marca explícita y anota US$0,20; pasado el límite mensual, `failed` con la causa
+  - [ ] un enlace en X requiere una marca explícita del operador por post (no basta con que el enlace esté en el brief), con el aviso del costo US$0,20. Hasta T16, "marcar" es escribirlo en el brief del operador (`checkPostContent`, F9-T11; `docs/04-formato-publicaciones.md`)
   - [ ] `pnpm check` pasa
 
 ### F9-T17 · Panel: Contenido
@@ -550,3 +551,4 @@ Cada entrega cierra con los docs y `docs/ESTADO.md` al día, su sección del `CH
 | 2026-10-19 | **Aprobado por el operador**: el plan tal como está; tres entregas (D20, §5.1); ejecución en paralelo con agentes en worktrees y la CI como juez (D21, §5.2); P4 y P5 con las recomendaciones; la decisión de arquitectura D19 (una instancia ahora, dos del mismo código al llegar el primer cliente) y su tarea T27. ADR-0029 y ADR-0030 pasan a Aceptados |
 | 2026-10-20 | Revisión de F9-T10: §4.2 suma las reglas de los posts (archivado no se edita, no se archiva con publicaciones pendientes, hasta 20 medios); F9-T17 suma el criterio del sha256 opcional sobre 100 MB (ADR-0025 punto 2); el video para X sale con la duración completa (su límite lo revisa T16) |
 | 2026-10-20 | F9-T07: aclarado que una publicación de una cuenta en modo `manual` (LinkedIn) programada no es solo un recordatorio como Marketplace: a la hora el reloj la deja en `awaiting_manual_confirm`, lista para publicar a mano, sin llamar a la red |
+| 2026-10-20 | Revisión de F9-T11: F9-T16 suma el criterio de la marca explícita del operador por post para un enlace en X (hasta T16, "marcar" es escribirlo en el brief del operador) |

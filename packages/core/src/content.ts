@@ -47,6 +47,19 @@ export const contentRunReportSchema = z.object({
    * revisión vigente se calcula al leer (`getListingContent`, F2-T12).
    */
   checks: z.partialRecord(z.enum(PLATFORMS), z.array(z.enum(CONTENT_CHECK_CODES))).optional(),
+  /**
+   * Corridas de posts (F9-T11): los códigos de la revisión de cada red **e idioma**
+   * (`checkPostContent`), con la misma salvedad que `checks` (es una foto de la corrida).
+   */
+  postChecks: z
+    .array(
+      z.object({
+        platform: z.enum(PLATFORMS),
+        language: z.enum(LANGUAGES),
+        codes: z.array(z.enum(CONTENT_CHECK_CODES)),
+      }),
+    )
+    .optional(),
   warnings: z.array(z.string()),
 });
 export type ContentRunReport = z.infer<typeof contentRunReportSchema>;

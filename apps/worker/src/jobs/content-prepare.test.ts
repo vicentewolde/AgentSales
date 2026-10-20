@@ -26,6 +26,7 @@ import {
 import type { DbBackupJobDeps } from "./db-backup.js";
 import { buildJobs } from "./index.js";
 import type { MarketplaceProfileJobDeps } from "./marketplace-profile.js";
+import type { PostDraftJobDeps } from "./post-draft.js";
 import type { PostMediaJobDeps } from "./post-media.js";
 import type { PublicationDueJobDeps } from "./publication-due.js";
 import type { PublicationPublishJobDeps } from "./publication-publish.js";
@@ -83,6 +84,7 @@ describe("job content.prepare · cola", () => {
         publicationsWatch: {} as PublicationsWatchJobDeps,
         dbBackup: {} as DbBackupJobDeps,
         postMedia: {} as PostMediaJobDeps,
+        postDraft: {} as PostDraftJobDeps,
       }).map((job) => job.name),
     ).toEqual([
       "system.ping",
@@ -96,6 +98,7 @@ describe("job content.prepare · cola", () => {
       "publications.watch",
       "db.backup",
       "post.media",
+      "post.draft",
     ]);
   });
 });
@@ -115,6 +118,7 @@ describe("jobs · Marketplace en producción (F8-T20, D4)", () => {
         publicationsWatch: {} as PublicationsWatchJobDeps,
         dbBackup: {} as DbBackupJobDeps,
         postMedia: {} as PostMediaJobDeps,
+        postDraft: {} as PostDraftJobDeps,
       }).map((job) => job.name);
 
     expect(names(null)).not.toContain("marketplace.profile");
