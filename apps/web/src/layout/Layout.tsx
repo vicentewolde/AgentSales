@@ -29,6 +29,8 @@ export const MENU: readonly MenuItem[] = [
   { label: "Importar", to: "/importar", listings: true },
   // F9-T17: los posts, para marcas y corredores (sin `end`: también el detalle).
   { label: "Contenido", to: "/contenido" },
+  // F9-T21: el plan de ideas de la IA (pedirlo, aceptar, editar y descartar ideas).
+  { label: "Plan", to: "/plan" },
   // F9-T18: lo programado y lo publicado, de posts y avisos, por semana o por mes.
   { label: "Calendario", to: "/calendario" },
   { label: "Seguimiento", to: "/seguimiento" },
