@@ -28,7 +28,10 @@ const PROFILE = {
 };
 const BROKER = { brandName: "AgentPey", tone: "Directo", fixedHashtags: ["#AgentPey"] };
 
-type PostFields = Pick<Post, "topic" | "brief" | "briefOrigin" | "source" | "pillar" | "kind">;
+type PostFields = Pick<
+  Post,
+  "topic" | "brief" | "briefOrigin" | "source" | "pillar" | "kind" | "xLinkAllowed"
+>;
 const POST: PostFields = {
   topic: "Cómo elegimos las redes",
   brief: "Contar el criterio. Enlace: https://agentpey.com/redes",
@@ -36,6 +39,7 @@ const POST: PostFields = {
   source: "manual",
   pillar: "producto",
   kind: "image",
+  xLinkAllowed: true,
 };
 
 const targets = socialTargets(["x", "linkedin"], ["es", "en"]);
@@ -95,6 +99,13 @@ describe("buildSocialBrief", () => {
     const { prompt } = buildSocialPrompt(fromAi);
     expect(prompt).not.toContain("Contar el criterio");
     expect(prompt).toContain('"tema_es_fuente": false');
+  });
+
+  it("sin la marca del enlace en X (F9-T16), la IA no recibe enlaces para X", () => {
+    const unmarked = brief({ xLinkAllowed: false });
+    expect(unmarked.operatorBrief).toContain("agentpey.com/redes");
+    expect(unmarked.xLinks).toEqual([]);
+    expect(buildSocialPrompt(unmarked).prompt).toContain('"enlaces_permitidos_en_x": []');
   });
 });
 
