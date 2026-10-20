@@ -3,7 +3,11 @@ import type { Broker } from "../broker.js";
 import type { MediaKind, Platform, PublicationFormat } from "../enums.js";
 import { AppError } from "../errors.js";
 import type { Listing } from "../listing.js";
-import type { PlatformAccount, PlatformCredentials } from "../platform-account.js";
+import {
+  accessTokenOf,
+  type PlatformAccount,
+  type PlatformCredentials,
+} from "../platform-account.js";
 import type { RemoteState } from "../publication.js";
 
 /**
@@ -225,7 +229,7 @@ export function storedAccessToken(credentials: PlatformCredentials): AccessToken
         "Este acceso no se renueva al vuelo: el intento debía armar el proveedor de token de la plataforma",
       );
     }
-    return credentials.accessToken;
+    return accessTokenOf(credentials);
   };
 }
 

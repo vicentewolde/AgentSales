@@ -748,15 +748,16 @@ export type AccountRefreshBody = z.infer<typeof accountRefreshBodySchema>;
 
 /**
  * Lo que pasó al refrescar (los valores vienen de core): `refreshed` (token nuevo y vencimiento
- * real), `skipped` (no tocaba: `reason` y desde cuándo se podrá, `refreshableAt`) o `expired` (la
- * cuenta quedó vencida: hay que reconectarla). Nunca lleva el token.
+ * real), `skipped` (no tocaba: `reason` y desde cuándo se podrá, `refreshableAt`, que es `null` si el
+ * token no vence) o `expired` (la cuenta quedó vencida: hay que reconectarla). Nunca lleva el token.
  */
 export const accountRefreshResponseSchema = z.discriminatedUnion("outcome", [
   z.object({ outcome: z.literal("refreshed"), account: platformAccountViewSchema }),
   z.object({
     outcome: z.literal("skipped"),
     reason: z.enum(TOKEN_REFRESH_SKIP_REASONS),
-    refreshableAt: z.coerce.date(),
+    /** `null` con `never_expires` (F9-T02): un token que no vence nunca se refresca. */
+    refreshableAt: z.coerce.date().nullable(),
     account: platformAccountViewSchema,
   }),
   z.object({

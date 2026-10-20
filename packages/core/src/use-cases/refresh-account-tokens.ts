@@ -3,7 +3,13 @@ import type { AbortSignalLike } from "../abort.js";
 import { ALL_SCOPE } from "../access.js";
 import type { Platform } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
-import { instagramAccountMetaSchema, type PlatformAccount } from "../platform-account.js";
+import {
+  accountTokenNeverExpires,
+  instagramAccountMetaSchema,
+  type PlatformAccount,
+  type TokenCredentials,
+  tokenCredentialsOf,
+} from "../platform-account.js";
 import type { InstagramAuth } from "../ports/instagram-auth.js";
 import type { MercadoLibreAuth } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
@@ -56,9 +62,11 @@ export type TokenRefreshOutcome = (typeof TOKEN_REFRESH_OUTCOMES)[number];
  * - `too_recent` (Instagram): menos de 24 h desde el último refresco (o desde la conexión, con el
  *   token del panel); tampoco con `force`;
  * - `not_due`: todavía no toca, y `force` lo salta. En Instagram, le quedan más de 30 días y el
- *   vencimiento no es una estimación; en Mercado Libre, se refrescó (o conectó) hace menos de 7 días.
+ *   vencimiento no es una estimación; en Mercado Libre, se refrescó (o conectó) hace menos de 7 días;
+ * - `never_expires` (F9-T02): la `meta` marca que el token no vence (`tokenNeverExpires`, un system
+ *   user de Meta); nunca se refresca, tampoco con `force`, y no tiene `refreshableAt`.
  */
-export const TOKEN_REFRESH_SKIP_REASONS = ["too_recent", "not_due"] as const;
+export const TOKEN_REFRESH_SKIP_REASONS = ["too_recent", "not_due", "never_expires"] as const;
 export type TokenRefreshSkipReason = (typeof TOKEN_REFRESH_SKIP_REASONS)[number];
 
 /**
@@ -76,8 +84,8 @@ export type TokenRefreshResult =
       outcome: "skipped";
       reason: TokenRefreshSkipReason;
       account: PlatformAccount;
-      /** Desde cuándo se refrescaría. */
-      refreshableAt: Date;
+      /** Desde cuándo se refrescaría; `null` con `never_expires` (nunca). */
+      refreshableAt: Date | null;
     }
   | { outcome: "expired"; reason: TokenExpiredReason; account: PlatformAccount };
 
@@ -128,6 +136,16 @@ function refreshConnected(
   account: PlatformAccount,
   options: RefreshOptions,
 ): Promise<TokenRefreshResult> {
+  // Antes de descifrar y de llamar a la plataforma: un token que no vence (un system user de Meta)
+  // no se manda al refresco, que podría rechazarlo y dejar la cuenta vencida.
+  if (accountTokenNeverExpires(account)) {
+    return Promise.resolve({
+      outcome: "skipped",
+      reason: "never_expires",
+      account,
+      refreshableAt: null,
+    });
+  }
   switch (account.platform) {
     case "instagram":
       return refreshInstagram(deps, account, options);
@@ -374,16 +392,19 @@ async function refreshInstagram(
     }
   }
 
-  let accessToken: string;
+  let stored: TokenCredentials;
   try {
-    ({ accessToken } = await deps.platformAccounts.getCredentials(account.id));
+    stored = tokenCredentialsOf(await deps.platformAccounts.getCredentials(account.id));
   } catch (error) {
     if (isAppError(error) && error.code === "CREDENTIALS_UNREADABLE") await markAs("error");
     throw error;
   }
   let token: Awaited<ReturnType<InstagramAuth["refresh"]>>;
   try {
-    token = await deps.instagram.refresh(accessToken, signal === undefined ? {} : { signal });
+    token = await deps.instagram.refresh(
+      stored.accessToken,
+      signal === undefined ? {} : { signal },
+    );
   } catch (error) {
     if (isAppError(error) && error.code === "IG_AUTH_INVALID") {
       return { outcome: "expired", reason: "token_rejected", account: await markAs("expired") };
@@ -391,7 +412,8 @@ async function refreshInstagram(
     throw error;
   }
   const refreshed = await deps.platformAccounts.updateToken(account.id, {
-    credentials: { accessToken: token.accessToken },
+    // Solo cambia el token: lo demás que guardaban las credenciales se conserva.
+    credentials: { ...stored, accessToken: token.accessToken },
     tokenExpiresAt: token.expiresAt,
     meta: { tokenRefreshedAt: now.toISOString(), tokenExpiryEstimated: false },
   });

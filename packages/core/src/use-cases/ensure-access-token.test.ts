@@ -424,7 +424,11 @@ describe("ensureAccessToken", () => {
       code: "ACCOUNT_NOT_FOUND",
     });
 
-    const instagram = await setup({ platform: "instagram" });
+    // Con las credenciales de Instagram: la escritura es estricta (F9-T02).
+    const instagram = await setup({
+      platform: "instagram",
+      credentials: { accessToken: OLD.accessToken },
+    });
     await expect(ensureAccessToken(instagram.deps, instagram.account.id)).rejects.toMatchObject({
       code: "ACCOUNT_REFRESH_UNSUPPORTED",
     });

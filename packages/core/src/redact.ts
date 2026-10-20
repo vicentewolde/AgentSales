@@ -30,14 +30,37 @@ const SENSITIVE_JSON_VALUE =
  */
 const MERCADOLIBRE_TOKEN = /APP_USR-[\w-]+|TG-[A-Za-z0-9]{8,}[\w-]*/g;
 
-/** Oculta credenciales y parámetros sensibles de URLs, formularios y JSON dentro de un texto. */
+/** Una barra, también codificada en una URL (`%2F`) o escapada en un JSON (`\/`). */
+const SLASH = String.raw`(?:\/|\\\/|%2F)`;
+/**
+ * El token de la URL de un webhook de Discord (spec F9 §4.7): `discord.com/api/webhooks/<id>/<token>`
+ * (o `discordapp.com`, un subdominio como `ptb.`, o `/api/v10/webhooks`), también con las barras
+ * codificadas o escapadas. Queda visible el id (no es secreto) y se oculta el token del final.
+ */
+const DISCORD_WEBHOOK = new RegExp(
+  String.raw`(discord(?:app)?\.com${SLASH}api${SLASH}(?:v\d+${SLASH})?webhooks${SLASH}\d+${SLASH})[\w-]+`,
+  "gi",
+);
+/**
+ * Un `Bearer <token>` de cualquier plataforma (una cabecera `Authorization` copiada a un mensaje),
+ * también con el espacio codificado (`%20`, `+`). El token va hasta el primer espacio, comilla, coma,
+ * punto y coma o `&` (el siguiente parámetro de un formulario).
+ */
+const BEARER_TOKEN = /(\bBearer(?:\s+|%20|\+))[^\s"'`,;&]+/gi;
+
+/**
+ * Oculta credenciales y parámetros sensibles de URLs, formularios y JSON dentro de un texto, el
+ * token de un webhook de Discord y los `Bearer`.
+ */
 export function redactText(text: string): string {
   return text
     .replace(URL_CREDENTIALS, `$1${REDACTED}@`)
     .replace(SENSITIVE_PARAM, `$1${REDACTED}`)
     .replace(OAUTH_CODE_PARAM, `$1${REDACTED}`)
     .replace(SENSITIVE_JSON_VALUE, `$1${REDACTED}"`)
-    .replace(MERCADOLIBRE_TOKEN, REDACTED);
+    .replace(MERCADOLIBRE_TOKEN, REDACTED)
+    .replace(DISCORD_WEBHOOK, `$1${REDACTED}`)
+    .replace(BEARER_TOKEN, `$1${REDACTED}`);
 }
 
 /** Claves de R2 de un corredor: `brokers/<id>/listings/...`. */

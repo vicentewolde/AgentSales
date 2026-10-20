@@ -2,9 +2,12 @@ import { z } from "zod";
 import type { AbortSignalLike } from "../abort.js";
 import { AppError, isAppError } from "../errors.js";
 import {
+  hasAccessToken,
   MERCADOLIBRE_REFRESH_TOKEN_DAYS,
   type PlatformAccount,
   type PlatformCredentials,
+  type RefreshableCredentials,
+  type TokenCredentials,
 } from "../platform-account.js";
 import type { MercadoLibreAuth } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
@@ -71,10 +74,12 @@ export function mercadoLibreTokenStillFresh(account: PlatformAccount, now: Date)
 }
 
 /** Las credenciales de Mercado Libre: siempre con el `refresh_token` (ADR-0015), o `null`. */
-function withRefreshToken(credentials: PlatformCredentials): Required<PlatformCredentials> | null {
-  return credentials.refreshToken === undefined
+function withRefreshToken(
+  credentials: PlatformCredentials,
+): (TokenCredentials & RefreshableCredentials) | null {
+  return !hasAccessToken(credentials) || credentials.refreshToken === undefined
     ? null
-    : { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken };
+    : { ...credentials, refreshToken: credentials.refreshToken };
 }
 
 /** La señal ya se disparó: no se empieza un refresco (nada cambió). */
@@ -176,7 +181,12 @@ export async function refreshMercadoLibreToken(
         }
         const refreshedAt = now();
         const saved = await save({
-          credentials: { accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken },
+          // Solo cambia el par: lo demás que guardaban las credenciales se conserva.
+          credentials: {
+            ...current,
+            accessToken: refreshed.accessToken,
+            refreshToken: refreshed.refreshToken,
+          },
           tokenExpiresAt: new Date(
             refreshedAt.getTime() + MERCADOLIBRE_REFRESH_TOKEN_DAYS * DAY_MS,
           ),
@@ -279,7 +289,7 @@ export async function ensureAccessToken(
     );
   }
 
-  let stored: Required<PlatformCredentials> | null;
+  let stored: RefreshableCredentials | null;
   try {
     stored = withRefreshToken(await deps.platformAccounts.getCredentials(accountId));
     if (stored === null) throw missingRefreshToken(accountId);

@@ -141,6 +141,123 @@ export function platformAccountRepositoryContract(
       expect(await repos.accounts.getCredentials(account.id)).toEqual(refreshed);
     });
 
+    it("una cuenta de Discord guarda su webhook y solo getCredentials lo devuelve (spec F9 §4.7)", async () => {
+      const webhookUrl = `https://discord.com/api/webhooks/${++sequence}/falso-webhook_contrato`;
+      const account = await repos.accounts.upsertConnected(
+        connectedAccount(brokerId, {
+          platform: "discord",
+          tokenExpiresAt: null,
+          meta: {},
+          credentials: { webhookUrl },
+        }),
+      );
+
+      expect(account).toMatchObject({ platform: "discord", hasCredentials: true });
+      expect(JSON.stringify(account)).not.toContain("falso-webhook");
+      expect(JSON.stringify(await repos.accounts.list(ALL_SCOPE))).not.toContain("falso-webhook");
+      expect(await repos.accounts.getCredentials(account.id)).toEqual({ webhookUrl });
+      await expect(
+        repos.accounts.updateToken(account.id, {
+          credentials: { accessToken: "no-sirve-en-discord" },
+          tokenExpiresAt: null,
+        }),
+      ).rejects.toMatchObject({ code: "CREDENTIALS_INVALID", retriable: false });
+      expect(await repos.accounts.getCredentials(account.id)).toEqual({ webhookUrl });
+    });
+
+    it("cada plataforma exige su variante al conectar y al refrescar (CREDENTIALS_INVALID)", async () => {
+      for (const [platform, credentials] of [
+        ["discord", { accessToken: "a" }],
+        ["discord", { webhookUrl: "https://evil.test/api/webhooks/1/falso" }],
+        ["x", { accessToken: "a" }],
+        ["tiktok", { accessToken: "a" }],
+        ["linkedin", { webhookUrl: "https://discord.com/api/webhooks/1/falso" }],
+      ] as const) {
+        await expect(
+          repos.accounts.upsertConnected(
+            connectedAccount(brokerId, {
+              platform,
+              credentials: credentials as PlatformCredentials,
+            }),
+          ),
+          platform,
+        ).rejects.toMatchObject({ code: "CREDENTIALS_INVALID", retriable: false });
+      }
+      const x = await repos.accounts.upsertConnected(
+        connectedAccount(brokerId, {
+          platform: "x",
+          credentials: { accessToken: "x-acceso", refreshToken: "x-renovar" },
+        }),
+      );
+      await expect(
+        repos.accounts.updateToken(x.id, {
+          credentials: { accessToken: "x-sin-renovar" },
+          tokenExpiresAt: null,
+        }),
+      ).rejects.toMatchObject({ code: "CREDENTIALS_INVALID" });
+      expect(await repos.accounts.getCredentials(x.id)).toEqual({
+        accessToken: "x-acceso",
+        refreshToken: "x-renovar",
+      });
+    });
+
+    it("la marca de que el token no vence va en meta y exige no tener vencimiento", async () => {
+      const input = connectedAccount(brokerId, {
+        tokenExpiresAt: null,
+        meta: { accountType: "BUSINESS", tokenNeverExpires: true },
+      });
+      const account = await repos.accounts.upsertConnected(input);
+      expect(account).toMatchObject({ tokenExpiresAt: null, meta: { tokenNeverExpires: true } });
+      expect(await repos.accounts.getCredentials(account.id)).toEqual(input.credentials);
+
+      // Conectar con la marca y un vencimiento, o darle un vencimiento después, no se acepta.
+      await expect(
+        repos.accounts.upsertConnected(
+          connectedAccount(brokerId, { meta: { tokenNeverExpires: true } }),
+        ),
+      ).rejects.toMatchObject({ code: "ACCOUNT_META_INVALID", retriable: false });
+      await expect(
+        repos.accounts.updateToken(account.id, {
+          credentials: { accessToken: "IGAA-con-fecha" },
+          tokenExpiresAt: new Date("2027-01-01T00:00:00Z"),
+        }),
+      ).rejects.toMatchObject({ code: "ACCOUNT_META_INVALID" });
+      expect(await repos.accounts.getCredentials(account.id)).toEqual(input.credentials);
+      const dated = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+      await expect(
+        repos.accounts.mergeMeta(dated.id, { tokenNeverExpires: true }),
+      ).rejects.toMatchObject({ code: "ACCOUNT_META_INVALID" });
+      expect((await repos.accounts.get(dated.id))?.meta).not.toHaveProperty("tokenNeverExpires");
+    });
+
+    it("la escritura es estricta: una clave de más no calza (CREDENTIALS_INVALID)", async () => {
+      await expect(
+        repos.accounts.upsertConnected(
+          connectedAccount(brokerId, {
+            credentials: { accessToken: "IGAA-a", expires: "never" } as PlatformCredentials,
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "CREDENTIALS_INVALID" });
+      const account = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+      await expect(
+        repos.accounts.updateToken(account.id, {
+          credentials: { accessToken: "IGAA-b", refreshToken: "no-va-en-instagram" },
+          tokenExpiresAt: null,
+        }),
+      ).rejects.toMatchObject({ code: "CREDENTIALS_INVALID" });
+    });
+
+    it("updateToken de una cuenta que no existe es ACCOUNT_NOT_FOUND aunque las credenciales no sirvan", async () => {
+      for (const credentials of [{ accessToken: "" }, { otra: "forma" }]) {
+        await expect(
+          repos.accounts.updateToken(repos.missingId, {
+            credentials: credentials as PlatformCredentials,
+            tokenExpiresAt: null,
+          }),
+        ).rejects.toMatchObject({ code: "ACCOUNT_NOT_FOUND" });
+      }
+    });
+
     it("reconectar la misma cuenta actualiza la fila (mismo id) y la deja conectada", async () => {
       const first = connectedAccount(brokerId);
       const created = await repos.accounts.upsertConnected(first);

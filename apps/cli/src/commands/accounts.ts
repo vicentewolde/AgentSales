@@ -541,6 +541,12 @@ export function runRefresh(deps: AccountsDeps, id: string, options: RefreshOptio
     }
     const mercadoLibre = account.platform === "portal_inmobiliario";
     if (result.outcome === "skipped") {
+      if (result.refreshableAt === null) {
+        deps.print(
+          `Sin cambios: el acceso de ${account.displayName} no vence, así que no se renueva`,
+        );
+        return 0;
+      }
       const when = formatDateTime(result.refreshableAt);
       deps.print(
         result.reason === "too_recent"
