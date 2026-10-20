@@ -289,6 +289,76 @@ describe("cuentas conectadas · cifrado en la base (PGlite)", () => {
     });
   });
 
+  /** Sella a mano, como lo guardaba el repositorio antes de F9 (mismo formato y misma AAD). */
+  const sealRaw = (id: string, aad: string, credentials: unknown) =>
+    repos.db
+      .update(platformAccounts)
+      .set({
+        credentialsEncrypted: createSecretBox(APP_KEY).encrypt(JSON.stringify(credentials), aad),
+      })
+      .where(eq(platformAccounts.id, id));
+
+  it("las cuentas guardadas antes de F9 se leen igual (spec F9 §4.7)", async () => {
+    const instagram = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+    await sealRaw(instagram.id, `instagram:${brokerId}:${instagram.externalAccountId}`, {
+      accessToken: "IGAA-de-f8",
+    });
+    const portal = await repos.accounts.upsertConnected(
+      connectedAccount(brokerId, {
+        platform: "portal_inmobiliario",
+        credentials: { accessToken: "APP_USR-x", refreshToken: "TG-x" },
+      }),
+    );
+    await sealRaw(portal.id, `portal_inmobiliario:${brokerId}:${portal.externalAccountId}`, {
+      accessToken: "APP_USR-de-f8",
+      refreshToken: "TG-de-f8",
+    });
+
+    expect(await repos.accounts.getCredentials(instagram.id)).toEqual({
+      accessToken: "IGAA-de-f8",
+    });
+    expect(await repos.accounts.getCredentials(portal.id)).toEqual({
+      accessToken: "APP_USR-de-f8",
+      refreshToken: "TG-de-f8",
+    });
+  });
+
+  it("el webhook de Discord va cifrado con la AAD de siempre, y la variante sale de la plataforma de la fila", async () => {
+    const webhookUrl = "https://discord.com/api/webhooks/42/falso-webhook_pglite";
+    const discord = await repos.accounts.upsertConnected(
+      connectedAccount(brokerId, {
+        platform: "discord",
+        tokenExpiresAt: null,
+        credentials: { webhookUrl },
+      }),
+    );
+    const row = await rawRow(discord.id);
+    expect(row?.credentialsEncrypted).toMatch(/^v1\./);
+    expect(JSON.stringify(row)).not.toContain("falso-webhook");
+    // Se descifra con la AAD `platform:broker_id:external_account_id` y guarda solo la variante.
+    expect(
+      JSON.parse(
+        createSecretBox(APP_KEY).decrypt(
+          row?.credentialsEncrypted ?? "",
+          `discord:${brokerId}:${discord.externalAccountId}`,
+        ),
+      ),
+    ).toEqual({ webhookUrl });
+
+    // Un webhook sellado en una cuenta de Instagram no calza con su variante.
+    const instagram = await repos.accounts.upsertConnected(connectedAccount(brokerId));
+    await sealRaw(instagram.id, `instagram:${brokerId}:${instagram.externalAccountId}`, {
+      webhookUrl,
+    });
+    const error = await repos.accounts
+      .getCredentials(instagram.id)
+      .catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ code: "CREDENTIALS_UNREADABLE" });
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error as object))).not.toContain(
+      "falso-webhook",
+    );
+  });
+
   it("una fila con meta corrupta es PLATFORM_ACCOUNT_ROW_INVALID, no un ZodError", async () => {
     const account = await repos.accounts.upsertConnected(connectedAccount(brokerId));
     await repos.db

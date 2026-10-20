@@ -175,9 +175,9 @@ export function createInMemoryPlatformAccountRepository(
       return { ...credentials };
     },
     async updateToken(id, update) {
-      const credentials = checkCredentials(update.credentials);
       const patch = normalizeAccountMeta(update.meta);
       const current = find(id);
+      const credentials = checkCredentials(update.credentials, current.account.platform);
       if (current.account.status !== "connected" || current.credentials === null) {
         throw notConnected(id);
       }

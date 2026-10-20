@@ -32,31 +32,181 @@ export type PlatformAccount = z.infer<typeof platformAccountSchema>;
  */
 export const INSTAGRAM_PUBLISH_SCOPE = "instagram_business_content_publish";
 
-/**
+/*
  * Credenciales de una cuenta, ya descifradas: solo viven en memoria, nunca van a un log, un error,
- * una respuesta HTTP ni a los datos de un job. Se guardan cifradas (`credentials_encrypted`).
+ * una respuesta HTTP ni a los datos de un job. Se guardan cifradas (`credentials_encrypted`) como el
+ * JSON de la variante de su plataforma, **sin** la plataforma adentro (spec F9 §4.7, ADR-0029 punto
+ * 10): la plataforma es la de la fila, que ya va en la AAD (`platform:broker_id:external_account_id`).
+ * Así las cuentas de antes de F9 (`{ accessToken }` y `{ accessToken, refreshToken }`) se leen igual.
  */
-export const platformCredentialsSchema = z.object({
-  accessToken: z.string().min(1),
-  /**
-   * Mercado Libre (ADR-0015): el token que renueva el acceso. Sirve una sola vez y solo vale el
-   * último, así que se refresca con el candado de la cuenta. Instagram no lo usa.
-   */
-  refreshToken: z.string().min(1).optional(),
-});
-export type PlatformCredentials = z.infer<typeof platformCredentialsSchema>;
+
+const secret = z.string().min(1);
 
 /**
- * Valida las credenciales antes de guardarlas: `CREDENTIALS_INVALID` (no reintentable) si no
- * calzan. El error no lleva el valor recibido.
+ * Marca de un token que **no vence** (spec F9 §4.7 y §4.17): `expires: "never"` dentro de las
+ * credenciales cifradas. Es explícita porque `token_expires_at = null` ya significa «no se sabe
+ * cuándo vence». Sin el campo, el token vence (o no se sabe) como siempre. Por ahora nada la usa:
+ * será el token de un system user de Meta en el piloto (F10).
  */
-export function checkCredentials(credentials: unknown): PlatformCredentials {
-  const parsed = platformCredentialsSchema.safeParse(credentials);
-  if (!parsed.success) {
-    throw new AppError("CREDENTIALS_INVALID", "Las credenciales de la cuenta no son válidas");
-  }
+export const TOKEN_NEVER_EXPIRES = "never";
+
+/** Instagram y LinkedIn: solo el token de acceso (que puede marcarse como que no vence). */
+export const accessTokenCredentialsSchema = z.object({
+  accessToken: secret,
+  expires: z.literal(TOKEN_NEVER_EXPIRES).optional(),
+});
+export type AccessTokenCredentials = z.infer<typeof accessTokenCredentialsSchema>;
+
+/**
+ * Mercado Libre (ADR-0015), como hasta F8: el `refreshToken` renueva el acceso, sirve una sola vez y
+ * solo vale el último, así que se refresca con el candado de la cuenta. Sigue opcional para leer las
+ * cuentas guardadas tal como están: sin él, `ensureAccessToken` pide reconectar.
+ */
+export const mercadoLibreCredentialsSchema = z.object({
+  accessToken: secret,
+  refreshToken: secret.optional(),
+});
+export type MercadoLibreCredentials = z.infer<typeof mercadoLibreCredentialsSchema>;
+
+/** X y TikTok: el par de acceso y de renovar, los dos obligatorios (no hay cuentas de antes). */
+export const refreshableCredentialsSchema = z.object({
+  accessToken: secret,
+  refreshToken: secret,
+});
+export type RefreshableCredentials = z.infer<typeof refreshableCredentialsSchema>;
+
+/**
+ * `https://discord.com/api/webhooks/<id>/<token>` (o `discordapp.com`): el id es numérico (un
+ * snowflake) y el token es el secreto. Sin puerto, usuario, subdominio, consulta ni fragmento. Con
+ * una expresión y no con `URL`: core no carga los tipos de Node ni del navegador.
+ */
+const DISCORD_WEBHOOK_URL =
+  /^https:\/\/(?:discord|discordapp)\.com\/api\/webhooks\/\d{1,30}\/[\w-]{1,200}$/;
+
+/**
+ * La URL de un webhook de Discord. Toda la URL es el secreto: quien la tiene publica en el canal.
+ * El mensaje de error nunca lleva la URL.
+ */
+export const discordWebhookUrlSchema = z
+  .string()
+  .regex(DISCORD_WEBHOOK_URL, "No es la URL de un webhook de Discord");
+
+/** Discord: la URL del webhook del canal, que hace de credencial. */
+export const discordCredentialsSchema = z.object({ webhookUrl: discordWebhookUrlSchema });
+export type DiscordCredentials = z.infer<typeof discordCredentialsSchema>;
+
+/**
+ * El esquema de las credenciales de cada plataforma. Marketplace no guarda (ADR-0017): su sesión
+ * vive en el perfil del navegador.
+ */
+export const PLATFORM_CREDENTIALS_SCHEMAS = {
+  instagram: accessTokenCredentialsSchema,
+  linkedin: accessTokenCredentialsSchema,
+  portal_inmobiliario: mercadoLibreCredentialsSchema,
+  x: refreshableCredentialsSchema,
+  tiktok: refreshableCredentialsSchema,
+  discord: discordCredentialsSchema,
+  fb_marketplace: z.null(),
+} as const satisfies Record<Platform, z.ZodType>;
+
+/** Las credenciales de una plataforma (`null` en Marketplace). */
+export type PlatformCredentialsFor<P extends Platform> = z.infer<
+  (typeof PLATFORM_CREDENTIALS_SCHEMAS)[P]
+>;
+
+type CredentialsVariant = NonNullable<PlatformCredentialsFor<Platform>>;
+type KeysOfUnion<T> = T extends unknown ? keyof T : never;
+/** Cada variante declara ausentes (`?: undefined`) las claves de las demás. */
+type Exclusive<T, All> = T extends unknown
+  ? T & { [K in Exclude<KeysOfUnion<All>, keyof T>]?: undefined }
+  : never;
+
+/**
+ * Las credenciales de cualquier cuenta que las guarda: una variante por plataforma. Cada variante
+ * declara ausentes las claves de las otras, así se lee `credentials.refreshToken` (o `webhookUrl`)
+ * sin estrechar antes: es `undefined` donde no va.
+ */
+export type PlatformCredentials = Exclusive<CredentialsVariant, CredentialsVariant>;
+
+/** Las credenciales que llevan un token de acceso (todas menos las de Discord). */
+export type TokenCredentials = Exclude<PlatformCredentials, DiscordCredentials>;
+
+const credentialsEntry = <P extends Platform>(platform: P) =>
+  z.object({
+    platform: z.literal(platform),
+    credentials: PLATFORM_CREDENTIALS_SCHEMAS[platform],
+  });
+
+/**
+ * La unión por plataforma (spec F9 §4.7): `{ platform, credentials }`, con `platform` como
+ * discriminante. Lo guardado no lleva `platform` (sale de la fila), así que quien lee arma el par.
+ */
+export const platformCredentialsSchema = z.discriminatedUnion("platform", [
+  credentialsEntry("instagram"),
+  credentialsEntry("linkedin"),
+  credentialsEntry("portal_inmobiliario"),
+  credentialsEntry("x"),
+  credentialsEntry("tiktok"),
+  credentialsEntry("discord"),
+  credentialsEntry("fb_marketplace"),
+]);
+export type PlatformCredentialsEntry = z.infer<typeof platformCredentialsSchema>;
+
+// Cada plataforma tiene su variante: si `PLATFORMS` suma una, esto no compila hasta agregarla.
+type MissingCredentialsPlatform = Exclude<Platform, PlatformCredentialsEntry["platform"]>;
+const everyPlatformHasCredentials: [MissingCredentialsPlatform] extends [never] ? true : never =
+  true;
+void everyPlatformHasCredentials;
+
+/**
+ * Sin plataforma (compatibilidad con F3 a F8): cualquiera de las variantes, estricta (una clave de
+ * otra variante o desconocida no se descarta en silencio: no calza). Lo que se guarda pasa siempre
+ * por el esquema de la plataforma de la cuenta.
+ */
+const anyCredentialsSchema = z.union([
+  z.strictObject(accessTokenCredentialsSchema.shape),
+  z.strictObject(mercadoLibreCredentialsSchema.shape),
+  z.strictObject(discordCredentialsSchema.shape),
+]);
+
+const credentialsInvalid = () =>
+  new AppError("CREDENTIALS_INVALID", "Las credenciales de la cuenta no son válidas");
+
+/**
+ * Valida las credenciales antes de guardarlas: con la plataforma, contra su variante (Discord exige
+ * `webhookUrl`; las de token, `accessToken`; X y TikTok también `refreshToken`). Sin ella, contra
+ * cualquiera. `CREDENTIALS_INVALID` (no reintentable) si no calzan, también en Marketplace (que no
+ * guarda credenciales). El error no lleva el valor recibido.
+ */
+export function checkCredentials(credentials: unknown): PlatformCredentials;
+export function checkCredentials<P extends Platform>(
+  credentials: unknown,
+  platform: P,
+): NonNullable<PlatformCredentialsFor<P>>;
+export function checkCredentials(credentials: unknown, platform?: Platform): PlatformCredentials {
+  const schema =
+    platform === undefined ? anyCredentialsSchema : PLATFORM_CREDENTIALS_SCHEMAS[platform];
+  const parsed = schema.safeParse(credentials);
+  if (!parsed.success || parsed.data === null) throw credentialsInvalid();
   return parsed.data;
 }
+
+/** Si las credenciales llevan un token de acceso (todas menos el webhook de Discord). */
+export const hasAccessToken = (credentials: PlatformCredentials): credentials is TokenCredentials =>
+  typeof credentials.accessToken === "string";
+
+/**
+ * El token de acceso de unas credenciales. `ACCESS_TOKEN_UNAVAILABLE` (no reintentable) si la
+ * plataforma no usa token (Discord): pedirlo es un error de programación.
+ */
+export function accessTokenOf(credentials: PlatformCredentials): string {
+  if (hasAccessToken(credentials)) return credentials.accessToken;
+  throw new AppError("ACCESS_TOKEN_UNAVAILABLE", "Esta cuenta no usa un token de acceso");
+}
+
+/** Si el token está marcado como que no vence (`expires: "never"`). */
+export const tokenNeverExpires = (credentials: PlatformCredentials): boolean =>
+  credentials.expires === TOKEN_NEVER_EXPIRES;
 
 /**
  * `meta` tal como queda guardada (jsonb): un objeto JSON, sin `undefined` ni fechas como `Date`.
@@ -135,10 +285,15 @@ export const usesSessionProfile = (platform: Platform): boolean =>
 
 /**
  * Las credenciales de una cuenta que se conecta, según su plataforma (ADR-0017): Marketplace no
- * tiene (`null`) y las demás las exigen. Errores (no reintentables, sin el valor recibido):
- * `ACCOUNT_CREDENTIALS_REQUIRED` si faltan, `ACCOUNT_CREDENTIALS_NOT_ALLOWED` si llegan a una
- * cuenta de Marketplace (su sesión nunca va a la base) y `CREDENTIALS_INVALID` si no calzan.
+ * tiene (`null`) y las demás exigen la variante de su plataforma (Discord, `{ webhookUrl }`; spec
+ * F9 §4.7). Errores (no reintentables, sin el valor recibido): `ACCOUNT_CREDENTIALS_REQUIRED` si
+ * faltan, `ACCOUNT_CREDENTIALS_NOT_ALLOWED` si llegan a una cuenta de Marketplace (su sesión nunca
+ * va a la base) y `CREDENTIALS_INVALID` si no calzan con su plataforma.
  */
+export function checkConnectedCredentials<P extends Platform>(
+  platform: P,
+  credentials: unknown,
+): NonNullable<PlatformCredentialsFor<P>> | null;
 export function checkConnectedCredentials(
   platform: Platform,
   credentials: unknown,
@@ -160,7 +315,7 @@ export function checkConnectedCredentials(
       },
     );
   }
-  return checkCredentials(credentials);
+  return checkCredentials(credentials, platform);
 }
 
 /**

@@ -14,9 +14,10 @@ export { REDACTED, redactText };
 
 /** Claves cuyo valor se oculta completo. */
 // Desde F8-T15 también el doble factor: el desafío, los códigos de recuperación y el enlace otpauth
-// (por su nombre exacto: un conteo como `loginChallenges` o `recoveryCodesLeft` sí se ve).
+// (por su nombre exacto: un conteo como `loginChallenges` o `recoveryCodesLeft` sí se ve). Desde
+// F9-T02, la URL de un webhook de Discord (`webhookUrl`): toda ella es la credencial.
 const SENSITIVE_KEY =
-  /token|secret|password|authorization|key|^challenge$|^recoveryCodes?$|otpauth/i;
+  /token|secret|password|authorization|key|^challenge$|^recoveryCodes?$|otpauth|webhook_?url/i;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null) {
@@ -73,8 +74,9 @@ function redactValue(value: unknown, ancestors: Set<object>): unknown {
 
 /**
  * Copia `value` ocultando secretos a cualquier profundidad:
- * - el valor completo de las claves `token|secret|password|authorization|key`;
- * - credenciales y parámetros sensibles dentro de URLs en cualquier texto;
+ * - el valor completo de las claves `token|secret|password|authorization|key|webhookUrl`;
+ * - credenciales y parámetros sensibles dentro de URLs en cualquier texto, el token de un webhook
+ *   de Discord y los `Bearer <token>` (`redactText`);
  * - lo anterior también dentro de errores (se copian a un objeto plano).
  */
 export function redact(value: Record<string, unknown>): Record<string, unknown>;

@@ -169,6 +169,62 @@ describe("createLogger", () => {
     expect(JSON.stringify(lines)).not.toContain("ak-123");
   });
 
+  describe("webhook de Discord y Bearer (F9-T02)", () => {
+    const WEBHOOK_TOKEN = "falso-webhook_ABC123";
+    const WEBHOOK = `https://discord.com/api/webhooks/123456789012345678/${WEBHOOK_TOKEN}`;
+    const BEARER = "falso-bearer.XYZ789";
+
+    it("en el mensaje, en los campos y en los bindings de un log", () => {
+      const { logger, lines } = captureLogger();
+
+      logger
+        .child({ target: WEBHOOK })
+        .info(
+          { webhookUrl: WEBHOOK, request: { url: WEBHOOK, header: `Bearer ${BEARER}` } },
+          `POST ${WEBHOOK} con Authorization: Bearer ${BEARER} respondió 404`,
+        );
+
+      const [line] = lines;
+      expect(line).toMatchObject({
+        webhookUrl: REDACTED,
+        msg: `POST https://discord.com/api/webhooks/123456789012345678/${REDACTED} con Authorization: Bearer ${REDACTED} respondió 404`,
+      });
+      expect(JSON.stringify(lines)).not.toContain(WEBHOOK_TOKEN);
+      expect(JSON.stringify(lines)).not.toContain(BEARER);
+    });
+
+    it("en un error serializado: su mensaje, su pila, sus propiedades y su causa", () => {
+      const { logger, lines } = captureLogger();
+      const cause = new Error(`Bearer ${BEARER} rechazado`);
+      const error = Object.assign(new Error(`Discord respondió 401 en ${WEBHOOK}`), {
+        response: { body: `{"url":"${WEBHOOK}"}` },
+        cause,
+      });
+
+      logger.error({ err: error }, "falló el envío");
+
+      const serialized = JSON.stringify(redact({ err: error }));
+      for (const text of [serialized, JSON.stringify(lines)]) {
+        expect(text).not.toContain(WEBHOOK_TOKEN);
+        expect(text).not.toContain(BEARER);
+      }
+      expect(redact({ err: error })).toMatchObject({
+        err: {
+          message: `Discord respondió 401 en https://discord.com/api/webhooks/123456789012345678/${REDACTED}`,
+          response: {
+            body: `{"url":"https://discord.com/api/webhooks/123456789012345678/${REDACTED}"}`,
+          },
+          cause: { message: `Bearer ${REDACTED} rechazado` },
+        },
+      });
+      // pino junta la causa en el mensaje: también queda oculta ahí.
+      expect(lines[0]).toMatchObject({
+        msg: "falló el envío",
+        err: { message: expect.stringContaining(REDACTED) },
+      });
+    });
+  });
+
   it("redacta un error logueado directamente y las URLs del mensaje", () => {
     const { logger, lines } = captureLogger();
     const error = Object.assign(new Error("fallo"), {

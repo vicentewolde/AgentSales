@@ -13,7 +13,11 @@ import {
 import { marketplacePrice } from "../marketplace/price.js";
 import type { MarketplaceProgress } from "../marketplace/progress.js";
 import { validateMarketplaceInput } from "../marketplace/validate.js";
-import { isManualMarketplaceAccount, usesSessionProfile } from "../platform-account.js";
+import {
+  accessTokenOf,
+  isManualMarketplaceAccount,
+  usesSessionProfile,
+} from "../platform-account.js";
 import type { BrokerRepository } from "../ports/broker-repository.js";
 import type { ContentRepository } from "../ports/content-repository.js";
 import type { ListingRepository } from "../ports/listing-repository.js";
@@ -668,7 +672,7 @@ async function prepareAttempt(
   // publisher de Portal usa siempre `ctx.accessToken` (`platformContextOf` solo cae en él sin
   // proveedor). Instagram: el guardado, que falla cerrado ante `rejectedToken`.
   const portal = publication.platform === "portal_inmobiliario";
-  const credentials = portal ? { accessToken: stored.accessToken } : stored;
+  const credentials = portal ? { accessToken: accessTokenOf(stored) } : stored;
   const accessToken: AccessTokenProvider = portal
     ? accessTokenProvider(
         {

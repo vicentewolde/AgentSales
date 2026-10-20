@@ -373,6 +373,27 @@ describe("publishPublication · errores", () => {
     expect(message).not.toMatch(/brokers\/|\/Users\/|IGAA-x/);
   });
 
+  it("ni el motivo ni la bitácora llevan el webhook de Discord ni un Bearer (F9-T02)", async () => {
+    const { t, post, run } = await setup({
+      publisher: {
+        steps: [
+          {
+            error: new AppError(
+              "IG_MEDIA_REJECTED",
+              "POST https://discord.com/api/webhooks/123/falso-webhook_1 con Bearer falso-bearer.2 respondió 400",
+            ),
+          },
+        ],
+      },
+    });
+    await expect(run(post)).rejects.toMatchObject({ code: "IG_MEDIA_REJECTED" });
+    const events = await t.publications.listEvents(post.id);
+    expect(events.length).toBeGreaterThan(0);
+    const written = JSON.stringify({ events, lastError: current(t, post.id)?.lastError });
+    expect(written).not.toMatch(/falso-webhook|falso-bearer/);
+    expect(written).toContain("https://discord.com/api/webhooks/123/[REDACTED]");
+  });
+
   it("un error que no es AppError queda como INTERNAL_ERROR, sin su mensaje", async () => {
     const { t, post, run } = await setup({
       publisher: { steps: [{ error: new Error("detalle interno con IGAA-secreto") }] },

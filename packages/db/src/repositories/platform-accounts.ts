@@ -106,9 +106,14 @@ export function createPlatformAccountRepository(
     } catch {
       throw unreadable(row.id);
     }
-    const credentials = platformCredentialsSchema.safeParse(parsed);
-    if (!credentials.success) throw unreadable(row.id);
-    return credentials.data;
+    // Lo guardado no lleva la plataforma: sale de la fila (la misma que va en la AAD), y con ella
+    // se elige la variante de la unión (spec F9 §4.7).
+    const entry = platformCredentialsSchema.safeParse({
+      platform: row.platform,
+      credentials: parsed,
+    });
+    if (!entry.success || entry.data.credentials === null) throw unreadable(row.id);
+    return entry.data.credentials;
   };
 
   const findRow = (id: string) =>
@@ -233,10 +238,10 @@ export function createPlatformAccountRepository(
     },
 
     async updateToken(id, { credentials, tokenExpiresAt, meta }) {
-      const checked = checkCredentials(credentials);
       const patch = normalizeAccountMeta(meta);
       const row = await findRow(id);
       if (row === undefined) throw notFound(id);
+      const checked = checkCredentials(credentials, row.platform);
       const [updated] = await withDbErrors(() =>
         // Condicional: un refresco que se cruza con una desconexión o un vencimiento no revive la
         // cuenta. La mezcla de `meta` es en la base (`||`), a un nivel, y reemplaza una `meta`

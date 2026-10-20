@@ -1,6 +1,7 @@
 import {
   type AbortSignalLike,
   AppError,
+  accessTokenOf,
   checkPublishInput,
   type DirectPublisher,
   type InstagramProgress,
@@ -191,7 +192,7 @@ class Attempt {
         "Falta el acceso de la cuenta de Instagram",
       );
     }
-    this.token = ctx.credentials.accessToken;
+    this.token = accessTokenOf(ctx.credentials);
     this.igUserId = ctx.account.externalAccountId;
     this.call = ctx.signal === undefined ? {} : { signal: ctx.signal };
     this.deadline = this.nowMs() + tools.attemptMaxMs;

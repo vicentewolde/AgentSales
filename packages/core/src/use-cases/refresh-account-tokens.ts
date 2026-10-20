@@ -3,7 +3,11 @@ import type { AbortSignalLike } from "../abort.js";
 import { ALL_SCOPE } from "../access.js";
 import type { Platform } from "../enums.js";
 import { AppError, isAppError } from "../errors.js";
-import { instagramAccountMetaSchema, type PlatformAccount } from "../platform-account.js";
+import {
+  accessTokenOf,
+  instagramAccountMetaSchema,
+  type PlatformAccount,
+} from "../platform-account.js";
 import type { InstagramAuth } from "../ports/instagram-auth.js";
 import type { MercadoLibreAuth } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
@@ -376,7 +380,7 @@ async function refreshInstagram(
 
   let accessToken: string;
   try {
-    ({ accessToken } = await deps.platformAccounts.getCredentials(account.id));
+    accessToken = accessTokenOf(await deps.platformAccounts.getCredentials(account.id));
   } catch (error) {
     if (isAppError(error) && error.code === "CREDENTIALS_UNREADABLE") await markAs("error");
     throw error;

@@ -118,6 +118,64 @@ describe("redactText", () => {
     });
   });
 
+  describe("webhooks de Discord (F9)", () => {
+    // Sin la palabra "token": un parámetro con ese nombre ya se oculta por su lado.
+    const TOKEN = "falso_DE-prueba123abc";
+    const KEPT = "https://discord.com/api/webhooks/123456789012345678/";
+
+    it("oculta el token del final y deja visible el id", () => {
+      expect(redactText(`POST ${KEPT}${TOKEN} respondió 404`)).toBe(
+        `POST ${KEPT}${REDACTED} respondió 404`,
+      );
+      expect(redactText(`https://discordapp.com/api/webhooks/1/${TOKEN}?wait=true`)).toBe(
+        `https://discordapp.com/api/webhooks/1/${REDACTED}?wait=true`,
+      );
+      expect(redactText(`https://ptb.discord.com/api/v10/webhooks/1/${TOKEN}/messages/2`)).toBe(
+        `https://ptb.discord.com/api/v10/webhooks/1/${REDACTED}/messages/2`,
+      );
+    });
+
+    it("también codificado en una URL, escapado en un JSON y en mayúsculas", () => {
+      for (const text of [
+        `https://x.test/r?to=https%3A%2F%2Fdiscord.com%2Fapi%2Fwebhooks%2F1%2F${TOKEN}`,
+        `{"url":"https:\\/\\/discord.com\\/api\\/webhooks\\/1\\/${TOKEN}"}`,
+        `HTTPS://DISCORD.COM/API/WEBHOOKS/1/${TOKEN}`,
+        `{"webhookUrl": "${KEPT}${TOKEN}"}`,
+      ]) {
+        const redacted = redactText(text);
+        expect(redacted, text).not.toContain(TOKEN);
+        expect(redacted).toContain(REDACTED);
+      }
+    });
+
+    it("deja visibles otras URLs de Discord y el nombre en un mensaje", () => {
+      const text = "Discord rechazó el archivo: https://discord.com/channels/1/2 (webhooks 1/2)";
+      expect(redactText(text)).toBe(text);
+    });
+  });
+
+  describe("Bearer de cualquier plataforma (F9)", () => {
+    it("en una cabecera, un JSON, codificado y con mayúsculas", () => {
+      expect(redactText("Authorization: Bearer AAAA.bbb-ccc_ddd= rechazado")).toBe(
+        `Authorization: Bearer ${REDACTED} rechazado`,
+      );
+      expect(redactText(`{"authorization":"Bearer li-token-falso"}`)).toBe(
+        `{"authorization":"Bearer ${REDACTED}"}`,
+      );
+      expect(redactText("authorization=bearer%20x-token-falso&b=1")).toBe(
+        `authorization=bearer%20${REDACTED}&b=1`,
+      );
+      expect(redactText("BEARER tiktok-token-falso, reintenta")).toBe(
+        `BEARER ${REDACTED}, reintenta`,
+      );
+    });
+
+    it("deja visible una palabra que solo contiene bearer", () => {
+      const text = "cardbearer sin token; Bearer";
+      expect(redactText(text)).toBe(text);
+    });
+  });
+
   it("deja intacto un texto sin URLs sensibles", () => {
     expect(redactText("bucket inaccesible")).toBe("bucket inaccesible");
   });
@@ -146,6 +204,14 @@ describe("scrubMessage", () => {
       expect(scrubbed).not.toContain(leak);
     }
     expect(scrubbed).toContain("https://bucket.r2.cloudflarestorage.com/k");
+  });
+
+  it("oculta el token de un webhook de Discord y un Bearer (F9)", () => {
+    const scrubbed = scrubMessage(
+      "POST https://discord.com/api/webhooks/1/token-falso-1 falló con Bearer token-falso-2",
+    );
+    expect(scrubbed).not.toMatch(/token-falso/);
+    expect(scrubbed).toContain(`https://discord.com/api/webhooks/1/${REDACTED}`);
   });
 
   it("deja visibles un comando de un tramo, una proporción y el texto normal", () => {

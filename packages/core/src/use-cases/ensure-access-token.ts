@@ -2,9 +2,11 @@ import { z } from "zod";
 import type { AbortSignalLike } from "../abort.js";
 import { AppError, isAppError } from "../errors.js";
 import {
+  hasAccessToken,
   MERCADOLIBRE_REFRESH_TOKEN_DAYS,
   type PlatformAccount,
   type PlatformCredentials,
+  type RefreshableCredentials,
 } from "../platform-account.js";
 import type { MercadoLibreAuth } from "../ports/mercadolibre-auth.js";
 import type { PlatformAccountRepository } from "../ports/platform-account-repository.js";
@@ -71,8 +73,8 @@ export function mercadoLibreTokenStillFresh(account: PlatformAccount, now: Date)
 }
 
 /** Las credenciales de Mercado Libre: siempre con el `refresh_token` (ADR-0015), o `null`. */
-function withRefreshToken(credentials: PlatformCredentials): Required<PlatformCredentials> | null {
-  return credentials.refreshToken === undefined
+function withRefreshToken(credentials: PlatformCredentials): RefreshableCredentials | null {
+  return !hasAccessToken(credentials) || credentials.refreshToken === undefined
     ? null
     : { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken };
 }
@@ -279,7 +281,7 @@ export async function ensureAccessToken(
     );
   }
 
-  let stored: Required<PlatformCredentials> | null;
+  let stored: RefreshableCredentials | null;
   try {
     stored = withRefreshToken(await deps.platformAccounts.getCredentials(accountId));
     if (stored === null) throw missingRefreshToken(accountId);

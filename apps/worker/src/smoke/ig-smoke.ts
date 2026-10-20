@@ -3,6 +3,7 @@ import {
   type AccessScope,
   ALL_SCOPE,
   AppError,
+  accessTokenOf,
   type Broker,
   canPrepareContent,
   isAppError,
@@ -243,7 +244,7 @@ export async function runIgSmoke(deps: IgSmokeDeps, options: IgSmokeOptions = {}
     }
     // La misma vida que las URLs de una publicación (core, `buildPublishInput`).
     const imageUrl = await deps.storage.signedReadUrl(cover.storagePath, PUBLISH_MEDIA_URL_TTL_S);
-    const { accessToken } = await deps.accounts.getCredentials(account.id);
+    const accessToken = accessTokenOf(await deps.accounts.getCredentials(account.id));
     const containerId = await deps.graph.createContainer(
       accessToken,
       account.externalAccountId,
