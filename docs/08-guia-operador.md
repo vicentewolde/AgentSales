@@ -211,6 +211,18 @@ pnpm -s cli post publish <id_post>                            # --platform para 
 - **`agenda`** muestra los posts junto a las propiedades, con el comando de cada cosa pendiente. **`post archive <id>`** da por terminado un post (primero hay que resolver o descartar sus publicaciones pendientes).
 - Si algo falla, la CLI muestra el código y qué hacer: `POST_NO_PLATFORMS` (la marca no tiene cuentas ni cadencia: conecta una o define la cadencia en `brand edit`), `LLM_BUDGET_EXCEEDED` (la marca llegó a su tope de IA del mes: `pnpm -s cli usage`), `LLM_OUTPUT_INVALID` (la IA no respondió en el formato pedido: vuelve a pedir los textos), `CONTENT_EDITED` (ya editaste o aprobaste: `post draft --replace-edits` los reemplaza), `POST_NOT_READY` (una idea sin aceptar o un post archivado), `OUTCOME_UNKNOWN_PENDING` (primero di si salió).
 
+### Lo mismo desde el panel (F9-T17)
+
+Todo lo anterior se puede hacer en el panel, en **Contenido** (el menú de la izquierda; el administrador elige la marca en "Ver corredor"):
+
+- **La lista** muestra los posts de la marca por estado (los archivados, con su filtro). Abajo, **Nuevo post**: tema, brief, tipo y fecha planeada (hora de Chile). Con "Todos" eliges la marca.
+- **El detalle de un post** tiene, en orden: **Pedir los textos a la IA** (con "Reemplazar también los textos editados o aprobados" si ya los tocaste); **una pestaña por red e idioma** con el texto, el conteo de esa red (en X cuenta como X: un enlace vale 23 y un emoji 2, y avisa que un enlace encarece el post), la vista previa, la revisión con lo que hay que corregir, **Editar** y **Aprobar** (o quitar la aprobación); **Fotos y videos** para subir con avance (puedes cancelar, y si falla, **Reintentar**; cada medio dice "procesando…" hasta que el worker arma sus versiones); **Publicar en …** una red a la vez y **Programar…** las redes que elijas a una hora de Chile; y la lista de **Publicaciones**.
+- **"No se sabe si salió"**: la publicación lo dice en ámbar. Mira la red y aprieta **Sí, salió** (pega el enlace si lo tienes) o **No salió** (queda fallida y puedes **Reintentar**).
+- **Una red a mano** (LinkedIn): la publicación te pide publicarla tú; después pega el enlace y aprieta **Lo publiqué**, o **No lo publiqué**.
+- **En vivo**, publicar y reintentar piden un segundo clic ("Sí, publicar en vivo"), y programar lo avisa en rojo.
+- **Videos de más de 100 MB:** el navegador los sube sin calcular su huella (sha256); el servidor la calcula después y el video aparece en unos minutos. Si ya estaba en el post, no se duplica.
+- **El perfil editorial** se edita en **Mi marca** (o, siendo administrador, en la página de cada corredor), con los mismos campos que `brand edit`. Si algo no sirve, el error aparece en rojo junto al campo y no se guarda nada.
+
 ## Restaurar un respaldo de la base
 
 > Esto es para un respaldo de tu Mac. Para uno del servidor (el de R2), sigue `docs/10-despliegue.md`, "Paso 10 · Restaurar un respaldo".
