@@ -233,8 +233,8 @@ export async function resumeAutoPublishAtStart(
 /**
  * Al arrancar: cierra como `failed` (`CONTENT_RUN_ABANDONED`) las corridas en `running` con
  * `started_at` de hace más de 2 h, de avisos **y de posts** (`failAbandoned` no distingue): el
- * motivo sirve para los dos, y `post.draft` (F9-T11) debe caber con sus reintentos en esas 2 h,
- * como `content.prepare`. Las `queued` no se tocan: se reencolan. Devuelve los ids.
+ * motivo sirve para los dos, y `post.draft` (F9-T11, `POST_DRAFT_QUEUE`) cabe con sus reintentos
+ * en esas 2 h, como `content.prepare`. Las `queued` no se tocan: se reencolan. Devuelve los ids.
  */
 export function failAbandonedContentRuns(
   contentRuns: Pick<ContentRunRepository, "failAbandoned">,
@@ -263,9 +263,7 @@ export function requeueQueuedContentRuns(
 /**
  * Al arrancar, después de `requeueQueuedContentRuns`: reencola las corridas `queued` de **posts**
  * como `post.draft` (F9-T05), nunca como `content.prepare`. Sin esto, una corrida de post en cola
- * quedaría huérfana tras un reinicio. La cola y el handler de `post.draft` llegan con F9-T11: hasta
- * entonces no hay corridas de posts (nada las pide) y, si las hubiera, encolar da
- * `QUEUE_UNAVAILABLE`: quedan en `failed` de esta función y siguen en cola para el próximo arranque.
+ * quedaría huérfana tras un reinicio. Las atiende el job `post.draft` (F9-T11).
  */
 export function requeueQueuedPostRuns(
   contentRuns: Pick<ContentRunRepository, "listQueued">,

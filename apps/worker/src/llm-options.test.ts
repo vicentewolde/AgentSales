@@ -1,6 +1,6 @@
-import { SAMPLE_CONTENT_DRAFT } from "@agentsales/core";
+import { SAMPLE_CONTENT_DRAFT, SAMPLE_SOCIAL_DRAFT } from "@agentsales/core";
 import { describe, expect, it } from "vitest";
-import { apiLlmOptions, llmProviderOptions } from "./llm-options.js";
+import { apiLlmOptions, llmProviderOptions, socialLlmProviderOptions } from "./llm-options.js";
 
 const env = {
   LLM_MODEL: "sonnet",
@@ -48,5 +48,16 @@ describe("proveedor de IA del worker", () => {
     expect(
       apiLlmOptions({ ...env, LLM_PROVIDER: "claude-cli", ANTHROPIC_API_KEY: "sk-ant-de-prueba" }),
     ).toMatchObject({ provider: "anthropic-api", model: "claude-sonnet-5-5" });
+  });
+
+  it("los textos de posts: con fake, el borrador de ejemplo de un post; si no, el mismo proveedor (F9-T11)", () => {
+    expect(socialLlmProviderOptions({ ...env, LLM_PROVIDER: "fake" }, {})).toEqual({
+      provider: "fake",
+      data: SAMPLE_SOCIAL_DRAFT,
+    });
+    const baseEnv = { PATH: "/usr/bin" };
+    expect(socialLlmProviderOptions({ ...env, LLM_PROVIDER: "claude-cli" }, baseEnv)).toEqual(
+      llmProviderOptions({ ...env, LLM_PROVIDER: "claude-cli" }, baseEnv),
+    );
   });
 });

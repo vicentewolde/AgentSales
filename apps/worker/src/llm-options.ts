@@ -1,5 +1,5 @@
 import type { Env } from "@agentsales/config";
-import { SAMPLE_CONTENT_DRAFT } from "@agentsales/core";
+import { SAMPLE_CONTENT_DRAFT, SAMPLE_SOCIAL_DRAFT } from "@agentsales/core";
 import type { LlmProviderOptions } from "@agentsales/llm";
 
 /**
@@ -54,4 +54,18 @@ export function llmProviderOptions(
     case "fake":
       return { provider: "fake", data: SAMPLE_CONTENT_DRAFT };
   }
+}
+
+/**
+ * Las opciones del proveedor para los textos de posts (`post.draft`, F9-T11): las mismas que
+ * `llmProviderOptions`, salvo con `fake`, que devuelve `SAMPLE_SOCIAL_DRAFT` (todas las redes en
+ * los dos idiomas; core se queda con lo pedido) en vez del borrador de un aviso.
+ */
+export function socialLlmProviderOptions(
+  env: LlmEnv,
+  baseEnv: Readonly<Record<string, string | undefined>>,
+): LlmProviderOptions {
+  return env.LLM_PROVIDER === "fake"
+    ? { provider: "fake", data: SAMPLE_SOCIAL_DRAFT }
+    : llmProviderOptions(env, baseEnv);
 }
