@@ -116,6 +116,12 @@ La doc no cubre este caso (NO VERIFICADO). Una sola app auditada puede servir a 
 8. Revisar que el WAF de Cloudflare deje pasar a los revisores de TikTok.
 9. Preguntar en el portal si la Organic API de TikTok for Business sirve para cuentas Business de una inmobiliaria.
 
+### Resultado de S6 (2026-10-21, en el servidor de producción; la hizo Claude con la autorización explícita del operador)
+- **Cómo:** TikTok exige `https`, así que S6 se hizo en el servidor: `PUBLISH_MODE=live` y el worker encendido **solo durante la prueba** (unos tres minutos), y de vuelta a `dry-run` con el worker apagado al terminar. El post se preparó y aprobó antes, en simulación.
+- **Conexión (Sandbox):** la cuenta `vicentewolde` de AgentPey se conectó con el botón del panel (Login Kit, `user.info.basic` y `video.upload`) contra la app del Sandbox.
+- **Subida como borrador:** un video vertical de 6 s (1080×1920, unos 5 MB) se subió por `FILE_UPLOAD` desde R2 y la publicación quedó en **`awaiting_manual_confirm`** («espera tu clic final»): el video llegó a la bandeja de TikTok del operador como borrador, sin publicarse. El texto no viaja: el operador lo pega en la app.
+- **Pendiente del operador:** abrir la bandeja de TikTok, ver el borrador y descartarlo (o publicarlo y confirmar con `publications confirm`), y marcar la publicación de prueba con `publications not-published <id>` si no se publica. La revisión de Production (video demo) sigue sin pedirse.
+
 ## 11. Riesgos y recomendación
 - **Recomendación:** TikTok en F9 solo como **borrador de video** (*Upload*); el borrador sin auditoría es lo único que no está confirmado por la doc, por eso la prueba S6 va antes de construir. Direct Post público, fotos y el compositor con las etiquetas, con el piloto, que es el caso de uso real que justifica la auditoría.
 - **Riesgos:** semanas de auditoría y rechazo por «uso interno»; que el borrador no llegue sin auditoría o que una cuenta personal no pueda autorizar (el veredicto pasaría a «TikTok completo en el piloto»); la ley de datos y las etiquetas comerciales y de IA, que son responsabilidad de quien publica.
