@@ -74,23 +74,33 @@ const FEED_UPDATE = new RegExp(
   "i",
 );
 /**
- * «Copiar enlace a la publicación»: `/posts/<usuario>_<texto>-activity-<número>-<sufijo>/`. El
- * número va al final, antes de un sufijo corto (sin él, también).
+ * El enlace largo de la publicación: `/posts/<usuario>_<texto>-activity-<número>-<sufijo>/` (a donde
+ * redirige el `lnkd.in` corto que hoy da «Copiar enlace a la publicación»). El número va al final,
+ * antes de un sufijo corto (sin él, también).
  */
 const POSTS_LINK = new RegExp(
   `^${HOST}\\/posts\\/[^/?#\\s]*?-(share|ugcPost|activity)-(\\d{10,30})(?:-[A-Za-z0-9_-]{1,12})?${TAIL}`,
   "i",
 );
 
+/** El enlace corto que da «Copiar enlace a la publicación»: `https://lnkd.in/…` (no trae el número). */
+const SHORT_LINK = /^https:\/\/lnkd\.in\//i;
+const SHORT_LINK_MESSAGE =
+  "Ese es el enlace corto de LinkedIn (lnkd.in) y no dice cuál es la publicación: ábrela (haz clic en su fecha) y copia el enlace de la barra de direcciones del navegador";
+const INVALID_LINK_MESSAGE =
+  "No es el enlace de una publicación de LinkedIn: ábrela (haz clic en su fecha) y copia el enlace de la barra de direcciones del navegador";
+
 /**
  * Reconoce el enlace de un post de LinkedIn que pega el operador al confirmar o resolver (ADR-0029
  * puntos 8 y 9), sin red: devuelve el URN (`urn:li:share|ugcPost|activity:<número>`), que es el
  * mismo **formato** de `external_id` que guarda el publisher (el URN de `x-restli-id`), y el enlace
  * limpio `https://www.linkedin.com/feed/update/<urn>/`. Acepta `/feed/update/<urn>` (la barra del
- * navegador al abrir el post) y `/posts/…-activity-<número>-…` («Copiar enlace a la publicación»).
+ * navegador al abrir el post) y `/posts/…-activity-<número>-…` (el enlace largo).
  * Ojo: el número de `activity` no es el del `share` que creó la API (`linkedin.md` §4.6): borrar por
- * la API con un URN `activity` no está verificado (S2). Cualquier otra cosa (un `lnkd.in`, un
- * perfil, otro sitio) es `PUBLISHED_URL_INVALID` (no reintentable), sin repetir lo recibido.
+ * la API con un URN `activity` no está verificado (S2). Cualquier otra cosa es
+ * `PUBLISHED_URL_INVALID` (no reintentable), sin repetir lo recibido. Un `lnkd.in` (el enlace corto que
+ * LinkedIn da hoy con «Copiar enlace a la publicación», sin el número: resolverlo pide red) tiene su
+ * propio mensaje, que manda a copiar el enlace de la barra de direcciones.
  */
 export function parseLinkedInPostUrl(value: string): LinkedInPostRef {
   const text = value.trim();
@@ -103,7 +113,7 @@ export function parseLinkedInPostUrl(value: string): LinkedInPostRef {
   if (type === undefined || id === undefined) {
     throw new AppError(
       "PUBLISHED_URL_INVALID",
-      "No es el enlace de una publicación de LinkedIn: en la publicación, abre el menú (…) y usa «Copiar enlace a la publicación»",
+      SHORT_LINK.test(text) ? SHORT_LINK_MESSAGE : INVALID_LINK_MESSAGE,
       { details: { platform: "linkedin" } },
     );
   }

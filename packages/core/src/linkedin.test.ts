@@ -48,7 +48,7 @@ describe("parseLinkedInPostUrl", () => {
     ).toBe("urn:li:activity:456");
   });
 
-  it("«Copiar enlace a la publicación»: /posts/…-activity-<número>-<sufijo>", () => {
+  it("el enlace largo de la publicación: /posts/…-activity-<número>-<sufijo>", () => {
     expect(
       parseLinkedInPostUrl(
         "https://www.linkedin.com/posts/vicente-wolde_arriendo-activity-post-activity-7381234567890123456-AbCd?utm_source=share&utm_medium=member_ios",
@@ -80,6 +80,17 @@ describe("parseLinkedInPostUrl", () => {
       expect(isAppError(error) && error.code).toBe("PUBLISHED_URL_INVALID");
       if (value !== "") expect((error as Error).message).not.toContain(value);
     }
+  });
+
+  it("el enlace corto lnkd.in tiene su propio mensaje: manda a copiar el de la barra de direcciones", () => {
+    const short = errorOf(() => parseLinkedInPostUrl("https://lnkd.in/p/diQmSaGV"));
+    expect(isAppError(short) && short.code).toBe("PUBLISHED_URL_INVALID");
+    expect((short as Error).message).toContain("enlace corto");
+    expect((short as Error).message).toContain("barra de direcciones");
+    expect((short as Error).message).not.toContain("diQmSaGV");
+    const other = errorOf(() => parseLinkedInPostUrl("https://evil.com/x"));
+    expect((other as Error).message).not.toContain("enlace corto");
+    expect((other as Error).message).toContain("barra de direcciones");
   });
 
   it("parsePublishedUrl de LinkedIn usa el lector: el external_id es el URN", () => {
