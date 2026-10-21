@@ -28,4 +28,4 @@
 - **Un registro público para el revisor:** más superficie y no hace falta.
 
 ## Seguimiento
-- **2026-10-20 (PR #201, ensayo de la demo de F9):** la lista de alta recién lo cumple: el paso Instagram de un corredor pasó de `owner: "admin"` a `owner: "broker"` (`onboardingSteps`), y el paso de la red de los posts de una marca también es de la marca, salvo Discord, que exige `accounts.manage` (ADR-0022).
+- **2026-10-20 (PR #201, ensayo de la demo de F9):** la lista de alta recién lo cumple: el paso Instagram de un corredor pasó de `owner: "admin"` a `owner: "broker"` (`onboardingSteps`), y el paso de la red de los posts de una marca también es de la marca, salvo Discord, que exige `accounts.manage` (ADR-0022). La lista pone `owner: "broker"` en Instagram **siempre**, pero el punto 4 sigue mandando: el botón del corredor existe solo en el servidor, con el inicio de sesión de Instagram. En el Mac, con el token del panel de Meta, el Instagram lo conecta el administrador (y un corredor propio no tiene usuario: lo maneja el operador con el suyo), así que ahí el paso pendiente dice "lo hace el corredor" aunque lo haga el administrador.

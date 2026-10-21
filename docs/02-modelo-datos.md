@@ -231,7 +231,7 @@ Un tema o idea con un texto por red e idioma (`contents.post_id`), a veces medio
 | platforms | text[] null | Desde F9-T20 (migración `0018`): las redes del post, de `POST_PLATFORMS` (core, validado al leer). Las llena el plan con las redes que la IA sugirió y que pasaron las verificaciones de cada idea, y las cambia el operador (`updatePost`). `null` = todas las redes de la marca (un post manual). `post.draft` redacta solo para estas, dentro de las de la marca y que sirvan al `kind` del post. Desde F9-T21 también deciden aprobar, publicar y programar: el texto de una red que no está aquí no se aprueba ni sale (`POST_PLATFORM_EXCLUDED`), y una red con publicaciones pendientes no se quita (`POST_HAS_PENDING_PUBLICATIONS`) |
 | x_link_allowed | boolean default `false` | Desde F9-T16 (migración `0016`): la marca explícita del operador que permite un enlace en el texto de X (cuesta US$0,20 en vez de US$0,015). Sin ella, un enlace en X impide aprobar (`LINK_NOT_ALLOWED`) y publicar (`X_LINK_NOT_ALLOWED`) |
 
-Índice `(broker_id, status, planned_at)` para el contenido y el calendario de una marca.
+Índice `(broker_id, status, planned_at)` para el contenido y el calendario de una marca, y `posts_plan_run_idx` sobre `(plan_run_id)` para las ideas de un plan (`GET /plans/:id` las lee con `PostRepository.list` por `planRunId`); los dos, desde la migración `0015`.
 
 ### plan_runs — planes de ideas de la IA (F9, ADR-0030)
 Se crea con `posts` (migración `0015`) porque `posts.plan_run_id` la referencia; la lógica (job `content.plan`) es de F9-T20: al terminar, el reporte y los posts `idea` de sus ideas se guardan en una sola transacción.

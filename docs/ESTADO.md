@@ -3,12 +3,16 @@
 > Este archivo es la memoria de trabajo entre sesiones. Claude lo lee al empezar y lo actualiza al terminar cada tarea. Mantenerlo corto: el historial detallado vive en git y en `CHANGELOG.md`.
 
 **Actualizado:** 2026-10-20
-**Fase actual:** F9 · Contenido de marca (spec **aprobado** el 2026-10-19: `docs/specs/fase-9-contenido-de-marca.md`; ADR-0029 y ADR-0030). F8 cerrada (`v1.0.0`)
-**Última tarea:** **entrega 2 de F9 cerrada** con la etiqueta `v1.2.0` (T15, T16, T26, T17, T18 y T19). Entrega 3 (`v1.3.0`): **T20 terminada** (#194, revisada por el `revisor` y el `arquitecto`): el plan de ideas en core y el worker (`content.plan`), aceptar y descartar, un plan activo por marca y la migración `0018` (`posts.platforms` y el índice). Tus decisiones del 2026-10-20: al aceptar una idea se redacta solo para sus redes sugeridas, y una idea descartada bloquea su tema 60 días. **T22 terminada** (#195): `pnpm eval:social` con tres marcas inventadas, sin escribir en la base; la medición real del costo te queda pendiente (abajo). **T21 terminada** (#196): el plan en el panel (página Plan) y la CLI (`plan`, `plan show|list`, `post accept|discard`, `post edit --platforms --date --brief`); las redes del post mandan al aprobar, publicar, programar y en el reloj (pedir a mano una red quitada se rechaza con su consejo, tu decisión del 2026-10-20), y quitar una red con publicaciones pendientes pide cancelarlas primero. **T23 terminada** (#198): todos los docs de la fase revisados contra el código; el procedimiento para volver atrás deshace la `0015` a la `0018` juntas, con su prueba. Además, la marca del enlace en X desde la CLI y el panel (#199)
-**Siguiente paso:** T24, la prueba con tus cuentas reales (necesita tus pruebas S1 a S6 de abajo y tu instrucción en el chat) → T25, el cierre con `v1.3.0`. Antes de publicar de verdad en cada red, tus pruebas S1 a S6 (abajo) y tu instrucción en el chat. Agrega a tu `.env` (y a `.env.example`) las variables de LinkedIn, X y TikTok (`CHANGELOG [1.2.0]`)
+**Fase actual:** F9 · Contenido de marca **cerrada** el 2026-10-20 (`v1.3.0`, la etiqueta con tu permiso). Siguiente: F10 · piloto con una oficina (spec §4.17 de F9; ADR-0031 a ADR-0033 propuestos)
+**Última tarea:** **cierre de F9** (`/fase-cerrar 9`). La entrega 3 quedó completa: el plan de ideas (T20, #194), el plan en el panel y la CLI (T21, #196), `pnpm eval:social` (T22, #195), la documentación (T23, #198), la marca del enlace en X (#199) y los arreglos del ensayo (#201). **T24:** el ensayo de la demo en simulación con la IA real y la marca AgentPey (con tu perfil real) salió bien; la prueba en vivo de cada red queda pendiente tuya (abajo). Tus decisiones del 2026-10-20: al aceptar una idea se redacta solo para sus redes sugeridas, una idea descartada bloquea su tema 60 días, y una red quitada del post se rechaza aunque se pida a mano
+**Siguiente paso:** crear la etiqueta `v1.3.0` (con tu permiso) y después `/fase-plan 10` (el piloto). En paralelo, cuando quieras: tus pruebas S1 a S6 y la prueba en vivo de F9 red por red, solo con tu instrucción en el chat
 
-## Pendiente tuyo de F9
-Nada de esto bloquea empezar: el código se construye contra simulaciones. Cada prueba de entrada bloquea solo su red (spec §4.8; los pasos están en la sección 8 de cada nota de `docs/integraciones/`):
+## Pendiente tuyo de F9 (cerrada con `v1.3.0`)
+- [ ] **Tu CLI apunta a tu Mac** desde el ensayo: para volver al servidor, `pnpm -s cli login --api https://agentsales.agentpey.com --email vicentewolde@gmail.com`
+- [ ] **Desplegar F9** (`docs/10-despliegue.md`, lo haces tú): aplica las migraciones `0014` a `0018`; después `ENV_FILE=.env.production pnpm db:seed --operator-brands` y el perfil editorial real de tus marcas con `brand edit` (en la base de desarrollo, AgentPey ya tiene el que me diste el 2026-10-20; `vinny` está vacío)
+- [ ] **T24 en vivo, red por red:** tras la prueba de entrada de cada red (abajo), conectar la cuenta de la marca y publicar un post en `live` con tu instrucción en el chat; en Discord y X, programado y con el worker del servidor encendido (criterio 3 de la fase)
+
+Cada prueba de entrada bloquea solo su red (spec §4.8; los pasos están en la sección 8 de cada nota de `docs/integraciones/`):
 - [ ] **S1 · Instagram:** una publicación real y neutra en tu cuenta profesional, vista desde una cuenta **sin rol** en la app (modo desarrollo), solo con tu instrucción en el chat. **Obligatoria antes de cualquier publicación real de posts en Instagram** (T13 ya está construido contra simulaciones; decisión del 2026-10-20)
 - [ ] **S2 y S3 · LinkedIn:** el token de «Share on LinkedIn» publica en `/rest/posts`; escribir a LinkedIn Developer Support por el §3.1(26) de sus términos. **Obligatorias antes de publicar de verdad en LinkedIn por la API** (T15 ya está construido contra simulaciones; la cuenta nace a mano)
 - [ ] **S4 · X:** cuenta de desarrollador con créditos (tope sugerido US$10 al mes), un post, un reply a ti mismo y un texto repetido. **Obligatoria antes de cualquier publicación real en X** (T16 ya está construido contra simulaciones)
@@ -93,43 +97,24 @@ Detalle en `docs/07-checklist-cuentas.md`, "Antes de F8":
   - [ ] Confirmar si la portada del reel de P002 fue el cuadro del segundo 1 (nota de Instagram §8, punto 8)
 
 ## Progreso de la fase
-F9 en tres entregas (spec §5.1) y por olas en paralelo (§5.2): como máximo 3 ramas con código a la vez, cada una en su worktree, con la CI como juez.
+F10 · piloto con una oficina: todavía sin spec.
 
-| Entrega | Tarea | Estado | PR |
-|---|---|---|---|
-| — | Spec F9 (`/fase-plan 9`) | ✅ aprobado | (este PR) |
-| 1 · `v1.1.0` | T01 Plataformas, marcas y estados nuevos | ✅ terminada | #170 |
-| 1 | T27 Despliegue parametrizado por instancia | ✅ terminada | #169 |
-| 1 | T02 Credenciales por plataforma y redactor | ✅ terminada | #171 |
-| 1 | T03 Esquema de posts y migración | ✅ terminada | #172 |
-| 1 | T04 Repositorios con sujeto y `PostLock` | ✅ terminada | #173 |
-| 1 | T05 Aprobar, editar y abrir publicaciones sobre un sujeto | ✅ terminada | #176 |
-| 1 | T06 El intento de publicar, el traspaso por cuenta y el resultado dudoso | ✅ terminada | #178 |
-| 1 | T07 Programar, reloj, vigilancia y cancelar sobre un sujeto | ✅ terminada | #179 |
-| 1 | T08 Agenda y seguimiento con posts | ✅ terminada | #181 |
-| 1 | T09 Perfil editorial | ✅ terminada | #175 |
-| 1 | T10 Posts manuales y sus medios | ✅ terminada | #177 |
-| 1 | T11 El texto por red con IA | ✅ terminada | #180 |
-| 1 | T12 Aprobar, publicar y programar un post (CLI) | ✅ terminada | #182 |
-| 1 | T13 Instagram para posts (S1 antes de publicar de verdad) | ✅ terminada | #184 |
-| 1 | T14 Discord (S5 antes de publicar de verdad) | ✅ terminada | #183 |
-| 2 · `v1.2.0` | T15 LinkedIn (S2 y S3 antes de publicar de verdad) | ✅ terminada | #185 |
-| 2 | T16 X (S4 antes de publicar de verdad) | ✅ terminada | #187 |
-| 2 | T26 TikTok, video como borrador (S6 antes de publicar de verdad) | ✅ terminada | #186 |
-| 2 | T17 Panel: Contenido | ✅ terminada | #189 |
-| 2 | T18 Panel: calendario | ✅ terminada | #190 |
-| 2 | T19 CLI de cuentas y guía del operador | ✅ terminada | #191 |
-| 3 · `v1.3.0` | T20 El plan de ideas (core y worker) | ✅ terminada | #194 |
-| 3 | T21 Plan en el panel y la CLI | ✅ terminada | #196 |
-| 3 | T22 Evaluación de la calidad | ✅ terminada | #195 |
-| 3 | T23 Documentación | ✅ terminada | #198, #199 |
-| 3 | T24 Prueba con las cuentas reales (contigo) | ⏳ pendiente | |
-| 3 | T25 Cierre de fase | ⏳ pendiente | |
+| Tarea | Estado | PR |
+|---|---|---|
+| Spec F10 (`/fase-plan 10`) | ⏳ pendiente | |
 
 Leyenda: ⏳ pendiente · 🔨 en curso · ✅ terminada · ⛔ bloqueada
 
 ## Bloqueos y pendientes del operador
 - **Mercado Libre:** cuenta, app y `.env` listos; `VICENTEWOLDE` conectada a `agentsales-pruebas` (2026-10-08) y renovada con `--force` en la demo del cierre (2026-10-09). El WhatsApp del corredor no estaba en la base en la demo de F6 (2026-10-16: `PORTAL_NOT_READY` en P002); hay que volver a cargarlo (arriba). Sin paquete pagado (tu decisión, 2026-10-08): la prueba real usa el usuario de prueba (D15, arriba).
+
+## Decisiones de F9
+Resueltas en el spec (§4.14, D1–D21) y ADR-0029 y ADR-0030; tres entregas (`v1.1.0`, `v1.2.0`, `v1.3.0`), 27 tareas en PR #169 a #201, con agentes en paralelo y la CI como juez:
+- **El post es otro sujeto de publicación** junto al aviso (ADR-0029); una marca es un corredor con `kind = brand`. Resultado dudoso (`outcome_unknown`) sin reintento ciego, traspaso a mano por cuenta (LinkedIn y TikTok) y credenciales por plataforma.
+- **La IA propone, tú decides** (ADR-0030): el perfil editorial es su única fuente de hechos; plan → aceptar → aprobar → programar, sin `auto_publish` para posts.
+- **Redes (tus respuestas):** LinkedIn perfil personal a mano (P1), X con enlaces marcados y tope de US$10 (P2), dos idiomas como posts separados (P4), Discord con webhook (P5), TikTok como borrador (D16). Construidas contra simulaciones; cada una exige su prueba S antes de publicar de verdad (2026-10-20).
+- **2026-10-20, entrega 3:** al aceptar se redacta solo para las redes sugeridas; las descartadas bloquean 60 días; las redes del post mandan siempre (una red quitada se rechaza aunque se pida a mano).
+- **Despliegue (D19):** una instancia mientras solo la uses tú; dos del mismo código al llegar el primer cliente (T27 lo dejó listo).
 
 ## Decisiones de F8
 Resueltas en el spec (§4.16, D1–D20) y ADR-0024 a ADR-0026:
@@ -193,7 +178,7 @@ Resueltas en el spec (§4.13, D1–D13), ADR-0015 y ADR-0016:
 Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de cada canal y las publicaciones nacen aprobadas, una por formato (carrusel y reel), con lo aprobado fijo; sin corridas mientras haya publicaciones pendientes y con un candado por aviso (cierra la ventana de edición de F2); el modo `dry-run`/`live` lo decide cada publicación; en F3 la cuenta se conecta con el token del panel de Meta (Meta rechazó `http://localhost`; el OAuth queda listo para F7 con HTTPS); sin `DELETE` (se borra a mano y se marca como retirada).
 
 ## Deuda técnica
-- **F9, de T15, T16 y T26:** faltan en `.env.example` `LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI`, `X_CLIENT_ID/SECRET/REDIRECT_URI` y `TIKTOK_CLIENT_KEY/SECRET/REDIRECT_URI` (los agentes no tocan `.env*`; los agregas tú). La marca del enlace en X (`posts.x_link_allowed`) solo se pone con `PATCH /api/posts/:id` hasta que la CLI (`post edit`) y el panel la sumen. Conectar LinkedIn, X y TikTok es por la CLI (botones del panel, T19). Retirar en LinkedIn con `DELETE` queda para T19. Ninguna de las tres redes publica de verdad hasta S2, S3, S4 y S6.
+- **F9, de T15, T16 y T26:** faltan en `.env.example` `LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI`, `X_CLIENT_ID/SECRET/REDIRECT_URI` y `TIKTOK_CLIENT_KEY/SECRET/REDIRECT_URI` (los agentes no tocan `.env*`; los agregas tú). Ninguna de las tres redes publica de verdad hasta S2, S3, S4 y S6.
 - **F9, de T14:** un video de más de 20 MiB no se publica en Discord (sale solo el texto): no hay enlace seguro porque R2 no tiene un dominio público (spec D8 cambiada). Se resuelve con un dominio de medios (`media.agentpey.com`), el mismo que pedirá TikTok para fotos. `social:smoke --platform discord` no existe: S5 se hace a mano.
 - **F9, de T23 (revisión de docs contra el código):**
   - `IG_PUBLISH_OUTCOME_UNKNOWN` de Instagram sigue en `failed`, no en `outcome_unknown`: el panel resuelve un resultado dudoso solo en los posts, no en la sección Contenido de una propiedad. Cuando la tenga, sumarlo a `OUTCOME_UNKNOWN_CODES`.
@@ -203,6 +188,12 @@ Resueltas en el spec (§4.10, D1–D12) y en ADR-0014: se aprueba el texto de ca
   - `pnpm social:smoke` no se construyó: las pruebas S1 a S6 son a mano.
   - Huecos de prueba: ningún test de `watchPublications` mezcla un aviso y un post en la misma vuelta (T07b), y `apps/web/src/queries/posts.ts` no tiene test propio (T17b).
 - **F9, de T22:** "fuera del perfil" de `eval:social` no es una garantía: la heurística de `unsupportedFacts` no ve clientes con nombre de empresa en una línea con forma de título (por ejemplo "Trabajamos con Banco Estado"). Propuesta: revisar también esas líneas, o marcarlas como advertencia. La revisión humana antes de aprobar sigue siendo la defensa.
+- **F9, del cierre (auditoría del `arquitecto`, para F10 y F11):**
+  - **Versiones distintas de la CLI y el servidor:** las respuestas validan con enums cerrados (por ejemplo, las claves de la lista de alta): una CLI más vieja con `--api` contra un servidor más nuevo falla al leer. Abrir esos enums o exigir la misma versión, antes de las dos instancias (D19).
+  - **Quién es dueño de una cuenta:** "cuenta de la marca" se decide comparando `account.brokerId === broker.id` en core (`onboarding.ts`) y en el panel (`PostPublishing.tsx`); llevarlo a una función de core antes de las oficinas (F11). Además, el panel pide las cuentas con el corredor del selector, no con el del post: el administrador con otro corredor elegido ve las redes del post desactivadas.
+  - **Quién hace cada paso de la lista de alta:** `owner` no mira el entorno (el botón de Instagram existe solo en el servidor) ni los corredores propios (sin usuario); en el piloto, operado por ti, dirá "lo hace el corredor". Decidirlo con `can` o el entorno, sin darle significados nuevos a `operator_owned`.
+  - **`kind` ya decide los pasos de la lista de alta** (con un `switch` exhaustivo): al agregar `office` u `org` en F11 es lo primero que se decide.
+  - **La revisión de nombres propios crece a fuerza de excepciones** (fechas, líneas con forma de título): con marcas de clientes, evaluar hechos estructurados o palabras permitidas por marca.
 - **Imagen (lote D):** la API sigue dependiendo de `@agentsales/media` (por el logo) y trae `playwright`; con una sola imagen para la API y el worker (D7) da igual (deuda de F7 cerrada así). El ffmpeg de la imagen y de la CI sale de BtbN, que conserva sus builds unos dos años: copiarlo a un bucket propio antes de que lo borren. La imagen fija Node por digest y Debian no se actualiza solo: subir la etiqueta y el digest de vez en cuando.
 - **Panel, el selector al recargar (F7-T17):** mientras cargan los corredores, el filtro todavía no se aplica y la primera consulta sale sin él (se repite al llegar la lista). No muestra nada ajeno (es del administrador), pero pide dos veces.
 - **Logos reemplazados (F7-T14):** al subir otro logo, el anterior queda como medio del corredor y en R2 (no se borra). Ocupa poco; limpiarlo junto con los medios huérfanos cuando haga falta.

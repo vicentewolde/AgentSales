@@ -4,6 +4,44 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [1.3.0] - 2026-10-20 · F9 Contenido de marca, entrega 3 (cierre de la fase)
+**La IA propone qué publicar y cuándo; tú decides.** Pides un plan para las próximas semanas y la IA propone ideas con fecha, línea de contenido, redes y el porqué, a partir del perfil editorial de tu marca. Una idea no gasta IA en textos ni se publica sola: la aceptas (y recién ahí se redactan sus textos), la apruebas y la programas. Con esto F9 queda completa.
+
+Probado contra simulaciones y en un ensayo de la demo en tu Mac (simulación, con la IA real y la marca AgentPey). **Nada se publicó de verdad:** la prueba en vivo de cada red (T24) queda para cuando hagas sus pruebas S1 a S6, y siempre con tu instrucción en el chat.
+
+### Añadido
+- **El plan de ideas:** `plan --broker <marca> [--days 14] [--count N] [--platform …]` y la página **Plan** del panel. Las ideas salen por semana, en los días y horas de la cadencia del perfil, sin repetir temas de los últimos 60 días ni ideas descartadas, y sin cifras ni nombres que no estén en tus hechos. `plan show <id>` y `plan list`.
+- **Decidir cada idea:** `post accept <id> [--wait]` (pasa a borrador y la IA redacta sus textos **solo para las redes sugeridas**), `post discard <id>` (no vuelve en 60 días) y `post edit <id> --brief … --date … --platforms …` antes de aceptarla. En el panel: Aceptar, Editar, Descartar y «Redactar lo aceptado».
+- **Las redes de un post mandan:** se redacta, aprueba, publica y programa solo en las redes del post; pedir a mano una red quitada se rechaza con su consejo, y quitar una red con publicaciones pendientes te pide cancelarlas primero.
+- **`pnpm eval:social`:** evalúa el plan y los textos con tres marcas inventadas, sin escribir en la base (`--provider fake` no gasta). Cuenta ideas repetidas, datos fuera del perfil, largos, escapes y menciones masivas, e imprime el costo estimado (~US$ 0,12 con Sonnet por un plan de 10 ideas y sus textos en dos idiomas).
+- **El enlace en X desde la CLI y el panel:** `post edit <id> --x-link | --no-x-link` y la casilla «Permitir un enlace en X» del post, con el aviso de su costo.
+- **La lista de alta de una marca:** pide el perfil editorial (al menos una línea y un hecho) y una red para los posts, en vez de WhatsApp, Mercado Libre y Marketplace.
+
+### Cambiado
+- El panel ya no ofrece publicar ni programar en una red sin cuenta conectada: el botón queda desactivado con el motivo y un enlace a Cuentas. `post approve` te dice que conectes la cuenta primero.
+- La revisión editorial ya no toma un mes o un día de la semana por un nombre propio cuando va con una fecha («Oct 9», «Mon, Oct 9»).
+- En la lista de alta, el Instagram de un corredor lo conecta el propio corredor (ADR-0028).
+
+### Corregido
+- `plan list --broker` y `listing ready|pause|resume|reopen|archive|close --broker` ya reciben la marca o el corredor.
+- Aceptar una idea ya no sugiere `post draft` para esperar los textos (eso los redactaba dos veces): usa `post accept --wait` o `post show`.
+
+### Documentación
+- Todos los docs de la fase revisados contra el código (arquitectura, modelo de datos, plataformas, formato, checklist de cuentas, guía del operador, despliegue, visión y roadmap) y el seguimiento de los ADR que F9 modifica.
+- **Volver atrás en el servidor:** el procedimiento deshace las migraciones `0015` a `0018` juntas, con una guarda y una prueba que hace el ida y vuelta (`docs/10-despliegue.md`, paso 9).
+
+### Base de datos
+- Migración `0018`: las redes de un post (`posts.platforms`) y un solo plan activo por marca. Solo agrega.
+
+### Límites conocidos
+- En **Instagram**, un resultado dudoso (la red no confirmó si publicó) queda como fallido y no como `outcome_unknown`: no se reintenta solo (no publica dos veces), pero tampoco se resuelve con «salió / no salió». Antes de reintentar, mira tu Instagram. En Discord, LinkedIn, X y TikTok sí se resuelve en un paso.
+
+### Pendiente fuera del código
+- **T24 en vivo:** por cada red, su prueba de entrada (S1 Instagram, S2 y S3 LinkedIn, S4 X, S5 Discord, S6 TikTok), después conectar la cuenta y publicar un post con tu instrucción en el chat (`docs/ESTADO.md`).
+- **El perfil editorial real de tus marcas** en el servidor (`brand edit`): la IA solo afirma lo que escribas en sus hechos.
+- **El costo real del plan:** `pnpm eval:social --provider anthropic-api --profile dos-idiomas --ideas 10 --out`, y anotarlo en `docs/integraciones/anthropic-api.md` §13.
+- **Desplegar** F9 lo haces tú (`docs/10-despliegue.md`): aplica las migraciones `0014` a `0018` y después `pnpm db:seed --operator-brands` en el servidor.
+
 ## [1.2.0] - 2026-10-20 · F9 Contenido de marca, entrega 2
 Tu contenido llega a **LinkedIn, X y TikTok**, y ya se maneja desde el **panel**: la pantalla Contenido para crear, redactar, aprobar y publicar posts, y un calendario con lo programado y lo publicado de posts y avisos. La IA que propone ideas llega en la entrega 3 (spec `docs/specs/fase-9-contenido-de-marca.md`).
 
